@@ -90,6 +90,32 @@ describe("compareProtocol", () => {
     expect(o.insufficient).toBe(false);
   });
 
+  it("keeps the stored unit raw while its framing crosses the display boundary", () => {
+    const cmp = compareProtocol(
+      [
+        {
+          key: "result:Selenium",
+          label: "Selenium",
+          unit: "ug/L",
+          direction: "higher_better",
+          samples: [
+            { date: "2026-04-30", value: 40 },
+            { date: "2026-05-01", value: 45 },
+          ],
+        },
+      ],
+      {
+        startDate: "2026-05-01",
+        endDate: "2026-05-10",
+        today: "2026-05-10",
+      }
+    );
+
+    expect(cmp.outcomes[0].unit).toBe("ug/L");
+    expect(cmp.outcomes[0].framing).toContain("+5 µg/L");
+    expect(cmp.outcomes[0].framing).not.toContain("ug/L");
+  });
+
   it("sparse labs: without the nearest-before fallback an empty baseline is insufficient", () => {
     const ldl: OutcomeSeries = {
       key: "result:LDL Cholesterol",

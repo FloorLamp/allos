@@ -131,3 +131,17 @@ export const CENSUS_KNOWN_OFFENDERS: KnownOffender[] = [
       "the run that first went green, which is the census doing its job.",
   },
 ];
+
+/**
+ * Match only a date-rule hit to the date ledger. A different census rule may hit
+ * the same text node/test id; sharing its location never earns that hit an entry.
+ */
+export function knownMachineDateOffender(
+  route: string,
+  offender: { kind: "date" | "lab-unit"; testId: string }
+): KnownOffender | undefined {
+  if (offender.kind !== "date") return undefined;
+  return CENSUS_KNOWN_OFFENDERS.find(
+    (known) => known.route === route && known.testId === offender.testId
+  );
+}

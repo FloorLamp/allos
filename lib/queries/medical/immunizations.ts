@@ -1,4 +1,5 @@
 import { db, hoistedStatement } from "../../db";
+import { storedLabUnit } from "../../display-unit";
 import {
   REPRESENTATIVE_SPECS,
   representativeCte,
@@ -137,7 +138,7 @@ export function getImmunityTiters(profileId: number): ImmunityTiter[] {
       marker,
       value: row.value,
       value_num: row.value_num,
-      unit: row.unit,
+      unit: storedLabUnit(row.unit),
       date: row.date,
       status: titerImmuneStatus(value, {
         immuneAtLeast: immuneThresholdFor(marker),

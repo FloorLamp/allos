@@ -22,6 +22,7 @@ import { formatLongDate } from "@/lib/format-date";
 import { clinicalResultDetailHref } from "@/lib/hrefs";
 import CardFootnote from "@/components/CardFootnote";
 import PhoneFold from "@/components/PhoneFold";
+import { displayUnit } from "@/lib/display-unit";
 
 // Longevity §1 — the biological-age HERO (#209, #1042 phase 4, split by #2367).
 //
@@ -188,6 +189,7 @@ export default async function BioAgeSection() {
               <ul className="grid grid-cols-1 gap-x-6 gap-y-2 sm:grid-cols-2">
                 {effects.map((e) => {
                   const label = bioAgeEffectLabel(e);
+                  const shownUnit = displayUnit(e.unit);
                   return (
                     <li
                       key={e.key}
@@ -223,14 +225,14 @@ export default async function BioAgeSection() {
                         <span className="tabular-nums">
                           {e.bound ?? ""}
                           {e.value}
-                          {e.unit ? ` ${e.unit}` : ""}
+                          {shownUnit ? ` ${shownUnit}` : ""}
                         </span>
                         {e.reference ? (
                           <>
                             {" · vs "}
                             <span className="tabular-nums">
                               {Math.round(e.reference.value * 10) / 10}
-                              {e.unit ? ` ${e.unit}` : ""}
+                              {shownUnit ? ` ${shownUnit}` : ""}
                             </span>
                             {` (${phenoAgeReferenceBasisLabel(e.reference)})`}
                           </>

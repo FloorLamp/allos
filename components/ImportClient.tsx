@@ -16,6 +16,7 @@ import { IconLoader2, IconAlertTriangle } from "@tabler/icons-react";
 import type { ExtractedWorkout } from "@/lib/workout-extract";
 import type { WeightUnit } from "@/lib/settings";
 import ScrollFade from "@/components/ScrollFade";
+import { displayUnit } from "@/lib/display-unit";
 
 // Lightweight client-side guess at what a paste/CSV contains, from its header
 // row — used only to preselect the type toggle (the user can override).
@@ -486,7 +487,7 @@ function ClinicalResultPreview({
               >
                 <td className="td">{r.name}</td>
                 <td className="td tabular-nums">{r.value ?? "–"}</td>
-                <td className="td">{r.unit ?? ""}</td>
+                <td className="td">{displayUnit(r.unit) ?? ""}</td>
                 <td className="td">{r.reference_range ?? ""}</td>
                 <td className="td">{r.flag ?? ""}</td>
               </tr>

@@ -15,6 +15,7 @@ import type { FormResult } from "@/lib/types";
 import type { OutcomeOption } from "@/lib/queries/protocols";
 import type { PanelId } from "@/lib/biomarker-panels";
 import ProtocolOutcomePicker from "./ProtocolOutcomePicker";
+import { displayUnit } from "@/lib/display-unit";
 
 // Round a window mean for display: 2 dp for small magnitudes, 1 dp otherwise.
 function fmtStat(n: number | null): string {
@@ -36,7 +37,8 @@ function OutcomePanel({
   o: OutcomeComparison;
   onRemove?: () => void;
 }) {
-  const unit = o.unit ? ` ${o.unit}` : "";
+  const shownUnit = displayUnit(o.unit);
+  const unitSuffix = shownUnit ? ` ${shownUnit}` : "";
   return (
     <div
       className="card"
@@ -82,7 +84,7 @@ function OutcomePanel({
               <div className="text-lg font-semibold text-slate-800 dark:text-slate-100">
                 {fmtStat(o.baseline.mean)}
                 <span className="ml-1 text-xs font-normal text-slate-400">
-                  {unit.trim()}
+                  {unitSuffix.trim()}
                 </span>
               </div>
               <div className="text-xs text-slate-400">
@@ -95,7 +97,7 @@ function OutcomePanel({
               <div className="text-lg font-semibold text-slate-800 dark:text-slate-100">
                 {fmtStat(o.intervention.mean)}
                 <span className="ml-1 text-xs font-normal text-slate-400">
-                  {unit.trim()}
+                  {unitSuffix.trim()}
                 </span>
               </div>
               <div className="text-xs text-slate-400">

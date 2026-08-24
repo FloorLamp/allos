@@ -55,6 +55,7 @@ import {
   RECHECK_BASIS_HEADING,
 } from "@/lib/biomarker-care-basis";
 import { convertToCanonical, sameUnit } from "@/lib/unit-conversions";
+import { displayUnit, storedLabUnit } from "@/lib/display-unit";
 import { getBiomarkerInfo } from "@/lib/datasets/biomarker-descriptions";
 import {
   getDisplayFormatPrefs,
@@ -100,9 +101,9 @@ export const dynamic = "force-dynamic";
 function formatRange(
   low: number | null,
   high: number | null,
-  unit: string | null
+  shownUnit: string | null
 ): string | null {
-  const u = unit ? ` ${unit}` : "";
+  const u = shownUnit ? ` ${shownUnit}` : "";
   // A point band (low === high) is a single target, e.g. "ideally undetectable"
   // toxins pinned at 0 — render it as one value, not "0–0".
   if (low != null && high != null)
@@ -306,7 +307,7 @@ export default async function ClinicalResultDetailPage(props: {
   let bands: BiomarkerBands = {};
 
   if (cb && cb.unit) {
-    chartUnit = cb.unit;
+    chartUnit = storedLabUnit(cb.unit);
     const converted = plottable.map((x) => ({
       ...x,
       v: convertToCanonical(x.value, x.r.unit, cb),
@@ -316,7 +317,9 @@ export default async function ClinicalResultDetailPage(props: {
       .map((x) => ({ date: x.r.date, value: x.v as number, bound: x.bound }));
     otherUnits = [
       ...new Set(
-        converted.filter((x) => x.v == null).map((x) => x.r.unit ?? "—")
+        converted
+          .filter((x) => x.v == null)
+          .map((x) => storedLabUnit(x.r.unit) ?? "—")
       ),
     ];
     if (cbHasRange) {
@@ -328,7 +331,7 @@ export default async function ClinicalResultDetailPage(props: {
       };
     }
   } else {
-    chartUnit = latestPlottable?.r.unit ?? null;
+    chartUnit = storedLabUnit(latestPlottable?.r.unit) ?? null;
     chartPoints = plottable
       .filter((x) => sameUnit(x.r.unit, chartUnit))
       .map((x) => ({ date: x.r.date, value: x.value, bound: x.bound }));
@@ -336,7 +339,7 @@ export default async function ClinicalResultDetailPage(props: {
       ...new Set(
         plottable
           .filter((x) => !sameUnit(x.r.unit, chartUnit))
-          .map((x) => x.r.unit ?? "—")
+          .map((x) => storedLabUnit(x.r.unit) ?? "—")
       ),
     ];
     const parsed = parseReferenceRange(latest.reference_range);
@@ -362,6 +365,10 @@ export default async function ClinicalResultDetailPage(props: {
       optimalHigh: bandC(bands.optimalHigh),
     };
   }
+  // Keep `chartUnit` raw through matching and conversion above. Only the values
+  // handed to visible copy/chart labels cross the display boundary.
+  const shownChartUnit = displayUnit(chartUnit);
+  const shownOtherUnits = otherUnits.map((unit) => displayUnit(unit) ?? unit);
   const unchartedCount = plottable.length - chartPoints.length;
   const hasBounded = chartPoints.some((p) => p.bound);
 
@@ -380,8 +387,12 @@ export default async function ClinicalResultDetailPage(props: {
     openRange
   );
 
-  const refRange = cb ? formatRange(ref.low, ref.high, cb.unit) : null;
-  const optimalRange = cb ? formatRange(opt.low, opt.high, cb.unit) : null;
+  const refRange = cb
+    ? formatRange(ref.low, ref.high, displayUnit(cb.unit))
+    : null;
+  const optimalRange = cb
+    ? formatRange(opt.low, opt.high, displayUnit(cb.unit))
+    : null;
   // Label a range with the qualifiers that shaped it: the reproductive status (when
   // a status range applied — female physiology), else the user's sex (when a
   // sex-specific override applied), and/or the age band (e.g. "age 6–12").
@@ -426,12 +437,12 @@ export default async function ClinicalResultDetailPage(props: {
     const male = formatRange(
       refField("male", "low"),
       refField("male", "high"),
-      cb.unit
+      displayUnit(cb.unit)
     );
     const female = formatRange(
       refField("female", "low"),
       refField("female", "high"),
-      cb.unit
+      displayUnit(cb.unit)
     );
     if (male)
       referenceEntries.push({ label: "Reference range (male)", range: male });
@@ -452,12 +463,12 @@ export default async function ClinicalResultDetailPage(props: {
     const male = formatRange(
       optField("male", "low"),
       optField("male", "high"),
-      cb.unit
+      displayUnit(cb.unit)
     );
     const female = formatRange(
       optField("female", "low"),
       optField("female", "high"),
-      cb.unit
+      displayUnit(cb.unit)
     );
     if (male)
       optimalEntries.push({ label: "Optimal range (male)", range: male });
@@ -920,9 +931,9 @@ export default async function ClinicalResultDetailPage(props: {
           <h2 className="font-semibold text-slate-800 dark:text-slate-100">
             Trend
           </h2>
-          {chartUnit ? (
+          {shownChartUnit ? (
             <span className="text-xs text-slate-500 dark:text-slate-400">
-              in {chartUnit}
+              in {shownChartUnit}
             </span>
           ) : null}
         </div>
@@ -958,7 +969,7 @@ export default async function ClinicalResultDetailPage(props: {
         ) : (
           <BiomarkerTrendChart
             data={chartPoints}
-            unit={chartUnit ?? ""}
+            unit={shownChartUnit ?? ""}
             bands={bands}
             annotations={chartAnnotations}
             windows={protocolWindows}
@@ -967,7 +978,7 @@ export default async function ClinicalResultDetailPage(props: {
         {unchartedCount > 0 && (
           <p className="mt-2 text-xs text-slate-500 dark:text-slate-400">
             {unchartedCount} reading(s) in non-convertible units (
-            {otherUnits.join(", ")}) not charted.
+            {shownOtherUnits.join(", ")}) not charted.
           </p>
         )}
         {hasBounded && (

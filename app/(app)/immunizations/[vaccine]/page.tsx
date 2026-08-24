@@ -27,6 +27,7 @@ import { statusBadge } from "../status-ui";
 import OverrideControls from "./OverrideControls";
 import VaccineDoseHistory from "../VaccineDoseHistory";
 import BackLink from "@/components/BackLink";
+import { displayUnit } from "@/lib/display-unit";
 
 export const dynamic = "force-dynamic";
 
@@ -218,7 +219,7 @@ export default async function VaccineDetailPage(props: {
                             {t.marker}
                           </div>
                           <div className="text-xs text-slate-500 dark:text-slate-400">
-                            {t.value ?? "—"} {t.unit ?? ""}
+                            {t.value ?? "—"} {displayUnit(t.unit) ?? ""}
                             {t.date ? ` · ${t.date}` : ""}
                           </div>
                         </div>

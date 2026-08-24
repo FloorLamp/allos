@@ -27,6 +27,12 @@ describe("decideSunExposure", () => {
     expect(obs!.detail).not.toMatch(/\bmore sun\b|\bUV\b|should|must/i);
   });
 
+  it("normalizes a stored ASCII micro unit only in the finding copy", () => {
+    const input = { ...base, vitaminDUnit: "uU / mL" };
+    expect(decideSunExposure(input)?.detail).toContain("22 µU / mL");
+    expect(input.vitaminDUnit).toBe("uU / mL");
+  });
+
   it("is null without a home location", () => {
     expect(decideSunExposure({ ...base, hasHomeLocation: false })).toBeNull();
   });

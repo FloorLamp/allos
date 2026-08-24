@@ -1,16 +1,27 @@
 import { test, expect } from "./fixtures";
-import type { Page } from "@playwright/test";
-import { openDashboardAll } from "./helpers";
+import type { Locator, Page } from "@playwright/test";
+import Database from "better-sqlite3";
+import {
+  hydratedClick,
+  openCombobox,
+  openDashboardAll,
+  settledFill,
+} from "./helpers";
+import { workerDbPath } from "./worker-env";
 import {
   CENSUS_EXEMPT_SUBTREES,
   CENSUS_KNOWN_OFFENDERS,
   MACHINE_DATE_RE,
+  knownMachineDateOffender,
   machineDateHits,
 } from "@/lib/machine-date-census";
+import { MACHINE_LAB_UNIT_RE } from "@/lib/machine-lab-unit-census";
 import { DEFAULT_FORMAT_PREFS } from "@/lib/format-date";
 import { plantTrashCaptures, sweepTrashProbes } from "./trash-probe";
+import { openGoalFact } from "./goal-form-helpers";
 
-// THE MACHINE-DATE CENSUS (#3492) — no storage-format date reaches user copy.
+// THE MACHINE-TEXT CENSUS (#3492/#3545) — no storage-format date or bare ASCII
+// microgram lab unit reaches user copy.
 //
 // Four surfaces printed a raw `YYYY-MM-DD` at a person in ONE day's review, which
 // is why this is a class guard rather than a fifth per-page fix: the surface added
@@ -62,13 +73,17 @@ interface CensusRoute {
    * least 3× its floor when this was written.
    */
   minTextNodes: number;
+  /** Rules this route was added to exercise. Omit to run both. */
+  kinds?: ("date" | "lab-unit")[];
   /**
    * Where this route's date-bearing copy lives. The census only believes its own
    * silence once one of these elements has been seen carrying a date IN THE DISPLAY
    * SHAPE — which proves both that the surface rendered and that the boundary is
    * doing its job, in one assertion.
    */
-  subject: string;
+  subject?: string;
+  /** The exact fixture-owned result this census proves rendered a micro unit. */
+  unitSubject?: (page: Page) => Locator;
   /** Extra work needed before the subject is on screen. */
   reveal?: (page: Page) => Promise<void>;
   /**
@@ -81,6 +96,99 @@ interface CensusRoute {
   sweep?: () => void;
 }
 
+const FOLLOWUP_COPY_PROBE = "e2e:lab-unit-census-followup";
+const RESOLVING_COPY_PROBE = "e2e:lab-unit-census-resolving";
+const REFERENCE_COPY_PROBE = "e2e:lab-unit-census-reference";
+
+function sweepFollowupCopyProbe(): void {
+  const handle = new Database(workerDbPath());
+  try {
+    handle
+      .prepare(
+        "DELETE FROM care_plan_items WHERE profile_id = 1 AND external_id = ?"
+      )
+      .run(FOLLOWUP_COPY_PROBE);
+    handle
+      .prepare(
+        "DELETE FROM medical_records WHERE profile_id = 1 AND external_id = ?"
+      )
+      .run(RESOLVING_COPY_PROBE);
+  } finally {
+    handle.close();
+  }
+}
+
+function plantFollowupCopyProbe(): void {
+  sweepFollowupCopyProbe();
+  const handle = new Database(workerDbPath());
+  try {
+    const source = handle
+      .prepare(
+        `SELECT id FROM medical_records
+         WHERE profile_id = 1 AND canonical_name = 'Selenium'
+         ORDER BY date, id LIMIT 1`
+      )
+      .get() as { id: number };
+    const { today } = handle.prepare("SELECT date('now') AS today").get() as {
+      today: string;
+    };
+    handle.transaction(() => {
+      handle
+        .prepare(
+          `INSERT INTO medical_records
+             (profile_id, date, category, name, value, value_num, unit,
+              canonical_name, flag, source, external_id)
+           VALUES (1, ?, 'lab', 'Selenium', '46', 46, 'ug / L',
+                   'Selenium', 'low', 'manual', ?)`
+        )
+        .run(today, RESOLVING_COPY_PROBE);
+      handle
+        .prepare(
+          `INSERT INTO care_plan_items
+             (profile_id, description, category, planned_date, status,
+              source_kind, source_medical_record_id,
+              recommended_interval_days, external_id)
+           VALUES (1, 'Recheck Selenium', 'follow-up', ?, NULL,
+                   'labs', ?, 30, ?)`
+        )
+        .run(today, source.id, FOLLOWUP_COPY_PROBE);
+    })();
+  } finally {
+    handle.close();
+  }
+}
+
+function sweepReferenceCopyProbe(): void {
+  const handle = new Database(workerDbPath());
+  try {
+    handle
+      .prepare(
+        "DELETE FROM medical_records WHERE profile_id = 1 AND external_id = ?"
+      )
+      .run(REFERENCE_COPY_PROBE);
+  } finally {
+    handle.close();
+  }
+}
+
+function plantReferenceCopyProbe(): void {
+  sweepReferenceCopyProbe();
+  const handle = new Database(workerDbPath());
+  try {
+    handle
+      .prepare(
+        `INSERT INTO medical_records
+           (profile_id, date, category, name, value, value_num, unit,
+            canonical_name, fasting, source, external_id)
+         VALUES (1, date('now'), 'lab', 'E2E Micro Reference', '9', 9,
+                 'mg/dL', 'Insulin, Fasting', 1, 'manual', ?)`
+      )
+      .run(REFERENCE_COPY_PROBE);
+  } finally {
+    handle.close();
+  }
+}
+
 // Document 908 is the e2e seed's multi-tab import (e2e/seed-events.ts): labs,
 // a projected medication, a visit, a condition, an immunization, a provider.
 // Document 912 carries the vitals rows, which take the READ-ONLY row presentation
@@ -91,7 +199,56 @@ const ROUTES: CensusRoute[] = [
     why: "Dashboard Standing rows — '112/72 mmHg 2026-07-22' in the filed report.",
     minTextNodes: 120,
     subject: '[data-testid="vitals-latest-bp-age"]',
+    unitSubject: (page) =>
+      page.locator(
+        '[data-testid="dashboard-candidate"][data-candidate-id="labs.latest:Selenium"]'
+      ),
     reveal: openDashboardAll,
+  },
+  {
+    path: "/?quick=search",
+    why: "Global search's precomposed Selenium result subtitle.",
+    minTextNodes: 40,
+    kinds: ["lab-unit"],
+    unitSubject: (page) =>
+      page.getByRole("option").filter({
+        has: page.getByText("Selenium", { exact: true }),
+      }),
+    reveal: async (page) => {
+      const input = page.getByRole("combobox", {
+        name: "Search or run a command",
+      });
+      await expect(input).toBeVisible();
+      await settledFill(page, input, "Selenium");
+      await expect(
+        page.getByRole("option").filter({
+          has: page.getByText("Selenium", { exact: true }),
+        })
+      ).toBeVisible();
+    },
+  },
+  {
+    path: "/training?tab=goals",
+    why: "The lab-goal target label and precomposed reference-range hint.",
+    minTextNodes: 35,
+    kinds: ["lab-unit"],
+    unitSubject: (page) => page.getByTestId("goal-clinical-result-reference"),
+    reveal: async (page) => {
+      await hydratedClick(page, page.getByRole("button", { name: "Add goal" }));
+      const form = page.getByTestId("goal-form");
+      await expect(form).toBeVisible();
+      const field = form.getByRole("combobox", { name: "Lab or vital" });
+      const listbox = await openCombobox(page, field);
+      await settledFill(page, field, "Selenium");
+      await listbox
+        .getByRole("option", { name: "Selenium", exact: true })
+        .click();
+      await expect(field).toHaveValue("Selenium");
+      // Picking the subject leaves the summary-first form's subject editor open.
+      // The reference hint belongs to Target, so open that real panel rather than
+      // treating hidden mounted copy as visible proof.
+      await openGoalFact(form, "target");
+    },
   },
   {
     // `?q=` bounds the table to a row that is certain to be in the shared seed AND
@@ -103,18 +260,82 @@ const ROUTES: CensusRoute[] = [
     why: "The clinical results table's Date cell (lib/reading-date-line's day half).",
     minTextNodes: 60,
     subject: "td[data-card='meta']",
+    unitSubject: (page) =>
+      page
+        .getByRole("row")
+        .filter({
+          has: page.getByText("E2E Novel Lab", { exact: true }),
+        })
+        .locator("td[data-card='value']"),
   },
   {
-    path: "/results/clinical-results/view?name=HDL%20Cholesterol",
-    why: "The bespoke per-biomarker history table and its 'as of' line.",
-    minTextNodes: 80,
+    path: "/results/clinical-results?q=E2E%20Micro%20Reference",
+    why: "The Clinical results mismatch branch's precomposed canonical reference unit.",
+    minTextNodes: 55,
+    kinds: ["lab-unit"],
+    unitSubject: (page) =>
+      page.getByTestId("clinical-result-reference").filter({ hasText: "µIU" }),
+    plant: plantReferenceCopyProbe,
+    sweep: sweepReferenceCopyProbe,
+  },
+  {
+    path: "/results/clinical-results/view?name=Selenium",
+    why: "The Selenium detail's latest value, curated ranges, chart labels, and history table.",
+    // Measured 67 on the production fixture; 60 stays well above the shell while
+    // leaving normal copy/layout variation room.
+    minTextNodes: 60,
     subject: "table td",
+    unitSubject: (page) => page.getByTestId("biomarker-latest-value"),
+  },
+  {
+    path: "/longevity",
+    why: "The biological-age input list's stored lab values and units.",
+    minTextNodes: 40,
+    // This route joins the census for its micro-unit fixture. Its existing raw
+    // dates are #3492 follow-up scope, not a reason to omit the unit surface.
+    kinds: ["lab-unit"],
+    unitSubject: (page) =>
+      page.getByTestId("bio-age-input").filter({
+        has: page.getByRole("link", {
+          name: "White Blood Cell Count",
+          exact: true,
+        }),
+      }),
+  },
+  {
+    path: "/upcoming",
+    why: "Flagged-lab follow-up source and resolving labels on Upcoming.",
+    minTextNodes: 30,
+    kinds: ["lab-unit"],
+    unitSubject: (page) =>
+      page
+        .locator('[data-testid^="upcoming-item-followup:"]')
+        .filter({ hasText: "Recheck Selenium" }),
+    plant: plantFollowupCopyProbe,
+    sweep: sweepFollowupCopyProbe,
+  },
+  {
+    path: "/trends?tab=insights&cmpA=result%3ASelenium&cmpB=metric%3Aweight&range=all",
+    why: "The clinical Trends series' Compare legend and chart unit.",
+    // Exact CI rendered 53–58 nodes across the ordinary shard and three scrutiny
+    // repeats. Keep a three-node stability margin; the unique visible `(µg/L)`
+    // subject below separately proves that the comparison itself rendered.
+    minTextNodes: 50,
+    kinds: ["lab-unit"],
+    unitSubject: (page) => page.getByText("(µg/L)", { exact: true }),
   },
   {
     path: "/import/908",
     why: "Import review: the Document date provenance row and the analyte grid's DATE cells.",
     minTextNodes: 22,
     subject: "td[data-card='meta']",
+    unitSubject: (page) =>
+      page
+        .getByRole("row")
+        .filter({
+          has: page.getByText("E2E Novel Lab", { exact: true }),
+        })
+        .locator("td[data-card='value']"),
   },
   {
     path: "/import/908?tab=visits",
@@ -207,36 +428,55 @@ const ROUTES: CensusRoute[] = [
 const DISPLAY_DATE =
   /(Jan|Feb|Mar|Apr|May|Jun|Jul|Aug|Sep|Oct|Nov|Dec)[a-z]*\.?\s+\d{1,2}\b|\b\d{1,2}\s+(Jan|Feb|Mar|Apr|May|Jun|Jul|Aug|Sep|Oct|Nov|Dec)/;
 
+const DISPLAY_MICRO_UNIT = /µ(?:g(?=\s*\/)|L\b|IU(?=\s*\/)|mol(?=\s*\/))/;
+
 interface Census {
   examined: number;
-  offenders: { text: string; testId: string; where: string }[];
+  offenders: {
+    kind: "date" | "lab-unit";
+    text: string;
+    testId: string;
+    where: string;
+  }[];
 }
 
 /**
  * Every RENDERED text node under `<main>`, minus the exempt subtrees, scanned for
- * machine dates.
+ * machine dates and machine-spelled lab units.
  *
  * `matcherSource` is handed in rather than closed over: `page.evaluate` serializes
- * its argument into the browser, so the one rule from lib/machine-date-census
- * travels with it and there is no second copy of the pattern living in this file.
+ * its argument into the browser, so the rules from lib/machine-date-census and
+ * lib/machine-lab-unit-census travel with it and there is no second copy of either
+ * pattern living in this file.
  */
-async function census(page: Page, matcherSource: string): Promise<Census> {
+async function census(
+  page: Page,
+  matcherSources: { date: string; labUnit: string }
+): Promise<Census> {
   return page.evaluate(
     ({
-      pattern,
+      patterns,
       exemptSelectors,
     }: {
-      pattern: string;
+      patterns: { date: string; labUnit: string };
       exemptSelectors: string[];
     }) => {
-      const re = new RegExp(pattern, "g");
+      const matchers = [
+        { kind: "date" as const, re: new RegExp(patterns.date, "g") },
+        { kind: "lab-unit" as const, re: new RegExp(patterns.labUnit, "g") },
+      ];
       const main = document.querySelector("main");
       if (!main) return { examined: 0, offenders: [] };
       const exempt = exemptSelectors.flatMap((s) => [
         ...main.querySelectorAll(s),
       ]);
       const walker = document.createTreeWalker(main, NodeFilter.SHOW_TEXT);
-      const out: { text: string; testId: string; where: string }[] = [];
+      const out: {
+        kind: "date" | "lab-unit";
+        text: string;
+        testId: string;
+        where: string;
+      }[] = [];
       let examined = 0;
       for (let n = walker.nextNode(); n; n = walker.nextNode()) {
         const text = n.textContent ?? "";
@@ -254,27 +494,30 @@ async function census(page: Page, matcherSource: string): Promise<Census> {
         if (!shown) continue;
         if (exempt.some((el) => el.contains(n))) continue;
         examined += 1;
-        re.lastIndex = 0;
-        const hits = [...text.matchAll(re)].map((m) => m[0]);
-        for (const hit of hits) {
-          const tag = parent.tagName.toLowerCase();
-          const testid = parent.closest("[data-testid]");
-          out.push({
-            text: hit,
-            testId: testid?.getAttribute("data-testid") ?? "",
-            where:
-              `${tag}` +
-              (testid
-                ? ` inside [data-testid="${testid.getAttribute("data-testid")}"]`
-                : "") +
-              ` — ${text.trim().slice(0, 90)}`,
-          });
+        for (const matcher of matchers) {
+          matcher.re.lastIndex = 0;
+          const hits = [...text.matchAll(matcher.re)].map((m) => m[0]);
+          for (const hit of hits) {
+            const tag = parent.tagName.toLowerCase();
+            const testid = parent.closest("[data-testid]");
+            out.push({
+              kind: matcher.kind,
+              text: hit,
+              testId: testid?.getAttribute("data-testid") ?? "",
+              where:
+                `${tag}` +
+                (testid
+                  ? ` inside [data-testid="${testid.getAttribute("data-testid")}"]`
+                  : "") +
+                ` — ${text.trim().slice(0, 90)}`,
+            });
+          }
         }
       }
       return { examined, offenders: out };
     },
     {
-      pattern: matcherSource,
+      patterns: matcherSources,
       exemptSelectors: CENSUS_EXEMPT_SUBTREES.map((e) => e.selector),
     }
   );
@@ -283,9 +526,12 @@ async function census(page: Page, matcherSource: string): Promise<Census> {
 // NOT A COPY OF THE RULE — the rule itself, serialized into the page. A second
 // spelling of the pattern living in this file could narrow silently, and an absence
 // assertion over a narrowed matcher is green by construction.
-const BROWSER_PATTERN = MACHINE_DATE_RE.source;
+const BROWSER_PATTERNS = {
+  date: MACHINE_DATE_RE.source,
+  labUnit: MACHINE_LAB_UNIT_RE.source,
+};
 
-test("no rendered copy states a machine date, on any censused surface (#3492)", async ({
+test("no rendered copy states machine dates or ASCII microgram lab units (#3492/#3545)", async ({
   page,
 }) => {
   test.slow(); // next start compiles each route on its first hit
@@ -320,17 +566,39 @@ test("no rendered copy states a machine date, on any censused surface (#3492)", 
       // THE CONTENT, NOT THE CONTAINER: a route that renders its shell and then its
       // table would otherwise be censused between the two, and empty is the state
       // that flatters an absence assertion.
-      const subject = page
-        .locator(route.subject)
-        .filter({ hasText: DISPLAY_DATE });
-      await expect(
-        subject.first(), // first-ok: read-only census — one instance is all that proves the surface rendered
-        `${route.path}: no element matching \`${route.subject}\` rendered a date in ` +
-          `the display shape, so this route's silence about machine dates means ` +
-          `nothing — ${route.why}`
-      ).toBeVisible();
+      if (route.subject) {
+        const subject = page
+          .locator(route.subject)
+          .filter({ hasText: DISPLAY_DATE });
+        await expect(
+          subject.first(), // first-ok: read-only census — one instance is all that proves the surface rendered
+          `${route.path}: no element matching \`${route.subject}\` rendered a date in ` +
+            `the display shape, so this route's silence about machine dates means ` +
+            `nothing — ${route.why}`
+        ).toBeVisible();
+      }
 
-      const { examined, offenders } = await census(page, BROWSER_PATTERN);
+      if (route.unitSubject) {
+        const unitSubject = route.unitSubject(page);
+        await expect(
+          unitSubject,
+          `${route.path}: the fixture-owned micro-unit result was not unique — ` +
+            `${route.why}`
+        ).toHaveCount(1);
+        await expect(
+          unitSubject,
+          `${route.path}: the fixture-owned result did not render a microgram unit ` +
+            `in the display shape, so this route's silence about machine-spelled ` +
+            `lab units means nothing — ${route.why}`
+        ).toContainText(DISPLAY_MICRO_UNIT);
+        await expect(
+          unitSubject,
+          `${route.path}: the fixture-owned micro-unit result was not visible — ` +
+            `${route.why}`
+        ).toBeVisible();
+      }
+
+      const { examined, offenders } = await census(page, BROWSER_PATTERNS);
 
       // (1) THE CENSUS FLOOR.
       expect(
@@ -342,17 +610,18 @@ test("no rendered copy states a machine date, on any censused surface (#3492)", 
 
       totalExamined += examined;
       seen.push(route.path);
-      for (const o of offenders) {
+      const relevantOffenders = route.kinds
+        ? offenders.filter((offender) => route.kinds?.includes(offender.kind))
+        : offenders;
+      for (const o of relevantOffenders) {
         // A KNOWN offender is recorded, not hidden: it stays out of `problems` so the
         // census can be green today, and it is required to still be here below.
-        const known = CENSUS_KNOWN_OFFENDERS.find(
-          (k) => k.route === route.path && k.testId === o.testId
-        );
+        const known = knownMachineDateOffender(route.path, o);
         if (known) {
           stillOffending.add(`${known.route} ${known.testId}`);
           continue;
         }
-        problems.push(`${route.path}: ${o.where}`);
+        problems.push(`${route.path} [${o.kind}]: ${o.where}`);
       }
     } finally {
       route.sweep?.();
@@ -369,10 +638,25 @@ test("no rendered copy states a machine date, on any censused surface (#3492)", 
   // …and only NOW is the absence worth asserting.
   expect(
     problems,
-    `Machine dates in rendered copy — render them through the display vocabulary in ` +
-      `lib/format-date (client: useFormatPrefs(); server: getDisplayFormatPrefs(login.id) ` +
-      `at the page boundary):\n${problems.join("\n")}`
+    `Machine text in rendered copy — dates go through lib/format-date and lab units ` +
+      `through lib/display-unit at MedicalValue:\n${problems.join("\n")}`
   ).toEqual([]);
+
+  // DISPLAY ONLY. The same synthetic row proved `µg/mL` on the clinical-results
+  // table and import subpage above; its stored spelling remains the import evidence.
+  const stored = new Database(workerDbPath(), { readonly: true });
+  try {
+    expect(
+      stored
+        .prepare(
+          `SELECT unit FROM medical_records
+           WHERE profile_id = 1 AND document_id = 908 AND name = 'E2E Novel Lab'`
+        )
+        .get()
+    ).toEqual({ unit: "ug/mL" });
+  } finally {
+    stored.close();
+  }
 
   // SHRINK-ONLY. Every known offender on a route the sweep actually visited must
   // still be offending. The day one is fixed this fails and asks for its entry to be
@@ -388,34 +672,80 @@ test("no rendered copy states a machine date, on any censused surface (#3492)", 
   ).toEqual([...new Set(expected)].sort());
 });
 
-test("(3) the census catches a synthetic offender planted in the live DOM", async ({
+test("(3) the census catches synthetic offenders planted in the live DOM", async ({
   page,
 }) => {
   test.slow();
   await page.goto("/results/clinical-results");
   await expect(page.getByRole("main")).toBeVisible();
 
-  const clean = await census(page, BROWSER_PATTERN);
+  const clean = await census(page, BROWSER_PATTERNS);
   expect(clean.examined).toBeGreaterThan(0);
   expect(clean.offenders).toEqual([]);
 
-  // A forged date, in a text node, in the place real copy lives. If the collector
-  // reads the wrong root, skips visible nodes, or the matcher has been narrowed to
-  // the point of blindness, this is where it shows — and it is the ONLY assertion
-  // in this file that can fail because the probe stopped working rather than
-  // because the app did.
+  // Forged machine text, in a text node, in the place real copy lives. If the
+  // collector reads the wrong root, skips visible nodes, or either matcher has been
+  // narrowed to blindness, this is where it shows.
   await page.evaluate(() => {
     const main = document.querySelector("main");
     const p = document.createElement("p");
-    p.setAttribute("data-testid", "forged-machine-date");
+    p.setAttribute("data-testid", "forged-machine-text");
     // FORGED BY A SPEC on purpose — never a real render.
-    p.textContent = "Forged by the census spec: 2014-03-09";
+    p.textContent = "Forged by the census spec: 2014-03-09 · 1.20 uU / mL";
     main?.appendChild(p);
   });
 
-  const dirty = await census(page, BROWSER_PATTERN);
-  expect(dirty.offenders.map((o) => o.text)).toEqual(["2014-03-09"]);
+  const dirty = await census(page, BROWSER_PATTERNS);
+  expect(dirty.offenders.map((o) => [o.kind, o.text])).toEqual([
+    ["date", "2014-03-09"],
+    ["lab-unit", "uU"],
+  ]);
   expect(dirty.examined).toBe(clean.examined + 1);
+});
+
+test("a known date offender cannot suppress a collocated lab-unit hit", async ({
+  page,
+}) => {
+  test.slow();
+  const known = CENSUS_KNOWN_OFFENDERS[0];
+  if (!known)
+    throw new Error("the collision control needs one registered date offender");
+  await page.goto(known.route);
+  await expect(page.getByRole("main")).toBeVisible();
+
+  await page.evaluate(
+    ({ testId }) => {
+      const main = document.querySelector("main");
+      const p = document.createElement("p");
+      // Same route + testid as the real date ledger entry, deliberately. Only the
+      // forged DATE earns that entry; the adjacent unit must still fail the sweep.
+      p.setAttribute("data-testid", testId);
+      p.textContent = "Forged collision: 2014-03-09 · 1.20 ug / mL";
+      main?.appendChild(p);
+    },
+    { testId: known.testId }
+  );
+
+  const dirty = await census(page, BROWSER_PATTERNS);
+  const forged = dirty.offenders.filter(
+    (offender) =>
+      offender.testId === known.testId &&
+      (offender.text === "2014-03-09" || offender.text === "ug")
+  );
+  expect(forged.map((offender) => [offender.kind, offender.text])).toEqual([
+    ["date", "2014-03-09"],
+    ["lab-unit", "ug"],
+  ]);
+  expect(
+    forged
+      .filter((offender) => knownMachineDateOffender(known.route, offender))
+      .map((offender) => [offender.kind, offender.text])
+  ).toEqual([["date", "2014-03-09"]]);
+  expect(
+    forged
+      .filter((offender) => !knownMachineDateOffender(known.route, offender))
+      .map((offender) => [offender.kind, offender.text])
+  ).toEqual([["lab-unit", "ug"]]);
 });
 
 test("the exemptions hold only while their premises do (#3492 item 3)", async ({

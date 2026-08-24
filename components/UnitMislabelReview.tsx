@@ -9,6 +9,7 @@ import {
 } from "@/app/(app)/data/review-actions";
 import type { UnitMislabelReview as UnitMislabelReviewRow } from "@/lib/queries/medical";
 import { UNDO_TOAST_MS } from "@/lib/undo-offer";
+import { displayUnit } from "@/lib/display-unit";
 
 // Data → Review, unit-mislabel cross-check (issue #761). Each card is a numeric lab
 // reading whose stored unit is a probable power-of-ten mislabel of the canonical
@@ -43,7 +44,7 @@ export default function UnitMislabelReview({
       return;
     }
     const undo = res.undo;
-    toast(`Unit corrected to ${item.correctedUnit}.`, {
+    toast(`Unit corrected to ${displayUnit(item.correctedUnit)}.`, {
       duration: UNDO_TOAST_MS,
       action: {
         label: "Undo",
@@ -83,54 +84,58 @@ export default function UnitMislabelReview({
       </p>
 
       <ul className="mt-3 space-y-3">
-        {items.map((item) => (
-          <li
-            key={item.id}
-            data-testid="unit-mislabel-card"
-            data-record-id={item.id}
-            data-name={item.name}
-            className="rounded-lg border border-black/10 p-3 dark:border-white/10"
-          >
-            <div className="text-sm text-slate-700 dark:text-slate-200">
-              <span className="font-medium text-slate-800 dark:text-slate-100">
-                {item.name} {item.value} {item.statedUnit}
-              </span>{" "}
-              — the stated range {prettyRange(item.statedRange)} matches{" "}
-              <span className="font-medium">{item.correctedUnit}</span>, not{" "}
-              <span className="font-medium">{item.statedUnit}</span>. Correct
-              the unit to {item.correctedUnit}?
-            </div>
-            <div
-              className="mt-1 text-xs text-slate-500 dark:text-slate-400"
-              data-testid="unit-mislabel-beforeafter"
+        {items.map((item) => {
+          const statedUnit = displayUnit(item.statedUnit);
+          const correctedUnit = displayUnit(item.correctedUnit);
+          return (
+            <li
+              key={item.id}
+              data-testid="unit-mislabel-card"
+              data-record-id={item.id}
+              data-name={item.name}
+              className="rounded-lg border border-black/10 p-3 dark:border-white/10"
             >
-              <span className="line-through">
-                {item.value} {item.statedUnit}
-              </span>{" "}
-              → {item.value} {item.correctedUnit}
-            </div>
-            <div className="mt-3 flex flex-wrap items-center gap-2">
-              <button
-                type="button"
-                data-testid="unit-mislabel-apply"
-                onClick={() => void onApply(item)}
-                className="btn btn-sm"
+              <div className="text-sm text-slate-700 dark:text-slate-200">
+                <span className="font-medium text-slate-800 dark:text-slate-100">
+                  {item.name} {item.value} {statedUnit}
+                </span>{" "}
+                — the stated range {prettyRange(item.statedRange)} matches{" "}
+                <span className="font-medium">{correctedUnit}</span>, not{" "}
+                <span className="font-medium">{statedUnit}</span>. Correct the
+                unit to {correctedUnit}?
+              </div>
+              <div
+                className="mt-1 text-xs text-slate-500 dark:text-slate-400"
+                data-testid="unit-mislabel-beforeafter"
               >
-                <IconWand className="h-4 w-4" stroke={1.75} />
-                Correct to {item.correctedUnit}
-              </button>
-              <button
-                type="button"
-                data-testid="unit-mislabel-dismiss"
-                onClick={() => void onDismiss(item)}
-                className="inline-flex items-center gap-1.5 rounded-lg px-3 py-1.5 text-sm font-medium text-slate-500 transition hover:bg-slate-100 dark:text-slate-400 dark:hover:bg-ink-750"
-              >
-                <IconEyeOff className="h-4 w-4" stroke={1.75} />
-                Dismiss
-              </button>
-            </div>
-          </li>
-        ))}
+                <span className="line-through">
+                  {item.value} {statedUnit}
+                </span>{" "}
+                → {item.value} {correctedUnit}
+              </div>
+              <div className="mt-3 flex flex-wrap items-center gap-2">
+                <button
+                  type="button"
+                  data-testid="unit-mislabel-apply"
+                  onClick={() => void onApply(item)}
+                  className="btn btn-sm"
+                >
+                  <IconWand className="h-4 w-4" stroke={1.75} />
+                  Correct to {correctedUnit}
+                </button>
+                <button
+                  type="button"
+                  data-testid="unit-mislabel-dismiss"
+                  onClick={() => void onDismiss(item)}
+                  className="inline-flex items-center gap-1.5 rounded-lg px-3 py-1.5 text-sm font-medium text-slate-500 transition hover:bg-slate-100 dark:text-slate-400 dark:hover:bg-ink-750"
+                >
+                  <IconEyeOff className="h-4 w-4" stroke={1.75} />
+                  Dismiss
+                </button>
+              </div>
+            </li>
+          );
+        })}
       </ul>
     </div>
   );

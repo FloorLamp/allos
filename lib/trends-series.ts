@@ -62,6 +62,7 @@ import {
   metricDetailHref,
   type AppRoute,
 } from "./hrefs";
+import { displayUnit } from "./display-unit";
 
 export interface TrendSeries {
   key: string; // "metric:weight" | "result:LDL Cholesterol" — also the pin key
@@ -297,11 +298,12 @@ export function buildBiomarkerSeries(
   const windowed = filterSeriesByRange(plot.points, range);
   if (windowed.length === 0) return null;
   const windowedFlags = filterSeriesByRange(plot.pointFlags, range);
+  const shownUnit = displayUnit(plot.unit);
 
   return {
     key: resultSeriesKey(canonical),
     label: canonical,
-    unit: plot.unit ? ` ${plot.unit}` : "",
+    unit: shownUnit ? ` ${shownUnit}` : "",
     color: bioColor(canonical),
     href: clinicalResultDetailHref(canonical),
     kind: "biomarker",
@@ -329,17 +331,21 @@ const BIO_TILE_DECIMALS = 1;
 function outOfWindowText(
   point: { date: string; value: number } | null,
   row: { date: string; value: string | null; unit: string | null } | undefined,
-  unit: string | null
+  pointUnit: string | null
 ): { date: string; text: string } | null {
   if (point && (!row || point.date >= row.date)) {
     return {
       date: point.date,
-      text: `${round(point.value, BIO_TILE_DECIMALS)}${unit ? ` ${unit}` : ""}`,
+      text: `${round(point.value, BIO_TILE_DECIMALS)}${pointUnit ? ` ${pointUnit}` : ""}`,
     };
   }
   const raw = row?.value?.trim();
   if (!row || !raw) return null;
-  return { date: row.date, text: `${raw}${row.unit ? ` ${row.unit}` : ""}` };
+  const shownUnit = displayUnit(row.unit);
+  return {
+    date: row.date,
+    text: `${raw}${shownUnit ? ` ${shownUnit}` : ""}`,
+  };
 }
 
 // The Overview tile for a SAVED clinical result (#1456: always rendered, so its ★ stays
@@ -366,10 +372,11 @@ export function buildSavedClinicalResultTile(
   if (!plot) return placeholderBiomarkerTile(canonical);
 
   const windowed = filterSeriesByRange(plot.points, range);
+  const shownUnit = displayUnit(plot.unit);
   const base: TrendSeries = {
     key: resultSeriesKey(canonical),
     label: canonical,
-    unit: plot.unit ? ` ${plot.unit}` : "",
+    unit: shownUnit ? ` ${shownUnit}` : "",
     color: bioColor(canonical),
     href: clinicalResultDetailHref(canonical),
     kind: "biomarker",
@@ -388,9 +395,9 @@ export function buildSavedClinicalResultTile(
   const reading = outOfWindowText(
     latestPoint,
     latestRow ?? undefined,
-    plot.unit
+    displayUnit(plot.unit)
   );
-  if (!reading) return { ...base, points: [], unit: base.unit || "" };
+  if (!reading) return { ...base, points: [] };
   return {
     ...base,
     points: [],

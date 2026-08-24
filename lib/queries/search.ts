@@ -3,6 +3,7 @@ import { SETTINGS_GROUPS, type SettingsGroupId } from "../settings-groups";
 import { getProfileAge } from "../settings";
 import { isTrainingRelevant } from "../life-stage";
 import { vaccineDisplayName } from "../immunization-catalog";
+import { displayUnit } from "../display-unit";
 import {
   matchTier,
   rankAndGroup,
@@ -135,7 +136,8 @@ function clinicalResultHits(profileId: number, like: string): SearchHit[] {
     key: `clinical-result:${r.title.toLowerCase()}`,
     title: r.title,
     subtitle:
-      [r.value, r.unit].filter(Boolean).join(" ").trim() || isoDate(r.date),
+      [r.value, displayUnit(r.unit)].filter(Boolean).join(" ").trim() ||
+      isoDate(r.date),
     href: clinicalResultDetailHref(r.title),
     date: isoDate(r.date),
     // "Add result" — navigate to the add form prefilled with this analyte (#662).

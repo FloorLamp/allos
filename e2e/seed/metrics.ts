@@ -253,7 +253,7 @@ export function seedSourceCompare(): void {
     { name: "Omega-3 Total (OmegaCheck)", value: 3.0, unit: "% by wt" },
     { name: "Folate", value: 2.0, unit: "ng/mL" },
     // #774: an expanded-coverage low nutrient (selenium → brazil nuts).
-    { name: "Selenium", value: 45, unit: "ug/L" },
+    { name: "Selenium", value: 45, unit: "ug / L" },
   ]) {
     db.prepare(
       `DELETE FROM medical_records WHERE profile_id = ? AND canonical_name = ?`

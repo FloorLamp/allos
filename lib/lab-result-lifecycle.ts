@@ -1,3 +1,5 @@
+import { displayUnit } from "./display-unit";
+
 // The lab RESULT LIFECYCLE (issue #1404): a result's status vocabulary, the ONE
 // decision about when an incoming re-import SUPERSEDES a stored reading, and the
 // collection attributes a reading carries alongside its value.
@@ -202,10 +204,11 @@ export function revisionSummary(rev: {
       : rev.value_num != null
         ? String(rev.value_num)
         : "—";
-  const unit = rev.unit ? ` ${rev.unit}` : "";
+  const shownUnit = displayUnit(rev.unit);
+  const suffix = shownUnit ? ` ${shownUnit}` : "";
   const lead = isCorrectionStatus(rev.superseded_by_status)
     ? RESULT_STATUS_LABELS[rev.superseded_by_status as ResultStatus]
     : "Superseded";
   const day = rev.superseded_at.slice(0, 10);
-  return `${lead} — was ${shown}${unit} (${day})`;
+  return `${lead} — was ${shown}${suffix} (${day})`;
 }

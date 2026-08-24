@@ -4,6 +4,7 @@ import ActivityIcon from "@/components/ActivityIcon";
 import { PendingTextLink } from "@/components/PendingLink";
 import { flagTone } from "@/lib/reference-range";
 import { medicalValueCaret, medicalValueFlagText } from "@/lib/medical-value";
+import { displayUnit } from "@/lib/display-unit";
 import type { AppRoute } from "@/lib/hrefs";
 
 export function PageHeader({
@@ -284,7 +285,7 @@ export function MedicalValue({
   const text = medicalValueFlagText(flag, showFlagLabel);
   return (
     <span className={medicalValueClass(flag)}>
-      {value ?? "—"} {unit ?? ""}
+      {value ?? "—"} {displayUnit(unit) ?? ""}
       {/* The caret is decorative (aria-hidden) — `text` below is its equivalent. */}
       {caret === "up" ? (
         <IconCaretUpFilled

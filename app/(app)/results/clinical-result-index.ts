@@ -41,6 +41,7 @@ import {
   referenceCell,
   type ReferenceCell,
 } from "@/lib/reading-reference-cell";
+import { storedLabUnit } from "@/lib/display-unit";
 
 // The query params the Clinical results section consumes. They ride the canonical
 // `/results/clinical-results` URL; the other Results sections ignore them.
@@ -257,7 +258,7 @@ function withReferenceCells(
         referenceCell: referenceCell({
           judgment: judgments[k],
           printed: r.reference_range,
-          unit: r.unit,
+          unit: storedLabUnit(r.unit),
         }),
       };
     });

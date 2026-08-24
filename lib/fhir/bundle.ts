@@ -1,6 +1,7 @@
 import { classifyLoinc, isUnmappedLabLoinc } from "../canonical-result-loinc";
 import { isNoKnownAllergyText } from "../clinical-parse";
 import { codeFromVaccineCode } from "../cvx-map";
+import { storedLabUnit } from "../display-unit";
 import type {
   ImportDemographics,
   ImportResult,
@@ -742,7 +743,11 @@ export function entriesToImportResult(
       .filter((rec) => isUnmappedLabLoinc(rec.loinc))
       // unit is catalog identity (it rides into the "Report unmapped code"
       // prefill) — never the measured value itself.
-      .map((rec) => ({ loinc: rec.loinc, name: rec.name, unit: rec.unit }))
+      .map((rec) => ({
+        loinc: rec.loinc,
+        name: rec.name,
+        unit: storedLabUnit(rec.unit),
+      }))
   );
   const report: ImportReport = {
     drops,

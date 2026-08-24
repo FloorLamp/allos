@@ -221,6 +221,14 @@ describe("what each target reads (#3220)", () => {
       targetFactLabel({
         kind: "biomarker",
         direction: "above",
+        value: "45",
+        unit: "ug / L",
+      })
+    ).toBe("over 45 µg / L");
+    expect(
+      targetFactLabel({
+        kind: "biomarker",
+        direction: "above",
         value: "30",
         unit: null,
       })
@@ -294,8 +302,12 @@ describe("where the goal is starting from (#3220)", () => {
       "from 21%"
     );
     expect(
-      from({ kind: "biomarker", biomarkerLatest: 130, biomarkerUnit: "mg/dL" })
-    ).toBe("from 130 mg/dL");
+      from({
+        kind: "biomarker",
+        biomarkerLatest: 45,
+        biomarkerUnit: "ug / L",
+      })
+    ).toBe("from 45 µg / L");
   });
 
   it("takes a freeform goal's starting point from the field, not from history", () => {
