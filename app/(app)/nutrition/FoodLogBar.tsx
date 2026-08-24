@@ -78,6 +78,7 @@ import OverflowMenu, {
 } from "@/components/OverflowMenu";
 import { usualFoodOffer } from "@/lib/food-regularity";
 import { foodLimitNoteText } from "@/lib/food-limit-note";
+import { applyFoodServingPlacements } from "@/lib/food-serving-projection";
 import { endFastAction, undoEndFastAction } from "./fast-actions";
 import {
   deleteFoodLogEvent,
@@ -623,42 +624,35 @@ export default function FoodLogBar({
     });
   }
 
-  // Adopt the server's authoritative counts for ONE (date, group, window) coordinate
-  // (#1934). A correction answers with the placement the serving LEFT and the one it
-  // LANDED in; applying both — rather than incrementing here and decrementing there —
-  // is what makes a slot change a MOVE and not a second serving. Note it is a SET, not
-  // a delta, so replaying it can never drift.
-  function applyPlacement(placement: FoodPlacement) {
-    invalidateServingBurst(
-      foodServingToastKey(receiptProfileId, placement.date, placement.groupKey)
+  // Adopt one or more server-named coordinates as ONE client projection (#1934).
+  // A correction answers with the placement the serving LEFT and the one it LANDED
+  // in. Both must be folded before either context state is published: publishing the
+  // source first lets a render restore the old slot map before the destination write.
+  // These are SETs, not deltas, so replaying the result can never drift.
+  function applyPlacements(placements: readonly FoodPlacement[]) {
+    for (const placement of placements) {
+      invalidateServingBurst(
+        foodServingToastKey(
+          receiptProfileId,
+          placement.date,
+          placement.groupKey
+        )
+      );
+    }
+    const next = applyFoodServingPlacements(
+      countsByDateRef.current,
+      slotCountsByDateRef.current,
+      placements
     );
-    const day = countsByDateRef.current[placement.date] ?? {};
-    const nextCounts = {
-      ...countsByDateRef.current,
-      [placement.date]: {
-        ...day,
-        [placement.groupKey]: placement.servings,
-      },
-    };
-    countsByDateRef.current = nextCounts;
-    setCountsByDate(nextCounts);
-    const slotDay = slotCountsByDateRef.current[placement.date] ?? {
-      Morning: {},
-      Midday: {},
-      Evening: {},
-    };
-    const nextSlotCounts = {
-      ...slotCountsByDateRef.current,
-      [placement.date]: {
-        ...slotDay,
-        [placement.mealSlot]: {
-          ...(slotDay[placement.mealSlot] ?? {}),
-          [placement.groupKey]: placement.mealServings,
-        },
-      },
-    };
-    slotCountsByDateRef.current = nextSlotCounts;
-    setSlotCountsByDate(nextSlotCounts);
+    // Ref truth moves together before either provider setter can trigger a render.
+    countsByDateRef.current = next.countsByDate;
+    slotCountsByDateRef.current = next.slotCountsByDate;
+    setCountsByDate(next.countsByDate);
+    setSlotCountsByDate(next.slotCountsByDate);
+  }
+
+  function applyPlacement(placement: FoodPlacement) {
+    applyPlacements([placement]);
   }
 
   // Reconcile a completed add burst in one paint from one post-burst server
@@ -809,10 +803,10 @@ export default function FoodLogBar({
       toast(outcome.error, { tone: "error" });
       return;
     }
-    // `from` first, then `to`: when a correction only changes the window, both name the
-    // same (date, group) and the second write settles it at the post-move truth.
-    applyPlacement(outcome.from);
-    applyPlacement(outcome.to);
+    // The pair is one projection transition. When only the window changes, both name
+    // the same (date, group), with `from` clearing the source window and `to` settling
+    // the destination at post-move truth.
+    applyPlacements([outcome.from, outcome.to]);
     setEditing(null);
     setDraft(null);
     toast("Serving corrected.");
