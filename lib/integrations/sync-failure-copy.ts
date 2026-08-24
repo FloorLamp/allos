@@ -53,9 +53,10 @@ export type SyncFailureFamily = "upstream" | "refused";
 //     rate-limit truncate and does, and it is the half whose failure IS the run's.
 //
 // Status 0 is every pull source's marker for "the request THREW — there was no HTTP
-// response at all". A NEGATIVE status is Withings' marker for an envelope this app
-// could not read a status out of at all (a gateway's HTML page in place of the JSON).
-// Both group with 5xx: nobody was refused anything, and a retry is the right advice.
+// response at all". A NEGATIVE status is Withings' marker for an envelope that parsed
+// but carried no status this app recognises. Both group with 5xx: nobody was refused
+// anything, and a retry is the right advice. (A body that does not parse AT ALL never
+// arrives here — it throws at the source and takes the caught-error path instead.)
 export function syncFailureFamily(status: number): SyncFailureFamily {
   if (status === 429 || status === 408) return "upstream";
   return status <= 0 || status >= 500 ? "upstream" : "refused";
@@ -70,7 +71,7 @@ export function syncFailureFamily(status: number): SyncFailureFamily {
 // support. `upstream` with a service name reads "Couldn't reach Withings." — and for
 // every code in this dialect we DID reach Withings; they answered HTTP 200 and put a
 // number in the payload. The family is still right (2555's own documented advice is
-// to try again, and an unparseable envelope is worth retrying); it is the "reach"
+// to try again, and an unrecognised envelope is worth retrying); it is the "reach"
 // that is false. So the vendor dialect spends the same family's SERVICE-LESS
 // sentence — "Couldn't sync your Withings data. Try again." — which is true either
 // way. `refused` needs no such care: it never names the third party.

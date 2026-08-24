@@ -81,7 +81,7 @@ export interface MessageLineParts<T> {
   // clause, always first, always unpunctuated. And a qualifier smuggled INTO a head is
   // exactly what lib/__tests__/message-line.test.ts fails a registered module for.
   head: T;
-  // A short CAUSE FRAGMENT explaining the head — "Couldn't reach Open-Meteo.", "never
+  // A short CAUSE FRAGMENT explaining the head — "weather fetch failed (503)", "never
   // checked". Rendered FIRST, introduced by the em dash.
   //
   // THE CONTRACT IS THE FIELD'S WHOLE REASON FOR EXISTING (#1913 item 6). A fragment,
@@ -89,6 +89,16 @@ export interface MessageLineParts<T> {
   // re-states the head — that is the exact defect this field was extracted to make
   // impossible to reintroduce. A producer with a supporting sentence written for a card
   // has a `note`, not a `because`.
+  //
+  // ONE REGISTERED PRODUCER NOW BREAKS THE FIRST HALF OF THAT, and the example above is
+  // kept as the fragment it documents rather than swapped for one that does. Since
+  // #3592 and #3618, `lib/attention.ts`'s integration detail is a whole house sentence
+  // ("Couldn't reach Open-Meteo. Try again.") because the card, the toast and the digest
+  // render one string and it has to stand alone on the first two. The SECOND half still
+  // holds — it does not re-state the head, which is the part that read badly — and
+  // re-specifying this slot is a live question recorded at that producer, not settled
+  // here. Stated so the next reader meets the exception rather than an example that
+  // quietly contradicts the rule above it.
   because?: T | null;
   // Supporting facts that QUALIFY the head and are neither a cause nor a comparison: the
   // dose amount behind a reminder, the sleep stages behind a duration, the lifts behind a
