@@ -973,10 +973,48 @@ describe("the class lists this census cannot read (#3561)", () => {
         )![1]
       ),
       "components/TrainingLogCalendar.tsx's DAY_HIT is the day cell's hit box on a " +
-        "phone. It tiles a grid column, so its WIDTH is the 40.9px seven columns fit " +
-        "into a 288px drawer and cannot reach the floor (#3536); its HEIGHT has the " +
-        "room and must."
+        "phone. It tiles one of seven columns in the widened drawer, so both its " +
+        "rendered width and height reach the floor (#3536)."
     ).toBeGreaterThanOrEqual(TAP_FLOOR_PX);
+    const drawerSource = read("components/MobileNav.tsx");
+    expect(
+      drawerSource,
+      "the phone drawer must reserve seven 44px columns after its safe-area gutter"
+    ).toContain(
+      "w-[max(20rem,calc(19.3125rem+env(safe-area-inset-left)))] max-w-full"
+    );
+    expect(
+      read("components/TrainingLogCalendar.tsx"),
+      "the calendar may cancel the ordinary drawer gutter, never the safe-area inset"
+    ).toContain(
+      "ml-[calc(env(safe-area-inset-left)_-_max(1rem,env(safe-area-inset-left)))]"
+    );
+    const calendarDrawerGeometry = (viewport: number, safeLeft: number) => {
+      const drawer = Math.min(viewport, Math.max(320, 309 + safeLeft));
+      const leftPadding = Math.max(16, safeLeft);
+      const calendarMarginLeft = safeLeft - leftPadding;
+      return {
+        gridLeft: leftPadding + calendarMarginLeft,
+        gridWidth: drawer - 1 - leftPadding - 16 - calendarMarginLeft + 16,
+      };
+    };
+    for (const [viewport, safeLeft] of [
+      [320, 0],
+      [390, 10],
+      [390, 16],
+      [390, 44],
+      [430, 60],
+    ]) {
+      const geometry = calendarDrawerGeometry(viewport, safeLeft);
+      expect(
+        geometry.gridLeft,
+        `a ${viewport}px viewport must keep its calendar inside a ${safeLeft}px left safe inset`
+      ).toBeGreaterThanOrEqual(safeLeft);
+      expect(
+        geometry.gridWidth,
+        `a ${viewport}px viewport with ${safeLeft}px left safe inset`
+      ).toBeGreaterThanOrEqual(7 * TAP_FLOOR_PX);
+    }
   });
 });
 
