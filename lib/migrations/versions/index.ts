@@ -218,6 +218,7 @@ import { migration as mIntakeSourceName } from "./20260822-intake-source-name";
 import { migration as mLoggedViaProvenance } from "./20260822-logged-via-provenance";
 import { migration as mTelemetrySourceAnswer } from "./20260823-telemetry-source-answer";
 import { migration as mBackfillErrorHouseCopy } from "./20260823-backfill-error-house-copy";
+import { migration as mIntakeItemPurposes } from "./20260823-intake-item-purposes";
 
 // The ordered, append-only list of schema migrations (issue #119). ORDER IS THE
 // CONTRACT: a migration's position (1-based) must equal its `id`, and the runner
@@ -445,6 +446,7 @@ export const MIGRATIONS: Migration[] = [
   mLoggedViaProvenance,
   mTelemetrySourceAnswer,
   mBackfillErrorHouseCopy,
+  mIntakeItemPurposes,
 ];
 
 // The CLOSED numbered era (001–185): ids frozen, each === its array position + 1

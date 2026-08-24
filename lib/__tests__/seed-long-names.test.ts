@@ -128,9 +128,12 @@ describe("the planted values can express the class (#3631)", () => {
     // The NAMED SUBJECT (#3522's pattern). A roster that averaged out to the right
     // size while losing the control this issue exists for would still pass every
     // assertion above.
+    // The file moved with #3484 part 2 — the bespoke dose shell became a mount of
+    // the shared event-ledger frame, and its Item select became the frame's — but it
+    // is the same control, still the one #3478 was measured on.
     const intake = UNBOUNDED_NAME_FIELDS.find((f) => f.key === "intakeItem");
     expect(intake?.controls.join("\n")).toContain(
-      "components/intake/DoseLedgerItemFilter.tsx"
+      "components/ledger/EventLedgerItemFilter.tsx"
     );
   });
 });

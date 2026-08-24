@@ -244,6 +244,17 @@ export function clearImportedDocumentRows(
            SELECT id FROM conditions WHERE profile_id = ? AND document_id = ?
          )`
   ).run(profileId, profileId, docId);
+  // The same shape one table over (#2857): an item may name a condition THIS document
+  // produced as a PURPOSE — a REFERENCES FK with no ON DELETE, so it refuses the
+  // condition delete below. The purpose ROW is removed rather than nulled (a purpose
+  // with no condition is not a purpose, and the CHECK refuses it), which is exactly what
+  // deleting the condition by hand does. The item's other purposes are untouched.
+  db.prepare(
+    `DELETE FROM intake_item_purposes
+       WHERE condition_id IN (
+         SELECT id FROM conditions WHERE profile_id = ? AND document_id = ?
+       )`
+  ).run(profileId, docId);
   // (#1204 note: a CROSS-DOCUMENT renewal course this document contributed to a med
   // owned by ANOTHER document is NOT cleared here — a course is not document-keyed. It
   // is deduped on (item_id, started_on), so a reprocess re-adds nothing, and it is
@@ -394,6 +405,16 @@ export function moveImportedDocumentRows(
       `UPDATE intake_items SET indication_condition_id = NULL
          WHERE profile_id = ? AND indication_condition_id IS NOT NULL
            AND indication_condition_id NOT IN (
+             SELECT id FROM conditions WHERE profile_id = ?
+           )`
+    ).run(pid, pid);
+    // A purpose link (#2857) must not cross profiles either, and for the same reason:
+    // no FK fires on the profile_id UPDATE a reassign performs. Removed, not nulled.
+    db.prepare(
+      `DELETE FROM intake_item_purposes
+         WHERE condition_id IS NOT NULL
+           AND item_id IN (SELECT id FROM intake_items WHERE profile_id = ?)
+           AND condition_id NOT IN (
              SELECT id FROM conditions WHERE profile_id = ?
            )`
     ).run(pid, pid);

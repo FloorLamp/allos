@@ -107,6 +107,12 @@ export interface IntakeItem {
   // not touch this string: they go through getIntakeIngredients /
   // getIntakeIngredientsByItem, which parse it once per request.
   ingredients_json?: string | null;
+  // Purpose links (issue #2857) — the structured "why" — as a JSON array of
+  // intake_item_purposes rows projected on the item read, or NULL when the item has
+  // none. Same arrangement and same reason as ingredients_json above: an optional child
+  // table on the hottest read. Consumers go through parseItemPurposes
+  // (lib/intake-purposes.ts) rather than touching this string.
+  purposes_json?: string | null;
   // The number of units the item was LAST refilled by (issue #852 item 3), NULL until
   // the first "Refilled" one-tap records it. Remembered so subsequent refills reuse the
   // size without re-asking; NOT the on-hand counter.

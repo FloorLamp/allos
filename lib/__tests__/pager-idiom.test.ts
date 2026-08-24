@@ -126,7 +126,7 @@ describe("one pager idiom (#3378)", () => {
       "app/(app)/trends/BodySection.tsx",
       "app/(app)/whats-new/page.tsx",
       "components/DataTableManager.tsx",
-      "components/intake/DoseLedgerView.tsx",
+      "components/ledger/EventLedgerFrame.tsx",
     ]);
   });
 

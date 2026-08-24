@@ -3,20 +3,26 @@
 import { usePathname, useRouter, useSearchParams } from "next/navigation";
 import { currentPathHref } from "@/lib/hrefs";
 
-// The dose ledger's ITEM filter (#2417). Writes the choice into the `item` query
-// param on the current path (preserving the kind and date-window params), so the
-// server component re-reads the ledger narrowed to that item — the same reader, the
-// same window, the same rows the item's own dose-history panel shows.
+// The event ledger's ITEM filter (#2417, generalized by #3484 part 2). Writes the
+// choice into the `item` query param on the current path (preserving every other
+// param), so the server component re-reads the ledger narrowed to that item — the
+// same reader, the same window, the same rows the item's own history shows.
 //
-// Every item the profile owns is offered, ACTIVE OR NOT: history outlives retirement,
-// and a filter that silently dropped a paused item would make its recorded doses
-// unreachable from the only surface that lists them all.
-export default function DoseLedgerItemFilter({
+// Every item the mount offers is offered here, ACTIVE OR NOT: history outlives
+// retirement, and a filter that silently dropped a paused item would make its
+// recorded events unreachable from the only surface that lists them all. WHICH items
+// those are, and how a retired one is labelled, is the mount's call — this control
+// renders the list it is given.
+export default function EventLedgerItemFilter({
   items,
   value,
+  label = "Item",
+  testId,
 }: {
   items: { id: number; label: string }[];
   value?: number;
+  label?: string;
+  testId: string;
 }) {
   const router = useRouter();
   const pathname = usePathname();
@@ -32,17 +38,17 @@ export default function DoseLedgerItemFilter({
 
   return (
     <label className="flex min-w-0 items-center gap-2 text-sm text-slate-600 dark:text-slate-300">
-      <span className="font-medium">Item</span>
-      {/* A `w-auto` select sizes to its WIDEST OPTION, and these options are item
+      <span className="font-medium">{label}</span>
+      {/* A `w-auto` <select> sizes to its WIDEST OPTION, and these options are item
           names nobody chose — a portal import writes "Calcium Carb-Cholecalciferol
-          (CALCIUM 500 + D OR)", and the " (inactive)" suffix adds eleven more
+          (CALCIUM 500 + D OR)", and an " (inactive)" suffix adds eleven more
           characters. So the control's intrinsic width is unbounded by anything the
           page controls, which is #3478: measured at 390px it rendered 447px wide,
           108px past the viewport, with the app shell clipping it silently — no
           ellipsis, no scroller, no chevron.
 
           `min-w-0` HERE is the load-bearing class, and it is not the one the issue
-          predicted. Measured at 390px against this same fixture (select right edge
+          predicted. Measured at 390px against that same fixture (select right edge
           vs a 390px viewport):
 
             input w-auto                                → 447px wide, 108px over
@@ -58,11 +64,13 @@ export default function DoseLedgerItemFilter({
 
           Deliberately width-agnostic rather than PanelFilterSelect's
           `max-w-40 sm:max-w-none`: that control offers a CLOSED vocabulary whose
-          longest label is known, and these names are unbounded at every width. */}
+          longest label is known, and these names are unbounded at every width. This
+          is a FRAME property and not one domain's: every ledger's item axis is the
+          profile's own open-vocabulary list, so every mount inherits the cap. */}
       <select
         className="input w-auto min-w-0 truncate"
         value={value ?? ""}
-        data-testid="dose-ledger-item-filter"
+        data-testid={testId}
         onChange={(event) => setItem(event.target.value)}
       >
         <option value="">All items</option>

@@ -16,6 +16,10 @@ import {
   parseItemIngredients,
   type IntakeItemIngredient,
 } from "../../intake-ingredients";
+import {
+  parseItemPurposes,
+  type IntakeItemPurpose,
+} from "../../intake-purposes";
 
 // Whether this profile has ANY intake item (supplement or medication). Drives the
 // Nutrition nav entry's visibility for an infant profile (#746): the food-group
@@ -85,7 +89,28 @@ const INTAKE_ITEMS_STMT = hoistedStatement(
                    FROM intake_item_ingredients g
                   WHERE g.item_id = intake_items.id),
                 '[]'
-              ) AS ingredients_json
+              ) AS ingredients_json,
+              -- Purpose links (#2857) ride along on the SAME terms as the composition
+              -- above, and for the same reason: another optional child table nearly
+              -- every item has no rows in, on the app's hottest read. A correlated
+              -- subselect over idx_intake_item_purposes_item is an index probe per item
+              -- and zero extra statements. NULLIF(..., '[]') keeps the common
+              -- no-purpose case out of the parser entirely.
+              NULLIF(
+                (SELECT json_group_array(json_object(
+                          'id', p.id,
+                          'item_id', p.item_id,
+                          'kind', p.kind,
+                          'goal_key', p.goal_key,
+                          'condition_id', p.condition_id,
+                          'biomarker_key', p.biomarker_key,
+                          'direction', p.direction,
+                          'sort', p.sort
+                        ) ORDER BY p.sort, p.id)
+                   FROM intake_item_purposes p
+                  WHERE p.item_id = intake_items.id),
+                '[]'
+              ) AS purposes_json
          FROM intake_items
          LEFT JOIN situations
                 ON situations.id = intake_items.situation_id
@@ -135,6 +160,20 @@ export const getIntakeIngredients = snapshotCached(
   (profileId: number) => String(profileId),
   getIntakeIngredientsUncached
 );
+
+// Purpose links (#2857) for one profile's items, decoded from the same item read the
+// composition rides on. Same arrangement, same reason: the rows are projected on
+// getIntakeItems, so this costs no statement of its own.
+export function getIntakePurposesByItem(
+  profileId: number
+): Map<number, IntakeItemPurpose[]> {
+  const out = new Map<number, IntakeItemPurpose[]>();
+  for (const item of getIntakeItems(profileId)) {
+    const rows = parseItemPurposes(item.purposes_json);
+    if (rows.length > 0) out.set(item.id, rows);
+  }
+  return out;
+}
 
 // The same rows grouped by item_id — the shape every consumer actually uses.
 export function getIntakeIngredientsByItem(

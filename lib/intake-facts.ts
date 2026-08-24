@@ -38,6 +38,7 @@ export type IntakeFactKey =
   | "supply"
   | "stopDate"
   | "composition"
+  | "purpose"
   | "notes";
 
 export type IntakeFactState = "stated" | "missing";
@@ -97,6 +98,9 @@ export interface IntakeFactInput {
   quantityOnHand: string;
   stopDate: string;
   ingredientCount: number;
+  // The declared purposes (#2857) as one already-joined phrase, or "" when none. Joined
+  // by the caller because only it holds the live condition NAMES — the rows store ids.
+  purposeSummary: string;
   notes: string;
   rules: readonly IntakeRule[];
   // Names for the pair sentences, by item id.
@@ -115,6 +119,7 @@ export const INTAKE_FACT_NOUNS: Record<IntakeFactKey, string> = {
   supply: "supply",
   stopDate: "stop date",
   composition: "what's in it",
+  purpose: "what it's for",
   notes: "notes",
 };
 
@@ -276,6 +281,13 @@ export function intakeFactSummary(f: IntakeFactInput): IntakeFactSummary {
       "composition",
       f.ingredientCount > 0 &&
         `${f.ingredientCount} ingredient${f.ingredientCount === 1 ? "" : "s"}`
+    );
+  if (f.kind === "supplement")
+    pushOptional(
+      chips,
+      more,
+      "purpose",
+      f.purposeSummary.trim() && `for ${f.purposeSummary.trim()}`
     );
   pushOptional(chips, more, "notes", f.notes.trim() && "notes");
 
