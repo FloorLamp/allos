@@ -351,7 +351,7 @@ describe("selected-state rows use the registered primitive (#2730)", () => {
       );
       fs.writeFileSync(
         path.join(base, "components/SpreadFlowOffender.tsx"),
-        'const BAD = { className: "chip chip-filter min-h-0! h-4 outline-2" };\nconst withClass = (className: string) => ({ className });\nconst withBareClass = className => ({ className });\nconst OPTIONS = { good: { className: "btn" }, bad: { className: "chip chip-filter min-h-0! h-4 outline-2" } };\nconst COMPUTED = { ["className"]: "chip chip-filter min-h-0! h-4 outline-2" };\nconst COMPUTED_OTHER = { ["title"]: "chip chip-filter min-h-0! h-4 outline-2" };\nconst SPREAD_OPTIONS = { ...OPTIONS, bad: { className: "chip chip-filter min-h-0! h-4 outline-2" } };\nconst key = enabled ? "good" : "other";\nconst DYNAMIC_OPTIONS = { [key]: {}, bad: { className: "chip chip-filter min-h-0! h-4 outline-2" } };\nexport function SpreadFlowOffender({ enabled, maybe }: { enabled: boolean; maybe: { className?: string } | null }) { return <>\n<button aria-pressed {...withClass("chip chip-filter min-h-0! h-4 outline-2")} />\n<button aria-pressed {...withBareClass("chip chip-filter min-h-0! h-4 outline-2")} />\n<button {...(enabled ? BAD : {})} />\n<button {...(maybe || BAD)} />\n<button aria-pressed {...OPTIONS.good} />\n<button aria-pressed {...OPTIONS.bad} />\n<button aria-pressed {...COMPUTED} />\n<button aria-pressed {...COMPUTED_OTHER} />\n<button aria-pressed {...SPREAD_OPTIONS.bad} />\n<button aria-pressed {...DYNAMIC_OPTIONS.bad} />\n</>; }\n'
+        'const BAD = { className: "chip chip-filter min-h-0! h-4 outline-2" };\nconst withClass = (className: string) => ({ className });\nconst withBareClass = className => ({ className });\nconst OPTIONS = { good: { className: "btn" }, bad: { className: "chip chip-filter min-h-0! h-4 outline-2" } };\nconst COMPUTED = { ["className"]: "chip chip-filter min-h-0! h-4 outline-2" };\nconst COMPUTED_OTHER = { ["title"]: "chip chip-filter min-h-0! h-4 outline-2" };\nconst SPREAD_OPTIONS = { ...OPTIONS, bad: { className: "chip chip-filter min-h-0! h-4 outline-2" } };\nconst key = enabled ? "good" : "other";\nconst DYNAMIC_OPTIONS = { [key]: {}, bad: { className: "chip chip-filter min-h-0! h-4 outline-2" } };\nexport function SpreadFlowOffender({ enabled }: { enabled: boolean }) { return <>\n<button aria-pressed {...withClass("chip chip-filter min-h-0! h-4 outline-2")} />\n<button aria-pressed {...withBareClass("chip chip-filter min-h-0! h-4 outline-2")} />\n<button {...(enabled ? BAD : {})} />\n<button {...(null || BAD)} />\n<button aria-pressed {...OPTIONS.good} />\n<button aria-pressed {...OPTIONS.bad} />\n<button aria-pressed {...COMPUTED} />\n<button aria-pressed {...COMPUTED_OTHER} />\n<button aria-pressed {...SPREAD_OPTIONS.bad} />\n<button aria-pressed {...DYNAMIC_OPTIONS.bad} />\n</>; }\n'
       );
       const expectedTokens = [
         "outline-2",
@@ -557,6 +557,53 @@ describe("selected-state rows use the registered primitive (#2730)", () => {
           "export function ClassExcludedRest({ className, ...rest }) {",
           "return <button aria-pressed {...rest} />;",
           "}",
+        ].join("\n")
+      );
+      expect(scanUnapprovedChipVocabularyCorpus(base)).toEqual([]);
+      expect(scanForwardedChipBindings(base)).toEqual([]);
+    } finally {
+      fs.rmSync(base, { recursive: true, force: true });
+    }
+  });
+
+  it("fails closed on unresolved conditional and logical spread branches", () => {
+    const base = makeTmpDir("unresolved-branch-chip-census");
+    try {
+      fs.mkdirSync(path.join(base, "components"), { recursive: true });
+      for (const expression of [
+        "enabled ? props : {}",
+        "props || {}",
+      ] as const) {
+        fs.writeFileSync(
+          path.join(base, "components/UnresolvedBranch.tsx"),
+          [
+            'import SubmitButton from "./SubmitButton";',
+            "export function UnresolvedBranch({ enabled, props }) { return <>",
+            `<button aria-pressed {...(${expression})} />`,
+            `<SubmitButton {...(${expression})} />`,
+            "</>; }",
+          ].join("\n")
+        );
+        expect(
+          () => scanUnapprovedChipVocabularyCorpus(base),
+          expression
+        ).toThrow(/cannot resolve an unsupported JSX spread expression/);
+        expect(() => scanForwardedChipBindings(base), expression).toThrow(
+          /cannot resolve an unsupported JSX spread expression/
+        );
+      }
+
+      fs.writeFileSync(
+        path.join(base, "components/UnresolvedBranch.tsx"),
+        [
+          'import SubmitButton from "./SubmitButton";',
+          'const SAFE = { className: "btn" };',
+          "export function SupportedBranch({ enabled }) { return <>",
+          "<button aria-pressed {...(enabled ? SAFE : {})} />",
+          "<button aria-pressed {...(null || SAFE)} />",
+          "<SubmitButton {...(enabled ? {} : SAFE)} />",
+          "<SubmitButton {...(undefined ?? SAFE)} />",
+          "</>; }",
         ].join("\n")
       );
       expect(scanUnapprovedChipVocabularyCorpus(base)).toEqual([]);

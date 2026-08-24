@@ -1450,7 +1450,7 @@ function spreadClassNameExpressions(
     const branches = objectExpressionBranches(written);
     if (branches !== null)
       return branches.flatMap((branch) =>
-        spreadClassNameExpressions(branch, declared, false, seen)
+        spreadClassNameExpressions(branch, declared, failOnUnresolved, seen)
       );
     const helper = materializeHelperCall(written, declared);
     if (helper !== null)
