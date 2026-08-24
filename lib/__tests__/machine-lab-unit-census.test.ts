@@ -207,6 +207,11 @@ describe("the machine-spelled lab-unit matcher (#3545)", () => {
         `export function GoalForm({ bioOption }) { return <p>{bioOption.latestUnit}</p>; }`,
         "bioOption.latestUnit",
       ],
+      [
+        "/repo/lib/trends-series.ts",
+        `export function outOfWindowText(row) { return row.unit; }`,
+        "row.unit",
+      ],
     ] as const;
     for (const [file, source, exit] of cases)
       expect(texts(source, file), file).toContain(exit);
@@ -256,6 +261,33 @@ describe("the machine-spelled lab-unit matcher (#3545)", () => {
         `function Unsafe({ unit }) { return <p>{unit}</p>; }
          export function UnitMislabelReview({ item }) { return <Unsafe unit={item.statedUnit} />; }`,
         "item.statedUnit",
+      ],
+      [
+        "/repo/app/(app)/training/GoalForm.tsx",
+        `function Unsafe({ unit }) { return <p>{unit}</p>; }
+         export function GoalForm({ bioOption }) {
+           const payload = { unit: bioOption.latestUnit };
+           return <Unsafe {...payload} />;
+         }`,
+        "bioOption.latestUnit",
+      ],
+      [
+        "/repo/app/(app)/results/clinical-results/view/page.tsx",
+        `function Unsafe({ unit }) { return <p>{unit}</p>; }
+         export function ClinicalResultView({ row }) {
+           const chartUnit = row.unit;
+           return <Unsafe unit={chartUnit} />;
+         }`,
+        "row.unit",
+      ],
+      [
+        "/repo/app/(app)/results/clinical-results/view/page.tsx",
+        `function Unsafe({ units }) { return <p>{units.join(" ")}</p>; }
+         export function ClinicalResultView({ row }) {
+           const otherUnits = [row.unit];
+           return <Unsafe units={otherUnits} />;
+         }`,
+        "row.unit",
       ],
     ] as const;
     for (const [file, source, exit] of cases)
@@ -350,10 +382,51 @@ describe("the machine-spelled lab-unit matcher (#3545)", () => {
   it("allows documented raw semantics and rejects post-construction projection writes", () => {
     expect(
       texts(
-        `export function ClinicalResultIndex({row, canonical}) { return sameUnit(row.unit, canonical) ? { unit: row.unit } : null; }`,
+        `import { storedLabUnit } from "@/lib/display-unit";
+         export function ClinicalResultIndex({row, canonical}) {
+           return sameUnit(row.unit, canonical)
+             ? { unit: storedLabUnit(row.unit) }
+             : null;
+         }`,
         "/repo/lib/clinical-result-index.ts"
       )
     ).toEqual([]);
+    expect(
+      texts(
+        `import * as units from "@/lib/display-unit";
+         export function ClinicalResultIndex({row}) {
+           return { unit: units.storedLabUnit(row.unit) };
+         }`,
+        "/repo/lib/clinical-result-index.ts"
+      )
+    ).toEqual([]);
+    expect(
+      texts(
+        `function storedLabUnit(unit) { return unit; }
+         export function ClinicalResultIndex({row}) {
+           return { unit: storedLabUnit(row.unit) };
+         }`,
+        "/repo/lib/clinical-result-index.ts"
+      )
+    ).toEqual(["row.unit"]);
+    expect(
+      texts(
+        `import { storedLabUnit } from "@/lib/display-unit";
+         export function ClinicalResultIndex({row}) {
+           return <p>{storedLabUnit(row.unit)}</p>;
+         }`,
+        "/repo/lib/clinical-result-index.ts"
+      )
+    ).toEqual(["row.unit"]);
+    expect(
+      texts(
+        `import { storedLabUnit } from "@/lib/display-unit";
+         export function ClinicalResultIndex({row}) {
+           return { text: storedLabUnit(row.unit) };
+         }`,
+        "/repo/lib/clinical-result-index.ts"
+      )
+    ).toEqual(["row.unit"]);
     expect(
       texts(
         `export function UnitMislabelReview({item}) { const payload={value:""}; payload.value=item.statedUnit; return <p>{payload.value}</p>; }`

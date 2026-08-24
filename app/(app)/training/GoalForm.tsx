@@ -23,7 +23,7 @@ import { kgTo, round } from "@/lib/units";
 import { formatSeconds } from "@/lib/duration";
 import { BODY_METRIC_LABELS } from "@/lib/outcome-goals";
 import { biomarkerSearchTerms } from "@/lib/canonical-name";
-import { displayUnit } from "@/lib/display-unit";
+import { displayUnit, storedLabUnit } from "@/lib/display-unit";
 import ActivityCombobox from "@/components/ActivityCombobox";
 import Combobox from "@/components/Combobox";
 import DateField from "@/components/DateField";
@@ -253,8 +253,8 @@ export default function GoalForm({
   // shows the number in the unit it was actually captured in.
   const bioUnit =
     editGoal?.biomarker_name && editGoal.biomarker_name === bioOption?.name
-      ? (editGoal.unit ?? bioOption?.unit ?? null)
-      : (bioOption?.unit ?? null);
+      ? (storedLabUnit(editGoal.unit) ?? storedLabUnit(bioOption?.unit) ?? null)
+      : (storedLabUnit(bioOption?.unit) ?? null);
 
   // The thresholds the app already holds for this analyte, stated beside the number
   // the user is about to type — the reference band the biomarker chart draws, for
@@ -458,7 +458,7 @@ export default function GoalForm({
     bodyLatest: latestBodyMetrics[bodyMetric] ?? null,
     bodyMetric,
     biomarkerLatest: bioOption?.latest ?? null,
-    biomarkerUnit: bioOption?.latestUnit ?? null,
+    biomarkerUnit: storedLabUnit(bioOption?.latestUnit) ?? null,
     currentValue,
     freeformUnit: unitText,
     toDisplayWeight: (kg) => round(kgTo(kg, weightUnit), 1),

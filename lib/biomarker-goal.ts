@@ -31,7 +31,7 @@
 // the next one is due.
 
 import { shiftDateStr, daysBetweenDateStr } from "./date";
-import { displayUnit } from "./display-unit";
+import { displayUnit, storedLabUnit } from "./display-unit";
 import {
   baselineTargetProgress,
   type GoalCheckIn,
@@ -124,7 +124,7 @@ export function computeBiomarkerGoalProgress(
 ): BiomarkerGoalProgress {
   const base = {
     target: target.value,
-    unit: target.unit ?? seriesUnit,
+    unit: storedLabUnit(target.unit) ?? seriesUnit,
   };
   if (!sameUnit(target.unit, seriesUnit)) {
     return {
@@ -133,7 +133,7 @@ export function computeBiomarkerGoalProgress(
       pct: 0,
       done: false,
       asOf: null,
-      unit: target.unit,
+      unit: storedLabUnit(target.unit),
       unavailable: "unit-mismatch",
     };
   }
@@ -245,7 +245,7 @@ export function biomarkerTargetOf(
   return {
     name: goal.biomarker_name!.trim(),
     value: goal.target_value,
-    unit: goal.unit,
+    unit: storedLabUnit(goal.unit),
     direction: goal.target_direction!,
     baselineValue: goal.baseline_value,
   };

@@ -10,19 +10,18 @@ const UNIT_PROPERTY =
   /^(?:bio(?:marker)?Unit|correctedUnit|latestUnit|latest_unit|statedUnit|unit|vitaminDUnit)$/i;
 const UNIT_IDENTIFIER = /^(?:units?|chartUnit|otherUnits)$/;
 const LAB_UNIT_IDENTIFIER = /^(?:bioUnit)$/i;
-const UNIT_STORAGE_IDENTIFIER = /^(?:bioUnit|chartUnit|otherUnits)$/;
 const LAB_CONTEXT_IDENTIFIER =
-  /(?:BioAgeEffect|Biomarker|Bio(?:Option|Target|Unit)|CensoredInput|Clinical|Immun|ImportResult|Lab(?:Observation|Reading|Result|Value)|Medical|OutcomeComparison|ReadingReference|ReferenceCell|ReferenceHint|RevisionSummary|SunExposure|Titer)/i;
+  /(?:BioAgeEffect|Biomarker|Bio(?:Option|Target|Unit)|CensoredInput|Clinical|Immun|ImportResult|Lab(?:Observation|Reading|Result|Value)|Medical|OutcomeComparison|OutOfWindow|ReadingReference|ReferenceCell|ReferenceHint|RevisionSummary|SunExposure|Titer)/i;
 const LAB_EXPRESSION_IDENTIFIER =
   /^(?:bioOption|bioTarget|bioUnit|referenceHint|shownBioUnit)$/i;
 const LAB_CONTEXT_PATH =
-  /(?:^|\/)(?:import|immunizations?|longevity|protocols?|results)(?:\/|$)|(?:^|\/)(?:ImportClient|ImmunizationsSection|UnitMislabelReview)\.tsx$|(?:^|\/)lib\/(?:biomarker-(?:goal|trajectory)|followup-labs|import-diff|queries\/search|reading-reference-cell|trends-series)\.ts$/i;
+  /(?:^|\/)(?:import|immunizations?|longevity|protocols?|results)(?:\/|$)|(?:^|\/)(?:ImportClient|ImmunizationsSection|UnitMislabelReview)\.tsx$|(?:^|\/)lib\/(?:biomarker-(?:goal|trajectory)|followup-labs|import-diff|queries\/search|reading-reference-cell)\.ts$/i;
 const RAW_UNIT_PARAMETER_PRODUCER =
   /(?:Copy|Description|Hint|Label|Note|Phrase|Subtitle|Suffix|Summary|Text|buildBiomarkerSeries|buildSavedClinicalResultTile|decideSunExposure|recordRow|referenceCell)/i;
 const POSSIBLE_UNIT_EXIT =
   /(?:\.\s*(?:bio(?:marker)?Unit|correctedUnit|latestUnit|latest_unit|statedUnit|unit|vitaminDUnit)\b|\[\s*["'](?:bio(?:marker)?Unit|correctedUnit|latestUnit|latest_unit|statedUnit|unit|vitaminDUnit)["']\s*\]|\b(?:bio(?:marker)?Unit|chartUnit|correctedUnit|latestUnit|otherUnits|statedUnit|units?|vitaminDUnit)\b)/i;
 const POSSIBLE_LAB_CONTEXT_SOURCE =
-  /(?:BioAgeEffect|Biomarker|Bio(?:Option|Target|Unit)|CensoredInput|Clinical|Immun|ImportResult|Lab(?:Observation|Reading|Result|Value)|Medical|OutcomeComparison|ReadingReference|ReferenceCell|ReferenceHint|RevisionSummary|SunExposure|Titer|\b(?:bioOption|bioTarget|bioUnit|referenceHint|shownBioUnit)\b|["'`]biomarker["'`])/i;
+  /(?:BioAgeEffect|Biomarker|Bio(?:Option|Target|Unit)|CensoredInput|Clinical|Immun|ImportResult|Lab(?:Observation|Reading|Result|Value)|Medical|OutcomeComparison|OutOfWindow|ReadingReference|ReferenceCell|ReferenceHint|RevisionSummary|SunExposure|Titer|\b(?:bioOption|bioTarget|bioUnit|referenceHint|shownBioUnit)\b|["'`]biomarker["'`])/i;
 
 function displayUnitModule(moduleName: string, fileName: string): boolean {
   if (moduleName === "@/lib/display-unit") return true;
@@ -137,6 +136,7 @@ interface Binding {
   constString: string | null;
   trustedFormatter: boolean;
   trustedFormatterNamespace: boolean;
+  trustedStoredUnit: boolean;
   trustedUnitRenderer: boolean;
   rawUnit: boolean;
 }
@@ -237,10 +237,10 @@ function unitPropertyRead(
  * This deliberately does not execute JavaScript or propagate aliases. In a
  * declared lab-display context a raw unit read must be consumed directly by the
  * canonical formatter. The only exceptions are syntax-local non-display
- * semantics: comparisons/guards, canonical unit-shaped storage, object-literal
- * data construction, and named conversion/import operations. Arbitrary calls,
- * assignments, spreads, aliases, and callbacks therefore fail at the original
- * read regardless of later execution order.
+ * semantics: comparisons/guards, named conversion/import operations, and the
+ * authenticated `storedLabUnit` contract for an intentional raw transfer.
+ * Arbitrary calls, assignments, spreads, aliases, and callbacks therefore fail
+ * at the original read regardless of later execution order.
  */
 export function rawRenderedUnitExits(
   source: string,
@@ -278,6 +278,7 @@ export function rawRenderedUnitExits(
     rawUnit = false,
     trustedFormatter = false,
     trustedFormatterNamespace = false,
+    trustedStoredUnit = false,
     trustedUnitRenderer = false,
     constString: string | null = null
   ) {
@@ -286,6 +287,7 @@ export function rawRenderedUnitExits(
       rawUnit,
       trustedFormatter,
       trustedFormatterNamespace,
+      trustedStoredUnit,
       trustedUnitRenderer,
     });
   }
@@ -330,7 +332,9 @@ export function rawRenderedUnitExits(
             scope,
             element.name,
             false,
-            (element.propertyName ?? element.name).text === "displayUnit"
+            (element.propertyName ?? element.name).text === "displayUnit",
+            false,
+            (element.propertyName ?? element.name).text === "storedLabUnit"
           );
       } else addBinding(scope, bindings.name, false, false, true);
     } else if (
@@ -347,6 +351,7 @@ export function rawRenderedUnitExits(
           false,
           false,
           false,
+          false,
           (element.propertyName ?? element.name).text === "MedicalValue"
         );
     } else if (ts.isVariableDeclaration(node)) {
@@ -358,6 +363,7 @@ export function rawRenderedUnitExits(
             scope,
             id,
             raw,
+            false,
             false,
             false,
             false,
@@ -421,6 +427,59 @@ export function rawRenderedUnitExits(
       );
     return false;
   }
+  function authenticStoredUnitCall(node: ts.CallExpression): boolean {
+    if (ts.isIdentifier(node.expression))
+      return (
+        resolve(node.expression, node.expression.text)?.trustedStoredUnit ===
+        true
+      );
+    if (
+      ts.isPropertyAccessExpression(node.expression) &&
+      node.expression.name.text === "storedLabUnit" &&
+      ts.isIdentifier(node.expression.expression)
+    )
+      return (
+        resolve(node.expression.expression, node.expression.expression.text)
+          ?.trustedFormatterNamespace === true
+      );
+    return false;
+  }
+  function explicitStoredUnitTransfer(node: ts.CallExpression): boolean {
+    let current: ts.Node = node;
+    while (current.parent) {
+      const parent = current.parent;
+      if (
+        ts.isJsxExpression(parent) ||
+        ts.isJsxAttribute(parent) ||
+        ts.isTemplateSpan(parent) ||
+        ts.isTaggedTemplateExpression(parent)
+      )
+        return false;
+      if (
+        ts.isBinaryExpression(parent) &&
+        parent.operatorToken.kind === ts.SyntaxKind.PlusToken
+      )
+        return false;
+      if (ts.isPropertyAssignment(parent) && parent.initializer === current)
+        return UNIT_PROPERTY.test(resolvedPropertyName(parent.name) ?? "");
+      if (
+        (ts.isVariableDeclaration(parent) && parent.initializer === current) ||
+        (ts.isBinaryExpression(parent) &&
+          parent.right === current &&
+          parent.operatorToken.kind === ts.SyntaxKind.EqualsToken)
+      )
+        return true;
+      if (ts.isFunctionLike(parent)) return true;
+      if (
+        ts.isReturnStatement(parent) ||
+        ts.isCallExpression(parent) ||
+        ts.isStatement(parent)
+      )
+        return false;
+      current = parent;
+    }
+    return false;
+  }
   function directlyFormatted(node: ts.Node): boolean {
     let current = node;
     while (current.parent) {
@@ -429,6 +488,29 @@ export function rawRenderedUnitExits(
         return (
           parent.arguments.includes(current as ts.Expression) &&
           authenticFormatterCall(parent)
+        );
+      if (
+        ts.isParenthesizedExpression(parent) ||
+        ts.isNonNullExpression(parent) ||
+        ts.isAsExpression(parent) ||
+        ts.isTypeAssertionExpression(parent) ||
+        ts.isSatisfiesExpression(parent) ||
+        ts.isAwaitExpression(parent)
+      )
+        current = parent;
+      else return false;
+    }
+    return false;
+  }
+  function directlyStored(node: ts.Node): boolean {
+    let current = node;
+    while (current.parent) {
+      const parent = current.parent;
+      if (ts.isCallExpression(parent))
+        return (
+          parent.arguments.includes(current as ts.Expression) &&
+          authenticStoredUnitCall(parent) &&
+          explicitStoredUnitTransfer(parent)
         );
       if (
         ts.isParenthesizedExpression(parent) ||
@@ -485,94 +567,6 @@ export function rawRenderedUnitExits(
       )
         current = parent;
       else return false;
-    }
-    return false;
-  }
-  function objectLiteralStorage(node: ts.Node): boolean {
-    let current = node;
-    while (current.parent) {
-      const parent = current.parent;
-      if (ts.isPropertyAssignment(parent) && parent.initializer === current) {
-        const name = resolvedPropertyName(parent.name);
-        return (
-          !!name &&
-          UNIT_PROPERTY.test(name) &&
-          /(?:app\/\(app\)\/(?:results\/clinical-result-index|training\/goal-target-options)\.ts|app\/\(app\)\/training\/GoalForm\.tsx|lib\/(?:biomarker-goal|clinical-result-index|fhir\/bundle|import-diff|queries\/medical(?:\/immunizations)?|rule-findings|trends-series)\.ts)$/.test(
-            normalized
-          )
-        );
-      }
-      if (ts.isFunctionLike(parent)) return false;
-      if (
-        ts.isStatement(parent) ||
-        ts.isJsxExpression(parent) ||
-        ts.isReturnStatement(parent) ||
-        ts.isCallExpression(parent)
-      )
-        return false;
-      current = parent;
-    }
-    return false;
-  }
-  function canonicalUnitStorage(node: ts.Node): boolean {
-    let current = node;
-    while (current.parent) {
-      const parent = current.parent;
-      if (
-        ts.isBinaryExpression(parent) &&
-        parent.right === current &&
-        parent.operatorToken.kind === ts.SyntaxKind.EqualsToken
-      )
-        return (
-          unitPropertyRead(parent.left, resolvedPropertyName) ||
-          (ts.isIdentifier(parent.left) &&
-            UNIT_STORAGE_IDENTIFIER.test(parent.left.text) &&
-            /app\/\(app\)\/results\/clinical-results\/view\/page\.tsx$/.test(
-              normalized
-            ))
-        );
-      if (
-        ts.isVariableDeclaration(parent) &&
-        parent.initializer === current &&
-        ts.isIdentifier(parent.name)
-      )
-        return (
-          UNIT_STORAGE_IDENTIFIER.test(parent.name.text) &&
-          /(?:app\/\(app\)\/(?:results\/clinical-results\/view\/page|training\/GoalForm)\.tsx)$/.test(
-            normalized
-          )
-        );
-      if (
-        ts.isStatement(parent) ||
-        ts.isCallExpression(parent) ||
-        ts.isJsxExpression(parent)
-      )
-        return false;
-      current = parent;
-    }
-    return false;
-  }
-  function namedUnitCollectionStorage(node: ts.Node): boolean {
-    if (
-      !/app\/\(app\)\/results\/clinical-results\/view\/page\.tsx$/.test(
-        normalized
-      )
-    )
-      return false;
-    for (
-      let current: ts.Node | undefined = node;
-      current;
-      current = current.parent
-    ) {
-      if (ts.isVariableDeclaration(current) && ts.isIdentifier(current.name))
-        return UNIT_STORAGE_IDENTIFIER.test(current.name.text);
-      if (
-        ts.isBinaryExpression(current) &&
-        current.operatorToken.kind === ts.SyntaxKind.EqualsToken &&
-        ts.isIdentifier(current.left)
-      )
-        return UNIT_STORAGE_IDENTIFIER.test(current.left.text);
-      if (ts.isStatement(current) || ts.isJsxExpression(current)) return false;
     }
     return false;
   }
@@ -695,10 +689,8 @@ export function rawRenderedUnitExits(
   function allowed(node: ts.Node): boolean {
     return (
       directlyFormatted(node) ||
+      directlyStored(node) ||
       insideSemanticCall(node) ||
-      objectLiteralStorage(node) ||
-      canonicalUnitStorage(node) ||
-      namedUnitCollectionStorage(node) ||
       comparisonOrGuard(node) ||
       unitJsxTransport(node) ||
       unitExport(node) ||
