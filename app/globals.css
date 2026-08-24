@@ -261,6 +261,25 @@
   }
 }
 
+/* A card that delegates its own gutter to rendered cells. The parent premise
+   and the three current horizontal roles are tokens so a density sweep cannot
+   mistake those cells for a second inset layer (#3507). */
+@utility card-delegated {
+  @apply overflow-hidden p-0!;
+}
+
+@utility card-gutter-standard {
+  @apply px-4 sm:px-5;
+}
+
+@utility card-gutter-compact {
+  @apply px-2 sm:px-5;
+}
+
+@utility card-gutter-action {
+  @apply px-2 sm:px-3;
+}
+
 @utility card-quiet {
   /* The QUIET card tier (#2701): border, no shadow — for repeated list items
      (timeline events are the first tenant) where a stack of shadows reads as

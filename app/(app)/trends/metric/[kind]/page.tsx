@@ -88,6 +88,11 @@ import MetricReadingsTable, {
 } from "@/components/MetricReadingsTable";
 import PeakFlowZoneCard from "@/components/PeakFlowZoneCard";
 import { getPeakFlowPersonalBest } from "@/lib/settings";
+import {
+  periodGridCols,
+  periodGridColumns,
+  periodItemBorders,
+} from "@/lib/period-stats-layout";
 import { suggestedPersonalBest } from "@/lib/peak-flow";
 import { savePeakFlowPersonalBest } from "../../peak-flow-actions";
 import SourceComparison from "../../SourceComparison";
@@ -723,41 +728,6 @@ export default async function TrendMetricDetailPage(props: {
 // value broke mid-range onto a second line — by arithmetic, not by accident. Four
 // windows (the #1938 365d column) wrap into a 2×2 grid for the same reason: four
 // abreast at 640px is back under that arithmetic's floor.
-const PERIOD_COLS: Record<number, string> = {
-  1: "sm:grid-cols-1",
-  2: "sm:grid-cols-2",
-  3: "sm:grid-cols-3",
-  4: "sm:grid-cols-2",
-};
-
-// How many `sm` columns the grid above resolves to — the input the per-item
-// borders need (divide-x/divide-y utilities assume one row or one column, which a
-// 2×2 grid is neither, so each cell draws its own edges instead).
-function periodGridCols(statCount: number): number {
-  return statCount === 4 ? 2 : Math.max(1, statCount);
-}
-
-// The separators between period cells, per cell: a top rule in the phone stack, a
-// left rule between `sm` row neighbours plus a top rule for the second 2×2 row,
-// and (in the desktop sidebar) back to top rules only when `xl` restacks to one
-// column.
-function periodItemBorders(
-  index: number,
-  cols: number,
-  desktopSidebar: boolean
-): string {
-  if (index === 0) return "";
-  const out = ["border-black/10", "dark:border-white/10", "border-t"];
-  const startsRow = index % cols === 0;
-  if (!startsRow) out.push("sm:border-l");
-  if (index < cols) out.push("sm:border-t-0");
-  if (desktopSidebar) {
-    if (!startsRow) out.push("xl:border-l-0");
-    if (index < cols) out.push("xl:border-t");
-  }
-  return out.join(" ");
-}
-
 function PeriodStatsCard({
   stats,
   unit,
@@ -793,11 +763,14 @@ function PeriodStatsCard({
 
   return (
     <section
-      className="card overflow-hidden p-0!"
+      className="card card-delegated"
       data-testid="metric-period-stats"
       aria-labelledby="metric-period-stats-heading"
     >
-      <div className="border-b border-black/10 bg-slate-50/55 px-4 py-3.5 sm:px-5 dark:border-white/10 dark:bg-ink-900/35">
+      <div
+        className="card-gutter-standard border-b border-black/10 bg-slate-50/55 py-3.5 dark:border-white/10 dark:bg-ink-900/35"
+        data-testid="metric-period-stats-header"
+      >
         <h2
           id="metric-period-stats-heading"
           className="font-semibold text-slate-800 dark:text-slate-100"
@@ -828,99 +801,104 @@ function PeriodStatsCard({
         </p>
       </div>
       <div
-        className={`grid grid-cols-1 ${
-          desktopSidebar
-            ? `xl:grid-cols-1 ${PERIOD_COLS[stats.length] ?? "sm:grid-cols-3"}`
-            : (PERIOD_COLS[stats.length] ?? "sm:grid-cols-3")
-        }`}
+        data-card-delegated-layout="period-stats-grid"
+        className={`grid grid-cols-1 ${periodGridColumns(stats.length, desktopSidebar)}`}
       >
         {stats.map((s, i) => (
           <article
             key={s.label}
+            data-card-delegated-layout="period-stat-border"
             data-testid={`period-stat-${s.days}`}
-            className={`min-w-0 px-4 py-4 sm:px-5 ${periodItemBorders(
+            className={`min-w-0 ${periodItemBorders(
               i,
               periodGridCols(stats.length),
               desktopSidebar
             )}`}
           >
-            <div className="flex min-w-0 items-start justify-between gap-3">
-              <span className="inline-flex rounded-full bg-brand-50 px-2.5 py-1 text-xs font-semibold text-brand-700 dark:bg-brand-950/70 dark:text-brand-300">
-                {windowLabel(s)}
-              </span>
-              <span
-                data-testid={`period-readings-${s.days}`}
-                className="min-w-0 text-right text-xs leading-5 text-slate-500 dark:text-slate-400"
-              >
-                {s.count === 0
-                  ? "No readings"
-                  : `${s.count} reading${s.count === 1 ? "" : "s"}${
-                      coverage(s) ? ` · ${coverage(s)}` : ""
-                    }`}
-              </span>
-            </div>
+            <div
+              className="card-gutter-standard py-4"
+              data-card-delegated-cell="period-stat"
+            >
+              <div className="flex min-w-0 items-start justify-between gap-3">
+                <span className="inline-flex rounded-full bg-brand-50 px-2.5 py-1 text-xs font-semibold text-brand-700 dark:bg-brand-950/70 dark:text-brand-300">
+                  {windowLabel(s)}
+                </span>
+                <span
+                  data-testid={`period-readings-${s.days}`}
+                  className="min-w-0 text-right text-xs leading-5 text-slate-500 dark:text-slate-400"
+                >
+                  {s.count === 0
+                    ? "No readings"
+                    : `${s.count} reading${s.count === 1 ? "" : "s"}${
+                        coverage(s) ? ` · ${coverage(s)}` : ""
+                      }`}
+                </span>
+              </div>
 
-            {s.count === 0 ? (
-              <p className="mt-5 text-sm text-slate-500 dark:text-slate-400">
-                Add a reading from a completed day to see an average, range, and
-                change.
-              </p>
-            ) : s.dayOne ? (
-              /* Day one: the figure is TODAY's reading, not an average, so it
+              {s.count === 0 ? (
+                <p className="mt-5 text-sm text-slate-500 dark:text-slate-400">
+                  Add a reading from a completed day to see an average, range,
+                  and change.
+                </p>
+              ) : s.dayOne ? (
+                /* Day one: the figure is TODAY's reading, not an average, so it
                  carries its own label and its own test id — an average and a
                  single in-progress reading must never be addressable as the
                  same thing. Range and Change are omitted: over one reading they
                  are v–v and +0, which reads as information and is not. */
-              <div className="mt-4">
-                <div
-                  data-testid={`period-today-reading-${s.days}`}
-                  className="text-3xl font-semibold leading-none tracking-tight tabular-nums text-slate-900 xl:text-2xl dark:text-slate-100"
-                >
-                  {withUnit(s.avg)}
-                </div>
-                <div className="mt-1 section-label">Today&rsquo;s reading</div>
-              </div>
-            ) : (
-              <div
-                className={
-                  desktopSidebar
-                    ? "xl:mt-4 xl:flex xl:items-end xl:gap-4"
-                    : undefined
-                }
-              >
-                <div className="mt-4 xl:mt-0 xl:shrink-0">
+                <div className="mt-4">
                   <div
-                    data-testid={`period-average-${s.days}`}
+                    data-testid={`period-today-reading-${s.days}`}
                     className="text-3xl font-semibold leading-none tracking-tight tabular-nums text-slate-900 xl:text-2xl dark:text-slate-100"
                   >
                     {withUnit(s.avg)}
                   </div>
-                  <div className="mt-1 section-label">Average</div>
+                  <div className="mt-1 section-label">
+                    Today&rsquo;s reading
+                  </div>
                 </div>
+              ) : (
+                <div
+                  className={
+                    desktopSidebar
+                      ? "xl:mt-4 xl:flex xl:items-end xl:gap-4"
+                      : undefined
+                  }
+                >
+                  <div className="mt-4 xl:mt-0 xl:shrink-0">
+                    <div
+                      data-testid={`period-average-${s.days}`}
+                      className="text-3xl font-semibold leading-none tracking-tight tabular-nums text-slate-900 xl:text-2xl dark:text-slate-100"
+                    >
+                      {withUnit(s.avg)}
+                    </div>
+                    <div className="mt-1 section-label">Average</div>
+                  </div>
 
-                <dl className="mt-4 grid min-w-0 flex-1 grid-cols-3 divide-x divide-black/10 rounded-lg bg-slate-50/80 py-2.5 xl:mt-0 dark:divide-white/10 dark:bg-ink-900/55">
-                  <div className="min-w-0 px-2.5">
-                    <dt className="section-label">Latest</dt>
-                    <dd className="mt-0.5 whitespace-nowrap text-sm font-semibold tabular-nums text-slate-800 dark:text-slate-100">
-                      {value(s.latest)}
-                    </dd>
-                  </div>
-                  <div className="min-w-0 px-2.5">
-                    <dt className="section-label">Range</dt>
-                    <dd className="mt-0.5 whitespace-nowrap text-sm font-semibold tabular-nums text-slate-800 dark:text-slate-100">
-                      {value(s.min)}–{value(s.max)}
-                    </dd>
-                  </div>
-                  <div className="min-w-0 px-2.5">
-                    <dt className="section-label">Change</dt>
-                    <dd className="mt-0.5 whitespace-nowrap text-sm font-semibold tabular-nums text-slate-800 dark:text-slate-100">
-                      {s.delta != null && s.delta > 0 ? "+" : ""}
-                      {value(s.delta)}
-                    </dd>
-                  </div>
-                </dl>
-              </div>
-            )}
+                  <dl className="mt-4 grid min-w-0 flex-1 grid-cols-3 divide-x divide-black/10 rounded-lg bg-slate-50/80 py-2.5 xl:mt-0 dark:divide-white/10 dark:bg-ink-900/55">
+                    <div className="min-w-0 px-2.5">
+                      <dt className="section-label">Latest</dt>
+                      <dd className="mt-0.5 whitespace-nowrap text-sm font-semibold tabular-nums text-slate-800 dark:text-slate-100">
+                        {value(s.latest)}
+                      </dd>
+                    </div>
+                    <div className="min-w-0 px-2.5">
+                      <dt className="section-label">Range</dt>
+                      <dd className="mt-0.5 whitespace-nowrap text-sm font-semibold tabular-nums text-slate-800 dark:text-slate-100">
+                        {value(s.min)}–{value(s.max)}
+                      </dd>
+                    </div>
+                    <div className="min-w-0 px-2.5">
+                      <dt className="section-label">Change</dt>
+                      <dd className="mt-0.5 whitespace-nowrap text-sm font-semibold tabular-nums text-slate-800 dark:text-slate-100">
+                        {s.delta != null && s.delta > 0 ? "+" : ""}
+                        {value(s.delta)}
+                      </dd>
+                    </div>
+                  </dl>
+                </div>
+              )}
+            </div>
           </article>
         ))}
       </div>
