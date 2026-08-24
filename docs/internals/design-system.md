@@ -106,7 +106,7 @@ decisions any more.
 | goes somewhere (a pane, a sub-page, an in-page anchor) | `chip chip-nav`    | `aria-current="page"` / `"true"` |
 | narrows what is already on screen                      | `chip chip-filter` | `aria-current` or `aria-pressed` |
 | labels something nobody can press                      | `badge`            | — (not a chip)                   |
-| switches a small mutually exclusive set of views       | `SegmentedControl` | its own component                |
+| switches a small mutually exclusive set of views       | `SegmentedControl` | `aria-pressed` / `aria-current`  |
 
 So a call site is one static string plus the ARIA it already owed the reader.
 Nothing else: `className="chip chip-nav"` and `aria-current={active ? "page" :
@@ -118,6 +118,10 @@ The adopter guard resolves local and imported class helpers, then accepts only
 the four role/density strings above (plus DateRangeControl's recorded
 `sm:hidden chip chip-filter` trigger). Arbitrary properties, important variants,
 and shell utilities are not a second vocabulary hidden behind the primitive.
+
+`SegmentedControl` keeps its inset track, but every option inside it owns a
+rendered `min-h-11` target. The track's padding is not clickable and therefore
+does not count toward the 44px floor; sibling option boxes must remain disjoint.
 
 Dense in-row strips add `chip-sm`; the modifier owns their `text-xs` /
 `px-2.5` / `py-0.5` scale and rendered 44px target. The #3525 sweep

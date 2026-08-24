@@ -261,6 +261,13 @@ describe("selected-state rows use the registered primitive (#2730)", () => {
   });
 
   it("uses complete button semantics for every audited photo selector", () => {
+    const segmented = read(REPO, "components/SegmentedControl.tsx");
+    expect(
+      segmented,
+      "each segment must render its own disjoint 44px target"
+    ).toMatch(/segmentClass\s*=\s*`[^`]*\bmin-h-11\b/);
+    expect(segmented.match(/data-segmented-option=""/g)).toHaveLength(2);
+
     const viewFiles = [
       "app/(app)/progress/ProgressPhotosView.tsx",
       "app/(app)/records/specialty/skin/LesionPhotoStrip.tsx",
