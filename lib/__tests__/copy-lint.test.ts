@@ -541,6 +541,7 @@ type LexicalBinding = {
   declaration: StaticBindingDeclaration | null;
   path: StaticPath;
   defaultInitializer: ts.Expression | null;
+  defaultPath: StaticPath;
 };
 
 // Project syntax that is statically known to become rendered text. HTML character
@@ -591,14 +592,23 @@ function projectStaticRenderedCopy(source: string): ProjectedText[] {
   const bindingEntries = (
     name: ts.BindingName,
     path: StaticPath = [],
-    defaultInitializer: ts.Expression | null = null
+    defaultInitializer: ts.Expression | null = null,
+    defaultDepth: number | null = null
   ): {
     name: string;
     path: StaticPath;
     defaultInitializer: ts.Expression | null;
+    defaultPath: StaticPath;
   }[] => {
     if (ts.isIdentifier(name)) {
-      return [{ name: name.text, path, defaultInitializer }];
+      return [
+        {
+          name: name.text,
+          path,
+          defaultInitializer,
+          defaultPath: defaultDepth == null ? [] : path.slice(defaultDepth),
+        },
+      ];
     }
     if (ts.isObjectBindingPattern(name)) {
       return name.elements.flatMap((element) => {
@@ -608,23 +618,29 @@ function projectStaticRenderedCopy(source: string): ProjectedText[] {
           : ts.isIdentifier(element.name)
             ? element.name.text
             : null;
+        const nextPath = key == null ? path : [...path, key];
         return key == null
           ? []
           : bindingEntries(
               element.name,
-              [...path, key],
-              element.initializer ?? defaultInitializer
+              nextPath,
+              element.initializer ?? defaultInitializer,
+              element.initializer ? nextPath.length : defaultDepth
             );
       });
     }
     return name.elements.flatMap((element, index) =>
       ts.isOmittedExpression(element)
         ? []
-        : bindingEntries(
-            element.name,
-            [...path, index],
-            element.initializer ?? defaultInitializer
-          )
+        : (() => {
+            const nextPath = [...path, index];
+            return bindingEntries(
+              element.name,
+              nextPath,
+              element.initializer ?? defaultInitializer,
+              element.initializer ? nextPath.length : defaultDepth
+            );
+          })()
     );
   };
   const collectBindings = (node: ts.Node): void => {
@@ -764,7 +780,11 @@ function projectStaticRenderedCopy(source: string): ProjectedText[] {
     return (
       resolved ??
       (binding.defaultInitializer
-        ? staticExpressionAtPath(binding.defaultInitializer, path, nextSeen)
+        ? staticExpressionAtPath(
+            binding.defaultInitializer,
+            [...binding.defaultPath, ...path],
+            nextSeen
+          )
         : null)
     );
   };
@@ -902,7 +922,11 @@ function projectStaticRenderedCopy(source: string): ProjectedText[] {
       : [];
     return variants.length > 0 || !binding.defaultInitializer
       ? variants
-      : staticVariantsAtPath(binding.defaultInitializer, path, nextSeen);
+      : staticVariantsAtPath(
+          binding.defaultInitializer,
+          [...binding.defaultPath, ...path],
+          nextSeen
+        );
   }
   const combineVariants = (
     left: ProjectedText[],
@@ -950,7 +974,7 @@ function projectStaticRenderedCopy(source: string): ProjectedText[] {
       const customCopyProp =
         customComponent &&
         !name.startsWith("data-") &&
-        !name.startsWith("on") &&
+        !/^on[A-Z]/.test(name) &&
         !TECHNICAL_CUSTOM_PROPS.has(name);
       if (!USER_COPY_ATTRIBUTES.has(name) && !customCopyProp) continue;
       if (ts.isStringLiteral(property.initializer)) {
@@ -1058,43 +1082,179 @@ function projectStaticRenderedCopy(source: string): ProjectedText[] {
     ) {
       return renderElement(node, false);
     }
+    const reference = staticReference(node);
+    if (reference && reference.path.length === 0) {
+      const initializer = lexicalBinding(reference.identifier)?.declaration
+        ?.initializer;
+      if (
+        initializer &&
+        (ts.isJsxElement(initializer) ||
+          ts.isJsxSelfClosingElement(initializer) ||
+          ts.isJsxFragment(initializer))
+      ) {
+        return renderElement(initializer, false);
+      }
+    }
     return [empty];
   };
 
   const renderedRoots: ProjectedText[] = [];
-  const isRenderedRoot = (
-    node: ts.JsxElement | ts.JsxSelfClosingElement | ts.JsxFragment
-  ): boolean => {
-    for (let current = node.parent; current; current = current.parent) {
-      if (ts.isReturnStatement(current) || ts.isExpressionStatement(current)) {
-        return true;
-      }
-      if (ts.isArrowFunction(current)) return !ts.isBlock(current.body);
-      if (
-        ts.isVariableDeclaration(current) ||
-        ts.isPropertyAssignment(current) ||
-        ts.isSourceFile(current) ||
-        ts.isFunctionLike(current)
-      ) {
-        return false;
-      }
+  const reachableJsx = new Set<
+    ts.JsxElement | ts.JsxSelfClosingElement | ts.JsxFragment
+  >();
+  const followedFlow = new Set<ts.Node>();
+  const functionDeclarations = new Map<string, ts.FunctionDeclaration>();
+  const collectFunctions = (node: ts.Node): void => {
+    if (ts.isFunctionDeclaration(node) && node.name) {
+      functionDeclarations.set(node.name.text, node);
     }
-    return false;
+    ts.forEachChild(node, collectFunctions);
   };
-  const visitRoots = (node: ts.Node): void => {
+  collectFunctions(file);
+
+  const isFunctionImplementation = (
+    node: ts.Node
+  ): node is ts.FunctionLikeDeclaration =>
+    ts.isArrowFunction(node) ||
+    ts.isFunctionExpression(node) ||
+    ts.isFunctionDeclaration(node) ||
+    ts.isMethodDeclaration(node) ||
+    ts.isGetAccessorDeclaration(node) ||
+    ts.isSetAccessorDeclaration(node) ||
+    ts.isConstructorDeclaration(node);
+  const hasExportModifier = (node: ts.Node): boolean =>
+    !!ts
+      .getModifiers(node as ts.HasModifiers)
+      ?.some(
+        (modifier) =>
+          modifier.kind === ts.SyntaxKind.ExportKeyword ||
+          modifier.kind === ts.SyntaxKind.DefaultKeyword
+      );
+  const functionName = (node: ts.FunctionLikeDeclaration): string | null => {
+    if (node.name && ts.isIdentifier(node.name)) return node.name.text;
+    if (
+      (ts.isArrowFunction(node) || ts.isFunctionExpression(node)) &&
+      ts.isVariableDeclaration(node.parent) &&
+      ts.isIdentifier(node.parent.name)
+    ) {
+      return node.parent.name.text;
+    }
+    return null;
+  };
+  const isComponentFunction = (node: ts.FunctionLikeDeclaration): boolean => {
+    const name = functionName(node);
+    const variableStatement =
+      ts.isVariableDeclaration(node.parent) &&
+      ts.isVariableDeclarationList(node.parent.parent) &&
+      ts.isVariableStatement(node.parent.parent.parent)
+        ? node.parent.parent.parent
+        : null;
+    return (
+      (!!name && /^[A-Z]/.test(name)) ||
+      hasExportModifier(node) ||
+      (!!variableStatement && hasExportModifier(variableStatement))
+    );
+  };
+  const markFunction = (node: ts.FunctionLikeDeclaration): void => {
+    if (followedFlow.has(node)) return;
+    followedFlow.add(node);
+    if (!node.body) return;
+    if (!ts.isBlock(node.body)) {
+      markExpression(node.body);
+      return;
+    }
+    const visitReturns = (child: ts.Node): void => {
+      if (child !== node.body && ts.isFunctionLike(child)) return;
+      if (ts.isReturnStatement(child) && child.expression) {
+        markExpression(child.expression);
+        return;
+      }
+      ts.forEachChild(child, visitReturns);
+    };
+    visitReturns(node.body);
+  };
+  const markExpression = (node: ts.Expression): void => {
+    if (followedFlow.has(node)) return;
+    followedFlow.add(node);
     if (
       ts.isJsxElement(node) ||
       ts.isJsxSelfClosingElement(node) ||
       ts.isJsxFragment(node)
     ) {
-      if (isRenderedRoot(node)) {
-        renderedRoots.push(...renderElement(node, true));
+      reachableJsx.add(node);
+      return;
+    }
+    if (
+      ts.isParenthesizedExpression(node) ||
+      ts.isAsExpression(node) ||
+      ts.isTypeAssertionExpression(node) ||
+      ts.isSatisfiesExpression(node) ||
+      ts.isNonNullExpression(node)
+    ) {
+      markExpression(node.expression);
+      return;
+    }
+    if (ts.isConditionalExpression(node)) {
+      markExpression(node.whenTrue);
+      markExpression(node.whenFalse);
+      return;
+    }
+    if (ts.isBinaryExpression(node)) {
+      markExpression(node.left);
+      markExpression(node.right);
+      return;
+    }
+    if (ts.isArrayLiteralExpression(node)) {
+      for (const element of node.elements) {
+        if (!ts.isSpreadElement(element)) markExpression(element);
       }
       return;
     }
-    ts.forEachChild(node, visitRoots);
+    if (ts.isCallExpression(node) && ts.isIdentifier(node.expression)) {
+      const binding = lexicalBinding(node.expression);
+      const initializer = binding?.declaration?.initializer;
+      if (
+        initializer &&
+        (ts.isArrowFunction(initializer) ||
+          ts.isFunctionExpression(initializer))
+      ) {
+        markFunction(initializer);
+      } else {
+        const declaration = functionDeclarations.get(node.expression.text);
+        if (declaration) markFunction(declaration);
+      }
+      return;
+    }
+    const reference = staticReference(node);
+    if (reference && reference.path.length === 0) {
+      const initializer = lexicalBinding(reference.identifier)?.declaration
+        ?.initializer;
+      if (initializer) markExpression(initializer);
+    }
   };
-  visitRoots(file);
+  const seedFlow = (node: ts.Node): void => {
+    if (isFunctionImplementation(node) && isComponentFunction(node)) {
+      markFunction(node);
+      return;
+    }
+    if (
+      ts.isReturnStatement(node) &&
+      node.expression &&
+      ts.isSourceFile(node.parent)
+    ) {
+      markExpression(node.expression);
+      return;
+    }
+    if (ts.isExpressionStatement(node)) {
+      markExpression(node.expression);
+      return;
+    }
+    ts.forEachChild(node, seedFlow);
+  };
+  seedFlow(file);
+  for (const node of reachableJsx) {
+    renderedRoots.push(...renderElement(node, true));
+  }
   return [...renderedRoots, ...attributeCandidates];
 }
 
@@ -1429,6 +1589,16 @@ describe("copy-lint: user-facing tone standard (issue #945)", () => {
     ]);
   });
 
+  it("resolves a default attached to an outer nested binding", () => {
+    const sample = [
+      'const { notice: { copy } = { copy: "Informational only." } } = {};',
+      "return <p>{copy}</p>;",
+    ].join("\n");
+    expect(disclaimerCopyViolations("synthetic.tsx", sample)).toEqual([
+      "synthetic.tsx:1 — disclaimer prose in: <p>Informational only.</p>",
+    ]);
+  });
+
   it("ignores internal-only strings nested in objects and diagnostic functions", () => {
     const sample = [
       'const diagnostic = { message: "Informational only." };',
@@ -1501,12 +1671,19 @@ describe("copy-lint: user-facing tone standard (issue #945)", () => {
       '<ExplorerShell hint="Informational only." />',
       '<LeadFold summary="Informational only." />',
       '<TodayMedRow detail="Informational only." />',
+      '<Welcome onboardingCopy="Informational only." />',
     ];
     for (const sample of samples) {
       expect(disclaimerCopyViolations("synthetic.tsx", sample), sample).toEqual(
         ["synthetic.tsx:1 — disclaimer prose in: Informational only."]
       );
     }
+    expect(
+      disclaimerCopyViolations(
+        "synthetic.tsx",
+        '<Welcome onClick="Informational only." />'
+      )
+    ).toEqual([]);
   });
 
   it("ignores JSX assigned only to an unused diagnostic binding", () => {
@@ -1515,6 +1692,24 @@ describe("copy-lint: user-facing tone standard (issue #945)", () => {
       "return <p>Status</p>;",
     ].join("\n");
     expect(disclaimerCopyViolations("synthetic.tsx", sample)).toEqual([]);
+  });
+
+  it("follows returned JSX bindings but ignores unused JSX callbacks", () => {
+    const returned = [
+      "const content = <p>Informational only.</p>;",
+      "return content;",
+    ].join("\n");
+    expect(disclaimerCopyViolations("synthetic.tsx", returned)).toEqual([
+      "synthetic.tsx:1 — disclaimer prose in: <p>Informational only.</p>",
+    ]);
+
+    const unusedCallback = [
+      "const diagnostic = () => <p>Informational only.</p>;",
+      "return <p>Status</p>;",
+    ].join("\n");
+    expect(disclaimerCopyViolations("synthetic.tsx", unusedCallback)).toEqual(
+      []
+    );
   });
 
   it("resolves rendered object properties and destructured const bindings", () => {
