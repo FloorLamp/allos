@@ -291,6 +291,114 @@ describe("compiled phone-only CSS proof (#3518)", { timeout: 60_000 }, () => {
     ).rejects.toThrow("desktop-visible compiled declarations differ");
   });
 
+  it("reads positional and nested array-destructured class bindings", async () => {
+    const candidate = (value: string) => `
+      const [BOX_CLASS, [NESTED_CLASS]] = ["${value}", ["${value}"]];
+      export const Candidate = () => (
+        <div className={BOX_CLASS + " " + NESTED_CLASS} />
+      );
+    `;
+    const branchRoot = makeProofRoot(candidate("m-8"));
+    const controlRoot = makeProofRoot(candidate("m-4"));
+
+    await expect(
+      provePhoneOnlyCss({ branchRoot, controlRoot })
+    ).rejects.toThrow("desktop-visible compiled declarations differ");
+  });
+
+  it("reads typed direct and nested members returned by a local function", async () => {
+    const candidate = (value: string) => `
+      interface Styles { box: string; nested: { box: string } }
+      function getStyles(): Styles {
+        return { box: "${value}", nested: { box: "${value}" } };
+      }
+      const getNestedStyles = (): Styles => ({
+        box: "${value}", nested: { box: "${value}" },
+      });
+      export const Candidate = () => (
+        <div
+          className={
+            getStyles().box + " " + getNestedStyles().nested.box
+          }
+        />
+      );
+    `;
+    const branchRoot = makeProofRoot(candidate("m-8"));
+    const controlRoot = makeProofRoot(candidate("m-4"));
+
+    await expect(
+      provePhoneOnlyCss({ branchRoot, controlRoot })
+    ).rejects.toThrow("desktop-visible compiled declarations differ");
+  });
+
+  it("resolves one static computed key instead of scanning every owner value", async () => {
+    const candidate = (group: string, key: string) => `
+      const styles = {
+        first: { small: "m-4", large: "m-8" },
+        second: { small: "p-4", large: "p-8" },
+      };
+      const group = "${group}";
+      const key = "${key}";
+      export const Candidate = () => <div className={styles[group][key]} />;
+    `;
+    const branchRoot = makeProofRoot(candidate("first", "large"));
+    const controlRoot = makeProofRoot(candidate("first", "small"));
+
+    await expect(
+      provePhoneOnlyCss({ branchRoot, controlRoot })
+    ).rejects.toThrow("desktop-visible compiled declarations differ");
+  });
+
+  it("keeps nested finite computed owners but excludes unselected members", async () => {
+    const candidate = (firstLarge: string, secondLarge: string) => `
+      const styles = {
+        first: { small: "m-4", large: "${firstLarge}" },
+        second: { small: "p-4", large: "${secondLarge}" },
+      };
+      export const Candidate = ({ group }: { group: "first" | "second" }) => (
+        <div className={styles[group]["small"]} />
+      );
+    `;
+    const branchRoot = makeProofRoot(candidate("m-8", "p-8"));
+    const controlRoot = makeProofRoot(candidate("m-12", "p-12"));
+
+    await expect(
+      provePhoneOnlyCss({ branchRoot, controlRoot })
+    ).resolves.toBeDefined();
+  });
+
+  it("fails closed on dynamic or ambiguous computed class keys", async () => {
+    const dynamicRoot = makeProofRoot(`
+      declare const styles: Record<string, string>;
+      export const Candidate = ({ key }: { key: string }) => (
+        <div className={styles[key]} />
+      );
+    `);
+    await expect(
+      compilePhoneOnlyCss(dynamicRoot, { label: "dynamic-key" })
+    ).rejects.toThrow("computed class owner is not statically enumerable");
+
+    const wrappedDynamicRoot = makeProofRoot(`
+      declare const styles: Record<string, string>;
+      declare function classes(...values: unknown[]): string;
+      export const Candidate = ({ key }: { key: string }) => (
+        <div className={classes(styles[key])} />
+      );
+    `);
+    await expect(
+      compilePhoneOnlyCss(wrappedDynamicRoot, { label: "wrapped-dynamic-key" })
+    ).rejects.toThrow("computed class owner is not statically enumerable");
+
+    const ambiguousRoot = makeProofRoot(`
+      const styles = { small: "m-4", large: "m-8" };
+      const key = Math.random() > 0.5 ? "small" : "large";
+      export const Candidate = () => <div className={styles[key]} />;
+    `);
+    await expect(
+      compilePhoneOnlyCss(ambiguousRoot, { label: "ambiguous-key" })
+    ).rejects.toThrow("computed class key is ambiguous: small, large");
+  });
+
   it("follows default imports and re-export aliases", async () => {
     const defaultCandidate =
       'import BOX_CLASS from "../components/classes";\nexport const Candidate = () => <div className={BOX_CLASS} />;\n';

@@ -306,9 +306,11 @@ syntax-aware census of `className` values and the constants they reach across
 `app/`, `components/`, and `lib/`, plus every static custom utility in the
 sheet. Constant and helper reachability follows the TypeScript checker's actual
 lexical and module symbols, including import aliases, defaults, and re-exports;
-typed object members and destructured aliases trace back to their static value
-owner, same-named or shadowed declarations are not merged, and an unresolved
-class-bearing binding fails closed. A changed callsite or desktop-only custom
+typed object and array members, local function-return members, and nested
+destructured aliases trace back to their static value owner. Computed keys pick
+only their statically selected member; finite runtime key unions enumerate only
+those members, while ambiguous or unbounded class-bearing owners fail closed.
+Same-named or shadowed declarations are not merged. A changed callsite or desktop-only custom
 utility therefore reaches its own artifact without treating visible copy as a
 class candidate. Before
 compilation the proof also derives every custom utility that uses `max-sm` or

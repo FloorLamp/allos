@@ -191,6 +191,7 @@ function runtimeClassCandidates(root, label) {
   };
   const fragments = [];
   const visitedDeclarations = new Set();
+  const permissivelyVisitedDeclarations = new Set();
 
   const lookupSymbol = (node) => {
     let symbol = checker.getSymbolAtLocation(node);
@@ -247,13 +248,17 @@ function runtimeClassCandidates(root, label) {
       visitValue(expression);
   };
 
-  const visitDeclaration = (declaration) => {
+  const visitDeclaration = (declaration, { allowDynamic = false } = {}) => {
     if (visitedDeclarations.has(declaration)) return;
-    visitedDeclarations.add(declaration);
+    if (allowDynamic && permissivelyVisitedDeclarations.has(declaration))
+      return;
+    if (allowDynamic) permissivelyVisitedDeclarations.add(declaration);
+    else visitedDeclarations.add(declaration);
     if (ts.isBindingElement(declaration)) {
-      if (declaration.initializer) visitValue(declaration.initializer);
+      if (declaration.initializer)
+        visitValue(declaration.initializer, { allowDynamic });
       const values = destructuredBindingValues(declaration);
-      for (const value of values) visitValue(value);
+      for (const value of values) visitValue(value, { allowDynamic });
       return;
     }
     if (
@@ -263,11 +268,12 @@ function runtimeClassCandidates(root, label) {
       ts.isParameter(declaration) ||
       ts.isEnumMember(declaration)
     ) {
-      if (declaration.initializer) visitValue(declaration.initializer);
+      if (declaration.initializer)
+        visitValue(declaration.initializer, { allowDynamic });
       return;
     }
     if (ts.isShorthandPropertyAssignment(declaration)) {
-      visitBinding(declaration.name);
+      visitBinding(declaration.name, { allowDynamic });
       return;
     }
     if (
@@ -298,7 +304,10 @@ function runtimeClassCandidates(root, label) {
     bindingError(declaration, `unsupported ${ts.SyntaxKind[declaration.kind]}`);
   };
 
-  const visitBinding = (node, { allowExternalDeclaration = false } = {}) => {
+  const visitBinding = (
+    node,
+    { allowExternalDeclaration = false, allowDynamic = false } = {}
+  ) => {
     const symbol = lookupSymbol(node);
     if (!symbol) {
       if (allowExternalDeclaration && unresolvedPackageOperator(node)) return;
@@ -326,7 +335,7 @@ function runtimeClassCandidates(root, label) {
       bindingError(node, "binding is outside the runtime source inventory");
     }
     for (const declaration of runtimeDeclarations)
-      visitDeclaration(declaration);
+      visitDeclaration(declaration, { allowDynamic });
   };
 
   const unwrapExpression = (node) => {
@@ -341,7 +350,7 @@ function runtimeClassCandidates(root, label) {
     return node;
   };
 
-  const staticValues = (expression, seen = new Set()) => {
+  const staticValues = (expression, seen = new Set(), callDepth = 0) => {
     expression = unwrapExpression(expression);
     if (seen.has(expression)) return [];
     seen.add(expression);
@@ -360,13 +369,17 @@ function runtimeClassCandidates(root, label) {
             ts.isEnumMember(declaration)) &&
           declaration.initializer
         )
-          return staticValues(declaration.initializer, seen);
+          return staticValues(
+            declaration.initializer,
+            new Set(seen),
+            callDepth
+          );
         if (ts.isBindingElement(declaration))
-          return destructuredBindingValues(declaration, seen).flatMap((value) =>
-            staticValues(value, seen)
+          return destructuredBindingValues(declaration, new Set(seen)).flatMap(
+            (value) => staticValues(value, new Set(seen), callDepth)
           );
         if (ts.isExportAssignment(declaration))
-          return staticValues(declaration.expression, seen);
+          return staticValues(declaration.expression, new Set(seen), callDepth);
         return [];
       });
     }
@@ -374,36 +387,174 @@ function runtimeClassCandidates(root, label) {
       return staticMemberValues(
         expression.expression,
         expression.name.text,
+        seen,
+        callDepth
+      ).flatMap((value) => staticValues(value, new Set(seen), callDepth));
+    if (ts.isElementAccessExpression(expression)) {
+      const resolution = staticComputedKeys(
+        expression.argumentExpression,
         seen
-      ).flatMap((value) => staticValues(value, seen));
-    if (
-      ts.isElementAccessExpression(expression) &&
-      expression.argumentExpression &&
-      (ts.isStringLiteral(expression.argumentExpression) ||
-        ts.isNumericLiteral(expression.argumentExpression))
-    )
-      return staticMemberValues(
-        expression.expression,
-        expression.argumentExpression.text,
-        seen
-      ).flatMap((value) => staticValues(value, seen));
+      );
+      if (!resolution.keys.length)
+        return allStaticMemberValues(
+          expression.expression,
+          new Set(seen),
+          callDepth
+        ).flatMap((value) => staticValues(value, new Set(seen), callDepth));
+      if (
+        resolution.source === "syntax" &&
+        resolution.keys.length !== 1 &&
+        hasAmbiguousStaticKeySource(expression.argumentExpression)
+      )
+        return [];
+      return resolution.keys
+        .flatMap((key) =>
+          staticMemberValues(
+            expression.expression,
+            key,
+            new Set(seen),
+            callDepth
+          )
+        )
+        .flatMap((value) => staticValues(value, new Set(seen), callDepth));
+    }
+    if (ts.isCallExpression(expression)) {
+      if (callDepth >= 8) return [];
+      const callee = ts.isPropertyAccessExpression(expression.expression)
+        ? expression.expression.name
+        : expression.expression;
+      if (!ts.isIdentifier(callee)) return [];
+      const symbol = lookupSymbol(callee);
+      if (!symbol) return [];
+      return (symbol.declarations ?? []).flatMap((declaration) => {
+        const callable =
+          ts.isVariableDeclaration(declaration) &&
+          declaration.initializer &&
+          (ts.isFunctionExpression(declaration.initializer) ||
+            ts.isArrowFunction(declaration.initializer))
+            ? declaration.initializer
+            : declaration;
+        if (
+          !runtimeFiles.has(
+            path.resolve(declaration.getSourceFile().fileName)
+          ) ||
+          !(
+            ts.isFunctionDeclaration(callable) ||
+            ts.isFunctionExpression(callable) ||
+            ts.isMethodDeclaration(callable) ||
+            ts.isArrowFunction(callable)
+          ) ||
+          !callable.body ||
+          seen.has(callable)
+        )
+          return [];
+        seen.add(callable);
+        return (returnExpressions(callable.body) ?? []).flatMap((value) =>
+          staticValues(value, new Set(seen), callDepth + 1)
+        );
+      });
+    }
     if (ts.isConditionalExpression(expression))
       return [
-        ...staticValues(expression.whenTrue, seen),
-        ...staticValues(expression.whenFalse, seen),
+        ...staticValues(expression.whenTrue, new Set(seen), callDepth),
+        ...staticValues(expression.whenFalse, new Set(seen), callDepth),
       ];
     return [expression];
   };
 
-  const staticMemberValues = (expression, key, seen = new Set()) => {
+  const staticComputedKeys = (expression, seen = new Set()) => {
+    if (!expression) return { keys: [], source: "none" };
+    const syntaxKeys = [
+      ...new Set(
+        staticValues(expression, seen)
+          .map(unwrapExpression)
+          .filter(
+            (value) =>
+              ts.isStringLiteral(value) ||
+              ts.isNoSubstitutionTemplateLiteral(value) ||
+              ts.isNumericLiteral(value)
+          )
+          .map((value) => value.text)
+      ),
+    ];
+    if (syntaxKeys.length) return { keys: syntaxKeys, source: "syntax" };
+
+    const typeKeys = [];
+    const collectTypeKeys = (type) => {
+      if (type.isUnion()) {
+        for (const member of type.types) collectTypeKeys(member);
+      } else if (type.flags & ts.TypeFlags.StringLiteral) {
+        typeKeys.push(type.value);
+      } else if (type.flags & ts.TypeFlags.NumberLiteral) {
+        typeKeys.push(String(type.value));
+      }
+    };
+    collectTypeKeys(checker.getTypeAtLocation(expression));
+    return { keys: [...new Set(typeKeys)], source: "type" };
+  };
+
+  const hasAmbiguousStaticKeySource = (expression, seen = new Set()) => {
+    expression = unwrapExpression(expression);
+    if (seen.has(expression)) return false;
+    seen.add(expression);
+    if (ts.isConditionalExpression(expression)) return true;
+    if (!ts.isIdentifier(expression)) return false;
+    const symbol = lookupSymbol(expression);
+    return (symbol?.declarations ?? []).some(
+      (declaration) =>
+        ts.isVariableDeclaration(declaration) &&
+        declaration.initializer &&
+        hasAmbiguousStaticKeySource(declaration.initializer, seen)
+    );
+  };
+
+  const mayBeClassText = (node) => {
+    const seen = new Set();
+    const inspect = (type) => {
+      if (seen.has(type)) return false;
+      seen.add(type);
+      if (type.isUnionOrIntersection()) return type.types.some(inspect);
+      return Boolean(
+        type.flags &
+        (ts.TypeFlags.StringLike |
+          ts.TypeFlags.Any |
+          ts.TypeFlags.Unknown |
+          ts.TypeFlags.TypeParameter)
+      );
+    };
+    return inspect(checker.getTypeAtLocation(node));
+  };
+
+  const staticMemberValues = (
+    expression,
+    key,
+    seen = new Set(),
+    callDepth = 0
+  ) => {
     const values = [];
-    for (const initializer of staticValues(expression, seen)) {
+    for (const initializer of staticValues(expression, seen, callDepth)) {
+      if (ts.isArrayLiteralExpression(initializer)) {
+        const index = Number(key);
+        if (
+          Number.isInteger(index) &&
+          index >= 0 &&
+          index < initializer.elements.length
+        ) {
+          const element = initializer.elements[index];
+          if (!ts.isOmittedExpression(element))
+            values.push(
+              ts.isSpreadElement(element) ? element.expression : element
+            );
+        }
+        continue;
+      }
       if (!ts.isObjectLiteralExpression(initializer)) continue;
       for (const property of initializer.properties) {
         if (
           ts.isPropertyAssignment(property) &&
           (ts.isIdentifier(property.name) ||
-            ts.isStringLiteral(property.name)) &&
+            ts.isStringLiteral(property.name) ||
+            ts.isNumericLiteral(property.name)) &&
           property.name.text === key
         )
           values.push(property.initializer);
@@ -413,27 +564,76 @@ function runtimeClassCandidates(root, label) {
         )
           values.push(property.name);
         else if (ts.isSpreadAssignment(property))
-          values.push(...staticMemberValues(property.expression, key, seen));
+          values.push(
+            ...staticMemberValues(
+              property.expression,
+              key,
+              new Set(seen),
+              callDepth
+            )
+          );
+      }
+    }
+    return values;
+  };
+
+  const allStaticMemberValues = (
+    expression,
+    seen = new Set(),
+    callDepth = 0
+  ) => {
+    const values = [];
+    for (const initializer of staticValues(expression, seen, callDepth)) {
+      if (ts.isArrayLiteralExpression(initializer)) {
+        for (const element of initializer.elements)
+          if (!ts.isOmittedExpression(element))
+            values.push(
+              ts.isSpreadElement(element) ? element.expression : element
+            );
+      } else if (ts.isObjectLiteralExpression(initializer)) {
+        for (const property of initializer.properties) {
+          if (ts.isPropertyAssignment(property))
+            values.push(property.initializer);
+          else if (ts.isShorthandPropertyAssignment(property))
+            values.push(property.name);
+          else if (ts.isSpreadAssignment(property))
+            values.push(
+              ...allStaticMemberValues(
+                property.expression,
+                new Set(seen),
+                callDepth
+              )
+            );
+        }
       }
     }
     return values;
   };
 
   const destructuredBindingValues = (binding, seen = new Set()) => {
-    const keys = [];
+    const pathSegments = [];
     let current = binding;
     while (ts.isBindingElement(current)) {
-      if (!ts.isObjectBindingPattern(current.parent)) return [];
-      const keyNode = current.propertyName ?? current.name;
-      if (!ts.isIdentifier(keyNode) && !ts.isStringLiteral(keyNode)) return [];
-      keys.unshift(keyNode.text);
+      if (current.dotDotDotToken) return [];
+      if (ts.isObjectBindingPattern(current.parent)) {
+        const keyNode = current.propertyName ?? current.name;
+        if (!ts.isIdentifier(keyNode) && !ts.isStringLiteral(keyNode))
+          return [];
+        pathSegments.unshift(keyNode.text);
+      } else if (ts.isArrayBindingPattern(current.parent)) {
+        const index = current.parent.elements.indexOf(current);
+        if (index < 0) return [];
+        pathSegments.unshift(String(index));
+      } else {
+        return [];
+      }
       const owner = current.parent.parent;
       if (ts.isVariableDeclaration(owner)) {
         if (!owner.initializer) return [];
         let values = [owner.initializer];
-        for (const key of keys)
+        for (const key of pathSegments)
           values = values.flatMap((value) =>
-            staticMemberValues(value, key, seen)
+            staticMemberValues(value, key, new Set(seen))
           );
         return values;
       }
@@ -443,16 +643,18 @@ function runtimeClassCandidates(root, label) {
     return [];
   };
 
-  const visitPropertyName = (name) => {
+  const visitPropertyName = (name, { allowDynamic = false } = {}) => {
     if (ts.isIdentifier(name) || ts.isStringLiteral(name))
       fragments.push(name.text);
-    else if (ts.isComputedPropertyName(name)) visitValue(name.expression);
+    else if (ts.isComputedPropertyName(name))
+      visitValue(name.expression, { allowDynamic });
   };
 
-  function visitValue(node) {
+  function visitValue(node, { allowDynamic = false } = {}) {
     if (!node) return;
+    const visitChild = (child) => visitValue(child, { allowDynamic });
     if (ts.isJsxExpression(node)) {
-      visitValue(node.expression);
+      visitChild(node.expression);
       return;
     }
     if (
@@ -468,25 +670,28 @@ function runtimeClassCandidates(root, label) {
     if (ts.isTemplateExpression(node)) {
       fragments.push(node.head.text);
       for (const span of node.templateSpans) {
-        visitValue(span.expression);
+        visitChild(span.expression);
         fragments.push(span.literal.text);
       }
       return;
     }
     if (ts.isIdentifier(node)) {
       if (node.text === "undefined") return;
-      visitBinding(node);
+      visitBinding(node, { allowDynamic });
       return;
     }
     if (ts.isPropertyAccessExpression(node)) {
       const values = staticMemberValues(node.expression, node.name.text);
       if (values.length) {
-        for (const value of values) visitValue(value);
+        for (const value of values) visitChild(value);
         return;
       }
       const propertySymbol = lookupSymbol(node.name);
       if (propertySymbol?.declarations?.length)
-        visitBinding(node.name, { allowExternalDeclaration: true });
+        visitBinding(node.name, {
+          allowExternalDeclaration: true,
+          allowDynamic,
+        });
       else
         bindingError(
           node.name,
@@ -495,11 +700,39 @@ function runtimeClassCandidates(root, label) {
       return;
     }
     if (ts.isElementAccessExpression(node)) {
-      visitValue(node.expression);
+      const resolution = staticComputedKeys(node.argumentExpression);
+      if (
+        resolution.source === "syntax" &&
+        resolution.keys.length !== 1 &&
+        hasAmbiguousStaticKeySource(node.argumentExpression)
+      )
+        bindingError(
+          node,
+          resolution.keys.length
+            ? `computed class key is ambiguous: ${resolution.keys.join(", ")}`
+            : "computed class key is not statically readable"
+        );
+      const values = resolution.keys.length
+        ? resolution.keys.flatMap((key) =>
+            staticMemberValues(node.expression, key)
+          )
+        : allStaticMemberValues(node.expression);
+      if (!values.length && (!allowDynamic || mayBeClassText(node)))
+        bindingError(
+          node,
+          resolution.keys.length
+            ? `computed class members ${resolution.keys.join(", ")} are not readable`
+            : "computed class owner is not statically enumerable"
+        );
+      for (const value of values) visitChild(value);
       return;
     }
     if (ts.isCallExpression(node) || ts.isNewExpression(node)) {
-      for (const argument of node.arguments ?? []) visitValue(argument);
+      // Calls inside class expressions often combine class strings with
+      // ordinary runtime data. Resolve any static argument candidates, but do
+      // not require unrelated business data to have a finite static owner.
+      for (const argument of node.arguments ?? [])
+        visitValue(argument, { allowDynamic: true });
       const callee = ts.isPropertyAccessExpression(node.expression)
         ? node.expression.name
         : node.expression;
@@ -508,34 +741,34 @@ function runtimeClassCandidates(root, label) {
       return;
     }
     if (ts.isTaggedTemplateExpression(node)) {
-      visitValue(node.template);
+      visitChild(node.template);
       return;
     }
     if (ts.isConditionalExpression(node)) {
-      visitValue(node.whenTrue);
-      visitValue(node.whenFalse);
+      visitChild(node.whenTrue);
+      visitChild(node.whenFalse);
       return;
     }
     if (ts.isBinaryExpression(node)) {
-      visitValue(node.left);
-      visitValue(node.right);
+      visitChild(node.left);
+      visitChild(node.right);
       return;
     }
     if (ts.isArrayLiteralExpression(node)) {
       for (const element of node.elements)
-        visitValue(ts.isSpreadElement(element) ? element.expression : element);
+        visitChild(ts.isSpreadElement(element) ? element.expression : element);
       return;
     }
     if (ts.isObjectLiteralExpression(node)) {
       for (const property of node.properties) {
         if (ts.isPropertyAssignment(property)) {
-          visitPropertyName(property.name);
-          visitValue(property.initializer);
+          visitPropertyName(property.name, { allowDynamic });
+          visitChild(property.initializer);
         } else if (ts.isShorthandPropertyAssignment(property)) {
           fragments.push(property.name.text);
-          visitBinding(property.name);
+          visitBinding(property.name, { allowDynamic });
         } else if (ts.isSpreadAssignment(property)) {
-          visitValue(property.expression);
+          visitChild(property.expression);
         } else if (ts.isMethodDeclaration(property)) {
           visitReturns(property.body);
         }
@@ -550,7 +783,7 @@ function runtimeClassCandidates(root, label) {
       ts.isSatisfiesExpression(node) ||
       ts.isAwaitExpression(node)
     ) {
-      visitValue(node.expression);
+      visitChild(node.expression);
       return;
     }
     if (ts.isArrowFunction(node) || ts.isFunctionExpression(node)) {
