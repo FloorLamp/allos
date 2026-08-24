@@ -1,6 +1,7 @@
 "use client";
 
 import EquipmentRegistryLink from "./EquipmentRegistryLink";
+import InfoTooltipIcon from "@/components/InfoTooltipIcon";
 import FactChipRow, { FactChip } from "@/components/facts/FactChipRow";
 import { useEffect, useRef, useState } from "react";
 import type { Equipment } from "@/lib/types";
@@ -147,7 +148,6 @@ function RpeStepper({
   return (
     <div
       data-testid={testId}
-      title="RPE — rate of perceived exertion (5–10, optional)"
       className="flex items-center overflow-hidden rounded-md border border-black/10 text-xs dark:border-white/10"
     >
       <button
@@ -878,11 +878,9 @@ export default function StrengthSets({
                   {/* Same missed-target marker as the training log card; the
                       session status is judged server-side. */}
                   {sess.status === "missed" && (
-                    <span
-                      className="text-amber-500 dark:text-amber-400"
-                      title={SET_STATUS_TITLES.missed}
-                    >
+                    <span className="inline-flex items-center gap-0.5 text-xs text-amber-500 dark:text-amber-400">
                       <IconAlertTriangle className="h-3.5 w-3.5" stroke={2} />
+                      Missed target
                     </span>
                   )}
                 </span>
@@ -1094,20 +1092,25 @@ export default function StrengthSets({
           {/* Rep-based sets only — a timed hold's effort IS its duration, so there
               is nothing for a rating to add. */}
           {!timed && (
-            <label
-              className={`flex items-center gap-2 ${
-                rpeToggling ? "cursor-progress opacity-60" : "cursor-pointer"
-              }`}
-              title="Adds an effort rating to every set row, on this and future sessions."
-            >
-              <BrandedCheckbox
-                checked={!!rpeTracking}
-                onChange={() => void toggleRpeTracking()}
-                inputTestId="rpe-tracking-checkbox"
-                controlTestId="rpe-tracking-control"
+            <span className="inline-flex items-center gap-1">
+              <label
+                className={`flex items-center gap-2 ${
+                  rpeToggling ? "cursor-progress opacity-60" : "cursor-pointer"
+                }`}
+              >
+                <BrandedCheckbox
+                  checked={!!rpeTracking}
+                  onChange={() => void toggleRpeTracking()}
+                  inputTestId="rpe-tracking-checkbox"
+                  controlTestId="rpe-tracking-control"
+                />
+                Rate effort (RPE)
+              </label>
+              <InfoTooltipIcon
+                label="RPE means rate of perceived exertion (5–10, optional). It adds an effort rating to every set row, now and in future sessions."
+                data-testid="rpe-help"
               />
-              Rate effort (RPE)
-            </label>
+            </span>
           )}
         </div>
       )}
@@ -1692,7 +1695,6 @@ export default function StrengthSets({
                   ? "text-amber-500 dark:text-amber-400"
                   : "text-brand-600 dark:text-brand-400"
               }`}
-              title={SET_STATUS_TITLES[targetStatus]}
             >
               {targetStatus === "missed" ? (
                 <IconAlertTriangle className="h-3.5 w-3.5" stroke={2} />

@@ -10,6 +10,7 @@ import {
   spokenDiagnosisList,
   type VisitDiagnosisRank,
 } from "@/lib/visit-diagnosis-rank";
+import InfoTooltipIcon from "@/components/InfoTooltipIcon";
 
 // The visit-diagnosis chips, shared by the visit list and the visit detail page
 // (#2589). Two DIFFERENT kinds of statement render here, and keeping them
@@ -50,8 +51,8 @@ import {
 //    the fragments AND the full names — guarded per span;
 //  - passing `m.tail` instead of `m.name` into `spokenDiagnosisList`, so it speaks
 //    fragments — guarded by the sr-only text, asserted in full;
-//  - dropping `title=` from the grouped chip, so hover recovers nothing — guarded
-//    by the exact title string;
+//  - dropping the grouped chip's touch/keyboard info affordance — guarded by the
+//    exact pinned tooltip text;
 //  - deleting <RankBadge/> from a tail, which the spec adds on top of the four
 //    above: the two members carry DIFFERENT source claims, so each tail's badge is
 //    asserted by its own text.
@@ -65,7 +66,7 @@ import {
 // Server-renderable: no state, no client hooks, so both surfaces use one copy.
 
 // The rank badge is a claim the SOURCE made. It is deliberately not styled like
-// anything this file invents: solid fill, uppercase, its own tooltip. A factored
+// anything this file invents: solid fill, uppercase, and visibly source-labelled. A factored
 // tail below is a fragment of a NAME, and the two must not be mistakable for each
 // other — half 1 exists precisely because "a rank" and "a word in a name" are
 // different kinds of statement.
@@ -76,12 +77,8 @@ function RankBadge({ entry }: { entry: VisitDiagnosisRank | null }) {
     <span
       className="ml-1 rounded-full bg-amber-700 px-1.5 text-xs font-semibold uppercase tracking-wide text-amber-50 dark:bg-amber-300 dark:text-amber-950"
       data-testid="diagnosis-rank-badge"
-      // Not "Rank stated by…": the badge also carries role labels on their own
-      // when the rank was withheld, and naming only the rank would mis-describe
-      // half of what it shows.
-      title="Stated by the source record"
     >
-      {label}
+      {label} · source
     </span>
   );
 }
@@ -113,32 +110,37 @@ function Chip({
     ranks
   );
   return (
-    <span
-      className={`${CHIP} flex-wrap gap-x-1 gap-y-0.5`}
-      data-testid="diagnosis-chip-group"
-      title={spoken.join("\n")}
-    >
-      <span className="sr-only">{spoken.join("; ")}</span>
-      <span aria-hidden="true">{group.stem}</span>
-      {group.members.map((m, i) => (
-        <span
-          key={i}
-          aria-hidden="true"
-          // A continuation of the name, marked as one: a hairline rule and italics,
-          // NOT a filled pill. The filled pill is the rank badge, and only the
-          // source gets to make that claim (see RankBadge).
-          className="inline-flex items-center border-l border-amber-500/50 pl-1.5 italic dark:border-amber-400/40"
-          data-testid="diagnosis-chip-tail"
-        >
-          {/* The tail is printed RAW — `stem + tail` is the original name, and
+    <span className="inline-flex max-w-full items-center gap-0.5">
+      <span
+        className={`${CHIP} flex-wrap gap-x-1 gap-y-0.5`}
+        data-testid="diagnosis-chip-group"
+      >
+        <span className="sr-only">{spoken.join("; ")}</span>
+        <span aria-hidden="true">{group.stem}</span>
+        {group.members.map((m, i) => (
+          <span
+            key={i}
+            aria-hidden="true"
+            // A continuation of the name, marked as one: a hairline rule and italics,
+            // NOT a filled pill. The filled pill is the rank badge, and only the
+            // source gets to make that claim (see RankBadge).
+            className="inline-flex items-center border-l border-amber-500/50 pl-1.5 italic dark:border-amber-400/40"
+            data-testid="diagnosis-chip-tail"
+          >
+            {/* The tail is printed RAW — `stem + tail` is the original name, and
               this component drops none of it (a leading space is collapsed by
               the browser at the start of the flex item, not by us). An entry
               that IS the stem has no tail of its own; the dash says "this one,
               and nothing further" rather than rendering an empty pill. */}
-          {m.tail.trim() ? m.tail : "—"}
-          <RankBadge entry={rankForDiagnosis(ranks, m.name)} />
-        </span>
-      ))}
+            {m.tail.trim() ? m.tail : "—"}
+            <RankBadge entry={rankForDiagnosis(ranks, m.name)} />
+          </span>
+        ))}
+      </span>
+      <InfoTooltipIcon
+        label={spoken.join("; ")}
+        data-testid="diagnosis-group-help"
+      />
     </span>
   );
 }

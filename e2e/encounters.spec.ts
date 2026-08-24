@@ -469,9 +469,7 @@ test.describe("Visit detail — source-stated diagnosis ranks (#2589)", () => {
     // make, and no badge at all is the mutation that used to pass.
     const badge = single.getByTestId("diagnosis-rank-badge");
     await expect(badge).toHaveCount(1);
-    await expect(badge).toHaveText(SOLO_BADGE);
-    // It is the SOURCE's claim, and says so on hover.
-    await expect(badge).toHaveAttribute("title", "Stated by the source record");
+    await expect(badge).toHaveText(`${SOLO_BADGE} · source`);
   });
 
   test("a factored chip badges each tail and speaks the full names", async ({
@@ -491,10 +489,10 @@ test.describe("Visit detail — source-stated diagnosis ranks (#2589)", () => {
     // …and the badge rides the TAIL, beside the name it belongs to, so two members
     // of one factored chip can carry different source claims.
     await expect(tails.nth(0).getByTestId("diagnosis-rank-badge")).toHaveText(
-      LEFT_BADGE
+      `${LEFT_BADGE} · source`
     );
     await expect(tails.nth(1).getByTestId("diagnosis-rank-badge")).toHaveText(
-      RIGHT_BADGE
+      `${RIGHT_BADGE} · source`
     );
 
     // The visual pieces are withheld from the accessibility tree — a screen reader
@@ -509,8 +507,10 @@ test.describe("Visit detail — source-stated diagnosis ranks (#2589)", () => {
     // What is spoken instead: the FULL names, each with its own badge. The strings
     // start with the stem, which is what fails if the component ever speaks tails.
     await expect(group.locator(".sr-only")).toHaveText(SPOKEN.join("; "));
-    // Hover recovers the same thing for a sighted reader.
-    await expect(group).toHaveAttribute("title", SPOKEN.join("\n"));
+    // The sighted expansion has the same tap/keyboard path as every other info
+    // affordance; it no longer depends on native hover chrome.
+    await chips.getByTestId("diagnosis-group-help").click();
+    await expect(page.getByRole("tooltip")).toHaveText(SPOKEN.join("; "));
   });
 });
 

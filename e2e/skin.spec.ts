@@ -77,7 +77,7 @@ test.describe("Skin lesions — add → view → track recheck → photo → fil
     const card = page.getByTestId("lesion-card").filter({ hasText: LABEL });
     await expect(card).toBeVisible();
     await expect(card).toContainText("watch");
-    await expect(card).toContainText("ABCDE E");
+    await expect(card).toContainText("ABCDE observations: E");
 
     // Track a recheck follow-up on it — the row's control turns into a tracked state.
     const trackForm = card.getByTestId(/^track-skin-followup-/);

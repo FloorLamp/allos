@@ -37,11 +37,8 @@ import { hasExerciseGuide } from "@/lib/exercise-guides";
 import { isNewLift } from "@/lib/exercise-familiarity";
 
 const PR_CHIP = (
-  <span
-    className="badge cursor-help bg-amber-100 text-amber-700 dark:bg-amber-950 dark:text-amber-300"
-    title="New personal record set in your latest session"
-  >
-    PR
+  <span className="badge bg-amber-100 text-amber-700 dark:bg-amber-950 dark:text-amber-300">
+    Latest personal record
   </span>
 );
 
@@ -358,11 +355,8 @@ export default function ExerciseDetailPanel({
                 </Link>
                 <span className="flex items-baseline justify-end gap-2 text-right">
                   {r.equipment && (
-                    <span
-                      className="badge shrink-0 bg-slate-100 text-slate-600 dark:bg-slate-800 dark:text-slate-300"
-                      title="Equipment used"
-                    >
-                      {r.equipment}
+                    <span className="badge shrink-0 bg-slate-100 text-slate-600 dark:bg-slate-800 dark:text-slate-300">
+                      Equipment: {r.equipment}
                     </span>
                   )}
                   <span className="tabular-nums text-slate-600 dark:text-slate-300">

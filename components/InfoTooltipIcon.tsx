@@ -139,7 +139,7 @@ export default function InfoTooltipIcon({
             return next;
           })
         }
-        className="inline-flex h-6 w-6 shrink-0 items-center justify-center rounded-full text-slate-500 transition hover:bg-slate-100 hover:text-slate-600 focus:outline-hidden focus-visible:ring-2 focus-visible:ring-brand-500 dark:text-slate-400 dark:hover:bg-ink-750 dark:hover:text-slate-300"
+        className="tap-target inline-flex h-8 w-8 shrink-0 items-center justify-center rounded-full text-slate-500 transition hover:bg-slate-100 hover:text-slate-600 focus:outline-hidden focus-visible:ring-2 focus-visible:ring-brand-500 dark:text-slate-400 dark:hover:bg-ink-750 dark:hover:text-slate-300"
       >
         <IconInfoCircle className="h-4 w-4" stroke={2} aria-hidden />
       </button>

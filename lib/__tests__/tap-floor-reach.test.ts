@@ -172,7 +172,6 @@ const UNDER_FLOOR_REGISTER: Registered[] = [
   { file: "app/(app)/upcoming/page.tsx", controls: 1, why: INLINE_GLYPH },
   { file: "components/FindingCard.tsx", controls: 1, why: INLINE_GLYPH },
   { file: "components/FindingRow.tsx", controls: 1, why: INLINE_GLYPH },
-  { file: "components/InfoTooltipIcon.tsx", controls: 1, why: INLINE_GLYPH },
   {
     file: "app/(app)/nutrition/UntrackHabitButton.tsx",
     controls: 1,

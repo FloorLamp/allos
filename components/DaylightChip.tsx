@@ -52,9 +52,8 @@ export default function DaylightChip({
       <span
         data-testid="daylight-uv"
         className="inline-flex items-center gap-1 text-amber-600 dark:text-amber-400"
-        title="Peak UV index during your outdoor window"
       >
-        UV {Math.round(uv.peakUvIndex)}
+        Peak UV {Math.round(uv.peakUvIndex)}
       </span>
     ) : null;
 

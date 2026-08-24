@@ -4,6 +4,7 @@ import type { ActivityEditData } from "./model";
 import type { DistanceUnit } from "@/lib/settings";
 import { importedActivityStats } from "@/lib/activity-import-details";
 import { zonePresentation } from "@/lib/training-zones";
+import InfoTooltipIcon from "@/components/InfoTooltipIcon";
 
 export default function ImportedActivityDetails({
   activity,
@@ -57,31 +58,33 @@ export default function ImportedActivityDetails({
                 data-testid={
                   stat.key === "heart_rate" ? "imported-heart-rate" : undefined
                 }
-                className="mt-0.5 text-base font-semibold tabular-nums text-slate-800 dark:text-slate-100"
+                className="mt-0.5 inline-flex items-center gap-0.5 text-base font-semibold tabular-nums text-slate-800 dark:text-slate-100"
                 style={
                   stat.key === "heart_rate" && heartRateZone
                     ? { color: heartRateZone.color }
                     : undefined
                 }
-                title={
-                  stat.key === "heart_rate" ? heartRateZone?.title : undefined
-                }
               >
                 {stat.value}
+                {stat.key === "heart_rate" && heartRateZone?.title && (
+                  <InfoTooltipIcon
+                    label={heartRateZone.title}
+                    data-testid="imported-heart-rate-help"
+                  />
+                )}
               </dd>
               {stat.detail && (
                 <div className="text-xs tabular-nums text-slate-500 dark:text-slate-400">
                   {stat.key === "power" ? (
-                    <>
-                      <span
-                        className="cursor-help decoration-dotted underline-offset-2 hover:underline"
-                        title="Weighted power accounts for changes in effort and better reflects the ride’s physiological load."
-                      >
-                        {stat.detail.split(" · ")[0]}
-                      </span>
+                    <span className="inline-flex items-center gap-0.5">
+                      <span>{stat.detail.split(" · ")[0]}</span>
                       {stat.detail.includes(" · ") &&
                         ` · ${stat.detail.split(" · ").slice(1).join(" · ")}`}
-                    </>
+                      <InfoTooltipIcon
+                        label="Weighted power accounts for changes in effort and better reflects the ride’s physiological load."
+                        data-testid="weighted-power-help"
+                      />
+                    </span>
                   ) : (
                     stat.detail
                   )}

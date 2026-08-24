@@ -429,16 +429,18 @@ export default async function TrainingActivityPage(props: {
                             {splitLabel} splits
                           </h3>
                           {data.telemetry.decouplingPercent != null && (
-                            <span
-                              data-testid="activity-decoupling"
-                              title="Pace per heartbeat, second half against first"
-                              className="text-xs tabular-nums text-slate-500 dark:text-slate-400"
-                            >
-                              {data.telemetry.decouplingPercent > 0
-                                ? `${data.telemetry.decouplingPercent}% slower per beat late on`
-                                : data.telemetry.decouplingPercent < 0
-                                  ? `${Math.abs(data.telemetry.decouplingPercent)}% faster per beat late on`
-                                  : "Even pace per beat throughout"}
+                            <span className="inline-flex items-center gap-0.5">
+                              <span
+                                data-testid="activity-decoupling"
+                                className="text-xs tabular-nums text-slate-500 dark:text-slate-400"
+                              >
+                                {data.telemetry.decouplingPercent > 0
+                                  ? `${data.telemetry.decouplingPercent}% slower per beat late on`
+                                  : data.telemetry.decouplingPercent < 0
+                                    ? `${Math.abs(data.telemetry.decouplingPercent)}% faster per beat late on`
+                                    : "Even pace per beat throughout"}
+                              </span>
+                              <InfoTooltipIcon label="Pace per heartbeat, second half against first" />
                             </span>
                           )}
                         </div>

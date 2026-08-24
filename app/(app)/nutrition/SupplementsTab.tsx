@@ -131,6 +131,7 @@ import {
 } from "@/lib/intake-pairs";
 import SuggestionsForm from "./SuggestionsForm";
 import CuratedSupplementSuggestions from "@/components/CuratedSupplementSuggestions";
+import InfoTooltipIcon from "@/components/InfoTooltipIcon";
 import AdherenceFindings from "./AdherenceFindings";
 import DemotionSuggestions from "./DemotionSuggestions";
 import SupplementSchedule from "./SupplementSchedule";
@@ -878,12 +879,17 @@ export default async function SupplementsTab({
                   </span>
                   {/* The other half of the #2378 distinction: this one was WRITTEN BY A
                       MODEL from your data, not looked up in a reviewed map. */}
-                  <span
-                    data-testid="suggestion-origin-badge"
-                    title="Written by AI from your data — not from the curated map. Review it before acting on it."
-                    className="badge bg-violet-100 text-violet-700 dark:bg-violet-950 dark:text-violet-300"
-                  >
-                    Generated
+                  <span className="inline-flex items-center gap-1">
+                    <span
+                      data-testid="suggestion-origin-badge"
+                      className="badge bg-violet-100 text-violet-700 dark:bg-violet-950 dark:text-violet-300"
+                    >
+                      Generated
+                    </span>
+                    <InfoTooltipIcon
+                      label="Written by AI from your data — not from the curated map. Review it before acting on it."
+                      data-testid="generated-origin-help"
+                    />
                   </span>
                   {suggestion.dosage && (
                     <span className="text-sm text-slate-500 dark:text-slate-400">
