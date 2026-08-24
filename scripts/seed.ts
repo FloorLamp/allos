@@ -136,6 +136,18 @@ const count = db
   c: number;
 };
 if (count.c > 0) {
+  const refusal =
+    process.env.SEED_REQUIRE_EMPTY === "1"
+      ? "census seed"
+      : DIAL_SELECTION.kind === "named"
+        ? `named seed shape ${DIAL_SELECTION.shape.name}`
+        : null;
+  if (refusal) {
+    console.error(
+      `Database already has data — refusing ${refusal}. Use a fresh scratch DB for each census shape.`
+    );
+    process.exit(1);
+  }
   console.log(
     "Database already has data — skipping seed. (Delete data/allos.db to reseed.)"
   );

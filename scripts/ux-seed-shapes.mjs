@@ -45,11 +45,15 @@ export function uxSeedShapeFromEnv(env) {
 
 // Build the actual child-process environment. Always clear a caller's direct
 // SEED_DIAL_SHAPE first: UX_SEED is the census label recorded in run.json, so it
-// must be the one authority over the data the seed writes.
+// must be the one authority over the data the seed writes. Seeded census shapes
+// also require a fresh DB; a successful no-op seed would put a new label on stale
+// data from a prior shape.
 export function applyUxSeedShapeEnv(env, shape) {
   const out = { ...env };
   delete out.SEED_DIAL_SHAPE;
+  delete out.SEED_REQUIRE_EMPTY;
   if (shape.seedDialShape) out.SEED_DIAL_SHAPE = shape.seedDialShape;
+  if (shape.seed) out.SEED_REQUIRE_EMPTY = "1";
   return out;
 }
 

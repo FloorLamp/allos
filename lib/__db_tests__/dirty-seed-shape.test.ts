@@ -16,8 +16,7 @@ type Witnesses = {
   longCondition: number;
 };
 
-function seedAndRead(shape: "baseline" | "dirty"): Witnesses {
-  const dbPath = path.join(makeTmpDir(`seed-shape-${shape}`), "allos.db");
+function runSeed(dbPath: string, shape: "baseline" | "dirty") {
   const env = {
     ...process.env,
     ALLOS_DB_PATH: dbPath,
@@ -28,11 +27,16 @@ function seedAndRead(shape: "baseline" | "dirty"): Witnesses {
     SEED_PERSONA: "",
     UX_SEED: "",
   };
-  const result = spawnSync(
+  return spawnSync(
     process.execPath,
     ["--import", "tsx", path.join(repo, "scripts", "seed.ts")],
     { cwd: repo, env, encoding: "utf8" }
   );
+}
+
+function seedAndRead(shape: "baseline" | "dirty"): Witnesses {
+  const dbPath = path.join(makeTmpDir(`seed-shape-${shape}`), "allos.db");
+  const result = runSeed(dbPath, shape);
   expect(result.status, result.stderr || result.stdout).toBe(0);
 
   const db = new Database(dbPath, { readonly: true });
@@ -76,5 +80,47 @@ describe("named dirty seed data", () => {
       longLab: 0,
       longCondition: 0,
     });
+  }, 30_000);
+
+  it("rejects every standard census shape when its scratch DB is stale", () => {
+    const dir = makeTmpDir("seed-shape-stale");
+    const dbPath = path.join(dir, "allos.db");
+    const baseline = runSeed(dbPath, "baseline");
+    expect(baseline.status, baseline.stderr || baseline.stdout).toBe(0);
+
+    const directDirty = runSeed(dbPath, "dirty");
+    expect(directDirty.status).not.toBe(0);
+    expect(directDirty.stderr).toContain(
+      "Database already has data — refusing named seed shape dirty"
+    );
+
+    for (const [uxSeed, label] of [
+      ["", "fresh"],
+      ["1", "seeded"],
+      ["thin", "thin"],
+      ["dirty", "dirty"],
+    ]) {
+      const result = spawnSync(
+        process.execPath,
+        [path.join(repo, "scripts", "ux-walkthrough.mjs"), "--serve", "pages"],
+        {
+          cwd: repo,
+          encoding: "utf8",
+          env: {
+            ...process.env,
+            ALLOS_DB_PATH: dbPath,
+            UX_SHOTS: path.join(dir, `shots-${uxSeed}`),
+            UX_SEED: uxSeed,
+            SEED_RNG: "",
+            SEED_PERSONA: "",
+            SEED_DIAL_SHAPE: "",
+          },
+        }
+      );
+      expect(result.status).not.toBe(0);
+      expect(result.stderr).toContain(
+        `refusing to reuse it for the ${label} census shape`
+      );
+    }
   }, 30_000);
 });

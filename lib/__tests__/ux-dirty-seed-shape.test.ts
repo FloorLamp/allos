@@ -29,7 +29,10 @@ function dirtyShape() {
 describe("UX_SEED=dirty", () => {
   it("reaches the fixed dirty vector through the actual child env boundary", () => {
     const childEnv = applyUxSeedShapeEnv({}, dirtyShape());
-    expect(childEnv).toEqual({ SEED_DIAL_SHAPE: "dirty" });
+    expect(childEnv).toEqual({
+      SEED_DIAL_SHAPE: "dirty",
+      SEED_REQUIRE_EMPTY: "1",
+    });
     const dials = seedDialsFromEnv(childEnv);
     expect(dials.kind).toBe("named");
     if (dials.kind !== "named") return;
@@ -48,7 +51,7 @@ describe("UX_SEED=dirty", () => {
     if (seeded.kind !== "found") return;
     expect(
       applyUxSeedShapeEnv({ SEED_DIAL_SHAPE: "dirty" }, seeded.shape)
-    ).toEqual({});
+    ).toEqual({ SEED_REQUIRE_EMPTY: "1" });
   });
 
   it("fails unknown names and a conflicting entropy seed loudly", () => {
@@ -122,10 +125,10 @@ describe("UX_SEED=dirty", () => {
     expect(walkthrough).toContain("const env = applyUxSeedShapeEnv(");
     expect(walkthrough).toContain("if (UX_SEED_SHAPE.seed)");
     expect(walkthrough).toMatch(
-      /spawnSync\("npx", \["tsx", "scripts\/seed\.ts"\], \{\s*env,/
+      /spawnSync\(\s*process\.execPath,\s*\["--import", "tsx", "scripts\/seed\.ts"\]/
     );
     expect(walkthrough).toContain(
-      "if (process.env.SEED_PERSONA || UX_SEED_SHAPE.seedDialShape)"
+      "seed exited non-zero for ${UX_SEED_SHAPE.label} — aborting"
     );
     expect(walkthrough).toContain(
       "const runInfo = uxSeedRunInfo(UX_SEED_SHAPE, process.env);"

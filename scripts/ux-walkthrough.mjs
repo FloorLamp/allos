@@ -1997,6 +1997,11 @@ if (!picked.length) {
 let server = null;
 if (serve) {
   const dbPath = process.env.ALLOS_DB_PATH || "/tmp/ux-walkthrough.db";
+  if (fs.existsSync(dbPath)) {
+    throw new Error(
+      `Scratch DB already exists at ${dbPath} — refusing to reuse it for the ${UX_SEED_SHAPE.label} census shape. Remove it or choose a fresh ALLOS_DB_PATH.`
+    );
+  }
   const port = new URL(BASE).port || "3111";
   const env = applyUxSeedShapeEnv(
     {
@@ -2017,18 +2022,15 @@ if (serve) {
   // journey mode reaches this lifecycle branch.
   if (UX_SEED_SHAPE.seed) {
     log(`seeding scratch DB (${UX_SEED_SHAPE.label})…`);
-    const r = spawnSync("npx", ["tsx", "scripts/seed.ts"], {
-      env,
-      stdio: "inherit",
-    });
+    const r = spawnSync(
+      process.execPath,
+      ["--import", "tsx", "scripts/seed.ts"],
+      { env, stdio: "inherit" }
+    );
     if (r.status !== 0) {
-      // A persona run's label IS its persona — censusing an unseeded DB under
-      // that label would be worse than no run, so fail instead of warning.
-      if (process.env.SEED_PERSONA || UX_SEED_SHAPE.seedDialShape)
-        throw new Error(
-          `seed exited non-zero for ${UX_SEED_SHAPE.label} — aborting instead of censusing a fresh DB under that label`
-        );
-      log("WARNING: seed exited non-zero — continuing unseeded");
+      throw new Error(
+        `seed exited non-zero for ${UX_SEED_SHAPE.label} — aborting instead of censusing stale or unseeded data under that label`
+      );
     }
     if (UX_SEED_SHAPE.postSeed === "thin") {
       log("thinning scratch DB to the last ~7 days…");
