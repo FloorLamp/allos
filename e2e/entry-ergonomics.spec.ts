@@ -304,7 +304,11 @@ test("Training header confines Add activity to the Log tab", async ({
     await expect(
       page.getByTestId("training-tabs").getByRole("tab", { name: tab.label })
     ).toHaveAttribute("aria-selected", "true");
-    await expect(page.getByTestId("training-page-action")).toBeVisible();
+    const pageAction = page.getByTestId("training-page-action");
+    await expect(pageAction).toBeVisible();
+    await expect(pageAction.locator("button:visible")).toHaveCount(
+      tab.present ? 1 : 0
+    );
     if (tab.present) {
       await expect(addActivity).toBeVisible();
       await expect(addActivity).toHaveAccessibleName("Add activity");
@@ -313,6 +317,8 @@ test("Training header confines Add activity to the Log tab", async ({
           'xpath=ancestor::*[@data-testid="training-page-action"][1]'
         )
       ).toHaveCount(1);
+      await addActivity.click();
+      await expect(page.getByPlaceholder(/What did you do/)).toBeVisible();
     } else {
       await expect(addActivity).toHaveCount(0);
     }

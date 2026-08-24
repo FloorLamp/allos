@@ -521,6 +521,35 @@ describe("the add affordance's grammar (#3486)", () => {
       "direct-log-gate"
     );
 
+    const duplicateCreate = pageSource.replace(
+      "<AddTrainingActivityButton />",
+      "<><AddTrainingActivityButton /><AddTrainingActivityButton /></>"
+    );
+    expect(duplicateCreate).not.toBe(pageSource);
+    expect(authenticateTrainingCreate(duplicateCreate).issues).toContain(
+      "sole-binding-reference"
+    );
+
+    const aliasedCreate = pageSource
+      .replace(
+        'import AddTrainingActivityButton from "./AddTrainingActivityButton";',
+        'import AddTrainingActivityButton from "./AddTrainingActivityButton";\nconst TrainingCreate = AddTrainingActivityButton;'
+      )
+      .replace("<AddTrainingActivityButton />", "<TrainingCreate />");
+    expect(aliasedCreate).not.toBe(pageSource);
+    expect(authenticateTrainingCreate(aliasedCreate).issues).toContain(
+      "sole-jsx-mount"
+    );
+
+    const ariaHiddenCreate = pageSource.replace(
+      "<AddTrainingActivityButton />",
+      '<span aria-hidden="true"><AddTrainingActivityButton /></span>'
+    );
+    expect(ariaHiddenCreate).not.toBe(pageSource);
+    expect(authenticateTrainingCreate(ariaHiddenCreate).issues).toEqual(
+      expect.arrayContaining(["direct-log-gate", "direct-tab-action-value"])
+    );
+
     const reversed = pageSource.replace(
       'activeTab === "log" && <AddTrainingActivityButton />',
       '"log" === activeTab && <AddTrainingActivityButton />'
