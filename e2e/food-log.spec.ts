@@ -489,7 +489,7 @@ test("the Trends → Nutrition tab is the over-time view, not the duplicate roll
   await expect(page.getByTestId("food-weekly-rollup")).toHaveCount(0);
 });
 
-test("a double-tap logs ONE serving, and a food tap never asks (#2007)", async ({
+test("a rapid double-tap logs TWO additive servings and never asks (#2007/#3611)", async ({
   page,
 }) => {
   await page.goto("/nutrition");
@@ -502,11 +502,11 @@ test("a double-tap logs ONE serving, and a food tap never asks (#2007)", async (
   const before = Number((await count.textContent())?.trim() || "0");
   const add = page.getByTestId(`log-${slug}`);
 
-  // The fat-finger double: two taps in the same instant. The second lands inside the
-  // post-success cooldown and is absorbed — no second request, no queued write.
+  // #3611 supersedes the old #2007 cooldown for this uncadenced additive row:
+  // two taps mean two servings, even in the same instant.
   await add.click();
   await add.click();
-  await expect(count).toHaveText(String(before + 1));
+  await expect(count).toHaveText(String(before + 2));
   // A food serving is ADDITIVE and declares no expected interval, so it must never
   // raise the re-log question, however many times it is tapped.
   await expect(page.getByTestId("confirm-dialog")).toHaveCount(0);
@@ -516,19 +516,24 @@ test("a double-tap logs ONE serving, and a food tap never asks (#2007)", async (
   await page.reload();
   await revealFoodGroup(page, slug);
   await expect(page.getByTestId(`count-${slug}`)).toHaveText(
-    String(before + 1)
+    String(before + 2)
   );
 
-  // A deliberate repeat still lands — the reload cleared the window — and still
-  // asks nothing.
+  // A deliberate repeat still lands after the server-truth pin and asks nothing.
   await settledClick(page, page.getByTestId(`log-${slug}`));
   await expect(page.getByTestId(`count-${slug}`)).toHaveText(
-    String(before + 2)
+    String(before + 3)
   );
   await expect(page.getByTestId("confirm-dialog")).toHaveCount(0);
 
   // Restore the fixture. An undo is a DIFFERENT write from the log above it, so it
   // is never absorbed by that tap's cooldown.
+  await settledClick(page, page.getByTestId(`undo-${slug}`));
+  await expect(page.getByTestId(`count-${slug}`)).toHaveText(
+    String(before + 2)
+  );
+  await page.reload();
+  await revealFoodGroup(page, slug);
   await settledClick(page, page.getByTestId(`undo-${slug}`));
   await expect(page.getByTestId(`count-${slug}`)).toHaveText(
     String(before + 1)

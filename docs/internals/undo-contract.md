@@ -104,7 +104,12 @@ Deliberate gaps, not oversights:
 Food serving is wired through `FoodLogBar` (#3611): its keyed cumulative toast
 captures the authoritative day total, and the inverse re-checks that total under the
 same write lock as the guarded decrement. A newer serving therefore turns an older
-Undo into `changed` rather than removing a write the toast did not announce.
+Undo into `changed` rather than removing a write the toast did not announce. Each
+upgraded offer has its own inverse write identity (the toast slot stays stable; its
+cooldown does not), and every receipt is subject-stamped: a profile switch clears both
+shown and queued receipts while the action also reauthorizes the originating profile.
+Precise serving removal replaces the same day/group slot, so its newer Undo never sits
+behind or beside an older add inverse.
 
 Each is a candidate BECAUSE its inverse is complete and local. None of them is a
 confirm being removed.

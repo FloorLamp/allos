@@ -29,6 +29,7 @@ export interface UndoAnnouncement {
   // closure therefore upgrades with the message instead of pointing at an older
   // write after a cumulative counter moves again (#3611).
   key?: string;
+  profileId?: number;
   // Absent/null = no undo (a refusal, or a write with no complete local inverse).
   undo?: UndoOffer | null;
 }
@@ -49,6 +50,7 @@ export function useUndoableAction(): (announcement: UndoAnnouncement) => void {
           tone: plan.tone,
           duration: plan.duration,
           key: announcement.key,
+          profileId: announcement.profileId,
         });
         return;
       }
@@ -56,6 +58,7 @@ export function useUndoableAction(): (announcement: UndoAnnouncement) => void {
         tone: plan.tone,
         duration: plan.duration,
         key: announcement.key,
+        profileId: announcement.profileId,
         action: {
           label: "Undo",
           onClick: () => {
@@ -76,11 +79,15 @@ export function useUndoableAction(): (announcement: UndoAnnouncement) => void {
               // restarts the slot timer; consumers without a key keep the original
               // append-only behavior.
               if (outcome.ok)
-                toast(offer.undoneMessage, { key: announcement.key });
+                toast(offer.undoneMessage, {
+                  key: announcement.key,
+                  profileId: announcement.profileId,
+                });
               else
                 toast(undoRefusalText(outcome.reason), {
                   tone: "error",
                   key: announcement.key,
+                  profileId: announcement.profileId,
                 });
             })();
           },

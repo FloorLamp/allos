@@ -94,6 +94,7 @@ smuggle the row's travel out of the band too, and the test fails that.
   someone who asked it not to.
 - `components/RollingNumber.tsx` — the one `requestAnimationFrame` case.
 - `app/(app)/nutrition/FoodLogBar.tsx` — serving-chip settle and serving-count roll.
+- `components/quick-entry/QuickStoolForm.tsx` — type-chip settle and today's-count roll.
 - `app/(app)/timeline/TimelineScrubber.tsx` — the jump rail's bubble, beating once per
   month boundary a drag crosses.
 - `components/SnoozeDismissMenu.tsx` — the dismissal's travel, started on the tap.
@@ -125,11 +126,11 @@ fails a micro-motion name that collides with an overlay one.
 
 ## The tenants
 
-**`settle` — `components/DoseStatusControl.tsx` and the food serving chips in
-`app/(app)/nutrition/FoodLogBar.tsx`.** A dose check-off is the app's most tap-shaped
+**`settle` — `components/DoseStatusControl.tsx`, the food serving chips in
+`app/(app)/nutrition/FoodLogBar.tsx`, and the quick stool type chips.** A dose check-off is the app's most tap-shaped
 confirm, and the control becoming its done state is the receipt — which is why the
-happy path here has never needed a toast. The food chip adopts the same receipt while
-its keyed toast carries the separate Undo escape hatch. The class is hung on the
+happy path here has never needed a toast. The food and stool chips adopt the same
+receipt while food's keyed toast carries the separate Undo escape hatch. The class is hung on the
 tapped control for one 300 ms run after a write lands; a refusal or dropped request
 animates nothing.
 
@@ -146,8 +147,8 @@ transition already made, and no tap ever waits on it. The carriers of "taken" ar
 button's `aria-pressed`, its accessible name, its title and its colour — all correct on
 the first paint after the tap, motion or no motion.
 
-**`count` — `components/RollingNumber.tsx`, in protein quick-add and food serving
-rows.** A quantity changing reads differently from a value being replaced, and that
+**`count` — `components/RollingNumber.tsx`, in protein quick-add, food serving rows,
+and the quick stool today's count.** A quantity changing reads differently from a value being replaced, and that
 difference is the information. Contract:
 
 - the **final value is always the truth in the DOM**. It renders verbatim on the server,
@@ -228,7 +229,7 @@ browser scheduling while duplicating those domain flows.
 | Deferred                                                    | Why                                                                                                                                                                                               |
 | ----------------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
 | A login-scoped "reduce motion" display setting beside theme | `prefers-reduced-motion` already reaches every motion here, at the OS level where most people who need it have already set it. The app-tier duplicate is a settings surface, not a motion change. |
-| Settle on remaining quick-log chips and mark-done rows      | Same vocabulary, more surfaces. Food serving adopted it with its full feedback contract (#3611); adopting every other chip thinly is still how a motion pass sprawls.                             |
+| Settle on remaining quick-log chips and mark-done rows      | Same vocabulary, more surfaces. Food serving and the applicable stool chip/count adopted it (#3611); adopting every other chip thinly is still how a motion pass sprawls.                         |
 
 Explicitly out of scope for this vocabulary, permanently: skeleton shimmer, attention
 pulses on findings (a finding may not campaign — see the reach policy in

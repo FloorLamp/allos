@@ -21,6 +21,22 @@ export interface KeyedToast {
   // outgoing bar has left rather than underneath it — but its countdown is over and
   // it leaves the list when the animation ends.
   exiting?: boolean;
+  // Profile-owned receipts may outlive the route that posted them. The provider
+  // keeps this subject stamp so a profile switch can clear every old-profile
+  // card, including phone snackbars still waiting in the queue (#3611).
+  profileId?: number;
+}
+
+// Keep only unscoped toasts and receipts owned by the profile now in force. This
+// is deliberately list-wide: below `md`, a previous profile's receipt may be
+// queued and therefore have no mounted DOM node to dismiss individually.
+export function dismissOtherProfileToasts<T extends KeyedToast>(
+  list: T[],
+  activeProfileId: number
+): T[] {
+  return list.filter(
+    (toast) => toast.profileId == null || toast.profileId === activeProfileId
+  );
 }
 
 // Insert `incoming`, or REPLACE the live toast with the same key in place. On a

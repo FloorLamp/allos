@@ -20,6 +20,7 @@ import {
   beginExit,
   dropExited,
   visibleToasts,
+  dismissOtherProfileToasts,
 } from "@/lib/toast-upsert";
 import { motionClass, motionMs, overlayMotionClass } from "@/lib/motion";
 import { useCompactViewport } from "@/components/useCompactViewport";
@@ -75,11 +76,15 @@ interface ToastOptions {
   // (position kept, timer reset) instead of stacking — so a lifecycle slot can
   // upgrade ("Uploaded — reading…" → "12 records ✓"). Keyless toasts always stack.
   key?: string;
+  // Subject stamp for health-data receipts that can survive navigation. Profile
+  // switching clears every toast whose stamp no longer matches, queued or shown.
+  profileId?: number;
 }
 
 interface ToastItem {
   id: number;
   key?: string;
+  profileId?: number;
   // Bumped on each in-place replace so the card's dismiss timer restarts (#1315).
   revision: number;
   // Set while the bar plays its exit animation; see lib/toast-upsert.ts.
@@ -92,10 +97,12 @@ interface ToastItem {
 
 type ToastFn = (message: string, options?: ToastOptions) => void;
 type DismissKeyFn = (key: string) => void;
+type DismissOtherProfilesFn = (activeProfileId: number) => void;
 
 interface ToastApi {
   toast: ToastFn;
   dismissKey: DismissKeyFn;
+  dismissOtherProfiles: DismissOtherProfilesFn;
 }
 
 // Default auto-dismiss by tone (ms). Errors linger longer since they carry
@@ -127,6 +134,13 @@ export function ToastProvider({ children }: { children: React.ReactNode }) {
     setToasts((list) => dismissKeyed(list, key));
   }, []);
 
+  const dismissOtherProfiles = useCallback<DismissOtherProfilesFn>(
+    (activeProfileId) => {
+      setToasts((list) => dismissOtherProfileToasts(list, activeProfileId));
+    },
+    []
+  );
+
   const toast = useCallback<ToastFn>((message, options = {}) => {
     const tone = options.tone ?? "success";
     const duration =
@@ -142,13 +156,14 @@ export function ToastProvider({ children }: { children: React.ReactNode }) {
         message,
         duration,
         action: options.action,
+        profileId: options.profileId,
       })
     );
   }, []);
 
   const api = useMemo<ToastApi>(
-    () => ({ toast, dismissKey }),
-    [toast, dismissKey]
+    () => ({ toast, dismissKey, dismissOtherProfiles }),
+    [toast, dismissKey, dismissOtherProfiles]
   );
 
   const shown = visibleToasts(toasts, snackbar);
@@ -283,4 +298,13 @@ export function useDismissToast(): DismissKeyFn {
   if (!ctx)
     throw new Error("useDismissToast must be used within a ToastProvider");
   return ctx.dismissKey;
+}
+
+export function useDismissOtherProfileToasts(): DismissOtherProfilesFn {
+  const ctx = useContext(ToastContext);
+  if (!ctx)
+    throw new Error(
+      "useDismissOtherProfileToasts must be used within a ToastProvider"
+    );
+  return ctx.dismissOtherProfiles;
 }

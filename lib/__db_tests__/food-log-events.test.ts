@@ -127,6 +127,60 @@ describe("food_log_events ledger atomicity (#950)", () => {
     expect(events(profileId)).toHaveLength(1);
   });
 
+  it("returns the current day and meal truth when a guarded undo is stale", () => {
+    const { profileId, anchor } = makeProfile("food-events-stale-truth");
+    logFoodServingCore(
+      profileId,
+      "berries",
+      anchor,
+      "quick-log",
+      `${anchor}T08:00:00Z`,
+      "Morning"
+    );
+    logFoodServingCore(
+      profileId,
+      "berries",
+      anchor,
+      "quick-log",
+      `${anchor}T08:01:00Z`,
+      "Morning"
+    );
+
+    expect(
+      undoFoodServingCore(profileId, "berries", anchor, "Morning", 1)
+    ).toEqual({
+      kind: "changed",
+      servings: 2,
+      mealSlot: "Morning",
+      mealServings: 2,
+    });
+  });
+
+  it("an originating-profile inverse cannot decrement a peer with the same total", () => {
+    const a = makeProfile("food-events-profile-a");
+    const b = makeProfile("food-events-profile-b");
+    logFoodServingCore(
+      a.profileId,
+      "legumes",
+      a.anchor,
+      "quick-log",
+      `${a.anchor}T08:00:00Z`
+    );
+    logFoodServingCore(
+      b.profileId,
+      "legumes",
+      b.anchor,
+      "quick-log",
+      `${b.anchor}T08:00:00Z`
+    );
+
+    expect(
+      undoFoodServingCore(a.profileId, "legumes", a.anchor, undefined, 1)
+    ).toMatchObject({ kind: "undone", servings: 0 });
+    expect(counter(a.profileId, "legumes", a.anchor)).toBe(0);
+    expect(counter(b.profileId, "legumes", b.anchor)).toBe(1);
+  });
+
   it("tolerates a pre-ledger counter row (popless decrement, no throw)", () => {
     const { profileId, anchor } = makeProfile("food-events-preledger");
     // Simulate history written BEFORE this migration: a counter row with NO events.

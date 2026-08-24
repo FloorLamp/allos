@@ -85,7 +85,12 @@ export type FoodUndoOutcome =
       mealSlot?: FoodSlot;
       mealServings?: number;
     }
-  | { kind: "changed"; servings: number }
+  | {
+      kind: "changed";
+      servings: number;
+      mealSlot?: FoodSlot;
+      mealServings?: number;
+    }
   | { kind: "unknown-group" };
 
 function mealServingCount(
@@ -221,7 +226,16 @@ export function undoFoodServingCore(
   return writeTx(() => {
     const current = foodDayCounter.total(profileId, date, [slug]);
     if (expectedServings != null && current !== expectedServings) {
-      return { kind: "changed", servings: current };
+      return {
+        kind: "changed",
+        servings: current,
+        ...(mealSlot
+          ? {
+              mealSlot,
+              mealServings: mealServingCount(profileId, slug, date, mealSlot),
+            }
+          : {}),
+      };
     }
     if (current <= 0)
       return {

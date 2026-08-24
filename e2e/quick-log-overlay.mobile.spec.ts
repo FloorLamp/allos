@@ -13,6 +13,9 @@ import {
   SHELL_WEIGHT_KG,
   SHELL_DOSE_ITEM,
   SHELL_PRACTICE,
+  E2E_LOGIN_MULTI,
+  MULTI_OWNER_PROFILE,
+  MULTI_SHARED_PROFILE,
 } from "./fixture-logins";
 import { frozenNow, workerDbPath } from "./worker-env";
 
@@ -146,6 +149,80 @@ function clearShellFoodGroup(groupKey: string): void {
       ).run(profileId, date, groupKey);
     });
     clear();
+  } finally {
+    db.close();
+  }
+}
+
+function profileIdByName(name: string): number {
+  const db = openDb();
+  try {
+    return (
+      db.prepare("SELECT id FROM profiles WHERE name = ?").get(name) as {
+        id: number;
+      }
+    ).id;
+  } finally {
+    db.close();
+  }
+}
+
+function clearProfileFoodGroup(profileId: number, groupKey: string): void {
+  const db = openDb();
+  try {
+    const date = frozenNow().toISOString().slice(0, 10);
+    db.transaction(() => {
+      db.prepare(
+        "DELETE FROM food_log_events WHERE profile_id = ? AND date = ? AND group_key = ?"
+      ).run(profileId, date, groupKey);
+      db.prepare(
+        "DELETE FROM food_daily_totals WHERE profile_id = ? AND date = ? AND group_key = ?"
+      ).run(profileId, date, groupKey);
+    })();
+  } finally {
+    db.close();
+  }
+}
+
+function profileFoodCount(profileId: number, groupKey: string): number {
+  const db = openDb();
+  try {
+    const date = frozenNow().toISOString().slice(0, 10);
+    const row = db
+      .prepare(
+        "SELECT servings FROM food_daily_totals WHERE profile_id = ? AND date = ? AND group_key = ?"
+      )
+      .get(profileId, date, groupKey) as { servings: number } | undefined;
+    return row?.servings ?? 0;
+  } finally {
+    db.close();
+  }
+}
+
+function addExternalShellFoodServing(groupKey: string, mealSlot: string): void {
+  const db = openDb();
+  try {
+    const profileId = shellProfileId();
+    const date = frozenNow().toISOString().slice(0, 10);
+    db.transaction(() => {
+      db.prepare(
+        `INSERT INTO food_daily_totals (profile_id, date, group_key, servings)
+         VALUES (?, ?, ?, 1)
+         ON CONFLICT(profile_id, date, group_key)
+         DO UPDATE SET servings = servings + 1`
+      ).run(profileId, date, groupKey);
+      db.prepare(
+        `INSERT INTO food_log_events
+           (profile_id, group_key, date, recorded_at, meal_slot, logged_via)
+         VALUES (?, ?, ?, ?, ?, 'page')`
+      ).run(
+        profileId,
+        groupKey,
+        date,
+        new Date(frozenNow().getTime() + 60_000).toISOString(),
+        mealSlot
+      );
+    })();
   } finally {
     db.close();
   }
@@ -486,15 +563,21 @@ test("food serving taps settle, roll one cumulative Undo toast, and undo only th
 
     // Additive means additive even inside the former cooldown window. The one
     // quiet slot is the TOAST: each authoritative result upgrades it in place.
+    // Arm the transient checks before tapping: these prove the normal-motion
+    // implementation actually enters both one-shot bands, not merely that the
+    // components publish static declarations.
+    const sawSettle = expect(settle).toHaveAttribute("data-settling", "true");
+    const sawRoll = expect(rolling).toHaveAttribute("data-rolling", "true");
     await add.click();
     await add.click();
     await add.click();
+    await Promise.all([sawSettle, sawRoll]);
     await expect(count).toHaveText("3");
     await expect(settle).toHaveAttribute("data-motion", "settle");
     await expect(rolling).toHaveAttribute("data-motion", "count");
 
     const toast = page.locator(
-      `[data-toast-key="food-serving:${frozenNow().toISOString().slice(0, 10)}:${group}"]`
+      `[data-toast-key^="food-serving:"][data-toast-key$=":${frozenNow().toISOString().slice(0, 10)}:${group}"]`
     );
     await expect(toast).toHaveCount(1);
     await expect(toast).toContainText(
@@ -518,8 +601,77 @@ test("food serving taps settle, roll one cumulative Undo toast, and undo only th
     );
     await settledClick(page, toast.getByRole("button", { name: "Undo" }));
     await expect(count).toHaveText("2");
+
+    // A different client advances the same coordinate after this receipt is
+    // offered. The guarded inverse refuses, and its typed refusal repairs this
+    // stale tab to the core's current truth instead of the add render's old 2.
+    await add.click();
+    await expect(toast).toContainText(
+      "3 servings of Cruciferous vegetables today"
+    );
+    const mealSlot =
+      (await food.getByTestId("food-slot-chip").getAttribute("data-slot")) ??
+      "Morning";
+    addExternalShellFoodServing(group, mealSlot);
+    await settledClick(page, toast.getByRole("button", { name: "Undo" }));
+    await expect(count).toHaveText("4");
+    await expect(toast).toContainText(
+      "Couldn’t undo — this has changed since."
+    );
   } finally {
     clearShellFoodGroup(group);
+    await page.context().close();
+  }
+});
+
+test("switching profiles clears the originating food receipt and cannot target its peer (#3611)", async ({
+  browser,
+}) => {
+  const group = "mushrooms";
+  const ownerId = profileIdByName(MULTI_OWNER_PROFILE);
+  const sharedId = profileIdByName(MULTI_SHARED_PROFILE);
+  clearProfileFoodGroup(ownerId, group);
+  clearProfileFoodGroup(sharedId, group);
+  const page = await loginAs(
+    browser,
+    { username: E2E_LOGIN_MULTI, password: E2E_MEMBER_PASSWORD },
+    PHONE_CONTEXT
+  );
+  try {
+    await page.goto("/");
+    await expect(page.getByTestId("profile-identity-bar-mobile")).toContainText(
+      MULTI_OWNER_PROFILE
+    );
+    const food = await openQuickEntry(page, "log-food");
+    const row = food.getByTestId(`food-group-${group}`);
+    if (!(await row.isVisible())) {
+      await food.getByTestId("food-more-groups-summary").click();
+    }
+    await settledClick(page, row.getByTestId(`log-${group}`));
+    await expect(
+      page.locator('[data-toast-key^="food-serving:"]')
+    ).toContainText("1 serving of Mushrooms today");
+    await page.keyboard.press("Escape");
+    await expect(food).toHaveCount(0);
+
+    const switcher = page.getByTestId("profile-identity-bar-mobile");
+    await expect(switcher).toBeEnabled();
+    await switcher.click();
+    await settledClick(
+      page,
+      page
+        .getByTestId("profile-switcher-panel-mobile")
+        .getByTestId(`switch-to-${sharedId}`)
+    );
+    await expect(switcher).toContainText(MULTI_SHARED_PROFILE);
+    await expect(page.locator('[data-toast-key^="food-serving:"]')).toHaveCount(
+      0
+    );
+    expect(profileFoodCount(ownerId, group)).toBe(1);
+    expect(profileFoodCount(sharedId, group)).toBe(0);
+  } finally {
+    clearProfileFoodGroup(ownerId, group);
+    clearProfileFoodGroup(sharedId, group);
     await page.context().close();
   }
 });

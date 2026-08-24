@@ -1,6 +1,6 @@
 "use server";
 
-import { requireWriteAccess } from "@/lib/auth";
+import { requireProfileWriteAccess, requireWriteAccess } from "@/lib/auth";
 import { LOGGED_VIA_FIELD, parseWebOrigin } from "@/lib/logged-via";
 import { revalidateRoute } from "@/lib/revalidate";
 import { db, today, writeTx } from "@/lib/db";
@@ -68,7 +68,15 @@ export type FoodLogResult =
       // tapped anyway (the end core re-derives the active fast under its own lock).
       endFastOffer?: true;
     }
-  | { ok: false; error: string };
+  | {
+      ok: false;
+      error: string;
+      // A guarded inverse refusal returns the current server truth so the row
+      // repairs any stale optimistic snapshot instead of rolling back to it.
+      servings?: number;
+      mealSlot?: FoodSlot;
+      mealServings?: number;
+    };
 
 // The correction sheet's phrasing for a refused statement (#2296). The sheet is the
 // one food surface where the statement IS the whole submission, so this is a genuine
@@ -119,8 +127,17 @@ function parseFields(
 export async function logFoodServing(
   formData: FormData
 ): Promise<FoodLogResult> {
-  const { profile } = await requireWriteAccess();
-  const fields = parseFields(formData, profile.id);
+  // The mounted bar stamps its originating subject. Reauthorize that subject so
+  // an in-flight add cannot be retargeted by a concurrent profile switch.
+  const requestedProfileId = Number(formData.get("profileId"));
+  let profileId: number;
+  if (Number.isInteger(requestedProfileId) && requestedProfileId > 0) {
+    await requireProfileWriteAccess(requestedProfileId);
+    profileId = requestedProfileId;
+  } else {
+    profileId = (await requireWriteAccess()).profile.id;
+  }
+  const fields = parseFields(formData, profileId);
   if (!fields) return formError("Unknown food group.");
   // The eating-time statement (#2053), when the user made one. The form carries the
   // CHOICE ("now" or an absolute local hour), never a client instant: the server resolves
@@ -136,7 +153,7 @@ export async function logFoodServing(
   // choice that won't resolve at all (a wall time inside a DST gap) is a refusal too,
   // not an absence — it was stated.
   const at = clockNow();
-  const tz = getTimezone(profile.id);
+  const tz = getTimezone(profileId);
   const choice = parseEatingTimeChoice(formData.get("occurred_at"));
   const resolved = choice ? resolveEatingTimeChoice(choice, at, tz) : null;
   const verdict: StatedTimeVerdict = !choice
@@ -145,7 +162,7 @@ export async function logFoodServing(
       ? { kind: "refused", reason: "malformed" }
       : judgeEatenAt(resolved, tz, fields.date, at);
   const outcome = logFoodServingCore(
-    profile.id,
+    profileId,
     fields.group,
     fields.date,
     // The one-tap food bar renders on the Nutrition page, on the dashboard, and in the
@@ -168,7 +185,7 @@ export async function logFoodServing(
   // per group per day" — because after the write the count this tap produced is
   // indistinguishable from one that was already there.
   const limitNote = getFoodLimitTapNote(
-    profile.id,
+    profileId,
     fields.group,
     fields.date,
     Math.max(0, outcome.servings - 1)
@@ -179,9 +196,9 @@ export async function logFoodServing(
   // today) — `promptsEndOfFast` — so the web bar, the quick-entry overlay and a future
   // Telegram rider cannot answer the same question three ways.
   const endFastOffer = promptsEndOfFast(
-    getActiveFastCached(profile.id),
+    getActiveFastCached(profileId),
     fields.date,
-    today(profile.id)
+    today(profileId)
   );
   revalidateRoute("/nutrition");
   revalidateRoute("/nutrition/food-history");
@@ -211,8 +228,18 @@ export async function logFoodServing(
 export async function undoFoodServing(
   formData: FormData
 ): Promise<FoodLogResult> {
-  const { profile } = await requireWriteAccess();
-  const fields = parseFields(formData, profile.id);
+  // A toast may survive a profile transition. When it carries its originating
+  // subject, reauthorize that subject explicitly; never retarget its inverse to
+  // whichever profile happens to be active when Undo is clicked (#3611).
+  const requestedProfileId = Number(formData.get("profileId"));
+  let profileId: number;
+  if (Number.isInteger(requestedProfileId) && requestedProfileId > 0) {
+    await requireProfileWriteAccess(requestedProfileId);
+    profileId = requestedProfileId;
+  } else {
+    profileId = (await requireWriteAccess()).profile.id;
+  }
+  const fields = parseFields(formData, profileId);
   if (!fields) return formError("Unknown food group.");
   const rawExpected = String(formData.get("expected_servings") ?? "").trim();
   const expectedServings = rawExpected === "" ? undefined : Number(rawExpected);
@@ -222,7 +249,7 @@ export async function undoFoodServing(
   )
     return formError("That serving count has changed.");
   const outcome = undoFoodServingCore(
-    profile.id,
+    profileId,
     fields.group,
     fields.date,
     fields.mealSlot,
@@ -230,7 +257,15 @@ export async function undoFoodServing(
   );
   if (outcome.kind === "unknown-group") return formError("Unknown food group.");
   if (outcome.kind === "changed")
-    return formError("That serving count has changed.");
+    return {
+      ok: false,
+      error: "That serving count has changed.",
+      servings: outcome.servings,
+      ...(outcome.mealSlot ? { mealSlot: outcome.mealSlot } : {}),
+      ...(outcome.mealServings != null
+        ? { mealServings: outcome.mealServings }
+        : {}),
+    };
   revalidateRoute("/nutrition");
   revalidateRoute("/nutrition/food-history");
   revalidateRoute("/trends");
