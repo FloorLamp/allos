@@ -1,6 +1,7 @@
 import { render, screen, within } from "@testing-library/react";
 import { describe, expect, it, vi } from "vitest";
 import PracticeSessionHistory from "@/components/practices/PracticeSessionHistory";
+import { overflowMenuLabel } from "@/lib/overflow-menu-label";
 import type { PracticeLog } from "@/lib/types";
 
 vi.mock("@/components/Toast", () => ({ useToast: () => vi.fn() }));
@@ -45,7 +46,7 @@ describe("practice session identity", () => {
     );
     expect(
       within(row).getByRole("button", {
-        name: "Session actions for Ledger practice — Aug 20, 2026",
+        name: overflowMenuLabel("Ledger practice — Aug 20, 2026", "Session"),
       })
     ).toBeTruthy();
   });
@@ -58,7 +59,7 @@ describe("practice session identity", () => {
     expect(row.textContent).not.toContain("Ledger practice");
     expect(
       within(row).getByRole("button", {
-        name: "Session actions for Aug 20, 2026",
+        name: overflowMenuLabel("Aug 20, 2026", "Session"),
       })
     ).toBeTruthy();
   });

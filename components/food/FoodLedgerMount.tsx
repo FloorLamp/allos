@@ -23,6 +23,7 @@ import {
   resolveEventLedgerRange,
 } from "@/lib/event-ledger";
 import { foodLedgerHref } from "@/lib/hrefs";
+import { bestKnownInstant } from "@/lib/row-instants";
 
 const ISO_FLOOR = "0001-01-01";
 const first = (value: string | string[] | undefined) =>
@@ -67,7 +68,7 @@ export default function FoodLedgerMount({
   const tz = getTimezone(profileId);
   const boundaries = profileFoodSlotBoundaries(profileId);
   const entries: FoodLedgerEntry[] = ledger.rows.map((row) => {
-    const instant = row.occurred_at ?? row.recorded_at;
+    const instant = bestKnownInstant("food_log_events", { ...row });
     return {
       id: row.id,
       groupKey: row.group_key,
@@ -80,8 +81,11 @@ export default function FoodLedgerMount({
         row.meal_slot,
         row.occurred_at
       ),
-      clock: instant ? zonedDateParts(tz, new Date(instant)).hhmm : null,
-      clockKind: row.occurred_at ? "eaten" : "logged",
+      clock: instant.known
+        ? zonedDateParts(tz, new Date(instant.at)).hhmm
+        : null,
+      clockKind:
+        instant.known && instant.semantic === "event" ? "eaten" : "logged",
     };
   });
   const pages = pageCount(ledger.total, HISTORY_PAGE_SIZE);

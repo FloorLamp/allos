@@ -172,7 +172,7 @@ export function getPracticeLedgerPage(
 ): { rows: PracticeLog[]; total: number; page: number } {
   const requestedPage = Math.max(1, Math.floor(page));
   const boundedSize = Math.max(1, Math.min(Math.floor(pageSize), 100));
-  const where = ["profile_id = ?", "date >= ?"];
+  const where = ["date >= ?"];
   const args: Array<string | number> = [profileId, from];
   if (options.untilDate) {
     where.push("date <= ?");
@@ -187,7 +187,8 @@ export function getPracticeLedgerPage(
   const total = (
     db
       .prepare(
-        `SELECT COUNT(*) AS n FROM practice_logs WHERE ${where.join(" AND ")}`
+        `SELECT COUNT(*) AS n FROM practice_logs
+          WHERE profile_id = ? AND ${where.join(" AND ")}`
       )
       .get(...args) as {
       n: number;
@@ -199,7 +200,7 @@ export function getPracticeLedgerPage(
       `SELECT id, practice, date, time, duration_min, notes,
               source, external_id, edited, created_at
          FROM practice_logs
-        WHERE ${where.join(" AND ")}
+        WHERE profile_id = ? AND ${where.join(" AND ")}
         ORDER BY date DESC, COALESCE(time, '99:99') DESC, id DESC
         LIMIT ? OFFSET ?`
     )

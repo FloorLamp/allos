@@ -139,6 +139,7 @@ import {
   type FoodGroup,
 } from "../food-groups";
 import { pageCount, pageOffset } from "../pagination";
+import { bestKnownInstant } from "../row-instants";
 
 // Safety-screened food suggestions for the profile's currently-flagged, diet-responsive
 // biomarker families. Deterministic; the AI narration tier (deferred, #576 Phase 3)
@@ -372,11 +373,7 @@ export function getFoodLedgerPage(
 ): { rows: FoodLedgerRow[]; total: number; page: number } {
   const requestedPage = Math.max(1, Math.floor(page));
   const boundedSize = Math.max(1, Math.min(Math.floor(pageSize), 100));
-  const where = [
-    "profile_id = ?",
-    "date >= ?",
-    "substr(group_key, 1, 2) != '__'",
-  ];
+  const where = ["date >= ?", "substr(group_key, 1, 2) != '__'"];
   const args: Array<string | number> = [profileId, from];
   if (options.untilDate) {
     where.push("date <= ?");
@@ -389,7 +386,8 @@ export function getFoodLedgerPage(
   const total = (
     db
       .prepare(
-        `SELECT COUNT(*) AS n FROM food_log_events WHERE ${where.join(" AND ")}`
+        `SELECT COUNT(*) AS n FROM food_log_events
+          WHERE profile_id = ? AND ${where.join(" AND ")}`
       )
       .get(...args) as {
       n: number;
@@ -400,7 +398,7 @@ export function getFoodLedgerPage(
     .prepare(
       `SELECT id, group_key, date, recorded_at, meal_slot, occurred_at
          FROM food_log_events
-        WHERE ${where.join(" AND ")}
+        WHERE profile_id = ? AND ${where.join(" AND ")}
         ORDER BY date DESC, COALESCE(occurred_at, recorded_at) DESC, id DESC
         LIMIT ? OFFSET ?`
     )
@@ -661,13 +659,19 @@ function gatherFoodRankingSignals(
       )
       .all(profileId, since) as Omit<FoodLedgerEvent, "meal_slot">[];
     slot = slotProximityOccurrences(
-      events.map((e) => ({
-        name: e.name,
-        date: e.date,
-        minuteOfDay: hhmmToMinutes(
-          zonedDateParts(tz, new Date(e.occurred_at ?? e.recorded_at)).hhmm
-        ),
-      })),
+      events.flatMap((event) => {
+        const instant = bestKnownInstant("food_log_events", { ...event });
+        if (!instant.known) return [];
+        return [
+          {
+            name: event.name,
+            date: event.date,
+            minuteOfDay: hhmmToMinutes(
+              zonedDateParts(tz, new Date(instant.at)).hhmm
+            ),
+          },
+        ];
+      }),
       profileFoodSlotAnchors(profileId)[window]
     );
   }
