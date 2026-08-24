@@ -141,11 +141,7 @@ export default function PhotoGallery({
               type="button"
               role="tab"
               aria-selected={d.key === domain.key}
-              className={`rounded-lg px-3 py-1.5 text-sm font-medium ${
-                d.key === domain.key
-                  ? "bg-brand-600 text-white"
-                  : "bg-slate-100 text-slate-600 hover:bg-slate-200 dark:bg-ink-800 dark:text-slate-300 dark:hover:bg-ink-750"
-              }`}
+              className="chip chip-filter"
               onClick={() => {
                 setDomainKey(d.key);
                 setSeries(null);

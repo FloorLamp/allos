@@ -233,6 +233,11 @@ const ADOPTERS: readonly (readonly [string, string])[] = [
   ["components/household/HouseholdHistoryTimeline.tsx", "chip chip-filter"],
   ["components/illness/EpisodeTimeline.tsx", "chip chip-filter chip-sm"],
   ["components/photo/PhotoGallery.tsx", "chip chip-filter chip-sm"],
+  ["components/illness/SymptomPhotoStrip.tsx", "chip chip-filter chip-sm"],
+  [
+    "app/(app)/records/specialty/skin/LesionPhotoStrip.tsx",
+    "chip chip-filter chip-sm",
+  ],
   ["components/activity-form/CustomTypeChips.tsx", "chip chip-filter chip-sm"],
   ["components/activity-form/StrengthSets.tsx", "chip chip-filter chip-sm"],
 ];
@@ -271,9 +276,10 @@ describe("the chip primitive and the stat tile (#3475)", () => {
     expect(small).toMatch(/\bpy-0\.5\b/);
     expect(small).toMatch(/\btext-xs\b/);
     expect(
-      css,
-      "chip-sm uses the shared hit-area mechanism with an 11px extension, making its 22px paint box 44px effective"
-    ).toMatch(/\.chip-sm::after\s*\{[\s\S]*?inset:\s*-0\.6875rem/);
+      small,
+      "chip-sm renders the shared 44px floor, including on native selects"
+    ).toMatch(/\bmin-h-11\b/);
+    expect(css).not.toMatch(/\.chip-sm::after\s*\{/);
     for (const role of ["chip-nav", "chip-filter"]) {
       const body = utilityBody(css, role);
       expect(
@@ -289,15 +295,16 @@ describe("the chip primitive and the stat tile (#3475)", () => {
         `${role} must paint its selected state from aria-current, so a chip cannot look selected without announcing it`
       ).toContain('&[aria-current]:not([aria-current="false"])');
       expect(body).toContain('&[aria-pressed="true"]');
+      expect(body).toContain('&[aria-selected="true"]');
     }
 
     // The two roles stay TOLD APART (#3408): one is full-round, the other is not.
     expect(utilityBody(css, "chip-nav")).toMatch(/rounded-full(?![\w-])/);
     expect(utilityBody(css, "chip-filter")).toMatch(/rounded-md(?![\w-])/);
 
-    // No rendered height floor: #3514 ruled 44px EFFECTIVE, and `chip-sm` meets
-    // it through the registered hit-area overlay. A rendered min-height here
-    // would replace rather than compose with a taller call-site request.
+    // The regular base and role utilities retain no rendered height floor;
+    // `chip-sm` is the opt-in modifier that owns min-h-11. A base floor would
+    // erase the distinction between the regular and dense variants.
     for (const name of ["chip", "chip-nav", "chip-filter"]) {
       expect(
         utilityBody(css, name),
@@ -369,6 +376,13 @@ describe("the chip primitive and the stat tile (#3475)", () => {
         ).toContain(className);
       }
     }
+
+    expect(
+      read("components/activity-form/StrengthSets.tsx"),
+      "the native equipment select must receive chip-sm's rendered floor; pseudo-elements cannot enlarge native selects"
+    ).toMatch(
+      /<select[\s\S]*?data-testid="strength-equipment-select"[\s\S]*?className="chip chip-filter chip-sm"/
+    );
   });
 
   it("rule 3: the hand-rolled census is exactly the recorded list", () => {
@@ -443,7 +457,8 @@ describe("the chip primitive and the stat tile (#3475)", () => {
       "`h-2.5 w-2.5 rounded-full ${on ? A : B}`",
       // `badge` is the non-interactive status primitive and is not this.
       "`badge ${tone === 'warn' ? A : B}`",
-      // A padded box that is not pill-shaped.
+      // A padded box that is not pill-shaped. Rounded-lg selected tabs are
+      // covered by selected-state-primitive-census instead of this pill scan.
       "`rounded-lg px-3 py-2 ${active ? A : B}`",
       // A pill with no condition in it is a static shape, not a selectable chip.
       "`rounded-full px-3 py-1 text-sm font-medium`",

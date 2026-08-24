@@ -618,13 +618,12 @@
    call site cannot spell the selected shade differently because it no longer
    spells it at all.
 
-   NO RENDERED HEIGHT FLOOR, DELIBERATELY. The `.btn` family's below-`sm` 44px floor
-   (SECTION: Touch tap targets) names `.btn`/`.btn-ghost`/`.btn-danger` and does
-   not reach here — chips are acquired by their WIDTH along a scrolling row, and
-   a 44px-tall strip of seven is a band of chrome above the list it narrows
-   (FilterPills' own measured note). #3514 has since RULED the floor at 44px
-   effective. Dense `chip-sm` controls preserve their compact painted box and
-   meet that target through the registered hit-area extension below; call sites
+   REGULAR chips have NO RENDERED HEIGHT FLOOR, DELIBERATELY; their established
+   34px box remains the navigation/filter default. THE DENSE SIZE OWNS ITS
+   RENDERED FLOOR. #3514 ruled 44px effective everywhere.
+   An 11px pseudo-element around a 22px chip appeared to reach it, but adjacent
+   chips overlap those invisible regions and native selects cannot reliably grow
+   through `::after`. `chip-sm` therefore renders at least 44px itself. Call sites
    do not add their own `min-h-*` or coarse-pointer shell variants. */
 @utility chip {
   @apply inline-flex shrink-0 items-center gap-1.5 whitespace-nowrap px-3 py-1.5 text-sm font-medium transition disabled:cursor-not-allowed disabled:opacity-40 focus:outline-hidden focus-visible:ring-2 focus-visible:ring-brand-500 focus-visible:ring-offset-2 dark:focus-visible:ring-offset-ink-950;
@@ -634,11 +633,11 @@
   border: 1px solid transparent;
 }
 
-/* The dense in-row size records the tree-wide consensus from #3525. Its
-   painted box stays compact; on coarse pointers the shared hit-area mechanism
-   below extends the effective target to the 44px floor ruled in #3514. */
+/* The dense in-row size records the tree-wide horizontal/type consensus from
+   #3525 and renders the 44px target itself. This works for native selects and
+   leaves every neighboring hit region disjoint. */
 @utility chip-sm {
-  @apply px-2.5 py-0.5 text-xs;
+  @apply min-h-11 px-2.5 py-0.5 text-xs;
 }
 
 @utility chip-nav {
@@ -654,7 +653,8 @@
      it. `[aria-current="false"]` is excluded because React renders that string
      when a call site passes the literal false rather than undefined. */
   &[aria-current]:not([aria-current="false"]),
-  &[aria-pressed="true"] {
+  &[aria-pressed="true"],
+  &[aria-selected="true"] {
     @apply border-brand-600 bg-brand-50 text-brand-700 dark:border-brand-400 dark:bg-brand-950/40 dark:text-brand-300;
   }
 }
@@ -665,7 +665,8 @@
     @apply bg-slate-200 dark:bg-ink-700;
   }
   &[aria-current]:not([aria-current="false"]),
-  &[aria-pressed="true"] {
+  &[aria-pressed="true"],
+  &[aria-selected="true"] {
     @apply bg-brand-600 text-white dark:bg-brand-500 dark:text-ink-950;
   }
 }
@@ -2030,16 +2031,6 @@ input[type="time"]::-webkit-datetime-edit-ampm-field:focus {
     content: "";
     position: absolute;
     inset: -6px;
-  }
-  /* `chip-sm` uses the same registered hit-area overlay, with the inset its
-     smaller painted box needs: 22px + 11px on each side = 44px effective. */
-  .chip-sm {
-    position: relative;
-  }
-  .chip-sm::after {
-    content: "";
-    position: absolute;
-    inset: -0.6875rem;
   }
 }
 

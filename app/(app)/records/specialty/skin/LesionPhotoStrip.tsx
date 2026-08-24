@@ -74,11 +74,7 @@ export default function LesionPhotoStrip({
               type="button"
               role="tab"
               aria-selected={view === v}
-              className={`rounded-lg px-2.5 py-1 text-xs font-medium ${
-                view === v
-                  ? "bg-brand-600 text-white"
-                  : "bg-slate-100 text-slate-600 hover:bg-slate-200 dark:bg-ink-800 dark:text-slate-300 dark:hover:bg-ink-750"
-              }`}
+              className="chip chip-filter chip-sm"
               onClick={() => setView(v)}
               data-testid={`lesion-photo-view-${v}-${lesionId}`}
             >

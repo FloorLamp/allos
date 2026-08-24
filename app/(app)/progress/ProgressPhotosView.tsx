@@ -163,11 +163,7 @@ export default function ProgressPhotosView({
               type="button"
               role="tab"
               aria-selected={view === v}
-              className={`rounded-lg px-3 py-1.5 text-sm font-medium ${
-                view === v
-                  ? "bg-brand-600 text-white"
-                  : "bg-slate-100 text-slate-600 hover:bg-slate-200 dark:bg-ink-800 dark:text-slate-300 dark:hover:bg-ink-750"
-              }`}
+              className="chip chip-filter"
               onClick={() => setView(v)}
               data-testid={`progress-view-${v}`}
             >

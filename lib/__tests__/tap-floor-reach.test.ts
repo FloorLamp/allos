@@ -3,8 +3,7 @@ import path from "node:path";
 import { fileURLToPath } from "node:url";
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
 import {
-  CHIP_SM_INSET_PX,
-  CHIP_SM_MIN_RENDERED_PX,
+  CHIP_SM_RENDERED_PX,
   TAP_FLOOR_PX,
   TAP_TARGET_INSET_PX,
   TAP_TARGET_MIN_RENDERED_PX,
@@ -52,7 +51,7 @@ import { makeTmpDir } from "./tmp-dir";
 //      shipped `ORDER BY … COLLATE NOCASE` sorts, because a guard that cries wolf
 //      is deleted within a week and takes the real rule with it. Here the
 //      neighbours are the `.btn` family, `.tap-target` used where its arithmetic
-//      works, and `.chip-sm` using its own registered hit-area inset.
+//      works, and `.chip-sm` using its shared rendered floor.
 //   5. A RATCHET over what already misses. 105 controls miss today — 60 once the
 //      45 native boxes with a `<label>` taking the tap are licensed — and this file
 //      does not pretend otherwise; what it does is stop the number growing, and
@@ -1429,13 +1428,13 @@ describe("the census walk reaches a planted offender", () => {
     expect(registered.has(plantedRel)).toBe(false);
   });
 
-  it("flags an undersized chip-sm the walk had to find on disk", () => {
+  it("flags a call-site minimum that undercuts chip-sm's rendered floor", () => {
     if (fs.existsSync(planted)) fs.unlinkSync(planted);
     const before = misses(census(corpus));
     fs.writeFileSync(
       planted,
       "export default function PlantedDenseChip() {\n" +
-        '  return <button type="button" aria-pressed="false" className="chip chip-filter chip-sm h-4">x</button>;\n' +
+        '  return <button type="button" aria-pressed="false" className="chip chip-filter chip-sm min-h-4">x</button>;\n' +
         "}\n",
       "utf8"
     );
@@ -1444,9 +1443,8 @@ describe("the census walk reaches a planted offender", () => {
     expect(caught).toHaveLength(1);
     expect(caught[0].control.mechanism).toBe("chip-sm");
     expect(caught[0].control.belowSmPx).toBe(16);
-    expect(caught[0].why).toContain(`${16 + 2 * CHIP_SM_INSET_PX}px effective`);
     expect(caught[0].why).toContain(
-      `only reaches it from ${CHIP_SM_MIN_RENDERED_PX}px up`
+      `undercuts \`chip-sm\`'s shared ${CHIP_SM_RENDERED_PX}px rendered floor`
     );
     expect(after.length).toBe(before.length + 1);
   });

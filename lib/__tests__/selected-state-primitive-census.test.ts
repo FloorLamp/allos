@@ -12,7 +12,8 @@ import { makeTmpDir } from "./tmp-dir";
 // #2730 closes the selected-state third voice. A mutually exclusive client
 // view uses SegmentedControl; navigation uses chip-nav; an in-place filter uses
 // chip-filter. The scan resolves local and imported class helpers before it
-// judges them, so moving a hand-roll behind `chipCls(active)` cannot hide it.
+// judges them, including rounded-lg `role="tab"` controls using aria-selected,
+// so moving a hand-roll behind `chipCls(active)` cannot hide it.
 
 const REPO = path.resolve(fileURLToPath(new URL("../..", import.meta.url)));
 const KEEP_MARKER = "Selected-state registry keep (#2730)";
@@ -78,12 +79,29 @@ function moduleReader(base: string, dir: string) {
 }
 
 type Finding = { file: string; line: number; className: string };
+type ShellFinding = Finding & { tokens: string[] };
 
-function isHandRolledSelectedClass(className: string): boolean {
+const CHIP_ROLE = /\bchip chip-(?:nav|filter)\b/;
+const SHELL_TOKEN =
+  /^(?:[a-z-]+:)*(?:rounded(?:-.+)?|border(?:-.+)?|bg-.+|p[trblxy]-.+|min-[hw]-.+|ring(?:-.+)?|shadow(?:-.+)?|text-(?:xs|sm|base|lg|xl|(?:brand|slate|rose|amber|emerald|sky)-.+))$/;
+
+function forbiddenShellTokens(className: string): string[] {
+  return (className.match(/[^\s"'`{}(),+?]+/g) ?? [])
+    .filter((token) => !token.startsWith("chip"))
+    .filter((token) => SHELL_TOKEN.test(token));
+}
+
+function isHandRolledSelectedClass(control: {
+  className: string;
+  selectedAttribute?: "pressed" | "current" | "selected";
+}): boolean {
+  const { className } = control;
   if (/\bchip chip-(?:nav|filter)\b/.test(className)) return false;
   if (/\bw-full\b/.test(className)) return false;
   return (
-    /rounded-(?:full|md)(?![\w-])/.test(className) &&
+    (/rounded-(?:full|md)(?![\w-])/.test(className) ||
+      (control.selectedAttribute === "selected" &&
+        /rounded-lg(?![\w-])/.test(className))) &&
     /\b(?:px|p[lr])-\d/.test(className)
   );
 }
@@ -111,7 +129,7 @@ export function scanSelectedStateCorpus(base: string): {
         unreadable.add(file);
         continue;
       }
-      if (isHandRolledSelectedClass(control.className))
+      if (isHandRolledSelectedClass(control))
         findings.push({
           file,
           line: control.line,
@@ -120,6 +138,29 @@ export function scanSelectedStateCorpus(base: string): {
     }
   }
   return { findings, unreadable: [...unreadable].sort() };
+}
+
+export function scanForbiddenChipShellCorpus(base: string): ShellFinding[] {
+  const findings: ShellFinding[] = [];
+  for (const file of sourceFiles(base)) {
+    const source = withoutComments(read(base, file));
+    const controls = findFlooredControls(
+      source,
+      moduleReader(base, path.dirname(path.join(base, file)))
+    );
+    for (const control of controls) {
+      if (!control.readable || !CHIP_ROLE.test(control.className)) continue;
+      const tokens = forbiddenShellTokens(control.className);
+      if (tokens.length > 0)
+        findings.push({
+          file,
+          line: control.line,
+          className: control.className,
+          tokens,
+        });
+    }
+  }
+  return findings;
 }
 
 describe("selected-state rows use the registered primitive (#2730)", () => {
@@ -142,8 +183,46 @@ describe("selected-state rows use the registered primitive (#2730)", () => {
         path.join(base, "components/Offender.tsx"),
         'import { chipCls } from "@/lib/chips";\nexport function Offender({ on }: { on: boolean }) { return <button aria-pressed={on} className={chipCls(on)}>x</button>; }\n'
       );
+      fs.writeFileSync(
+        path.join(base, "components/TabOffender.tsx"),
+        'export function TabOffender({ on }: { on: boolean }) { return <button role="tab" aria-selected={on} className={`rounded-lg px-3 py-1.5 ${on ? "bg-brand-600" : "bg-slate-100"}`}>x</button>; }\n'
+      );
       expect(scanSelectedStateCorpus(base).findings).toMatchObject([
         { file: "components/Offender.tsx", line: 2 },
+        { file: "components/TabOffender.tsx", line: 1 },
+      ]);
+    } finally {
+      fs.rmSync(base, { recursive: true, force: true });
+    }
+  });
+
+  it("rejects forbidden shell extras reached through imported concatenation", () => {
+    expect(scanForbiddenChipShellCorpus(REPO)).toEqual([]);
+
+    const base = makeTmpDir("chip-shell-census");
+    try {
+      fs.mkdirSync(path.join(base, "components"), { recursive: true });
+      fs.mkdirSync(path.join(base, "lib"), { recursive: true });
+      fs.writeFileSync(
+        path.join(base, "lib/chips.ts"),
+        'export const BASE = "chip chip-filter";\nexport const EXTRA = "rounded-full border-dashed bg-rose-50 pointer-coarse:text-base min-h-8";\n'
+      );
+      fs.writeFileSync(
+        path.join(base, "components/Offender.tsx"),
+        'import { BASE, EXTRA } from "@/lib/chips";\nexport function Offender() { return <button className={`${BASE} ${EXTRA}`}>x</button>; }\n'
+      );
+      expect(scanForbiddenChipShellCorpus(base)).toMatchObject([
+        {
+          file: "components/Offender.tsx",
+          line: 2,
+          tokens: expect.arrayContaining([
+            "rounded-full",
+            "border-dashed",
+            "bg-rose-50",
+            "pointer-coarse:text-base",
+            "min-h-8",
+          ]),
+        },
       ]);
     } finally {
       fs.rmSync(base, { recursive: true, force: true });

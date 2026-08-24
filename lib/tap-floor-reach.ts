@@ -27,7 +27,8 @@
 //
 //   HIT AREA — a deliberately smaller rendered control extended to >= 44
 //   effective by the shared overlay: `.tap-target` uses `inset: -6px` around a
-//   32px box (#644), while `chip-sm` uses 11px around its 22px painted box.
+//   32px box (#644). Dense `chip-sm` controls instead render at 44px themselves;
+//   an overlay would collide with adjacent chips and cannot enlarge a select.
 //
 // Rendered height and hit area are different guarantees, so a rule says which it
 // means. A control using NEITHER mechanism is the defect.
@@ -79,11 +80,8 @@ export const TAP_TARGET_INSET_PX = 6;
 export const TAP_TARGET_MIN_RENDERED_PX =
   TAP_FLOOR_PX - 2 * TAP_TARGET_INSET_PX;
 
-/** `chip-sm`'s per-side hit-area extension (#3525). */
-export const CHIP_SM_INSET_PX = 11;
-
-/** The smallest painted box from which `chip-sm` reaches 44px effective. */
-export const CHIP_SM_MIN_RENDERED_PX = TAP_FLOOR_PX - 2 * CHIP_SM_INSET_PX;
+/** The rendered floor owned centrally by `chip-sm` (#3525). */
+export const CHIP_SM_RENDERED_PX = TAP_FLOOR_PX;
 
 /** Which registered mechanism a control uses to meet the floor, if any. */
 export type FloorMechanism =
@@ -93,7 +91,7 @@ export type FloorMechanism =
   | "rendered"
   /** `.tap-target`'s hit-area overlay. */
   | "tap-target"
-  /** `chip-sm`'s measured 11px-per-side variant of the hit-area overlay. */
+  /** `chip-sm`'s shared rendered `min-h-11` floor. */
   | "chip-sm"
   /**
    * The class list could not be read, so NO mechanism can be established. This
@@ -137,6 +135,8 @@ export type FlooredControl = {
   mechanism: FloorMechanism;
   /** Whether the opening tag declares an announced selected state. */
   selectedState: boolean;
+  /** Which selected-state attribute the opening tag declares, when readable. */
+  selectedAttribute?: "pressed" | "current" | "selected";
   /**
    * For a `native-box`: whether a `<label>` takes the tap on its behalf — either
    * by wrapping it, or by naming its `id` in an `htmlFor`. This is the premise
@@ -1141,9 +1141,16 @@ export function usesTapTarget(className: string): boolean {
   return /(?:^|[\s"'`{}(),:?])tap-target(?![\w-])/.test(className);
 }
 
-/** True when this class list carries the dense chip hit-area mechanism. */
+/** True when this class list carries the dense chip rendered-floor mechanism. */
 export function usesChipSm(className: string): boolean {
   return /(?:^|[\s"'`{}(),:?])chip-sm(?![\w-])/.test(className);
+}
+
+function selectedAttribute(
+  openTag: string
+): FlooredControl["selectedAttribute"] {
+  return /\baria-(pressed|current|selected)\b/.exec(openTag)?.[1] as
+    FlooredControl["selectedAttribute"] | undefined;
 }
 
 const INTERACTIVE_TAGS = new Set([
@@ -1245,7 +1252,8 @@ export function findFlooredControls(
         kind: kindOf(tag, openTag),
         belowSmPx: null,
         mechanism: "unreadable",
-        selectedState: /\baria-(?:pressed|current)\b/.test(openTag),
+        selectedState: selectedAttribute(openTag) !== undefined,
+        selectedAttribute: selectedAttribute(openTag),
         labelled: false,
         className: classNameExpression(openTag)!
           .text.replace(/\s+/g, " ")
@@ -1300,7 +1308,8 @@ export function findFlooredControls(
       kind,
       belowSmPx,
       mechanism,
-      selectedState: /\baria-(?:pressed|current)\b/.test(openTag),
+      selectedState: selectedAttribute(openTag) !== undefined,
+      selectedAttribute: selectedAttribute(openTag),
       labelled,
       className: className.replace(/\s+/g, " ").trim(),
       readable: true,
@@ -1319,10 +1328,10 @@ export function findFlooredControls(
  *   hit-area overlay. This is `StarButton`'s old `h-9`.
  *
  *   A MECHANISM THAT CANNOT REACH — `.tap-target` on a control rendered smaller
- *   than `TAP_TARGET_MIN_RENDERED_PX`. The overlay adds a fixed 12px, so below
- *   32px it lands short while wearing the class that says it does not. A control
- *   that believes it is already compliant is worse than one that knows it is
- *   not, because nothing will ever look at it again.
+ *   than `TAP_TARGET_MIN_RENDERED_PX`, or a `chip-sm` call site that undercuts
+ *   its shared min-h-11 floor. A control that believes it is already compliant
+ *   is worse than one that knows it is not, because nothing will ever look at
+ *   it again.
  *
  * A control that pins NO height is not judged here — see the module header on
  * what this scan can see. That is a stated bound, not a silent skip.
@@ -1337,12 +1346,10 @@ export function floorMiss(control: FlooredControl): string | null {
   if (control.mechanism === "btn-family" || control.mechanism === "rendered")
     return null;
   if (control.mechanism === "chip-sm") {
-    if (control.belowSmPx >= CHIP_SM_MIN_RENDERED_PX) return null;
+    if (control.belowSmPx >= CHIP_SM_RENDERED_PX) return null;
     return (
-      `${control.belowSmPx}px rendered + \`chip-sm\`'s 2x${CHIP_SM_INSET_PX}px = ` +
-      `${control.belowSmPx + 2 * CHIP_SM_INSET_PX}px effective, under the ` +
-      `${TAP_FLOOR_PX}px floor. The dense-chip hit-area mechanism only reaches it from ` +
-      `${CHIP_SM_MIN_RENDERED_PX}px up`
+      `a ${control.belowSmPx}px call-site minimum undercuts \`chip-sm\`'s shared ` +
+      `${CHIP_SM_RENDERED_PX}px rendered floor`
     );
   }
   if (control.mechanism === "tap-target") {
