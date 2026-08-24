@@ -291,9 +291,28 @@ host convergence, escape/discard contracts), `stateful-affordances.md`
 
 ## 9. Enforcement
 
+Phone-only shared utilities use the compiled-sheet proof in
+`scripts/phone-only-css-proof.mjs`. Add a utility to
+`scripts/phone-only-css-registry.mjs` only when its contract is that every
+declaration it contributes is below `sm`. To compare a focused branch with a
+clean control worktree:
+
+```bash
+node scripts/phone-only-css-proof.mjs --control /path/to/origin-main-worktree
+```
+
+The compiler disables Tailwind's prose scanner and includes only the registry,
+then removes the two exact phone scopes structurally at any nesting depth. It
+fails on compile/empty artifacts, missing expected declarations, a census below
+its floor, or any remaining desktop-visible difference. Its claim is only that
+the registered utilities contribute no declaration at `sm` or above. It does
+not prove that a phone declaration composes safely with the cascade; #3510's
+`min-block-size` replacement bug is deliberately outside this guard.
+
 | tier                                  | covers                                                                                                                                                                                                 | status                       |
 | ------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ | ---------------------------- |
 | Language/lint scans (`lib/__tests__`) | border colors, hover fills, page width, records action grammar, copy lint, phone density (sub-panel insets + section rhythm, #3466), add-affordance grammar (verb + placement, #3486)                  | shipped — the proven pattern |
+| Compiled phone-only CSS proof         | registered shared utilities contribute no declarations at `sm` or above; deterministic branch/control artifact comparison (#3518)                                                                      | shipped — scope claim only   |
 | Design-guard suite                    | chips, sheet titles, link tones — lands with each primitive per the guards ruling                                                                                                                      | pending, per-issue           |
 | Census probes (#3489)                 | clipped content, control-height mismatch, ISO-date text scan (#3492), hover captures, cross-page consistency lane, named dirty profile, named one-completed-cycle middle state, post-merge mini-census | shipped                      |
 | `components/**` test tier             | enabling infrastructure for component-level guards                                                                                                                                                     | #3446 ✓ shipped              |
