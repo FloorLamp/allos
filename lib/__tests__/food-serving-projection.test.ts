@@ -1,5 +1,9 @@
 import { describe, expect, it } from "vitest";
+import { readFileSync } from "node:fs";
+import { fileURLToPath } from "node:url";
 import { applyFoodServingPlacements } from "@/lib/food-serving-projection";
+
+const ROOT = fileURLToPath(new URL("../..", import.meta.url));
 
 describe("applyFoodServingPlacements", () => {
   it("publishes both halves of a same-group meal correction as one projection", () => {
@@ -41,5 +45,23 @@ describe("applyFoodServingPlacements", () => {
       Midday: { berries: 1 },
       Evening: { nuts_seeds: 1 },
     });
+  });
+
+  it("keeps browser projection publication on one provider state boundary", () => {
+    const provider = readFileSync(
+      `${ROOT}/app/(app)/nutrition/FoodSuggestionsLayout.tsx`,
+      "utf8"
+    );
+    const bar = readFileSync(
+      `${ROOT}/app/(app)/nutrition/FoodLogBar.tsx`,
+      "utf8"
+    );
+
+    expect(provider).toContain("useState<FoodProjectionState>");
+    expect(provider).not.toContain("setCountsByDate");
+    expect(provider).not.toContain("setSlotCountsByDate");
+    expect(bar).toContain("setProjection(next)");
+    expect(bar).not.toContain("setCountsByDate");
+    expect(bar).not.toContain("setSlotCountsByDate");
   });
 });

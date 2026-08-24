@@ -93,7 +93,10 @@ import {
   type FoodServingTruthResult,
   type UsualFoodResult,
 } from "./actions";
-import { useFoodSelectedDate } from "./FoodSuggestionsLayout";
+import {
+  useFoodSelectedDate,
+  type FoodProjectionState,
+} from "./FoodSuggestionsLayout";
 
 // Where one corrected serving landed, with the server's authoritative counts for that
 // coordinate. Named off the action's result so the bar and the write core can never
@@ -281,19 +284,19 @@ export default function FoodLogBar({
     activeDate,
     setActiveDate,
     countsByDate,
-    setCountsByDate,
     slotCountsByDate,
-    setSlotCountsByDate,
+    setProjection,
   } = useFoodSelectedDate();
   const activeProfileId = useActiveProfileId();
   // This component only mounts in the authenticated app shell, under
   // ActiveProfileProvider. The fallback keeps story/static mounts inert rather
   // than inventing a cross-profile target.
   const receiptProfileId = activeProfileId ?? 0;
-  const countsByDateRef = useRef(countsByDate);
-  const slotCountsByDateRef = useRef(slotCountsByDate);
-  countsByDateRef.current = countsByDate;
-  slotCountsByDateRef.current = slotCountsByDate;
+  const projectionRef = useRef<FoodProjectionState>({
+    countsByDate,
+    slotCountsByDate,
+  });
+  projectionRef.current = { countsByDate, slotCountsByDate };
   const [activeSlot, setActiveSlot] = useState<FoodSlot>(slot);
   // The eating-time statement in force for the next taps (#2053), or null for the default
   // and honest silence: nobody said, so nothing is written. STICKY across taps on purpose
@@ -588,39 +591,53 @@ export default function FoodLogBar({
     proteinRank
   );
 
-  // Set one slug's daily count, leaving every other day untouched.
-  function setCount(slug: string, next: (prev: number) => number) {
-    setCountsByDate((m) => {
-      const day = m[activeDate] ?? {};
-      return {
-        ...m,
-        [activeDate]: { ...day, [slug]: Math.max(0, next(day[slug] ?? 0)) },
-      };
-    });
+  function commitProjection(next: FoodProjectionState) {
+    // Keep the async mutation boundary and the provider on the exact same object.
+    // Every caller below computes both halves before this one publication.
+    projectionRef.current = next;
+    setProjection(next);
   }
 
-  function setSlotCount(
+  // Set one serving coordinate in the day and meal projections together.
+  function setServingCounts(
+    date: string,
     targetSlot: FoodSlot,
     slug: string,
-    next: (prev: number) => number
+    next: (prev: { day: number; meal: number }) => {
+      day: number;
+      meal: number;
+    }
   ) {
-    setSlotCountsByDate((allDays) => {
-      const day = allDays[activeDate] ?? {
-        Morning: {},
-        Midday: {},
-        Evening: {},
-      };
-      const meal = day[targetSlot] ?? {};
-      return {
-        ...allDays,
-        [activeDate]: {
-          ...day,
+    const current = projectionRef.current;
+    const dayCounts = current.countsByDate[date] ?? {};
+    const slotDay = current.slotCountsByDate[date] ?? {
+      Morning: {},
+      Midday: {},
+      Evening: {},
+    };
+    const mealCounts = slotDay[targetSlot] ?? {};
+    const value = next({
+      day: dayCounts[slug] ?? 0,
+      meal: mealCounts[slug] ?? 0,
+    });
+    commitProjection({
+      countsByDate: {
+        ...current.countsByDate,
+        [date]: {
+          ...dayCounts,
+          [slug]: Math.max(0, value.day),
+        },
+      },
+      slotCountsByDate: {
+        ...current.slotCountsByDate,
+        [date]: {
+          ...slotDay,
           [targetSlot]: {
-            ...meal,
-            [slug]: Math.max(0, next(meal[slug] ?? 0)),
+            ...mealCounts,
+            [slug]: Math.max(0, value.meal),
           },
         },
-      };
+      },
     });
   }
 
@@ -630,25 +647,12 @@ export default function FoodLogBar({
   // source first lets a render restore the old slot map before the destination write.
   // These are SETs, not deltas, so replaying the result can never drift.
   function applyPlacements(placements: readonly FoodPlacement[]) {
-    for (const placement of placements) {
-      invalidateServingBurst(
-        foodServingToastKey(
-          receiptProfileId,
-          placement.date,
-          placement.groupKey
-        )
-      );
-    }
     const next = applyFoodServingPlacements(
-      countsByDateRef.current,
-      slotCountsByDateRef.current,
+      projectionRef.current.countsByDate,
+      projectionRef.current.slotCountsByDate,
       placements
     );
-    // Ref truth moves together before either provider setter can trigger a render.
-    countsByDateRef.current = next.countsByDate;
-    slotCountsByDateRef.current = next.slotCountsByDate;
-    setCountsByDate(next.countsByDate);
-    setSlotCountsByDate(next.slotCountsByDate);
+    commitProjection(next);
   }
 
   function applyPlacement(placement: FoodPlacement) {
@@ -663,15 +667,14 @@ export default function FoodLogBar({
     slug: string,
     truth: FoodServingTruth
   ) {
-    const day = countsByDateRef.current[date] ?? {};
+    const current = projectionRef.current;
+    const day = current.countsByDate[date] ?? {};
     const nextCounts = {
-      ...countsByDateRef.current,
+      ...current.countsByDate,
       [date]: { ...day, [slug]: truth.servings },
     };
-    countsByDateRef.current = nextCounts;
-    setCountsByDate(nextCounts);
 
-    const slotDay = slotCountsByDateRef.current[date] ?? {
+    const slotDay = current.slotCountsByDate[date] ?? {
       Morning: {},
       Midday: {},
       Evening: {},
@@ -684,19 +687,75 @@ export default function FoodLogBar({
       };
     }
     const nextSlotCounts = {
-      ...slotCountsByDateRef.current,
+      ...current.slotCountsByDate,
       [date]: nextDay,
     };
-    slotCountsByDateRef.current = nextSlotCounts;
-    setSlotCountsByDate(nextSlotCounts);
+    commitProjection({
+      countsByDate: nextCounts,
+      slotCountsByDate: nextSlotCounts,
+    });
   }
 
-  function invalidateServingBurst(receiptKey: string) {
-    servingBursts.current.set(
-      receiptKey,
-      invalidateFoodServingBurst(
-        servingBursts.current.get(receiptKey) ?? emptyFoodServingBurst()
-      )
+  async function reconcileServingTruthIfIdle(
+    receiptKey: string,
+    date: string,
+    slug: string
+  ) {
+    const captured =
+      servingBursts.current.get(receiptKey) ?? emptyFoodServingBurst();
+    // A current add burst owns the final read after its last response. Reading
+    // before that would snapshot only a prefix of its writes.
+    if (captured.pending.size > 0) return;
+    const form = new FormData();
+    form.set("group_key", slug);
+    form.set("date", date);
+    if (activeProfileId != null) form.set("profileId", String(activeProfileId));
+    let truth: FoodServingTruthResult;
+    try {
+      truth = await readFoodServingTruth(form);
+    } catch {
+      return;
+    }
+    const current =
+      servingBursts.current.get(receiptKey) ?? emptyFoodServingBurst();
+    if (
+      activeProfileRef.current === activeProfileId &&
+      current.epoch === captured.epoch &&
+      current.nextTapId === captured.nextTapId &&
+      current.pending.size === 0 &&
+      truth.ok
+    )
+      applyServingTruth(date, slug, truth);
+  }
+
+  function invalidateServingBurst(receiptKey: string): number {
+    const next = invalidateFoodServingBurst(
+      servingBursts.current.get(receiptKey) ?? emptyFoodServingBurst()
+    );
+    servingBursts.current.set(receiptKey, next);
+    return next.epoch;
+  }
+
+  function isServingMutationCurrent(receiptKey: string, epoch: number) {
+    return (
+      activeProfileRef.current === activeProfileId &&
+      (servingBursts.current.get(receiptKey) ?? emptyFoodServingBurst())
+        .epoch === epoch
+    );
+  }
+
+  function beginServingMutations(receiptKeys: readonly string[]) {
+    const epochs = new Map<string, number>();
+    for (const key of new Set(receiptKeys)) {
+      epochs.set(key, invalidateServingBurst(key));
+      dismissToast(key);
+    }
+    return epochs;
+  }
+
+  function areServingMutationsCurrent(epochs: ReadonlyMap<string, number>) {
+    return [...epochs].every(([key, epoch]) =>
+      isServingMutationCurrent(key, epoch)
     );
   }
 
@@ -770,6 +829,10 @@ export default function FoodLogBar({
       toast("Pick a day from the log's own recent range.", { tone: "error" });
       return;
     }
+    const correctionEpochs = beginServingMutations([
+      foodServingToastKey(receiptProfileId, editing.date, editing.groupKey),
+      foodServingToastKey(receiptProfileId, draft.when.date, draft.groupKey),
+    ]);
     setSaving(true);
     const fd = new FormData();
     fd.set("event_id", String(editing.id));
@@ -795,20 +858,35 @@ export default function FoodLogBar({
       outcome = await updateFoodLogEvent(fd);
     } catch {
       setSaving(false);
-      toast("Couldn't correct that serving — try again.", { tone: "error" });
+      if (areServingMutationsCurrent(correctionEpochs))
+        toast("Couldn't correct that serving — try again.", { tone: "error" });
       return;
     }
     setSaving(false);
     if (!outcome.ok) {
-      toast(outcome.error, { tone: "error" });
+      if (areServingMutationsCurrent(correctionEpochs))
+        toast(outcome.error, { tone: "error" });
+      return;
+    }
+    setEditing(null);
+    setDraft(null);
+    if (!areServingMutationsCurrent(correctionEpochs)) {
+      void reconcileServingTruthIfIdle(
+        foodServingToastKey(receiptProfileId, editing.date, editing.groupKey),
+        editing.date,
+        editing.groupKey
+      );
+      void reconcileServingTruthIfIdle(
+        foodServingToastKey(receiptProfileId, draft.when.date, draft.groupKey),
+        draft.when.date,
+        draft.groupKey
+      );
       return;
     }
     // The pair is one projection transition. When only the window changes, both name
     // the same (date, group), with `from` clearing the source window and `to` settling
     // the destination at post-move truth.
     applyPlacements([outcome.from, outcome.to]);
-    setEditing(null);
-    setDraft(null);
     toast("Serving corrected.");
   }
 
@@ -842,8 +920,7 @@ export default function FoodLogBar({
       event.date,
       event.groupKey
     );
-    invalidateServingBurst(mutationReceiptKey);
-    dismissToast(mutationReceiptKey);
+    const removalEpochs = beginServingMutations([mutationReceiptKey]);
     setRemovingId(event.id);
     const fd = new FormData();
     fd.set("event_id", String(event.id));
@@ -852,17 +929,27 @@ export default function FoodLogBar({
       outcome = await deleteFoodLogEvent(fd);
     } catch (err) {
       setRemovingId(null);
-      toast(
-        shouldQueueOffline(navigator.onLine !== false, err)
-          ? "You're offline — removing a serving needs a connection."
-          : "Couldn't remove that serving — try again.",
-        { tone: "error" }
-      );
+      if (areServingMutationsCurrent(removalEpochs))
+        toast(
+          shouldQueueOffline(navigator.onLine !== false, err)
+            ? "You're offline — removing a serving needs a connection."
+            : "Couldn't remove that serving — try again.",
+          { tone: "error" }
+        );
       return;
     }
     setRemovingId(null);
     if (!outcome.ok) {
-      toast(outcome.error, { tone: "error" });
+      if (areServingMutationsCurrent(removalEpochs))
+        toast(outcome.error, { tone: "error" });
+      return;
+    }
+    if (!areServingMutationsCurrent(removalEpochs)) {
+      void reconcileServingTruthIfIdle(
+        mutationReceiptKey,
+        event.date,
+        event.groupKey
+      );
       return;
     }
     // The authoritative post-write counts for the coordinate the serving vacated. A SET,
@@ -889,7 +976,16 @@ export default function FoodLogBar({
         label: "Undo",
         onClick: () => {
           void (async () => {
+            const restoreEpochs = beginServingMutations([receiptKey]);
             const restored = await undoDelete(undoId);
+            if (!areServingMutationsCurrent(restoreEpochs)) {
+              void reconcileServingTruthIfIdle(
+                receiptKey,
+                event.date,
+                event.groupKey
+              );
+              return;
+            }
             if (!restored.ok) {
               toast("Couldn’t undo — it may have expired.", {
                 tone: "error",
@@ -969,7 +1065,9 @@ export default function FoodLogBar({
     delta: 1 | -1,
     expectedServings?: number,
     inverseWriteKey?: string,
-    inverseSlot?: FoodSlot
+    inverseSlot?: FoodSlot,
+    expectedEventId?: number,
+    onMutationStarted?: (epoch: number) => void
   ): Promise<boolean> {
     const slug = group.slug;
     // WHERE the tap lands (#2269): an add with a statement in force files under the
@@ -985,37 +1083,21 @@ export default function FoodLogBar({
       slug
     );
     const receiptKey = foodServingToastKey(receiptProfileId, activeDate, slug);
+    let mutationEpoch: number;
     if (delta === -1) {
-      invalidateServingBurst(receiptKey);
+      mutationEpoch = invalidateServingBurst(receiptKey);
+      onMutationStarted?.(mutationEpoch);
       dismissToast(receiptKey);
     }
     const before: ServingCounts = {
-      day: countsByDateRef.current[activeDate]?.[slug] ?? 0,
-      meal: slotCountsByDateRef.current[activeDate]?.[filingSlot]?.[slug] ?? 0,
+      day: projectionRef.current.countsByDate[activeDate]?.[slug] ?? 0,
+      meal:
+        projectionRef.current.slotCountsByDate[activeDate]?.[filingSlot]?.[
+          slug
+        ] ?? 0,
     };
     const commit = (next: ServingCounts) => {
-      const currentDay = countsByDateRef.current[activeDate] ?? {};
-      countsByDateRef.current = {
-        ...countsByDateRef.current,
-        [activeDate]: { ...currentDay, [slug]: next.day },
-      };
-      const currentSlotDay = slotCountsByDateRef.current[activeDate] ?? {
-        Morning: {},
-        Midday: {},
-        Evening: {},
-      };
-      slotCountsByDateRef.current = {
-        ...slotCountsByDateRef.current,
-        [activeDate]: {
-          ...currentSlotDay,
-          [filingSlot]: {
-            ...(currentSlotDay[filingSlot] ?? {}),
-            [slug]: next.meal,
-          },
-        },
-      };
-      setCount(slug, () => next.day);
-      setSlotCount(filingSlot, slug, () => next.meal);
+      setServingCounts(activeDate, filingSlot, slug, () => next);
     };
     // Queue an ADD tap while offline (#1596): the captured slug + the active meal
     // window and day under the user's finger replay through the same write core on
@@ -1043,16 +1125,19 @@ export default function FoodLogBar({
       // The device can refuse the capture (#3038) — say so in the shared sentence
       // and report it, so the caller rolls the optimistic counts back.
       if (!kept) {
-        toast(OFFLINE_CAPTURE_REFUSED_MESSAGE, { tone: "error" });
+        if (isCurrentMutation())
+          toast(OFFLINE_CAPTURE_REFUSED_MESSAGE, { tone: "error" });
         return false;
       }
-      toast("Saved offline — will sync when you reconnect.");
+      if (isCurrentMutation())
+        toast("Saved offline — will sync when you reconnect.");
       return true;
     };
     const undoNeedsConnection = () => {
-      toast("You're offline — removing a serving needs a connection.", {
-        tone: "error",
-      });
+      if (isCurrentMutation())
+        toast("You're offline — removing a serving needs a connection.", {
+          tone: "error",
+        });
     };
     // Whether the tap reached a write at all, and what the write said — modeled so
     // the ledger sees exactly one settlement per tap. "refused" is the queue
@@ -1072,13 +1157,19 @@ export default function FoodLogBar({
       );
       servingBursts.current.set(receiptKey, begun.state);
       addTap = begun.tap;
+      mutationEpoch = addTap.epoch;
     }
+    const isCurrentMutation = () =>
+      isServingMutationCurrent(receiptKey, mutationEpoch);
+    const reconcileAfterStaleMutation = () => {
+      void reconcileServingTruthIfIdle(receiptKey, activeDate, slug);
+    };
     const addSettlementBox: { value: FoodServingBurstSettlement | null } = {
       value: null,
     };
-    const settleAddBurst = (outcome: {
-      ok: boolean;
-    }): FoodServingBurstSettlement | null => {
+    const settleAddBurst = (
+      outcome: { ok: true; eventId: number } | { ok: false }
+    ): FoodServingBurstSettlement | null => {
       if (!addTap) return null;
       const settled = settleFoodServingAdd(
         servingBursts.current.get(receiptKey) ?? emptyFoodServingBurst(),
@@ -1128,6 +1219,8 @@ export default function FoodLogBar({
         fd.set("meal_slot", filingSlot);
         if (expectedServings != null)
           fd.set("expected_servings", String(expectedServings));
+        if (expectedEventId != null)
+          fd.set("event_id", String(expectedEventId));
         if (activeProfileId != null)
           fd.set("profileId", String(activeProfileId));
         // The CHOICE, not an instant: online the server resolves it against its own clock
@@ -1150,15 +1243,35 @@ export default function FoodLogBar({
         }
         // Refused capture: queueOffline already said so; the counts roll back.
         if (tap.kind === "refused") {
-          settleAddBurst({ ok: false });
+          const settled = settleAddBurst({ ok: false });
+          if (!settled?.accepted || !isCurrentMutation())
+            return { kind: "keep" };
           return { kind: "rollback" };
         }
         if (tap.kind === "offline-undo") {
+          if (!isCurrentMutation()) return { kind: "keep" };
           undoNeedsConnection();
           return { kind: "rollback" };
         }
         const outcome = tap.outcome;
         if (outcome.ok) {
+          if (delta === 1) {
+            if (outcome.eventId == null) {
+              settleAddBurst({ ok: false });
+              return { kind: "keep" };
+            }
+            const settled = settleAddBurst({
+              ok: true,
+              eventId: outcome.eventId,
+            });
+            if (!settled?.accepted || !isCurrentMutation()) {
+              reconcileAfterStaleMutation();
+              return { kind: "keep" };
+            }
+          } else if (!isCurrentMutation()) {
+            reconcileAfterStaleMutation();
+            return { kind: "keep" };
+          }
           // The serving landed and the stated minute did not (#2296). The write is a
           // success, so this is a NOTICE on a normal toast — never an error tone that
           // would read as "your tap failed" for a row that is sitting right there. It
@@ -1188,8 +1301,6 @@ export default function FoodLogBar({
           }
           offerEndFast(outcome.endFastOffer);
           if (delta === 1) {
-            const settled = settleAddBurst({ ok: true });
-            if (!settled?.accepted) return { kind: "keep" };
             settleServing(coordinate);
             // Preserve every still-pending optimistic tap. The final response's
             // caller performs one authoritative read and reconciles the whole
@@ -1226,9 +1337,16 @@ export default function FoodLogBar({
           settleAddBurst({ ok: false });
           return { kind: "keep" };
         }
+        if (!isCurrentMutation()) {
+          reconcileAfterStaleMutation();
+          return { kind: "keep" };
+        }
         // Roll back this inverse and adopt the core's current authoritative total
         // when its guard refuses.
-        if (expectedServings != null && outcome.servings != null) {
+        if (
+          (expectedServings != null || expectedEventId != null) &&
+          outcome.servings != null
+        ) {
           const authoritative: ServingCounts = {
             day: outcome.servings,
             meal:
@@ -1238,7 +1356,7 @@ export default function FoodLogBar({
           };
           return { kind: "adopt", value: authoritative };
         }
-        if (expectedServings == null) {
+        if (expectedServings == null && expectedEventId == null) {
           toast(outcome.error || "Couldn't save that serving — try again.", {
             tone: "error",
           });
@@ -1246,10 +1364,19 @@ export default function FoodLogBar({
         return { kind: "rollback" };
       },
       onError: async (err) => {
+        if (!isCurrentMutation()) {
+          if (delta === 1) settleAddBurst({ ok: false });
+          reconcileAfterStaleMutation();
+          return { kind: "keep" };
+        }
         // Connection dropped mid-tap — queue an add instead of a false failure.
         if (shouldQueueOffline(navigator.onLine !== false, err)) {
           if (delta === 1) {
             const kept = await queueOffline();
+            if (!isCurrentMutation()) {
+              if (!kept) settleAddBurst({ ok: false });
+              return { kind: "keep" };
+            }
             if (kept) dropAddBurst();
             else settleAddBurst({ ok: false });
             return kept ? { kind: "keep" } : { kind: "rollback" };
@@ -1324,19 +1451,27 @@ export default function FoodLogBar({
             receipt.coordinate,
             ++servingInverseSequence.current
           );
+          let inverseEpoch: number | null = null;
           announceUndoable({
             ...feedback,
             profileId: receiptProfileScope.profileId,
             profileToken: receiptProfileScope.token,
             undo: {
               undoneMessage: "Serving undone.",
+              isCurrent: () =>
+                inverseEpoch != null &&
+                isServingMutationCurrent(feedback.key, inverseEpoch),
               run: async () =>
                 (await bump(
                   group,
                   -1,
-                  truth.servings,
+                  undefined,
                   inverseKey,
-                  receipt.mealSlot as FoodSlot
+                  receipt.mealSlot as FoodSlot,
+                  receipt.eventId,
+                  (epoch) => {
+                    inverseEpoch = epoch;
+                  }
                 ))
                   ? { ok: true }
                   : { ok: false, reason: "changed" },
@@ -1417,8 +1552,7 @@ export default function FoodLogBar({
     );
     const commit = (next: Record<string, ServingCounts>) => {
       for (const [slug, value] of Object.entries(next)) {
-        setCount(slug, () => value.day);
-        setSlotCount(window, slug, () => value.meal);
+        setServingCounts(activeDate, window, slug, () => value);
       }
     };
     await usualLedger.tap<UsualFoodResult>({

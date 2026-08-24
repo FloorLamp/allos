@@ -57,23 +57,33 @@ describe("foodServingFeedback", () => {
     // Natural response order: after three optimistic taps are already visible,
     // the first response knows only its own total. It must not publish a count
     // that would roll the UI 3→1 while the other taps are still pending.
-    const first = settleFoodServingAdd(state, morning.tap, { ok: true });
+    const first = settleFoodServingAdd(state, morning.tap, {
+      ok: true,
+      eventId: 11,
+    });
     expect(first.completed).toBe(false);
     expect(first.receipt).toBeUndefined();
 
-    const second = settleFoodServingAdd(first.state, evening.tap, { ok: true });
+    const second = settleFoodServingAdd(first.state, evening.tap, {
+      ok: true,
+      eventId: 12,
+    });
     expect(second.completed).toBe(false);
     expect(second.receipt).toBeUndefined();
 
     // A concurrent removal can make the final action's own result numerically
     // lower. The coordinator accepts only success/tap identity; response totals
     // never enter this protocol, and the caller performs one fresh read now.
-    const final = settleFoodServingAdd(second.state, midday.tap, { ok: true });
+    const final = settleFoodServingAdd(second.state, midday.tap, {
+      ok: true,
+      eventId: 13,
+    });
 
     expect(final.completed).toBe(true);
     expect(final.receipt).toEqual({
       coordinate: "midday",
       mealSlot: "Midday",
+      eventId: 13,
     });
   });
 
@@ -84,10 +94,38 @@ describe("foodServingFeedback", () => {
       "Morning"
     );
     const afterRemoval = invalidateFoodServingBurst(begun.state);
-    const stale = settleFoodServingAdd(afterRemoval, begun.tap, { ok: true });
+    const stale = settleFoodServingAdd(afterRemoval, begun.tap, {
+      ok: true,
+      eventId: 11,
+    });
     expect(stale.accepted).toBe(false);
     expect(stale.completed).toBe(false);
     expect(stale.receipt).toBeUndefined();
+  });
+
+  it("advances the mutation epoch for a later burst and keeps tap-ordered event identity", () => {
+    const first = beginFoodServingAdd(
+      emptyFoodServingBurst(),
+      "morning",
+      "Morning"
+    );
+    const second = beginFoodServingAdd(first.state, "evening", "Evening");
+    const laterTapFirst = settleFoodServingAdd(second.state, second.tap, {
+      ok: true,
+      eventId: 32,
+    });
+    const completed = settleFoodServingAdd(laterTapFirst.state, first.tap, {
+      ok: true,
+      eventId: 31,
+    });
+    expect(completed.receipt).toEqual({
+      coordinate: "evening",
+      mealSlot: "Evening",
+      eventId: 32,
+    });
+
+    const laterBurst = beginFoodServingAdd(completed.state, "midday", "Midday");
+    expect(laterBurst.tap.epoch).toBeGreaterThan(first.tap.epoch);
   });
 
   it("keeps successful receipt and failure channel when the final tap fails", () => {
@@ -95,13 +133,17 @@ describe("foodServingFeedback", () => {
     const first = beginFoodServingAdd(state, "morning", "Morning");
     state = first.state;
     const second = beginFoodServingAdd(state, "evening", "Evening");
-    const success = settleFoodServingAdd(second.state, first.tap, { ok: true });
+    const success = settleFoodServingAdd(second.state, first.tap, {
+      ok: true,
+      eventId: 21,
+    });
     const failure = settleFoodServingAdd(success.state, second.tap, {
       ok: false,
     });
     expect(failure.receipt).toEqual({
       coordinate: "morning",
       mealSlot: "Morning",
+      eventId: 21,
     });
     expect(failure.completed).toBe(true);
     expect(failure.reportFailure).toBe(true);

@@ -15,6 +15,7 @@ import {
   foodServingTruthCore,
   logFoodServingCore,
   undoFoodServingCore,
+  updateFoodLogEventCore,
 } from "@/lib/food-log-write";
 import { getFoodBarOrder, getFoodMealDays } from "@/lib/queries";
 
@@ -29,10 +30,11 @@ function makeProfile(name: string): { profileId: number; anchor: string } {
 function events(profileId: number) {
   return db
     .prepare(
-      `SELECT group_key, date, recorded_at, meal_slot FROM food_log_events
+      `SELECT id, group_key, date, recorded_at, meal_slot FROM food_log_events
         WHERE profile_id = ? ORDER BY id`
     )
     .all(profileId) as {
+    id: number;
     group_key: string;
     date: string;
     recorded_at: string;
@@ -48,6 +50,12 @@ function counter(profileId: number, group: string, date: string): number {
     )
     .get(profileId, date, group) as { servings: number } | undefined;
   return row?.servings ?? 0;
+}
+
+function loggedEventId(outcome: ReturnType<typeof logFoodServingCore>): number {
+  if (outcome.kind !== "logged" || outcome.eventId == null)
+    throw new Error("expected serving write to return its inserted event id");
+  return outcome.eventId;
 }
 
 describe("food_log_events ledger atomicity (#950)", () => {
@@ -129,6 +137,78 @@ describe("food_log_events ledger atomicity (#950)", () => {
       undoFoodServingCore(profileId, "cruciferous", anchor, undefined, 2)
     ).toMatchObject({ kind: "undone", servings: 1 });
     expect(events(profileId)).toHaveLength(1);
+  });
+
+  it("binds a toast inverse to the exact inserted event across count-preserving changes", () => {
+    const { profileId, anchor } = makeProfile("food-events-exact-undo");
+    const logged = logFoodServingCore(
+      profileId,
+      "nuts_seeds",
+      anchor,
+      "quick-log",
+      `${anchor}T08:00:00Z`,
+      "Morning"
+    );
+    const eventId = loggedEventId(logged);
+
+    // Moving the originating row preserves the daily total. A count-only guard
+    // used to report success without removing anything from Morning.
+    expect(
+      updateFoodLogEventCore(profileId, eventId, {
+        mealSlot: "Evening",
+      })
+    ).toMatchObject({ kind: "updated" });
+    expect(
+      undoFoodServingCore(
+        profileId,
+        "nuts_seeds",
+        anchor,
+        "Morning",
+        undefined,
+        eventId
+      )
+    ).toEqual({
+      kind: "changed",
+      servings: 1,
+      mealSlot: "Morning",
+      mealServings: 0,
+    });
+    expect(counter(profileId, "nuts_seeds", anchor)).toBe(1);
+    expect(events(profileId)).toHaveLength(1);
+  });
+
+  it("deletes the named event rather than a newer same-slot replacement", () => {
+    const { profileId, anchor } = makeProfile("food-events-named-undo");
+    const first = logFoodServingCore(
+      profileId,
+      "berries",
+      anchor,
+      "quick-log",
+      `${anchor}T08:00:00Z`,
+      "Morning"
+    );
+    const second = logFoodServingCore(
+      profileId,
+      "berries",
+      anchor,
+      "quick-log",
+      `${anchor}T08:01:00Z`,
+      "Morning"
+    );
+    const firstEventId = loggedEventId(first);
+    const secondEventId = loggedEventId(second);
+
+    expect(
+      undoFoodServingCore(
+        profileId,
+        "berries",
+        anchor,
+        "Morning",
+        undefined,
+        firstEventId
+      )
+    ).toMatchObject({ kind: "undone", servings: 1, mealServings: 1 });
+    expect(events(profileId).map((event) => event.id)).toEqual([secondEventId]);
   });
 
   it("returns the current day and meal truth when a guarded undo is stale", () => {

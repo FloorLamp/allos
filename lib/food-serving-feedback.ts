@@ -45,6 +45,7 @@ export interface FoodServingBurstState {
   nextTapId: number;
   pending: ReadonlyMap<number, FoodServingAddTap>;
   latestSuccessfulTap: FoodServingAddTap | null;
+  latestSuccessfulEventId: number | null;
   successes: number;
   failures: number;
 }
@@ -52,6 +53,7 @@ export interface FoodServingBurstState {
 export interface FoodServingBurstReceipt {
   coordinate: string;
   mealSlot: string;
+  eventId: number;
 }
 
 export interface FoodServingBurstSettlement {
@@ -71,6 +73,7 @@ export function emptyFoodServingBurst(
     nextTapId,
     pending: new Map(),
     latestSuccessfulTap: null,
+    latestSuccessfulEventId: null,
     successes: 0,
     failures: 0,
   };
@@ -87,9 +90,12 @@ export function beginFoodServingAdd(
   mealSlot: string
 ): { state: FoodServingBurstState; tap: FoodServingAddTap } {
   const starting = state.pending.size === 0;
+  // A completed burst followed by a later add is a new coordinate mutation.
+  // Rapid taps that are pending together intentionally share one epoch.
+  const epoch = starting ? state.epoch + 1 : state.epoch;
   const tap: FoodServingAddTap = {
     id: state.nextTapId + 1,
-    epoch: state.epoch,
+    epoch,
     coordinate,
     mealSlot,
   };
@@ -98,9 +104,11 @@ export function beginFoodServingAdd(
     tap,
     state: {
       ...state,
+      epoch,
       nextTapId: tap.id,
       pending,
       latestSuccessfulTap: starting ? null : state.latestSuccessfulTap,
+      latestSuccessfulEventId: starting ? null : state.latestSuccessfulEventId,
       successes: starting ? 0 : state.successes,
       failures: starting ? 0 : state.failures,
     },
@@ -110,7 +118,7 @@ export function beginFoodServingAdd(
 export function settleFoodServingAdd(
   state: FoodServingBurstState,
   tap: FoodServingAddTap,
-  outcome: { ok: boolean }
+  outcome: { ok: true; eventId: number } | { ok: false }
 ): FoodServingBurstSettlement {
   if (tap.epoch !== state.epoch || !state.pending.has(tap.id)) {
     return {
@@ -123,21 +131,28 @@ export function settleFoodServingAdd(
   const pending = new Map(state.pending);
   pending.delete(tap.id);
   let latestSuccessfulTap = state.latestSuccessfulTap;
+  let latestSuccessfulEventId = state.latestSuccessfulEventId;
   let successes = state.successes;
   let failures = state.failures;
   if (outcome.ok) {
     successes += 1;
-    if (!latestSuccessfulTap || tap.id > latestSuccessfulTap.id)
+    if (!latestSuccessfulTap || tap.id > latestSuccessfulTap.id) {
       latestSuccessfulTap = tap;
+      latestSuccessfulEventId = outcome.eventId;
+    }
   } else {
     failures += 1;
   }
   const completed = pending.size === 0;
   const receipt =
-    completed && successes > 0 && latestSuccessfulTap
+    completed &&
+    successes > 0 &&
+    latestSuccessfulTap &&
+    latestSuccessfulEventId != null
       ? {
           coordinate: latestSuccessfulTap.coordinate,
           mealSlot: latestSuccessfulTap.mealSlot,
+          eventId: latestSuccessfulEventId,
         }
       : undefined;
   const reportFailure = completed && failures > 0;
@@ -147,6 +162,7 @@ export function settleFoodServingAdd(
         ...state,
         pending,
         latestSuccessfulTap,
+        latestSuccessfulEventId,
         successes,
         failures,
       };

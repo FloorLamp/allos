@@ -42,6 +42,9 @@ import { formError, formOk, type FormResult } from "@/lib/types";
 export type FoodLogResult =
   | {
       ok: true;
+      // Present for an add. Its Undo binds to this exact ledger row instead of
+      // authenticating by a daily count that another mutation can preserve.
+      eventId?: number;
       servings: number;
       mealSlot?: FoodSlot;
       mealServings?: number;
@@ -238,6 +241,7 @@ export async function logFoodServing(
   revalidateRoute("/");
   return {
     ok: true,
+    eventId: outcome.eventId,
     servings: outcome.servings,
     ...(outcome.mealSlot ? { mealSlot: outcome.mealSlot } : {}),
     ...(outcome.mealServings != null
@@ -279,12 +283,20 @@ export async function undoFoodServing(
     (!Number.isInteger(expectedServings) || expectedServings < 1)
   )
     return formError("That serving count has changed.");
+  const rawEventId = String(formData.get("event_id") ?? "").trim();
+  const expectedEventId = rawEventId === "" ? undefined : Number(rawEventId);
+  if (
+    expectedEventId !== undefined &&
+    (!Number.isSafeInteger(expectedEventId) || expectedEventId < 1)
+  )
+    return formError("That serving has changed.");
   const outcome = undoFoodServingCore(
     profileId,
     fields.group,
     fields.date,
     fields.mealSlot,
-    expectedServings
+    expectedServings,
+    expectedEventId
   );
   if (outcome.kind === "unknown-group") return formError("Unknown food group.");
   if (outcome.kind === "changed")

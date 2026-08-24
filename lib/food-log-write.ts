@@ -68,6 +68,9 @@ export interface FoodWriteOrigin {
 export type FoodLogOutcome =
   | {
       kind: "logged";
+      // Exact identity of the ledger row appended for this tap. A toast inverse
+      // deletes this row, never whichever event merely happens to be newest later.
+      eventId: number;
       servings: number;
       mealSlot?: FoodSlot;
       mealServings?: number;
@@ -204,24 +207,27 @@ export function logFoodServingCore(
     // ledger see one consistent state, so a reader can never observe a bumped count
     // with no matching event (or vice versa). Additive — the counter row above is
     // byte-identical to the pre-ledger write.
-    db.prepare(
-      `INSERT INTO food_log_events
+    const inserted = db
+      .prepare(
+        `INSERT INTO food_log_events
          (profile_id, group_key, date, recorded_at, meal_slot, occurred_at, time_source,
           notify_message_id, logged_via)
        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)`
-    ).run(
-      profileId,
-      slug,
-      date,
-      loggedAt,
-      storedSlot,
-      time?.eatenAt ?? null,
-      time?.source ?? null,
-      origin?.notifyMessageId ?? null,
-      loggedVia
-    );
+      )
+      .run(
+        profileId,
+        slug,
+        date,
+        loggedAt,
+        storedSlot,
+        time?.eatenAt ?? null,
+        time?.source ?? null,
+        origin?.notifyMessageId ?? null,
+        loggedVia
+      );
     return {
       kind: "logged",
+      eventId: Number(inserted.lastInsertRowid),
       servings,
       ...(placedSlot ? { mealSlot: placedSlot } : {}),
       ...(placedSlot
@@ -246,14 +252,21 @@ export function undoFoodServingCore(
   // under the same write lock as the decrement so a newer tap cannot be removed
   // through an older toast. Plain minus controls omit it and keep their existing
   // "remove the newest visible serving" behavior.
-  expectedServings?: number
+  expectedServings?: number,
+  // A keyed toast names the exact event its add created. Generic minus controls
+  // omit this and retain their established "newest in this meal" behavior.
+  expectedEventId?: number
 ): FoodUndoOutcome {
   // Canonicalize so undo targets the same row a canonical log wrote (#883).
   const slug = canonicalFoodGroup(group);
   if (slug === null) return { kind: "unknown-group" };
   return writeTx(() => {
     const current = foodDayCounter.total(profileId, date, [slug]);
-    if (expectedServings != null && current !== expectedServings) {
+    if (
+      expectedEventId == null &&
+      expectedServings != null &&
+      current !== expectedServings
+    ) {
       return {
         kind: "changed",
         servings: current,
@@ -267,7 +280,7 @@ export function undoFoodServingCore(
     }
     if (current <= 0)
       return {
-        kind: "undone",
+        kind: expectedEventId == null ? "undone" : "changed",
         servings: 0,
         ...(mealSlot ? { mealSlot, mealServings: 0 } : {}),
       };
@@ -284,17 +297,46 @@ export function undoFoodServingCore(
       meal_slot: FoodSlot | null;
       occurred_at: string | null;
     }[];
-    const event = mealSlot
-      ? candidates.find(
-          (candidate) =>
-            foodSlotForProfileEvent(
-              profileId,
-              candidate.recorded_at,
-              candidate.meal_slot,
-              candidate.occurred_at
-            ) === mealSlot
-        )
-      : candidates[0];
+    const event =
+      expectedEventId != null
+        ? candidates.find((candidate) => candidate.id === expectedEventId)
+        : mealSlot
+          ? candidates.find(
+              (candidate) =>
+                foodSlotForProfileEvent(
+                  profileId,
+                  candidate.recorded_at,
+                  candidate.meal_slot,
+                  candidate.occurred_at
+                ) === mealSlot
+            )
+          : candidates[0];
+
+    // An exact inverse refuses if the originating row moved, was removed, or no
+    // longer belongs to the meal the receipt named. Count equality cannot prove
+    // any of those facts under a count-preserving correction/replacement.
+    if (
+      expectedEventId != null &&
+      (!event ||
+        (mealSlot != null &&
+          foodSlotForProfileEvent(
+            profileId,
+            event.recorded_at,
+            event.meal_slot,
+            event.occurred_at
+          ) !== mealSlot))
+    ) {
+      return {
+        kind: "changed",
+        servings: current,
+        ...(mealSlot
+          ? {
+              mealSlot,
+              mealServings: mealServingCount(profileId, slug, date, mealSlot),
+            }
+          : {}),
+      };
+    }
 
     // A slot-scoped undo may only remove a serving visible in that meal. This keeps
     // a Morning minus from silently deleting Dinner. Legacy counter-only history has

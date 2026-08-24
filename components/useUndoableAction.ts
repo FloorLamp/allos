@@ -74,6 +74,7 @@ export function useUndoableAction(): (announcement: UndoAnnouncement) => void {
                 // inverse did or did not land — say so instead of claiming either.
                 outcome = { ok: false, reason: "failed" };
               }
+              if (offer.isCurrent && !offer.isCurrent()) return;
               // A keyed cumulative lifecycle stays in ONE snackbar slot all the
               // way through its inverse. On phones, posting this result keyless
               // would put it at the head of the one-at-a-time queue and leave a
