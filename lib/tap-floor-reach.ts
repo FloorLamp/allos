@@ -817,8 +817,8 @@ function objectEntries(expression: string): string[] | null {
   return entries;
 }
 
-/** The value after a top-level object-property colon, or null. */
-function objectEntryValue(entry: string): string | null {
+/** The top-level object-property colon, or -1 for a shorthand entry. */
+function objectEntryColon(entry: string): number {
   const stack: string[] = [];
   for (let i = 0; i < entry.length; i += 1) {
     const c = entry[i];
@@ -833,9 +833,57 @@ function objectEntryValue(entry: string): string | null {
     }
     if (c === "(" || c === "[" || c === "{") stack.push(c);
     else if (c === ")" || c === "]" || c === "}") stack.pop();
-    else if (c === ":" && stack.length === 0) return entry.slice(i + 1).trim();
+    else if (c === ":" && stack.length === 0) return i;
   }
+  return -1;
+}
+
+/** The value after a top-level object-property colon, or null. */
+function objectEntryValue(entry: string): string | null {
+  const colon = objectEntryColon(entry);
+  return colon < 0 ? null : entry.slice(colon + 1).trim();
+}
+
+/** A literal expression that can name a computed object property. */
+function staticComputedObjectKey(expression: string): string | null {
+  const text = expression.trim();
+  if (
+    text.length >= 2 &&
+    (text[0] === '"' || text[0] === "'") &&
+    text.at(-1) === text[0]
+  )
+    return text.slice(1, -1);
   return null;
+}
+
+/** A statically named object key, including the computed form `["key"]`. */
+function staticObjectKey(key: string): string | null {
+  const text = key.trim();
+  if (/^[A-Za-z_$][\w$]*$/.test(text)) return text;
+  const literal = staticComputedObjectKey(text);
+  if (literal !== null) return literal;
+  if (text.startsWith("[") && closingBracket(text, 0) === text.length - 1)
+    return staticComputedObjectKey(text.slice(1, -1));
+  return null;
+}
+
+/**
+ * One statically selected property of an object literal. Unknown computed keys
+ * and spreads refuse resolution because either could own the requested key.
+ */
+function staticObjectProperty(expression: string, key: string): string | null {
+  const entries = objectEntries(expression);
+  if (entries === null) return null;
+  let selected: string | null = null;
+  for (const entry of entries) {
+    if (entry.startsWith("...")) return null;
+    const colon = objectEntryColon(entry);
+    const value = objectEntryValue(entry);
+    const name = staticObjectKey(colon < 0 ? entry : entry.slice(0, colon));
+    if (name === null) return null;
+    if (name === key) selected = value ?? name;
+  }
+  return selected;
 }
 
 /** Split a comma-separated parameter or argument list at bracket depth zero. */
@@ -964,13 +1012,22 @@ function substituteOnce(
       replacement = `(${body})`;
       end = shut + 1;
     } else if (next.startsWith("[") || next.startsWith(".")) {
-      const values = objectValues(value);
-      if (values === null) continue;
       const shut = next.startsWith("[")
         ? closingBracket(expression, end + gap)
         : -1;
       if (next.startsWith("[") && shut < 0) continue;
-      replacement = values.map((v) => `(${v})`).join(" + ");
+      const member = next.startsWith("[")
+        ? staticComputedObjectKey(expression.slice(end + gap + 1, shut))
+        : (/^\.([\w$]+)/.exec(next)?.[1] ?? null);
+      if (member !== null) {
+        const selected = staticObjectProperty(value, member);
+        if (selected === null) continue;
+        replacement = `(${selected})`;
+      } else {
+        const values = objectValues(value);
+        if (values === null) continue;
+        replacement = values.map((v) => `(${v})`).join(" + ");
+      }
       end = next.startsWith("[")
         ? shut + 1
         : end + gap + /^\.[\w$]*/.exec(next)![0].length;
@@ -1360,11 +1417,8 @@ function spreadClassNameExpressions(
       continue;
     }
     const colonValue = objectEntryValue(entry);
-    const key = (
-      colonValue === null ? entry : entry.slice(0, entry.indexOf(":"))
-    )
-      .trim()
-      .replace(/^(?:"|')|(?:"|')$/g, "");
+    const colon = objectEntryColon(entry);
+    const key = staticObjectKey(colon < 0 ? entry : entry.slice(0, colon));
     if (key === "className") values.push(colonValue ?? "className");
   }
   return values;
