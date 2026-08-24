@@ -266,17 +266,36 @@ function crossProfileSourceFiles(): { rel: string; text: string }[] {
 // ("https://…") survive.
 function stripComments(text: string): string {
   return text
-    .replace(/\/\*[\s\S]*?\*\//g, (comment) => comment.replace(/[^\r\n]/g, " "))
+    .replace(
+      /(^|[\s{(;,=:])\/\*[\s\S]*?\*\//gm,
+      (match: string, prefix: string) =>
+        prefix + match.slice(prefix.length).replace(/[^\r\n]/g, " ")
+    )
     .replace(/(^|[^:])\/\/.*$/gm, "$1");
 }
 
-// JSX often spells an intentional text-space as {" "}. Replace that expression
-// with whitespace while preserving its exact byte/newline footprint, so rendered
-// words join for matching without moving a later offender's reported source line.
-function normalizeJsxWhitespaceExpressions(text: string): string {
-  return text.replace(/\{\s*(["'`])([ \t\r\n]+)\1\s*\}/g, (expression) =>
-    expression.replace(/[^\r\n]/g, " ")
-  );
+// JSX has two ordinary source spellings for a rendered space that a text regex
+// cannot see: an entity (`&nbsp;`) and a whitespace-only expression (`{" "}` or
+// `{"\u0020"}`). Blank each spelling byte-for-byte while retaining CR/LF, so the
+// phrase becomes matchable without moving its source line or later offsets.
+function normalizeRenderedWhitespace(text: string): string {
+  return text
+    .replace(
+      /\{[ \t\r\n]*\}/g,
+      (expression: string, offset: number, source: string) => {
+        const before = source[offset - 1] ?? "";
+        const after = source[offset + expression.length] ?? "";
+        // A stripped JSX comment contributes no text of its own. Only whitespace
+        // written beside the expression creates a rendered word boundary.
+        const hasRenderedBoundary = /[ \t]/.test(before) || /[ \t]/.test(after);
+        return expression.replace(/[^\r\n]/g, hasRenderedBoundary ? " " : "_");
+      }
+    )
+    .replace(/&nbsp;/gi, (entity) => " ".repeat(entity.length))
+    .replace(
+      /\{\s*(["'`])(?:(?:[ \t\r\n]+)|(?:\\(?:[tnr]|u(?:0009|000a|000d|0020|00a0)|x(?:09|0a|0d|20))))+\1\s*\}/gi,
+      (expression) => expression.replace(/[^\r\n]/g, " ")
+    );
 }
 
 // A line is a non-user-facing context (internal logging / thrown error / import) —
@@ -321,7 +340,7 @@ function crossProfileVoiceViolations(rel: string, text: string): string[] {
 function disclaimerCopyViolations(rel: string, text: string): string[] {
   if (DISCLAIMER_COPY_ALLOW.has(rel)) return [];
 
-  const code = normalizeJsxWhitespaceExpressions(stripComments(text));
+  const code = normalizeRenderedWhitespace(stripComments(text));
   const violations = new Set<string>();
   for (const phrasing of DISCLAIMER_PHRASINGS) {
     const flags = `${phrasing.flags.replace(/g/g, "")}g`;
@@ -453,11 +472,46 @@ describe("copy-lint: user-facing tone standard (issue #945)", () => {
     ]);
   });
 
+  it("does not mistake a MIME glob for the start of a block comment", () => {
+    const sample = [
+      'const accept = "image/*";',
+      "<p>Consult a clinician.</p>",
+      "{/* a real JSX comment */}",
+    ].join("\n");
+    expect(disclaimerCopyViolations("synthetic.tsx", sample)).toEqual([
+      "synthetic.tsx:2 — disclaimer prose in: <p>Consult a clinician.</p>",
+    ]);
+  });
+
   it("detects disclaimer prose split by a JSX whitespace expression", () => {
     const sample = '<p>Informational{" "}only.</p>';
     expect(disclaimerCopyViolations("synthetic.tsx", sample)).toEqual([
       "synthetic.tsx:1 — disclaimer prose in: <p>Informational only.</p>",
     ]);
+  });
+
+  it("detects adjacent rendered-whitespace forms without moving their source lines", () => {
+    const samples = [
+      "<p>Informational {/* design note */} only.</p>",
+      "<p>Informational&nbsp;only.</p>",
+      '<p>Informational{"\\u0020"}only.</p>',
+    ];
+    for (const sample of samples) {
+      expect(disclaimerCopyViolations("synthetic.tsx", sample)).toEqual([
+        "synthetic.tsx:1 — disclaimer prose in: <p>Informational only.</p>",
+      ]);
+    }
+  });
+
+  it("stays quiet on non-whitespace JSX joins, entities, expressions, and comments", () => {
+    const sample = [
+      "<p>Informational{/* no rendered space */}only.</p>",
+      "<p>Informational&copy;only.</p>",
+      '<p>Informational{"x"}only.</p>',
+      "// Informational&nbsp;only.",
+      "{/* Informational only. Consult a clinician. */}",
+    ].join("\n");
+    expect(disclaimerCopyViolations("synthetic.tsx", sample)).toEqual([]);
   });
 
   it("keeps the migrated sites in the scan, outside the allowlist, with canonical links where required", () => {
