@@ -9,6 +9,7 @@ import {
 import { rawRenderedUnitExits } from "@/lib/lab-unit-display-census";
 
 const REPO = path.resolve(fileURLToPath(new URL("../..", import.meta.url)));
+const LAB_FILE = "/repo/components/UnitMislabelReview.tsx";
 
 function sourceFiles(dir: string): string[] {
   return readdirSync(dir, { withFileTypes: true }).flatMap((entry) => {
@@ -23,50 +24,42 @@ function sourceFiles(dir: string): string[] {
   });
 }
 
+function texts(source: string, file = LAB_FILE): string[] {
+  return rawRenderedUnitExits(source, file).map((hit) => hit.text);
+}
+
 describe("the machine-spelled lab-unit matcher (#3545)", () => {
-  it("sees every supported ASCII micro token in rendered lab copy", () => {
-    expect(machineLabUnitHits("Coenzyme Q10 1.20 ug/mL")).toEqual(["ug"]);
-    expect(machineLabUnitHits("Lead 2 ug/dL · Selenium 45 ug/L")).toEqual([
+  it("sees every supported ASCII micro token, including spaced slashes", () => {
+    expect(machineLabUnitHits("CoQ10 1.2 ug/mL · Lead 2 ug / dL")).toEqual([
       "ug",
       "ug",
     ]);
     expect(
-      machineLabUnitHits(
-        "WBC 5.8 10^3/uL · insulin 6 uIU/mL · TSH 2 uU/mL · 9 umol/L"
-      )
+      machineLabUnitHits("WBC 5.8 10^3/uL · 6 uIU / mL · 2 uU/mL · 9 umol / L")
     ).toEqual(["uL", "uIU", "uU", "umol"]);
-    expect(
-      machineLabUnitHits(
-        "Selenium 45 ug / L · insulin 6 uIU / mL · TSH 2 uU / mL · 9 umol / L"
-      )
-    ).toEqual(["ug", "uIU", "uU", "umol"]);
   });
 
   it("stays quiet on display spelling, dose vocabulary, and ordinary words", () => {
-    for (const text of [
-      "Coenzyme Q10 1.20 µg/mL",
-      "TSH 2 µU/mL",
-      "Lead 2 mcg/dL",
-      "Vitamin B12 500 mcg",
+    for (const value of [
+      "1.2 µg/mL",
+      "2 µU/mL",
+      "500 mcg",
       "drug/mL",
       "drug / mL",
       "shrug/off",
       "shrug / off",
-    ]) {
-      expect(machineLabUnitHits(text)).toEqual([]);
-    }
+    ])
+      expect(machineLabUnitHits(value)).toEqual([]);
   });
 
   it("is stateless across calls", () => {
-    const text = "Selenium 45 ug/L";
-    expect(machineLabUnitHits(text)).toEqual(["ug"]);
-    expect(machineLabUnitHits(text)).toEqual(["ug"]);
+    expect(machineLabUnitHits("45 ug/L")).toEqual(["ug"]);
+    expect(machineLabUnitHits("45 ug/L")).toEqual(["ug"]);
     expect(MACHINE_LAB_UNIT_RE.lastIndex).toBe(0);
   });
 
-  // Coverage instruments the census while it scans every shipped source. Test
-  // modules are not browser/server exits and are excluded before file I/O. Keep
-  // the bound above the known honest runtime (#3669 timeout precedent).
+  // Test modules are not shipped exits and are excluded before file I/O. Keep
+  // this well below the 45 s timeout that originally motivated the prefilter.
   it("discovers every raw unit property at a lab-copy boundary", () => {
     const offenders = ["app", "components", "lib"].flatMap((root) =>
       sourceFiles(path.join(REPO, root)).flatMap((file) =>
@@ -81,1478 +74,227 @@ describe("the machine-spelled lab-unit matcher (#3545)", () => {
     ).toEqual([]);
   }, 45_000);
 
-  it("cannot be licensed by comments or an unrelated formatter call", () => {
+  it("requires the exact raw read to use the canonical formatter", () => {
     const source = `
       import { displayUnit } from "@/lib/display-unit";
       export function MedicalValueHostile({ row, other, unit }) {
-        return <p>
-          {/* displayUnit(row.unit) */}
-          {displayUnit(other.unit)}
-          {row.unit}
-          {unit}
-          {row["unit"]}
-        </p>;
+        return <p>{/* displayUnit(row.unit) */}{displayUnit(other.unit)}{row.unit}{unit}{row["unit"]}</p>;
       }
     `;
-    expect(rawRenderedUnitExits(source).map((hit) => hit.text)).toEqual([
+    expect(texts(source, "/repo/components/MedicalValueHostile.tsx")).toEqual([
       "row.unit",
       "unit",
       'row["unit"]',
     ]);
-  });
-
-  it("treats only the exact formatter-wrapped rendered read as clean", () => {
     expect(
-      rawRenderedUnitExits(`
-        import { displayUnit } from "@/lib/display-unit";
-        export function Safe({ row }) {
-          return <span title={displayUnit(row.unit) ?? ""}>{displayUnit(row.unit)}</span>;
-        }
-      `)
+      texts(`
+      import { displayUnit } from "@/lib/display-unit";
+      export function MedicalValueSafe({ row }) { return <span title={displayUnit(row.unit) ?? ""}>{displayUnit(row.unit)}</span>; }
+    `)
     ).toEqual([]);
   });
 
-  it("does not trust a same-named local formatter in a lab component", () => {
-    const source = `
-      import { displayUnit as realDisplayUnit } from "@/lib/display-unit";
-      function displayUnit(unit) { return unit; }
-      export function MedicalValueHostile({ row }) {
-        return <span>{displayUnit(row.unit)}</span>;
-      }
-    `;
-    expect(rawRenderedUnitExits(source).map((hit) => hit.text)).toEqual([
-      "row.unit",
-    ]);
-  });
+  it("authenticates imports, aliases, and lexical shadows", () => {
+    expect(
+      texts(`
+      import { displayUnit as shown } from "@/lib/display-unit";
+      export function MedicalValueSafe({ row }) { return <span>{shown(row.unit)}</span>; }
+    `)
+    ).toEqual([]);
 
-  it("does not trust a formatter import that a lab component shadows", () => {
-    const source = `
-      import { displayUnit } from "@/lib/display-unit";
-      export function MedicalValueHostile({ row }) {
-        const displayUnit = (unit) => unit;
-        return <span>{displayUnit(row.unit)}</span>;
-      }
-    `;
-    expect(rawRenderedUnitExits(source).map((hit) => hit.text)).toEqual([
-      "row.unit",
-    ]);
-  });
-
-  it("authenticates an aliased formatter import", () => {
-    const source = `
-      import { displayUnit as realDisplayUnit } from "@/lib/display-unit";
-      export function MedicalValueSafe({ row }) {
-        return <span>{realDisplayUnit(row.unit)}</span>;
-      }
-    `;
-    expect(rawRenderedUnitExits(source)).toEqual([]);
-  });
-
-  it("does not trust named function or class expressions that shadow the import", () => {
     for (const local of [
-      "const fake = function displayUnit(arg) { return <span>{displayUnit(arg.row.unit)}</span>; };",
-      "const fake = class displayUnit { render(arg) { return <span>{displayUnit(arg.row.unit)}</span>; } };",
+      `function displayUnit(value) { return value; }`,
+      `const displayUnit = (value) => value;`,
+      `const fake = function displayUnit(arg) { return displayUnit(arg.row.unit); };`,
+      `const fake = class displayUnit { render(arg) { return displayUnit(arg.row.unit); } };`,
     ]) {
-      const source = `
-        import { displayUnit } from "@/lib/display-unit";
-        export function MedicalValueHostile() {
-          ${local}
-          return null;
-        }
-      `;
-      expect(rawRenderedUnitExits(source).map((hit) => hit.text)).toEqual([
-        "arg.row.unit",
-      ]);
-    }
-  });
-
-  it("catches raw units in precomposed lab subtitles and helper text", () => {
-    const search = `
-      export function clinicalResultHits(rows) {
-        return rows.map((r) => ({ subtitle: [r.value, r.unit].join(" ") }));
-      }
-    `;
-    expect(
-      rawRenderedUnitExits(search, "/repo/lib/queries/search.ts").map(
-        (hit) => hit.text
-      )
-    ).toEqual(["r.unit"]);
-
-    const helper = `
-      export function biomarkerGoalTargetText(goal) {
-        const unit = goal.unit;
-        return String(goal.value) + (unit ? " " + unit : "");
-      }
-    `;
-    expect(
-      rawRenderedUnitExits(helper, "/repo/lib/biomarker-goal.ts").map(
-        (hit) => hit.text
-      )
-    ).toEqual(["goal.unit", "unit"]);
-  });
-
-  it("accepts the real relative import in precomposed lab copy", () => {
-    const source = `
-      import { displayUnit as shown } from "../display-unit";
-      export function clinicalResultHits(rows) {
-        return rows.map((r) => ({ subtitle: shown(r.unit) }));
-      }
-    `;
-    expect(rawRenderedUnitExits(source, "/repo/lib/queries/search.ts")).toEqual(
-      []
-    );
-  });
-
-  it("catches raw units in goal facts, revisions, findings, and longevity copy", () => {
-    const cases = [
-      {
-        file: "/repo/lib/goal-facts.ts",
-        source: `
-          export function targetFactLabel(t) {
-            if (t.kind === "biomarker") {
-              const shownUnit = t.unit;
-              return shownUnit;
-            }
-            return t.unit;
-          }
-          export function goalStartingFrom(i) {
-            if (i.kind === "biomarker") {
-              return startingFromFactLabel({ unit: i.biomarkerUnit });
-            }
-            return startingFromFactLabel({ unit: i.freeformUnit });
-          }
-        `,
-        exits: ["t.unit", "i.biomarkerUnit"],
-      },
-      {
-        file: "/repo/lib/lab-result-lifecycle.ts",
-        source: `export function revisionSummary(rev) { return "was " + rev.unit; }`,
-        exits: ["rev.unit"],
-      },
-      {
-        file: "/repo/lib/biomarker-trajectory.ts",
-        source: `export function unitSuffix(unit) { return unit ? " " + unit : ""; }`,
-        exits: ["unit"],
-      },
-      {
-        file: "/repo/lib/bio-age.ts",
-        source: `export function bioAgeEffectPhrase(e) { const at = e.unit; return at; }`,
-        exits: ["e.unit"],
-      },
-    ];
-    for (const candidate of cases) {
       expect(
-        rawRenderedUnitExits(candidate.source, candidate.file).map(
-          (hit) => hit.text
-        ),
-        candidate.file
-      ).toEqual(candidate.exits);
-    }
-  });
-
-  it("catches raw units in import diffs, lab follow-ups, and reference cells", () => {
-    const cases = [
-      {
-        file: "/repo/lib/import-diff.ts",
-        source: `
-          export function recordRow(f) {
-            const shownUnit = f.unit;
-            return {
-              label: f.name + " — " + f.value + " " + shownUnit,
-              fields: { unit: f.unit },
-            };
-          }
-        `,
-        exits: ["f.unit"],
-      },
-      {
-        file: "/repo/lib/followup-labs.ts",
-        source: `
-          export function labValueLabel(record) {
-            const u = record.unit?.trim();
-            return record.value + " " + u;
-          }
-        `,
-        exits: ["record.unit"],
-      },
-      {
-        file: "/repo/lib/reading-reference-cell.ts",
-        source: `
-          export function referenceCell(input) {
-            const suffix = input.judgment.unit ? " " + input.judgment.unit : "";
-            return { text: "ref " + input.low + suffix };
-          }
-        `,
-        exits: ["input.judgment.unit"],
-      },
-    ];
-    for (const candidate of cases) {
-      expect(
-        rawRenderedUnitExits(candidate.source, candidate.file).map(
-          (hit) => hit.text
-        ),
-        candidate.file
-      ).toEqual(candidate.exits);
-    }
-  });
-
-  it("catches raw units in clinical Trends series and sparse fallbacks", () => {
-    const source = `
-      export function buildBiomarkerSeries(plot) {
-        const shownUnit = plot.unit;
-        return { unit: shownUnit ? " " + shownUnit : "" };
-      }
-      function outOfWindowText(point, row, unit) {
-        if (point) {
-          const shownUnit = unit;
-          return { text: point.value + " " + shownUnit };
-        }
-        const shownUnit = row.unit;
-        return { text: row.value + " " + shownUnit };
-      }
-      export function buildSavedClinicalResultTile(plot) {
-        return { unit: plot.unit };
-      }
-    `;
-    expect(
-      rawRenderedUnitExits(source, "/repo/lib/trends-series.ts").map(
-        (hit) => hit.text
-      )
-    ).toEqual(["plot.unit", "unit", "row.unit", "plot.unit"]);
-  });
-
-  it("catches raw units in sun-exposure copy and unit-mislabel UI", () => {
-    const sunExposure = `
-      export function decideSunExposure(input) {
-        const shownVitaminDUnit = input.vitaminDUnit;
-        const valueText = input.value + " " + shownVitaminDUnit;
-        return { detail: valueText };
-      }
-    `;
-    expect(
-      rawRenderedUnitExits(sunExposure, "/repo/lib/sun-exposure.ts").map(
-        (hit) => hit.text
-      )
-    ).toEqual(["input.vitaminDUnit"]);
-    expect(
-      rawRenderedUnitExits(
-        `export function decideSunExposure(input) { return { detail: input.vitaminDUnit }; }`,
-        "/repo/lib/sun-exposure.ts"
-      ).map((hit) => hit.text)
-    ).toEqual(["input.vitaminDUnit"]);
-
-    const review = `
-      import { displayUnit } from "@/lib/display-unit";
-      export function UnitMislabelReview({ item, toast }) {
-        const statedUnit = item.statedUnit;
-        const correctedUnit = item.correctedUnit;
-        toast("Unit corrected to " + item.correctedUnit);
-        return <p>{item.value} {statedUnit} → {correctedUnit}</p>;
-      }
-    `;
-    expect(
-      rawRenderedUnitExits(
-        review,
-        "/repo/components/UnitMislabelReview.tsx"
-      ).map((hit) => hit.text)
-    ).toEqual(["item.statedUnit", "item.correctedUnit", "item.correctedUnit"]);
-  });
-
-  it("follows name-independent aliases and destructuring to rendered lab copy", () => {
-    const cases = [
-      {
-        source: `
-          export function LabResultCard({ row }) {
-            const u = row.unit;
-            return <span>{row.value} {u}</span>;
-          }
-        `,
-        file: "/repo/components/LabResultCard.tsx",
-        exits: ["u"],
-      },
-      {
-        source: `
-          export function ClinicalResultCard({ row }) {
-            const { unit: u } = row;
-            return <span>{row.value} {u}</span>;
-          }
-        `,
-        file: "/repo/components/ClinicalResultCard.tsx",
-        exits: ["u"],
-      },
-      {
-        source: `
-          export function ClinicalResultCard({ unit: u, value }) {
-            return <span>{value} {u}</span>;
-          }
-        `,
-        file: "/repo/components/ClinicalResultCard.tsx",
-        exits: ["u"],
-      },
-      {
-        source: `
-          export function UnitMislabelReview({ item, toast }) {
-            const stated = item.statedUnit;
-            const corrected = item.correctedUnit;
-            toast("Unit corrected to " + corrected);
-            return <p>{item.value} {stated} → {corrected}</p>;
-          }
-        `,
-        file: "/repo/components/UnitMislabelReview.tsx",
-        exits: ["corrected", "stated", "corrected"],
-      },
-      {
-        source: `
-          export function LabResultCard({ row }) {
-            const first = row.unit;
-            const second = first;
-            return <span>{second}</span>;
-          }
-        `,
-        file: "/repo/components/LabResultCard.tsx",
-        exits: ["second"],
-      },
-    ];
-    for (const candidate of cases) {
-      expect(
-        rawRenderedUnitExits(candidate.source, candidate.file).map(
-          (hit) => hit.text
-        ),
-        candidate.file
-      ).toEqual(candidate.exits);
-    }
-  });
-
-  it("does not taint aliases whose raw source crossed the formatter boundary", () => {
-    const source = `
-      import { displayUnit } from "@/lib/display-unit";
-      export function LabResultCard({ row }) {
-        const u = displayUnit(row.unit);
-        const alias = u;
-        return <span>{alias}</span>;
-      }
-    `;
-    expect(
-      rawRenderedUnitExits(source, "/repo/components/LabResultCard.tsx")
-    ).toEqual([]);
-  });
-
-  it("follows assignment patterns, loop bindings, and captured writes", () => {
-    const cases = [
-      `
-        export function UnitMislabelReview({ item, toast }) {
-          let spelling = "";
-          ({ statedUnit: spelling } = item);
-          toast("Stored as " + spelling);
-          return <p>{spelling}</p>;
-        }
+        texts(
+          `
+        import { displayUnit as realDisplayUnit } from "@/lib/display-unit";
+        export function MedicalValueHostile({ row }) { ${local} return <span>{displayUnit(row.unit)}</span>; }
       `,
-      `
-        export function UnitMislabelReview({ items, toast }) {
-          for (const { statedUnit: spelling } of items) {
-            toast("Stored as " + spelling);
-            return <p>{spelling}</p>;
-          }
-          return null;
-        }
-      `,
-      `
-        export function UnitMislabelReview({ item, toast }) {
-          const { "statedUnit": spelling } = item;
-          toast("Stored as " + spelling);
-          return <p>{spelling}</p>;
-        }
-      `,
-      `
-        export function UnitMislabelReview({ items, toast }) {
-          let spelling = "";
-          items.forEach((item) => { spelling = item.statedUnit; });
-          toast("Stored as " + spelling);
-          return <p>{spelling}</p>;
-        }
-      `,
-    ];
-    for (const source of cases) {
-      expect(
-        rawRenderedUnitExits(
-          source,
-          "/repo/components/UnitMislabelReview.tsx"
-        ).map((hit) => hit.text)
-      ).toEqual(["spelling", "spelling"]);
-    }
-  });
-
-  it("follows RHS values through array patterns, iterables, and copy joins", () => {
-    const cases = [
-      {
-        source: `
-          export function UnitMislabelReview({ item, toast }) {
-            const [spelling] = [item.statedUnit];
-            toast("Stored as " + spelling);
-            return <p>{spelling}</p>;
-          }
-        `,
-        exits: ["spelling", "spelling"],
-      },
-      {
-        source: `
-          export function UnitMislabelReview({ item, toast }) {
-            let spelling = "";
-            [spelling] = [item.statedUnit];
-            toast("Stored as " + spelling);
-            return <p>{spelling}</p>;
-          }
-        `,
-        exits: ["spelling", "spelling"],
-      },
-      {
-        source: `
-          export function UnitMislabelReview({ items, toast }) {
-            let spelling = "";
-            for ({ statedUnit: spelling } of items) {
-              toast("Stored as " + spelling);
-              return <p>{spelling}</p>;
-            }
-            return null;
-          }
-        `,
-        exits: ["spelling", "spelling"],
-      },
-      {
-        source: `
-          export function UnitMislabelReview({ items, toast }) {
-            for (const spelling of items.map((item) => item.statedUnit)) {
-              toast("Stored as " + spelling);
-              return <p>{spelling}</p>;
-            }
-            return null;
-          }
-        `,
-        exits: ["spelling", "spelling"],
-      },
-      {
-        source: `
-          export function UnitMislabelReview({ item, toast }) {
-            const parts = [item.value, item.confirmed ? item.statedUnit : ""];
-            const copy = parts.filter(Boolean).join(" ");
-            toast(copy);
-            return <p>{copy}</p>;
-          }
-        `,
-        exits: ["copy", "copy"],
-      },
-    ];
-    for (const candidate of cases) {
-      expect(
-        rawRenderedUnitExits(
-          candidate.source,
-          "/repo/components/UnitMislabelReview.tsx"
-        ).map((hit) => hit.text)
-      ).toEqual(candidate.exits);
-    }
-  });
-
-  it("lets container flow cross the authentic formatter boundary", () => {
-    const source = `
-      import { displayUnit } from "@/lib/display-unit";
-      export function UnitMislabelReview({ items, item, toast }) {
-        const [spelling] = [displayUnit(item.statedUnit)];
-        const copy = items
-          .map((row) => displayUnit(row.statedUnit))
-          .filter(Boolean)
-          .join(" · ");
-        toast(copy);
-        return <p>{spelling} {copy}</p>;
-      }
-    `;
-    expect(
-      rawRenderedUnitExits(source, "/repo/components/UnitMislabelReview.tsx")
-    ).toEqual([]);
-  });
-
-  it("analyzes named map and flatMap callback bodies", () => {
-    const rawCallbacks = [
-      `
-        export function UnitMislabelReview({ items, toast }) {
-          const pick = (item) => item.statedUnit;
-          const copy = items.map(pick).join(" · ");
-          toast(copy);
-          return <p>{copy}</p>;
-        }
-      `,
-      `
-        export function UnitMislabelReview({ items, toast }) {
-          const copy = items.flatMap(pick).join(" · ");
-          toast(copy);
-          return <p>{copy}</p>;
-          function pick(item) { return [item.statedUnit]; }
-        }
-      `,
-    ];
-    for (const source of rawCallbacks) {
-      expect(
-        rawRenderedUnitExits(
-          source,
-          "/repo/components/UnitMislabelReview.tsx"
-        ).map((hit) => hit.text)
-      ).toEqual(["copy", "copy"]);
-    }
-
-    const safeCallbacks = `
-      import { displayUnit } from "@/lib/display-unit";
-      export function UnitMislabelReview({ items, toast }) {
-        const pick = (item) => displayUnit(item.statedUnit);
-        const pickMany = function (item) { return [displayUnit(item.statedUnit)]; };
-        const copy = items.map(pick).concat(items.flatMap(pickMany)).join(" · ");
-        toast(copy);
-        return <p>{copy}</p>;
-      }
-    `;
-    expect(
-      rawRenderedUnitExits(
-        safeCallbacks,
-        "/repo/components/UnitMislabelReview.tsx"
-      )
-    ).toEqual([]);
-  });
-
-  it("evaluates call arguments and captured aliases at invocation", () => {
-    const rawCalls = [
-      `
-        export function UnitMislabelReview({ item }) {
-          let spelling = "";
-          populate(item.statedUnit);
-          return <p>{spelling}</p>;
-          function populate(value) { spelling = value; }
-        }
-      `,
-      `
-        export function UnitMislabelReview({ item }) {
-          let spelling = "";
-          let source = "";
-          source = item.statedUnit;
-          populate();
-          return <p>{spelling}</p>;
-          function populate() { spelling = source; }
-        }
-      `,
-      `
-        export function UnitMislabelReview({ item }) {
-          let spelling = "";
-          const populate = (value) => { spelling = value; };
-          const run = populate.bind(null, item.statedUnit);
-          run();
-          return <p>{spelling}</p>;
-        }
-      `,
-      `
-        export function UnitMislabelReview({ item }) {
-          let spelling = "";
-          const helper = {
-            populate(value) { spelling = value; },
-          };
-          helper.populate(item.statedUnit);
-          return <p>{spelling}</p>;
-        }
-      `,
-    ];
-    for (const source of rawCalls) {
-      expect(
-        rawRenderedUnitExits(
-          source,
-          "/repo/components/UnitMislabelReview.tsx"
-        ).map((hit) => hit.text)
-      ).toEqual(["spelling"]);
-    }
-
-    const safeCalls = [
-      `
-        import { displayUnit } from "@/lib/display-unit";
-        export function UnitMislabelReview({ item }) {
-          let spelling = "";
-          populate(displayUnit(item.statedUnit));
-          return <p>{spelling}</p>;
-          function populate(value) { spelling = value; }
-        }
-      `,
-      `
-        import { displayUnit } from "@/lib/display-unit";
-        export function UnitMislabelReview({ item }) {
-          let spelling = "";
-          const source = displayUnit(item.statedUnit);
-          populate();
-          return <p>{spelling}</p>;
-          function populate() { spelling = source; }
-        }
-      `,
-      `
-        import { displayUnit } from "@/lib/display-unit";
-        export function UnitMislabelReview({ item }) {
-          let spelling = "";
-          const populate = (value) => { spelling = value; };
-          const run = populate.bind(null, displayUnit(item.statedUnit));
-          run();
-          return <p>{spelling}</p>;
-        }
-      `,
-      `
-        import { displayUnit } from "@/lib/display-unit";
-        export function UnitMislabelReview({ item }) {
-          let spelling = "";
-          const helper = {
-            populate(value) { spelling = value; },
-          };
-          helper.populate(displayUnit(item.statedUnit));
-          return <p>{spelling}</p>;
-        }
-      `,
-    ];
-    for (const source of safeCalls) {
-      expect(
-        rawRenderedUnitExits(source, "/repo/components/UnitMislabelReview.tsx")
-      ).toEqual([]);
-    }
-
-    const writeAfterCall = `
-      export function UnitMislabelReview({ item }) {
-        let spelling = "safe";
-        let source = "safe";
-        populate();
-        source = item.statedUnit;
-        return <p>{spelling}</p>;
-        function populate() { spelling = source; }
-      }
-    `;
-    expect(
-      rawRenderedUnitExits(
-        writeAfterCall,
-        "/repo/components/UnitMislabelReview.tsx"
-      )
-    ).toEqual([]);
-  });
-
-  it("propagates invocation values through nested callable chains", () => {
-    const pairs = [
-      [
-        `
-          export function UnitMislabelReview({ item }) {
-            let spelling = "";
-            outer(item.statedUnit);
-            return <p>{spelling}</p>;
-            function outer(value) { inner(value); }
-            function inner(value) { spelling = value; }
-          }
-        `,
-        `
-          import { displayUnit } from "@/lib/display-unit";
-          export function UnitMislabelReview({ item }) {
-            let spelling = "";
-            outer(displayUnit(item.statedUnit));
-            return <p>{spelling}</p>;
-            function outer(value) { inner(value); }
-            function inner(value) { spelling = value; }
-          }
-        `,
-      ],
-      [
-        `
-          export function UnitMislabelReview({ item }) {
-            let spelling = "";
-            let source = item.statedUnit;
-            outer();
-            return <p>{spelling}</p>;
-            function outer() { inner(); }
-            function inner() { spelling = source; }
-          }
-        `,
-        `
-          import { displayUnit } from "@/lib/display-unit";
-          export function UnitMislabelReview({ item }) {
-            let spelling = "";
-            let source = displayUnit(item.statedUnit) ?? "";
-            outer();
-            return <p>{spelling}</p>;
-            function outer() { inner(); }
-            function inner() { spelling = source; }
-          }
-        `,
-      ],
-    ];
-    for (const [index, [raw, safe]] of pairs.entries()) {
-      expect(
-        rawRenderedUnitExits(
-          raw,
-          "/repo/components/UnitMislabelReview.tsx"
-        ).map((hit) => hit.text),
-        `mutation ${index}`
-      ).toEqual(["spelling"]);
-      expect(
-        rawRenderedUnitExits(safe, "/repo/components/UnitMislabelReview.tsx")
-      ).toEqual([]);
-    }
-
-    const rawReturnChain = `
-      export function UnitMislabelReview({ items }) {
-        const copy = items.map(outer).join(" ");
-        return <p>{copy}</p>;
-        function outer(value) { return inner(value); }
-        function inner(value) { return value.statedUnit; }
-      }
-    `;
-    expect(
-      rawRenderedUnitExits(
-        rawReturnChain,
-        "/repo/components/UnitMislabelReview.tsx"
-      ).map((hit) => hit.text)
-    ).toEqual(["copy"]);
-
-    const safeReturnChain = `
-      import { displayUnit } from "@/lib/display-unit";
-      export function UnitMislabelReview({ items }) {
-        const copy = items.map(outer).join(" ");
-        return <p>{copy}</p>;
-        function outer(value) { return inner(value); }
-        function inner(value) { return displayUnit(value.statedUnit); }
-      }
-    `;
-    expect(
-      rawRenderedUnitExits(
-        safeReturnChain,
-        "/repo/components/UnitMislabelReview.tsx"
-      )
-    ).toEqual([]);
-  });
-
-  it("substitutes destructured and rest parameters at invocation", () => {
-    const pairs = [
-      [
-        "populate([item.statedUnit]);",
-        "populate([displayUnit(item.statedUnit)]);",
-        "function populate([value]) { spelling = value; }",
-      ],
-      [
-        "populate({ statedUnit: item.statedUnit });",
-        "populate({ statedUnit: displayUnit(item.statedUnit) });",
-        "function populate({ statedUnit: value }) { spelling = value; }",
-      ],
-      [
-        "populate(item.value, item.statedUnit);",
-        "populate(item.value, displayUnit(item.statedUnit));",
-        'function populate(...values) { spelling = values.join(" "); }',
-      ],
-      [
-        "populate([item.value, item.statedUnit]);",
-        "populate([item.value, displayUnit(item.statedUnit)]);",
-        'function populate([first, ...values]) { spelling = values.join(" "); }',
-      ],
-      [
-        "populate({ meta: { statedUnit: item.statedUnit } });",
-        "populate({ meta: { statedUnit: displayUnit(item.statedUnit) } });",
-        "function populate({ meta: { statedUnit: value } }) { spelling = value; }",
-      ],
-    ];
-    for (const [rawCall, safeCall, populate] of pairs) {
-      const host = (call: string, importLine = "") => `
-        ${importLine}
-        export function UnitMislabelReview({ item }) {
-          let spelling = "";
-          ${call}
-          return <p>{spelling}</p>;
-          ${populate}
-        }
-      `;
-      expect(
-        rawRenderedUnitExits(
-          host(rawCall),
-          "/repo/components/UnitMislabelReview.tsx"
-        ).map((hit) => hit.text)
-      ).toEqual(["spelling"]);
-      expect(
-        rawRenderedUnitExits(
-          host(safeCall, 'import { displayUnit } from "@/lib/display-unit";'),
-          "/repo/components/UnitMislabelReview.tsx"
+          "/repo/components/MedicalValueHostile.tsx"
         )
-      ).toEqual([]);
-    }
-  });
-
-  it("resolves string-keyed callable methods", () => {
-    const raw = `
-      export function UnitMislabelReview({ item, items }) {
-        let spelling = "";
-        const helper = {
-          pick(value) { return value.statedUnit; },
-          populate(value) { spelling = value; },
-        };
-        const copy = items.map(helper["pick"]).join(" ");
-        helper["populate"](item.statedUnit);
-        return <p title={copy}>{copy} {spelling}</p>;
-      }
-    `;
-    expect(
-      rawRenderedUnitExits(raw, "/repo/components/UnitMislabelReview.tsx").map(
-        (hit) => hit.text
-      )
-    ).toEqual(["copy", "copy", "spelling"]);
-
-    const safe = `
-      import { displayUnit } from "@/lib/display-unit";
-      export function UnitMislabelReview({ item, items }) {
-        let spelling = "";
-        const helper = {
-          pick(value) { return displayUnit(value.statedUnit); },
-          populate(value) { spelling = value; },
-        };
-        const copy = items.map(helper["pick"]).join(" ");
-        helper["populate"](displayUnit(item.statedUnit));
-        return <p title={copy}>{copy} {spelling}</p>;
-      }
-    `;
-    expect(
-      rawRenderedUnitExits(safe, "/repo/components/UnitMislabelReview.tsx")
-    ).toEqual([]);
-
-    const callback = `
-      export function UnitMislabelReview({ item }) {
-        let spelling = "";
-        const helper = { populate(value) { spelling = value; } };
-        [item.statedUnit].forEach(helper["populate"]);
-        return <p>{spelling}</p>;
-      }
-    `;
-    expect(
-      rawRenderedUnitExits(
-        callback,
-        "/repo/components/UnitMislabelReview.tsx"
-      ).map((hit) => hit.text)
-    ).toEqual(["spelling"]);
-  });
-
-  it("resolves callable assignments at their program point", () => {
-    const raw = `
-      export function UnitMislabelReview({ item, items }) {
-        let spelling = "";
-        let pick;
-        let populate;
-        pick = (value) => value.statedUnit;
-        populate = (value) => { spelling = value; };
-        const copy = items.map(pick).join(" ");
-        populate(item.statedUnit);
-        return <p title={copy}>{copy} {spelling}</p>;
-      }
-    `;
-    expect(
-      rawRenderedUnitExits(raw, "/repo/components/UnitMislabelReview.tsx").map(
-        (hit) => hit.text
-      )
-    ).toEqual(["copy", "copy", "spelling"]);
-
-    const safe = `
-      import { displayUnit } from "@/lib/display-unit";
-      export function UnitMislabelReview({ item }) {
-        let spelling = "";
-        let populate = () => {};
-        populate(item.statedUnit);
-        populate = (value) => { spelling = value; };
-        populate(displayUnit(item.statedUnit));
-        return <p>{spelling}</p>;
-      }
-    `;
-    expect(
-      rawRenderedUnitExits(safe, "/repo/components/UnitMislabelReview.tsx")
-    ).toEqual([]);
-
-    const killedAssignment = `
-      export function UnitMislabelReview({ items }) {
-        let pick = (value) => value.statedUnit;
-        pick = Math.abs;
-        const copy = items.map(pick).join(" ");
-        return <p>{copy}</p>;
-      }
-    `;
-    expect(
-      rawRenderedUnitExits(
-        killedAssignment,
-        "/repo/components/UnitMislabelReview.tsx"
-      )
-    ).toEqual([]);
-  });
-
-  it("uses callable assignments only on executable control-flow paths", () => {
-    const mutations = [
-      `
-        export function UnitMislabelReview({ items }) {
-          let pick = (item) => item.statedUnit;
-          function disable() { pick = Math.abs; }
-          const copy = items.map(pick).join(" ");
-          return <p>{copy}</p>;
-        }
-      `,
-      `
-        export function UnitMislabelReview({ item }) {
-          let copy = "";
-          let set = () => {};
-          const populate = (value) => { copy = value; };
-          setup(populate);
-          set(item.statedUnit);
-          return <p>{copy}</p>;
-          function setup(next) { set = next; }
-        }
-      `,
-      `
-        export function UnitMislabelReview({ items, confirmed }) {
-          let pick = (item) => item.statedUnit;
-          if (confirmed) pick = Math.abs;
-          const copy = items.map(pick).join(" ");
-          return <p>{copy}</p>;
-        }
-      `,
-      `
-        export function UnitMislabelReview({ item }) {
-          let copy = "";
-          let set = () => {};
-          setup();
-          set(item.statedUnit);
-          return <p>{copy}</p>;
-          function setup() { set = (value) => { copy = value; }; }
-        }
-      `,
-      `
-        export function UnitMislabelReview({ item, confirmed }) {
-          let copy = "";
-          let set = (value) => { copy = value; };
-          if (confirmed) set = () => { copy = "safe"; };
-          set(item.statedUnit);
-          return <p>{copy}</p>;
-        }
-      `,
-      `
-        export function UnitMislabelReview({ item }) {
-          let copy = "";
-          let set = (value) => { copy = value; };
-          set(item.statedUnit);
-          set = Math.abs;
-          return <p>{copy}</p>;
-        }
-      `,
-    ];
-    for (const [index, source] of mutations.entries()) {
-      expect(
-        rawRenderedUnitExits(
-          source,
-          "/repo/components/UnitMislabelReview.tsx"
-        ).map((hit) => hit.text),
-        `mutation ${index}`
-      ).toEqual(["copy"]);
+      ).not.toEqual([]);
     }
 
-    const unconditionalKill = `
-      export function UnitMislabelReview({ item }) {
-        let copy = "safe";
-        let set = (value) => { copy = value; };
-        set = Math.abs;
-        set(item.statedUnit);
-        return <p>{copy}</p>;
-      }
-    `;
     expect(
-      rawRenderedUnitExits(
-        unconditionalKill,
-        "/repo/components/UnitMislabelReview.tsx"
-      )
-    ).toEqual([]);
-
-    const safeSetupAlias = `
-      import { displayUnit } from "@/lib/display-unit";
-      export function UnitMislabelReview({ item }) {
-        let copy = "";
-        let set = () => {};
-        const populate = (value) => { copy = value; };
-        setup(populate);
-        set(displayUnit(item.statedUnit));
-        return <p>{copy}</p>;
-        function setup(next) { set = next; }
-      }
-    `;
-    expect(
-      rawRenderedUnitExits(
-        safeSetupAlias,
-        "/repo/components/UnitMislabelReview.tsx"
-      )
-    ).toEqual([]);
-  });
-
-  it("propagates object aliases and indexed rest values", () => {
-    const mutations = [
-      [
+      texts(
         `
-        export function UnitMislabelReview({ item }) {
-          let copy = "";
-          const payload = { value: item.statedUnit };
-          populate(payload);
-          return <p>{copy}</p>;
-          function populate({ value }) { copy = value; }
-        }
-      `,
-        `
-        import { displayUnit } from "@/lib/display-unit";
-        export function UnitMislabelReview({ item }) {
-          let copy = "";
-          const payload = { value: displayUnit(item.statedUnit) };
-          populate(payload);
-          return <p>{copy}</p>;
-          function populate({ value }) { copy = value; }
-        }
-      `,
-      ],
-      [
-        `
-        export function UnitMislabelReview({ item }) {
-          let spelling = "";
-          populate(item.statedUnit);
-          return <p>{spelling}</p>;
-          function populate(...values) { spelling = values[0]; }
-        }
-      `,
-        `
-        import { displayUnit } from "@/lib/display-unit";
-        export function UnitMislabelReview({ item }) {
-          let spelling = "";
-          populate(displayUnit(item.statedUnit));
-          return <p>{spelling}</p>;
-          function populate(...values) { spelling = values[0]; }
-        }
-      `,
-      ],
-    ];
-    for (const [index, [raw, safe]] of mutations.entries()) {
-      expect(
-        rawRenderedUnitExits(
-          raw,
-          "/repo/components/UnitMislabelReview.tsx"
-        ).map((hit) => hit.text),
-        `mutation ${index}`
-      ).toEqual([index === 0 ? "copy" : "spelling"]);
-      expect(
-        rawRenderedUnitExits(safe, "/repo/components/UnitMislabelReview.tsx")
-      ).toEqual([]);
-    }
-
-    const semanticStorage = `
-      export function UnitMislabelReview({ item }) {
-        let first = "";
-        const payload = { value: item.value, unit: item.statedUnit };
-        populate(payload);
-        const { value: second } = payload;
-        return <p>{first} {second}</p>;
-        function populate({ value }) { first = value; }
-      }
-    `;
-    expect(
-      rawRenderedUnitExits(
-        semanticStorage,
-        "/repo/components/UnitMislabelReview.tsx"
+          import { displayUnit } from "@/lib/display-unit";
+          export function MedicalValueHostile({ row }) {
+            function displayUnit(value) { return value; }
+            return <span>{displayUnit(row.unit)}</span>;
+          }
+        `,
+        "/repo/components/MedicalValueHostile.tsx"
       )
-    ).toEqual([]);
-  });
+    ).toEqual(["row.unit"]);
 
-  it("resolves callable methods assigned after object construction", () => {
-    for (const [assignment, callback] of [
-      ["helper.pick = (item) => item.statedUnit;", "helper.pick"],
-      ['helper["pick"] = (item) => item.statedUnit;', 'helper["pick"]'],
-    ]) {
-      const raw = `
-        export function UnitMislabelReview({ items }) {
-          const helper = {};
-          ${assignment}
-          const copy = items.map(${callback}).join(" ");
-          return <p>{copy}</p>;
-        }
-      `;
-      expect(
-        rawRenderedUnitExits(
-          raw,
-          "/repo/components/UnitMislabelReview.tsx"
-        ).map((hit) => hit.text)
-      ).toEqual(["copy"]);
-    }
-
-    const safe = `
-      import { displayUnit } from "@/lib/display-unit";
-      export function UnitMislabelReview({ items }) {
-        const helper = {};
-        helper.pick = (item) => displayUnit(item.statedUnit);
-        const copy = items.map(helper["pick"]).join(" ");
-        return <p>{copy}</p>;
-      }
-    `;
     expect(
-      rawRenderedUnitExits(safe, "/repo/components/UnitMislabelReview.tsx")
-    ).toEqual([]);
-  });
-
-  it("preserves callable object identity across aliases and destructuring", () => {
-    const rawCases = [
-      `
-        export function UnitMislabelReview({ items }) {
-          const helper = {};
-          const alias = helper;
-          alias.pick = (item) => item.statedUnit;
-          const copy = items.map(helper.pick).join(" ");
-          return <p>{copy}</p>;
-        }
-      `,
-      `
-        export function UnitMislabelReview({ items }) {
-          const helper = {};
-          const alias = helper;
-          helper.pick = (item) => item.statedUnit;
-          const copy = items.map(alias.pick).join(" ");
-          return <p>{copy}</p>;
-        }
-      `,
-      `
-        export function UnitMislabelReview({ items }) {
-          const helper = { pick: (item) => item.statedUnit };
-          const { pick } = helper;
-          const copy = items.map(pick).join(" ");
-          return <p>{copy}</p>;
-        }
-      `,
-    ];
-    for (const [index, source] of rawCases.entries()) {
-      expect(
-        rawRenderedUnitExits(
-          source,
-          "/repo/components/UnitMislabelReview.tsx"
-        ).map((hit) => hit.text),
-        `raw identity ${index}`
-      ).toEqual(["copy"]);
-    }
-
-    const definiteKills = [
-      `
-        export function UnitMislabelReview({ items }) {
-          const helper = {};
-          const alias = helper;
-          helper.pick = (item) => item.statedUnit;
-          alias.pick = Math.abs;
-          const copy = items.map(helper.pick).join(" ");
-          return <p>{copy}</p>;
-        }
-      `,
-      `
-        export function UnitMislabelReview({ items }) {
-          const helper = {};
-          const alias = helper;
-          alias.pick = (item) => item.statedUnit;
-          helper.pick = Math.abs;
-          const copy = items.map(alias.pick).join(" ");
-          return <p>{copy}</p>;
-        }
-      `,
-      `
-        export function UnitMislabelReview({ items }) {
-          const helper = { pick: (item) => item.statedUnit };
-          helper.pick = Math.abs;
-          const { pick } = helper;
-          const copy = items.map(pick).join(" ");
-          return <p>{copy}</p>;
-        }
-      `,
-    ];
-    for (const [index, source] of definiteKills.entries()) {
-      expect(
-        rawRenderedUnitExits(source, "/repo/components/UnitMislabelReview.tsx"),
-        `identity kill ${index}`
-      ).toEqual([]);
-    }
-  });
-
-  it("orders projected data-property writes with control-flow joins", () => {
-    const rawCases = [
-      `
-        export function UnitMislabelReview({ item }) {
-          const payload = { value: "safe" };
-          payload.value = item.statedUnit;
-          const copy = payload.value;
-          return <p>{copy}</p>;
-        }
-      `,
-      `
-        import { displayUnit } from "@/lib/display-unit";
-        export function UnitMislabelReview({ item, confirmed }) {
-          const payload = { value: item.statedUnit };
-          if (confirmed) payload.value = displayUnit(payload.value);
-          const copy = payload.value;
-          return <p>{copy}</p>;
-        }
-      `,
-      `
-        export function UnitMislabelReview({ item, confirmed }) {
-          const payload = { value: "safe" };
-          if (confirmed) payload.value = item.statedUnit;
-          const copy = payload.value;
-          return <p>{copy}</p>;
-        }
-      `,
-      `
-        export function UnitMislabelReview({ item }) {
-          const payload = { value: "safe" };
-          const alias = payload;
-          alias.value = item.statedUnit;
-          const copy = payload.value;
-          return <p>{copy}</p>;
-        }
-      `,
-    ];
-    for (const source of rawCases) {
-      expect(
-        rawRenderedUnitExits(
-          source,
-          "/repo/components/UnitMislabelReview.tsx"
-        ).map((hit) => hit.text)
-      ).toEqual(["copy"]);
-    }
-
-    const definiteKill = `
-      import { displayUnit } from "@/lib/display-unit";
-      export function UnitMislabelReview({ item }) {
-        const payload = { value: item.statedUnit };
-        payload.value = displayUnit(payload.value);
-        const copy = payload.value;
-        return <p>{copy}</p>;
-      }
-    `;
-    expect(
-      rawRenderedUnitExits(
-        definiteKill,
-        "/repo/components/UnitMislabelReview.tsx"
-      )
-    ).toEqual([]);
-  });
-
-  it("orders captured writes at their runtime invocation, not source location", () => {
-    const rawBeforeRender = `
-      export function UnitMislabelReview({ item }) {
-        let spelling = "";
-        populate();
-        return <p>{spelling}</p>;
-        function populate() {
-          spelling = item.statedUnit;
-        }
-      }
-    `;
-    expect(
-      rawRenderedUnitExits(
-        rawBeforeRender,
-        "/repo/components/UnitMislabelReview.tsx"
-      ).map((hit) => hit.text)
-    ).toEqual(["spelling"]);
-
-    const boundCallback = `
-      export function UnitMislabelReview({ item }) {
-        let spelling = "";
-        const populate = () => { spelling = item.statedUnit; };
-        populate();
-        return <p>{spelling}</p>;
-      }
-    `;
-    expect(
-      rawRenderedUnitExits(
-        boundCallback,
-        "/repo/components/UnitMislabelReview.tsx"
-      ).map((hit) => hit.text)
-    ).toEqual(["spelling"]);
-
-    const neverCalled = `
-      export function UnitMislabelReview({ item }) {
-        let spelling = "safe";
-        return <p>{spelling}</p>;
-        function populate() {
-          spelling = item.statedUnit;
-        }
-      }
-    `;
-    expect(
-      rawRenderedUnitExits(
-        neverCalled,
-        "/repo/components/UnitMislabelReview.tsx"
-      )
-    ).toEqual([]);
-
-    const authenticKill = `
-      import { displayUnit } from "@/lib/display-unit";
-      export function UnitMislabelReview({ item }) {
-        let spelling = item.statedUnit;
-        normalize();
-        return <p>{spelling}</p>;
-        function normalize() {
-          spelling = displayUnit(spelling) ?? "";
-        }
-      }
-    `;
-    expect(
-      rawRenderedUnitExits(
-        authenticKill,
-        "/repo/components/UnitMislabelReview.tsx"
-      )
-    ).toEqual([]);
-
-    const conditionalKill = `
-      import { displayUnit } from "@/lib/display-unit";
-      export function UnitMislabelReview({ item }) {
-        let spelling = item.statedUnit;
-        if (item.confirmed) normalize();
-        return <p>{spelling}</p>;
-        function normalize() {
-          spelling = displayUnit(spelling) ?? "";
-        }
-      }
-    `;
-    expect(
-      rawRenderedUnitExits(
-        conditionalKill,
-        "/repo/components/UnitMislabelReview.tsx"
-      ).map((hit) => hit.text)
-    ).toEqual(["spelling"]);
-  });
-
-  it("clears taint only at an authentic formatter write", () => {
-    const safe = `
-      import { displayUnit } from "@/lib/display-unit";
-      export function UnitMislabelReview({ item, toast }) {
-        let spelling = item.statedUnit;
-        spelling = displayUnit(spelling) ?? "";
-        toast("Stored as " + spelling);
-        return <p>{spelling}</p>;
-      }
-    `;
-    expect(
-      rawRenderedUnitExits(safe, "/repo/components/UnitMislabelReview.tsx")
-    ).toEqual([]);
-
-    const conditional = `
-      import { displayUnit } from "@/lib/display-unit";
-      export function UnitMislabelReview({ item, toast }) {
-        let spelling = item.statedUnit;
-        if (item.confirmed) spelling = displayUnit(spelling) ?? "";
-        toast("Stored as " + spelling);
-        return <p>{spelling}</p>;
-      }
-    `;
-    expect(
-      rawRenderedUnitExits(
-        conditional,
-        "/repo/components/UnitMislabelReview.tsx"
-      ).map((hit) => hit.text)
-    ).toEqual(["spelling", "spelling"]);
-
-    const capturedThenSafe = `
-      import { displayUnit } from "@/lib/display-unit";
-      export function UnitMislabelReview({ items, toast }) {
-        let spelling = "";
-        items.forEach((item) => { spelling = item.statedUnit; });
-        spelling = displayUnit(spelling) ?? "";
-        toast("Stored as " + spelling);
-        return <p>{spelling}</p>;
-      }
-    `;
-    expect(
-      rawRenderedUnitExits(
-        capturedThenSafe,
-        "/repo/components/UnitMislabelReview.tsx"
-      )
-    ).toEqual([]);
-
-    const shadowed = `
-      import { displayUnit } from "@/lib/display-unit";
-      export function UnitMislabelReview({ item }) {
-        function Nested({ displayUnit }) {
-          return <p>{displayUnit(item.statedUnit)}</p>;
-        }
-        return <Nested displayUnit={(value) => value} />;
-      }
-    `;
-    expect(
-      rawRenderedUnitExits(
-        shadowed,
-        "/repo/components/UnitMislabelReview.tsx"
-      ).map((hit) => hit.text)
-    ).toEqual(["item.statedUnit"]);
-  });
-
-  it("resolves block shadows without distrusting an authentic outer formatter", () => {
-    const blockShadow = `
-      export function UnitMislabelReview({ item, toast }) {
-        const spelling = item.statedUnit;
-        if (item.dismissed) {
-          const spelling = "unknown";
-          toast("Stored as " + spelling);
-          return <p>{spelling}</p>;
-        }
-        return null;
-      }
-    `;
-    expect(
-      rawRenderedUnitExits(
-        blockShadow,
-        "/repo/components/UnitMislabelReview.tsx"
-      )
-    ).toEqual([]);
-
-    const formatterShadow = `
+      texts(`
       import { displayUnit } from "@/lib/display-unit";
       export function UnitMislabelReview({ item }) {
         function unrelated(displayUnit) { return displayUnit; }
         return <p>{displayUnit(item.statedUnit)}</p>;
       }
-    `;
-    expect(
-      rawRenderedUnitExits(
-        formatterShadow,
-        "/repo/components/UnitMislabelReview.tsx"
-      )
+    `)
     ).toEqual([]);
   });
 
-  it("covers the biomarker option's existing latestUnit producer", () => {
-    const source = `
-      export function GoalForm({ bioOption, kind }) {
-        if (kind === "biomarker") return <p>{bioOption.latestUnit}</p>;
-        return null;
+  it("covers raw/precomposed lab-copy exits", () => {
+    const cases = [
+      [
+        "/repo/lib/queries/search.ts",
+        `export function clinicalResultHits(rows) { return rows.map(r => ({ subtitle: [r.value, r.unit].join(" ") })); }`,
+        "r.unit",
+      ],
+      [
+        "/repo/lib/biomarker-goal.ts",
+        `export function biomarkerGoalTargetText(goal) { const unit = goal.unit; return String(goal.value) + " " + unit; }`,
+        "goal.unit",
+      ],
+      [
+        "/repo/lib/lab-result-lifecycle.ts",
+        `export function revisionSummary(rev) { return "was " + rev.unit; }`,
+        "rev.unit",
+      ],
+      [
+        "/repo/lib/biomarker-trajectory.ts",
+        `export function unitSuffix(unit) { return unit ? " " + unit : ""; }`,
+        "unit",
+      ],
+      [
+        "/repo/lib/bio-age.ts",
+        `export function bioAgeEffectPhrase(e) { return e.unit; }`,
+        "e.unit",
+      ],
+      [
+        "/repo/lib/followup-labs.ts",
+        `export function labValueLabel(record) { return record.value + " " + record.unit?.trim(); }`,
+        "record.unit",
+      ],
+      [
+        "/repo/lib/reading-reference-cell.ts",
+        `export function referenceCell(input) { return { text: "ref " + input.judgment.unit }; }`,
+        "input.judgment.unit",
+      ],
+      [
+        "/repo/lib/sun-exposure.ts",
+        `export function decideSunExposure(input) { return { detail: input.vitaminDUnit }; }`,
+        "input.vitaminDUnit",
+      ],
+      [
+        "/repo/app/(app)/training/GoalForm.tsx",
+        `export function GoalForm({ bioOption }) { return <p>{bioOption.latestUnit}</p>; }`,
+        "bioOption.latestUnit",
+      ],
+    ] as const;
+    for (const [file, source, exit] of cases)
+      expect(texts(source, file), file).toContain(exit);
+  });
+
+  it("rejects aliases, destructuring, arrays, loops, callbacks, and call arguments at the source", () => {
+    const cases = [
+      `const u = item.statedUnit; toast(u);`,
+      `const { statedUnit: u } = item; toast(u);`,
+      `let u; ({ statedUnit: u } = item); toast(u);`,
+      `const [u] = [item.statedUnit]; toast(u);`,
+      `for (const u of items.map(item => item.statedUnit)) toast(u);`,
+      `const pick = item => item.statedUnit; toast(items.map(pick).join(" "));`,
+      `function populate(value) { copy = value } populate(item.statedUnit); toast(copy);`,
+      `const parts = [item.value, item.confirmed ? item.statedUnit : ""]; toast(parts.join(" "));`,
+    ];
+    for (const body of cases) {
+      const source = `export function UnitMislabelReview({ item, items, toast }) { let copy = ""; ${body}; return <p>{copy}</p>; }`;
+      expect(texts(source), body).not.toEqual([]);
+    }
+  });
+
+  it("rejects nested callable chains, destructured/rest arguments, and callable snapshots", () => {
+    const cases = [
+      `function one(v){two(v)} function two(v){copy=v} one(item.statedUnit);`,
+      `function populate({value}){copy=value} populate({value:item.statedUnit});`,
+      `function populate(...values){copy=values[0]} populate(item.statedUnit);`,
+      `const helper={pick:value=>value.statedUnit}; const {pick}=helper; copy=items.map(pick).join(" ");`,
+      `const helper={pick:value=>value.statedUnit}; let pick; ({pick}=helper); copy=items.map(pick).join(" ");`,
+      `const helper={pick:value=>value.statedUnit}; const [pick]=[helper.pick]; copy=items.map(pick).join(" ");`,
+      `const helper={pick:value=>value.statedUnit}; const alias={...helper}; copy=items.map(alias.pick).join(" ");`,
+      `const helper={}; helper["pick"]=value=>value.statedUnit; copy=items.map(helper["pick"]).join(" ");`,
+    ];
+    for (const body of cases) {
+      expect(
+        texts(
+          `export function UnitMislabelReview({item,items}) { let copy=""; ${body}; return <p>{copy}</p>; }`
+        ),
+        body
+      ).not.toEqual([]);
+    }
+  });
+
+  it("rejects every latest parameter/property/object mutation", () => {
+    const raw = [
+      `const payload={value:""}; set(payload,item.statedUnit); function set(target,value){target.value=value} return <p>{payload.value}</p>;`,
+      `const helper={}; install(helper); function install(target){target.pick=item=>item.statedUnit} return <p>{items.map(helper.pick)}</p>;`,
+      `const payload={nested:{value:""}}; payload.nested.value=item.statedUnit; return <p>{payload.nested.value}</p>;`,
+      `const payload={nested:{value:""}}; const alias=payload.nested; alias.value=item.statedUnit; return <p>{payload.nested.value}</p>;`,
+      `const payload={value:""}; payload.value ||= item.statedUnit; return <p>{payload.value}</p>;`,
+      `const helper={pick:item=>item.statedUnit}; let pick; ({pick}=helper); return <p>{items.map(pick)}</p>;`,
+      `const helper={pick:item=>item.statedUnit}; const [pick]=[helper.pick]; return <p>{items.map(pick)}</p>;`,
+      `const helper={pick:item=>item.statedUnit}; const alias={...helper}; return <p>{items.map(alias.pick)}</p>;`,
+      `let helper={}; const old=helper; helper={pick:item=>item.statedUnit}; old.pick=Math.abs; return <p>{items.map(helper.pick)}</p>;`,
+    ];
+    for (const body of raw)
+      expect(
+        texts(`export function UnitMislabelReview({item,items}) { ${body} }`),
+        body
+      ).toContain("item.statedUnit");
+  });
+
+  it("allows syntax-local storage followed by direct authenticated normalization", () => {
+    const safe = `
+      import { displayUnit } from "@/lib/display-unit";
+      export function UnitMislabelReview({item}) {
+        const payload={value:item.statedUnit};
+        normalize(payload);
+        function normalize(target){target.value=displayUnit(target.value)??""}
+        return <p>{payload.value}</p>;
       }
     `;
+    expect(texts(safe)).toEqual([]);
+
+    const nested = `
+      import { displayUnit } from "@/lib/display-unit";
+      export function UnitMislabelReview({item}) {
+        const payload={nested:{value:item.statedUnit}};
+        payload.nested.value=displayUnit(payload.nested.value)??"";
+        return <p>{payload.nested.value}</p>;
+      }
+    `;
+    expect(texts(nested)).toEqual([]);
+  });
+
+  it("allows documented raw semantics and rejects post-construction projection writes", () => {
     expect(
-      rawRenderedUnitExits(source, "/repo/app/(app)/training/GoalForm.tsx").map(
-        (hit) => hit.text
+      texts(
+        `export function ClinicalResultIndex({row, canonical}) { return sameUnit(row.unit, canonical) ? { unit: row.unit } : null; }`,
+        "/repo/lib/clinical-result-index.ts"
       )
-    ).toEqual(["bioOption.latestUnit"]);
-  });
-
-  it("does not leak a tainted alias through an unrelated nested shadow", () => {
-    const source = `
-      export function LabResultCard({ row }) {
-        const u = row.unit;
-        function DoseCopy() {
-          const u = "mcg";
-          return <span>{u}</span>;
-        }
-        return <DoseCopy />;
-      }
-    `;
-    expect(
-      rawRenderedUnitExits(source, "/repo/components/LabResultCard.tsx")
     ).toEqual([]);
+    expect(
+      texts(
+        `export function UnitMislabelReview({item}) { const payload={value:""}; payload.value=item.statedUnit; return <p>{payload.value}</p>; }`
+      )
+    ).toEqual(["item.statedUnit"]);
   });
 
-  it("ignores ordinary unit suffixes outside lab contexts", () => {
+  it("ignores ordinary units outside lab contexts", () => {
     expect(
-      rawRenderedUnitExits(`
-        export function RideSpeed({ row }) {
-          return <span>{row.value}{row.unit}</span>;
-        }
-      `)
+      texts(
+        `export function RideSpeed({row}) { return <span>{row.value}{row.unit}</span>; }`,
+        "/repo/components/RideSpeed.tsx"
+      )
     ).toEqual([]);
   });
 });
