@@ -266,8 +266,17 @@ function crossProfileSourceFiles(): { rel: string; text: string }[] {
 // ("https://…") survive.
 function stripComments(text: string): string {
   return text
-    .replace(/\/\*[\s\S]*?\*\//g, "")
+    .replace(/\/\*[\s\S]*?\*\//g, (comment) => comment.replace(/[^\r\n]/g, " "))
     .replace(/(^|[^:])\/\/.*$/gm, "$1");
+}
+
+// JSX often spells an intentional text-space as {" "}. Replace that expression
+// with whitespace while preserving its exact byte/newline footprint, so rendered
+// words join for matching without moving a later offender's reported source line.
+function normalizeJsxWhitespaceExpressions(text: string): string {
+  return text.replace(/\{\s*(["'`])([ \t\r\n]+)\1\s*\}/g, (expression) =>
+    expression.replace(/[^\r\n]/g, " ")
+  );
 }
 
 // A line is a non-user-facing context (internal logging / thrown error / import) —
@@ -312,7 +321,7 @@ function crossProfileVoiceViolations(rel: string, text: string): string[] {
 function disclaimerCopyViolations(rel: string, text: string): string[] {
   if (DISCLAIMER_COPY_ALLOW.has(rel)) return [];
 
-  const code = stripComments(text);
+  const code = normalizeJsxWhitespaceExpressions(stripComments(text));
   const violations = new Set<string>();
   for (const phrasing of DISCLAIMER_PHRASINGS) {
     const flags = `${phrasing.flags.replace(/g/g, "")}g`;
@@ -427,6 +436,30 @@ describe("copy-lint: user-facing tone standard (issue #945)", () => {
     expect(disclaimerCopyViolations("synthetic.tsx", sample)).toHaveLength(5);
   });
 
+  it("reports the original source line after a multiline block comment", () => {
+    const sample = [
+      "/*",
+      " * disclaimer design note",
+      " * Consult a clinician.",
+      " */",
+      "const one = 1;",
+      "const two = 2;",
+      "const three = 3;",
+      "<p>Informational",
+      "only.</p>",
+    ].join("\n");
+    expect(disclaimerCopyViolations("synthetic.tsx", sample)).toEqual([
+      "synthetic.tsx:8 — disclaimer prose in: <p>Informational only.</p>",
+    ]);
+  });
+
+  it("detects disclaimer prose split by a JSX whitespace expression", () => {
+    const sample = '<p>Informational{" "}only.</p>';
+    expect(disclaimerCopyViolations("synthetic.tsx", sample)).toEqual([
+      "synthetic.tsx:1 — disclaimer prose in: <p>Informational only.</p>",
+    ]);
+  });
+
   it("keeps the migrated sites in the scan, outside the allowlist, with canonical links where required", () => {
     const files = new Map(sourceFiles().map((file) => [file.rel, file.text]));
     for (const rel of MIGRATED_DISCLAIMER_SITES) {
@@ -441,6 +474,9 @@ describe("copy-lint: user-facing tone standard (issue #945)", () => {
     for (const rel of DISCLAIMER_LINK_SITES) {
       expect(files.get(rel)).toContain(`href="${DISCLAIMER_LINK_TARGET}"`);
     }
+    expect(files.get("components/ProfilePassport.tsx")).toContain(
+      "Growth percentiles use WHO/CDC references for age and sex."
+    );
   });
 
   it("keeps the disclaimer allowlist frozen to the canonical module and page", () => {
