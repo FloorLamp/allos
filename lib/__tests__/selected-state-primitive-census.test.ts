@@ -45,7 +45,28 @@ function read(base: string, rel: string): string {
 }
 
 const repoSourceCache = new Map<string, string>();
+const repoCleanSourceCache = new Map<string, string>();
+const repoModuleCache = new Map<string, ImportedModule | null>();
 let repoFileCache: string[] | null = null;
+
+function cleanSource(base: string, file: string): string {
+  if (base !== REPO) return withoutComments(read(base, file));
+  const key = path.join(base, file);
+  const cached = repoCleanSourceCache.get(key);
+  if (cached !== undefined) return cached;
+  const clean = withoutComments(read(base, file));
+  repoCleanSourceCache.set(key, clean);
+  return clean;
+}
+
+function scanModuleCache(base: string): Map<string, ImportedModule | null> {
+  // Temp mutation tests deliberately rewrite the same path between scans. Only
+  // immutable repo reads can share module objects without making those hostile
+  // rewrites disappear behind a cache.
+  return base === REPO
+    ? repoModuleCache
+    : new Map<string, ImportedModule | null>();
+}
 
 function sourceFiles(base: string): string[] {
   if (base === REPO && repoFileCache) return repoFileCache;
@@ -149,8 +170,16 @@ function customComponentClassBindings(
   file: string,
   moduleCache: Map<string, ImportedModule | null>
 ): ForwardedChipBinding[] {
-  const source = withoutComments(read(base, file));
-  if (!/\bclassName\b|\{\s*\.\.\./.test(source)) return [];
+  const written = read(base, file);
+  // Absence in the raw source is conclusive; comments can only create a false
+  // candidate. Keep the TSX-aware comment pass off files that cannot contain a
+  // custom forwarding seam at all — it is the expensive part under coverage.
+  if (
+    !/\bclassName\b|\{\s*\.\.\./.test(written) ||
+    !/<[A-Z][\w$.]*(?=[\s>])/.test(written)
+  )
+    return [];
+  const source = cleanSource(base, file);
   const readModule = moduleReader(
     base,
     path.dirname(path.join(base, file)),
@@ -171,6 +200,7 @@ function customComponentClassBindings(
     // body that can append a second shell.
     if (nextLinks.has(match[1])) continue;
     const open = openingTag(source, match.index).tag;
+    if (!/\bclassName\b|\{\s*\.\.\./.test(open)) continue;
     const forwardedControl = /(?:Button|Link)$/.test(match[1]);
     for (const resolved of classBindings(
       open,
@@ -193,7 +223,7 @@ function customComponentClassBindings(
 export function scanForwardedChipBindings(
   base: string
 ): ForwardedChipBinding[] {
-  const moduleCache = new Map<string, ImportedModule | null>();
+  const moduleCache = scanModuleCache(base);
   return sourceFiles(base).flatMap((file) =>
     customComponentClassBindings(base, file, moduleCache)
   );
@@ -249,13 +279,15 @@ export function scanSelectedStateCorpus(base: string): {
 } {
   const findings: Finding[] = [];
   const unreadable = new Set<string>();
-  const moduleCache = new Map<string, ImportedModule | null>();
+  const moduleCache = scanModuleCache(base);
   for (const file of sourceFiles(base)) {
-    const source = withoutComments(read(base, file));
     // `findFlooredControls` defines selected state by these exact attributes.
     // Avoid resolving imports and class helpers for the overwhelming majority of
-    // the TSX corpus that cannot contribute to this selected-state census.
-    if (!/\baria-(?:pressed|current|selected)\b/.test(source)) continue;
+    // the TSX corpus that cannot contribute to this selected-state census. Raw
+    // absence is conclusive; a comment can only admit an extra candidate.
+    const written = read(base, file);
+    if (!/\baria-(?:pressed|current|selected)\b/.test(written)) continue;
+    const source = cleanSource(base, file);
     const controls = findFlooredControls(
       source,
       moduleReader(base, path.dirname(path.join(base, file)), moduleCache)
@@ -286,12 +318,24 @@ export function scanUnapprovedChipVocabularyCorpus(
   base: string
 ): VocabularyFinding[] {
   const findings: VocabularyFinding[] = [];
-  const moduleCache = new Map<string, ImportedModule | null>();
+  const moduleCache = scanModuleCache(base);
   for (const file of sourceFiles(base)) {
-    const source = withoutComments(read(base, file));
+    const written = read(base, file);
     // A chip class can arrive directly, through a className binding, or through
-    // a JSX spread. A file with neither spelling cannot own or forward one.
-    if (!/\bclassName\b|\{\s*\.\.\./.test(source)) continue;
+    // a JSX spread. A native candidate must exist too. These are absence-only
+    // raw checks: comment text may admit extra files, but can never hide a live
+    // one, and avoiding a full TSX parse here keeps the census below CI's test
+    // timeout under coverage contention.
+    if (!/\bclassName\b|\{\s*\.\.\./.test(written)) continue;
+    const hasNativeTag =
+      /<(?:button|a|select|textarea|input|summary)(?=[\s>])/.test(written) ||
+      (/<[a-z][\w-]*(?=[\s>])/.test(written) &&
+        (/\bonClick\s*=/.test(written) ||
+          /\brole\s*=\s*"(?:button|tab|switch|menuitem|menuitemcheckbox|menuitemradio|option|checkbox|radio|link)"/.test(
+            written
+          )));
+    if (!hasNativeTag) continue;
+    const source = cleanSource(base, file);
     const readModule = moduleReader(
       base,
       path.dirname(path.join(base, file)),
@@ -311,6 +355,7 @@ export function scanUnapprovedChipVocabularyCorpus(
           open
         );
       if (!interactive) continue;
+      if (!/\bclassName\b|\{\s*\.\.\./.test(open)) continue;
       for (const resolved of classBindings(open, declarations, file, true)) {
         if (!resolved.readable || !isChipAdopter(resolved.text)) continue;
         const className = resolved.text.replace(/\s+/g, " ").trim();
