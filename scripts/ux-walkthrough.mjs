@@ -1997,6 +1997,11 @@ if (!picked.length) {
 let server = null;
 if (serve) {
   const dbPath = process.env.ALLOS_DB_PATH || "/tmp/ux-walkthrough.db";
+  if (dbPath === ":memory:") {
+    throw new Error(
+      "--serve requires a file-backed ALLOS_DB_PATH shared by the seed and dev-server processes; :memory: creates a different database in each process."
+    );
+  }
   if (fs.existsSync(dbPath)) {
     throw new Error(
       `Scratch DB already exists at ${dbPath} — refusing to reuse it for the ${UX_SEED_SHAPE.label} census shape. Remove it or choose a fresh ALLOS_DB_PATH.`
@@ -2034,14 +2039,16 @@ if (serve) {
     }
     if (UX_SEED_SHAPE.postSeed === "thin") {
       log("thinning scratch DB to the last ~7 days…");
-      const t = spawnSync("npx", ["tsx", "scripts/ux-thin-data.ts"], {
-        env,
-        stdio: "inherit",
-      });
-      if (t.status !== 0)
-        log(
-          "WARNING: thin trim exited non-zero — this run is the FULL seed shape, not thin"
+      const t = spawnSync(
+        process.execPath,
+        ["--import", "tsx", "scripts/ux-thin-data.ts"],
+        { env, stdio: "inherit" }
+      );
+      if (t.status !== 0) {
+        throw new Error(
+          "post-seed transform exited non-zero for thin — aborting instead of censusing the full seed under the thin label"
         );
+      }
     }
   }
   log(`starting dev server on :${port} (db: ${dbPath})…`);

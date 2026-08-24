@@ -97,6 +97,28 @@ describe("UX_SEED=dirty", () => {
     );
   });
 
+  it("rejects an in-memory database before served child processes start", () => {
+    const env: NodeJS.ProcessEnv = {
+      ...process.env,
+      ALLOS_DB_PATH: ":memory:",
+      UX_SEED: "dirty",
+    };
+    delete env.SEED_RNG;
+    delete env.SEED_PERSONA;
+    delete env.SEED_DIAL_SHAPE;
+    const result = spawnSync(
+      process.execPath,
+      [path.join(repo, "scripts", "ux-walkthrough.mjs"), "--serve", "pages"],
+      { cwd: repo, env, encoding: "utf8" }
+    );
+
+    expect(result.status).not.toBe(0);
+    expect(result.stderr).toContain(
+      "--serve requires a file-backed ALLOS_DB_PATH shared by the seed and dev-server processes"
+    );
+    expect(result.stdout).not.toContain("seeding scratch DB");
+  });
+
   it("records the named shape independently in run.json data", () => {
     expect(uxSeedRunInfo(dirtyShape(), {})).toEqual({
       uxSeed: "dirty",
