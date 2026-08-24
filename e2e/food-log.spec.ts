@@ -37,10 +37,11 @@ test("logging a serving shows in the day count and the weekly rollup, undo decre
 
   const count = page.getByTestId("count-nuts_seeds");
   const before = Number((await count.textContent())?.trim() || "0");
+  expect(before).toBe(1);
 
   // One tap → optimistic increment.
   await page.getByTestId("log-nuts_seeds").click();
-  await expect(count).toHaveText(String(before + 1));
+  await expect(count).toHaveText("2");
 
   // The weekly rollup (server-rendered) reflects the serving after refresh.
   await expect(page.getByTestId("food-weekly-rollup")).toBeVisible();

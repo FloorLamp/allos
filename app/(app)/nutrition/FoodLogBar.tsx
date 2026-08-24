@@ -30,7 +30,11 @@ import FoodGroupIcon, {
 import ModalShell from "@/components/ModalShell";
 import SegmentedControl from "@/components/SegmentedControl";
 import CompactDateMenu from "@/components/CompactDateMenu";
-import { useDismissToast, useToast } from "@/components/Toast";
+import {
+  useDismissToast,
+  useToast,
+  useToastProfileScope,
+} from "@/components/Toast";
 import RollingNumber from "@/components/RollingNumber";
 import { useUndoableAction } from "@/components/useUndoableAction";
 import { usePrefersReducedMotion } from "@/components/usePrefersReducedMotion";
@@ -43,9 +47,14 @@ import {
   foodServingFeedback,
   foodServingInverseKey,
   foodServingToastKey,
-  finishesFoodServingBurst,
-  reconcileFoodServingAdd,
-  type FoodServingAddTruth,
+  beginFoodServingAdd,
+  dropFoodServingAdd,
+  emptyFoodServingBurst,
+  invalidateFoodServingBurst,
+  settleFoodServingAdd,
+  type FoodServingAddTap,
+  type FoodServingBurstSettlement,
+  type FoodServingBurstState,
 } from "@/lib/food-serving-feedback";
 import { microMotionPlan } from "@/lib/micro-motion";
 import { useActiveProfileId } from "@/components/ActiveProfileProvider";
@@ -396,17 +405,16 @@ export default function FoodLogBar({
   // plus two swallowed repeats (#3611). A per-tap key lets the existing ledger
   // guard each request independently while the toast key below deliberately stays
   // stable and cumulative.
-  const servingTapSequence = useRef(0);
   // The toast key is stable, but each OFFERED inverse is a distinct write. A
   // second add after Undo must not inherit the first inverse's cooldown.
   const servingInverseSequence = useRef(0);
   // Highest add truth observed for each full rendered/write coordinate. Add
   // transactions are monotonic inside a burst; an older response arriving after
   // a newer one may never move the row or its receipt backward.
-  const servingAddDayTruth = useRef(new Map<string, number>());
-  const servingAddMealTruth = useRef(new Map<string, number>());
-  const servingPendingAdds = useRef(new Map<string, number>());
-  const servingBurstCoordinates = useRef(new Map<string, Set<string>>());
+  const servingBursts = useRef(new Map<string, FoodServingBurstState>());
+  const toastProfileScope = useToastProfileScope();
+  const receiptProfileScope =
+    toastProfileScope?.profileId === activeProfileId ? toastProfileScope : null;
 
   // The row itself is the immediate receipt. A successful add gets the shipped
   // settle token; reduced motion keeps the same count/button end state and simply
@@ -613,19 +621,8 @@ export default function FoodLogBar({
   // is what makes a slot change a MOVE and not a second serving. Note it is a SET, not
   // a delta, so replaying it can never drift.
   function applyPlacement(placement: FoodPlacement) {
-    const coordinate = foodServingCoordinate(
-      receiptProfileId,
-      placement.date,
-      placement.mealSlot,
-      placement.groupKey
-    );
-    resetConcurrentAddTruth(
-      foodServingToastKey(receiptProfileId, placement.date, placement.groupKey),
-      coordinate,
-      {
-        servings: placement.servings,
-        mealServings: placement.mealServings,
-      }
+    invalidateServingBurst(
+      foodServingToastKey(receiptProfileId, placement.date, placement.groupKey)
     );
     setCountsByDate((all) => {
       const day = all[placement.date] ?? {};
@@ -656,18 +653,13 @@ export default function FoodLogBar({
     });
   }
 
-  function resetConcurrentAddTruth(
-    receiptKey: string,
-    coordinate: string,
-    truth: FoodServingAddTruth
-  ) {
-    if ((servingPendingAdds.current.get(receiptKey) ?? 0) > 0) {
-      servingAddDayTruth.current.set(receiptKey, truth.servings);
-      servingAddMealTruth.current.set(coordinate, truth.mealServings);
-    } else {
-      servingAddDayTruth.current.delete(receiptKey);
-      servingAddMealTruth.current.delete(coordinate);
-    }
+  function invalidateServingBurst(receiptKey: string) {
+    servingBursts.current.set(
+      receiptKey,
+      invalidateFoodServingBurst(
+        servingBursts.current.get(receiptKey) ?? emptyFoodServingBurst()
+      )
+    );
   }
 
   // The bounded recent days the sheet may correct within — the same seven-day policy
@@ -807,6 +799,13 @@ export default function FoodLogBar({
       });
       return;
     }
+    const mutationReceiptKey = foodServingToastKey(
+      receiptProfileId,
+      event.date,
+      event.groupKey
+    );
+    invalidateServingBurst(mutationReceiptKey);
+    dismissToast(mutationReceiptKey);
     setRemovingId(event.id);
     const fd = new FormData();
     fd.set("event_id", String(event.id));
@@ -842,9 +841,11 @@ export default function FoodLogBar({
       event.date,
       event.groupKey
     );
+    if (!receiptProfileScope) return;
     toast("Serving removed.", {
       key: receiptKey,
-      profileId: activeProfileId ?? undefined,
+      profileId: receiptProfileScope.profileId,
+      profileToken: receiptProfileScope.token,
       duration: UNDO_TOAST_MS,
       action: {
         label: "Undo",
@@ -855,7 +856,8 @@ export default function FoodLogBar({
               toast("Couldn’t undo — it may have expired.", {
                 tone: "error",
                 key: receiptKey,
-                profileId: activeProfileId ?? undefined,
+                profileId: receiptProfileScope.profileId,
+                profileToken: receiptProfileScope.token,
               });
               return;
             }
@@ -869,7 +871,8 @@ export default function FoodLogBar({
             });
             toast("Restored.", {
               key: receiptKey,
-              profileId: activeProfileId ?? undefined,
+              profileId: receiptProfileScope.profileId,
+              profileToken: receiptProfileScope.token,
             });
           })();
         },
@@ -927,14 +930,16 @@ export default function FoodLogBar({
     group: FoodGroup,
     delta: 1 | -1,
     expectedServings?: number,
-    inverseWriteKey?: string
+    inverseWriteKey?: string,
+    inverseSlot?: FoodSlot
   ): Promise<boolean> {
     const slug = group.slug;
     // WHERE the tap lands (#2269): an add with a statement in force files under the
     // stated time's derived window — the tab stays navigation, the chip stated the
     // consequence — so the optimistic bump moves THAT section's count, not the cell
     // being looked at. An undo (and an add with no statement) stays tab-scoped.
-    const filingSlot = (delta === 1 ? statedFilingSlot() : null) ?? activeSlot;
+    const filingSlot =
+      inverseSlot ?? (delta === 1 ? statedFilingSlot() : null) ?? activeSlot;
     const coordinate = foodServingCoordinate(
       receiptProfileId,
       activeDate,
@@ -942,6 +947,10 @@ export default function FoodLogBar({
       slug
     );
     const receiptKey = foodServingToastKey(receiptProfileId, activeDate, slug);
+    if (delta === -1) {
+      invalidateServingBurst(receiptKey);
+      dismissToast(receiptKey);
+    }
     const before: ServingCounts = {
       day: countsByDateRef.current[activeDate]?.[slug] ?? 0,
       meal: slotCountsByDateRef.current[activeDate]?.[filingSlot]?.[slug] ?? 0,
@@ -980,7 +989,7 @@ export default function FoodLogBar({
       const kept = await enqueue("food", activeDate, {
         entry: "serving",
         groupKey: slug,
-        mealSlot: activeSlot,
+        mealSlot: filingSlot,
         grams: null,
         // The statement travels as a RESOLVED instant, because a replay has no server to
         // resolve a choice against: "now" is this device's clock at the tap, and an
@@ -1012,16 +1021,79 @@ export default function FoodLogBar({
       | { kind: "refused" }
       | { kind: "offline-undo" }
       | { kind: "wrote"; outcome: FoodLogResult };
+    let addTap: FoodServingAddTap | null = null;
     if (delta === 1) {
-      servingPendingAdds.current.set(
-        receiptKey,
-        (servingPendingAdds.current.get(receiptKey) ?? 0) + 1
+      const begun = beginFoodServingAdd(
+        servingBursts.current.get(receiptKey) ?? emptyFoodServingBurst(),
+        coordinate,
+        filingSlot,
+        { servings: before.day, mealServings: before.meal }
       );
-      const burstCoordinates =
-        servingBurstCoordinates.current.get(receiptKey) ?? new Set<string>();
-      burstCoordinates.add(coordinate);
-      servingBurstCoordinates.current.set(receiptKey, burstCoordinates);
+      servingBursts.current.set(receiptKey, begun.state);
+      addTap = begun.tap;
     }
+    const settleAddBurst = (
+      outcome:
+        { ok: true; servings: number; mealServings: number } | { ok: false }
+    ): FoodServingBurstSettlement | null => {
+      if (!addTap) return null;
+      const settled = settleFoodServingAdd(
+        servingBursts.current.get(receiptKey) ?? emptyFoodServingBurst(),
+        addTap,
+        outcome
+      );
+      servingBursts.current.set(receiptKey, settled.state);
+      if (!settled.accepted) return settled;
+      if (settled.receipt && receiptProfileScope) {
+        const feedback = foodServingFeedback(
+          receiptProfileId,
+          activeDate,
+          slug,
+          group.name,
+          settled.receipt.servings,
+          activeDay.label
+        );
+        const inverseKey = foodServingInverseKey(
+          settled.receipt.coordinate,
+          ++servingInverseSequence.current
+        );
+        const receipt = settled.receipt;
+        announceUndoable({
+          ...feedback,
+          profileId: receiptProfileScope.profileId,
+          profileToken: receiptProfileScope.token,
+          undo: {
+            undoneMessage: "Serving undone.",
+            run: async () =>
+              (await bump(
+                group,
+                -1,
+                receipt.servings,
+                inverseKey,
+                receipt.mealSlot as FoodSlot
+              ))
+                ? { ok: true }
+                : { ok: false, reason: "changed" },
+          },
+        });
+      }
+      if (settled.reportFailure) {
+        toast("Couldn't save one of those servings — try again.", {
+          tone: "error",
+        });
+      }
+      return settled;
+    };
+    const dropAddBurst = () => {
+      if (!addTap) return;
+      servingBursts.current.set(
+        receiptKey,
+        dropFoodServingAdd(
+          servingBursts.current.get(receiptKey) ?? emptyFoodServingBurst(),
+          addTap
+        )
+      );
+    };
     const result = await ledger.tap<ServingTap>({
       // The key names the WRITE, not the row: a "−" correction straight after a "+"
       // is a different write and must not be absorbed by its cooldown. Adds carry a
@@ -1029,7 +1101,7 @@ export default function FoodLogBar({
       // additive write, is what collapses by coordinate (#3611).
       key:
         delta === 1
-          ? `${activeDate}:${filingSlot}:${slug}:add:${++servingTapSequence.current}`
+          ? `${activeDate}:${filingSlot}:${slug}:add:${addTap!.id}`
           : (inverseWriteKey ?? `${activeDate}:${filingSlot}:${slug}:undo`),
       from: before,
       // Optimistic: reflect the tap immediately.
@@ -1048,7 +1120,7 @@ export default function FoodLogBar({
         const fd = new FormData();
         fd.set("group_key", slug);
         fd.set("date", activeDate);
-        fd.set("meal_slot", activeSlot);
+        fd.set("meal_slot", filingSlot);
         if (expectedServings != null)
           fd.set("expected_servings", String(expectedServings));
         if (activeProfileId != null)
@@ -1067,9 +1139,15 @@ export default function FoodLogBar({
         };
       },
       settle: (tap) => {
-        if (tap.kind === "queued") return { kind: "keep" };
+        if (tap.kind === "queued") {
+          dropAddBurst();
+          return { kind: "keep" };
+        }
         // Refused capture: queueOffline already said so; the counts roll back.
-        if (tap.kind === "refused") return { kind: "rollback" };
+        if (tap.kind === "refused") {
+          settleAddBurst({ ok: false });
+          return { kind: "rollback" };
+        }
         if (tap.kind === "offline-undo") {
           undoNeedsConnection();
           return { kind: "rollback" };
@@ -1105,92 +1183,32 @@ export default function FoodLogBar({
           }
           offerEndFast(outcome.endFastOffer);
           if (delta === 1) {
-            settleServing(coordinate);
-            const finishesBurst = finishesFoodServingBurst(
-              servingPendingAdds.current.get(receiptKey) ?? 1
-            );
-            const reconciled = reconcileFoodServingAdd(
-              servingAddDayTruth.current.has(receiptKey) ||
-                servingAddMealTruth.current.has(coordinate)
-                ? {
-                    servings:
-                      servingAddDayTruth.current.get(receiptKey) ??
-                      outcome.servings,
-                    mealServings:
-                      servingAddMealTruth.current.get(coordinate) ??
-                      outcome.mealServings ??
-                      Math.max(0, before.meal + 1),
-                  }
-                : undefined,
-              {
-                servings: outcome.servings,
-                mealServings:
-                  outcome.mealSlot === filingSlot &&
-                  outcome.mealServings != null
-                    ? outcome.mealServings
-                    : Math.max(0, before.meal + 1),
-              }
-            );
-            servingAddDayTruth.current.set(receiptKey, reconciled.servings);
-            servingAddMealTruth.current.set(
-              coordinate,
-              reconciled.mealServings
-            );
-            const feedback = foodServingFeedback(
-              receiptProfileId,
-              activeDate,
-              slug,
-              group.name,
-              reconciled.servings,
-              activeDay.label
-            );
-            // Publish only when every rapid add response has settled. Earlier
-            // successes still move/settle the row, but exposing their inverse
-            // while older responses are outstanding lets Undo interleave with
-            // those callbacks. The final callback publishes the burst maximum,
-            // even when that callback itself carried an older/lower truth.
-            if (finishesBurst) {
-              const inverseKey = foodServingInverseKey(
-                coordinate,
-                ++servingInverseSequence.current
-              );
-              announceUndoable({
-                ...feedback,
-                profileId: activeProfileId ?? undefined,
-                undo: {
-                  undoneMessage: "Serving undone.",
-                  run: async () =>
-                    (await bump(group, -1, reconciled.servings, inverseKey))
-                      ? { ok: true }
-                      : { ok: false, reason: "changed" },
-                },
-              });
-            }
-          } else {
-            // A successful manual/receipt inverse is a new authoritative floor.
-            // Reset the add-only monotonic coordinator so a later add can grow
-            // from this lower truth instead of being mistaken for an old reply.
-            resetConcurrentAddTruth(receiptKey, coordinate, {
+            const settled = settleAddBurst({
+              ok: true,
               servings: outcome.servings,
               mealServings:
                 outcome.mealSlot === filingSlot && outcome.mealServings != null
                   ? outcome.mealServings
-                  : Math.max(0, before.meal - 1),
+                  : Math.max(0, before.meal + 1),
             });
-            dismissToast(
-              foodServingToastKey(receiptProfileId, activeDate, slug)
-            );
+            if (!settled?.accepted || !settled.counts) return { kind: "keep" };
+            settleServing(coordinate);
+            return {
+              kind: "adopt",
+              value: {
+                day: settled.counts.servings,
+                meal: settled.counts.mealServings,
+              },
+            };
+          } else {
+            dismissToast(receiptKey);
           }
           // Reconcile with the server's authoritative daily total (#748 item 2) so a
           // dropped/failed write can never leave a phantom count.
           return {
             kind: "adopt",
             value: {
-              day:
-                delta === 1
-                  ? (servingAddDayTruth.current.get(receiptKey) ??
-                    outcome.servings)
-                  : outcome.servings,
+              day: outcome.servings,
               // The server's meal figure is adopted only when it names the slot this
               // tap's optimistic bump moved (#2269) — a tap racing an hour boundary can
               // derive one window client-side and land in the neighbor server-side, and
@@ -1200,15 +1218,29 @@ export default function FoodLogBar({
               // also leaves the optimistic one standing rather than inventing one.
               meal:
                 outcome.mealSlot === filingSlot && outcome.mealServings != null
-                  ? delta === 1
-                    ? (servingAddMealTruth.current.get(coordinate) ??
-                      outcome.mealServings)
-                    : outcome.mealServings
+                  ? outcome.mealServings
                   : Math.max(0, before.meal + delta),
             },
           };
         }
-        // Roll back this tap and tell the user it didn't stick.
+        // A failed add still settles the whole rapid burst. If earlier taps
+        // succeeded, the final effect publishes their cumulative receipt and
+        // reports this failure separately.
+        if (delta === 1) {
+          const settled = settleAddBurst({ ok: false });
+          if (settled?.accepted && settled.counts) {
+            return {
+              kind: "adopt",
+              value: {
+                day: settled.counts.servings,
+                meal: settled.counts.mealServings,
+              },
+            };
+          }
+          return { kind: "keep" };
+        }
+        // Roll back this inverse and adopt the core's current authoritative total
+        // when its guard refuses.
         if (expectedServings != null && outcome.servings != null) {
           const authoritative: ServingCounts = {
             day: outcome.servings,
@@ -1217,10 +1249,6 @@ export default function FoodLogBar({
                 ? outcome.mealServings
                 : before.meal,
           };
-          resetConcurrentAddTruth(receiptKey, coordinate, {
-            servings: authoritative.day,
-            mealServings: authoritative.meal,
-          });
           return { kind: "adopt", value: authoritative };
         }
         if (expectedServings == null) {
@@ -1234,35 +1262,30 @@ export default function FoodLogBar({
         // Connection dropped mid-tap — queue an add instead of a false failure.
         if (shouldQueueOffline(navigator.onLine !== false, err)) {
           if (delta === 1) {
-            return (await queueOffline())
-              ? { kind: "keep" }
-              : { kind: "rollback" };
+            const kept = await queueOffline();
+            if (kept) dropAddBurst();
+            else settleAddBurst({ ok: false });
+            return kept ? { kind: "keep" } : { kind: "rollback" };
           }
           undoNeedsConnection();
           return { kind: "rollback" };
+        }
+        if (delta === 1) {
+          const settled = settleAddBurst({ ok: false });
+          return settled?.counts
+            ? {
+                kind: "adopt",
+                value: {
+                  day: settled.counts.servings,
+                  meal: settled.counts.mealServings,
+                },
+              }
+            : { kind: "keep" };
         }
         toast("Couldn't save that serving — try again.", { tone: "error" });
         return { kind: "rollback" };
       },
     });
-    if (delta === 1) {
-      const remaining = Math.max(
-        0,
-        (servingPendingAdds.current.get(receiptKey) ?? 1) - 1
-      );
-      if (remaining === 0) {
-        servingPendingAdds.current.delete(receiptKey);
-        servingAddDayTruth.current.delete(receiptKey);
-        for (const burstCoordinate of servingBurstCoordinates.current.get(
-          receiptKey
-        ) ?? []) {
-          servingAddMealTruth.current.delete(burstCoordinate);
-        }
-        servingBurstCoordinates.current.delete(receiptKey);
-      } else {
-        servingPendingAdds.current.set(receiptKey, remaining);
-      }
-    }
     return (
       result.status === "settled" &&
       result.result.kind === "wrote" &&

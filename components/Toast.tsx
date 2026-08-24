@@ -6,6 +6,7 @@ import {
   useContext,
   useEffect,
   useMemo,
+  useRef,
   useState,
 } from "react";
 import {
@@ -21,6 +22,9 @@ import {
   dropExited,
   visibleToasts,
   dismissOtherProfileToasts,
+  clearProfileToasts,
+  acceptsProfileToast,
+  type ProfileToastScope,
 } from "@/lib/toast-upsert";
 import { motionClass, motionMs, overlayMotionClass } from "@/lib/motion";
 import { useCompactViewport } from "@/components/useCompactViewport";
@@ -79,12 +83,14 @@ interface ToastOptions {
   // Subject stamp for health-data receipts that can survive navigation. Profile
   // switching clears every toast whose stamp no longer matches, queued or shown.
   profileId?: number;
+  profileToken?: number;
 }
 
 interface ToastItem {
   id: number;
   key?: string;
   profileId?: number;
+  profileToken?: number;
   // Bumped on each in-place replace so the card's dismiss timer restarts (#1315).
   revision: number;
   // Set while the bar plays its exit animation; see lib/toast-upsert.ts.
@@ -97,12 +103,13 @@ interface ToastItem {
 
 type ToastFn = (message: string, options?: ToastOptions) => void;
 type DismissKeyFn = (key: string) => void;
-type DismissOtherProfilesFn = (activeProfileId: number) => void;
+type ActivateProfileFn = (activeProfileId: number | null) => void;
 
 interface ToastApi {
   toast: ToastFn;
   dismissKey: DismissKeyFn;
-  dismissOtherProfiles: DismissOtherProfilesFn;
+  activateProfile: ActivateProfileFn;
+  profileScope: ProfileToastScope | null;
 }
 
 // Default auto-dismiss by tone (ms). Errors linger longer since they carry
@@ -110,11 +117,28 @@ interface ToastApi {
 const DEFAULT_DURATION: Record<Tone, number> = { success: 6000, error: 10000 };
 
 const ToastContext = createContext<ToastApi | null>(null);
+const mountedProfileActivators = new Set<ActivateProfileFn>();
+
+// Sign-out begins before the authenticated layout unmounts. These module-level
+// relays let that boundary clear/re-arm every mounted provider without making the
+// reusable logout control require a ToastProvider in isolation tests.
+export function clearProfileToastsForLogout(): void {
+  for (const activate of mountedProfileActivators) activate(null);
+}
+
+export function restoreToastProfileAfterFailedLogout(profileId: number): void {
+  for (const activate of mountedProfileActivators) activate(profileId);
+}
 
 let seq = 0;
 
 export function ToastProvider({ children }: { children: React.ReactNode }) {
   const [toasts, setToasts] = useState<ToastItem[]>([]);
+  const [profileScope, setProfileScope] = useState<ProfileToastScope | null>(
+    null
+  );
+  const profileScopeRef = useRef<ProfileToastScope | null>(null);
+  const profileTokenRef = useRef(0);
   const reduceMotion = usePrefersReducedMotion();
   const snackbar = useCompactViewport();
   const exitMs = motionMs("notice", reduceMotion);
@@ -134,14 +158,27 @@ export function ToastProvider({ children }: { children: React.ReactNode }) {
     setToasts((list) => dismissKeyed(list, key));
   }, []);
 
-  const dismissOtherProfiles = useCallback<DismissOtherProfilesFn>(
-    (activeProfileId) => {
-      setToasts((list) => dismissOtherProfileToasts(list, activeProfileId));
-    },
-    []
-  );
+  const activateProfile = useCallback<ActivateProfileFn>((activeProfileId) => {
+    const token = ++profileTokenRef.current;
+    const next =
+      activeProfileId == null ? null : { profileId: activeProfileId, token };
+    profileScopeRef.current = next;
+    setProfileScope(next);
+    setToasts((list) =>
+      activeProfileId == null
+        ? clearProfileToasts(list)
+        : dismissOtherProfileToasts(list, activeProfileId)
+    );
+  }, []);
+  useEffect(() => {
+    mountedProfileActivators.add(activateProfile);
+    return () => {
+      mountedProfileActivators.delete(activateProfile);
+    };
+  }, [activateProfile]);
 
   const toast = useCallback<ToastFn>((message, options = {}) => {
+    if (!acceptsProfileToast(profileScopeRef.current, options)) return;
     const tone = options.tone ?? "success";
     const duration =
       options.duration === undefined
@@ -157,13 +194,14 @@ export function ToastProvider({ children }: { children: React.ReactNode }) {
         duration,
         action: options.action,
         profileId: options.profileId,
+        profileToken: options.profileToken,
       })
     );
   }, []);
 
   const api = useMemo<ToastApi>(
-    () => ({ toast, dismissKey, dismissOtherProfiles }),
-    [toast, dismissKey, dismissOtherProfiles]
+    () => ({ toast, dismissKey, activateProfile, profileScope }),
+    [toast, dismissKey, activateProfile, profileScope]
   );
 
   const shown = visibleToasts(toasts, snackbar);
@@ -300,11 +338,18 @@ export function useDismissToast(): DismissKeyFn {
   return ctx.dismissKey;
 }
 
-export function useDismissOtherProfileToasts(): DismissOtherProfilesFn {
+export function useActivateToastProfile(): ActivateProfileFn {
   const ctx = useContext(ToastContext);
   if (!ctx)
     throw new Error(
-      "useDismissOtherProfileToasts must be used within a ToastProvider"
+      "useActivateToastProfile must be used within a ToastProvider"
     );
-  return ctx.dismissOtherProfiles;
+  return ctx.activateProfile;
+}
+
+export function useToastProfileScope(): ProfileToastScope | null {
+  const ctx = useContext(ToastContext);
+  if (!ctx)
+    throw new Error("useToastProfileScope must be used within a ToastProvider");
+  return ctx.profileScope;
 }

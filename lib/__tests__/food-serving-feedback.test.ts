@@ -3,8 +3,10 @@ import {
   foodServingCoordinate,
   foodServingFeedback,
   foodServingInverseKey,
-  finishesFoodServingBurst,
-  reconcileFoodServingAdd,
+  beginFoodServingAdd,
+  emptyFoodServingBurst,
+  invalidateFoodServingBurst,
+  settleFoodServingAdd,
 } from "@/lib/food-serving-feedback";
 import {
   dismissOtherProfileToasts,
@@ -43,49 +45,82 @@ describe("foodServingFeedback", () => {
     });
   });
 
-  it("does not regress count or receipt when deferred adds settle 3 then 2", async () => {
-    let resolveTwo!: (truth: {
-      servings: number;
-      mealServings: number;
-    }) => void;
-    let resolveThree!: (truth: {
-      servings: number;
-      mealServings: number;
-    }) => void;
-    const two = new Promise<{ servings: number; mealServings: number }>(
-      (resolve) => (resolveTwo = resolve)
-    );
-    const three = new Promise<{ servings: number; mealServings: number }>(
-      (resolve) => (resolveThree = resolve)
-    );
-    let visible: ReturnType<typeof reconcileFoodServingAdd> | undefined;
-    let receipt: ReturnType<typeof reconcileFoodServingAdd> | undefined;
-    let pendingAdds = 2;
-    const settle = async (
-      pending: Promise<{ servings: number; mealServings: number }>
-    ) => {
-      const incoming = await pending;
-      visible = reconcileFoodServingAdd(visible, incoming);
-      if (finishesFoodServingBurst(pendingAdds)) receipt = visible;
-      pendingAdds -= 1;
-    };
-    const older = settle(two);
-    const newer = settle(three);
-    resolveThree({ servings: 3, mealServings: 3 });
-    await newer;
-    resolveTwo({ servings: 2, mealServings: 2 });
-    await older;
+  it("does not regress 3→2 and binds Undo to the latest tap, not last response", () => {
+    let state = emptyFoodServingBurst();
+    const morning = beginFoodServingAdd(state, "morning", "Morning", {
+      servings: 1,
+      mealServings: 1,
+    });
+    state = morning.state;
+    const evening = beginFoodServingAdd(state, "evening", "Evening", {
+      servings: 2,
+      mealServings: 0,
+    });
+    state = evening.state;
 
-    expect(visible).toEqual({
+    const newer = settleFoodServingAdd(state, evening.tap, {
+      ok: true,
       servings: 3,
-      mealServings: 3,
-      publishReceipt: false,
+      mealServings: 1,
     });
-    expect(receipt).toEqual({
+    expect(newer.counts?.servings).toBe(3);
+    const older = settleFoodServingAdd(newer.state, morning.tap, {
+      ok: true,
+      servings: 2,
+      mealServings: 2,
+    });
+
+    expect(older.counts?.servings).toBe(3);
+    expect(older.receipt).toEqual({
       servings: 3,
-      mealServings: 3,
-      publishReceipt: false,
+      coordinate: "evening",
+      mealSlot: "Evening",
     });
+  });
+
+  it("ignores a delayed add settlement after a decrement starts a new epoch", () => {
+    const begun = beginFoodServingAdd(
+      emptyFoodServingBurst(),
+      "morning",
+      "Morning",
+      { servings: 1, mealServings: 1 }
+    );
+    const afterRemoval = invalidateFoodServingBurst(begun.state);
+    const stale = settleFoodServingAdd(afterRemoval, begun.tap, {
+      ok: true,
+      servings: 2,
+      mealServings: 2,
+    });
+    expect(stale.accepted).toBe(false);
+    expect(stale.receipt).toBeUndefined();
+  });
+
+  it("keeps successful receipt and failure channel when the final tap fails", () => {
+    let state = emptyFoodServingBurst();
+    const first = beginFoodServingAdd(state, "morning", "Morning", {
+      servings: 0,
+      mealServings: 0,
+    });
+    state = first.state;
+    const second = beginFoodServingAdd(state, "evening", "Evening", {
+      servings: 1,
+      mealServings: 0,
+    });
+    const success = settleFoodServingAdd(second.state, first.tap, {
+      ok: true,
+      servings: 1,
+      mealServings: 1,
+    });
+    const failure = settleFoodServingAdd(success.state, second.tap, {
+      ok: false,
+    });
+    expect(failure.receipt).toEqual({
+      servings: 1,
+      coordinate: "morning",
+      mealSlot: "Morning",
+    });
+    expect(failure.reportFailure).toBe(true);
+    expect(failure.counts?.servings).toBe(1);
   });
 
   it("keys settle state by profile, day, meal, and group", () => {

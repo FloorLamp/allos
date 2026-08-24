@@ -3,7 +3,7 @@
 import { useEffect, useRef } from "react";
 import { clearEmergencyPayload } from "@/components/emergency-offline";
 import { clearSnapshots } from "@/lib/offline/snapshot-db";
-import { useDismissOtherProfileToasts } from "@/components/Toast";
+import { useActivateToastProfile } from "@/components/Toast";
 
 // Device-local cleanup on a profile switch (issue #600). Mounted ONCE in the (app)
 // layout, it watches the session's active profile id and wipes the profile-specific
@@ -55,16 +55,20 @@ export default function ProfileSwitchWatcher({
 }: {
   activeProfileId: number;
 }) {
-  const dismissOtherProfileToasts = useDismissOtherProfileToasts();
+  const activateToastProfile = useActivateToastProfile();
   const previous = useRef(activeProfileId);
   useEffect(() => {
     // Run on first mount too: the app layout may have remounted after the server
     // switch while the root ToastProvider (and its queued snackbars) survived.
-    dismissOtherProfileToasts(activeProfileId);
-    if (previous.current === activeProfileId) return;
-    previous.current = activeProfileId;
-    clearEmergencyPayload();
-    void clearSnapshots();
-  }, [activeProfileId, dismissOtherProfileToasts]);
+    activateToastProfile(activeProfileId);
+    if (previous.current !== activeProfileId) {
+      previous.current = activeProfileId;
+      clearEmergencyPayload();
+      void clearSnapshots();
+    }
+    // Logout unmounts the authenticated layout. Clearing the active generation
+    // rejects late completions as well as removing already queued receipts.
+    return () => activateToastProfile(null);
+  }, [activeProfileId, activateToastProfile]);
   return null;
 }

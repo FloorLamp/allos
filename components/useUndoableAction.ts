@@ -30,6 +30,7 @@ export interface UndoAnnouncement {
   // write after a cumulative counter moves again (#3611).
   key?: string;
   profileId?: number;
+  profileToken?: number;
   // Absent/null = no undo (a refusal, or a write with no complete local inverse).
   undo?: UndoOffer | null;
 }
@@ -51,6 +52,7 @@ export function useUndoableAction(): (announcement: UndoAnnouncement) => void {
           duration: plan.duration,
           key: announcement.key,
           profileId: announcement.profileId,
+          profileToken: announcement.profileToken,
         });
         return;
       }
@@ -59,6 +61,7 @@ export function useUndoableAction(): (announcement: UndoAnnouncement) => void {
         duration: plan.duration,
         key: announcement.key,
         profileId: announcement.profileId,
+        profileToken: announcement.profileToken,
         action: {
           label: "Undo",
           onClick: () => {
@@ -82,12 +85,14 @@ export function useUndoableAction(): (announcement: UndoAnnouncement) => void {
                 toast(offer.undoneMessage, {
                   key: announcement.key,
                   profileId: announcement.profileId,
+                  profileToken: announcement.profileToken,
                 });
               else
                 toast(undoRefusalText(outcome.reason), {
                   tone: "error",
                   key: announcement.key,
                   profileId: announcement.profileId,
+                  profileToken: announcement.profileToken,
                 });
             })();
           },

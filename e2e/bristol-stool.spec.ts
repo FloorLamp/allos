@@ -109,7 +109,12 @@ test("the picker offers exactly the seven types and logs the tapped one", async 
   );
 
   const before = frozenNow().getTime();
-  await settledClick(page, picker.getByTestId("stool-type-6"));
+  const settle = picker.getByTestId("stool-settle-6");
+  const rolling = picker.getByTestId("quick-entry-stool-rolling-count");
+  const sawSettle = expect(settle).toHaveAttribute("data-settling", "true");
+  const sawRoll = expect(rolling).toHaveAttribute("data-rolling", "true");
+  await picker.getByTestId("stool-type-6").click();
+  await Promise.all([sawSettle, sawRoll]);
 
   // The sheet STAYS OPEN — several a day is ordinary, and a mis-tap is corrected by
   // tapping again rather than by reopening.
@@ -143,6 +148,20 @@ test("the picker offers exactly the seven types and logs the tapped one", async 
     Math.floor(before / 1000) * 1000
   );
   expect(stampedAt!.getTime()).toBeLessThanOrEqual(after);
+
+  // Reduced motion keeps the write/count end state and removes both transient
+  // animation bands. The frozen instant makes this a correction of the reading,
+  // so the daily count correctly remains one.
+  await page.emulateMedia({ reducedMotion: "reduce" });
+  const reducedSettle = picker.getByTestId("stool-settle-5");
+  await settledClick(page, picker.getByTestId("stool-type-5"));
+  await expect(page.getByTestId("quick-entry-stool-count")).toHaveText(
+    "1 logged today."
+  );
+  await expect(reducedSettle).toHaveAttribute("data-reduced-motion", "true");
+  await expect(reducedSettle).not.toHaveClass(/motion-settle/);
+  await expect(rolling).toHaveAttribute("data-reduced-motion", "true");
+  await expect(rolling).toHaveAttribute("data-rolling", "false");
 });
 
 test("the Body panel shows a day's types as marks, never as one average", async ({

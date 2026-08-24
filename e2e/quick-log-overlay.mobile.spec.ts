@@ -627,7 +627,7 @@ test("food serving taps settle, roll one cumulative Undo toast, and undo only th
 test("switching profiles clears the originating food receipt and cannot target its peer (#3611)", async ({
   browser,
 }) => {
-  const group = "mushrooms";
+  const group = "nuts_seeds";
   const ownerId = profileIdByName(MULTI_OWNER_PROFILE);
   const sharedId = profileIdByName(MULTI_SHARED_PROFILE);
   clearProfileFoodGroup(ownerId, group);
@@ -650,7 +650,7 @@ test("switching profiles clears the originating food receipt and cannot target i
     await settledClick(page, row.getByTestId(`log-${group}`));
     await expect(
       page.locator('[data-toast-key^="food-serving:"]')
-    ).toContainText("1 serving of Mushrooms today");
+    ).toContainText("1 serving of Nuts & seeds today");
     await page.keyboard.press("Escape");
     await expect(food).toHaveCount(0);
 
