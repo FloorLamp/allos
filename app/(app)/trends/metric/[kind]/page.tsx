@@ -88,6 +88,7 @@ import MetricReadingsTable, {
 } from "@/components/MetricReadingsTable";
 import PeakFlowZoneCard from "@/components/PeakFlowZoneCard";
 import { getPeakFlowPersonalBest } from "@/lib/settings";
+import { periodGridCols, periodItemBorders } from "@/lib/period-stats-layout";
 import { suggestedPersonalBest } from "@/lib/peak-flow";
 import { savePeakFlowPersonalBest } from "../../peak-flow-actions";
 import SourceComparison from "../../SourceComparison";
@@ -729,34 +730,6 @@ const PERIOD_COLS: Record<number, string> = {
   3: "sm:grid-cols-3",
   4: "sm:grid-cols-2",
 };
-
-// How many `sm` columns the grid above resolves to — the input the per-item
-// borders need (divide-x/divide-y utilities assume one row or one column, which a
-// 2×2 grid is neither, so each cell draws its own edges instead).
-function periodGridCols(statCount: number): number {
-  return statCount === 4 ? 2 : Math.max(1, statCount);
-}
-
-// The separators between period cells, per cell: a top rule in the phone stack, a
-// left rule between `sm` row neighbours plus a top rule for the second 2×2 row,
-// and (in the desktop sidebar) back to top rules only when `xl` restacks to one
-// column.
-function periodItemBorders(
-  index: number,
-  cols: number,
-  desktopSidebar: boolean
-): string {
-  if (index === 0) return "";
-  const out = ["border-black/10", "dark:border-white/10", "border-t"];
-  const startsRow = index % cols === 0;
-  if (!startsRow) out.push("sm:border-l");
-  if (index < cols) out.push("sm:border-t-0");
-  if (desktopSidebar) {
-    if (!startsRow) out.push("xl:border-l-0");
-    if (index < cols) out.push("xl:border-t");
-  }
-  return out.join(" ");
-}
 
 function PeriodStatsCard({
   stats,

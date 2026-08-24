@@ -2,6 +2,11 @@ import fs from "node:fs";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
 import { describe, expect, it } from "vitest";
+import {
+  PERIOD_ITEM_BORDER_CLASSES,
+  periodGridCols,
+  periodItemBorders,
+} from "../period-stats-layout";
 import { stripComments } from "./strip-comments";
 import { makeTmpDir } from "./tmp-dir";
 
@@ -278,6 +283,16 @@ function classTagSpansWithin(
   return [...spans.values()];
 }
 
+function componentTagSpansWithin(
+  source: string,
+  start: number,
+  end: number
+): TagSpan[] {
+  return [...source.slice(start, end).matchAll(/<[A-Z][\w.]*\b/g)].map(
+    (match) => tagSpanAt(source, start + match.index)
+  );
+}
+
 function horizontalPaddingTokens(tag: string): string[] {
   const className = tag.slice(tag.indexOf("className="));
   return [...className.matchAll(/["'`]([^"'`]*)["'`]/g)]
@@ -399,10 +414,29 @@ function contractProblems(
           );
         }
         for (const [start, end] of owners) {
-          if (!source.slice(start, end).includes(`<${adopter.viaComponent}`)) {
+          const invocations = openingTagSpansWith(
+            source,
+            `<${adopter.viaComponent}`
+          ).filter(
+            (invocation) => invocation.start > start && invocation.end < end
+          );
+          if (invocations.length !== 1) {
             problems.push(
-              `${adopter.file}: ${adopter.ownerNeedle} does not render ${adopter.viaComponent}`
+              `${adopter.file}: ${adopter.ownerNeedle} must render ${adopter.viaComponent} exactly once`
             );
+            continue;
+          }
+          for (const wrapper of componentTagSpansWithin(source, start, end)) {
+            if (wrapper.start === invocations[0].start) continue;
+            const [wrapperStart, wrapperEnd] = elementRange(source, wrapper);
+            if (
+              wrapperStart < invocations[0].start &&
+              wrapperEnd > invocations[0].end
+            ) {
+              problems.push(
+                `${adopter.file}: unresolved component wrapper lies between ${adopter.ownerNeedle} and ${adopter.viaComponent}`
+              );
+            }
           }
         }
       } else {
@@ -540,6 +574,17 @@ function contractProblems(
             );
           }
         }
+        for (const component of componentTagSpansWithin(source, start, end)) {
+          const [componentStart, componentEnd] = elementRange(
+            source,
+            component
+          );
+          if (componentStart < carrier.start && componentEnd > carrier.end) {
+            problems.push(
+              `${parent.file}: unresolved component wrapper lies between ${parent.needle} and a registered carrier`
+            );
+          }
+        }
       }
       for (const tag of classTags) {
         const horizontal = horizontalPaddingTokens(tag.text);
@@ -609,6 +654,39 @@ describe("delegated card gutter contract (#3507)", () => {
       "@apply px-2 sm:px-5;"
     );
     expect(utilityBody(css, "card-gutter-action")).toBe("@apply px-2 sm:px-3;");
+  });
+
+  it("exhausts the registered PeriodStats border helper without admitting gutter classes", () => {
+    expect(PERIOD_ITEM_BORDER_CLASSES).toEqual({
+      first: "",
+      stackStart: "border-black/10 dark:border-white/10 border-t",
+      rowSibling: "border-black/10 dark:border-white/10 border-t sm:border-l",
+      firstRowSibling:
+        "border-black/10 dark:border-white/10 border-t sm:border-l sm:border-t-0",
+      desktopRowSibling:
+        "border-black/10 dark:border-white/10 border-t sm:border-l xl:border-l-0",
+      desktopFirstRowSibling:
+        "border-black/10 dark:border-white/10 border-t sm:border-l sm:border-t-0 xl:border-l-0 xl:border-t",
+    });
+    const registered = new Set<string>(
+      Object.values(PERIOD_ITEM_BORDER_CLASSES)
+    );
+    for (const statCount of [1, 2, 3, 4]) {
+      const cols = periodGridCols(statCount);
+      for (let index = 0; index < statCount; index += 1) {
+        for (const desktopSidebar of [false, true]) {
+          const output = periodItemBorders(index, cols, desktopSidebar);
+          expect(
+            registered.has(output),
+            `unregistered border output for ${JSON.stringify({ statCount, index, desktopSidebar })}: ${output}`
+          ).toBe(true);
+          expect(
+            output.split(/\s+/).filter((token) => isPadding(token, true)),
+            "the border-only helper may never return horizontal gutter"
+          ).toEqual([]);
+        }
+      }
+    }
   });
 
   it("pins every parent and rendered gutter carrier, with no local overrides", () => {
@@ -783,6 +861,15 @@ describe("delegated card gutter contract (#3507)", () => {
         /unresolved className lies between/
       );
     }
+
+    const componentWrapped = `
+      function ReviewWrapper({ children }: { children: React.ReactNode }) {
+        return <div className="px-8">{children}</div>;
+      }
+      ${live.slice(0, start)}<ReviewWrapper>${live.slice(start, end)}</ReviewWrapper>${live.slice(end)}`;
+    expect(periodStatsProblems(componentWrapped).join("\n")).toMatch(
+      /unresolved component wrapper lies between/
+    );
   });
 
   it("requires every registered delegated parent to own a registered carrier", () => {

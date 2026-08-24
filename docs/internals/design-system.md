@@ -152,7 +152,10 @@ Two traps the guards exist for, both found by measurement rather than reading:
   breakpoint and logical edge, and rejects any unregistered adopter. A
   non-literal class wrapper between a parent and carrier fails closed; the two
   PeriodStats wrappers with dynamic grid/border classes are registered and
-  pinned exactly as layout-only. The guard also bans ad-hoc `p-0!` throughout
+  pinned exactly as layout-only, and the border helper can return only an
+  exhaustively asserted registry of border classes. Component wrappers on that
+  path fail closed too; `ReadingsHeader` is the one registered component bridge
+  and its rendered root is pinned. The guard also bans ad-hoc `p-0!` throughout
   `app/` and `components/`; the sole exact, fail-stale exception is
   ProtocolCompare's non-card icon button (#3507).
 
