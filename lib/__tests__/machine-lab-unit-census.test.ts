@@ -434,6 +434,163 @@ describe("the machine-spelled lab-unit matcher (#3545)", () => {
     ).toEqual([]);
   });
 
+  it("follows assignment patterns, loop bindings, and captured writes", () => {
+    const cases = [
+      `
+        export function UnitMislabelReview({ item, toast }) {
+          let spelling = "";
+          ({ statedUnit: spelling } = item);
+          toast("Stored as " + spelling);
+          return <p>{spelling}</p>;
+        }
+      `,
+      `
+        export function UnitMislabelReview({ items, toast }) {
+          for (const { statedUnit: spelling } of items) {
+            toast("Stored as " + spelling);
+            return <p>{spelling}</p>;
+          }
+          return null;
+        }
+      `,
+      `
+        export function UnitMislabelReview({ item, toast }) {
+          const { "statedUnit": spelling } = item;
+          toast("Stored as " + spelling);
+          return <p>{spelling}</p>;
+        }
+      `,
+      `
+        export function UnitMislabelReview({ items, toast }) {
+          let spelling = "";
+          items.forEach((item) => { spelling = item.statedUnit; });
+          toast("Stored as " + spelling);
+          return <p>{spelling}</p>;
+        }
+      `,
+    ];
+    for (const source of cases) {
+      expect(
+        rawRenderedUnitExits(
+          source,
+          "/repo/components/UnitMislabelReview.tsx"
+        ).map((hit) => hit.text)
+      ).toEqual(["spelling", "spelling"]);
+    }
+  });
+
+  it("clears taint only at an authentic formatter write", () => {
+    const safe = `
+      import { displayUnit } from "@/lib/display-unit";
+      export function UnitMislabelReview({ item, toast }) {
+        let spelling = item.statedUnit;
+        spelling = displayUnit(spelling) ?? "";
+        toast("Stored as " + spelling);
+        return <p>{spelling}</p>;
+      }
+    `;
+    expect(
+      rawRenderedUnitExits(safe, "/repo/components/UnitMislabelReview.tsx")
+    ).toEqual([]);
+
+    const conditional = `
+      import { displayUnit } from "@/lib/display-unit";
+      export function UnitMislabelReview({ item, toast }) {
+        let spelling = item.statedUnit;
+        if (item.confirmed) spelling = displayUnit(spelling) ?? "";
+        toast("Stored as " + spelling);
+        return <p>{spelling}</p>;
+      }
+    `;
+    expect(
+      rawRenderedUnitExits(
+        conditional,
+        "/repo/components/UnitMislabelReview.tsx"
+      ).map((hit) => hit.text)
+    ).toEqual(["spelling", "spelling"]);
+
+    const capturedThenSafe = `
+      import { displayUnit } from "@/lib/display-unit";
+      export function UnitMislabelReview({ items, toast }) {
+        let spelling = "";
+        items.forEach((item) => { spelling = item.statedUnit; });
+        spelling = displayUnit(spelling) ?? "";
+        toast("Stored as " + spelling);
+        return <p>{spelling}</p>;
+      }
+    `;
+    expect(
+      rawRenderedUnitExits(
+        capturedThenSafe,
+        "/repo/components/UnitMislabelReview.tsx"
+      )
+    ).toEqual([]);
+
+    const shadowed = `
+      import { displayUnit } from "@/lib/display-unit";
+      export function UnitMislabelReview({ item }) {
+        function Nested({ displayUnit }) {
+          return <p>{displayUnit(item.statedUnit)}</p>;
+        }
+        return <Nested displayUnit={(value) => value} />;
+      }
+    `;
+    expect(
+      rawRenderedUnitExits(
+        shadowed,
+        "/repo/components/UnitMislabelReview.tsx"
+      ).map((hit) => hit.text)
+    ).toEqual(["item.statedUnit"]);
+  });
+
+  it("resolves block shadows without distrusting an authentic outer formatter", () => {
+    const blockShadow = `
+      export function UnitMislabelReview({ item, toast }) {
+        const spelling = item.statedUnit;
+        if (item.dismissed) {
+          const spelling = "unknown";
+          toast("Stored as " + spelling);
+          return <p>{spelling}</p>;
+        }
+        return null;
+      }
+    `;
+    expect(
+      rawRenderedUnitExits(
+        blockShadow,
+        "/repo/components/UnitMislabelReview.tsx"
+      )
+    ).toEqual([]);
+
+    const formatterShadow = `
+      import { displayUnit } from "@/lib/display-unit";
+      export function UnitMislabelReview({ item }) {
+        function unrelated(displayUnit) { return displayUnit; }
+        return <p>{displayUnit(item.statedUnit)}</p>;
+      }
+    `;
+    expect(
+      rawRenderedUnitExits(
+        formatterShadow,
+        "/repo/components/UnitMislabelReview.tsx"
+      )
+    ).toEqual([]);
+  });
+
+  it("covers the biomarker option's existing latestUnit producer", () => {
+    const source = `
+      export function GoalForm({ bioOption, kind }) {
+        if (kind === "biomarker") return <p>{bioOption.latestUnit}</p>;
+        return null;
+      }
+    `;
+    expect(
+      rawRenderedUnitExits(source, "/repo/app/(app)/training/GoalForm.tsx").map(
+        (hit) => hit.text
+      )
+    ).toEqual(["bioOption.latestUnit"]);
+  });
+
   it("does not leak a tainted alias through an unrelated nested shadow", () => {
     const source = `
       export function LabResultCard({ row }) {

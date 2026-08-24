@@ -7,7 +7,7 @@ export interface RawRenderedUnitExit {
 }
 
 const UNIT_PROPERTY =
-  /^(?:bio(?:marker)?Unit|correctedUnit|latest_unit|statedUnit|unit|vitaminDUnit)$/i;
+  /^(?:bio(?:marker)?Unit|correctedUnit|latestUnit|latest_unit|statedUnit|unit|vitaminDUnit)$/i;
 const UNIT_IDENTIFIER = /^(?:units?|chartUnit|otherUnits)$/;
 const LAB_UNIT_IDENTIFIER = /^(?:bioUnit)$/i;
 const LAB_CONTEXT_IDENTIFIER =
@@ -23,7 +23,7 @@ const COPY_PRODUCER =
 const PRECOMPOSED_LAB_COPY_PRODUCER =
   /(?:BioAgeEffect|Biomarker|CensoredInput|ClinicalResult|LabValue|ReferenceCell|ReferenceHint|Revision|SunExposure|Trajectory|unitSuffix)/i;
 const POSSIBLE_UNIT_EXIT =
-  /(?:\.\s*(?:bio(?:marker)?Unit|correctedUnit|latest_unit|statedUnit|unit|vitaminDUnit)\b|\[\s*["'](?:bio(?:marker)?Unit|correctedUnit|latest_unit|statedUnit|unit|vitaminDUnit)["']\s*\]|\b(?:bio(?:marker)?Unit|chartUnit|correctedUnit|otherUnits|statedUnit|units?|vitaminDUnit)\b)/i;
+  /(?:\.\s*(?:bio(?:marker)?Unit|correctedUnit|latestUnit|latest_unit|statedUnit|unit|vitaminDUnit)\b|\[\s*["'](?:bio(?:marker)?Unit|correctedUnit|latestUnit|latest_unit|statedUnit|unit|vitaminDUnit)["']\s*\]|\b(?:bio(?:marker)?Unit|chartUnit|correctedUnit|latestUnit|otherUnits|statedUnit|units?|vitaminDUnit)\b)/i;
 
 function displayUnitModule(moduleName: string, fileName: string): boolean {
   if (moduleName === "@/lib/display-unit") return true;
@@ -39,11 +39,11 @@ function displayUnitModule(moduleName: string, fileName: string): boolean {
   return resolved === `${rootMatch[1]}/lib/display-unit`;
 }
 
-function importedDisplayUnitBindings(
+function importedDisplayUnitDeclarations(
   sourceFile: ts.SourceFile,
   fileName: string
-): Set<string> {
-  const bindings = new Set<string>();
+): Set<ts.Identifier> {
+  const declarations = new Set<ts.Identifier>();
   for (const statement of sourceFile.statements) {
     if (
       !ts.isImportDeclaration(statement) ||
@@ -55,45 +55,11 @@ function importedDisplayUnitBindings(
       continue;
     for (const element of statement.importClause.namedBindings.elements) {
       if ((element.propertyName ?? element.name).text === "displayUnit") {
-        bindings.add(element.name.text);
+        declarations.add(element.name);
       }
     }
   }
-
-  // Be conservative about shadowing. A formatter import cannot protect an exit
-  // if any local declaration reuses its binding name; requiring an alias in that
-  // unusual case is preferable to licensing an identity function by spelling.
-  function removeShadowedBinding(node: ts.Node) {
-    if (
-      ts.isIdentifier(node) &&
-      bindings.has(node.text) &&
-      ((ts.isVariableDeclaration(node.parent) && node.parent.name === node) ||
-        (ts.isParameter(node.parent) && node.parent.name === node) ||
-        (ts.isBindingElement(node.parent) && node.parent.name === node) ||
-        ((ts.isFunctionDeclaration(node.parent) ||
-          ts.isFunctionExpression(node.parent) ||
-          ts.isClassDeclaration(node.parent) ||
-          ts.isClassExpression(node.parent) ||
-          ts.isMethodDeclaration(node.parent)) &&
-          node.parent.name === node))
-    ) {
-      bindings.delete(node.text);
-    }
-    ts.forEachChild(node, removeShadowedBinding);
-  }
-  removeShadowedBinding(sourceFile);
-  return bindings;
-}
-
-function isDisplayUnitCall(
-  node: ts.Node,
-  trustedBindings: Set<string>
-): boolean {
-  return (
-    ts.isCallExpression(node) &&
-    ts.isIdentifier(node.expression) &&
-    trustedBindings.has(node.expression.text)
-  );
+  return declarations;
 }
 
 function renderedExpression(node: ts.JsxExpression): ts.Expression | null {
@@ -291,120 +257,491 @@ export function rawRenderedUnitExits(
   );
   const out: RawRenderedUnitExit[] = [];
   const seen = new Set<number>();
-  const trustedBindings = importedDisplayUnitBindings(sourceFile, fileName);
+  const formatterDeclarations = importedDisplayUnitDeclarations(
+    sourceFile,
+    fileName
+  );
 
-  // Follow raw unit values through local aliases instead of trusting a handful of
-  // conventional names. The map is function-scoped so an ordinary `u` in another
-  // helper cannot inherit taint; ancestor scopes are consulted so callbacks still
-  // see aliases captured from their enclosing lab-copy producer.
-  const taintedAliases = new Map<ts.Node, Set<string>>();
-  const declaredAliases = new Map<ts.Node, Set<string>>();
+  interface LexicalScope {
+    node: ts.Node;
+    parent: LexicalScope | null;
+    bindings: Map<string, UnitBinding>;
+  }
 
-  function aliasScope(node: ts.Node): ts.Node {
+  interface BindingWrite {
+    node: ts.Node;
+    position: number;
+    expression?: ts.Expression;
+    raw?: boolean;
+    appliesWithin?: ts.Node;
+  }
+
+  interface UnitBinding {
+    id: number;
+    name: string;
+    scope: LexicalScope;
+    initialRaw: boolean;
+    writes: BindingWrite[];
+  }
+
+  let nextBindingId = 1;
+  const scopeAt = new Map<ts.Node, LexicalScope>();
+  const declarationBindings = new Map<ts.Identifier, UnitBinding>();
+  const trustedFormatterBindings = new Set<UnitBinding>();
+
+  type RuntimeFunction =
+    | ts.FunctionDeclaration
+    | ts.FunctionExpression
+    | ts.ArrowFunction
+    | ts.MethodDeclaration
+    | ts.ConstructorDeclaration
+    | ts.GetAccessorDeclaration
+    | ts.SetAccessorDeclaration;
+
+  function runtimeFunction(node: ts.Node): node is RuntimeFunction {
+    return (
+      ts.isFunctionDeclaration(node) ||
+      ts.isFunctionExpression(node) ||
+      ts.isArrowFunction(node) ||
+      ts.isMethodDeclaration(node) ||
+      ts.isConstructorDeclaration(node) ||
+      ts.isGetAccessorDeclaration(node) ||
+      ts.isSetAccessorDeclaration(node)
+    );
+  }
+
+  function childScope(node: ts.Node, parent: LexicalScope): LexicalScope {
+    return { node, parent, bindings: new Map() };
+  }
+
+  function nearestVarScope(scope: LexicalScope): LexicalScope {
+    for (
+      let current: LexicalScope | null = scope;
+      current;
+      current = current.parent
+    ) {
+      if (ts.isSourceFile(current.node) || runtimeFunction(current.node))
+        return current;
+    }
+    return scope;
+  }
+
+  function conventionalUnitName(name: string): boolean {
+    return UNIT_IDENTIFIER.test(name) || LAB_UNIT_IDENTIFIER.test(name);
+  }
+
+  function declareIdentifier(
+    identifier: ts.Identifier,
+    scope: LexicalScope,
+    initialRaw = false
+  ): UnitBinding {
+    let binding = scope.bindings.get(identifier.text);
+    if (!binding) {
+      binding = {
+        id: nextBindingId++,
+        name: identifier.text,
+        scope,
+        initialRaw,
+        writes: [],
+      };
+      scope.bindings.set(identifier.text, binding);
+    } else if (initialRaw) {
+      binding.initialRaw = true;
+    }
+    declarationBindings.set(identifier, binding);
+    if (formatterDeclarations.has(identifier))
+      trustedFormatterBindings.add(binding);
+    return binding;
+  }
+
+  function propertyText(name: ts.PropertyName | ts.BindingName): string | null {
+    if (ts.isIdentifier(name) || ts.isStringLiteral(name)) return name.text;
+    if (ts.isComputedPropertyName(name) && ts.isStringLiteral(name.expression))
+      return name.expression.text;
+    return null;
+  }
+
+  function declarePattern(
+    name: ts.BindingName,
+    scope: LexicalScope,
+    parameter: boolean,
+    rawFromProperty = false
+  ) {
+    if (ts.isIdentifier(name)) {
+      declareIdentifier(
+        name,
+        scope,
+        rawFromProperty || (parameter && conventionalUnitName(name.text))
+      );
+      return;
+    }
+    for (const element of name.elements) {
+      if (ts.isOmittedExpression(element)) continue;
+      const property = element.propertyName ?? element.name;
+      const propertyName = propertyText(property);
+      const raw =
+        rawFromProperty ||
+        (propertyName != null && UNIT_PROPERTY.test(propertyName));
+      declarePattern(element.name, scope, parameter, raw);
+    }
+  }
+
+  const rootScope: LexicalScope = {
+    node: sourceFile,
+    parent: null,
+    bindings: new Map(),
+  };
+
+  function collectScopes(node: ts.Node, inherited: LexicalScope) {
+    let scope = inherited;
+
+    if (node !== sourceFile && runtimeFunction(node)) {
+      if (ts.isFunctionDeclaration(node) && node.name)
+        declareIdentifier(node.name, inherited);
+      scope = childScope(node, inherited);
+      scopeAt.set(node, scope);
+      if (ts.isFunctionExpression(node) && node.name)
+        declareIdentifier(node.name, scope);
+      for (const parameter of node.parameters) collectScopes(parameter, scope);
+      if (node.body) collectScopes(node.body, scope);
+      return;
+    }
+
+    if (ts.isClassDeclaration(node) || ts.isClassExpression(node)) {
+      if (ts.isClassDeclaration(node) && node.name)
+        declareIdentifier(node.name, inherited);
+      scope = childScope(node, inherited);
+      scopeAt.set(node, scope);
+      if (node.name) declareIdentifier(node.name, scope);
+      for (const member of node.members) collectScopes(member, scope);
+      return;
+    }
+
+    if (
+      node !== sourceFile &&
+      (ts.isBlock(node) ||
+        ts.isForStatement(node) ||
+        ts.isForInStatement(node) ||
+        ts.isForOfStatement(node) ||
+        ts.isCatchClause(node))
+    ) {
+      scope = childScope(node, inherited);
+    }
+    scopeAt.set(node, scope);
+
+    if (ts.isImportSpecifier(node)) {
+      declareIdentifier(node.name, rootScope);
+    } else if (ts.isVariableDeclaration(node)) {
+      const list = ts.isVariableDeclarationList(node.parent)
+        ? node.parent
+        : null;
+      const declarationScope =
+        list && (list.flags & ts.NodeFlags.BlockScoped) !== 0
+          ? scope
+          : nearestVarScope(scope);
+      declarePattern(node.name, declarationScope, false);
+    } else if (ts.isParameter(node)) {
+      declarePattern(node.name, scope, true);
+    } else if (ts.isCatchClause(node) && node.variableDeclaration) {
+      declarePattern(node.variableDeclaration.name, scope, false);
+    }
+
+    ts.forEachChild(node, (child) => collectScopes(child, scope));
+  }
+  collectScopes(sourceFile, rootScope);
+
+  function resolveIdentifier(identifier: ts.Identifier): UnitBinding | null {
+    if (declarationBindings.has(identifier))
+      return declarationBindings.get(identifier) ?? null;
+    for (
+      let scope: LexicalScope | null = scopeAt.get(identifier) ?? null;
+      scope;
+      scope = scope.parent
+    ) {
+      const binding = scope.bindings.get(identifier.text);
+      if (binding) return binding;
+    }
+    return null;
+  }
+
+  function isAuthenticDisplayUnitCall(node: ts.Node): boolean {
+    if (!ts.isCallExpression(node) || !ts.isIdentifier(node.expression))
+      return false;
+    const binding = resolveIdentifier(node.expression);
+    return binding != null && trustedFormatterBindings.has(binding);
+  }
+
+  function identifierIsReference(identifier: ts.Identifier): boolean {
+    if (declarationBindings.has(identifier)) return false;
+    const parent = identifier.parent;
+    if (
+      (ts.isPropertyAccessExpression(parent) && parent.name === identifier) ||
+      (ts.isPropertyAssignment(parent) && parent.name === identifier) ||
+      (ts.isBindingElement(parent) && parent.propertyName === identifier) ||
+      (ts.isImportSpecifier(parent) &&
+        (parent.name === identifier || parent.propertyName === identifier))
+    )
+      return false;
+    return true;
+  }
+
+  function bindingForTarget(identifier: ts.Identifier): UnitBinding | null {
+    return declarationBindings.get(identifier) ?? resolveIdentifier(identifier);
+  }
+
+  function addWrite(binding: UnitBinding | null, write: BindingWrite) {
+    if (binding) binding.writes.push(write);
+  }
+
+  function addRawBindingTargets(
+    name: ts.BindingName,
+    owner: ts.Node,
+    appliesWithin?: ts.Node,
+    rawFromProperty = false
+  ) {
+    if (ts.isIdentifier(name)) {
+      if (rawFromProperty)
+        addWrite(bindingForTarget(name), {
+          node: owner,
+          position: owner.end,
+          raw: true,
+          appliesWithin,
+        });
+      return;
+    }
+    for (const element of name.elements) {
+      if (ts.isOmittedExpression(element)) continue;
+      const property = element.propertyName ?? element.name;
+      const propertyName = propertyText(property);
+      const raw =
+        rawFromProperty ||
+        (propertyName != null && UNIT_PROPERTY.test(propertyName));
+      addRawBindingTargets(element.name, owner, appliesWithin, raw);
+    }
+  }
+
+  function unwrapAssignmentTarget(node: ts.Expression): ts.Expression {
+    let current = node;
+    while (
+      ts.isParenthesizedExpression(current) ||
+      ts.isAsExpression(current) ||
+      ts.isTypeAssertionExpression(current) ||
+      ts.isNonNullExpression(current) ||
+      ts.isSatisfiesExpression(current)
+    ) {
+      current = current.expression;
+    }
+    return current;
+  }
+
+  function addRawExpressionTargets(
+    expression: ts.Expression,
+    owner: ts.Node,
+    rawFromProperty = false
+  ) {
+    const target = unwrapAssignmentTarget(expression);
+    if (ts.isIdentifier(target)) {
+      if (rawFromProperty)
+        addWrite(bindingForTarget(target), {
+          node: owner,
+          position: owner.end,
+          raw: true,
+        });
+      return;
+    }
+    if (
+      ts.isBinaryExpression(target) &&
+      target.operatorToken.kind === ts.SyntaxKind.EqualsToken
+    ) {
+      addRawExpressionTargets(target.left, owner, rawFromProperty);
+      return;
+    }
+    if (ts.isObjectLiteralExpression(target)) {
+      for (const property of target.properties) {
+        if (ts.isPropertyAssignment(property)) {
+          const name = propertyText(property.name);
+          addRawExpressionTargets(
+            property.initializer,
+            owner,
+            rawFromProperty || (name != null && UNIT_PROPERTY.test(name))
+          );
+        } else if (ts.isShorthandPropertyAssignment(property)) {
+          const name = property.name.text;
+          addRawExpressionTargets(
+            property.name,
+            owner,
+            rawFromProperty || UNIT_PROPERTY.test(name)
+          );
+        } else if (ts.isSpreadAssignment(property)) {
+          addRawExpressionTargets(property.expression, owner, rawFromProperty);
+        }
+      }
+      return;
+    }
+    if (ts.isArrayLiteralExpression(target)) {
+      for (const element of target.elements) {
+        if (!ts.isOmittedExpression(element))
+          addRawExpressionTargets(element, owner, rawFromProperty);
+      }
+    }
+  }
+
+  function collectWrites(node: ts.Node) {
+    if (
+      ts.isVariableDeclaration(node) &&
+      !(
+        directVariableExit(node) &&
+        ts.isIdentifier(node.name) &&
+        !conventionalUnitName(node.name.text)
+      )
+    ) {
+      const forOf =
+        ts.isVariableDeclarationList(node.parent) &&
+        ts.isForOfStatement(node.parent.parent)
+          ? node.parent.parent
+          : null;
+      if (ts.isIdentifier(node.name) && node.initializer) {
+        addWrite(bindingForTarget(node.name), {
+          node,
+          position: node.end,
+          expression: node.initializer,
+        });
+      } else if (!ts.isIdentifier(node.name)) {
+        addRawBindingTargets(node.name, node, forOf?.statement);
+      }
+    }
+    if (
+      ts.isBinaryExpression(node) &&
+      node.operatorToken.kind === ts.SyntaxKind.EqualsToken
+    ) {
+      const target = unwrapAssignmentTarget(node.left);
+      if (ts.isIdentifier(target)) {
+        addWrite(bindingForTarget(target), {
+          node,
+          position: node.end,
+          expression: node.right,
+        });
+      } else {
+        addRawExpressionTargets(target, node);
+      }
+    }
+    ts.forEachChild(node, collectWrites);
+  }
+  collectWrites(sourceFile);
+  for (const scope of new Set(scopeAt.values())) {
+    for (const binding of scope.bindings.values())
+      binding.writes.sort((a, b) => a.position - b.position);
+  }
+
+  function isDescendant(node: ts.Node, ancestor: ts.Node): boolean {
     for (
       let current: ts.Node | undefined = node;
       current;
       current = current.parent
     ) {
-      if (
-        ts.isSourceFile(current) ||
-        ts.isFunctionDeclaration(current) ||
-        ts.isFunctionExpression(current) ||
-        ts.isArrowFunction(current) ||
-        ts.isMethodDeclaration(current) ||
-        ts.isConstructorDeclaration(current) ||
-        ts.isGetAccessorDeclaration(current) ||
-        ts.isSetAccessorDeclaration(current)
-      )
-        return current;
-    }
-    return sourceFile;
-  }
-
-  function taint(name: string, node: ts.Node): boolean {
-    const scope = aliasScope(node);
-    const names = taintedAliases.get(scope) ?? new Set<string>();
-    if (names.has(name)) return false;
-    names.add(name);
-    taintedAliases.set(scope, names);
-    return true;
-  }
-
-  function recordDeclaration(name: string, node: ts.Node) {
-    const scope = aliasScope(node);
-    const names = declaredAliases.get(scope) ?? new Set<string>();
-    names.add(name);
-    declaredAliases.set(scope, names);
-  }
-
-  function recordBindingDeclarations(name: ts.BindingName, owner: ts.Node) {
-    if (ts.isIdentifier(name)) {
-      recordDeclaration(name.text, owner);
-      return;
-    }
-    for (const element of name.elements) {
-      if (!ts.isOmittedExpression(element))
-        recordBindingDeclarations(element.name, owner);
-    }
-  }
-
-  function collectDeclarations(node: ts.Node) {
-    if (ts.isVariableDeclaration(node) || ts.isParameter(node))
-      recordBindingDeclarations(node.name, node);
-    ts.forEachChild(node, collectDeclarations);
-  }
-  collectDeclarations(sourceFile);
-
-  function tainted(identifier: ts.Identifier): boolean {
-    const visited = new Set<ts.Node>();
-    for (
-      let current: ts.Node | undefined = identifier;
-      current;
-      current = current.parent
-    ) {
-      const scope = aliasScope(current);
-      if (visited.has(scope)) continue;
-      visited.add(scope);
-      if (taintedAliases.get(scope)?.has(identifier.text)) return true;
-      if (declaredAliases.get(scope)?.has(identifier.text)) return false;
-      if (ts.isSourceFile(scope)) break;
-      current = scope;
+      if (current === ancestor) return true;
     }
     return false;
   }
 
-  function rawAlias(identifier: ts.Identifier) {
-    return (
-      UNIT_IDENTIFIER.test(identifier.text) ||
-      LAB_UNIT_IDENTIFIER.test(identifier.text) ||
-      tainted(identifier)
+  function enclosingRuntime(node: ts.Node): ts.Node {
+    for (
+      let current: ts.Node | undefined = node;
+      current;
+      current = current.parent
+    ) {
+      if (runtimeFunction(current) || ts.isSourceFile(current)) return current;
+    }
+    return sourceFile;
+  }
+
+  function guardedRegions(node: ts.Node, boundary: ts.Node): ts.Node[] {
+    const regions: ts.Node[] = [];
+    for (
+      let current: ts.Node | undefined = node;
+      current && current !== boundary;
+      current = current.parent
+    ) {
+      const parent = current.parent;
+      if (!parent) break;
+      if (ts.isIfStatement(parent)) {
+        if (isDescendant(node, parent.thenStatement))
+          regions.push(parent.thenStatement);
+        else if (
+          parent.elseStatement &&
+          isDescendant(node, parent.elseStatement)
+        )
+          regions.push(parent.elseStatement);
+      } else if (ts.isConditionalExpression(parent)) {
+        if (isDescendant(node, parent.whenTrue)) regions.push(parent.whenTrue);
+        else if (isDescendant(node, parent.whenFalse))
+          regions.push(parent.whenFalse);
+      } else if (
+        (ts.isForStatement(parent) ||
+          ts.isForInStatement(parent) ||
+          ts.isForOfStatement(parent) ||
+          ts.isWhileStatement(parent) ||
+          ts.isDoStatement(parent)) &&
+        isDescendant(node, parent.statement)
+      ) {
+        regions.push(parent.statement);
+      } else if (ts.isCaseOrDefaultClause(parent)) {
+        regions.push(parent);
+      } else if (
+        ts.isBinaryExpression(parent) &&
+        (parent.operatorToken.kind === ts.SyntaxKind.AmpersandAmpersandToken ||
+          parent.operatorToken.kind === ts.SyntaxKind.BarBarToken ||
+          parent.operatorToken.kind === ts.SyntaxKind.QuestionQuestionToken) &&
+        isDescendant(node, parent.right)
+      ) {
+        regions.push(parent.right);
+      } else if (ts.isCatchClause(parent)) {
+        regions.push(parent.block);
+      }
+    }
+    return regions;
+  }
+
+  function writeIsDefiniteForUse(write: BindingWrite, use: ts.Node): boolean {
+    if (write.appliesWithin) return isDescendant(use, write.appliesWithin);
+    const execution = enclosingRuntime(write.node);
+    if (!isDescendant(use, execution)) return false;
+    return guardedRegions(write.node, execution).every((region) =>
+      isDescendant(use, region)
     );
   }
 
+  const taintMemo = new Map<string, boolean>();
+  const evaluatingTaint = new Set<string>();
+
+  function bindingTaintedAt(binding: UnitBinding, use: ts.Node): boolean {
+    const key = `${binding.id}:${use.pos}:${use.end}`;
+    const memoized = taintMemo.get(key);
+    if (memoized != null) return memoized;
+    if (evaluatingTaint.has(key)) return binding.initialRaw;
+    evaluatingTaint.add(key);
+
+    let tainted = binding.initialRaw;
+    const useStart = use.getStart(sourceFile);
+    for (const write of binding.writes) {
+      if (write.position >= useStart) continue;
+      const writeTainted =
+        write.raw === true ||
+        (write.expression != null && carriesRawUnit(write.expression));
+      if (writeIsDefiniteForUse(write, use)) tainted = writeTainted;
+      else if (writeTainted) tainted = true;
+    }
+
+    evaluatingTaint.delete(key);
+    taintMemo.set(key, tainted);
+    return tainted;
+  }
+
   function rawIdentifierUse(identifier: ts.Identifier): boolean {
-    return (
-      rawAlias(identifier) &&
-      !(
-        ts.isPropertyAccessExpression(identifier.parent) &&
-        identifier.parent.name === identifier
-      ) &&
-      !(
-        ts.isPropertyAssignment(identifier.parent) &&
-        identifier.parent.name === identifier
-      ) &&
-      !(
-        ts.isVariableDeclaration(identifier.parent) &&
-        identifier.parent.name === identifier
-      ) &&
-      !(
-        ts.isBindingElement(identifier.parent) &&
-        identifier.parent.name === identifier
-      ) &&
-      !(
-        ts.isParameter(identifier.parent) &&
-        identifier.parent.name === identifier
-      )
-    );
+    if (!identifierIsReference(identifier)) return false;
+    const binding = resolveIdentifier(identifier);
+    if (binding) return bindingTaintedAt(binding, identifier);
+    return conventionalUnitName(identifier.text);
   }
 
   // Does this expression still CARRY the raw unit string? Do not taint arbitrary
@@ -412,7 +749,7 @@ export function rawRenderedUnitExits(
   // conversion results, formatter-return objects). Only spelling-preserving
   // operations and copy composition propagate the value to a later display sink.
   function carriesRawUnit(node: ts.Node): boolean {
-    if (isDisplayUnitCall(node, trustedBindings)) return false;
+    if (isAuthenticDisplayUnitCall(node)) return false;
     if (
       ts.isPropertyAccessExpression(node) &&
       UNIT_PROPERTY.test(node.name.text)
@@ -477,85 +814,6 @@ export function rawRenderedUnitExits(
     );
   }
 
-  function taintBindingName(name: ts.BindingName, owner: ts.Node): boolean {
-    if (ts.isIdentifier(name)) return taint(name.text, owner);
-    let changed = false;
-    for (const element of name.elements) {
-      if (ts.isOmittedExpression(element)) continue;
-      if (taintBindingName(element.name, owner)) changed = true;
-    }
-    return changed;
-  }
-
-  function taintUnitBindings(
-    pattern: ts.ObjectBindingPattern,
-    owner: ts.Node
-  ): boolean {
-    let changed = false;
-    for (const element of pattern.elements) {
-      const property = element.propertyName ?? element.name;
-      if (
-        ts.isIdentifier(property) &&
-        UNIT_PROPERTY.test(property.text) &&
-        taintBindingName(element.name, owner)
-      )
-        changed = true;
-      if (
-        ts.isObjectBindingPattern(element.name) &&
-        taintUnitBindings(element.name, owner)
-      )
-        changed = true;
-    }
-    return changed;
-  }
-
-  // Resolve alias chains to a fixed point (`const a = row.unit; const b = a`).
-  // Destructured unit properties are raw by construction at this boundary, even
-  // though the property access is represented by a BindingElement rather than an
-  // expression node.
-  let changed = true;
-  while (changed) {
-    changed = false;
-    function collectAliases(node: ts.Node) {
-      if (
-        ts.isVariableDeclaration(node) &&
-        node.initializer &&
-        isLabDisplayContext(node, fileName) &&
-        !directVariableExit(node)
-      ) {
-        if (
-          ts.isIdentifier(node.name) &&
-          carriesRawUnit(node.initializer) &&
-          taint(node.name.text, node)
-        )
-          changed = true;
-        if (
-          ts.isObjectBindingPattern(node.name) &&
-          taintUnitBindings(node.name, node)
-        )
-          changed = true;
-      }
-      if (
-        ts.isParameter(node) &&
-        ts.isObjectBindingPattern(node.name) &&
-        isLabDisplayContext(node, fileName)
-      ) {
-        if (taintUnitBindings(node.name, node)) changed = true;
-      }
-      if (
-        ts.isBinaryExpression(node) &&
-        node.operatorToken.kind === ts.SyntaxKind.EqualsToken &&
-        ts.isIdentifier(node.left) &&
-        isLabDisplayContext(node, fileName) &&
-        carriesRawUnit(node.right) &&
-        taint(node.left.text, node)
-      )
-        changed = true;
-      ts.forEachChild(node, collectAliases);
-    }
-    collectAliases(sourceFile);
-  }
-
   function inspect(expression: ts.Expression) {
     function visit(node: ts.Node, protectedByFormatter: boolean) {
       // Nested JSX owns its own expression containers. Walking into it here
@@ -568,7 +826,7 @@ export function rawRenderedUnitExits(
       )
         return;
       const protectedHere =
-        protectedByFormatter || isDisplayUnitCall(node, trustedBindings);
+        protectedByFormatter || isAuthenticDisplayUnitCall(node);
       if (ts.isConditionalExpression(node)) {
         visit(node.whenTrue, protectedHere);
         visit(node.whenFalse, protectedHere);
