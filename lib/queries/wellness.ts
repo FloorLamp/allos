@@ -35,6 +35,7 @@ import {
 } from "../practice";
 import type { FrequencyTarget, PracticeLog } from "../types";
 import type { FrequencyPace } from "../frequency-targets";
+import { pageCount, pageOffset } from "../pagination";
 import {
   getFrequencyTargetProgress,
   getFrequencyTargets,
@@ -159,6 +160,103 @@ export function getPracticeSessions(
         LIMIT ?`
     )
     .all(...args) as PracticeLog[];
+}
+
+/** Cross-practice, server-paged session rows for the shared event-ledger mount. */
+export function getPracticeLedgerPage(
+  profileId: number,
+  from: string,
+  options: { untilDate?: string | null; practice?: string },
+  page: number,
+  pageSize: number
+): { rows: PracticeLog[]; total: number; page: number } {
+  const requestedPage = Math.max(1, Math.floor(page));
+  const boundedSize = Math.max(1, Math.min(Math.floor(pageSize), 100));
+  const where = ["profile_id = ?", "date >= ?"];
+  const args: Array<string | number> = [profileId, from];
+  if (options.untilDate) {
+    where.push("date <= ?");
+    args.push(options.untilDate);
+  }
+  if (options.practice) {
+    const spellings = resolvedSpellings(profileId, options.practice);
+    if (spellings.length === 0) return { rows: [], total: 0, page: 1 };
+    where.push(`practice IN (${inClause(spellings)})`);
+    args.push(...spellings);
+  }
+  const total = (
+    db
+      .prepare(
+        `SELECT COUNT(*) AS n FROM practice_logs WHERE ${where.join(" AND ")}`
+      )
+      .get(...args) as {
+      n: number;
+    }
+  ).n;
+  const boundedPage = Math.min(requestedPage, pageCount(total, boundedSize));
+  const rows = db
+    .prepare(
+      `SELECT id, practice, date, time, duration_min, notes,
+              source, external_id, edited, created_at
+         FROM practice_logs
+        WHERE ${where.join(" AND ")}
+        ORDER BY date DESC, COALESCE(time, '99:99') DESC, id DESC
+        LIMIT ? OFFSET ?`
+    )
+    .all(
+      ...args,
+      boundedSize,
+      pageOffset(boundedPage, boundedSize)
+    ) as PracticeLog[];
+  return { rows, total, page: boundedPage };
+}
+
+/** The open-vocabulary item axis without loading the session ledger it filters. */
+export function getPracticeLedgerOptions(
+  profileId: number
+): { identity: string; name: string }[] {
+  const rows = db
+    .prepare(
+      `SELECT value, kind, recency FROM (
+         SELECT practice AS value, 'session' AS kind,
+                MAX(date || 'T' || COALESCE(time, '')) AS recency
+           FROM practice_logs
+          WHERE profile_id = ?
+          GROUP BY practice
+         UNION ALL
+         SELECT scope_value AS value, 'target' AS kind, '' AS recency
+           FROM frequency_targets
+          WHERE profile_id = ? AND scope_kind = 'practice'
+       )
+       ORDER BY kind DESC, recency DESC, value COLLATE NOCASE, value`
+    )
+    .all(profileId, profileId) as {
+    value: string;
+    kind: "session" | "target";
+    recency: string;
+  }[];
+  const grouped = new Map<
+    string,
+    { targetSpelling?: string; latestSpelling?: string }
+  >();
+  for (const row of rows) {
+    const identity = practiceIdentity(row.value);
+    if (!identity) continue;
+    const item = grouped.get(identity) ?? {};
+    if (row.kind === "target" && !item.targetSpelling)
+      item.targetSpelling = row.value;
+    if (row.kind === "session" && !item.latestSpelling)
+      item.latestSpelling = row.value;
+    grouped.set(identity, item);
+  }
+  return [...grouped.entries()]
+    .map(([identity, item]) => ({
+      identity,
+      name: practiceDisplayName({ identity, ...item }),
+    }))
+    .sort((left, right) =>
+      left.name.localeCompare(right.name, undefined, { sensitivity: "base" })
+    );
 }
 
 export function getPracticeUsageInWindow(

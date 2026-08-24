@@ -35,6 +35,8 @@ export const TIMELINE_CATEGORIES = [
   "injury",
   "endurance",
   "practice",
+  "food",
+  "substance",
 ] as const;
 
 export type TimelineCategory = (typeof TIMELINE_CATEGORIES)[number];
@@ -148,6 +150,10 @@ export function timelineCategoryLabel(category: TimelineCategory): string {
       return "Event";
     case "practice":
       return "Practice";
+    case "food":
+      return "Food";
+    case "substance":
+      return "Substance";
   }
 }
 

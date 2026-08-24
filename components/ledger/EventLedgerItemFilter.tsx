@@ -19,8 +19,8 @@ export default function EventLedgerItemFilter({
   label = "Item",
   testId,
 }: {
-  items: { id: number; label: string }[];
-  value?: number;
+  items: { id: string | number; label: string }[];
+  value?: string | number;
   label?: string;
   testId: string;
 }) {

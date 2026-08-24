@@ -183,7 +183,9 @@ describe("a mount does not rebuild the frame", () => {
     // Deliberately a list. #3484 part 3 adds the food and practices mounts, and part 1
     // adds nothing here — so a new entry should be an edit somebody made on purpose.
     expect(mounts.map((f) => f.rel).sort()).toEqual([
+      "components/food/FoodLedgerMount.tsx",
       "components/intake/DoseLedgerMount.tsx",
+      "components/practices/PracticeLedgerMount.tsx",
     ]);
   });
 

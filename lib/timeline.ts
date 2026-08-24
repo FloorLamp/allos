@@ -66,6 +66,9 @@ import {
 } from "./illness-episode";
 import { episodeHeadline } from "./illness-episode-format";
 import { episodeHref } from "./hrefs";
+import { foodGroupName } from "./food-groups";
+import { ALCOHOL_FOOD_GROUP, substanceDef } from "./substance-use";
+import { foodLedgerHref } from "./hrefs";
 
 // The #1502 panel slug as SQL, built once (the finite-preimage CASE is a large
 // literal — building it per call would rebuild it on every timeline read).
@@ -672,6 +675,130 @@ function collectEvents(
         href: intakeHref(l.kind),
         tone: "good",
         detailItems: parseDetailItems(l.dose_details),
+      },
+      options
+    );
+  }
+
+  // Food servings (#3484): one card per profile-local DAY, not one card per tap.
+  // Alcohol shares this store but is classified below as substance, so one observed
+  // drink never appears twice under two Timeline filters.
+  const foodBounds = exact("date");
+  const foodDays = db
+    .prepare(
+      `SELECT date, SUM(servings) AS count,
+              GROUP_CONCAT(group_key || '::' || servings, '||') AS groups
+         FROM (
+           SELECT date, group_key, COUNT(*) AS servings
+             FROM food_log_events
+            WHERE profile_id = ? AND group_key != ?
+              AND substr(group_key, 1, 2) != '__'${foodBounds.clause}
+            GROUP BY date, group_key
+         )
+        GROUP BY date
+        ORDER BY date DESC
+        LIMIT ?`
+    )
+    .all(
+      profileId,
+      ALCOHOL_FOOD_GROUP,
+      ...foodBounds.params,
+      perTableLimit
+    ) as { date: string; count: number; groups: string | null }[];
+  for (const day of foodDays) {
+    const groups = (day.groups ?? "")
+      .split("||")
+      .filter(Boolean)
+      .map((pair) => {
+        const split = pair.lastIndexOf("::");
+        return {
+          key: split < 0 ? pair : pair.slice(0, split),
+          count: split < 0 ? 0 : Number(pair.slice(split + 2)),
+        };
+      });
+    pushLimited(
+      events,
+      {
+        id: `food:${day.date}`,
+        date: day.date,
+        category: "food",
+        title: `${day.count} serving${day.count === 1 ? "" : "s"} logged`,
+        subtitle: compactList(
+          groups.map((group) => foodGroupName(group.key)),
+          5
+        ),
+        href: foodLedgerHref({ from: day.date, to: day.date }),
+        detailItems: groups.map((group) => ({
+          label: foodGroupName(group.key),
+          value: `${group.count} serving${group.count === 1 ? "" : "s"}`,
+        })),
+      },
+      options
+    );
+  }
+
+  // Substance observations (#3484): alcohol's serving events and the dedicated
+  // per-day count store are one day rollup. #3295 will replace the latter's aggregate
+  // rows with event rows; no write or instant is invented here ahead of that work.
+  const substanceBounds = exact("date");
+  const substanceDays = db
+    .prepare(
+      `WITH substance_rows AS (
+         SELECT date, ? AS substance, COUNT(*) AS units
+           FROM food_log_events
+          WHERE profile_id = ? AND group_key = ?${substanceBounds.clause}
+          GROUP BY date
+         UNION ALL
+         SELECT date, substance, units
+           FROM substance_daily_totals
+          WHERE profile_id = ?${substanceBounds.clause}
+       )
+       SELECT date, SUM(units) AS count,
+              GROUP_CONCAT(substance || '::' || units, '||') AS items
+         FROM substance_rows
+        GROUP BY date
+        ORDER BY date DESC
+        LIMIT ?`
+    )
+    .all(
+      ALCOHOL_FOOD_GROUP,
+      profileId,
+      ALCOHOL_FOOD_GROUP,
+      ...substanceBounds.params,
+      profileId,
+      ...substanceBounds.params,
+      perTableLimit
+    ) as { date: string; count: number; items: string | null }[];
+  for (const day of substanceDays) {
+    const items = (day.items ?? "")
+      .split("||")
+      .filter(Boolean)
+      .map((pair) => {
+        const split = pair.lastIndexOf("::");
+        return {
+          key: split < 0 ? pair : pair.slice(0, split),
+          count: split < 0 ? 0 : Number(pair.slice(split + 2)),
+        };
+      });
+    pushLimited(
+      events,
+      {
+        id: `substance:${day.date}`,
+        date: day.date,
+        category: "substance",
+        title: `${day.count} substance use${day.count === 1 ? "" : "s"} logged`,
+        subtitle: compactList(
+          items.map((item) => substanceDef(item.key).label),
+          5
+        ),
+        href: "/records/specialty/substance-use",
+        detailItems: items.map((item) => {
+          const def = substanceDef(item.key);
+          return {
+            label: def.label,
+            value: `${item.count} ${item.count === 1 ? def.countSingular : def.countPlural}`,
+          };
+        }),
       },
       options
     );
@@ -1461,6 +1588,9 @@ export function getTimelineDates(
     "SELECT achieved_on AS date FROM milestones WHERE profile_id = @profileId",
     "SELECT date FROM symptom_logs WHERE profile_id = @profileId",
     "SELECT date FROM practice_logs WHERE profile_id = @profileId",
+    `SELECT date FROM food_log_events
+      WHERE profile_id = @profileId AND substr(group_key, 1, 2) != '__'`,
+    "SELECT date FROM substance_daily_totals WHERE profile_id = @profileId",
     "SELECT start_date AS date FROM protocols WHERE profile_id = @profileId",
     `SELECT end_date AS date FROM protocols
       WHERE profile_id = @profileId AND end_date IS NOT NULL`,

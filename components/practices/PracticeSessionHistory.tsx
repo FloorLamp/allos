@@ -35,10 +35,15 @@ export default function PracticeSessionHistory({
   sessions,
   totalCount = sessions.length,
   emptyText = "No sessions during this period.",
+  ledger = false,
+  readOnly = false,
 }: {
   sessions: PracticeLog[];
   totalCount?: number;
   emptyText?: string;
+  /** The server-paged event-ledger mount owns empty state, extent and paging. */
+  ledger?: boolean;
+  readOnly?: boolean;
 }) {
   const toast = useToast();
   const formatPrefs = useFormatPrefs();
@@ -72,7 +77,7 @@ export default function PracticeSessionHistory({
     }
   }
 
-  if (sessions.length === 0) {
+  if (sessions.length === 0 && !ledger) {
     return (
       <p
         className="mt-2 text-xs text-slate-500 dark:text-slate-400"
@@ -106,17 +111,25 @@ export default function PracticeSessionHistory({
   ];
 
   return (
-    <div className="mt-3" data-testid="practice-session-history">
+    <div
+      className={ledger ? "" : "mt-3"}
+      data-testid="practice-session-history"
+    >
       <EntryHistoryTable
         items={sessions}
         columns={columns}
         tableClassName="practice-session-list w-full text-left text-sm"
         actionsHeaderClassName="w-28"
-        expandToggle={{
-          collapsedLabel: expandLabel,
-          expandedLabel: "Show fewer sessions",
-          testId: "practice-session-toggle",
-        }}
+        expandToggle={
+          ledger
+            ? undefined
+            : {
+                collapsedLabel: expandLabel,
+                expandedLabel: "Show fewer sessions",
+                testId: "practice-session-toggle",
+              }
+        }
+        readOnly={readOnly}
         menuKind="Session"
         menuItemName={(session) =>
           formatDateWithYear(session.date, formatPrefs)

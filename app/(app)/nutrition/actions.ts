@@ -184,7 +184,9 @@ export async function logFoodServing(
     today(profile.id)
   );
   revalidateRoute("/nutrition");
+  revalidateRoute("/nutrition/food-history");
   revalidateRoute("/trends");
+  revalidateRoute("/timeline");
   revalidateRoute("/");
   return {
     ok: true,
@@ -220,7 +222,9 @@ export async function undoFoodServing(
   );
   if (outcome.kind === "unknown-group") return formError("Unknown food group.");
   revalidateRoute("/nutrition");
+  revalidateRoute("/nutrition/food-history");
   revalidateRoute("/trends");
+  revalidateRoute("/timeline");
   revalidateRoute("/");
   return {
     ok: true,
@@ -287,7 +291,9 @@ export async function logUsualFood(
     day
   );
   revalidateRoute("/nutrition");
+  revalidateRoute("/nutrition/food-history");
   revalidateRoute("/trends");
+  revalidateRoute("/timeline");
   revalidateRoute("/");
   return {
     ok: true,
@@ -383,7 +389,9 @@ export async function updateFoodLogEvent(
   if (outcome.kind === "not-correctable")
     return formError("Protein logs are corrected from the protein total.");
   revalidateRoute("/nutrition");
+  revalidateRoute("/nutrition/food-history");
   revalidateRoute("/trends");
+  revalidateRoute("/timeline");
   revalidateRoute("/");
   return { ok: true, from: outcome.from, to: outcome.to };
 }
@@ -420,7 +428,9 @@ export async function deleteFoodLogEvent(
   if (outcome.kind === "not-deletable")
     return formError("Protein logs are removed from the protein total.");
   revalidateRoute("/nutrition");
+  revalidateRoute("/nutrition/food-history");
   revalidateRoute("/trends");
+  revalidateRoute("/timeline");
   revalidateRoute("/");
   return { ok: true, vacated: outcome.vacated, undoId: outcome.undoId };
 }

@@ -57,8 +57,8 @@ export interface EventLedgerChipAxis<K extends string> {
 
 /** The item filter: the profile's own items, which is an OPEN vocabulary. */
 export interface EventLedgerItemAxis {
-  options: { id: number; label: string }[];
-  value?: number;
+  options: { id: string | number; label: string }[];
+  value?: string | number;
   /** The visible field label; defaults to "Item". */
   label?: string;
 }
