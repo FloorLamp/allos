@@ -35,10 +35,20 @@ const UNREADABLE_SELECTED_STATE = [
 ] as const;
 
 function read(base: string, rel: string): string {
-  return fs.readFileSync(path.join(base, rel), "utf8");
+  const key = path.join(base, rel);
+  if (base !== REPO) return fs.readFileSync(key, "utf8");
+  const cached = repoSourceCache.get(key);
+  if (cached !== undefined) return cached;
+  const source = fs.readFileSync(key, "utf8");
+  repoSourceCache.set(key, source);
+  return source;
 }
 
+const repoSourceCache = new Map<string, string>();
+let repoFileCache: string[] | null = null;
+
 function sourceFiles(base: string): string[] {
+  if (base === REPO && repoFileCache) return repoFileCache;
   const files: string[] = [];
   const walk = (dir: string) => {
     const abs = path.join(base, dir);
@@ -51,11 +61,16 @@ function sourceFiles(base: string): string[] {
   };
   walk("app");
   walk("components");
-  return files.filter((file) => !file.includes("/__tests__/"));
+  const found = files.filter((file) => !file.includes("/__tests__/"));
+  if (base === REPO) repoFileCache = found;
+  return found;
 }
 
-function moduleReader(base: string, dir: string) {
-  const cache = new Map<string, ImportedModule | null>();
+function moduleReader(
+  base: string,
+  dir: string,
+  cache = new Map<string, ImportedModule | null>()
+) {
   const reader = (specifier: string): ImportedModule | null => {
     let target: string;
     if (specifier.startsWith("@/"))
@@ -70,7 +85,7 @@ function moduleReader(base: string, dir: string) {
           fs.existsSync(file)
             ? {
                 source: withoutComments(fs.readFileSync(file, "utf8")),
-                readModule: moduleReader(base, path.dirname(file)),
+                readModule: moduleReader(base, path.dirname(file), cache),
               }
             : null
         );
@@ -131,10 +146,16 @@ function lineOf(source: string, at: number): number {
 
 function customComponentClassBindings(
   base: string,
-  file: string
+  file: string,
+  moduleCache: Map<string, ImportedModule | null>
 ): ForwardedChipBinding[] {
   const source = withoutComments(read(base, file));
-  const readModule = moduleReader(base, path.dirname(path.join(base, file)));
+  if (!/\bclassName\b|\{\s*\.\.\./.test(source)) return [];
+  const readModule = moduleReader(
+    base,
+    path.dirname(path.join(base, file)),
+    moduleCache
+  );
   let declared: ReturnType<typeof classDeclarations> | null = null;
   const declarations = () =>
     (declared ??= classDeclarations(source, readModule));
@@ -172,8 +193,9 @@ function customComponentClassBindings(
 export function scanForwardedChipBindings(
   base: string
 ): ForwardedChipBinding[] {
+  const moduleCache = new Map<string, ImportedModule | null>();
   return sourceFiles(base).flatMap((file) =>
-    customComponentClassBindings(base, file)
+    customComponentClassBindings(base, file, moduleCache)
   );
 }
 
@@ -227,11 +249,16 @@ export function scanSelectedStateCorpus(base: string): {
 } {
   const findings: Finding[] = [];
   const unreadable = new Set<string>();
+  const moduleCache = new Map<string, ImportedModule | null>();
   for (const file of sourceFiles(base)) {
     const source = withoutComments(read(base, file));
+    // `findFlooredControls` defines selected state by these exact attributes.
+    // Avoid resolving imports and class helpers for the overwhelming majority of
+    // the TSX corpus that cannot contribute to this selected-state census.
+    if (!/\baria-(?:pressed|current|selected)\b/.test(source)) continue;
     const controls = findFlooredControls(
       source,
-      moduleReader(base, path.dirname(path.join(base, file)))
+      moduleReader(base, path.dirname(path.join(base, file)), moduleCache)
     );
     for (const control of controls) {
       if (!control.selectedState) continue;
@@ -259,9 +286,17 @@ export function scanUnapprovedChipVocabularyCorpus(
   base: string
 ): VocabularyFinding[] {
   const findings: VocabularyFinding[] = [];
+  const moduleCache = new Map<string, ImportedModule | null>();
   for (const file of sourceFiles(base)) {
     const source = withoutComments(read(base, file));
-    const readModule = moduleReader(base, path.dirname(path.join(base, file)));
+    // A chip class can arrive directly, through a className binding, or through
+    // a JSX spread. A file with neither spelling cannot own or forward one.
+    if (!/\bclassName\b|\{\s*\.\.\./.test(source)) continue;
+    const readModule = moduleReader(
+      base,
+      path.dirname(path.join(base, file)),
+      moduleCache
+    );
     let declared: ReturnType<typeof classDeclarations> | null = null;
     const declarations = () =>
       (declared ??= classDeclarations(source, readModule));
