@@ -1462,7 +1462,16 @@ export default function IntakeItemForm({
 
       case "rules":
         return (
-          <div className="sm:col-span-2">
+          // `min-w-0` releases this grid item's content floor, and it is load-bearing
+          // rather than decorative (#3631). The rules editor renders a `select` of
+          // ITEM NAMES — unbounded by anything the page controls — and a grid item's
+          // `min-width: auto` resolves to its CONTENT minimum, so the track widened to
+          // the widest option and nothing downstream could shrink it. Measured at
+          // 390px with a 63-character imported name: the select rendered 476px wide,
+          // 119px past the viewport, WITH `min-w-0` already on the select itself.
+          // #3478's fix on the control is necessary and was not sufficient here; the
+          // guard is in e2e/dose-ledger-phone.mobile.spec.ts.
+          <div className="min-w-0 sm:col-span-2">
             <IntakeRulesEditor
               key={rulesStartOnMenu ? "add" : "edit"}
               rules={rules}
