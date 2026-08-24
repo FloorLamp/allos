@@ -160,7 +160,7 @@ function FoodRowLabel({
 }
 
 // The shared dense filter size keeps this correction row compact while its
-// registered hit-area overlay reaches the 44px effective target.
+// rendered min-height supplies the disjoint 44px target.
 const FOOD_TIME_CHIP = "chip chip-filter chip-sm";
 
 // One logged serving, as the correction list renders it (#1934). The aggregate counts

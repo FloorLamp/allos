@@ -386,15 +386,16 @@ const UNJUDGED_TAP_TARGETS: UnjudgedTapTarget[] = [
  * someone removes it.
  *
  * Before #3561 there was no list, because there was no way to tell these apart
- * from a control that had been read and pinned no height. Thirteen is the number
+ * from a control that had been read and pinned no height. Twelve is the number
  * after the resolver reaches module constants, imported constants, barrel
  * re-exports, record lookups and single-`return` helpers; without those it was 153.
+ * CustomRangeToggle left this roster when it took exact ownership of its chip
+ * class instead of accepting an unreadable forwarded `className`.
  */
 const UNREADABLE_CLASS_LISTS: { file: string; controls: number }[] = [
   { file: "app/(app)/sleep/SleepLogAction.tsx", controls: 1 },
   { file: "app/(app)/upcoming/FoldSummary.tsx", controls: 1 },
   { file: "components/Combobox.tsx", controls: 1 },
-  { file: "components/CustomRangeDisclosure.tsx", controls: 1 },
   { file: "components/DateField.tsx", controls: 1 },
   { file: "components/DoseStatusControl.tsx", controls: 1 },
   { file: "components/ExerciseDetailPanel.tsx", controls: 1 },

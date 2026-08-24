@@ -118,6 +118,9 @@ The adopter guard resolves local and imported class helpers, then accepts only
 the four role/density strings above (plus DateRangeControl's recorded
 `sm:hidden chip chip-filter` trigger). Arbitrary properties, important variants,
 and shell utilities are not a second vocabulary hidden behind the primitive.
+The registered class is owned by the native control rather than forwarded
+through a wrapper; DateRangeControl's injectable link is the one recorded seam,
+and its exact class plus each bare forwarding hop are structurally pinned.
 
 `SegmentedControl` keeps its inset track, but every option inside it owns a
 rendered `min-h-11` target. The track's padding is not clickable and therefore

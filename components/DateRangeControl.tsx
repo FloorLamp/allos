@@ -200,10 +200,7 @@ export default function DateRangeControl({
               >
                 All time
               </LinkComponent>
-              <CustomRangeToggle
-                active={customActive}
-                className={`sm:hidden ${RANGE_PILL}`}
-              />
+              <CustomRangeToggle active={customActive} />
               {trailingChips}
             </div>
             {rightSlot && (

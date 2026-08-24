@@ -3,8 +3,12 @@ import path from "node:path";
 import { fileURLToPath } from "node:url";
 import { describe, expect, it } from "vitest";
 import {
+  classDeclarations,
+  classNameExpression,
   findFlooredControls,
   isApprovedChipAdopterClass,
+  openingTag,
+  resolveClassName,
   unapprovedChipAdopterTokens,
   withoutComments,
   type ImportedModule,
@@ -27,7 +31,6 @@ const PRIMITIVE_IMPLEMENTATION_FILES = [
   "components/SegmentedControl.tsx",
 ] as const;
 const UNREADABLE_SELECTED_STATE = [
-  "components/CustomRangeDisclosure.tsx", // forwarded registered chip-filter class from DateRangeControl
   "components/activity-form/IntensityPicker.tsx", // three-up field grid, not a chip row
 ] as const;
 
@@ -82,12 +85,104 @@ function moduleReader(base: string, dir: string) {
 
 type Finding = { file: string; line: number; className: string };
 type VocabularyFinding = Finding & { tokens: string[] };
+type ForwardedChipBinding = Finding & { component: string };
+type ForwardedChipSummary = Omit<ForwardedChipBinding, "line"> & {
+  controls: number;
+};
+
+// A registered chip belongs on its native interactive element. DateRangeControl
+// has one deliberate indirection: its two quick-range links may render through
+// TimelineFilterLink so Timeline can preserve scroll. The binding is exact and
+// the forwarding chain below is structurally pinned; a second component or a
+// second class vocabulary is a new contract, not an allow-list entry to append.
+const FORWARDED_CHIP_BINDINGS = [
+  {
+    file: "components/DateRangeControl.tsx",
+    component: "LinkComponent",
+    className: "chip chip-filter",
+    controls: 2,
+  },
+] as const;
 
 function isChipAdopter(className: string): boolean {
   const tokens = new Set(className.match(/[^\s"'`{}(),+?]+/g) ?? []);
   return (
     tokens.has("chip") && (tokens.has("chip-nav") || tokens.has("chip-filter"))
   );
+}
+
+function lineOf(source: string, at: number): number {
+  return source.slice(0, at).split("\n").length;
+}
+
+function customComponentClassBindings(
+  base: string,
+  file: string
+): ForwardedChipBinding[] {
+  const source = withoutComments(read(base, file));
+  const readModule = moduleReader(base, path.dirname(path.join(base, file)));
+  let declared: ReturnType<typeof classDeclarations> | null = null;
+  const declarations = () =>
+    (declared ??= classDeclarations(source, readModule));
+  const findings: ForwardedChipBinding[] = [];
+  const nextLinks = new Set(
+    [
+      ...source.matchAll(/import\s+([A-Z][\w$]*)\s+from\s+["']next\/link["']/g),
+    ].map((match) => match[1])
+  );
+  for (const match of source.matchAll(/<([A-Z][\w$.]*)(?=[\s>])/g)) {
+    // Next's Link is the terminal interactive owner: it renders the native <a>
+    // and lives outside this repository, so there is no repo-local forwarding
+    // body that can append a second shell.
+    if (nextLinks.has(match[1])) continue;
+    const open = openingTag(source, match.index).tag;
+    const resolved = resolveClassName(open, declarations);
+    if (!resolved?.readable || !isChipAdopter(resolved.text)) continue;
+    findings.push({
+      file,
+      line: lineOf(source, match.index),
+      component: match[1],
+      className: resolved.text.replace(/\s+/g, " ").trim(),
+    });
+  }
+  return findings;
+}
+
+export function scanForwardedChipBindings(
+  base: string
+): ForwardedChipBinding[] {
+  return sourceFiles(base).flatMap((file) =>
+    customComponentClassBindings(base, file)
+  );
+}
+
+function bindingSummary(bindings: ForwardedChipBinding[]) {
+  const summary = new Map<string, ForwardedChipSummary>();
+  for (const binding of bindings) {
+    const key = `${binding.file}\0${binding.component}\0${binding.className}`;
+    const current = summary.get(key);
+    summary.set(key, {
+      file: binding.file,
+      component: binding.component,
+      className: binding.className,
+      controls: (current?.controls ?? 0) + 1,
+    });
+  }
+  return [...summary.values()].sort((a, b) =>
+    `${a.file}:${a.component}:${a.className}`.localeCompare(
+      `${b.file}:${b.component}:${b.className}`
+    )
+  );
+}
+
+function tagClassExpressions(source: string, tag: string) {
+  const expressions: { literal: boolean; text: string }[] = [];
+  const pattern = new RegExp(`<${tag}(?=[\\s>])`, "g");
+  for (const match of source.matchAll(pattern)) {
+    const expression = classNameExpression(openingTag(source, match.index).tag);
+    if (expression) expressions.push(expression);
+  }
+  return expressions;
 }
 
 function isHandRolledSelectedClass(control: {
@@ -234,6 +329,73 @@ describe("selected-state rows use the registered primitive (#2730)", () => {
           file: "components/ImportedOffender.tsx",
           line: 2,
           tokens: expectedTokens,
+        },
+      ]);
+    } finally {
+      fs.rmSync(base, { recursive: true, force: true });
+    }
+  });
+
+  it("keeps registered chip classes on native controls or one pinned forwarding seam", () => {
+    const forwarded = scanForwardedChipBindings(REPO);
+    expect(
+      bindingSummary(forwarded),
+      "a custom component receiving a registered chip class owns an unreadable shell boundary; only the structurally pinned DateRange link seam may do that"
+    ).toEqual(FORWARDED_CHIP_BINDINGS);
+    for (const binding of forwarded) {
+      expect(
+        isApprovedChipAdopterClass(binding.className),
+        `${binding.file}:${binding.line} forwards an unapproved chip class through <${binding.component}>`
+      ).toBe(true);
+    }
+
+    const dateRange = read(REPO, "components/DateRangeControl.tsx");
+    expect(tagClassExpressions(dateRange, "LinkComponent")).toEqual([
+      { literal: false, text: "RANGE_PILL" },
+      { literal: false, text: "RANGE_PILL" },
+    ]);
+    expect(tagClassExpressions(dateRange, "Link")).toEqual([
+      { literal: false, text: "className" },
+      {
+        literal: true,
+        text: "btn-ghost w-full py-1.5 text-center sm:py-2",
+      },
+    ]);
+    expect(tagClassExpressions(dateRange, "CustomRangeToggle")).toEqual([]);
+
+    const customRange = read(REPO, "components/CustomRangeDisclosure.tsx");
+    expect(tagClassExpressions(customRange, "button")).toEqual([
+      { literal: true, text: "sm:hidden chip chip-filter" },
+    ]);
+    expect(customRange).not.toMatch(/\bclassName\s*:\s*string/);
+
+    expect(
+      tagClassExpressions(
+        read(REPO, "components/TimelineFilterLink.tsx"),
+        "PendingLink"
+      )
+    ).toEqual([{ literal: false, text: "className" }]);
+    expect(
+      tagClassExpressions(read(REPO, "components/PendingLink.tsx"), "Link")
+    ).toEqual([{ literal: false, text: "className" }]);
+
+    const base = makeTmpDir("forwarded-chip-census");
+    try {
+      fs.mkdirSync(path.join(base, "components"), { recursive: true });
+      fs.writeFileSync(
+        path.join(base, "components/ForwardedChip.tsx"),
+        "export function ForwardedChip({ className }: { className: string }) { return <button aria-current className={`${className} min-h-0! h-4 outline-2`}>x</button>; }\n"
+      );
+      fs.writeFileSync(
+        path.join(base, "components/Caller.tsx"),
+        'import { ForwardedChip } from "./ForwardedChip";\nexport function Caller() { return <ForwardedChip className="chip chip-filter" />; }\n'
+      );
+      expect(bindingSummary(scanForwardedChipBindings(base))).toEqual([
+        {
+          file: "components/Caller.tsx",
+          component: "ForwardedChip",
+          className: "chip chip-filter",
+          controls: 1,
         },
       ]);
     } finally {
