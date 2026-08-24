@@ -306,7 +306,8 @@ syntax-aware census of `className` values and the constants they reach across
 `app/`, `components/`, and `lib/`, plus every static custom utility in the
 sheet. Constant and helper reachability follows the TypeScript checker's actual
 lexical and module symbols, including import aliases, defaults, and re-exports;
-same-named or shadowed declarations are not merged, and an unresolved
+typed object members and destructured aliases trace back to their static value
+owner, same-named or shadowed declarations are not merged, and an unresolved
 class-bearing binding fails closed. A changed callsite or desktop-only custom
 utility therefore reaches its own artifact without treating visible copy as a
 class candidate. Before

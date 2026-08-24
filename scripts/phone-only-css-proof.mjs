@@ -194,6 +194,12 @@ function runtimeClassCandidates(root, label) {
 
   const lookupSymbol = (node) => {
     let symbol = checker.getSymbolAtLocation(node);
+    if (
+      node.parent &&
+      ts.isShorthandPropertyAssignment(node.parent) &&
+      node.parent.name === node
+    )
+      symbol = checker.getShorthandAssignmentValueSymbol(node.parent) ?? symbol;
     if (!symbol) return null;
     if (symbol.flags & ts.SymbolFlags.Alias) {
       symbol = checker.getAliasedSymbol(symbol);
@@ -220,31 +226,40 @@ function runtimeClassCandidates(root, label) {
     return false;
   };
 
-  const visitReturns = (body) => {
+  const returnExpressions = (body) => {
+    const expressions = [];
     if (!body) return;
-    if (!ts.isBlock(body)) {
-      visitValue(body);
-      return;
-    }
+    if (!ts.isBlock(body)) return [body];
     const visit = (node) => {
       if (ts.isFunctionLike(node) && node !== body) return;
       if (ts.isReturnStatement(node) && node.expression) {
-        visitValue(node.expression);
+        expressions.push(node.expression);
         return;
       }
       ts.forEachChild(node, visit);
     };
     visit(body);
+    return expressions;
+  };
+
+  const visitReturns = (body) => {
+    for (const expression of returnExpressions(body) ?? [])
+      visitValue(expression);
   };
 
   const visitDeclaration = (declaration) => {
     if (visitedDeclarations.has(declaration)) return;
     visitedDeclarations.add(declaration);
+    if (ts.isBindingElement(declaration)) {
+      if (declaration.initializer) visitValue(declaration.initializer);
+      const values = destructuredBindingValues(declaration);
+      for (const value of values) visitValue(value);
+      return;
+    }
     if (
       ts.isVariableDeclaration(declaration) ||
       ts.isPropertyDeclaration(declaration) ||
       ts.isPropertyAssignment(declaration) ||
-      ts.isBindingElement(declaration) ||
       ts.isParameter(declaration) ||
       ts.isEnumMember(declaration)
     ) {
@@ -326,32 +341,106 @@ function runtimeClassCandidates(root, label) {
     return node;
   };
 
-  const visitNamedMember = (expression, nameNode) => {
-    const symbol = lookupSymbol(expression);
-    if (!symbol) bindingError(nameNode, "member owner has no lexical symbol");
-    const declarations = (symbol.declarations ?? []).filter((declaration) =>
-      runtimeFiles.has(path.resolve(declaration.getSourceFile().fileName))
-    );
-    let matched = false;
-    for (const declaration of declarations) {
-      if (!ts.isVariableDeclaration(declaration) || !declaration.initializer)
-        continue;
-      const initializer = unwrapExpression(declaration.initializer);
+  const staticValues = (expression, seen = new Set()) => {
+    expression = unwrapExpression(expression);
+    if (seen.has(expression)) return [];
+    seen.add(expression);
+    if (ts.isIdentifier(expression)) {
+      const symbol = lookupSymbol(expression);
+      if (!symbol) return [];
+      return (symbol.declarations ?? []).flatMap((declaration) => {
+        if (
+          !runtimeFiles.has(path.resolve(declaration.getSourceFile().fileName))
+        )
+          return [];
+        if (
+          (ts.isVariableDeclaration(declaration) ||
+            ts.isPropertyDeclaration(declaration) ||
+            ts.isPropertyAssignment(declaration) ||
+            ts.isEnumMember(declaration)) &&
+          declaration.initializer
+        )
+          return staticValues(declaration.initializer, seen);
+        if (ts.isBindingElement(declaration))
+          return destructuredBindingValues(declaration, seen).flatMap((value) =>
+            staticValues(value, seen)
+          );
+        if (ts.isExportAssignment(declaration))
+          return staticValues(declaration.expression, seen);
+        return [];
+      });
+    }
+    if (ts.isPropertyAccessExpression(expression))
+      return staticMemberValues(
+        expression.expression,
+        expression.name.text,
+        seen
+      ).flatMap((value) => staticValues(value, seen));
+    if (
+      ts.isElementAccessExpression(expression) &&
+      expression.argumentExpression &&
+      (ts.isStringLiteral(expression.argumentExpression) ||
+        ts.isNumericLiteral(expression.argumentExpression))
+    )
+      return staticMemberValues(
+        expression.expression,
+        expression.argumentExpression.text,
+        seen
+      ).flatMap((value) => staticValues(value, seen));
+    if (ts.isConditionalExpression(expression))
+      return [
+        ...staticValues(expression.whenTrue, seen),
+        ...staticValues(expression.whenFalse, seen),
+      ];
+    return [expression];
+  };
+
+  const staticMemberValues = (expression, key, seen = new Set()) => {
+    const values = [];
+    for (const initializer of staticValues(expression, seen)) {
       if (!ts.isObjectLiteralExpression(initializer)) continue;
       for (const property of initializer.properties) {
         if (
           ts.isPropertyAssignment(property) &&
           (ts.isIdentifier(property.name) ||
             ts.isStringLiteral(property.name)) &&
-          property.name.text === nameNode.text
-        ) {
-          matched = true;
-          visitValue(property.initializer);
-        }
+          property.name.text === key
+        )
+          values.push(property.initializer);
+        else if (
+          ts.isShorthandPropertyAssignment(property) &&
+          property.name.text === key
+        )
+          values.push(property.name);
+        else if (ts.isSpreadAssignment(property))
+          values.push(...staticMemberValues(property.expression, key, seen));
       }
     }
-    if (!matched)
-      bindingError(nameNode, "member declaration is not statically readable");
+    return values;
+  };
+
+  const destructuredBindingValues = (binding, seen = new Set()) => {
+    const keys = [];
+    let current = binding;
+    while (ts.isBindingElement(current)) {
+      if (!ts.isObjectBindingPattern(current.parent)) return [];
+      const keyNode = current.propertyName ?? current.name;
+      if (!ts.isIdentifier(keyNode) && !ts.isStringLiteral(keyNode)) return [];
+      keys.unshift(keyNode.text);
+      const owner = current.parent.parent;
+      if (ts.isVariableDeclaration(owner)) {
+        if (!owner.initializer) return [];
+        let values = [owner.initializer];
+        for (const key of keys)
+          values = values.flatMap((value) =>
+            staticMemberValues(value, key, seen)
+          );
+        return values;
+      }
+      if (!ts.isBindingElement(owner)) return [];
+      current = owner;
+    }
+    return [];
   };
 
   const visitPropertyName = (name) => {
@@ -390,10 +479,19 @@ function runtimeClassCandidates(root, label) {
       return;
     }
     if (ts.isPropertyAccessExpression(node)) {
+      const values = staticMemberValues(node.expression, node.name.text);
+      if (values.length) {
+        for (const value of values) visitValue(value);
+        return;
+      }
       const propertySymbol = lookupSymbol(node.name);
       if (propertySymbol?.declarations?.length)
         visitBinding(node.name, { allowExternalDeclaration: true });
-      else visitNamedMember(node.expression, node.name);
+      else
+        bindingError(
+          node.name,
+          "member initializer is not statically readable"
+        );
       return;
     }
     if (ts.isElementAccessExpression(node)) {

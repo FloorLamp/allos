@@ -254,6 +254,43 @@ describe("compiled phone-only CSS proof (#3518)", { timeout: 60_000 }, () => {
     ).rejects.toThrow("desktop-visible compiled declarations differ");
   });
 
+  it("reads typed and nested member initializers from their value owner", async () => {
+    const candidate = (value: string) => `
+      interface Styles { box: string; nested: { box: string } }
+      const styles: Styles = {
+        box: "${value}",
+        nested: { box: "${value}" },
+      };
+      export const Candidate = () => (
+        <div className={styles.box + " " + styles.nested.box} />
+      );
+    `;
+    const branchRoot = makeProofRoot(candidate("m-8"));
+    const controlRoot = makeProofRoot(candidate("m-4"));
+
+    await expect(
+      provePhoneOnlyCss({ branchRoot, controlRoot })
+    ).rejects.toThrow("desktop-visible compiled declarations differ");
+  });
+
+  it("reads aliased and nested destructured class bindings", async () => {
+    const candidate = (value: string) => `
+      const { box: BOX_CLASS, nested: { box: NESTED_CLASS } } = {
+        box: "${value}",
+        nested: { box: "${value}" },
+      };
+      export const Candidate = () => (
+        <div className={BOX_CLASS + " " + NESTED_CLASS} />
+      );
+    `;
+    const branchRoot = makeProofRoot(candidate("m-8"));
+    const controlRoot = makeProofRoot(candidate("m-4"));
+
+    await expect(
+      provePhoneOnlyCss({ branchRoot, controlRoot })
+    ).rejects.toThrow("desktop-visible compiled declarations differ");
+  });
+
   it("follows default imports and re-export aliases", async () => {
     const defaultCandidate =
       'import BOX_CLASS from "../components/classes";\nexport const Candidate = () => <div className={BOX_CLASS} />;\n';
