@@ -13,6 +13,7 @@ import {
   formatDateWithYear,
   type DisplayFormatPrefs,
 } from "@/lib/format-date";
+import { normalizePracticeName } from "@/lib/practice";
 import type { PracticeLog, PracticeSessionMutationOutcome } from "@/lib/types";
 import {
   editPracticeSession,
@@ -27,6 +28,28 @@ function sessionFacts(session: PracticeLog, prefs: DisplayFormatPrefs): string {
   return parts.join(" · ");
 }
 
+function sessionTitle(
+  session: PracticeLog,
+  prefs: DisplayFormatPrefs,
+  showPracticeName: boolean
+): string {
+  const facts = sessionFacts(session, prefs);
+  return showPracticeName
+    ? `${normalizePracticeName(session.practice)} · ${facts}`
+    : facts;
+}
+
+function sessionMenuName(
+  session: PracticeLog,
+  prefs: DisplayFormatPrefs,
+  showPracticeName: boolean
+): string {
+  const date = formatDateWithYear(session.date, prefs);
+  return showPracticeName
+    ? `${normalizePracticeName(session.practice)} — ${date}`
+    : date;
+}
+
 // The practice-session history list on the shared EntryHistoryTable (#1491):
 // the shell, ⋯ menu, collapsed-5 window and undoable delete live in the shared
 // component; this file keeps practice's columns, its edit form, and the typed
@@ -36,6 +59,7 @@ export default function PracticeSessionHistory({
   totalCount = sessions.length,
   emptyText = "No sessions during this period.",
   ledger = false,
+  showPracticeName = false,
   readOnly = false,
 }: {
   sessions: PracticeLog[];
@@ -43,6 +67,8 @@ export default function PracticeSessionHistory({
   emptyText?: string;
   /** The server-paged event-ledger mount owns empty state, extent and paging. */
   ledger?: boolean;
+  /** Cross-practice ledgers name the practice; per-practice cards already do. */
+  showPracticeName?: boolean;
   readOnly?: boolean;
 }) {
   const toast = useToast();
@@ -98,7 +124,7 @@ export default function PracticeSessionHistory({
       header: "Session",
       slot: "title",
       cellClassName: "tabular-nums text-slate-700 dark:text-slate-200",
-      cell: (session) => sessionFacts(session, formatPrefs),
+      cell: (session) => sessionTitle(session, formatPrefs, showPracticeName),
     },
     {
       header: "Notes",
@@ -132,7 +158,7 @@ export default function PracticeSessionHistory({
         readOnly={readOnly}
         menuKind="Session"
         menuItemName={(session) =>
-          formatDateWithYear(session.date, formatPrefs)
+          sessionMenuName(session, formatPrefs, showPracticeName)
         }
         rowTestId={(session) => `practice-session-${session.id}`}
         editTestId={() => "practice-session-edit"}

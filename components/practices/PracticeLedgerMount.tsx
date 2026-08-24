@@ -126,6 +126,7 @@ export default function PracticeLedgerMount({
         sessions={ledger.rows}
         totalCount={ledger.rows.length}
         ledger
+        showPracticeName={!practice}
         readOnly={!canWrite}
       />
     </EventLedgerFrame>
