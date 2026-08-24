@@ -270,10 +270,9 @@ test("the CDC schedule grid scrolls in-container on a phone (#1449)", async ({
     "schedule-grid-tip"
   );
 
-  await page
-    .getByTestId("records-immunizations")
-    .getByRole("heading", { name: "Immunizations" })
-    .click();
+  // Use the empty viewport gutter as a real outside pointer target. The phone
+  // heading is intentionally sr-only and cannot be clicked by a user.
+  await page.mouse.click(1, 1);
   await expect(pinnedTip).toHaveCount(0);
   await expect(doseTrigger).toHaveAttribute("aria-expanded", "false");
 
