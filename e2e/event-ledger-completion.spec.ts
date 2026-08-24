@@ -68,21 +68,26 @@ test("food and practice ledgers are reachable and Timeline filters their day rol
     page.getByRole("link", { name: "Food", exact: true })
   );
   await expect(page).toHaveURL(/category=food/);
-  const foodDay = page.getByTestId("timeline-event").filter({
-    has: page.locator(
-      `a[href="/nutrition/food-history?from=${DAY}&to=${DAY}"]`
-    ),
+  const foodDay = page.getByRole("link", {
+    name: /^\d+ servings? logged$/,
   });
   await expect(foodDay).toHaveCount(1);
-  await expect(foodDay).toContainText(/servings? logged/);
+  await expect(foodDay).toHaveAttribute(
+    "href",
+    `/nutrition/food-history?from=${DAY}&to=${DAY}`
+  );
   await hydratedClick(
     page,
     page.getByRole("link", { name: "Substance", exact: true })
   );
   await expect(page).toHaveURL(/category=substance/);
-  const substanceDay = page
-    .getByTestId("timeline-event")
-    .filter({ hasText: `Ledger substance ${stamp}` });
+  const substanceDay = page.getByRole("link", {
+    name: /^\d+ substance uses? logged$/,
+  });
   await expect(substanceDay).toHaveCount(1);
-  await expect(substanceDay).toContainText(/substance uses? logged/);
+  await expect(substanceDay).toHaveAttribute(
+    "href",
+    "/records/specialty/substance-use"
+  );
+  await expect(page.locator("main")).toContainText(`Ledger substance ${stamp}`);
 });
