@@ -301,18 +301,23 @@ clean control worktree:
 node scripts/phone-only-css-proof.mjs --control /path/to/origin-main-worktree
 ```
 
-The compiler disables Tailwind's prose scanner and includes only the registry.
-Before compilation it derives every custom utility that uses `max-sm` or one of
-the two exact phone media scopes from the source sheet; an unregistered
-candidate fails instead of disappearing from both artifacts. The proof then
-removes those phone scopes structurally at any nesting depth and compares the
-remaining semantic CSS tree without collapsing declaration values or reordering
-cascade winners. It fails on compile/empty artifacts, missing expected
-declarations, a census below its floor, or any remaining desktop-visible
-difference. Its claim is only that the registered utilities contribute no
-declaration at `sm` or above. It does not prove that a phone declaration
-composes safely with the cascade; #3510's `min-block-size` replacement bug is
-deliberately outside this guard.
+The compiler disables Tailwind's prose scanner. Each worktree gets its own
+syntax-aware census of `className` values and the constants they reach across
+`app/`, `components/`, and `lib/`, plus every static custom utility in the
+sheet. A changed callsite or desktop-only custom utility therefore reaches its
+own artifact without treating visible copy as a class candidate. Before
+compilation the proof also derives every custom utility that uses `max-sm` or
+one of the two exact phone media scopes; an unregistered candidate fails instead
+of disappearing from both artifacts. It then removes those phone scopes
+structurally at any nesting depth and compares the remaining semantic CSS tree
+without collapsing declaration values or reordering cascade winners. Only
+unique atomic `@property` registrations and their matching unique fallback
+entries are order-normalized; duplicates fail closed. The proof fails on
+compile/empty artifacts, missing expected declarations, a census below its
+floor, or any remaining desktop-visible difference. Its claim is only that the
+registered utilities contribute no declaration at `sm` or above. It does not
+prove that a phone declaration composes safely with the cascade; #3510's
+`min-block-size` replacement bug is deliberately outside this guard.
 
 | tier                                  | covers                                                                                                                                                                                                 | status                       |
 | ------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ | ---------------------------- |

@@ -1,4 +1,5 @@
 import fs from "node:fs";
+import os from "node:os";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
 import { describe, expect, it } from "vitest";
@@ -18,6 +19,15 @@ import {
 
 const repo = path.resolve(fileURLToPath(new URL("../..", import.meta.url)));
 const globals = fs.readFileSync(path.join(repo, "app", "globals.css"), "utf8");
+
+function makeProofRoot(source: string) {
+  const root = fs.mkdtempSync(path.join(os.tmpdir(), "phone-css-proof-"));
+  for (const directory of ["app", "components", "lib"])
+    fs.mkdirSync(path.join(root, directory), { recursive: true });
+  fs.writeFileSync(path.join(root, "app", "globals.css"), globals);
+  fs.writeFileSync(path.join(root, "app", "candidate.tsx"), source);
+  return root;
+}
 
 describe("compiled phone-only CSS proof (#3518)", () => {
   it("compiles the deterministic registry and proves every declaration is below sm", async () => {
@@ -85,6 +95,54 @@ describe("compiled phone-only CSS proof (#3518)", () => {
     );
   });
 
+  it("normalizes only unique atomic property registrations and fallbacks", async () => {
+    const css = await compilePhoneOnlyCss(repo);
+    const registrations = (order: readonly string[]) => `
+      ${order
+        .map(
+          (name) =>
+            `@property --proof-${name} { syntax: "<number>"; inherits: false; initial-value: 0; }`
+        )
+        .join("\n")}
+      @layer properties {
+        @supports ((-webkit-hyphens: none) and (not (margin-trim: inline))) or ((-moz-orient: inline) and (not (color:rgb(from red r g b)))) {
+          *, ::before, ::after, ::backdrop {
+            ${order.map((name) => `--proof-${name}: 0;`).join("\n")}
+          }
+        }
+      }
+    `;
+    const desktop = (extra: string) =>
+      inspectPhoneOnlyCss(`${css}\n${extra}`, { label: "registrations" })
+        .desktop;
+
+    expect(desktop(registrations(["a", "b"]))).toBe(
+      desktop(registrations(["b", "a"]))
+    );
+    expect(
+      desktop(
+        '@property --proof-order { syntax: "<number>"; inherits: false; initial-value: 0; }'
+      )
+    ).not.toBe(
+      desktop(
+        '@property --proof-order { initial-value: 0; inherits: false; syntax: "<number>"; }'
+      )
+    );
+    expect(() =>
+      desktop(
+        `${registrations(["a", "b"])}\n@property --proof-a { syntax: "*"; inherits: false; }`
+      )
+    ).toThrow("duplicate @property registration --proof-a");
+    expect(() =>
+      desktop(
+        registrations(["a", "b"]).replace(
+          "--proof-a: 0;",
+          "--proof-a: 0; --proof-a: 1;"
+        )
+      )
+    ).toThrow("duplicate fallback declaration --proof-a");
+  });
+
   it("fails closed when a phone-contributing utility is omitted from the registry", async () => {
     const omitted = `${globals}\n@utility omitted-phone-utility { color: red; @apply max-sm:p-2; }`;
     await expect(
@@ -92,6 +150,48 @@ describe("compiled phone-only CSS proof (#3518)", () => {
     ).rejects.toThrow(
       "omitted: phone-contributing utility omitted-phone-utility is not registered"
     );
+  });
+
+  it("includes every custom utility and each root's real callsite candidates", async () => {
+    const baseCss = await compilePhoneOnlyCss(repo);
+    const customCss = await compilePhoneOnlyCssText(
+      `${globals}\n@utility collateral-desktop { color: red; }`,
+      { root: repo, label: "custom utility" }
+    );
+    expect(customCss).toContain(".collateral-desktop");
+    expect(
+      inspectPhoneOnlyCss(customCss, { label: "custom utility" }).desktop
+    ).not.toBe(inspectPhoneOnlyCss(baseCss, { label: "base" }).desktop);
+
+    const branchRoot = makeProofRoot(
+      'export const Candidate = () => <div className="p-8" />;\n'
+    );
+    const controlRoot = makeProofRoot(
+      'export const Candidate = () => <div className="p-4" />;\n'
+    );
+    await expect(
+      provePhoneOnlyCss({ branchRoot, controlRoot })
+    ).rejects.toThrow("desktop-visible compiled declarations differ");
+
+    fs.writeFileSync(
+      path.join(branchRoot, "components", "classes.ts"),
+      'export const DESKTOP_CLASS = "m-8";\n'
+    );
+    fs.writeFileSync(
+      path.join(branchRoot, "app", "candidate.tsx"),
+      'import { DESKTOP_CLASS } from "../components/classes";\nexport const Candidate = () => <div className={DESKTOP_CLASS} />;\n'
+    );
+    await expect(
+      provePhoneOnlyCss({ branchRoot, controlRoot })
+    ).rejects.toThrow("desktop-visible compiled declarations differ");
+
+    fs.writeFileSync(
+      path.join(branchRoot, "app", "candidate.tsx"),
+      'export const Candidate = () => <div className="p-4">p-8</div>;\n'
+    );
+    await expect(
+      provePhoneOnlyCss({ branchRoot, controlRoot })
+    ).resolves.toBeDefined();
   });
 
   it("rejects a declaration leaked from a registered utility onto desktop", async () => {

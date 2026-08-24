@@ -1,8 +1,10 @@
 import fs from "node:fs";
 import path from "node:path";
 import { fileURLToPath, pathToFileURL } from "node:url";
+import { Scanner } from "@tailwindcss/oxide";
 import postcss from "postcss";
 import tailwind from "@tailwindcss/postcss";
+import ts from "typescript";
 import {
   COMPILED_BYTE_FLOOR,
   PHONE_BLOCK_FLOOR,
@@ -11,6 +13,14 @@ import {
 } from "./phone-only-css-registry.mjs";
 
 const TAILWIND_IMPORT = '@import "tailwindcss";';
+const RUNTIME_SOURCE_DIRECTORIES = ["app", "components", "lib"];
+const RUNTIME_SOURCE_EXTENSIONS = new Set([
+  ".js",
+  ".jsx",
+  ".mjs",
+  ".ts",
+  ".tsx",
+]);
 const MODULE_ROOT = path.resolve(
   path.dirname(fileURLToPath(import.meta.url)),
   ".."
@@ -57,6 +67,153 @@ export function phoneOnlyUtilityCandidates(source, label = "app/globals.css") {
   return candidates;
 }
 
+function customUtilityCandidates(source, label) {
+  let root;
+  try {
+    root = postcss.parse(source);
+  } catch (error) {
+    throw new Error(
+      `${label}: cannot parse custom utilities: ${error.message}`,
+      {
+        cause: error,
+      }
+    );
+  }
+  const candidates = [];
+  root.walkAtRules("utility", (utility) => {
+    const name = normalizeSpace(utility.params);
+    const duplicate = candidates.find((candidate) => candidate === name);
+    if (duplicate)
+      throw new Error(`${label}: duplicate custom utility ${duplicate}`);
+    // Functional utilities are emitted from their real callsite candidates;
+    // a bare wildcard is not itself a valid candidate for @source inline.
+    if (!name.endsWith("-*")) candidates.push(name);
+  });
+  return candidates;
+}
+
+function runtimeSourceFiles(root, label) {
+  const files = [];
+  const visit = (directory) => {
+    let entries;
+    try {
+      entries = fs.readdirSync(directory, { withFileTypes: true });
+    } catch (error) {
+      throw new Error(`${label}: cannot read ${directory}: ${error.message}`, {
+        cause: error,
+      });
+    }
+    for (const entry of entries.sort((left, right) =>
+      left.name.localeCompare(right.name)
+    )) {
+      const resolved = path.join(directory, entry.name);
+      if (entry.isDirectory()) {
+        if (!entry.name.startsWith("__")) visit(resolved);
+      } else if (
+        entry.isFile() &&
+        RUNTIME_SOURCE_EXTENSIONS.has(path.extname(entry.name)) &&
+        !/\.(?:test|spec)\.[^.]+$/.test(entry.name)
+      ) {
+        files.push(resolved);
+      }
+    }
+  };
+
+  for (const directory of RUNTIME_SOURCE_DIRECTORIES) {
+    const sourceDirectory = path.join(root, directory);
+    if (!fs.statSync(sourceDirectory, { throwIfNoEntry: false })?.isDirectory())
+      throw new Error(
+        `${label}: runtime candidate source directory is missing: ${sourceDirectory}`
+      );
+    visit(sourceDirectory);
+  }
+  return files;
+}
+
+function runtimeClassCandidates(root, label) {
+  const declarations = new Map();
+  const classRoots = [];
+  const sourceFiles = runtimeSourceFiles(root, label);
+  for (const file of sourceFiles) {
+    let source;
+    try {
+      source = fs.readFileSync(file, "utf8");
+    } catch (error) {
+      throw new Error(`${label}: cannot read ${file}: ${error.message}`, {
+        cause: error,
+      });
+    }
+    const sourceFile = ts.createSourceFile(
+      file,
+      source,
+      ts.ScriptTarget.Latest,
+      true,
+      file.endsWith("x") ? ts.ScriptKind.TSX : ts.ScriptKind.TS
+    );
+    const parseError = sourceFile.parseDiagnostics?.[0];
+    if (parseError) {
+      throw new Error(
+        `${label}: cannot parse runtime candidates in ${file}: ${ts.flattenDiagnosticMessageText(parseError.messageText, "\n")}`
+      );
+    }
+    const remember = (name, node) => {
+      const matches = declarations.get(name) ?? [];
+      matches.push(node);
+      declarations.set(name, matches);
+    };
+    const visit = (node) => {
+      if (
+        ts.isVariableDeclaration(node) &&
+        ts.isIdentifier(node.name) &&
+        node.initializer
+      )
+        remember(node.name.text, node.initializer);
+      else if (
+        (ts.isFunctionDeclaration(node) || ts.isClassDeclaration(node)) &&
+        node.name
+      )
+        remember(node.name.text, node);
+
+      if (
+        ts.isJsxAttribute(node) &&
+        (node.name.text === "className" || node.name.text === "class") &&
+        node.initializer
+      ) {
+        classRoots.push(node.initializer);
+      }
+      ts.forEachChild(node, visit);
+    };
+    visit(sourceFile);
+  }
+
+  const fragments = [];
+  const visited = new Set();
+  const pending = [...classRoots];
+  while (pending.length) {
+    const node = pending.pop();
+    if (visited.has(node)) continue;
+    visited.add(node);
+    if (
+      ts.isStringLiteral(node) ||
+      ts.isNoSubstitutionTemplateLiteral(node) ||
+      ts.isTemplateHead(node) ||
+      ts.isTemplateMiddle(node) ||
+      ts.isTemplateTail(node)
+    ) {
+      fragments.push(node.text);
+    } else if (ts.isIdentifier(node)) {
+      for (const declaration of declarations.get(node.text) ?? [])
+        pending.push(declaration);
+    }
+    ts.forEachChild(node, (child) => pending.push(child));
+  }
+
+  const scanner = new Scanner({ sources: [] });
+  return scanner
+    .scanFiles([{ content: fragments.join("\n"), extension: "html" }])
+    .sort();
+}
+
 function assertPhoneOnlyRegistry(source, registry, label, requireRegistry) {
   const registered = registry.map(({ name }) => name);
   const duplicate = registered.find(
@@ -84,17 +241,23 @@ function assertPhoneOnlyRegistry(source, registry, label, requireRegistry) {
   }
 }
 
-function deterministicInput(source, registry) {
+function deterministicInput(source, root, registry, label) {
   const occurrences = source.split(TAILWIND_IMPORT).length - 1;
   if (occurrences !== 1) {
     throw new Error(
       `expected exactly one ${TAILWIND_IMPORT} in app/globals.css; found ${occurrences}`
     );
   }
-  const names = registry.map(({ name }) => name).join(" ");
+  const names = [
+    ...new Set([
+      ...customUtilityCandidates(source, label),
+      ...registry.map(({ name }) => name),
+      ...runtimeClassCandidates(root, label),
+    ]),
+  ].join(" ");
   return source.replace(
     TAILWIND_IMPORT,
-    `@import "tailwindcss" source(none);\n@source inline("${names}");`
+    `@import "tailwindcss" source(none);\n@source inline(${JSON.stringify(names)});`
   );
 }
 
@@ -120,7 +283,7 @@ export async function compilePhoneOnlyCssText(
 ) {
   if (!root) throw new Error("compilePhoneOnlyCssText requires a root");
   assertPhoneOnlyRegistry(source, registry, label, requireRegistry);
-  const css = deterministicInput(source, registry);
+  const css = deterministicInput(source, root, registry, label);
   try {
     const compiled = (
       await postcss([tailwind({ base: root })]).process(css, {
@@ -222,14 +385,100 @@ export function stripPhoneContributions(css) {
   return { root, blocks, declarations };
 }
 
-function semanticChildren(container) {
+function propertyRegistrationContext(root) {
+  const seen = new Set();
+  const atomic = new Set();
+  for (const node of root.nodes ?? []) {
+    if (node.type !== "atrule" || node.name !== "property") continue;
+    const name = normalizeSpace(node.params);
+    if (seen.has(name))
+      throw new Error(`duplicate @property registration ${name}`);
+    seen.add(name);
+    if (
+      /^--[\w-]+$/.test(name) &&
+      Array.isArray(node.nodes) &&
+      node.nodes.every(
+        (child) => child.type === "decl" || child.type === "comment"
+      )
+    )
+      atomic.add(node);
+  }
+  return { names: seen, atomic };
+}
+
+function isPropertyFallbackRule(node, propertyNames) {
+  if (
+    node.type !== "rule" ||
+    normalizeSpace(node.selector) !== "*, ::before, ::after, ::backdrop" ||
+    node.parent?.type !== "atrule" ||
+    node.parent.name !== "supports" ||
+    node.parent.parent?.type !== "atrule" ||
+    node.parent.parent.name !== "layer" ||
+    normalizeSpace(node.parent.parent.params) !== "properties"
+  )
+    return false;
+  const declarations = (node.nodes ?? []).filter(
+    (child) => child.type !== "comment"
+  );
+  return (
+    declarations.length > 0 &&
+    declarations.every(
+      (child) => child.type === "decl" && propertyNames.has(child.prop)
+    )
+  );
+}
+
+function semanticChildren(container, propertyContext) {
+  const nodes = (container.nodes ?? []).filter(
+    (node) => node.type !== "comment"
+  );
   const children = [];
-  for (const node of container.nodes ?? []) {
-    if (node.type === "comment") continue;
+  for (let index = 0; index < nodes.length; index++) {
+    const node = nodes[index];
+    if (container.type === "root" && propertyContext.atomic.has(node)) {
+      const registrations = [];
+      while (index < nodes.length && propertyContext.atomic.has(nodes[index])) {
+        const registration = nodes[index];
+        registrations.push([
+          "atrule",
+          registration.name,
+          registration.params,
+          semanticChildren(registration, propertyContext),
+        ]);
+        index++;
+      }
+      index--;
+      registrations.sort((left, right) => left[2].localeCompare(right[2]));
+      children.push(...registrations);
+      continue;
+    }
     if (node.type === "decl") {
       children.push(["decl", node.prop, node.value, node.important]);
     } else if (node.type === "rule") {
-      const descendants = semanticChildren(node);
+      let descendants;
+      if (isPropertyFallbackRule(node, propertyContext.names)) {
+        const declarations = node.nodes.filter(
+          (child) => child.type !== "comment"
+        );
+        const seen = new Set();
+        for (const declaration of declarations) {
+          if (seen.has(declaration.prop))
+            throw new Error(
+              `duplicate fallback declaration ${declaration.prop}`
+            );
+          seen.add(declaration.prop);
+        }
+        descendants = declarations
+          .map((declaration) => [
+            "decl",
+            declaration.prop,
+            declaration.value,
+            declaration.important,
+          ])
+          .sort((left, right) => left[1].localeCompare(right[1]));
+      } else {
+        descendants = semanticChildren(node, propertyContext);
+      }
       if (!descendants.length) continue;
       children.push(["rule", node.selector, descendants]);
     } else if (node.type === "atrule") {
@@ -237,7 +486,7 @@ function semanticChildren(container) {
         "atrule",
         node.name,
         node.params,
-        node.nodes ? semanticChildren(node) : null,
+        node.nodes ? semanticChildren(node, propertyContext) : null,
       ]);
     } else {
       throw new Error(`unsupported compiled CSS node type: ${node.type}`);
@@ -319,7 +568,12 @@ export function inspectPhoneOnlyCss(
     // Serialize semantic AST fields, not presentation whitespace. Declaration
     // values and every child stay in source order: spaces inside strings and a
     // later declaration winning the cascade are both browser-visible.
-    desktop: JSON.stringify(semanticChildren(stripped.root)),
+    desktop: JSON.stringify(
+      semanticChildren(
+        stripped.root,
+        propertyRegistrationContext(stripped.root)
+      )
+    ),
   };
 }
 
