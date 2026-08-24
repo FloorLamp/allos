@@ -373,6 +373,8 @@ shape, or a diff with no censused UI target stops loudly for a manual plan.
 Unmapped runtime/shared files also force a full run. For `--run`, the wrapper
 gives the harness a unique owned scratch DB and removes it afterward, so repeated
 seeded runs cannot reuse old data. Run without `--run` to print the plan only.
+That executable plan preserves `UX_SEED`, `SEED_RNG`, and `SEED_PERSONA` when
+they were requested, including values that need shell quoting.
 
 The target vocabulary the audits established (use it when filing from a run):
 first data inside one viewport-height; no standing rare-cadence entry forms

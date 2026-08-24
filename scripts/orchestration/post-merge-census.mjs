@@ -219,6 +219,25 @@ function usage() {
   );
 }
 
+const PRESERVED_SHAPE_ENV = ["UX_SEED", "SEED_RNG", "SEED_PERSONA"];
+
+function shellQuote(value) {
+  if (/^[A-Za-z0-9_./,:=+-]+$/.test(value)) return value;
+  if (value === "") return "''";
+  return `'${value.replaceAll("'", `'"'"'`)}'`;
+}
+
+function plannedCommand(plan, scope, env) {
+  const assignments = [
+    `UX_ROUTES=${shellQuote(plan.mode === "scoped" ? scope : "")}`,
+  ];
+  for (const name of PRESERVED_SHAPE_ENV) {
+    if (env[name] !== undefined)
+      assignments.push(`${name}=${shellQuote(env[name])}`);
+  }
+  return `${assignments.join(" ")} node scripts/ux-walkthrough.mjs --serve pages`;
+}
+
 function makeOwnedScratchDb() {
   const dir = fs.mkdtempSync(path.join(os.tmpdir(), SCRATCH_PREFIX));
   return { dir, dbPath: path.join(dir, "allos.db") };
@@ -253,8 +272,7 @@ function main(argv) {
     console.log(`  full-run reason: ${reason}`);
 
   if (!run) {
-    const prefix = plan.mode === "scoped" ? `UX_ROUTES=${scope} ` : "";
-    console.log(`${prefix}node scripts/ux-walkthrough.mjs --serve pages`);
+    console.log(plannedCommand(plan, scope, process.env));
     return 0;
   }
 
