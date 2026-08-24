@@ -266,6 +266,10 @@ describe("selected-state rows use the registered primitive (#2730)", () => {
       segmented,
       "each segment must render its own disjoint 44px target"
     ).toMatch(/segmentClass\s*=\s*`[^`]*\bmin-h-11\b/);
+    expect(
+      segmented.match(/className=\{segmentClass\}/g),
+      "both the Link and button bindings must consume the one guarded segment class"
+    ).toHaveLength(2);
     expect(segmented.match(/data-segmented-option=""/g)).toHaveLength(2);
 
     const viewFiles = [
