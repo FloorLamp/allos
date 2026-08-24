@@ -50,6 +50,7 @@ describe("UX_SEED=dirty", () => {
       volume: "lean",
       gapiness: "continuous",
       textLength: "long",
+      middleState: "baseline",
     });
   });
 
@@ -66,7 +67,7 @@ describe("UX_SEED=dirty", () => {
     expect(uxSeedShapeFromEnv({ UX_SEED: "dritty" })).toEqual({
       kind: "unknown",
       raw: "dritty",
-      known: ["1", "thin", "dirty"],
+      known: ["1", "thin", "dirty", "one-cycle"],
     });
     expect(uxSeedShapeFromEnv({ UX_SEED: "dirty", SEED_RNG: "3" })).toEqual({
       kind: "conflict",
@@ -353,7 +354,7 @@ describe("UX_SEED=dirty", () => {
       path.join(repo, ".claude", "skills", "ux-walkthrough", "SKILL.md"),
       "utf8"
     );
-    expect(skill).toContain("Run all four census shapes");
+    expect(skill).toContain("Run all five census shapes");
     expect(skill).toContain(
       "UX_SEED=dirty node scripts/ux-walkthrough.mjs --serve pages"
     );

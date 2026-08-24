@@ -15,9 +15,10 @@
 //     look, byte-stable. `npm run seed`, the e2e template DB, and `--baseline`
 //     census diffing all depend on that pin. Entropy is a seeing-tool feature,
 //     never a test-tier one.
-//   - Same seed ⇒ same dials, forever: dials draw IN DECLARATION ORDER from a
-//     fresh stream, so a new dial is APPENDED (one draw at the end), never
-//     inserted — inserting would silently re-deal every existing seed's look.
+//   - Same seed ⇒ same dials, forever: randomized dials draw IN DECLARATION
+//     ORDER from a fresh stream, so a new randomized dial is APPENDED (one draw
+//     at the end), never inserted. Named-only middle states stay at baseline in
+//     numbered looks and consume NO draw.
 //   - Jitter (`jitterStream`) is a separate stream derived from the same seed,
 //     so adding or removing a jitter call in seed.ts can never shift which
 //     dials a seed samples.
@@ -55,6 +56,11 @@ export interface SeedDials {
   gapiness: "continuous" | "gappy";
   // Long names — truncation and wrap behavior.
   textLength: "short" | "long";
+  // Named boundary-state looks that should not be dealt randomly. Keep this
+  // field at the END and at `baseline` for every numbered seed: adding a new
+  // middle-state census shape must not consume a PRNG draw or re-deal the five
+  // historical entropy dimensions (#3489 D5).
+  middleState: "baseline" | "one-completed-cycle";
 }
 
 // The pinned default: exactly the hand-authored look the seed has always
@@ -65,6 +71,7 @@ export const BASELINE_DIALS: SeedDials = {
   volume: "lean",
   gapiness: "continuous",
   textLength: "short",
+  middleState: "baseline",
 };
 
 export interface NamedSeedDialShape {
@@ -91,6 +98,14 @@ export const NAMED_SEED_DIAL_SHAPES: readonly NamedSeedDialShape[] = [
       textLength: "long",
     },
   },
+  {
+    name: "one-cycle",
+    description: "two periods yielding one completed cycle",
+    dials: {
+      ...BASELINE_DIALS,
+      middleState: "one-completed-cycle",
+    },
+  },
 ];
 
 export type SeedDialSelection =
@@ -101,18 +116,22 @@ export type SeedDialSelection =
 
 // Sample the dial vector for a seed. DEFAULT_SEED is special-cased to the
 // baseline BY CONSTRUCTION (not by hoping draws land right), so the pin cannot
-// rot as dials are appended. Every other seed draws one value per dial, in
-// declaration order — append new dials at the END (see module comment).
-export function sampleDials(seed: number): SeedDials {
-  if (seed === DEFAULT_SEED) return { ...BASELINE_DIALS };
-  const rng = mulberry32(seed);
+// rot as dials are appended. Every other seed draws the five historical
+// randomized values in declaration order; named-only middleState consumes none.
+export function sampleNumberedDials(rng: () => number): SeedDials {
   return {
     illnessNow: rng() < 0.5 ? "active" : "past",
     importQuirks: rng() < 0.5 ? "clean" : "quirky",
     volume: rng() < 0.5 ? "lean" : "heavy",
     gapiness: rng() < 0.5 ? "continuous" : "gappy",
     textLength: rng() < 0.5 ? "short" : "long",
+    middleState: "baseline",
   };
+}
+
+export function sampleDials(seed: number): SeedDials {
+  if (seed === DEFAULT_SEED) return { ...BASELINE_DIALS };
+  return sampleNumberedDials(mulberry32(seed));
 }
 
 // One line for logs and audit.md: names only the non-baseline dials, or says
@@ -126,6 +145,8 @@ export function describeDials(dials: SeedDials): string {
   if (dials.volume !== BASELINE_DIALS.volume) parts.push("heavy volume");
   if (dials.gapiness !== BASELINE_DIALS.gapiness) parts.push("logging gaps");
   if (dials.textLength !== BASELINE_DIALS.textLength) parts.push("long names");
+  if (dials.middleState === "one-completed-cycle")
+    parts.push("one completed cycle");
   return parts.length ? parts.join(" + ") : "baseline look";
 }
 

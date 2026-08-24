@@ -19,7 +19,8 @@
 //
 // Or let the harness own the server lifecycle (scratch DB, boot, poll-ready,
 // teardown; UX_SEED=1 seeds first for a data-rich census, UX_SEED=thin seeds and
-// trims to a week, and UX_SEED=dirty pins import residue + long names):
+// trims to a week, UX_SEED=dirty pins import residue + long names, and
+// UX_SEED=one-cycle pins the one-completed-cycle honesty boundary):
 //
 //   node scripts/ux-walkthrough.mjs --serve onboarding pages
 //
@@ -1993,7 +1994,7 @@ const picked = args.filter(
 if (!picked.length) {
   console.error(
     `usage: node scripts/ux-walkthrough.mjs [--serve] [--baseline <prior shots dir>] <journey...>\njourneys: ${Object.keys(journeys).join(", ")}
---serve boots the dev server itself on a unique tool-owned scratch DB (caller ALLOS_DB_PATH is ignored; UX_SEED=1 seeds, UX_SEED=thin seeds then trims to ~7 days, UX_SEED=dirty pins import quirks + long names) and tears it down after. SEED_RNG=<int> (#2594) gives the 1/thin shapes a distinct, reproducible scenario-dial look; unset = the pinned baseline.
+--serve boots the dev server itself on a unique tool-owned scratch DB (caller ALLOS_DB_PATH is ignored; UX_SEED=1 seeds, UX_SEED=thin trims to ~7 days, UX_SEED=dirty pins import quirks + long names, UX_SEED=one-cycle pins one completed cycle) and tears it down after. SEED_RNG=<int> (#2594) gives the 1/thin shapes a distinct, reproducible scenario-dial look; unset = the pinned baseline.
 --baseline diffs a prior run's metrics.json/taps.json (pages/workflows journeys write them) into audit.md.`
   );
   process.exit(1);
@@ -2125,7 +2126,8 @@ try {
     }
     // Census data shapes: unset = fresh DB (empty states), `1` = the full seed
     // (~3 weeks of history), `thin` = seed then trim observations to the last ~7
-    // days (#1544), and `dirty` = the fixed dirty-profile dial vector (#3489 D3).
+    // days (#1544), `dirty` = the fixed dirty-profile vector (#3489 D3), and
+    // `one-cycle` = two periods yielding one completed interval (#3489 D5).
     if (UX_SEED_SHAPE.seed) {
       log(`seeding scratch DB (${UX_SEED_SHAPE.label})…`);
       assertUxServedDbUnused(servedDb);

@@ -291,12 +291,12 @@ host convergence, escape/discard contracts), `stateful-affordances.md`
 
 ## 9. Enforcement
 
-| tier                                  | covers                                                                                                                                                                                       | status                       |
-| ------------------------------------- | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | ---------------------------- |
-| Language/lint scans (`lib/__tests__`) | border colors, hover fills, page width, records action grammar, copy lint, phone density (sub-panel insets + section rhythm, #3466), add-affordance grammar (verb + placement, #3486)        | shipped — the proven pattern |
-| Design-guard suite                    | chips, sheet titles, link tones — lands with each primitive per the guards ruling                                                                                                            | pending, per-issue           |
-| Census probes (#3489)                 | clipped content, control-height mismatch, ISO-date text scan (#3492 ✓ shipped), hover captures, cross-page consistency lane, dirty-profile shape, middle-state dials, post-merge mini-census | **ruled**                    |
-| `components/**` test tier             | enabling infrastructure for component-level guards                                                                                                                                           | #3446 ✓ shipped              |
+| tier                                  | covers                                                                                                                                                                                                 | status                       |
+| ------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ | ---------------------------- |
+| Language/lint scans (`lib/__tests__`) | border colors, hover fills, page width, records action grammar, copy lint, phone density (sub-panel insets + section rhythm, #3466), add-affordance grammar (verb + placement, #3486)                  | shipped — the proven pattern |
+| Design-guard suite                    | chips, sheet titles, link tones — lands with each primitive per the guards ruling                                                                                                                      | pending, per-issue           |
+| Census probes (#3489)                 | clipped content, control-height mismatch, ISO-date text scan (#3492), hover captures, cross-page consistency lane, named dirty profile, named one-completed-cycle middle state, post-merge mini-census | shipped                      |
+| `components/**` test tier             | enabling infrastructure for component-level guards                                                                                                                                                     | #3446 ✓ shipped              |
 
 ## Work map
 

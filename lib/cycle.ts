@@ -333,6 +333,27 @@ function round1(n: number): number {
 // tiles render only at or above it; FORECAST_MIN_CYCLES is this same number, deliberately.
 export const CYCLE_STATS_MIN_SAMPLES = 3;
 
+export type CycleLengthStatsState =
+  { kind: "insufficient"; message: string } | { kind: "ready" };
+
+// The evidence gate the Cycle page renders. Keeping the count-aware empty state
+// beside the model threshold makes the one-completed-cycle census shape test the
+// same decision the UI consumes, rather than a copied number or a page-local
+// approximation (#3482, #3489 D5).
+export function cycleLengthStatsState(
+  stats: CycleStats
+): CycleLengthStatsState {
+  if (stats.regularity !== "insufficient") return { kind: "ready" };
+  const have =
+    stats.cycleCount === 0
+      ? "No completed cycles yet"
+      : `${stats.cycleCount} completed cycle${stats.cycleCount === 1 ? "" : "s"}`;
+  return {
+    kind: "insufficient",
+    message: `${have} — cycle length stats appear after ${CYCLE_STATS_MIN_SAMPLES}.`,
+  };
+}
+
 // The "is it regular / changing" read over the most recent completed cycles. `insufficient`
 // until there are at least CYCLE_STATS_MIN_SAMPLES length samples; then `regular` when the
 // spread (max − min) is within CYCLE_REGULARITY_VARIATION_DAYS, else `irregular`.

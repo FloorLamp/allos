@@ -14,6 +14,12 @@ export const UX_SEED_SHAPES = [
     seed: true,
     seedDialShape: "dirty",
   },
+  {
+    name: "one-cycle",
+    label: "one-cycle",
+    seed: true,
+    seedDialShape: "one-cycle",
+  },
 ];
 
 export function uxSeedShapeFromEnv(env) {
