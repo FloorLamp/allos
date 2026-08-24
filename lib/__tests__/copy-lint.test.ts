@@ -441,12 +441,14 @@ function staticStringExpression(
 
 type ProjectionEdit = { start: number; end: number } & ProjectedText;
 
-// Project only syntax React renders as text. HTML character references decode in
-// JSX text, not inside JavaScript strings. Conversely, a statically provable JSX
-// string/template expression renders its evaluated value without its JS syntax.
-// Every projected character retains an offset into the original source so lint
-// diagnostics keep exact source lines even when a spelling expands or contracts.
-function projectRenderedJsxText(source: string): ProjectedText {
+// Project syntax that is statically known to become rendered text. HTML character
+// references decode in JSX text, not inside JavaScript strings. A statically
+// provable JSX expression renders its evaluated value without its JS syntax. Const
+// string initializers are projected as candidates too: this matches the lint's
+// existing treatment of user-copy constants and catches values rendered later via
+// an identifier without needing scope lookup or risking binding cycles. Every
+// projected character retains an original offset so diagnostics keep exact lines.
+function projectStaticRenderedCopy(source: string): ProjectedText {
   const file = ts.createSourceFile(
     "copy-lint.tsx",
     source,
@@ -456,6 +458,22 @@ function projectRenderedJsxText(source: string): ProjectedText {
   );
   const edits: ProjectionEdit[] = [];
   const visit = (node: ts.Node): void => {
+    if (
+      ts.isVariableDeclaration(node) &&
+      node.initializer &&
+      ts.isVariableDeclarationList(node.parent) &&
+      (node.parent.flags & ts.NodeFlags.Const) !== 0
+    ) {
+      const rendered = staticStringExpression(node.initializer, file, source);
+      if (rendered) {
+        edits.push({
+          start: node.initializer.getStart(file),
+          end: node.initializer.end,
+          ...rendered,
+        });
+        return;
+      }
+    }
     if (ts.isJsxExpression(node)) {
       if (!node.expression) {
         edits.push({
@@ -557,7 +575,7 @@ function disclaimerCopyViolations(rel: string, text: string): string[] {
   if (DISCLAIMER_COPY_ALLOW.has(rel)) return [];
 
   const code = stripComments(text);
-  const projection = projectRenderedJsxText(code);
+  const projection = projectStaticRenderedCopy(code);
   const violations = new Set<string>();
   for (const phrasing of DISCLAIMER_PHRASINGS) {
     const flags = `${phrasing.flags.replace(/g/g, "")}g`;
@@ -715,6 +733,16 @@ describe("copy-lint: user-facing tone standard (issue #945)", () => {
     const sample = '<p>{`Informational${" "}only.`}</p>';
     expect(disclaimerCopyViolations("synthetic.tsx", sample)).toEqual([
       "synthetic.tsx:1 — disclaimer prose in: <p>Informational only.</p>",
+    ]);
+  });
+
+  it("detects a static const template later rendered through an identifier", () => {
+    const sample = [
+      'const disclaimer = `Informational${" "}only.`;',
+      "return <p>{disclaimer}</p>;",
+    ].join("\n");
+    expect(disclaimerCopyViolations("synthetic.tsx", sample)).toEqual([
+      "synthetic.tsx:1 — disclaimer prose in: const disclaimer = Informational only.;",
     ]);
   });
 
