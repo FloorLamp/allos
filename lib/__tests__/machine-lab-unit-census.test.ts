@@ -141,6 +141,23 @@ describe("the machine-spelled lab-unit matcher (#3545)", () => {
       }
     `)
     ).toEqual([]);
+
+    expect(
+      texts(`
+      import * as units from "@/lib/display-unit";
+      export function MedicalValueSafe({ row }) { return <span>{units.displayUnit(row.unit)}</span>; }
+    `)
+    ).toEqual([]);
+
+    expect(
+      texts(`
+      import * as units from "@/lib/display-unit";
+      export function MedicalValueHostile({ row }) {
+        const units = { displayUnit: value => value };
+        return <span>{units.displayUnit(row.unit)}</span>;
+      }
+    `)
+    ).toEqual(["row.unit"]);
   });
 
   it("covers raw/precomposed lab-copy exits", () => {
@@ -212,6 +229,61 @@ describe("the machine-spelled lab-unit matcher (#3545)", () => {
     }
   });
 
+  it("rejects display-shaped exception collisions at the original read", () => {
+    const cases = [
+      [
+        "/repo/app/(app)/longevity/BiomarkersSection.tsx",
+        `function MedicalValue({ unit }) { return <span>{unit}</span>; }
+         export function BiomarkersSection({ item }) { return <MedicalValue unit={item.statedUnit} />; }`,
+        "item.statedUnit",
+      ],
+      [
+        "/repo/app/(app)/results/clinical-results/view/page.tsx",
+        `function formatRange(low, high, unit) { return low + "–" + high + " " + unit; }
+         export function ClinicalResultView({ row }) { return <p>{formatRange(1, 2, row.unit)}</p>; }`,
+        "row.unit",
+      ],
+      [
+        "/repo/components/UnitMislabelReview.tsx",
+        `export function UnitMislabelReview({ item }) {
+           const payload = { value: item.statedUnit };
+           return <p>{payload.value}</p>;
+         }`,
+        "item.statedUnit",
+      ],
+      [
+        "/repo/components/UnitMislabelReview.tsx",
+        `function Unsafe({ unit }) { return <p>{unit}</p>; }
+         export function UnitMislabelReview({ item }) { return <Unsafe unit={item.statedUnit} />; }`,
+        "item.statedUnit",
+      ],
+    ] as const;
+    for (const [file, source, exit] of cases)
+      expect(texts(source, file), source).toContain(exit);
+  });
+
+  it("rejects constant-key computed unit reads and destructuring", () => {
+    expect(
+      texts(`export function UnitMislabelReview({ item }) {
+        const key = "statedUnit";
+        return <p>{item[key]}</p>;
+      }`)
+    ).toEqual(["item[key]"]);
+    expect(
+      texts(`export function UnitMislabelReview({ item }) {
+        const key = "statedUnit";
+        const { [key]: unit } = item;
+        return <p>{unit}</p>;
+      }`)
+    ).toEqual(["unit"]);
+    expect(
+      texts(`export function UnitMislabelReview({ item }) {
+        const key = "value";
+        return <p>{item[key]}</p>;
+      }`)
+    ).toEqual([]);
+  });
+
   it("rejects nested callable chains, destructured/rest arguments, and callable snapshots", () => {
     const cases = [
       `function one(v){two(v)} function two(v){copy=v} one(item.statedUnit);`,
@@ -252,7 +324,7 @@ describe("the machine-spelled lab-unit matcher (#3545)", () => {
       ).toContain("item.statedUnit");
   });
 
-  it("allows syntax-local storage followed by direct authenticated normalization", () => {
+  it("rejects indirect storage even when a later write normalizes it", () => {
     const safe = `
       import { displayUnit } from "@/lib/display-unit";
       export function UnitMislabelReview({item}) {
@@ -262,7 +334,7 @@ describe("the machine-spelled lab-unit matcher (#3545)", () => {
         return <p>{payload.value}</p>;
       }
     `;
-    expect(texts(safe)).toEqual([]);
+    expect(texts(safe)).toEqual(["item.statedUnit"]);
 
     const nested = `
       import { displayUnit } from "@/lib/display-unit";
@@ -272,7 +344,7 @@ describe("the machine-spelled lab-unit matcher (#3545)", () => {
         return <p>{payload.nested.value}</p>;
       }
     `;
-    expect(texts(nested)).toEqual([]);
+    expect(texts(nested)).toEqual(["item.statedUnit"]);
   });
 
   it("allows documented raw semantics and rejects post-construction projection writes", () => {

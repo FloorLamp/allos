@@ -17,7 +17,6 @@ const LAB_EXPRESSION_IDENTIFIER =
   /^(?:bioOption|bioTarget|bioUnit|referenceHint|shownBioUnit)$/i;
 const LAB_CONTEXT_PATH =
   /(?:^|\/)(?:import|immunizations?|longevity|protocols?|results)(?:\/|$)|(?:^|\/)(?:ImportClient|ImmunizationsSection|UnitMislabelReview)\.tsx$|(?:^|\/)lib\/(?:biomarker-(?:goal|trajectory)|followup-labs|import-diff|queries\/search|reading-reference-cell|trends-series)\.ts$/i;
-const COPY_FIELD = /^(?:description|detail|hint|label|subtitle|text|title)$/i;
 const RAW_UNIT_PARAMETER_PRODUCER =
   /(?:Copy|Description|Hint|Label|Note|Phrase|Subtitle|Suffix|Summary|Text|buildBiomarkerSeries|buildSavedClinicalResultTile|decideSunExposure|recordRow|referenceCell)/i;
 const POSSIBLE_UNIT_EXIT =
@@ -34,6 +33,18 @@ function displayUnitModule(moduleName: string, fileName: string): boolean {
     !!root &&
     path.posix.resolve("/", path.posix.dirname(normalized), moduleName) ===
       `${root[1]}/lib/display-unit`
+  );
+}
+
+function medicalValueModule(moduleName: string, fileName: string): boolean {
+  if (moduleName === "@/components/ui") return true;
+  if (!moduleName.startsWith(".")) return false;
+  const normalized = fileName.replaceAll("\\", "/");
+  const root = /^(.*)\/(?:app|components|lib)\//.exec(normalized);
+  return (
+    !!root &&
+    path.posix.resolve("/", path.posix.dirname(normalized), moduleName) ===
+      `${root[1]}/components/ui`
   );
 }
 
@@ -123,7 +134,10 @@ function isLabDisplayContext(node: ts.Node, fileName: string): boolean {
 }
 
 interface Binding {
+  constString: string | null;
   trustedFormatter: boolean;
+  trustedFormatterNamespace: boolean;
+  trustedUnitRenderer: boolean;
   rawUnit: boolean;
 }
 interface Scope {
@@ -143,18 +157,20 @@ function propertyName(node: ts.Node | undefined): string | null {
 function patternBindings(
   name: ts.BindingName,
   inheritedRaw: boolean,
-  add: (identifier: ts.Identifier, raw: boolean) => void
+  add: (identifier: ts.Identifier, raw: boolean) => void,
+  nameOf: (node: ts.Node | undefined) => string | null = propertyName
 ) {
   if (ts.isIdentifier(name)) return add(name, inheritedRaw);
   for (const element of name.elements) {
     if (ts.isOmittedExpression(element)) continue;
     const key = ts.isObjectBindingPattern(name)
-      ? propertyName(element.propertyName ?? element.name)
+      ? nameOf(element.propertyName ?? element.name)
       : null;
     patternBindings(
       element.name,
       inheritedRaw || (key !== null && UNIT_PROPERTY.test(key)),
-      add
+      add,
+      nameOf
     );
   }
 }
@@ -202,15 +218,16 @@ function isDeclarationIdentifier(node: ts.Identifier): boolean {
   return false;
 }
 
-function unitPropertyRead(node: ts.Node): boolean {
+function unitPropertyRead(
+  node: ts.Node,
+  nameOf: (node: ts.Node | undefined) => string | null = propertyName
+): boolean {
   return (
     (ts.isPropertyAccessExpression(node) &&
       UNIT_PROPERTY.test(node.name.text)) ||
     (ts.isElementAccessExpression(node) &&
       !!node.argumentExpression &&
-      (ts.isStringLiteral(node.argumentExpression) ||
-        ts.isNoSubstitutionTemplateLiteral(node.argumentExpression)) &&
-      UNIT_PROPERTY.test(node.argumentExpression.text))
+      UNIT_PROPERTY.test(nameOf(node.argumentExpression) ?? ""))
   );
 }
 
@@ -259,9 +276,44 @@ export function rawRenderedUnitExits(
     scope: Scope,
     identifier: ts.Identifier,
     rawUnit = false,
-    trustedFormatter = false
+    trustedFormatter = false,
+    trustedFormatterNamespace = false,
+    trustedUnitRenderer = false,
+    constString: string | null = null
   ) {
-    scope.bindings.set(identifier.text, { rawUnit, trustedFormatter });
+    scope.bindings.set(identifier.text, {
+      constString,
+      rawUnit,
+      trustedFormatter,
+      trustedFormatterNamespace,
+      trustedUnitRenderer,
+    });
+  }
+  function resolve(node: ts.Node, name: string): Binding | null {
+    for (
+      let scope: Scope | null = scopeAt.get(node) ?? sourceScope;
+      scope;
+      scope = scope.parent
+    ) {
+      const binding = scope.bindings.get(name);
+      if (binding) return binding;
+    }
+    return null;
+  }
+  function constantString(node: ts.Node | undefined): string | null {
+    if (!node) return null;
+    if (ts.isStringLiteral(node) || ts.isNoSubstitutionTemplateLiteral(node))
+      return node.text;
+    if (ts.isIdentifier(node))
+      return resolve(node, node.text)?.constString ?? null;
+    return null;
+  }
+  function resolvedPropertyName(node: ts.Node | undefined): string | null {
+    if (node && ts.isComputedPropertyName(node))
+      return constantString(node.expression);
+    if (node && ts.isIdentifier(node))
+      return constantString(node) ?? propertyName(node);
+    return propertyName(node) ?? constantString(node);
   }
   function collect(node: ts.Node) {
     const scope = scopeAt.get(node) ?? sourceScope;
@@ -269,6 +321,22 @@ export function rawRenderedUnitExits(
       ts.isImportDeclaration(node) &&
       ts.isStringLiteral(node.moduleSpecifier) &&
       displayUnitModule(node.moduleSpecifier.text, fileName) &&
+      node.importClause?.namedBindings
+    ) {
+      const bindings = node.importClause.namedBindings;
+      if (ts.isNamedImports(bindings)) {
+        for (const element of bindings.elements)
+          addBinding(
+            scope,
+            element.name,
+            false,
+            (element.propertyName ?? element.name).text === "displayUnit"
+          );
+      } else addBinding(scope, bindings.name, false, false, true);
+    } else if (
+      ts.isImportDeclaration(node) &&
+      ts.isStringLiteral(node.moduleSpecifier) &&
+      medicalValueModule(node.moduleSpecifier.text, fileName) &&
       node.importClause?.namedBindings &&
       ts.isNamedImports(node.importClause.namedBindings)
     ) {
@@ -277,11 +345,29 @@ export function rawRenderedUnitExits(
           scope,
           element.name,
           false,
-          (element.propertyName ?? element.name).text === "displayUnit"
+          false,
+          false,
+          (element.propertyName ?? element.name).text === "MedicalValue"
         );
     } else if (ts.isVariableDeclaration(node)) {
-      patternBindings(node.name, false, (id, raw) =>
-        addBinding(scope, id, raw)
+      patternBindings(
+        node.name,
+        false,
+        (id, raw) =>
+          addBinding(
+            scope,
+            id,
+            raw,
+            false,
+            false,
+            false,
+            ts.isIdentifier(node.name) &&
+              ts.isVariableDeclarationList(node.parent) &&
+              (node.parent.flags & ts.NodeFlags.Const) !== 0
+              ? constantString(node.initializer)
+              : null
+          ),
+        resolvedPropertyName
       );
     } else if (ts.isParameter(node)) {
       const owner = node.parent;
@@ -290,15 +376,19 @@ export function rawRenderedUnitExits(
       const rawProducer =
         RAW_UNIT_PARAMETER_PRODUCER.test(ownerName) ||
         LAB_CONTEXT_IDENTIFIER.test(ownerName);
-      patternBindings(node.name, false, (id, raw) =>
-        addBinding(
-          scope,
-          id,
-          rawProducer &&
-            (raw ||
-              UNIT_IDENTIFIER.test(id.text) ||
-              LAB_UNIT_IDENTIFIER.test(id.text))
-        )
+      patternBindings(
+        node.name,
+        false,
+        (id, raw) =>
+          addBinding(
+            scope,
+            id,
+            rawProducer &&
+              (raw ||
+                UNIT_IDENTIFIER.test(id.text) ||
+                LAB_UNIT_IDENTIFIER.test(id.text))
+          ),
+        resolvedPropertyName
       );
     } else if (
       (ts.isFunctionDeclaration(node) || ts.isClassDeclaration(node)) &&
@@ -314,23 +404,22 @@ export function rawRenderedUnitExits(
     ts.forEachChild(node, collect);
   }
   collect(sourceFile);
-
-  function resolve(node: ts.Node, name: string): Binding | null {
-    for (
-      let scope: Scope | null = scopeAt.get(node) ?? sourceScope;
-      scope;
-      scope = scope.parent
-    ) {
-      const binding = scope.bindings.get(name);
-      if (binding) return binding;
-    }
-    return null;
-  }
   function authenticFormatterCall(node: ts.CallExpression): boolean {
-    return (
-      ts.isIdentifier(node.expression) &&
-      resolve(node.expression, node.expression.text)?.trustedFormatter === true
-    );
+    if (ts.isIdentifier(node.expression))
+      return (
+        resolve(node.expression, node.expression.text)?.trustedFormatter ===
+        true
+      );
+    if (
+      ts.isPropertyAccessExpression(node.expression) &&
+      node.expression.name.text === "displayUnit" &&
+      ts.isIdentifier(node.expression.expression)
+    )
+      return (
+        resolve(node.expression.expression, node.expression.expression.text)
+          ?.trustedFormatterNamespace === true
+      );
+    return false;
   }
   function directlyFormatted(node: ts.Node): boolean {
     let current = node;
@@ -370,9 +459,22 @@ export function rawRenderedUnitExits(
         return (
           parent.arguments.includes(current as ts.Expression) &&
           !!name &&
-          /^(?:convertToCanonical|fmtTemp|fmtWeight|formatRange|normalizeImportedTemperature|outOfWindowText|reconciledFlag|sameUnit|toCm|unitKey|unitSuffix|waistCircToCm|headCircToCm)$/i.test(
-            name
-          )
+          ((name === "convertToCanonical" &&
+            /(?:components\/BiomarkerScale\.tsx|app\/\(app\)\/results\/clinical-results\/view\/page\.tsx)$/.test(
+              normalized
+            )) ||
+            (name === "sameUnit" &&
+              /(?:app\/\(app\)\/results\/clinical-results\/view\/page\.tsx|lib\/(?:biomarker-goal|clinical-result-index|reading-reference-cell|rule-findings)\.ts)$/.test(
+                normalized
+              )) ||
+            (name === "reconciledFlag" &&
+              normalized.endsWith("/lib/queries/derived.ts")) ||
+            (/^(?:fmtTemp|fmtWeight|normalizeImportedTemperature|toCm|unitKey|waistCircToCm|headCircToCm)$/.test(
+              name
+            ) &&
+              /(?:lib\/(?:cda\/extractors\/observations|height-extract|head-circ-extract|migrations\/versions\/074-imported-temperature-degf|notifications\/telegram-quick-log|waist-circ-extract)\.ts)$/.test(
+                normalized
+              )))
         );
       }
       if (
@@ -391,30 +493,14 @@ export function rawRenderedUnitExits(
     while (current.parent) {
       const parent = current.parent;
       if (ts.isPropertyAssignment(parent) && parent.initializer === current) {
-        const name = propertyName(parent.name);
-        for (
-          let owner: ts.Node | undefined = parent.parent;
-          owner;
-          owner = owner.parent
-        ) {
-          if (ts.isFunctionLike(owner)) {
-            const ownerName =
-              declarationName(owner) ?? declarationName(owner.parent) ?? "";
-            if (RAW_UNIT_PARAMETER_PRODUCER.test(ownerName)) return false;
-            break;
-          }
-          if (ts.isCallExpression(owner)) {
-            const callName = semanticCallName(owner);
-            return (
-              !!callName &&
-              /^(?:decideSunExposure|goalStartingFrom|push|recordRow|referenceCell|serializeFields)$/.test(
-                callName
-              )
-            );
-          }
-          if (ts.isStatement(owner)) break;
-        }
-        return !name || !COPY_FIELD.test(name);
+        const name = resolvedPropertyName(parent.name);
+        return (
+          !!name &&
+          UNIT_PROPERTY.test(name) &&
+          /(?:app\/\(app\)\/(?:results\/clinical-result-index|training\/goal-target-options)\.ts|app\/\(app\)\/training\/GoalForm\.tsx|lib\/(?:biomarker-goal|clinical-result-index|fhir\/bundle|import-diff|queries\/medical(?:\/immunizations)?|rule-findings|trends-series)\.ts)$/.test(
+            normalized
+          )
+        );
       }
       if (ts.isFunctionLike(parent)) return false;
       if (
@@ -438,16 +524,24 @@ export function rawRenderedUnitExits(
         parent.operatorToken.kind === ts.SyntaxKind.EqualsToken
       )
         return (
-          unitPropertyRead(parent.left) ||
+          unitPropertyRead(parent.left, resolvedPropertyName) ||
           (ts.isIdentifier(parent.left) &&
-            UNIT_STORAGE_IDENTIFIER.test(parent.left.text))
+            UNIT_STORAGE_IDENTIFIER.test(parent.left.text) &&
+            /app\/\(app\)\/results\/clinical-results\/view\/page\.tsx$/.test(
+              normalized
+            ))
         );
       if (
         ts.isVariableDeclaration(parent) &&
         parent.initializer === current &&
         ts.isIdentifier(parent.name)
       )
-        return UNIT_STORAGE_IDENTIFIER.test(parent.name.text);
+        return (
+          UNIT_STORAGE_IDENTIFIER.test(parent.name.text) &&
+          /(?:app\/\(app\)\/(?:results\/clinical-results\/view\/page|training\/GoalForm)\.tsx)$/.test(
+            normalized
+          )
+        );
       if (
         ts.isStatement(parent) ||
         ts.isCallExpression(parent) ||
@@ -459,6 +553,12 @@ export function rawRenderedUnitExits(
     return false;
   }
   function namedUnitCollectionStorage(node: ts.Node): boolean {
+    if (
+      !/app\/\(app\)\/results\/clinical-results\/view\/page\.tsx$/.test(
+        normalized
+      )
+    )
+      return false;
     for (
       let current: ts.Node | undefined = node;
       current;
@@ -535,8 +635,21 @@ export function rawRenderedUnitExits(
     let current = node;
     while (current.parent) {
       const parent = current.parent;
-      if (ts.isJsxAttribute(parent) && parent.initializer === current)
-        return parent.name.getText(sourceFile) === "unit";
+      if (ts.isJsxAttribute(parent) && parent.initializer === current) {
+        if (parent.name.getText(sourceFile) !== "unit") return false;
+        const attributes = parent.parent;
+        const element = attributes.parent;
+        if (
+          !ts.isJsxSelfClosingElement(element) &&
+          !ts.isJsxOpeningElement(element)
+        )
+          return false;
+        const tag = element.tagName;
+        return (
+          ts.isIdentifier(tag) &&
+          resolve(tag, tag.text)?.trustedUnitRenderer === true
+        );
+      }
       if (ts.isJsxExpression(parent) || ts.isParenthesizedExpression(parent))
         current = parent;
       else return false;
@@ -544,6 +657,7 @@ export function rawRenderedUnitExits(
     return false;
   }
   function unitExport(node: ts.Node): boolean {
+    if (!normalized.endsWith("/lib/queries/biomarker-plot.ts")) return false;
     for (
       let current: ts.Node | undefined = node;
       current;
@@ -552,13 +666,19 @@ export function rawRenderedUnitExits(
       if (ts.isFunctionLike(current)) {
         const name =
           declarationName(current) ?? declarationName(current.parent) ?? "";
-        return /(?:TargetUnit|canonicalUnit|storedUnit)$/i.test(name);
+        return name === "biomarkerTargetUnit";
       }
     }
     return false;
   }
   function trustedDisplayInput(node: ts.Node): boolean {
     if (!ts.isIdentifier(node)) return false;
+    if (
+      !/(?:components\/(?:BiomarkerChartInner|BiomarkerTrendChart)\.tsx)$/.test(
+        normalized
+      )
+    )
+      return false;
     for (
       let current: ts.Node | undefined = node;
       current;
@@ -567,12 +687,7 @@ export function rawRenderedUnitExits(
       if (ts.isFunctionLike(current)) {
         const name =
           declarationName(current) ?? declarationName(current.parent) ?? "";
-        if (
-          /^(?:BiomarkerChart|BiomarkerTrendChart|ImportJobCard|ImportJobList|MedicalValue|WorkoutPreview)$/.test(
-            name
-          )
-        )
-          return true;
+        if (/^(?:BiomarkerChart|BiomarkerTrendChart)$/.test(name)) return true;
       }
     }
     return false;
@@ -595,7 +710,7 @@ export function rawRenderedUnitExits(
   function destructuringAssignmentUnitTarget(node: ts.Node): boolean {
     if (
       !ts.isPropertyAssignment(node) ||
-      !UNIT_PROPERTY.test(propertyName(node.name) ?? "")
+      !UNIT_PROPERTY.test(resolvedPropertyName(node.name) ?? "")
     )
       return false;
     let current: ts.Node = node.parent;
@@ -627,7 +742,7 @@ export function rawRenderedUnitExits(
   function visit(node: ts.Node) {
     const assignmentTarget = destructuringAssignmentUnitTarget(node);
     const candidate =
-      unitPropertyRead(node) ||
+      unitPropertyRead(node, resolvedPropertyName) ||
       assignmentTarget ||
       (ts.isIdentifier(node) &&
         !isDeclarationIdentifier(node) &&

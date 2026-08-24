@@ -101,9 +101,8 @@ export const dynamic = "force-dynamic";
 function formatRange(
   low: number | null,
   high: number | null,
-  unit: string | null
+  shownUnit: string | null
 ): string | null {
-  const shownUnit = displayUnit(unit);
   const u = shownUnit ? ` ${shownUnit}` : "";
   // A point band (low === high) is a single target, e.g. "ideally undetectable"
   // toxins pinned at 0 — render it as one value, not "0–0".
@@ -386,8 +385,12 @@ export default async function ClinicalResultDetailPage(props: {
     openRange
   );
 
-  const refRange = cb ? formatRange(ref.low, ref.high, cb.unit) : null;
-  const optimalRange = cb ? formatRange(opt.low, opt.high, cb.unit) : null;
+  const refRange = cb
+    ? formatRange(ref.low, ref.high, displayUnit(cb.unit))
+    : null;
+  const optimalRange = cb
+    ? formatRange(opt.low, opt.high, displayUnit(cb.unit))
+    : null;
   // Label a range with the qualifiers that shaped it: the reproductive status (when
   // a status range applied — female physiology), else the user's sex (when a
   // sex-specific override applied), and/or the age band (e.g. "age 6–12").
@@ -432,12 +435,12 @@ export default async function ClinicalResultDetailPage(props: {
     const male = formatRange(
       refField("male", "low"),
       refField("male", "high"),
-      cb.unit
+      displayUnit(cb.unit)
     );
     const female = formatRange(
       refField("female", "low"),
       refField("female", "high"),
-      cb.unit
+      displayUnit(cb.unit)
     );
     if (male)
       referenceEntries.push({ label: "Reference range (male)", range: male });
@@ -458,12 +461,12 @@ export default async function ClinicalResultDetailPage(props: {
     const male = formatRange(
       optField("male", "low"),
       optField("male", "high"),
-      cb.unit
+      displayUnit(cb.unit)
     );
     const female = formatRange(
       optField("female", "low"),
       optField("female", "high"),
-      cb.unit
+      displayUnit(cb.unit)
     );
     if (male)
       optimalEntries.push({ label: "Optimal range (male)", range: male });

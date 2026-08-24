@@ -331,13 +331,12 @@ const BIO_TILE_DECIMALS = 1;
 function outOfWindowText(
   point: { date: string; value: number } | null,
   row: { date: string; value: string | null; unit: string | null } | undefined,
-  unit: string | null
+  pointUnit: string | null
 ): { date: string; text: string } | null {
   if (point && (!row || point.date >= row.date)) {
-    const shownUnit = displayUnit(unit);
     return {
       date: point.date,
-      text: `${round(point.value, BIO_TILE_DECIMALS)}${shownUnit ? ` ${shownUnit}` : ""}`,
+      text: `${round(point.value, BIO_TILE_DECIMALS)}${pointUnit ? ` ${pointUnit}` : ""}`,
     };
   }
   const raw = row?.value?.trim();
@@ -396,7 +395,7 @@ export function buildSavedClinicalResultTile(
   const reading = outOfWindowText(
     latestPoint,
     latestRow ?? undefined,
-    plot.unit
+    displayUnit(plot.unit)
   );
   if (!reading) return { ...base, points: [] };
   return {
