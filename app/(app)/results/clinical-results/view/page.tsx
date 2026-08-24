@@ -55,6 +55,7 @@ import {
   RECHECK_BASIS_HEADING,
 } from "@/lib/biomarker-care-basis";
 import { convertToCanonical, sameUnit } from "@/lib/unit-conversions";
+import { displayUnit } from "@/lib/display-unit";
 import { getBiomarkerInfo } from "@/lib/datasets/biomarker-descriptions";
 import {
   getDisplayFormatPrefs,
@@ -102,7 +103,8 @@ function formatRange(
   high: number | null,
   unit: string | null
 ): string | null {
-  const u = unit ? ` ${unit}` : "";
+  const shownUnit = displayUnit(unit);
+  const u = shownUnit ? ` ${shownUnit}` : "";
   // A point band (low === high) is a single target, e.g. "ideally undetectable"
   // toxins pinned at 0 — render it as one value, not "0–0".
   if (low != null && high != null)
@@ -362,6 +364,10 @@ export default async function ClinicalResultDetailPage(props: {
       optimalHigh: bandC(bands.optimalHigh),
     };
   }
+  // Keep `chartUnit` raw through matching and conversion above. Only the values
+  // handed to visible copy/chart labels cross the display boundary.
+  const shownChartUnit = displayUnit(chartUnit);
+  const shownOtherUnits = otherUnits.map((unit) => displayUnit(unit) ?? unit);
   const unchartedCount = plottable.length - chartPoints.length;
   const hasBounded = chartPoints.some((p) => p.bound);
 
@@ -920,9 +926,9 @@ export default async function ClinicalResultDetailPage(props: {
           <h2 className="font-semibold text-slate-800 dark:text-slate-100">
             Trend
           </h2>
-          {chartUnit ? (
+          {shownChartUnit ? (
             <span className="text-xs text-slate-500 dark:text-slate-400">
-              in {chartUnit}
+              in {shownChartUnit}
             </span>
           ) : null}
         </div>
@@ -958,7 +964,7 @@ export default async function ClinicalResultDetailPage(props: {
         ) : (
           <BiomarkerTrendChart
             data={chartPoints}
-            unit={chartUnit ?? ""}
+            unit={shownChartUnit ?? ""}
             bands={bands}
             annotations={chartAnnotations}
             windows={protocolWindows}
@@ -967,7 +973,7 @@ export default async function ClinicalResultDetailPage(props: {
         {unchartedCount > 0 && (
           <p className="mt-2 text-xs text-slate-500 dark:text-slate-400">
             {unchartedCount} reading(s) in non-convertible units (
-            {otherUnits.join(", ")}) not charted.
+            {shownOtherUnits.join(", ")}) not charted.
           </p>
         )}
         {hasBounded && (

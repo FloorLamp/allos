@@ -154,5 +154,8 @@ describe("the unit rides along only when the row's own unit disagrees", () => {
     expect(cellFor("Uric Acid", null, {}, "µmol/L").text).toBe(
       "ref 3.5–7.2 mg/dL"
     );
+    expect(cellFor("Insulin, Fasting", null, {}, "mg/dL").text).toBe(
+      "ref ≤ 18.4 µIU/mL · optimal 2–5 µIU/mL"
+    );
   });
 });

@@ -12,7 +12,7 @@ import { formatDateWithYear } from "@/lib/format-date";
 // A vitals row imported from a C-CDA carries "mm[Hg]" verbatim in storage and used to
 // render it verbatim too, three rows under a heading that says "Vitals". Storage is
 // untouched — nothing writes this back and no matcher reads it.
-import { displayUnit } from "@/lib/unit-conversions";
+import { displayUnit } from "@/lib/display-unit";
 import { useFormatPrefs } from "./FormatPrefsProvider";
 import { triageRowId } from "@/lib/confidence-triage";
 import { EmptyState, MedicalValue } from "./ui";

@@ -262,14 +262,15 @@ does not own.
 
 `copy.md` is the owning doctrine (the eight rules + the copy-lint scan). The
 2026-08-21 additions registered there: the machine-text display boundary
-(prefs-formatted dates #3492 ✓ shipped, display-normalized units and labeled
-enums #3493, safe list joins #3496, no title-casing clinical names), lead+fold
+(prefs-formatted dates #3492 ✓ shipped, display-normalized units #3493/#3545 and
+labeled enums #3493, safe list joins #3496, no title-casing clinical names), lead+fold
 for intros and mechanisms (#3488 ✓ shipped, #3490 ✓ shipped, #3497), state honesty at low n (#3482,
 #3498), and tone semantics for verdict vs neutral text (#3500). Guards: the
 copy-lint scan plus the #3489 census text probes — the first of which, the
-machine-date census, ships as `lib/machine-date-census.ts` (the rule),
-`lib/__tests__/machine-date-census.test.ts` (it can see, and stays quiet) and
-`e2e/machine-date-census.spec.ts` (the same rule over rendered text nodes). The
+machine-text census, ships as `lib/machine-date-census.ts` and
+`lib/machine-lab-unit-census.ts` (the rules), their pure tests (they can see, and
+stay quiet), and `e2e/machine-date-census.spec.ts` (the same rules over rendered
+text nodes). The
 second, the lead+fold census, follows the same three-file shape:
 `lib/lead-fold-census.ts`, `lib/__tests__/lead-fold-census.test.ts` and
 `e2e/lead-fold-census.mobile.spec.ts` (rendered line boxes at 390px).

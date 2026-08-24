@@ -15,7 +15,10 @@
 
 import { describe, it, expect, beforeAll } from "vitest";
 import { db, today } from "@/lib/db";
-import { buildSavedClinicalResultTile } from "@/lib/trends-series";
+import {
+  buildBiomarkerSeries,
+  buildSavedClinicalResultTile,
+} from "@/lib/trends-series";
 import { defaultTrendsRange } from "@/lib/timeline-format";
 import { shiftDateStr } from "@/lib/date";
 
@@ -25,6 +28,7 @@ import { shiftDateStr } from "@/lib/date";
 const STALE_ANALYTE = "Testonium";
 const FRESH_ANALYTE = "Freshonium";
 const GENOTYPE_ANALYTE = "Testotype";
+const MICRO_ANALYTE = "Microtonium";
 const NEVER_MEASURED = "Neveronium";
 
 describe("#1485 G — the sparse-series tile falls back to the latest reading", () => {
@@ -62,6 +66,7 @@ describe("#1485 G — the sparse-series tile falls back to the latest reading", 
     insertLab(FRESH_ANALYTE, shiftDateStr(todayStr, -10), "12", 12, "mg/dL");
     // A qualitative reading: no numeric value at all, so nothing is plottable.
     insertLab(GENOTYPE_ANALYTE, staleDate, "e3/e4", null, null);
+    insertLab(MICRO_ANALYTE, staleDate, "55", 55, "ug / L");
   });
 
   it("shows the latest reading and its age when the default window is empty", () => {
@@ -109,6 +114,27 @@ describe("#1485 G — the sparse-series tile falls back to the latest reading", 
     );
     expect(tile.points.map((p) => p.value)).toEqual([40, 55]);
     expect(tile.outsideWindow ?? null).toBeNull();
+  });
+
+  it("normalizes lab units in chart labels and the saved-result fallback only", () => {
+    const series = buildBiomarkerSeries(profileId, MICRO_ANALYTE, {});
+    expect(series?.unit).toBe(" µg / L");
+
+    const tile = buildSavedClinicalResultTile(
+      profileId,
+      MICRO_ANALYTE,
+      defaultTrendsRange(todayStr),
+      todayStr
+    );
+    expect(tile.unit).toBe(" µg / L");
+    expect(tile.outsideWindow?.text).toBe("55 µg / L");
+    expect(
+      db
+        .prepare(
+          "SELECT unit FROM medical_records WHERE profile_id = ? AND canonical_name = ?"
+        )
+        .get(profileId, MICRO_ANALYTE)
+    ).toEqual({ unit: "ug / L" });
   });
 
   // The APOE-genotype case: starred, real in the seed, and invisible to a

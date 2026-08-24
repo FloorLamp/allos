@@ -512,7 +512,9 @@ export function seedRecordsBrowser(): void {
     "E2E Novel Lab",
     "1.2",
     1.2,
-    "mg/L",
+    // ASCII micro spelling on purpose (#3545): storage keeps the imported evidence;
+    // every MedicalValue surface must render the display spelling `µg/mL`.
+    "ug/mL",
     "E2E Iron Panel",
     null,
     BROWSER_DOC_ID,

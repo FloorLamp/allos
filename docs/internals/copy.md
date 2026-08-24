@@ -162,8 +162,9 @@ owner-ruled and ships with its guard (the guards-mandatory ruling recorded on
 
 Stored machine forms never reach user-facing copy verbatim: dates render
 through the profile's display format prefs (never raw ISO — #3492, shipped),
-units display-normalized (UCUM bracket stripping per #1018's equivalence —
-#3493), enum-ish values through label maps with the raw value as fallback
+lab units display-normalized (UCUM bracket stripping per #1018's equivalence —
+#3493; ASCII micro tokens such as `ug`/`uL` render with `µ` — #3545), while the
+dose vocabulary deliberately keeps `mcg`; enum-ish values use label maps with the raw value as fallback
 (#3493). List joins never use a separator the joined names can contain
 (`summarizeNames` and template joins — #3496, shipped), and clinical names are never
 title-cased (`lib/allergen-vocabulary.ts`'s recorded doctrine; imported

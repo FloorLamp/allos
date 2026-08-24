@@ -123,6 +123,25 @@ describe("recordRow keying", () => {
     });
     expect(r.key).toBe("rec:2020-05-01|lab|glucose");
   });
+
+  it("normalizes a machine-spelled micro unit only in the rendered diff label", () => {
+    const r = recordRow({
+      date: "2020-05-01",
+      category: "lab",
+      name: "Selenium",
+      value: "45",
+      value_num: 45,
+      unit: "ug / L",
+      reference_range: null,
+      panel: null,
+      flag: null,
+      canonical: "Selenium",
+      notes: null,
+      external_id: "obs:selenium",
+    });
+    expect(r.label).toBe("Selenium — 45 µg / L");
+    expect(r.fields).toContain("unit=ug / L");
+  });
 });
 
 describe("diffRows", () => {

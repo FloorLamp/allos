@@ -29,6 +29,7 @@
 // PURE: no DB. The caller resolves the judgement (lib/queries/metric-judgment.ts).
 
 import { formatBand } from "./band-format";
+import { displayUnit } from "./display-unit";
 import type { MetricJudgment } from "./metric-judgment";
 import { sameUnit } from "./unit-conversions";
 
@@ -74,7 +75,9 @@ export function referenceCell(input: ReferenceCellInput): ReferenceCell {
     // bare number pair would be a second silent mismatch of exactly the kind this
     // issue exists to end. `sameUnit` treats an absent unit on either side as
     // agreement — nothing is claimed when nothing was stated.
-    const suffix = j.unit && !sameUnit(input.unit, j.unit) ? ` ${j.unit}` : "";
+    const shownUnit = displayUnit(j.unit);
+    const suffix =
+      shownUnit && !sameUnit(input.unit, j.unit) ? ` ${shownUnit}` : "";
     const ref = formatBand(j.low, j.high, suffix);
     const optimal = formatBand(j.optimalLow, j.optimalHigh, suffix);
     const parts: string[] = [];

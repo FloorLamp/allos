@@ -30,6 +30,7 @@ import type { BiomarkerDirection } from "./types";
 import type { Finding } from "./findings";
 import type { AppRoute } from "./hrefs";
 import { biomarkerFlagDismissalKey } from "./dismissal-keys";
+import { displayUnit } from "./display-unit";
 
 // ---- Thresholds (exported so the tests pin the exact boundaries) ----
 
@@ -191,7 +192,8 @@ function fmt(n: number): string {
 }
 
 function unitSuffix(unit: string | null | undefined): string {
-  return unit && unit.trim() ? ` ${unit.trim()}` : "";
+  const shown = displayUnit(unit);
+  return shown ? ` ${shown}` : "";
 }
 
 // A human phrase for a non-optimal status ("above the optimal range", …).

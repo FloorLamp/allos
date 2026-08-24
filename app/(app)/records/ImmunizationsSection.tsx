@@ -45,6 +45,7 @@ import ImmunizationStatusFilter from "@/app/(app)/immunizations/ImmunizationStat
 import ImmunizationRecordActions from "@/app/(app)/immunizations/ImmunizationRecordActions";
 import { addImmunization } from "@/app/(app)/immunizations/actions";
 import SourceDocumentLink from "@/components/SourceDocumentLink";
+import { displayUnit } from "@/lib/display-unit";
 
 const TITER_BADGE = {
   immune:
@@ -496,7 +497,7 @@ export default function ImmunizationsSection({
                           {t.marker}
                         </Link>
                         <div className="text-xs text-slate-500 dark:text-slate-400">
-                          {t.value ?? "—"} {t.unit ?? ""}
+                          {t.value ?? "—"} {displayUnit(t.unit) ?? ""}
                           {t.date ? ` · ${t.date}` : ""}
                           {t.document_id != null ? (
                             <>

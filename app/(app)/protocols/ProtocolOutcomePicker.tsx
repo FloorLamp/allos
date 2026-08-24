@@ -9,6 +9,7 @@ import {
 } from "@/lib/protocol-outcome-picker";
 import { formatOutcomeDelta } from "@/lib/protocol-compare";
 import type { PanelId } from "@/lib/biomarker-panels";
+import { displayUnit } from "@/lib/display-unit";
 
 export default function ProtocolOutcomePicker({
   options,
@@ -108,14 +109,15 @@ export default function ProtocolOutcomePicker({
           badgeFor={(key) => {
             const preview = byKey.get(key)?.preview;
             if (!preview) return null;
-            const unit = preview.unit ? ` ${preview.unit}` : "";
+            const shownUnit = displayUnit(preview.unit);
+            const unitSuffix = shownUnit ? ` ${shownUnit}` : "";
             return (
               <span
                 className="shrink-0 text-xs tabular-nums text-slate-500 dark:text-slate-400"
-                title={`${preview.beforeMean} → ${preview.duringMean}${unit} (${preview.beforeN} before, ${preview.duringN} during)`}
+                title={`${preview.beforeMean} → ${preview.duringMean}${unitSuffix} (${preview.beforeN} before, ${preview.duringN} during)`}
               >
                 {formatOutcomeDelta(preview.meanDelta)}
-                {unit}
+                {unitSuffix}
               </span>
             );
           }}

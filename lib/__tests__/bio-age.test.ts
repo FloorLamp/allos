@@ -77,6 +77,18 @@ describe("censoredInputNote", () => {
     );
   });
 
+  it("normalizes a machine-spelled micro unit in the visible caveat", () => {
+    const note = censoredInputNote({
+      inputs: [{ name: "Selenium", value: 45, unit: "ug / L", bound: "<" }],
+      censored: {
+        inputs: [{ name: "Selenium", label: "Selenium", bound: "<" }],
+        bias: null,
+      },
+    });
+    expect(note).toContain("45 µg / L");
+    expect(note).not.toContain("ug / L");
+  });
+
   it("says an above-limit reading is above, and an under-estimate is under", () => {
     const note = censoredInputNote({
       inputs: [{ name: "Albumin", value: 5.5, unit: "g/dL", bound: ">" }],
@@ -658,6 +670,12 @@ describe("bio-age effect copy", () => {
     // The claim is about what the index would read, not about what would happen to
     // the reader if the analyte changed (see the attention doctrine).
     expect(phrase).not.toMatch(/you (could|would|should)|lower your|improve/i);
+  });
+
+  it("normalizes a machine-spelled micro unit in the row tooltip", () => {
+    const phrase = bioAgeEffectPhrase(effect({ unit: "ug / L" }));
+    expect(phrase).toContain("12.3 µg / L (optimal)");
+    expect(phrase).not.toContain("ug / L");
   });
 
   it("says an absent reference is NOT a zero effect", () => {

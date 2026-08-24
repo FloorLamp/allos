@@ -12,6 +12,7 @@
 // lib/date), so this file never touches a real clock and stays deterministic.
 
 import { daysBetweenDateStr, shiftDateStr } from "./date";
+import { displayUnit } from "./display-unit";
 import type { OutcomeDirection } from "./protocol-metrics";
 
 export interface OutcomeSample {
@@ -190,7 +191,8 @@ export function compareOutcome(
       windows.spanDays
     )} prior (n=${intervention.n} during vs ${baseline.n} before).`;
   } else {
-    const unitStr = unit ? ` ${unit}` : "";
+    const shownUnit = displayUnit(unit);
+    const unitStr = shownUnit ? ` ${shownUnit}` : "";
     framing = `${series.label} ${formatOutcomeDelta(
       meanDelta
     )}${unitStr} vs the ${spanLabel(
@@ -306,7 +308,8 @@ export function compareOutcomePooled(
   } else if (meanDelta === 0) {
     framing = `${series.label} unchanged across ${winLabel} (n=${intervention.n} during vs ${baseline.n} baseline).`;
   } else {
-    const unitStr = unit ? ` ${unit}` : "";
+    const shownUnit = displayUnit(unit);
+    const unitStr = shownUnit ? ` ${shownUnit}` : "";
     framing = `${series.label} ${formatOutcomeDelta(
       meanDelta
     )}${unitStr} across ${winLabel} (n=${intervention.n} during vs ${baseline.n} baseline).`;

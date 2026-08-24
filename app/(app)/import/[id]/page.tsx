@@ -66,7 +66,7 @@ import {
   reconcileProduced,
   detailReconciliationLine,
 } from "@/lib/produced-count";
-import { displayUnit } from "@/lib/unit-conversions";
+import { displayUnit } from "@/lib/display-unit";
 import { importActionExplainers } from "@/lib/import-actions-copy";
 import { isDeterministicReprocess } from "@/lib/reprocess-cost";
 import BackLink from "@/components/BackLink";

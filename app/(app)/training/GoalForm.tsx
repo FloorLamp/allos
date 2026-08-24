@@ -23,6 +23,7 @@ import { kgTo, round } from "@/lib/units";
 import { formatSeconds } from "@/lib/duration";
 import { BODY_METRIC_LABELS } from "@/lib/outcome-goals";
 import { biomarkerSearchTerms } from "@/lib/canonical-name";
+import { displayUnit } from "@/lib/display-unit";
 import ActivityCombobox from "@/components/ActivityCombobox";
 import Combobox from "@/components/Combobox";
 import DateField from "@/components/DateField";
@@ -261,12 +262,14 @@ export default function GoalForm({
   // context, and picking someone's target for them is a different (clinical) act.
   const referenceHint = (() => {
     if (!bioOption) return null;
-    const { low, high, unit } = bioOption;
-    const suffix = unit ? ` ${unit}` : "";
+    const { low, high } = bioOption;
+    const suffix = displayUnit(bioOption.unit);
     if (low != null && high != null)
-      return `Reference range ${low}–${high}${suffix}`;
-    if (high != null) return `Reference under ${high}${suffix}`;
-    if (low != null) return `Reference over ${low}${suffix}`;
+      return `Reference range ${low}–${high}${suffix ? ` ${suffix}` : ""}`;
+    if (high != null)
+      return `Reference under ${high}${suffix ? ` ${suffix}` : ""}`;
+    if (low != null)
+      return `Reference over ${low}${suffix ? ` ${suffix}` : ""}`;
     return null;
   })();
 
@@ -964,7 +967,8 @@ export default function GoalForm({
               </div>
               <div className="mt-3">
                 <label className="label" htmlFor="goal-biomarker-target">
-                  Target value{bioUnit ? ` (${bioUnit})` : ""}
+                  Target value
+                  {bioUnit ? ` (${displayUnit(bioUnit)})` : ""}
                 </label>
                 <input
                   id="goal-biomarker-target"

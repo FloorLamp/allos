@@ -1,18 +1,18 @@
 import { describe, expect, it } from "vitest";
 import {
   convertToCanonical,
-  displayUnit,
   isBareCountPerVolume,
   isConvertible,
   sameUnit,
 } from "@/lib/unit-conversions";
+import { displayUnit } from "@/lib/display-unit";
 
 // #3493 item 2. The equivalence machinery below has stripped UCUM's brackets and
 // annotations since #1018 — for MATCHING. The display side never did, so an imported
 // blood pressure was flagged against the canonical mmHg band and then rendered to a
 // person as "60 mm[Hg]". `displayUnit` is that same stripping at the display boundary,
 // sharing one implementation with `sameUnit` so the two cannot drift.
-describe("displayUnit (#3493)", () => {
+describe("displayUnit (#3493/#3545)", () => {
   it("renders the UCUM spellings documents ship as a person writes them", () => {
     expect(displayUnit("mm[Hg]")).toBe("mmHg");
     expect(displayUnit("[degF]")).toBe("degF");
@@ -24,8 +24,30 @@ describe("displayUnit (#3493)", () => {
   it("leaves an ordinary unit exactly as stored", () => {
     // The overwhelming majority of rows. A display function that "tidied" these would
     // be inventing a second spelling of every unit in the app.
-    for (const u of ["mg/dL", "mmHg", "%", "10*3/uL", "kg", "°C"]) {
+    for (const u of ["mg/dL", "mmHg", "%", "kg", "°C"]) {
       expect(displayUnit(u)).toBe(u);
+    }
+  });
+
+  it("maps the lab vocabulary's ASCII micro spellings at display only", () => {
+    for (const [stored, displayed] of [
+      ["ug", "µg"],
+      ["ug/mL", "µg/mL"],
+      ["ug/dL", "µg/dL"],
+      ["10^3/uL", "10^3/µL"],
+      ["10*3/uL", "10*3/µL"],
+      ["cells/uL", "cells/µL"],
+      ["uIU/mL", "µIU/mL"],
+      ["uU/mL", "µU/mL"],
+      ["umol/L", "µmol/L"],
+    ] as const) {
+      expect(displayUnit(stored)).toBe(displayed);
+    }
+  });
+
+  it("does not rewrite dose vocabulary or parse unknown tokens", () => {
+    for (const unit of ["mcg", "mcg/dL", "drug/mL", "uM", "ul"]) {
+      expect(displayUnit(unit)).toBe(unit);
     }
   });
 

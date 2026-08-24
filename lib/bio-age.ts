@@ -27,6 +27,7 @@ import {
   type PhenoAgeReference,
 } from "./derived-biomarkers";
 import { formatDateWithYear, type DisplayFormatPrefs } from "./format-date";
+import { displayUnit } from "./display-unit";
 import { isAdultForClinical } from "./life-stage";
 import { optimalBand, referenceRange } from "./reference-range/selection";
 import type {
@@ -381,10 +382,11 @@ export function censoredInputNote(draw: BioAgeDrawInputs): string | null {
   if (!censored || censored.inputs.length === 0) return null;
   const named = censored.inputs.map((c) => {
     const input = draw.inputs.find((i) => i.name === c.name);
+    const shownUnit = displayUnit(input?.unit);
     const at =
       input == null
         ? ""
-        : ` at ${input.value}${input.unit ? ` ${input.unit}` : ""}`;
+        : ` at ${input.value}${shownUnit ? ` ${shownUnit}` : ""}`;
     const side = c.bound === "<" ? "below" : "above";
     return `${c.name} was reported ${side} its detection limit and substituted${at}`;
   });
@@ -474,15 +476,16 @@ export function bioAgeEffectPhrase(e: PhenoAgeInputEffect): string {
   if (e.reference == null || e.effectYears == null) {
     return `No curated reference value for ${e.name}, so this input has no comparison — not a zero effect.`;
   }
-  const at = `${round1(e.reference.value)}${e.unit ? ` ${e.unit}` : ""} (${phenoAgeReferenceBasisLabel(e.reference)})`;
+  const shownUnit = displayUnit(e.unit);
+  const at = `${round1(e.reference.value)}${shownUnit ? ` ${shownUnit}` : ""} (${phenoAgeReferenceBasisLabel(e.reference)})`;
   const years = Math.abs(round1(e.effectYears));
-  const unit = years === 1 ? "year" : "years";
+  const yearsUnit = years === 1 ? "year" : "years";
   if (years === 0) return `Reads the same with this input at ${at}.`;
   const direction = e.effectYears > 0 ? "higher" : "lower";
   const bounded = e.bound
     ? " That input was reported beyond a detection limit, so this comparison rests on the substituted limit."
     : "";
-  return `The model reads ${years} ${unit} ${direction} than it would with this input at ${at}.${bounded}`;
+  return `The model reads ${years} ${yearsUnit} ${direction} than it would with this input at ${at}.${bounded}`;
 }
 
 // Is the chronological-age row? The tenth input is not an analyte, so a surface links

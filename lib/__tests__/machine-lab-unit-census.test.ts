@@ -1,0 +1,367 @@
+import { describe, expect, it } from "vitest";
+import { readFileSync, readdirSync } from "node:fs";
+import path from "node:path";
+import { fileURLToPath } from "node:url";
+import {
+  MACHINE_LAB_UNIT_RE,
+  machineLabUnitHits,
+} from "@/lib/machine-lab-unit-census";
+import { rawRenderedUnitExits } from "@/lib/lab-unit-display-census";
+
+const REPO = path.resolve(fileURLToPath(new URL("../..", import.meta.url)));
+
+function sourceFiles(dir: string): string[] {
+  return readdirSync(dir, { withFileTypes: true }).flatMap((entry) => {
+    const full = path.join(dir, entry.name);
+    if (entry.isDirectory()) return sourceFiles(full);
+    return /\.tsx?$/.test(entry.name) && !entry.name.endsWith(".d.ts")
+      ? [full]
+      : [];
+  });
+}
+
+describe("the machine-spelled lab-unit matcher (#3545)", () => {
+  it("sees every supported ASCII micro token in rendered lab copy", () => {
+    expect(machineLabUnitHits("Coenzyme Q10 1.20 ug/mL")).toEqual(["ug"]);
+    expect(machineLabUnitHits("Lead 2 ug/dL · Selenium 45 ug/L")).toEqual([
+      "ug",
+      "ug",
+    ]);
+    expect(
+      machineLabUnitHits(
+        "WBC 5.8 10^3/uL · insulin 6 uIU/mL · TSH 2 uU/mL · 9 umol/L"
+      )
+    ).toEqual(["uL", "uIU", "uU", "umol"]);
+    expect(
+      machineLabUnitHits(
+        "Selenium 45 ug / L · insulin 6 uIU / mL · TSH 2 uU / mL · 9 umol / L"
+      )
+    ).toEqual(["ug", "uIU", "uU", "umol"]);
+  });
+
+  it("stays quiet on display spelling, dose vocabulary, and ordinary words", () => {
+    for (const text of [
+      "Coenzyme Q10 1.20 µg/mL",
+      "TSH 2 µU/mL",
+      "Lead 2 mcg/dL",
+      "Vitamin B12 500 mcg",
+      "drug/mL",
+      "drug / mL",
+      "shrug/off",
+      "shrug / off",
+    ]) {
+      expect(machineLabUnitHits(text)).toEqual([]);
+    }
+  });
+
+  it("is stateless across calls", () => {
+    const text = "Selenium 45 ug/L";
+    expect(machineLabUnitHits(text)).toEqual(["ug"]);
+    expect(machineLabUnitHits(text)).toEqual(["ug"]);
+    expect(MACHINE_LAB_UNIT_RE.lastIndex).toBe(0);
+  });
+
+  // Coverage instruments every lib source while this intentionally scans the
+  // repository; exact CI measured 27.168s before the source prefilter. Keep the
+  // test bounded, but above that known honest runtime (#3669 timeout precedent).
+  it("discovers every raw unit property at a lab-copy boundary", () => {
+    const offenders = ["app", "components", "lib"].flatMap((root) =>
+      sourceFiles(path.join(REPO, root)).flatMap((file) =>
+        rawRenderedUnitExits(readFileSync(file, "utf8"), file).map(
+          (hit) => `${path.relative(REPO, file)}:${hit.line} ${hit.text}`
+        )
+      )
+    );
+    expect(
+      offenders,
+      "Raw unit properties reached lab copy; wrap the exact exit in displayUnit"
+    ).toEqual([]);
+  }, 45_000);
+
+  it("cannot be licensed by comments or an unrelated formatter call", () => {
+    const source = `
+      import { displayUnit } from "@/lib/display-unit";
+      export function MedicalValueHostile({ row, other, unit }) {
+        return <p>
+          {/* displayUnit(row.unit) */}
+          {displayUnit(other.unit)}
+          {row.unit}
+          {unit}
+          {row["unit"]}
+        </p>;
+      }
+    `;
+    expect(rawRenderedUnitExits(source).map((hit) => hit.text)).toEqual([
+      "row.unit",
+      "unit",
+      'row["unit"]',
+    ]);
+  });
+
+  it("treats only the exact formatter-wrapped rendered read as clean", () => {
+    expect(
+      rawRenderedUnitExits(`
+        import { displayUnit } from "@/lib/display-unit";
+        export function Safe({ row }) {
+          return <span title={displayUnit(row.unit) ?? ""}>{displayUnit(row.unit)}</span>;
+        }
+      `)
+    ).toEqual([]);
+  });
+
+  it("does not trust a same-named local formatter in a lab component", () => {
+    const source = `
+      import { displayUnit as realDisplayUnit } from "@/lib/display-unit";
+      function displayUnit(unit) { return unit; }
+      export function MedicalValueHostile({ row }) {
+        return <span>{displayUnit(row.unit)}</span>;
+      }
+    `;
+    expect(rawRenderedUnitExits(source).map((hit) => hit.text)).toEqual([
+      "row.unit",
+    ]);
+  });
+
+  it("does not trust a formatter import that a lab component shadows", () => {
+    const source = `
+      import { displayUnit } from "@/lib/display-unit";
+      export function MedicalValueHostile({ row }) {
+        const displayUnit = (unit) => unit;
+        return <span>{displayUnit(row.unit)}</span>;
+      }
+    `;
+    expect(rawRenderedUnitExits(source).map((hit) => hit.text)).toEqual([
+      "row.unit",
+    ]);
+  });
+
+  it("authenticates an aliased formatter import", () => {
+    const source = `
+      import { displayUnit as realDisplayUnit } from "@/lib/display-unit";
+      export function MedicalValueSafe({ row }) {
+        return <span>{realDisplayUnit(row.unit)}</span>;
+      }
+    `;
+    expect(rawRenderedUnitExits(source)).toEqual([]);
+  });
+
+  it("does not trust named function or class expressions that shadow the import", () => {
+    for (const local of [
+      "const fake = function displayUnit(arg) { return <span>{displayUnit(arg.row.unit)}</span>; };",
+      "const fake = class displayUnit { render(arg) { return <span>{displayUnit(arg.row.unit)}</span>; } };",
+    ]) {
+      const source = `
+        import { displayUnit } from "@/lib/display-unit";
+        export function MedicalValueHostile() {
+          ${local}
+          return null;
+        }
+      `;
+      expect(rawRenderedUnitExits(source).map((hit) => hit.text)).toEqual([
+        "arg.row.unit",
+      ]);
+    }
+  });
+
+  it("catches raw units in precomposed lab subtitles and helper text", () => {
+    const search = `
+      export function clinicalResultHits(rows) {
+        return rows.map((r) => ({ subtitle: [r.value, r.unit].join(" ") }));
+      }
+    `;
+    expect(
+      rawRenderedUnitExits(search, "/repo/lib/queries/search.ts").map(
+        (hit) => hit.text
+      )
+    ).toEqual(["r.unit"]);
+
+    const helper = `
+      export function biomarkerGoalTargetText(goal) {
+        const unit = goal.unit;
+        return String(goal.value) + (unit ? " " + unit : "");
+      }
+    `;
+    expect(
+      rawRenderedUnitExits(helper, "/repo/lib/biomarker-goal.ts").map(
+        (hit) => hit.text
+      )
+    ).toEqual(["goal.unit", "unit"]);
+  });
+
+  it("accepts the real relative import in precomposed lab copy", () => {
+    const source = `
+      import { displayUnit as shown } from "../display-unit";
+      export function clinicalResultHits(rows) {
+        return rows.map((r) => ({ subtitle: shown(r.unit) }));
+      }
+    `;
+    expect(rawRenderedUnitExits(source, "/repo/lib/queries/search.ts")).toEqual(
+      []
+    );
+  });
+
+  it("catches raw units in goal facts, revisions, findings, and longevity copy", () => {
+    const cases = [
+      {
+        file: "/repo/lib/goal-facts.ts",
+        source: `
+          export function targetFactLabel(t) {
+            if (t.kind === "biomarker") {
+              const shownUnit = t.unit;
+              return shownUnit;
+            }
+            return t.unit;
+          }
+          export function goalStartingFrom(i) {
+            if (i.kind === "biomarker") {
+              return startingFromFactLabel({ unit: i.biomarkerUnit });
+            }
+            return startingFromFactLabel({ unit: i.freeformUnit });
+          }
+        `,
+        exits: ["t.unit", "i.biomarkerUnit"],
+      },
+      {
+        file: "/repo/lib/lab-result-lifecycle.ts",
+        source: `export function revisionSummary(rev) { return "was " + rev.unit; }`,
+        exits: ["rev.unit"],
+      },
+      {
+        file: "/repo/lib/biomarker-trajectory.ts",
+        source: `export function unitSuffix(unit) { return unit ? " " + unit : ""; }`,
+        exits: ["unit"],
+      },
+      {
+        file: "/repo/lib/bio-age.ts",
+        source: `export function bioAgeEffectPhrase(e) { const at = e.unit; return at; }`,
+        exits: ["e.unit"],
+      },
+    ];
+    for (const candidate of cases) {
+      expect(
+        rawRenderedUnitExits(candidate.source, candidate.file).map(
+          (hit) => hit.text
+        ),
+        candidate.file
+      ).toEqual(candidate.exits);
+    }
+  });
+
+  it("catches raw units in import diffs, lab follow-ups, and reference cells", () => {
+    const cases = [
+      {
+        file: "/repo/lib/import-diff.ts",
+        source: `
+          export function recordRow(f) {
+            const shownUnit = f.unit;
+            return {
+              label: f.name + " — " + f.value + " " + shownUnit,
+              fields: { unit: f.unit },
+            };
+          }
+        `,
+        exits: ["f.unit"],
+      },
+      {
+        file: "/repo/lib/followup-labs.ts",
+        source: `
+          export function labValueLabel(record) {
+            const u = record.unit?.trim();
+            return record.value + " " + u;
+          }
+        `,
+        exits: ["record.unit"],
+      },
+      {
+        file: "/repo/lib/reading-reference-cell.ts",
+        source: `
+          export function referenceCell(input) {
+            const suffix = input.judgment.unit ? " " + input.judgment.unit : "";
+            return { text: "ref " + input.low + suffix };
+          }
+        `,
+        exits: ["input.judgment.unit"],
+      },
+    ];
+    for (const candidate of cases) {
+      expect(
+        rawRenderedUnitExits(candidate.source, candidate.file).map(
+          (hit) => hit.text
+        ),
+        candidate.file
+      ).toEqual(candidate.exits);
+    }
+  });
+
+  it("catches raw units in clinical Trends series and sparse fallbacks", () => {
+    const source = `
+      export function buildBiomarkerSeries(plot) {
+        const shownUnit = plot.unit;
+        return { unit: shownUnit ? " " + shownUnit : "" };
+      }
+      function outOfWindowText(point, row, unit) {
+        if (point) {
+          const shownUnit = unit;
+          return { text: point.value + " " + shownUnit };
+        }
+        const shownUnit = row.unit;
+        return { text: row.value + " " + shownUnit };
+      }
+      export function buildSavedClinicalResultTile(plot) {
+        return { unit: plot.unit };
+      }
+    `;
+    expect(
+      rawRenderedUnitExits(source, "/repo/lib/trends-series.ts").map(
+        (hit) => hit.text
+      )
+    ).toEqual(["plot.unit", "unit", "row.unit", "plot.unit"]);
+  });
+
+  it("catches raw units in sun-exposure copy and unit-mislabel UI", () => {
+    const sunExposure = `
+      export function decideSunExposure(input) {
+        const shownVitaminDUnit = input.vitaminDUnit;
+        const valueText = input.value + " " + shownVitaminDUnit;
+        return { detail: valueText };
+      }
+    `;
+    expect(
+      rawRenderedUnitExits(sunExposure, "/repo/lib/sun-exposure.ts").map(
+        (hit) => hit.text
+      )
+    ).toEqual(["input.vitaminDUnit"]);
+    expect(
+      rawRenderedUnitExits(
+        `export function decideSunExposure(input) { return { detail: input.vitaminDUnit }; }`,
+        "/repo/lib/sun-exposure.ts"
+      ).map((hit) => hit.text)
+    ).toEqual(["input.vitaminDUnit"]);
+
+    const review = `
+      import { displayUnit } from "@/lib/display-unit";
+      export function UnitMislabelReview({ item, toast }) {
+        const statedUnit = item.statedUnit;
+        const correctedUnit = item.correctedUnit;
+        toast("Unit corrected to " + item.correctedUnit);
+        return <p>{item.value} {statedUnit} → {correctedUnit}</p>;
+      }
+    `;
+    expect(
+      rawRenderedUnitExits(
+        review,
+        "/repo/components/UnitMislabelReview.tsx"
+      ).map((hit) => hit.text)
+    ).toEqual(["item.statedUnit", "item.correctedUnit", "item.correctedUnit"]);
+  });
+
+  it("ignores ordinary unit suffixes outside lab contexts", () => {
+    expect(
+      rawRenderedUnitExits(`
+        export function RideSpeed({ row }) {
+          return <span>{row.value}{row.unit}</span>;
+        }
+      `)
+    ).toEqual([]);
+  });
+});
