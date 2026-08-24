@@ -16,6 +16,7 @@ import { isRealIsoDate } from "@/lib/date";
 import { today } from "@/lib/db";
 import { getProfileAge } from "@/lib/settings/profile-attrs";
 import { isTrainingRelevant } from "@/lib/life-stage";
+import AddTrainingActivityButton from "./AddTrainingActivityButton";
 
 export const dynamic = "force-dynamic";
 
@@ -95,13 +96,16 @@ export default async function TrainingPage(props: {
         // full-width row above every tab, and the Plan tab's Equipment card is
         // the phone door now.
         action={
-          <Link
-            href="/equipment"
-            data-testid="training-equipment-link"
-            className="hidden shrink-0 items-center py-1 text-sm text-link md:inline-flex"
-          >
-            Equipment
-          </Link>
+          <div className="flex items-center gap-3">
+            {activeTab === "log" && <AddTrainingActivityButton />}
+            <Link
+              href="/equipment"
+              data-testid="training-equipment-link"
+              className="hidden shrink-0 items-center py-1 text-sm text-link md:inline-flex"
+            >
+              Equipment
+            </Link>
+          </div>
         }
       >
         {activeSection}

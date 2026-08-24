@@ -5,7 +5,6 @@ import {
   IconX,
   IconAlertTriangle,
   IconBolt,
-  IconPlus,
   IconRepeat,
   IconSearch,
 } from "@tabler/icons-react";
@@ -36,6 +35,7 @@ import {
   type TrainingLogFilters,
 } from "@/lib/training-log-filters";
 import type { TrainingLogSourceOption } from "./training-log-feed-resolve";
+import AddTrainingActivityButton from "./AddTrainingActivityButton";
 export type { TrainingLogCardData, DayGroup };
 
 // The Training Log's per-list multi-view context (issue #1330). Present ONLY when more
@@ -522,12 +522,10 @@ export default function TrainingLogView({
     return () => window.removeEventListener("scroll", update);
   }, []);
 
-  // The Log-activity affordances (desktop). Extracted so the full controls grid
-  // and the first-run empty variant share ONE definition rather than duplicating
-  // the button row (issue #809). "Repeat last" self-hides on first-run because
-  // `lastActivity` is null. This row is `hidden md:flex` in both places — the
-  // mobile entry point is MobileNav's always-mounted quick-log chrome.
-  const actionButtons = (
+  // The Training Log's secondary actions stay with its search controls. The one
+  // page-level primary, Add activity, lives in PageHeader.action (#3486). These
+  // remain desktop-only; MobileNav's always-mounted quick-log owns phone entry.
+  const secondaryActions = (
     <>
       {lastActivity && hasLastActivity && (
         <button
@@ -555,18 +553,17 @@ export default function TrainingLogView({
           {workoutOffer.label}
         </button>
       )}
-      <button type="button" onClick={() => openCreate()} className="btn">
-        <IconPlus className="h-4 w-4" stroke={2.5} />
-        Add activity
-      </button>
     </>
   );
+  const hasSecondaryActions =
+    Boolean(lastActivity && hasLastActivity) || canStartWorkout;
 
   return (
     <div>
       {showHeader && (
         <PageHeader
           title="Training Log"
+          action={<AddTrainingActivityButton />}
           // The week summary stands in for a static tagline — a compact strip.
           subtitle={
             <span className="flex flex-wrap items-baseline gap-x-4 gap-y-1">
@@ -625,15 +622,17 @@ export default function TrainingLogView({
       )}
 
       {/* Controls. On first-run (issue #809) the search/filter controls are
-          meaningless over an empty history, so only the action row renders — the
-          bare wrapper drops the grid placement the full controls need. */}
+          meaningless over an empty history, so only any available secondary
+          workout action renders below the housed page primary. */}
       {!hasActivities ? (
-        <div
-          data-testid="training-log-actions"
-          className="mb-4 hidden flex-wrap items-center gap-2 md:flex"
-        >
-          {actionButtons}
-        </div>
+        hasSecondaryActions && (
+          <div
+            data-testid="training-log-actions"
+            className="mb-4 hidden flex-wrap items-center gap-2 md:flex"
+          >
+            {secondaryActions}
+          </div>
+        )
       ) : (
         <div
           data-testid="training-log-controls"
@@ -751,12 +750,14 @@ export default function TrainingLogView({
               </button>
             )}
           </div>
-          <div
-            data-testid="training-log-actions"
-            className="hidden flex-wrap items-center gap-2 md:ml-auto md:flex lg:col-start-2 lg:row-start-1 lg:ml-0"
-          >
-            {actionButtons}
-          </div>
+          {hasSecondaryActions && (
+            <div
+              data-testid="training-log-actions"
+              className="hidden flex-wrap items-center gap-2 md:ml-auto md:flex lg:col-start-2 lg:row-start-1 lg:ml-0"
+            >
+              {secondaryActions}
+            </div>
+          )}
         </div>
       )}
 

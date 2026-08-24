@@ -146,7 +146,7 @@ test("'Duplicate activity' pre-fills a create form that saves a new activity (#2
   await expect(titleRows).toHaveCount(before);
 });
 
-test("Training Log actions share the search toolbar and stay outside the editor scroller", async ({
+test("Training Log houses its primary in the header and keeps secondary actions with search", async ({
   page,
 }) => {
   await page.setViewportSize({ width: 1800, height: 900 });
@@ -202,14 +202,27 @@ test("Training Log actions share the search toolbar and stay outside the editor 
   await expect(page.getByTestId("activity-editor-scroll")).toBeHidden();
 
   const actions = page.getByTestId("training-log-actions");
+  const addActivity = page.getByTestId("training-log-add-activity");
   const button = page.getByTestId("repeat-last");
   await expect(actions).toContainText("Repeat last");
   await expect(actions).toContainText("Start workout");
-  await expect(actions).toContainText("Add activity");
+  await expect(actions).not.toContainText("Add activity");
+  await expect(addActivity).toBeVisible();
+  await expect(addActivity).toHaveAccessibleName("Add activity");
   await expect(button).toBeVisible();
 
-  // These are page-level actions, aligned with search rather than living in the
-  // independently scrolling activity panel.
+  // The create is the page-header primary. Repeat/start are secondary controls
+  // aligned with search; neither group lives in the editor's scroller.
+  await expect(
+    addActivity.locator(
+      'xpath=ancestor::*[@data-testid="training-page-action"][1]'
+    )
+  ).toHaveCount(1);
+  await expect(
+    addActivity.locator(
+      'xpath=ancestor::*[@data-testid="training-log-controls"]'
+    )
+  ).toHaveCount(0);
   await expect(
     button.locator('xpath=ancestor::*[@data-testid="training-log-controls"][1]')
   ).toHaveCount(1);
@@ -255,16 +268,16 @@ test("Training Log actions share the search toolbar and stay outside the editor 
       )
   ).toBe(14);
   await expect(actions).toBeHidden();
-  await expect(
-    actions.getByRole("button", { name: "Add activity" })
-  ).toBeHidden();
+  await expect(addActivity).toBeHidden();
 
   // The mobile nav remains through 767px, so page actions must not reappear at
   // the earlier 640px breakpoint and create duplicate controls.
   await page.setViewportSize({ width: 700, height: 844 });
   await expect(actions).toBeHidden();
+  await expect(addActivity).toBeHidden();
   await page.setViewportSize({ width: 800, height: 844 });
   await expect(actions).toBeVisible();
+  await expect(addActivity).toBeVisible();
   const narrowFiltersBox = await types.boundingBox();
   const narrowActionsBox = await actions.boundingBox();
   expect(narrowFiltersBox).not.toBeNull();

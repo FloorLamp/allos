@@ -157,10 +157,7 @@ async function sweepProbes(page: Page): Promise<void> {
 // how the first draft of this spec failed. A finished session reopens in plain editing.
 async function logUniformProbe(page: Page, finish: boolean): Promise<string> {
   await page.goto("/training?tab=log");
-  await page
-    .getByTestId("training-log-actions")
-    .getByRole("button", { name: "Add activity" })
-    .click();
+  await page.getByTestId("training-log-add-activity").click();
 
   const title = `${PROBE_PREFIX} ${Date.now()}-${++probeSeq}`; // clock-ok: unique probe-name suffix, never a stored timestamp
   await page.getByRole("textbox", { name: "Activity name" }).fill(title);

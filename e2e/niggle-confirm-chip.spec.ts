@@ -32,12 +32,7 @@ test("a workout note naming a sore knee offers a one-tap niggle confirm (#2948)"
   const title = `${PROBE_PREFIX} session ${stamp}`;
 
   await page.goto("/training?tab=log");
-  await hydratedClick(
-    page,
-    page
-      .getByTestId("training-log-actions")
-      .getByRole("button", { name: "Add activity" })
-  );
+  await hydratedClick(page, page.getByTestId("training-log-add-activity"));
   await expect(page.getByTestId("activity-form")).toBeVisible();
 
   await settledFill(

@@ -64,19 +64,8 @@ const PRIMITIVE_FILES = new Map<string, string>([
 // PRIMARY CREATES WHOSE PLACEMENT A HUMAN SIGNED OFF, each with the reason. The
 // chokepoint-register discipline this repo already uses for anatomy exceptions:
 // an entry is a decision somebody made in this file, not a string that slipped
-// past a scan. Two entries today, and both are findings rather than exemptions —
-// each is written so that reading it tells you what would close it.
+// past a scan.
 const PLACEMENT_REGISTER = new Map<string, string>([
-  [
-    "app/(app)/training/TrainingLogView.tsx",
-    "OPEN FINDING, not an exemption. The Training Log's create sits in the DESKTOP " +
-      "controls row under the page header (`hidden md:flex`, beside search and " +
-      "filters), which is #3486's 'row below' shape on a page its table never " +
-      "listed. It is registered rather than moved because moving it into " +
-      "`PageHeader`'s `action` would also surface it BELOW `md`, where MobileNav's " +
-      "always-mounted quick-log is deliberately the entry point (#809) — a " +
-      "placement decision with a mobile consequence, not a mechanical fix.",
-  ],
   [
     "components/photo/PhotoCapture.tsx",
     "The trigger's class AND its placement are both the caller's: `className ?? " +
@@ -243,6 +232,30 @@ describe("the add affordance's grammar (#3486)", () => {
         "those is a decision someone should record in PLACEMENT_REGISTER in this " +
         "file, with the reason."
     ).toEqual([]);
+  });
+
+  it("houses the Training Log primary in the existing page-header action", () => {
+    const subject = found.filter(
+      (a) =>
+        a.file === "app/(app)/training/AddTrainingActivityButton.tsx" &&
+        a.label === "Add activity"
+    );
+    expect(
+      subject,
+      "The Training Log's Add activity primary must remain in the affordance census"
+    ).toHaveLength(1);
+    expect(subject[0].primary).toBe(true);
+
+    const { housings, mounts } = mountHousings("AddTrainingActivityButton");
+    expect(mounts.map((mount) => mount.replace(/:\d+$/, ""))).toEqual([
+      "app/(app)/training/TrainingLogView.tsx",
+      "app/(app)/training/page.tsx",
+    ]);
+    expect(housings).toEqual(["page-header", "page-header"]);
+    expect(
+      read("app/(app)/training/page.tsx"),
+      "The tab-first header primary must remain confined to the Log tab; the mobile dock owns global logging"
+    ).toContain('activeTab === "log" && <AddTrainingActivityButton />');
   });
 
   it("names every icon-only create for AT, because below `sm` it has no other name", () => {
