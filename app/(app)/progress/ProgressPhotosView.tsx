@@ -4,6 +4,7 @@ import { useMemo, useState } from "react";
 import PhotoCapture from "@/components/photo/PhotoCapture";
 import PhotoGallery from "@/components/photo/PhotoGallery";
 import PhotoTimeline from "@/components/photo/PhotoTimeline";
+import SegmentedControl from "@/components/SegmentedControl";
 import DateField from "@/components/DateField";
 import ModalShell from "@/components/ModalShell";
 import { useConfirm } from "@/components/ConfirmDialog";
@@ -156,21 +157,20 @@ export default function ProgressPhotosView({
             }}
           />
         ) : null}
-        <div className="ml-auto flex gap-1" role="tablist" aria-label="View">
-          {(["grid", "compare"] as const).map((v) => (
-            <button
-              key={v}
-              type="button"
-              role="tab"
-              aria-selected={view === v}
-              className="chip chip-filter"
-              onClick={() => setView(v)}
-              data-testid={`progress-view-${v}`}
-            >
-              {v === "grid" ? "Browse" : "Compare"}
-            </button>
-          ))}
-        </div>
+        <SegmentedControl
+          options={[
+            { value: "grid", label: "Browse", testId: "progress-view-grid" },
+            {
+              value: "compare",
+              label: "Compare",
+              testId: "progress-view-compare",
+            },
+          ]}
+          value={view}
+          onChange={setView}
+          ariaLabel="View"
+          className="ml-auto"
+        />
       </div>
 
       {notice ? (

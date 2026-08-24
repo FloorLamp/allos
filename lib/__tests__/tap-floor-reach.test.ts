@@ -931,6 +931,8 @@ describe("the height reader", () => {
     // Arbitrary values in units it knows.
     expect(belowSmHeightPx("input h-[38px]")).toBe(38);
     expect(belowSmHeightPx("h-[2rem]")).toBe(32);
+    expect(belowSmHeightPx("[min-height:2rem]")).toBe(32);
+    expect(belowSmHeightPx("pointer-coarse:h-8")).toBe(32);
     // Half steps and the 1px step.
     expect(belowSmHeightPx("h-3.5")).toBe(14);
     expect(belowSmHeightPx("h-px")).toBe(1);
@@ -981,6 +983,26 @@ describe("the sweep can see an offender", () => {
     );
     expect(control.mechanism).toBe("tap-target");
     expect(floorMiss(control)).toContain("40px effective");
+  });
+
+  it("catches the unapproved dense-chip payload directly and through an imported helper", () => {
+    const payload =
+      "chip chip-filter chip-sm outline-2 outline-dashed outline-rose-500 pointer-coarse:h-8 [min-height:2rem]";
+    const [direct] = scan(
+      `export default function X() { return <button aria-pressed className="${payload}">x</button>; }`
+    );
+    const [imported] = scanWith(
+      'import { CHIP } from "@/lib/chips"; export default function X() { return <button aria-pressed className={CHIP}>x</button>; }',
+      { "@/lib/chips": `export const CHIP = "${payload}";` }
+    );
+    for (const control of [direct, imported]) {
+      expect(control.readable).toBe(true);
+      expect(control.mechanism).toBe("chip-sm");
+      expect(control.belowSmPx).toBe(32);
+      expect(floorMiss(control)).toContain(
+        "undercuts `chip-sm`'s shared 44px rendered floor"
+      );
+    }
   });
 
   it("catches a `sm:`-only floor, which governs the wrong side of the boundary", () => {

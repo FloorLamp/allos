@@ -6,6 +6,7 @@ import SubmitButton from "@/components/SubmitButton";
 import { useToast } from "@/components/Toast";
 import PhotoGallery from "@/components/photo/PhotoGallery";
 import PhotoTimeline from "@/components/photo/PhotoTimeline";
+import SegmentedControl from "@/components/SegmentedControl";
 import type { GalleryPhoto } from "@/lib/photo/gallery-model";
 import { uploadLesionPhoto, deleteLesionPhoto } from "./actions";
 import type { LesionPhotoRow } from "@/lib/skin-photo-write";
@@ -63,24 +64,24 @@ export default function LesionPhotoStrip({
   return (
     <div className="space-y-2" data-testid={`lesion-photos-${lesionId}`}>
       {gallery.length > 1 ? (
-        <div
-          className="flex justify-end gap-1"
-          role="tablist"
-          aria-label="Photo view"
-        >
-          {(["grid", "compare"] as const).map((v) => (
-            <button
-              key={v}
-              type="button"
-              role="tab"
-              aria-selected={view === v}
-              className="chip chip-filter chip-sm"
-              onClick={() => setView(v)}
-              data-testid={`lesion-photo-view-${v}-${lesionId}`}
-            >
-              {v === "grid" ? "Browse" : "Compare"}
-            </button>
-          ))}
+        <div className="flex justify-end">
+          <SegmentedControl
+            options={[
+              {
+                value: "grid",
+                label: "Browse",
+                testId: `lesion-photo-view-grid-${lesionId}`,
+              },
+              {
+                value: "compare",
+                label: "Compare",
+                testId: `lesion-photo-view-compare-${lesionId}`,
+              },
+            ]}
+            value={view}
+            onChange={setView}
+            ariaLabel="Photo view"
+          />
         </div>
       ) : null}
 

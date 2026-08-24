@@ -5,6 +5,7 @@ import { useFocusTrap } from "@/components/useFocusTrap";
 import { useResettableState } from "@/components/useResettableState";
 import { IconChevronLeft, IconChevronRight, IconX } from "@tabler/icons-react";
 import { EmptyState } from "@/components/ui";
+import SegmentedControl from "@/components/SegmentedControl";
 import {
   dateGroups,
   filterBySeries,
@@ -130,28 +131,19 @@ export default function PhotoGallery({
   return (
     <div className="space-y-3" data-testid="photo-gallery">
       {usable.length > 1 ? (
-        <div
-          className="flex flex-wrap gap-1"
-          role="tablist"
-          aria-label="Photo domain"
-        >
-          {usable.map((d) => (
-            <button
-              key={d.key}
-              type="button"
-              role="tab"
-              aria-selected={d.key === domain.key}
-              className="chip chip-filter"
-              onClick={() => {
-                setDomainKey(d.key);
-                setSeries(null);
-              }}
-              data-testid={`photo-gallery-domain-${d.key}`}
-            >
-              {d.label}
-            </button>
-          ))}
-        </div>
+        <SegmentedControl
+          options={usable.map((d) => ({
+            value: d.key,
+            label: d.label,
+            testId: `photo-gallery-domain-${d.key}`,
+          }))}
+          value={domain.key}
+          onChange={(key) => {
+            setDomainKey(key);
+            setSeries(null);
+          }}
+          ariaLabel="Photo domain"
+        />
       ) : null}
 
       {domain.series.length > 0 ? (

@@ -1071,9 +1071,34 @@ export function resolveClassName(
 }
 
 // A Tailwind height token with its full variant chain: `h-8`, `sm:h-auto`,
-// `max-sm:min-h-11`, `h-[38px]`.
+// `max-sm:min-h-11`, `h-[38px]`, or `[min-height:2rem]`.
 const HEIGHT_TOKEN =
-  /(?:^|[\s"'`{}(),:?])((?:[a-z0-9.-]+:)*)(min-h|h)-(\[[^\]]*\]|[\d.]+|px|auto|full|screen|fit|min|max)(?![\w.[-])/g;
+  /(?:^|[\s"'`{}(),:?])((?:[a-z0-9.-]+:)*)((?:(min-h|h)-(\[[^\]]*\]|[\d.]+|px|auto|full|screen|fit|min|max))|\[min-height:([^\]]+)\])(?![\w.[-])/g;
+
+function heightTokenParts(match: RegExpMatchArray): {
+  variants: string[];
+  utility: string;
+  value: string;
+} {
+  return {
+    variants: match[1] ? match[1].slice(0, -1).split(":") : [],
+    utility: match[3] ?? "[min-height]",
+    value: match[4] ?? match[5],
+  };
+}
+
+function heightScope(variants: string[]): "base" | "narrow" | null {
+  if (variants.length === 0) return "base";
+  if (variants.every((variant) => variant === "pointer-coarse")) return "base";
+  if (
+    variants.includes("max-sm") &&
+    variants.every(
+      (variant) => variant === "max-sm" || variant === "pointer-coarse"
+    )
+  )
+    return "narrow";
+  return null;
+}
 
 /** A Tailwind spacing value as CSS pixels, or null when it is not a length. */
 function scaleToPx(value: string): number | null {
@@ -1086,6 +1111,10 @@ function scaleToPx(value: string): number | null {
     if (rem) return Number(rem[1]) * 16;
     return null;
   }
+  const arbitraryPx = /^(\d+(?:\.\d+)?)px$/.exec(value);
+  if (arbitraryPx) return Number(arbitraryPx[1]);
+  const arbitraryRem = /^(\d+(?:\.\d+)?)rem$/.exec(value);
+  if (arbitraryRem) return Number(arbitraryRem[1]) * 16;
   const n = Number(value);
   return Number.isFinite(n) ? n * 4 : null;
 }
@@ -1111,12 +1140,11 @@ export function belowSmHeightPx(className: string): number | null {
   let narrow: number | null = null;
   let narrowPinned = false;
   for (const m of className.matchAll(HEIGHT_TOKEN)) {
-    const variants = m[1] ? m[1].slice(0, -1).split(":") : [];
-    const governsBelowSm = variants.length === 0;
-    const governsNarrowly = variants.length === 1 && variants[0] === "max-sm";
-    if (!governsBelowSm && !governsNarrowly) continue;
-    const px = scaleToPx(m[3]);
-    if (governsNarrowly) {
+    const { variants, value } = heightTokenParts(m);
+    const scope = heightScope(variants);
+    if (scope === null) continue;
+    const px = scaleToPx(value);
+    if (scope === "narrow") {
       narrowPinned = true;
       narrow = px;
     } else {
@@ -1144,6 +1172,40 @@ export function usesTapTarget(className: string): boolean {
 /** True when this class list carries the dense chip rendered-floor mechanism. */
 export function usesChipSm(className: string): boolean {
   return /(?:^|[\s"'`{}(),:?])chip-sm(?![\w-])/.test(className);
+}
+
+/**
+ * The complete call-site vocabulary of a registered chip. Shell, size, colour,
+ * and state live in the primitive; the lone visibility utility is the compact
+ * custom-range trigger that has a separate desktop control.
+ */
+export const CHIP_ADOPTER_VOCABULARY = new Set([
+  "chip",
+  "chip-nav",
+  "chip-filter",
+  "chip-sm",
+  "sm:hidden",
+]);
+
+/** The complete resolved class lists admitted at chip call sites. */
+export const CHIP_ADOPTER_CLASSES = new Set([
+  "chip chip-nav",
+  "chip chip-nav chip-sm",
+  "chip chip-filter",
+  "chip chip-filter chip-sm",
+  "sm:hidden chip chip-filter",
+]);
+
+/** Every class token outside the exact chip adopter vocabulary. */
+export function unapprovedChipAdopterTokens(className: string): string[] {
+  return (className.match(/[^\s"'`{}(),+?]+/g) ?? []).filter(
+    (token) => !CHIP_ADOPTER_VOCABULARY.has(token)
+  );
+}
+
+/** True only for one of the exact registered chip call-site class lists. */
+export function isApprovedChipAdopterClass(className: string): boolean {
+  return CHIP_ADOPTER_CLASSES.has(className.replace(/\s+/g, " ").trim());
 }
 
 function selectedAttribute(
@@ -1266,17 +1328,13 @@ export function findFlooredControls(
 
     // The unreadable case: a height token in a shape this scan cannot price.
     for (const token of className.matchAll(HEIGHT_TOKEN)) {
-      const variants = token[1] ? token[1].slice(0, -1).split(":") : [];
-      const governs =
-        variants.length === 0 ||
-        (variants.length === 1 && variants[0] === "max-sm");
-      if (!governs) continue;
-      const value = token[3];
+      const { variants, utility, value } = heightTokenParts(token);
+      if (heightScope(variants) === null) continue;
       if (/^(auto|full|screen|fit|min|max)$/.test(value)) continue;
       if (scaleToPx(value) === null) {
         throw new UnreadableControlError(
           `line ${lineOf(m.index)}: <${tag}> pins its below-\`sm\` height with ` +
-            `\`${token[2]}-${value}\`, which this scan cannot turn into pixels. The tap ` +
+            `\`${utility}-${value}\`, which this scan cannot turn into pixels. The tap ` +
             `floor is ${TAP_FLOOR_PX}px effective (#3514) and a control whose height ` +
             "cannot be read is a control the floor has stopped governing. Use a scale " +
             "step, or an arbitrary value in `px` or `rem`."

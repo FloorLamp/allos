@@ -4,6 +4,8 @@ import { fileURLToPath } from "node:url";
 import { describe, expect, it } from "vitest";
 import {
   findFlooredControls,
+  isApprovedChipAdopterClass,
+  unapprovedChipAdopterTokens,
   withoutComments,
   type ImportedModule,
 } from "@/lib/tap-floor-reach";
@@ -79,16 +81,13 @@ function moduleReader(base: string, dir: string) {
 }
 
 type Finding = { file: string; line: number; className: string };
-type ShellFinding = Finding & { tokens: string[] };
+type VocabularyFinding = Finding & { tokens: string[] };
 
-const CHIP_ROLE = /\bchip chip-(?:nav|filter)\b/;
-const SHELL_TOKEN =
-  /^(?:[a-z-]+:)*(?:rounded(?:-.+)?|border(?:-.+)?|bg-.+|p[trblxy]-.+|min-[hw]-.+|ring(?:-.+)?|shadow(?:-.+)?|text-(?:xs|sm|base|lg|xl|(?:brand|slate|rose|amber|emerald|sky)-.+))$/;
-
-function forbiddenShellTokens(className: string): string[] {
-  return (className.match(/[^\s"'`{}(),+?]+/g) ?? [])
-    .filter((token) => !token.startsWith("chip"))
-    .filter((token) => SHELL_TOKEN.test(token));
+function isChipAdopter(className: string): boolean {
+  const tokens = new Set(className.match(/[^\s"'`{}(),+?]+/g) ?? []);
+  return (
+    tokens.has("chip") && (tokens.has("chip-nav") || tokens.has("chip-filter"))
+  );
 }
 
 function isHandRolledSelectedClass(control: {
@@ -140,8 +139,10 @@ export function scanSelectedStateCorpus(base: string): {
   return { findings, unreadable: [...unreadable].sort() };
 }
 
-export function scanForbiddenChipShellCorpus(base: string): ShellFinding[] {
-  const findings: ShellFinding[] = [];
+export function scanUnapprovedChipVocabularyCorpus(
+  base: string
+): VocabularyFinding[] {
+  const findings: VocabularyFinding[] = [];
   for (const file of sourceFiles(base)) {
     const source = withoutComments(read(base, file));
     const controls = findFlooredControls(
@@ -149,15 +150,16 @@ export function scanForbiddenChipShellCorpus(base: string): ShellFinding[] {
       moduleReader(base, path.dirname(path.join(base, file)))
     );
     for (const control of controls) {
-      if (!control.readable || !CHIP_ROLE.test(control.className)) continue;
-      const tokens = forbiddenShellTokens(control.className);
-      if (tokens.length > 0)
+      if (!control.readable || !isChipAdopter(control.className)) continue;
+      if (!isApprovedChipAdopterClass(control.className)) {
+        const tokens = unapprovedChipAdopterTokens(control.className);
         findings.push({
           file,
           line: control.line,
           className: control.className,
           tokens,
         });
+      }
     }
   }
   return findings;
@@ -196,32 +198,42 @@ describe("selected-state rows use the registered primitive (#2730)", () => {
     }
   });
 
-  it("rejects forbidden shell extras reached through imported concatenation", () => {
-    expect(scanForbiddenChipShellCorpus(REPO)).toEqual([]);
+  it("rejects every token outside the exact adopter vocabulary, directly or through imports", () => {
+    expect(scanUnapprovedChipVocabularyCorpus(REPO)).toEqual([]);
 
-    const base = makeTmpDir("chip-shell-census");
+    const base = makeTmpDir("chip-vocabulary-census");
     try {
       fs.mkdirSync(path.join(base, "components"), { recursive: true });
       fs.mkdirSync(path.join(base, "lib"), { recursive: true });
       fs.writeFileSync(
         path.join(base, "lib/chips.ts"),
-        'export const BASE = "chip chip-filter";\nexport const EXTRA = "rounded-full border-dashed bg-rose-50 pointer-coarse:text-base min-h-8";\n'
+        'export const BASE = "chip chip-filter chip-sm";\nexport const EXTRA = "outline-2 outline-dashed outline-rose-500 pointer-coarse:h-8 [min-height:2rem]";\n'
       );
       fs.writeFileSync(
-        path.join(base, "components/Offender.tsx"),
-        'import { BASE, EXTRA } from "@/lib/chips";\nexport function Offender() { return <button className={`${BASE} ${EXTRA}`}>x</button>; }\n'
+        path.join(base, "components/DirectOffender.tsx"),
+        'export function DirectOffender() { return <button aria-pressed className="chip chip-filter chip-sm outline-2 outline-dashed outline-rose-500 pointer-coarse:h-8 [min-height:2rem]">x</button>; }\n'
       );
-      expect(scanForbiddenChipShellCorpus(base)).toMatchObject([
+      fs.writeFileSync(
+        path.join(base, "components/ImportedOffender.tsx"),
+        'import { BASE, EXTRA } from "@/lib/chips";\nexport function ImportedOffender() { return <button aria-pressed className={`${BASE} ${EXTRA}`}>x</button>; }\n'
+      );
+      const expectedTokens = [
+        "outline-2",
+        "outline-dashed",
+        "outline-rose-500",
+        "pointer-coarse:h-8",
+        "[min-height:2rem]",
+      ];
+      expect(scanUnapprovedChipVocabularyCorpus(base)).toMatchObject([
         {
-          file: "components/Offender.tsx",
+          file: "components/DirectOffender.tsx",
+          line: 1,
+          tokens: expectedTokens,
+        },
+        {
+          file: "components/ImportedOffender.tsx",
           line: 2,
-          tokens: expect.arrayContaining([
-            "rounded-full",
-            "border-dashed",
-            "bg-rose-50",
-            "pointer-coarse:text-base",
-            "min-h-8",
-          ]),
+          tokens: expectedTokens,
         },
       ]);
     } finally {
@@ -246,5 +258,32 @@ describe("selected-state rows use the registered primitive (#2730)", () => {
     expect(read(REPO, "components/DataTableManager.tsx")).not.toContain(
       "aria-pressed"
     );
+  });
+
+  it("uses complete button semantics for every audited photo selector", () => {
+    const viewFiles = [
+      "app/(app)/progress/ProgressPhotosView.tsx",
+      "app/(app)/records/specialty/skin/LesionPhotoStrip.tsx",
+      "components/illness/SymptomPhotoStrip.tsx",
+      "components/photo/PhotoGallery.tsx",
+    ];
+    for (const file of viewFiles) {
+      const source = read(REPO, file);
+      expect(
+        source,
+        `${file} must use the shared small-view control`
+      ).toContain("<SegmentedControl");
+      expect(
+        source,
+        `${file} must not expose incomplete tab semantics`
+      ).not.toMatch(/role="tab(?:list)?"|aria-selected/);
+    }
+
+    const gallery = read(REPO, "components/photo/PhotoGallery.tsx");
+    expect(
+      gallery,
+      "series narrowing remains an in-place chip filter"
+    ).toContain("aria-pressed={series === s.key}");
+    expect(gallery).toContain('className="chip chip-filter chip-sm"');
   });
 });

@@ -2,6 +2,10 @@ import fs from "node:fs";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
 import { describe, expect, it } from "vitest";
+import {
+  isApprovedChipAdopterClass,
+  unapprovedChipAdopterTokens,
+} from "@/lib/tap-floor-reach";
 
 // The chip primitive and the stat tile (issue #3475), guarded in the tradition of
 // mobile-density-convention.test.ts.
@@ -233,11 +237,6 @@ const ADOPTERS: readonly (readonly [string, string])[] = [
   ["components/household/HouseholdHistoryTimeline.tsx", "chip chip-filter"],
   ["components/illness/EpisodeTimeline.tsx", "chip chip-filter chip-sm"],
   ["components/photo/PhotoGallery.tsx", "chip chip-filter chip-sm"],
-  ["components/illness/SymptomPhotoStrip.tsx", "chip chip-filter chip-sm"],
-  [
-    "app/(app)/records/specialty/skin/LesionPhotoStrip.tsx",
-    "chip chip-filter chip-sm",
-  ],
   ["components/activity-form/CustomTypeChips.tsx", "chip chip-filter chip-sm"],
   ["components/activity-form/StrengthSets.tsx", "chip chip-filter chip-sm"],
 ];
@@ -366,14 +365,9 @@ describe("the chip primitive and the stat tile (#3475)", () => {
       ).not.toEqual([]);
       for (const className of primitiveClasses) {
         expect(
-          [
-            "chip chip-nav",
-            "chip chip-nav chip-sm",
-            "chip chip-filter",
-            "chip chip-filter chip-sm",
-          ],
+          isApprovedChipAdopterClass(className),
           `${file} adds a call-site shell variant to ${className}; role, optional density, selected aria, and disabled state are the whole chip contract`
-        ).toContain(className);
+        ).toBe(true);
       }
     }
 
@@ -469,5 +463,16 @@ describe("the chip primitive and the stat tile (#3475)", () => {
         `the census must stay QUIET on ${source} — a guard that cries wolf on shipped, correct code is deleted within a week and takes the real guard with it`
       ).toBe(false);
     }
+
+    const payload =
+      "chip chip-filter chip-sm outline-2 outline-dashed outline-rose-500 pointer-coarse:h-8 [min-height:2rem]";
+    expect(isApprovedChipAdopterClass(payload)).toBe(false);
+    expect(unapprovedChipAdopterTokens(payload)).toEqual([
+      "outline-2",
+      "outline-dashed",
+      "outline-rose-500",
+      "pointer-coarse:h-8",
+      "[min-height:2rem]",
+    ]);
   });
 });

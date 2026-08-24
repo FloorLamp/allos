@@ -5,6 +5,7 @@ import { IconCamera } from "@tabler/icons-react";
 import { useToast } from "@/components/Toast";
 import PhotoGallery from "@/components/photo/PhotoGallery";
 import PhotoTimeline from "@/components/photo/PhotoTimeline";
+import SegmentedControl from "@/components/SegmentedControl";
 import { filterBySeries, type GalleryPhoto } from "@/lib/photo/gallery-model";
 import {
   uploadSymptomPhotoAction,
@@ -143,21 +144,23 @@ export default function SymptomPhotoStrip({
           Progress photos
         </h3>
         {gallery.length > 1 ? (
-          <div className="flex gap-1" role="tablist" aria-label="Photo view">
-            {(["grid", "compare"] as const).map((v) => (
-              <button
-                key={v}
-                type="button"
-                role="tab"
-                aria-selected={view === v}
-                className="chip chip-filter chip-sm"
-                onClick={() => setView(v)}
-                data-testid={`symptom-photo-view-${v}`}
-              >
-                {v === "grid" ? "Browse" : "Compare"}
-              </button>
-            ))}
-          </div>
+          <SegmentedControl
+            options={[
+              {
+                value: "grid",
+                label: "Browse",
+                testId: "symptom-photo-view-grid",
+              },
+              {
+                value: "compare",
+                label: "Compare",
+                testId: "symptom-photo-view-compare",
+              },
+            ]}
+            value={view}
+            onChange={setView}
+            ariaLabel="Photo view"
+          />
         ) : null}
       </div>
 
