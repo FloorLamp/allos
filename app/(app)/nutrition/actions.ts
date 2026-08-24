@@ -8,6 +8,7 @@ import { canonicalFoodGroup, isValidFoodGroup } from "@/lib/food-groups";
 import { isFoodSlot, type FoodSlot } from "@/lib/food-slot";
 import {
   deleteFoodLogEventCore,
+  foodServingTruthCore,
   logFoodServingCore,
   undoFoodServingCore,
   updateFoodLogEventCore,
@@ -77,6 +78,36 @@ export type FoodLogResult =
       mealSlot?: FoodSlot;
       mealServings?: number;
     };
+
+export type FoodServingTruthResult =
+  | {
+      ok: true;
+      servings: number;
+      mealServings: Record<FoodSlot, number>;
+    }
+  | { ok: false; error: string };
+
+// A burst's individual add responses cannot establish which numeric total is
+// newest once another client may remove or correct the same group. After the
+// final pending response, the browser asks once for the current day + meal
+// projection and adopts that coherent snapshot. This read intentionally does
+// not revalidate: its caller updates only the small counter slice it requested.
+export async function readFoodServingTruth(
+  formData: FormData
+): Promise<FoodServingTruthResult> {
+  const requestedProfileId = Number(formData.get("profileId"));
+  let profileId: number;
+  if (Number.isInteger(requestedProfileId) && requestedProfileId > 0) {
+    await requireProfileWriteAccess(requestedProfileId);
+    profileId = requestedProfileId;
+  } else {
+    profileId = (await requireWriteAccess()).profile.id;
+  }
+  const fields = parseFields(formData, profileId);
+  if (!fields) return formError("Unknown food group.");
+  const truth = foodServingTruthCore(profileId, fields.group, fields.date);
+  return truth ? { ok: true, ...truth } : formError("Unknown food group.");
+}
 
 // The correction sheet's phrasing for a refused statement (#2296). The sheet is the
 // one food surface where the statement IS the whole submission, so this is a genuine

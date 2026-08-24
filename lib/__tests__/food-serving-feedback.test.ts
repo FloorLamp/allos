@@ -45,36 +45,35 @@ describe("foodServingFeedback", () => {
     });
   });
 
-  it("does not regress 3→2 and binds Undo to the latest tap, not last response", () => {
+  it("keeps every partial settlement away from three optimistic taps and binds Undo to tap order", () => {
     let state = emptyFoodServingBurst();
-    const morning = beginFoodServingAdd(state, "morning", "Morning", {
-      servings: 1,
-      mealServings: 1,
-    });
+    const morning = beginFoodServingAdd(state, "morning", "Morning");
     state = morning.state;
-    const evening = beginFoodServingAdd(state, "evening", "Evening", {
-      servings: 2,
-      mealServings: 0,
-    });
+    const evening = beginFoodServingAdd(state, "evening", "Evening");
     state = evening.state;
+    const midday = beginFoodServingAdd(state, "midday", "Midday");
+    state = midday.state;
 
-    const newer = settleFoodServingAdd(state, evening.tap, {
-      ok: true,
-      servings: 3,
-      mealServings: 1,
-    });
-    expect(newer.counts?.servings).toBe(3);
-    const older = settleFoodServingAdd(newer.state, morning.tap, {
-      ok: true,
-      servings: 2,
-      mealServings: 2,
-    });
+    // Natural response order: after three optimistic taps are already visible,
+    // the first response knows only its own total. It must not publish a count
+    // that would roll the UI 3→1 while the other taps are still pending.
+    const first = settleFoodServingAdd(state, morning.tap, { ok: true });
+    expect(first.completed).toBe(false);
+    expect(first.receipt).toBeUndefined();
 
-    expect(older.counts?.servings).toBe(3);
-    expect(older.receipt).toEqual({
-      servings: 3,
-      coordinate: "evening",
-      mealSlot: "Evening",
+    const second = settleFoodServingAdd(first.state, evening.tap, { ok: true });
+    expect(second.completed).toBe(false);
+    expect(second.receipt).toBeUndefined();
+
+    // A concurrent removal can make the final action's own result numerically
+    // lower. The coordinator accepts only success/tap identity; response totals
+    // never enter this protocol, and the caller performs one fresh read now.
+    const final = settleFoodServingAdd(second.state, midday.tap, { ok: true });
+
+    expect(final.completed).toBe(true);
+    expect(final.receipt).toEqual({
+      coordinate: "midday",
+      mealSlot: "Midday",
     });
   });
 
@@ -82,45 +81,30 @@ describe("foodServingFeedback", () => {
     const begun = beginFoodServingAdd(
       emptyFoodServingBurst(),
       "morning",
-      "Morning",
-      { servings: 1, mealServings: 1 }
+      "Morning"
     );
     const afterRemoval = invalidateFoodServingBurst(begun.state);
-    const stale = settleFoodServingAdd(afterRemoval, begun.tap, {
-      ok: true,
-      servings: 2,
-      mealServings: 2,
-    });
+    const stale = settleFoodServingAdd(afterRemoval, begun.tap, { ok: true });
     expect(stale.accepted).toBe(false);
+    expect(stale.completed).toBe(false);
     expect(stale.receipt).toBeUndefined();
   });
 
   it("keeps successful receipt and failure channel when the final tap fails", () => {
     let state = emptyFoodServingBurst();
-    const first = beginFoodServingAdd(state, "morning", "Morning", {
-      servings: 0,
-      mealServings: 0,
-    });
+    const first = beginFoodServingAdd(state, "morning", "Morning");
     state = first.state;
-    const second = beginFoodServingAdd(state, "evening", "Evening", {
-      servings: 1,
-      mealServings: 0,
-    });
-    const success = settleFoodServingAdd(second.state, first.tap, {
-      ok: true,
-      servings: 1,
-      mealServings: 1,
-    });
+    const second = beginFoodServingAdd(state, "evening", "Evening");
+    const success = settleFoodServingAdd(second.state, first.tap, { ok: true });
     const failure = settleFoodServingAdd(success.state, second.tap, {
       ok: false,
     });
     expect(failure.receipt).toEqual({
-      servings: 1,
       coordinate: "morning",
       mealSlot: "Morning",
     });
+    expect(failure.completed).toBe(true);
     expect(failure.reportFailure).toBe(true);
-    expect(failure.counts?.servings).toBe(1);
   });
 
   it("keys settle state by profile, day, meal, and group", () => {

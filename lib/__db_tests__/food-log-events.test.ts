@@ -11,7 +11,11 @@
 import { describe, it, expect } from "vitest";
 import { db, today } from "@/lib/db";
 import { shiftDateStr, utcInstant, zonedWallTimeToUtc } from "@/lib/date";
-import { logFoodServingCore, undoFoodServingCore } from "@/lib/food-log-write";
+import {
+  foodServingTruthCore,
+  logFoodServingCore,
+  undoFoodServingCore,
+} from "@/lib/food-log-write";
 import { getFoodBarOrder, getFoodMealDays } from "@/lib/queries";
 
 function makeProfile(name: string): { profileId: number; anchor: string } {
@@ -153,6 +157,35 @@ describe("food_log_events ledger atomicity (#950)", () => {
       servings: 2,
       mealSlot: "Morning",
       mealServings: 2,
+    });
+  });
+
+  it("post-burst truth keeps a legitimate authoritative decrease", () => {
+    const { profileId, anchor } = makeProfile("food-events-final-truth");
+    logFoodServingCore(
+      profileId,
+      "berries",
+      anchor,
+      "quick-log",
+      `${anchor}T08:00:00Z`,
+      "Morning"
+    );
+    logFoodServingCore(
+      profileId,
+      "berries",
+      anchor,
+      "quick-log",
+      `${anchor}T18:00:00Z`,
+      "Evening"
+    );
+    // Another client removes the Evening serving after an add response has
+    // already reported 2. The fresh read must publish the lower current truth,
+    // not preserve the numerically larger historical response.
+    undoFoodServingCore(profileId, "berries", anchor, "Evening");
+
+    expect(foodServingTruthCore(profileId, "berries", anchor)).toEqual({
+      servings: 1,
+      mealServings: { Morning: 1, Midday: 0, Evening: 0 },
     });
   });
 

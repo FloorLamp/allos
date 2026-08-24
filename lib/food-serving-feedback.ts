@@ -44,21 +44,12 @@ export interface FoodServingBurstState {
   epoch: number;
   nextTapId: number;
   pending: ReadonlyMap<number, FoodServingAddTap>;
-  baseServings: number | null;
-  baseMealServings: ReadonlyMap<string, number>;
-  servings: number | null;
-  mealServings: ReadonlyMap<string, number>;
   latestSuccessfulTap: FoodServingAddTap | null;
+  successes: number;
   failures: number;
 }
 
-export interface FoodServingBurstCounts {
-  servings: number;
-  mealServings: number;
-}
-
 export interface FoodServingBurstReceipt {
-  servings: number;
   coordinate: string;
   mealSlot: string;
 }
@@ -66,7 +57,7 @@ export interface FoodServingBurstReceipt {
 export interface FoodServingBurstSettlement {
   state: FoodServingBurstState;
   accepted: boolean;
-  counts?: FoodServingBurstCounts;
+  completed: boolean;
   receipt?: FoodServingBurstReceipt;
   reportFailure: boolean;
 }
@@ -79,23 +70,21 @@ export function emptyFoodServingBurst(
     epoch,
     nextTapId,
     pending: new Map(),
-    baseServings: null,
-    baseMealServings: new Map(),
-    servings: null,
-    mealServings: new Map(),
     latestSuccessfulTap: null,
+    successes: 0,
     failures: 0,
   };
 }
 
 // Tap order and response order are different facts. The burst remembers the
-// former for the inverse coordinate, while authoritative maxima absorb the
-// latter without ever moving a rendered count backwards.
+// former for the inverse coordinate. It deliberately does NOT combine returned
+// totals: a number cannot prove server order once another client may add,
+// remove, or correct the same coordinate. The caller performs one fresh read
+// after the final pending response instead.
 export function beginFoodServingAdd(
   state: FoodServingBurstState,
   coordinate: string,
-  mealSlot: string,
-  before: FoodServingBurstCounts
+  mealSlot: string
 ): { state: FoodServingBurstState; tap: FoodServingAddTap } {
   const starting = state.pending.size === 0;
   const tap: FoodServingAddTap = {
@@ -105,22 +94,14 @@ export function beginFoodServingAdd(
     mealSlot,
   };
   const pending = new Map(state.pending).set(tap.id, tap);
-  const baseMealServings = starting
-    ? new Map([[coordinate, before.mealServings]])
-    : new Map(state.baseMealServings);
-  if (!baseMealServings.has(coordinate))
-    baseMealServings.set(coordinate, before.mealServings);
   return {
     tap,
     state: {
       ...state,
       nextTapId: tap.id,
       pending,
-      baseServings: starting ? before.servings : state.baseServings,
-      baseMealServings,
-      servings: starting ? null : state.servings,
-      mealServings: starting ? new Map() : state.mealServings,
       latestSuccessfulTap: starting ? null : state.latestSuccessfulTap,
+      successes: starting ? 0 : state.successes,
       failures: starting ? 0 : state.failures,
     },
   };
@@ -129,41 +110,32 @@ export function beginFoodServingAdd(
 export function settleFoodServingAdd(
   state: FoodServingBurstState,
   tap: FoodServingAddTap,
-  outcome: ({ ok: true } & FoodServingBurstCounts) | { ok: false }
+  outcome: { ok: boolean }
 ): FoodServingBurstSettlement {
   if (tap.epoch !== state.epoch || !state.pending.has(tap.id)) {
-    return { state, accepted: false, reportFailure: false };
+    return {
+      state,
+      accepted: false,
+      completed: false,
+      reportFailure: false,
+    };
   }
   const pending = new Map(state.pending);
   pending.delete(tap.id);
-  let servings = state.servings;
-  let mealServings = new Map(state.mealServings);
   let latestSuccessfulTap = state.latestSuccessfulTap;
+  let successes = state.successes;
   let failures = state.failures;
   if (outcome.ok) {
-    servings = Math.max(servings ?? outcome.servings, outcome.servings);
-    mealServings.set(
-      tap.coordinate,
-      Math.max(
-        mealServings.get(tap.coordinate) ?? outcome.mealServings,
-        outcome.mealServings
-      )
-    );
+    successes += 1;
     if (!latestSuccessfulTap || tap.id > latestSuccessfulTap.id)
       latestSuccessfulTap = tap;
   } else {
     failures += 1;
   }
-  const visibleServings = servings ?? state.baseServings ?? 0;
-  const visibleMeal =
-    mealServings.get(tap.coordinate) ??
-    state.baseMealServings.get(tap.coordinate) ??
-    0;
   const completed = pending.size === 0;
   const receipt =
-    completed && servings != null && latestSuccessfulTap
+    completed && successes > 0 && latestSuccessfulTap
       ? {
-          servings,
           coordinate: latestSuccessfulTap.coordinate,
           mealSlot: latestSuccessfulTap.mealSlot,
         }
@@ -174,15 +146,14 @@ export function settleFoodServingAdd(
     : {
         ...state,
         pending,
-        servings,
-        mealServings,
         latestSuccessfulTap,
+        successes,
         failures,
       };
   return {
     state: next,
     accepted: true,
-    counts: { servings: visibleServings, mealServings: visibleMeal },
+    completed,
     receipt,
     reportFailure,
   };

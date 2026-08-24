@@ -111,10 +111,20 @@ test("the picker offers exactly the seven types and logs the tapped one", async 
   const before = frozenNow().getTime();
   const settle = picker.getByTestId("stool-settle-6");
   const rolling = picker.getByTestId("quick-entry-stool-rolling-count");
-  const sawSettle = expect(settle).toHaveAttribute("data-settling", "true");
-  const sawRoll = expect(rolling).toHaveAttribute("data-rolling", "true");
+  const settleRuns = Number(await settle.getAttribute("data-motion-runs"));
+  const rollingRuns = Number(await rolling.getAttribute("data-motion-runs"));
   await picker.getByTestId("stool-type-6").click();
-  await Promise.all([sawSettle, sawRoll]);
+  // Persistent receipts, not a race to sample the 300/250 ms transient flags.
+  // The settle count is driven by the actual CSS animationstart event; the roll
+  // count increments only when RollingNumber schedules its real rAF sequence.
+  await expect(settle).toHaveAttribute(
+    "data-motion-runs",
+    String(settleRuns + 1)
+  );
+  await expect(rolling).toHaveAttribute(
+    "data-motion-runs",
+    String(rollingRuns + 1)
+  );
 
   // The sheet STAYS OPEN — several a day is ordinary, and a mis-tap is corrected by
   // tapping again rather than by reopening.
@@ -160,8 +170,13 @@ test("the picker offers exactly the seven types and logs the tapped one", async 
   );
   await expect(reducedSettle).toHaveAttribute("data-reduced-motion", "true");
   await expect(reducedSettle).not.toHaveClass(/motion-settle/);
+  await expect(reducedSettle).toHaveAttribute("data-motion-runs", "0");
   await expect(rolling).toHaveAttribute("data-reduced-motion", "true");
   await expect(rolling).toHaveAttribute("data-rolling", "false");
+  await expect(rolling).toHaveAttribute(
+    "data-motion-runs",
+    String(rollingRuns + 1)
+  );
 });
 
 test("the Body panel shows a day's types as marks, never as one average", async ({

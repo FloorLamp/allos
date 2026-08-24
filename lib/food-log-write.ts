@@ -18,7 +18,7 @@
 // spelling of it. Everything else here — catalog canonicalization, the event ledger the
 // counter rides with, meal-window derivation, the typed outcomes — is unchanged.
 
-import { db, writeTx } from "./db";
+import { db, readTx, writeTx } from "./db";
 import type { LoggedVia } from "./logged-via";
 import { now as clockNow, instantNow } from "./clock";
 import { foodDayCounter } from "./day-counter-ledger-db";
@@ -26,7 +26,7 @@ import { judgeEatenAt } from "./food-eating-time";
 import type { StatedTimeRefusal } from "./stated-time";
 import { isRealIsoDate, utcInstant, zonedDateParts } from "./date";
 import { canonicalFoodGroup } from "./food-groups";
-import { type FoodSlot } from "./food-slot";
+import { FOOD_SLOTS, type FoodSlot } from "./food-slot";
 import { foodSlotForProfileEvent } from "./profile-food-slot";
 import { getTimezone } from "./settings";
 import { isProteinNudgeKey } from "./protein-nudge";
@@ -118,6 +118,34 @@ function mealServingCount(
         event.occurred_at
       ) === mealSlot
   ).length;
+}
+
+export interface FoodServingTruth {
+  servings: number;
+  mealServings: Record<FoodSlot, number>;
+}
+
+// One post-burst read, after every pending add action has returned. Individual
+// action totals cannot be ordered from the browser: another client may remove or
+// correct a serving between two adds, making the newer truth numerically lower.
+// Reading the day and all three meal projections together gives the surface one
+// coherent value to adopt without guessing from response order or magnitude.
+export function foodServingTruthCore(
+  profileId: number,
+  group: string,
+  date: string
+): FoodServingTruth | null {
+  const slug = canonicalFoodGroup(group);
+  if (slug === null) return null;
+  return readTx(() => ({
+    servings: foodDayCounter.total(profileId, date, [slug]),
+    mealServings: Object.fromEntries(
+      FOOD_SLOTS.map((slot) => [
+        slot,
+        mealServingCount(profileId, slug, date, slot),
+      ])
+    ) as Record<FoodSlot, number>,
+  }));
 }
 
 // Log one serving of a food group on a day. Upserts the day's row, incrementing its

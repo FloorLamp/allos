@@ -47,6 +47,7 @@ export default function QuickStoolForm({
   const reducedMotion = usePrefersReducedMotion();
   const settlePlan = microMotionPlan("settle", reducedMotion);
   const [settlingType, setSettlingType] = useState<number | null>(null);
+  const [settleRuns, setSettleRuns] = useState<Record<number, number>>({});
   const settleTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
   useEffect(
     () => () => {
@@ -113,6 +114,13 @@ export default function QuickStoolForm({
               data-motion="settle"
               data-reduced-motion={reducedMotion ? "true" : "false"}
               data-settling={settlingType === t.type ? "true" : "false"}
+              data-motion-runs={settleRuns[t.type] ?? 0}
+              onAnimationStart={() =>
+                setSettleRuns((runs) => ({
+                  ...runs,
+                  [t.type]: (runs[t.type] ?? 0) + 1,
+                }))
+              }
               className={`absolute inset-0 rounded-lg border border-(--border) bg-surface transition group-hover:border-slate-400 dark:group-hover:border-slate-500${
                 settlingType === t.type ? ` ${settlePlan.className}` : ""
               }`}
