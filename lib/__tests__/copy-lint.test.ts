@@ -734,6 +734,11 @@ function projectStaticRenderedCopy(source: string): ProjectedText[] {
     | { kind: "props"; props: ReadonlyMap<string, InputValue> };
   const activeParameterInputs = new Map<ts.ParameterDeclaration, RenderInput>();
   const activeThisInputs = new Map<ts.FunctionLikeDeclaration, RenderInput>();
+  const lexicalThisInputs = new Map<ts.ArrowFunction, RenderInput>();
+  const expressionInput = (expression: ts.Expression): RenderInput => ({
+    kind: "value",
+    value: { expressions: [expression], projections: [] },
+  });
 
   const parameterInput = (
     declaration: StaticBindingDeclaration | null
@@ -743,6 +748,11 @@ function projectStaticRenderedCopy(source: string): ProjectedText[] {
       : null;
   const thisInput = (node: ts.Node): RenderInput | null => {
     for (let current = node.parent; current; current = current.parent) {
+      if (ts.isArrowFunction(current)) {
+        const lexical = lexicalThisInputs.get(current);
+        if (lexical) return lexical;
+        continue;
+      }
       if (ts.isFunctionLike(current)) {
         return (
           activeThisInputs.get(current as ts.FunctionLikeDeclaration) ?? null
@@ -750,6 +760,20 @@ function projectStaticRenderedCopy(source: string): ProjectedText[] {
       }
     }
     return null;
+  };
+  const withThisInput = <T>(
+    node: ts.FunctionLikeDeclaration,
+    receiver: RenderInput,
+    callback: () => T
+  ): T => {
+    const previous = activeThisInputs.get(node);
+    activeThisInputs.set(node, receiver);
+    try {
+      return callback();
+    } finally {
+      if (previous) activeThisInputs.set(node, previous);
+      else activeThisInputs.delete(node);
+    }
   };
   const functionReturnExpressions = (
     node: ts.FunctionLikeDeclaration
@@ -811,8 +835,12 @@ function projectStaticRenderedCopy(source: string): ProjectedText[] {
           ts.isGetAccessorDeclaration(property) &&
           propertyKey(property.name) === head
         ) {
-          const [returned] = functionReturnExpressions(property);
-          return returned ? staticExpressionAtPath(returned, tail, seen) : null;
+          return withThisInput(property, expressionInput(expression), () => {
+            const [returned] = functionReturnExpressions(property);
+            return returned
+              ? staticExpressionAtPath(returned, tail, seen)
+              : null;
+          });
         }
         if (ts.isSpreadAssignment(property)) {
           const candidate = staticExpressionAtPath(
@@ -920,8 +948,13 @@ function projectStaticRenderedCopy(source: string): ProjectedText[] {
           ts.isGetAccessorDeclaration(property) &&
           propertyKey(property.name) === head
         ) {
-          const states = functionReturnExpressions(property).map((returned) =>
-            staticPathExists(returned, tail, seen)
+          const states = withThisInput(
+            property,
+            expressionInput(expression),
+            () =>
+              functionReturnExpressions(property).map((returned) =>
+                staticPathExists(returned, tail, seen)
+              )
           );
           return states.length > 0 &&
             states.every((state) => state === states[0])
@@ -979,6 +1012,22 @@ function projectStaticRenderedCopy(source: string): ProjectedText[] {
       return whenTrue === whenFalse ? whenTrue : null;
     }
     const [head, ...tail] = path;
+    if (ts.isCallExpression(expression) && typeof head === "string") {
+      const states = objectPropVariants(expression).map((props) => {
+        const value = props.get(head);
+        if (!value) return false;
+        if (tail.length === 0) return true;
+        const nested = value.expressions.map((candidate) =>
+          staticPathPresent(candidate, tail, seen)
+        );
+        return nested.length > 0 && nested.every((state) => state === nested[0])
+          ? nested[0]
+          : null;
+      });
+      return states.length > 0 && states.every((state) => state === states[0])
+        ? states[0]
+        : null;
+    }
     if (ts.isObjectLiteralExpression(expression)) {
       for (const property of [...expression.properties].reverse()) {
         if (
@@ -1062,17 +1111,50 @@ function projectStaticRenderedCopy(source: string): ProjectedText[] {
     const value = input.props.get(head);
     return value ? { value, tail } : null;
   };
+  type BoundRenderInput = { input: RenderInput; pathOffset: number };
   const bindingRenderInput = (
     binding: LexicalBinding,
     input: RenderInput | null
-  ): RenderInput | null => {
-    if (!input || !binding.objectRest) return input;
-    if (input.kind !== "props" || binding.objectRest.path.length > 0) {
-      return input;
+  ): BoundRenderInput | null => {
+    if (!input) return null;
+    if (!binding.objectRest) return { input, pathOffset: 0 };
+    if (input.kind !== "props") return { input, pathOffset: 0 };
+    const rest = binding.objectRest;
+    if (rest.path.length === 0) {
+      const props = new Map(input.props);
+      for (const key of rest.excluded) props.delete(key.toString());
+      return { input: { kind: "props", props }, pathOffset: 0 };
     }
-    const props = new Map(input.props);
-    for (const key of binding.objectRest.excluded) props.delete(key.toString());
-    return { kind: "props", props };
+    const nested = inputValueAt(input, rest.path);
+    if (!nested || nested.tail.length > 0) return { input, pathOffset: 0 };
+    const states = nested.value.expressions.flatMap((expression) =>
+      objectPropVariants(expression)
+    );
+    if (states.length === 0) return { input, pathOffset: 0 };
+    const props = new Map<string, InputValue>();
+    for (const state of states) {
+      for (const [name, value] of state) {
+        const previous = props.get(name);
+        props.set(
+          name,
+          previous
+            ? {
+                expressions: [...previous.expressions, ...value.expressions],
+                projections: [...previous.projections, ...value.projections],
+                definitelyDefined:
+                  previous.definitelyDefined === true &&
+                  value.definitelyDefined === true,
+                scanAsProp: previous.scanAsProp || value.scanAsProp,
+              }
+            : value
+        );
+      }
+    }
+    for (const key of rest.excluded) props.delete(key.toString());
+    return {
+      input: { kind: "props", props },
+      pathOffset: rest.path.length,
+    };
   };
   function inputStaticVariants(
     input: RenderInput,
@@ -1128,8 +1210,11 @@ function projectStaticRenderedCopy(source: string): ProjectedText[] {
     const declaration = binding.declaration;
     if (!declaration || seen.has(declaration)) return null;
     const nextSeen = new Set(seen).add(declaration);
-    const input = bindingRenderInput(binding, parameterInput(declaration));
-    const requestedPath = [...binding.path, ...path];
+    const boundInput = bindingRenderInput(binding, parameterInput(declaration));
+    const input = boundInput?.input ?? null;
+    const requestedPath = [...binding.path, ...path].slice(
+      boundInput?.pathOffset ?? 0
+    );
     const inputVariants = input
       ? inputStaticVariants(input, requestedPath, nextSeen)
       : [];
@@ -1229,6 +1314,15 @@ function projectStaticRenderedCopy(source: string): ProjectedText[] {
     }
     if (ts.isBinaryExpression(expression)) {
       if (
+        expression.operatorToken.kind === ts.SyntaxKind.PlusToken &&
+        path.length === 0
+      ) {
+        return combineVariants(
+          staticVariantsAtPath(expression.left, [], seen),
+          staticVariantsAtPath(expression.right, [], seen)
+        );
+      }
+      if (
         expression.operatorToken.kind === ts.SyntaxKind.AmpersandAmpersandToken
       ) {
         return uniqueVariants([
@@ -1245,6 +1339,23 @@ function projectStaticRenderedCopy(source: string): ProjectedText[] {
           ...staticVariantsAtPath(expression.right, path, seen),
         ]);
       }
+    }
+    if (ts.isCallExpression(expression) && path.length > 0) {
+      const [head, ...tail] = path;
+      if (typeof head !== "string") return [];
+      return uniqueVariants(
+        objectPropVariants(expression).flatMap((props) => {
+          const value = props.get(head);
+          return value
+            ? [
+                ...(tail.length === 0 ? value.projections : []),
+                ...value.expressions.flatMap((candidate) =>
+                  staticVariantsAtPath(candidate, tail, seen)
+                ),
+              ]
+            : [];
+        })
+      );
     }
     if (ts.isPropertyAccessExpression(expression)) {
       return staticVariantsAtPath(
@@ -1284,9 +1395,11 @@ function projectStaticRenderedCopy(source: string): ProjectedText[] {
             ts.isGetAccessorDeclaration(property) &&
             propertyKey(property.name) === head
           ) {
-            return uniqueVariants(
-              functionReturnExpressions(property).flatMap((returned) =>
-                staticVariantsAtPath(returned, tail, seen)
+            return withThisInput(property, expressionInput(expression), () =>
+              uniqueVariants(
+                functionReturnExpressions(property).flatMap((returned) =>
+                  staticVariantsAtPath(returned, tail, seen)
+                )
               )
             );
           }
@@ -1341,8 +1454,11 @@ function projectStaticRenderedCopy(source: string): ProjectedText[] {
     const declaration = binding?.declaration;
     if (!binding || !declaration || seen.has(declaration)) return [];
     const nextSeen = new Set(seen).add(declaration);
-    const input = bindingRenderInput(binding, parameterInput(declaration));
-    const requestedPath = [...binding.path, ...path];
+    const boundInput = bindingRenderInput(binding, parameterInput(declaration));
+    const input = boundInput?.input ?? null;
+    const requestedPath = [...binding.path, ...path].slice(
+      boundInput?.pathOffset ?? 0
+    );
     const inputVariants = input
       ? inputStaticVariants(input, requestedPath, nextSeen)
       : [];
@@ -1461,8 +1577,10 @@ function projectStaticRenderedCopy(source: string): ProjectedText[] {
             ts.isGetAccessorDeclaration(property) &&
             propertyKey(property.name) === head
           ) {
-            return functionReturnExpressions(property).flatMap((returned) =>
-              staticExpressionNodesAtPath(returned, tail, seen)
+            return withThisInput(property, expressionInput(expression), () =>
+              functionReturnExpressions(property).flatMap((returned) =>
+                staticExpressionNodesAtPath(returned, tail, seen)
+              )
             );
           }
           if (ts.isSpreadAssignment(property)) {
@@ -1501,9 +1619,18 @@ function projectStaticRenderedCopy(source: string): ProjectedText[] {
       const declaration = binding?.declaration;
       if (!binding || !declaration || seen.has(declaration)) return [];
       const nextSeen = new Set(seen).add(declaration);
-      const requestedPath = [...binding.path, ...reference.path, ...path];
-      const input = bindingRenderInput(binding, parameterInput(declaration));
+      const boundInput = bindingRenderInput(
+        binding,
+        parameterInput(declaration)
+      );
+      const input = boundInput?.input ?? null;
+      const requestedPath = [...binding.path, ...reference.path, ...path].slice(
+        boundInput?.pathOffset ?? 0
+      );
       if (input) {
+        if (input.kind === "props" && requestedPath.length === 0) {
+          return [reference.identifier];
+        }
         const resolved = inputValueAt(input, requestedPath);
         return resolved
           ? resolved.value.expressions.flatMap((candidate) =>
@@ -1666,8 +1793,11 @@ function projectStaticRenderedCopy(source: string): ProjectedText[] {
     const declaration = binding?.declaration;
     if (!binding || !declaration || seen.has(declaration)) return [];
     const nextSeen = new Set(seen).add(declaration);
-    const input = bindingRenderInput(binding, parameterInput(declaration));
-    const requestedPath = [...binding.path, ...reference.path];
+    const boundInput = bindingRenderInput(binding, parameterInput(declaration));
+    const input = boundInput?.input ?? null;
+    const requestedPath = [...binding.path, ...reference.path].slice(
+      boundInput?.pathOffset ?? 0
+    );
     if (input) {
       if (input.kind === "props" && requestedPath.length === 0) {
         return [cloneProps(input.props)];
@@ -2009,8 +2139,10 @@ function projectStaticRenderedCopy(source: string): ProjectedText[] {
             ts.isGetAccessorDeclaration(property) &&
             propertyKey(property.name) === head
           ) {
-            return functionReturnExpressions(property).flatMap((returned) =>
-              jsxNodesAtPath(returned, tail, seen)
+            return withThisInput(property, expressionInput(expression), () =>
+              functionReturnExpressions(property).flatMap((returned) =>
+                jsxNodesAtPath(returned, tail, seen)
+              )
             );
           }
           if (ts.isSpreadAssignment(property)) {
@@ -2040,8 +2172,11 @@ function projectStaticRenderedCopy(source: string): ProjectedText[] {
     const declaration = binding?.declaration;
     if (!binding || !declaration || seen.has(declaration)) return [];
     const nextSeen = new Set(seen).add(declaration);
-    const requestedPath = [...binding.path, ...reference.path, ...path];
-    const input = bindingRenderInput(binding, parameterInput(declaration));
+    const boundInput = bindingRenderInput(binding, parameterInput(declaration));
+    const input = boundInput?.input ?? null;
+    const requestedPath = [...binding.path, ...reference.path, ...path].slice(
+      boundInput?.pathOffset ?? 0
+    );
     const inputNodes = input
       ? inputJsxNodes(input, requestedPath, nextSeen)
       : [];
@@ -2079,10 +2214,6 @@ function projectStaticRenderedCopy(source: string): ProjectedText[] {
   }
 
   const activeRenderCalls = new Set<ts.FunctionLikeDeclaration>();
-  const expressionInput = (expression: ts.Expression): RenderInput => ({
-    kind: "value",
-    value: { expressions: [expression], projections: [] },
-  });
   function functionRenderedVariants(
     node: ts.FunctionLikeDeclaration,
     inputs: RenderInput[] = [],
@@ -2100,7 +2231,8 @@ function projectStaticRenderedCopy(source: string): ProjectedText[] {
       if (input) activeParameterInputs.set(parameter, input);
       else activeParameterInputs.delete(parameter);
     });
-    if (receiver) activeThisInputs.set(node, receiver);
+    if (receiver && !ts.isArrowFunction(node))
+      activeThisInputs.set(node, receiver);
     else activeThisInputs.delete(node);
     try {
       if (!ts.isBlock(node.body)) return expressionVariants(node.body);
@@ -2147,12 +2279,19 @@ function projectStaticRenderedCopy(source: string): ProjectedText[] {
       if (input) activeParameterInputs.set(parameter, input);
       else activeParameterInputs.delete(parameter);
     });
-    if (receiver) activeThisInputs.set(node, receiver);
+    if (receiver && !ts.isArrowFunction(node))
+      activeThisInputs.set(node, receiver);
     else activeThisInputs.delete(node);
     try {
-      return functionReturnExpressions(node).flatMap((returned) =>
-        objectPropVariants(returned)
-      );
+      return functionReturnExpressions(node).flatMap((returned) => {
+        const direct = objectPropVariants(returned);
+        return direct.length > 0
+          ? direct
+          : staticExpressionNodesAtPath(returned, [], new Set()).flatMap(
+              (candidate) =>
+                candidate === returned ? [] : objectPropVariants(candidate)
+            );
+      });
     } finally {
       for (const previous of previousInputs) {
         if (previous.value) {
@@ -2365,6 +2504,23 @@ function projectStaticRenderedCopy(source: string): ProjectedText[] {
           return tail.length === 0 ? [property] : [];
         }
         if (
+          ts.isGetAccessorDeclaration(property) &&
+          propertyKey(property.name) === head
+        ) {
+          const receiver = expressionInput(expression);
+          const candidates = withThisInput(property, receiver, () =>
+            functionReturnExpressions(property).flatMap((returned) =>
+              callableNodesAtPath(returned, tail, seen)
+            )
+          );
+          for (const candidate of candidates) {
+            if (ts.isArrowFunction(candidate)) {
+              lexicalThisInputs.set(candidate, receiver);
+            }
+          }
+          return candidates;
+        }
+        if (
           ts.isShorthandPropertyAssignment(property) &&
           property.name.text === head
         ) {
@@ -2419,8 +2575,14 @@ function projectStaticRenderedCopy(source: string): ProjectedText[] {
       const binding = lexicalBinding(reference.identifier);
       const declaration = binding?.declaration;
       if (!binding || !declaration || seen.has(declaration)) return [];
-      const input = bindingRenderInput(binding, parameterInput(declaration));
-      const requestedPath = [...binding.path, ...reference.path, ...path];
+      const boundInput = bindingRenderInput(
+        binding,
+        parameterInput(declaration)
+      );
+      const input = boundInput?.input ?? null;
+      const requestedPath = [...binding.path, ...reference.path, ...path].slice(
+        boundInput?.pathOffset ?? 0
+      );
       const nextSeen = new Set(seen).add(declaration);
       if (input) {
         const resolved = inputValueAt(input, requestedPath);
@@ -3547,6 +3709,37 @@ describe("copy-lint: user-facing tone standard (issue #945)", () => {
     ].join("\n");
     expect(disclaimerCopyViolations("synthetic.tsx", identitySafe)).toEqual([]);
 
+    for (const identity of [
+      "const identity = (value) => ({ value }).value;",
+      "const identity = (value) => [value][0];",
+    ]) {
+      const wrappedRendered = [
+        identity,
+        'function Notice({ message = "Status" }) { return <p>{message}</p>; }',
+        "function Wrapper(props) {",
+        "  return <Notice {...identity(props)} />;",
+        "}",
+        'return <Wrapper message="Informational only." />;',
+      ].join("\n");
+      expect(
+        disclaimerCopyViolations("synthetic.tsx", wrappedRendered),
+        wrappedRendered
+      ).toHaveLength(1);
+
+      const wrappedSafe = [
+        identity,
+        'function Notice({ message = "Informational only." }) { return <p>{message}</p>; }',
+        "function Wrapper(props) {",
+        "  return <Notice {...identity(props)} />;",
+        "}",
+        'return <Wrapper message="Status" />;',
+      ].join("\n");
+      expect(
+        disclaimerCopyViolations("synthetic.tsx", wrappedSafe),
+        wrappedSafe
+      ).toEqual([]);
+    }
+
     const restRendered = [
       'function Notice({ message = "Status" }) { return <p>{message}</p>; }',
       "function Wrapper({ internal, ...props }) {",
@@ -3566,6 +3759,28 @@ describe("copy-lint: user-facing tone standard (issue #945)", () => {
       'return <Wrapper internal="x" message="Status" />;',
     ].join("\n");
     expect(disclaimerCopyViolations("synthetic.tsx", restSafe)).toEqual([]);
+
+    const nestedRestRendered = [
+      'function Notice({ message = "Status" }) { return <p>{message}</p>; }',
+      "function Wrapper({ config: { internal, ...props } }) {",
+      "  return <Notice {...props} />;",
+      "}",
+      'return <Wrapper config={{ internal: "x", message: "Informational only." }} />;',
+    ].join("\n");
+    expect(
+      disclaimerCopyViolations("synthetic.tsx", nestedRestRendered)
+    ).toHaveLength(1);
+
+    const nestedRestSafe = [
+      'function Notice({ message = "Status" }) { return <p>{message}</p>; }',
+      "function Wrapper({ config: { message, ...props } }) {",
+      "  return <Notice {...props} />;",
+      "}",
+      'return <Wrapper config={{ message: "Informational only." }} />;',
+    ].join("\n");
+    expect(disclaimerCopyViolations("synthetic.tsx", nestedRestSafe)).toEqual(
+      []
+    );
   });
 
   it("treats a later undefined spread property as an overriding value", () => {
@@ -3575,6 +3790,26 @@ describe("copy-lint: user-facing tone standard (issue #945)", () => {
       "return <p>{message}</p>;",
     ].join("\n");
     expect(disclaimerCopyViolations("synthetic.tsx", sample)).toEqual([]);
+
+    const helperOverride = [
+      "const identity = (value) => value;",
+      'const base = { message: "Informational only." };',
+      "const message = { ...base, ...identity({ message: undefined }) }.message;",
+      "return <p>{message}</p>;",
+    ].join("\n");
+    expect(disclaimerCopyViolations("synthetic.tsx", helperOverride)).toEqual(
+      []
+    );
+
+    const helperBanned = [
+      "const identity = (value) => value;",
+      'const base = { message: "Status" };',
+      'const message = { ...base, ...identity({ message: "Informational only." }) }.message;',
+      "return <p>{message}</p>;",
+    ].join("\n");
+    expect(
+      disclaimerCopyViolations("synthetic.tsx", helperBanned)
+    ).toHaveLength(1);
   });
 
   it("preserves receiver context for sibling calls and map thisArg", () => {
@@ -3609,6 +3844,25 @@ describe("copy-lint: user-facing tone standard (issue #945)", () => {
     expect(
       disclaimerCopyViolations("synthetic.tsx", inlineThisArg)
     ).toHaveLength(1);
+
+    const lexicalArrow = [
+      "const helpers = {",
+      '  prefix: "Informational ",',
+      "  notice() { return (() => <p>{this.prefix}only.</p>)(); },",
+      "};",
+      "return helpers.notice();",
+    ].join("\n");
+    expect(
+      disclaimerCopyViolations("synthetic.tsx", lexicalArrow)
+    ).toHaveLength(1);
+
+    const lexicalArrowSafe = lexicalArrow.replace(
+      'prefix: "Informational "',
+      'prefix: "Status: "'
+    );
+    expect(disclaimerCopyViolations("synthetic.tsx", lexicalArrowSafe)).toEqual(
+      []
+    );
   });
 
   it("projects statically rendered getter values", () => {
@@ -3627,6 +3881,51 @@ describe("copy-lint: user-facing tone standard (issue #945)", () => {
       "return <p>{copy.message}</p>;",
     ].join("\n");
     expect(disclaimerCopyViolations("synthetic.tsx", safe)).toEqual([]);
+
+    const receiver = [
+      "const copy = {",
+      '  prefix: "Consult a ",',
+      '  get message() { return this.prefix + "clinician."; },',
+      "};",
+      "return <p>{copy.message}</p>;",
+    ].join("\n");
+    expect(disclaimerCopyViolations("synthetic.tsx", receiver)).toHaveLength(1);
+
+    const receiverSafe = receiver.replace(
+      'prefix: "Consult a "',
+      'prefix: "Contact a "'
+    );
+    expect(disclaimerCopyViolations("synthetic.tsx", receiverSafe)).toEqual([]);
+
+    const callable = [
+      "const Parts = {",
+      "  get Notice() { return () => <p>Informational only.</p>; },",
+      "};",
+      "return <Parts.Notice />;",
+    ].join("\n");
+    expect(disclaimerCopyViolations("synthetic.tsx", callable)).toHaveLength(1);
+
+    const callableSafe = callable.replace("Informational only.", "Status");
+    expect(disclaimerCopyViolations("synthetic.tsx", callableSafe)).toEqual([]);
+
+    const callableReceiver = [
+      "const Parts = {",
+      '  prefix: "Informational ",',
+      "  get Notice() { return () => <p>{this.prefix}only.</p>; },",
+      "};",
+      "return <Parts.Notice />;",
+    ].join("\n");
+    expect(
+      disclaimerCopyViolations("synthetic.tsx", callableReceiver)
+    ).toHaveLength(1);
+
+    const callableReceiverSafe = callableReceiver.replace(
+      'prefix: "Informational "',
+      'prefix: "Status: "'
+    );
+    expect(
+      disclaimerCopyViolations("synthetic.tsx", callableReceiverSafe)
+    ).toEqual([]);
   });
 
   it("keeps the migrated sites in the scan, outside the allowlist, with canonical links where required", () => {
