@@ -291,9 +291,47 @@ host convergence, escape/discard contracts), `stateful-affordances.md`
 
 ## 9. Enforcement
 
+Phone-only shared utilities use the compiled-sheet proof in
+`scripts/phone-only-css-proof.mjs`. Add a utility to
+`scripts/phone-only-css-registry.mjs` only when its contract is that every
+declaration it contributes is below `sm`. To compare a focused branch with a
+clean control worktree:
+
+```bash
+node scripts/phone-only-css-proof.mjs --control /path/to/origin-main-worktree
+```
+
+The compiler disables Tailwind's prose scanner. Each worktree gets its own
+syntax-aware census of `className` values and the constants they reach across
+`app/`, `components/`, and `lib/`, plus every static custom utility in the
+sheet. Constant and helper reachability follows the TypeScript checker's actual
+lexical and module symbols, including import aliases, defaults, and re-exports;
+typed object and array members, local function-return members, and nested
+destructured aliases trace back to their static value owner. Renamed component
+props follow the component symbol to JSX callsites, and inline `map` bindings
+follow their position in a finite static receiver. Computed keys pick
+only their statically selected member; finite runtime key unions enumerate only
+those members, while ambiguous or unbounded class-bearing owners fail closed.
+Same-named or shadowed declarations are not merged. A changed callsite or desktop-only custom
+utility therefore reaches its own artifact without treating visible copy as a
+class candidate. Before
+compilation the proof also derives every custom utility that uses `max-sm` or
+one of the two exact phone media scopes; an unregistered candidate fails instead
+of disappearing from both artifacts. It then removes those phone scopes
+structurally at any nesting depth and compares the remaining semantic CSS tree
+without collapsing declaration values or reordering cascade winners. Only
+unique atomic `@property` registrations and their matching unique fallback
+entries are order-normalized; duplicates fail closed. The proof fails on
+compile/empty artifacts, missing expected declarations, a census below its
+floor, or any remaining desktop-visible difference. Its claim is only that the
+registered utilities contribute no declaration at `sm` or above. It does not
+prove that a phone declaration composes safely with the cascade; #3510's
+`min-block-size` replacement bug is deliberately outside this guard.
+
 | tier                                  | covers                                                                                                                                                                                                 | status                       |
 | ------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ | ---------------------------- |
 | Language/lint scans (`lib/__tests__`) | border colors, hover fills, page width, records action grammar, copy lint, phone density (sub-panel insets + section rhythm, #3466), add-affordance grammar (verb + placement, #3486)                  | shipped — the proven pattern |
+| Compiled phone-only CSS proof         | registered shared utilities contribute no declarations at `sm` or above; deterministic branch/control artifact comparison (#3518)                                                                      | shipped — scope claim only   |
 | Design-guard suite                    | chips, sheet titles, link tones — lands with each primitive per the guards ruling                                                                                                                      | pending, per-issue           |
 | Census probes (#3489)                 | clipped content, control-height mismatch, ISO-date text scan (#3492), hover captures, cross-page consistency lane, named dirty profile, named one-completed-cycle middle state, post-merge mini-census | shipped                      |
 | `components/**` test tier             | enabling infrastructure for component-level guards                                                                                                                                                     | #3446 ✓ shipped              |
