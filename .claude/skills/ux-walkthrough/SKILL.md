@@ -34,9 +34,11 @@ PORT=3111 npm run dev
 ## 2. Drive the journeys
 
 Easiest: let the harness own the server lifecycle (`--serve` boots the dev
-server on the scratch DB, polls readiness, and tears it down; `UX_SEED=1`
+server on a unique private scratch DB, polls readiness, and tears the server and
+database down; a caller's `ALLOS_DB_PATH` is ignored in this mode. `UX_SEED=1`
 runs `scripts/seed.ts` first for a data-rich census, `UX_SEED=thin` seeds and
-then trims to the last ~7 days — see the three shapes in §3):
+then trims to the last ~7 days, and `UX_SEED=dirty` pins import residue plus
+long uncontrolled names — see the four shapes in §3):
 
 ```bash
 node scripts/ux-walkthrough.mjs --serve onboarding invite pages workflows
@@ -162,16 +164,26 @@ The proven workflow for an all-pages consistency audit:
    GOOD (proves coverage), and end with a top-5. Cross-check surprising claims
    against the code before filing (a "dead route" may be an intentional
    relevance redirect).
-7. **Run all three census shapes** — they surface disjoint finding sets, and a
+7. **Run all four census shapes** — they surface disjoint finding sets, and a
    whole class of degradation lives only in the middle one:
 
-   | shape  | command                                                      | what it shows                |
-   | ------ | ------------------------------------------------------------ | ---------------------------- |
-   | fresh  | `node scripts/ux-walkthrough.mjs --serve pages`              | empty states                 |
-   | thin   | `UX_SEED=thin node scripts/ux-walkthrough.mjs --serve pages` | a phone's first week         |
-   | seeded | `UX_SEED=1 node scripts/ux-walkthrough.mjs --serve pages`    | ~3 weeks, full tables/charts |
+   | shape  | command                                                       | what it shows                       |
+   | ------ | ------------------------------------------------------------- | ----------------------------------- |
+   | fresh  | `node scripts/ux-walkthrough.mjs --serve pages`               | empty states                        |
+   | thin   | `UX_SEED=thin node scripts/ux-walkthrough.mjs --serve pages`  | a phone's first week                |
+   | seeded | `UX_SEED=1 node scripts/ux-walkthrough.mjs --serve pages`     | ~3 weeks, full tables/charts        |
+   | dirty  | `UX_SEED=dirty node scripts/ux-walkthrough.mjs --serve pages` | portal residue + uncontrolled names |
 
-   **Entropy (#2594)**: any seeded shape also takes `SEED_RNG=<int>` for a
+   **Dirty profile (#3489)** is a named, fixed vector rather than a numbered
+   random look: it keeps illness, volume and logging continuity at the baseline,
+   turns on the existing `importQuirks` and `textLength` hooks, and runs the
+   existing long-name corpus in `scripts/seed-long-names.ts`. Do not combine it
+   with `SEED_RNG`; the harness fails instead of recording two conflicting shape
+   labels. `run.json` and the audit header record both `UX_SEED=dirty` and its
+   fixed `SEED_DIAL_SHAPE=dirty` receipt.
+
+   **Entropy (#2594)**: the `seeded` and `thin` shapes also take
+   `SEED_RNG=<int>` for a
    distinct, REPRODUCIBLE look — a seeded PRNG samples five scenario dials
    (past/active illness, import quirks, heavy goal volume, logging gaps, long
    names), each mapped to a defect class the seeded baseline can't show. Unset
@@ -179,6 +191,10 @@ The proven workflow for an all-pages consistency audit:
    `run.json` + the audit header record both knobs, and `--baseline` prints a
    loud shape-mismatch warning instead of a wall of false regressions when
    seeds differ. Sweep 2–3 seeds when hunting; keep one seed when diffing.
+   A `SEED_RNG` without `UX_SEED=1` or `UX_SEED=thin` fails loudly, because a
+   fresh DB cannot contain the sampled vector. It also cannot be combined with
+   `SEED_PERSONA`: persona seeding replaces that vector, so recording both would
+   make the run receipt claim entropy that never reached the database.
 
    **The unbounded-name corpus (`SEED_RNG=3`, #3631)**: the `long names` dial is
    the one to reach for when auditing GEOMETRY, and it is worth knowing why. A
@@ -213,8 +229,8 @@ The proven workflow for an all-pages consistency audit:
    passport (encounters, records, immunizations, procedures, preventive events)
    is deliberately kept: a week-old install can hold years of it from one
    document import, and keeping it lets the detail-page census still resolve ids
-   on this shape. Use a scratch `ALLOS_DB_PATH` per shape, or delete the DB
-   between runs — the seed refuses a non-empty database.
+   on this shape. The served harness allocates a new file-backed database for
+   every run, so shapes cannot inherit data from one another.
 
    **Personas (`SEED_PERSONA`)**: the seeded shape can also swap WHO the
    profile is — `scripts/seed-personas.ts` seeds a coherent alternate
@@ -222,7 +238,8 @@ The proven workflow for an all-pages consistency audit:
    surfaces its demographics most affect (whole page populations — growth
    charts, AAP pediatric BP, elderly fitness norms, polypharmacy warnings —
    are invisible from the baseline's one vantage). Needs `UX_SEED=1`
-   (the harness refuses other combinations); SEED_RNG dials do not apply.
+   (the harness refuses other combinations); combining it with `SEED_RNG` also
+   fails because persona data replaces the dial vector.
    An unknown name FAILS the seed and the run — a persona label must never
    sit on data that isn't that persona. Registry + per-persona `routes` (the
    UX_ROUTES targets) live in the module; run one as e.g.:
