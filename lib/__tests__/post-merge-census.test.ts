@@ -2,7 +2,7 @@ import { describe, expect, it } from "vitest";
 import {
   parseNameStatus,
   planPostMergeCensus,
-} from "../../scripts/post-merge-census.mjs";
+} from "../../scripts/orchestration/post-merge-census.mjs";
 
 const routes = [
   "/",

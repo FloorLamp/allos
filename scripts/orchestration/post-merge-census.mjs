@@ -192,8 +192,8 @@ function gitChanges(repoRoot, before, after) {
 
 function usage() {
   return (
-    "usage: node scripts/post-merge-census.mjs <before-ref> [after-ref] [--run]\n" +
-    "example: UX_SEED=1 npm run census:post-merge -- HEAD^ HEAD --run"
+    "usage: node scripts/orchestration/post-merge-census.mjs <before-ref> [after-ref] [--run]\n" +
+    "example: UX_SEED=1 node scripts/orchestration/post-merge-census.mjs HEAD^ HEAD --run"
   );
 }
 
@@ -204,6 +204,7 @@ function main(argv) {
   const [before, after = "HEAD"] = refs;
   const repoRoot = path.resolve(
     path.dirname(fileURLToPath(import.meta.url)),
+    "..",
     ".."
   );
   const routes = enumerateCensusRoutes(repoRoot);

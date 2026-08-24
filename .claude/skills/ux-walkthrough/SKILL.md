@@ -361,7 +361,7 @@ than suppressing the flag).
 Run a seeded mini-census while a merged UI change is still fresh:
 
 ```bash
-UX_SEED=1 npm run census:post-merge -- HEAD^ HEAD --run
+UX_SEED=1 node scripts/orchestration/post-merge-census.mjs HEAD^ HEAD --run
 ```
 
 The command reads Git's changed-file records and sets `UX_ROUTES` from

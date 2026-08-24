@@ -20,9 +20,10 @@
 - Run one adversarial audit over the previous day of merges per session-day.
   File findings against the introducing PR.
 - After each UI-affecting merge, run
-  `UX_SEED=1 npm run census:post-merge -- HEAD^ HEAD --run` while its PR context
-  is fresh. The command scopes app territories, expands shared UI changes to a
-  full census, and stops for a manual plan when the mapping cannot be defended.
+  `UX_SEED=1 node scripts/orchestration/post-merge-census.mjs HEAD^ HEAD --run`
+  while its PR context is fresh. The command scopes app territories, expands
+  shared UI changes to a full census, and stops for a manual plan when the
+  mapping cannot be defended.
 - Dispatch continuously until every remaining issue is blocked, owner-gated, or
   dependency-bound; state that explicitly.
 - Keep `parked` labels and status reports consistent.
