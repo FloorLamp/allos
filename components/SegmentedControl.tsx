@@ -52,7 +52,11 @@ export interface SegmentedControlOption<T extends string | number> {
   icon?: ReactNode;
   disabled?: boolean;
   testId?: string;
-  dataAttributes?: Record<string, string | number>;
+  dataAttributes?: {
+    "data-active"?: string;
+    "data-days-ago"?: number;
+    "data-observation-count"?: number;
+  };
 }
 
 export default function SegmentedControl<T extends string | number>({
@@ -116,7 +120,11 @@ export default function SegmentedControl<T extends string | number>({
               aria-current={active ? ariaCurrent : undefined}
               data-segmented-option=""
               data-testid={option.testId}
-              {...option.dataAttributes}
+              data-active={option.dataAttributes?.["data-active"]}
+              data-days-ago={option.dataAttributes?.["data-days-ago"]}
+              data-observation-count={
+                option.dataAttributes?.["data-observation-count"]
+              }
               className={segmentClass}
             >
               {body}
@@ -132,7 +140,11 @@ export default function SegmentedControl<T extends string | number>({
             data-segmented-option=""
             disabled={option.disabled}
             data-testid={option.testId}
-            {...option.dataAttributes}
+            data-active={option.dataAttributes?.["data-active"]}
+            data-days-ago={option.dataAttributes?.["data-days-ago"]}
+            data-observation-count={
+              option.dataAttributes?.["data-observation-count"]
+            }
             className={segmentClass}
           >
             {body}

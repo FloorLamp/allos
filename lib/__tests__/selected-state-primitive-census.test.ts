@@ -434,6 +434,65 @@ describe("selected-state rows use the registered primitive (#2730)", () => {
     }
   });
 
+  it("fails closed on unsupported object-producing member projections", () => {
+    const base = makeTmpDir("unsupported-projected-chip-census");
+    try {
+      fs.mkdirSync(path.join(base, "components"), { recursive: true });
+      fs.writeFileSync(
+        path.join(base, "components/UnsupportedProjection.tsx"),
+        [
+          'import SubmitButton from "./SubmitButton";',
+          'const BAD = { className: "chip chip-filter min-h-0! h-4 outline-2" };',
+          "const OPTIONS = Object.assign({}, { bad: BAD });",
+          "export function UnsupportedProjection() { return <>",
+          "<button aria-pressed {...OPTIONS.bad} />",
+          "<SubmitButton {...OPTIONS.bad} />",
+          "</>; }",
+        ].join("\n")
+      );
+      expect(() => scanUnapprovedChipVocabularyCorpus(base)).toThrow(
+        /cannot resolve member `bad` from an unsupported object producer/
+      );
+      expect(() => scanForwardedChipBindings(base)).toThrow(
+        /cannot resolve member `bad` from an unsupported object producer/
+      );
+
+      fs.writeFileSync(
+        path.join(base, "components/UnsupportedProjection.tsx"),
+        [
+          'import SubmitButton from "./SubmitButton";',
+          "export function UnresolvedProjection({ options }) { return <>",
+          "<button aria-pressed {...options.bad} />",
+          "<SubmitButton {...options.bad} />",
+          "</>; }",
+        ].join("\n")
+      );
+      expect(() => scanUnapprovedChipVocabularyCorpus(base)).toThrow(
+        /cannot resolve an unsupported object member projection/
+      );
+      expect(() => scanForwardedChipBindings(base)).toThrow(
+        /cannot resolve an unsupported object member projection/
+      );
+
+      fs.writeFileSync(
+        path.join(base, "components/UnsupportedProjection.tsx"),
+        [
+          'import SubmitButton from "./SubmitButton";',
+          'const OPTIONS = { good: { className: "btn" } };',
+          'const COMPUTED = { ["good"]: { ["className"]: "btn" } };',
+          "export function SupportedProjection() { return <>",
+          "<button aria-pressed {...OPTIONS.good} />",
+          '<SubmitButton {...COMPUTED["good"]} />',
+          "</>; }",
+        ].join("\n")
+      );
+      expect(scanUnapprovedChipVocabularyCorpus(base)).toEqual([]);
+      expect(scanForwardedChipBindings(base)).toEqual([]);
+    } finally {
+      fs.rmSync(base, { recursive: true, force: true });
+    }
+  });
+
   it("keeps registered chip classes on native controls or one pinned forwarding seam", () => {
     const forwarded = scanForwardedChipBindings(REPO);
     expect(

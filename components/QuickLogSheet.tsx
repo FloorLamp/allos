@@ -213,7 +213,14 @@ export default function QuickLogSheet({
             </h3>
             {/* The dashboard's own control, unchanged: it names every serving and
           every dose the tap will write, and answers from the typed outcome. */}
-            {context.routine && <UsualRoutineControl {...context.routine} />}
+            {context.routine && (
+              <UsualRoutineControl
+                window={context.routine.window}
+                food={context.routine.food}
+                doses={context.routine.doses}
+                subjectName={context.routine.subjectName}
+              />
+            )}
             <div className="flex flex-wrap gap-2">
               {context.dueDoses.count > 0 && (
                 <ContextChip

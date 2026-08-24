@@ -876,9 +876,13 @@ function staticObjectKey(key: string): string | null {
 function staticObjectProperty(
   expression: string,
   key: string
-): { kind: "selected"; value: string } | { kind: "ambiguous" } | null {
+):
+  | { kind: "selected"; value: string }
+  | { kind: "ambiguous" }
+  | { kind: "missing" }
+  | { kind: "unsupported" } {
   const entries = objectEntries(expression);
-  if (entries === null) return null;
+  if (entries === null) return { kind: "unsupported" };
   for (let index = entries.length - 1; index >= 0; index -= 1) {
     const entry = entries[index];
     if (entry.startsWith("...")) return { kind: "ambiguous" };
@@ -888,7 +892,7 @@ function staticObjectProperty(
     if (name === null) return { kind: "ambiguous" };
     if (name === key) return { kind: "selected", value: value ?? name };
   }
-  return null;
+  return { kind: "missing" };
 }
 
 /** Split a comma-separated parameter or argument list at bracket depth zero. */
@@ -986,7 +990,8 @@ function substitute(expression: string, declared: ClassDeclarations): string {
 
 function substituteOnce(
   expression: string,
-  declared: ClassDeclarations
+  declared: ClassDeclarations,
+  failOnUnsupportedProjection = false
 ): string {
   const skip = literalSpans(expression);
   for (const m of expression.matchAll(/(?<![\w$.])[A-Za-z_$][\w$]*/g)) {
@@ -1026,16 +1031,27 @@ function substituteOnce(
         : (/^\.([\w$]+)/.exec(next)?.[1] ?? null);
       if (member !== null) {
         const selected = staticObjectProperty(value, member);
-        if (selected === null) continue;
-        if (selected.kind === "ambiguous")
+        if (selected.kind === "ambiguous" && failOnUnsupportedProjection)
           throw new UnreadableControlError(
             `member \`${member}\` may be overwritten by a spread or dynamic object key`
           );
-        replacement = `(${selected.value})`;
+        if (selected.kind === "unsupported" && failOnUnsupportedProjection)
+          throw new UnreadableControlError(
+            `cannot resolve member \`${member}\` from an unsupported object producer`
+          );
+        if (selected.kind === "ambiguous" || selected.kind === "unsupported")
+          continue;
+        replacement =
+          selected.kind === "selected" ? `(${selected.value})` : "({})";
       } else {
+        if (objectEntries(value) === null && failOnUnsupportedProjection)
+          throw new UnreadableControlError(
+            "cannot resolve a computed member from an unsupported object producer"
+          );
+        if (objectEntries(value) === null) continue;
         const values = objectValues(value);
-        if (values === null) continue;
-        replacement = values.map((v) => `(${v})`).join(" + ");
+        replacement =
+          values === null ? "({})" : values.map((v) => `(${v})`).join(" + ");
       }
       end = next.startsWith("[")
         ? shut + 1
@@ -1383,6 +1399,12 @@ function objectExpressionBranches(expression: string): string[] | null {
   return null;
 }
 
+function hasUnresolvedMemberProjection(expression: string): boolean {
+  return /(?:^[A-Za-z_$][\w$]*|\))\s*(?:\??\.\s*[A-Za-z_$][\w$]*|\[)/.test(
+    withoutOuterParentheses(expression)
+  );
+}
+
 /**
  * Every className value an object expression explicitly contributes when it is
  * spread onto JSX. Constants and single-expression arrow helpers are resolved
@@ -1411,9 +1433,15 @@ function spreadClassNameExpressions(
     // keys; a coincidentally named local `className` must not rewrite the key
     // whose ownership this scan is establishing.
     const materialized = withoutOuterParentheses(
-      substituteOnce(written, declared)
+      substituteOnce(written, declared, true)
     );
-    if (materialized === written) return [];
+    if (materialized === written) {
+      if (hasUnresolvedMemberProjection(written))
+        throw new UnreadableControlError(
+          "cannot resolve an unsupported object member projection"
+        );
+      return [];
+    }
     return spreadClassNameExpressions(materialized, declared, seen);
   }
 
