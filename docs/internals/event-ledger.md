@@ -1,9 +1,11 @@
 # The event-ledger primitive
 
-Status: **shipped** — one frame, mounted per domain (#3484 part 2). The dose
+Status: **shipped** — one frame, mounted per domain (#3484). The dose
 ledger's bespoke shell (`components/intake/DoseLedgerView.tsx`, 347 lines) is
 gone; `/medications/dose-history` and `/nutrition/dose-history` are two mounts of
-the frame and their routes and deep links are unchanged.
+the frame and their routes and deep links are unchanged. Food mounts it at
+`/nutrition/food-history`; practices mount it at
+`/wellness/practice-history`.
 
 ## The shape
 
@@ -39,8 +41,10 @@ be two frames again as far as any spec or census is concerned.
 
 ## What a mount owns
 
-Everything a domain decides. `components/intake/DoseLedgerMount.tsx` is the
-worked example:
+Everything a domain decides. The three live mounts are
+`components/intake/DoseLedgerMount.tsx`,
+`components/food/FoodLedgerMount.tsx`, and
+`components/practices/PracticeLedgerMount.tsx`:
 
 - the **read** and its bound — `getIntakeDoseLedgerPage`, paged at the SQL level
   (#2445), profile-scoped at the page boundary as before;
@@ -59,6 +63,14 @@ worked example:
 
 #2417's one-ledger-two-doors survives as one mount opened at two pre-filters:
 the two routes differ in exactly one thing, the kind they open filtered to.
+Food and practices reuse their existing profile-scoped Server Actions for row
+correction and undoable removal; the frame does not know those actions.
+
+Substances deliberately have no row-ledger mount yet. Alcohol currently has
+serving events, while nicotine, cannabis and custom substances have only daily
+totals. #3295 owns the event schema and write reconciliation needed to turn
+those aggregates into honest rows; when it lands, its domain door mounts this
+same frame rather than adding a fourth shell.
 
 ## Instants and days
 
@@ -66,6 +78,10 @@ The primitive **inherits** the time model as it stands and re-derives nothing.
 #3428's day-bucketing question is open and applies to the primitive exactly as it
 applied to what it replaces; a mount that wanted a different answer would be
 answering #3428 in one surface.
+
+Food corrections preserve the existing contract's pair semantics: changing a
+row's local day re-anchors a stated eating wall time on that day, while an
+unchanged row omits the instant patch so its stored precision is untouched.
 
 ## The seam, as a measurement
 
@@ -91,7 +107,7 @@ Playwright run.
    and not trapped in a component.
 3. Render `EventLedgerFrame` with your rows as children and your write
    affordance as `backfill`.
-4. Add the file to the mount list in the seam test.
+4. Add the file to the explicit mount census in the seam test.
 
 If a rule of yours seems to want to live in the frame, the seam is in the wrong
 place: put it in the mount.

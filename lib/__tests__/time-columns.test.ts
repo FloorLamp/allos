@@ -273,7 +273,7 @@ const PAIRING_ALLOW: Record<string, { count: number; why: string }> = {
   },
   "lib/queries/nutrition.ts": {
     count: 3,
-    why: "the EATING-TIME reads: the eating-minute distribution and the recent-serving lookup, each pairing `occurred_at` with `recorded_at` (the meal-event projection stopped collapsing them in #2227 — it now carries both facts so the correction sheet can say which one it shows). This is the sharpest instance of the substitution in the repo — an eating-time distribution that quietly includes tap times for every serving nobody stated a time for — and the module's own comments already say so. Converting the rest is a product decision about what those charts should show when the instant is undeclared, not a mechanical swap, so #2205 phase 3 declares it and leaves the answer to its own change.",
+    why: "three database-side food-ledger operations must pair stated eating time with immutable capture before rows reach JS: the server-paged history's stable within-day order, plus the recent-food check's bounded MAX and WHERE. JS projections use bestKnownInstant and are not allowlisted.",
   },
   "lib/queries/search.ts": {
     count: 1,

@@ -27,6 +27,8 @@ import {
   IconSparkles,
   IconUsers,
   IconLayoutList,
+  IconApple,
+  IconGlassFull,
   type TablerIcon,
 } from "@tabler/icons-react";
 import { requireScope, stampSubjects, type SubjectInfo } from "@/lib/scope";
@@ -145,6 +147,8 @@ const CATEGORY_ICONS: Record<TimelineCategory, TablerIcon> = {
   injury: IconBandage,
   endurance: IconRun,
   practice: IconSparkles,
+  food: IconApple,
+  substance: IconGlassFull,
 };
 
 // Timeline rows are the quiet card tier: they share Botanical's card surface and
@@ -181,6 +185,9 @@ const BADGE_CLASS: Record<TimelineCategory, string> = {
   injury: "bg-red-100 text-red-700 dark:bg-red-950 dark:text-red-300",
   endurance: "bg-sky-100 text-sky-700 dark:bg-sky-950 dark:text-sky-300",
   practice: "bg-lime-100 text-lime-700 dark:bg-lime-950 dark:text-lime-300",
+  food: "bg-green-100 text-green-700 dark:bg-green-950 dark:text-green-300",
+  substance:
+    "bg-purple-100 text-purple-700 dark:bg-purple-950 dark:text-purple-300",
 };
 
 // The default page size and the increment each "Load more" reveals. The feed is

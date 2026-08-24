@@ -25,6 +25,7 @@ import {
 
 function revalidatePracticeSurfaces() {
   revalidateRoute("/wellness");
+  revalidateRoute("/wellness/practice-history");
   revalidateRoute("/longevity");
   revalidateRoute("/timeline");
   revalidateRoute("/upcoming");

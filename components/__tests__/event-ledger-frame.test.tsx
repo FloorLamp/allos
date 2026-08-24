@@ -1,5 +1,5 @@
 import { beforeEach, describe, expect, it, vi } from "vitest";
-import { render, screen } from "@testing-library/react";
+import { fireEvent, render, screen } from "@testing-library/react";
 import type { ReactNode } from "react";
 import EventLedgerFrame from "@/components/ledger/EventLedgerFrame";
 import type { AppRoute } from "@/lib/hrefs";
@@ -19,10 +19,12 @@ import type { AppRoute } from "@/lib/hrefs";
 // Server/Client boundary, with real rows. What it cannot do is fail in two seconds
 // when the next mount of this frame reorders the slot.
 
+const navigation = vi.hoisted(() => ({ push: vi.fn(), search: "" }));
+
 vi.mock("next/navigation", () => ({
-  useRouter: () => ({ push: vi.fn() }),
+  useRouter: () => ({ push: navigation.push }),
   usePathname: () => "/medications/dose-history",
-  useSearchParams: () => new URLSearchParams(),
+  useSearchParams: () => new URLSearchParams(navigation.search),
 }));
 
 vi.mock("next/link", () => ({
@@ -44,6 +46,8 @@ vi.mock("next/link", () => ({
 // ScrollFade (the chip row's masked scroller) measures with a ResizeObserver, which
 // jsdom does not implement. The stub is the same one AnalyzePicker's test installs.
 beforeEach(() => {
+  navigation.push.mockReset();
+  navigation.search = "";
   vi.stubGlobal(
     "ResizeObserver",
     class {
@@ -189,6 +193,17 @@ describe("the event-ledger frame names every part off one prefix", () => {
       "probe-ledger-pagination",
     ])
       expect(screen.getByTestId(id), id).toBeTruthy();
+  });
+
+  it("keeps the range but drops the page when the item axis narrows", () => {
+    navigation.search = "from=2026-08-01&to=2026-08-23&page=4";
+    mount({ empty: false });
+    fireEvent.change(screen.getByTestId("probe-ledger-item-filter"), {
+      target: { value: "7" },
+    });
+    expect(navigation.push).toHaveBeenCalledWith(
+      "/medications/dose-history?from=2026-08-01&to=2026-08-23&item=7"
+    );
   });
 
   it("hangs the mount's footer off the page, below the ledger card", () => {
