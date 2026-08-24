@@ -11,7 +11,12 @@
 import { describe, it, expect } from "vitest";
 import { db, today } from "@/lib/db";
 import { shiftDateStr, utcInstant, zonedWallTimeToUtc } from "@/lib/date";
-import { logFoodServingCore, undoFoodServingCore } from "@/lib/food-log-write";
+import {
+  foodServingTruthCore,
+  logFoodServingCore,
+  undoFoodServingCore,
+  updateFoodLogEventCore,
+} from "@/lib/food-log-write";
 import { getFoodBarOrder, getFoodMealDays } from "@/lib/queries";
 
 function makeProfile(name: string): { profileId: number; anchor: string } {
@@ -25,10 +30,11 @@ function makeProfile(name: string): { profileId: number; anchor: string } {
 function events(profileId: number) {
   return db
     .prepare(
-      `SELECT group_key, date, recorded_at, meal_slot FROM food_log_events
+      `SELECT id, group_key, date, recorded_at, meal_slot FROM food_log_events
         WHERE profile_id = ? ORDER BY id`
     )
     .all(profileId) as {
+    id: number;
     group_key: string;
     date: string;
     recorded_at: string;
@@ -44,6 +50,12 @@ function counter(profileId: number, group: string, date: string): number {
     )
     .get(profileId, date, group) as { servings: number } | undefined;
   return row?.servings ?? 0;
+}
+
+function loggedEventId(outcome: ReturnType<typeof logFoodServingCore>): number {
+  if (outcome.kind !== "logged" || outcome.eventId == null)
+    throw new Error("expected serving write to return its inserted event id");
+  return outcome.eventId;
 }
 
 describe("food_log_events ledger atomicity (#950)", () => {
@@ -94,6 +106,230 @@ describe("food_log_events ledger atomicity (#950)", () => {
     // The newest (20:00) event was popped; the 08:00 one survives.
     expect(evs).toHaveLength(1);
     expect(evs[0].recorded_at).toBe(`${anchor}T08:00:00Z`);
+  });
+
+  it("a toast-bound undo refuses after a newer serving changes the announced total", () => {
+    const { profileId, anchor } = makeProfile("food-events-undo-guard");
+    logFoodServingCore(
+      profileId,
+      "cruciferous",
+      anchor,
+      "quick-log",
+      `${anchor}T08:00:00Z`
+    );
+    // This is the total the first tap's toast announced. A second device/tap
+    // moves the counter before that older Undo is pressed.
+    logFoodServingCore(
+      profileId,
+      "cruciferous",
+      anchor,
+      "quick-log",
+      `${anchor}T08:01:00Z`
+    );
+
+    expect(
+      undoFoodServingCore(profileId, "cruciferous", anchor, undefined, 1)
+    ).toEqual({ kind: "changed", servings: 2 });
+    expect(counter(profileId, "cruciferous", anchor)).toBe(2);
+    expect(events(profileId)).toHaveLength(2);
+
+    expect(
+      undoFoodServingCore(profileId, "cruciferous", anchor, undefined, 2)
+    ).toMatchObject({ kind: "undone", servings: 1 });
+    expect(events(profileId)).toHaveLength(1);
+  });
+
+  it("binds a toast inverse to the exact inserted event across count-preserving changes", () => {
+    const { profileId, anchor } = makeProfile("food-events-exact-undo");
+    const logged = logFoodServingCore(
+      profileId,
+      "nuts_seeds",
+      anchor,
+      "quick-log",
+      `${anchor}T08:00:00Z`,
+      "Morning"
+    );
+    const eventId = loggedEventId(logged);
+
+    // Moving the originating row preserves the daily total. A count-only guard
+    // used to report success without removing anything from Morning.
+    expect(
+      updateFoodLogEventCore(profileId, eventId, {
+        mealSlot: "Evening",
+      })
+    ).toMatchObject({ kind: "updated" });
+    expect(
+      undoFoodServingCore(
+        profileId,
+        "nuts_seeds",
+        anchor,
+        "Morning",
+        undefined,
+        eventId
+      )
+    ).toEqual({
+      kind: "changed",
+      servings: 1,
+      mealSlot: "Morning",
+      mealServings: 0,
+    });
+    expect(counter(profileId, "nuts_seeds", anchor)).toBe(1);
+    expect(events(profileId)).toHaveLength(1);
+  });
+
+  it("deletes the named event rather than a newer same-slot replacement", () => {
+    const { profileId, anchor } = makeProfile("food-events-named-undo");
+    const first = logFoodServingCore(
+      profileId,
+      "berries",
+      anchor,
+      "quick-log",
+      `${anchor}T08:00:00Z`,
+      "Morning"
+    );
+    const second = logFoodServingCore(
+      profileId,
+      "berries",
+      anchor,
+      "quick-log",
+      `${anchor}T08:01:00Z`,
+      "Morning"
+    );
+    const firstEventId = loggedEventId(first);
+    const secondEventId = loggedEventId(second);
+
+    expect(
+      undoFoodServingCore(
+        profileId,
+        "berries",
+        anchor,
+        "Morning",
+        2,
+        firstEventId
+      )
+    ).toMatchObject({ kind: "undone", servings: 1, mealServings: 1 });
+    expect(events(profileId).map((event) => event.id)).toEqual([secondEventId]);
+  });
+
+  it("refuses an exact inverse when a newer serving supersedes its receipt total", () => {
+    const { profileId, anchor } = makeProfile("food-events-exact-stale");
+    const first = logFoodServingCore(
+      profileId,
+      "berries",
+      anchor,
+      "quick-log",
+      `${anchor}T08:00:00Z`,
+      "Morning"
+    );
+    const firstEventId = loggedEventId(first);
+    logFoodServingCore(
+      profileId,
+      "berries",
+      anchor,
+      "quick-log",
+      `${anchor}T08:01:00Z`,
+      "Morning"
+    );
+
+    expect(
+      undoFoodServingCore(
+        profileId,
+        "berries",
+        anchor,
+        "Morning",
+        1,
+        firstEventId
+      )
+    ).toEqual({
+      kind: "changed",
+      servings: 2,
+      mealSlot: "Morning",
+      mealServings: 2,
+    });
+    expect(events(profileId)).toHaveLength(2);
+  });
+
+  it("returns the current day and meal truth when a guarded undo is stale", () => {
+    const { profileId, anchor } = makeProfile("food-events-stale-truth");
+    logFoodServingCore(
+      profileId,
+      "berries",
+      anchor,
+      "quick-log",
+      `${anchor}T08:00:00Z`,
+      "Morning"
+    );
+    logFoodServingCore(
+      profileId,
+      "berries",
+      anchor,
+      "quick-log",
+      `${anchor}T08:01:00Z`,
+      "Morning"
+    );
+
+    expect(
+      undoFoodServingCore(profileId, "berries", anchor, "Morning", 1)
+    ).toEqual({
+      kind: "changed",
+      servings: 2,
+      mealSlot: "Morning",
+      mealServings: 2,
+    });
+  });
+
+  it("post-burst truth keeps a legitimate authoritative decrease", () => {
+    const { profileId, anchor } = makeProfile("food-events-final-truth");
+    logFoodServingCore(
+      profileId,
+      "berries",
+      anchor,
+      "quick-log",
+      `${anchor}T08:00:00Z`,
+      "Morning"
+    );
+    logFoodServingCore(
+      profileId,
+      "berries",
+      anchor,
+      "quick-log",
+      `${anchor}T18:00:00Z`,
+      "Evening"
+    );
+    // Another client removes the Evening serving after an add response has
+    // already reported 2. The fresh read must publish the lower current truth,
+    // not preserve the numerically larger historical response.
+    undoFoodServingCore(profileId, "berries", anchor, "Evening");
+
+    expect(foodServingTruthCore(profileId, "berries", anchor)).toEqual({
+      servings: 1,
+      mealServings: { Morning: 1, Midday: 0, Evening: 0 },
+    });
+  });
+
+  it("an originating-profile inverse cannot decrement a peer with the same total", () => {
+    const a = makeProfile("food-events-profile-a");
+    const b = makeProfile("food-events-profile-b");
+    logFoodServingCore(
+      a.profileId,
+      "legumes",
+      a.anchor,
+      "quick-log",
+      `${a.anchor}T08:00:00Z`
+    );
+    logFoodServingCore(
+      b.profileId,
+      "legumes",
+      b.anchor,
+      "quick-log",
+      `${b.anchor}T08:00:00Z`
+    );
+
+    expect(
+      undoFoodServingCore(a.profileId, "legumes", a.anchor, undefined, 1)
+    ).toMatchObject({ kind: "undone", servings: 0 });
+    expect(counter(a.profileId, "legumes", a.anchor)).toBe(0);
+    expect(counter(b.profileId, "legumes", b.anchor)).toBe(1);
   });
 
   it("tolerates a pre-ledger counter row (popless decrement, no throw)", () => {

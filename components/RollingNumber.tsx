@@ -44,6 +44,10 @@ export default function RollingNumber({
   const reduced = usePrefersReducedMotion();
   const [shown, setShown] = useState(value);
   const [rolling, setRolling] = useState(false);
+  // Persistent receipt for browser/component tests. `data-rolling` is correctly
+  // transient, but asking a loaded browser shard to sample a 250 ms window is a
+  // scheduler race. This increments only when the real rAF roll is scheduled.
+  const [motionRuns, setMotionRuns] = useState(0);
   // The last value we were ASKED for — compared against `value` so the effect fires
   // on a real change and not on every re-render of the parent.
   const target = useRef(value);
@@ -63,6 +67,7 @@ export default function RollingNumber({
       return;
     }
     setRolling(true);
+    setMotionRuns((runs) => runs + 1);
     const start = performance.now();
     let frame = 0;
     const tick = (now: number) => {
@@ -90,6 +95,7 @@ export default function RollingNumber({
       data-motion="count"
       data-reduced-motion={reduced ? "true" : "false"}
       data-rolling={rolling ? "true" : "false"}
+      data-motion-runs={motionRuns}
       className={`tabular-nums${rolling ? " motion-count" : ""}${
         className ? ` ${className}` : ""
       }`}

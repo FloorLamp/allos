@@ -3,6 +3,7 @@
 import { useEffect, useRef } from "react";
 import { clearEmergencyPayload } from "@/components/emergency-offline";
 import { clearSnapshots } from "@/lib/offline/snapshot-db";
+import { useActivateToastProfile } from "@/components/Toast";
 
 // Device-local cleanup on a profile switch (issue #600). Mounted ONCE in the (app)
 // layout, it watches the session's active profile id and wipes the profile-specific
@@ -13,14 +14,17 @@ import { clearSnapshots } from "@/lib/offline/snapshot-db";
 // per-button onClick, so switching outside the profile menu left the previous profile's
 // emergency card readable session-free at /offline.
 //
-// SCOPE — the emergency card and the offline READ SNAPSHOTS (#2908). Both are
+// SCOPE — the emergency card, offline READ SNAPSHOTS (#2908), and subject-stamped
+// toast receipts. The first two are
 // profile-owned reads that outlive the request and render session-free at /offline, so
 // both must go the instant the active profile changes: a snapshot surviving a switch
 // would put one person's med list and dose schedule under another person's name, which
 // is the worst defect this feature can have. The offline write QUEUE is deliberately
 // NOT wiped on switch: its intents are profile-stamped (issue #599) and replay onto the
 // profile they were captured under regardless of the active profile, so wiping them
-// would only throw away pending writes for no safety gain. That asymmetry is the point
+// would only throw away pending writes for no safety gain. Receipts are cleared from
+// the root provider's whole list, including phone slots still queued off-DOM, so an
+// inverse from A is never offered while acting as B. That asymmetry is the point
 // — a queued WRITE carries its own attribution to the server, while a cached READ is
 // only as safe as the moment it is shown. Logout wipes all three (the sidebar logout),
 // since the device is being handed back to the login screen.
@@ -51,12 +55,20 @@ export default function ProfileSwitchWatcher({
 }: {
   activeProfileId: number;
 }) {
+  const activateToastProfile = useActivateToastProfile();
   const previous = useRef(activeProfileId);
   useEffect(() => {
-    if (previous.current === activeProfileId) return;
-    previous.current = activeProfileId;
-    clearEmergencyPayload();
-    void clearSnapshots();
-  }, [activeProfileId]);
+    // Run on first mount too: the app layout may have remounted after the server
+    // switch while the root ToastProvider (and its queued snackbars) survived.
+    activateToastProfile(activeProfileId);
+    if (previous.current !== activeProfileId) {
+      previous.current = activeProfileId;
+      clearEmergencyPayload();
+      void clearSnapshots();
+    }
+    // Logout unmounts the authenticated layout. Clearing the active generation
+    // rejects late completions as well as removing already queued receipts.
+    return () => activateToastProfile(null);
+  }, [activeProfileId, activateToastProfile]);
   return null;
 }

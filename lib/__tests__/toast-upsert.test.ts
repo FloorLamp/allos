@@ -5,6 +5,8 @@ import {
   beginExit,
   dropExited,
   visibleToasts,
+  acceptsProfileToast,
+  clearProfileToasts,
   type KeyedToast,
 } from "@/lib/toast-upsert";
 
@@ -61,6 +63,24 @@ describe("upsertToast", () => {
     list = upsertToast(list, t({ id: 3, key: "k", message: "c" }));
     expect(list[0].revision).toBe(2);
     expect(list[0].id).toBe(1);
+  });
+});
+
+describe("profile toast generations", () => {
+  it("rejects an old in-flight completion after switch and same-profile relogin", () => {
+    const oldA = { profileId: 7, profileToken: 1 };
+    expect(acceptsProfileToast({ profileId: 8, token: 2 }, oldA)).toBe(false);
+    expect(acceptsProfileToast({ profileId: 7, token: 3 }, oldA)).toBe(false);
+    expect(acceptsProfileToast({ profileId: 7, token: 1 }, oldA)).toBe(true);
+  });
+
+  it("logout rejects completions and clears all profile-owned queue slots", () => {
+    const list = [
+      t({ id: 1, profileId: 7, profileToken: 1, message: "A" }),
+      t({ id: 2, message: "generic" }),
+    ];
+    expect(acceptsProfileToast(null, list[0])).toBe(false);
+    expect(clearProfileToasts(list).map((toast) => toast.id)).toEqual([2]);
   });
 });
 

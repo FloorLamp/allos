@@ -27,6 +27,10 @@ import WhatsNewLink from "@/components/WhatsNewLink";
 import type { SessionProfile } from "@/lib/auth";
 import type { AppVersion } from "@/lib/version";
 import { DEFAULT_NAV_RELEVANCE, type NavRelevance } from "@/lib/nav-relevance";
+import {
+  clearProfileToastsForLogout,
+  restoreToastProfileAfterFailedLogout,
+} from "@/components/Toast";
 
 // ── THE LOGOUT'S FAILURE RELAY, AT MODULE SCOPE ON PURPOSE (#3605) ───────────────────
 //
@@ -176,6 +180,10 @@ export default function SidebarContent({
   onClose?: () => void;
 }) {
   const logoutButtonRef = useRef<HTMLButtonElement>(null);
+  const activeProfileIdRef = useRef(active.id);
+  useEffect(() => {
+    activeProfileIdRef.current = active.id;
+  }, [active.id]);
   // A logout STARTS ONCE. Two callers can reach `logoutAfterWipe` (the queued-tap
   // effect below and the button's own onClick), and there is a real interval —
   // React attached, its effect not yet run — in which a single tap reaches both.
@@ -303,8 +311,10 @@ export default function SidebarContent({
     } catch (err) {
       unstable_rethrow(err);
       await reopenUnlessSessionEnded();
+      restoreToastProfileAfterFailedLogout(activeProfileIdRef.current);
       logoutStarted.current = false;
       setLogoutPending(false);
+      restoreToastProfileAfterFailedLogout(activeProfileIdRef.current);
       clearQueuedLogoutTap(logoutButtonRef.current);
       throw err;
     }
@@ -347,6 +357,7 @@ export default function SidebarContent({
     if (logoutStarted.current) return;
     logoutStarted.current = true;
     setLogoutPending(true);
+    clearProfileToastsForLogout();
     try {
       await wipeDeviceForSignOut();
       // ISSUED BY CALLING IT, NOT BY REACHING FOR A NODE (#3605). See the relay at the

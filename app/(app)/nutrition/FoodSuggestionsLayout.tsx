@@ -20,13 +20,20 @@ type SlotCountsByDate = Record<
   Record<FoodSlot, Record<string, number>>
 >;
 
+export interface FoodProjectionState {
+  countsByDate: CountsByDate;
+  slotCountsByDate: SlotCountsByDate;
+}
+
 interface FoodSelectedDateContextValue {
   activeDate: string;
   setActiveDate: Dispatch<SetStateAction<string>>;
   countsByDate: CountsByDate;
-  setCountsByDate: Dispatch<SetStateAction<CountsByDate>>;
   slotCountsByDate: SlotCountsByDate;
-  setSlotCountsByDate: Dispatch<SetStateAction<SlotCountsByDate>>;
+  // Daily and per-meal counts are one projection. A correction moves one event
+  // between two meal coordinates, so publishing them through separate provider
+  // states permits a render to observe only half of the move.
+  setProjection: Dispatch<SetStateAction<FoodProjectionState>>;
 }
 
 const FoodSelectedDateContext =
@@ -55,22 +62,21 @@ export function FoodSelectedDateProvider({
   children: ReactNode;
 }) {
   const [activeDate, setActiveDate] = useState(today);
-  const [countsByDate, setCountsByDate] = useState<CountsByDate>(() =>
-    Object.fromEntries(days.map((day) => [day.date, day.counts]))
-  );
-  const [slotCountsByDate, setSlotCountsByDate] = useState<SlotCountsByDate>(
-    () => Object.fromEntries(days.map((day) => [day.date, day.slotCounts]))
-  );
+  const [projection, setProjection] = useState<FoodProjectionState>(() => ({
+    countsByDate: Object.fromEntries(days.map((day) => [day.date, day.counts])),
+    slotCountsByDate: Object.fromEntries(
+      days.map((day) => [day.date, day.slotCounts])
+    ),
+  }));
 
   return (
     <FoodSelectedDateContext.Provider
       value={{
         activeDate,
         setActiveDate,
-        countsByDate,
-        setCountsByDate,
-        slotCountsByDate,
-        setSlotCountsByDate,
+        countsByDate: projection.countsByDate,
+        slotCountsByDate: projection.slotCountsByDate,
+        setProjection,
       }}
     >
       {children}
@@ -134,12 +140,12 @@ export default function FoodSuggestionsLayout({
   const [activeDate, setActiveDate] = useState(
     initialDateInRange ? initialDate : today
   );
-  const [countsByDate, setCountsByDate] = useState<CountsByDate>(() =>
-    Object.fromEntries(days.map((day) => [day.date, day.counts]))
-  );
-  const [slotCountsByDate, setSlotCountsByDate] = useState<SlotCountsByDate>(
-    () => Object.fromEntries(days.map((day) => [day.date, day.slotCounts]))
-  );
+  const [projection, setProjection] = useState<FoodProjectionState>(() => ({
+    countsByDate: Object.fromEntries(days.map((day) => [day.date, day.counts])),
+    slotCountsByDate: Object.fromEntries(
+      days.map((day) => [day.date, day.slotCounts])
+    ),
+  }));
   const hasSuggestions = suggestionCount > 0;
   const activeDay = days.find((day) => day.date === activeDate) ?? days[0];
   const activeDayNutrients = selectedDayNutrients.find(
@@ -163,10 +169,9 @@ export default function FoodSuggestionsLayout({
       value={{
         activeDate,
         setActiveDate,
-        countsByDate,
-        setCountsByDate,
-        slotCountsByDate,
-        setSlotCountsByDate,
+        countsByDate: projection.countsByDate,
+        slotCountsByDate: projection.slotCountsByDate,
+        setProjection,
       }}
     >
       <div data-testid="nutrition-food-layout">

@@ -37,6 +37,14 @@ function rows(profileId: number) {
     .all(profileId) as { date: string; group_key: string; servings: number }[];
 }
 
+function addedEventId(
+  result: Awaited<ReturnType<typeof logFoodServing>>
+): number {
+  if (!result.ok || result.eventId == null)
+    throw new Error("expected add action to return its inserted event id");
+  return result.eventId;
+}
+
 beforeEach(() => {
   revalidate.mockClear();
 });
@@ -81,11 +89,19 @@ describe("logFoodServing", () => {
     const first = await logFoodServing(
       fd({ group_key: "berries", date: DATE })
     );
-    expect(first).toEqual({ ok: true, servings: 1 });
+    expect(first).toEqual({
+      ok: true,
+      eventId: expect.any(Number),
+      servings: 1,
+    });
     const second = await logFoodServing(
       fd({ group_key: "berries", date: DATE })
     );
-    expect(second).toEqual({ ok: true, servings: 2 });
+    expect(second).toEqual({
+      ok: true,
+      eventId: expect.any(Number),
+      servings: 2,
+    });
   });
 });
 
@@ -577,10 +593,11 @@ describe("food_log_events ledger through the actions (#950)", () => {
   function ledger(profileId: number) {
     return db
       .prepare(
-        `SELECT group_key, date, recorded_at, meal_slot FROM food_log_events
+        `SELECT id, group_key, date, recorded_at, meal_slot FROM food_log_events
           WHERE profile_id = ? ORDER BY id`
       )
       .all(profileId) as {
+      id: number;
       group_key: string;
       date: string;
       recorded_at: string;
@@ -615,6 +632,35 @@ describe("food_log_events ledger through the actions (#950)", () => {
     expect(ledger(profile.id)).toHaveLength(1);
   });
 
+  it("wires an exact event id through the guarded toast inverse", async () => {
+    const login = createLogin();
+    const profile = createProfile("event-exact-undoer", login.id);
+    actAs(login, profile);
+
+    const first = await logFoodServing(
+      fd({ group_key: "berries", date: DATE, meal_slot: "Morning" })
+    );
+    const second = await logFoodServing(
+      fd({ group_key: "berries", date: DATE, meal_slot: "Morning" })
+    );
+    const firstEventId = addedEventId(first);
+    const secondEventId = addedEventId(second);
+
+    expect(
+      await undoFoodServing(
+        fd({
+          group_key: "berries",
+          date: DATE,
+          meal_slot: "Morning",
+          event_id: String(firstEventId),
+        })
+      )
+    ).toMatchObject({ ok: true, servings: 1, mealServings: 1 });
+    expect(ledger(profile.id).map((event) => event.id)).toEqual([
+      secondEventId,
+    ]);
+  });
+
   it("persists and returns the selected meal slot for a backfill", async () => {
     const login = createLogin();
     const profile = createProfile("meal-backfiller", login.id);
@@ -625,6 +671,7 @@ describe("food_log_events ledger through the actions (#950)", () => {
     );
     expect(logged).toEqual({
       ok: true,
+      eventId: expect.any(Number),
       servings: 1,
       mealSlot: "Morning",
       mealServings: 1,
