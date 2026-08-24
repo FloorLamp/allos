@@ -194,20 +194,29 @@ export function withoutComments(source: string): string {
       ts.ScriptKind.TSX
     );
     const ranges = new Map<string, ts.CommentRange>();
+    const jsxTextRanges: { pos: number; end: number }[] = [];
     const add = (found: ts.CommentRange[] | undefined) => {
       for (const range of found ?? [])
         ranges.set(`${range.pos}:${range.end}`, range);
     };
     function collect(node: ts.Node) {
+      if (ts.isJsxText(node))
+        jsxTextRanges.push({ pos: node.pos, end: node.end });
       add(ts.getLeadingCommentRanges(source, node.pos));
       add(ts.getTrailingCommentRanges(source, node.end));
       for (const child of node.getChildren(sourceFile)) collect(child);
     }
     collect(sourceFile);
     const chars = source.split("");
-    for (const { pos, end } of ranges.values())
+    for (const { pos, end } of ranges.values()) {
+      // TypeScript exposes line-leading `//` in JSX text as a comment range even
+      // though the TSX grammar renders it as copy. Its owning JsxText span is the
+      // distinction; blanking it can erase a real nested control later on the line.
+      if (jsxTextRanges.some((text) => pos >= text.pos && pos < text.end))
+        continue;
       for (let at = pos; at < end; at += 1)
         if (chars[at] !== "\n" && chars[at] !== "\r") chars[at] = " ";
+    }
     return chars.join("");
   } catch {
     // Keep the lightweight fallback for malformed snippets: its output remains
@@ -225,24 +234,6 @@ export function withoutComments(source: string): string {
     // JSX text is prose, even when it contains JavaScript's comment tokens.
     // Only a tag or a `{…}` expression leaves it.
     if (mode === "text") {
-      const lineStart = source.lastIndexOf("\n", i - 1) + 1;
-      const linePrefixIsIndent = /^\s*$/.test(source.slice(lineStart, i));
-      // TypeScript accepts ordinary comments between JSX attributes. Preserve
-      // comment-shaped COPY, but still blank an indented comment line when a
-      // surrounding nested expression left this lightweight lexer in text mode.
-      if (
-        linePrefixIsIndent &&
-        c === "/" &&
-        (source[i + 1] === "/" || source[i + 1] === "*")
-      ) {
-        const lineComment = source[i + 1] === "/";
-        const end = lineComment
-          ? source.indexOf("\n", i + 2)
-          : source.indexOf("*/", i + 2);
-        const stop = end < 0 ? source.length : end + (lineComment ? 0 : 2);
-        for (; i < stop; i += 1) out += source[i] === "\n" ? "\n" : " ";
-        continue;
-      }
       if (c === "<" && /[A-Za-z/>]/.test(source[i + 1] ?? "")) {
         mode = "tag";
         tags.push({ parent: "text", closing: source[i + 1] === "/" });
@@ -1673,17 +1664,19 @@ export function resolveJsxClassNameBindings(
 // A Tailwind height token with its full variant chain: `h-8`, `sm:h-auto`,
 // `max-sm:min-h-11`, `h-[38px]`, or `[min-height:2rem]`.
 const HEIGHT_TOKEN =
-  /(?:^|[\s"'`{}(),:?])((?:[a-z0-9.-]+:)*)((?:(min-h|h)-(\[[^\]]*\]|[\d.]+|px|auto|full|screen|fit|min|max))|\[min-height:([^\]]+)\])(?![\w.[-])/g;
+  /(?:^|[\s"'`{}(),:?])((?:[a-z0-9.-]+:)*)((?:(min-h|h)-(\[[^\]]*\]|[\d.]+|px|auto|full|screen|fit|min|max))|\[min-height:([^\]]+)\])(!)?(?![\w.[-])/g;
 
 function heightTokenParts(match: RegExpMatchArray): {
   variants: string[];
   utility: string;
   value: string;
+  important: boolean;
 } {
   return {
     variants: match[1] ? match[1].slice(0, -1).split(":") : [],
     utility: match[3] ?? "[min-height]",
     value: match[4] ?? match[5],
+    important: match[6] === "!",
   };
 }
 
@@ -1762,29 +1755,51 @@ export function belowSmHeightPx(className: string): number | null {
   return null;
 }
 
+type MinimumOverride =
+  | { kind: "absent" }
+  | { kind: "known"; px: number }
+  | { kind: "ambiguous"; tokens: string[] };
+
 /** A call-site `min-height` that can replace the button family's CSS floor. */
-function belowSmMinimumPx(className: string): number | null {
-  let base: number | null = null;
-  let basePinned = false;
-  let narrow: number | null = null;
-  let narrowPinned = false;
+function belowSmMinimum(className: string): MinimumOverride {
+  const candidates: Array<{
+    scope: "base" | "narrow";
+    px: number | null;
+    important: boolean;
+    token: string;
+  }> = [];
   for (const m of className.matchAll(HEIGHT_TOKEN)) {
-    const { variants, utility, value } = heightTokenParts(m);
+    const { variants, utility, value, important } = heightTokenParts(m);
     if (utility !== "min-h" && utility !== "[min-height]") continue;
     const scope = heightScope(variants);
     if (scope === null) continue;
-    const px = scaleToPx(value);
-    if (scope === "narrow") {
-      narrowPinned = true;
-      narrow = px;
-    } else {
-      basePinned = true;
-      base = px;
-    }
+    const prefix = variants.length === 0 ? "" : `${variants.join(":")}:`;
+    const body =
+      utility === "[min-height]"
+        ? `[min-height:${value}]`
+        : `${utility}-${value}`;
+    candidates.push({
+      scope,
+      px: scaleToPx(value),
+      important,
+      token: `${prefix}${body}${important ? "!" : ""}`,
+    });
   }
-  if (narrowPinned) return narrow;
-  if (basePinned) return base;
-  return null;
+  if (candidates.length === 0) return { kind: "absent" };
+
+  // Importance beats both source order and a narrower non-important variant.
+  // Within the winning importance tier, max-sm is the below-sm specialization.
+  const important = candidates.filter((candidate) => candidate.important);
+  const tier = important.length > 0 ? important : candidates;
+  const narrow = tier.filter((candidate) => candidate.scope === "narrow");
+  const applicable = narrow.length > 0 ? narrow : tier;
+  const values = new Set(applicable.map((candidate) => candidate.px));
+  if (values.size !== 1 || values.has(null))
+    return {
+      kind: "ambiguous",
+      tokens: applicable.map((candidate) => candidate.token),
+    };
+  return { kind: "known", px: [...values][0]! };
 }
 
 /**
@@ -1833,27 +1848,24 @@ export function inButtonFamily(
   className: string,
   family: ReadonlySet<string>
 ): boolean {
-  return (className.match(/[^\s"'`{}(),:?]+/g) ?? []).some((token) =>
-    family.has(token)
-  );
+  // Keep variants attached. `.sm\:btn` and `.hover\:btn` are different CSS
+  // selectors from the exact `.btn` that receives the phone floor.
+  return classTokens(className).some((token) => family.has(token));
+}
+
+/** Static class tokens with Tailwind variants kept attached to their utility. */
+function classTokens(className: string): string[] {
+  return className.match(/[^\s"'`{}(),+?]+/g) ?? [];
 }
 
 /** True when this class list carries `.tap-target`. */
 export function usesTapTarget(className: string): boolean {
-  return /(?:^|[\s"'`{}(),:?])tap-target(?![\w-])/.test(className);
+  return classTokens(className).includes("tap-target");
 }
 
 /** True when this class list carries the dense chip rendered-floor mechanism. */
 export function usesChipSm(className: string): boolean {
-  return /(?:^|[\s"'`{}(),:?])chip-sm(?![\w-])/.test(className);
-}
-
-/** True when this class list carries the deliberately floor-free base chip. */
-function usesRegularChip(className: string): boolean {
-  return (
-    /(?:^|[\s"'`{}(),:?])chip(?![\w-])/.test(className) &&
-    !usesChipSm(className)
-  );
+  return classTokens(className).includes("chip-sm");
 }
 
 /**
@@ -1888,6 +1900,11 @@ export function unapprovedChipAdopterTokens(className: string): string[] {
 /** True only for one of the exact registered chip call-site class lists. */
 export function isApprovedChipAdopterClass(className: string): boolean {
   return CHIP_ADOPTER_CLASSES.has(className.replace(/\s+/g, " ").trim());
+}
+
+/** The exact floor-free regular-chip license, excluding the dense modifier. */
+function isLicensedRegularChip(className: string): boolean {
+  return isApprovedChipAdopterClass(className) && !usesChipSm(className);
 }
 
 function selectedAttribute(
@@ -2074,8 +2091,10 @@ export function findFlooredControls(
  *   is worse than one that knows it is not, because nothing will ever look at
  *   it again.
  *
- * A control that pins NO height is not judged here — see the module header on
- * what this scan can see. That is a stated bound, not a silent skip.
+ * A control that pins NO height and carries no authenticated CSS-floor mechanism
+ * is not judged here — see the module header on what this scan can see. That is a
+ * stated bound, not a silent skip; the governed census counts the CSS mechanisms
+ * even when their call sites spell no height.
  */
 export function floorMiss(control: FlooredControl): string | null {
   // NOT A CLEARANCE — the absence of a reading. `readable: false` means the class
@@ -2083,28 +2102,33 @@ export function floorMiss(control: FlooredControl): string | null {
   // the census rosters these EXACTLY rather than letting them look like the line
   // below, which is a control that was read and pins no height (#3561).
   if (!control.readable) return null;
-  // Regular chips are acquired by width in a scrolling row and deliberately
-  // carry no rendered floor. This is an explicit licensed class, not accidental
-  // silence from an unpinned height; `chip-sm` takes the rendered-floor branch.
-  if (usesRegularChip(control.className)) return null;
-  if (control.mechanism === "btn-family") {
-    const callSiteMinimum = belowSmMinimumPx(control.className);
-    if (callSiteMinimum === null || callSiteMinimum >= TAP_FLOOR_PX)
-      return null;
+  if (control.mechanism === "btn-family" || control.mechanism === "chip-sm") {
+    const callSiteMinimum = belowSmMinimum(control.className);
+    if (callSiteMinimum.kind === "absent") return null;
+    if (callSiteMinimum.kind === "ambiguous")
+      return (
+        `the call-site minimum (${callSiteMinimum.tokens.join(", ")}) explicitly ` +
+        `replaces the ${control.mechanism} floor, but this source scan cannot prove ` +
+        "its winning rendered minimum"
+      );
+    if (callSiteMinimum.px >= TAP_FLOOR_PX) return null;
+    if (control.mechanism === "chip-sm")
+      return (
+        `a ${callSiteMinimum.px}px call-site minimum undercuts \`chip-sm\`'s shared ` +
+        `${CHIP_SM_RENDERED_PX}px rendered floor`
+      );
     return (
-      `a ${callSiteMinimum}px call-site minimum replaces the button family's ` +
+      `a ${callSiteMinimum.px}px call-site minimum replaces the button family's ` +
       `${TAP_FLOOR_PX}px below-\`sm\` floor`
     );
   }
+  // Width is the acquisition target for the two exact regular-chip roles. This
+  // license runs only after CSS-floor mechanisms and admits no extra class token,
+  // so `chip btn …`, `chip tap-target …`, and local height overrides cannot hide
+  // behind it. The chip adopter census owns this same closed vocabulary.
+  if (isLicensedRegularChip(control.className)) return null;
   if (control.belowSmPx === null) return null;
   if (control.mechanism === "rendered") return null;
-  if (control.mechanism === "chip-sm") {
-    if (control.belowSmPx >= CHIP_SM_RENDERED_PX) return null;
-    return (
-      `a ${control.belowSmPx}px call-site minimum undercuts \`chip-sm\`'s shared ` +
-      `${CHIP_SM_RENDERED_PX}px rendered floor`
-    );
-  }
   if (control.mechanism === "tap-target") {
     if (control.belowSmPx >= TAP_TARGET_MIN_RENDERED_PX) return null;
     return (
