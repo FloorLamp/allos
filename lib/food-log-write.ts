@@ -262,11 +262,7 @@ export function undoFoodServingCore(
   if (slug === null) return { kind: "unknown-group" };
   return writeTx(() => {
     const current = foodDayCounter.total(profileId, date, [slug]);
-    if (
-      expectedEventId == null &&
-      expectedServings != null &&
-      current !== expectedServings
-    ) {
+    if (expectedServings != null && current !== expectedServings) {
       return {
         kind: "changed",
         servings: current,

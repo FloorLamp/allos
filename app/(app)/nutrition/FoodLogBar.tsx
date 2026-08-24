@@ -1537,7 +1537,7 @@ export default function FoodLogBar({
                 (await bump(
                   group,
                   -1,
-                  undefined,
+                  truth.servings,
                   inverseKey,
                   receipt.mealSlot as FoodSlot,
                   receipt.eventId,

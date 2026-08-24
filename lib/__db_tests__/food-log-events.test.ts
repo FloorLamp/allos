@@ -204,11 +204,49 @@ describe("food_log_events ledger atomicity (#950)", () => {
         "berries",
         anchor,
         "Morning",
-        undefined,
+        2,
         firstEventId
       )
     ).toMatchObject({ kind: "undone", servings: 1, mealServings: 1 });
     expect(events(profileId).map((event) => event.id)).toEqual([secondEventId]);
+  });
+
+  it("refuses an exact inverse when a newer serving supersedes its receipt total", () => {
+    const { profileId, anchor } = makeProfile("food-events-exact-stale");
+    const first = logFoodServingCore(
+      profileId,
+      "berries",
+      anchor,
+      "quick-log",
+      `${anchor}T08:00:00Z`,
+      "Morning"
+    );
+    const firstEventId = loggedEventId(first);
+    logFoodServingCore(
+      profileId,
+      "berries",
+      anchor,
+      "quick-log",
+      `${anchor}T08:01:00Z`,
+      "Morning"
+    );
+
+    expect(
+      undoFoodServingCore(
+        profileId,
+        "berries",
+        anchor,
+        "Morning",
+        1,
+        firstEventId
+      )
+    ).toEqual({
+      kind: "changed",
+      servings: 2,
+      mealSlot: "Morning",
+      mealServings: 2,
+    });
+    expect(events(profileId)).toHaveLength(2);
   });
 
   it("returns the current day and meal truth when a guarded undo is stale", () => {
