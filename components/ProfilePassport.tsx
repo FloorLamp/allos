@@ -566,10 +566,6 @@ export default function ProfilePassport({
                     />
                   )}
                 </div>
-                <p className="text-xs text-slate-500 dark:text-slate-400">
-                  Growth percentile for age &amp; sex (WHO/CDC) — not medical
-                  advice.
-                </p>
               </div>
             )}
           </Section>

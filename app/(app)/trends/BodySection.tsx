@@ -1371,8 +1371,8 @@ export default async function BodySection({
       detailHref={metricDetailHref(slug)}
       footer={
         <p className="mt-2 text-xs text-slate-500 dark:text-slate-400">
-          A subjective self-rating from your daily check-ins — informational
-          only, never range-checked.
+          A subjective self-rating from your daily check-ins — never
+          range-checked.
         </p>
       }
     >

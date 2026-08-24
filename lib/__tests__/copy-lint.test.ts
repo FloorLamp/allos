@@ -2,6 +2,7 @@ import { describe, expect, it } from "vitest";
 import fs from "node:fs";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
+import { DISCLAIMER_PHRASINGS } from "@/lib/disclaimers";
 
 // Copy-lint source-scan (issue #945) — the profile-scoping / telegram-chokepoint /
 // notes-text pattern applied to user-facing COPY. It reads every source under the
@@ -18,6 +19,8 @@ import { fileURLToPath } from "node:url";
 //       this template" toast without its period is the drift this catches.
 //   (4) Second-person voice on a cross-profile surface — "you" / "your" can only
 //       address the active profile, never an aggregate or another person's row.
+//   (5) Disclaimer boilerplate outside the canonical /disclaimer surface — domain
+//       pages may link there, never hand-write another prose variant.
 //
 // It is DELIBERATELY narrow (the issue's decision): it catches the drift patterns
 // we actually measured, not tone in general — review still owns tone. Comments,
@@ -33,6 +36,7 @@ const REPO = path.resolve(fileURLToPath(new URL("../..", import.meta.url)));
 // from the ERROR-VERB ban: its returned bodies are the #478 generic-error rule's
 // turf ("internal error"), not the human-copy standard this test governs.
 const SCAN_DIRS = ["app", "components", path.join("lib", "notifications")];
+const SCAN_FILES = ["lib/disclaimers.ts"];
 
 // app/api/** is the #478 JSON-error-body layer, not human copy (issue §1, §Non-goals).
 const EXCLUDE_SUBPATH = ["app/api/"];
@@ -88,6 +92,26 @@ const BANNED: { re: RegExp; label: string }[] = [
 // start with "Couldn't "), so the check has no false positives.
 const COULDNT_LITERAL = /(["'])(Couldn['’]t [^"']*?)\1/g;
 const TERMINAL = /[.?!]$/;
+
+// Disclaimer wording has exactly two source-level homes: the canonical module and
+// the page that renders it. The page currently contains no matching literal (it maps
+// the module's sections), but keeping both paths explicit records the architectural
+// boundary and prevents a domain page from acquiring an ad hoc exception.
+const DISCLAIMER_COPY_ALLOW = new Set([
+  "lib/disclaimers.ts",
+  "app/(app)/disclaimer/page.tsx",
+]);
+const DISCLAIMER_LINK_TARGET = "/disclaimer#suggestions-and-reference-ranges";
+const DISCLAIMER_LINK_SITES = [
+  "app/(app)/upcoming/page.tsx",
+  "app/(app)/results/clinical-results/view/page.tsx",
+];
+const MIGRATED_DISCLAIMER_SITES = [
+  ...DISCLAIMER_LINK_SITES,
+  "app/(app)/trends/BodySection.tsx",
+  "components/ProfilePassport.tsx",
+  "components/intake/IntakeInteractionNotices.tsx",
+];
 
 // Legitimate, justified exceptions. Keyed by (relative path, exact substring) so an
 // entry survives ordinary line edits above it. FROZEN — this list only shrinks.
@@ -220,6 +244,9 @@ function sourceFiles(): { rel: string; text: string }[] {
       files.push({ rel, text: fs.readFileSync(full, "utf8") });
     }
   }
+  for (const rel of SCAN_FILES) {
+    files.push({ rel, text: fs.readFileSync(path.join(REPO, rel), "utf8") });
+  }
   return files;
 }
 
@@ -280,6 +307,31 @@ function crossProfileVoiceViolations(rel: string, text: string): string[] {
     }
   });
   return violations;
+}
+
+function disclaimerCopyViolations(rel: string, text: string): string[] {
+  if (DISCLAIMER_COPY_ALLOW.has(rel)) return [];
+
+  const code = stripComments(text);
+  const violations = new Set<string>();
+  for (const phrasing of DISCLAIMER_PHRASINGS) {
+    const flags = `${phrasing.flags.replace(/g/g, "")}g`;
+    const matcher = new RegExp(phrasing.source, flags);
+    let match: RegExpExecArray | null;
+    while ((match = matcher.exec(code)) !== null) {
+      const line = code.slice(0, match.index).split("\n").length;
+      const lineStart = code.lastIndexOf("\n", match.index - 1) + 1;
+      const lineEnd = code.indexOf("\n", match.index + match[0].length);
+      const snippet = code
+        .slice(lineStart, lineEnd === -1 ? code.length : lineEnd)
+        .replace(/\s+/g, " ")
+        .trim();
+      if (!isInternalLine(snippet)) {
+        violations.add(`${rel}:${line} — disclaimer prose in: ${snippet}`);
+      }
+    }
+  }
+  return [...violations];
 }
 
 describe("copy-lint: user-facing tone standard (issue #945)", () => {
@@ -346,6 +398,58 @@ describe("copy-lint: user-facing tone standard (issue #945)", () => {
         `"your" means the active profile. Login-scoped control copy may enter the ` +
         `frozen CROSS_PROFILE_VOICE_ALLOW list with an exact substring and reason:\n` +
         violations.join("\n")
+    ).toEqual([]);
+  });
+
+  it("domain surfaces do not render disclaimer prose", () => {
+    const violations = sourceFiles().flatMap(({ rel, text }) =>
+      disclaimerCopyViolations(rel, text)
+    );
+    expect(
+      violations,
+      `Disclaimer posture belongs in lib/disclaimers.ts and renders only on ` +
+        `/disclaimer. Replace inline prose with at most a one-line canonical link; ` +
+        `do not add a domain-surface allowlist entry:\n${violations.join("\n")}`
+    ).toEqual([]);
+  });
+
+  it("the disclaimer scan detects every phrase family, including across JSX lines, and ignores comments", () => {
+    const sample = [
+      "// This is not medical advice.",
+      "{/* Informational only. Consult a clinician. */}",
+      "<p>This is not medical advice.</p>",
+      "<p>Informational",
+      "only.</p>",
+      "<p>Consult a clinician.</p>",
+      "<p>Informational, never prescriptive.</p>",
+      "<p>This reading is not a diagnosis.</p>",
+    ].join("\n");
+    expect(disclaimerCopyViolations("synthetic.tsx", sample)).toHaveLength(5);
+  });
+
+  it("keeps the migrated sites in the scan, outside the allowlist, with canonical links where required", () => {
+    const files = new Map(sourceFiles().map((file) => [file.rel, file.text]));
+    for (const rel of MIGRATED_DISCLAIMER_SITES) {
+      const text = files.get(rel);
+      expect(
+        text,
+        `${rel} must remain in the copy-lint source census`
+      ).toBeTypeOf("string");
+      expect(DISCLAIMER_COPY_ALLOW.has(rel)).toBe(false);
+      expect(disclaimerCopyViolations(rel, text!)).toEqual([]);
+    }
+    for (const rel of DISCLAIMER_LINK_SITES) {
+      expect(files.get(rel)).toContain(`href="${DISCLAIMER_LINK_TARGET}"`);
+    }
+  });
+
+  it("keeps the disclaimer allowlist frozen to the canonical module and page", () => {
+    expect([...DISCLAIMER_COPY_ALLOW].sort()).toEqual(
+      ["app/(app)/disclaimer/page.tsx", "lib/disclaimers.ts"].sort()
+    );
+    const knownFiles = new Set(sourceFiles().map((file) => file.rel));
+    expect(
+      [...DISCLAIMER_COPY_ALLOW].filter((rel) => !knownFiles.has(rel))
     ).toEqual([]);
   });
 

@@ -977,8 +977,12 @@ export default async function ClinicalResultDetailPage(props: {
           </p>
         )}
         <p className="mt-3 text-xs text-slate-500 dark:text-slate-400">
-          Reference and optimal ranges may be inaccurate and often vary by sex
-          and age. Consult a clinician.
+          <Link
+            href="/disclaimer#suggestions-and-reference-ranges"
+            className="text-link"
+          >
+            About reference ranges →
+          </Link>
         </p>
       </div>
 
