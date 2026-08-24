@@ -32,6 +32,10 @@ export default function EventLedgerItemFilter({
     const sp = new URLSearchParams(searchParams.toString());
     if (next) sp.set("item", next);
     else sp.delete("item");
+    // A narrowed ledger starts at its first row. Carrying page 4 into a different
+    // item can skip the new item's newest history (or leave a clamped read behind a
+    // stale URL), while the pager itself is the only control that turns the page.
+    sp.delete("page");
     const s = sp.toString();
     router.push(currentPathHref(s ? `${pathname}?${s}` : pathname));
   }
