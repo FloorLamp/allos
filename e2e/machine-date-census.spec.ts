@@ -37,9 +37,10 @@ import { openGoalFact } from "./goal-form-helpers";
 // that failure looks like a failure. So NOTHING here believes a clean sweep until
 // the sweep has proved it took place, and it proves it three ways, in this order:
 //
-//   1. A CENSUS FLOOR. Every route declares the minimum number of rendered text
-//      nodes it must yield. A 404 page and a bare shell come in an order of
-//      magnitude under it.
+//   1. A ROUTE-READINESS PROOF. Most routes use a deliberately loose census
+//      floor: a 404 page and a bare shell come in an order of magnitude under it.
+//      A compact surface whose density legitimately changes instead names stable
+//      semantic landmarks; it must still yield a non-empty census sample.
 //   2. A NAMED SUBJECT per route — the element whose date was the defect — which
 //      must be among the nodes actually collected. This is the tighter half: a
 //      floor can be met by 200 nav labels while the table the route exists for
@@ -69,10 +70,16 @@ interface CensusRoute {
   /**
    * The floor on rendered text nodes. Set from a measured run and rounded DOWN
    * hard: the number exists to separate "this page rendered" from "this page
-   * 404'd or rendered a shell", not to pin a layout. Every route below measured at
-   * least 3× its floor when this was written.
+   * 404'd or rendered a shell", not to pin a layout. Omit only when `assertReady`
+   * names a stronger semantic readiness proof.
    */
-  minTextNodes: number;
+  minTextNodes?: number;
+  /**
+   * Semantic route readiness for a compact surface whose text-node density is not
+   * a stable contract. This must prove the route-specific content (not only shared
+   * shell chrome) rendered. Exactly one of this and `minTextNodes` is declared.
+   */
+  assertReady?: (page: Page) => Promise<void>;
   /** Rules this route was added to exercise. Omit to run both. */
   kinds?: ("date" | "lab-unit")[];
   /**
@@ -317,10 +324,20 @@ const ROUTES: CensusRoute[] = [
   {
     path: "/trends?tab=insights&cmpA=result%3ASelenium&cmpB=metric%3Aweight&range=all",
     why: "The clinical Trends series' Compare legend and chart unit.",
-    // Exact CI rendered 53–58 nodes across the ordinary shard and three scrutiny
-    // repeats. Keep a three-node stability margin; the unique visible `(µg/L)`
-    // subject below separately proves that the comparison itself rendered.
-    minTextNodes: 50,
+    // #3656 correctly consolidated repeated chip text, reducing this compact route's
+    // rendered text nodes without reducing what the census can observe. The stable
+    // contract is the URL-selected pair plus its lazy chart — not how many separate
+    // text nodes their controls happen to use. The unique `(µg/L)` subject below then
+    // proves the clinical display boundary is present in that ready comparison.
+    assertReady: async (page) => {
+      await expect(
+        page.getByRole("combobox", { name: "Series A" })
+      ).toHaveValue("Selenium");
+      await expect(
+        page.getByRole("combobox", { name: "Series B" })
+      ).toHaveValue("Weight");
+      await expect(page.getByTestId("compare-chart")).toBeVisible();
+    },
     kinds: ["lab-unit"],
     unitSubject: (page) => page.getByText("(µg/L)", { exact: true }),
   },
@@ -531,6 +548,18 @@ const BROWSER_PATTERNS = {
   labUnit: MACHINE_LAB_UNIT_RE.source,
 };
 
+test("every census route declares one honest route-readiness proof", () => {
+  for (const route of ROUTES) {
+    const strategies =
+      Number(route.minTextNodes !== undefined) +
+      Number(route.assertReady !== undefined);
+    expect(
+      strategies,
+      `${route.path} must declare exactly one of minTextNodes or assertReady`
+    ).toBe(1);
+  }
+});
+
 test("no rendered copy states machine dates or ASCII microgram lab units (#3492/#3545)", async ({
   page,
 }) => {
@@ -561,6 +590,7 @@ test("no rendered copy states machine dates or ASCII microgram lab units (#3492/
       await page.goto(route.path);
       await expect(page.getByRole("main")).toBeVisible();
       if (route.reveal) await route.reveal(page);
+      if (route.assertReady) await route.assertReady(page);
 
       // (2) THE NAMED SUBJECT, before anything is believed about silence. WAIT FOR
       // THE CONTENT, NOT THE CONTAINER: a route that renders its shell and then its
@@ -600,13 +630,23 @@ test("no rendered copy states machine dates or ASCII microgram lab units (#3492/
 
       const { examined, offenders } = await census(page, BROWSER_PATTERNS);
 
-      // (1) THE CENSUS FLOOR.
-      expect(
-        examined,
-        `${route.path}: only ${examined} rendered text nodes — under the floor of ` +
-          `${route.minTextNodes}. This route did not render what it is in the census ` +
-          `for, so its silence about machine dates means nothing.`
-      ).toBeGreaterThanOrEqual(route.minTextNodes);
+      // (1) THE ROUTE-READINESS PROOF. A semantic route still has to contribute
+      // actual rendered text to the collector; its landmarks replace only the
+      // arbitrary density threshold, never the evidence that a sweep occurred.
+      if (route.minTextNodes !== undefined) {
+        expect(
+          examined,
+          `${route.path}: only ${examined} rendered text nodes — under the floor of ` +
+            `${route.minTextNodes}. This route did not render what it is in the census ` +
+            `for, so its silence about machine dates means nothing.`
+        ).toBeGreaterThanOrEqual(route.minTextNodes);
+      } else {
+        expect(
+          examined,
+          `${route.path}: its semantic readiness landmarks rendered but the census ` +
+            `collected no text, so its silence about machine text means nothing.`
+        ).toBeGreaterThan(0);
+      }
 
       totalExamined += examined;
       seen.push(route.path);
@@ -632,7 +672,7 @@ test("no rendered copy states machine dates or ASCII microgram lab units (#3492/
   // that silently shortened the sweep is the same failure as an empty page.
   expect(seen).toEqual(ROUTES.map((r) => r.path));
   expect(totalExamined).toBeGreaterThanOrEqual(
-    ROUTES.reduce((n, r) => n + r.minTextNodes, 0)
+    ROUTES.reduce((n, r) => n + (r.minTextNodes ?? 1), 0)
   );
 
   // …and only NOW is the absence worth asserting.
