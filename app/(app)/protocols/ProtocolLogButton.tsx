@@ -91,7 +91,7 @@ export default function ProtocolLogButton({
         className={
           primaryTone === "neutral"
             ? `${DOSE_ACTION_LABEL} ${DOSE_ACTION_NEUTRAL}`
-            : "inline-flex items-center gap-1.5 rounded-lg bg-brand-600 px-3 py-1.5 text-sm font-medium text-white"
+            : "inline-flex min-h-11 items-center gap-1.5 rounded-lg bg-brand-600 px-3 py-1.5 text-sm font-medium text-white"
         }
       >
         <IconCheck className="h-4 w-4" stroke={2} aria-hidden />
