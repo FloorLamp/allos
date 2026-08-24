@@ -3,8 +3,10 @@ import path from "node:path";
 import { fileURLToPath } from "node:url";
 import { describe, expect, it } from "vitest";
 import {
+  PERIOD_GRID_COLUMN_CLASSES,
   PERIOD_ITEM_BORDER_CLASSES,
   periodGridCols,
+  periodGridColumns,
   periodItemBorders,
 } from "../period-stats-layout";
 import { stripComments } from "./strip-comments";
@@ -123,7 +125,7 @@ const LAYOUTS: readonly LayoutAnchor[] = [
     count: 1,
     ownerNeedle: 'data-testid="metric-period-stats"',
     className:
-      '{`grid grid-cols-1 ${ desktopSidebar ? `xl:grid-cols-1 ${PERIOD_COLS[stats.length] ?? "sm:grid-cols-3"}` : (PERIOD_COLS[stats.length] ?? "sm:grid-cols-3") }`}',
+      "{`grid grid-cols-1 ${periodGridColumns(stats.length, desktopSidebar)}`}",
   },
   {
     site: "period-stats",
@@ -293,6 +295,27 @@ function componentTagSpansWithin(
   );
 }
 
+function elementTagSpansWithin(
+  source: string,
+  start: number,
+  end: number
+): TagSpan[] {
+  return [...source.slice(start, end).matchAll(/<[A-Za-z][\w.]*\b/g)].map(
+    (match) => tagSpanAt(source, start + match.index)
+  );
+}
+
+function componentRenderedRoot(source: string, name: string): TagSpan | null {
+  const block = functionBlockRange(source, name);
+  if (!block) return null;
+  const returned = source.indexOf("return", block[0]);
+  if (returned < 0 || returned >= block[1]) return null;
+  const root = source.indexOf("<", returned);
+  if (root < 0 || root >= block[1]) return null;
+  const tag = tagSpanAt(source, root);
+  return /^<[A-Za-z][\w.]*\b/.test(tag.text) ? tag : null;
+}
+
 function horizontalPaddingTokens(tag: string): string[] {
   const className = tag.slice(tag.indexOf("className="));
   return [...className.matchAll(/["'`]([^"'`]*)["'`]/g)]
@@ -313,6 +336,16 @@ function rawTokenCount(source: string, token: string): number {
 }
 
 function isPadding(token: string, horizontalOnly: boolean): boolean {
+  const arbitraryProperties = horizontalOnly
+    ? "padding|padding-inline|padding-left|padding-right|padding-inline-start|padding-inline-end"
+    : "padding|padding-inline|padding-block|padding-left|padding-right|padding-top|padding-bottom|padding-inline-start|padding-inline-end|padding-block-start|padding-block-end";
+  if (
+    new RegExp(`(?:^|:)!?\\[(?:${arbitraryProperties}):[^\\]]+\\]!?$`).test(
+      token
+    )
+  ) {
+    return true;
+  }
   const leaf = token.split(":").at(-1)?.replace(/^!|!$/g, "") ?? "";
   return horizontalOnly
     ? /^(?:p|px|pl|pr|ps|pe)-/.test(leaf)
@@ -402,11 +435,18 @@ function contractProblems(
       );
       if (adopter.viaComponent) {
         const component = functionBlockRange(source, adopter.viaComponent);
+        const renderedRoot = componentRenderedRoot(
+          source,
+          adopter.viaComponent
+        );
         if (
           !component ||
+          !renderedRoot ||
           carriers.some(
             (carrier) =>
-              carrier.start < component[0] || carrier.end > component[1]
+              carrier.start < component[0] ||
+              carrier.end > component[1] ||
+              carrier.start !== renderedRoot.start
           )
         ) {
           problems.push(
@@ -425,6 +465,23 @@ function contractProblems(
               `${adopter.file}: ${adopter.ownerNeedle} must render ${adopter.viaComponent} exactly once`
             );
             continue;
+          }
+          for (const ancestor of elementTagSpansWithin(source, start, end)) {
+            if (
+              ancestor.start === invocations[0].start ||
+              ancestor.start === start
+            ) {
+              continue;
+            }
+            const [ancestorStart, ancestorEnd] = elementRange(source, ancestor);
+            if (
+              ancestorStart < invocations[0].start &&
+              ancestorEnd > invocations[0].end
+            ) {
+              problems.push(
+                `${adopter.file}: ${adopter.viaComponent} is nested inside another carrier or wrapper under ${adopter.ownerNeedle}`
+              );
+            }
           }
           for (const wrapper of componentTagSpansWithin(source, start, end)) {
             if (wrapper.start === invocations[0].start) continue;
@@ -552,9 +609,28 @@ function contractProblems(
     for (const parentTag of openingTagSpansWith(source, parent.needle)) {
       const [start, end] = elementRange(source, parentTag);
       const classTags = classTagSpansWithin(source, start, end);
+      const elementTags = elementTagSpansWithin(source, start, end);
       for (const carrier of carrierSpans.filter(
         (tag) => tag.start > start && tag.end < end
       )) {
+        for (const ancestor of elementTags) {
+          if (
+            ancestor.start === parentTag.start ||
+            ancestor.start === carrier.start
+          ) {
+            continue;
+          }
+          const [ancestorStart, ancestorEnd] = elementRange(source, ancestor);
+          if (
+            ancestorStart < carrier.start &&
+            ancestorEnd > carrier.end &&
+            !registeredLayoutStarts.has(ancestor.start)
+          ) {
+            problems.push(
+              `${parent.file}: unregistered element lies between ${parent.needle} and a registered carrier`
+            );
+          }
+        }
         for (const ancestor of classTags) {
           if (
             ancestor.start === parentTag.start ||
@@ -689,6 +765,37 @@ describe("delegated card gutter contract (#3507)", () => {
     }
   });
 
+  it("exhausts the registered PeriodStats grid helper without admitting gutter classes", () => {
+    expect(PERIOD_GRID_COLUMN_CLASSES).toEqual({
+      one: "sm:grid-cols-1",
+      two: "sm:grid-cols-2",
+      three: "sm:grid-cols-3",
+      four: "sm:grid-cols-2",
+      fallback: "sm:grid-cols-3",
+      desktopOne: "xl:grid-cols-1 sm:grid-cols-1",
+      desktopTwo: "xl:grid-cols-1 sm:grid-cols-2",
+      desktopThree: "xl:grid-cols-1 sm:grid-cols-3",
+      desktopFour: "xl:grid-cols-1 sm:grid-cols-2",
+      desktopFallback: "xl:grid-cols-1 sm:grid-cols-3",
+    });
+    const registered = new Set<string>(
+      Object.values(PERIOD_GRID_COLUMN_CLASSES)
+    );
+    for (const statCount of [0, 1, 2, 3, 4, 5]) {
+      for (const desktopSidebar of [false, true]) {
+        const output = periodGridColumns(statCount, desktopSidebar);
+        expect(
+          registered.has(output),
+          `unregistered grid output for ${JSON.stringify({ statCount, desktopSidebar })}: ${output}`
+        ).toBe(true);
+        expect(
+          output.split(/\s+/).filter((token) => isPadding(token, true)),
+          "the grid-only helper may never return horizontal gutter"
+        ).toEqual([]);
+      }
+    }
+  });
+
   it("pins every parent and rendered gutter carrier, with no local overrides", () => {
     expect(contractProblems(REPO, ADOPTERS)).toEqual([]);
     expect(
@@ -729,6 +836,22 @@ describe("delegated card gutter contract (#3507)", () => {
       root,
       ADOPTERS.filter((entry) => entry.site === "period-stats"),
       LAYOUTS.filter((entry) => entry.site === "period-stats")
+    );
+  }
+
+  function siteProblems(source: string, site: string, file: string) {
+    const root = makeTmpDir(`card-gutter-${site}`);
+    fs.mkdirSync(path.join(root, "app/(app)/protocols"), { recursive: true });
+    fs.mkdirSync(path.dirname(path.join(root, file)), { recursive: true });
+    fs.writeFileSync(
+      path.join(root, PROTOCOL_P0.file),
+      `<button className="${PROTOCOL_P0.className}" />`
+    );
+    fs.writeFileSync(path.join(root, file), source);
+    return contractProblems(
+      root,
+      ADOPTERS.filter((entry) => entry.site === site),
+      []
     );
   }
 
@@ -787,7 +910,14 @@ describe("delegated card gutter contract (#3507)", () => {
         [parent, carrier]
       ).join("\n")
     ).toMatch(/is missing card-gutter-standard/);
-    for (const override of ["md:px-8", "lg:ps-8", "xl:pe-8"]) {
+    for (const override of [
+      "md:px-8",
+      "lg:ps-8",
+      "xl:pe-8",
+      "md:[padding-inline:2rem]",
+      "lg:![padding-left:2rem]",
+      "[padding-inline-end:2rem]!",
+    ]) {
       expect(
         fixtureProblems(
           `<section data-testid="parent" className="card card-delegated"><div data-testid="carrier" className="card-gutter-standard ${override}" /></section>`,
@@ -870,6 +1000,44 @@ describe("delegated card gutter contract (#3507)", () => {
     expect(periodStatsProblems(componentWrapped).join("\n")).toMatch(
       /unresolved component wrapper lies between/
     );
+  });
+
+  it("pins the ReadingsHeader root and keeps sibling carriers at card level", () => {
+    const file = "components/MetricReadingsTable.tsx";
+    const live = fs.readFileSync(path.join(REPO, file), "utf8");
+    const header = openingTagSpansWith(
+      live,
+      'data-testid="metric-readings-header"'
+    )[0];
+    const [headerStart, headerEnd] = elementRange(live, header);
+    const wrappedHeader = `${live.slice(0, headerStart)}<div className="px-8">${live.slice(headerStart, headerEnd)}</div>${live.slice(headerEnd)}`;
+    expect(
+      siteProblems(wrappedHeader, "metric-readings", file).join("\n")
+    ).toMatch(/not the rendered root of ReadingsHeader/);
+
+    const firstInvocation = openingTagSpansWith(live, "<ReadingsHeader")[0];
+    const withoutInvocation = `${live.slice(0, firstInvocation.start)}${live.slice(firstInvocation.end)}`;
+    const firstBody = openingTagSpansWith(
+      withoutInvocation,
+      'data-testid="metric-readings-body"'
+    )[0];
+    const nested = `${withoutInvocation.slice(0, firstBody.end)}<ReadingsHeader />${withoutInvocation.slice(firstBody.end)}`;
+    expect(siteProblems(nested, "metric-readings", file).join("\n")).toMatch(
+      /nested inside another carrier or wrapper/
+    );
+  });
+
+  it("rejects arbitrary horizontal padding on the live TrendMini carrier", () => {
+    const file = "components/TrendMiniCard.tsx";
+    const live = fs.readFileSync(path.join(REPO, file), "utf8");
+    const mutated = live.replace(
+      'className="card-gutter-standard group',
+      'className="card-gutter-standard md:[padding-inline:2rem] group'
+    );
+    expect(mutated).not.toBe(live);
+    expect(
+      siteProblems(mutated, "trend-mini-compact", file).join("\n")
+    ).toMatch(/overrides its token/);
   });
 
   it("requires every registered delegated parent to own a registered carrier", () => {

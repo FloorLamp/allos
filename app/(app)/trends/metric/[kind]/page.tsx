@@ -88,7 +88,11 @@ import MetricReadingsTable, {
 } from "@/components/MetricReadingsTable";
 import PeakFlowZoneCard from "@/components/PeakFlowZoneCard";
 import { getPeakFlowPersonalBest } from "@/lib/settings";
-import { periodGridCols, periodItemBorders } from "@/lib/period-stats-layout";
+import {
+  periodGridCols,
+  periodGridColumns,
+  periodItemBorders,
+} from "@/lib/period-stats-layout";
 import { suggestedPersonalBest } from "@/lib/peak-flow";
 import { savePeakFlowPersonalBest } from "../../peak-flow-actions";
 import SourceComparison from "../../SourceComparison";
@@ -724,13 +728,6 @@ export default async function TrendMetricDetailPage(props: {
 // value broke mid-range onto a second line — by arithmetic, not by accident. Four
 // windows (the #1938 365d column) wrap into a 2×2 grid for the same reason: four
 // abreast at 640px is back under that arithmetic's floor.
-const PERIOD_COLS: Record<number, string> = {
-  1: "sm:grid-cols-1",
-  2: "sm:grid-cols-2",
-  3: "sm:grid-cols-3",
-  4: "sm:grid-cols-2",
-};
-
 function PeriodStatsCard({
   stats,
   unit,
@@ -805,11 +802,7 @@ function PeriodStatsCard({
       </div>
       <div
         data-card-delegated-layout="period-stats-grid"
-        className={`grid grid-cols-1 ${
-          desktopSidebar
-            ? `xl:grid-cols-1 ${PERIOD_COLS[stats.length] ?? "sm:grid-cols-3"}`
-            : (PERIOD_COLS[stats.length] ?? "sm:grid-cols-3")
-        }`}
+        className={`grid grid-cols-1 ${periodGridColumns(stats.length, desktopSidebar)}`}
       >
         {stats.map((s, i) => (
           <article

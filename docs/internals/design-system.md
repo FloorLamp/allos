@@ -148,16 +148,16 @@ Two traps the guards exist for, both found by measurement rather than reading:
   These shared utilities preserve the deliberately different phone values
   without repeating horizontal numbers at call sites. The focused guard keeps a
   literal DOM-tag registry of all four parents and every carrier (including a
-  local component's rendered root), bans local horizontal overrides at every
-  breakpoint and logical edge, and rejects any unregistered adopter. A
-  non-literal class wrapper between a parent and carrier fails closed; the two
-  PeriodStats wrappers with dynamic grid/border classes are registered and
-  pinned exactly as layout-only, and the border helper can return only an
-  exhaustively asserted registry of border classes. Component wrappers on that
-  path fail closed too; `ReadingsHeader` is the one registered component bridge
-  and its rendered root is pinned. The guard also bans ad-hoc `p-0!` throughout
-  `app/` and `components/`; the sole exact, fail-stale exception is
-  ProtocolCompare's non-card icon button (#3507).
+  local component's rendered root), bans named and arbitrary-property
+  horizontal overrides at every breakpoint and logical edge, and rejects any
+  unregistered adopter. Carriers must stay at card level: an unregistered DOM
+  or component wrapper, or one registered carrier nested inside another, fails
+  closed. The two PeriodStats layout wrappers are the only registered path;
+  their grid and border helpers can return only exhaustively asserted,
+  padding-free class registries. `ReadingsHeader` is the one component bridge,
+  and its carrier must be the component's actual returned root. The guard also
+  bans ad-hoc `p-0!` throughout `app/` and `components/`; the sole exact,
+  fail-stale exception is ProtocolCompare's non-card icon button (#3507).
 
 Scope, as **applied**: section rhythm was swept across every section-level seam
 in the app shell. Out deliberately: `app/(auth)/*` and `/offline` (not app

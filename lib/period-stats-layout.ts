@@ -13,6 +13,44 @@ export const PERIOD_ITEM_BORDER_CLASSES = {
     "border-black/10 dark:border-white/10 border-t sm:border-l sm:border-t-0 xl:border-l-0 xl:border-t",
 } as const;
 
+// The complete set of responsive grid layouts used by PeriodStatsCard. Both
+// layout helpers sit between the delegated card and its gutter-owning cells,
+// so neither may grow a padding class behind an unchanged call site (#3507).
+export const PERIOD_GRID_COLUMN_CLASSES = {
+  one: "sm:grid-cols-1",
+  two: "sm:grid-cols-2",
+  three: "sm:grid-cols-3",
+  four: "sm:grid-cols-2",
+  fallback: "sm:grid-cols-3",
+  desktopOne: "xl:grid-cols-1 sm:grid-cols-1",
+  desktopTwo: "xl:grid-cols-1 sm:grid-cols-2",
+  desktopThree: "xl:grid-cols-1 sm:grid-cols-3",
+  desktopFour: "xl:grid-cols-1 sm:grid-cols-2",
+  desktopFallback: "xl:grid-cols-1 sm:grid-cols-3",
+} as const;
+
+export function periodGridColumns(
+  statCount: number,
+  desktopSidebar: boolean
+): string {
+  const suffix =
+    statCount === 1
+      ? "One"
+      : statCount === 2
+        ? "Two"
+        : statCount === 3
+          ? "Three"
+          : statCount === 4
+            ? "Four"
+            : "Fallback";
+  const key = desktopSidebar
+    ? `desktop${suffix}`
+    : `${suffix[0].toLowerCase()}${suffix.slice(1)}`;
+  return PERIOD_GRID_COLUMN_CLASSES[
+    key as keyof typeof PERIOD_GRID_COLUMN_CLASSES
+  ];
+}
+
 // How many `sm` columns the rolling-summary grid resolves to. Four windows use
 // a 2×2 grid; smaller sets stay in one row.
 export function periodGridCols(statCount: number): number {
