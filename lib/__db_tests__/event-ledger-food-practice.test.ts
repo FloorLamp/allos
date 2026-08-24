@@ -41,6 +41,10 @@ describe("food and practice event-ledger completion (#3484)", () => {
       `INSERT INTO substance_daily_totals (profile_id, substance, date, units)
        VALUES (?, 'nicotine', '2026-08-20', 2), (?, 'cannabis', '2026-08-20', 1)`
     ).run(owner, stranger);
+    db.prepare(
+      `INSERT INTO substance_daily_totals (profile_id, substance, date, units)
+       VALUES (?, 'herbal||blend::night', '2026-08-20', 1)`
+    ).run(owner);
 
     const all = getTimelineEvents(owner, {
       startDate: "2026-08-20",
@@ -60,10 +64,11 @@ describe("food and practice event-ledger completion (#3484)", () => {
     ]);
     expect(substanceEvent).toMatchObject({
       category: "substance",
-      title: "3 substance uses logged",
+      title: "4 substance uses logged",
     });
     expect(substanceEvent?.detailItems).toEqual([
       { label: "Alcohol", value: "1 standard drink" },
+      { label: "herbal||blend::night", value: "1 use" },
       { label: "Nicotine", value: "2 uses" },
     ]);
     expect(

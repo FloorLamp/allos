@@ -687,7 +687,9 @@ function collectEvents(
   const foodDays = db
     .prepare(
       `SELECT date, SUM(servings) AS count,
-              GROUP_CONCAT(group_key || '::' || servings, '||') AS groups
+              json_group_array(
+                json_object('key', group_key, 'count', servings)
+              ) AS groups
          FROM (
            SELECT date, group_key, COUNT(*) AS servings
              FROM food_log_events
@@ -706,16 +708,11 @@ function collectEvents(
       perTableLimit
     ) as { date: string; count: number; groups: string | null }[];
   for (const day of foodDays) {
-    const groups = (day.groups ?? "")
-      .split("||")
-      .filter(Boolean)
-      .map((pair) => {
-        const split = pair.lastIndexOf("::");
-        return {
-          key: split < 0 ? pair : pair.slice(0, split),
-          count: split < 0 ? 0 : Number(pair.slice(split + 2)),
-        };
-      });
+    const groups = (
+      JSON.parse(day.groups ?? "[]") as { key: string; count: number }[]
+    ).sort((left, right) =>
+      foodGroupName(left.key).localeCompare(foodGroupName(right.key))
+    );
     pushLimited(
       events,
       {
@@ -754,7 +751,9 @@ function collectEvents(
           WHERE profile_id = ?${substanceBounds.clause}
        )
        SELECT date, SUM(units) AS count,
-              GROUP_CONCAT(substance || '::' || units, '||') AS items
+              json_group_array(
+                json_object('key', substance, 'count', units)
+              ) AS items
          FROM substance_rows
         GROUP BY date
         ORDER BY date DESC
@@ -770,16 +769,11 @@ function collectEvents(
       perTableLimit
     ) as { date: string; count: number; items: string | null }[];
   for (const day of substanceDays) {
-    const items = (day.items ?? "")
-      .split("||")
-      .filter(Boolean)
-      .map((pair) => {
-        const split = pair.lastIndexOf("::");
-        return {
-          key: split < 0 ? pair : pair.slice(0, split),
-          count: split < 0 ? 0 : Number(pair.slice(split + 2)),
-        };
-      });
+    const items = (
+      JSON.parse(day.items ?? "[]") as { key: string; count: number }[]
+    ).sort((left, right) =>
+      substanceDef(left.key).label.localeCompare(substanceDef(right.key).label)
+    );
     pushLimited(
       events,
       {
