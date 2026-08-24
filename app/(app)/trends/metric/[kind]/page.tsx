@@ -841,89 +841,96 @@ function PeriodStatsCard({
           <article
             key={s.label}
             data-testid={`period-stat-${s.days}`}
-            className={`min-w-0 px-4 py-4 sm:px-5 ${periodItemBorders(
+            className={`min-w-0 ${periodItemBorders(
               i,
               periodGridCols(stats.length),
               desktopSidebar
             )}`}
           >
-            <div className="flex min-w-0 items-start justify-between gap-3">
-              <span className="inline-flex rounded-full bg-brand-50 px-2.5 py-1 text-xs font-semibold text-brand-700 dark:bg-brand-950/70 dark:text-brand-300">
-                {windowLabel(s)}
-              </span>
-              <span
-                data-testid={`period-readings-${s.days}`}
-                className="min-w-0 text-right text-xs leading-5 text-slate-500 dark:text-slate-400"
-              >
-                {s.count === 0
-                  ? "No readings"
-                  : `${s.count} reading${s.count === 1 ? "" : "s"}${
-                      coverage(s) ? ` · ${coverage(s)}` : ""
-                    }`}
-              </span>
-            </div>
+            <div
+              className="card-gutter-standard py-4"
+              data-card-delegated-cell="period-stat"
+            >
+              <div className="flex min-w-0 items-start justify-between gap-3">
+                <span className="inline-flex rounded-full bg-brand-50 px-2.5 py-1 text-xs font-semibold text-brand-700 dark:bg-brand-950/70 dark:text-brand-300">
+                  {windowLabel(s)}
+                </span>
+                <span
+                  data-testid={`period-readings-${s.days}`}
+                  className="min-w-0 text-right text-xs leading-5 text-slate-500 dark:text-slate-400"
+                >
+                  {s.count === 0
+                    ? "No readings"
+                    : `${s.count} reading${s.count === 1 ? "" : "s"}${
+                        coverage(s) ? ` · ${coverage(s)}` : ""
+                      }`}
+                </span>
+              </div>
 
-            {s.count === 0 ? (
-              <p className="mt-5 text-sm text-slate-500 dark:text-slate-400">
-                Add a reading from a completed day to see an average, range, and
-                change.
-              </p>
-            ) : s.dayOne ? (
-              /* Day one: the figure is TODAY's reading, not an average, so it
+              {s.count === 0 ? (
+                <p className="mt-5 text-sm text-slate-500 dark:text-slate-400">
+                  Add a reading from a completed day to see an average, range,
+                  and change.
+                </p>
+              ) : s.dayOne ? (
+                /* Day one: the figure is TODAY's reading, not an average, so it
                  carries its own label and its own test id — an average and a
                  single in-progress reading must never be addressable as the
                  same thing. Range and Change are omitted: over one reading they
                  are v–v and +0, which reads as information and is not. */
-              <div className="mt-4">
-                <div
-                  data-testid={`period-today-reading-${s.days}`}
-                  className="text-3xl font-semibold leading-none tracking-tight tabular-nums text-slate-900 xl:text-2xl dark:text-slate-100"
-                >
-                  {withUnit(s.avg)}
-                </div>
-                <div className="mt-1 section-label">Today&rsquo;s reading</div>
-              </div>
-            ) : (
-              <div
-                className={
-                  desktopSidebar
-                    ? "xl:mt-4 xl:flex xl:items-end xl:gap-4"
-                    : undefined
-                }
-              >
-                <div className="mt-4 xl:mt-0 xl:shrink-0">
+                <div className="mt-4">
                   <div
-                    data-testid={`period-average-${s.days}`}
+                    data-testid={`period-today-reading-${s.days}`}
                     className="text-3xl font-semibold leading-none tracking-tight tabular-nums text-slate-900 xl:text-2xl dark:text-slate-100"
                   >
                     {withUnit(s.avg)}
                   </div>
-                  <div className="mt-1 section-label">Average</div>
+                  <div className="mt-1 section-label">
+                    Today&rsquo;s reading
+                  </div>
                 </div>
+              ) : (
+                <div
+                  className={
+                    desktopSidebar
+                      ? "xl:mt-4 xl:flex xl:items-end xl:gap-4"
+                      : undefined
+                  }
+                >
+                  <div className="mt-4 xl:mt-0 xl:shrink-0">
+                    <div
+                      data-testid={`period-average-${s.days}`}
+                      className="text-3xl font-semibold leading-none tracking-tight tabular-nums text-slate-900 xl:text-2xl dark:text-slate-100"
+                    >
+                      {withUnit(s.avg)}
+                    </div>
+                    <div className="mt-1 section-label">Average</div>
+                  </div>
 
-                <dl className="mt-4 grid min-w-0 flex-1 grid-cols-3 divide-x divide-black/10 rounded-lg bg-slate-50/80 py-2.5 xl:mt-0 dark:divide-white/10 dark:bg-ink-900/55">
-                  <div className="min-w-0 px-2.5">
-                    <dt className="section-label">Latest</dt>
-                    <dd className="mt-0.5 whitespace-nowrap text-sm font-semibold tabular-nums text-slate-800 dark:text-slate-100">
-                      {value(s.latest)}
-                    </dd>
-                  </div>
-                  <div className="min-w-0 px-2.5">
-                    <dt className="section-label">Range</dt>
-                    <dd className="mt-0.5 whitespace-nowrap text-sm font-semibold tabular-nums text-slate-800 dark:text-slate-100">
-                      {value(s.min)}–{value(s.max)}
-                    </dd>
-                  </div>
-                  <div className="min-w-0 px-2.5">
-                    <dt className="section-label">Change</dt>
-                    <dd className="mt-0.5 whitespace-nowrap text-sm font-semibold tabular-nums text-slate-800 dark:text-slate-100">
-                      {s.delta != null && s.delta > 0 ? "+" : ""}
-                      {value(s.delta)}
-                    </dd>
-                  </div>
-                </dl>
-              </div>
-            )}
+                  <dl className="mt-4 grid min-w-0 flex-1 grid-cols-3 divide-x divide-black/10 rounded-lg bg-slate-50/80 py-2.5 xl:mt-0 dark:divide-white/10 dark:bg-ink-900/55">
+                    <div className="min-w-0 px-2.5">
+                      <dt className="section-label">Latest</dt>
+                      <dd className="mt-0.5 whitespace-nowrap text-sm font-semibold tabular-nums text-slate-800 dark:text-slate-100">
+                        {value(s.latest)}
+                      </dd>
+                    </div>
+                    <div className="min-w-0 px-2.5">
+                      <dt className="section-label">Range</dt>
+                      <dd className="mt-0.5 whitespace-nowrap text-sm font-semibold tabular-nums text-slate-800 dark:text-slate-100">
+                        {value(s.min)}–{value(s.max)}
+                      </dd>
+                    </div>
+                    <div className="min-w-0 px-2.5">
+                      <dt className="section-label">Change</dt>
+                      <dd className="mt-0.5 whitespace-nowrap text-sm font-semibold tabular-nums text-slate-800 dark:text-slate-100">
+                        {s.delta != null && s.delta > 0 ? "+" : ""}
+                        {value(s.delta)}
+                      </dd>
+                    </div>
+                  </dl>
+                </div>
+              )}
+            </div>
           </article>
         ))}
       </div>

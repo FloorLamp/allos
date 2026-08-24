@@ -43,6 +43,14 @@ const ADOPTERS: readonly Anchor[] = [
     ownerNeedle: 'data-testid="metric-period-stats"',
   },
   {
+    site: "period-stats",
+    file: "app/(app)/trends/metric/[kind]/page.tsx",
+    needle: 'data-card-delegated-cell="period-stat"',
+    count: 1,
+    token: "card-gutter-standard",
+    ownerNeedle: 'data-testid="metric-period-stats"',
+  },
+  {
     site: "metric-readings",
     file: "components/MetricReadingsTable.tsx",
     needle: 'data-testid="metric-readings"',
@@ -215,6 +223,27 @@ function literalClassName(tag: string): string {
   return match[1];
 }
 
+function classTagSpansWithin(
+  source: string,
+  start: number,
+  end: number
+): TagSpan[] {
+  const spans = new Map<number, TagSpan>();
+  for (const match of source.slice(start, end).matchAll(/className\s*=/g)) {
+    const at = start + match.index;
+    const tagStart = source.lastIndexOf("<", at);
+    if (tagStart >= start) spans.set(tagStart, tagSpanAt(source, tagStart));
+  }
+  return [...spans.values()];
+}
+
+function horizontalPaddingTokens(tag: string): string[] {
+  const className = tag.slice(tag.indexOf("className="));
+  return [...className.matchAll(/["'`]([^"'`]*)["'`]/g)]
+    .flatMap((match) => match[1].split(/\s+/))
+    .filter((token) => isPadding(token, true));
+}
+
 function literalTokenCount(source: string, token: Token): number {
   let count = 0;
   for (const match of source.matchAll(/className\s*=\s*"([^"]*)"/g)) {
@@ -371,6 +400,38 @@ function contractProblems(root: string, adopters: readonly Anchor[]): string[] {
         `${parent.site}: delegated card has no registered gutter carrier`
       );
     }
+
+    const source = byFile.get(parent.file);
+    if (!source) continue;
+    const carrierRanges = adopters
+      .filter(
+        (entry) =>
+          entry.site === parent.site &&
+          entry.ownerNeedle === parent.needle &&
+          !entry.viaComponent
+      )
+      .flatMap((entry) =>
+        openingTagSpansWith(source, entry.needle).map((tag) =>
+          elementRange(source, tag)
+        )
+      );
+    for (const parentTag of openingTagSpansWith(source, parent.needle)) {
+      const [start, end] = elementRange(source, parentTag);
+      for (const tag of classTagSpansWithin(source, start, end)) {
+        const horizontal = horizontalPaddingTokens(tag.text);
+        if (
+          horizontal.length > 0 &&
+          !carrierRanges.some(
+            ([carrierStart, carrierEnd]) =>
+              tag.start >= carrierStart && tag.end <= carrierEnd
+          )
+        ) {
+          problems.push(
+            `${parent.file}: ${parent.needle} has an unregistered horizontal-padding carrier: ${horizontal.join(" ")}`
+          );
+        }
+      }
+    }
   }
 
   const p0 = files.flatMap((entry) =>
@@ -448,6 +509,26 @@ describe("delegated card gutter contract (#3507)", () => {
     return contractProblems(root, adopters);
   }
 
+  function periodStatsProblems(source: string) {
+    const root = makeTmpDir("card-gutter-period-stats");
+    fs.mkdirSync(path.join(root, "app/(app)/protocols"), { recursive: true });
+    fs.mkdirSync(path.join(root, "app/(app)/trends/metric/[kind]"), {
+      recursive: true,
+    });
+    fs.writeFileSync(
+      path.join(root, PROTOCOL_P0.file),
+      `<button className="${PROTOCOL_P0.className}" />`
+    );
+    fs.writeFileSync(
+      path.join(root, "app/(app)/trends/metric/[kind]/page.tsx"),
+      source
+    );
+    return contractProblems(
+      root,
+      ADOPTERS.filter((entry) => entry.site === "period-stats")
+    );
+  }
+
   it("fails closed on the mutations that defeated the former expression scan", () => {
     const cases: ReadonlyArray<readonly [string, string, RegExp]> = [
       [
@@ -517,6 +598,53 @@ describe("delegated card gutter contract (#3507)", () => {
         [parent, carrier]
       ).join("\n")
     ).toMatch(/outside its .* card/);
+    for (const wrapper of [
+      '<div className="px-8">',
+      '<div><div className="md:ps-8">',
+    ]) {
+      const closes = wrapper.startsWith("<div><div")
+        ? "</div></div>"
+        : "</div>";
+      expect(
+        fixtureProblems(
+          `<section data-testid="parent" className="card card-delegated">${wrapper}<div data-testid="carrier" className="card-gutter-standard" />${closes}</section>`,
+          [parent, carrier]
+        ).join("\n")
+      ).toMatch(/unregistered horizontal-padding carrier/);
+    }
+    expect(
+      fixtureProblems(
+        '<section data-testid="parent" className="card card-delegated"><div data-testid="carrier" className="card-gutter-standard"><span className="px-2.5" /></div></section>',
+        [parent, carrier]
+      )
+    ).toEqual([]);
+  });
+
+  it("catches the exact live PeriodStatsCard carrier and wrapper regressions", () => {
+    const live = fs.readFileSync(
+      path.join(REPO, "app/(app)/trends/metric/[kind]/page.tsx"),
+      "utf8"
+    );
+    expect(
+      periodStatsProblems(
+        live
+          .replace(
+            'className="card-gutter-standard py-4"',
+            'className="px-4 py-4 sm:px-5"'
+          )
+          .replace('data-card-delegated-cell="period-stat"', "")
+      ).join("\n")
+    ).toMatch(/unregistered horizontal-padding carrier/);
+
+    const header = openingTagSpansWith(
+      live,
+      'data-testid="metric-period-stats-header"'
+    )[0];
+    const [start, end] = elementRange(live, header);
+    const wrapped = `${live.slice(0, start)}<div className="px-8">${live.slice(start, end)}</div>${live.slice(end)}`;
+    expect(periodStatsProblems(wrapped).join("\n")).toMatch(
+      /unregistered horizontal-padding carrier/
+    );
   });
 
   it("requires every registered delegated parent to own a registered carrier", () => {
