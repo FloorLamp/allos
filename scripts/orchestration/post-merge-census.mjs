@@ -9,6 +9,7 @@
 
 import { execFileSync, spawnSync } from "node:child_process";
 import fs from "node:fs";
+import os from "node:os";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
 
@@ -22,6 +23,7 @@ const SHARED_APP_FILES = new Set([
   "app/(app)/layout.tsx",
   "app/(app)/not-found.tsx",
 ]);
+const SCRATCH_PREFIX = "allos-post-merge-census-";
 
 function fail(message) {
   throw new Error(message);
@@ -76,6 +78,19 @@ function isRoutePage(file) {
 function prefixHasRoute(prefix, routes) {
   return routes.some(
     (route) => route === prefix || route.startsWith(`${prefix}/`)
+  );
+}
+
+function isKnownNonRuntime(file) {
+  return (
+    file.endsWith(".md") ||
+    file.startsWith(".claude/") ||
+    file.startsWith(".github/") ||
+    file.startsWith("docs/") ||
+    file.startsWith("e2e/") ||
+    file.startsWith("lib/__db_tests__/") ||
+    file.startsWith("lib/__tests__/") ||
+    file.startsWith("scripts/orchestration/")
   );
 }
 
@@ -152,6 +167,13 @@ export function planPostMergeCensus(changes, routes) {
       if (file.startsWith("app/")) {
         fail(`unknown app path shape needs a manual census plan: ${file}`);
       }
+      if (isKnownNonRuntime(file)) continue;
+
+      // No import graph backs this mapping. A shared runtime file can reach any
+      // surface, and ignoring it merely because another path supplied a prefix
+      // turns a mixed diff into a false scoped claim.
+      mappedFiles++;
+      fullReasons.add("unmapped runtime/shared files changed");
     }
   }
 
@@ -197,16 +219,28 @@ function usage() {
   );
 }
 
+function makeOwnedScratchDb() {
+  const dir = fs.mkdtempSync(path.join(os.tmpdir(), SCRATCH_PREFIX));
+  return { dir, dbPath: path.join(dir, "allos.db") };
+}
+
+function removeOwnedScratch(dir) {
+  const resolved = path.resolve(dir);
+  if (
+    path.dirname(resolved) !== path.resolve(os.tmpdir()) ||
+    !path.basename(resolved).startsWith(SCRATCH_PREFIX)
+  ) {
+    fail(`refusing to clean unowned scratch directory: ${dir}`);
+  }
+  fs.rmSync(resolved, { recursive: true, force: true });
+}
+
 function main(argv) {
   const run = argv.includes("--run");
   const refs = argv.filter((arg) => arg !== "--run");
   if (refs.length < 1 || refs.length > 2) fail(usage());
   const [before, after = "HEAD"] = refs;
-  const repoRoot = path.resolve(
-    path.dirname(fileURLToPath(import.meta.url)),
-    "..",
-    ".."
-  );
+  const repoRoot = process.cwd();
   const routes = enumerateCensusRoutes(repoRoot);
   const changes = gitChanges(repoRoot, before, after);
   const plan = planPostMergeCensus(changes, routes);
@@ -221,20 +255,36 @@ function main(argv) {
   if (!run) {
     const prefix = plan.mode === "scoped" ? `UX_ROUTES=${scope} ` : "";
     console.log(`${prefix}node scripts/ux-walkthrough.mjs --serve pages`);
-    return;
+    return 0;
   }
 
-  const env = {
-    ...process.env,
-    UX_ROUTES: plan.mode === "scoped" ? scope : "",
-  };
-  const result = spawnSync(
-    process.execPath,
-    [path.join(repoRoot, "scripts", "ux-walkthrough.mjs"), "--serve", "pages"],
-    { cwd: repoRoot, env, stdio: "inherit" }
-  );
-  if (result.error) fail(`could not start the census: ${result.error.message}`);
-  if (result.status !== 0) process.exit(result.status ?? 1);
+  // This wrapper owns the database lifecycle. The harness's historical default
+  // is one fixed /tmp file; after one seeded run, every later seed can skip that
+  // populated DB while run.json still labels the run UX_SEED=1. A fresh directory
+  // per invocation also contains SQLite's sidecars and gives cleanup one exact,
+  // validated target.
+  const scratch = makeOwnedScratchDb();
+  try {
+    const env = {
+      ...process.env,
+      ALLOS_DB_PATH: scratch.dbPath,
+      UX_ROUTES: plan.mode === "scoped" ? scope : "",
+    };
+    const result = spawnSync(
+      process.execPath,
+      [
+        path.join(repoRoot, "scripts", "ux-walkthrough.mjs"),
+        "--serve",
+        "pages",
+      ],
+      { cwd: repoRoot, env, stdio: "inherit" }
+    );
+    if (result.error)
+      fail(`could not start the census: ${result.error.message}`);
+    return result.status ?? 1;
+  } finally {
+    removeOwnedScratch(scratch.dir);
+  }
 }
 
 const invoked = process.argv[1]
@@ -242,9 +292,10 @@ const invoked = process.argv[1]
   : false;
 if (invoked) {
   try {
-    main(process.argv.slice(2));
+    const status = main(process.argv.slice(2));
+    if (status !== 0) process.exitCode = status;
   } catch (error) {
     console.error(`post-merge census: ${error.message}`);
-    process.exit(2);
+    process.exitCode = 2;
   }
 }

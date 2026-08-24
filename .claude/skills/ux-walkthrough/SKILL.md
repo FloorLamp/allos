@@ -370,7 +370,9 @@ tree. A change under `components/**`, or in shared app chrome such as a layout
 or `app/globals.css`, runs the whole route set: there is no import-graph coverage
 that could defend a narrower claim. A renamed/deleted route, an unknown `app/`
 shape, or a diff with no censused UI target stops loudly for a manual plan.
-Run without `--run` to print the planned scope and harness command only.
+Unmapped runtime/shared files also force a full run. For `--run`, the wrapper
+gives the harness a unique owned scratch DB and removes it afterward, so repeated
+seeded runs cannot reuse old data. Run without `--run` to print the plan only.
 
 The target vocabulary the audits established (use it when filing from a run):
 first data inside one viewport-height; no standing rare-cadence entry forms
