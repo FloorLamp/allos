@@ -48,9 +48,11 @@ import {
   foodServingInverseKey,
   foodServingToastKey,
   beginFoodServingAdd,
+  beginFoodServingNonAddMutation,
   dropFoodServingAdd,
   emptyFoodServingBurst,
-  invalidateFoodServingBurst,
+  finishFoodServingNonAddMutation,
+  requestFoodServingTruth,
   settleFoodServingAdd,
   type FoodServingAddTap,
   type FoodServingBurstSettlement,
@@ -329,9 +331,11 @@ export default function FoodLogBar({
     mealTouched: boolean;
   } | null>(null);
   const [saving, setSaving] = useState(false);
+  const correctionUiGeneration = useRef(0);
   // The serving whose row-scoped removal is in flight (#1963), or null. An id, so the
   // one row the user named is the only one that dims.
   const [removingId, setRemovingId] = useState<number | null>(null);
+  const removalUiGeneration = useRef(0);
   // Which serving's ⋯ menu is open (#1488 row-action convention). Ids, not indexes.
   const [openMenuId, setOpenMenuId] = useState<number | null>(null);
   const toast = useToast();
@@ -419,6 +423,9 @@ export default function FoodLogBar({
   // are deliberately not ordered or combined here; the final response triggers
   // one current snapshot below.
   const servingBursts = useRef(new Map<string, FoodServingBurstState>());
+  const deferredServingTruth = useRef(
+    new Map<string, { date: string; slug: string }>()
+  );
   const toastProfileScope = useToastProfileScope();
   const receiptProfileScope =
     toastProfileScope?.profileId === activeProfileId ? toastProfileScope : null;
@@ -705,7 +712,17 @@ export default function FoodLogBar({
       servingBursts.current.get(receiptKey) ?? emptyFoodServingBurst();
     // A current add burst owns the final read after its last response. Reading
     // before that would snapshot only a prefix of its writes.
-    if (captured.pending.size > 0) return;
+    if (captured.pending.size > 0) {
+      deferredServingTruth.current.set(receiptKey, { date, slug });
+      return;
+    }
+    const requested = requestFoodServingTruth(captured);
+    servingBursts.current.set(receiptKey, requested.state);
+    if (!requested.readNow) {
+      deferredServingTruth.current.set(receiptKey, { date, slug });
+      return;
+    }
+    deferredServingTruth.current.delete(receiptKey);
     const form = new FormData();
     form.set("group_key", slug);
     form.set("date", date);
@@ -722,18 +739,12 @@ export default function FoodLogBar({
       activeProfileRef.current === activeProfileId &&
       current.epoch === captured.epoch &&
       current.nextTapId === captured.nextTapId &&
+      current.truthRevision === captured.truthRevision &&
       current.pending.size === 0 &&
+      current.nonAddPending.size === 0 &&
       truth.ok
     )
       applyServingTruth(date, slug, truth);
-  }
-
-  function invalidateServingBurst(receiptKey: string): number {
-    const next = invalidateFoodServingBurst(
-      servingBursts.current.get(receiptKey) ?? emptyFoodServingBurst()
-    );
-    servingBursts.current.set(receiptKey, next);
-    return next.epoch;
   }
 
   function isServingMutationCurrent(receiptKey: string, epoch: number) {
@@ -747,10 +758,29 @@ export default function FoodLogBar({
   function beginServingMutations(receiptKeys: readonly string[]) {
     const epochs = new Map<string, number>();
     for (const key of new Set(receiptKeys)) {
-      epochs.set(key, invalidateServingBurst(key));
+      const next = beginFoodServingNonAddMutation(
+        servingBursts.current.get(key) ?? emptyFoodServingBurst()
+      );
+      servingBursts.current.set(key, next);
+      epochs.set(key, next.epoch);
       dismissToast(key);
     }
     return epochs;
+  }
+
+  function finishServingMutations(epochs: ReadonlyMap<string, number>) {
+    for (const [key, epoch] of epochs) {
+      const finished = finishFoodServingNonAddMutation(
+        servingBursts.current.get(key) ?? emptyFoodServingBurst(),
+        epoch
+      );
+      servingBursts.current.set(key, finished.state);
+      if (!finished.refreshDeferredTruth) continue;
+      const deferred = deferredServingTruth.current.get(key);
+      deferredServingTruth.current.delete(key);
+      if (deferred)
+        void reconcileServingTruthIfIdle(key, deferred.date, deferred.slug);
+    }
   }
 
   function areServingMutationsCurrent(epochs: ReadonlyMap<string, number>) {
@@ -766,6 +796,8 @@ export default function FoodLogBar({
   const minCorrectionDay = days[days.length - 1]?.date ?? today;
 
   function openCorrection(event: FoodLogEvent) {
+    correctionUiGeneration.current += 1;
+    setSaving(false);
     setEditing(event);
     setDraft({
       groupKey: event.groupKey,
@@ -786,6 +818,13 @@ export default function FoodLogBar({
       },
       mealTouched: false,
     });
+  }
+
+  function closeCorrection() {
+    correctionUiGeneration.current += 1;
+    setSaving(false);
+    setEditing(null);
+    setDraft(null);
   }
 
   // The day + eating-time pair moved (via the shared control, which owns the pair
@@ -833,6 +872,7 @@ export default function FoodLogBar({
       foodServingToastKey(receiptProfileId, editing.date, editing.groupKey),
       foodServingToastKey(receiptProfileId, draft.when.date, draft.groupKey),
     ]);
+    const correctionUi = ++correctionUiGeneration.current;
     setSaving(true);
     const fd = new FormData();
     fd.set("event_id", String(editing.id));
@@ -857,20 +897,22 @@ export default function FoodLogBar({
     try {
       outcome = await updateFoodLogEvent(fd);
     } catch {
-      setSaving(false);
-      if (areServingMutationsCurrent(correctionEpochs))
+      const current = areServingMutationsCurrent(correctionEpochs);
+      finishServingMutations(correctionEpochs);
+      if (correctionUiGeneration.current === correctionUi) setSaving(false);
+      if (current)
         toast("Couldn't correct that serving — try again.", { tone: "error" });
       return;
     }
-    setSaving(false);
+    const current = areServingMutationsCurrent(correctionEpochs);
+    finishServingMutations(correctionEpochs);
+    if (correctionUiGeneration.current === correctionUi) setSaving(false);
     if (!outcome.ok) {
-      if (areServingMutationsCurrent(correctionEpochs))
-        toast(outcome.error, { tone: "error" });
+      if (current) toast(outcome.error, { tone: "error" });
       return;
     }
-    setEditing(null);
-    setDraft(null);
-    if (!areServingMutationsCurrent(correctionEpochs)) {
+    if (correctionUiGeneration.current === correctionUi) closeCorrection();
+    if (!current) {
       void reconcileServingTruthIfIdle(
         foodServingToastKey(receiptProfileId, editing.date, editing.groupKey),
         editing.date,
@@ -921,6 +963,7 @@ export default function FoodLogBar({
       event.groupKey
     );
     const removalEpochs = beginServingMutations([mutationReceiptKey]);
+    const removalUi = ++removalUiGeneration.current;
     setRemovingId(event.id);
     const fd = new FormData();
     fd.set("event_id", String(event.id));
@@ -928,8 +971,10 @@ export default function FoodLogBar({
     try {
       outcome = await deleteFoodLogEvent(fd);
     } catch (err) {
-      setRemovingId(null);
-      if (areServingMutationsCurrent(removalEpochs))
+      const current = areServingMutationsCurrent(removalEpochs);
+      finishServingMutations(removalEpochs);
+      if (removalUiGeneration.current === removalUi) setRemovingId(null);
+      if (current)
         toast(
           shouldQueueOffline(navigator.onLine !== false, err)
             ? "You're offline — removing a serving needs a connection."
@@ -938,13 +983,14 @@ export default function FoodLogBar({
         );
       return;
     }
-    setRemovingId(null);
+    const current = areServingMutationsCurrent(removalEpochs);
+    finishServingMutations(removalEpochs);
+    if (removalUiGeneration.current === removalUi) setRemovingId(null);
     if (!outcome.ok) {
-      if (areServingMutationsCurrent(removalEpochs))
-        toast(outcome.error, { tone: "error" });
+      if (current) toast(outcome.error, { tone: "error" });
       return;
     }
-    if (!areServingMutationsCurrent(removalEpochs)) {
+    if (!current) {
       void reconcileServingTruthIfIdle(
         mutationReceiptKey,
         event.date,
@@ -977,8 +1023,24 @@ export default function FoodLogBar({
         onClick: () => {
           void (async () => {
             const restoreEpochs = beginServingMutations([receiptKey]);
-            const restored = await undoDelete(undoId);
-            if (!areServingMutationsCurrent(restoreEpochs)) {
+            let restored: Awaited<ReturnType<typeof undoDelete>>;
+            try {
+              restored = await undoDelete(undoId);
+            } catch {
+              const current = areServingMutationsCurrent(restoreEpochs);
+              finishServingMutations(restoreEpochs);
+              if (current)
+                toast("Couldn’t undo — try again.", {
+                  tone: "error",
+                  key: receiptKey,
+                  profileId: receiptProfileScope.profileId,
+                  profileToken: receiptProfileScope.token,
+                });
+              return;
+            }
+            const current = areServingMutationsCurrent(restoreEpochs);
+            finishServingMutations(restoreEpochs);
+            if (!current) {
               void reconcileServingTruthIfIdle(
                 receiptKey,
                 event.date,
@@ -1084,10 +1146,11 @@ export default function FoodLogBar({
     );
     const receiptKey = foodServingToastKey(receiptProfileId, activeDate, slug);
     let mutationEpoch: number;
+    let nonAddEpochs: ReadonlyMap<string, number> | null = null;
     if (delta === -1) {
-      mutationEpoch = invalidateServingBurst(receiptKey);
+      nonAddEpochs = beginServingMutations([receiptKey]);
+      mutationEpoch = nonAddEpochs.get(receiptKey)!;
       onMutationStarted?.(mutationEpoch);
-      dismissToast(receiptKey);
     }
     const before: ServingCounts = {
       day: projectionRef.current.countsByDate[activeDate]?.[slug] ?? 0,
@@ -1167,6 +1230,7 @@ export default function FoodLogBar({
     const addSettlementBox: { value: FoodServingBurstSettlement | null } = {
       value: null,
     };
+    let refreshRefusedInverseTruth = false;
     const settleAddBurst = (
       outcome: { ok: true; eventId: number } | { ok: false }
     ): FoodServingBurstSettlement | null => {
@@ -1341,20 +1405,15 @@ export default function FoodLogBar({
           reconcileAfterStaleMutation();
           return { kind: "keep" };
         }
-        // Roll back this inverse and adopt the core's current authoritative total
-        // when its guard refuses.
+        // A guarded inverse refusal means some other writer changed this coordinate.
+        // Its action result cannot always name every meal slot, so keep the optimistic
+        // projection only until one fresh day + meal truth read completes below.
         if (
           (expectedServings != null || expectedEventId != null) &&
           outcome.servings != null
         ) {
-          const authoritative: ServingCounts = {
-            day: outcome.servings,
-            meal:
-              outcome.mealSlot === filingSlot && outcome.mealServings != null
-                ? outcome.mealServings
-                : before.meal,
-          };
-          return { kind: "adopt", value: authoritative };
+          refreshRefusedInverseTruth = true;
+          return { kind: "keep" };
         }
         if (expectedServings == null && expectedEventId == null) {
           toast(outcome.error || "Couldn't save that serving — try again.", {
@@ -1392,6 +1451,19 @@ export default function FoodLogBar({
         return { kind: "rollback" };
       },
     });
+
+    if (nonAddEpochs) finishServingMutations(nonAddEpochs);
+    if (refreshRefusedInverseTruth && isCurrentMutation())
+      await reconcileServingTruthIfIdle(receiptKey, activeDate, slug);
+    if (delta === 1) {
+      const deferred = deferredServingTruth.current.get(receiptKey);
+      if (deferred)
+        await reconcileServingTruthIfIdle(
+          receiptKey,
+          deferred.date,
+          deferred.slug
+        );
+    }
 
     const addSettlement = addSettlementBox.value;
     if (
@@ -2299,10 +2371,7 @@ export default function FoodLogBar({
       {editing && draft && (
         <ModalShell
           title="Correct this serving"
-          onClose={() => {
-            setEditing(null);
-            setDraft(null);
-          }}
+          onClose={closeCorrection}
           size="sm"
         >
           <div data-testid="food-correct-modal" className="space-y-3">
@@ -2393,10 +2462,7 @@ export default function FoodLogBar({
               type="button"
               data-testid="food-correct-cancel"
               className="btn-ghost"
-              onClick={() => {
-                setEditing(null);
-                setDraft(null);
-              }}
+              onClick={closeCorrection}
             >
               Cancel
             </button>

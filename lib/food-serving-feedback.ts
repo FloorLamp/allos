@@ -46,6 +46,11 @@ export interface FoodServingBurstState {
   pending: ReadonlyMap<number, FoodServingAddTap>;
   latestSuccessfulTap: FoodServingAddTap | null;
   latestSuccessfulEventId: number | null;
+  // Corrections, removals, and inverses do not occupy the add-pending map, but
+  // an authoritative read must still wait until their server action settles.
+  nonAddPending: ReadonlySet<number>;
+  truthDeferred: boolean;
+  truthRevision: number;
   successes: number;
   failures: number;
 }
@@ -74,6 +79,9 @@ export function emptyFoodServingBurst(
     pending: new Map(),
     latestSuccessfulTap: null,
     latestSuccessfulEventId: null,
+    nonAddPending: new Set(),
+    truthDeferred: false,
+    truthRevision: 0,
     successes: 0,
     failures: 0,
   };
@@ -157,7 +165,12 @@ export function settleFoodServingAdd(
       : undefined;
   const reportFailure = completed && failures > 0;
   const next = completed
-    ? emptyFoodServingBurst(state.epoch, state.nextTapId)
+    ? {
+        ...emptyFoodServingBurst(state.epoch, state.nextTapId),
+        nonAddPending: state.nonAddPending,
+        truthDeferred: state.truthDeferred,
+        truthRevision: state.truthRevision,
+      }
     : {
         ...state,
         pending,
@@ -185,7 +198,12 @@ export function dropFoodServingAdd(
   const pending = new Map(state.pending);
   pending.delete(tap.id);
   return pending.size === 0
-    ? emptyFoodServingBurst(state.epoch, state.nextTapId)
+    ? {
+        ...emptyFoodServingBurst(state.epoch, state.nextTapId),
+        nonAddPending: state.nonAddPending,
+        truthDeferred: state.truthDeferred,
+        truthRevision: state.truthRevision,
+      }
     : { ...state, pending };
 }
 
@@ -195,7 +213,52 @@ export function dropFoodServingAdd(
 export function invalidateFoodServingBurst(
   state: FoodServingBurstState
 ): FoodServingBurstState {
-  return emptyFoodServingBurst(state.epoch + 1, state.nextTapId);
+  return {
+    ...emptyFoodServingBurst(state.epoch + 1, state.nextTapId),
+    nonAddPending: state.nonAddPending,
+    truthDeferred: state.truthDeferred,
+    truthRevision: state.truthRevision,
+  };
+}
+
+export function beginFoodServingNonAddMutation(
+  state: FoodServingBurstState
+): FoodServingBurstState {
+  const invalidated = invalidateFoodServingBurst(state);
+  return {
+    ...invalidated,
+    nonAddPending: new Set(state.nonAddPending).add(invalidated.epoch),
+    truthRevision: state.truthRevision + 1,
+  };
+}
+
+export function requestFoodServingTruth(state: FoodServingBurstState): {
+  state: FoodServingBurstState;
+  readNow: boolean;
+} {
+  return state.nonAddPending.size > 0
+    ? { state: { ...state, truthDeferred: true }, readNow: false }
+    : { state, readNow: true };
+}
+
+export function finishFoodServingNonAddMutation(
+  state: FoodServingBurstState,
+  epoch: number
+): { state: FoodServingBurstState; refreshDeferredTruth: boolean } {
+  if (!state.nonAddPending.has(epoch))
+    return { state, refreshDeferredTruth: false };
+  const nonAddPending = new Set(state.nonAddPending);
+  nonAddPending.delete(epoch);
+  const complete = nonAddPending.size === 0;
+  return {
+    state: {
+      ...state,
+      nonAddPending,
+      truthDeferred: complete ? false : state.truthDeferred,
+      truthRevision: state.truthRevision + 1,
+    },
+    refreshDeferredTruth: complete && state.truthDeferred,
+  };
 }
 
 export function foodServingFeedback(

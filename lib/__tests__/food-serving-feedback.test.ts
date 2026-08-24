@@ -4,8 +4,11 @@ import {
   foodServingFeedback,
   foodServingInverseKey,
   beginFoodServingAdd,
+  beginFoodServingNonAddMutation,
   emptyFoodServingBurst,
+  finishFoodServingNonAddMutation,
   invalidateFoodServingBurst,
+  requestFoodServingTruth,
   settleFoodServingAdd,
 } from "@/lib/food-serving-feedback";
 import {
@@ -101,6 +104,76 @@ describe("foodServingFeedback", () => {
     expect(stale.accepted).toBe(false);
     expect(stale.completed).toBe(false);
     expect(stale.receipt).toBeUndefined();
+  });
+
+  it("defers truth read during correction or removal and releases it only for that mutation", () => {
+    const add = beginFoodServingAdd(
+      emptyFoodServingBurst(),
+      "morning",
+      "Morning"
+    );
+    const pending = beginFoodServingNonAddMutation(add.state);
+    const requested = requestFoodServingTruth(pending);
+
+    expect(requested.readNow).toBe(false);
+    expect(requested.state.truthDeferred).toBe(true);
+    expect(
+      settleFoodServingAdd(requested.state, add.tap, {
+        ok: true,
+        eventId: 11,
+      }).accepted
+    ).toBe(false);
+
+    const staleFinish = finishFoodServingNonAddMutation(
+      requested.state,
+      requested.state.epoch - 1
+    );
+    expect(staleFinish.refreshDeferredTruth).toBe(false);
+    expect(staleFinish.state.nonAddPending.size).toBe(1);
+
+    const finished = finishFoodServingNonAddMutation(
+      requested.state,
+      requested.state.epoch
+    );
+    expect(finished.refreshDeferredTruth).toBe(true);
+    expect(finished.state.nonAddPending.size).toBe(0);
+    expect(requestFoodServingTruth(finished.state).readNow).toBe(true);
+  });
+
+  it("keeps a correction token through a newer add and fences truth again at completion", () => {
+    const correction = beginFoodServingNonAddMutation(emptyFoodServingBurst());
+    const correctionEpoch = correction.epoch;
+    const add = beginFoodServingAdd(correction, "morning", "Morning");
+
+    expect(add.state.nonAddPending.has(correctionEpoch)).toBe(true);
+    expect(requestFoodServingTruth(add.state).readNow).toBe(false);
+
+    const completed = finishFoodServingNonAddMutation(
+      add.state,
+      correctionEpoch
+    );
+    expect(completed.state.epoch).toBe(add.state.epoch);
+    expect(completed.state.truthRevision).toBeGreaterThan(
+      add.state.truthRevision
+    );
+    expect(completed.state.nonAddPending.size).toBe(0);
+  });
+
+  it("waits for every overlapping non-add token before releasing deferred truth", () => {
+    const first = beginFoodServingNonAddMutation(emptyFoodServingBurst());
+    const second = beginFoodServingNonAddMutation(first);
+    const requested = requestFoodServingTruth(second).state;
+
+    const secondDone = finishFoodServingNonAddMutation(requested, second.epoch);
+    expect(secondDone.refreshDeferredTruth).toBe(false);
+    expect(secondDone.state.nonAddPending.has(first.epoch)).toBe(true);
+
+    const allDone = finishFoodServingNonAddMutation(
+      secondDone.state,
+      first.epoch
+    );
+    expect(allDone.refreshDeferredTruth).toBe(true);
+    expect(allDone.state.nonAddPending.size).toBe(0);
   });
 
   it("advances the mutation epoch for a later burst and keeps tap-ordered event identity", () => {

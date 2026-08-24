@@ -603,8 +603,8 @@ test("food serving taps settle, roll one cumulative Undo toast, and undo only th
     await expect(count).toHaveText("2");
 
     // A different client advances the same coordinate after this receipt is
-    // offered. The guarded inverse refuses, and its typed refusal repairs this
-    // stale tab to the core's current truth instead of the add render's old 2.
+    // offered. The guarded inverse refuses, and one fresh day + meal truth read
+    // repairs this stale tab instead of keeping the add render's old 2.
     await add.click();
     await expect(toast).toContainText(
       "3 servings of Cruciferous vegetables today"
