@@ -401,7 +401,7 @@ describe("compiled phone-only CSS proof (#3518)", { timeout: 60_000 }, () => {
 
   it("follows renamed and nested component prop bindings to JSX callsites", async () => {
     const candidate = (value: string) => `
-      declare function clsx(...values: unknown[]): string;
+      import { clsx as cx } from "uninstalled-class-helper";
       function Frame({
         classes: renamed,
         layout: { classes: nested },
@@ -412,7 +412,7 @@ describe("compiled phone-only CSS proof (#3518)", { timeout: 60_000 }, () => {
         return (
           <>
             <div className={renamed + " " + nested} />
-            <div className={clsx(renamed, nested)} />
+            <div className={cx(renamed, nested)} />
           </>
         );
       }
@@ -430,7 +430,7 @@ describe("compiled phone-only CSS proof (#3518)", { timeout: 60_000 }, () => {
 
   it("follows direct, renamed, and nested static map callback bindings", async () => {
     const candidate = (value: string) => `
-      declare function clsx(...values: unknown[]): string;
+      import { clsx as mergeTokens } from "uninstalled-class-helper";
       const direct = ["${value}"];
       const records = [{
         classes: "${value}",
@@ -439,11 +439,11 @@ describe("compiled phone-only CSS proof (#3518)", { timeout: 60_000 }, () => {
       export const Candidate = () => (
         <>
           {direct.map((renamed) => <div className={renamed} />)}
-          {direct.map((renamed) => <div className={clsx(renamed)} />)}
+          {direct.map((renamed) => <div className={mergeTokens(renamed)} />)}
           {records.map(({ classes: renamed, nested: { classes: nested } }) => (
             <>
               <div className={renamed + " " + nested} />
-              <div className={clsx(renamed, nested)} />
+              <div className={mergeTokens(renamed, nested)} />
             </>
           ))}
         </>
@@ -459,9 +459,9 @@ describe("compiled phone-only CSS proof (#3518)", { timeout: 60_000 }, () => {
 
   it("fails closed when a class-bearing component parameter has no caller", async () => {
     const root = makeProofRoot(`
-      declare function clsx(...values: unknown[]): string;
+      import { clsx as cx } from "uninstalled-class-helper";
       export function Candidate({ classes: renamed }: { classes: string }) {
-        return <div className={clsx(renamed)} />;
+        return <div className={cx(renamed)} />;
       }
     `);
 

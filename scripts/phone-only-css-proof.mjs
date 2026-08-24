@@ -618,10 +618,7 @@ function runtimeClassCandidates(root, label) {
     const callee = ts.isPropertyAccessExpression(call.expression)
       ? call.expression.name
       : call.expression;
-    return (
-      ts.isIdentifier(callee) &&
-      /^(?:c(?:lass(?:es|Names?)?|n)|clsx)$/i.test(callee.text)
-    );
+    return ts.isIdentifier(callee) && unresolvedPackageOperator(callee);
   };
 
   const staticMemberValues = (
