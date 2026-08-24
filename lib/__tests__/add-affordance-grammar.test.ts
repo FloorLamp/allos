@@ -1,6 +1,7 @@
 import fs from "node:fs";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
+import ts from "typescript";
 import { describe, expect, it } from "vitest";
 import {
   CREATE_VERB,
@@ -166,6 +167,69 @@ function mountHousings(name: string): {
   return { housings, mounts };
 }
 
+type TrainingCreateMount = { line: number; logGated: boolean };
+
+/**
+ * Read the actual TSX parent of every Training create mount. A text search can
+ * be counterfeited by leaving the expected expression in a comment or a dead
+ * sibling while mounting the button unconditionally; the TypeScript tree makes
+ * the gate a property of the mount itself.
+ */
+function trainingCreateMounts(source: string): TrainingCreateMount[] {
+  const file = ts.createSourceFile(
+    "app/(app)/training/page.tsx",
+    source,
+    ts.ScriptTarget.Latest,
+    true,
+    ts.ScriptKind.TSX
+  );
+  const mounts: TrainingCreateMount[] = [];
+
+  const isActiveLog = (node: ts.Expression): boolean => {
+    while (ts.isParenthesizedExpression(node)) node = node.expression;
+    if (
+      !ts.isBinaryExpression(node) ||
+      node.operatorToken.kind !== ts.SyntaxKind.EqualsEqualsEqualsToken
+    )
+      return false;
+    const matches = (left: ts.Expression, right: ts.Expression) =>
+      ts.isIdentifier(left) &&
+      left.text === "activeTab" &&
+      ts.isStringLiteral(right) &&
+      right.text === "log";
+    return matches(node.left, node.right) || matches(node.right, node.left);
+  };
+
+  const isLogGated = (mount: ts.JsxSelfClosingElement): boolean => {
+    let expression: ts.Expression = mount;
+    while (ts.isParenthesizedExpression(expression.parent))
+      expression = expression.parent;
+    const parent = expression.parent;
+    return (
+      ts.isBinaryExpression(parent) &&
+      parent.operatorToken.kind === ts.SyntaxKind.AmpersandAmpersandToken &&
+      parent.right === expression &&
+      isActiveLog(parent.left)
+    );
+  };
+
+  const visit = (node: ts.Node) => {
+    if (
+      ts.isJsxSelfClosingElement(node) &&
+      ts.isIdentifier(node.tagName) &&
+      node.tagName.text === "AddTrainingActivityButton"
+    ) {
+      mounts.push({
+        line: file.getLineAndCharacterOfPosition(node.getStart(file)).line + 1,
+        logGated: isLogGated(node),
+      });
+    }
+    ts.forEachChild(node, visit);
+  };
+  visit(file);
+  return mounts;
+}
+
 describe("the add affordance's grammar (#3486)", () => {
   const found = census();
 
@@ -252,10 +316,25 @@ describe("the add affordance's grammar (#3486)", () => {
       "app/(app)/training/page.tsx",
     ]);
     expect(housings).toEqual(["page-header", "page-header"]);
+    const pageSource = read("app/(app)/training/page.tsx");
+    const pageMounts = trainingCreateMounts(pageSource);
     expect(
-      read("app/(app)/training/page.tsx"),
-      "The tab-first header primary must remain confined to the Log tab; the mobile dock owns global logging"
-    ).toContain('activeTab === "log" && <AddTrainingActivityButton />');
+      pageMounts,
+      "The page-header primary must have exactly one mount and that mount itself must be gated by the parsed active Log tab"
+    ).toHaveLength(1);
+    expect(pageMounts.map((mount) => mount.logGated)).toEqual([true]);
+
+    // The exact escape this replaces: an unconditional mount plus the expected
+    // expression left in a JSX comment. A raw `toContain` sees the sentence;
+    // the TSX tree sees that the only live mount has no gate.
+    const hostile = pageSource.replace(
+      '{activeTab === "log" && <AddTrainingActivityButton />}',
+      '<AddTrainingActivityButton />\n            {/* activeTab === "log" && <AddTrainingActivityButton /> */}'
+    );
+    expect(hostile).not.toBe(pageSource);
+    expect(
+      trainingCreateMounts(hostile).map((mount) => mount.logGated)
+    ).toEqual([false]);
   });
 
   it("names every icon-only create for AT, because below `sm` it has no other name", () => {

@@ -287,6 +287,38 @@ test("Training Log houses its primary in the header and keeps secondary actions 
   );
 });
 
+test("Training header confines Add activity to the Log tab", async ({
+  page,
+}) => {
+  await page.setViewportSize({ width: 1280, height: 900 });
+  const addActivity = page.getByTestId("training-log-add-activity");
+  const tabs = [
+    { id: "overview", label: "Overview", present: false },
+    { id: "log", label: "Log", present: true },
+    { id: "analyze", label: "Analyze", present: false },
+    { id: "plan", label: "Plan", present: false },
+  ] as const;
+
+  for (const tab of tabs) {
+    await page.goto(`/training?tab=${tab.id}`);
+    await expect(
+      page.getByTestId("training-tabs").getByRole("tab", { name: tab.label })
+    ).toHaveAttribute("aria-selected", "true");
+    await expect(page.getByTestId("training-page-action")).toBeVisible();
+    if (tab.present) {
+      await expect(addActivity).toBeVisible();
+      await expect(addActivity).toHaveAccessibleName("Add activity");
+      await expect(
+        addActivity.locator(
+          'xpath=ancestor::*[@data-testid="training-page-action"][1]'
+        )
+      ).toHaveCount(1);
+    } else {
+      await expect(addActivity).toHaveCount(0);
+    }
+  }
+});
+
 test("edit mode surfaces the exercise's previous sessions (#188)", async ({
   page,
 }) => {
