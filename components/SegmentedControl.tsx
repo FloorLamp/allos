@@ -118,7 +118,10 @@ export default function SegmentedControl<T extends string | number>({
         const body = fill ? (
           <>
             {option.icon}
-            <span className="min-w-0 truncate" title={option.label}>
+            <span
+              className="min-w-0 truncate"
+              title={option.title ?? option.label}
+            >
               {option.label}
             </span>
           </>

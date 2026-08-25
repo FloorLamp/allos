@@ -4,8 +4,18 @@ import SegmentedControl from "@/components/SegmentedControl";
 
 describe("SegmentedControl fill mode (#3675)", () => {
   const options = [
-    { value: "train", label: "Train" },
-    { value: "consume", label: "A deliberately long Consume label" },
+    {
+      value: "train",
+      label: "Train",
+      accessibleLabel: undefined,
+      title: undefined,
+    },
+    {
+      value: "consume",
+      label: "A deliberately long Consume label",
+      accessibleLabel: "Consume, all recorded values are 0",
+      title: "All recorded values are 0",
+    },
   ] as const;
 
   it("owns a filling root and equal, truncating option boxes", () => {
@@ -24,12 +34,14 @@ describe("SegmentedControl fill mode (#3675)", () => {
     expect(group.className).not.toContain("inline-flex rounded-lg");
 
     for (const option of options) {
-      const button = screen.getByRole("button", { name: option.label });
+      const button = screen.getByRole("button", {
+        name: option.accessibleLabel ?? option.label,
+      });
       expect(button.className).toContain("min-w-0 flex-1");
       expect(button.className).not.toContain("shrink-0");
       const label = button.querySelector("span");
       expect(label?.className).toContain("truncate");
-      expect(label?.getAttribute("title")).toBe(option.label);
+      expect(label?.getAttribute("title")).toBe(option.title ?? option.label);
     }
   });
 
@@ -47,7 +59,9 @@ describe("SegmentedControl fill mode (#3675)", () => {
     expect(group.className).toContain("inline-flex");
     expect(group.className).not.toContain("flex w-full");
     for (const option of options) {
-      const button = screen.getByRole("button", { name: option.label });
+      const button = screen.getByRole("button", {
+        name: option.accessibleLabel ?? option.label,
+      });
       expect(button.className).toContain("shrink-0");
       expect(button.className).not.toContain("min-w-0 flex-1");
       expect(button.querySelector("span")).toBeNull();

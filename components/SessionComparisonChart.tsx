@@ -80,6 +80,7 @@ export default function SessionComparisonChart({
           onChange={setSelectedKey}
           ariaLabel="Comparison metric"
           testId={`${testIdPrefix}-metrics`}
+          fill
         />
       )}
 

@@ -77,6 +77,7 @@ export default function SessionTelemetryChart({
           value={selected.key}
           onChange={setSelectedKey}
           ariaLabel="Recorded metrics"
+          fill
         />
       ) : null}
       <div className="mt-3" data-testid="session-telemetry-chart">
