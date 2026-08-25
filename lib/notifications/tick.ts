@@ -1024,6 +1024,10 @@ export async function tickProfile(
   // past) and, by its presence, what tells the two apart. Attempts stay at two per
   // profile per day in either mode: re-checks re-evaluate a CONDITION, they never
   // re-attempt a delivery (#2121 item 3).
+  // Deliberately not travel-gated (#3685), like the weekly recap below: this is a
+  // summary of the day, not a claim that its configured minute was missed. Dynamic
+  // mode also has a floor and arrival deadline rather than one authoritative slot,
+  // so both modes keep their shared digest contract instead of forking on travel.
   if (getProfileSetting(profileId, DIGEST_MARKER_KEY) !== date) {
     try {
       const outcome = await runDigestTick(

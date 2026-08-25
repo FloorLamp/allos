@@ -122,28 +122,47 @@ export function occurredTwice(sw: TimezoneSwitch, p: LocalPosition): boolean {
   return comparePositions(r.landed, p) <= 0 && comparePositions(p, r.left) <= 0;
 }
 
-// EXCUSED: this profile-local slot never occurred, under ANY of the switches on
-// record. The word matters — "excused" is not "missed" and not "skipped" and not
-// "not due". It is a slot the calendar demanded and the planet refused, and it is
-// out of the day's adherence denominator for exactly that reason.
+// How many times this position occurred after the ordered switch history adjusts
+// the ordinary once-per-day wall clock. A forward crossing removes an occurrence;
+// a backward crossing adds one. Counting the whole trajectory matters: a quick
+// eastward switch can skip noon and a later westward switch can put noon back into
+// the same day. Treating the forward spans as a union would still call that real
+// noon impossible.
+function positionOccurrences(
+  switches: readonly TimezoneSwitch[],
+  p: LocalPosition
+): number {
+  let occurrences = 1;
+  for (const sw of switches) {
+    if (neverOccurred(sw, p)) occurrences -= 1;
+    else if (occurredTwice(sw, p)) occurrences += 1;
+  }
+  return occurrences;
+}
+
+// EXCUSED: this profile-local slot did not occur after the complete switch
+// trajectory is accounted for. The word matters — "excused" is not "missed" and
+// not "skipped" and not "not due". It is a slot the calendar demanded and the
+// planet refused, and it is out of the day's adherence denominator for exactly
+// that reason.
 export function isExcusedSlot(
   switches: readonly TimezoneSwitch[],
   day: string,
   minute: number
 ): boolean {
   const p = { day, minute };
-  return switches.some((sw) => neverOccurred(sw, p));
+  return positionOccurrences(switches, p) <= 0;
 }
 
-// The mirror predicate, for the westward pins: this slot's wall clock came round a
-// second time on this local day.
+// The mirror predicate, for the westward pins: after the complete trajectory this
+// slot's wall clock came round more than once on this local day.
 export function isRepeatedSlot(
   switches: readonly TimezoneSwitch[],
   day: string,
   minute: number
 ): boolean {
   const p = { day, minute };
-  return switches.some((sw) => occurredTwice(sw, p));
+  return positionOccurrences(switches, p) > 1;
 }
 
 // ---- Stored switch history ----

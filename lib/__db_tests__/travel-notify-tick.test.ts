@@ -46,6 +46,8 @@ import { isRepeatedSlot } from "@/lib/travel-timezone";
 
 const HONOLULU = "Pacific/Honolulu";
 const LOS_ANGELES = "America/Los_Angeles";
+const NEW_YORK = "America/New_York";
+const TOKYO = "Asia/Tokyo";
 const MIDDAY_MINUTE = 12 * 60;
 const DAY = "2026-06-17";
 
@@ -197,5 +199,23 @@ describe("travel excusal at the real notification tick", () => {
     expectThreeSlotMessages(sentTo(west.chatId));
     await tickProfile(west.receiver, "west", 5, Date.now());
     expectThreeSlotMessages(sentTo(west.chatId));
+  });
+
+  it("re-arms a skipped slot when a reverse switch makes it occur later that day", async () => {
+    const roundTrip = scenario("round-trip", NEW_YORK);
+    vi.setSystemTime(new Date("2026-05-01T14:00:00Z")); // New York 10:00
+    switchProfileTimezone(roundTrip.receiver, TOKYO, NEW_YORK); // Tokyo 23:00
+    vi.setSystemTime(new Date("2026-05-01T14:01:00Z")); // Tokyo 23:01
+    switchProfileTimezone(roundTrip.receiver, NEW_YORK, null); // New York 10:01
+
+    const switches = getTravelSwitches(roundTrip.receiver);
+    expect(isReminderSlotExcused(switches, "2026-05-01", MIDDAY_MINUTE)).toBe(
+      false
+    );
+    expect(isRepeatedSlot(switches, "2026-05-01", MIDDAY_MINUTE)).toBe(false);
+
+    vi.setSystemTime(new Date("2026-05-01T16:00:00Z")); // New York 12:00
+    await tickProfile(roundTrip.receiver, "round-trip", 5, Date.now());
+    expectThreeSlotMessages(sentTo(roundTrip.chatId));
   });
 });

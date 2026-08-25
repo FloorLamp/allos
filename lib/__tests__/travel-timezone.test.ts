@@ -247,8 +247,19 @@ describe("isExcusedSlot / isRepeatedSlot over a history", () => {
     { at: "2026-05-08T14:00:00Z", from: TOKYO, to: NY },
   ];
 
-  it("excuses a slot skipped by ANY switch on record", () => {
+  it("excuses a slot the complete trip trajectory never contained", () => {
     expect(isExcusedSlot(history, "2026-05-01", EVENING)).toBe(true);
+  });
+
+  it("re-arms a skipped slot when a later reverse switch makes it occur", () => {
+    const quickReturn: TimezoneSwitch[] = [
+      { at: "2026-05-01T14:00:00Z", from: NY, to: TOKYO },
+      { at: "2026-05-01T14:01:00Z", from: TOKYO, to: NY },
+    ];
+    // 10:00 -> 23:00 skips noon, then 23:01 -> 10:01 puts noon back ahead
+    // of the profile. Across the combined trajectory it occurs exactly once.
+    expect(isExcusedSlot(quickReturn, "2026-05-01", MIDDAY)).toBe(false);
+    expect(isRepeatedSlot(quickReturn, "2026-05-01", MIDDAY)).toBe(false);
   });
 
   it("does not excuse a slot the westward leg merely repeated", () => {
