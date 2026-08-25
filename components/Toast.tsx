@@ -84,6 +84,9 @@ interface ToastOptions {
   // switching clears every toast whose stamp no longer matches, queued or shown.
   profileId?: number;
   profileToken?: number;
+  // Opaque instance ownership for conditional keyed cleanup. It does not alter
+  // replacement: a newer same-key post still owns and upgrades the shared slot.
+  owner?: symbol;
 }
 
 interface ToastItem {
@@ -91,6 +94,7 @@ interface ToastItem {
   key?: string;
   profileId?: number;
   profileToken?: number;
+  owner?: symbol;
   // Bumped on each in-place replace so the card's dismiss timer restarts (#1315).
   revision: number;
   // Set while the bar plays its exit animation; see lib/toast-upsert.ts.
@@ -102,14 +106,16 @@ interface ToastItem {
 }
 
 type ToastFn = (message: string, options?: ToastOptions) => void;
-type DismissKeyFn = (key: string) => void;
+type DismissKeyFn = (key: string, owner?: symbol) => void;
 type ActivateProfileFn = (activeProfileId: number | null) => void;
+type GetProfileScopeFn = () => ProfileToastScope | null;
 
 interface ToastApi {
   toast: ToastFn;
   dismissKey: DismissKeyFn;
   activateProfile: ActivateProfileFn;
   profileScope: ProfileToastScope | null;
+  getProfileScope: GetProfileScopeFn;
 }
 
 // Default auto-dismiss by tone (ms). Errors linger longer since they carry
@@ -154,8 +160,8 @@ export function ToastProvider({ children }: { children: React.ReactNode }) {
     [exitMs]
   );
 
-  const dismissKey = useCallback<DismissKeyFn>((key) => {
-    setToasts((list) => dismissKeyed(list, key));
+  const dismissKey = useCallback<DismissKeyFn>((key, owner) => {
+    setToasts((list) => dismissKeyed(list, key, owner));
   }, []);
 
   const activateProfile = useCallback<ActivateProfileFn>((activeProfileId) => {
@@ -177,6 +183,14 @@ export function ToastProvider({ children }: { children: React.ReactNode }) {
     };
   }, [activateProfile]);
 
+  // State is for consumers that render the scope. Interaction handlers need the
+  // commit-current value synchronously, including hydration-replayed events that
+  // run before passive effects have caused another render.
+  const getProfileScope = useCallback<GetProfileScopeFn>(
+    () => profileScopeRef.current,
+    []
+  );
+
   const toast = useCallback<ToastFn>((message, options = {}) => {
     if (!acceptsProfileToast(profileScopeRef.current, options)) return;
     const tone = options.tone ?? "success";
@@ -195,13 +209,20 @@ export function ToastProvider({ children }: { children: React.ReactNode }) {
         action: options.action,
         profileId: options.profileId,
         profileToken: options.profileToken,
+        owner: options.owner,
       })
     );
   }, []);
 
   const api = useMemo<ToastApi>(
-    () => ({ toast, dismissKey, activateProfile, profileScope }),
-    [toast, dismissKey, activateProfile, profileScope]
+    () => ({
+      toast,
+      dismissKey,
+      activateProfile,
+      profileScope,
+      getProfileScope,
+    }),
+    [toast, dismissKey, activateProfile, profileScope, getProfileScope]
   );
 
   const shown = visibleToasts(toasts, snackbar);
@@ -352,4 +373,13 @@ export function useToastProfileScope(): ProfileToastScope | null {
   if (!ctx)
     throw new Error("useToastProfileScope must be used within a ToastProvider");
   return ctx.profileScope;
+}
+
+export function useToastProfileScopeGetter(): GetProfileScopeFn {
+  const ctx = useContext(ToastContext);
+  if (!ctx)
+    throw new Error(
+      "useToastProfileScopeGetter must be used within a ToastProvider"
+    );
+  return ctx.getProfileScope;
 }

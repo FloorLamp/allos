@@ -29,6 +29,10 @@ export interface KeyedToast {
   // Profile id alone is insufficient when A logs out and later signs back into A:
   // a completion from the old session must not enter the new session's queue.
   profileToken?: number;
+  // Optional component-instance ownership for keyed lifecycle cleanup. A newer
+  // same-key upsert replaces this stamp along with the receipt, so an older
+  // instance can conditionally dismiss only while it still owns the slot.
+  owner?: symbol;
 }
 
 export interface ProfileToastScope {
@@ -90,13 +94,17 @@ export function upsertToast<T extends KeyedToast>(list: T[], incoming: T): T[] {
   return [...list, incoming];
 }
 
-// Remove the live toast with this key. An unknown key is a no-op (the list is
-// returned unchanged in content).
+// Remove the live toast with this key. When an owner is supplied, remove it only
+// while that owner still holds the slot; a newer same-key upsert is left alone.
+// An unknown key is a no-op (the list is returned unchanged in content).
 export function dismissKeyed<T extends KeyedToast>(
   list: T[],
-  key: string
+  key: string,
+  owner?: symbol
 ): T[] {
-  return list.filter((t) => t.key !== key);
+  return list.filter(
+    (toast) => toast.key !== key || (owner != null && toast.owner !== owner)
+  );
 }
 
 // Start the exit animation for one toast. The item stays in the list, marked, so

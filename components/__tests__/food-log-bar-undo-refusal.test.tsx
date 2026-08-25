@@ -1,20 +1,26 @@
-import { useLayoutEffect } from "react";
+import { useEffect, useLayoutEffect } from "react";
 import {
   act,
   fireEvent,
   render,
   screen,
   waitFor,
+  within,
 } from "@testing-library/react";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { ActiveProfileProvider } from "@/components/ActiveProfileProvider";
-import { ToastProvider } from "@/components/Toast";
+import {
+  ToastProvider,
+  useToast,
+  useToastProfileScopeGetter,
+} from "@/components/Toast";
 import ProfileSwitchWatcher from "@/components/ProfileSwitchWatcher";
 import { TimezoneProvider } from "@/components/TimezoneProvider";
 import FoodLogBar, { type FoodLogDay } from "@/app/(app)/nutrition/FoodLogBar";
 import { FoodSelectedDateProvider } from "@/app/(app)/nutrition/FoodSuggestionsLayout";
 import type { FoodGroup } from "@/lib/food-groups";
 import type { FoodSlot } from "@/lib/food-slot";
+import type { ProfileToastScope } from "@/lib/toast-upsert";
 
 const actions = vi.hoisted(() => ({
   logFoodServing: vi.fn(),
@@ -97,6 +103,35 @@ function RunOnLayoutCommit({ run }: { run: () => void }) {
   return null;
 }
 
+function CaptureProfileScopeAfterCommit({
+  capture,
+}: {
+  capture: (scope: ProfileToastScope | null) => void;
+}) {
+  const getScope = useToastProfileScopeGetter();
+  useEffect(() => capture(getScope()), [capture, getScope]);
+  return null;
+}
+
+function PostProfileNoteOnLayout({
+  oldScope,
+  observeCurrent,
+}: {
+  oldScope: ProfileToastScope;
+  observeCurrent: (scope: ProfileToastScope | null) => void;
+}) {
+  const toast = useToast();
+  const getScope = useToastProfileScopeGetter();
+  useLayoutEffect(() => {
+    observeCurrent(getScope());
+    toast("Old-profile layout note.", {
+      profileId: oldScope.profileId,
+      profileToken: oldScope.token,
+    });
+  }, [getScope, observeCurrent, oldScope, toast]);
+  return null;
+}
+
 function barTree({
   profileId = 7,
   day = DAY,
@@ -105,12 +140,26 @@ function barTree({
   providerKey = "food-provider",
   tapBeforePassiveEffect = false,
   onLayoutCommit = undefined as (() => void) | undefined,
+  captureProfileScope = undefined as
+    ((scope: ProfileToastScope | null) => void) | undefined,
+  layoutProfileNote = undefined as
+    | {
+        oldScope: ProfileToastScope;
+        observeCurrent: (scope: ProfileToastScope | null) => void;
+      }
+    | undefined,
 } = {}) {
   return (
     <TimezoneProvider tz="UTC">
       <ActiveProfileProvider profileId={profileId}>
         <ToastProvider>
           <ProfileSwitchWatcher activeProfileId={profileId} />
+          {captureProfileScope && (
+            <CaptureProfileScopeAfterCommit capture={captureProfileScope} />
+          )}
+          {layoutProfileNote && (
+            <PostProfileNoteOnLayout {...layoutProfileNote} />
+          )}
           <FoodSelectedDateProvider key={providerKey} today={DATE} days={[day]}>
             <FoodLogBar
               key={barKey}
@@ -132,6 +181,33 @@ function barTree({
 
 function mountBar(options: Parameters<typeof barTree>[0] = {}) {
   return render(barTree(options));
+}
+
+function twoBarTree({ showFirst = true } = {}) {
+  const bar = (key: string) => (
+    <FoodSelectedDateProvider key={`provider-${key}`} today={DATE} days={[DAY]}>
+      <FoodLogBar
+        key={`bar-${key}`}
+        today={DATE}
+        days={[DAY]}
+        groupsBySlot={GROUPS}
+        excludedGroups={[]}
+        slot="Midday"
+        slotBoundaries={{ midday: 660, evening: 900 }}
+      />
+    </FoodSelectedDateProvider>
+  );
+  return (
+    <TimezoneProvider tz="UTC">
+      <ActiveProfileProvider profileId={7}>
+        <ToastProvider>
+          <ProfileSwitchWatcher activeProfileId={7} />
+          <div data-testid="first-food-bar">{showFirst && bar("first")}</div>
+          <div data-testid="second-food-bar">{bar("second")}</div>
+        </ToastProvider>
+      </ActiveProfileProvider>
+    </TimezoneProvider>
+  );
 }
 
 function deferred<T>() {
@@ -159,6 +235,10 @@ describe("FoodLogBar projection publication", () => {
     actions.updateFoodLogEvent.mockReset();
     fastActions.endFastAction.mockReset();
     fastActions.undoEndFastAction.mockReset();
+    fastActions.endFastAction.mockResolvedValue({
+      ok: false,
+      error: "No fast is running.",
+    });
     actions.logFoodServing.mockResolvedValue({
       ok: true,
       eventId: 41,
@@ -190,22 +270,45 @@ describe("FoodLogBar projection publication", () => {
     vi.unstubAllGlobals();
   });
 
-  it("publishes an optimistic tap committed before passive effects", async () => {
+  it("publishes the authoritative receipt for a tap committed before passive effects", async () => {
     const outcome = {
       ok: true,
       eventId: 40,
       servings: 1,
       mealSlot: "Midday",
       mealServings: 1,
+      endFastOffer: true,
+      limitNote: {
+        kind: "interaction",
+        groupKey: "cruciferous",
+        title: "Early interaction note.",
+        body: "Keep the authoritative receipt.",
+        hold: true,
+      },
     } as const;
     const add = deferred<typeof outcome>();
     actions.logFoodServing.mockReturnValue(add.promise);
+    actions.readFoodServingTruth.mockReset().mockResolvedValue({
+      ok: true,
+      servings: 1,
+      mealServings: { Morning: 0, Midday: 1, Evening: 0 },
+    });
 
     mountBar({ tapBeforePassiveEffect: true });
 
     expect(actions.logFoodServing).toHaveBeenCalledTimes(1);
     expect(screen.getByTestId("count-cruciferous").textContent).toBe("1");
     await act(async () => add.resolve(outcome));
+
+    expect(actions.readFoodServingTruth).toHaveBeenCalledTimes(1);
+    expect(screen.getByTestId("count-cruciferous").textContent).toBe("1");
+    expect(await screen.findByRole("button", { name: "Undo" })).toBeTruthy();
+    expect(
+      await screen.findByRole("button", { name: "End fast" })
+    ).toBeTruthy();
+    expect(screen.getByText(/Early interaction note\./).textContent).toContain(
+      "Keep the authoritative receipt."
+    );
   });
 
   it("publishes fresh day and meal truth when a newer serving invalidates the receipt", async () => {
@@ -353,6 +456,45 @@ describe("FoodLogBar projection publication", () => {
     expect(screen.queryByText("Serving corrected.")).toBeNull();
     expect(screen.queryByTestId("toast")).toBeNull();
     expect(screen.queryByTestId("food-correct-save")).toBeNull();
+  });
+
+  it("rotates the profile token before a pure old-profile note resolves in the new layout", async () => {
+    const profileEight: FoodLogDay = {
+      ...DAY,
+      counts: { cruciferous: 9 },
+      slotCounts: {
+        Morning: {},
+        Midday: { cruciferous: 9 },
+        Evening: {},
+      },
+    };
+    let oldScope: ProfileToastScope | null = null;
+    let scopeDuringNewLayout: ProfileToastScope | null = null;
+    const view = mountBar({
+      profileId: 7,
+      captureProfileScope: (scope) => {
+        oldScope = scope;
+      },
+    });
+    expect(oldScope).not.toBeNull();
+
+    view.rerender(
+      barTree({
+        profileId: 8,
+        day: profileEight,
+        layoutProfileNote: {
+          oldScope: oldScope!,
+          observeCurrent: (scope) => {
+            scopeDuringNewLayout = scope;
+          },
+        },
+      })
+    );
+    await act(async () => {});
+
+    expect(scopeDuringNewLayout).toMatchObject({ profileId: 8 });
+    expect(screen.queryByText(/Old-profile layout note\./)).toBeNull();
+    expect(screen.queryByTestId("toast")).toBeNull();
   });
 
   it("does not claim a correction after a same-profile provider remount", async () => {
@@ -594,6 +736,120 @@ describe("FoodLogBar projection publication", () => {
 
     expect(screen.queryByRole("button", { name: "Undo" })).toBeNull();
     expect(screen.queryByRole("button", { name: "End fast" })).toBeNull();
+  });
+
+  it("does not let an older bar cleanup dismiss a newer bar's serving Undo", async () => {
+    actions.logFoodServing
+      .mockResolvedValueOnce({
+        ok: true,
+        eventId: 81,
+        servings: 1,
+        mealSlot: "Midday",
+        mealServings: 1,
+      })
+      .mockResolvedValueOnce({
+        ok: true,
+        eventId: 82,
+        servings: 2,
+        mealSlot: "Midday",
+        mealServings: 2,
+      });
+    actions.readFoodServingTruth
+      .mockReset()
+      .mockResolvedValueOnce({
+        ok: true,
+        servings: 1,
+        mealServings: { Morning: 0, Midday: 1, Evening: 0 },
+      })
+      .mockResolvedValueOnce({
+        ok: true,
+        servings: 2,
+        mealServings: { Morning: 0, Midday: 2, Evening: 0 },
+      });
+    const view = render(twoBarTree());
+
+    fireEvent.click(
+      within(screen.getByTestId("first-food-bar")).getByTestId(
+        "log-cruciferous"
+      )
+    );
+    expect(await screen.findByRole("button", { name: "Undo" })).toBeTruthy();
+    fireEvent.click(
+      within(screen.getByTestId("second-food-bar")).getByTestId(
+        "log-cruciferous"
+      )
+    );
+    await waitFor(() =>
+      expect(actions.readFoodServingTruth).toHaveBeenCalledTimes(2)
+    );
+    expect(
+      await screen.findByText("2 servings of Cruciferous vegetables today")
+    ).toBeTruthy();
+
+    view.rerender(twoBarTree({ showFirst: false }));
+
+    expect(screen.getByRole("button", { name: "Undo" })).toBeTruthy();
+    expect(
+      screen.getByText("2 servings of Cruciferous vegetables today")
+    ).toBeTruthy();
+  });
+
+  it("does not let an older bar cleanup dismiss a newer bar's end-fast offer", async () => {
+    actions.logFoodServing
+      .mockResolvedValueOnce({
+        ok: true,
+        eventId: 83,
+        servings: 1,
+        mealSlot: "Midday",
+        mealServings: 1,
+        endFastOffer: true,
+      })
+      .mockResolvedValueOnce({
+        ok: true,
+        eventId: 84,
+        servings: 2,
+        mealSlot: "Midday",
+        mealServings: 2,
+        endFastOffer: true,
+      });
+    actions.readFoodServingTruth
+      .mockReset()
+      .mockResolvedValueOnce({
+        ok: true,
+        servings: 1,
+        mealServings: { Morning: 0, Midday: 1, Evening: 0 },
+      })
+      .mockResolvedValueOnce({
+        ok: true,
+        servings: 2,
+        mealServings: { Morning: 0, Midday: 2, Evening: 0 },
+      });
+    const view = render(twoBarTree());
+
+    fireEvent.click(
+      within(screen.getByTestId("first-food-bar")).getByTestId(
+        "log-cruciferous"
+      )
+    );
+    expect(
+      await screen.findByRole("button", { name: "End fast" })
+    ).toBeTruthy();
+    fireEvent.click(
+      within(screen.getByTestId("second-food-bar")).getByTestId(
+        "log-cruciferous"
+      )
+    );
+    await waitFor(() =>
+      expect(actions.readFoodServingTruth).toHaveBeenCalledTimes(2)
+    );
+    expect(
+      await screen.findByText("2 servings of Cruciferous vegetables today")
+    ).toBeTruthy();
+    view.rerender(twoBarTree({ showFirst: false }));
+
+    const offer = screen.getByRole("button", { name: "End fast" });
+    fireEvent.click(offer);
+    expect(fastActions.endFastAction).toHaveBeenCalledTimes(1);
   });
 
   it("publishes correction truth after its Server Action RSC rerender", async () => {

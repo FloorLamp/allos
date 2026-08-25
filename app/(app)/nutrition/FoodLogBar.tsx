@@ -33,7 +33,7 @@ import CompactDateMenu from "@/components/CompactDateMenu";
 import {
   useDismissToast,
   useToast,
-  useToastProfileScope,
+  useToastProfileScopeGetter,
 } from "@/components/Toast";
 import RollingNumber from "@/components/RollingNumber";
 import { useUndoableAction } from "@/components/useUndoableAction";
@@ -81,6 +81,7 @@ import OverflowMenu, {
 import { usualFoodOffer } from "@/lib/food-regularity";
 import { foodLimitNoteText } from "@/lib/food-limit-note";
 import { applyFoodServingPlacements } from "@/lib/food-serving-projection";
+import type { ProfileToastScope } from "@/lib/toast-upsert";
 import { endFastAction, undoEndFastAction } from "./fast-actions";
 import {
   deleteFoodLogEvent,
@@ -105,7 +106,7 @@ import {
 // drift on the shape.
 type FoodPlacement = Extract<FoodEventEditResult, { ok: true }>["from"];
 type FoodServingTruth = Extract<FoodServingTruthResult, { ok: true }>;
-type FoodNoticeScope = NonNullable<ReturnType<typeof useToastProfileScope>>;
+type FoodNoticeScope = ProfileToastScope;
 
 // One-tap food-group serving logger (issue #579), modeled on the dose-confirm one-tap
 // bar (components/DoseStatusControl): optimistic local counts, a Server Action per tap,
@@ -342,6 +343,7 @@ export default function FoodLogBar({
   const toast = useToast();
   const dismissToast = useDismissToast();
   const announceUndoable = useUndoableAction();
+  const toastOwner = useRef(Symbol("FoodLogBar")).current;
   // "End your fast?" (#2756). A FOLLOW-UP OFFER beside a log that has ALREADY landed —
   // never a confirm-before-write, and the serving is on the counter whatever happens
   // next. DECLINING IS DOING NOTHING: the toast times out on its own and the fast is
@@ -434,9 +436,11 @@ export default function FoodLogBar({
   const deferredServingTruth = useRef(
     new Map<string, { date: string; slug: string }>()
   );
-  const toastProfileScope = useToastProfileScope();
-  const receiptProfileScope =
-    toastProfileScope?.profileId === activeProfileId ? toastProfileScope : null;
+  const getToastProfileScope = useToastProfileScopeGetter();
+  const currentReceiptProfileScope = (): FoodNoticeScope | null => {
+    const scope = getToastProfileScope();
+    return scope?.profileId === activeProfileId ? scope : null;
+  };
   // An old async completion may outlive a same-component profile transition. The
   // profile coordinate joins the burst epoch guard so it cannot reconcile one
   // subject's counts into the next subject's mounted bar.
@@ -456,14 +460,14 @@ export default function FoodLogBar({
       // completion can publish another subject's projection. Root toast tokens
       // reject cross-profile notes; this mounted origin additionally gates every
       // local-state success claim and action-bearing receipt.
-      dismissToast("end-fast-offer");
-      for (const key of burstStates.keys()) dismissToast(key);
+      dismissToast("end-fast-offer", toastOwner);
+      for (const key of burstStates.keys()) dismissToast(key, toastOwner);
       barMountedRef.current = false;
       activeProfileRef.current = undefined;
       correctionUiGeneration.current += 1;
       removalUiGeneration.current += 1;
     };
-  }, [activeProfileId, dismissToast]);
+  }, [activeProfileId, dismissToast, toastOwner]);
 
   function isMountedProfile() {
     return (
@@ -484,6 +488,7 @@ export default function FoodLogBar({
       ...options,
       profileId: scope.profileId,
       profileToken: scope.token,
+      owner: toastOwner,
     });
   }
 
@@ -911,7 +916,7 @@ export default function FoodLogBar({
 
   async function saveCorrection() {
     if (!editing || !draft) return;
-    const noticeScope = receiptProfileScope;
+    const noticeScope = currentReceiptProfileScope();
     // The bounded-days policy the retired Day dropdown physically enforced, kept at
     // save time for a hand-typed date: this sheet recovers a recent meal, it is not an
     // unrestricted historical editor.
@@ -1019,7 +1024,7 @@ export default function FoodLogBar({
   // UnitMislabelReview's is its token shape.
   async function removeServing(event: FoodLogEvent) {
     if (removingId !== null) return;
-    const noticeScope = receiptProfileScope;
+    const noticeScope = currentReceiptProfileScope();
     // A delete is not a capture (the lib/offline/queue.ts scope comment), so it stays
     // online-only and says so rather than pretending, exactly as the group "−" does.
     if (typeof navigator !== "undefined" && navigator.onLine === false) {
@@ -1207,7 +1212,7 @@ export default function FoodLogBar({
     expectedEventId?: number,
     onMutationStarted?: (epoch: number) => void
   ): Promise<boolean> {
-    const noticeScope = receiptProfileScope;
+    const noticeScope = currentReceiptProfileScope();
     const slug = group.slug;
     // WHERE the tap lands (#2269): an add with a statement in force files under the
     // stated time's derived window — the tab stays navigation, the chip stated the
@@ -1655,6 +1660,7 @@ export default function FoodLogBar({
             ...feedback,
             profileId: noticeScope.profileId,
             profileToken: noticeScope.token,
+            owner: toastOwner,
             undo: {
               undoneMessage: "Serving undone.",
               isCurrent: () =>
@@ -1738,7 +1744,7 @@ export default function FoodLogBar({
   async function logUsual() {
     const slugs = usualGroups.map((g) => g.slug);
     if (slugs.length === 0) return;
-    const noticeScope = receiptProfileScope;
+    const noticeScope = currentReceiptProfileScope();
     const window = activeSlot;
     const before: Record<string, ServingCounts> = Object.fromEntries(
       slugs.map((slug) => [
