@@ -1,7 +1,7 @@
 import { test, expect } from "./fixtures";
 import type { Locator, Page } from "@playwright/test";
 import Database from "better-sqlite3";
-import { hydratedClick, settledClick } from "./helpers";
+import { awaitHydrated, hydratedClick, settledClick } from "./helpers";
 import { loginAs } from "./nav";
 import {
   E2E_LOGIN_FOODPIN,
@@ -504,6 +504,7 @@ test("a rapid double-tap logs TWO additive servings and never asks (#2007/#3611)
 
   // #3611 supersedes the old #2007 cooldown for this uncadenced additive row:
   // two taps mean two servings, even in the same instant.
+  await awaitHydrated(add);
   await add.click();
   await add.click();
   await expect(count).toHaveText(String(before + 2));
@@ -511,8 +512,16 @@ test("a rapid double-tap logs TWO additive servings and never asks (#2007/#3611)
   // raise the re-log question, however many times it is tapped.
   await expect(page.getByTestId("confirm-dialog")).toHaveCount(0);
 
+  // The count is optimistic. The one keyed cumulative toast is published only
+  // after every pending add has settled and a fresh authoritative truth read says
+  // both servings exist; wait for that durable marker before navigating away.
+  const toast = page.locator(
+    `[data-toast-key^="food-serving:"][data-toast-key$=":${frozenNow().toISOString().slice(0, 10)}:${slug}"]`
+  );
+  await expect(toast).toContainText(`${before + 2} servings of Legumes today`);
+
   // The pin: a reload re-reads the server's own count, so this is the row that
-  // exists and not the optimistic number the second tap would also have shown.
+  // exists and not merely the optimistic number shown above.
   await page.reload();
   await revealFoodGroup(page, slug);
   await expect(page.getByTestId(`count-${slug}`)).toHaveText(
