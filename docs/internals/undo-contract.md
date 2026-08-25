@@ -108,6 +108,12 @@ Undo into `changed` rather than removing a write the toast did not announce. Eac
 upgraded offer has its own inverse write identity (the toast slot stays stable; its
 cooldown does not), and every receipt is subject-stamped: a profile switch clears both
 shown and queued receipts while the action also reauthorizes the originating profile.
+The keyed slot also carries an opaque lifecycle reservation minted when the interaction
+starts. A later interaction supersedes it immediately; every post-await publish/dismiss
+and the inverse outcome is conditional on that exact reservation still being current.
+An action click preserves the reservation while its card exits so a slow valid inverse
+can answer, while manual/timeout dismissal cancels it. This prevents an older response,
+action or island cleanup from erasing a newer island's valid Undo.
 Precise serving removal replaces the same day/group slot, so its newer Undo never sits
 behind or beside an older add inverse.
 

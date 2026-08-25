@@ -2,7 +2,7 @@
 import { useLoggedViaStamp } from "@/components/LoggedViaSurface";
 
 import type { ReactNode } from "react";
-import { useEffect, useMemo, useRef, useState } from "react";
+import { useEffect, useLayoutEffect, useMemo, useRef, useState } from "react";
 import {
   IconAdjustmentsHorizontal,
   IconPlus,
@@ -31,9 +31,10 @@ import ModalShell from "@/components/ModalShell";
 import SegmentedControl from "@/components/SegmentedControl";
 import CompactDateMenu from "@/components/CompactDateMenu";
 import {
+  useClaimToastKey,
   useDismissToast,
   useToast,
-  useToastProfileScope,
+  useToastProfileScopeGetter,
 } from "@/components/Toast";
 import RollingNumber from "@/components/RollingNumber";
 import { useUndoableAction } from "@/components/useUndoableAction";
@@ -81,6 +82,7 @@ import OverflowMenu, {
 import { usualFoodOffer } from "@/lib/food-regularity";
 import { foodLimitNoteText } from "@/lib/food-limit-note";
 import { applyFoodServingPlacements } from "@/lib/food-serving-projection";
+import type { ProfileToastScope } from "@/lib/toast-upsert";
 import { endFastAction, undoEndFastAction } from "./fast-actions";
 import {
   deleteFoodLogEvent,
@@ -105,6 +107,7 @@ import {
 // drift on the shape.
 type FoodPlacement = Extract<FoodEventEditResult, { ok: true }>["from"];
 type FoodServingTruth = Extract<FoodServingTruthResult, { ok: true }>;
+type FoodNoticeScope = ProfileToastScope;
 
 // One-tap food-group serving logger (issue #579), modeled on the dose-confirm one-tap
 // bar (components/DoseStatusControl): optimistic local counts, a Server Action per tap,
@@ -340,7 +343,21 @@ export default function FoodLogBar({
   const [openMenuId, setOpenMenuId] = useState<number | null>(null);
   const toast = useToast();
   const dismissToast = useDismissToast();
+  const claimToastKey = useClaimToastKey();
   const announceUndoable = useUndoableAction();
+  const toastLifecycles = useRef(new Map<string, symbol>());
+  const cleanupLifecycles = useRef(new Map<string, symbol>());
+  const reserveToastLifecycle = (
+    key: string,
+    dismissCurrent = true,
+    cleanupOnUnmount = true
+  ) => {
+    const owner = Symbol(key);
+    toastLifecycles.current.set(key, owner);
+    if (cleanupOnUnmount) cleanupLifecycles.current.set(key, owner);
+    claimToastKey(key, owner, dismissCurrent);
+    return owner;
+  };
   // "End your fast?" (#2756). A FOLLOW-UP OFFER beside a log that has ALREADY landed —
   // never a confirm-before-write, and the serving is on the counter whatever happens
   // next. DECLINING IS DOING NOTHING: the toast times out on its own and the fast is
@@ -364,33 +381,51 @@ export default function FoodLogBar({
   // behind it would be accepted — so a restricted profile's close-out through this same
   // toast draws no Undo, exactly as its card does, and this island asks no life-stage
   // question of its own.
-  const undoEnd = (undoFastId: number) => {
+  const undoEnd = (
+    scope: FoodNoticeScope | null,
+    undoFastId: number,
+    owner: symbol
+  ) => {
+    if (!isMountedProfile()) return;
     const fd = new FormData();
     fd.set("id", String(undoFastId));
     void undoEndFastAction(fd).then((back) => {
-      toast(back.ok ? back.message : back.error, {
+      if (!isMountedProfile()) return;
+      profileToast(scope, back.ok ? back.message : back.error, {
         key: "end-fast-offer",
+        owner,
+        onlyIfOwner: true,
         ...(back.ok ? {} : { tone: "error" as const }),
       });
     });
   };
-  const offerEndFast = (offered: true | undefined) => {
-    if (!offered) return;
-    toast("Serving logged. End your fast?", {
+  const offerEndFast = (
+    scope: FoodNoticeScope | null,
+    offered: true | undefined,
+    owner: symbol
+  ) => {
+    if (!offered || !isMountedProfile()) return;
+    profileToast(scope, "Serving logged. End your fast?", {
       key: "end-fast-offer",
+      owner,
+      onlyIfOwner: true,
       action: {
         label: "End fast",
         onClick: () => {
+          if (!isMountedProfile()) return;
           void endFastAction(new FormData()).then((r) => {
+            if (!isMountedProfile()) return;
             const undoFastId = r.ok ? r.undoFastId : undefined;
-            toast(r.ok ? r.message : r.error, {
+            profileToast(scope, r.ok ? r.message : r.error, {
               key: "end-fast-offer",
+              owner,
+              onlyIfOwner: true,
               ...(r.ok ? {} : { tone: "error" as const }),
               ...(undoFastId != null
                 ? {
                     action: {
                       label: "Undo",
-                      onClick: () => undoEnd(undoFastId),
+                      onClick: () => undoEnd(scope, undoFastId, owner),
                     },
                   }
                 : {}),
@@ -426,14 +461,59 @@ export default function FoodLogBar({
   const deferredServingTruth = useRef(
     new Map<string, { date: string; slug: string }>()
   );
-  const toastProfileScope = useToastProfileScope();
-  const receiptProfileScope =
-    toastProfileScope?.profileId === activeProfileId ? toastProfileScope : null;
+  const getToastProfileScope = useToastProfileScopeGetter();
+  const currentReceiptProfileScope = (): FoodNoticeScope | null => {
+    const scope = getToastProfileScope();
+    return scope?.profileId === activeProfileId ? scope : null;
+  };
   // An old async completion may outlive a same-component profile transition. The
   // profile coordinate joins the burst epoch guard so it cannot reconcile one
   // subject's counts into the next subject's mounted bar.
-  const activeProfileRef = useRef(activeProfileId);
+  const activeProfileRef = useRef<number | null | undefined>(activeProfileId);
   activeProfileRef.current = activeProfileId;
+  // A hydration-replayed/discrete interaction may run after commit but before
+  // passive effects. The bar is live from render; cleanup is the only transition
+  // that makes this origin stale.
+  const barMountedRef = useRef(true);
+  useLayoutEffect(() => {
+    const lifecycles = cleanupLifecycles.current;
+    activeProfileRef.current = activeProfileId;
+    barMountedRef.current = true;
+    return () => {
+      // The provider is keyed by subject, but this bar's promises outlive its
+      // subtree. Invalidate both identity and mutation state before any old
+      // completion can publish another subject's projection. Root toast tokens
+      // reject cross-profile notes; this mounted origin additionally gates every
+      // local-state success claim and action-bearing receipt.
+      for (const [key, owner] of lifecycles) dismissToast(key, owner);
+      barMountedRef.current = false;
+      activeProfileRef.current = undefined;
+      correctionUiGeneration.current += 1;
+      removalUiGeneration.current += 1;
+    };
+  }, [activeProfileId, dismissToast]);
+
+  function isMountedProfile() {
+    return (
+      barMountedRef.current && activeProfileRef.current === activeProfileId
+    );
+  }
+
+  function profileToast(
+    scope: FoodNoticeScope | null,
+    message: string,
+    options: Parameters<typeof toast>[1] = {}
+  ) {
+    // The token is the toast provider's profile GENERATION, not only the subject
+    // id. A completion from an unmounted A bar is therefore refused after A→B,
+    // logout, or a later A session even if an async path misses a local guard.
+    if (!scope) return;
+    toast(message, {
+      ...options,
+      profileId: scope.profileId,
+      profileToken: scope.token,
+    });
+  }
 
   // The row itself is the immediate receipt. A successful add gets the shipped
   // settle token; reduced motion keeps the same count/button end state and simply
@@ -599,6 +679,7 @@ export default function FoodLogBar({
   );
 
   function commitProjection(next: FoodProjectionState) {
+    if (!isMountedProfile()) return;
     // Keep the async mutation boundary and the provider on the exact same object.
     // Every caller below computes both halves before this one publication.
     projectionRef.current = next;
@@ -708,6 +789,7 @@ export default function FoodLogBar({
     date: string,
     slug: string
   ) {
+    if (!isMountedProfile()) return;
     const captured =
       servingBursts.current.get(receiptKey) ?? emptyFoodServingBurst();
     // A current add burst owns the final read after its last response. Reading
@@ -736,7 +818,7 @@ export default function FoodLogBar({
     const current =
       servingBursts.current.get(receiptKey) ?? emptyFoodServingBurst();
     if (
-      activeProfileRef.current === activeProfileId &&
+      isMountedProfile() &&
       current.epoch === captured.epoch &&
       current.nextTapId === captured.nextTapId &&
       current.truthRevision === captured.truthRevision &&
@@ -749,30 +831,36 @@ export default function FoodLogBar({
 
   function isServingMutationCurrent(receiptKey: string, epoch: number) {
     return (
-      activeProfileRef.current === activeProfileId &&
+      isMountedProfile() &&
       (servingBursts.current.get(receiptKey) ?? emptyFoodServingBurst())
         .epoch === epoch
     );
   }
 
-  function beginServingMutations(receiptKeys: readonly string[]) {
-    const epochs = new Map<string, number>();
+  type ServingMutationClaim = { epoch: number; owner: symbol };
+  function beginServingMutations(
+    receiptKeys: readonly string[],
+    existingOwners: ReadonlyMap<string, symbol> = new Map()
+  ) {
+    const epochs = new Map<string, ServingMutationClaim>();
     for (const key of new Set(receiptKeys)) {
       const next = beginFoodServingNonAddMutation(
         servingBursts.current.get(key) ?? emptyFoodServingBurst()
       );
       servingBursts.current.set(key, next);
-      epochs.set(key, next.epoch);
-      dismissToast(key);
+      const owner = existingOwners.get(key) ?? reserveToastLifecycle(key);
+      epochs.set(key, { epoch: next.epoch, owner });
     }
     return epochs;
   }
 
-  function finishServingMutations(epochs: ReadonlyMap<string, number>) {
-    for (const [key, epoch] of epochs) {
+  function finishServingMutations(
+    epochs: ReadonlyMap<string, ServingMutationClaim>
+  ) {
+    for (const [key, claim] of epochs) {
       const finished = finishFoodServingNonAddMutation(
         servingBursts.current.get(key) ?? emptyFoodServingBurst(),
-        epoch
+        claim.epoch
       );
       servingBursts.current.set(key, finished.state);
       if (!finished.refreshDeferredTruth) continue;
@@ -783,9 +871,11 @@ export default function FoodLogBar({
     }
   }
 
-  function areServingMutationsCurrent(epochs: ReadonlyMap<string, number>) {
-    return [...epochs].every(([key, epoch]) =>
-      isServingMutationCurrent(key, epoch)
+  function areServingMutationsCurrent(
+    epochs: ReadonlyMap<string, ServingMutationClaim>
+  ) {
+    return [...epochs].every(([key, claim]) =>
+      isServingMutationCurrent(key, claim.epoch)
     );
   }
 
@@ -857,6 +947,7 @@ export default function FoodLogBar({
 
   async function saveCorrection() {
     if (!editing || !draft) return;
+    const noticeScope = currentReceiptProfileScope();
     // The bounded-days policy the retired Day dropdown physically enforced, kept at
     // save time for a hand-typed date: this sheet recovers a recent meal, it is not an
     // unrestricted historical editor.
@@ -865,7 +956,9 @@ export default function FoodLogBar({
       draft.when.date < minCorrectionDay ||
       draft.when.date > maxCorrectionDay
     ) {
-      toast("Pick a day from the log's own recent range.", { tone: "error" });
+      profileToast(noticeScope, "Pick a day from the log's own recent range.", {
+        tone: "error",
+      });
       return;
     }
     const correctionEpochs = beginServingMutations([
@@ -900,36 +993,49 @@ export default function FoodLogBar({
       const current = areServingMutationsCurrent(correctionEpochs);
       finishServingMutations(correctionEpochs);
       if (correctionUiGeneration.current === correctionUi) setSaving(false);
-      if (current)
-        toast("Couldn't correct that serving — try again.", { tone: "error" });
+      if (current || !isMountedProfile())
+        profileToast(
+          noticeScope,
+          "Couldn't correct that serving — try again.",
+          {
+            tone: "error",
+          }
+        );
       return;
     }
     const current = areServingMutationsCurrent(correctionEpochs);
     finishServingMutations(correctionEpochs);
     if (correctionUiGeneration.current === correctionUi) setSaving(false);
     if (!outcome.ok) {
-      if (current) toast(outcome.error, { tone: "error" });
+      if (current || !isMountedProfile())
+        profileToast(noticeScope, outcome.error, { tone: "error" });
       return;
     }
     if (correctionUiGeneration.current === correctionUi) closeCorrection();
     if (!current) {
-      void reconcileServingTruthIfIdle(
-        foodServingToastKey(receiptProfileId, editing.date, editing.groupKey),
-        editing.date,
-        editing.groupKey
-      );
-      void reconcileServingTruthIfIdle(
-        foodServingToastKey(receiptProfileId, draft.when.date, draft.groupKey),
-        draft.when.date,
-        draft.groupKey
-      );
+      if (isMountedProfile()) {
+        void reconcileServingTruthIfIdle(
+          foodServingToastKey(receiptProfileId, editing.date, editing.groupKey),
+          editing.date,
+          editing.groupKey
+        );
+        void reconcileServingTruthIfIdle(
+          foodServingToastKey(
+            receiptProfileId,
+            draft.when.date,
+            draft.groupKey
+          ),
+          draft.when.date,
+          draft.groupKey
+        );
+      }
       return;
     }
     // The pair is one projection transition. When only the window changes, both name
     // the same (date, group), with `from` clearing the source window and `to` settling
     // the destination at post-move truth.
     applyPlacements([outcome.from, outcome.to]);
-    toast("Serving corrected.");
+    profileToast(noticeScope, "Serving corrected.");
   }
 
   // Remove the ONE serving the ⋯ menu named (#1963). The row's "−" peer is group-scoped
@@ -949,12 +1055,17 @@ export default function FoodLogBar({
   // UnitMislabelReview's is its token shape.
   async function removeServing(event: FoodLogEvent) {
     if (removingId !== null) return;
+    const noticeScope = currentReceiptProfileScope();
     // A delete is not a capture (the lib/offline/queue.ts scope comment), so it stays
     // online-only and says so rather than pretending, exactly as the group "−" does.
     if (typeof navigator !== "undefined" && navigator.onLine === false) {
-      toast("You're offline — removing a serving needs a connection.", {
-        tone: "error",
-      });
+      profileToast(
+        noticeScope,
+        "You're offline — removing a serving needs a connection.",
+        {
+          tone: "error",
+        }
+      );
       return;
     }
     const mutationReceiptKey = foodServingToastKey(
@@ -963,6 +1074,7 @@ export default function FoodLogBar({
       event.groupKey
     );
     const removalEpochs = beginServingMutations([mutationReceiptKey]);
+    const removalOwner = removalEpochs.get(mutationReceiptKey)!.owner;
     const removalUi = ++removalUiGeneration.current;
     setRemovingId(event.id);
     const fd = new FormData();
@@ -974,8 +1086,9 @@ export default function FoodLogBar({
       const current = areServingMutationsCurrent(removalEpochs);
       finishServingMutations(removalEpochs);
       if (removalUiGeneration.current === removalUi) setRemovingId(null);
-      if (current)
-        toast(
+      if (current || !isMountedProfile())
+        profileToast(
+          noticeScope,
           shouldQueueOffline(navigator.onLine !== false, err)
             ? "You're offline — removing a serving needs a connection."
             : "Couldn't remove that serving — try again.",
@@ -987,22 +1100,24 @@ export default function FoodLogBar({
     finishServingMutations(removalEpochs);
     if (removalUiGeneration.current === removalUi) setRemovingId(null);
     if (!outcome.ok) {
-      if (current) toast(outcome.error, { tone: "error" });
+      if (current || !isMountedProfile())
+        profileToast(noticeScope, outcome.error, { tone: "error" });
       return;
     }
     if (!current) {
-      void reconcileServingTruthIfIdle(
-        mutationReceiptKey,
-        event.date,
-        event.groupKey
-      );
+      if (isMountedProfile())
+        void reconcileServingTruthIfIdle(
+          mutationReceiptKey,
+          event.date,
+          event.groupKey
+        );
       return;
     }
     // The authoritative post-write counts for the coordinate the serving vacated. A SET,
     // not a delta — the same reconciliation a correction does, so a dropped or refused
     // write can never leave a phantom count behind.
     const vacated = outcome.vacated;
-    applyPlacement(vacated);
+    if (current) applyPlacement(vacated);
     const undoId = outcome.undoId;
     // Precise removal supersedes the cumulative add receipt for this day/group.
     // Reusing its slot prevents two generic Undo buttons on desktop and keeps the
@@ -1012,17 +1127,21 @@ export default function FoodLogBar({
       event.date,
       event.groupKey
     );
-    if (!receiptProfileScope) return;
-    toast("Serving removed.", {
+    if (!noticeScope) return;
+    profileToast(noticeScope, "Serving removed.", {
       key: receiptKey,
-      profileId: receiptProfileScope.profileId,
-      profileToken: receiptProfileScope.token,
+      owner: removalOwner,
+      onlyIfOwner: true,
       duration: UNDO_TOAST_MS,
       action: {
         label: "Undo",
         onClick: () => {
+          if (!isMountedProfile()) return;
           void (async () => {
-            const restoreEpochs = beginServingMutations([receiptKey]);
+            const restoreEpochs = beginServingMutations(
+              [receiptKey],
+              new Map([[receiptKey, removalOwner]])
+            );
             let restored: Awaited<ReturnType<typeof undoDelete>>;
             try {
               restored = await undoDelete(undoId);
@@ -1030,31 +1149,36 @@ export default function FoodLogBar({
               const current = areServingMutationsCurrent(restoreEpochs);
               finishServingMutations(restoreEpochs);
               if (current)
-                toast("Couldn’t undo — try again.", {
+                profileToast(noticeScope, "Couldn’t undo — try again.", {
                   tone: "error",
                   key: receiptKey,
-                  profileId: receiptProfileScope.profileId,
-                  profileToken: receiptProfileScope.token,
+                  owner: removalOwner,
+                  onlyIfOwner: true,
                 });
               return;
             }
             const current = areServingMutationsCurrent(restoreEpochs);
             finishServingMutations(restoreEpochs);
             if (!current) {
-              void reconcileServingTruthIfIdle(
-                receiptKey,
-                event.date,
-                event.groupKey
-              );
+              if (isMountedProfile())
+                void reconcileServingTruthIfIdle(
+                  receiptKey,
+                  event.date,
+                  event.groupKey
+                );
               return;
             }
             if (!restored.ok) {
-              toast("Couldn’t undo — it may have expired.", {
-                tone: "error",
-                key: receiptKey,
-                profileId: receiptProfileScope.profileId,
-                profileToken: receiptProfileScope.token,
-              });
+              profileToast(
+                noticeScope,
+                "Couldn’t undo — it may have expired.",
+                {
+                  tone: "error",
+                  key: receiptKey,
+                  owner: removalOwner,
+                  onlyIfOwner: true,
+                }
+              );
               return;
             }
             // The restore puts back exactly the one serving this delete took, at the
@@ -1065,10 +1189,10 @@ export default function FoodLogBar({
               servings: vacated.servings + 1,
               mealServings: vacated.mealServings + 1,
             });
-            toast("Restored.", {
+            profileToast(noticeScope, "Restored.", {
               key: receiptKey,
-              profileId: receiptProfileScope.profileId,
-              profileToken: receiptProfileScope.token,
+              owner: removalOwner,
+              onlyIfOwner: true,
             });
           })();
         },
@@ -1129,8 +1253,10 @@ export default function FoodLogBar({
     inverseWriteKey?: string,
     inverseSlot?: FoodSlot,
     expectedEventId?: number,
-    onMutationStarted?: (epoch: number) => void
+    onMutationStarted?: (epoch: number) => void,
+    existingReceiptOwner?: symbol
   ): Promise<boolean> {
+    const noticeScope = currentReceiptProfileScope();
     const slug = group.slug;
     // WHERE the tap lands (#2269): an add with a statement in force files under the
     // stated time's derived window — the tab stays navigation, the chip stated the
@@ -1145,11 +1271,23 @@ export default function FoodLogBar({
       slug
     );
     const receiptKey = foodServingToastKey(receiptProfileId, activeDate, slug);
+    // Reserve every keyed lifecycle when the interaction STARTS. A slower older
+    // response can then neither publish nor dismiss over a newer bar/tap.
+    const receiptOwner =
+      existingReceiptOwner ?? reserveToastLifecycle(receiptKey);
+    const endFastOwner =
+      delta === 1 ? reserveToastLifecycle("end-fast-offer") : null;
+    const limitNoteKey = `food-limit-${slug}`;
+    const limitNoteOwner =
+      delta === 1 ? reserveToastLifecycle(limitNoteKey, false, false) : null;
     let mutationEpoch: number;
-    let nonAddEpochs: ReadonlyMap<string, number> | null = null;
+    let nonAddEpochs: ReadonlyMap<string, ServingMutationClaim> | null = null;
     if (delta === -1) {
-      nonAddEpochs = beginServingMutations([receiptKey]);
-      mutationEpoch = nonAddEpochs.get(receiptKey)!;
+      nonAddEpochs = beginServingMutations(
+        [receiptKey],
+        new Map([[receiptKey, receiptOwner]])
+      );
+      mutationEpoch = nonAddEpochs.get(receiptKey)!.epoch;
       onMutationStarted?.(mutationEpoch);
     }
     const before: ServingCounts = {
@@ -1188,19 +1326,26 @@ export default function FoodLogBar({
       // The device can refuse the capture (#3038) — say so in the shared sentence
       // and report it, so the caller rolls the optimistic counts back.
       if (!kept) {
-        if (isCurrentMutation())
-          toast(OFFLINE_CAPTURE_REFUSED_MESSAGE, { tone: "error" });
+        if (isCurrentMutation() || !isMountedProfile())
+          profileToast(noticeScope, OFFLINE_CAPTURE_REFUSED_MESSAGE, {
+            tone: "error",
+          });
         return false;
       }
       if (isCurrentMutation())
-        toast("Saved offline — will sync when you reconnect.");
+        profileToast(
+          noticeScope,
+          "Saved offline — will sync when you reconnect."
+        );
       return true;
     };
     const undoNeedsConnection = () => {
-      if (isCurrentMutation())
-        toast("You're offline — removing a serving needs a connection.", {
-          tone: "error",
-        });
+      if (isCurrentMutation() || !isMountedProfile())
+        profileToast(
+          noticeScope,
+          "You're offline — removing a serving needs a connection.",
+          { tone: "error" }
+        );
     };
     // Whether the tap reached a write at all, and what the write said — modeled so
     // the ledger sees exactly one settlement per tap. "refused" is the queue
@@ -1225,7 +1370,8 @@ export default function FoodLogBar({
     const isCurrentMutation = () =>
       isServingMutationCurrent(receiptKey, mutationEpoch);
     const reconcileAfterStaleMutation = () => {
-      void reconcileServingTruthIfIdle(receiptKey, activeDate, slug);
+      if (isMountedProfile())
+        void reconcileServingTruthIfIdle(receiptKey, activeDate, slug);
     };
     const addSettlementBox: { value: FoodServingBurstSettlement | null } = {
       value: null,
@@ -1313,8 +1459,8 @@ export default function FoodLogBar({
           return { kind: "rollback" };
         }
         if (tap.kind === "offline-undo") {
-          if (!isCurrentMutation()) return { kind: "keep" };
           undoNeedsConnection();
+          if (!isCurrentMutation()) return { kind: "keep" };
           return { kind: "rollback" };
         }
         const outcome = tap.outcome;
@@ -1328,7 +1474,18 @@ export default function FoodLogBar({
               ok: true,
               eventId: outcome.eventId,
             });
-            if (!settled?.accepted || !isCurrentMutation()) {
+            if (!settled?.accepted) return { kind: "keep" };
+            if (
+              !isMountedProfile() &&
+              settled.completed &&
+              settled.reportFailure
+            )
+              profileToast(
+                noticeScope,
+                "Couldn't save one of those servings — try again.",
+                { tone: "error" }
+              );
+            if (!isCurrentMutation() && isMountedProfile()) {
               reconcileAfterStaleMutation();
               return { kind: "keep" };
             }
@@ -1343,8 +1500,9 @@ export default function FoodLogBar({
           // (the form sends the CHOICE and the server resolves it, so no client clock
           // can push it into the future); the offline capture, which carries a client
           // instant, is where a fast clock actually costs the minute.
-          if (outcome.statedTimeRefused) {
-            toast(
+          if (isCurrentMutation() && outcome.statedTimeRefused) {
+            profileToast(
+              noticeScope,
               `Serving saved without its time \u2014 ${
                 STATED_TIME_REFUSAL_NOTE[outcome.statedTimeRefused]
               }.`
@@ -1358,21 +1516,25 @@ export default function FoodLogBar({
           // interaction holds until the reader dismisses it, a dietary note takes the
           // ordinary timer. The server already ranked them; at most one ever arrives.
           if (outcome.limitNote) {
-            toast(foodLimitNoteText(outcome.limitNote), {
-              key: `food-limit-${outcome.limitNote.groupKey}`,
+            profileToast(noticeScope, foodLimitNoteText(outcome.limitNote), {
+              key: limitNoteKey,
+              ...(limitNoteOwner != null
+                ? { owner: limitNoteOwner, onlyIfOwner: true }
+                : {}),
               ...(outcome.limitNote.hold ? { duration: null } : {}),
             });
           }
-          offerEndFast(outcome.endFastOffer);
+          if (endFastOwner != null)
+            offerEndFast(noticeScope, outcome.endFastOffer, endFastOwner);
           if (delta === 1) {
-            settleServing(coordinate);
+            if (isMountedProfile()) settleServing(coordinate);
             // Preserve every still-pending optimistic tap. The final response's
             // caller performs one authoritative read and reconciles the whole
             // day/meal slice below; a partial response never commits a smaller
             // settled-only number over later taps.
             return { kind: "keep" };
           } else {
-            dismissToast(receiptKey);
+            dismissToast(receiptKey, receiptOwner);
           }
           // Reconcile with the server's authoritative daily total (#748 item 2) so a
           // dropped/failed write can never leave a phantom count.
@@ -1398,7 +1560,17 @@ export default function FoodLogBar({
         // succeeded, the final effect publishes their cumulative receipt and
         // reports this failure separately.
         if (delta === 1) {
-          settleAddBurst({ ok: false });
+          const settled = settleAddBurst({ ok: false });
+          if (
+            !isMountedProfile() &&
+            settled?.completed &&
+            settled.reportFailure
+          )
+            profileToast(
+              noticeScope,
+              outcome.error || "Couldn't save that serving — try again.",
+              { tone: "error" }
+            );
           return { kind: "keep" };
         }
         if (!isCurrentMutation()) {
@@ -1416,18 +1588,17 @@ export default function FoodLogBar({
           return { kind: "keep" };
         }
         if (expectedServings == null && expectedEventId == null) {
-          toast(outcome.error || "Couldn't save that serving — try again.", {
-            tone: "error",
-          });
+          profileToast(
+            noticeScope,
+            outcome.error || "Couldn't save that serving — try again.",
+            {
+              tone: "error",
+            }
+          );
         }
         return { kind: "rollback" };
       },
       onError: async (err) => {
-        if (!isCurrentMutation()) {
-          if (delta === 1) settleAddBurst({ ok: false });
-          reconcileAfterStaleMutation();
-          return { kind: "keep" };
-        }
         // Connection dropped mid-tap — queue an add instead of a false failure.
         if (shouldQueueOffline(navigator.onLine !== false, err)) {
           if (delta === 1) {
@@ -1443,11 +1614,30 @@ export default function FoodLogBar({
           undoNeedsConnection();
           return { kind: "rollback" };
         }
+        if (!isCurrentMutation()) {
+          if (delta === 1) {
+            const settled = settleAddBurst({ ok: false });
+            if (
+              !isMountedProfile() &&
+              settled?.completed &&
+              settled.reportFailure
+            )
+              profileToast(
+                noticeScope,
+                "Couldn't save that serving — try again.",
+                { tone: "error" }
+              );
+          }
+          reconcileAfterStaleMutation();
+          return { kind: "keep" };
+        }
         if (delta === 1) {
           settleAddBurst({ ok: false });
           return { kind: "keep" };
         }
-        toast("Couldn't save that serving — try again.", { tone: "error" });
+        profileToast(noticeScope, "Couldn't save that serving — try again.", {
+          tone: "error",
+        });
         return { kind: "rollback" };
       },
     });
@@ -1470,7 +1660,8 @@ export default function FoodLogBar({
       delta === 1 &&
       addTap &&
       addSettlement?.accepted &&
-      addSettlement.completed
+      addSettlement.completed &&
+      isMountedProfile()
     ) {
       const completionEpoch = addTap.epoch;
       const completionNextTapId = addSettlement.state.nextTapId;
@@ -1483,7 +1674,6 @@ export default function FoodLogBar({
         const currentBurst =
           servingBursts.current.get(receiptKey) ?? emptyFoodServingBurst();
         return (
-          activeProfileRef.current === activeProfileId &&
           currentBurst.epoch === completionEpoch &&
           currentBurst.nextTapId === completionNextTapId &&
           currentBurst.pending.size === 0
@@ -1493,12 +1683,14 @@ export default function FoodLogBar({
       try {
         truth = await readFoodServingTruth(truthForm);
       } catch {
-        if (isStillLatest() && receiptProfileScope) {
-          toast("Saved, but couldn't refresh the count — reload to check it.", {
-            tone: "error",
-            profileId: receiptProfileScope.profileId,
-            profileToken: receiptProfileScope.token,
-          });
+        if (isStillLatest() && noticeScope) {
+          profileToast(
+            noticeScope,
+            "Saved, but couldn't refresh the count — reload to check it.",
+            {
+              tone: "error",
+            }
+          );
         }
         return (
           result.status === "settled" &&
@@ -1508,9 +1700,10 @@ export default function FoodLogBar({
       }
       const stillLatest = isStillLatest();
       if (stillLatest && truth.ok) {
-        applyServingTruth(activeDate, slug, truth);
+        if (isMountedProfile()) applyServingTruth(activeDate, slug, truth);
         const receipt = addSettlement.receipt;
-        if (receipt && receiptProfileScope) {
+        const completedOwner = toastLifecycles.current.get(receiptKey);
+        if (receipt && noticeScope && completedOwner != null) {
           const feedback = foodServingFeedback(
             receiptProfileId,
             activeDate,
@@ -1526,15 +1719,18 @@ export default function FoodLogBar({
           let inverseEpoch: number | null = null;
           announceUndoable({
             ...feedback,
-            profileId: receiptProfileScope.profileId,
-            profileToken: receiptProfileScope.token,
+            profileId: noticeScope.profileId,
+            profileToken: noticeScope.token,
+            owner: completedOwner,
             undo: {
               undoneMessage: "Serving undone.",
               isCurrent: () =>
                 inverseEpoch != null &&
                 isServingMutationCurrent(feedback.key, inverseEpoch),
-              run: async () =>
-                (await bump(
+              run: async () => {
+                if (!isMountedProfile())
+                  return { ok: false, reason: "changed" };
+                return (await bump(
                   group,
                   -1,
                   truth.servings,
@@ -1543,27 +1739,25 @@ export default function FoodLogBar({
                   receipt.eventId,
                   (epoch) => {
                     inverseEpoch = epoch;
-                  }
+                  },
+                  completedOwner
                 ))
                   ? { ok: true }
-                  : { ok: false, reason: "changed" },
+                  : { ok: false, reason: "changed" };
+              },
             },
           });
         }
-        if (addSettlement.reportFailure && receiptProfileScope) {
-          toast("Couldn't save one of those servings — try again.", {
-            tone: "error",
-            profileId: receiptProfileScope.profileId,
-            profileToken: receiptProfileScope.token,
-          });
+        if (addSettlement.reportFailure && noticeScope) {
+          profileToast(
+            noticeScope,
+            "Couldn't save one of those servings — try again.",
+            { tone: "error" }
+          );
         }
       } else if (stillLatest && !truth.ok) {
-        if (receiptProfileScope) {
-          toast(truth.error, {
-            tone: "error",
-            profileId: receiptProfileScope.profileId,
-            profileToken: receiptProfileScope.token,
-          });
+        if (noticeScope) {
+          profileToast(noticeScope, truth.error, { tone: "error" });
         }
       }
     }
@@ -1612,6 +1806,12 @@ export default function FoodLogBar({
   async function logUsual() {
     const slugs = usualGroups.map((g) => g.slug);
     if (slugs.length === 0) return;
+    const noticeScope = currentReceiptProfileScope();
+    for (const slug of slugs)
+      reserveToastLifecycle(
+        foodServingToastKey(receiptProfileId, activeDate, slug)
+      );
+    const endFastOwner = reserveToastLifecycle("end-fast-offer");
     const window = activeSlot;
     const before: Record<string, ServingCounts> = Object.fromEntries(
       slugs.map((slug) => [
@@ -1650,12 +1850,18 @@ export default function FoodLogBar({
           // The offer went stale between render and tap (logged from another device,
           // from the Telegram button). Answered from the typed outcome — never
           // confirmed unconditionally — and the optimistic bump rolls back.
-          toast(result.error || "Couldn't log those servings — try again.", {
-            tone: "error",
-          });
-          return { kind: "rollback" };
+          profileToast(
+            noticeScope,
+            result.error || "Couldn't log those servings — try again.",
+            {
+              tone: "error",
+            }
+          );
+          return isMountedProfile() ? { kind: "rollback" } : { kind: "keep" };
         }
-        toast(
+        if (!isMountedProfile()) return { kind: "keep" };
+        profileToast(
+          noticeScope,
           `Logged ${namesPhrase(
             result.groups.map(
               (g) =>
@@ -1666,7 +1872,7 @@ export default function FoodLogBar({
         );
         // ONE prompt for the whole bundle (#2756): the server answers a bundled write
         // with a single flag, so a usual-tap that landed five servings asks once.
-        offerEndFast(result.endFastOffer);
+        offerEndFast(noticeScope, result.endFastOffer, endFastOwner);
         // Adopt the server's authoritative figures for every group it actually wrote —
         // which may be FEWER than the button named, if part of the offer expired.
         // Groups it did not write keep their pre-tap counts, so the display matches
@@ -1680,8 +1886,10 @@ export default function FoodLogBar({
         // Online-only by declaration (lib/offline/queue.ts): the offer's justification
         // is server state, and an additive replay could double-log a window. The
         // single-serving rows beside it still queue, so nothing is unreachable.
-        toast("Couldn't log those servings — try again.", { tone: "error" });
-        return { kind: "rollback" };
+        profileToast(noticeScope, "Couldn't log those servings — try again.", {
+          tone: "error",
+        });
+        return isMountedProfile() ? { kind: "rollback" } : { kind: "keep" };
       },
     });
   }

@@ -31,6 +31,7 @@ export interface UndoAnnouncement {
   key?: string;
   profileId?: number;
   profileToken?: number;
+  owner?: symbol;
   // Absent/null = no undo (a refusal, or a write with no complete local inverse).
   undo?: UndoOffer | null;
 }
@@ -53,6 +54,8 @@ export function useUndoableAction(): (announcement: UndoAnnouncement) => void {
           key: announcement.key,
           profileId: announcement.profileId,
           profileToken: announcement.profileToken,
+          owner: announcement.owner,
+          onlyIfOwner: announcement.owner != null,
         });
         return;
       }
@@ -62,6 +65,8 @@ export function useUndoableAction(): (announcement: UndoAnnouncement) => void {
         key: announcement.key,
         profileId: announcement.profileId,
         profileToken: announcement.profileToken,
+        owner: announcement.owner,
+        onlyIfOwner: announcement.owner != null,
         action: {
           label: "Undo",
           onClick: () => {
@@ -87,6 +92,8 @@ export function useUndoableAction(): (announcement: UndoAnnouncement) => void {
                   key: announcement.key,
                   profileId: announcement.profileId,
                   profileToken: announcement.profileToken,
+                  owner: announcement.owner,
+                  onlyIfOwner: announcement.owner != null,
                 });
               else
                 toast(undoRefusalText(outcome.reason), {
@@ -94,6 +101,8 @@ export function useUndoableAction(): (announcement: UndoAnnouncement) => void {
                   key: announcement.key,
                   profileId: announcement.profileId,
                   profileToken: announcement.profileToken,
+                  owner: announcement.owner,
+                  onlyIfOwner: announcement.owner != null,
                 });
             })();
           },

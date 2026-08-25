@@ -9,6 +9,7 @@ import {
   type SetStateAction,
 } from "react";
 import { IconChevronDown, IconSparkles } from "@tabler/icons-react";
+import { useActiveProfileId } from "@/components/ActiveProfileProvider";
 import type { FoodSlot } from "@/lib/food-slot";
 import ModalShell from "@/components/ModalShell";
 import InsightLauncher from "@/components/InsightLauncher";
@@ -53,14 +54,28 @@ export function useFoodSelectedDate(): FoodSelectedDateContextValue {
 // this state inside FoodSuggestionsLayout below, while the sheet needs the same
 // logger state without the page's suggestions/sidebar composition.
 export function FoodSelectedDateProvider({
-  today,
-  days,
-  children,
-}: {
+  ...props
+}: FoodSelectedDateProviderProps) {
+  const activeProfileId = useActiveProfileId();
+  return (
+    <FoodSelectedDateProviderForProfile
+      key={activeProfileId ?? "unscoped"}
+      {...props}
+    />
+  );
+}
+
+interface FoodSelectedDateProviderProps {
   today: string;
   days: FoodLogDay[];
   children: ReactNode;
-}) {
+}
+
+function FoodSelectedDateProviderForProfile({
+  today,
+  days,
+  children,
+}: FoodSelectedDateProviderProps) {
   const [activeDate, setActiveDate] = useState(today);
   const [projection, setProjection] = useState<FoodProjectionState>(() => ({
     countsByDate: Object.fromEntries(days.map((day) => [day.date, day.counts])),
@@ -114,16 +129,18 @@ function ResponsiveNutrientDetails({ children }: { children: ReactNode }) {
 // weekly context in the unified right rail; the content opens in a modal so the
 // logger and sidebar never reflow when the disclosure changes state.
 export default function FoodSuggestionsLayout({
-  today,
-  days,
-  initialDate,
-  logger,
-  todaySidebar,
-  weeklySidebar,
-  selectedDayNutrients = [],
-  suggestionContent,
-  suggestionCount,
-}: {
+  ...props
+}: FoodSuggestionsLayoutProps) {
+  const activeProfileId = useActiveProfileId();
+  return (
+    <FoodSuggestionsLayoutForProfile
+      key={activeProfileId ?? "unscoped"}
+      {...props}
+    />
+  );
+}
+
+interface FoodSuggestionsLayoutProps {
   today: string;
   days: FoodLogDay[];
   initialDate?: string;
@@ -133,7 +150,19 @@ export default function FoodSuggestionsLayout({
   selectedDayNutrients?: { date: string; content: ReactNode }[];
   suggestionContent: ReactNode;
   suggestionCount: number;
-}) {
+}
+
+function FoodSuggestionsLayoutForProfile({
+  today,
+  days,
+  initialDate,
+  logger,
+  todaySidebar,
+  weeklySidebar,
+  selectedDayNutrients = [],
+  suggestionContent,
+  suggestionCount,
+}: FoodSuggestionsLayoutProps) {
   const [open, setOpen] = useState(false);
   const initialDateInRange =
     initialDate != null && days.some((day) => day.date === initialDate);

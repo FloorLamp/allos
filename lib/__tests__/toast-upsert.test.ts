@@ -102,6 +102,21 @@ describe("dismissKeyed", () => {
     const list = [t({ id: 1, message: "a" }), t({ id: 2, message: "b" })];
     expect(dismissKeyed(list, "upload")).toHaveLength(2);
   });
+
+  it("conditionally dismisses only while the caller still owns the keyed slot", () => {
+    const oldOwner = Symbol("old");
+    const newOwner = Symbol("new");
+    let list = [
+      t({ id: 1, key: "food", owner: oldOwner, message: "old receipt" }),
+    ];
+    list = upsertToast(
+      list,
+      t({ id: 2, key: "food", owner: newOwner, message: "new receipt" })
+    );
+
+    expect(dismissKeyed(list, "food", oldOwner)).toEqual(list);
+    expect(dismissKeyed(list, "food", newOwner)).toEqual([]);
+  });
 });
 
 // ── The phone queue (#3373) ──────────────────────────────────────────────────

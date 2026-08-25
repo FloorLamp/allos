@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useRef } from "react";
+import { useLayoutEffect, useRef } from "react";
 import { clearEmergencyPayload } from "@/components/emergency-offline";
 import { clearSnapshots } from "@/lib/offline/snapshot-db";
 import { useActivateToastProfile } from "@/components/Toast";
@@ -57,7 +57,10 @@ export default function ProfileSwitchWatcher({
 }) {
   const activateToastProfile = useActivateToastProfile();
   const previous = useRef(activeProfileId);
-  useEffect(() => {
+  // Identity must rotate in the commit itself. A previous-profile promise can
+  // resolve after the new tree commits but before passive effects; rotating here
+  // makes the root token reject that continuation before it can enqueue a notice.
+  useLayoutEffect(() => {
     // Run on first mount too: the app layout may have remounted after the server
     // switch while the root ToastProvider (and its queued snackbars) survived.
     activateToastProfile(activeProfileId);
