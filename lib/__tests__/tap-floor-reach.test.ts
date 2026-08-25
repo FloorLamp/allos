@@ -57,7 +57,7 @@ import { makeTmpDir } from "./tmp-dir";
 //   5. A RATCHET over what already misses. Labelled native boxes are licensed
 //      separately and counted exactly below; this file does not pretend the rest
 //      comply — it stops the number growing and records what each group awaits.
-//   6. AND A SECOND ROSTER FOR WHAT THIS CENSUS CANNOT JUDGE. 22 `.tap-target`
+//   6. AND A SECOND ROSTER FOR WHAT THIS CENSUS CANNOT JUDGE. Four `.tap-target`
 //      controls pin no height in source, so `floorMiss` returns null at its first
 //      line and they are neither findings nor cleared. Counting them is what
 //      turns a silent blind spot into a number that can go up (#3557 review).
@@ -104,7 +104,7 @@ const TREE: Corpus = { base: REPO, roots: ROOTS };
 // every feature — but a number well above zero, so a sweep that has stopped
 // seeing them fails LOUDLY instead of passing over an empty list. Measured
 // 2026-08-24: 1467 interactive controls carrying a `className`, of which 350 are
-// `.btn`-family members and 51 take `.tap-target` as their mechanism. It only
+// `.btn`-family members and 35 take `.tap-target` as their mechanism. It only
 // ever moves up, and only when someone has looked.
 //
 // The same 1456 measured 2026-08-22, before #3561 taught the scan to resolve a
@@ -113,14 +113,15 @@ const TREE: Corpus = { base: REPO, roots: ROOTS };
 // moved is underneath: 159 controls could receive a verdict and now 178 explicit
 // heights can. The governed floor below also counts authenticated CSS mechanisms,
 // so the subset this rule can actually clear or reject cannot disappear behind a
-// stable headline. `.tap-target` as a mechanism separately went 38 -> 51.
+// stable headline. `.tap-target` as a mechanism separately went 38 -> 51, then
+// back to 35 as adjacent controls took rendered ownership in #3562.
 const CENSUS_FLOOR = 1200;
 // Filled from the governed source-verdict population below: explicit readable
 // heights plus the two mechanisms whose rendered floor arrives from CSS.
 const GOVERNED_CENSUS_FLOOR = 494;
 const MECHANISM_CENSUS_FLOORS: Partial<Record<FloorMechanism, number>> = {
   "btn-family": 350,
-  "tap-target": 51,
+  "tap-target": 35,
   "chip-sm": 21,
   rendered: 39,
 };
@@ -197,19 +198,6 @@ const UNDER_FLOOR_REGISTER: Registered[] = [
     file: "app/(app)/results/TrajectoryWatchCard.tsx",
     controls: 1,
     why: INLINE_GLYPH,
-  },
-  {
-    file: "components/facts/FactChipRow.tsx",
-    controls: 2,
-    why:
-      "the unpriced fact chip body and its remove `x`. The body CARRIES `.tap-target` " +
-      "but declares no rendered height, so the fixed overlay cannot yet prove 44px; the " +
-      "remove control is 24px inside a 34px chip. It also CARRIES `.tap-target` and " +
-      `still lands at ${24 + 2 * TAP_TARGET_INSET_PX}px effective, because the overlay adds a fixed ` +
-      `2x${TAP_TARGET_INSET_PX}px. Reaching ${TAP_FLOOR_PX} needs ${TAP_TARGET_MIN_RENDERED_PX}px rendered, which grows the chip ` +
-      "from 34px to 46 and re-lays every fact row in the app — the #3536 shape, recorded " +
-      "rather than forced. Both remain in the unjudged roster; #3562 owns their measured " +
-      "phone geometry",
   },
   {
     file: "components/illness/SymptomLogBar.tsx",
@@ -327,7 +315,7 @@ const UNDER_FLOOR_REGISTER: Registered[] = [
  *
  * `floorMiss` returns null on its FIRST LINE for a control that pins no height —
  * see the module header on what a class-list scan can see. That is a stated
- * bound and it is honest, but until now it was also SILENT: twenty-two controls
+ * bound and it is honest, but until now it was also SILENT: four controls
  * wearing the token that says "the floor was reached by hit area" were neither
  * findings nor cleared, and nothing counted them. A blind spot with no number
  * cannot grow visibly, which is the #3206 shape one level down.
@@ -340,35 +328,15 @@ const UNDER_FLOOR_REGISTER: Registered[] = [
  *
  * Why it matters and is not bookkeeping: `.tap-target` adds a FIXED 12px, so a
  * control's compliance depends entirely on a rendered height none of these
- * declare. Three of the twenty have now been measured (MEASURED_UNDER_FLOOR)
- * and all three are under the floor. The other seventeen are UNMEASURED — nobody
- * has looked, and this file says so rather than implying they are fine.
+ * declare. Three have now been measured (MEASURED_UNDER_FLOOR) and all three
+ * are under the floor. The other one is UNMEASURED — nobody has looked, and
+ * this file says so rather than implying it is fine.
  */
 type UnjudgedTapTarget = { file: string; controls: number };
 
 const UNJUDGED_TAP_TARGETS: UnjudgedTapTarget[] = [
-  { file: "app/(app)/encounters/AddVisitEntry.tsx", controls: 2 },
-  { file: "app/(app)/protocols/ProtocolForm.tsx", controls: 1 },
-  { file: "app/(app)/training/GoalForm.tsx", controls: 1 },
-  // The injury bar's trailing-affordance MENU (#3221), the same control ProtocolForm
-  // and GoalForm are rostered for: a `.tap-target` chip whose height is whatever its
-  // padding and text come to. Unjudged for the same reason and counted for the same one.
-  { file: "app/(app)/training/InjuryBar.tsx", controls: 1 },
-  { file: "components/IntakeItemForm.tsx", controls: 1 },
-  // The purpose chips (#2857): the goal buttons and the suggestion offer, both
-  // rounded-full chips whose padding decides their height. Nobody has measured them —
-  // they sit beside the fact chips this roster already carries unmeasured.
-  { file: "components/intake/PurposesEditor.tsx", controls: 2 },
-  // Two arrived with #3561: the dock button and one more chip in FactChipRow,
-  // both of whose class lists were hoisted constants the scan
-  // returned as identifiers. They were always unjudged; now they are counted.
-  { file: "components/MobileDock.tsx", controls: 1 },
-  { file: "components/QuickLogSheet.tsx", controls: 2 },
-  { file: "components/encounters/VisitFactRow.tsx", controls: 1 },
-  { file: "components/facts/FactChipRow.tsx", controls: 3 },
   { file: "components/intake/CadenceEditor.tsx", controls: 1 },
   { file: "components/intake/IntakeKindChip.tsx", controls: 1 },
-  { file: "components/intake/IntakeRulesEditor.tsx", controls: 1 },
   { file: "components/video/VideoClipGrid.tsx", controls: 2 },
 ];
 
@@ -413,7 +381,7 @@ const UNREADABLE_CLASS_LISTS: { file: string; controls: number }[] = [
 ];
 
 /**
- * THE THREE OF THOSE TWENTY-ONE THAT HAVE BEEN MEASURED, and all three are short.
+ * THE THREE MEASURED CONTROLS, all short.
  *
  * Measured against the app's own compiled CSS at a 390px viewport with a coarse
  * pointer (#3557 review). These are the same defect this module is named for —
@@ -475,16 +443,12 @@ const MEASURED_UNDER_FLOOR: MeasuredUnderFloor[] = [
 ];
 
 /**
- * The seventeen nobody has measured. Stated as a number rather than left as
+ * The one nobody has measured. Stated as a number rather than left as
  * subtraction, because "we have not looked" is the fact worth being able to
- * read off this file. It went 16 -> 18 when #3561 made two hoisted class lists
- * readable — the controls did not change, the scan's sight did. ProfileIdentityBar
- * now declares its phone floor, taking that count back to 17. The other three
- * are the other kind of increase, new controls nobody has put a ruler to:
- * #3221's trailing-affordance menu on the injury bar, which the other
- * facts-with-editors hosts already had, and #2857's two purpose chips.
+ * read off this file. IntakeKindChip's unlocked branch has no shipped route;
+ * cadence and the two video actions are the three routed measured misses.
  */
-const UNMEASURED_TAP_TARGETS = 17;
+const UNMEASURED_TAP_TARGETS = 1;
 
 function read(rel: string, base: string = REPO): string {
   return fs.readFileSync(path.join(base, rel), "utf8");
