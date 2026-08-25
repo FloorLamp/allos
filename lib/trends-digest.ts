@@ -101,7 +101,7 @@ export interface TrendItem {
   // Where the LATEST value sits vs the range ("above" / "below" / "in"), when a
   // range was supplied — drives the "into high/low range" phrasing.
   lastStatus: "above" | "below" | "in" | "unknown";
-  // Ranking score (higher = more significant); not shown, used only to sort.
+  // Relative magnitude within a crossing tier; not shown, used only to sort.
   magnitude: number;
   text: string;
 }
@@ -116,21 +116,24 @@ export interface DigestOptions {
   minPctChange?: number;
 }
 
-// Rank score: a range crossing dominates (an out-of-range move above an
-// into-range move), then the relative magnitude of the change. A first-value of 0
-// (pctChange null but non-zero move) is treated as a large relative move so it
-// isn't sorted to the bottom.
-function scoreOf(pctChange: number | null, shift: RangeShift): number {
-  const rel = pctChange == null ? 1 : Math.abs(pctChange);
-  const shiftBoost =
-    shift === "out-of-range"
-      ? 1000
-      : shift === "through-range"
-        ? 750
-        : shift === "into-range"
-          ? 500
-          : 0;
-  return shiftBoost + rel;
+// Relative magnitude within a ranking tier. A first-value of 0 (pctChange null
+// but non-zero move) is treated as a large relative move so it isn't sorted to
+// the bottom.
+function magnitudeOf(pctChange: number | null): number {
+  return pctChange == null ? 1 : Math.abs(pctChange);
+}
+
+// Crossings are categorical ranking tiers rather than finite score boosts, so no
+// size of ordinary move can outrank one. Preserve the existing precedence among
+// crossing kinds, then compare relative magnitude within the same tier.
+function crossingRank(shift: RangeShift): number {
+  return shift === "out-of-range"
+    ? 3
+    : shift === "through-range"
+      ? 2
+      : shift === "into-range"
+        ? 1
+        : 0;
 }
 
 function classifyShift(
@@ -238,7 +241,10 @@ function dispersionShift(
   leading: readonly { date: string; value: number }[],
   trailing: readonly { date: string; value: number }[]
 ): boolean {
-  if (leading.length === 0 || trailing.length === 0) return false;
+  // Each half needs enough observations to establish its own dispersion and
+  // slope. One point per half can prove a crossing, but not a level shift against
+  // the series' own variation.
+  if (leading.length < 2 || trailing.length < 2) return false;
   const observedChange =
     median(trailing.map(({ value }) => value)) -
     median(leading.map(({ value }) => value));
@@ -421,7 +427,8 @@ export function robustSeriesSummary(
 // Compute the ranked, human-labeled news list. The unchanged shared endpoint
 // summary first establishes direction/materiality; this additional gate admits
 // only crossings, dispersion-significant level shifts, and in-window behavior
-// changes. Ties still break on the old score, then label.
+// changes. Crossings rank categorically first; ties break on relative magnitude,
+// then label.
 export function summarizeTrends(
   series: readonly DigestSeries[],
   opts: DigestOptions = {}
@@ -451,7 +458,7 @@ export function summarizeTrends(
 
     const direction = summary.direction;
     const days = daysBetween(pts[0].date, pts[pts.length - 1].date);
-    const magnitude = scoreOf(pctChange, shift);
+    const magnitude = magnitudeOf(pctChange);
     const core: Omit<TrendItem, "text"> = {
       key: s.key,
       label: s.label,
@@ -475,7 +482,10 @@ export function summarizeTrends(
   }
 
   items.sort(
-    (x, y) => y.magnitude - x.magnitude || x.label.localeCompare(y.label)
+    (x, y) =>
+      crossingRank(y.rangeShift) - crossingRank(x.rangeShift) ||
+      y.magnitude - x.magnitude ||
+      x.label.localeCompare(y.label)
   );
   return items.slice(0, Math.max(0, limit));
 }
