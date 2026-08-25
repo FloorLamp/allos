@@ -193,6 +193,42 @@ describe("FoodLogBar projection publication", () => {
     ).toBeTruthy();
   });
 
+  it("resets provider projection when the mounted subject changes", () => {
+    const profileSeven: FoodLogDay = {
+      ...DAY,
+      counts: { cruciferous: 1 },
+      slotCounts: {
+        Morning: {},
+        Midday: { cruciferous: 1 },
+        Evening: {},
+      },
+    };
+    const profileEight: FoodLogDay = {
+      ...DAY,
+      counts: { cruciferous: 9 },
+      slotCounts: {
+        Morning: {},
+        Midday: { cruciferous: 9 },
+        Evening: {},
+      },
+    };
+    const view = mountBar({ profileId: 7, day: profileSeven });
+    expect(screen.getByTestId("food-slot-total-midday").textContent).toBe("1");
+    expect(screen.getByTestId("count-cruciferous").getAttribute("title")).toBe(
+      "1 serving in Midday today"
+    );
+
+    view.rerender(barTree({ profileId: 8, day: profileEight }));
+
+    // Plain total/title derive directly from the provider projection, so this
+    // proves subject reset independently of RollingNumber's visual lifecycle.
+    expect(screen.getByTestId("food-slot-total-midday").textContent).toBe("9");
+    expect(screen.getByTestId("count-cruciferous").getAttribute("title")).toBe(
+      "9 servings in Midday today"
+    );
+    expect(screen.getByTestId("count-cruciferous").textContent).toBe("9");
+  });
+
   it("publishes correction truth after its Server Action RSC rerender", async () => {
     window.matchMedia = normalMotionMediaQuery;
     const frames: FrameRequestCallback[] = [];
