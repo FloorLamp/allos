@@ -39,7 +39,6 @@ import IntakeFactRow, {
 import FactEditorHost, {
   useFactEditor,
 } from "@/components/facts/FactEditorHost";
-import IntakeKindChip from "@/components/intake/IntakeKindChip";
 import IntakeRulesEditor from "@/components/intake/IntakeRulesEditor";
 import { parseWeekdays, cadenceLabel } from "@/lib/intake-cadence";
 import {
@@ -1101,13 +1100,6 @@ export default function IntakeItemForm({
           </dl>
         )}
       </div>
-
-      {lockedKind == null && (
-        <IntakeKindChip
-          derivation={derivation}
-          onChoose={(next) => setChosenKind(next)}
-        />
-      )}
 
       {derivation.kind != null && choices.length > 0 && (
         <div

@@ -38,24 +38,6 @@ async function expectOverlayFloor(
   ).toBeGreaterThanOrEqual(TAP_FLOOR_PX);
 }
 
-async function expectMeasuredMiss(
-  name: string,
-  locator: Locator,
-  exactRenderedPx: number
-) {
-  await expect(locator, name).toBeVisible();
-  await expect(locator, `${name} still uses the fixed overlay`).toHaveClass(
-    /(?:^|\s)tap-target(?:\s|$)/
-  );
-  const box = await locator.boundingBox();
-  expect(box, name).not.toBeNull();
-  expect(box!.height, `${name} rendered height`).toBe(exactRenderedPx);
-  expect(
-    box!.height + 2 * TAP_TARGET_INSET_PX,
-    `${name} remains an owner-held effective miss`
-  ).toBeLessThan(TAP_FLOOR_PX);
-}
-
 async function expectRenderedTargetsDisjoint(name: string, row: Locator) {
   await expect(row, `${name} row`).toBeVisible();
   const targets = row.locator("button");
@@ -222,7 +204,7 @@ test.describe("tap-target rendered census (#3562)", () => {
     );
   });
 
-  test("intake controls and the remaining cadence miss", async ({ page }) => {
+  test("intake and cadence controls", async ({ page }) => {
     test.setTimeout(120_000);
     await page.goto("/nutrition?tab=supplements");
     await page.getByTestId("supplement-add-toggle").click();
@@ -294,10 +276,13 @@ test.describe("tap-target rendered census (#3562)", () => {
 
     await form.getByTestId("intake-fact-timing").click();
     await form.getByLabel("How often").selectOption("weekly");
-    await expectMeasuredMiss(
+    await expectRenderedFloor(
       "cadence weekday",
-      form.getByTestId("cadence-weekday-1"),
-      24
+      form.getByTestId("cadence-weekday-1")
+    );
+    await expectRenderedTargetsDisjoint(
+      "cadence weekdays",
+      form.getByTestId("cadence-weekdays")
     );
   });
 });

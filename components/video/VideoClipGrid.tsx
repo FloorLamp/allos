@@ -1,12 +1,11 @@
 "use client";
 
 import { useRef, useState, useTransition } from "react";
-import {
-  IconVideo,
-  IconMicrophone,
-  IconTrash,
-  IconMapPin,
-} from "@tabler/icons-react";
+import { IconVideo, IconMicrophone, IconMapPin } from "@tabler/icons-react";
+import OverflowMenu, {
+  MENU_ITEM,
+  MENU_ITEM_DANGER,
+} from "@/components/OverflowMenu";
 import { useToast } from "@/components/Toast";
 import NotesText from "@/components/NotesText";
 import { extractPosterFrame } from "@/lib/video/client-poster";
@@ -85,6 +84,7 @@ export default function VideoClipGrid({
   const [caption, setCaption] = useState("");
   const [editingId, setEditingId] = useState<number | null>(null);
   const [captionDraft, setCaptionDraft] = useState("");
+  const [menuOpenId, setMenuOpenId] = useState<number | null>(null);
 
   function onPick(file: File | undefined) {
     if (!file) return;
@@ -213,33 +213,44 @@ export default function VideoClipGrid({
                   <div className="flex items-center justify-between gap-1">
                     <span className="truncate">{c.label}</span>
                     {canWrite && (
-                      <span className="flex shrink-0 items-center gap-0.5">
-                        <button
-                          type="button"
-                          aria-label="Edit clip caption"
-                          title="Edit caption"
-                          data-testid={`video-clip-edit-${c.id}`}
-                          disabled={pending}
-                          onClick={() => {
-                            setEditingId(c.id);
-                            setCaptionDraft(c.caption ?? "");
-                          }}
-                          className="tap-target rounded-sm p-1 text-slate-400 transition hover:bg-slate-100 hover:text-slate-600 disabled:opacity-50 dark:hover:bg-ink-800 dark:hover:text-slate-200"
-                        >
-                          <span aria-hidden>✎</span>
-                        </button>
-                        <button
-                          type="button"
-                          aria-label="Delete clip"
-                          title="Delete clip"
-                          data-testid={`video-clip-delete-${c.id}`}
-                          disabled={pending}
-                          onClick={() => remove(c.id)}
-                          className="tap-target rounded-sm p-1 text-slate-400 transition hover:bg-rose-50 hover:text-rose-500 disabled:opacity-50 dark:hover:bg-rose-950/30"
-                        >
-                          <IconTrash className="h-3.5 w-3.5" stroke={1.75} />
-                        </button>
-                      </span>
+                      <OverflowMenu
+                        kind="Clip"
+                        itemName={c.caption || c.label}
+                        open={menuOpenId === c.id}
+                        onOpenChange={(open) =>
+                          setMenuOpenId(open ? c.id : null)
+                        }
+                      >
+                        {({ close }) => (
+                          <>
+                            <button
+                              type="button"
+                              role="menuitem"
+                              disabled={pending}
+                              onClick={() => {
+                                setEditingId(c.id);
+                                setCaptionDraft(c.caption ?? "");
+                                close();
+                              }}
+                              className={MENU_ITEM}
+                            >
+                              Edit caption
+                            </button>
+                            <button
+                              type="button"
+                              role="menuitem"
+                              disabled={pending}
+                              onClick={() => {
+                                close();
+                                remove(c.id);
+                              }}
+                              className={MENU_ITEM_DANGER}
+                            >
+                              Delete clip
+                            </button>
+                          </>
+                        )}
+                      </OverflowMenu>
                     )}
                   </div>
 

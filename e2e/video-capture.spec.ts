@@ -19,8 +19,8 @@ import { workerDbPath } from "./worker-env";
 //
 // It also pins the #1457 PRESENCE RULES, which split the surface in two: the
 // canonical activity page (the feed itself is slim rows) shows the strip ONLY
-// when clips exist (read/playback + per-clip
-// edit/delete, no add), and the activity EDITOR's More-details block is where a
+// when clips exist (read/playback + one per-clip action menu, no add), and the
+// activity EDITOR's More-details block is where a
 // clip gets attached (always rendered, empty state included, wherever a SAVED
 // activity id exists — an upload needs one). So the walk is: no section → open
 // editor → add → the card's section appears → delete the last clip → it
@@ -262,9 +262,13 @@ test("upload → poster grid → open player → Range serve → location warnin
     expect(bogus.status()).toBe(404);
     expect(await bogus.json()).toEqual({ ok: false, error: "not found" });
 
-    // Delete → the card's per-clip control still works (only ADD moved away), and
-    // with the last clip gone the whole section disappears again (#1457).
-    await settledClick(page, strip.getByTestId(`video-clip-delete-${clipId}`));
+    // Delete → the card's standard per-clip menu still works (only ADD moved
+    // away), and with the last clip gone the whole section disappears again.
+    await strip.getByTestId("overflow-menu-trigger").click();
+    await settledClick(
+      page,
+      page.getByRole("menuitem", { name: "Delete clip" })
+    );
     await expect(page.getByTestId(`activity-media-strip-${aid}`)).toHaveCount(
       0,
       { timeout: 20_000 }

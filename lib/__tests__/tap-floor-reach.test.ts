@@ -57,10 +57,11 @@ import { makeTmpDir } from "./tmp-dir";
 //   5. A RATCHET over what already misses. Labelled native boxes are licensed
 //      separately and counted exactly below; this file does not pretend the rest
 //      comply — it stops the number growing and records what each group awaits.
-//   6. AND A SECOND ROSTER FOR WHAT THIS CENSUS CANNOT JUDGE. Four `.tap-target`
-//      controls pin no height in source, so `floorMiss` returns null at its first
-//      line and they are neither findings nor cleared. Counting them is what
-//      turns a silent blind spot into a number that can go up (#3557 review).
+//   6. AND A SECOND ROSTER FOR WHAT THIS CENSUS CANNOT JUDGE. A `.tap-target`
+//      control that pins no height in source makes `floorMiss` return null at its
+//      first line, so it is neither a finding nor cleared. The roster is empty
+//      after #3562, and keeping that exact assertion prevents the blind spot from
+//      returning silently.
 //   7. AND A THIRD FOR WHAT IT CANNOT EVEN READ. A control whose class list is
 //      composed somewhere else — a forwarded `className` prop, a `.map()`
 //      variable — comes back `readable: false`, and those are rostered EXACTLY
@@ -103,8 +104,8 @@ const TREE: Corpus = { base: REPO, roots: ROOTS };
 // THE FLOOR THE CENSUS MUST CLEAR. Not the exact count — controls arrive with
 // every feature — but a number well above zero, so a sweep that has stopped
 // seeing them fails LOUDLY instead of passing over an empty list. Measured
-// 2026-08-24: 1467 interactive controls carrying a `className`, of which 350 are
-// `.btn`-family members and 35 take `.tap-target` as their mechanism. It only
+// 2026-08-25: 1464 interactive controls carrying a `className`, of which 350 are
+// `.btn`-family members and 31 take `.tap-target` as their mechanism. It only
 // ever moves up, and only when someone has looked.
 //
 // The same 1456 measured 2026-08-22, before #3561 taught the scan to resolve a
@@ -114,14 +115,15 @@ const TREE: Corpus = { base: REPO, roots: ROOTS };
 // heights can. The governed floor below also counts authenticated CSS mechanisms,
 // so the subset this rule can actually clear or reject cannot disappear behind a
 // stable headline. `.tap-target` as a mechanism separately went 38 -> 51, then
-// back to 35 as adjacent controls took rendered ownership in #3562.
+// back to 35 as adjacent controls took rendered ownership in #3562's first
+// pass, then 31 when the four owner-held controls converged.
 const CENSUS_FLOOR = 1200;
 // Filled from the governed source-verdict population below: explicit readable
 // heights plus the two mechanisms whose rendered floor arrives from CSS.
 const GOVERNED_CENSUS_FLOOR = 494;
 const MECHANISM_CENSUS_FLOORS: Partial<Record<FloorMechanism, number>> = {
   "btn-family": 350,
-  "tap-target": 35,
+  "tap-target": 31,
   "chip-sm": 21,
   rendered: 39,
 };
@@ -223,13 +225,6 @@ const UNDER_FLOOR_REGISTER: Registered[] = [
   },
   { file: "components/MoodValencePicker.tsx", controls: 1, why: DENSE_EDITOR },
   {
-    file: "components/intake/CadenceEditor.tsx",
-    controls: 1,
-    why:
-      `${DENSE_EDITOR}. Its weekday toggle is measured at 24px rendered and remains in ` +
-      "MEASURED_UNDER_FLOOR; #3562 owns the phone-row resolution",
-  },
-  {
     file: "app/(app)/training/TrainingLogView.tsx",
     controls: 1,
     why: DENSE_EDITOR,
@@ -270,17 +265,12 @@ const UNDER_FLOOR_REGISTER: Registered[] = [
   {
     file: "components/video/VideoClipGrid.tsx",
     controls: 2,
-    // NAMED, because this entry was read as covering the whole file and it does
-    // not. The two controls here are the CAPTION TEXT INPUTS —
+    // The two controls here are the CAPTION TEXT INPUTS —
     // `video-clip-caption-input-*` (`input h-8`) and the new-clip `Caption
     // (optional)` field (`input h-9`). The file's two icon buttons at the
-    // figcaption are a different population entirely: they pin no height, this
-    // census renders no verdict on them, and they are recorded in
-    // MEASURED_UNDER_FLOOR below at 24px and 22px rendered. A count of 2 with a
-    // `why` about typed fields silently covered them, which is worse than
-    // leaving them out — the ratchet was green and the sentence was false
-    // (#3557 review, blocker 3).
-    why: `${TYPED_FIELD}. This entry is the two caption text inputs ONLY; the file's two icon buttons pin no height and are recorded in MEASURED_UNDER_FLOOR`,
+    // figcaption now has one standard OverflowMenu trigger instead of the two
+    // under-floor glyphs (#3562).
+    why: `${TYPED_FIELD}. This entry is the two caption text inputs only`,
   },
   {
     file: "components/medications/PediatricDoseBandPicker.tsx",
@@ -314,11 +304,8 @@ const UNDER_FLOOR_REGISTER: Registered[] = [
  * THE `.tap-target` CONTROLS THIS CENSUS CANNOT JUDGE, ENUMERATED.
  *
  * `floorMiss` returns null on its FIRST LINE for a control that pins no height —
- * see the module header on what a class-list scan can see. That is a stated
- * bound and it is honest, but until now it was also SILENT: four controls
- * wearing the token that says "the floor was reached by hit area" were neither
- * findings nor cleared, and nothing counted them. A blind spot with no number
- * cannot grow visibly, which is the #3206 shape one level down.
+ * see the module header on what a class-list scan can see. The exact empty roster
+ * after #3562 makes a future blind spot fail instead of growing silently.
  *
  * So they are rostered here, by file and count, and the census asserts the
  * roster is EXACTLY what it finds. A new unpinned `.tap-target` is red until
@@ -327,18 +314,11 @@ const UNDER_FLOOR_REGISTER: Registered[] = [
  * size of the question this scan cannot answer.
  *
  * Why it matters and is not bookkeeping: `.tap-target` adds a FIXED 12px, so a
- * control's compliance depends entirely on a rendered height none of these
- * declare. Three have now been measured (MEASURED_UNDER_FLOOR) and all three
- * are under the floor. The other one is UNMEASURED — nobody has looked, and
- * this file says so rather than implying it is fine.
+ * control's compliance depends entirely on its rendered height.
  */
 type UnjudgedTapTarget = { file: string; controls: number };
 
-const UNJUDGED_TAP_TARGETS: UnjudgedTapTarget[] = [
-  { file: "components/intake/CadenceEditor.tsx", controls: 1 },
-  { file: "components/intake/IntakeKindChip.tsx", controls: 1 },
-  { file: "components/video/VideoClipGrid.tsx", controls: 2 },
-];
+const UNJUDGED_TAP_TARGETS: UnjudgedTapTarget[] = [];
 
 /**
  * THE CLASS LISTS THIS CENSUS CANNOT READ AT ALL, ENUMERATED.
@@ -380,25 +360,6 @@ const UNREADABLE_CLASS_LISTS: { file: string; controls: number }[] = [
   { file: "components/illness/ReopenEpisodeReconcile.tsx", controls: 1 },
 ];
 
-/**
- * THE THREE MEASURED CONTROLS, all short.
- *
- * Measured against the app's own compiled CSS at a 390px viewport with a coarse
- * pointer (#3557 review). These are the same defect this module is named for —
- * a control wearing `.tap-target`, which says the floor was reached by hit area,
- * while its rendered box is under the 32px the overlay's fixed 12px needs. They
- * were invisible to the source census because their height is their content's.
- *
- * RECORDED, NOT FIXED. Raising these is a phone-idiom decision in a dense row —
- * the weekday cadence toggles are seven across a phone, the clip glyphs ride a
- * figcaption line — and that is #3562's call, on the #3536 precedent this file
- * already follows for `FactChipRow`. What is fixed here is the RECORD: two of
- * the three were standing behind a register entry about `<select>` boxes.
- *
- * `testid` is what pins each entry to its control. A line number drifts with any
- * edit above it; a testid is the thing the control is addressed by, and the
- * census asserts it is still in the file.
- */
 type MeasuredUnderFloor = {
   file: string;
   /** 1-based line of the opening tag when this was measured, for the reader. */
@@ -410,45 +371,9 @@ type MeasuredUnderFloor = {
   what: string;
 };
 
-const MEASURED_UNDER_FLOOR: MeasuredUnderFloor[] = [
-  {
-    file: "components/intake/CadenceEditor.tsx",
-    line: 56,
-    testid: "-weekday-",
-    renderedPx: 24,
-    what:
-      "the cadence editor's weekday toggles (`px-2 py-1 text-xs`, seven across a phone). " +
-      "Raising them to 32 rendered re-lays the row, which is the #3374/#3378 phone-idiom " +
-      "question and not a class edit",
-  },
-  {
-    file: "components/video/VideoClipGrid.tsx",
-    line: 217,
-    testid: "video-clip-edit-",
-    renderedPx: 24,
-    what:
-      "the clip caption's edit glyph (`p-1` around a text-sized character), riding the " +
-      "figcaption line. The INLINE_GLYPH shape: its box is the line's, so the floor needs " +
-      "a layout answer",
-  },
-  {
-    file: "components/video/VideoClipGrid.tsx",
-    line: 231,
-    testid: "video-clip-delete-",
-    renderedPx: 22,
-    what:
-      "the clip's delete glyph (`p-1` around a 14px icon), beside the edit glyph above and " +
-      "2px shorter because the icon is smaller than the line box",
-  },
-];
+const MEASURED_UNDER_FLOOR: MeasuredUnderFloor[] = [];
 
-/**
- * The one nobody has measured. Stated as a number rather than left as
- * subtraction, because "we have not looked" is the fact worth being able to
- * read off this file. IntakeKindChip's unlocked branch has no shipped route;
- * cadence and the two video actions are the three routed measured misses.
- */
-const UNMEASURED_TAP_TARGETS = 1;
+const UNMEASURED_TAP_TARGETS = 0;
 
 function read(rel: string, base: string = REPO): string {
   return fs.readFileSync(path.join(base, rel), "utf8");
@@ -811,7 +736,7 @@ describe("the `.tap-target` controls this census cannot judge", () => {
     ).toBe(total - MEASURED_UNDER_FLOOR.length);
   });
 
-  it("holds the three measured ones to the arithmetic, not to a memory of it", () => {
+  it("holds any measured ones to the arithmetic, not to a memory of it", () => {
     for (const m of MEASURED_UNDER_FLOOR) {
       // It really is the control described — the testid is how it is addressed,
       // and a line number would only tell you the file has been edited since.
