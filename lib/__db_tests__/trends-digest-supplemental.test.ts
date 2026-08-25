@@ -264,9 +264,9 @@ describe("supplemental Trends digest gather (#3397)", () => {
     ]);
   });
 
-  it("does not score a target created part-way through the digest window", () => {
-    const id = profile("digest practice lifetime");
-    const name = "Digest breathwork";
+  it("keeps a mid-window target quiet with fewer than four covered weeks", () => {
+    const id = profile("digest practice short lifetime");
+    const name = "Digest short breathwork";
     const range = { from: dateBack(id, 62), to: today(id) };
     const practiceWindow = practiceTrendWindow(range, today(id));
     const windows = cadenceWindows(id, {
@@ -274,19 +274,15 @@ describe("supplemental Trends digest gather (#3397)", () => {
       includeCurrent: false,
       asOf: practiceWindow.asOf,
     });
+    const covered = windows.slice(-3);
     db.prepare(
       `INSERT INTO frequency_targets
          (profile_id, scope_kind, scope_value, scope_identity, per_week,
           created_at)
        VALUES (?, 'practice', ?, ?, 2, ?)`
-    ).run(
-      id,
-      name,
-      practiceIdentity(name),
-      `${shiftDateStr(windows[0].start, 2)} 08:00:00`
-    );
-    windows.forEach((window, index) => {
-      for (let within = 0; within < (index < 4 ? 1 : 4); within++) {
+    ).run(id, name, practiceIdentity(name), `${covered[0].start} 08:00:00`);
+    covered.forEach((window, index) => {
+      for (let within = 0; within < (index === 0 ? 1 : 4); within++) {
         db.prepare(
           "INSERT INTO practice_logs (profile_id, practice, date) VALUES (?, ?, ?)"
         ).run(id, name, shiftDateStr(window.start, within));
@@ -294,6 +290,43 @@ describe("supplemental Trends digest gather (#3397)", () => {
     });
 
     expect(buildPracticeDigestSeries(id, range, today(id))).toEqual([]);
+  });
+
+  it("summarizes a mid-window target across its four covered weeks", () => {
+    const id = profile("digest practice covered lifetime");
+    const name = "Digest covered breathwork";
+    const range = { from: dateBack(id, 62), to: today(id) };
+    const practiceWindow = practiceTrendWindow(range, today(id));
+    const windows = cadenceWindows(id, {
+      weeks: practiceWindow.weeks,
+      includeCurrent: false,
+      asOf: practiceWindow.asOf,
+    });
+    const covered = windows.slice(-4);
+    db.prepare(
+      `INSERT INTO frequency_targets
+         (profile_id, scope_kind, scope_value, scope_identity, per_week,
+          created_at)
+       VALUES (?, 'practice', ?, ?, 2, ?)`
+    ).run(id, name, practiceIdentity(name), `${covered[0].start} 08:00:00`);
+    covered.forEach((window, index) => {
+      for (let within = 0; within < (index < 2 ? 1 : 4); within++) {
+        db.prepare(
+          "INSERT INTO practice_logs (profile_id, practice, date) VALUES (?, ?, ?)"
+        ).run(id, name, shiftDateStr(window.start, within));
+      }
+    });
+
+    const [series] = buildPracticeDigestSeries(id, range, today(id));
+    expect(series.points).toEqual(
+      covered.map((week, index) => ({
+        date: week.start,
+        value: index < 2 ? 1 : 4,
+      }))
+    );
+    expect(summarizeTrends([series]).map((item) => item.key)).toEqual([
+      series.key,
+    ]);
   });
 
   it("uses the live target after an edit without changing its canonical history", () => {

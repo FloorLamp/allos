@@ -64,6 +64,7 @@ import {
   type AppRoute,
 } from "./hrefs";
 import { displayUnit } from "./display-unit";
+import { cadenceWeeksCoveredByTarget } from "./queries/cadence-ledger";
 
 export interface TrendSeries {
   key: string; // "metric:weight" | "result:LDL Cholesterol" — also the pin key
@@ -563,32 +564,40 @@ export function buildPracticeDigestSeries(
   todayStr: string
 ): DigestSeries[] {
   const window = practiceTrendWindow(range, todayStr);
-  return getFrequencyTargetWeeklyHistory(profileId, window.weeks, window.asOf)
-    .filter(
-      (history) =>
-        history.target.scope_kind === "practice" &&
-        history.existedWholeWindow &&
-        practiceDigestEligible({
-          perWeek: history.target.per_week,
-          weeks: history.weeks,
-        })
+  return getFrequencyTargetWeeklyHistory(
+    profileId,
+    window.weeks,
+    window.asOf
+  ).flatMap((history) => {
+    if (history.target.scope_kind !== "practice") return [];
+    const weeks = cadenceWeeksCoveredByTarget(
+      history.weeks,
+      history.declaredOn
+    );
+    if (
+      !practiceDigestEligible({
+        perWeek: history.target.per_week,
+        weeks,
+      })
     )
-    .map((history) => {
-      const identity = practiceIdentity(history.target.scope_value);
-      return {
+      return [];
+    const identity = practiceIdentity(history.target.scope_value);
+    return [
+      {
         key: practiceDigestKey(identity),
         label: `${practiceDisplayName({
           targetSpelling: history.target.scope_value,
           identity,
         })} cadence`,
         unit: "/wk",
-        points: history.weeks.map((week) => ({
+        points: weeks.map((week) => ({
           date: week.start,
           value: week.count,
         })),
         minPctChange: PRACTICE_DIGEST_MIN_CHANGE,
-      };
-    });
+      },
+    ];
+  });
 }
 
 // Assemble every candidate series for the "what's trending" digest: the standard
