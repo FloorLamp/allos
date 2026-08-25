@@ -15,7 +15,8 @@ export default function OverlayDragHandle({
   testId = "sheet-drag-handle",
   className = "",
 }: {
-  // Where the recognizer attaches (see useOverlayDrag's `grabRef`).
+  // Identifies the intentional handle origin. A surface may also admit body
+  // drags through useOverlayDrag's one-shot `canStart` rule.
   handleRef?: React.RefObject<HTMLDivElement | null>;
   testId?: string;
   className?: string;

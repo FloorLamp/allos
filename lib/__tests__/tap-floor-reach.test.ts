@@ -68,7 +68,8 @@ import { makeTmpDir } from "./tmp-dir";
 //      constant reached the scan as its own IDENTIFIER, matched no height token,
 //      and read as a control that simply pins no height. Three live 40px controls
 //      were behind that (`TrainingLogCalendar`, raised here) and a fourth turned
-//      up the moment it closed (`ActivityOverlay`, registered below).
+//      up when that closed (`ActivityOverlay`, subsequently cleared by the
+//      shared 44px overlay-handle target in #3691).
 
 const REPO = path.resolve(fileURLToPath(new URL("../..", import.meta.url)));
 const ROOTS = ["app", "components"];
@@ -309,25 +310,6 @@ const UNDER_FLOOR_REGISTER: Registered[] = [
     why: `${BARE_BOX} — the #1868 kind x channel matrix, whose phone idiom is #3495/#3550`,
   },
   { file: "components/DataTableManager.tsx", controls: 2, why: BARE_BOX },
-
-  // ── the drag affordance that doubles as a control ────────────────────────
-  {
-    file: "components/ActivityOverlay.tsx",
-    controls: 1,
-    // FOUND BY FAILING CLOSED (#3561), not by anyone looking. Its class list is
-    // `OVERLAY_DRAG_HANDLE_HIT`, an identifier imported through the `./overlay`
-    // barrel from `./tokens` — three hops the scan could not take, so a 24px
-    // `<button>` read as a control pinning no height.
-    why:
-      "the workout overlay's minimize handle, `h-6 w-16` (24px) from " +
-      "`OVERLAY_DRAG_HANDLE_HIT` in components/overlay/tokens.ts. That constant is the " +
-      "SHARED drag affordance — `OverlayDragHandle` renders it `aria-hidden` on the " +
-      "sheet, the drawer and the dock, where it is a gesture hint and not a target — so " +
-      "raising it to 44 changes the handle's box on every overlay in the app, which is a " +
-      "visual decision for the overlay vocabulary (#1469) rather than a height edit. What " +
-      "closes this is either a 44px box for the one site where the handle IS the button, " +
-      "or the token growing everywhere on purpose",
-  },
 
   // ── the one range track ──────────────────────────────────────────────────
   {
@@ -1325,10 +1307,11 @@ describe("the sweep resolves a class list written somewhere else", () => {
   });
 
   it("follows a BARREL, which is how this tree actually writes its tokens", () => {
-    // `ActivityOverlay` imports `OVERLAY_DRAG_HANDLE_HIT` from "./overlay", an
+    // This is the shape ActivityOverlay uses for
+    // `OVERLAY_DRAG_HANDLE_HIT`: imported from "./overlay", an
     // index that re-exports it from "./tokens", whose value is composed from a
     // constant that never crosses either hop. Stopping at the first module reads
-    // nothing; the 24px button behind those three hops is a real finding.
+    // nothing; a sub-floor button behind those three hops must remain visible.
     const [control] = scanWith(
       `import { HANDLE } from "./overlay";
        export default function X() {

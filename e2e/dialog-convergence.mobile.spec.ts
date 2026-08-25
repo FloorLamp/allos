@@ -352,9 +352,13 @@ test("a flick on a dirty form asks first, and keeping the edit brings the whole 
   // back is the panel as it stands when the flick starts.
   const atRest = await restingPanelTop(dialog);
 
-  // A flick on the handle is the sheet's discard gesture (#1428). Right for a
-  // half-typed weight; wrong for a form somebody has been filling in.
-  await touchSwipeFrom(page, dialog.getByTestId("sheet-drag-handle"), {
+  // A flick on the body at its top is the sheet's discard gesture (#3691).
+  // Right for a clean form; wrong for one somebody has been filling in.
+  const content = dialog.locator("[data-sheet-content]");
+  await content.evaluate((node) => {
+    node.scrollTop = 0;
+  });
+  await touchSwipeFrom(page, content, {
     dy: 260,
   });
   const confirm = page.getByTestId("confirm-dialog");
@@ -384,7 +388,7 @@ test("a flick on a dirty form asks first, and keeping the edit brings the whole 
 
   // And the guard is not spent: the SAME gesture asks again, and this time the
   // answer is discard. Refusing a dismissal must not disarm the surface.
-  await touchSwipeFrom(page, dialog.getByTestId("sheet-drag-handle"), {
+  await touchSwipeFrom(page, content, {
     dy: 260,
   });
   await expect(confirm).toBeVisible();
@@ -431,7 +435,11 @@ test("a clean converged form dismisses in one gesture, with no question", async 
   await openVisitFact(dialog, "reason");
   await expect(dialog.getByLabel(TITLE_FIELD)).toBeVisible();
   await closeVisitFact(dialog);
-  await touchSwipeFrom(page, dialog.getByTestId("sheet-drag-handle"), {
+  const content = dialog.locator("[data-sheet-content]");
+  await content.evaluate((node) => {
+    node.scrollTop = 0;
+  });
+  await touchSwipeFrom(page, content, {
     dy: 260,
   });
   await expect(dialog).toHaveCount(0);
