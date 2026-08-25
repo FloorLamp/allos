@@ -25,13 +25,7 @@ import { SUPPLIES_HREF } from "@/lib/hrefs";
 // One component across viewports, and never icon-only: the glyph is `aria-hidden`
 // beside real text, and the accessible name always carries the destination's NAME
 // even when the visible label is a bare count.
-export default function SharedSuppliesLink({
-  count,
-  className = "",
-}: {
-  count: number;
-  className?: string;
-}) {
+export default function SharedSuppliesLink({ count }: { count: number }) {
   const label = sharedSuppliesLinkLabel(count);
   const accessibleName =
     count > 0 ? `Medicine cabinet: ${label}` : "Medicine cabinet";
@@ -41,7 +35,7 @@ export default function SharedSuppliesLink({
       data-testid="shared-supplies-link"
       title="Medicine cabinet"
       aria-label={accessibleName}
-      className={`inline-flex shrink-0 items-center gap-1 whitespace-nowrap text-sm text-link ${className}`}
+      className="inline-flex shrink-0 items-center gap-1 whitespace-nowrap text-sm text-link"
     >
       <IconArchive aria-hidden className="h-4 w-4 shrink-0" stroke={1.75} />
       {label}

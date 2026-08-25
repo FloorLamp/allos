@@ -12,19 +12,13 @@ import type { IntakeItemKind } from "@/lib/types";
 // `intakeHref`).
 //
 // Never icon-only: the glyph is `aria-hidden` beside real text.
-export default function DoseLedgerLink({
-  kind,
-  className = "",
-}: {
-  kind: IntakeItemKind;
-  className?: string;
-}) {
+export default function DoseLedgerLink({ kind }: { kind: IntakeItemKind }) {
   return (
     <Link
       href={doseLedgerHref(kind)}
       data-testid="dose-ledger-link"
       title="Dose history"
-      className={`inline-flex shrink-0 items-center gap-1 whitespace-nowrap text-sm text-link ${className}`}
+      className="inline-flex shrink-0 items-center gap-1 whitespace-nowrap text-sm text-link"
     >
       <IconHistory aria-hidden className="h-4 w-4 shrink-0" stroke={1.75} />
       Dose history

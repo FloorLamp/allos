@@ -228,7 +228,7 @@ export default function DashboardStandingCluster({
                                     {door && (
                                       <span
                                         data-testid="standing-door"
-                                        className="standing-door pointer-events-none absolute inset-y-0 right-0 flex items-center bg-surface pl-3 text-xs font-medium whitespace-nowrap text-brand-700 dark:text-brand-400"
+                                        className="standing-door pointer-events-none absolute inset-y-0 right-0 flex items-center gap-1 bg-surface pl-3 text-xs font-medium whitespace-nowrap text-brand-700 dark:text-brand-400"
                                         aria-hidden="true"
                                       >
                                         {door}
