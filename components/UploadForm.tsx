@@ -17,6 +17,7 @@ import {
   MEDICAL_UPLOAD_BATCH_CAP,
   MEDICAL_UPLOAD_TOAST_KEY,
 } from "@/lib/upload-gate";
+import { useInlineToastFailure } from "@/components/useInlineToastFailure";
 
 // Upload form for medical documents. The submit button stays disabled until at
 // least one file is chosen. One offscreen `name="file"` input is the only picker;
@@ -67,19 +68,11 @@ export default function UploadForm({
 }) {
   const [selected, setSelected] = useState<File[]>([]);
   const [dragActive, setDragActive] = useState(false);
-  const [error, setError] = useState<string | null>(null);
   const formRef = useRef<HTMLFormElement>(null);
   const inputRef = useRef<HTMLInputElement>(null);
   const toast = useToast();
   const router = useRouter();
-
-  // A field-bearing sheet form owns two failure channels (#3275): the durable
-  // correction beside the picker and the shared toast that announces the failed
-  // commit even when focus is elsewhere in the sheet.
-  const fail = (message: string): void => {
-    setError(message);
-    toast(message, { tone: "error" });
-  };
+  const { error, clearError, fail } = useInlineToastFailure();
 
   // The preview list and the submit gating read the one real input, which is what
   // every path — picker, drop, camera — writes into.
@@ -94,7 +87,11 @@ export default function UploadForm({
   // input isn't there the capture modal stays open with the reason.
   async function addCapturedFile(file: File): Promise<string | null> {
     const input = inputRef.current;
-    if (!input) return "Couldn't attach the photo. Try again.";
+    if (!input) {
+      const message = "Couldn't attach the photo. Try again.";
+      fail(message);
+      return message;
+    }
     const dt = new DataTransfer();
     Array.from(input.files ?? []).forEach((f) => dt.items.add(f));
     dt.items.add(file);
@@ -123,7 +120,7 @@ export default function UploadForm({
   }
 
   async function handleUpload(formData: FormData) {
-    setError(null);
+    clearError();
     let result;
     try {
       result = await uploadMedicalDocument(formData);

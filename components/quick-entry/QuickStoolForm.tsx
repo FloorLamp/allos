@@ -12,6 +12,7 @@ import { usePrefersReducedMotion } from "@/components/usePrefersReducedMotion";
 import { microMotionPlan } from "@/lib/micro-motion";
 import {
   OFFLINE_CAPTURE_REFUSED_MESSAGE,
+  newIdempotencyKey,
   shouldQueueOffline,
 } from "@/lib/offline/queue";
 
@@ -82,13 +83,19 @@ export default function QuickStoolForm({
   }
 
   async function tap(type: number) {
+    // Mint one event before either transport starts. If the action commits but its
+    // response is lost, the fallback queue carries this exact key and instant.
+    const capture = {
+      key: newIdempotencyKey(),
+      capturedAt: new Date().toISOString(),
+    };
     type StoolTap =
       | { kind: "queued" }
       | { kind: "refused" }
       | { kind: "wrote"; result: Awaited<ReturnType<typeof logStoolForm>> };
 
     const queueOffline = async (): Promise<"queued" | "refused"> => {
-      const kept = await enqueue("stool", today, { type });
+      const kept = await enqueue("stool", today, { type }, capture);
       if (!kept) {
         toast(OFFLINE_CAPTURE_REFUSED_MESSAGE, { tone: "error" });
         return "refused";
@@ -108,6 +115,8 @@ export default function QuickStoolForm({
         }
         const fd = new FormData();
         fd.set("type", String(type));
+        fd.set("event_key", capture.key);
+        fd.set("captured_at", capture.capturedAt);
         return { kind: "wrote", result: await logStoolForm(fd) };
       },
       settle: (outcome) => {

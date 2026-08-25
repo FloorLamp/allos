@@ -26,6 +26,7 @@ import {
   isAuthFailure,
   MAX_INTENTS,
   type FlowKind,
+  type IntentCapture,
   type IntentPayload,
   type ReplayResult,
   type RejectedEntry,
@@ -77,7 +78,8 @@ interface OfflineQueueApi {
   enqueue: (
     flow: FlowKind,
     date: string,
-    payload: IntentPayload
+    payload: IntentPayload,
+    capture?: IntentCapture
   ) => Promise<boolean>;
   // Attempt to replay the whole queue now (safe to call redundantly).
   flush: () => Promise<void>;
@@ -311,11 +313,23 @@ export default function OfflineQueueProvider({
   }, [toast, refreshCount, refreshRejected, announceSynced]);
 
   const enqueue = useCallback(
-    async (flow: FlowKind, date: string, payload: IntentPayload) => {
+    async (
+      flow: FlowKind,
+      date: string,
+      payload: IntentPayload,
+      capture?: IntentCapture
+    ) => {
       // Stamp the write with the profile it's captured under (issue #599) so replay
       // attributes it correctly no matter which profile is active on reconnect.
       const kept = await enqueueIntent(
-        buildIntent(flow, date, payload, activeProfileId)
+        buildIntent(
+          flow,
+          date,
+          payload,
+          activeProfileId,
+          capture ? new Date(capture.capturedAt) : undefined,
+          capture?.key
+        )
       );
       if (!kept) return false;
       await refreshCount();

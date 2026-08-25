@@ -93,6 +93,20 @@ describe("buildIntent", () => {
     );
     expect(a.key).not.toBe(b.key);
   });
+
+  it("preserves an already-captured event key for response-loss fallback", () => {
+    const captured = new Date("2026-08-22T08:12:34.567Z");
+    const intent = buildIntent(
+      "stool",
+      "2026-08-22",
+      { type: 4 },
+      9,
+      captured,
+      "10000000-0000-4000-8000-000000000001"
+    );
+    expect(intent.key).toBe("10000000-0000-4000-8000-000000000001");
+    expect(intent.capturedAt).toBe(captured.toISOString());
+  });
 });
 
 describe("chunkIntents (issue #604)", () => {

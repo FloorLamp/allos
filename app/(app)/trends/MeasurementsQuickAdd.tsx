@@ -1,5 +1,6 @@
 "use client";
 import { useLoggedViaStamp } from "@/components/LoggedViaSurface";
+import { useInlineToastFailure } from "@/components/useInlineToastFailure";
 
 import { useEffect, useRef, useState, type ReactNode } from "react";
 import { useSearchParams } from "next/navigation";
@@ -215,14 +216,7 @@ export default function MeasurementsQuickAdd({
   // Which surface this sitting was entered on (#3087): the Trends panel, a metric
   // detail page, or the quick-log sheet — three mountings of this one form.
   const stampLoggedVia = useLoggedViaStamp();
-  const [error, setError] = useState<string | null>(null);
-  // A field-bearing sheet form keeps the failure beside the fields AND raises the
-  // app-wide toast (#3275). The inline message is the durable correction point;
-  // the toast makes the failed commit visible if focus is elsewhere in the sheet.
-  const fail = (message: string): void => {
-    setError(message);
-    toast(message, { tone: "error" });
-  };
+  const { error, clearError, fail } = useInlineToastFailure();
   // The submission's WHEN — one date + one optional Time for the whole sitting
   // (#2235 decision 3), owned as a PAIR by the shared control so a stated instant's
   // profile-local date is the row's date by construction. Posted through the hidden
@@ -308,7 +302,7 @@ export default function MeasurementsQuickAdd({
   }
 
   async function handle(formData: FormData) {
-    setError(null);
+    clearError();
     const s = (k: string): string | null => {
       const v = formData.get(k);
       return v === null || String(v).trim() === "" ? null : String(v);

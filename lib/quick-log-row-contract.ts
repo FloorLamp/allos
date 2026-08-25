@@ -37,7 +37,7 @@ export type QuickLogFailureChannel =
     };
 
 export type QuickLogCommit =
-  | { kind: "action"; verb: string }
+  | { kind: "action"; verb: "Mark taken" | "Log now" }
   | { kind: "form"; verb: `Save${string}` }
   | { kind: "exception"; verb: string | null; argument: string };
 
@@ -101,14 +101,18 @@ export const QUICK_LOG_ROW_CONTRACT = {
       argument:
         "The optional protein amount and eating-time choice parameterize immediate add/remove buttons; there is no form commit.",
     },
-    commit: { kind: "action", verb: "Add a serving / Add protein grams" },
+    commit: {
+      kind: "exception",
+      verb: "Add a serving / Add protein grams",
+      argument:
+        "The two immediate controls name the concrete quantity they add; calling either one Log now would hide whether the tap adds a serving or protein grams.",
+    },
   },
   "log-dose": {
     offline: {
-      status: "covered",
-      flows: ["dose"],
-      detail:
-        "The sheet lists scheduled doses only; each Mark taken intent queues with set-to-taken semantics.",
+      status: "excluded",
+      argument:
+        "QuickDoseList posts Mark taken directly and does not adopt the offline dose queue. Dose-surface parity is owned separately by #3272; coverage on another dose surface cannot stand in for this row.",
     },
     failure: { fields: "none", channel: "toast" },
     commit: { kind: "action", verb: "Mark taken" },
@@ -136,7 +140,7 @@ export const QUICK_LOG_ROW_CONTRACT = {
       argument:
         "The optional duration stepper parameterizes the Log now action; the quick-entry mount intentionally omits the separate detail form.",
     },
-    commit: { kind: "action", verb: "Log now / Log another" },
+    commit: { kind: "action", verb: "Log now" },
   },
   "log-mood": {
     offline: {
@@ -146,7 +150,12 @@ export const QUICK_LOG_ROW_CONTRACT = {
         "The selected day and valence queue as the existing per-day mood upsert.",
     },
     failure: { fields: "none", channel: "inline-and-toast" },
-    commit: { kind: "action", verb: "Log mood" },
+    commit: {
+      kind: "exception",
+      verb: "Log mood",
+      argument:
+        "The selected face is the argument to an immediate mood action, and the explicit noun keeps the seven-day backfill row from reading like an unspecified generic log.",
+    },
   },
   "log-period": {
     offline: {
@@ -156,8 +165,10 @@ export const QUICK_LOG_ROW_CONTRACT = {
     },
     failure: { fields: "none", channel: "inline" },
     commit: {
-      kind: "action",
+      kind: "exception",
       verb: "Start period / End period / Reopen period",
+      argument:
+        "These are lifecycle transitions whose server-resolved verb is the state change; flattening them to Log now would conceal whether the action starts, ends, or reopens a period.",
     },
   },
   "log-stool": {
@@ -168,7 +179,12 @@ export const QUICK_LOG_ROW_CONTRACT = {
         "Covered by the #3166 Q5 owner ruling: the additive Bristol type and captured instant queue for replay.",
     },
     failure: { fields: "none", channel: "toast" },
-    commit: { kind: "action", verb: "Log type" },
+    commit: {
+      kind: "exception",
+      verb: "Log type",
+      argument:
+        "Each button's accessible name carries the selected Bristol type; Log type preserves that categorical argument where a generic Log now label would not.",
+    },
   },
   "log-substance": {
     offline: {
@@ -177,7 +193,12 @@ export const QUICK_LOG_ROW_CONTRACT = {
         "The tap's safety-relevant weekly count and optional cap verdict are server-derived and would understate until replay.",
     },
     failure: { fields: "none", channel: "inline" },
-    commit: { kind: "action", verb: "Log a use / Log a standard drink" },
+    commit: {
+      kind: "exception",
+      verb: "Log a use / Log a standard drink",
+      argument:
+        "The button names the tracked substance unit, including the standard-drink vocabulary where applicable; Log now would erase the concrete argument being committed.",
+    },
   },
   "add-document": {
     offline: {

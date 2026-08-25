@@ -526,7 +526,12 @@ export function logBristolStool(
   // The observation's profile-local wall clock, "HH:MM" or "HH:MM:SS". Omitted
   // → read from the clock seam, which is what an online one-tap log does. Seconds
   // are accepted for offline replay so a captured tap keeps its exact key.
-  at?: string | null
+  at?: string | null,
+  // A one-tap event identity. The offline queue key is also the online action key,
+  // so a response lost after commit can replay without adding a second reading.
+  // `origin` already participates in metric_samples' natural key, which also lets
+  // two real taps in the same second remain two observations without a migration.
+  eventKey?: string | null
 ): boolean {
   if (!isRealIsoDate(date)) return false;
   const bristolType = parseBristolType(type);
@@ -563,15 +568,36 @@ export function logBristolStool(
       ? "00"
       : String(instant.getUTCSeconds()).padStart(2, "0");
   const ts = `${date}T${hhmm}:${seconds}`;
+  const origin = eventKey ? `stool:${eventKey}` : null;
   writeTx(() => {
     db.prepare(
-      `INSERT INTO metric_samples (profile_id, source, metric, date, started_at, ended_at, value)
-         VALUES (?, 'manual', ?, ?, ?, ?, ?)
+      `INSERT INTO metric_samples (profile_id, source, origin, metric, date, started_at, ended_at, value)
+         VALUES (?, 'manual', ?, ?, ?, ?, ?, ?)
        ON CONFLICT DO UPDATE SET
          value = excluded.value, date = excluded.date`
-    ).run(profileId, BRISTOL_STOOL_METRIC, date, ts, ts, bristolType);
+    ).run(profileId, origin, BRISTOL_STOOL_METRIC, date, ts, ts, bristolType);
   });
   return true;
+}
+
+export interface StoolEventCapture {
+  key: string;
+  capturedAt: string;
+  type: number;
+}
+
+function resolveStoolCapture(
+  profileId: number,
+  capturedAt: unknown,
+  now: Date
+): { capturedAt: string; date: string; wallTime: string } {
+  // One accepted instant owns both projections. A malformed or future device value
+  // falls back to the app clock through the same policy as the other queued taps.
+  const normalized = resolveCapturedInstant(capturedAt, now);
+  const instant = new Date(normalized);
+  const { date, hhmm } = zonedDateParts(getTimezone(profileId), instant);
+  const seconds = String(instant.getUTCSeconds()).padStart(2, "0");
+  return { capturedAt: normalized, date, wallTime: `${hhmm}:${seconds}` };
 }
 
 // ── mood check-in (issue #992) ──────────────────────────────────────────────────
@@ -1144,18 +1170,17 @@ export function applyIntent(
       ok = true;
     } else if (intent.flow === "stool") {
       const p = intent.payload as StoolPayload;
-      const captured = new Date(intent.capturedAt);
-      if (!Number.isFinite(captured.getTime())) {
-        outcome = { status: "rejected" };
-        return;
-      }
-      const hhmm = zonedDateParts(getTimezone(profileId), captured).hhmm;
-      const seconds = String(captured.getUTCSeconds()).padStart(2, "0");
+      const captured = resolveStoolCapture(
+        profileId,
+        intent.capturedAt,
+        clockNow()
+      );
       ok = logBristolStool(
         profileId,
-        intent.date,
+        captured.date,
         p?.type,
-        `${hhmm}:${seconds}`
+        captured.wallTime,
+        intent.key
       );
     } else if (intent.flow === "vitals") {
       const p = intent.payload as VitalsPayload;
@@ -1208,4 +1233,26 @@ export function applyIntent(
     outcome = { status: "done", ...(timeNotice ? { timeNotice } : {}) };
   });
   return outcome;
+}
+
+// The online Bristol action and an offline replay enter through the same event
+// envelope. `applyIntent` commits the reading and replay key in one transaction;
+// retaining this envelope after a lost response therefore turns fallback into a
+// duplicate no-op instead of a second bowel-movement record.
+export function applyStoolEvent(
+  profileId: number,
+  event: StoolEventCapture,
+  now: Date = clockNow()
+): ReplayOutcome & { date: string } {
+  const captured = resolveStoolCapture(profileId, event.capturedAt, now);
+  const outcome = applyIntent(profileId, {
+    key: event.key,
+    flow: "stool",
+    date: captured.date,
+    capturedAt: captured.capturedAt,
+    payload: { type: event.type },
+    profileId,
+    attempts: 0,
+  });
+  return { ...outcome, date: captured.date };
 }

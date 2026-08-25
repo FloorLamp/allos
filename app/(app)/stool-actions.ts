@@ -1,9 +1,8 @@
 "use server";
 
 import { requireWriteAccess } from "@/lib/auth";
-import { today } from "@/lib/db";
 import { revalidateRoute } from "@/lib/revalidate";
-import { logBristolStool } from "@/lib/offline/writes";
+import { applyStoolEvent } from "@/lib/offline/writes";
 import { getBristolReadings } from "@/lib/queries/bristol-stool";
 import { parseBristolType } from "@/lib/bristol-stool";
 
@@ -30,9 +29,14 @@ export async function logStoolForm(
   const { profile } = await requireWriteAccess();
   const type = parseBristolType(formData.get("type"));
   if (type === null) return { ok: false, error: "Pick a type from 1 to 7." };
+  const key = String(formData.get("event_key") ?? "");
+  const capturedAt = String(formData.get("captured_at") ?? "");
+  if (!/^[0-9a-f-]{36}$/i.test(key)) {
+    return { ok: false, error: "Couldn't log that. Try again." };
+  }
 
-  const date = today(profile.id);
-  if (!logBristolStool(profile.id, date, type)) {
+  const applied = applyStoolEvent(profile.id, { key, capturedAt, type });
+  if (applied.status === "rejected") {
     return { ok: false, error: "Couldn't log that. Try again." };
   }
 
@@ -41,6 +45,7 @@ export async function logStoolForm(
   return {
     ok: true,
     type,
-    todayCount: getBristolReadings(profile.id, date, date).length,
+    todayCount: getBristolReadings(profile.id, applied.date, applied.date)
+      .length,
   };
 }

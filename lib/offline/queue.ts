@@ -412,6 +412,11 @@ export interface QueuedIntent {
   attempts?: number;
 }
 
+export interface IntentCapture {
+  key: string;
+  capturedAt: string;
+}
+
 // A uuid for the idempotency key. Prefers crypto.randomUUID (all evergreen
 // browsers + Node 24); falls back to a random-hex composition where it's absent so
 // the queue never throws in an exotic runtime.
@@ -437,10 +442,11 @@ export function buildIntent(
   date: string,
   payload: IntentPayload,
   profileId: number,
-  now: Date = new Date()
+  now: Date = new Date(),
+  key: string = newIdempotencyKey()
 ): QueuedIntent {
   return {
-    key: newIdempotencyKey(),
+    key,
     flow,
     date,
     capturedAt: now.toISOString(),
