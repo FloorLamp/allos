@@ -269,7 +269,7 @@ carried a border wrapper with no page mount left to serve.
 - **`useOverlayDrag`** — panel drag-to-resolve: finger-following, release
   settle, and the keyframe/inline-transform handshake (below).
 - **`OverlayDragHandle` + `tokens.ts`** — the affordance (a 40×6 bar inside a
-  64×24 hit target), the scrim tint, panel radius/elevation/safe-area padding.
+  64×44 hit target), the scrim tint, panel radius/elevation/safe-area padding.
 - **`overlayMotionClass()`** (from `lib/motion.ts`) — the enter/exit classes
   over ONE duration + easing pair, declared once as `--overlay-ms` /
   `--overlay-ease-enter` / `--overlay-ease-exit` in `app/globals.css`.
@@ -369,6 +369,16 @@ drag. A pointer-based recognizer therefore never gets to decide anything. Touch
 events keep flowing, which lets our axis lock do the arbitration. Consequence,
 accepted: these are touch gestures only; the tap/click affordance beside each
 one is the pointer route.
+
+**BottomSheet fixes body ownership at touch-start** (#3691). The handle always
+owns a downward drag, whatever the content scroll position. A drag beginning in
+the content owns dismissal only when every effective vertical scroll owner from
+the touch origin through the sheet content was already at its top. That includes
+intentional nested form scrollers with fixed action footers; beginning below any
+owner's top belongs to native scrolling for the touch's entire lifecycle, even
+if the scroll reaches zero before the finger lifts. The shared recognizer's
+one-shot `canStart` admission expresses that boundary without preventing
+default, re-reading mid-gesture, or interfering with taps and fields.
 
 **`overscroll-behavior-x: contain`** on `html`/`body`. Without it a horizontal
 drag the page cannot scroll CHAINS to the browser's in-page history navigation:

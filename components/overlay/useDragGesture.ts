@@ -63,7 +63,7 @@ import {
 // block scrolling: vertical scroll wins by DEFAULT and we simply decline to act.
 // A surface that genuinely must own an axis says so declaratively in CSS
 // (`touch-action`) — see components/overlay/tokens.ts's drag-handle token, the
-// one place in the app that takes an axis away from the browser, on a 40x24px
+// one place in the app that takes an axis away from the browser, on a 64x44px
 // handle that has nothing to scroll.
 //
 // A consequence, and an accepted one: these are touch gestures only. A mouse
@@ -76,6 +76,11 @@ export interface DragGestureOptions {
   // document (the drawer's edge swipe, which has no element to start on because
   // the drawer is not mounted yet).
   targetRef?: React.RefObject<HTMLElement | null>;
+  // One-shot admission rule for gestures whose origin matters beyond simple
+  // containment. It is evaluated exactly once, at touch-start, before a gesture
+  // becomes active. A scroller can therefore decide from its STARTING scroll
+  // position without changing the answer halfway through the same touch.
+  canStart?: (origin: Node) => boolean;
   // The direction that commits. Travel the other way is not negative travel — it
   // is no travel (see lib/gesture.ts).
   direction: GestureDirection;
@@ -152,6 +157,32 @@ function insideSameAxisScroller(
   return false;
 }
 
+// A bottom sheet may contain a second, intentional vertical scroll owner (a
+// long form with a fixed action footer is the common shape). The outer content
+// region can therefore be parked at zero while the element under the finger is
+// still halfway through its own list. Native scrolling owns that touch until
+// EVERY effective owner between the origin and the sheet boundary is at its
+// top. Read once at touch-start; no owner can hand the same touch to the sheet
+// later in its lifecycle.
+export function verticalScrollOwnersAtTop(
+  origin: Node,
+  boundary: HTMLElement
+): boolean {
+  if (!boundary.contains(origin)) return false;
+  let node: Element | null =
+    origin instanceof Element ? origin : origin.parentElement;
+  while (node) {
+    if (node === boundary) return boundary.scrollTop <= 0;
+    const style = getComputedStyle(node);
+    const ownsVerticalScroll =
+      (style.overflowY === "auto" || style.overflowY === "scroll") &&
+      node.scrollHeight > node.clientHeight + 1;
+    if (ownsVerticalScroll && node.scrollTop > 0) return false;
+    node = node.parentElement;
+  }
+  return false;
+}
+
 export function useDragGesture(options: DragGestureOptions): void {
   // Options change every render (fresh closures); the listeners must not. One
   // ref, read at event time, keeps the subscription stable for the life of the
@@ -211,6 +242,8 @@ export function useDragGesture(options: DragGestureOptions): void {
         if (!root || !(origin instanceof Node) || !root.contains(origin))
           return;
       }
+      if (!(e.target instanceof Node) || o.canStart?.(e.target) === false)
+        return;
       if (
         o.ignoreSameAxisScrollers &&
         e.target instanceof Element &&

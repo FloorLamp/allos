@@ -1,6 +1,6 @@
 "use client";
 
-import { useId, useRef } from "react";
+import { useCallback, useId, useRef } from "react";
 import { createPortal } from "react-dom";
 import { useFocusTrap } from "./useFocusTrap";
 import { usePresence } from "./usePresence";
@@ -11,6 +11,7 @@ import {
   OverlayDragHandle,
   overlayMotionClass,
   useOverlayDrag,
+  verticalScrollOwnersAtTop,
   OVERLAY_PANEL_BORDER,
   OVERLAY_PANEL_ELEVATION,
   OVERLAY_PANEL_MAX_WIDTH,
@@ -225,6 +226,7 @@ export default function BottomSheet({
   const localPanelRef = useRef<HTMLDivElement>(null);
   const panelRef = externalPanelRef ?? localPanelRef;
   const handleRef = useRef<HTMLDivElement>(null);
+  const contentRef = useRef<HTMLDivElement>(null);
   const titleId = useId();
   const descriptionId = useId();
 
@@ -248,14 +250,33 @@ export default function BottomSheet({
     active: open,
   });
 
-  // Drag-to-dismiss (#1425), on the shared recognizer (#1469). THE SHEET'S
+  // Drag-to-dismiss (#1425, #3691), on the shared recognizer (#1469). THE SHEET'S
   // OUTCOME IS DISCARD — that is what the lifecycle contract above licenses, and
   // it is the whole difference between this call site and the activity dock's,
   // which passes `onMinimize` to the very same hook. Enabled only while open, so
   // a sheet already playing its exit can't be re-grabbed.
+  const canStartSheetDrag = useCallback((origin: Node): boolean => {
+    const handle = handleRef.current;
+    const content = contentRef.current;
+
+    // The responsive dialog keeps the handle node mounted but hides it from
+    // `md` up. Its zero rendered boxes are the DOM truth that the sheet gesture
+    // is unavailable there; without this check the panel-wide target below
+    // would make a centred desktop card draggable by its body.
+    if (!handle || handle.getClientRects().length === 0) return false;
+    if (handle.contains(origin)) return true;
+
+    // Body ownership is decided once, from every effective scroll owner between
+    // the origin and this content boundary. Starting below any owner's top
+    // belongs to native scrolling for that touch's whole lifecycle, even if it
+    // reaches zero. When all owners start at zero the touch may pull the sheet
+    // down, and later scroll changes cannot revoke that already-claimed origin.
+    return Boolean(content && verticalScrollOwnersAtTop(origin, content));
+  }, []);
+
   const { suppressMotion } = useOverlayDrag({
     panelRef,
-    grabRef: handleRef,
+    canStart: canStartSheetDrag,
     direction: "down",
     onOutcome: onGestureDismiss ?? onClose,
     // The panel unmounts between opens, so the motion latch expires with it
@@ -406,7 +427,9 @@ export default function BottomSheet({
         className={`relative flex w-full flex-col overflow-hidden bg-surface outline-hidden ${panelMaxWidth} ${OVERLAY_PANEL_BORDER} ${OVERLAY_PANEL_ELEVATION} ${panelShape} ${panelMotion}`}
       >
         {/* The drag affordance, now functional (#1425): a downward drag from
-        here dismisses the sheet. A centered dialog is not flickable, so the
+        here dismisses the sheet at any body scroll position. The body itself
+        joins only when its scroller started at the top (#3691). A centered
+        dialog is not flickable, so the
         responsive presentation drops the handle from `md` up exactly where that
         stops being true (#1428) — and the recognizer goes with it, since a
         hidden element receives no pointer events. A card centred at EVERY width
@@ -535,6 +558,7 @@ export default function BottomSheet({
         layer (bodies that do not overflow in the first place) is what closes
         that, which is why #3360 asked for both. */}
         <div
+          ref={contentRef}
           className={`mt-3 flex min-h-0 flex-1 flex-col overflow-x-hidden overflow-y-auto overscroll-contain ${
             asDialog ? "md:overflow-visible" : ""
           }`}
