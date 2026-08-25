@@ -290,7 +290,6 @@ const UNREADABLE_CLASS_LISTS: { file: string; controls: number }[] = [
   { file: "components/Combobox.tsx", controls: 1 },
   { file: "components/DateField.tsx", controls: 1 },
   { file: "components/DoseStatusControl.tsx", controls: 1 },
-  { file: "components/ExerciseDetailPanel.tsx", controls: 1 },
   { file: "components/HrefSelect.tsx", controls: 1 },
   { file: "components/SubmitButton.tsx", controls: 1 },
   { file: "components/activity-form/IntensityPicker.tsx", controls: 1 },

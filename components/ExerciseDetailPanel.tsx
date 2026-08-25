@@ -73,7 +73,6 @@ export default function ExerciseDetailPanel({
   goals,
   goalProgress,
   recent,
-  onFilterTag,
   headerRight,
   showTrend = true,
   showRecent = true,
@@ -101,8 +100,6 @@ export default function ExerciseDetailPanel({
     equipment: string | null;
     text: string;
   }[];
-  // When provided, the muscle/region badges become buttons that filter by them.
-  onFilterTag?: (kind: "muscle" | "region", value: string) => void;
   // Optional control pinned to the right of the header, after the level badge
   // (e.g. a close button when shown in a dismissable panel).
   headerRight?: ReactNode;
@@ -178,20 +175,9 @@ export default function ExerciseDetailPanel({
     value: repsTrend ? v.volumeKg : dispWeight(v.volumeKg, wu, 0),
   }));
 
-  // A muscle/region badge, clickable to filter when onFilterTag is provided.
-  const tagBadge = (kind: "muscle" | "region", value: string, cls: string) =>
-    onFilterTag ? (
-      <button
-        type="button"
-        onClick={() => onFilterTag(kind, value)}
-        title={`Show ${value} activities`}
-        className={`badge ${cls} cursor-pointer transition hover:ring-1 hover:ring-current`}
-      >
-        {value}
-      </button>
-    ) : (
-      <span className={`badge ${cls}`}>{value}</span>
-    );
+  const tagBadge = (value: string, cls: string) => (
+    <span className={`badge ${cls}`}>{value}</span>
+  );
 
   return (
     <div>
@@ -203,14 +189,12 @@ export default function ExerciseDetailPanel({
         </h2>
         {info?.muscle &&
           tagBadge(
-            "muscle",
             info.muscle,
             "bg-brand-50 text-brand-700 dark:bg-brand-950 dark:text-brand-300"
           )}
         {info?.region &&
           info.region !== info.muscle &&
           tagBadge(
-            "region",
             info.region,
             "bg-slate-100 text-slate-500 dark:bg-ink-800 dark:text-slate-400"
           )}
