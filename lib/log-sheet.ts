@@ -48,7 +48,7 @@ const SEGMENT_ORDER: readonly LogSegmentId[] = [
 
 const SEGMENT_LABELS: Record<LogSegmentId, string> = {
   train: "Train",
-  food: "Food",
+  food: "Consume",
   body: "Body",
   care: "Care",
 };
@@ -61,7 +61,12 @@ const SEGMENT_LABELS: Record<LogSegmentId, string> = {
 export const LOG_SEGMENT_CENSUS = {
   "log-activity": "train",
   "live-workout": "train",
+  // Consume is what you take into your body: food, a dose, or a substance. The
+  // id stays `food` so stored habit-day keys and callers do not need a migration;
+  // the reader-facing label carries the broader owner-ruled category (#3675).
   "log-food": "food",
+  "log-dose": "food",
+  "log-substance": "food",
   // The measurements form is weight + vitals + a minor's growth fields (#1486),
   // and the period offer is the other thing the body itself reports — both are
   // "something my body did", not something I took or practised.
@@ -70,17 +75,10 @@ export const LOG_SEGMENT_CENSUS = {
   // The third thing the body itself reports (#2785), beside the measurements
   // sitting and the period offer.
   "log-stool": "body",
-  // Care is what you ADMINISTER to yourself and what you FILE about it: a dose,
-  // a tracked practice, a check-in, a document. Doses lead it because they are
-  // the segment's daily verb.
-  "log-dose": "care",
+  // Care is what you practise, check in about, or file: a tracked practice, a
+  // mood check-in, or a document. Things taken into the body live in Consume.
   "log-practice": "care",
   "log-mood": "care",
-  // Care, on the segment's own definition above: a substance use is something you
-  // ADMINISTER to yourself. It is not Food even for alcohol — the row offers whatever
-  // this profile tracks (#3327), and the one curated substance that happens to ride
-  // the food ledger does not get to name the segment for all the others.
-  "log-substance": "care",
   "add-document": "care",
 } as const satisfies Record<QuickLogId, LogSegmentId>;
 
@@ -104,8 +102,22 @@ export function logSheetSegments(
 }
 
 /**
+ * The list reserve for the segments a profile can ACTUALLY see. QuickLogSheet
+ * applies its training gate before calling this, so a one-segment profile never
+ * holds empty rows for entries it cannot reach (#3675).
+ */
+export function maxLogSheetRows(
+  segments: readonly Pick<LogSegment, "items">[]
+): number {
+  return segments.reduce(
+    (maximum, segment) => Math.max(maximum, segment.items.length),
+    0
+  );
+}
+
+/**
  * Which segment the track opens on: the one holding the CURRENT ROUTE's promoted
- * log (`primaryQuickLog`), so opening the puck on Nutrition lands on Food. Falls
+ * log (`primaryQuickLog`), so opening the puck on Nutrition lands on Consume. Falls
  * back to the first surviving segment when that item is gated away for this
  * profile — never to an empty or absent one.
  */
@@ -217,11 +229,9 @@ export const LOG_DAY_SOURCES = {
   //
   // ALCOHOL IS DELIBERATELY NOT DECLARED HERE. Its taps land on `food_daily_totals`
   // (#860/#944 — a standard drink IS one serving of the curated alcohol group), which
-  // "log-food" already declares and the statement already counts. Naming it twice
-  // would count one tap as evidence for two segments, which is exactly the skew this
-  // census exists to make visible. The cost is stated: a profile whose ONLY substance
-  // is alcohol carries its logging evidence in Food rather than Care, which is where
-  // the row was written.
+  // `log-food` already declares and the statement already counts for Consume. This
+  // entry declares only the dedicated substance writer; naming the food store again
+  // would give one store two owners in a census whose keys are quick-log entries.
   "log-substance": ["substance_daily_totals"],
   // The daily check-in's store is STORE-PRIVATE by the #992 contract: nothing
   // outside its own read/write/registry modules may name the table, because a
@@ -229,20 +239,20 @@ export const LOG_DAY_SOURCES = {
   // any other engine. Counting how often somebody checks in — even only to pick
   // which tab of a menu opens first — is a computation ABOUT mood by a module
   // that is none of the four, so it is refused here rather than argued into that
-  // guard's allowlist. Doses and practices carry the Care segment's evidence, and
-  // the cost is stated: a profile whose only care logging is check-ins is
+  // guard's allowlist. Practices carry the Care segment's evidence, and the cost
+  // is stated: a profile whose only care logging is check-ins is
   // under-counted, and its dashboard keeps the route default.
   "log-mood": arguedExclusion(
-    "The daily check-in's store is store-private under the #992 sensitivity contract — a subjective self-rating feeds no engine — and counting check-ins to order a menu would be exactly such an engine. Doses and practices carry the Care segment's evidence instead."
+    "The daily check-in's store is store-private under the #992 sensitivity contract — a subjective self-rating feeds no engine — and counting check-ins to order a menu would be exactly such an engine. Practices carry the Care segment's evidence instead."
   ),
   // A document row is dated by the DOCUMENT — the day the lab drew the blood,
   // often months before anyone filed it — so its date says nothing about when its
   // owner logs, and the day the filing actually happened exists only as the
   // `uploaded_at` UTC instant, which would have to be folded into a profile-local
   // day to be counted honestly (docs/internals/time-model.md). Filing is occasional
-  // by nature too. Care is measured by its three daily verbs instead.
+  // by nature too. Care is measured by its practice verb instead.
   "add-document": arguedExclusion(
-    "A document row is dated by the DOCUMENT rather than by the day it was filed, so its date is not evidence about when its owner logs; the filing day itself exists only as a UTC instant. Doses, practices and mood are the Care segment's daily verbs and carry its evidence."
+    "A document row is dated by the DOCUMENT rather than by the day it was filed, so its date is not evidence about when its owner logs; the filing day itself exists only as a UTC instant. Practices carry the Care segment's logging evidence."
   ),
 } as const satisfies Record<QuickLogId, readonly string[] | ArguedExclusion>;
 
@@ -298,7 +308,7 @@ export function habitualLogSegment(
 /**
  * The route on which logging history decides the opening segment: the dashboard,
  * and only the dashboard (the ruling's stated scope). Every other route either
- * promotes its own domain — `/nutrition` → Food, unchanged — or is a long-tail
+ * promotes its own domain — `/nutrition` → Consume, unchanged — or is a long-tail
  * surface whose sheet keeps the historical activity fallback.
  */
 export const HABIT_DEFAULT_ROUTE = "/";

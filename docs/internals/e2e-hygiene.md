@@ -2520,13 +2520,15 @@ for, and nothing else. **Two consecutive agreeing reads prove the element held
 still across one 50 ms window; they cannot prove it will hold still for the next
 one**, and the point is stale from the moment it is returned.
 
-The quick-log sheet is where that bites, because a BOTTOM-ANCHORED panel grows
-UPWARD. It gathers its "Due & usual now" row lazily on every open (#1468 — those
-offers must be fresher than the page), and when that Server Action lands the
-sheet gets taller and the drag handle leaves the coordinate a settled measurement
-had just certified. The touch then lands on whatever slid into that coordinate,
-the recognizer's containment test rejects it, and the gesture is never claimed:
-**nothing happens, silently**.
+The quick-log sheet is where that bit before #3675, because a BOTTOM-ANCHORED
+panel grew UPWARD. It gathers its "Due & usual now" row lazily on every open
+(#1468 — those offers must be fresher than the page), and when that Server Action
+landed the sheet got taller and the drag handle left the coordinate a settled
+measurement had just certified. The touch then landed on whatever slid into that
+coordinate, the recognizer's containment test rejected it, and the gesture was
+never claimed: **nothing happened, silently**. #3675 now reserves that context
+slot and the segment list from the first frame, removing this particular mover;
+the re-aiming helper remains the general guarantee for element-anchored gestures.
 
 That is the whole of #2714, and the shape of its failure is worth keeping,
 because it was mis-read three times as a slow exit:

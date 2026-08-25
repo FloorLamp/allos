@@ -1,8 +1,12 @@
 import { test, expect } from "./fixtures";
 import Database from "better-sqlite3";
-import { settledClick } from "./helpers";
+import { settledBoxes, settledClick } from "./helpers";
 import { loginAs } from "./nav";
 import { switchToProfile } from "./family-helpers";
+import {
+  TAP_FLOOR_FLOAT_EPSILON_PX,
+  TAP_FLOOR_PX,
+} from "@/lib/tap-floor-reach";
 import {
   E2E_MEMBER_PASSWORD,
   E2E_LOGIN_TRAVEL,
@@ -32,6 +36,7 @@ test.describe.configure({ mode: "serial" });
 
 const AWAY = "Asia/Tokyo";
 const SECOND_AWAY = "Europe/Paris";
+const PHONE = { width: 390, height: 844 };
 
 // The zone the traveller profile's day runs on before anything moves it: the run's
 // own rotating pin, which is also the zone the return offer has to recognise as home.
@@ -95,7 +100,7 @@ test.describe("travel timezone banner (#3263)", () => {
     const page = await loginAs(
       browser,
       { username: E2E_LOGIN_TRAVEL, password: E2E_MEMBER_PASSWORD },
-      { timezoneId: AWAY }
+      { timezoneId: AWAY, viewport: PHONE, hasTouch: true }
     );
     try {
       await page.goto("/");
@@ -111,6 +116,33 @@ test.describe("travel timezone banner (#3263)", () => {
       await expect(banner).toContainText("move your day there?");
       // Shown, never sent: nothing has moved yet.
       expect(travellerSettings().timezone).toBeNull();
+
+      // This banner is mounted by the shared app layout, so one short action is
+      // repeated on every own-profile route. Measure both real targets where the
+      // defect was reported: phone width, after hydration has painted the offer.
+      const [acceptBox, dismissBox] = await settledBoxes([
+        page.getByTestId("travel-timezone-accept"),
+        page.getByTestId("travel-timezone-dismiss"),
+      ]);
+      for (const box of [acceptBox, dismissBox])
+        expect(box.height + TAP_FLOOR_FLOAT_EPSILON_PX).toBeGreaterThanOrEqual(
+          TAP_FLOOR_PX
+        );
+      const horizontalOverlap =
+        Math.min(
+          acceptBox.x + acceptBox.width,
+          dismissBox.x + dismissBox.width
+        ) - Math.max(acceptBox.x, dismissBox.x);
+      const verticalOverlap =
+        Math.min(
+          acceptBox.y + acceptBox.height,
+          dismissBox.y + dismissBox.height
+        ) - Math.max(acceptBox.y, dismissBox.y);
+      expect(
+        horizontalOverlap > 0 && verticalOverlap > 0,
+        `travel banner targets overlap at ${PHONE.width}px: ` +
+          `accept=${JSON.stringify(acceptBox)} dismiss=${JSON.stringify(dismissBox)}`
+      ).toBe(false);
 
       await settledClick(page, page.getByTestId("travel-timezone-dismiss"));
       await expect(banner).toBeHidden();

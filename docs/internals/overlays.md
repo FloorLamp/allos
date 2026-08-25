@@ -44,6 +44,14 @@ workout" and reopen the docked session with its epoch untouched, and both
 `openLive`/`openSession` enforce that internally so a stale caller can't stomp
 it either. See [stateful affordances](./stateful-affordances.md).
 
+The quick-log consumer holds its own content geometry stable (#3675), without a
+`BottomSheet` variant: it reserves the due-and-usual context slot before that
+Server Action resolves and fixes the row list to the largest segment the active
+profile can actually see. Both reserves remain inside BottomSheet's existing
+content scroller. Segment switches, non-empty gathers, empty answers, and failed
+gathers therefore leave the panel and its segment strip in place; only the
+gathered section's declared opacity-only `arrive` receipt paints.
+
 ## Choosing a host for a new surface
 
 One rule, so a new form does not pick its host by looking at whichever neighbour
