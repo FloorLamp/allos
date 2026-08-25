@@ -1074,7 +1074,7 @@
   & [data-matrix-head-cell] > span {
     @apply max-sm:inline!;
   }
-  & [data-matrix-head-cell] > input {
+  & [data-matrix-head-cell] > [data-matrix-head-control] {
     @apply max-sm:order-first! max-sm:m-0!;
   }
 }
@@ -2034,6 +2034,22 @@ input[type="time"]::-webkit-datetime-edit-ampm-field:focus {
       min-block-size: 2.75rem;
       min-inline-size: 2.75rem;
     }
+  }
+}
+
+/* A checkbox keeps its compact native paint while its associated label owns the
+   interaction floor on phone layouts and coarse-pointer devices. The label, not
+   a pseudo-element, is the target so native checkbox click semantics do the work. */
+.checkbox-control {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+}
+
+@media (max-width: 639.98px), (pointer: coarse) {
+  .checkbox-control {
+    min-block-size: 2.75rem;
+    min-inline-size: 2.75rem;
   }
 }
 

@@ -46,6 +46,7 @@ import type { DigestTimeSuggestion } from "@/lib/digest-time-suggestion";
 import { formatClockMinutes, type TimeFormat } from "@/lib/format-date";
 import DigestTimeSuggestionRow from "./DigestTimeSuggestion";
 import SaveStatus from "@/components/SaveStatus";
+import CheckboxControl from "@/components/CheckboxControl";
 import { useSaveStatus } from "@/components/useSaveStatus";
 import {
   saveNotificationPrefs,
@@ -898,21 +899,20 @@ export default function NotificationPrefs({
                   >
                     {columnStateLabel(c.liveness)}
                   </span>
-                  {/* The tri-state column sweep (#1868 §2). `indeterminate` is a DOM
-                      property with no React attribute, so it is set through a ref. */}
-                  <input
-                    type="checkbox"
-                    className="mx-auto mt-1 block h-4 w-4 accent-brand-600"
-                    ref={(el) => {
-                      if (el) el.indeterminate = state === "mixed";
-                    }}
-                    checked={state === "all"}
-                    disabled={routing || sweep.length === 0}
-                    onChange={() => sweepColumn(c.id)}
-                    data-testid={`matrix-column-all-${c.id}`}
-                    aria-label={label}
-                    title={label}
-                  />
+                  <span
+                    className="mx-auto mt-1 block w-fit"
+                    data-matrix-head-control
+                  >
+                    <CheckboxControl
+                      label={label}
+                      title={label}
+                      checked={state === "all"}
+                      indeterminate={state === "mixed"}
+                      disabled={routing || sweep.length === 0}
+                      onChange={() => sweepColumn(c.id)}
+                      data-testid={`matrix-column-all-${c.id}`}
+                    />
+                  </span>
                 </span>
               );
             })}
@@ -942,23 +942,21 @@ export default function NotificationPrefs({
                         `hidden` at `sm`+, so the desktop rows are untouched. */}
                     {e.control.type !== "toggle" && (
                       <span
-                        className="hidden h-4 w-4 shrink-0"
+                        className="hidden h-11 w-11 shrink-0"
                         aria-hidden="true"
                         data-matrix-toggle-slot
                       />
                     )}
                     {e.control.type === "toggle" && (
-                      <input
-                        type="checkbox"
-                        className="h-4 w-4 accent-brand-600"
+                      <CheckboxControl
+                        label={e.label}
                         checked={values[e.control.field] === "1"}
-                        onChange={(ev) =>
+                        onChange={(checked) =>
                           set(
                             (e.control as { field: string }).field,
-                            ev.target.checked ? "1" : "0"
+                            checked ? "1" : "0"
                           )
                         }
-                        aria-label={e.label}
                         data-testid={e.controlTestId ?? `kind-enable-${e.kind}`}
                       />
                     )}

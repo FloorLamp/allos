@@ -13,7 +13,6 @@ import {
   resolveSymptomKey,
   symptomLabel,
   symptomBySlug,
-  SYMPTOM_SEVERITY_LEVELS,
   MAX_SYMPTOM_SEVERITY,
   symptomLabelOptions,
 } from "@/lib/symptoms";
@@ -42,6 +41,7 @@ import {
   suggestSymptomsFromText,
 } from "../../app/(app)/symptom-actions";
 import type { SymptomTextMapping } from "@/lib/symptom-text-map";
+import SymptomSeverityControl from "@/components/illness/SymptomSeverityControl";
 
 // One-tap symptom logger (issue #799/#857), modeled on the FoodLogBar one-tap pattern:
 // optimistic local severities, a Server Action per tap, and reconciliation to the
@@ -728,23 +728,13 @@ export default function SymptomLogBar({
                         )}
                       </span>
                       <div className="flex items-center gap-1">
-                        {SYMPTOM_SEVERITY_LEVELS.map((lvl) => (
-                          <button
-                            key={lvl.value}
-                            type="button"
-                            aria-pressed={s.severity === lvl.value}
-                            aria-label={`${s.label} — severity ${lvl.value} of ${MAX_SYMPTOM_SEVERITY} (${lvl.label})`}
-                            title={lvl.label}
-                            onClick={() => setStagedSeverity(idx, lvl.value)}
-                            className={`h-5 w-5 rounded text-xs font-semibold ${
-                              s.severity >= lvl.value
-                                ? "bg-brand-600 text-white"
-                                : "bg-slate-100 text-slate-500 hover:bg-slate-200 dark:bg-ink-800 dark:text-slate-400"
-                            }`}
-                          >
-                            {lvl.value}
-                          </button>
-                        ))}
+                        <SymptomSeverityControl
+                          symptomLabel={s.label}
+                          value={s.severity}
+                          onChange={(severity) =>
+                            setStagedSeverity(idx, severity)
+                          }
+                        />
                         <button
                           type="button"
                           aria-label={`Remove ${s.label} suggestion`}
@@ -1017,27 +1007,15 @@ export default function SymptomLogBar({
                     <span className="truncate">{r.label}</span>
                   </span>
                   <div className="flex items-center gap-1">
-                    {SYMPTOM_SEVERITY_LEVELS.map((lvl) => (
-                      <button
-                        key={lvl.value}
-                        type="button"
-                        data-testid={`symptom-${key}-sev-${lvl.value}`}
-                        aria-pressed={sev === lvl.value}
-                        aria-label={`${r.label} — severity ${lvl.value} of ${MAX_SYMPTOM_SEVERITY} (${lvl.label})`}
-                        title={lvl.label}
-                        onClick={() => {
-                          if (lvl.value < sev) void lower(key, lvl.value);
-                          else void tap(key, lvl.value);
-                        }}
-                        className={`h-6 w-6 rounded text-xs font-semibold ${
-                          sev >= lvl.value
-                            ? "bg-brand-600 text-white"
-                            : "bg-slate-100 text-slate-500 hover:bg-slate-200 dark:bg-ink-800 dark:text-slate-400 dark:hover:bg-ink-700"
-                        }`}
-                      >
-                        {lvl.value}
-                      </button>
-                    ))}
+                    <SymptomSeverityControl
+                      symptomLabel={r.label}
+                      value={sev}
+                      testIdPrefix={`symptom-${key}-sev`}
+                      onChange={(severity) => {
+                        if (severity < sev) void lower(key, severity);
+                        else void tap(key, severity);
+                      }}
+                    />
                     <button
                       type="button"
                       data-testid={`symptom-${key}-note-toggle`}

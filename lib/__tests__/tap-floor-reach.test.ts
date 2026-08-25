@@ -128,7 +128,7 @@ const MECHANISM_CENSUS_FLOORS: Partial<Record<FloorMechanism, number>> = {
   "tap-target": 31,
   rendered: 39,
 };
-const LICENSED_NATIVE_BOXES = 51;
+const LICENSED_NATIVE_BOXES = 52;
 
 /**
  * THE CONTROLS THAT MISS THE FLOOR TODAY, by file, with what each is waiting on.
@@ -164,21 +164,12 @@ const TYPED_FIELD =
   "typed field (`<select>` / text `<input>`), not an icon target: #3514 converged CONTROLS " +
   "and never said whether a field's box is the same quantity — an open question, recorded";
 
-// A bare native checkbox with no `<label>` taking the tap on its behalf. The
-// labelled boxes in the tree are licensed by that association and are not
-// registered here; these four are the ones where the 16px box IS the whole
-// target.
-const BARE_BOX =
-  "bare native checkbox: no `<label>` takes the tap, so the 16px box is the whole target";
-
 const UNDER_FLOOR_REGISTER: Registered[] = [
   // ── dense editors ────────────────────────────────────────────────────────
   {
     file: "components/illness/SymptomLogBar.tsx",
-    controls: 4,
-    why:
-      "compact symptom editor: two numeric severity selectors and two 32px typed " +
-      "fields need the row/field primitive, not the icon-button primitive",
+    controls: 2,
+    why: "compact symptom editor: two 32px typed fields await #3708",
   },
   {
     file: "components/activity-form/StrengthSets.tsx",
@@ -249,17 +240,6 @@ const UNDER_FLOOR_REGISTER: Registered[] = [
     controls: 1,
     why: TYPED_FIELD,
   },
-
-  // ── bare native boxes ────────────────────────────────────────────────────
-  {
-    file: "app/(app)/settings/notifications/NotificationPrefs.tsx",
-    controls: 2,
-    // Two, not three: #3558 gave one of the three boxes a `<label>` and the
-    // licence took it out of the finding. The entry is the number the tree
-    // holds today, not the number it held when the census was first taken.
-    why: `${BARE_BOX} — the #1868 kind x channel matrix, whose phone idiom is #3495/#3550`,
-  },
-  { file: "components/DataTableManager.tsx", controls: 2, why: BARE_BOX },
 
   // ── the one range track ──────────────────────────────────────────────────
   {
