@@ -1,6 +1,7 @@
 import fs from "node:fs";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
+import ts from "typescript";
 import { describe, expect, it } from "vitest";
 import {
   CREATE_VERB,
@@ -64,19 +65,8 @@ const PRIMITIVE_FILES = new Map<string, string>([
 // PRIMARY CREATES WHOSE PLACEMENT A HUMAN SIGNED OFF, each with the reason. The
 // chokepoint-register discipline this repo already uses for anatomy exceptions:
 // an entry is a decision somebody made in this file, not a string that slipped
-// past a scan. Two entries today, and both are findings rather than exemptions —
-// each is written so that reading it tells you what would close it.
+// past a scan.
 const PLACEMENT_REGISTER = new Map<string, string>([
-  [
-    "app/(app)/training/TrainingLogView.tsx",
-    "OPEN FINDING, not an exemption. The Training Log's create sits in the DESKTOP " +
-      "controls row under the page header (`hidden md:flex`, beside search and " +
-      "filters), which is #3486's 'row below' shape on a page its table never " +
-      "listed. It is registered rather than moved because moving it into " +
-      "`PageHeader`'s `action` would also surface it BELOW `md`, where MobileNav's " +
-      "always-mounted quick-log is deliberately the entry point (#809) — a " +
-      "placement decision with a mobile consequence, not a mechanical fix.",
-  ],
   [
     "components/photo/PhotoCapture.tsx",
     "The trigger's class AND its placement are both the caller's: `className ?? " +
@@ -177,6 +167,256 @@ function mountHousings(name: string): {
   return { housings, mounts };
 }
 
+type TrainingCreateAuthentication = {
+  issues: string[];
+  mountLines: number[];
+};
+
+/**
+ * Authenticate the imported binding, its sole live reference, and the control
+ * flow that owns that reference. A component-name search alone can be
+ * counterfeited by aliasing the binding and leaving the expected spelling in a
+ * string or comment; a gate check alone can sit inside an outer false/dynamic
+ * wrapper. The TypeScript tree connects all three claims.
+ */
+function authenticateTrainingCreate(
+  source: string
+): TrainingCreateAuthentication {
+  const file = ts.createSourceFile(
+    "app/(app)/training/page.tsx",
+    source,
+    ts.ScriptTarget.Latest,
+    true,
+    ts.ScriptKind.TSX
+  );
+  const issues: string[] = [];
+  const importsFrom = (specifier: string) =>
+    file.statements.filter(
+      (statement): statement is ts.ImportDeclaration =>
+        ts.isImportDeclaration(statement) &&
+        ts.isStringLiteral(statement.moduleSpecifier) &&
+        statement.moduleSpecifier.text === specifier
+    );
+  const imports = importsFrom("./AddTrainingActivityButton");
+  const canonical = imports.filter(
+    (statement) =>
+      !statement.importClause?.isTypeOnly &&
+      statement.importClause?.name?.text === "AddTrainingActivityButton" &&
+      statement.importClause.namedBindings === undefined
+  );
+  if (imports.length !== 1 || canonical.length !== 1)
+    issues.push("canonical-import");
+
+  const tabImports = importsFrom("@/components/TabFirstPage");
+  const canonicalTab = tabImports.filter(
+    (statement) =>
+      !statement.importClause?.isTypeOnly &&
+      statement.importClause?.name?.text === "TabFirstPage" &&
+      statement.importClause.namedBindings === undefined
+  );
+  if (tabImports.length !== 1 || canonicalTab.length !== 1)
+    issues.push("canonical-tab-first-page-import");
+
+  const importedName = canonical[0]?.importClause?.name;
+  const importedTabName = canonicalTab[0]?.importClause?.name;
+  const references: ts.Identifier[] = [];
+  const tabReferences: ts.Identifier[] = [];
+  const visit = (node: ts.Node): void => {
+    if (
+      ts.isIdentifier(node) &&
+      node.text === "AddTrainingActivityButton" &&
+      node !== importedName
+    )
+      references.push(node);
+    if (
+      ts.isIdentifier(node) &&
+      node.text === "TabFirstPage" &&
+      node !== importedTabName
+    )
+      tabReferences.push(node);
+    ts.forEachChild(node, visit);
+  };
+  visit(file);
+
+  const tabOpenings = tabReferences.filter(
+    (
+      reference
+    ): reference is ts.Identifier & { parent: ts.JsxOpeningElement } =>
+      ts.isJsxOpeningElement(reference.parent) &&
+      reference.parent.tagName === reference
+  );
+  const tabClosings = tabReferences.filter(
+    (reference) =>
+      ts.isJsxClosingElement(reference.parent) &&
+      reference.parent.tagName === reference
+  );
+  const tabMount = tabOpenings[0]?.parent.parent;
+  if (
+    tabReferences.length !== 2 ||
+    tabOpenings.length !== 1 ||
+    tabClosings.length !== 1 ||
+    !tabMount ||
+    !ts.isJsxElement(tabMount) ||
+    tabClosings[0].parent.parent !== tabMount
+  )
+    issues.push("sole-tab-first-page-mount");
+
+  const tabActionAttributes =
+    tabMount && ts.isJsxElement(tabMount)
+      ? tabMount.openingElement.attributes.properties.filter(
+          (attribute): attribute is ts.JsxAttribute =>
+            ts.isJsxAttribute(attribute) &&
+            ts.isIdentifier(attribute.name) &&
+            attribute.name.text === "action"
+        )
+      : [];
+  const hasTabSpread =
+    tabMount &&
+    ts.isJsxElement(tabMount) &&
+    tabMount.openingElement.attributes.properties.some((attribute) =>
+      ts.isJsxSpreadAttribute(attribute)
+    );
+  if (tabActionAttributes.length !== 1 || hasTabSpread)
+    issues.push("sole-tab-first-page-action");
+  if (references.length !== 1) issues.push("sole-binding-reference");
+
+  const mounts = references.filter(
+    (
+      reference
+    ): reference is ts.Identifier & {
+      parent: ts.JsxSelfClosingElement;
+    } =>
+      ts.isJsxSelfClosingElement(reference.parent) &&
+      reference.parent.tagName === reference
+  );
+  if (mounts.length !== 1) issues.push("sole-jsx-mount");
+
+  const mount = mounts[0]?.parent;
+  const gate = mount?.parent;
+  const condition =
+    gate &&
+    ts.isBinaryExpression(gate) &&
+    gate.operatorToken.kind === ts.SyntaxKind.AmpersandAmpersandToken &&
+    gate.right === mount
+      ? gate.left
+      : undefined;
+  const exactLogCondition =
+    condition &&
+    ts.isBinaryExpression(condition) &&
+    condition.operatorToken.kind === ts.SyntaxKind.EqualsEqualsEqualsToken &&
+    ts.isIdentifier(condition.left) &&
+    condition.left.text === "activeTab" &&
+    ts.isStringLiteral(condition.right) &&
+    condition.right.text === "log";
+  if (!exactLogCondition) issues.push("direct-log-gate");
+
+  const actionInitializer = tabActionAttributes[0]?.initializer;
+  const gateExpression = gate?.parent;
+  const actionContainer = gateExpression?.parent;
+  if (
+    !actionInitializer ||
+    !ts.isJsxExpression(actionInitializer) ||
+    !gateExpression ||
+    !ts.isJsxExpression(gateExpression) ||
+    gateExpression.expression !== gate ||
+    !actionContainer ||
+    !ts.isJsxElement(actionContainer) ||
+    actionInitializer.expression !== actionContainer ||
+    !actionContainer.children.includes(gateExpression)
+  )
+    issues.push("direct-tab-action-value");
+
+  if (gate) {
+    let cursor: ts.Node = gate;
+    let owner: ts.Node | undefined;
+    while (cursor.parent) {
+      const parent = cursor.parent;
+      if (ts.isFunctionLike(parent)) {
+        owner = parent;
+        break;
+      }
+      if (
+        (ts.isBinaryExpression(parent) &&
+          [
+            ts.SyntaxKind.AmpersandAmpersandToken,
+            ts.SyntaxKind.BarBarToken,
+            ts.SyntaxKind.QuestionQuestionToken,
+          ].includes(parent.operatorToken.kind)) ||
+        ts.isConditionalExpression(parent) ||
+        ts.isIfStatement(parent) ||
+        ts.isForStatement(parent) ||
+        ts.isForInStatement(parent) ||
+        ts.isForOfStatement(parent) ||
+        ts.isWhileStatement(parent) ||
+        ts.isDoStatement(parent) ||
+        ts.isSwitchStatement(parent)
+      )
+        issues.push("enclosing-control-flow");
+      cursor = parent;
+    }
+    if (
+      !owner ||
+      !ts.isFunctionDeclaration(owner) ||
+      owner.name?.text !== "TrainingPage" ||
+      !owner.modifiers?.some(
+        (modifier) => modifier.kind === ts.SyntaxKind.DefaultKeyword
+      )
+    )
+      issues.push("training-page-owner");
+
+    if (owner && ts.isFunctionDeclaration(owner)) {
+      let returnStatement: ts.ReturnStatement | undefined;
+      let returnCursor: ts.Node | undefined = tabMount;
+      let untransformedReturnPath = true;
+      while (returnCursor && returnCursor !== owner) {
+        if (ts.isReturnStatement(returnCursor)) {
+          returnStatement = returnCursor;
+          break;
+        }
+        const parent: ts.Node = returnCursor.parent;
+        if (
+          !ts.isJsxElement(parent) &&
+          !ts.isJsxFragment(parent) &&
+          !ts.isParenthesizedExpression(parent) &&
+          !ts.isReturnStatement(parent)
+        )
+          untransformedReturnPath = false;
+        returnCursor = parent;
+      }
+      const body = owner.body;
+      const directReturn = Boolean(
+        body &&
+        returnStatement &&
+        returnStatement.parent === body &&
+        body.statements.includes(returnStatement) &&
+        untransformedReturnPath
+      );
+      let priorAbrupt = false;
+      if (directReturn && body && returnStatement) {
+        const returnIndex = body.statements.indexOf(returnStatement);
+        const containsAbrupt = (node: ts.Node): boolean => {
+          if (node !== owner && ts.isFunctionLike(node)) return false;
+          if (ts.isReturnStatement(node) || ts.isThrowStatement(node))
+            return true;
+          return node.getChildren(file).some(containsAbrupt);
+        };
+        priorAbrupt = body.statements
+          .slice(0, returnIndex)
+          .some(containsAbrupt);
+      }
+      if (!directReturn || priorAbrupt) issues.push("direct-return-path");
+    }
+  }
+
+  return {
+    issues: [...new Set(issues)],
+    mountLines: mounts.map(
+      (reference) =>
+        file.getLineAndCharacterOfPosition(reference.getStart(file)).line + 1
+    ),
+  };
+}
+
 describe("the add affordance's grammar (#3486)", () => {
   const found = census();
 
@@ -243,6 +483,210 @@ describe("the add affordance's grammar (#3486)", () => {
         "those is a decision someone should record in PLACEMENT_REGISTER in this " +
         "file, with the reason."
     ).toEqual([]);
+  });
+
+  it("houses the Training Log primary in the existing page-header action", () => {
+    const subject = found.filter(
+      (a) =>
+        a.file === "app/(app)/training/AddTrainingActivityButton.tsx" &&
+        a.label === "Add activity"
+    );
+    expect(
+      subject,
+      "The Training Log's Add activity primary must remain in the affordance census"
+    ).toHaveLength(1);
+    expect(subject[0].primary).toBe(true);
+
+    const { housings, mounts } = mountHousings("AddTrainingActivityButton");
+    expect(mounts.map((mount) => mount.replace(/:\d+$/, ""))).toEqual([
+      "app/(app)/training/TrainingLogView.tsx",
+      "app/(app)/training/page.tsx",
+    ]);
+    expect(housings).toEqual(["page-header", "page-header"]);
+    const pageSource = read("app/(app)/training/page.tsx");
+    expect(
+      authenticateTrainingCreate(pageSource).issues,
+      "The page header must use the exact imported AddTrainingActivityButton binding once, directly behind the sole activeTab === log gate in TrainingPage"
+    ).toEqual([]);
+
+    // The exact escape this replaces: an unconditional mount plus the expected
+    // expression left in a JSX comment. A raw `toContain` sees the sentence;
+    // the TSX tree sees that the only live mount has no gate.
+    const hostile = pageSource.replace(
+      '{activeTab === "log" && <AddTrainingActivityButton />}',
+      '<AddTrainingActivityButton />\n            {/* activeTab === "log" && <AddTrainingActivityButton /> */}'
+    );
+    expect(hostile).not.toBe(pageSource);
+    expect(authenticateTrainingCreate(hostile).issues).toContain(
+      "direct-log-gate"
+    );
+
+    const duplicateCreate = pageSource.replace(
+      "<AddTrainingActivityButton />",
+      "<><AddTrainingActivityButton /><AddTrainingActivityButton /></>"
+    );
+    expect(duplicateCreate).not.toBe(pageSource);
+    expect(authenticateTrainingCreate(duplicateCreate).issues).toContain(
+      "sole-binding-reference"
+    );
+
+    const aliasedCreate = pageSource
+      .replace(
+        'import AddTrainingActivityButton from "./AddTrainingActivityButton";',
+        'import AddTrainingActivityButton from "./AddTrainingActivityButton";\nconst TrainingCreate = AddTrainingActivityButton;'
+      )
+      .replace("<AddTrainingActivityButton />", "<TrainingCreate />");
+    expect(aliasedCreate).not.toBe(pageSource);
+    expect(authenticateTrainingCreate(aliasedCreate).issues).toContain(
+      "sole-jsx-mount"
+    );
+
+    const ariaHiddenCreate = pageSource.replace(
+      "<AddTrainingActivityButton />",
+      '<span aria-hidden="true"><AddTrainingActivityButton /></span>'
+    );
+    expect(ariaHiddenCreate).not.toBe(pageSource);
+    expect(authenticateTrainingCreate(ariaHiddenCreate).issues).toEqual(
+      expect.arrayContaining(["direct-log-gate", "direct-tab-action-value"])
+    );
+
+    const reversed = pageSource.replace(
+      'activeTab === "log" && <AddTrainingActivityButton />',
+      '"log" === activeTab && <AddTrainingActivityButton />'
+    );
+    expect(reversed).not.toBe(pageSource);
+    expect(authenticateTrainingCreate(reversed).issues).toContain(
+      "direct-log-gate"
+    );
+
+    for (const transformedGate of [
+      '[activeTab === "log" && <AddTrainingActivityButton />]',
+      'Boolean(activeTab === "log" && <AddTrainingActivityButton />)',
+      '(activeTab === "log" && <AddTrainingActivityButton />, null)',
+    ]) {
+      const transformed = pageSource.replace(
+        '{activeTab === "log" && <AddTrainingActivityButton />}',
+        `{${transformedGate}}`
+      );
+      expect(transformed).not.toBe(pageSource);
+      expect(authenticateTrainingCreate(transformed).issues).toContain(
+        "direct-tab-action-value"
+      );
+    }
+
+    const transformedReturns = [
+      pageSource.replace(
+        "  return (\n    // Width cap",
+        "  return Boolean(\n    // Width cap"
+      ),
+      pageSource
+        .replace("  return (\n    // Width cap", "  return [\n    // Width cap")
+        .replace("\n  );\n}\n\nfunction one(", "\n  ];\n}\n\nfunction one("),
+      pageSource.replace(
+        "\n  );\n}\n\nfunction one(",
+        "\n    , null);\n}\n\nfunction one("
+      ),
+    ];
+    for (const transformed of transformedReturns) {
+      expect(transformed).not.toBe(pageSource);
+      expect(authenticateTrainingCreate(transformed).issues).toContain(
+        "direct-return-path"
+      );
+    }
+
+    for (const outer of ["false", "showTrainingCreate"]) {
+      const wrapped = pageSource.replace(
+        '{activeTab === "log" && <AddTrainingActivityButton />}',
+        `{${outer} && (activeTab === "log" && <AddTrainingActivityButton />)}`
+      );
+      expect(wrapped).not.toBe(pageSource);
+      expect(authenticateTrainingCreate(wrapped).issues).toContain(
+        "enclosing-control-flow"
+      );
+    }
+
+    const priorReturn = pageSource.replace(
+      "  return (\n    // Width cap",
+      "  return null;\n  return (\n    // Width cap"
+    );
+    expect(priorReturn).not.toBe(pageSource);
+    expect(authenticateTrainingCreate(priorReturn).issues).toContain(
+      "direct-return-path"
+    );
+
+    const finallyOverride = pageSource
+      .replace(
+        "  return (\n    // Width cap",
+        "  try {\n    return (\n    // Width cap"
+      )
+      .replace(
+        "\n  );\n}\n\nfunction one(",
+        "\n    );\n  } finally {\n    return null;\n  }\n}\n\nfunction one("
+      );
+    expect(finallyOverride).not.toBe(pageSource);
+    expect(authenticateTrainingCreate(finallyOverride).issues).toContain(
+      "direct-return-path"
+    );
+
+    const tabAlias = pageSource
+      .replace(
+        'import TabFirstPage from "@/components/TabFirstPage";',
+        'import TrainingTabs from "@/components/TabFirstPage";'
+      )
+      .replaceAll("<TabFirstPage", "<TrainingTabs")
+      .replaceAll("</TabFirstPage>", "</TrainingTabs>");
+    expect(tabAlias).not.toBe(pageSource);
+    expect(authenticateTrainingCreate(tabAlias).issues).toEqual(
+      expect.arrayContaining([
+        "canonical-tab-first-page-import",
+        "sole-tab-first-page-mount",
+      ])
+    );
+
+    const extraTabMount = pageSource.replace(
+      '<PageContainer width="wide" className="mx-auto">',
+      '<PageContainer width="wide" className="mx-auto">\n      <TabFirstPage config={TRAINING_TAB_FIRST_PAGE} />'
+    );
+    expect(extraTabMount).not.toBe(pageSource);
+    expect(authenticateTrainingCreate(extraTabMount).issues).toContain(
+      "sole-tab-first-page-mount"
+    );
+
+    const duplicateAction = pageSource.replace(
+      'testId="training-page"',
+      'testId="training-page" action={null}'
+    );
+    expect(duplicateAction).not.toBe(pageSource);
+    expect(authenticateTrainingCreate(duplicateAction).issues).toContain(
+      "sole-tab-first-page-action"
+    );
+
+    const spreadActionOverride = pageSource.replace(
+      'testId="training-page"',
+      'testId="training-page" {...{ action: null }}'
+    );
+    expect(spreadActionOverride).not.toBe(pageSource);
+    expect(authenticateTrainingCreate(spreadActionOverride).issues).toContain(
+      "sole-tab-first-page-action"
+    );
+
+    const aliasDecoy = pageSource
+      .replace(
+        'import AddTrainingActivityButton from "./AddTrainingActivityButton";',
+        'import TrainingCreate from "./AddTrainingActivityButton";'
+      )
+      .replace(
+        '{activeTab === "log" && <AddTrainingActivityButton />}',
+        '<TrainingCreate />\n            {activeTab === "log" && "<AddTrainingActivityButton />"}'
+      );
+    expect(aliasDecoy).not.toBe(pageSource);
+    expect(authenticateTrainingCreate(aliasDecoy).issues).toEqual(
+      expect.arrayContaining([
+        "canonical-import",
+        "sole-binding-reference",
+        "sole-jsx-mount",
+      ])
+    );
   });
 
   it("names every icon-only create for AT, because below `sm` it has no other name", () => {

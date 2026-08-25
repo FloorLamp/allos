@@ -130,11 +130,8 @@ test("RPE selector round-trips through the activity form (#743)", async ({
   await page.setViewportSize({ width: 1280, height: 900 });
   await page.goto("/training?tab=log"); // default "Log" tab renders the Training Log feed
 
-  // Open a fresh CREATE editor from the training log actions toolbar.
-  await page
-    .getByTestId("training-log-actions")
-    .getByRole("button", { name: "Add activity" })
-    .click();
+  // Open a fresh CREATE editor from the Training page-header action.
+  await page.getByTestId("training-log-add-activity").click();
 
   const title = `${PROBE_PREFIX} ${Date.now()}-${++probeSeq}`; // clock-ok: unique probe-name suffix, never a stored timestamp
   await page.getByRole("textbox", { name: "Activity name" }).fill(title);
@@ -283,10 +280,7 @@ test("the set row's tab order is the same with the effort column on and off (#33
 
   await page.setViewportSize({ width: 1280, height: 900 });
   await page.goto("/training?tab=log");
-  await page
-    .getByTestId("training-log-actions")
-    .getByRole("button", { name: "Add activity" })
-    .click();
+  await page.getByTestId("training-log-add-activity").click();
   await pickActivity(page, "Barbell Bench Press");
 
   // How a focused control names itself: its testid, else its accessible label, else

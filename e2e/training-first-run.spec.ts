@@ -10,7 +10,7 @@ import {
 // Training → Log first-run empty state (issue #809). A brand-new / post-onboarding
 // profile has NO activities. HistorySection used to early-return a bare EmptyState
 // ("No activities logged yet. Use 'Log activity' to start.") BEFORE TrainingLogView —
-// which owns the Log-activity action row (Add activity / Start workout) and the
+// which owns the desktop Log actions and the
 // activity-editor wiring — ever mounted, so the very users who need "Add activity"
 // had no way to reach it. Every seeded fixture profile has activities (No Gear even
 // seeds one on purpose so its Log tab renders the Training Log), which is exactly why this
@@ -39,14 +39,18 @@ test.describe("Training Log first-run empty state (#809)", () => {
       page.getByText("No activities match your filters")
     ).toHaveCount(0);
 
-    // The action row is present and prominent (viewport width 1280 ≥ md, so the
-    // `md:flex` desktop row shows): Add activity + Start workout, but NOT Repeat
-    // last — nothing has been logged, so there is nothing to repeat.
+    // Add activity is the page-header primary; Start workout remains the Log
+    // surface's secondary action. Nothing has been logged, so Repeat is absent.
+    const addActivity = page.getByTestId("training-log-add-activity");
     const actions = page.getByTestId("training-log-actions");
-    await expect(actions).toBeVisible();
+    await expect(addActivity).toBeVisible();
+    await expect(addActivity).toHaveAccessibleName("Add activity");
     await expect(
-      actions.getByRole("button", { name: "Add activity" })
-    ).toBeVisible();
+      addActivity.locator(
+        'xpath=ancestor::*[@data-testid="training-page-action"][1]'
+      )
+    ).toHaveCount(1);
+    await expect(actions).toBeVisible();
     await expect(
       actions.getByRole("button", { name: "Start workout" })
     ).toBeVisible();
@@ -62,7 +66,7 @@ test.describe("Training Log first-run empty state (#809)", () => {
 
     // Tapping Add activity opens the editor (its activity-name combobox appears) —
     // the affordance the early return used to strand.
-    await actions.getByRole("button", { name: "Add activity" }).click();
+    await addActivity.click();
     await expect(page.getByPlaceholder(/What did you do/)).toBeVisible();
 
     await page.close();
@@ -83,11 +87,12 @@ test.describe("Training Log first-run empty state (#809)", () => {
       })
     ).toBeVisible();
 
-    // The desktop action row is `hidden` below md; the mobile entry point is
+    // The desktop primary and secondary action row are hidden below md; the mobile entry point is
     // the dock's always-mounted log puck (the responsive shared-content rule —
     // the first-run empty state must not strand mobile users either). Both Train
     // rows are present in its sheet, and Log activity opens the editor overlay.
     await expect(page.getByTestId("training-log-actions")).toBeHidden();
+    await expect(page.getByTestId("training-log-add-activity")).toBeHidden();
     const sheet = await openLogSheet(page);
     await expect(await showLogRow(sheet, "live-workout")).toBeVisible();
     const mobileLog = await showLogRow(sheet, "log-activity");

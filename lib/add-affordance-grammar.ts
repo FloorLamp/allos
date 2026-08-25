@@ -356,7 +356,9 @@ export function housingAt(source: string, index: number): Housing | null {
     const { tag } = openingTag(source, m.index);
     const span = bracedAttrSpan(tag, m.index, "action");
     if (span && index > span.start && index < span.end)
-      return m[1] === "PageHeader" ? "page-header" : "section-header";
+      return m[1] === "PageHeader" || m[1] === "TabFirstPage"
+        ? "page-header"
+        : "section-header";
   }
   for (const m of source.matchAll(/<form(?=[\s>])/g)) {
     const span = elementSpan(source, m.index, "form");
