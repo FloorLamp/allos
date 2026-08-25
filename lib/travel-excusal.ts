@@ -21,8 +21,13 @@ import {
 } from "./notifications/intake-format";
 import { DEFAULT_INTAKE_REMINDER_MINUTES } from "./notifications/schedule";
 import { getNotifySchedule } from "./settings/notifications";
+import { getTimezone } from "./settings/display";
 import { getTravelSwitches } from "./settings/travel";
-import { isExcusedSlot, type TimezoneSwitch } from "./travel-timezone";
+import {
+  connectedTimezoneSwitchHistory,
+  isExcusedSlot,
+  type TimezoneSwitch,
+} from "./travel-timezone";
 
 // The profile-local minute a reminder window fires at: the configured time, or the
 // shipped default when the window is off. A window switched off still HAS a nominal
@@ -60,7 +65,10 @@ export type DoseExcusalResolver = (
 ) => boolean;
 
 export function travelExcusalResolver(profileId: number): DoseExcusalResolver {
-  const switches = getTravelSwitches(profileId);
+  const switches = connectedTimezoneSwitchHistory(
+    getTravelSwitches(profileId),
+    getTimezone(profileId)
+  );
   // The overwhelmingly common case: nobody has travelled, so nothing is excused and
   // neither the schedule read nor the per-day work is worth doing.
   if (switches.length === 0) return () => false;

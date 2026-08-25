@@ -30,7 +30,7 @@ import {
   setExcludedFoodGroups,
   setProteinGoalLevel,
   isValidTimezone,
-  setTimezone,
+  setProfileTimezoneFromSettings,
   setHomeLocation,
   setSkinType,
   isValidWeekStart,
@@ -203,7 +203,7 @@ function saveProfileSettingsCore(profileId: number, formData: FormData): void {
       // and the exporter re-sends one day rather than three. The re-key is reconciled
       // at ingest now, against the reading instant that is actually being re-sent:
       // lib/integrations/ingest-timezone-reconcile.ts.
-      setTimezone(profile.id, tz);
+      setProfileTimezoneFromSettings(profile.id, tz);
     }
   }
 

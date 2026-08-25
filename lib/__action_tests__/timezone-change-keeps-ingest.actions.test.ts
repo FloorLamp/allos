@@ -20,7 +20,12 @@
 import { describe, it, expect } from "vitest";
 import { db, today } from "@/lib/db";
 import { shiftDateStr } from "@/lib/date";
-import { getTimezone, setTimezone } from "@/lib/settings";
+import {
+  getHomeTimezone,
+  getTimezone,
+  getTravelSwitches,
+  setTimezone,
+} from "@/lib/settings";
 import { saveProfileSettings } from "@/app/(app)/settings/profile/actions";
 import { acceptTravelTimezone } from "@/app/(app)/travel-actions";
 import { createLogin, createProfile, actAs, fd } from "./harness";
@@ -101,5 +106,42 @@ describe("a timezone change deletes no ingest rows (#3524)", () => {
 
     await saveProfileSettings(fd({ timezone: "America/New_York" }));
     expect(bodyMetricDates(profile.id, "health-connect")).toEqual([recent]);
+  });
+
+  it("records a compensating seam when Settings returns an active trip home", async () => {
+    const login = createLogin();
+    const profile = createProfile("Settings return", login.id);
+    db.prepare("UPDATE logins SET own_profile_id = ? WHERE id = ?").run(
+      profile.id,
+      login.id
+    );
+    actAs(login, profile);
+    setTimezone(profile.id, "America/New_York");
+
+    const previousNow = process.env.ALLOS_TEST_NOW;
+    try {
+      process.env.ALLOS_TEST_NOW = "2026-05-01T14:00:00Z";
+      await acceptTravelTimezone("Asia/Tokyo");
+      process.env.ALLOS_TEST_NOW = "2026-05-01T14:01:00Z";
+      await saveProfileSettings(fd({ timezone: "America/New_York" }));
+    } finally {
+      if (previousNow == null) delete process.env.ALLOS_TEST_NOW;
+      else process.env.ALLOS_TEST_NOW = previousNow;
+    }
+
+    expect(getTimezone(profile.id)).toBe("America/New_York");
+    expect(getHomeTimezone(profile.id)).toBeNull();
+    expect(getTravelSwitches(profile.id)).toEqual([
+      {
+        at: "2026-05-01T14:00:00Z",
+        from: "America/New_York",
+        to: "Asia/Tokyo",
+      },
+      {
+        at: "2026-05-01T14:01:00Z",
+        from: "Asia/Tokyo",
+        to: "America/New_York",
+      },
+    ]);
   });
 });

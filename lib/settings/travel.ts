@@ -23,6 +23,8 @@ import { isValidTimezone } from "../timezone";
 import { instantNow, now as clockNow } from "../clock";
 import {
   appendTimezoneSwitch,
+  connectedTimezoneSwitchHistory,
+  decodeTimezoneSwitchHistory,
   parseTimezoneSwitches,
   serializeTimezoneSwitches,
   type TimezoneSwitch,
@@ -71,8 +73,9 @@ export function clearDismissedTravelZone(profileId: number): void {
 // Deliberately NOT folded into `setTimezone`. That setter is the primitive every
 // seed, fixture and onboarding path binds, and a first-ever zone or a fixture's
 // setup is not a journey — recording those would fill the history with switches
-// nobody took and excuse slots nobody flew over. Travel goes through here; the
-// Settings form keeps its own path unchanged (#3263 leaves that form alone).
+// nobody took and excuse slots nobody flew over. Travel goes through here. The
+// Settings form uses the helper below so an edit DURING an active trip records the
+// same seam, while ordinary onboarding/correction edits stay bare.
 //
 // Returns the switch it recorded, or null when the zone did not actually move.
 export function switchProfileTimezone(
@@ -84,19 +87,52 @@ export function switchProfileTimezone(
   const from = getTimezone(profileId);
   if (from === tz) return null;
   const at = instantNow();
+  const decodedHistory = decodeTimezoneSwitchHistory(
+    getProfileSetting(profileId, SWITCHES_KEY)
+  );
+  const connectedHistory = connectedTimezoneSwitchHistory(
+    decodedHistory.switches,
+    from
+  );
+  const historyTrusted =
+    decodedHistory.valid &&
+    connectedHistory.length === decodedHistory.switches.length;
   setTimezone(profileId, tz);
   const record: TimezoneSwitch = { at, from, to: tz };
-  const history = appendTimezoneSwitch(
-    getTravelSwitches(profileId),
-    record,
-    clockNow()
-  );
-  setProfileSetting(
-    profileId,
-    SWITCHES_KEY,
-    serializeTimezoneSwitches(history)
-  );
+  // Preserve malformed storage instead of laundering it into a clean one-way
+  // history. Consumers continue to fail open; the timezone still moves and the
+  // home marker still follows the explicit user choice.
+  if (historyTrusted) {
+    const history = appendTimezoneSwitch(connectedHistory, record, clockNow());
+    setProfileSetting(
+      profileId,
+      SWITCHES_KEY,
+      serializeTimezoneSwitches(history)
+    );
+  }
   if (homeZone) setProfileSetting(profileId, HOME_KEY, homeZone);
   else clearHomeTimezone(profileId);
   return record;
+}
+
+// A timezone selected explicitly in Settings is normally a correction, not proof
+// of travel. During an active trip, however, changing the away zone or selecting
+// home crosses the same wall-clock seam as the travel prompt and must be recorded;
+// otherwise a stale outbound jump can keep suppressing a slot after the person has
+// returned. The original home remains stable across intermediate legs.
+export function setProfileTimezoneFromSettings(
+  profileId: number,
+  tz: string
+): void {
+  if (!isValidTimezone(tz)) throw new Error(`Invalid timezone: ${tz}`);
+  if (getTimezone(profileId) === tz) return;
+
+  const homeZone = getHomeTimezone(profileId);
+  if (!homeZone) {
+    setTimezone(profileId, tz);
+    return;
+  }
+
+  switchProfileTimezone(profileId, tz, tz === homeZone ? null : homeZone);
+  clearDismissedTravelZone(profileId);
 }
