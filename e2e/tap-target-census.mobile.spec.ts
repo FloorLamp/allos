@@ -105,6 +105,9 @@ test.describe("tap-target rendered census (#3562)", () => {
     await page.getByTestId("dock-log-puck").click();
     const sheet = page.getByTestId("quick-log-sheet");
     await expect(sheet).toBeVisible();
+    const trainSegment = sheet.getByTestId("log-sheet-segment-train");
+    await trainSegment.click();
+    await expect(trainSegment).toHaveAttribute("aria-pressed", "true");
     await expectRenderedFloor(
       "quick-log row",
       sheet.getByTestId("quick-log-log-activity")

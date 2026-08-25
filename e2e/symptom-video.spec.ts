@@ -146,10 +146,17 @@ test("the episode strip renders empty, takes a dated clip, serves it by Range, a
   browser,
 }) => {
   test.slow(); // an upload plus first-hit route compiles
-  const page = await loginAs(browser, {
-    username: E2E_LOGIN_SICK_VIDEO,
-    password: E2E_MEMBER_PASSWORD,
-  });
+  const page = await loginAs(
+    browser,
+    {
+      username: E2E_LOGIN_SICK_VIDEO,
+      password: E2E_MEMBER_PASSWORD,
+    },
+    {
+      viewport: { width: 390, height: 844 },
+      hasTouch: true,
+    }
+  );
   try {
     const strip = await openEpisode(page);
 
