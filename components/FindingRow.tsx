@@ -1,6 +1,7 @@
 import { IconX } from "@tabler/icons-react";
 import DestinationLink from "@/components/DestinationLink";
 import type { Finding } from "@/lib/findings";
+import IconButton from "@/components/IconButton";
 
 // ONE finding row — title/detail, the optional evidence + action line, and the
 // dismiss button posting to the surface's own namespace-guarded server action.
@@ -68,15 +69,14 @@ export default function FindingRow({
           name="dedupe_key"
           value={dismissKey ?? f.dedupeKey}
         />
-        <button
+        <IconButton
           type="submit"
           data-testid={dismissTestid}
-          aria-label={`Dismiss ${f.title}`}
-          title="Dismiss"
-          className="flex h-6 w-6 shrink-0 items-center justify-center rounded-full text-slate-500 transition hover:bg-slate-100 hover:text-slate-600 dark:text-slate-400 dark:hover:bg-ink-750 dark:hover:text-slate-300"
+          label={`Dismiss ${f.title}`}
+          tooltip="Dismiss"
         >
           <IconX className="h-4 w-4" stroke={2} />
-        </button>
+        </IconButton>
       </form>
     </li>
   );

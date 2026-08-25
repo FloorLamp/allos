@@ -1,6 +1,7 @@
 import Link from "next/link";
 import DestinationLink from "@/components/DestinationLink";
 import SegmentedControl from "@/components/SegmentedControl";
+import IconButton from "@/components/IconButton";
 import {
   IconPill,
   IconRefresh,
@@ -701,15 +702,14 @@ function MultiviewHint() {
         }}
         className="shrink-0"
       >
-        <button
+        <IconButton
           type="submit"
           data-testid="multiview-hint-dismiss"
-          aria-label="Dismiss hint"
-          title="Dismiss hint"
-          className="flex h-6 w-6 items-center justify-center rounded-full text-brand-500 transition hover:bg-brand-100 dark:hover:bg-brand-500/20"
+          label="Dismiss hint"
+          tone="brand"
         >
           <IconX className="h-4 w-4" stroke={2} />
-        </button>
+        </IconButton>
       </form>
     </div>
   );
