@@ -55,6 +55,7 @@ export function useUndoableAction(): (announcement: UndoAnnouncement) => void {
           profileId: announcement.profileId,
           profileToken: announcement.profileToken,
           owner: announcement.owner,
+          onlyIfOwner: announcement.owner != null,
         });
         return;
       }
@@ -65,6 +66,7 @@ export function useUndoableAction(): (announcement: UndoAnnouncement) => void {
         profileId: announcement.profileId,
         profileToken: announcement.profileToken,
         owner: announcement.owner,
+        onlyIfOwner: announcement.owner != null,
         action: {
           label: "Undo",
           onClick: () => {
@@ -91,6 +93,7 @@ export function useUndoableAction(): (announcement: UndoAnnouncement) => void {
                   profileId: announcement.profileId,
                   profileToken: announcement.profileToken,
                   owner: announcement.owner,
+                  onlyIfOwner: announcement.owner != null,
                 });
               else
                 toast(undoRefusalText(outcome.reason), {
@@ -99,6 +102,7 @@ export function useUndoableAction(): (announcement: UndoAnnouncement) => void {
                   profileId: announcement.profileId,
                   profileToken: announcement.profileToken,
                   owner: announcement.owner,
+                  onlyIfOwner: announcement.owner != null,
                 });
             })();
           },

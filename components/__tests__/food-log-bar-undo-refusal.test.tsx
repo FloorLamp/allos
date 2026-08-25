@@ -183,13 +183,13 @@ function mountBar(options: Parameters<typeof barTree>[0] = {}) {
   return render(barTree(options));
 }
 
-function twoBarTree({ showFirst = true } = {}) {
+function twoBarTree({ showFirst = true, day = DAY } = {}) {
   const bar = (key: string) => (
-    <FoodSelectedDateProvider key={`provider-${key}`} today={DATE} days={[DAY]}>
+    <FoodSelectedDateProvider key={`provider-${key}`} today={DATE} days={[day]}>
       <FoodLogBar
         key={`bar-${key}`}
         today={DATE}
-        days={[DAY]}
+        days={[day]}
         groupsBySlot={GROUPS}
         excludedGroups={[]}
         slot="Midday"
@@ -232,7 +232,9 @@ describe("FoodLogBar projection publication", () => {
     actions.logFoodServing.mockReset();
     actions.undoFoodServing.mockReset();
     actions.readFoodServingTruth.mockReset();
+    actions.deleteFoodLogEvent.mockReset();
     actions.updateFoodLogEvent.mockReset();
+    actions.logUsualFood.mockReset();
     fastActions.endFastAction.mockReset();
     fastActions.undoEndFastAction.mockReset();
     fastActions.endFastAction.mockResolvedValue({
@@ -850,6 +852,311 @@ describe("FoodLogBar projection publication", () => {
     const offer = screen.getByRole("button", { name: "End fast" });
     fireEvent.click(offer);
     expect(fastActions.endFastAction).toHaveBeenCalledTimes(1);
+  });
+
+  it("does not let an older deferred end-fast result replace a newer offer", async () => {
+    const endOutcome = {
+      ok: true,
+      message: "Older fast ended.",
+      undoFastId: 17,
+    } as const;
+    const ending = deferred<typeof endOutcome>();
+    fastActions.endFastAction.mockReturnValue(ending.promise);
+    actions.logFoodServing
+      .mockResolvedValueOnce({
+        ok: true,
+        eventId: 92,
+        servings: 1,
+        mealSlot: "Midday",
+        mealServings: 1,
+        endFastOffer: true,
+      })
+      .mockResolvedValueOnce({
+        ok: true,
+        eventId: 93,
+        servings: 2,
+        mealSlot: "Midday",
+        mealServings: 2,
+        endFastOffer: true,
+      });
+    actions.readFoodServingTruth
+      .mockReset()
+      .mockResolvedValueOnce({
+        ok: true,
+        servings: 1,
+        mealServings: { Morning: 0, Midday: 1, Evening: 0 },
+      })
+      .mockResolvedValueOnce({
+        ok: true,
+        servings: 2,
+        mealServings: { Morning: 0, Midday: 2, Evening: 0 },
+      });
+    render(twoBarTree());
+
+    fireEvent.click(
+      within(screen.getByTestId("first-food-bar")).getByTestId(
+        "log-cruciferous"
+      )
+    );
+    fireEvent.click(await screen.findByRole("button", { name: "End fast" }));
+    fireEvent.click(
+      within(screen.getByTestId("second-food-bar")).getByTestId(
+        "log-cruciferous"
+      )
+    );
+    expect(
+      await screen.findByText("2 servings of Cruciferous vegetables today")
+    ).toBeTruthy();
+    expect(screen.getByText("Serving logged. End your fast?")).toBeTruthy();
+
+    await act(async () => ending.resolve(endOutcome));
+
+    expect(screen.getByText("Serving logged. End your fast?")).toBeTruthy();
+    expect(screen.getByRole("button", { name: "End fast" })).toBeTruthy();
+    expect(screen.queryByText("Older fast ended.")).toBeNull();
+  });
+
+  it("keeps the later bar's receipt when an earlier add response finishes last", async () => {
+    const slowOutcome = {
+      ok: true,
+      eventId: 85,
+      servings: 1,
+      mealSlot: "Midday",
+      mealServings: 1,
+    } as const;
+    const slow = deferred<typeof slowOutcome>();
+    actions.logFoodServing
+      .mockReturnValueOnce(slow.promise)
+      .mockResolvedValueOnce({
+        ok: true,
+        eventId: 86,
+        servings: 2,
+        mealSlot: "Midday",
+        mealServings: 2,
+      });
+    actions.readFoodServingTruth
+      .mockReset()
+      .mockResolvedValueOnce({
+        ok: true,
+        servings: 2,
+        mealServings: { Morning: 0, Midday: 2, Evening: 0 },
+      })
+      .mockResolvedValueOnce({
+        ok: true,
+        servings: 1,
+        mealServings: { Morning: 0, Midday: 1, Evening: 0 },
+      });
+    render(twoBarTree());
+
+    fireEvent.click(
+      within(screen.getByTestId("first-food-bar")).getByTestId(
+        "log-cruciferous"
+      )
+    );
+    fireEvent.click(
+      within(screen.getByTestId("second-food-bar")).getByTestId(
+        "log-cruciferous"
+      )
+    );
+    expect(
+      await screen.findByText("2 servings of Cruciferous vegetables today")
+    ).toBeTruthy();
+
+    await act(async () => slow.resolve(slowOutcome));
+
+    expect(actions.readFoodServingTruth).toHaveBeenCalledTimes(2);
+    expect(
+      screen.getByText("2 servings of Cruciferous vegetables today")
+    ).toBeTruthy();
+    expect(
+      screen.queryByText("1 serving of Cruciferous vegetables today")
+    ).toBeNull();
+  });
+
+  it("keeps the later bar's receipt when an earlier removal response finishes last", async () => {
+    const day: FoodLogDay = {
+      ...DAY,
+      counts: { cruciferous: 1 },
+      slotCounts: {
+        Morning: {},
+        Midday: { cruciferous: 1 },
+        Evening: {},
+      },
+      events: [
+        {
+          id: 90,
+          groupKey: "cruciferous",
+          name: GROUP.name,
+          date: DATE,
+          mealSlot: "Midday",
+          eatenAt: null,
+          loggedTime: "12:00",
+        },
+      ],
+    };
+    const removalOutcome = {
+      ok: true,
+      undoId: 90,
+      vacated: {
+        date: DATE,
+        groupKey: "cruciferous",
+        mealSlot: "Midday",
+        servings: 0,
+        mealServings: 0,
+      },
+    } as const;
+    const removal = deferred<typeof removalOutcome>();
+    actions.deleteFoodLogEvent.mockReturnValue(removal.promise);
+    actions.logFoodServing.mockResolvedValue({
+      ok: true,
+      eventId: 91,
+      servings: 2,
+      mealSlot: "Midday",
+      mealServings: 2,
+    });
+    actions.readFoodServingTruth.mockReset().mockResolvedValue({
+      ok: true,
+      servings: 2,
+      mealServings: { Morning: 0, Midday: 2, Evening: 0 },
+    });
+    render(twoBarTree({ day }));
+
+    fireEvent.click(
+      within(screen.getByTestId("first-food-bar")).getByRole("button", {
+        name: /^Actions for the Cruciferous vegetables serving/,
+      })
+    );
+    fireEvent.click(screen.getByTestId("food-logged-remove-90"));
+    fireEvent.click(
+      within(screen.getByTestId("second-food-bar")).getByTestId(
+        "log-cruciferous"
+      )
+    );
+    expect(
+      await screen.findByText("2 servings of Cruciferous vegetables today")
+    ).toBeTruthy();
+
+    await act(async () => removal.resolve(removalOutcome));
+
+    expect(
+      screen.getByText("2 servings of Cruciferous vegetables today")
+    ).toBeTruthy();
+    expect(screen.queryByText("Serving removed.")).toBeNull();
+  });
+
+  it("does not let an older deferred Undo replace a newer bar's receipt", async () => {
+    const inverseOutcome = {
+      ok: true,
+      servings: 0,
+      mealSlot: "Midday",
+      mealServings: 0,
+    } as const;
+    const inverse = deferred<typeof inverseOutcome>();
+    actions.logFoodServing
+      .mockResolvedValueOnce({
+        ok: true,
+        eventId: 87,
+        servings: 1,
+        mealSlot: "Midday",
+        mealServings: 1,
+      })
+      .mockResolvedValueOnce({
+        ok: true,
+        eventId: 88,
+        servings: 2,
+        mealSlot: "Midday",
+        mealServings: 2,
+      });
+    actions.undoFoodServing.mockReturnValue(inverse.promise);
+    actions.readFoodServingTruth
+      .mockReset()
+      .mockResolvedValueOnce({
+        ok: true,
+        servings: 1,
+        mealServings: { Morning: 0, Midday: 1, Evening: 0 },
+      })
+      .mockResolvedValueOnce({
+        ok: true,
+        servings: 2,
+        mealServings: { Morning: 0, Midday: 2, Evening: 0 },
+      });
+    render(twoBarTree());
+
+    fireEvent.click(
+      within(screen.getByTestId("first-food-bar")).getByTestId(
+        "log-cruciferous"
+      )
+    );
+    fireEvent.click(await screen.findByRole("button", { name: "Undo" }));
+    fireEvent.click(
+      within(screen.getByTestId("second-food-bar")).getByTestId(
+        "log-cruciferous"
+      )
+    );
+    expect(
+      await screen.findByText("2 servings of Cruciferous vegetables today")
+    ).toBeTruthy();
+
+    await act(async () => inverse.resolve(inverseOutcome));
+
+    expect(
+      screen.getByText("2 servings of Cruciferous vegetables today")
+    ).toBeTruthy();
+    expect(screen.queryByText("Serving undone.")).toBeNull();
+  });
+
+  it("does not let an older decrement response dismiss a newer bar's receipt", async () => {
+    const day: FoodLogDay = {
+      ...DAY,
+      counts: { cruciferous: 1 },
+      slotCounts: {
+        Morning: {},
+        Midday: { cruciferous: 1 },
+        Evening: {},
+      },
+    };
+    const decrementOutcome = {
+      ok: true,
+      servings: 0,
+      mealSlot: "Midday",
+      mealServings: 0,
+    } as const;
+    const decrement = deferred<typeof decrementOutcome>();
+    actions.undoFoodServing.mockReturnValue(decrement.promise);
+    actions.logFoodServing.mockResolvedValue({
+      ok: true,
+      eventId: 89,
+      servings: 2,
+      mealSlot: "Midday",
+      mealServings: 2,
+    });
+    actions.readFoodServingTruth.mockReset().mockResolvedValue({
+      ok: true,
+      servings: 2,
+      mealServings: { Morning: 0, Midday: 2, Evening: 0 },
+    });
+    render(twoBarTree({ day }));
+
+    fireEvent.click(
+      within(screen.getByTestId("first-food-bar")).getByTestId(
+        "undo-cruciferous"
+      )
+    );
+    fireEvent.click(
+      within(screen.getByTestId("second-food-bar")).getByTestId(
+        "log-cruciferous"
+      )
+    );
+    expect(
+      await screen.findByText("2 servings of Cruciferous vegetables today")
+    ).toBeTruthy();
+
+    await act(async () => decrement.resolve(decrementOutcome));
+
+    expect(
+      screen.getByText("2 servings of Cruciferous vegetables today")
+    ).toBeTruthy();
+    expect(screen.getByRole("button", { name: "Undo" })).toBeTruthy();
   });
 
   it("publishes correction truth after its Server Action RSC rerender", async () => {

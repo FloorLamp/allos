@@ -13,8 +13,11 @@ function receiptScopeErrors(source: string): string[] {
     errors.push("every interaction must capture the current receipt scope");
   if (/\b(?:profileToast|offerEndFast|undoEnd)\(\s*null\b/.test(source))
     errors.push("a food outcome bypasses its captured receipt scope");
-  if (!source.includes("owner: toastOwner"))
-    errors.push("food receipts are missing their bar owner");
+  if (
+    !source.includes("reserveToastLifecycle") ||
+    !source.includes("onlyIfOwner: true")
+  )
+    errors.push("food receipts are missing lifecycle ownership");
   return errors;
 }
 
@@ -104,6 +107,11 @@ describe("applyFoodServingPlacements", () => {
       `${ROOT}/components/ProfileSwitchWatcher.tsx`,
       "utf8"
     );
+    const undo = readFileSync(
+      `${ROOT}/components/useUndoableAction.ts`,
+      "utf8"
+    );
+    const toastProvider = readFileSync(`${ROOT}/components/Toast.tsx`, "utf8");
 
     // Correction, precise removal, serving add/undo, and "usual" each capture
     // the canonical root-toast scope before their first await.
@@ -113,11 +121,22 @@ describe("applyFoodServingPlacements", () => {
     // caller-supplied options object.
     expect(bar.match(/\btoast\(/g)).toHaveLength(1);
     expect(bar).toMatch(
-      /toast\(message, \{\s*\.\.\.options,\s*profileId: scope\.profileId,\s*profileToken: scope\.token,\s*owner: toastOwner,/s
+      /toast\(message, \{\s*\.\.\.options,\s*profileId: scope\.profileId,\s*profileToken: scope\.token,/s
     );
-    expect(bar).toContain("offerEndFast(noticeScope, outcome.endFastOffer)");
-    expect(bar).toContain("offerEndFast(noticeScope, result.endFastOffer)");
-    expect(bar).toContain("undoEnd(scope, undoFastId)");
+    expect(bar).toContain(
+      "offerEndFast(noticeScope, outcome.endFastOffer, endFastOwner)"
+    );
+    expect(bar).toContain(
+      "offerEndFast(noticeScope, result.endFastOffer, endFastOwner)"
+    );
+    expect(bar).toContain("undoEnd(scope, undoFastId, owner)");
+    expect(bar).toContain("dismissToast(receiptKey, receiptOwner)");
+    expect(bar).toContain("existingReceiptOwner ?? reserveToastLifecycle");
+    expect(
+      undo.match(/onlyIfOwner: announcement\.owner != null/g)
+    ).toHaveLength(4);
+    expect(toastProvider).toContain("keyedOwnersRef.current.get(options.key)");
+    expect(toastProvider).toContain("dismiss(toast.id, true)");
     expect(watcher).toContain("useLayoutEffect(() => {");
     expect(watcher).not.toContain("useEffect(() => {");
 
@@ -139,10 +158,10 @@ describe("applyFoodServingPlacements", () => {
       "profileToast(noticeScope, OFFLINE_CAPTURE_REFUSED_MESSAGE",
       'profileToast(noticeScope, "Serving corrected.")',
       'profileToast(noticeScope, "Serving removed."',
-      "offerEndFast(noticeScope, outcome.endFastOffer)",
+      "offerEndFast(noticeScope, outcome.endFastOffer, endFastOwner)",
       "profileToast(\n          noticeScope,\n          `Logged ${namesPhrase(",
-      "offerEndFast(noticeScope, result.endFastOffer)",
-      "undoEnd(scope, undoFastId)",
+      "offerEndFast(noticeScope, result.endFastOffer, endFastOwner)",
+      "undoEnd(scope, undoFastId, owner)",
     ]) {
       const mutant = bar.replace(
         target,

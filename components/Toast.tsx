@@ -84,9 +84,12 @@ interface ToastOptions {
   // switching clears every toast whose stamp no longer matches, queued or shown.
   profileId?: number;
   profileToken?: number;
-  // Opaque instance ownership for conditional keyed cleanup. It does not alter
-  // replacement: a newer same-key post still owns and upgrades the shared slot.
+  // Opaque interaction-lifecycle ownership for conditional keyed publication
+  // and cleanup. A newer same-key claim still owns the shared slot globally.
   owner?: symbol;
+  // A continuation may publish only while its interaction-start reservation
+  // still owns the key. Initial/legacy keyed posts omit this and claim normally.
+  onlyIfOwner?: boolean;
 }
 
 interface ToastItem {
@@ -107,12 +110,18 @@ interface ToastItem {
 
 type ToastFn = (message: string, options?: ToastOptions) => void;
 type DismissKeyFn = (key: string, owner?: symbol) => void;
+type ClaimKeyFn = (
+  key: string,
+  owner: symbol,
+  dismissCurrent?: boolean
+) => void;
 type ActivateProfileFn = (activeProfileId: number | null) => void;
 type GetProfileScopeFn = () => ProfileToastScope | null;
 
 interface ToastApi {
   toast: ToastFn;
   dismissKey: DismissKeyFn;
+  claimKey: ClaimKeyFn;
   activateProfile: ActivateProfileFn;
   profileScope: ProfileToastScope | null;
   getProfileScope: GetProfileScopeFn;
@@ -145,6 +154,7 @@ export function ToastProvider({ children }: { children: React.ReactNode }) {
   );
   const profileScopeRef = useRef<ProfileToastScope | null>(null);
   const profileTokenRef = useRef(0);
+  const keyedOwnersRef = useRef(new Map<string, symbol>());
   const reduceMotion = usePrefersReducedMotion();
   const snackbar = useCompactViewport();
   const exitMs = motionMs("notice", reduceMotion);
@@ -153,16 +163,36 @@ export function ToastProvider({ children }: { children: React.ReactNode }) {
   // drop it when the animation is over. Under reduced motion `exitMs` is 0 and the
   // timeout runs on the next tick, so the sequence is the same and simply snaps.
   const dismiss = useCallback(
-    (id: number) => {
-      setToasts((list) => beginExit(list, id));
+    (id: number, preserveOwner = false) => {
+      setToasts((list) => {
+        const item = list.find((toast) => toast.id === id);
+        if (
+          !preserveOwner &&
+          item?.key != null &&
+          item.owner != null &&
+          keyedOwnersRef.current.get(item.key) === item.owner
+        )
+          keyedOwnersRef.current.delete(item.key);
+        return beginExit(list, id);
+      });
       setTimeout(() => setToasts((list) => dropExited(list, id)), exitMs);
     },
     [exitMs]
   );
 
   const dismissKey = useCallback<DismissKeyFn>((key, owner) => {
+    if (owner != null && keyedOwnersRef.current.get(key) !== owner) return;
+    keyedOwnersRef.current.delete(key);
     setToasts((list) => dismissKeyed(list, key, owner));
   }, []);
+
+  const claimKey = useCallback<ClaimKeyFn>(
+    (key, owner, dismissCurrent = true) => {
+      keyedOwnersRef.current.set(key, owner);
+      if (dismissCurrent) setToasts((list) => dismissKeyed(list, key));
+    },
+    []
+  );
 
   const activateProfile = useCallback<ActivateProfileFn>((activeProfileId) => {
     const token = ++profileTokenRef.current;
@@ -193,6 +223,20 @@ export function ToastProvider({ children }: { children: React.ReactNode }) {
 
   const toast = useCallback<ToastFn>((message, options = {}) => {
     if (!acceptsProfileToast(profileScopeRef.current, options)) return;
+    if (options.key != null) {
+      if (options.onlyIfOwner) {
+        if (
+          options.owner == null ||
+          keyedOwnersRef.current.get(options.key) !== options.owner
+        )
+          return;
+      } else if (options.owner != null) {
+        keyedOwnersRef.current.set(options.key, options.owner);
+      } else {
+        // A legacy/global keyed post is itself a newer claim.
+        keyedOwnersRef.current.delete(options.key);
+      }
+    }
     const tone = options.tone ?? "success";
     const duration =
       options.duration === undefined
@@ -218,11 +262,19 @@ export function ToastProvider({ children }: { children: React.ReactNode }) {
     () => ({
       toast,
       dismissKey,
+      claimKey,
       activateProfile,
       profileScope,
       getProfileScope,
     }),
-    [toast, dismissKey, activateProfile, profileScope, getProfileScope]
+    [
+      toast,
+      dismissKey,
+      claimKey,
+      activateProfile,
+      profileScope,
+      getProfileScope,
+    ]
   );
 
   const shown = visibleToasts(toasts, snackbar);
@@ -259,7 +311,7 @@ function ToastCard({
   reduceMotion,
 }: {
   toast: ToastItem;
-  dismiss: (id: number) => void;
+  dismiss: (id: number, preserveOwner?: boolean) => void;
   reduceMotion: boolean;
 }) {
   const success = toast.tone === "success";
@@ -269,6 +321,12 @@ function ToastCard({
   // effect below re-ran and restarted every toast's countdown whenever any toast
   // was added or removed. `dismiss` is a stable useCallback, so this is too.
   const onDismiss = useCallback(() => dismiss(toast.id), [dismiss, toast.id]);
+  const onAction = useCallback(() => {
+    // The card may leave while a slow inverse runs, but its lifecycle reservation
+    // remains current until a newer claim or an explicit/manual timeout dismissal.
+    dismiss(toast.id, true);
+    toast.action?.onClick();
+  }, [dismiss, toast]);
   // Auto-dismiss after `duration` ms; a null duration keeps the toast up until
   // the user closes it by hand. `toast.revision` is a dep so an in-place keyed
   // replace (which keeps the id, so onDismiss is stable) restarts the countdown
@@ -313,10 +371,7 @@ function ToastCard({
       </p>
       {toast.action && (
         <button
-          onClick={() => {
-            toast.action?.onClick();
-            onDismiss();
-          }}
+          onClick={onAction}
           // The snackbar-action idiom below `md`: a full-height trailing button on
           // the bar, so a 10s undo window is actually hittable while walking
           // (#2642). From `md` up it is the inline link under the message it has
@@ -357,6 +412,13 @@ export function useDismissToast(): DismissKeyFn {
   if (!ctx)
     throw new Error("useDismissToast must be used within a ToastProvider");
   return ctx.dismissKey;
+}
+
+export function useClaimToastKey(): ClaimKeyFn {
+  const ctx = useContext(ToastContext);
+  if (!ctx)
+    throw new Error("useClaimToastKey must be used within a ToastProvider");
+  return ctx.claimKey;
 }
 
 export function useActivateToastProfile(): ActivateProfileFn {

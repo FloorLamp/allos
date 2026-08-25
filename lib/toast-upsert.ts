@@ -29,9 +29,8 @@ export interface KeyedToast {
   // Profile id alone is insufficient when A logs out and later signs back into A:
   // a completion from the old session must not enter the new session's queue.
   profileToken?: number;
-  // Optional component-instance ownership for keyed lifecycle cleanup. A newer
-  // same-key upsert replaces this stamp along with the receipt, so an older
-  // instance can conditionally dismiss only while it still owns the slot.
+  // Optional interaction-lifecycle ownership for conditional keyed publication
+  // and cleanup. A newer claim replaces this stamp along with the receipt.
   owner?: symbol;
 }
 
