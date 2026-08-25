@@ -29,6 +29,7 @@ import type { EpisodeInRangeEvents } from "@/lib/illness-episode-events";
 import NotesText from "@/components/NotesText";
 import SubmitButton from "@/components/SubmitButton";
 import ScrollFade from "@/components/ScrollFade";
+import Chip from "@/components/Chip";
 import { ResponsiveTable, Td } from "@/components/ResponsiveTable";
 import { CARD_MODE_ONLY, CARD_MODE_TABLE_ONLY } from "@/lib/card-row";
 import WhenControl, { type WhenValue } from "@/components/WhenControl";
@@ -624,15 +625,15 @@ export default function EpisodeTimeline({
               {availableFilters.map((option) => {
                 const active = filter === option.value;
                 return (
-                  <button
+                  <Chip
                     key={option.value}
-                    type="button"
-                    aria-pressed={active}
+                    role="filter"
+                    density="dense"
+                    pressed={active}
                     onClick={() => setFilter(option.value)}
-                    className="chip chip-filter chip-sm"
                   >
                     {option.label}
-                  </button>
+                  </Chip>
                 );
               })}
             </div>

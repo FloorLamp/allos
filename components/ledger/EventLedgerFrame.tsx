@@ -146,6 +146,7 @@ export default function EventLedgerFrame<K extends string>({
           <div className="flex flex-wrap items-center gap-3">
             {chips ? (
               <FilterPills
+                mode="link"
                 options={chips.options}
                 value={chips.value}
                 label={chips.label}

@@ -1,5 +1,5 @@
-import Link from "next/link";
 import ScrollFade from "@/components/ScrollFade";
+import Chip from "@/components/Chip";
 import type { AppRoute } from "@/lib/hrefs";
 
 // The ONE filter affordance for a record list surface (#1449, cluster C).
@@ -62,31 +62,36 @@ import type { AppRoute } from "@/lib/hrefs";
 export type FilterPillOption<T extends string> = {
   value: T;
   label: string;
-  // LINK mode only: where this filter state lives.
-  href?: AppRoute;
+  href: AppRoute;
 };
 
-export default function FilterPills<T extends string>({
-  options,
-  value,
-  onSelect,
-  label,
-  testId,
-  optionTestId,
-}: {
-  options: readonly FilterPillOption<T>[];
+type FilterPillButtonOption<T extends string> = {
   value: T;
-  onSelect?: (next: T) => void;
-  // Names the control for assistive tech, e.g. "Filter conditions by status".
+  label: string;
+  href?: never;
+};
+
+type FilterPillsProps<T extends string> = {
+  value: T;
   label: string;
   testId?: string;
-  // A stable marker per OPTION, for a list whose specs address one state
-  // directly (the encounter kind filter's `encounter-kind-ambulatory`). Optional
-  // because most filters are addressed by their visible label; supplying it is
-  // what let a hand-rolled chip row adopt this component without rewriting its
-  // specs (#3408, item E / item G).
   optionTestId?: (value: T) => string;
-}) {
+} & (
+  | {
+      mode: "link";
+      options: readonly FilterPillOption<T>[];
+      onSelect?: never;
+    }
+  | {
+      mode: "button";
+      options: readonly FilterPillButtonOption<T>[];
+      onSelect: (next: T) => void;
+    }
+);
+
+export default function FilterPills<T extends string>(
+  props: FilterPillsProps<T>
+) {
   // ── THE FILTER ROLE OF THE CHIP PRIMITIVE (#3475) ─────────────────────────
   //
   // The class list this component used to hand-write IS the filter role, and it
@@ -111,47 +116,46 @@ export default function FilterPills<T extends string>({
   // carried because a colour-only answer to "which filter am I in?" is
   // unreadable to AT and to a test. A filter cannot look active without saying
   // it is.
-  const pill = "chip chip-filter";
-
   return (
     <ScrollFade
       role="group"
-      aria-label={label}
-      data-testid={testId ?? "filter-pills"}
+      aria-label={props.label}
+      data-testid={props.testId ?? "filter-pills"}
       // The marker the class-level "nav chips and filter chips are visually
       // distinct" assertion reads, so that claim does not have to be spelled as a
       // brittle list of Tailwind classes in a spec.
       data-chip-role="filter"
       className="flex gap-2"
     >
-      {options.map((o) => {
-        const active = o.value === value;
-        if (o.href) {
-          return (
-            <Link
-              key={o.value}
-              href={o.href}
-              aria-current={active ? "true" : undefined}
-              data-testid={optionTestId?.(o.value)}
-              className={pill}
-            >
-              {o.label}
-            </Link>
-          );
-        }
-        return (
-          <button
-            key={o.value}
-            type="button"
-            aria-pressed={active}
-            data-testid={optionTestId?.(o.value)}
-            onClick={() => onSelect?.(o.value)}
-            className={pill}
-          >
-            {o.label}
-          </button>
-        );
-      })}
+      {props.mode === "link"
+        ? props.options.map((o) => {
+            const active = o.value === props.value;
+            return (
+              <Chip
+                key={o.value}
+                role="filter"
+                href={o.href}
+                current={active}
+                testId={props.optionTestId?.(o.value)}
+              >
+                {o.label}
+              </Chip>
+            );
+          })
+        : props.options.map((o) => {
+            const active = o.value === props.value;
+            return (
+              <Chip
+                key={o.value}
+                role="filter"
+                pressed={active}
+                testId={props.optionTestId?.(o.value)}
+                onClick={() => props.onSelect(o.value)}
+              >
+                {o.label}
+              </Chip>
+            );
+          })}
     </ScrollFade>
   );
 }

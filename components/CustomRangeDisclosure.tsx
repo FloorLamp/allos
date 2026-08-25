@@ -77,7 +77,7 @@ export function CustomRangeToggle({
       aria-expanded={ctx.open}
       aria-controls={ctx.panelId}
       onClick={ctx.toggle}
-      className="sm:hidden chip chip-filter"
+      className="btn-ghost sm:hidden"
     >
       Custom&hellip;
     </button>

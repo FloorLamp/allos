@@ -9,6 +9,7 @@ import type { RoutineWithDays } from "@/lib/types";
 import Combobox from "@/components/Combobox";
 import SubmitButton from "@/components/SubmitButton";
 import { useToast } from "@/components/Toast";
+import Chip from "@/components/Chip";
 import { createRoutineAction, updateRoutineAction } from "./actions";
 import DraftRestoreBanner from "@/components/DraftRestoreBanner";
 import { useFormDraft } from "@/components/useFormDraft";
@@ -318,15 +319,15 @@ export default function RoutineBuilder({
                 {REGION_SCOPES.map((r) => {
                   const active = day.focus.includes(r);
                   return (
-                    <button
+                    <Chip
                       key={r}
-                      type="button"
+                      role="filter"
+                      density="dense"
                       onClick={() => toggleFocus(di, r)}
-                      aria-pressed={active}
-                      className="chip chip-filter chip-sm"
+                      pressed={active}
                     >
                       {r}
-                    </button>
+                    </Chip>
                   );
                 })}
               </div>

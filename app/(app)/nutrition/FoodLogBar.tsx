@@ -30,6 +30,7 @@ import FoodGroupIcon, {
 import ModalShell from "@/components/ModalShell";
 import SegmentedControl from "@/components/SegmentedControl";
 import CompactDateMenu from "@/components/CompactDateMenu";
+import Chip from "@/components/Chip";
 import {
   useClaimToastKey,
   useDismissToast,
@@ -193,10 +194,6 @@ function FoodRowLabel({
     </>
   );
 }
-
-// The shared dense filter size keeps this correction row compact while its
-// rendered min-height supplies the disjoint 44px target.
-const FOOD_TIME_CHIP = "chip chip-filter chip-sm";
 
 // One logged serving, as the correction list renders it (#1934). The aggregate counts
 // above name no row, so they cannot be corrected; this carries the ledger id the ⋯ row
@@ -2391,10 +2388,11 @@ export default function FoodLogBar({
               <span className="text-xs text-slate-500 dark:text-slate-400">
                 Eaten
               </span>
-              <button
-                type="button"
-                data-testid="food-eating-now"
-                aria-pressed={statedChoice?.kind === "now"}
+              <Chip
+                role="filter"
+                density="dense"
+                testId="food-eating-now"
+                pressed={statedChoice?.kind === "now"}
                 title="Record the servings you add as eaten now"
                 onClick={() => {
                   setEarlierOpen(false);
@@ -2402,19 +2400,18 @@ export default function FoodLogBar({
                     prev?.kind === "now" ? null : { kind: "now" }
                   );
                 }}
-                className={FOOD_TIME_CHIP}
               >
                 Now
-              </button>
+              </Chip>
               {eatingTimeOptions.length > 0 && (
-                <button
-                  type="button"
-                  data-testid="food-eating-earlier"
-                  aria-pressed={statedChoice?.kind === "at"}
-                  aria-expanded={earlierOpen}
+                <Chip
+                  role="filter"
+                  density="dense"
+                  testId="food-eating-earlier"
+                  pressed={statedChoice?.kind === "at"}
+                  expanded={earlierOpen}
                   title="State an earlier time instead"
                   onClick={() => setEarlierOpen((open) => !open)}
-                  className={FOOD_TIME_CHIP}
                 >
                   {/* The pressed chip keeps announcing the filing (#2269): the hour
                       wins over the tab, so `19:00 \u00b7 Evening` is what the next "+"
@@ -2426,16 +2423,17 @@ export default function FoodLogBar({
                         )?.slot ?? activeSlot
                       }`
                     : "Earlier\u2026"}
-                </button>
+                </Chip>
               )}
               {earlierOpen &&
                 eatingTimeOptions.map((option) => (
-                  <button
+                  <Chip
                     key={option.hhmm}
-                    type="button"
-                    data-testid={`food-eating-at-${option.hhmm}`}
-                    data-slot={option.slot}
-                    aria-pressed={
+                    role="filter"
+                    density="dense"
+                    testId={`food-eating-at-${option.hhmm}`}
+                    data={{ "data-slot": option.slot }}
+                    pressed={
                       statedChoice?.kind === "at" &&
                       statedChoice.hhmm === option.hhmm
                     }
@@ -2447,14 +2445,13 @@ export default function FoodLogBar({
                           : { kind: "at", hhmm: option.hhmm }
                       );
                     }}
-                    className={FOOD_TIME_CHIP}
                   >
                     {/* The chip states the CONSEQUENCE before the tap (#2269): the
                         hour AND the meal window it files under \u2014 the #2268 correction
                         sheet's per-hour enrichment, worn at log time. The tab stays
                         navigation; a stated time wins the filing. */}
                     {`${option.hhmm} \u00b7 ${option.slot}`}
-                  </button>
+                  </Chip>
                 ))}
               <span
                 data-testid="food-eating-time-note"

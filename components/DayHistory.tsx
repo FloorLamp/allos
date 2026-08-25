@@ -39,6 +39,7 @@ import {
   type DayHistoryRow,
   type DayHistoryValue,
 } from "@/lib/day-history";
+import Chip from "@/components/Chip";
 import type { FoodGroupTier } from "@/lib/food-groups";
 import FoodGroupIcon, {
   FOOD_GROUP_TIER_TINT,
@@ -897,16 +898,16 @@ export default function DayHistory({
           </div>
           <div className="flex flex-wrap items-center gap-1.5">
             {shownChipGroups.map((g) => (
-              <button
+              <Chip
                 key={g.key}
-                type="button"
-                data-testid="day-history-chip"
-                data-group={g.key}
-                aria-pressed={isOn(g.key)}
-                aria-label={g.label}
+                role="filter"
+                density="dense"
+                testId="day-history-chip"
+                data={{ "data-group": g.key }}
+                pressed={isOn(g.key)}
+                accessibleLabel={g.label}
                 title={g.label}
                 onClick={() => toggle(g.key)}
-                className="chip chip-filter chip-sm"
               >
                 {g.foodSlug && (
                   <FoodGroupIcon
@@ -919,7 +920,7 @@ export default function DayHistory({
                   />
                 )}
                 <span className="max-w-28 truncate">{g.short ?? g.label}</span>
-              </button>
+              </Chip>
             ))}
             {chipGroups.length > collapsedChipCount && (
               <button
@@ -927,7 +928,7 @@ export default function DayHistory({
                 data-testid="day-history-filter-toggle"
                 aria-expanded={filtersExpanded}
                 onClick={() => setFiltersExpanded((v) => !v)}
-                className="chip chip-filter chip-sm"
+                className="btn-ghost min-h-11 px-2.5 py-0.5 text-xs"
               >
                 {filtersExpanded
                   ? "Show less"
@@ -947,7 +948,7 @@ export default function DayHistory({
                   clearAutomaticRowSelection();
                   setDetail(null);
                 }}
-                className="chip chip-filter chip-sm"
+                className="btn-ghost min-h-11 px-2.5 py-0.5 text-xs"
               >
                 All
               </button>
@@ -959,7 +960,7 @@ export default function DayHistory({
                   clearAutomaticRowSelection();
                   setDetail(null);
                 }}
-                className="chip chip-filter chip-sm"
+                className="btn-ghost min-h-11 px-2.5 py-0.5 text-xs"
               >
                 None
               </button>

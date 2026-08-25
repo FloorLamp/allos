@@ -51,6 +51,8 @@ export interface SegmentedControlOption<T extends string | number> {
   // Rendered before the label, inside the segment.
   icon?: ReactNode;
   disabled?: boolean;
+  accessibleLabel?: string;
+  title?: string;
   testId?: string;
   dataAttributes?: {
     "data-active"?: string;
@@ -132,6 +134,8 @@ export default function SegmentedControl<T extends string | number>({
               key={option.value}
               href={option.href}
               aria-current={active ? ariaCurrent : undefined}
+              aria-label={option.accessibleLabel}
+              title={option.title}
               data-segmented-option=""
               data-testid={option.testId}
               data-active={option.dataAttributes?.["data-active"]}
@@ -151,6 +155,8 @@ export default function SegmentedControl<T extends string | number>({
             type="button"
             onClick={() => onChange?.(option.value)}
             aria-pressed={active}
+            aria-label={option.accessibleLabel}
+            title={option.title}
             data-segmented-option=""
             disabled={option.disabled}
             data-testid={option.testId}

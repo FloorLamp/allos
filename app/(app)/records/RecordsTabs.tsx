@@ -1,8 +1,8 @@
 "use client";
 
-import Link from "next/link";
 import { usePathname } from "next/navigation";
 import ScrollFade from "@/components/ScrollFade";
+import Chip from "@/components/Chip";
 import type { RecordsGroup } from "./nav";
 
 // The second level of the Health-record tab hierarchy (#1079). The four group tabs
@@ -71,14 +71,9 @@ export default function RecordsTabs({ groups }: { groups: RecordsGroup[] }) {
         {activeGroup.panes.map((p) => {
           const active = pathname === p.href;
           return (
-            <Link
-              key={p.id}
-              href={p.href}
-              aria-current={active ? "page" : undefined}
-              className="chip chip-nav"
-            >
+            <Chip key={p.id} role="nav" href={p.href} current={active}>
               {p.label}
-            </Link>
+            </Chip>
           );
         })}
       </ScrollFade>

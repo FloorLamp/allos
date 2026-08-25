@@ -9,6 +9,7 @@ import type {
 } from "@/lib/portal-setup-stage";
 import type { PortalLoginStatus } from "@/lib/portal-status";
 import Avatar from "@/components/Avatar";
+import Chip from "@/components/Chip";
 import OverflowMenu, {
   MENU_ITEM,
   MENU_ITEM_DANGER,
@@ -172,13 +173,13 @@ function ProfileChip({
   disabled?: boolean;
 }) {
   return (
-    <button
-      type="button"
-      aria-pressed={pressed}
+    <Chip
+      role="filter"
+      density="dense"
+      pressed={pressed}
       onClick={onPress}
       disabled={disabled}
-      data-testid="profile-chip"
-      className="chip chip-filter chip-sm"
+      testId="profile-chip"
     >
       <Avatar
         profile={{
@@ -192,7 +193,7 @@ function ProfileChip({
       <span className="truncate" data-testid="profile-chip-name">
         {profile.name}
       </span>
-    </button>
+    </Chip>
   );
 }
 
@@ -263,17 +264,17 @@ function SoftwareChips({
       data-testid="software-picker"
     >
       {SOFTWARE_OPTIONS.map((o) => (
-        <button
+        <Chip
           key={o.value || "unsure"}
-          type="button"
-          aria-pressed={chosen === o.value}
+          role="filter"
+          density="dense"
+          pressed={chosen === o.value}
           onClick={() => onChoose(o.value)}
           disabled={disabled}
-          data-testid={`software-chip-${o.value || "unsure"}`}
-          className="chip chip-filter chip-sm"
+          testId={`software-chip-${o.value || "unsure"}`}
         >
           {o.label}
-        </button>
+        </Chip>
       ))}
     </div>
   );

@@ -1,5 +1,6 @@
 import Link from "next/link";
 import type { ComponentType, ReactNode } from "react";
+import Chip, { type ChipLinkRenderProps } from "./Chip";
 import DateField from "./DateField";
 import {
   isAllTimeRange,
@@ -17,39 +18,10 @@ import {
 import ScrollFade from "./ScrollFade";
 import type { AppRoute } from "@/lib/hrefs";
 
-// A link that takes {href, className, children}. Defaults to next/link's Link;
-// the Timeline passes its scroll-restoring TimelineFilterLink so its quick-range
-// pills keep the feed's scroll position (Trends just uses plain links).
-type LinkLike = ComponentType<{
-  href: AppRoute;
-  className: string;
-  children: ReactNode;
-  "aria-current"?: "page";
-  // A stable handle on the PILL ITSELF. Added with #2869: the pills are real
-  // navigations that now report pending in place, and asserting that needs the
-  // anchor rather than its text — the pending state appends an `sr-only`
-  // "Opening 30D" inside the link, which changes its accessible name.
-  testId?: string;
-}>;
-
-// next/link's Link has a broader (Url) href type than LinkLike; wrap it so the
-// default satisfies the prop type without a cast.
-const DefaultLink: LinkLike = ({
-  href,
-  className,
-  children,
-  "aria-current": ariaCurrent,
-  testId,
-}) => (
-  <Link
-    href={href}
-    className={className}
-    aria-current={ariaCurrent}
-    data-testid={testId}
-  >
-    {children}
-  </Link>
-);
+// Chip owns the link's presentation. Timeline supplies only its scroll-restoring
+// renderer so quick ranges keep the feed position and pending treatment; Trends
+// uses Chip's default Next link.
+type LinkLike = ComponentType<ChipLinkRenderProps>;
 
 // The quick-range chips are FILTERS (#3475): they narrow the window of the chart
 // or feed already on screen, in place, and they are not destinations. So they
@@ -64,8 +36,6 @@ const DefaultLink: LinkLike = ({
 // read — and with Trends' 90D default (#1485 G) "which window am I in?" is
 // answered by the pill, so it needs a non-visual answer). The primitive now
 // paints the lit state FROM that attribute, so the two can no longer disagree.
-const RANGE_PILL = "chip chip-filter";
-
 // The shared from/to + quick-range control. The Timeline and the Trends hub both
 // drive their charts from this one control: a GET form that submits
 // from/to back to `basePath` (carrying `hiddenParams` — the Timeline's category,
@@ -85,7 +55,7 @@ export default function DateRangeControl({
   todayStr,
   hiddenParams = {},
   buildHref,
-  LinkComponent = DefaultLink,
+  LinkComponent,
   rightSlot,
   trailingChips,
   companionSlot,
@@ -180,26 +150,26 @@ export default function DateRangeControl({
           >
             <div className="flex w-max min-w-full shrink-0 items-center justify-between gap-2 sm:w-auto sm:min-w-0 sm:justify-start sm:flex-wrap">
               {qrs.map((qr) => (
-                <LinkComponent
+                <Chip
                   key={qr.label}
+                  role="filter"
                   href={buildHref({ from: qr.from, to: qr.to })}
                   testId={`${idPrefix}-pill-${qr.label}`}
-                  className={RANGE_PILL}
-                  aria-current={
-                    isQuickRangeActive(range, qr) ? "page" : undefined
-                  }
+                  current={isQuickRangeActive(range, qr)}
+                  LinkComponent={LinkComponent}
                 >
                   {qr.label}
-                </LinkComponent>
+                </Chip>
               ))}
-              <LinkComponent
+              <Chip
+                role="filter"
                 href={buildHref({})}
                 testId={`${idPrefix}-pill-all-time`}
-                className={RANGE_PILL}
-                aria-current={isAllTimeRange(range) ? "page" : undefined}
+                current={isAllTimeRange(range)}
+                LinkComponent={LinkComponent}
               >
                 All time
-              </LinkComponent>
+              </Chip>
               <CustomRangeToggle active={customActive} />
               {trailingChips}
             </div>

@@ -5,6 +5,7 @@ import PhotoCapture from "@/components/photo/PhotoCapture";
 import PhotoGallery from "@/components/photo/PhotoGallery";
 import PhotoTimeline from "@/components/photo/PhotoTimeline";
 import SegmentedControl from "@/components/SegmentedControl";
+import Chip from "@/components/Chip";
 import DateField from "@/components/DateField";
 import ModalShell from "@/components/ModalShell";
 import { useConfirm } from "@/components/ConfirmDialog";
@@ -254,19 +255,19 @@ export default function ProgressPhotosView({
         <section className="space-y-2">
           <div className="flex flex-wrap gap-1">
             {PROGRESS_POSES.map((p) => (
-              <button
+              <Chip
                 key={p}
-                type="button"
-                aria-pressed={comparePose === p}
-                className="chip chip-filter chip-sm"
+                role="filter"
+                density="dense"
+                pressed={comparePose === p}
                 onClick={() => {
                   setSeriesFilter(p);
                   setPose(p);
                 }}
-                data-testid={`progress-compare-pose-${p}`}
+                testId={`progress-compare-pose-${p}`}
               >
                 {POSE_LABELS[p]}
-              </button>
+              </Chip>
             ))}
           </div>
           <PhotoTimeline

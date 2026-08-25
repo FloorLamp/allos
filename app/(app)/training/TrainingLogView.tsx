@@ -17,6 +17,7 @@ import ActiveDaysStrip from "@/components/ActiveDaysStrip";
 import { useLatestRef } from "@/components/useLatestRef";
 import { useResettableState } from "@/components/useResettableState";
 import SegmentedControl from "@/components/SegmentedControl";
+import Chip from "@/components/Chip";
 import type { ActiveDaysStrip as ActiveDaysStripData } from "@/lib/workout-heatmap";
 
 // TrainingLogCardData / DayGroup moved to lib/training-log-card.ts (issue #334), built by the
@@ -714,22 +715,21 @@ export default function TrainingLogView({
               count is the WHOLE ledger's (#1634), so a faulty row in an unfetched
               window still surfaces the toggle that can reach it. */}
             {faultCount > 0 && (
-              <button
-                type="button"
+              <Chip
+                role="filter"
                 onClick={() =>
                   setFilters((f) => ({ ...f, faultOnly: !f.faultOnly }))
                 }
-                aria-pressed={activeFilters.faultOnly}
-                data-testid="training-log-fault-filter"
+                pressed={activeFilters.faultOnly}
+                testId="training-log-fault-filter"
                 title="Show only rows that can't be saved as-is"
-                className="chip chip-filter"
               >
                 <IconAlertTriangle className="h-4 w-4" stroke={2} />
                 Can’t be saved
                 <span className="rounded-full bg-black/10 px-1.5 text-xs tabular-nums dark:bg-white/15">
                   {faultCount}
                 </span>
-              </button>
+              </Chip>
             )}
             {activeFilters.tag && (
               <span

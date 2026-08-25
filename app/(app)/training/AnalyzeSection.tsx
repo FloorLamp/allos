@@ -1,4 +1,5 @@
 import Link from "next/link";
+import Chip from "@/components/Chip";
 import HrefSelect from "@/components/HrefSelect";
 import { PendingTextLink } from "@/components/PendingLink";
 import {
@@ -428,16 +429,16 @@ export default async function AnalyzeSection({
                   option.item.trim().toLowerCase() ===
                     currentItem.trim().toLowerCase();
                 return (
-                  <Link
+                  <Chip
                     key={`${option.kind}:${option.item}`}
+                    role="nav"
                     href={option.href}
-                    aria-current={current ? "page" : undefined}
+                    current={current}
                     // The nav role of the chip primitive (#3475). This strip
                     // and the Equipment strip below it used to be two
                     // hand-rolled pills in ONE file — different padding
                     // (`py-1.5` vs `py-1`) and different selected brand shades
                     // (600 vs 500) — which is the drift the primitive closes.
-                    className="chip chip-nav"
                   >
                     <ActivityIcon
                       type={option.kind}
@@ -445,7 +446,7 @@ export default async function AnalyzeSection({
                       className="h-4 w-4 shrink-0"
                     />
                     {option.label}
-                  </Link>
+                  </Chip>
                 );
               })}
             </nav>
@@ -466,14 +467,12 @@ export default async function AnalyzeSection({
               <span className="mb-1 block section-label">Equipment</span>
               <div className="flex flex-wrap gap-1.5">
                 {view.loadContexts.map((c) => (
-                  <Link
+                  <Chip
                     key={c.lane}
+                    role="nav"
                     href={hrefFor({ item: currentItem, lane: c.lane })}
-                    data-testid={`analyze-load-context-${c.lane}`}
-                    aria-current={
-                      c.lane === view.activeLane ? "true" : undefined
-                    }
-                    className="chip chip-nav"
+                    testId={`analyze-load-context-${c.lane}`}
+                    current={c.lane === view.activeLane}
                   >
                     {c.label}
                     {/* The chip's own `gap-1.5` spaces this; an `ml-1.5` here
@@ -481,7 +480,7 @@ export default async function AnalyzeSection({
                     <span className="opacity-70 tabular-nums">
                       {c.sessions}
                     </span>
-                  </Link>
+                  </Chip>
                 ))}
               </div>
               <p className="mt-1.5 text-xs text-slate-500 dark:text-slate-400">

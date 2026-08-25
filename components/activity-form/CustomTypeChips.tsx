@@ -3,6 +3,7 @@
 import type { ActivityType } from "@/lib/types";
 import { titleCase } from "@/lib/activity-meta";
 import { blockedRing, type PartFault } from "./model";
+import Chip from "@/components/Chip";
 
 // Cardio/Sport chips for a committed custom (free-text) activity. Rendered
 // whenever the part is custom — even after inference guessed a type — so a
@@ -29,15 +30,15 @@ export default function CustomTypeChips({
         New activity:
       </span>
       {(["cardio", "sport"] as const).map((t) => (
-        <button
+        <Chip
           key={t}
-          type="button"
+          role="filter"
+          density="dense"
           onClick={() => onPick(t)}
-          aria-pressed={activeType === t}
-          className="chip chip-filter chip-sm"
+          pressed={activeType === t}
         >
           {titleCase(t)}
-        </button>
+        </Chip>
       ))}
     </div>
   );

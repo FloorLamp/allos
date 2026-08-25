@@ -4,6 +4,7 @@ import {
   ANNOTATION_KIND_META,
   type AnnotationKind,
 } from "@/lib/trend-annotations";
+import Chip from "@/components/Chip";
 
 // The per-event-type toggle for the Trends event annotations.
 // Presentational + controlled: the parent owns which kinds are enabled
@@ -28,12 +29,12 @@ export default function AnnotationToggleBar({
         const meta = ANNOTATION_KIND_META[kind];
         const on = enabled[kind];
         return (
-          <button
+          <Chip
             key={kind}
-            type="button"
-            aria-pressed={on}
+            role="filter"
+            density="dense"
+            pressed={on}
             onClick={() => onToggle(kind)}
-            className="chip chip-filter chip-sm"
           >
             <span
               className="inline-block h-2.5 w-2.5 rounded-full"
@@ -43,7 +44,7 @@ export default function AnnotationToggleBar({
               }}
             />
             {meta.label}
-          </button>
+          </Chip>
         );
       })}
     </div>

@@ -6,6 +6,7 @@ import { useResettableState } from "@/components/useResettableState";
 import { IconChevronLeft, IconChevronRight, IconX } from "@tabler/icons-react";
 import { EmptyState } from "@/components/ui";
 import SegmentedControl from "@/components/SegmentedControl";
+import Chip from "@/components/Chip";
 import {
   dateGroups,
   filterBySeries,
@@ -150,16 +151,16 @@ export default function PhotoGallery({
         <div className="flex flex-wrap gap-1">
           {[{ key: null as string | null, label: "All" }, ...domain.series].map(
             (s) => (
-              <button
+              <Chip
                 key={s.key ?? "__all"}
-                type="button"
-                aria-pressed={series === s.key}
-                className="chip chip-filter chip-sm"
+                role="filter"
+                density="dense"
+                pressed={series === s.key}
                 onClick={() => setSeries(s.key)}
-                data-testid={`photo-gallery-series-${s.key ?? "all"}`}
+                testId={`photo-gallery-series-${s.key ?? "all"}`}
               >
                 {s.label}
-              </button>
+              </Chip>
             )
           )}
         </div>

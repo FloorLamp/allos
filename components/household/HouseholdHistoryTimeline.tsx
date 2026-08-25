@@ -11,6 +11,7 @@ import type { TemperatureUnit } from "@/lib/settings";
 import type { HouseholdHistoryItem } from "@/lib/household-history";
 import { formatDateShape, type DisplayFormatPrefs } from "@/lib/format-date";
 import { useFormatPrefs } from "@/components/FormatPrefsProvider";
+import Chip from "@/components/Chip";
 
 // The merged household visit + illness-episode timeline with a per-person toggle
 // (issue #1009 Ask 1). A pure FORMATTER over the pre-built, date-ordered stream the
@@ -198,15 +199,14 @@ function FilterChip({
   children: React.ReactNode;
 }) {
   return (
-    <button
-      type="button"
+    <Chip
+      role="filter"
       onClick={onClick}
-      data-testid={testid}
-      data-active={active}
-      aria-pressed={active}
-      className="chip chip-filter"
+      testId={testid}
+      data={{ "data-active": active }}
+      pressed={active}
     >
       {children}
-    </button>
+    </Chip>
   );
 }

@@ -1,6 +1,7 @@
 import { Fragment } from "react";
 import Link from "next/link";
 import SegmentedControl from "@/components/SegmentedControl";
+import Chip from "@/components/Chip";
 import { timelineDayHref, type AppRoute } from "@/lib/hrefs";
 import {
   IconActivity,
@@ -1041,32 +1042,28 @@ export default async function TimelinePage(props: {
                 />
 
                 <div className="-mx-2 flex gap-2 overflow-x-auto px-2 pb-1 sm:mx-0 sm:flex-wrap sm:overflow-visible sm:px-0 sm:pb-0">
-                  <TimelineFilterLink
+                  <Chip
+                    role="filter"
                     href={filterHref(undefined, range, undefined, [
                       ...openFolds,
                     ])}
-                    className={`shrink-0 rounded-full px-3 py-1 text-sm font-medium transition ${
-                      !category
-                        ? "bg-brand-500 text-white"
-                        : "bg-slate-100 text-slate-600 hover:bg-slate-200 dark:bg-ink-800 dark:text-slate-300 dark:hover:bg-ink-750"
-                    }`}
+                    current={!category}
+                    LinkComponent={TimelineFilterLink}
                   >
                     All
-                  </TimelineFilterLink>
+                  </Chip>
                   {visibleCategories.map((c) => {
                     const active = c === category;
                     return (
-                      <TimelineFilterLink
+                      <Chip
                         key={c}
+                        role="filter"
                         href={filterHref(c, range, undefined, [...openFolds])}
-                        className={`shrink-0 rounded-full px-3 py-1 text-sm font-medium transition ${
-                          active
-                            ? "bg-brand-500 text-white"
-                            : "bg-slate-100 text-slate-600 hover:bg-slate-200 dark:bg-ink-800 dark:text-slate-300 dark:hover:bg-ink-750"
-                        }`}
+                        current={active}
+                        LinkComponent={TimelineFilterLink}
                       >
                         {timelineCategoryLabel(c)}
-                      </TimelineFilterLink>
+                      </Chip>
                     );
                   })}
                 </div>

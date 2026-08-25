@@ -3,6 +3,7 @@
 import { useState } from "react";
 import Link from "next/link";
 import DestinationIndicator from "@/components/DestinationIndicator";
+import SegmentedControl from "@/components/SegmentedControl";
 import { useFormatPrefs } from "@/components/FormatPrefsProvider";
 import { CYCLING_METRICS } from "@/lib/cycling-metrics";
 import { roundChartValue } from "@/lib/chart-format";
@@ -70,27 +71,16 @@ export default function SessionComparisonChart({
   return (
     <div className="mt-4 min-w-0" data-testid={`${testIdPrefix}-chart`}>
       {metrics.length > 1 && (
-        <div
-          className="flex flex-wrap gap-1"
-          aria-label="Comparison metric"
-          role="group"
-          data-testid={`${testIdPrefix}-metrics`}
-        >
-          {metrics.map((metric) => {
-            const active = metric.key === selected.key;
-            return (
-              <button
-                key={metric.key}
-                type="button"
-                aria-pressed={active}
-                onClick={() => setSelectedKey(metric.key)}
-                className="chip chip-filter"
-              >
-                {metric.shortLabel}
-              </button>
-            );
-          })}
-        </div>
+        <SegmentedControl
+          options={metrics.map((metric) => ({
+            value: metric.key,
+            label: metric.shortLabel,
+          }))}
+          value={selected.key}
+          onChange={setSelectedKey}
+          ariaLabel="Comparison metric"
+          testId={`${testIdPrefix}-metrics`}
+        />
       )}
 
       <div className="mt-3" data-testid={`${testIdPrefix}-ranking`}>

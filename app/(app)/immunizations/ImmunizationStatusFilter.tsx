@@ -51,6 +51,7 @@ export default function ImmunizationStatusFilter({
 
   return (
     <FilterPills
+      mode="link"
       options={options}
       value={current}
       label="Filter vaccines by status"

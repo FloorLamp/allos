@@ -1,6 +1,7 @@
 "use client";
 
 import { useEffect, useState } from "react";
+import Chip from "@/components/Chip";
 
 // Sticky chart-jump chips for the Trends → Overview → body census (#1067 Phase 1) — the #1042
 // jump-link pattern (ProfileAnchorNav) applied to the body census chart stack.
@@ -48,19 +49,19 @@ export default function ChartJumpChips({ chips }: { chips: ChartChip[] }) {
       className="sticky top-14 z-20 -mx-1 flex gap-2 overflow-x-auto bg-(--nav) px-1 py-2 md:top-0"
     >
       {chips.map((c) => (
-        <a
+        <Chip
           key={c.id}
+          role="nav"
           href={`#${c.id}`}
-          data-testid={`chart-jump-${c.id}`}
+          testId={`chart-jump-${c.id}`}
           // A jump chip is a DESTINATION (an in-page anchor), so it takes the
           // chip primitive's nav role (#3475) — and its lit state is now painted
           // from `aria-current`, which this strip did not previously set at all:
           // "which chart am I looking at" was a colour-only answer.
-          aria-current={active === c.id ? "true" : undefined}
-          className="chip chip-nav"
+          current={active === c.id}
         >
           {c.label}
-        </a>
+        </Chip>
       ))}
     </nav>
   );

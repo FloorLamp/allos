@@ -210,6 +210,7 @@ export default function EncounterList({
       {presentKinds.length > 1 ? (
         <div className="mb-3">
           <FilterPills
+            mode="button"
             options={[
               { value: "all" as const, label: "All" },
               ...presentKinds.map((k) => ({
