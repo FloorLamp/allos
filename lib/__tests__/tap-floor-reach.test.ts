@@ -286,7 +286,6 @@ const UNJUDGED_TAP_TARGETS: UnjudgedTapTarget[] = [];
  * button-family class instead of accepting an unreadable forwarded `className`.
  */
 const UNREADABLE_CLASS_LISTS: { file: string; controls: number }[] = [
-  { file: "app/(app)/upcoming/FoldSummary.tsx", controls: 1 },
   { file: "components/Combobox.tsx", controls: 1 },
   { file: "components/DateField.tsx", controls: 1 },
   { file: "components/DoseStatusControl.tsx", controls: 1 },

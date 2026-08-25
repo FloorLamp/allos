@@ -16,13 +16,20 @@
 import { test, expect } from "./fixtures";
 import Database from "better-sqlite3";
 import { loginAs } from "./nav";
-import { settledClick } from "./helpers";
+import { settledBoxes, settledClick } from "./helpers";
 import {
   E2E_LOGIN_SUPPRESSED,
   SUPPRESSED_PROFILE,
   E2E_MEMBER_PASSWORD,
 } from "./fixture-logins";
 import { workerDbPath } from "./worker-env";
+import {
+  TAP_FLOOR_FLOAT_EPSILON_PX,
+  TAP_FLOOR_PX,
+} from "@/lib/tap-floor-tokens";
+
+const PHONE = { width: 390, height: 844 };
+const DESKTOP = { width: 1280, height: 844 };
 
 const COACHING_KEY = "training-obs:plateau:e2e suppressed lift";
 const BRIDGE_KEY = "med-bridge:e2e suppressed rx";
@@ -133,4 +140,54 @@ test("restoring a suggestion dismissal clears it from the section (#1151)", asyn
   // (No origin-surface reappearance to assert: post-#1178/092 the bridge's
   // backing 'prescription' records cannot exist, so Restore's job here is
   // simply clearing the outlived key — the #203 orphan-pruning behavior.)
+});
+
+test("the suppression summary keeps native disclosure semantics and responsive target geometry (#3707)", async ({
+  browser,
+}) => {
+  resetSuppressions();
+  const page = await loginAs(
+    browser,
+    {
+      username: E2E_LOGIN_SUPPRESSED,
+      password: E2E_MEMBER_PASSWORD,
+    },
+    { viewport: PHONE, hasTouch: true }
+  );
+  try {
+    await page.goto("/upcoming");
+
+    const section = page.getByTestId("suppressed-section");
+    const summary = page.getByTestId("suppressed-summary");
+    await expect(summary).toBeVisible();
+    await expect(summary).toHaveAccessibleName("Snoozed & dismissed (3)");
+    await expect(section).toHaveJSProperty("open", false);
+
+    const [phoneSummary, phoneSection] = await settledBoxes([summary, section]);
+    expect(
+      phoneSummary.height + TAP_FLOOR_FLOAT_EPSILON_PX,
+      `suppression summary phone height at ${PHONE.width}px`
+    ).toBeGreaterThanOrEqual(TAP_FLOOR_PX);
+    expect(phoneSummary.x).toBeGreaterThanOrEqual(phoneSection.x);
+    expect(phoneSummary.y).toBeGreaterThanOrEqual(phoneSection.y);
+    expect(phoneSummary.x + phoneSummary.width).toBeLessThanOrEqual(
+      phoneSection.x + phoneSection.width + TAP_FLOOR_FLOAT_EPSILON_PX
+    );
+    expect(phoneSummary.y + phoneSummary.height).toBeLessThanOrEqual(
+      phoneSection.y + phoneSection.height + TAP_FLOOR_FLOAT_EPSILON_PX
+    );
+
+    await summary.click();
+    await expect(section).toHaveJSProperty("open", true);
+
+    await page.setViewportSize(DESKTOP);
+    const [desktopSummary] = await settledBoxes([summary]);
+    expect(
+      desktopSummary.height,
+      "suppression summary desktop height"
+    ).toBeLessThan(TAP_FLOOR_PX);
+    expect(desktopSummary.height).toBeLessThan(phoneSummary.height);
+  } finally {
+    await page.context().close();
+  }
 });
