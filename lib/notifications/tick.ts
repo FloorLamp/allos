@@ -113,6 +113,8 @@ import { createLogger } from "../log";
 import { pruneSyncEvents } from "../integrations/connections";
 import { syncIntegrations } from "../integrations/pull-tick";
 import { evaluateSyncRequests } from "../portal-requests";
+import { isReminderSlotExcused } from "../travel-excusal";
+import { getTravelSwitches } from "../settings/travel";
 
 const log = createLogger("notify");
 
@@ -326,6 +328,16 @@ export async function tickProfile(
   const weekday = weekdayInTz(tz, now);
   const date = dateStrInTz(tz, now);
   const sched = getNotifySchedule(profileId);
+  // Travel (#3685): a retry band must not resurrect a wall-clock slot an
+  // eastward switch skipped. Resolve the profile-owned history once per tick and
+  // keep the overwhelmingly common empty-history case free of switch arithmetic
+  // and per-day work at every slot below.
+  const travelSwitches = getTravelSwitches(profileId);
+  const reminderSlotExcused =
+    travelSwitches.length === 0
+      ? (_slotMinute: number) => false
+      : (slotMinute: number) =>
+          isReminderSlotExcused(travelSwitches, date, slotMinute);
 
   // The full coaching gather (complete strength/cardio scan + 42×1440 HR-minute
   // rows) is this profile's heaviest per-tick read, and BOTH the workout-reminder
@@ -366,7 +378,11 @@ export async function tickProfile(
   ) {
     for (const w of FOOD_NUDGE_WINDOWS) {
       const slotMinute = sched.supplementMinutes[w];
-      if (slotMinute == null || !slotDue(slotMinute, minute, tickMinutes))
+      if (
+        slotMinute == null ||
+        !slotDue(slotMinute, minute, tickMinutes) ||
+        reminderSlotExcused(slotMinute)
+      )
         continue;
       const plan = planUsualRoutine(profileId, w, date, true);
       if (plan) usualPlans.set(w, plan);
@@ -391,6 +407,7 @@ export async function tickProfile(
     if (
       slotMinute != null &&
       slotDue(slotMinute, minute, tickMinutes) &&
+      !reminderSlotExcused(slotMinute) &&
       getProfileSetting(profileId, intakeSlotMarkerKey(w)) !== date
     )
       intakeSlotsDue.push(w);
@@ -404,7 +421,11 @@ export async function tickProfile(
     getProfileSetting(profileId, intakeSlotMarkerKey("PreWorkout")) !== date
   ) {
     const preMinute = getPreWorkoutSlotMinute(profileId);
-    if (preMinute != null && slotDue(preMinute, minute, tickMinutes))
+    if (
+      preMinute != null &&
+      slotDue(preMinute, minute, tickMinutes) &&
+      !reminderSlotExcused(preMinute)
+    )
       intakeSlotsDue.push("PreWorkout");
   }
   if (intakeSlotsDue.length > 0) {
@@ -460,6 +481,7 @@ export async function tickProfile(
     if (
       slotMinute != null &&
       slotDue(slotMinute, minute, tickMinutes) &&
+      !reminderSlotExcused(slotMinute) &&
       getProfileSetting(profileId, householdRoundMarkerKey(w)) !== date
     )
       householdSlotsDue.push(w);
@@ -532,7 +554,11 @@ export async function tickProfile(
   ) {
     for (const w of FOOD_NUDGE_WINDOWS) {
       const slotMinute = sched.supplementMinutes[w];
-      if (slotMinute != null && slotDue(slotMinute, minute, tickMinutes))
+      if (
+        slotMinute != null &&
+        slotDue(slotMinute, minute, tickMinutes) &&
+        !reminderSlotExcused(slotMinute)
+      )
         dueSlots.push({
           slot: `food_${w}`,
           markerKey: foodNudgeMarkerKey(w),
@@ -575,7 +601,11 @@ export async function tickProfile(
   // re-arming the reminder. Ignoring it never escalates anything.
   if (getProfileMoodCheckin(profileId)) {
     const slotMinute = sched.supplementMinutes.Evening;
-    if (slotMinute != null && slotDue(slotMinute, minute, tickMinutes))
+    if (
+      slotMinute != null &&
+      slotDue(slotMinute, minute, tickMinutes) &&
+      !reminderSlotExcused(slotMinute)
+    )
       dueSlots.push({
         slot: "mood_checkin",
         markerKey: TICK_SLOT_MARKER_KEYS.mood_checkin,
@@ -601,7 +631,11 @@ export async function tickProfile(
   // signal does not have.
   {
     const slotMinute = sched.supplementMinutes.Bedtime;
-    if (slotMinute != null && slotDue(slotMinute, minute, tickMinutes)) {
+    if (
+      slotMinute != null &&
+      slotDue(slotMinute, minute, tickMinutes) &&
+      !reminderSlotExcused(slotMinute)
+    ) {
       // The instant the message's factual clause names, captured by the build and written
       // only ON DELIVERY (#3027). The sweep cannot re-derive it later: what falsifies the
       // message is data ARRIVING with timestamps EARLIER than now, so re-reading the
@@ -627,7 +661,8 @@ export async function tickProfile(
     // inference itself is hour-grain (the mode over start hours).
     if (
       inf.weekdays.includes(weekday) &&
-      slotDue(inf.hour * 60, minute, tickMinutes)
+      slotDue(inf.hour * 60, minute, tickMinutes) &&
+      !reminderSlotExcused(inf.hour * 60)
     )
       dueSlots.push({
         slot: "workout",
@@ -1065,6 +1100,9 @@ export async function tickProfile(
   // the three period-anchored markers. That is deliberate: a longer period REPLACES the
   // shorter one's send in this slot, so there is exactly one recap per slot and this
   // gate must not fork per scale.
+  // Deliberately not travel-gated (#3685): a recap summarizes a period and makes no
+  // claim that this wall-clock slot was missed. Arriving on the retry band after a
+  // switch is late but still truthful, unlike a slot-anchored dose or food ask.
   if (
     sched.weeklyRecapDay != null &&
     weekday === sched.weeklyRecapDay &&

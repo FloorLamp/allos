@@ -302,6 +302,15 @@ never validation: a stored off-grid time stays valid and keeps firing
 late-but-correctly, so a scheduler hiccup can never strand a time somebody
 deliberately chose.
 
+**Travel removes both attempt bands for a skipped slot (#3685).** The retry band
+cannot distinguish a failed first send from an eastward timezone switch that
+jumped over the first band, so `tickProfile` resolves the profile's switch history
+once and applies `isReminderSlotExcused` to every slot-anchored send, including
+derived PreWorkout and workout minutes. Westward repeated slots remain due and the
+ordinary per-day marker keeps them once-only. The weekly recap is deliberately
+outside this gate: it summarizes a period and makes no missed-slot claim, so a late
+retry remains truthful.
+
 **The email channel (#1855).** Email is the fourth channel: login-scoped like
 Telegram/push (the address is `logins.email` — the auth address; the enable,
 content mode, and matrix column are `login_settings` keys), fanned out over the
