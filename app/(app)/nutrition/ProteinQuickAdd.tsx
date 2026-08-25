@@ -178,12 +178,10 @@ export default function ProteinQuickAdd({
           data-testid="protein-quickadd-total"
           className="block truncate text-xs tabular-nums text-slate-500 dark:text-slate-400"
         >
-          {/* The grams ROLL to the new total (#2654, motion 3): the optimistic
-              paint above has already made the change, and this is what makes the
-              change visible AS a quantity moving rather than a label rewritten.
-              Under reduced motion the new number is simply there — the text is the
-              carrier either way, which is why an exact-text assertion on this line
-              stays honest. */}
+          {/* The authoritative grams land immediately (#2654, motion 3); a bounded
+              scale pulse acknowledges the optimistic change without delaying the
+              text. Under reduced motion the new number is simply there, which is why
+              an exact-text assertion on this line stays honest either way. */}
           <RollingNumber
             value={Math.round(total)}
             testId="protein-quickadd-grams"
