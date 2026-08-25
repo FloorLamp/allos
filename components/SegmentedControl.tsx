@@ -51,6 +51,8 @@ export interface SegmentedControlOption<T extends string | number> {
   // Rendered before the label, inside the segment.
   icon?: ReactNode;
   disabled?: boolean;
+  accessibleLabel?: string;
+  title?: string;
   testId?: string;
   dataAttributes?: {
     "data-active"?: string;
@@ -110,13 +112,19 @@ export default function SegmentedControl<T extends string | number>({
             ? "bg-(--seg-active-bg) text-(--seg-active-fg) shadow-xs"
             : "text-slate-500 hover:text-slate-800 disabled:cursor-not-allowed disabled:opacity-35 disabled:hover:text-slate-500 dark:text-slate-400 dark:hover:text-slate-100 dark:disabled:hover:text-slate-400"
         }`;
-        // Keep intrinsic consumers' rendered body byte-for-byte unchanged. Fill
-        // mode alone needs a released content floor and a visual ellipsis; the
-        // text remains the accessible name, and `title` preserves it on hover.
+        // Keep intrinsic consumers' rendered body byte-for-byte unchanged. An
+        // enabled fill segment may ellipsise because its interactive element
+        // carries the full label. A native-disabled button cannot reliably show
+        // a title, so its label wraps instead of hiding meaning behind one.
+        const title = option.disabled
+          ? undefined
+          : (option.title ?? (fill ? option.label : undefined));
         const body = fill ? (
           <>
             {option.icon}
-            <span className="min-w-0 truncate" title={option.label}>
+            <span
+              className={`min-w-0 ${option.disabled ? "whitespace-normal" : "truncate"}`}
+            >
               {option.label}
             </span>
           </>
@@ -132,6 +140,8 @@ export default function SegmentedControl<T extends string | number>({
               key={option.value}
               href={option.href}
               aria-current={active ? ariaCurrent : undefined}
+              aria-label={option.accessibleLabel}
+              title={title}
               data-segmented-option=""
               data-testid={option.testId}
               data-active={option.dataAttributes?.["data-active"]}
@@ -151,6 +161,8 @@ export default function SegmentedControl<T extends string | number>({
             type="button"
             onClick={() => onChange?.(option.value)}
             aria-pressed={active}
+            aria-label={option.accessibleLabel}
+            title={title}
             data-segmented-option=""
             disabled={option.disabled}
             data-testid={option.testId}

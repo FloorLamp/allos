@@ -25,6 +25,8 @@ import { BODY_METRIC_LABELS } from "@/lib/outcome-goals";
 import { biomarkerSearchTerms } from "@/lib/canonical-name";
 import { displayUnit, storedLabUnit } from "@/lib/display-unit";
 import ActivityCombobox from "@/components/ActivityCombobox";
+import Chip from "@/components/Chip";
+import FilterPills from "@/components/FilterPills";
 import Combobox from "@/components/Combobox";
 import DateField from "@/components/DateField";
 import SubmitButton from "@/components/SubmitButton";
@@ -67,8 +69,6 @@ const DIRECTION_LABEL: Record<OutcomeGoalDirection, string> = {
   below: "Under",
   above: "Over",
 };
-
-const PILL = "chip chip-filter";
 
 // Create or edit a goal (#3220), in the shared facts-with-editors grammar (#3218).
 //
@@ -643,25 +643,23 @@ export default function GoalForm({
                 placeholder="e.g. Bench Press, Squat, Plank"
               />
               {showEquipment && (
-                <div className="mt-2 flex flex-wrap items-center gap-1.5">
-                  {variant!.group.equipment.map((eq) => {
-                    const active = variant!.equipment === eq;
-                    return (
-                      <button
-                        key={eq}
-                        type="button"
-                        onClick={() =>
-                          chooseExerciseSubject(
-                            composeVariant(variant!.group, eq)
-                          )
-                        }
-                        aria-pressed={active}
-                        className="chip chip-filter chip-sm"
-                      >
-                        {eq}
-                      </button>
-                    );
-                  })}
+                <div className="mt-2">
+                  <FilterPills
+                    mode="button"
+                    layout="wrap"
+                    label="Equipment variant"
+                    density="dense"
+                    value={variant!.equipment ?? undefined}
+                    onSelect={(equipment) =>
+                      chooseExerciseSubject(
+                        composeVariant(variant!.group, equipment)
+                      )
+                    }
+                    options={variant!.group.equipment.map((equipment) => ({
+                      value: equipment,
+                      label: equipment,
+                    }))}
+                  />
                   {variant!.equipment === null && (
                     <span className="text-xs text-slate-500 dark:text-slate-400">
                       Pick equipment
@@ -677,20 +675,18 @@ export default function GoalForm({
             {kind === "body" && (
               <input type="hidden" name="body_metric" value={bodyMetric} />
             )}
-            <div className="flex flex-wrap gap-1.5">
-              {BODY_METRICS.map((bm) => (
-                <button
-                  key={bm}
-                  type="button"
-                  data-testid={`goal-body-metric-${bm}`}
-                  onClick={() => chooseBodyMetric(bm)}
-                  aria-pressed={kind === "body" && bodyMetric === bm}
-                  className={PILL}
-                >
-                  {BODY_METRIC_LABELS[bm]}
-                </button>
-              ))}
-            </div>
+            <FilterPills
+              mode="button"
+              layout="wrap"
+              label="Body metric"
+              value={kind === "body" ? bodyMetric : undefined}
+              onSelect={chooseBodyMetric}
+              options={BODY_METRICS.map((bodyMetricOption) => ({
+                value: bodyMetricOption,
+                label: BODY_METRIC_LABELS[bodyMetricOption],
+                testId: `goal-body-metric-${bodyMetricOption}`,
+              }))}
+            />
           </div>
 
           <div>
@@ -732,15 +728,14 @@ export default function GoalForm({
                 the button would unmount the control the person just pressed and drop
                 focus to <body>, outside the form's own keydown handler — the same
                 defect #3311 fixed for the chips. */}
-            <button
-              type="button"
-              data-testid="goal-kind-freeform"
-              aria-pressed={kind === "freeform"}
+            <Chip
+              role="filter"
+              testId="goal-kind-freeform"
+              pressed={kind === "freeform"}
               onClick={() => chooseKind("freeform")}
-              className="chip chip-filter"
             >
               Track something else
-            </button>
+            </Chip>
             {kind === "freeform" && (
               <div className="mt-3">
                 <label className="label" htmlFor={`goal-ff-title-${uid}`}>
@@ -765,25 +760,19 @@ export default function GoalForm({
             <>
               <label className="label">Target</label>
               <input type="hidden" name="metric" value={metric} />
-              <div className="flex flex-wrap gap-1.5">
-                {METRICS.map((m) => {
-                  const disabled = timed
-                    ? m.value !== "hold"
-                    : m.value === "hold";
-                  return (
-                    <button
-                      key={m.value}
-                      type="button"
-                      disabled={disabled}
-                      onClick={() => chooseMetric(m.value)}
-                      aria-pressed={metric === m.value}
-                      className={PILL}
-                    >
-                      {m.label}
-                    </button>
-                  );
-                })}
-              </div>
+              <FilterPills
+                mode="button"
+                layout="wrap"
+                label="Goal target"
+                value={metric}
+                onSelect={chooseMetric}
+                options={METRICS.map((option) => ({
+                  ...option,
+                  disabled: timed
+                    ? option.value !== "hold"
+                    : option.value === "hold",
+                }))}
+              />
               {/* Metric-conditional inputs — mounted only for the metric that uses
                   them; see the header for why this one block is not merely hidden. */}
               <div key={metric} className="mt-3 grid gap-3 sm:grid-cols-2">
@@ -941,20 +930,18 @@ export default function GoalForm({
             <>
               <label className="label">Target</label>
               <input type="hidden" name="target_direction" value={direction} />
-              <div className="flex flex-wrap gap-1.5">
-                {OUTCOME_GOAL_DIRECTIONS.map((d) => (
-                  <button
-                    key={d}
-                    type="button"
-                    data-testid={`goal-direction-${d}`}
-                    onClick={() => setDirection(d)}
-                    aria-pressed={direction === d}
-                    className={PILL}
-                  >
-                    {DIRECTION_LABEL[d]}
-                  </button>
-                ))}
-              </div>
+              <FilterPills
+                mode="button"
+                layout="wrap"
+                label="Target direction"
+                value={direction}
+                onSelect={setDirection}
+                options={OUTCOME_GOAL_DIRECTIONS.map((directionOption) => ({
+                  value: directionOption,
+                  label: DIRECTION_LABEL[directionOption],
+                  testId: `goal-direction-${directionOption}`,
+                }))}
+              />
               <div className="mt-3">
                 <label className="label" htmlFor="goal-biomarker-target">
                   Target value

@@ -1,5 +1,6 @@
-import Link from "next/link";
 import type { ImportTab } from "@/lib/import-browser";
+import { importTabHref } from "@/lib/hrefs";
+import Chip from "@/components/Chip";
 
 // The import-detail records-browser tab strip (#271): one tab per non-empty
 // produced type (label + count — the data the old "What it produced" card
@@ -27,16 +28,17 @@ export default function ImportTabStrip({
       {tabs.map((t) => {
         const active = t.key === activeKey;
         return (
-          <Link
+          <Chip
             key={t.key}
-            href={`/import/${docId}?tab=${encodeURIComponent(t.key)}`}
-            aria-current={active ? "page" : undefined}
-            data-testid={`import-tab-${t.key}`}
-            className="chip chip-nav chip-sm"
+            role="nav"
+            density="dense"
+            href={importTabHref(docId, t.key)}
+            current={active}
+            testId={`import-tab-${t.key}`}
           >
             {t.label}{" "}
             <span className="tabular-nums font-semibold">{t.count}</span>
-          </Link>
+          </Chip>
         );
       })}
     </nav>

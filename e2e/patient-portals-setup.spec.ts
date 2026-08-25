@@ -487,7 +487,10 @@ test.describe("Patient portals — the portal sections (#1874)", () => {
     // Edit it after creation — the ⋯ opens the same chips.
     await openRowMenu(page, section, portal);
     await (await menuItem(page, "portal-software-edit")).click();
-    await hydratedClick(page, section.getByTestId("software-chip-generic-ccd"));
+    const denseButton = section.getByTestId("software-chip-generic-ccd");
+    const denseButtonBox = await denseButton.boundingBox();
+    expect(denseButtonBox?.height).toBeGreaterThanOrEqual(44);
+    await hydratedClick(page, denseButton);
     await hydratedClick(page, section.getByTestId("portal-software-save"));
     await expect(
       section.getByTestId("row-note").filter({ hasText: "✓ Saved" })

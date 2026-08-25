@@ -1,5 +1,6 @@
 import Link from "next/link";
-import type { ComponentType, ReactNode } from "react";
+import type { ReactNode } from "react";
+import FilterPills from "./FilterPills";
 import DateField from "./DateField";
 import {
   isAllTimeRange,
@@ -17,39 +18,25 @@ import {
 import ScrollFade from "./ScrollFade";
 import type { AppRoute } from "@/lib/hrefs";
 
-// A link that takes {href, className, children}. Defaults to next/link's Link;
-// the Timeline passes its scroll-restoring TimelineFilterLink so its quick-range
-// pills keep the feed's scroll position (Trends just uses plain links).
-type LinkLike = ComponentType<{
-  href: AppRoute;
-  className: string;
-  children: ReactNode;
-  "aria-current"?: "page";
-  // A stable handle on the PILL ITSELF. Added with #2869: the pills are real
-  // navigations that now report pending in place, and asserting that needs the
-  // anchor rather than its text — the pending state appends an `sr-only`
-  // "Opening 30D" inside the link, which changes its accessible name.
-  testId?: string;
-}>;
-
-// next/link's Link has a broader (Url) href type than LinkLike; wrap it so the
-// default satisfies the prop type without a cast.
-const DefaultLink: LinkLike = ({
-  href,
-  className,
-  children,
-  "aria-current": ariaCurrent,
-  testId,
-}) => (
-  <Link
-    href={href}
-    className={className}
-    aria-current={ariaCurrent}
-    data-testid={testId}
-  >
-    {children}
-  </Link>
-);
+export function dateRangeFilterModel(
+  range: DateRange,
+  ranges: readonly QuickRange[]
+) {
+  const activeIndex = ranges.findIndex((quickRange) =>
+    isQuickRangeActive(range, quickRange)
+  );
+  return {
+    value: isAllTimeRange(range)
+      ? null
+      : activeIndex >= 0
+        ? activeIndex
+        : undefined,
+    options: ranges.map((quickRange, index) => ({
+      value: index,
+      quickRange,
+    })),
+  };
+}
 
 // The quick-range chips are FILTERS (#3475): they narrow the window of the chart
 // or feed already on screen, in place, and they are not destinations. So they
@@ -59,13 +46,11 @@ const DefaultLink: LinkLike = ({
 // and its brand fill, which is two answers to "which one is on?" on adjacent
 // rows of one filter block.
 //
-// The active pill carries `aria-current="page"` at every call site below (the
+// The active pill carries `aria-current="true"` at every call site below (the
 // lit state was once conveyed by colour ALONE, which neither AT nor a test can
 // read — and with Trends' 90D default (#1485 G) "which window am I in?" is
 // answered by the pill, so it needs a non-visual answer). The primitive now
 // paints the lit state FROM that attribute, so the two can no longer disagree.
-const RANGE_PILL = "chip chip-filter";
-
 // The shared from/to + quick-range control. The Timeline and the Trends hub both
 // drive their charts from this one control: a GET form that submits
 // from/to back to `basePath` (carrying `hiddenParams` — the Timeline's category,
@@ -76,7 +61,7 @@ const RANGE_PILL = "chip chip-filter";
 // related control below the pills on phones and beside them on desktop.
 //
 // Mobile (#1455): below `sm` the chip row is the PRIMARY control — it renders
-// first and the From/To card collapses behind its "Custom…" pill (open by default
+// first and the From/To card collapses behind its "Custom…" disclosure (open by default
 // when the active window is custom, so a shared URL still shows its dates). From
 // `sm` up the layout is unchanged: card first, chip row under it, no toggle.
 export default function DateRangeControl({
@@ -85,7 +70,7 @@ export default function DateRangeControl({
   todayStr,
   hiddenParams = {},
   buildHref,
-  LinkComponent = DefaultLink,
+  linkBehavior,
   rightSlot,
   trailingChips,
   companionSlot,
@@ -97,7 +82,7 @@ export default function DateRangeControl({
   todayStr: string;
   hiddenParams?: Record<string, string | undefined>;
   buildHref: (range: DateRange) => AppRoute;
-  LinkComponent?: LinkLike;
+  linkBehavior?: "timeline";
   rightSlot?: ReactNode;
   trailingChips?: ReactNode;
   companionSlot?: ReactNode;
@@ -105,9 +90,9 @@ export default function DateRangeControl({
   idPrefix?: string;
 }) {
   const qrs = [...extraRanges, ...quickRanges(todayStr)];
-  // The one predicate behind both the default-open panel and the "Custom…" pill's
-  // lit state (and, at the call sites, the range-summary chip) — lib/timeline-format.
+  // The predicate behind the panel's default-open state — lib/timeline-format.
   const customActive = isCustomRange(range, todayStr, extraRanges);
+  const filterModel = dateRangeFilterModel(range, qrs);
   return (
     // `gap`, not `space-y`: the two rows swap visual order below `sm` via `order-*`,
     // and space-y's `> * + *` margin follows DOM order, so it would land the gap on
@@ -162,7 +147,7 @@ export default function DateRangeControl({
         </CustomRangePanel>
 
         {/* The chip row. One horizontally-scrolling row on a phone: quick ranges
-            and the "Custom…" toggle. Desktop surfaces may hang trailing controls
+            and the "Custom…" disclosure. Desktop surfaces may hang trailing controls
             off the end; it wraps normally from `sm` up.
 
             #1485 D: when the row overflows, cut-off content with no affordance
@@ -179,28 +164,31 @@ export default function DateRangeControl({
             className="flex min-w-0 flex-1 items-center gap-2 pb-1 sm:flex-wrap sm:justify-between sm:overflow-visible sm:pb-0"
           >
             <div className="flex w-max min-w-full shrink-0 items-center justify-between gap-2 sm:w-auto sm:min-w-0 sm:justify-start sm:flex-wrap">
-              {qrs.map((qr) => (
-                <LinkComponent
-                  key={qr.label}
-                  href={buildHref({ from: qr.from, to: qr.to })}
-                  testId={`${idPrefix}-pill-${qr.label}`}
-                  className={RANGE_PILL}
-                  aria-current={
-                    isQuickRangeActive(range, qr) ? "page" : undefined
-                  }
-                >
-                  {qr.label}
-                </LinkComponent>
-              ))}
-              <LinkComponent
-                href={buildHref({})}
-                testId={`${idPrefix}-pill-all-time`}
-                className={RANGE_PILL}
-                aria-current={isAllTimeRange(range) ? "page" : undefined}
-              >
-                All time
-              </LinkComponent>
-              <CustomRangeToggle active={customActive} />
+              <FilterPills
+                mode="link"
+                layout="wrap"
+                label="Date range"
+                value={filterModel.value}
+                linkBehavior={linkBehavior}
+                options={[
+                  ...filterModel.options.map(({ value, quickRange }) => ({
+                    value,
+                    label: quickRange.label,
+                    href: buildHref({
+                      from: quickRange.from,
+                      to: quickRange.to,
+                    }),
+                    testId: `${idPrefix}-pill-${quickRange.label}`,
+                  })),
+                  {
+                    value: null,
+                    label: "All time",
+                    href: buildHref({}),
+                    testId: `${idPrefix}-pill-all-time`,
+                  },
+                ]}
+              />
+              <CustomRangeToggle />
               {trailingChips}
             </div>
             {rightSlot && (

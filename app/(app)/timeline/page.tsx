@@ -1,6 +1,7 @@
 import { Fragment } from "react";
 import Link from "next/link";
 import SegmentedControl from "@/components/SegmentedControl";
+import FilterPills from "@/components/FilterPills";
 import { timelineDayHref, type AppRoute } from "@/lib/hrefs";
 import {
   IconActivity,
@@ -1015,7 +1016,7 @@ export default async function TimelinePage(props: {
                   buildHref={(r) =>
                     filterHref(category, r, undefined, [...openFolds])
                   }
-                  LinkComponent={TimelineFilterLink}
+                  linkBehavior="timeline"
                   idPrefix="timeline"
                   rightSlot={
                     <>
@@ -1040,36 +1041,29 @@ export default async function TimelinePage(props: {
                   }
                 />
 
-                <div className="-mx-2 flex gap-2 overflow-x-auto px-2 pb-1 sm:mx-0 sm:flex-wrap sm:overflow-visible sm:px-0 sm:pb-0">
-                  <TimelineFilterLink
-                    href={filterHref(undefined, range, undefined, [
-                      ...openFolds,
-                    ])}
-                    className={`shrink-0 rounded-full px-3 py-1 text-sm font-medium transition ${
-                      !category
-                        ? "bg-brand-500 text-white"
-                        : "bg-slate-100 text-slate-600 hover:bg-slate-200 dark:bg-ink-800 dark:text-slate-300 dark:hover:bg-ink-750"
-                    }`}
-                  >
-                    All
-                  </TimelineFilterLink>
-                  {visibleCategories.map((c) => {
-                    const active = c === category;
-                    return (
-                      <TimelineFilterLink
-                        key={c}
-                        href={filterHref(c, range, undefined, [...openFolds])}
-                        className={`shrink-0 rounded-full px-3 py-1 text-sm font-medium transition ${
-                          active
-                            ? "bg-brand-500 text-white"
-                            : "bg-slate-100 text-slate-600 hover:bg-slate-200 dark:bg-ink-800 dark:text-slate-300 dark:hover:bg-ink-750"
-                        }`}
-                      >
-                        {timelineCategoryLabel(c)}
-                      </TimelineFilterLink>
-                    );
-                  })}
-                </div>
+                <FilterPills
+                  mode="link"
+                  layout="responsive"
+                  label="Timeline category"
+                  value={category ?? null}
+                  linkBehavior="timeline"
+                  options={[
+                    {
+                      value: null,
+                      label: "All",
+                      href: filterHref(undefined, range, undefined, [
+                        ...openFolds,
+                      ]),
+                    },
+                    ...visibleCategories.map((visibleCategory) => ({
+                      value: visibleCategory,
+                      label: timelineCategoryLabel(visibleCategory),
+                      href: filterHref(visibleCategory, range, undefined, [
+                        ...openFolds,
+                      ]),
+                    })),
+                  ]}
+                />
               </div>
             }
           />

@@ -3,7 +3,6 @@ import path from "node:path";
 import { fileURLToPath } from "node:url";
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
 import {
-  CHIP_SM_RENDERED_PX,
   TAP_FLOOR_FLOAT_EPSILON_PX,
   TAP_FLOOR_PX,
   TAP_TARGET_INSET_PX,
@@ -53,8 +52,8 @@ import { makeTmpDir } from "./tmp-dir";
 //   4. QUIET ON THE BENIGN NEIGHBOURS. #3325's census had to stay silent on five
 //      shipped `ORDER BY … COLLATE NOCASE` sorts, because a guard that cries wolf
 //      is deleted within a week and takes the real rule with it. Here the
-//      neighbours are the `.btn` family, `.tap-target` used where its arithmetic
-//      works, and `.chip-sm` using its shared rendered floor.
+//      neighbours are the `.btn` family and `.tap-target` used where its arithmetic
+//      works.
 //   5. A RATCHET over what already misses. Labelled native boxes are licensed
 //      separately and counted exactly below; this file does not pretend the rest
 //      comply — it stops the number growing and records what each group awaits.
@@ -121,11 +120,10 @@ const TREE: Corpus = { base: REPO, roots: ROOTS };
 const CENSUS_FLOOR = 1200;
 // Filled from the governed source-verdict population below: explicit readable
 // heights plus the two mechanisms whose rendered floor arrives from CSS.
-const GOVERNED_CENSUS_FLOOR = 494;
+const GOVERNED_CENSUS_FLOOR = 486;
 const MECHANISM_CENSUS_FLOORS: Partial<Record<FloorMechanism, number>> = {
   "btn-family": 350,
   "tap-target": 31,
-  "chip-sm": 21,
   rendered: 39,
 };
 const LICENSED_NATIVE_BOXES = 51;
@@ -314,8 +312,8 @@ const UNJUDGED_TAP_TARGETS: UnjudgedTapTarget[] = [];
  * from a control that had been read and pinned no height. Twelve is the number
  * after the resolver reaches module constants, imported constants, barrel
  * re-exports, record lookups and single-`return` helpers; without those it was 153.
- * CustomRangeToggle left this roster when it took exact ownership of its chip
- * class instead of accepting an unreadable forwarded `className`.
+ * CustomRangeToggle left this roster when it took exact ownership of its
+ * button-family class instead of accepting an unreadable forwarded `className`.
  */
 const UNREADABLE_CLASS_LISTS: { file: string; controls: number }[] = [
   { file: "app/(app)/sleep/SleepLogAction.tsx", controls: 1 },
@@ -361,6 +359,7 @@ function sourceFiles(root: string, base: string = REPO): string[] {
       if (entry.isDirectory()) {
         if (entry.name === "node_modules" || entry.name.startsWith("."))
           continue;
+        if (entry.name === "__tests__") continue;
         walk(rel);
       } else if (entry.name.endsWith(".tsx")) {
         out.push(rel);
@@ -460,8 +459,7 @@ function governedControls<T extends FlooredControl>(found: T[]): T[] {
     // These mechanisms receive their floor from CSS even when the call site
     // writes no height. The other mechanisms need an explicit rendered height
     // before a source-only rule can prove their arithmetic.
-    if (control.mechanism === "btn-family" || control.mechanism === "chip-sm")
-      return true;
+    if (control.mechanism === "btn-family") return true;
     return control.belowSmPx !== null;
   });
 }
@@ -986,7 +984,6 @@ describe("the sweep can see an offender", () => {
       `export default function X() {
          return <>
            <button className="btn">family</button>
-           <button className="chip chip-filter chip-sm">dense chip</button>
            <button className="tap-target h-8">overlay</button>
            <button className="h-7">explicit offender</button>
            <button className="tap-target">unmeasured overlay</button>
@@ -996,7 +993,6 @@ describe("the sweep can see an offender", () => {
     );
     expect(controls.map((control) => control.mechanism)).toEqual([
       "btn-family",
-      "chip-sm",
       "tap-target",
       "none",
       "tap-target",
@@ -1004,7 +1000,7 @@ describe("the sweep can see an offender", () => {
     ]);
     expect(
       governedControls(controls).map((control) => control.mechanism)
-    ).toEqual(["btn-family", "chip-sm", "tap-target", "none"]);
+    ).toEqual(["btn-family", "tap-target", "none"]);
   });
 
   it("catches a hand-rolled control outside the family — #3486's own shape", () => {
@@ -1026,26 +1022,6 @@ describe("the sweep can see an offender", () => {
     );
     expect(control.mechanism).toBe("tap-target");
     expect(floorMiss(control)).toContain("40px effective");
-  });
-
-  it("catches the unapproved dense-chip payload directly and through an imported helper", () => {
-    const payload =
-      "chip chip-filter chip-sm outline-2 outline-dashed outline-rose-500 pointer-coarse:h-8 [min-height:2rem]";
-    const [direct] = scan(
-      `export default function X() { return <button aria-pressed className="${payload}">x</button>; }`
-    );
-    const [imported] = scanWith(
-      'import { CHIP } from "@/lib/chips"; export default function X() { return <button aria-pressed className={CHIP}>x</button>; }',
-      { "@/lib/chips": `export const CHIP = "${payload}";` }
-    );
-    for (const control of [direct, imported]) {
-      expect(control.readable).toBe(true);
-      expect(control.mechanism).toBe("chip-sm");
-      expect(control.belowSmPx).toBe(32);
-      expect(floorMiss(control)).toContain(
-        "undercuts `chip-sm`'s shared 44px rendered floor"
-      );
-    }
   });
 
   it("catches a `sm:`-only floor, which governs the wrong side of the boundary", () => {
@@ -1727,49 +1703,6 @@ describe("the sweep is quiet on the benign neighbours", () => {
     }
   });
 
-  it("keeps a regular chip quiet without masking a competing mechanism", () => {
-    // The single most important silence here. A chip is acquired by its WIDTH
-    // along a scrolling row, and app/globals.css says so in as many words ("NO
-    // RENDERED HEIGHT FLOOR, DELIBERATELY"). A census that flagged the app's filter pills
-    // would be switched off within a week and would take the real rule with it.
-    const [control] = scan(
-      `export default function X() {
-         return <button type="button" className="chip chip-filter" aria-pressed={on}>Meds</button>;
-       }`
-    );
-    expect(control.belowSmPx).toBeNull();
-    expect(floorMiss(control)).toBeNull();
-    const [ordinary] = scan(
-      `export default function X() {
-         return <button type="button" className="foo bar h-7">Meds</button>;
-       }`
-    );
-    expect(floorMiss(ordinary)).not.toBeNull();
-    const [localHeight] = scan(
-      `export default function X() {
-         return <button type="button" className="chip chip-filter h-7">Meds</button>;
-       }`
-    );
-    expect(floorMiss(localHeight)).toContain(
-      "with neither registered mechanism"
-    );
-    const [collision] = scan(
-      `export default function X() {
-         return <button type="button" className="chip btn min-h-4">Meds</button>;
-       }`
-    );
-    expect(collision.mechanism).toBe("btn-family");
-    expect(floorMiss(collision)).toContain(
-      "16px call-site minimum replaces the button family's 44px"
-    );
-    expect(
-      fs.readFileSync(path.join(REPO, "app/globals.css"), "utf8"),
-      "app/globals.css no longer records that `.chip` declares no height floor on " +
-        "purpose. The silence above is licensed by that sentence; if the decision " +
-        "changed, this census should stop being quiet."
-    ).toContain("NO RENDERED HEIGHT FLOOR, DELIBERATELY");
-  });
-
   it("says nothing about a non-interactive element that happens to be short", () => {
     expect(
       scan(
@@ -1873,27 +1806,6 @@ describe("the census walk reaches a planted offender", () => {
     // The planted file is unregistered, so the real verdict fires too.
     const registered = new Set(UNDER_FLOOR_REGISTER.map((e) => e.file));
     expect(registered.has(plantedRel)).toBe(false);
-  });
-
-  it("flags a call-site minimum that undercuts chip-sm's rendered floor", () => {
-    if (fs.existsSync(planted)) fs.unlinkSync(planted);
-    const before = misses(census(corpus));
-    fs.writeFileSync(
-      planted,
-      "export default function PlantedDenseChip() {\n" +
-        '  return <button type="button" aria-pressed="false" className="chip chip-filter chip-sm min-h-4">x</button>;\n' +
-        "}\n",
-      "utf8"
-    );
-    const after = misses(census(corpus));
-    const caught = after.filter((m) => m.control.file === plantedRel);
-    expect(caught).toHaveLength(1);
-    expect(caught[0].control.mechanism).toBe("chip-sm");
-    expect(caught[0].control.belowSmPx).toBe(16);
-    expect(caught[0].why).toContain(
-      `undercuts \`chip-sm\`'s shared ${CHIP_SM_RENDERED_PX}px rendered floor`
-    );
-    expect(after.length).toBe(before.length + 1);
   });
 
   it("stays quiet on a planted control that meets the floor", () => {

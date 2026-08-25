@@ -30,7 +30,7 @@ function firstBodyTile(page: import("@playwright/test").Page) {
     .first(); // first-ok: this helper deliberately names the first census metric
 }
 
-test.describe("the custom From/To form collapses behind a Custom… pill (A)", () => {
+test.describe("the custom From/To form collapses behind a Custom… disclosure (A)", () => {
   test("collapsed by default, with the quick-range row as the primary control", async ({
     page,
   }) => {
@@ -55,6 +55,9 @@ test.describe("the custom From/To form collapses behind a Custom… pill (A)", (
     const toggle = page.getByTestId("custom-range-toggle");
     await expect(toggle).toBeVisible();
     await expect(toggle).toHaveAttribute("aria-expanded", "false");
+    await expect(toggle).not.toHaveAttribute("aria-pressed");
+    await expect(toggle).toHaveClass(/btn-ghost/);
+    expect((await toggle.boundingBox())?.height).toBeGreaterThanOrEqual(44);
     // The panel is in the DOM (the form's server-rendered defaults never leave)
     // but not shown — that is the ~230px this reclaims.
     await expect(page.getByTestId("custom-range-panel")).toBeHidden();
@@ -73,6 +76,7 @@ test.describe("the custom From/To form collapses behind a Custom… pill (A)", (
     await expect(page.locator("#trends-to")).toBeVisible();
     await expect(page.getByRole("button", { name: "Apply" })).toBeVisible();
     await expect(toggle).toHaveAttribute("aria-expanded", "true");
+    await expect(toggle).not.toHaveAttribute("aria-pressed");
   });
 
   test("a shared ?from= URL lands with the form already expanded", async ({
@@ -85,10 +89,9 @@ test.describe("the custom From/To form collapses behind a Custom… pill (A)", (
 
     const panel = page.getByTestId("custom-range-panel");
     await expect(panel).toBeVisible();
-    await expect(page.getByTestId("custom-range-toggle")).toHaveAttribute(
-      "aria-expanded",
-      "true"
-    );
+    const toggle = page.getByTestId("custom-range-toggle");
+    await expect(toggle).toHaveAttribute("aria-expanded", "true");
+    await expect(toggle).not.toHaveAttribute("aria-pressed");
     // The dates are the whole reason it opens. DateField shows a friendly label in
     // its text box and submits the ISO value from a hidden input, so assert the
     // canonical one.

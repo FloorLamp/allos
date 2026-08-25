@@ -4,6 +4,7 @@
 
 import { useState } from "react";
 import LineChartCard from "@/components/LineChartCard";
+import SegmentedControl from "@/components/SegmentedControl";
 import { chartNeutral, chartSeries } from "@/lib/chart-colors";
 import { CYCLING_METRICS } from "@/lib/cycling-metrics";
 import type { SessionTrace, SessionTraceKey } from "@/lib/cycling-analytics";
@@ -61,33 +62,23 @@ export default function SessionTelemetryChart({
   return (
     <div className="mt-4" data-testid="session-telemetry">
       {traces.length > 1 ? (
-        <div
-          className="flex flex-wrap gap-1"
-          aria-label="Recorded metrics"
-          role="group"
-        >
-          {traces.map((trace) => {
-            const active = trace.key === selected.key;
+        <SegmentedControl
+          options={traces.map((trace) => {
             const zeroOnly = hasOnlyZeroValues(trace);
-            return (
-              <button
-                key={trace.key}
-                type="button"
-                aria-pressed={active}
-                aria-label={
-                  zeroOnly
-                    ? `${trace.shortLabel}, all recorded values are 0`
-                    : undefined
-                }
-                title={zeroOnly ? "All recorded values are 0" : undefined}
-                onClick={() => setSelectedKey(trace.key)}
-                className="chip chip-filter"
-              >
-                {trace.shortLabel}
-              </button>
-            );
+            return {
+              value: trace.key,
+              label: trace.shortLabel,
+              accessibleLabel: zeroOnly
+                ? `${trace.shortLabel}, all recorded values are 0`
+                : undefined,
+              title: zeroOnly ? "All recorded values are 0" : undefined,
+            };
           })}
-        </div>
+          value={selected.key}
+          onChange={setSelectedKey}
+          ariaLabel="Recorded metrics"
+          fill
+        />
       ) : null}
       <div className="mt-3" data-testid="session-telemetry-chart">
         <LineChartCard

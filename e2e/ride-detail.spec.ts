@@ -1065,6 +1065,23 @@ test("canonical activity navigation stays compact on a ride", async ({
       (element) => element.scrollWidth <= element.clientWidth + 1
     )
   ).toBe(true);
+  const telemetry = page.getByTestId("session-telemetry");
+  expect(
+    await telemetry.evaluate(
+      (element) => element.scrollWidth <= element.clientWidth + 1
+    )
+  ).toBe(true);
+  for (const groupName of ["Comparison metric", "Recorded metrics"]) {
+    const group = page.getByRole("group", { name: groupName });
+    await expect(group).toBeVisible();
+    const widths = await group
+      .getByRole("button")
+      .evaluateAll((buttons) =>
+        buttons.map((button) => button.getBoundingClientRect().width)
+      );
+    expect(widths.length).toBeGreaterThan(1);
+    expect(widths.every((width) => width >= 44)).toBe(true);
+  }
   expect(
     await page
       .getByTestId("ride-recorded-measurements")

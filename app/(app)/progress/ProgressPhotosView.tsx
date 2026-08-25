@@ -5,6 +5,7 @@ import PhotoCapture from "@/components/photo/PhotoCapture";
 import PhotoGallery from "@/components/photo/PhotoGallery";
 import PhotoTimeline from "@/components/photo/PhotoTimeline";
 import SegmentedControl from "@/components/SegmentedControl";
+import FilterPills from "@/components/FilterPills";
 import DateField from "@/components/DateField";
 import ModalShell from "@/components/ModalShell";
 import { useConfirm } from "@/components/ConfirmDialog";
@@ -252,23 +253,22 @@ export default function ProgressPhotosView({
         />
       ) : (
         <section className="space-y-2">
-          <div className="flex flex-wrap gap-1">
-            {PROGRESS_POSES.map((p) => (
-              <button
-                key={p}
-                type="button"
-                aria-pressed={comparePose === p}
-                className="chip chip-filter chip-sm"
-                onClick={() => {
-                  setSeriesFilter(p);
-                  setPose(p);
-                }}
-                data-testid={`progress-compare-pose-${p}`}
-              >
-                {POSE_LABELS[p]}
-              </button>
-            ))}
-          </div>
+          <FilterPills
+            mode="button"
+            layout="wrap"
+            label="Comparison pose"
+            density="dense"
+            value={comparePose}
+            onSelect={(pose) => {
+              setSeriesFilter(pose);
+              setPose(pose);
+            }}
+            options={PROGRESS_POSES.map((pose) => ({
+              value: pose,
+              label: POSE_LABELS[pose],
+              testId: `progress-compare-pose-${pose}`,
+            }))}
+          />
           <PhotoTimeline
             photos={compareSeries}
             emptyHint={`Add at least two ${POSE_LABELS[comparePose]} photos to compare over time.`}

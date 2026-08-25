@@ -2,6 +2,7 @@
 
 import EquipmentRegistryLink from "./EquipmentRegistryLink";
 import InfoTooltipIcon from "@/components/InfoTooltipIcon";
+import Chip from "@/components/Chip";
 import FactChipRow, { FactChip } from "@/components/facts/FactChipRow";
 import { useEffect, useRef, useState } from "react";
 import type { Equipment } from "@/lib/types";
@@ -764,32 +765,32 @@ export default function StrengthSets({
             // implement is chosen.
             const active = variant.equipment === eq && p.equipmentId == null;
             return (
-              <button
+              <Chip
                 key={eq}
-                type="button"
+                role="filter"
+                density="dense"
                 onClick={() => {
                   onUpdatePartName(composeVariant(variant.group, eq));
                   onUpdatePart({ equipmentId: null });
                 }}
-                aria-pressed={active}
-                className="chip chip-filter chip-sm"
+                pressed={active}
               >
                 {eq}
-              </button>
+              </Chip>
             );
           })}
         {/* This lift's default implement — click to clear any custom
               implement and use the default; highlighted while it's active. */}
         {defaultEq && (
-          <button
-            type="button"
+          <Chip
+            role="filter"
+            density="dense"
             onClick={() => onUpdatePart({ equipmentId: null })}
             title="Use the default equipment"
-            aria-pressed={p.equipmentId == null}
-            className="chip chip-filter chip-sm"
+            pressed={p.equipmentId == null}
           >
             {defaultEq}
-          </button>
+          </Chip>
         )}
         {/* User-defined implement: a compact dropdown sharing the chip row.
               Selecting one drops any variant equipment (resets to the base). */}
@@ -800,7 +801,7 @@ export default function StrengthSets({
             onChange={(e) =>
               selectEquipment(e.target.value ? Number(e.target.value) : null)
             }
-            className="chip chip-filter chip-sm"
+            className="input min-h-11 w-auto px-2.5 py-0.5 text-xs"
           >
             <option value="">Equipment</option>
             {equipmentList.map((eq) => (
@@ -819,7 +820,7 @@ export default function StrengthSets({
             type="button"
             onClick={() => setAddingEquipment(true)}
             data-testid="strength-equipment-add"
-            className="chip chip-filter chip-sm"
+            className="btn-ghost min-h-11 px-2.5 py-0.5 text-xs"
           >
             + Equipment
           </button>

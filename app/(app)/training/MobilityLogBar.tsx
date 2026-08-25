@@ -7,6 +7,7 @@ import type { MobilityMove } from "@/lib/mobility-moves";
 import { regionsForMove } from "@/lib/mobility-coverage";
 import type { MuscleRegion } from "@/lib/lifts";
 import { useToast } from "@/components/Toast";
+import Chip from "@/components/Chip";
 import { useOfflineQueue } from "@/components/OfflineQueueProvider";
 import { useOptimisticLedger } from "@/components/useOptimisticLedger";
 import {
@@ -185,18 +186,17 @@ export default function MobilityLogBar({
               {regionMoves.map((m) => {
                 const on = selected.has(m.slug);
                 return (
-                  <button
+                  <Chip
                     key={m.slug}
-                    type="button"
-                    data-testid={`mobility-move-${m.slug}`}
-                    aria-pressed={on}
+                    role="filter"
+                    pressed={on}
+                    testId={`mobility-move-${m.slug}`}
                     title={m.description}
                     onClick={() => toggle(m.slug)}
-                    className="chip chip-filter"
                   >
                     {on && <IconCheck className="h-3.5 w-3.5" stroke={2.5} />}
                     {m.name}
-                  </button>
+                  </Chip>
                 );
               })}
             </div>

@@ -2,6 +2,7 @@
 
 import { useEffect, useMemo, useRef, useState } from "react";
 import IntakeItemCombobox from "@/components/IntakeItemCombobox";
+import FilterPills from "@/components/FilterPills";
 import ProviderCombobox from "@/components/ProviderCombobox";
 import { useIntakeOptions } from "@/components/IntakeOptionsContext";
 import DateField from "@/components/DateField";
@@ -1082,19 +1083,21 @@ export default function IntakeItemForm({
           <span className="text-sm text-slate-500 dark:text-slate-400">
             Form
           </span>
-          {choices.map((choice) => (
-            <button
-              key={choice.slug || "default"}
-              type="button"
-              data-testid="intake-formulation-choice"
-              data-slug={choice.slug || DEFAULT_FORMULATION_SLUG}
-              aria-pressed={choice.slug === activeSlug}
-              onClick={() => pickFormulation(choice.slug)}
-              className="chip chip-filter"
-            >
-              {choice.label}
-            </button>
-          ))}
+          <FilterPills
+            mode="button"
+            layout="wrap"
+            label="Form"
+            value={activeSlug}
+            onSelect={pickFormulation}
+            options={choices.map((choice) => ({
+              value: choice.slug,
+              label: choice.label,
+              testId: "intake-formulation-choice",
+              data: {
+                "data-slug": choice.slug || DEFAULT_FORMULATION_SLUG,
+              },
+            }))}
+          />
         </div>
       )}
 

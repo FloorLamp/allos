@@ -28,6 +28,7 @@ import {
 import type { EpisodeInRangeEvents } from "@/lib/illness-episode-events";
 import NotesText from "@/components/NotesText";
 import SubmitButton from "@/components/SubmitButton";
+import FilterPills from "@/components/FilterPills";
 import ScrollFade from "@/components/ScrollFade";
 import { ResponsiveTable, Td } from "@/components/ResponsiveTable";
 import { CARD_MODE_ONLY, CARD_MODE_TABLE_ONLY } from "@/lib/card-row";
@@ -616,25 +617,18 @@ export default function EpisodeTimeline({
 
           {availableFilters.length >= ILLNESS_TIMELINE_MIN_CHIPS && (
             <div
-              role="group"
-              aria-label="Filter illness history"
               className="mt-3 inline-flex max-w-full flex-wrap rounded-lg border border-black/10 p-0.5 text-xs font-medium dark:border-white/10"
               data-testid="illness-history-filters"
             >
-              {availableFilters.map((option) => {
-                const active = filter === option.value;
-                return (
-                  <button
-                    key={option.value}
-                    type="button"
-                    aria-pressed={active}
-                    onClick={() => setFilter(option.value)}
-                    className="chip chip-filter chip-sm"
-                  >
-                    {option.label}
-                  </button>
-                );
-              })}
+              <FilterPills
+                mode="button"
+                layout="wrap"
+                label="Filter illness history"
+                density="dense"
+                value={filter}
+                onSelect={setFilter}
+                options={availableFilters}
+              />
             </div>
           )}
 

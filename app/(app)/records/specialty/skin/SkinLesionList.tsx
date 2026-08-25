@@ -250,6 +250,7 @@ export default function SkinLesionList({
       {/* The family's ONE filter affordance (#1449, cluster C) — this was an
           "All statuses" <select>, one of four controls for the same job. */}
       <FilterPills
+        mode="button"
         options={[
           { value: "", label: "All" },
           ...SKIN_LESION_STATUSES.map((s) => ({

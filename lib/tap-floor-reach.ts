@@ -29,8 +29,7 @@ import ts from "typescript";
 //
 //   HIT AREA — a deliberately smaller rendered control extended to >= 44
 //   effective by the shared overlay: `.tap-target` uses `inset: -6px` around a
-//   32px box (#644). Dense `chip-sm` controls instead render at 44px themselves;
-//   an overlay would collide with adjacent chips and cannot enlarge a select.
+//   32px box (#644).
 //
 // Rendered height and hit area are different guarantees, so a rule says which it
 // means. A control using NEITHER mechanism is the defect.
@@ -89,9 +88,6 @@ export const TAP_TARGET_INSET_PX = 6;
 export const TAP_TARGET_MIN_RENDERED_PX =
   TAP_FLOOR_PX - 2 * TAP_TARGET_INSET_PX;
 
-/** The rendered floor owned centrally by `chip-sm` (#3525). */
-export const CHIP_SM_RENDERED_PX = TAP_FLOOR_PX;
-
 /** Which registered mechanism a control uses to meet the floor, if any. */
 export type FloorMechanism =
   /** Membership of the `.btn` family — the floor arrives from app/globals.css. */
@@ -100,8 +96,6 @@ export type FloorMechanism =
   | "rendered"
   /** `.tap-target`'s hit-area overlay. */
   | "tap-target"
-  /** `chip-sm`'s shared rendered `min-h-11` floor. */
-  | "chip-sm"
   /**
    * The class list could not be read, so NO mechanism can be established. This
    * is not a verdict — it is the absence of one, made countable. See
@@ -142,10 +136,6 @@ export type FlooredControl = {
    */
   belowSmPx: number | null;
   mechanism: FloorMechanism;
-  /** Whether the opening tag declares an announced selected state. */
-  selectedState: boolean;
-  /** Which selected-state attribute the opening tag declares, when readable. */
-  selectedAttribute?: "pressed" | "current" | "selected";
   /**
    * For a `native-box`: whether a `<label>` takes the tap on its behalf — either
    * by wrapping it, or by naming its `id` in an `htmlFor`. This is the premise
@@ -2011,57 +2001,6 @@ export function usesTapTarget(className: string): boolean {
   return classTokens(className).includes("tap-target");
 }
 
-/** True when this class list carries the dense chip rendered-floor mechanism. */
-export function usesChipSm(className: string): boolean {
-  return classTokens(className).includes("chip-sm");
-}
-
-/**
- * The complete call-site vocabulary of a registered chip. Shell, size, colour,
- * and state live in the primitive; the lone visibility utility is the compact
- * custom-range trigger that has a separate desktop control.
- */
-export const CHIP_ADOPTER_VOCABULARY = new Set([
-  "chip",
-  "chip-nav",
-  "chip-filter",
-  "chip-sm",
-  "sm:hidden",
-]);
-
-/** The complete resolved class lists admitted at chip call sites. */
-export const CHIP_ADOPTER_CLASSES = new Set([
-  "chip chip-nav",
-  "chip chip-nav chip-sm",
-  "chip chip-filter",
-  "chip chip-filter chip-sm",
-  "sm:hidden chip chip-filter",
-]);
-
-/** Every class token outside the exact chip adopter vocabulary. */
-export function unapprovedChipAdopterTokens(className: string): string[] {
-  return (className.match(/[^\s"'`{}(),+?]+/g) ?? []).filter(
-    (token) => !CHIP_ADOPTER_VOCABULARY.has(token)
-  );
-}
-
-/** True only for one of the exact registered chip call-site class lists. */
-export function isApprovedChipAdopterClass(className: string): boolean {
-  return CHIP_ADOPTER_CLASSES.has(className.replace(/\s+/g, " ").trim());
-}
-
-/** The exact floor-free regular-chip license, excluding the dense modifier. */
-function isLicensedRegularChip(className: string): boolean {
-  return isApprovedChipAdopterClass(className) && !usesChipSm(className);
-}
-
-function selectedAttribute(
-  openTag: string
-): FlooredControl["selectedAttribute"] {
-  return /\baria-(pressed|current|selected)\b/.exec(openTag)?.[1] as
-    FlooredControl["selectedAttribute"] | undefined;
-}
-
 const INTERACTIVE_TAGS = new Set([
   "button",
   "a",
@@ -2284,8 +2223,6 @@ export function findFlooredControls(
         kind: kindOf(tag, openTag),
         belowSmPx: null,
         mechanism: "unreadable",
-        selectedState: selectedAttribute(openTag) !== undefined,
-        selectedAttribute: selectedAttribute(openTag),
         labelled: false,
         className: classNameExpression(openTag)!
           .text.replace(/\s+/g, " ")
@@ -2326,21 +2263,17 @@ export function findFlooredControls(
       const belowSmPx = belowSmHeightPx(className);
       const mechanism: FloorMechanism = inButtonFamily(className, buttonFamily)
         ? "btn-family"
-        : usesChipSm(className)
-          ? "chip-sm"
-          : usesTapTarget(className)
-            ? "tap-target"
-            : belowSmPx !== null && belowSmPx >= TAP_FLOOR_PX
-              ? "rendered"
-              : "none";
+        : usesTapTarget(className)
+          ? "tap-target"
+          : belowSmPx !== null && belowSmPx >= TAP_FLOOR_PX
+            ? "rendered"
+            : "none";
       return {
         line: lineOf(m.index),
         tag,
         kind,
         belowSmPx,
         mechanism,
-        selectedState: selectedAttribute(openTag) !== undefined,
-        selectedAttribute: selectedAttribute(openTag),
         labelled,
         className: className.replace(/\s+/g, " ").trim(),
         readable: true,
@@ -2350,7 +2283,6 @@ export function findFlooredControls(
       if (floorMiss(candidate) !== null) return false;
       if (
         candidate.mechanism === "btn-family" ||
-        candidate.mechanism === "chip-sm" ||
         candidate.mechanism === "rendered"
       )
         return true;
@@ -2359,16 +2291,13 @@ export function findFlooredControls(
           candidate.belowSmPx !== null &&
           candidate.belowSmPx >= TAP_TARGET_MIN_RENDERED_PX
         );
-      if (isLicensedRegularChip(candidate.className)) return true;
       return false;
     };
     const governedAlternative =
       candidates.length > 1 &&
       candidates.some(
         (candidate) =>
-          candidate.mechanism !== "none" ||
-          candidate.belowSmPx !== null ||
-          isLicensedRegularChip(candidate.className)
+          candidate.mechanism !== "none" || candidate.belowSmPx !== null
       );
     const failed = candidates.find((candidate) => floorMiss(candidate));
     const unproven = governedAlternative
@@ -2401,8 +2330,7 @@ export function findFlooredControls(
  *   hit-area overlay. This is `StarButton`'s old `h-9`.
  *
  *   A MECHANISM THAT CANNOT REACH — `.tap-target` on a control rendered smaller
- *   than `TAP_TARGET_MIN_RENDERED_PX`, or a `chip-sm` call site that undercuts
- *   its shared min-h-11 floor. A control that believes it is already compliant
+ *   than `TAP_TARGET_MIN_RENDERED_PX`. A control that believes it is already compliant
  *   is worse than one that knows it is not, because nothing will ever look at
  *   it again.
  *
@@ -2422,7 +2350,7 @@ export function floorMiss(control: FlooredControl): string | null {
       "a reachable class-expression arm has no authenticated floor mechanism " +
       "or rendered 44px floor"
     );
-  if (control.mechanism === "btn-family" || control.mechanism === "chip-sm") {
+  if (control.mechanism === "btn-family") {
     const callSiteMinimum = belowSmMinimum(control.className);
     if (callSiteMinimum.kind === "absent") return null;
     if (callSiteMinimum.kind === "ambiguous")
@@ -2432,21 +2360,11 @@ export function floorMiss(control: FlooredControl): string | null {
         "its winning rendered minimum"
       );
     if (callSiteMinimum.px >= TAP_FLOOR_PX) return null;
-    if (control.mechanism === "chip-sm")
-      return (
-        `a ${callSiteMinimum.px}px call-site minimum undercuts \`chip-sm\`'s shared ` +
-        `${CHIP_SM_RENDERED_PX}px rendered floor`
-      );
     return (
       `a ${callSiteMinimum.px}px call-site minimum replaces the button family's ` +
       `${TAP_FLOOR_PX}px below-\`sm\` floor`
     );
   }
-  // Width is the acquisition target for the two exact regular-chip roles. This
-  // license runs only after CSS-floor mechanisms and admits no extra class token,
-  // so `chip btn …`, `chip tap-target …`, and local height overrides cannot hide
-  // behind it. The chip adopter census owns this same closed vocabulary.
-  if (isLicensedRegularChip(control.className)) return null;
   if (control.belowSmPx === null) return null;
   if (control.mechanism === "rendered") return null;
   if (control.mechanism === "tap-target") {

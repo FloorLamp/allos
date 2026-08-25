@@ -9,6 +9,7 @@ import type {
 } from "@/lib/portal-setup-stage";
 import type { PortalLoginStatus } from "@/lib/portal-status";
 import Avatar from "@/components/Avatar";
+import FilterPills from "@/components/FilterPills";
 import OverflowMenu, {
   MENU_ITEM,
   MENU_ITEM_DANGER,
@@ -157,45 +158,6 @@ function RowNote({ id, note }: { id: string; note: Note | null }) {
   );
 }
 
-// One household member as a pressable chip — face + name (#1874 point 5). A button, not
-// a ProfileSwitcherChip: tapping it answers "who is this patient", it never navigates or
-// switches the session's acting profile.
-function ProfileChip({
-  profile,
-  pressed,
-  onPress,
-  disabled,
-}: {
-  profile: ProfileChoice;
-  pressed: boolean;
-  onPress: () => void;
-  disabled?: boolean;
-}) {
-  return (
-    <button
-      type="button"
-      aria-pressed={pressed}
-      onClick={onPress}
-      disabled={disabled}
-      data-testid="profile-chip"
-      className="chip chip-filter chip-sm"
-    >
-      <Avatar
-        profile={{
-          id: profile.id,
-          name: profile.name,
-          photo_path: profile.photoPath,
-          photo_version: profile.photoVersion,
-        }}
-        size="sm"
-      />
-      <span className="truncate" data-testid="profile-chip-name">
-        {profile.name}
-      </span>
-    </button>
-  );
-}
-
 // The read-only face of a mapping: the same chip shape, not pressable.
 function StaticChip({ profile }: { profile: ProfileChoice }) {
   return (
@@ -229,20 +191,37 @@ function ChipPicker({
   disabled?: boolean;
 }) {
   return (
-    <div
-      className="flex flex-wrap items-center gap-1.5"
-      data-testid="profile-picker"
-    >
-      {profiles.map((p) => (
-        <ProfileChip
-          key={p.id}
-          profile={p}
-          pressed={chosen === p.id}
-          onPress={() => onChoose(p.id)}
-          disabled={disabled}
-        />
-      ))}
-    </div>
+    <FilterPills
+      mode="button"
+      layout="wrap"
+      label="Household profile"
+      density="dense"
+      value={chosen ?? undefined}
+      onSelect={onChoose}
+      testId="profile-picker"
+      options={profiles.map((profile) => ({
+        value: profile.id,
+        label: profile.name,
+        disabled,
+        testId: "profile-chip",
+        content: (
+          <>
+            <Avatar
+              profile={{
+                id: profile.id,
+                name: profile.name,
+                photo_path: profile.photoPath,
+                photo_version: profile.photoVersion,
+              }}
+              size="sm"
+            />
+            <span className="truncate" data-testid="profile-chip-name">
+              {profile.name}
+            </span>
+          </>
+        ),
+      }))}
+    />
   );
 }
 
@@ -258,24 +237,20 @@ function SoftwareChips({
   disabled?: boolean;
 }) {
   return (
-    <div
-      className="flex flex-wrap items-center gap-1.5"
-      data-testid="software-picker"
-    >
-      {SOFTWARE_OPTIONS.map((o) => (
-        <button
-          key={o.value || "unsure"}
-          type="button"
-          aria-pressed={chosen === o.value}
-          onClick={() => onChoose(o.value)}
-          disabled={disabled}
-          data-testid={`software-chip-${o.value || "unsure"}`}
-          className="chip chip-filter chip-sm"
-        >
-          {o.label}
-        </button>
-      ))}
-    </div>
+    <FilterPills
+      mode="button"
+      layout="wrap"
+      label="Portal software"
+      density="dense"
+      value={chosen}
+      onSelect={onChoose}
+      testId="software-picker"
+      options={SOFTWARE_OPTIONS.map((option) => ({
+        ...option,
+        disabled,
+        testId: `software-chip-${option.value || "unsure"}`,
+      }))}
+    />
   );
 }
 

@@ -90,6 +90,7 @@ export default function ConditionsSection({
         <ConditionForm action={addCondition} />
       </AddEntryPanel>
       <FilterPills
+        mode="link"
         options={FILTERS}
         value={active}
         label="Filter conditions by status"
