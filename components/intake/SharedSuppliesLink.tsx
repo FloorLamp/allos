@@ -8,8 +8,8 @@ import { SUPPLIES_HREF } from "@/lib/hrefs";
 // The cabinet is a physical-object REGISTRY — bottles that intake items link to —
 // and #1522 moved it off the sidebar onto its consumers, the way /equipment has
 // always been reached (Training's header, the activity form's picker). This is that
-// door, rendered by every consumer surface: the Medications header, the Nutrition →
-// Supplements sidebar, and the Household header.
+// door, rendered by every consumer surface: the Current medications card, Nutrition →
+// Supplements' Manage section, and the Household header.
 //
 // STABLE, not conditional. The row it replaced was `requiresMultiProfile`, so it
 // appeared unannounced the moment a second profile was added and there was no

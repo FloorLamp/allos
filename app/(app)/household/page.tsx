@@ -284,8 +284,9 @@ export default async function HouseholdPage() {
           // reached from the stable parents that consume it.
           <div className="flex flex-wrap items-center justify-end gap-x-3 gap-y-2">
             <SharedSuppliesLink count={countVisiblePools(profileIds)} />
-            {/* ONE glyph for the doors in this row (#3487 item 5). It used to say
-                "History →" beside the cabinet door's "›" — two arrow glyphs, one row.
+            {/* ONE glyph per door in this row (#3487 item 5). It used to say
+                "History →" beside the cabinet door's "›" — two arrow vocabularies in
+                one row.
                 The standing-door convention is the chevron (#3253), so this door
                 matches the door beside it, in treatment as well as glyph: the
                 hand-rolled sky pair here was the same per-widget near-copy #2719
@@ -296,7 +297,7 @@ export default async function HouseholdPage() {
               className="inline-flex shrink-0 items-center gap-1 whitespace-nowrap text-sm text-link"
               data-testid="household-history-link"
             >
-              History
+              Illness episodes
               <IconChevronRight
                 aria-hidden
                 className="h-4 w-4 shrink-0"

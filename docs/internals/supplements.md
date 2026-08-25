@@ -1230,8 +1230,8 @@ nav entry. Its old Medical-group row was worse than an ordinary one: it was
 `requiresMultiProfile`, so it materialized unannounced when a second profile was
 added, wearing the same `IconPill` as the "Medications" row above it. The row was
 removed; the ROUTE is unchanged. Its doors are `components/intake/SharedSuppliesLink`
-(the Medications header, the Nutrition → Supplements tab, and the Household header,
-labelled by the pure `sharedSuppliesLinkLabel`), the shared-bottle chip on a linked
+(the Current medications card, Nutrition → Supplements' Manage section, and the
+Household header, labelled by the pure `sharedSuppliesLinkLabel`), the shared-bottle chip on a linked
 item, and the "See all shared bottles" exit in `SharedSupplyPicker`. `/supplies`
 highlights **Medications** and `/equipment` highlights **Training** through
 `NAV_PARENT_ROUTES` (`lib/nav.ts`), which `isRouteActive` consults before the plain

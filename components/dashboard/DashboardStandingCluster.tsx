@@ -1,5 +1,6 @@
 import Link from "next/link";
 import type { ReactNode } from "react";
+import { IconChevronRight } from "@tabler/icons-react";
 import type { AppRoute } from "@/lib/hrefs";
 import { trackedPageFor } from "@/lib/recent-pages";
 import StandingSparkline, {
@@ -230,7 +231,12 @@ export default function DashboardStandingCluster({
                                         className="standing-door pointer-events-none absolute inset-y-0 right-0 flex items-center bg-surface pl-3 text-xs font-medium whitespace-nowrap text-brand-700 dark:text-brand-400"
                                         aria-hidden="true"
                                       >
-                                        {door} ›
+                                        {door}
+                                        <IconChevronRight
+                                          aria-hidden
+                                          className="h-4 w-4 shrink-0"
+                                          stroke={1.75}
+                                        />
                                       </span>
                                     )}
                                   </Link>
