@@ -23,6 +23,9 @@ function touch(
 function mountScrollAwareDrag() {
   const root = document.createElement("div");
   const handle = document.createElement("div");
+  const title = document.createElement("h2");
+  const description = document.createElement("p");
+  const close = document.createElement("button");
   const content = document.createElement("div");
   const nested = document.createElement("div");
   const body = document.createElement("button");
@@ -34,13 +37,13 @@ function mountScrollAwareDrag() {
   });
   nested.append(body);
   content.append(nested);
-  root.append(handle, content);
+  root.append(handle, title, description, close, content);
   document.body.append(root);
 
   const onCommit = vi.fn();
   const canStart = vi.fn(
     (origin: Node) =>
-      handle.contains(origin) || verticalScrollOwnersAtTop(origin, content)
+      !content.contains(origin) || verticalScrollOwnersAtTop(origin, content)
   );
   renderHook(() =>
     useDragGesture({
@@ -50,7 +53,17 @@ function mountScrollAwareDrag() {
       onCommit,
     })
   );
-  return { body, canStart, content, handle, nested, onCommit };
+  return {
+    body,
+    canStart,
+    close,
+    content,
+    description,
+    handle,
+    nested,
+    onCommit,
+    title,
+  };
 }
 
 function dragDown(target: HTMLElement, afterStart?: () => void): void {
@@ -111,14 +124,17 @@ describe("useDragGesture touch-start admission (#3691)", () => {
     expect(onCommit).not.toHaveBeenCalled();
   });
 
-  it("admits the handle at any body scroll position", () => {
-    vi.useFakeTimers();
-    const { canStart, content, handle, onCommit } = mountScrollAwareDrag();
+  it.each(["handle", "title", "description", "close"] as const)(
+    "admits %s chrome at any body scroll position",
+    (key) => {
+      vi.useFakeTimers();
+      const mounted = mountScrollAwareDrag();
 
-    content.scrollTop = 200;
-    dragDown(handle);
+      mounted.content.scrollTop = 200;
+      dragDown(mounted[key]);
 
-    expect(canStart).toHaveBeenCalledTimes(1);
-    expect(onCommit).toHaveBeenCalledTimes(1);
-  });
+      expect(mounted.canStart).toHaveBeenCalledTimes(1);
+      expect(mounted.onCommit).toHaveBeenCalledTimes(1);
+    }
+  );
 });
