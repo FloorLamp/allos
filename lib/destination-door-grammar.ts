@@ -5,9 +5,10 @@ import ts from "typescript";
 // DESTINATION-DOOR SOURCE-SHAPE REGISTRY (#3502).
 //
 // This is deliberately not a JavaScript interpreter. The four governed renderers,
-// nine mounts, their owner paths, and the trusted slot components are pinned by
-// exact token digests. A source-shape change is a review event. The corpus is parsed
-// and indexed once, using each file's real syntax mode.
+// nine mounts, their owner paths/declarations, trusted slot components, and each
+// governed declaration's referenced runtime support closure are pinned by exact
+// token digests. A source-shape change is a review event. The corpus is parsed and
+// indexed once, using each file's real syntax mode.
 
 type JsxNode = ts.JsxElement | ts.JsxSelfClosingElement;
 
@@ -80,7 +81,9 @@ export interface DestinationDoorPlan {
 }
 
 export interface RendererSnapshot extends RendererPlan {
-  bodyDigest: string;
+  declarationDigest: string;
+  declarationTrace: readonly string[];
+  declarationSpan?: string;
   supportDigests: Readonly<Record<string, string>>;
 }
 
@@ -88,10 +91,15 @@ export interface MountSnapshot extends MountPlan {
   nodeDigest: string;
   ownerDigest: string;
   pathDigest: string;
+  declarationDigest: string;
+  declarationTrace: readonly string[];
+  declarationSpan?: string;
 }
 
 export interface TrustedSlotSnapshot extends TrustedSlotPlan {
-  bodyDigest: string;
+  declarationDigest: string;
+  declarationTrace: readonly string[];
+  declarationSpan?: string;
 }
 
 export interface DestinationDoorRegistry {
@@ -104,7 +112,7 @@ export interface DestinationDoorRegistry {
   nonDoorReasons: Readonly<Record<string, string>>;
 }
 
-const DESCRIPTOR_VERSION = "door-ast-token-v1";
+const DESCRIPTOR_VERSION = "door-ast-token-v2";
 
 interface ImportRecord {
   kind: "import" | "re-export" | "dynamic-import" | "require";
@@ -128,6 +136,8 @@ interface IndexedFile {
   references: Map<string, IdentifierReference[]>;
   functions: Map<string, ts.FunctionDeclaration[]>;
   supportNodes: Map<string, ts.Node[]>;
+  topLevelBindings: Map<string, ts.Node[]>;
+  topLevelExecutable: ts.Statement[];
 }
 
 function scriptKind(file: string): ts.ScriptKind {
@@ -204,8 +214,53 @@ function lineOf(file: ts.SourceFile, node: ts.Node): number {
   return file.getLineAndCharacterOfPosition(node.getStart(file)).line + 1;
 }
 
+function unwrapExpression(expression: ts.Expression): ts.Expression {
+  let current = expression;
+  while (
+    ts.isParenthesizedExpression(current) ||
+    ts.isAsExpression(current) ||
+    ts.isTypeAssertionExpression(current) ||
+    ts.isNonNullExpression(current) ||
+    ts.isSatisfiesExpression(current)
+  ) {
+    current = current.expression;
+  }
+  return current;
+}
+
+function staticString(expression: ts.Expression): string | null {
+  const current = unwrapExpression(expression);
+  if (ts.isStringLiteralLike(current)) return current.text;
+  if (ts.isNoSubstitutionTemplateLiteral(current)) return current.text;
+  if (ts.isTemplateExpression(current)) {
+    let value = current.head.text;
+    for (const span of current.templateSpans) {
+      const expression = staticString(span.expression);
+      if (expression == null) return null;
+      value += expression + span.literal.text;
+    }
+    return value;
+  }
+  if (
+    ts.isBinaryExpression(current) &&
+    current.operatorToken.kind === ts.SyntaxKind.PlusToken
+  ) {
+    const left = staticString(current.left);
+    const right = staticString(current.right);
+    return left == null || right == null ? null : left + right;
+  }
+  if (
+    ts.isBinaryExpression(current) &&
+    current.operatorToken.kind === ts.SyntaxKind.CommaToken
+  ) {
+    return staticString(current.right);
+  }
+  return null;
+}
+
 function staticModuleName(expression: ts.Expression): string | null {
-  return ts.isStringLiteralLike(expression) ? expression.text : null;
+  const current = unwrapExpression(expression);
+  return ts.isStringLiteralLike(current) ? current.text : null;
 }
 
 function makeFinding(
@@ -222,6 +277,126 @@ function directRequireReference(node: ts.Identifier): boolean {
     ts.isCallExpression(node.parent) &&
     node.parent.expression === node &&
     node.parent.questionDotToken == null
+  );
+}
+
+function isNamePosition(node: ts.Identifier): boolean {
+  const parent = node.parent;
+  return (
+    ((ts.isVariableDeclaration(parent) ||
+      ts.isParameter(parent) ||
+      ts.isFunctionDeclaration(parent) ||
+      ts.isClassDeclaration(parent) ||
+      ts.isInterfaceDeclaration(parent) ||
+      ts.isTypeAliasDeclaration(parent) ||
+      ts.isEnumDeclaration(parent) ||
+      ts.isImportClause(parent) ||
+      ts.isImportSpecifier(parent) ||
+      ts.isNamespaceImport(parent) ||
+      ts.isBindingElement(parent)) &&
+      parent.name === node) ||
+    ((ts.isPropertyAssignment(parent) ||
+      ts.isMethodDeclaration(parent) ||
+      ts.isPropertyDeclaration(parent) ||
+      ts.isPropertySignature(parent) ||
+      ts.isMethodSignature(parent)) &&
+      parent.name === node) ||
+    (ts.isPropertyAccessExpression(parent) && parent.name === node) ||
+    ts.isQualifiedName(parent) ||
+    ts.isTypeReferenceNode(parent) ||
+    ts.isLiteralTypeNode(parent)
+  );
+}
+
+function shadowsRequire(node: ts.Identifier): boolean {
+  let current: ts.Node | undefined = node.parent;
+  while (current) {
+    if (ts.isFunctionLike(current)) {
+      if (
+        current.parameters.some((parameter) =>
+          bindingNames(parameter.name).includes("require")
+        )
+      ) {
+        return true;
+      }
+    }
+    if (ts.isSourceFile(current)) {
+      return current.statements.some(
+        (statement) =>
+          ts.isVariableStatement(statement) &&
+          statement.declarationList.declarations.some((declaration) =>
+            bindingNames(declaration.name).includes("require")
+          )
+      );
+    }
+    current = current.parent;
+  }
+  return false;
+}
+
+function loaderReceiver(expression: ts.Expression): boolean {
+  const current = unwrapExpression(expression);
+  if (ts.isIdentifier(current)) {
+    return current.text === "module" || current.text === "globalThis";
+  }
+  if (
+    ts.isBinaryExpression(current) &&
+    current.operatorToken.kind === ts.SyntaxKind.CommaToken
+  ) {
+    return loaderReceiver(current.right);
+  }
+  return false;
+}
+
+function computedRequireReference(node: ts.ElementAccessExpression): boolean {
+  return (
+    node.argumentExpression != null &&
+    staticString(node.argumentExpression) === "require" &&
+    loaderReceiver(node.expression)
+  );
+}
+
+function topLevelBindingNodes(statement: ts.Statement): [string, ts.Node][] {
+  if (ts.isVariableStatement(statement)) {
+    return statement.declarationList.declarations.flatMap((declaration) =>
+      bindingNames(declaration.name).map((name): [string, ts.Node] => [
+        name,
+        statement,
+      ])
+    );
+  }
+  if (
+    (ts.isFunctionDeclaration(statement) ||
+      ts.isClassDeclaration(statement) ||
+      ts.isInterfaceDeclaration(statement) ||
+      ts.isTypeAliasDeclaration(statement) ||
+      ts.isEnumDeclaration(statement)) &&
+    statement.name
+  ) {
+    return [[statement.name.text, statement]];
+  }
+  return [];
+}
+
+function isExecutableTopLevel(statement: ts.Statement): boolean {
+  if (
+    ts.isExpressionStatement(statement) &&
+    ts.isStringLiteral(statement.expression)
+  ) {
+    return false;
+  }
+  return !(
+    ts.isImportDeclaration(statement) ||
+    ts.isExportDeclaration(statement) ||
+    ts.isImportEqualsDeclaration(statement) ||
+    ts.isVariableStatement(statement) ||
+    ts.isFunctionDeclaration(statement) ||
+    ts.isClassDeclaration(statement) ||
+    ts.isInterfaceDeclaration(statement) ||
+    ts.isTypeAliasDeclaration(statement) ||
+    ts.isEnumDeclaration(statement) ||
+    ts.isModuleDeclaration(statement) ||
+    ts.isEmptyStatement(statement)
   );
 }
 
@@ -242,6 +417,8 @@ function indexFile(source: DoorSource): {
   const references = new Map<string, IdentifierReference[]>();
   const functions = new Map<string, ts.FunctionDeclaration[]>();
   const supportNodes = new Map<string, ts.Node[]>();
+  const topLevelBindings = new Map<string, ts.Node[]>();
+  const topLevelExecutable: ts.Statement[] = [];
   const findings: DoorFinding[] = [];
   const loaderKeys = new Set<string>();
   const loaderFinding = (node: ts.Node, detail: string): void => {
@@ -299,12 +476,38 @@ function indexFile(source: DoorSource): {
               line: lineOf(file, element),
             });
           }
+        } else if (
+          clause.namedBindings &&
+          ts.isNamespaceImport(clause.namedBindings)
+        ) {
+          imports.push({
+            kind: "import",
+            moduleName,
+            imported: "*",
+            local: clause.namedBindings.name.text,
+            line: lineOf(file, clause.namedBindings),
+          });
         }
+      }
+      if (clause?.name) addToMap(topLevelBindings, clause.name.text, statement);
+      if (clause?.namedBindings && ts.isNamedImports(clause.namedBindings)) {
+        for (const element of clause.namedBindings.elements) {
+          addToMap(topLevelBindings, element.name.text, statement);
+        }
+      }
+      if (clause?.namedBindings && ts.isNamespaceImport(clause.namedBindings)) {
+        addToMap(topLevelBindings, clause.namedBindings.name.text, statement);
       }
     }
     if (
       ts.isExportDeclaration(statement) &&
       !statement.isTypeOnly &&
+      !(
+        statement.exportClause &&
+        ts.isNamedExports(statement.exportClause) &&
+        statement.exportClause.elements.length > 0 &&
+        statement.exportClause.elements.every((element) => element.isTypeOnly)
+      ) &&
       statement.moduleSpecifier &&
       ts.isStringLiteral(statement.moduleSpecifier)
     ) {
@@ -317,6 +520,10 @@ function indexFile(source: DoorSource): {
     if (ts.isImportEqualsDeclaration(statement)) {
       loaderFinding(statement, "import-equals require is unsupported");
     }
+    for (const [name, node] of topLevelBindingNodes(statement)) {
+      addToMap(topLevelBindings, name, node);
+    }
+    if (isExecutableTopLevel(statement)) topLevelExecutable.push(statement);
   }
 
   const visit = (node: ts.Node): void => {
@@ -364,22 +571,26 @@ function indexFile(source: DoorSource): {
           line: lineOf(file, node),
         });
       }
-      if (node.text === "require" && !directRequireReference(node)) {
+      if (
+        node.text === "require" &&
+        !isNamePosition(node) &&
+        !shadowsRequire(node) &&
+        !directRequireReference(node)
+      ) {
         loaderFinding(node, "require alias/property/call form is unsupported");
       }
-      if (node.text === "createRequire") {
+      if (node.text === "createRequire" && !isNamePosition(node)) {
         loaderFinding(node, "createRequire loaders are unsupported");
       }
     }
-    if (ts.isPropertyAccessExpression(node) && node.name.text === "require") {
+    if (
+      ts.isPropertyAccessExpression(node) &&
+      node.name.text === "require" &&
+      loaderReceiver(node.expression)
+    ) {
       loaderFinding(node, "property require loaders are unsupported");
     }
-    if (
-      ts.isElementAccessExpression(node) &&
-      node.argumentExpression &&
-      ts.isStringLiteralLike(node.argumentExpression) &&
-      node.argumentExpression.text === "require"
-    ) {
+    if (ts.isElementAccessExpression(node) && computedRequireReference(node)) {
       loaderFinding(node, "element require loaders are unsupported");
     }
     if (ts.isCallExpression(node)) {
@@ -400,6 +611,7 @@ function indexFile(source: DoorSource): {
       } else if (
         ts.isIdentifier(node.expression) &&
         node.expression.text === "require" &&
+        !shadowsRequire(node.expression) &&
         node.questionDotToken == null
       ) {
         loaderFinding(node, "runtime require() is unsupported");
@@ -419,6 +631,8 @@ function indexFile(source: DoorSource): {
       references,
       functions,
       supportNodes,
+      topLevelBindings,
+      topLevelExecutable,
     },
     findings,
   };
@@ -476,16 +690,140 @@ function digest(text: string): string {
 }
 
 function nodeDigest(node: ts.Node, file: ts.SourceFile): string {
-  const kinds: number[] = [];
+  const descriptor: string[] = [];
   const visit = (current: ts.Node): void => {
     if (ts.isJsxText(current) && current.text.trim() === "") return;
-    kinds.push(current.kind);
+    descriptor.push(String(current.kind));
+    if (ts.isJsxText(current)) {
+      descriptor.push(`jsx-text:${JSON.stringify(current.text)}`);
+    }
     ts.forEachChild(current, visit);
   };
   visit(node);
   return digest(
-    `${kinds.join(",")}::${tokenStream(node.getText(file), file.languageVariant)}`
+    `${descriptor.join(",")}::${tokenStream(node.getText(file), file.languageVariant)}`
   );
+}
+
+interface StructuralShape {
+  digest: string;
+  trace: readonly string[];
+  span: string;
+}
+
+function referencedNames(node: ts.Node): Set<string> {
+  const names = new Set<string>();
+  const visit = (current: ts.Node): void => {
+    if (ts.isIdentifier(current) && !isNamePosition(current)) {
+      names.add(current.text);
+    }
+    ts.forEachChild(current, visit);
+  };
+  visit(node);
+  return names;
+}
+
+function structuralClosure(
+  indexed: IndexedFile,
+  root: ts.Node,
+  supportNames: readonly string[] = []
+): ts.Node[] {
+  if (indexed.topLevelExecutable.length > 0) {
+    const statement = indexed.topLevelExecutable[0];
+    throw new Error(
+      `${indexed.path}:${lineOf(indexed.file, statement)} executable top-level statement is unsupported in a governed module`
+    );
+  }
+  const selected = new Set<ts.Node>([root]);
+  const queue: ts.Node[] = [root];
+  for (const name of supportNames) {
+    const matches = indexed.topLevelBindings.get(name) ?? [];
+    if (matches.length !== 1) {
+      throw new Error(`${indexed.path}: expected one support binding ${name}`);
+    }
+    if (!selected.has(matches[0])) {
+      selected.add(matches[0]);
+      queue.push(matches[0]);
+    }
+  }
+  for (let index = 0; index < queue.length; index += 1) {
+    for (const name of referencedNames(queue[index])) {
+      const matches = indexed.topLevelBindings.get(name) ?? [];
+      if (matches.length > 1) {
+        throw new Error(
+          `${indexed.path}: support binding ${name} resolves to ${matches.length} top-level declarations`
+        );
+      }
+      const match = matches[0];
+      if (match && !selected.has(match)) {
+        selected.add(match);
+        queue.push(match);
+      }
+    }
+  }
+  return [...selected].sort(
+    (left, right) => left.getStart(indexed.file) - right.getStart(indexed.file)
+  );
+}
+
+function nodeSelector(node: ts.Node, file: ts.SourceFile): string {
+  if (ts.isImportDeclaration(node)) {
+    return `import:${node.moduleSpecifier.getText(file)}`;
+  }
+  if (
+    (ts.isFunctionDeclaration(node) ||
+      ts.isClassDeclaration(node) ||
+      ts.isInterfaceDeclaration(node) ||
+      ts.isTypeAliasDeclaration(node) ||
+      ts.isEnumDeclaration(node)) &&
+    node.name
+  ) {
+    return `${ts.SyntaxKind[node.kind]}:${node.name.text}`;
+  }
+  if (ts.isVariableStatement(node)) {
+    const names = node.declarationList.declarations.flatMap((declaration) =>
+      bindingNames(declaration.name)
+    );
+    return `VariableStatement:${names.join(",")}`;
+  }
+  return `${ts.SyntaxKind[node.kind]}@${lineOf(file, node)}`;
+}
+
+function structuralShape(
+  indexed: IndexedFile,
+  root: ts.Node,
+  supportNames: readonly string[] = []
+): StructuralShape {
+  const nodes = structuralClosure(indexed, root, supportNames);
+  const trace: string[] = [];
+  const importNodes = nodes.filter(ts.isImportDeclaration);
+  if (importNodes.length > 0) {
+    trace.push(
+      `referenced-imports=${digest(
+        importNodes
+          .map(
+            (node) =>
+              `${nodeSelector(node, indexed.file)}=${nodeDigest(node, indexed.file)}`
+          )
+          .join("|")
+      )}`
+    );
+  }
+  for (const node of nodes.filter((entry) => !ts.isImportDeclaration(entry))) {
+    const selector = nodeSelector(node, indexed.file);
+    trace.push(`${selector}=${nodeDigest(node, indexed.file)}`);
+    if (node === root) {
+      node.forEachChild((child) => {
+        trace.push(
+          `${selector}>${ts.SyntaxKind[child.kind]}=${nodeDigest(child, indexed.file)}`
+        );
+      });
+    }
+  }
+  const start = lineOf(indexed.file, root);
+  const end =
+    indexed.file.getLineAndCharacterOfPosition(root.getEnd()).line + 1;
+  return { digest: digest(trace.join("|")), trace, span: `${start}-${end}` };
 }
 
 function hasRequiredImport(
@@ -653,11 +991,23 @@ function captureRenderer(
     }
     supportDigests[name] = nodeDigest(nodes[0], indexed.file);
   }
+  const shape = structuralShape(indexed, renderer, plan.supportNames);
   return {
     ...plan,
-    bodyDigest: nodeDigest(renderer.body, indexed.file),
+    declarationDigest: shape.digest,
+    declarationTrace: shape.trace,
+    declarationSpan: shape.span,
     supportDigests,
   };
+}
+
+function enclosingTopLevelDeclaration(
+  node: ts.Node,
+  file: ts.SourceFile
+): ts.Node | null {
+  let current: ts.Node | undefined = node;
+  while (current.parent && current.parent !== file) current = current.parent;
+  return current.parent === file ? current : null;
 }
 
 function captureMount(
@@ -674,11 +1024,21 @@ function captureMount(
   }
   const owner = findOwner(mount, plan.owner, indexed.file);
   if (!owner) throw new Error(`${plan.key}: owner not found in ${plan.path}`);
+  const declaration = enclosingTopLevelDeclaration(mount, indexed.file);
+  if (!declaration) {
+    throw new Error(
+      `${plan.key}: enclosing declaration not found in ${plan.path}`
+    );
+  }
+  const declarationShape = structuralShape(indexed, declaration);
   return {
     ...plan,
     nodeDigest: nodeDigest(mount, indexed.file),
     ownerDigest: nodeDigest(owner, indexed.file),
     pathDigest: pathDigest(mount, indexed.file),
+    declarationDigest: declarationShape.digest,
+    declarationTrace: declarationShape.trace,
+    declarationSpan: declarationShape.span,
   };
 }
 
@@ -692,7 +1052,13 @@ function captureTrustedSlot(
   if (!component?.body) {
     throw new Error(`${plan.key}: missing trusted slot ${plan.name}`);
   }
-  return { ...plan, bodyDigest: nodeDigest(component.body, indexed.file) };
+  const shape = structuralShape(indexed, component);
+  return {
+    ...plan,
+    declarationDigest: shape.digest,
+    declarationTrace: shape.trace,
+    declarationSpan: shape.span,
+  };
 }
 
 function nearestFunction(node: ts.Node): ts.FunctionLikeDeclaration | null {
@@ -711,8 +1077,21 @@ function nearestFunction(node: ts.Node): ts.FunctionLikeDeclaration | null {
   return null;
 }
 
+function chevronNodes(indexed: IndexedFile): JsxNode[] {
+  return [...indexed.jsx]
+    .filter(
+      ([name]) =>
+        name === "IconChevronRight" || name.endsWith(".IconChevronRight")
+    )
+    .flatMap(([, nodes]) => nodes)
+    .sort(
+      (left, right) =>
+        left.getStart(indexed.file) - right.getStart(indexed.file)
+    );
+}
+
 function chevronSignatures(indexed: IndexedFile): string[] {
-  return (indexed.jsx.get("IconChevronRight") ?? [])
+  return chevronNodes(indexed)
     .map((icon) => {
       const scope = nearestFunction(icon);
       const scopeName =
@@ -800,6 +1179,39 @@ function compareDigest(
   }
 }
 
+function compareShape(
+  findings: DoorFinding[],
+  key: string,
+  file: string,
+  selector: string,
+  expectedDigest: string,
+  actualDigest: string,
+  expectedTrace: readonly string[],
+  actualTrace: readonly string[],
+  actualSpan: string | undefined
+): void {
+  if (expectedDigest === actualDigest) return;
+  const length = Math.max(expectedTrace.length, actualTrace.length);
+  const differences = Array.from({ length }, (_, index) => index).filter(
+    (index) => expectedTrace[index] !== actualTrace[index]
+  );
+  const index =
+    differences.find((candidate) =>
+      [expectedTrace[candidate], actualTrace[candidate]].some((entry) =>
+        entry?.slice(0, entry.indexOf("=")).includes(">")
+      )
+    ) ??
+    differences[0] ??
+    0;
+  findings.push(
+    makeFinding(
+      key,
+      file,
+      `${selector} changed at span ${actualSpan ?? "unknown"}; first structural difference [${index}]: expected ${expectedTrace[index] ?? "<end>"}, received ${actualTrace[index] ?? "<end>"}`
+    )
+  );
+}
+
 export function auditDestinationDoorRegistry(
   corpus: DestinationDoorCorpus,
   registry: DestinationDoorRegistry
@@ -860,13 +1272,16 @@ export function auditDestinationDoorRegistry(
 
   registry.renderers.forEach((expected, index) => {
     const received = actual.renderers[index];
-    compareDigest(
+    compareShape(
       findings,
       expected.key,
       expected.path,
-      "renderer-body",
-      expected.bodyDigest,
-      received.bodyDigest
+      `renderer:${expected.name}`,
+      expected.declarationDigest,
+      received.declarationDigest,
+      expected.declarationTrace,
+      received.declarationTrace,
+      received.declarationSpan
     );
     for (const name of expected.supportNames ?? []) {
       compareDigest(
@@ -890,7 +1305,7 @@ export function auditDestinationDoorRegistry(
         );
       }
     }
-    const count = indexed.jsx.get("IconChevronRight")?.length ?? 0;
+    const count = chevronNodes(indexed).length;
     if (count !== expected.chevronCount) {
       findings.push(
         makeFinding(
@@ -928,6 +1343,17 @@ export function auditDestinationDoorRegistry(
       expected.pathDigest,
       received.pathDigest
     );
+    compareShape(
+      findings,
+      expected.key,
+      expected.path,
+      "mount-owner-declaration",
+      expected.declarationDigest,
+      received.declarationDigest,
+      expected.declarationTrace,
+      received.declarationTrace,
+      received.declarationSpan
+    );
     if (
       expected.ownerImport &&
       !hasRequiredImport(corpus.files.get(expected.path)!, expected.ownerImport)
@@ -943,13 +1369,16 @@ export function auditDestinationDoorRegistry(
   });
 
   registry.trustedSlots.forEach((expected, index) => {
-    compareDigest(
+    compareShape(
       findings,
       expected.key,
       expected.path,
-      "trusted-slot-body",
-      expected.bodyDigest,
-      actual.trustedSlots[index].bodyDigest
+      `trusted-slot:${expected.name}`,
+      expected.declarationDigest,
+      actual.trustedSlots[index].declarationDigest,
+      expected.declarationTrace,
+      actual.trustedSlots[index].declarationTrace,
+      actual.trustedSlots[index].declarationSpan
     );
   });
 
