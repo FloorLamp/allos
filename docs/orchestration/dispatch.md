@@ -38,8 +38,10 @@ Two axes are load-bearing, and `reconcile-tracker` flags violations of both
 - That cap counts agents RUNNING — a machine limit. The queue that jams first
   is PRs awaiting REVIEW, which is serial and cannot be parallelised. Hold
   dispatch at roughly three unreviewed PRs however few agents are running.
-- With ready P1s, reserve two user/data lanes and one high-risk P2 lane; cap
-  presentation/guard at one. Recompute when issues arrive or lanes free.
+- With ready P1s, reserve two user/data lanes and select the highest-risk ready
+  P2; cap presentation/guard at one. Recompute when issues arrive or lanes free.
+- An urgent P0/P1 displaces the current candidate through `promote`; run only
+  its full matrix.
 - STAGGER starts. Durations cluster tightly (seven of the first ten inside
   85±5 min), so simultaneous starts are simultaneous arrivals — and
   simultaneous GATES: five at once drove load to 17.7 on 4 cores.
@@ -53,6 +55,8 @@ Two axes are load-bearing, and `reconcile-tracker` flags violations of both
   `scripts/orchestration/agent-gates.sh`.
 - Push meaningful checkpoints. A branch not next to land stays branch-only;
   do not open a PR for CI that an earlier merge will invalidate.
+- Parallelize banked implementation/local pre-review; serialize the sole
+  candidate's remote review, CI, and merge.
 - A census meant to be EXHAUSTIVE passes ripgrep's `--binary` (`-a`). Several
   source files carry a deliberate NUL separator, so rg calls them binary and
   skips them — a plain `rg` reports a clean sweep it never took.
