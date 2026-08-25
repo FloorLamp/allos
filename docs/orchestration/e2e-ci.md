@@ -32,6 +32,9 @@
 ## Merge bar
 
 - Require every check green on the exact PR head.
+- Only the landing candidate opens or refreshes a PR and runs full CI. Banked
+  branches run authored/edited specs and local gates; non-authored blast radius
+  waits for candidate CI. Report a blocked browser run; do not open another PR.
 - Check `mergeable_state` before diagnosing absent CI. Conflict-dirty PRs do not
   start checks.
 - A green check describes the base used for that run. Re-merge current main and

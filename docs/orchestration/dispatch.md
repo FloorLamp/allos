@@ -9,9 +9,8 @@ Two axes are load-bearing, and `reconcile-tracker` flags violations of both
   `P2` + `parked` issue is in no queue and every queue at once.
 - **At least one domain label.** Cross-cutting design/UX work takes `design` —
   it is a real domain, not a missing one.
-- `bug` is the only type label dispatch reads (P0/P1 bugs preempt features);
-  `feat`/`refactor` are optional color, and `ui` optionally marks screen-heavy
-  — therefore e2e-heavy — work (the two-agent cap).
+- Every ready P0/P1 preempts feature and presentation work, with or without
+  `bug`. Other type labels are optional color; `ui` marks e2e-heavy work.
 - `enhancement`, `cleanup`, `javascript`, and `lib` are retired (2026-08-15)
   and deleted repo-side; a hygiene finding flags any reappearance. `lib` routed
   nothing — business logic living in `lib/` is the repo's own rule.
@@ -39,6 +38,10 @@ Two axes are load-bearing, and `reconcile-tracker` flags violations of both
 - That cap counts agents RUNNING — a machine limit. The queue that jams first
   is PRs awaiting REVIEW, which is serial and cannot be parallelised. Hold
   dispatch at roughly three unreviewed PRs however few agents are running.
+- With ready P1s, reserve two user/data lanes and select the highest-risk ready
+  P2; cap presentation/guard at one. Recompute when issues arrive or lanes free.
+- An urgent P0/P1 displaces the current candidate through `promote`; run only
+  its full matrix.
 - STAGGER starts. Durations cluster tightly (seven of the first ten inside
   85±5 min), so simultaneous starts are simultaneous arrivals — and
   simultaneous GATES: five at once drove load to 17.7 on 4 cores.
@@ -50,8 +53,10 @@ Two axes are load-bearing, and `reconcile-tracker` flags violations of both
   rework when judging depth.
 - Every brief uses the generated template and the gate order from
   `scripts/orchestration/agent-gates.sh`.
-- Agents push after every meaningful step. The remote branch is the durable
-  checkpoint.
+- Push meaningful checkpoints. A branch not next to land stays branch-only;
+  do not open a PR for CI that an earlier merge will invalidate.
+- Parallelize banked implementation/local pre-review; serialize the sole
+  candidate's remote review, CI, and merge.
 - A census meant to be EXHAUSTIVE passes ripgrep's `--binary` (`-a`). Several
   source files carry a deliberate NUL separator, so rg calls them binary and
   skips them — a plain `rg` reports a clean sweep it never took.
@@ -62,6 +67,8 @@ Two axes are load-bearing, and `reconcile-tracker` flags violations of both
 1. Read the issue body and every comment.
 2. Generate the dispatch brief and record the branch in the task list.
 3. Require the agent to merge current `origin/main` and run the assigned gates.
+   Promote only the next landing candidate to a PR; keep later verified branches
+   banked until the preceding merge lands, then rebase once.
 4. Read the full diff, verify claims, and post a substantive COMMENT review.
 5. Diagnose E2E reds locally; send code corrections back to the author unless
    the change is an orchestrator-owned E2E fix.
@@ -71,10 +78,9 @@ Two axes are load-bearing, and `reconcile-tracker` flags violations of both
 
 ## Tooling
 
-- `dispatch-brief.mjs`: create, list, resume, adopt, and close dispatches.
-  `list` flags a dispatch that has not MOVED — newest of branch tip and
-  worktree write — in 3x the median, not one that is merely old; a dispatch
-  with no worktree and no branch at all is flagged separately.
+- `dispatch-brief.mjs`: manage dispatches, the sole landing candidate, and
+  validated priority/lane state; deliver every emitted role update. `list`
+  flags 3x-median idleness or a dispatch with no worktree and no branch.
 - `agent-gates.sh`: lint, typecheck, unit, DB, E2E hygiene, PHI scan, format.
   The DB and E2E-hygiene gates run only when the diff touches what they cover.
   A format rewrite re-verifies the directive-reading gates it can invalidate.

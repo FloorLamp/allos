@@ -33,6 +33,9 @@
   fresh pass. The test: does the fix create a surface the last pass could not
   have attacked? A new store, key, lifetime, or owning row is yes; a corrected
   constant or bound is no.
+- After two blocking rounds against one mechanism, stop patching examples.
+  Re-open the premise around a shared substrate, restrictive invariant, or
+  direct behavior evidence; record why the replacement closes the defect class.
 - #3011 is the worked example: three passes, and passes 2 and 3 each found a real
   defect in what the previous fix had just built—a memory that expired with the
   runs, then a memory attached to a row that was not a document.
@@ -58,6 +61,9 @@ instance that bought it. Read it before writing a guard or dispatching a lens.
   check and the merge, and GitHub merges the head it finds, not the one you read.
 - Serialize merges. After each merge, recheck every open PR's mergeability and
   refresh or reconcile affected branches.
+- One landing candidate gets final rebase, PR open/refresh, remote exact-head
+  COMMENT/adversarial review, and full CI, in order. Local pre-review does not
+  replace it; bank later branches until the candidate lands.
 - A later conflicting PR rebases only after the last earlier conflict lands.
 - Resume the author for semantic conflict resolution; do not hand-integrate
   feature code.
