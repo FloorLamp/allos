@@ -35,7 +35,9 @@ export default function CustomTypeChips({
         label="Activity type"
         density="dense"
         value={
-          activeType === "cardio" || activeType === "sport" ? activeType : null
+          activeType === "cardio" || activeType === "sport"
+            ? activeType
+            : undefined
         }
         onSelect={onPick}
         options={(["cardio", "sport"] as const).map((type) => ({

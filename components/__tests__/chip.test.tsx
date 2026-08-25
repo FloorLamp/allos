@@ -2,6 +2,7 @@ import { fireEvent, render, screen } from "@testing-library/react";
 import { describe, expect, it, vi } from "vitest";
 import Chip from "@/components/Chip";
 import FilterPills from "@/components/FilterPills";
+import { dateRangeFilterModel } from "@/components/DateRangeControl";
 
 describe("Chip", () => {
   it("binds navigation paint to current link semantics", () => {
@@ -93,6 +94,86 @@ describe("Chip", () => {
 });
 
 describe("FilterPills", () => {
+  it("keeps an extra range labelled __all distinct from All time", () => {
+    const extra = [{ label: "__all", from: "2026-01-01", to: "2026-01-02" }];
+    const allTime = dateRangeFilterModel({}, extra);
+    expect(allTime.value).toBe(null);
+    expect(allTime.options[0]?.value).toBe(0);
+
+    const selectedExtra = dateRangeFilterModel(
+      { from: "2026-01-01", to: "2026-01-02" },
+      extra
+    );
+    expect(selectedExtra.value).toBe(0);
+  });
+
+  it("owns Timeline's phone-scroll to sm-wrap layout", () => {
+    vi.stubGlobal(
+      "ResizeObserver",
+      class {
+        observe() {}
+        disconnect() {}
+      }
+    );
+    render(
+      <FilterPills
+        mode="link"
+        layout="responsive"
+        label="Timeline category"
+        value="all"
+        options={[{ value: "all", label: "All", href: "/timeline" }]}
+      />
+    );
+
+    const group = screen.getByRole("group", { name: "Timeline category" });
+    expect(group.className).toContain("overflow-x-auto");
+    expect(group.className).toContain("-mx-2");
+    expect(group.className).toContain("sm:mx-0");
+    expect(group.className).toContain("sm:flex-wrap");
+    expect(group.className).toContain("sm:overflow-visible");
+    vi.unstubAllGlobals();
+  });
+
+  it("keeps null All distinct from a real __all option", () => {
+    const onSelect = vi.fn();
+    const { rerender } = render(
+      <FilterPills
+        mode="button"
+        layout="wrap"
+        label="Photo series"
+        value={null}
+        onSelect={onSelect}
+        options={[
+          { value: null, label: "All" },
+          { value: "__all", label: "Series named __all" },
+        ]}
+      />
+    );
+
+    const all = screen.getByRole("button", { name: "All" });
+    const named = screen.getByRole("button", { name: "Series named __all" });
+    expect(all.getAttribute("aria-pressed")).toBe("true");
+    expect(named.getAttribute("aria-pressed")).toBe("false");
+    fireEvent.click(named);
+    expect(onSelect).toHaveBeenCalledWith("__all");
+
+    rerender(
+      <FilterPills
+        mode="button"
+        layout="wrap"
+        label="Photo series"
+        value="__all"
+        onSelect={onSelect}
+        options={[
+          { value: null, label: "All" },
+          { value: "__all", label: "Series named __all" },
+        ]}
+      />
+    );
+    expect(all.getAttribute("aria-pressed")).toBe("false");
+    expect(named.getAttribute("aria-pressed")).toBe("true");
+  });
+
   it("derives current state for a whole link group", () => {
     render(
       <FilterPills

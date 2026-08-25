@@ -1043,12 +1043,13 @@ export default async function TimelinePage(props: {
 
                 <FilterPills
                   mode="link"
+                  layout="responsive"
                   label="Timeline category"
-                  value={category ?? "__all"}
+                  value={category ?? null}
                   linkBehavior="timeline"
                   options={[
                     {
-                      value: "__all",
+                      value: null,
                       label: "All",
                       href: filterHref(undefined, range, undefined, [
                         ...openFolds,

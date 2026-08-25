@@ -196,7 +196,7 @@ function ChipPicker({
       layout="wrap"
       label="Household profile"
       density="dense"
-      value={chosen}
+      value={chosen ?? undefined}
       onSelect={onChoose}
       testId="profile-picker"
       options={profiles.map((profile) => ({

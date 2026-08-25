@@ -2392,9 +2392,7 @@ export default function FoodLogBar({
                 density="dense"
                 label="When the servings you add were eaten"
                 value={
-                  statedChoice?.kind === "now"
-                    ? "__now"
-                    : (statedChoice?.hhmm ?? null)
+                  statedChoice?.kind === "now" ? "__now" : statedChoice?.hhmm
                 }
                 onSelect={(choice) => {
                   if (choice === "__now") {

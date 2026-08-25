@@ -7,10 +7,13 @@ import type { AppRoute } from "@/lib/hrefs";
 // The one composition for a single-choice filter group. A whole group uses
 // either URL links or callback buttons; it cannot mix them. Option metadata and
 // regular/dense geometry flow through Chip, while this owner supplies the label
-// and either scrolling or wrapping layout. It declares no client boundary, so
-// link groups remain server-renderable and button groups inherit their caller's.
+// and one of three bounded layouts: scrolling, wrapping, or Timeline's
+// phone-scroll/`sm`-wrap response. It declares no client boundary, so link groups
+// remain server-renderable and button groups inherit their caller's.
 
-type FilterPillBaseOption<T extends string | number> = {
+type FilterPillValue = string | number | null;
+
+type FilterPillBaseOption<T extends FilterPillValue> = {
   value: T;
   label: string;
   content?: ReactNode;
@@ -18,12 +21,12 @@ type FilterPillBaseOption<T extends string | number> = {
   testId?: string;
 };
 
-export type FilterPillOption<T extends string | number> =
+export type FilterPillOption<T extends FilterPillValue> =
   FilterPillBaseOption<T> & {
     href: AppRoute;
   };
 
-export type FilterPillButtonOption<T extends string | number> =
+export type FilterPillButtonOption<T extends FilterPillValue> =
   FilterPillBaseOption<T> & {
     href?: never;
     disabled?: boolean;
@@ -32,13 +35,14 @@ export type FilterPillButtonOption<T extends string | number> =
     >;
   };
 
-type FilterPillsProps<T extends string | number> = {
-  value: T | null;
+type FilterPillsProps<T extends FilterPillValue> = {
+  /** `undefined` means no option is selected; `null` may be a real option. */
+  value: T | undefined;
   label: string;
   testId?: string;
   optionTestId?: (value: T) => string;
   density?: ChipDensity;
-  layout?: "scroll" | "wrap";
+  layout?: "scroll" | "wrap" | "responsive";
 } & (
   | {
       mode: "link";
@@ -54,7 +58,11 @@ type FilterPillsProps<T extends string | number> = {
     }
 );
 
-export default function FilterPills<T extends string | number>(
+function optionKey(value: FilterPillValue): string {
+  return value === null ? "null:" : `${typeof value}:${value}`;
+}
+
+export default function FilterPills<T extends FilterPillValue>(
   props: FilterPillsProps<T>
 ) {
   const options =
@@ -63,7 +71,7 @@ export default function FilterPills<T extends string | number>(
           const active = o.value === props.value;
           return (
             <Chip
-              key={o.value}
+              key={optionKey(o.value)}
               role="filter"
               density={props.density}
               href={o.href}
@@ -80,7 +88,7 @@ export default function FilterPills<T extends string | number>(
           const active = o.value === props.value;
           return (
             <Chip
-              key={o.value}
+              key={optionKey(o.value)}
               role="filter"
               density={props.density}
               pressed={active}
@@ -114,7 +122,14 @@ export default function FilterPills<T extends string | number>(
     );
   }
   return (
-    <ScrollFade {...groupProps} className="flex gap-2">
+    <ScrollFade
+      {...groupProps}
+      className={
+        props.layout === "responsive"
+          ? "-mx-2 flex gap-2 px-2 pb-1 sm:mx-0 sm:flex-wrap sm:overflow-visible sm:px-0 sm:pb-0"
+          : "flex gap-2"
+      }
+    >
       {options}
     </ScrollFade>
   );

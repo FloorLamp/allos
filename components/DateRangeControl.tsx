@@ -18,6 +18,26 @@ import {
 import ScrollFade from "./ScrollFade";
 import type { AppRoute } from "@/lib/hrefs";
 
+export function dateRangeFilterModel(
+  range: DateRange,
+  ranges: readonly QuickRange[]
+) {
+  const activeIndex = ranges.findIndex((quickRange) =>
+    isQuickRangeActive(range, quickRange)
+  );
+  return {
+    value: isAllTimeRange(range)
+      ? null
+      : activeIndex >= 0
+        ? activeIndex
+        : undefined,
+    options: ranges.map((quickRange, index) => ({
+      value: index,
+      quickRange,
+    })),
+  };
+}
+
 // The quick-range chips are FILTERS (#3475): they narrow the window of the chart
 // or feed already on screen, in place, and they are not destinations. So they
 // wear the chip primitive's filter role rather than the third selected-state
@@ -72,10 +92,7 @@ export default function DateRangeControl({
   const qrs = [...extraRanges, ...quickRanges(todayStr)];
   // The predicate behind the panel's default-open state — lib/timeline-format.
   const customActive = isCustomRange(range, todayStr, extraRanges);
-  const activeRange = isAllTimeRange(range)
-    ? "__all"
-    : (qrs.find((quickRange) => isQuickRangeActive(range, quickRange))?.label ??
-      null);
+  const filterModel = dateRangeFilterModel(range, qrs);
   return (
     // `gap`, not `space-y`: the two rows swap visual order below `sm` via `order-*`,
     // and space-y's `> * + *` margin follows DOM order, so it would land the gap on
@@ -151,11 +168,11 @@ export default function DateRangeControl({
                 mode="link"
                 layout="wrap"
                 label="Date range"
-                value={activeRange}
+                value={filterModel.value}
                 linkBehavior={linkBehavior}
                 options={[
-                  ...qrs.map((quickRange) => ({
-                    value: quickRange.label,
+                  ...filterModel.options.map(({ value, quickRange }) => ({
+                    value,
                     label: quickRange.label,
                     href: buildHref({
                       from: quickRange.from,
@@ -164,7 +181,7 @@ export default function DateRangeControl({
                     testId: `${idPrefix}-pill-${quickRange.label}`,
                   })),
                   {
-                    value: "__all",
+                    value: null,
                     label: "All time",
                     href: buildHref({}),
                     testId: `${idPrefix}-pill-all-time`,

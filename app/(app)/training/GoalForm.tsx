@@ -649,7 +649,7 @@ export default function GoalForm({
                     layout="wrap"
                     label="Equipment variant"
                     density="dense"
-                    value={variant!.equipment}
+                    value={variant!.equipment ?? undefined}
                     onSelect={(equipment) =>
                       chooseExerciseSubject(
                         composeVariant(variant!.group, equipment)
@@ -679,7 +679,7 @@ export default function GoalForm({
               mode="button"
               layout="wrap"
               label="Body metric"
-              value={kind === "body" ? bodyMetric : null}
+              value={kind === "body" ? bodyMetric : undefined}
               onSelect={chooseBodyMetric}
               options={BODY_METRICS.map((bodyMetricOption) => ({
                 value: bodyMetricOption,

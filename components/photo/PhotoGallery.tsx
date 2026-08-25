@@ -153,17 +153,17 @@ export default function PhotoGallery({
           layout="wrap"
           label="Photo series"
           density="dense"
-          value={series ?? "__all"}
-          onSelect={(next) => setSeries(next === "__all" ? null : next)}
+          value={series}
+          onSelect={setSeries}
           options={[
-            { value: "__all", label: "All" },
+            { value: null, label: "All" },
             ...domain.series.map((item) => ({
               value: item.key,
               label: item.label,
             })),
           ].map((option) => ({
             ...option,
-            testId: `photo-gallery-series-${option.value === "__all" ? "all" : option.value}`,
+            testId: `photo-gallery-series-${option.value === null ? "all" : option.value}`,
           }))}
         />
       ) : null}
