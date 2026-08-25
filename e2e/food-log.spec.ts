@@ -1,7 +1,7 @@
 import { test, expect } from "./fixtures";
 import type { Locator, Page } from "@playwright/test";
 import Database from "better-sqlite3";
-import { hydratedClick, settledClick } from "./helpers";
+import { awaitHydrated, hydratedClick, settledClick } from "./helpers";
 import { loginAs } from "./nav";
 import {
   E2E_LOGIN_FOODPIN,
@@ -500,10 +500,32 @@ test("a rapid double-tap logs TWO additive servings and never asks (#2007/#3611)
   await revealFoodGroup(page, slug);
   const count = page.getByTestId(`count-${slug}`);
   const before = Number((await count.textContent())?.trim() || "0");
+  const today = frozenNow().toISOString().slice(0, 10);
+  // The shared authenticated fixture starts on its canonical profile 1 (file header).
+  // Read the DAY axis directly: the visible row count above is meal-scoped, while the
+  // cumulative receipt deliberately reports the group's whole-day total.
+  const db = new Database(workerDbPath(), { readonly: true });
+  const beforeDay = (() => {
+    try {
+      return (
+        (
+          db
+            .prepare(
+              `SELECT servings FROM food_daily_totals
+                WHERE profile_id = 1 AND date = ? AND group_key = ?`
+            )
+            .get(today, slug) as { servings: number } | undefined
+        )?.servings ?? 0
+      );
+    } finally {
+      db.close();
+    }
+  })();
   const add = page.getByTestId(`log-${slug}`);
 
   // #3611 supersedes the old #2007 cooldown for this uncadenced additive row:
   // two taps mean two servings, even in the same instant.
+  await awaitHydrated(add);
   await add.click();
   await add.click();
   await expect(count).toHaveText(String(before + 2));
@@ -511,8 +533,18 @@ test("a rapid double-tap logs TWO additive servings and never asks (#2007/#3611)
   // raise the re-log question, however many times it is tapped.
   await expect(page.getByTestId("confirm-dialog")).toHaveCount(0);
 
+  // The count is optimistic. The one keyed cumulative toast is published only
+  // after every pending add has settled and a fresh authoritative truth read says
+  // both servings exist; wait for that durable marker before navigating away.
+  const toast = page.locator(
+    `[data-toast-key^="food-serving:"][data-toast-key$=":${today}:${slug}"]`
+  );
+  await expect(toast).toContainText(
+    `${beforeDay + 2} servings of Legumes & beans today`
+  );
+
   // The pin: a reload re-reads the server's own count, so this is the row that
-  // exists and not the optimistic number the second tap would also have shown.
+  // exists and not merely the optimistic number shown above.
   await page.reload();
   await revealFoodGroup(page, slug);
   await expect(page.getByTestId(`count-${slug}`)).toHaveText(
