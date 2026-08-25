@@ -6,7 +6,7 @@ import { describe, expect, it } from "vitest";
 
 const REPO = path.resolve(fileURLToPath(new URL("../..", import.meta.url)));
 const RIGHT_GLYPH =
-  /(?:→|➜|➡|›|»|⟩|❯|►|->|&(?:rarr|rightarrow);|&#(?:8594|8250|187);)\s*$/;
+  /(?:→|➜|➔|➡|⇒|⟶|›|»|⟩|❯|►|->|&(?:rarr|rightarrow);|&#(?:8594|8250|187);)\s*$/;
 const RIGHT_ICON_FAMILY = /(?:Arrow|Chevron|Caret)/;
 const COMPOUND_DIRECTION = /(?:UpRight|DownRight|RightUp|RightDown)/;
 
@@ -133,6 +133,9 @@ describe("DestinationLink", () => {
     'import Link from "next/link"; import { IconArrowRightBar } from "@tabler/icons-react"; export const Bad = () => <Link href="/x"><IconArrowRightBar /></Link>;',
     'import Link from "next/link"; import { IconCaretRightFilled } from "@tabler/icons-react"; export const Bad = () => <Link href="/x"><IconCaretRightFilled /></Link>;',
     'import Link from "next/link"; export const Bad = () => <Link href="/x">Open →</Link>;',
+    'import Link from "next/link"; export const Bad = () => <Link href="/x">Open ➔</Link>;',
+    'import Link from "next/link"; export const Bad = () => <Link href="/x">Open ⇒</Link>;',
+    'import Link from "next/link"; export const Bad = () => <Link href="/x">Open ⟶</Link>;',
     'import Link from "next/link"; export const Bad = () => <Link href="/x">Open &#8594;</Link>;',
   ])("sees an ordinary raw bypass", (source) => {
     expect(handRolledIndicators("components/Bad.tsx", source)).not.toEqual([]);
