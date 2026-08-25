@@ -80,9 +80,9 @@ export function bottleSiblingKind(
 
 // Which bottles a KIND-LOCKED door may offer (#3270).
 //
-// A locked door does not ask and cannot be corrected — lib/intake-kind.ts puts
-// `locked` first with `correctable: false` — so a bottle it offers is a bottle whose
-// pick WRITES the door's kind, silently. Offering the household's ibuprofen in the Add
+// A locked door does not ask and cannot be corrected — IntakeItemForm requires its
+// host to pass the door's literal kind — so a bottle it offers is a bottle whose pick
+// WRITES the door's kind, silently. Offering the household's ibuprofen in the Add
 // supplement door therefore does not file a medication under a warning; it files a
 // SUPPLEMENT named Ibuprofen. `kind` picks the dose vocabulary and the suggestion lists
 // (#846) and is what the interaction and PRN-ceiling paths read, so that row is wrong in

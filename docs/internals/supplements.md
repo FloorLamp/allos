@@ -304,14 +304,12 @@ replaced three shells over one write path — `MedicationForm` (1,356 lines),
 drift class standing armed: every field, label and gate fixed in one had to be
 remembered in two others, and only medications had a frictionless door at all.
 
-**Name first; the kind is derived.** The form opens on one field. A pick from
-the medication vocabulary or the supplement catalog sets the kind and renders it
-as a correctable chip; a name in BOTH (melatonin) or in neither asks once, and
-those are different questions with different copy. A shared bottle lends the
-kind of the items already drawing on it — a bottle has none of its own — and one
-nobody links yet falls through to the ask. A kind-locked door (`/medications`,
-Nutrition → Supplements) answers it outright and offers nothing to change.
-`lib/intake-kind.ts` is the whole decision; the form renders it.
+**Name first; every door owns the kind.** The form opens on one field, but it is
+never a generic intake chooser: each of its six shipped hosts passes a literal
+`medication` or `supplement` kind. Medication doors and Nutrition → Supplements
+therefore keep their own write vocabulary without asking a question the route
+has already answered. The form rejects a missing or unknown kind at its runtime
+boundary, and the caller census keeps every mount literal and classified.
 
 **Summary-first, facts with editors.** After a pick the form renders NO editors.
 It renders the facts it will save as tappable sentences — dose, timing,

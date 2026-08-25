@@ -92,7 +92,7 @@ export default function AddVisitEntry({
             type="button"
             data-testid="visit-tense-past"
             onClick={() => setTense("past")}
-            className="tap-target font-medium text-brand-700 underline underline-offset-2 dark:text-brand-300"
+            className="tap-target inline-flex min-h-8 items-center font-medium text-brand-700 underline underline-offset-2 dark:text-brand-300"
           >
             Already happened
           </button>
@@ -101,7 +101,7 @@ export default function AddVisitEntry({
             type="button"
             data-testid="visit-tense-upcoming"
             onClick={() => setTense("upcoming")}
-            className="tap-target font-medium text-brand-700 underline underline-offset-2 dark:text-brand-300"
+            className="tap-target inline-flex min-h-8 items-center font-medium text-brand-700 underline underline-offset-2 dark:text-brand-300"
           >
             Upcoming instead
           </button>

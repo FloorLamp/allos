@@ -76,10 +76,10 @@ function suggestedAttrs(
 }
 
 const STATED_CHIP =
-  "tap-target rounded-full border border-(--border) bg-surface px-3 py-1.5 text-sm text-slate-700 transition hover:bg-(--ghost-hover) dark:text-slate-200";
+  "min-h-11 rounded-full border border-(--border) bg-surface px-3 py-1.5 text-sm text-slate-700 transition hover:bg-(--ghost-hover) dark:text-slate-200";
 
 const MISSING_CHIP =
-  "tap-target rounded-full border border-dashed border-brand-400 px-3 py-1.5 text-sm font-medium text-brand-700 transition hover:bg-brand-50 dark:border-brand-500 dark:text-brand-300 dark:hover:bg-brand-950";
+  "min-h-11 rounded-full border border-dashed border-brand-400 px-3 py-1.5 text-sm font-medium text-brand-700 transition hover:bg-brand-50 dark:border-brand-500 dark:text-brand-300 dark:hover:bg-brand-950";
 
 // The row itself: the facts in reading order, wrapping on narrow viewports. Consumers
 // pass their chips as children so a surface can order its own facts and append its own
@@ -180,14 +180,14 @@ export function FactChip({
       data-testid={testId}
       data-fact-state={state}
       {...suggestedAttrs(suggested)}
-      className="inline-flex items-center gap-1 rounded-full border border-(--border) bg-surface py-1.5 pr-1.5 pl-3 text-sm text-slate-700 dark:text-slate-200"
+      className="inline-flex min-h-11 items-stretch rounded-full border border-(--border) bg-surface text-sm text-slate-700 dark:text-slate-200"
     >
       <button
         type="button"
         data-focus-key={focusKey}
         aria-expanded={expanded}
         onClick={() => onOpen(focusKey)}
-        className="text-left"
+        className="flex min-h-11 items-center py-1.5 pl-3 text-left"
       >
         {label}
         {badge}
@@ -197,7 +197,7 @@ export function FactChip({
         data-testid={remove.testId}
         aria-label={remove.label}
         onClick={remove.onClick}
-        className="tap-target flex h-6 w-6 items-center justify-center rounded-full text-slate-400 transition hover:bg-rose-50 hover:text-rose-600 dark:hover:bg-rose-950 dark:hover:text-rose-400"
+        className="flex min-h-11 w-11 items-center justify-center rounded-full text-slate-400 transition hover:bg-rose-50 hover:text-rose-600 dark:hover:bg-rose-950 dark:hover:text-rose-400"
       >
         ×
       </button>
@@ -231,7 +231,7 @@ export function FactAddChip({
       data-focus-key={focusKey}
       aria-expanded={expanded}
       onClick={() => onOpen(focusKey)}
-      className="tap-target inline-flex items-center gap-1 rounded-full border border-dashed border-(--border) px-3 py-1.5 text-sm text-slate-600 transition hover:bg-(--ghost-hover) dark:text-slate-300"
+      className="inline-flex min-h-11 items-center gap-1 rounded-full border border-dashed border-(--border) px-3 py-1.5 text-sm text-slate-600 transition hover:bg-(--ghost-hover) dark:text-slate-300"
     >
       <IconPlus className="h-3.5 w-3.5" stroke={2} aria-hidden="true" />
       {label}
@@ -268,7 +268,7 @@ export function FactMoreChip({
       data-fact-more="true"
       aria-expanded={expanded}
       onClick={() => onOpen(focusKey)}
-      className="tap-target rounded-full px-3 py-1.5 text-sm text-slate-500 underline-offset-2 transition hover:underline dark:text-slate-400"
+      className="min-h-11 rounded-full px-3 py-1.5 text-sm text-slate-500 underline-offset-2 transition hover:underline dark:text-slate-400"
     >
       {label}
     </button>

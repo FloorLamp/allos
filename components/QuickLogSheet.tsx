@@ -289,7 +289,7 @@ export default function QuickLogSheet({
                     item.target.kind === "live" ? workoutOffer.kind : undefined
                   }
                   onClick={() => run(item)}
-                  className="tap-target press flex w-full items-center gap-3 rounded-xl border border-(--border) bg-surface px-3 py-3 text-left transition hover:bg-(--ghost-hover)"
+                  className="press flex min-h-11 w-full items-center gap-3 rounded-xl border border-(--border) bg-surface px-3 py-3 text-left transition hover:bg-(--ghost-hover)"
                 >
                   <span className="flex h-9 w-9 shrink-0 items-center justify-center rounded-lg bg-brand-50 text-brand-600 dark:bg-brand-500/15 dark:text-brand-300">
                     <Icon className="h-5 w-5" stroke={1.75} />
@@ -335,7 +335,7 @@ function ContextChip({
       data-testid={testId}
       data-workout-offer={workoutOffer}
       onClick={onClick}
-      className="tap-target press inline-flex items-center gap-1.5 rounded-full border border-brand-200 bg-brand-50/60 px-3 py-2 text-sm font-medium text-brand-800 transition hover:bg-brand-50 dark:border-brand-900 dark:bg-brand-950/40 dark:text-brand-200 dark:hover:bg-brand-950/60"
+      className="press inline-flex min-h-11 items-center gap-1.5 rounded-full border border-brand-200 bg-brand-50/60 px-3 py-2 text-sm font-medium text-brand-800 transition hover:bg-brand-50 dark:border-brand-900 dark:bg-brand-950/40 dark:text-brand-200 dark:hover:bg-brand-950/60"
     >
       {icon}
       {label}

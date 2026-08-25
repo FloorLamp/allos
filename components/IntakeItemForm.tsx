@@ -39,7 +39,6 @@ import IntakeFactRow, {
 import FactEditorHost, {
   useFactEditor,
 } from "@/components/facts/FactEditorHost";
-import IntakeKindChip from "@/components/intake/IntakeKindChip";
 import IntakeRulesEditor from "@/components/intake/IntakeRulesEditor";
 import { parseWeekdays, cadenceLabel } from "@/lib/intake-cadence";
 import {
@@ -93,7 +92,6 @@ import {
   defaultFoodTiming,
   pauseLinkNeedsConfirm,
 } from "@/lib/intake-schedule";
-import { deriveIntakeKind } from "@/lib/intake-kind";
 import {
   brandOptionsFor,
   dosageOptionsFor,
@@ -125,6 +123,7 @@ import type {
   IntakePair,
   MedicationCourse,
 } from "@/lib/types";
+import { requireIntakeFormKind } from "@/lib/intake-form-kind";
 
 const CATALOG_BY_NAME = new Map(
   SUPPLEMENT_CATALOG.map((c) => [c.name.toLowerCase(), c])
@@ -161,7 +160,7 @@ const CATALOG_BY_NAME = new Map(
 export default function IntakeItemForm({
   action,
   item,
-  kind: lockedKind = null,
+  kind: requestedKind,
   doses: initialDoses,
   ingredients: initialIngredients = [],
   purposes: initialPurposes = [],
@@ -183,9 +182,9 @@ export default function IntakeItemForm({
   action: (formData: FormData) => Promise<FormResult>;
   // Present ⇒ edit mode, seeded from the row; absent ⇒ create.
   item?: IntakeItem;
-  // A kind-locked door (/medications, Nutrition → Supplements) skips the question
-  // entirely — the existing kind-locked `action` prop pattern, made explicit.
-  kind?: IntakeItemKind | null;
+  // Every shipped door is kind-locked (/medications or Nutrition → Supplements).
+  // There is no generic chooser route, so the host must state which write it owns.
+  kind: IntakeItemKind;
   doses?: IntakeDose[];
   ingredients?: IntakeItemIngredient[];
   // Declared purpose links (#2857), seeding the "What you take it for" control on edit.
@@ -207,6 +206,7 @@ export default function IntakeItemForm({
   initialSupply?: SupplyOption | null;
   activityScheduleAvailable?: boolean;
 }) {
+  const lockedKind = requireIntakeFormKind(requestedKind);
   const s = item;
   const fid = s?.id ?? "new";
   const toast = useToast();
@@ -231,13 +231,8 @@ export default function IntakeItemForm({
   const supplySeed = initialSupply ? itemSeedFromPool(initialSupply) : null;
   const seededRef = useRef(supplySeed);
 
-  // ---- The one field, and what the form derives from it ----
+  // ---- The one field ----
   const [name, setName] = useState(s?.name ?? supplySeed?.name ?? "");
-  const [chosenKind, setChosenKind] = useState<IntakeItemKind | null>(
-    s?.kind ?? null
-  );
-  const [bottleSiblingKind, setBottleSiblingKind] =
-    useState<IntakeItemKind | null>(null);
   // The household's bottles, offered in the SAME field as the vocabularies (#3216
   // decision 3). This is the #1705 create-mode branch promoted from the refill fold to
   // the front door: "there is a shared bottle of D3 5000 IU; add it for my daughter"
@@ -259,17 +254,7 @@ export default function IntakeItemForm({
   }, [s]);
   const rx = useIntakeRxcui(s);
 
-  const derivation = deriveIntakeKind({
-    name,
-    locked: lockedKind,
-    chosen: chosenKind,
-    bottleSiblingKind,
-    inMedicationVocabulary: getMedicationInfo(name) != null,
-    inSupplementVocabulary: CATALOG_BY_NAME.has(name.trim().toLowerCase()),
-  });
-  // Until the kind is known the form has nothing to summarize; the medication shape
-  // is used only to type the state below, never rendered.
-  const kind: IntakeItemKind = derivation.kind ?? "medication";
+  const kind = lockedKind;
   const isMed = kind === "medication";
   const affordances = intakeKindAffordances(kind, {
     activityScheduleAvailable,
@@ -555,13 +540,9 @@ export default function IntakeItemForm({
   function onPickName(picked: string, query?: string) {
     setSelectedPediatricBandMinLbs(null);
     setFormulationSlug("");
-    // A new name is new evidence: the kind is re-derived rather than staying at
-    // whatever the previous name decided.
-    setChosenKind(null);
-
     // A BOTTLE row. It seeds the product facts the pool is authoritative for, rides as
-    // supply_id on this item's own save, and lends its members' kind — a bottle has
-    // none of its own, so one with nothing linked yet falls through to the ask.
+    // supply_id on this item's own save. The locked door filters the bottle choices
+    // to its own kind before this point.
     const bottle = bottleForOptionLabel(
       bottlesForKindDoor(bottles, lockedKind),
       picked
@@ -669,8 +650,8 @@ export default function IntakeItemForm({
 
   // Picking a shared bottle (#1705), promoted from the refill fold to the front door:
   // it seeds the product facts the pool is authoritative for, rides as `supply_id` on
-  // this item's own save, and — because a bottle has no kind — lends the kind of a
-  // sibling item already drawing from it.
+  // this item's own save. The door's locked kind already scoped which bottles were
+  // offered, so a bottle never changes the form's kind.
   function onPickSupply(supply: SupplyOption | null): void {
     const seed = supply ? itemSeedFromPool(supply) : null;
     const previous = seededRef.current;
@@ -693,7 +674,6 @@ export default function IntakeItemForm({
     );
     setSupplyId(supply ? String(supply.id) : "");
     setSupplyLabel(supply?.name ?? null);
-    setBottleSiblingKind(supply?.siblingKind ?? null);
     seededRef.current = seed;
   }
 
@@ -857,10 +837,10 @@ export default function IntakeItemForm({
 
   // ---- Draft (#1699) ----
   const draftExtra = useMemo(
-    () => ({ state: formState, rules, chosenKind, formulationSlug }),
+    () => ({ state: formState, rules, formulationSlug }),
     // The whole posted state is the draft, so one dependency is honest: any change
     // to any fact rewrites it.
-    [formState, rules, chosenKind, formulationSlug]
+    [formState, rules, formulationSlug]
   );
   type IntakeDraft = typeof draftExtra;
   const draft = useFormDraft<IntakeDraft>({
@@ -871,7 +851,6 @@ export default function IntakeItemForm({
     onRestore: (d) => {
       const v = d.state;
       setName(v.name);
-      setChosenKind(d.chosenKind ?? null);
       setBrand(v.brand);
       setProduct(v.product);
       setStack(v.stack);
@@ -914,10 +893,6 @@ export default function IntakeItemForm({
 
   async function handle() {
     setError(null);
-    if (derivation.kind == null) {
-      setError("Choose whether this is a medication or a supplement.");
-      return;
-    }
     const label = name.trim() || (isMed ? "Medication" : "Supplement");
     const pause = ruleFields.pauseSituation.trim();
     if (
@@ -969,8 +944,6 @@ export default function IntakeItemForm({
     formRef.current?.reset();
     setName("");
     rx.reset();
-    setChosenKind(null);
-    setBottleSiblingKind(null);
     setBrand("");
     setBrandNarrowing(null);
     setProduct("");
@@ -1041,7 +1014,7 @@ export default function IntakeItemForm({
       action={handle}
       onKeyDown={onFormKeyDown}
       data-testid="intake-item-form"
-      data-kind={derivation.kind ?? ""}
+      data-kind={kind}
       className="grid gap-4 sm:grid-cols-2"
     >
       <DraftRestoreBanner
@@ -1062,7 +1035,6 @@ export default function IntakeItemForm({
             if (v !== name) {
               setFormulationSlug("");
               setSelectedPediatricBandMinLbs(null);
-              setChosenKind(null);
             }
             setName(v);
             rx.onNameChange();
@@ -1102,14 +1074,7 @@ export default function IntakeItemForm({
         )}
       </div>
 
-      {lockedKind == null && (
-        <IntakeKindChip
-          derivation={derivation}
-          onChoose={(next) => setChosenKind(next)}
-        />
-      )}
-
-      {derivation.kind != null && choices.length > 0 && (
+      {choices.length > 0 && (
         <div
           data-testid="intake-formulation-row"
           className="flex flex-wrap items-center gap-1.5 sm:col-span-2"
@@ -1155,35 +1120,34 @@ export default function IntakeItemForm({
         age={age}
       />
 
-      {derivation.kind != null &&
-        (openPanel == null ? (
-          <IntakeFactRow
-            summary={summary}
-            openEditor={openPanel}
-            onOpen={(key, focusKey) => {
-              setRulesStartOnMenu(false);
-              setOpenPanel(key, focusKey);
-            }}
-            onAddRule={(focusKey) => {
-              setRulesStartOnMenu(true);
-              setOpenPanel("rules", focusKey);
-            }}
-            onRemoveRule={(id) =>
-              setRules((current) => current.filter((r) => r.id !== id))
-            }
-          />
-        ) : (
-          <FactEditorHost
-            testId="intake-editor"
-            doneTestId="intake-editor-done"
-            panel={openPanel}
-            onDone={closePanel}
-            className="sm:col-span-2"
-            bodyClassName="grid gap-4 sm:grid-cols-2"
-          >
-            {renderPanel()}
-          </FactEditorHost>
-        ))}
+      {openPanel == null ? (
+        <IntakeFactRow
+          summary={summary}
+          openEditor={openPanel}
+          onOpen={(key, focusKey) => {
+            setRulesStartOnMenu(false);
+            setOpenPanel(key, focusKey);
+          }}
+          onAddRule={(focusKey) => {
+            setRulesStartOnMenu(true);
+            setOpenPanel("rules", focusKey);
+          }}
+          onRemoveRule={(id) =>
+            setRules((current) => current.filter((r) => r.id !== id))
+          }
+        />
+      ) : (
+        <FactEditorHost
+          testId="intake-editor"
+          doneTestId="intake-editor-done"
+          panel={openPanel}
+          onDone={closePanel}
+          className="sm:col-span-2"
+          bodyClassName="grid gap-4 sm:grid-cols-2"
+        >
+          {renderPanel()}
+        </FactEditorHost>
+      )}
 
       {error && (
         <p
@@ -1827,7 +1791,7 @@ export default function IntakeItemForm({
                 type="button"
                 data-testid={`intake-more-${key}`}
                 onClick={() => setOpenPanel(key)}
-                className="tap-target rounded-full border border-(--border) px-3 py-1.5 text-sm transition hover:bg-(--ghost-hover)"
+                className="min-h-11 rounded-full border border-(--border) px-3 py-1.5 text-sm transition hover:bg-(--ghost-hover)"
               >
                 {INTAKE_FACT_NOUNS[key]}
               </button>

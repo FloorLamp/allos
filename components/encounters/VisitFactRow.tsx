@@ -104,7 +104,7 @@ export default function VisitFactRow({
                     setMoreOpen(false);
                     onOpen(key);
                   }}
-                  className="tap-target rounded-full border border-dashed border-(--border) px-3 py-1.5 text-sm text-slate-600 transition hover:bg-(--ghost-hover) dark:text-slate-300"
+                  className="min-h-11 rounded-full border border-dashed border-(--border) px-3 py-1.5 text-sm text-slate-600 transition hover:bg-(--ghost-hover) dark:text-slate-300"
                 >
                   {VISIT_FACT_NOUNS[key]}
                 </button>
