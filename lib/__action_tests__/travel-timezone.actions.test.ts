@@ -8,8 +8,8 @@
 // the banner being hidden is only the UI half of it.
 //
 // Also proves the three writes the acceptance criteria name: the switch remembers
-// home, the revert clears it and answers with both zones for the tell-after, and a
-// dismissal is scoped to the zone it dismissed.
+// home, the user-invoked revert clears it, and a dismissal is scoped to the zone it
+// dismissed. No tell-after state survives the explicit return offer.
 
 import { describe, it, expect, beforeEach, afterEach, vi } from "vitest";
 import { revalidatePath } from "next/cache";
