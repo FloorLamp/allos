@@ -1,6 +1,6 @@
 "use client";
 
-import SubmitButton from "@/components/SubmitButton";
+import Button from "@/components/Button";
 import { useUndoableAction } from "@/components/useUndoableAction";
 import {
   DOSE_UNDONE_MESSAGE,
@@ -41,7 +41,6 @@ export default function DoseConfirmButton({
   action,
   undoAction,
   fields,
-  className,
   testid,
   ariaLabel,
   children,
@@ -52,7 +51,6 @@ export default function DoseConfirmButton({
   undoAction?: (formData: FormData) => Promise<DoseUndoResult>;
   // Hidden form fields posted with the action — ids only, never objects.
   fields: Record<string, string | number>;
-  className?: string;
   testid?: string;
   // An accessible name that says WHICH dose (#2615 item 2). The visible label is
   // deliberately short ("Confirm — Mia"), which on a card listing a morning and an
@@ -113,14 +111,14 @@ export default function DoseConfirmButton({
       {Object.entries(fields).map(([name, value]) => (
         <input key={name} type="hidden" name={name} value={value} />
       ))}
-      <SubmitButton
+      <Button
+        type="submit"
         pendingLabel="…"
         data-testid={testid}
-        className={className}
         aria-label={ariaLabel}
       >
         {children}
-      </SubmitButton>
+      </Button>
     </form>
   );
 }

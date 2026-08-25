@@ -30,6 +30,7 @@ import OpenInMaps from "@/components/OpenInMaps";
 import NotesText from "@/components/NotesText";
 import SourceDocumentLink from "@/components/SourceDocumentLink";
 import EpisodeLinks from "@/components/EpisodeLinks";
+import Button from "@/components/Button";
 import { satisfiedRuleForCompletedKind } from "@/lib/preventive-appointment";
 import {
   matchCarePlanItemsForAppointment,
@@ -381,7 +382,10 @@ export default function AppointmentList({
                   testId={`appointment-illness-episode-${a.id}`}
                 />
               </div>
-              <div className="flex shrink-0 items-center gap-1">
+              <div
+                className="flex shrink-0 items-center gap-3 sm:gap-1"
+                data-testid="appointment-row-actions"
+              >
                 {a.status === "scheduled" ? (
                   <>
                     <button
@@ -439,13 +443,7 @@ export default function AppointmentList({
                         <IconCalendarPlus className="h-4 w-4" stroke={1.75} />
                       </button>
                     )}
-                    <button
-                      type="button"
-                      onClick={() => onReopen(a)}
-                      className="rounded-lg px-2 py-1 text-xs font-medium text-slate-500 transition hover:bg-slate-100 dark:text-slate-400 dark:hover:bg-ink-800"
-                    >
-                      Reopen
-                    </button>
+                    <Button onClick={() => onReopen(a)}>Reopen</Button>
                   </>
                 )}
                 <OverflowMenu

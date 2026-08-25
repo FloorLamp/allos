@@ -2,6 +2,7 @@
 
 import { useId, useState } from "react";
 import Link from "next/link";
+import Button from "@/components/Button";
 import type { AppRoute } from "@/lib/hrefs";
 import type { DashboardCandidateKind } from "@/lib/dashboard-relevance";
 import CandidateKindGlyph from "./CandidateKindGlyph";
@@ -89,16 +90,14 @@ function Bucket({ bucket }: { bucket: DashboardAheadBucket }) {
       <div className="flex items-start justify-between gap-3">
         <Member member={first} href={bucket.primaryHref ?? first.href} />
         {rest.length > 0 && (
-          <button
-            type="button"
-            className="shrink-0 text-sm font-medium text-brand-700 dark:text-brand-400"
+          <Button
             aria-label={`+${rest.length} more in ${bucket.label}`}
             aria-expanded={expanded}
             aria-controls={contentsId}
             onClick={() => setExpanded((value) => !value)}
           >
             +{rest.length} more
-          </button>
+          </Button>
         )}
       </div>
       {rest.length > 0 && (
