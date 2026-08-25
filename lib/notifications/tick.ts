@@ -115,6 +115,7 @@ import { syncIntegrations } from "../integrations/pull-tick";
 import { evaluateSyncRequests } from "../portal-requests";
 import { isReminderSlotExcused } from "../travel-excusal";
 import { getTravelSwitches } from "../settings/travel";
+import { connectedTimezoneSwitchHistory } from "../travel-timezone";
 
 const log = createLogger("notify");
 
@@ -332,7 +333,10 @@ export async function tickProfile(
   // eastward switch skipped. Resolve the profile-owned history once per tick and
   // keep the overwhelmingly common empty-history case free of switch arithmetic
   // and per-day work at every slot below.
-  const travelSwitches = getTravelSwitches(profileId);
+  const travelSwitches = connectedTimezoneSwitchHistory(
+    getTravelSwitches(profileId),
+    tz
+  );
   const reminderSlotExcused =
     travelSwitches.length === 0
       ? (_slotMinute: number) => false

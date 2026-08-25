@@ -3,6 +3,7 @@ import {
   MAX_STORED_SWITCHES,
   appendTimezoneSwitch,
   comparePositions,
+  connectedTimezoneSwitchHistory,
   isExcusedSlot,
   isRepeatedSlot,
   localPositionIn,
@@ -260,6 +261,28 @@ describe("isExcusedSlot / isRepeatedSlot over a history", () => {
     // of the profile. Across the combined trajectory it occurs exactly once.
     expect(isExcusedSlot(quickReturn, "2026-05-01", MIDDAY)).toBe(false);
     expect(isRepeatedSlot(quickReturn, "2026-05-01", MIDDAY)).toBe(false);
+  });
+
+  it("ignores a duplicate crossing instead of cancelling a legitimate return", () => {
+    const duplicatedOutbound: TimezoneSwitch[] = [
+      { at: "2026-05-01T13:59:00Z", from: NY, to: TOKYO },
+      { at: "2026-05-01T14:00:00Z", from: NY, to: TOKYO },
+      { at: "2026-05-01T14:01:00Z", from: TOKYO, to: NY },
+    ];
+    expect(isExcusedSlot(duplicatedOutbound, "2026-05-01", MIDDAY)).toBe(false);
+    expect(isRepeatedSlot(duplicatedOutbound, "2026-05-01", MIDDAY)).toBe(
+      false
+    );
+  });
+
+  it("fails open across a discontinuity or a current-zone mismatch", () => {
+    const disconnected: TimezoneSwitch[] = [
+      { at: "2026-05-01T14:00:00Z", from: NY, to: TOKYO },
+      { at: "2026-05-01T14:01:00Z", from: "Europe/Paris", to: TOKYO },
+    ];
+    expect(isExcusedSlot(disconnected, "2026-05-01", MIDDAY)).toBe(false);
+    expect(connectedTimezoneSwitchHistory(history, NY)).toEqual(history);
+    expect(connectedTimezoneSwitchHistory([history[0]], NY)).toEqual([]);
   });
 
   it("does not excuse a slot the westward leg merely repeated", () => {

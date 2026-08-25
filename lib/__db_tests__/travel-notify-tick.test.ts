@@ -24,6 +24,7 @@ import {
   setProfileSetting,
   setTelegramBotConfig,
   setTimezone,
+  setProfileTimezoneFromSettings,
   switchProfileTimezone,
 } from "@/lib/settings";
 import { tickProfile } from "@/lib/notifications/tick";
@@ -217,5 +218,27 @@ describe("travel excusal at the real notification tick", () => {
     vi.setSystemTime(new Date("2026-05-01T16:00:00Z")); // New York 12:00
     await tickProfile(roundTrip.receiver, "round-trip", 5, Date.now());
     expectThreeSlotMessages(sentTo(roundTrip.chatId));
+  });
+
+  it("re-arms the real noon slot when Settings returns an active trip home", async () => {
+    const settingsReturn = scenario("settings-return", NEW_YORK);
+    vi.setSystemTime(new Date("2026-05-01T14:00:00Z")); // New York 10:00
+    switchProfileTimezone(settingsReturn.receiver, TOKYO, NEW_YORK);
+    vi.setSystemTime(new Date("2026-05-01T14:01:00Z")); // Tokyo 23:01
+    setProfileTimezoneFromSettings(settingsReturn.receiver, NEW_YORK);
+
+    const switches = getTravelSwitches(settingsReturn.receiver);
+    expect(isReminderSlotExcused(switches, "2026-05-01", MIDDAY_MINUTE)).toBe(
+      false
+    );
+
+    vi.setSystemTime(new Date("2026-05-01T16:00:00Z")); // New York 12:00
+    await tickProfile(
+      settingsReturn.receiver,
+      "settings-return",
+      5,
+      Date.now()
+    );
+    expectThreeSlotMessages(sentTo(settingsReturn.chatId));
   });
 });

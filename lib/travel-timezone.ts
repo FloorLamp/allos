@@ -122,6 +122,46 @@ export function occurredTwice(sw: TimezoneSwitch, p: LocalPosition): boolean {
   return comparePositions(r.landed, p) <= 0 && comparePositions(p, r.left) <= 0;
 }
 
+// Keep only the newest valid, chronological chain of switches that actually
+// leads to `currentZone`. The history is a bounded JSON setting rather than an
+// event ledger, so an old client, a manual Settings edit, or a corrupt duplicate
+// can leave a discontinuity. Failing open is the safe answer: uncertain history
+// must not silently excuse a real dose or suppress its reminder.
+//
+// When no current zone is supplied, the newest record's destination anchors the
+// chain. This keeps the pure predicates safe for callers that only have history;
+// profile-scoped consumers pass the stored current zone as the stronger anchor.
+export function connectedTimezoneSwitchHistory(
+  switches: readonly TimezoneSwitch[],
+  currentZone?: string
+): TimezoneSwitch[] {
+  if (switches.length === 0) return [];
+
+  let expectedDestination = currentZone ?? switches.at(-1)?.to;
+  let nextInstant = Number.POSITIVE_INFINITY;
+  const connected: TimezoneSwitch[] = [];
+
+  for (let i = switches.length - 1; i >= 0; i -= 1) {
+    const sw = switches[i];
+    const instant = Date.parse(sw.at);
+    if (
+      !expectedDestination ||
+      !Number.isFinite(instant) ||
+      !isValidTimezone(sw.from) ||
+      !isValidTimezone(sw.to) ||
+      sw.to !== expectedDestination ||
+      instant >= nextInstant
+    ) {
+      break;
+    }
+    connected.unshift(sw);
+    expectedDestination = sw.from;
+    nextInstant = instant;
+  }
+
+  return connected;
+}
+
 // How many times this position occurred after the ordered switch history adjusts
 // the ordinary once-per-day wall clock. A forward crossing removes an occurrence;
 // a backward crossing adds one. Counting the whole trajectory matters: a quick
@@ -133,7 +173,7 @@ function positionOccurrences(
   p: LocalPosition
 ): number {
   let occurrences = 1;
-  for (const sw of switches) {
+  for (const sw of connectedTimezoneSwitchHistory(switches)) {
     if (neverOccurred(sw, p)) occurrences -= 1;
     else if (occurredTwice(sw, p)) occurrences += 1;
   }
