@@ -3,6 +3,7 @@
 import { useEffect, useId, useRef, useState } from "react";
 import { IconCheck, IconChevronDown } from "@tabler/icons-react";
 import AnchoredPanel from "@/components/overlay/AnchoredPanel";
+import Button from "@/components/Button";
 import type { ChartChip } from "./ChartJumpChips";
 
 // Compact chart navigator for Trends → Overview → body census full-chart layout. The former
@@ -58,12 +59,16 @@ export default function ChartJumpMenu({ items }: { items: ChartChip[] }) {
   }, [items]);
 
   // The ACTIVE option takes focus when the menu opens, in either presentation.
-  // This runs after the host's own focus handling (an outer component's effect
-  // runs last), so the sheet's focus trap lands on the first option and this
-  // moves it to the current chart, which is what an arrow key should step from.
+  // The desktop host first mounts the portal hidden while it measures. Move
+  // focus on the next frame, after those option refs attach and the panel has
+  // its anchored position. The sheet follows the same path after its trap has
+  // chosen an initial target.
   useEffect(() => {
     if (!open) return;
-    optionRefs.current[activeIndex]?.focus();
+    const frame = requestAnimationFrame(() => {
+      optionRefs.current[activeIndex]?.focus();
+    });
+    return () => cancelAnimationFrame(frame);
   }, [activeIndex, open]);
 
   if (items.length === 0) return null;
@@ -91,8 +96,8 @@ export default function ChartJumpMenu({ items }: { items: ChartChip[] }) {
       data-testid="chart-jump-menu"
       className="relative z-50 flex items-center"
     >
-      <div className="relative inline-flex items-center">
-        <button
+      <div className="relative grid min-w-24 items-center">
+        <Button
           ref={triggerRef}
           type="button"
           data-testid="chart-jump-menu-trigger"
@@ -110,7 +115,6 @@ export default function ChartJumpMenu({ items }: { items: ChartChip[] }) {
             }
             moveFocus(event.key === "ArrowDown" ? 1 : -1);
           }}
-          className="inline-flex h-9 min-w-24 items-center justify-between gap-2 rounded-md px-2 text-sm font-semibold text-slate-700 transition hover:bg-slate-100 focus-visible:outline-hidden focus-visible:ring-2 focus-visible:ring-brand-500 dark:text-slate-200 dark:hover:bg-ink-800"
         >
           <span>{activeLabel}</span>
           <IconChevronDown
@@ -119,7 +123,7 @@ export default function ChartJumpMenu({ items }: { items: ChartChip[] }) {
               open ? "rotate-180" : ""
             }`}
           />
-        </button>
+        </Button>
 
         <AnchoredPanel
           open={open}

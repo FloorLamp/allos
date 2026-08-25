@@ -1,6 +1,8 @@
 import { test, expect } from "./fixtures";
 import { loginAs } from "./nav";
+import { settledBoxes } from "./helpers";
 import { E2E_LOGIN_NUTRITION, E2E_MEMBER_PASSWORD } from "./fixture-logins";
+import { TAP_FLOOR_PX } from "@/lib/tap-floor-tokens";
 
 // Food-tab composition (issue #980), driven against the dedicated NUTRITION_PROFILE
 // (seed-events: a weigh-in, this-week food servings, a confirmed fiber supplement, sex =
@@ -52,15 +54,45 @@ test("mobile nutrition leads with quick logging and a compact snapshot before th
     await expect(quick.getByTestId("protein-quickadd")).toBeVisible();
     const dateMenuTrigger = page.getByTestId("food-day-menu-trigger");
     await expect(dateMenuTrigger).toBeVisible();
+    await expect(dateMenuTrigger).toHaveAttribute("data-button-control", "");
+    await expect(dateMenuTrigger).toHaveAttribute("aria-haspopup", "menu");
+    await expect(dateMenuTrigger).toHaveAttribute("aria-expanded", "false");
     await expect(
       page
         .getByTestId("food-context-heading")
         .getByTestId("food-day-menu-trigger")
     ).toBeVisible();
     await expect(page.getByTestId("food-day-toggle")).toBeHidden();
+
+    // CompactDateMenu is the one adopter that genuinely renders on a phone.
+    // Measure it beside the row's other action so the 44px repair cannot escape
+    // the viewport or buy its size by covering Dietary preferences.
+    const preferences = page.getByTestId("food-preferences-open-mobile");
+    const [dateBox, preferencesBox] = await settledBoxes([
+      dateMenuTrigger,
+      preferences,
+    ]);
+    const viewport = page.viewportSize()!;
+    expect(dateBox.width).toBeGreaterThanOrEqual(TAP_FLOOR_PX);
+    expect(dateBox.height).toBeGreaterThanOrEqual(TAP_FLOOR_PX);
+    expect(dateBox.x).toBeGreaterThanOrEqual(0);
+    expect(dateBox.x + dateBox.width).toBeLessThanOrEqual(viewport.width);
+    const overlapX =
+      Math.min(
+        dateBox.x + dateBox.width,
+        preferencesBox.x + preferencesBox.width
+      ) - Math.max(dateBox.x, preferencesBox.x);
+    const overlapY =
+      Math.min(
+        dateBox.y + dateBox.height,
+        preferencesBox.y + preferencesBox.height
+      ) - Math.max(dateBox.y, preferencesBox.y);
+    expect(overlapX > 0 && overlapY > 0).toBe(false);
+
     await dateMenuTrigger.click();
     const dateMenu = page.getByTestId("food-day-menu");
     await expect(dateMenu).toBeVisible();
+    await expect(dateMenuTrigger).toHaveAttribute("aria-expanded", "true");
     const dateLabels = await dateMenu
       .getByRole("menuitemradio")
       .allTextContents();
@@ -77,6 +109,8 @@ test("mobile nutrition leads with quick logging and a compact snapshot before th
       dateMenu.getByRole("menuitemradio", { name: "Yesterday" })
     ).toBeFocused();
     await page.keyboard.press("Enter");
+    await expect(dateMenuTrigger).toHaveAttribute("aria-expanded", "false");
+    await expect(dateMenuTrigger).toBeFocused();
     await expect(page.getByTestId("food-context-heading")).toHaveAccessibleName(
       /Yesterday (Morning|Midday|Evening) Food Log/
     );

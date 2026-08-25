@@ -2,15 +2,16 @@
 
 import { useEffect, useId, useRef, useState } from "react";
 import { IconCheck, IconChevronDown } from "@tabler/icons-react";
+import Button from "@/components/Button";
 
 export interface CompactDateMenuDay {
   date: string;
   label: string;
 }
 
-// Borderless phone-only date control for compact context headings. The options
-// use the app's own menu surface instead of delegating appearance to the
-// platform select, whose typography and popup vary considerably by browser.
+// Phone-only date control for compact context headings. The options use the
+// app's own menu surface instead of delegating appearance to the platform
+// select, whose typography and popup vary considerably by browser.
 export default function CompactDateMenu({
   days,
   value,
@@ -57,8 +58,8 @@ export default function CompactDateMenu({
   };
 
   return (
-    <span className="relative -my-2 inline-flex sm:hidden">
-      <button
+    <span className="relative -my-2 -ml-2.5 inline-grid sm:hidden">
+      <Button
         ref={triggerRef}
         type="button"
         data-testid={`${testIdPrefix}-day-menu-trigger`}
@@ -76,7 +77,6 @@ export default function CompactDateMenu({
           }
           moveFocus(event.key === "ArrowDown" ? 1 : -1);
         }}
-        className="-ml-1 inline-flex h-10 items-center gap-1 rounded-md px-1 font-semibold text-slate-800 transition hover:bg-slate-100 focus-visible:outline-hidden focus-visible:ring-2 focus-visible:ring-brand-500 dark:text-slate-100 dark:hover:bg-ink-800"
       >
         <span>{active?.label}</span>
         <IconChevronDown
@@ -85,7 +85,7 @@ export default function CompactDateMenu({
             open ? "rotate-180" : ""
           }`}
         />
-      </button>
+      </Button>
       {open && (
         <>
           <span

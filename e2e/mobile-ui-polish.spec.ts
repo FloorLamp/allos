@@ -265,7 +265,7 @@ test.describe("nutrition food-log controls stay in the viewport on mobile", () =
         .getByTestId("supplement-context-heading")
         .getByTestId("supplement-day-menu-trigger")
     ).toBeVisible();
-    await expect(supplementDate).toHaveCSS("border-top-width", "0px");
+    await expect(supplementDate).toHaveAttribute("data-button-control", "");
     await expect(page.getByTestId("supplement-day-toggle")).toBeHidden();
     await supplementDate.click();
     const supplementDateMenu = page.getByTestId("supplement-day-menu");
