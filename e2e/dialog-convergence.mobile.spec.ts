@@ -349,7 +349,10 @@ test("a drag begun in a nested form scroller stays native for its whole touch", 
     node.scrollTop = Math.min(180, available);
     return { available, scrollTop: node.scrollTop };
   });
-  expect(starting.available).toBeGreaterThanOrEqual(100);
+  // Any non-zero range is sufficient for this ownership pin: the scroller is
+  // below its top at touch-start, and reaching zero during the same long swipe
+  // must never transfer that touch to the sheet.
+  expect(starting.available).toBeGreaterThan(0);
   expect(starting.scrollTop).toBeGreaterThan(0);
   expect(await outer.evaluate((node) => node.scrollTop)).toBe(0);
 
