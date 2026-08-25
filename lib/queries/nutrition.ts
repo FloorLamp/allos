@@ -22,6 +22,7 @@ import { recentWindowStart } from "./training/common";
 import { suggestFoods, type FoodSuggestion } from "../food-suggest";
 import {
   getMetricDailyTotals,
+  getAdditiveMetricDailyTotalsBatch,
   getWeights,
   getLatestMetricValue,
 } from "./metrics";
@@ -1156,17 +1157,23 @@ export function getMacroFiberDays(
   profileId: number,
   range: DateRange
 ): MacroFiberDay[] {
+  const tracked = getAdditiveMetricDailyTotalsBatch(profileId, [
+    "protein_g",
+    "carbs_g",
+    "fat_g",
+    "fiber_g",
+  ]);
   return filterSeriesByRange(
     buildMacroFiberSeries({
       protein: mergeProteinSources(
-        getMetricDailyTotals(profileId, "protein_g"),
+        tracked.get("protein_g")!,
         getProteinDailyTotals(profileId, range.from ?? "0000-01-01").map(
           (r) => ({ date: r.date, value: r.grams })
         )
       ),
-      carbs: getMetricDailyTotals(profileId, "carbs_g"),
-      fat: getMetricDailyTotals(profileId, "fat_g"),
-      fiber: getMetricDailyTotals(profileId, "fiber_g"),
+      carbs: tracked.get("carbs_g")!,
+      fat: tracked.get("fat_g")!,
+      fiber: tracked.get("fiber_g")!,
     }),
     range
   );

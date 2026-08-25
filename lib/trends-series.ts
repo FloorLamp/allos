@@ -14,7 +14,7 @@ import {
   getIntakeItems,
   getAppointments,
   getProtocolWindows,
-  getPracticeTrends,
+  getFrequencyTargetWeeklyHistory,
   getRankedBiomarkerOptions,
 } from "./queries";
 import { today } from "./db";
@@ -56,6 +56,7 @@ import {
   practiceTrendWindow,
   PRACTICE_DIGEST_MIN_CHANGE,
 } from "./trends-practices";
+import { practiceDisplayName, practiceIdentity } from "./practice";
 import type { DateRange } from "./timeline-format";
 import {
   clinicalResultDetailHref,
@@ -562,18 +563,32 @@ export function buildPracticeDigestSeries(
   todayStr: string
 ): DigestSeries[] {
   const window = practiceTrendWindow(range, todayStr);
-  return getPracticeTrends(profileId, window.weeks, window.asOf)
-    .filter((practice) => practiceDigestEligible(practice))
-    .map((practice) => ({
-      key: practiceDigestKey(practice.identity),
-      label: `${practice.name} cadence`,
-      unit: "/wk",
-      points: practice.weeks.map((week) => ({
-        date: week.start,
-        value: week.count,
-      })),
-      minPctChange: PRACTICE_DIGEST_MIN_CHANGE,
-    }));
+  return getFrequencyTargetWeeklyHistory(profileId, window.weeks, window.asOf)
+    .filter(
+      (history) =>
+        history.target.scope_kind === "practice" &&
+        history.existedWholeWindow &&
+        practiceDigestEligible({
+          perWeek: history.target.per_week,
+          weeks: history.weeks,
+        })
+    )
+    .map((history) => {
+      const identity = practiceIdentity(history.target.scope_value);
+      return {
+        key: practiceDigestKey(identity),
+        label: `${practiceDisplayName({
+          targetSpelling: history.target.scope_value,
+          identity,
+        })} cadence`,
+        unit: "/wk",
+        points: history.weeks.map((week) => ({
+          date: week.start,
+          value: week.count,
+        })),
+        minPctChange: PRACTICE_DIGEST_MIN_CHANGE,
+      };
+    });
 }
 
 // Assemble every candidate series for the "what's trending" digest: the standard

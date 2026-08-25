@@ -2,9 +2,12 @@ import Link from "next/link";
 import { IconX } from "@tabler/icons-react";
 import { requireSession } from "@/lib/auth";
 import { today } from "@/lib/db";
-import { buildDigestSeries } from "@/lib/trends-series";
+import {
+  buildDigestSeries,
+  buildPracticeDigestSeries,
+} from "@/lib/trends-series";
 import { summarizeTrends, type TrendItem } from "@/lib/trends-digest";
-import { getFindingSuppressions } from "@/lib/queries";
+import { getFindingSuppressions, getMacroFiberDays } from "@/lib/queries";
 import { activeByKey, digestDedupeKey } from "@/lib/findings";
 import type { DateRange } from "@/lib/timeline-format";
 import { dismissDigest } from "./actions";
@@ -16,7 +19,6 @@ import { getTrendsDigestGather } from "@/lib/queries/trends-digest";
 import {
   buildLoggingCadenceDigestSeries,
   buildNutritionDigestSeries,
-  buildPracticeDigestSeriesFromInputs,
   digestGatherBounds,
   supplementalDigestInputs,
 } from "@/lib/trends-digest-series";
@@ -56,14 +58,19 @@ export default async function TrendingDigest({ range }: { range: DateRange }) {
   });
   const bounds = digestGatherBounds(range, weeks, todayStr);
   const digestRows = getTrendsDigestGather(profile.id, bounds);
-  // ONE profile-scoped statement replaces the former practice-target/history
-  // gather and supplies all supplemental stored facts (#3397). The builders below
-  // are pure, and composing them does not fan the digest out across ledgers.
+  // The batched supplemental statement is only for logging facts. Practice cadence
+  // and protein retain the canonical ledger/chart semantics beneath this formatter.
   const gathered = supplementalDigestInputs(digestRows, weeks, range);
   const series = [
     ...standardSeries,
-    ...buildPracticeDigestSeriesFromInputs(gathered.practiceTargets),
-    ...buildNutritionDigestSeries(gathered),
+    ...buildPracticeDigestSeries(profile.id, range, todayStr),
+    ...buildNutritionDigestSeries({
+      proteinDays: getMacroFiberDays(profile.id, range).map((day) => ({
+        date: day.date,
+        value: day.protein,
+      })),
+      foodServings: gathered.foodServings,
+    }),
     ...buildLoggingCadenceDigestSeries({
       windows: weeks,
       foodDates: gathered.foodDates,
