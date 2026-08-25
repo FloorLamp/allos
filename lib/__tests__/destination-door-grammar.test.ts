@@ -77,7 +77,7 @@ function withoutSourceExtension(file: string): string {
 
 function resolvedModule(from: string, specifier: string): string | null {
   if (specifier.startsWith("@/"))
-    return withoutSourceExtension(specifier.slice(2));
+    return withoutSourceExtension(path.posix.normalize(specifier.slice(2)));
   if (!specifier.startsWith(".")) return null;
   return withoutSourceExtension(
     path.posix.normalize(path.posix.join(path.posix.dirname(from), specifier))
@@ -92,6 +92,7 @@ const RENDERERS: ReadonlyArray<{
     file: "components/intake/SharedSuppliesLink.tsx",
     contract: {
       testId: "shared-supplies-link",
+      targetOwner: "link",
       destinationExpression: "SUPPLIES_HREF",
       destinationBinding: "module",
       moduleBindings: [
@@ -102,7 +103,12 @@ const RENDERERS: ReadonlyArray<{
       label: { kind: "expression", value: "label" },
       childShape: ["tag:IconArchive", "expr:label", "tag:IconChevronRight"],
       accessibleName: { kind: "aria-label", value: "accessibleName" },
-      treatment: { owner: "link", tokens: ["text-link", "gap-1"] },
+      treatment: {
+        owner: "link",
+        className:
+          "inline-flex shrink-0 items-center gap-1 whitespace-nowrap text-sm text-link",
+        tokens: ["text-link", "gap-1"],
+      },
       bindings: [
         { name: "label", expression: "sharedSuppliesLinkLabel(count)" },
         {
@@ -117,6 +123,7 @@ const RENDERERS: ReadonlyArray<{
     file: "components/intake/DoseLedgerLink.tsx",
     contract: {
       testId: "dose-ledger-link",
+      targetOwner: "link",
       destinationExpression: "doseLedgerHref(kind)",
       destinationBinding: "module",
       moduleBindings: [{ name: "doseLedgerHref", moduleName: "@/lib/hrefs" }],
@@ -128,26 +135,38 @@ const RENDERERS: ReadonlyArray<{
         "tag:IconChevronRight",
       ],
       accessibleName: { kind: "visible-label" },
-      treatment: { owner: "link", tokens: ["text-link", "gap-1"] },
+      treatment: {
+        owner: "link",
+        className:
+          "inline-flex shrink-0 items-center gap-1 whitespace-nowrap text-sm text-link",
+        tokens: ["text-link", "gap-1"],
+      },
     },
   },
   {
     file: "app/(app)/household/page.tsx",
     contract: {
       testId: "household-history-link",
+      targetOwner: "link",
       destinationExpression: "EPISODES_HREF",
       destinationBinding: "module",
       moduleBindings: [{ name: "EPISODES_HREF", moduleName: "@/lib/hrefs" }],
       label: { kind: "literal", value: "Illness episodes" },
       childShape: ["text:Illness episodes", "tag:IconChevronRight"],
       accessibleName: { kind: "visible-label" },
-      treatment: { owner: "link", tokens: ["text-link", "gap-1"] },
+      treatment: {
+        owner: "link",
+        className:
+          "inline-flex shrink-0 items-center gap-1 whitespace-nowrap text-sm text-link",
+        tokens: ["text-link", "gap-1"],
+      },
     },
   },
   {
     file: "components/dashboard/DashboardStandingCluster.tsx",
     contract: {
       testId: "standing-door",
+      targetOwner: "decoration",
       destinationExpression: "presentation.href",
       moduleBindings: [
         { name: "trackedPageFor", moduleName: "@/lib/recent-pages" },
@@ -155,7 +174,12 @@ const RENDERERS: ReadonlyArray<{
       label: { kind: "expression", value: "door" },
       childShape: ["expr:door", "tag:IconChevronRight"],
       accessibleName: { kind: "row-content", value: "content" },
-      treatment: { owner: "door", tokens: ["standing-door", "gap-1"] },
+      treatment: {
+        owner: "door",
+        className:
+          "standing-door pointer-events-none absolute inset-y-0 right-0 flex items-center gap-1 bg-surface pl-3 text-xs font-medium whitespace-nowrap text-brand-700 dark:text-brand-400",
+        tokens: ["standing-door", "gap-1"],
+      },
       decorationHidden: true,
       bindings: [
         {
@@ -343,84 +367,145 @@ const NON_DOOR_CHEVRON_FILES = new Map<string, { count: number; why: string }>([
 const NON_DOOR_CHEVRON_SIGNATURES = new Map<string, readonly string[]>([
   [
     "app/(app)/immunizations/MyChartImport.tsx",
-    ["Link[href:/data?section=import]||||true"],
+    ["Link[href:literal:/data?section=import]|aria-hidden:true"],
   ],
   [
     "app/(app)/protocols/ProtocolList.tsx",
-    ["Link|||`protocol-row-${p.id}`|true"],
+    [
+      "Link[href:expression:`/protocols/${p.id}`,data-testid:expression:`protocol-row-${p.id}`]>li>ul[data-testid:literal:protocol-list]|aria-hidden:true",
+    ],
   ],
   [
     "app/(app)/training/activity/[id]/ActivityDetailControls.tsx",
-    ["span||Resume|session-in-progress|true"],
+    [
+      "button[data-testid:literal:session-in-progress,type:literal:button]|aria-hidden:true",
+    ],
   ],
   [
     "app/(app)/training/activity/[id]/ActivityLedgerNav.tsx",
-    ["PendingIconSlot|||activity-ledger-navigation|true"],
+    [
+      "PendingLink[href:expression:activityHref(newerId),testId:literal:activity-newer-link,label:literal:newer activity]>span>div[data-testid:literal:activity-ledger-navigation]|aria-hidden:true",
+    ],
   ],
   [
     "components/activity-form/ActivityMoreDetails.tsx",
-    ["button|||activity-more-details|true"],
+    [
+      "button[type:literal:button,aria-expanded:expression:open]>section[data-testid:literal:activity-more-details]|aria-hidden:true",
+    ],
   ],
   [
     "components/dashboard/IllnessNowGroup.tsx",
-    ["span|||`illness-cockpit-toggle-${c.episodeKey}`|true"],
+    [
+      'button[data-testid:expression:`illness-cockpit-toggle-${c.episodeKey}`,aria-label:expression:lockedOpen?`${episodeLabel}detailsfor${c.displayName}`:`${expanded?"Collapse":"Expand"}${episodeLabel}detailsfor${c.displayName}`,type:literal:button,aria-expanded:expression:expanded]>div[data-testid:literal:illness-cockpit-header-row]>div[data-testid:expression:`illness-cockpit-${c.episodeKey}`]>section[data-testid:literal:illness-now-group,aria-label:literal:Illness]|aria-hidden:true',
+    ],
   ],
   [
     "components/integrations/SyncHistoryDays.tsx",
-    ["summary|||sync-day-summary|true"],
+    [
+      "summary[data-testid:literal:sync-day-summary]>details[data-testid:expression:`sync-day-${day.day}`]>li>ul|aria-hidden:true",
+    ],
   ],
   [
     "components/photo/PhotoGallery.tsx",
-    ["button||Next photo|photo-lightbox-next|true"],
+    [
+      "button[data-testid:literal:photo-lightbox-next,aria-label:literal:Next photo,title:literal:Next photo,type:literal:button]>div>div[data-testid:literal:photo-lightbox,role:literal:dialog,aria-label:expression:`Photofrom${open.date}`]>div[data-testid:literal:photo-gallery]|aria-hidden:true",
+    ],
   ],
   [
     "components/AdherenceRefill.tsx",
     [
-      'Link||`Sharedsupply—${bottleLabel(pool)},drawnfromby${pool.memberCount}trackeditem${pool.memberCount===1?"":"s"}`|shared-supply-chip|true',
+      'Link[href:expression:SUPPLIES_HREF,data-testid:literal:shared-supply-chip,title:expression:`Sharedsupply—${bottleLabel(pool)},drawnfromby${pool.memberCount}trackeditem${pool.memberCount===1?"":"s"}`]|aria-hidden:true',
     ],
   ],
   [
     "components/ClinicalResultsTable.tsx",
-    ["button||panelGroupSummary(group)|clinical-result-panel-toggle|true"],
+    [
+      "button[data-testid:literal:clinical-result-panel-toggle,aria-label:expression:panelGroupSummary(group),type:literal:button,aria-expanded:expression:open]>Td>tr[data-testid:literal:clinical-result-panel-header]|aria-hidden:true",
+    ],
   ],
-  ["components/DateField.tsx", ["button||Next month||true"]],
-  ["components/EquipmentManager.tsx", ["Link|||equipment-row|true"]],
-  ["components/HouseholdCard.tsx", ["button|||household-open|true"]],
-  ["components/LeadFold.tsx", ["summary|||`${testId}-fold-summary`|true"]],
+  [
+    "components/DateField.tsx",
+    [
+      "button[aria-label:literal:Next month,title:literal:Next month,type:literal:button]>div>div>AnchoredPanel[testId:literal:date-field-calendar,title:literal:Choose a date]>div|aria-hidden:true",
+    ],
+  ],
+  [
+    "components/EquipmentManager.tsx",
+    [
+      "Link[href:expression:`/equipment/${e.id}`]>div>div>li[data-testid:literal:equipment-row]|aria-hidden:true",
+    ],
+  ],
+  [
+    "components/HouseholdCard.tsx",
+    [
+      "button[data-testid:literal:household-open,type:literal:submit]>form>div[data-testid:literal:household-card]|aria-hidden:true",
+    ],
+  ],
+  [
+    "components/LeadFold.tsx",
+    [
+      "summary[data-testid:expression:`${testId}-fold-summary`]>details[data-testid:expression:`${testId}-fold`]>div[data-testid:expression:testId]|aria-hidden:true",
+    ],
+  ],
   [
     "components/Nav.tsx",
-    ["button[aria-expanded:expanded,type:button]||||true"],
+    [
+      "button[type:literal:button,aria-expanded:expression:expanded]>div|aria-hidden:true",
+    ],
   ],
-  ["components/ProducedListing.tsx", ["Link|||produced-item|true"]],
-  ["components/ProducedProviders.tsx", ["Link|||produced-provider|true"]],
+  [
+    "components/ProducedListing.tsx",
+    [
+      "Link[href:expression:item.href]>li[data-testid:literal:produced-item]>ul>div[data-testid:literal:produced-listing]|aria-hidden:true",
+    ],
+  ],
+  [
+    "components/ProducedProviders.tsx",
+    [
+      "Link[href:expression:p.href]>li[data-testid:literal:produced-provider]>ul>div[data-testid:literal:produced-providers]|aria-hidden:true",
+    ],
+  ],
   [
     "components/ProfileSwitcherChip.tsx",
     [
-      "binding:content→Link|button||`Open${label}for${profile.name}`|`Switchto${profile.name}andopen${label}`|testId|true",
+      "Link[href:expression:destination,data-testid:expression:testId,aria-label:expression:`Open${label}for${profile.name}`]||button[data-testid:expression:testId,aria-label:expression:`Switchto${profile.name}andopen${label}`,type:literal:submit]>form|aria-hidden:true",
     ],
   ],
-  ["components/QuickLogSheet.tsx", ["button|||`quick-log-${item.id}`|true"]],
+  [
+    "components/QuickLogSheet.tsx",
+    [
+      "button[data-testid:expression:`quick-log-${item.id}`,type:literal:button]>li>ul[data-testid:literal:log-sheet-items]>LoggedViaSurface>BottomSheet[testId:literal:quick-log-sheet,title:literal:Log]|aria-hidden:true",
+    ],
+  ],
   [
     "components/RawDataViewer.tsx",
-    ["component:Caret→button|||raw-node-toggle|true"],
+    [
+      "button[data-testid:literal:raw-node-toggle,type:literal:button,aria-expanded:expression:open]>div|aria-hidden:true",
+    ],
   ],
   [
     "components/SessionComparisonChart.tsx",
-    ["span|||`${testIdPrefix}-ranking`|true"],
+    [
+      'Link[href:expression:point.href,data-testid:expression:`${testIdPrefix}-link`,aria-label:expression:`Open${point.title}from${formatLongDate(point.date,formatPrefs,{year:"always"})}`]>li[data-testid:expression:`${testIdPrefix}-observation`]>ol[aria-label:expression:`${selected.label}across${points.length}${noun}`]>div[data-testid:expression:`${testIdPrefix}-ranking`]>div[data-testid:expression:`${testIdPrefix}-chart`]|aria-hidden:true',
+    ],
   ],
   [
     "components/TimelineDayNav.tsx",
-    ["PendingIconSlot|||timeline-day-nav|true"],
+    [
+      "PendingLink[href:expression:nextHref,testId:literal:timeline-day-next,label:expression:nextLabel]>nav[data-testid:literal:timeline-day-nav,aria-label:literal:Adjacent days]|aria-hidden:true",
+    ],
   ],
-  ["components/TrainingLogCalendar.tsx", ["button||Next month||true"]],
+  [
+    "components/TrainingLogCalendar.tsx",
+    [
+      "button[aria-label:literal:Next month,title:literal:Next month,type:literal:button]>div>div|aria-hidden:true",
+    ],
+  ],
 ]);
 
 function chevronSignature(source: string): string[] {
   return chevronOccurrences(source).map(
-    ({ ownerTag, role, label, testId, ariaHidden }) =>
-      [ownerTag, role, label, testId, ariaHidden]
-        .map((value) => value ?? "")
-        .join("|")
+    ({ ancestry, ariaHidden }) => `${ancestry}|aria-hidden:${ariaHidden}`
   );
 }
 
@@ -458,6 +543,7 @@ function moduleReferenceFindings(
   expectedFiles: ReadonlyMap<string, number>
 ): string[] {
   const target = withoutSourceExtension(targetFile);
+  const targetDirectory = path.posix.dirname(target);
   const findings: string[] = [];
   const actualImportFiles = new Map<string, number>();
   for (const source of sources) {
@@ -465,7 +551,15 @@ function moduleReferenceFindings(
       source.source,
       component
     )) {
-      if (resolvedModule(source.file, reference.moduleName) !== target)
+      const computed = reference.kind.startsWith("computed-");
+      if (
+        resolvedModule(source.file, reference.moduleName) !== target &&
+        !(
+          computed &&
+          (reference.moduleName.includes(component) ||
+            reference.moduleName.includes(targetDirectory))
+        )
+      )
         continue;
       if (reference.kind !== "import" || !reference.canonical) {
         findings.push(
@@ -618,6 +712,12 @@ describe("destination-door grammar (#3502)", () => {
     for (const [file, signatures] of NON_DOOR_CHEVRON_SIGNATURES) {
       expect(chevronSignature(read(file)), file).toEqual(signatures);
       expect(
+        chevronOccurrences(read(file)).flatMap(
+          (occurrence) => occurrence.issues
+        ),
+        file
+      ).toEqual([]);
+      expect(
         chevronOccurrences(read(file)).every(
           (occurrence) => occurrence.ariaHidden === "true"
         ),
@@ -630,12 +730,17 @@ describe("destination-door grammar (#3502)", () => {
 describe("the destination-door reader's reach", () => {
   const contract: DestinationDoorContract = {
     testId: "door",
+    targetOwner: "link",
     destinationExpression: "DESTINATION",
     destinationBinding: "module",
     label: { kind: "expression", value: "identity" },
     childShape: ["expr:identity", "tag:IconChevronRight"],
     accessibleName: { kind: "visible-label" },
-    treatment: { owner: "link", tokens: ["text-link", "gap-1"] },
+    treatment: {
+      owner: "link",
+      className: "text-link gap-1",
+      tokens: ["text-link", "gap-1"],
+    },
     bindings: [{ name: "identity", expression: "identityOf(destination)" }],
   };
   const good = `
@@ -768,6 +873,22 @@ describe("the destination-door reader's reach", () => {
       good.replace("text-link gap-1", "text-link gap-1 hidden"),
     ],
     [
+      "link-hidden-class",
+      good.replace("text-link gap-1", "text-link gap-1 opacity-0"),
+    ],
+    [
+      "link-hidden-class",
+      good.replace("text-link gap-1", "text-link gap-1 sr-only"),
+    ],
+    [
+      "link-hidden-class",
+      good.replace("text-link gap-1", "text-link gap-1 max-h-0"),
+    ],
+    [
+      "link-hidden-class",
+      good.replace("text-link gap-1", "text-link gap-1 [display:none]"),
+    ],
+    [
       "hidden-ancestry-hidden",
       good
         .replace("<Link", "<div hidden><Link")
@@ -783,6 +904,12 @@ describe("the destination-door reader's reach", () => {
       "hidden-ancestry-style",
       good
         .replace("<Link", '<div style={{ display: "none" }}><Link')
+        .replace("</Link>", "</Link></div>"),
+    ],
+    [
+      "hidden-ancestry-hidden-class",
+      good
+        .replace("<Link", '<div className="opacity-0"><Link')
         .replace("</Link>", "</Link></div>"),
     ],
     [
@@ -881,6 +1008,21 @@ describe("the destination-door reader's reach", () => {
         shared.contract
       ).issues
     ).toContain("module-binding:sharedSuppliesLinkLabel");
+    expect(
+      auditDestinationDoorSource(
+        source.replace("href={SUPPLIES_HREF}", 'href="SUPPLIES_HREF"'),
+        shared.contract
+      ).issues
+    ).toContain("destination");
+    expect(
+      auditDestinationDoorSource(
+        source.replace(
+          "aria-label={accessibleName}",
+          'aria-label="accessibleName"'
+        ),
+        shared.contract
+      ).issues
+    ).toContain("accessible-name");
   });
 
   it("pins Household's inline door inside PageHeader.action", () => {
@@ -903,6 +1045,8 @@ describe("the destination-door reader's reach", () => {
       '<PageHeader action={active ? <Link data-testid="household-history-link" /> : null} />',
       '<PageHeader action={false && <Link data-testid="household-history-link" />} />',
       '<PageHeader action={() => <Link data-testid="household-history-link" />} />',
+      '<PageHeader action={<div hidden><Link data-testid="household-history-link" /></div>} />',
+      '<PageHeader action={<div className={maybeHidden}><Link data-testid="household-history-link" /></div>} />',
     ]) {
       expect(
         testIdOwnerLines(
@@ -928,6 +1072,18 @@ describe("the destination-door reader's reach", () => {
         medication.ownerContract
       )
     ).toEqual([]);
+    const headingOwner: DoorOwner = {
+      kind: "ancestor-heading",
+      ownerTag: "section",
+      headingTag: "h2",
+      text: "Manage",
+    };
+    for (const source of [
+      "<section {...props}><h2>Manage</h2><Door /></section>",
+      '<section className="a" className="b"><h2>Manage</h2><Door /></section>',
+    ]) {
+      expect(jsxMountOwnerLines(source, "Door", headingOwner)).toEqual([]);
+    }
     expect(
       jsxMountOwnerLines(
         read(medication.file).replace(
@@ -936,6 +1092,28 @@ describe("the destination-door reader's reach", () => {
         ),
         medication.component,
         medication.ownerContract
+      )
+    ).toEqual([]);
+    for (const dead of ["false", "0", '""']) {
+      expect(
+        jsxMountOwnerLines(
+          read(medication.file).replace(
+            "{isActing ? (\n          <div",
+            `{${dead} && (\n          <div`
+          ),
+          medication.component,
+          medication.ownerContract
+        )
+      ).toEqual([]);
+    }
+    const standing = MOUNTS.find(
+      (mount) => mount.component === "DashboardStandingCluster"
+    )!;
+    expect(
+      jsxMountOwnerLines(
+        "{standing.length > 0 && (true || <DashboardStandingCluster />)}",
+        standing.component,
+        standing.ownerContract
       )
     ).toEqual([]);
   });
@@ -948,6 +1126,23 @@ describe("the destination-door reader's reach", () => {
     const issues = auditDestinationDoorSource(nested, contract).issues;
     expect(issues).toContain("label");
     expect(issues).toContain("content-shape");
+
+    const dose = RENDERERS.find(
+      (entry) => entry.contract.testId === "dose-ledger-link"
+    )!;
+    const transplanted = read(dose.file)
+      .replace('data-testid="dose-ledger-link"', "")
+      .replace(
+        "<IconHistory",
+        '<span data-testid="dose-ledger-link"><IconHistory'
+      )
+      .replace("</Link>", "</span>Wrong sibling</Link>");
+    const doseIssues = auditDestinationDoorSource(
+      transplanted,
+      dose.contract
+    ).issues;
+    expect(doseIssues).toContain("target-relationship");
+    expect(doseIssues).toContain("accessible-name");
   });
 
   it("rejects aliases, wrappers, re-exports, dynamic loads, and requires", () => {
@@ -994,7 +1189,7 @@ describe("the destination-door reader's reach", () => {
         {
           file: "lib/ui/Cabinet.tsx",
           source:
-            "const A = import(`@/components/intake/SharedSuppliesLink`); const B = require(`@/components/intake/SharedSuppliesLink`)",
+            'const A = import(`@/components/intake/SharedSuppliesLink`); const B = require(`@/components/intake/SharedSuppliesLink`); const C = import(`@/components/intake/${"SharedSuppliesLink"}`); const D = require("@/components/intake/" + "SharedSuppliesLink"); const E = import(`@/components/intake/${candidate}`); const F = require("@/components/intake/" + candidate)',
         },
       ],
       "SharedSuppliesLink",
@@ -1003,6 +1198,22 @@ describe("the destination-door reader's reach", () => {
     );
     expect(templateFindings.join("\n")).toMatch(/dynamic-import/);
     expect(templateFindings.join("\n")).toMatch(/require/);
+    expect(templateFindings.join("\n")).toMatch(/computed-dynamic-import/);
+    expect(templateFindings.join("\n")).toMatch(/computed-require/);
+    expect(
+      moduleReferenceFindings(
+        [
+          {
+            file: "app/normalized.tsx",
+            source:
+              'import SharedSuppliesLink from "@/components/other/../intake/SharedSuppliesLink"; <SharedSuppliesLink />',
+          },
+        ],
+        "SharedSuppliesLink",
+        target,
+        new Map()
+      ).length
+    ).toBeGreaterThan(0);
   });
 
   it.each([
@@ -1080,14 +1291,50 @@ describe("the destination-door reader's reach", () => {
         contract
       ).issues
     ).toContain("binding:identity");
+    expect(
+      auditDestinationDoorSource(
+        good.replace("const identity", "let identity"),
+        contract
+      ).issues
+    ).toContain("binding:identity");
+    expect(
+      auditDestinationDoorSource(
+        good.replace("return <Link", "identity = other;\n      return <Link"),
+        contract
+      ).issues
+    ).toContain("binding:identity");
   });
 
   it("makes a same-file chevron move change its structural identity", () => {
     const original =
-      '<button data-testid="next"><IconChevronRight aria-hidden /></button>';
+      'import { IconChevronRight } from "@tabler/icons-react"; <div data-testid="row"><Link href="/row"><IconChevronRight aria-hidden /></Link></div>';
     const moved =
-      '<button data-testid="next" /><Link><IconChevronRight aria-hidden /></Link>';
+      'import { IconChevronRight } from "@tabler/icons-react"; <div data-testid="row"><Link href="/destination"><IconChevronRight aria-hidden /></Link></div>';
     expect(chevronSignature(moved)).not.toEqual(chevronSignature(original));
+    expect(
+      chevronOccurrences(original).flatMap((entry) => entry.issues)
+    ).toEqual([]);
+    expect(
+      chevronOccurrences(
+        original.replace("aria-hidden", "{...iconProps} aria-hidden")
+      ).flatMap((entry) => entry.issues)
+    ).toContain("chevron-spread-attributes");
+    expect(
+      chevronOccurrences(
+        original.replace(
+          '<Link href="/row"',
+          '<Link {...ownerProps} href="/row"'
+        )
+      ).flatMap((entry) => entry.issues)
+    ).toContain("chevron-owner-spread-attributes");
+    expect(
+      chevronOccurrences(
+        original.replace(
+          "import { IconChevronRight }",
+          "const IconChevronRight = Local; import { Other }"
+        )
+      ).flatMap((entry) => entry.issues)
+    ).toEqual(expect.arrayContaining(["chevron-import", "chevron-shadow"]));
   });
 
   it("makes extra mounts and extra chevrons change exact occurrence maps", () => {
