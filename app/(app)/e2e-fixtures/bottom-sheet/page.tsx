@@ -1,5 +1,7 @@
 import { notFound } from "next/navigation";
 import BottomSheetGestureHarness from "./BottomSheetGestureHarness";
+import PageContainer from "@/components/PageContainer";
+import PageHeader from "@/components/PageHeader";
 
 // This route exists only for real-browser gesture coverage that needs a
 // BottomSheet `description` (the prop has no product caller). The E2E worker is
@@ -13,5 +15,10 @@ export default async function BottomSheetGesturePage({
 }) {
   if (process.env.ALLOS_E2E_TEST_HARNESS !== "1") notFound();
   const query = await searchParams;
-  return <BottomSheetGestureHarness guarded={query.guarded === "1"} />;
+  return (
+    <PageContainer width="form">
+      <PageHeader title="Bottom sheet gesture fixture" />
+      <BottomSheetGestureHarness guarded={query.guarded === "1"} />
+    </PageContainer>
+  );
 }
