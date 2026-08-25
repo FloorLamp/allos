@@ -3,6 +3,7 @@ import type { Locator, Page } from "@playwright/test";
 import { hydratedClick, settledAfterAnimation, settledClick } from "./helpers";
 import { loginAs } from "./nav";
 import { E2E_LOGIN_MOBILITY, E2E_MEMBER_PASSWORD } from "./fixture-logins";
+import { TAP_FLOOR_PX } from "@/lib/tap-floor-tokens";
 
 // The phone toast is a SNACKBAR (issue #3373).
 //
@@ -33,7 +34,6 @@ import { E2E_LOGIN_MOBILITY, E2E_MEMBER_PASSWORD } from "./fixture-logins";
 // this file's `.mobile.spec.ts` name.
 const PHONE = { viewport: { width: 390, height: 844 }, hasTouch: true };
 // The app's own touch floor (app/globals.css, `tap-target`; #644).
-const TAP_FLOOR = 44;
 // What `max(1rem, env(safe-area-inset-*))` resolves to with no hardware inset —
 // the gutter the bottom-edge tokens put on both sides of the bar.
 const GUTTER = 16;
@@ -128,8 +128,8 @@ test("a phone toast is one full-width bar above the dock, and a second waits its
     // ── Thumb affordances ──────────────────────────────────────────────────
     const dismiss = toast.getByRole("button", { name: "Dismiss" });
     const dismissBox = (await dismiss.boundingBox())!;
-    expect(dismissBox.width).toBeGreaterThanOrEqual(TAP_FLOOR);
-    expect(dismissBox.height).toBeGreaterThanOrEqual(TAP_FLOOR);
+    expect(dismissBox.width).toBeGreaterThanOrEqual(TAP_FLOOR_PX);
+    expect(dismissBox.height).toBeGreaterThanOrEqual(TAP_FLOOR_PX);
     // Reachable by keyboard as well as by thumb.
     await dismiss.focus();
     await expect(dismiss).toBeFocused();

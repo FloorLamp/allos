@@ -1,6 +1,6 @@
 import { test, expect } from "./fixtures";
 import { settledBoxes } from "./helpers";
-import { TAP_FLOOR_PX } from "@/lib/tap-floor-reach";
+import { TAP_FLOOR_PX } from "@/lib/tap-floor-tokens";
 import type { Locator } from "@playwright/test";
 
 // The phone density sweep (#3466), measured at 390×844 rather than read off a

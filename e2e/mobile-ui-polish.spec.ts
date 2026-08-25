@@ -8,6 +8,7 @@ import {
   openMobileDrawer,
   settledBoxes,
 } from "./helpers";
+import { TAP_FLOOR_PX } from "@/lib/tap-floor-tokens";
 
 // Mobile / touch-target polish (#640, #641, #644). Driven at a phone viewport so
 // the clipping and undersized-target defects are observable — the desktop layout
@@ -146,9 +147,7 @@ test.describe("touch targets clear the 40px minimum (#644)", () => {
 });
 
 // #3514's floor, spelled the way e2e/button-height-floor.mobile.spec.ts spells it —
-// a rendered measurement cannot import the source census's constant without importing
-// the census, and the two numbers are held equal by that spec.
-const TAP_FLOOR_PX = 44;
+// Rendered measurements import the small design token, never the source census.
 
 // THE FLOOR THIS MEASURES MOVED UNDER IT. #3377 built these boxes at 40 and this
 // test was written to that number; #3514 ruled the floor to 44px EFFECTIVE and the
@@ -349,7 +348,6 @@ test.describe("the food overflow disclosure matches the list it extends (#3362)"
 
   // The app's own touch floor (app/globals.css, `tap-target`), which is what the
   // 42px control was under.
-  const TAP_FLOOR = 44;
 
   // Every number this spec compares, read in ONE evaluate so they describe a
   // single layout rather than four independent round-trips (#1538's settledBoxes
@@ -410,7 +408,7 @@ test.describe("the food overflow disclosure matches the list it extends (#3362)"
 
   function expectCitizenOfTheList(m: Awaited<ReturnType<typeof listMetrics>>) {
     expect(m.rowCount).toBeGreaterThanOrEqual(2);
-    expect(m.summaryHeight).toBeGreaterThanOrEqual(TAP_FLOOR);
+    expect(m.summaryHeight).toBeGreaterThanOrEqual(TAP_FLOOR_PX);
     // The row idiom, not a literal height: same card width, and a height within a
     // couple of px of the rows it extends (`min-h-14` against 58px content rows).
     expect(m.summaryLeft).toBeCloseTo(m.rowLeft, 0);
@@ -534,7 +532,6 @@ test.describe("the pager offers thumb-sized steps at 390px (#3378)", () => {
   test.use({ viewport: PHONE });
 
   // The app's own touch floor (app/globals.css, `tap-target`; #644).
-  const TAP_FLOOR = 44;
 
   // Every number compared here, read in ONE evaluate so they describe a single
   // layout rather than three independent round-trips (#1538's settledBoxes
@@ -578,8 +575,8 @@ test.describe("the pager offers thumb-sized steps at 390px (#3378)", () => {
   function expectThumbShape(m: Awaited<ReturnType<typeof pagerMetrics>>) {
     expect(m.labels).toEqual(["Prev", "Next"]);
     for (const box of m.boxes) {
-      expect(box.height).toBeGreaterThanOrEqual(TAP_FLOOR);
-      expect(box.width).toBeGreaterThanOrEqual(TAP_FLOOR);
+      expect(box.height).toBeGreaterThanOrEqual(TAP_FLOOR_PX);
+      expect(box.width).toBeGreaterThanOrEqual(TAP_FLOOR_PX);
     }
     // At the row's EDGES, with the extent between them — the thumb shape, not the
     // desktop huddle. Measured against the row itself, so its padding moves the

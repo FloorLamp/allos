@@ -11,6 +11,7 @@ import { E2E_MEMBER_PASSWORD } from "./logins/shared";
 import { settledAfterAnimation, settledBoxes } from "./helpers";
 import { loginAs } from "./nav";
 import { frozenNow, workerDbPath } from "./worker-env";
+import { TAP_FLOOR_PX } from "@/lib/tap-floor-tokens";
 
 const PHONE_430 = { viewport: { width: 430, height: 932 }, hasTouch: true };
 const PHONE_390 = { viewport: { width: 390, height: 844 }, hasTouch: true };
@@ -138,7 +139,9 @@ test("every segment keeps the sheet still and fills the phone width (#3675)", as
     await page.setViewportSize(PHONE_390.viewport);
     for (let index = 0; index < 4; index += 1) {
       const optionBox = await box(options.nth(index), `390px segment ${index}`);
-      expect(optionBox.height + PX_EPSILON).toBeGreaterThanOrEqual(44);
+      expect(optionBox.height + PX_EPSILON).toBeGreaterThanOrEqual(
+        TAP_FLOOR_PX
+      );
     }
   } finally {
     await page.context().close();

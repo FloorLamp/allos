@@ -192,7 +192,7 @@ export default function ProteinQuickAdd({
       {/* 32px RENDERED, NOT 28 (#3486's reach). `.tap-target`'s `inset: -6px`
           adds a fixed 12px, so it reaches #3514's 44px floor only from 32px up;
           at `h-7` this pair was 40px effective while carrying the class that
-          claims the floor. lib/tap-floor-reach.ts holds the arithmetic. */}
+          claims the floor. lib/tap-floor-tokens.ts holds the arithmetic. */}
       <button
         type="button"
         data-testid="protein-quickadd-undo"

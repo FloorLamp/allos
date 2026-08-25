@@ -1,5 +1,6 @@
 import { test, expect } from "./fixtures";
 import { hydratedClick, settledBoxes, settledClick } from "./helpers";
+import { TAP_FLOOR_PX } from "@/lib/tap-floor-tokens";
 
 // THE ANCHORED PANEL FORKS AT `md` (issues #3374, #3376).
 //
@@ -21,7 +22,6 @@ import { hydratedClick, settledBoxes, settledClick } from "./helpers";
 // honest tablet case — to pin the other side of the fork.
 
 // The phone tap floor (#644). Sheet rows meet it by construction.
-const TAP_FLOOR = 44;
 // What a popover row rises to when a COARSE pointer is doing the tapping. Lower
 // than the phone floor on purpose: the popover is a compact desktop surface and
 // this is the minimum a finger is owed there, not the phone's comfortable row.
@@ -76,8 +76,8 @@ test.describe("below md the ⋯ menu is a bottom action sheet", () => {
     for (const [i, box] of boxes.entries()) {
       expect(
         box.height,
-        `menu row ${i} should meet the ${TAP_FLOOR}px tap floor in the sheet`
-      ).toBeGreaterThanOrEqual(TAP_FLOOR);
+        `menu row ${i} should meet the ${TAP_FLOOR_PX}px tap floor in the sheet`
+      ).toBeGreaterThanOrEqual(TAP_FLOOR_PX);
     }
 
     // Dismissal is discard, which is a menu's whole contract — and the trigger
@@ -127,7 +127,7 @@ test.describe("below md the ⋯ menu is a bottom action sheet", () => {
     // popover removes it from a sheet.
     const remove = page.getByTestId(`food-logged-remove-${eventId}`);
     const [removeBox] = await settledBoxes([remove]);
-    expect(removeBox.height).toBeGreaterThanOrEqual(TAP_FLOOR);
+    expect(removeBox.height).toBeGreaterThanOrEqual(TAP_FLOOR_PX);
     await settledClick(page, remove);
     await expect(row).toHaveCount(0);
     await expect(page.getByTestId("overflow-menu-sheet")).toHaveCount(0);
@@ -169,8 +169,8 @@ test.describe("below md the date picker is a bottom sheet", () => {
     const day = calendar.getByRole("button", { name: "17", exact: true });
     await expect(day).toBeVisible();
     const [dayBox] = await settledBoxes([day]);
-    expect(dayBox.height).toBeGreaterThanOrEqual(TAP_FLOOR);
-    expect(dayBox.width).toBeGreaterThanOrEqual(TAP_FLOOR);
+    expect(dayBox.height).toBeGreaterThanOrEqual(TAP_FLOOR_PX);
+    expect(dayBox.width).toBeGreaterThanOrEqual(TAP_FLOOR_PX);
 
     // Picking round-trips into the field's POSTED value, which is the contract
     // the fork must not touch.

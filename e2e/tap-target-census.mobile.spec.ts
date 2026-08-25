@@ -9,7 +9,7 @@ import {
   TAP_FLOOR_FLOAT_EPSILON_PX,
   TAP_FLOOR_PX,
   TAP_TARGET_INSET_PX,
-} from "../lib/tap-floor-reach";
+} from "../lib/tap-floor-tokens";
 
 const PHONE = { width: 390, height: 844 };
 

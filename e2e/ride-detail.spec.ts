@@ -7,6 +7,7 @@ import {
   serializeCyclingStreamSummary,
   summarizeCyclingStreams,
 } from "@/lib/cycling-stream-summary";
+import { TAP_FLOOR_PX } from "@/lib/tap-floor-tokens";
 
 // The Log feed is a slim index. Selecting a ride navigates directly to its
 // canonical activity page at every viewport size.
@@ -1080,7 +1081,7 @@ test("canonical activity navigation stays compact on a ride", async ({
         buttons.map((button) => button.getBoundingClientRect().width)
       );
     expect(widths.length).toBeGreaterThan(1);
-    expect(widths.every((width) => width >= 44)).toBe(true);
+    expect(widths.every((width) => width >= TAP_FLOOR_PX)).toBe(true);
   }
   expect(
     await page

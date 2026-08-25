@@ -6,7 +6,7 @@ import { switchToProfile } from "./family-helpers";
 import {
   TAP_FLOOR_FLOAT_EPSILON_PX,
   TAP_FLOOR_PX,
-} from "@/lib/tap-floor-reach";
+} from "@/lib/tap-floor-tokens";
 import {
   E2E_MEMBER_PASSWORD,
   E2E_LOGIN_TRAVEL,

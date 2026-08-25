@@ -3,6 +3,7 @@ import type { Locator, Page } from "@playwright/test";
 import { hydratedClick, settledBoxes } from "./helpers";
 import { loginAs } from "./nav";
 import { E2E_LOGIN_HHHIST, E2E_MEMBER_PASSWORD } from "./fixture-logins";
+import { TAP_FLOOR_PX } from "@/lib/tap-floor-tokens";
 
 // The Records hub's PHONE ANATOMY (issue #3408).
 //
@@ -53,7 +54,6 @@ const VIEWPORT_HEIGHT = 844;
 // whether the chrome came off, so the number is a comparison, not a guess.
 const LIST_TOP_CEILING = 455;
 // The app's own touch floor (app/globals.css, `tap-target`; #644).
-const TAP_FLOOR = 44;
 
 async function documentOrder(
   page: Page,
@@ -342,7 +342,7 @@ test.describe("Records panes — phone anatomy (#3408)", () => {
     // hanging off a kebab — the fork lives in AnchoredPanel and no consumer
     // chose it (#3374). Its rows clear the tap floor because the sheet's do.
     const printBox = await print.boundingBox();
-    expect(printBox!.height).toBeGreaterThanOrEqual(TAP_FLOOR);
+    expect(printBox!.height).toBeGreaterThanOrEqual(TAP_FLOOR_PX);
     await page.keyboard.press("Escape");
 
     // THE LIST STARTS 137px HIGHER THAN IT DID. The issue's headline complaint,
