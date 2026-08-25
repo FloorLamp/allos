@@ -1,5 +1,7 @@
 import Link from "next/link";
-import DestinationLink from "@/components/DestinationLink";
+import DestinationLink, {
+  DestinationActionLink,
+} from "@/components/DestinationLink";
 import SegmentedControl from "@/components/SegmentedControl";
 import IconButton from "@/components/IconButton";
 import {
@@ -1254,13 +1256,12 @@ function Row({
   // onto a line by itself (#1446).
   const cta =
     item.actionLabel != null && item.preventiveRuleKey != null ? (
-      <DestinationLink
+      <DestinationActionLink
         href={item.href}
         data-testid={`upcoming-cta-${item.key}`}
-        className="flex min-w-0 items-center gap-1 truncate rounded-lg border border-black/10 px-2.5 py-1 text-xs font-medium text-slate-600 transition hover:bg-slate-100 dark:border-white/10 dark:text-slate-300 dark:hover:bg-ink-750"
       >
         <span className="truncate">{item.actionLabel}</span>
-      </DestinationLink>
+      </DestinationActionLink>
     ) : null;
 
   const hasFollowUp = actionVisible && item.followUpResolve != null;
@@ -1407,7 +1408,10 @@ function Row({
           {/* The primary CTA and the row's ONE overflow trigger, glued into a single
               nowrap group so a wrap can never strand the "⋯" alone on its own line
               (#1446). */}
-          <div className="flex min-w-0 shrink-0 items-center gap-1">
+          <div
+            className="flex min-w-0 items-center gap-2 sm:gap-1"
+            data-testid="upcoming-primary-actions"
+          >
             {cta}
             <UpcomingRowMenu
               itemName={item.title}

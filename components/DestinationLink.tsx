@@ -14,6 +14,11 @@ type StandingDestinationLinkProps = DestinationLinkProps & {
   destinationLabel: string;
 };
 
+type DestinationActionLinkProps = Omit<
+  DestinationLinkProps,
+  "className" | "style"
+>;
+
 // The one rightward destination indicator. Callers own their link's content and
 // housing; this primitive owns the glyph, spacing, geometry, and accessibility.
 export default function DestinationLink({
@@ -31,6 +36,24 @@ export default function DestinationLink({
         <DestinationIndicator />
       </span>
     </Link>
+  );
+}
+
+// A destination presented beside ordinary row actions. It shares the one
+// ordinary-control treatment without pretending a link is a button, and exposes
+// no class/style seam for a caller to resize or recolor it.
+export function DestinationActionLink({
+  children,
+  ...props
+}: DestinationActionLinkProps) {
+  return (
+    <DestinationLink
+      {...props}
+      className="button-control"
+      data-button-control=""
+    >
+      {children}
+    </DestinationLink>
   );
 }
 
