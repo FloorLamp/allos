@@ -16,6 +16,7 @@ import { currentPathHref } from "@/lib/hrefs";
 // was a fourth local copy of 15000 until the vocabulary got one home.
 import { UNDO_TOAST_MS } from "@/lib/undo-offer";
 import PaginationControls from "@/components/PaginationControls";
+import CheckboxControl from "@/components/CheckboxControl";
 
 interface Dataset {
   key: string;
@@ -260,12 +261,10 @@ export default function DataTableManager({
                 <tr>
                   {editing && (
                     <th className="th w-8">
-                      <input
-                        type="checkbox"
-                        className="h-4 w-4 accent-brand-600"
+                      <CheckboxControl
+                        label="Select all rows shown"
                         checked={allVisibleSelected}
-                        onChange={toggleAllVisible}
-                        aria-label="Select all rows shown"
+                        onChange={() => toggleAllVisible()}
                       />
                     </th>
                   )}
@@ -289,12 +288,10 @@ export default function DataTableManager({
                     >
                       {editing && (
                         <td className="td w-8">
-                          <input
-                            type="checkbox"
-                            className="h-4 w-4 accent-brand-600"
+                          <CheckboxControl
+                            label={`Select row ${i + 1}`}
                             checked={isSel}
                             onChange={() => toggleRow(id)}
-                            aria-label={`Select row ${i + 1}`}
                           />
                         </td>
                       )}
