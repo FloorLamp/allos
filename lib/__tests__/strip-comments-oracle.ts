@@ -22,11 +22,12 @@
 // The two directions are not equally bad and the report keeps them apart for that
 // reason. Over-blanking is the direction that hides a defect.
 //
-// IT IS NOT A TEST AND IT DOES NOT REPLACE THE SCANNER. Depending on `typescript` at
-// scan time would make every census in `lib/__tests__` pay a full tokenizer, and the
-// scanner's whole design is that it does not need one (it never deletes, so its
-// failures are bounded). This is the instrument that says how far the heuristic is
-// from the real answer, run by hand and pinned by the cases in
+// IT IS NOT A TEST AND IT DOES NOT REPLACE THE DEFAULT SCANNER. Depending on
+// `typescript` at scan time would make every census in `lib/__tests__` pay for a full
+// parse. The dialog census opts into the parser-backed projection exported below
+// because over-blanking there can hide the exact ModalShell it guards (#3532); the
+// other consumers retain the lightweight scanner and this instrument says how far
+// that heuristic is from the real answer, run by hand and pinned by the cases in
 // `lib/__tests__/strip-comments.test.ts`.
 import { execFileSync } from "node:child_process";
 import fs from "node:fs";
@@ -55,6 +56,10 @@ export function oracleCommentRanges(
   src: string
 ): [number, number][] {
   const sf = ts.createSourceFile(rel, src, ts.ScriptTarget.Latest, true);
+  return commentRanges(sf, src);
+}
+
+function commentRanges(sf: ts.SourceFile, src: string): [number, number][] {
   const out: [number, number][] = [];
   const seen = new Set<number>();
   const visit = (node: ts.Node): void => {
@@ -80,6 +85,29 @@ export function oracleCommentRanges(
   };
   visit(sf);
   return out;
+}
+
+/**
+ * Blank comments from a source file using the parser's trivia boundaries.
+ *
+ * Unlike a raw scanner, the parser has enough grammar context to know that the `/`
+ * after `)` or `}` may open a regular expression. That distinction is load-bearing
+ * for a guard: `/[/*]/` must remain code, not become a block comment that hides the
+ * rest of the file. Invalid source fails closed by returning the original text. A
+ * false finding is visible; deleting code from a guard's input would be a silent
+ * false pass.
+ */
+export function stripCommentsParsed(rel: string, src: string): string {
+  const sf = ts.createSourceFile(rel, src, ts.ScriptTarget.Latest, true);
+  const diagnostics = (
+    sf as ts.SourceFile & { parseDiagnostics?: readonly ts.Diagnostic[] }
+  ).parseDiagnostics;
+  if (diagnostics?.length) return src;
+
+  const out = src.split("");
+  for (const [from, to] of commentRanges(sf, src))
+    for (let i = from; i < to; i += 1) if (out[i] !== "\n") out[i] = " ";
+  return out.join("");
 }
 
 export interface Disagreement {

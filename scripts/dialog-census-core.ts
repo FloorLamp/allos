@@ -50,7 +50,7 @@
 import fs from "node:fs";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
-import { stripComments } from "@/lib/__tests__/strip-comments";
+import { stripCommentsParsed } from "@/lib/__tests__/strip-comments-oracle";
 
 export const REPO_ROOT = path.resolve(
   fileURLToPath(new URL("..", import.meta.url))
@@ -227,11 +227,14 @@ export function readSourceFiles(root: string = REPO_ROOT): SourceFile[] {
  * Strings, templates and regular-expression literals are copied through verbatim,
  * comment openers and all. Both halves are load-bearing: `accept="image/*"` and
  * `/\/*$/` must not open phantom block comments that blank everything after them.
- * The shared scanner carries the repo-wide regex/class/template handling and its
- * parser-oracle tests; keeping a smaller private scanner here recreated #3532.
+ * This census uses the parser-backed path because its failure direction is
+ * security-guard-shaped: deleting source can hide a dialog. A raw scanner cannot
+ * distinguish division from a regex after `)` or `}`, so `/[/*]/` in either position
+ * can otherwise open a phantom block comment and blank a later ModalShell (#3532).
+ * Invalid source fails closed as unstripped text rather than disappearing.
  */
-export function withoutComments(text: string): string {
-  return stripComments(text);
+export function withoutComments(text: string, rel = "source.tsx"): string {
+  return stripCommentsParsed(rel, text);
 }
 
 // ── Imports ──────────────────────────────────────────────────────────────────
@@ -283,7 +286,7 @@ export function resolveSpecifier(fromRel: string, spec: string): string {
  * "@/components/ModalShell"`) is still recognised as the host it is.
  */
 export function importedBindings(file: SourceFile): ImportedBinding[] {
-  const code = withoutComments(file.text);
+  const code = withoutComments(file.text, file.rel);
   const out: ImportedBinding[] = [];
   for (const m of code.matchAll(IMPORT_RE)) {
     const wholeClauseIsType = m[1] != null;
@@ -495,7 +498,7 @@ export function handRolled(
   file: SourceFile,
   bindings: ImportedBinding[]
 ): HandRolled {
-  const code = withoutComments(file.text);
+  const code = withoutComments(file.text, file.rel);
   const imports = (module: string, local?: string) =>
     bindings.some(
       (b) => b.module === module && (local == null || b.local === local)
@@ -649,7 +652,7 @@ export interface DialogCensus {
 export function censusDialogs(files: SourceFile[]): DialogCensus {
   const entries: DialogEntry[] = [];
   for (const file of files) {
-    const code = withoutComments(file.text);
+    const code = withoutComments(file.text, file.rel);
     const bindings = importedBindings(file);
 
     const hosts: string[] = [];

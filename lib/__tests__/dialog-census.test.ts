@@ -932,6 +932,37 @@ describe("dialog census — what it can SEE", () => {
     }
   );
 
+  it.each([
+    [
+      "a braceless conditional body after `)`",
+      `const ready = true;
+       const path = "/entry/";
+       if (ready) /[/*]/.test(path);`,
+    ],
+    [
+      "a statement after a function body's `}`",
+      `const path = "/entry/";
+       function probe() {}
+       /[/*]/.test(path);`,
+    ],
+  ])("keeps a ModalShell after %s", (name, beforeModal) => {
+    const entry = classifyOne(
+      `components/RegexAfter-${name}.tsx`,
+      `import ModalShell from "@/components/ModalShell";
+       ${beforeModal}
+       export default function RegexBeforeModal() {
+         return (
+           <ModalShell open onClose={() => {}} title="Edit entry">
+             <div>{path}</div>
+           </ModalShell>
+         );
+       }`
+    );
+
+    expect(entry?.kind).toBe("hosted");
+    expect(entry?.hosts).toContain("components/ModalShell.tsx");
+  });
+
   it("reads a source file that carries a NUL byte", () => {
     const entry = classifyOne(
       "components/NulByte.tsx",
