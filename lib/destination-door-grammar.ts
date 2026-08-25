@@ -414,26 +414,27 @@ function jsxTagReference(node: ts.Node): boolean {
   );
 }
 
-function bindingElementMaySelectChevron(element: ts.BindingElement): boolean {
-  if (element.dotDotDotToken) return true;
-  const propertyName = element.propertyName;
-  if (!propertyName) {
+function directQualifiedJsxReference(node: ts.Identifier): boolean {
+  let current: ts.Expression = node;
+  while (true) {
+    const parent = current.parent;
+    if (
+      (ts.isParenthesizedExpression(parent) ||
+        ts.isAsExpression(parent) ||
+        ts.isTypeAssertionExpression(parent) ||
+        ts.isNonNullExpression(parent) ||
+        ts.isSatisfiesExpression(parent)) &&
+      parent.expression === current
+    ) {
+      current = parent;
+      continue;
+    }
     return (
-      ts.isIdentifier(element.name) && element.name.text === "IconChevronRight"
+      ts.isPropertyAccessExpression(parent) &&
+      parent.expression === current &&
+      jsxTagReference(parent)
     );
   }
-  if (
-    ts.isIdentifier(propertyName) ||
-    ts.isStringLiteralLike(propertyName) ||
-    ts.isNumericLiteral(propertyName)
-  ) {
-    return propertyName.text === "IconChevronRight";
-  }
-  if (ts.isComputedPropertyName(propertyName)) {
-    const key = staticString(propertyName.expression);
-    return key == null || key === "IconChevronRight";
-  }
-  return false;
 }
 
 function makeFinding(
@@ -783,40 +784,21 @@ function indexFile(source: DoorSource): {
           record.binding &&
           lexicalBinding(node) === record.binding
       );
-      if (iconNamespaceImport) {
-        const member = node.parent;
-        const propertyChevron =
-          ts.isPropertyAccessExpression(member) &&
-          member.expression === node &&
-          member.name.text === "IconChevronRight";
-        const computedChevron =
-          ts.isElementAccessExpression(member) &&
-          member.expression === node &&
-          (() => {
-            const key = member.argumentExpression
-              ? staticString(member.argumentExpression)
-              : null;
-            return key == null || key === "IconChevronRight";
-          })();
-        const destructuredChevron =
-          ts.isVariableDeclaration(member) &&
-          member.initializer === node &&
-          ts.isObjectBindingPattern(member.name) &&
-          member.name.elements.some(bindingElementMaySelectChevron);
-        if (
-          (propertyChevron && !jsxTagReference(member)) ||
-          computedChevron ||
-          destructuredChevron
-        ) {
-          findings.push(
-            makeFinding(
-              "chevron:value-use",
-              source.path,
-              `unsupported non-JSX IconChevronRight member use through ${node.text}`,
-              lineOf(file, node)
-            )
-          );
-        }
+      if (
+        iconNamespaceImport &&
+        !importBinding &&
+        !isNamePosition(node) &&
+        !isInTypePosition(node) &&
+        !directQualifiedJsxReference(node)
+      ) {
+        findings.push(
+          makeFinding(
+            "chevron:value-use",
+            source.path,
+            `unsupported runtime value escape of ${node.text} from @tabler/icons-react`,
+            lineOf(file, node)
+          )
+        );
       }
     }
     if (

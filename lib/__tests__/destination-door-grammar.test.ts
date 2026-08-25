@@ -1476,6 +1476,10 @@ describe("destination-door source-shape registry (#3502)", () => {
     'import * as Icons from "@tabler/icons-react"; const key = "IconChevronRight"; const Next = Icons[key]; export function Row() { return <button><Next /></button>; }',
     'import * as Icons from "@tabler/icons-react"; declare const key: string; const Next = Icons[key]; export function Row() { return <button><Next /></button>; }',
     'import Icons from "@tabler/icons-react"; const Next = Icons.IconChevronRight; export function Row() { return <button><Next /></button>; }',
+    'import * as Icons from "@tabler/icons-react"; const Next = (Icons).IconChevronRight; export function Row() { return <button><Next /></button>; }',
+    'import * as Icons from "@tabler/icons-react"; const Next = (Icons as typeof Icons).IconChevronRight; export function Row() { return <button><Next /></button>; }',
+    'import * as Icons from "@tabler/icons-react"; const { IconChevronRight: Next } = (Icons); export function Row() { return <button><Next /></button>; }',
+    'import * as Icons from "@tabler/icons-react"; const Alias = Icons; const Next = Alias.IconChevronRight; export function Row() { return <button><Next /></button>; }',
   ])(
     "rejects IconChevronRight aliases derived from module objects: %s",
     (source) => {
@@ -1495,7 +1499,7 @@ describe("destination-door source-shape registry (#3502)", () => {
       {
         path: "components/IconRow.tsx",
         source:
-          'import * as Icons from "@tabler/icons-react"; export function Row() { return <button><Icons.IconChevronRight /></button>; }',
+          'import * as Icons from "@tabler/icons-react"; export function Row() { return <button><Icons.IconArrowLeft /><Icons.IconChevronRight /></button>; }',
       },
     ]);
     expect(corpus.findings).toEqual([]);
