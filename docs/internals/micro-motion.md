@@ -6,19 +6,21 @@ document governs is motion that answers **"did that work?"** inside the interfac
 itself, which is faster and quieter than a toast. Motion here is information, and
 it is held to the same standard as copy.
 
-Five motions ship today (#2654, #2657). `slide` and `fold` are the two halves of one
+Seven motions ship today (#2654, #2657, #3253, #3675). `slide` and `fold` are the two halves of one
 gesture — a dismissal travelling, and the fold answering — and they are deliberately
 **two** tokens, because they are two durations with two different justifications.
 
-| Motion   | Token             | Duration             | What it says                                               |
-| -------- | ----------------- | -------------------- | ---------------------------------------------------------- |
-| `settle` | `--motion-settle` | 300 ms               | the control you tapped **became** its done state           |
-| `count`  | `--motion-count`  | 250 ms               | a **quantity** changed, rather than a value being replaced |
-| `slide`  | `--motion-slide`  | 300 ms               | the finding you dismissed **went somewhere**               |
-| `tick`   | `--motion-tick`   | 180 ms               | the scrub crossed **into a different month**               |
-| `fold`   | `--motion-fold`   | 500 ms (band-exempt) | the fold **caught** it — this is where to look             |
+| Motion    | Token              | Duration             | What it says                                               |
+| --------- | ------------------ | -------------------- | ---------------------------------------------------------- |
+| `settle`  | `--motion-settle`  | 300 ms               | the control you tapped **became** its done state           |
+| `count`   | `--motion-count`   | 250 ms               | a **quantity** changed, rather than a value being replaced |
+| `slide`   | `--motion-slide`   | 300 ms               | the finding you dismissed **went somewhere**               |
+| `tick`    | `--motion-tick`    | 180 ms               | the scrub crossed **into a different month**               |
+| `promote` | `--motion-promote` | 300 ms               | a witnessed reading **moved into Now**                     |
+| `arrive`  | `--motion-arrive`  | 200 ms               | due-and-usual offers **finished gathering**                |
+| `fold`    | `--motion-fold`    | 500 ms (band-exempt) | the fold **caught** it — this is where to look             |
 
-One ease curve for all five, `--motion-ease`, decelerating: the move arrives and
+One ease curve for all seven, `--motion-ease`, decelerating: the move arrives and
 settles, it never bounces back.
 
 ## The four rules
@@ -97,6 +99,9 @@ smuggle the row's travel out of the band too, and the test fails that.
 - `components/quick-entry/QuickStoolForm.tsx` — type-chip settle and today's-count pulse.
 - `app/(app)/timeline/TimelineScrubber.tsx` — the jump rail's bubble, beating once per
   month boundary a drag crosses.
+- `components/dashboard/NowCards.tsx` — a witnessed reading promoted into Now.
+- `components/QuickLogSheet.tsx` — due-and-usual offers fading into a slot reserved
+  before their asynchronous gather starts.
 - `components/SnoozeDismissMenu.tsx` — the dismissal's travel, started on the tap.
 - `app/(app)/upcoming/FoldSummary.tsx` — the fold line that pulses when it catches one.
 - `lib/__tests__/micro-motion.test.ts` — pins the CSS numbers to the module's, and
@@ -219,6 +224,15 @@ between scrubbing _through_ history and sliding around inside one month.
   text at rest" is the idiom's whole point — so there is no mount to pulse on.
 - The beat is replayed by **remounting the bubble's label** (React `key` on a counter),
   because a one-shot CSS animation cannot re-run from a class that never left.
+
+**`arrive` — `components/QuickLogSheet.tsx`, the due-and-usual gather.** The sheet
+reserves the context slot before it asks the server what is due and usual, so the
+answer never changes panel height or moves the segment strip. When a non-empty answer
+lands, its section fades once for 200 ms, opacity only. The heading and controls are
+already authoritative on that frame, and a persistent `aria-live` status announces
+that the options are ready. Under reduced motion they are simply present at full
+opacity; no class or keyframe is scheduled. An empty or failed gather stays silent and
+the reserved slot remains, so silence never reintroduces the shove.
 
 ## How the suite proves it
 

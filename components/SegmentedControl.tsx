@@ -66,6 +66,7 @@ export default function SegmentedControl<T extends string | number>({
   ariaLabel,
   ariaCurrent = "page",
   testId,
+  fill = false,
   className = "",
 }: {
   options: SegmentedControlOption<T>[];
@@ -82,6 +83,9 @@ export default function SegmentedControl<T extends string | number>({
   //            overclaim there.
   ariaCurrent?: "page" | "true";
   testId?: string;
+  // Opt-in equal-width track. The root owns its display mode so a caller never
+  // has to beat `inline-flex` through Tailwind's generated utility order.
+  fill?: boolean;
   className?: string;
 }) {
   return (
@@ -91,7 +95,7 @@ export default function SegmentedControl<T extends string | number>({
       data-testid={testId}
       // Identifies the shared control for styling and tests.
       data-segmented=""
-      className={`inline-flex rounded-lg bg-(--seg-bg) p-1 ${className}`}
+      className={`${fill ? "flex w-full" : "inline-flex"} rounded-lg bg-(--seg-bg) p-1 ${className}`}
     >
       {options.map((option) => {
         const active = value === option.value;
@@ -99,14 +103,24 @@ export default function SegmentedControl<T extends string | number>({
         // Botanical census's accent-filled pill). Each option renders its own
         // 44px target; the track's padding is visual inset, not a substitute
         // non-clickable target and no pseudo-area can overlap a sibling.
-        const segmentClass = `inline-flex min-h-11 shrink-0 items-center justify-center rounded-md px-3 py-1 text-xs font-medium whitespace-nowrap transition ${
-          option.icon ? "gap-1.5 " : ""
-        }${
+        const segmentClass = `inline-flex min-h-11 items-center justify-center rounded-md px-3 py-1 text-xs font-medium whitespace-nowrap transition ${
+          fill ? "min-w-0 flex-1 " : "shrink-0 "
+        }${option.icon ? "gap-1.5 " : ""}${
           active
             ? "bg-(--seg-active-bg) text-(--seg-active-fg) shadow-xs"
             : "text-slate-500 hover:text-slate-800 disabled:cursor-not-allowed disabled:opacity-35 disabled:hover:text-slate-500 dark:text-slate-400 dark:hover:text-slate-100 dark:disabled:hover:text-slate-400"
         }`;
-        const body = (
+        // Keep intrinsic consumers' rendered body byte-for-byte unchanged. Fill
+        // mode alone needs a released content floor and a visual ellipsis; the
+        // text remains the accessible name, and `title` preserves it on hover.
+        const body = fill ? (
+          <>
+            {option.icon}
+            <span className="min-w-0 truncate" title={option.label}>
+              {option.label}
+            </span>
+          </>
+        ) : (
           <>
             {option.icon}
             {option.label}

@@ -51,7 +51,7 @@ import {
 //   substance_daily_totals — `source = 'manual'` (#3327). NOT NULL with a 'manual'
 //     default, exactly like metric_samples, so there is no null half to admit. Only
 //     the NON-food substances are here: alcohol's taps land on food_daily_totals and
-//     are already counted by the Food arm, and counting them again as Care would make
+//     are already counted by the Consume arm, and counting them again would make
 //     one tap evidence for two segments.
 //   medical_records — `source IS NULL OR source = 'manual'`. Nullable AND written
 //     by hand-entry paths that disagree: `insertVitals`/`recordReading` and the
@@ -123,14 +123,14 @@ const HABIT_DAYS = hoistedStatement(
      SELECT 'body' AS segment, period_start AS d FROM cycles
        WHERE profile_id = @profileId AND period_start >= @from
      UNION ALL
-     SELECT 'care' AS segment, l.date AS d FROM intake_item_logs l
+     SELECT 'food' AS segment, l.date AS d FROM intake_item_logs l
        JOIN intake_items ii ON ii.id = l.item_id
       WHERE ii.profile_id = @profileId AND l.date >= @from
      UNION ALL
      SELECT 'care' AS segment, date AS d FROM practice_logs
        WHERE profile_id = @profileId AND source IS NULL AND date >= @from
      UNION ALL
-     SELECT 'care' AS segment, date AS d FROM substance_daily_totals
+     SELECT 'food' AS segment, date AS d FROM substance_daily_totals
        WHERE profile_id = @profileId AND source = 'manual' AND date >= @from
    ) WHERE d IS NOT NULL AND d != ''
    GROUP BY segment`

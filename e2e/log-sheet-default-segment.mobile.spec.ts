@@ -148,11 +148,11 @@ test.describe("the dashboard sheet's opening segment (#2709)", () => {
   });
 
   test("changes nothing on a route that promotes its own domain", async () => {
-    // The ruling's stated scope. Medications promotes doses however heavily this
-    // profile has been logging food, because the page you are standing on is
-    // better evidence about the next tap than a quarter of history.
+    // The ruling's stated scope. Medications promotes doses into Consume however
+    // heavily this profile has been logging food, because the page you are
+    // standing on is better evidence about the next tap than a quarter of history.
     setFoodHistory(true);
     await page.goto("/medications");
-    expect(await openingSegment(page)).toBe("log-sheet-segment-care");
+    expect(await openingSegment(page)).toBe("log-sheet-segment-food");
   });
 });

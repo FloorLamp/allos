@@ -136,7 +136,7 @@ describe("quickLogMenu", () => {
     expect(noSubstance).not.toContain("log-substance");
   });
 
-  it("puts the substance row in Care, after mood and before the document row", () => {
+  it("keeps the registry's substance row after mood and before the document row", () => {
     expect(quickLogMenu(true, true).map((i) => i.id)).toEqual([
       LOG_ACTIVITY_ID,
       "live-workout",

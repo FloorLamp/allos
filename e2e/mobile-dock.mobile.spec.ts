@@ -166,7 +166,7 @@ test("the puck opens the log sheet, whose segmented long tail reaches every log"
 test("the sheet opens on the segment the current route is about", async ({
   page,
 }) => {
-  // Nutrition promotes food (lib/quick-log.ts), so the puck lands on Food with
+  // Nutrition promotes food (lib/quick-log.ts), so the puck lands on Consume with
   // no segment tap at all — the whole reason the default is derived rather than
   // fixed.
   await page.goto("/nutrition");
