@@ -59,6 +59,7 @@ function primitiveText(value: unknown, kind: JsonKind): string {
 function Caret({ open }: { open: boolean }) {
   return (
     <IconChevronRight
+      aria-hidden="true"
       className={`h-3.5 w-3.5 shrink-0 transition-transform ${open ? "rotate-90" : ""}`}
       stroke={2}
     />

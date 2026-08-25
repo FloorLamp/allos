@@ -36,6 +36,8 @@ export interface ExactReturn {
 export interface DestinationDoorContract {
   testId: string;
   destinationExpression: string;
+  destinationBinding?: "module";
+  moduleBindings?: readonly { name: string; moduleName: string }[];
   title?: string;
   label: DoorLabel;
   childShape: readonly string[];
@@ -77,6 +79,20 @@ export interface ModuleReference {
   line: number;
   local?: string;
   canonical?: boolean;
+}
+
+export interface ComponentRuntimeReference {
+  kind: "jsx" | "non-jsx";
+  line: number;
+}
+
+export interface ChevronOccurrence {
+  line: number;
+  ownerTag: string;
+  role: string | null;
+  label: string | null;
+  testId: string | null;
+  ariaHidden: string | null;
 }
 
 function sourceFile(
@@ -144,9 +160,13 @@ function attributeValue(attr: ts.JsxAttribute | null): string | null {
     if (attr.initializer.expression.kind === ts.SyntaxKind.FalseKeyword) {
       return "false";
     }
-    return attr.initializer.expression.getText();
+    return compact(attr.initializer.expression.getText());
   }
   return null;
+}
+
+function staticString(node: ts.Expression | ts.ModuleName): string | null {
+  return ts.isStringLiteralLike(node) ? node.text : null;
 }
 
 function exactAttributeIssues(opening: Opening, role: string): string[] {
@@ -174,6 +194,39 @@ function hasStaticClassTokens(
   if (!attr?.initializer || !ts.isStringLiteral(attr.initializer)) return false;
   const classes = new Set(attr.initializer.text.split(/\s+/).filter(Boolean));
   return tokens.every((token) => classes.has(token));
+}
+
+function hiddenClassToken(value: string): boolean {
+  return value
+    .split(/\s+/)
+    .filter(Boolean)
+    .some((token) => /(^|:)(hidden|invisible|collapse)$/.test(token));
+}
+
+function visibilityIssues(opening: Opening, role: string): string[] {
+  const issues: string[] = [];
+  if (role !== "hidden-ancestry" && attribute(opening, "aria-labelledby")) {
+    issues.push(`${role}-aria-labelledby`);
+  }
+  for (const name of ["hidden", "inert"] as const) {
+    const attr = attribute(opening, name);
+    const value = attributeValue(attr);
+    if (attr && value !== "false") issues.push(`${role}-${name}`);
+  }
+  if (attribute(opening, "style")) issues.push(`${role}-style`);
+  const className = attribute(opening, "className");
+  if (className) {
+    const value = attributeValue(className);
+    if (
+      (value != null && hiddenClassToken(value)) ||
+      /(?:["'`\s:])(hidden|invisible|collapse)(?:["'`\s}]|$)/.test(
+        className.getText()
+      )
+    ) {
+      issues.push(`${role}-hidden-class`);
+    }
+  }
+  return issues;
 }
 
 function directText(node: JsxNode): string[] {
@@ -229,6 +282,7 @@ function hiddenJsxAncestorIssues(node: JsxNode): string[] {
   while (current) {
     if (ts.isJsxElement(current) || ts.isJsxSelfClosingElement(current)) {
       const opening = openingOf(current)!;
+      issues.push(...visibilityIssues(opening, "hidden-ancestry"));
       if (opening.attributes.properties.some(ts.isJsxSpreadAttribute)) {
         issues.push("hidden-ancestry-spread");
       }
@@ -266,6 +320,31 @@ function hasCanonicalDefaultImport(
   );
 }
 
+function declarationNames(file: ts.SourceFile, name: string): ts.Node[] {
+  const found: ts.Node[] = [];
+  const visit = (node: ts.Node): void => {
+    if (
+      ts.isVariableDeclaration(node) &&
+      bindingNames(node.name).includes(name)
+    ) {
+      found.push(node);
+    } else if (ts.isParameter(node) && bindingNames(node.name).includes(name)) {
+      found.push(node);
+    } else if (
+      (ts.isFunctionDeclaration(node) ||
+        ts.isFunctionExpression(node) ||
+        ts.isClassDeclaration(node) ||
+        ts.isClassExpression(node)) &&
+      node.name?.text === name
+    ) {
+      found.push(node);
+    }
+    ts.forEachChild(node, visit);
+  };
+  visit(file);
+  return found;
+}
+
 function hasCanonicalNamedImport(
   file: ts.SourceFile,
   moduleName: string,
@@ -291,27 +370,71 @@ function hasCanonicalNamedImport(
   );
 }
 
-function exactBinding(file: ts.SourceFile, binding: ExactBinding): boolean {
-  const matches: ts.VariableDeclaration[] = [];
-  const visit = (node: ts.Node): void => {
-    if (
-      ts.isVariableDeclaration(node) &&
-      ts.isIdentifier(node.name) &&
-      node.name.text === binding.name
-    ) {
-      matches.push(node);
-    }
-    ts.forEachChild(node, visit);
-  };
-  visit(file);
+function isFunctionScope(node: ts.Node): node is ts.FunctionLikeDeclaration {
   return (
-    matches.length === 1 &&
-    matches[0].initializer != null &&
-    compact(matches[0].initializer.getText()) === compact(binding.expression)
+    ts.isFunctionDeclaration(node) ||
+    ts.isFunctionExpression(node) ||
+    ts.isArrowFunction(node) ||
+    ts.isMethodDeclaration(node) ||
+    ts.isGetAccessorDeclaration(node) ||
+    ts.isSetAccessorDeclaration(node) ||
+    ts.isConstructorDeclaration(node)
   );
 }
 
-function exactReturn(file: ts.SourceFile, contract: ExactReturn): boolean {
+function nearestFunctionScope(
+  node: ts.Node
+): ts.FunctionLikeDeclaration | null {
+  let current: ts.Node | undefined = node.parent;
+  while (current) {
+    if (isFunctionScope(current)) return current;
+    current = current.parent;
+  }
+  return null;
+}
+
+function bindingNames(name: ts.BindingName): string[] {
+  if (ts.isIdentifier(name)) return [name.text];
+  return name.elements.flatMap((element) =>
+    ts.isOmittedExpression(element) ? [] : bindingNames(element.name)
+  );
+}
+
+function exactBinding(
+  scope: ts.FunctionLikeDeclaration | null,
+  binding: ExactBinding
+): boolean {
+  if (!scope || !scope.body || !ts.isBlock(scope.body)) return false;
+  const matches: ts.VariableDeclaration[] = [];
+  const visit = (node: ts.Node): void => {
+    if (ts.isVariableDeclaration(node)) {
+      if (bindingNames(node.name).includes(binding.name)) matches.push(node);
+    }
+    ts.forEachChild(node, visit);
+  };
+  visit(scope.body);
+  const direct = scope.body.statements
+    .filter(ts.isVariableStatement)
+    .flatMap((statement) => [...statement.declarationList.declarations])
+    .filter(
+      (declaration) =>
+        ts.isIdentifier(declaration.name) &&
+        declaration.name.text === binding.name
+    );
+  return (
+    matches.length === 1 &&
+    direct.length === 1 &&
+    direct[0] === matches[0] &&
+    direct[0].initializer != null &&
+    compact(direct[0].initializer.getText()) === compact(binding.expression)
+  );
+}
+
+function exactReturn(
+  file: ts.SourceFile,
+  scope: ts.FunctionLikeDeclaration | null,
+  contract: ExactReturn
+): boolean {
   const functions = file.statements.filter(
     (statement): statement is ts.FunctionDeclaration =>
       ts.isFunctionDeclaration(statement) &&
@@ -319,10 +442,32 @@ function exactReturn(file: ts.SourceFile, contract: ExactReturn): boolean {
   );
   if (functions.length !== 1 || !functions[0].body) return false;
   const returns = functions[0].body.statements.filter(ts.isReturnStatement);
-  return (
+  if (!(
     returns.length === 1 &&
     returns[0].expression != null &&
     compact(returns[0].expression.getText()) === compact(contract.expression)
+  ))
+    return false;
+
+  const references: ts.Identifier[] = [];
+  const visit = (node: ts.Node): void => {
+    if (ts.isIdentifier(node) && node.text === contract.functionName) {
+      references.push(node);
+    }
+    ts.forEachChild(node, visit);
+  };
+  visit(file);
+  return (
+    scope != null &&
+    references.length === 2 &&
+    references.some((reference) => reference === functions[0].name) &&
+    references.some(
+      (reference) =>
+        ts.isCallExpression(reference.parent) &&
+        reference.parent.expression === reference &&
+        reference.getStart(file) >= scope.getStart(file) &&
+        reference.getEnd() <= scope.getEnd()
+    )
   );
 }
 
@@ -372,9 +517,25 @@ export function auditDestinationDoorSource(
     return { issues, line: null };
   }
   const linkOpening = openingOf(link)!;
+  const scope = nearestFunctionScope(door);
+
+  if (declarationNames(file, "Link").length > 0) issues.push("link-shadow");
+  if (declarationNames(file, "IconChevronRight").length > 0) {
+    issues.push("chevron-shadow");
+  }
+  for (const binding of contract.moduleBindings ?? []) {
+    if (!hasCanonicalNamedImport(file, binding.moduleName, binding.name)) {
+      issues.push(`module-binding:${binding.name}`);
+    }
+    if (declarationNames(file, binding.name).length > 0) {
+      issues.push(`module-binding-shadow:${binding.name}`);
+    }
+  }
 
   issues.push(...exactAttributeIssues(linkOpening, "link"));
   if (door !== link) issues.push(...exactAttributeIssues(doorOpening, "door"));
+  issues.push(...visibilityIssues(linkOpening, "link"));
+  if (door !== link) issues.push(...visibilityIssues(doorOpening, "door"));
 
   const href = attributeValue(attribute(linkOpening, "href"));
   if (
@@ -382,6 +543,20 @@ export function auditDestinationDoorSource(
     compact(href) !== compact(contract.destinationExpression)
   ) {
     issues.push("destination");
+  }
+  const destinationRoot =
+    contract.destinationExpression.match(/^[A-Za-z_$][\w$]*/)?.[0];
+  if (
+    contract.destinationBinding === "module" &&
+    destinationRoot &&
+    scope &&
+    declarationNames(scope.getSourceFile(), destinationRoot).some(
+      (declaration) =>
+        declaration.getStart(file) >= scope.getStart(file) &&
+        declaration.getEnd() <= scope.getEnd()
+    )
+  ) {
+    issues.push(`destination-shadow:${destinationRoot}`);
   }
   if (
     contract.title != null &&
@@ -487,10 +662,10 @@ export function auditDestinationDoorSource(
   if (/[›→]/.test(door.getText(file))) issues.push("retired-arrow-glyph");
 
   for (const binding of contract.bindings ?? []) {
-    if (!exactBinding(file, binding)) issues.push(`binding:${binding.name}`);
+    if (!exactBinding(scope, binding)) issues.push(`binding:${binding.name}`);
   }
   for (const requiredReturn of contract.returns ?? []) {
-    if (!exactReturn(file, requiredReturn)) {
+    if (!exactReturn(file, scope, requiredReturn)) {
       issues.push(`return:${requiredReturn.functionName}`);
     }
   }
@@ -545,6 +720,8 @@ function ownedBy(
   file: ts.SourceFile
 ): boolean {
   let current: ts.Node | undefined = node.parent;
+  let conditionalPath = false;
+  let deadPath = false;
   while (current) {
     if (owner.kind === "jsx-attribute" && ts.isJsxAttribute(current)) {
       const opening = current.parent.parent;
@@ -552,7 +729,15 @@ function ownedBy(
         current.name.getText() === owner.attribute &&
         (ts.isJsxOpeningElement(opening) ||
           ts.isJsxSelfClosingElement(opening)) &&
-        tagName(opening.tagName) === owner.ownerTag
+        tagName(opening.tagName) === owner.ownerTag &&
+        !conditionalPath &&
+        opening.attributes.properties.every(ts.isJsxAttribute) &&
+        attributes(opening, owner.attribute).length === 1 &&
+        current.initializer != null &&
+        ts.isJsxExpression(current.initializer) &&
+        current.initializer.expression != null &&
+        (ts.isJsxElement(current.initializer.expression) ||
+          ts.isJsxSelfClosingElement(current.initializer.expression))
       ) {
         return true;
       }
@@ -564,6 +749,9 @@ function ownedBy(
       const opening = openingOf(current)!;
       if (
         tagName(opening.tagName) === owner.ownerTag &&
+        !deadPath &&
+        opening.attributes.properties.every(ts.isJsxAttribute) &&
+        attributes(opening, owner.attribute).length === 1 &&
         attributeValue(attribute(opening, owner.attribute)) === owner.value
       ) {
         return true;
@@ -573,6 +761,7 @@ function ownedBy(
       owner.kind === "ancestor-heading" &&
       ts.isJsxElement(current) &&
       tagName(current.openingElement.tagName) === owner.ownerTag &&
+      !deadPath &&
       directHeadingMatches(current, owner.headingTag, owner.text)
     ) {
       return true;
@@ -581,9 +770,38 @@ function ownedBy(
       owner.kind === "logical-and" &&
       ts.isBinaryExpression(current) &&
       current.operatorToken.kind === ts.SyntaxKind.AmpersandAmpersandToken &&
-      compact(current.left.getText(file)) === compact(owner.expression)
+      compact(current.left.getText(file)) === compact(owner.expression) &&
+      !deadPath
     ) {
       return true;
+    }
+    if (
+      ts.isArrowFunction(current) ||
+      ts.isFunctionExpression(current) ||
+      ts.isCallExpression(current)
+    ) {
+      conditionalPath = true;
+      deadPath = true;
+    } else if (ts.isConditionalExpression(current)) {
+      conditionalPath = true;
+      if (
+        (current.condition.kind === ts.SyntaxKind.FalseKeyword &&
+          node.getStart(file) >= current.whenTrue.getStart(file) &&
+          node.getEnd() <= current.whenTrue.getEnd()) ||
+        (current.condition.kind === ts.SyntaxKind.TrueKeyword &&
+          node.getStart(file) >= current.whenFalse.getStart(file) &&
+          node.getEnd() <= current.whenFalse.getEnd())
+      ) {
+        deadPath = true;
+      }
+    } else if (ts.isBinaryExpression(current)) {
+      conditionalPath = true;
+      if (
+        current.operatorToken.kind === ts.SyntaxKind.AmpersandAmpersandToken &&
+        current.left.kind === ts.SyntaxKind.FalseKeyword
+      ) {
+        deadPath = true;
+      }
     }
     current = current.parent;
   }
@@ -627,6 +845,117 @@ export function chevronLines(source: string): number[] {
   return jsxMountLines(source, "IconChevronRight");
 }
 
+/** Structural identity and accessibility of every chevron occurrence. */
+export function chevronOccurrences(source: string): ChevronOccurrence[] {
+  const file = sourceFile(source, "destination-door-chevron.tsx");
+  const parentOpening = (node: ts.Node): Opening | null => {
+    let current: ts.Node | undefined = node.parent;
+    while (current) {
+      if (ts.isJsxElement(current) || ts.isJsxSelfClosingElement(current)) {
+        return openingOf(current)!;
+      }
+      current = current.parent;
+    }
+    return null;
+  };
+  return jsxElements(file)
+    .filter((node) => tagName(openingOf(node)!.tagName) === "IconChevronRight")
+    .map((icon) => {
+      let owner: JsxNode | null = null;
+      let ancestor: ts.Node | undefined = icon.parent;
+      let testId: string | null = null;
+      let bindingName: string | null = null;
+      let functionName: string | null = null;
+      while (ancestor) {
+        if (ts.isJsxElement(ancestor) || ts.isJsxSelfClosingElement(ancestor)) {
+          const opening = openingOf(ancestor)!;
+          testId ??= attributeValue(attribute(opening, "data-testid"));
+          if (!owner) owner = ancestor;
+        }
+        if (
+          ts.isVariableDeclaration(ancestor) &&
+          ts.isIdentifier(ancestor.name)
+        ) {
+          bindingName ??= ancestor.name.text;
+        }
+        if (ts.isFunctionDeclaration(ancestor) && ancestor.name) {
+          functionName ??= ancestor.name.text;
+        }
+        ancestor = ancestor.parent;
+      }
+      const ownerOpening = owner ? openingOf(owner)! : null;
+      const indirect: Opening[] = [];
+      if (!ownerOpening && bindingName) {
+        const visit = (node: ts.Node): void => {
+          if (
+            ts.isJsxExpression(node) &&
+            node.expression != null &&
+            ts.isIdentifier(node.expression) &&
+            node.expression.text === bindingName
+          ) {
+            const opening = parentOpening(node);
+            if (opening) indirect.push(opening);
+          }
+          ts.forEachChild(node, visit);
+        };
+        visit(file);
+      } else if (!ownerOpening && functionName) {
+        for (const mount of jsxElements(file).filter(
+          (node) => tagName(openingOf(node)!.tagName) === functionName
+        )) {
+          const opening = parentOpening(mount);
+          if (opening) indirect.push(opening);
+        }
+      }
+      const openings = ownerOpening ? [ownerOpening] : indirect;
+      const values = (name: string): string[] =>
+        [
+          ...new Set(
+            openings
+              .map((opening) => attributeValue(attribute(opening, name)))
+              .filter((value): value is string => value != null)
+          ),
+        ].sort();
+      const tags = [
+        ...new Set(openings.map((opening) => tagName(opening.tagName))),
+      ].sort();
+      const labels = [
+        ...new Set([...values("aria-label"), ...values("title")]),
+      ];
+      testId ??= values("data-testid").join("|") || null;
+      const indirectPrefix = bindingName
+        ? `binding:${bindingName}→`
+        : functionName
+          ? `component:${functionName}→`
+          : "";
+      const fallbackIdentity = ["href", "aria-expanded", "name", "type"]
+        .flatMap((name) => {
+          const found = values(name);
+          return found.length > 0 ? [`${name}:${found.join("|")}`] : [];
+        })
+        .join(",");
+      const ownerIdentity = tags.join("|") || "<none>";
+      return {
+        line: file.getLineAndCharacterOfPosition(icon.getStart(file)).line + 1,
+        ownerTag: ownerOpening
+          ? `${tagName(ownerOpening.tagName)}${
+              labels.length === 0 && !testId && fallbackIdentity
+                ? `[${fallbackIdentity}]`
+                : ""
+            }`
+          : `${indirectPrefix}${ownerIdentity}`,
+        role: values("role").join("|") || null,
+        label:
+          labels.join("|") ||
+          (owner && ts.isJsxElement(owner)
+            ? directText(owner).join(" ") || null
+            : null),
+        testId,
+        ariaHidden: attributeValue(attribute(openingOf(icon)!, "aria-hidden")),
+      };
+    });
+}
+
 /** Every syntax identifier with this exact spelling (comments/strings excluded). */
 export function identifierLines(source: string, identifier: string): number[] {
   const file = sourceFile(source, "destination-door-identifier.tsx");
@@ -641,6 +970,38 @@ export function identifierLines(source: string, identifier: string): number[] {
   };
   visit(file);
   return lines;
+}
+
+/** Runtime references to a canonically imported component binding. */
+export function componentRuntimeReferences(
+  source: string,
+  component: string
+): ComponentRuntimeReference[] {
+  const file = sourceFile(source, "destination-door-component-reference.tsx");
+  const found: ComponentRuntimeReference[] = [];
+  const visit = (node: ts.Node): void => {
+    if (ts.isIdentifier(node) && node.text === component) {
+      if (
+        (ts.isImportClause(node.parent) && node.parent.name === node) ||
+        ts.isImportSpecifier(node.parent)
+      ) {
+        return;
+      }
+      const parent = node.parent;
+      const jsx =
+        (ts.isJsxOpeningElement(parent) && parent.tagName === node) ||
+        (ts.isJsxSelfClosingElement(parent) && parent.tagName === node);
+      // Closing tags repeat the opening binding without creating another mount.
+      if (ts.isJsxClosingElement(parent) && parent.tagName === node) return;
+      found.push({
+        kind: jsx ? "jsx" : "non-jsx",
+        line: file.getLineAndCharacterOfPosition(node.getStart(file)).line + 1,
+      });
+    }
+    ts.forEachChild(node, visit);
+  };
+  visit(file);
+  return found;
 }
 
 /**
@@ -658,10 +1019,9 @@ export function componentModuleReferences(
     file.getLineAndCharacterOfPosition(node.getStart(file)).line + 1;
 
   for (const statement of file.statements) {
-    if (
-      ts.isImportDeclaration(statement) &&
-      ts.isStringLiteral(statement.moduleSpecifier)
-    ) {
+    if (ts.isImportDeclaration(statement)) {
+      const moduleName = staticString(statement.moduleSpecifier);
+      if (moduleName == null) continue;
       const clause = statement.importClause;
       const named = clause?.namedBindings;
       const typeOnly =
@@ -674,7 +1034,7 @@ export function componentModuleReferences(
       const local = statement.importClause?.name?.text;
       found.push({
         kind: "import",
-        moduleName: statement.moduleSpecifier.text,
+        moduleName,
         line: line(statement),
         local,
         canonical:
@@ -682,29 +1042,28 @@ export function componentModuleReferences(
           local === canonicalLocal,
       });
     }
-    if (
-      ts.isExportDeclaration(statement) &&
-      statement.moduleSpecifier &&
-      ts.isStringLiteral(statement.moduleSpecifier)
-    ) {
+    if (ts.isExportDeclaration(statement) && statement.moduleSpecifier) {
+      const moduleName = staticString(statement.moduleSpecifier);
+      if (moduleName == null) continue;
       found.push({
         kind: "re-export",
-        moduleName: statement.moduleSpecifier.text,
+        moduleName,
         line: line(statement),
       });
     }
   }
 
   const visit = (node: ts.Node): void => {
-    if (
-      ts.isCallExpression(node) &&
-      node.arguments.length === 1 &&
-      ts.isStringLiteral(node.arguments[0])
-    ) {
+    if (ts.isCallExpression(node) && node.arguments.length === 1) {
+      const moduleName = staticString(node.arguments[0]);
+      if (moduleName == null) {
+        ts.forEachChild(node, visit);
+        return;
+      }
       if (node.expression.kind === ts.SyntaxKind.ImportKeyword) {
         found.push({
           kind: "dynamic-import",
-          moduleName: node.arguments[0].text,
+          moduleName,
           line: line(node),
         });
       } else if (
@@ -713,7 +1072,7 @@ export function componentModuleReferences(
       ) {
         found.push({
           kind: "require",
-          moduleName: node.arguments[0].text,
+          moduleName,
           line: line(node),
         });
       }

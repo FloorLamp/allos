@@ -81,7 +81,10 @@ export default function ProducedListing({
                       {formatDateWithYear(item.date, prefs)}
                     </span>
                   )}
-                  <IconChevronRight className="h-3.5 w-3.5 shrink-0 self-center text-slate-300 group-hover:text-brand-600 dark:text-slate-600 dark:group-hover:text-brand-400" />
+                  <IconChevronRight
+                    aria-hidden="true"
+                    className="h-3.5 w-3.5 shrink-0 self-center text-slate-300 group-hover:text-brand-600 dark:text-slate-600 dark:group-hover:text-brand-400"
+                  />
                 </Link>
                 {/* What the extractor hedged about this row, and why (#2339). */}
                 {flag && (

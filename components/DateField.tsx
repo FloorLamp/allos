@@ -346,7 +346,7 @@ export default function DateField({
                   title="Next month"
                   className="flex h-11 w-11 items-center justify-center rounded-sm text-slate-500 hover:bg-slate-100 hover:text-slate-700 md:h-8 md:w-8 dark:text-slate-400 dark:hover:bg-ink-800 dark:hover:text-slate-200"
                 >
-                  <IconChevronRight className="h-4 w-4" />
+                  <IconChevronRight aria-hidden="true" className="h-4 w-4" />
                 </button>
               </div>
             </div>

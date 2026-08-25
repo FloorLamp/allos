@@ -177,7 +177,7 @@ export default function TrainingLogCalendar({
           aria-label="Next month"
           title="Next month"
         >
-          <IconChevronRight className="h-4 w-4" />
+          <IconChevronRight aria-hidden="true" className="h-4 w-4" />
         </button>
       </div>
 

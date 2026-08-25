@@ -303,6 +303,7 @@ export default function QuickLogSheet({
                     </span>
                   </span>
                   <IconChevronRight
+                    aria-hidden="true"
                     className="h-4 w-4 shrink-0 text-slate-400"
                     stroke={1.75}
                   />

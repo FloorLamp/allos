@@ -63,6 +63,7 @@ export default function MyChartImport({
         </p>
       </div>
       <IconChevronRight
+        aria-hidden="true"
         className="h-4 w-4 shrink-0 text-slate-500 dark:text-slate-400"
         stroke={1.75}
       />

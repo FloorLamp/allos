@@ -395,6 +395,7 @@ export default function SyncHistoryDays({
                 data-testid="sync-day-summary"
               >
                 <IconChevronRight
+                  aria-hidden="true"
                   className="mt-1 h-4 w-4 shrink-0 text-slate-500 transition-transform group-open:rotate-90 dark:text-slate-400"
                   stroke={2}
                 />
