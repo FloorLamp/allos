@@ -921,6 +921,10 @@ describe("destination-door source-shape registry (#3502)", () => {
     'let key = "require"; globalThis[key]("./door")',
     '(0, module["requ" + "ire"])("./door")',
     'module["requ" + "ire"].bind(null)("./door")',
+    'import { createRequire } from "node:module";',
+    'import { createRequire as makeRequire } from "module";',
+    'import * as moduleApi from "node:module";',
+    'import moduleApi from "module";',
   ])("fails loud on unsupported runtime loader: %s", (source) => {
     expect(
       new DestinationDoorCorpus([{ path: "lib/loader.ts", source }]).findings
@@ -959,9 +963,25 @@ describe("destination-door source-shape registry (#3502)", () => {
     "const module = { require() {} }; module.require('./door');",
     "const createRequire = () => null; createRequire();",
     'import { require } from "./benign"; require("./door");',
+    'switch (kind) { case "local": const require = local; require("./door"); break; }',
   ])("respects lexical loader shadowing: %s", (source) => {
     expect(
       new DestinationDoorCorpus([{ path: "lib/shadow.ts", source }]).findings
+    ).toEqual([]);
+  });
+
+  it("ignores loader spellings used only by the type system", () => {
+    expect(
+      new DestinationDoorCorpus([
+        {
+          path: "lib/types.ts",
+          source: [
+            "type RequireType = typeof require;",
+            "type CreateRequireType = typeof createRequire;",
+            "type ModuleRequireType = typeof module.require;",
+          ].join("\n"),
+        },
+      ]).findings
     ).toEqual([]);
   });
 
@@ -1152,6 +1172,86 @@ describe("destination-door source-shape registry (#3502)", () => {
         baseline
       )
     ).toEqual([expect.objectContaining({ key: "renderer:door" })]);
+  });
+
+  it("pins empty named import and export module-shape edges in every mode", () => {
+    const edges = [
+      'import {} from "edge-a";',
+      'import type {} from "edge-b";',
+      'export {} from "edge-c";',
+      'export type {} from "edge-d";',
+    ];
+    const source = [
+      ...edges,
+      "export default function Door() { return <div />; }",
+    ].join("\n");
+    const plan: DestinationDoorPlan = {
+      renderers: [
+        {
+          key: "renderer:door",
+          path: "components/Door.tsx",
+          name: "Door",
+          imports: [],
+          chevronCount: 0,
+        },
+      ],
+      mounts: [],
+      trustedSlots: [],
+      nonDoorReasons: {},
+    };
+    const baseline = smallRegistry(
+      [{ path: "components/Door.tsx", source }],
+      plan
+    ).registry;
+    for (const edge of edges) {
+      expect(
+        auditDestinationDoorRegistry(
+          new DestinationDoorCorpus([
+            {
+              path: "components/Door.tsx",
+              source: source.replace(`${edge}\n`, ""),
+            },
+          ]),
+          baseline
+        ),
+        edge
+      ).toEqual([expect.objectContaining({ key: "renderer:door" })]);
+    }
+  });
+
+  it("uses stable kind-and-ordinal selectors across comment-only prefixes", () => {
+    const source = [
+      'import Link from "next/link";',
+      'export default function Door() { return <Link href="/door">Door</Link>; }',
+    ].join("\n");
+    const plan: DestinationDoorPlan = {
+      renderers: [
+        {
+          key: "renderer:door",
+          path: "components/Door.tsx",
+          name: "Door",
+          imports: [
+            { moduleName: "next/link", imported: "default", local: "Link" },
+          ],
+          chevronCount: 0,
+        },
+      ],
+      mounts: [],
+      trustedSlots: [],
+      nonDoorReasons: {},
+    };
+    const baseline = smallRegistry(
+      [{ path: "components/Door.tsx", source }],
+      plan
+    ).registry;
+    expect(
+      auditDestinationDoorRegistry(
+        new DestinationDoorCorpus([
+          { path: "components/Door.tsx", source: `// context only\n${source}` },
+        ]),
+        baseline
+      )
+    ).toEqual([]);
   });
 
   it("pins each mount node, semantic owner, path, and canonical binding", () => {
@@ -1371,6 +1471,58 @@ describe("destination-door source-shape registry (#3502)", () => {
     ).toEqual(
       expect.arrayContaining(["non-door:reason-key-set", "non-door:signature"])
     );
+  });
+
+  it("allows direct JSX aliases but rejects chevron value aliases and barrels", () => {
+    const source =
+      'import { IconChevronRight as Chevron } from "@tabler/icons-react"; export function Row() { return <button><Chevron /></button>; }';
+    const plan: DestinationDoorPlan = {
+      renderers: [],
+      mounts: [],
+      trustedSlots: [],
+      nonDoorReasons: { "components/Row.tsx#1": "record navigation" },
+    };
+    const baseline = smallRegistry(
+      [{ path: "components/Row.tsx", source }],
+      plan
+    ).registry;
+    expect(
+      auditDestinationDoorRegistry(
+        new DestinationDoorCorpus([{ path: "components/Row.tsx", source }]),
+        baseline
+      )
+    ).toEqual([]);
+
+    const aliasMutation = source
+      .replace("export function", "const Other = Chevron; export function")
+      .replace("<Chevron />", "<Other />");
+    expect(
+      auditDestinationDoorRegistry(
+        new DestinationDoorCorpus([
+          { path: "components/Row.tsx", source: aliasMutation },
+        ]),
+        baseline
+      ).map((finding) => finding.key)
+    ).toContain("chevron:value-use");
+
+    const barrel = new DestinationDoorCorpus([
+      {
+        path: "components/icons.ts",
+        source:
+          'export { IconChevronRight as Chevron } from "@tabler/icons-react";',
+      },
+    ]);
+    const barrelRegistry = captureDestinationDoorRegistry(barrel, {
+      renderers: [],
+      mounts: [],
+      trustedSlots: [],
+      nonDoorReasons: {},
+    });
+    expect(
+      auditDestinationDoorRegistry(barrel, barrelRegistry).map(
+        (finding) => finding.key
+      )
+    ).toContain("chevron-re-export");
   });
 
   it("ignores all-type-only named re-export clauses", () => {

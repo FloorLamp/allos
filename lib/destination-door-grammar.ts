@@ -128,11 +128,13 @@ interface ImportRecord {
   imported?: "default" | string;
   local?: string;
   line: number;
+  binding?: ts.ImportDeclaration;
 }
 
 interface IdentifierReference {
   kind: "jsx" | "other";
   line: number;
+  node: ts.Identifier;
 }
 
 interface IndexedFile {
@@ -324,6 +326,13 @@ function lexicalBinding(reference: ts.Identifier): ts.Node | null {
         matches.push(...statementBindings(statement, name));
       }
     }
+    if (ts.isCaseBlock(current)) {
+      for (const clause of current.clauses) {
+        for (const statement of clause.statements) {
+          matches.push(...statementBindings(statement, name));
+        }
+      }
+    }
     if (
       (ts.isForStatement(current) ||
         ts.isForInStatement(current) ||
@@ -436,8 +445,18 @@ function isNamePosition(node: ts.Identifier): boolean {
     (ts.isPropertyAccessExpression(parent) && parent.name === node) ||
     ts.isQualifiedName(parent) ||
     ts.isTypeReferenceNode(parent) ||
+    ts.isTypeQueryNode(parent) ||
     ts.isLiteralTypeNode(parent)
   );
+}
+
+function isInTypePosition(node: ts.Node): boolean {
+  let current: ts.Node | undefined = node.parent;
+  while (current && !ts.isStatement(current) && !ts.isSourceFile(current)) {
+    if (ts.isTypeNode(current)) return true;
+    current = current.parent;
+  }
+  return false;
 }
 
 function loaderReceiver(expression: ts.Expression): boolean {
@@ -510,6 +529,18 @@ function indexFile(source: DoorSource): {
     ) {
       const moduleName = statement.moduleSpecifier.text;
       const clause = statement.importClause;
+      const emptyNamedBindings =
+        clause?.namedBindings &&
+        ts.isNamedImports(clause.namedBindings) &&
+        clause.namedBindings.elements.length === 0;
+      if (emptyNamedBindings) {
+        imports.push({
+          kind: "import",
+          moduleName,
+          line: lineOf(file, statement),
+          binding: statement,
+        });
+      }
       if (clause && !clause.isTypeOnly) {
         if (clause.name) {
           imports.push({
@@ -518,6 +549,7 @@ function indexFile(source: DoorSource): {
             imported: "default",
             local: clause.name.text,
             line: lineOf(file, statement),
+            binding: statement,
           });
         }
         if (clause.namedBindings && ts.isNamedImports(clause.namedBindings)) {
@@ -529,6 +561,7 @@ function indexFile(source: DoorSource): {
               imported: element.propertyName?.text ?? element.name.text,
               local: element.name.text,
               line: lineOf(file, element),
+              binding: statement,
             });
           }
         } else if (
@@ -541,27 +574,83 @@ function indexFile(source: DoorSource): {
             imported: "*",
             local: clause.namedBindings.name.text,
             line: lineOf(file, clause.namedBindings),
+            binding: statement,
           });
+        }
+      }
+      if (
+        (moduleName === "node:module" || moduleName === "module") &&
+        clause &&
+        !clause.isTypeOnly
+      ) {
+        const importsCreateRequire =
+          Boolean(clause.name) ||
+          Boolean(
+            clause.namedBindings && ts.isNamespaceImport(clause.namedBindings)
+          ) ||
+          Boolean(
+            clause.namedBindings &&
+            ts.isNamedImports(clause.namedBindings) &&
+            clause.namedBindings.elements.some(
+              (element) =>
+                !element.isTypeOnly &&
+                (element.propertyName?.text ?? element.name.text) ===
+                  "createRequire"
+            )
+          );
+        if (importsCreateRequire) {
+          loaderFinding(
+            statement,
+            `runtime ${moduleName} import capable of createRequire is unsupported`
+          );
         }
       }
     }
     if (
       ts.isExportDeclaration(statement) &&
-      !statement.isTypeOnly &&
-      !(
-        statement.exportClause &&
-        ts.isNamedExports(statement.exportClause) &&
-        statement.exportClause.elements.length > 0 &&
-        statement.exportClause.elements.every((element) => element.isTypeOnly)
-      ) &&
       statement.moduleSpecifier &&
       ts.isStringLiteral(statement.moduleSpecifier)
     ) {
-      imports.push({
-        kind: "re-export",
-        moduleName: statement.moduleSpecifier.text,
-        line: lineOf(file, statement),
-      });
+      const moduleName = statement.moduleSpecifier.text;
+      const named =
+        statement.exportClause && ts.isNamedExports(statement.exportClause)
+          ? statement.exportClause
+          : null;
+      const emptyNamed = named?.elements.length === 0;
+      const hasRuntimeExport =
+        emptyNamed ||
+        (!statement.isTypeOnly &&
+          !(
+            named?.elements.length &&
+            named.elements.every((element) => element.isTypeOnly)
+          ));
+      if (hasRuntimeExport) {
+        imports.push({
+          kind: "re-export",
+          moduleName,
+          line: lineOf(file, statement),
+        });
+      }
+      if (
+        moduleName === "@tabler/icons-react" &&
+        !statement.isTypeOnly &&
+        (!named ||
+          named.elements.some(
+            (element) =>
+              !element.isTypeOnly &&
+              (element.propertyName?.text ?? element.name.text) ===
+                "IconChevronRight"
+          ))
+      ) {
+        findings.push(
+          makeFinding(
+            "chevron-re-export",
+            source.path,
+            "re-exporting IconChevronRight from @tabler/icons-react is unsupported",
+            lineOf(file, statement)
+          )
+        );
+      }
     }
     if (ts.isImportEqualsDeclaration(statement)) {
       loaderFinding(statement, "import-equals require is unsupported");
@@ -599,23 +688,38 @@ function indexFile(source: DoorSource): {
     }
     if (ts.isIdentifier(node)) {
       const parent = node.parent;
+      const exportSpecifier = ts.isExportSpecifier(parent) ? parent : null;
+      const exportDeclaration =
+        exportSpecifier && ts.isExportDeclaration(exportSpecifier.parent.parent)
+          ? exportSpecifier.parent.parent
+          : null;
+      const typeOnlyExport =
+        Boolean(exportSpecifier?.isTypeOnly) ||
+        Boolean(exportDeclaration?.isTypeOnly);
       const importBinding =
         ts.isImportClause(parent) ||
         ts.isImportSpecifier(parent) ||
         ts.isNamespaceImport(parent);
       const closing = ts.isJsxClosingElement(parent) && parent.tagName === node;
-      if (!importBinding && !closing) {
+      if (
+        !importBinding &&
+        !closing &&
+        !typeOnlyExport &&
+        !isInTypePosition(node)
+      ) {
         const jsxReference =
           (ts.isJsxOpeningElement(parent) && parent.tagName === node) ||
           (ts.isJsxSelfClosingElement(parent) && parent.tagName === node);
         addToMap(references, node.text, {
           kind: jsxReference ? "jsx" : "other",
           line: lineOf(file, node),
+          node,
         });
       }
       if (
         node.text === "require" &&
         !isNamePosition(node) &&
+        !isInTypePosition(node) &&
         lexicalBinding(node) == null &&
         !directRequireReference(node)
       ) {
@@ -624,6 +728,7 @@ function indexFile(source: DoorSource): {
       if (
         node.text === "createRequire" &&
         !isNamePosition(node) &&
+        !isInTypePosition(node) &&
         lexicalBinding(node) == null
       ) {
         loaderFinding(node, "createRequire loaders are unsupported");
@@ -631,6 +736,7 @@ function indexFile(source: DoorSource): {
       if (
         node.text === "module" &&
         !isNamePosition(node) &&
+        !isInTypePosition(node) &&
         lexicalBinding(node) == null
       ) {
         loaderFinding(node, "CommonJS module loaders are unsupported");
@@ -638,12 +744,17 @@ function indexFile(source: DoorSource): {
     }
     if (
       ts.isPropertyAccessExpression(node) &&
+      !isInTypePosition(node) &&
       node.name.text === "require" &&
       loaderReceiver(node.expression)
     ) {
       loaderFinding(node, "property require loaders are unsupported");
     }
-    if (ts.isElementAccessExpression(node) && loaderReceiver(node.expression)) {
+    if (
+      ts.isElementAccessExpression(node) &&
+      !isInTypePosition(node) &&
+      loaderReceiver(node.expression)
+    ) {
       const key = node.argumentExpression
         ? staticString(node.argumentExpression)
         : null;
@@ -784,6 +895,13 @@ function runtimeTopLevelStatement(statement: ts.Statement): boolean {
   if (ts.isImportDeclaration(statement)) {
     const clause = statement.importClause;
     if (!clause) return true;
+    if (
+      clause.namedBindings &&
+      ts.isNamedImports(clause.namedBindings) &&
+      clause.namedBindings.elements.length === 0
+    ) {
+      return true;
+    }
     if (clause.isTypeOnly) return false;
     if (clause.name) return true;
     if (clause.namedBindings && ts.isNamespaceImport(clause.namedBindings)) {
@@ -796,6 +914,13 @@ function runtimeTopLevelStatement(statement: ts.Statement): boolean {
     );
   }
   if (ts.isExportDeclaration(statement)) {
+    if (
+      statement.exportClause &&
+      ts.isNamedExports(statement.exportClause) &&
+      statement.exportClause.elements.length === 0
+    ) {
+      return true;
+    }
     if (statement.isTypeOnly) return false;
     if (!statement.exportClause) return true;
     return !(
@@ -829,7 +954,7 @@ function nodeSelector(node: ts.Node, file: ts.SourceFile): string {
     );
     return `VariableStatement:${names.join(",")}`;
   }
-  return `${ts.SyntaxKind[node.kind]}@${lineOf(file, node)}`;
+  return ts.SyntaxKind[node.kind];
 }
 
 function structuralShape(
@@ -1325,6 +1450,30 @@ export function auditDestinationDoorRegistry(
     );
   }
   for (const [file, indexed] of corpus.files) {
+    for (const iconImport of indexed.imports.filter(
+      (record) =>
+        record.kind === "import" &&
+        record.moduleName === "@tabler/icons-react" &&
+        record.imported === "IconChevronRight" &&
+        record.local &&
+        record.binding
+    )) {
+      for (const reference of indexed.references.get(iconImport.local!) ?? []) {
+        if (
+          reference.kind === "other" &&
+          lexicalBinding(reference.node) === iconImport.binding
+        ) {
+          findings.push(
+            makeFinding(
+              "chevron:value-use",
+              file,
+              `unsupported non-JSX reference to canonical ${iconImport.local} binding`,
+              reference.line
+            )
+          );
+        }
+      }
+    }
     for (const record of indexed.imports) {
       if (
         (!record.moduleName.startsWith("@/") &&
@@ -1697,28 +1846,32 @@ export function auditDestinationDoorRegistry(
     }
     const indexed = corpus.files.get(file);
     if (indexed && received.length > 0) {
-      const iconImport: ImportRequirement = {
-        moduleName: "@tabler/icons-react",
-        imported: "IconChevronRight",
-        local: "IconChevronRight",
-      };
-      if (!hasRequiredImport(indexed, iconImport)) {
+      const iconImports = indexed.imports.filter(
+        (record) =>
+          record.kind === "import" &&
+          record.moduleName === "@tabler/icons-react" &&
+          record.imported === "IconChevronRight" &&
+          record.local
+      );
+      if (iconImports.length !== 1) {
         findings.push(
           makeFinding(
             "non-door:icon-import",
             file,
-            "missing canonical IconChevronRight import"
+            `expected one canonical IconChevronRight import; received ${iconImports.length}`
           )
         );
       }
-      if ((indexed.declarations.get("IconChevronRight") ?? 0) > 0) {
-        findings.push(
-          makeFinding(
-            "non-door:icon-shadow",
-            file,
-            "local declaration shadows IconChevronRight"
-          )
-        );
+      for (const iconImport of iconImports) {
+        if ((indexed.declarations.get(iconImport.local!) ?? 0) > 0) {
+          findings.push(
+            makeFinding(
+              "non-door:icon-shadow",
+              file,
+              `local declaration shadows ${iconImport.local}`
+            )
+          );
+        }
       }
     }
   }
