@@ -1,5 +1,8 @@
 import { type Locator } from "@playwright/test";
 import { test, expect } from "./fixtures";
+import { E2E_LOGIN_SHELL, SHELL_DOSE_ITEM } from "./logins/metrics";
+import { E2E_MEMBER_PASSWORD } from "./logins/shared";
+import { loginAs } from "./nav";
 import { TAP_FLOOR_PX, TAP_TARGET_INSET_PX } from "../lib/tap-floor-reach";
 
 const PHONE = { width: 390, height: 844 };
@@ -91,33 +94,40 @@ async function expectRenderedTargetsDisjoint(name: string, row: Locator) {
 test.describe("tap-target rendered census (#3562)", () => {
   test.use({ viewport: PHONE, hasTouch: true });
 
-  test("shell and quick-log controls", async ({ page }) => {
+  test("shell and quick-log controls", async ({ browser }) => {
     test.setTimeout(120_000);
-    await page.goto("/");
-    await expectRenderedFloor(
-      "mobile profile identity",
-      page.getByTestId("profile-identity-bar-mobile")
+    const page = await loginAs(
+      browser,
+      { username: E2E_LOGIN_SHELL, password: E2E_MEMBER_PASSWORD },
+      { viewport: PHONE, hasTouch: true }
     );
-    await expectRenderedFloor(
-      "mobile dock slot",
-      page.getByTestId("dock-slot-home")
-    );
-    await page.getByTestId("dock-log-puck").click();
-    const sheet = page.getByTestId("quick-log-sheet");
-    await expect(sheet).toBeVisible();
-    const trainSegment = sheet.getByTestId("log-sheet-segment-train");
-    await trainSegment.click();
-    await expect(trainSegment).toHaveAttribute("aria-pressed", "true");
-    await expectRenderedFloor(
-      "quick-log row",
-      sheet.getByTestId("quick-log-log-activity")
-    );
-    const context = sheet.getByTestId("log-sheet-context");
-    await expect(context).toBeVisible();
-    await expectRenderedFloor(
-      "seeded due-dose context chip",
-      context.getByTestId("log-sheet-chip-doses")
-    );
+    try {
+      await page.goto("/");
+      await expectRenderedFloor(
+        "mobile profile identity",
+        page.getByTestId("profile-identity-bar-mobile")
+      );
+      await expectRenderedFloor(
+        "mobile dock slot",
+        page.getByTestId("dock-slot-home")
+      );
+      await page.getByTestId("dock-log-puck").click();
+      const sheet = page.getByTestId("quick-log-sheet");
+      await expect(sheet).toBeVisible();
+      const trainSegment = sheet.getByTestId("log-sheet-segment-train");
+      await trainSegment.click();
+      await expect(trainSegment).toHaveAttribute("aria-pressed", "true");
+      await expectRenderedFloor(
+        "quick-log row",
+        sheet.getByTestId("quick-log-log-activity")
+      );
+      const context = sheet.getByTestId("log-sheet-context");
+      const dueDose = context.getByTestId("log-sheet-chip-doses");
+      await expect(dueDose).toHaveText(`Due: ${SHELL_DOSE_ITEM}`);
+      await expectRenderedFloor("owned due-dose context chip", dueDose);
+    } finally {
+      await page.context().close();
+    }
   });
 
   test("visit controls", async ({ page }) => {
