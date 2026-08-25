@@ -1,5 +1,6 @@
 import { type Locator } from "@playwright/test";
 import { test, expect } from "./fixtures";
+import { E2E_LOGIN_MULTI } from "./logins/household";
 import { E2E_LOGIN_SHELL, SHELL_DOSE_ITEM } from "./logins/metrics";
 import { E2E_MEMBER_PASSWORD } from "./logins/shared";
 import { hydratedClick } from "./helpers";
@@ -77,11 +78,10 @@ async function expectRenderedTargetsDisjoint(name: string, row: Locator) {
 test.describe("tap-target rendered census (#3562)", () => {
   test.use({ viewport: PHONE, hasTouch: true });
 
-  test("shell and quick-log controls", async ({ browser }) => {
-    test.setTimeout(120_000);
+  test("multi-profile identity control", async ({ browser }) => {
     const page = await loginAs(
       browser,
-      { username: E2E_LOGIN_SHELL, password: E2E_MEMBER_PASSWORD },
+      { username: E2E_LOGIN_MULTI, password: E2E_MEMBER_PASSWORD },
       { viewport: PHONE, hasTouch: true }
     );
     try {
@@ -90,6 +90,20 @@ test.describe("tap-target rendered census (#3562)", () => {
         "mobile profile identity",
         page.getByTestId("profile-identity-bar-mobile")
       );
+    } finally {
+      await page.context().close();
+    }
+  });
+
+  test("shell dock and quick-log controls", async ({ browser }) => {
+    test.setTimeout(120_000);
+    const page = await loginAs(
+      browser,
+      { username: E2E_LOGIN_SHELL, password: E2E_MEMBER_PASSWORD },
+      { viewport: PHONE, hasTouch: true }
+    );
+    try {
+      await page.goto("/");
       await expectRenderedFloor(
         "mobile dock slot",
         page.getByTestId("dock-slot-home")
