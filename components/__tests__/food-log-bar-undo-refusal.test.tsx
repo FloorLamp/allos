@@ -280,9 +280,9 @@ describe("FoodLogBar projection publication", () => {
     // visual receipt's queued frame has deliberately not run.
     expect(screen.getByTestId("food-slot-total-morning").textContent).toBe("0");
     expect(screen.getByTestId("food-slot-total-evening").textContent).toBe("1");
-    expect(
-      screen.getByTestId("count-cruciferous").getAttribute("title")
-    ).toBe("0 servings in Morning today");
+    expect(screen.getByTestId("count-cruciferous").getAttribute("title")).toBe(
+      "0 servings in Morning today"
+    );
     expect(screen.getByTestId("count-cruciferous").textContent).toBe("0");
     expect(frames).toHaveLength(1);
   });
