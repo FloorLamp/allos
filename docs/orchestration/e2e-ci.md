@@ -32,6 +32,12 @@
 ## Merge bar
 
 - Require every check green on the exact PR head.
+- Full PR CI belongs to the next landing candidate. Parallel branches run only
+  authored or edited specs plus assigned local gates, then wait to open or
+  refresh a PR until earlier shared-base candidates land. Non-authored
+  blast-radius specs run in the promoted candidate's CI. A locally blocked
+  browser run is a reported verification gap, not a reason to start several
+  soon-stale full matrices.
 - Check `mergeable_state` before diagnosing absent CI. Conflict-dirty PRs do not
   start checks.
 - A green check describes the base used for that run. Re-merge current main and
