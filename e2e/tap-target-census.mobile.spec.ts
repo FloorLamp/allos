@@ -1,0 +1,288 @@
+import { type Locator } from "@playwright/test";
+import { test, expect } from "./fixtures";
+import { TAP_FLOOR_PX, TAP_TARGET_INSET_PX } from "../lib/tap-floor-reach";
+
+const PHONE = { width: 390, height: 844 };
+
+async function expectRenderedFloor(name: string, locator: Locator) {
+  await expect(locator, name).toBeVisible();
+  await expect(
+    locator,
+    `${name} owns its rendered target instead of overlapping its neighbours`
+  ).not.toHaveClass(/(?:^|\s)tap-target(?:\s|$)/);
+  const box = await locator.boundingBox();
+  expect(box, name).not.toBeNull();
+  expect(box!.height, `${name} rendered height`).toBeGreaterThanOrEqual(
+    TAP_FLOOR_PX
+  );
+}
+
+async function expectOverlayFloor(
+  name: string,
+  locator: Locator,
+  exactRenderedPx: number
+) {
+  await expect(locator, name).toBeVisible();
+  await expect(locator, `${name} hit-area mechanism`).toHaveClass(
+    /(?:^|\s)tap-target(?:\s|$)/
+  );
+  const box = await locator.boundingBox();
+  expect(box, name).not.toBeNull();
+  expect(box!.height, `${name} rendered height`).toBe(exactRenderedPx);
+  expect(
+    box!.height + 2 * TAP_TARGET_INSET_PX,
+    `${name} effective height`
+  ).toBeGreaterThanOrEqual(TAP_FLOOR_PX);
+}
+
+async function expectMeasuredMiss(
+  name: string,
+  locator: Locator,
+  exactRenderedPx: number
+) {
+  await expect(locator, name).toBeVisible();
+  await expect(locator, `${name} still uses the fixed overlay`).toHaveClass(
+    /(?:^|\s)tap-target(?:\s|$)/
+  );
+  const box = await locator.boundingBox();
+  expect(box, name).not.toBeNull();
+  expect(box!.height, `${name} rendered height`).toBe(exactRenderedPx);
+  expect(
+    box!.height + 2 * TAP_TARGET_INSET_PX,
+    `${name} remains an owner-held effective miss`
+  ).toBeLessThan(TAP_FLOOR_PX);
+}
+
+async function expectRenderedTargetsDisjoint(name: string, row: Locator) {
+  await expect(row, `${name} row`).toBeVisible();
+  const targets = row.locator("button");
+  const count = await targets.count();
+  expect(count, `${name} must exercise adjacent targets`).toBeGreaterThan(1);
+  const boxes = await Promise.all(
+    Array.from({ length: count }, (_, index) =>
+      targets.nth(index).boundingBox()
+    )
+  );
+  for (let left = 0; left < boxes.length; left += 1) {
+    await expect(
+      targets.nth(left),
+      `${name} target ${left} owns a rendered box`
+    ).not.toHaveClass(/(?:^|\s)tap-target(?:\s|$)/);
+    expect(boxes[left], name).not.toBeNull();
+    expect(
+      boxes[left]!.height,
+      `${name} target ${left}`
+    ).toBeGreaterThanOrEqual(TAP_FLOOR_PX);
+    for (let right = left + 1; right < boxes.length; right += 1) {
+      const a = boxes[left]!;
+      const b = boxes[right]!;
+      const overlapX =
+        Math.min(a.x + a.width, b.x + b.width) - Math.max(a.x, b.x);
+      const overlapY =
+        Math.min(a.y + a.height, b.y + b.height) - Math.max(a.y, b.y);
+      expect(
+        overlapX > 0 && overlapY > 0,
+        `${name} targets ${left} and ${right} must not own the same point`
+      ).toBe(false);
+    }
+  }
+}
+
+test.describe("tap-target rendered census (#3562)", () => {
+  test.use({ viewport: PHONE, hasTouch: true });
+
+  test("shell and quick-log controls", async ({ page }) => {
+    test.setTimeout(120_000);
+    await page.goto("/");
+    await expectRenderedFloor(
+      "mobile profile identity",
+      page.getByTestId("profile-identity-bar-mobile")
+    );
+    await expectRenderedFloor(
+      "mobile dock slot",
+      page.getByTestId("dock-slot-home")
+    );
+    await page.getByTestId("dock-log-puck").click();
+    const sheet = page.getByTestId("quick-log-sheet");
+    await expect(sheet).toBeVisible();
+    await expectRenderedFloor(
+      "quick-log row",
+      sheet.getByTestId("log-sheet-items").locator("button").first()
+    );
+    await expectRenderedFloor(
+      "quick-log context chip",
+      sheet.locator('[data-testid^="log-sheet-chip-"]').first()
+    );
+  });
+
+  test("visit controls", async ({ page }) => {
+    test.setTimeout(120_000);
+    await page.goto("/records/history/visits");
+    await page.getByRole("button", { name: "Add visit", exact: true }).click();
+    const dialog = page.getByRole("dialog", { name: "Add visit" });
+    await expectOverlayFloor(
+      "past-visit tense switch",
+      dialog.getByTestId("visit-tense-past"),
+      32
+    );
+    await expectRenderedFloor(
+      "visit fact chip",
+      dialog.getByTestId("visit-fact-when")
+    );
+    await expectRenderedFloor(
+      "visit more trigger",
+      dialog.getByTestId("visit-fact-more")
+    );
+    await dialog.getByTestId("visit-fact-more").click();
+    await expectRenderedFloor(
+      "visit more choice",
+      dialog.getByTestId("visit-more-provider")
+    );
+    await expectRenderedTargetsDisjoint(
+      "visit more choices",
+      dialog.getByTestId("visit-fact-more-menu")
+    );
+    await dialog.getByTestId("visit-tense-past").click();
+    await expectOverlayFloor(
+      "upcoming-visit tense switch",
+      dialog.getByTestId("visit-tense-upcoming"),
+      32
+    );
+  });
+
+  test("protocol, goal and injury detail menus", async ({ page }) => {
+    test.setTimeout(120_000);
+    await page.goto("/longevity#protocols");
+    await page.getByRole("main").getByTestId("new-protocol-toggle").click();
+    const protocol = page.getByTestId("protocol-form");
+    await expectRenderedFloor(
+      "protocol more trigger",
+      protocol.getByTestId("protocol-fact-more")
+    );
+    await protocol.getByTestId("protocol-fact-more").click();
+    await expectRenderedFloor(
+      "protocol more choice",
+      protocol.getByTestId("protocol-more-notes")
+    );
+    await expectRenderedTargetsDisjoint(
+      "protocol more choices",
+      protocol.getByTestId("protocol-more-notes").locator("..")
+    );
+
+    await page.goto("/training?tab=goals");
+    await page.getByRole("button", { name: "Add goal", exact: true }).click();
+    const goal = page.getByTestId("goal-form");
+    await goal.getByTestId("goal-kind-freeform").click();
+    await goal.getByLabel("Title").fill("Geometry goal");
+    await goal.getByTestId("goal-editor-done").click();
+    await expectRenderedFloor(
+      "goal more trigger",
+      goal.getByTestId("goal-fact-more")
+    );
+    await goal.getByTestId("goal-fact-more").click();
+    await expectRenderedFloor(
+      "goal more choice",
+      goal.getByTestId("goal-more-category")
+    );
+    await expectRenderedTargetsDisjoint(
+      "goal more choices",
+      goal.getByTestId("goal-more-category").locator("..")
+    );
+
+    await page.goto("/training");
+    await page.getByRole("button", { name: "Log injury", exact: true }).click();
+    const injury = page.getByTestId("injury-form");
+    await expectRenderedFloor(
+      "injury more trigger",
+      injury.getByTestId("injury-fact-more")
+    );
+    await injury.getByTestId("injury-fact-more").click();
+    await expectRenderedFloor(
+      "injury more choice",
+      injury.getByTestId("injury-more-laterality")
+    );
+    await expectRenderedTargetsDisjoint(
+      "injury more choices",
+      injury.getByTestId("injury-more-laterality").locator("..")
+    );
+  });
+
+  test("intake controls and the remaining cadence miss", async ({ page }) => {
+    test.setTimeout(120_000);
+    await page.goto("/nutrition?tab=supplements");
+    await page.getByTestId("supplement-add-toggle").click();
+    const form = page.getByTestId("intake-item-form");
+    await expect(form).toBeVisible();
+    await form.getByLabel("Name").fill("Geometry thing");
+    await form.getByLabel("Name").press("Escape");
+    await expectRenderedFloor(
+      "intake fact chip",
+      form.getByTestId("intake-fact-dose")
+    );
+    await expectRenderedFloor(
+      "intake add-rule chip",
+      form.getByTestId("intake-add-rule")
+    );
+    await expectRenderedFloor(
+      "intake more trigger",
+      form.getByTestId("intake-fact-more")
+    );
+    await expectRenderedTargetsDisjoint(
+      "intake fact row",
+      form.getByTestId("intake-fact-row")
+    );
+
+    await form.getByTestId("intake-fact-more").click();
+    await expect(form.getByTestId("intake-editor")).toHaveAttribute(
+      "data-panel",
+      "more"
+    );
+    await expectRenderedFloor(
+      "intake more choice",
+      form.getByTestId("intake-more-purpose")
+    );
+    await expectRenderedTargetsDisjoint(
+      "intake more choices",
+      form.getByTestId("intake-more-purpose").locator("..")
+    );
+    await form.getByTestId("intake-more-purpose").click();
+    await form.getByLabel("Name").fill("Lutein");
+    await form.getByLabel("Name").press("Escape");
+    await expectRenderedFloor(
+      "purpose goal",
+      form.getByTestId("purpose-goal-energy")
+    );
+    await expectRenderedFloor(
+      "purpose suggestion",
+      form.getByTestId("purpose-suggest-eyes")
+    );
+    await expectRenderedTargetsDisjoint(
+      "purpose goals",
+      form.getByTestId("purpose-goal-energy").locator("..")
+    );
+    await form.getByTestId("intake-editor-done").click();
+    await form.getByTestId("intake-add-rule").click();
+    await expectRenderedFloor(
+      "rule offer",
+      form.getByTestId("intake-rule-add-only-when")
+    );
+    await expectRenderedTargetsDisjoint(
+      "rule offers",
+      form.getByTestId("intake-rule-add-only-when").locator("..")
+    );
+    await form.getByTestId("intake-rule-add-only-when").click();
+    await form.getByTestId("intake-editor-done").click();
+    await expectRenderedTargetsDisjoint(
+      "fact chip split",
+      form.getByTestId("intake-fact-rule")
+    );
+
+    await form.getByTestId("intake-fact-timing").click();
+    await form.getByLabel("How often").selectOption("weekly");
+    await expectMeasuredMiss(
+      "cadence weekday",
+      form.getByTestId("cadence-weekday-1"),
+      24
+    );
+  });
+});

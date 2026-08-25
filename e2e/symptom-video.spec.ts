@@ -1,5 +1,5 @@
 import { test, expect } from "./fixtures";
-import { type Page } from "@playwright/test";
+import { type Locator, type Page } from "@playwright/test";
 import Database from "better-sqlite3";
 import { loginAs } from "./nav";
 import { followLink, settledClick } from "./helpers";
@@ -12,6 +12,7 @@ import {
 } from "./fixture-logins";
 import { buildM4aFixture, buildMp4Fixture } from "../lib/video/fixture";
 import { workerDbPath } from "./worker-env";
+import { TAP_FLOOR_PX, TAP_TARGET_INSET_PX } from "../lib/tap-floor-reach";
 
 // The episode page's SYMPTOM VIDEO strip (#1598 — components/illness/SymptomVideoStrip
 // on /medical/episodes/[id]). It is the OTHER shipped half of the #1224 video core, and
@@ -47,6 +48,24 @@ import { workerDbPath } from "./worker-env";
 // correctly yields nothing and the posterless path is the one under test.
 
 const DB_PATH = workerDbPath();
+
+async function expectOwnerHeldTapTargetMiss(
+  name: string,
+  locator: Locator,
+  exactRenderedPx: number
+) {
+  await expect(locator, name).toBeVisible();
+  await expect(locator, `${name} still uses the fixed overlay`).toHaveClass(
+    /(?:^|\s)tap-target(?:\s|$)/
+  );
+  const box = await locator.boundingBox();
+  expect(box, name).not.toBeNull();
+  expect(box!.height, `${name} rendered height`).toBe(exactRenderedPx);
+  expect(
+    box!.height + 2 * TAP_TARGET_INSET_PX,
+    `${name} remains an owner-held effective miss`
+  ).toBeLessThan(TAP_FLOOR_PX);
+}
 
 function withDb<T>(fn: (h: Database.Database) => T): T {
   const h = new Database(DB_PATH);
@@ -202,8 +221,15 @@ test("the episode strip renders empty, takes a dated clip, serves it by Range, a
     expect(bogus.status()).toBe(404);
     expect(await bogus.json()).toEqual({ ok: false, error: "not found" });
 
+    // These caption-line actions are the two owner-held #3562 misses. Keep their
+    // direct 390px evidence visible while their phone layout remains open.
+    const edit = tile.getByTestId(`video-clip-edit-${clip.id}`);
+    const remove = tile.getByTestId(`video-clip-delete-${clip.id}`);
+    await expectOwnerHeldTapTargetMiss("symptom video edit", edit, 24);
+    await expectOwnerHeldTapTargetMiss("symptom video delete", remove, 22);
+
     // Caption round trip through the episode action (the strip's third write path).
-    await tile.getByTestId(`video-clip-edit-${clip.id}`).click();
+    await edit.click();
     const captionInput = tile.getByTestId(
       `video-clip-caption-input-${clip.id}`
     );
@@ -219,7 +245,7 @@ test("the episode strip renders empty, takes a dated clip, serves it by Range, a
 
     // Delete the last clip → the strip falls back to its empty copy (it is always
     // rendered on a writable episode, so nothing disappears — only the grid empties).
-    await settledClick(page, tile.getByTestId(`video-clip-delete-${clip.id}`));
+    await settledClick(page, remove);
     await expect(
       strip.locator('[data-testid^="video-clip-item-"]')
     ).toHaveCount(0, { timeout: 20_000 }); // named ceiling: the delete rides a Server Action + its revalidated re-render
