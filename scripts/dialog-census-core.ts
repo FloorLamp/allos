@@ -231,7 +231,8 @@ export function readSourceFiles(root: string = REPO_ROOT): SourceFile[] {
  * security-guard-shaped: deleting source can hide a dialog. A raw scanner cannot
  * distinguish division from a regex after `)` or `}`, so `/[/*]/` in either position
  * can otherwise open a phantom block comment and blank a later ModalShell (#3532).
- * Invalid source fails closed as unstripped text rather than disappearing.
+ * Invalid source stops the census with its file and parse location: raw comments may
+ * not authenticate a host, and malformed code may not silently disappear.
  */
 export function withoutComments(text: string, rel = "source.tsx"): string {
   return stripCommentsParsed(rel, text);

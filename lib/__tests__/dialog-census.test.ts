@@ -963,6 +963,24 @@ describe("dialog census — what it can SEE", () => {
     expect(entry?.hosts).toContain("components/ModalShell.tsx");
   });
 
+  it("fails explicitly when malformed source comments counterfeit a host", () => {
+    expect(() =>
+      classifyOne(
+        "components/MalformedCommentCounterfeit.tsx",
+        `/*
+         import ModalShell from "@/components/ModalShell";
+         export function Decoy() {
+           return <ModalShell open onClose={() => {}} title="Decoy" />;
+         }
+         */
+         const malformed = ;
+         export default function Plain() { return <div />; }`
+      )
+    ).toThrow(
+      /Comment scan could not parse components\/MalformedCommentCounterfeit\.tsx:\d+:\d+:/
+    );
+  });
+
   it("reads a source file that carries a NUL byte", () => {
     const entry = classifyOne(
       "components/NulByte.tsx",

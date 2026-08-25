@@ -93,16 +93,23 @@ function commentRanges(sf: ts.SourceFile, src: string): [number, number][] {
  * Unlike a raw scanner, the parser has enough grammar context to know that the `/`
  * after `)` or `}` may open a regular expression. That distinction is load-bearing
  * for a guard: `/[/*]/` must remain code, not become a block comment that hides the
- * rest of the file. Invalid source fails closed by returning the original text. A
- * false finding is visible; deleting code from a guard's input would be a silent
- * false pass.
+ * rest of the file. Invalid source fails closed with an explicit scanner error:
+ * returning raw text would let comments authenticate imports and JSX, while deleting
+ * text would be a silent false pass.
  */
 export function stripCommentsParsed(rel: string, src: string): string {
   const sf = ts.createSourceFile(rel, src, ts.ScriptTarget.Latest, true);
   const diagnostics = (
     sf as ts.SourceFile & { parseDiagnostics?: readonly ts.Diagnostic[] }
   ).parseDiagnostics;
-  if (diagnostics?.length) return src;
+  if (diagnostics?.length) {
+    const first = diagnostics[0]!;
+    const at = sf.getLineAndCharacterOfPosition(first.start ?? 0);
+    throw new Error(
+      `Comment scan could not parse ${rel}:${at.line + 1}:${at.character + 1}: ` +
+        ts.flattenDiagnosticMessageText(first.messageText, "\n")
+    );
+  }
 
   const out = src.split("");
   for (const [from, to] of commentRanges(sf, src))
