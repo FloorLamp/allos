@@ -1,4 +1,5 @@
 import Link from "next/link";
+import DestinationLink from "@/components/DestinationLink";
 import { ActivityTypeIcon } from "@/components/ui";
 import ActivityPartRows from "@/components/activity/ActivityPartRows";
 import ActivitySummaryLine from "@/components/activity/ActivitySummaryLine";
@@ -29,13 +30,13 @@ export default function RecentSessions({ view }: { view: RecentSessionsView }) {
         <h4 className="section-label">
           {view.scope === "week" ? "What you did" : "Last session"}
         </h4>
-        <Link
+        <DestinationLink
           href="/training?tab=log"
           data-testid="recent-sessions-log-link"
           className="text-xs text-link"
         >
-          {view.more > 0 ? `${view.more} more in Log →` : "Open log →"}
-        </Link>
+          {view.more > 0 ? `${view.more} more in Log` : "Open log"}
+        </DestinationLink>
       </div>
 
       <ul className="mt-3 space-y-4">

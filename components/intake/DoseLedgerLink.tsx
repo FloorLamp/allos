@@ -1,5 +1,5 @@
-import Link from "next/link";
-import { IconHistory, IconChevronRight } from "@tabler/icons-react";
+import { IconHistory } from "@tabler/icons-react";
+import DestinationLink from "@/components/DestinationLink";
 import { doseLedgerHref } from "@/lib/hrefs";
 import type { IntakeItemKind } from "@/lib/types";
 
@@ -20,7 +20,7 @@ export default function DoseLedgerLink({
   className?: string;
 }) {
   return (
-    <Link
+    <DestinationLink
       href={doseLedgerHref(kind)}
       data-testid="dose-ledger-link"
       title="Dose history"
@@ -28,11 +28,6 @@ export default function DoseLedgerLink({
     >
       <IconHistory aria-hidden className="h-4 w-4 shrink-0" stroke={1.75} />
       Dose history
-      <IconChevronRight
-        aria-hidden
-        className="h-4 w-4 shrink-0"
-        stroke={1.75}
-      />
-    </Link>
+    </DestinationLink>
   );
 }

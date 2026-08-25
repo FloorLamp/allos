@@ -1,7 +1,7 @@
 "use client";
 
 import { useEffect, useState, useTransition } from "react";
-import Link from "next/link";
+import DestinationLink from "@/components/DestinationLink";
 import {
   listSharedSupplyOptions,
   createPoolAction,
@@ -213,13 +213,13 @@ export default function SharedSupplyPicker({
         below is the way IN. The cabinet has no nav row — this is one of its doors. */}
       {activeSupplyName && (
         <p className="mb-2 text-xs">
-          <Link
+          <DestinationLink
             href={SUPPLIES_HREF}
             data-testid="shared-supply-cabinet-link"
             className="text-link"
           >
-            See all shared bottles →
-          </Link>
+            See all shared bottles
+          </DestinationLink>
         </p>
       )}
       <div className="flex flex-wrap items-center gap-2">

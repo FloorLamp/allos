@@ -1,6 +1,6 @@
-import Link from "next/link";
 import { IconChevronRight } from "@tabler/icons-react";
 import Avatar, { type AvatarProfile } from "@/components/Avatar";
+import DestinationLink from "@/components/DestinationLink";
 import { switchProfileAction } from "@/app/(app)/profile-context-actions";
 import type { AppRoute } from "@/lib/hrefs";
 
@@ -49,11 +49,6 @@ export default function ProfileSwitcherChip({
           {badge}
         </span>
       )}
-      <IconChevronRight
-        className="h-4 w-4 shrink-0 text-slate-300 dark:text-slate-600"
-        stroke={1.75}
-        aria-hidden="true"
-      />
     </>
   );
   const className =
@@ -61,14 +56,14 @@ export default function ProfileSwitcherChip({
 
   if (acting) {
     return (
-      <Link
+      <DestinationLink
         href={destination}
         className={className}
         aria-label={`Open ${label} for ${profile.name}`}
         data-testid={testId}
       >
         {content}
-      </Link>
+      </DestinationLink>
     );
   }
 
@@ -83,6 +78,11 @@ export default function ProfileSwitcherChip({
         data-testid={testId}
       >
         {content}
+        <IconChevronRight
+          className="h-4 w-4 shrink-0 text-slate-300 dark:text-slate-600"
+          stroke={1.75}
+          aria-hidden="true"
+        />
       </button>
     </form>
   );

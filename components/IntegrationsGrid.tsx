@@ -1,5 +1,5 @@
 import Link from "next/link";
-import { IconArrowRight } from "@tabler/icons-react";
+import DestinationIndicator from "@/components/DestinationIndicator";
 import { INTEGRATIONS } from "@/lib/integrations/registry";
 import { integrationDetailHref } from "@/lib/hrefs";
 import { getIntegrationState } from "@/lib/queries";
@@ -141,7 +141,7 @@ function StatusCard({
       <StatusFact state={state} />
       <div className="mt-3 inline-flex items-center gap-1 text-sm font-medium text-brand-700 dark:text-brand-400">
         {attention ? "Reconnect" : "Manage"}
-        <IconArrowRight className="h-4 w-4" />
+        <DestinationIndicator />
       </div>
     </div>
   );
@@ -184,7 +184,7 @@ function PitchCard({ def }: { def: IntegrationDef }) {
       {!planned && (
         <div className="mt-4 inline-flex items-center gap-1 text-sm font-medium text-brand-700 dark:text-brand-400">
           Set up
-          <IconArrowRight className="h-4 w-4" />
+          <DestinationIndicator />
         </div>
       )}
     </div>

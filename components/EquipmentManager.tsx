@@ -1,8 +1,8 @@
 "use client";
 
 import { useId, useState, useTransition } from "react";
-import Link from "next/link";
-import { IconPlus, IconX, IconChevronRight } from "@tabler/icons-react";
+import { IconPlus, IconX } from "@tabler/icons-react";
+import DestinationLink from "@/components/DestinationLink";
 import OverflowMenu, {
   MENU_ITEM,
   MENU_ITEM_DANGER,
@@ -14,6 +14,7 @@ import { kgTo, toKg, round, stripNegative } from "@/lib/units";
 import { EmptyState } from "@/components/ui";
 import { useToast } from "@/components/Toast";
 import { useConfirm } from "@/components/ConfirmDialog";
+import { equipmentHref } from "@/lib/hrefs";
 import {
   createEquipmentAction,
   updateEquipmentAction,
@@ -200,17 +201,12 @@ export default function EquipmentManager({
     >
       <div className={`min-w-0 ${e.retired ? "opacity-60" : ""}`}>
         <div className="flex flex-wrap items-center gap-2">
-          <Link
-            href={`/equipment/${e.id}`}
+          <DestinationLink
+            href={equipmentHref(e.id)}
             className="group inline-flex items-center gap-0.5 font-medium text-slate-800 hover:text-brand-600 dark:text-slate-100 dark:hover:text-brand-400"
           >
             {e.name}
-            <IconChevronRight
-              className="h-4 w-4 text-slate-300 transition group-hover:translate-x-0.5 group-hover:text-brand-500 dark:text-slate-600"
-              stroke={2}
-              aria-hidden
-            />
-          </Link>
+          </DestinationLink>
           {e.category && (
             <span className="badge bg-slate-100 text-slate-600 dark:bg-slate-800 dark:text-slate-300">
               {e.category}

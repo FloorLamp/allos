@@ -1,4 +1,5 @@
 import Link from "next/link";
+import DestinationLink from "@/components/DestinationLink";
 import { strengthLevelLabel } from "@/lib/strength-standards";
 import type { StrengthLadderRow } from "@/lib/strength-ladder";
 import { fmtWeight } from "@/lib/units";
@@ -26,12 +27,12 @@ export default function StrengthStandardsLadder({
         <h3 className="font-semibold text-slate-800 dark:text-slate-100">
           Strength standards
         </h3>
-        <Link
+        <DestinationLink
           href="/training?tab=analyze&kind=strength"
           className="text-xs text-link"
         >
-          Full standards →
-        </Link>
+          Full standards
+        </DestinationLink>
       </div>
       {rows.length === 0 ? (
         <p className="mt-3 text-sm text-slate-500 dark:text-slate-400">

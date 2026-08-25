@@ -1,7 +1,7 @@
 "use client";
 
 import { useState, useTransition } from "react";
-import Link from "next/link";
+import DestinationLink from "@/components/DestinationLink";
 import type { StreamLifecycleOffer } from "@/lib/queries/stream-lifecycle";
 import {
   STREAM_OFFBOARD_KEEP,
@@ -96,9 +96,9 @@ export default function StreamLifecycleOfferRow({
           {declineLabel}
         </button>
         {offer.href && (
-          <Link href={offer.href} className="text-sm text-link">
-            {offer.sourceName} sync history →
-          </Link>
+          <DestinationLink href={offer.href} className="text-sm text-link">
+            {offer.sourceName} sync history
+          </DestinationLink>
         )}
       </div>
       {error && (

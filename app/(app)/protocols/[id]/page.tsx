@@ -1,5 +1,6 @@
 import { notFound } from "next/navigation";
 import Link from "next/link";
+import DestinationLink from "@/components/DestinationLink";
 import { IconBarbell, IconPill } from "@tabler/icons-react";
 import { requireSession } from "@/lib/auth";
 import { today } from "@/lib/db";
@@ -229,13 +230,13 @@ export default async function ProtocolDetailPage(props: {
                 }
                 action={
                   practice?.scopeKind === "practice" ? (
-                    <Link
+                    <DestinationLink
                       href="/wellness"
                       className="text-sm font-medium text-brand-700 hover:underline dark:text-brand-300"
                       data-testid="protocol-wellness-link"
                     >
-                      View practice →
-                    </Link>
+                      View practice
+                    </DestinationLink>
                   ) : undefined
                 }
               />

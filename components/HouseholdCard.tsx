@@ -12,7 +12,7 @@ import {
   IconChecklist,
   IconX,
 } from "@tabler/icons-react";
-import Link from "next/link";
+import DestinationLink from "@/components/DestinationLink";
 import Avatar from "@/components/Avatar";
 import {
   PILLAR_TONE_CLASS,
@@ -410,13 +410,13 @@ function SetupCheckRow({
           // People & access (the grant UI `setGrants` can finally act on since #2345) or
           // Settings → Notifications. No profile switch is involved, so it is an
           // ordinary link.
-          <Link
+          <DestinationLink
             href={check.cta.href}
             data-testid="household-setup-cta"
             className="mt-1 inline-block text-xs text-link"
           >
-            {check.cta.label} →
-          </Link>
+            {check.cta.label}
+          </DestinationLink>
         ) : (
           // A route about THIS MEMBER's own data. It needs the profile switch first
           // (#879), and the destination is re-derived server-side from the check id —

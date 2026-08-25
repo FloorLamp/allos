@@ -1,4 +1,4 @@
-import Link from "next/link";
+import DestinationLink from "@/components/DestinationLink";
 import {
   getActivityDates,
   getActivitySuggestions,
@@ -574,12 +574,12 @@ export default async function OverviewSection() {
           <div className="flex items-baseline justify-between gap-2">
             <h4 className="section-label">Weekly targets</h4>
             {/* The chips RENDER here and are EDITED in Plan (#2892) — one home. */}
-            <Link
+            <DestinationLink
               href="/training?tab=plan#targets"
               className="text-xs text-link"
             >
-              Edit targets →
-            </Link>
+              Edit targets
+            </DestinationLink>
           </div>
           {targets.length === 0 ? (
             <p className="mt-2 text-sm text-slate-500 dark:text-slate-400">
@@ -685,13 +685,13 @@ export default async function OverviewSection() {
             }))}
             action={
               cardioPrs.length > PR_CAP ? (
-                <Link
+                <DestinationLink
                   href="/training?tab=analyze"
                   data-testid="overview-cardio-prs-all"
                   className="shrink-0 text-xs font-medium text-brand-700 hover:underline dark:text-brand-400"
                 >
-                  Show all {cardioPrs.length} →
-                </Link>
+                  Show all {cardioPrs.length}
+                </DestinationLink>
               ) : undefined
             }
           />

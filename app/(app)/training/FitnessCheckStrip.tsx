@@ -1,3 +1,4 @@
+import DestinationIndicator from "@/components/DestinationIndicator";
 import { PendingTextLink } from "@/components/PendingLink";
 import type { FitnessCheckModel } from "@/lib/fitness-check-model";
 
@@ -9,11 +10,7 @@ export default function FitnessCheckStrip({
   const retest = model.coverage.stale;
   const missing = model.coverage.unmeasured;
   const action =
-    retest > 0
-      ? `Retest ${retest} →`
-      : missing > 0
-        ? `Add ${missing} →`
-        : "View →";
+    retest > 0 ? `Retest ${retest}` : missing > 0 ? `Add ${missing}` : "View";
 
   return (
     <div className="card py-3" id="fitness" data-testid="fitness-check-strip">
@@ -61,9 +58,10 @@ export default function FitnessCheckStrip({
           href="/training/fitness-check"
           testId="fitness-check-strip-link"
           label="fitness check"
-          className="ml-auto text-sm text-link"
+          className="ml-auto inline-flex items-center gap-1 text-sm text-link"
         >
           {action}
+          <DestinationIndicator />
         </PendingTextLink>
       </div>
     </div>
