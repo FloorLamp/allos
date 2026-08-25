@@ -1,24 +1,21 @@
 "use client";
 
 import { useActivityEditor } from "./ActivityEditorProvider";
+import Button from "./Button";
 
 export default function LogActivityButton({
   children = "+ Log activity",
-  className = "btn w-full",
   onClick,
   testId,
 }: {
   children?: React.ReactNode;
-  className?: string;
   onClick?: () => void;
   testId?: string;
 }) {
   const { openCreate, trainingRelevant } = useActivityEditor();
   if (!trainingRelevant) return null;
   return (
-    <button
-      type="button"
-      className={className}
+    <Button
       data-testid={testId}
       onClick={() => {
         openCreate();
@@ -26,6 +23,6 @@ export default function LogActivityButton({
       }}
     >
       {children}
-    </button>
+    </Button>
   );
 }

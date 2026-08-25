@@ -286,18 +286,14 @@ const UNJUDGED_TAP_TARGETS: UnjudgedTapTarget[] = [];
  * button-family class instead of accepting an unreadable forwarded `className`.
  */
 const UNREADABLE_CLASS_LISTS: { file: string; controls: number }[] = [
-  { file: "app/(app)/sleep/SleepLogAction.tsx", controls: 1 },
   { file: "app/(app)/upcoming/FoldSummary.tsx", controls: 1 },
   { file: "components/Combobox.tsx", controls: 1 },
   { file: "components/DateField.tsx", controls: 1 },
   { file: "components/DoseStatusControl.tsx", controls: 1 },
   { file: "components/ExerciseDetailPanel.tsx", controls: 1 },
   { file: "components/HrefSelect.tsx", controls: 1 },
-  { file: "components/LogActivityButton.tsx", controls: 1 },
   { file: "components/SubmitButton.tsx", controls: 1 },
   { file: "components/activity-form/IntensityPicker.tsx", controls: 1 },
-  { file: "components/illness/EndEpisodeReconcile.tsx", controls: 1 },
-  { file: "components/illness/ReopenEpisodeReconcile.tsx", controls: 1 },
 ];
 
 type MeasuredUnderFloor = {

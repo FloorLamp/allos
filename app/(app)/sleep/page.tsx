@@ -182,7 +182,6 @@ export default async function SleepPage() {
               today={todayStr}
               minDate={sleepMoodMinDate}
               label="Add entry →"
-              className="text-sm text-link"
               testId="sleep-add-entry-stale"
             />
           </div>
@@ -292,7 +291,6 @@ export default async function SleepPage() {
             today={todayStr}
             minDate={sleepMoodMinDate}
             label="Add entry"
-            className="text-link"
             testId="sleep-add-entry-empty"
           />{" "}
           or{" "}
