@@ -30,7 +30,7 @@ import FoodGroupIcon, {
 import ModalShell from "@/components/ModalShell";
 import SegmentedControl from "@/components/SegmentedControl";
 import CompactDateMenu from "@/components/CompactDateMenu";
-import Chip from "@/components/Chip";
+import FilterPills from "@/components/FilterPills";
 import {
   useClaimToastKey,
   useDismissToast,
@@ -2381,41 +2381,63 @@ export default function FoodLogBar({
           {statingTime && (
             <div
               data-testid="food-eating-time"
-              role="group"
-              aria-label="When the servings you add were eaten"
               className="mb-2.5 flex flex-wrap items-center gap-1.5"
             >
               <span className="text-xs text-slate-500 dark:text-slate-400">
                 Eaten
               </span>
-              <Chip
-                role="filter"
+              <FilterPills
+                mode="button"
+                layout="wrap"
                 density="dense"
-                testId="food-eating-now"
-                pressed={statedChoice?.kind === "now"}
-                title="Record the servings you add as eaten now"
-                onClick={() => {
+                label="When the servings you add were eaten"
+                value={
+                  statedChoice?.kind === "now"
+                    ? "__now"
+                    : (statedChoice?.hhmm ?? null)
+                }
+                onSelect={(choice) => {
+                  if (choice === "__now") {
+                    setEarlierOpen(false);
+                    setEatingTime((prev) =>
+                      prev?.kind === "now" ? null : { kind: "now" }
+                    );
+                    return;
+                  }
                   setEarlierOpen(false);
                   setEatingTime((prev) =>
-                    prev?.kind === "now" ? null : { kind: "now" }
+                    prev?.kind === "at" && prev.hhmm === choice
+                      ? null
+                      : { kind: "at", hhmm: choice }
                   );
                 }}
-              >
-                Now
-              </Chip>
+                options={[
+                  {
+                    value: "__now",
+                    label: "Now",
+                    title: "Record the servings you add as eaten now",
+                    testId: "food-eating-now",
+                  },
+                  ...(earlierOpen
+                    ? eatingTimeOptions.map((option) => ({
+                        value: option.hhmm,
+                        label: `${option.hhmm} \u00b7 ${option.slot}`,
+                        testId: `food-eating-at-${option.hhmm}`,
+                        data: { "data-slot": option.slot },
+                      }))
+                    : []),
+                ]}
+              />
               {eatingTimeOptions.length > 0 && (
-                <Chip
-                  role="filter"
-                  density="dense"
-                  testId="food-eating-earlier"
-                  pressed={statedChoice?.kind === "at"}
-                  expanded={earlierOpen}
+                <button
+                  type="button"
+                  data-testid="food-eating-earlier"
+                  aria-expanded={earlierOpen}
                   title="State an earlier time instead"
                   onClick={() => setEarlierOpen((open) => !open)}
+                  className="btn-ghost"
                 >
-                  {/* The pressed chip keeps announcing the filing (#2269): the hour
-                      wins over the tab, so `19:00 \u00b7 Evening` is what the next "+"
-                      will actually do. */}
+                  {/* A disclosure for the time choices, not a selected option. */}
                   {statedChoice?.kind === "at"
                     ? `${statedChoice.hhmm} \u00b7 ${
                         eatingTimeOptions.find(
@@ -2423,36 +2445,8 @@ export default function FoodLogBar({
                         )?.slot ?? activeSlot
                       }`
                     : "Earlier\u2026"}
-                </Chip>
+                </button>
               )}
-              {earlierOpen &&
-                eatingTimeOptions.map((option) => (
-                  <Chip
-                    key={option.hhmm}
-                    role="filter"
-                    density="dense"
-                    testId={`food-eating-at-${option.hhmm}`}
-                    data={{ "data-slot": option.slot }}
-                    pressed={
-                      statedChoice?.kind === "at" &&
-                      statedChoice.hhmm === option.hhmm
-                    }
-                    onClick={() => {
-                      setEarlierOpen(false);
-                      setEatingTime((prev) =>
-                        prev?.kind === "at" && prev.hhmm === option.hhmm
-                          ? null
-                          : { kind: "at", hhmm: option.hhmm }
-                      );
-                    }}
-                  >
-                    {/* The chip states the CONSEQUENCE before the tap (#2269): the
-                        hour AND the meal window it files under \u2014 the #2268 correction
-                        sheet's per-hour enrichment, worn at log time. The tab stays
-                        navigation; a stated time wins the filing. */}
-                    {`${option.hhmm} \u00b7 ${option.slot}`}
-                  </Chip>
-                ))}
               <span
                 data-testid="food-eating-time-note"
                 className="w-full text-xs text-slate-500 dark:text-slate-400"

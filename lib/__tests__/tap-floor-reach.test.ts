@@ -312,8 +312,8 @@ const UNJUDGED_TAP_TARGETS: UnjudgedTapTarget[] = [];
  * from a control that had been read and pinned no height. Twelve is the number
  * after the resolver reaches module constants, imported constants, barrel
  * re-exports, record lookups and single-`return` helpers; without those it was 153.
- * CustomRangeToggle left this roster when it took exact ownership of its chip
- * class instead of accepting an unreadable forwarded `className`.
+ * CustomRangeToggle left this roster when it took exact ownership of its
+ * button-family class instead of accepting an unreadable forwarded `className`.
  */
 const UNREADABLE_CLASS_LISTS: { file: string; controls: number }[] = [
   { file: "app/(app)/sleep/SleepLogAction.tsx", controls: 1 },

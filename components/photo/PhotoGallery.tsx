@@ -6,7 +6,7 @@ import { useResettableState } from "@/components/useResettableState";
 import { IconChevronLeft, IconChevronRight, IconX } from "@tabler/icons-react";
 import { EmptyState } from "@/components/ui";
 import SegmentedControl from "@/components/SegmentedControl";
-import ChipGroup from "@/components/ChipGroup";
+import FilterPills from "@/components/FilterPills";
 import {
   dateGroups,
   filterBySeries,
@@ -148,7 +148,9 @@ export default function PhotoGallery({
       ) : null}
 
       {domain.series.length > 0 ? (
-        <ChipGroup
+        <FilterPills
+          mode="button"
+          layout="wrap"
           label="Photo series"
           density="dense"
           value={series ?? "__all"}

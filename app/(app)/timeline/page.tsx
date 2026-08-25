@@ -1,7 +1,7 @@
 import { Fragment } from "react";
 import Link from "next/link";
 import SegmentedControl from "@/components/SegmentedControl";
-import Chip from "@/components/Chip";
+import FilterPills from "@/components/FilterPills";
 import { timelineDayHref, type AppRoute } from "@/lib/hrefs";
 import {
   IconActivity,
@@ -1041,32 +1041,28 @@ export default async function TimelinePage(props: {
                   }
                 />
 
-                <div className="-mx-2 flex gap-2 overflow-x-auto px-2 pb-1 sm:mx-0 sm:flex-wrap sm:overflow-visible sm:px-0 sm:pb-0">
-                  <Chip
-                    role="filter"
-                    href={filterHref(undefined, range, undefined, [
-                      ...openFolds,
-                    ])}
-                    current={!category}
-                    linkBehavior="timeline"
-                  >
-                    All
-                  </Chip>
-                  {visibleCategories.map((c) => {
-                    const active = c === category;
-                    return (
-                      <Chip
-                        key={c}
-                        role="filter"
-                        href={filterHref(c, range, undefined, [...openFolds])}
-                        current={active}
-                        linkBehavior="timeline"
-                      >
-                        {timelineCategoryLabel(c)}
-                      </Chip>
-                    );
-                  })}
-                </div>
+                <FilterPills
+                  mode="link"
+                  label="Timeline category"
+                  value={category ?? "__all"}
+                  linkBehavior="timeline"
+                  options={[
+                    {
+                      value: "__all",
+                      label: "All",
+                      href: filterHref(undefined, range, undefined, [
+                        ...openFolds,
+                      ]),
+                    },
+                    ...visibleCategories.map((visibleCategory) => ({
+                      value: visibleCategory,
+                      label: timelineCategoryLabel(visibleCategory),
+                      href: filterHref(visibleCategory, range, undefined, [
+                        ...openFolds,
+                      ]),
+                    })),
+                  ]}
+                />
               </div>
             }
           />

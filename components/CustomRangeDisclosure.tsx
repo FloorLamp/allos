@@ -1,7 +1,6 @@
 "use client";
 
 import { createContext, useContext, useState, type ReactNode } from "react";
-import Chip from "@/components/Chip";
 
 // The mobile collapse for DateRangeControl's From/To card (#1455).
 //
@@ -9,7 +8,7 @@ import Chip from "@/components/Chip";
 // fold on every surface that mounts the shared control (Trends, the metric detail
 // pages, the Timeline) — for a control most sessions never touch, because the
 // quick-range pills answer the question. Below `sm` the pill row becomes the
-// primary control and this disclosure hides the card behind a "Custom…" pill;
+// primary control and this disclosure hides the card behind a "Custom…" action;
 // `sm:`-and-up is unchanged (the panel is always visible, the toggle never
 // renders).
 //
@@ -53,31 +52,23 @@ export function CustomRangeDisclosure({
   );
 }
 
-// The "Custom…" pill. Mobile-only; Chip owns its registered presentation and
-// selected semantics while this disclosure independently owns expanded state.
-export function CustomRangeToggle({
-  active,
-}: {
-  // Whether the window in effect IS a custom range — i.e. whether this pill is
-  // the selected one among its quick-range siblings. `aria-pressed` answers
-  // selection and `aria-expanded` separately answers whether the panel is open.
-  active: boolean;
-}) {
+// "Custom…" opens and closes an editor; it does not select or apply a range.
+// It is therefore a button-family disclosure, explicitly outside the chip/filter
+// grammar. The applied dates remain visible in the panel and URL once submitted.
+export function CustomRangeToggle() {
   const ctx = useContext(Ctx);
   if (!ctx) return null;
   return (
-    <span className="sm:hidden">
-      <Chip
-        role="filter"
-        testId="custom-range-toggle"
-        pressed={active}
-        expanded={ctx.open}
-        controls={ctx.panelId}
-        onClick={ctx.toggle}
-      >
-        Custom&hellip;
-      </Chip>
-    </span>
+    <button
+      type="button"
+      data-testid="custom-range-toggle"
+      aria-expanded={ctx.open}
+      aria-controls={ctx.panelId}
+      onClick={ctx.toggle}
+      className="btn-ghost sm:hidden"
+    >
+      Custom&hellip;
+    </button>
   );
 }
 

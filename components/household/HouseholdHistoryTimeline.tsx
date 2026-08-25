@@ -11,7 +11,7 @@ import type { TemperatureUnit } from "@/lib/settings";
 import type { HouseholdHistoryItem } from "@/lib/household-history";
 import { formatDateShape, type DisplayFormatPrefs } from "@/lib/format-date";
 import { useFormatPrefs } from "@/components/FormatPrefsProvider";
-import Chip from "@/components/Chip";
+import FilterPills from "@/components/FilterPills";
 
 // The merged household visit + illness-episode timeline with a per-person toggle
 // (issue #1009 Ask 1). A pure FORMATTER over the pre-built, date-ordered stream the
@@ -65,29 +65,34 @@ export default function HouseholdHistoryTimeline({
   return (
     <div className="space-y-4">
       {/* Per-person toggle: All + one chip per accessible profile. */}
-      <div
-        className="flex flex-wrap gap-2"
-        data-testid="household-history-filter"
-      >
-        <FilterChip
-          active={person === "all"}
-          onClick={() => setPerson("all")}
-          testid="household-history-filter-all"
-        >
-          Everyone
-        </FilterChip>
-        {profiles.map((p) => (
-          <FilterChip
-            key={p.id}
-            active={person === p.id}
-            onClick={() => setPerson(p.id)}
-            testid={`household-history-filter-${p.id}`}
-          >
-            <Avatar profile={p} size="sm" />
-            {nameFor(p.id)}
-          </FilterChip>
-        ))}
-      </div>
+      <FilterPills
+        mode="button"
+        layout="wrap"
+        label="Household history profile"
+        value={person}
+        onSelect={setPerson}
+        testId="household-history-filter"
+        options={[
+          {
+            value: "all",
+            label: "Everyone",
+            testId: "household-history-filter-all",
+            data: { "data-active": person === "all" },
+          },
+          ...profiles.map((profile) => ({
+            value: profile.id,
+            label: nameFor(profile.id),
+            testId: `household-history-filter-${profile.id}`,
+            data: { "data-active": person === profile.id },
+            content: (
+              <>
+                <Avatar profile={profile} size="sm" />
+                {nameFor(profile.id)}
+              </>
+            ),
+          })),
+        ]}
+      />
 
       {shown.length === 0 ? (
         <EmptyState
@@ -184,29 +189,5 @@ export default function HouseholdHistoryTimeline({
         </ul>
       )}
     </div>
-  );
-}
-
-function FilterChip({
-  active,
-  onClick,
-  testid,
-  children,
-}: {
-  active: boolean;
-  onClick: () => void;
-  testid: string;
-  children: React.ReactNode;
-}) {
-  return (
-    <Chip
-      role="filter"
-      onClick={onClick}
-      testId={testid}
-      data={{ "data-active": active }}
-      pressed={active}
-    >
-      {children}
-    </Chip>
   );
 }

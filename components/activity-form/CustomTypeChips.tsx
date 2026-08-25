@@ -3,7 +3,7 @@
 import type { ActivityType } from "@/lib/types";
 import { titleCase } from "@/lib/activity-meta";
 import { blockedRing, type PartFault } from "./model";
-import ChipGroup from "@/components/ChipGroup";
+import FilterPills from "@/components/FilterPills";
 
 // Cardio/Sport chips for a committed custom (free-text) activity. Rendered
 // whenever the part is custom — even after inference guessed a type — so a
@@ -29,7 +29,9 @@ export default function CustomTypeChips({
       <span className="text-xs font-medium text-slate-500 dark:text-slate-400">
         New activity:
       </span>
-      <ChipGroup
+      <FilterPills
+        mode="button"
+        layout="wrap"
         label="Activity type"
         density="dense"
         value={

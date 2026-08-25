@@ -26,7 +26,7 @@ import { biomarkerSearchTerms } from "@/lib/canonical-name";
 import { displayUnit, storedLabUnit } from "@/lib/display-unit";
 import ActivityCombobox from "@/components/ActivityCombobox";
 import Chip from "@/components/Chip";
-import ChipGroup from "@/components/ChipGroup";
+import FilterPills from "@/components/FilterPills";
 import Combobox from "@/components/Combobox";
 import DateField from "@/components/DateField";
 import SubmitButton from "@/components/SubmitButton";
@@ -644,7 +644,9 @@ export default function GoalForm({
               />
               {showEquipment && (
                 <div className="mt-2">
-                  <ChipGroup
+                  <FilterPills
+                    mode="button"
+                    layout="wrap"
                     label="Equipment variant"
                     density="dense"
                     value={variant!.equipment}
@@ -673,7 +675,9 @@ export default function GoalForm({
             {kind === "body" && (
               <input type="hidden" name="body_metric" value={bodyMetric} />
             )}
-            <ChipGroup
+            <FilterPills
+              mode="button"
+              layout="wrap"
               label="Body metric"
               value={kind === "body" ? bodyMetric : null}
               onSelect={chooseBodyMetric}
@@ -756,7 +760,9 @@ export default function GoalForm({
             <>
               <label className="label">Target</label>
               <input type="hidden" name="metric" value={metric} />
-              <ChipGroup
+              <FilterPills
+                mode="button"
+                layout="wrap"
                 label="Goal target"
                 value={metric}
                 onSelect={chooseMetric}
@@ -924,7 +930,9 @@ export default function GoalForm({
             <>
               <label className="label">Target</label>
               <input type="hidden" name="target_direction" value={direction} />
-              <ChipGroup
+              <FilterPills
+                mode="button"
+                layout="wrap"
                 label="Target direction"
                 value={direction}
                 onSelect={setDirection}

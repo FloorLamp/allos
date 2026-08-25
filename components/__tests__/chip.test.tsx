@@ -1,7 +1,7 @@
 import { fireEvent, render, screen } from "@testing-library/react";
 import { describe, expect, it, vi } from "vitest";
 import Chip from "@/components/Chip";
-import ChipGroup from "@/components/ChipGroup";
+import FilterPills from "@/components/FilterPills";
 
 describe("Chip", () => {
   it("binds navigation paint to current link semantics", () => {
@@ -14,7 +14,7 @@ describe("Chip", () => {
     const link = screen.getByRole("link", { name: "Records" });
     expect(link.getAttribute("href")).toBe("/records");
     expect(link.getAttribute("aria-current")).toBe("page");
-    expect(link.className).toBe("chip chip-nav");
+    expect(link.className).toBe("chip-base chip-nav");
   });
 
   it("binds filter paint and disabled behavior to button semantics", () => {
@@ -28,7 +28,7 @@ describe("Chip", () => {
     const button = screen.getByRole("button", { name: "Breakfast" });
     expect(button.getAttribute("aria-pressed")).toBe("true");
     expect((button as HTMLButtonElement).disabled).toBe(true);
-    expect(button.className).toBe("chip chip-filter chip-sm");
+    expect(button.className).toBe("chip-base chip-filter chip-sm");
     fireEvent.click(button);
     expect(onClick).not.toHaveBeenCalled();
   });
@@ -68,7 +68,7 @@ describe("Chip", () => {
     );
 
     const link = screen.getByRole("link", { name: "30D" });
-    expect(link.className).toBe("chip chip-filter");
+    expect(link.className).toBe("chip-base chip-filter");
     expect(link.getAttribute("aria-current")).toBe("true");
     expect(link.getAttribute("data-testid")).toBeNull();
   });
@@ -92,11 +92,35 @@ describe("Chip", () => {
   });
 });
 
-describe("ChipGroup", () => {
+describe("FilterPills", () => {
+  it("derives current state for a whole link group", () => {
+    render(
+      <FilterPills
+        mode="link"
+        layout="wrap"
+        label="Status"
+        value="active"
+        options={[
+          { value: "all", label: "All", href: "/records" },
+          { value: "active", label: "Active", href: "/timeline" },
+        ]}
+      />
+    );
+
+    expect(
+      screen.getByRole("link", { name: "Active" }).getAttribute("aria-current")
+    ).toBe("true");
+    expect(
+      screen.getByRole("link", { name: "All" }).hasAttribute("aria-current")
+    ).toBe(false);
+  });
+
   it("derives a single-choice group from domain options", () => {
     const onSelect = vi.fn();
     render(
-      <ChipGroup
+      <FilterPills
+        mode="button"
+        layout="wrap"
         label="Pose"
         density="dense"
         value="front"
@@ -106,6 +130,7 @@ describe("ChipGroup", () => {
           {
             value: "side",
             label: "Side",
+            content: <span>Side pose</span>,
             disabled: true,
             data: { "data-pose": "side" },
           },

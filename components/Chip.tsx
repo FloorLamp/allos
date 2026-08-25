@@ -88,7 +88,7 @@ function DefaultChipLink({
 // and behavior, never presentation classes or independent ARIA state.
 export default function Chip(props: ChipProps) {
   const density = props.density ?? "regular";
-  const className = `chip chip-${props.role}${density === "dense" ? " chip-sm" : ""}`;
+  const className = `chip-base chip-${props.role}${density === "dense" ? " chip-sm" : ""}`;
 
   if (props.href !== undefined) {
     const ariaCurrent = props.current

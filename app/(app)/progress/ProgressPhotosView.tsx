@@ -5,7 +5,7 @@ import PhotoCapture from "@/components/photo/PhotoCapture";
 import PhotoGallery from "@/components/photo/PhotoGallery";
 import PhotoTimeline from "@/components/photo/PhotoTimeline";
 import SegmentedControl from "@/components/SegmentedControl";
-import ChipGroup from "@/components/ChipGroup";
+import FilterPills from "@/components/FilterPills";
 import DateField from "@/components/DateField";
 import ModalShell from "@/components/ModalShell";
 import { useConfirm } from "@/components/ConfirmDialog";
@@ -253,7 +253,9 @@ export default function ProgressPhotosView({
         />
       ) : (
         <section className="space-y-2">
-          <ChipGroup
+          <FilterPills
+            mode="button"
+            layout="wrap"
             label="Comparison pose"
             density="dense"
             value={comparePose}

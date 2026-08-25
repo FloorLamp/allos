@@ -1,6 +1,6 @@
 import Link from "next/link";
 import type { ReactNode } from "react";
-import Chip from "./Chip";
+import FilterPills from "./FilterPills";
 import DateField from "./DateField";
 import {
   isAllTimeRange,
@@ -41,7 +41,7 @@ import type { AppRoute } from "@/lib/hrefs";
 // related control below the pills on phones and beside them on desktop.
 //
 // Mobile (#1455): below `sm` the chip row is the PRIMARY control — it renders
-// first and the From/To card collapses behind its "Custom…" pill (open by default
+// first and the From/To card collapses behind its "Custom…" disclosure (open by default
 // when the active window is custom, so a shared URL still shows its dates). From
 // `sm` up the layout is unchanged: card first, chip row under it, no toggle.
 export default function DateRangeControl({
@@ -70,9 +70,12 @@ export default function DateRangeControl({
   idPrefix?: string;
 }) {
   const qrs = [...extraRanges, ...quickRanges(todayStr)];
-  // The one predicate behind both the default-open panel and the "Custom…" pill's
-  // lit state (and, at the call sites, the range-summary chip) — lib/timeline-format.
+  // The predicate behind the panel's default-open state — lib/timeline-format.
   const customActive = isCustomRange(range, todayStr, extraRanges);
+  const activeRange = isAllTimeRange(range)
+    ? "__all"
+    : (qrs.find((quickRange) => isQuickRangeActive(range, quickRange))?.label ??
+      null);
   return (
     // `gap`, not `space-y`: the two rows swap visual order below `sm` via `order-*`,
     // and space-y's `> * + *` margin follows DOM order, so it would land the gap on
@@ -127,7 +130,7 @@ export default function DateRangeControl({
         </CustomRangePanel>
 
         {/* The chip row. One horizontally-scrolling row on a phone: quick ranges
-            and the "Custom…" toggle. Desktop surfaces may hang trailing controls
+            and the "Custom…" disclosure. Desktop surfaces may hang trailing controls
             off the end; it wraps normally from `sm` up.
 
             #1485 D: when the row overflows, cut-off content with no affordance
@@ -144,28 +147,31 @@ export default function DateRangeControl({
             className="flex min-w-0 flex-1 items-center gap-2 pb-1 sm:flex-wrap sm:justify-between sm:overflow-visible sm:pb-0"
           >
             <div className="flex w-max min-w-full shrink-0 items-center justify-between gap-2 sm:w-auto sm:min-w-0 sm:justify-start sm:flex-wrap">
-              {qrs.map((qr) => (
-                <Chip
-                  key={qr.label}
-                  role="filter"
-                  href={buildHref({ from: qr.from, to: qr.to })}
-                  testId={`${idPrefix}-pill-${qr.label}`}
-                  current={isQuickRangeActive(range, qr)}
-                  linkBehavior={linkBehavior}
-                >
-                  {qr.label}
-                </Chip>
-              ))}
-              <Chip
-                role="filter"
-                href={buildHref({})}
-                testId={`${idPrefix}-pill-all-time`}
-                current={isAllTimeRange(range)}
+              <FilterPills
+                mode="link"
+                layout="wrap"
+                label="Date range"
+                value={activeRange}
                 linkBehavior={linkBehavior}
-              >
-                All time
-              </Chip>
-              <CustomRangeToggle active={customActive} />
+                options={[
+                  ...qrs.map((quickRange) => ({
+                    value: quickRange.label,
+                    label: quickRange.label,
+                    href: buildHref({
+                      from: quickRange.from,
+                      to: quickRange.to,
+                    }),
+                    testId: `${idPrefix}-pill-${quickRange.label}`,
+                  })),
+                  {
+                    value: "__all",
+                    label: "All time",
+                    href: buildHref({}),
+                    testId: `${idPrefix}-pill-all-time`,
+                  },
+                ]}
+              />
+              <CustomRangeToggle />
               {trailingChips}
             </div>
             {rightSlot && (

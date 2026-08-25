@@ -24,7 +24,7 @@ import type { RecordsGroup } from "./nav";
 // hard-coding two lists of Tailwind classes.
 //
 // AND THE OUTLINE PILL IS NOW THE PRIMITIVE'S NAV ROLE (#3475). The class list
-// this file used to hand-write moved verbatim into `chip chip-nav` in
+// this file used to hand-write moved verbatim into `chip-base chip-nav` in
 // app/globals.css — one padding (`py-1` -> the primitive's `py-1.5`, 30px -> the
 // 32px the filter role already measured, so the two strips are the same height
 // and differ only where they are meant to: shape and fill) and one selected

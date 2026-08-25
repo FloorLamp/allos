@@ -8,7 +8,7 @@ import {
 } from "@tabler/icons-react";
 import { formatSeconds } from "@/lib/duration";
 import { useHaptics } from "@/components/useHaptics";
-import ChipGroup from "@/components/ChipGroup";
+import FilterPills from "@/components/FilterPills";
 import {
   REST_PRESETS_SEC,
   REST_STEP_SEC,
@@ -221,7 +221,9 @@ export default function RestTimer({
         </div>
       </div>
       <div className="mt-2">
-        <ChipGroup
+        <FilterPills
+          mode="button"
+          layout="wrap"
           label="Rest duration"
           density="dense"
           value={target}

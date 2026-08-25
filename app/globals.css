@@ -585,9 +585,9 @@
    TWO ROLES, ALREADY SHIPPED AND ALREADY RULED (#3408). This does not invent a
    vocabulary; it registers the one the app already speaks:
 
-     .chip .chip-nav     — a DESTINATION. Outline pill, `rounded-full`, selected
+     chip-base + chip-nav — a DESTINATION. Outline pill, `rounded-full`, selected
                            = brand outline + brand tint. Records' pane strip.
-     .chip .chip-filter  — a CONTROL that narrows a list in place. Inset well,
+     chip-base + chip-filter — a CONTROL that narrows a list in place. Inset well,
                            `rounded-md`, no border, selected = brand FILL.
                            `components/FilterPills.tsx` is the app's one filter
                            affordance and renders through this.
@@ -625,7 +625,7 @@
    chips overlap those invisible regions and native selects cannot reliably grow
    through `::after`. `chip-sm` therefore renders at least 44px itself. Call sites
    do not add their own `min-h-*` or coarse-pointer shell variants. */
-@utility chip {
+@utility chip-base {
   @apply inline-flex shrink-0 items-center gap-1.5 whitespace-nowrap px-3 py-1.5 text-sm font-medium transition disabled:cursor-not-allowed disabled:opacity-40 focus:outline-hidden focus-visible:ring-2 focus-visible:ring-brand-500 focus-visible:ring-offset-2 dark:focus-visible:ring-offset-ink-950;
   /* Reserved so a bordered role and a borderless one occupy the same box. The
      fill paints under it (`background-clip` is `border-box` by default), so a
