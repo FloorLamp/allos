@@ -39,10 +39,11 @@ test.describe("Import detail: tabbed records browser", () => {
     await expect(strip.getByTestId("import-tab-providers")).toHaveText(
       "Providers 1"
     );
-    const denseLinkBox = await strip
-      .getByTestId("import-tab-lab")
-      .boundingBox();
-    expect(denseLinkBox?.height).toBeGreaterThanOrEqual(44);
+    const denseLink = strip.getByTestId("import-tab-lab");
+    await expect(denseLink).toBeVisible();
+    await expect
+      .poll(async () => (await denseLink.boundingBox())?.height ?? 0)
+      .toBeGreaterThanOrEqual(44);
 
     // Default tab (no ?tab=) is the FIRST non-empty tab — Labs — marked current,
     // and its editable table renders the lab rows.
