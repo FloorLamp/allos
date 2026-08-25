@@ -10,6 +10,7 @@ import type {
 import type { PortalLoginStatus } from "@/lib/portal-status";
 import Avatar from "@/components/Avatar";
 import Chip from "@/components/Chip";
+import ChipGroup from "@/components/ChipGroup";
 import OverflowMenu, {
   MENU_ITEM,
   MENU_ITEM_DANGER,
@@ -259,24 +260,18 @@ function SoftwareChips({
   disabled?: boolean;
 }) {
   return (
-    <div
-      className="flex flex-wrap items-center gap-1.5"
-      data-testid="software-picker"
-    >
-      {SOFTWARE_OPTIONS.map((o) => (
-        <Chip
-          key={o.value || "unsure"}
-          role="filter"
-          density="dense"
-          pressed={chosen === o.value}
-          onClick={() => onChoose(o.value)}
-          disabled={disabled}
-          testId={`software-chip-${o.value || "unsure"}`}
-        >
-          {o.label}
-        </Chip>
-      ))}
-    </div>
+    <ChipGroup
+      label="Portal software"
+      density="dense"
+      value={chosen}
+      onSelect={onChoose}
+      testId="software-picker"
+      options={SOFTWARE_OPTIONS.map((option) => ({
+        ...option,
+        disabled,
+        testId: `software-chip-${option.value || "unsure"}`,
+      }))}
+    />
   );
 }
 

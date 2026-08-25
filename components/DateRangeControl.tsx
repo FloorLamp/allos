@@ -1,6 +1,6 @@
 import Link from "next/link";
-import type { ComponentType, ReactNode } from "react";
-import Chip, { type ChipLinkRenderProps } from "./Chip";
+import type { ReactNode } from "react";
+import Chip from "./Chip";
 import DateField from "./DateField";
 import {
   isAllTimeRange,
@@ -18,11 +18,6 @@ import {
 import ScrollFade from "./ScrollFade";
 import type { AppRoute } from "@/lib/hrefs";
 
-// Chip owns the link's presentation. Timeline supplies only its scroll-restoring
-// renderer so quick ranges keep the feed position and pending treatment; Trends
-// uses Chip's default Next link.
-type LinkLike = ComponentType<ChipLinkRenderProps>;
-
 // The quick-range chips are FILTERS (#3475): they narrow the window of the chart
 // or feed already on screen, in place, and they are not destinations. So they
 // wear the chip primitive's filter role rather than the third selected-state
@@ -31,7 +26,7 @@ type LinkLike = ComponentType<ChipLinkRenderProps>;
 // and its brand fill, which is two answers to "which one is on?" on adjacent
 // rows of one filter block.
 //
-// The active pill carries `aria-current="page"` at every call site below (the
+// The active pill carries `aria-current="true"` at every call site below (the
 // lit state was once conveyed by colour ALONE, which neither AT nor a test can
 // read — and with Trends' 90D default (#1485 G) "which window am I in?" is
 // answered by the pill, so it needs a non-visual answer). The primitive now
@@ -55,7 +50,7 @@ export default function DateRangeControl({
   todayStr,
   hiddenParams = {},
   buildHref,
-  LinkComponent,
+  linkBehavior,
   rightSlot,
   trailingChips,
   companionSlot,
@@ -67,7 +62,7 @@ export default function DateRangeControl({
   todayStr: string;
   hiddenParams?: Record<string, string | undefined>;
   buildHref: (range: DateRange) => AppRoute;
-  LinkComponent?: LinkLike;
+  linkBehavior?: "timeline";
   rightSlot?: ReactNode;
   trailingChips?: ReactNode;
   companionSlot?: ReactNode;
@@ -156,7 +151,7 @@ export default function DateRangeControl({
                   href={buildHref({ from: qr.from, to: qr.to })}
                   testId={`${idPrefix}-pill-${qr.label}`}
                   current={isQuickRangeActive(range, qr)}
-                  LinkComponent={LinkComponent}
+                  linkBehavior={linkBehavior}
                 >
                   {qr.label}
                 </Chip>
@@ -166,7 +161,7 @@ export default function DateRangeControl({
                 href={buildHref({})}
                 testId={`${idPrefix}-pill-all-time`}
                 current={isAllTimeRange(range)}
-                LinkComponent={LinkComponent}
+                linkBehavior={linkBehavior}
               >
                 All time
               </Chip>

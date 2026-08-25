@@ -181,10 +181,8 @@ test.describe("Records panes — phone anatomy (#3408)", () => {
   // What it would have caught: the defect #3475 was filed on is four heights for
   // one idea — the nav chip at `py-1` + border (30px), one Analyze strip at
   // `py-1.5` + border (34) and a second at `py-1` + border (30), and FilterPills
-  // at `py-1.5` borderless (32) — which the source scan in
-  // lib/__tests__/chip-primitive-census.test.ts can only see while everyone
-  // spells the size in `app/globals.css`. A call site that re-overrides padding
-  // is invisible there and visible here.
+  // at `py-1.5` borderless (32). A call site that re-overrides padding is
+  // invisible to a token residual and visible here.
   test("the two chip roles render at ONE size, and differ only where they mean to", async ({
     page,
   }) => {

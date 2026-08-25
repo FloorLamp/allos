@@ -546,7 +546,7 @@ test.describe("Trends → Overview → body census metric pages (#1067 Phase 2)"
     // The 1Y pill is part of the shared quick-range row and lights like any other.
     const oneYearPill = page.getByRole("link", { name: "1Y", exact: true });
     await followLink(page, oneYearPill, /from=/);
-    await expect(oneYearPill).toHaveAttribute("aria-current", "page");
+    await expect(oneYearPill).toHaveAttribute("aria-current", "true");
 
     // The full daily series is in the window (`data-points` counts the fold's raw
     // readings)…

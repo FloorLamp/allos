@@ -39,7 +39,9 @@ function rawChipTokens(file: string, text?: string): string[] {
   }
   function visit(node: ts.Node) {
     if (ts.isStringLiteralLike(node)) {
-      const used = tokens(node.text).filter((token) => token !== "chip");
+      const used = tokens(node.text).filter(
+        (token) => token !== "chip" || node.text.trim() === "chip"
+      );
       report(node, used);
     }
     if (
@@ -82,6 +84,7 @@ describe("Chip residual", () => {
       "conditional",
       '<button className={`chip ${on ? "chip-filter" : "chip-nav"}`}>A</button>',
     ],
+    ["bare hoisted", 'const raw = "chip"; <button className={raw}>A</button>'],
   ])("rejects a %s raw presentation", (_name, source) => {
     expect(rawChipTokens("components/Plant.tsx", source)).not.toEqual([]);
   });

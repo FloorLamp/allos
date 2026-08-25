@@ -1016,7 +1016,7 @@ export default async function TimelinePage(props: {
                   buildHref={(r) =>
                     filterHref(category, r, undefined, [...openFolds])
                   }
-                  LinkComponent={TimelineFilterLink}
+                  linkBehavior="timeline"
                   idPrefix="timeline"
                   rightSlot={
                     <>
@@ -1048,7 +1048,7 @@ export default async function TimelinePage(props: {
                       ...openFolds,
                     ])}
                     current={!category}
-                    LinkComponent={TimelineFilterLink}
+                    linkBehavior="timeline"
                   >
                     All
                   </Chip>
@@ -1060,7 +1060,7 @@ export default async function TimelinePage(props: {
                         role="filter"
                         href={filterHref(c, range, undefined, [...openFolds])}
                         current={active}
-                        LinkComponent={TimelineFilterLink}
+                        linkBehavior="timeline"
                       >
                         {timelineCategoryLabel(c)}
                       </Chip>

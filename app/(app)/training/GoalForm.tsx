@@ -26,6 +26,7 @@ import { biomarkerSearchTerms } from "@/lib/canonical-name";
 import { displayUnit, storedLabUnit } from "@/lib/display-unit";
 import ActivityCombobox from "@/components/ActivityCombobox";
 import Chip from "@/components/Chip";
+import ChipGroup from "@/components/ChipGroup";
 import Combobox from "@/components/Combobox";
 import DateField from "@/components/DateField";
 import SubmitButton from "@/components/SubmitButton";
@@ -642,25 +643,21 @@ export default function GoalForm({
                 placeholder="e.g. Bench Press, Squat, Plank"
               />
               {showEquipment && (
-                <div className="mt-2 flex flex-wrap items-center gap-1.5">
-                  {variant!.group.equipment.map((eq) => {
-                    const active = variant!.equipment === eq;
-                    return (
-                      <Chip
-                        key={eq}
-                        role="filter"
-                        density="dense"
-                        onClick={() =>
-                          chooseExerciseSubject(
-                            composeVariant(variant!.group, eq)
-                          )
-                        }
-                        pressed={active}
-                      >
-                        {eq}
-                      </Chip>
-                    );
-                  })}
+                <div className="mt-2">
+                  <ChipGroup
+                    label="Equipment variant"
+                    density="dense"
+                    value={variant!.equipment}
+                    onSelect={(equipment) =>
+                      chooseExerciseSubject(
+                        composeVariant(variant!.group, equipment)
+                      )
+                    }
+                    options={variant!.group.equipment.map((equipment) => ({
+                      value: equipment,
+                      label: equipment,
+                    }))}
+                  />
                   {variant!.equipment === null && (
                     <span className="text-xs text-slate-500 dark:text-slate-400">
                       Pick equipment
@@ -676,19 +673,16 @@ export default function GoalForm({
             {kind === "body" && (
               <input type="hidden" name="body_metric" value={bodyMetric} />
             )}
-            <div className="flex flex-wrap gap-1.5">
-              {BODY_METRICS.map((bm) => (
-                <Chip
-                  key={bm}
-                  role="filter"
-                  testId={`goal-body-metric-${bm}`}
-                  onClick={() => chooseBodyMetric(bm)}
-                  pressed={kind === "body" && bodyMetric === bm}
-                >
-                  {BODY_METRIC_LABELS[bm]}
-                </Chip>
-              ))}
-            </div>
+            <ChipGroup
+              label="Body metric"
+              value={kind === "body" ? bodyMetric : null}
+              onSelect={chooseBodyMetric}
+              options={BODY_METRICS.map((bodyMetricOption) => ({
+                value: bodyMetricOption,
+                label: BODY_METRIC_LABELS[bodyMetricOption],
+                testId: `goal-body-metric-${bodyMetricOption}`,
+              }))}
+            />
           </div>
 
           <div>
@@ -762,24 +756,17 @@ export default function GoalForm({
             <>
               <label className="label">Target</label>
               <input type="hidden" name="metric" value={metric} />
-              <div className="flex flex-wrap gap-1.5">
-                {METRICS.map((m) => {
-                  const disabled = timed
-                    ? m.value !== "hold"
-                    : m.value === "hold";
-                  return (
-                    <Chip
-                      key={m.value}
-                      role="filter"
-                      disabled={disabled}
-                      onClick={() => chooseMetric(m.value)}
-                      pressed={metric === m.value}
-                    >
-                      {m.label}
-                    </Chip>
-                  );
-                })}
-              </div>
+              <ChipGroup
+                label="Goal target"
+                value={metric}
+                onSelect={chooseMetric}
+                options={METRICS.map((option) => ({
+                  ...option,
+                  disabled: timed
+                    ? option.value !== "hold"
+                    : option.value === "hold",
+                }))}
+              />
               {/* Metric-conditional inputs — mounted only for the metric that uses
                   them; see the header for why this one block is not merely hidden. */}
               <div key={metric} className="mt-3 grid gap-3 sm:grid-cols-2">
@@ -937,19 +924,16 @@ export default function GoalForm({
             <>
               <label className="label">Target</label>
               <input type="hidden" name="target_direction" value={direction} />
-              <div className="flex flex-wrap gap-1.5">
-                {OUTCOME_GOAL_DIRECTIONS.map((d) => (
-                  <Chip
-                    key={d}
-                    role="filter"
-                    testId={`goal-direction-${d}`}
-                    onClick={() => setDirection(d)}
-                    pressed={direction === d}
-                  >
-                    {DIRECTION_LABEL[d]}
-                  </Chip>
-                ))}
-              </div>
+              <ChipGroup
+                label="Target direction"
+                value={direction}
+                onSelect={setDirection}
+                options={OUTCOME_GOAL_DIRECTIONS.map((directionOption) => ({
+                  value: directionOption,
+                  label: DIRECTION_LABEL[directionOption],
+                  testId: `goal-direction-${directionOption}`,
+                }))}
+              />
               <div className="mt-3">
                 <label className="label" htmlFor="goal-biomarker-target">
                   Target value

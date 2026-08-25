@@ -31,11 +31,8 @@ test("a no-param load opens on 90D, with All time one tap away", async ({
 
   // The lit pill is the answer to "what window am I looking at?", so the default
   // has to LIGHT one — a window matching no pill would read as custom.
-  await expect(rangePill(page, "90D")).toHaveAttribute("aria-current", "page");
-  await expect(rangePill(page, "All time")).not.toHaveAttribute(
-    "aria-current",
-    "page"
-  );
+  await expect(rangePill(page, "90D")).toHaveAttribute("aria-current", "true");
+  await expect(rangePill(page, "All time")).not.toHaveAttribute("aria-current");
 
   // All time still reachable in one tap — and it must SURVIVE, which is the whole
   // reason it needs an explicit sentinel: it used to clear the params, and a

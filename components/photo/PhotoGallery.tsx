@@ -6,7 +6,7 @@ import { useResettableState } from "@/components/useResettableState";
 import { IconChevronLeft, IconChevronRight, IconX } from "@tabler/icons-react";
 import { EmptyState } from "@/components/ui";
 import SegmentedControl from "@/components/SegmentedControl";
-import Chip from "@/components/Chip";
+import ChipGroup from "@/components/ChipGroup";
 import {
   dateGroups,
   filterBySeries,
@@ -148,22 +148,22 @@ export default function PhotoGallery({
       ) : null}
 
       {domain.series.length > 0 ? (
-        <div className="flex flex-wrap gap-1">
-          {[{ key: null as string | null, label: "All" }, ...domain.series].map(
-            (s) => (
-              <Chip
-                key={s.key ?? "__all"}
-                role="filter"
-                density="dense"
-                pressed={series === s.key}
-                onClick={() => setSeries(s.key)}
-                testId={`photo-gallery-series-${s.key ?? "all"}`}
-              >
-                {s.label}
-              </Chip>
-            )
-          )}
-        </div>
+        <ChipGroup
+          label="Photo series"
+          density="dense"
+          value={series ?? "__all"}
+          onSelect={(next) => setSeries(next === "__all" ? null : next)}
+          options={[
+            { value: "__all", label: "All" },
+            ...domain.series.map((item) => ({
+              value: item.key,
+              label: item.label,
+            })),
+          ].map((option) => ({
+            ...option,
+            testId: `photo-gallery-series-${option.value === "__all" ? "all" : option.value}`,
+          }))}
+        />
       ) : null}
 
       {groups.length === 0 ? (

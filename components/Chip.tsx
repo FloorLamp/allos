@@ -1,16 +1,16 @@
 import Link from "next/link";
-import type { ComponentType, MouseEventHandler, ReactNode } from "react";
+import type { MouseEventHandler, ReactNode } from "react";
+import TimelineFilterLink from "@/components/TimelineFilterLink";
 import type { AppRoute } from "@/lib/hrefs";
 
 export type ChipRole = "nav" | "filter";
 export type ChipDensity = "regular" | "dense";
 
-export interface ChipLinkRenderProps {
+interface InternalChipLinkProps {
   href: AppRoute | `#${string}`;
   className: string;
   children: ReactNode;
-  current?: boolean;
-  ariaCurrent?: "page" | "true";
+  ariaCurrent?: "page" | "true" | "location";
   onClick?: MouseEventHandler<HTMLAnchorElement>;
   testId?: string;
   title?: string;
@@ -25,15 +25,23 @@ type CommonProps = {
 };
 
 type LinkChipProps = CommonProps & {
-  href: AppRoute | `#${string}`;
   current: boolean;
-  LinkComponent?: ComponentType<ChipLinkRenderProps>;
   onClick?: MouseEventHandler<HTMLAnchorElement>;
   pressed?: never;
   disabled?: never;
   expanded?: never;
   controls?: never;
-};
+} & (
+    | {
+        href: `#${string}`;
+        linkBehavior?: never;
+      }
+    | {
+        href: AppRoute;
+        /** Closed behavior adapter; presentation and ARIA remain primitive-owned. */
+        linkBehavior?: "timeline";
+      }
+  );
 
 type FilterButtonChipProps = CommonProps & {
   role: "filter";
@@ -48,7 +56,7 @@ type FilterButtonChipProps = CommonProps & {
   onClick?: MouseEventHandler<HTMLButtonElement>;
   href?: never;
   current?: never;
-  LinkComponent?: never;
+  linkBehavior?: never;
 };
 
 export type ChipProps = LinkChipProps | FilterButtonChipProps;
@@ -57,17 +65,16 @@ function DefaultChipLink({
   href,
   className,
   children,
-  current,
   ariaCurrent,
   onClick,
   testId,
   title,
-}: ChipLinkRenderProps) {
+}: InternalChipLinkProps) {
   const props = {
     href,
     className,
     children,
-    "aria-current": current ? ariaCurrent : undefined,
+    "aria-current": ariaCurrent,
     onClick,
     "data-testid": testId,
     title,
@@ -84,19 +91,38 @@ export default function Chip(props: ChipProps) {
   const className = `chip chip-${props.role}${density === "dense" ? " chip-sm" : ""}`;
 
   if (props.href !== undefined) {
-    const ChipLink = props.LinkComponent ?? DefaultChipLink;
+    const ariaCurrent = props.current
+      ? props.role === "filter"
+        ? "true"
+        : props.href.startsWith("#")
+          ? "location"
+          : "page"
+      : undefined;
+    if (props.linkBehavior === "timeline") {
+      return (
+        <TimelineFilterLink
+          href={props.href}
+          ariaCurrent={ariaCurrent}
+          onClick={props.onClick}
+          className={className}
+          testId={props.testId}
+          title={props.title}
+        >
+          {props.children}
+        </TimelineFilterLink>
+      );
+    }
     return (
-      <ChipLink
+      <DefaultChipLink
         href={props.href}
-        current={props.current}
-        ariaCurrent={props.role === "nav" ? "page" : "true"}
+        ariaCurrent={ariaCurrent}
         onClick={props.onClick}
         className={className}
         testId={props.testId}
         title={props.title}
       >
         {props.children}
-      </ChipLink>
+      </DefaultChipLink>
     );
   }
 

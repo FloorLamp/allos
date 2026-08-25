@@ -8,7 +8,7 @@ import {
 } from "@tabler/icons-react";
 import { formatSeconds } from "@/lib/duration";
 import { useHaptics } from "@/components/useHaptics";
-import Chip from "@/components/Chip";
+import ChipGroup from "@/components/ChipGroup";
 import {
   REST_PRESETS_SEC,
   REST_STEP_SEC,
@@ -220,18 +220,17 @@ export default function RestTimer({
           </button>
         </div>
       </div>
-      <div className="mt-2 flex flex-wrap gap-1.5">
-        {REST_PRESETS_SEC.map((secs) => (
-          <Chip
-            key={secs}
-            role="filter"
-            density="dense"
-            onClick={() => pickPreset(secs)}
-            pressed={target === secs}
-          >
-            {formatSeconds(secs)}
-          </Chip>
-        ))}
+      <div className="mt-2">
+        <ChipGroup
+          label="Rest duration"
+          density="dense"
+          value={target}
+          onSelect={pickPreset}
+          options={REST_PRESETS_SEC.map((secs) => ({
+            value: secs,
+            label: formatSeconds(secs),
+          }))}
+        />
       </div>
     </div>
   );

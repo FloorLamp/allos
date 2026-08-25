@@ -1,6 +1,7 @@
 "use client";
 
 import { createContext, useContext, useState, type ReactNode } from "react";
+import Chip from "@/components/Chip";
 
 // The mobile collapse for DateRangeControl's From/To card (#1455).
 //
@@ -52,35 +53,31 @@ export function CustomRangeDisclosure({
   );
 }
 
-// The "Custom…" pill. Mobile-only, and the owner of its complete registered
-// chip class. Keeping that exact class on the native control means a wrapper
-// cannot append a second shell or override the chip's target geometry.
+// The "Custom…" pill. Mobile-only; Chip owns its registered presentation and
+// selected semantics while this disclosure independently owns expanded state.
 export function CustomRangeToggle({
   active,
 }: {
   // Whether the window in effect IS a custom range — i.e. whether this pill is
-  // the selected one among its quick-range siblings. `aria-current` rather than
-  // `aria-pressed` because the siblings are links that already say it that way,
-  // and because this button separately owns `aria-expanded` for the panel it
-  // discloses: pressed-and-expanded on one control is two different questions
-  // wearing one answer. The chip primitive paints the lit state from this
-  // attribute (#3475), so the pill cannot look selected without saying so.
+  // the selected one among its quick-range siblings. `aria-pressed` answers
+  // selection and `aria-expanded` separately answers whether the panel is open.
   active: boolean;
 }) {
   const ctx = useContext(Ctx);
   if (!ctx) return null;
   return (
-    <button
-      type="button"
-      data-testid="custom-range-toggle"
-      aria-current={active ? "true" : undefined}
-      aria-expanded={ctx.open}
-      aria-controls={ctx.panelId}
-      onClick={ctx.toggle}
-      className="btn-ghost sm:hidden"
-    >
-      Custom&hellip;
-    </button>
+    <span className="sm:hidden">
+      <Chip
+        role="filter"
+        testId="custom-range-toggle"
+        pressed={active}
+        expanded={ctx.open}
+        controls={ctx.panelId}
+        onClick={ctx.toggle}
+      >
+        Custom&hellip;
+      </Chip>
+    </span>
   );
 }
 

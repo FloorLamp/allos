@@ -1,8 +1,8 @@
 "use client";
 
-import { useEffect } from "react";
+import { useEffect, type MouseEventHandler, type ReactNode } from "react";
 import PendingLink, { PendingOverlay } from "@/components/PendingLink";
-import type { ChipLinkRenderProps } from "@/components/Chip";
+import type { AppRoute } from "@/lib/hrefs";
 
 declare global {
   interface Window {
@@ -118,16 +118,23 @@ export default function TimelineFilterLink({
   className,
   children,
   testId,
+  title,
   label,
-  current,
+  ariaCurrent,
   onClick,
   // Disclosure state for the link-driven fold headers (#2657). `aria-expanded` IS
   // supported on `role="link"` — unlike `aria-pressed`, which the #2535 scan bans
   // outright — so a month card announces open/closed to assistive technology while
   // staying a plain server-rendered link that works before hydration.
   ariaExpanded,
-}: ChipLinkRenderProps & {
+}: {
+  href: AppRoute;
+  className: string;
+  children: ReactNode;
+  ariaCurrent?: "page" | "true" | "location";
+  onClick?: MouseEventHandler<HTMLAnchorElement>;
   testId?: string;
+  title?: string;
   /**
    * What the pending state announces. Optional because this component is also
    * passed as `DateRangeControl`'s Chip link renderer. A chip whose children ARE
@@ -144,8 +151,9 @@ export default function TimelineFilterLink({
       label={announced}
       scroll={false}
       testId={testId}
-      current={current}
+      ariaCurrent={ariaCurrent}
       ariaExpanded={ariaExpanded}
+      title={title}
       onClick={(event) => {
         onClick?.(event);
         if (typeof window === "undefined") return;
