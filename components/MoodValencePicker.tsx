@@ -27,7 +27,7 @@ export default function MoodValencePicker({
             type="button"
             data-testid={`${testIdPrefix}-${score}`}
             aria-pressed={selected}
-            aria-label={`Mood: ${MOOD_LABELS[index]}`}
+            aria-label={`Log mood: ${MOOD_LABELS[index]}`}
             title={MOOD_LABELS[index]}
             disabled={disabled}
             onClick={() => onChange(score)}

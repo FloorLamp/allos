@@ -206,6 +206,7 @@ export type QuickEntryData =
       // Bristol stool form (#2785). The picker needs nothing gathered but the day's
       // running count — the seven types are a committed vocabulary, not server state.
       form: "stool";
+      today: string;
       todayCount: number;
     }
   | {
@@ -314,6 +315,7 @@ export async function loadQuickEntry(
   if (form === "stool") {
     return {
       form: "stool",
+      today: date,
       todayCount: getBristolReadings(profile.id, date, date).length,
     };
   }

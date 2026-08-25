@@ -73,6 +73,14 @@ export default function UploadForm({
   const toast = useToast();
   const router = useRouter();
 
+  // A field-bearing sheet form owns two failure channels (#3275): the durable
+  // correction beside the picker and the shared toast that announces the failed
+  // commit even when focus is elsewhere in the sheet.
+  const fail = (message: string): void => {
+    setError(message);
+    toast(message, { tone: "error" });
+  };
+
   // The preview list and the submit gating read the one real input, which is what
   // every path — picker, drop, camera — writes into.
   function syncSelected() {
@@ -123,7 +131,7 @@ export default function UploadForm({
       // Size/type failures are handled gracefully server-side as failed-document
       // rows, but a disk-write throw would replace the whole page via the error
       // boundary (issue #477) — keep the form mounted and surface it inline.
-      setError("Couldn’t upload the files. Try again.");
+      fail("Couldn’t upload the files. Try again.");
       return;
     }
     // Clear the input (and re-disable the button) so the same file(s) can be picked
@@ -133,7 +141,7 @@ export default function UploadForm({
     setSelected([]);
     if (!result || result.ingested === 0) {
       // Nothing valid to ingest (e.g. an empty drop) — hint rather than a silent no-op.
-      setError("Choose at least one file to upload.");
+      fail("Choose at least one file to upload.");
       return;
     }
     const lead =

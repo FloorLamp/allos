@@ -101,7 +101,7 @@ test("the picker offers exactly the seven types and logs the tapped one", async 
   // the button has room for — that is what makes a self-reported type comparable.
   await expect(picker.getByTestId("stool-type-3")).toHaveAttribute(
     "aria-label",
-    "Type 3, Like a sausage but with cracks on the surface"
+    "Log type 3, Like a sausage but with cracks on the surface"
   );
 
   await expect(page.getByTestId("quick-entry-stool-count")).toHaveText(
@@ -177,6 +177,44 @@ test("the picker offers exactly the seven types and logs the tapped one", async 
     "data-motion-runs",
     String(rollingRuns + 1)
   );
+});
+
+test("a Bristol tap queues offline and replays once at its captured instant (#3166 Q5)", async ({
+  page,
+  context,
+}) => {
+  await page.goto("/?quick=log-stool");
+  const picker = page.getByTestId("quick-entry-stool");
+  await expect(picker).toBeVisible();
+
+  await context.setOffline(true);
+  await picker.getByTestId("stool-type-4").click();
+
+  await expect(
+    page.getByText("Saved offline — will sync when you reconnect.")
+  ).toBeVisible();
+  await expect(page.getByTestId("offline-queue-badge")).toHaveText(
+    /1 queued offline/
+  );
+  await expect(page.getByTestId("quick-entry-stool-count")).toHaveText(
+    "1 logged today."
+  );
+  expect(bristolRows()).toEqual([]);
+
+  await context.setOffline(false);
+  await expect(page.getByText(/Synced 1 offline entr/)).toBeVisible();
+  await expect(page.getByTestId("offline-queue-badge")).toHaveCount(0);
+
+  const rows = bristolRows();
+  expect(rows).toHaveLength(1);
+  expect(rows[0].value).toBe(4);
+  const captured = zonedWallIsoToUtc(TZ, rows[0].started_at);
+  expect(captured?.getTime()).toBe(
+    Math.floor(frozenNow().getTime() / 1000) * 1000
+  );
+
+  await page.reload();
+  expect(bristolRows()).toHaveLength(1);
 });
 
 test("the Body panel shows a day's types as marks, never as one average", async ({

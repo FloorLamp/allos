@@ -63,6 +63,7 @@ import {
   type FoodPayload,
   type MobilityPayload,
   type PracticePayload,
+  type StoolPayload,
 } from "@/lib/offline/queue";
 
 // ── dose confirm / skip ───────────────────────────────────────────────────────
@@ -522,8 +523,9 @@ export function logBristolStool(
   profileId: number,
   date: string,
   type: unknown,
-  // The observation's profile-local wall clock, "HH:MM". Omitted → read from the
-  // clock seam, which is what a one-tap log does: the moment IS now.
+  // The observation's profile-local wall clock, "HH:MM" or "HH:MM:SS". Omitted
+  // → read from the clock seam, which is what an online one-tap log does. Seconds
+  // are accepted for offline replay so a captured tap keeps its exact key.
   at?: string | null
 ): boolean {
   if (!isRealIsoDate(date)) return false;
@@ -547,12 +549,19 @@ export function logBristolStool(
   // clock path carries seconds, and it reads them off the instant in UTC: every IANA
   // zone in the modern era is a whole-minute offset, so the seconds are the same
   // number on any wall clock.
-  const stated = normalizeClockTime(at ?? null);
+  const statedWithSeconds =
+    typeof at === "string" && /^(?:[01]\d|2[0-3]):[0-5]\d:[0-5]\d$/.test(at)
+      ? at
+      : null;
+  const stated =
+    statedWithSeconds?.slice(0, 5) ?? normalizeClockTime(at ?? null);
   const instant = clockNow();
   const hhmm = stated ?? zonedDateParts(getTimezone(profileId), instant).hhmm;
-  const seconds = stated
-    ? "00"
-    : String(instant.getUTCSeconds()).padStart(2, "0");
+  const seconds = statedWithSeconds
+    ? statedWithSeconds.slice(6)
+    : stated
+      ? "00"
+      : String(instant.getUTCSeconds()).padStart(2, "0");
   const ts = `${date}T${hhmm}:${seconds}`;
   writeTx(() => {
     db.prepare(
@@ -1133,6 +1142,21 @@ export function applyIntent(
         return;
       }
       ok = true;
+    } else if (intent.flow === "stool") {
+      const p = intent.payload as StoolPayload;
+      const captured = new Date(intent.capturedAt);
+      if (!Number.isFinite(captured.getTime())) {
+        outcome = { status: "rejected" };
+        return;
+      }
+      const hhmm = zonedDateParts(getTimezone(profileId), captured).hhmm;
+      const seconds = String(captured.getUTCSeconds()).padStart(2, "0");
+      ok = logBristolStool(
+        profileId,
+        intent.date,
+        p?.type,
+        `${hhmm}:${seconds}`
+      );
     } else if (intent.flow === "vitals") {
       const p = intent.payload as VitalsPayload;
       const applied = insertVitals(

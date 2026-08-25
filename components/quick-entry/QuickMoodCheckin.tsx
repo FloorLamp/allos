@@ -54,6 +54,10 @@ export default function QuickMoodCheckin({
     days[0]?.mood?.valence ?? null
   );
   const [error, setError] = useState<string | null>(null);
+  const fail = (message: string): void => {
+    setError(message);
+    toast(message, { tone: "error" });
+  };
 
   const day = days[selected];
 
@@ -87,7 +91,7 @@ export default function QuickMoodCheckin({
       write: () => logMood(fd),
       settle: (res) => {
         if (!res.ok) {
-          setError(res.error);
+          fail(res.error);
           return { kind: "rollback" };
         }
         toast(`Logged ${moodLabel(n)} · ${moodBackfillLabel(selected)}`);
@@ -112,14 +116,14 @@ export default function QuickMoodCheckin({
           // rolls back and the sheet STAYS OPEN — closing it is this surface's
           // claim that the check-in landed.
           if (!kept) {
-            toast(OFFLINE_CAPTURE_REFUSED_MESSAGE, { tone: "error" });
+            fail(OFFLINE_CAPTURE_REFUSED_MESSAGE);
             return undefined; // rollback
           }
           toast("Saved offline — will sync when you reconnect.");
           onDone();
           return { kind: "keep" };
         }
-        setError("Couldn't save that check-in — try again.");
+        fail("Couldn't save that check-in — try again.");
         return undefined; // rollback
       },
     });

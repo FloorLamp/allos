@@ -221,6 +221,8 @@ describe("FLOW_KINDS", () => {
       // DAY-idempotent per (profile, practice-identity, date), which is what answers
       // #2130's "a replay could double-log a day" objection.
       "practice",
+      // Bristol stool-form (#3166 Q5): additive capture with its tap instant.
+      "stool",
     ]);
   });
 });

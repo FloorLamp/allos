@@ -3,12 +3,17 @@
 import { useEffect, useRef, useState } from "react";
 import BristolStoolIcon from "@/components/BristolStoolIcon";
 import { useToast } from "@/components/Toast";
+import { useOfflineQueue } from "@/components/OfflineQueueProvider";
 import { useOptimisticLedger } from "@/components/useOptimisticLedger";
 import { BRISTOL_STOOL_TYPES } from "@/lib/bristol-stool";
 import { logStoolForm } from "@/app/(app)/stool-actions";
 import RollingNumber from "@/components/RollingNumber";
 import { usePrefersReducedMotion } from "@/components/usePrefersReducedMotion";
 import { microMotionPlan } from "@/lib/micro-motion";
+import {
+  OFFLINE_CAPTURE_REFUSED_MESSAGE,
+  shouldQueueOffline,
+} from "@/lib/offline/queue";
 
 // The quick-entry overlay's STOOL form (issue #2785): the Bristol Stool Form Scale as
 // seven one-tap buttons.
@@ -36,12 +41,15 @@ import { microMotionPlan } from "@/lib/micro-motion";
 // bad (#2785 ships a recording surface; a finding is a later decision under the
 // findings doctrine).
 export default function QuickStoolForm({
+  today,
   todayCount,
 }: {
+  today: string;
   // How many Bristol readings this profile already has for today, from the server.
   todayCount: number;
 }) {
   const toast = useToast();
+  const { enqueue } = useOfflineQueue();
   const ledger = useOptimisticLedger<number>("stool-form");
   const [count, setCount] = useState(todayCount);
   const reducedMotion = usePrefersReducedMotion();
@@ -74,17 +82,38 @@ export default function QuickStoolForm({
   }
 
   async function tap(type: number) {
-    await ledger.tap({
+    type StoolTap =
+      | { kind: "queued" }
+      | { kind: "refused" }
+      | { kind: "wrote"; result: Awaited<ReturnType<typeof logStoolForm>> };
+
+    const queueOffline = async (): Promise<"queued" | "refused"> => {
+      const kept = await enqueue("stool", today, { type });
+      if (!kept) {
+        toast(OFFLINE_CAPTURE_REFUSED_MESSAGE, { tone: "error" });
+        return "refused";
+      }
+      toast("Saved offline — will sync when you reconnect.");
+      return "queued";
+    };
+
+    await ledger.tap<StoolTap>({
       key: String(type),
       from: count,
       optimistic: count + 1,
       commit: setCount,
-      write: () => {
+      write: async () => {
+        if (typeof navigator !== "undefined" && navigator.onLine === false) {
+          return { kind: await queueOffline() };
+        }
         const fd = new FormData();
         fd.set("type", String(type));
-        return logStoolForm(fd);
+        return { kind: "wrote", result: await logStoolForm(fd) };
       },
-      settle: (res) => {
+      settle: (outcome) => {
+        if (outcome.kind === "queued") return { kind: "keep" };
+        if (outcome.kind === "refused") return { kind: "rollback" };
+        const res = outcome.result;
         if (!res.ok) {
           toast(res.error, { tone: "error" });
           return { kind: "rollback" };
@@ -92,6 +121,20 @@ export default function QuickStoolForm({
         settle(type);
         toast(`Logged type ${res.type}`);
         return { kind: "adopt", value: res.todayCount };
+      },
+      onError: async (error) => {
+        if (
+          shouldQueueOffline(
+            typeof navigator === "undefined" ? true : navigator.onLine,
+            error
+          )
+        ) {
+          return (await queueOffline()) === "queued"
+            ? { kind: "keep" }
+            : { kind: "rollback" };
+        }
+        toast("Couldn't log that. Try again.", { tone: "error" });
+        return { kind: "rollback" };
       },
     });
   }
@@ -105,7 +148,7 @@ export default function QuickStoolForm({
             type="button"
             data-testid={`stool-type-${t.type}`}
             onClick={() => void tap(t.type)}
-            aria-label={`Type ${t.type}, ${t.description}`}
+            aria-label={`Log type ${t.type}, ${t.description}`}
             className="group relative flex flex-col items-center gap-1 px-1 py-2 text-slate-700 dark:text-slate-200"
           >
             <span

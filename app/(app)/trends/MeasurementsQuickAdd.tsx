@@ -216,6 +216,13 @@ export default function MeasurementsQuickAdd({
   // detail page, or the quick-log sheet — three mountings of this one form.
   const stampLoggedVia = useLoggedViaStamp();
   const [error, setError] = useState<string | null>(null);
+  // A field-bearing sheet form keeps the failure beside the fields AND raises the
+  // app-wide toast (#3275). The inline message is the durable correction point;
+  // the toast makes the failed commit visible if focus is elsewhere in the sheet.
+  const fail = (message: string): void => {
+    setError(message);
+    toast(message, { tone: "error" });
+  };
   // The submission's WHEN — one date + one optional Time for the whole sitting
   // (#2235 decision 3), owned as a PAIR by the shared control so a stated instant's
   // profile-local date is the row's date by construction. Posted through the hidden
@@ -352,14 +359,14 @@ export default function MeasurementsQuickAdd({
     const hasWaist = waist.waistCirc != null;
 
     if (!hasBody && !hasVitals && !hasGrowth && !hasWaist) {
-      setError("Enter at least one measurement.");
+      fail("Enter at least one measurement.");
       return;
     }
     // The combined form retains its historical body-composition contract: a note
     // belongs to a weigh-in. Metric-scoped body-fat/resting-HR forms deliberately
     // have no weight field; those nullable observations persist independently.
     if (!hasBody && body.notes != null && body.notes.trim() !== "") {
-      setError("Enter a weight to save a note.");
+      fail("Enter a weight to save a note.");
       return;
     }
 
@@ -383,7 +390,7 @@ export default function MeasurementsQuickAdd({
       (hasGrowth ? validateGrowthInput(growth) : null) ??
       (hasWaist ? validateWaistInput(waist) : null);
     if (firstError) {
-      setError(firstError);
+      fail(firstError);
       return;
     }
 
@@ -461,10 +468,10 @@ export default function MeasurementsQuickAdd({
       const captured = await queueOffline();
       if (captured === "queued") return;
       if (captured === "refused") {
-        toast(OFFLINE_CAPTURE_REFUSED_MESSAGE, { tone: "error" });
+        fail(OFFLINE_CAPTURE_REFUSED_MESSAGE);
         return;
       }
-      setError("You're offline — reconnect to save these measurements.");
+      fail("You're offline — reconnect to save these measurements.");
       return;
     }
     let saved: MeasurementsSaveResult;
@@ -475,11 +482,11 @@ export default function MeasurementsQuickAdd({
         const captured = await queueOffline();
         if (captured === "queued") return;
         if (captured === "refused") {
-          toast(OFFLINE_CAPTURE_REFUSED_MESSAGE, { tone: "error" });
+          fail(OFFLINE_CAPTURE_REFUSED_MESSAGE);
           return;
         }
       }
-      setError("Couldn't save these measurements. Try again.");
+      fail("Couldn't save these measurements. Try again.");
       return;
     }
     rememberWritten();
