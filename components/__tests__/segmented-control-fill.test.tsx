@@ -98,6 +98,7 @@ describe("SegmentedControl fill mode (#3675)", () => {
             value: "unavailable",
             label: "A long unavailable range",
             disabled: true,
+            title: "Unavailable because this range has no additional data",
           },
         ]}
         value="unavailable"

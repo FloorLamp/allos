@@ -116,8 +116,9 @@ export default function SegmentedControl<T extends string | number>({
         // enabled fill segment may ellipsise because its interactive element
         // carries the full label. A native-disabled button cannot reliably show
         // a title, so its label wraps instead of hiding meaning behind one.
-        const title =
-          option.title ?? (fill && !option.disabled ? option.label : undefined);
+        const title = option.disabled
+          ? undefined
+          : (option.title ?? (fill ? option.label : undefined));
         const body = fill ? (
           <>
             {option.icon}
