@@ -53,8 +53,9 @@ export interface OverlayDragOptions {
   //
   // A consumer with a scrollable body may instead use `canStart` to decide from
   // the exact touch origin and its state at touch-start. BottomSheet does this:
-  // its handle always admits, while its body admits only when its scroller
-  // started at the top.
+  // its non-scrolling chrome always admits while its body admits only when its
+  // scroller started at the top; the handle's rendered box separately gates
+  // whether that whole gesture is available at the current breakpoint.
   grabRef?: React.RefObject<HTMLElement | null>;
   // Optional one-shot origin admission, forwarded to the shared recognizer.
   // This is intentionally not a per-move guard: gesture ownership cannot flip

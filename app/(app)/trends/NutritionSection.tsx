@@ -1,5 +1,5 @@
 import { Fragment, type ReactNode } from "react";
-import Link from "next/link";
+import DestinationLink from "@/components/DestinationLink";
 import { requireSession } from "@/lib/auth";
 import { today } from "@/lib/db";
 import {
@@ -224,12 +224,12 @@ export default async function NutritionSection({
           <h2 className="font-semibold text-slate-800 dark:text-slate-100">
             Intake history
           </h2>
-          <Link
+          <DestinationLink
             href="/timeline"
             className="text-sm font-medium text-brand-700 hover:underline dark:text-brand-400"
           >
-            Full timeline →
-          </Link>
+            Full timeline
+          </DestinationLink>
         </div>
         <p className="mb-3 text-sm text-slate-500 dark:text-slate-400">
           {DAY_HISTORY_DOMAINS.food.helperText}
@@ -269,13 +269,13 @@ export default async function NutritionSection({
           {/* The TABULAR counterpart of this chart (#2417): the calendar shows the
               pattern, the ledger shows the rows behind it — and a tapped day in the
               panel below links into that ledger filtered to the day. */}
-          <Link
+          <DestinationLink
             href={doseLedgerHref("supplement", { kind: DOSE_LEDGER_ALL_KINDS })}
             data-testid="dose-history-ledger-link"
             className="text-sm font-medium text-brand-700 hover:underline dark:text-brand-400"
           >
-            Dose ledger →
-          </Link>
+            Dose ledger
+          </DestinationLink>
         </div>
         <p className="mb-3 text-sm text-slate-500 dark:text-slate-400">
           {DAY_HISTORY_DOMAINS.dose.helperText}

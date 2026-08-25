@@ -142,6 +142,16 @@ export interface CadenceScopeRef {
   value: string;
 }
 
+// A multi-week consumer must decide lifetime eligibility per week. The summary
+// flag on CadenceLedgerEntry answers only for the oldest requested window; this
+// projection keeps the declaration-day comparison canonical for every caller.
+export function cadenceWeeksCoveredByTarget<T extends { start: string }>(
+  weeks: readonly T[],
+  declaredOn: string
+): T[] {
+  return weeks.filter((week) => week.start >= declaredOn);
+}
+
 const scopeKey = (scope: CadenceScopeRef): string =>
   `${scope.kind}:${scope.value}`;
 
@@ -731,7 +741,7 @@ export function getCadenceCapWeeks(
     // Only the weeks that began after the cap was declared. The ledger's
     // `existedWholeWindow` answers this for its OLDEST window; a multi-week read needs
     // it per week, off the same `created_at` day the flag compares.
-    const weeks = entry.weeks.filter((w) => w.start >= entry.declaredOn);
+    const weeks = cadenceWeeksCoveredByTarget(entry.weeks, entry.declaredOn);
     if (weeks.length < CAP_PERIOD_MIN_WEEKS) continue;
     out.push({
       label: cadenceScopeNoun(

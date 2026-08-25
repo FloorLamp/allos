@@ -1,4 +1,5 @@
 import Link from "next/link";
+import DestinationLink from "@/components/DestinationLink";
 import { redirect } from "next/navigation";
 import { metricDetailHref, CLINICAL_RESULTS_LIST_HREF } from "@/lib/hrefs";
 import { continuousReadingSlug } from "@/lib/reading-cadence";
@@ -869,12 +870,12 @@ export default async function ClinicalResultDetailPage(props: {
             <span className="font-semibold">Immunity marker.</span> This titer
             backs your immunization record.
           </span>
-          <Link
+          <DestinationLink
             href="/records/history/immunizations"
             className="shrink-0 font-medium text-brand-700 hover:underline dark:text-brand-400"
           >
-            See immunity status →
-          </Link>
+            See immunity status
+          </DestinationLink>
         </div>
       )}
 
@@ -988,12 +989,12 @@ export default async function ClinicalResultDetailPage(props: {
           </p>
         )}
         <p className="mt-3 text-xs text-slate-500 dark:text-slate-400">
-          <Link
+          <DestinationLink
             href="/disclaimer#suggestions-and-reference-ranges"
             className="text-link"
           >
-            About reference ranges →
-          </Link>
+            About reference ranges
+          </DestinationLink>
         </p>
       </div>
 

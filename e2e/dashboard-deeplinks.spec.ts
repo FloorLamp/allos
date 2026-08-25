@@ -61,7 +61,7 @@ test.describe("data-quality CTAs deep-link the exact form (#1146)", () => {
       const ctaFor = (label: string) =>
         dashboardCandidateWithText(page, "data-quality.finding:", label)
           .getByTestId("data-quality-item")
-          .getByRole("link", { name: "Fix it →" });
+          .getByRole("link", { name: "Fix it" });
 
       // Each CTA names the exact target (asserted before navigating).
       await expect(ctaFor("Record smoking status")).toHaveAttribute(
@@ -124,7 +124,7 @@ test.describe("data-quality CTAs deep-link the exact form (#1146)", () => {
         "Confirm 1 RxNorm match"
       )
         .getByTestId("data-quality-item")
-        .getByRole("link", { name: "Fix it →" });
+        .getByRole("link", { name: "Fix it" });
       await expect(cta).toHaveAttribute(
         "href",
         /\/medications\/\d+\?action=edit$/

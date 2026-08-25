@@ -1,4 +1,4 @@
-import Link from "next/link";
+import DestinationLink from "@/components/DestinationLink";
 import { today } from "@/lib/db";
 import { EPISODES_HREF } from "@/lib/hrefs";
 import {
@@ -149,13 +149,13 @@ export default function VisitsSection({
       <div className="mb-3 flex flex-wrap items-center justify-between gap-x-4 gap-y-2">
         <h3 className="section-label">Past</h3>
         {showHousehold && (
-          <Link
+          <DestinationLink
             href={EPISODES_HREF}
             className="shrink-0 text-sm font-medium text-brand-700 hover:underline dark:text-brand-300"
             data-testid="household-view-link"
           >
-            View illness episodes →
-          </Link>
+            View illness episodes
+          </DestinationLink>
         )}
       </div>
       <EncounterList

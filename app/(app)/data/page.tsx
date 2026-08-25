@@ -1,5 +1,4 @@
-import Link from "next/link";
-import { IconArrowRight } from "@tabler/icons-react";
+import DestinationLink from "@/components/DestinationLink";
 import {
   getTrashRetentionDays,
   getUnitPrefs,
@@ -222,7 +221,7 @@ export default async function DataPage(
         {/* The import history now lives in one place — the Review tab's unified
             feed — so there's a single source of truth for everything imported
             (documents, pastes, and background syncs), not two competing logs. */}
-        <Link
+        <DestinationLink
           href="/data?section=review"
           className="card flex items-center justify-between gap-3 transition hover:border-brand-300 dark:hover:border-brand-800"
         >
@@ -235,8 +234,7 @@ export default async function DataPage(
               resolve duplicates — in the Review tab.
             </p>
           </div>
-          <IconArrowRight className="h-5 w-5 shrink-0 text-brand-600 dark:text-brand-400" />
-        </Link>
+        </DestinationLink>
       </div>
     );
   }

@@ -1,5 +1,5 @@
-import Link from "next/link";
-import { IconArrowRight, IconChecklist } from "@tabler/icons-react";
+import { IconChecklist } from "@tabler/icons-react";
+import DestinationLink from "@/components/DestinationLink";
 import { dismissOnboardingChecklist } from "@/app/(app)/onboarding/actions";
 import { MEDICATIONS_HREF, type AppRoute } from "@/lib/hrefs";
 import {
@@ -106,7 +106,7 @@ export default function OnboardingChecklist({
       </div>
       <div className="divide-y divide-black/5 dark:divide-white/10">
         {tasks.slice(0, 4).map((task) => (
-          <Link
+          <DestinationLink
             key={task.label}
             href={task.href}
             className={`group items-center justify-between gap-3 py-3 first:pt-0 ${
@@ -121,8 +121,7 @@ export default function OnboardingChecklist({
                 {task.benefit}
               </span>
             </span>
-            <IconArrowRight className="h-4 w-4 shrink-0 text-slate-400" />
-          </Link>
+          </DestinationLink>
         ))}
       </div>
       <form action={dismissOnboardingChecklist} className="mt-3">

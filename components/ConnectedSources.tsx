@@ -1,5 +1,4 @@
-import Link from "next/link";
-import { IconArrowRight } from "@tabler/icons-react";
+import DestinationLink from "@/components/DestinationLink";
 import type { IntegrationId } from "@/lib/types/integrations";
 import { integrationDetailHref } from "@/lib/hrefs";
 import { getIntegration } from "@/lib/integrations/registry";
@@ -68,15 +67,15 @@ function SourceAction({ source }: { source: ConnectedSource }) {
   }
   if (!source.connected && href) {
     return (
-      <Link href={href} className="text-sm text-link">
-        Reconnect {source.name} →
-      </Link>
+      <DestinationLink href={href} className="text-sm text-link">
+        Reconnect {source.name}
+      </DestinationLink>
     );
   }
   return href ? (
-    <Link href={href} className="text-sm text-link">
-      Open {source.name} settings →
-    </Link>
+    <DestinationLink href={href} className="text-sm text-link">
+      Open {source.name} settings
+    </DestinationLink>
   ) : null;
 }
 
@@ -106,13 +105,13 @@ function AttentionCard({
           <>
             <SourceAction source={source} />
             {href && source.history.length > 0 && (
-              <Link
+              <DestinationLink
                 href={href}
                 className="text-xs text-link"
                 data-testid={`source-history-link-${source.id}`}
               >
-                Full sync history →
-              </Link>
+                Full sync history
+              </DestinationLink>
             )}
           </>
         }
@@ -230,19 +229,18 @@ function HealthyRow({ source }: { source: ConnectedSource }) {
         {source.latest && (
           <SyncTimestamp value={source.latest.at} relativeOnly />
         )}
-        <IconArrowRight className="h-4 w-4 text-brand-600 dark:text-brand-400" />
       </span>
     </>
   );
   return (
     <li data-testid={`source-${source.id}`}>
       {href ? (
-        <Link
+        <DestinationLink
           href={href}
           className="flex flex-wrap items-center justify-between gap-2 rounded-lg border border-black/5 px-3 py-2 transition hover:border-brand-300 dark:border-white/5 dark:hover:border-brand-800"
         >
           {body}
-        </Link>
+        </DestinationLink>
       ) : (
         <div className="flex flex-wrap items-center justify-between gap-2 rounded-lg border border-black/5 px-3 py-2 dark:border-white/5">
           {body}

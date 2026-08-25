@@ -1,5 +1,5 @@
 import Link from "next/link";
-import { IconChevronRight } from "@tabler/icons-react";
+import DestinationIndicator from "@/components/DestinationIndicator";
 import type { ProducedItem } from "@/lib/import-browser";
 import type { ConfidenceFlag } from "@/lib/extraction-confidence";
 import { triageRowId } from "@/lib/confidence-triage";
@@ -81,7 +81,7 @@ export default function ProducedListing({
                       {formatDateWithYear(item.date, prefs)}
                     </span>
                   )}
-                  <IconChevronRight className="h-3.5 w-3.5 shrink-0 self-center text-slate-300 group-hover:text-brand-600 dark:text-slate-600 dark:group-hover:text-brand-400" />
+                  <DestinationIndicator />
                 </Link>
                 {/* What the extractor hedged about this row, and why (#2339). */}
                 {flag && (

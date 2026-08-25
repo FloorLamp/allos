@@ -1,5 +1,5 @@
-import Link from "next/link";
 import { IconX } from "@tabler/icons-react";
+import DestinationLink from "@/components/DestinationLink";
 import type { Finding } from "@/lib/findings";
 import IconButton from "@/components/IconButton";
 
@@ -53,12 +53,12 @@ export default function FindingRow({
         <div className="mt-1.5 flex flex-wrap items-center gap-x-3 gap-y-1 text-xs text-slate-500 dark:text-slate-400">
           {f.evidence && <span>{f.evidence}</span>}
           {f.actionHref && (
-            <Link
+            <DestinationLink
               href={f.actionHref}
               className="font-medium text-brand-700 hover:underline dark:text-brand-400"
             >
-              {f.actionLabel ?? "View"} →
-            </Link>
+              {f.actionLabel ?? "View"}
+            </DestinationLink>
           )}
         </div>
       </div>

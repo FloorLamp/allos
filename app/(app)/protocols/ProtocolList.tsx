@@ -1,6 +1,7 @@
-import Link from "next/link";
-import { IconFlask2, IconChevronRight } from "@tabler/icons-react";
+import { IconFlask2 } from "@tabler/icons-react";
+import DestinationLink from "@/components/DestinationLink";
 import { formatLongDate, type DisplayFormatPrefs } from "@/lib/format-date";
+import { protocolHref } from "@/lib/hrefs";
 import type { Protocol } from "@/lib/types";
 import type { ProtocolHeatmap } from "@/lib/protocol-heatmap";
 import PracticeHeatmap from "@/components/practices/PracticeHeatmap";
@@ -37,8 +38,8 @@ export default function ProtocolList({
             )}`;
         return (
           <li key={p.id}>
-            <Link
-              href={`/protocols/${p.id}`}
+            <DestinationLink
+              href={protocolHref(p.id)}
               className="flex items-start gap-3 rounded-lg px-3 py-3 transition hover:bg-white/70 dark:hover:bg-white/5"
               data-testid={`protocol-row-${p.id}`}
             >
@@ -75,12 +76,7 @@ export default function ProtocolList({
                   className="mt-2"
                 />
               </div>
-              <IconChevronRight
-                className="self-center h-4 w-4 shrink-0 text-slate-400"
-                stroke={1.75}
-                aria-hidden
-              />
-            </Link>
+            </DestinationLink>
           </li>
         );
       })}

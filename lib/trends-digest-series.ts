@@ -6,25 +6,8 @@
 
 import { shiftDateStr } from "./date";
 import { FOOD_GROUPS, foodGroupShortName } from "./food-groups";
-import {
-  SOURCE_PREFERENCE,
-  pickOneSourcePerDay,
-  pickRowsOneOriginPerSourceDay,
-} from "./metric-sources";
-import {
-  parseMetricSourcePriority,
-  resolveMetricSources,
-} from "./metric-source-priority";
-import { mergeProteinSources, buildMacroFiberSeries } from "./nutrition-trends";
-import { practiceDisplayName, practiceIdentity } from "./practice";
-import { filterSeriesByRange } from "./trends";
 import type { DigestSeries } from "./trends-digest";
 import type { DateRange } from "./timeline-format";
-import {
-  practiceDigestEligible,
-  practiceDigestKey,
-  PRACTICE_DIGEST_MIN_CHANGE,
-} from "./trends-practices";
 import type { CadenceWindow } from "./queries/cadence-ledger";
 import type { TrendsDigestGatherRow } from "./queries/trends-digest";
 
@@ -44,13 +27,6 @@ export const NUTRITION_DIGEST_PREFIX = "nutrition:";
 export const LOGGING_DIGEST_PREFIX = "logging:";
 
 export interface SupplementalDigestInputs {
-  practiceTargets: {
-    identity: string;
-    name: string;
-    perWeek: number | null;
-    weeks: { start: string; count: number }[];
-  }[];
-  proteinDays: { date: string; value: number }[];
   foodServings: { date: string; group: string; servings: number }[];
   foodDates: string[];
   doseDates: string[];
@@ -75,88 +51,14 @@ function countsByWindow(
   );
 }
 
-// Turn the one query-layer union into the exact inputs the pure family builders
-// consume. Source election and manual-vs-tracked precedence are the SAME primitives
-// getMacroFiberDays uses for the Nutrition chart.
+// Turn the one query-layer union into the exact logging inputs the pure family
+// builders consume. Cadence targets and macro nutrition use their canonical reads.
 export function supplementalDigestInputs(
   rows: readonly TrendsDigestGatherRow[],
   windows: readonly CadenceWindow[],
   range: DateRange
 ): SupplementalDigestInputs {
-  const trackedRows = rows.flatMap((row) =>
-    row.kind === "macro-tracked" && row.key && row.date && row.value != null
-      ? [
-          {
-            metric: row.key,
-            date: row.date,
-            source: row.source,
-            origin: row.origin,
-            value: row.value,
-          },
-        ]
-      : []
-  );
-  const priority = parseMetricSourcePriority(
-    rows.find((row) => row.kind === "source-priority")?.key
-  );
-  const trackedFor = (metric: string) => {
-    const candidates = trackedRows.filter((row) => row.metric === metric);
-    return pickOneSourcePerDay(
-      pickRowsOneOriginPerSourceDay(
-        candidates,
-        (row) => row.date,
-        (row) => row.source,
-        (row) => row.origin,
-        (row) => row.value
-      ),
-      resolveMetricSources(metric, priority, SOURCE_PREFERENCE)
-    ).sort((a, b) => a.date.localeCompare(b.date));
-  };
-  const logged = rows.flatMap((row) =>
-    row.kind === "protein-logged" && row.date && row.value != null
-      ? [{ date: row.date, value: row.value }]
-      : []
-  );
-  const proteinDays = filterSeriesByRange(
-    buildMacroFiberSeries({
-      protein: mergeProteinSources(trackedFor("protein_g"), logged),
-      carbs: trackedFor("carbs_g"),
-      fat: trackedFor("fat_g"),
-      fiber: trackedFor("fiber_g"),
-    }).map((day) => ({ date: day.date, value: day.protein })),
-    range
-  );
-
-  const practiceLogDates = rows.filter(
-    (row) => row.kind === "practice-log" && row.date
-  );
-  const practiceTargets = rows
-    .filter((row) => row.kind === "practice-target" && row.key)
-    .map((target) => {
-      const identity = practiceIdentity(target.key!);
-      const dates = practiceLogDates.flatMap((row) =>
-        practiceIdentity(row.key ?? "") === identity && row.date
-          ? [row.date]
-          : []
-      );
-      const counts = countsByWindow(dates, windows);
-      return {
-        identity,
-        name: practiceDisplayName({
-          targetSpelling: target.key,
-          identity,
-        }),
-        perWeek: target.value,
-        weeks: windows.map((window, index) => ({
-          start: window.start,
-          count: counts[index],
-        })),
-      };
-    });
-
   return {
-    practiceTargets,
-    proteinDays,
     foodServings: rows.flatMap((row) =>
       row.kind === "food-serving" && row.date && row.key && row.value != null
         ? (!range.from || row.date >= range.from) &&
@@ -169,28 +71,6 @@ export function supplementalDigestInputs(
     doseDates: datesFor(rows, "dose-log"),
     weighingDates: datesFor(rows, "weight-log"),
   };
-}
-
-export function buildPracticeDigestSeriesFromInputs(
-  practices: readonly SupplementalDigestInputs["practiceTargets"][number][]
-): DigestSeries[] {
-  return practices
-    .filter((practice) =>
-      practiceDigestEligible({
-        perWeek: practice.perWeek,
-        weeks: practice.weeks,
-      })
-    )
-    .map((practice) => ({
-      key: practiceDigestKey(practice.identity),
-      label: `${practice.name} cadence`,
-      unit: "/wk",
-      points: practice.weeks.map((week) => ({
-        date: week.start,
-        value: week.count,
-      })),
-      minPctChange: PRACTICE_DIGEST_MIN_CHANGE,
-    }));
 }
 
 export function buildNutritionDigestSeries(input: {
@@ -270,18 +150,12 @@ export function digestGatherBounds(
   windows: readonly CadenceWindow[],
   todayStr: string
 ): {
-  practiceFrom: string;
-  proteinFrom: string;
-  foodFrom: string;
-  doseFrom: string;
+  from: string;
   to: string;
 } {
-  const practiceFrom = windows[0]?.start ?? shiftDateStr(todayStr, -27);
+  const from = windows[0]?.start ?? shiftDateStr(todayStr, -27);
   return {
-    practiceFrom,
-    proteinFrom: range.from ?? "0000-01-01",
-    foodFrom: practiceFrom,
-    doseFrom: practiceFrom,
+    from,
     to: range.to && range.to < todayStr ? range.to : todayStr,
   };
 }

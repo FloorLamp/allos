@@ -24,7 +24,7 @@ async function expectEmptyDayAddLink(
   const panel = section.getByTestId("day-history-daypanel");
   await expect(panel).toContainText("Nothing logged this day.");
   const add = panel.getByTestId("day-history-add-link");
-  await expect(add).toHaveText("Log for this day →");
+  await expect(add).toHaveText("Log for this day");
   await expect(add).toHaveAttribute("href", href);
   await expect(add).toHaveAttribute("href", new RegExp(date!));
 }

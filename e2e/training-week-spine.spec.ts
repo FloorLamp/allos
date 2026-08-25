@@ -224,7 +224,7 @@ test("the band's blocks are named — the week's sessions read on the card", asy
     // The fifth in-window session is CUT, and the cut is stated — the link is the
     // handoff, not a silent truncation.
     await expect(list.getByTestId("recent-sessions-log-link")).toHaveText(
-      "1 more in Log →"
+      "1 more in Log"
     );
 
     // Neither decoy reaches the list: last week's session is outside the window,

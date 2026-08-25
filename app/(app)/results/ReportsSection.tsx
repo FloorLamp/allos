@@ -4,7 +4,7 @@ import NotesText from "@/components/NotesText";
 import { formatLongDate, type DisplayFormatPrefs } from "@/lib/format-date";
 import { importHref } from "@/lib/hrefs";
 import { dataSectionHref } from "@/lib/hrefs";
-import Link from "next/link";
+import DestinationLink from "@/components/DestinationLink";
 
 // Results › Reports (#708): the narrative diagnostic reports — the free-text body of a
 // microbiology culture, gram stain, or cytopathology report, recovered from an imported
@@ -66,9 +66,12 @@ export default function ReportsSection({
           />
           {r.document_id != null && (
             <p className="text-xs">
-              <Link href={importHref(r.document_id)} className="text-link">
-                View source document →
-              </Link>
+              <DestinationLink
+                href={importHref(r.document_id)}
+                className="text-link"
+              >
+                View source document
+              </DestinationLink>
             </p>
           )}
         </article>

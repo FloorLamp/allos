@@ -1,8 +1,7 @@
 "use client";
 
 import { useEffect, useRef, useState } from "react";
-import Link from "next/link";
-import { IconArrowRight } from "@tabler/icons-react";
+import DestinationLink from "@/components/DestinationLink";
 import { loadSyncRows } from "@/app/(app)/data/review-actions";
 import { drilldownRemainderLabel } from "@/lib/integrations/sync-history-days";
 import type { SyncRowLink } from "@/lib/queries";
@@ -113,7 +112,7 @@ export default function SyncRowsDrilldown({
                   {r.date ? ` · ${r.date}` : ""} (removed)
                 </span>
               ) : (
-                <Link
+                <DestinationLink
                   href={r.href}
                   className="inline-flex items-center gap-1 text-slate-600 hover:text-brand-600 hover:underline dark:text-slate-300 dark:hover:text-brand-400"
                 >
@@ -130,8 +129,7 @@ export default function SyncRowsDrilldown({
                     {r.label}
                     {r.date ? ` · ${r.date}` : ""}
                   </span>
-                  <IconArrowRight className="h-3 w-3 shrink-0" />
-                </Link>
+                </DestinationLink>
               )}
             </li>
           ))}

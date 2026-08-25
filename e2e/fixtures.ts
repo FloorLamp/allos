@@ -395,6 +395,9 @@ export const test = base.extend<TestFixtures, WorkerFixtures>({
             // Frozen app clock (#990/#1464): the seed that produced the template
             // and this server must read the same instant.
             ALLOS_TEST_NOW: readFrozenNow(),
+            // Opt in the authenticated, test-only UI fixtures. Their routes
+            // return 404 from every ordinary deployment.
+            ALLOS_E2E_TEST_HARNESS: "1",
             // Outbound email capture for the email-auth spec — per worker.
             EMAIL_TEST_CAPTURE: workerMailboxPath(idx),
             ...(demo ? { ALLOS_DEMO_MODE: "1" } : {}),

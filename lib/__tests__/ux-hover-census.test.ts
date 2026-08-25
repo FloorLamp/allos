@@ -42,12 +42,12 @@ const snap = (elements: El[]) => ({ elements, examined: elements.length });
 describe("summarizeHover — the rendered difference a hover made", () => {
   it("reports an element that became visible as revealed INFORMATION", () => {
     const r = summarizeHover(
-      snap([el("door", false, [0, 0, 60, 16], "Latest ›")]),
-      snap([el("door", true, [0, 0, 60, 16], "Latest ›")]),
+      snap([el("door", false, [0, 0, 60, 16], "Latest")]),
+      snap([el("door", true, [0, 0, 60, 16], "Latest")]),
       OPTS,
       true
     );
-    expect(r.revealed).toEqual([{ el: "span#door", text: "Latest ›" }]);
+    expect(r.revealed).toEqual([{ el: "span#door", text: "Latest" }]);
     expect(r.revealedTotal).toBe(1);
     expect(r.changed).toBe(true);
     expect(r.revealsInformation).toBe(true);
@@ -203,7 +203,7 @@ describe("hoverAuditSections — how a reviewer meets a hover capture", () => {
       label: "Standing family door labels",
       found: true,
       shot: "42-page-desktop-home-hover.png",
-      revealed: [{ el: 'span[data-testid="standing-door"]', text: "Latest ›" }],
+      revealed: [{ el: 'span[data-testid="standing-door"]', text: "Latest" }],
       hidden: [{ el: "span#age", text: "3 d ago" }],
       movedTotal: 1,
       pixelsChanged: true,
@@ -228,7 +228,7 @@ describe("hoverAuditSections — how a reviewer meets a hover capture", () => {
   it("names the shot file, so the table points AT the picture", () => {
     const md = hoverAuditSections(rows).join("\n");
     expect(md).toContain("42-page-desktop-home-hover.png");
-    expect(md).toContain("Latest ›");
+    expect(md).toContain("Latest");
     // …and says out loud that this is a desktop-only artifact, because a reader
     // who does not know that will wonder why there is no phone column.
     expect(md).toContain("Desktop only");

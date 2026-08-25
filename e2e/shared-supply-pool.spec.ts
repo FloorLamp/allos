@@ -305,9 +305,7 @@ test.describe("shared supply pools", () => {
       // specs' bottles are orphan-visible to everyone and exact-counting shared seed
       // rows is what the fixture-hygiene rule forbids.
       await expect(medDoor).toHaveText(/\d+ shared bottles/);
-      await expect(
-        medDoor.getByTestId("shared-supplies-chevron")
-      ).toBeVisible();
+      await expect(medDoor.locator("svg.h-4.w-4").last()).toBeVisible();
       // The accessible name keeps the destination's NAME even when the visible label
       // is a count, so the link never reads as an anonymous number to AT.
       await expect(medDoor).toHaveAttribute("aria-label", /Medicine cabinet/);
