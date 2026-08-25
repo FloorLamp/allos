@@ -50,6 +50,7 @@
 import fs from "node:fs";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
+import { stripComments } from "@/lib/__tests__/strip-comments";
 
 export const REPO_ROOT = path.resolve(
   fileURLToPath(new URL("..", import.meta.url))
@@ -223,60 +224,14 @@ export function readSourceFiles(root: string = REPO_ROOT): SourceFile[] {
  * makes a file that merely NAMES `ModalShell` in prose stop counting as a
  * consumer of it.
  *
- * String literals are copied through VERBATIM, comment openers and all. That is
- * load-bearing rather than fussy — `accept="image/*"` opens a phantom block
- * comment that would blank the next hundred lines, and a scan that silently
- * throws away source reports a green it never checked.
+ * Strings, templates and regular-expression literals are copied through verbatim,
+ * comment openers and all. Both halves are load-bearing: `accept="image/*"` and
+ * `/\/*$/` must not open phantom block comments that blank everything after them.
+ * The shared scanner carries the repo-wide regex/class/template handling and its
+ * parser-oracle tests; keeping a smaller private scanner here recreated #3532.
  */
 export function withoutComments(text: string): string {
-  const out: string[] = [];
-  let inBlock = false;
-  for (let i = 0; i < text.length; i += 1) {
-    const ch = text[i];
-    if (ch === "\n") {
-      out.push(ch);
-      continue;
-    }
-    if (inBlock) {
-      if (ch === "*" && text[i + 1] === "/") {
-        inBlock = false;
-        out.push("  ");
-        i += 1;
-      } else out.push(" ");
-      continue;
-    }
-    if (ch === '"' || ch === "'" || ch === "`") {
-      out.push(ch);
-      i += 1;
-      while (i < text.length && text[i] !== ch) {
-        if (text[i] === "\\") {
-          out.push(text[i], text[i + 1] ?? "");
-          i += 2;
-          continue;
-        }
-        out.push(text[i]);
-        i += 1;
-      }
-      out.push(text[i] ?? "");
-      continue;
-    }
-    if (ch === "/" && text[i + 1] === "*") {
-      inBlock = true;
-      out.push("  ");
-      i += 1;
-      continue;
-    }
-    if (ch === "/" && text[i + 1] === "/") {
-      while (i < text.length && text[i] !== "\n") {
-        out.push(" ");
-        i += 1;
-      }
-      i -= 1;
-      continue;
-    }
-    out.push(ch);
-  }
-  return out.join("");
+  return stripComments(text);
 }
 
 // ── Imports ──────────────────────────────────────────────────────────────────
