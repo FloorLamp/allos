@@ -2,6 +2,7 @@ import { type Locator } from "@playwright/test";
 import { test, expect } from "./fixtures";
 import { E2E_LOGIN_SHELL, SHELL_DOSE_ITEM } from "./logins/metrics";
 import { E2E_MEMBER_PASSWORD } from "./logins/shared";
+import { hydratedClick } from "./helpers";
 import { loginAs } from "./nav";
 import { TAP_FLOOR_PX, TAP_TARGET_INSET_PX } from "../lib/tap-floor-reach";
 
@@ -93,11 +94,11 @@ test.describe("tap-target rendered census (#3562)", () => {
         "mobile dock slot",
         page.getByTestId("dock-slot-home")
       );
-      await page.getByTestId("dock-log-puck").click();
+      await hydratedClick(page, page.getByTestId("dock-log-puck"));
       const sheet = page.getByTestId("quick-log-sheet");
       await expect(sheet).toBeVisible();
       const trainSegment = sheet.getByTestId("log-sheet-segment-train");
-      await trainSegment.click();
+      await hydratedClick(page, trainSegment);
       await expect(trainSegment).toHaveAttribute("aria-pressed", "true");
       await expectRenderedFloor(
         "quick-log row",
@@ -115,7 +116,10 @@ test.describe("tap-target rendered census (#3562)", () => {
   test("visit controls", async ({ page }) => {
     test.setTimeout(120_000);
     await page.goto("/records/history/visits");
-    await page.getByRole("button", { name: "Add visit", exact: true }).click();
+    await hydratedClick(
+      page,
+      page.getByRole("button", { name: "Add visit", exact: true })
+    );
     const dialog = page.getByRole("dialog", { name: "Add visit" });
     await expectOverlayFloor(
       "past-visit tense switch",
@@ -130,7 +134,7 @@ test.describe("tap-target rendered census (#3562)", () => {
       "visit more trigger",
       dialog.getByTestId("visit-fact-more")
     );
-    await dialog.getByTestId("visit-fact-more").click();
+    await hydratedClick(page, dialog.getByTestId("visit-fact-more"));
     await expectRenderedFloor(
       "visit more choice",
       dialog.getByTestId("visit-more-provider")
@@ -139,7 +143,7 @@ test.describe("tap-target rendered census (#3562)", () => {
       "visit more choices",
       dialog.getByTestId("visit-fact-more-menu")
     );
-    await dialog.getByTestId("visit-tense-past").click();
+    await hydratedClick(page, dialog.getByTestId("visit-tense-past"));
     await expectOverlayFloor(
       "upcoming-visit tense switch",
       dialog.getByTestId("visit-tense-upcoming"),
@@ -150,13 +154,16 @@ test.describe("tap-target rendered census (#3562)", () => {
   test("protocol, goal and injury detail menus", async ({ page }) => {
     test.setTimeout(120_000);
     await page.goto("/longevity#protocols");
-    await page.getByRole("main").getByTestId("new-protocol-toggle").click();
+    await hydratedClick(
+      page,
+      page.getByRole("main").getByTestId("new-protocol-toggle")
+    );
     const protocol = page.getByTestId("protocol-form");
     await expectRenderedFloor(
       "protocol more trigger",
       protocol.getByTestId("protocol-fact-more")
     );
-    await protocol.getByTestId("protocol-fact-more").click();
+    await hydratedClick(page, protocol.getByTestId("protocol-fact-more"));
     await expectRenderedFloor(
       "protocol more choice",
       protocol.getByTestId("protocol-more-notes")
@@ -167,16 +174,19 @@ test.describe("tap-target rendered census (#3562)", () => {
     );
 
     await page.goto("/training?tab=goals");
-    await page.getByRole("button", { name: "Add goal", exact: true }).click();
+    await hydratedClick(
+      page,
+      page.getByRole("button", { name: "Add goal", exact: true })
+    );
     const goal = page.getByTestId("goal-form");
-    await goal.getByTestId("goal-kind-freeform").click();
+    await hydratedClick(page, goal.getByTestId("goal-kind-freeform"));
     await goal.getByLabel("Title").fill("Geometry goal");
-    await goal.getByTestId("goal-editor-done").click();
+    await hydratedClick(page, goal.getByTestId("goal-editor-done"));
     await expectRenderedFloor(
       "goal more trigger",
       goal.getByTestId("goal-fact-more")
     );
-    await goal.getByTestId("goal-fact-more").click();
+    await hydratedClick(page, goal.getByTestId("goal-fact-more"));
     await expectRenderedFloor(
       "goal more choice",
       goal.getByTestId("goal-more-category")
@@ -187,13 +197,16 @@ test.describe("tap-target rendered census (#3562)", () => {
     );
 
     await page.goto("/training");
-    await page.getByRole("button", { name: "Log injury", exact: true }).click();
+    await hydratedClick(
+      page,
+      page.getByRole("button", { name: "Log injury", exact: true })
+    );
     const injury = page.getByTestId("injury-form");
     await expectRenderedFloor(
       "injury more trigger",
       injury.getByTestId("injury-fact-more")
     );
-    await injury.getByTestId("injury-fact-more").click();
+    await hydratedClick(page, injury.getByTestId("injury-fact-more"));
     await expectRenderedFloor(
       "injury more choice",
       injury.getByTestId("injury-more-laterality")
@@ -207,7 +220,7 @@ test.describe("tap-target rendered census (#3562)", () => {
   test("intake and cadence controls", async ({ page }) => {
     test.setTimeout(120_000);
     await page.goto("/nutrition?tab=supplements");
-    await page.getByTestId("supplement-add-toggle").click();
+    await hydratedClick(page, page.getByTestId("supplement-add-toggle"));
     const form = page.getByTestId("intake-item-form");
     await expect(form).toBeVisible();
     await form.getByLabel("Name").fill("Geometry thing");
@@ -229,7 +242,7 @@ test.describe("tap-target rendered census (#3562)", () => {
       form.getByTestId("intake-fact-row")
     );
 
-    await form.getByTestId("intake-fact-more").click();
+    await hydratedClick(page, form.getByTestId("intake-fact-more"));
     await expect(form.getByTestId("intake-editor")).toHaveAttribute(
       "data-panel",
       "more"
@@ -242,7 +255,7 @@ test.describe("tap-target rendered census (#3562)", () => {
       "intake more choices",
       form.getByTestId("intake-more-purpose").locator("..")
     );
-    await form.getByTestId("intake-more-purpose").click();
+    await hydratedClick(page, form.getByTestId("intake-more-purpose"));
     await form.getByLabel("Name").fill("Lutein");
     await form.getByLabel("Name").press("Escape");
     await expectRenderedFloor(
@@ -257,8 +270,8 @@ test.describe("tap-target rendered census (#3562)", () => {
       "purpose goals",
       form.getByTestId("purpose-goal-energy").locator("..")
     );
-    await form.getByTestId("intake-editor-done").click();
-    await form.getByTestId("intake-add-rule").click();
+    await hydratedClick(page, form.getByTestId("intake-editor-done"));
+    await hydratedClick(page, form.getByTestId("intake-add-rule"));
     await expectRenderedFloor(
       "rule offer",
       form.getByTestId("intake-rule-add-only-when")
@@ -267,14 +280,14 @@ test.describe("tap-target rendered census (#3562)", () => {
       "rule offers",
       form.getByTestId("intake-rule-add-only-when").locator("..")
     );
-    await form.getByTestId("intake-rule-add-only-when").click();
-    await form.getByTestId("intake-editor-done").click();
+    await hydratedClick(page, form.getByTestId("intake-rule-add-only-when"));
+    await hydratedClick(page, form.getByTestId("intake-editor-done"));
     await expectRenderedTargetsDisjoint(
       "fact chip split",
       form.getByTestId("intake-fact-rule")
     );
 
-    await form.getByTestId("intake-fact-timing").click();
+    await hydratedClick(page, form.getByTestId("intake-fact-timing"));
     await form.getByLabel("How often").selectOption("weekly");
     await expectRenderedFloor(
       "cadence weekday",

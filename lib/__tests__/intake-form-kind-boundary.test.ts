@@ -17,6 +17,15 @@ const EXPECTED_CALLERS = [
   ["components/illness/SymptomMedQuickAdd.tsx", "medication"],
 ] as const;
 
+function isScannedSource(name: string): boolean {
+  return (
+    name.endsWith(".ts") ||
+    name.endsWith(".tsx") ||
+    name.endsWith(".js") ||
+    name.endsWith(".jsx")
+  );
+}
+
 function sourceFiles(root: string): string[] {
   const out: string[] = [];
   const walk = (rel: string) => {
@@ -25,8 +34,7 @@ function sourceFiles(root: string): string[] {
     })) {
       const child = `${rel}/${entry.name}`;
       if (entry.isDirectory()) walk(child);
-      else if (entry.name.endsWith(".ts") || entry.name.endsWith(".tsx"))
-        out.push(child);
+      else if (isScannedSource(entry.name)) out.push(child);
     }
   };
   walk(root);
@@ -45,13 +53,20 @@ function isIntakeFormModule(specifier: string): boolean {
   );
 }
 
+function scriptKind(file: string): ts.ScriptKind {
+  if (file.endsWith(".tsx")) return ts.ScriptKind.TSX;
+  if (file.endsWith(".jsx")) return ts.ScriptKind.JSX;
+  if (file.endsWith(".js")) return ts.ScriptKind.JS;
+  return ts.ScriptKind.TS;
+}
+
 function scanIntakeFormSource(file: string, text: string): IntakeFormCensus {
   const source = ts.createSourceFile(
     file,
     text,
     ts.ScriptTarget.Latest,
     true,
-    file.endsWith(".tsx") ? ts.ScriptKind.TSX : ts.ScriptKind.TS
+    scriptKind(file)
   );
   const callers: [string, string][] = [];
   const violations: string[] = [];
@@ -331,5 +346,39 @@ describe("IntakeItemForm's locked-kind boundary", () => {
         `export { default as Form } from "@/components/IntakeItemForm";`
       ).violations
     ).not.toEqual([]);
+  });
+
+  it("rejects JavaScript barrels and JSX aliases with their native syntax", () => {
+    expect(
+      ["Host.ts", "Host.tsx", "Host.js", "Host.jsx"].filter(isScannedSource)
+    ).toEqual(["Host.ts", "Host.tsx", "Host.js", "Host.jsx"]);
+    expect(
+      scanIntakeFormSource(
+        "components/index.js",
+        `export { default as Form } from "@/components/IntakeItemForm";`
+      ).violations
+    ).not.toEqual([]);
+    expect(
+      scanIntakeFormSource(
+        "components/Host.jsx",
+        `
+          import IntakeItemForm from "@/components/IntakeItemForm";
+          const Alias = IntakeItemForm;
+          export const Host = () => <Alias kind="medication" />;
+        `
+      ).violations
+    ).not.toEqual([]);
+    expect(
+      scanIntakeFormSource(
+        "components/Host.jsx",
+        `
+          import IntakeItemForm from "@/components/IntakeItemForm";
+          export const Host = () => <IntakeItemForm kind="medication" />;
+        `
+      )
+    ).toEqual({
+      callers: [["components/Host.jsx", "medication"]],
+      violations: [],
+    });
   });
 });
