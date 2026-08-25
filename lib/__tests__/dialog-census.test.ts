@@ -348,7 +348,7 @@ describe("dialog census — what it can SEE", () => {
     const entry = classifyOne(
       "components/CommentOnly.tsx",
       `import { createPortal } from "react-dom";
-       // Portal to <body> (matching ModalShell/ConfirmDialog): rendered inline.
+       // import ModalShell from "@/components/ModalShell"; return <ModalShell />;
        export default function CommentOnly() {
          return createPortal(
            <div className="fixed inset-0" role="dialog" aria-modal="true" />,
@@ -356,8 +356,8 @@ describe("dialog census — what it can SEE", () => {
          );
        }`
     );
-    // This is components/MergeConflictDialog.tsx's exact shape. A file-level
-    // grep for `ModalShell` put it in the HOSTED list off that comment alone.
+    // A real line comment contains both the counterfeit host import and use. If
+    // comment stripping stops working, this becomes hosted instead of hostless.
     expect(entry?.kind).toBe("hostless");
   });
 
@@ -906,6 +906,79 @@ describe("dialog census — what it can SEE", () => {
     // `image/*` opened a phantom block comment in an earlier scanner and blanked
     // the next hundred lines — a scan reporting a green it never checked.
     expect(entry?.kind).toBe("hostless");
+  });
+
+  it.each([
+    ["escaped-slash quantifier", String.raw`/\/*$/`],
+    ["character class", String.raw`/[/*]/`],
+  ])(
+    "keeps a ModalShell after a regex containing a block-comment shape (%s)",
+    (name, regex) => {
+      const entry = classifyOne(
+        `components/RegexBeforeModal-${name}.tsx`,
+        `import ModalShell from "@/components/ModalShell";
+         const normalize = (path: string) => path.replace(${regex}, "");
+         export default function RegexBeforeModal() {
+           return (
+             <ModalShell open onClose={() => {}} title="Edit entry">
+               <div>{normalize("/entry/")}</div>
+             </ModalShell>
+           );
+         }`
+      );
+
+      expect(entry?.kind).toBe("hosted");
+      expect(entry?.hosts).toContain("components/ModalShell.tsx");
+    }
+  );
+
+  it.each([
+    [
+      "a braceless conditional body after `)`",
+      `const ready = true;
+       const path = "/entry/";
+       if (ready) /[/*]/.test(path);`,
+    ],
+    [
+      "a statement after a function body's `}`",
+      `const path = "/entry/";
+       function probe() {}
+       /[/*]/.test(path);`,
+    ],
+  ])("keeps a ModalShell after %s", (name, beforeModal) => {
+    const entry = classifyOne(
+      `components/RegexAfter-${name}.tsx`,
+      `import ModalShell from "@/components/ModalShell";
+       ${beforeModal}
+       export default function RegexBeforeModal() {
+         return (
+           <ModalShell open onClose={() => {}} title="Edit entry">
+             <div>{path}</div>
+           </ModalShell>
+         );
+       }`
+    );
+
+    expect(entry?.kind).toBe("hosted");
+    expect(entry?.hosts).toContain("components/ModalShell.tsx");
+  });
+
+  it("fails explicitly when malformed source comments counterfeit a host", () => {
+    expect(() =>
+      classifyOne(
+        "components/MalformedCommentCounterfeit.tsx",
+        `/*
+         import ModalShell from "@/components/ModalShell";
+         export function Decoy() {
+           return <ModalShell open onClose={() => {}} title="Decoy" />;
+         }
+         */
+         const malformed = ;
+         export default function Plain() { return <div />; }`
+      )
+    ).toThrow(
+      /Comment scan could not parse components\/MalformedCommentCounterfeit\.tsx:\d+:\d+:/
+    );
   });
 
   it("reads a source file that carries a NUL byte", () => {
