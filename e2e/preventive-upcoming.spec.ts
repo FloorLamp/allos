@@ -207,7 +207,7 @@ test.describe("preventive care in Upcoming (issues #82 + #86 + #85)", () => {
     // #3521 restores #1049's one-surface contract: Upcoming links to the
     // anchored canonical section and carries no hand-written disclaimer prose.
     const disclaimerLink = main.getByRole("link", {
-      name: "About these suggestions →",
+      name: "About these suggestions",
       exact: true,
     });
     await expect(disclaimerLink).toBeVisible();

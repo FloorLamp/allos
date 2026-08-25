@@ -234,7 +234,7 @@ test("strength progress is folded into the standards ladder", async ({
 
   await followLink(
     page,
-    ladder.getByRole("link", { name: "Full standards →" }),
+    ladder.getByRole("link", { name: "Full standards" }),
     /tab=analyze/
   );
   await expect(page.getByTestId("analyze-section")).toBeVisible();
