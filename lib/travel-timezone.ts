@@ -48,7 +48,7 @@ export function comparePositions(a: LocalPosition, b: LocalPosition): number {
 
 // One recorded move of a profile's timezone. `at` is the canonical UTC instant the
 // switch took effect; `from`/`to` are IANA zones. Written by every path that moves
-// the zone for TRAVEL (the one-tap switch and the automatic return), so the rules
+// the zone for TRAVEL (the accepted outbound and return offers), so the rules
 // below can be asked about a day after the fact.
 export interface TimezoneSwitch {
   at: string;

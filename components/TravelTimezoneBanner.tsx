@@ -83,8 +83,14 @@ export default function TravelTimezoneBanner({
   const accept = useCallback(async () => {
     if (prompt.kind === "none") return;
     setBusy(true);
-    if (prompt.kind === "return") await revertTravelTimezone();
-    else await acceptTravelTimezone(prompt.deviceZone);
+    const result =
+      prompt.kind === "return"
+        ? await revertTravelTimezone()
+        : await acceptTravelTimezone(prompt.deviceZone);
+    // Dismissal is optimistic client state as well as a server setting. The
+    // action spends the server copy when a switch lands; spend this mounted copy
+    // too, because an RSC update preserves client state across the new props.
+    if (result.ok) setDismissed(null);
     setBusy(false);
   }, [prompt]);
 
