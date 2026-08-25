@@ -8,6 +8,7 @@ import {
   SHELL_PROFILE,
 } from "./logins/metrics";
 import { E2E_MEMBER_PASSWORD } from "./logins/shared";
+import { settledAfterAnimation, settledBoxes } from "./helpers";
 import { loginAs } from "./nav";
 import { frozenNow, workerDbPath } from "./worker-env";
 
@@ -25,11 +26,17 @@ async function box(locator: Locator, name: string): Promise<Box> {
 }
 
 async function sheetGeometry(sheet: Locator) {
-  const panel = await box(sheet.locator("[data-sheet-panel]"), "sheet panel");
-  const segments = await box(
-    sheet.getByTestId("log-sheet-segments"),
-    "segment strip"
-  );
+  const panelLocator = sheet.locator("[data-sheet-panel]");
+  const segmentsLocator = sheet.getByTestId("log-sheet-segments");
+  await expect(panelLocator, "sheet panel").toBeVisible();
+  await expect(segmentsLocator, "segment strip").toBeVisible();
+  // `usePresence` exposes only `enter` / `exit`: while a sheet is open its
+  // `data-phase` remains `enter` by design, so waiting for a fictional `rest`
+  // state can never settle. Ask the rendered panel's animation instead, then
+  // take one atomic, two-consecutive-read geometry snapshot. This is a positive
+  // stable-state signal and resolves immediately under reduced motion.
+  await settledAfterAnimation(panelLocator);
+  const [panel, segments] = await settledBoxes([panelLocator, segmentsLocator]);
   return { panelHeight: panel.height, segmentTop: segments.y };
 }
 
@@ -95,7 +102,6 @@ test("every segment keeps the sheet still and fills the phone width (#3675)", as
   try {
     await page.goto("/");
     const sheet = await openLogSheet(page);
-    await expect(sheet).toHaveAttribute("data-phase", "rest");
     await expect(sheet.getByTestId("log-sheet-context")).toBeVisible();
 
     const track = sheet.getByTestId("log-sheet-segments");
@@ -176,7 +182,6 @@ test("a delayed gather paints into the reserved slot without moving the sheet (#
 
     await page.goto("/");
     const sheet = await openLogSheet(page);
-    await expect(sheet).toHaveAttribute("data-phase", "rest");
     await ready;
     await expect(sheet.getByTestId("log-sheet-context")).toHaveCount(0);
     const before = await sheetGeometry(sheet);
@@ -241,7 +246,6 @@ test("an empty gathered answer keeps the same reserved geometry and stays silent
 
     await page.goto("/");
     const sheet = await openLogSheet(page);
-    await expect(sheet).toHaveAttribute("data-phase", "rest");
     await ready;
     const before = await sheetGeometry(sheet);
     const reserve = sheet.getByTestId("log-sheet-context-slot");
@@ -288,7 +292,6 @@ test("a failed gather stays silent and reduced motion schedules no arrive keyfra
     await page.goto("/");
     const response = nextActionResponse(page);
     const sheet = await openLogSheet(page);
-    await expect(sheet).toHaveAttribute("data-phase", "rest");
     const before = await sheetGeometry(sheet);
     const reservedBefore = await box(
       sheet.getByTestId("log-sheet-context-slot"),
