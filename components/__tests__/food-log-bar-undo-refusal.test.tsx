@@ -1,4 +1,4 @@
-import { useEffect } from "react";
+import { useLayoutEffect } from "react";
 import {
   act,
   fireEvent,
@@ -8,7 +8,8 @@ import {
 } from "@testing-library/react";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { ActiveProfileProvider } from "@/components/ActiveProfileProvider";
-import { ToastProvider, useActivateToastProfile } from "@/components/Toast";
+import { ToastProvider } from "@/components/Toast";
+import ProfileSwitchWatcher from "@/components/ProfileSwitchWatcher";
 import { TimezoneProvider } from "@/components/TimezoneProvider";
 import FoodLogBar, { type FoodLogDay } from "@/app/(app)/nutrition/FoodLogBar";
 import { FoodSelectedDateProvider } from "@/app/(app)/nutrition/FoodSuggestionsLayout";
@@ -23,12 +24,17 @@ const actions = vi.hoisted(() => ({
   updateFoodLogEvent: vi.fn(),
   logUsualFood: vi.fn(),
 }));
-
-vi.mock("@/app/(app)/nutrition/actions", () => actions);
-vi.mock("@/app/(app)/nutrition/fast-actions", () => ({
+const fastActions = vi.hoisted(() => ({
   endFastAction: vi.fn(),
   undoEndFastAction: vi.fn(),
 }));
+
+vi.mock("@/app/(app)/nutrition/actions", () => actions);
+vi.mock("@/components/emergency-offline", () => ({
+  clearEmergencyPayload: vi.fn(),
+}));
+vi.mock("@/lib/offline/snapshot-db", () => ({ clearSnapshots: vi.fn() }));
+vi.mock("@/app/(app)/nutrition/fast-actions", () => fastActions);
 vi.mock("@/app/(app)/undo-actions", () => ({ undoDelete: vi.fn() }));
 vi.mock("@/components/OfflineQueueProvider", () => ({
   useOfflineQueue: () => ({
@@ -77,9 +83,17 @@ function normalMotionMediaQuery(query: string): MediaQueryList {
   return { ...mediaQuery(query), matches: false };
 }
 
-function ActivateProfileToast({ profileId }: { profileId: number }) {
-  const activate = useActivateToastProfile();
-  useEffect(() => activate(profileId), [activate, profileId]);
+function TapBeforePassiveEffect() {
+  useLayoutEffect(() => {
+    document
+      .querySelector<HTMLElement>("[data-testid='log-cruciferous']")
+      ?.click();
+  }, []);
+  return null;
+}
+
+function RunOnLayoutCommit({ run }: { run: () => void }) {
+  useLayoutEffect(run, [run]);
   return null;
 }
 
@@ -89,12 +103,14 @@ function barTree({
   slot = "Midday" as FoodSlot,
   barKey = "food-bar",
   providerKey = "food-provider",
+  tapBeforePassiveEffect = false,
+  onLayoutCommit = undefined as (() => void) | undefined,
 } = {}) {
   return (
     <TimezoneProvider tz="UTC">
       <ActiveProfileProvider profileId={profileId}>
         <ToastProvider>
-          <ActivateProfileToast profileId={profileId} />
+          <ProfileSwitchWatcher activeProfileId={profileId} />
           <FoodSelectedDateProvider key={providerKey} today={DATE} days={[day]}>
             <FoodLogBar
               key={barKey}
@@ -105,6 +121,8 @@ function barTree({
               slot={slot}
               slotBoundaries={{ midday: 660, evening: 900 }}
             />
+            {tapBeforePassiveEffect && <TapBeforePassiveEffect />}
+            {onLayoutCommit && <RunOnLayoutCommit run={onLayoutCommit} />}
           </FoodSelectedDateProvider>
         </ToastProvider>
       </ActiveProfileProvider>
@@ -139,6 +157,8 @@ describe("FoodLogBar projection publication", () => {
     actions.undoFoodServing.mockReset();
     actions.readFoodServingTruth.mockReset();
     actions.updateFoodLogEvent.mockReset();
+    fastActions.endFastAction.mockReset();
+    fastActions.undoEndFastAction.mockReset();
     actions.logFoodServing.mockResolvedValue({
       ok: true,
       eventId: 41,
@@ -168,6 +188,24 @@ describe("FoodLogBar projection publication", () => {
 
   afterEach(() => {
     vi.unstubAllGlobals();
+  });
+
+  it("publishes an optimistic tap committed before passive effects", async () => {
+    const outcome = {
+      ok: true,
+      eventId: 40,
+      servings: 1,
+      mealSlot: "Midday",
+      mealServings: 1,
+    } as const;
+    const add = deferred<typeof outcome>();
+    actions.logFoodServing.mockReturnValue(add.promise);
+
+    mountBar({ tapBeforePassiveEffect: true });
+
+    expect(actions.logFoodServing).toHaveBeenCalledTimes(1);
+    expect(screen.getByTestId("count-cruciferous").textContent).toBe("1");
+    await act(async () => add.resolve(outcome));
   });
 
   it("publishes fresh day and meal truth when a newer serving invalidates the receipt", async () => {
@@ -299,8 +337,14 @@ describe("FoodLogBar projection publication", () => {
     fireEvent.click(screen.getByTestId("food-correct-save"));
     expect(actions.updateFoodLogEvent).toHaveBeenCalledTimes(1);
 
-    view.rerender(barTree({ profileId: 8, day: profileEight }));
-    await act(async () => correction.resolve(outcome));
+    view.rerender(
+      barTree({
+        profileId: 8,
+        day: profileEight,
+        onLayoutCommit: () => correction.resolve(outcome),
+      })
+    );
+    await act(async () => {});
 
     expect(screen.getByTestId("food-slot-total-midday").textContent).toBe("9");
     expect(screen.getByTestId("count-cruciferous").getAttribute("title")).toBe(
@@ -309,6 +353,76 @@ describe("FoodLogBar projection publication", () => {
     expect(screen.queryByText("Serving corrected.")).toBeNull();
     expect(screen.queryByTestId("toast")).toBeNull();
     expect(screen.queryByTestId("food-correct-save")).toBeNull();
+  });
+
+  it("does not claim a correction after a same-profile provider remount", async () => {
+    const day: FoodLogDay = {
+      ...DAY,
+      counts: { cruciferous: 1 },
+      slotCounts: {
+        Morning: { cruciferous: 1 },
+        Midday: {},
+        Evening: {},
+      },
+      events: [
+        {
+          id: 74,
+          groupKey: "cruciferous",
+          name: GROUP.name,
+          date: DATE,
+          mealSlot: "Morning",
+          eatenAt: null,
+          loggedTime: "08:00",
+        },
+      ],
+    };
+    const outcome = {
+      ok: true,
+      from: {
+        date: DATE,
+        groupKey: "cruciferous",
+        mealSlot: "Morning",
+        servings: 1,
+        mealServings: 0,
+      },
+      to: {
+        date: DATE,
+        groupKey: "cruciferous",
+        mealSlot: "Evening",
+        servings: 1,
+        mealServings: 1,
+      },
+    } as const;
+    const correction = deferred<typeof outcome>();
+    actions.updateFoodLogEvent.mockReturnValue(correction.promise);
+    const view = mountBar({ profileId: 7, day, slot: "Morning" });
+
+    fireEvent.click(
+      screen.getByRole("button", {
+        name: /^Actions for the Cruciferous vegetables serving/,
+      })
+    );
+    fireEvent.click(screen.getByTestId("food-logged-correct-74"));
+    fireEvent.change(screen.getByTestId("food-correct-slot"), {
+      target: { value: "Evening" },
+    });
+    fireEvent.click(screen.getByTestId("food-correct-save"));
+
+    view.rerender(
+      barTree({
+        profileId: 7,
+        day,
+        slot: "Morning",
+        barKey: "replacement-correction-bar",
+        providerKey: "replacement-correction-provider",
+      })
+    );
+    await act(async () => correction.resolve(outcome));
+
+    expect(screen.getByTestId("food-slot-total-morning").textContent).toBe("1");
+    expect(screen.getByTestId("food-slot-total-evening").textContent).toBe("0");
+    expect(screen.queryByText("Serving corrected.")).toBeNull();
+    expect(screen.queryByTestId("toast")).toBeNull();
   });
 
   it("rejects an old interaction note after an A to B to A profile cycle", async () => {
@@ -372,12 +486,10 @@ describe("FoodLogBar projection publication", () => {
     );
     expect(screen.queryByText("Food interaction note.")).toBeNull();
     expect(screen.queryByTestId("toast")).toBeNull();
-    expect(actions.readFoodServingTruth).toHaveBeenCalledTimes(1);
-    const truthForm = actions.readFoodServingTruth.mock.calls[0][0] as FormData;
-    expect(truthForm.get("profileId")).toBe("7");
+    expect(actions.readFoodServingTruth).not.toHaveBeenCalled();
   });
 
-  it("keeps a late receipt across a same-generation profile remount", async () => {
+  it("keeps only a pure late note across a same-generation remount", async () => {
     const before: FoodLogDay = {
       ...DAY,
       counts: { cruciferous: 1 },
@@ -389,10 +501,10 @@ describe("FoodLogBar projection publication", () => {
     };
     const remounted: FoodLogDay = {
       ...DAY,
-      counts: { cruciferous: 5 },
+      counts: { cruciferous: 2 },
       slotCounts: {
         Morning: {},
-        Midday: { cruciferous: 5 },
+        Midday: { cruciferous: 2 },
         Evening: {},
       },
     };
@@ -402,6 +514,7 @@ describe("FoodLogBar projection publication", () => {
       servings: 2,
       mealSlot: "Midday",
       mealServings: 2,
+      endFastOffer: true,
       limitNote: {
         kind: "interaction",
         groupKey: "cruciferous",
@@ -425,13 +538,62 @@ describe("FoodLogBar projection publication", () => {
     );
     await act(async () => add.resolve(outcome));
 
-    expect(screen.getByTestId("food-slot-total-midday").textContent).toBe("5");
+    expect(screen.getByTestId("food-slot-total-midday").textContent).toBe("2");
     expect(screen.getByTestId("count-cruciferous").getAttribute("title")).toBe(
-      "5 servings in Midday today"
+      "2 servings in Midday today"
     );
     expect(
       screen.getByText(/Same-profile interaction note\./).textContent
     ).toContain("Keep this receipt after an ordinary remount.");
+    expect(screen.queryByRole("button", { name: "Undo" })).toBeNull();
+    expect(screen.queryByRole("button", { name: "End fast" })).toBeNull();
+    expect(screen.queryByText("Serving logged. End your fast?")).toBeNull();
+    expect(actions.undoFoodServing).not.toHaveBeenCalled();
+    expect(fastActions.endFastAction).not.toHaveBeenCalled();
+    expect(actions.readFoodServingTruth).not.toHaveBeenCalled();
+  });
+
+  it("removes action-bearing receipts when their origin unmounts", async () => {
+    actions.logFoodServing.mockResolvedValue({
+      ok: true,
+      eventId: 75,
+      servings: 1,
+      mealSlot: "Midday",
+      mealServings: 1,
+      endFastOffer: true,
+    });
+    actions.readFoodServingTruth.mockReset().mockResolvedValue({
+      ok: true,
+      servings: 1,
+      mealServings: { Morning: 0, Midday: 1, Evening: 0 },
+    });
+    const view = mountBar();
+
+    fireEvent.click(screen.getByTestId("log-cruciferous"));
+    expect(await screen.findByRole("button", { name: "Undo" })).toBeTruthy();
+    expect(
+      await screen.findByRole("button", { name: "End fast" })
+    ).toBeTruthy();
+
+    view.rerender(
+      barTree({
+        profileId: 7,
+        day: {
+          ...DAY,
+          counts: { cruciferous: 1 },
+          slotCounts: {
+            Morning: {},
+            Midday: { cruciferous: 1 },
+            Evening: {},
+          },
+        },
+        barKey: "post-receipt-bar",
+        providerKey: "post-receipt-provider",
+      })
+    );
+
+    expect(screen.queryByRole("button", { name: "Undo" })).toBeNull();
+    expect(screen.queryByRole("button", { name: "End fast" })).toBeNull();
   });
 
   it("publishes correction truth after its Server Action RSC rerender", async () => {

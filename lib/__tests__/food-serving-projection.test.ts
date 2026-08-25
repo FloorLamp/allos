@@ -71,6 +71,10 @@ describe("applyFoodServingPlacements", () => {
       `${ROOT}/app/(app)/nutrition/FoodLogBar.tsx`,
       "utf8"
     );
+    const watcher = readFileSync(
+      `${ROOT}/components/ProfileSwitchWatcher.tsx`,
+      "utf8"
+    );
 
     // Correction, precise removal, serving add/undo, and "usual" each capture
     // the canonical root-toast scope before their first await.
@@ -87,5 +91,7 @@ describe("applyFoodServingPlacements", () => {
     expect(bar).toContain("offerEndFast(noticeScope, outcome.endFastOffer)");
     expect(bar).toContain("offerEndFast(noticeScope, result.endFastOffer)");
     expect(bar).toContain("undoEnd(scope, undoFastId)");
+    expect(watcher).toContain("useLayoutEffect(() => {");
+    expect(watcher).not.toContain("useEffect(() => {");
   });
 });
