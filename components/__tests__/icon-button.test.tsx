@@ -12,6 +12,8 @@ describe("IconButton", () => {
         type="submit"
         data-testid="subject"
         tone="amber"
+        pressed
+        tabIndex={-1}
       >
         <IconX data-testid="glyph" />
       </IconButton>
@@ -24,8 +26,11 @@ describe("IconButton", () => {
     expect(button.getAttribute("title")).toBe("Dismiss");
     expect(button.getAttribute("data-icon-button")).toBe("");
     expect(button.getAttribute("data-tone")).toBe("amber");
+    expect(button.getAttribute("aria-pressed")).toBe("true");
+    expect(button.getAttribute("tabindex")).toBe("-1");
     expect(button.className).toContain("min-h-11");
     expect(button.className).toContain("min-w-11");
+    expect(button.className).toContain("aria-pressed:bg-brand-50");
     expect(button.className).not.toContain("tap-target");
     expect(
       screen.getByTestId("glyph").closest("[aria-hidden='true']")

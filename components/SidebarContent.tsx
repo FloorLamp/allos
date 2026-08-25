@@ -4,6 +4,7 @@ import Link from "next/link";
 import { useCallback, useEffect, useRef, useState } from "react";
 import { IconLogout, IconSearch, IconX } from "@tabler/icons-react";
 import Nav from "@/components/Nav";
+import IconButton from "@/components/IconButton";
 import { openGlobalSearch } from "@/components/CommandPalette";
 import Wordmark from "@/components/Wordmark";
 import ProfileIdentityBar from "@/components/ProfileIdentityBar";
@@ -431,15 +432,9 @@ export default function SidebarContent({
           <Wordmark markClassName="h-6 w-10" />
         </Link>
         {onClose && (
-          <button
-            type="button"
-            aria-label="Close menu"
-            title="Close menu"
-            onClick={onClose}
-            className="flex h-9 w-9 shrink-0 items-center justify-center rounded-lg text-slate-500 transition hover:bg-slate-100 dark:text-slate-400 dark:hover:bg-ink-750"
-          >
+          <IconButton type="button" label="Close menu" onClick={onClose}>
             <IconX className="h-5 w-5" stroke={1.75} />
-          </button>
+          </IconButton>
         )}
       </div>
       {/* The identity bar (#1801) at the TOP of the sidebar — "whose data am I

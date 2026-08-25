@@ -7,6 +7,10 @@ import {
   type Request,
 } from "@playwright/test";
 import { AUTO_RELOAD_KEY } from "@/lib/sw-update";
+import {
+  TAP_FLOOR_FLOAT_EPSILON_PX,
+  TAP_FLOOR_PX,
+} from "@/lib/tap-floor-tokens";
 
 // The blessed e2e interaction module (issue #868, fix b2).
 //
@@ -1242,6 +1246,68 @@ export async function settledBoxes(
     }
     previous = key;
     await page.waitForTimeout(50);
+  }
+}
+
+// A compact rendered-geometry assertion for primitive-owned phone targets. It
+// reads one settled layout snapshot, checks the actual boxes (not class names),
+// and optionally proves adjacent boxes do not overlap.
+export async function expectPhoneTapTargets(
+  page: Page,
+  name: string,
+  targets: Locator[],
+  opts: { disjoint?: boolean } = {}
+): Promise<void> {
+  expect(
+    targets.length,
+    `${name} must name at least one target`
+  ).toBeGreaterThan(0);
+  for (const target of targets) {
+    await expect(target, name).toBeVisible();
+    await target.scrollIntoViewIfNeeded();
+  }
+  const boxes = await settledBoxes(targets);
+  const viewport = page.viewportSize();
+  expect(viewport, `${name} requires a fixed viewport`).not.toBeNull();
+
+  for (const [index, box] of boxes.entries()) {
+    expect(
+      box.width + TAP_FLOOR_FLOAT_EPSILON_PX,
+      `${name} target ${index} rendered width`
+    ).toBeGreaterThanOrEqual(TAP_FLOOR_PX);
+    expect(
+      box.height + TAP_FLOOR_FLOAT_EPSILON_PX,
+      `${name} target ${index} rendered height`
+    ).toBeGreaterThanOrEqual(TAP_FLOOR_PX);
+    expect(box.x, `${name} target ${index} left edge`).toBeGreaterThanOrEqual(
+      0
+    );
+    expect(box.y, `${name} target ${index} top edge`).toBeGreaterThanOrEqual(0);
+    expect(
+      box.x + box.width,
+      `${name} target ${index} right edge`
+    ).toBeLessThanOrEqual(viewport!.width + TAP_FLOOR_FLOAT_EPSILON_PX);
+    expect(
+      box.y + box.height,
+      `${name} target ${index} bottom edge`
+    ).toBeLessThanOrEqual(viewport!.height + TAP_FLOOR_FLOAT_EPSILON_PX);
+  }
+
+  if (!opts.disjoint) return;
+  for (let left = 0; left < boxes.length; left += 1) {
+    for (let right = left + 1; right < boxes.length; right += 1) {
+      const a = boxes[left]!;
+      const b = boxes[right]!;
+      const overlapX =
+        Math.min(a.x + a.width, b.x + b.width) - Math.max(a.x, b.x);
+      const overlapY =
+        Math.min(a.y + a.height, b.y + b.height) - Math.max(a.y, b.y);
+      expect(
+        overlapX > TAP_FLOOR_FLOAT_EPSILON_PX &&
+          overlapY > TAP_FLOOR_FLOAT_EPSILON_PX,
+        `${name} targets ${left} and ${right} overlap`
+      ).toBe(false);
+    }
   }
 }
 

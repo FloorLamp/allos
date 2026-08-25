@@ -3,6 +3,7 @@
 import { IconEye, IconEyeOff } from "@tabler/icons-react";
 import type { SessionProfile } from "@/lib/auth";
 import Avatar from "@/components/Avatar";
+import IconButton from "@/components/IconButton";
 import {
   switchProfileAction,
   setViewProfileAction,
@@ -115,37 +116,32 @@ export default function ProfileSwitcherPanel({
             </form>
             <form action={setViewProfileAction} className="shrink-0">
               <input type="hidden" name="profileId" value={p.id} />
-              <button
+              <IconButton
                 type="submit"
                 disabled={isActing}
                 data-testid={`view-toggle-${p.id}`}
-                aria-pressed={inView}
-                aria-label={
+                pressed={inView}
+                label={
                   isActing
                     ? `${p.name} is always in your view`
                     : inView
                       ? `Remove ${p.name} from view`
                       : `Add ${p.name} to view`
                 }
-                title={
+                tooltip={
                   isActing
                     ? "Always in view"
                     : inView
                       ? "In view — tap to hide"
                       : "Not in view — tap to show"
                 }
-                className={`flex h-8 w-8 items-center justify-center rounded-md border transition disabled:opacity-40 ${
-                  inView
-                    ? "border-brand-300 bg-brand-50 text-brand-600 dark:border-brand-500/40 dark:bg-brand-500/10 dark:text-brand-300"
-                    : "border-black/10 text-slate-400 hover:bg-slate-100 dark:border-white/10 dark:hover:bg-ink-750"
-                }`}
               >
                 {inView ? (
                   <IconEye className="h-4 w-4" stroke={1.75} />
                 ) : (
                   <IconEyeOff className="h-4 w-4" stroke={1.75} />
                 )}
-              </button>
+              </IconButton>
             </form>
           </div>
         );

@@ -7,6 +7,7 @@ import {
   followLink,
   hydratedClick,
   openCombobox,
+  expectPhoneTapTargets,
   settledBoxes,
   settledFill,
 } from "./helpers";
@@ -1261,10 +1262,72 @@ test("the plate builder opens on the converged dialog host (#3405)", async ({
   const weight = page.getByTestId("set1-weight");
   await expect(weight).toBeVisible();
 
-  await hydratedClick(
-    page,
-    page.getByRole("button", { name: "Open plate builder" })
+  // The phone route has no desktop Add-activity entry. Open and pick through the
+  // real desktop flow first, then resize the mounted editor to measure its phone
+  // target without pretending that absent entry point exists.
+  await page.setViewportSize({ width: 390, height: 844 });
+  const plateButton = page.getByRole("button", {
+    name: "Open plate builder",
+  });
+  const plateSlot = plateButton.locator("..");
+  const setRow = page.getByTestId("set-values-1");
+  const weightStepper = page.getByTestId("set1-weight-stepper");
+  await expect(plateButton).toHaveAttribute("data-icon-button", "");
+  await expectPhoneTapTargets(page, "strength-set plate builder", [
+    plateButton,
+  ]);
+  await expect(plateSlot).toBeVisible();
+  await expect(setRow).toBeVisible();
+  await expect(weightStepper).toBeVisible();
+
+  // One atomic DOM read proves the split ownership: the wrapper keeps the old
+  // 28px grid slot while IconButton supplies the 44px target. A half pixel covers
+  // browser sub-pixel rounding without admitting a real one-pixel layout shift.
+  const geometry = await plateButton.evaluate((button) => {
+    const slot = button.parentElement;
+    const row = button.closest('[data-testid="set-values-1"]');
+    const stepper = row?.querySelector('[data-testid="set1-weight-stepper"]');
+    if (!slot || !row || !stepper)
+      throw new Error("Plate target is detached from its owning set row");
+    const box = (element: Element) => {
+      const rect = element.getBoundingClientRect();
+      return {
+        left: rect.left,
+        top: rect.top,
+        right: rect.right,
+        bottom: rect.bottom,
+        width: rect.width,
+        height: rect.height,
+      };
+    };
+    return {
+      target: box(button),
+      slot: box(slot),
+      row: box(row),
+      stepper: box(stepper),
+    };
+  });
+  const pixelEpsilon = 0.5;
+  expect(geometry.target.width).toBeGreaterThanOrEqual(44);
+  expect(geometry.target.height).toBeGreaterThanOrEqual(44);
+  expect(Math.abs(geometry.slot.width - 28)).toBeLessThanOrEqual(pixelEpsilon);
+  expect(geometry.target.left).toBeGreaterThanOrEqual(
+    geometry.row.left - pixelEpsilon
   );
+  expect(geometry.target.right).toBeLessThanOrEqual(
+    geometry.row.right + pixelEpsilon
+  );
+  expect(geometry.target.top).toBeGreaterThanOrEqual(
+    geometry.row.top - pixelEpsilon
+  );
+  expect(geometry.target.bottom).toBeLessThanOrEqual(
+    geometry.row.bottom + pixelEpsilon
+  );
+  expect(geometry.target.left + pixelEpsilon).toBeGreaterThanOrEqual(
+    geometry.stepper.right
+  );
+
+  await hydratedClick(page, plateButton);
 
   const builder = page.getByTestId("plate-builder");
   await expect(builder).toBeVisible();
