@@ -41,7 +41,8 @@ describe("SegmentedControl fill mode (#3675)", () => {
       expect(button.className).not.toContain("shrink-0");
       const label = button.querySelector("span");
       expect(label?.className).toContain("truncate");
-      expect(label?.getAttribute("title")).toBe(option.title ?? option.label);
+      expect(label?.getAttribute("title")).toBeNull();
+      expect(button.getAttribute("title")).toBe(option.title ?? option.label);
     }
   });
 
@@ -66,5 +67,26 @@ describe("SegmentedControl fill mode (#3675)", () => {
       expect(button.className).not.toContain("min-w-0 flex-1");
       expect(button.querySelector("span")).toBeNull();
     }
+  });
+
+  it("keeps a truncated link's full label on the interactive element", () => {
+    render(
+      <SegmentedControl
+        options={[
+          {
+            value: "timeline",
+            label: "A long timeline label",
+            href: "/timeline",
+          },
+        ]}
+        value="timeline"
+        ariaLabel="Timeline view"
+        fill
+      />
+    );
+
+    const link = screen.getByRole("link", { name: "A long timeline label" });
+    expect(link.getAttribute("title")).toBe("A long timeline label");
+    expect(link.querySelector("span")?.getAttribute("title")).toBeNull();
   });
 });

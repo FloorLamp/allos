@@ -114,16 +114,14 @@ export default function SegmentedControl<T extends string | number>({
         }`;
         // Keep intrinsic consumers' rendered body byte-for-byte unchanged. Fill
         // mode alone needs a released content floor and a visual ellipsis; the
-        // text remains the accessible name, and `title` preserves it on hover.
+        // text remains the accessible name. The interactive element's `title`
+        // preserves the full label on hover without hiding content behind a
+        // mouse-only child tooltip.
+        const title = option.title ?? (fill ? option.label : undefined);
         const body = fill ? (
           <>
             {option.icon}
-            <span
-              className="min-w-0 truncate"
-              title={option.title ?? option.label}
-            >
-              {option.label}
-            </span>
+            <span className="min-w-0 truncate">{option.label}</span>
           </>
         ) : (
           <>
@@ -138,7 +136,7 @@ export default function SegmentedControl<T extends string | number>({
               href={option.href}
               aria-current={active ? ariaCurrent : undefined}
               aria-label={option.accessibleLabel}
-              title={option.title}
+              title={title}
               data-segmented-option=""
               data-testid={option.testId}
               data-active={option.dataAttributes?.["data-active"]}
@@ -159,7 +157,7 @@ export default function SegmentedControl<T extends string | number>({
             onClick={() => onChange?.(option.value)}
             aria-pressed={active}
             aria-label={option.accessibleLabel}
-            title={option.title}
+            title={title}
             data-segmented-option=""
             disabled={option.disabled}
             data-testid={option.testId}
