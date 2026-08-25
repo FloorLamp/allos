@@ -87,14 +87,17 @@ function barTree({
   profileId = 7,
   day = DAY,
   slot = "Midday" as FoodSlot,
+  barKey = "food-bar",
+  providerKey = "food-provider",
 } = {}) {
   return (
     <TimezoneProvider tz="UTC">
       <ActiveProfileProvider profileId={profileId}>
         <ToastProvider>
           <ActivateProfileToast profileId={profileId} />
-          <FoodSelectedDateProvider today={DATE} days={[day]}>
+          <FoodSelectedDateProvider key={providerKey} today={DATE} days={[day]}>
             <FoodLogBar
+              key={barKey}
               today={DATE}
               days={[day]}
               groupsBySlot={GROUPS}
@@ -227,6 +230,208 @@ describe("FoodLogBar projection publication", () => {
       "9 servings in Midday today"
     );
     expect(screen.getByTestId("count-cruciferous").textContent).toBe("9");
+  });
+
+  it("drops a deferred correction receipt after its profile bar unmounts", async () => {
+    const profileSeven: FoodLogDay = {
+      ...DAY,
+      counts: { cruciferous: 1 },
+      slotCounts: {
+        Morning: { cruciferous: 1 },
+        Midday: {},
+        Evening: {},
+      },
+      events: [
+        {
+          id: 71,
+          groupKey: "cruciferous",
+          name: GROUP.name,
+          date: DATE,
+          mealSlot: "Morning",
+          eatenAt: null,
+          loggedTime: "08:00",
+        },
+      ],
+    };
+    const profileEight: FoodLogDay = {
+      ...DAY,
+      counts: { cruciferous: 9 },
+      slotCounts: {
+        Morning: {},
+        Midday: { cruciferous: 9 },
+        Evening: {},
+      },
+    };
+    const outcome = {
+      ok: true,
+      from: {
+        date: DATE,
+        groupKey: "cruciferous",
+        mealSlot: "Morning",
+        servings: 1,
+        mealServings: 0,
+      },
+      to: {
+        date: DATE,
+        groupKey: "cruciferous",
+        mealSlot: "Evening",
+        servings: 1,
+        mealServings: 1,
+      },
+    } as const;
+    const correction = deferred<typeof outcome>();
+    actions.updateFoodLogEvent.mockReturnValue(correction.promise);
+    const view = mountBar({
+      profileId: 7,
+      day: profileSeven,
+      slot: "Morning",
+    });
+
+    fireEvent.click(
+      screen.getByRole("button", {
+        name: /^Actions for the Cruciferous vegetables serving/,
+      })
+    );
+    fireEvent.click(screen.getByTestId("food-logged-correct-71"));
+    fireEvent.change(screen.getByTestId("food-correct-slot"), {
+      target: { value: "Evening" },
+    });
+    fireEvent.click(screen.getByTestId("food-correct-save"));
+    expect(actions.updateFoodLogEvent).toHaveBeenCalledTimes(1);
+
+    view.rerender(barTree({ profileId: 8, day: profileEight }));
+    await act(async () => correction.resolve(outcome));
+
+    expect(screen.getByTestId("food-slot-total-midday").textContent).toBe("9");
+    expect(screen.getByTestId("count-cruciferous").getAttribute("title")).toBe(
+      "9 servings in Midday today"
+    );
+    expect(screen.queryByText("Serving corrected.")).toBeNull();
+    expect(screen.queryByTestId("toast")).toBeNull();
+    expect(screen.queryByTestId("food-correct-save")).toBeNull();
+  });
+
+  it("rejects an old interaction note after an A to B to A profile cycle", async () => {
+    const profileSeven: FoodLogDay = {
+      ...DAY,
+      counts: { cruciferous: 1 },
+      slotCounts: {
+        Morning: {},
+        Midday: { cruciferous: 1 },
+        Evening: {},
+      },
+    };
+    const profileEight: FoodLogDay = {
+      ...DAY,
+      counts: { cruciferous: 9 },
+      slotCounts: {
+        Morning: {},
+        Midday: { cruciferous: 9 },
+        Evening: {},
+      },
+    };
+    const returnedProfileSeven: FoodLogDay = {
+      ...DAY,
+      counts: { cruciferous: 5 },
+      slotCounts: {
+        Morning: {},
+        Midday: { cruciferous: 5 },
+        Evening: {},
+      },
+    };
+    const outcome = {
+      ok: true,
+      eventId: 72,
+      servings: 2,
+      mealSlot: "Midday",
+      mealServings: 2,
+      limitNote: {
+        kind: "interaction",
+        groupKey: "cruciferous",
+        title: "Food interaction note.",
+        body: "Check the timing guidance for this food.",
+        hold: true,
+      },
+    } as const;
+    const add = deferred<typeof outcome>();
+    actions.logFoodServing.mockReturnValue(add.promise);
+    const view = mountBar({ profileId: 7, day: profileSeven });
+
+    fireEvent.click(screen.getByTestId("log-cruciferous"));
+    expect(actions.logFoodServing).toHaveBeenCalledTimes(1);
+    const submitted = actions.logFoodServing.mock.calls[0][0] as FormData;
+    expect(submitted.get("profileId")).toBe("7");
+
+    view.rerender(barTree({ profileId: 8, day: profileEight }));
+    view.rerender(barTree({ profileId: 7, day: returnedProfileSeven }));
+    await act(async () => add.resolve(outcome));
+
+    expect(screen.getByTestId("food-slot-total-midday").textContent).toBe("5");
+    expect(screen.getByTestId("count-cruciferous").getAttribute("title")).toBe(
+      "5 servings in Midday today"
+    );
+    expect(screen.queryByText("Food interaction note.")).toBeNull();
+    expect(screen.queryByTestId("toast")).toBeNull();
+    expect(actions.readFoodServingTruth).toHaveBeenCalledTimes(1);
+    const truthForm = actions.readFoodServingTruth.mock.calls[0][0] as FormData;
+    expect(truthForm.get("profileId")).toBe("7");
+  });
+
+  it("keeps a late receipt across a same-generation profile remount", async () => {
+    const before: FoodLogDay = {
+      ...DAY,
+      counts: { cruciferous: 1 },
+      slotCounts: {
+        Morning: {},
+        Midday: { cruciferous: 1 },
+        Evening: {},
+      },
+    };
+    const remounted: FoodLogDay = {
+      ...DAY,
+      counts: { cruciferous: 5 },
+      slotCounts: {
+        Morning: {},
+        Midday: { cruciferous: 5 },
+        Evening: {},
+      },
+    };
+    const outcome = {
+      ok: true,
+      eventId: 73,
+      servings: 2,
+      mealSlot: "Midday",
+      mealServings: 2,
+      limitNote: {
+        kind: "interaction",
+        groupKey: "cruciferous",
+        title: "Same-profile interaction note.",
+        body: "Keep this receipt after an ordinary remount.",
+        hold: true,
+      },
+    } as const;
+    const add = deferred<typeof outcome>();
+    actions.logFoodServing.mockReturnValue(add.promise);
+    const view = mountBar({ profileId: 7, day: before });
+
+    fireEvent.click(screen.getByTestId("log-cruciferous"));
+    view.rerender(
+      barTree({
+        profileId: 7,
+        day: remounted,
+        barKey: "replacement-bar",
+        providerKey: "replacement-provider",
+      })
+    );
+    await act(async () => add.resolve(outcome));
+
+    expect(screen.getByTestId("food-slot-total-midday").textContent).toBe("5");
+    expect(screen.getByTestId("count-cruciferous").getAttribute("title")).toBe(
+      "5 servings in Midday today"
+    );
+    expect(
+      screen.getByText(/Same-profile interaction note\./).textContent
+    ).toContain("Keep this receipt after an ordinary remount.");
   });
 
   it("publishes correction truth after its Server Action RSC rerender", async () => {

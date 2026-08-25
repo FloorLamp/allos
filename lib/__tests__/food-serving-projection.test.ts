@@ -65,4 +65,27 @@ describe("applyFoodServingPlacements", () => {
     expect(bar).not.toContain("setCountsByDate");
     expect(bar).not.toContain("setSlotCountsByDate");
   });
+
+  it("stamps every food interaction receipt with its captured profile generation", () => {
+    const bar = readFileSync(
+      `${ROOT}/app/(app)/nutrition/FoodLogBar.tsx`,
+      "utf8"
+    );
+
+    // Correction, precise removal, serving add/undo, and "usual" each capture
+    // the canonical root-toast scope before their first await.
+    expect(bar.match(/const noticeScope = receiptProfileScope;/g)).toHaveLength(
+      4
+    );
+    // One direct call is allowed: the helper itself. Every health notice goes
+    // through profileToast, whose final properties cannot be overridden by a
+    // caller-supplied options object.
+    expect(bar.match(/\btoast\(/g)).toHaveLength(1);
+    expect(bar).toMatch(
+      /toast\(message, \{\s*\.\.\.options,\s*profileId: scope\.profileId,\s*profileToken: scope\.token,/s
+    );
+    expect(bar).toContain("offerEndFast(noticeScope, outcome.endFastOffer)");
+    expect(bar).toContain("offerEndFast(noticeScope, result.endFastOffer)");
+    expect(bar).toContain("undoEnd(scope, undoFastId)");
+  });
 });
