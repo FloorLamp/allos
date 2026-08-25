@@ -2,7 +2,7 @@ import { test, expect } from "./fixtures";
 import { type Locator, type Page } from "@playwright/test";
 import Database from "better-sqlite3";
 import { loginAs } from "./nav";
-import { followLink, settledClick } from "./helpers";
+import { followLink, hydratedClick, settledClick } from "./helpers";
 import {
   E2E_LOGIN_HHHIST,
   E2E_LOGIN_SICK_VIDEO,
@@ -233,7 +233,7 @@ test("the episode strip renders empty, takes a dated clip, serves it by Range, a
     await expectClipOverflow(actions);
 
     // Caption round trip through the episode action (the strip's third write path).
-    await actions.click();
+    await hydratedClick(page, actions);
     await page.getByRole("menuitem", { name: "Edit caption" }).click();
     const captionInput = tile.getByTestId(
       `video-clip-caption-input-${clip.id}`
@@ -250,7 +250,7 @@ test("the episode strip renders empty, takes a dated clip, serves it by Range, a
 
     // Delete the last clip → the strip falls back to its empty copy (it is always
     // rendered on a writable episode, so nothing disappears — only the grid empties).
-    await actions.click();
+    await hydratedClick(page, actions);
     await settledClick(
       page,
       page.getByRole("menuitem", { name: "Delete clip" })
@@ -307,7 +307,7 @@ test("an audio clip lands on the same strip as a mic tile and plays through <aud
 
     // Own what this test attached, so the neighbour above always starts from empty.
     const actions = tile.getByTestId("overflow-menu-trigger");
-    await actions.click();
+    await hydratedClick(page, actions);
     await settledClick(
       page,
       page.getByRole("menuitem", { name: "Delete clip" })
@@ -396,7 +396,7 @@ test("a caregiver reading a household member's episode can play its clips (#1696
     }
 
     // Own what this test attached — the cross-profile delete gates on the child too.
-    await tile.getByTestId("overflow-menu-trigger").click();
+    await hydratedClick(page, tile.getByTestId("overflow-menu-trigger"));
     await settledClick(
       page,
       page.getByRole("menuitem", { name: "Delete clip" })

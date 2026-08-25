@@ -2,7 +2,12 @@ import { test, expect } from "./fixtures";
 import { type Page } from "@playwright/test";
 import Database from "better-sqlite3";
 import { loginAs } from "./nav";
-import { comboboxRows, followLink, settledClick } from "./helpers";
+import {
+  comboboxRows,
+  followLink,
+  hydratedClick,
+  settledClick,
+} from "./helpers";
 import {
   E2E_LOGIN_VIDEO,
   E2E_MEMBER_PASSWORD,
@@ -264,7 +269,7 @@ test("upload → poster grid → open player → Range serve → location warnin
 
     // Delete → the card's standard per-clip menu still works (only ADD moved
     // away), and with the last clip gone the whole section disappears again.
-    await strip.getByTestId("overflow-menu-trigger").click();
+    await hydratedClick(page, strip.getByTestId("overflow-menu-trigger"));
     await settledClick(
       page,
       page.getByRole("menuitem", { name: "Delete clip" })
