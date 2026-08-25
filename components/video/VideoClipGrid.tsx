@@ -6,6 +6,7 @@ import OverflowMenu, {
   MENU_ITEM,
   MENU_ITEM_DANGER,
 } from "@/components/OverflowMenu";
+import { useConfirm } from "@/components/ConfirmDialog";
 import { useToast } from "@/components/Toast";
 import NotesText from "@/components/NotesText";
 import { extractPosterFrame } from "@/lib/video/client-poster";
@@ -79,6 +80,7 @@ export default function VideoClipGrid({
 }) {
   const [pending, start] = useTransition();
   const toast = useToast();
+  const confirm = useConfirm();
   const fileRef = useRef<HTMLInputElement>(null);
   const [openId, setOpenId] = useState<number | null>(null);
   const [caption, setCaption] = useState("");
@@ -240,8 +242,15 @@ export default function VideoClipGrid({
                               type="button"
                               role="menuitem"
                               disabled={pending}
-                              onClick={() => {
-                                close();
+                              onClick={async () => {
+                                const ok = await confirm({
+                                  title: "Delete clip?",
+                                  message:
+                                    "This clip will be permanently deleted.",
+                                  confirmLabel: "Delete",
+                                  danger: true,
+                                });
+                                if (!ok) return;
                                 remove(c.id);
                               }}
                               className={MENU_ITEM_DANGER}

@@ -66,6 +66,17 @@ async function expectClipOverflow(locator: Locator) {
   ).toBeGreaterThanOrEqual(TAP_FLOOR_PX);
 }
 
+async function openClipDeleteConfirm(page: Page) {
+  await hydratedClick(
+    page,
+    page.getByRole("menuitem", { name: "Delete clip" })
+  );
+  const dialog = page.getByTestId("confirm-dialog");
+  await expect(dialog).toBeVisible();
+  await expect(dialog).toContainText("This clip will be permanently deleted.");
+  return dialog;
+}
+
 function withDb<T>(fn: (h: Database.Database) => T): T {
   const h = new Database(DB_PATH);
   try {
@@ -234,7 +245,10 @@ test("the episode strip renders empty, takes a dated clip, serves it by Range, a
 
     // Caption round trip through the episode action (the strip's third write path).
     await hydratedClick(page, actions);
-    await page.getByRole("menuitem", { name: "Edit caption" }).click();
+    await hydratedClick(
+      page,
+      page.getByRole("menuitem", { name: "Edit caption" })
+    );
     const captionInput = tile.getByTestId(
       `video-clip-caption-input-${clip.id}`
     );
@@ -251,9 +265,20 @@ test("the episode strip renders empty, takes a dated clip, serves it by Range, a
     // Delete the last clip → the strip falls back to its empty copy (it is always
     // rendered on a writable episode, so nothing disappears — only the grid empties).
     await hydratedClick(page, actions);
+    let deleteDialog = await openClipDeleteConfirm(page);
+    await hydratedClick(
+      page,
+      deleteDialog.getByRole("button", { name: "Cancel" })
+    );
+    await expect(deleteDialog).toBeHidden();
+    await expect(tile).toBeVisible();
+    expect(latestClip().id).toBe(clip.id);
+
+    await hydratedClick(page, actions);
+    deleteDialog = await openClipDeleteConfirm(page);
     await settledClick(
       page,
-      page.getByRole("menuitem", { name: "Delete clip" })
+      deleteDialog.getByRole("button", { name: "Delete" })
     );
     await expect(
       strip.locator('[data-testid^="video-clip-item-"]')
@@ -308,9 +333,10 @@ test("an audio clip lands on the same strip as a mic tile and plays through <aud
     // Own what this test attached, so the neighbour above always starts from empty.
     const actions = tile.getByTestId("overflow-menu-trigger");
     await hydratedClick(page, actions);
+    const deleteDialog = await openClipDeleteConfirm(page);
     await settledClick(
       page,
-      page.getByRole("menuitem", { name: "Delete clip" })
+      deleteDialog.getByRole("button", { name: "Delete" })
     );
     await expect(
       strip.locator('[data-testid^="video-clip-item-"]')
@@ -397,9 +423,10 @@ test("a caregiver reading a household member's episode can play its clips (#1696
 
     // Own what this test attached — the cross-profile delete gates on the child too.
     await hydratedClick(page, tile.getByTestId("overflow-menu-trigger"));
+    const deleteDialog = await openClipDeleteConfirm(page);
     await settledClick(
       page,
-      page.getByRole("menuitem", { name: "Delete clip" })
+      deleteDialog.getByRole("button", { name: "Delete" })
     );
     await expect(
       strip.locator('[data-testid^="video-clip-item-"]')

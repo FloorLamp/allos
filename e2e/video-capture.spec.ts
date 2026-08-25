@@ -270,9 +270,15 @@ test("upload → poster grid → open player → Range serve → location warnin
     // Delete → the card's standard per-clip menu still works (only ADD moved
     // away), and with the last clip gone the whole section disappears again.
     await hydratedClick(page, strip.getByTestId("overflow-menu-trigger"));
-    await settledClick(
+    await hydratedClick(
       page,
       page.getByRole("menuitem", { name: "Delete clip" })
+    );
+    const deleteDialog = page.getByTestId("confirm-dialog");
+    await expect(deleteDialog).toBeVisible();
+    await settledClick(
+      page,
+      deleteDialog.getByRole("button", { name: "Delete" })
     );
     await expect(page.getByTestId(`activity-media-strip-${aid}`)).toHaveCount(
       0,
