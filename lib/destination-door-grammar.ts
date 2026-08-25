@@ -5,10 +5,10 @@ import ts from "typescript";
 // DESTINATION-DOOR SOURCE-SHAPE REGISTRY (#3502).
 //
 // This is deliberately not a JavaScript interpreter. The four governed renderers,
-// nine mounts, their owner paths/declarations, trusted slot components, and each
-// governed declaration's referenced runtime support closure are pinned by exact
-// token digests. A source-shape change is a review event. The corpus is parsed and
-// indexed once, using each file's real syntax mode.
+// nine mounts, their owner paths, every runtime top-level statement in each
+// governed module, and the local modules behind claimed external bindings are
+// pinned by exact token digests. A source-shape change is a review event. The
+// corpus is parsed and indexed once, using each file's real syntax mode.
 
 type JsxNode = ts.JsxElement | ts.JsxSelfClosingElement;
 
@@ -102,17 +102,25 @@ export interface TrustedSlotSnapshot extends TrustedSlotPlan {
   declarationSpan?: string;
 }
 
+export interface ExternalModuleSnapshot {
+  key: string;
+  path: string;
+  moduleDigest: string;
+  moduleTrace: readonly string[];
+}
+
 export interface DestinationDoorRegistry {
   descriptorVersion: string;
   typescriptVersion: string;
   renderers: readonly RendererSnapshot[];
   mounts: readonly MountSnapshot[];
   trustedSlots: readonly TrustedSlotSnapshot[];
+  externalModules: readonly ExternalModuleSnapshot[];
   nonDoorChevrons: Readonly<Record<string, readonly string[]>>;
   nonDoorReasons: Readonly<Record<string, string>>;
 }
 
-const DESCRIPTOR_VERSION = "door-ast-token-v2";
+const DESCRIPTOR_VERSION = "door-ast-token-v3";
 
 interface ImportRecord {
   kind: "import" | "re-export" | "dynamic-import" | "require";
@@ -136,8 +144,6 @@ interface IndexedFile {
   references: Map<string, IdentifierReference[]>;
   functions: Map<string, ts.FunctionDeclaration[]>;
   supportNodes: Map<string, ts.Node[]>;
-  topLevelBindings: Map<string, ts.Node[]>;
-  topLevelExecutable: ts.Statement[];
 }
 
 function scriptKind(file: string): ts.ScriptKind {
@@ -228,14 +234,140 @@ function unwrapExpression(expression: ts.Expression): ts.Expression {
   return current;
 }
 
-function staticString(expression: ts.Expression): string | null {
+function importBindingNames(statement: ts.ImportDeclaration): string[] {
+  const clause = statement.importClause;
+  if (!clause) return [];
+  return [
+    ...(clause.name ? [clause.name.text] : []),
+    ...(clause.namedBindings && ts.isNamedImports(clause.namedBindings)
+      ? clause.namedBindings.elements.map((element) => element.name.text)
+      : []),
+    ...(clause.namedBindings && ts.isNamespaceImport(clause.namedBindings)
+      ? [clause.namedBindings.name.text]
+      : []),
+  ];
+}
+
+function statementBindings(statement: ts.Statement, name: string): ts.Node[] {
+  if (ts.isImportDeclaration(statement)) {
+    return importBindingNames(statement).includes(name) ? [statement] : [];
+  }
+  if (ts.isVariableStatement(statement)) {
+    return statement.declarationList.declarations.filter((declaration) =>
+      bindingNames(declaration.name).includes(name)
+    );
+  }
+  if (
+    (ts.isFunctionDeclaration(statement) ||
+      ts.isClassDeclaration(statement) ||
+      ts.isEnumDeclaration(statement)) &&
+    statement.name?.text === name
+  ) {
+    return [statement];
+  }
+  return [];
+}
+
+function functionVarBindings(
+  fn: ts.SignatureDeclaration,
+  name: string
+): ts.VariableDeclaration[] {
+  const matches: ts.VariableDeclaration[] = [];
+  const visit = (node: ts.Node): void => {
+    if (node !== fn && ts.isFunctionLike(node)) return;
+    if (
+      ts.isVariableDeclarationList(node) &&
+      (node.flags & (ts.NodeFlags.Let | ts.NodeFlags.Const)) === 0
+    ) {
+      matches.push(
+        ...node.declarations.filter((declaration) =>
+          bindingNames(declaration.name).includes(name)
+        )
+      );
+    }
+    ts.forEachChild(node, visit);
+  };
+  visit(fn);
+  return matches;
+}
+
+function lexicalBinding(reference: ts.Identifier): ts.Node | null {
+  const name = reference.text;
+  let current: ts.Node | undefined = reference.parent;
+  while (current) {
+    const matches: ts.Node[] = [];
+    if (ts.isFunctionLike(current)) {
+      if (
+        current.name &&
+        ts.isIdentifier(current.name) &&
+        current.name.text === name
+      ) {
+        matches.push(current.name);
+      }
+      for (const parameter of current.parameters) {
+        if (bindingNames(parameter.name).includes(name))
+          matches.push(parameter);
+      }
+      matches.push(...functionVarBindings(current, name));
+    }
+    if (ts.isCatchClause(current) && current.variableDeclaration) {
+      if (bindingNames(current.variableDeclaration.name).includes(name)) {
+        matches.push(current.variableDeclaration);
+      }
+    }
+    if (
+      ts.isSourceFile(current) ||
+      ts.isBlock(current) ||
+      ts.isModuleBlock(current)
+    ) {
+      for (const statement of current.statements) {
+        matches.push(...statementBindings(statement, name));
+      }
+    }
+    if (
+      (ts.isForStatement(current) ||
+        ts.isForInStatement(current) ||
+        ts.isForOfStatement(current)) &&
+      current.initializer &&
+      ts.isVariableDeclarationList(current.initializer)
+    ) {
+      matches.push(
+        ...current.initializer.declarations.filter((declaration) =>
+          bindingNames(declaration.name).includes(name)
+        )
+      );
+    }
+    if (matches.length > 0) return matches[0];
+    current = current.parent;
+  }
+  return null;
+}
+
+function staticString(
+  expression: ts.Expression,
+  seen: ReadonlySet<ts.Node> = new Set()
+): string | null {
   const current = unwrapExpression(expression);
+  if (ts.isIdentifier(current)) {
+    const binding = lexicalBinding(current);
+    if (
+      !binding ||
+      !ts.isVariableDeclaration(binding) ||
+      !binding.initializer ||
+      !ts.isVariableDeclarationList(binding.parent) ||
+      (binding.parent.flags & ts.NodeFlags.Const) === 0 ||
+      seen.has(binding)
+    ) {
+      return null;
+    }
+    return staticString(binding.initializer, new Set([...seen, binding]));
+  }
   if (ts.isStringLiteralLike(current)) return current.text;
   if (ts.isNoSubstitutionTemplateLiteral(current)) return current.text;
   if (ts.isTemplateExpression(current)) {
     let value = current.head.text;
     for (const span of current.templateSpans) {
-      const expression = staticString(span.expression);
+      const expression = staticString(span.expression, seen);
       if (expression == null) return null;
       value += expression + span.literal.text;
     }
@@ -245,15 +377,15 @@ function staticString(expression: ts.Expression): string | null {
     ts.isBinaryExpression(current) &&
     current.operatorToken.kind === ts.SyntaxKind.PlusToken
   ) {
-    const left = staticString(current.left);
-    const right = staticString(current.right);
+    const left = staticString(current.left, seen);
+    const right = staticString(current.right, seen);
     return left == null || right == null ? null : left + right;
   }
   if (
     ts.isBinaryExpression(current) &&
     current.operatorToken.kind === ts.SyntaxKind.CommaToken
   ) {
-    return staticString(current.right);
+    return staticString(current.right, seen);
   }
   return null;
 }
@@ -308,36 +440,13 @@ function isNamePosition(node: ts.Identifier): boolean {
   );
 }
 
-function shadowsRequire(node: ts.Identifier): boolean {
-  let current: ts.Node | undefined = node.parent;
-  while (current) {
-    if (ts.isFunctionLike(current)) {
-      if (
-        current.parameters.some((parameter) =>
-          bindingNames(parameter.name).includes("require")
-        )
-      ) {
-        return true;
-      }
-    }
-    if (ts.isSourceFile(current)) {
-      return current.statements.some(
-        (statement) =>
-          ts.isVariableStatement(statement) &&
-          statement.declarationList.declarations.some((declaration) =>
-            bindingNames(declaration.name).includes("require")
-          )
-      );
-    }
-    current = current.parent;
-  }
-  return false;
-}
-
 function loaderReceiver(expression: ts.Expression): boolean {
   const current = unwrapExpression(expression);
   if (ts.isIdentifier(current)) {
-    return current.text === "module" || current.text === "globalThis";
+    return (
+      (current.text === "module" || current.text === "globalThis") &&
+      lexicalBinding(current) == null
+    );
   }
   if (
     ts.isBinaryExpression(current) &&
@@ -346,58 +455,6 @@ function loaderReceiver(expression: ts.Expression): boolean {
     return loaderReceiver(current.right);
   }
   return false;
-}
-
-function computedRequireReference(node: ts.ElementAccessExpression): boolean {
-  return (
-    node.argumentExpression != null &&
-    staticString(node.argumentExpression) === "require" &&
-    loaderReceiver(node.expression)
-  );
-}
-
-function topLevelBindingNodes(statement: ts.Statement): [string, ts.Node][] {
-  if (ts.isVariableStatement(statement)) {
-    return statement.declarationList.declarations.flatMap((declaration) =>
-      bindingNames(declaration.name).map((name): [string, ts.Node] => [
-        name,
-        statement,
-      ])
-    );
-  }
-  if (
-    (ts.isFunctionDeclaration(statement) ||
-      ts.isClassDeclaration(statement) ||
-      ts.isInterfaceDeclaration(statement) ||
-      ts.isTypeAliasDeclaration(statement) ||
-      ts.isEnumDeclaration(statement)) &&
-    statement.name
-  ) {
-    return [[statement.name.text, statement]];
-  }
-  return [];
-}
-
-function isExecutableTopLevel(statement: ts.Statement): boolean {
-  if (
-    ts.isExpressionStatement(statement) &&
-    ts.isStringLiteral(statement.expression)
-  ) {
-    return false;
-  }
-  return !(
-    ts.isImportDeclaration(statement) ||
-    ts.isExportDeclaration(statement) ||
-    ts.isImportEqualsDeclaration(statement) ||
-    ts.isVariableStatement(statement) ||
-    ts.isFunctionDeclaration(statement) ||
-    ts.isClassDeclaration(statement) ||
-    ts.isInterfaceDeclaration(statement) ||
-    ts.isTypeAliasDeclaration(statement) ||
-    ts.isEnumDeclaration(statement) ||
-    ts.isModuleDeclaration(statement) ||
-    ts.isEmptyStatement(statement)
-  );
 }
 
 function indexFile(source: DoorSource): {
@@ -417,12 +474,10 @@ function indexFile(source: DoorSource): {
   const references = new Map<string, IdentifierReference[]>();
   const functions = new Map<string, ts.FunctionDeclaration[]>();
   const supportNodes = new Map<string, ts.Node[]>();
-  const topLevelBindings = new Map<string, ts.Node[]>();
-  const topLevelExecutable: ts.Statement[] = [];
   const findings: DoorFinding[] = [];
   const loaderKeys = new Set<string>();
   const loaderFinding = (node: ts.Node, detail: string): void => {
-    const key = `${node.getStart(file)}:${detail}`;
+    const key = String(node.getStart(file));
     if (loaderKeys.has(key)) return;
     loaderKeys.add(key);
     findings.push(
@@ -489,15 +544,6 @@ function indexFile(source: DoorSource): {
           });
         }
       }
-      if (clause?.name) addToMap(topLevelBindings, clause.name.text, statement);
-      if (clause?.namedBindings && ts.isNamedImports(clause.namedBindings)) {
-        for (const element of clause.namedBindings.elements) {
-          addToMap(topLevelBindings, element.name.text, statement);
-        }
-      }
-      if (clause?.namedBindings && ts.isNamespaceImport(clause.namedBindings)) {
-        addToMap(topLevelBindings, clause.namedBindings.name.text, statement);
-      }
     }
     if (
       ts.isExportDeclaration(statement) &&
@@ -520,10 +566,6 @@ function indexFile(source: DoorSource): {
     if (ts.isImportEqualsDeclaration(statement)) {
       loaderFinding(statement, "import-equals require is unsupported");
     }
-    for (const [name, node] of topLevelBindingNodes(statement)) {
-      addToMap(topLevelBindings, name, node);
-    }
-    if (isExecutableTopLevel(statement)) topLevelExecutable.push(statement);
   }
 
   const visit = (node: ts.Node): void => {
@@ -574,13 +616,24 @@ function indexFile(source: DoorSource): {
       if (
         node.text === "require" &&
         !isNamePosition(node) &&
-        !shadowsRequire(node) &&
+        lexicalBinding(node) == null &&
         !directRequireReference(node)
       ) {
         loaderFinding(node, "require alias/property/call form is unsupported");
       }
-      if (node.text === "createRequire" && !isNamePosition(node)) {
+      if (
+        node.text === "createRequire" &&
+        !isNamePosition(node) &&
+        lexicalBinding(node) == null
+      ) {
         loaderFinding(node, "createRequire loaders are unsupported");
+      }
+      if (
+        node.text === "module" &&
+        !isNamePosition(node) &&
+        lexicalBinding(node) == null
+      ) {
+        loaderFinding(node, "CommonJS module loaders are unsupported");
       }
     }
     if (
@@ -590,8 +643,18 @@ function indexFile(source: DoorSource): {
     ) {
       loaderFinding(node, "property require loaders are unsupported");
     }
-    if (ts.isElementAccessExpression(node) && computedRequireReference(node)) {
-      loaderFinding(node, "element require loaders are unsupported");
+    if (ts.isElementAccessExpression(node) && loaderReceiver(node.expression)) {
+      const key = node.argumentExpression
+        ? staticString(node.argumentExpression)
+        : null;
+      if (key === "require") {
+        loaderFinding(node, "element require loaders are unsupported");
+      } else if (key == null) {
+        loaderFinding(
+          node,
+          "computed CommonJS/global loader receiver is unsupported"
+        );
+      }
     }
     if (ts.isCallExpression(node)) {
       if (node.expression.kind === ts.SyntaxKind.ImportKeyword) {
@@ -611,7 +674,7 @@ function indexFile(source: DoorSource): {
       } else if (
         ts.isIdentifier(node.expression) &&
         node.expression.text === "require" &&
-        !shadowsRequire(node.expression) &&
+        lexicalBinding(node.expression) == null &&
         node.questionDotToken == null
       ) {
         loaderFinding(node, "runtime require() is unsupported");
@@ -631,8 +694,6 @@ function indexFile(source: DoorSource): {
       references,
       functions,
       supportNodes,
-      topLevelBindings,
-      topLevelExecutable,
     },
     findings,
   };
@@ -711,59 +772,41 @@ interface StructuralShape {
   span: string;
 }
 
-function referencedNames(node: ts.Node): Set<string> {
-  const names = new Set<string>();
-  const visit = (current: ts.Node): void => {
-    if (ts.isIdentifier(current) && !isNamePosition(current)) {
-      names.add(current.text);
+function runtimeTopLevelStatement(statement: ts.Statement): boolean {
+  if (hasModifier(statement, ts.SyntaxKind.DeclareKeyword)) return false;
+  if (
+    ts.isInterfaceDeclaration(statement) ||
+    ts.isTypeAliasDeclaration(statement) ||
+    ts.isEmptyStatement(statement)
+  ) {
+    return false;
+  }
+  if (ts.isImportDeclaration(statement)) {
+    const clause = statement.importClause;
+    if (!clause) return true;
+    if (clause.isTypeOnly) return false;
+    if (clause.name) return true;
+    if (clause.namedBindings && ts.isNamespaceImport(clause.namedBindings)) {
+      return true;
     }
-    ts.forEachChild(current, visit);
-  };
-  visit(node);
-  return names;
-}
-
-function structuralClosure(
-  indexed: IndexedFile,
-  root: ts.Node,
-  supportNames: readonly string[] = []
-): ts.Node[] {
-  if (indexed.topLevelExecutable.length > 0) {
-    const statement = indexed.topLevelExecutable[0];
-    throw new Error(
-      `${indexed.path}:${lineOf(indexed.file, statement)} executable top-level statement is unsupported in a governed module`
+    return Boolean(
+      clause.namedBindings &&
+      ts.isNamedImports(clause.namedBindings) &&
+      clause.namedBindings.elements.some((element) => !element.isTypeOnly)
     );
   }
-  const selected = new Set<ts.Node>([root]);
-  const queue: ts.Node[] = [root];
-  for (const name of supportNames) {
-    const matches = indexed.topLevelBindings.get(name) ?? [];
-    if (matches.length !== 1) {
-      throw new Error(`${indexed.path}: expected one support binding ${name}`);
-    }
-    if (!selected.has(matches[0])) {
-      selected.add(matches[0]);
-      queue.push(matches[0]);
-    }
+  if (ts.isExportDeclaration(statement)) {
+    if (statement.isTypeOnly) return false;
+    if (!statement.exportClause) return true;
+    return !(
+      ts.isNamedExports(statement.exportClause) &&
+      statement.exportClause.elements.every((element) => element.isTypeOnly)
+    );
   }
-  for (let index = 0; index < queue.length; index += 1) {
-    for (const name of referencedNames(queue[index])) {
-      const matches = indexed.topLevelBindings.get(name) ?? [];
-      if (matches.length > 1) {
-        throw new Error(
-          `${indexed.path}: support binding ${name} resolves to ${matches.length} top-level declarations`
-        );
-      }
-      const match = matches[0];
-      if (match && !selected.has(match)) {
-        selected.add(match);
-        queue.push(match);
-      }
-    }
+  if (ts.isFunctionDeclaration(statement) && !statement.body) {
+    return false;
   }
-  return [...selected].sort(
-    (left, right) => left.getStart(indexed.file) - right.getStart(indexed.file)
-  );
+  return true;
 }
 
 function nodeSelector(node: ts.Node, file: ts.SourceFile): string {
@@ -791,26 +834,16 @@ function nodeSelector(node: ts.Node, file: ts.SourceFile): string {
 
 function structuralShape(
   indexed: IndexedFile,
-  root: ts.Node,
-  supportNames: readonly string[] = []
+  root: ts.Node | null
 ): StructuralShape {
-  const nodes = structuralClosure(indexed, root, supportNames);
+  const nodes = indexed.file.statements.filter(runtimeTopLevelStatement);
   const trace: string[] = [];
-  const importNodes = nodes.filter(ts.isImportDeclaration);
-  if (importNodes.length > 0) {
-    trace.push(
-      `referenced-imports=${digest(
-        importNodes
-          .map(
-            (node) =>
-              `${nodeSelector(node, indexed.file)}=${nodeDigest(node, indexed.file)}`
-          )
-          .join("|")
-      )}`
-    );
-  }
-  for (const node of nodes.filter((entry) => !ts.isImportDeclaration(entry))) {
-    const selector = nodeSelector(node, indexed.file);
+  const selectorCounts = new Map<string, number>();
+  for (const node of nodes) {
+    const baseSelector = nodeSelector(node, indexed.file);
+    const ordinal = (selectorCounts.get(baseSelector) ?? 0) + 1;
+    selectorCounts.set(baseSelector, ordinal);
+    const selector = `${baseSelector}#${ordinal}`;
     trace.push(`${selector}=${nodeDigest(node, indexed.file)}`);
     if (node === root) {
       node.forEachChild((child) => {
@@ -820,9 +853,11 @@ function structuralShape(
       });
     }
   }
-  const start = lineOf(indexed.file, root);
-  const end =
-    indexed.file.getLineAndCharacterOfPosition(root.getEnd()).line + 1;
+  const start = root ? lineOf(indexed.file, root) : 1;
+  const end = root
+    ? indexed.file.getLineAndCharacterOfPosition(root.getEnd()).line + 1
+    : indexed.file.getLineAndCharacterOfPosition(indexed.file.getEnd()).line +
+      1;
   return { digest: digest(trace.join("|")), trace, span: `${start}-${end}` };
 }
 
@@ -991,7 +1026,7 @@ function captureRenderer(
     }
     supportDigests[name] = nodeDigest(nodes[0], indexed.file);
   }
-  const shape = structuralShape(indexed, renderer, plan.supportNames);
+  const shape = structuralShape(indexed, renderer);
   return {
     ...plan,
     declarationDigest: shape.digest,
@@ -1078,10 +1113,20 @@ function nearestFunction(node: ts.Node): ts.FunctionLikeDeclaration | null {
 }
 
 function chevronNodes(indexed: IndexedFile): JsxNode[] {
+  const localNames = new Set(
+    indexed.imports
+      .filter(
+        (record) =>
+          record.kind === "import" &&
+          record.moduleName === "@tabler/icons-react" &&
+          record.imported === "IconChevronRight" &&
+          record.local
+      )
+      .map((record) => record.local!)
+  );
   return [...indexed.jsx]
     .filter(
-      ([name]) =>
-        name === "IconChevronRight" || name.endsWith(".IconChevronRight")
+      ([name]) => localNames.has(name) || name.endsWith(".IconChevronRight")
     )
     .flatMap(([, nodes]) => nodes)
     .sort(
@@ -1106,6 +1151,55 @@ function chevronSignatures(indexed: IndexedFile): string[] {
     .sort();
 }
 
+function claimedExternalPaths(
+  corpus: DestinationDoorCorpus,
+  plan: DestinationDoorPlan
+): string[] {
+  const governed = new Set([
+    ...plan.renderers.map((entry) => entry.path),
+    ...plan.mounts.map((entry) => entry.path),
+    ...plan.trustedSlots.map((entry) => entry.path),
+  ]);
+  const claims: { from: string; requirement: ImportRequirement }[] = [
+    ...plan.renderers.flatMap((entry) =>
+      entry.imports.map((requirement) => ({ from: entry.path, requirement }))
+    ),
+    ...plan.mounts.flatMap((entry) =>
+      entry.ownerImport
+        ? [{ from: entry.path, requirement: entry.ownerImport }]
+        : []
+    ),
+  ];
+  const paths = new Set<string>();
+  for (const claim of claims) {
+    const candidates = moduleCandidates(
+      corpus,
+      claim.from,
+      claim.requirement.moduleName
+    );
+    if (candidates.length === 1 && !governed.has(candidates[0])) {
+      paths.add(candidates[0]);
+    }
+  }
+  return [...paths].sort();
+}
+
+function captureExternalModules(
+  corpus: DestinationDoorCorpus,
+  plan: DestinationDoorPlan
+): ExternalModuleSnapshot[] {
+  return claimedExternalPaths(corpus, plan).map((file) => {
+    const indexed = corpus.files.get(file)!;
+    const shape = structuralShape(indexed, null);
+    return {
+      key: `external:${file}`,
+      path: file,
+      moduleDigest: shape.digest,
+      moduleTrace: shape.trace,
+    };
+  });
+}
+
 export function captureDestinationDoorRegistry(
   corpus: DestinationDoorCorpus,
   plan: DestinationDoorPlan
@@ -1125,6 +1219,7 @@ export function captureDestinationDoorRegistry(
     trustedSlots: plan.trustedSlots.map((entry) =>
       captureTrustedSlot(corpus, entry)
     ),
+    externalModules: captureExternalModules(corpus, plan),
     nonDoorChevrons: Object.fromEntries(
       Object.entries(nonDoorChevrons).sort(([a], [b]) => a.localeCompare(b))
     ),
@@ -1379,6 +1474,39 @@ export function auditDestinationDoorRegistry(
       expected.declarationTrace,
       actual.trustedSlots[index].declarationTrace,
       actual.trustedSlots[index].declarationSpan
+    );
+  });
+
+  const expectedExternalKeys = registry.externalModules.map(
+    (entry) => entry.key
+  );
+  const actualExternalKeys = actual.externalModules.map((entry) => entry.key);
+  if (
+    JSON.stringify(expectedExternalKeys) !== JSON.stringify(actualExternalKeys)
+  ) {
+    findings.push(
+      makeFinding(
+        "external-module:key-set",
+        "<registry>",
+        `claimed external module keys changed: expected ${JSON.stringify(expectedExternalKeys)}, received ${JSON.stringify(actualExternalKeys)}`
+      )
+    );
+  }
+  registry.externalModules.forEach((expected) => {
+    const received = actual.externalModules.find(
+      (entry) => entry.key === expected.key
+    );
+    if (!received) return;
+    compareShape(
+      findings,
+      expected.key,
+      expected.path,
+      `external-module:${expected.path}`,
+      expected.moduleDigest,
+      received.moduleDigest,
+      expected.moduleTrace,
+      received.moduleTrace,
+      "1-end"
     );
   });
 
