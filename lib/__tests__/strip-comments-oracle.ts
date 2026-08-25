@@ -33,7 +33,7 @@ import { execFileSync } from "node:child_process";
 import fs from "node:fs";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
-import ts from "typescript";
+import { parsedCommentRanges } from "../../scripts/source-comment-ranges";
 import { stripComments } from "./strip-comments";
 
 const REPO = path.resolve(fileURLToPath(new URL("../..", import.meta.url)));
@@ -55,66 +55,7 @@ export function oracleCommentRanges(
   rel: string,
   src: string
 ): [number, number][] {
-  const sf = ts.createSourceFile(rel, src, ts.ScriptTarget.Latest, true);
-  return commentRanges(sf, src);
-}
-
-function commentRanges(sf: ts.SourceFile, src: string): [number, number][] {
-  const out: [number, number][] = [];
-  const seen = new Set<number>();
-  const visit = (node: ts.Node): void => {
-    const kids = node.getChildren(sf);
-    if (kids.length === 0) {
-      const at = node.getFullStart();
-      // BOTH halves, and the reason is a real trap: `getLeadingCommentRanges` starts
-      // collecting only after a line break (unless `pos` is 0), so a comment sitting
-      // immediately at the token's full start — every `{/* … */}` in JSX, every
-      // trailing `// …` — is invisible to it. `getTrailingCommentRanges` collects
-      // from `pos` and stops at the first line break. The union is the file's trivia.
-      for (const r of [
-        ...(ts.getTrailingCommentRanges(src, at) ?? []),
-        ...(ts.getLeadingCommentRanges(src, at) ?? []),
-      ])
-        if (!seen.has(r.pos)) {
-          seen.add(r.pos);
-          out.push([r.pos, r.end]);
-        }
-      return;
-    }
-    for (const k of kids) visit(k);
-  };
-  visit(sf);
-  return out;
-}
-
-/**
- * Blank comments from a source file using the parser's trivia boundaries.
- *
- * Unlike a raw scanner, the parser has enough grammar context to know that the `/`
- * after `)` or `}` may open a regular expression. That distinction is load-bearing
- * for a guard: `/[/*]/` must remain code, not become a block comment that hides the
- * rest of the file. Invalid source fails closed with an explicit scanner error:
- * returning raw text would let comments authenticate imports and JSX, while deleting
- * text would be a silent false pass.
- */
-export function stripCommentsParsed(rel: string, src: string): string {
-  const sf = ts.createSourceFile(rel, src, ts.ScriptTarget.Latest, true);
-  const diagnostics = (
-    sf as ts.SourceFile & { parseDiagnostics?: readonly ts.Diagnostic[] }
-  ).parseDiagnostics;
-  if (diagnostics?.length) {
-    const first = diagnostics[0]!;
-    const at = sf.getLineAndCharacterOfPosition(first.start ?? 0);
-    throw new Error(
-      `Comment scan could not parse ${rel}:${at.line + 1}:${at.character + 1}: ` +
-        ts.flattenDiagnosticMessageText(first.messageText, "\n")
-    );
-  }
-
-  const out = src.split("");
-  for (const [from, to] of commentRanges(sf, src))
-    for (let i = from; i < to; i += 1) if (out[i] !== "\n") out[i] = " ";
-  return out.join("");
+  return parsedCommentRanges(rel, src);
 }
 
 export interface Disagreement {

@@ -50,7 +50,7 @@
 import fs from "node:fs";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
-import { stripCommentsParsed } from "@/lib/__tests__/strip-comments-oracle";
+import { stripCommentsParsed } from "./source-comment-ranges";
 
 export const REPO_ROOT = path.resolve(
   fileURLToPath(new URL("..", import.meta.url))
