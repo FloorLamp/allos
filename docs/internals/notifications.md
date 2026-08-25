@@ -310,11 +310,12 @@ PreWorkout, household-round, food, mood, wear and inferred-workout slots. The
 complete ordered switch trajectory decides whether the minute occurred: a later
 reverse switch can put a previously skipped minute back into the day. Westward
 repeated slots remain due and the ordinary per-day marker keeps them once-only.
-Only the newest valid, chronological switch chain ending in the profile's current
-timezone may excuse a slot; a duplicate, discontinuity, or bare timezone correction
-fails open. Settings records a compensating seam when it changes the timezone during
-an active trip, including a manual return home, while ordinary non-travel timezone
-corrections remain unrecorded.
+The entire retained history must be one valid, chronological switch chain ending in
+the profile's current timezone before any slot may be excused; a duplicate,
+discontinuity, invalid row, ordering fault, or bare timezone correction rejects all
+of it and fails open. Settings records a compensating seam when it changes the
+timezone during an active trip, including a manual return home, while ordinary
+non-travel timezone corrections remain unrecorded.
 The morning digest and weekly recap are deliberately outside this gate: each
 summarizes a period and makes no missed-slot claim, so a late summary remains
 truthful. Dynamic digest mode also follows an arrival floor and deadline rather
