@@ -156,10 +156,12 @@ export interface FrequencyTargetWeek {
 }
 
 // A target's trailing history: its COMPLETED weeks (oldest first — the current,
-// in-progress week is deliberately absent, see below) plus whether the target itself
-// existed for the whole of that window.
+// in-progress week is deliberately absent, see below), its canonical profile-local
+// declaration day, and whether it existed for the whole oldest requested window.
 export interface FrequencyTargetHistory {
   target: FrequencyTarget;
+  /** Profile-local day on which this target was declared. */
+  declaredOn: string;
   weeks: FrequencyTargetWeek[];
   existedWholeWindow: boolean;
 }
@@ -198,6 +200,7 @@ export function getFrequencyTargetWeeklyHistory(
     asOf,
   }).map((entry) => ({
     target: entry.target,
+    declaredOn: entry.declaredOn,
     weeks: entry.weeks.map((w) => ({ start: w.start, count: w.count })),
     existedWholeWindow: entry.existedWholeWindow,
   }));
