@@ -1,7 +1,7 @@
 import { notFound } from "next/navigation";
 import BottomSheetGestureHarness from "./BottomSheetGestureHarness";
 import PageContainer from "@/components/PageContainer";
-import PageHeader from "@/components/PageHeader";
+import { PageHeader } from "@/components/ui";
 
 // This route exists only for real-browser gesture coverage that needs a
 // BottomSheet `description` (the prop has no product caller). The E2E worker is
