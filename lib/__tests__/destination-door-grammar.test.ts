@@ -11,11 +11,13 @@ import {
   componentModuleReferences,
   identifierLines,
   jsxMountLines,
+  jsxMountContractLines,
   jsxMountOwnerLines,
   testIdLines,
   testIdOwnerLines,
   type DestinationDoorContract,
   type DoorOwner,
+  type ExactJsxProp,
 } from "../destination-door-grammar";
 
 // THE EXACT, WHOLE-TREE DESTINATION-DOOR CENSUS (#3502).
@@ -91,6 +93,7 @@ const RENDERERS: ReadonlyArray<{
   {
     file: "components/intake/SharedSuppliesLink.tsx",
     contract: {
+      rendererName: "SharedSuppliesLink",
       testId: "shared-supplies-link",
       targetOwner: "link",
       destinationExpression: "SUPPLIES_HREF",
@@ -98,6 +101,13 @@ const RENDERERS: ReadonlyArray<{
       moduleBindings: [
         { name: "SUPPLIES_HREF", moduleName: "@/lib/hrefs" },
         { name: "sharedSuppliesLinkLabel", moduleName: "@/lib/refill" },
+      ],
+      linkAttributes: [
+        "href",
+        "data-testid",
+        "title",
+        "aria-label",
+        "className",
       ],
       title: "Medicine cabinet",
       label: { kind: "expression", value: "label" },
@@ -122,11 +132,13 @@ const RENDERERS: ReadonlyArray<{
   {
     file: "components/intake/DoseLedgerLink.tsx",
     contract: {
+      rendererName: "DoseLedgerLink",
       testId: "dose-ledger-link",
       targetOwner: "link",
       destinationExpression: "doseLedgerHref(kind)",
       destinationBinding: "module",
       moduleBindings: [{ name: "doseLedgerHref", moduleName: "@/lib/hrefs" }],
+      linkAttributes: ["href", "data-testid", "title", "className"],
       title: "Dose history",
       label: { kind: "literal", value: "Dose history" },
       childShape: [
@@ -146,11 +158,14 @@ const RENDERERS: ReadonlyArray<{
   {
     file: "app/(app)/household/page.tsx",
     contract: {
+      rendererName: "HouseholdPage",
       testId: "household-history-link",
       targetOwner: "link",
       destinationExpression: "EPISODES_HREF",
       destinationBinding: "module",
       moduleBindings: [{ name: "EPISODES_HREF", moduleName: "@/lib/hrefs" }],
+      linkAttributes: ["href", "className", "data-testid"],
+      visibleAncestorComponents: ["PageHeader"],
       label: { kind: "literal", value: "Illness episodes" },
       childShape: ["text:Illness episodes", "tag:IconChevronRight"],
       accessibleName: { kind: "visible-label" },
@@ -165,12 +180,14 @@ const RENDERERS: ReadonlyArray<{
   {
     file: "components/dashboard/DashboardStandingCluster.tsx",
     contract: {
+      rendererName: "DashboardStandingCluster",
       testId: "standing-door",
       targetOwner: "decoration",
       destinationExpression: "presentation.href",
       moduleBindings: [
         { name: "trackedPageFor", moduleName: "@/lib/recent-pages" },
       ],
+      linkAttributes: ["href", "title", "className"],
       label: { kind: "expression", value: "door" },
       childShape: ["expr:door", "tag:IconChevronRight"],
       accessibleName: { kind: "row-content", value: "content" },
@@ -208,6 +225,7 @@ const MOUNTS: ReadonlyArray<{
   targetFile: string;
   file: string;
   count: number;
+  props: readonly ExactJsxProp[];
   owner: string;
   ownerContract: DoorOwner;
 }> = [
@@ -216,6 +234,13 @@ const MOUNTS: ReadonlyArray<{
     targetFile: "components/intake/SharedSuppliesLink.tsx",
     file: "app/(app)/household/page.tsx",
     count: 1,
+    props: [
+      {
+        name: "count",
+        kind: "expression",
+        value: "countVisiblePools(profileIds)",
+      },
+    ],
     owner: "Household PageHeader.action — owner-approved paired doors (#3487)",
     ownerContract: HOUSEHOLD_HEADER_OWNER,
   },
@@ -224,6 +249,7 @@ const MOUNTS: ReadonlyArray<{
     targetFile: "components/intake/SharedSuppliesLink.tsx",
     file: "app/(app)/medications/MedicationBoard.tsx",
     count: 1,
+    props: [{ name: "count", kind: "expression", value: "cabinetCount" }],
     owner: "Current medications card (#3479)",
     ownerContract: {
       kind: "ancestor-attribute",
@@ -237,6 +263,7 @@ const MOUNTS: ReadonlyArray<{
     targetFile: "components/intake/SharedSuppliesLink.tsx",
     file: "app/(app)/nutrition/SupplementsTab.tsx",
     count: 2,
+    props: [{ name: "count", kind: "expression", value: "cabinetCount" }],
     owner: "both Supplements layouts' Manage sections",
     ownerContract: {
       kind: "ancestor-heading",
@@ -250,6 +277,7 @@ const MOUNTS: ReadonlyArray<{
     targetFile: "components/intake/DoseLedgerLink.tsx",
     file: "app/(app)/medications/MedicationsTodayPanel.tsx",
     count: 1,
+    props: [{ name: "kind", kind: "literal", value: "medication" }],
     owner: "Medications Today card",
     ownerContract: {
       kind: "ancestor-attribute",
@@ -263,6 +291,7 @@ const MOUNTS: ReadonlyArray<{
     targetFile: "components/intake/DoseLedgerLink.tsx",
     file: "app/(app)/nutrition/SupplementsTab.tsx",
     count: 2,
+    props: [{ name: "kind", kind: "literal", value: "supplement" }],
     owner: "both Supplements layouts' Manage sections",
     ownerContract: {
       kind: "ancestor-heading",
@@ -276,6 +305,14 @@ const MOUNTS: ReadonlyArray<{
     targetFile: "components/dashboard/DashboardStandingCluster.tsx",
     file: "components/dashboard/DashboardPlacementCanvas.tsx",
     count: 1,
+    props: [
+      { name: "placements", kind: "expression", value: "standing" },
+      {
+        name: "presentations",
+        kind: "expression",
+        value: "standingPresentations",
+      },
+    ],
     owner: "the `standing.length > 0` Standing-lane branch",
     ownerContract: { kind: "logical-and", expression: "standing.length > 0" },
   },
@@ -543,7 +580,6 @@ function moduleReferenceFindings(
   expectedFiles: ReadonlyMap<string, number>
 ): string[] {
   const target = withoutSourceExtension(targetFile);
-  const targetDirectory = path.posix.dirname(target);
   const findings: string[] = [];
   const actualImportFiles = new Map<string, number>();
   for (const source of sources) {
@@ -552,14 +588,13 @@ function moduleReferenceFindings(
       component
     )) {
       const computed = reference.kind.startsWith("computed-");
-      if (
-        resolvedModule(source.file, reference.moduleName) !== target &&
-        !(
-          computed &&
-          (reference.moduleName.includes(component) ||
-            reference.moduleName.includes(targetDirectory))
-        )
-      )
+      if (computed) {
+        findings.push(
+          `${source.file}:${reference.line} has unresolved ${reference.kind}`
+        );
+        continue;
+      }
+      if (resolvedModule(source.file, reference.moduleName) !== target)
         continue;
       if (reference.kind !== "import" || !reference.canonical) {
         findings.push(
@@ -657,6 +692,10 @@ describe("destination-door grammar (#3502)", () => {
 
     for (const mount of MOUNTS) {
       expect(
+        jsxMountContractLines(read(mount.file), mount.component, mount.props),
+        `${mount.file}: exact ${mount.component} props`
+      ).toHaveLength(mount.count);
+      expect(
         jsxMountOwnerLines(
           read(mount.file),
           mount.component,
@@ -729,10 +768,13 @@ describe("destination-door grammar (#3502)", () => {
 
 describe("the destination-door reader's reach", () => {
   const contract: DestinationDoorContract = {
+    rendererName: "Door",
     testId: "door",
     targetOwner: "link",
     destinationExpression: "DESTINATION",
     destinationBinding: "module",
+    moduleBindings: [{ name: "DESTINATION", moduleName: "@/dest" }],
+    linkAttributes: ["href", "data-testid", "className"],
     label: { kind: "expression", value: "identity" },
     childShape: ["expr:identity", "tag:IconChevronRight"],
     accessibleName: { kind: "visible-label" },
@@ -746,7 +788,8 @@ describe("the destination-door reader's reach", () => {
   const good = `
     import Link from "next/link";
     import { IconChevronRight } from "@tabler/icons-react";
-    function Door() {
+    import { DESTINATION } from "@/dest";
+    export default function Door() {
       const identity = identityOf(destination);
       return <Link href={DESTINATION} data-testid="door" className="text-link gap-1">
         {identity}
@@ -889,6 +932,14 @@ describe("the destination-door reader's reach", () => {
       good.replace("text-link gap-1", "text-link gap-1 [display:none]"),
     ],
     [
+      "link-hidden-class",
+      good.replace("text-link gap-1", "text-link gap-1 sm:!opacity-0"),
+    ],
+    [
+      "link-hidden-class",
+      good.replace("text-link gap-1", "text-link gap-1 [visibility:hidden]"),
+    ],
+    [
       "hidden-ancestry-hidden",
       good
         .replace("<Link", "<div hidden><Link")
@@ -913,6 +964,18 @@ describe("the destination-door reader's reach", () => {
         .replace("</Link>", "</Link></div>"),
     ],
     [
+      "hidden-ancestry-dynamic-class",
+      good
+        .replace("<Link", "<div className={maybeHidden}><Link")
+        .replace("</Link>", "</Link></div>"),
+    ],
+    [
+      "hidden-ancestry-unsupported-component:Invisible",
+      good
+        .replace("<Link", "<Invisible><Link")
+        .replace("</Link>", "</Link></Invisible>"),
+    ],
+    [
       "link-shadow",
       good.replace("function Door()", "function Door(Link: unknown)"),
     ],
@@ -934,6 +997,44 @@ describe("the destination-door reader's reach", () => {
     expect(auditDestinationDoorSource(source, contract).issues).toContain(
       issue
     );
+  });
+
+  it("binds the target to the default renderer's supported live return", () => {
+    const link = `<Link href={DESTINATION} data-testid="door" className="text-link gap-1">
+      {identity}<IconChevronRight aria-hidden className="h-4 w-4" />
+    </Link>`;
+    const decoy =
+      good.replace('data-testid="door"', 'data-testid="other"') +
+      `\nfunction Decoy() { const identity = identityOf(destination); return ${link}; }`;
+    expect(auditDestinationDoorSource(decoy, contract).issues).toContain(
+      "renderer-scope"
+    );
+    expect(
+      auditDestinationDoorSource(
+        good.replace("return <Link", "return false && <Link"),
+        contract
+      ).issues
+    ).toContain("renderer-dead-branch");
+    expect(
+      auditDestinationDoorSource(
+        good
+          .replace("return <Link", "return render(() => <Link")
+          .replace("</Link>;", "</Link>);"),
+        contract
+      ).issues
+    ).toContain("renderer-unsupported-callback");
+    expect(
+      auditDestinationDoorSource(
+        good.replace("return <Link", "return null;\n      return <Link"),
+        contract
+      ).issues
+    ).toContain("renderer-pre-return");
+    expect(
+      auditDestinationDoorSource(
+        good.replace("export default function Door", "function Door"),
+        contract
+      ).issues
+    ).toContain("renderer-default-export");
   });
 
   it("pins Standing's hidden decoration, row content, identity call, and spacing", () => {
@@ -1025,6 +1126,53 @@ describe("the destination-door reader's reach", () => {
     ).toContain("accessible-name");
   });
 
+  it("pins immutable destination inputs and forbids Link interaction overrides", () => {
+    const dose = RENDERERS.find(
+      (entry) => entry.contract.testId === "dose-ledger-link"
+    )!;
+    expect(
+      auditDestinationDoorSource(
+        read(dose.file).replace("return (", 'kind = "supplement";\n  return ('),
+        dose.contract
+      ).issues
+    ).toContain("destination-input:kind");
+    const standing = RENDERERS.find(
+      (entry) => entry.contract.testId === "standing-door"
+    )!;
+    expect(
+      auditDestinationDoorSource(
+        read(standing.file).replace(
+          "const door = presentation.href",
+          "presentation.href = other;\n                            const door = presentation.href"
+        ),
+        standing.contract
+      ).issues
+    ).toContain("destination-input:presentation");
+
+    for (const override of [
+      "onClick={handleClick}",
+      "replace",
+      'role="button"',
+      "tabIndex={-1}",
+    ]) {
+      expect(
+        auditDestinationDoorSource(
+          good.replace('data-testid="door"', `data-testid="door" ${override}`),
+          contract
+        ).issues,
+        override
+      ).toContain("link-attribute-contract");
+    }
+    expect(
+      auditDestinationDoorSource(
+        good
+          .replace("return <Link", "return <button><Link")
+          .replace("</Link>;", "</Link></button>;"),
+        contract
+      ).issues
+    ).toContain("interactive-ancestry");
+  });
+
   it("pins Household's inline door inside PageHeader.action", () => {
     const housed = `
       <PageHeader action={<Link data-testid="household-history-link" />} />
@@ -1114,6 +1262,56 @@ describe("the destination-door reader's reach", () => {
         "{standing.length > 0 && (true || <DashboardStandingCluster />)}",
         standing.component,
         standing.ownerContract
+      )
+    ).toEqual([]);
+  });
+
+  it("pins exact mount props and rejects every statically dead wrapper", () => {
+    const mount = MOUNTS.find(
+      (entry) => entry.component === "DashboardStandingCluster"
+    )!;
+    const source = read(mount.file);
+    for (const mutated of [
+      source.replace(
+        "placements={standing}",
+        "{...props} placements={standing}"
+      ),
+      source.replace(
+        "placements={standing}",
+        "placements={other} placements={standing}"
+      ),
+      source.replace("placements={standing}", "placements={other}"),
+      source.replace(
+        "presentations={standingPresentations}",
+        'presentations="standingPresentations"'
+      ),
+    ]) {
+      expect(
+        jsxMountContractLines(mutated, mount.component, mount.props)
+      ).toEqual([]);
+    }
+
+    for (const dead of [
+      "undefined",
+      "void 0",
+      "NaN",
+      "!true",
+      "false as boolean",
+    ]) {
+      expect(
+        jsxMountOwnerLines(
+          `{standing.length > 0 && (${dead} && <DashboardStandingCluster placements={standing} presentations={standingPresentations} />)}`,
+          mount.component,
+          mount.ownerContract
+        ),
+        dead
+      ).toEqual([]);
+    }
+    expect(
+      jsxMountOwnerLines(
+        "{standing.length > 0 && (maybe() && <DashboardStandingCluster placements={standing} presentations={standingPresentations} />)}",
+        mount.component,
+        mount.ownerContract
       )
     ).toEqual([]);
   });
@@ -1214,6 +1412,19 @@ describe("the destination-door reader's reach", () => {
         new Map()
       ).length
     ).toBeGreaterThan(0);
+    expect(
+      moduleReferenceFindings(
+        [
+          {
+            file: "app/unresolved.ts",
+            source: "const module = import(runtimePath)",
+          },
+        ],
+        "SharedSuppliesLink",
+        target,
+        new Map()
+      ).join("\n")
+    ).toMatch(/unresolved computed-dynamic-import/);
   });
 
   it.each([
@@ -1303,6 +1514,18 @@ describe("the destination-door reader's reach", () => {
         contract
       ).issues
     ).toContain("binding:identity");
+    const shared = RENDERERS.find(
+      (entry) => entry.contract.testId === "shared-supplies-link"
+    )!;
+    expect(
+      auditDestinationDoorSource(
+        read(shared.file).replace(
+          "Medicine cabinet: ${label}",
+          "Medicine  cabinet: ${label}"
+        ),
+        shared.contract
+      ).issues
+    ).toContain("binding:accessibleName");
   });
 
   it("makes a same-file chevron move change its structural identity", () => {

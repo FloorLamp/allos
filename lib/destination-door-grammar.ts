@@ -34,11 +34,14 @@ export interface ExactReturn {
 }
 
 export interface DestinationDoorContract {
+  rendererName: string;
   testId: string;
   targetOwner: "link" | "decoration";
   destinationExpression: string;
   destinationBinding?: "module";
   moduleBindings?: readonly { name: string; moduleName: string }[];
+  linkAttributes: readonly string[];
+  visibleAncestorComponents?: readonly string[];
   title?: string;
   label: DoorLabel;
   childShape: readonly string[];
@@ -97,6 +100,12 @@ export interface ComponentRuntimeReference {
   line: number;
 }
 
+export interface ExactJsxProp {
+  name: string;
+  kind: "literal" | "expression" | "boolean";
+  value?: string;
+}
+
 export interface ChevronOccurrence {
   line: number;
   ownerTag: string;
@@ -131,7 +140,34 @@ function compact(text: string): string {
   return text.replace(/\s+/g, "");
 }
 
+function tokenFingerprint(text: string): string {
+  const scanner = ts.createScanner(
+    ts.ScriptTarget.Latest,
+    true,
+    ts.LanguageVariant.JSX,
+    text
+  );
+  const tokens: string[] = [];
+  for (
+    let token = scanner.scan();
+    token !== ts.SyntaxKind.EndOfFileToken;
+    token = scanner.scan()
+  ) {
+    tokens.push(`${token}:${scanner.getTokenText()}`);
+  }
+  return tokens.join("|");
+}
+
 function staticTruthiness(node: ts.Expression): boolean | null {
+  if (
+    ts.isParenthesizedExpression(node) ||
+    ts.isAsExpression(node) ||
+    ts.isTypeAssertionExpression(node) ||
+    ts.isSatisfiesExpression(node) ||
+    ts.isNonNullExpression(node)
+  ) {
+    return staticTruthiness(node.expression);
+  }
   if (node.kind === ts.SyntaxKind.TrueKeyword) return true;
   if (
     node.kind === ts.SyntaxKind.FalseKeyword ||
@@ -140,6 +176,17 @@ function staticTruthiness(node: ts.Expression): boolean | null {
     return false;
   if (ts.isNumericLiteral(node)) return Number(node.text) !== 0;
   if (ts.isStringLiteralLike(node)) return node.text.length > 0;
+  if (ts.isIdentifier(node) && ["undefined", "NaN"].includes(node.text)) {
+    return false;
+  }
+  if (ts.isVoidExpression(node)) return false;
+  if (
+    ts.isPrefixUnaryExpression(node) &&
+    node.operator === ts.SyntaxKind.ExclamationToken
+  ) {
+    const value = staticTruthiness(node.operand);
+    return value == null ? null : !value;
+  }
   return null;
 }
 
@@ -243,6 +290,18 @@ function exactAttributeIssues(opening: Opening, role: string): string[] {
   return issues;
 }
 
+function exactAttributeNames(
+  opening: Opening,
+  expected: readonly string[]
+): boolean {
+  if (opening.attributes.properties.some(ts.isJsxSpreadAttribute)) return false;
+  const names = opening.attributes.properties
+    .filter(ts.isJsxAttribute)
+    .map((prop) => prop.name.getText())
+    .sort();
+  return JSON.stringify(names) === JSON.stringify([...expected].sort());
+}
+
 function hasStaticClassTokens(
   opening: Opening,
   tokens: readonly string[]
@@ -273,7 +332,8 @@ function exactExpressionAttribute(
     attr?.initializer != null &&
     ts.isJsxExpression(attr.initializer) &&
     attr.initializer.expression != null &&
-    compact(attr.initializer.expression.getText()) === compact(expected)
+    tokenFingerprint(attr.initializer.expression.getText()) ===
+      tokenFingerprint(expected)
   );
 }
 
@@ -294,11 +354,24 @@ function hiddenClassToken(value: string): boolean {
   return value
     .split(/\s+/)
     .filter(Boolean)
-    .some((token) =>
-      /(^|:)(hidden|invisible|collapse|sr-only|opacity-0|max-h-0|max-w-0|h-0|w-0|scale-0|\[display:none\])$/.test(
-        token
-      )
-    );
+    .some((token) => {
+      const arbitraryStart = token.lastIndexOf(":");
+      const utility = (
+        token.startsWith("[")
+          ? token
+          : token.includes(":[")
+            ? token.slice(token.lastIndexOf(":[") + 1)
+            : token.slice(arbitraryStart + 1)
+      ).replace(/^!/, "");
+      return (
+        /^(hidden|invisible|collapse|sr-only|opacity-0|max-h-0|max-w-0|h-0|w-0|scale-0)$/.test(
+          utility
+        ) ||
+        /^\[(display:none|visibility:hidden|opacity:0|max-height:0|max-width:0)\]$/.test(
+          utility
+        )
+      );
+    });
 }
 
 function visibilityIssues(opening: Opening, role: string): string[] {
@@ -327,6 +400,89 @@ function visibilityIssues(opening: Opening, role: string): string[] {
   return issues;
 }
 
+function staticClassValues(
+  expression: ts.Expression,
+  file: ts.SourceFile,
+  seen = new Set<string>()
+): string[] | null {
+  if (ts.isStringLiteralLike(expression)) return [expression.text];
+  if (
+    expression.kind === ts.SyntaxKind.NullKeyword ||
+    expression.kind === ts.SyntaxKind.FalseKeyword
+  ) {
+    return [""];
+  }
+  if (
+    ts.isParenthesizedExpression(expression) ||
+    ts.isAsExpression(expression) ||
+    ts.isSatisfiesExpression(expression)
+  ) {
+    return staticClassValues(expression.expression, file, seen);
+  }
+  if (ts.isIdentifier(expression)) {
+    if (expression.text === "undefined") return [""];
+    if (seen.has(expression.text)) return null;
+    const declarations = declarationNames(file, expression.text).filter(
+      ts.isVariableDeclaration
+    );
+    if (declarations.length !== 1 || !declarations[0].initializer) return null;
+    const list = declarations[0].parent;
+    if (
+      !ts.isVariableDeclarationList(list) ||
+      (list.flags & ts.NodeFlags.Const) === 0
+    ) {
+      return null;
+    }
+    return staticClassValues(
+      declarations[0].initializer,
+      file,
+      new Set([...seen, expression.text])
+    );
+  }
+  if (ts.isConditionalExpression(expression)) {
+    const left = staticClassValues(expression.whenTrue, file, seen);
+    const right = staticClassValues(expression.whenFalse, file, seen);
+    return left && right ? [...new Set([...left, ...right])] : null;
+  }
+  if (
+    ts.isBinaryExpression(expression) &&
+    expression.operatorToken.kind === ts.SyntaxKind.PlusToken
+  ) {
+    const left = staticClassValues(expression.left, file, seen);
+    const right = staticClassValues(expression.right, file, seen);
+    if (!left || !right) return null;
+    return left.flatMap((a) => right.map((b) => a + b));
+  }
+  if (ts.isTemplateExpression(expression)) {
+    let values = [expression.head.text];
+    for (const span of expression.templateSpans) {
+      const substitutions = staticClassValues(span.expression, file, seen);
+      if (!substitutions) return null;
+      values = values.flatMap((prefix) =>
+        substitutions.map(
+          (substitution) => prefix + substitution + span.literal.text
+        )
+      );
+    }
+    return values;
+  }
+  return null;
+}
+
+function classAttributeValues(
+  opening: Opening,
+  file: ts.SourceFile
+): string[] | null {
+  const attr = attribute(opening, "className");
+  if (!attr) return [];
+  if (!attr.initializer) return null;
+  if (ts.isStringLiteral(attr.initializer)) return [attr.initializer.text];
+  if (ts.isJsxExpression(attr.initializer) && attr.initializer.expression) {
+    return staticClassValues(attr.initializer.expression, file);
+  }
+  return null;
+}
+
 function directText(node: JsxNode): string[] {
   if (!ts.isJsxElement(node)) return [];
   return node.children
@@ -339,9 +495,7 @@ function directExpressions(node: JsxNode): string[] {
   if (!ts.isJsxElement(node)) return [];
   return node.children
     .filter(ts.isJsxExpression)
-    .flatMap((child) =>
-      child.expression ? [compact(child.expression.getText())] : []
-    );
+    .flatMap((child) => (child.expression ? [child.expression.getText()] : []));
 }
 
 function directChildShape(node: JsxNode): string[] {
@@ -396,13 +550,50 @@ function nearestLink(node: ts.Node): JsxNode | null {
   return null;
 }
 
-function hiddenJsxAncestorIssues(node: JsxNode): string[] {
+function interactiveJsxAncestor(node: JsxNode): boolean {
+  let current: ts.Node | undefined = node.parent;
+  while (current) {
+    if (ts.isJsxElement(current) || ts.isJsxSelfClosingElement(current)) {
+      const opening = openingOf(current)!;
+      const tag = tagName(opening.tagName);
+      if (
+        ["Link", "a", "button", "summary"].includes(tag) ||
+        ["button", "link"].includes(
+          attributeValue(attribute(opening, "role")) ?? ""
+        )
+      ) {
+        return true;
+      }
+    }
+    current = current.parent;
+  }
+  return false;
+}
+
+function hiddenJsxAncestorIssues(
+  node: JsxNode,
+  file: ts.SourceFile,
+  visibleAncestorComponents: readonly string[]
+): string[] {
   const issues: string[] = [];
   let current: ts.Node | undefined = node.parent;
   while (current) {
     if (ts.isJsxElement(current) || ts.isJsxSelfClosingElement(current)) {
       const opening = openingOf(current)!;
+      const ancestorTag = tagName(opening.tagName);
+      if (
+        /^[A-Z]/.test(ancestorTag) &&
+        !visibleAncestorComponents.includes(ancestorTag)
+      ) {
+        issues.push(`hidden-ancestry-unsupported-component:${ancestorTag}`);
+      }
       issues.push(...visibilityIssues(opening, "hidden-ancestry"));
+      const classValues = classAttributeValues(opening, file);
+      if (classValues == null) {
+        issues.push("hidden-ancestry-dynamic-class");
+      } else if (classValues.some(hiddenClassToken)) {
+        issues.push("hidden-ancestry-hidden-class");
+      }
       if (opening.attributes.properties.some(ts.isJsxSpreadAttribute)) {
         issues.push("hidden-ancestry-spread");
       }
@@ -475,6 +666,81 @@ function declarationNames(file: ts.SourceFile, name: string): ts.Node[] {
   };
   visit(file);
   return found;
+}
+
+function expressionIdentifiers(expression: string): string[] {
+  const parsed = sourceFile(`const __door_expression = (${expression});`);
+  const declaration = parsed.statements
+    .filter(ts.isVariableStatement)
+    .flatMap((statement) => [...statement.declarationList.declarations])[0];
+  if (!declaration?.initializer) return [];
+  const found = new Set<string>();
+  const visit = (node: ts.Node): void => {
+    if (
+      ts.isIdentifier(node) &&
+      !(ts.isPropertyAccessExpression(node.parent) && node.parent.name === node)
+    ) {
+      found.add(node.text);
+    }
+    ts.forEachChild(node, visit);
+  };
+  visit(declaration.initializer);
+  return [...found];
+}
+
+function rootIdentifier(node: ts.Expression): ts.Identifier | null {
+  let current = node;
+  while (ts.isPropertyAccessExpression(current)) current = current.expression;
+  return ts.isIdentifier(current) ? current : null;
+}
+
+function identifierIsWritten(file: ts.SourceFile, name: string): boolean {
+  let written = false;
+  const visit = (node: ts.Node): void => {
+    if (ts.isBinaryExpression(node)) {
+      const root = rootIdentifier(node.left);
+      if (
+        root?.text === name &&
+        node.operatorToken.kind >= ts.SyntaxKind.FirstAssignment &&
+        node.operatorToken.kind <= ts.SyntaxKind.LastAssignment
+      ) {
+        written = true;
+      }
+    }
+    if (
+      (ts.isPrefixUnaryExpression(node) || ts.isPostfixUnaryExpression(node)) &&
+      [ts.SyntaxKind.PlusPlusToken, ts.SyntaxKind.MinusMinusToken].includes(
+        node.operator
+      ) &&
+      rootIdentifier(node.operand)?.text === name
+    ) {
+      written = true;
+    }
+    ts.forEachChild(node, visit);
+  };
+  visit(file);
+  return written;
+}
+
+function immutableDestinationInput(
+  file: ts.SourceFile,
+  name: string,
+  moduleBindings: readonly { name: string; moduleName: string }[]
+): boolean {
+  if (moduleBindings.some((binding) => binding.name === name)) {
+    return !identifierIsWritten(file, name);
+  }
+  const declarations = declarationNames(file, name);
+  if (declarations.length !== 1 || identifierIsWritten(file, name))
+    return false;
+  const declaration = declarations[0];
+  if (ts.isParameter(declaration)) return true;
+  return (
+    ts.isVariableDeclaration(declaration) &&
+    ts.isVariableDeclarationList(declaration.parent) &&
+    (declaration.parent.flags & ts.NodeFlags.Const) !== 0 &&
+    declaration.initializer != null
+  );
 }
 
 function hasCanonicalNamedImport(
@@ -554,6 +820,9 @@ function exactBinding(
     }
     if (
       (ts.isPrefixUnaryExpression(node) || ts.isPostfixUnaryExpression(node)) &&
+      [ts.SyntaxKind.PlusPlusToken, ts.SyntaxKind.MinusMinusToken].includes(
+        node.operator
+      ) &&
       ts.isIdentifier(node.operand) &&
       node.operand.text === binding.name
     ) {
@@ -578,7 +847,8 @@ function exactBinding(
     ts.isVariableDeclarationList(direct[0].parent) &&
     (direct[0].parent.flags & ts.NodeFlags.Const) !== 0 &&
     direct[0].initializer != null &&
-    compact(direct[0].initializer.getText()) === compact(binding.expression)
+    tokenFingerprint(direct[0].initializer.getText()) ===
+      tokenFingerprint(binding.expression)
   );
 }
 
@@ -597,7 +867,8 @@ function exactReturn(
   if (!(
     returns.length === 1 &&
     returns[0].expression != null &&
-    compact(returns[0].expression.getText()) === compact(contract.expression)
+    tokenFingerprint(returns[0].expression.getText()) ===
+      tokenFingerprint(contract.expression)
   ))
     return false;
 
@@ -623,6 +894,163 @@ function exactReturn(
   );
 }
 
+function hasModifier(node: ts.Node, kind: ts.SyntaxKind): boolean {
+  return ts.canHaveModifiers(node)
+    ? (ts.getModifiers(node)?.some((modifier) => modifier.kind === kind) ??
+        false)
+    : false;
+}
+
+function containsNode(container: ts.Node, node: ts.Node): boolean {
+  return (
+    node.getStart() >= container.getStart() &&
+    node.getEnd() <= container.getEnd()
+  );
+}
+
+function directReturns(
+  scope: ts.FunctionLikeDeclaration
+): ts.ReturnStatement[] {
+  if (!scope.body || !ts.isBlock(scope.body)) return [];
+  const found: ts.ReturnStatement[] = [];
+  const visit = (node: ts.Node): void => {
+    if (node !== scope.body && isFunctionScope(node)) return;
+    if (ts.isReturnStatement(node)) found.push(node);
+    ts.forEachChild(node, visit);
+  };
+  visit(scope.body);
+  return found;
+}
+
+function supportedDynamicCondition(expression: ts.Expression): boolean {
+  if (staticTruthiness(expression) != null) return true;
+  if (
+    ts.isIdentifier(expression) ||
+    ts.isPropertyAccessExpression(expression)
+  ) {
+    return true;
+  }
+  if (ts.isPrefixUnaryExpression(expression)) {
+    return (
+      expression.operator === ts.SyntaxKind.ExclamationToken &&
+      supportedDynamicCondition(expression.operand)
+    );
+  }
+  if (ts.isBinaryExpression(expression)) {
+    return [
+      ts.SyntaxKind.EqualsEqualsEqualsToken,
+      ts.SyntaxKind.ExclamationEqualsEqualsToken,
+      ts.SyntaxKind.GreaterThanToken,
+      ts.SyntaxKind.GreaterThanEqualsToken,
+      ts.SyntaxKind.LessThanToken,
+      ts.SyntaxKind.LessThanEqualsToken,
+    ].includes(expression.operatorToken.kind);
+  }
+  return false;
+}
+
+function rendererProvenanceIssues(
+  file: ts.SourceFile,
+  door: JsxNode,
+  rendererName: string
+): string[] {
+  const renderers = file.statements.filter(
+    (statement): statement is ts.FunctionDeclaration =>
+      ts.isFunctionDeclaration(statement) &&
+      statement.name?.text === rendererName &&
+      hasModifier(statement, ts.SyntaxKind.ExportKeyword) &&
+      hasModifier(statement, ts.SyntaxKind.DefaultKeyword)
+  );
+  if (renderers.length !== 1 || !renderers[0].body) {
+    return ["renderer-default-export"];
+  }
+  const renderer = renderers[0];
+  const rendererBody = renderer.body;
+  if (!rendererBody || !containsNode(rendererBody, door)) {
+    return ["renderer-scope"];
+  }
+
+  const issues: string[] = [];
+  let scope: ts.FunctionLikeDeclaration | null = nearestFunctionScope(door);
+  while (scope) {
+    const liveReturns = directReturns(scope).filter(
+      (statement) =>
+        statement.expression && containsNode(statement.expression, door)
+    );
+    const conciseLive =
+      ts.isArrowFunction(scope) &&
+      !ts.isBlock(scope.body) &&
+      containsNode(scope.body, door);
+    if (liveReturns.length !== 1 && !conciseLive) {
+      issues.push("renderer-live-return");
+      break;
+    }
+    if (liveReturns.length === 1 && scope.body && ts.isBlock(scope.body)) {
+      const live = liveReturns[0];
+      if (
+        scope.body.statements.some(
+          (statement) =>
+            ts.isReturnStatement(statement) &&
+            statement.getStart(file) < live.getStart(file)
+        )
+      ) {
+        issues.push("renderer-pre-return");
+      }
+    }
+    if (scope === renderer) break;
+    const parent = scope.parent;
+    if (
+      !ts.isCallExpression(parent) ||
+      !parent.arguments.includes(scope as ts.Expression) ||
+      !ts.isPropertyAccessExpression(parent.expression) ||
+      !["map", "flatMap"].includes(parent.expression.name.text)
+    ) {
+      issues.push("renderer-unsupported-callback");
+      break;
+    }
+    scope = nearestFunctionScope(scope);
+  }
+  if (scope !== renderer) issues.push("renderer-root-return");
+
+  let current: ts.Node | undefined = door.parent;
+  while (current && current !== renderer) {
+    if (ts.isConditionalExpression(current)) {
+      const truth = staticTruthiness(current.condition);
+      const inTrue = containsNode(current.whenTrue, door);
+      if ((truth === true && !inTrue) || (truth === false && inTrue)) {
+        issues.push("renderer-dead-branch");
+      } else if (
+        truth == null &&
+        !supportedDynamicCondition(current.condition)
+      ) {
+        issues.push("renderer-unsupported-condition");
+      }
+    }
+    if (ts.isBinaryExpression(current)) {
+      const truth = staticTruthiness(current.left);
+      if (
+        (current.operatorToken.kind === ts.SyntaxKind.AmpersandAmpersandToken &&
+          truth === false) ||
+        (current.operatorToken.kind === ts.SyntaxKind.BarBarToken &&
+          truth === true)
+      ) {
+        issues.push("renderer-dead-branch");
+      } else if (
+        [
+          ts.SyntaxKind.AmpersandAmpersandToken,
+          ts.SyntaxKind.BarBarToken,
+        ].includes(current.operatorToken.kind) &&
+        truth == null &&
+        !supportedDynamicCondition(current.left)
+      ) {
+        issues.push("renderer-unsupported-condition");
+      }
+    }
+    current = current.parent;
+  }
+  return [...new Set(issues)];
+}
+
 function exactDirectLabel(node: JsxNode, label: DoorLabel): boolean {
   if (label.kind === "literal") {
     const text = directText(node);
@@ -630,7 +1058,9 @@ function exactDirectLabel(node: JsxNode, label: DoorLabel): boolean {
   }
   const expressions = directExpressions(node);
   return (
-    expressions.filter((value) => value === compact(label.value)).length === 1
+    expressions.filter(
+      (value) => tokenFingerprint(value) === tokenFingerprint(label.value)
+    ).length === 1
   );
 }
 
@@ -672,6 +1102,10 @@ export function auditDestinationDoorSource(
   const linkOpening = openingOf(link)!;
   const scope = nearestFunctionScope(door);
 
+  if (interactiveJsxAncestor(link)) issues.push("interactive-ancestry");
+
+  issues.push(...rendererProvenanceIssues(file, door, contract.rendererName));
+
   if (declarationNames(file, "Link").length > 0) issues.push("link-shadow");
   if (declarationNames(file, "IconChevronRight").length > 0) {
     issues.push("chevron-shadow");
@@ -691,8 +1125,16 @@ export function auditDestinationDoorSource(
       issues.push(`module-binding-shadow:${binding.name}`);
     }
   }
+  for (const name of expressionIdentifiers(contract.destinationExpression)) {
+    if (!immutableDestinationInput(file, name, contract.moduleBindings ?? [])) {
+      issues.push(`destination-input:${name}`);
+    }
+  }
 
   issues.push(...exactAttributeIssues(linkOpening, "link"));
+  if (!exactAttributeNames(linkOpening, contract.linkAttributes)) {
+    issues.push("link-attribute-contract");
+  }
   if (door !== link) issues.push(...exactAttributeIssues(doorOpening, "door"));
   issues.push(...visibilityIssues(linkOpening, "link"));
   if (door !== link) issues.push(...visibilityIssues(doorOpening, "door"));
@@ -757,7 +1199,13 @@ export function auditDestinationDoorSource(
   else if (linkAriaHiddenAttribute && linkAriaHidden !== "false") {
     issues.push("hidden-link-dynamic");
   }
-  issues.push(...hiddenJsxAncestorIssues(link));
+  issues.push(
+    ...hiddenJsxAncestorIssues(
+      link,
+      file,
+      contract.visibleAncestorComponents ?? []
+    )
+  );
   if (contract.accessibleName.kind === "aria-label") {
     if (
       !exactExpressionAttribute(
@@ -777,10 +1225,11 @@ export function auditDestinationDoorSource(
     ) {
       issues.push("accessible-name");
     } else if (contract.accessibleName.kind === "row-content") {
-      const content = compact(contract.accessibleName.value);
+      const content = tokenFingerprint(contract.accessibleName.value);
       if (
-        directExpressions(link).filter((value) => value === content).length !==
-        1
+        directExpressions(link).filter(
+          (value) => tokenFingerprint(value) === content
+        ).length !== 1
       ) {
         issues.push("accessible-name");
       }
@@ -852,6 +1301,50 @@ export function jsxMountLines(source: string, component: string): number[] {
   const file = sourceFile(source, "destination-door-mount.tsx");
   return jsxElements(file)
     .filter((node) => tagName(openingOf(node)!.tagName) === component)
+    .map(
+      (node) => file.getLineAndCharacterOfPosition(node.getStart(file)).line + 1
+    );
+}
+
+function exactJsxProp(opening: Opening, contract: ExactJsxProp): boolean {
+  const attr = attribute(opening, contract.name);
+  if (!attr) return false;
+  if (contract.kind === "boolean") {
+    return attr.initializer == null && contract.value == null;
+  }
+  if (contract.kind === "literal") {
+    return (
+      attr.initializer != null &&
+      ts.isStringLiteral(attr.initializer) &&
+      attr.initializer.text === contract.value
+    );
+  }
+  return (
+    attr.initializer != null &&
+    ts.isJsxExpression(attr.initializer) &&
+    attr.initializer.expression != null &&
+    tokenFingerprint(attr.initializer.expression.getText()) ===
+      tokenFingerprint(contract.value ?? "")
+  );
+}
+
+/** Exact mount opening: canonical tag, no overrides, and only registered props. */
+export function jsxMountContractLines(
+  source: string,
+  component: string,
+  props: readonly ExactJsxProp[]
+): number[] {
+  const file = sourceFile(source, "destination-door-mount-contract.tsx");
+  return jsxElements(file)
+    .filter((node) => tagName(openingOf(node)!.tagName) === component)
+    .filter((node) => {
+      const opening = openingOf(node)!;
+      return (
+        exactAttributeIssues(opening, "mount").length === 0 &&
+        opening.attributes.properties.length === props.length &&
+        props.every((prop) => exactJsxProp(opening, prop))
+      );
+    })
     .map(
       (node) => file.getLineAndCharacterOfPosition(node.getStart(file)).line + 1
     );
@@ -969,6 +1462,11 @@ function ownedBy(
           node.getEnd() <= current.whenFalse.getEnd())
       ) {
         deadPath = true;
+      } else if (
+        truth == null &&
+        !supportedDynamicCondition(current.condition)
+      ) {
+        deadPath = true;
       }
     } else if (ts.isBinaryExpression(current)) {
       conditionalPath = true;
@@ -978,6 +1476,16 @@ function ownedBy(
           truth === false) ||
         (current.operatorToken.kind === ts.SyntaxKind.BarBarToken &&
           truth === true)
+      ) {
+        deadPath = true;
+      } else if (
+        [
+          ts.SyntaxKind.AmpersandAmpersandToken,
+          ts.SyntaxKind.BarBarToken,
+          ts.SyntaxKind.QuestionQuestionToken,
+        ].includes(current.operatorToken.kind) &&
+        truth == null &&
+        !supportedDynamicCondition(current.left)
       ) {
         deadPath = true;
       }
