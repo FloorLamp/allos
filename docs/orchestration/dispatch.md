@@ -9,11 +9,8 @@ Two axes are load-bearing, and `reconcile-tracker` flags violations of both
   `P2` + `parked` issue is in no queue and every queue at once.
 - **At least one domain label.** Cross-cutting design/UX work takes `design` —
   it is a real domain, not a missing one.
-- Priority is operative on its own: every ready P0/P1 preempts feature and
-  presentation work, whether or not it also carries `bug`. `bug` is the only
-  type label dispatch reads; `feat`/`refactor` are optional color, and `ui`
-  optionally marks screen-heavy
-  — therefore e2e-heavy — work (the two-agent cap).
+- Every ready P0/P1 preempts feature and presentation work, with or without
+  `bug`. Other type labels are optional color; `ui` marks e2e-heavy work.
 - `enhancement`, `cleanup`, `javascript`, and `lib` are retired (2026-08-15)
   and deleted repo-side; a hygiene finding flags any reappearance. `lib` routed
   nothing — business logic living in `lib/` is the repo's own rule.
@@ -41,11 +38,8 @@ Two axes are load-bearing, and `reconcile-tracker` flags violations of both
 - That cap counts agents RUNNING — a machine limit. The queue that jams first
   is PRs awaiting REVIEW, which is serial and cannot be parallelised. Hold
   dispatch at roughly three unreviewed PRs however few agents are running.
-- While ready P1s exist, reserve two implementation lanes for user/data P1s and
-  one for the highest-risk ready P2. Run at most one presentation/guard lane.
-  A P1 operator bottleneck may use that fourth lane; it does not displace the
-  two user/data lanes. Recompute this allocation whenever an issue is filed or
-  a lane frees, not only at the start of a dispatch wave.
+- With ready P1s, reserve two user/data lanes and one high-risk P2 lane; cap
+  presentation/guard at one. Recompute when issues arrive or lanes free.
 - STAGGER starts. Durations cluster tightly (seven of the first ten inside
   85±5 min), so simultaneous starts are simultaneous arrivals — and
   simultaneous GATES: five at once drove load to 17.7 on 4 cores.
@@ -57,9 +51,8 @@ Two axes are load-bearing, and `reconcile-tracker` flags violations of both
   rework when judging depth.
 - Every brief uses the generated template and the gate order from
   `scripts/orchestration/agent-gates.sh`.
-- Agents push after every meaningful step. The remote branch is the durable
-  checkpoint. A branch that is not next in the landing train stays a branch:
-  do not open its PR merely to obtain CI that an earlier merge will invalidate.
+- Push meaningful checkpoints. A branch not next to land stays branch-only;
+  do not open a PR for CI that an earlier merge will invalidate.
 - A census meant to be EXHAUSTIVE passes ripgrep's `--binary` (`-a`). Several
   source files carry a deliberate NUL separator, so rg calls them binary and
   skips them — a plain `rg` reports a clean sweep it never took.
@@ -79,33 +72,11 @@ Two axes are load-bearing, and `reconcile-tracker` flags violations of both
 7. Close the dispatch, remove its worktree and branch, and verify linked issues
    actually closed.
 
-## Landing train
-
-- Parallelise implementation and independent review; serialize PR creation,
-  exact-head CI, and merge. At most one branch from a shared base is the active
-  landing candidate.
-- Later lanes push durable branch checkpoints but do not open a PR for CI. Once
-  the preceding candidate merges, promote the next branch in the ledger, rebase
-  it, resolve semantic conflicts with its author, rewrite its body, open or
-  refresh the PR, then obtain review against the exact pushed PR head.
-- CI on an older base is diagnostic only. It is not merge evidence after an
-  earlier overlapping or shared-substrate PR lands, so avoid paying for that
-  run in advance.
-- An urgent P0/P1 can move to the front. Say which candidate it displaced; do
-  not run both full matrices and pretend both are next.
-- Record candidate/banked state, priority, and lane in the dispatch ledger. Use
-  `dispatch-brief.mjs promote <branch>` for every handoff or displacement so a
-  restart reconstructs the same landing train.
-
 ## Tooling
 
-- `dispatch-brief.mjs`: create, list, resume, adopt, and close dispatches.
-  It also promotes the one landing candidate and updates validated priority/lane
-  allocation in the append-only ledger; deliver every emitted role update to
-  the affected running agents.
-  `list` flags a dispatch that has not MOVED — newest of branch tip and
-  worktree write — in 3x the median, not one that is merely old; a dispatch
-  with no worktree and no branch at all is flagged separately.
+- `dispatch-brief.mjs`: manage dispatches, the sole landing candidate, and
+  validated priority/lane state; deliver every emitted role update. `list`
+  flags 3x-median idleness or a dispatch with no worktree and no branch.
 - `agent-gates.sh`: lint, typecheck, unit, DB, E2E hygiene, PHI scan, format.
   The DB and E2E-hygiene gates run only when the diff touches what they cover.
   A format rewrite re-verifies the directive-reading gates it can invalidate.
