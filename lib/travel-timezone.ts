@@ -219,9 +219,9 @@ export const MAX_STORED_SWITCHES = 24;
 // Beyond it the switch day is off every strip and the record is dead weight.
 export const SWITCH_RETENTION_DAYS = 120;
 
-// Decode the stored JSON array. Tolerant by design (see resolveSwitch): anything
-// that is not a well-shaped record is dropped rather than thrown, because this is
-// read on every render and every tick.
+// Decode the stored JSON array without throwing. Parsing is deliberately
+// all-or-nothing: dropping one malformed row could turn a corrupt out-and-back
+// trajectory into a trusted one-way crossing and falsely excuse a real slot.
 export function parseTimezoneSwitches(
   raw: string | null | undefined
 ): TimezoneSwitch[] {
@@ -235,10 +235,10 @@ export function parseTimezoneSwitches(
   if (!Array.isArray(parsed)) return [];
   const out: TimezoneSwitch[] = [];
   for (const entry of parsed) {
-    if (!entry || typeof entry !== "object") continue;
+    if (!entry || typeof entry !== "object") return [];
     const { at, from, to } = entry as Record<string, unknown>;
-    if (typeof at !== "string") continue;
-    if (typeof from !== "string" || typeof to !== "string") continue;
+    if (typeof at !== "string") return [];
+    if (typeof from !== "string" || typeof to !== "string") return [];
     out.push({ at, from, to });
   }
   return out;

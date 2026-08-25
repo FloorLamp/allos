@@ -276,4 +276,32 @@ describe("travel excusal at the real notification tick", () => {
     await tickProfile(disconnected.receiver, "disconnected", 5, Date.now());
     expectThreeSlotMessages(sentTo(disconnected.chatId));
   });
+
+  it("fails open when a malformed stored seam neighbors a valid crossing", async () => {
+    const malformed = scenario("malformed", ATHENS);
+    setProfileSetting(malformed.receiver, "notify_supp_midday_hour", "15:00");
+    setProfileSetting(
+      malformed.receiver,
+      "timezone_switches",
+      JSON.stringify([
+        { at: "2026-05-01T12:00:00Z", from: ATHENS },
+        {
+          at: "2026-05-01T12:01:00Z",
+          from: PARIS,
+          to: ATHENS,
+        },
+      ])
+    );
+
+    // Dropping the malformed Athens→Paris correction would leave a trusted
+    // Paris 14:01 → Athens 15:01 crossing and falsely suppress 15:00.
+    expect(getTravelSwitches(malformed.receiver)).toEqual([]);
+    expect(
+      travelExcusalResolver(malformed.receiver)("Midday", "2026-05-01")
+    ).toBe(false);
+
+    vi.setSystemTime(new Date("2026-05-01T12:01:00Z")); // Athens 15:01
+    await tickProfile(malformed.receiver, "malformed", 5, Date.now());
+    expectThreeSlotMessages(sentTo(malformed.chatId));
+  });
 });

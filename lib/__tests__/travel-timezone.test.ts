@@ -316,7 +316,7 @@ describe("stored switch history", () => {
     );
   });
 
-  it("drops junk rather than throwing, so one bad row cannot take a render down", () => {
+  it("fails open without throwing when any stored row is malformed", () => {
     expect(parseTimezoneSwitches(undefined)).toEqual([]);
     expect(parseTimezoneSwitches("{")).toEqual([]);
     expect(parseTimezoneSwitches('{"at":"x"}')).toEqual([]);
@@ -324,7 +324,7 @@ describe("stored switch history", () => {
       parseTimezoneSwitches(
         `[{"at":"${NOON_UTC}","from":"${NY}"},{"at":"${NOON_UTC}","from":"${NY}","to":"${TOKYO}"},null,7]`
       )
-    ).toEqual([{ at: NOON_UTC, from: NY, to: TOKYO }]);
+    ).toEqual([]);
   });
 
   it("prunes records older than the retention window on append", () => {
