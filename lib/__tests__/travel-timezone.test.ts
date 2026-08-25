@@ -13,7 +13,7 @@ import {
   serializeTimezoneSwitches,
   travelOfferText,
   travelPrompt,
-  travelReturnText,
+  travelReturnOfferText,
   zonePlaceLabel,
   type TimezoneSwitch,
 } from "@/lib/travel-timezone";
@@ -391,8 +391,9 @@ describe("travelPrompt", () => {
     ).toEqual({ kind: "return", homeZone: NY, awayZone: TOKYO });
   });
 
-  it("reports the return even when that zone was once dismissed", () => {
-    // Coming home is not a question, so a dismissal is not an answer to it.
+  it("suppresses a return offer dismissed for the reported home zone", () => {
+    // A home-terminating VPN can stay on indefinitely. It asks once, rather than
+    // once per render, for the same reason an outbound offer does.
     expect(
       travelPrompt({
         ...base,
@@ -401,7 +402,7 @@ describe("travelPrompt", () => {
         homeZone: NY,
         dismissedZone: NY,
       })
-    ).toEqual({ kind: "return", homeZone: NY, awayZone: TOKYO });
+    ).toEqual({ kind: "none" });
   });
 
   it("treats a home zone equal to the profile's own zone as stale, not a trip", () => {
@@ -433,10 +434,9 @@ describe("copy", () => {
     );
   });
 
-  it("names BOTH zones when it tells you it moved the day back", () => {
-    const text = travelReturnText(NY, TOKYO);
-    expect(text).toContain("New York");
-    expect(text).toContain("Tokyo");
-    expect(text).toBe("Back on New York time — you were on Tokyo time.");
+  it("asks explicitly before moving the day back", () => {
+    expect(travelReturnOfferText(NY)).toBe(
+      "Your device is back on New York time — move your day back?"
+    );
   });
 });

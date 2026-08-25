@@ -17,16 +17,15 @@ import { db, today } from "@/lib/db";
 import {
   getDismissedTravelZone,
   getHomeTimezone,
+  getProfileSetting,
   getTimezone,
   getTravelSwitches,
-  getTravelTell,
   setTimezone,
 } from "@/lib/settings";
 import {
   acceptTravelTimezone,
   dismissTravelTimezone,
   revertTravelTimezone,
-  acknowledgeTravelTell,
 } from "@/app/(app)/travel-actions";
 import { createLogin, createProfile, actAs } from "./harness";
 
@@ -129,9 +128,14 @@ describe("acceptTravelTimezone", () => {
 });
 
 describe("revertTravelTimezone", () => {
-  it("moves the day home, clears the home marker, and names both zones", async () => {
+  it("moves the day home only when explicitly invoked and clears the home marker", async () => {
     const { profile } = ownProfile("returning", NY);
     await acceptTravelTimezone(TOKYO);
+
+    // Merely detecting home is now a browser-side offer. Until its accept callback
+    // invokes this action, the stored day remains away.
+    expect(getTimezone(profile.id)).toBe(TOKYO);
+    expect(getHomeTimezone(profile.id)).toBe(NY);
 
     const result = await revertTravelTimezone();
     expect(result).toEqual({
@@ -144,25 +148,11 @@ describe("revertTravelTimezone", () => {
     expect(getHomeTimezone(profile.id)).toBeNull();
     // The return leg leaves its own seam in the wall clock and joins the history.
     expect(getTravelSwitches(profile.id)).toHaveLength(2);
-    // THE TELL IS DURABLE, and that is the point of storing it rather than
-    // returning it. #2471 permits the unasked revert only because it reports
-    // afterwards, so the report has to outlive the request that caused it — a
-    // person who navigates mid-revert must still be told their day moved.
-    expect(getTravelTell(profile.id)).toBe(TOKYO);
-  });
-
-  it("keeps the tell until it is acknowledged, then drops it", async () => {
-    const { profile } = ownProfile("returning-ack", NY);
-    await acceptTravelTimezone(TOKYO);
-    await revertTravelTimezone();
-    // Still owed after an unrelated read — nothing about rendering spends it.
-    expect(getTravelTell(profile.id)).toBe(TOKYO);
-
-    await expect(acknowledgeTravelTell()).resolves.toEqual({ ok: true });
-    expect(getTravelTell(profile.id)).toBeNull();
-    // Acknowledging a message is not a journey: the day does not move.
-    expect(getTimezone(profile.id)).toBe(NY);
-    expect(getTravelSwitches(profile.id)).toHaveLength(2);
+    // The tell-after existed only to justify an automatic write. Explicit accept
+    // needs no later acknowledgement and must not mint the retired key.
+    expect(
+      getProfileSetting(profile.id, "timezone_travel_tell")
+    ).toBeUndefined();
   });
 
   it("does nothing for a profile that is not away", async () => {
@@ -201,6 +191,17 @@ describe("dismissTravelTimezone", () => {
     await dismissTravelTimezone(TOKYO);
     await acceptTravelTimezone(TOKYO);
     expect(getDismissedTravelZone(profile.id)).toBeNull();
+  });
+
+  it("dismisses a return offer without moving the away day", async () => {
+    const { profile } = ownProfile("dismiss-return", NY);
+    await acceptTravelTimezone(TOKYO);
+
+    await expect(dismissTravelTimezone(NY)).resolves.toEqual({ ok: true });
+    expect(getDismissedTravelZone(profile.id)).toBe(NY);
+    expect(getTimezone(profile.id)).toBe(TOKYO);
+    expect(getHomeTimezone(profile.id)).toBe(NY);
+    expect(getTravelSwitches(profile.id)).toHaveLength(1);
   });
 
   it("REFUSES when the login is acting for someone else's profile", async () => {

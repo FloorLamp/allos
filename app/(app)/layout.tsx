@@ -36,7 +36,6 @@ import {
   getWhatsNewSeenDate,
   getHomeTimezone,
   getDismissedTravelZone,
-  getTravelTell,
 } from "@/lib/settings";
 import { getProfileAge } from "@/lib/settings/profile-attrs";
 import { isMinor } from "@/lib/life-stage";
@@ -263,11 +262,6 @@ export default async function AppLayout({
   const travelDismissedZone = ownProfileActing
     ? getDismissedTravelZone(profile.id)
     : null;
-  // A completed revert still owing the person a word. Server-side so an ordinary
-  // navigation cannot swallow it (lib/settings/travel.ts).
-  const travelTellAwayZone = ownProfileActing
-    ? getTravelTell(profile.id)
-    : null;
   const onboarding = getOnboardingState(profile.id);
   const showOnboardingReturn =
     onboarding?.status === "in_progress" &&
@@ -418,7 +412,6 @@ export default async function AppLayout({
                                 profileZone={timezone}
                                 homeZone={travelHomeZone}
                                 dismissedZone={travelDismissedZone}
-                                tellAwayZone={travelTellAwayZone}
                               />
                               {children}
                             </div>
