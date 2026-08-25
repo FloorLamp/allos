@@ -1,4 +1,5 @@
 import { test, expect } from "./fixtures";
+import { TAP_FLOOR_PX, TAP_TARGET_INSET_PX } from "@/lib/tap-floor-reach";
 
 // THE BUTTON FAMILY'S HEIGHT FLOOR, MEASURED AS A RENDERED BOX (#3486).
 //
@@ -35,8 +36,6 @@ const PHONE = { width: 390, height: 844 };
 // whose box is legitimately smaller than its target — a sweep that swept both would
 // fail honest code. The family shipped at 40 because #3486's text said 40; #3514
 // found that #644, the issue §5 cited for that number, never produced 40 at all.
-const TAP_FLOOR_PX = 44;
-
 test.describe("the button family has one height at phone width (#3486)", () => {
   test.use({ viewport: PHONE });
 
@@ -296,7 +295,6 @@ test.describe("the hit-area mechanism reaches the floor it claims (#3486)", () =
   // `.tap-target`'s extension, and the smallest rendered box it can lift to the
   // floor. Derived, not spelled — the same derivation `lib/tap-floor-reach.ts`
   // makes, so the two cannot disagree about what 32 means.
-  const TAP_TARGET_INSET_PX = 6;
   const TAP_TARGET_MIN_RENDERED_PX = TAP_FLOOR_PX - 2 * TAP_TARGET_INSET_PX;
 
   test("the food-log steppers are 44px effective, by box plus overlay", async ({

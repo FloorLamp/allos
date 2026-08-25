@@ -1,5 +1,6 @@
 import { test, expect } from "./fixtures";
 import { settledBoxes } from "./helpers";
+import { TAP_FLOOR_PX } from "@/lib/tap-floor-reach";
 import type { Locator } from "@playwright/test";
 
 // The phone density sweep (#3466), measured at 390×844 rather than read off a
@@ -41,9 +42,8 @@ async function padding(locator: Locator): Promise<number[]> {
   );
 }
 
-// The tap floor #3466's acceptance criteria name. A row IS the target on the
-// hover-fill list idiom, so the row's own height is the quantity.
-const TAP_FLOOR_PX = 40;
+// A row IS the target on the hover-fill list idiom, so its own rendered height
+// must meet the shared #3514 floor.
 
 test("class A: a sub-panel inside a card pads less than the card does (#3466)", async ({
   page,
