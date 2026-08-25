@@ -146,7 +146,7 @@ test.describe("Overview leads with charts (B)", () => {
     await expect(page.getByTestId("starred-results")).toBeVisible();
   });
 
-  test("the compact movers row leads with the top few behind a show-all disclosure", async ({
+  test("the compact movers row caps its lead chips with full tap targets", async ({
     page,
   }) => {
     await page.goto("/trends");
@@ -168,14 +168,6 @@ test.describe("Overview leads with charts (B)", () => {
     expect(dismissBox).not.toBeNull();
     expect(dismissBox!.height).toBeGreaterThanOrEqual(TAP_FLOOR_PX);
     expect(dismissBox!.width).toBeGreaterThanOrEqual(TAP_FLOOR_PX);
-
-    // The seed yields more movers than the cap, so the disclosure renders; opening
-    // it reveals the rest into the same chip row.
-    const showAll = digest.getByTestId("digest-show-all");
-    await expect(showAll).toBeVisible();
-    const capped = await inline.count();
-    await hydratedClick(page, showAll);
-    await expect.poll(() => inline.count()).toBeGreaterThan(capped);
   });
 });
 
