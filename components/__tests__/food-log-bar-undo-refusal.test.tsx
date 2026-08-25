@@ -6,7 +6,7 @@ import {
   screen,
   waitFor,
 } from "@testing-library/react";
-import { beforeEach, describe, expect, it, vi } from "vitest";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { ActiveProfileProvider } from "@/components/ActiveProfileProvider";
 import { ToastProvider, useActivateToastProfile } from "@/components/Toast";
 import { TimezoneProvider } from "@/components/TimezoneProvider";
@@ -73,25 +73,33 @@ function mediaQuery(query: string): MediaQueryList {
   };
 }
 
+function normalMotionMediaQuery(query: string): MediaQueryList {
+  return { ...mediaQuery(query), matches: false };
+}
+
 function ActivateProfileToast({ profileId }: { profileId: number }) {
   const activate = useActivateToastProfile();
   useEffect(() => activate(profileId), [activate, profileId]);
   return null;
 }
 
-function mountBar() {
-  render(
+function barTree({
+  profileId = 7,
+  day = DAY,
+  slot = "Midday" as FoodSlot,
+} = {}) {
+  return (
     <TimezoneProvider tz="UTC">
-      <ActiveProfileProvider profileId={7}>
+      <ActiveProfileProvider profileId={profileId}>
         <ToastProvider>
-          <ActivateProfileToast profileId={7} />
-          <FoodSelectedDateProvider today={DATE} days={[DAY]}>
+          <ActivateProfileToast profileId={profileId} />
+          <FoodSelectedDateProvider today={DATE} days={[day]}>
             <FoodLogBar
               today={DATE}
-              days={[DAY]}
+              days={[day]}
               groupsBySlot={GROUPS}
               excludedGroups={[]}
-              slot="Midday"
+              slot={slot}
               slotBoundaries={{ midday: 660, evening: 900 }}
             />
           </FoodSelectedDateProvider>
@@ -101,12 +109,33 @@ function mountBar() {
   );
 }
 
-describe("FoodLogBar guarded Undo projection", () => {
+function mountBar(options: Parameters<typeof barTree>[0] = {}) {
+  return render(barTree(options));
+}
+
+function deferred<T>() {
+  let resolve!: (value: T) => void;
+  const promise = new Promise<T>((done) => {
+    resolve = done;
+  });
+  return { promise, resolve };
+}
+
+describe("FoodLogBar projection publication", () => {
   beforeEach(() => {
     window.matchMedia = mediaQuery;
+    vi.stubGlobal(
+      "ResizeObserver",
+      class ResizeObserver {
+        observe() {}
+        unobserve() {}
+        disconnect() {}
+      }
+    );
     actions.logFoodServing.mockReset();
     actions.undoFoodServing.mockReset();
     actions.readFoodServingTruth.mockReset();
+    actions.updateFoodLogEvent.mockReset();
     actions.logFoodServing.mockResolvedValue({
       ok: true,
       eventId: 41,
@@ -134,6 +163,10 @@ describe("FoodLogBar guarded Undo projection", () => {
       });
   });
 
+  afterEach(() => {
+    vi.unstubAllGlobals();
+  });
+
   it("publishes fresh day and meal truth when a newer serving invalidates the receipt", async () => {
     mountBar();
 
@@ -158,5 +191,99 @@ describe("FoodLogBar guarded Undo projection", () => {
     expect(
       await screen.findByText("Couldn’t undo — this has changed since.")
     ).toBeTruthy();
+  });
+
+  it("publishes correction truth after its Server Action RSC rerender", async () => {
+    window.matchMedia = normalMotionMediaQuery;
+    const frames: FrameRequestCallback[] = [];
+    vi.stubGlobal(
+      "requestAnimationFrame",
+      vi.fn((callback: FrameRequestCallback) => {
+        frames.push(callback);
+        return frames.length;
+      })
+    );
+    vi.stubGlobal("cancelAnimationFrame", vi.fn());
+    const day: FoodLogDay = {
+      ...DAY,
+      counts: { cruciferous: 1 },
+      slotCounts: {
+        Morning: { cruciferous: 1 },
+        Midday: {},
+        Evening: {},
+      },
+      events: [
+        {
+          id: 51,
+          groupKey: "cruciferous",
+          name: GROUP.name,
+          date: DATE,
+          mealSlot: "Morning",
+          eatenAt: null,
+          loggedTime: "08:00",
+        },
+      ],
+    };
+    const outcome = {
+      ok: true,
+      from: {
+        date: DATE,
+        groupKey: "cruciferous",
+        mealSlot: "Morning",
+        servings: 1,
+        mealServings: 0,
+      },
+      to: {
+        date: DATE,
+        groupKey: "cruciferous",
+        mealSlot: "Evening",
+        servings: 1,
+        mealServings: 1,
+      },
+    } as const;
+    const correction = deferred<typeof outcome>();
+    actions.updateFoodLogEvent.mockReturnValue(correction.promise);
+    const view = mountBar({ day, slot: "Morning" });
+
+    fireEvent.click(
+      screen.getByRole("button", {
+        name: /^Actions for the Cruciferous vegetables serving/,
+      })
+    );
+    fireEvent.click(screen.getByTestId("food-logged-correct-51"));
+    fireEvent.change(screen.getByTestId("food-correct-slot"), {
+      target: { value: "Evening" },
+    });
+    act(() => {
+      fireEvent.click(screen.getByTestId("food-correct-save"));
+    });
+    expect(actions.updateFoodLogEvent).toHaveBeenCalledTimes(1);
+
+    // A Server Action applies its revalidated RSC tree before the awaiting client
+    // continuation publishes the typed result. The provider stays mounted for the
+    // same profile, while the bar receives the server's corrected row/day props.
+    const correctedDay: FoodLogDay = {
+      ...day,
+      slotCounts: {
+        Morning: { cruciferous: 0 },
+        Midday: {},
+        Evening: { cruciferous: 1 },
+      },
+      events: [{ ...day.events[0], mealSlot: "Evening" }],
+    };
+    view.rerender(barTree({ day: correctedDay, slot: "Morning" }));
+
+    await act(async () => correction.resolve(outcome));
+
+    // Both consumers read the same provider projection. The raw meal totals and
+    // the row's title prove it is already Morning=0/Evening=1 even though the
+    // visual receipt's queued frame has deliberately not run.
+    expect(screen.getByTestId("food-slot-total-morning").textContent).toBe("0");
+    expect(screen.getByTestId("food-slot-total-evening").textContent).toBe("1");
+    expect(screen.getByTestId("count-cruciferous").getAttribute("title")).toBe(
+      "0 servings in Morning today"
+    );
+    expect(screen.getByTestId("count-cruciferous").textContent).toBe("0");
+    expect(frames).toHaveLength(1);
   });
 });

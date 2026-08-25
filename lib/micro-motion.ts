@@ -77,9 +77,9 @@ export const MICRO_MOTIONS = {
   count: {
     ms: 250,
     conveys:
-      "a QUANTITY changed, which reads differently from a value being replaced — the digits travel from the old number to the new one.",
+      "a QUANTITY changed, which reads differently from a value being replaced — the authoritative new digits pulse once in place.",
     carriedBy:
-      "the number itself, which is already the final value in the DOM's text on the frame the tap settles.",
+      "the number itself, which is the final value in the DOM before the first pulse frame can paint.",
     reducedEndState:
       "the new number is simply there, with no tween and no scale pulse.",
   },
@@ -246,32 +246,4 @@ export function microMotionPlan(
     animate: true,
     className: `motion-${kind}`,
   };
-}
-
-// ── The counter roll ─────────────────────────────────────────────────────────
-//
-// The one requestAnimationFrame case in the vocabulary: digits travelling between
-// two quantities. Pure so the curve is unit-tested rather than eyeballed, and so
-// the reduced-motion answer is the SAME function rather than a second code path
-// the caller writes around it.
-//
-// Ease-out cubic, matching MICRO_MOTION_EASE's shape: fast off the mark, settling
-// onto the real number. `elapsedMs >= ms` — and `ms <= 0`, the reduced-motion
-// duration — both answer `to` exactly, so a frame that arrives late, a frame that
-// arrives at 0, and a viewer who asked for no motion all land on the true value.
-export function countRollValue(
-  from: number,
-  to: number,
-  elapsedMs: number,
-  ms: number
-): number {
-  if (ms <= 0 || elapsedMs >= ms) return to;
-  if (elapsedMs <= 0) return from;
-  const t = elapsedMs / ms;
-  const eased = 1 - (1 - t) ** 3;
-  const raw = from + (to - from) * eased;
-  // Rounded TOWARD the destination so the last visible frame before the settle is
-  // never the value we just left — a roll that shows `30` twice and then `31` reads
-  // as a stutter rather than a travel.
-  return to >= from ? Math.floor(raw) : Math.ceil(raw);
 }
