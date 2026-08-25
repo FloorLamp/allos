@@ -107,11 +107,13 @@ test.describe("tap-target rendered census (#3562)", () => {
     await expect(sheet).toBeVisible();
     await expectRenderedFloor(
       "quick-log row",
-      sheet.getByTestId("log-sheet-items").locator("button").first()
+      sheet.getByTestId("quick-log-log-activity")
     );
+    const context = sheet.getByTestId("log-sheet-context");
+    await expect(context).toBeVisible();
     await expectRenderedFloor(
-      "quick-log context chip",
-      sheet.locator('[data-testid^="log-sheet-chip-"]').first()
+      "seeded due-dose context chip",
+      context.getByTestId("log-sheet-chip-doses")
     );
   });
 
