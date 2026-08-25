@@ -95,10 +95,7 @@ import {
   type FoodServingTruthResult,
   type UsualFoodResult,
 } from "./actions";
-import {
-  useFoodSelectedDate,
-  type FoodProjectionState,
-} from "./FoodSuggestionsLayout";
+import { useFoodSelectedDate } from "./FoodSuggestionsLayout";
 
 // Where one corrected serving landed, with the server's authoritative counts for that
 // coordinate. Named off the action's result so the bar and the write core can never
@@ -287,18 +284,14 @@ export default function FoodLogBar({
     setActiveDate,
     countsByDate,
     slotCountsByDate,
-    setProjection,
+    readProjection,
+    publishProjection,
   } = useFoodSelectedDate();
   const activeProfileId = useActiveProfileId();
   // This component only mounts in the authenticated app shell, under
   // ActiveProfileProvider. The fallback keeps story/static mounts inert rather
   // than inventing a cross-profile target.
   const receiptProfileId = activeProfileId ?? 0;
-  const projectionRef = useRef<FoodProjectionState>({
-    countsByDate,
-    slotCountsByDate,
-  });
-  projectionRef.current = { countsByDate, slotCountsByDate };
   const [activeSlot, setActiveSlot] = useState<FoodSlot>(slot);
   // The eating-time statement in force for the next taps (#2053), or null for the default
   // and honest silence: nobody said, so nothing is written. STICKY across taps on purpose
@@ -598,13 +591,6 @@ export default function FoodLogBar({
     proteinRank
   );
 
-  function commitProjection(next: FoodProjectionState) {
-    // Keep the async mutation boundary and the provider on the exact same object.
-    // Every caller below computes both halves before this one publication.
-    projectionRef.current = next;
-    setProjection(next);
-  }
-
   // Set one serving coordinate in the day and meal projections together.
   function setServingCounts(
     date: string,
@@ -615,36 +601,37 @@ export default function FoodLogBar({
       meal: number;
     }
   ) {
-    const current = projectionRef.current;
-    const dayCounts = current.countsByDate[date] ?? {};
-    const slotDay = current.slotCountsByDate[date] ?? {
-      Morning: {},
-      Midday: {},
-      Evening: {},
-    };
-    const mealCounts = slotDay[targetSlot] ?? {};
-    const value = next({
-      day: dayCounts[slug] ?? 0,
-      meal: mealCounts[slug] ?? 0,
-    });
-    commitProjection({
-      countsByDate: {
-        ...current.countsByDate,
-        [date]: {
-          ...dayCounts,
-          [slug]: Math.max(0, value.day),
-        },
-      },
-      slotCountsByDate: {
-        ...current.slotCountsByDate,
-        [date]: {
-          ...slotDay,
-          [targetSlot]: {
-            ...mealCounts,
-            [slug]: Math.max(0, value.meal),
+    publishProjection((current) => {
+      const dayCounts = current.countsByDate[date] ?? {};
+      const slotDay = current.slotCountsByDate[date] ?? {
+        Morning: {},
+        Midday: {},
+        Evening: {},
+      };
+      const mealCounts = slotDay[targetSlot] ?? {};
+      const value = next({
+        day: dayCounts[slug] ?? 0,
+        meal: mealCounts[slug] ?? 0,
+      });
+      return {
+        countsByDate: {
+          ...current.countsByDate,
+          [date]: {
+            ...dayCounts,
+            [slug]: Math.max(0, value.day),
           },
         },
-      },
+        slotCountsByDate: {
+          ...current.slotCountsByDate,
+          [date]: {
+            ...slotDay,
+            [targetSlot]: {
+              ...mealCounts,
+              [slug]: Math.max(0, value.meal),
+            },
+          },
+        },
+      };
     });
   }
 
@@ -654,12 +641,13 @@ export default function FoodLogBar({
   // source first lets a render restore the old slot map before the destination write.
   // These are SETs, not deltas, so replaying the result can never drift.
   function applyPlacements(placements: readonly FoodPlacement[]) {
-    const next = applyFoodServingPlacements(
-      projectionRef.current.countsByDate,
-      projectionRef.current.slotCountsByDate,
-      placements
+    publishProjection((current) =>
+      applyFoodServingPlacements(
+        current.countsByDate,
+        current.slotCountsByDate,
+        placements
+      )
     );
-    commitProjection(next);
   }
 
   function applyPlacement(placement: FoodPlacement) {
@@ -674,32 +662,32 @@ export default function FoodLogBar({
     slug: string,
     truth: FoodServingTruth
   ) {
-    const current = projectionRef.current;
-    const day = current.countsByDate[date] ?? {};
-    const nextCounts = {
-      ...current.countsByDate,
-      [date]: { ...day, [slug]: truth.servings },
-    };
-
-    const slotDay = current.slotCountsByDate[date] ?? {
-      Morning: {},
-      Midday: {},
-      Evening: {},
-    };
-    const nextDay = { ...slotDay };
-    for (const slot of FOOD_SLOTS) {
-      nextDay[slot] = {
-        ...(slotDay[slot] ?? {}),
-        [slug]: truth.mealServings[slot],
+    publishProjection((current) => {
+      const day = current.countsByDate[date] ?? {};
+      const nextCounts = {
+        ...current.countsByDate,
+        [date]: { ...day, [slug]: truth.servings },
       };
-    }
-    const nextSlotCounts = {
-      ...current.slotCountsByDate,
-      [date]: nextDay,
-    };
-    commitProjection({
-      countsByDate: nextCounts,
-      slotCountsByDate: nextSlotCounts,
+
+      const slotDay = current.slotCountsByDate[date] ?? {
+        Morning: {},
+        Midday: {},
+        Evening: {},
+      };
+      const nextDay = { ...slotDay };
+      for (const slot of FOOD_SLOTS) {
+        nextDay[slot] = {
+          ...(slotDay[slot] ?? {}),
+          [slug]: truth.mealServings[slot],
+        };
+      }
+      return {
+        countsByDate: nextCounts,
+        slotCountsByDate: {
+          ...current.slotCountsByDate,
+          [date]: nextDay,
+        },
+      };
     });
   }
 
@@ -1152,12 +1140,12 @@ export default function FoodLogBar({
       mutationEpoch = nonAddEpochs.get(receiptKey)!;
       onMutationStarted?.(mutationEpoch);
     }
+    const currentProjection = readProjection();
     const before: ServingCounts = {
-      day: projectionRef.current.countsByDate[activeDate]?.[slug] ?? 0,
+      day: currentProjection.countsByDate[activeDate]?.[slug] ?? 0,
       meal:
-        projectionRef.current.slotCountsByDate[activeDate]?.[filingSlot]?.[
-          slug
-        ] ?? 0,
+        currentProjection.slotCountsByDate[activeDate]?.[filingSlot]?.[slug] ??
+        0,
     };
     const commit = (next: ServingCounts) => {
       setServingCounts(activeDate, filingSlot, slug, () => next);

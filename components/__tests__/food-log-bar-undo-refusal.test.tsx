@@ -79,19 +79,19 @@ function ActivateProfileToast({ profileId }: { profileId: number }) {
   return null;
 }
 
-function mountBar() {
-  render(
+function mountBar({ day = DAY, slot = "Midday" as FoodSlot } = {}) {
+  return render(
     <TimezoneProvider tz="UTC">
       <ActiveProfileProvider profileId={7}>
         <ToastProvider>
           <ActivateProfileToast profileId={7} />
-          <FoodSelectedDateProvider today={DATE} days={[DAY]}>
+          <FoodSelectedDateProvider today={DATE} days={[day]}>
             <FoodLogBar
               today={DATE}
-              days={[DAY]}
+              days={[day]}
               groupsBySlot={GROUPS}
               excludedGroups={[]}
-              slot="Midday"
+              slot={slot}
               slotBoundaries={{ midday: 660, evening: 900 }}
             />
           </FoodSelectedDateProvider>
@@ -101,12 +101,21 @@ function mountBar() {
   );
 }
 
-describe("FoodLogBar guarded Undo projection", () => {
+describe("FoodLogBar projection publication", () => {
   beforeEach(() => {
     window.matchMedia = mediaQuery;
+    vi.stubGlobal(
+      "ResizeObserver",
+      class ResizeObserver {
+        observe() {}
+        unobserve() {}
+        disconnect() {}
+      }
+    );
     actions.logFoodServing.mockReset();
     actions.undoFoodServing.mockReset();
     actions.readFoodServingTruth.mockReset();
+    actions.updateFoodLogEvent.mockReset();
     actions.logFoodServing.mockResolvedValue({
       ok: true,
       eventId: 41,
@@ -158,5 +167,66 @@ describe("FoodLogBar guarded Undo projection", () => {
     expect(
       await screen.findByText("Couldn’t undo — this has changed since.")
     ).toBeTruthy();
+  });
+
+  it("publishes a correction's vacated and destination slots through provider truth", async () => {
+    const day: FoodLogDay = {
+      ...DAY,
+      counts: { cruciferous: 1 },
+      slotCounts: {
+        Morning: { cruciferous: 1 },
+        Midday: {},
+        Evening: {},
+      },
+      events: [
+        {
+          id: 51,
+          groupKey: "cruciferous",
+          name: GROUP.name,
+          date: DATE,
+          mealSlot: "Morning",
+          eatenAt: null,
+          loggedTime: "08:00",
+        },
+      ],
+    };
+    actions.updateFoodLogEvent.mockResolvedValue({
+      ok: true,
+      from: {
+        date: DATE,
+        groupKey: "cruciferous",
+        mealSlot: "Morning",
+        servings: 1,
+        mealServings: 0,
+      },
+      to: {
+        date: DATE,
+        groupKey: "cruciferous",
+        mealSlot: "Evening",
+        servings: 1,
+        mealServings: 1,
+      },
+    });
+    mountBar({ day, slot: "Morning" });
+
+    fireEvent.click(
+      screen.getByRole("button", {
+        name: /^Actions for the Cruciferous vegetables serving/,
+      })
+    );
+    fireEvent.click(screen.getByTestId("food-logged-correct-51"));
+    fireEvent.change(screen.getByTestId("food-correct-slot"), {
+      target: { value: "Evening" },
+    });
+    await act(async () => {
+      fireEvent.click(screen.getByTestId("food-correct-save"));
+    });
+
+    await waitFor(() =>
+      expect(screen.getByTestId("count-cruciferous").textContent).toBe("0")
+    );
+    expect(screen.getByTestId("food-slot-total-morning").textContent).toBe("0");
+    expect(screen.getByTestId("food-slot-total-evening").textContent).toBe("1");
+    expect(actions.updateFoodLogEvent).toHaveBeenCalledTimes(1);
   });
 });
