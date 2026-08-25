@@ -1,6 +1,9 @@
 import { act, renderHook } from "@testing-library/react";
 import { afterEach, describe, expect, it, vi } from "vitest";
-import { useDragGesture } from "../overlay/useDragGesture";
+import {
+  useDragGesture,
+  verticalScrollOwnersAtTop,
+} from "../overlay/useDragGesture";
 
 type TouchPoint = Pick<Touch, "identifier" | "clientX" | "clientY">;
 
@@ -21,17 +24,23 @@ function mountScrollAwareDrag() {
   const root = document.createElement("div");
   const handle = document.createElement("div");
   const content = document.createElement("div");
+  const nested = document.createElement("div");
   const body = document.createElement("button");
   handle.append(document.createElement("span"));
-  content.append(body);
+  nested.style.overflowY = "auto";
+  Object.defineProperties(nested, {
+    clientHeight: { value: 100 },
+    scrollHeight: { value: 400 },
+  });
+  nested.append(body);
+  content.append(nested);
   root.append(handle, content);
   document.body.append(root);
 
   const onCommit = vi.fn();
   const canStart = vi.fn(
     (origin: Node) =>
-      handle.contains(origin) ||
-      (content.contains(origin) && content.scrollTop <= 0)
+      handle.contains(origin) || verticalScrollOwnersAtTop(origin, content)
   );
   renderHook(() =>
     useDragGesture({
@@ -41,7 +50,7 @@ function mountScrollAwareDrag() {
       onCommit,
     })
   );
-  return { body, canStart, content, handle, onCommit };
+  return { body, canStart, content, handle, nested, onCommit };
 }
 
 function dragDown(target: HTMLElement, afterStart?: () => void): void {
@@ -81,6 +90,21 @@ describe("useDragGesture touch-start admission (#3691)", () => {
     dragDown(body, () => {
       // Reaching the boundary does not turn the same touch into a dismissal.
       content.scrollTop = 0;
+    });
+
+    expect(canStart).toHaveBeenCalledTimes(1);
+    expect(onCommit).not.toHaveBeenCalled();
+  });
+
+  it("keeps a nested scroll owner's touch native after it reaches the top", () => {
+    vi.useFakeTimers();
+    const { body, canStart, content, nested, onCommit } =
+      mountScrollAwareDrag();
+
+    content.scrollTop = 0;
+    nested.scrollTop = 80;
+    dragDown(body, () => {
+      nested.scrollTop = 0;
     });
 
     expect(canStart).toHaveBeenCalledTimes(1);

@@ -157,6 +157,32 @@ function insideSameAxisScroller(
   return false;
 }
 
+// A bottom sheet may contain a second, intentional vertical scroll owner (a
+// long form with a fixed action footer is the common shape). The outer content
+// region can therefore be parked at zero while the element under the finger is
+// still halfway through its own list. Native scrolling owns that touch until
+// EVERY effective owner between the origin and the sheet boundary is at its
+// top. Read once at touch-start; no owner can hand the same touch to the sheet
+// later in its lifecycle.
+export function verticalScrollOwnersAtTop(
+  origin: Node,
+  boundary: HTMLElement
+): boolean {
+  if (!boundary.contains(origin)) return false;
+  let node: Element | null =
+    origin instanceof Element ? origin : origin.parentElement;
+  while (node) {
+    if (node === boundary) return boundary.scrollTop <= 0;
+    const style = getComputedStyle(node);
+    const ownsVerticalScroll =
+      (style.overflowY === "auto" || style.overflowY === "scroll") &&
+      node.scrollHeight > node.clientHeight + 1;
+    if (ownsVerticalScroll && node.scrollTop > 0) return false;
+    node = node.parentElement;
+  }
+  return false;
+}
+
 export function useDragGesture(options: DragGestureOptions): void {
   // Options change every render (fresh closures); the listeners must not. One
   // ref, read at event time, keeps the subscription stable for the life of the

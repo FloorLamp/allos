@@ -155,6 +155,26 @@ test.describe("bottom sheet: swipe down discards", () => {
     await expect.poll(() => content.evaluate((node) => node.scrollTop)).toBe(0);
   });
 
+  test("the handle dismisses while the real sheet body is scrolled", async ({
+    page,
+  }) => {
+    await page.goto("/?quick=log-measurements");
+    const sheet = page.getByTestId("quick-entry-sheet");
+    await expect(sheet.getByTestId("measurements-quick-add")).toBeVisible();
+    const content = sheet.locator("[data-sheet-content]");
+    const scrollTop = await content.evaluate((node) => {
+      node.scrollTop = Math.min(160, node.scrollHeight - node.clientHeight);
+      return node.scrollTop;
+    });
+    expect(scrollTop).toBeGreaterThan(0);
+
+    await touchSwipeFrom(page, sheet.getByTestId("sheet-drag-handle"), {
+      dy: 240,
+    });
+
+    await expect(sheet).toHaveCount(0);
+  });
+
   test("the scrim FADES on the drag path — the close is visibly progressing", async ({
     page,
   }) => {

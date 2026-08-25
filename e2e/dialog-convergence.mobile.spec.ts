@@ -327,6 +327,39 @@ test("the page behind an open quick-entry sheet does not move either", async ({
   );
 });
 
+test("a drag begun in a nested form scroller stays native for its whole touch", async ({
+  page,
+}) => {
+  test.slow();
+  await page.goto("/longevity#protocols");
+  await hydratedClick(
+    page,
+    page.getByRole("main").getByTestId("new-protocol-toggle")
+  );
+  const dialog = page.getByRole("dialog", { name: "Add protocol" });
+  await expect(dialog).toBeVisible();
+
+  // ProtocolForm owns an intentional inner scroller so its action footer stays
+  // fixed. The sheet's outer content remains at zero while this list moves; the
+  // touch-start admission must follow the effective owner under the finger.
+  const outer = dialog.locator("[data-sheet-content]");
+  const inner = dialog.getByTestId("protocol-form-scroll");
+  const starting = await inner.evaluate((node) => {
+    const available = node.scrollHeight - node.clientHeight;
+    node.scrollTop = Math.min(180, available);
+    return { available, scrollTop: node.scrollTop };
+  });
+  expect(starting.available).toBeGreaterThanOrEqual(100);
+  expect(starting.scrollTop).toBeGreaterThan(0);
+  expect(await outer.evaluate((node) => node.scrollTop)).toBe(0);
+
+  await touchSwipeFrom(page, inner, { dy: 240 }, { stepDelayMs: 20 });
+
+  await expect(dialog).toBeVisible();
+  await expect(page.getByTestId("confirm-dialog")).toHaveCount(0);
+  await expect.poll(() => inner.evaluate((node) => node.scrollTop)).toBe(0);
+});
+
 // The dirty-discard guard (#2774, consequence B), in three tests rather than one
 // chain. The chained version — flick, refuse, then tap the scrim, then reopen —
 // was green here ten times over and red on CI, and a test whose failure cannot be

@@ -372,11 +372,13 @@ one is the pointer route.
 
 **BottomSheet fixes body ownership at touch-start** (#3691). The handle always
 owns a downward drag, whatever the content scroll position. A drag beginning in
-the content owns dismissal only when that one scroll owner was already at its
-top; beginning below the top belongs to native scrolling for the touch's entire
-lifecycle, even if the scroll reaches zero before the finger lifts. The shared
-recognizer's one-shot `canStart` admission expresses that boundary without
-preventing default, re-reading mid-gesture, or interfering with taps and fields.
+the content owns dismissal only when every effective vertical scroll owner from
+the touch origin through the sheet content was already at its top. That includes
+intentional nested form scrollers with fixed action footers; beginning below any
+owner's top belongs to native scrolling for the touch's entire lifecycle, even
+if the scroll reaches zero before the finger lifts. The shared recognizer's
+one-shot `canStart` admission expresses that boundary without preventing
+default, re-reading mid-gesture, or interfering with taps and fields.
 
 **`overscroll-behavior-x: contain`** on `html`/`body`. Without it a horizontal
 drag the page cannot scroll CHAINS to the browser's in-page history navigation:

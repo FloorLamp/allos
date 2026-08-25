@@ -11,6 +11,7 @@ import {
   OverlayDragHandle,
   overlayMotionClass,
   useOverlayDrag,
+  verticalScrollOwnersAtTop,
   OVERLAY_PANEL_BORDER,
   OVERLAY_PANEL_ELEVATION,
   OVERLAY_PANEL_MAX_WIDTH,
@@ -265,13 +266,12 @@ export default function BottomSheet({
     if (!handle || handle.getClientRects().length === 0) return false;
     if (handle.contains(origin)) return true;
 
-    // Body ownership is decided once, from the scroll position at touch-start.
-    // Starting below the top belongs to native scrolling for that touch's whole
-    // lifecycle, even if it reaches zero. Starting at zero may pull the sheet
+    // Body ownership is decided once, from every effective scroll owner between
+    // the origin and this content boundary. Starting below any owner's top
+    // belongs to native scrolling for that touch's whole lifecycle, even if it
+    // reaches zero. When all owners start at zero the touch may pull the sheet
     // down, and later scroll changes cannot revoke that already-claimed origin.
-    return Boolean(
-      content && content.contains(origin) && content.scrollTop <= 0
-    );
+    return Boolean(content && verticalScrollOwnersAtTop(origin, content));
   }, []);
 
   const { suppressMotion } = useOverlayDrag({
