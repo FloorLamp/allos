@@ -6,7 +6,7 @@ import {
   screen,
   waitFor,
 } from "@testing-library/react";
-import { beforeEach, describe, expect, it, vi } from "vitest";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { ActiveProfileProvider } from "@/components/ActiveProfileProvider";
 import { ToastProvider, useActivateToastProfile } from "@/components/Toast";
 import { TimezoneProvider } from "@/components/TimezoneProvider";
@@ -73,18 +73,26 @@ function mediaQuery(query: string): MediaQueryList {
   };
 }
 
+function normalMotionMediaQuery(query: string): MediaQueryList {
+  return { ...mediaQuery(query), matches: false };
+}
+
 function ActivateProfileToast({ profileId }: { profileId: number }) {
   const activate = useActivateToastProfile();
   useEffect(() => activate(profileId), [activate, profileId]);
   return null;
 }
 
-function mountBar({ day = DAY, slot = "Midday" as FoodSlot } = {}) {
-  return render(
+function barTree({
+  profileId = 7,
+  day = DAY,
+  slot = "Midday" as FoodSlot,
+} = {}) {
+  return (
     <TimezoneProvider tz="UTC">
-      <ActiveProfileProvider profileId={7}>
+      <ActiveProfileProvider profileId={profileId}>
         <ToastProvider>
-          <ActivateProfileToast profileId={7} />
+          <ActivateProfileToast profileId={profileId} />
           <FoodSelectedDateProvider today={DATE} days={[day]}>
             <FoodLogBar
               today={DATE}
@@ -99,6 +107,18 @@ function mountBar({ day = DAY, slot = "Midday" as FoodSlot } = {}) {
       </ActiveProfileProvider>
     </TimezoneProvider>
   );
+}
+
+function mountBar(options: Parameters<typeof barTree>[0] = {}) {
+  return render(barTree(options));
+}
+
+function deferred<T>() {
+  let resolve!: (value: T) => void;
+  const promise = new Promise<T>((done) => {
+    resolve = done;
+  });
+  return { promise, resolve };
 }
 
 describe("FoodLogBar projection publication", () => {
@@ -143,6 +163,10 @@ describe("FoodLogBar projection publication", () => {
       });
   });
 
+  afterEach(() => {
+    vi.unstubAllGlobals();
+  });
+
   it("publishes fresh day and meal truth when a newer serving invalidates the receipt", async () => {
     mountBar();
 
@@ -169,7 +193,17 @@ describe("FoodLogBar projection publication", () => {
     ).toBeTruthy();
   });
 
-  it("publishes a correction's vacated and destination slots through provider truth", async () => {
+  it("publishes correction truth after its Server Action RSC rerender", async () => {
+    window.matchMedia = normalMotionMediaQuery;
+    const frames: FrameRequestCallback[] = [];
+    vi.stubGlobal(
+      "requestAnimationFrame",
+      vi.fn((callback: FrameRequestCallback) => {
+        frames.push(callback);
+        return frames.length;
+      })
+    );
+    vi.stubGlobal("cancelAnimationFrame", vi.fn());
     const day: FoodLogDay = {
       ...DAY,
       counts: { cruciferous: 1 },
@@ -190,7 +224,7 @@ describe("FoodLogBar projection publication", () => {
         },
       ],
     };
-    actions.updateFoodLogEvent.mockResolvedValue({
+    const outcome = {
       ok: true,
       from: {
         date: DATE,
@@ -206,8 +240,10 @@ describe("FoodLogBar projection publication", () => {
         servings: 1,
         mealServings: 1,
       },
-    });
-    mountBar({ day, slot: "Morning" });
+    } as const;
+    const correction = deferred<typeof outcome>();
+    actions.updateFoodLogEvent.mockReturnValue(correction.promise);
+    const view = mountBar({ day, slot: "Morning" });
 
     fireEvent.click(
       screen.getByRole("button", {
@@ -218,15 +254,36 @@ describe("FoodLogBar projection publication", () => {
     fireEvent.change(screen.getByTestId("food-correct-slot"), {
       target: { value: "Evening" },
     });
-    await act(async () => {
+    act(() => {
       fireEvent.click(screen.getByTestId("food-correct-save"));
     });
+    expect(actions.updateFoodLogEvent).toHaveBeenCalledTimes(1);
 
-    await waitFor(() =>
-      expect(screen.getByTestId("count-cruciferous").textContent).toBe("0")
-    );
+    // A Server Action applies its revalidated RSC tree before the awaiting client
+    // continuation publishes the typed result. The provider stays mounted for the
+    // same profile, while the bar receives the server's corrected row/day props.
+    const correctedDay: FoodLogDay = {
+      ...day,
+      slotCounts: {
+        Morning: { cruciferous: 0 },
+        Midday: {},
+        Evening: { cruciferous: 1 },
+      },
+      events: [{ ...day.events[0], mealSlot: "Evening" }],
+    };
+    view.rerender(barTree({ day: correctedDay, slot: "Morning" }));
+
+    await act(async () => correction.resolve(outcome));
+
+    // Both consumers read the same provider projection. The raw meal totals and
+    // the row's title prove it is already Morning=0/Evening=1 even though the
+    // visual receipt's queued frame has deliberately not run.
     expect(screen.getByTestId("food-slot-total-morning").textContent).toBe("0");
     expect(screen.getByTestId("food-slot-total-evening").textContent).toBe("1");
-    expect(actions.updateFoodLogEvent).toHaveBeenCalledTimes(1);
+    expect(
+      screen.getByTestId("count-cruciferous").getAttribute("title")
+    ).toBe("0 servings in Morning today");
+    expect(screen.getByTestId("count-cruciferous").textContent).toBe("0");
+    expect(frames).toHaveLength(1);
   });
 });

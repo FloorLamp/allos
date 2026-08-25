@@ -1,10 +1,8 @@
 "use client";
 
 import {
-  useCallback,
   createContext,
   useContext,
-  useRef,
   useState,
   type Dispatch,
   type ReactNode,
@@ -27,10 +25,6 @@ export interface FoodProjectionState {
   slotCountsByDate: SlotCountsByDate;
 }
 
-type FoodProjectionUpdate = (
-  current: FoodProjectionState
-) => FoodProjectionState;
-
 interface FoodSelectedDateContextValue {
   activeDate: string;
   setActiveDate: Dispatch<SetStateAction<string>>;
@@ -39,8 +33,7 @@ interface FoodSelectedDateContextValue {
   // Daily and per-meal counts are one projection. A correction moves one event
   // between two meal coordinates, so publishing them through separate provider
   // states permits a render to observe only half of the move.
-  readProjection: () => FoodProjectionState;
-  publishProjection: (update: FoodProjectionUpdate) => void;
+  setProjection: Dispatch<SetStateAction<FoodProjectionState>>;
 }
 
 const FoodSelectedDateContext =
@@ -56,27 +49,6 @@ export function useFoodSelectedDate(): FoodSelectedDateContextValue {
   return value;
 }
 
-function useFoodProjection(days: FoodLogDay[]) {
-  const [projection, setProjection] = useState<FoodProjectionState>(() => ({
-    countsByDate: Object.fromEntries(days.map((day) => [day.date, day.counts])),
-    slotCountsByDate: Object.fromEntries(
-      days.map((day) => [day.date, day.slotCounts])
-    ),
-  }));
-  // Provider state and imperative mutation truth have one writer. In particular,
-  // an RSC render may replace `days`, but it cannot overwrite this ref with the
-  // pre-action projection while the action caller is publishing its correction.
-  const projectionRef = useRef(projection);
-  const readProjection = useCallback(() => projectionRef.current, []);
-  const publishProjection = useCallback((update: FoodProjectionUpdate) => {
-    const next = update(projectionRef.current);
-    projectionRef.current = next;
-    setProjection(next);
-  }, []);
-
-  return { projection, readProjection, publishProjection };
-}
-
 // Context-only mount for the global quick-entry sheet. The full Nutrition page owns
 // this state inside FoodSuggestionsLayout below, while the sheet needs the same
 // logger state without the page's suggestions/sidebar composition.
@@ -90,8 +62,12 @@ export function FoodSelectedDateProvider({
   children: ReactNode;
 }) {
   const [activeDate, setActiveDate] = useState(today);
-  const { projection, readProjection, publishProjection } =
-    useFoodProjection(days);
+  const [projection, setProjection] = useState<FoodProjectionState>(() => ({
+    countsByDate: Object.fromEntries(days.map((day) => [day.date, day.counts])),
+    slotCountsByDate: Object.fromEntries(
+      days.map((day) => [day.date, day.slotCounts])
+    ),
+  }));
 
   return (
     <FoodSelectedDateContext.Provider
@@ -100,8 +76,7 @@ export function FoodSelectedDateProvider({
         setActiveDate,
         countsByDate: projection.countsByDate,
         slotCountsByDate: projection.slotCountsByDate,
-        readProjection,
-        publishProjection,
+        setProjection,
       }}
     >
       {children}
@@ -165,8 +140,12 @@ export default function FoodSuggestionsLayout({
   const [activeDate, setActiveDate] = useState(
     initialDateInRange ? initialDate : today
   );
-  const { projection, readProjection, publishProjection } =
-    useFoodProjection(days);
+  const [projection, setProjection] = useState<FoodProjectionState>(() => ({
+    countsByDate: Object.fromEntries(days.map((day) => [day.date, day.counts])),
+    slotCountsByDate: Object.fromEntries(
+      days.map((day) => [day.date, day.slotCounts])
+    ),
+  }));
   const hasSuggestions = suggestionCount > 0;
   const activeDay = days.find((day) => day.date === activeDate) ?? days[0];
   const activeDayNutrients = selectedDayNutrients.find(
@@ -192,8 +171,7 @@ export default function FoodSuggestionsLayout({
         setActiveDate,
         countsByDate: projection.countsByDate,
         slotCountsByDate: projection.slotCountsByDate,
-        readProjection,
-        publishProjection,
+        setProjection,
       }}
     >
       <div data-testid="nutrition-food-layout">

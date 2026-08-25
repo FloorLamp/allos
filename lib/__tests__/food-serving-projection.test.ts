@@ -60,10 +60,7 @@ describe("applyFoodServingPlacements", () => {
     expect(provider).toContain("useState<FoodProjectionState>");
     expect(provider).not.toContain("setCountsByDate");
     expect(provider).not.toContain("setSlotCountsByDate");
-    expect(provider).toContain("publishProjection");
-    expect(provider).toContain("projectionRef.current = next");
-    expect(bar).toContain("publishProjection((current)");
-    expect(bar).not.toContain("projectionRef.current = {");
+    expect(bar).toContain("setProjection(next)");
     expect(bar).not.toContain("setCountsByDate");
     expect(bar).not.toContain("setSlotCountsByDate");
   });

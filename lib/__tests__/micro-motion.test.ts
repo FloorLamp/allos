@@ -5,7 +5,6 @@ import { describe, expect, it } from "vitest";
 import {
   bandExemption,
   bandExemptionFor,
-  countRollValue,
   MICRO_MOTIONS,
   MICRO_MOTION_BAND_EXEMPTIONS,
   MICRO_MOTION_EASE,
@@ -18,7 +17,7 @@ import {
 } from "@/lib/micro-motion";
 
 // The micro-motion vocabulary (#2654). Its numbers live in TWO places by necessity —
-// lib/micro-motion.ts times the counter's requestAnimationFrame tween and the settle's
+// lib/micro-motion.ts times the counter's requestAnimationFrame receipt and the settle's
 // class window, app/globals.css times the paint — so they are pinned to each other
 // here, exactly as the overlay family's are in motion-tokens.test.ts.
 //
@@ -338,55 +337,5 @@ describe("micro-motion declarations", () => {
     // #1469's overlay tokens answer a different question at 240 ms. A micro-motion
     // name colliding with one would let a surface reach for the wrong feel.
     for (const kind of KINDS) expect(kind).not.toMatch(/overlay|drawer|sheet/);
-  });
-});
-
-describe("countRollValue", () => {
-  it("answers the destination at and past the end of the roll", () => {
-    expect(countRollValue(0, 30, 250, 250)).toBe(30);
-    expect(countRollValue(0, 30, 900, 250)).toBe(30);
-  });
-
-  it("answers the destination instantly at zero duration (reduced motion)", () => {
-    // The SAME function serves the reduced-motion path — no second code path for a
-    // caller to get wrong.
-    expect(countRollValue(0, 30, 0, 0)).toBe(30);
-    expect(countRollValue(120, 5, 16, 0)).toBe(5);
-  });
-
-  it("starts from the value it left", () => {
-    expect(countRollValue(10, 40, 0, 250)).toBe(10);
-  });
-
-  it("eases out: more than half the travel is done by the halfway point", () => {
-    const half = countRollValue(0, 100, 125, 250);
-    expect(half).toBeGreaterThan(50);
-    expect(half).toBeLessThan(100);
-  });
-
-  it("moves monotonically toward the destination, both directions", () => {
-    let up = countRollValue(0, 60, 0, 250);
-    for (let t = 10; t <= 250; t += 10) {
-      const next = countRollValue(0, 60, t, 250);
-      expect(next).toBeGreaterThanOrEqual(up);
-      up = next;
-    }
-    expect(up).toBe(60);
-
-    let down = countRollValue(60, 0, 0, 250);
-    for (let t = 10; t <= 250; t += 10) {
-      const next = countRollValue(60, 0, t, 250);
-      expect(next).toBeLessThanOrEqual(down);
-      down = next;
-    }
-    expect(down).toBe(0);
-  });
-
-  it("rounds toward the destination so the first frame is never a stutter", () => {
-    // Rounding to nearest would repeat the starting number on the first frame or
-    // two of a slow roll, which reads as a stall rather than a travel.
-    expect(countRollValue(0, 1, 1, 250)).toBe(0);
-    expect(countRollValue(0, 100, 5, 250)).toBeGreaterThan(0);
-    expect(countRollValue(100, 0, 5, 250)).toBeLessThan(100);
   });
 });
