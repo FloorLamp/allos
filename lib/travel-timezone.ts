@@ -219,29 +219,45 @@ export const MAX_STORED_SWITCHES = 24;
 // Beyond it the switch day is off every strip and the record is dead weight.
 export const SWITCH_RETENTION_DAYS = 120;
 
-// Decode the stored JSON array without throwing. Parsing is deliberately
-// all-or-nothing: dropping one malformed row could turn a corrupt out-and-back
-// trajectory into a trusted one-way crossing and falsely excuse a real slot.
-export function parseTimezoneSwitches(
+export interface DecodedTimezoneSwitchHistory {
+  switches: TimezoneSwitch[];
+  valid: boolean;
+}
+
+// Decode the stored JSON array without throwing while preserving whether it was
+// trustworthy. Writers need the validity bit: treating malformed history as an
+// ordinary empty history and appending one new seam would launder the corruption
+// into a trusted one-way crossing.
+export function decodeTimezoneSwitchHistory(
   raw: string | null | undefined
-): TimezoneSwitch[] {
-  if (!raw) return [];
+): DecodedTimezoneSwitchHistory {
+  if (!raw) return { switches: [], valid: true };
   let parsed: unknown;
   try {
     parsed = JSON.parse(raw);
   } catch {
-    return [];
+    return { switches: [], valid: false };
   }
-  if (!Array.isArray(parsed)) return [];
+  if (!Array.isArray(parsed)) return { switches: [], valid: false };
   const out: TimezoneSwitch[] = [];
   for (const entry of parsed) {
-    if (!entry || typeof entry !== "object") return [];
+    if (!entry || typeof entry !== "object")
+      return { switches: [], valid: false };
     const { at, from, to } = entry as Record<string, unknown>;
-    if (typeof at !== "string") return [];
-    if (typeof from !== "string" || typeof to !== "string") return [];
+    if (typeof at !== "string") return { switches: [], valid: false };
+    if (typeof from !== "string" || typeof to !== "string")
+      return { switches: [], valid: false };
     out.push({ at, from, to });
   }
-  return out;
+  return { switches: out, valid: true };
+}
+
+// Reader convenience. Invalid storage is the ordinary fail-open empty history;
+// switch writers use decodeTimezoneSwitchHistory so they do not erase its taint.
+export function parseTimezoneSwitches(
+  raw: string | null | undefined
+): TimezoneSwitch[] {
+  return decodeTimezoneSwitchHistory(raw).switches;
 }
 
 export function serializeTimezoneSwitches(

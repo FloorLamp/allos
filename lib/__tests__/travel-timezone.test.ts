@@ -4,6 +4,7 @@ import {
   appendTimezoneSwitch,
   comparePositions,
   connectedTimezoneSwitchHistory,
+  decodeTimezoneSwitchHistory,
   isExcusedSlot,
   isRepeatedSlot,
   localPositionIn,
@@ -325,6 +326,9 @@ describe("stored switch history", () => {
         `[{"at":"${NOON_UTC}","from":"${NY}"},{"at":"${NOON_UTC}","from":"${NY}","to":"${TOKYO}"},null,7]`
       )
     ).toEqual([]);
+    expect(
+      decodeTimezoneSwitchHistory(`[{"at":"${NOON_UTC}","from":"${NY}"}]`)
+    ).toEqual({ switches: [], valid: false });
   });
 
   it("prunes records older than the retention window on append", () => {
