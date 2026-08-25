@@ -404,6 +404,38 @@ function staticModuleName(expression: ts.Expression): string | null {
   return ts.isStringLiteralLike(current) ? current.text : null;
 }
 
+function jsxTagReference(node: ts.Node): boolean {
+  const parent = node.parent;
+  return (
+    (ts.isJsxOpeningElement(parent) ||
+      ts.isJsxSelfClosingElement(parent) ||
+      ts.isJsxClosingElement(parent)) &&
+    parent.tagName === node
+  );
+}
+
+function bindingElementMaySelectChevron(element: ts.BindingElement): boolean {
+  if (element.dotDotDotToken) return true;
+  const propertyName = element.propertyName;
+  if (!propertyName) {
+    return (
+      ts.isIdentifier(element.name) && element.name.text === "IconChevronRight"
+    );
+  }
+  if (
+    ts.isIdentifier(propertyName) ||
+    ts.isStringLiteralLike(propertyName) ||
+    ts.isNumericLiteral(propertyName)
+  ) {
+    return propertyName.text === "IconChevronRight";
+  }
+  if (ts.isComputedPropertyName(propertyName)) {
+    const key = staticString(propertyName.expression);
+    return key == null || key === "IconChevronRight";
+  }
+  return false;
+}
+
 function makeFinding(
   key: string,
   file: string,
@@ -533,7 +565,7 @@ function indexFile(source: DoorSource): {
         clause?.namedBindings &&
         ts.isNamedImports(clause.namedBindings) &&
         clause.namedBindings.elements.length === 0;
-      if (emptyNamedBindings) {
+      if (emptyNamedBindings && !clause.isTypeOnly) {
         imports.push({
           kind: "import",
           moduleName,
@@ -618,8 +650,8 @@ function indexFile(source: DoorSource): {
           : null;
       const emptyNamed = named?.elements.length === 0;
       const hasRuntimeExport =
-        emptyNamed ||
-        (!statement.isTypeOnly &&
+        !statement.isTypeOnly &&
+        (emptyNamed ||
           !(
             named?.elements.length &&
             named.elements.every((element) => element.isTypeOnly)
@@ -741,6 +773,51 @@ function indexFile(source: DoorSource): {
       ) {
         loaderFinding(node, "CommonJS module loaders are unsupported");
       }
+
+      const iconNamespaceImport = imports.find(
+        (record) =>
+          record.kind === "import" &&
+          record.moduleName === "@tabler/icons-react" &&
+          (record.imported === "*" || record.imported === "default") &&
+          record.local === node.text &&
+          record.binding &&
+          lexicalBinding(node) === record.binding
+      );
+      if (iconNamespaceImport) {
+        const member = node.parent;
+        const propertyChevron =
+          ts.isPropertyAccessExpression(member) &&
+          member.expression === node &&
+          member.name.text === "IconChevronRight";
+        const computedChevron =
+          ts.isElementAccessExpression(member) &&
+          member.expression === node &&
+          (() => {
+            const key = member.argumentExpression
+              ? staticString(member.argumentExpression)
+              : null;
+            return key == null || key === "IconChevronRight";
+          })();
+        const destructuredChevron =
+          ts.isVariableDeclaration(member) &&
+          member.initializer === node &&
+          ts.isObjectBindingPattern(member.name) &&
+          member.name.elements.some(bindingElementMaySelectChevron);
+        if (
+          (propertyChevron && !jsxTagReference(member)) ||
+          computedChevron ||
+          destructuredChevron
+        ) {
+          findings.push(
+            makeFinding(
+              "chevron:value-use",
+              source.path,
+              `unsupported non-JSX IconChevronRight member use through ${node.text}`,
+              lineOf(file, node)
+            )
+          );
+        }
+      }
     }
     if (
       ts.isPropertyAccessExpression(node) &&
@@ -781,6 +858,12 @@ function indexFile(source: DoorSource): {
             moduleName,
             line: lineOf(file, node),
           });
+          if (moduleName === "node:module" || moduleName === "module") {
+            loaderFinding(
+              node,
+              `runtime import(${JSON.stringify(moduleName)}) capable of createRequire is unsupported`
+            );
+          }
         }
       } else if (
         ts.isIdentifier(node.expression) &&
@@ -895,6 +978,7 @@ function runtimeTopLevelStatement(statement: ts.Statement): boolean {
   if (ts.isImportDeclaration(statement)) {
     const clause = statement.importClause;
     if (!clause) return true;
+    if (clause.isTypeOnly) return false;
     if (
       clause.namedBindings &&
       ts.isNamedImports(clause.namedBindings) &&
@@ -902,7 +986,6 @@ function runtimeTopLevelStatement(statement: ts.Statement): boolean {
     ) {
       return true;
     }
-    if (clause.isTypeOnly) return false;
     if (clause.name) return true;
     if (clause.namedBindings && ts.isNamespaceImport(clause.namedBindings)) {
       return true;
@@ -914,6 +997,7 @@ function runtimeTopLevelStatement(statement: ts.Statement): boolean {
     );
   }
   if (ts.isExportDeclaration(statement)) {
+    if (statement.isTypeOnly) return false;
     if (
       statement.exportClause &&
       ts.isNamedExports(statement.exportClause) &&
@@ -921,7 +1005,6 @@ function runtimeTopLevelStatement(statement: ts.Statement): boolean {
     ) {
       return true;
     }
-    if (statement.isTypeOnly) return false;
     if (!statement.exportClause) return true;
     return !(
       ts.isNamedExports(statement.exportClause) &&

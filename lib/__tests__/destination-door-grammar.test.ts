@@ -299,8 +299,15 @@ const PLAN: DestinationDoorPlan = {
 
 // Reviewed SHA-256 token digests (96-bit prefixes). Never replace these with a live
 // capture: a governed source-shape change must fail until this registry is updated.
-function reviewedTrace(parts: TemplateStringsArray): readonly string[] {
-  return parts[0].trim().split("\n");
+function reviewedTrace(
+  parts: TemplateStringsArray,
+  ...values: readonly string[]
+): readonly string[] {
+  return parts
+    .map((part, index) => `${values[index - 1] ?? ""}${part}`)
+    .join("")
+    .trim()
+    .split("\n");
 }
 
 const RENDERER_1_SHAPE = {
@@ -668,7 +675,7 @@ FunctionDeclaration:trainingActivityPageHref#1=a28a1bbb67873bee8984b9ca
 FunctionDeclaration:timelineDayHref#1=4dde4266cbfaf4434d9ee000
 FunctionDeclaration:timelineRangeHref#1=872f1c18634bfaab562d8550
 FunctionDeclaration:trainingLogDayHref#1=6b7f7b1a1b625afa64ed4225
-FunctionDeclaration:dayHistoryAddHref#1=0c1deb0347827e1385250794
+FunctionDeclaration:dayHistoryAddHref#1=0c1deb0347827e1385250794${"" /* phi-scan-ok: generated SHA-256 structural digest, not PHI */}
 VariableStatement:DATA_SECTIONS#1=8648179ebce00898ae83b060
 FunctionDeclaration:dataSectionHref#1=03b8c93f759c56b4ec2d507d
 VariableStatement:INTEGRATION_DETAIL_ROUTES#1=87ceae54dcff8ef2d3a0bb0a
@@ -925,6 +932,8 @@ describe("destination-door source-shape registry (#3502)", () => {
     'import { createRequire as makeRequire } from "module";',
     'import * as moduleApi from "node:module";',
     'import moduleApi from "module";',
+    'const { createRequire } = await import("node:module");',
+    'const createRequire = (await import("module")).createRequire;',
   ])("fails loud on unsupported runtime loader: %s", (source) => {
     expect(
       new DestinationDoorCorpus([{ path: "lib/loader.ts", source }]).findings
@@ -1174,15 +1183,15 @@ describe("destination-door source-shape registry (#3502)", () => {
     ).toEqual([expect.objectContaining({ key: "renderer:door" })]);
   });
 
-  it("pins empty named import and export module-shape edges in every mode", () => {
-    const edges = [
-      'import {} from "edge-a";',
+  it("pins empty value edges and erases empty type-only edges", () => {
+    const valueEdges = ['import {} from "edge-a";', 'export {} from "edge-c";'];
+    const typeEdges = [
       'import type {} from "edge-b";',
-      'export {} from "edge-c";',
       'export type {} from "edge-d";',
     ];
     const source = [
-      ...edges,
+      ...valueEdges,
+      ...typeEdges,
       "export default function Door() { return <div />; }",
     ].join("\n");
     const plan: DestinationDoorPlan = {
@@ -1203,19 +1212,37 @@ describe("destination-door source-shape registry (#3502)", () => {
       [{ path: "components/Door.tsx", source }],
       plan
     ).registry;
-    for (const edge of edges) {
-      expect(
-        auditDestinationDoorRegistry(
-          new DestinationDoorCorpus([
-            {
-              path: "components/Door.tsx",
-              source: source.replace(`${edge}\n`, ""),
-            },
-          ]),
-          baseline
-        ),
-        edge
-      ).toEqual([expect.objectContaining({ key: "renderer:door" })]);
+    for (const edge of valueEdges) {
+      for (const mutation of [
+        source.replace(`${edge}\n`, ""),
+        source.replace(edge, edge.replace("edge-", "changed-edge-")),
+      ]) {
+        expect(
+          auditDestinationDoorRegistry(
+            new DestinationDoorCorpus([
+              { path: "components/Door.tsx", source: mutation },
+            ]),
+            baseline
+          ),
+          edge
+        ).toEqual([expect.objectContaining({ key: "renderer:door" })]);
+      }
+    }
+    for (const edge of typeEdges) {
+      for (const mutation of [
+        source.replace(`${edge}\n`, ""),
+        source.replace(edge, edge.replace("edge-", "changed-edge-")),
+      ]) {
+        expect(
+          auditDestinationDoorRegistry(
+            new DestinationDoorCorpus([
+              { path: "components/Door.tsx", source: mutation },
+            ]),
+            baseline
+          ),
+          edge
+        ).toEqual([]);
+      }
     }
   });
 
@@ -1440,6 +1467,48 @@ describe("destination-door source-shape registry (#3502)", () => {
         expect.objectContaining({ key: "non-door:icon-import" }),
       ])
     );
+  });
+
+  it.each([
+    'import * as Icons from "@tabler/icons-react"; const Next = Icons.IconChevronRight; export function Row() { return <button><Next /></button>; }',
+    'import * as Icons from "@tabler/icons-react"; const { IconChevronRight: Next } = Icons; export function Row() { return <button><Next /></button>; }',
+    'import * as Icons from "@tabler/icons-react"; const Next = Icons["IconChevronRight"]; export function Row() { return <button><Next /></button>; }',
+    'import * as Icons from "@tabler/icons-react"; const key = "IconChevronRight"; const Next = Icons[key]; export function Row() { return <button><Next /></button>; }',
+    'import * as Icons from "@tabler/icons-react"; declare const key: string; const Next = Icons[key]; export function Row() { return <button><Next /></button>; }',
+    'import Icons from "@tabler/icons-react"; const Next = Icons.IconChevronRight; export function Row() { return <button><Next /></button>; }',
+  ])(
+    "rejects IconChevronRight aliases derived from module objects: %s",
+    (source) => {
+      expect(
+        new DestinationDoorCorpus([{ path: "components/IconRow.tsx", source }])
+          .findings
+      ).toEqual(
+        expect.arrayContaining([
+          expect.objectContaining({ key: "chevron:value-use" }),
+        ])
+      );
+    }
+  );
+
+  it("keeps direct qualified IconChevronRight JSX censusable", () => {
+    const corpus = new DestinationDoorCorpus([
+      {
+        path: "components/IconRow.tsx",
+        source:
+          'import * as Icons from "@tabler/icons-react"; export function Row() { return <button><Icons.IconChevronRight /></button>; }',
+      },
+    ]);
+    expect(corpus.findings).toEqual([]);
+    expect(
+      Object.keys(
+        captureDestinationDoorRegistry(corpus, {
+          renderers: [],
+          mounts: [],
+          trustedSlots: [],
+          nonDoorReasons: {},
+        }).nonDoorChevrons
+      )
+    ).toEqual(["components/IconRow.tsx"]);
   });
 
   it("counts aliased IconChevronRight bindings", () => {
