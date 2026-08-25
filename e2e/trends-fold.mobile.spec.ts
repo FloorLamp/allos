@@ -2,6 +2,7 @@ import { test, expect } from "./fixtures";
 import { hydratedClick } from "./helpers";
 import { expandTrendsContext } from "./trends-chrome";
 import { expandTimelineFilters } from "./timeline-chrome";
+import { TAP_FLOOR_PX } from "@/lib/tap-floor-reach";
 
 // Trends "charts above the fold" on a phone (#1455). The page used to spend ~1.9
 // screens on chrome before the first chart: the always-open From/To card, a
@@ -157,6 +158,16 @@ test.describe("Overview leads with charts (B)", () => {
     // may render inline. That cap IS the change.
     const inline = digest.getByTestId("digest-dismiss");
     await expect.poll(() => inline.count()).toBeLessThanOrEqual(LEAD_CHIPS);
+
+    // The shared IconButton owns a RENDERED target. Measure one real mount rather
+    // than inferring geometry from its Tailwind classes; all mounts receive this
+    // same root box from the primitive.
+    const dismiss = inline.first(); // first-ok: every digest dismiss is one mount of the same IconButton primitive
+    await expect(dismiss).toHaveAttribute("data-icon-button", "");
+    const dismissBox = await dismiss.boundingBox();
+    expect(dismissBox).not.toBeNull();
+    expect(dismissBox!.height).toBeGreaterThanOrEqual(TAP_FLOOR_PX);
+    expect(dismissBox!.width).toBeGreaterThanOrEqual(TAP_FLOOR_PX);
 
     // The seed yields more movers than the cap, so the disclosure renders; opening
     // it reveals the rest into the same chip row.

@@ -22,6 +22,7 @@ import {
 } from "@/lib/trends-digest-series";
 import { clinicalResultDetailHref, type AppRoute } from "@/lib/hrefs";
 import TrendDigestChip from "@/components/TrendDigestChip";
+import IconButton from "@/components/IconButton";
 
 // How many ranked movers render inline before the "show all N" disclosure (#1455).
 const LEAD_CHIPS = 3;
@@ -113,15 +114,14 @@ export default async function TrendingDigest({ range }: { range: DateRange }) {
             name="dedupe_key"
             value={digestDedupeKey(item)}
           />
-          <button
+          <IconButton
             type="submit"
             data-testid="digest-dismiss"
-            aria-label={`Dismiss ${item.label} trend`}
-            title="Dismiss"
-            className="flex h-5 w-5 items-center justify-center rounded-full text-slate-500 transition hover:bg-slate-100 hover:text-slate-600 dark:text-slate-400 dark:hover:bg-ink-750 dark:hover:text-slate-300"
+            label={`Dismiss ${item.label} trend`}
+            tooltip="Dismiss"
           >
             <IconX className="h-3.5 w-3.5" stroke={2} />
-          </button>
+          </IconButton>
         </form>
       </span>
     );

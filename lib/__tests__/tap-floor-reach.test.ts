@@ -156,15 +156,6 @@ const DENSE_EDITOR =
   "dense in-form editor row: raising the control raises the row, which is a phone-idiom " +
   "decision for the surface (#3374/#3378 shape), not a height edit — the #3536 precedent";
 
-// A dismiss/secondary glyph riding inside a line of text. Its box is sized to the
-// text it sits in, so the floor cannot be met by growing it without moving the
-// line. `.tap-target` does not rescue these either: below 32px rendered the
-// overlay lands short (see TAP_TARGET_MIN_RENDERED_PX).
-const INLINE_GLYPH =
-  "inline dismiss/secondary glyph sized to the text line it rides in; below " +
-  `${TAP_TARGET_MIN_RENDERED_PX}px even \`.tap-target\` cannot reach the floor, so this needs a ` +
-  "layout answer rather than a class";
-
 // A native `<select>` or text field. #3514 ruled the floor for TARGETS and its
 // converged list is controls; whether a typed field's box is the same quantity is
 // genuinely undecided, and this register records the question rather than
@@ -173,42 +164,22 @@ const TYPED_FIELD =
   "typed field (`<select>` / text `<input>`), not an icon target: #3514 converged CONTROLS " +
   "and never said whether a field's box is the same quantity — an open question, recorded";
 
-// A bare native checkbox with no `<label>` taking the tap on its behalf. The 41
+// A bare native checkbox with no `<label>` taking the tap on its behalf. The
 // labelled boxes in the tree are licensed by that association and are not
-// registered here; these five are the ones where the 16px box IS the whole
+// registered here; these four are the ones where the 16px box IS the whole
 // target.
 const BARE_BOX =
   "bare native checkbox: no `<label>` takes the tap, so the 16px box is the whole target";
 
 const UNDER_FLOOR_REGISTER: Registered[] = [
-  // ── inline glyphs ────────────────────────────────────────────────────────
-  { file: "components/FoodGuidance.tsx", controls: 1, why: INLINE_GLYPH },
-  { file: "components/HouseholdCard.tsx", controls: 1, why: INLINE_GLYPH },
-  {
-    file: "app/(app)/trends/TrendingDigest.tsx",
-    controls: 1,
-    why: INLINE_GLYPH,
-  },
-  { file: "app/(app)/upcoming/page.tsx", controls: 1, why: INLINE_GLYPH },
-  { file: "components/FindingCard.tsx", controls: 1, why: INLINE_GLYPH },
-  { file: "components/FindingRow.tsx", controls: 1, why: INLINE_GLYPH },
-  {
-    file: "app/(app)/nutrition/UntrackHabitButton.tsx",
-    controls: 1,
-    why: INLINE_GLYPH,
-  },
-  {
-    file: "app/(app)/results/TrajectoryWatchCard.tsx",
-    controls: 1,
-    why: INLINE_GLYPH,
-  },
+  // ── dense editors ────────────────────────────────────────────────────────
   {
     file: "components/illness/SymptomLogBar.tsx",
     controls: 4,
-    why: `${INLINE_GLYPH}; and two 32px severity fields on the same bar (${TYPED_FIELD})`,
+    why:
+      "compact symptom editor: two numeric severity selectors and two 32px typed " +
+      "fields need the row/field primitive, not the icon-button primitive",
   },
-
-  // ── dense editors ────────────────────────────────────────────────────────
   {
     file: "components/activity-form/StrengthSets.tsx",
     controls: 11,
