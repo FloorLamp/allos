@@ -70,6 +70,13 @@ import ts from "typescript";
 export const TAP_FLOOR_PX = 44;
 
 /**
+ * `getBoundingClientRect()` can expose CSS subpixel arithmetic as 43.99994px
+ * for a declared 44px box. This absorbs only that floating-point noise in
+ * browser floor measurements; it is not a general layout tolerance.
+ */
+export const TAP_FLOOR_FLOAT_EPSILON_PX = 0.01;
+
+/**
  * `.tap-target`'s per-side extension, `inset: -6px` (#644). The guard asserts
  * this still matches `app/globals.css` rather than trusting the copy.
  */

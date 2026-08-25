@@ -4,6 +4,7 @@ import { fileURLToPath } from "node:url";
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
 import {
   CHIP_SM_RENDERED_PX,
+  TAP_FLOOR_FLOAT_EPSILON_PX,
   TAP_FLOOR_PX,
   TAP_TARGET_INSET_PX,
   TAP_TARGET_MIN_RENDERED_PX,
@@ -686,6 +687,16 @@ describe("the tap floor's reach (#3486 part 3 / #3514)", () => {
       "The `.btn` family's below-`sm` floor in app/globals.css is no longer " +
         `${TAP_FLOOR_PX / 16}rem (${TAP_FLOOR_PX}px). The census and the stylesheet must hold one number.`
     ).toContain(`min-block-size: ${TAP_FLOOR_PX / 16}rem`);
+  });
+
+  it("keeps browser float tolerance below a genuine layout miss", () => {
+    expect(TAP_FLOOR_FLOAT_EPSILON_PX).toBe(0.01);
+    expect(
+      TAP_FLOOR_PX - 0.001 + TAP_FLOOR_FLOAT_EPSILON_PX
+    ).toBeGreaterThanOrEqual(TAP_FLOOR_PX);
+    expect(TAP_FLOOR_PX - 0.02 + TAP_FLOOR_FLOAT_EPSILON_PX).toBeLessThan(
+      TAP_FLOOR_PX
+    );
   });
 });
 

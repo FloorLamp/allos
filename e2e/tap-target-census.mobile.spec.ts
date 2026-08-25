@@ -5,7 +5,11 @@ import { E2E_LOGIN_SHELL, SHELL_DOSE_ITEM } from "./logins/metrics";
 import { E2E_MEMBER_PASSWORD } from "./logins/shared";
 import { hydratedClick } from "./helpers";
 import { loginAs } from "./nav";
-import { TAP_FLOOR_PX, TAP_TARGET_INSET_PX } from "../lib/tap-floor-reach";
+import {
+  TAP_FLOOR_FLOAT_EPSILON_PX,
+  TAP_FLOOR_PX,
+  TAP_TARGET_INSET_PX,
+} from "../lib/tap-floor-reach";
 
 const PHONE = { width: 390, height: 844 };
 
@@ -17,9 +21,10 @@ async function expectRenderedFloor(name: string, locator: Locator) {
   ).not.toHaveClass(/(?:^|\s)tap-target(?:\s|$)/);
   const box = await locator.boundingBox();
   expect(box, name).not.toBeNull();
-  expect(box!.height, `${name} rendered height`).toBeGreaterThanOrEqual(
-    TAP_FLOOR_PX
-  );
+  expect(
+    box!.height + TAP_FLOOR_FLOAT_EPSILON_PX,
+    `${name} rendered height`
+  ).toBeGreaterThanOrEqual(TAP_FLOOR_PX);
 }
 
 async function expectOverlayFloor(
@@ -35,7 +40,7 @@ async function expectOverlayFloor(
   expect(box, name).not.toBeNull();
   expect(box!.height, `${name} rendered height`).toBe(exactRenderedPx);
   expect(
-    box!.height + 2 * TAP_TARGET_INSET_PX,
+    box!.height + 2 * TAP_TARGET_INSET_PX + TAP_FLOOR_FLOAT_EPSILON_PX,
     `${name} effective height`
   ).toBeGreaterThanOrEqual(TAP_FLOOR_PX);
 }
@@ -57,7 +62,7 @@ async function expectRenderedTargetsDisjoint(name: string, row: Locator) {
     ).not.toHaveClass(/(?:^|\s)tap-target(?:\s|$)/);
     expect(boxes[left], name).not.toBeNull();
     expect(
-      boxes[left]!.height,
+      boxes[left]!.height + TAP_FLOOR_FLOAT_EPSILON_PX,
       `${name} target ${left}`
     ).toBeGreaterThanOrEqual(TAP_FLOOR_PX);
     for (let right = left + 1; right < boxes.length; right += 1) {
