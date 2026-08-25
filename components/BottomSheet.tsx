@@ -259,19 +259,25 @@ export default function BottomSheet({
     const handle = handleRef.current;
     const content = contentRef.current;
 
-    // The responsive dialog keeps the handle node mounted but hides it from
-    // `md` up. Its zero rendered boxes are the DOM truth that the sheet gesture
-    // is unavailable there; without this check the panel-wide target below
-    // would make a centred desktop card draggable by its body.
+    // THE RENDERED HANDLE GATES THE WHOLE SHEET GESTURE, separately from where
+    // this particular touch began. The responsive dialog keeps the handle node
+    // mounted but hides it from `md` up; its zero rendered boxes are the DOM
+    // truth that no part of the centred desktop card may arm a drag. Do not fold
+    // this into an origin-is-the-handle rule: the visible handle advertises the
+    // gesture for the whole non-scrolling chrome below it — title, description
+    // and Close included.
     if (!handle || handle.getClientRects().length === 0) return false;
-    if (handle.contains(origin)) return true;
 
-    // Body ownership is decided once, from every effective scroll owner between
-    // the origin and this content boundary. Starting below any owner's top
-    // belongs to native scrolling for that touch's whole lifecycle, even if it
-    // reaches zero. When all owners start at zero the touch may pull the sheet
-    // down, and later scroll changes cannot revoke that already-claimed origin.
-    return Boolean(content && verticalScrollOwnersAtTop(origin, content));
+    // Chrome outside the content scroller owns no competing vertical scroll,
+    // so it always admits. Inside the content region, body ownership is decided
+    // once from every effective scroll owner between the origin and this
+    // boundary. Starting below any owner's top belongs to native scrolling for
+    // that touch's whole lifecycle, even if it reaches zero. When all owners
+    // start at zero the touch may pull the sheet down, and later scroll changes
+    // cannot revoke that already-claimed origin.
+    if (!content || !content.contains(origin)) return true;
+
+    return verticalScrollOwnersAtTop(origin, content);
   }, []);
 
   const { suppressMotion } = useOverlayDrag({
@@ -426,14 +432,14 @@ export default function BottomSheet({
         // locked body behind it is the whole of that fix.
         className={`relative flex w-full flex-col overflow-hidden bg-surface outline-hidden ${panelMaxWidth} ${OVERLAY_PANEL_BORDER} ${OVERLAY_PANEL_ELEVATION} ${panelShape} ${panelMotion}`}
       >
-        {/* The drag affordance, now functional (#1425): a downward drag from
-        here dismisses the sheet at any body scroll position. The body itself
-        joins only when its scroller started at the top (#3691). A centered
-        dialog is not flickable, so the
+        {/* The visible drag affordance gates the whole gesture (#1425/#3721):
+        the handle and the non-scrolling chrome below it dismiss at any body
+        scroll position. The body itself joins only when its scroller started
+        at the top (#3691). A centered dialog is not flickable, so the
         responsive presentation drops the handle from `md` up exactly where that
         stops being true (#1428) — and the recognizer goes with it, since a
-        hidden element receives no pointer events. A card centred at EVERY width
-        never draws one at all. */}
+        hidden handle has no rendered box. A card centred at EVERY width never
+        draws one at all. */}
         {!asCentered && (
           <OverlayDragHandle
             handleRef={handleRef}

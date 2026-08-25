@@ -618,13 +618,15 @@ describe("actual atomic dashboard manifests", () => {
   // number so CI goes green, with no account of what moved, is the failure this
   // table exists to make visible — a stale-high baseline silently absorbs the next
   // regression, which is exactly how the old single cap stopped meaning anything.
+  // #3723 batches additive metric totals, recovering two statements for the
+  // bodybuilder and four for the biohacker while preserving source election.
   const QUERY_BASELINE: Record<string, number> = {
-    bodybuilder: 243,
+    bodybuilder: 241,
     "marathon-runner": 240,
     household: 270,
     pregnant: 237,
     "diabetic-cgm": 248,
-    biohacker: 258,
+    biohacker: 254,
   };
 
   // A BACKSTOP, NOT THE METER. The baseline above is the meter; this is the bound

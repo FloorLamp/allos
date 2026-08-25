@@ -6,19 +6,20 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { db, today } from "@/lib/db";
 import { shiftDateStr } from "@/lib/date";
-import { setWeekMode } from "@/lib/settings";
+import { setTimezone, setWeekMode } from "@/lib/settings";
 import { cadenceWindows } from "@/lib/queries/cadence-ledger";
 import { getTrendsDigestGather } from "@/lib/queries/trends-digest";
 import {
   buildLoggingCadenceDigestSeries,
   buildNutritionDigestSeries,
-  buildPracticeDigestSeriesFromInputs,
   digestGatherBounds,
   supplementalDigestInputs,
 } from "@/lib/trends-digest-series";
 import { summarizeTrends } from "@/lib/trends-digest";
 import { practiceIdentity } from "@/lib/practice";
 import { getMacroFiberDays } from "@/lib/queries";
+import { buildPracticeDigestSeries } from "@/lib/trends-series";
+import { practiceTrendWindow } from "@/lib/trends-practices";
 
 const NOW = new Date("2026-06-17T12:00:00Z");
 
@@ -119,6 +120,18 @@ function digestInputs(profileId: number, days = 62) {
   };
 }
 
+function nutritionDigestSeries(profileId: number, days = 62) {
+  const range = { from: dateBack(profileId, days), to: today(profileId) };
+  const { gathered } = digestInputs(profileId, days);
+  return buildNutritionDigestSeries({
+    proteinDays: getMacroFiberDays(profileId, range).map((day) => ({
+      date: day.date,
+      value: day.protein,
+    })),
+    foodServings: gathered.foodServings,
+  });
+}
+
 describe("supplemental Trends digest gather (#3397)", () => {
   beforeEach(() => {
     vi.useFakeTimers({ toFake: ["Date"] });
@@ -135,15 +148,11 @@ describe("supplemental Trends digest gather (#3397)", () => {
     seedProtein(moved, [100, 100, 100, 100, 50, 50, 50, 50]);
     seedProtein(steady, [80, 80, 80, 80, 80, 80, 80, 80]);
 
-    const movedSeries = buildNutritionDigestSeries(
-      digestInputs(moved).gathered
-    );
+    const movedSeries = nutritionDigestSeries(moved);
     expect(summarizeTrends(movedSeries).map((item) => item.key)).toContain(
       "nutrition:protein"
     );
-    expect(
-      summarizeTrends(buildNutritionDigestSeries(digestInputs(steady).gathered))
-    ).toEqual([]);
+    expect(summarizeTrends(nutritionDigestSeries(steady))).toEqual([]);
   });
 
   it("detects a food-group shift only across the selected Trends range", () => {
@@ -153,9 +162,7 @@ describe("supplemental Trends digest gather (#3397)", () => {
       seedFoodDay(id, dateBack(id, back), back >= 5 ? 4 : 1);
     }
 
-    const items = summarizeTrends(
-      buildNutritionDigestSeries(digestInputs(id, 8).gathered)
-    );
+    const items = summarizeTrends(nutritionDigestSeries(id, 8));
     expect(items.map((item) => item.key)).toContain(
       "nutrition:food-group:poultry"
     );
@@ -180,21 +187,42 @@ describe("supplemental Trends digest gather (#3397)", () => {
       id,
       digestGatherBounds(range, windows, today(id))
     );
-    const gathered = supplementalDigestInputs(rows, windows, range);
-    expect(gathered.proteinDays).toEqual(
-      getMacroFiberDays(id, range).map((day) => ({
-        date: day.date,
-        value: day.protein,
-      }))
-    );
-    expect(gathered.proteinDays.map((day) => day.value)).toEqual([
+    const proteinDays = getMacroFiberDays(id, range).map((day) => ({
+      date: day.date,
+      value: day.protein,
+    }));
+    expect(proteinDays.map((day) => day.value)).toEqual([
       100, 100, 100, 100, 0, 0, 0, 0,
     ]);
     expect(
-      summarizeTrends(buildNutritionDigestSeries(gathered)).map(
-        (item) => item.key
-      )
+      summarizeTrends(
+        buildNutritionDigestSeries({
+          proteinDays,
+          foodServings: supplementalDigestInputs(rows, windows, range)
+            .foodServings,
+        })
+      ).map((item) => item.key)
     ).toContain("nutrition:protein");
+  });
+
+  it("uses the Nutrition chart's tracked-over-logged protein precedence", () => {
+    const id = profile("digest mixed protein sources");
+    const date = dateBack(id, 2);
+    db.prepare(
+      `INSERT INTO protein_daily_totals (profile_id, date, grams)
+       VALUES (?, ?, 45)`
+    ).run(id, date);
+    seedTrackedMetric(id, "protein_g", date, 120);
+    const range = { from: dateBack(id, 7), to: today(id) };
+
+    const proteinDays = getMacroFiberDays(id, range).map((day) => ({
+      date: day.date,
+      value: day.protein,
+    }));
+    expect(proteinDays).toEqual([{ date, value: 120 }]);
+    expect(
+      buildNutritionDigestSeries({ proteinDays, foodServings: [] })[0].points
+    ).toEqual(proteinDays);
   });
 
   it("keeps the tracked-practice cadence behavior on the batched path", () => {
@@ -221,9 +249,10 @@ describe("supplemental Trends digest gather (#3397)", () => {
       }
     });
 
-    const input = digestInputs(id);
-    const [series] = buildPracticeDigestSeriesFromInputs(
-      input.gathered.practiceTargets
+    const [series] = buildPracticeDigestSeries(
+      id,
+      { from: dateBack(id, 62), to: today(id) },
+      today(id)
     );
     expect(series).toMatchObject({
       key: `wellness:${practiceIdentity(name)}`,
@@ -233,6 +262,142 @@ describe("supplemental Trends digest gather (#3397)", () => {
     expect(summarizeTrends([series]).map((item) => item.key)).toEqual([
       series.key,
     ]);
+  });
+
+  it("keeps a mid-window target quiet with fewer than four covered weeks", () => {
+    const id = profile("digest practice short lifetime");
+    const name = "Digest short breathwork";
+    const range = { from: dateBack(id, 62), to: today(id) };
+    const practiceWindow = practiceTrendWindow(range, today(id));
+    const windows = cadenceWindows(id, {
+      weeks: practiceWindow.weeks,
+      includeCurrent: false,
+      asOf: practiceWindow.asOf,
+    });
+    const covered = windows.slice(-3);
+    db.prepare(
+      `INSERT INTO frequency_targets
+         (profile_id, scope_kind, scope_value, scope_identity, per_week,
+          created_at)
+       VALUES (?, 'practice', ?, ?, 2, ?)`
+    ).run(id, name, practiceIdentity(name), `${covered[0].start} 08:00:00`);
+    covered.forEach((window, index) => {
+      for (let within = 0; within < (index === 0 ? 1 : 4); within++) {
+        db.prepare(
+          "INSERT INTO practice_logs (profile_id, practice, date) VALUES (?, ?, ?)"
+        ).run(id, name, shiftDateStr(window.start, within));
+      }
+    });
+
+    expect(buildPracticeDigestSeries(id, range, today(id))).toEqual([]);
+  });
+
+  it("summarizes a mid-window target across its four covered weeks", () => {
+    const id = profile("digest practice covered lifetime");
+    const name = "Digest covered breathwork";
+    const range = { from: dateBack(id, 62), to: today(id) };
+    const practiceWindow = practiceTrendWindow(range, today(id));
+    const windows = cadenceWindows(id, {
+      weeks: practiceWindow.weeks,
+      includeCurrent: false,
+      asOf: practiceWindow.asOf,
+    });
+    const covered = windows.slice(-4);
+    db.prepare(
+      `INSERT INTO frequency_targets
+         (profile_id, scope_kind, scope_value, scope_identity, per_week,
+          created_at)
+       VALUES (?, 'practice', ?, ?, 2, ?)`
+    ).run(id, name, practiceIdentity(name), `${covered[0].start} 08:00:00`);
+    covered.forEach((window, index) => {
+      for (let within = 0; within < (index < 2 ? 1 : 4); within++) {
+        db.prepare(
+          "INSERT INTO practice_logs (profile_id, practice, date) VALUES (?, ?, ?)"
+        ).run(id, name, shiftDateStr(window.start, within));
+      }
+    });
+
+    const [series] = buildPracticeDigestSeries(id, range, today(id));
+    expect(series.points).toEqual(
+      covered.map((week, index) => ({
+        date: week.start,
+        value: index < 2 ? 1 : 4,
+      }))
+    );
+    expect(summarizeTrends([series]).map((item) => item.key)).toEqual([
+      series.key,
+    ]);
+  });
+
+  it("uses the live target after an edit without changing its canonical history", () => {
+    const id = profile("digest practice edited");
+    const name = "Digest stretching";
+    const range = { from: dateBack(id, 62), to: today(id) };
+    const practiceWindow = practiceTrendWindow(range, today(id));
+    const windows = cadenceWindows(id, {
+      weeks: practiceWindow.weeks,
+      includeCurrent: false,
+      asOf: practiceWindow.asOf,
+    });
+    const targetId = Number(
+      db
+        .prepare(
+          `INSERT INTO frequency_targets
+             (profile_id, scope_kind, scope_value, scope_identity, per_week,
+              created_at)
+           VALUES (?, 'practice', ?, ?, 2, ?)`
+        )
+        .run(
+          id,
+          name,
+          practiceIdentity(name),
+          `${shiftDateStr(windows[0].start, -1)} 08:00:00`
+        ).lastInsertRowid
+    );
+    windows.forEach((window, index) => {
+      for (let within = 0; within < (index < 4 ? 1 : 4); within++) {
+        db.prepare(
+          "INSERT INTO practice_logs (profile_id, practice, date) VALUES (?, ?, ?)"
+        ).run(id, name, shiftDateStr(window.start, within));
+      }
+    });
+    const before = buildPracticeDigestSeries(id, range, today(id));
+    expect(before).toHaveLength(1);
+
+    db.prepare(
+      "UPDATE frequency_targets SET per_week = 4, per_week_max = 6 WHERE id = ? AND profile_id = ?"
+    ).run(targetId, id);
+
+    expect(buildPracticeDigestSeries(id, range, today(id))).toEqual(before);
+  });
+
+  it("interprets target creation on the profile-local day", () => {
+    const id = profile("digest practice local day");
+    setTimezone(id, "America/New_York");
+    const name = "Digest meditation";
+    const range = { from: dateBack(id, 27), to: today(id) };
+    const practiceWindow = practiceTrendWindow(range, today(id));
+    const windows = cadenceWindows(id, {
+      weeks: practiceWindow.weeks,
+      includeCurrent: false,
+      asOf: practiceWindow.asOf,
+    });
+    const utcDayAfterStart = shiftDateStr(windows[0].start, 1);
+    db.prepare(
+      `INSERT INTO frequency_targets
+         (profile_id, scope_kind, scope_value, scope_identity, per_week,
+          created_at)
+       VALUES (?, 'practice', ?, ?, 2, ?)`
+    ).run(id, name, practiceIdentity(name), `${utcDayAfterStart}T03:00:00Z`);
+    windows.forEach((window, index) => {
+      for (let within = 0; within < (index < 2 ? 1 : 4); within++) {
+        db.prepare(
+          "INSERT INTO practice_logs (profile_id, practice, date) VALUES (?, ?, ?)"
+        ).run(id, name, shiftDateStr(window.start, within));
+      }
+    });
+
+    expect(buildPracticeDigestSeries(id, range, today(id))).toHaveLength(1);
   });
 
   it("surfaces material food/dose/weighing cadence and not a steady logger", () => {
@@ -362,14 +527,10 @@ describe("supplemental Trends digest gather (#3397)", () => {
     }) as typeof db.prepare);
 
     const rows = getTrendsDigestGather(own, {
-      practiceFrom: dateBack(own, 90),
-      proteinFrom: dateBack(own, 90),
-      foodFrom: dateBack(own, 90),
-      doseFrom: dateBack(own, 90),
+      from: dateBack(own, 90),
       to: today(own),
     });
     expect(executions).toBe(1);
-    expect(rows.filter((row) => row.kind === "protein-logged")).toHaveLength(2);
     expect(rows.some((row) => row.kind === "food-serving")).toBe(false);
     expect(rows.some((row) => row.kind === "weight-log")).toBe(false);
   });
