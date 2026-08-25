@@ -47,6 +47,17 @@ import {
 // control the app has already re-rendered, and always goes through.
 export type DoseVariant = "circle" | "pill";
 
+// The tri-state owns the space its two targets consume. A pill renders at 32px
+// and `.tap-target` reaches 6px beyond every edge on a coarse pointer, so 6px of
+// outer padding contains that reach and a 12px gap lets the adjacent targets meet
+// without overlapping. The equal negative margin preserves the visible pills' flow
+// position; a fine-pointer desktop keeps the original compact layout. Circles
+// already render at 44px and need no overlay reserve.
+const DOSE_STATUS_GEOMETRY: Record<DoseVariant, string> = {
+  circle: "gap-3",
+  pill: "-m-1.5 gap-3 p-1.5 sm:pointer-fine:m-0 sm:pointer-fine:gap-1.5 sm:pointer-fine:p-0",
+};
+
 export default function DoseStatusControl({
   doseId,
   taken,
@@ -330,12 +341,7 @@ export default function DoseStatusControl({
 
   return (
     <div
-      // Wider gap between the two circle targets (#644) so adjacent taps —
-      // taken vs. skipped, consequential for a medication — don't collide on a
-      // phone. The pill variant keeps its tighter spacing.
-      className={`flex shrink-0 items-center ${
-        variant === "circle" ? "gap-3" : "gap-1.5"
-      }`}
+      className={`flex shrink-0 items-center ${DOSE_STATUS_GEOMETRY[variant]}`}
       data-testid="dose-status"
       data-variant={variant}
       data-reduced-motion={reduced ? "true" : "false"}
@@ -347,7 +353,7 @@ export default function DoseStatusControl({
         onClick={() => apply(isTaken ? "clear" : "taken")}
         disabled={busy}
         data-settling={settling ? "true" : "false"}
-        className={`${takeClass}${settling ? ` ${settlePlan.className}` : ""}`}
+        className={`${takeClass}${settling ? " motion-settle" : ""}`}
         aria-pressed={isTaken}
         aria-label={isTaken ? "Mark not taken" : "Mark taken"}
         title={isTaken ? "Taken — click to undo" : "Mark taken"}
