@@ -89,7 +89,7 @@ smuggle the row's travel out of the band too, and the test fails that.
 - `lib/micro-motion.ts` — the pure half. Durations, the ease curve, the `MICRO_MOTIONS`
   declaration table, `microMotionPlan(kind, reduceMotion)` (which folds the preference
   into a duration and a class name, returning `0` and `""` under the preference).
-- `app/globals.css`, `SECTION: Micro-motion` — the custom properties and the two
+- `app/globals.css`, `SECTION: Micro-motion` — the custom properties and the declared
   `.motion-*` classes, plus a `prefers-reduced-motion: reduce` block that neutralizes
   them. Belt and braces: the planner already returns no class, but a stylesheet that
   only works because its JS caller remembered to check is one refactor from animating
