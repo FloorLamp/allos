@@ -1,7 +1,7 @@
 "use client";
 
 import { useState } from "react";
-import Link from "next/link";
+import DestinationLink from "@/components/DestinationLink";
 import ModalShell from "@/components/ModalShell";
 import FitnessTestTimer from "@/components/activity-form/FitnessTestTimer";
 import FitnessDomainBars from "@/components/FitnessDomainBars";
@@ -562,13 +562,13 @@ function EntryModal({
             naming a page. */}
         {def.store.kind === "vital" && tile.measured && (
           <p className="mb-2 text-xs">
-            <Link
+            <DestinationLink
               href={clinicalResultDetailHref(def.store.canonical)}
               className="text-link"
               data-testid={`fitness-history-${def.key}`}
             >
-              View history &amp; percentile →
-            </Link>
+              View history &amp; percentile
+            </DestinationLink>
           </p>
         )}
         {tile.roughGuide && tile.selfNormCitation && (

@@ -1,5 +1,4 @@
-import Link from "next/link";
-import { IconChevronRight } from "@tabler/icons-react";
+import DestinationLink from "@/components/DestinationLink";
 import {
   adherenceSummary,
   adherenceSummaryVisibility,
@@ -114,7 +113,7 @@ export function SharedSupplyChip({
         ? `out of supply${across}`
         : `≈${pool.daysLeft} day${pool.daysLeft === 1 ? "" : "s"}${across}`;
   return (
-    <Link
+    <DestinationLink
       href={SUPPLIES_HREF}
       data-testid="shared-supply-chip"
       className={`inline-flex items-center gap-0.5 whitespace-nowrap text-xs font-medium underline-offset-2 hover:underline ${
@@ -131,12 +130,7 @@ export function SharedSupplyChip({
         {product ? ` · ${product}` : ""}
         {days ? ` · ${days}` : ""}
       </span>
-      <IconChevronRight
-        className="h-3.5 w-3.5"
-        stroke={1.75}
-        aria-hidden="true"
-      />
-    </Link>
+    </DestinationLink>
   );
 }
 

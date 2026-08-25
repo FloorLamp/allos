@@ -1,5 +1,4 @@
-import Link from "next/link";
-import { IconArrowRight } from "@tabler/icons-react";
+import DestinationLink from "@/components/DestinationLink";
 import SyncTimestamp from "./integrations/SyncTimestamp";
 
 // The link from a ONE-OFF archive importer's page (Fitbit Takeout) to its entries in
@@ -21,7 +20,7 @@ export default function IntegrationSyncHistoryLink({
   lastSuccessAt: string | null;
 }) {
   return (
-    <Link
+    <DestinationLink
       href="/data?section=review"
       data-testid="sync-history-link"
       // NOT A `.card` (#3466 class B). Its only host — the Fitbit Takeout page's
@@ -51,7 +50,6 @@ export default function IntegrationSyncHistoryLink({
           )}
         </p>
       </div>
-      <IconArrowRight className="h-5 w-5 shrink-0 text-brand-600 dark:text-brand-400" />
-    </Link>
+    </DestinationLink>
   );
 }

@@ -1,4 +1,4 @@
-import Link from "next/link";
+import DestinationLink from "@/components/DestinationLink";
 import type { SportStat } from "@/lib/queries";
 import { formatMinutes } from "@/lib/duration";
 import SessionHighlights from "@/components/SessionHighlights";
@@ -32,12 +32,12 @@ export default function SportDepthSuite({
         <h3 className="font-semibold text-slate-800 dark:text-slate-100">
           Sport
         </h3>
-        <Link
+        <DestinationLink
           href="/training?tab=analyze&kind=sport"
           className="text-xs text-link"
         >
-          Analyze →
-        </Link>
+          Analyze
+        </DestinationLink>
       </div>
       {sports.length === 0 && cadence.length === 0 ? (
         <p className="mt-3 text-sm text-slate-500 dark:text-slate-400">

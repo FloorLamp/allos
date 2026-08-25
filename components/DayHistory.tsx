@@ -2,6 +2,7 @@
 
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import Link from "next/link";
+import DestinationLink from "@/components/DestinationLink";
 import { chartActivityRamp, chartObservationRamp } from "@/lib/chart-colors";
 import {
   formatLongDate,
@@ -758,8 +759,8 @@ export default function DayHistory({
         : timelineDayHref(date);
   const selectedDayLinkLabel =
     !week && domain === "workout" && selectedDayTotal > 0
-      ? "Training log →"
-      : "Timeline →";
+      ? "Training log"
+      : "Timeline";
   const occurrenceHref = (date: string) =>
     week
       ? bucketFeedHref(date)
@@ -1261,16 +1262,16 @@ export default function DayHistory({
                     the entry on a day the reader never picked — so at week
                     grain the offer is withheld rather than guessed (#2413). */}
                 {addHref && !week ? (
-                  <Link
+                  <DestinationLink
                     href={dayHistoryAddHref(addHref, domain, selectedDay)}
                     data-testid="day-history-add-link"
                     className="text-xs font-medium text-brand-700 hover:underline dark:text-brand-400"
                   >
-                    Log for this day →
-                  </Link>
+                    Log for this day
+                  </DestinationLink>
                 ) : null}
                 {spec.dayLink ? (
-                  <Link
+                  <DestinationLink
                     href={spec.dayLink.href(
                       selectedDay,
                       week
@@ -1281,15 +1282,15 @@ export default function DayHistory({
                     data-testid="day-history-day-link"
                     className="text-xs font-medium text-brand-700 hover:underline dark:text-brand-400"
                   >
-                    {spec.dayLink.label} →
-                  </Link>
+                    {spec.dayLink.label}
+                  </DestinationLink>
                 ) : null}
-                <Link
+                <DestinationLink
                   href={selectedDayHref(selectedDay)}
                   className="text-xs font-medium text-brand-700 hover:underline dark:text-brand-400"
                 >
                   {selectedDayLinkLabel}
-                </Link>
+                </DestinationLink>
                 <button
                   type="button"
                   aria-label={`Close ${bw.one} details`}

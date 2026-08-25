@@ -366,7 +366,7 @@ test("selecting a week opens the WEEK panel, and a partial week says how far it 
   await expect(panel.getByTestId("day-history-add-link")).toHaveCount(0);
 
   // The Timeline link spans the week rather than pointing at one day.
-  const timeline = panel.getByRole("link", { name: "Timeline →" });
+  const timeline = panel.getByRole("link", { name: "Timeline" });
   const href = await timeline.getAttribute("href");
   const match = href!.match(/from=(\d{4}-\d{2}-\d{2})&to=(\d{4}-\d{2}-\d{2})/);
   expect(match).not.toBeNull();

@@ -1,4 +1,4 @@
-import Link from "next/link";
+import DestinationLink from "@/components/DestinationLink";
 import type { CardioZoneCoverage } from "@/lib/queries";
 import type { SessionOverviewRollup } from "@/lib/session-overview";
 import type { FitnessPercentile } from "@/lib/fitness-norms";
@@ -33,12 +33,12 @@ export default function EnduranceDepthSuite({
         <h3 className="font-semibold text-slate-800 dark:text-slate-100">
           Endurance
         </h3>
-        <Link
+        <DestinationLink
           href="/training?tab=analyze&kind=cardio"
           className="text-xs text-link"
         >
-          Analyze →
-        </Link>
+          Analyze
+        </DestinationLink>
       </div>
       {!hasHistory ? (
         <p className="mt-3 text-sm text-slate-500 dark:text-slate-400">
@@ -106,12 +106,12 @@ export default function EnduranceDepthSuite({
               <p className="mt-2 text-lg font-semibold text-slate-800 dark:text-slate-100">
                 {vo2 ? formatPercentile(vo2) : "No current VO₂ result"}
               </p>
-              <Link
+              <DestinationLink
                 href="/training/fitness-check"
                 className="text-xs text-link"
               >
-                Fitness check →
-              </Link>
+                Fitness check
+              </DestinationLink>
             </div>
           )}
         </div>

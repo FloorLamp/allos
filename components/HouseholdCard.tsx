@@ -1,5 +1,4 @@
 import {
-  IconChevronRight,
   IconTrendingDown,
   IconTrendingUp,
   IconMinus,
@@ -12,7 +11,8 @@ import {
   IconChecklist,
   IconX,
 } from "@tabler/icons-react";
-import Link from "next/link";
+import DestinationIndicator from "@/components/DestinationIndicator";
+import DestinationLink from "@/components/DestinationLink";
 import Avatar from "@/components/Avatar";
 import {
   PILLAR_TONE_CLASS,
@@ -410,13 +410,13 @@ function SetupCheckRow({
           // People & access (the grant UI `setGrants` can finally act on since #2345) or
           // Settings → Notifications. No profile switch is involved, so it is an
           // ordinary link.
-          <Link
+          <DestinationLink
             href={check.cta.href}
             data-testid="household-setup-cta"
             className="mt-1 inline-block text-xs text-link"
           >
-            {check.cta.label} →
-          </Link>
+            {check.cta.label}
+          </DestinationLink>
         ) : (
           // A route about THIS MEMBER's own data. It needs the profile switch first
           // (#879), and the destination is re-derived server-side from the check id —
@@ -427,9 +427,10 @@ function SetupCheckRow({
             <button
               type="submit"
               data-testid="household-setup-cta"
-              className="text-xs text-link focus:outline-hidden focus-visible:ring-2 focus-visible:ring-brand-500"
+              className="inline-flex items-center gap-1 text-xs text-link focus:outline-hidden focus-visible:ring-2 focus-visible:ring-brand-500"
             >
-              {check.cta.label} →
+              {check.cta.label}
+              <DestinationIndicator />
             </button>
           </form>
         ))}
@@ -524,11 +525,7 @@ export default function HouseholdCard({ data }: { data: HouseholdCardData }) {
           <span className="min-w-0 flex-1 truncate text-base font-semibold text-slate-900 dark:text-slate-100">
             {profile.name}
           </span>
-          <IconChevronRight
-            className="h-5 w-5 shrink-0 text-slate-300 dark:text-slate-600"
-            stroke={1.75}
-            aria-hidden="true"
-          />
+          <DestinationIndicator />
         </button>
       </form>
 

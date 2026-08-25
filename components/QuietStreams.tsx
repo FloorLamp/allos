@@ -1,5 +1,5 @@
-import Link from "next/link";
 import { IconDeviceWatchOff } from "@tabler/icons-react";
+import DestinationLink from "@/components/DestinationLink";
 import type { QuietStreamRow } from "@/lib/queries/continuous-streams";
 
 // Data → Review: a source that is syncing green while one of its continuous data
@@ -53,12 +53,12 @@ export default function QuietStreams({ rows }: { rows: QuietStreamRow[] }) {
               </p>
             )}
             {row.href && (
-              <Link
+              <DestinationLink
                 href={row.href}
                 className="mt-2 inline-block text-sm text-link"
               >
-                {row.sourceName} sync history →
-              </Link>
+                {row.sourceName} sync history
+              </DestinationLink>
             )}
           </li>
         ))}

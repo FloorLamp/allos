@@ -110,11 +110,15 @@ describe("the setup block's links join text-link (#3487 item 2 / #2719)", () => 
 });
 
 describe("one arrow glyph for the doors in one row (#3487 item 5)", () => {
-  it("the History door draws the chevron the cabinet door draws", () => {
+  it("both doors delegate their chevron to DestinationLink", () => {
     const page = read(PAGE);
     const door = read("components/intake/SharedSuppliesLink.tsx");
-    expect(door).toContain("IconChevronRight");
-    expect(page).toContain("IconChevronRight");
+    const primitive = read("components/DestinationLink.tsx");
+    const indicator = read("components/DestinationIndicator.tsx");
+    expect(door).toContain("DestinationLink");
+    expect(page).toContain("DestinationLink");
+    expect(primitive).toContain("DestinationIndicator");
+    expect(indicator).toContain("IconChevronRight");
     // The literal arrow this row used to end on is gone.
     expect(page).not.toContain("History →");
   });

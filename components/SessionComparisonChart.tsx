@@ -2,7 +2,7 @@
 
 import { useState } from "react";
 import Link from "next/link";
-import { IconChevronRight } from "@tabler/icons-react";
+import DestinationIndicator from "@/components/DestinationIndicator";
 import { useFormatPrefs } from "@/components/FormatPrefsProvider";
 import { CYCLING_METRICS } from "@/lib/cycling-metrics";
 import { roundChartValue } from "@/lib/chart-format";
@@ -172,12 +172,7 @@ export default function SessionComparisonChart({
                     selected.decimals,
                     selected.unit
                   )}
-                  {!point.current && (
-                    <IconChevronRight
-                      className="h-3.5 w-3.5 text-slate-400"
-                      aria-hidden="true"
-                    />
-                  )}
+                  {!point.current && <DestinationIndicator />}
                 </span>
               </div>
             );

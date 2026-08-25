@@ -1,8 +1,8 @@
 "use client";
 
-import Link from "next/link";
 import { usePathname } from "next/navigation";
-import { IconArrowRight, IconSparkles } from "@tabler/icons-react";
+import { IconSparkles } from "@tabler/icons-react";
+import DestinationLink from "@/components/DestinationLink";
 
 export default function OnboardingReturnBanner({ show }: { show: boolean }) {
   const pathname = usePathname();
@@ -17,13 +17,12 @@ export default function OnboardingReturnBanner({ show }: { show: boolean }) {
         <IconSparkles className="h-4 w-4 shrink-0" aria-hidden="true" />
         Your setup is saved. Return when you’re ready to continue.
       </span>
-      <Link
+      <DestinationLink
         href="/onboarding"
         className="inline-flex items-center gap-1 font-medium text-brand-700 hover:underline dark:text-brand-300"
       >
         Continue setup
-        <IconArrowRight className="h-4 w-4" aria-hidden="true" />
-      </Link>
+      </DestinationLink>
     </div>
   );
 }

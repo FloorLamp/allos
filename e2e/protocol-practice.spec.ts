@@ -201,7 +201,7 @@ test("wellness practice: range target + one-tap logging (#1259)", async ({
     "/wellness"
   );
   await expect(card.getByTestId("protocol-wellness-link")).toHaveText(
-    "View practice →"
+    "View practice"
   );
   const adherence = card.getByTestId("protocol-adherence");
   // Starts at zero against the 3–5×/week target, labeled by the practice name.

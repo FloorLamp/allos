@@ -1,5 +1,6 @@
 import Link from "next/link";
 import Avatar, { type AvatarProfile } from "@/components/Avatar";
+import DestinationLink from "@/components/DestinationLink";
 import { EPISODES_HREF, episodeHref } from "@/lib/hrefs";
 import type { HouseholdEpisodeContext } from "@/lib/household-history";
 import { formatDateShape, type DisplayFormatPrefs } from "@/lib/format-date";
@@ -90,13 +91,13 @@ export default function HouseholdEpisodeContextCard({
           );
         })}
       </ul>
-      <Link
+      <DestinationLink
         href={EPISODES_HREF}
         className="inline-block text-sm font-medium text-sky-700 hover:underline dark:text-sky-300"
         data-testid="episode-household-context-link"
       >
-        View household illness episodes →
-      </Link>
+        View household illness episodes
+      </DestinationLink>
     </section>
   );
 }

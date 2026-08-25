@@ -1,5 +1,6 @@
 import Link from "next/link";
 import type { ReactNode } from "react";
+import { StandingDestinationLink } from "@/components/DestinationLink";
 import type { AppRoute } from "@/lib/hrefs";
 import { trackedPageFor } from "@/lib/recent-pages";
 import StandingSparkline, {
@@ -181,7 +182,7 @@ export default function DashboardStandingCluster({
                                 )}
                                 {presentation.actionLabel && (
                                   <span className="text-xs font-medium text-brand-700 dark:text-brand-400">
-                                    {presentation.actionLabel} →
+                                    {presentation.actionLabel}
                                   </span>
                                 )}
                               </>
@@ -217,22 +218,22 @@ export default function DashboardStandingCluster({
                                 data-engagement={engagement}
                                 data-presence={presentation.presence}
                               >
-                                {presentation.href ? (
+                                {presentation.href && door ? (
+                                  <StandingDestinationLink
+                                    href={presentation.href}
+                                    title={presentation.hoverNote}
+                                    className={`standing-row ${className} hover:text-brand-700 dark:hover:text-brand-400`}
+                                    destinationLabel={door}
+                                  >
+                                    {content}
+                                  </StandingDestinationLink>
+                                ) : presentation.href ? (
                                   <Link
                                     href={presentation.href}
                                     title={presentation.hoverNote}
                                     className={`standing-row ${className} hover:text-brand-700 dark:hover:text-brand-400`}
                                   >
                                     {content}
-                                    {door && (
-                                      <span
-                                        data-testid="standing-door"
-                                        className="standing-door pointer-events-none absolute inset-y-0 right-0 flex items-center bg-surface pl-3 text-xs font-medium whitespace-nowrap text-brand-700 dark:text-brand-400"
-                                        aria-hidden="true"
-                                      >
-                                        {door} ›
-                                      </span>
-                                    )}
                                   </Link>
                                 ) : (
                                   <div
