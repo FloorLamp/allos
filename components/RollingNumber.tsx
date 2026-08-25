@@ -4,7 +4,9 @@ import { useEffect, useState } from "react";
 import { microMotionPlan } from "@/lib/micro-motion";
 import { usePrefersReducedMotion } from "./usePrefersReducedMotion";
 
-// A day counter that ROLLS when its quantity changes (#2654, motion 3).
+// A day counter that PULSES when its quantity changes (#2654, motion 3).
+// `RollingNumber` and `data-rolling` are legacy public names retained for caller and
+// browser-test stability; they describe the active receipt, not a digit tween.
 //
 // A quantity changing reads differently from a value being replaced, and that
 // difference IS the information: after a one-tap log the authoritative new number
@@ -14,7 +16,7 @@ import { usePrefersReducedMotion } from "./usePrefersReducedMotion";
 // The contract, in the order it matters:
 //
 //  * THE FINAL VALUE IS ALWAYS THE TRUTH IN THE DOM. `value` renders verbatim on the
-//    server, on the first client paint, and on every mount. The roll only ever plays
+//    server, on the first client paint, and on every change. The pulse only ever plays
 //    on a CHANGE, so a screen reader, a no-JS reader and an exact-text assertion all
 //    read the real number. The visual receipt may wait for a paint; truth never does.
 //  * Reduced motion is the designed state, not a fallback: the new number is simply

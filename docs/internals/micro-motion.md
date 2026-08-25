@@ -85,16 +85,16 @@ smuggle the row's travel out of the band too, and the test fails that.
 
 - `lib/micro-motion.ts` — the pure half. Durations, the ease curve, the `MICRO_MOTIONS`
   declaration table, `microMotionPlan(kind, reduceMotion)` (which folds the preference
-  into a duration and a class name, returning `0` and `""` under the preference), and
-  `countRollValue()`, the roll's eased curve.
+  into a duration and a class name, returning `0` and `""` under the preference).
 - `app/globals.css`, `SECTION: Micro-motion` — the custom properties and the two
   `.motion-*` classes, plus a `prefers-reduced-motion: reduce` block that neutralizes
   them. Belt and braces: the planner already returns no class, but a stylesheet that
   only works because its JS caller remembered to check is one refactor from animating
   someone who asked it not to.
-- `components/RollingNumber.tsx` — the one `requestAnimationFrame` case.
-- `app/(app)/nutrition/FoodLogBar.tsx` — serving-chip settle and serving-count roll.
-- `components/quick-entry/QuickStoolForm.tsx` — type-chip settle and today's-count roll.
+- `components/RollingNumber.tsx` — renders authoritative digits immediately; its one
+  `requestAnimationFrame` loop only retires the bounded scale-pulse receipt.
+- `app/(app)/nutrition/FoodLogBar.tsx` — serving-chip settle and serving-count pulse.
+- `components/quick-entry/QuickStoolForm.tsx` — type-chip settle and today's-count pulse.
 - `app/(app)/timeline/TimelineScrubber.tsx` — the jump rail's bubble, beating once per
   month boundary a drag crosses.
 - `components/SnoozeDismissMenu.tsx` — the dismissal's travel, started on the tap.
@@ -152,11 +152,16 @@ and the quick stool today's count.** A quantity changing reads differently from 
 difference is the information. Contract:
 
 - the **final value is always the truth in the DOM**. It renders verbatim on the server,
-  on the first client paint, and on every mount. The roll plays only on a **change**, so a
+  on the first client paint, and on every change. The scale pulse is only a receipt, so a
   screen reader, a no-JS reader and an exact-text assertion all read the real number.
 - **`tabular-nums` is applied by the component**, not by the caller: digits that change
   width relayout the row around them, which is the one thing this motion must not do.
-- it never plays on mount and only plays on a change.
+- it never pulses on mount and only pulses on a change.
+
+`RollingNumber`, `data-rolling`, and the existing `rolling-count-*` test IDs are
+legacy public names retained for caller and browser-test stability. “Rolling” in those
+identifiers now means that the scale-pulse receipt is active; the digits do not roll or
+tween, and no animation frame controls their text.
 
 **`slide` + `fold` — the dismissal and the fold that catches it, on `/upcoming`.** One
 gesture, two motions, two components, because the two ends of it are on opposite sides

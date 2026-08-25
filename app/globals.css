@@ -1360,10 +1360,10 @@
    that answers for a gesture rather than for a write).
 
    The numbers live in these custom properties and nowhere else. lib/micro-motion.ts
-   mirrors them (its MICRO_MOTIONS table hands the same number to the counter's
-   requestAnimationFrame tween) and lib/__tests__/micro-motion.test.ts pins the two
-   copies together, fails a duration outside the 150–300 ms band, and fails any rule
-   in this section that loops.
+   mirrors them (its MICRO_MOTIONS table gives the counter pulse the same bounded
+   receipt duration) and lib/__tests__/micro-motion.test.ts pins the two copies
+   together, fails a duration outside the 150–300 ms band, and fails any rule in this
+   section that loops.
 
    ONE duration here is outside that band, by owner ruling of 2026-08-13 recorded on
    #2654: `--motion-fold`, the fold line's pulse, at 500 ms. Its reasoning lives with
@@ -1418,9 +1418,9 @@
   animation: micro-settle var(--motion-settle) var(--motion-ease);
 }
 
-/* The scale pulse that rides the counter roll. The DIGITS are tweened in JS
-   (components/RollingNumber.tsx over lib/micro-motion.ts's countRollValue); this is
-   the one subtle beat that says the quantity moved rather than being rewritten. */
+/* The scale pulse that acknowledges a changed count. The authoritative new digits
+   render immediately; this bounded receipt is the one subtle beat that says the
+   quantity moved rather than being silently rewritten. */
 @keyframes micro-count {
   0% {
     transform: scale(1);
