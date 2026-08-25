@@ -37,12 +37,9 @@ const ARROW_HIT =
 // with no dead pixels between them — a tap that lands nowhere reads as a broken day
 // just as a tap that lands next door does.
 //
-// THE HEIGHT REACHES THE FLOOR AND THE WIDTH CANNOT, and that is arithmetic rather
-// than a compromise: seven columns need 7 × 44 = 308px and the drawer is 288px wide.
-// The breakout below already spends the drawer's gutter and this card's padding to buy
-// the columns 40.9px, and there is nothing left to spend. Recorded rather than forced —
-// the #3536 precedent — and it is why e2e/mobile-ui-polish.spec.ts holds the day cell
-// to 44 in height and 40 in width, from the same measurement.
+// Seven columns need 7 × 44 = 308px. The phone drawer now reserves that width (#3536),
+// and the full-bleed band below spends its gutter so every column reaches the same 44px
+// rendered floor as its height. The desktop sidebar keeps the bare 28px circles.
 const DAY_HIT =
   "flex h-11 w-full items-center justify-center md:mx-auto md:h-7 md:w-7";
 // The circle a reader sees. Unchanged at every width.
@@ -111,18 +108,19 @@ export default function TrainingLogCalendar({
     //
     // This grid is a PHONE surface: components/MobileNav.tsx renders the same
     // <SidebarContent> inside the nav drawer, where its 28px day links sat ~35%
-    // under the 40px tap floor (#644). Seven columns need 280px of grid to give
-    // each day a 40px-wide hit area, and the drawer is only 288px wide — measured,
-    // with its own 16px side padding and this card's `p-3`, the columns were 32.7px.
-    // There is no arrangement of padding INSIDE the card that reaches the floor, so
-    // below `md` the card gives up the drawer's gutter (`-mx-4` cancels exactly the
-    // `pl-[max(1rem,…)] pr-4` the drawer sets) and its own horizontal padding,
-    // making the columns 40.9px. The side borders and the corner radius go with it,
+    // under the old 40px tap floor (#644). Seven columns need 308px of grid to give
+    // each day a 44px-wide hit area. #3536 raised the drawer to a 320px preferred
+    // width that grows with any left safe-area inset, so this full-bleed band can
+    // give all seven columns at least 44px. Below `md` the card gives up the
+    // drawer's right gutter and only the part of its left gutter outside the
+    // safe-area inset. Its left edge therefore lands exactly on
+    // `env(safe-area-inset-left)`, never behind it, while the drawer width pays
+    // for all 308px of grid. The side borders and the corner radius go with it,
     // so it reads as a band rather than a card jammed against the drawer's edges.
     //
     // From `md` up every one of those is put back and the desktop sidebar renders
     // byte-identically to before: same card, same 28px days, same density.
-    <div className="-mx-4 border-y border-black/10 py-3 md:mx-0 md:rounded-lg md:border-x md:px-3 dark:border-white/10">
+    <div className="-mr-4 ml-[calc(env(safe-area-inset-left)_-_max(1rem,env(safe-area-inset-left)))] border-y border-black/10 py-3 md:mx-0 md:rounded-lg md:border-x md:px-3 dark:border-white/10">
       <div className="mb-2 flex items-center justify-between gap-1">
         <button
           type="button"

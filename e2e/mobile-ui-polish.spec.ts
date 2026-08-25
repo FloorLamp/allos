@@ -155,80 +155,85 @@ const TAP_FLOOR_PX = 44;
 // assertion below kept passing, because 40 is not less than 40. A bound that survives
 // the rule it exists to enforce is not a bound (#3561).
 //
-// HEIGHT IS 44 AND WIDTH IS 40, and the gap is arithmetic rather than an exemption:
-// seven day columns need 7 × 44 = 308px and the drawer is 288px wide. The calendar
-// already spends the drawer's gutter and its own padding to reach 40.9px columns and
-// has nothing left — the #3536 shape, recorded in TrainingLogCalendar.tsx at the
-// constant. The ARROWS have the room and are held to 44 in both.
+// Seven day columns need 7 × 44 = 308px. #3536 widens the drawer enough to pay that
+// arithmetic even at a 320px viewport; no exception or overlapping hit slop remains.
 test.describe("the phone drawer's month calendar clears the floor too (#3377/#3514)", () => {
   test.use({ viewport: PHONE });
 
-  test("every day cell is >=44px tall and both month arrows are >=44px square in the drawer", async ({
+  test("every day cell is >=44px square and disjoint at 320px and 390px", async ({
     page,
   }) => {
     test.slow(); // opening the drawer costs a hydration wait on a cold route
-    await page.goto("/");
-    // The drawer, not the desktop sidebar: `components/MobileNav.tsx` renders the
-    // SAME <SidebarContent> — and therefore the same <TrainingLogCalendar> — inside
-    // the phone nav drawer, which is what makes this grid a phone surface at all.
-    // The desktop copy is `display: none` here and would measure 0.
-    const drawer = await openMobileDrawer(page);
-    const prevMonth = drawer.getByLabel("Previous month");
-    const nextMonth = drawer.getByLabel("Next month");
-    await expect(prevMonth).toBeVisible();
-    // Settle the drawer's slide-in before reading any box: mid-animation the aside
-    // is still translated and every child reads a few pixels off.
-    await settledBoxes([drawer, prevMonth, nextMonth]);
+    for (const width of [320, PHONE.width]) {
+      await page.setViewportSize({ width, height: PHONE.height });
+      await page.goto("/");
+      // The drawer, not the desktop sidebar: `components/MobileNav.tsx` renders the
+      // SAME <SidebarContent> — and therefore the same <TrainingLogCalendar> — inside
+      // the phone nav drawer, which is what makes this grid a phone surface at all.
+      const drawer = await openMobileDrawer(page);
+      const prevMonth = drawer.getByLabel("Previous month");
+      const nextMonth = drawer.getByLabel("Next month");
+      await expect(prevMonth).toBeVisible();
+      await settledBoxes([drawer, prevMonth, nextMonth]);
 
-    // Both arrows AND every day of the rendered month — a floor that only the
-    // first cell clears is not a floor. The 28px circle and the 16px chevron are
-    // unchanged; what is measured here is the box a finger lands in.
-    const cells = await drawer.evaluate((aside) => {
-      const prev = aside.querySelector('[aria-label="Previous month"]')!;
-      const calendar = prev.closest("div")!.parentElement!;
-      const grids = calendar.querySelectorAll(".grid");
-      const days = Array.from(grids[grids.length - 1].children);
-      const box = (el: Element) => {
-        const r = el.getBoundingClientRect();
-        return { w: r.width, h: r.height };
-      };
-      return {
-        days: days.map(box),
-        dayCount: days.length,
-        glyph: box(days[0].firstElementChild!),
-      };
-    });
-    expect(cells.dayCount).toBeGreaterThanOrEqual(28);
-    for (const day of cells.days) {
-      // Width: the widest seven equal columns the 288px drawer can hold. See the
-      // describe block — this one is short of the floor and cannot not be.
-      expect(day.w).toBeGreaterThanOrEqual(40);
-      expect(day.h).toBeGreaterThanOrEqual(TAP_FLOOR_PX);
+      // Both arrows AND every day of the rendered month — a floor that only the
+      // first cell clears is not a floor. The 28px circle and the 16px chevron are
+      // unchanged; what is measured here is the box a finger lands in.
+      const cells = await drawer.evaluate((aside) => {
+        const prev = aside.querySelector('[aria-label="Previous month"]')!;
+        const calendar = prev.closest("div")!.parentElement!;
+        const grids = calendar.querySelectorAll(".grid");
+        const days = Array.from(grids[grids.length - 1].children);
+        const box = (el: Element) => {
+          const r = el.getBoundingClientRect();
+          return { x: r.x, y: r.y, w: r.width, h: r.height };
+        };
+        return {
+          days: days.map(box),
+          dayCount: days.length,
+          glyph: box(days[0].firstElementChild!),
+        };
+      });
+      expect(cells.dayCount).toBeGreaterThanOrEqual(28);
+      for (const [index, day] of cells.days.entries()) {
+        expect(day.w).toBeGreaterThanOrEqual(TAP_FLOOR_PX);
+        expect(day.h).toBeGreaterThanOrEqual(TAP_FLOOR_PX);
+        if (index % 7 !== 0) {
+          const previous = cells.days[index - 1];
+          expect(previous.y).toBeCloseTo(day.y, 0);
+          expect(previous.x + previous.w).toBeLessThanOrEqual(day.x + 0.5);
+        }
+        if (index >= 7) {
+          const above = cells.days[index - 7];
+          expect(above.x).toBeCloseTo(day.x, 0);
+          expect(above.y + above.h).toBeLessThanOrEqual(day.y + 0.5);
+        }
+      }
+      // …and the glyph inside did NOT grow with it. This is the padding/hit-slop
+      // idiom, not a bigger calendar: 28px circles, 44px-tall targets.
+      expect(cells.glyph.w).toBeLessThanOrEqual(30);
+
+      const [prevBox, nextBox] = await settledBoxes([prevMonth, nextMonth]);
+      for (const arrow of [prevBox, nextBox]) {
+        expect(arrow.width).toBeGreaterThanOrEqual(TAP_FLOOR_PX);
+        expect(arrow.height).toBeGreaterThanOrEqual(TAP_FLOOR_PX);
+      }
+
+      // The destinations are untouched — growing a hit area must not re-point a day.
+      // EVERY day link, not a sampled one: a hit box that grew over its neighbour
+      // would still leave the first link's href correct.
+      const hrefs = await drawer
+        .locator('a[href^="/timeline?from="]')
+        .evaluateAll((nodes) => nodes.map((n) => n.getAttribute("href") ?? ""));
+      expect(hrefs.length).toBeGreaterThan(0);
+      const shape =
+        /^\/timeline\?from=(\d{4}-\d{2}-\d{2})&to=\1#timeline-day-\1$/;
+      expect(hrefs.filter((href) => !shape.test(href))).toEqual([]);
+      // Nothing in the drawer sits past the viewport: the calendar gives up the
+      // drawer's own side padding to buy those 44px columns, so this is the check
+      // that the breakout lands flush rather than overhanging.
+      await expectNoClippedContent(page);
     }
-    // …and the glyph inside did NOT grow with it. This is the padding/hit-slop
-    // idiom, not a bigger calendar: 28px circles, 44px-tall targets.
-    expect(cells.glyph.w).toBeLessThanOrEqual(30);
-
-    const [prevBox, nextBox] = await settledBoxes([prevMonth, nextMonth]);
-    for (const arrow of [prevBox, nextBox]) {
-      expect(arrow.width).toBeGreaterThanOrEqual(TAP_FLOOR_PX);
-      expect(arrow.height).toBeGreaterThanOrEqual(TAP_FLOOR_PX);
-    }
-
-    // The destinations are untouched — growing a hit area must not re-point a day.
-    // EVERY day link, not a sampled one: a hit box that grew over its neighbour
-    // would still leave the first link's href correct.
-    const hrefs = await drawer
-      .locator('a[href^="/timeline?from="]')
-      .evaluateAll((nodes) => nodes.map((n) => n.getAttribute("href") ?? ""));
-    expect(hrefs.length).toBeGreaterThan(0);
-    const shape =
-      /^\/timeline\?from=(\d{4}-\d{2}-\d{2})&to=\1#timeline-day-\1$/;
-    expect(hrefs.filter((href) => !shape.test(href))).toEqual([]);
-    // Nothing in the drawer sits past the viewport: the calendar gives up the
-    // drawer's own side padding to buy those 40px columns, so this is the check
-    // that the breakout lands flush rather than overhanging.
-    await expectNoClippedContent(page);
   });
 });
 

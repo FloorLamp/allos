@@ -258,7 +258,13 @@ export default function MobileNav({
             <aside
               ref={drawerRef}
               data-testid="mobile-drawer"
-              className={`absolute inset-y-0 left-0 flex w-72 max-w-[85%] flex-col gap-4 overflow-y-auto overscroll-contain border-r border-black/10 bg-(--nav) pt-[max(1rem,env(safe-area-inset-top))] pr-4 pb-[max(1rem,env(safe-area-inset-bottom))] pl-[max(1rem,env(safe-area-inset-left))] dark:border-white/5 ${panelMotion}`}
+              // Seven 44px calendar columns need 308px wholly inside the left
+              // safe-area edge. The preferred 320px drawer therefore grows to
+              // 309px + that inset: 308px of grid plus its right border. The
+              // calendar cancels only the ordinary gutter outside the safe area.
+              // At 320px it may fill the viewport; the explicit close button and
+              // swipe remain the dismissal paths (#3536). Desktop is unaffected.
+              className={`absolute inset-y-0 left-0 flex w-[max(20rem,calc(19.3125rem+env(safe-area-inset-left)))] max-w-full flex-col gap-4 overflow-y-auto overscroll-contain border-r border-black/10 bg-(--nav) pt-[max(1rem,env(safe-area-inset-top))] pr-4 pb-[max(1rem,env(safe-area-inset-bottom))] pl-[max(1rem,env(safe-area-inset-left))] dark:border-white/5 ${panelMotion}`}
             >
               <SidebarContent
                 activityDates={activityDates}
