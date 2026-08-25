@@ -973,6 +973,103 @@ describe("FoodLogBar projection publication", () => {
     ).toBeNull();
   });
 
+  it("publishes an inverted same-bar burst under its latest lifecycle", async () => {
+    const firstOutcome = {
+      ok: true,
+      eventId: 94,
+      servings: 1,
+      mealSlot: "Midday",
+      mealServings: 1,
+    } as const;
+    const secondOutcome = {
+      ok: true,
+      eventId: 95,
+      servings: 2,
+      mealSlot: "Midday",
+      mealServings: 2,
+    } as const;
+    const first = deferred<typeof firstOutcome>();
+    const second = deferred<typeof secondOutcome>();
+    actions.logFoodServing
+      .mockReturnValueOnce(first.promise)
+      .mockReturnValueOnce(second.promise);
+    actions.readFoodServingTruth.mockReset().mockResolvedValue({
+      ok: true,
+      servings: 2,
+      mealServings: { Morning: 0, Midday: 2, Evening: 0 },
+    });
+    mountBar();
+
+    fireEvent.click(screen.getByTestId("log-cruciferous"));
+    fireEvent.click(screen.getByTestId("log-cruciferous"));
+    await act(async () => second.resolve(secondOutcome));
+    expect(actions.readFoodServingTruth).not.toHaveBeenCalled();
+
+    await act(async () => first.resolve(firstOutcome));
+
+    expect(actions.readFoodServingTruth).toHaveBeenCalledTimes(1);
+    expect(
+      await screen.findByText("2 servings of Cruciferous vegetables today")
+    ).toBeTruthy();
+    expect(screen.getByRole("button", { name: "Undo" })).toBeTruthy();
+  });
+
+  it("keeps the newer keyed limit note when an older tap resolves last", async () => {
+    const firstOutcome = {
+      ok: true,
+      eventId: 96,
+      servings: 1,
+      mealSlot: "Midday",
+      mealServings: 1,
+      limitNote: {
+        kind: "interaction",
+        groupKey: "cruciferous",
+        title: "Older interaction note.",
+        body: "This older response must not replace the later note.",
+        hold: true,
+      },
+    } as const;
+    const secondOutcome = {
+      ok: true,
+      eventId: 97,
+      servings: 2,
+      mealSlot: "Midday",
+      mealServings: 2,
+      limitNote: {
+        kind: "interaction",
+        groupKey: "cruciferous",
+        title: "Newer interaction note.",
+        body: "Keep the interaction-start winner.",
+        hold: true,
+      },
+    } as const;
+    const first = deferred<typeof firstOutcome>();
+    const second = deferred<typeof secondOutcome>();
+    actions.logFoodServing
+      .mockReturnValueOnce(first.promise)
+      .mockReturnValueOnce(second.promise);
+    actions.readFoodServingTruth.mockReset().mockResolvedValue({
+      ok: true,
+      servings: 2,
+      mealServings: { Morning: 0, Midday: 2, Evening: 0 },
+    });
+    mountBar();
+
+    fireEvent.click(screen.getByTestId("log-cruciferous"));
+    fireEvent.click(screen.getByTestId("log-cruciferous"));
+    await act(async () => second.resolve(secondOutcome));
+    expect(screen.getByText(/Newer interaction note\./).textContent).toContain(
+      "Keep the interaction-start winner."
+    );
+
+    await act(async () => first.resolve(firstOutcome));
+
+    expect(screen.getByText(/Newer interaction note\./).textContent).toContain(
+      "Keep the interaction-start winner."
+    );
+    expect(screen.queryByText(/Older interaction note\./)).toBeNull();
+  });
+
   it("keeps the later bar's receipt when an earlier removal response finishes last", async () => {
     const day: FoodLogDay = {
       ...DAY,
