@@ -38,7 +38,10 @@ async function expectOverlayFloor(
   );
   const box = await locator.boundingBox();
   expect(box, name).not.toBeNull();
-  expect(box!.height, `${name} rendered height`).toBe(exactRenderedPx);
+  expect(
+    Math.abs(box!.height - exactRenderedPx),
+    `${name} rendered height delta from ${exactRenderedPx}px`
+  ).toBeLessThanOrEqual(TAP_FLOOR_FLOAT_EPSILON_PX);
   expect(
     box!.height + 2 * TAP_TARGET_INSET_PX + TAP_FLOOR_FLOAT_EPSILON_PX,
     `${name} effective height`

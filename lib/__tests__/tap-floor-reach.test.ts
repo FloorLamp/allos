@@ -697,6 +697,11 @@ describe("the tap floor's reach (#3486 part 3 / #3514)", () => {
     expect(TAP_FLOOR_PX - 0.02 + TAP_FLOOR_FLOAT_EPSILON_PX).toBeLessThan(
       TAP_FLOOR_PX
     );
+    for (const rendered of [31.99994, 32.00006])
+      expect(Math.abs(rendered - 32)).toBeLessThanOrEqual(
+        TAP_FLOOR_FLOAT_EPSILON_PX
+      );
+    expect(Math.abs(31.98 - 32)).toBeGreaterThan(TAP_FLOOR_FLOAT_EPSILON_PX);
   });
 });
 
