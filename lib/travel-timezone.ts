@@ -122,11 +122,13 @@ export function occurredTwice(sw: TimezoneSwitch, p: LocalPosition): boolean {
   return comparePositions(r.landed, p) <= 0 && comparePositions(p, r.left) <= 0;
 }
 
-// Keep only the newest valid, chronological chain of switches that actually
-// leads to `currentZone`. The history is a bounded JSON setting rather than an
-// event ledger, so an old client, a manual Settings edit, or a corrupt duplicate
-// can leave a discontinuity. Failing open is the safe answer: uncertain history
-// must not silently excuse a real dose or suppress its reminder.
+// Accept a history only when every retained switch forms one valid, chronological
+// chain that actually leads to `currentZone`. The history is a bounded JSON setting
+// rather than an event ledger, so an old client, a manual Settings edit, or a corrupt
+// duplicate can leave a discontinuity. A valid-looking suffix is NOT enough: the
+// missing seam at its boundary could cancel a crossing in that suffix. Failing open
+// means rejecting the whole retained history so uncertainty never silently excuses
+// a real dose or suppresses its reminder.
 //
 // When no current zone is supplied, the newest record's destination anchors the
 // chain. This keeps the pure predicates safe for callers that only have history;
@@ -152,7 +154,7 @@ export function connectedTimezoneSwitchHistory(
       sw.to !== expectedDestination ||
       instant >= nextInstant
     ) {
-      break;
+      return [];
     }
     connected.unshift(sw);
     expectedDestination = sw.from;

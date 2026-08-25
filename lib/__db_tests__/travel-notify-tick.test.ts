@@ -42,14 +42,20 @@ import { sendMessageRaw } from "@/lib/notifications/telegram-api";
 import type { NotificationMessage } from "@/lib/notifications/types";
 import { seedLoginTelegram } from "./fixtures";
 import { stubTelegramSends } from "./telegram-spies";
-import { isReminderSlotExcused } from "@/lib/travel-excusal";
+import {
+  isReminderSlotExcused,
+  travelExcusalResolver,
+} from "@/lib/travel-excusal";
 import { isRepeatedSlot } from "@/lib/travel-timezone";
 
 const HONOLULU = "Pacific/Honolulu";
 const LOS_ANGELES = "America/Los_Angeles";
 const NEW_YORK = "America/New_York";
 const TOKYO = "Asia/Tokyo";
+const ATHENS = "Europe/Athens";
+const PARIS = "Europe/Paris";
 const MIDDAY_MINUTE = 12 * 60;
+const AFTERNOON_MINUTE = 15 * 60;
 const DAY = "2026-06-17";
 
 beforeAll(() => stubTelegramSends());
@@ -240,5 +246,34 @@ describe("travel excusal at the real notification tick", () => {
       Date.now()
     );
     expectThreeSlotMessages(sentTo(settingsReturn.chatId));
+  });
+
+  it("fails open when an unrecorded correction disconnects retained history", async () => {
+    const disconnected = scenario("disconnected", NEW_YORK);
+    setProfileSetting(
+      disconnected.receiver,
+      "notify_supp_midday_hour",
+      "15:00"
+    );
+
+    vi.setSystemTime(new Date("2026-05-01T10:00:00Z")); // New York 06:00
+    switchProfileTimezone(disconnected.receiver, ATHENS, NEW_YORK); // Athens 13:00
+    vi.setSystemTime(new Date("2026-05-01T12:00:00Z")); // Athens 15:00
+    setTimezone(disconnected.receiver, PARIS); // legacy/bare correction: Paris 14:00
+    vi.setSystemTime(new Date("2026-05-01T12:01:00Z")); // Paris 14:01
+    switchProfileTimezone(disconnected.receiver, ATHENS, NEW_YORK); // Athens 15:01
+
+    // The retained suffix alone appears to skip 15:00, but the unrecorded
+    // Athens→Paris seam made it occur. Both production consumers must fail open.
+    const switches = getTravelSwitches(disconnected.receiver);
+    expect(
+      isReminderSlotExcused(switches, "2026-05-01", AFTERNOON_MINUTE)
+    ).toBe(false);
+    expect(
+      travelExcusalResolver(disconnected.receiver)("Midday", "2026-05-01")
+    ).toBe(false);
+
+    await tickProfile(disconnected.receiver, "disconnected", 5, Date.now());
+    expectThreeSlotMessages(sentTo(disconnected.chatId));
   });
 });

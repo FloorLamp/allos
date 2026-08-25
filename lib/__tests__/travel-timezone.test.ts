@@ -280,7 +280,10 @@ describe("isExcusedSlot / isRepeatedSlot over a history", () => {
       { at: "2026-05-01T14:00:00Z", from: NY, to: TOKYO },
       { at: "2026-05-01T14:01:00Z", from: "Europe/Paris", to: TOKYO },
     ];
-    expect(isExcusedSlot(disconnected, "2026-05-01", MIDDAY)).toBe(false);
+    // Paris 16:01 → Tokyo 23:01 appears to skip 20:00, but the unrecorded
+    // boundary that put the profile in Paris can cancel that crossing. The
+    // retained history is uncertain, so even an in-gap slot must fail open.
+    expect(isExcusedSlot(disconnected, "2026-05-01", EVENING)).toBe(false);
     expect(connectedTimezoneSwitchHistory(history, NY)).toEqual(history);
     expect(connectedTimezoneSwitchHistory([history[0]], NY)).toEqual([]);
   });
