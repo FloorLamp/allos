@@ -131,6 +131,7 @@ describe("DestinationLink", () => {
     'import Jump from "next/link"; import { IconArrowRight as Go } from "@tabler/icons-react"; export const Bad = () => <Jump href="/x"><Go /></Jump>;',
     'import Link from "next/link"; import { IconCaretRight } from "@tabler/icons-react"; export const Bad = () => <Link href="/x"><IconCaretRight /></Link>;',
     'import Link from "next/link"; import { IconArrowRightBar } from "@tabler/icons-react"; export const Bad = () => <Link href="/x"><IconArrowRightBar /></Link>;',
+    'import Link from "next/link"; import { IconChevronRightFilled } from "@tabler/icons-react"; export const Bad = () => <Link href="/x"><IconChevronRightFilled /></Link>;',
     'import Link from "next/link"; import { IconCaretRightFilled } from "@tabler/icons-react"; export const Bad = () => <Link href="/x"><IconCaretRightFilled /></Link>;',
     'import Link from "next/link"; export const Bad = () => <Link href="/x">Open →</Link>;',
     'import Link from "next/link"; export const Bad = () => <Link href="/x">Open ➔</Link>;',
