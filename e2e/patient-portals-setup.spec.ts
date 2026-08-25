@@ -12,6 +12,7 @@ import {
   PORTAL_B_NAME,
   PORTAL_HOUSEHOLD_A_PROFILE,
 } from "./fixture-logins";
+import { TAP_FLOOR_PX } from "@/lib/tap-floor-tokens";
 
 // The Patient portals page (#1739, reshaped by #1826, re-reshaped by #1874): the
 // portal → login → patient OBJECT MODEL rendered as permanent card-sections, with
@@ -489,7 +490,7 @@ test.describe("Patient portals — the portal sections (#1874)", () => {
     await (await menuItem(page, "portal-software-edit")).click();
     const denseButton = section.getByTestId("software-chip-generic-ccd");
     const denseButtonBox = await denseButton.boundingBox();
-    expect(denseButtonBox?.height).toBeGreaterThanOrEqual(44);
+    expect(denseButtonBox?.height).toBeGreaterThanOrEqual(TAP_FLOOR_PX);
     await hydratedClick(page, denseButton);
     await hydratedClick(page, section.getByTestId("portal-software-save"));
     await expect(

@@ -12,7 +12,7 @@ import {
 } from "./fixture-logins";
 import { buildM4aFixture, buildMp4Fixture } from "../lib/video/fixture";
 import { workerDbPath } from "./worker-env";
-import { TAP_FLOOR_PX, TAP_TARGET_INSET_PX } from "../lib/tap-floor-reach";
+import { TAP_FLOOR_PX, TAP_TARGET_INSET_PX } from "../lib/tap-floor-tokens";
 
 // The episode page's SYMPTOM VIDEO strip (#1598 — components/illness/SymptomVideoStrip
 // on /medical/episodes/[id]). It is the OTHER shipped half of the #1224 video core, and

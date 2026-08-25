@@ -2,6 +2,7 @@ import { test, expect } from "./fixtures";
 import type { Locator, Page } from "@playwright/test";
 import { openCommandPalette } from "./nav";
 import { hydratedClick, settledAfterAnimation } from "./helpers";
+import { TAP_FLOOR_PX } from "@/lib/tap-floor-tokens";
 
 // The command palette's PHONE SHELL (issue #3423).
 //
@@ -36,7 +37,6 @@ import { hydratedClick, settledAfterAnimation } from "./helpers";
 // e2e/entry-ergonomics.spec.ts, which owns that write.
 
 // The app's own touch floor (app/globals.css, `tap-target`; #644).
-const TAP_FLOOR = 44;
 // The `mobile` project's viewport (playwright.config.ts). 390 rather than the
 // 430 the issue's screenshots were taken at, on purpose: both are below `md`,
 // which is the only boundary any of this is keyed on, and 390 is the HARDER of
@@ -103,7 +103,7 @@ test.describe("command palette — the phone shell (#3423)", () => {
     const cancel = page.getByRole("button", { name: "Cancel", exact: true });
     await expect(cancel).toBeVisible();
     const cancelBox = await cancel.boundingBox();
-    expect(cancelBox!.height).toBeGreaterThanOrEqual(TAP_FLOOR);
+    expect(cancelBox!.height).toBeGreaterThanOrEqual(TAP_FLOOR_PX);
 
     // `hydratedClick`, not `settledClick`: Cancel posts nothing — it closes a
     // read-only surface — and settledClick arms a POST wait that would time out
@@ -178,7 +178,7 @@ test.describe("command palette — the phone shell (#3423)", () => {
     await expect(row).toBeVisible();
     const box = await row.boundingBox();
     // ~36px before this change: `px-2 py-2` around `text-sm`.
-    expect(box!.height).toBeGreaterThanOrEqual(TAP_FLOOR);
+    expect(box!.height).toBeGreaterThanOrEqual(TAP_FLOOR_PX);
 
     // ONE TAP, NO HOVER. `tap()` dispatches touch events only — it fires no
     // mouseenter at all — so a row whose commit still depended on the hover-only
@@ -204,7 +204,7 @@ test.describe("command palette — the phone shell (#3423)", () => {
       await expect(action).toBeVisible({ timeout: 20_000 });
       const box = await action.boundingBox();
       expect(box).not.toBeNull();
-      expect(box!.height).toBeGreaterThanOrEqual(TAP_FLOOR);
+      expect(box!.height).toBeGreaterThanOrEqual(TAP_FLOOR_PX);
 
       // Real coarse-pointer coordinates, deliberately off the visual centre.
       // Before #3458 the chip was ~26px inside a 44px sibling row whose action

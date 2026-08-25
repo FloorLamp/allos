@@ -1,5 +1,9 @@
 import { test, expect } from "./fixtures";
-import { TAP_FLOOR_PX, TAP_TARGET_INSET_PX } from "@/lib/tap-floor-reach";
+import {
+  TAP_FLOOR_PX,
+  TAP_TARGET_INSET_PX,
+  TAP_TARGET_MIN_RENDERED_PX,
+} from "@/lib/tap-floor-tokens";
 
 // THE BUTTON FAMILY'S HEIGHT FLOOR, MEASURED AS A RENDERED BOX (#3486).
 //
@@ -293,10 +297,8 @@ test.describe("the hit-area mechanism reaches the floor it claims (#3486)", () =
   test.use({ viewport: PHONE });
 
   // `.tap-target`'s extension, and the smallest rendered box it can lift to the
-  // floor. Derived, not spelled — the same derivation `lib/tap-floor-reach.ts`
+  // floor. Derived, not spelled — the same derivation `lib/tap-floor-tokens.ts`
   // makes, so the two cannot disagree about what 32 means.
-  const TAP_TARGET_MIN_RENDERED_PX = TAP_FLOOR_PX - 2 * TAP_TARGET_INSET_PX;
-
   test("the food-log steppers are 44px effective, by box plus overlay", async ({
     page,
   }) => {

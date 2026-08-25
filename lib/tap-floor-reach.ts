@@ -1,4 +1,9 @@
 import ts from "typescript";
+import {
+  TAP_FLOOR_PX,
+  TAP_TARGET_INSET_PX,
+  TAP_TARGET_MIN_RENDERED_PX,
+} from "./tap-floor-tokens";
 
 // THE TAP FLOOR'S REACH (#3486 part 3, under the #3514 ruling), in one place.
 //
@@ -47,9 +52,9 @@ import ts from "typescript";
 // The arithmetic is written down exactly once in the tree today — in
 // `app/globals.css`'s `table-cards` rule, for one call site: "the visible control
 // occupies 32px in layout while its pseudo-element extends the clickable button
-// box to 44px — 32 + 2x6". `TAP_TARGET_MIN_RENDERED_PX` below is that sentence as
-// a number every site can be checked against, and the guard reads the inset back
-// out of `app/globals.css` so the two cannot drift apart.
+// box to 44px — 32 + 2x6". `lib/tap-floor-tokens.ts` owns that sentence as
+// numbers every site can share, and the guard reads the inset back out of
+// `app/globals.css` so the two cannot drift apart.
 //
 // ── WHAT THIS SCAN CAN AND CANNOT SEE ───────────────────────────────────────
 //
@@ -64,29 +69,6 @@ import ts from "typescript";
 //
 // The half this DOES own is the half a rendered probe cannot: every route, every
 // state, every control that never renders in a spec.
-
-/** The floor, as a number of CSS pixels of EFFECTIVE target. #3514's ruling. */
-export const TAP_FLOOR_PX = 44;
-
-/**
- * `getBoundingClientRect()` can expose CSS subpixel arithmetic as 43.99994px
- * for a declared 44px box. This absorbs only that floating-point noise in
- * browser floor measurements; it is not a general layout tolerance.
- */
-export const TAP_FLOOR_FLOAT_EPSILON_PX = 0.01;
-
-/**
- * `.tap-target`'s per-side extension, `inset: -6px` (#644). The guard asserts
- * this still matches `app/globals.css` rather than trusting the copy.
- */
-export const TAP_TARGET_INSET_PX = 6;
-
-/**
- * The smallest RENDERED box from which `.tap-target` still reaches the floor.
- * Derived, never spelled: the overlay adds one inset per side.
- */
-export const TAP_TARGET_MIN_RENDERED_PX =
-  TAP_FLOOR_PX - 2 * TAP_TARGET_INSET_PX;
 
 /** Which registered mechanism a control uses to meet the floor, if any. */
 export type FloorMechanism =

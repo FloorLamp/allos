@@ -1,6 +1,7 @@
 import { test, expect } from "./fixtures";
 import { loginAs } from "./nav";
 import { expandTrendsContext } from "./trends-chrome";
+import { TAP_FLOOR_PX } from "@/lib/tap-floor-tokens";
 import {
   expectAtomicCardPairs,
   expectNoClippedContent,
@@ -357,7 +358,6 @@ test.describe("Trends → Overview → body census metric pages (#1067 Phase 2)"
     // compactness the old ceiling was really guarding is kept as a separate,
     // looser bound: the labeled variant from `sm` up is far wider, so 48
     // distinguishes icon-only from labeled without pinning anyone's padding.
-    const TAP_FLOOR_PX = 44;
     for (const box of [mobileStarBox, mobileLogBox]) {
       expect(box.width).toBeGreaterThanOrEqual(TAP_FLOOR_PX);
       expect(box.height).toBeGreaterThanOrEqual(TAP_FLOOR_PX);

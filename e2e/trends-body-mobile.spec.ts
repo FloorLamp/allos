@@ -10,6 +10,7 @@ import {
 } from "./helpers";
 import { expandTrendsContext } from "./trends-chrome";
 import { frozenNow } from "./worker-env";
+import { TAP_FLOOR_PX } from "@/lib/tap-floor-tokens";
 import {
   E2E_MEMBER_PASSWORD,
   E2E_LOGIN_TRENDS_BODY,
@@ -81,10 +82,10 @@ test.describe("Trends → Overview → body census responsive views (#1067)", ()
     const tileHeaderBox = await tileHeader.boundingBox();
     expect(tileBox).not.toBeNull();
     expect(tileHeaderBox).not.toBeNull();
-    expect(tileHeaderBox!.height).toBeGreaterThanOrEqual(44);
+    expect(tileHeaderBox!.height).toBeGreaterThanOrEqual(TAP_FLOOR_PX);
     // A pinned tile now reserves a separate ⋯ control beside the header. The
     // detail link keeps a full tap target without claiming the menu's width.
-    expect(tileHeaderBox!.width).toBeGreaterThanOrEqual(44);
+    expect(tileHeaderBox!.width).toBeGreaterThanOrEqual(TAP_FLOOR_PX);
     // The full chart is one tap away on its metric detail page, never inline on
     // mobile Overview (#2152). Following the header proves the whole tap target;
     // its hover paint is deliberately not part of the phone contract.

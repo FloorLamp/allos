@@ -2,7 +2,7 @@ import { test, expect } from "./fixtures";
 import { hydratedClick } from "./helpers";
 import { expandTrendsContext } from "./trends-chrome";
 import { expandTimelineFilters } from "./timeline-chrome";
-import { TAP_FLOOR_PX } from "@/lib/tap-floor-reach";
+import { TAP_FLOOR_PX } from "@/lib/tap-floor-tokens";
 
 // Trends "charts above the fold" on a phone (#1455). The page used to spend ~1.9
 // screens on chrome before the first chart: the always-open From/To card, a
@@ -57,7 +57,9 @@ test.describe("the custom From/To form collapses behind a Custom… disclosure (
     await expect(toggle).toHaveAttribute("aria-expanded", "false");
     await expect(toggle).not.toHaveAttribute("aria-pressed");
     await expect(toggle).toHaveClass(/btn-ghost/);
-    expect((await toggle.boundingBox())?.height).toBeGreaterThanOrEqual(44);
+    expect((await toggle.boundingBox())?.height).toBeGreaterThanOrEqual(
+      TAP_FLOOR_PX
+    );
     // The panel is in the DOM (the form's server-rendered defaults never leave)
     // but not shown — that is the ~230px this reclaims.
     await expect(page.getByTestId("custom-range-panel")).toBeHidden();

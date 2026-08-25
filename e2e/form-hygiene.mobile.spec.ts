@@ -8,6 +8,7 @@ import {
   settledFill,
 } from "./helpers";
 import { openLogSheet, showLogRow } from "./log-sheet-helpers";
+import { TAP_FLOOR_PX } from "@/lib/tap-floor-tokens";
 // Form hygiene at phone width (issue #1450 cluster A, the highest-stakes site).
 //
 // The strength set row (SET · WEIGHT stepper · × · REPS stepper · OPTIONS) is the
@@ -217,8 +218,8 @@ test("each set groups its identity and options above its values at 390px (#1612)
   // Phone-sized targets for the ones that are a bare glyph (#1613's rule, held
   // here too now that the toolbar has room for them).
   for (const b of [warmup, removeSet]) {
-    expect(b.width).toBeGreaterThanOrEqual(44);
-    expect(b.height).toBeGreaterThanOrEqual(44);
+    expect(b.width).toBeGreaterThanOrEqual(TAP_FLOOR_PX);
+    expect(b.height).toBeGreaterThanOrEqual(TAP_FLOOR_PX);
   }
 
   // The sticky schema shows only the VALUE schema on a phone, aligned to the

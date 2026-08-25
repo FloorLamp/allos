@@ -3,10 +3,6 @@ import path from "node:path";
 import { fileURLToPath } from "node:url";
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
 import {
-  TAP_FLOOR_FLOAT_EPSILON_PX,
-  TAP_FLOOR_PX,
-  TAP_TARGET_INSET_PX,
-  TAP_TARGET_MIN_RENDERED_PX,
   UnreadableControlError,
   belowSmHeightPx,
   buttonFloorClasses,
@@ -18,6 +14,12 @@ import {
   type FlooredControl,
   type ImportedModule,
 } from "../tap-floor-reach";
+import {
+  TAP_FLOOR_FLOAT_EPSILON_PX,
+  TAP_FLOOR_PX,
+  TAP_TARGET_INSET_PX,
+  TAP_TARGET_MIN_RENDERED_PX,
+} from "../tap-floor-tokens";
 import { makeTmpDir } from "./tmp-dir";
 
 // THE TAP FLOOR'S REACH, SWEPT OVER THE TREE (#3486 part 3, under #3514).
@@ -635,7 +637,7 @@ describe("the tap floor's reach (#3486 part 3 / #3514)", () => {
     expect(
       Number(inset![1]),
       `app/globals.css extends \`.tap-target\` by ${inset?.[1]}px per side, but ` +
-        `lib/tap-floor-reach.ts prices it at ${TAP_TARGET_INSET_PX}px. Move the constant, ` +
+        `lib/tap-floor-tokens.ts prices it at ${TAP_TARGET_INSET_PX}px. Move the constant, ` +
         "or the census is judging every hit-area control against arithmetic that is not " +
         "the app's."
     ).toBe(TAP_TARGET_INSET_PX);

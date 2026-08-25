@@ -3,7 +3,7 @@ import { type Page } from "@playwright/test";
 import { hydratedClick, touchSwipe, touchSwipeFrom } from "./helpers";
 import { loginAs } from "./nav";
 import { E2E_LOGIN_PRESENCE, E2E_MEMBER_PASSWORD } from "./fixture-logins";
-import { TAP_FLOOR_PX } from "@/lib/tap-floor-reach";
+import { TAP_FLOOR_PX } from "@/lib/tap-floor-tokens";
 
 // Overlay gestures (issues #1425, #1469).
 //

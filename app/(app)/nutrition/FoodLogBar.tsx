@@ -1997,7 +1997,7 @@ export default function FoodLogBar({
                 up. At `h-7` this stepper was 28 + 12 = 40 effective while wearing
                 the class that says the floor is met, which is worse than a plainly
                 undersized control: nothing was ever going to look at it again.
-                lib/tap-floor-reach.ts holds the arithmetic for the whole class. */}
+                lib/tap-floor-tokens.ts holds the arithmetic for the whole class. */}
             <button
               type="button"
               data-testid={`undo-${g.slug}`}
