@@ -308,7 +308,7 @@ export function habitualLogSegment(
 /**
  * The route on which logging history decides the opening segment: the dashboard,
  * and only the dashboard (the ruling's stated scope). Every other route either
- * promotes its own domain — `/nutrition` → Food, unchanged — or is a long-tail
+ * promotes its own domain — `/nutrition` → Consume, unchanged — or is a long-tail
  * surface whose sheet keeps the historical activity fallback.
  */
 export const HABIT_DEFAULT_ROUTE = "/";
