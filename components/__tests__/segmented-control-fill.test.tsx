@@ -89,4 +89,32 @@ describe("SegmentedControl fill mode (#3675)", () => {
     expect(link.getAttribute("title")).toBe("A long timeline label");
     expect(link.querySelector("span")?.getAttribute("title")).toBeNull();
   });
+
+  it("keeps a disabled fill label visible instead of relying on a tooltip", () => {
+    render(
+      <SegmentedControl
+        options={[
+          {
+            value: "unavailable",
+            label: "A long unavailable range",
+            disabled: true,
+          },
+        ]}
+        value="unavailable"
+        onChange={vi.fn()}
+        ariaLabel="Available ranges"
+        fill
+      />
+    );
+
+    const button = screen.getByRole("button", {
+      name: "A long unavailable range",
+    });
+    expect(button.getAttribute("disabled")).not.toBeNull();
+    expect(button.getAttribute("title")).toBeNull();
+    expect(button.querySelector("span")?.className).toContain(
+      "whitespace-normal"
+    );
+    expect(button.querySelector("span")?.className).not.toContain("truncate");
+  });
 });
