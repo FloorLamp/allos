@@ -64,7 +64,9 @@
 
 - Exonerating a flake requires a 3/3 local CI-parity pass of the exact spec and
   a stated mechanism.
-- A second occurrence of the same spec creates a census issue with both CI runs.
+- A second occurrence of the same spec attaches both CI runs to the owning
+  mechanism/root-cause issue or to the matching failure-class entry; recurrence
+  alone is not a reason to mint a new census issue.
 - Clock-adjacent failures need forced-skew branch/main comparison with
   `ALLOS_TEST_NOW`; minutes-apart runs are insufficient.
 - Repeated failures invalidate a “distinct one-offs” argument.

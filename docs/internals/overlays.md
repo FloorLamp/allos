@@ -115,10 +115,13 @@ Three converged when the ruling landed. `MergeConflictDialog` and
 that had shipped without `overscroll-contain` — the #2774 defect, live, for as
 long as the convergence has existed (#3421).
 
-These are the exceptions. Each is registered in `HOSTLESS_DIALOGS`
-(`scripts/dialog-census-core.ts`) and says in its own file which it is;
-`lib/__tests__/dialog-census.test.ts` fails if this table and that register stop
-naming the same files.
+These are the current non-host rows. Some are genuine anatomy-driven exceptions
+to the shared primitives; some have already converged onto
+`components/overlay` rather than the dialog host. Primitive-first convergence
+onto `ModalShell` or `components/overlay` stays the default.
+`HOSTLESS_DIALOGS` (`scripts/dialog-census-core.ts`) is documentary input to
+the detector, and `lib/__tests__/dialog-census.test.ts` keeps that input and
+this table aligned.
 
 | Dialog                                          | Why the shared host cannot serve it                                                                                                                                                                                                                                                                                                                                                     |
 | ----------------------------------------------- | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
@@ -517,11 +520,12 @@ nothing, so `npm run census:dialogs` prints it as `found by ANATOMY`.
 It reports dialogs belonging to no dialog host rather than omitting them, in two
 sections that are two different answers: RECORDED EXCEPTIONS (the table above),
 and SCOPED OUT BY ANATOMY (surfaces the convergence rule was never about).
-`lib/__tests__/dialog-census.test.ts` fails when a new hostless dialog appears
-unrecorded, when a record outlives its subject, and when the register and the
-table above stop naming the same files. It does not fail on the recorded set —
-those are sanctioned, and a build error on a sanctioned exception is how a
-register teaches the next reader to ignore it.
+`lib/__tests__/dialog-census.test.ts` is the detection layer: it fails when a
+new hostless dialog appears, when a documentary `HOSTLESS_DIALOGS` entry
+outlives its subject, and when that input and the table above drift apart. It
+does not make hostless dialogs the goal; the default remains convergence onto
+`ModalShell` or `components/overlay`, and the remaining rows are explained here
+rather than minted by recurrence.
 
 ## Testing gestures
 
