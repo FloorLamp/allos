@@ -35,13 +35,17 @@ export interface ExactReturn {
 
 export interface DestinationDoorContract {
   rendererName: string;
+  rendererCallbackSources?: readonly string[];
   testId: string;
   targetOwner: "link" | "decoration";
   destinationExpression: string;
   destinationBinding?: "module";
   moduleBindings?: readonly { name: string; moduleName: string }[];
   linkAttributes: readonly string[];
-  visibleAncestorComponents?: readonly string[];
+  visibleAncestorComponents?: readonly {
+    name: string;
+    moduleName: string;
+  }[];
   title?: string;
   label: DoorLabel;
   childShape: readonly string[];
@@ -66,12 +70,16 @@ export type DoorOwner =
       kind: "jsx-attribute";
       ownerTag: string;
       attribute: string;
+      ownerModule?: string;
+      ownerImport?: "default" | "named";
     }
   | {
       kind: "ancestor-attribute";
       ownerTag: string;
       attribute: string;
       value: string;
+      ownerModule?: string;
+      ownerImport?: "default" | "named";
     }
   | {
       kind: "ancestor-heading";
@@ -158,7 +166,12 @@ function tokenFingerprint(text: string): string {
   return tokens.join("|");
 }
 
-function staticTruthiness(node: ts.Expression): boolean | null {
+const STATIC_UNKNOWN = Symbol("static-unknown");
+
+function staticPrimitive(
+  node: ts.Expression,
+  seen = new Set<string>()
+): string | number | boolean | null | undefined | typeof STATIC_UNKNOWN {
   if (
     ts.isParenthesizedExpression(node) ||
     ts.isAsExpression(node) ||
@@ -166,28 +179,86 @@ function staticTruthiness(node: ts.Expression): boolean | null {
     ts.isSatisfiesExpression(node) ||
     ts.isNonNullExpression(node)
   ) {
-    return staticTruthiness(node.expression);
+    return staticPrimitive(node.expression, seen);
   }
   if (node.kind === ts.SyntaxKind.TrueKeyword) return true;
-  if (
-    node.kind === ts.SyntaxKind.FalseKeyword ||
-    node.kind === ts.SyntaxKind.NullKeyword
-  )
-    return false;
-  if (ts.isNumericLiteral(node)) return Number(node.text) !== 0;
-  if (ts.isStringLiteralLike(node)) return node.text.length > 0;
-  if (ts.isIdentifier(node) && ["undefined", "NaN"].includes(node.text)) {
-    return false;
+  if (node.kind === ts.SyntaxKind.FalseKeyword) return false;
+  if (node.kind === ts.SyntaxKind.NullKeyword) return null;
+  if (ts.isNumericLiteral(node)) return Number(node.text);
+  if (ts.isStringLiteralLike(node)) return node.text;
+  if (ts.isIdentifier(node)) {
+    if (node.text === "undefined") return undefined;
+    if (node.text === "NaN") return Number.NaN;
+    if (seen.has(node.text)) return STATIC_UNKNOWN;
+    const declarations = declarationNames(
+      node.getSourceFile(),
+      node.text
+    ).filter(ts.isVariableDeclaration);
+    if (declarations.length !== 1 || !declarations[0].initializer) {
+      return STATIC_UNKNOWN;
+    }
+    const list = declarations[0].parent;
+    if (
+      !ts.isVariableDeclarationList(list) ||
+      (list.flags & ts.NodeFlags.Const) === 0
+    ) {
+      return STATIC_UNKNOWN;
+    }
+    return staticPrimitive(
+      declarations[0].initializer,
+      new Set([...seen, node.text])
+    );
   }
-  if (ts.isVoidExpression(node)) return false;
-  if (
-    ts.isPrefixUnaryExpression(node) &&
-    node.operator === ts.SyntaxKind.ExclamationToken
-  ) {
-    const value = staticTruthiness(node.operand);
-    return value == null ? null : !value;
+  if (ts.isVoidExpression(node)) return undefined;
+  if (ts.isPrefixUnaryExpression(node)) {
+    const value = staticPrimitive(node.operand, seen);
+    if (value === STATIC_UNKNOWN) return STATIC_UNKNOWN;
+    if (node.operator === ts.SyntaxKind.ExclamationToken) return !value;
+    if (node.operator === ts.SyntaxKind.PlusToken) return Number(value);
+    if (node.operator === ts.SyntaxKind.MinusToken) return -Number(value);
+    return STATIC_UNKNOWN;
   }
-  return null;
+  if (ts.isBinaryExpression(node)) {
+    const left = staticPrimitive(node.left, seen);
+    const right = staticPrimitive(node.right, seen);
+    if (left === STATIC_UNKNOWN || right === STATIC_UNKNOWN) {
+      return STATIC_UNKNOWN;
+    }
+    switch (node.operatorToken.kind) {
+      case ts.SyntaxKind.EqualsEqualsEqualsToken:
+        return left === right;
+      case ts.SyntaxKind.ExclamationEqualsEqualsToken:
+        return left !== right;
+      case ts.SyntaxKind.EqualsEqualsToken:
+        return String(left) === String(right);
+      case ts.SyntaxKind.ExclamationEqualsToken:
+        return String(left) !== String(right);
+      case ts.SyntaxKind.GreaterThanToken:
+        return typeof left === "string" && typeof right === "string"
+          ? left > right
+          : Number(left) > Number(right);
+      case ts.SyntaxKind.GreaterThanEqualsToken:
+        return typeof left === "string" && typeof right === "string"
+          ? left >= right
+          : Number(left) >= Number(right);
+      case ts.SyntaxKind.LessThanToken:
+        return typeof left === "string" && typeof right === "string"
+          ? left < right
+          : Number(left) < Number(right);
+      case ts.SyntaxKind.LessThanEqualsToken:
+        return typeof left === "string" && typeof right === "string"
+          ? left <= right
+          : Number(left) <= Number(right);
+      default:
+        return STATIC_UNKNOWN;
+    }
+  }
+  return STATIC_UNKNOWN;
+}
+
+function staticTruthiness(node: ts.Expression): boolean | null {
+  const value = staticPrimitive(node);
+  return value === STATIC_UNKNOWN ? null : Boolean(value);
 }
 
 function tagName(node: ts.JsxTagNameExpression): string {
@@ -362,12 +433,15 @@ function hiddenClassToken(value: string): boolean {
           : token.includes(":[")
             ? token.slice(token.lastIndexOf(":[") + 1)
             : token.slice(arbitraryStart + 1)
-      ).replace(/^!/, "");
+      )
+        .replace(/^!/, "")
+        .replace(/!$/, "")
+        .replace(/_/g, "");
       return (
         /^(hidden|invisible|collapse|sr-only|opacity-0|max-h-0|max-w-0|h-0|w-0|scale-0)$/.test(
           utility
         ) ||
-        /^\[(display:none|visibility:hidden|opacity:0|max-height:0|max-width:0)\]$/.test(
+        /^\[(display:none|visibility:hidden|opacity:0|max-height:0|max-width:0)(?:!important)?\]$/.test(
           utility
         )
       );
@@ -573,7 +647,10 @@ function interactiveJsxAncestor(node: JsxNode): boolean {
 function hiddenJsxAncestorIssues(
   node: JsxNode,
   file: ts.SourceFile,
-  visibleAncestorComponents: readonly string[]
+  visibleAncestorComponents: readonly {
+    name: string;
+    moduleName: string;
+  }[]
 ): string[] {
   const issues: string[] = [];
   let current: ts.Node | undefined = node.parent;
@@ -581,11 +658,25 @@ function hiddenJsxAncestorIssues(
     if (ts.isJsxElement(current) || ts.isJsxSelfClosingElement(current)) {
       const opening = openingOf(current)!;
       const ancestorTag = tagName(opening.tagName);
+      const trusted = visibleAncestorComponents.find(
+        (component) => component.name === ancestorTag
+      );
       if (
         /^[A-Z]/.test(ancestorTag) &&
-        !visibleAncestorComponents.includes(ancestorTag)
+        (!trusted ||
+          !hasCanonicalNamedImport(file, trusted.moduleName, trusted.name) ||
+          declarationNames(file, trusted.name).length > 0)
       ) {
         issues.push(`hidden-ancestry-unsupported-component:${ancestorTag}`);
+      }
+      if (ancestorTag === "template") {
+        issues.push("hidden-ancestry-template");
+      }
+      if (["dialog", "details"].includes(ancestorTag)) {
+        const open = attribute(opening, "open");
+        if (!open || attributeValue(open) !== "true") {
+          issues.push(`hidden-ancestry-closed-${ancestorTag}`);
+        }
       }
       issues.push(...visibilityIssues(opening, "hidden-ancestry"));
       const classValues = classAttributeValues(opening, file);
@@ -690,17 +781,71 @@ function expressionIdentifiers(expression: string): string[] {
 
 function rootIdentifier(node: ts.Expression): ts.Identifier | null {
   let current = node;
-  while (ts.isPropertyAccessExpression(current)) current = current.expression;
+  while (
+    ts.isPropertyAccessExpression(current) ||
+    ts.isElementAccessExpression(current) ||
+    ts.isParenthesizedExpression(current) ||
+    ts.isAsExpression(current) ||
+    ts.isSatisfiesExpression(current) ||
+    ts.isNonNullExpression(current)
+  ) {
+    current = current.expression;
+  }
   return ts.isIdentifier(current) ? current : null;
 }
 
-function identifierIsWritten(file: ts.SourceFile, name: string): boolean {
+function assignmentTargetContains(node: ts.Node, name: string): boolean {
+  if (ts.isIdentifier(node)) return node.text === name;
+  if (
+    ts.isPropertyAccessExpression(node) ||
+    ts.isElementAccessExpression(node) ||
+    ts.isParenthesizedExpression(node) ||
+    ts.isAsExpression(node) ||
+    ts.isSatisfiesExpression(node) ||
+    ts.isNonNullExpression(node)
+  ) {
+    return rootIdentifier(node)?.text === name;
+  }
+  if (ts.isObjectLiteralExpression(node)) {
+    return node.properties.some((property) => {
+      if (ts.isShorthandPropertyAssignment(property)) {
+        return property.name.text === name;
+      }
+      if (ts.isPropertyAssignment(property)) {
+        return assignmentTargetContains(property.initializer, name);
+      }
+      if (ts.isSpreadAssignment(property)) {
+        return assignmentTargetContains(property.expression, name);
+      }
+      return false;
+    });
+  }
+  if (ts.isArrayLiteralExpression(node)) {
+    return node.elements.some((element) =>
+      assignmentTargetContains(element, name)
+    );
+  }
+  return false;
+}
+
+function identifierIsWritten(
+  file: ts.SourceFile,
+  name: string,
+  objectRoot: boolean
+): boolean {
   let written = false;
   const visit = (node: ts.Node): void => {
+    if (
+      objectRoot &&
+      ts.isVariableDeclaration(node) &&
+      node.initializer != null &&
+      rootIdentifier(node.initializer)?.text === name
+    ) {
+      written = true;
+    }
     if (ts.isBinaryExpression(node)) {
-      const root = rootIdentifier(node.left);
       if (
-        root?.text === name &&
+        assignmentTargetContains(node.left, name) &&
         node.operatorToken.kind >= ts.SyntaxKind.FirstAssignment &&
         node.operatorToken.kind <= ts.SyntaxKind.LastAssignment
       ) {
@@ -716,6 +861,41 @@ function identifierIsWritten(file: ts.SourceFile, name: string): boolean {
     ) {
       written = true;
     }
+    if (
+      ts.isDeleteExpression(node) &&
+      rootIdentifier(node.expression)?.text === name
+    ) {
+      written = true;
+    }
+    if (ts.isForInStatement(node) || ts.isForOfStatement(node)) {
+      const target = node.initializer;
+      if (
+        (ts.isVariableDeclarationList(target) &&
+          target.declarations.some((declaration) =>
+            bindingNames(declaration.name).includes(name)
+          )) ||
+        (!ts.isVariableDeclarationList(target) &&
+          assignmentTargetContains(target, name))
+      ) {
+        written = true;
+      }
+    }
+    if (ts.isCallExpression(node)) {
+      const callName = node.expression.getText(file);
+      if (
+        ((callName === "Object.assign" || callName === "Reflect.set") &&
+          node.arguments[0] != null &&
+          rootIdentifier(node.arguments[0])?.text === name) ||
+        (objectRoot &&
+          ((ts.isPropertyAccessExpression(node.expression) &&
+            rootIdentifier(node.expression)?.text === name) ||
+            node.arguments.some(
+              (argument) => ts.isIdentifier(argument) && argument.text === name
+            )))
+      ) {
+        written = true;
+      }
+    }
     ts.forEachChild(node, visit);
   };
   visit(file);
@@ -725,13 +905,14 @@ function identifierIsWritten(file: ts.SourceFile, name: string): boolean {
 function immutableDestinationInput(
   file: ts.SourceFile,
   name: string,
-  moduleBindings: readonly { name: string; moduleName: string }[]
+  moduleBindings: readonly { name: string; moduleName: string }[],
+  objectRoot: boolean
 ): boolean {
   if (moduleBindings.some((binding) => binding.name === name)) {
-    return !identifierIsWritten(file, name);
+    return !identifierIsWritten(file, name, objectRoot);
   }
   const declarations = declarationNames(file, name);
-  if (declarations.length !== 1 || identifierIsWritten(file, name))
+  if (declarations.length !== 1 || identifierIsWritten(file, name, objectRoot))
     return false;
   const declaration = declarations[0];
   if (ts.isParameter(declaration)) return true;
@@ -949,10 +1130,72 @@ function supportedDynamicCondition(expression: ts.Expression): boolean {
   return false;
 }
 
+function containsAbruptCompletion(node: ts.Node): boolean {
+  let found = false;
+  const visit = (child: ts.Node): void => {
+    if (child !== node && isFunctionScope(child)) return;
+    if (ts.isReturnStatement(child) || ts.isThrowStatement(child)) {
+      found = true;
+      return;
+    }
+    ts.forEachChild(child, visit);
+  };
+  visit(node);
+  return found;
+}
+
+function guaranteesAbruptCompletion(node: ts.Statement): boolean {
+  if (ts.isReturnStatement(node) || ts.isThrowStatement(node)) return true;
+  if (ts.isBlock(node)) {
+    return node.statements.some(guaranteesAbruptCompletion);
+  }
+  if (ts.isIfStatement(node)) {
+    const truth = staticTruthiness(node.expression);
+    if (truth === true) return guaranteesAbruptCompletion(node.thenStatement);
+    if (truth === false) {
+      return node.elseStatement
+        ? guaranteesAbruptCompletion(node.elseStatement)
+        : false;
+    }
+    return (
+      node.elseStatement != null &&
+      guaranteesAbruptCompletion(node.thenStatement) &&
+      guaranteesAbruptCompletion(node.elseStatement)
+    );
+  }
+  return false;
+}
+
+function callbackSourceSupported(expression: ts.Expression): boolean {
+  if (ts.isParenthesizedExpression(expression)) {
+    return callbackSourceSupported(expression.expression);
+  }
+  if (ts.isArrayLiteralExpression(expression))
+    return expression.elements.length > 0;
+  if (ts.isPropertyAccessExpression(expression)) return true;
+  if (!ts.isIdentifier(expression)) return false;
+  const declarations = declarationNames(
+    expression.getSourceFile(),
+    expression.text
+  ).filter(ts.isVariableDeclaration);
+  if (declarations.length !== 1 || !declarations[0].initializer) return true;
+  const list = declarations[0].parent;
+  if (
+    !ts.isVariableDeclarationList(list) ||
+    (list.flags & ts.NodeFlags.Const) === 0
+  ) {
+    return false;
+  }
+  return ts.isArrayLiteralExpression(declarations[0].initializer)
+    ? declarations[0].initializer.elements.length > 0
+    : true;
+}
+
 function rendererProvenanceIssues(
   file: ts.SourceFile,
   door: JsxNode,
-  rendererName: string
+  rendererName: string,
+  callbackSources: readonly string[]
 ): string[] {
   const renderers = file.statements.filter(
     (statement): statement is ts.FunctionDeclaration =>
@@ -990,8 +1233,10 @@ function rendererProvenanceIssues(
       if (
         scope.body.statements.some(
           (statement) =>
-            ts.isReturnStatement(statement) &&
-            statement.getStart(file) < live.getStart(file)
+            statement.getStart(file) < live.getStart(file) &&
+            (scope === renderer
+              ? containsAbruptCompletion(statement)
+              : guaranteesAbruptCompletion(statement))
         )
       ) {
         issues.push("renderer-pre-return");
@@ -999,11 +1244,24 @@ function rendererProvenanceIssues(
     }
     if (scope === renderer) break;
     const parent = scope.parent;
+    const callbackAccess =
+      ts.isCallExpression(parent) &&
+      ts.isPropertyAccessExpression(parent.expression)
+        ? parent.expression
+        : null;
+    const callbackReceiver = callbackAccess?.expression;
     if (
       !ts.isCallExpression(parent) ||
-      !parent.arguments.includes(scope as ts.Expression) ||
-      !ts.isPropertyAccessExpression(parent.expression) ||
-      !["map", "flatMap"].includes(parent.expression.name.text)
+      parent.arguments[0] !== scope ||
+      !callbackAccess ||
+      !["map", "flatMap"].includes(callbackAccess.name.text) ||
+      !callbackReceiver ||
+      !callbackSources.some(
+        (source) =>
+          tokenFingerprint(source) ===
+          tokenFingerprint(callbackReceiver.getText(file))
+      ) ||
+      !callbackSourceSupported(callbackReceiver)
     ) {
       issues.push("renderer-unsupported-callback");
       break;
@@ -1014,6 +1272,21 @@ function rendererProvenanceIssues(
 
   let current: ts.Node | undefined = door.parent;
   while (current && current !== renderer) {
+    if (ts.isIfStatement(current)) {
+      const truth = staticTruthiness(current.expression);
+      const inThen = containsNode(current.thenStatement, door);
+      const inElse = current.elseStatement
+        ? containsNode(current.elseStatement, door)
+        : false;
+      if ((truth === false && inThen) || (truth === true && inElse)) {
+        issues.push("renderer-dead-branch");
+      } else if (
+        truth == null &&
+        !supportedDynamicCondition(current.expression)
+      ) {
+        issues.push("renderer-unsupported-condition");
+      }
+    }
     if (ts.isConditionalExpression(current)) {
       const truth = staticTruthiness(current.condition);
       const inTrue = containsNode(current.whenTrue, door);
@@ -1104,7 +1377,14 @@ export function auditDestinationDoorSource(
 
   if (interactiveJsxAncestor(link)) issues.push("interactive-ancestry");
 
-  issues.push(...rendererProvenanceIssues(file, door, contract.rendererName));
+  issues.push(
+    ...rendererProvenanceIssues(
+      file,
+      door,
+      contract.rendererName,
+      contract.rendererCallbackSources ?? []
+    )
+  );
 
   if (declarationNames(file, "Link").length > 0) issues.push("link-shadow");
   if (declarationNames(file, "IconChevronRight").length > 0) {
@@ -1126,7 +1406,17 @@ export function auditDestinationDoorSource(
     }
   }
   for (const name of expressionIdentifiers(contract.destinationExpression)) {
-    if (!immutableDestinationInput(file, name, contract.moduleBindings ?? [])) {
+    const objectRoot = new RegExp(`^${name}(?:\\.|\\[)`).test(
+      contract.destinationExpression.trim()
+    );
+    if (
+      !immutableDestinationInput(
+        file,
+        name,
+        contract.moduleBindings ?? [],
+        objectRoot
+      )
+    ) {
       issues.push(`destination-input:${name}`);
     }
   }
@@ -1376,15 +1666,35 @@ function directHeadingMatches(
   );
 }
 
+function ownerTagTrusted(file: ts.SourceFile, owner: DoorOwner): boolean {
+  if (owner.kind === "logical-and" || !/^[A-Z]/.test(owner.ownerTag)) {
+    return true;
+  }
+  if (
+    (owner.kind !== "jsx-attribute" && owner.kind !== "ancestor-attribute") ||
+    !owner.ownerModule ||
+    !owner.ownerImport
+  ) {
+    return false;
+  }
+  const imported =
+    owner.ownerImport === "default"
+      ? hasCanonicalDefaultImport(file, owner.ownerModule, owner.ownerTag)
+      : hasCanonicalNamedImport(file, owner.ownerModule, owner.ownerTag);
+  return imported && declarationNames(file, owner.ownerTag).length === 0;
+}
+
 function ownedBy(
   node: JsxNode,
   owner: DoorOwner,
   file: ts.SourceFile
 ): boolean {
+  if (!ownerTagTrusted(file, owner)) return false;
   let current: ts.Node | undefined = node.parent;
   let conditionalPath = false;
   let deadPath = false;
   let unsafeOwnerPath = false;
+  let ownerMatched = false;
   while (current) {
     if (owner.kind === "jsx-attribute" && ts.isJsxAttribute(current)) {
       const opening = current.parent.parent;
@@ -1403,7 +1713,7 @@ function ownedBy(
         (ts.isJsxElement(current.initializer.expression) ||
           ts.isJsxSelfClosingElement(current.initializer.expression))
       ) {
-        return true;
+        ownerMatched = true;
       }
     }
     if (
@@ -1419,7 +1729,7 @@ function ownedBy(
         attributes(opening, owner.attribute).length === 1 &&
         attributeValue(attribute(opening, owner.attribute)) === owner.value
       ) {
-        return true;
+        ownerMatched = true;
       }
     }
     if (
@@ -1431,7 +1741,7 @@ function ownedBy(
       exactAttributeIssues(current.openingElement, "owner").length === 0 &&
       directHeadingMatches(current, owner.headingTag, owner.text)
     ) {
-      return true;
+      ownerMatched = true;
     }
     if (
       owner.kind === "logical-and" &&
@@ -1441,7 +1751,7 @@ function ownedBy(
       !deadPath &&
       !unsafeOwnerPath
     ) {
-      return true;
+      ownerMatched = true;
     }
     if (
       ts.isArrowFunction(current) ||
@@ -1450,6 +1760,20 @@ function ownedBy(
     ) {
       conditionalPath = true;
       deadPath = true;
+    } else if (ts.isIfStatement(current)) {
+      conditionalPath = true;
+      const truth = staticTruthiness(current.expression);
+      const inThen = containsNode(current.thenStatement, node);
+      const inElse = current.elseStatement
+        ? containsNode(current.elseStatement, node)
+        : false;
+      if (
+        (truth === false && inThen) ||
+        (truth === true && inElse) ||
+        (truth == null && !supportedDynamicCondition(current.expression))
+      ) {
+        deadPath = true;
+      }
     } else if (ts.isConditionalExpression(current)) {
       conditionalPath = true;
       const truth = staticTruthiness(current.condition);
@@ -1498,7 +1822,7 @@ function ownedBy(
     }
     current = current.parent;
   }
-  return false;
+  return ownerMatched && !deadPath && !unsafeOwnerPath;
 }
 
 export function jsxMountOwnerLines(
@@ -1565,6 +1889,14 @@ export function chevronOccurrences(source: string): ChevronOccurrence[] {
     return index >= 0 ? path.slice(index) : [];
   };
   const descriptor = (opening: Opening): string => {
+    const containsTemplate = (node: ts.Node): boolean => {
+      if (ts.isTemplateLiteral(node)) return true;
+      let found = false;
+      ts.forEachChild(node, (child) => {
+        if (!found && containsTemplate(child)) found = true;
+      });
+      return found;
+    };
     const identity = [
       "href",
       "data-testid",
@@ -1582,7 +1914,15 @@ export function chevronOccurrences(source: string): ChevronOccurrence[] {
         attr.initializer && ts.isStringLiteral(attr.initializer)
           ? "literal"
           : "expression";
-      return [`${name}:${kind}:${attributeValue(attr)}`];
+      const expression =
+        attr.initializer &&
+        ts.isJsxExpression(attr.initializer) &&
+        attr.initializer.expression;
+      const value =
+        expression && containsTemplate(expression)
+          ? `syntax:${JSON.stringify(expression.getText(file))}`
+          : attributeValue(attr);
+      return [`${name}:${kind}:${value}`];
     });
     return `${tagName(opening.tagName)}${
       identity.length ? `[${identity.join(",")}]` : ""
@@ -1758,6 +2098,43 @@ export function componentModuleReferences(
   const found: ModuleReference[] = [];
   const line = (node: ts.Node) =>
     file.getLineAndCharacterOfPosition(node.getStart(file)).line + 1;
+  const requireAliases = new Set<string>();
+
+  const requireLike = (expression: ts.Expression): boolean => {
+    if (ts.isParenthesizedExpression(expression)) {
+      return requireLike(expression.expression);
+    }
+    if (
+      ts.isBinaryExpression(expression) &&
+      expression.operatorToken.kind === ts.SyntaxKind.CommaToken
+    ) {
+      return requireLike(expression.right);
+    }
+    if (ts.isIdentifier(expression)) {
+      return (
+        expression.text === "require" || requireAliases.has(expression.text)
+      );
+    }
+    return (
+      ts.isPropertyAccessExpression(expression) &&
+      ts.isIdentifier(expression.expression) &&
+      expression.expression.text === "module" &&
+      expression.name.text === "require"
+    );
+  };
+
+  const collectRequireAliases = (node: ts.Node): void => {
+    if (
+      ts.isVariableDeclaration(node) &&
+      ts.isIdentifier(node.name) &&
+      node.initializer != null &&
+      requireLike(node.initializer)
+    ) {
+      requireAliases.add(node.name.text);
+    }
+    ts.forEachChild(node, collectRequireAliases);
+  };
+  collectRequireAliases(file);
 
   for (const statement of file.statements) {
     if (ts.isImportDeclaration(statement)) {
@@ -1795,38 +2172,74 @@ export function componentModuleReferences(
   }
 
   const visit = (node: ts.Node): void => {
-    if (ts.isCallExpression(node) && node.arguments.length === 1) {
-      const moduleName = staticString(node.arguments[0]);
-      if (moduleName == null) {
-        if (node.expression.kind === ts.SyntaxKind.ImportKeyword) {
-          found.push({
-            kind: "computed-dynamic-import",
-            moduleName: compact(node.arguments[0].getText(file)),
-            line: line(node),
-          });
-        } else if (
-          ts.isIdentifier(node.expression) &&
-          node.expression.text === "require"
-        ) {
-          found.push({
-            kind: "computed-require",
-            moduleName: compact(node.arguments[0].getText(file)),
-            line: line(node),
-          });
-        }
+    if (ts.isImportEqualsDeclaration(node)) {
+      const reference = node.moduleReference;
+      if (ts.isExternalModuleReference(reference) && reference.expression) {
+        const moduleName = staticString(reference.expression);
+        found.push({
+          kind: moduleName == null ? "computed-require" : "require",
+          moduleName:
+            moduleName ?? tokenFingerprint(reference.expression.getText(file)),
+          line: line(node),
+        });
+      }
+    }
+    if (ts.isCallExpression(node)) {
+      let loadArgument: ts.Expression | undefined;
+      let loadKind: "dynamic-import" | "require" | null = null;
+      if (node.expression.kind === ts.SyntaxKind.ImportKeyword) {
+        loadArgument =
+          node.arguments.length === 1 ? node.arguments[0] : undefined;
+        loadKind = "dynamic-import";
+      } else if (requireLike(node.expression)) {
+        loadArgument =
+          node.arguments.length === 1 ? node.arguments[0] : undefined;
+        loadKind = "require";
+      } else if (
+        ts.isPropertyAccessExpression(node.expression) &&
+        node.expression.name.text === "call" &&
+        requireLike(node.expression.expression)
+      ) {
+        loadArgument =
+          node.arguments.length === 2 ? node.arguments[1] : undefined;
+        loadKind = "require";
+      }
+      if (!loadKind) {
         ts.forEachChild(node, visit);
         return;
       }
-      if (node.expression.kind === ts.SyntaxKind.ImportKeyword) {
+      if (!loadArgument) {
+        found.push({
+          kind:
+            loadKind === "require"
+              ? "computed-require"
+              : "computed-dynamic-import",
+          moduleName: "unsupported-arguments",
+          line: line(node),
+        });
+        ts.forEachChild(node, visit);
+        return;
+      }
+      const moduleName = staticString(loadArgument);
+      if (moduleName == null) {
+        found.push({
+          kind:
+            loadKind === "require"
+              ? "computed-require"
+              : "computed-dynamic-import",
+          moduleName: tokenFingerprint(loadArgument.getText(file)),
+          line: line(node),
+        });
+        ts.forEachChild(node, visit);
+        return;
+      }
+      if (loadKind === "dynamic-import") {
         found.push({
           kind: "dynamic-import",
           moduleName,
           line: line(node),
         });
-      } else if (
-        ts.isIdentifier(node.expression) &&
-        node.expression.text === "require"
-      ) {
+      } else {
         found.push({
           kind: "require",
           moduleName,
