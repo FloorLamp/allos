@@ -229,11 +229,9 @@ export const LOG_DAY_SOURCES = {
   //
   // ALCOHOL IS DELIBERATELY NOT DECLARED HERE. Its taps land on `food_daily_totals`
   // (#860/#944 — a standard drink IS one serving of the curated alcohol group), which
-  // "log-food" already declares and the statement already counts. Naming it twice
-  // would count one tap as evidence for two segments, which is exactly the skew this
-  // census exists to make visible. The cost is stated: a profile whose ONLY substance
-  // is alcohol carries its logging evidence in Food rather than Care, which is where
-  // the row was written.
+  // `log-food` already declares and the statement already counts for Consume. This
+  // entry declares only the dedicated substance writer; naming the food store again
+  // would give one store two owners in a census whose keys are quick-log entries.
   "log-substance": ["substance_daily_totals"],
   // The daily check-in's store is STORE-PRIVATE by the #992 contract: nothing
   // outside its own read/write/registry modules may name the table, because a

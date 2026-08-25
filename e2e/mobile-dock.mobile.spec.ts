@@ -148,15 +148,21 @@ test("the puck opens the log sheet, whose segmented long tail reaches every log"
   ).not.toHaveAttribute("aria-pressed", "true");
 
   // The long tail: another domain is one segment tap away, no page visit needed.
-  await sheet.getByTestId("log-sheet-segment-care").click();
+  // Doses are things taken into the body, so their row lives in Consume.
+  await sheet.getByTestId("log-sheet-segment-food").click();
   await expect(sheet.getByTestId("quick-log-log-dose")).toBeVisible();
-  await expect(sheet.getByTestId("quick-log-add-document")).toBeVisible();
   // Segments are mutually exclusive — another segment's rows are gone, not
   // stacked below.
   await expect(sheet.getByTestId("quick-log-log-activity")).toHaveCount(0);
-  await expect(sheet.getByTestId("quick-log-log-food")).toHaveCount(0);
+  await expect(sheet.getByTestId("quick-log-add-document")).toHaveCount(0);
+
+  // Care is independently reachable and now contains practice, mood and files.
+  await sheet.getByTestId("log-sheet-segment-care").click();
+  await expect(sheet.getByTestId("quick-log-add-document")).toBeVisible();
+  await expect(sheet.getByTestId("quick-log-log-dose")).toHaveCount(0);
 
   // A row still opens its EXISTING form in place (#1468) rather than navigating.
+  await sheet.getByTestId("log-sheet-segment-food").click();
   await sheet.getByTestId("quick-log-log-dose").click();
   await expect(sheet).toHaveCount(0);
   await expect(page.getByTestId("quick-entry-sheet")).toBeVisible();

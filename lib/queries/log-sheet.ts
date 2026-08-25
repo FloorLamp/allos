@@ -51,8 +51,9 @@ import {
 //   substance_daily_totals — `source = 'manual'` (#3327). NOT NULL with a 'manual'
 //     default, exactly like metric_samples, so there is no null half to admit. Only
 //     the NON-food substances are here: alcohol's taps land on food_daily_totals and
-//     are already counted by the Consume arm, and counting them again would make
-//     one tap evidence for two segments.
+//     are already counted by the `log-food` source declaration for Consume. This arm
+//     therefore owns only the dedicated substance store rather than giving one store
+//     two quick-log owners.
 //   medical_records — `source IS NULL OR source = 'manual'`. Nullable AND written
 //     by hand-entry paths that disagree: `insertVitals`/`recordReading` and the
 //     temperature logger stamp 'manual', while the /results "add a result" form

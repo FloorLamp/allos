@@ -95,13 +95,13 @@ test.describe("quick-log sheet: the substance row (#3327)", () => {
   test("a profile that tracks no substance gets no row at all", async () => {
     await page.goto("/");
     const sheet = await openLogSheet(page);
-    // The CARE segment is revealed first and the row is absent within it — the
+    // The Consume segment is revealed first and the row is absent within it — the
     // strictly stronger statement the helper returns a locator for. "The row is not
     // visible" would also pass on a sheet that had stopped segmenting.
     const row = await showLogRow(sheet, "log-substance");
     await expect(row).toHaveCount(0);
     // The segment itself survives — the gate removes a row, never a segment.
-    await expect(sheet.getByTestId("quick-log-log-dose")).toBeVisible();
+    await expect(sheet.getByTestId("quick-log-log-food")).toBeVisible();
   });
 
   test("naming a substance makes the row appear, offering that substance with no cap framing", async () => {
