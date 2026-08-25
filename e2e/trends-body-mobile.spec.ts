@@ -275,6 +275,9 @@ test.describe("Trends → Overview → body census responsive views (#1067)", ()
     );
     await expect(jumpMenu).toBeVisible();
     await expect(trigger).toBeVisible();
+    await expect(trigger).toHaveAttribute("data-button-control", "");
+    await expect(trigger).toHaveAttribute("aria-haspopup", "menu");
+    await expect(trigger).toHaveAttribute("aria-expanded", "false");
     await expect(controls.locator("> *")).toHaveCount(3);
     const logButton = controls.getByTestId("log-measurements-toggle");
     await expect(logButton).toBeVisible();
@@ -330,8 +333,31 @@ test.describe("Trends → Overview → body census responsive views (#1067)", ()
       ).toBeLessThanOrEqual(9);
     }
 
-    await hydratedClick(page, trigger);
+    // The all-charts row is desktop-only. Drive the trigger's keyboard contract
+    // here before its existing pointer path: arrows open and enter the menu,
+    // Escape restores the trigger, and expanded state follows.
+    await trigger.focus();
+    await page.keyboard.press("ArrowDown");
     const menuOptions = page.getByTestId("chart-jump-menu-options");
+    await expect(menuOptions).toBeVisible();
+    await expect(trigger).toHaveAttribute("aria-expanded", "true");
+    const focusedMenuItem = menuOptions.locator('[role="menuitemradio"]:focus');
+    await expect(focusedMenuItem).toHaveCount(1);
+    const initiallyFocused = await focusedMenuItem.getAttribute("data-testid");
+    await page.keyboard.press("ArrowDown");
+    await expect
+      .poll(() => focusedMenuItem.getAttribute("data-testid"))
+      .not.toBe(initiallyFocused);
+    await page.keyboard.press("Escape");
+    await expect(menuOptions).toHaveCount(0);
+    await expect(trigger).toHaveAttribute("aria-expanded", "false");
+    await expect(trigger).toBeFocused();
+
+    const [compactTriggerBox] = await settledBoxes([trigger]);
+    expect(compactTriggerBox.height).toBeLessThan(44);
+
+    // Keep the established pointer path and real anchor-scroll behavior too.
+    await hydratedClick(page, trigger);
     await expect(menuOptions).toBeVisible();
     await expect(menuOptions).toHaveCSS("z-index", "50");
 
