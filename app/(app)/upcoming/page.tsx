@@ -981,10 +981,7 @@ function SuppressedSection({
           a client component: it pulses ONCE when its count goes up (#2654, motion 2),
           which is the other half of the dismissed row's travel toward it. The count
           itself is server truth on every paint; the pulse only decorates a change. */}
-      <FoldSummary
-        count={items.length}
-        className="cursor-pointer section-label"
-      />
+      <FoldSummary count={items.length} />
       <div className="card mt-2 space-y-3 p-2">
         {groups.map((g) => (
           <div key={g.domain}>

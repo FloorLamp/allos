@@ -34,11 +34,9 @@ import { usePrefersReducedMotion } from "@/components/usePrefersReducedMotion";
 // one, and it exempts this pulse alone.
 export default function FoldSummary({
   count,
-  className,
 }: {
   // The authoritative number of snoozed + dismissed rows behind this disclosure.
   count: number;
-  className: string;
 }) {
   const reduced = usePrefersReducedMotion();
   const plan = microMotionPlan("fold", reduced);
@@ -79,16 +77,21 @@ export default function FoldSummary({
       data-motion="fold"
       data-reduced-motion={reduced ? "true" : "false"}
       data-pulsing={pulsing ? "true" : "false"}
-      // `rounded-lg` so the box-shadow ring follows the line rather than boxing it;
-      // it changes no geometry, which is the rule the whole vocabulary keeps.
-      className={`${className} rounded-lg${pulsing ? " motion-fold" : ""}`}
+      className="min-h-11 cursor-pointer py-3.5 section-label sm:min-h-0 sm:py-0"
     >
-      Snoozed &amp; dismissed{" "}
+      {/* The motion sits on the visible line so the summary keeps one readable,
+          fixed treatment. `rounded-lg` makes the box-shadow ring follow that line;
+          it changes no geometry, which is the rule the whole vocabulary keeps. */}
       <span
-        data-testid="suppressed-count"
-        className="tabular-nums text-slate-500 dark:text-slate-400"
+        className={`inline-block rounded-lg${pulsing ? ` ${plan.className}` : ""}`}
       >
-        ({count})
+        Snoozed &amp; dismissed{" "}
+        <span
+          data-testid="suppressed-count"
+          className="tabular-nums text-slate-500 dark:text-slate-400"
+        >
+          ({count})
+        </span>
       </span>
     </summary>
   );
