@@ -23,6 +23,7 @@ import UsualRoutineControl from "./dashboard/UsualRoutineControl";
 import { useActivityEditor } from "./ActivityEditorProvider";
 import { useQuickEntry } from "./QuickEntryProvider";
 import { useResettableState } from "./useResettableState";
+import { usePrefersReducedMotion } from "./usePrefersReducedMotion";
 import {
   loadLogSheetContext,
   type LogSheetContext,
@@ -30,6 +31,7 @@ import {
 import {
   dueDoseChipLabel,
   logSheetSegments,
+  maxLogSheetRows,
   openingLogSegment,
   type LogSegmentId,
   type SegmentLogDays,
@@ -37,6 +39,7 @@ import {
 import { type QuickLogIcon, type QuickLogItem } from "@/lib/quick-log";
 import { LoggedViaSurface } from "@/components/LoggedViaSurface";
 import type { WebLoggedVia } from "@/lib/logged-via";
+import { microMotionPlan } from "@/lib/micro-motion";
 
 // The log sheet — what the dock's raised puck opens (issue #2651). Since #2745
 // the puck is the one phone-chrome route here; the duplicate top-bar cluster is
@@ -81,7 +84,7 @@ import type { WebLoggedVia } from "@/lib/logged-via";
 // this sheet has always rendered — same entries, same two gates, same registry —
 // grouped into a one-line segmented domain track so no log needs its page first.
 // The track opens on the segment holding the current route's promoted log, so
-// the puck on Nutrition lands on Food — except on the DASHBOARD, which promotes
+// the puck on Nutrition lands on Consume — except on the DASHBOARD, which promotes
 // no log of its own and opens instead on the segment this profile has logged on
 // the most DAYS over the trailing quarter (#2709, owner ruling).
 // `openingLogSegment` owns that whole composition, including the fallback for a
@@ -114,6 +117,11 @@ const ICONS: Record<QuickLogIcon, typeof IconBarbell> = {
 // workout started from the sheet's bolt would record `page` like one started from the
 // Training page. Which is the sentence this mechanism exists to make false.
 const SHEET_SURFACE: WebLoggedVia = "quick-log";
+
+// One row is 60px (36px icon + 24px vertical padding), followed by the list's
+// 4px gap. Its `pb-1` spends that final 4px after the last row, so N×64px is the
+// exact rendered list block rather than an approximate minimum (#3675).
+const LOG_SHEET_ROW_BLOCK_PX = 64;
 
 export default function QuickLogSheet({
   open,
@@ -170,8 +178,14 @@ export default function QuickLogSheet({
     `${pathname}|${open ? 1 : 0}`
   );
 
-  const context = useLogSheetContext(open);
+  const { context, state: contextState } = useLogSheetContext(open);
   const shown = segments.find((s) => s.id === segment) ?? segments[0];
+  const maxRows = maxLogSheetRows(segments);
+  const hasGatheredOffers = Boolean(
+    context && (context.routine || context.dueDoses.count > 0)
+  );
+  const reduceMotion = usePrefersReducedMotion();
+  const arrivePlan = microMotionPlan("arrive", reduceMotion);
 
   function run(item: QuickLogItem) {
     // Close first: whatever opens next is its own overlay and should stand
@@ -203,62 +217,80 @@ export default function QuickLogSheet({
           the dashboard atom if the puck says so. Declared here at the region root
           rather than on the control, which is mounted in both places. */}
       <LoggedViaSurface value={SHEET_SURFACE}>
-        {context && (context.routine || context.dueDoses.count > 0) && (
-          <section
-            data-testid="log-sheet-context"
-            className="mb-4 border-b border-black/5 pb-3 dark:border-white/5"
+        {/* The 208px context slot exists from the first frame and survives an
+            empty or failed gather. It is tall enough for the heading, composed
+            routine control, and two wrapping chips at 390px. BottomSheet keeps
+            the one scroll owner; this reserve adds no nested scroller. */}
+        <div
+          data-testid="log-sheet-context-slot"
+          data-context-state={contextState}
+          className="mb-4 h-52"
+        >
+          <p
+            role="status"
+            aria-live="polite"
+            data-testid="log-sheet-context-status"
+            className="sr-only"
           >
-            <h3 className="mb-2 text-xs font-semibold tracking-wide text-slate-500 uppercase dark:text-slate-400">
-              Due &amp; usual now
-            </h3>
-            {/* The dashboard's own control, unchanged: it names every serving and
+            {hasGatheredOffers ? "Due and usual options are ready." : ""}
+          </p>
+          {hasGatheredOffers && context && (
+            <section
+              data-testid="log-sheet-context"
+              className={`${arrivePlan.className} h-full border-b border-black/5 pb-3 dark:border-white/5`}
+            >
+              <h3 className="mb-2 text-xs font-semibold tracking-wide text-slate-500 uppercase dark:text-slate-400">
+                Due &amp; usual now
+              </h3>
+              {/* The dashboard's own control, unchanged: it names every serving and
           every dose the tap will write, and answers from the typed outcome. */}
-            {context.routine && (
-              <UsualRoutineControl
-                window={context.routine.window}
-                food={context.routine.food}
-                doses={context.routine.doses}
-                subjectName={context.routine.subjectName}
-              />
-            )}
-            <div className="flex flex-wrap gap-2">
-              {context.dueDoses.count > 0 && (
-                <ContextChip
-                  testId="log-sheet-chip-doses"
-                  icon={<IconPill className="h-4 w-4" stroke={1.75} />}
-                  // Names come from the SAME due items the count used to summarize;
-                  // the chip still opens the list and confirms nothing itself.
-                  label={dueDoseChipLabel(context.dueDoses)!}
-                  onClick={() => {
-                    onClose();
-                    openQuickEntry("dose");
-                  }}
+              {context.routine && (
+                <UsualRoutineControl
+                  window={context.routine.window}
+                  food={context.routine.food}
+                  doses={context.routine.doses}
+                  subjectName={context.routine.subjectName}
                 />
               )}
-              {/* ONLY the `resume` arm. A `start` offer stands on every route at
+              <div className="flex flex-wrap gap-2">
+                {context.dueDoses.count > 0 && (
+                  <ContextChip
+                    testId="log-sheet-chip-doses"
+                    icon={<IconPill className="h-4 w-4" stroke={1.75} />}
+                    // Names come from the SAME due items the count used to summarize;
+                    // the chip still opens the list and confirms nothing itself.
+                    label={dueDoseChipLabel(context.dueDoses)!}
+                    onClick={() => {
+                      onClose();
+                      openQuickEntry("dose");
+                    }}
+                  />
+                )}
+                {/* ONLY the `resume` arm. A `start` offer stands on every route at
             every hour, and a permanently-present chip in a section headed "Due &
             usual now" would claim that starting a workout is DUE — which is
             exactly the campaigning this chrome refuses. A live or just-abandoned
             session genuinely is now, and "Log activity" stays one segment away
             regardless (#2419: dueness gates nudging, never logging). */}
-              {workoutOffer.kind === "resume" && (
-                <ContextChip
-                  testId="log-sheet-chip-session"
-                  workoutOffer={workoutOffer.kind}
-                  icon={<IconBolt className="h-4 w-4" stroke={1.75} />}
-                  // The LABEL is the offer (#1893) — "Resume workout" with a
-                  // session already live, so the tap can never silently reset a
-                  // running clock.
-                  label={workoutOffer.label}
-                  onClick={() => {
-                    onClose();
-                    openLive();
-                  }}
-                />
-              )}
-            </div>
-          </section>
-        )}
+                {workoutOffer.kind === "resume" && (
+                  <ContextChip
+                    testId="log-sheet-chip-session"
+                    workoutOffer={workoutOffer.kind}
+                    icon={<IconBolt className="h-4 w-4" stroke={1.75} />}
+                    // The LABEL is the offer (#1893) — "Resume workout" with a
+                    // session already live, so the tap can never silently reset a
+                    // running clock.
+                    label={workoutOffer.label}
+                    onClick={() => {
+                      onClose();
+                      openLive();
+                    }}
+                  />
+                )}
+              </div>
+            </section>
+          )}
+        </div>
 
         {segments.length > 1 && (
           <SegmentedControl<LogSegmentId>
@@ -271,11 +303,17 @@ export default function QuickLogSheet({
             onChange={setSegment}
             ariaLabel="What are you logging?"
             testId="log-sheet-segments"
-            className="mb-3 flex w-full"
+            fill
+            className="mb-3"
           />
         )}
 
-        <ul className="flex flex-col gap-1 pb-1" data-testid="log-sheet-items">
+        <ul
+          className="flex flex-col gap-1 pb-1"
+          data-testid="log-sheet-items"
+          data-max-rows={maxRows}
+          style={{ height: `${maxRows * LOG_SHEET_ROW_BLOCK_PX}px` }}
+        >
           {(shown?.items ?? []).map((item) => {
             const Icon = ICONS[item.icon];
             const label =
@@ -354,13 +392,18 @@ function ContextChip({
 // A failed gather renders NO context section. These are offers, and the honest
 // degradation of an offer nobody could resolve is silence — never a chip that
 // can only refuse, and never a blocking error over a menu that still works.
-function useLogSheetContext(open: boolean): LogSheetContext | null {
+type LogSheetContextLoad = {
+  context: LogSheetContext | null;
+  state: "idle" | "loading" | "ready" | "failed";
+};
+
+function useLogSheetContext(open: boolean): LogSheetContextLoad {
   // Keyed on `open`, so closing DISCARDS the answer during the next render
   // rather than through a follow-up effect: a sheet reopened an hour later must
   // never paint the offers it gathered the first time, and clearing that in an
   // effect would both cascade a render and leave a frame where it had.
-  const [context, setContext] = useResettableState<LogSheetContext | null>(
-    null,
+  const [load, setLoad] = useResettableState<LogSheetContextLoad>(
+    { context: null, state: open ? "loading" : "idle" },
     open
   );
   // Ignore a response that lost its race — a close-then-reopen must not paint the
@@ -371,12 +414,14 @@ function useLogSheetContext(open: boolean): LogSheetContext | null {
     const token = ++requestRef.current;
     void loadLogSheetContext().then(
       (data) => {
-        if (requestRef.current === token) setContext(data);
+        if (requestRef.current === token)
+          setLoad({ context: data, state: "ready" });
       },
       () => {
-        if (requestRef.current === token) setContext(null);
+        if (requestRef.current === token)
+          setLoad({ context: null, state: "failed" });
       }
     );
-  }, [open, setContext]);
-  return context;
+  }, [open, setLoad]);
+  return load;
 }

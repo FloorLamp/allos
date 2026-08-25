@@ -184,9 +184,10 @@ defect. The same two facts are re-checked server-side in `loadQuickEntry`, so a
 hand-written `?quick=log-substance` cannot reach the offer either.
 
 A substance tap is also one hand-entered row of logging evidence, so `LOG_DAY_SOURCES`
-declares `substance_daily_totals` for the Care segment. Alcohol is deliberately **not**
-declared there: its taps land on `food_daily_totals`, which the Food arm already counts,
-and naming that store twice would make one tap evidence for two segments.
+declares `substance_daily_totals` for the Consume segment. Alcohol is deliberately **not**
+declared there: its taps land on `food_daily_totals`, which the Consume arm already counts,
+through the `log-food` entry that owns that writer. The substance entry declares only its
+dedicated store, so one store never has two quick-log owners in the census.
 
 ## Reach
 

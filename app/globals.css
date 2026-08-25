@@ -1352,7 +1352,7 @@
 
 /* ── SECTION: Micro-motion ── */
 /* Micro-motion (issue #2654) — the small moves that answer "did that work?".
-   Five of them, and their whole justification is that they carry INFORMATION: a
+   Seven of them, and their whole justification is that they carry INFORMATION: a
    tap-shaped confirm visibly BECOMING its done state, a quantity visibly CHANGING
    rather than being replaced, a dismissed finding visibly TRAVELLING toward the fold
    that catches it, that fold visibly ANSWERING, and the jump rail's bubble BEATING as
@@ -1371,9 +1371,11 @@
    be constructed without one. It is not a precedent — the dismissed row's own
    `--motion-slide` stays inside the band, and so does everything else.
 
-   NOTHING HERE LOOPS, autoplays, or moves without a user gesture. Explicitly not in
-   this vocabulary: skeleton shimmer, attention pulses on findings (a finding may not
-   campaign — reach policy), chart draw-in, page transitions. The fold pulse is the
+   NOTHING HERE LOOPS or autoplays as an attention claim. `arrive` is the one
+   asynchronous receipt: it fires once when the quick-log gather finishes, inside a
+   box that already exists, and announces that same completion through aria-live.
+   Explicitly not in this vocabulary: skeleton shimmer, attention pulses on findings
+   (a finding may not campaign — reach policy), chart draw-in, page transitions. The fold pulse is the
    near miss to keep an eye on: it fires ONCE, on the tap that incremented the count,
    and never on arrival at the page. The overlay family below is a different question
    at a different duration; do not cross-wire them.
@@ -1387,6 +1389,7 @@
   --motion-slide: 300ms;
   --motion-tick: 180ms;
   --motion-promote: 300ms;
+  --motion-arrive: 200ms;
   /* Band-exempt, see the note above. */
   --motion-fold: 500ms;
   /* ONE curve for the whole vocabulary. Decelerating: the move arrives and
@@ -1527,6 +1530,21 @@
   animation: micro-promote var(--motion-promote) var(--motion-ease);
 }
 
+/* Offers gathered after the quick-log sheet opened arriving inside a box that
+   was already reserved. Opacity alone: the receipt says the async answer landed
+   without moving the segment strip or any other control under the reader. */
+@keyframes micro-arrive {
+  0% {
+    opacity: 0;
+  }
+  100% {
+    opacity: 1;
+  }
+}
+.motion-arrive {
+  animation: micro-arrive var(--motion-arrive) var(--motion-ease);
+}
+
 @media (prefers-reduced-motion: reduce) {
   /* Belt and braces. `microMotionPlan()` already returns no class under the
      preference, so these are not applied at all — but a stylesheet that only works
@@ -1539,6 +1557,7 @@
   .motion-slide,
   .motion-tick,
   .motion-promote,
+  .motion-arrive,
   .motion-fold {
     animation: none;
   }

@@ -324,6 +324,12 @@ describe("micro-motion declarations", () => {
       className: "motion-settle",
     });
     expect(microMotionPlan("count", false).ms).toBe(250);
+    expect(microMotionPlan("arrive", false)).toEqual({
+      ms: 200,
+      animate: true,
+      className: "motion-arrive",
+    });
+    expect(bandExemptionFor("arrive")).toBeNull();
     // Motion 2's two halves, separately: the row's travel and the fold's answer.
     expect(microMotionPlan("slide", false).ms).toBe(300);
     expect(microMotionPlan("fold", false)).toEqual({

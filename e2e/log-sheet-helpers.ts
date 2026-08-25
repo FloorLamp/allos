@@ -5,7 +5,7 @@ import type { QuickLogId } from "@/lib/quick-log";
 // Driving the quick-log sheet's SEGMENTED long tail (issue #2651).
 //
 // The sheet used to be one flat list, so every spec reached a row by test id and
-// got it. Since #2651 the long tail is a segmented domain track (Train · Food ·
+// got it. Since #2651 the long tail is a segmented domain track (Train · Consume ·
 // Body · Care) and a row exists in the DOM only while its own segment is
 // selected — so "reach the row" now means "select its segment, then reach the
 // row", and every caller has to say which.

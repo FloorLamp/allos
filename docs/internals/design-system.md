@@ -125,6 +125,10 @@ and its exact class plus each bare forwarding hop are structurally pinned.
 `SegmentedControl` keeps its inset track, but every option inside it owns a
 rendered `min-h-11` target. The track's padding is not clickable and therefore
 does not count toward the 44px floor; sibling option boxes must remain disjoint.
+Its `fill` mode is opt-in: the primitive owns `flex w-full`, divides options with
+`flex-1 min-w-0`, and truncates only the visual label while preserving the full
+accessible name and `title`. Quick log uses that mode for its four equal phone
+segments; the other thirteen consumers keep intrinsic `inline-flex` sizing (#3675).
 
 Dense in-row strips add `chip-sm`; the modifier owns their `text-xs` /
 `px-2.5` / `py-0.5` scale and rendered 44px target. The #3525 sweep

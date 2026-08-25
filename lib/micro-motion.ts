@@ -134,6 +134,18 @@ export const MICRO_MOTIONS = {
     reducedEndState:
       "the card is simply in Now on the frame the page re-renders, and Standing no longer lists the row; no keyframe is ever scheduled.",
   },
+  // The seventh tenant (#3675). The quick-log sheet reserves the context slot
+  // before this asynchronous gather starts, so the opacity receipt can say
+  // "finished gathering" without moving the segment strip under the reader.
+  arrive: {
+    ms: 200,
+    conveys:
+      "the sheet just finished finding out what is due and usual for you: these offers were gathered after it opened, they were not waiting here.",
+    carriedBy:
+      "the section's own heading and rendered controls, plus its persistent aria-live status announcing that due and usual options are ready.",
+    reducedEndState:
+      "the gathered controls are simply present at full opacity on the frame the answer resolves; no keyframe is ever scheduled.",
+  },
   fold: {
     ms: 500,
     conveys:
