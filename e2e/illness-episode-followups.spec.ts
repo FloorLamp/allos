@@ -1,10 +1,11 @@
 import { test, expect } from "./fixtures";
-import { type Page } from "@playwright/test";
+import { type Locator, type Page } from "@playwright/test";
 import { followLink } from "./nav";
 import {
   dismissToast,
   expectNoClippedContent,
   hydratedClick,
+  settledBoxes,
   settledClick,
 } from "./helpers";
 import {
@@ -14,6 +15,36 @@ import {
   openTempEntry,
 } from "./symptom-helpers";
 import { frozenNow } from "./worker-env";
+import {
+  TAP_FLOOR_FLOAT_EPSILON_PX,
+  TAP_FLOOR_PX,
+} from "@/lib/tap-floor-tokens";
+
+const PHONE = { width: 390, height: 844 };
+
+async function expectClosedEpisodeAction(
+  locator: Locator,
+  name: string
+): Promise<void> {
+  await expect(locator).toHaveAttribute("data-button-control", "");
+  await expect(locator).toHaveAccessibleName(name);
+  const [box] = await settledBoxes([locator]);
+  expect(
+    box.width + TAP_FLOOR_FLOAT_EPSILON_PX,
+    `${name} rendered width`
+  ).toBeGreaterThanOrEqual(TAP_FLOOR_PX);
+  expect(
+    box.height + TAP_FLOOR_FLOAT_EPSILON_PX,
+    `${name} rendered height`
+  ).toBeGreaterThanOrEqual(TAP_FLOOR_PX);
+  expect(
+    box.x + TAP_FLOOR_FLOAT_EPSILON_PX,
+    `${name} left viewport edge`
+  ).toBeGreaterThanOrEqual(0);
+  expect(box.x + box.width, `${name} right viewport edge`).toBeLessThanOrEqual(
+    PHONE.width + TAP_FLOOR_FLOAT_EPSILON_PX
+  );
+}
 
 async function openCurrentEpisode(page: Page) {
   await page.goto("/medical/episodes");
@@ -543,6 +574,7 @@ test.describe("Illness-episode follow-ups (#856)", () => {
     page,
   }) => {
     test.slow();
+    await page.setViewportSize(PHONE);
     await openCurrentEpisode(page);
     const timeline = page.getByTestId("episode-illness-timeline");
     const historyRows = timeline.locator(
@@ -554,7 +586,9 @@ test.describe("Illness-episode follow-ups (#856)", () => {
       timeline.getByRole("heading", { name: "History" })
     ).toBeVisible();
 
-    await page.getByRole("button", { name: "End episode" }).click();
+    const endEpisode = page.getByTestId("episode-end");
+    await expectClosedEpisodeAction(endEpisode, "End episode");
+    await endEpisode.click();
     const endDialog = page.getByRole("dialog", {
       name: "End this episode?",
     });
@@ -583,6 +617,7 @@ test.describe("Illness-episode follow-ups (#856)", () => {
     await expect(historyRows).toHaveCount(historyCountBeforeEnd);
     const reopen = page.getByTestId("episode-reopen-action");
     await expect(reopen).toBeVisible();
+    await expectClosedEpisodeAction(reopen, "Reopen episode");
     await expect(reopen.locator(".tabler-icon-restore")).toBeVisible();
     await expect(page.getByTestId("resolved-episode-backfill-note")).toHaveText(
       "Add a past update to this episode. This won’t reopen it."

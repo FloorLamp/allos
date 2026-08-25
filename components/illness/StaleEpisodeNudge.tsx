@@ -60,7 +60,6 @@ export default function StaleEpisodeNudge({
           lastActiveDay={lastActivityDate}
           triggerLabel={`End as of ${lastActivityDate}`}
           triggerTestId="stale-episode-end"
-          triggerClassName="badge cursor-pointer border border-amber-500/40 bg-surface text-amber-700 hover:bg-amber-50 disabled:opacity-50 dark:text-amber-300"
           successMessage={`Episode ended as of ${lastActivityDate}.`}
         />
         <button

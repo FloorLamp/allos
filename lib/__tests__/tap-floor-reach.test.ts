@@ -294,8 +294,6 @@ const UNREADABLE_CLASS_LISTS: { file: string; controls: number }[] = [
   { file: "components/HrefSelect.tsx", controls: 1 },
   { file: "components/SubmitButton.tsx", controls: 1 },
   { file: "components/activity-form/IntensityPicker.tsx", controls: 1 },
-  { file: "components/illness/EndEpisodeReconcile.tsx", controls: 1 },
-  { file: "components/illness/ReopenEpisodeReconcile.tsx", controls: 1 },
 ];
 
 type MeasuredUnderFloor = {

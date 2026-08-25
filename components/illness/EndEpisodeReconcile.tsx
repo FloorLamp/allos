@@ -3,6 +3,7 @@
 import { useState, useTransition } from "react";
 import { useToast } from "@/components/Toast";
 import { useConfirm } from "@/components/ConfirmDialog";
+import Button from "@/components/Button";
 import ModalShell from "@/components/ModalShell";
 import type { EpisodeMedSuggestion } from "@/lib/episode-med-reconcile";
 import { endEpisodeWithMedsAction } from "@/app/(app)/medical/episodes/actions";
@@ -27,7 +28,6 @@ export default function EndEpisodeReconcile({
   lastActiveDay = null,
   triggerLabel,
   pendingLabel = "Ending…",
-  triggerClassName,
   triggerTestId,
   icon,
   successMessage = "Episode ended.",
@@ -38,7 +38,6 @@ export default function EndEpisodeReconcile({
   lastActiveDay?: string | null;
   triggerLabel: string;
   pendingLabel?: string;
-  triggerClassName: string;
   triggerTestId: string;
   icon?: React.ReactNode;
   successMessage?: string;
@@ -106,16 +105,14 @@ export default function EndEpisodeReconcile({
 
   return (
     <>
-      <button
-        type="button"
+      <Button
         data-testid={triggerTestId}
         disabled={pending}
         onClick={() => void onTrigger()}
-        className={triggerClassName}
       >
         {icon}
         {pending ? pendingLabel : triggerLabel}
-      </button>
+      </Button>
 
       {open && (
         <ModalShell
