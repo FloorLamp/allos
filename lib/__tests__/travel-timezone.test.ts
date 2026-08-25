@@ -319,6 +319,10 @@ describe("stored switch history", () => {
 
   it("fails open without throwing when any stored row is malformed", () => {
     expect(parseTimezoneSwitches(undefined)).toEqual([]);
+    expect(decodeTimezoneSwitchHistory("")).toEqual({
+      switches: [],
+      valid: false,
+    });
     expect(parseTimezoneSwitches("{")).toEqual([]);
     expect(parseTimezoneSwitches('{"at":"x"}')).toEqual([]);
     expect(

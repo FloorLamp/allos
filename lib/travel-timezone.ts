@@ -231,7 +231,7 @@ export interface DecodedTimezoneSwitchHistory {
 export function decodeTimezoneSwitchHistory(
   raw: string | null | undefined
 ): DecodedTimezoneSwitchHistory {
-  if (!raw) return { switches: [], valid: true };
+  if (raw == null) return { switches: [], valid: true };
   let parsed: unknown;
   try {
     parsed = JSON.parse(raw);

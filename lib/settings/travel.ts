@@ -23,6 +23,7 @@ import { isValidTimezone } from "../timezone";
 import { instantNow, now as clockNow } from "../clock";
 import {
   appendTimezoneSwitch,
+  connectedTimezoneSwitchHistory,
   decodeTimezoneSwitchHistory,
   parseTimezoneSwitches,
   serializeTimezoneSwitches,
@@ -89,17 +90,20 @@ export function switchProfileTimezone(
   const decodedHistory = decodeTimezoneSwitchHistory(
     getProfileSetting(profileId, SWITCHES_KEY)
   );
+  const connectedHistory = connectedTimezoneSwitchHistory(
+    decodedHistory.switches,
+    from
+  );
+  const historyTrusted =
+    decodedHistory.valid &&
+    connectedHistory.length === decodedHistory.switches.length;
   setTimezone(profileId, tz);
   const record: TimezoneSwitch = { at, from, to: tz };
   // Preserve malformed storage instead of laundering it into a clean one-way
   // history. Consumers continue to fail open; the timezone still moves and the
   // home marker still follows the explicit user choice.
-  if (decodedHistory.valid) {
-    const history = appendTimezoneSwitch(
-      decodedHistory.switches,
-      record,
-      clockNow()
-    );
+  if (historyTrusted) {
+    const history = appendTimezoneSwitch(connectedHistory, record, clockNow());
     setProfileSetting(
       profileId,
       SWITCHES_KEY,

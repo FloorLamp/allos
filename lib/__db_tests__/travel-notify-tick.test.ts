@@ -306,4 +306,36 @@ describe("travel excusal at the real notification tick", () => {
     await tickProfile(malformed.receiver, "malformed", 5, Date.now());
     expectThreeSlotMessages(sentTo(malformed.chatId));
   });
+
+  it("does not launder a well-shaped invalid row while appending", async () => {
+    const invalid = scenario("invalid-date", ATHENS);
+    setProfileSetting(invalid.receiver, "notify_supp_midday_hour", "15:00");
+    const invalidHistory = JSON.stringify([
+      { at: "not-an-instant", from: ATHENS, to: PARIS },
+    ]);
+    setProfileSetting(invalid.receiver, "timezone_switches", invalidHistory);
+    setTimezone(invalid.receiver, PARIS);
+
+    vi.setSystemTime(new Date("2026-05-01T12:01:00Z")); // Paris 14:01
+    switchProfileTimezone(invalid.receiver, ATHENS, null); // Athens 15:01
+
+    // appendTimezoneSwitch prunes invalid instants. The writer must reject the
+    // history before append or this becomes a clean Paris→Athens skip.
+    expect(getProfileSetting(invalid.receiver, "timezone_switches")).toBe(
+      invalidHistory
+    );
+    expect(
+      isReminderSlotExcused(
+        getTravelSwitches(invalid.receiver),
+        "2026-05-01",
+        AFTERNOON_MINUTE
+      )
+    ).toBe(false);
+    expect(
+      travelExcusalResolver(invalid.receiver)("Midday", "2026-05-01")
+    ).toBe(false);
+
+    await tickProfile(invalid.receiver, "invalid-date", 5, Date.now());
+    expectThreeSlotMessages(sentTo(invalid.chatId));
+  });
 });
