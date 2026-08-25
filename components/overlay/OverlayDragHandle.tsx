@@ -15,8 +15,8 @@ export default function OverlayDragHandle({
   testId = "sheet-drag-handle",
   className = "",
 }: {
-  // Identifies the intentional handle origin. A surface may also admit body
-  // drags through useOverlayDrag's one-shot `canStart` rule.
+  // Lets a host inspect the affordance's rendered box. BottomSheet uses that as
+  // the whole gesture's responsive gate, independently of the touch origin.
   handleRef?: React.RefObject<HTMLDivElement | null>;
   testId?: string;
   className?: string;
