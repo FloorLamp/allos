@@ -57,6 +57,21 @@ function resumeIn(zone: string): void {
   act(() => window.dispatchEvent(new Event("focus")));
 }
 
+describe("the travel banner's action hierarchy and tap floor (#3711)", () => {
+  it("uses the shared button floor for the primary action and a rendered floor for the text action", () => {
+    render(banner(HONOLULU, NY));
+
+    const accept = screen.getByTestId("travel-timezone-accept");
+    const dismiss = screen.getByTestId("travel-timezone-dismiss");
+
+    expect(accept.className).toMatch(/\bbtn\b/);
+    expect(dismiss.className).toMatch(/\bmin-h-11\b/);
+    // "Not now" stays the quiet text action. The floor does not turn it into a
+    // second filled or bordered CTA beside "Move my day".
+    expect(dismiss.className).not.toMatch(/\bbtn(?:-ghost|-danger)?\b/);
+  });
+});
+
 describe("a mounted travel banner spends successful dismissals (#3684)", () => {
   it("re-offers New York after dismissing it, accepting Los Angeles, and returning", async () => {
     const view = render(banner(HONOLULU, NY));
