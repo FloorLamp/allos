@@ -198,7 +198,8 @@ test.describe("travel timezone banner (#3263)", () => {
       // implementation could finish its write after this page was gone; now an
       // ordinary navigation has no write to race and the return offer simply renders
       // again on the destination.
-      await page.goto("/settings/profile");
+      const navigation = await page.goto("/settings/display");
+      expect(navigation?.status()).toBe(200);
       const navigatedBanner = page.getByTestId("travel-timezone-banner");
       await expect(navigatedBanner).toBeVisible({ timeout: 20_000 });
       expect(travellerSettings().timezone).toBe(SECOND_AWAY);
