@@ -21,8 +21,12 @@ function isScannedSource(name: string): boolean {
   return (
     name.endsWith(".ts") ||
     name.endsWith(".tsx") ||
+    name.endsWith(".mts") ||
+    name.endsWith(".cts") ||
     name.endsWith(".js") ||
-    name.endsWith(".jsx")
+    name.endsWith(".jsx") ||
+    name.endsWith(".mjs") ||
+    name.endsWith(".cjs")
   );
 }
 
@@ -56,8 +60,15 @@ function isIntakeFormModule(specifier: string): boolean {
 function scriptKind(file: string): ts.ScriptKind {
   if (file.endsWith(".tsx")) return ts.ScriptKind.TSX;
   if (file.endsWith(".jsx")) return ts.ScriptKind.JSX;
-  if (file.endsWith(".js")) return ts.ScriptKind.JS;
+  if (file.endsWith(".js") || file.endsWith(".mjs") || file.endsWith(".cjs"))
+    return ts.ScriptKind.JS;
   return ts.ScriptKind.TS;
+}
+
+function isModuleTextLiteral(
+  node: ts.Node
+): node is ts.StringLiteral | ts.NoSubstitutionTemplateLiteral {
+  return ts.isStringLiteral(node) || ts.isNoSubstitutionTemplateLiteral(node);
 }
 
 function scanIntakeFormSource(file: string, text: string): IntakeFormCensus {
@@ -117,7 +128,7 @@ function scanIntakeFormSource(file: string, text: string): IntakeFormCensus {
   const visit = (node: ts.Node) => {
     const parent = node.parent;
     const executableModuleLoad =
-      ts.isStringLiteral(node) &&
+      isModuleTextLiteral(node) &&
       ((ts.isCallExpression(parent) &&
         parent.arguments.includes(node) &&
         (parent.expression.kind === ts.SyntaxKind.ImportKeyword ||
@@ -125,7 +136,7 @@ function scanIntakeFormSource(file: string, text: string): IntakeFormCensus {
             parent.expression.text === "require"))) ||
         ts.isExternalModuleReference(parent));
     if (
-      ts.isStringLiteral(node) &&
+      isModuleTextLiteral(node) &&
       isIntakeFormModule(node.text) &&
       executableModuleLoad
     ) {
@@ -350,8 +361,37 @@ describe("IntakeItemForm's locked-kind boundary", () => {
 
   it("rejects JavaScript barrels and JSX aliases with their native syntax", () => {
     expect(
-      ["Host.ts", "Host.tsx", "Host.js", "Host.jsx"].filter(isScannedSource)
-    ).toEqual(["Host.ts", "Host.tsx", "Host.js", "Host.jsx"]);
+      [
+        "Host.ts",
+        "Host.tsx",
+        "Host.mts",
+        "Host.cts",
+        "Host.js",
+        "Host.jsx",
+        "Host.mjs",
+        "Host.cjs",
+      ].filter(isScannedSource)
+    ).toEqual([
+      "Host.ts",
+      "Host.tsx",
+      "Host.mts",
+      "Host.cts",
+      "Host.js",
+      "Host.jsx",
+      "Host.mjs",
+      "Host.cjs",
+    ]);
+    expect([
+      scriptKind("Host.mjs"),
+      scriptKind("Host.cjs"),
+      scriptKind("Host.mts"),
+      scriptKind("Host.cts"),
+    ]).toEqual([
+      ts.ScriptKind.JS,
+      ts.ScriptKind.JS,
+      ts.ScriptKind.TS,
+      ts.ScriptKind.TS,
+    ]);
     expect(
       scanIntakeFormSource(
         "components/index.js",
@@ -380,5 +420,41 @@ describe("IntakeItemForm's locked-kind boundary", () => {
       callers: [["components/Host.jsx", "medication"]],
       violations: [],
     });
+  });
+
+  it("rejects quoted and template executable loads in module-family files", () => {
+    const hostile = [
+      [
+        "components/Quoted.mjs",
+        'const Form = await import("@/components/IntakeItemForm");',
+      ],
+      [
+        "components/Host.mjs",
+        "const Form = await import(`@/components/IntakeItemForm`);",
+      ],
+      [
+        "components/Host.cjs",
+        "const Form = require(`@/components/IntakeItemForm`);",
+      ],
+      [
+        "components/Host.mts",
+        "const Form = await import(`@/components/IntakeItemForm`);",
+      ],
+      [
+        "components/Host.cts",
+        "const Form = require(`@/components/IntakeItemForm`);",
+      ],
+    ] as const;
+    for (const [file, source] of hostile) {
+      expect(scanIntakeFormSource(file, source).violations, file).not.toEqual(
+        []
+      );
+    }
+    expect(
+      scanIntakeFormSource(
+        "components/notes.mjs",
+        "export const documentation = `@/components/IntakeItemForm`;"
+      )
+    ).toEqual({ callers: [], violations: [] });
   });
 });
