@@ -7,6 +7,17 @@ import { describe, expect, it } from "vitest";
 const REPO = path.resolve(fileURLToPath(new URL("../..", import.meta.url)));
 const RIGHT_GLYPH =
   /(?:→|➜|➡|›|»|⟩|❯|►|->|&(?:rarr|rightarrow);|&#(?:8594|8250|187);)\s*$/;
+const RIGHT_ICON_FAMILY = /(?:Arrow|Chevron|Caret)/;
+const COMPOUND_DIRECTION = /(?:UpRight|DownRight|RightUp|RightDown)/;
+
+function isRightwardIndicatorIcon(name: string): boolean {
+  return (
+    name.startsWith("Icon") &&
+    RIGHT_ICON_FAMILY.test(name) &&
+    name.includes("Right") &&
+    !COMPOUND_DIRECTION.test(name)
+  );
+}
 
 function sourceFiles(): string[] {
   const found: string[] = [];
@@ -55,7 +66,7 @@ function directRightwardCues(
     ) {
       for (const specifier of clause.namedBindings.elements) {
         const imported = specifier.propertyName?.text ?? specifier.name.text;
-        if (/^Icon.*Right$/.test(imported)) icons.add(specifier.name.text);
+        if (isRightwardIndicatorIcon(imported)) icons.add(specifier.name.text);
       }
     }
   }
@@ -119,6 +130,8 @@ describe("DestinationLink", () => {
   it.each([
     'import Jump from "next/link"; import { IconArrowRight as Go } from "@tabler/icons-react"; export const Bad = () => <Jump href="/x"><Go /></Jump>;',
     'import Link from "next/link"; import { IconCaretRight } from "@tabler/icons-react"; export const Bad = () => <Link href="/x"><IconCaretRight /></Link>;',
+    'import Link from "next/link"; import { IconArrowRightBar } from "@tabler/icons-react"; export const Bad = () => <Link href="/x"><IconArrowRightBar /></Link>;',
+    'import Link from "next/link"; import { IconCaretRightFilled } from "@tabler/icons-react"; export const Bad = () => <Link href="/x"><IconCaretRightFilled /></Link>;',
     'import Link from "next/link"; export const Bad = () => <Link href="/x">Open →</Link>;',
     'import Link from "next/link"; export const Bad = () => <Link href="/x">Open &#8594;</Link>;',
   ])("sees an ordinary raw bypass", (source) => {
@@ -131,5 +144,11 @@ describe("DestinationLink", () => {
     expect(handRolledIndicators("components/NextMonth.tsx", source)).toEqual(
       []
     );
+  });
+
+  it("leaves a diagonal external-link cue alone", () => {
+    const source =
+      'import Link from "next/link"; import { IconArrowUpRight } from "@tabler/icons-react"; export const External = () => <Link href="https://example.com">Open source <IconArrowUpRight /></Link>;';
+    expect(handRolledIndicators("components/External.tsx", source)).toEqual([]);
   });
 });

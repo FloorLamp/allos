@@ -1,5 +1,5 @@
-import { IconChevronRight } from "@tabler/icons-react";
 import Avatar, { type AvatarProfile } from "@/components/Avatar";
+import DestinationIndicator from "@/components/DestinationIndicator";
 import DestinationLink from "@/components/DestinationLink";
 import { switchProfileAction } from "@/app/(app)/profile-context-actions";
 import type { AppRoute } from "@/lib/hrefs";
@@ -78,11 +78,7 @@ export default function ProfileSwitcherChip({
         data-testid={testId}
       >
         {content}
-        <IconChevronRight
-          className="h-4 w-4 shrink-0 text-slate-300 dark:text-slate-600"
-          stroke={1.75}
-          aria-hidden="true"
-        />
+        <DestinationIndicator />
       </button>
     </form>
   );

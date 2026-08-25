@@ -1,5 +1,4 @@
 import {
-  IconChevronRight,
   IconTrendingDown,
   IconTrendingUp,
   IconMinus,
@@ -12,6 +11,7 @@ import {
   IconChecklist,
   IconX,
 } from "@tabler/icons-react";
+import DestinationIndicator from "@/components/DestinationIndicator";
 import DestinationLink from "@/components/DestinationLink";
 import Avatar from "@/components/Avatar";
 import {
@@ -427,9 +427,10 @@ function SetupCheckRow({
             <button
               type="submit"
               data-testid="household-setup-cta"
-              className="text-xs text-link focus:outline-hidden focus-visible:ring-2 focus-visible:ring-brand-500"
+              className="inline-flex items-center gap-1 text-xs text-link focus:outline-hidden focus-visible:ring-2 focus-visible:ring-brand-500"
             >
-              {check.cta.label} →
+              {check.cta.label}
+              <DestinationIndicator />
             </button>
           </form>
         ))}
@@ -524,11 +525,7 @@ export default function HouseholdCard({ data }: { data: HouseholdCardData }) {
           <span className="min-w-0 flex-1 truncate text-base font-semibold text-slate-900 dark:text-slate-100">
             {profile.name}
           </span>
-          <IconChevronRight
-            className="h-5 w-5 shrink-0 text-slate-300 dark:text-slate-600"
-            stroke={1.75}
-            aria-hidden="true"
-          />
+          <DestinationIndicator />
         </button>
       </form>
 
