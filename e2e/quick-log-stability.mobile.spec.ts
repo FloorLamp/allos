@@ -276,9 +276,19 @@ test("a failed gather stays silent and reduced motion schedules no arrive keyfra
     { ...PHONE_390, reducedMotion: "reduce" }
   );
   try {
+    let release!: () => void;
+    const held = new Promise<void>((resolve) => {
+      release = resolve;
+    });
+    let requestReady!: () => void;
+    const ready = new Promise<void>((resolve) => {
+      requestReady = resolve;
+    });
     await page.route("**/*", async (route) => {
       const request = route.request();
       if (request.method() === "POST" && request.headers()["next-action"]) {
+        requestReady();
+        await held;
         await route.fulfill({
           status: 502,
           contentType: "text/plain",
@@ -292,20 +302,18 @@ test("a failed gather stays silent and reduced motion schedules no arrive keyfra
     await page.goto("/");
     const response = nextActionResponse(page);
     const sheet = await openLogSheet(page);
+    await ready;
+    const reserve = sheet.getByTestId("log-sheet-context-slot");
+    await expect(reserve).toHaveAttribute("data-context-state", "loading");
     const before = await sheetGeometry(sheet);
-    const reservedBefore = await box(
-      sheet.getByTestId("log-sheet-context-slot"),
-      "failed context reserve"
-    );
+    const reservedBefore = await box(reserve, "failed context reserve");
+    release();
     await response;
-    await expect(sheet.getByTestId("log-sheet-context-slot")).toHaveAttribute(
-      "data-context-state",
-      "failed"
-    );
+    await expect(reserve).toHaveAttribute("data-context-state", "failed");
 
     expectSameGeometry(await sheetGeometry(sheet), before);
     const reservedAfter = await box(
-      sheet.getByTestId("log-sheet-context-slot"),
+      reserve,
       "failed context reserve after response"
     );
     expect(
