@@ -13,7 +13,7 @@ import { LOG_HABIT_MIN_DAYS } from "@/lib/log-sheet";
 
 // THE DASHBOARD'S LOG SHEET OPENS WHERE THIS PROFILE ACTUALLY LOGS (issue #2709).
 //
-// Every other route either promotes its own domain (`/nutrition` → Food) or falls
+// Every other route either promotes its own domain (`/nutrition` → Consume) or falls
 // through to the historical "Log activity" answer. The dashboard promoted nothing,
 // so the sheet opened on Train there and logging food from home cost two taps —
 // on the surface people are on most. The owner's ruling (2026-08-13) is that it

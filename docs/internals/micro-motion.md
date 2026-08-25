@@ -1,10 +1,11 @@
 # Micro-motion: the small moves that carry information
 
 The app is almost entirely static, and that is the calm identity working — no
-garnish, nothing looping, nothing moving without a gesture. The exception this
-document governs is motion that answers **"did that work?"** inside the interface
-itself, which is faster and quieter than a toast. Motion here is information, and
-it is held to the same standard as copy.
+garnish and nothing looping. Motion begins only from a gesture, a write, or a
+bounded async state transition the reader is already waiting for. It answers
+**"did that work?"** or **"what just arrived?"** inside the interface, faster and
+quieter than a toast. Motion here is information, and it is held to the same
+standard as copy.
 
 Seven motions ship today (#2654, #2657, #3253, #3675). `slide` and `fold` are the two halves of one
 gesture — a dismissal travelling, and the fold answering — and they are deliberately
@@ -123,9 +124,9 @@ separately, so widening the pattern is not a permanent chase.
 
 `lib/motion.ts` owns a different question — a panel _arriving_, at 240 ms, with an
 enter/exit pair and a `usePresence` unmount window (see `docs/internals/overlays.md`).
-That is navigation. Micro-motion is feedback on a write — and, since `tick`, on a
-GESTURE, which is the same question ("did that register?") asked of a drag instead of a
-save. Keep the vocabularies apart:
+That is navigation. Micro-motion is feedback on a write, a gesture, or a bounded
+witnessed async state transition. `tick` asks "did that register?" of a drag;
+`arrive` identifies content whose pending gather just resolved. Keep the vocabularies apart:
 a surface that slides a sheet does not reach into this module, and the token test
 fails a micro-motion name that collides with an overlay one.
 
