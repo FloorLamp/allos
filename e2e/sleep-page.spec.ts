@@ -20,6 +20,10 @@ import {
 } from "./helpers";
 import { createFixtureProfile, destroyFixtureProfile } from "./fixture-profile";
 import { workerDbPath, frozenNow } from "./worker-env";
+import {
+  TAP_FLOOR_FLOAT_EPSILON_PX,
+  TAP_FLOOR_PX,
+} from "@/lib/tap-floor-tokens";
 
 const DB_PATH = workerDbPath();
 
@@ -781,7 +785,8 @@ test.describe("Sleep page (#1066)", () => {
   test("the Sleep page body does not scroll sideways at phone width", async ({
     page,
   }) => {
-    await page.setViewportSize({ width: 320, height: 844 });
+    const phoneWidth = 320;
+    await page.setViewportSize({ width: phoneWidth, height: 844 });
     await page.goto("/sleep");
     await expect(page.getByTestId("sleep-hero")).toBeVisible();
     // Nothing on the page may sit past the right edge (#1543 — the shell clips
@@ -800,10 +805,32 @@ test.describe("Sleep page (#1066)", () => {
       })
     );
     expect(cardsOffLeft).toEqual([]);
-    await expect(page.getByTestId("sleep-add-entry-header")).toHaveCSS(
-      "white-space",
-      "nowrap"
-    );
+    const addEntry = page.getByTestId("sleep-add-entry-header");
+    await expect(addEntry).toHaveAttribute("data-button-control", "");
+    await expect(addEntry).toHaveAccessibleName("Add entry");
+    await expect(addEntry).toHaveCSS("white-space", "nowrap");
+    const [addEntryBox] = await settledBoxes([addEntry]);
+    expect(
+      addEntryBox.width + TAP_FLOOR_FLOAT_EPSILON_PX,
+      "Add entry rendered width"
+    ).toBeGreaterThanOrEqual(TAP_FLOOR_PX);
+    expect(
+      addEntryBox.height + TAP_FLOOR_FLOAT_EPSILON_PX,
+      "Add entry rendered height"
+    ).toBeGreaterThanOrEqual(TAP_FLOOR_PX);
+    expect(
+      addEntryBox.x + TAP_FLOOR_FLOAT_EPSILON_PX,
+      "Add entry left viewport edge"
+    ).toBeGreaterThanOrEqual(0);
+    expect(
+      addEntryBox.x + addEntryBox.width,
+      "Add entry right viewport edge"
+    ).toBeLessThanOrEqual(phoneWidth + TAP_FLOOR_FLOAT_EPSILON_PX);
+    await addEntry.click();
+    const dialog = page.getByTestId("sleep-mood-edit-dialog");
+    await expect(dialog).toBeVisible();
+    await dialog.getByRole("button", { name: "Cancel" }).click();
+    await expect(dialog).toHaveCount(0);
     const history = page.getByTestId("sleep-mood-history");
     for (const stage of ["Deep", "REM", "Light", "Awake"]) {
       await expect(
