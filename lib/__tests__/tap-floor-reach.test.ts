@@ -122,7 +122,7 @@ const TREE: Corpus = { base: REPO, roots: ROOTS };
 const CENSUS_FLOOR = 1200;
 // Filled from the governed source-verdict population below: explicit readable
 // heights plus the two mechanisms whose rendered floor arrives from CSS.
-const GOVERNED_CENSUS_FLOOR = 486;
+const GOVERNED_CENSUS_FLOOR = 480;
 const MECHANISM_CENSUS_FLOORS: Partial<Record<FloorMechanism, number>> = {
   "btn-family": 350,
   "tap-target": 31,
@@ -173,7 +173,7 @@ const UNDER_FLOOR_REGISTER: Registered[] = [
   },
   {
     file: "components/activity-form/StrengthSets.tsx",
-    controls: 11,
+    controls: 8,
     why: DENSE_EDITOR,
   },
   {
@@ -182,22 +182,10 @@ const UNDER_FLOOR_REGISTER: Registered[] = [
     why: DENSE_EDITOR,
   },
   {
-    file: "components/activity-form/FitnessTestTimer.tsx",
-    controls: 1,
-    why: DENSE_EDITOR,
-  },
-  { file: "components/MoodValencePicker.tsx", controls: 1, why: DENSE_EDITOR },
-  {
     file: "app/(app)/training/TrainingLogView.tsx",
     controls: 1,
     why: DENSE_EDITOR,
   },
-  {
-    file: "components/ProfileSwitcherPanel.tsx",
-    controls: 1,
-    why: DENSE_EDITOR,
-  },
-  { file: "components/SidebarContent.tsx", controls: 1, why: DENSE_EDITOR },
   {
     file: "app/(app)/trends/ChartJumpMenu.tsx",
     controls: 1,

@@ -1,6 +1,7 @@
 "use client";
 
 import { MOOD_FACES, MOOD_LABELS } from "@/lib/mood";
+import IconButton from "@/components/IconButton";
 
 // Shared 1–5 mood picker used by today's dashboard check-in and historical edits.
 // Keeping the tap targets here means labels, selected styling, and accessibility
@@ -22,23 +23,18 @@ export default function MoodValencePicker({
         const score = index + 1;
         const selected = value === score;
         return (
-          <button
+          <IconButton
             key={score}
             type="button"
             data-testid={`${testIdPrefix}-${score}`}
-            aria-pressed={selected}
-            aria-label={`Mood: ${MOOD_LABELS[index]}`}
-            title={MOOD_LABELS[index]}
+            pressed={selected}
+            label={`Mood: ${MOOD_LABELS[index]}`}
+            tooltip={MOOD_LABELS[index]}
             disabled={disabled}
             onClick={() => onChange(score)}
-            className={`flex h-9 w-9 items-center justify-center rounded-full border text-lg transition ${
-              selected
-                ? "border-brand-500 bg-brand-50 dark:bg-brand-950"
-                : "border-transparent opacity-60 hover:opacity-100"
-            } disabled:opacity-40`}
           >
             {face}
-          </button>
+          </IconButton>
         );
       })}
     </div>

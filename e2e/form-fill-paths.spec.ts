@@ -2,7 +2,12 @@ import { test, expect } from "./fixtures";
 import { type Page } from "@playwright/test";
 import Database from "better-sqlite3";
 import { loginAs } from "./nav";
-import { comboboxRows, deleteActivityFromForm, settledClick } from "./helpers";
+import {
+  comboboxRows,
+  deleteActivityFromForm,
+  expectPhoneTapTargets,
+  settledClick,
+} from "./helpers";
 import {
   E2E_LOGIN_FORM_DELOAD,
   E2E_LOGIN_FORM_PLATEAU,
@@ -102,6 +107,18 @@ test("deload week shaves the routine lift's next-set suggestion (#923)", async (
     await expect(card).toContainText("Deload week");
     await expect(card).toContainText("90");
 
+    // Add activity is a desktop entry point. Resize only after that real flow
+    // mounted and populated the editor, immediately before measuring the migrated
+    // phone target.
+    await page.setViewportSize({ width: 390, height: 844 });
+    const plateSuggestion = card.getByRole("button", {
+      name: "Load these plates on the bar",
+    });
+    await expect(plateSuggestion).toHaveAttribute("data-icon-button", "");
+    await expectPhoneTapTargets(page, "suggested-load plate builder", [
+      plateSuggestion,
+    ]);
+
     // The set-1 ghost placeholder shows the SAME shaved load (auto-seed, #335).
     const weight = page.getByTestId("set1-weight");
     await expect(weight).toHaveAttribute("placeholder", /^90/);
@@ -192,6 +209,13 @@ test("a plateaued lift shows the inline plateau hint (#923)", async ({
     const hint = page.getByTestId("plateau-hint");
     await expect(hint).toBeVisible();
     await expect(hint).toContainText(/flat ~6 weeks/i);
+
+    // Open/pick on the desktop surface that owns the entry flow; the target's
+    // phone geometry is the only thing this resize is meant to exercise.
+    await page.setViewportSize({ width: 390, height: 844 });
+    const dismiss = hint.getByTestId("plateau-hint-dismiss");
+    await expect(dismiss).toHaveAttribute("data-icon-button", "");
+    await expectPhoneTapTargets(page, "plateau-hint dismissal", [dismiss]);
   } finally {
     await page.close();
   }

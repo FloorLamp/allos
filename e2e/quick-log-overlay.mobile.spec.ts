@@ -2,7 +2,12 @@ import { test, expect } from "./fixtures";
 import { type Page } from "@playwright/test";
 import Database from "better-sqlite3";
 import path from "node:path";
-import { hydratedClick, openMeasurementGroup, settledClick } from "./helpers";
+import {
+  expectPhoneTapTargets,
+  hydratedClick,
+  openMeasurementGroup,
+  settledClick,
+} from "./helpers";
 import { openLogSheet, showLogRow } from "./log-sheet-helpers";
 import { loginAs, openCommandPalette } from "./nav";
 import type { QuickLogId } from "@/lib/quick-log";
@@ -796,6 +801,15 @@ test("the mood row logs a check-in in place — and 'Yesterday' backfills the mi
     const overlay = await openQuickEntry(page, "log-mood");
     const checkin = overlay.getByTestId("quick-mood-checkin");
     await expect(checkin).toBeVisible();
+    const moodChoices = Array.from({ length: 5 }, (_, index) =>
+      checkin.getByTestId(`quick-mood-tap-${index + 1}`)
+    );
+    for (const choice of moodChoices) {
+      await expect(choice).toHaveAttribute("data-icon-button", "");
+    }
+    await expectPhoneTapTargets(page, "mood choices", moodChoices, {
+      disjoint: true,
+    });
 
     // The overlay renders only after its on-open gather resolved, so the chips
     // are hydrated client state by the time they are visible.

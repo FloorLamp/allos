@@ -2,7 +2,11 @@ import { test, expect } from "./fixtures";
 import type { Page } from "@playwright/test";
 import Database from "better-sqlite3";
 import { loginAs } from "./nav";
-import { expectNoClippedContent, settledClick } from "./helpers";
+import {
+  expectNoClippedContent,
+  expectPhoneTapTargets,
+  settledClick,
+} from "./helpers";
 import {
   E2E_LOGIN_FITNESS,
   E2E_LOGIN_FITNESS_SENIOR,
@@ -388,10 +392,17 @@ test.describe("Fitness check grid (#1129/#1132/#1135)", () => {
   test("count-up timer times a hold and Finish fills the seconds input", async ({
     browser,
   }) => {
-    const page = await loginAs(browser, {
-      username: E2E_LOGIN_FITNESS,
-      password: E2E_MEMBER_PASSWORD,
-    });
+    const page = await loginAs(
+      browser,
+      {
+        username: E2E_LOGIN_FITNESS,
+        password: E2E_MEMBER_PASSWORD,
+      },
+      {
+        viewport: { width: 390, height: 844 },
+        hasTouch: true,
+      }
+    );
     test.slow();
 
     await page.goto("/training/fitness-check");
@@ -405,6 +416,9 @@ test.describe("Fitness check grid (#1129/#1132/#1135)", () => {
     // Launch the takeover, start the count-up clock.
     await page.getByTestId("fitness-timer-plank-launch").click();
     await expect(page.getByTestId("fitness-timer-plank-panel")).toBeVisible();
+    const collapse = page.getByTestId("fitness-timer-plank-collapse");
+    await expect(collapse).toHaveAttribute("data-icon-button", "");
+    await expectPhoneTapTargets(page, "fitness timer collapse", [collapse]);
     await page.getByTestId("fitness-timer-plank-start").click();
 
     // Real wait via a retrying expect: the readout advances past 0:00 (≥ 1 whole second

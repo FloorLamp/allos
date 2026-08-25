@@ -2,6 +2,7 @@
 
 import EquipmentRegistryLink from "./EquipmentRegistryLink";
 import InfoTooltipIcon from "@/components/InfoTooltipIcon";
+import IconButton from "@/components/IconButton";
 import Chip from "@/components/Chip";
 import FactChipRow, { FactChip } from "@/components/facts/FactChipRow";
 import { useEffect, useRef, useState } from "react";
@@ -602,17 +603,21 @@ export default function StrengthSets({
   };
   // Small button that opens the plate builder for a specific weight field.
   const plateButton = (si: number, field: "weight" | "weightRight") => (
-    <button
-      type="button"
-      // Pointer affordance only — keep it out of the weight→reps tab order (#336).
-      tabIndex={-1}
-      onClick={() => onPlateTarget(si, field)}
-      title="Plate builder"
-      aria-label="Open plate builder"
-      className="flex h-9 w-7 shrink-0 items-center justify-center rounded-sm text-slate-500 hover:bg-slate-100 hover:text-brand-600 dark:text-slate-400 dark:hover:bg-ink-800 dark:hover:text-brand-400"
-    >
-      <IconBarbell className="h-4 w-4" />
-    </button>
+    // Keep the set grid's established 28px plate COLUMN while IconButton owns a
+    // centered 44px TARGET. The heading reserves this same w-7 slot below, so
+    // widening the layout column would move both value-column centers (#337).
+    <span className="flex w-7 min-w-0 shrink-0 items-center justify-center">
+      <IconButton
+        type="button"
+        // Pointer affordance only — keep it out of the weight→reps tab order (#336).
+        tabIndex={-1}
+        onClick={() => onPlateTarget(si, field)}
+        tooltip="Plate builder"
+        label="Open plate builder"
+      >
+        <IconBarbell className="h-4 w-4" />
+      </IconButton>
+    </span>
   );
   // Increment steppers (issue #337). The weight step is lift-appropriate and
   // plate-loadable — the SAME weightIncrementKg/Lb the next-set suggestion adds
@@ -948,15 +953,13 @@ export default function StrengthSets({
               {showPlate &&
                 !suggestion.bodyweight &&
                 suggestion.weightKg > 0 && (
-                  <button
+                  <IconButton
                     type="button"
                     onClick={() => onPlateFromSuggestion(suggestion.weightKg)}
-                    title="Load these plates on the bar"
-                    aria-label="Load these plates on the bar"
-                    className="flex h-6 w-6 items-center justify-center rounded-md border border-brand-300 text-brand-600 transition hover:bg-brand-500 hover:text-white dark:border-brand-800 dark:text-brand-400 dark:hover:bg-brand-600 dark:hover:text-white"
+                    label="Load these plates on the bar"
                   >
                     <IconBarbell className="h-3.5 w-3.5" />
-                  </button>
+                  </IconButton>
                 )}
             </span>
           </div>
@@ -1018,16 +1021,15 @@ export default function StrengthSets({
                 surfaces, pre-rendered by the one-computation helper. */}
             <span>{plateauHint.hintText}</span>
           </span>
-          <button
+          <IconButton
             type="button"
             onClick={() => dismissPlateau(plateauHint.dedupeKey)}
             data-testid="plateau-hint-dismiss"
-            aria-label="Dismiss plateau hint"
-            title="Dismiss"
-            className="flex h-5 w-5 shrink-0 items-center justify-center rounded-full text-slate-500 transition hover:bg-slate-200 hover:text-slate-600 dark:text-slate-400 dark:hover:bg-ink-800 dark:hover:text-slate-300"
+            label="Dismiss plateau hint"
+            tooltip="Dismiss"
           >
             <IconX className="h-3.5 w-3.5" stroke={2} />
-          </button>
+          </IconButton>
         </div>
       )}
       {/* One options row: the per-side toggle (unilateral lifts), the declared
