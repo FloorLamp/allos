@@ -48,7 +48,7 @@ export function comparePositions(a: LocalPosition, b: LocalPosition): number {
 
 // One recorded move of a profile's timezone. `at` is the canonical UTC instant the
 // switch took effect; `from`/`to` are IANA zones. Written by every path that moves
-// the zone for TRAVEL (the one-tap switch and the automatic return), so the rules
+// the zone for TRAVEL (the accepted outbound and return offers), so the rules
 // below can be asked about a day after the fact.
 export interface TimezoneSwitch {
   at: string;
@@ -212,9 +212,9 @@ export function appendTimezoneSwitch(
 //
 //   "offer"  — the device is somewhere the profile is not; ASK before moving the
 //              day, because a layover or a VPN must not move it (#2471).
-//   "return" — the device is back on the zone the profile left; the app reverts on
-//              its own and TELLS afterwards, because that action is lossless and
-//              reverses a state the person explicitly entered (#2471 again).
+//   "return" — the device reports the zone the profile left. This is still an
+//              OFFER: a home-terminating VPN can produce the same browser signal,
+//              so returning asks exactly as travelling out does (#3684).
 export type TravelPrompt =
   | { kind: "none" }
   | { kind: "offer"; deviceZone: string; profileZone: string }
@@ -249,12 +249,12 @@ export function travelPrompt(input: TravelPromptInput): TravelPrompt {
   // A `timezone_home` equal to the profile's current zone is stale bookkeeping, not
   // a trip — treat it as absent so it can never manufacture a return prompt.
   const homeZone = input.homeZone === profileZone ? null : input.homeZone;
+  // Both directions are offers. A permanently tunnelled device reporting home
+  // should ask once, not on every page view.
+  if (dismissedZone && dismissedZone === deviceZone) return { kind: "none" };
   if (homeZone && deviceZone === homeZone) {
     return { kind: "return", homeZone, awayZone: profileZone };
   }
-  // The dismissal suppresses the OFFER only. Coming home is not a question, so it
-  // is not something a dismissal can answer.
-  if (dismissedZone && dismissedZone === deviceZone) return { kind: "none" };
   return { kind: "offer", deviceZone, profileZone };
 }
 
@@ -271,8 +271,6 @@ export function travelOfferText(deviceZone: string): string {
   return `Your device is on ${zonePlaceLabel(deviceZone)} time — move your day there?`;
 }
 
-// The tell-after. Names BOTH zones on purpose: "back on New York time" alone leaves
-// the person guessing which of their trip's zones the app had been running on.
-export function travelReturnText(homeZone: string, awayZone: string): string {
-  return `Back on ${zonePlaceLabel(homeZone)} time — you were on ${zonePlaceLabel(awayZone)} time.`;
+export function travelReturnOfferText(homeZone: string): string {
+  return `Your device is back on ${zonePlaceLabel(homeZone)} time — move your day back?`;
 }

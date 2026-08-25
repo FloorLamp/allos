@@ -271,11 +271,6 @@ const ALLOW: { file: string; fn: string; why: string; gate?: string }[] = [
     fn: "revertTravelTimezone",
     why: "delegates to ownProfileForTravel(), which calls requireWriteAccess() and then refuses unless the acting profile is the login's OWN (#3263)",
   },
-  {
-    file: "app/(app)/travel-actions.ts",
-    fn: "acknowledgeTravelTell",
-    why: "delegates to ownProfileForTravel(), which calls requireWriteAccess() and then refuses unless the acting profile is the login's OWN (#3263)",
-  },
   // --- Cross-profile / session-pointer actions (gate the TARGET, not the active
   // profile, so requireWriteAccess() would check the wrong profile) ---
   {

@@ -26,8 +26,13 @@ import {
   intakeAdherenceStrip,
 } from "@/lib/intake-adherence";
 import { travelExcusalResolver } from "@/lib/travel-excusal";
-import { isExcusedSlot, isRepeatedSlot } from "@/lib/travel-timezone";
+import {
+  isExcusedSlot,
+  isRepeatedSlot,
+  travelPrompt,
+} from "@/lib/travel-timezone";
 import { buildIntakeReminderForSlots } from "@/lib/notifications/intake";
+import { slotDue } from "@/lib/notifications/schedule";
 import {
   getIntakeItems,
   getIntakeDoses,
@@ -35,8 +40,10 @@ import {
 } from "@/lib/queries";
 import {
   getHomeTimezone,
+  getNotifySchedule,
   getTimezone,
   getTravelSwitches,
+  setProfileSetting,
   setTimezone,
   switchProfileTimezone,
   clearHomeTimezone,
@@ -115,6 +122,54 @@ function logTaken(doseId: number, itemId: number, date: string): void {
      VALUES (?, ?, ?, 'taken', ?)`
   ).run(doseId, itemId, date, `${date} 12:00:00`);
 }
+
+describe("a home-zone browser while the profile is away (#3684)", () => {
+  it("offers without moving a Honolulu day, so its 12:00 Midday slot still arrives", () => {
+    const profileId = makeProfile("vpn-home-exit", NY);
+    seedDose(profileId, "Midday med", "Midday");
+    setProfileSetting(profileId, "notify_supp_morning_hour", "07:30");
+    setProfileSetting(profileId, "notify_supp_midday_hour", "12:00");
+    setProfileSetting(profileId, "notify_supp_evening_hour", "18:00");
+
+    // The person explicitly moved their day to Honolulu. Later, at the same
+    // physical location, a home-terminating VPN makes the browser report New York.
+    switchProfileTimezone(profileId, HONOLULU, NY);
+    expect(
+      travelPrompt({
+        ownProfile: true,
+        deviceZone: NY,
+        profileZone: getTimezone(profileId),
+        homeZone: getHomeTimezone(profileId),
+        dismissedZone: null,
+      })
+    ).toEqual({ kind: "return", homeZone: NY, awayZone: HONOLULU });
+
+    // Detecting the offer is pure: no action has been accepted, so the profile day
+    // and its trip marker remain on Honolulu.
+    expect(getTimezone(profileId)).toBe(HONOLULU);
+    expect(getHomeTimezone(profileId)).toBe(NY);
+    expect(getTravelSwitches(profileId)).toHaveLength(1);
+
+    // 22:00Z is 12:00 in Honolulu but 18:00 in New York. The pinned 07:30 / 12:00 /
+    // 18:00 schedule is still evaluated on the away clock: Midday is due and its
+    // reminder remains buildable; the New York Evening slot is not due.
+    freeze("2026-05-01T22:00:00Z");
+    const schedule = getNotifySchedule(profileId).supplementMinutes;
+    expect(schedule).toMatchObject({
+      Morning: 7 * 60 + 30,
+      Midday: 12 * 60,
+      Evening: 18 * 60,
+    });
+    const minute = minuteOfDayInTz(
+      getTimezone(profileId),
+      new Date("2026-05-01T22:00:00Z")
+    );
+    expect(minute).toBe(12 * 60);
+    expect(slotDue(schedule.Midday!, minute, 5)).toBe(true);
+    expect(slotDue(schedule.Evening!, minute, 5)).toBe(false);
+    expect(buildIntakeReminderForSlots(profileId, ["Midday"])).not.toBeNull();
+  });
+});
 
 // The item's own adherence strip over the trailing fortnight, travel excusal wired in
 // exactly as every production caller wires it.
