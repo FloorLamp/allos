@@ -7,7 +7,7 @@ import {
 } from "@testing-library/react";
 import { createRef } from "react";
 import { describe, expect, it, vi } from "vitest";
-import Button from "@/components/Button";
+import Button, { SubmitActionChip } from "@/components/Button";
 import { DestinationActionLink } from "@/components/DestinationLink";
 
 describe("Button", () => {
@@ -61,15 +61,19 @@ describe("Button", () => {
   it("forwards its submitter and owns the pending label, spinner, and state", async () => {
     const result = Promise.withResolvers<void>();
     const submitted = vi.fn((_formData: FormData) => result.promise);
+    const runtimeProps = { type: "button" } as unknown as Parameters<
+      typeof SubmitActionChip
+    >[0];
     render(
       <form action={submitted}>
-        <Button type="submit" name="intent" value="archive">
+        <SubmitActionChip {...runtimeProps} name="intent" value="archive">
           Archive
-        </Button>
+        </SubmitActionChip>
       </form>
     );
 
     const button = screen.getByRole("button", { name: "Archive" });
+    expect(button.getAttribute("type")).toBe("submit");
     fireEvent.click(button);
 
     await waitFor(() => expect(submitted).toHaveBeenCalledOnce());

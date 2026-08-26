@@ -3,6 +3,7 @@ import {
   cyclePhaseOnDate,
   cycleDayOnDate,
   cycleLengths,
+  cycleLengthStatsState,
   cycleStats,
   periodLengthDays,
   periodOnDate,
@@ -13,6 +14,7 @@ import {
   LUTEAL_PHASE_DAYS,
   MAX_PLAUSIBLE_PERIOD_DAYS,
   type CyclePeriod,
+  type CycleStats,
 } from "@/lib/cycle";
 
 // Pure-tier: the cycle-phase / length / variability derivations (issue #714). No DB.
@@ -377,5 +379,58 @@ describe("isFlowLevel", () => {
     expect(isFlowLevel("heavy")).toBe(true);
     expect(isFlowLevel("spotting")).toBe(false);
     expect(isFlowLevel(null)).toBe(false);
+  });
+});
+
+// The evidence-gate SENTENCE, not the threshold behind it (#3702). `cycleStats`
+// above pins when the gate opens; these pin what the Cycle page prints while it is
+// shut. Both existing callers of `cycleLengthStatsState`
+// (lib/__db_tests__/one-cycle-seed-shape.test.ts and
+// lib/__tests__/ux-one-cycle-seed-shape.test.ts) seed exactly one completed cycle,
+// so the singular branch was the only one anyone had ever rendered in a test —
+// while `cycleCount: 0` is what a brand-new profile reads FIRST.
+describe("cycleLengthStatsState", () => {
+  function insufficient(cycleCount: number): CycleStats {
+    return {
+      cycleCount,
+      meanLength: null,
+      medianLength: null,
+      minLength: null,
+      maxLength: null,
+      variabilityDays: null,
+      regularity: "insufficient",
+    };
+  }
+
+  it("names the empty state without inventing a count", () => {
+    expect(cycleLengthStatsState(insufficient(0))).toEqual({
+      kind: "insufficient",
+      message: "No completed cycles yet — cycle length stats appear after 3.",
+    });
+  });
+
+  it("pluralizes above one", () => {
+    expect(cycleLengthStatsState(insufficient(2))).toEqual({
+      kind: "insufficient",
+      message: "2 completed cycles — cycle length stats appear after 3.",
+    });
+  });
+
+  it("stays singular at one", () => {
+    expect(cycleLengthStatsState(insufficient(1))).toEqual({
+      kind: "insufficient",
+      message: "1 completed cycle — cycle length stats appear after 3.",
+    });
+  });
+
+  // Deliberately a combination `cycleStats` cannot produce — that is the point. The
+  // gate's only input is the VERDICT, and the only way to show the count is not
+  // secretly deciding is to hand it a fixture where the two disagree. Re-keying this
+  // on `cycleCount >= CYCLE_STATS_MIN_SAMPLES` reads as an equivalent refactor and is
+  // exactly the branch swap #3482 was about.
+  it("opens the gate on the verdict, never on the count", () => {
+    expect(
+      cycleLengthStatsState({ ...insufficient(0), regularity: "regular" })
+    ).toEqual({ kind: "ready" });
   });
 });

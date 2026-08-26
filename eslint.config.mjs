@@ -41,6 +41,29 @@ const config = [
     },
   },
   ...nextCoreWebVitals,
+  // The compiler API comes from `typescript-api`, a devDependency aliased to
+  // `npm:typescript@5.9`, and never from `typescript` itself (#3559). TS 7 turns the
+  // root export into a version stub and moves `createSourceFile` / `forEachChild` to
+  // entries it marks UNSTABLE, so a plain `import ts from "typescript"` stops
+  // resolving to a compiler at all — which would take the Server Action
+  // authorization sweep and the adult-only write scan red on a version bump. Sixteen
+  // files import the alias today; this is what stops a seventeenth reopening it.
+  {
+    rules: {
+      "no-restricted-imports": [
+        "error",
+        {
+          patterns: [
+            {
+              group: ["typescript", "typescript/*"],
+              message:
+                'Import the compiler API from "typescript-api" (the pinned 5.x alias), not from "typescript" — see #3559.',
+            },
+          ],
+        },
+      ],
+    },
+  },
   // eslint-config-next 16 bundles eslint-plugin-react-hooks v6, whose
   // next/core-web-vitals preset newly enables the "React Compiler" rule family.
   // Every compiler rule family has completed its product-reviewed burn-down and

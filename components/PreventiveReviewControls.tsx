@@ -2,11 +2,8 @@
 
 import { useState } from "react";
 import DateField from "@/components/DateField";
-import SubmitButton from "@/components/SubmitButton";
+import { SubmitActionChip } from "@/components/Button";
 import type { FormResult } from "@/lib/types";
-
-const CHIP =
-  "rounded-lg border border-black/10 px-2.5 py-1 text-xs font-medium text-slate-600 transition hover:bg-slate-100 disabled:opacity-60 dark:border-white/10 dark:text-slate-300 dark:hover:bg-ink-750";
 
 // The preventive REVIEW CANDIDATE controls (issue #3025), shared by the Upcoming
 // row and dashboard Show everything so the offer reads identically on both.
@@ -97,23 +94,21 @@ export default function PreventiveReviewControls({
             data-testid={`preventive-review-date-${recordId}-${ruleKey}`}
             inputClassName="w-32 py-1 text-xs"
           />
-          <SubmitButton
+          <SubmitActionChip
             pendingLabel="…"
             data-testid={`preventive-review-confirm-${recordId}-${ruleKey}`}
-            className={CHIP}
           >
             Confirm
-          </SubmitButton>
+          </SubmitActionChip>
         </form>
         <form action={run(dismissAction)}>
           {hidden}
-          <SubmitButton
+          <SubmitActionChip
             pendingLabel="…"
             data-testid={`preventive-review-dismiss-${recordId}-${ruleKey}`}
-            className={CHIP}
           >
             Dismiss
-          </SubmitButton>
+          </SubmitActionChip>
         </form>
         {error && (
           <span

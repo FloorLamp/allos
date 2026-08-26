@@ -81,3 +81,15 @@ const Button = forwardRef<HTMLButtonElement, ButtonProps>(function Button(
 });
 
 export default Button;
+
+type SubmitActionProps = Omit<ButtonProps, "type">;
+
+export const SubmitActionChip = (props: SubmitActionProps) => (
+  <Button {...props} type="submit" />
+);
+
+export const InlineSubmitAction = (props: SubmitActionProps) => (
+  <span className="inline-submit-action">
+    <SubmitActionChip {...props} />
+  </span>
+);
