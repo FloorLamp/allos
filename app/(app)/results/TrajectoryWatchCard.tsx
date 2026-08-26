@@ -98,7 +98,6 @@ export default function TrajectoryWatchCard({
               type="submit"
               data-testid="trajectory-rollup-dismiss"
               label={`Dismiss ${g.label} trajectory watch`}
-              tooltip="Dismiss"
             >
               <IconX className="h-4 w-4" stroke={2} />
             </IconButton>

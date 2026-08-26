@@ -10,6 +10,7 @@ import type { ActivityType } from "@/lib/types";
 import type { ActivityEditData } from "./model";
 import SaveStatus from "@/components/SaveStatus";
 import Button from "@/components/Button";
+import InfoTooltipIcon from "@/components/InfoTooltipIcon";
 
 // The activity form's header section: the type icon + live title, the date
 // subtitle, the stored-row provenance line, and the close control. Presentational
@@ -133,11 +134,9 @@ export default function ActivityFormHeader({
             header. Mobile retains its existing sticky footer. */}
         <div className="hidden h-8 items-center gap-1.5 text-xs md:flex">
           {blocker && (
-            <span
-              className="font-medium text-amber-600 dark:text-amber-400"
-              title={blocker}
-            >
+            <span className="inline-flex items-center font-medium text-amber-600 dark:text-amber-400">
               Not saved
+              <InfoTooltipIcon label={blocker} />
             </span>
           )}
           <SaveStatus pending={pending} savedAt={savedAt} error={saveError} />
@@ -150,7 +149,6 @@ export default function ActivityFormHeader({
               type="button"
               onClick={() => void onClose()}
               aria-label="Minimize workout"
-              title="Minimize workout"
             >
               <IconMinus className="h-5 w-5" />
               Minimize

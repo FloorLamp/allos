@@ -29,7 +29,6 @@ export default function MoodValencePicker({
             data-testid={`${testIdPrefix}-${score}`}
             pressed={selected}
             label={`Mood: ${MOOD_LABELS[index]}`}
-            tooltip={MOOD_LABELS[index]}
             disabled={disabled}
             onClick={() => onChange(score)}
           >

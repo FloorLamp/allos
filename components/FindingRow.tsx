@@ -73,7 +73,6 @@ export default function FindingRow({
           type="submit"
           data-testid={dismissTestid}
           label={`Dismiss ${f.title}`}
-          tooltip="Dismiss"
         >
           <IconX className="h-4 w-4" stroke={2} />
         </IconButton>

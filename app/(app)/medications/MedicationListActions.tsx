@@ -43,7 +43,6 @@ export default function MedicationListActions() {
         className="tap-target flex h-9 w-9 items-center justify-center rounded-lg border border-(--border) bg-surface text-slate-600 transition hover:bg-(--ghost-hover) hover:text-slate-900 dark:text-slate-300 dark:hover:text-slate-100"
         data-testid="medication-print-link"
         aria-label="Print medication list"
-        title="Print medication list"
       >
         <IconPrinter className="h-4 w-4" stroke={1.75} />
       </Link>
@@ -52,7 +51,6 @@ export default function MedicationListActions() {
         className="tap-target flex h-9 w-9 items-center justify-center rounded-lg border border-(--border) bg-surface text-slate-600 transition hover:bg-(--ghost-hover) hover:text-slate-900 dark:text-slate-300 dark:hover:text-slate-100"
         data-testid="medication-share-open"
         aria-label="Share medication list"
-        title="Share medication list"
         onClick={() => setOpen(true)}
       >
         <IconShare className="h-4 w-4" stroke={1.75} />

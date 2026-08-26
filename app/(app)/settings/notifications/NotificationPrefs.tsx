@@ -47,6 +47,7 @@ import { formatClockMinutes, type TimeFormat } from "@/lib/format-date";
 import DigestTimeSuggestionRow from "./DigestTimeSuggestion";
 import SaveStatus from "@/components/SaveStatus";
 import CheckboxControl from "@/components/CheckboxControl";
+import InfoTooltipIcon from "@/components/InfoTooltipIcon";
 import { useSaveStatus } from "@/components/useSaveStatus";
 import {
   saveNotificationPrefs,
@@ -880,8 +881,11 @@ export default function NotificationPrefs({
               const label = columnBulkLabel(c.label, state);
               return (
                 <span key={c.id} className="block" data-matrix-head-cell={c.id}>
-                  <span title={`${c.label} — follows ${c.owner}`}>
+                  <span className="inline-flex items-center justify-center">
                     {c.short}
+                    <InfoTooltipIcon
+                      label={`${c.label} — follows ${c.owner}`}
+                    />
                   </span>
                   {/* #2565 part B: the state is stated for EVERY column, in words, in
                       the same slot — a disclosure that only appears on failure reads
@@ -905,7 +909,6 @@ export default function NotificationPrefs({
                   >
                     <CheckboxControl
                       label={label}
-                      title={label}
                       checked={state === "all"}
                       indeterminate={state === "mixed"}
                       disabled={routing || sweep.length === 0}
@@ -1207,12 +1210,14 @@ export default function NotificationPrefs({
                     ) : (
                       <span key={c.id} className="contents" data-matrix-cell>
                         <span
-                          className="text-slate-300 dark:text-slate-600"
-                          title={`${c.label} can’t deliver this button-only reminder.`}
+                          className="inline-flex items-center text-slate-300 dark:text-slate-600"
                           data-testid={`matrix-unavailable-${c.id}-${e.kind}`}
                           data-matrix-dash
                         >
                           &mdash;
+                          <InfoTooltipIcon
+                            label={`${c.label} can’t deliver this button-only reminder.`}
+                          />
                         </span>
                         <span
                           className="hidden text-xs font-normal text-slate-500 dark:text-slate-400"

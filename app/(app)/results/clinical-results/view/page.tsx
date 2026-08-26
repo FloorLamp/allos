@@ -1,4 +1,5 @@
 import Link from "next/link";
+import InfoTooltipIcon from "@/components/InfoTooltipIcon";
 import DestinationLink from "@/components/DestinationLink";
 import { redirect } from "next/navigation";
 import { metricDetailHref, CLINICAL_RESULTS_LIST_HREF } from "@/lib/hrefs";
@@ -1086,11 +1087,11 @@ export default async function ClinicalResultDetailPage(props: {
                     </Td>
                     <Td slot="meta" label="Source">
                       {r.derived ? (
-                        <span
-                          className="text-slate-500 dark:text-slate-400"
-                          title={r.derived_formula}
-                        >
+                        <span className="inline-flex items-center text-slate-500 dark:text-slate-400">
                           Computed
+                          {r.derived_formula ? (
+                            <InfoTooltipIcon label={r.derived_formula} />
+                          ) : null}
                         </span>
                       ) : r.document_id ? (
                         <Link

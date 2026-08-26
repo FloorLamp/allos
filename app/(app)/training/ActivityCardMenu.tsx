@@ -322,8 +322,7 @@ export default function ActivityCardMenu({
                         type="button"
                         role="menuitem"
                         data-testid="merge-target"
-                        className={`${MENU_ITEM} truncate`}
-                        title={s.title}
+                        className={`${MENU_ITEM} wrap-break-word whitespace-normal`}
                         onClick={() => pick(s)}
                       >
                         {s.title}
@@ -354,7 +353,6 @@ export default function ActivityCardMenu({
                         key={s.id}
                         data-testid="merge-target"
                         className="flex items-center gap-2 px-3 py-1.5 text-sm text-slate-700 dark:text-slate-200"
-                        title={s.title}
                       >
                         <input
                           type="checkbox"
@@ -363,7 +361,7 @@ export default function ActivityCardMenu({
                           onChange={() => toggleChecked(s.id)}
                           aria-label={`Combine ${s.title}`}
                         />
-                        <span className="truncate">{s.title}</span>
+                        <span className="wrap-break-word">{s.title}</span>
                       </div>
                     ))}
                   </div>

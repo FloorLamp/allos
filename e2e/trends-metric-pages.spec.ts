@@ -117,6 +117,9 @@ test.describe("Trends → Overview → body census metric pages (#1067 Phase 2)"
     await expect(
       stepsTile.getByText("Daily Steps", { exact: true })
     ).not.toBeVisible();
+    await expect(
+      stepsTile.getByTestId("trend-mini-header-link")
+    ).toHaveAccessibleName(/Daily Steps/);
     await expect(stepsTile.getByRole("link")).toHaveAttribute(
       "href",
       "/trends/metric/steps"

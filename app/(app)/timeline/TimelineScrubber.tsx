@@ -275,7 +275,6 @@ export default function TimelineScrubber({ stops }: { stops: ScrubberStop[] }) {
         role="slider"
         tabIndex={0}
         aria-label="Scrub to a month"
-        title="Scrub to a month"
         aria-orientation="vertical"
         aria-valuemin={0}
         aria-valuemax={Math.max(0, stops.length - 1)}

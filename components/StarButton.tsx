@@ -107,7 +107,6 @@ export default function StarButton({
           : undefined
       }
       data-testid="star-toggle"
-      title={shown ? `Unstar ${subject}` : `Star ${subject}`}
       className={`inline-flex min-h-11 items-center justify-center rounded-lg border font-medium transition sm:min-h-0 ${
         compact
           ? "gap-1 px-2 py-1 text-xs"

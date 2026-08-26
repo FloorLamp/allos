@@ -129,7 +129,6 @@ export default function PurposesEditor({
                   type="button"
                   data-testid={`purpose-remove-${i}`}
                   aria-label={`Remove ${chipLabel(r, conditions)}`}
-                  title="Remove"
                   onClick={() => removeAt(i)}
                   className="text-slate-400 hover:text-slate-700 dark:hover:text-slate-200"
                 >

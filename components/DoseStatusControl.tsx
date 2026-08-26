@@ -357,7 +357,6 @@ export default function DoseStatusControl({
         className={`${takeClass}${settling ? " motion-settle" : ""}`}
         aria-pressed={isTaken}
         aria-label={isTaken ? "Mark not taken" : "Mark taken"}
-        title={isTaken ? "Taken — click to undo" : "Mark taken"}
         data-testid="dose-take"
       >
         <IconCheck
@@ -375,7 +374,6 @@ export default function DoseStatusControl({
         className={skipClass}
         aria-pressed={isSkipped}
         aria-label={isSkipped ? "Undo skip" : "Skip this dose"}
-        title={isSkipped ? "Skipped — tap to undo" : "Skip this dose"}
         data-testid="dose-skip"
       >
         <IconPlayerTrackNext

@@ -52,8 +52,11 @@ test("a stale headline states the day it was read, and keeps its value (#2615)",
     await expect(asOf).not.toHaveText(/ago/);
     // The shared glance-age treatment, naming the interval that was crossed —
     // weight's own floor, not a global one.
-    await expect(asOf).toHaveAttribute(
-      "title",
+    const currencyDetails = weight.getByRole("button", {
+      name: "Older than six weeks — still your latest reading, but not a current one",
+    });
+    await currencyDetails.click();
+    await expect(page.getByRole("tooltip")).toHaveText(
       "Older than six weeks — still your latest reading, but not a current one"
     );
 

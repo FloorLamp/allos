@@ -151,7 +151,6 @@ function nameCell(r: {
       <Link
         href={clinicalResultDetailHref(r.canonical_name)}
         className="font-medium text-brand-700 hover:underline dark:text-brand-400"
-        title={`View ${r.canonical_name} over time`}
       >
         {r.canonical_name}
       </Link>
@@ -175,7 +174,8 @@ function dateCell(
   r: { date: string; category: string | null },
   now: string,
   showAge: boolean,
-  prefs: DisplayFormatPrefs
+  prefs: DisplayFormatPrefs,
+  reportedPanelDetail?: string
 ) {
   const line = readingDateLine(r, now, showAge, prefs);
   return (
@@ -201,8 +201,21 @@ function dateCell(
           </span>
         </>
       ) : null}
+      {reportedPanelDetail ? (
+        <InfoTooltipIcon
+          label={reportedPanelDetail}
+          data-testid="clinical-reported-panel-help"
+        />
+      ) : null}
     </span>
   );
+}
+
+function reportedPanelDisclosureLabel(
+  observation: ClinicalResultTableObservation,
+  reported: string
+) {
+  return `Reported under “${reported}” — ${tableNameKey(observation)}, ${observation.date}`;
 }
 
 // The Panel cell (#1502). It shows the NORMALIZED clinical panel resolved from the
@@ -211,8 +224,8 @@ function dateCell(
 // free-text heading (in practice the lab VENDOR: "Quest Diagnostics", "LabCorp").
 //
 // The stored `panel` column is untouched PROVENANCE and still surfaces two ways:
-// as the cell's tooltip on a resolved row ("Reported under …"), and as the visible
-// text for a row the taxonomy can't place — an un-canonicalized analyte the
+// through the row date's shared disclosure on a resolved row ("Reported under …"), and
+// as the visible text for a row the taxonomy can't place — an un-canonicalized analyte the
 // extractor coined, where the document's own heading is the best label we have.
 // That fallback row is deliberately NOT a filter link: "everything drawn at
 // LabCorp" is the useless facet this issue removed, and `?panel=other` (reachable
@@ -237,7 +250,6 @@ function PanelCell({
       <Td label="Panel" className="hidden md:table-cell">
         <Link
           href={href(id)}
-          title={reported ? `Reported under “${reported}”` : undefined}
           className="text-xs text-slate-500 hover:text-brand-700 hover:underline dark:text-slate-400 dark:hover:text-brand-400"
         >
           {panelLabel(id)}
@@ -375,6 +387,10 @@ function ClinicalResultRow({
   const showChip =
     !!multiView && !!r.subject && subjectChipVisible({ multi: true, isActing });
   const writeProfileId = multiView ? r.profileId : undefined;
+  const reportedPanelAlias =
+    !r.derived && tablePanelId(r) !== OTHER_PANEL
+      ? r.panel?.trim() || null
+      : null;
   // The leading subject cell (multi-view only), rendered first in every row. On a
   // card it's the first meta item — the chip IS its own label (#534), so no
   // "Profile" prefix — and it drops out entirely on an acting-profile row.
@@ -530,14 +546,21 @@ function ClinicalResultRow({
             dir,
             current: current ? "1" : undefined,
           })}
-          title={`Filter by ${r.category}`}
           className="hover:opacity-80"
         >
           {r.category ? <Tag value={r.category} /> : null}
         </Link>
       </Td>
       <Td slot="meta" label="Date">
-        {dateCell(r, now, !!r.is_latest, prefs)}
+        {dateCell(
+          r,
+          now,
+          !!r.is_latest,
+          prefs,
+          reportedPanelAlias
+            ? reportedPanelDisclosureLabel(r, reportedPanelAlias)
+            : undefined
+        )}
       </Td>
       <Td slot="actions">
         {/* The menu renders whenever it has at least one item (#2316). It used to be

@@ -24,6 +24,7 @@ import LogActivityButton from "@/components/LogActivityButton";
 import FrequentPages from "@/components/FrequentPages";
 import TrainingLogCalendar from "@/components/TrainingLogCalendar";
 import ThemeToggle from "@/components/ThemeToggle";
+import InfoTooltipIcon from "@/components/InfoTooltipIcon";
 import WhatsNewLink from "@/components/WhatsNewLink";
 import type { SessionProfile } from "@/lib/auth";
 import type { AppVersion } from "@/lib/version";
@@ -596,24 +597,25 @@ export default function SidebarContent({
             {/* commitUrl is non-null only when sha is (see lib/version.ts), so
             the link branch always has a hash; the span mirrors AppVersion's
             "cell" variant, falling back to "unknown" when the sha is missing. */}
-            {version.commitUrl ? (
-              <a
-                href={version.commitUrl}
-                target="_blank"
-                rel="noreferrer"
-                title={version.commitMessage ?? undefined}
-                className="font-mono text-xs text-slate-500 underline-offset-2 transition hover:text-slate-700 hover:underline dark:text-slate-400 dark:hover:text-slate-200"
-              >
-                {version.sha}
-              </a>
-            ) : (
-              <span
-                title={version.commitMessage ?? undefined}
-                className="font-mono text-xs text-slate-500 dark:text-slate-400"
-              >
-                {version.sha ?? "unknown"}
-              </span>
-            )}
+            <span className="inline-flex items-center">
+              {version.commitUrl ? (
+                <a
+                  href={version.commitUrl}
+                  target="_blank"
+                  rel="noreferrer"
+                  className="font-mono text-xs text-slate-500 underline-offset-2 transition hover:text-slate-700 hover:underline dark:text-slate-400 dark:hover:text-slate-200"
+                >
+                  {version.sha}
+                </a>
+              ) : (
+                <span className="font-mono text-xs text-slate-500 dark:text-slate-400">
+                  {version.sha ?? "unknown"}
+                </span>
+              )}
+              {version.commitMessage ? (
+                <InfoTooltipIcon label={version.commitMessage} />
+              ) : null}
+            </span>
           </div>
         </div>
         {/* Persistent footer link to the single Disclaimer surface (issue #1049).

@@ -64,11 +64,17 @@ export default function MedicationTodayStrip({
                   key={item.key}
                   href={medBoardAnchor(subject.profileId)}
                   data-testid="med-everyone-due"
-                  className="inline-flex items-center gap-1 rounded-full border border-black/10 bg-slate-50 py-0.5 pl-1.5 pr-2 text-xs font-medium text-slate-600 transition hover:border-brand-400 dark:border-white/10 dark:bg-ink-850 dark:text-slate-300"
-                  title={item.dueText ?? undefined}
+                  className="inline-flex max-w-full items-start gap-1 rounded-lg border border-black/10 bg-slate-50 py-1 pl-1.5 pr-2 text-xs font-medium text-slate-600 transition hover:border-brand-400 dark:border-white/10 dark:bg-ink-850 dark:text-slate-300"
                 >
                   <IconPill className="h-3.5 w-3.5 shrink-0" stroke={1.75} />
-                  <span className="truncate">{item.title}</span>
+                  <span className="min-w-0 wrap-break-word">
+                    <span className="block">{item.title}</span>
+                    {item.dueText && (
+                      <span className="block font-normal opacity-80">
+                        {item.dueText}
+                      </span>
+                    )}
+                  </span>
                 </a>
               ))}
               {strip.lowRefills.map((item) => (
@@ -76,11 +82,17 @@ export default function MedicationTodayStrip({
                   key={item.key}
                   href={medBoardAnchor(subject.profileId)}
                   data-testid="med-everyone-refill"
-                  className="inline-flex items-center gap-1 rounded-full border border-amber-200 bg-amber-50 py-0.5 pl-1.5 pr-2 text-xs font-medium text-amber-700 transition hover:border-amber-400 dark:border-amber-900 dark:bg-amber-950 dark:text-amber-300"
-                  title={item.detail ?? undefined}
+                  className="inline-flex max-w-full items-start gap-1 rounded-lg border border-amber-200 bg-amber-50/60 py-1 pl-1.5 pr-2 text-xs font-medium text-amber-700 transition hover:border-amber-400 dark:border-amber-900 dark:bg-amber-950/60 dark:text-amber-300"
                 >
                   <IconRefresh className="h-3.5 w-3.5 shrink-0" stroke={1.75} />
-                  <span className="truncate">{item.title}</span>
+                  <span className="min-w-0 wrap-break-word">
+                    <span className="block">{item.title}</span>
+                    {item.detail && (
+                      <span className="block font-normal opacity-80">
+                        {item.detail}
+                      </span>
+                    )}
+                  </span>
                 </a>
               ))}
             </span>

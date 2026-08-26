@@ -96,7 +96,7 @@ test("plain-form Finish stamps end and opens the shared Session complete step; e
   const step = page.getByTestId("session-complete-step");
   await expect(step).toBeVisible();
   await expect(step.getByTestId("session-recap")).toContainText("working set");
-  await step.getByRole("button", { name: "Hard" }).click();
+  await step.getByRole("button", { name: "Hard", exact: true }).click();
 
   // Save stamps the end time + effort through the plain form's auto-save.
   const saved = page.waitForResponse(
@@ -116,10 +116,9 @@ test("plain-form Finish stamps end and opens the shared Session complete step; e
     .first(); // first-ok: the activity row THIS spec created (filtered by its unique title)
   await expect(row).toBeVisible();
   await openRowForEdit(page, row);
-  await expect(page.getByRole("button", { name: "Hard" })).toHaveAttribute(
-    "aria-pressed",
-    "true"
-  );
+  await expect(
+    page.getByRole("button", { name: "Hard", exact: true })
+  ).toHaveAttribute("aria-pressed", "true");
   // The plain finish button is create-only: an edit surface never shows it.
   await expect(page.getByTestId("plain-finish-workout")).toHaveCount(0);
 
@@ -163,11 +162,10 @@ test("the recap-step effort rating round-trips into activities.intensity (#924)"
   await page.getByTestId("finish-workout").click();
   const step = page.getByTestId("session-complete-step");
   await expect(step).toBeVisible();
-  await step.getByRole("button", { name: "Hard" }).click();
-  await expect(step.getByRole("button", { name: "Hard" })).toHaveAttribute(
-    "aria-pressed",
-    "true"
-  );
+  await step.getByRole("button", { name: "Hard", exact: true }).click();
+  await expect(
+    step.getByRole("button", { name: "Hard", exact: true })
+  ).toHaveAttribute("aria-pressed", "true");
 
   // Save collapses to the plain editor and stamps the end time — that final
   // auto-save POST persists title + effort + end. Await it before navigating so
@@ -190,10 +188,9 @@ test("the recap-step effort rating round-trips into activities.intensity (#924)"
     .first(); // first-ok: the activity row THIS spec created (filtered by its unique title)
   await expect(row).toBeVisible();
   await openRowForEdit(page, row);
-  await expect(page.getByRole("button", { name: "Hard" })).toHaveAttribute(
-    "aria-pressed",
-    "true"
-  );
+  await expect(
+    page.getByRole("button", { name: "Hard", exact: true })
+  ).toHaveAttribute("aria-pressed", "true");
 
   await deleteOpenDraft(page);
 });

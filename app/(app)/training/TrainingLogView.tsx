@@ -533,7 +533,7 @@ export default function TrainingLogView({
           type="button"
           onClick={() => openRepeat(lastActivity)}
           data-testid="repeat-last"
-          title={`Log again: ${lastActivity.title}`}
+          aria-label={`Repeat last — log again: ${lastActivity.title}`}
           className="btn-ghost"
         >
           <IconRepeat className="h-4 w-4" stroke={2} />
@@ -659,7 +659,6 @@ export default function TrainingLogView({
                 type="button"
                 onClick={() => setFilters((f) => ({ ...f, query: "" }))}
                 aria-label="Clear search"
-                title="Clear search"
                 className="absolute top-1/2 right-1 flex h-8 w-8 -translate-y-1/2 items-center justify-center rounded-md text-slate-500 hover:bg-slate-100 hover:text-slate-600 dark:text-slate-400 dark:hover:bg-ink-800 dark:hover:text-slate-300"
               >
                 <IconX className="h-4 w-4" />
@@ -722,7 +721,6 @@ export default function TrainingLogView({
                 }
                 pressed={activeFilters.faultOnly}
                 testId="training-log-fault-filter"
-                title="Show only rows that can't be saved as-is"
               >
                 <IconAlertTriangle className="h-4 w-4" stroke={2} />
                 Can’t be saved

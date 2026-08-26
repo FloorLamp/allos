@@ -2,6 +2,7 @@ import Link from "next/link";
 import { chartActivityRamp } from "@/lib/chart-colors";
 import { trainingLogDayHref } from "@/lib/hrefs";
 import type { ActiveDaysStrip as ActiveDaysStripData } from "@/lib/workout-heatmap";
+import VisualizationDetails from "@/components/VisualizationDetails";
 
 // The same blessed activity ramp the full heatmap uses (issue #1445) — the strip
 // is the heatmap's compact twin, so a second ladder here is the drift.
@@ -54,20 +55,22 @@ export default function ActiveDaysStrip({
               data-testid="active-day"
               data-date={day.date}
               data-count={day.count}
-              title={summary(day)}
               aria-label={summary(day)}
               className={`${classes} ring-brand-400 hover:ring-2 focus:outline-hidden focus:ring-2`}
             />
           ) : (
             <span
               key={day.date}
-              title={summary(day)}
               aria-label={summary(day)}
               className={classes}
             />
           );
         })}
       </div>
+      <VisualizationDetails
+        label="Daily details"
+        items={data.days.map(summary)}
+      />
     </div>
   );
 }

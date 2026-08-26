@@ -218,6 +218,7 @@ test.describe("Import detail: tabbed records browser", () => {
     // companion JSON case is asserted in review-inbox.spec.ts.
     const downloadBtn = viewer.getByTestId("raw-download");
     await expect(downloadBtn).toHaveText(/Download XML/);
+    await expect(downloadBtn).toContainText("extraction-908.xml");
     const [saved] = await Promise.all([
       page.waitForEvent("download"),
       downloadBtn.click(),

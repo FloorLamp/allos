@@ -49,7 +49,6 @@ function StageBar({
             <div
               key={s.key}
               style={{ width: `${pct}%`, backgroundColor: s.color }}
-              title={`${s.label} ${formatHm(stages[s.key])}`}
             />
           );
         })}

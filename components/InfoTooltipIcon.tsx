@@ -16,11 +16,9 @@ type TooltipPosition = {
 
 export default function InfoTooltipIcon({
   label,
-  className,
   "data-testid": testId,
 }: {
   label: string;
-  className?: string;
   "data-testid"?: string;
 }) {
   const tooltipId = useId();
@@ -112,9 +110,7 @@ export default function InfoTooltipIcon({
 
   return (
     <span
-      className={["relative z-10 inline-flex align-middle", className]
-        .filter(Boolean)
-        .join(" ")}
+      className="pointer-events-auto relative z-10 inline-flex align-middle"
       data-escape-layer={open ? "true" : undefined}
       onMouseEnter={() => setHovered(true)}
       onMouseLeave={() => setHovered(false)}
@@ -123,7 +119,6 @@ export default function InfoTooltipIcon({
         ref={buttonRef}
         type="button"
         aria-label={label}
-        title="More information"
         aria-describedby={open ? tooltipId : undefined}
         aria-expanded={open}
         data-testid={testId}

@@ -39,7 +39,6 @@ export default function SharedSuppliesLink({
     <DestinationLink
       href={SUPPLIES_HREF}
       data-testid="shared-supplies-link"
-      title="Medicine cabinet"
       aria-label={accessibleName}
       className={`inline-flex shrink-0 items-center gap-1 whitespace-nowrap text-sm text-link ${className}`}
     >

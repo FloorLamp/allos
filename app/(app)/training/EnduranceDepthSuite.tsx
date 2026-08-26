@@ -6,6 +6,7 @@ import { formatPercentile } from "@/lib/fitness-norms";
 import { fmtDistance } from "@/lib/units";
 import { formatMinutes } from "@/lib/duration";
 import type { DistanceUnit } from "@/lib/settings";
+import VisualizationDetails from "@/components/VisualizationDetails";
 
 function changeText(value: number | null): string {
   if (value == null) return "no prior block";
@@ -69,10 +70,15 @@ export default function EnduranceDepthSuite({
                       style={{
                         width: `${zones.totalMinutes > 0 ? (minutes / zones.totalMinutes) * 100 : 0}%`,
                       }}
-                      title={`Zone ${index + 1}: ${minutes} min`}
                     />
                   ))}
                 </div>
+                <VisualizationDetails
+                  label="Zone details"
+                  items={zones.minutes.map(
+                    (minutes, index) => `Zone ${index + 1}: ${minutes} min`
+                  )}
+                />
                 <p className="mt-2 text-sm text-slate-600 dark:text-slate-300">
                   Zone 2 {zones.minutes[1] ?? 0} min · {zones.easyPercent}% easy
                   / {100 - zones.easyPercent}% hard

@@ -4,11 +4,10 @@ import { describe, expect, it } from "vitest";
 import IconButton from "@/components/IconButton";
 
 describe("IconButton", () => {
-  it("owns the icon-only name, title, and rendered tap floor", () => {
+  it("owns the icon-only name and rendered tap floor", () => {
     render(
       <IconButton
         label="Dismiss sodium guidance"
-        tooltip="Dismiss"
         type="submit"
         data-testid="subject"
         tone="amber"
@@ -23,7 +22,7 @@ describe("IconButton", () => {
       name: "Dismiss sodium guidance",
     });
     expect(button.getAttribute("type")).toBe("submit");
-    expect(button.getAttribute("title")).toBe("Dismiss");
+    expect(button.getAttribute("title")).toBeNull();
     expect(button.getAttribute("data-icon-button")).toBe("");
     expect(button.getAttribute("data-tone")).toBe("amber");
     expect(button.getAttribute("aria-pressed")).toBe("true");
@@ -37,7 +36,7 @@ describe("IconButton", () => {
     ).not.toBeNull();
   });
 
-  it("defaults to a non-submitting button and uses its label as hover text", () => {
+  it("defaults to a non-submitting button", () => {
     render(
       <IconButton label="Open actions">
         <IconX />
@@ -46,6 +45,6 @@ describe("IconButton", () => {
 
     const button = screen.getByRole("button", { name: "Open actions" });
     expect(button.getAttribute("type")).toBe("button");
-    expect(button.getAttribute("title")).toBe("Open actions");
+    expect(button.getAttribute("title")).toBeNull();
   });
 });

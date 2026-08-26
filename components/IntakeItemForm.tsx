@@ -1365,9 +1365,12 @@ export default function IntakeItemForm({
                         setMaxDailyCount(String(redoseDefaults.maxDailyCount));
                         markTouched("minIntervalHours", "maxDailyCount");
                       }}
-                      title={`Use ${redoseDefaults.tier} label defaults: ${redoseDefaults.minIntervalHours} hours, maximum ${redoseDefaults.maxDailyCount} doses per day`}
                     >
-                      Use label defaults
+                      <span className="block">Use label defaults</span>
+                      <span className="block text-xs font-normal text-slate-500 dark:text-slate-400">
+                        {redoseDefaults.minIntervalHours} hours · maximum{" "}
+                        {redoseDefaults.maxDailyCount} doses/day
+                      </span>
                     </button>
                   )}
                 </div>

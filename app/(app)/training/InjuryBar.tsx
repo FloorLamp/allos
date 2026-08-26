@@ -208,7 +208,6 @@ export default function InjuryBar({
                   }
                   className="btn-ghost p-1 text-slate-400 hover:text-brand-600 dark:hover:text-brand-400"
                   aria-label={`Edit ${inj.label}`}
-                  title="Edit what this covers"
                   data-testid="injury-edit-toggle"
                 >
                   <IconPencil size={16} />
@@ -918,7 +917,6 @@ function InjuryExercisePicker({
               <button
                 type="button"
                 aria-label={`Remove ${name}`}
-                title="Remove lift"
                 onClick={() => onPicked(picked.filter((x) => x !== name))}
                 className="text-brand-500 hover:text-rose-500"
               >

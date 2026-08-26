@@ -215,7 +215,11 @@ test("training log cards prioritize a summary and progressively disclose details
   await expect(summary).toContainText("62 min");
   await expect(summary).toContainText("148/171 bpm");
   const heartRate = ride.getByTestId("activity-heart-rate");
-  await expect(heartRate).toHaveAttribute("title", "Zone 3 · Tempo");
+  const heartRateDetails = heartRate.getByRole("button", {
+    name: "Zone 3 · Tempo",
+  });
+  await heartRateDetails.click();
+  await expect(page.getByRole("tooltip")).toHaveText("Zone 3 · Tempo");
   await expectUtilityColor(heartRate, "text-slate-800");
   await expect(heartRate.getByTestId("activity-heart-rate-icon")).toHaveCSS(
     "color",
@@ -279,9 +283,16 @@ test("strength target status is named and muscle filters are quiet text", async 
   const push = await openActivityPage(page, pushRow, "Push day");
   await expect(push.getByTestId("activity-summary")).toContainText("kcal");
   await expect(push.getByTestId("activity-metrics")).toHaveCount(0);
-  await expect(
-    push.getByRole("img", { name: "All sets hit their target reps" })
-  ).toBeVisible();
+  await expect(push.getByText("Target met", { exact: true })).toBeVisible();
+  const benchRow = push
+    .getByTestId("training-log-strength-row")
+    .filter({ hasText: "Barbell Bench Press" })
+    .first(); // first-ok: filtered to the Barbell Bench Press strength row — one match
+  const targetDetails = benchRow.getByTestId("exercise-row-info");
+  await targetDetails.click();
+  await expect(page.getByRole("tooltip")).toContainText(
+    "All sets hit their target reps"
+  );
   // Edit flows through the canonical activity page.
   await activityPage(page).getByTestId("activity-page-edit").click();
   await expect(
@@ -298,10 +309,6 @@ test("strength target status is named and muscle filters are quiet text", async 
 
   // Exercise name, set summary, and context form one compact row rather than a
   // forced two-line name/metadata block with the summary pushed to the far edge.
-  const benchRow = push
-    .getByTestId("training-log-strength-row")
-    .filter({ hasText: "Barbell Bench Press" })
-    .first(); // first-ok: filtered to the Barbell Bench Press strength row — one match
   const exerciseName = benchRow.getByRole("link", {
     name: "Barbell Bench Press",
     exact: true,

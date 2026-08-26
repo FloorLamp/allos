@@ -125,7 +125,6 @@ export default async function TrendingDigest({ range }: { range: DateRange }) {
             type="submit"
             data-testid="digest-dismiss"
             label={`Dismiss ${item.label} trend`}
-            tooltip="Dismiss"
           >
             <IconX className="h-3.5 w-3.5" stroke={2} />
           </IconButton>

@@ -82,7 +82,6 @@ export default function EditableResultRow({
             <Link
               href={nameLink.href}
               className="text-brand-700 hover:underline dark:text-brand-400"
-              title={nameLink.title}
             >
               {r.name}
             </Link>

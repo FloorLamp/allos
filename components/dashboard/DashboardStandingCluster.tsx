@@ -11,6 +11,7 @@ import {
   type StandingSectionKey,
 } from "@/lib/dashboard-standing";
 import type { DashboardPlacement } from "@/lib/dashboard-relevance";
+import InfoTooltipIcon from "@/components/InfoTooltipIcon";
 
 export interface DashboardStandingPresentation {
   label?: string;
@@ -24,12 +25,8 @@ export interface DashboardStandingPresentation {
    * every row whose domain has no trend read — that is the rule, not an omission.
    */
   series?: StandingSparklineSeries;
-  /**
-   * A sentence the row carries on hover, behind its own numbers. Today the sleep
-   * rows' usual band ("Usual 10:40 PM – 5:45 AM"), sourced verbatim from the
-   * classifier that already answers it (#3253's rider). Silence when it answers null.
-   */
-  hoverNote?: string;
+  /** Touch- and keyboard-accessible explanatory detail. */
+  disclosure?: string;
 }
 
 // The door's label: the DESTINATION's own name, taken from the one list that already
@@ -202,6 +199,25 @@ export default function DashboardStandingCluster({
                             const door = presentation.href
                               ? doorLabel(presentation.href)
                               : null;
+                            const rowDisclosure = presentation.disclosure;
+                            const linked = presentation.href ? (
+                              door ? (
+                                <StandingDestinationLink
+                                  href={presentation.href}
+                                  className={`standing-row ${className} hover:text-brand-700 dark:hover:text-brand-400`}
+                                  destinationLabel={door}
+                                >
+                                  {content}
+                                </StandingDestinationLink>
+                              ) : (
+                                <Link
+                                  href={presentation.href}
+                                  className={`standing-row ${className} hover:text-brand-700 dark:hover:text-brand-400`}
+                                >
+                                  {content}
+                                </Link>
+                              )
+                            ) : null;
                             return (
                               <li
                                 key={candidate.candidateId}
@@ -218,29 +234,21 @@ export default function DashboardStandingCluster({
                                 data-engagement={engagement}
                                 data-presence={presentation.presence}
                               >
-                                {presentation.href && door ? (
-                                  <StandingDestinationLink
-                                    href={presentation.href}
-                                    title={presentation.hoverNote}
-                                    className={`standing-row ${className} hover:text-brand-700 dark:hover:text-brand-400`}
-                                    destinationLabel={door}
-                                  >
-                                    {content}
-                                  </StandingDestinationLink>
-                                ) : presentation.href ? (
-                                  <Link
-                                    href={presentation.href}
-                                    title={presentation.hoverNote}
-                                    className={`standing-row ${className} hover:text-brand-700 dark:hover:text-brand-400`}
-                                  >
-                                    {content}
-                                  </Link>
+                                {linked ? (
+                                  rowDisclosure ? (
+                                    <div className="flex min-w-0 items-center">
+                                      {linked}
+                                      <InfoTooltipIcon label={rowDisclosure} />
+                                    </div>
+                                  ) : (
+                                    linked
+                                  )
                                 ) : (
-                                  <div
-                                    className={className}
-                                    title={presentation.hoverNote}
-                                  >
+                                  <div className={className}>
                                     {content}
+                                    {rowDisclosure ? (
+                                      <InfoTooltipIcon label={rowDisclosure} />
+                                    ) : null}
                                   </div>
                                 )}
                               </li>
@@ -248,15 +256,11 @@ export default function DashboardStandingCluster({
                           })}
                         </ul>
                       </dd>
-                      {/* The column exists as a CELL at every desktop width, drawn or
-                        not, so a family with no trend read does not pull its
-                        neighbours' plots out of line. Below 720px the whole track is
-                        gone (the grid drops back to two columns) and the row's facts
-                        stand alone. The 45rem spelling is load-bearing — see the
-                        cascade note on the row above. */}
-                      <div className="hidden min-[45rem]:flex min-[45rem]:justify-end">
-                        {series && <StandingSparkline series={series} />}
-                      </div>
+                      {/* StandingSparkline places its plot in the trailing desktop
+                        column and its disclosure across the two content columns below,
+                        where the full contextual label has honest width. A family with
+                        no trend read leaves the declared grid track in place. */}
+                      {series && <StandingSparkline series={series} />}
                     </div>
                   );
                 })}

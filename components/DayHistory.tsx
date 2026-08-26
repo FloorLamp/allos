@@ -3,6 +3,7 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import Link from "next/link";
 import DestinationLink from "@/components/DestinationLink";
+import InfoTooltipIcon from "@/components/InfoTooltipIcon";
 import { chartActivityRamp, chartObservationRamp } from "@/lib/chart-colors";
 import {
   formatLongDate,
@@ -100,6 +101,16 @@ const PANE_ROW = "text-xs text-slate-700 dark:text-slate-200";
 const PANE_VALUE =
   "shrink-0 text-xs tabular-nums text-slate-500 dark:text-slate-400";
 
+type DetailDisclosureOwner = {
+  domain: DayHistoryDomainKey;
+  grain: DayHistoryGrain;
+  weekStart: number;
+} & (
+  | { kind: "aggregate"; date: string }
+  | { kind: "matrix"; rowKey: string; date: string }
+  | { kind: "row"; rowKey: string }
+);
+
 function plural(n: number, one: string, many: string): string {
   return `${n} ${n === 1 ? one : many}`;
 }
@@ -161,6 +172,7 @@ export default function DayHistory({
 }) {
   const spec = DAY_HISTORY_DOMAINS[domain];
   const week = grain === "week";
+  const disclosureOwnerContext = { domain, grain, weekStart } as const;
   // Ladders and legend copy are DECLARED per grain in the registry; this picks
   // the pair, and never writes a ladder of its own.
   const cellLevel = historyCellLevel(spec, grain);
@@ -173,6 +185,12 @@ export default function DayHistory({
   const levelClasses = [ramp.emptyClass, ...ramp.stepClasses];
   const [selected, setSelected] = useState<ReadonlySet<string> | null>(null);
   const [detail, setDetail] = useState<string | null>(null);
+  const [disclosureOwner, setDisclosureOwner] =
+    useState<DetailDisclosureOwner | null>(null);
+  const previewDetail = (text: string, owner: DetailDisclosureOwner) => {
+    setDetail(text);
+    setDisclosureOwner(owner);
+  };
   const [expanded, setExpanded] = useState(false);
   const [filtersExpanded, setFiltersExpanded] = useState(false);
   const [calCell, setCalCell] = useState(CAL_CELL);
@@ -560,6 +578,13 @@ export default function DayHistory({
     )}${mins}${notes}${partialSuffix(cell.date)}`;
   };
 
+  const matrixRowSummary = (row: DayHistoryRow): string =>
+    `${row.label}: ${plural(row.total, spec.unitOne, spec.unitMany)} across ${plural(
+      row.activeDays,
+      bw.one,
+      bw.many
+    )}`;
+
   const minsSuffix =
     spec.detailSuffix === "min" && totalDetail > 0
       ? ` · ${durationLabel(totalDetail)}`
@@ -678,14 +703,56 @@ export default function DayHistory({
   const calendarCellSummary = (cell: DayHistoryCalendarCell): string =>
     aggregateCellSummary(cell);
 
-  // Hover for pointers, focus for keyboards, tap for touch — `title` never
-  // fires on touch, so taps push the same summaries into the caption.
+  const disclosureDetail = (() => {
+    if (!disclosureOwner) return null;
+    if (
+      disclosureOwner.domain !== domain ||
+      disclosureOwner.grain !== grain ||
+      disclosureOwner.weekStart !== weekStart
+    ) {
+      return null;
+    }
+    if (disclosureOwner.kind === "aggregate") {
+      const cell =
+        calendar?.columns
+          .flat()
+          .find(
+            (candidate) =>
+              !candidate.future && candidate.date === disclosureOwner.date
+          ) ??
+        strip?.cells.find(
+          (candidate) => candidate.date === disclosureOwner.date
+        );
+      return cell ? aggregateCellSummary(cell) : null;
+    }
+    const row = rows.find(
+      (candidate) => candidate.key === disclosureOwner.rowKey
+    );
+    if (!row) return null;
+    if (disclosureOwner.kind === "row") return matrixRowSummary(row);
+    const column = buckets.indexOf(disclosureOwner.date);
+    return column >= 0 && row.cells[column]?.date === disclosureOwner.date
+      ? matrixCellSummary(row, column)
+      : null;
+  })();
+  if (disclosureOwner && disclosureDetail === null) {
+    // Filtering, folding, or changing the window can remove the owning visual.
+    // Clear during render like the selected-row/day repairs above so restoring a
+    // prior filter cannot resurrect detail the reader has not previewed again.
+    setDisclosureOwner(null);
+  }
+
+  // Hover for pointers, focus for keyboards, tap for touch — every path pushes
+  // the same accessible summary into the visible caption and disclosure.
   // Calendar cells drive the shared hover day; a click SELECTS (toggling),
   // never navigates.
   const calendarCellProps = (text: string, date: string) => ({
-    title: text,
     onMouseEnter: () => {
-      setDetail(text);
+      previewDetail(text, {
+        ...disclosureOwnerContext,
+        kind: "aggregate",
+        date,
+      });
       setHoverDay(date);
     },
     onMouseLeave: () => {
@@ -693,7 +760,11 @@ export default function DayHistory({
       setHoverDay(null);
     },
     onFocus: () => {
-      setDetail(text);
+      previewDetail(text, {
+        ...disclosureOwnerContext,
+        kind: "aggregate",
+        date,
+      });
       setHoverDay(date);
     },
     onBlur: () => {
@@ -701,7 +772,11 @@ export default function DayHistory({
       setHoverDay(null);
     },
     onClick: () => {
-      setDetail(text);
+      previewDetail(text, {
+        ...disclosureOwnerContext,
+        kind: "aggregate",
+        date,
+      });
       selectDay(date, true);
     },
   });
@@ -797,9 +872,13 @@ export default function DayHistory({
     ri: number,
     ci: number
   ) => ({
-    title: text,
     onMouseEnter: () => {
-      setDetail(text);
+      previewDetail(text, {
+        ...disclosureOwnerContext,
+        kind: "matrix",
+        rowKey,
+        date,
+      });
       setHoverDay(date);
       setHoverRow(rowKey);
     },
@@ -810,7 +889,12 @@ export default function DayHistory({
     },
     onFocus: () => {
       setFocusCell({ row: ri, col: ci });
-      setDetail(text);
+      previewDetail(text, {
+        ...disclosureOwnerContext,
+        kind: "matrix",
+        rowKey,
+        date,
+      });
       setHoverDay(date);
       setHoverRow(rowKey);
     },
@@ -820,7 +904,12 @@ export default function DayHistory({
       setHoverRow(null);
     },
     onClick: () => {
-      setDetail(text);
+      previewDetail(text, {
+        ...disclosureOwnerContext,
+        kind: "matrix",
+        rowKey,
+        date,
+      });
       selectDay(date, false);
     },
     onKeyDown: (event: React.KeyboardEvent<HTMLElement>) => {
@@ -906,7 +995,6 @@ export default function DayHistory({
                 data={{ "data-group": g.key }}
                 pressed={isOn(g.key)}
                 accessibleLabel={g.label}
-                title={g.label}
                 onClick={() => toggle(g.key)}
               >
                 {g.foodSlug && (
@@ -1295,7 +1383,6 @@ export default function DayHistory({
                 <button
                   type="button"
                   aria-label={`Close ${bw.one} details`}
-                  title="Close"
                   onClick={() => setSelectedDay(null)}
                   className="text-slate-400 hover:text-slate-600 dark:hover:text-slate-300"
                 >
@@ -1325,10 +1412,16 @@ export default function DayHistory({
                       {/* The abbreviated form (#2858): this row is a truncating
                           half of a two-column line whose other half is the count
                           and its notes, so it is a dense label like the chips and
-                          the matrix gutter, not the record. The full label stays on
-                          the hover title. */}
-                      <span className="truncate" title={item.meta?.label}>
-                        {item.meta?.short ?? item.meta?.label ?? item.key}
+                          the matrix gutter, not the record. The shared disclosure
+                          beside it exposes the full label. */}
+                      <span className="inline-flex min-w-0 items-center">
+                        <span className="truncate">
+                          {item.meta?.short ?? item.meta?.label ?? item.key}
+                        </span>
+                        {item.meta?.label &&
+                        item.meta.label !== item.meta.short ? (
+                          <InfoTooltipIcon label={item.meta.label} />
+                        ) : null}
                       </span>
                     </span>
                     <span className={PANE_VALUE}>
@@ -1367,7 +1460,6 @@ export default function DayHistory({
               <button
                 type="button"
                 aria-label={`Close ${spec.groupOne} details`}
-                title="Close"
                 onClick={() => {
                   setSelectedRowKey(null);
                   setAutoSelectedRowKey(null);
@@ -1435,18 +1527,24 @@ export default function DayHistory({
             <h3 id={`${testId}-matrix-title`} className="sr-only">
               {spec.matrixTitle}
             </h3>
-            <span
+            <div
               data-testid={detail ? "day-history-detail" : undefined}
-              aria-live="polite"
-              title={detail ?? undefined}
-              className={`min-w-0 truncate text-xs ${
-                detail
-                  ? "text-slate-500 dark:text-slate-400"
-                  : "font-semibold uppercase tracking-wide text-slate-600 dark:text-slate-300"
-              }`}
+              className="flex min-h-8 min-w-0 items-center"
             >
-              {detail ?? spec.matrixTitle}
-            </span>
+              <span
+                aria-live="polite"
+                className={`min-w-0 truncate text-xs ${
+                  detail
+                    ? "text-slate-500 dark:text-slate-400"
+                    : "font-semibold uppercase tracking-wide text-slate-600 dark:text-slate-300"
+                }`}
+              >
+                {detail ?? spec.matrixTitle}
+              </span>
+              {disclosureDetail ? (
+                <InfoTooltipIcon label={disclosureDetail} />
+              ) : null}
+            </div>
             <div className="flex shrink-0 items-center gap-3">
               {matrixRange && (
                 <span
@@ -1559,14 +1657,14 @@ export default function DayHistory({
                       <span className="truncate">{row.short}</span>
                     </>
                   );
-                  const rowSummary = `${row.label}: ${plural(
-                    row.total,
-                    spec.unitOne,
-                    spec.unitMany
-                  )} across ${plural(row.activeDays, bw.one, bw.many)}`;
+                  const rowSummary = matrixRowSummary(row);
                   const rowHoverProps = {
                     onMouseEnter: () => {
-                      setDetail(rowSummary);
+                      previewDetail(rowSummary, {
+                        ...disclosureOwnerContext,
+                        kind: "row",
+                        rowKey: row.key,
+                      });
                       setHoverDay(null);
                       setHoverRow(row.key);
                     },
@@ -1594,13 +1692,16 @@ export default function DayHistory({
                           type="button"
                           data-testid="day-history-expand"
                           onClick={() => setExpanded(true)}
-                          title={row.foldedKeys.map(labelFor).join(", ")}
                           data-matrix-label
                           aria-label={`${row.label}; expand ${row.foldedKeys.map(labelFor).join(", ")}`}
                           className={`sticky left-0 z-2 flex w-24 shrink-0 cursor-pointer items-center justify-end gap-1 self-stretch px-3 text-xs font-medium text-brand-700 hover:font-semibold sm:w-28 dark:text-brand-400 ${MATRIX_LABEL_BG}`}
                           {...rowHoverProps}
                           onFocus={() => {
-                            setDetail(rowSummary);
+                            previewDetail(rowSummary, {
+                              ...disclosureOwnerContext,
+                              kind: "row",
+                              rowKey: row.key,
+                            });
                             setHoverDay(null);
                             setHoverRow(row.key);
                           }}
@@ -1617,7 +1718,6 @@ export default function DayHistory({
                           data-matrix-label
                           aria-label={rowSummary}
                           className={`sticky left-0 z-2 flex w-24 shrink-0 cursor-pointer items-center justify-end self-stretch px-3 text-xs text-slate-600 transition-colors hover:text-slate-900 sm:w-28 dark:text-slate-300 dark:hover:text-slate-100 ${MATRIX_LABEL_BG}`}
-                          title={row.label}
                           {...rowHoverProps}
                         >
                           <button
@@ -1630,10 +1730,18 @@ export default function DayHistory({
                               setSelectedRowKey((prev) =>
                                 prev === row.key ? null : row.key
                               );
-                              setDetail(rowSummary);
+                              previewDetail(rowSummary, {
+                                ...disclosureOwnerContext,
+                                kind: "row",
+                                rowKey: row.key,
+                              });
                             }}
                             onFocus={() => {
-                              setDetail(rowSummary);
+                              previewDetail(rowSummary, {
+                                ...disclosureOwnerContext,
+                                kind: "row",
+                                rowKey: row.key,
+                              });
                               setHoverDay(null);
                               setHoverRow(row.key);
                             }}

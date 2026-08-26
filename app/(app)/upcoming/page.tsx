@@ -1292,8 +1292,7 @@ function Row({
               + `sm:w-28` pins it to one x for every row in the card. */}
           <div
             data-testid="upcoming-status"
-            title={dueText}
-            className={`shrink-0 truncate text-xs font-medium sm:w-28 ${tone}`}
+            className={`shrink-0 wrap-break-word text-xs font-medium sm:w-28 ${tone}`}
           >
             {dueText}
           </div>

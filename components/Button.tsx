@@ -21,7 +21,6 @@ export interface ButtonProps {
   onClick?: MouseEventHandler<HTMLButtonElement>;
   onKeyDown?: KeyboardEventHandler<HTMLButtonElement>;
   pendingLabel?: ReactNode;
-  title?: string;
   "aria-label"?: string;
   "aria-haspopup"?: AriaAttributes["aria-haspopup"];
   "aria-expanded"?: boolean;
@@ -43,7 +42,6 @@ const Button = forwardRef<HTMLButtonElement, ButtonProps>(function Button(
     onClick,
     onKeyDown,
     pendingLabel,
-    title,
     "aria-label": ariaLabel,
     "aria-haspopup": ariaHasPopup,
     "aria-expanded": ariaExpanded,
@@ -64,7 +62,6 @@ const Button = forwardRef<HTMLButtonElement, ButtonProps>(function Button(
       value={value}
       onClick={onClick}
       onKeyDown={onKeyDown}
-      title={title}
       aria-label={ariaLabel}
       aria-haspopup={ariaHasPopup}
       aria-expanded={ariaExpanded}

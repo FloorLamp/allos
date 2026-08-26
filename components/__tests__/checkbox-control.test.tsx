@@ -27,7 +27,7 @@ describe("CheckboxControl", () => {
     expect((checkbox as HTMLInputElement).checked).toBe(false);
   });
 
-  it("owns disabled, indeterminate and title metadata", () => {
+  it("owns disabled and indeterminate state", () => {
     const onChange = vi.fn();
     render(
       <CheckboxControl
@@ -35,7 +35,6 @@ describe("CheckboxControl", () => {
         checked={false}
         disabled
         indeterminate
-        title="Some Telegram kinds are on"
         onChange={onChange}
       />
     );
@@ -45,7 +44,7 @@ describe("CheckboxControl", () => {
     }) as HTMLInputElement;
     expect(checkbox.disabled).toBe(true);
     expect(checkbox.indeterminate).toBe(true);
-    expect(checkbox.title).toBe("Some Telegram kinds are on");
+    expect(checkbox.title).toBe("");
     expect(onChange).not.toHaveBeenCalled();
   });
 });

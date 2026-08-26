@@ -87,8 +87,18 @@ test("a tracked habit shows the N-week consistency trend; a fresh one shows a sh
     await expect(fishTrend).toBeVisible();
     const fishCells = fishTrend.locator("span[data-verdict]");
     await expect(fishCells).toHaveCount(8);
-    // A cell carries the week/count tooltip ("… – … · N of 2").
-    await expect(fishCells.first()).toHaveAttribute("title", /·\s\d+ of 2$/); // first-ok: a week-cell of the deterministic 8-cell strip (count asserted above); tooltip format check
+    // The shared disclosure carries each week's exact count.
+    const fishDetails = card.getByTestId("habit-fatty_fish");
+    const fishSummary = fishDetails.locator("summary");
+    await expect(fishSummary).toHaveText("Fatty fish weekly details");
+    await fishSummary.click();
+    const fishItems = fishDetails.locator("details li");
+    await expect(fishItems).toHaveCount(8);
+    expect(
+      (await fishItems.allTextContents()).every((item) =>
+        /·\s\d+ of 2$/.test(item)
+      )
+    ).toBe(true);
     // A backdated habit has NO not-applicable cells (it existed for the whole window).
     await expect(fishTrend.locator('span[data-verdict="na"]')).toHaveCount(0);
 
@@ -99,10 +109,16 @@ test("a tracked habit shows the N-week consistency trend; a fresh one shows a sh
     await expect(
       greensTrend.locator('span[data-verdict="na"]').first() // first-ok: a not-applicable cold-start cell of the freshly-created greens habit — order-agnostic
     ).toBeVisible();
-    // Its na cell tooltip says so.
+    // Its shared detail disclosure says so.
+    const greensDetails = card.getByTestId("habit-leafy_greens");
+    const greensSummary = greensDetails.locator("summary");
+    await expect(greensSummary).toHaveText("Leafy greens weekly details");
+    await greensSummary.click();
     await expect(
-      greensTrend.locator('span[data-verdict="na"]').first() // first-ok: a not-applicable cold-start cell of the freshly-created greens habit — order-agnostic
-    ).toHaveAttribute("title", /not tracked yet$/);
+      greensDetails
+        .locator("details li")
+        .filter({ hasText: /not tracked yet$/ })
+    ).not.toHaveCount(0);
   } finally {
     await page.context().close();
   }

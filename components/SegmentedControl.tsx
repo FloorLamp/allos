@@ -52,7 +52,6 @@ export interface SegmentedControlOption<T extends string | number> {
   icon?: ReactNode;
   disabled?: boolean;
   accessibleLabel?: string;
-  title?: string;
   testId?: string;
   dataAttributes?: {
     "data-active"?: string;
@@ -113,18 +112,12 @@ export default function SegmentedControl<T extends string | number>({
             : "text-slate-500 hover:text-slate-800 disabled:cursor-not-allowed disabled:opacity-35 disabled:hover:text-slate-500 dark:text-slate-400 dark:hover:text-slate-100 dark:disabled:hover:text-slate-400"
         }`;
         // Keep intrinsic consumers' rendered body byte-for-byte unchanged. An
-        // enabled fill segment may ellipsise because its interactive element
-        // carries the full label. A native-disabled button cannot reliably show
-        // a title, so its label wraps instead of hiding meaning behind one.
-        const title = option.disabled
-          ? undefined
-          : (option.title ?? (fill ? option.label : undefined));
+        // Filled segments wrap their complete label instead of hiding it behind
+        // hover-only metadata.
         const body = fill ? (
           <>
             {option.icon}
-            <span
-              className={`min-w-0 ${option.disabled ? "whitespace-normal" : "truncate"}`}
-            >
+            <span className="min-w-0 whitespace-normal wrap-break-word">
               {option.label}
             </span>
           </>
@@ -141,7 +134,6 @@ export default function SegmentedControl<T extends string | number>({
               href={option.href}
               aria-current={active ? ariaCurrent : undefined}
               aria-label={option.accessibleLabel}
-              title={title}
               data-segmented-option=""
               data-testid={option.testId}
               data-active={option.dataAttributes?.["data-active"]}
@@ -162,7 +154,6 @@ export default function SegmentedControl<T extends string | number>({
             onClick={() => onChange?.(option.value)}
             aria-pressed={active}
             aria-label={option.accessibleLabel}
-            title={title}
             data-segmented-option=""
             disabled={option.disabled}
             data-testid={option.testId}

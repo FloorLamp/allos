@@ -301,7 +301,6 @@ export default function RoutineBuilder({
                 <button
                   type="button"
                   aria-label={`Remove ${day.label || `day ${di + 1}`}`}
-                  title="Remove day"
                   onClick={() => setDays((ds) => ds.filter((_, i) => i !== di))}
                   className="shrink-0 text-slate-400 hover:text-rose-500"
                 >
@@ -363,7 +362,6 @@ export default function RoutineBuilder({
                             <button
                               type="button"
                               aria-label={`Remove ${c}`}
-                              title="Remove exercise"
                               onClick={() =>
                                 patchSlot(di, si, (s) => ({
                                   ...s,
@@ -384,7 +382,6 @@ export default function RoutineBuilder({
                       <button
                         type="button"
                         aria-label={`Remove slot ${si + 1}`}
-                        title="Remove slot"
                         onClick={() =>
                           patchDay(di, (d) => ({
                             ...d,

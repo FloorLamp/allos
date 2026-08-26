@@ -124,8 +124,8 @@ test.describe("Illness-episode follow-ups (#856)", () => {
     ).toBeVisible();
     const printAction = page.getByRole("button", { name: "Print episode" });
     const shareAction = page.getByRole("button", { name: "Share episode" });
-    await expect(printAction).toHaveAttribute("title", "Print");
-    await expect(shareAction).toHaveAttribute("title", "Share");
+    await expect(printAction).toHaveAccessibleName("Print episode");
+    await expect(shareAction).toHaveAccessibleName("Share episode");
     await expect(printAction).toHaveText("");
     await expect(shareAction).toHaveText("");
     await expect(page.getByTestId("episode-care-context")).toBeVisible();
@@ -266,7 +266,7 @@ test.describe("Illness-episode follow-ups (#856)", () => {
     ).toBeLessThanOrEqual(1);
     expect(Math.max(...illnessDoseActionWidths)).toBeLessThanOrEqual(36);
     for (const button of illnessDoseActions) {
-      await expect(button).toHaveAttribute("title", /\S+/);
+      await expect(button).toHaveAccessibleName(/\S+/);
       await expect(button.locator("span")).toHaveClass(/sr-only/);
     }
     const medNameBox = await doseWorkingRow

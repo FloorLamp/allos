@@ -128,7 +128,6 @@ export default function TrainingLogCalendar({
           disabled={atMin}
           className={ARROW_HIT}
           aria-label="Previous month"
-          title="Previous month"
         >
           <IconChevronLeft className="h-4 w-4" />
         </button>
@@ -175,7 +174,6 @@ export default function TrainingLogCalendar({
           disabled={atMax}
           className={ARROW_HIT}
           aria-label="Next month"
-          title="Next month"
         >
           <IconChevronRight className="h-4 w-4" />
         </button>
@@ -198,7 +196,6 @@ export default function TrainingLogCalendar({
               <Link
                 key={i}
                 href={`/timeline?from=${ds}&to=${ds}#timeline-day-${ds}`}
-                title={`View ${ds}`}
                 className={DAY_HIT}
               >
                 <span

@@ -387,7 +387,6 @@ export default function ImmunizationsSection({
                           <Link
                             href={`/immunizations/${a.code}`}
                             className="font-medium text-brand-700 hover:underline dark:text-brand-400"
-                            title={`View ${a.name}`}
                           >
                             {a.name}
                           </Link>

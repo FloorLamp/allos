@@ -126,7 +126,7 @@ function renderMetricTile(t: TrendMetricTile, menu?: ReactNode): ReactNode {
   return (
     <TrendMiniCard
       title={t.title}
-      mobileTitle={t.label}
+      shortTitle={t.label}
       href={t.href}
       data={t.points}
       unit={t.unit}

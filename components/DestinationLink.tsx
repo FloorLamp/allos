@@ -4,7 +4,7 @@ import DestinationIndicator from "@/components/DestinationIndicator";
 
 type DestinationLinkProps = Omit<
   ComponentProps<typeof Link>,
-  "children" | "className"
+  "children" | "className" | "title"
 > & {
   children: ReactNode;
   className?: string;

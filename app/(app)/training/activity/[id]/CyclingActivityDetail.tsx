@@ -836,7 +836,6 @@ export default async function CyclingActivityDetail(props: {
                                 backgroundColor:
                                   ZONE_COLORS[index % ZONE_COLORS.length],
                               }}
-                              title={`Zone ${zone.zone}: ${zone.percent}%`}
                             />
                           ) : null
                         )}

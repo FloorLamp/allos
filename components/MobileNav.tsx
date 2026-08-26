@@ -228,7 +228,6 @@ export default function MobileNav({
             <button
               type="button"
               aria-label="Search"
-              title="Search"
               data-testid="search-mobile"
               onClick={() => openGlobalSearch()}
               className="tap-target press flex h-10 w-10 items-center justify-center rounded-lg text-slate-600 transition hover:bg-slate-100 dark:text-slate-300 dark:hover:bg-ink-750"

@@ -1802,6 +1802,26 @@ async function renderDashboard(
   // the dormant seat, a live one is untouched. The branch is per row rather than per
   // family precisely so a 2022 blood pressure cannot collapse this morning's resting
   // heart rate (#3226).
+  const bpAge = vitalsModel?.bp
+    ? glanceAgeToken({
+        date: vitalsModel.bp.date,
+        today: on,
+        freshness: vitalsModel.bp.freshness,
+        form: "long",
+        floorLabel: VITAL_PRESENTATION_FLOORS["blood-pressure"].label,
+        dateLabel: formatLongDate(vitalsModel.bp.date, formatPrefs),
+      })
+    : null;
+  const restingHrAge = vitalsModel?.restingHr
+    ? glanceAgeToken({
+        date: vitalsModel.restingHr.date,
+        today: on,
+        freshness: vitalsModel.restingHr.freshness,
+        form: "long",
+        floorLabel: VITAL_PRESENTATION_FLOORS["resting-hr"].label,
+        dateLabel: formatLongDate(vitalsModel.restingHr.date, formatPrefs),
+      })
+    : null;
   if (vitalsModel?.bp?.dormant)
     addStandingOnly(
       dailyCandidates.vitalDormant(
@@ -1831,17 +1851,7 @@ async function renderDashboard(
       ),
       {
         value: (() => {
-          const age = glanceAgeToken({
-            date: vitalsModel.bp.date,
-            today: on,
-            freshness: vitalsModel.bp.freshness,
-            form: "long",
-            floorLabel: VITAL_PRESENTATION_FLOORS["blood-pressure"].label,
-            // The day, through the login's own date prefs (#3492). This row used to
-            // take glance-age's ISO fallback and print "2026-07-22" beside the
-            // reading; the fallback is gone and the label is now required.
-            dateLabel: formatLongDate(vitalsModel.bp.date, formatPrefs),
-          });
+          const age = bpAge!;
           const direction = vitalsModel.bp.direction;
           return (
             <span
@@ -1852,7 +1862,6 @@ async function renderDashboard(
               <span
                 data-testid="vitals-latest-bp-age"
                 data-stale={age.stale ? "true" : undefined}
-                title={age.title ?? undefined}
                 className={`standing-age ${age.className}`}
               >
                 {age.text}
@@ -1864,6 +1873,7 @@ async function renderDashboard(
           );
         })(),
         href: "/trends#body",
+        disclosure: bpAge?.title ?? undefined,
         presence: "current",
       }
     );
@@ -1896,17 +1906,7 @@ async function renderDashboard(
       ),
       {
         value: (() => {
-          const age = glanceAgeToken({
-            date: vitalsModel.restingHr.date,
-            today: on,
-            freshness: vitalsModel.restingHr.freshness,
-            form: "long",
-            floorLabel: VITAL_PRESENTATION_FLOORS["resting-hr"].label,
-            // Same boundary as the blood-pressure row above (#3492) — and the same
-            // formatter its own sparkline caption already used, so the row and the
-            // plot beneath it state one day in one shape.
-            dateLabel: formatLongDate(vitalsModel.restingHr.date, formatPrefs),
-          });
+          const age = restingHrAge!;
           const direction = vitalsModel.restingHr.direction;
           return (
             <span
@@ -1917,7 +1917,6 @@ async function renderDashboard(
               <span
                 data-testid="vitals-latest-resting-hr-age"
                 data-stale={age.stale ? "true" : undefined}
-                title={age.title ?? undefined}
                 className={`standing-age ${age.className}`}
               >
                 {age.text}
@@ -1943,6 +1942,7 @@ async function renderDashboard(
           loneCaption: `Single reading · ${formatLongDate(vitalsModel.restingHr.date, formatPrefs)}`,
         },
         href: "/trends#body",
+        disclosure: restingHrAge?.title ?? undefined,
         presence: "current",
       }
     );
@@ -2033,13 +2033,13 @@ async function renderDashboard(
           <span
             data-testid="recent-lab-date"
             data-stale={age.stale ? "true" : undefined}
-            title={age.title ?? undefined}
             className={`standing-age ${age.className}`}
           >
             {age.text}
           </span>
         ),
         href: row.href,
+        disclosure: age.title ?? undefined,
         presence: "current",
       }
     );
@@ -2299,7 +2299,7 @@ async function renderDashboard(
           value,
           // The band sits behind the two rows it is a band FOR. A duration has no
           // usual bed-and-wake pair to be measured against, so it carries nothing.
-          hoverNote: key === "duration" ? undefined : usualSleepBand,
+          disclosure: key === "duration" ? undefined : usualSleepBand,
           href: "/sleep",
           presence: "current",
         }

@@ -128,13 +128,6 @@ export default function ProfileSwitcherPanel({
                       ? `Remove ${p.name} from view`
                       : `Add ${p.name} to view`
                 }
-                tooltip={
-                  isActing
-                    ? "Always in view"
-                    : inView
-                      ? "In view — tap to hide"
-                      : "Not in view — tap to show"
-                }
               >
                 {inView ? (
                   <IconEye className="h-4 w-4" stroke={1.75} />

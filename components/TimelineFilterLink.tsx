@@ -118,7 +118,6 @@ export default function TimelineFilterLink({
   className,
   children,
   testId,
-  title,
   label,
   ariaCurrent,
   onClick,
@@ -134,7 +133,6 @@ export default function TimelineFilterLink({
   ariaCurrent?: "page" | "true" | "location";
   onClick?: MouseEventHandler<HTMLAnchorElement>;
   testId?: string;
-  title?: string;
   /**
    * What the pending state announces. Optional because this component is also
    * passed as `DateRangeControl`'s Chip link renderer. A chip whose children ARE
@@ -153,7 +151,6 @@ export default function TimelineFilterLink({
       testId={testId}
       ariaCurrent={ariaCurrent}
       ariaExpanded={ariaExpanded}
-      title={title}
       onClick={(event) => {
         onClick?.(event);
         if (typeof window === "undefined") return;

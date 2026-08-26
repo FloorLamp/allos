@@ -385,7 +385,6 @@ function ToastCard({
       <button
         onClick={onDismiss}
         aria-label="Dismiss"
-        title="Dismiss"
         // A real 44px box below `md` (#644), not the `tap-target` pseudo-element
         // on its own — that extension is coarse-pointer-only and invisible to a
         // layout measurement, and this is the control a thumb reaches for while

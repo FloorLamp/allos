@@ -121,10 +121,7 @@ export default function SessionComparisonChart({
                           year: "always",
                         })}
                   </p>
-                  <p
-                    className="truncate text-xs text-slate-500 dark:text-slate-400"
-                    title={point.title}
-                  >
+                  <p className="wrap-break-word text-xs text-slate-500 dark:text-slate-400">
                     {point.title}
                   </p>
                 </div>

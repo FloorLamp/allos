@@ -195,8 +195,12 @@ test.describe("N-way activity merge (#1081)", () => {
         .locator('[id^="activity-"]')
         .filter({ hasText: "NW card" });
       await expect(rowEl).toHaveCount(1);
-      await expect(page.getByText("NW sib A")).toBeVisible();
-      await expect(page.getByText("NW sib B")).toBeVisible();
+      await expect(
+        page.getByTestId("training-log-row").filter({ hasText: "NW sib A" })
+      ).toBeVisible();
+      await expect(
+        page.getByTestId("training-log-row").filter({ hasText: "NW sib B" })
+      ).toBeVisible();
 
       // Open the originating canonical record and its overflow menu.
       await hydratedClick(page, rowEl);
@@ -241,9 +245,15 @@ test.describe("N-way activity merge (#1081)", () => {
       // Return to the log for a deterministic server render: every dropped row
       // is back, including the originating record absorbed by the sibling keeper.
       await page.goto("/training?tab=log");
-      await expect(page.getByText("NW card")).toBeVisible();
-      await expect(page.getByText("NW sib B")).toBeVisible();
-      await expect(page.getByText("NW sib A")).toBeVisible();
+      await expect(
+        page.getByTestId("training-log-row").filter({ hasText: "NW card" })
+      ).toBeVisible();
+      await expect(
+        page.getByTestId("training-log-row").filter({ hasText: "NW sib B" })
+      ).toBeVisible();
+      await expect(
+        page.getByTestId("training-log-row").filter({ hasText: "NW sib A" })
+      ).toBeVisible();
     } finally {
       await page.context().close();
     }

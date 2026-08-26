@@ -13,14 +13,12 @@ interface InternalChipLinkProps {
   ariaCurrent?: "page" | "true" | "location";
   onClick?: MouseEventHandler<HTMLAnchorElement>;
   testId?: string;
-  title?: string;
 }
 
 type CommonProps = {
   role: ChipRole;
   density?: ChipDensity;
   children: ReactNode;
-  title?: string;
   testId?: string;
 };
 
@@ -68,7 +66,6 @@ function DefaultChipLink({
   ariaCurrent,
   onClick,
   testId,
-  title,
 }: InternalChipLinkProps) {
   const props = {
     href,
@@ -77,7 +74,6 @@ function DefaultChipLink({
     "aria-current": ariaCurrent,
     onClick,
     "data-testid": testId,
-    title,
   };
   return href.startsWith("#") ? <a {...props} /> : <Link {...props} />;
 }
@@ -106,7 +102,6 @@ export default function Chip(props: ChipProps) {
           onClick={props.onClick}
           className={className}
           testId={props.testId}
-          title={props.title}
         >
           {props.children}
         </TimelineFilterLink>
@@ -119,7 +114,6 @@ export default function Chip(props: ChipProps) {
         onClick={props.onClick}
         className={className}
         testId={props.testId}
-        title={props.title}
       >
         {props.children}
       </DefaultChipLink>
@@ -134,7 +128,6 @@ export default function Chip(props: ChipProps) {
       aria-label={props.accessibleLabel}
       aria-expanded={props.expanded}
       aria-controls={props.controls}
-      title={props.title}
       onClick={props.onClick}
       data-testid={props.testId}
       data-chip-role="filter"

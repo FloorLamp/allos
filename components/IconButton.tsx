@@ -3,8 +3,6 @@ import type { MouseEventHandler, ReactNode } from "react";
 export interface IconButtonProps {
   /** The complete accessible name for the icon-only action. */
   label: string;
-  /** Optional shorter hover text. Defaults to the accessible name. */
-  tooltip?: string;
   /** Shared visual tone; target geometry and focus treatment never vary. */
   tone?: "neutral" | "amber" | "brand";
   /** The decorative glyph. IconButton hides it from the accessibility tree. */
@@ -21,11 +19,10 @@ export interface IconButtonProps {
 
 // The one icon-only button primitive. Its rendered box owns the 44px tap floor,
 // so callers never size a glyph and then try to recover its target with a local
-// pseudo-element. The required label is both the accessible name and, by default,
-// the hover title; the glyph contributes no competing name.
+// pseudo-element. The required label is the accessible name; the glyph contributes
+// no competing name.
 export default function IconButton({
   label,
-  tooltip,
   tone = "neutral",
   children,
   type = "button",
@@ -42,7 +39,6 @@ export default function IconButton({
       onClick={onClick}
       aria-pressed={pressed}
       aria-label={label}
-      title={tooltip ?? label}
       tabIndex={tabIndex}
       data-testid={testId}
       data-icon-button=""

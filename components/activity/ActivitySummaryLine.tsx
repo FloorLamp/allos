@@ -26,7 +26,6 @@ interface SummaryItem {
   intensity?: string | null;
   heartRate?: boolean;
   color?: string;
-  title?: string;
   tooltip?: string;
   detail?: React.ReactNode;
 }
@@ -73,9 +72,7 @@ function SummaryValue({
       ) : (
         item.value
       )}
-      {item.tooltip ? (
-        <InfoTooltipIcon label={item.tooltip} className="ml-1" />
-      ) : null}
+      {item.tooltip ? <InfoTooltipIcon label={item.tooltip} /> : null}
     </span>
   );
 }
@@ -144,7 +141,7 @@ export default function ActivitySummaryLine({
           value: heartRateText,
           heartRate: true,
           color: heartRate?.color,
-          title: heartRate?.title,
+          tooltip: heartRate?.title,
           detail: metricDetails?.heartRate,
         }
       : null,
@@ -208,7 +205,6 @@ export default function ActivitySummaryLine({
           <div
             key={item.key}
             data-testid={summaryTestId(item)}
-            title={item.title}
             className="flex min-w-0 flex-col items-start gap-1"
           >
             <dt className="section-label">{item.label}</dt>
@@ -236,7 +232,6 @@ export default function ActivitySummaryLine({
         <span
           key={item.key}
           data-testid={summaryTestId(item)}
-          title={item.title}
           className="inline-flex items-center whitespace-nowrap"
         >
           <SummaryValue item={item} />

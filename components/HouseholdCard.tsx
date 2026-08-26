@@ -15,6 +15,7 @@ import DestinationIndicator from "@/components/DestinationIndicator";
 import DestinationLink from "@/components/DestinationLink";
 import Avatar from "@/components/Avatar";
 import IconButton from "@/components/IconButton";
+import InfoTooltipIcon from "@/components/InfoTooltipIcon";
 import {
   PILLAR_TONE_CLASS,
   PillarToneBadge,
@@ -127,12 +128,10 @@ function TrendArrow({ trend, unit }: { trend: WeightTrend; unit: WeightUnit }) {
       ? "steady"
       : `${trend.dir === "up" ? "up" : "down"} ${fmtWeight(Math.abs(trend.deltaKg), unit)}`;
   return (
-    <span
-      className="inline-flex items-center text-slate-500 dark:text-slate-400"
-      title={`Weight ${label} since the previous reading`}
-    >
+    <span className="inline-flex items-center text-slate-500 dark:text-slate-400">
       <Icon className="h-4 w-4" stroke={1.75} aria-hidden="true" />
       <span className="sr-only">{label}</span>
+      <InfoTooltipIcon label={`Weight ${label} since the previous reading`} />
     </span>
   );
 }
@@ -167,8 +166,8 @@ function AttentionRow({
   Icon: typeof IconPill;
   title: string;
   // The unabbreviated form when `title` is a curated short name (#2858) — the
-  // truncating line's hover title, so the whole name is always retrievable on a row
-  // that has no link of its own. Absent when the title already IS the whole thing.
+  // value disclosed beside the truncating line, so the whole name is retrievable on
+  // a row that has no link of its own. Absent when the title is already complete.
   titleFull?: string;
   detail?: string | null;
   action?: React.ReactNode;
@@ -182,11 +181,9 @@ function AttentionRow({
         aria-hidden="true"
       />
       <div className="min-w-0 flex-1">
-        <div
-          className="truncate text-sm font-medium text-slate-700 dark:text-slate-200"
-          title={titleFull}
-        >
-          {title}
+        <div className="flex min-w-0 items-center text-sm font-medium text-slate-700 dark:text-slate-200">
+          <span className="truncate">{title}</span>
+          {titleFull ? <InfoTooltipIcon label={titleFull} /> : null}
         </div>
         {detail && (
           <div className="truncate text-xs text-slate-500 dark:text-slate-400">
@@ -227,8 +224,8 @@ function DueDoseRow({
   // A caregiver's card is a GLANCE at up to a dozen of these rows, each one an
   // icon + a truncating name + a Confirm button in a card-width column, so the name
   // here is the control form (#2858) — the abbreviation buys the slot name beside it
-  // room to survive the truncation. The record's full name stays on the hover title
-  // and inside the confirm's accessible name below; a medication is never shortened.
+  // room to survive the truncation. The record's full name stays in the shared
+  // disclosure and the confirm's accessible name below; a medication is never shortened.
   const shortTitle = item.shortLabel ?? item.title;
   return (
     <AttentionRow
@@ -469,7 +466,6 @@ function Setup({
               type="submit"
               data-testid="household-setup-dismiss"
               label={`Dismiss setup notes for ${profile.name}`}
-              tooltip="Dismiss"
             >
               <IconX className="h-3.5 w-3.5" stroke={2} aria-hidden="true" />
             </IconButton>

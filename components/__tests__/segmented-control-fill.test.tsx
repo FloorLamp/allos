@@ -8,13 +8,11 @@ describe("SegmentedControl fill mode (#3675)", () => {
       value: "train",
       label: "Train",
       accessibleLabel: undefined,
-      title: undefined,
     },
     {
       value: "consume",
       label: "A deliberately long Consume label",
       accessibleLabel: "Consume, all recorded values are 0",
-      title: "All recorded values are 0",
     },
   ] as const;
 
@@ -40,9 +38,10 @@ describe("SegmentedControl fill mode (#3675)", () => {
       expect(button.className).toContain("min-w-0 flex-1");
       expect(button.className).not.toContain("shrink-0");
       const label = button.querySelector("span");
-      expect(label?.className).toContain("truncate");
+      expect(label?.className).toContain("whitespace-normal");
+      expect(label?.className).not.toContain("truncate");
       expect(label?.getAttribute("title")).toBeNull();
-      expect(button.getAttribute("title")).toBe(option.title ?? option.label);
+      expect(button.getAttribute("title")).toBeNull();
     }
   });
 
@@ -69,7 +68,7 @@ describe("SegmentedControl fill mode (#3675)", () => {
     }
   });
 
-  it("keeps a truncated link's full label on the interactive element", () => {
+  it("keeps a link's full label visible", () => {
     render(
       <SegmentedControl
         options={[
@@ -86,8 +85,11 @@ describe("SegmentedControl fill mode (#3675)", () => {
     );
 
     const link = screen.getByRole("link", { name: "A long timeline label" });
-    expect(link.getAttribute("title")).toBe("A long timeline label");
+    expect(link.getAttribute("title")).toBeNull();
     expect(link.querySelector("span")?.getAttribute("title")).toBeNull();
+    expect(link.querySelector("span")?.className).toContain(
+      "whitespace-normal"
+    );
   });
 
   it("keeps a disabled fill label visible instead of relying on a tooltip", () => {
@@ -98,7 +100,6 @@ describe("SegmentedControl fill mode (#3675)", () => {
             value: "unavailable",
             label: "A long unavailable range",
             disabled: true,
-            title: "Unavailable because this range has no additional data",
           },
         ]}
         value="unavailable"

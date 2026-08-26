@@ -338,8 +338,8 @@ export function ActivityTypeIcon({
   // Bare icon, matching the activity modal heading — no circle, no per-type color.
   return (
     <span
-      title={title || type}
-      aria-label={type}
+      role="img"
+      aria-label={title || type}
       className="shrink-0 text-brand-600 dark:text-brand-400"
     >
       <ActivityIcon

@@ -28,7 +28,6 @@ export default function OpenInMaps({
       target="_blank"
       rel="noreferrer"
       data-testid="open-in-maps"
-      title={`${label} — opens your maps app`}
       className={
         className ??
         "inline-flex items-center gap-1 text-brand-700 hover:underline dark:text-brand-300"
@@ -38,6 +37,7 @@ export default function OpenInMaps({
         <IconMapPin className="h-4 w-4 shrink-0" stroke={1.75} />
       ) : null}
       {label}
+      <span className="sr-only"> — opens your maps app</span>
     </a>
   );
 }
