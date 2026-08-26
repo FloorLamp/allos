@@ -67,8 +67,18 @@ function contractNames(source: string) {
 }
 
 async function compile(source: string, names: readonly string[]) {
-  if (!source.includes(TAILWIND_IMPORT))
-    throw new Error(`missing ${TAILWIND_IMPORT} in app/globals.css`);
+  const tailwindImports: AtRule[] = [];
+  postcss.parse(source, { from: GLOBALS }).walkAtRules("import", (atRule) => {
+    if (/^["']tailwindcss["'](?:\s|$)/.test(normalized(atRule.params)))
+      tailwindImports.push(atRule);
+  });
+  if (
+    tailwindImports.length !== 1 ||
+    normalized(tailwindImports[0].params) !== '"tailwindcss"'
+  )
+    throw new Error(
+      `expected exactly one plain ${TAILWIND_IMPORT} in app/globals.css`
+    );
   const fixture = source.replace(
     TAILWIND_IMPORT,
     `@import "tailwindcss" source(none);\n@source inline(${JSON.stringify(names.join(" "))});`
@@ -167,6 +177,57 @@ describe("compiled phone-only CSS proof (#3518/#3727)", () => {
     expect(() => contractNames(renamed)).toThrow(
       "phone-only utility identities changed"
     );
+  });
+
+  it("rejects a widened Tailwind breakpoint while discovery still retains the utility", async () => {
+    const root = postcss.parse(source, { from: GLOBALS });
+    let mutation: AtRule | undefined;
+    root.walkAtRules("utility", (utility) => {
+      if (normalized(utility.params) !== "table-cards") return;
+      utility.walkAtRules("apply", (atRule) => {
+        if (!mutation && normalized(atRule.params) === "max-sm:block")
+          mutation = atRule;
+      });
+    });
+    expect(mutation, "the table-cards max-sm probe must exist").toBeDefined();
+    mutation!.params = "max-md:block";
+    const widened = root.toString();
+    expect(contractNames(widened)).toEqual(names);
+
+    const compiledLeak = await compile(widened, ["table-cards"]);
+    expect(() => assertPhoneOnly(compiledLeak, ["table-cards"])).toThrow(
+      "table-cards emitted declarations at sm or above"
+    );
+  });
+
+  it("rejects a widened raw phone media query while discovery still retains the utility", async () => {
+    const root = postcss.parse(source, { from: GLOBALS });
+    let mutation: AtRule | undefined;
+    root.walkAtRules("utility", (utility) => {
+      if (normalized(utility.params) !== "metric-readings-list") return;
+      utility.walkAtRules("media", (atRule) => {
+        if (!mutation && normalized(atRule.params) === "(max-width: 639.98px)")
+          mutation = atRule;
+      });
+    });
+    expect(
+      mutation,
+      "the metric-readings-list raw phone-media probe must exist"
+    ).toBeDefined();
+    mutation!.params = "(max-width: 767.98px)";
+    const widened = root.toString();
+    expect(contractNames(widened)).toEqual(names);
+
+    const compiledLeak = await compile(widened, ["metric-readings-list"]);
+    expect(() =>
+      assertPhoneOnly(compiledLeak, ["metric-readings-list"])
+    ).toThrow("metric-readings-list emitted declarations at sm or above");
+  });
+
+  it("rejects a second Tailwind import that could restore automatic source scanning", async () => {
+    await expect(
+      compile(`${source}\n${TAILWIND_IMPORT}`, ["subpanel-inset"])
+    ).rejects.toThrow("expected exactly one plain");
   });
 
   it("matches exact class tokens, including nested rules, not lookalikes", () => {

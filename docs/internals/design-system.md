@@ -313,13 +313,14 @@ host convergence, escape/discard contracts), `stateful-affordances.md`
 Phone-only shared utilities use the real Tailwind compile in
 `lib/__tests__/phone-only-compiled-css.test.ts`. The test discovers every
 `@utility` with a `max-sm` or exact phone-media contribution directly from
-`app/globals.css`, compiles a fixture containing those names, and inspects the
-emitted PostCSS tree. Every emitted declaration for each discovered utility must
-have a strictly-below-`sm` media ancestor. A colocated name-only contract set is
-checked exactly against discovery so a missing or renamed utility fails; there
-are no per-utility counts, properties, call-site registry, or source interpreter
-to maintain (#3727). The proof remains a scope claim only: it does not prove that
-a phone declaration composes safely with the cascade; #3510's `min-block-size`
+`app/globals.css`, compiles each discovered name in isolation, and inspects its
+emitted PostCSS tree. Isolation prevents nested selectors from crediting one
+utility with another utility's output. Every emitted declaration must have a
+strictly-below-`sm` media ancestor. A colocated name-only contract set is checked
+exactly against discovery so a missing or renamed utility fails; there are no
+per-utility counts, properties, call-site registry, or source interpreter to
+maintain (#3727). The proof remains a scope claim only: it does not prove that a
+phone declaration composes safely with the cascade; #3510's `min-block-size`
 replacement bug is deliberately outside this guard.
 
 | tier                                  | covers                                                                                                                                                                                                 | status                       |
