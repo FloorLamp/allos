@@ -2,6 +2,7 @@
 
 import type { Dispatch, SetStateAction } from "react";
 import { IconX } from "@tabler/icons-react";
+import type { IntakeConditionOption } from "@/lib/types";
 import {
   GOAL_PURPOSES,
   goalPurposeLabel,
@@ -52,9 +53,14 @@ function draftKey(d: PurposeDraft): string {
   });
 }
 
+// The chip's own words. The condition lookup runs over EVERY recorded condition, not
+// only the ones the picker offers: a purpose declared while a condition was active
+// outlives its resolution, and the id in the row is still the whole answer. Looking it
+// up in the active list alone left the chip reading the literal word "condition" and
+// its remove control reading "Remove condition" (#3650).
 function chipLabel(
   d: PurposeDraft,
-  conditions: readonly { id: number; name: string }[]
+  conditions: readonly IntakeConditionOption[]
 ): string {
   if (d.kind === "goal") return goalPurposeLabel(d.goalKey);
   if (d.kind === "condition")
@@ -77,8 +83,9 @@ export default function PurposesEditor({
   name: string;
   ingredientNames: readonly string[];
   // The profile's own recorded conditions, the same list the #1052 indication picker
-  // reads. Empty when nothing is recorded, and the condition row simply does not show.
-  conditions?: { id: number; name: string }[];
+  // reads — ALL of them, with their status. Empty when nothing is recorded, and the
+  // condition row simply does not show.
+  conditions?: IntakeConditionOption[];
   // Canonical biomarker names this profile actually has results for
   // (getUsedCanonicalNames). Not the whole vocabulary: a reason names an analyte the
   // person has seen a number for.
@@ -86,6 +93,9 @@ export default function PurposesEditor({
   fid: string | number;
 }) {
   const chosen = new Set(rows.map(draftKey));
+  // What the picker OFFERS: only active conditions — nobody files a new reason against
+  // something they have marked resolved. The labels above read the full list.
+  const activeConditions = conditions.filter((c) => c.status === "active");
   function add(d: PurposeDraft) {
     setRows((rs) =>
       rs.some((r) => draftKey(r) === draftKey(d)) ? rs : [...rs, d]
@@ -180,7 +190,7 @@ export default function PurposesEditor({
         })}
       </div>
 
-      {conditions.length > 0 && (
+      {activeConditions.length > 0 && (
         <div className="mt-2">
           <label
             htmlFor={`purpose-condition-${fid}`}
@@ -201,7 +211,7 @@ export default function PurposesEditor({
             className="input"
           >
             <option value="">Add a condition…</option>
-            {conditions
+            {activeConditions
               .filter(
                 (c) =>
                   !chosen.has(

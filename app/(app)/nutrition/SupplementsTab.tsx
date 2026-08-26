@@ -506,9 +506,14 @@ export default async function SupplementsTab({
   // pickers behind it read the profile's own conditions and the biomarker names it
   // actually has results for — a reason names something the person has seen.
   const purposesBySupp = getIntakePurposesByItem(profile.id);
-  const purposeConditions = getConditions(profile.id, { status: "active" }).map(
-    (c) => ({ id: c.id, name: c.name })
-  );
+  // EVERY recorded condition, with its status (#3650). The purpose picker offers the
+  // active ones; a purpose already declared against one that has since been resolved
+  // still has to be able to say its name.
+  const purposeConditions = getConditions(profile.id).map((c) => ({
+    id: c.id,
+    name: c.name,
+    status: c.status,
+  }));
   const purposeBiomarkers = getUsedCanonicalNames(profile.id);
   // Filtered through the findings bus (#435): a keep-apart warning the profile has
   // dismissed (on this page or Upcoming) is held out, keyed by its keep-apart:<lo>-<hi>

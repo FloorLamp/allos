@@ -9,6 +9,7 @@ import type {
   IntakeItem,
   IntakeDose,
   IntakePair,
+  IntakeConditionOption,
 } from "@/lib/types";
 import type { InteractionItem } from "@/lib/drug-interactions";
 import type { PgxVariantInput } from "@/lib/pgx";
@@ -202,7 +203,7 @@ export default function MedicationCard({
   // List-row overflow actions land on this detail view with the relevant form open.
   initialAction?: "edit" | "stop";
   // The profile's conditions for the "For condition…" indication picker (#1052).
-  conditions?: { id: number; name: string }[];
+  conditions?: IntakeConditionOption[];
 }) {
   const s = medication;
   const router = useRouter();

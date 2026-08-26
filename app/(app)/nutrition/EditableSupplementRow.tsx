@@ -1,7 +1,12 @@
 "use client";
 
 import { useState } from "react";
-import type { IntakeItem, IntakeDose, IntakePair } from "@/lib/types";
+import type {
+  IntakeItem,
+  IntakeDose,
+  IntakePair,
+  IntakeConditionOption,
+} from "@/lib/types";
 import {
   ingredientLine,
   type IntakeItemIngredient,
@@ -89,7 +94,7 @@ export default function EditableSupplementRow({
   ingredients?: IntakeItemIngredient[];
   // Purpose links and their picker sources (#2857), passed straight to the edit form.
   purposes?: IntakeItemPurpose[];
-  purposeConditions?: { id: number; name: string }[];
+  purposeConditions?: IntakeConditionOption[];
   purposeBiomarkers?: string[];
   isTaken: boolean;
   isSkipped: boolean;

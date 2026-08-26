@@ -117,6 +117,7 @@ import {
 import type {
   FormResult,
   IntakeCondition,
+  IntakeConditionOption,
   IntakeItem,
   IntakeItemKind,
   IntakeDose,
@@ -195,7 +196,7 @@ export default function IntakeItemForm({
   biomarkers?: string[];
   retiredDoses?: IntakeDose[];
   allIntakeItems?: { id: number; name: string }[];
-  conditions?: { id: number; name: string }[];
+  conditions?: IntakeConditionOption[];
   stackItems?: InteractionItem[];
   pgxVariants?: PgxVariantInput[];
   pairs?: IntakePair[];
