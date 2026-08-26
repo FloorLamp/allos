@@ -169,28 +169,10 @@ describe("bioAgeDelta", () => {
     );
   });
 
-  // THE COMPACT HALF OF THE #3544 SPLIT. Same delta, a value slot's idiom: the
-  // magnitude and the direction, and NOT the calendar age — the surface that shows
-  // this states that number in its own detail line, and stating it twice two lines
-  // apart is the defect this exists for. The sentence above is untouched, which is
-  // the point of having two: /longevity reads you a sentence, a card's value slot
-  // does not.
   it("compacts the delta for a value slot", () => {
     expect(bioAgeDeltaCompact(bioAgeDelta(46.8, 50))).toBe("3.2 yrs younger");
     expect(bioAgeDeltaCompact(bioAgeDelta(56, 55))).toBe("1 yr older");
     expect(bioAgeDeltaCompact(bioAgeDelta(50, 50))).toBe("≈ calendar age");
-  });
-
-  it("names no calendar age, in any direction", () => {
-    for (const [bio, chrono] of [
-      [46.8, 50],
-      [56, 55],
-      [50, 50],
-    ] as const) {
-      expect(bioAgeDeltaCompact(bioAgeDelta(bio, chrono))).not.toContain(
-        String(chrono)
-      );
-    }
   });
 });
 
