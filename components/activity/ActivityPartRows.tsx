@@ -123,7 +123,7 @@ export default function ActivityPartRows({
                 {part.name}
               </span>
             )}
-            <span className="inline-flex min-w-0 flex-wrap items-center gap-x-1 gap-y-0.5">
+            <span className="inline-flex min-w-0 flex-wrap items-start gap-x-1 gap-y-0.5">
               <span
                 data-testid="exercise-set-summary"
                 className="text-sm tabular-nums text-slate-600 dark:text-slate-300"

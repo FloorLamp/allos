@@ -133,6 +133,7 @@ test("a sync timestamp discloses beside its whole-card destination", async ({
   await expect(destination.getByRole("button")).toHaveCount(0);
 
   const initialUrl = page.url();
+  await trigger.scrollIntoViewIfNeeded();
   const [triggerBox] = await settledBoxes([trigger]);
   await page.touchscreen.tap(
     triggerBox.x + triggerBox.width / 2,

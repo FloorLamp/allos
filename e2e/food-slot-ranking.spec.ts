@@ -89,9 +89,9 @@ test("a tracked habit shows the N-week consistency trend; a fresh one shows a sh
     await expect(fishCells).toHaveCount(8);
     // The shared disclosure carries each week's exact count.
     const fishDetails = card.getByTestId("habit-fatty_fish");
-    await fishDetails
-      .getByRole("button", { name: "Fatty fish weekly details" })
-      .click();
+    const fishSummary = fishDetails.locator("summary");
+    await expect(fishSummary).toHaveText("Fatty fish weekly details");
+    await fishSummary.click();
     const fishItems = fishDetails.locator("details li");
     await expect(fishItems).toHaveCount(8);
     expect(

@@ -97,9 +97,9 @@ test("a free-weight PR keeps its prior dot and earns the '· PR' suffix", async 
     // e1RM of 50 kg × 5 (58.3 kg), never the machine's 120 kg × 5 (140 kg). Asserting
     // the number rather than the dot's presence is what makes this a LANE assertion:
     // the unfiltered series renders a dot here too, just the wrong one.
-    await pr
-      .getByRole("button", { name: `${LADDER_PR_LIFT} ladder details` })
-      .click();
+    const detailsSummary = pr.locator("summary");
+    await expect(detailsSummary).toHaveText(`${LADDER_PR_LIFT} ladder details`);
+    await detailsSummary.click();
     await expect(
       pr.locator("details li").filter({ hasText: "About 90 days ago: 58.3 kg" })
     ).toHaveCount(1);
