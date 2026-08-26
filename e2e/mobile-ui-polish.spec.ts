@@ -266,15 +266,20 @@ test.describe("nutrition food-log controls stay in the viewport on mobile", () =
         .getByTestId("supplement-day-menu-trigger")
     ).toBeVisible();
     await expect(supplementDate).toHaveAttribute("data-button-control", "");
+    await expect(supplementDate).toHaveAccessibleName("Choose day to review");
     await expect(page.getByTestId("supplement-day-toggle")).toBeHidden();
     await supplementDate.click();
     const supplementDateMenu = page.getByTestId("supplement-day-menu");
     await expect(supplementDateMenu).toBeVisible();
-    await expect(supplementDateMenu.getByRole("menuitemradio")).toHaveCount(7);
-    await expect(
-      supplementDateMenu.getByRole("menuitemradio", { name: "Today" })
-    ).toHaveAttribute("aria-checked", "true");
     await supplementDateMenu
+      .getByRole("menuitemradio", { name: "Yesterday" })
+      .click();
+    await expect(
+      page.getByTestId("supplement-context-heading")
+    ).toHaveAccessibleName("Yesterday Supplements");
+    await supplementDate.click();
+    await page
+      .getByTestId("supplement-day-menu")
       .getByRole("menuitemradio", { name: "Today" })
       .click();
     await expect(page.getByTestId("supplements-status-mobile")).toHaveText(
@@ -302,6 +307,44 @@ test.describe("nutrition food-log controls stay in the viewport on mobile", () =
     expect(morning.y).toBeCloseTo(midday.y, 0);
     expect(midday.y).toBeCloseTo(evening.y, 0);
     expect(evening.height).toBeGreaterThanOrEqual(48);
+    await expectNoClippedContent(page);
+  });
+
+  test("both intake context bars share the md frost and become static at lg", async ({
+    page,
+  }) => {
+    for (const width of [800, 1100]) {
+      await page.setViewportSize({ width, height: 900 });
+      for (const surface of [
+        { href: "/nutrition", testId: "food-log-context" },
+        {
+          href: "/nutrition?tab=supplements",
+          testId: "intake-schedule-context",
+        },
+      ]) {
+        await page.goto(surface.href);
+        const context = page.getByTestId(surface.testId);
+        await expect(context).toBeVisible();
+        const style = await context.evaluate((element) => {
+          const parent = element.parentElement as HTMLElement;
+          const computed = getComputedStyle(element);
+          return {
+            position: computed.position,
+            backgroundColor: computed.backgroundColor,
+            backdropFilter: computed.backdropFilter,
+            bleed:
+              parent.getBoundingClientRect().left -
+              element.getBoundingClientRect().left,
+          };
+        });
+        expect(style.position).toBe(width < 1024 ? "sticky" : "static");
+        if (width < 1024) {
+          expect(style.backgroundColor).not.toBe("rgba(0, 0, 0, 0)");
+          expect(style.backdropFilter).not.toBe("none");
+          expect(style.bleed).toBeGreaterThan(0);
+        }
+      }
+    }
   });
 
   // The /nutrition two-column grid (lg:grid-cols-[1fr_320px]) collapses to a

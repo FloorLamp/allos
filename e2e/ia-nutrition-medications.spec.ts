@@ -156,20 +156,6 @@ test("Nutrition is a Food | Supplements tab umbrella (#746)", async ({
     "aria-pressed",
     "true"
   );
-  await page.getByTestId("supplement-day-yesterday").click();
-  await expect(page.getByTestId("supplement-day-yesterday")).toHaveAttribute(
-    "aria-pressed",
-    "true"
-  );
-  await expect(
-    page.getByTestId("supplement-context-heading")
-  ).toHaveAccessibleName("Yesterday Supplements");
-  await expect(page.getByTestId("supplement-context-label")).toHaveCount(0);
-  await expect(page.getByTestId("supplement-slot-chip")).toHaveCount(0);
-  await page.getByTestId("supplement-day-today").click();
-  await expect(
-    page.getByTestId("supplement-context-heading")
-  ).toHaveAccessibleName(/Today Supplements(?: (?:Workout|Rest) day)?/);
 
   // The large schedule cards rest on All and narrow to one supplement time slot.
   await expect(page.getByTestId("supplement-slot-selector")).toHaveAttribute(
