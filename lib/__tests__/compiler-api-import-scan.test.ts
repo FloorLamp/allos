@@ -30,6 +30,19 @@ import ts from "typescript-api";
 const REPO = path.resolve(fileURLToPath(new URL("../..", import.meta.url)));
 const ROOTS = ["app", "components", "lib", "e2e", "scripts"];
 
+// The five directories above hold every importer converted here — but they are not
+// where a compiler-API import would most naturally be ADDED next. `vitest.config.ts`,
+// `playwright.config.ts` and their siblings sit at the repo ROOT, they are exactly
+// the files someone reaches for when wiring a toolchain, and a walk that starts
+// inside `app/` cannot see them. Read rather than listed, so a new root config joins
+// the sweep by existing.
+function rootLevelSourceFiles(): string[] {
+  return fs
+    .readdirSync(REPO, { withFileTypes: true })
+    .filter((entry) => entry.isFile() && /\.[cm]?tsx?$/.test(entry.name))
+    .map((entry) => path.join(REPO, entry.name));
+}
+
 // The sanctioned alias. Everything else that resolves into the typescript package
 // — the bare root export and every subpath of it — is what this scan refuses.
 const SANCTIONED = "typescript-api";
@@ -106,9 +119,10 @@ describe("compiler-API imports go through the pinned alias (#3559)", () => {
   // Parsing every source file under five roots costs more than this question is
   // worth, and the answer cannot hide from a text pre-filter: a specifier that
   // resolves into the typescript package contains the word.
-  const candidates = ROOTS.flatMap((root) =>
-    sourceFiles(path.join(REPO, root))
-  ).filter((file) => fs.readFileSync(file, "utf8").includes("typescript"));
+  const candidates = [
+    ...ROOTS.flatMap((root) => sourceFiles(path.join(REPO, root))),
+    ...rootLevelSourceFiles(),
+  ].filter((file) => fs.readFileSync(file, "utf8").includes("typescript"));
 
   it("still finds the scanners it is guarding (the sweep is not vacuous)", () => {
     // A walk that silently stopped finding imports would report a clean tree. This
@@ -118,6 +132,15 @@ describe("compiler-API imports go through the pinned alias (#3559)", () => {
       fs.readFileSync(file, "utf8").includes(`from "${SANCTIONED}"`)
     );
     expect(onAlias.length).toBeGreaterThanOrEqual(14);
+
+    // The root-level sweep has no offender to find today — every converted importer
+    // lives under one of ROOTS — so nothing above would go red if `readdirSync` came
+    // back empty and the extension quietly stopped covering anything. This says out
+    // loud that the configs ARE being read: `vitest.config.ts` and
+    // `playwright.config.ts` are the two that most invite a compiler-API import.
+    const rootLevel = rootLevelSourceFiles().map((file) => path.basename(file));
+    expect(rootLevel).toContain("vitest.config.ts");
+    expect(rootLevel).toContain("playwright.config.ts");
   });
 
   it("no source file imports the compiler API off the typescript root export", () => {
