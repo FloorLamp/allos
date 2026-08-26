@@ -52,7 +52,7 @@ const INGREDIENTS: IntakeItemIngredient[] = [
     amount: 500,
     unit: "mg",
     amount_text: null,
-    position: 0,
+    sort: 0,
   },
   {
     id: 2,
@@ -61,7 +61,7 @@ const INGREDIENTS: IntakeItemIngredient[] = [
     amount: 10,
     unit: "mg",
     amount_text: null,
-    position: 1,
+    sort: 1,
   },
 ];
 
