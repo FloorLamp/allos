@@ -59,7 +59,7 @@ export default function FindingFollowUpScheduler({
       action={async (formData) => void (await action(formData))}
       aria-label={submitLabel}
       data-testid={`${formId}${suffix}`}
-      className="inline-flex max-w-full items-center gap-1"
+      className="inline-flex max-w-full items-stretch gap-1"
     >
       <input
         type="hidden"
