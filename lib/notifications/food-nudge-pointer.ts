@@ -17,6 +17,7 @@
 // harmlessly.
 
 import { FOOD_NUDGE_WINDOWS, type FoodNudgeWindow } from "./food-format";
+import { ORIGIN_MARK_PATTERN } from "./chat-origin";
 import { deliveredCallbackTokens } from "./delivered-keyboard";
 import type { NotificationMessage } from "./types";
 
@@ -78,6 +79,14 @@ export function parseFoodNudgePointer(
   };
 }
 
+// The food quick-log token this pointer is extracted from. The optional origin marker
+// segment (#3087) is IMPORTED from chat-origin.ts rather than respelled here (#3567
+// item 3) — a hand-copy of the charset fails silently, since a marker the pattern
+// cannot match makes the whole token unmatchable and the send mints no pointer at all.
+const FOOD_TOKEN_RE = new RegExp(
+  `^food:${ORIGIN_MARK_PATTERN}\\d+:([A-Za-z]+):(\\d{4}-\\d{2}-\\d{2}):.+$`
+);
+
 // Build the pointer from an outbound food-nudge message + its delivered ids. The
 // window + date are read off the nudge's first quick-log button token
 // (`food:<profileId>:<window>:<date>:<slug>`) — every button in one nudge carries the
@@ -94,14 +103,12 @@ export function foodNudgePointerFromMessage(
   messageId: number
 ): FoodNudgePointer | null {
   for (const token of deliveredCallbackTokens(msg)) {
-    // `(?:[nc]:)?` is the optional origin marker (#3087) — see chat-origin.ts.
-    const m = /^food:(?:[nc]:)?\d+:([A-Za-z]+):(\d{4}-\d{2}-\d{2}):.+$/.exec(
-      token
-    );
+    const m = FOOD_TOKEN_RE.exec(token);
     if (!m) continue;
-    const window = m[1];
+    // m[1] is the origin marker's own capture, which this reader does not need.
+    const window = m[2];
     if (!FOOD_NUDGE_WINDOWS.includes(window as FoodNudgeWindow)) continue;
-    return { chatId, messageId, date: m[2], window: window as FoodNudgeWindow };
+    return { chatId, messageId, date: m[3], window: window as FoodNudgeWindow };
   }
   return null;
 }
