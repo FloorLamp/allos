@@ -274,3 +274,50 @@ test.describe("Timeline mobile chrome budget (#1517)", () => {
     }
   });
 });
+
+// ── THE HEADER'S READ-ONCE SENTENCE (#3452 item 3) ───────────────────────────
+//
+// The Timeline's subtitle — "A chronological view of workouts, labs, documents,
+// medications, visits, goals, and other health events." — is the longest page
+// subtitle in the app, and #3403 made it cost a second line on a phone: letting
+// the header reserve its action's width stopped "Year in review" wrapping and
+// pushed the sentence over instead, running the header 73->165 instead of 73->145.
+//
+// The owner ruled it off the phone (2026-08-22) and named the cost: a first-time
+// phone visitor loses the one-line explainer. `PageHeader`'s `hideSubtitleBelowSm`
+// is the prop that does it, and until now NOTHING in the app passed it — so the
+// only thing standing between this ruling and a silent revert is this guard
+// (guards are mandatory, owner ruling 2026-08-21, docs/internals/design-system.md).
+//
+// BOTH HALVES, because half of the ruling is that desktop does not change. A guard
+// that only checked the phone would go green on a subtitle deleted outright, which
+// is a different decision than the one that was made.
+test.describe("the Timeline subtitle is phone-only chrome (#3452)", () => {
+  const SUBTITLE = /^A chronological view of workouts, labs/;
+
+  test("hidden below `sm`, present on desktop", async ({ browser }) => {
+    test.slow(); // the Timeline is one of the app's heaviest server renders
+    const page = await signIn(browser);
+    try {
+      await page.goto(dayUrl(TL_CHROME_QUIET_DAY));
+
+      // The page still NAMES itself on a phone — the title is what orients you, and
+      // `compactBelowSm` (which takes the whole heading band) was not the ruling.
+      await expect(
+        page.getByRole("heading", { name: "Timeline", level: 1 })
+      ).toBeVisible();
+      // RENDERED BUT NOT SHOWN. `hideSubtitleBelowSm` is a `hidden sm:block`, so the
+      // node is in the DOM and `toBeHidden` is the honest assertion; a `toHaveCount(0)`
+      // here would pass against a subtitle that had simply been deleted.
+      const subtitle = page.getByText(SUBTITLE);
+      await expect(subtitle).toHaveCount(1);
+      await expect(subtitle).toBeHidden();
+
+      // …and it comes back the moment there is room for it. Same page, same node.
+      await page.setViewportSize(DESKTOP);
+      await expect(subtitle).toBeVisible();
+    } finally {
+      await page.context().close();
+    }
+  });
+});

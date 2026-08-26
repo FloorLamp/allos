@@ -170,7 +170,7 @@ export const HOSTLESS_DIALOGS: Record<string, HostlessRecord> = {
     // nearest neighbour here is ProfileIdentityBar, an anchored non-transactional
     // panel that floats over the page with a scrim and converged onto
     // components/overlay. (Owner ruling, #3445.)
-    why: "RECORDED EXCEPTION, and converged — onto components/overlay, the same way ActivityOverlay and ProfileIdentityBar are. Its anatomy is EDGE-anchored: the drawer travels in from the left screen edge and an edge swipe both opens it and retreats through it (useDragGesture/useOverlayDrag, #1416/#2746), which a centred card has no edge to travel from. Found by ANATOMY rather than by ARIA (#3445) — it carries no role and no aria-modal, which is a real gap and a separate question from where it renders.",
+    why: "RECORDED EXCEPTION, and converged — onto components/overlay, the same way ActivityOverlay and ProfileIdentityBar are. Its anatomy is EDGE-anchored: the drawer travels in from the left screen edge and an edge swipe both opens it and retreats through it (useDragGesture/useOverlayDrag, #1416/#2746), which a centred card has no edge to travel from. The exception is presentation only: #3445 found it by ANATOMY because it declared no role and no aria-modal, and #3463 closed that gap — it carries role=dialog, aria-modal and the shared useFocusTrap now, so initial focus, the Tab trap, capture-phase Escape and focus restore are the host's after all.",
   },
   "components/MobileDetailPage.tsx": {
     scopedOut: true,

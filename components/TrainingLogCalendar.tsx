@@ -37,9 +37,12 @@ const ARROW_HIT =
 // with no dead pixels between them — a tap that lands nowhere reads as a broken day
 // just as a tap that lands next door does.
 //
-// Seven columns need 7 × 44 = 308px. The phone drawer now reserves that width (#3536),
-// and the full-bleed band below spends its gutter so every column reaches the same 44px
-// rendered floor as its height. The desktop sidebar keeps the bare 28px circles.
+// What SEVEN of those columns cost is `--week-grid-min` (app/globals.css, #3452) —
+// stated there once, because the phone nav drawer has to be wide enough to pay for it
+// and used to derive the same number a second time in its own width class. The
+// full-bleed band below claims that minimum and spends its gutter so every column
+// reaches the same 44px rendered floor as its height; the phone drawer reserves the
+// width for it (#3536). The desktop sidebar keeps the bare 28px circles.
 const DAY_HIT =
   "flex h-11 w-full items-center justify-center md:mx-auto md:h-7 md:w-7";
 // The circle a reader sees. Unchanged at every width.
@@ -108,19 +111,25 @@ export default function TrainingLogCalendar({
     //
     // This grid is a PHONE surface: components/MobileNav.tsx renders the same
     // <SidebarContent> inside the nav drawer, where its 28px day links sat ~35%
-    // under the old 40px tap floor (#644). Seven columns need 308px of grid to give
-    // each day a 44px-wide hit area. #3536 raised the drawer to a 320px preferred
-    // width that grows with any left safe-area inset, so this full-bleed band can
-    // give all seven columns at least 44px. Below `md` the card gives up the
-    // drawer's right gutter and only the part of its left gutter outside the
+    // under the old 40px tap floor (#644). #3536 raised the drawer to a 320px
+    // preferred width that grows with any left safe-area inset, so this full-bleed
+    // band can give all seven columns at least 44px. Below `md` the card gives up
+    // the drawer's right gutter and only the part of its left gutter outside the
     // safe-area inset. Its left edge therefore lands exactly on
-    // `env(safe-area-inset-left)`, never behind it, while the drawer width pays
-    // for all 308px of grid. The side borders and the corner radius go with it,
-    // so it reads as a band rather than a card jammed against the drawer's edges.
+    // `env(safe-area-inset-left)`, never behind it, while the drawer width pays for
+    // the whole week. The side borders and the corner radius go with it, so it
+    // reads as a band rather than a card jammed against the drawer's edges.
     //
-    // From `md` up every one of those is put back and the desktop sidebar renders
-    // byte-identically to before: same card, same 28px days, same density.
-    <div className="-mr-4 ml-[calc(env(safe-area-inset-left)_-_max(1rem,env(safe-area-inset-left)))] border-y border-black/10 py-3 md:mx-0 md:rounded-lg md:border-x md:px-3 dark:border-white/10">
+    // `min-w-(--week-grid-min)` is that bill, CLAIMED rather than assumed (#3452).
+    // It is slack at every width the drawer actually offers — which is the point:
+    // if a host ever gets narrower than a week, the columns overflow visibly
+    // instead of quietly redistributing themselves back under the tap floor, which
+    // is exactly the failure #3377 found and no DOM assertion would have caught.
+    //
+    // From `md` up every one of those is put back — the minimum included, since the
+    // desktop sidebar is narrower than a touch week and renders the bare 28px
+    // circles instead — and the desktop sidebar is byte-identical to before.
+    <div className="-mr-4 ml-[calc(env(safe-area-inset-left)_-_max(1rem,env(safe-area-inset-left)))] min-w-(--week-grid-min) border-y border-black/10 py-3 md:mx-0 md:min-w-0 md:rounded-lg md:border-x md:px-3 dark:border-white/10">
       <div className="mb-2 flex items-center justify-between gap-1">
         <button
           type="button"
