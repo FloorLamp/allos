@@ -1,8 +1,9 @@
-import { describe, expect, it } from "vitest";
+import { describe, expect, it, vi } from "vitest";
 import fs from "node:fs";
 import {
   hashMigration,
   hashMigrations,
+  main,
   MANIFEST_PATH,
   migrationFiles,
   planManifest,
@@ -102,5 +103,61 @@ describe("migration manifest generator (npm run gen:migration-manifest)", () => 
     expect(plan.changed).toEqual([edited]);
     expect(plan.added).toEqual([]);
     expect(plan.next[edited]).toBe(current[edited]);
+  });
+});
+
+describe("migration manifest generator — the refusal, executed", () => {
+  // The refusal is the whole point of the generator, and until this ran nothing
+  // executed it: deleting the entire refusal block left the pure suite green, and
+  // under that mutant an edited shipped migration writes at exit 0 (#3824 review).
+  // So this drives `main()` — scripts/gen-migration-manifest.ts is `process.exit(
+  // main())` — and asserts the code AND that the file on disk was not touched.
+  //
+  // Driven in-process rather than by spawning the script, because an end-to-end
+  // spawn would have to edit a real shipped migration in the working tree: this
+  // tier runs files in parallel against one checkout, so the guard above would red
+  // on the neighbour's edit, and a failing run would leave the repo dirty.
+  const BASELINE = "001-baseline.ts";
+  const without = (hashes: Record<string, string>, file: string) =>
+    Object.fromEntries(Object.entries(hashes).filter(([f]) => f !== file));
+
+  it.each([
+    [
+      "a shipped migration was edited",
+      (hashes: Record<string, string>) => ({
+        ...hashes,
+        [BASELINE]: "0".repeat(64),
+      }),
+    ],
+    [
+      "a shipped migration's file is gone",
+      (hashes: Record<string, string>) => without(hashes, BASELINE),
+    ],
+    [
+      "a shipped migration was renamed, which is an edit under cover",
+      (hashes: Record<string, string>) => ({
+        ...without(hashes, BASELINE),
+        "001-baselines.ts": "0".repeat(64),
+      }),
+    ],
+  ])("refuses and writes nothing when %s", (_case, corrupt) => {
+    const committed = fs.readFileSync(MANIFEST_PATH, "utf8");
+    const silenced = vi.spyOn(console, "error").mockImplementation(() => {});
+    let code: number;
+    let after: string;
+    try {
+      code = main(corrupt(hashMigrations()));
+    } finally {
+      after = fs.readFileSync(MANIFEST_PATH, "utf8");
+      // If the refusal ever regresses, main() writes — to the REAL manifest, since
+      // this suite runs against the repo itself. Put the committed bytes back
+      // before the assertion below reports the regression.
+      if (after !== committed) fs.writeFileSync(MANIFEST_PATH, committed);
+      silenced.mockRestore();
+    }
+    expect({ code, wrote: after !== committed }).toEqual({
+      code: 1,
+      wrote: false,
+    });
   });
 });
