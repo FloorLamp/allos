@@ -2149,10 +2149,40 @@ describe("doseUnitCount (#2856)", () => {
     expect(doseUnitCount("1/2 tablet")).toBe(1);
   });
 
-  it("treats an absent or wordless amount as one serving", () => {
+  it("treats an absent amount as one serving", () => {
     expect(doseUnitCount(null)).toBe(1);
     expect(doseUnitCount("")).toBe(1);
-    expect(doseUnitCount("one capsule")).toBe(1);
+  });
+
+  // #3162: three common spellings fell through to one serving — the under-count
+  // direction, which on a risk total is the one that DROPS a warning. "one capsule"
+  // used to sit in the "wordless amount" case above, where it passed for the wrong
+  // reason: it is now READ as one rather than defaulted to one, and only a case that
+  // reads a number other than 1 can tell those apart.
+  it.each([
+    ["2 x 500 mg capsules", 2],
+    ["3 x 400 mg tablets", 3],
+    ["2x500mg capsules", 2],
+    ["two capsules", 2],
+    ["take two capsules", 2],
+    ["one scoop", 1],
+    ["three gummies", 3],
+    ["one capsule", 1],
+  ])("reads %s as %i", (amount, count) => {
+    expect(doseUnitCount(amount)).toBe(count);
+  });
+
+  // The widenings still need a LABEL UNIT named, so neither reopens the "10 ml read
+  // as ten servings" hazard the count word exists to close, and a word that is not a
+  // numeral stays a word.
+  it.each([
+    ["2 x 500 mg", 1],
+    ["2 x 5 ml", 1],
+    ["one gram", 1],
+    ["a capsule", 1],
+    ["twenty capsules", 1],
+  ])("leaves %s at one serving", (amount, count) => {
+    expect(doseUnitCount(amount)).toBe(count);
   });
 });
 
