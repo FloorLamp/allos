@@ -833,10 +833,12 @@ nothing is read out of `notes`. The rows ride on the item read as `purposes_json
 delete-and-reinsert on save (absent field = unchanged; empty array = cleared), export as
 the `intake_item_purposes` dataset with the condition resolved to its live NAME, and are
 captured/restored with the item by `undo-delete`. `condition_id` carries NO
-`ON DELETE` — the `indication_condition_id` shape — so its detach is explicit in
-`lib/undo-delete-db.ts` beside the sibling clinical null-outs; the row is REMOVED (a
+`ON DELETE` — the `indication_condition_id` shape — so every literal condition delete
+uses the shared, same-profile detach in `lib/condition-delete.ts`; the row is REMOVED (a
 purpose with no condition is not a purpose, and the CHECK refuses it) and, like every
-sibling detach, is not restored on undo. Recorded in `docs/internals/trash.md`.
+sibling detach, is not restored on undo. A corrupt cross-profile link is never cleared:
+the condition delete fails and its transaction rolls back. Recorded in
+`docs/internals/trash.md`.
 Rendering a purpose on the item row, grouping a stack by goal, and putting a
 biomarker-linked item beside its retest nudge are follow-ups #2857 names as separate
 issues; the surface here is the declaration, on the SUPPLEMENT form only — a medication

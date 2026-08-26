@@ -27,6 +27,7 @@ import {
 } from "./queries/intake/medications";
 import { getActiveSituations, setActiveSituations } from "./settings";
 import { normalizeSituationName } from "./situations";
+import { detachConditionIntakeLinks } from "./condition-delete";
 
 export type EpisodePromoteOutcome =
   | { kind: "promoted"; conditionId: number }
@@ -443,12 +444,23 @@ export function unpromoteEpisodeConditionCore(
   profileId: number,
   episodeId: number
 ): boolean {
-  const externalId = episodeConditionExternalId(episodeId);
-  const res = db
-    .prepare(
-      `DELETE FROM conditions
-        WHERE profile_id = ? AND external_id = ? AND source = 'episode'`
-    )
-    .run(profileId, externalId);
-  return res.changes > 0;
+  return writeTx(() => {
+    const externalId = episodeConditionExternalId(episodeId);
+    const row = db
+      .prepare(
+        `SELECT id FROM conditions
+          WHERE profile_id = ? AND external_id = ? AND source = 'episode'`
+      )
+      .get(profileId, externalId) as { id: number } | undefined;
+    if (!row) return false;
+    detachConditionIntakeLinks(profileId, row.id);
+    return (
+      db
+        .prepare(
+          `DELETE FROM conditions
+            WHERE id = ? AND profile_id = ? AND external_id = ? AND source = 'episode'`
+        )
+        .run(row.id, profileId, externalId).changes > 0
+    );
+  });
 }
