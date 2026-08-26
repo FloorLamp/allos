@@ -11,7 +11,41 @@ Session lineage: the first orchestrated session merged 98 PRs and closed ~215
 issues with zero reverts; later ones added the migration-slot protocol
 (098–108), the #1392/#1417 census root-causes, the release-notes pipeline, the
 `parked`/dependabot rulings, the check-in cadence, and the merge-commit
-discipline. Every session so far has held zero reverts.
+discipline. The zero-revert run ended on 2026-08-26, when #3800 was merged on
+green CI and reverted by the owner the same session — see below.
+
+## The review that checked the arithmetic (2026-08-26)
+
+#3800 implemented #3555's ruling that the ENTIRE Standing row is the link
+surface. It used a stretched pseudo-element reaching out from the facts cell by
+two custom properties. The review verified those at `sm` (12rem) and
+`min-[45rem]` (13rem), found both correct against the grid template, and said
+so: "every breakpoint the properties change at is a breakpoint the template
+changes at." True, and the wrong question.
+
+Below `sm` the row is a single-column grid, so the name cell is its own grid
+row. The surface, anchored in the facts cell with `top:0;bottom:0`, never
+covered it. At 390px — the phone width #3555 is about — "the entire row is the
+link" was false. The review had checked the two breakpoints where the values
+changed and never rendered the base case.
+
+A second defect had the same shape. The PR shipped an e2e asserting the date
+stays visible while the door shows, and the review recorded that the guard
+existed. It never asked which widths the guard ran at; the door still covered
+age content at widths that spec never visited, which the rebuild proved
+separately at 720px and 1280px.
+
+The owner reverted the merge and rebuilt it at -453 lines, deleting the
+stretched pseudo-link, the custom properties, the hover-census registration and
+the commentary. Both misses share one root: the review confirmed the
+implementation was internally consistent instead of rendering the condition the
+ruling names.
+
+Same session, three PRs (#3635, #3690, #3633) were closed for rescope and a
+just-merged test file was rewritten from separate `it()` blocks into
+`it.each()` tables at a quarter of the length. The dispatch template asked for
+thorough guards and reasoned comments and never said where thorough stops; that
+bar now lives in the brief generator.
 
 ## The canary that couldn't (2026-08-12)
 

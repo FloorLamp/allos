@@ -21,7 +21,14 @@ import {
 } from "@/lib/notifications/offer-tail";
 import { collapsedTuneAction } from "@/lib/notifications/digest-tune";
 import { messageKeyboard } from "@/lib/notifications/telegram-render";
-import type { NotificationAction } from "@/lib/notifications/types";
+import {
+  capTelegramKeyboard,
+  TELEGRAM_MAX_BUTTONS,
+} from "@/lib/notifications/telegram-limits";
+import type {
+  NotificationAction,
+  NotificationMessage,
+} from "@/lib/notifications/types";
 
 const ctx = {
   date: "2026-03-04",
@@ -310,5 +317,90 @@ describe("offerTailNeedsRefresh", () => {
     expect(offerTailNeedsRefresh("08:00", "09:30")).toBe(false);
     expect(offerTailNeedsRefresh("08:00", "22:30")).toBe(true);
     expect(offerTailNeedsRefresh("22:00", "23:30")).toBe(false);
+  });
+});
+
+// ── THE `prn:` DISCRIMINATOR IS KEYBOARD-SHAPED, SO THE KEYBOARD MUST HOLD (#3567) ──
+//
+// `prn:` is minted by BOTH the `/dose` command's list and the digest's expanded offer
+// list, on purpose: one administration-logging path on Telegram rather than two that
+// could drift. So the BUTTON cannot say which keyboard offered it, and
+// `isExpandedOfferKeyboard` (lib/notifications/telegram-quick-log.ts) asks the
+// KEYBOARD instead — an expanded offer list is the only one carrying a collapse token.
+//
+// That is the right call: it works on messages minted before the marker mechanism
+// shipped, which a token marker never could. But it rests on an invariant NOTHING
+// ASSERTED — that every `prn:` keyboard which is an offer list carries a collapse
+// control. Lose it and the list reads as `/dose`: silently, because "a /dose tap" is a
+// perfectly valid reading that stamps `telegram-command` and skips the chip rebuild.
+//
+// SO THE INVARIANT IS ASSERTED ON BEHAVIOUR, at the one function that guarantees it:
+// `expandedOfferActions` appends the control to every list it renders. That is the half
+// a change can actually break, and testing it costs nothing to keep true.
+//
+// WHAT IS NOT ASSERTED HERE, named rather than pinned: that no THIRD site starts minting
+// `prn:`. Only two do today — `expandedOfferActions` (which carries the collapse control,
+// and is therefore readable as an offer list) and the `/dose` command's reusable list in
+// lib/notifications/telegram-quick-log.ts (which has never had one, and is the OTHER side
+// of the discriminator). A census over minter occurrences would have to be maintained as
+// the tree moves and would buy nothing this sentence does not say. IF YOU MINT `prn:`
+// FROM A THIRD KEYBOARD: decide which side it is on. An offer list must carry a collapse
+// control; a command list must not. Get it wrong and the tap is misattributed silently.
+
+describe("the prn: keyboard discriminator", () => {
+  it("appends a collapse control to EVERY expanded offer list", () => {
+    // The property `isExpandedOfferKeyboard` reads. Spelled here as the same
+    // prefix test rather than by importing that function: it lives in a module that
+    // reaches the database, and this is the pure tier.
+    const carries = (actions: NotificationAction[]): boolean =>
+      actions.some((a) => a.data?.startsWith(`${OFFER_COLLAPSE_PREFIX}:`));
+    for (const n of [1, 2, 7, 40]) {
+      const items = Array.from({ length: n }, (_, i) => ({
+        itemId: i + 1,
+        name: `Item ${i + 1}`,
+        detail: null,
+        countToday: 0,
+      }));
+      const actions = expandedOfferActions(7, "2026-03-04", items, () => "tok");
+      expect(actions.filter((a) => a.data?.startsWith("prn:"))).toHaveLength(n);
+      expect(carries(actions), `${n} offered items`).toBe(true);
+    }
+  });
+
+  it("loses the control ONLY at the wire cap, and says at which count", () => {
+    // THE ONE MECHANICAL ROUTE, measured rather than asserted away. `sendMessageRaw`
+    // puts `capTelegramKeyboard(messageKeyboard(msg))` on the wire, and the cap keeps
+    // whole LEADING rows — so the collapse control, which is appended LAST, is the
+    // first thing dropped. Every offered item takes a row of its own (`row:
+    // offer-<itemId>`) and the control takes one more, so the list survives at
+    // TELEGRAM_MAX_BUTTONS - 1 items and loses its control at TELEGRAM_MAX_BUTTONS.
+    //
+    // A keyboard past that point reads as `/dose`. It needs ~100 offered doses in ONE
+    // slot, which is why this is a bound and not a bug report — but it is written
+    // down, and it turns red if the cap arithmetic or the row grouping changes.
+    const list = (n: number) => {
+      const items = Array.from({ length: n }, (_, i) => ({
+        itemId: i + 1,
+        name: `Item ${i + 1}`,
+        detail: null,
+        countToday: 0,
+      }));
+      const msg: NotificationMessage = {
+        title: "Doses",
+        body: "x",
+        actions: expandedOfferActions(7, "2026-03-04", items, () => "tok"),
+      };
+      return capTelegramKeyboard(messageKeyboard(msg)).keyboard;
+    };
+    const hasCollapse = (rows: ReturnType<typeof list>): boolean =>
+      rows.some((r) =>
+        r.some((b) =>
+          ("callback_data" in b ? (b.callback_data ?? "") : "").startsWith(
+            `${OFFER_COLLAPSE_PREFIX}:`
+          )
+        )
+      );
+    expect(hasCollapse(list(TELEGRAM_MAX_BUTTONS - 1))).toBe(true);
+    expect(hasCollapse(list(TELEGRAM_MAX_BUTTONS))).toBe(false);
   });
 });

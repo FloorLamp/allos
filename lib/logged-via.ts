@@ -65,7 +65,7 @@ export const LOGGED_VIA_MEANING: Record<LoggedVia, string> = {
   page: "the domain page's own form",
   "offline-replay": "a queued write replayed by /api/offline-replay",
   import:
-    "not a user interaction; the row came from an importer (`source` holds which)",
+    "not a user interaction; the row came from an importer (`source` names which, where the write path has one)",
 };
 
 /** Every value of the vocabulary, derived from the exhaustive record above. */
@@ -138,6 +138,16 @@ export function parseWebOrigin(
  * Not a surface — it says no person acted, and `source` on the same row names which
  * importer or integration did. Named rather than spelled inline at each importer so
  * the two columns stay legibly orthogonal at every write site.
+ *
+ * ONE SHIPPED WRITE PATH STAMPS `import` WITH NO `source` AT ALL, and the meaning
+ * string above is hedged because of it (#3566). `commitWorkouts`
+ * (app/(app)/data/actions.ts) bulk-imports a training log and receives only the
+ * extracted workouts — the document is not in its signature — so there is no id for
+ * a `document:<n>` to name, and inventing one would be worse than the NULL. Giving
+ * it a real `source` is a signature change plus two product consequences (Trends'
+ * source comparison grows a series; `lib/activity-draft.ts` reads `source != null`
+ * as "not a draft"), so it is a decision, not a cleanup. Until it is made, `import`
+ * means "no person acted" and nothing more on those rows.
  */
 export const IMPORTED: LoggedVia = "import";
 
@@ -178,6 +188,21 @@ export const OFFLINE_REPLAY: LoggedVia = "offline-replay";
  *   • `lib/__tests__/logged-via-census.test.ts` reads the MIGRATION'S OWN TEXT and
  *     asserts its tranche is exactly this list, in the pure tier where no database
  *     exists.
+ */
+/**
+ * WHAT A `symptom_logs` STAMP ACTUALLY RECORDS, said here because the vocabulary above
+ * does not fit that ledger without a sentence (#3566).
+ *
+ * `symptom_logs` is `UNIQUE(profile_id, date, symptom)` — a DAY-ROW, upserted, whose
+ * severity is raised by later reports of the same symptom on the same day. `logged_via`
+ * is correctly absent from both `DO UPDATE SET` clauses, because this column records
+ * CREATION and never mutation. So the stamp names the surface that OPENED the day-row,
+ * not the surface behind its current severity: a symptom first logged on the page and
+ * then worsened from a Telegram tap still reads `page`.
+ *
+ * That is the creation-not-mutation rule working exactly as #3087 specifies. It is
+ * written down because "which surface a person used" reads, at a glance, like a claim
+ * about the row's present value, and #3077's ranker is what will read it.
  */
 export const LEDGERS_WITH_LOGGED_VIA = [
   "intake_item_logs",

@@ -2116,10 +2116,7 @@ async function renderDashboard(
         {
           label: "Latest",
           value: `${latestWeight.value} ${units.weightUnit}`,
-          // The row's AGE text, named so a guard can hold it to the one rule it has:
-          // it is always visible. The hover door used to take its place (#3253);
-          // #3555 ruling 1 moved the door's rail instead, and content never steps
-          // aside for chrome again.
+          // The date stays visible when the destination door appears (#3555).
           detail: (
             <span className="standing-age">
               {formatLongDate(latestWeight.date, formatPrefs)}

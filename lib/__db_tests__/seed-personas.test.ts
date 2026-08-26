@@ -129,6 +129,84 @@ describe("persona seeds against a live schema", () => {
     });
   }
 
+  // WHAT A SEEDED ROW CLAIMS ABOUT ITSELF, checked at the only tier that can see it.
+  //
+  // The census in lib/__tests__/logged-via-census.test.ts asserts that every INSERT
+  // into a tranche ledger NAMES `logged_via`. It cannot ask whether the VALUE agrees
+  // with the row's `source`, because that is a fact about data and not about text —
+  // and counting NULLs cannot either, which is how this shipped: a retro-attach
+  // `UPDATE … SET source = 'extracted'` set the source and left an earlier `page`
+  // stamp behind, so 33 baseline rows asserted a person typed on the labs page the
+  // very values the instance presents as extracted from a PDF. That is a POSITIVE
+  // FALSE CLAIM, strictly worse than the NULL it replaced, and it lands in the one
+  // column #3077's ranker will read.
+  //
+  // `import` is the value where `source` is the authoritative half (lib/logged-via.ts),
+  // so a `source` naming an integration and a `logged_via` naming a surface cannot both
+  // be true of one row. Table-driven over the seeded ledgers rather than a new census:
+  // the question is one SQL predicate, and it belongs beside the seed that answers it.
+  const INTEGRATION_SOURCE =
+    "(source LIKE 'document:%' OR source IN " +
+    "('extracted','oura','withings','strava','health-connect'))";
+
+  for (const table of [
+    "activities",
+    "body_metrics",
+    "medical_records",
+  ] as const) {
+    it(`${table}: no seeded row claims a surface while its source names an importer`, () => {
+      const contradictions = db
+        .prepare(
+          `SELECT source, logged_via, COUNT(*) c FROM ${table}
+             WHERE source IS NOT NULL AND ${INTEGRATION_SOURCE}
+               AND logged_via IS NOT 'import'
+           GROUP BY source, logged_via`
+        )
+        .all() as { source: string; logged_via: string; c: number }[];
+      expect(
+        contradictions.map(
+          (r) => `${r.source} -> ${r.logged_via} (${r.c} rows)`
+        ),
+        "A seeded row's `source` names an importer while its `logged_via` names a " +
+          "surface a person acted on. Both cannot be true (#3566). If a write is " +
+          "retro-attaching a document, the stamp moves with the source — see the two " +
+          "`UPDATE … SET source = 'extracted'` statements and scripts/seed-logged-via.ts."
+      ).toEqual([]);
+    });
+  }
+
+  it("stamps every seeded tranche row, so the check above is not vacuous", () => {
+    // The floor under the assertions above: they are ABSENCE checks, and a ledger
+    // nobody wrote would satisfy all three. Both halves in one test — rows exist, and
+    // none of them is unstamped.
+    //
+    // SIX LEDGERS, NOT SEVEN, and the omission is the harness's reach rather than an
+    // oversight: this file applies the PERSONAS, not scripts/seed.ts, and no persona
+    // writes `food_log_events` (measured — zero INSERTs in scripts/seed-personas.ts).
+    // Demanding rows there would assert something false about this tier. The baseline
+    // seed's food rows are stamped too; that is checked by seeding scripts/seed.ts,
+    // which no test tier runs — named here so the gap is known rather than assumed.
+    for (const table of [
+      "activities",
+      "body_metrics",
+      "medical_records",
+      "intake_item_logs",
+      "practice_logs",
+      "symptom_logs",
+    ] as const) {
+      const row = db
+        .prepare(
+          `SELECT COUNT(*) total, SUM(logged_via IS NULL) unstamped FROM ${table}`
+        )
+        .get() as { total: number; unstamped: number | null };
+      expect(
+        row.total,
+        `${table} has no seeded rows to make a claim about`
+      ).toBeGreaterThan(0);
+      expect(row.unstamped ?? 0, `${table} has unstamped rows`).toBe(0);
+    }
+  });
+
   // Household members are created by the persona itself; look them up by the
   // profile name each addFamilyProfile call writes.
   const memberId = (name: string): number =>

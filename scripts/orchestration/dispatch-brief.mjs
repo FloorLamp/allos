@@ -599,6 +599,24 @@ ${MIGRATION_LINES}
   worse than none, because the work looks justified. Grep for a distinctive FRAGMENT
   that cannot wrap, or use \`rg -U\`, and when a content check says something is
   missing, OPEN THE FILE before believing it.
+- SMALLEST DIRECT FIX, AND COMPACT PROOFS. On 2026-08-26 the owner closed THREE PRs
+  unmerged within fifteen minutes — "rebuild only the smallest direct behavior fixes;
+  no AST/source scanners, occurrence allowlists, or ratchet machinery", "no parallel
+  contract/helper surface", "compact table-driven/focused proofs" — and objected to
+  335 added COMMENT lines inside +453 of production. So: fix the behaviour, prove it
+  compactly, and do not build a surface that itself needs maintaining. If your diff
+  starts growing a registry, a census, or a second helper layer, that is the signal you
+  have left the fix and started building around it: STOP and put it in OPEN QUESTIONS
+  with one sentence on what it would buy.
+  TABLE-DRIVEN, NOT ONE \`it()\` PER CASE. This is the concrete form and it is measured:
+  a lane landed four issues' worth of coverage as separate \`it()\` blocks with a prose
+  header on each, and the owner rewrote it the same hour as \`it.each([...])\` tables —
+  identical assertions, identical coverage, ~25% of the lines. When cases differ only in
+  inputs and expected output, they are a TABLE; the prose that would have headed each one
+  belongs in ONE comment above it, and only where it says something the code cannot.
+  A COMMENT MUST CARRY REASONING THE CODE CANNOT. This repo rewards that and the briefs
+  above ask for it — but the ratio is part of the judgement, and a diff whose production
+  delta is three-quarters prose will be read as one that lost it.
 - A GUARD'S PATTERN COMES FROM HOW THE REPO WRITES THE CONSTRUCT, NOT FROM HOW THE
   ISSUE DESCRIBES IT. An issue names the defect in the shape its author had in mind.
   If you encode THAT shape, your guard is green against a tree that never used it, and
