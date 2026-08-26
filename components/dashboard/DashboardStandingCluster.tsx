@@ -105,22 +105,6 @@ export default function DashboardStandingCluster({
                           ?.series
                     )
                     .find((entry) => entry != null);
-                  // WHO CARRIES THE ROW'S LINK SURFACE (#3555 ruling 2). A STACKED
-                  // family gives every member its own line, so every linked member
-                  // carries its own surface over its own line's band. Every other
-                  // composition puts all its members on ONE line, which can only have
-                  // ONE surface: the first member that is a link takes it, and the
-                  // others sit above it (`z-10` below) so their own text stays the
-                  // thing you click. Undefined when no member of the family links
-                  // anywhere — a row with nowhere to go gets no surface and no door.
-                  const stacked = family.composition === "members";
-                  const surfaceId = stacked
-                    ? undefined
-                    : members.find(
-                        (placement) =>
-                          presentations.get(placement.candidate.candidateId)
-                            ?.href
-                      )?.candidate.candidateId;
                   return (
                     // THE BREAKPOINT IS IN rem AND MUST STAY IN rem (#3459).
                     // 45rem is 720px at the root default — the same seam #3252
@@ -131,67 +115,28 @@ export default function DashboardStandingCluster({
                     // the later `sm:` two-column template wins: the third column
                     // never applied at ANY width, while the cell below turned
                     // visible on its own and auto-flowed onto a second grid row.
-                    //
-                    // THE TREND TRACK IS DECLARED ONLY WHERE A PLOT EXISTS (#3555
-                    // ruling 3). A family with no `series` keeps the two-column
-                    // template at every width, so its facts cell — and therefore its
-                    // door's rail — runs to the row's own edge instead of stopping
-                    // 192px short over a track nothing draws in. This costs the
-                    // plotted families' alignment nothing: the enclosing `<dl>` is not
-                    // a grid, so each family's row is an INDEPENDENT grid container
-                    // with no tracks shared across families. Plots line up because
-                    // every plotted family declares the same fixed `10rem … 11rem`
-                    // sizes, not because plotless families reserve an empty cell.
-                    //
-                    // `--standing-lead` / `--standing-trail` are the distance from the
-                    // facts cell's own edges out to the row's padding edges — the name
-                    // track plus its gap plus the row's `px-4`, and the trend track
-                    // plus its gap plus the same padding where that track exists. They
-                    // are declared HERE, beside the template whose track sizes they
-                    // restate, because the row-wide link surface (app/globals.css,
-                    // "Dashboard hover doors") is anchored inside the facts cell and
-                    // has to reach back out over them.
                     <div
                       key={family.key}
-                      className={`relative grid gap-1 border-t border-(--divider) px-4 py-3 [--standing-lead:1rem] [--standing-trail:1rem] first:border-t-0 sm:grid-cols-[10rem_minmax(0,1fr)] sm:gap-4 sm:[--standing-lead:12rem] min-[45rem]:items-center ${
-                        series
-                          ? "min-[45rem]:grid-cols-[10rem_minmax(0,1fr)_11rem] min-[45rem]:[--standing-trail:13rem]"
-                          : ""
-                      }`}
+                      className="grid gap-1 border-t border-(--divider) px-4 py-3 first:border-t-0 sm:grid-cols-[10rem_minmax(0,1fr)] sm:gap-4 min-[45rem]:grid-cols-[10rem_minmax(0,1fr)_11rem] min-[45rem]:items-center"
                       data-standing-family={family.key}
                       data-standing-composition={family.composition}
-                      // The fork itself, named so a guard can ask which template a row
-                      // is on rather than inferring it from whether a plot happened to
-                      // draw (a series of fewer than two readable points draws
-                      // nothing, and would read as plotless while sitting on the
-                      // three-column template).
-                      data-standing-trend={series ? "" : undefined}
                     >
                       <dt className="text-sm font-medium text-slate-600 dark:text-slate-300">
                         {family.label}
                       </dt>
-                      {/* THE FACTS CELL IS THE RAIL AND THE BAND. `relative` makes this
-                        cell the containing block for both out-of-flow boxes a shared
-                        line needs — the door at its right edge, and the row-wide link
-                        surface that reaches back out from it — and `self-stretch` gives
-                        that surface the full height of the row's first grid line, so
-                        the sparkline beside it is inside the band rather than beside
-                        it. A STACKED family overrides both from its `li` below, which
-                        is nearer. */}
-                      <dd className="relative flex min-w-0 items-center min-[45rem]:self-stretch">
-                        {/* THE DOOR'S RAIL (#3459 item 2, moved by #3555 ruling 3).
-                          Every door in this family lands on ONE x — the right edge of
-                          the facts cell — instead of trailing whichever member's text
-                          it happens to follow. On a family with a plot that is
-                          immediately left of the plot; on a plotless family the facts
-                          cell now runs to the row's edge, so the door does too. The
-                          box it is pinned to is whichever element is exactly one LINE
-                          wide for the hovered member: a `members` family stacks, so
-                          each `li` is that line; every other composition puts its
-                          members on ONE line, so this cell is. Both end on the facts
-                          cell's right edge, which is the whole point. */}
+                      <dd className="min-w-0">
+                        {/* THE DOOR'S RAIL (#3459 item 2). Every door in this family
+                          lands on ONE x — the right edge of the facts cell, just left
+                          of the sparkline column — instead of trailing whichever
+                          member's text it happens to follow. The anchor is whichever
+                          element is exactly one LINE wide for the hovered member, so
+                          the door's y stays on the row you are pointing at: a
+                          `members` family stacks, so each `li` is that line; a
+                          `single`/`composed` family puts every member on ONE line, so
+                          the `ul` is. Both have the dd's right edge, which is the
+                          whole point. */}
                         <ul
-                          className={`flex min-w-0 flex-1 gap-1.5 ${
+                          className={`relative flex min-w-0 gap-1.5 ${
                             family.composition === "members"
                               ? "flex-col"
                               : "flex-row flex-wrap gap-x-4"
@@ -245,9 +190,8 @@ export default function DashboardStandingCluster({
                             // keyboard focus alike. It is PINNED to the right edge of
                             // the family's facts cell (#3459 item 2) and only fades and
                             // slides — being out of flow, it can never move the row,
-                            // and nothing yields its place to it: the reading's date
-                            // stays fully visible underneath (#3555 ruling 1,
-                            // app/globals.css, "Dashboard hover doors").
+                            // and the age it stands in for keeps its own box while it
+                            // steps aside (app/globals.css, "Dashboard hover doors").
                             // `pointer-events-none` because every member's door box
                             // occupies the SAME rail: a door that could take the
                             // pointer would let the rail reveal a neighbour's door
@@ -256,18 +200,11 @@ export default function DashboardStandingCluster({
                               ? doorLabel(presentation.href)
                               : null;
                             const rowDisclosure = presentation.disclosure;
-                            // The row-wide link surface (#3555 ruling 2), stretched
-                            // from this anchor by app/globals.css.
-                            const surface =
-                              presentation.href &&
-                              (stacked || candidate.candidateId === surfaceId)
-                                ? "standing-stretch "
-                                : "";
                             const linked = presentation.href ? (
                               door ? (
                                 <StandingDestinationLink
                                   href={presentation.href}
-                                  className={`${surface}standing-row ${className} hover:text-brand-700 dark:hover:text-brand-400`}
+                                  className={`standing-row ${className} hover:text-brand-700 dark:hover:text-brand-400`}
                                   destinationLabel={door}
                                 >
                                   {content}
@@ -275,7 +212,7 @@ export default function DashboardStandingCluster({
                               ) : (
                                 <Link
                                   href={presentation.href}
-                                  className={`${surface}standing-row ${className} hover:text-brand-700 dark:hover:text-brand-400`}
+                                  className={`standing-row ${className} hover:text-brand-700 dark:hover:text-brand-400`}
                                 >
                                   {content}
                                 </Link>
@@ -285,17 +222,9 @@ export default function DashboardStandingCluster({
                               <li
                                 key={candidate.candidateId}
                                 className={
-                                  stacked
+                                  family.composition === "members"
                                     ? "relative"
-                                    : candidate.candidateId === surfaceId
-                                      ? undefined
-                                      : // Above the shared line's one link surface, so
-                                        // this member's own text is still what a
-                                        // pointer lands on. A flex item takes a
-                                        // `z-index` without being positioned, which
-                                        // matters: `relative` here would move the
-                                        // door's rail onto this member's own text box.
-                                        "z-10"
+                                    : undefined
                                 }
                                 data-testid="dashboard-candidate"
                                 data-candidate-id={candidate.candidateId}
@@ -329,10 +258,8 @@ export default function DashboardStandingCluster({
                       </dd>
                       {/* StandingSparkline places its plot in the trailing desktop
                         column and its disclosure across the two content columns below,
-                        where the full contextual label has honest width. The column
-                        exists only for a family that draws in it (#3555 ruling 3): a
-                        family with no trend read renders neither the cell nor the
-                        track. */}
+                        where the full contextual label has honest width. A family with
+                        no trend read leaves the declared grid track in place. */}
                       {series && <StandingSparkline series={series} />}
                     </div>
                   );

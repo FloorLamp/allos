@@ -94,29 +94,12 @@ export function bioAgeDelta(bioAge: number, chronoAge: number): BioAgeDelta {
 }
 
 // A human phrase for the delta ("3.2 years younger than your calendar age of 50").
-// A SENTENCE, for a surface that is reading you a sentence: the /longevity bio-age
-// section. A compact slot takes `bioAgeDeltaCompact` instead (#3544).
 export function bioAgeDeltaPhrase(d: BioAgeDelta): string {
   if (d.direction === "even") {
     return `about the same as your calendar age of ${d.chronoAge}`;
   }
   const unit = d.magnitudeYears === 1 ? "year" : "years";
   return `${d.magnitudeYears} ${unit} ${d.direction} than your calendar age of ${d.chronoAge}`;
-}
-
-// The same delta in a VALUE slot's idiom ("3.2 yrs younger", "≈ calendar age") —
-// the compact half of the #3544 split. The healthspan-pillars card reads
-// `label → value → tone chip` with a detail line under it, and its other rows say
-// "Intermediate", "SRI 92", "86 of 120"; a sentence in that slot is the one row that
-// wraps onto its own line on a phone. The DIRECTION is here because it is the fact;
-// the JUDGMENT stays with the tone chip (#1220), and the calendar age itself is
-// stated once, by the detail line ("PhenoAge 26.6 vs calendar 35"). "yrs" rather
-// than "years" is the value slot's own compression, not a new abbreviation: the
-// spelled-out sentence above is unchanged for the surfaces that want it.
-export function bioAgeDeltaCompact(d: BioAgeDelta): string {
-  if (d.direction === "even") return "≈ calendar age";
-  const unit = d.magnitudeYears === 1 ? "yr" : "yrs";
-  return `${d.magnitudeYears} ${unit} ${d.direction}`;
 }
 
 // ── Pace of aging (the delta trend over time) ─────────────────────────────────
