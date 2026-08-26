@@ -527,9 +527,7 @@ export default function EpisodeTimeline({
           >
             Cancel
           </button>
-          <SubmitButton className="btn btn-sm" pendingLabel="Saving…">
-            Save
-          </SubmitButton>
+          <SubmitButton pendingLabel="Saving…">Save</SubmitButton>
         </div>
       </form>
     );

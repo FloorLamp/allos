@@ -994,7 +994,7 @@ export default function MedicationCard({
                     className="input text-sm"
                   />
                 </div>
-                <SubmitButton pendingLabel="Saving…" className="btn btn-sm">
+                <SubmitButton pendingLabel="Saving…">
                   Add side effect
                 </SubmitButton>
               </form>

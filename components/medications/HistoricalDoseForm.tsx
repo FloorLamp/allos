@@ -229,7 +229,7 @@ export default function HistoricalDoseForm({
         </p>
       ) : null}
       <div className="flex items-center gap-2">
-        <SubmitButton pendingLabel="Saving…" className="btn btn-sm">
+        <SubmitButton pendingLabel="Saving…">
           {editing ? "Save changes" : "Save dose"}
         </SubmitButton>
         <button type="button" onClick={onDone} className="btn-ghost btn-sm">
