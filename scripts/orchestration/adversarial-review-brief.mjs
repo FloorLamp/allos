@@ -336,6 +336,49 @@ export function shipsRuntimeCode(files) {
   return files.some((f) => SHIPPED_CODE.test(f) && !TEST_FILE.test(f));
 }
 
+// A DIFF THAT ONLY REMOVES ASSERTIONS IS NOT "A DIFF THAT DECIDES NOTHING" (#3044).
+//
+// The scope rule above is true of what it examines and false of what actually
+// protects this system: the safety gates here are substantially enforced BY TESTS.
+// `lib/__tests__/adult-only-writes-scan.test.ts` is what keeps a write core in
+// `ADULT_ONLY_WRITE_CORES`; `profile-scoping.test.ts` is what keeps a query's
+// `profile_id` filter. A PR that weakens one has changed no runtime line and has
+// removed a guard, and came back `ordinary`.
+//
+// WHY DELETIONS AND NOT TEST FILES. #3039 scoped test files out with a number: on the
+// tuning window, admitting every test file takes the false-CONSULT rate from 6.8% to
+// 12.3%, and the five it adds are all tooling PRs whose prose is ABOUT machinery.
+// Re-measured on both of that ruling's windows, a NET `expect(` DELETION costs
+// nothing at all — 6.8% tuning and 5.8% held out, identical to the rule it widens.
+// It brings exactly ONE of 201 merged PRs into scope that the tier could not see:
+// #2963, "Remove useless test assertions", 26 assertions removed across 12 files.
+//
+// WHY NOT A NAMED SET OF SCAN TESTS. Measured at the same zero cost, so it buys no
+// accuracy — and it is a list that has to be maintained, and that goes stale silently
+// the first time a gate is enforced by a test nobody added to it.
+//
+// WHAT THIS STILL DOES NOT CATCH, recorded rather than papered over, in the tradition
+// of the hole it closes: scope only lets the TEXT tier look. #2963 is in scope under
+// this rule and still `ordinary`, because its own prose names no safety term. A
+// deletion described in neutral words stays invisible, and no scope rule fixes that.
+export function weakenedTests(files, patches) {
+  return files.filter(
+    (f) => TEST_FILE.test(f) && netExpectDelta(patches?.[f]) < 0
+  );
+}
+
+/** Assertions a unified-diff hunk adds, minus the ones it removes. */
+function netExpectDelta(patch) {
+  let delta = 0;
+  for (const line of (patch ?? "").split("\n")) {
+    const n = (line.match(/expect\(/g) ?? []).length;
+    // `+++`/`---` are the file headers, not content.
+    if (line.startsWith("+") && !line.startsWith("+++")) delta += n;
+    else if (line.startsWith("-") && !line.startsWith("---")) delta -= n;
+  }
+  return delta;
+}
+
 // Prose only. A PR body carries three things this tier must not read: fenced
 // blocks (pasted gate transcripts and command output), the PR template's own
 // checklist (`- [x] No PHI in code, fixtures, seed`, on 12 of 73 path-ordinary
@@ -449,7 +492,7 @@ export function vocabularyHits(sources) {
  * The whole decision, over facts a caller supplies — so it can be tested without
  * a network. Returns { verdict, exit, pathHits, vocabHits, scoped }.
  */
-export function classify({ files, sources }) {
+export function classify({ files, sources, patches }) {
   const pathHits = [];
   for (const file of files) {
     const rule = HIGH_STAKES.find((r) => r.glob.test(file));
@@ -461,16 +504,21 @@ export function classify({ files, sources }) {
       exit: EXIT.mandatory,
       pathHits,
       vocabHits: [],
+      weakened: [],
       scoped: true,
     };
   }
-  const scoped = shipsRuntimeCode(files);
+  // `patches` is optional: a caller with no diff text simply gets the path-and-
+  // filename scope rule, which is what every pre-#3044 caller already had.
+  const weakened = weakenedTests(files, patches);
+  const scoped = shipsRuntimeCode(files) || weakened.length > 0;
   const vocabHits = scoped ? vocabularyHits(sources) : [];
   return {
     verdict: vocabHits.length ? "CONSULT" : "ordinary",
     exit: vocabHits.length ? EXIT.consult : EXIT.ordinary,
     pathHits,
     vocabHits,
+    weakened,
     scoped,
   };
 }
@@ -558,6 +606,7 @@ function main(argv) {
     );
   }
   const files = [];
+  const patches = {};
   for (let page = 1; page <= 10; page++) {
     const batch = gh(
       token,
@@ -568,7 +617,10 @@ function main(argv) {
         `the file list for PR #${prNumber} came back as ${batch?.message ?? typeof batch}`
       );
     }
-    files.push(...batch.map((f) => f.filename));
+    for (const f of batch) {
+      files.push(f.filename);
+      if (f.patch) patches[f.filename] = f.patch;
+    }
     if (batch.length < 100) break;
   }
 
@@ -580,9 +632,10 @@ function main(argv) {
     if (issue && typeof issue.number === "number") linkedIssues.push(issue);
   }
 
-  const { verdict, exit, pathHits, vocabHits, scoped } = classify({
+  const { verdict, exit, pathHits, vocabHits, weakened, scoped } = classify({
     files,
     sources: claimSources(pr, linkedIssues),
+    patches,
   });
 
   if (verdict === "MANDATORY") {
@@ -592,6 +645,11 @@ function main(argv) {
     console.error(
       `CONSULT — no declared path matched in PR #${prNumber} (${files.length} files), but its own text is about a safety-relevant behaviour.`
     );
+    if (weakened.length) {
+      console.error(
+        `  in scope because it REMOVES assertions from: ${weakened.join(", ")}`
+      );
+    }
     console.error(
       "An ORCHESTRATOR decides whether the lane runs. Read these claims, not the terms:"
     );
