@@ -1,5 +1,10 @@
 import { test, expect } from "./fixtures";
 import { loginAs } from "./nav";
+import { settledClick } from "./helpers";
+import {
+  expectDesktopOrdinarySubmit,
+  expectPhoneOrdinarySubmit,
+} from "./ordinary-submit-actions";
 import { E2E_LOGIN_CHILD, E2E_MEMBER_PASSWORD } from "./fixture-logins";
 
 // /immunizations + /immunizations/[vaccine] (issue #391, gap 2). The list, the
@@ -54,6 +59,32 @@ test.describe("Immunizations (#391)", () => {
     ).toBeVisible();
     const history = page.locator(".card").filter({ hasText: "Dose history" });
     await expect(history).toContainText("2018-09-01");
+
+    const submit = page.getByRole("button", { name: "Set override" });
+    const form = submit.locator("xpath=ancestor::form");
+    const note = form.getByLabel("Note (optional)");
+    await expectDesktopOrdinarySubmit({
+      form,
+      owner: form,
+      submit,
+      adjacent: note,
+      name: "immunization Set override",
+    });
+    await page.setViewportSize({ width: 390, height: 844 });
+    await expectPhoneOrdinarySubmit({
+      form,
+      owner: form,
+      submit,
+      adjacent: note,
+      name: "immunization Set override",
+    });
+    await settledClick(page, submit);
+    await expect(page.getByText("Current override:")).toBeVisible();
+    await settledClick(
+      page,
+      page.getByRole("button", { name: "Remove override" })
+    );
+    await expect(page.getByText("Current override:")).toHaveCount(0);
   });
 
   test("the recorded-dose list is profile-scoped — a different profile sees its own, not profile 1's", async ({

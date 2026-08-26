@@ -8,6 +8,10 @@ import {
   settledClick,
   settledFill,
 } from "./helpers";
+import {
+  expectDesktopOrdinarySubmit,
+  expectPhoneOrdinarySubmit,
+} from "./ordinary-submit-actions";
 import { workerDbPath } from "./worker-env";
 import {
   E2E_LOGIN_MENTAL,
@@ -269,21 +273,38 @@ test.describe("correcting a recorded score (#1396)", () => {
       page,
       page.getByTestId(`instrument-reading-edit-${id}`)
     );
-    await expect(
-      page.getByTestId(`instrument-reading-edit-form-${id}`)
-    ).toBeVisible();
-    await page.getByTestId(`instrument-reading-total-${id}`).fill("12");
-    await settledClick(
-      page,
-      page
-        .getByTestId(`instrument-reading-edit-form-${id}`)
-        .getByRole("button", { name: "Save" })
-    );
+    const form = page.getByTestId(`instrument-reading-edit-form-${id}`);
+    await expect(form).toBeVisible();
+    const total = page.getByTestId(`instrument-reading-total-${id}`);
+    const submit = form.getByRole("button", { name: "Save" });
+    const desktopViewport = page.viewportSize();
+    expect(
+      desktopViewport,
+      "the mental-health project has a fixed desktop viewport"
+    ).not.toBeNull();
+    await expectDesktopOrdinarySubmit({
+      form,
+      owner: form,
+      submit,
+      adjacent: total,
+      name: "instrument reading Save",
+    });
+    await page.setViewportSize({ width: 390, height: 844 });
+    await expectPhoneOrdinarySubmit({
+      form,
+      owner: form,
+      submit,
+      adjacent: total,
+      name: "instrument reading Save",
+    });
+    await total.fill("12");
+    await settledClick(page, submit);
 
     await expect(row).toContainText("12");
     await expect(
       page.getByTestId(`instrument-reading-band-${id}`)
     ).not.toContainText("Severe");
+    await page.setViewportSize(desktopViewport!);
   });
 
   test("a mis-entered score can be removed from the History list", async () => {

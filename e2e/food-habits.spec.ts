@@ -1,5 +1,9 @@
 import { test, expect } from "./fixtures";
 import { hydratedClick, settledClick } from "./helpers";
+import {
+  expectDesktopOrdinarySubmit,
+  expectPhoneOrdinarySubmit,
+} from "./ordinary-submit-actions";
 import { withProtocolFact } from "./protocol-form-helpers";
 // Food-habit targets (issue #580): the /nutrition Weekly habits card shows a food_group
 // frequency target with its #579-rollup progress, and a new habit can be tracked/removed.
@@ -33,10 +37,25 @@ test("tracking a new food habit adds it, and removing it leaves the fixture as f
     .selectOption("legumes");
   // Scoped to the add form: the suggestion cards render their own "Track"
   // buttons (7 on the seeded page), a strict-mode collision unscoped.
-  await page
-    .getByTestId("add-habit-form")
-    .getByRole("button", { name: "Track" })
-    .click();
+  const form = page.getByTestId("add-habit-form");
+  const submit = form.getByRole("button", { name: "Track" });
+  const servings = form.getByLabel("Servings per week");
+  await expectDesktopOrdinarySubmit({
+    form,
+    owner: form,
+    submit,
+    adjacent: servings,
+    name: "weekly habit Track",
+  });
+  await page.setViewportSize({ width: 390, height: 844 });
+  await expectPhoneOrdinarySubmit({
+    form,
+    owner: form,
+    submit,
+    adjacent: servings,
+    name: "weekly habit Track",
+  });
+  await settledClick(page, submit);
 
   await expect(page.getByTestId("habit-legumes")).toBeVisible();
 
