@@ -8,11 +8,10 @@ import {
 import { isStrengthTrainingRelevant } from "@/lib/life-stage";
 import { requireSession } from "@/lib/auth";
 import { isDemoMode, isDemoRestricted } from "@/lib/demo";
-import Tabs from "@/components/Tabs";
 import TabFirstPage from "@/components/TabFirstPage";
 import { DATA_TAB_FIRST_PAGE } from "@/components/tab-first-pages";
-import UploadForm from "@/components/UploadForm";
-import ImportClient, { ImportJobList } from "@/components/ImportClient";
+import { ImportJobList } from "@/components/ImportClient";
+import ImportMethodTabs from "@/app/(app)/data/ImportMethodTabs";
 import IntegrationsGrid from "@/components/IntegrationsGrid";
 import StreamLifecycleOffers from "@/components/integrations/StreamLifecycleOffers";
 import DataExport from "@/components/DataExport";
@@ -152,31 +151,10 @@ export default async function DataPage(
             in-flight review cards render below, always visible. */}
         <section id="paste-import" className="scroll-mt-4 space-y-4">
           <div className="card">
-            <Tabs
-              tabs={[
-                {
-                  id: "upload",
-                  label: "File upload (incl. CSV)",
-                  content: (
-                    <div>
-                      <h2 className="font-semibold text-slate-800 dark:text-slate-100">
-                        Upload a lab report, scan, or health-record export
-                      </h2>
-                      <UploadForm demo={demo} />
-                    </div>
-                  ),
-                },
-                {
-                  id: "paste",
-                  label: "Paste CSV",
-                  content: (
-                    <ImportClient
-                      units={{ weightUnit: units.weightUnit }}
-                      workoutImportAvailable={strengthTrainingAvailable}
-                    />
-                  ),
-                },
-              ]}
+            <ImportMethodTabs
+              demo={demo}
+              weightUnit={units.weightUnit}
+              workoutImportAvailable={strengthTrainingAvailable}
             />
           </div>
 

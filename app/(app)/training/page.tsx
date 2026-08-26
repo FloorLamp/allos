@@ -48,14 +48,8 @@ export default async function TrainingPage(props: {
       ? requestedDate
       : undefined;
 
-  // #105 (the Trends pattern, #1496): build ONLY the active section server-side.
-  // Handing every section to `Tabs` as a `content:` prop rendered — and ran the
-  // queries for — all SIX on every request; the client `keepMounted` flag gated DOM,
-  // not the RSC pass. Each tab switch is already a URL navigation (NavTabs → Link),
-  // so this makes a /training visit compute one tab instead of all of them, at no
-  // extra round-trips. The `?tab=` vocabulary is unchanged, so every deep link
-  // (?tab=log from the timeline/integrations, ?tab=analyze from the plateau finding,
-  // ?tab=goals from the dashboard presentation, …) lands exactly where it always did.
+  // Build only the server-selected section (#105/#1496); URL links keep each tab
+  // deep-linkable without evaluating every tab's queries during the RSC pass.
   const activeSection: React.ReactNode = (() => {
     switch (activeTab) {
       case "analyze":

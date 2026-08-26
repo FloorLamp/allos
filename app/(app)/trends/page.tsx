@@ -16,7 +16,7 @@ import { rangeSummaryLabel } from "@/lib/trends";
 import { clampPage } from "@/lib/pagination";
 import { activeRangeLabel } from "@/lib/trends-context";
 import { PageHeader } from "@/components/ui";
-import { NavTabsStrip } from "@/components/NavTabs";
+import TabList from "@/components/TabList";
 import TrendsContextBar from "@/components/TrendsContextBar";
 import DateRangeControl from "@/components/DateRangeControl";
 import {
@@ -208,12 +208,8 @@ export default async function TrendsPage(props: {
   // range control.
   const rangeLabel = activeRangeLabel(range, todayStr, extraRanges);
 
-  // #105: build ONLY the active tab server-side. Passing every tab as a prop
-  // rendered (and ran the queries for) all of them on every request — the client
-  // `keepMounted` flag only gated DOM, not the RSC pass. Each tab switch is already
-  // a URL navigation (NavTabs → router.replace), so this makes every Trends request
-  // compute one tab instead of all of them, at no extra round-trips. The Overview
-  // tab splits that budget once more with a Suspense boundary (below).
+  // Build only the URL-selected tab server-side (#105); Overview divides its own
+  // work once more with a Suspense boundary below.
   const activeSection: React.ReactNode = (() => {
     switch (activeTab) {
       case "nutrition":
@@ -324,16 +320,21 @@ export default async function TrendsPage(props: {
           key={activeTab}
           rangeLabel={rangeLabel}
           tabs={
-            <NavTabsStrip
-              tabs={tabStrip}
-              paramKey="tab"
-              activeId={activeTab}
-              prominentOnMobile
-              mobileLayout="scroll"
-              flush
-              testId="trends-tabs"
-              className="sm:mt-4"
-            />
+            <div className="sm:mt-4">
+              <TabList
+                binding="link"
+                ariaLabel="Trends sections"
+                tabs={tabStrip}
+                panelId="trends-tabpanel"
+                paramKey="tab"
+                activeId={activeTab}
+                presentation={{
+                  kind: "prominent",
+                  mobileLayout: "scroll",
+                }}
+                testId="trends-tabs"
+              />
+            </div>
           }
           controls={
             <DateRangeControl
@@ -371,7 +372,9 @@ export default async function TrendsPage(props: {
           }
         />
 
-        <div role="tabpanel">{activeSection}</div>
+        <div id="trends-tabpanel" role="tabpanel" aria-label="Trends section">
+          {activeSection}
+        </div>
       </TrendAnnotationProvider>
     </div>
   );
