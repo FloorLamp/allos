@@ -437,24 +437,24 @@ describe("the prn: keyboard discriminator", () => {
     // A keyboard past that point reads as `/dose`. It needs ~100 offered doses in ONE
     // slot, which is why this is a bound and not a bug report — but it is written
     // down, and it turns red if the cap arithmetic or the row grouping changes.
-    const list = (n: number): { data?: string }[][] => {
+    const list = (n: number) => {
       const items = Array.from({ length: n }, (_, i) => ({
         itemId: i + 1,
         name: `Item ${i + 1}`,
         detail: null,
         countToday: 0,
       }));
-      return capTelegramKeyboard(
-        messageKeyboard({
-          text: "x",
-          actions: expandedOfferActions(7, "2026-03-04", items, () => "tok"),
-        } as NotificationMessage)
-      ).keyboard;
+      const msg: NotificationMessage = {
+        title: "Doses",
+        body: "x",
+        actions: expandedOfferActions(7, "2026-03-04", items, () => "tok"),
+      };
+      return capTelegramKeyboard(messageKeyboard(msg)).keyboard;
     };
-    const hasCollapse = (rows: { data?: string }[][]): boolean =>
+    const hasCollapse = (rows: ReturnType<typeof list>): boolean =>
       rows.some((r) =>
         r.some((b) =>
-          String((b as { callback_data?: string }).callback_data ?? "").startsWith(
+          ("callback_data" in b ? (b.callback_data ?? "") : "").startsWith(
             `${OFFER_COLLAPSE_PREFIX}:`
           )
         )
