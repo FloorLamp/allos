@@ -16,7 +16,7 @@
 import { test, expect } from "./fixtures";
 import Database from "better-sqlite3";
 import { loginAs } from "./nav";
-import { settledBoxes, settledClick } from "./helpers";
+import { expectPhoneTapTargets, settledBoxes, settledClick } from "./helpers";
 import {
   E2E_LOGIN_SUPPRESSED,
   SUPPRESSED_PROFILE,
@@ -179,6 +179,43 @@ test("the suppression summary keeps native disclosure semantics and responsive t
 
     await summary.click();
     await expect(section).toHaveJSProperty("open", true);
+
+    const careRow = section
+      .getByTestId("suppressed-row")
+      .filter({ hasText: "E2E Suppressed Appointment" });
+    const bridgeRow = section
+      .getByTestId("suppressed-row")
+      .filter({ hasText: "Untracked prescription — E2e Suppressed Rx" });
+    const restore = careRow.getByRole("button", {
+      name: "Restore",
+      exact: true,
+    });
+    const clear = bridgeRow.getByRole("button", { name: "Clear", exact: true });
+    await expect(restore).toHaveAttribute("data-button-control", "");
+    await expect(clear).toHaveAttribute("data-button-control", "");
+    await expectPhoneTapTargets(page, "suppression restore and clear", [
+      restore,
+      clear,
+    ]);
+    const [careBox, restoreBox, bridgeBox, clearBox] = await settledBoxes([
+      careRow,
+      restore,
+      bridgeRow,
+      clear,
+    ]);
+    for (const [row, button, name] of [
+      [careBox, restoreBox, "Restore"],
+      [bridgeBox, clearBox, "Clear"],
+    ] as const) {
+      expect(
+        button.x + TAP_FLOOR_FLOAT_EPSILON_PX,
+        `${name} left row containment`
+      ).toBeGreaterThanOrEqual(row.x);
+      expect(
+        button.x + button.width,
+        `${name} right row containment`
+      ).toBeLessThanOrEqual(row.x + row.width + TAP_FLOOR_FLOAT_EPSILON_PX);
+    }
 
     await page.setViewportSize(DESKTOP);
     const [desktopSummary] = await settledBoxes([summary]);

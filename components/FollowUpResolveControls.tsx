@@ -1,6 +1,6 @@
 "use client";
 
-import SubmitButton from "@/components/SubmitButton";
+import Button from "@/components/Button";
 
 // The confirm-first (#560) finding-follow-up resolution controls (issue #700 ask 3),
 // shared by BOTH the Upcoming page and dashboard attention atoms so the
@@ -45,15 +45,15 @@ export default function FollowUpResolveControls({
           ["changed", "Changed"],
         ] as const
       ).map(([value, label]) => (
-        <SubmitButton
+        <Button
           key={value}
+          type="submit"
           name="resolution"
           value={value}
           pendingLabel="…"
-          className="rounded-lg border border-black/10 px-2.5 py-1 text-xs font-medium text-slate-600 transition hover:bg-slate-100 disabled:opacity-60 dark:border-white/10 dark:text-slate-300 dark:hover:bg-ink-750"
         >
           {label}
-        </SubmitButton>
+        </Button>
       ))}
     </form>
   );

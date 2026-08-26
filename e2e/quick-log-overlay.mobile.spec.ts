@@ -6,6 +6,7 @@ import {
   expectPhoneTapTargets,
   hydratedClick,
   openMeasurementGroup,
+  settledBoxes,
   settledClick,
 } from "./helpers";
 import { openLogSheet, showLogRow } from "./log-sheet-helpers";
@@ -23,6 +24,7 @@ import {
   MULTI_SHARED_PROFILE,
 } from "./fixture-logins";
 import { frozenNow, workerDbPath } from "./worker-env";
+import { TAP_FLOOR_FLOAT_EPSILON_PX } from "@/lib/tap-floor-tokens";
 
 // Every quick-log item opens an IN-PLACE overlay (issues #1468, #1467).
 //
@@ -438,12 +440,27 @@ test("the dose overlay answers from the outcome — it never just confirms", asy
     const row = overlay.getByTestId(`quick-entry-dose-${doseId}`);
     await expect(row).toBeVisible();
     await expect(row).toContainText(SHELL_DOSE_ITEM);
+    const markTaken = row.getByRole("button", {
+      name: "Mark taken",
+      exact: true,
+    });
+    await expect(markTaken).toHaveAttribute("data-button-control", "");
+    await expectPhoneTapTargets(page, "quick dose Mark taken", [markTaken]);
+    const [rowBox, markTakenBox] = await settledBoxes([row, markTaken]);
+    expect(
+      markTakenBox.x + TAP_FLOOR_FLOAT_EPSILON_PX,
+      "Mark taken left row containment"
+    ).toBeGreaterThanOrEqual(rowBox.x);
+    expect(
+      markTakenBox.x + markTakenBox.width,
+      "Mark taken right row containment"
+    ).toBeLessThanOrEqual(rowBox.x + rowBox.width + TAP_FLOOR_FLOAT_EPSILON_PX);
 
     // The schedule changes elsewhere while this sheet still shows the dose as
     // due. The open sheet is a frozen snapshot; its button is about to describe a
     // world that no longer holds.
     setDoseRetired(doseId, true);
-    await settledClick(page, row.getByRole("button", { name: "Mark taken" }));
+    await settledClick(page, markTaken);
 
     // THE assertion: it says what actually happened. markDoseTaken wrote nothing,
     // and claiming "Dose logged" here would be a false confirmation of a

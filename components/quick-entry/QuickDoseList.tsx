@@ -2,7 +2,7 @@
 import { useLoggedViaStamp } from "@/components/LoggedViaSurface";
 
 import { useState } from "react";
-import SubmitButton from "@/components/SubmitButton";
+import Button from "@/components/Button";
 import { useToast } from "@/components/Toast";
 import { doseConfirmMessage, doseResolved } from "@/lib/dose-outcome-text";
 import { markTaken } from "@/app/(app)/upcoming/actions";
@@ -123,12 +123,9 @@ export default function QuickDoseList({
             className="shrink-0"
             data-testid={`quick-entry-dose-form-${dose.doseId}`}
           >
-            <SubmitButton
-              pendingLabel="…"
-              className="tap-target rounded-lg border border-black/10 px-2.5 py-1 text-xs font-medium text-slate-600 transition hover:bg-slate-100 disabled:opacity-60 dark:border-white/10 dark:text-slate-300 dark:hover:bg-ink-750"
-            >
+            <Button type="submit" pendingLabel="…">
               Mark taken
-            </SubmitButton>
+            </Button>
           </form>
         </li>
       ))}

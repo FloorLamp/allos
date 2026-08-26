@@ -1,4 +1,10 @@
-import { fireEvent, render, screen } from "@testing-library/react";
+import {
+  act,
+  fireEvent,
+  render,
+  screen,
+  waitFor,
+} from "@testing-library/react";
 import { createRef } from "react";
 import { describe, expect, it, vi } from "vitest";
 import Button from "@/components/Button";
@@ -52,20 +58,17 @@ describe("Button", () => {
     expect(link.querySelector("svg")).not.toBeNull();
   });
 
-  it("forwards its native name and value as the form submitter", () => {
-    const submitted = vi.fn();
+  it("forwards its submitter and owns the pending label, spinner, and state", async () => {
+    const result = Promise.withResolvers<void>();
+    const submitted = vi.fn((_formData: FormData) => result.promise);
     render(
-      <form
-        onSubmit={(event) => {
-          event.preventDefault();
-          const submitter = (event.nativeEvent as SubmitEvent).submitter;
-          submitted(
-            submitter,
-            new FormData(event.currentTarget, submitter).get("intent")
-          );
-        }}
-      >
-        <Button type="submit" name="intent" value="archive">
+      <form action={submitted}>
+        <Button
+          type="submit"
+          name="intent"
+          value="archive"
+          pendingLabel="Archiving…"
+        >
           Archive
         </Button>
       </form>
@@ -74,6 +77,31 @@ describe("Button", () => {
     const button = screen.getByRole("button", { name: "Archive" });
     fireEvent.click(button);
 
-    expect(submitted).toHaveBeenCalledWith(button, "archive");
+    await waitFor(() => expect(submitted).toHaveBeenCalledOnce());
+    expect(submitted.mock.calls[0][0].get("intent")).toBe("archive");
+    expect(button.getAttribute("aria-busy")).toBe("true");
+    expect((button as HTMLButtonElement).disabled).toBe(true);
+    expect(button.textContent).toBe("Archiving…");
+    expect(button.querySelector('svg[aria-hidden="true"]')).not.toBeNull();
+
+    await act(async () => result.resolve());
+    await waitFor(() => expect(button.textContent).toBe("Archive"));
+  });
+
+  it("keeps the idle label as the pending fallback", async () => {
+    const result = Promise.withResolvers<void>();
+    render(
+      <form action={() => result.promise}>
+        <Button type="submit">Restore</Button>
+      </form>
+    );
+
+    const button = screen.getByRole("button", { name: "Restore" });
+    fireEvent.click(button);
+    await waitFor(() => expect(button.getAttribute("aria-busy")).toBe("true"));
+    expect(button.textContent).toBe("Restore");
+    expect(button.querySelector('svg[aria-hidden="true"]')).not.toBeNull();
+
+    await act(async () => result.resolve());
   });
 });
