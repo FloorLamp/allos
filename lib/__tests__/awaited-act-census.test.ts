@@ -349,9 +349,7 @@ describe("the census's reach", () => {
     const clean = act(async () => {});
     expect(clean).not.toBeInstanceOf(Promise);
     expect(
-      (
-        clean as { then: (ok: () => void, no: () => void) => unknown }
-      ).then(
+      (clean as { then: (ok: () => void, no: () => void) => unknown }).then(
         () => {},
         () => {}
       )

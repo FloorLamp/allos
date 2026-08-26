@@ -428,10 +428,7 @@ export function resolveShippedReference(options?: {
   // Committer date, ISO, in UTC: it is what a reviewer compares against "when did
   // I last fetch". `%cI` rather than the author date — a rebased or cherry-picked
   // commit keeps its author date and is not evidence of anything about this ref.
-  const baseDate = git(
-    ["show", "-s", "--format=%cI", base],
-    cwd
-  ).stdout.trim();
+  const baseDate = git(["show", "-s", "--format=%cI", base], cwd).stdout.trim();
   const stamped = baseDate ? `${shortBase}, committed ${baseDate}` : shortBase;
 
   // ls-tree rather than matching git's "does not exist" wording on stderr: an

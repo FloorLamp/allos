@@ -664,11 +664,7 @@ const gitCorpus = (
   execFileSync("git", ["init", "-q", "-b", "main", root], {
     stdio: ["ignore", "pipe", "pipe"],
   });
-  fs.writeFileSync(
-    path.join(root, rel),
-    serializeManifest(manifest),
-    "utf8"
-  );
+  fs.writeFileSync(path.join(root, rel), serializeManifest(manifest), "utf8");
   run("add", "-A");
   run("commit", "-q", "-m", "shipped");
   return { root, rel };
@@ -868,7 +864,11 @@ describe("the generator refuses a run that could not ask (#3635 R1)", () => {
     );
     const seeded = generateManifest({
       ...c,
-      shipped: { manifest: {}, source: "a corpus with no history", mergeBase: true },
+      shipped: {
+        manifest: {},
+        source: "a corpus with no history",
+        mergeBase: true,
+      },
     });
     return {
       ...c,
@@ -1073,7 +1073,11 @@ describe("runManifestCli, driven over argv and env (#3635 R5)", () => {
     );
     const seed = generateManifest({
       ...c,
-      shipped: { manifest: {}, source: "a corpus with no history", mergeBase: true },
+      shipped: {
+        manifest: {},
+        source: "a corpus with no history",
+        mergeBase: true,
+      },
     });
     expect(seed.wrote).toBe(true);
     return {
@@ -1195,10 +1199,19 @@ describe("runManifestCli, driven over argv and env (#3635 R5)", () => {
     // What CI runs. Both spellings, because npm swallows the bare one exactly as
     // it swallows `--check`.
     const c = cliCorpus();
-    const tip = { ...c.paths, shipped: { ...c.paths.shipped, mergeBase: false } };
+    const tip = {
+      ...c.paths,
+      shipped: { ...c.paths.shipped, mergeBase: false },
+    };
     for (const invocation of [
       { argv: ["--check", "--require-merge-base"], env: {} },
-      { argv: [], env: { npm_config_check: "true", npm_config_require_merge_base: "true" } },
+      {
+        argv: [],
+        env: {
+          npm_config_check: "true",
+          npm_config_require_merge_base: "true",
+        },
+      },
     ]) {
       const result = runManifestCli({ ...invocation, paths: tip });
       expect(result.exitCode).toBe(1);
