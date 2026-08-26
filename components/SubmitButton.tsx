@@ -109,3 +109,7 @@ export default function SubmitButton({
     </button>
   );
 }
+
+export const DestructiveSubmit = (
+  props: Omit<SubmitButtonProps, "className">
+) => <SubmitButton {...props} className="btn-danger" />;

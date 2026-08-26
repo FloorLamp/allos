@@ -6,7 +6,7 @@ import { useFormatPrefs } from "@/components/FormatPrefsProvider";
 import { IconPrinter, IconShare } from "@tabler/icons-react";
 import CreatedShareLink from "@/components/CreatedShareLink";
 import ModalShell from "@/components/ModalShell";
-import SubmitButton from "@/components/SubmitButton";
+import SubmitButton, { DestructiveSubmit } from "@/components/SubmitButton";
 import { printRegion } from "@/components/print-scope";
 import {
   SHARE_FIELDS,
@@ -215,12 +215,9 @@ export default function PassportControls({
                     {l.status === "valid" && (
                       <form action={onRevoke} className="shrink-0">
                         <input type="hidden" name="id" value={l.id} />
-                        <SubmitButton
-                          className="btn-danger px-3 py-1.5 text-xs"
-                          pendingLabel="Revoking…"
-                        >
+                        <DestructiveSubmit pendingLabel="Revoking…">
                           Revoke
-                        </SubmitButton>
+                        </DestructiveSubmit>
                       </form>
                     )}
                   </li>
