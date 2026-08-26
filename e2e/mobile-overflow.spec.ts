@@ -63,7 +63,7 @@ test.describe("mobile clipped-content audit (#1063)", () => {
     await expect(page.getByRole("heading", { name: "Setup" })).toBeVisible();
     const status = page.getByTestId("strava-integration-status");
     const controls = status.locator(
-      "[data-button-control], [data-integration-disconnect]"
+      "[data-button-control], [data-integration-disconnect] button"
     );
     const count = await controls.count();
     expect(count).toBeGreaterThanOrEqual(3);
@@ -87,7 +87,7 @@ test.describe("mobile clipped-content audit (#1063)", () => {
           previous.y + previous.height <= current.y
       ).toBe(true);
     }
-    const disconnect = status.locator("[data-integration-disconnect]");
+    const disconnect = status.locator("[data-integration-disconnect] button");
     await disconnect.focus();
     await page.keyboard.press("Shift+Tab");
     await page.keyboard.press("Tab");

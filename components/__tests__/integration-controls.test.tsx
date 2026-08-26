@@ -9,8 +9,7 @@ import { describe, expect, it, vi } from "vitest";
 import SyncNowButton from "@/components/SyncNowButton";
 import IntegrationDisconnectButton from "@/components/integrations/IntegrationDisconnectButton";
 import { INTEGRATION_BACKFILL_STARTED_EVENT } from "@/components/integrations/IntegrationBackfillProgress";
-import StravaBackfillButton from "@/app/(app)/integrations/strava/StravaBackfillButton";
-import StravaRecheckButton from "@/app/(app)/integrations/strava/StravaRecheckButton";
+import StravaActionButtons from "@/app/(app)/integrations/strava/StravaActionButtons";
 
 const toast = vi.hoisted(() => vi.fn());
 const actions = vi.hoisted(() => ({
@@ -56,7 +55,7 @@ describe("integration action controls", () => {
     actions.backfill
       .mockResolvedValueOnce({ status: "error", message: "Try later" })
       .mockResolvedValueOnce({ status: "done", message: "Backfill started" });
-    const view = render(<StravaBackfillButton missing={7} />);
+    const view = render(<StravaActionButtons missing={7} answeredNone={0} />);
     expect(screen.getByRole("button").textContent).toContain("7");
 
     fireEvent.click(screen.getByRole("button"));
@@ -73,12 +72,12 @@ describe("integration action controls", () => {
       tone: "success",
     });
 
-    view.rerender(<StravaRecheckButton answeredNone={3} />);
+    view.rerender(<StravaActionButtons missing={0} answeredNone={3} />);
     expect(screen.getByTestId("strava-recheck-empty").textContent).toContain(
       "3"
     );
-    view.rerender(<StravaRecheckButton answeredNone={0} />);
-    expect(screen.queryByRole("button")).toBeNull();
+    view.rerender(<StravaActionButtons missing={0} answeredNone={0} />);
+    expect(screen.queryByTestId("strava-recheck-empty")).toBeNull();
   });
 });
 
@@ -86,9 +85,7 @@ describe("integration disconnect controls", () => {
   it("binds a callback and owns its pending state", async () => {
     const result = Promise.withResolvers<void>();
     const action = vi.fn(() => result.promise);
-    render(
-      <IntegrationDisconnectButton kind="family-feed" onDisconnect={action} />
-    );
+    render(<IntegrationDisconnectButton kind="family-feed" action={action} />);
     const button = screen.getByTestId("family-feed-disable");
     button.focus();
     expect(document.activeElement).toBe(button);
@@ -105,9 +102,7 @@ describe("integration disconnect controls", () => {
   it("binds a Server Action through its owned form", async () => {
     const result = Promise.withResolvers<void>();
     const action = vi.fn((_formData: FormData) => result.promise);
-    render(
-      <IntegrationDisconnectButton kind="disconnect" serverAction={action} />
-    );
+    render(<IntegrationDisconnectButton kind="disconnect" action={action} />);
     const button = screen.getByRole("button", { name: "Disconnect" });
     fireEvent.click(button);
     await waitFor(() => expect(action).toHaveBeenCalledOnce());

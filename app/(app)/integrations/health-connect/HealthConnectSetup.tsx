@@ -199,7 +199,7 @@ export default function HealthConnectSetup({
         </div>
         <IntegrationDisconnectButton
           kind="disconnect"
-          onDisconnect={onDisconnect}
+          action={onDisconnect}
           disabled={busy}
         />
       </div>

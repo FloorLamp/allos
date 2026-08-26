@@ -392,7 +392,7 @@ export default function CalendarFeedConfig({
           </button>
           <IntegrationDisconnectButton
             kind="calendar-feed"
-            onDisconnect={onDisable}
+            action={onDisable}
             disabled={busy}
           />
         </div>

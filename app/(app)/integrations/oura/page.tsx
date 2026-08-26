@@ -98,7 +98,7 @@ export default async function OuraPage(props: {
                   <SyncNowButton sourceId="oura" />
                   <IntegrationDisconnectButton
                     kind="disconnect"
-                    serverAction={disconnectOuraAction}
+                    action={disconnectOuraAction}
                   />
                 </>
               }

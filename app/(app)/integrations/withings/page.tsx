@@ -114,7 +114,7 @@ export default async function WithingsPage(props: {
                   <SyncNowButton sourceId="withings" />
                   <IntegrationDisconnectButton
                     kind="disconnect"
-                    serverAction={disconnectWithingsAction}
+                    action={disconnectWithingsAction}
                   />
                 </>
               }

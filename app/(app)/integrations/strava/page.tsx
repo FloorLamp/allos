@@ -11,8 +11,7 @@ import IntegrationStatusHeader from "@/components/integrations/IntegrationStatus
 import IntegrationDisconnectButton from "@/components/integrations/IntegrationDisconnectButton";
 import SyncHistoryTable from "@/components/integrations/SyncHistoryTable";
 import SyncNowButton from "@/components/SyncNowButton";
-import StravaBackfillButton from "./StravaBackfillButton";
-import StravaRecheckButton from "./StravaRecheckButton";
+import StravaActionButtons from "./StravaActionButtons";
 import { TokenRow } from "@/components/TokenRow";
 import { stravaCallbackUrl } from "./url";
 import { externalBaseUrl } from "@/lib/external-url-server";
@@ -130,11 +129,13 @@ export default async function StravaPage(props: {
               controls={
                 <>
                   <SyncNowButton sourceId="strava" />
-                  <StravaBackfillButton missing={missingRideDetails} />
-                  <StravaRecheckButton answeredNone={answeredNoneSessions} />
+                  <StravaActionButtons
+                    missing={missingRideDetails}
+                    answeredNone={answeredNoneSessions}
+                  />
                   <IntegrationDisconnectButton
                     kind="disconnect"
-                    serverAction={disconnectStravaAction}
+                    action={disconnectStravaAction}
                   />
                 </>
               }

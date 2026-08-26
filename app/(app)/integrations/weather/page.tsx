@@ -111,7 +111,7 @@ export default async function WeatherPage(props: {
                     <SyncNowButton sourceId="weather" />
                     <IntegrationDisconnectButton
                       kind="disable"
-                      serverAction={disconnectWeatherAction}
+                      action={disconnectWeatherAction}
                     />
                   </>
                 }

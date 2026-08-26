@@ -190,7 +190,7 @@ export default function ConsolidatedFeedConfig({
         </button>
         <IntegrationDisconnectButton
           kind="family-feed"
-          onDisconnect={onDisable}
+          action={onDisable}
           disabled={busy}
         />
       </div>
