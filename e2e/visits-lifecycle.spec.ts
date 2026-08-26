@@ -1,6 +1,10 @@
 import { test, expect } from "./fixtures";
 import Database from "better-sqlite3";
 import { followLink, hydratedClick } from "./helpers";
+import {
+  expectDesktopSpecialtySubmit as expectDesktopFormSubmit,
+  expectPhoneSpecialtySubmit as expectPhoneFormSubmit,
+} from "./specialty-form-actions";
 import { workerDbPath } from "./worker-env";
 import { withVisitFact } from "./visit-form-helpers";
 
@@ -13,6 +17,7 @@ import { withVisitFact } from "./visit-form-helpers";
 const DB_PATH = workerDbPath();
 const MARKER = "E2E lifecycle physical";
 const STALE_MARKER = "E2E stale double complete";
+const PHONE = { width: 390, height: 844 };
 
 function cleanup() {
   const handle = new Database(DB_PATH);
@@ -59,8 +64,32 @@ test.describe("Visits lifecycle — book → complete → log visit → detail (
       // fact away (FactEditorHost's `onKeyDown`).
       await page.keyboard.press("Escape");
     });
-    await visitDialog.getByRole("button", { name: "Add", exact: true }).click();
+    const desktopViewport = page.viewportSize();
+    expect(
+      desktopViewport,
+      "desktop project has a fixed viewport"
+    ).not.toBeNull();
+    const form = visitDialog.locator("form");
+    const addSubmit = form.getByRole("button", { name: "Add", exact: true });
+    await expectDesktopFormSubmit({
+      form,
+      actions: form.getByTestId("appointment-form-actions"),
+      primaryOwner: form.getByTestId("appointment-form-primary-action"),
+      submit: addSubmit,
+      name: "appointment add",
+    });
+    await page.setViewportSize(PHONE);
+    await expectPhoneFormSubmit({
+      form,
+      actions: form.getByTestId("appointment-form-actions"),
+      primaryOwner: form.getByTestId("appointment-form-primary-action"),
+      submit: addSubmit,
+      fillsActions: true,
+      name: "phone appointment add",
+    });
+    await addSubmit.click();
     await expect(page.getByText("Appointment saved")).toBeVisible();
+    await page.setViewportSize(desktopViewport!);
 
     // Complete the just-booked appointment. Its row carries the Mark-completed
     // control while scheduled.
