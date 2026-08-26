@@ -30,6 +30,7 @@ import {
   correctionPickerTitle,
   FOOD_TIME_PREFIXES,
 } from "./correction-rows";
+import { ORIGIN_MARK_PATTERN } from "./chat-origin";
 import type { NotificationAction, NotificationMessage } from "./types";
 import { GLYPH } from "./glyphs";
 
@@ -112,6 +113,16 @@ export function foodLessCallbackData(
   return `foodless:${profileId}:${window}:${date}`;
 }
 
+// The head of a food quick-log / protein token, up to and including its profile id,
+// with the optional origin marker in between. Built from ORIGIN_MARK_PATTERN rather
+// than respelling `[nc]` here (#3567 item 3): the charset lives in chat-origin.ts, and
+// a hand-copy of it fails SILENTLY — a marker this pattern cannot match reads as an
+// unmarked legacy token, which is a valid state, so the button count would simply drop.
+const FOOD_QUICK_LOG_TOKEN_RE = new RegExp(`^food:${ORIGIN_MARK_PATTERN}\\d+:`);
+const FOOD_PROTEIN_TOKEN_RE = new RegExp(
+  `^foodprotein:${ORIGIN_MARK_PATTERN}\\d+:`
+);
+
 // Count the ranked quick-log buttons currently in a nudge keyboard (#1075). Expansion is
 // STATELESS — the number of visible ranked buttons IS the current visibleCount — so a
 // handler reads it back off cq.message.reply_markup to preserve, extend, or reduce the
@@ -137,8 +148,8 @@ export function countVisibleFoodButtons(
         // family prefix and the profile id, so a `\d+`-anchored pattern would stop
         // counting the buttons the moment a keyboard declared where it came from —
         // and the expansion this function preserves is read back from that count.
-        (/^food:(?:[nc]:)?\d+:/.test(d) ||
-          /^foodprotein:(?:[nc]:)?\d+:/.test(d))
+        // The marker segment is IMPORTED, never respelled (#3567 item 3).
+        (FOOD_QUICK_LOG_TOKEN_RE.test(d) || FOOD_PROTEIN_TOKEN_RE.test(d))
       )
         n++;
     }

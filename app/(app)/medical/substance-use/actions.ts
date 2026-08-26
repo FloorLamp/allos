@@ -349,11 +349,15 @@ export async function addSubstanceDailyTotalAction(
   if (isMinor(getProfileAge(profile.id))) return { kind: "not-found" };
   const parsed = historyInput(formData, today(profile.id));
   if (!parsed.ok) return parsed.outcome;
+  // READ OFF THE POST, not hardcoded (#3567). Behaviour is unchanged today — an
+  // unstamped post takes `webOrigin`'s `page` fallback, which is what the literal
+  // said — but the claim is now made by the mounting instead of by this file, which
+  // cannot know where its form is rendered.
   const outcome = addSubstanceDailyTotalCore(
     profile.id,
     parsed.substance,
     parsed,
-    "page"
+    webOrigin(formData)
   );
   if (outcome.kind === "added") revalidateSubstanceUse();
   return outcome;
@@ -373,7 +377,7 @@ export async function updateSubstanceDailyTotalAction(
     parsed.substance,
     id,
     parsed,
-    "page"
+    webOrigin(formData)
   );
   if (outcome.kind === "updated") revalidateSubstanceUse();
   return outcome;

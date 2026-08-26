@@ -512,6 +512,15 @@ export async function commitWorkouts(
           profile.id,
           sqlNow(),
           // A bulk training-log IMPORT, not a session anybody tapped (#3087).
+          //
+          // `source` STAYS NULL HERE, and that is a known gap rather than an
+          // oversight (#3566): `import` normally pairs with a `source` naming the
+          // importer, but this action receives only the extracted workouts — no
+          // document id is in scope to build a `document:<n>` from. Filling it in
+          // is a signature change with product consequences (Trends folds series by
+          // `source`; lib/activity-draft.ts reads `source != null` as "not a
+          // draft"), so it is a decision. Naming it here so the next reader of
+          // lib/logged-via.ts's `import` sentence knows which rows it hedges for.
           IMPORTED
         ).lastInsertRowid
       );

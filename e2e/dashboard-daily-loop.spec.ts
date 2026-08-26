@@ -71,11 +71,6 @@ test.describe("dashboard daily loop (#1221)", () => {
     await expect(bpCandidate.getByTestId("vitals-latest-bp")).toContainText(
       /\d{2,3}\/\d{2,3}/
     );
-    // "60 bpm", NOT "60 bpm resting" (#3544 item 2): the unit is `bpm` and the word
-    // "resting" is the row LABEL's job — the family this row sits in is already
-    // called "Resting heart rate". Anchored on the number so the check is about the
-    // reading and not about a stray "bpm" elsewhere in the row, and paired with the
-    // negative because `toContainText(/\d+ bpm/)` alone matches the defect too.
     const hrReading = hrCandidate.getByTestId("vitals-latest-resting-hr");
     await expect(hrReading).toContainText(/\d+ bpm/);
     await expect(hrReading).not.toContainText("bpm resting");

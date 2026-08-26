@@ -35,6 +35,7 @@
 
 import type { Database } from "better-sqlite3";
 import type { FitnessEntryInput } from "../lib/fitness-assessment";
+import { VIA_IMPORTED, VIA_SEEDED } from "./seed-logged-via";
 
 export interface PersonaContext {
   db: Database;
@@ -158,10 +159,12 @@ interface RecordWriter {
 
 function recordWriter(ctx: PersonaContext): RecordWriter {
   const ins = ctx.db.prepare(
+    // `source` is bound to the literal "manual" below, so this is a person's own
+    // entry rather than an import — see scripts/seed-logged-via.ts.
     `INSERT INTO medical_records
        (profile_id, date, category, name, value, unit, reference_range,
-        value_num, canonical_name, panel, source, occurred_at)
-     VALUES (?,?,?,?,?,?,?,?,?,?,?,?)`
+        value_num, canonical_name, panel, source, occurred_at, logged_via)
+     VALUES (?,?,?,?,?,?,?,?,?,?,?,?, ${VIA_SEEDED})`
   );
   const ids: number[] = [];
   return {
@@ -198,8 +201,8 @@ function bodyMetric(
 ): void {
   ctx.db
     .prepare(
-      `INSERT INTO body_metrics (profile_id, date, weight_kg, body_fat_pct, resting_hr, notes)
-       VALUES (?,?,?,?,?,NULL)`
+      `INSERT INTO body_metrics (profile_id, date, weight_kg, body_fat_pct, resting_hr, notes, logged_via)
+       VALUES (?,?,?,?,?,NULL, ${VIA_SEEDED})`
     )
     .run(ctx.profileId, day, weightKg, bodyFatPct, restingHr);
 }
@@ -229,8 +232,8 @@ function strengthSession(
   const activityId = Number(
     ctx.db
       .prepare(
-        `INSERT INTO activities (profile_id, date, type, title, notes, duration_min, distance_km, intensity)
-         VALUES (?,?,?,?,NULL,?,NULL,?)`
+        `INSERT INTO activities (profile_id, date, type, title, notes, duration_min, distance_km, intensity, logged_via)
+         VALUES (?,?,?,?,NULL,?,NULL,?, ${VIA_SEEDED})`
       )
       .run(ctx.profileId, day, "strength", title, 70, "hard").lastInsertRowid
   );
@@ -265,8 +268,8 @@ function cardioSession(
   const id = Number(
     ctx.db
       .prepare(
-        `INSERT INTO activities (profile_id, date, type, title, notes, duration_min, distance_km, intensity, components)
-         VALUES (?,?,?,?,NULL,?,?,?,?)`
+        `INSERT INTO activities (profile_id, date, type, title, notes, duration_min, distance_km, intensity, components, logged_via)
+         VALUES (?,?,?,?,NULL,?,?,?,?, ${VIA_SEEDED})`
       )
       .run(
         ctx.profileId,
@@ -389,8 +392,8 @@ function logAdherence(ctx: PersonaContext): void {
   // Amount is snapshotted like the real confirm path (adherence.ts) does, so
   // the dose-history ledger shows what was taken instead of "—".
   const log = ctx.db.prepare(
-    `INSERT OR IGNORE INTO intake_item_logs (dose_id, item_id, date, amount, status)
-     VALUES (?,?,?,?,'taken')`
+    `INSERT OR IGNORE INTO intake_item_logs (dose_id, item_id, date, amount, status, logged_via)
+     VALUES (?,?,?,?,'taken', ${VIA_SEEDED})`
   );
   for (let d = 6; d >= 1; d--) {
     for (const row of doses) {
@@ -551,8 +554,8 @@ function activeIllness(
       );
   }
   const sym = ctx.db.prepare(
-    `INSERT INTO symptom_logs (profile_id, date, symptom, severity, note)
-     VALUES (?, ?, ?, ?, NULL)
+    `INSERT INTO symptom_logs (profile_id, date, symptom, severity, note, logged_via)
+     VALUES (?, ?, ?, ?, NULL, ${VIA_SEEDED})
      ON CONFLICT (profile_id, date, symptom)
      DO UPDATE SET severity = MAX(symptom_logs.severity, excluded.severity)`
   );
@@ -615,7 +618,11 @@ function addDocument(
   if (opts.linkCategory) {
     const linked = ctx.db
       .prepare(
-        `UPDATE medical_records SET document_id = ?, source = 'extracted'
+        // `logged_via` moves with `source` — see the twin in scripts/seed.ts and the
+        // exception stated in scripts/seed-logged-via.ts. A row retro-attached to a
+        // document was not tapped by anybody.
+        `UPDATE medical_records
+            SET document_id = ?, source = 'extracted', logged_via = ${VIA_IMPORTED}
          WHERE profile_id = ? AND date = ? AND category = ?`
       )
       .run(docId, ctx.profileId, opts.linkDate ?? day, opts.linkCategory);
@@ -671,8 +678,8 @@ function sourcedCardio(
         `INSERT INTO activities
            (profile_id, date, type, title, duration_min, distance_km,
             start_time, end_time, components, source, external_id,
-            avg_hr, max_hr, elevation_m, edited)
-         VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,0)`
+            avg_hr, max_hr, elevation_m, edited, logged_via)
+         VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,0, ${VIA_IMPORTED})`
       )
       .run(
         ctx.profileId,
@@ -751,8 +758,8 @@ function ouraNight(
   ins.run(ctx.profileId, "hrv_ms", wakeDay, start, end, opts.hrv);
   ctx.db
     .prepare(
-      `INSERT INTO body_metrics (profile_id, date, resting_hr, source, occurred_at)
-       VALUES (?,?,?,'oura',?)`
+      `INSERT INTO body_metrics (profile_id, date, resting_hr, source, occurred_at, logged_via)
+       VALUES (?,?,?,'oura',?, ${VIA_IMPORTED})`
     )
     .run(ctx.profileId, wakeDay, opts.rhr, end);
 }
@@ -767,8 +774,8 @@ function withingsWeighIn(
   const at = ctx.occurredAt(day, "07:05");
   ctx.db
     .prepare(
-      `INSERT INTO body_metrics (profile_id, date, weight_kg, body_fat_pct, source, occurred_at)
-       VALUES (?,?,?,?,'withings',?)`
+      `INSERT INTO body_metrics (profile_id, date, weight_kg, body_fat_pct, source, occurred_at, logged_via)
+       VALUES (?,?,?,?,'withings',?, ${VIA_IMPORTED})`
     )
     .run(ctx.profileId, day, opts.kg, opts.fatPct, at);
   const ins = ctx.db.prepare(
@@ -1490,7 +1497,7 @@ function seedToddlerData(
       const day = ctx.daysAgo(ago);
       ctx.db
         .prepare(
-          `INSERT INTO body_metrics (profile_id, date, weight_kg, notes) VALUES (?,?,?,?)`
+          `INSERT INTO body_metrics (profile_id, date, weight_kg, notes, logged_via) VALUES (?,?,?,?, ${VIA_SEEDED})`
         )
         .run(
           ctx.profileId,
@@ -1851,8 +1858,8 @@ const household: SeedPersona = {
     ctx.db
       .prepare(
         `INSERT INTO medical_records
-           (profile_id, date, category, name, value, value_num, unit, canonical_name)
-         VALUES (?, ?, 'instrument', 'PHQ-9', '24', 24, NULL, 'PHQ-9')`
+           (profile_id, date, category, name, value, value_num, unit, canonical_name, logged_via)
+         VALUES (?, ?, 'instrument', 'PHQ-9', '24', 24, NULL, 'PHQ-9', ${VIA_SEEDED})`
       )
       .run(ctx.profileId, ctx.daysAgo(0));
     const workoutDay = ctx.daysAgo(0);
@@ -1860,8 +1867,8 @@ const household: SeedPersona = {
       .prepare(
         `INSERT INTO activities
            (profile_id, date, type, title, start_time, end_time, duration_min,
-            created_at, updated_at)
-         VALUES (?, ?, 'strength', 'Lunch workout', '12:30', NULL, NULL, ?, ?)`
+            created_at, updated_at, logged_via)
+         VALUES (?, ?, 'strength', 'Lunch workout', '12:30', NULL, NULL, ?, ?, ${VIA_SEEDED})`
       )
       .run(
         ctx.profileId,
@@ -2117,8 +2124,8 @@ const pregnant: SeedPersona = {
       const phq = ctx.db
         .prepare(
           `INSERT INTO medical_records
-             (profile_id, date, category, name, value, value_num, unit, canonical_name)
-           VALUES (?, ?, 'instrument', 'PHQ-9', '7', 7, NULL, 'PHQ-9')`
+             (profile_id, date, category, name, value, value_num, unit, canonical_name, logged_via)
+           VALUES (?, ?, 'instrument', 'PHQ-9', '7', 7, NULL, 'PHQ-9', ${VIA_SEEDED})`
         )
         .run(ctx.profileId, ctx.daysAgo(25));
       const answers = ctx.db.prepare(
@@ -2207,7 +2214,7 @@ const pregnant: SeedPersona = {
       const day = maya.daysAgo(ago);
       ctx.db
         .prepare(
-          `INSERT INTO body_metrics (profile_id, date, weight_kg, notes) VALUES (?,?,?,NULL)`
+          `INSERT INTO body_metrics (profile_id, date, weight_kg, notes, logged_via) VALUES (?,?,?,NULL, ${VIA_SEEDED})`
         )
         .run(maya.profileId, day, kg);
       metricPoint(maya, "height_cm", day, cm);
@@ -2792,8 +2799,8 @@ const biohacker: SeedPersona = {
           targetId
         );
       const session = ctx.db.prepare(
-        `INSERT INTO practice_logs (profile_id, practice, date, time, duration_min)
-         VALUES (?, ?, ?, ?, ?)`
+        `INSERT INTO practice_logs (profile_id, practice, date, time, duration_min, logged_via)
+         VALUES (?, ?, ?, ?, ?, ${VIA_SEEDED})`
       );
       for (let d = 41; d >= 0; d--) {
         if (dayMod.includes(d % 7)) {
