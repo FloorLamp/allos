@@ -124,3 +124,15 @@ export function checkRateLimit(
   store.set(key, decision.state);
   return { ok: decision.ok, retryAfterSec: decision.retryAfterSec };
 }
+
+// Test seam: DB suites share one Node process, unlike independent app boots.
+// The `store` above then carries a whole file's spent budget into the next file
+// in the same worker, and the keys collide because each file reseeds the same
+// template database — so `api-token:1` is a DIFFERENT token per file and the SAME
+// bucket. Adding one DB-tier file re-packs the workers and the victim is whichever
+// file lands behind the spenders, with a 429 in place of its expected status
+// (#3809). `lastSweep` resets too: leaving it set would skip the next sweep.
+export function resetRateLimitState(): void {
+  store.clear();
+  lastSweep = 0;
+}

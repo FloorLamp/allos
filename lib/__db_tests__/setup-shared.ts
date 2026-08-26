@@ -92,6 +92,12 @@ async function resetCarriedState(): Promise<void> {
   // file is indistinguishable from this file's own data.
   const schedule = await import("../queries/intake/schedule");
   schedule.invalidateDoseScheduleVersions();
+  // #3809 fixed-window rate-limit buckets for the token-authenticated routes,
+  // keyed on the presented token's row id. Every file reseeds the same template,
+  // so the ids restart at 1 and the budget an earlier file spent is charged to
+  // this file's unrelated token — a 429 where the test expected its own status.
+  const rateLimit = await import("../rate-limit");
+  rateLimit.resetRateLimitState();
 }
 
 beforeAll(async () => {
