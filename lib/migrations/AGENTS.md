@@ -15,6 +15,8 @@ These instructions apply to the migration runner and migrations.
   the same tail. Resolve with `git checkout --ours` and re-run the generator; it
   recomputes every entry, so either side is a fine start. Never delete it — a
   missing manifest is not a clean slate.
+- The generator refuses conflict markers in `index.ts` too, rather than matching
+  through them and writing a manifest for a file that will not compile.
 - Use a rebuild migration to grow a `CHECK` enum or add a foreign key. Null
   dangling links before enforcing a new foreign key.
 - Put one-shot data moves in migrations, not settings flags. Per-boot

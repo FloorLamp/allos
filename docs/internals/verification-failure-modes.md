@@ -299,10 +299,23 @@ These are not review taste; each retired a green that meant nothing.
   files, a throw planted in every callback, 19 red the run. The 2 that did not are
   promises the tests deliberately never settle. So `.then()` on a REAL promise is
   fine, and the rule worth enforcing is the narrow one:
-  `lib/__tests__/awaited-act-census.test.ts` requires every React `act(` to be
-  `await`ed. No lint rule in this repo covers it — the effective config for a test
-  file carries 67 rules, none promise-related, and `no-floating-promises` inspects
-  expression statements, so the `return` form is invisible to it even when enabled.
+  `lib/__tests__/awaited-act-census.test.ts`. No lint rule in this repo covers it —
+  the effective config for a test file carries 67 rules, none promise-related, and
+  `no-floating-promises` inspects expression statements, so the `return` form is
+  invisible to it even when enabled.
+  THE GUARD'S SCOPE IS THE CALLBACK, NOT THE `await`, and its first version got
+  that wrong. Written absolutely — any `act(` without a preceding `await` — it
+  flagged ten sites main gained in two days, all of them
+  `act(() => vi.advanceTimersByTime(500))`, where there is nothing to await.
+  Measured against the real `act`: a SYNCHRONOUS callback's throw comes back out
+  of the call on the same stack and fails the case whether or not anyone awaited
+  it; an ASYNCHRONOUS one parks its rejection on the thenable, and dropping the
+  thenable drops the rejection. So the census is quiet only where it can prove
+  propagation — a syntactically synchronous function literal whose result is
+  discarded — and fires on everything else, `act(someHelper)` included. That is an
+  allowance for a SHAPE, not for a file: it names no occurrence, so the eleventh
+  synchronous site is silent for the same reason the first ten are. A guard that
+  reds main on a correct idiom does not survive to catch the incorrect one.
 
 - **A guard that recomputes the file it checks cannot see an edit that was
   recomputed too.** `lib/__tests__/migration-immutability.test.ts` asserts
@@ -317,6 +330,29 @@ These are not review taste; each retired a green that meant nothing.
   tree HAS, so DELETING a shipped migration outright was `dropped: 1`,
   `REHASHED: 0` and exit 0 — an alarm that only looks at what is in front of it
   cannot fire on what was taken away.
+
+- **A gate can be correct and still never be asked.** The deletion half above is
+  only meaningful against a COMMON ANCESTOR of HEAD; against a branch tip a name
+  missing from the tree is usually one main gained, so the generator declines to
+  ask and prints `GONE: not asked`. That sentence is true, and on a green check it
+  is indistinguishable from asked-and-clean. CI's `check` job took
+  `actions/checkout@v7` with no `fetch-depth` — depth 1, no merge-base, question
+  never asked — while the two jobs that need history passed `fetch-depth: 2`
+  explicitly. Measured on a CI-shaped checkout of the real tree: delete a shipped
+  migration's file, import, `MIGRATIONS` entry and manifest key, and the step
+  prints `unchanged: 219 … GONE: not asked` and exits 0. Every already-migrated
+  database then refuses to boot on a false diagnosis while fresh installs boot on
+  a different schema.
+  THE TELL WAS IN THE COMMENT: it explained the unasked question as a design
+  choice, when it was a consequence of the fetch two lines above. A comment that
+  rationalises a limit rather than naming what imposes it is the shape to
+  distrust. The fix is history (`fetch-depth: 0`) plus `--require-merge-base`,
+  which refuses rather than reports when the reference is a tip — so the same
+  silence cannot come back through a later "optimisation" of the checkout.
+  AND THE WORRY THAT MOTIVATED THE LIMIT DOES NOT APPLY TO THE FIX: a merge-base
+  is an ancestor of HEAD by construction, so asking against it cannot
+  false-positive. Measured on one tree, both ways — merge-base `GONE: []` exit 0,
+  main's tip `GONE: ["20260823-intake-item-purposes.ts"]` exit 1.
 
 - **A comment can generate a real rule.** Tailwind's content scanner reads source
   as text, so a class name in an English sentence compiles to CSS: `.min-h-9`
