@@ -137,7 +137,7 @@ import DemotionSuggestions from "./DemotionSuggestions";
 import SupplementSchedule from "./SupplementSchedule";
 import SupplementInsightBadges from "./SupplementInsightBadges";
 import AddSupplementModal from "@/components/nutrition/AddSupplementModal";
-import CreateAction, { SectionCreateHeader } from "@/components/CreateAction";
+import { SectionCreateHeader } from "@/components/CreateAction";
 import SupplementWeeklyAdherence from "@/components/SupplementWeeklyAdherence";
 import {
   addIntakeItem,
@@ -1284,15 +1284,16 @@ export default async function SupplementsTab({
                           <DoseLedgerLink kind="supplement" />
                         </>
                       }
-                      createAction={
-                        <CreateAction kind="supplement">
+                      createAction={{
+                        kind: "supplement",
+                        control: (
                           <AddSupplementModal
                             {...addSupplementModal}
                             conditions={purposeConditions}
                             biomarkers={purposeBiomarkers}
                           />
-                        </CreateAction>
-                      }
+                        ),
+                      }}
                     />
                   </section>
                 </div>

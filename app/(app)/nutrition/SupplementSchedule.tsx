@@ -2,7 +2,6 @@
 
 import { useState, type ReactNode } from "react";
 import IntakeContextBar from "@/components/IntakeContextBar";
-import CreateAction from "@/components/CreateAction";
 import { EmptyState } from "@/components/ui";
 import AddSupplementModal, {
   type AddSupplementModalProps,
@@ -68,11 +67,10 @@ export default function SupplementSchedule({
           taken: activeDay.takenCount,
           total: activeDay.totalCount,
         }}
-        createAction={
-          <CreateAction kind="supplement">
-            <AddSupplementModal {...addSupplement} />
-          </CreateAction>
-        }
+        createAction={{
+          kind: "supplement",
+          control: <AddSupplementModal {...addSupplement} />,
+        }}
       />
 
       <section className="mb-4">

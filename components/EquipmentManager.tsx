@@ -3,7 +3,7 @@
 import { useId, useState, useTransition } from "react";
 import { IconPlus, IconX } from "@tabler/icons-react";
 import DestinationLink from "@/components/DestinationLink";
-import CreateAction, {
+import {
   SectionCreateHeader,
   useCreateActionLabel,
 } from "@/components/CreateAction";
@@ -322,14 +322,11 @@ export default function EquipmentManager({
     <div className="card max-w-2xl space-y-4">
       <SectionCreateHeader
         title="Your equipment"
-        createAction={
-          <CreateAction
-            kind="equipment"
-            available={creationAvailable && !adding && editingId == null}
-          >
-            <EquipmentCreateControl onActivate={startAdd} />
-          </CreateAction>
-        }
+        createAction={{
+          kind: "equipment",
+          available: creationAvailable && !adding && editingId == null,
+          control: <EquipmentCreateControl onActivate={startAdd} />,
+        }}
       />
 
       <p className="text-xs text-slate-500 dark:text-slate-400">

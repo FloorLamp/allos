@@ -17,6 +17,7 @@ export const CREATE_ACTIONS = {
   },
   practice: {
     label: "Add practice",
+    dialogTitle: "Add a practice",
     housing: "page",
   },
   "training-activity": {
@@ -47,6 +48,7 @@ export const CREATE_ACTIONS = {
   string,
   {
     label: `Add ${string}`;
+    dialogTitle?: `Add ${string}`;
     housing: "page" | "section";
   }
 >;
@@ -55,42 +57,48 @@ export type CreateActionKind = keyof typeof CREATE_ACTIONS;
 export type CreateActionLabel =
   (typeof CREATE_ACTIONS)[CreateActionKind]["label"];
 
-export interface CreateActionProps {
+export interface CreateActionDeclaration {
   kind: CreateActionKind;
   available?: boolean;
-  children: ReactElement;
+  control: ReactElement;
 }
 
-export type CreateActionElement = ReactElement<
-  CreateActionProps,
-  typeof CreateAction
->;
+const CreateActionKindContext = createContext<CreateActionKind | null>(null);
 
-const CreateActionLabelContext = createContext<CreateActionLabel | null>(null);
-
-export function useCreateActionLabel(): CreateActionLabel {
-  const label = useContext(CreateActionLabelContext);
-  if (label === null) {
+function useCreateActionKind(): CreateActionKind {
+  const kind = useContext(CreateActionKindContext);
+  if (kind === null) {
     throw new Error("Registered create controls require CreateAction");
   }
-  return label;
+  return kind;
+}
+
+export function useCreateActionLabel(): CreateActionLabel {
+  return CREATE_ACTIONS[useCreateActionKind()].label;
+}
+
+export function useCreateActionDialogTitle(): `Add ${string}` {
+  const action = CREATE_ACTIONS[useCreateActionKind()];
+  return "dialogTitle" in action ? action.dialogTitle : action.label;
 }
 
 export default function CreateAction({
-  kind,
-  available = true,
-  children,
-}: CreateActionProps) {
-  if (!available) return null;
+  declaration,
+  housing,
+}: {
+  declaration: CreateActionDeclaration;
+  housing: "page" | "section";
+}) {
+  if (declaration.available === false) return null;
+  if (housing !== CREATE_ACTIONS[declaration.kind].housing)
+    throw new Error(
+      `${declaration.kind} create action requires ${CREATE_ACTIONS[declaration.kind].housing} housing`
+    );
   return (
-    <CreateActionLabelContext value={CREATE_ACTIONS[kind].label}>
-      {children}
-    </CreateActionLabelContext>
+    <CreateActionKindContext value={declaration.kind}>
+      {declaration.control}
+    </CreateActionKindContext>
   );
-}
-
-function createActionIsAvailable(action: CreateActionElement): boolean {
-  return action.props.available !== false;
 }
 
 // One structural home for section creates. The host, rather than an arbitrary
@@ -106,11 +114,11 @@ export function SectionCreateHeader({
   title: string;
   subtitle?: ReactNode;
   leading?: ReactElement;
-  createAction?: CreateActionElement;
+  createAction?: CreateActionDeclaration;
   action?: ReactNode;
 }) {
   const createAvailable =
-    createAction && createActionIsAvailable(createAction) ? createAction : null;
+    createAction && createAction.available !== false ? createAction : null;
   return (
     <div className="flex flex-wrap items-center justify-between gap-2">
       <div className="flex min-w-0 items-start gap-3">
@@ -129,7 +137,9 @@ export function SectionCreateHeader({
       {createAvailable || action ? (
         <div className="flex min-w-0 flex-wrap items-center justify-end gap-2">
           {action}
-          {createAvailable}
+          {createAvailable ? (
+            <CreateAction declaration={createAvailable} housing="section" />
+          ) : null}
         </div>
       ) : null}
     </div>

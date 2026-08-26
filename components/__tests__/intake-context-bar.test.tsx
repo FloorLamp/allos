@@ -1,7 +1,7 @@
 import { fireEvent, render, screen } from "@testing-library/react";
 import { expect, it, vi } from "vitest";
 import IntakeContextBar from "@/components/IntakeContextBar";
-import CreateAction, { useCreateActionLabel } from "@/components/CreateAction";
+import { useCreateActionLabel } from "@/components/CreateAction";
 
 const DAYS = [
   { date: "2026-08-26", label: "Today" },
@@ -57,11 +57,10 @@ it("keeps the supplement create in the specialized context action cell", () => {
       value={DAYS[0].date}
       onChange={vi.fn()}
       status={{ kind: "taken", taken: 1, total: 2 }}
-      createAction={
-        <CreateAction kind="supplement">
-          <SupplementCreateControl />
-        </CreateAction>
-      }
+      createAction={{
+        kind: "supplement",
+        control: <SupplementCreateControl />,
+      }}
     />
   );
 

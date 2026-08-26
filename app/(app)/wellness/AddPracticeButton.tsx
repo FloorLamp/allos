@@ -3,7 +3,10 @@
 import { useRef, useState } from "react";
 import { IconPlus } from "@tabler/icons-react";
 import ModalShell from "@/components/ModalShell";
-import { useCreateActionLabel } from "@/components/CreateAction";
+import {
+  useCreateActionDialogTitle,
+  useCreateActionLabel,
+} from "@/components/CreateAction";
 import PracticeEditor from "./PracticeEditor";
 
 export default function AddPracticeButton({
@@ -13,6 +16,7 @@ export default function AddPracticeButton({
 }) {
   const [open, setOpen] = useState(defaultOpen);
   const label = useCreateActionLabel();
+  const dialogTitle = useCreateActionDialogTitle();
   const practiceInputRef = useRef<HTMLInputElement>(null);
 
   return (
@@ -29,7 +33,7 @@ export default function AddPracticeButton({
       </button>
       {open && (
         <ModalShell
-          title={label}
+          title={dialogTitle}
           onClose={() => setOpen(false)}
           initialFocusRef={practiceInputRef}
           size="sm"

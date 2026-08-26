@@ -11,7 +11,6 @@ import {
 import type { ActivityType } from "@/lib/types";
 import { useActivityEditor } from "@/components/ActivityEditorProvider";
 import { PageHeader, EmptyState } from "@/components/ui";
-import CreateAction from "@/components/CreateAction";
 import TrainingLogRow from "./TrainingLogRow";
 import { loadTrainingLogPage } from "./activity-actions";
 import ActiveDaysStrip from "@/components/ActiveDaysStrip";
@@ -565,11 +564,10 @@ export default function TrainingLogView({
       {showHeader && (
         <PageHeader
           title="Training Log"
-          createAction={
-            <CreateAction kind="training-activity">
-              <AddTrainingActivityButton />
-            </CreateAction>
-          }
+          createAction={{
+            kind: "training-activity",
+            control: <AddTrainingActivityButton />,
+          }}
           // The week summary stands in for a static tagline — a compact strip.
           subtitle={
             <span className="flex flex-wrap items-baseline gap-x-4 gap-y-1">

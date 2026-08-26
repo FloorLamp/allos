@@ -1,8 +1,9 @@
-import { cleanup, render, screen } from "@testing-library/react";
+import { cleanup, fireEvent, render, screen } from "@testing-library/react";
 import { describe, expect, it, vi } from "vitest";
 import CreateAction, {
   CREATE_ACTIONS,
   SectionCreateHeader,
+  type CreateActionDeclaration,
   type CreateActionKind,
   useCreateActionLabel,
 } from "@/components/CreateAction";
@@ -22,6 +23,12 @@ vi.mock("@/components/ActivityEditorProvider", () => ({
   useActivityEditor: () => ({ openCreate: vi.fn() }),
 }));
 
+vi.mock("@/components/ModalShell", () => ({
+  default: ({ title }: { title: string }) => (
+    <div role="dialog" aria-label={title} />
+  ),
+}));
+
 vi.mock("@/components/TabFirstTabs", () => ({
   default: () => <nav data-testid="desktop-tabs" />,
 }));
@@ -36,11 +43,23 @@ function DriftingControl() {
   return <button type="button">{label.replace("Add", "New")}</button>;
 }
 
+function housedAction(
+  kind: CreateActionKind,
+  control: React.ReactElement
+): React.ReactElement {
+  const createAction = { kind, control };
+  return CREATE_ACTIONS[kind].housing === "page" ? (
+    <PageHeader title="Test page" createAction={createAction} />
+  ) : (
+    <SectionCreateHeader title="Test section" createAction={createAction} />
+  );
+}
+
 function assertCanonicalRender(
   kind: CreateActionKind,
   control: React.ReactElement
 ) {
-  const view = render(<CreateAction kind={kind}>{control}</CreateAction>);
+  const view = render(housedAction(kind, control));
   const label = CREATE_ACTIONS[kind].label;
   expect(screen.getByRole("button", { name: label })).toBeTruthy();
   view.unmount();
@@ -51,11 +70,7 @@ describe("CreateAction", () => {
     render(
       <PageHeader
         title="Training"
-        createAction={
-          <CreateAction kind="training-activity">
-            <TestControl />
-          </CreateAction>
-        }
+        createAction={{ kind: "training-activity", control: <TestControl /> }}
         action={<button type="button">Filter</button>}
       />
     );
@@ -70,11 +85,7 @@ describe("CreateAction", () => {
       <TabFirstPage
         config={TRAINING_TAB_FIRST_PAGE}
         testId="training"
-        createAction={
-          <CreateAction kind="training-activity">
-            <TestControl />
-          </CreateAction>
-        }
+        createAction={{ kind: "training-activity", control: <TestControl /> }}
         action={<button type="button">Equipment</button>}
       >
         Log
@@ -95,11 +106,7 @@ describe("CreateAction", () => {
       <SectionCreateHeader
         title="Goals"
         action={<button type="button">Show archived</button>}
-        createAction={
-          <CreateAction kind="goal">
-            <TestControl />
-          </CreateAction>
-        }
+        createAction={{ kind: "goal", control: <TestControl /> }}
       />
     );
     const heading = screen.getByRole("heading", { name: "Goals" });
@@ -113,11 +120,11 @@ describe("CreateAction", () => {
     const pageHeader = render(
       <PageHeader
         title="Training"
-        createAction={
-          <CreateAction kind="training-activity" available={false}>
-            <TestControl />
-          </CreateAction>
-        }
+        createAction={{
+          kind: "training-activity",
+          available: false,
+          control: <TestControl />,
+        }}
       />
     );
     expect(screen.queryByRole("button", { name: "Add activity" })).toBeNull();
@@ -128,11 +135,11 @@ describe("CreateAction", () => {
       <TabFirstPage
         config={TRAINING_TAB_FIRST_PAGE}
         testId="unavailable-training"
-        createAction={
-          <CreateAction kind="training-activity" available={false}>
-            <TestControl />
-          </CreateAction>
-        }
+        createAction={{
+          kind: "training-activity",
+          available: false,
+          control: <TestControl />,
+        }}
       >
         Plan
       </TabFirstPage>
@@ -143,11 +150,11 @@ describe("CreateAction", () => {
     const sectionHeader = render(
       <SectionCreateHeader
         title="Equipment"
-        createAction={
-          <CreateAction kind="equipment" available={false}>
-            <TestControl />
-          </CreateAction>
-        }
+        createAction={{
+          kind: "equipment",
+          available: false,
+          control: <TestControl />,
+        }}
       />
     );
     expect(screen.queryByRole("button", { name: "Add equipment" })).toBeNull();
@@ -157,6 +164,17 @@ describe("CreateAction", () => {
   it("makes label drift fail through the rendered accessible name", () => {
     assertCanonicalRender("goal", <TestControl />);
     expect(() => assertCanonicalRender("goal", <DriftingControl />)).toThrow();
+  });
+
+  it("refuses wrong-housing create actions at render time", () => {
+    expect(() =>
+      render(
+        <CreateAction
+          declaration={{ kind: "goal", control: <TestControl /> }}
+          housing="page"
+        />
+      )
+    ).toThrow("goal create action requires section housing");
   });
 
   it("renders every exact registered trigger with registry-owned copy", () => {
@@ -208,7 +226,7 @@ describe("CreateAction", () => {
         "Registered create controls require CreateAction"
       );
       cleanup();
-      render(<CreateAction kind={kind}>{control}</CreateAction>);
+      render(housedAction(kind, control));
       const trigger = screen.getByRole("button", {
         name: CREATE_ACTIONS[kind].label,
       });
@@ -220,10 +238,21 @@ describe("CreateAction", () => {
     }
   });
 
+  it("keeps the practice dialog's grammatical title in registry-owned copy", () => {
+    render(housedAction("practice", <AddPracticeButton />));
+
+    fireEvent.click(screen.getByRole("button", { name: "Add practice" }));
+    expect(screen.getByRole("dialog", { name: "Add a practice" })).toBeTruthy();
+  });
+
   it("keeps the registry closed to canonical copy and housing", () => {
     expect(CREATE_ACTIONS).toEqual({
       medication: { label: "Add medication", housing: "page" },
-      practice: { label: "Add practice", housing: "page" },
+      practice: {
+        label: "Add practice",
+        dialogTitle: "Add a practice",
+        housing: "page",
+      },
       "training-activity": { label: "Add activity", housing: "page" },
       protocol: { label: "Add protocol", housing: "section" },
       goal: { label: "Add goal", housing: "section" },
@@ -232,13 +261,12 @@ describe("CreateAction", () => {
       supplement: { label: "Add supplement", housing: "section" },
     });
 
-    type Props = Parameters<typeof CreateAction>[0];
-    const accepts = (_props: Props) => undefined;
+    const accepts = (_declaration: CreateActionDeclaration) => undefined;
     // @ts-expect-error A create label is selected by kind, not rewritten locally.
-    accepts({ kind: "activity", children: <TestControl /> });
+    accepts({ kind: "activity", control: <TestControl /> });
     accepts({
       kind: "routine",
-      children: <TestControl />,
+      control: <TestControl />,
       // @ts-expect-error The semantic primitive has no caller styling seam.
       className: "px-8",
     });

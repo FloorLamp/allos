@@ -13,7 +13,7 @@ import { mergedSituationOptions } from "@/lib/situations";
 import { SituationOptionsProvider } from "@/components/SituationOptionsContext";
 import { recoveryGearOptions } from "@/lib/protocol-gear";
 import ProtocolFormModal from "@/app/(app)/protocols/ProtocolFormModal";
-import CreateAction, { SectionCreateHeader } from "@/components/CreateAction";
+import { SectionCreateHeader } from "@/components/CreateAction";
 import ProtocolList from "@/app/(app)/protocols/ProtocolList";
 import { createProtocol } from "@/app/(app)/protocols/actions";
 import type { ProtocolTemplate } from "@/lib/protocol-templates";
@@ -90,8 +90,9 @@ export default async function ProtocolsSection({
                 Wellness practices
               </Link>
             }
-            createAction={
-              <CreateAction kind="protocol">
+            createAction={{
+              kind: "protocol",
+              control: (
                 <ProtocolFormModal
                   // A legacy ?template= navigation remounts the modal and opens it with
                   // the linked template. In-form template changes use ProtocolForm's
@@ -103,8 +104,8 @@ export default async function ProtocolsSection({
                   intakeItems={intakeItems}
                   template={template}
                 />
-              </CreateAction>
-            }
+              ),
+            }}
           />
         </SituationOptionsProvider>
       </div>

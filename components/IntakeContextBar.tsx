@@ -3,7 +3,9 @@
 import { IconAdjustmentsHorizontal } from "@tabler/icons-react";
 import CompactDateMenu from "@/components/CompactDateMenu";
 import IconButton from "@/components/IconButton";
-import type { CreateActionElement } from "@/components/CreateAction";
+import CreateAction, {
+  type CreateActionDeclaration,
+} from "@/components/CreateAction";
 import SegmentedControl from "@/components/SegmentedControl";
 
 type SharedProps = {
@@ -25,7 +27,7 @@ type Props = SharedProps &
     | {
         purpose: "supplement-review";
         status: { kind: "taken"; taken: number; total: number };
-        createAction: CreateActionElement;
+        createAction: CreateActionDeclaration;
       }
   );
 
@@ -140,7 +142,12 @@ export default function IntakeContextBar(input: Props) {
               </IconButton>
             </span>
           ) : (
-            input.createAction.props.available !== false && input.createAction
+            input.createAction.available !== false && (
+              <CreateAction
+                declaration={input.createAction}
+                housing="section"
+              />
+            )
           )}
         </div>
       </div>

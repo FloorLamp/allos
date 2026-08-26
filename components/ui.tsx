@@ -1,7 +1,9 @@
 import Link from "next/link";
 import { IconCaretUpFilled, IconCaretDownFilled } from "@tabler/icons-react";
 import ActivityIcon from "@/components/ActivityIcon";
-import type { CreateActionElement } from "@/components/CreateAction";
+import CreateAction, {
+  type CreateActionDeclaration,
+} from "@/components/CreateAction";
 import DestinationIndicator from "@/components/DestinationIndicator";
 import { PendingTextLink } from "@/components/PendingLink";
 import { flagTone } from "@/lib/reference-range";
@@ -25,7 +27,7 @@ export function PageHeader({
   subtitle?: React.ReactNode;
   leading?: React.ReactNode;
   /** The page's one registered create. Unrelated controls stay in `action`. */
-  createAction?: CreateActionElement;
+  createAction?: CreateActionDeclaration;
   action?: React.ReactNode;
   // Give up the whole heading band below `sm` (issue #1485 F, following the #1413
   // dashboard precedent): the title goes `sr-only` and the subtitle is dropped, so
@@ -47,7 +49,7 @@ export function PageHeader({
   // `available` is declaration data, so a Server Component can decide whether
   // its action cell exists without calling through the client boundary.
   const createAvailable = Boolean(
-    createAction && createAction.props.available !== false
+    createAction && createAction.available !== false
   );
   const hasTrailing = Boolean(createAvailable || action);
   // Compact below `md` (issue #1416, section A/D): a phone gives the heading a
@@ -112,11 +114,11 @@ export function PageHeader({
         >
           {createAvailable && createAction && action ? (
             <div className="flex items-center gap-3">
-              {createAction}
+              <CreateAction declaration={createAction} housing="page" />
               {action}
             </div>
           ) : createAvailable && createAction ? (
-            createAction
+            <CreateAction declaration={createAction} housing="page" />
           ) : (
             action
           )}

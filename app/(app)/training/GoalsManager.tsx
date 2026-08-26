@@ -37,7 +37,7 @@ import {
 } from "@/lib/format-date";
 import { useFormatPrefs } from "@/components/FormatPrefsProvider";
 import { EmptyState, Tag } from "@/components/ui";
-import CreateAction, {
+import {
   SectionCreateHeader,
   useCreateActionLabel,
 } from "@/components/CreateAction";
@@ -144,11 +144,10 @@ export default function GoalsManager({
               </button>
             ) : undefined
           }
-          createAction={
-            <CreateAction kind="goal">
-              <GoalCreateControl onActivate={() => setModal({})} />
-            </CreateAction>
-          }
+          createAction={{
+            kind: "goal",
+            control: <GoalCreateControl onActivate={() => setModal({})} />,
+          }}
         />
       </div>
 

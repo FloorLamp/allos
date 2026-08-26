@@ -5,7 +5,7 @@ import { IconPlus } from "@tabler/icons-react";
 import type { RoutineWithDays } from "@/lib/types";
 import { EmptyState } from "@/components/ui";
 import ModalShell from "@/components/ModalShell";
-import CreateAction, {
+import {
   SectionCreateHeader,
   useCreateActionLabel,
 } from "@/components/CreateAction";
@@ -177,11 +177,10 @@ export default function RoutinesManager({
               Adopt a template
             </button>
           }
-          createAction={
-            <CreateAction kind="routine">
-              <RoutineCreateControl onActivate={() => setBuilder({})} />
-            </CreateAction>
-          }
+          createAction={{
+            kind: "routine",
+            control: <RoutineCreateControl onActivate={() => setBuilder({})} />,
+          }}
         />
       </div>
 

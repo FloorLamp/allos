@@ -2,7 +2,6 @@ import Link from "next/link";
 import { redirect } from "next/navigation";
 import PageContainer from "@/components/PageContainer";
 import TabFirstPage from "@/components/TabFirstPage";
-import CreateAction from "@/components/CreateAction";
 import { TRAINING_TAB_FIRST_PAGE } from "@/components/tab-first-pages";
 import { requireSession } from "@/lib/auth";
 import {
@@ -90,14 +89,11 @@ export default async function TrainingPage(props: {
         // Desktop-only since #2892: on phones the header action rendered as a
         // full-width row above every tab, and the Plan tab's Equipment card is
         // the phone door now.
-        createAction={
-          <CreateAction
-            kind="training-activity"
-            available={activeTab === "log"}
-          >
-            <AddTrainingActivityButton />
-          </CreateAction>
-        }
+        createAction={{
+          kind: "training-activity",
+          available: activeTab === "log",
+          control: <AddTrainingActivityButton />,
+        }}
         action={
           <Link
             href="/equipment"

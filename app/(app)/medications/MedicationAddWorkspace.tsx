@@ -3,7 +3,7 @@
 import { useState } from "react";
 import { IconPlus, IconX } from "@tabler/icons-react";
 import { PageHeader } from "@/components/ui";
-import CreateAction, { useCreateActionLabel } from "@/components/CreateAction";
+import { useCreateActionLabel } from "@/components/CreateAction";
 import IntakeItemForm from "@/components/IntakeItemForm";
 import type { InteractionItem } from "@/lib/drug-interactions";
 import type { PgxVariantInput } from "@/lib/pgx";
@@ -88,14 +88,15 @@ export default function MedicationAddWorkspace({
         // title and a counts subtitle at 390px the group would still be sharing a line
         // it does not fit on. The rule is untouched; only its content shrank.
         stackActionBelowSm
-        createAction={
-          <CreateAction kind="medication">
+        createAction={{
+          kind: "medication",
+          control: (
             <MedicationCreateControl
               open={open}
               onToggle={() => setOpen((value) => !value)}
             />
-          </CreateAction>
-        }
+          ),
+        }}
       />
 
       {open ? (
