@@ -8,7 +8,7 @@ import IntakeItemForm from "@/components/IntakeItemForm";
 import type { InteractionItem } from "@/lib/drug-interactions";
 import type { PgxVariantInput } from "@/lib/pgx";
 import type { PediatricFormContext } from "@/lib/prn-dosing";
-import type { FormResult } from "@/lib/types";
+import type { FormResult, IntakeConditionOption } from "@/lib/types";
 import type { SupplyOption } from "@/lib/supply-product";
 
 export function MedicationCreateControl({
@@ -58,7 +58,7 @@ export default function MedicationAddWorkspace({
   pediatric?: PediatricFormContext;
   age: number | null;
   todayStr: string;
-  conditions: { id: number; name: string }[];
+  conditions: IntakeConditionOption[];
   // Arrived from the cabinet's "Add for another person" (#1705). One form carries the
   // shared-supply control the seed shows up in, so the bottle is never linked invisibly.
   initialSupply?: SupplyOption | null;

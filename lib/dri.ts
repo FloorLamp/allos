@@ -959,6 +959,36 @@ const LABEL_UNIT_COUNT_RE = /(?<![\d.,/])(\d+(?:\.\d+)?)\s*([a-z]+)\b/gi;
 // could be.
 const BARE_COUNT_RE = /^\d+(?:\.\d+)?$/;
 
+// "2 x 500 mg capsules" (#3162). The count and its unit word are separated by the
+// PER-UNIT strength, so LABEL_UNIT_COUNT_RE — which needs the two adjacent — cannot
+// see the pair and the row read as one capsule. Anchored at the start, because that
+// is where a multiplier is written; a trailing "x2" is a different notation this does
+// not claim to read.
+const MULTIPLIER_COUNT_RE = /^(\d+(?:\.\d+)?)\s*[x×]\s*/i;
+
+// Counts written as words ("two capsules", "one scoop") — #3162. Bounded at ten:
+// past that the count is written in digits, and every entry here has to be a word
+// whose presence in a dose amount can only mean a number.
+const WORD_NUMERALS = new Map<string, number>([
+  ["one", 1],
+  ["two", 2],
+  ["three", 3],
+  ["four", 4],
+  ["five", 5],
+  ["six", 6],
+  ["seven", 7],
+  ["eight", 8],
+  ["nine", 9],
+  ["ten", 10],
+]);
+
+// The alphabetic words of an amount, in order. Both readings below work off ADJACENT
+// WORDS rather than a regex over the raw string, so an amount that says more than the
+// dose ("take two capsules") still pairs the numeral with the unit it precedes.
+function amountWords(raw: string): string[] {
+  return raw.match(/[a-z]+/gi) ?? [];
+}
+
 // How many LABEL UNITS (capsules, tablets, scoops) one dose row is (issue #2856).
 // Ingredient amounts are stated per single label unit, so a blend taken two capsules
 // at a time contributes twice each ingredient — a question a name-only stack never had
@@ -982,6 +1012,13 @@ const BARE_COUNT_RE = /^\d+(?:\.\d+)?$/;
 //
 // A fractional label ("1/2 tablet") reads as 1, not 0.5 or 2 — the fraction is not
 // parsed, and one serving is the cautious reading of a half dose for a risk total.
+//
+// THE TWO WIDENINGS (#3162) RUN ONLY WHERE THE DIGIT-ADJACENT RULE FOUND NOTHING, and
+// that ordering is the safety argument, not a style choice: every string this file
+// already answers keeps its answer, so a widening of a safety multiplier can only
+// move a row that was reading as one serving. Both still require a LABEL UNIT to be
+// named, so the "10 ml" liquid that once read as ten servings cannot be revived by
+// writing it "2 x 5 ml".
 export function doseUnitCount(amount: string | null): number {
   const raw = (amount ?? "").trim();
   if (!raw) return 1;
@@ -989,6 +1026,19 @@ export function doseUnitCount(amount: string | null): number {
   for (const m of raw.matchAll(LABEL_UNIT_COUNT_RE)) {
     if (!LABEL_UNIT_WORDS.test(m[2])) continue;
     const n = Number(m[1]);
+    if (Number.isFinite(n) && n > 0) return n;
+  }
+  const words = amountWords(raw);
+  // A count written as a word, immediately before its unit ("two capsules").
+  for (let i = 0; i + 1 < words.length; i++) {
+    const n = WORD_NUMERALS.get(words[i].toLowerCase());
+    if (n != null && LABEL_UNIT_WORDS.test(words[i + 1])) return n;
+  }
+  // The multiplier form, and only where a label unit is named ANYWHERE — that is what
+  // makes the leading number a COUNT rather than a strength.
+  const mult = MULTIPLIER_COUNT_RE.exec(raw);
+  if (mult && words.some((w) => LABEL_UNIT_WORDS.test(w))) {
+    const n = Number(mult[1]);
     if (Number.isFinite(n) && n > 0) return n;
   }
   if (BARE_COUNT_RE.test(raw)) {

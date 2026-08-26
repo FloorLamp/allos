@@ -171,6 +171,7 @@ export default async function MedicationDetailPage(props: {
   const medConditions = getConditions(profileId).map((c) => ({
     id: c.id,
     name: c.name,
+    status: c.status,
   }));
   const situationOptions = mergedSituationOptions(getSituations(profileId)).map(
     (o) => o.name
@@ -308,6 +309,7 @@ export default async function MedicationDetailPage(props: {
               canWrite={canWrite}
               initialAction={initialAction}
               conditions={medConditions}
+              ingredients={m.ingredients}
             />
           </IntakeOptionsProvider>
         </SituationOptionsProvider>

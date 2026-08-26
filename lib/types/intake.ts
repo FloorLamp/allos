@@ -4,6 +4,7 @@
 // import paths are unchanged.
 
 import type { CadenceKind, DoseScheduleVersion } from "../intake-cadence";
+import type { ConditionStatus } from "./medical";
 
 export type { CadenceKind, DoseScheduleVersion };
 
@@ -213,6 +214,19 @@ export interface IntakeItem {
 // Same table, same dose/schedule/adherence machinery; the UI
 // groups by this and reveals the stricter medication fields.
 export type IntakeItemKind = "supplement" | "medication";
+
+// A recorded condition as an intake form's pickers see it (#3650). ONE list, carrying
+// the status, rather than one list per filter: the purpose picker OFFERS only active
+// conditions (nobody files a new reason against something resolved) while the chip for
+// an already-declared purpose must be able to NAME any of them. Passing the active
+// list alone is what made a purpose on a since-resolved condition render as the
+// literal word "condition" — the id was intact and the name was simply not in the
+// list the label was looked up in.
+export interface IntakeConditionOption {
+  id: number;
+  name: string;
+  status: ConditionStatus;
+}
 
 // One scheduled intake of an item. An item has one or more doses, so a
 // split dose (e.g. 1200 mg omega-3 across two fat meals) is two dose rows, each

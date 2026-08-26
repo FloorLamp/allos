@@ -9,8 +9,10 @@ import type {
   IntakeItem,
   IntakeDose,
   IntakePair,
+  IntakeConditionOption,
 } from "@/lib/types";
 import type { InteractionItem } from "@/lib/drug-interactions";
+import type { IntakeItemIngredient } from "@/lib/intake-ingredients";
 import type { PgxVariantInput } from "@/lib/pgx";
 import {
   STOP_REASONS,
@@ -46,6 +48,7 @@ import RefillButton from "@/components/medications/RefillButton";
 import AdherenceCalendar from "@/components/medications/AdherenceCalendar";
 import ScheduledDoseAction from "@/components/medications/ScheduledDoseAction";
 import DoseHistoryPanel from "@/components/intake/DoseHistoryPanel";
+import IngredientsDisclosure from "@/components/intake/IngredientsDisclosure";
 import QuickLogPrnControl from "@/components/medications/QuickLogPrnControl";
 import IntakeItemForm from "@/components/IntakeItemForm";
 import RxOtcBadge from "@/components/RxOtcBadge";
@@ -126,6 +129,7 @@ export default function MedicationCard({
   canWrite = true,
   initialAction,
   conditions = [],
+  ingredients = [],
 }: {
   medication: IntakeItem;
   doses: IntakeDose[];
@@ -202,7 +206,9 @@ export default function MedicationCard({
   // List-row overflow actions land on this detail view with the relevant form open.
   initialAction?: "edit" | "stop";
   // The profile's conditions for the "For condition…" indication picker (#1052).
-  conditions?: { id: number; name: string }[];
+  conditions?: IntakeConditionOption[];
+  // The label composition (#2856), shown as this card's "What's in this" line (#3161).
+  ingredients?: IntakeItemIngredient[];
 }) {
   const s = medication;
   const router = useRouter();
@@ -764,6 +770,14 @@ export default function MedicationCard({
               </div>
             </div>
           ) : null}
+          {/* What's in this (#2856 / #3161). The same disclosure the supplement row
+            carries — one renderer, so a combination product reads the same whichever
+            surface it is tracked on. */}
+          <IngredientsDisclosure
+            rows={ingredients}
+            testId="medication-ingredients"
+            className="py-4 first:pt-0 last:pb-0"
+          />
           {s.notes?.trim() ? (
             <div className="py-4 first:pt-0 last:pb-0">
               <div className="mb-1 section-label">Notes</div>

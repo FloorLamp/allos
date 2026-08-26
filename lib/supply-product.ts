@@ -111,9 +111,32 @@ export function bottleFitsKindDoor(
   return sibling == null || sibling === lockedKind;
 }
 
-// The same rule over a list — what a door actually offers. Named once so the door's
-// OFFER set and the set it RESOLVES a pick against cannot drift apart: a row nobody
-// was shown must not become linkable by typing its label.
+// THE SHARED-SUPPLY PICKER ASKS THE SAME QUESTION, AND GETS THE SAME ANSWER (#3315,
+// option 1 of the three that issue put up). Linking an EXISTING item to a bottle is
+// the other direction from the door above — the item already has a kind, chosen
+// deliberately, and nothing is written behind anyone's back. The end state is the same
+// shape all the same: the item carries the bottle's product facts while disagreeing
+// with it about kind, and the bottle's membership becomes MIXED.
+//
+// THE MIXED CONSEQUENCE IS WHY IT IS NOT LEFT ALONE. poolSurfaceKind leans a mixed
+// bottle to MEDICATION (below), so linking ONE supplement item to the household's
+// ibuprofen removes that bottle from the Add supplement door FOR EVERYONE — a shared
+// household object changes kind on one person's link, with nothing on either screen
+// saying so. Confirming instead (option 2) would have to explain that consequence in
+// a sentence nobody reads at the moment they are choosing a bottle.
+//
+// WHAT IT COSTS: linking across kinds now needs the item's kind corrected first, on
+// the surface that owns it. That is the honest order of operations — the kind is the
+// thing that was wrong — and it is the same answer the door gives.
+//
+// THE BOTTLE AN ITEM IS ALREADY LINKED TO IS NOT SUBJECT TO THIS. The picker keeps it
+// whatever its siblings lend: it is a statement of fact rather than an offer, and a
+// pre-existing mixed link that vanished from its own picker could never be seen or
+// undone. Filtering an OFFER and hiding a FACT are different acts.
+//
+// The same rule over a list — what a door actually offers, and what the picker offers.
+// Named once so the OFFER set and the set a pick is RESOLVED against cannot drift
+// apart: a row nobody was shown must not become linkable by typing its label.
 export function bottlesForKindDoor<T extends Pick<SupplyOption, "siblingKind">>(
   bottles: readonly T[],
   lockedKind: IntakeItemKind | null

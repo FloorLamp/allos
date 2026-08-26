@@ -7,7 +7,7 @@ import IntakeItemForm from "@/components/IntakeItemForm";
 import type { InteractionItem } from "@/lib/drug-interactions";
 import type { PgxVariantInput } from "@/lib/pgx";
 import type { SupplyOption } from "@/lib/supply-product";
-import type { FormResult } from "@/lib/types";
+import type { FormResult, IntakeConditionOption } from "@/lib/types";
 import { useCreateActionLabel } from "@/components/CreateAction";
 
 export interface AddSupplementModalProps {
@@ -20,7 +20,7 @@ export interface AddSupplementModalProps {
   initialSupply?: SupplyOption | null;
   activityScheduleAvailable?: boolean;
   // Picker sources for the "What you take it for" control (#2857).
-  conditions?: { id: number; name: string }[];
+  conditions?: IntakeConditionOption[];
   biomarkers?: string[];
 }
 
