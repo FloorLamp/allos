@@ -3,6 +3,7 @@ import fs from "node:fs";
 import { readFileSync } from "node:fs";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
+import { act } from "react";
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
 
 import {
@@ -216,6 +217,146 @@ describe("the census's reach", () => {
       "f.tsx",
       "g.tsx",
     ]);
+  });
+
+  // The shapes the NARROWED rule has to keep seeing (#3635 R2). Narrowing to the
+  // documented defect is only defensible if none of the defect escapes with it, so
+  // every one of these is a case the absolute rule caught and this one still must.
+  it("sees a dropped act whose callback it cannot prove is synchronous", () => {
+    const found = findUnawaitedActSites([
+      {
+        // An IDENTIFIER, not a literal. Nothing here says whether `flush` is
+        // async, so the guard cannot prove the throw would propagate and refuses
+        // to be quiet. This is the hole a "no `async` on the line" rule would have.
+        file: "a.tsx",
+        source: `import { act } from "@testing-library/react";\nit("x", () => {\n  act(flushEverything);\n});\n`,
+      },
+      {
+        // The literal starts on the NEXT line, so the guard is reading an empty
+        // argument text. Cannot-prove is a finding, not a pass.
+        file: "b.tsx",
+        source: `import { act } from "@testing-library/react";\nit("x", () => {\n  act(\n    async () => {}\n  );\n});\n`,
+      },
+      {
+        // Synchronous callback, but the VALUE is consumed. `act()` returns a
+        // thenable that is not a promise; returning it hands the runner something
+        // it cannot await meaningfully.
+        file: "c.tsx",
+        source: `import { act } from "@testing-library/react";\nit("x", () => {\n  return act(() => {});\n});\n`,
+      },
+      {
+        file: "d.tsx",
+        source: `import { act } from "@testing-library/react";\nit("x", () => {\n  const done = act(() => {});\n  expect(done).toBeDefined();\n});\n`,
+      },
+      {
+        // `.then()` hung off the closing paren THREE LINES DOWN — the shape
+        // `imported-name-offer.test.tsx` actually had. A rule that reads only the
+        // line the call starts on never sees this one.
+        file: "e.tsx",
+        source: `import { act } from "@testing-library/react";\nit("x", async () => {\n  await act(async () => {\n    fire();\n  }).then(() => {\n    expect(1).toBe(2);\n  });\n});\n`,
+      },
+      {
+        // An `await`ed act is fine; an act awaited inside a dropped chain is not.
+        file: "f.tsx",
+        source: `import { act } from "@testing-library/react";\nit("x", () => {\n  act(async function () {\n    fire();\n  });\n});\n`,
+      },
+    ]);
+    expect(found.map((f) => f.file)).toEqual([
+      "a.tsx",
+      "b.tsx",
+      "c.tsx",
+      "d.tsx",
+      "e.tsx",
+      "f.tsx",
+    ]);
+  });
+
+  // AND THE SPELLING THE NARROWING EXISTS FOR, which the absolute rule flagged on
+  // ten sites main gained on 24-25 Aug 2026. Silent because a throw inside a
+  // synchronous callback comes back out of the call — proved below, not assumed.
+  it("stays quiet on a discarded act with a synchronous callback", () => {
+    const found = findUnawaitedActSites([
+      {
+        file: "a.tsx",
+        source: `import { act } from "@testing-library/react";\nit("x", () => {\n  act(() => vi.advanceTimersByTime(500));\n});\n`,
+      },
+      {
+        file: "b.tsx",
+        source: `import { act } from "@testing-library/react";\nfunction dragDown(target: HTMLElement): void {\n  act(() => {\n    touch(target, "touchstart");\n    vi.runAllTimers();\n  });\n}\n`,
+      },
+      {
+        file: "c.tsx",
+        source: `import { act } from "@testing-library/react";\nit("x", () => {\n  act(function () {\n    fireEvent.submit(form);\n  });\n});\n`,
+      },
+      {
+        // A single-parameter arrow with no parentheses.
+        file: "d.tsx",
+        source: `import { act } from "@testing-library/react";\nit("x", () => {\n  act(() => window.dispatchEvent(new Event("focus")));\n});\n`,
+      },
+      {
+        // Two statements on one line: the second act is still a bare statement.
+        file: "e.tsx",
+        source: `import { act } from "@testing-library/react";\nit("x", () => {\n  act(() => a()); act(() => b());\n});\n`,
+      },
+    ]);
+    expect(found).toEqual([]);
+  });
+
+  // THE MEASUREMENT THE NARROWING RESTS ON, run rather than quoted (#3635 R2).
+  //
+  // The whole scope decision is the claim that a synchronous callback cannot
+  // swallow anything while an asynchronous one can. That is a fact about React's
+  // `act`, it is the reason ten correct sites are allowed to stay as they are, and
+  // a comment asserting it would go stale the first time React changed. So it is
+  // exercised against the real `act` this repo ships.
+  it("a throw inside act() only escapes an ASYNC callback", async () => {
+    (
+      globalThis as unknown as { IS_REACT_ACT_ENVIRONMENT: boolean }
+    ).IS_REACT_ACT_ENVIRONMENT = true;
+
+    // SYNCHRONOUS: the callback runs to completion inside the call, so the throw
+    // comes straight back out on the same stack. Nothing can be lost, awaited or
+    // not — which is why the guard above is quiet about this shape.
+    expect(() =>
+      act(() => {
+        throw new Error("sync-callback-throw");
+      })
+    ).toThrow("sync-callback-throw");
+
+    // ASYNCHRONOUS: the call RETURNS NORMALLY. The rejection is parked on the
+    // thenable, and a case that drops the thenable is green over a throw.
+    let escaped: unknown = null;
+    let dropped: unknown;
+    try {
+      dropped = act(async () => {
+        throw new Error("async-callback-throw");
+      });
+    } catch (error) {
+      escaped = error;
+    }
+    expect(
+      escaped,
+      "An async act() callback's throw reached the calling scope. If React has " +
+        "started propagating it synchronously, the discriminator this census is " +
+        "narrowed on no longer holds and the narrowing has to be revisited."
+    ).toBeNull();
+    await expect(Promise.resolve(dropped)).rejects.toThrow(
+      "async-callback-throw"
+    );
+
+    // And the thenable is not a promise: `then` returns undefined, so
+    // `return act(…).then(cb)` returns undefined and the runner awaits nothing.
+    const clean = act(async () => {});
+    expect(clean).not.toBeInstanceOf(Promise);
+    expect(
+      (
+        clean as { then: (ok: () => void, no: () => void) => unknown }
+      ).then(
+        () => {},
+        () => {}
+      )
+    ).toBeUndefined();
+    await Promise.resolve(clean);
   });
 
   it("stays quiet on the benign neighbours", () => {
