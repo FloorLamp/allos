@@ -1,7 +1,7 @@
 "use client";
 
 import { useActionState, useState } from "react";
-import SubmitButton from "@/components/SubmitButton";
+import Button from "@/components/Button";
 import InfoTooltipIcon from "@/components/InfoTooltipIcon";
 import type { SessionSummary } from "@/lib/auth";
 import { deviceLabel } from "@/lib/user-agent-label";
@@ -75,9 +75,9 @@ export default function ActiveSessions({
         </div>
         {otherCount > 0 && canRevoke && (
           <form action={signOutOtherSessions} className="shrink-0">
-            <SubmitButton className="btn-ghost" pendingLabel="Signing out…">
+            <Button type="submit" pendingLabel="Signing out…">
               Sign out everywhere else
-            </SubmitButton>
+            </Button>
           </form>
         )}
       </div>
@@ -131,9 +131,9 @@ export default function ActiveSessions({
               {!s.current && canRevoke && (
                 <form action={revokeAction} className="shrink-0">
                   <input type="hidden" name="session_id" value={s.id} />
-                  <SubmitButton className="btn-ghost text-sm" pendingLabel="…">
+                  <Button type="submit" pendingLabel="…">
                     Revoke
-                  </SubmitButton>
+                  </Button>
                 </form>
               )}
             </li>

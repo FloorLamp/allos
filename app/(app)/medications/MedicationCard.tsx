@@ -54,7 +54,7 @@ import FoodGuidance from "@/components/FoodGuidance";
 import NotesText from "@/components/NotesText";
 import Combobox from "@/components/Combobox";
 import DateField from "@/components/DateField";
-import SubmitButton from "@/components/SubmitButton";
+import SubmitButton, { DestructiveSubmit } from "@/components/SubmitButton";
 import OverflowMenu, {
   MENU_ITEM,
   MENU_ITEM_DANGER,
@@ -709,12 +709,9 @@ export default function MedicationCard({
               </div>
             </div>
             <div className="flex items-center gap-2">
-              <SubmitButton
-                pendingLabel="Stopping…"
-                className="btn-danger btn-sm"
-              >
+              <DestructiveSubmit pendingLabel="Stopping…">
                 Stop medication
-              </SubmitButton>
+              </DestructiveSubmit>
               <button
                 type="button"
                 onClick={() => {

@@ -1,6 +1,6 @@
 import { IconArrowsExchange } from "@tabler/icons-react";
 import Avatar, { type AvatarProfile } from "@/components/Avatar";
-import SubmitButton from "@/components/SubmitButton";
+import Button from "@/components/Button";
 import { switchProfileAction } from "@/app/(app)/profile-context-actions";
 
 // Identifies the data subject on a page that may be showing a non-active accessible
@@ -33,14 +33,14 @@ export default function ProfileIdentityBanner({
       {crossProfile && (
         <form action={switchProfileAction}>
           <input type="hidden" name="profileId" value={profile.id} />
-          <SubmitButton
-            className="btn-ghost shrink-0"
+          <Button
+            type="submit"
             pendingLabel="Switching…"
             data-testid={`${testIdPrefix}-switch-profile`}
           >
             <IconArrowsExchange className="h-4 w-4" stroke={1.75} />
             Act as {profile.name}
-          </SubmitButton>
+          </Button>
         </form>
       )}
     </div>

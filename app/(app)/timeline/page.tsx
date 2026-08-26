@@ -959,6 +959,17 @@ export default async function TimelinePage(props: {
         className={railGutter}
         title="Timeline"
         subtitle="A chronological view of workouts, labs, documents, medications, visits, goals, and other health events."
+        // READ-ONCE COPY, OFF THE PHONE HEADER (owner ruling on #3452 item 3).
+        // #3403 stopped "Year in review" wrapping by letting the header reserve
+        // its action's width, and the bill landed on this sentence: it took a
+        // second line, running the phone header 73->165 instead of 73->145. It is
+        // orientation prose nobody reads twice, which is what `hideSubtitleBelowSm`
+        // exists for; the title stays, so the page still says where you are.
+        //
+        // THE ACCEPTED COST, stated by the owner rather than discovered later: a
+        // first-time phone visitor does not get the one-line explainer at all.
+        // Desktop is unchanged. e2e/timeline-chrome.spec.ts holds both halves.
+        hideSubtitleBelowSm
         action={
           <Link
             href="/retrospective"

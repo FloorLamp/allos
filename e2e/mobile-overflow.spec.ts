@@ -95,22 +95,23 @@ test.describe("mobile clipped-content audit (#1063)", () => {
           shadow: style.boxShadow,
           ringShadow: style.getPropertyValue("--tw-ring-shadow").trim(),
           ringColor: style.getPropertyValue("--tw-ring-color").trim(),
-          rose: getComputedStyle(document.documentElement)
-            .getPropertyValue("--color-rose-800")
-            .trim(),
+          brand: style.getPropertyValue("--color-brand-500").trim(),
         };
       });
     const unfocused = await focusStyle();
     await controls.nth(count - 2).focus();
     await page.keyboard.press("Tab");
     await expect(disconnect).toBeFocused();
+    await expect
+      .poll(async () => (await focusStyle()).shadow)
+      .not.toBe(unfocused.shadow);
     const focused = await focusStyle();
     expect(focused.shadow).not.toBe(unfocused.shadow);
     expect(focused.ringShadow).not.toBe(unfocused.ringShadow);
-    expect(focused.ringColor).toBe(focused.rose);
+    expect(focused.ringColor).toBe(focused.brand);
     await page.keyboard.press("Tab");
     await expect(disconnect).not.toBeFocused();
-    expect(await focusStyle()).toEqual(unfocused);
+    await expect.poll(focusStyle).toEqual(unfocused);
     await expectNoClippedContent(page);
   });
 

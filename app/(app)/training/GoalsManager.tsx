@@ -26,8 +26,8 @@ import OverflowMenu, {
   OverflowMenuSubmitItem,
 } from "@/components/OverflowMenu";
 import { useConfirm } from "@/components/ConfirmDialog";
+import Button from "@/components/Button";
 import ModalShell from "@/components/ModalShell";
-import SubmitButton from "@/components/SubmitButton";
 import { useTimezone } from "@/components/TimezoneProvider";
 import { dateStrInTz } from "@/lib/date";
 import { formatSeconds } from "@/lib/duration";
@@ -409,9 +409,7 @@ export default function GoalsManager({
                       className="input w-24 py-1"
                       aria-label="Current value"
                     />
-                    <SubmitButton className="btn-ghost py-1">
-                      Update
-                    </SubmitButton>
+                    <Button type="submit">Update</Button>
                   </form>
                 )}
               </div>
