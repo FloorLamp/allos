@@ -198,7 +198,7 @@ describe("upcomingDueText past the overdue ceiling (#2806)", () => {
     { days: 97, dueDate: "2026-04-02", text: "overdue since Apr 2" },
     // The walkthrough's own magnitude, and the year it left behind.
     { days: 2035, dueDate: "2020-12-11", text: "overdue since Dec 11, 2020" },
-  ])("$days days overdue reads \"$text\"", ({ dueDate, text }) => {
+  ])('$days days overdue reads "$text"', ({ dueDate, text }) => {
     expect(upcomingDueText(item({ key: `o:${dueDate}`, dueDate }), TODAY)).toBe(
       text
     );

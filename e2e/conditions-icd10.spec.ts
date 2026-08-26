@@ -155,7 +155,9 @@ test("a profile with no conditions is told none are recorded, not that a filter 
     // The default pill really is All — otherwise the sentence below would be right
     // for the wrong reason.
     await expect(
-      section.getByTestId("conditions-filter").getByRole("link", { name: "All" })
+      section
+        .getByTestId("conditions-filter")
+        .getByRole("link", { name: "All" })
     ).toHaveAttribute("aria-current", "true");
     await expect(section).toContainText("No conditions recorded.");
     await expect(section).not.toContainText("No conditions match this filter");

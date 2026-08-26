@@ -118,10 +118,13 @@ export function practiceSelectValue(
 // It reads the SELECT VALUE, not a parsed practice: the custom sentinel has no name
 // typed yet, and a field that appeared only once the name was filled would be its own
 // small surprise.
-export function scopeAcceptsPerWeekMax(rawValue: string | null | undefined): boolean {
+export function scopeAcceptsPerWeekMax(
+  rawValue: string | null | undefined
+): boolean {
   const value = (rawValue ?? "").trim();
   return (
-    value === CUSTOM_PRACTICE_VALUE || value.startsWith(WELLNESS_PRACTICE_PREFIX)
+    value === CUSTOM_PRACTICE_VALUE ||
+    value.startsWith(WELLNESS_PRACTICE_PREFIX)
   );
 }
 

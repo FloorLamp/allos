@@ -112,16 +112,27 @@ describe("scopeAcceptsPerWeekMax (#3353)", () => {
     { what: "an activity type", value: "sport", accepts: false },
     { what: "another activity type", value: "strength", accepts: false },
     { what: "a food group", value: "food_group:fatty_fish", accepts: false },
-    { what: "a curated wellness practice", value: "practice:Sauna", accepts: true },
-    { what: "the custom sentinel", value: CUSTOM_PRACTICE_VALUE, accepts: true },
-  ])("$what: offers a Maximum = $accepts, and stores exactly that", ({ value, accepts }) => {
-    expect(scopeAcceptsPerWeekMax(value)).toBe(accepts);
-    // A max of 5 over a floor of 3 is storable in every other respect — > floor and
-    // ≤ MAX_PER_WEEK — so what decides it here is the scope and nothing else.
-    const parsed = parseScopedPractice(value, "3", "5", "Grounding walk");
-    expect(parsed).not.toBeNull();
-    expect(parsed?.perWeekMax != null).toBe(accepts);
-  });
+    {
+      what: "a curated wellness practice",
+      value: "practice:Sauna",
+      accepts: true,
+    },
+    {
+      what: "the custom sentinel",
+      value: CUSTOM_PRACTICE_VALUE,
+      accepts: true,
+    },
+  ])(
+    "$what: offers a Maximum = $accepts, and stores exactly that",
+    ({ value, accepts }) => {
+      expect(scopeAcceptsPerWeekMax(value)).toBe(accepts);
+      // A max of 5 over a floor of 3 is storable in every other respect — > floor and
+      // ≤ MAX_PER_WEEK — so what decides it here is the scope and nothing else.
+      const parsed = parseScopedPractice(value, "3", "5", "Grounding walk");
+      expect(parsed).not.toBeNull();
+      expect(parsed?.perWeekMax != null).toBe(accepts);
+    }
+  );
 
   it("says no to what the picker cannot hold", () => {
     // Blank and nonsense reach `parseScopedPractice` as "no practice at all"; the

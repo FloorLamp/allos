@@ -247,7 +247,9 @@ test("a measurements save whose vitals half is refused says which half it kept",
 
   // The sentence states the partial truth, and the shared one — which would be a lie
   // about the weight — does not appear beside it.
-  await expect(page.getByText(MEASUREMENTS_PARTIAL_REFUSED_MESSAGE)).toBeVisible({
+  await expect(
+    page.getByText(MEASUREMENTS_PARTIAL_REFUSED_MESSAGE)
+  ).toBeVisible({
     timeout: 15_000,
   });
   await expect(page.getByText(OFFLINE_CAPTURE_REFUSED_MESSAGE)).toHaveCount(0);
@@ -258,10 +260,21 @@ test("a measurements save whose vitals half is refused says which half it kept",
     /1 queued offline/
   );
 
-  // DELIBERATELY NOT RECONNECTING. The queued body intent is real and would replay
-  // into the shared fixture profile the moment this context went online; it dies with
-  // the context instead. Every other test in this file can reconnect because it
-  // refused BOTH halves and has nothing queued.
+  // RECONNECTING WITH THE REPLAY ROUTE SHUT, which is not fussiness in either
+  // direction. Every other test here can go online freely because it refused BOTH
+  // halves and has nothing queued; this one holds a REAL body-metric intent that
+  // would land a weigh-in on the shared fixture profile the moment the flush ran. And
+  // simply staying offline is not an option: e2e-hygiene's offline-navigation rule
+  // reads the window as running to the END OF THE FILE when a spec never comes back,
+  // so an unclosed window swallows every later test's `goto` — the guard being right.
+  // So: block the flush, come back online, and let the intent die with the context.
+  await page.route("**/api/offline-replay", (route) => route.abort());
+  await context.setOffline(false);
+  // Still queued, so nothing reached the server — a presence assertion, which is the
+  // honest shape here: waiting longer cannot make a badge that was cleared reappear.
+  await expect(page.getByTestId("offline-queue-badge")).toHaveText(
+    /1 queued offline/
+  );
 });
 
 test("a refused mobility-move tap says so and un-presses the chip", async ({
