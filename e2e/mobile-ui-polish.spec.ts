@@ -180,7 +180,39 @@ test.describe("the phone drawer's month calendar clears the floor too (#3377/#35
       const prevMonth = drawer.getByLabel("Previous month");
       const nextMonth = drawer.getByLabel("Next month");
       await expect(prevMonth).toBeVisible();
-      await settledBoxes([drawer, prevMonth, nextMonth]);
+      const [drawerBox] = await settledBoxes([drawer, prevMonth, nextMonth]);
+
+      // THE TOKEN RESOLVES TO THE WIDTH IT REPLACED (#3452), measured rather than
+      // asserted to be so. `--week-grid-min` costs a week; the drawer adds its own
+      // 1px right border and the left safe-area inset (0 in a headless browser),
+      // and 20rem stays the preferred width — so a phone this narrow gets exactly
+      // 320px, which is what the retired `19.3125rem` literal resolved to too.
+      //
+      // DERIVED FROM THE FLOOR, not frozen at 320: if #3514's number ever moves,
+      // this expectation moves with it and the drawer had better follow. That is
+      // the whole reason the literal went.
+      const DRAWER_BORDER_PX = 1;
+      const drawerPreferredPx = 320;
+      expect(drawerBox.width).toBeCloseTo(
+        Math.min(
+          width,
+          Math.max(drawerPreferredPx, 7 * TAP_FLOOR_PX + DRAWER_BORDER_PX)
+        ),
+        0
+      );
+      // …and the calendar band CLAIMS that week rather than trusting the drawer to
+      // have reserved it. This is the computed value of the shared token, read off
+      // the element that consumes it — the second half of "one owner".
+      await expect
+        .poll(() =>
+          drawer
+            .locator('[aria-label="Previous month"]')
+            .evaluate(
+              (el) =>
+                getComputedStyle(el.closest("div")!.parentElement!).minWidth
+            )
+        )
+        .toBe(`${7 * TAP_FLOOR_PX}px`);
 
       // Both arrows AND every day of the rendered month — a floor that only the
       // first cell clears is not a floor. The 28px circle and the 16px chevron are
