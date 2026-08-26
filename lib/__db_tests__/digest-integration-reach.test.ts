@@ -101,7 +101,8 @@ afterEach(() => {
 
 // What runPullSync records when a refresh token is dead (#3618) — the state
 // sentence, chosen from the connection's own needs_reauth, not from a status.
-const RECONNECT = "Your Strava connection expired. Reconnect to resume syncing.";
+const RECONNECT =
+  "Your Strava connection expired. Reconnect to resume syncing.";
 
 describe("a broken sync rides the morning digest (#1685)", () => {
   it("names the failing provider and links its reconnect page", async () => {

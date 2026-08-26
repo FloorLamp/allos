@@ -27,6 +27,14 @@ import { isStaleSyncEvent } from "@/lib/integrations/staleness";
 import { collectAttentionModel } from "@/lib/queries/attention";
 import { integrationToItem } from "@/lib/attention";
 
+// What runPullSync records when a refresh token is dead (#3618) — the state
+// sentence, chosen from the connection's own needs_reauth, never from a status.
+// The payload is opaque to every assertion here bar one `toContain`, but it is
+// spelled the way the producer spells it so no fixture preserves copy the tree
+// can no longer write.
+const reconnect = (name: string) =>
+  `Your ${name} connection expired. Reconnect to resume syncing.`;
+
 function newProfile(name: string): number {
   return Number(
     db.prepare("INSERT INTO profiles (name) VALUES (?)").run(name)
@@ -116,8 +124,7 @@ describe("a connected integration that stopped syncing (#1685)", () => {
     const p = newProfile("FailingAndOld");
     connect(p, "withings");
     syncEvent(p, "withings", 20 * DAYS); // last success, long ago …
-    // The sentence a dead Withings refresh token actually records (#3618).
-    syncEvent(p, "withings", 1, 0, "Your Withings connection expired. Reconnect to resume syncing."); // … then a failure
+    syncEvent(p, "withings", 1, 0, reconnect("Withings")); // … then a failure
 
     const issues = getImportIssues(p);
     // Exactly ONE row for the source: the recorded failure, which names the cause.
@@ -185,8 +192,8 @@ describe("the stale signal reaches the surfaces that read import issues", () => 
     // whether data is arriving); the recorded failure is what the copy then names,
     // which is the surviving job of consecutiveLeadingFailures.
     syncEvent(p, "strava", 5 * DAYS);
-    syncEvent(p, "strava", 2, 0, "Your Strava connection expired. Reconnect to resume syncing.");
-    syncEvent(p, "strava", 1, 0, "Your Strava connection expired. Reconnect to resume syncing.");
+    syncEvent(p, "strava", 2, 0, reconnect("Strava"));
+    syncEvent(p, "strava", 1, 0, reconnect("Strava"));
 
     const item = integrationToItem(getIntegrationAttention(p)[0]);
     expect(item.title).toBe("Strava sync needs attention");

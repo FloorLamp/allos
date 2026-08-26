@@ -2180,8 +2180,11 @@ run's red line, and `…gets the same answer, so this stays missing until it's f
 as the partial's detail underneath it. Neither weather half has a rate-limit truncate
 ahead of the classifier, so there was no fact under the disagreement. It reads
 `syncFailureFamily(status) === "refused"` now. #3007's `400` and #2567's `5xx` are
-unmoved; on the statuses this path can actually receive (`0`, or `>= 400` from a
-non-OK response) the behaviour delta is exactly `429` and `408`.
+unmoved. The statuses this path can actually receive are enumerable — `getJson` and
+the hourly fetch report `0` when the request threw and `res.status` otherwise, and a
+`fetch` that follows redirects reaches a non-OK response only at `>= 400` — so over
+that set the behaviour delta is exactly `429` and `408`. Outside it the two rules
+still agree, because there is now only one of them.
 
 **Two status dialects, and one sentence that only the HTTP one can support.**
 `syncFailureCopy` takes a `StatusDialect`. `http` is the default; `vendor` is a

@@ -98,6 +98,12 @@ export function weatherPartialWarning(
 // #2567's 5xx still keeps the retry promise. What moved is 429/408, which #3007 never
 // considered — its worked example is a deterministic 400 that had never once
 // succeeded, not a rate limit the next tick clears.
+//
+// The two rules also part company below 400, where the bare boundary said "retry" and
+// the family says `refused` — but no status in that range reaches here. Both callers
+// pass a status openMeteoFetch* produced, and those are `0` when the request threw and
+// a non-OK `res.status` otherwise, which for a redirect-following `fetch` starts at
+// 400. So over the reachable set the delta is exactly the two codes above.
 export function isDeterministicFailure(status: number | undefined): boolean {
   return status != null && syncFailureFamily(status) === "refused";
 }
