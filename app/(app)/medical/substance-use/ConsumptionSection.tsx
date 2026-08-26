@@ -155,7 +155,11 @@ export default function ConsumptionSection({
   async function addEntry(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
     setPending(true);
-    const fd = new FormData(event.currentTarget);
+    // STAMPED like every other post from this section (#3567). It was correct only
+    // because the action's fallback and this section's actual surface happened to be
+    // the same word — true while it is on a page, silently wrong the day it renders
+    // inside a region. `withSubstance` above already stamps; these two did not.
+    const fd = stampLoggedVia(new FormData(event.currentTarget));
     fd.set("substance", substance);
     const result = await addSubstanceDailyTotalAction(fd);
     setPending(false);
@@ -175,7 +179,7 @@ export default function ConsumptionSection({
   ) {
     event.preventDefault();
     setPending(true);
-    const fd = new FormData(event.currentTarget);
+    const fd = stampLoggedVia(new FormData(event.currentTarget));
     fd.set("substance", substance);
     fd.set("id", String(entry.id));
     const result = await updateSubstanceDailyTotalAction(fd);

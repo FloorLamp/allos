@@ -169,6 +169,62 @@ export function unwiredPosters(root: string): string[] {
   return [...new Set(out)].sort();
 }
 
+// ── THE REACH `unwiredPosters` DOES NOT HAVE, PINNED RATHER THAN ASSUMED (#3567) ──
+//
+// `unwiredPosters` inspects `"use client"` files, because only a client can stamp a
+// FormData. That is the right subject — and it means a whole class of file reaches a
+// surface-reading action without ever being looked at: a HOOK, a SERVER COMPONENT
+// handing an action to a generic client control, and a SERVER ACTION module calling
+// another action directly.
+//
+// NONE OF THOSE CAN DECLARE A SURFACE, so widening `unwiredPosters` to cover them
+// would report three findings that are all correct today — the cry-wolf direction, on
+// legitimate code, which is how a census gets deleted. But leaving them unnamed makes
+// the guard's silence read as coverage, which is the defect #3567 was filed about.
+//
+// So they are REGISTERED instead, with a sentence each, and the set is asserted to be
+// exactly this. A fourth conduit turns the test red, and whoever added it either wires
+// its mounting or writes down why it cannot. Same discipline as
+// `NOT_A_USER_WRITE_LEDGER` in the sibling census: the guard is allowed to be quiet in
+// exactly one place, and that place is itself pinned.
+const POSTER_CONDUITS: Record<string, string> = {
+  "app/(app)/palette-actions.ts posts logPractice (app/(app)/wellness/actions.ts)":
+    "a Server Action calling another Server Action — no FormData crosses a client, " +
+    "and this module names its own surface as a literal (`loggedVia: \"quick-log\"`)",
+  "app/(app)/upcoming/page.tsx posts markTaken (app/(app)/upcoming/actions.ts)":
+    "a server page building `\"use server\"` closures for a generic row control; the " +
+    "FormData is built by that control, and markTaken's `page` fallback is the " +
+    "correct answer for this mounting, which its own comment says",
+  "components/activity-form/useActivityAutosave.ts posts saveActivity (app/(app)/training/activity-actions.ts)":
+    "a hook that posts the FormData its PARENT builds — the stamp belongs to the " +
+    "mounting, and the hook never reads a form field",
+};
+
+/**
+ * Every (non-client file, action) pair reaching a surface-reading action.
+ *
+ * The complement of `unwiredPosters` over the same universe: same walk, same import
+ * matching, inverted "use client" test. Files that DO declare are still skipped —
+ * a server component can be a region root, and that is a declaration.
+ */
+export function posterConduits(root: string): string[] {
+  const actions = readingActions(root);
+  const out: string[] = [];
+  for (const sub of ["app", "components"]) {
+    for (const file of walk(root, sub)) {
+      const src = fs.readFileSync(file, "utf8");
+      if (/^\s*["']use client["']/.test(src)) continue;
+      if (DECLARES_RE.test(src)) continue;
+      const rel = path.relative(root, file).split(path.sep).join("/");
+      for (const [action, actionFile] of actions) {
+        if (importsSymbol(src, action))
+          out.push(`${rel} posts ${action} (${actionFile})`);
+      }
+    }
+  }
+  return [...new Set(out)].sort();
+}
+
 /**
  * Which client files DECLARE a region, and which surface each declares.
  *
@@ -733,6 +789,22 @@ describe("every surface-reading action has a mounting that declares itself", () 
         "from this mounting, whatever surface it actually is."
     ).toEqual([]);
   });
+
+  it("names every NON-client file that reaches a reading action", () => {
+    // The guard above cannot see these and never could — see POSTER_CONDUITS. This
+    // test is what stops that blind spot growing silently: the set must be EXACTLY
+    // the registered one, in both directions, so a new hook or server component is a
+    // red and a conduit that has been rewired or deleted is a stale line.
+    expect(
+      posterConduits(REPO),
+      "A file that is not a client component now reaches a Server Action that reads " +
+        "`logged_via` off the post (#3567 item 6). It cannot stamp a FormData, so " +
+        "`unwiredPosters` will never see it. Check whether the MOUNTING behind it " +
+        "declares a surface — if it does not, the action is taking its fallback — " +
+        "then add a line to POSTER_CONDUITS saying which conduit this is and why it " +
+        "cannot declare."
+    ).toEqual(Object.keys(POSTER_CONDUITS).sort());
+  });
 });
 
 describe("the census's reach", () => {
@@ -765,6 +837,44 @@ export async function logThing(formData: FormData) {
     expect(unwiredPosters(root)).toEqual([
       "components/ThingBar.tsx posts logThing (app/(app)/x/actions.ts)",
     ]);
+  });
+
+  it("sees the conduits `unwiredPosters` structurally cannot", () => {
+    // The three shapes POSTER_CONDUITS registers, planted: a hook, a server component
+    // handing the action to a generic control, and a Server Action calling another.
+    // None is a client, so `unwiredPosters` must stay silent on all three while
+    // `posterConduits` names all three — that split IS the honesty this adds.
+    const root = corpus({
+      "app/(app)/x/actions.ts": ACTION,
+      "components/x/useThingAutosave.ts":
+        'import { logThing } from "@/app/(app)/x/actions";\n' +
+        "export function useThingAutosave(build: () => FormData) { return logThing(build()); }\n",
+      "app/(app)/y/page.tsx":
+        'import { logThing } from "@/app/(app)/x/actions";\n' +
+        "export default function Page() { return null; }\n",
+      "app/(app)/z-actions.ts":
+        '"use server";\nimport { logThing } from "@/app/(app)/x/actions";\n',
+    });
+    expect(unwiredPosters(root)).toEqual([]);
+    expect(posterConduits(root)).toEqual([
+      "app/(app)/y/page.tsx posts logThing (app/(app)/x/actions.ts)",
+      "app/(app)/z-actions.ts posts logThing (app/(app)/x/actions.ts)",
+      "components/x/useThingAutosave.ts posts logThing (app/(app)/x/actions.ts)",
+    ]);
+  });
+
+  it("counts a DECLARING server component as wired, not as a conduit", () => {
+    // A server component CAN declare — a region root is often exactly that (the
+    // dashboard). Reporting one as an unreachable conduit would put a wired mounting
+    // on a list of things that cannot be wired, which is worse than silence.
+    const root = corpus({
+      "app/(app)/x/actions.ts": ACTION,
+      "app/(app)/w/page.tsx":
+        'import { logThing } from "@/app/(app)/x/actions";\n' +
+        'import { LoggedViaSurface } from "@/components/LoggedViaSurface";\n',
+    });
+    expect(posterConduits(root)).toEqual([]);
+    expect(unwiredPosters(root)).toEqual([]);
   });
 
   it("attributes a read to the RIGHT action when a file exports several", () => {
