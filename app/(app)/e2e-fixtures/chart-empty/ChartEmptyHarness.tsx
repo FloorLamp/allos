@@ -28,9 +28,7 @@ function FixtureCard({
   return (
     <ChartCard
       title={testid}
-      detailHref={
-        null
-      } /* detail-none: this E2E-only geometry card has no product destination. */
+      detailHref={null} /* detail-none: E2E-only geometry. */
       testid={testid}
     >
       {children}
