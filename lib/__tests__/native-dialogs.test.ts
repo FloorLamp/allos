@@ -1,7 +1,7 @@
 import fs from "node:fs";
 import path from "node:path";
 import { describe, expect, it } from "vitest";
-import ts from "typescript";
+import ts from "typescript-api";
 
 const REPO = path.resolve(import.meta.dirname, "../..");
 const NATIVE_DIALOGS = new Set(["alert", "confirm", "prompt"]);

@@ -169,6 +169,28 @@ export function unwiredPosters(root: string): string[] {
   return [...new Set(out)].sort();
 }
 
+// ── THE REACH `unwiredPosters` DOES NOT HAVE, NAMED SO ITS SILENCE IS NOT READ AS
+// COVERAGE (#3567 item 6) ──
+//
+// It inspects `"use client"` files, because only a client can stamp a FormData. That is
+// the right subject, and it means a whole class of file reaches a surface-reading action
+// without ever being looked at: a HOOK (components/activity-form/useActivityAutosave.ts
+// posts the FormData its PARENT builds), a SERVER COMPONENT handing an action to a
+// generic client control (app/(app)/upcoming/page.tsx, whose row control builds the
+// FormData and whose `page` fallback is the correct answer for that mounting), and a
+// SERVER ACTION module calling another action directly (app/(app)/palette-actions.ts,
+// where no FormData crosses a client at all).
+//
+// NONE OF THOSE CAN DECLARE A SURFACE. So widening this guard to cover them would report
+// three findings that are all correct today — the cry-wolf direction, on legitimate
+// code, which is how a census gets deleted. The limitation is written here instead of
+// pinned by a registry: a list of the three would have to be kept true as the tree
+// moves, and maintaining it buys nothing the sentence does not already say.
+//
+// WHAT TO DO IF YOU ADD A FOURTH. Ask whether the MOUNTING behind your conduit declares
+// a surface. If it does not, the action is silently taking its `page` fallback, and this
+// guard will not tell you — that is the whole of what it cannot see.
+
 /**
  * Which client files DECLARE a region, and which surface each declares.
  *

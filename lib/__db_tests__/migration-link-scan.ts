@@ -39,7 +39,7 @@
 import fs from "node:fs";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
-import ts from "typescript";
+import ts from "typescript-api";
 
 const REPO = path.resolve(fileURLToPath(new URL("../..", import.meta.url)));
 

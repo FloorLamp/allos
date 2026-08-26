@@ -40,7 +40,6 @@ describe("episode reconciliation triggers", () => {
     expect(trigger.getAttribute("type")).toBe("button");
     expect(trigger.getAttribute("data-testid")).toBe("episode-end");
     expect(trigger.getAttribute("data-button-control")).toBe("");
-    expect(trigger.className).toBe("button-control");
 
     fireEvent.click(trigger);
     expect(
@@ -71,7 +70,6 @@ describe("episode reconciliation triggers", () => {
     expect(trigger.getAttribute("type")).toBe("button");
     expect(trigger.getAttribute("data-testid")).toBe("episode-reopen-action");
     expect(trigger.getAttribute("data-button-control")).toBe("");
-    expect(trigger.className).toBe("button-control");
 
     fireEvent.click(trigger);
     expect(

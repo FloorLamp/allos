@@ -4,10 +4,16 @@
       "date": "2026-08-26",
       "entries": [
         {
-          "pr": 3800,
+          "pr": 3811,
           "title": "Pointing at a dashboard row keeps its date, the whole row is clickable, and two readings stop repeating themselves",
           "kind": "fix",
           "issues": [3555, 3544]
+        },
+        {
+          "pr": 3805,
+          "title": "The menu drawer keeps keyboard focus inside it and names itself; Timeline's subtitle hides on phones",
+          "kind": "fix",
+          "issues": [3463, 3452]
         }
       ]
     },

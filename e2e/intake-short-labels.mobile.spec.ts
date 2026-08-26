@@ -1,8 +1,9 @@
 import { test, expect } from "./fixtures";
 import type { Locator, Page } from "@playwright/test";
 import Database from "better-sqlite3";
-import { hydratedClick } from "./helpers";
+import { expectPhoneTapTargets, hydratedClick, settledBoxes } from "./helpers";
 import { workerDbPath, frozenNow } from "./worker-env";
+import { TAP_FLOOR_FLOAT_EPSILON_PX } from "@/lib/tap-floor-tokens";
 
 // Issue #2858 — the curated intake CONTROL label on the web's tight spots, and the
 // hazard that comes with it.
@@ -153,6 +154,7 @@ test("two items that shorten alike keep distinct logging chips", async ({
   try {
     seeded.push(seedItem(db, 1, FULL_NAME, "may"));
     seeded.push(seedItem(db, 1, ALIAS_NAME, "may"));
+    seeded.push(seedItem(db, 1, "Long wrapped availability control", "may"));
 
     const available = await openAvailable(page);
     const chips = available.getByTestId("available-row").filter({
@@ -175,6 +177,36 @@ test("two items that shorten alike keep distinct logging chips", async ({
       );
     expect(doseIds).toHaveLength(2);
     expect(new Set(doseIds).size).toBe(2);
+
+    const owner = available.getByTestId("available-chips");
+    const controls = owner
+      .getByTestId("available-row")
+      .filter({
+        hasText: new RegExp(
+          `${FULL_NAME}|${ALIAS_NAME}|Long wrapped availability control`
+        ),
+      })
+      .getByTestId("available-mark-taken");
+    await expect(controls).toHaveCount(3);
+    await expectPhoneTapTargets(
+      page,
+      "wrapped Upcoming availability actions",
+      [controls.nth(0), controls.nth(1), controls.nth(2)],
+      { disjoint: true }
+    );
+    const [ownerBox, ...boxes] = await settledBoxes([
+      owner,
+      controls.nth(0),
+      controls.nth(1),
+      controls.nth(2),
+    ]);
+    expect(new Set(boxes.map((box) => box.y)).size).toBeGreaterThan(1);
+    for (const box of boxes) {
+      expect(box.x).toBeGreaterThanOrEqual(ownerBox.x);
+      expect(box.x + box.width).toBeLessThanOrEqual(
+        ownerBox.x + ownerBox.width + TAP_FLOOR_FLOAT_EPSILON_PX
+      );
+    }
   } finally {
     dropItems(db, seeded);
     db.close();

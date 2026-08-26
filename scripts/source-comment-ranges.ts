@@ -1,4 +1,4 @@
-import ts from "typescript";
+import ts from "typescript-api";
 
 /**
  * Every comment range in a source file, from a real TypeScript parse.

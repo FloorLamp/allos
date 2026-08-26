@@ -2,7 +2,7 @@
 
 import { useMemo, useRef, useState } from "react";
 import { IconPencil, IconPlus, IconX } from "@tabler/icons-react";
-import Button from "@/components/Button";
+import Button, { InlineSubmitAction } from "@/components/Button";
 import SubmitButton from "@/components/SubmitButton";
 import NotesText from "@/components/NotesText";
 import DateField from "@/components/DateField";
@@ -290,12 +290,9 @@ export default function InjuryBar({
         >
           <p className="text-xs text-slate-500 dark:text-slate-400">
             Have injury-specific supplements?{" "}
-            <SubmitButton
-              pendingLabel="…"
-              className="btn-ghost inline p-0 text-xs underline"
-            >
+            <InlineSubmitAction pendingLabel="…">
               Turn on the &ldquo;Injury&rdquo; situation
-            </SubmitButton>
+            </InlineSubmitAction>
           </p>
         </form>
       )}

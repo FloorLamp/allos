@@ -3,6 +3,7 @@ import {
   cyclePhaseOnDate,
   cycleDayOnDate,
   cycleLengths,
+  cycleLengthStatsState,
   cycleStats,
   periodLengthDays,
   periodOnDate,
@@ -368,6 +369,16 @@ describe("CYCLE_STATS_MIN_SAMPLES — the tiles' gate is the regularity verdict 
     expect(stats.variabilityDays).toBe(0);
     expect(stats.meanLength).toBe(stats.minLength);
     expect(stats.regularity).toBe("insufficient");
+  });
+
+  it.each([
+    [0, "No completed cycles yet — cycle length stats appear after 3."],
+    [2, "2 completed cycles — cycle length stats appear after 3."],
+  ])("renders the %i-cycle evidence state", (cycles, message) => {
+    expect(cycleLengthStatsState(cycleStats(periodsYielding(cycles)))).toEqual({
+      kind: "insufficient",
+      message,
+    });
   });
 });
 

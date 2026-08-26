@@ -4,7 +4,14 @@ import path from "node:path";
 import { fileURLToPath } from "node:url";
 import { describe, expect, it } from "vitest";
 
-import { readDoseQuantity, parseQuantity, doseUnitCount } from "../dri";
+import {
+  readDoseQuantity,
+  parseQuantity,
+  doseUnitCount,
+  WRITTEN_NUMBER,
+  WRITTEN_NUMBER_SCAN,
+  DOSE_NUMBER_SCAN,
+} from "../dri";
 import { readIngredientAmount } from "../intake-ingredients";
 import {
   strengthFromName,
@@ -488,6 +495,16 @@ describe("no reader of a dose amount invents a number (#3444)", () => {
 // the two halves, and the reason neither is optional. The reach test below pins the
 // blind spot as a fixture so it stays known rather than becoming a surprise.
 //
+// PARTLY CLOSED SINCE #3468, and stated here because this header is where a reader
+// looks: THE COMPOSED-SCAN CENSUS at the bottom of this file expands `${…}` from a
+// file's own `const` definitions before asking its questions, so `const NUM =
+// WRITTEN_NUMBER_SCAN` followed by `${NUM}` three constants later IS paired. It asks a
+// different question from this one — WHICH SCAN a reader composed, and whether that
+// scan can refuse — so neither census subsumes the other: this one sees a hand-written
+// pattern that composes nothing, that one sees a composition whose text carries no
+// number spelling at all. What remains out of reach for BOTH is a scan reached through
+// a function, an object property or a renamed import.
+//
 // It also says nothing about a reader that does not use a regex at all (an indexOf, a
 // hand-rolled character loop, a parseFloat over a substring). The behavioural sweep is
 // the only half that can see those, and only for readers listed in it.
@@ -904,6 +921,388 @@ describe("the census's reach", () => {
       scan(
         "range.ts",
         "const RE = /(-?\\d+(?:\\.\\d+)?)\\s*(?:-|to)\\s*(-?\\d+(?:\\.\\d+)?)/i;\n"
+      )
+    ).toEqual([]);
+  });
+});
+
+// ─────────────────────────────────────────────────────────────────────────────
+// THE COMPOSED-SCAN CENSUS (#3468)
+//
+// #3464 SPLIT THE SCAN IN TWO, AND THE TEXT CENSUS ABOVE CANNOT TELL THEM APART.
+//
+//   WRITTEN_NUMBER_SCAN  where a number starts and ends for a NAME GRAMMAR. It does
+//                        not span an unreadable separator run, on purpose: spanning it
+//                        collapses "Vitamin B 12" to "Vitamin B" and makes
+//                        `medicationFamilies` merge distinct drugs into one redose
+//                        family.
+//   DOSE_NUMBER_SCAN     the same plus the refusal branch, for readers whose answer is
+//                        a QUANTITY and whose safe fallback is refusal.
+//
+// A new dose reader that composes WRITTEN_NUMBER_SCAN — the wrong one, and the one with
+// the more inviting name — is spanning AND start-guarded, so `unanchoredDoseScans` above
+// stays silent on it. The reader it describes returns a CONFIDENT ZERO for "1 000 mg"
+// and every other unreadable-run spelling, which is the whole of what #3451 was for.
+//
+// SO THIS ONE KEYS ON A PROPERTY, NOT AN ENUMERATION. There is no list of "the
+// unreadable separators" left to widen to — since #3464 the shipped rule is DERIVED,
+// refusing any separator run that is not one of four meaning-carrying characters — and
+// enumerating that complement is the exact mistake #3464 made three times before
+// inverting the classes. The property here is the one that matters to a caller:
+//
+//     CAN THE READER REFUSE? A scan can refuse only if it takes an unreadable run
+//     WHOLE, because that is what leaves `readGroupedNumber` something to decline. A
+//     scan that stops at the space hands its caller the fragment before it and the
+//     caller answers confidently.
+//
+// That is asked of the scan's BEHAVIOUR, at runtime, against "1 000" — not of its text.
+// So a fourth scan classifies itself, and a scan whose guards change is re-classified
+// by the same question rather than by anyone remembering to update a list.
+//
+// AND IT FOLLOWS ONE LEVEL OF COMPOSITION, which is the reach #3444 named as missing.
+// lib/prescription-parse.ts writes `const NUM = WRITTEN_NUMBER_SCAN;` and composes NUM
+// three constants later; nothing that matches on a fragment in isolation will ever pair
+// them. Interpolations are EXPANDED from the file's own `const` definitions before the
+// questions are asked, so an alias is transparent and the dose unit hiding behind
+// `${DOSE_UNIT}` is visible.
+//
+// THE TWO REGISTRIES BELOW ARE CLASSIFICATIONS, NOT AN OCCURRENCE ALLOWLIST, and the
+// difference is why they earn their keep. Neither lists PLACES the defect is tolerated.
+// `NOT_A_NUMBER_SCAN` answers "is this export a number a reader returns?" — a question
+// about what a constant IS, asked once of each thing lib/dri.ts publishes, and the
+// answer does not change as the tree moves. `ALLOWED_NON_REFUSING` answers "is this a
+// name grammar or a quantity reader?" — the distinction #3464 created and the exact
+// distinction this census exists to be able to draw. Both are ONE entry.
+//
+// So do not delete them as ratchet machinery, and do not grow them as one either. A
+// second entry in `ALLOWED_NON_REFUSING` is a claim that another module's answer is a
+// NAME and not a QUANTITY; if that is not true of it, the reader is the defect and the
+// registry is not where it belongs.
+//
+// WHAT IS STILL OUT OF REACH, in the register this file already uses:
+//   * A PLAIN TEMPLATE LITERAL — `new RegExp(\`…\`)` — WHICH IS THE SHAPE THIS TREE
+//     ACTUALLY WRITES, and the omission that made this list dishonest until #3813's
+//     adversarial pass. `patternFragments` matches regex literals, `String.raw\`…\``
+//     and `new RegExp("…")`; its constructor matcher accepts a double- or single-quoted
+//     argument and NOTHING ELSE, so a backtick argument yields zero fragments. Measured,
+//     not inferred: the same reader spelled `new RegExp(String.raw\`…\`)` produces one
+//     fragment and IS caught, while `new RegExp(\`…\`)` produces none — so the defect
+//     escapes BOTH censuses, this one included, and a reader built that way returns
+//     "000" for "1 000 mg" in silence. lib/notifications/food-format.ts:121 writes that
+//     exact spelling today (harmlessly — it reads no dose), which is the point: it is
+//     the ordinary way to build a pattern here, not an exotic one.
+//   * STRING CONCATENATION — `"(\\d+)" + "\\s*(mg)"` — same reason. The text never
+//     exists in one literal for either matcher to see.
+//   * AN ANCHOR ON ONE ALTERNATION BRANCH ONLY — `/^a|(\\d+)\\s*mg/` reads as anchored
+//     to `isAnchored`, which tests the START of the pattern, while the second branch is
+//     free to restart mid-number. The anchor check is a prefix test, not a proof that
+//     every branch refuses.
+//   * A DOSE UNIT OUTSIDE `DOSE_UNIT_TOKEN`. That list is six mass/activity units, and
+//     it is a LIST, not a rule — `ml`, `units`, `tablet` and `puff` are all real
+//     spellings in this tree (lib/prescription-parse.ts's own DOSE_UNIT and DOSE_FORM
+//     carry them), and a reader pairing a number with one of those is invisible here.
+//   * a scan reached through a FUNCTION, an object property or an import alias
+//     (`import { WRITTEN_NUMBER_SCAN as N }`) — expansion follows plain `const X = Y;`
+//     and `const X = String.raw\`…\`;`, nothing else;
+//   * a reader that composes nothing and hand-writes the guard — that is the text
+//     census above's question, and it is why both exist;
+//   * a reader that uses no regex at all. The behavioural sweep at the top of this file
+//     is the only half that can see those, and only for the readers listed in it.
+// ─────────────────────────────────────────────────────────────────────────────
+
+/** The scans lib/dri.ts publishes for other modules to compose AS A NUMBER. */
+const SCAN_SOURCES: Record<string, string> = {
+  WRITTEN_NUMBER,
+  WRITTEN_NUMBER_SCAN,
+  DOSE_NUMBER_SCAN,
+};
+
+/**
+ * The other `*NUMBER*` exports of lib/dri.ts, which are not scans a reader composes as
+ * its number — so "can it refuse" is not a question about them.
+ *
+ * This registry exists because the classification above is only honest if it covers
+ * EVERYTHING the module publishes. A new export that nothing classifies would sit
+ * outside the census silently, which is the shape this whole file refuses. Writing the
+ * sentence is the cost of adding one; it was found by this guard on its first run.
+ */
+const NOT_A_NUMBER_SCAN: Record<string, string> = {
+  MID_NUMBER_PREFIX:
+    "an END-anchored test on the text BEFORE a strength, asking how far back a " +
+    "number goes so a name/strength split can be walked out of the middle of one. " +
+    "It never stands in for the number a reader returns, and its one consumer " +
+    "(lib/prescription-parse.ts) matches it against a prefix, not against a dose.",
+};
+
+/**
+ * The string every one of these scans is classified against.
+ *
+ * A plain space between digit groups: the spelling #3451 was filed for, and the one
+ * separator run that is unreadable no matter which of the four meaning-carrying
+ * characters a document uses.
+ */
+const UNREADABLE_RUN = "1 000";
+
+/**
+ * Can a reader built on this scan REFUSE?
+ *
+ * Only if the scan takes the whole unreadable run, because that is what reaches
+ * `readGroupedNumber` with something to decline. A scan that stops at the space
+ * returns "1" and its caller answers 1 — or, one restart later, 0.
+ */
+function canRefuse(scanSource: string): boolean {
+  return new RegExp(scanSource).exec(UNREADABLE_RUN)?.[0] === UNREADABLE_RUN;
+}
+
+/** The body of a pattern fragment, without its `/…/` or `String.raw\`…\`` wrapper. */
+function fragmentBody(fragment: string): string {
+  if (fragment.startsWith("String.raw`"))
+    return fragment.slice("String.raw`".length, -1);
+  if (fragment.startsWith("/") && fragment.endsWith("/"))
+    return fragment.slice(1, -1);
+  return fragment;
+}
+
+/**
+ * A file's own `const` definitions, in the two shapes an interpolation can resolve to.
+ *
+ * A plain alias (`const NUM = WRITTEN_NUMBER_SCAN;`) is stored as `${WRITTEN_NUMBER_SCAN}`
+ * so the SAME expansion loop resolves it — one mechanism, not two.
+ */
+function constTexts(code: string): Map<string, string> {
+  const out = new Map<string, string>();
+  const re =
+    /const\s+([A-Za-z0-9_$]+)\s*=\s*(String\.raw`(?:[^`\\]|\\.)*`|[A-Za-z0-9_$]+)\s*;/g;
+  for (const m of code.matchAll(re)) {
+    out.set(
+      m[1],
+      m[2].startsWith("String.raw`")
+        ? m[2].slice("String.raw`".length, -1)
+        : `\${${m[2]}}`
+    );
+  }
+  return out;
+}
+
+/** Expand `${…}` from the file's constants, recording which SCANS were reached. */
+function expandFragment(
+  body: string,
+  defs: Map<string, string>
+): { text: string; scans: Set<string> } {
+  const scans = new Set<string>();
+  let text = body;
+  // Bounded: a cycle (`const A = B; const B = A;`) must not hang the tier, and real
+  // chains in this tree are two or three deep.
+  for (let pass = 0; pass < 8; pass++) {
+    let changed = false;
+    text = text.replace(/\$\{([A-Za-z0-9_$]+)\}/g, (whole, name: string) => {
+      if (Object.hasOwn(SCAN_SOURCES, name)) {
+        scans.add(name);
+        changed = true;
+        return SCAN_SOURCES[name];
+      }
+      const def = defs.get(name);
+      if (def === undefined) return whole;
+      changed = true;
+      return def;
+    });
+    if (!changed) break;
+  }
+  return { text, scans };
+}
+
+/** Is this EXPANDED pattern body anchored at the start? */
+function bodyIsAnchored(body: string): boolean {
+  return /^(?:\((?:\?:|\?<[^>]+>)?)*\^/.test(body);
+}
+
+/**
+ * Every pattern that composes a scan which CANNOT refuse, against a dose unit, without
+ * an anchor to make it fail instead.
+ */
+export function nonRefusingDoseComposers(code: string): string[] {
+  const defs = constTexts(code);
+  const out: string[] = [];
+  for (const fragment of patternFragments(code)) {
+    const { text, scans } = expandFragment(fragmentBody(fragment), defs);
+    const cannotRefuse = [...scans].filter((n) => !canRefuse(SCAN_SOURCES[n]));
+    if (cannotRefuse.length === 0) continue;
+    if (!DOSE_UNIT_TOKEN.test(text)) continue;
+    if (bodyIsAnchored(text)) continue;
+    out.push(`${fragment} composes ${cannotRefuse.sort().join(", ")}`);
+  }
+  return out;
+}
+
+/**
+ * Files allowed to compose a non-refusing scan against a dose unit. One entry, and it
+ * is the NAME GRAMMAR the split exists for — say why in the value.
+ */
+const ALLOWED_NON_REFUSING: Record<string, string> = {
+  "lib/prescription-parse.ts":
+    "a NAME grammar, not a quantity reader. Its answer is where a drug name ends and " +
+    "its strength begins, and WRITTEN_NUMBER_SCAN is the correct half precisely " +
+    "because it does NOT span an unreadable run: spanning it collapses " +
+    '"Vitamin B 12" to "Vitamin B" and merges distinct drugs into one redose family. ' +
+    "The strength it splits off is handed to readDoseQuantity, which composes the " +
+    "refusing scan — so the refusal still happens, one module later.",
+};
+
+describe("the composed-scan census (#3468)", () => {
+  const scanned = trackedSources();
+  const found = new Map<string, string[]>();
+  for (const relative of scanned) {
+    const hits = nonRefusingDoseComposers(
+      stripComments(readFileSync(path.join(REPO, relative), "utf8"))
+    );
+    if (hits.length > 0) found.set(relative, hits);
+  }
+
+  it("classifies the shipped scans by whether their reader CAN REFUSE", () => {
+    // The property this census keys on, stated as an assertion so it cannot quietly
+    // invert. `1 000` is the unreadable run; the refusing scan takes it whole and hands
+    // readGroupedNumber something to decline, the name-grammar scan stops at the space.
+    expect(canRefuse(DOSE_NUMBER_SCAN)).toBe(true);
+    expect(canRefuse(WRITTEN_NUMBER_SCAN)).toBe(false);
+    expect(canRefuse(WRITTEN_NUMBER)).toBe(false);
+    // And the consequence, at the reader: the refusing composition declines rather
+    // than answering, which is what "confident zero" would otherwise be.
+    expect(readDoseQuantity("1 000 mg").kind).toBe("unreadable");
+  });
+
+  it("knows every scan lib/dri.ts publishes, so a fourth must be classified", () => {
+    // The registry's premise. A new exported *NUMBER* scan that nothing classifies
+    // would sit outside SCAN_SOURCES and be invisible to the census — silence that
+    // reads as coverage, which is the defect this whole file exists to refuse. Either
+    // it is a scan a reader composes as its number (SCAN_SOURCES, and `canRefuse`
+    // classifies it by running it) or it is not (NOT_A_NUMBER_SCAN, with a sentence).
+    const exported = [
+      ...stripComments(
+        readFileSync(path.join(REPO, "lib/dri.ts"), "utf8")
+      ).matchAll(/^export const ([A-Z0-9_]*NUMBER[A-Z0-9_]*)\s*=/gm),
+    ].map((m) => m[1]);
+    expect(exported.sort()).toEqual(
+      [...Object.keys(SCAN_SOURCES), ...Object.keys(NOT_A_NUMBER_SCAN)].sort()
+    );
+  });
+
+  it("finds no non-refusing dose composer outside the registry", () => {
+    const unregistered = [...found]
+      .filter(([relative]) => !(relative in ALLOWED_NON_REFUSING))
+      .map(
+        ([relative, hits]) =>
+          `${relative}: ${hits.join(" | ")} — this reader composes a scan that CANNOT ` +
+          `refuse, against a dose unit, unanchored. On "1 000 mg" the scan stops at ` +
+          `the space and the reader answers confidently with the fragment before it. ` +
+          `Compose DOSE_NUMBER_SCAN (lib/dri.ts) if the answer is a QUANTITY, or say ` +
+          `in ALLOWED_NON_REFUSING why a name grammar is the right half here.`
+      );
+    expect(unregistered).toEqual([]);
+  });
+
+  it("keeps THAT registry from outliving the readers it excuses", () => {
+    expect([...found.keys()].sort()).toEqual(
+      Object.keys(ALLOWED_NON_REFUSING).sort()
+    );
+  });
+
+  it("is SILENT on the two neighbours #3468 named by hand", () => {
+    // Both are the cry-wolf cases: shipped code that is correct, and that a census
+    // keyed one notch wider would report. Named individually rather than left to the
+    // set equality above, because they are the two the issue asked about.
+    //
+    // lib/dose-amount-census.ts composes the REFUSING scan for its live reader, and
+    // its retired PRE_FIX_DOSE_RE composes nothing at all — it is a bare literal, the
+    // subject of a measurement rather than a reader of live data.
+    expect(found.has("lib/dose-amount-census.ts")).toBe(false);
+    expect(preFixDoseReading("1 000 mg")).not.toBeNull();
+    // …and lib/prescription-parse.ts IS found, then excused by name. Asserting the
+    // finding rather than only the excuse keeps the entry from becoming decoration:
+    // if that file stopped composing the name grammar, this is what would say so.
+    expect(found.get("lib/prescription-parse.ts")?.length).toBeGreaterThan(0);
+  });
+});
+
+describe("the composed-scan census's reach", () => {
+  const dir = makeTmpDir("composed-scan-census");
+  const scan = (name: string, content: string): string[] => {
+    writeFileSync(path.join(dir, name), content);
+    return nonRefusingDoseComposers(
+      stripComments(readFileSync(path.join(dir, name), "utf8"))
+    );
+  };
+
+  it("FLAGS a dose reader built on WRITTEN_NUMBER_SCAN", () => {
+    // The source #3468 describes: the wrong scan, the more inviting name, and a
+    // confident zero for every unreadable-run spelling. `unanchoredDoseScans` above
+    // is silent on this exact text — asserted here so the two halves' division of
+    // labour is a measurement rather than a claim.
+    const src =
+      "import { WRITTEN_NUMBER_SCAN } from './dri';\n" +
+      "const RE = new RegExp(String.raw`(${WRITTEN_NUMBER_SCAN})\\s*(mg|mcg)\\b`, 'i');\n";
+    expect(scan("wrong-scan.ts", src)).toHaveLength(1);
+    expect(unanchoredDoseScans(stripComments(src))).toEqual([]);
+  });
+
+  it("FLAGS it through a LOCAL ALIAS, which is how the tree actually writes it", () => {
+    // `const NUM = WRITTEN_NUMBER_SCAN;` then `${NUM}` three constants later — the
+    // composed-grammar shape #3444 was written in and that no fragment-in-isolation
+    // census can pair. The unit hides behind an alias too.
+    expect(
+      scan(
+        "aliased.ts",
+        "import { WRITTEN_NUMBER_SCAN } from './dri';\n" +
+          "const NUM = WRITTEN_NUMBER_SCAN;\n" +
+          "const UNIT = String.raw`(?:mg|mcg|iu)\\b`;\n" +
+          "const RE = new RegExp(String.raw`\\s+${NUM}\\s*${UNIT}.*$`, 'i');\n"
+      )
+    ).toHaveLength(1);
+  });
+
+  it("STAYS SILENT on a reader that composes the REFUSING scan", () => {
+    // lib/dri.ts's own DOSE_QUANTITY_RE and lib/dose-amount-census.ts, in miniature.
+    expect(
+      scan(
+        "right-scan.ts",
+        "import { DOSE_NUMBER_SCAN } from './dri';\n" +
+          "const RE = new RegExp(String.raw`(${DOSE_NUMBER_SCAN})\\s*(mcg|mg|g|iu)\\b`, 'i');\n"
+      )
+    ).toEqual([]);
+  });
+
+  it("STAYS SILENT on an ANCHORED composition, which refuses by failing", () => {
+    // lib/intake-ingredients.ts, which composes WRITTEN_NUMBER on purpose and anchors
+    // both ends: "1 000 mg" matches nothing and the caller gets null.
+    expect(
+      scan(
+        "anchored-compose.ts",
+        "import { WRITTEN_NUMBER } from './dri';\n" +
+          "const RE = new RegExp(String.raw`^(${WRITTEN_NUMBER})\\s*(mcg|mg|g|iu)$`, 'i');\n"
+      )
+    ).toEqual([]);
+  });
+
+  it("STAYS SILENT on a name grammar with no dose unit in it", () => {
+    // Splitting a name on a number is not reading a quantity. Flagging it would be the
+    // cry-wolf direction on the very use the scan split exists to serve.
+    expect(
+      scan(
+        "name-only.ts",
+        "import { WRITTEN_NUMBER_SCAN } from './dri';\n" +
+          "const RE = new RegExp(String.raw`^(.*?)\\s+${WRITTEN_NUMBER_SCAN}$`);\n"
+      )
+    ).toEqual([]);
+  });
+
+  it("STAYS SILENT on prose that merely NAMES the wrong scan", () => {
+    // Three files in this tree discuss WRITTEN_NUMBER_SCAN in order to explain which
+    // half to use. A census that reported them would be a list of documentation.
+    expect(
+      scan(
+        "prose.ts",
+        "// Do not build a quantity reader on WRITTEN_NUMBER_SCAN against mg — it\n" +
+          "// cannot refuse. Compose DOSE_NUMBER_SCAN instead.\n" +
+          "export const NOTE = 1;\n"
       )
     ).toEqual([]);
   });

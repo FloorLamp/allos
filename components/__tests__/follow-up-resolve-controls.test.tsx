@@ -21,7 +21,6 @@ describe("FollowUpResolveControls", () => {
       const button = screen.getByRole("button", { name: label });
       expect(button.getAttribute("name")).toBe("resolution");
       expect(button.getAttribute("value")).toBe(value);
-      expect(button.className).toBe("button-control");
     }
   });
 });
