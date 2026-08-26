@@ -70,7 +70,7 @@ const Button = forwardRef<HTMLButtonElement, ButtonProps>(function Button(
       aria-busy={busy || undefined}
       data-testid={testId}
       data-button-control=""
-      className="button-control"
+      className="button-control shrink-0"
     >
       {busy && (
         <IconLoader2 className="size-4 motion-safe:animate-spin" aria-hidden />
@@ -85,7 +85,7 @@ export default Button;
 type SubmitActionProps = Omit<ButtonProps, "type">;
 
 export const SubmitActionChip = (props: SubmitActionProps) => (
-  <Button type="submit" {...props} />
+  <Button {...props} type="submit" />
 );
 
 export const InlineSubmitAction = (props: SubmitActionProps) => (

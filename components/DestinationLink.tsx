@@ -49,7 +49,7 @@ export function DestinationActionLink({
   return (
     <DestinationLink
       {...props}
-      className="button-control"
+      className="button-control shrink-0"
       data-button-control=""
     >
       {children}

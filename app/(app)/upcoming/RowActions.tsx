@@ -17,6 +17,7 @@ import OverflowMenu, {
   type MenuHelpers,
 } from "@/components/OverflowMenu";
 import { SubmitActionChip } from "@/components/Button";
+import { DestinationActionLink } from "@/components/DestinationLink";
 import InfoTooltipIcon from "@/components/InfoTooltipIcon";
 import { useToast } from "@/components/Toast";
 import {
@@ -54,10 +55,6 @@ const ACTION_ICON: Record<string, TablerIcon> = {
 // control's accessible name and a sibling shared disclosure. Absent
 // on every chip whose label already IS the whole thing.
 //
-// A CHIP concern only. The overflow-menu presenter below renders `label` verbatim,
-// because the only surface that abbreviates (Upcoming's availability run) renders
-// with `fold={false}` and has no menu — giving the menu a branch no descriptor can
-// reach would be a second, untested definition of what a row action is called.
 type FullLabel = { fullLabel?: string };
 
 export type RowAction =
@@ -85,9 +82,6 @@ export type RowAction =
       // success may carry outcome-named wording. `void` keeps the additive default.
       action: (formData: FormData) => Promise<MenuActionResult>;
     } & FullLabel);
-
-const CHIP =
-  "flex shrink-0 items-center gap-1 whitespace-nowrap rounded-lg border border-black/10 px-2.5 py-1 text-xs font-medium text-slate-600 transition hover:bg-slate-100 disabled:opacity-60 dark:border-white/10 dark:text-slate-300 dark:hover:bg-ink-750";
 
 function HiddenFields({ fields }: { fields: Record<string, string | number> }) {
   return (
@@ -149,15 +143,14 @@ export function RowActionChips({
         if (a.kind === "link") {
           return (
             <span key={a.id} className="inline-flex items-center">
-              <Link
+              <DestinationActionLink
                 href={a.href}
                 data-testid={a.testId}
-                className={CHIP}
                 aria-label={accessibleLabel}
               >
                 {Icon && <Icon className="h-3.5 w-3.5" stroke={1.75} />}
                 {a.label}
-              </Link>
+              </DestinationActionLink>
               {a.fullLabel ? (
                 <InfoTooltipIcon label={`Full label: ${a.fullLabel}`} />
               ) : null}

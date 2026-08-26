@@ -7,7 +7,7 @@ import {
 } from "@testing-library/react";
 import { createRef } from "react";
 import { describe, expect, it, vi } from "vitest";
-import Button from "@/components/Button";
+import Button, { SubmitActionChip } from "@/components/Button";
 import { DestinationActionLink } from "@/components/DestinationLink";
 
 describe("Button", () => {
@@ -35,7 +35,7 @@ describe("Button", () => {
     expect(button.getAttribute("aria-expanded")).toBe("false");
     expect(button.getAttribute("aria-controls")).toBe("more-results");
     expect(button.getAttribute("data-button-control")).toBe("");
-    expect(button.className).toBe("button-control");
+    expect(button.className).toBe("button-control shrink-0");
     expect(button.className).not.toContain("tap-target");
     expect(ref.current).toBe(button);
     fireEvent.keyDown(button, { key: "ArrowDown" });
@@ -54,22 +54,26 @@ describe("Button", () => {
     const link = screen.getByRole("link", { name: "Review screening" });
     expect(link.getAttribute("href")).toBe("/upcoming");
     expect(link.getAttribute("data-button-control")).toBe("");
-    expect(link.className).toBe("button-control");
+    expect(link.className).toBe("button-control shrink-0");
     expect(link.querySelector("svg")).not.toBeNull();
   });
 
   it("forwards its submitter and owns the pending label, spinner, and state", async () => {
     const result = Promise.withResolvers<void>();
     const submitted = vi.fn((_formData: FormData) => result.promise);
+    const runtimeProps = { type: "button" } as unknown as Parameters<
+      typeof SubmitActionChip
+    >[0];
     render(
       <form action={submitted}>
-        <Button type="submit" name="intent" value="archive">
+        <SubmitActionChip {...runtimeProps} name="intent" value="archive">
           Archive
-        </Button>
+        </SubmitActionChip>
       </form>
     );
 
     const button = screen.getByRole("button", { name: "Archive" });
+    expect(button.getAttribute("type")).toBe("submit");
     fireEvent.click(button);
 
     await waitFor(() => expect(submitted).toHaveBeenCalledOnce());
