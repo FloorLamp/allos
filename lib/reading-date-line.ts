@@ -37,8 +37,8 @@ import { isBiomarkerStale } from "./reference-range";
 // test name the same string instead of two copies that can drift apart.
 export const DATE_AGE_SEPARATOR = " · ";
 
-// The hover text on a stale age token — the same sentence the cell carried before
-// the two lines became one.
+// The disclosed explanation for a stale age token — the same sentence the cell
+// carried before the two lines became one.
 export const STALE_AGE_TITLE = "Over a year old — consider retesting";
 
 const AGE_CLASS_CURRENT = "text-slate-500 dark:text-slate-400";

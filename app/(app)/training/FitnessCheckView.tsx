@@ -330,16 +330,14 @@ function Tile({
             {tile.label}
           </span>
         </div>
-        {/* Below sm the chip collapses to its glyph + a title, with the text kept
-            for AT (sr-only) — the 2-col tiles are too narrow for glyph AND text. */}
+        {/* The domain stays visible beside its glyph at every width; the title can
+            wrap inside the square tile when the two compete for space. */}
         <span
           data-testid="fitness-tile-domain"
           className="inline-flex shrink-0 items-center gap-1 rounded-sm bg-black/5 pl-1 text-xs uppercase tracking-wide opacity-70 dark:bg-white/10"
         >
           <FitnessDomainGlyph domain={tile.domain} className="h-3 w-3" />
-          <span className="sr-only sm:not-sr-only">
-            {DOMAIN_LABEL[tile.domain] ?? tile.domain}
-          </span>
+          <span>{DOMAIN_LABEL[tile.domain] ?? tile.domain}</span>
         </span>
       </div>
 

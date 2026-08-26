@@ -256,8 +256,8 @@ The cell is now a **judgment cell**, and nothing about it is a second derivation
   reason the cell cannot be a bare number pair.
 - No canonical entry → the printed string genuinely IS the deciding range, so it
   shows as before, relabelled **Lab reference**. Either way the lab's own string
-  survives: as the cell's hover title, and in full on the reading detail page under
-  its own "Lab reference" column.
+  survives: through the cell's shared information disclosure, and in full on the
+  reading detail page under its own "Lab reference" column.
 - `formatBand()` (`lib/band-format.ts`) is the one band formatter, promoted out of
   `MetricJudgmentCard` (#221). It rounds to four decimals rather than two — Urine
   Specific Gravity is curated 1.001–1.035, and two places print "1–1.04".

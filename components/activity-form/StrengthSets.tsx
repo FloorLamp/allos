@@ -1712,6 +1712,11 @@ export default function StrengthSets({
           )}
         </span>
       </div>
+      {showGrid && (
+        <p className="mt-1 text-xs text-slate-500 dark:text-slate-400">
+          Warmup sets do not count toward volume or target markers.
+        </p>
+      )}
       {badDuration && (
         <p className="mt-1 text-xs text-rose-500 dark:text-rose-400">
           Enter hold time as m:ss (e.g. 1:30) or seconds (e.g. 90).

@@ -104,7 +104,7 @@ function Chip({
   // The factored form. The visual parts are aria-hidden and the full names — with
   // their ranks, composed by the pure `spokenDiagnosisList` — are spoken instead,
   // so nothing about this layout reaches assistive technology as an abbreviation.
-  // The title carries the same strings for hover.
+  // The adjacent shared information control exposes the same strings.
   const spoken = spokenDiagnosisList(
     group.members.map((m) => m.name),
     ranks

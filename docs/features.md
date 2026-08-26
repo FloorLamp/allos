@@ -1823,10 +1823,10 @@ wrapped lines on a phone. This is about wrapping and nothing else — it groups 
 long shared stem, including two genuinely different diagnoses, and it never claims
 they are one. Nothing is hidden: the stem plus each tail is exactly the stored
 name, and a compacted chip carries every full name — each with whatever the source
-stated about it — as its hover text and as the text a screen reader reads instead
-of the fragments. (An uncompacted chip already prints its whole name, so it has no
-hover text of its own.) A source-stated rank and a fragment of a name are styled
-apart, because they are different claims.
+stated about it — in its shared information disclosure and as the text a screen
+reader reads instead of the fragments. (An uncompacted chip already prints its whole
+name, so it needs no disclosure.) A source-stated rank and a fragment of a name are
+styled apart, because they are different claims.
 
 ### Providers
 

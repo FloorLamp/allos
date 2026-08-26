@@ -432,19 +432,21 @@ export default function ActivityPartsList({
       </div>
 
       <div className="flex flex-wrap items-center justify-between gap-2">
-        <button
-          type="button"
-          onClick={onAddPart}
-          disabled={!canAddPart}
-          aria-label={
-            canAddPart
-              ? "Add another activity"
-              : "Complete the current activity first"
-          }
-          className="btn-ghost"
-        >
-          + Add another activity
-        </button>
+        <div>
+          <button
+            type="button"
+            onClick={onAddPart}
+            disabled={!canAddPart}
+            className="btn-ghost"
+          >
+            + Add another activity
+          </button>
+          {!canAddPart && (
+            <p className="mt-1 text-xs text-slate-500 dark:text-slate-400">
+              Complete the current activity first.
+            </p>
+          )}
+        </div>
         {/* Live multisport roll-up (issue #337): Σ distance / Σ duration across
             the legs while editing, matching the save-time fold. */}
         {showRollup && (
