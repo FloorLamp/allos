@@ -47,6 +47,7 @@ import {
 } from "./activity-import-details";
 import { zoneForBpm, type ZoneModel } from "./training-zones";
 import type { ActivityVideoRow } from "./activity-video-write";
+import type { SubjectInfo } from "./scope";
 
 // A media clip attached to an activity (#1224), in the SERIALIZABLE
 // shape the activity detail page renders — booleans/numbers only, so it crosses
@@ -76,23 +77,11 @@ export type DisplayPart =
   | { kind: "cardio"; name: string; detail: string }
   | { kind: "sport"; name: string; detail: string };
 
-// The subject identity a merged multi-view card carries (issue #1330). A
-// serializable projection of lib/scope's SubjectInfo (name/photo/access), stamped
-// onto each card so the client renders the subject chip and write affordances.
-// ABSENT in single view — the card renders byte-identical.
-export interface TrainingLogCardSubject {
-  profileId: number;
-  name: string;
-  photoPath: string | null;
-  photoVersion: number;
-  // subject.access === "write": a read-only-granted member's cards render view-only.
-  canWrite: boolean;
-}
-
 export interface TrainingLogCardData {
   activity: ActivityEditData;
-  // Subject identity for a merged multi-view card (issue #1330); absent in single view.
-  subject?: TrainingLogCardSubject;
+  // Canonical subject identity for a merged multi-view card (issue #1330); absent
+  // in single view so the card renders byte-identical.
+  subject?: SubjectInfo;
   timeText: string | null;
   durationText: string | null;
   distanceText: string | null;

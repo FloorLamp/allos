@@ -7,6 +7,7 @@ import {
   expectNoClippedContent,
   expectInView,
   hydratedClick,
+  settledBoxes,
 } from "./helpers";
 import { loginAs } from "./nav";
 import {
@@ -236,7 +237,7 @@ test.describe("Multi-profile viewing (issue #1096)", () => {
       .filter({ hasText: MULTI_SHARED_DOSE });
     await expect(
       sharedRowDesktop.getByTestId(`subject-chip-${sharedId}`)
-    ).toBeVisible();
+    ).toContainText(MULTI_SHARED_PROFILE);
     await expect(
       page.locator(`[data-testid="subject-chip-${ownerId}"]`)
     ).toHaveCount(0);
@@ -638,9 +639,12 @@ test.describe("Multi-view Training Log (issue #1330)", () => {
       .locator('[id^="activity-"]')
       .filter({ hasText: MULTI_SHARED_ACTIVITY });
     await expect(sharedCard).toBeVisible();
-    await expect(
-      sharedCard.getByTestId(`subject-chip-${sharedId}-row`)
-    ).toBeVisible();
+    const sharedChipSlot = sharedCard.getByTestId(
+      `subject-chip-${sharedId}-row`
+    );
+    const sharedChip = sharedChipSlot.getByTestId(`subject-chip-${sharedId}`);
+    await expect(sharedChipSlot).toBeVisible();
+    await expect(sharedChip).toContainText(MULTI_SHARED_PROFILE);
     // The owner's own cards are still there, without a chip anywhere on the feed.
     await expect(
       page
@@ -650,6 +654,26 @@ test.describe("Multi-view Training Log (issue #1330)", () => {
     await expect(
       page.locator(`[data-testid="subject-chip-${ownerId}"]`)
     ).toHaveCount(0);
+
+    // At phone width the caller-owned slot drops below the activity copy while the
+    // shared primitive remains contained in its row and the viewport.
+    await page.setViewportSize({ width: 390, height: 844 });
+    await page.goto("/training?tab=log");
+    await expect(sharedChipSlot).toBeVisible();
+    const [phoneRowBox, phoneContentBox, phoneSlotBox] = await settledBoxes([
+      sharedCard,
+      sharedCard.locator(":scope > div.min-w-0"),
+      sharedChipSlot,
+    ]);
+    expect(phoneSlotBox.x).toBeGreaterThanOrEqual(phoneRowBox.x - 1);
+    expect(phoneSlotBox.x + phoneSlotBox.width).toBeLessThanOrEqual(
+      phoneRowBox.x + phoneRowBox.width + 1
+    );
+    expect(
+      phoneSlotBox.y,
+      "phone subject slot follows activity copy"
+    ).toBeGreaterThanOrEqual(phoneContentBox.y + phoneContentBox.height - 1);
+    await expectNoClippedContent(page);
 
     // Cross-profile merge never pairs: the owner's Alpha record's merge picker
     // offers its same-DAY same-PROFILE sibling (Bravo) but NEVER the shared
