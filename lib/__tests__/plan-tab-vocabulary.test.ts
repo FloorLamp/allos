@@ -2,7 +2,7 @@ import fs from "node:fs";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
 import { describe, expect, it } from "vitest";
-import { withoutComments } from "../add-affordance-grammar";
+import { stripComments } from "./strip-comments";
 
 // THE PLAN TAB'S VOCABULARY AND ITS FOLDED ENTRY FORM (#3474), as a source scan.
 //
@@ -23,7 +23,7 @@ import { withoutComments } from "../add-affordance-grammar";
 const REPO = path.resolve(fileURLToPath(new URL("../..", import.meta.url)));
 
 function read(rel: string): string {
-  return withoutComments(fs.readFileSync(path.join(REPO, rel), "utf8"));
+  return stripComments(fs.readFileSync(path.join(REPO, rel), "utf8"));
 }
 
 const PLAN_SECTION = "app/(app)/training/PlanSection.tsx";
@@ -126,9 +126,7 @@ describe("no user-facing 'weekly routine' string survives (#3474 item 4)", () =>
 
   it("no source file writes it", () => {
     const offenders = sourceFiles().filter((rel) =>
-      RETIRED.test(
-        withoutComments(fs.readFileSync(path.join(REPO, rel), "utf8"))
-      )
+      RETIRED.test(stripComments(fs.readFileSync(path.join(REPO, rel), "utf8")))
     );
     expect(offenders).toEqual([]);
   });
@@ -189,25 +187,5 @@ describe("the entry form folds, and the empty state stops repeating itself", () 
     expect(src).not.toContain(
       "No routines yet. Adopt a template or build a custom routine"
     );
-  });
-});
-
-describe("Goals and Routines carry their create in the section header row (#3474 item 5)", () => {
-  // Already true on main when this landed (#2892/#3531 got there first) — pinned so
-  // the family cannot drift apart again, which is the whole of what item 5 asks.
-  it("both sections put the heading and the action in one justify-between row", () => {
-    for (const rel of [GOALS_MANAGER, ROUTINES_MANAGER]) {
-      const src = read(rel);
-      const header = src.indexOf(
-        'className="mb-3 flex flex-wrap items-center justify-between gap-2"'
-      );
-      expect(header, rel).toBeGreaterThan(-1);
-      // The create button sits INSIDE that row: it appears after the row opens and
-      // before the list/empty-state branch below it.
-      const list = src.indexOf(".length === 0 ? (");
-      const create = src.indexOf("<IconPlus", header);
-      expect(create, rel).toBeGreaterThan(header);
-      expect(create, rel).toBeLessThan(list);
-    }
   });
 });

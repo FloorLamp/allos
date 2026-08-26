@@ -2,7 +2,7 @@ import fs from "node:fs";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
 import { describe, expect, it } from "vitest";
-import { withoutComments } from "../add-affordance-grammar";
+import { stripComments } from "./strip-comments";
 
 // THE HOUSEHOLD GLANCE'S READS AND LINK TREATMENTS (#3487), as a source scan.
 //
@@ -20,7 +20,7 @@ import { withoutComments } from "../add-affordance-grammar";
 const REPO = path.resolve(fileURLToPath(new URL("../..", import.meta.url)));
 
 function read(rel: string): string {
-  return withoutComments(fs.readFileSync(path.join(REPO, rel), "utf8"));
+  return stripComments(fs.readFileSync(path.join(REPO, rel), "utf8"));
 }
 
 const PAGE = "app/(app)/household/page.tsx";

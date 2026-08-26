@@ -1,5 +1,8 @@
 import type { ReactNode } from "react";
 import TabFirstTabs from "@/components/TabFirstTabs";
+import CreateAction, {
+  type CreateActionDeclaration,
+} from "@/components/CreateAction";
 import type { TabFirstPageConfig } from "@/components/tab-first-pages";
 import { PageHeader } from "@/components/ui";
 
@@ -9,16 +12,25 @@ export default function TabFirstPage({
   config,
   children,
   action,
+  createAction,
   className = "",
   testId,
 }: {
   config: TabFirstPageConfig;
   children: ReactNode;
+  /** The page's one registered create. Unrelated doors stay in `action`. */
+  createAction?: CreateActionDeclaration;
   action?: ReactNode;
   className?: string;
   testId?: string;
 }) {
   const { title, subtitle } = config;
+  // `available` is declaration data, so this Server Component can omit the
+  // action row without calling through the client boundary.
+  const createAvailable = Boolean(
+    createAction && createAction.available !== false
+  );
+  const hasTrailing = Boolean(createAvailable || action);
 
   return (
     <div
@@ -32,7 +44,7 @@ export default function TabFirstPage({
         >
           <PageHeader title={title} subtitle={subtitle} />
         </div>
-        {action && (
+        {hasTrailing && (
           <div
             data-testid={testId ? `${testId}-action` : undefined}
             // Full-width right-aligned row on a phone (the heading cell is gone);
@@ -40,7 +52,12 @@ export default function TabFirstPage({
             // mirrored so the two bottom edges still line up.
             className="mb-3 flex w-full shrink-0 justify-end sm:mb-4 md:mb-6 md:w-auto"
           >
-            {action}
+            <div className="flex items-center gap-3">
+              {createAvailable && createAction ? (
+                <CreateAction declaration={createAction} housing="page" />
+              ) : null}
+              {action}
+            </div>
           </div>
         )}
       </div>

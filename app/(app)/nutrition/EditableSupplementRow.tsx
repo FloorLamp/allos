@@ -35,6 +35,7 @@ import DoseHistoryPanel, {
 import OverflowMenu, {
   MENU_ITEM,
   MENU_ITEM_DANGER,
+  OverflowMenuSubmitItem,
 } from "@/components/OverflowMenu";
 import { useConfirm } from "@/components/ConfirmDialog";
 import { useUndoableDelete } from "@/components/useUndoableDelete";
@@ -294,9 +295,9 @@ export default function EditableSupplementRow({
                 >
                   <input type="hidden" name="id" value={s.id} />
                   <input type="hidden" name="to" value={s.active ? "0" : "1"} />
-                  <button type="submit" role="menuitem" className={MENU_ITEM}>
+                  <OverflowMenuSubmitItem>
                     {s.active ? "Pause" : "Resume"}
-                  </button>
+                  </OverflowMenuSubmitItem>
                 </form>
                 {/* Plain button (not a form action): confirm() runs a modal the
                   user must answer, which deadlocks inside a form-action

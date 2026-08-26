@@ -137,6 +137,7 @@ import DemotionSuggestions from "./DemotionSuggestions";
 import SupplementSchedule from "./SupplementSchedule";
 import SupplementInsightBadges from "./SupplementInsightBadges";
 import AddSupplementModal from "@/components/nutrition/AddSupplementModal";
+import { SectionCreateHeader } from "@/components/CreateAction";
 import SupplementWeeklyAdherence from "@/components/SupplementWeeklyAdherence";
 import {
   addIntakeItem,
@@ -1275,16 +1276,25 @@ export default async function SupplementsTab({
                     />
                   </section>
                   <section className="p-4">
-                    <h2 className="mb-3 section-label">Manage</h2>
-                    <div className="flex flex-wrap items-center justify-between gap-3">
-                      <AddSupplementModal
-                        {...addSupplementModal}
-                        conditions={purposeConditions}
-                        biomarkers={purposeBiomarkers}
-                      />
-                      <SharedSuppliesLink count={cabinetCount} />
-                      <DoseLedgerLink kind="supplement" />
-                    </div>
+                    <SectionCreateHeader
+                      title="Manage"
+                      action={
+                        <>
+                          <SharedSuppliesLink count={cabinetCount} />
+                          <DoseLedgerLink kind="supplement" />
+                        </>
+                      }
+                      createAction={{
+                        kind: "supplement",
+                        control: (
+                          <AddSupplementModal
+                            {...addSupplementModal}
+                            conditions={purposeConditions}
+                            biomarkers={purposeBiomarkers}
+                          />
+                        ),
+                      }}
+                    />
                   </section>
                 </div>
               </aside>

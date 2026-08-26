@@ -12,6 +12,7 @@ type SubmitButtonProps = {
   disabled?: boolean;
   requireSelection?: string;
   "aria-label"?: NativeButtonProps["aria-label"];
+  role?: "menuitem";
   "data-testid"?: string;
   name?: NativeButtonProps["name"];
   value?: NativeButtonProps["value"];
@@ -30,6 +31,7 @@ export default function SubmitButton({
   disabled = false,
   requireSelection,
   "aria-label": ariaLabel,
+  role,
   "data-testid": testId,
   name,
   value,
@@ -71,6 +73,7 @@ export default function SubmitButton({
       disabled={pending || disabled || selectionMissing}
       aria-busy={pending}
       aria-label={ariaLabel}
+      role={role}
       className={className}
       data-testid={testId}
       name={name}

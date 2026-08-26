@@ -23,6 +23,7 @@ import { fmtWeight } from "@/lib/units";
 import OverflowMenu, {
   MENU_ITEM,
   MENU_ITEM_DANGER,
+  OverflowMenuSubmitItem,
 } from "@/components/OverflowMenu";
 import { useConfirm } from "@/components/ConfirmDialog";
 import ModalShell from "@/components/ModalShell";
@@ -38,6 +39,10 @@ import {
 import { useFormatPrefs } from "@/components/FormatPrefsProvider";
 import { EmptyState, Tag } from "@/components/ui";
 import {
+  SectionCreateHeader,
+  useCreateActionLabel,
+} from "@/components/CreateAction";
+import {
   updateProgress,
   setStatus,
   setArchived,
@@ -45,6 +50,19 @@ import {
 } from "@/app/(app)/training/goal-actions";
 import GoalForm from "@/app/(app)/training/GoalForm";
 import type { GoalBiomarkerOption } from "@/app/(app)/training/goal-target-options";
+
+export function GoalCreateControl({ onActivate }: { onActivate: () => void }) {
+  const label = useCreateActionLabel();
+  return (
+    <button
+      type="button"
+      onClick={onActivate}
+      className="btn inline-flex items-center gap-1.5"
+    >
+      <IconPlus className="h-4 w-4" /> {label}
+    </button>
+  );
+}
 
 // A progress value, formatted for the goal's metric.
 function goalValueText(g: OutcomeGoal, value: number, wu: WeightUnit): string {
@@ -111,32 +129,27 @@ export default function GoalsManager({
 
   return (
     <div>
-      {/* flex-wrap (#2892): the Add-goal button takes its own line on narrow
-          screens instead of squeezing the heading. */}
-      <div className="mb-3 flex flex-wrap items-center justify-between gap-2">
-        <div className="flex min-w-0 items-center gap-3">
-          <h2 className="text-lg font-semibold text-slate-800 dark:text-slate-100">
-            Goals
-          </h2>
-          {archivedCount > 0 && (
-            <button
-              type="button"
-              onClick={() => setShowArchived((s) => !s)}
-              className="text-xs font-medium text-slate-500 hover:text-slate-700 dark:text-slate-400 dark:hover:text-slate-200"
-            >
-              {showArchived
-                ? "Hide archived"
-                : `Show archived (${archivedCount})`}
-            </button>
-          )}
-        </div>
-        <button
-          type="button"
-          onClick={() => setModal({})}
-          className="btn inline-flex items-center gap-1.5"
-        >
-          <IconPlus className="h-4 w-4" /> Add goal
-        </button>
+      <div className="mb-3">
+        <SectionCreateHeader
+          title="Goals"
+          action={
+            archivedCount > 0 ? (
+              <button
+                type="button"
+                onClick={() => setShowArchived((s) => !s)}
+                className="text-xs font-medium text-slate-500 hover:text-slate-700 dark:text-slate-400 dark:hover:text-slate-200"
+              >
+                {showArchived
+                  ? "Hide archived"
+                  : `Show archived (${archivedCount})`}
+              </button>
+            ) : undefined
+          }
+          createAction={{
+            kind: "goal",
+            control: <GoalCreateControl onActivate={() => setModal({})} />,
+          }}
+        />
       </div>
 
       {goals.length === 0 ? (
@@ -235,13 +248,9 @@ export default function GoalsManager({
                           >
                             <input type="hidden" name="id" value={g.id} />
                             <input type="hidden" name="status" value="active" />
-                            <button
-                              type="submit"
-                              role="menuitem"
-                              className={MENU_ITEM}
-                            >
+                            <OverflowMenuSubmitItem>
                               Mark active
-                            </button>
+                            </OverflowMenuSubmitItem>
                           </form>
                         ) : (
                           <form
@@ -255,17 +264,9 @@ export default function GoalsManager({
                               name="status"
                               value="achieved"
                             />
-                            <button
-                              type="submit"
-                              role="menuitem"
-                              className={`${MENU_ITEM} ${
-                                prog?.done
-                                  ? "text-emerald-600 dark:text-emerald-400"
-                                  : ""
-                              }`}
-                            >
+                            <OverflowMenuSubmitItem>
                               Mark achieved
-                            </button>
+                            </OverflowMenuSubmitItem>
                           </form>
                         )}
                         {/* Archive toggle — preserves the achieved state. */}
@@ -284,13 +285,9 @@ export default function GoalsManager({
                             name="archived"
                             value={g.archived ? "0" : "1"}
                           />
-                          <button
-                            type="submit"
-                            role="menuitem"
-                            className={MENU_ITEM}
-                          >
+                          <OverflowMenuSubmitItem>
                             {g.archived ? "Unarchive" : "Archive"}
-                          </button>
+                          </OverflowMenuSubmitItem>
                         </form>
                         {/* Plain button (not a form action): confirm() opens a
                             modal the user must answer, which deadlocks inside a

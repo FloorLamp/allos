@@ -438,7 +438,6 @@ test("the dose overlay answers from the outcome — it never just confirms", asy
     const row = overlay.getByTestId(`quick-entry-dose-${doseId}`);
     await expect(row).toBeVisible();
     await expect(row).toContainText(SHELL_DOSE_ITEM);
-
     // The schedule changes elsewhere while this sheet still shows the dose as
     // due. The open sheet is a frozen snapshot; its button is about to describe a
     // world that no longer holds.

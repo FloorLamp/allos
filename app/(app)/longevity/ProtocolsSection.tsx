@@ -13,6 +13,7 @@ import { mergedSituationOptions } from "@/lib/situations";
 import { SituationOptionsProvider } from "@/components/SituationOptionsContext";
 import { recoveryGearOptions } from "@/lib/protocol-gear";
 import ProtocolFormModal from "@/app/(app)/protocols/ProtocolFormModal";
+import { SectionCreateHeader } from "@/components/CreateAction";
 import ProtocolList from "@/app/(app)/protocols/ProtocolList";
 import { createProtocol } from "@/app/(app)/protocols/actions";
 import type { ProtocolTemplate } from "@/lib/protocol-templates";
@@ -69,44 +70,44 @@ export default async function ProtocolsSection({
       data-testid="longevity-protocols"
       className="card scroll-mt-20"
     >
-      <div className="mb-4 flex flex-wrap items-start justify-between gap-3">
-        <div className="flex items-start gap-3">
-          <span className="rounded-xl bg-brand-50 p-2.5 text-brand-600 dark:bg-brand-500/10 dark:text-brand-300">
-            <IconFlask2 className="h-5 w-5" aria-hidden />
-          </span>
-          <div>
-            <h2 className="text-lg font-semibold text-slate-900 dark:text-slate-100">
-              Protocols
-            </h2>
-            <p className="mt-0.5 max-w-2xl text-sm text-slate-600 dark:text-slate-300">
-              Test a change by comparing the health data you already track
-              before and during it.
-            </p>
-          </div>
-        </div>
-        <div className="flex flex-wrap items-center gap-2">
-          <Link
-            href="/wellness"
-            className="btn-ghost btn-sm"
-            data-testid="longevity-wellness-link"
-          >
-            <IconSparkles className="h-4 w-4" aria-hidden />
-            Wellness practices
-          </Link>
-          <SituationOptionsProvider options={situationOptions}>
-            <ProtocolFormModal
-              // A legacy ?template= navigation remounts the modal and opens it with
-              // the linked template. In-form template changes use ProtocolForm's
-              // keyed field seed instead.
-              key={template?.id ?? "blank"}
-              action={createProtocol}
-              options={options}
-              equipment={equipment}
-              intakeItems={intakeItems}
-              template={template}
-            />
-          </SituationOptionsProvider>
-        </div>
+      <div className="mb-4">
+        <SituationOptionsProvider options={situationOptions}>
+          <SectionCreateHeader
+            title="Protocols"
+            subtitle="Test a change by comparing the health data you already track before and during it."
+            leading={
+              <span className="rounded-xl bg-brand-50 p-2.5 text-brand-600 dark:bg-brand-500/10 dark:text-brand-300">
+                <IconFlask2 className="h-5 w-5" aria-hidden />
+              </span>
+            }
+            action={
+              <Link
+                href="/wellness"
+                className="btn-ghost btn-sm"
+                data-testid="longevity-wellness-link"
+              >
+                <IconSparkles className="h-4 w-4" aria-hidden />
+                Wellness practices
+              </Link>
+            }
+            createAction={{
+              kind: "protocol",
+              control: (
+                <ProtocolFormModal
+                  // A legacy ?template= navigation remounts the modal and opens it with
+                  // the linked template. In-form template changes use ProtocolForm's
+                  // keyed field seed instead.
+                  key={template?.id ?? "blank"}
+                  action={createProtocol}
+                  options={options}
+                  equipment={equipment}
+                  intakeItems={intakeItems}
+                  template={template}
+                />
+              ),
+            }}
+          />
+        </SituationOptionsProvider>
       </div>
 
       <ProtocolList
