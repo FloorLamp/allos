@@ -3,6 +3,7 @@
 import { useState } from "react";
 import { IconArrowRight, IconCheck } from "@tabler/icons-react";
 import SubmitButton from "@/components/SubmitButton";
+import { InlineSubmitAction } from "@/components/Button";
 import type { OnboardingProfilePath } from "@/lib/onboarding";
 import { deferOnboarding, saveOnboardingProfilePath } from "./actions";
 
@@ -101,13 +102,10 @@ export default function ProfilePathChoices({
           data-testid="onboarding-exit-section"
           className="border-t border-black/5 pt-3 text-right dark:border-white/5"
         >
-          <SubmitButton
-            pendingLabel="Leaving setup…"
-            className="inline-flex items-center gap-1 text-sm text-link"
-          >
+          <InlineSubmitAction pendingLabel="Leaving setup…">
             Set up later, take me to my dashboard
             <IconArrowRight className="h-4 w-4" aria-hidden="true" />
-          </SubmitButton>
+          </InlineSubmitAction>
         </form>
       )}
     </div>

@@ -1,7 +1,10 @@
 import { test, expect } from "./fixtures";
 import Database from "better-sqlite3";
 import { hydratedClick, settledClick } from "./helpers";
+import { expectPhoneOrdinarySubmit } from "./ordinary-submit-actions";
 import { workerDbPath, frozenNow } from "./worker-env";
+
+const PHONE = { width: 390, height: 844 };
 
 // The finding follow-up TERMINATOR (issue #1866): the first-class resolve/decline
 // action on the Upcoming row — the only permanent off-switch for the overdue
@@ -90,6 +93,7 @@ test.describe("Follow-up terminator — resolve/decline on Upcoming (#1866)", ()
     test.slow();
     const { studyId, cpId } = seedOverdueFollowUp();
 
+    await page.setViewportSize(PHONE);
     await page.goto("/upcoming");
     const row = page.getByTestId(`upcoming-item-followup:${cpId}`);
     await expect(row).toBeVisible();
@@ -103,7 +107,23 @@ test.describe("Follow-up terminator — resolve/decline on Upcoming (#1866)", ()
     await form
       .getByLabel("Reason (optional)")
       .fill("Discussed with clinician — not pursuing");
-    await settledClick(page, form.getByRole("button", { name: "Decline" }));
+    const decline = form.getByRole("button", { name: "Decline", exact: true });
+    const cancel = form.getByRole("button", { name: "Cancel", exact: true });
+    await expectPhoneOrdinarySubmit({
+      form,
+      owner: form,
+      submit: decline,
+      adjacent: cancel,
+      name: "follow-up settle submit",
+    });
+    await expectPhoneOrdinarySubmit({
+      form,
+      owner: form,
+      submit: cancel,
+      adjacent: decline,
+      name: "follow-up settle cancel",
+    });
+    await settledClick(page, decline);
 
     // The finding is gone — a terminal close, not a suppression.
     await expect(

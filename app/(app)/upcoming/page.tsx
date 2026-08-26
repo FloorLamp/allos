@@ -1130,7 +1130,6 @@ function Row({
       kind: "link",
       label: item.altAction.label,
       href: item.altAction.href,
-      icon: "arrow-right",
       testId: item.altAction.testId,
     });
   }
