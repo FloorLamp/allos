@@ -8,15 +8,12 @@ import {
 } from "@/lib/event-ledger";
 import { DEFAULT_FORMAT_PREFS } from "@/lib/format-date";
 
-// The reference day every sentence below is rendered against. It is not decoration:
-// `formatMonthDay` appends the year only when the date leaves this day's calendar
-// year, so `today` is part of the rendered sentence.
+// `formatMonthDay` appends the year only when the date leaves `today`'s calendar
+// year, so the reference day is part of the rendered sentence, not decoration.
 const TODAY = "2026-08-24";
-// A reference day in a LATER calendar year than the dates being rendered — and than
-// this box's wall clock. That is what makes the year-carrying cases below fail if
-// anyone stops threading `today` into `formatMonthDay`: against the process clock
-// these same dates render bare, so the assertion pins the argument and not merely
-// the year rule.
+// A later calendar year than both the dates below and this box's wall clock — so the
+// year-carrying cases go red if anyone stops threading `today` through, which pins
+// the argument rather than merely the year rule.
 const NEXT_YEAR = "2027-01-05";
 
 describe("event ledger range", () => {
@@ -52,12 +49,10 @@ describe("event ledger range", () => {
   });
 });
 
-// The two sentences a person actually reads above the food and practice ledgers
-// (#3703). Both branch four ways on the window, and the e2e spec seeds rows on both
-// days of its range, so it only ever renders the from+to shape with rows present —
-// the empty and half-bounded wordings ship on nobody's evidence. These assert the
-// WHOLE sentence, because the bug class is a wrong preposition or a swapped noun,
-// and a `toContain` on the date would pass straight through every one of them.
+// The two sentences a person reads above the food and practice ledgers (#3703). The
+// e2e spec seeds rows on both days of its range, so only the from+to shape with rows
+// present had ever been rendered. These assert the WHOLE sentence: the bug class is a
+// wrong preposition or a swapped noun, which a `toContain` on the date sails past.
 describe("eventLedgerWindowNote", () => {
   it("says nothing when the ledger names no window", () => {
     expect(
