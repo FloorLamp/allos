@@ -19,7 +19,6 @@ describe("FindingFollowUpScheduler", () => {
     expect(form.className).toContain("inline-flex max-w-full");
     const action = screen.getByRole("button", { name: "Track follow-up" });
     expect(action.getAttribute("data-button-control")).toBe("");
-    expect(action.className).toContain("shrink-0");
   });
 
   it("posts the owned fields and keeps its name while pending", async () => {

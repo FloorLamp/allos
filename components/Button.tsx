@@ -70,7 +70,7 @@ const Button = forwardRef<HTMLButtonElement, ButtonProps>(function Button(
       aria-busy={busy || undefined}
       data-testid={testId}
       data-button-control=""
-      className="button-control shrink-0"
+      className="button-control"
     >
       {busy && (
         <IconLoader2 className="size-4 motion-safe:animate-spin" aria-hidden />

@@ -568,7 +568,7 @@
      behavior and content while the primitives own paint, focus, and geometry.
      It renders at the 44px phone floor, then returns to its compact 26px row
      height from sm upward so touch repair does not spend desktop density. */
-  @apply inline-flex min-h-11 min-w-11 items-center justify-center gap-1 whitespace-nowrap rounded-lg border border-black/10 px-2.5 py-1 text-xs font-medium text-slate-600 transition hover:bg-slate-100 focus:outline-hidden focus-visible:ring-2 focus-visible:ring-brand-500 disabled:cursor-not-allowed disabled:bg-slate-100 disabled:text-slate-500 dark:border-white/10 dark:text-slate-300 dark:hover:bg-ink-750 dark:disabled:bg-ink-750 dark:disabled:text-slate-400;
+  @apply inline-flex min-h-11 min-w-11 shrink-0 items-center justify-center gap-1 whitespace-nowrap rounded-lg border border-black/10 px-2.5 py-1 text-xs font-medium text-slate-600 transition hover:bg-slate-100 focus:outline-hidden focus-visible:ring-2 focus-visible:ring-brand-500 disabled:cursor-not-allowed disabled:bg-slate-100 disabled:text-slate-500 dark:border-white/10 dark:text-slate-300 dark:hover:bg-ink-750 dark:disabled:bg-ink-750 dark:disabled:text-slate-400;
   @media (min-width: 40rem) {
     min-block-size: 0;
     min-inline-size: 0;

@@ -3,7 +3,6 @@
 import { useState } from "react";
 import Link from "next/link";
 import {
-  IconArrowRight,
   IconCalendarPlus,
   IconCircleMinus,
   IconCircleX,
@@ -46,7 +45,6 @@ import { DISMISS_ROW_ATTR } from "./dismiss-row";
 // descriptor names its icon and each presenter resolves it through this map.
 const ACTION_ICON: Record<string, TablerIcon> = {
   book: IconCalendarPlus,
-  "arrow-right": IconArrowRight,
   "clipboard-plus": IconClipboardPlus,
 };
 
