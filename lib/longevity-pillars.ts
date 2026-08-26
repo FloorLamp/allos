@@ -19,7 +19,7 @@ import {
   type FitnessAgeResult,
   type FitnessPercentile,
 } from "./fitness-norms";
-import { bioAgeDeltaPhrase, type BioAgeDelta } from "./bio-age";
+import { bioAgeDeltaCompact, type BioAgeDelta } from "./bio-age";
 import type { AppRoute } from "./hrefs";
 import {
   strengthLevelLabel,
@@ -522,7 +522,10 @@ export function buildPillars(inputs: PillarInputs): Pillar[] {
     pillars.push({
       key: "bio-age",
       label: "Biological age",
-      value: bioAgeDeltaPhrase(inputs.bioAge.delta),
+      // COMPACT, in the card's own grammar (#3544): the sentence form belongs to
+      // /longevity's bio-age section, and the calendar age is stated once — by the
+      // detail line below, not twice two lines apart.
+      value: bioAgeDeltaCompact(inputs.bioAge.delta),
       detail: `PhenoAge ${inputs.bioAge.delta.bioAge.toFixed(
         1
       )} vs calendar ${inputs.bioAge.delta.chronoAge}`,

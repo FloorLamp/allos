@@ -70,7 +70,7 @@ async function openEpisodeEditor(page: Page) {
     controls.getByRole("button", { name: "More episode actions" })
   );
   await expect(
-    page.getByRole("button", { name: /Promote to condition|Remove condition/ })
+    page.getByText(/Promote to condition|Remove condition/, { exact: true })
   ).toBeVisible();
   await page.getByTestId("episode-edit-open").click();
   await expect(page.getByTestId("episode-editor")).toBeVisible();

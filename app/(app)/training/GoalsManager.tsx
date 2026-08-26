@@ -23,6 +23,7 @@ import { fmtWeight } from "@/lib/units";
 import OverflowMenu, {
   MENU_ITEM,
   MENU_ITEM_DANGER,
+  OverflowMenuSubmitItem,
 } from "@/components/OverflowMenu";
 import { useConfirm } from "@/components/ConfirmDialog";
 import ModalShell from "@/components/ModalShell";
@@ -247,13 +248,9 @@ export default function GoalsManager({
                           >
                             <input type="hidden" name="id" value={g.id} />
                             <input type="hidden" name="status" value="active" />
-                            <button
-                              type="submit"
-                              role="menuitem"
-                              className={MENU_ITEM}
-                            >
+                            <OverflowMenuSubmitItem>
                               Mark active
-                            </button>
+                            </OverflowMenuSubmitItem>
                           </form>
                         ) : (
                           <form
@@ -267,17 +264,9 @@ export default function GoalsManager({
                               name="status"
                               value="achieved"
                             />
-                            <button
-                              type="submit"
-                              role="menuitem"
-                              className={`${MENU_ITEM} ${
-                                prog?.done
-                                  ? "text-emerald-600 dark:text-emerald-400"
-                                  : ""
-                              }`}
-                            >
+                            <OverflowMenuSubmitItem>
                               Mark achieved
-                            </button>
+                            </OverflowMenuSubmitItem>
                           </form>
                         )}
                         {/* Archive toggle — preserves the achieved state. */}
@@ -296,13 +285,9 @@ export default function GoalsManager({
                             name="archived"
                             value={g.archived ? "0" : "1"}
                           />
-                          <button
-                            type="submit"
-                            role="menuitem"
-                            className={MENU_ITEM}
-                          >
+                          <OverflowMenuSubmitItem>
                             {g.archived ? "Unarchive" : "Archive"}
-                          </button>
+                          </OverflowMenuSubmitItem>
                         </form>
                         {/* Plain button (not a form action): confirm() opens a
                             modal the user must answer, which deadlocks inside a

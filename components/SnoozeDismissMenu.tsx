@@ -3,7 +3,7 @@
 import { useCallback, useEffect, useRef, useState } from "react";
 import { IconClock, IconEyeOff } from "@tabler/icons-react";
 import OverflowMenu, {
-  MENU_ITEM,
+  OverflowMenuSubmitItem,
   type MenuHelpers,
 } from "@/components/OverflowMenu";
 import { usePrefersReducedMotion } from "@/components/usePrefersReducedMotion";
@@ -123,9 +123,7 @@ export function SnoozeDismissItems({
           {profileId != null && (
             <input type="hidden" name="profile_id" value={profileId} />
           )}
-          <button type="submit" role="menuitem" className={MENU_ITEM}>
-            {opt.label}
-          </button>
+          <OverflowMenuSubmitItem>{opt.label}</OverflowMenuSubmitItem>
         </form>
       ))}
       {!snoozeOnly && (
@@ -140,14 +138,10 @@ export function SnoozeDismissItems({
           {profileId != null && (
             <input type="hidden" name="profile_id" value={profileId} />
           )}
-          <button
-            type="submit"
-            role="menuitem"
-            className={`${MENU_ITEM} flex items-center gap-1.5`}
-          >
+          <OverflowMenuSubmitItem>
             <IconEyeOff className="h-3.5 w-3.5" stroke={1.75} />
             Dismiss
-          </button>
+          </OverflowMenuSubmitItem>
         </form>
       )}
     </>
