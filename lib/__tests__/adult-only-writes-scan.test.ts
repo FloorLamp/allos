@@ -2,7 +2,7 @@ import { describe, expect, it } from "vitest";
 import fs from "node:fs";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
-import ts from "typescript";
+import ts from "typescript-api";
 import {
   ADULT_ONLY_WRITE_CORES,
   ADULT_ONLY_MUTATION_MARKERS,
