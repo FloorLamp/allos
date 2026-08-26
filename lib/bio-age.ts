@@ -102,6 +102,12 @@ export function bioAgeDeltaPhrase(d: BioAgeDelta): string {
   return `${d.magnitudeYears} ${unit} ${d.direction} than your calendar age of ${d.chronoAge}`;
 }
 
+export function bioAgeDeltaCompact(d: BioAgeDelta): string {
+  if (d.direction === "even") return "≈ calendar age";
+  const unit = d.magnitudeYears === 1 ? "yr" : "yrs";
+  return `${d.magnitudeYears} ${unit} ${d.direction}`;
+}
+
 // ── Pace of aging (the delta trend over time) ─────────────────────────────────
 
 // A complete PhenoAge draw reduced to what the pace math needs.

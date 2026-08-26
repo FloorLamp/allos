@@ -240,7 +240,7 @@ export default function StandingSparkline({
           ))}
         </svg>
       </div>
-      <div className="hidden min-[45rem]:col-span-2 min-[45rem]:col-start-2 min-[45rem]:block">
+      <div className="relative z-10 hidden min-[45rem]:col-span-2 min-[45rem]:col-start-2 min-[45rem]:block">
         <VisualizationDetails
           label={`${series.name} history details`}
           items={strokes.flat().map((point) => series.pointLabel(point))}

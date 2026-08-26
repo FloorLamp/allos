@@ -212,9 +212,7 @@ export const DISCLOSURE_EXPANSIONS = [
 export const HOVER_CAPTURES = [
   {
     // #3459 item 2 / #3253 decision 2: the door label slides in at the right edge
-    // of the facts cell and the age steps aside for it. Both halves are opacity
-    // exchanges in app/globals.css ("Dashboard hover doors"), so the census's
-    // static shot shows the age and never the door.
+    // of the facts cell, so the static census needs one hovered capture.
     route: "/",
     label: "Standing family door labels",
     target: "a.standing-row",

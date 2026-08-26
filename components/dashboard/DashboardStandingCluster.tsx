@@ -105,6 +105,11 @@ export default function DashboardStandingCluster({
                           ?.series
                     )
                     .find((entry) => entry != null);
+                  const stacked = family.composition === "members";
+                  const surfaceId = members.find(
+                    (placement) =>
+                      presentations.get(placement.candidate.candidateId)?.href
+                  )?.candidate.candidateId;
                   return (
                     // THE BREAKPOINT IS IN rem AND MUST STAY IN rem (#3459).
                     // 45rem is 720px at the root default — the same seam #3252
@@ -117,14 +122,19 @@ export default function DashboardStandingCluster({
                     // visible on its own and auto-flowed onto a second grid row.
                     <div
                       key={family.key}
-                      className="grid gap-1 border-t border-(--divider) px-4 py-3 first:border-t-0 sm:grid-cols-[10rem_minmax(0,1fr)] sm:gap-4 min-[45rem]:grid-cols-[10rem_minmax(0,1fr)_11rem] min-[45rem]:items-center"
+                      className={`relative grid gap-1 border-t border-(--divider) px-4 py-3 [--standing-lead:1rem] [--standing-trail:1rem] first:border-t-0 sm:grid-cols-[10rem_minmax(0,1fr)] sm:gap-4 sm:[--standing-lead:12rem] min-[45rem]:items-center ${
+                        series
+                          ? "min-[45rem]:grid-cols-[10rem_minmax(0,1fr)_11rem] min-[45rem]:[--standing-trail:13rem]"
+                          : ""
+                      }`}
                       data-standing-family={family.key}
                       data-standing-composition={family.composition}
+                      data-standing-trend={series ? "" : undefined}
                     >
                       <dt className="text-sm font-medium text-slate-600 dark:text-slate-300">
                         {family.label}
                       </dt>
-                      <dd className="min-w-0">
+                      <dd className="relative min-w-0 min-[45rem]:self-stretch">
                         {/* THE DOOR'S RAIL (#3459 item 2). Every door in this family
                           lands on ONE x — the right edge of the facts cell, just left
                           of the sparkline column — instead of trailing whichever
@@ -136,7 +146,7 @@ export default function DashboardStandingCluster({
                           the `ul` is. Both have the dd's right edge, which is the
                           whole point. */}
                         <ul
-                          className={`relative flex min-w-0 gap-1.5 ${
+                          className={`flex min-w-0 gap-1.5 ${
                             family.composition === "members"
                               ? "flex-col"
                               : "flex-row flex-wrap gap-x-4"
@@ -200,11 +210,16 @@ export default function DashboardStandingCluster({
                               ? doorLabel(presentation.href)
                               : null;
                             const rowDisclosure = presentation.disclosure;
+                            const primary = candidate.candidateId === surfaceId;
+                            const surface =
+                              presentation.href && (stacked || primary)
+                                ? `standing-stretch ${primary ? "standing-primary " : ""}`
+                                : "";
                             const linked = presentation.href ? (
                               door ? (
                                 <StandingDestinationLink
                                   href={presentation.href}
-                                  className={`standing-row ${className} hover:text-brand-700 dark:hover:text-brand-400`}
+                                  className={`${surface}standing-row ${className} min-[45rem]:pr-32 hover:text-brand-700 dark:hover:text-brand-400`}
                                   destinationLabel={door}
                                 >
                                   {content}
@@ -212,7 +227,7 @@ export default function DashboardStandingCluster({
                               ) : (
                                 <Link
                                   href={presentation.href}
-                                  className={`standing-row ${className} hover:text-brand-700 dark:hover:text-brand-400`}
+                                  className={`${surface}standing-row ${className} hover:text-brand-700 dark:hover:text-brand-400`}
                                 >
                                   {content}
                                 </Link>
@@ -222,9 +237,11 @@ export default function DashboardStandingCluster({
                               <li
                                 key={candidate.candidateId}
                                 className={
-                                  family.composition === "members"
+                                  stacked
                                     ? "relative"
-                                    : undefined
+                                    : primary
+                                      ? undefined
+                                      : "z-10"
                                 }
                                 data-testid="dashboard-candidate"
                                 data-candidate-id={candidate.candidateId}
@@ -256,10 +273,7 @@ export default function DashboardStandingCluster({
                           })}
                         </ul>
                       </dd>
-                      {/* StandingSparkline places its plot in the trailing desktop
-                        column and its disclosure across the two content columns below,
-                        where the full contextual label has honest width. A family with
-                        no trend read leaves the declared grid track in place. */}
+                      {/* Only plotted families reserve the trailing track. */}
                       {series && <StandingSparkline series={series} />}
                     </div>
                   );

@@ -2116,8 +2116,7 @@ async function renderDashboard(
         {
           label: "Latest",
           value: `${latestWeight.value} ${units.weightUnit}`,
-          // The row's AGE text, marked so the hover door can step in for it (#3253).
-          // `standing-age` is the one class the door's CSS pair keys on.
+          // The date stays visible when the destination door appears (#3555).
           detail: (
             <span className="standing-age">
               {formatLongDate(latestWeight.date, formatPrefs)}

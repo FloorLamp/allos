@@ -495,10 +495,14 @@ test("a Standing row reveals its door on hover and on keyboard focus alike", asy
   page,
 }) => {
   await page.goto("/");
-  const row = page
+  const family = page
+    .locator("[data-standing-family]:not([data-standing-trend])")
+    .filter({ has: page.getByTestId("standing-door") })
+    .first(); // first-ok: plotless families use the same two-column template
+  const row = family
     .locator('[data-testid="dashboard-candidate"][data-lane="standing"]')
     .filter({ has: page.getByTestId("standing-door") })
-    .first(); // first-ok: every doored row behaves identically; this asserts the mechanism
+    .first(); // first-ok: every doored row uses the same rail
   const link = row.getByRole("link").first(); // first-ok: the row above is one candidate; its link IS the row
   const door = row.getByTestId("standing-door");
   const opacity = (target: typeof door) =>
@@ -539,6 +543,16 @@ test("a Standing row reveals its door on hover and on keyboard focus alike", asy
       )
     )
     .toBe(0);
+  expect(
+    await family.evaluate((node) => {
+      const style = getComputedStyle(node);
+      return Math.round(
+        node.getBoundingClientRect().right -
+          parseFloat(style.paddingRight) -
+          node.querySelector("dd")!.getBoundingClientRect().right
+      );
+    })
+  ).toBe(0);
 
   // The IDENTICAL treatment from the keyboard. Move the mouse away first, so what is
   // being measured is focus and not a lingering hover.
@@ -621,7 +635,7 @@ test("a stacked family's door lands on the member you are pointing at, not on th
   expect(placed.railGap).toBeCloseTo(0, 0);
 });
 
-test("the door rail is not a pointer target, so it cannot reveal a neighbour's door", async ({
+test("the shared rail answers with the row's primary door", async ({
   page,
 }) => {
   // Every member of a family shares ONE door rail, so their door boxes overlap
@@ -652,8 +666,8 @@ test("the door rail is not a pointer target, so it cannot reveal a neighbour's d
   await first.getByRole("link").first().hover(); // first-ok: the member row IS its link
   await expect.poll(async () => (await opacities()).includes("1")).toBe(true);
 
-  // ABSENCE: the rail itself belongs to nobody. Hover the far right of the facts
-  // cell, past every member's text, and no door may answer.
+  // The widened primary link owns the rail; overlapping doors do not take pointer
+  // events, so only that link's door appears.
   const rail = await family.evaluate((node) => {
     const facts = node.querySelector("dd")!.getBoundingClientRect();
     const list = node.querySelector("ul")!.getBoundingClientRect();
@@ -662,10 +676,10 @@ test("the door rail is not a pointer target, so it cannot reveal a neighbour's d
   await page.mouse.move(rail.x, rail.y);
   await expect
     .poll(async () => (await opacities()).join(","))
-    .toMatch(/^0(,0)*$/);
+    .toMatch(/^1(,0)*$/);
 });
 
-test("the age text steps aside for the door rather than being deleted", async ({
+test("the Standing link covers its phone label and desktop plot without covering the date", async ({
   browser,
 }) => {
   const page = await loginAs(browser, {
@@ -674,21 +688,56 @@ test("the age text steps aside for the door rather than being deleted", async ({
   });
   try {
     await page.goto("/");
-    const row = page.locator(
-      '[data-testid="dashboard-candidate"][data-candidate-id^="weight.latest:"]'
-    );
+    const family = page
+      .locator("[data-standing-family][data-standing-trend]")
+      .filter({ has: page.locator(".standing-age") })
+      .first(); // first-ok: plotted families share this row anatomy
+    const row = family
+      .getByTestId("dashboard-candidate")
+      .filter({ has: page.locator(".standing-age") });
     const age = row.locator(".standing-age");
-    await expect(age).toBeVisible();
-    const box = (await age.boundingBox())!;
-    const weightLink = row.getByRole("link").first(); // first-ok: the E2E_LOGIN_DAILY fixture's weight.latest row, one link
-    await weightLink.hover();
+    const link = row.getByRole("link").first(); // first-ok: the selected candidate's link
+    const door = link.getByTestId("standing-door");
+    await link.scrollIntoViewIfNeeded();
+    const before = (await family.boundingBox())!;
+    const name = (await family.locator("dt").boundingBox())!;
+    await page.mouse.move(name.x + name.width / 2, name.y + name.height / 2);
     await expect
-      .poll(() => age.evaluate((node) => getComputedStyle(node).opacity))
-      .toBe("0");
-    // Still in the layout, exactly where it was: it stepped aside, it did not leave.
-    const after = (await age.boundingBox())!;
-    expect(Math.abs(after.width - box.width)).toBeLessThan(1);
-    expect(Math.abs(after.x - box.x)).toBeLessThan(1);
+      .poll(() => door.evaluate((node) => getComputedStyle(node).opacity))
+      .toBe("1");
+    const [ageBox, doorBox] = await Promise.all([
+      age.boundingBox(),
+      door.boundingBox(),
+    ]);
+    expect(ageBox!.x + ageBox!.width).toBeLessThanOrEqual(doorBox!.x + 1);
+    expect(await family.boundingBox()).toEqual(before);
+
+    const plot = (await family
+      .getByTestId("standing-sparkline")
+      .boundingBox())!;
+    expect(
+      await page.evaluate(
+        ({ x, y }) =>
+          document.elementFromPoint(x, y)?.closest("a")?.getAttribute("href"),
+        { x: plot.x + plot.width / 2, y: plot.y + plot.height / 2 }
+      )
+    ).toBe(await link.getAttribute("href"));
+
+    await page.setViewportSize({ width: 390, height: 844 });
+    await page.goto("/");
+    const phoneFamily = page
+      .locator("[data-standing-family]")
+      .filter({ has: page.locator("a.standing-primary") })
+      .first(); // first-ok: every primary surface uses the same mobile reach
+    const phoneName = (await phoneFamily.locator("dt").boundingBox())!;
+    const phoneHref = await phoneFamily
+      .locator("a.standing-primary")
+      .getAttribute("href");
+    await page.mouse.click(
+      phoneName.x + phoneName.width / 2,
+      phoneName.y + phoneName.height / 2
+    );
+    await page.waitForURL((url) => `${url.pathname}${url.hash}` === phoneHref);
   } finally {
     await page.context().close();
   }

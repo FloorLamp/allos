@@ -1264,23 +1264,19 @@
 /* The Standing rows' hover doors (#3253 decision 2). A row's whole line is already a
    link; what it never said was WHERE it goes. On hover — and on keyboard
    focus-visible, identically, because a door only a mouse can find is not a door — the
-   destination's name slides in at the right edge and the reading's age text steps
-   aside for it.
+   destination's name slides in at the right edge without hiding the row's facts.
 
-   Written here rather than as Tailwind variants because the two halves are a PAIR: the
-   age fading and the door arriving are one exchange at one duration, and splitting them
-   across arbitrary descendant variants on the anchor is how they would come to drift.
+   Written here because the stretched hit surface and its door are one affordance.
 
-   Opacity and transform only, so the exchange can never move the row or its neighbours
-   — the age keeps its box while it is invisible, which is what "no layout shift" means
-   here. 120 ms is a hover affordance, deliberately faster than and NOT part of the
+   Opacity and transform only, so the reveal cannot move the row. 120 ms is a hover
+   affordance, deliberately faster than and NOT part of the
    micro-motion vocabulary (that band times motion carrying information about a change;
    this reveals something that was true all along).
 
    Touch is untouched: with no hover the door simply never appears, and the row tap was
    already the door.
 
-   Under prefers-reduced-motion the exchange still HAPPENS — it is information, not
+   Under prefers-reduced-motion the reveal still HAPPENS — it is information, not
    decoration — it just arrives on the frame, with no fade. */
 .standing-row .standing-door {
   opacity: 0;
@@ -1289,22 +1285,30 @@
     opacity 120ms ease-out,
     transform 120ms ease-out;
 }
-.standing-row .standing-age {
-  transition: opacity 120ms ease-out;
-}
 .standing-row:hover .standing-door,
 .standing-row:focus-visible .standing-door {
   opacity: 1;
   transform: translateX(0);
 }
-.standing-row:hover .standing-age,
-.standing-row:focus-visible .standing-age {
-  opacity: 0;
-}
 @media (prefers-reduced-motion: reduce) {
-  .standing-row .standing-door,
-  .standing-row .standing-age {
+  .standing-row .standing-door {
     transition: none;
+  }
+}
+
+.standing-stretch::after {
+  content: "";
+  position: absolute;
+  inset: 0 calc(-1 * var(--standing-trail)) 0 calc(-1 * var(--standing-lead));
+}
+@media (max-width: 39.999rem) {
+  .standing-primary::after {
+    top: -1.5rem;
+  }
+}
+@media (max-width: 44.999rem) {
+  .standing-door {
+    display: none;
   }
 }
 

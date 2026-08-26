@@ -8,7 +8,7 @@ import {
   type PillarTone,
 } from "@/lib/longevity-pillars";
 import { formatPercentile, type FitnessPercentile } from "@/lib/fitness-norms";
-import { bioAgeDelta, bioAgeDeltaPhrase } from "@/lib/bio-age";
+import { bioAgeDelta, bioAgeDeltaCompact } from "@/lib/bio-age";
 import { strengthLevelLabel } from "@/lib/strength-standards";
 import type { CanonicalResultDefinition } from "@/lib/types";
 
@@ -132,10 +132,10 @@ describe("buildPillars value equals its source computation (#224)", () => {
     expect(pillar.tone).toBe("good"); // ≥50th
   });
 
-  it("bio-age pillar value is bioAgeDeltaPhrase of the source delta", () => {
+  it("uses the compact bio-age delta", () => {
     const delta = bioAgeDelta(45, 50);
     const [pillar] = buildPillars({ bioAge: { delta } });
-    expect(pillar.value).toBe(bioAgeDeltaPhrase(delta));
+    expect(pillar.value).toBe(bioAgeDeltaCompact(delta));
     expect(pillar.tone).toBe("good"); // biologically younger
   });
 

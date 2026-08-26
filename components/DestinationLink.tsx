@@ -57,8 +57,7 @@ export function DestinationActionLink({
   );
 }
 
-// Standing's hover/focus rail is a real presentation variant: its destination
-// name and indicator exchange with the age in a fixed, out-of-flow rail.
+// Standing's fixed, out-of-flow destination rail.
 export function StandingDestinationLink({
   children,
   className = "",
