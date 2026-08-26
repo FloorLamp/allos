@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useRef } from "react";
+import { useRef } from "react";
 import { createPortal } from "react-dom";
 import Link from "next/link";
 import { IconSearch } from "@tabler/icons-react";
@@ -10,6 +10,7 @@ import SidebarContent from "@/components/SidebarContent";
 import QuickLogSheet from "@/components/QuickLogSheet";
 import { openGlobalSearch } from "@/components/CommandPalette";
 import { useLockBodyScroll } from "@/components/useLockBodyScroll";
+import { useFocusTrap } from "@/components/useFocusTrap";
 import { usePresence } from "@/components/usePresence";
 import { usePrefersReducedMotion } from "@/components/usePrefersReducedMotion";
 import { useMobileChrome } from "@/components/MobileChromeProvider";
@@ -47,6 +48,19 @@ import { DEFAULT_NAV_RELEVANCE, type NavRelevance } from "@/lib/nav-relevance";
 // puck; #2745 moved the workout offer into the sheet's Train segment and retired
 // all three. #2746 likewise made the dock's More slot the sole visible drawer
 // trigger. Edge-swipe-right remains a gesture route to that same drawer.
+//
+// IT IS A MODAL, AND IT SAYS SO (#3463). The drawer is a hand-rolled modal
+// surface — it portals to <body>, covers the viewport with its own scrimmed
+// `fixed inset-0`, locks the body behind it and takes a click-to-dismiss
+// backdrop — and for a long time it declared none of that: no `role`, no
+// `aria-modal`, no focus trap, so a keyboard or screen-reader user could tab
+// straight out of it into the scroll-locked page underneath. Its RECORDED
+// EXCEPTION (scripts/dialog-census-core.ts, docs/internals/overlays.md) is about
+// PRESENTATION — the edge anatomy below, which a centred host cannot express —
+// and never was a licence to skip the a11y floor. So it now declares the role and
+// takes the SHARED useFocusTrap, which owns initial focus, the Tab trap,
+// capture-phase Escape and focus restore to the control that opened it. The edge
+// swipe, the backdrop and the drag are untouched.
 //
 // The drawer slides in and out (issue #1416, section F): usePresence keeps it
 // mounted for the length of its exit animation and then unmounts it for real, so
@@ -173,17 +187,29 @@ export default function MobileNav({
     },
   });
 
-  // While mounted (including through the exit animation): lock body scroll, and
-  // while open allow Escape to close.
+  // While mounted (including through the exit animation): lock body scroll.
   useLockBodyScroll(drawer.mounted);
-  useEffect(() => {
-    if (!open) return;
-    const onKey = (e: KeyboardEvent) => {
-      if (e.key === "Escape") setOpen(false);
-    };
-    document.addEventListener("keydown", onKey);
-    return () => document.removeEventListener("keydown", onKey);
-  }, [open, setOpen]);
+  // The a11y floor, from the shared hook rather than hand-rolled (#3463). It
+  // replaces this file's own `document` keydown listener for Escape, and brings
+  // the three things that listener never had: initial focus into the panel, a Tab
+  // trap so focus cannot leave it for the page it has scroll-locked, and focus
+  // restored to the opener (the dock's More slot) on close.
+  //
+  // ACTIVE ON `open`, NOT ON `drawer.mounted`: the panel outlives `open` by the
+  // length of its exit animation, and trapping focus inside a panel that is on its
+  // way out would hold the keyboard hostage for 240ms. Deactivating on `open` is
+  // also what RUNS the restore, so focus lands back on More as the drawer starts
+  // to leave rather than after it has gone. Same call ProfileIdentityBar makes.
+  //
+  // Escape still reaches a layer opened INSIDE or OVER the drawer first: the hook
+  // yields to `[data-escape-layer="true"]` and to any nearer `[role="dialog"]`
+  // (#3409/#3425), which is the seam that keeps the quick-log sheet closing by
+  // itself while the drawer stays open behind it.
+  useFocusTrap({
+    panelRef: drawerRef,
+    onClose: () => setOpen(false),
+    active: open,
+  });
 
   const phase = drawer.phase === "enter" ? "enter" : "exit";
   // A hand-dragged panel owns its transform for the rest of its life (see
@@ -257,13 +283,23 @@ export default function MobileNav({
             <aside
               ref={drawerRef}
               data-testid="mobile-drawer"
-              // Seven 44px calendar columns need 308px wholly inside the left
-              // safe-area edge. The preferred 320px drawer therefore grows to
-              // 309px + that inset: 308px of grid plus its right border. The
-              // calendar cancels only the ordinary gutter outside the safe area.
-              // At 320px it may fill the viewport; the explicit close button and
-              // swipe remain the dismissal paths (#3536). Desktop is unaffected.
-              className={`absolute inset-y-0 left-0 flex w-[max(20rem,calc(19.3125rem+env(safe-area-inset-left)))] max-w-full flex-col gap-4 overflow-y-auto overscroll-contain border-r border-black/10 bg-(--nav) pt-[max(1rem,env(safe-area-inset-top))] pr-4 pb-[max(1rem,env(safe-area-inset-bottom))] pl-[max(1rem,env(safe-area-inset-left))] dark:border-white/5 ${panelMotion}`}
+              // A DIALOG, DECLARED (#3463). `aria-modal` is what tells assistive
+              // technology that the scroll-locked page behind the scrim is out of
+              // play; the label is the one the close control already uses, so the
+              // surface and its dismissal name the same thing.
+              role="dialog"
+              aria-modal="true"
+              aria-label="Menu"
+              // AT LEAST AS WIDE AS A WEEK, plus this drawer's own 1px right
+              // border and the left safe-area inset. `--week-grid-min` is where
+              // seven tap-floor columns are costed (app/globals.css, #3452); the
+              // navigation shell no longer restates the calendar's arithmetic, it
+              // just pays the bill. 20rem is still the PREFERRED width — the token
+              // only raises it once a safe-area inset eats into the content box.
+              // At that width the drawer may fill a small viewport; the explicit
+              // close button and the swipe remain the dismissal paths (#3536).
+              // Desktop is unaffected.
+              className={`absolute inset-y-0 left-0 flex w-[max(20rem,calc(var(--week-grid-min)+1px+env(safe-area-inset-left)))] max-w-full flex-col gap-4 overflow-y-auto overscroll-contain border-r border-black/10 bg-(--nav) pt-[max(1rem,env(safe-area-inset-top))] pr-4 pb-[max(1rem,env(safe-area-inset-bottom))] pl-[max(1rem,env(safe-area-inset-left))] dark:border-white/5 ${panelMotion}`}
             >
               <SidebarContent
                 activityDates={activityDates}

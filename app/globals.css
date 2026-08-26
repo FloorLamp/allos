@@ -1831,6 +1831,31 @@
   }
 }
 
+/* THE SEVEN-COLUMN WEEK, DERIVED ONCE (#3452).
+
+   A weekday grid is seven columns and each one has to clear the app's tap floor
+   — 44px EFFECTIVE, the one number ruled on #3514 — so the narrowest a week can
+   honestly be rendered at is 7 x 2.75rem. Two files need that quantity and they
+   need it for opposite reasons: components/TrainingLogCalendar.tsx renders the
+   columns, and components/MobileNav.tsx has to be WIDE ENOUGH TO PAY FOR THEM,
+   because the phone nav drawer is where that calendar becomes a touch surface at
+   all (#3377/#3536).
+
+   Before this the drawer restated the arithmetic in its own width class — a
+   shared navigation shell carrying a Training child's implementation detail, and
+   two derivations of one number that could drift apart silently in either
+   direction (owner ruling on #3452, from the #3687 recent-merge audit). The
+   drawer now asks only "at least as wide as a week, plus my own right border and
+   the left safe-area inset"; what a week costs is answered here.
+
+   `calc(7 * 2.75rem)` rather than `19.25rem` on purpose: the derivation IS the
+   value, and a reader who wants to change the column floor should not have to
+   reverse-engineer a decimal. lib/__tests__/week-grid-token.test.ts holds both
+   consumers to it. */
+:root {
+  --week-grid-min: calc(7 * 2.75rem);
+}
+
 @media (prefers-reduced-motion: reduce) {
   /* Belt and braces: `overlayMotionClass()` already returns "" under the
      preference, so these classes are not even applied — but a surface that

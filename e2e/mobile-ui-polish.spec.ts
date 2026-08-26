@@ -154,8 +154,15 @@ test.describe("touch targets clear the 40px minimum (#644)", () => {
 // assertion below kept passing, because 40 is not less than 40. A bound that survives
 // the rule it exists to enforce is not a bound (#3561).
 //
-// Seven day columns need 7 × 44 = 308px. #3536 widens the drawer enough to pay that
-// arithmetic even at a 320px viewport; no exception or overlapping hit slop remains.
+// What seven day columns cost is `--week-grid-min` (app/globals.css, #3452) — the
+// drawer's width class and the calendar band both read it, and neither derives it
+// any more. #3536 widened the drawer enough to pay that bill even at a 320px
+// viewport; no exception or overlapping hit slop remains.
+//
+// THIS IS THE RENDERED PROOF for the token swap. lib/__tests__/tap-floor-reach.test.ts
+// checks the arithmetic in source; only a browser can say the columns still land
+// where they did, which is why #3452's ownership fix was measured here rather than
+// asserted to be geometry-neutral.
 test.describe("the phone drawer's month calendar clears the floor too (#3377/#3514)", () => {
   test.use({ viewport: PHONE });
 
