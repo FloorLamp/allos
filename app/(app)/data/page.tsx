@@ -8,7 +8,7 @@ import {
 import { isStrengthTrainingRelevant } from "@/lib/life-stage";
 import { requireSession } from "@/lib/auth";
 import { isDemoMode, isDemoRestricted } from "@/lib/demo";
-import Tabs from "@/components/Tabs";
+import TabList from "@/components/TabList";
 import TabFirstPage from "@/components/TabFirstPage";
 import { DATA_TAB_FIRST_PAGE } from "@/components/tab-first-pages";
 import UploadForm from "@/components/UploadForm";
@@ -152,7 +152,10 @@ export default async function DataPage(
             in-flight review cards render below, always visible. */}
         <section id="paste-import" className="scroll-mt-4 space-y-4">
           <div className="card">
-            <Tabs
+            <TabList
+              binding="button"
+              ariaLabel="Import method"
+              testId="tab-strip"
               tabs={[
                 {
                   id: "upload",

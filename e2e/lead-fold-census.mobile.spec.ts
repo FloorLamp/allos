@@ -276,16 +276,16 @@ const STRIP_ROUTES: { path: string; strips: number; why: string }[] = [
   {
     path: "/data?section=import",
     strips: 2,
-    why: "#3488's own surface: the Data page's NavTabs section strip, and the upload card's `Tabs` strip (File upload / Paste CSV) that painted the sliver.",
+    why: "#3488's two Data strips, including the upload method buttons.",
   },
   {
     path: "/records",
     strips: 1,
-    why: "A NavTabs strip in the `grid` arm — the branch that never carried the suppression at all.",
+    why: "The equal-width tab treatment.",
   },
 ];
 
-/** Every tab strip on the page: `Tabs`' own, and every NavTabs `role=tablist`. */
+/** Every tab strip on the page. */
 const STRIP_SELECTOR = '[data-testid="tab-strip"], [role="tablist"]';
 
 test("no tab strip paints a scrollbar, and every one still scrolls (#3488 fix 3)", async ({
@@ -317,12 +317,9 @@ test("no tab strip paints a scrollbar, and every one still scrolls (#3488 fix 3)
     await page.goto(route.path);
     await expect(page.getByRole("main")).toBeVisible();
     const readings = await page.evaluate((selector) => {
-      // VISIBLE strips only. `NavTabs` renders a second, `hidden md:flex` copy of
-      // its strip for the desktop layout; a display:none box has zero scrollWidth
-      // and zero clientWidth, so it can neither overflow nor paint anything, and
-      // including it would make "the forced overflow did not take" the first
-      // failure on a correct tree. The hidden count is returned too, so a strip
-      // that DISAPPEARS is not silently reclassified as compliant.
+      // Visible strips only: tab-first pages have responsive-exclusive copies,
+      // and a display:none box cannot overflow or paint a scrollbar. The hidden
+      // count still prevents a disappearing strip from passing silently.
       const all = [...document.querySelectorAll<HTMLElement>(selector)];
       const els = all.filter((n) => n.clientWidth > 0);
 
@@ -355,12 +352,8 @@ test("no tab strip paints a scrollbar, and every one still scrolls (#3488 fix 3)
       // suppressed scrollbar is being asserted about a scroller rather than about a
       // row with nothing to scroll.
       //
-      // The forcing NARROWS THE BOX rather than widening the content, and that is
-      // not a stylistic choice: `NavTabs`' phone arm is a `grid`, where an appended
-      // 2000px child lands in a NEW ROW and grows the strip's height instead of its
-      // scroll width. Measured 2026-08-22 — the spacer version reported "the forced
-      // overflow did not take" on /records, correctly. Clamping the width overflows
-      // the tabs that are already there, in every arm.
+      // Narrow the box rather than adding content: an appended child can land in a
+      // new grid row. Clamping overflows the tabs already present in either layout.
       const strips = els.map((el) => {
         // FORGED BY A SPEC on purpose: a clamp that guarantees the row overflows.
         el.style.width = "40px";
@@ -430,10 +423,8 @@ test("the empty upload card shows two doors and nothing below them (#3488 fix 2)
 
   // Nothing below them: no permanently disabled twin, and no promise to read
   // something in the background before there is a something.
-  // Asserted on the ROW, not on its sentence: `Tabs` keeps every panel mounted and
-  // merely hidden, so a bare `getByText("in the background")` also reads the Paste
-  // CSV panel's own copy and fails for a reason that has nothing to do with this
-  // card.
+  // Assert on the row: inactive panels stay mounted, so a page-wide text query
+  // would also read the hidden Paste CSV panel.
   await expect(page.getByTestId("medical-upload-submit-row")).toHaveCount(0);
   await expect(page.getByTestId("medical-upload-submit")).toHaveCount(0);
 

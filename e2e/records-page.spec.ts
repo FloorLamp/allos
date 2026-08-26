@@ -56,10 +56,11 @@ test("mobile Health record starts with four shell-owned group tabs", async ({
   await expect(tabs).toBeVisible();
   await expect(tabs.getByRole("tab")).toHaveCount(4);
 
-  await expect(tabs.getByRole("tab", { name: "History" })).toHaveAttribute(
-    "aria-selected",
-    "true"
-  );
+  const history = tabs.getByRole("tab", { name: "History" });
+  await expect(history).toHaveAttribute("aria-selected", "true");
+  await expect(history).toHaveAttribute("aria-current", "page");
+  await expect(history).toHaveAttribute("aria-controls", "records-tabpanel");
+  await expect(page.locator("#records-tabpanel")).toBeVisible();
   await followLink(
     page,
     tabs.getByRole("tab", { name: "Problems" }),

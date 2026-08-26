@@ -417,8 +417,7 @@ budget is a proxy and a rendered box is the thing the reader meets:
 
 Registered in `design-system.md` §3 and closed by the same change: the
 suppression pair (`scrollbar-none` + `[&::-webkit-scrollbar]:hidden`) lives on
-the shared strips — `components/Tabs.tsx` and every arm of
-`components/NavTabs.tsx` — never at a call site.
+the shared strip in `components/TabList.tsx`, never at a call site.
 
 Its guard is in the same census spec, and it is a CASCADE reading rather than a
 geometric one, for a measured reason: headless Chromium draws overlay

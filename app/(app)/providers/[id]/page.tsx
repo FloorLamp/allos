@@ -33,7 +33,7 @@ import PageContainer from "@/components/PageContainer";
 import ProviderIdentityCard from "../ProviderIdentityCard";
 import ProviderMergePanel from "../ProviderMergePanel";
 import ProviderAffiliations from "../ProviderAffiliations";
-import { NavTabsStrip } from "@/components/NavTabs";
+import TabList from "@/components/TabList";
 import BackLink from "@/components/BackLink";
 
 export const dynamic = "force-dynamic";
@@ -55,7 +55,9 @@ function ActivityList({
 }) {
   return (
     <ul
+      id="provider-activity-panel"
       role="tabpanel"
+      aria-label="Provider activity"
       data-testid={`provider-activity-panel-${id}`}
       className="divide-y divide-black/5 overflow-hidden rounded-b-xl border-x border-b border-black/5 dark:divide-white/10 dark:border-white/10"
     >
@@ -321,16 +323,20 @@ export default async function ProviderDetailPage(props: {
           />
         ) : (
           <div data-testid="provider-activity-tabs">
-            <NavTabsStrip
+            <TabList
+              binding="link"
+              ariaLabel="Provider activity"
               tabs={availableActivity.map((item) => ({
                 id: item.id,
                 label: `${item.label} (${item.count})`,
               }))}
+              panelId="provider-activity-panel"
               paramKey="activity"
               activeId={activeActivity?.id}
-              prominentOnMobile
-              mobileLayout="scroll"
-              flush
+              presentation={{
+                kind: "prominent",
+                mobileLayout: "scroll",
+              }}
             />
             {activeActivity ? (
               <ActivityList

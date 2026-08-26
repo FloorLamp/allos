@@ -52,8 +52,7 @@ function writeFixtureFile(relPath: string, bytes: string): void {
   fs.writeFileSync(abs, bytes);
 }
 
-// Open the Data page's "Manage & export" section. It's a NavTabs section rendered
-// server-side from ?section=, so the direct navigation already paints it.
+// Direct navigation paints the server-selected Manage & export section.
 async function openManageTab(page: import("@playwright/test").Page) {
   await page.goto("/data?section=manage");
   await expect(
