@@ -51,4 +51,29 @@ describe("Button", () => {
     expect(link.className).toBe("button-control");
     expect(link.querySelector("svg")).not.toBeNull();
   });
+
+  it("forwards its native name and value as the form submitter", () => {
+    const submitted = vi.fn();
+    render(
+      <form
+        onSubmit={(event) => {
+          event.preventDefault();
+          const submitter = (event.nativeEvent as SubmitEvent).submitter;
+          submitted(
+            submitter,
+            new FormData(event.currentTarget, submitter).get("intent")
+          );
+        }}
+      >
+        <Button type="submit" name="intent" value="archive">
+          Archive
+        </Button>
+      </form>
+    );
+
+    const button = screen.getByRole("button", { name: "Archive" });
+    fireEvent.click(button);
+
+    expect(submitted).toHaveBeenCalledWith(button, "archive");
+  });
 });

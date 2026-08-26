@@ -4,15 +4,20 @@ import { useFormStatus } from "react-dom";
 import {
   forwardRef,
   type AriaAttributes,
+  type ButtonHTMLAttributes,
   type KeyboardEventHandler,
   type MouseEventHandler,
   type ReactNode,
 } from "react";
 
+type NativeButtonProps = ButtonHTMLAttributes<HTMLButtonElement>;
+
 export interface ButtonProps {
   children: ReactNode;
   type?: "button" | "submit" | "reset";
   disabled?: boolean;
+  name?: NativeButtonProps["name"];
+  value?: NativeButtonProps["value"];
   onClick?: MouseEventHandler<HTMLButtonElement>;
   onKeyDown?: KeyboardEventHandler<HTMLButtonElement>;
   pendingLabel?: ReactNode;
@@ -33,6 +38,8 @@ const Button = forwardRef<HTMLButtonElement, ButtonProps>(function Button(
     children,
     type = "button",
     disabled = false,
+    name,
+    value,
     onClick,
     onKeyDown,
     pendingLabel,
@@ -53,6 +60,8 @@ const Button = forwardRef<HTMLButtonElement, ButtonProps>(function Button(
       ref={ref}
       type={type}
       disabled={disabled || busy}
+      name={name}
+      value={value}
       onClick={onClick}
       onKeyDown={onKeyDown}
       title={title}
