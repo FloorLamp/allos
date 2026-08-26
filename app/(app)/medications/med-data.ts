@@ -105,6 +105,7 @@ import {
   type DormantPrnSuggestion,
 } from "@/lib/dormant-prn";
 import { isOnDemand } from "@/lib/intake-schedule";
+import { dateFromCreatedAt } from "@/lib/timeline-format";
 
 // The per-med derived context every card/row formats over. `prnRedoseLine` is the
 // marker-agnostic next-window chip; `prnDayLabel`/`prnTimes` are the administration
@@ -573,7 +574,7 @@ export function loadMedicationsData(
       asNeeded: isOnDemand(s),
       active: !!s.active,
       lastAdministration: lastAdminByItem.get(s.id) ?? null,
-      createdOn: s.created_at.slice(0, 10),
+      createdOnLocalDay: dateFromCreatedAt(s.created_at, tz),
     }));
   const allDormant = dormantPrnCandidates(dormantInputs, todayStr);
   const isDormantDismissed = (d: DormantPrnSuggestion) => {
