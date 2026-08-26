@@ -1913,7 +1913,7 @@ async function renderDashboard(
               className="inline-flex flex-wrap items-baseline gap-x-2"
               data-testid="vitals-latest-resting-hr"
             >
-              <span>{`${vitalsModel.restingHr.value} bpm resting`}</span>
+              <span>{`${vitalsModel.restingHr.value} bpm`}</span>
               <span
                 data-testid="vitals-latest-resting-hr-age"
                 data-stale={age.stale ? "true" : undefined}
@@ -2116,8 +2116,10 @@ async function renderDashboard(
         {
           label: "Latest",
           value: `${latestWeight.value} ${units.weightUnit}`,
-          // The row's AGE text, marked so the hover door can step in for it (#3253).
-          // `standing-age` is the one class the door's CSS pair keys on.
+          // The row's AGE text, named so a guard can hold it to the one rule it has:
+          // it is always visible. The hover door used to take its place (#3253);
+          // #3555 ruling 1 moved the door's rail instead, and content never steps
+          // aside for chrome again.
           detail: (
             <span className="standing-age">
               {formatLongDate(latestWeight.date, formatPrefs)}
