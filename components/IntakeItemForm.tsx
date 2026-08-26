@@ -1691,6 +1691,7 @@ export default function IntakeItemForm({
           <RefillTracking
             fid={fid}
             item={s}
+            kind={lockedKind}
             initialSupply={initialSupply}
             onPickSupply={onPickSupply}
             quantityOnHand={quantityOnHand}
