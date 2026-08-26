@@ -10,6 +10,7 @@ import { round } from "@/lib/units";
 import { robustSeriesSummary } from "@/lib/trends-digest";
 import { biomarkerAxisDomain } from "@/lib/reference-range";
 import type { AppRoute } from "@/lib/hrefs";
+import DelegatedCard from "./DelegatedCard";
 
 // A compact trend tile for the Trends hub's Body census: the latest value with a
 // net-change badge over the visible window, its linked name, and a small sparkline.
@@ -191,17 +192,8 @@ export default function TrendMiniCard({
   // The one-line variant: name · "no data in this range" · the same corner menu.
   if (compact) {
     return (
-      <div
-        className="card card-delegated flex items-stretch"
-        data-card-delegated-site="trend-mini-compact"
-        data-testid={testid}
-      >
-        <Link
-          href={href}
-          data-card-delegated-cell="trend-mini-compact-header"
-          data-testid="trend-mini-header-link"
-          className="card-gutter-standard group flex min-h-14 min-w-0 flex-1 flex-col justify-center gap-0.5 py-2.5 transition-colors hover:bg-brand-50/80 focus:outline-hidden focus-visible:ring-2 focus-visible:ring-brand-500 dark:hover:bg-brand-950/40"
-        >
+      <DelegatedCard data-testid={testid}>
+        <DelegatedCard.Header href={href} data-testid="trend-mini-header-link">
           <span
             // Same breakpoint swap, same fix as the full variant's title below.
             className="truncate text-sm font-medium text-slate-500 group-hover:text-brand-700 group-hover:underline sm:wrap-break-word sm:whitespace-normal dark:text-slate-400 dark:group-hover:text-brand-300"
@@ -219,16 +211,9 @@ export default function TrendMiniCard({
           <span className="truncate text-xs text-slate-500 dark:text-slate-400">
             No data in this range
           </span>
-        </Link>
-        {menu && (
-          <div
-            className="card-gutter-action flex shrink-0 items-center"
-            data-card-delegated-cell="trend-mini-compact-action"
-          >
-            {menu}
-          </div>
-        )}
-      </div>
+        </DelegatedCard.Header>
+        {menu && <DelegatedCard.Action>{menu}</DelegatedCard.Action>}
+      </DelegatedCard>
     );
   }
 

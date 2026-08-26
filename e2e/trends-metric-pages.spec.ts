@@ -589,6 +589,66 @@ test.describe("Trends → Overview → body census metric pages (#1067 Phase 2)"
     await expect(page.getByTestId("period-stat-7")).toBeVisible();
     await expect(page.getByTestId("period-stat-365")).toBeVisible();
 
+    // The compound card owns the phone topology: header and grid are its direct
+    // parts, and each summary cell is a direct grid child with the one standard
+    // gutter. Measure the adjacent boxes at the viewport that exposed the old
+    // double-gutter defect; class strings cannot prove a wrapper stayed absent.
+    const summary = page.getByTestId("metric-period-stats");
+    const grid = summary.locator('[data-delegated-card-part="grid"]');
+    expect(
+      await summary.evaluate((card) =>
+        Array.from(card.children).map((child) =>
+          child.getAttribute("data-delegated-card-part")
+        )
+      )
+    ).toEqual(["header", "grid"]);
+    expect(
+      await grid.evaluate((element) =>
+        Array.from(element.children).map((child) =>
+          child.getAttribute("data-delegated-card-part")
+        )
+      )
+    ).toEqual(["cell", "cell"]);
+    const firstCell = page.getByTestId("period-stat-7");
+    const secondCell = page.getByTestId("period-stat-365");
+    const [summaryBox, headerBox, gridBox, firstCellBox, secondCellBox] =
+      await settledBoxes([
+        summary,
+        summary.getByTestId("metric-period-stats-header"),
+        grid,
+        firstCell,
+        secondCell,
+      ]);
+    const summaryFrame = await summary.evaluate((element) => {
+      const style = getComputedStyle(element);
+      return {
+        borderLeft: Number.parseFloat(style.borderLeftWidth),
+        borderRight: Number.parseFloat(style.borderRightWidth),
+        paddingLeft: Number.parseFloat(style.paddingLeft),
+      };
+    });
+    expect(summaryFrame.borderLeft).toBeGreaterThan(0);
+    expect(summaryFrame.borderRight).toBeGreaterThan(0);
+    expect(headerBox.x - summaryBox.x).toBe(summaryFrame.borderLeft);
+    expect(gridBox.x - summaryBox.x).toBe(summaryFrame.borderLeft);
+    expect(gridBox.width).toBe(
+      summaryBox.width - summaryFrame.borderLeft - summaryFrame.borderRight
+    );
+    expect(firstCellBox.x).toBeCloseTo(gridBox.x, 0);
+    expect(secondCellBox.x).toBeCloseTo(gridBox.x, 0);
+    expect(firstCellBox.width).toBeCloseTo(secondCellBox.width, 0);
+    expect(secondCellBox.y - (firstCellBox.y + firstCellBox.height)).toBe(0);
+    expect(summaryFrame.paddingLeft).toBe(0);
+    for (const cell of [firstCell, secondCell]) {
+      expect(
+        await cell
+          .locator('[data-delegated-card-gutter="standard"]')
+          .evaluate((element) =>
+            Number.parseFloat(getComputedStyle(element).paddingLeft)
+          )
+      ).toBe(16);
+    }
+
     // No value wraps onto a second line: a wrapped `dd` is ~2× the height of the
     // `dt` beside it, which never wraps. Behavioral, not a pixel budget (#868).
     const rows = page.getByTestId("metric-period-stats").locator("dl > div");

@@ -8,6 +8,7 @@ import { useUndoableDelete } from "./useUndoableDelete";
 import { useToast } from "./Toast";
 import { EmptyState, Tag } from "./ui";
 import NotesText from "./NotesText";
+import DelegatedCard from "./DelegatedCard";
 import {
   deleteMetricReading,
   updateMetricReading,
@@ -84,25 +85,30 @@ export default function MetricReadingsTable({
 }) {
   if (readOnlyReason) {
     return (
-      <div className="card card-delegated" data-testid="metric-readings">
-        <ReadingsHeader />
-        <div
-          className="card-gutter-compact pb-2 sm:pb-5"
+      <DelegatedCard data-testid="metric-readings">
+        <DelegatedCard.Header data-testid="metric-readings-header">
+          <h2 className="font-semibold text-slate-800 dark:text-slate-100">
+            Readings
+          </h2>
+        </DelegatedCard.Header>
+        <DelegatedCard.Cell
+          density="compact"
           data-testid="metric-readings-body"
         >
           <EmptyState message={readOnlyReason} />
-        </div>
-      </div>
+        </DelegatedCard.Cell>
+      </DelegatedCard>
     );
   }
 
   return (
-    <div className="card card-delegated" data-testid="metric-readings">
-      <ReadingsHeader />
-      <div
-        className="card-gutter-compact pb-2 sm:pb-5"
-        data-testid="metric-readings-body"
-      >
+    <DelegatedCard data-testid="metric-readings">
+      <DelegatedCard.Header data-testid="metric-readings-header">
+        <h2 className="font-semibold text-slate-800 dark:text-slate-100">
+          Readings
+        </h2>
+      </DelegatedCard.Header>
+      <DelegatedCard.Cell density="compact" data-testid="metric-readings-body">
         {rows.length === 0 ? (
           <EmptyState message="No readings recorded yet." />
         ) : (
@@ -143,21 +149,8 @@ export default function MetricReadingsTable({
             )}
           </>
         )}
-      </div>
-    </div>
-  );
-}
-
-function ReadingsHeader() {
-  return (
-    <div
-      className="card-gutter-standard pt-2.5 pb-1 sm:pt-4 sm:pb-3"
-      data-testid="metric-readings-header"
-    >
-      <h2 className="font-semibold text-slate-800 dark:text-slate-100">
-        Readings
-      </h2>
-    </div>
+      </DelegatedCard.Cell>
+    </DelegatedCard>
   );
 }
 
