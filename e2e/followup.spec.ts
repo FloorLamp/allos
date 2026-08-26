@@ -1,7 +1,15 @@
 import { test, expect } from "./fixtures";
 import Database from "better-sqlite3";
-import { hydratedClick, settledClick } from "./helpers";
+import {
+  expectPhoneTapTargets,
+  hydratedClick,
+  settledBoxes,
+  settledClick,
+} from "./helpers";
 import { workerDbPath } from "./worker-env";
+import { TAP_FLOOR_FLOAT_EPSILON_PX } from "@/lib/tap-floor-tokens";
+
+const PHONE = { width: 390, height: 844 };
 
 // The finding follow-up loop (#700): an incidental imaging finding → a tracked,
 // LEGIBLE follow-up on Upcoming → a resolution OFFER when a later study lands →
@@ -103,16 +111,51 @@ test.describe("Finding follow-up loop — track → legible upcoming → resolve
       date: "2025-11-01",
       impression: "E2EFUP interval follow",
     });
+    await page.setViewportSize(PHONE);
     await page.goto("/upcoming");
     const offering = page
       .locator('[data-testid^="upcoming-item-followup:"]')
       .filter({ hasText: SOURCE_IMPRESSION });
     await expect(offering).toBeVisible();
-    const stable = offering.getByRole("button", { name: "Stable" });
-    await expect(stable).toBeVisible();
+    const resolutionForm = offering.locator(
+      '[data-testid^="followup-resolve-"]'
+    );
+    const outcomes = ["Resolved", "Stable", "Changed"].map((name) =>
+      resolutionForm.getByRole("button", { name, exact: true })
+    );
+    for (const [index, outcome] of outcomes.entries()) {
+      await expect(outcome).toHaveAccessibleName(
+        ["Resolved", "Stable", "Changed"][index]!
+      );
+      await expect(outcome).toHaveAttribute("data-button-control", "");
+    }
+    await expectPhoneTapTargets(
+      page,
+      "follow-up resolution outcomes",
+      outcomes,
+      {
+        disjoint: true,
+      }
+    );
+    const [formBox, ...outcomeBoxes] = await settledBoxes([
+      resolutionForm,
+      ...outcomes,
+    ]);
+    for (const [index, box] of outcomeBoxes.entries()) {
+      expect(
+        box.x + TAP_FLOOR_FLOAT_EPSILON_PX,
+        `resolution ${index} left containment`
+      ).toBeGreaterThanOrEqual(formBox.x);
+      expect(
+        box.x + box.width,
+        `resolution ${index} right containment`
+      ).toBeLessThanOrEqual(
+        formBox.x + formBox.width + TAP_FLOOR_FLOAT_EPSILON_PX
+      );
+    }
 
     // 5) Confirm-first resolve closes the loop — the item drops off Upcoming.
-    await settledClick(page, stable);
+    await settledClick(page, outcomes[1]!);
     await expect(
       page
         .locator('[data-testid^="upcoming-item-followup:"]')

@@ -85,7 +85,7 @@ import { formatMonthDay, type DisplayFormatPrefs } from "@/lib/format-date";
 import { getDisplayFormatPrefs } from "@/lib/settings/display";
 import { PageHeader, EmptyState } from "@/components/ui";
 import Avatar from "@/components/Avatar";
-import SubmitButton from "@/components/SubmitButton";
+import Button from "@/components/Button";
 import UpcomingRowMenu, { RowActionChips, type RowAction } from "./RowActions";
 import { DISMISS_ROW_ATTR } from "./dismiss-row";
 import FoldSummary from "./FoldSummary";
@@ -1012,16 +1012,13 @@ function SuppressedSection({
                         name="profile_id"
                         value={e.profileId}
                       />
-                      <SubmitButton
-                        pendingLabel="…"
-                        className="flex items-center gap-1 rounded-lg border border-black/10 px-2.5 py-1 text-xs font-medium text-slate-600 transition hover:bg-slate-100 disabled:opacity-60 dark:border-white/10 dark:text-slate-300 dark:hover:bg-ink-750"
-                      >
+                      <Button type="submit" pendingLabel="…">
                         <IconArrowBackUp
                           className="h-3.5 w-3.5"
                           stroke={1.75}
                         />
                         {e.orphan ? "Clear" : "Restore"}
-                      </SubmitButton>
+                      </Button>
                     </form>
                   </div>
                 );
