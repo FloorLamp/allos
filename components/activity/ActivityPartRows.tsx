@@ -169,52 +169,56 @@ export default function ActivityPartRows({
                   </Link>
                 </span>
               ) : null}
-              {part.status === "met" && (
-                <span className="inline-flex items-center gap-1 text-xs text-brand-600 dark:text-brand-400">
-                  <IconCheck className="h-4 w-4" stroke={2.5} />
-                  Target met
-                </span>
-              )}
-              {part.status === "missed" && (
-                <span className="inline-flex items-center gap-1 text-xs text-amber-500 dark:text-amber-400">
-                  <IconAlertTriangle className="h-4 w-4" stroke={2} />
-                  Target missed
-                </span>
-              )}
-              {rowHelp ? (
-                <InfoTooltipIcon
-                  label={rowHelp}
-                  data-testid="exercise-row-info"
-                />
-              ) : null}
             </span>
-            {(part.muscle || part.equipment) && (
-              <span className="flex min-w-0 items-center gap-x-1 overflow-hidden whitespace-nowrap">
-                {part.muscle &&
-                  (onFilterTag ? (
-                    <button
-                      type="button"
-                      onClick={() => onFilterTag("muscle", part.muscle!)}
-                      className="relative z-10 shrink-0 text-xs text-slate-500 hover:text-brand-600 hover:underline dark:text-slate-400 dark:hover:text-brand-400"
-                    >
-                      {part.muscle}
-                    </button>
-                  ) : (
-                    <span className="shrink-0 text-xs text-slate-500 dark:text-slate-400">
-                      {part.muscle}
-                    </span>
-                  ))}
-                {part.muscle && part.equipment && (
-                  <span
-                    aria-hidden
-                    className="shrink-0 text-xs text-slate-500 dark:text-slate-400"
-                  >
-                    ·
+            {(part.status || rowHelp || part.muscle || part.equipment) && (
+              <span className="flex min-w-0 flex-wrap items-center gap-x-1 gap-y-0.5">
+                {part.status === "met" && (
+                  <span className="inline-flex items-center gap-1 text-xs text-brand-600 dark:text-brand-400">
+                    <IconCheck className="h-4 w-4" stroke={2.5} />
+                    Target met
                   </span>
                 )}
-                {part.equipment && (
-                  <span className="min-w-0 truncate text-xs text-slate-500 dark:text-slate-400">
-                    {part.equipment}
+                {part.status === "missed" && (
+                  <span className="inline-flex items-center gap-1 text-xs text-amber-500 dark:text-amber-400">
+                    <IconAlertTriangle className="h-4 w-4" stroke={2} />
+                    Target missed
+                  </span>
+                )}
+                {rowHelp ? (
+                  <InfoTooltipIcon
+                    label={rowHelp}
+                    data-testid="exercise-row-info"
+                  />
+                ) : null}
+                {(part.muscle || part.equipment) && (
+                  <span className="flex min-w-0 items-center gap-x-1 overflow-hidden whitespace-nowrap">
+                    {part.muscle &&
+                      (onFilterTag ? (
+                        <button
+                          type="button"
+                          onClick={() => onFilterTag("muscle", part.muscle!)}
+                          className="relative z-10 shrink-0 text-xs text-slate-500 hover:text-brand-600 hover:underline dark:text-slate-400 dark:hover:text-brand-400"
+                        >
+                          {part.muscle}
+                        </button>
+                      ) : (
+                        <span className="shrink-0 text-xs text-slate-500 dark:text-slate-400">
+                          {part.muscle}
+                        </span>
+                      ))}
+                    {part.muscle && part.equipment && (
+                      <span
+                        aria-hidden
+                        className="shrink-0 text-xs text-slate-500 dark:text-slate-400"
+                      >
+                        ·
+                      </span>
+                    )}
+                    {part.equipment && (
+                      <span className="min-w-0 truncate text-xs text-slate-500 dark:text-slate-400">
+                        {part.equipment}
+                      </span>
+                    )}
                   </span>
                 )}
               </span>

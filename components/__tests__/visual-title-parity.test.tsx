@@ -47,8 +47,17 @@ describe("visual title parity", () => {
     expect(screen.getByText(/\+5 kg/)).toBeTruthy();
     expect(screen.getByText("All-time PR")).toBeTruthy();
     expect(screen.getByText("Target met")).toBeTruthy();
+    const row = screen.getByTestId("training-log-strength-row");
     const disclosure = screen.getByTestId("exercise-row-info");
     expect(screen.getAllByTestId("exercise-row-info")).toHaveLength(1);
+    expect(row.children).toHaveLength(3);
+    expect(
+      row.children[1]?.contains(screen.getByTestId("exercise-set-summary"))
+    ).toBe(true);
+    expect(row.children[1]?.contains(disclosure)).toBe(false);
+    expect(row.children[2]?.contains(disclosure)).toBe(true);
+    expect(row.children[2]?.textContent).toContain("Target met");
+    expect(row.children[2]?.textContent).toContain("Chest");
     expect(disclosure.getAttribute("aria-label")).toBe(
       "Top set up 5 kg vs last time · Still your all-time estimated 1RM record. · All sets hit their target reps"
     );
