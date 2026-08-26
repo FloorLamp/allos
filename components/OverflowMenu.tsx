@@ -5,6 +5,7 @@ import { IconDots } from "@tabler/icons-react";
 import { useToast } from "@/components/Toast";
 import { useConfirmOpen } from "@/components/ConfirmDialog";
 import { useLatestRef } from "@/components/useLatestRef";
+import SubmitButton from "@/components/SubmitButton";
 import AnchoredPanel from "@/components/overlay/AnchoredPanel";
 import { overflowMenuLabel } from "@/lib/overflow-menu-label";
 
@@ -41,6 +42,23 @@ export const MENU_ITEM =
   "block w-full px-3 py-3 text-left text-sm text-slate-700 hover:bg-slate-50 md:pointer-fine:py-1.5 md:pointer-coarse:py-3 dark:text-slate-200 dark:hover:bg-ink-800";
 export const MENU_ITEM_DANGER =
   "block w-full px-3 py-3 text-left text-sm text-rose-600 hover:bg-rose-50 md:pointer-fine:py-1.5 md:pointer-coarse:py-3 dark:text-rose-400 dark:hover:bg-rose-950";
+
+type MenuSubmitProps = { children: ReactNode; pendingLabel?: ReactNode };
+
+export function OverflowMenuSubmitItem({
+  children,
+  pendingLabel,
+}: MenuSubmitProps) {
+  return (
+    <SubmitButton
+      role="menuitem"
+      className={`${MENU_ITEM} flex items-center gap-1.5`}
+      pendingLabel={pendingLabel}
+    >
+      {children}
+    </SubmitButton>
+  );
+}
 
 const MENU_WIDTH = 160; // matches w-40
 

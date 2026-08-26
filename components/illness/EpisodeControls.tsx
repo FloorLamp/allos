@@ -5,7 +5,10 @@ import { IconPrinter, IconShare } from "@tabler/icons-react";
 import CreatedShareLink from "@/components/CreatedShareLink";
 import ModalShell from "@/components/ModalShell";
 import { useConfirm } from "@/components/ConfirmDialog";
-import OverflowMenu, { MENU_ITEM } from "@/components/OverflowMenu";
+import OverflowMenu, {
+  MENU_ITEM,
+  OverflowMenuSubmitItem,
+} from "@/components/OverflowMenu";
 import EpisodeEditor from "@/components/illness/EpisodeEditor";
 import SubmitButton from "@/components/SubmitButton";
 import { useToast } from "@/components/Toast";
@@ -88,9 +91,6 @@ export default function EpisodeControls({
       setConditionBusy(false);
     }
   }
-  async function onUnpromote(fd: FormData) {
-    await unpromoteEpisodeConditionAction(fd);
-  }
   function stateFormData() {
     const fd = new FormData();
     fd.set("episodeId", String(episodeId));
@@ -148,7 +148,7 @@ export default function EpisodeControls({
               {promoted ? (
                 <form
                   action={async (fd) => {
-                    await onUnpromote(fd);
+                    await unpromoteEpisodeConditionAction(fd);
                     close();
                   }}
                 >
@@ -156,9 +156,9 @@ export default function EpisodeControls({
                   {profileId != null && (
                     <input type="hidden" name="profileId" value={profileId} />
                   )}
-                  <SubmitButton className={MENU_ITEM} pendingLabel="Removing…">
+                  <OverflowMenuSubmitItem pendingLabel="Removing…">
                     Remove condition
-                  </SubmitButton>
+                  </OverflowMenuSubmitItem>
                 </form>
               ) : (
                 <button

@@ -1257,23 +1257,32 @@
 /* The Standing rows' hover doors (#3253 decision 2). A row's whole line is already a
    link; what it never said was WHERE it goes. On hover — and on keyboard
    focus-visible, identically, because a door only a mouse can find is not a door — the
-   destination's name slides in at the right edge and the reading's age text steps
-   aside for it.
+   destination's name slides in at the right edge of the facts cell.
 
-   Written here rather than as Tailwind variants because the two halves are a PAIR: the
-   age fading and the door arriving are one exchange at one duration, and splitting them
-   across arbitrary descendant variants on the anchor is how they would come to drift.
+   THE DATE NEVER HIDES (#3555 ruling 1). This pair used to be an EXCHANGE: the door
+   arrived and `.standing-age` faded to 0 in the same 120ms, because #3459 item 2 had
+   put the door on the date's own x and something had to give. The x moved (see the
+   template fork in components/dashboard/DashboardStandingCluster.tsx), so nothing has
+   to. Pointing at a date to read it must never delete it — content does not step
+   aside for chrome. The `.standing-age` class stays as the name of the row's age
+   text, but no rule here keys on it any more; it is what the guard in
+   e2e/dashboard.spec.ts holds at full opacity while the door is up.
 
-   Opacity and transform only, so the exchange can never move the row or its neighbours
-   — the age keeps its box while it is invisible, which is what "no layout shift" means
-   here. 120 ms is a hover affordance, deliberately faster than and NOT part of the
-   micro-motion vocabulary (that band times motion carrying information about a change;
-   this reveals something that was true all along).
+   Written here rather than as Tailwind variants because the door and the row-wide
+   link surface below it are ONE affordance: the surface decides what "hovering this
+   row" means, and the door is what hovering it says. Split across arbitrary
+   descendant variants on the anchor, they would come to drift.
+
+   Opacity and transform only, so the reveal can never move the row or its neighbours
+   — which is what "no layout shift" means here. 120 ms is a hover affordance,
+   deliberately faster than and NOT part of the micro-motion vocabulary (that band
+   times motion carrying information about a change; this reveals something that was
+   true all along).
 
    Touch is untouched: with no hover the door simply never appears, and the row tap was
    already the door.
 
-   Under prefers-reduced-motion the exchange still HAPPENS — it is information, not
+   Under prefers-reduced-motion the reveal still HAPPENS — it is information, not
    decoration — it just arrives on the frame, with no fade. */
 .standing-row .standing-door {
   opacity: 0;
@@ -1282,23 +1291,42 @@
     opacity 120ms ease-out,
     transform 120ms ease-out;
 }
-.standing-row .standing-age {
-  transition: opacity 120ms ease-out;
-}
 .standing-row:hover .standing-door,
 .standing-row:focus-visible .standing-door {
   opacity: 1;
   transform: translateX(0);
 }
-.standing-row:hover .standing-age,
-.standing-row:focus-visible .standing-age {
-  opacity: 0;
-}
 @media (prefers-reduced-motion: reduce) {
-  .standing-row .standing-door,
-  .standing-row .standing-age {
+  .standing-row .standing-door {
     transition: none;
   }
+}
+
+/* THE WHOLE ROW IS THE LINK (#3555 ruling 2). The anchor still wraps only the facts
+   line — restructuring the row would have moved the door's rail and the sparkline's
+   column with it — so the surface is a stretched pseudo-element instead, out of flow
+   and transparent: name cell, facts, gutters and sparkline all hover, focus and click
+   as one, and the row's own geometry is untouched.
+
+   IT REACHES OUT BY THE TEMPLATE'S OWN TRACKS. The pseudo-element's containing block
+   is the element that already carries the door's rail — the facts cell for a family
+   whose members share one line, the member's own `li` for a stacked one — so reaching
+   the row's edges means crossing the name track and, where one exists, the trend
+   track. `--standing-lead` and `--standing-trail` are those distances, declared once
+   beside the grid template that owns them (DashboardStandingCluster.tsx) and
+   responsive with it: a plotless family's trail is just the row's own padding, which
+   is why its door lands on the row's edge.
+
+   The vertical band is the containing block's, NOT the row's: in a stacked family
+   that is exactly one member's line, which is what keeps one member's hover from
+   revealing its neighbour's door. */
+.standing-stretch::after {
+  content: "";
+  position: absolute;
+  top: 0;
+  bottom: 0;
+  left: calc(-1 * var(--standing-lead, 0px));
+  right: calc(-1 * var(--standing-trail, 0px));
 }
 
 /* ── SECTION: Log out pending state ── */

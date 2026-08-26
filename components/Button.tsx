@@ -1,6 +1,7 @@
 "use client";
 
 import { useFormStatus } from "react-dom";
+import { IconLoader2 } from "@tabler/icons-react";
 import {
   forwardRef,
   type AriaAttributes,
@@ -71,6 +72,9 @@ const Button = forwardRef<HTMLButtonElement, ButtonProps>(function Button(
       data-button-control=""
       className="button-control"
     >
+      {busy && (
+        <IconLoader2 className="size-4 motion-safe:animate-spin" aria-hidden />
+      )}
       {busy ? (pendingLabel ?? children) : children}
     </button>
   );
