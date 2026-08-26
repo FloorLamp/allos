@@ -1,7 +1,5 @@
 import { describe, expect, it } from "vitest";
 import {
-  MAX_FITNESS_WEEKS,
-  MIN_FITNESS_WEEKS,
   fitnessWindow,
   fitnessWindowWeeks,
   hasFitnessZoneContent,
@@ -63,14 +61,14 @@ describe("fitnessWindowWeeks", () => {
   });
 
   it("caps all time at 12 months of columns", () => {
-    expect(fitnessWindowWeeks(null)).toBe(MAX_FITNESS_WEEKS);
+    expect(fitnessWindowWeeks(null)).toBe(53);
     // A window LONGER than the cap still caps (the heatmap never grows unbounded).
-    expect(fitnessWindowWeeks(5 * 365)).toBe(MAX_FITNESS_WEEKS);
+    expect(fitnessWindowWeeks(5 * 365)).toBe(53);
   });
 
   it("floors a very short window so the weekly charts still read", () => {
-    expect(fitnessWindowWeeks(1)).toBe(MIN_FITNESS_WEEKS);
-    expect(fitnessWindowWeeks(7)).toBe(MIN_FITNESS_WEEKS);
+    expect(fitnessWindowWeeks(1)).toBe(4);
+    expect(fitnessWindowWeeks(7)).toBe(4);
   });
 
   it("rounds a partial week UP so the window's edge day has a column", () => {
