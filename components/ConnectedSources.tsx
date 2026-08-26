@@ -13,7 +13,7 @@ import {
   standingBadge,
   standingEscalates,
 } from "@/lib/integrations/source-state";
-import IntegrationActionButton from "@/components/integrations/IntegrationActionButton";
+import SyncNowButton from "@/components/SyncNowButton";
 import StatusBadge from "@/components/integrations/StatusBadge";
 import SyncTimestamp from "@/components/integrations/SyncTimestamp";
 import IntegrationStatusHeader from "@/components/integrations/IntegrationStatusHeader";
@@ -62,7 +62,7 @@ function SourceAction({ source }: { source: ConnectedSource }) {
     );
   }
   if (source.connected && source.canSyncNow) {
-    return <IntegrationActionButton kind="sync" sourceId={source.id} />;
+    return <SyncNowButton sourceId={source.id} />;
   }
   if (!source.connected && href) {
     return (

@@ -87,6 +87,14 @@ test.describe("mobile clipped-content audit (#1063)", () => {
           previous.y + previous.height <= current.y
       ).toBe(true);
     }
+    const disconnect = status.locator("[data-integration-disconnect]");
+    await disconnect.focus();
+    await page.keyboard.press("Shift+Tab");
+    await page.keyboard.press("Tab");
+    await expect(disconnect).toBeFocused();
+    expect(
+      await disconnect.evaluate((button) => getComputedStyle(button).boxShadow)
+    ).not.toBe("none");
     await expectNoClippedContent(page);
   });
 

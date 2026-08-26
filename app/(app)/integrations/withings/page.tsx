@@ -13,7 +13,7 @@ import { requireSession } from "@/lib/auth";
 import IntegrationStatusHeader from "@/components/integrations/IntegrationStatusHeader";
 import IntegrationDisconnectButton from "@/components/integrations/IntegrationDisconnectButton";
 import SyncHistoryTable from "@/components/integrations/SyncHistoryTable";
-import IntegrationActionButton from "@/components/integrations/IntegrationActionButton";
+import SyncNowButton from "@/components/SyncNowButton";
 import { TokenRow } from "@/components/TokenRow";
 import { withingsCallbackUrl } from "./url";
 import BackLink from "@/components/BackLink";
@@ -111,7 +111,7 @@ export default async function WithingsPage(props: {
               isAdmin={login.role === "admin"}
               controls={
                 <>
-                  <IntegrationActionButton kind="sync" sourceId="withings" />
+                  <SyncNowButton sourceId="withings" />
                   <IntegrationDisconnectButton
                     kind="disconnect"
                     serverAction={disconnectWithingsAction}

@@ -43,7 +43,7 @@ function Control({
       aria-busy={pending || undefined}
       data-testid={kind === "family-feed" ? "family-feed-disable" : undefined}
       data-integration-disconnect=""
-      className="min-h-11 rounded-lg border border-rose-200 px-3 py-2 text-sm font-medium text-rose-600 hover:bg-rose-50 disabled:cursor-not-allowed disabled:opacity-50 sm:min-h-0 dark:border-rose-900 dark:text-rose-400 dark:hover:bg-rose-950"
+      className="min-h-11 rounded-lg border border-rose-200 px-3 py-2 text-sm font-medium text-rose-600 hover:bg-rose-50 focus:outline-hidden focus-visible:ring-2 focus-visible:ring-rose-500 disabled:cursor-not-allowed disabled:opacity-50 sm:min-h-0 dark:border-rose-900 dark:text-rose-400 dark:hover:bg-rose-950"
     >
       {copy[kind][pending ? 1 : 0]}
     </button>

@@ -10,7 +10,7 @@ import { requireSession } from "@/lib/auth";
 import IntegrationStatusHeader from "@/components/integrations/IntegrationStatusHeader";
 import IntegrationDisconnectButton from "@/components/integrations/IntegrationDisconnectButton";
 import SyncHistoryTable from "@/components/integrations/SyncHistoryTable";
-import IntegrationActionButton from "@/components/integrations/IntegrationActionButton";
+import SyncNowButton from "@/components/SyncNowButton";
 import { connectOura, disconnectOuraAction } from "./actions";
 import { getProfileAge } from "@/lib/settings";
 import { isTrainingRelevant } from "@/lib/life-stage";
@@ -95,7 +95,7 @@ export default async function OuraPage(props: {
               isAdmin={login.role === "admin"}
               controls={
                 <>
-                  <IntegrationActionButton kind="sync" sourceId="oura" />
+                  <SyncNowButton sourceId="oura" />
                   <IntegrationDisconnectButton
                     kind="disconnect"
                     serverAction={disconnectOuraAction}

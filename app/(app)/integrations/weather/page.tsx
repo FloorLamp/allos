@@ -13,7 +13,7 @@ import { getUvDoseForDay } from "@/lib/queries/weather";
 import IntegrationStatusHeader from "@/components/integrations/IntegrationStatusHeader";
 import IntegrationDisconnectButton from "@/components/integrations/IntegrationDisconnectButton";
 import SyncHistoryTable from "@/components/integrations/SyncHistoryTable";
-import IntegrationActionButton from "@/components/integrations/IntegrationActionButton";
+import SyncNowButton from "@/components/SyncNowButton";
 import { enableWeatherAction, disconnectWeatherAction } from "./actions";
 import BackLink from "@/components/BackLink";
 
@@ -108,7 +108,7 @@ export default async function WeatherPage(props: {
                 isAdmin={login.role === "admin"}
                 controls={
                   <>
-                    <IntegrationActionButton kind="sync" sourceId="weather" />
+                    <SyncNowButton sourceId="weather" />
                     <IntegrationDisconnectButton
                       kind="disable"
                       serverAction={disconnectWeatherAction}
