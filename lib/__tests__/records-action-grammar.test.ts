@@ -255,7 +255,7 @@ describe("Records action grammar (#3408)", () => {
     // deleted within a week. A form is neither a route nor a `*Section.tsx`, so
     // no pane's member list can contain one — proved here against a real form
     // that WOULD trip the count if it were ever read.
-    const formRel = "app/(app)/records/care/overview/CarePlanForm.tsx";
+    const formRel = "app/(app)/records/specialty/skin/LesionPhotoStrip.tsx";
     expect(primaryCount(readRel(formRel))).toBeGreaterThan(0);
     expect(panes().flatMap((p) => p.members)).not.toContain(formRel);
   });
