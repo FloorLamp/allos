@@ -5,58 +5,46 @@ import { IconCheck, IconCopy } from "@tabler/icons-react";
 import Button from "@/components/Button";
 import { Notice } from "@/components/Notice";
 
-export default function CreatedShareLink({
-  value,
-  valueTestId,
-}: {
-  value: string;
-  valueTestId?: string;
-}) {
+type CreatedShareLinkProps = { value: string; valueTestId?: string };
+
+export default function CreatedShareLink(props: CreatedShareLinkProps) {
+  const { value, valueTestId } = props;
   const inputRef = useRef<HTMLInputElement>(null);
   const mounted = useRef(true);
+  const copyGeneration = useRef(0);
   const receiptTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
-  const [copyState, setCopyState] = useState<"idle" | "copied" | "manual">(
-    "idle"
-  );
+  const [status, setStatus] = useState("");
+  const manualCopy = status.startsWith("Copy unavailable");
 
-  function clearReceiptTimer() {
-    clearTimeout(receiptTimer.current ?? undefined);
-    receiptTimer.current = null;
-  }
-
-  useEffect(
-    () => () => {
+  useEffect(() => {
+    mounted.current = true;
+    return () => {
       mounted.current = false;
+      copyGeneration.current += 1;
       clearTimeout(receiptTimer.current ?? undefined);
-    },
-    []
-  );
+    };
+  }, []);
 
   async function copy() {
-    clearReceiptTimer();
-    setCopyState("idle");
+    const generation = ++copyGeneration.current;
+    clearTimeout(receiptTimer.current ?? undefined);
+    receiptTimer.current = null;
+    setStatus("");
     try {
       await navigator.clipboard.writeText(value);
-      if (!mounted.current) return;
-      setCopyState("copied");
+      if (!mounted.current || generation !== copyGeneration.current) return;
+      setStatus("Link copied.");
       receiptTimer.current = setTimeout(() => {
         receiptTimer.current = null;
-        setCopyState("idle");
+        setStatus("");
       }, 1_500);
     } catch {
-      if (!mounted.current) return;
+      if (!mounted.current || generation !== copyGeneration.current) return;
       inputRef.current?.focus();
       inputRef.current?.select();
-      setCopyState("manual");
+      setStatus("Copy unavailable. The link is selected for manual copying.");
     }
   }
-
-  const status =
-    copyState === "manual"
-      ? "Copy unavailable. The link is selected for manual copying."
-      : copyState === "copied"
-        ? "Link copied."
-        : "";
 
   return (
     <Notice tone="emerald" className="mt-4" testid="created-share-link">
@@ -74,7 +62,7 @@ export default function CreatedShareLink({
           className="input min-w-0 font-mono text-xs"
         />
         <Button onClick={copy} aria-label="Copy link" title="Copy link">
-          {copyState === "copied" ? (
+          {status === "Link copied." ? (
             <IconCheck className="h-4 w-4" stroke={1.75} />
           ) : (
             <IconCopy className="h-4 w-4" stroke={1.75} />
@@ -84,7 +72,7 @@ export default function CreatedShareLink({
       <p
         role="status"
         aria-live="polite"
-        className={copyState === "manual" ? "mt-2 text-xs" : "sr-only"}
+        className={manualCopy ? "mt-2 text-xs" : "sr-only"}
       >
         {status}
       </p>
