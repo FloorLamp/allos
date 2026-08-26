@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, useTransition } from "react";
+import ClearLogControl from "@/components/ClearLogControl";
 import ScrollFade from "@/components/ScrollFade";
 import { EmptyState } from "@/components/ui";
 import { useFormatPrefs } from "@/components/FormatPrefsProvider";
@@ -15,9 +15,7 @@ import {
 // as its sibling viewers — card, ScrollFade, `.th`/`.td`, dashed empty panel,
 // formatTimestamp + useFormatPrefs, the admin-gated Clear action — over a different
 // row model: one row per (run, profile), expandable to its lines.
-//
-// Expansion is a plain <details>, so it needs no client state and works with JS off;
-// only the Clear confirm is stateful.
+// Expansion stays a plain <details>, so it works with JS off.
 
 const KIND_BADGE: Record<NotifyLineKind, string> = {
   decline: "bg-amber-100 text-amber-700 dark:bg-amber-950 dark:text-amber-300",
@@ -42,8 +40,6 @@ export default function NotifyRunTable({
   clearAction: () => Promise<void>;
 }) {
   const formatPrefs = useFormatPrefs();
-  const [pending, startTransition] = useTransition();
-  const [confirming, setConfirming] = useState(false);
 
   return (
     <div data-testid="notify-log">
@@ -55,44 +51,7 @@ export default function NotifyRunTable({
           </span>
         )}
         <span className="ml-auto" />
-        {totalRuns > 0 &&
-          (confirming ? (
-            <span className="flex items-center gap-2">
-              <span className="text-slate-500 dark:text-slate-400">
-                Clear all?
-              </span>
-              <button
-                type="button"
-                disabled={pending}
-                onClick={() =>
-                  startTransition(async () => {
-                    await clearAction();
-                    setConfirming(false);
-                  })
-                }
-                className="btn-danger btn-sm"
-                data-testid="notify-log-clear-confirm"
-              >
-                {pending ? "Clearing…" : "Confirm"}
-              </button>
-              <button
-                type="button"
-                onClick={() => setConfirming(false)}
-                className="rounded-md px-2 py-1 text-slate-500 hover:text-slate-700 dark:text-slate-400 dark:hover:text-slate-200"
-              >
-                Cancel
-              </button>
-            </span>
-          ) : (
-            <button
-              type="button"
-              onClick={() => setConfirming(true)}
-              className="rounded-md border border-black/10 px-2 py-1 font-medium text-slate-500 hover:text-slate-700 dark:border-white/10 dark:text-slate-400 dark:hover:text-slate-200"
-              data-testid="notify-log-clear"
-            >
-              Clear
-            </button>
-          ))}
+        {totalRuns > 0 && <ClearLogControl log="notify" clear={clearAction} />}
       </div>
 
       {runs.length === 0 ? (
