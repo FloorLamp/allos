@@ -4,7 +4,12 @@
 // The load-bearing property under test is that scoping is a function of the CURRENT
 // clock, not of when a message was built. Everything else here is copy and shape.
 
+import fs from "node:fs";
+import path from "node:path";
+import { fileURLToPath } from "node:url";
 import { describe, it, expect } from "vitest";
+import { stripComments } from "./strip-comments";
+import { makeTmpDir } from "./tmp-dir";
 import {
   isOfferedOn,
   slotHintBucket,
@@ -21,7 +26,14 @@ import {
 } from "@/lib/notifications/offer-tail";
 import { collapsedTuneAction } from "@/lib/notifications/digest-tune";
 import { messageKeyboard } from "@/lib/notifications/telegram-render";
-import type { NotificationAction } from "@/lib/notifications/types";
+import {
+  capTelegramKeyboard,
+  TELEGRAM_MAX_BUTTONS,
+} from "@/lib/notifications/telegram-limits";
+import type {
+  NotificationAction,
+  NotificationMessage,
+} from "@/lib/notifications/types";
 
 const ctx = {
   date: "2026-03-04",
@@ -310,5 +322,176 @@ describe("offerTailNeedsRefresh", () => {
     expect(offerTailNeedsRefresh("08:00", "09:30")).toBe(false);
     expect(offerTailNeedsRefresh("08:00", "22:30")).toBe(true);
     expect(offerTailNeedsRefresh("22:00", "23:30")).toBe(false);
+  });
+});
+
+// ── THE `prn:` DISCRIMINATOR IS KEYBOARD-SHAPED, SO THE KEYBOARD MUST HOLD (#3567) ──
+//
+// `prn:` is minted by BOTH the `/dose` command's list and the digest's expanded offer
+// list, on purpose: one administration-logging path on Telegram rather than two that
+// could drift. So the BUTTON cannot say which keyboard offered it, and
+// `isExpandedOfferKeyboard` (lib/notifications/telegram-quick-log.ts) asks the
+// KEYBOARD instead — an expanded offer list is the only one carrying a collapse token.
+//
+// That is the right call: it works on messages minted before the marker mechanism
+// shipped, which a token marker never could. But it rests on an invariant NOTHING
+// ASSERTED — that every `prn:` keyboard which is an offer list carries a collapse
+// control. Lose it and the list reads as `/dose`: silently, because "a /dose tap" is a
+// perfectly valid reading that stamps `telegram-command` and skips the chip rebuild.
+//
+// Two halves, because the invariant has two ways to break:
+//   1. `expandedOfferActions` stops appending the control — asserted below, directly.
+//   2. A THIRD site starts minting `prn:` and never thinks about the discriminator —
+//      caught by the census, which pins the minter set at exactly the two that exist.
+
+const PRN_MINTERS: Record<string, string> = {
+  "lib/notifications/offer-tail.ts":
+    "the digest's expanded offer list; `expandedOfferActions` appends the collapse " +
+    "control to every list it renders, which is what makes the keyboard readable",
+  "lib/notifications/telegram-quick-log.ts":
+    "the `/dose` command's reusable list, which has never had a collapse control — " +
+    "it is the OTHER side of the discriminator, and must stay that way",
+};
+
+const REPO_ROOT = path.resolve(fileURLToPath(new URL("../..", import.meta.url)));
+
+/**
+ * Every non-test source file under `root` minting a `prn:` callback token.
+ *
+ * Takes a ROOT so the reach test below can run this whole walker over a corpus
+ * written to break it — a census proved only against a complying tree has proved
+ * that the tree complies, not that the census can see.
+ */
+function prnMinters(root: string = REPO_ROOT): string[] {
+  const roots = ["lib", "app"];
+  const out: string[] = [];
+  const walkDir = (dir: string, base: string): void => {
+    let entries: fs.Dirent[];
+    try {
+      entries = fs.readdirSync(dir, { withFileTypes: true });
+    } catch {
+      return;
+    }
+    for (const entry of entries) {
+      const p = path.join(dir, entry.name);
+      if (entry.isDirectory()) {
+        if (entry.name === "node_modules" || entry.name === ".next") continue;
+        walkDir(p, base);
+        continue;
+      }
+      if (!p.endsWith(".ts") && !p.endsWith(".tsx")) continue;
+      const rel = path.relative(base, p).split(path.sep).join("/");
+      if (/__(?:db_|action_)?tests__/.test(rel)) continue;
+      if (/\.test\.tsx?$/.test(p)) continue;
+      // COMMENTS STRIPPED FIRST. Five of the seven `` `prn: `` occurrences in this
+      // tree are PROSE about the shared prefix — a raw text sweep would report the
+      // modules that merely explain the mechanism as if they minted tokens, and the
+      // registry would then be a list of documentation.
+      if (/`prn:/.test(stripComments(fs.readFileSync(p, "utf8"))))
+        out.push(rel);
+    }
+  };
+  for (const r of roots) walkDir(path.join(root, r), root);
+  return [...new Set(out)].sort();
+}
+
+describe("the prn: keyboard discriminator", () => {
+  it("appends a collapse control to EVERY expanded offer list", () => {
+    // The property `isExpandedOfferKeyboard` reads. Spelled here as the same
+    // prefix test rather than by importing that function: it lives in a module that
+    // reaches the database, and this is the pure tier.
+    const carries = (actions: NotificationAction[]): boolean =>
+      actions.some((a) => a.data?.startsWith(`${OFFER_COLLAPSE_PREFIX}:`));
+    for (const n of [1, 2, 7, 40]) {
+      const items = Array.from({ length: n }, (_, i) => ({
+        itemId: i + 1,
+        name: `Item ${i + 1}`,
+        detail: null,
+        countToday: 0,
+      }));
+      const actions = expandedOfferActions(7, "2026-03-04", items, () => "tok");
+      expect(actions.filter((a) => a.data?.startsWith("prn:"))).toHaveLength(n);
+      expect(carries(actions), `${n} offered items`).toBe(true);
+    }
+  });
+
+  it("mints prn: from exactly the two keyboards that own the discriminator", () => {
+    expect(
+      prnMinters(),
+      "A source file mints a `prn:` callback token and is not one of the two " +
+        "keyboards this discriminator is built on (#3567 item 7). `prn:` says " +
+        "nothing about which keyboard offered it — the COLLAPSE CONTROL does. If the " +
+        "new keyboard is an offer list, it must carry one; if it is a command list, " +
+        "it must not. Then add a line to PRN_MINTERS saying which it is."
+    ).toEqual(Object.keys(PRN_MINTERS).sort());
+  });
+
+  it("loses the control ONLY at the wire cap, and says at which count", () => {
+    // THE ONE MECHANICAL ROUTE, measured rather than asserted away. `sendMessageRaw`
+    // puts `capTelegramKeyboard(messageKeyboard(msg))` on the wire, and the cap keeps
+    // whole LEADING rows — so the collapse control, which is appended LAST, is the
+    // first thing dropped. Every offered item takes a row of its own (`row:
+    // offer-<itemId>`) and the control takes one more, so the list survives at
+    // TELEGRAM_MAX_BUTTONS - 1 items and loses its control at TELEGRAM_MAX_BUTTONS.
+    //
+    // A keyboard past that point reads as `/dose`. It needs ~100 offered doses in ONE
+    // slot, which is why this is a bound and not a bug report — but it is written
+    // down, and it turns red if the cap arithmetic or the row grouping changes.
+    const list = (n: number): { data?: string }[][] => {
+      const items = Array.from({ length: n }, (_, i) => ({
+        itemId: i + 1,
+        name: `Item ${i + 1}`,
+        detail: null,
+        countToday: 0,
+      }));
+      return capTelegramKeyboard(
+        messageKeyboard({
+          text: "x",
+          actions: expandedOfferActions(7, "2026-03-04", items, () => "tok"),
+        } as NotificationMessage)
+      ).keyboard;
+    };
+    const hasCollapse = (rows: { data?: string }[][]): boolean =>
+      rows.some((r) =>
+        r.some((b) =>
+          String((b as { callback_data?: string }).callback_data ?? "").startsWith(
+            `${OFFER_COLLAPSE_PREFIX}:`
+          )
+        )
+      );
+    expect(hasCollapse(list(TELEGRAM_MAX_BUTTONS - 1))).toBe(true);
+    expect(hasCollapse(list(TELEGRAM_MAX_BUTTONS))).toBe(false);
+  });
+
+  it("SEES a third minter, and stays SILENT on prose about the prefix", () => {
+    const root = makeTmpDir("prn-minters");
+    const write = (rel: string, body: string): void => {
+      const abs = path.join(root, rel);
+      fs.mkdirSync(path.dirname(abs), { recursive: true });
+      fs.writeFileSync(abs, body);
+    };
+    // A third keyboard minting the token — the finding.
+    write(
+      "lib/notifications/new-keyboard.ts",
+      "export const btn = { data: `prn:${pid}:${id}:${tok()}` };\n"
+    );
+    // Prose about the shared prefix, which is what most `prn:` occurrences in this
+    // tree actually are. Reporting these would make the registry a list of docs.
+    write(
+      "lib/notifications/explainer.ts",
+      "// `prn:` is shared by the two lists; see the discriminator.\n" +
+        "export const NOTE = 1;\n"
+    );
+    // A READER of the token, not a minter: a double-quoted prefix test.
+    write(
+      "lib/notifications/reader.ts",
+      'export const isPrn = (d: string) => d.startsWith("prn:");\n'
+    );
+    // And a test file, excluded by suffix even though it mints the same shape.
+    write(
+      "lib/__tests__/x.test.ts",
+      "const d = `prn:1:2:tok`;\n"
+    );
+    expect(prnMinters(root)).toEqual(["lib/notifications/new-keyboard.ts"]);
   });
 });
