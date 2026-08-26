@@ -6,9 +6,16 @@ import { stripComments } from "./strip-comments";
 import {
   keyboardChatOrigin,
   markToken,
+  ORIGIN_MARK_PATTERN,
   originFromToken,
   withChatOrigin,
 } from "@/lib/notifications/chat-origin";
+import { TELEGRAM_CALLBACK_DATA_MAX_BYTES } from "@/lib/notifications/callback-data";
+import {
+  FOOD_NUDGE_WINDOWS,
+  foodLogCallbackData,
+} from "@/lib/notifications/food-format";
+import { foodGroupSlugs } from "@/lib/food-groups";
 import { makeTmpDir } from "./tmp-dir";
 
 // The pure half of the chat origin marker (#3087). The round trip — a real send, a
@@ -49,13 +56,95 @@ describe("the marker on the wire", () => {
     }
   });
 
-  it("stays under Telegram's 64-byte callback cap on a long real token", () => {
-    // A food token runs to about 45 bytes; the marker costs two.
-    const longest = markToken(
-      "food:107080001001:Evening:2026-08-22:sugary_foods_desserts",
+  // ── THE BYTE CAP, DERIVED FROM THE BOUNDARY ─────────────────────────────────
+  //
+  // A GUARD OVER A BOUNDARY MUST BUILD ITS WORST CASE FROM THE BOUNDARY. The version
+  // this replaced hard-coded `64` and a hand-made 21-character slug,
+  // `sugary_foods_desserts`, WHICH IS NOT IN THE CATALOG (#3567) — so it tested an
+  // invented token against an invented cap and could not have noticed either one
+  // moving. Every segment below now comes from the thing that decides it:
+  //
+  //   the cap      TELEGRAM_CALLBACK_DATA_MAX_BYTES (lib/notifications/callback-data.ts)
+  //   the windows  FOOD_NUDGE_WINDOWS  — Morning/Midday/Evening, longest 7
+  //   the slug     foodGroupSlugs()    — the real catalog, 25 entries, longest 17
+  //   the token    foodLogCallbackData + markToken, the two functions that mint it
+  //
+  // WHICH PROFILE ID, AND WHY IT IS THE WIDEST ONE. `profiles.id` is
+  // `INTEGER PRIMARY KEY AUTOINCREMENT`, so a production instance counts from 1 and
+  // its food tokens run to about 45 bytes — which is what chat-origin.ts's comment
+  // says, and it is right. But this tree's DB tier deliberately mints WIDE ids:
+  // lib/__db_tests__/fixture-profile-space.ts moves each test file's allocation into a
+  // `(pid, thread)`-keyed block, so its profiles are twelve digits today and the only
+  // thing bounding them is `Number.isSafeInteger`. A cap guard built from a
+  // production-shaped id would therefore test LOOSER than the fixtures already
+  // exercise, which is the wrong direction for a cap. So it is built from the widest
+  // id this app can round-trip at all — `Number.MAX_SAFE_INTEGER`, sixteen digits —
+  // and that is strictly wider than anything either tier can produce.
+  const WIDEST_PROFILE_ID = Number.MAX_SAFE_INTEGER;
+  // Any real day: the parser fixes the shape at `\d{4}-\d{2}-\d{2}`, so every date is
+  // exactly ten bytes and no date is worse than another.
+  const A_DATE = "2026-12-31";
+
+  const widestFoodToken = (): string => {
+    const window = [...FOOD_NUDGE_WINDOWS].sort(
+      (a, b) => b.length - a.length
+    )[0];
+    const slug = [...foodGroupSlugs()].sort((a, b) => b.length - a.length)[0];
+    return markToken(
+      foodLogCallbackData(WIDEST_PROFILE_ID, window, A_DATE, slug),
       "telegram-command"
     );
-    expect(Buffer.byteLength(longest, "utf8")).toBeLessThanOrEqual(64);
+  };
+
+  it("keeps the WIDEST food token this tree can mint inside Telegram's cap", () => {
+    const longest = widestFoodToken();
+    // Named so a failure reads as "which segment grew", not as a bare number.
+    expect(
+      Buffer.byteLength(longest, "utf8"),
+      `worst-case marked food token: ${longest}`
+    ).toBeLessThanOrEqual(TELEGRAM_CALLBACK_DATA_MAX_BYTES);
+  });
+
+  it("would SEE the overflow — a slug one byte past the headroom breaks the cap", () => {
+    // A PASSING CAP CHECK SAYS NOTHING ABOUT WHAT THE CHECK CAN SEE. The assertion
+    // above is green with room to spare, and would stay green if some segment stopped
+    // being included at all. So the same derivation is run against a catalog entry
+    // authored to break it: the widest slug that still fits, plus one character.
+    //
+    // No magic number — the headroom is measured, and the fixture is built from it.
+    // The slug is the only segment a routine change grows (a new food group is one
+    // JSON entry away; the cap, the windows and the id width are not), so bytes of
+    // slug is the honest unit to state the remaining room in.
+    const headroom =
+      TELEGRAM_CALLBACK_DATA_MAX_BYTES -
+      Buffer.byteLength(widestFoodToken(), "utf8");
+    expect(headroom).toBeGreaterThanOrEqual(0);
+
+    const window = [...FOOD_NUDGE_WINDOWS].sort(
+      (a, b) => b.length - a.length
+    )[0];
+    const longestSlug = [...foodGroupSlugs()].sort(
+      (a, b) => b.length - a.length
+    )[0];
+    const tokenFor = (slug: string): string =>
+      markToken(
+        foodLogCallbackData(WIDEST_PROFILE_ID, window, A_DATE, slug),
+        "telegram-command"
+      );
+
+    // Exactly at the cliff: still allowed.
+    const atCap = "x".repeat(longestSlug.length + headroom);
+    expect(Buffer.byteLength(tokenFor(atCap), "utf8")).toBe(
+      TELEGRAM_CALLBACK_DATA_MAX_BYTES
+    );
+    // One character over: the cap is breached, so the derivation is TIGHT rather than
+    // merely satisfied. A future slug of this length is what closes the gap.
+    expect(
+      Buffer.byteLength(tokenFor(`${atCap}x`), "utf8"),
+      `a food-group slug may run to ${atCap.length} characters before its callback ` +
+        `token overflows Telegram's cap (longest in the catalog today: ` +
+        `${longestSlug}, ${longestSlug.length}).`
+    ).toBeGreaterThan(TELEGRAM_CALLBACK_DATA_MAX_BYTES);
   });
 });
 
@@ -399,6 +488,122 @@ describe("every rebuild of a food nudge re-applies the origin", () => {
     expect(body.split("\n")[12]).toContain("buildFoodNudge");
     expect(unwrappedFoodRebuilds(root)).toEqual([
       "lib/notifications/spaced.ts:13",
+    ]);
+  });
+});
+
+// ── THE MARKER CHARSET CENSUS (#3567 item 3) ──────────────────────────────────
+//
+// `ORIGIN_MARK_PATTERN` is exported so that the marker segment is written ONCE. It was
+// exported and then hand-spelled anyway, at six code sites across three modules, and
+// every one of them was correct only by coincidence.
+//
+// WHY THIS PARTICULAR DUPLICATE IS WORTH A GUARD, when most are not: widening the
+// charset would have missed the hand-copies SILENTLY. A food token whose marker no
+// longer matches does not throw and does not mis-parse — it reads as an UNMARKED
+// legacy token, which is a valid state that logs a nudge. So the failure mode of
+// forgetting one copy is a permanent, one-directional inflation of exactly the number
+// this column exists to measure, on a path nothing renders.
+//
+// WHAT IT KEYS ON is the repo's own spelling, not the issue's description: every one
+// of the six copies wrote the charset as a regex CHARACTER CLASS over the mark
+// letters. The alternation form is included too — it is the same thought, and a
+// census that saw one spelling and not the other would report clean because it cannot
+// see (#3580). Both are DERIVED from the exported pattern, so widening the charset
+// widens this guard in the same edit.
+//
+// WHAT IT CANNOT SEE, stated rather than implied: a copy built at runtime from a
+// variable, a `String.fromCharCode`, or a class written with a range or an escape
+// (`[n-c]`, `[\x6e\x63]`). Nobody has written one; nothing stops them.
+
+/** The character class inside the exported pattern — `nc`, derived, never restated. */
+const MARK_CHARS = /\[([^\]]+)\]/.exec(ORIGIN_MARK_PATTERN)?.[1] ?? "";
+
+/** The module that is ALLOWED to spell it: the one that exports it. */
+const MARKER_MODULE = "lib/notifications/chat-origin.ts";
+
+/** Every hand-spelling of the marker charset, in the two shapes this repo writes. */
+function markerCharsetSpellings(chars: string): string[] {
+  const letters = [...chars];
+  const orders =
+    letters.length === 2
+      ? [letters.join(""), [...letters].reverse().join("")]
+      : [letters.join("")];
+  return [
+    ...orders.map((o) => `[${o}]`),
+    ...orders.map((o) => `(?:${[...o].join("|")})`),
+    ...orders.map((o) => `(${[...o].join("|")})`),
+  ];
+}
+
+/** Files that respell the marker charset instead of importing the pattern. */
+export function respelledMarkerCharsets(root: string): string[] {
+  const spellings = markerCharsetSpellings(MARK_CHARS);
+  const out: string[] = [];
+  for (const { rel, src } of sources(root)) {
+    if (rel === MARKER_MODULE) continue;
+    for (const spelling of spellings)
+      if (src.includes(spelling)) out.push(`${rel}: ${spelling}`);
+  }
+  return [...new Set(out)].sort();
+}
+
+describe("the marker charset is written once", () => {
+  it("has a charset to make a claim about", () => {
+    // AN ABSENCE ASSERTION FAILS OPEN, and this one fails open twice over: an empty
+    // charset yields no spellings to look for, and an empty corpus yields no files to
+    // look in. Both floors, before the verdict.
+    expect(MARK_CHARS.length).toBeGreaterThanOrEqual(2);
+    expect(markerCharsetSpellings(MARK_CHARS).length).toBeGreaterThanOrEqual(4);
+    expect(sources(REPO).length).toBeGreaterThanOrEqual(500);
+    expect(sources(REPO).map((f) => f.rel)).toContain(MARKER_MODULE);
+  });
+
+  it("leaves no module respelling the charset chat-origin.ts exports", () => {
+    expect(
+      respelledMarkerCharsets(REPO),
+      "The origin marker's charset is hand-spelled outside chat-origin.ts (#3567). " +
+        "Import ORIGIN_MARK_PATTERN instead: a copy that misses a later widening " +
+        "does not throw — the token reads as an UNMARKED legacy token, which is a " +
+        "valid state that logs a nudge, so the miscount is silent and permanent."
+    ).toEqual([]);
+  });
+
+  it("SEES a hand-spelled charset, and STAYS SILENT on the imported one", () => {
+    // A green sweep over a complying tree says nothing about what the sweep can see.
+    const root = makeTmpDir("marker-charset");
+    fsMod.mkdirSync(path.join(root, "lib/notifications"), { recursive: true });
+    fsMod.writeFileSync(
+      path.join(root, "lib/notifications/handspelled.ts"),
+      [
+        "const RE = /^food:(?:[nc]:)?\\d+:/;",
+        "export const ok = RE.test(x);",
+      ].join("\n")
+    );
+    fsMod.writeFileSync(
+      path.join(root, "lib/notifications/alternation.ts"),
+      "const RE = new RegExp(`^food:(?:(n|c):)?\\\\d+:`);\n"
+    );
+    fsMod.writeFileSync(
+      path.join(root, "lib/notifications/imported.ts"),
+      [
+        'import { ORIGIN_MARK_PATTERN } from "./chat-origin";',
+        "const RE = new RegExp(`^food:${ORIGIN_MARK_PATTERN}\\\\d+:`);",
+      ].join("\n")
+    );
+    // …and a COMMENT that quotes the charset in order to explain it, which three
+    // shipped files do. Reading comments would report the documentation as the defect.
+    fsMod.writeFileSync(
+      path.join(root, "lib/notifications/explained.ts"),
+      [
+        "// `[nc]` is the marker charset; do not respell it — import the pattern.",
+        'import { ORIGIN_MARK_PATTERN } from "./chat-origin";',
+        "export const P = ORIGIN_MARK_PATTERN;",
+      ].join("\n")
+    );
+    expect(respelledMarkerCharsets(root)).toEqual([
+      "lib/notifications/alternation.ts: (n|c)",
+      "lib/notifications/handspelled.ts: [nc]",
     ]);
   });
 });

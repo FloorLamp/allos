@@ -64,10 +64,41 @@ const MARK: Record<ChatOrigin, string> = {
   "telegram-command": "c",
 };
 
-const BY_MARK: Record<string, ChatOrigin> = {
-  n: "telegram-nudge",
-  c: "telegram-command",
-};
+/**
+ * The reverse map, DERIVED rather than spelled out again.
+ *
+ * A second hand-kept copy of the charset is a second place to forget it. Adding a
+ * third chat surface must be a compile error in `MARK` and a no-op everywhere else.
+ */
+const BY_MARK = Object.fromEntries(
+  Object.entries(MARK).map(([origin, mark]) => [mark, origin])
+) as Record<string, ChatOrigin>;
+
+/**
+ * The marker charset as a regex character class, derived from `MARK`.
+ *
+ * THE CHARSET IS WRITTEN ONCE (#3567 item 3). It used to be hand-spelled `[nc]` at
+ * six code sites across three modules — here, in `food-format.ts`'s button counter
+ * and in `food-nudge-pointer.ts` — and every one of them was correct only by
+ * coincidence. Widening the charset would have missed most of them SILENTLY: a food
+ * token whose marker no longer matches does not throw, it reads as an unmarked legacy
+ * token, which is a valid state that logs a nudge. So the class comes from the
+ * exhaustive record above, and the census in lib/__tests__/chat-origin.test.ts holds
+ * the tree to it.
+ *
+ * The marks are single ASCII letters from a closed vocabulary, so they need no
+ * character-class escaping — pinned by that same census.
+ */
+const MARK_CLASS = `[${Object.values(MARK).join("")}]`;
+
+/**
+ * The marker segment at the head of a token's tail, with the mark captured.
+ *
+ * Used for both reading (`.exec(…)?.[1]`) and stripping (`.replace(…, "")`), so the
+ * two directions cannot drift apart. No `g` flag: a shared regex with one would carry
+ * `lastIndex` between calls.
+ */
+const LEADING_MARK_RE = new RegExp(`^(${MARK_CLASS}):`);
 
 /**
  * How an unmarked token reads.
@@ -89,7 +120,7 @@ export const UNMARKED_CHAT_ORIGIN: ChatOrigin = "telegram-nudge";
 const MARKED_PREFIXES = ["foodprotein", "food"] as const;
 
 /** The regex fragment a family parser uses for its optional marker segment. */
-export const ORIGIN_MARK_PATTERN = "(?:([nc]):)?";
+export const ORIGIN_MARK_PATTERN = `(?:(${MARK_CLASS}):)?`;
 
 /** Read a marker back, defaulting to the legacy reading. */
 export function originFromMark(mark: string | undefined): ChatOrigin {
@@ -105,7 +136,7 @@ export function originFromMark(mark: string | undefined): ChatOrigin {
 export function markToken(data: string, origin: ChatOrigin): string {
   for (const prefix of MARKED_PREFIXES) {
     if (!data.startsWith(`${prefix}:`)) continue;
-    const rest = data.slice(prefix.length + 1).replace(/^[nc]:/, "");
+    const rest = data.slice(prefix.length + 1).replace(LEADING_MARK_RE, "");
     return `${prefix}:${MARK[origin]}:${rest}`;
   }
   return data;
@@ -116,7 +147,9 @@ export function originFromToken(data: unknown): ChatOrigin {
   if (typeof data !== "string") return UNMARKED_CHAT_ORIGIN;
   for (const prefix of MARKED_PREFIXES) {
     if (!data.startsWith(`${prefix}:`)) continue;
-    return originFromMark(/^([nc]):/.exec(data.slice(prefix.length + 1))?.[1]);
+    return originFromMark(
+      LEADING_MARK_RE.exec(data.slice(prefix.length + 1))?.[1]
+    );
   }
   return UNMARKED_CHAT_ORIGIN;
 }
@@ -145,7 +178,7 @@ export function keyboardChatOrigin(
       if (typeof btn.callback_data !== "string") continue;
       for (const prefix of MARKED_PREFIXES) {
         if (!btn.callback_data.startsWith(`${prefix}:`)) continue;
-        const mark = /^([nc]):/.exec(
+        const mark = LEADING_MARK_RE.exec(
           btn.callback_data.slice(prefix.length + 1)
         )?.[1];
         if (mark) return originFromMark(mark);
