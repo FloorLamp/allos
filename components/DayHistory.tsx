@@ -101,10 +101,15 @@ const PANE_ROW = "text-xs text-slate-700 dark:text-slate-200";
 const PANE_VALUE =
   "shrink-0 text-xs tabular-nums text-slate-500 dark:text-slate-400";
 
-type DetailDisclosureOwner =
+type DetailDisclosureOwner = {
+  domain: DayHistoryDomainKey;
+  grain: DayHistoryGrain;
+  weekStart: number;
+} & (
   | { kind: "aggregate"; date: string }
   | { kind: "matrix"; rowKey: string; date: string }
-  | { kind: "row"; rowKey: string };
+  | { kind: "row"; rowKey: string }
+);
 
 function plural(n: number, one: string, many: string): string {
   return `${n} ${n === 1 ? one : many}`;
@@ -167,6 +172,7 @@ export default function DayHistory({
 }) {
   const spec = DAY_HISTORY_DOMAINS[domain];
   const week = grain === "week";
+  const disclosureOwnerContext = { domain, grain, weekStart } as const;
   // Ladders and legend copy are DECLARED per grain in the registry; this picks
   // the pair, and never writes a ladder of its own.
   const cellLevel = historyCellLevel(spec, grain);
@@ -699,6 +705,13 @@ export default function DayHistory({
 
   const disclosureDetail = (() => {
     if (!disclosureOwner) return null;
+    if (
+      disclosureOwner.domain !== domain ||
+      disclosureOwner.grain !== grain ||
+      disclosureOwner.weekStart !== weekStart
+    ) {
+      return null;
+    }
     if (disclosureOwner.kind === "aggregate") {
       const cell =
         calendar?.columns
@@ -735,7 +748,11 @@ export default function DayHistory({
   // never navigates.
   const calendarCellProps = (text: string, date: string) => ({
     onMouseEnter: () => {
-      previewDetail(text, { kind: "aggregate", date });
+      previewDetail(text, {
+        ...disclosureOwnerContext,
+        kind: "aggregate",
+        date,
+      });
       setHoverDay(date);
     },
     onMouseLeave: () => {
@@ -743,7 +760,11 @@ export default function DayHistory({
       setHoverDay(null);
     },
     onFocus: () => {
-      previewDetail(text, { kind: "aggregate", date });
+      previewDetail(text, {
+        ...disclosureOwnerContext,
+        kind: "aggregate",
+        date,
+      });
       setHoverDay(date);
     },
     onBlur: () => {
@@ -751,7 +772,11 @@ export default function DayHistory({
       setHoverDay(null);
     },
     onClick: () => {
-      previewDetail(text, { kind: "aggregate", date });
+      previewDetail(text, {
+        ...disclosureOwnerContext,
+        kind: "aggregate",
+        date,
+      });
       selectDay(date, true);
     },
   });
@@ -848,7 +873,12 @@ export default function DayHistory({
     ci: number
   ) => ({
     onMouseEnter: () => {
-      previewDetail(text, { kind: "matrix", rowKey, date });
+      previewDetail(text, {
+        ...disclosureOwnerContext,
+        kind: "matrix",
+        rowKey,
+        date,
+      });
       setHoverDay(date);
       setHoverRow(rowKey);
     },
@@ -859,7 +889,12 @@ export default function DayHistory({
     },
     onFocus: () => {
       setFocusCell({ row: ri, col: ci });
-      previewDetail(text, { kind: "matrix", rowKey, date });
+      previewDetail(text, {
+        ...disclosureOwnerContext,
+        kind: "matrix",
+        rowKey,
+        date,
+      });
       setHoverDay(date);
       setHoverRow(rowKey);
     },
@@ -869,7 +904,12 @@ export default function DayHistory({
       setHoverRow(null);
     },
     onClick: () => {
-      previewDetail(text, { kind: "matrix", rowKey, date });
+      previewDetail(text, {
+        ...disclosureOwnerContext,
+        kind: "matrix",
+        rowKey,
+        date,
+      });
       selectDay(date, false);
     },
     onKeyDown: (event: React.KeyboardEvent<HTMLElement>) => {
@@ -1621,6 +1661,7 @@ export default function DayHistory({
                   const rowHoverProps = {
                     onMouseEnter: () => {
                       previewDetail(rowSummary, {
+                        ...disclosureOwnerContext,
                         kind: "row",
                         rowKey: row.key,
                       });
@@ -1657,6 +1698,7 @@ export default function DayHistory({
                           {...rowHoverProps}
                           onFocus={() => {
                             previewDetail(rowSummary, {
+                              ...disclosureOwnerContext,
                               kind: "row",
                               rowKey: row.key,
                             });
@@ -1689,12 +1731,14 @@ export default function DayHistory({
                                 prev === row.key ? null : row.key
                               );
                               previewDetail(rowSummary, {
+                                ...disclosureOwnerContext,
                                 kind: "row",
                                 rowKey: row.key,
                               });
                             }}
                             onFocus={() => {
                               previewDetail(rowSummary, {
+                                ...disclosureOwnerContext,
                                 kind: "row",
                                 rowKey: row.key,
                               });

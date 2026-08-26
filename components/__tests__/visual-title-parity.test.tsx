@@ -136,6 +136,52 @@ describe("visual title parity", () => {
     expect(screen.queryByRole("button", { name: restoredDetail })).toBeNull();
   });
 
+  it("does not retarget day-cell disclosures to a week with the same date", () => {
+    vi.stubGlobal(
+      "ResizeObserver",
+      class ResizeObserver {
+        observe() {}
+        unobserve() {}
+        disconnect() {}
+      }
+    );
+    const props = {
+      domain: "workout" as const,
+      values: [{ date: "2026-08-23", group: "strength", value: 1 }],
+      groups: [{ key: "strength", label: "Strength" }],
+      end: "2026-08-23",
+      weeks: 1,
+      weekStart: 0,
+      today: "2026-08-23",
+      formatPrefs: DEFAULT_FORMAT_PREFS,
+    };
+    const { rerender } = render(<DayHistory {...props} grain="day" />);
+    const header = () =>
+      within(screen.getByTestId("day-history-matrix-header"));
+
+    const aggregate = screen.getByRole("button", {
+      name: /Sunday, August 23, 2026 — 1 session.*today/,
+    });
+    fireEvent.focus(aggregate);
+    fireEvent.blur(aggregate);
+    expect(header().getByRole("button")).toBeTruthy();
+
+    rerender(<DayHistory {...props} grain="week" />);
+    expect(header().queryByRole("button")).toBeNull();
+    rerender(<DayHistory {...props} grain="day" />);
+    expect(header().queryByRole("button")).toBeNull();
+
+    const matrixCell = screen.getByRole("gridcell", {
+      name: /Strength · Sunday, August 23, 2026 — 1 session/,
+    });
+    fireEvent.focus(matrixCell);
+    fireEvent.blur(matrixCell);
+    expect(header().getByRole("button")).toBeTruthy();
+
+    rerender(<DayHistory {...props} grain="week" />);
+    expect(header().queryByRole("button")).toBeNull();
+  });
+
   it("keeps intensity choices exact and discloses every hint", () => {
     render(<IntensityPicker intensity="" onChange={() => undefined} />);
 
