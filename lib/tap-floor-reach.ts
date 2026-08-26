@@ -1,4 +1,4 @@
-import ts from "typescript";
+import ts from "typescript-api";
 import {
   TAP_FLOOR_PX,
   TAP_TARGET_INSET_PX,
