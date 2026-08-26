@@ -2169,6 +2169,20 @@ truncate and does** — and that half's failure IS the run's failure, so it was 
 line on the card. `<= 0` rather than `== 0` covers Withings' `-1`, its marker for an
 envelope that parsed but carried no status: nobody refused us anything.
 
+**One rule, not two spellings of it — and this moved a #3007 rule.** The weather
+partial's Review detail asks the same question when it chooses its tail: `the next
+run re-fetches it` (#2567's load-shedding case) or `stays missing until it's fixed`
+(#3007's air-quality `400`, which was one day past its host's ceiling and had never
+once succeeded). `isDeterministicFailure` spelled that as the bare 4xx boundary, so
+when `429`/`408` moved above, one Open-Meteo rate limit produced **both** answers on
+one card from one run — `Couldn't refresh the weather forecast. Try again.` as the
+run's red line, and `…gets the same answer, so this stays missing until it's fixed.`
+as the partial's detail underneath it. Neither weather half has a rate-limit truncate
+ahead of the classifier, so there was no fact under the disagreement. It reads
+`syncFailureFamily(status) === "refused"` now. #3007's `400` and #2567's `5xx` are
+unmoved; on the statuses this path can actually receive (`0`, or `>= 400` from a
+non-OK response) the behaviour delta is exactly `429` and `408`.
+
 **Two status dialects, and one sentence that only the HTTP one can support.**
 `syncFailureCopy` takes a `StatusDialect`. `http` is the default; `vendor` is a
 source that rides its own codes inside a body served over HTTP 200 — Withings'
