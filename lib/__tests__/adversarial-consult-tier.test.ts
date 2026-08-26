@@ -45,6 +45,7 @@ import {
   sentenceAround,
   shipsRuntimeCode,
   vocabularyHits,
+  weakenedTests,
 } from "../../scripts/orchestration/adversarial-review-brief.mjs";
 import { makeTmpDir } from "./tmp-dir";
 
@@ -671,6 +672,116 @@ describe("the exit codes", () => {
 
 // ---------------------------------------------------------------------------
 
+// THE HOLE #3039 RECORDED, AND WHAT CLOSING IT COSTS (#3044).
+//
+// A diff that only DELETES assertions from a test changes no runtime line and can
+// still remove a guard — the safety gates here are substantially enforced by tests.
+// The regression case is SYNTHETIC and says so: no merged PR in either of #3039's
+// windows deletes an assertion from a safety scan test. The one real PR the rule
+// newly brings into scope is #2963, "Remove useless test assertions" (26 removed
+// across 12 files), and it is pinned below because it stays `ordinary` — scope only
+// lets the TEXT tier look, and #2963's prose names no safety term.
+describe("a diff that only removes assertions is in scope (#3044)", () => {
+  const patch = (...lines: string[]) =>
+    ["@@ -1,4 +1,4 @@", ...lines].join("\n");
+
+  it.each([
+    [
+      "a removed assertion",
+      patch(
+        ' it("x", () => {',
+        '-  expect(cores).toContain("alcohol");',
+        " });"
+      ),
+      ["lib/__tests__/adult-only-writes-scan.test.ts"],
+    ],
+    ["an added assertion", patch('+  expect(cores).toContain("alcohol");'), []],
+    [
+      "one removed, two added",
+      patch(
+        "-  expect(a).toBe(1);",
+        "+  expect(a).toBe(1);",
+        "+  expect(b).toBe(2);"
+      ),
+      [],
+    ],
+    [
+      "two removed, one added",
+      patch(
+        "-  expect(a).toBe(1);",
+        "-  expect(b).toBe(2);",
+        "+  expect(a).toBe(1);"
+      ),
+      ["lib/__tests__/adult-only-writes-scan.test.ts"],
+    ],
+    [
+      "the diff headers alone, which start with - and + but are not content",
+      [
+        "--- a/lib/__tests__/adult-only-writes-scan.test.ts",
+        "+++ b/lib/__tests__/adult-only-writes-scan.test.ts",
+      ].join("\n"),
+      [],
+    ],
+    [
+      "no patch at all — the API omits one for a binary or oversized file",
+      undefined,
+      [],
+    ],
+  ])("%s", (_label, body, expected) => {
+    const file = "lib/__tests__/adult-only-writes-scan.test.ts";
+    expect(
+      weakenedTests([file], body === undefined ? {} : { [file]: body })
+    ).toEqual(expected);
+  });
+
+  const DELETION = {
+    "lib/__tests__/adult-only-writes-scan.test.ts":
+      '@@ -1,3 +1,2 @@\n-  expect(ADULT_ONLY_WRITE_CORES).toContain("alcohol");\n',
+  };
+  const SAFETY_WORDED = [
+    {
+      where: "PR title",
+      text: "Drop a stale adult-only assertion from the write-core scan",
+    },
+  ];
+  const NEUTRAL = [
+    { where: "PR title", text: "Remove useless test assertions" },
+  ];
+
+  it.each([
+    [
+      "a safety-worded assertion deletion is CONSULT",
+      SAFETY_WORDED,
+      DELETION,
+      "CONSULT",
+    ],
+    // The same diff read by a caller that supplies no patches — every pre-#3044
+    // call site — must behave exactly as it did before.
+    [
+      "the same diff with no patch text supplied stays ordinary",
+      SAFETY_WORDED,
+      undefined,
+      "ordinary",
+    ],
+    // #2963's real shape: in scope under the new rule, and still ordinary, because
+    // scope only decides whether the TEXT tier is allowed to look.
+    [
+      "#2963's neutral prose over the same deletion stays ordinary",
+      NEUTRAL,
+      DELETION,
+      "ordinary",
+    ],
+  ])("%s", (_label, sources, patches, verdict) => {
+    expect(
+      classify({
+        files: ["lib/__tests__/adult-only-writes-scan.test.ts"],
+        sources,
+        patches,
+      }).verdict
+    ).toBe(verdict);
+  });
+});
+
 describe("the rule is stated in the file as a test, not as precedents", () => {
   const src = fs.readFileSync(SCRIPT, "utf8");
 
@@ -689,6 +800,12 @@ describe("the rule is stated in the file as a test, not as precedents", () => {
     expect(src).toMatch(/6\.8%/);
     expect(src).toMatch(/5\.0%/);
     expect(src).toMatch(/5\.9%/);
+  });
+
+  it("states what admitting assertion deletions measured, on both windows", () => {
+    expect(src).toContain("WHY DELETIONS AND NOT TEST FILES");
+    expect(src).toMatch(/12\.3%/);
+    expect(src).toMatch(/6\.8% tuning and 5\.8% held out/);
   });
 
   it("says where the exit codes differ, because 2 and 3 both refuse", () => {
