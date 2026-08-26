@@ -21,9 +21,24 @@ import IntegrationStatusHeader from "@/components/integrations/IntegrationStatus
 // Data → Review, "Connected sources" — an INBOX (#1772), not a second copy of every
 // source's page.
 //
-// Review and setup share one source-state model but keep distinct roles: setup owns
-// full history, while Review names genuine attention and otherwise links home.
-// This remains a server component over getConnectedSources.
+// #208 created this as the recurring-streams half of Review; #1212 then made it the
+// ONE place sync history rendered and #1614 routed Weather in. What neither covered is
+// that a source's status and controls were still rendered twice in two visual
+// languages — here and on its own setup page — with different badges, different
+// timestamp formats, and (with the setup pages' raw `last_sync_summary` echo) a third
+// accounting. The state model is now one computation (lib/integrations/source-state
+// over getIntegrationState) and the surfaces have deliberate, different ROLES:
+//
+//   • the setup page is the source's HOME — status header, controls, full history;
+//   • Review's "Needs attention" card IS the alert for a genuinely-broken source
+//     (#1880 item 2) — EscalatedSources below, rendered by ReviewInbox: standing
+//     chip, reason, consequence in user terms, and ALL the actions, once;
+//   • this card is the calm rest — a source with something unfinished (partial /
+//     not-connected) expands with its reason, a flapping one states its pattern as
+//     an amber one-liner, and a healthy one collapses to a single line linking home.
+//
+// History renders in exactly ONE place still (#1212's rule holds): it moved home.
+// Server component — the page reads the sources via lib/queries (getConnectedSources).
 
 // The way back to a source's own page. `integrationDetailHref` only returns null
 // for the planned Garmin, which never appears here.
@@ -31,9 +46,14 @@ function homeHref(source: ConnectedSource) {
   return integrationDetailHref(source.id as IntegrationId);
 }
 
+// The action a source in the inbox offers. A pull source that is connected can be
+// pulled on demand; one that was removed (#294) or whose token died (#326) gets a way
+// back to reconnect; a push-only source explains why there is no button.
 function SourceAction({ source }: { source: ConnectedSource }) {
   const href = homeHref(source);
-  // A push source has no manual pull or reconnect action in Review.
+  // Push FIRST: a push-only source (Health Connect) has nothing to pull and nothing
+  // to "reconnect" from here — the phone exporter drives it, and its token lives on
+  // its own page — so it explains itself whatever its connection row says.
   if (source.kind === "push") {
     return (
       <span className="text-xs text-slate-500 dark:text-slate-400">

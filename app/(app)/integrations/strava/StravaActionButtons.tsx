@@ -1,24 +1,19 @@
 "use client";
 
 import IntegrationActionButton from "@/components/integrations/IntegrationActionButton";
-import { INTEGRATION_BACKFILL_STARTED_EVENT } from "@/components/integrations/IntegrationBackfillProgress";
+import { INTEGRATION_BACKFILL_STARTED_EVENT as BACKFILL_STARTED } from "@/components/integrations/IntegrationBackfillProgress";
 import {
   backfillStravaRideDetails,
   recheckStravaEmptySessions,
 } from "./actions";
 
-export default function StravaActionButtons({
-  missing,
-  answeredNone,
-}: {
-  missing: number;
-  answeredNone: number;
-}) {
+type Props = { missing: number; answeredNone: number };
+
+export default function StravaActionButtons({ missing, answeredNone }: Props) {
   async function backfill() {
     const result = await backfillStravaRideDetails();
-    if (result.status === "done") {
-      window.dispatchEvent(new Event(INTEGRATION_BACKFILL_STARTED_EVENT));
-    }
+    if (result.status === "done")
+      window.dispatchEvent(new Event(BACKFILL_STARTED));
     return result;
   }
 
@@ -27,10 +22,8 @@ export default function StravaActionButtons({
       <IntegrationActionButton
         binding={{
           action: backfill,
-          label: "Backfill session details",
-          pendingLabel: "Backfilling…",
-          icon: "import",
-          testId: "strava-backfill-details",
+          copy: ["Backfill session details", "Backfilling…"],
+          control: { icon: "import", testId: "strava-backfill-details" },
           count: missing,
         }}
       />
@@ -38,10 +31,8 @@ export default function StravaActionButtons({
         <IntegrationActionButton
           binding={{
             action: recheckStravaEmptySessions,
-            label: "Re-check sessions with no details",
-            pendingLabel: "Re-checking…",
-            icon: "refresh",
-            testId: "strava-recheck-empty",
+            copy: ["Re-check sessions with no details", "Re-checking…"],
+            control: { icon: "refresh", testId: "strava-recheck-empty" },
             count: answeredNone,
           }}
         />

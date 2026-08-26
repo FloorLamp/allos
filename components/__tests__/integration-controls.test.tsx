@@ -90,6 +90,8 @@ describe("integration disconnect controls", () => {
     button.focus();
     expect(document.activeElement).toBe(button);
     expect(button.className).toContain("focus-visible:ring-2");
+    expect(button.className).toContain("border-rose-200");
+    expect(button.className).not.toContain("btn-danger");
     fireEvent.click(button);
     await waitFor(() => expect(button.textContent).toBe("Disabling…"));
     expect(button.hasAttribute("disabled")).toBe(true);
