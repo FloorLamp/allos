@@ -723,6 +723,23 @@ test("the Standing link covers its phone label and desktop plot without covering
       )
     ).toBe(await link.getAttribute("href"));
 
+    await page.setViewportSize({ width: 640, height: 844 });
+    await page.goto("/");
+    const midRow = page
+      .locator("[data-standing-family][data-standing-trend]")
+      .filter({ has: page.locator(".standing-age") })
+      .first()
+      .getByRole("link")
+      .first(); // first-ok: the plotted family's primary candidate
+    await midRow.focus();
+    await expect
+      .poll(() =>
+        midRow
+          .getByTestId("standing-door")
+          .evaluate((node) => getComputedStyle(node).opacity)
+      )
+      .toBe("1");
+
     await page.setViewportSize({ width: 390, height: 844 });
     await page.goto("/");
     const phoneFamily = page

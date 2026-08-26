@@ -199,9 +199,7 @@ export default function DashboardStandingCluster({
                             // The door: where this row goes, revealed on hover and on
                             // keyboard focus alike. It is PINNED to the right edge of
                             // the family's facts cell (#3459 item 2) and only fades and
-                            // slides — being out of flow, it can never move the row,
-                            // and the age it stands in for keeps its own box while it
-                            // steps aside (app/globals.css, "Dashboard hover doors").
+                            // slides without moving the row or hiding its age.
                             // `pointer-events-none` because every member's door box
                             // occupies the SAME rail: a door that could take the
                             // pointer would let the rail reveal a neighbour's door
@@ -219,7 +217,7 @@ export default function DashboardStandingCluster({
                               door ? (
                                 <StandingDestinationLink
                                   href={presentation.href}
-                                  className={`${surface}standing-row ${className} min-[45rem]:pr-32 hover:text-brand-700 dark:hover:text-brand-400`}
+                                  className={`${surface}standing-row ${className} sm:pr-32 hover:text-brand-700 dark:hover:text-brand-400`}
                                   destinationLabel={door}
                                 >
                                   {content}

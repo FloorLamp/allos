@@ -1305,8 +1305,6 @@
   .standing-primary::after {
     top: -1.5rem;
   }
-}
-@media (max-width: 44.999rem) {
   .standing-door {
     display: none;
   }
