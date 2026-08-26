@@ -105,6 +105,7 @@ import {
   type DormantPrnSuggestion,
 } from "@/lib/dormant-prn";
 import { isOnDemand } from "@/lib/intake-schedule";
+import type { IntakeItemIngredient } from "@/lib/intake-ingredients";
 import { dateFromCreatedAt } from "@/lib/timeline-format";
 
 // The per-med derived context every card/row formats over. `prnRedoseLine` is the
@@ -150,6 +151,11 @@ export interface MedCardData {
   // Today's actual administration timestamp by scheduled dose id. Stored values stay
   // raw here so each surface can apply the login's global 12h/24h preference.
   takenDoseTimes: Record<number, string>;
+  // The label composition (#2856). `intake_item_ingredients` is a child of
+  // `intake_items`, so a medication can carry it as readily as a supplement — a
+  // combination OTC product is exactly the shape #2856 is about — and the card is
+  // where the person tracking that item can see it (#3161).
+  ingredients: IntakeItemIngredient[];
 }
 
 // The adherence inputs that do not depend on the WINDOW being scored — the workout-day
@@ -400,6 +406,11 @@ export function loadMedicationsData(
   const medDue = (s: IntakeItem) =>
     !!s.active && (isOnDemand(s) || isDueOn(s, ctx));
 
+  // Composition (#2856), read once for the whole board. It feeds the interaction
+  // notice below — which must answer the SAME for a pair of items whichever one is
+  // being entered — and the card's own "What's in this" line (#3161).
+  const ingredientsByItem = getIntakeIngredientsByItem(profileId);
+
   const buildCardData = (med: IntakeItem): MedCardData => {
     const medDoses = dosesByItem.get(med.id) ?? [];
     const doseIds = medDoses.map((d) => d.id);
@@ -447,6 +458,7 @@ export function loadMedicationsData(
           return takenAt ? [[doseId, takenAt] as const] : [];
         })
       ),
+      ingredients: ingredientsByItem.get(med.id) ?? [],
     };
   };
 
@@ -504,11 +516,6 @@ export function loadMedicationsData(
     allPgxWarnings
   );
 
-  // Composition rides along (#2856): the notice must answer the SAME for a pair of
-  // items whichever one is being entered. Without it, typing the blend against a saved
-  // SSRI warned while typing the SSRI against the saved blend said nothing — one pair,
-  // one profile, two answers decided by the order the person happened to add them.
-  const ingredientsByItem = getIntakeIngredientsByItem(profileId);
   const stackItems: InteractionItem[] = intakeItems.map((s) => ({
     id: s.id,
     name: s.name,

@@ -7,10 +7,8 @@ import type {
   IntakePair,
   IntakeConditionOption,
 } from "@/lib/types";
-import {
-  ingredientLine,
-  type IntakeItemIngredient,
-} from "@/lib/intake-ingredients";
+import type { IntakeItemIngredient } from "@/lib/intake-ingredients";
+import IngredientsDisclosure from "@/components/intake/IngredientsDisclosure";
 import type { IntakeItemPurpose } from "@/lib/intake-purposes";
 import type { InteractionItem } from "@/lib/drug-interactions";
 import type { PgxVariantInput } from "@/lib/pgx";
@@ -363,20 +361,11 @@ export default function EditableSupplementRow({
           )}
           {/* What's in this (#2856): the label composition, shown where the person
             entered it so the numbers behind an upper-limit warning or an interaction
-            notice are inspectable rather than mysterious. Closed by default — most
-            items have none, and a blend's label is a lot of words for a dose row. */}
-          {ingredients.length > 0 && (
-            <details className="mt-0.5" data-testid="supplement-ingredients">
-              <summary className="cursor-pointer text-xs text-slate-500 dark:text-slate-400">
-                What&apos;s in this ({ingredients.length})
-              </summary>
-              <ul className="mt-1 space-y-0.5 border-l-2 border-black/10 pl-3 text-xs text-slate-500 dark:border-white/10 dark:text-slate-400">
-                {ingredients.map((g) => (
-                  <li key={g.id}>{ingredientLine(g)}</li>
-                ))}
-              </ul>
-            </details>
-          )}
+            notice are inspectable rather than mysterious. */}
+          <IngredientsDisclosure
+            rows={ingredients}
+            testId="supplement-ingredients"
+          />
           <NotesText
             as="div"
             notes={s.notes}

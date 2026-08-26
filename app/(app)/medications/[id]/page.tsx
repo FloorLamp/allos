@@ -309,6 +309,7 @@ export default async function MedicationDetailPage(props: {
               canWrite={canWrite}
               initialAction={initialAction}
               conditions={medConditions}
+              ingredients={m.ingredients}
             />
           </IntakeOptionsProvider>
         </SituationOptionsProvider>
