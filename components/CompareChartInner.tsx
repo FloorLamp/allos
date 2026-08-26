@@ -42,6 +42,7 @@ import {
   type TrendWindow,
 } from "@/lib/trend-annotations";
 import { protocolWindowEpochs } from "@/lib/chart-windows";
+import { EmptyState } from "@/components/ui";
 
 // Dual-series overlay for the Trends Compare tab. Plots two
 // date-aligned series on one time axis so correlation is eyeball-able. Axis
@@ -96,11 +97,7 @@ export default function CompareChart({
       )
     : [];
   if (data.length === 0) {
-    return (
-      <div className="flex h-72 items-center justify-center text-sm text-slate-500 dark:text-slate-400">
-        No overlapping data in this range
-      </div>
-    );
+    return <EmptyState message="No overlapping data in this range" />;
   }
   const pct = (v: number) => `${Math.round(v * 100)}%`;
   // Same-unit series share one auto-scaled axis; only genuinely different units

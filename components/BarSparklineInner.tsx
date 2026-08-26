@@ -23,6 +23,7 @@ import { formatLongDate } from "@/lib/format-date";
 import { useFormatPrefs } from "@/components/FormatPrefsProvider";
 import { groupChartValue, roundChartValue } from "@/lib/chart-format";
 import { applyDayFill, type DayFillSpec } from "@/lib/trend-sparkline";
+import { EmptyState } from "@/components/ui";
 
 const ISO_DATE = /^\d{4}-\d{2}-\d{2}$/;
 
@@ -74,13 +75,7 @@ export default function BarSparklineInner({
     : undefined;
 
   if (data.length === 0) {
-    return (
-      <div
-        className={`flex ${heightClass} items-center justify-center text-sm text-slate-500 dark:text-slate-400`}
-      >
-        No data yet
-      </div>
-    );
+    return <EmptyState message="No data yet" />;
   }
   return (
     <div className={`${heightClass} min-w-0 max-w-full`}>
