@@ -26,7 +26,8 @@ type Common = {
 };
 type ButtonProps = Common & {
   binding: "button";
-  tabs: readonly (IdTab & { content: ReactNode; keepMounted?: boolean })[];
+  tabs: readonly IdTab[];
+  children: (panels: readonly TabPanelState[]) => ReactNode;
   panelId?: never;
   paramKey?: never;
   activeId?: never;
@@ -46,6 +47,13 @@ type RouteProps = Common & {
   activeId?: never;
 };
 export type TabListProps = ButtonProps | QueryProps | RouteProps;
+
+export type TabPanelState = {
+  id: string;
+  panelId: string;
+  tabId: string;
+  active: boolean;
+};
 
 const COLUMNS = { 2: "grid-cols-2", 3: "grid-cols-3", 4: "grid-cols-4" };
 
@@ -69,7 +77,7 @@ function tabClass(active: boolean, p?: Presentation) {
       : (p.mobileColumns ?? 2) === 2
         ? "px-4 py-3 text-base font-semibold md:px-4 md:py-2 md:text-sm md:font-medium"
         : "px-1 py-3 text-sm font-semibold md:px-4 md:py-2 md:text-sm md:font-medium";
-  return `-mb-px ${scroll ? "min-w-max flex-1 shrink-0 md:flex-none" : "min-w-0 shrink-0"} whitespace-nowrap border-b-2 text-center transition ${size} ${
+  return `-mb-px ${scroll ? "min-w-max flex-1 shrink-0 md:flex-none" : "min-w-0 shrink-0"} whitespace-nowrap border-b-2 text-center transition focus:outline-hidden focus-visible:ring-2 focus-visible:ring-brand-500 focus-visible:ring-offset-2 dark:focus-visible:ring-offset-ink-950 ${size} ${
     active
       ? "border-brand-500 text-brand-700 dark:text-brand-400"
       : "border-transparent text-slate-500 hover:text-slate-700 dark:text-slate-400 dark:hover:text-slate-200"
@@ -223,8 +231,14 @@ function ButtonList(props: ButtonProps) {
   const activeId = props.tabs.some((tab) => tab.id === selected)
     ? selected
     : props.tabs[0]?.id;
+  const panels = props.tabs.map((tab, index) => ({
+    id: tab.id,
+    panelId: domId(listId, "panel", index),
+    tabId: domId(listId, "tab", index),
+    active: tab.id === activeId,
+  }));
   return (
-    <div className="space-y-4">
+    <>
       <Strip
         {...props}
         activeId={activeId}
@@ -233,21 +247,8 @@ function ButtonList(props: ButtonProps) {
         onSelect={setSelected}
         idBase={listId}
       />
-      {props.tabs.map((tab, index) => {
-        const active = tab.id === activeId;
-        return !active && tab.keepMounted === false ? null : (
-          <div
-            key={tab.id}
-            id={domId(listId, "panel", index)}
-            role="tabpanel"
-            aria-labelledby={domId(listId, "tab", index)}
-            hidden={!active}
-          >
-            {tab.content}
-          </div>
-        );
-      })}
-    </div>
+      {props.children(panels)}
+    </>
   );
 }
 

@@ -419,17 +419,10 @@ Registered in `design-system.md` §3 and closed by the same change: the
 suppression pair (`scrollbar-none` + `[&::-webkit-scrollbar]:hidden`) lives on
 the shared strip in `components/TabList.tsx`, never at a call site.
 
-Its guard is in the same census spec, and it is a CASCADE reading rather than a
-geometric one, for a measured reason: headless Chromium draws overlay
-scrollbars, so an unsuppressed control scroller built beside the strip reports
-`offsetHeight − clientHeight === 0` too (measured 2026-08-22, with and without
-touch emulation). A gutter assertion would therefore have passed on a strip with
-no suppression at all. The probe reads the computed value ON THE LIVE ELEMENT —
-which answers what a class-string grep cannot, namely whether the rule reached
-THIS element — against a control in the same document that must come back
-`auto`, so the reading is a discriminator rather than a constant. It clamps each
-strip's width first, so "it still scrolls" is a claim about a row that is
-actually scrolling.
+Its guard uses a computed-style cascade reading because headless Chromium's
+overlay scrollbars consume no geometry. It compares each live, forcibly
+overflowing strip with an unsuppressed control, proving both that suppression
+reached the element and that scrolling remains possible.
 
 ### 11. State honesty at low n
 

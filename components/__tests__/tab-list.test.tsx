@@ -1,6 +1,7 @@
 import { fireEvent, render, screen } from "@testing-library/react";
 import type { ComponentPropsWithRef } from "react";
 import { beforeAll, describe, expect, it, vi } from "vitest";
+import ImportMethodTabs from "@/app/(app)/data/ImportMethodTabs";
 import TabList from "@/components/TabList";
 import TabFirstTabs from "@/components/TabFirstTabs";
 import {
@@ -17,6 +18,12 @@ const nav = vi.hoisted(() => ({
 vi.mock("next/navigation", () => ({
   usePathname: () => nav.path,
   useSearchParams: () => new URLSearchParams(nav.search),
+}));
+vi.mock("@/components/UploadForm", () => ({
+  default: () => <div>Upload form</div>,
+}));
+vi.mock("@/components/ImportClient", () => ({
+  default: () => <div>Paste importer</div>,
 }));
 vi.mock("next/link", () => ({
   default: ({
@@ -52,18 +59,13 @@ beforeAll(() =>
 );
 
 describe("TabList", () => {
-  it("owns button focus, selection, linkage, and mounted panels", () => {
+  it("owns focus and selection while Data owns its mounted panels", () => {
     render(
-      <TabList
-        binding="button"
-        ariaLabel="Import method"
-        tabs={[
-          { id: "upload", label: "File upload", content: <i>Upload</i> },
-          { id: "paste", label: "Paste CSV", content: <i>Paste</i> },
-        ]}
-      />
+      <ImportMethodTabs demo={false} weightUnit="kg" workoutImportAvailable />
     );
-    const upload = screen.getByRole("tab", { name: "File upload" });
+    const upload = screen.getByRole("tab", {
+      name: "File upload (incl. CSV)",
+    });
     const paste = screen.getByRole("tab", { name: "Paste CSV" });
     const uploadPanel = document.getElementById(
       upload.getAttribute("aria-controls")!
@@ -77,12 +79,14 @@ describe("TabList", () => {
     ]);
     expect(uploadPanel.getAttribute("aria-labelledby")).toBe(upload.id);
     expect([uploadPanel.hidden, pastePanel.hidden]).toEqual([false, true]);
+    expect(upload.className).toContain("focus-visible:ring-2");
+    expect(upload.className).toContain("focus-visible:ring-brand-500");
 
     upload.focus();
     fireEvent.keyDown(upload, { key: "ArrowRight" });
     expect(document.activeElement).toBe(paste);
     expect([uploadPanel.hidden, pastePanel.hidden]).toEqual([true, false]);
-    expect(screen.getByText("Upload")).not.toBeNull();
+    expect(screen.getByText("Upload form")).not.toBeNull();
     expect(paste.getAttribute("aria-selected")).toBe("true");
   });
 

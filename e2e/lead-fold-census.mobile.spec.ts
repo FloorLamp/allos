@@ -293,25 +293,10 @@ test("no tab strip paints a scrollbar, and every one still scrolls (#3488 fix 3)
 }) => {
   test.slow();
 
-  // ── WHY THIS IS A CASCADE READING AND NOT A GEOMETRIC ONE, MEASURED ────────────
-  //
-  // The honest version of #3529's rule. Geometry is the right instrument when the
-  // rendered box can express the defect — and for a scrollbar, in THIS browser, it
-  // cannot: headless Chromium draws OVERLAY scrollbars, which float above the
-  // content and consume no layout space. Measured 2026-08-22, twice: an
-  // unsuppressed control scroller built beside the strip read `offsetHeight -
-  // clientHeight === 0`, at 390px with touch and again with `hasTouch: false`. A
-  // gutter assertion would therefore have passed on a strip with no suppression at
-  // all — the exact fail-open shape this census exists to avoid — so it is not the
-  // assertion.
-  //
-  // What IS measured is the computed value ON THE LIVE ELEMENT, which answers the
-  // question a class-string grep cannot: did the rule reach THIS element. And it is
-  // measured against a CONTROL in the same document, so the reading is a
-  // discriminator rather than a constant: the control must come back "auto" and the
-  // strip "none". If a future Chromium restores classic scrollbars, the control's
-  // gutter becomes non-zero and the geometric assertion below starts doing real
-  // work; until then it records what it saw.
+  // Headless Chromium's overlay scrollbars consume no geometry, so a gutter-only
+  // check passes unsuppressed rows. Read the live computed suppression against an
+  // unsuppressed control; the paired values discriminate instead of comparing a
+  // browser constant (#3488/#3529).
   const found: string[] = [];
   for (const route of STRIP_ROUTES) {
     await page.goto(route.path);
@@ -323,10 +308,8 @@ test("no tab strip paints a scrollbar, and every one still scrolls (#3488 fix 3)
       const all = [...document.querySelectorAll<HTMLElement>(selector)];
       const els = all.filter((n) => n.clientWidth > 0);
 
-      // THE CONTROL: an unsuppressed horizontal scroller of the same width, built
-      // from scratch. NOT a clone — a clone carries the strip's own
-      // `[&::-webkit-scrollbar]:hidden`, so it would read "suppressed" for the same
-      // reason the strip does and prove nothing.
+      // Build the unsuppressed control from scratch; a clone would carry the rule
+      // being tested and prove nothing.
       const control = document.createElement("div");
       control.style.cssText = "overflow-x:auto;width:200px";
       const wide = document.createElement("span");
@@ -347,13 +330,8 @@ test("no tab strip paints a scrollbar, and every one still scrolls (#3488 fix 3)
         };
       };
 
-      // Force each strip to overflow, so "it still scrolls" is a claim about a row
-      // that is actually scrolling rather than one that happens to fit — and so a
-      // suppressed scrollbar is being asserted about a scroller rather than about a
-      // row with nothing to scroll.
-      //
-      // Narrow the box rather than adding content: an appended child can land in a
-      // new grid row. Clamping overflows the tabs already present in either layout.
+      // Clamp instead of adding content, which could land in a new grid row. This
+      // makes every treatment genuinely overflow before its scroll is asserted.
       const strips = els.map((el) => {
         // FORGED BY A SPEC on purpose: a clamp that guarantees the row overflows.
         el.style.width = "40px";
@@ -372,8 +350,7 @@ test("no tab strip paints a scrollbar, and every one still scrolls (#3488 fix 3)
         `(${readings.hidden} hidden) — ${route.why}`
     ).toBe(route.strips);
 
-    // The control proves the reading DISCRIMINATES. Without this the assertion
-    // below is "none === none" on a browser that reports it for everything.
+    // The control keeps the computed reading discriminating.
     expect(
       readings.control.scrollbarWidth,
       "an unsuppressed scroller no longer reports scrollbar-width:auto, so this " +
@@ -421,8 +398,6 @@ test("the empty upload card shows two doors and nothing below them (#3488 fix 2)
   );
   await expect(page.getByTestId("medical-upload-camera")).toBeVisible();
 
-  // Nothing below them: no permanently disabled twin, and no promise to read
-  // something in the background before there is a something.
   // Assert on the row: inactive panels stay mounted, so a page-wide text query
   // would also read the hidden Paste CSV panel.
   await expect(page.getByTestId("medical-upload-submit-row")).toHaveCount(0);
