@@ -123,14 +123,14 @@ onto `ModalShell` or `components/overlay` stays the default.
 the detector, and `lib/__tests__/dialog-census.test.ts` keeps that input and
 this table aligned.
 
-| Dialog                                          | Why the shared host cannot serve it                                                                                                                                                                                                                                                                                                                                                     |
-| ----------------------------------------------- | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| `components/ImageCropper.tsx`                   | Opens **over** an already-open dialog (both profile-photo pickers are ModalShells), so it needs `z-120` — above the sheet's `z-60` and the toasts' `z-100` — and the host takes no stacking prop. Its pointer drag also manipulates CONTENT across the whole panel.                                                                                                                     |
-| `components/photo/PhotoGallery.tsx`             | A full-bleed media viewer: black ground, image `object-contain` to the viewport edges, its own left/right paging. A titled `bg-surface` card with padding and a scroll owner is the wrong shape, and swipe-to-dismiss would fight the paging gesture.                                                                                                                                   |
-| `components/activity-form/FitnessTestTimer.tsx` | Must survive being closed. Collapsing the takeover returns the viewer to the entry sheet **with the run still going**, and the host unmounts a dialog when it closes. It is also nested inside an already-scrimmed sheet, so it carries no scrim of its own.                                                                                                                            |
-| `components/ActivityOverlay.tsx`                | Converged — onto `components/overlay`, not the dialog host. A session that survives navigation, whose drag resolves to **minimize** (#1469). The host is transactional; this is the row above it in the host table.                                                                                                                                                                     |
-| `components/ProfileIdentityBar.tsx`             | Converged onto `components/overlay` the same way, TOP-anchored: the panel drops out of the identity bar and a swipe **up** retreats through it (#1801). A centred host has no anchor to drop from.                                                                                                                                                                                      |
-| `components/MobileNav.tsx`                      | Converged onto `components/overlay` the same way, EDGE-anchored: the drawer travels in from the left screen edge and an edge swipe both opens it and retreats through it (#1416/#2746). A centred card has no edge to travel from. Found by ANATOMY, not by ARIA (#3445) — it carries no `role` and no `aria-modal`, which is a real gap and a separate question from where it renders. |
+| Dialog                                          | Why the shared host cannot serve it                                                                                                                                                                                                                                                                                                                                                          |
+| ----------------------------------------------- | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `components/ImageCropper.tsx`                   | Opens **over** an already-open dialog (both profile-photo pickers are ModalShells), so it needs `z-120` — above the sheet's `z-60` and the toasts' `z-100` — and the host takes no stacking prop. Its pointer drag also manipulates CONTENT across the whole panel.                                                                                                                          |
+| `components/photo/PhotoGallery.tsx`             | A full-bleed media viewer: black ground, image `object-contain` to the viewport edges, its own left/right paging. A titled `bg-surface` card with padding and a scroll owner is the wrong shape, and swipe-to-dismiss would fight the paging gesture.                                                                                                                                        |
+| `components/activity-form/FitnessTestTimer.tsx` | Must survive being closed. Collapsing the takeover returns the viewer to the entry sheet **with the run still going**, and the host unmounts a dialog when it closes. It is also nested inside an already-scrimmed sheet, so it carries no scrim of its own.                                                                                                                                 |
+| `components/ActivityOverlay.tsx`                | Converged — onto `components/overlay`, not the dialog host. A session that survives navigation, whose drag resolves to **minimize** (#1469). The host is transactional; this is the row above it in the host table.                                                                                                                                                                          |
+| `components/ProfileIdentityBar.tsx`             | Converged onto `components/overlay` the same way, TOP-anchored: the panel drops out of the identity bar and a swipe **up** retreats through it (#1801). A centred host has no anchor to drop from.                                                                                                                                                                                           |
+| `components/MobileNav.tsx`                      | Converged onto `components/overlay` the same way, EDGE-anchored: the drawer travels in from the left screen edge and an edge swipe both opens it and retreats through it (#1416/#2746). A centred card has no edge to travel from. Found by ANATOMY, not by ARIA (#3445), because it declared neither — #3463 closed that: it carries `role="dialog"`, `aria-modal` and the shared trap now. |
 
 `components/MobileDetailPage.tsx` is **not on this table and not an exception**.
 It is a full-page mobile takeover — it replaces the page rather than floating
@@ -140,13 +140,26 @@ is. It leaves the dialog family by ANATOMY, so the census reports it under
 instance of.
 
 **A recorded exception is about presentation, not about the a11y floor.**
-`ActivityOverlay`, `ProfileIdentityBar` and the photo lightbox all take the
-shared `useFocusTrap` — named rather than counted, so the claim stays checkable
-against `npm run census:dialogs`, which prints "shared focus trap" against
-exactly those three. The lightbox adopted it as part of this ruling: its Escape
-lived on the panel's own `onKeyDown`, which fires only once focus is inside, and
-nothing ever put it there — so Escape did nothing at all unless the viewer
-happened to Tab first.
+`ActivityOverlay`, `ProfileIdentityBar`, `PhotoGallery` (the photo lightbox) and
+`MobileNav` (the phone nav drawer) take the shared `useFocusTrap` — named rather
+than counted, so the claim stays checkable against `npm run census:dialogs`,
+which prints "shared focus trap" against exactly these and nothing else, and
+against `lib/__tests__/dialog-census.test.ts`, which reads this paragraph and
+holds the names to the register in both directions. The lightbox adopted it as
+part of this ruling: its Escape lived on the panel's own `onKeyDown`, which fires
+only once focus is inside, and nothing ever put it there — so Escape did nothing
+at all unless the viewer happened to Tab first.
+
+The nav drawer was the counterexample this sentence carried for a while. It was
+recorded as an exception for its EDGE anatomy and then declared nothing at all —
+no `role`, no `aria-modal`, no trap — so focus could leave it for the page it had
+scroll-locked, and a screen reader was never told a modal layer had taken over
+(#3463). The exception did not change; the floor was met. `MobileNav` keeps its
+edge-swipe open, its swipe-left retreat and its drag, and its own `document`
+keydown listener for Escape is gone — the shared hook answers Escape on the
+capture phase, and yields it to any nearer `[role="dialog"]` or
+`[data-escape-layer="true"]` first, which is what keeps a quick-log sheet opened
+over the drawer closing by itself.
 
 ### The anchored panel forks at `md` (#3374 / #3376)
 

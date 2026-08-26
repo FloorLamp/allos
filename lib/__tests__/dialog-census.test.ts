@@ -159,6 +159,76 @@ describe("dialog census — the register over the real tree", () => {
     ).toEqual([]);
   });
 
+  // THE A11Y-FLOOR SENTENCE, HELD TO THE REGISTER (#3463).
+  //
+  // docs/internals/overlays.md says a recorded exception is about PRESENTATION and
+  // not about the a11y floor, and then names the exceptions that take the shared
+  // focus trap. That naming was prose and nothing else — #3463 filed the drawer as
+  // a live counterexample to the sentence's own spirit, and the sentence went on
+  // reading true the whole time because nothing compared it to the tree.
+  //
+  // It is compared now, IN BOTH DIRECTIONS. A name in the paragraph whose file has
+  // dropped the trap is a doc claiming an a11y floor the code no longer meets; an
+  // exception that takes the trap and is not named is the register quietly getting
+  // better than its own documentation, which is how the count in that sentence went
+  // stale three times before it was made a list of names at all.
+  //
+  // MATCHED ON THE BACKTICKED SYMBOL inside that one paragraph, not on a mention
+  // anywhere in the document: overlays.md argues about every one of these
+  // components elsewhere — the host table, the gesture table, the convergence
+  // history — and a document-wide grep would read those arguments as claims.
+  it("names exactly the exceptions that take the shared focus trap", () => {
+    const doc = fs.readFileSync(
+      path.join(REPO_ROOT, "docs/internals/overlays.md"),
+      "utf8"
+    );
+    const marker =
+      "**A recorded exception is about presentation, not about the a11y floor.**";
+    const at = doc.indexOf(marker);
+    expect(
+      at,
+      "docs/internals/overlays.md's a11y-floor sentence moved or was reworded — " +
+        "this guard reads the paragraph it opens. If the doctrine is being " +
+        "retired, that is an owner call (#3405/#3463), not a rename."
+    ).toBeGreaterThan(-1);
+    const paragraph = doc.slice(at).split("\n\n")[0];
+    const named = new Set(
+      [...paragraph.matchAll(/`([A-Z][A-Za-z]*)`/g)].map((m) => m[1])
+    );
+
+    const basename = (rel: string) =>
+      rel
+        .split("/")
+        .pop()!
+        .replace(/\.tsx?$/, "");
+    const trapped = new Set(
+      CENSUS.exceptions
+        .filter((entry) => entry.handRolled?.sharedFocusTrap === true)
+        .map((entry) => basename(entry.rel))
+    );
+    // The paragraph also backticks `useFocusTrap` itself, and may name other
+    // symbols while arguing; only the exception set is under test.
+    const exceptionNames = new Set(
+      CENSUS.exceptions.map((e) => basename(e.rel))
+    );
+    const claimed = new Set([...named].filter((n) => exceptionNames.has(n)));
+
+    expect(
+      [...trapped].filter((n) => !claimed.has(n)).sort(),
+      "This recorded exception takes the shared useFocusTrap and " +
+        "docs/internals/overlays.md's a11y-floor paragraph does not name it. The " +
+        "sentence is the checkable form of the doctrine; add the name."
+    ).toEqual([]);
+    expect(
+      [...claimed].filter((n) => !trapped.has(n)).sort(),
+      "docs/internals/overlays.md's a11y-floor paragraph names this exception as " +
+        "taking the shared useFocusTrap, and the census says it does not. Either " +
+        "the surface lost its trap — which is the regression this guard exists " +
+        "for — or the paragraph is naming it for some other reason and should say " +
+        "so outside that paragraph."
+    ).toEqual([]);
+  });
+
   it("keeps the host modules where the failure messages say they are", () => {
     const onDisk = new Set(readSourceFiles().map((f) => f.rel));
     for (const rel of Object.keys(HOST_MODULES)) {
@@ -307,26 +377,38 @@ describe("dialog census — the register over the real tree", () => {
   // Pinned as REAL FILES rather than as fixtures, because the defect was that
   // every reach fixture had been written from the detector's own premise. These
   // two cannot be: nobody wrote them to be found.
-  it("classifies MobileNav, which declares no role and no aria-modal", () => {
+  it("classifies MobileNav, which now declares the role it always had", () => {
     const entry = CENSUS.hostless.find(
       (e) => e.rel === "components/MobileNav.tsx"
     );
     expect(
       entry,
       "The mobile nav drawer portals to <body>, covers the viewport with its own " +
-        "scrimmed `fixed inset-0`, takes the shared body lock and handles Escape. " +
-        "It carries no `role` and no `aria-modal`, which is exactly why the census " +
-        "could not see it (#3445). If it has converged onto the dialog host, drop " +
-        "its HOSTLESS_DIALOGS entry — do not weaken the detector."
+        "scrimmed `fixed inset-0` and takes the shared body lock. If it has " +
+        "converged onto the dialog host, drop its HOSTLESS_DIALOGS entry — do not " +
+        "weaken the detector."
     ).toBeDefined();
-    // FOUND BY WHAT IT RENDERS, not by what it says. If somebody adds
-    // `role="dialog"` to the drawer this flips to "aria" and the anatomy route
-    // stops being exercised by a real file — which is worth knowing, so it is
-    // asserted rather than left to drift.
-    expect(entry?.declaredBy).toBe("anatomy");
+    // THE PREDICTION IN THIS COMMENT CAME TRUE, and it is left standing because
+    // the flip is the receipt. It used to read: "found by what it RENDERS, not by
+    // what it says — if somebody adds `role=\"dialog\"` to the drawer this flips
+    // to 'aria' and the anatomy route stops being exercised by a real file, which
+    // is worth knowing, so it is asserted rather than left to drift."
+    //
+    // #3463 is that somebody. The drawer declares `role="dialog"`, `aria-modal`
+    // and the shared focus trap now, so the ARIA route finds it, and the ANATOMY
+    // route — the half #3445 exists for — is exercised by the stale-record guard's
+    // fixture alone. THAT IS THE COST OF THIS CHANGE, stated where a reader meets
+    // it: no real file in the tree is currently hand-rolling a modal surface with
+    // no ARIA, which is the good outcome and also the reason the detector's most
+    // valuable clause has no live subject. Do not delete the anatomy route because
+    // nothing real hits it; the next hand-rolled drawer is what it is for.
+    expect(entry?.declaredBy).toBe("aria");
     expect(entry?.handRolled?.portal).toBe(true);
     expect(entry?.handRolled?.sharedBodyLock).toBe(true);
     expect(entry?.handRolled?.scrim).toBe(true);
+    // The a11y floor #3463 met, asserted where the register can see it: the
+    // exception is about presentation, so the trap is not optional.
+    expect(entry?.handRolled?.sharedFocusTrap).toBe(true);
   });
 
   it("puts the converged LevelBadge on the host, not in the register", () => {
@@ -466,7 +548,10 @@ describe("dialog census — what it can SEE", () => {
   //   dismissible, Escape                         → the Escape-only modal
   //   SCRIM_RE, the OVERLAY_SCRIM token half      → MobileNav, on disk
   //   SCRIM_RE, the literal-tint half             → the hand-rolled card
-  //   the anatomy route in censusDialogs at all   → MobileNav, and the stale-record guard
+  //   the anatomy route in censusDialogs at all   → the stale-record guard ALONE
+  //                                                 since #3463; MobileNav used to
+  //                                                 be the real file here and now
+  //                                                 declares its role
   //
   // A WARNING FOR WHOEVER RE-RUNS THIS. The first harness reported all twelve
   // mutants KILLED, and it was reading its own exit code after passing vitest an

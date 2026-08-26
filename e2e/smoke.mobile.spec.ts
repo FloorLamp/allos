@@ -53,7 +53,9 @@ test("dock More opens the drawer with the shared sidebar navigation", async ({
   await expect(drawer.getByTestId("signed-in-as")).toBeVisible();
   await expect(drawer.getByTestId("profile-identity-bar")).toHaveCount(0);
 
-  // Escape closes it (MobileNav's keydown handler).
+  // Escape closes it. The listener is the SHARED `useFocusTrap`'s since #3463 —
+  // capture phase, and it yields to any nearer `[role="dialog"]` first — not
+  // MobileNav's own `document` keydown handler, which is gone.
   await page.keyboard.press("Escape");
   await expect(drawer).toHaveCount(0);
 });

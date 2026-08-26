@@ -391,6 +391,121 @@ test.describe("fewer taps to common actions (#1416 B/E)", () => {
   });
 });
 
+// ── THE DRAWER IS A MODAL, AND SAYS SO (#3463) ───────────────────────────────
+//
+// The failure this pins was invisible to every spec in the suite, which is the
+// reason it survived: the drawer opened, the links worked, and the only thing
+// wrong was what it told a keyboard or a screen reader — nothing. It portals to
+// <body>, covers the viewport, scrim-dims and SCROLL-LOCKS the page behind it, and
+// carried no `role`, no `aria-modal` and no focus trap, so Tab walked straight out
+// of it into content nobody could scroll to.
+//
+// WHAT IS ASSERTED, and why each part needs a browser:
+//   * the declaration, through `getByRole` rather than by attribute alone — the
+//     accessible NAME is a computation, and an `aria-label` that resolved to
+//     nothing would still pass an attribute check.
+//   * both TRAP BOUNDARIES, by identity. Shift+Tab from the opening stop must land
+//     somewhere else inside the drawer, and one Tab from there must come BACK to
+//     where it started. The return trip is what distinguishes a wrap from focus
+//     that simply never moved — the shape a broken trap and a working one share.
+//   * a forward sweep, because a boundary that holds says nothing about the stops
+//     in between (the drawer holds a whole month calendar of day links).
+//   * RESTORE, to the dock's More slot. A trap that strands focus on <body> after
+//     closing has moved the problem rather than fixed it.
+//   * and the two dismissals that already existed, re-asserted HERE because the
+//     trap now answers Escape on the capture phase instead of this file's own
+//     `document` listener. The edge-swipe retreat is unchanged and stays in
+//     e2e/overlay-gestures.mobile.spec.ts, which owns the gesture.
+test.describe("the nav drawer declares itself a modal (#3463)", () => {
+  // Where focus actually is, named well enough for a failure to say so out loud.
+  // `closest` rather than a bounding-box test: the drawer is portalled, so DOM
+  // containment is the only honest reading of "focus is still in the drawer".
+  const focusHere = (page: Page) =>
+    page.evaluate(() => {
+      const el = document.activeElement as HTMLElement | null;
+      if (!el) return { inside: false, name: "nothing" };
+      return {
+        inside: el.closest('[data-testid="mobile-drawer"]') !== null,
+        name:
+          el.getAttribute("aria-label") ??
+          el.textContent?.trim().slice(0, 40) ??
+          el.tagName,
+      };
+    });
+
+  test("declares role, name and aria-modal, and Tab cannot leave it", async ({
+    page,
+  }) => {
+    await page.goto("/timeline");
+    const drawer = await openMobileDrawer(page);
+
+    await expect(drawer).toHaveAttribute("role", "dialog");
+    await expect(drawer).toHaveAttribute("aria-modal", "true");
+    // The computed name, not the attribute: this is the assertion that fails if
+    // the label is ever moved to an element that does not name the panel.
+    await expect(page.getByRole("dialog", { name: "Menu" })).toBeVisible();
+
+    // The trap put focus INSIDE on open — without this every assertion below
+    // would be about a page whose focus never entered the drawer at all.
+    const opening = await focusHere(page);
+    expect(opening.inside, `focus opened on ${opening.name}`).toBe(true);
+
+    // BOUNDARY ONE: backwards off the first stop wraps to the last.
+    await page.keyboard.press("Shift+Tab");
+    const wrapped = await focusHere(page);
+    expect(wrapped.inside, `Shift+Tab reached ${wrapped.name}`).toBe(true);
+    expect(
+      wrapped.name,
+      "Shift+Tab from the drawer's first stop did not move focus at all, so the " +
+        "wrap below would pass vacuously"
+    ).not.toBe(opening.name);
+
+    // BOUNDARY TWO: forwards off the last stop comes back to the first. Same key,
+    // opposite end, and the round trip is the proof.
+    await page.keyboard.press("Tab");
+    const returned = await focusHere(page);
+    expect(returned.inside, `Tab reached ${returned.name}`).toBe(true);
+    expect(returned.name).toBe(opening.name);
+
+    // AND THE STOPS IN BETWEEN. The drawer holds the whole sidebar plus a month of
+    // day links, so this sweep does not claim to be exhaustive — it claims that no
+    // ordinary run of tabbing walks out of a scroll-locked overlay, which is the
+    // thing a person would actually do.
+    const SWEEP = 40;
+    for (let i = 0; i < SWEEP; i += 1) {
+      await page.keyboard.press("Tab");
+      const at = await focusHere(page);
+      expect(
+        at.inside,
+        `Tab #${i + 1} reached ${at.name}, outside the drawer`
+      ).toBe(true);
+    }
+  });
+
+  test("Escape and the backdrop both dismiss it, and focus goes back to More", async ({
+    page,
+  }) => {
+    await page.goto("/timeline");
+    const drawer = await openMobileDrawer(page);
+    await page.keyboard.press("Escape");
+    await expect(drawer).toHaveCount(0);
+    // RESTORED, not merely released. The opener is the dock's More slot, which is
+    // where a keyboard user was standing when the drawer took over.
+    await expect(page.getByTestId("dock-slot-more")).toBeFocused();
+
+    const reopened = await openMobileDrawer(page);
+    // TO THE RIGHT OF THE PANEL, not at the scrim's own origin. The backdrop spans
+    // the viewport and the drawer is stacked over its left ~320px, so a click at
+    // (20, 20) lands on the drawer and dismisses nothing. The affordance under
+    // test is unchanged; where it is exposed is not.
+    await page
+      .getByTestId("mobile-drawer-backdrop")
+      .click({ position: { x: 360, y: 400 } });
+    await expect(reopened).toHaveCount(0);
+    await expect(page.getByTestId("dock-slot-more")).toBeFocused();
+  });
+});
+
 test.describe("reduced motion (#1416 F)", () => {
   // PW 1.61 exposes the emulation through contextOptions (there is no top-level
   // `reducedMotion` test option), so this is the shape that reaches the browser.
