@@ -1,5 +1,7 @@
 import { test, expect } from "./fixtures";
 import { hydratedClick, openCareOverviewSection, settledFill } from "./helpers";
+import { loginAs } from "./nav";
+import { E2E_LOGIN_REPORTS_EMPTY, E2E_MEMBER_PASSWORD } from "./fixture-logins";
 // #155: entering a condition by its lay name surfaces an ICD-10-CM code suggestion
 // the user CONFIRMS ("Use code"), which fills the code + code-system fields; on save
 // the stored code renders in the conditions table. This drives the real form and
@@ -128,4 +130,43 @@ test("picking a family-history condition applies its ICD-10-CM code too (#1676)"
   await settledFill(page, conditionField, "Something else entirely");
   await expect(dialog.locator("#fh-code-new")).toHaveValue("");
   await expect(dialog.locator("#fh-codesys-new")).toHaveValue("");
+});
+
+// #2809: the conditions list had ONE empty state and used it for two situations. A
+// profile with nothing recorded opened the page on the default All pill and read "No
+// conditions match this filter" — a sentence that says data is being hidden from you,
+// to someone who has none. It is the ordinary first-run state, not an edge: 197 of the
+// 209 seeded fixture profiles have no conditions at all.
+//
+// REPORTS_EMPTY is borrowed read-only, as e2e/results-page.spec.ts already borrows it:
+// it is a dedicated adult profile whose own spec never writes to it, so "this profile
+// has no conditions" stays true under --repeat-each.
+test("a profile with no conditions is told none are recorded, not that a filter hid them (#2809)", async ({
+  browser,
+}) => {
+  const member = await loginAs(browser, {
+    username: E2E_LOGIN_REPORTS_EMPTY,
+    password: E2E_MEMBER_PASSWORD,
+  });
+  try {
+    await member.goto("/records/problems/conditions");
+    const section = member.getByTestId("records-conditions");
+    await expect(section).toBeVisible();
+    // The default pill really is All — otherwise the sentence below would be right
+    // for the wrong reason.
+    await expect(
+      section.getByTestId("conditions-filter").getByRole("link", { name: "All" })
+    ).toHaveAttribute("aria-current", "true");
+    await expect(section).toContainText("No conditions recorded.");
+    await expect(section).not.toContainText("No conditions match this filter");
+
+    // THE CONTROL, on the same profile and the same empty list: one pill along, a
+    // filter IS narrowing the list, and the other sentence is the right one. Same
+    // zero rows, different sentence — so the branch is driven by the filter and not
+    // by the row count.
+    await member.goto("/records/problems/conditions?cond=resolved");
+    await expect(section).toContainText("No conditions match this filter.");
+  } finally {
+    await member.context().close();
+  }
 });

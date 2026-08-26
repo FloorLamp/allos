@@ -15,6 +15,7 @@ import type {
 import {
   PRACTICE_TYPES,
   practiceSelectValue,
+  scopeAcceptsPerWeekMax,
   CUSTOM_PRACTICE_VALUE,
 } from "@/lib/protocol-practice";
 import { PRACTICE_STARTER_LIST } from "@/lib/practice";
@@ -304,7 +305,13 @@ export default function ProtocolForm({
     {
       practice: practiceScope(practiceSelection, practiceCustom),
       perWeek: positiveInt(perWeek),
-      perWeekMax: positiveInt(perWeekMax),
+      // …including the ceiling, which the parse keeps for a wellness practice and
+      // drops everywhere else (#3353). Without the scope question the live chip read
+      // "3–5×/week" over a sport protocol that was about to store "3×/week" — the
+      // same silent discard as the field above, one line further along.
+      perWeekMax: scopeAcceptsPerWeekMax(practiceSelection)
+        ? positiveInt(perWeekMax)
+        : null,
       startDate,
       endDate,
       intakeItemName: activeIntake?.name ?? null,
@@ -609,7 +616,23 @@ export default function ProtocolForm({
                     data-testid="protocol-practice-per-week"
                   />
                 </div>
-                <div>
+                {/* A WEEKLY RANGE IS A WELLNESS-PRACTICE CONCEPT (#3353), and
+                    `parseScopedPractice` drops the maximum for every other scope. The
+                    field used to be offered anyway, so a sport protocol accepted a
+                    number that silently did not exist — discoverable only by noticing
+                    the cadence chip say "2×/week" and reading it as the chip being
+                    wrong. `scopeAcceptsPerWeekMax` is the storage rule's own
+                    predicate, so the two cannot drift.
+
+                    HIDDEN, NOT UNMOUNTED, which is this form's convention (see the
+                    custom-name field above) and here also the answer to "what happens
+                    to a maximum already typed": it is KEPT. Switching to a sport and
+                    back must not blank a number a person typed, and while it is
+                    hidden the value posts to a parse that discards it — so nothing
+                    is stored under a scope that has no ceiling either way. The
+                    minimum keeps its own column at both states, so nothing shifts
+                    under the pointer as the scope changes. */}
+                <div hidden={!scopeAcceptsPerWeekMax(practiceSelection)}>
                   <label className="label" htmlFor={`pr-practice-max-${uid}`}>
                     Maximum <span className="text-slate-400">(optional)</span>
                   </label>

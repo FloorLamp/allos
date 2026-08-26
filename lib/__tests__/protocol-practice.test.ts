@@ -1,9 +1,11 @@
 import { describe, expect, it } from "vitest";
 import {
+  CUSTOM_PRACTICE_VALUE,
   parseProtocolPractice,
   parseScopedPractice,
   practiceSelectValue,
   protocolPracticeNoun,
+  scopeAcceptsPerWeekMax,
 } from "../protocol-practice";
 
 describe("protocolPracticeNoun", () => {
@@ -93,5 +95,39 @@ describe("parseScopedPractice (#580 — activity OR food group)", () => {
       perWeek: 3,
       perWeekMax: null,
     });
+  });
+});
+
+// #3353 — the scope × Maximum-field matrix, as ONE property rather than one example.
+//
+// The editor offered a Maximum for every scope while the parse kept it for only one,
+// so a sport protocol accepted a ceiling that silently did not exist.
+// `scopeAcceptsPerWeekMax` is what the form now asks before rendering the field, and
+// what it asks before letting the live cadence chip state a range — so the question
+// that decides the FIELD has to be the same question that decides the VALUE. That is
+// the assertion below: for every select value the picker can hold, the predicate and
+// the parse agree, and neither is read off the other.
+describe("scopeAcceptsPerWeekMax (#3353)", () => {
+  it.each([
+    { what: "an activity type", value: "sport", accepts: false },
+    { what: "another activity type", value: "strength", accepts: false },
+    { what: "a food group", value: "food_group:fatty_fish", accepts: false },
+    { what: "a curated wellness practice", value: "practice:Sauna", accepts: true },
+    { what: "the custom sentinel", value: CUSTOM_PRACTICE_VALUE, accepts: true },
+  ])("$what: offers a Maximum = $accepts, and stores exactly that", ({ value, accepts }) => {
+    expect(scopeAcceptsPerWeekMax(value)).toBe(accepts);
+    // A max of 5 over a floor of 3 is storable in every other respect — > floor and
+    // ≤ MAX_PER_WEEK — so what decides it here is the scope and nothing else.
+    const parsed = parseScopedPractice(value, "3", "5", "Grounding walk");
+    expect(parsed).not.toBeNull();
+    expect(parsed?.perWeekMax != null).toBe(accepts);
+  });
+
+  it("says no to what the picker cannot hold", () => {
+    // Blank and nonsense reach `parseScopedPractice` as "no practice at all"; the
+    // editor asks this predicate BEFORE there is a practice, so it must answer.
+    expect(scopeAcceptsPerWeekMax("")).toBe(false);
+    expect(scopeAcceptsPerWeekMax(null)).toBe(false);
+    expect(scopeAcceptsPerWeekMax("nonsense")).toBe(false);
   });
 });

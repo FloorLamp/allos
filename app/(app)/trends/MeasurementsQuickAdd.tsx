@@ -30,6 +30,7 @@ import {
   type MeasurementEntryMetric,
 } from "@/lib/measurement-entry";
 import {
+  MEASUREMENTS_PARTIAL_REFUSED_MESSAGE,
   OFFLINE_CAPTURE_REFUSED_MESSAGE,
   shouldQueueOffline,
 } from "@/lib/offline/queue";
@@ -41,6 +42,16 @@ import {
 } from "./measurement-actions";
 
 export type { MeasurementEntryMetric } from "@/lib/measurement-entry";
+
+// Which refusal sentence a queued capture gets. The shared one when the device kept
+// NOTHING; the partial one when the body half is already in the queue and only the
+// vitals were refused (#3118) — the badge would otherwise say "1 queued offline"
+// under a sentence saying nothing was saved.
+function refusedMessage(captured: "refused" | "partial"): string {
+  return captured === "partial"
+    ? MEASUREMENTS_PARTIAL_REFUSED_MESSAGE
+    : OFFLINE_CAPTURE_REFUSED_MESSAGE;
+}
 
 // The combined "Log measurements" form (issue #1486).
 //
@@ -420,10 +431,17 @@ export default function MeasurementsQuickAdd({
     // so in practice the two halves refuse together — and the first refusal
     // stops the second enqueue rather than queueing half a sitting under a toast
     // that says none of it was saved.
+    //
+    // "partial" is the narrow case that survives that rule (#3118): storage failing
+    // BETWEEN the two enqueues, so the body half is kept and the vitals half is not.
+    // It is a refusal — no success toast, no reset, no group memory — but it is not
+    // the shared sentence, because the weight WILL sync and telling someone it did
+    // not is what makes them log it twice.
     const queueOffline = async (): Promise<
-      "queued" | "refused" | "unqueueable"
+      "queued" | "refused" | "partial" | "unqueueable"
     > => {
       if (hasGrowth || hasWaist) return "unqueueable";
+      let keptBody = false;
       if (hasBody) {
         const kept = await enqueue("body-metric", date, {
           weight: String(body.weight ?? ""),
@@ -437,6 +455,7 @@ export default function MeasurementsQuickAdd({
           occurredAt: s("occurred_at"),
         });
         if (!kept) return "refused";
+        keptBody = true;
       }
       if (hasVitals) {
         // The sitting's one stated time travels with the vitals intent too
@@ -447,7 +466,7 @@ export default function MeasurementsQuickAdd({
           ...vitals,
           occurredAt: s("occurred_at"),
         });
-        if (!kept) return "refused";
+        if (!kept) return keptBody ? "partial" : "refused";
       }
       rememberWritten();
       toast("Saved offline — will sync when you reconnect.");
@@ -460,8 +479,8 @@ export default function MeasurementsQuickAdd({
     if (typeof navigator !== "undefined" && navigator.onLine === false) {
       const captured = await queueOffline();
       if (captured === "queued") return;
-      if (captured === "refused") {
-        toast(OFFLINE_CAPTURE_REFUSED_MESSAGE, { tone: "error" });
+      if (captured === "refused" || captured === "partial") {
+        toast(refusedMessage(captured), { tone: "error" });
         return;
       }
       setError("You're offline — reconnect to save these measurements.");
@@ -474,8 +493,8 @@ export default function MeasurementsQuickAdd({
       if (shouldQueueOffline(navigator.onLine !== false, err)) {
         const captured = await queueOffline();
         if (captured === "queued") return;
-        if (captured === "refused") {
-          toast(OFFLINE_CAPTURE_REFUSED_MESSAGE, { tone: "error" });
+        if (captured === "refused" || captured === "partial") {
+          toast(refusedMessage(captured), { tone: "error" });
           return;
         }
       }
