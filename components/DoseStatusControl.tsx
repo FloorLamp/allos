@@ -51,7 +51,8 @@ export type DoseVariant = "circle" | "pill";
 // and `.tap-target` reaches 6px beyond every edge on a coarse pointer, so 6px of
 // outer padding contains that reach and a 12px gap lets the adjacent targets meet
 // without overlapping. The equal negative margin preserves the visible pills' flow
-// position; a fine-pointer desktop keeps the original compact layout. Circles
+// position; ScheduledDoseAction coordinates an outer reserve so its row still owns
+// this full box. A fine-pointer desktop keeps the original compact layout. Circles
 // already render at 44px and need no overlay reserve.
 const DOSE_STATUS_GEOMETRY: Record<DoseVariant, string> = {
   circle: "gap-3",

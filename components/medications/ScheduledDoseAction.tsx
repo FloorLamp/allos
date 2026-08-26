@@ -3,7 +3,10 @@ import DoseStatusControl from "@/components/DoseStatusControl";
 // Scheduled-dose metadata and actions share one presentation on the Medications
 // Today panel and the medication detail page. The amount/time describe the dose;
 // the buttons describe what they do. Keeping those roles separate avoids turning
-// "1 tablet · Morning" into an ambiguous action label.
+// "1 tablet · Morning" into an ambiguous action label. The editable row also owns
+// the pill control's coarse-pointer reserve: padding contains the full 44px box,
+// while a matching vertical negative margin preserves its 32px visual alignment in
+// surrounding rows. Fine-pointer desktop returns to the original compact geometry.
 export default function ScheduledDoseAction({
   doseId,
   doseLabel,
@@ -31,7 +34,11 @@ export default function ScheduledDoseAction({
     <div
       data-testid="scheduled-dose-action"
       data-past-due={pastDue ? "1" : undefined}
-      className="flex w-full flex-wrap items-center justify-between gap-2"
+      className={`flex w-full flex-wrap items-center justify-between gap-2${
+        readOnly
+          ? ""
+          : " -my-1.5 p-1.5 sm:pointer-fine:my-0 sm:pointer-fine:p-0"
+      }`}
       title={pastDue ? "Past due — earlier today" : undefined}
     >
       <div className="flex min-w-0 flex-wrap items-baseline gap-x-2 gap-y-0.5">

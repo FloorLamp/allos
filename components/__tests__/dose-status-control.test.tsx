@@ -1,6 +1,7 @@
 import { render, screen } from "@testing-library/react";
 import { describe, expect, it, vi } from "vitest";
 import DoseStatusControl from "@/components/DoseStatusControl";
+import ScheduledDoseAction from "@/components/medications/ScheduledDoseAction";
 
 vi.mock("@/components/LoggedViaSurface", () => ({
   useLoggedViaStamp: () => (formData: FormData) => formData,
@@ -84,6 +85,21 @@ describe("DoseStatusControl", () => {
       );
     }
   );
+
+  it("coordinates the pill reserve with its owning scheduled-dose row", () => {
+    render(
+      <ScheduledDoseAction
+        doseId={9}
+        doseLabel="Morning"
+        taken={false}
+        skipped={false}
+      />
+    );
+
+    expect(screen.getByTestId("scheduled-dose-action").className).toBe(
+      "flex w-full flex-wrap items-center justify-between gap-2 -my-1.5 p-1.5 sm:pointer-fine:my-0 sm:pointer-fine:p-0"
+    );
+  });
 
   it("keeps the rendered 44px circle treatment without an overlay reserve", () => {
     render(
