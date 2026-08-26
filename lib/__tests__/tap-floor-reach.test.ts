@@ -789,12 +789,50 @@ describe("the class lists this census cannot read (#3561)", () => {
         "phone. It tiles one of seven columns in the widened drawer, so both its " +
         "rendered width and height reach the floor (#3536)."
     ).toBeGreaterThanOrEqual(TAP_FLOOR_PX);
+    // ── ONE OWNER FOR THE WEEK'S WIDTH (#3452) ───────────────────────────────
+    //
+    // This block used to pin the drawer's width class as a LITERAL — the same
+    // `19.3125rem` the drawer hard-coded, and the same `309` the model below
+    // restated a third time. Three derivations of one quantity, each correct, none
+    // of them able to notice the others moving; and the drawer was carrying a
+    // Training child's implementation detail to get there (owner ruling on #3452,
+    // from the #3687 recent-merge audit).
+    //
+    // `--week-grid-min` in app/globals.css is that quantity now, and everything
+    // here READS it rather than restating it: the token's own value is checked
+    // against this file's tap floor, and the geometry model below is built from
+    // the number the stylesheet actually declares. Change the floor and this whole
+    // block moves with it — or fails loudly, which is the point.
+    const css = read("app/globals.css");
+    const weekGrid =
+      /--week-grid-min:\s*calc\(\s*7\s*\*\s*([\d.]+)rem\s*\)/.exec(css);
+    expect(
+      weekGrid,
+      "app/globals.css no longer declares `--week-grid-min` as seven times a rem " +
+        "column floor. It is where a week's minimum width is costed (#3452) — the " +
+        "phone drawer and the calendar band both read it, and this model derives " +
+        "from it. Do not inline the answer back into either of them."
+    ).not.toBeNull();
+    const weekColumnPx = Number(weekGrid![1]) * 16;
+    expect(
+      weekColumnPx,
+      `app/globals.css costs a week column at ${weekColumnPx}px and this census ` +
+        `holds the floor at ${TAP_FLOOR_PX}px (#3514). One number, two files.`
+    ).toBe(TAP_FLOOR_PX);
+    const weekGridPx = 7 * weekColumnPx;
+
+    // THE DRAWER'S OWN BORDER, and nothing else of the calendar's. `w-` is a
+    // border-box width here (Tailwind's preflight), so the panel has to buy its
+    // 1px right border on top of the grid it is paying for.
+    const DRAWER_BORDER_PX = 1;
     const drawerSource = read("components/MobileNav.tsx");
     expect(
       drawerSource,
-      "the phone drawer must reserve seven 44px columns after its safe-area gutter"
+      "the phone drawer must size itself from `--week-grid-min` plus its own " +
+        "border and the left safe-area inset (#3452) — not from a width literal " +
+        "that happens to equal seven columns today"
     ).toContain(
-      "w-[max(20rem,calc(19.3125rem+env(safe-area-inset-left)))] max-w-full"
+      `w-[max(20rem,calc(var(--week-grid-min)+${DRAWER_BORDER_PX}px+env(safe-area-inset-left)))] max-w-full`
     );
     expect(
       read("components/TrainingLogCalendar.tsx"),
@@ -802,13 +840,30 @@ describe("the class lists this census cannot read (#3561)", () => {
     ).toContain(
       "ml-[calc(env(safe-area-inset-left)_-_max(1rem,env(safe-area-inset-left)))]"
     );
+    expect(
+      read("components/TrainingLogCalendar.tsx"),
+      "the calendar band must CLAIM `--week-grid-min` rather than trust its host " +
+        "to have reserved it (#3452). Without the claim a host that got narrower " +
+        "would redistribute the seven columns back under the tap floor silently — " +
+        "the #3377 failure, which no DOM assertion caught."
+    ).toContain("min-w-(--week-grid-min)");
+
     const calendarDrawerGeometry = (viewport: number, safeLeft: number) => {
-      const drawer = Math.min(viewport, Math.max(320, 309 + safeLeft));
+      const drawer = Math.min(
+        viewport,
+        Math.max(320, weekGridPx + DRAWER_BORDER_PX + safeLeft)
+      );
       const leftPadding = Math.max(16, safeLeft);
       const calendarMarginLeft = safeLeft - leftPadding;
       return {
         gridLeft: leftPadding + calendarMarginLeft,
-        gridWidth: drawer - 1 - leftPadding - 16 - calendarMarginLeft + 16,
+        gridWidth:
+          drawer -
+          DRAWER_BORDER_PX -
+          leftPadding -
+          16 -
+          calendarMarginLeft +
+          16,
       };
     };
     for (const [viewport, safeLeft] of [
@@ -826,8 +881,82 @@ describe("the class lists this census cannot read (#3561)", () => {
       expect(
         geometry.gridWidth,
         `a ${viewport}px viewport with ${safeLeft}px left safe inset`
-      ).toBeGreaterThanOrEqual(7 * TAP_FLOOR_PX);
+      ).toBeGreaterThanOrEqual(weekGridPx);
     }
+  });
+
+  // THE OTHER HALF OF ONE OWNER: nobody may write the ANSWER down again (#3452).
+  //
+  // The token above only helps if the literals it replaced cannot come back. A
+  // second `19.3125rem` in a class list would render identically on the day it
+  // was written and drift the moment the floor moves, which is precisely the
+  // failure that produced three copies of this number.
+  //
+  // MATCHED ON THE VALUE IN CODE, WITH COMMENTS STRIPPED, and that scope is the
+  // whole care of this guard. `lib/intraday-layout.ts` reasons out loud about a
+  // "~308px" day column that has nothing to do with a week grid, and
+  // `app/globals.css` explains in prose why it writes `calc(7 * 2.75rem)` rather
+  // than `19.25rem`. Both are correct, both mention a forbidden number, and a
+  // guard that shouted at either would be deleted within a week.
+  it("keeps the week's width out of every class list but the token", () => {
+    const RESTATED = [
+      // The drawer's old width, and the grid it is paying for.
+      "19.3125rem",
+      "19.25rem",
+      // The same two in the px spelling somebody reaching for a quick fix uses.
+      "309px",
+      "308px",
+    ];
+    // SCOPE, SAID OUT LOUD: every .tsx under app/ and components/ — the same walk
+    // the rest of this census uses, and the only place a Tailwind class list can
+    // live. app/globals.css is the token's own home and is exempt by being a
+    // stylesheet rather than by an allow-list entry.
+    const offenders: string[] = [];
+    for (const root of ROOTS) {
+      for (const rel of sourceFiles(root)) {
+        const code = withoutComments(read(rel));
+        for (const literal of RESTATED) {
+          if (code.includes(literal)) offenders.push(`${rel}: ${literal}`);
+        }
+      }
+    }
+    expect(
+      offenders.sort(),
+      "A week's width is written down here as a literal. It is costed once, as " +
+        "`--week-grid-min` in app/globals.css (#3452); read the token instead. If " +
+        "this number means something else entirely at this call site, it wants a " +
+        "name of its own rather than the same digits."
+    ).toEqual([]);
+  });
+
+  // AND THE GUARD ABOVE PROVEN TO SEE, in this file's own tradition: a green
+  // sweep over a complying tree says nothing about what the sweep can see.
+  it("sees a restated week width, and stays quiet on a comment about one", () => {
+    const scan = (text: string) => {
+      const code = withoutComments(text);
+      return ["19.3125rem", "19.25rem", "309px", "308px"].filter((literal) =>
+        code.includes(literal)
+      );
+    };
+    expect(
+      scan('export const Drawer = () => <aside className="w-[19.3125rem]" />;'),
+      "the exact literal the drawer used to carry"
+    ).toEqual(["19.3125rem"]);
+    expect(
+      scan('const band = "min-w-[308px] md:min-w-0";'),
+      "the px spelling of the grid it pays for"
+    ).toEqual(["308px"]);
+    expect(
+      scan(
+        "// the intraday day column is ~308px once the shell padding is taken"
+      ),
+      "a comment reasoning about an unrelated 308px must not be a finding — " +
+        "lib/intraday-layout.ts really does say this"
+    ).toEqual([]);
+    expect(
+      scan('const week = "min-w-(--week-grid-min) md:min-w-0";'),
+      "the compliant spelling"
+    ).toEqual([]);
   });
 });
 
