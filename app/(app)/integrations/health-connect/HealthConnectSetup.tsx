@@ -8,6 +8,7 @@ import {
 } from "@/lib/token-lifecycle";
 import { ExpirySelect, TokenLifecycleNote } from "@/components/TokenLifecycle";
 import { TokenRow } from "@/components/TokenRow";
+import IntegrationDisconnectButton from "@/components/integrations/IntegrationDisconnectButton";
 import { connectHealthConnect, disconnect } from "./actions";
 
 // The Health Connect ingest-token panel (issue #1209). The token is HASHED at rest,
@@ -196,14 +197,11 @@ export default function HealthConnectSetup({
             </p>
           )}
         </div>
-        <button
-          type="button"
+        <IntegrationDisconnectButton
+          kind="disconnect"
+          action={onDisconnect}
           disabled={busy}
-          onClick={onDisconnect}
-          className="rounded-lg border border-rose-200 px-3 py-2 text-sm font-medium text-rose-600 hover:bg-rose-50 dark:border-rose-900 dark:text-rose-400 dark:hover:bg-rose-950"
-        >
-          Disconnect
-        </button>
+        />
       </div>
     </div>
   );
