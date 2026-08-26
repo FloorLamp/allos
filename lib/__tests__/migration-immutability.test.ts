@@ -1,8 +1,14 @@
 import { describe, expect, it } from "vitest";
 import fs from "node:fs";
-import path from "node:path";
-import crypto from "node:crypto";
-import { fileURLToPath } from "node:url";
+import {
+  hashMigration,
+  hashMigrations,
+  MANIFEST_PATH,
+  migrationFiles,
+  planManifest,
+  readManifest,
+  serializeManifest,
+} from "../migrations/manifest";
 
 // Immutability guard for shipped migrations (issue #119). A shipped migration file
 // is APPEND-ONLY: once released it is frozen, and a bug is fixed by appending a
@@ -15,34 +21,17 @@ import { fileURLToPath } from "node:url";
 // Pure (reads source as bytes, no DB/network), so it lives in the unit tier — the
 // same way the phi-scan / profile-scoping tests read the repo's own source.
 
-const REPO = path.resolve(fileURLToPath(new URL("../..", import.meta.url)));
-const VERSIONS_DIR = path.join(REPO, "lib/migrations/versions");
-const MANIFEST = path.join(REPO, "lib/migrations/manifest.json");
+// The file set, the hash and the index.ts exclusion come from
+// lib/migrations/manifest.ts, so this guard and `npm run gen:migration-manifest`
+// cannot disagree about what they are checking (#3579).
 
 // Every migration file: the closed numbered era (001-baseline.ts … 185-*.ts) and
-// the name-keyed era after it (YYYYMMDD-slug.ts). index.ts is NOT frozen — it is
-// edited to append each new migration — so it is excluded.
+// the name-keyed era after it (YYYYMMDD-slug.ts).
 const LEGACY_FILE_RE = /^\d{3}-[a-z0-9-]+\.ts$/;
 const NAMED_FILE_RE = /^\d{8}-[a-z0-9-]+\.ts$/;
-function migrationFiles(): string[] {
-  return fs
-    .readdirSync(VERSIONS_DIR)
-    .filter((f) => f.endsWith(".ts") && f !== "index.ts")
-    .sort();
-}
-
-function sha256(file: string): string {
-  return crypto
-    .createHash("sha256")
-    .update(fs.readFileSync(path.join(VERSIONS_DIR, file)))
-    .digest("hex");
-}
 
 describe("migration immutability — hash manifest", () => {
-  const manifest = JSON.parse(fs.readFileSync(MANIFEST, "utf8")) as Record<
-    string,
-    string
-  >;
+  const manifest = readManifest();
   const files = migrationFiles();
 
   it("has at least the baseline migration", () => {
@@ -52,7 +41,7 @@ describe("migration immutability — hash manifest", () => {
   it("every shipped migration matches its manifest hash (append-only)", () => {
     for (const f of files) {
       expect(
-        sha256(f),
+        hashMigration(f),
         `${f} has changed since it was committed. Shipped migrations are ` +
           `APPEND-ONLY — do not edit a released migration; append a NEW ` +
           `corrective migration instead. If this is a brand-new migration, add ` +
@@ -79,5 +68,39 @@ describe("migration immutability — hash manifest", () => {
           `named — see lib/migrations/runner.ts.`
       ).toBe(true);
     }
+  });
+});
+
+describe("migration manifest generator (npm run gen:migration-manifest)", () => {
+  it("reproduces the committed manifest byte for byte", () => {
+    // Recomputing every hash from disk and getting the committed file back is the
+    // whole claim the manifest makes: no shipped migration has moved. It also
+    // pins the generator's output format, so running it never reformats the file.
+    const plan = planManifest(readManifest(), hashMigrations());
+    expect({
+      added: plan.added,
+      removed: plan.removed,
+      changed: plan.changed,
+    }).toEqual({ added: [], removed: [], changed: [] });
+    expect(serializeManifest(plan.next)).toBe(
+      fs.readFileSync(MANIFEST_PATH, "utf8")
+    );
+  });
+
+  it("reports an edited shipped migration instead of adopting its new hash", () => {
+    // What an edited shipped migration looks like to the generator: the file on
+    // disk hashes differently than the entry that shipped with it. The planned
+    // manifest holds the disk hash, so refusing on a non-empty `changed` is the
+    // only thing between that edit and a clean-looking manifest.
+    const current = hashMigrations();
+    const committed = readManifest();
+    const edited = "001-baseline.ts";
+    const plan = planManifest(
+      { ...committed, [edited]: "0".repeat(64) },
+      current
+    );
+    expect(plan.changed).toEqual([edited]);
+    expect(plan.added).toEqual([]);
+    expect(plan.next[edited]).toBe(current[edited]);
   });
 });
