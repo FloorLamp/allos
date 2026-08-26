@@ -42,7 +42,26 @@ jobs:
   check:
     runs-on: ubuntu-latest
     steps:
+      # fetch-depth 0 — FULL HISTORY, and the migration-manifest step at the
+      # bottom of this job is the only reason. That step asks git whether a
+      # migration that is on main is GONE from this tree, and that question is
+      # only meaningful against a COMMON ANCESTOR of HEAD. At the default depth 1
+      # there is no ancestor to find, so it was silently not asked — see the step
+      # for the measured consequence.
+      #
+      # Not `fetch-depth: 2`, which is what the two e2e jobs below take. Depth 2
+      # brings the merge commit's two parents, which is enough to DIFF against the
+      # PR base and is why those jobs are right to use it. It is not enough to
+      # guarantee a merge-base: it holds only while main's tip is still the base
+      # parent, and it degrades to the depth-1 behaviour — no ancestor, question
+      # unasked, exit 0 — rather than to an error. A gate whose failure mode is
+      # silence does not get a bound that can quietly go out of range.
+      #
+      # Cost: this repo is ~40 MB with a few hundred commits, and `gitleaks.yml`
+      # and `e2e-main.yml` already take `fetch-depth: 0` on every run.
       - uses: actions/checkout@v7
+        with:
+          fetch-depth: 0
 
       - uses: ./.github/actions/node-setup
 
@@ -169,19 +188,38 @@ jobs:
       # from the one on MAIN? It reads main from git, and it deliberately does not
       # honour --allow-rehash, so the laundered rehash above exits 1 here.
       #
-      # The fetch is what makes "on main" answerable at all — actions/checkout
-      # leaves this checkout with no origin/main ref. Depth 1 is enough and costs
-      # ~1s: the shallow tip has no merge-base with the PR's merge commit, so the
-      # generator falls back to main's tip. That answers the rehash question fully
-      # (a hash differing from any commit on main is a rehash) and deliberately
-      # leaves the deletion question unasked, because against a TIP a name missing
-      # here is usually one main gained, not one this tree lost — see
-      # `mergeBase` in lib/migrations/manifest-source.ts.
+      # The fetch is what makes "on main" answerable at all: actions/checkout
+      # writes the ref it checked out and nothing else, so origin/main does not
+      # exist here until this runs.
+      #
+      # NO `--depth`, and that is the other half of the `fetch-depth: 0` above.
+      # This step used to fetch main at depth 1 and a comment here explained that
+      # the resulting tip fallback left the deletion question unasked ON PURPOSE.
+      # That was a consequence being read back as a design (#3635 R1): the design
+      # declines to ask against a TIP, and a depth-1 pair is the one situation in
+      # which a tip is all there is. Given ancestry, the question is askable and
+      # cannot false-positive — a merge-base is an ancestor of HEAD by
+      # construction, so a migration in it and not in this tree was removed here.
       - name: Fetch main, the reference for what has shipped
-        run: git fetch --no-tags --depth=1 origin main:refs/remotes/origin/main
+        run: git fetch --no-tags origin main:refs/remotes/origin/main
 
+      # WHAT WAS PASSING BEFORE, measured end to end on a CI-shaped checkout:
+      # delete a shipped migration's file, its import line, its `MIGRATIONS` entry
+      # and its manifest key, and this step printed `GONE: not asked` and exited
+      # 0. A merged deletion then leaves every already-migrated database refusing
+      # to boot — "a newer release wrote this database and the running code has
+      # been rolled back", which is false — while fresh installs boot on a
+      # different schema. Whether some other tier happens to notice is incidental:
+      # a data-only name-keyed migration with no dedicated test is silent
+      # everywhere.
+      #
+      # `--require-merge-base` is what stops that answer being reachable again. It
+      # fails this step if the reference is a tip rather than an ancestor, so if
+      # the checkout above ever loses its history the gate reds instead of going
+      # quiet. It is the only caller that passes it: a developer in a shallow
+      # clone still gets the report and the note saying the question was skipped.
       - name: Migration manifest agrees with the tree and with main
-        run: npm run gen:migration-manifest -- --check
+        run: npm run gen:migration-manifest -- --check --require-merge-base
 
   # Pure unit suite AND the coverage regression floor in one pass. This runs
   # the same test set as `npm test` — ALL THREE vitest.config.ts projects: the two

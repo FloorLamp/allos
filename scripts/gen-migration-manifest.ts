@@ -5,6 +5,7 @@
  *   npm run gen:migration-manifest                    # rewrite the manifest from disk
  *   npm run gen:migration-manifest -- --check         # verify without writing
  *   npm run gen:migration-manifest -- --allow-rehash  # rewrite a SHIPPED hash, on purpose
+ *   npm run gen:migration-manifest -- --check --require-merge-base   # what CI runs
  *
  * The manifest holds a sha-256 per shipped migration file and exists to prove
  * nobody edited a migration after it shipped. Until now it had a reader
@@ -31,9 +32,16 @@
  *   - Adding, editing or removing a migration YOUR OWN BRANCH introduced is none
  *     of that, and says nothing.
  *
- * The flags work with `--` in front of them, as npm requires. `--check` also
- * works without it (npm hides it in the environment, where this reads it);
- * `--allow-rehash` deliberately does not.
+ *   - `--require-merge-base` REFUSES a run that could not ask the deletion
+ *     question at all. Without a common ancestor the report prints
+ *     `GONE: not asked` and exits 0, which reads exactly like asked-and-clean on
+ *     a green check — that is how a deleted migration got through CI (#3635 R1).
+ *     CI passes this flag and nothing else does: a shallow local clone still gets
+ *     the report, but the gate in front of main insists the question was asked.
+ *
+ * The flags work with `--` in front of them, as npm requires. `--check` and
+ * `--require-merge-base` also work without it (npm hides them in the environment,
+ * where this reads them); `--allow-rehash` deliberately does not.
  *
  * The hash, the file set, the ordering and the refusals all live in
  * lib/migrations/manifest-source.ts, which the immutability guard imports too. This

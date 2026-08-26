@@ -60,6 +60,10 @@ export function sha256OfMigration(
     .digest("hex");
 }
 
+// Conflict markers, in either of the two files this module reads. Shared so the
+// registry's refusal and the manifest's cannot drift apart.
+const CONFLICT_MARKER_RE = /^(<{7}|={7}|>{7})/m;
+
 // REGISTRY ORDER IS THE MANIFEST'S ORDER, and it is read out of index.ts rather
 // than guessed. `MIGRATIONS` is an array of import ALIASES, so the order is only
 // recoverable by pairing each alias with the module specifier it was imported
@@ -85,6 +89,34 @@ const ENTRY_RE = /^\s*(\w+)\s*,\s*$/gm;
 
 export function registryOrder(registryPath: string = REGISTRY_PATH): string[] {
   const source = fs.readFileSync(registryPath, "utf8");
+  const rel = registryPath === REGISTRY_PATH ? REGISTRY_REL : registryPath;
+  // INDEX.TS GETS THE SAME CONFLICT-MARKER REFUSAL manifest.json has (#3635 R3).
+  //
+  // manifest.json is parsed by `JSON.parse`, so markers in it throw and the
+  // refusal below `parseManifest` catches them. index.ts is read as TEXT, and the
+  // two regexes above are line-oriented and happy to match straight THROUGH a
+  // marker: with both sides' migration files on disk — which is the state
+  // `lib/migrations/AGENTS.md` tells authors to produce, keeping both import lines
+  // and both array entries — `assertRegistryMatchesDisk` sees no disagreement
+  // either. Measured: the generator printed `unchanged: 220`, `new: 2` and wrote a
+  // manifest, exit 0, over a registry that is not valid TypeScript. `unchanged` is
+  // the sentence the docs call the proof that no shipped migration moved, and it
+  // was pronounced over a tree nothing could compile.
+  //
+  // Typecheck catches it minutes later. The generator is documented to run at the
+  // exact moment the markers are there, so it is the one that has to say so.
+  if (CONFLICT_MARKER_RE.test(source)) {
+    throw new Error(
+      `${rel} still has git CONFLICT MARKERS in it, so the registry cannot be ` +
+        `read.\n` +
+        `Resolve it by keeping BOTH sides — both import lines and both ` +
+        `\`MIGRATIONS\` entries, in merge order — and re-run the generator. ` +
+        `Migrations are name-keyed, so there is no slot to fight over: neither ` +
+        `side's migration is a replacement for the other's.\n` +
+        `DO NOT pick one side. A dropped entry is a migration that silently ` +
+        `stops running, on fresh databases only.`
+    );
+  }
   const byAlias = new Map<string, string>();
   for (const m of source.matchAll(IMPORT_RE)) {
     byAlias.set(m[1], `${m[2]}.ts`);
@@ -191,7 +223,6 @@ export function serializeManifest(manifest: Record<string, string>): string {
 // it does not fall back to `{}`. Swallowing an unreadable manifest as "no previous
 // manifest" is the same fail-open as deleting the file: every entry reads as new and
 // nothing is compared to anything.
-const CONFLICT_MARKER_RE = /^(<{7}|={7}|>{7})/m;
 
 export function parseManifest(
   text: string,
@@ -240,7 +271,22 @@ export function readManifest(
 // rehash from a laundered one, and `rm` was the quieter of the two.
 //
 // The reference is therefore the manifest AS OF THE MERGE-BASE WITH origin/main:
-// the hashes that are actually on main, which no working-tree operation can move.
+// the hashes on main as of the last time this checkout FETCHED, which no
+// working-tree operation can move.
+//
+// THAT SECOND CLAUSE USED TO READ "the hashes that are actually on main", and it
+// was false (#3635 R4). `refs/remotes/origin/main` is an ordinary local ref whose
+// value is whenever somebody last ran `git fetch`. One fetch behind, a branch that
+// deletes a migration main already carries prints `GONE: 0` — which is the same
+// output as asked-and-clean, and the reassuring direction. So the report now
+// carries the base commit's COMMIT DATE beside its sha, and the report is the
+// thing a reviewer reads. A stale reference is legible instead of invisible.
+//
+// Not a refusal, deliberately: "origin/main is older than your newest local
+// commit" is true of essentially every branch anyone is working on, so refusing on
+// it would fire on the ordinary case — the failure mode this module already has a
+// long comment about. In CI the ref is fetched in the step immediately before, so
+// there the date is a receipt rather than a warning.
 // That fixes the other half too. A migration your own branch introduced is not in
 // the merge-base manifest, so editing it after a review comment is an ordinary
 // `added` and the refusal stays quiet — where before, the refusal's first genuine
@@ -272,8 +318,15 @@ export interface ShippedReference {
    * ancestor, a name in the reference and not in the tree was deleted by this
    * branch — but against main's TIP, it is far more likely to be a migration
    * merged to main after this branch forked, which is the ordinary state of every
-   * branch that is behind. CI is exactly where that happens: the checkout has no
-   * merge-base to find, so the fallback below is main's tip.
+   * branch that is behind.
+   *
+   * A TIP IS NOT WHERE CI ENDS UP ANY MORE, and this comment used to say it was
+   * (#3635 R1). The tip fallback is reached when git has no ancestry to search —
+   * a shallow clone, an unfetched ref, unrelated histories. `.github/workflows/ci.yml`
+   * put the `check` job in exactly that state by checking out at depth 1, so the
+   * deletion question went unasked on the one runner that guards main. It now
+   * checks out with full history and passes `--require-merge-base`, which refuses
+   * rather than reports when this is false.
    */
   mergeBase: boolean;
 }
@@ -356,6 +409,14 @@ export function resolveShippedReference(options?: {
 
   const shortBase =
     git(["rev-parse", "--short", base], cwd).stdout.trim() || base;
+  // Committer date, ISO, in UTC: it is what a reviewer compares against "when did
+  // I last fetch". `%cI` rather than the author date — a rebased or cherry-picked
+  // commit keeps its author date and is not evidence of anything about this ref.
+  const baseDate = git(
+    ["show", "-s", "--format=%cI", base],
+    cwd
+  ).stdout.trim();
+  const stamped = baseDate ? `${shortBase}, committed ${baseDate}` : shortBase;
 
   // ls-tree rather than matching git's "does not exist" wording on stderr: an
   // absent path is empty stdout and exit 0, which separates "not there" from
@@ -369,7 +430,7 @@ export function resolveShippedReference(options?: {
   if (listed.stdout.trim() === "") {
     return {
       manifest: {},
-      source: `${rel} did not exist at ${shortBase} (${via}) — nothing has shipped`,
+      source: `${rel} did not exist at ${stamped} (${via}) — nothing has shipped`,
       mergeBase: isMergeBase,
     };
   }
@@ -382,7 +443,7 @@ export function resolveShippedReference(options?: {
   }
   return {
     manifest: parseManifest(blob.stdout, `${rel} as of ${shortBase}`),
-    source: `${rel} as of ${shortBase} (${via})`,
+    source: `${rel} as of ${stamped} (${via})`,
     mergeBase: isMergeBase,
   };
 }
@@ -442,6 +503,22 @@ export interface GenerateManifestOptions {
    * the tree as it is, and both of those are things it exists to report.
    */
   allowRehash?: boolean;
+  /**
+   * REFUSE A RUN THAT COULD NOT ASK THE DELETION QUESTION (#3635 R1).
+   *
+   * `unshipped` is only computed against a common ancestor, and when git cannot
+   * find one the report says `GONE: not asked` and exits 0. That sentence is
+   * correct and it is also, in CI, indistinguishable from a clean answer to
+   * anyone reading a green check. It is how a merged deletion of a shipped
+   * migration passed CI: the `check` job checked out at depth 1, no merge-base
+   * existed, and the one question this whole refusal exists to ask was skipped.
+   *
+   * So CI passes this, and CI is the only caller that does. A developer in a
+   * shallow clone gets the report and the note; the gate that guards main insists
+   * the question was actually asked, and reds if a future change to the checkout
+   * quietly takes the ancestry away again.
+   */
+  requireMergeBase?: boolean;
 }
 
 export interface GenerateManifestResult {
@@ -526,7 +603,7 @@ export function generateManifest(
   // so it refuses through the same door.
   //
   // ONLY AGAINST A COMMON ANCESTOR. Against main's TIP — the fallback when git
-  // finds no merge-base, which is what a CI checkout of a PR merge ref gets — a
+  // finds no merge-base, which is what a shallow checkout gets — a
   // name in the reference and not in the tree is far more often a migration that
   // landed on main after this branch forked than one this branch deleted. Asking
   // there would red every branch that is behind, so the question is not asked and
@@ -573,6 +650,31 @@ export function generateManifest(
     shipped,
     report,
   };
+
+  // THE QUESTION HAS TO HAVE BEEN ASKED BEFORE ITS ANSWER MEANS ANYTHING (#3635
+  // R1). This fires FIRST: an "everything is fine" from a run that skipped the
+  // deletion check is the exact output a run that asked and found nothing gives,
+  // and the two must not be reachable through the same exit code.
+  if (options.requireMergeBase && !shipped.mergeBase) {
+    return {
+      ...base,
+      error:
+        `\n${rel} CANNOT BE CHECKED: the shipped reference is ${shipped.source}, ` +
+        `which is a branch TIP rather than a common ancestor of HEAD — so the ` +
+        `"is a shipped migration GONE from this tree?" question was not asked, ` +
+        `and this run has nothing to say about it.\n` +
+        `That question is the one that catches a deleted migration, which every ` +
+        `already-migrated database then refuses to boot over. It needs history: ` +
+        `check out with \`fetch-depth: 0\` and fetch main without \`--depth\`, so ` +
+        `\`git merge-base origin/main HEAD\` resolves.\n` +
+        `Asking against a merge-base cannot false-positive — the merge-base is an ` +
+        `ancestor of HEAD by construction, so a name in it and not here was ` +
+        `removed by this branch. The false positives this design avoids come from ` +
+        `asking against a TIP, which is a different question.`,
+      wrote: false,
+      exitCode: 1,
+    };
+  }
 
   // A SHIPPED MIGRATION THAT MOVED OR VANISHED IS THE ALARM, not a routine
   // outcome. Shipped migrations are append-only, so a file whose bytes changed is
@@ -697,10 +799,11 @@ export function generateManifest(
 // `process.argv`, so the verify-only run WROTE. npm does put it in the
 // environment as `npm_config_check`, so that is read too.
 //
-// The two flags are NOT treated alike, and the asymmetry is the point.
-// `--check` is read from the environment because mis-reading it can only make the
-// tool do LESS (check instead of write). `--allow-rehash` is not: it is the one
-// door that lets released history's hash move, `npm_config_*` can also arrive
+// The flags are NOT treated alike, and the asymmetry is the point.
+// `--check` and `--require-merge-base` are read from the environment because
+// mis-reading either can only make the tool do LESS, or insist on MORE — check
+// instead of write, refuse instead of report. `--allow-rehash` is not: it is the
+// one door that lets released history's hash move, `npm_config_*` can also arrive
 // from an .npmrc or an exported shell variable nobody typed today, and a door
 // that opens from ambient state is not a decision anybody made. So an
 // env-only `--allow-rehash` is refused, by name, pointing at the `--` form.
@@ -718,6 +821,21 @@ const npmFlag = (value: string | undefined): boolean =>
 export function runManifestCli(invocation: {
   argv: readonly string[];
   env?: Record<string, string | undefined>;
+  /**
+   * Where to run. Omitted — which is what the script does — every path defaults
+   * to this repo.
+   *
+   * It exists for the same reason `argv` and `env` are parameters rather than
+   * globals: the argv handling and the shape of a thrown error were two of the
+   * defects this module fixed, and neither is observable from a caller that can
+   * only point the CLI at the live tree. A test that drives it over a throwaway
+   * corpus is the only kind that can watch a refusal happen; before this seam
+   * existed the function was imported by one test file and called by none of it.
+   */
+  paths?: Pick<
+    GenerateManifestOptions,
+    "versionsDir" | "registryPath" | "manifestPath" | "repoRoot" | "shipped"
+  >;
 }): ManifestCliResult {
   const argv = invocation.argv;
   const env = invocation.env ?? {};
@@ -739,8 +857,12 @@ export function runManifestCli(invocation: {
   }
 
   const options: GenerateManifestOptions = {
+    ...invocation.paths,
     check: argv.includes("--check") || npmFlag(env.npm_config_check),
     allowRehash: argv.includes("--allow-rehash"),
+    requireMergeBase:
+      argv.includes("--require-merge-base") ||
+      npmFlag(env.npm_config_require_merge_base),
   };
 
   let result: GenerateManifestResult;
