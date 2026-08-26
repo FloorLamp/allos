@@ -618,7 +618,11 @@ function addDocument(
   if (opts.linkCategory) {
     const linked = ctx.db
       .prepare(
-        `UPDATE medical_records SET document_id = ?, source = 'extracted'
+        // `logged_via` moves with `source` — see the twin in scripts/seed.ts and the
+        // exception stated in scripts/seed-logged-via.ts. A row retro-attached to a
+        // document was not tapped by anybody.
+        `UPDATE medical_records
+            SET document_id = ?, source = 'extracted', logged_via = ${VIA_IMPORTED}
          WHERE profile_id = ? AND date = ? AND category = ?`
       )
       .run(docId, ctx.profileId, opts.linkDate ?? day, opts.linkCategory);

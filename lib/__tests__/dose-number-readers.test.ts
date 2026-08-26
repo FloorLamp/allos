@@ -980,6 +980,27 @@ describe("the census's reach", () => {
 // registry is not where it belongs.
 //
 // WHAT IS STILL OUT OF REACH, in the register this file already uses:
+//   * A PLAIN TEMPLATE LITERAL — `new RegExp(\`…\`)` — WHICH IS THE SHAPE THIS TREE
+//     ACTUALLY WRITES, and the omission that made this list dishonest until #3813's
+//     adversarial pass. `patternFragments` matches regex literals, `String.raw\`…\``
+//     and `new RegExp("…")`; its constructor matcher accepts a double- or single-quoted
+//     argument and NOTHING ELSE, so a backtick argument yields zero fragments. Measured,
+//     not inferred: the same reader spelled `new RegExp(String.raw\`…\`)` produces one
+//     fragment and IS caught, while `new RegExp(\`…\`)` produces none — so the defect
+//     escapes BOTH censuses, this one included, and a reader built that way returns
+//     "000" for "1 000 mg" in silence. lib/notifications/food-format.ts:121 writes that
+//     exact spelling today (harmlessly — it reads no dose), which is the point: it is
+//     the ordinary way to build a pattern here, not an exotic one.
+//   * STRING CONCATENATION — `"(\\d+)" + "\\s*(mg)"` — same reason. The text never
+//     exists in one literal for either matcher to see.
+//   * AN ANCHOR ON ONE ALTERNATION BRANCH ONLY — `/^a|(\\d+)\\s*mg/` reads as anchored
+//     to `isAnchored`, which tests the START of the pattern, while the second branch is
+//     free to restart mid-number. The anchor check is a prefix test, not a proof that
+//     every branch refuses.
+//   * A DOSE UNIT OUTSIDE `DOSE_UNIT_TOKEN`. That list is six mass/activity units, and
+//     it is a LIST, not a rule — `ml`, `units`, `tablet` and `puff` are all real
+//     spellings in this tree (lib/prescription-parse.ts's own DOSE_UNIT and DOSE_FORM
+//     carry them), and a reader pairing a number with one of those is invisible here.
 //   * a scan reached through a FUNCTION, an object property or an import alias
 //     (`import { WRITTEN_NUMBER_SCAN as N }`) — expansion follows plain `const X = Y;`
 //     and `const X = String.raw\`…\`;`, nothing else;

@@ -3195,7 +3195,16 @@ const docId = Number(
 );
 const linkedRows = db
   .prepare(
-    `UPDATE medical_records SET document_id = ?, source = 'extracted'
+    // `logged_via` MOVES WITH `source`. These rows were INSERTed above as a person's
+    // own entry and are being retro-attached to a document here, so the stamp has to
+    // follow: `import` is the one value where `source` is the authoritative half
+    // (lib/logged-via.ts), and the real write path for this exact row shape —
+    // lib/import-persist.ts's `insRec` — binds IMPORTED. Leaving `page` behind would
+    // have the demo instance assert somebody typed on the labs page the very values
+    // it presents as extracted from a PDF, which is a POSITIVE FALSE CLAIM and worse
+    // than the NULL it replaced.
+    `UPDATE medical_records
+        SET document_id = ?, source = 'extracted', logged_via = ${VIA_IMPORTED}
        WHERE profile_id = 1 AND date = ? AND category = 'lab'`
   )
   .run(docId, daysAgo(30));
