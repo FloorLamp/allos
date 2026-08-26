@@ -4,9 +4,10 @@ These instructions apply to the migration runner and migrations.
 
 - Shipped migrations are immutable. Never edit `001-baseline.ts` or another
   applied migration.
-- Add schema changes as a final `YYYYMMDD-slug.ts` entry in `versions/index.ts`
-  and add its SHA-256 to `manifest.json`. Name-keyed migrations have no numeric
-  `id`.
+- Add schema changes as a final `YYYYMMDD-slug.ts` entry in `versions/index.ts`,
+  then run `npm run gen:migration-manifest` to add its SHA-256 to
+  `manifest.json`. Never hand-type a hash — run the generator again to resolve a
+  manifest merge conflict. Name-keyed migrations have no numeric `id`.
 - Use a rebuild migration to grow a `CHECK` enum or add a foreign key. Null
   dangling links before enforcing a new foreign key.
 - Put one-shot data moves in migrations, not settings flags. Per-boot
