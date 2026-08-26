@@ -6,6 +6,7 @@ import {
 } from "@/lib/tap-floor-tokens";
 
 type Box = { x: number; y: number; width: number; height: number };
+const EDIT_ACTION_GAP_PX = 8; // gap-2
 
 function expectContained(outer: Box, inner: Box, name: string) {
   expect(
@@ -99,10 +100,27 @@ export async function expectPhoneSpecialtySubmit({
   expectContained(formBox, actionsBox, `${name} actions in form`);
   expectContained(actionsBox, ownerBox, `${name} primary owner in actions`);
   expectContained(ownerBox, submitBox, `${name} submit in primary owner`);
-  if (adjacentBox)
+  if (adjacentBox) {
+    expect(
+      ownerBox.x,
+      `${name} primary owner starts the action row`
+    ).toBeCloseTo(actionsBox.x, 1);
+    expect(
+      adjacentBox.x - (ownerBox.x + ownerBox.width),
+      `${name} actions retain the configured gap`
+    ).toBeCloseTo(EDIT_ACTION_GAP_PX, 1);
+    expect(
+      adjacentBox.x + adjacentBox.width,
+      `${name} adjacent action ends the action row`
+    ).toBeCloseTo(actionsBox.x + actionsBox.width, 1);
+    expect(
+      ownerBox.width + EDIT_ACTION_GAP_PX + adjacentBox.width,
+      `${name} owner, gap, and adjacent action consume the row`
+    ).toBeCloseTo(actionsBox.width, 1);
     expectContained(
       actionsBox,
       adjacentBox,
       `${name} adjacent action in actions`
     );
+  }
 }
