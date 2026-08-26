@@ -1,4 +1,3 @@
-import { IconGitMerge, IconCopyCheck, IconEyeOff } from "@tabler/icons-react";
 import type { UnitPrefs } from "@/lib/settings";
 import type { IntegrationId } from "@/lib/types";
 import { getIntegration } from "@/lib/integrations/registry";
@@ -16,6 +15,7 @@ import ActivityMergeControls from "@/components/ActivityMergeControls";
 import ActivityClusterControls, {
   type ClusterMemberView,
 } from "@/components/ActivityClusterControls";
+import DuplicateResolutionActions from "@/components/DuplicateResolutionActions";
 import type {
   ActivityDupRow,
   BodyMetricConflictRow,
@@ -24,13 +24,6 @@ import {
   mergeBodyMetricPair,
   resolvePair,
 } from "@/app/(app)/data/review-actions";
-
-// Data → Review, Phase 2 (issue #10): the duplicate/conflict resolver. Renders each
-// DETECTED pair with both rows' details + a confidence chip, and the three terminal
-// actions — Merge (keep one row, folding the other's missing fields in), Keep both,
-// Dismiss. Server component: the buttons are plain server-action <form>s (the same
-// pattern as the Upcoming snooze/dismiss controls), so no client JS is needed. We
-// NEVER auto-merge — every resolution is an explicit press.
 
 // Friendly provenance label for a row's `source`: an integration's display name
 // when it maps to a known provider, "Manual entry" for a NULL source, else the raw
@@ -123,81 +116,6 @@ function activityFacts(row: ActivityDupRow, units: UnitPrefs): string[] {
   return facts;
 }
 
-// The three action buttons for one pair: a Merge form per candidate keeper, then
-// Keep-both and Dismiss. Rendered for both domains — the merge action differs, so
-// the caller passes the domain + the two ids + the merge server action.
-function PairActions({
-  domain,
-  signature,
-  keepId,
-  dropId,
-  mergeAction,
-  keepLabelA,
-  keepLabelB,
-}: {
-  domain: string;
-  signature: string;
-  // The default keeper (primary merge) and the other row.
-  keepId: number;
-  dropId: number;
-  mergeAction: (formData: FormData) => void;
-  keepLabelA: string;
-  keepLabelB: string;
-}) {
-  return (
-    <div className="mt-3 flex flex-wrap items-center gap-2">
-      <form action={mergeAction}>
-        <input type="hidden" name="keep_id" value={keepId} />
-        <input type="hidden" name="drop_id" value={dropId} />
-        <input type="hidden" name="signature" value={signature} />
-        <button
-          type="submit"
-          data-testid="dup-merge-primary"
-          className="btn btn-sm"
-        >
-          <IconGitMerge className="h-4 w-4" stroke={1.75} />
-          Merge, keep {keepLabelA}
-        </button>
-      </form>
-      <form action={mergeAction}>
-        <input type="hidden" name="keep_id" value={dropId} />
-        <input type="hidden" name="drop_id" value={keepId} />
-        <input type="hidden" name="signature" value={signature} />
-        <button
-          type="submit"
-          className="inline-flex items-center gap-1.5 rounded-lg border border-black/10 px-3 py-1.5 text-sm font-medium text-slate-600 transition hover:bg-slate-100 dark:border-white/10 dark:text-slate-300 dark:hover:bg-ink-750"
-        >
-          Keep {keepLabelB} instead
-        </button>
-      </form>
-      <form action={resolvePair}>
-        <input type="hidden" name="domain" value={domain} />
-        <input type="hidden" name="decision" value="kept-both" />
-        <input type="hidden" name="signature" value={signature} />
-        <button
-          type="submit"
-          className="inline-flex items-center gap-1.5 rounded-lg border border-black/10 px-3 py-1.5 text-sm font-medium text-slate-600 transition hover:bg-slate-100 dark:border-white/10 dark:text-slate-300 dark:hover:bg-ink-750"
-        >
-          <IconCopyCheck className="h-4 w-4" stroke={1.75} />
-          Keep both
-        </button>
-      </form>
-      <form action={resolvePair}>
-        <input type="hidden" name="domain" value={domain} />
-        <input type="hidden" name="decision" value="dismissed" />
-        <input type="hidden" name="signature" value={signature} />
-        <button
-          type="submit"
-          className="inline-flex items-center gap-1.5 rounded-lg px-3 py-1.5 text-sm font-medium text-slate-500 transition hover:bg-slate-100 dark:text-slate-400 dark:hover:bg-ink-750"
-        >
-          <IconEyeOff className="h-4 w-4" stroke={1.75} />
-          Dismiss
-        </button>
-      </form>
-    </div>
-  );
-}
-
 export default function DuplicateReview({
   activityClusters,
   bodyMetricPairs,
@@ -226,10 +144,6 @@ export default function DuplicateReview({
 
       <ul className="mt-3 space-y-3">
         {activityClusters.map((cluster) => {
-          // A 2-row cluster renders EXACTLY as the pairwise case (unchanged #10/#100
-          // UI): the token-sorted members are a/b, the default keeper via the shared
-          // rule, conflict preview per keeper. A 3+ member cluster (#1081) collapses
-          // C(n,2) pair cards into one keeper-radio card.
           if (cluster.members.length <= 2) {
             const a = cluster.members[0];
             const b = cluster.members[1];
@@ -332,13 +246,26 @@ export default function DuplicateReview({
           // Keeper = a, other = b. Two manual weigh-ins both read "Manual entry",
           // so label by source when they differ, else A/B with an on-card badge
           // (#531) — the same shared disambiguator as the activity path.
+          const { a, b, signature } = pair;
           const dis = disambiguationLabels(
-            sourceLabel(pair.a.source),
-            sourceLabel(pair.b.source)
+            sourceLabel(a.source),
+            sourceLabel(b.source)
           );
+          const merge = mergeBodyMetricPair;
+          const resolve = resolvePair;
+          const mergePayload = (keep_id: number, drop_id: number) => ({
+            keep_id,
+            drop_id,
+            signature,
+          });
+          const resolutionPayload = (decision: "kept-both" | "dismissed") => ({
+            domain: BODY_METRIC_DOMAIN,
+            decision,
+            signature,
+          });
           return (
             <li
-              key={`bm:${pair.signature}`}
+              key={`bm:${signature}`}
               data-testid="dup-body-metric-pair"
               className="rounded-lg border border-black/10 p-3 dark:border-white/10"
             >
@@ -347,33 +274,32 @@ export default function DuplicateReview({
                   Conflict
                 </span>
                 <span className="text-xs text-slate-500 dark:text-slate-400">
-                  {pair.a.date} · {pair.reason}
+                  {a.date} · {pair.reason}
                 </span>
               </div>
               <div className="grid gap-2 sm:grid-cols-2">
                 <RowSummary
-                  source={pair.a.source}
-                  title={sourceLabel(pair.a.source)}
-                  facts={bodyMetricFacts(pair.a, units)}
+                  source={a.source}
+                  title={sourceLabel(a.source)}
+                  facts={bodyMetricFacts(a, units)}
                   isKeeper
                   badge={dis.usedFallback ? "A" : undefined}
                 />
                 <RowSummary
-                  source={pair.b.source}
-                  title={sourceLabel(pair.b.source)}
-                  facts={bodyMetricFacts(pair.b, units)}
+                  source={b.source}
+                  title={sourceLabel(b.source)}
+                  facts={bodyMetricFacts(b, units)}
                   isKeeper={false}
                   badge={dis.usedFallback ? "B" : undefined}
                 />
               </div>
-              <PairActions
-                domain={BODY_METRIC_DOMAIN}
-                signature={pair.signature}
-                keepId={pair.a.id}
-                dropId={pair.b.id}
-                mergeAction={mergeBodyMetricPair}
-                keepLabelA={dis.a}
-                keepLabelB={dis.b}
+              <DuplicateResolutionActions
+                actions={[
+                  ["keeper", dis.a, merge, mergePayload(a.id, b.id)],
+                  ["alternate-keeper", dis.b, merge, mergePayload(b.id, a.id)],
+                  ["keep-both", null, resolve, resolutionPayload("kept-both")],
+                  ["dismiss", null, resolve, resolutionPayload("dismissed")],
+                ]}
               />
             </li>
           );

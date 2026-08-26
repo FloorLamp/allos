@@ -1,7 +1,6 @@
 "use client";
 
 import { useMemo, useState, useTransition } from "react";
-import { IconGitMerge, IconCopyCheck, IconEyeOff } from "@tabler/icons-react";
 import type { UnitPrefs } from "@/lib/settings";
 import { ACTIVITY_DOMAIN } from "@/lib/import-review/detect";
 import {
@@ -9,21 +8,12 @@ import {
   type OverrideChoices,
 } from "@/lib/import-review/conflicts";
 import MergeConflictDialog from "@/components/MergeConflictDialog";
+import DuplicateResolutionActions from "@/components/DuplicateResolutionActions";
 import {
   mergeActivityPair,
   resolvePair,
 } from "@/app/(app)/data/review-actions";
 
-// The action row for one detected ACTIVITY duplicate pair in the Data → Review
-// resolver (issue #10), conflict-aware (issue #100). Either row can be the keeper
-// (two merge buttons). When the two rows genuinely disagree on a field, the chosen
-// keeper's merge opens the SHARED conflict picker first so the user picks per
-// field; with zero conflicts the merge submits in one click, unchanged. Keep both /
-// Dismiss are unchanged plain server-action forms.
-//
-// The picker is the same N-way component every merge surface uses (#1431); this
-// pairwise card is simply its two-member case, oriented by the pressed button's
-// keeper (the picker pre-selects the keeper's values itself).
 export default function ActivityMergeControls({
   signature,
   aId,
@@ -39,13 +29,11 @@ export default function ActivityMergeControls({
   bId: number;
   aLabel: string;
   bLabel: string;
-  // Both rows' fold-field values (pickFoldValues) — the picker's conflict input.
   aFoldValues: Record<string, unknown>;
   bFoldValues: Record<string, unknown>;
   units: UnitPrefs;
 }) {
   const [pending, startTransition] = useTransition();
-  // The keeper whose merge is awaiting per-field resolution ("a" | "b"), or null.
   const [dialogFor, setDialogFor] = useState<"a" | "b" | null>(null);
 
   const conflicts = useMemo(
@@ -88,51 +76,23 @@ export default function ActivityMergeControls({
     setDialogFor(null);
   }
 
+  const resolutionPayload = (decision: "kept-both" | "dismissed") => ({
+    domain: ACTIVITY_DOMAIN,
+    decision,
+    signature,
+  });
+
   return (
-    <div className="mt-3 flex flex-wrap items-center gap-2">
-      <button
-        type="button"
-        onClick={() => onMergeClick("a")}
-        disabled={pending}
-        data-testid="dup-merge-primary"
-        className="btn btn-sm"
-      >
-        <IconGitMerge className="h-4 w-4" stroke={1.75} />
-        Merge, keep {aLabel}
-      </button>
-      <button
-        type="button"
-        onClick={() => onMergeClick("b")}
-        disabled={pending}
-        data-testid="dup-merge-secondary"
-        className="inline-flex items-center gap-1.5 rounded-lg border border-black/10 px-3 py-1.5 text-sm font-medium text-slate-600 transition hover:bg-slate-100 disabled:opacity-50 dark:border-white/10 dark:text-slate-300 dark:hover:bg-ink-750"
-      >
-        Keep {bLabel} instead
-      </button>
-      <form action={resolvePair}>
-        <input type="hidden" name="domain" value={ACTIVITY_DOMAIN} />
-        <input type="hidden" name="decision" value="kept-both" />
-        <input type="hidden" name="signature" value={signature} />
-        <button
-          type="submit"
-          className="inline-flex items-center gap-1.5 rounded-lg border border-black/10 px-3 py-1.5 text-sm font-medium text-slate-600 transition hover:bg-slate-100 dark:border-white/10 dark:text-slate-300 dark:hover:bg-ink-750"
-        >
-          <IconCopyCheck className="h-4 w-4" stroke={1.75} />
-          Keep both
-        </button>
-      </form>
-      <form action={resolvePair}>
-        <input type="hidden" name="domain" value={ACTIVITY_DOMAIN} />
-        <input type="hidden" name="decision" value="dismissed" />
-        <input type="hidden" name="signature" value={signature} />
-        <button
-          type="submit"
-          className="inline-flex items-center gap-1.5 rounded-lg px-3 py-1.5 text-sm font-medium text-slate-500 transition hover:bg-slate-100 dark:text-slate-400 dark:hover:bg-ink-750"
-        >
-          <IconEyeOff className="h-4 w-4" stroke={1.75} />
-          Dismiss
-        </button>
-      </form>
+    <>
+      <DuplicateResolutionActions
+        pending={pending}
+        actions={[
+          ["keeper", aLabel, () => onMergeClick("a")],
+          ["alternate-keeper", bLabel, () => onMergeClick("b")],
+          ["keep-both", null, resolvePair, resolutionPayload("kept-both")],
+          ["dismiss", null, resolvePair, resolutionPayload("dismissed")],
+        ]}
+      />
 
       {dialogFor && (
         <MergeConflictDialog
@@ -149,6 +109,6 @@ export default function ActivityMergeControls({
           onCancel={() => setDialogFor(null)}
         />
       )}
-    </div>
+    </>
   );
 }
