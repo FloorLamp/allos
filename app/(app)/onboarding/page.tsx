@@ -151,7 +151,9 @@ function WizardActions({
         <Link href={`/onboarding?step=${backStep}`} className="btn-ghost">
           Back
         </Link>
-        {children}
+        <div data-testid="onboarding-primary-action" className="grid w-36">
+          {children}
+        </div>
       </div>
       {showExit && (
         <div
@@ -304,7 +306,6 @@ export default async function OnboardingPage({
               {!readOnly && (
                 <WizardActions backStep={1}>
                   <SubmitButton
-                    className="btn w-36"
                     pendingLabel="Continuing…"
                     requireSelection="focus"
                   >
@@ -419,9 +420,7 @@ export default async function OnboardingPage({
               {!readOnly && (
                 <div className="sm:col-span-2">
                   <WizardActions backStep={2}>
-                    <SubmitButton className="btn w-36" pendingLabel="Saving…">
-                      Next
-                    </SubmitButton>
+                    <SubmitButton pendingLabel="Saving…">Next</SubmitButton>
                   </WizardActions>
                 </div>
               )}
@@ -509,9 +508,7 @@ export default async function OnboardingPage({
             <div className="mt-4">
               <form action={continueOnboardingData}>
                 <WizardActions backStep={3}>
-                  <SubmitButton className="btn w-36" pendingLabel="Continuing…">
-                    Next
-                  </SubmitButton>
+                  <SubmitButton pendingLabel="Continuing…">Next</SubmitButton>
                 </WizardActions>
               </form>
             </div>
@@ -564,7 +561,6 @@ export default async function OnboardingPage({
               {!readOnly && (
                 <WizardActions backStep={4}>
                   <SubmitButton
-                    className="btn w-36"
                     pendingLabel="Saving…"
                     requireSelection="notification_intent"
                   >
@@ -614,10 +610,7 @@ export default async function OnboardingPage({
               {!readOnly && (
                 <form action={completeOnboarding}>
                   <WizardActions backStep={5} showExit={false}>
-                    <SubmitButton
-                      className="btn w-36"
-                      pendingLabel="Finishing…"
-                    >
+                    <SubmitButton pendingLabel="Finishing…">
                       View dashboard
                     </SubmitButton>
                   </WizardActions>

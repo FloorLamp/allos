@@ -788,12 +788,14 @@ export default function ProtocolForm({
             Cancel
           </button>
         )}
-        <SubmitButton
-          className="btn w-full sm:w-auto sm:min-w-24"
-          pendingLabel="Saving…"
+        <div
+          className="grid w-full sm:w-auto sm:min-w-24"
+          data-testid="protocol-form-primary-action"
         >
-          {editing ? "Save" : "Create protocol"}
-        </SubmitButton>
+          <SubmitButton pendingLabel="Saving…">
+            {editing ? "Save" : "Create protocol"}
+          </SubmitButton>
+        </div>
       </div>
     </form>
   );
