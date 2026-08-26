@@ -234,8 +234,8 @@ describe("the manifest writer over a corpus authored to break it", () => {
   it("keys the manifest in REGISTRY order even when that is not filename order", () => {
     // The distinguishing corpus, and the reason the order case above is not just a
     // sort in disguise: a migration dated earlier that merged later registers LAST
-    // and sorts FIRST. The real tree does distinguish them today — 23 of its 219
-    // migrations register at a position they do not sort at, measured 2026-08-23 —
+    // and sorts FIRST. The real tree does distinguish them today — 24 of its 220
+    // migrations register at a position they do not sort at, measured 2026-08-26 —
     // but that is an accident of merge history and one re-sort away from being
     // untrue, whereas this corpus separates the two rules by construction.
     const { versionsDir, registryPath } = corpus(
@@ -623,6 +623,612 @@ describe("the generator refuses to launder an edit to a shipped migration", () =
     expect(result.wrote).toBe(true);
     expect(result.exitCode).toBe(0);
     expect(result.error).toBeUndefined();
+    fs.rmSync(c.versionsDir, { recursive: true, force: true });
+  });
+});
+
+// ---------------------------------------------------------------------------
+// THE GUARDS THAT WERE IMPORTED AND NEVER CALLED (#3635 R5).
+//
+// The adversarial pass applied the redundancy rule literally: `manifest-source.ts`
+// is imported by exactly one test file and one script, so this file is the only
+// tier that CAN observe it. Then it removed one guard at a time and re-ran.
+// Stubbing `resolveShippedReference`'s entire git ancestor determination left
+// 25 passed. So did deleting the conflict-marker branch, the `npm_config_check`
+// reading, and the by-name `--allow-rehash` refusal. Every shipped-reference case
+// above passes `shipped` in as a synthetic literal, so not one of them asks git
+// about anything, and `parseManifest` and `runManifestCli` were imported symbols
+// nothing called.
+//
+// So these cases drive the two entry points over REAL git repositories and a real
+// argv/env, built in a temp directory. Same corpus discipline as everything above:
+// never the live tree.
+
+/** A throwaway repository with `main`, and a manifest committed on it. */
+const gitCorpus = (
+  manifest: Record<string, string>
+): { root: string; rel: string } => {
+  const root = makeTmpDir("manifest-git");
+  const rel = "manifest.json";
+  const run = (...args: string[]) =>
+    execFileSync("git", ["-C", root, ...args], {
+      stdio: ["ignore", "pipe", "pipe"],
+      env: {
+        ...process.env,
+        GIT_AUTHOR_NAME: "corpus",
+        GIT_AUTHOR_EMAIL: "corpus@example.invalid",
+        GIT_COMMITTER_NAME: "corpus",
+        GIT_COMMITTER_EMAIL: "corpus@example.invalid",
+      },
+    });
+  execFileSync("git", ["init", "-q", "-b", "main", root], {
+    stdio: ["ignore", "pipe", "pipe"],
+  });
+  fs.writeFileSync(
+    path.join(root, rel),
+    serializeManifest(manifest),
+    "utf8"
+  );
+  run("add", "-A");
+  run("commit", "-q", "-m", "shipped");
+  return { root, rel };
+};
+
+const gitRun = (root: string, ...args: string[]): string =>
+  execFileSync("git", ["-C", root, ...args], {
+    stdio: ["ignore", "pipe", "pipe"],
+    env: {
+      ...process.env,
+      GIT_AUTHOR_NAME: "corpus",
+      GIT_AUTHOR_EMAIL: "corpus@example.invalid",
+      GIT_COMMITTER_NAME: "corpus",
+      GIT_COMMITTER_EMAIL: "corpus@example.invalid",
+    },
+  })
+    .toString("utf8")
+    .trim();
+
+describe("resolveShippedReference asks git, over real repositories", () => {
+  const SHIPPED = {
+    "20260801-first.ts": "a".repeat(64),
+    "20260802-second.ts": "b".repeat(64),
+  };
+
+  it("reads the manifest at the MERGE-BASE, and says it found an ancestor", () => {
+    // The case the whole refusal rests on and the one nothing exercised: a branch
+    // that has moved on, a main that is where it was, and the hashes coming from
+    // the commit they share. Stub the resolution and this reads an empty manifest
+    // from a source string nobody wrote.
+    const { root, rel } = gitCorpus(SHIPPED);
+    const baseSha = gitRun(root, "rev-parse", "--short", "HEAD");
+    gitRun(root, "checkout", "-q", "-b", "feature");
+    fs.writeFileSync(path.join(root, "unrelated.txt"), "later\n", "utf8");
+    gitRun(root, "add", "-A");
+    gitRun(root, "commit", "-q", "-m", "branch work");
+    // The branch's own manifest says something else entirely — proving the
+    // reference came from the commit and not from the file on disk.
+    fs.writeFileSync(
+      path.join(root, rel),
+      serializeManifest({ "20260801-first.ts": "z".repeat(64) }),
+      "utf8"
+    );
+
+    const ref = resolveShippedReference({
+      repoRoot: root,
+      manifestRel: rel,
+      baseRefs: ["main"],
+    });
+    expect(ref.manifest).toEqual(SHIPPED);
+    expect(ref.mergeBase).toBe(true);
+    expect(ref.source).toContain(baseSha);
+    expect(ref.source).toContain("the merge-base with main");
+    fs.rmSync(root, { recursive: true, force: true });
+  });
+
+  it("stamps the base commit's DATE beside its sha (#3635 R4)", () => {
+    // `refs/remotes/origin/main` is only as fresh as the last fetch, and the
+    // module used to call it "the hashes that are actually on main". One fetch
+    // behind, a real deletion prints `GONE: 0` — asked-and-clean's own output. The
+    // date is what makes the reference's age legible in the line a reviewer reads.
+    const { root, rel } = gitCorpus(SHIPPED);
+    const committed = gitRun(root, "show", "-s", "--format=%cI", "HEAD");
+    const ref = resolveShippedReference({
+      repoRoot: root,
+      manifestRel: rel,
+      baseRefs: ["main"],
+    });
+    expect(ref.source).toContain(`committed ${committed}`);
+    fs.rmSync(root, { recursive: true, force: true });
+  });
+
+  it("falls back to the TIP, and says so, when the histories are unrelated", () => {
+    // `mergeBase: false` is what silences the deletion question, so it has to be
+    // reachable for the right reason. Two roots in one repository share no commit.
+    const { root, rel } = gitCorpus(SHIPPED);
+    gitRun(root, "checkout", "-q", "--orphan", "elsewhere");
+    gitRun(root, "rm", "-q", "-rf", ".");
+    fs.writeFileSync(path.join(root, "other.txt"), "unrelated\n", "utf8");
+    gitRun(root, "add", "-A");
+    gitRun(root, "commit", "-q", "-m", "unrelated root");
+
+    const ref = resolveShippedReference({
+      repoRoot: root,
+      manifestRel: rel,
+      baseRefs: ["main"],
+    });
+    expect(ref.mergeBase).toBe(false);
+    expect(ref.manifest).toEqual(SHIPPED);
+    expect(ref.source).toContain("it has no merge-base with HEAD");
+    fs.rmSync(root, { recursive: true, force: true });
+  });
+
+  it("REFUSES when no base ref resolves — it never reads as `nothing shipped`", () => {
+    // The fail-open this module exists to prevent. An empty reference means every
+    // hash is new and the alarm cannot fire, so "git could not answer" must not
+    // produce one.
+    const { root, rel } = gitCorpus(SHIPPED);
+    expect(() =>
+      resolveShippedReference({
+        repoRoot: root,
+        manifestRel: rel,
+        baseRefs: ["no-such-ref"],
+      })
+    ).toThrow(/none of no-such-ref resolves/);
+    fs.rmSync(root, { recursive: true, force: true });
+  });
+
+  it("REFUSES outside a repository rather than assuming nothing shipped", () => {
+    const root = makeTmpDir("manifest-nogit");
+    expect(() => resolveShippedReference({ repoRoot: root })).toThrow(
+      /could not read a repository/
+    );
+    fs.rmSync(root, { recursive: true, force: true });
+  });
+
+  it("answers `{}` only where git POSITIVELY says nothing shipped", () => {
+    // Two of them, and they are the distinction the refusal above rests on: git
+    // answering "there is nothing" is not git failing to answer.
+    const empty = makeTmpDir("manifest-empty");
+    execFileSync("git", ["init", "-q", "-b", "main", empty], {
+      stdio: ["ignore", "pipe", "pipe"],
+    });
+    const noCommits = resolveShippedReference({ repoRoot: empty });
+    expect(noCommits.manifest).toEqual({});
+    expect(noCommits.source).toContain("no commits yet");
+    expect(noCommits.mergeBase).toBe(true);
+    fs.rmSync(empty, { recursive: true, force: true });
+
+    const { root } = gitCorpus(SHIPPED);
+    const absent = resolveShippedReference({
+      repoRoot: root,
+      manifestRel: "not-committed-here.json",
+      baseRefs: ["main"],
+    });
+    expect(absent.manifest).toEqual({});
+    expect(absent.source).toContain("nothing has shipped");
+    expect(absent.mergeBase).toBe(true);
+    fs.rmSync(root, { recursive: true, force: true });
+  });
+
+  it("carries the ancestor's hashes all the way into the deletion alarm", () => {
+    // End to end with nothing passed in: the reference comes from git, and the
+    // refusal fires on a migration the ancestor has and this tree does not. This
+    // is the CI shape, and it is what `GONE: not asked` was standing in for.
+    const { root, rel } = gitCorpus({});
+    const versionsDir = path.join(root, "versions");
+    fs.mkdirSync(versionsDir);
+    const FIRST = "20260801-first.ts";
+    const SECOND = "20260802-second.ts";
+    for (const [name, body] of [
+      [FIRST, "export const migration = 1;\n"],
+      [SECOND, "export const migration = 2;\n"],
+    ] as const) {
+      fs.writeFileSync(path.join(versionsDir, name), body, "utf8");
+    }
+    const registryPath = path.join(versionsDir, "index.ts");
+    writeRegistry(registryPath, [FIRST, SECOND]);
+    const manifestPath = path.join(root, rel);
+    fs.writeFileSync(
+      manifestPath,
+      serializeManifest(buildManifest({ versionsDir, registryPath })),
+      "utf8"
+    );
+    gitRun(root, "add", "-A");
+    gitRun(root, "commit", "-q", "-m", "two migrations shipped");
+    gitRun(root, "checkout", "-q", "-b", "feature");
+
+    fs.rmSync(path.join(versionsDir, FIRST));
+    writeRegistry(registryPath, [SECOND]);
+    const result = generateManifest({
+      versionsDir,
+      registryPath,
+      manifestPath,
+      repoRoot: root,
+      shipped: resolveShippedReference({
+        repoRoot: root,
+        manifestRel: rel,
+        baseRefs: ["main"],
+      }),
+    });
+    expect(result.unshipped).toEqual([FIRST]);
+    expect(result.exitCode).toBe(1);
+    expect(result.wrote).toBe(false);
+    fs.rmSync(root, { recursive: true, force: true });
+  });
+});
+
+describe("the generator refuses a run that could not ask (#3635 R1)", () => {
+  const tipCorpus = () => {
+    const c = corpus(
+      {
+        "20260801-first.ts": "export const migration = 1;\n",
+        "20260802-second.ts": "export const migration = 2;\n",
+      },
+      ["20260801-first.ts", "20260802-second.ts"]
+    );
+    const seeded = generateManifest({
+      ...c,
+      shipped: { manifest: {}, source: "a corpus with no history", mergeBase: true },
+    });
+    return {
+      ...c,
+      tip: {
+        manifest: seeded.manifest,
+        source: "main's tip, in this test",
+        mergeBase: false,
+      } satisfies ShippedReference,
+    };
+  };
+
+  it("exits 1 on a TIP reference, instead of reporting `not asked` and 0", () => {
+    // The CI defect. `.github/workflows/ci.yml` checked out at depth 1, no
+    // merge-base existed, and the report's `GONE: not asked` came with exit 0 —
+    // which on a green check is indistinguishable from asked-and-clean. Delete
+    // this branch and a checkout with no history reports success again.
+    const c = tipCorpus();
+    fs.rmSync(path.join(c.versionsDir, "20260801-first.ts"));
+    writeRegistry(c.registryPath, ["20260802-second.ts"]);
+    // Regenerate so the manifest and the bytes agree: the only thing left for
+    // `--check` to have an opinion about is the migration that is on main and
+    // gone from here — which against a tip it declines to have one about.
+    expect(generateManifest({ ...c, shipped: c.tip }).wrote).toBe(true);
+
+    const asked = generateManifest({ ...c, shipped: c.tip, check: true });
+    expect(asked.exitCode, "without the flag the run still reports").toBe(0);
+    expect(asked.report).toContain("GONE:      not asked");
+
+    const required = generateManifest({
+      ...c,
+      shipped: c.tip,
+      check: true,
+      requireMergeBase: true,
+    });
+    expect(required.exitCode).toBe(1);
+    expect(required.error).toContain("CANNOT BE CHECKED");
+    expect(required.error).toContain("fetch-depth: 0");
+    fs.rmSync(c.versionsDir, { recursive: true, force: true });
+  });
+
+  it("stays out of the way when the reference IS an ancestor", () => {
+    // A refusal that fires on the ordinary case gets a flag typed in front of it
+    // by reflex, so the flag must be silent on every run that has its ancestry.
+    const c = tipCorpus();
+    const result = generateManifest({
+      ...c,
+      shipped: { ...c.tip, mergeBase: true },
+      check: true,
+      requireMergeBase: true,
+    });
+    expect(result.exitCode).toBe(0);
+    expect(result.error).toBeUndefined();
+    fs.rmSync(c.versionsDir, { recursive: true, force: true });
+  });
+});
+
+describe("the registry gets manifest.json's conflict-marker refusal (#3635 R3)", () => {
+  /** Both sides of a two-migration merge, markers and all, files on disk. */
+  const conflicted = () => {
+    const versionsDir = makeTmpDir("manifest-conflict");
+    const A = "20260824-side-a.ts";
+    const B = "20260824-side-b.ts";
+    for (const [name, n] of [
+      [A, 1],
+      [B, 2],
+    ] as const) {
+      fs.writeFileSync(
+        path.join(versionsDir, name),
+        `export const migration = ${n};\n`,
+        "utf8"
+      );
+    }
+    const registryPath = path.join(versionsDir, "index.ts");
+    fs.writeFileSync(
+      registryPath,
+      [
+        "<<<<<<< HEAD",
+        'import { migration as mA } from "./20260824-side-a";',
+        "=======",
+        'import { migration as mB } from "./20260824-side-b";',
+        ">>>>>>> origin/main",
+        "",
+        "export const MIGRATIONS: Migration[] = [",
+        "<<<<<<< HEAD",
+        "  mA,",
+        "=======",
+        "  mB,",
+        ">>>>>>> origin/main",
+        "];",
+        "",
+      ].join("\n"),
+      "utf8"
+    );
+    return {
+      versionsDir,
+      registryPath,
+      manifestPath: path.join(versionsDir, "manifest.json"),
+    };
+  };
+
+  it("refuses instead of writing a manifest for a registry that will not compile", () => {
+    // Measured before this refusal existed: BOTH sides' files are on disk, so
+    // `assertRegistryMatchesDisk` sees no disagreement, and the import and entry
+    // regexes match straight through the marker lines. The generator printed
+    // `unchanged: 220`, `new: 2`, wrote the manifest and exited 0 — over a file
+    // that is not valid TypeScript, with the sentence the docs call the proof that
+    // no shipped migration moved.
+    const c = conflicted();
+    expect(() => registryOrder(c.registryPath)).toThrow(/CONFLICT MARKERS/);
+    expect(fs.existsSync(c.manifestPath)).toBe(false);
+    fs.rmSync(c.versionsDir, { recursive: true, force: true });
+  });
+
+  it("names keeping BOTH sides, which is what name-keyed migrations want", () => {
+    // The wrong repair is picking a side, and it is the quiet one: the dropped
+    // migration simply stops running, on fresh databases only.
+    const c = conflicted();
+    let message = "";
+    try {
+      registryOrder(c.registryPath);
+    } catch (error) {
+      message = error instanceof Error ? error.message : String(error);
+    }
+    expect(message).toContain("BOTH sides");
+    expect(message).toContain("DO NOT pick one side");
+    fs.rmSync(c.versionsDir, { recursive: true, force: true });
+  });
+
+  it("is silent on a registry with no markers in it", () => {
+    const versionsDir = makeTmpDir("manifest-clean");
+    fs.writeFileSync(
+      path.join(versionsDir, "20260801-only.ts"),
+      "export const migration = 1;\n",
+      "utf8"
+    );
+    const registryPath = path.join(versionsDir, "index.ts");
+    writeRegistry(registryPath, ["20260801-only.ts"]);
+    expect(registryOrder(registryPath)).toEqual(["20260801-only.ts"]);
+    fs.rmSync(versionsDir, { recursive: true, force: true });
+  });
+});
+
+describe("parseManifest's conflict-marker refusal, called (#3635 R5)", () => {
+  const CONFLICTED = [
+    "{",
+    "<<<<<<< HEAD",
+    '  "20260824-side-a.ts": "aaaa"',
+    "=======",
+    '  "20260824-side-b.ts": "bbbb"',
+    ">>>>>>> origin/main",
+    "}",
+    "",
+  ].join("\n");
+
+  it("names `checkout --ours` and forbids the delete", () => {
+    // A manifest.json conflict is not an edge case: both sides append to the same
+    // tail on every two-migration merge, so git has nothing to interleave. The two
+    // obvious repairs are `--ours` (right) and `rm` (wrong, and invisible for a
+    // long time), so the message has to name which is which.
+    let message = "";
+    try {
+      parseManifest(CONFLICTED, "lib/migrations/manifest.json");
+    } catch (error) {
+      message = error instanceof Error ? error.message : String(error);
+    }
+    expect(message).toContain("CONFLICT MARKERS");
+    expect(message).toContain("git checkout --ours");
+    expect(message).toContain("DO NOT DELETE IT");
+  });
+
+  it("refuses rather than falling back to `{}`", () => {
+    // Swallowing an unreadable manifest as "no previous manifest" is the same
+    // fail-open as deleting the file: every entry reads as new and nothing is
+    // compared to anything.
+    expect(() => parseManifest(CONFLICTED, "m.json")).toThrow();
+    expect(() => parseManifest("{ not json", "m.json")).toThrow(
+      /is not valid JSON/
+    );
+    expect(parseManifest('{"a.ts":"x"}', "m.json")).toEqual({ "a.ts": "x" });
+  });
+
+  it("reaches the same refusal through readManifest, off disk", () => {
+    const dir = makeTmpDir("manifest-parse");
+    const file = path.join(dir, "manifest.json");
+    fs.writeFileSync(file, CONFLICTED, "utf8");
+    expect(() => readManifest(file)).toThrow(/CONFLICT MARKERS/);
+    fs.rmSync(dir, { recursive: true, force: true });
+  });
+});
+
+describe("runManifestCli, driven over argv and env (#3635 R5)", () => {
+  /** A corpus whose manifest is written, agrees with the bytes, and is `shipped`. */
+  const cliCorpus = () => {
+    const FIRST = "20260801-first.ts";
+    const SECOND = "20260802-second.ts";
+    const c = corpus(
+      {
+        [FIRST]: "export const migration = 1;\n",
+        [SECOND]: "export const migration = 2;\n",
+      },
+      [FIRST, SECOND]
+    );
+    const seed = generateManifest({
+      ...c,
+      shipped: { manifest: {}, source: "a corpus with no history", mergeBase: true },
+    });
+    expect(seed.wrote).toBe(true);
+    return {
+      paths: {
+        ...c,
+        shipped: {
+          manifest: seed.manifest,
+          source: "main, in this test",
+          mergeBase: true,
+        } satisfies ShippedReference,
+      },
+      first: FIRST,
+      versionsDir: c.versionsDir,
+      manifestPath: c.manifestPath,
+    };
+  };
+
+  it("reads --check out of npm's environment, and does NOT write", () => {
+    // `npm run gen:migration-manifest --check` — WITHOUT the `--` — is the
+    // invocation a nervous person reaches for, and npm swallows the flag before
+    // it can reach process.argv. It puts it in the environment instead. Without
+    // this reading, the verify-only run WRITES, which is the opposite of what was
+    // asked for and leaves no trace that it happened.
+    const c = cliCorpus();
+    fs.appendFileSync(
+      path.join(c.versionsDir, c.first),
+      "\n// an edit to a shipped migration\n",
+      "utf8"
+    );
+    const before = fs.readFileSync(c.manifestPath, "utf8");
+
+    const result = runManifestCli({
+      argv: [],
+      env: { npm_config_check: "true" },
+      paths: c.paths,
+    });
+    expect(result.exitCode).toBe(1);
+    expect(result.stderr).toContain("FAILS");
+    expect(
+      fs.readFileSync(c.manifestPath, "utf8"),
+      "the env --check was not read, so the run wrote the manifest it was asked to verify"
+    ).toBe(before);
+    fs.rmSync(c.versionsDir, { recursive: true, force: true });
+  });
+
+  it("treats npm's `false` as absent, so an unset flag does not check", () => {
+    // npm writes "true"/"false"; a "false" that reached here as truthy would turn
+    // every ordinary write into a verify and the tool would appear to do nothing.
+    const c = cliCorpus();
+    fs.writeFileSync(
+      path.join(c.versionsDir, "20260803-third.ts"),
+      "export const migration = 3;\n",
+      "utf8"
+    );
+    writeRegistry(c.paths.registryPath, [
+      c.first,
+      "20260802-second.ts",
+      "20260803-third.ts",
+    ]);
+    const result = runManifestCli({
+      argv: [],
+      env: { npm_config_check: "false" },
+      paths: c.paths,
+    });
+    expect(result.exitCode).toBe(0);
+    expect(result.stdout).toContain("Wrote ");
+    fs.rmSync(c.versionsDir, { recursive: true, force: true });
+  });
+
+  it("REFUSES an --allow-rehash that arrived only through the environment", () => {
+    // The one flag that moves a hash already on main. `npm_config_*` can come from
+    // an .npmrc or an exported shell variable nobody typed today, and a door that
+    // opens from ambient state is not a decision anybody made. Remove this and
+    // that door opens from the environment, silently, with the write succeeding.
+    const c = cliCorpus();
+    fs.appendFileSync(
+      path.join(c.versionsDir, c.first),
+      "\n// an edit to a shipped migration\n",
+      "utf8"
+    );
+    const before = fs.readFileSync(c.manifestPath, "utf8");
+
+    const result = runManifestCli({
+      argv: [],
+      env: { npm_config_allow_rehash: "true" },
+      paths: c.paths,
+    });
+    expect(result.exitCode).toBe(1);
+    expect(result.stderr).toContain("through npm's environment");
+    expect(result.stderr).toContain("-- --allow-rehash");
+    expect(result.stdout).toBe("");
+    expect(
+      fs.readFileSync(c.manifestPath, "utf8"),
+      "an env-only --allow-rehash rewrote a hash that is on main"
+    ).toBe(before);
+    fs.rmSync(c.versionsDir, { recursive: true, force: true });
+  });
+
+  it("honours the same flag when it is TYPED, where review can see it", () => {
+    // A refusal with no door is routed around within the hour. The point of the
+    // case above is where the decision is visible, not that it is forbidden.
+    const c = cliCorpus();
+    fs.appendFileSync(
+      path.join(c.versionsDir, c.first),
+      "\n// a deliberate rehash\n",
+      "utf8"
+    );
+    const result = runManifestCli({
+      argv: ["--allow-rehash"],
+      env: { npm_config_allow_rehash: "true" },
+      paths: c.paths,
+    });
+    expect(result.exitCode).toBe(0);
+    expect(result.stderr).toContain("--allow-rehash: rewrote 1 hash(es)");
+    fs.rmSync(c.versionsDir, { recursive: true, force: true });
+  });
+
+  it("passes --require-merge-base through, from argv and from the environment", () => {
+    // What CI runs. Both spellings, because npm swallows the bare one exactly as
+    // it swallows `--check`.
+    const c = cliCorpus();
+    const tip = { ...c.paths, shipped: { ...c.paths.shipped, mergeBase: false } };
+    for (const invocation of [
+      { argv: ["--check", "--require-merge-base"], env: {} },
+      { argv: [], env: { npm_config_check: "true", npm_config_require_merge_base: "true" } },
+    ]) {
+      const result = runManifestCli({ ...invocation, paths: tip });
+      expect(result.exitCode).toBe(1);
+      expect(result.stderr).toContain("CANNOT BE CHECKED");
+    }
+    // And silent when the reference is an ancestor, which is every ordinary run.
+    expect(
+      runManifestCli({
+        argv: ["--check", "--require-merge-base"],
+        paths: c.paths,
+      }).exitCode
+    ).toBe(0);
+    fs.rmSync(c.versionsDir, { recursive: true, force: true });
+  });
+
+  it("turns a thrown refusal into one message, with no stack trace", () => {
+    // Every refusal below the CLI already carries its whole remedy. A stack trace
+    // on top buries the one line the reader needs, and this was one of the two
+    // argv-shaped defects that put the command line in a testable function.
+    const c = cliCorpus();
+    fs.writeFileSync(
+      c.paths.registryPath,
+      ["<<<<<<< HEAD", "=======", ">>>>>>> origin/main", ""].join("\n"),
+      "utf8"
+    );
+    const result = runManifestCli({ argv: [], paths: c.paths });
+    expect(result.exitCode).toBe(1);
+    expect(result.stdout).toBe("");
+    expect(result.stderr).toContain("CONFLICT MARKERS");
+    expect(result.stderr).not.toContain("    at ");
     fs.rmSync(c.versionsDir, { recursive: true, force: true });
   });
 });

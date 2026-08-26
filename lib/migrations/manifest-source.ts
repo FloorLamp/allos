@@ -67,11 +67,14 @@ const CONFLICT_MARKER_RE = /^(<{7}|={7}|>{7})/m;
 // REGISTRY ORDER IS THE MANIFEST'S ORDER, and it is read out of index.ts rather
 // than guessed. `MIGRATIONS` is an array of import ALIASES, so the order is only
 // recoverable by pairing each alias with the module specifier it was imported
-// from — and filename sort is NOT the same list. Measured on main 2026-08-23: of
-// 219 migrations, 23 register at a different position than they sort at, and
-// `20260813-encounter-diagnosis-ranks.ts` registers 186th but sorts 188th, two
+// from — and filename sort is NOT the same list. Measured on main 2026-08-26: of
+// 220 migrations, 24 register at a different position than they sort at, and
+// `20260813-encounter-diagnosis-ranks.ts` registers 187th but sorts 189th, two
 // positions off. (Import order, `MIGRATIONS` order and the manifest's key order
-// agree at all 219 — those three are the same list; the sorted one is not.)
+// agree at all 220 — those three are the same list; the sorted one is not.)
+//
+// Re-measure it rather than trusting the number: it moves with every merge, and
+// the count was 23 of 219 three days before this line was written.
 //
 // Text, not import: this must be readable by a script that refuses a tree where
 // index.ts and versions/ disagree, and an import of a registry naming a file that
