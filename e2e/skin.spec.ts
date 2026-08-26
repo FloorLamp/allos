@@ -1,6 +1,10 @@
 import { test, expect } from "./fixtures";
 import Database from "better-sqlite3";
-import { settledClick } from "./helpers";
+import { dismissToast, hydratedClick, settledClick } from "./helpers";
+import {
+  expectDesktopSpecialtySubmit,
+  expectPhoneSpecialtySubmit,
+} from "./specialty-form-actions";
 import { workerDbPath } from "./worker-env";
 
 // Skin-lesion tracking on the Skin section of /records (#715, folded #1042): add a body-map-anchored lesion through the real
@@ -14,6 +18,7 @@ import { workerDbPath } from "./worker-env";
 // or lesion_photos it seeds off them).
 const DB_PATH = workerDbPath();
 const LABEL = "E2ESkinWatchMole"; // collision-free identity marker (not in seed)
+const PHONE = { width: 390, height: 844 };
 
 // A tiny (8x8) solid PNG, base64 — a synthetic fixture image (no PHI).
 // It must DECODE now, not merely pass a magic-byte sniff: since #1844 a lesion photo
@@ -59,6 +64,23 @@ test.describe("Skin lesions — add → view → track recheck → photo → fil
     await page.getByTestId("add-skin-lesion-panel-toggle").click();
     const form = page.getByTestId("skin-lesion-form");
     await expect(form).toBeVisible();
+    const add = form.getByRole("button", { name: "Add", exact: true });
+    await expectDesktopSpecialtySubmit({
+      form,
+      actions: form.getByTestId("skin-lesion-actions"),
+      primaryOwner: form.getByTestId("skin-lesion-primary-action"),
+      submit: add,
+      name: "skin add",
+    });
+    await page.setViewportSize(PHONE);
+    await expectPhoneSpecialtySubmit({
+      form,
+      actions: form.getByTestId("skin-lesion-actions"),
+      primaryOwner: form.getByTestId("skin-lesion-primary-action"),
+      submit: add,
+      fillsActions: true,
+      name: "phone skin add",
+    });
 
     // Add a WATCH lesion on the scalp with an ABCDE observation + a recheck interval.
     await form.getByLabel("Label / location").fill(LABEL);
@@ -67,10 +89,7 @@ test.describe("Skin lesions — add → view → track recheck → photo → fil
     await form.getByRole("checkbox", { name: /Evolving/ }).check();
     await form.getByLabel("Finding / note").fill("Even brown, watch it.");
     await form.getByLabel("Recheck in (days)").fill("91");
-    await settledClick(
-      page,
-      form.getByRole("button", { name: "Add", exact: true })
-    );
+    await settledClick(page, add);
     await expect(page.getByText("Lesion saved")).toBeVisible();
 
     // It appears as its own identity card with a watch badge + the ABCDE letters.
@@ -78,6 +97,9 @@ test.describe("Skin lesions — add → view → track recheck → photo → fil
     await expect(card).toBeVisible();
     await expect(card).toContainText("watch");
     await expect(card).toContainText("ABCDE observations: E");
+    await dismissToast(page, "Lesion saved");
+    await page.reload();
+    await expect(card).toBeVisible();
 
     // Track a recheck follow-up on it — the row's control turns into a tracked state.
     const trackForm = card.getByTestId(/^track-skin-followup-/);
@@ -109,6 +131,7 @@ test.describe("Skin lesions — add → view → track recheck → photo → fil
     await settledClick(page, upload.getByRole("button", { name: "Add photo" }));
     const tile = card.locator('[data-testid^="photo-gallery-item-"]');
     await expect(tile).toBeVisible({ timeout: 15000 });
+    await dismissToast(page, "Photo added");
     // The grid reads the ingest thumbnail; the lightbox opens the full image.
     await tile.click();
     const lightbox = page.getByTestId("photo-lightbox");
@@ -129,9 +152,35 @@ test.describe("Skin lesions — add → view → track recheck → photo → fil
     ).toBeVisible();
 
     // Edit the observation record: change the finding note.
-    await card.getByRole("button", { name: "Record actions" }).click();
+    await hydratedClick(
+      page,
+      card.getByRole("button", { name: "Record actions" })
+    );
     await page.getByRole("menuitem", { name: "Edit" }).click();
-    const editForm = card.getByTestId("skin-lesion-form");
+    let editForm = card.getByTestId("skin-lesion-form");
+    await expectPhoneSpecialtySubmit({
+      form: editForm,
+      actions: editForm.getByTestId("skin-lesion-actions"),
+      primaryOwner: editForm.getByTestId("skin-lesion-primary-action"),
+      submit: editForm.getByRole("button", { name: "Save", exact: true }),
+      adjacent: editForm.getByRole("button", {
+        name: "Cancel",
+        exact: true,
+      }),
+      name: "phone skin edit",
+    });
+    await hydratedClick(
+      page,
+      editForm.getByRole("button", { name: "Cancel", exact: true })
+    );
+    await expect(editForm).toHaveCount(0);
+
+    await hydratedClick(
+      page,
+      card.getByRole("button", { name: "Record actions" })
+    );
+    await page.getByRole("menuitem", { name: "Edit" }).click();
+    editForm = card.getByTestId("skin-lesion-form");
     await editForm
       .getByLabel("Finding / note")
       .fill("Unchanged since baseline.");
@@ -144,11 +193,17 @@ test.describe("Skin lesions — add → view → track recheck → photo → fil
     await expect(card).toContainText("Unchanged since baseline.", {
       timeout: 15_000,
     });
+    await dismissToast(page, "Lesion updated");
+    await page.reload();
+    await expect(card).toContainText("Unchanged since baseline.");
 
     // Delete the observation and confirm the card is gone. The row's "Delete" button
     // opens the confirm dialog (a client toggle); the dialog's Delete fires the POST.
     // exact:true scopes it off the lightbox's "Delete photo" control.
-    await card.getByRole("button", { name: "Record actions" }).click();
+    await hydratedClick(
+      page,
+      card.getByRole("button", { name: "Record actions" })
+    );
     await page.getByRole("menuitem", { name: "Delete", exact: true }).click();
     await settledClick(
       page,
