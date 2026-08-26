@@ -8,7 +8,7 @@ import {
   E2E_MEMBER_PASSWORD,
 } from "./fixture-logins";
 import { workerDbPath } from "./worker-env";
-import { openDashboardAll, settledClick } from "./helpers";
+import { openDashboardAll, settledBoxes, settledClick } from "./helpers";
 
 function resetDashboardAllOffer(): void {
   const db = new Database(workerDbPath());
@@ -705,11 +705,8 @@ test("the Standing link covers its phone label and desktop plot without covering
     await expect
       .poll(() => door.evaluate((node) => getComputedStyle(node).opacity))
       .toBe("1");
-    const [ageBox, doorBox] = await Promise.all([
-      age.boundingBox(),
-      door.boundingBox(),
-    ]);
-    expect(ageBox!.x + ageBox!.width).toBeLessThanOrEqual(doorBox!.x + 1);
+    const [ageBox, doorBox] = await settledBoxes([age, door]);
+    expect(ageBox.x + ageBox.width).toBeLessThanOrEqual(doorBox.x + 1);
     expect(await family.boundingBox()).toEqual(before);
 
     const plot = (await family
@@ -726,11 +723,8 @@ test("the Standing link covers its phone label and desktop plot without covering
     await page.setViewportSize({ width: 640, height: 844 });
     await page.goto("/");
     const midRow = page
-      .locator("[data-standing-family][data-standing-trend]")
-      .filter({ has: page.locator(".standing-age") })
-      .first()
-      .getByRole("link")
-      .first(); // first-ok: the plotted family's primary candidate
+      .locator('[data-candidate-id^="weight.latest:"]')
+      .getByRole("link");
     await midRow.focus();
     await expect
       .poll(() =>
