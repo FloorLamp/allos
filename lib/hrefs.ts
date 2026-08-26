@@ -169,6 +169,40 @@ export function doseLedgerHref(
   return qs ? `/nutrition/dose-history?${qs}` : "/nutrition/dose-history";
 }
 
+interface EventLedgerHrefParams {
+  from?: string;
+  to?: string;
+  item?: string;
+  allTime?: boolean;
+  page?: number;
+}
+
+function eventLedgerHref(
+  path: string,
+  params: EventLedgerHrefParams
+): AppRoute {
+  const sp = new URLSearchParams();
+  if (params.allTime) sp.set("range", "all");
+  if (params.from) sp.set("from", params.from);
+  if (params.to) sp.set("to", params.to);
+  if (params.item) sp.set("item", params.item);
+  if (params.page && params.page > 1) sp.set("page", String(params.page));
+  const qs = sp.toString();
+  return (qs ? `${path}?${qs}` : path) as AppRoute;
+}
+
+/** The Nutrition door into the serving-row ledger (#3484). */
+export function foodLedgerHref(params: EventLedgerHrefParams = {}): AppRoute {
+  return eventLedgerHref("/nutrition/food-history", params);
+}
+
+/** The Wellness door into the cross-practice session ledger (#3484/#2151). */
+export function practiceLedgerHref(
+  params: EventLedgerHrefParams = {}
+): AppRoute {
+  return eventLedgerHref("/wellness/practice-history", params);
+}
+
 // "Add this bottle for another person" (#1705) — the cabinet's second entry point into
 // the item forms. Same kind→surface rule as intakeHref, plus the `?supply=` param the
 // two surfaces parse to open their add form pre-seeded and pre-linked. One helper so the

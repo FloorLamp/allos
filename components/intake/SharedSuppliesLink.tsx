@@ -1,5 +1,5 @@
-import Link from "next/link";
-import { IconArchive, IconChevronRight } from "@tabler/icons-react";
+import { IconArchive } from "@tabler/icons-react";
+import DestinationLink from "@/components/DestinationLink";
 import { sharedSuppliesLinkLabel } from "@/lib/refill";
 import { SUPPLIES_HREF } from "@/lib/hrefs";
 
@@ -36,21 +36,14 @@ export default function SharedSuppliesLink({
   const accessibleName =
     count > 0 ? `Medicine cabinet: ${label}` : "Medicine cabinet";
   return (
-    <Link
+    <DestinationLink
       href={SUPPLIES_HREF}
       data-testid="shared-supplies-link"
-      title="Medicine cabinet"
       aria-label={accessibleName}
       className={`inline-flex shrink-0 items-center gap-1 whitespace-nowrap text-sm text-link ${className}`}
     >
       <IconArchive aria-hidden className="h-4 w-4 shrink-0" stroke={1.75} />
       {label}
-      <IconChevronRight
-        aria-hidden
-        className="h-4 w-4 shrink-0"
-        data-testid="shared-supplies-chevron"
-        stroke={1.75}
-      />
-    </Link>
+    </DestinationLink>
   );
 }

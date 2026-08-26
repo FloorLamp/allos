@@ -1,5 +1,6 @@
 import Link from "next/link";
-import { IconFileImport, IconChevronRight } from "@tabler/icons-react";
+import { IconFileImport } from "@tabler/icons-react";
+import DestinationLink from "@/components/DestinationLink";
 
 // Points at the Import page, where health-record uploads live alongside lab/scan
 // documents. A MyChart "Download Summary" (CCD/XDM) or SMART Health Card imported
@@ -45,7 +46,7 @@ export default function MyChartImport({
   }
 
   return (
-    <Link
+    <DestinationLink
       href="/data?section=import"
       className="card flex items-center gap-3 transition hover:border-brand-400 hover:bg-brand-50/40 dark:hover:bg-brand-950/30"
     >
@@ -62,10 +63,6 @@ export default function MyChartImport({
           Import page to bring in your immunizations, labs, and vitals.
         </p>
       </div>
-      <IconChevronRight
-        className="h-4 w-4 shrink-0 text-slate-500 dark:text-slate-400"
-        stroke={1.75}
-      />
-    </Link>
+    </DestinationLink>
   );
 }

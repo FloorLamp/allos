@@ -22,6 +22,7 @@ import { recentWindowStart } from "./training/common";
 import { suggestFoods, type FoodSuggestion } from "../food-suggest";
 import {
   getMetricDailyTotals,
+  getAdditiveMetricDailyTotalsBatch,
   getWeights,
   getLatestMetricValue,
 } from "./metrics";
@@ -138,6 +139,8 @@ import {
   foodGroupSlugs,
   type FoodGroup,
 } from "../food-groups";
+import { pageCount, pageOffset } from "../pagination";
+import { bestKnownInstant } from "../row-instants";
 
 // Safety-screened food suggestions for the profile's currently-flagged, diet-responsive
 // biomarker families. Deterministic; the AI narration tier (deferred, #576 Phase 3)
@@ -345,6 +348,67 @@ export function getFoodMealDays(
   for (const day of byDate.values()) day.events.reverse();
 
   return dates.map((date) => byDate.get(date)!);
+}
+
+export interface FoodLedgerRow {
+  id: number;
+  group_key: string;
+  date: string;
+  recorded_at: string;
+  meal_slot: FoodSlot | null;
+  occurred_at: string | null;
+}
+
+/**
+ * One server-paged serving ledger. The event table, rather than its daily counter,
+ * is the row identity because corrections and undo name a single serving. Reserved
+ * ranking/protein observations are excluded by joining the curated food vocabulary
+ * in memory at the filter boundary and by the write store's reserved-key prefix.
+ */
+export function getFoodLedgerPage(
+  profileId: number,
+  from: string,
+  options: { untilDate?: string | null; groupKey?: string },
+  page: number,
+  pageSize: number
+): { rows: FoodLedgerRow[]; total: number; page: number } {
+  const requestedPage = Math.max(1, Math.floor(page));
+  const boundedSize = Math.max(1, Math.min(Math.floor(pageSize), 100));
+  const where = ["date >= ?", "substr(group_key, 1, 2) != '__'"];
+  const args: Array<string | number> = [profileId, from];
+  if (options.untilDate) {
+    where.push("date <= ?");
+    args.push(options.untilDate);
+  }
+  if (options.groupKey) {
+    where.push("group_key = ?");
+    args.push(options.groupKey);
+  }
+  const total = (
+    db
+      .prepare(
+        `SELECT COUNT(*) AS n FROM food_log_events
+          WHERE profile_id = ? AND ${where.join(" AND ")}`
+      )
+      .get(...args) as {
+      n: number;
+    }
+  ).n;
+  const boundedPage = Math.min(requestedPage, pageCount(total, boundedSize));
+  const rows = db
+    .prepare(
+      `SELECT id, group_key, date, recorded_at, meal_slot, occurred_at
+         FROM food_log_events
+        WHERE profile_id = ? AND ${where.join(" AND ")}
+        ORDER BY date DESC, COALESCE(occurred_at, recorded_at) DESC, id DESC
+        LIMIT ? OFFSET ?`
+    )
+    .all(
+      ...args,
+      boundedSize,
+      pageOffset(boundedPage, boundedSize)
+    ) as FoodLedgerRow[];
+  return { rows, total, page: boundedPage };
 }
 
 // The profile's food-log rows on/after `since` (inclusive), as FoodDailyServingTotal[] for the
@@ -596,13 +660,19 @@ function gatherFoodRankingSignals(
       )
       .all(profileId, since) as Omit<FoodLedgerEvent, "meal_slot">[];
     slot = slotProximityOccurrences(
-      events.map((e) => ({
-        name: e.name,
-        date: e.date,
-        minuteOfDay: hhmmToMinutes(
-          zonedDateParts(tz, new Date(e.occurred_at ?? e.recorded_at)).hhmm
-        ),
-      })),
+      events.flatMap((event) => {
+        const instant = bestKnownInstant("food_log_events", { ...event });
+        if (!instant.known) return [];
+        return [
+          {
+            name: event.name,
+            date: event.date,
+            minuteOfDay: hhmmToMinutes(
+              zonedDateParts(tz, new Date(instant.at)).hhmm
+            ),
+          },
+        ];
+      }),
       profileFoodSlotAnchors(profileId)[window]
     );
   }
@@ -1087,17 +1157,23 @@ export function getMacroFiberDays(
   profileId: number,
   range: DateRange
 ): MacroFiberDay[] {
+  const tracked = getAdditiveMetricDailyTotalsBatch(profileId, [
+    "protein_g",
+    "carbs_g",
+    "fat_g",
+    "fiber_g",
+  ]);
   return filterSeriesByRange(
     buildMacroFiberSeries({
       protein: mergeProteinSources(
-        getMetricDailyTotals(profileId, "protein_g"),
+        tracked.get("protein_g")!,
         getProteinDailyTotals(profileId, range.from ?? "0000-01-01").map(
           (r) => ({ date: r.date, value: r.grams })
         )
       ),
-      carbs: getMetricDailyTotals(profileId, "carbs_g"),
-      fat: getMetricDailyTotals(profileId, "fat_g"),
-      fiber: getMetricDailyTotals(profileId, "fiber_g"),
+      carbs: tracked.get("carbs_g")!,
+      fat: tracked.get("fat_g")!,
+      fiber: tracked.get("fiber_g")!,
     }),
     range
   );

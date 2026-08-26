@@ -221,7 +221,6 @@ export default function DateField({
         autoFocus={autoFocus}
         placeholder={placeholder}
         inputMode="numeric"
-        title="Date in YYYY-MM-DD format"
         autoComplete="off"
         onChange={(e) => setVal(e.target.value)}
         // FOCUS OPENS THE CALENDAR ONLY WHERE IT IS A POPOVER. From `md` up the
@@ -254,7 +253,6 @@ export default function DateField({
         type="button"
         onClick={() => setOpen((o) => !o)}
         aria-label="Open calendar"
-        title="Open calendar"
         className="absolute right-2 top-1/2 -translate-y-1/2 text-slate-500 transition hover:text-slate-600 dark:text-slate-400 dark:hover:text-slate-300"
       >
         <svg
@@ -334,7 +332,6 @@ export default function DateField({
                   type="button"
                   onClick={() => shift(-1)}
                   aria-label="Previous month"
-                  title="Previous month"
                   className="flex h-11 w-11 items-center justify-center rounded-sm text-slate-500 hover:bg-slate-100 hover:text-slate-700 md:h-8 md:w-8 dark:text-slate-400 dark:hover:bg-ink-800 dark:hover:text-slate-200"
                 >
                   <IconChevronLeft className="h-4 w-4" />
@@ -343,7 +340,6 @@ export default function DateField({
                   type="button"
                   onClick={() => shift(1)}
                   aria-label="Next month"
-                  title="Next month"
                   className="flex h-11 w-11 items-center justify-center rounded-sm text-slate-500 hover:bg-slate-100 hover:text-slate-700 md:h-8 md:w-8 dark:text-slate-400 dark:hover:bg-ink-800 dark:hover:text-slate-200"
                 >
                   <IconChevronRight className="h-4 w-4" />

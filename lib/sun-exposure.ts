@@ -10,6 +10,8 @@
 // Pure (no DB/clock); the DB input assembly lives in lib/queries/sun +
 // buildSunExposureFindings (lib/rule-findings.ts).
 
+import { displayUnit } from "@/lib/display-unit";
+
 // dedupeKey namespace for the suppression bus + the RULE_FINDING_PREFIXES registry.
 export const SUN_EXPOSURE_PREFIX = "sun-exposure:";
 
@@ -57,9 +59,10 @@ export function decideSunExposure(
   if (input.avgWeeklyDaylightMin >= LOW_WEEKLY_DAYLIGHT_MIN) return null;
 
   const perWeek = Math.round(input.avgWeeklyDaylightMin);
+  const shownVitaminDUnit = displayUnit(input.vitaminDUnit);
   const valueText =
     input.vitaminDValue != null
-      ? `${input.vitaminDValue}${input.vitaminDUnit ? ` ${input.vitaminDUnit}` : ""}`
+      ? `${input.vitaminDValue}${shownVitaminDUnit ? ` ${shownVitaminDUnit}` : ""}`
       : "your last reading";
   return {
     dedupeKey: sunExposureSignalKey(input.vitaminDDate),

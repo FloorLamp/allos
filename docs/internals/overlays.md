@@ -44,6 +44,14 @@ workout" and reopen the docked session with its epoch untouched, and both
 `openLive`/`openSession` enforce that internally so a stale caller can't stomp
 it either. See [stateful affordances](./stateful-affordances.md).
 
+The quick-log consumer holds its own content geometry stable (#3675), without a
+`BottomSheet` variant: it reserves the due-and-usual context slot before that
+Server Action resolves and fixes the row list to the largest segment the active
+profile can actually see. Both reserves remain inside BottomSheet's existing
+content scroller. Segment switches, non-empty gathers, empty answers, and failed
+gathers therefore leave the panel and its segment strip in place; only the
+gathered section's declared opacity-only `arrive` receipt paints.
+
 ## Choosing a host for a new surface
 
 One rule, so a new form does not pick its host by looking at whichever neighbour
@@ -107,10 +115,13 @@ Three converged when the ruling landed. `MergeConflictDialog` and
 that had shipped without `overscroll-contain` — the #2774 defect, live, for as
 long as the convergence has existed (#3421).
 
-These are the exceptions. Each is registered in `HOSTLESS_DIALOGS`
-(`scripts/dialog-census-core.ts`) and says in its own file which it is;
-`lib/__tests__/dialog-census.test.ts` fails if this table and that register stop
-naming the same files.
+These are the current non-host rows. Some are genuine anatomy-driven exceptions
+to the shared primitives; some have already converged onto
+`components/overlay` rather than the dialog host. Primitive-first convergence
+onto `ModalShell` or `components/overlay` stays the default.
+`HOSTLESS_DIALOGS` (`scripts/dialog-census-core.ts`) is documentary input to
+the detector, and `lib/__tests__/dialog-census.test.ts` keeps that input and
+this table aligned.
 
 | Dialog                                          | Why the shared host cannot serve it                                                                                                                                                                                                                                                                                                                                                     |
 | ----------------------------------------------- | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
@@ -269,7 +280,7 @@ carried a border wrapper with no page mount left to serve.
 - **`useOverlayDrag`** — panel drag-to-resolve: finger-following, release
   settle, and the keyframe/inline-transform handshake (below).
 - **`OverlayDragHandle` + `tokens.ts`** — the affordance (a 40×6 bar inside a
-  64×24 hit target), the scrim tint, panel radius/elevation/safe-area padding.
+  64×44 hit target), the scrim tint, panel radius/elevation/safe-area padding.
 - **`overlayMotionClass()`** (from `lib/motion.ts`) — the enter/exit classes
   over ONE duration + easing pair, declared once as `--overlay-ms` /
   `--overlay-ease-enter` / `--overlay-ease-exit` in `app/globals.css`.
@@ -369,6 +380,16 @@ drag. A pointer-based recognizer therefore never gets to decide anything. Touch
 events keep flowing, which lets our axis lock do the arbitration. Consequence,
 accepted: these are touch gestures only; the tap/click affordance beside each
 one is the pointer route.
+
+**BottomSheet fixes body ownership at touch-start** (#3691). The handle always
+owns a downward drag, whatever the content scroll position. A drag beginning in
+the content owns dismissal only when every effective vertical scroll owner from
+the touch origin through the sheet content was already at its top. That includes
+intentional nested form scrollers with fixed action footers; beginning below any
+owner's top belongs to native scrolling for the touch's entire lifecycle, even
+if the scroll reaches zero before the finger lifts. The shared recognizer's
+one-shot `canStart` admission expresses that boundary without preventing
+default, re-reading mid-gesture, or interfering with taps and fields.
 
 **`overscroll-behavior-x: contain`** on `html`/`body`. Without it a horizontal
 drag the page cannot scroll CHAINS to the browser's in-page history navigation:
@@ -499,11 +520,12 @@ nothing, so `npm run census:dialogs` prints it as `found by ANATOMY`.
 It reports dialogs belonging to no dialog host rather than omitting them, in two
 sections that are two different answers: RECORDED EXCEPTIONS (the table above),
 and SCOPED OUT BY ANATOMY (surfaces the convergence rule was never about).
-`lib/__tests__/dialog-census.test.ts` fails when a new hostless dialog appears
-unrecorded, when a record outlives its subject, and when the register and the
-table above stop naming the same files. It does not fail on the recorded set —
-those are sanctioned, and a build error on a sanctioned exception is how a
-register teaches the next reader to ignore it.
+`lib/__tests__/dialog-census.test.ts` is the detection layer: it fails when a
+new hostless dialog appears, when a documentary `HOSTLESS_DIALOGS` entry
+outlives its subject, and when that input and the table above drift apart. It
+does not make hostless dialogs the goal; the default remains convergence onto
+`ModalShell` or `components/overlay`, and the remaining rows are explained here
+rather than minted by recurrence.
 
 ## Testing gestures
 

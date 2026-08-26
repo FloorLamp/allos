@@ -1,6 +1,7 @@
 "use client";
 
 import { IconX } from "@tabler/icons-react";
+import IconButton from "@/components/IconButton";
 import {
   matchFoodInteractions,
   foodGuidanceLine,
@@ -95,15 +96,14 @@ export default function FoodGuidance({
                 name="dedupe_key"
                 value={foodTimingSignalKey(itemId, hit.key)}
               />
-              <button
+              <IconButton
                 type="submit"
                 data-testid="food-guidance-dismiss"
-                aria-label={`Dismiss ${hit.food} guidance for ${name}`}
-                title="Dismiss"
-                className="flex h-4 w-4 shrink-0 items-center justify-center rounded-full text-amber-500 transition hover:bg-amber-100 hover:text-amber-700 dark:text-amber-400 dark:hover:bg-amber-900/40"
+                label={`Dismiss ${hit.food} guidance for ${name}`}
+                tone="amber"
               >
                 <IconX className="h-3 w-3" stroke={2} />
-              </button>
+              </IconButton>
             </form>
           ) : null}
         </div>

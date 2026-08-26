@@ -8,9 +8,7 @@ import { hydratedClick } from "./helpers";
 // the FHIR passport, and the per-dataset JSON/CSV files. The companion "Clinical
 // passport (FHIR)" link downloads a parseable FHIR Bundle. Both routes are session-
 // gated and scoped to the active (seeded) profile.
-// Open the Data page's "Manage & export" section. It's a NavTabs section rendered
-// server-side from ?section=, so the direct navigation already paints it; clicking
-// the tab (role=tab) confirms it's the selected section.
+// Direct navigation paints the server-selected section; clicking confirms it.
 async function openManageTab(page: import("@playwright/test").Page) {
   await page.goto("/data?section=manage");
   await page.getByRole("tab", { name: "Manage & export" }).click();

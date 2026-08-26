@@ -118,7 +118,6 @@ export default function UsualRoutineControl({
       data-groups={groups.join(",")}
       data-doses={doseIds.join(",")}
       aria-label={`${heading}: ${phrase}`}
-      title={`One tap logs ${phrase}`}
       disabled={ledger.blocked()}
       onClick={run}
       className="mb-3 flex w-full items-center gap-3 rounded-lg border border-brand-200 bg-brand-50/60 px-3 py-2 text-left transition hover:bg-brand-50 disabled:opacity-50 dark:border-brand-900 dark:bg-brand-950/40 dark:hover:bg-brand-950/60"

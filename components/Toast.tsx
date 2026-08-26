@@ -6,8 +6,8 @@ import {
   useContext,
   useEffect,
   useMemo,
+  useRef,
   useState,
-  useSyncExternalStore,
 } from "react";
 import {
   IconCircleCheck,
@@ -21,8 +21,13 @@ import {
   beginExit,
   dropExited,
   visibleToasts,
+  dismissOtherProfileToasts,
+  clearProfileToasts,
+  acceptsProfileToast,
+  type ProfileToastScope,
 } from "@/lib/toast-upsert";
 import { motionClass, motionMs, overlayMotionClass } from "@/lib/motion";
+import { useCompactViewport } from "@/components/useCompactViewport";
 import { usePrefersReducedMotion } from "@/components/usePrefersReducedMotion";
 import {
   BOTTOM_EDGE_GUTTER_LEFT,
@@ -75,11 +80,24 @@ interface ToastOptions {
   // (position kept, timer reset) instead of stacking — so a lifecycle slot can
   // upgrade ("Uploaded — reading…" → "12 records ✓"). Keyless toasts always stack.
   key?: string;
+  // Subject stamp for health-data receipts that can survive navigation. Profile
+  // switching clears every toast whose stamp no longer matches, queued or shown.
+  profileId?: number;
+  profileToken?: number;
+  // Opaque interaction-lifecycle ownership for conditional keyed publication
+  // and cleanup. A newer same-key claim still owns the shared slot globally.
+  owner?: symbol;
+  // A continuation may publish only while its interaction-start reservation
+  // still owns the key. Initial/legacy keyed posts omit this and claim normally.
+  onlyIfOwner?: boolean;
 }
 
 interface ToastItem {
   id: number;
   key?: string;
+  profileId?: number;
+  profileToken?: number;
+  owner?: symbol;
   // Bumped on each in-place replace so the card's dismiss timer restarts (#1315).
   revision: number;
   // Set while the bar plays its exit animation; see lib/toast-upsert.ts.
@@ -91,76 +109,134 @@ interface ToastItem {
 }
 
 type ToastFn = (message: string, options?: ToastOptions) => void;
-type DismissKeyFn = (key: string) => void;
+type DismissKeyFn = (key: string, owner?: symbol) => void;
+type ClaimKeyFn = (
+  key: string,
+  owner: symbol,
+  dismissCurrent?: boolean
+) => void;
+type ActivateProfileFn = (activeProfileId: number | null) => void;
+type GetProfileScopeFn = () => ProfileToastScope | null;
 
 interface ToastApi {
   toast: ToastFn;
   dismissKey: DismissKeyFn;
+  claimKey: ClaimKeyFn;
+  activateProfile: ActivateProfileFn;
+  profileScope: ProfileToastScope | null;
+  getProfileScope: GetProfileScopeFn;
 }
 
 // Default auto-dismiss by tone (ms). Errors linger longer since they carry
 // something to read.
 const DEFAULT_DURATION: Record<Tone, number> = { success: 6000, error: 10000 };
 
-// The breakpoint the two shapes split on — Tailwind's `md`, the same one every
-// `md:` class below is written against.
-const SNACKBAR_QUERY = "(max-width: 767.98px)";
-
-function subscribeSnackbar(onChange: () => void): () => void {
-  if (typeof window === "undefined" || !window.matchMedia) return () => {};
-  const query = window.matchMedia(SNACKBAR_QUERY);
-  query.addEventListener("change", onChange);
-  return () => query.removeEventListener("change", onChange);
-}
-
-function snackbarSnapshot(): boolean {
-  return (
-    typeof window !== "undefined" &&
-    !!window.matchMedia?.(SNACKBAR_QUERY).matches
-  );
-}
-
-const serverSnackbarSnapshot = () => false;
-
-// Whether toasts render as the phone snackbar. This is a genuine BEHAVIOUR fork —
-// how many toasts are on screen, and whether the rest are waiting — not a layout
-// one, so it cannot live in a media query the way the `md:` classes do. There is
-// no wrong first paint to worry about: a toast only ever exists because something
-// on the client raised one, so this is never read during SSR or hydration.
-function useSnackbarViewport(): boolean {
-  return useSyncExternalStore(
-    subscribeSnackbar,
-    snackbarSnapshot,
-    serverSnackbarSnapshot
-  );
-}
-
 const ToastContext = createContext<ToastApi | null>(null);
+const mountedProfileActivators = new Set<ActivateProfileFn>();
+
+// Sign-out begins before the authenticated layout unmounts. These module-level
+// relays let that boundary clear/re-arm every mounted provider without making the
+// reusable logout control require a ToastProvider in isolation tests.
+export function clearProfileToastsForLogout(): void {
+  for (const activate of mountedProfileActivators) activate(null);
+}
+
+export function restoreToastProfileAfterFailedLogout(profileId: number): void {
+  for (const activate of mountedProfileActivators) activate(profileId);
+}
 
 let seq = 0;
 
 export function ToastProvider({ children }: { children: React.ReactNode }) {
   const [toasts, setToasts] = useState<ToastItem[]>([]);
+  const [profileScope, setProfileScope] = useState<ProfileToastScope | null>(
+    null
+  );
+  const profileScopeRef = useRef<ProfileToastScope | null>(null);
+  const profileTokenRef = useRef(0);
+  const keyedOwnersRef = useRef(new Map<string, symbol>());
   const reduceMotion = usePrefersReducedMotion();
-  const snackbar = useSnackbarViewport();
+  const snackbar = useCompactViewport();
   const exitMs = motionMs("notice", reduceMotion);
 
   // Dismissal is two steps: mark the toast so it plays its exit animation, then
   // drop it when the animation is over. Under reduced motion `exitMs` is 0 and the
   // timeout runs on the next tick, so the sequence is the same and simply snaps.
   const dismiss = useCallback(
-    (id: number) => {
-      setToasts((list) => beginExit(list, id));
+    (id: number, preserveOwner = false) => {
+      setToasts((list) => {
+        const item = list.find((toast) => toast.id === id);
+        if (
+          !preserveOwner &&
+          item?.key != null &&
+          item.owner != null &&
+          keyedOwnersRef.current.get(item.key) === item.owner
+        )
+          keyedOwnersRef.current.delete(item.key);
+        return beginExit(list, id);
+      });
       setTimeout(() => setToasts((list) => dropExited(list, id)), exitMs);
     },
     [exitMs]
   );
 
-  const dismissKey = useCallback<DismissKeyFn>((key) => {
-    setToasts((list) => dismissKeyed(list, key));
+  const dismissKey = useCallback<DismissKeyFn>((key, owner) => {
+    if (owner != null && keyedOwnersRef.current.get(key) !== owner) return;
+    keyedOwnersRef.current.delete(key);
+    setToasts((list) => dismissKeyed(list, key, owner));
   }, []);
 
+  const claimKey = useCallback<ClaimKeyFn>(
+    (key, owner, dismissCurrent = true) => {
+      keyedOwnersRef.current.set(key, owner);
+      if (dismissCurrent) setToasts((list) => dismissKeyed(list, key));
+    },
+    []
+  );
+
+  const activateProfile = useCallback<ActivateProfileFn>((activeProfileId) => {
+    const token = ++profileTokenRef.current;
+    const next =
+      activeProfileId == null ? null : { profileId: activeProfileId, token };
+    profileScopeRef.current = next;
+    setProfileScope(next);
+    setToasts((list) =>
+      activeProfileId == null
+        ? clearProfileToasts(list)
+        : dismissOtherProfileToasts(list, activeProfileId)
+    );
+  }, []);
+  useEffect(() => {
+    mountedProfileActivators.add(activateProfile);
+    return () => {
+      mountedProfileActivators.delete(activateProfile);
+    };
+  }, [activateProfile]);
+
+  // State is for consumers that render the scope. Interaction handlers need the
+  // commit-current value synchronously, including hydration-replayed events that
+  // run before passive effects have caused another render.
+  const getProfileScope = useCallback<GetProfileScopeFn>(
+    () => profileScopeRef.current,
+    []
+  );
+
   const toast = useCallback<ToastFn>((message, options = {}) => {
+    if (!acceptsProfileToast(profileScopeRef.current, options)) return;
+    if (options.key != null) {
+      if (options.onlyIfOwner) {
+        if (
+          options.owner == null ||
+          keyedOwnersRef.current.get(options.key) !== options.owner
+        )
+          return;
+      } else if (options.owner != null) {
+        keyedOwnersRef.current.set(options.key, options.owner);
+      } else {
+        // A legacy/global keyed post is itself a newer claim.
+        keyedOwnersRef.current.delete(options.key);
+      }
+    }
     const tone = options.tone ?? "success";
     const duration =
       options.duration === undefined
@@ -175,13 +251,30 @@ export function ToastProvider({ children }: { children: React.ReactNode }) {
         message,
         duration,
         action: options.action,
+        profileId: options.profileId,
+        profileToken: options.profileToken,
+        owner: options.owner,
       })
     );
   }, []);
 
   const api = useMemo<ToastApi>(
-    () => ({ toast, dismissKey }),
-    [toast, dismissKey]
+    () => ({
+      toast,
+      dismissKey,
+      claimKey,
+      activateProfile,
+      profileScope,
+      getProfileScope,
+    }),
+    [
+      toast,
+      dismissKey,
+      claimKey,
+      activateProfile,
+      profileScope,
+      getProfileScope,
+    ]
   );
 
   const shown = visibleToasts(toasts, snackbar);
@@ -218,7 +311,7 @@ function ToastCard({
   reduceMotion,
 }: {
   toast: ToastItem;
-  dismiss: (id: number) => void;
+  dismiss: (id: number, preserveOwner?: boolean) => void;
   reduceMotion: boolean;
 }) {
   const success = toast.tone === "success";
@@ -228,6 +321,12 @@ function ToastCard({
   // effect below re-ran and restarted every toast's countdown whenever any toast
   // was added or removed. `dismiss` is a stable useCallback, so this is too.
   const onDismiss = useCallback(() => dismiss(toast.id), [dismiss, toast.id]);
+  const onAction = useCallback(() => {
+    // The card may leave while a slow inverse runs, but its lifecycle reservation
+    // remains current until a newer claim or an explicit/manual timeout dismissal.
+    dismiss(toast.id, true);
+    toast.action?.onClick();
+  }, [dismiss, toast]);
   // Auto-dismiss after `duration` ms; a null duration keeps the toast up until
   // the user closes it by hand. `toast.revision` is a dep so an in-place keyed
   // replace (which keeps the id, so onDismiss is stable) restarts the countdown
@@ -272,10 +371,7 @@ function ToastCard({
       </p>
       {toast.action && (
         <button
-          onClick={() => {
-            toast.action?.onClick();
-            onDismiss();
-          }}
+          onClick={onAction}
           // The snackbar-action idiom below `md`: a full-height trailing button on
           // the bar, so a 10s undo window is actually hittable while walking
           // (#2642). From `md` up it is the inline link under the message it has
@@ -289,7 +385,6 @@ function ToastCard({
       <button
         onClick={onDismiss}
         aria-label="Dismiss"
-        title="Dismiss"
         // A real 44px box below `md` (#644), not the `tap-target` pseudo-element
         // on its own — that extension is coarse-pointer-only and invisible to a
         // layout measurement, and this is the control a thumb reaches for while
@@ -316,4 +411,36 @@ export function useDismissToast(): DismissKeyFn {
   if (!ctx)
     throw new Error("useDismissToast must be used within a ToastProvider");
   return ctx.dismissKey;
+}
+
+export function useClaimToastKey(): ClaimKeyFn {
+  const ctx = useContext(ToastContext);
+  if (!ctx)
+    throw new Error("useClaimToastKey must be used within a ToastProvider");
+  return ctx.claimKey;
+}
+
+export function useActivateToastProfile(): ActivateProfileFn {
+  const ctx = useContext(ToastContext);
+  if (!ctx)
+    throw new Error(
+      "useActivateToastProfile must be used within a ToastProvider"
+    );
+  return ctx.activateProfile;
+}
+
+export function useToastProfileScope(): ProfileToastScope | null {
+  const ctx = useContext(ToastContext);
+  if (!ctx)
+    throw new Error("useToastProfileScope must be used within a ToastProvider");
+  return ctx.profileScope;
+}
+
+export function useToastProfileScopeGetter(): GetProfileScopeFn {
+  const ctx = useContext(ToastContext);
+  if (!ctx)
+    throw new Error(
+      "useToastProfileScopeGetter must be used within a ToastProvider"
+    );
+  return ctx.getProfileScope;
 }

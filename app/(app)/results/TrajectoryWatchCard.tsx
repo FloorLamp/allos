@@ -1,6 +1,7 @@
 import { IconTrendingUp, IconX } from "@tabler/icons-react";
 import type { Finding } from "@/lib/findings";
 import FindingRow from "@/components/FindingRow";
+import IconButton from "@/components/IconButton";
 import PhoneFold from "@/components/PhoneFold";
 import {
   rollupTrajectoryFindings,
@@ -93,15 +94,13 @@ export default function TrajectoryWatchCard({
               every item inside posts, so this is a shortcut, not a bulk action. */}
           <form action={dismissAction}>
             <input type="hidden" name="dedupe_key" value={g.key} />
-            <button
+            <IconButton
               type="submit"
               data-testid="trajectory-rollup-dismiss"
-              aria-label={`Dismiss ${g.label} trajectory watch`}
-              title="Dismiss"
-              className="flex h-6 w-6 shrink-0 items-center justify-center rounded-full text-slate-500 transition hover:bg-slate-100 hover:text-slate-600 dark:text-slate-400 dark:hover:bg-ink-750 dark:hover:text-slate-300"
+              label={`Dismiss ${g.label} trajectory watch`}
             >
               <IconX className="h-4 w-4" stroke={2} />
-            </button>
+            </IconButton>
           </form>
         </div>
       </li>

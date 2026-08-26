@@ -143,9 +143,12 @@ export default function AudiogramForm({
           {error}
         </p>
       )}
-      <SubmitButton className="btn w-full" pendingLabel="Saving…">
-        Add
-      </SubmitButton>
+      <div
+        className="grid w-full sm:w-fit"
+        data-testid="audiogram-primary-action"
+      >
+        <SubmitButton pendingLabel="Saving…">Add</SubmitButton>
+      </div>
     </form>
   );
 }

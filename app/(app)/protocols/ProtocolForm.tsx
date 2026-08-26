@@ -747,7 +747,7 @@ export default function ProtocolForm({
                     type="button"
                     data-testid={`protocol-more-${key}`}
                     onClick={() => openPanel(key)}
-                    className="tap-target rounded-full border border-(--border) px-3 py-1.5 text-sm transition hover:bg-(--ghost-hover)"
+                    className="min-h-11 rounded-full border border-(--border) px-3 py-1.5 text-sm transition hover:bg-(--ghost-hover)"
                   >
                     {PROTOCOL_FACT_NOUNS[key]}
                   </button>
@@ -788,12 +788,14 @@ export default function ProtocolForm({
             Cancel
           </button>
         )}
-        <SubmitButton
-          className="btn w-full sm:w-auto sm:min-w-24"
-          pendingLabel="Saving…"
+        <div
+          className="grid w-full sm:w-auto sm:min-w-24"
+          data-testid="protocol-form-primary-action"
         >
-          {editing ? "Save" : "Create protocol"}
-        </SubmitButton>
+          <SubmitButton pendingLabel="Saving…">
+            {editing ? "Save" : "Create protocol"}
+          </SubmitButton>
+        </div>
       </div>
     </form>
   );

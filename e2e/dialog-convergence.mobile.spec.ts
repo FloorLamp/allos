@@ -327,6 +327,42 @@ test("the page behind an open quick-entry sheet does not move either", async ({
   );
 });
 
+test("a drag begun in a nested form scroller stays native for its whole touch", async ({
+  page,
+}) => {
+  test.slow();
+  await page.goto("/longevity#protocols");
+  await hydratedClick(
+    page,
+    page.getByRole("main").getByTestId("new-protocol-toggle")
+  );
+  const dialog = page.getByRole("dialog", { name: "Add protocol" });
+  await expect(dialog).toBeVisible();
+
+  // ProtocolForm owns an intentional inner scroller so its action footer stays
+  // fixed. The sheet's outer content remains at zero while this list moves; the
+  // touch-start admission must follow the effective owner under the finger.
+  const outer = dialog.locator("[data-sheet-content]");
+  const inner = dialog.getByTestId("protocol-form-scroll");
+  const starting = await inner.evaluate((node) => {
+    const available = node.scrollHeight - node.clientHeight;
+    node.scrollTop = Math.min(180, available);
+    return { available, scrollTop: node.scrollTop };
+  });
+  // Any non-zero range is sufficient for this ownership pin: the scroller is
+  // below its top at touch-start, and reaching zero during the same long swipe
+  // must never transfer that touch to the sheet.
+  expect(starting.available).toBeGreaterThan(0);
+  expect(starting.scrollTop).toBeGreaterThan(0);
+  expect(await outer.evaluate((node) => node.scrollTop)).toBe(0);
+
+  await touchSwipeFrom(page, inner, { dy: 240 }, { stepDelayMs: 20 });
+
+  await expect(dialog).toBeVisible();
+  await expect(page.getByTestId("confirm-dialog")).toHaveCount(0);
+  await expect.poll(() => inner.evaluate((node) => node.scrollTop)).toBe(0);
+});
+
 // The dirty-discard guard (#2774, consequence B), in three tests rather than one
 // chain. The chained version — flick, refuse, then tap the scrim, then reopen —
 // was green here ten times over and red on CI, and a test whose failure cannot be
@@ -352,9 +388,13 @@ test("a flick on a dirty form asks first, and keeping the edit brings the whole 
   // back is the panel as it stands when the flick starts.
   const atRest = await restingPanelTop(dialog);
 
-  // A flick on the handle is the sheet's discard gesture (#1428). Right for a
-  // half-typed weight; wrong for a form somebody has been filling in.
-  await touchSwipeFrom(page, dialog.getByTestId("sheet-drag-handle"), {
+  // A flick on the body at its top is the sheet's discard gesture (#3691).
+  // Right for a clean form; wrong for one somebody has been filling in.
+  const content = dialog.locator("[data-sheet-content]");
+  await content.evaluate((node) => {
+    node.scrollTop = 0;
+  });
+  await touchSwipeFrom(page, content, {
     dy: 260,
   });
   const confirm = page.getByTestId("confirm-dialog");
@@ -384,7 +424,7 @@ test("a flick on a dirty form asks first, and keeping the edit brings the whole 
 
   // And the guard is not spent: the SAME gesture asks again, and this time the
   // answer is discard. Refusing a dismissal must not disarm the surface.
-  await touchSwipeFrom(page, dialog.getByTestId("sheet-drag-handle"), {
+  await touchSwipeFrom(page, content, {
     dy: 260,
   });
   await expect(confirm).toBeVisible();
@@ -431,7 +471,11 @@ test("a clean converged form dismisses in one gesture, with no question", async 
   await openVisitFact(dialog, "reason");
   await expect(dialog.getByLabel(TITLE_FIELD)).toBeVisible();
   await closeVisitFact(dialog);
-  await touchSwipeFrom(page, dialog.getByTestId("sheet-drag-handle"), {
+  const content = dialog.locator("[data-sheet-content]");
+  await content.evaluate((node) => {
+    node.scrollTop = 0;
+  });
+  await touchSwipeFrom(page, content, {
     dy: 260,
   });
   await expect(dialog).toHaveCount(0);

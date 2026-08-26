@@ -14,7 +14,7 @@ import {
   getIntakeItems,
   getAppointments,
   getProtocolWindows,
-  getPracticeTrends,
+  getFrequencyTargetWeeklyHistory,
   getRankedBiomarkerOptions,
 } from "./queries";
 import { today } from "./db";
@@ -56,12 +56,15 @@ import {
   practiceTrendWindow,
   PRACTICE_DIGEST_MIN_CHANGE,
 } from "./trends-practices";
+import { practiceDisplayName, practiceIdentity } from "./practice";
 import type { DateRange } from "./timeline-format";
 import {
   clinicalResultDetailHref,
   metricDetailHref,
   type AppRoute,
 } from "./hrefs";
+import { displayUnit } from "./display-unit";
+import { cadenceWeeksCoveredByTarget } from "./queries/cadence-ledger";
 
 export interface TrendSeries {
   key: string; // "metric:weight" | "result:LDL Cholesterol" — also the pin key
@@ -297,11 +300,12 @@ export function buildBiomarkerSeries(
   const windowed = filterSeriesByRange(plot.points, range);
   if (windowed.length === 0) return null;
   const windowedFlags = filterSeriesByRange(plot.pointFlags, range);
+  const shownUnit = displayUnit(plot.unit);
 
   return {
     key: resultSeriesKey(canonical),
     label: canonical,
-    unit: plot.unit ? ` ${plot.unit}` : "",
+    unit: shownUnit ? ` ${shownUnit}` : "",
     color: bioColor(canonical),
     href: clinicalResultDetailHref(canonical),
     kind: "biomarker",
@@ -329,17 +333,21 @@ const BIO_TILE_DECIMALS = 1;
 function outOfWindowText(
   point: { date: string; value: number } | null,
   row: { date: string; value: string | null; unit: string | null } | undefined,
-  unit: string | null
+  pointUnit: string | null
 ): { date: string; text: string } | null {
   if (point && (!row || point.date >= row.date)) {
     return {
       date: point.date,
-      text: `${round(point.value, BIO_TILE_DECIMALS)}${unit ? ` ${unit}` : ""}`,
+      text: `${round(point.value, BIO_TILE_DECIMALS)}${pointUnit ? ` ${pointUnit}` : ""}`,
     };
   }
   const raw = row?.value?.trim();
   if (!row || !raw) return null;
-  return { date: row.date, text: `${raw}${row.unit ? ` ${row.unit}` : ""}` };
+  const shownUnit = displayUnit(row.unit);
+  return {
+    date: row.date,
+    text: `${raw}${shownUnit ? ` ${shownUnit}` : ""}`,
+  };
 }
 
 // The Overview tile for a SAVED clinical result (#1456: always rendered, so its ★ stays
@@ -366,10 +374,11 @@ export function buildSavedClinicalResultTile(
   if (!plot) return placeholderBiomarkerTile(canonical);
 
   const windowed = filterSeriesByRange(plot.points, range);
+  const shownUnit = displayUnit(plot.unit);
   const base: TrendSeries = {
     key: resultSeriesKey(canonical),
     label: canonical,
-    unit: plot.unit ? ` ${plot.unit}` : "",
+    unit: shownUnit ? ` ${shownUnit}` : "",
     color: bioColor(canonical),
     href: clinicalResultDetailHref(canonical),
     kind: "biomarker",
@@ -388,9 +397,9 @@ export function buildSavedClinicalResultTile(
   const reading = outOfWindowText(
     latestPoint,
     latestRow ?? undefined,
-    plot.unit
+    displayUnit(plot.unit)
   );
-  if (!reading) return { ...base, points: [], unit: base.unit || "" };
+  if (!reading) return { ...base, points: [] };
   return {
     ...base,
     points: [],
@@ -555,18 +564,40 @@ export function buildPracticeDigestSeries(
   todayStr: string
 ): DigestSeries[] {
   const window = practiceTrendWindow(range, todayStr);
-  return getPracticeTrends(profileId, window.weeks, window.asOf)
-    .filter((practice) => practiceDigestEligible(practice))
-    .map((practice) => ({
-      key: practiceDigestKey(practice.identity),
-      label: `${practice.name} cadence`,
-      unit: "/wk",
-      points: practice.weeks.map((week) => ({
-        date: week.start,
-        value: week.count,
-      })),
-      minPctChange: PRACTICE_DIGEST_MIN_CHANGE,
-    }));
+  return getFrequencyTargetWeeklyHistory(
+    profileId,
+    window.weeks,
+    window.asOf
+  ).flatMap((history) => {
+    if (history.target.scope_kind !== "practice") return [];
+    const weeks = cadenceWeeksCoveredByTarget(
+      history.weeks,
+      history.declaredOn
+    );
+    if (
+      !practiceDigestEligible({
+        perWeek: history.target.per_week,
+        weeks,
+      })
+    )
+      return [];
+    const identity = practiceIdentity(history.target.scope_value);
+    return [
+      {
+        key: practiceDigestKey(identity),
+        label: `${practiceDisplayName({
+          targetSpelling: history.target.scope_value,
+          identity,
+        })} cadence`,
+        unit: "/wk",
+        points: weeks.map((week) => ({
+          date: week.start,
+          value: week.count,
+        })),
+        minPctChange: PRACTICE_DIGEST_MIN_CHANGE,
+      },
+    ];
+  });
 }
 
 // Assemble every candidate series for the "what's trending" digest: the standard

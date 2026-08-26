@@ -18,11 +18,9 @@ import { isValidTimezone } from "@/lib/timezone";
 import {
   clearDismissedTravelZone,
   clearHomeTimezone,
-  clearTravelTell,
   getHomeTimezone,
   getTimezone,
   setDismissedTravelZone,
-  setTravelTell,
   switchProfileTimezone,
 } from "@/lib/settings";
 
@@ -30,7 +28,7 @@ export interface TravelSwitchResult {
   ok: boolean;
   // The zone the day now runs on, when the write landed.
   timezone?: string;
-  // Populated by the revert only — the tell-after names both zones.
+  // Populated by the explicit return only.
   homeZone?: string;
   awayZone?: string;
 }
@@ -90,9 +88,9 @@ export async function dismissTravelTimezone(
   return { ok: true };
 }
 
-// Coming home. AUTOMATIC and told afterwards (#2471): the action is lossless and it
-// reverses a state the person explicitly entered, so asking permission protects
-// nothing. Clears `timezone_home` — the trip is over — and the dismissal with it.
+// Coming home, only after the person accepts the return offer. A browser timezone
+// can be set by a VPN, so it is a hint rather than authority to move a profile's
+// day (#3684). Clears `timezone_home` — the trip is over — and the dismissal with it.
 export async function revertTravelTimezone(): Promise<TravelSwitchResult> {
   const profileId = await ownProfileForTravel();
   if (profileId === null) return { ok: false };
@@ -104,19 +102,6 @@ export async function revertTravelTimezone(): Promise<TravelSwitchResult> {
   switchProfileTimezone(profileId, homeZone, null);
   clearHomeTimezone(profileId);
   clearDismissedTravelZone(profileId);
-  // The tell is owed from the moment the day moves, so it is recorded in the same
-  // write — not handed back for the caller to display. Whoever renders next says
-  // it, including a page the person navigated to while this was in flight.
-  setTravelTell(profileId, awayZone);
   afterTimezoneMoved();
   return { ok: true, timezone: homeZone, homeZone, awayZone };
-}
-
-// Acknowledge the tell. Nothing about the day changes — this only stops the app
-// repeating a message the person has now read.
-export async function acknowledgeTravelTell(): Promise<TravelSwitchResult> {
-  const profileId = await ownProfileForTravel();
-  if (profileId === null) return { ok: false };
-  clearTravelTell(profileId);
-  return { ok: true };
 }

@@ -1,4 +1,5 @@
 import { requireSession } from "@/lib/auth";
+import Link from "next/link";
 import { today } from "@/lib/db";
 import {
   getPracticeDays,
@@ -139,7 +140,16 @@ export default async function WellnessPage(props: {
       )}
 
       <section>
-        <h2 className="mb-2 section-label">Your practices</h2>
+        <div className="mb-2 flex items-center justify-between gap-3">
+          <h2 className="section-label">Your practices</h2>
+          <Link
+            href="/wellness/practice-history"
+            className="text-sm font-medium text-brand-700 hover:underline dark:text-brand-400"
+            data-testid="practice-ledger-link"
+          >
+            View practice history
+          </Link>
+        </div>
         {practices.length === 0 ? (
           <EmptyState message="No practices yet. Add one to set a weekly goal and start logging sessions." />
         ) : (

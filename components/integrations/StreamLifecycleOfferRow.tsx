@@ -1,7 +1,7 @@
 "use client";
 
 import { useState, useTransition } from "react";
-import Link from "next/link";
+import DestinationLink from "@/components/DestinationLink";
 import type { StreamLifecycleOffer } from "@/lib/queries/stream-lifecycle";
 import {
   STREAM_OFFBOARD_KEEP,
@@ -72,33 +72,33 @@ export default function StreamLifecycleOfferRow({
           disabled={pending}
           onClick={() => run(acceptAction)}
           data-testid={`stream-offer-accept-${offer.kind}`}
-          title={
-            onboarding
-              ? `Turn on the bedtime reminder for ${offer.sourceName} ${offer.streamLabel} data`
-              : "Turn the bedtime reminder off"
-          }
           className="btn btn-sm"
         >
-          {acceptLabel}
+          <span className="block">{acceptLabel}</span>
+          <span className="block text-xs font-normal opacity-80">
+            {onboarding
+              ? `For ${offer.sourceName} ${offer.streamLabel} data.`
+              : "Turns the bedtime reminder off."}
+          </span>
         </button>
         <button
           type="button"
           disabled={pending}
           onClick={() => run(declineAction)}
           data-testid={`stream-offer-decline-${offer.kind}`}
-          title={
-            onboarding
-              ? "Don't turn it on, and stop offering it for this device"
-              : "Leave it on — it resumes by itself when data arrives"
-          }
           className="btn-ghost btn-sm"
         >
-          {declineLabel}
+          <span className="block">{declineLabel}</span>
+          <span className="block text-xs font-normal opacity-80">
+            {onboarding
+              ? "Stops offering it for this device."
+              : "It resumes by itself when data arrives."}
+          </span>
         </button>
         {offer.href && (
-          <Link href={offer.href} className="text-sm text-link">
-            {offer.sourceName} sync history →
-          </Link>
+          <DestinationLink href={offer.href} className="text-sm text-link">
+            {offer.sourceName} sync history
+          </DestinationLink>
         )}
       </div>
       {error && (

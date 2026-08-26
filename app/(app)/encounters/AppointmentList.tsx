@@ -30,6 +30,7 @@ import OpenInMaps from "@/components/OpenInMaps";
 import NotesText from "@/components/NotesText";
 import SourceDocumentLink from "@/components/SourceDocumentLink";
 import EpisodeLinks from "@/components/EpisodeLinks";
+import Button from "@/components/Button";
 import { satisfiedRuleForCompletedKind } from "@/lib/preventive-appointment";
 import {
   matchCarePlanItemsForAppointment,
@@ -381,14 +382,16 @@ export default function AppointmentList({
                   testId={`appointment-illness-episode-${a.id}`}
                 />
               </div>
-              <div className="flex shrink-0 items-center gap-1">
+              <div
+                className="flex shrink-0 items-center gap-3 sm:gap-1"
+                data-testid="appointment-row-actions"
+              >
                 {a.status === "scheduled" ? (
                   <>
                     <button
                       type="button"
                       onClick={() => onComplete(a)}
                       aria-label="Mark completed"
-                      title="Mark completed"
                       className="tap-target flex h-8 w-8 items-center justify-center rounded-lg text-slate-500 transition hover:bg-emerald-50 hover:text-emerald-600 dark:text-slate-400 dark:hover:bg-emerald-950 dark:hover:text-emerald-400"
                     >
                       <IconCheck className="h-4 w-4" stroke={1.75} />
@@ -397,7 +400,6 @@ export default function AppointmentList({
                       type="button"
                       onClick={() => onCancel(a)}
                       aria-label="Cancel appointment"
-                      title="Cancel"
                       className="tap-target flex h-8 w-8 items-center justify-center rounded-lg text-slate-500 transition hover:bg-slate-100 dark:text-slate-400 dark:hover:bg-ink-800"
                     >
                       <IconX className="h-4 w-4" stroke={1.75} />
@@ -410,7 +412,6 @@ export default function AppointmentList({
                         <Link
                           href={`/encounters/${a.encounter_id}`}
                           aria-label="View linked visit"
-                          title="View linked visit"
                           data-testid="view-linked-visit"
                           className="tap-target flex h-8 w-8 items-center justify-center rounded-lg text-emerald-600 transition hover:bg-emerald-50 dark:text-emerald-400 dark:hover:bg-emerald-950"
                         >
@@ -421,7 +422,6 @@ export default function AppointmentList({
                           type="button"
                           onClick={() => onLogVisit(a)}
                           aria-label="Log this visit"
-                          title="Log this visit"
                           data-testid="log-visit-row"
                           className="tap-target flex h-8 w-8 items-center justify-center rounded-lg text-slate-500 transition hover:bg-emerald-50 hover:text-emerald-600 dark:text-slate-400 dark:hover:bg-emerald-950 dark:hover:text-emerald-400"
                         >
@@ -433,19 +433,12 @@ export default function AppointmentList({
                         type="button"
                         onClick={() => setFollowUpFrom(a)}
                         aria-label="Schedule follow-up"
-                        title="Schedule follow-up"
                         className="tap-target flex h-8 w-8 items-center justify-center rounded-lg text-slate-500 transition hover:bg-brand-50 hover:text-brand-600 dark:text-slate-400 dark:hover:bg-brand-950 dark:hover:text-brand-400"
                       >
                         <IconCalendarPlus className="h-4 w-4" stroke={1.75} />
                       </button>
                     )}
-                    <button
-                      type="button"
-                      onClick={() => onReopen(a)}
-                      className="rounded-lg px-2 py-1 text-xs font-medium text-slate-500 transition hover:bg-slate-100 dark:text-slate-400 dark:hover:bg-ink-800"
-                    >
-                      Reopen
-                    </button>
+                    <Button onClick={() => onReopen(a)}>Reopen</Button>
                   </>
                 )}
                 <OverflowMenu

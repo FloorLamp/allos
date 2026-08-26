@@ -39,12 +39,13 @@ import {
   serializeOnboardingState,
 } from "../lib/onboarding";
 import {
+  DEFAULT_SEED,
   describeDials,
   jitterStream,
-  sampleDials,
-  seedFromEnv,
+  seedDialsFromEnv,
 } from "./seed-rng";
 import { personaFromEnv } from "./seed-personas";
+import { LONG_NAMES } from "./seed-long-names";
 
 // The seed populates the bootstrap profile. Owned-table
 // rows are born NOT NULL on a fresh DB, so every insert carries profile_id = 1.
@@ -61,8 +62,20 @@ function daysAgo(n: number): string {
 // pinned baseline — exactly the hand-authored look below, which `npm run seed`,
 // the e2e template DB, and census `--baseline` diffing all rely on. The dial
 // hooks are inline at their data sites, each tagged "#2594 dial".
-const SEED_ENTROPY = seedFromEnv(process.env);
-const DIALS = sampleDials(SEED_ENTROPY);
+const DIAL_SELECTION = seedDialsFromEnv(process.env);
+if (DIAL_SELECTION.kind === "unknown") {
+  console.error(
+    `Unknown SEED_DIAL_SHAPE "${DIAL_SELECTION.raw}". Known shapes: ${DIAL_SELECTION.known.join(", ")}`
+  );
+  process.exit(1);
+}
+if (DIAL_SELECTION.kind === "conflict") {
+  console.error(DIAL_SELECTION.reason);
+  process.exit(1);
+}
+const SEED_ENTROPY =
+  DIAL_SELECTION.kind === "entropy" ? DIAL_SELECTION.seed : DEFAULT_SEED;
+const DIALS = DIAL_SELECTION.dials;
 const rand = jitterStream(SEED_ENTROPY);
 // Persona axis (SEED_PERSONA, scripts/seed-personas.ts): WHO the profile is,
 // orthogonal to the dial vector's HOW-the-baseline-varies. A persona run
@@ -77,9 +90,20 @@ if (PERSONA_SELECTION.kind === "unknown") {
   );
   process.exit(1);
 }
-if (PERSONA_SELECTION.kind === "none") {
+if (PERSONA_SELECTION.kind === "found" && DIAL_SELECTION.kind === "named") {
+  console.error(
+    `SEED_PERSONA=${PERSONA_SELECTION.persona.name} cannot be combined with SEED_DIAL_SHAPE=${DIAL_SELECTION.shape.name}`
+  );
+  process.exit(1);
+}
+if (PERSONA_SELECTION.kind === "none" && DIAL_SELECTION.kind === "entropy") {
   console.log(
     `seed entropy: SEED_RNG=${SEED_ENTROPY} — ${describeDials(DIALS)}`
+  );
+}
+if (PERSONA_SELECTION.kind === "none" && DIAL_SELECTION.kind === "named") {
+  console.log(
+    `seed shape: ${DIAL_SELECTION.shape.name} — ${DIAL_SELECTION.shape.description}`
   );
 }
 // The current illness episode's day offset (#2594 dial: illnessNow). "active"
@@ -103,15 +127,25 @@ if (!profileOne) {
   process.exit(1);
 }
 
-const count = db
+type CountRow = { c: number };
+
+// Ordinary direct seed invocations keep their longstanding no-op behavior.
+// Served census freshness is not inferred from a moving table allowlist: the
+// walkthrough owns a newly-created directory and a never-before-used DB path.
+const existing = db
   .prepare(
-    `SELECT (SELECT COUNT(*) FROM activities WHERE profile_id = ?)
-          + (SELECT COUNT(*) FROM medical_records WHERE profile_id = ?) c`
+    `SELECT
+       (SELECT COUNT(*) FROM activities WHERE profile_id = ?) +
+       (SELECT COUNT(*) FROM medical_records WHERE profile_id = ?) AS c`
   )
-  .get(SEED_PROFILE_ID, SEED_PROFILE_ID) as {
-  c: number;
-};
-if (count.c > 0) {
+  .get(SEED_PROFILE_ID, SEED_PROFILE_ID) as CountRow;
+if (existing.c > 0) {
+  if (DIAL_SELECTION.kind === "named") {
+    console.error(
+      `Database already has data — refusing named seed shape ${DIAL_SELECTION.shape.name}. Use a fresh scratch DB for each census shape.`
+    );
+    process.exit(1);
+  }
   console.log(
     "Database already has data — skipping seed. (Delete data/allos.db to reseed.)"
   );
@@ -1223,6 +1257,28 @@ for (const [name, canonical, value, unit] of [
   );
 }
 
+// #2594 dial: textLength (#3631). ONE analyte carrying the full name a reference
+// lab actually prints, so the tables and pickers that render analyte names have a
+// value nothing in the app bounds. See scripts/seed-long-names.ts for why this is a
+// dial and not the baseline, and for the roster of families that still need one.
+if (DIALS.textLength === "long") {
+  medIds.push(
+    Number(
+      insMed.run(
+        daysAgo(30),
+        "lab",
+        LONG_NAMES.clinicalResult,
+        "38",
+        "ng/mL",
+        "30-100 ng/mL",
+        38,
+        LONG_NAMES.clinicalResult,
+        "Vitamin panel"
+      ).lastInsertRowid
+    )
+  );
+}
+
 // Derive clinical (high/low) and non-optimal flags from the canonical reference
 // + optimal bands, so seeded readings flag exactly like real imported ones.
 reconcileFlags(SEED_PROFILE_ID, medIds);
@@ -1557,6 +1613,33 @@ courseIns.run(
   "switched",
   "Switched to simvastatin"
 );
+
+// #2594 dial: textLength (#3631). THE class's canonical instance — one INACTIVE
+// portal-imported medication whose name is what a pharmacy portal really writes.
+// Inactive on purpose: the dose ledger's Item filter suffixes an inactive item
+// " (inactive)" (components/intake/DoseLedgerView.tsx), which is the widest option
+// #3478's select had to size against. With this planted, the geometry census can
+// express the unbounded-name overflow; without it, its longest medication label is
+// "Atorvastatin (inactive)" at 23 characters, which fits a phone at any width.
+if (DIALS.textLength === "long") {
+  const importedLongId = Number(
+    db
+      .prepare(
+        `INSERT INTO intake_items
+           (profile_id, name, notes, active, condition, obligation, kind, document_id, source)
+         VALUES (1, ?, 'Imported from the pharmacy portal', 0, 'daily', 'may', 'medication', NULL, 'extracted')`
+      )
+      .run(LONG_NAMES.intakeItem).lastInsertRowid
+  );
+  medDose.run(importedLongId, "500 mg", null, "any", 0);
+  courseIns.run(
+    importedLongId,
+    daysAgo(80),
+    daysAgo(30),
+    "completed_course",
+    "Imported course"
+  );
+}
 
 // A KNOWN-INTERACTING pair (issue #144): Warfarin (anticoagulant) + Ibuprofen (an
 // NSAID) — a MAJOR bleeding-risk interaction that surfaces on the intake surfaces, the
@@ -1896,6 +1979,22 @@ condIns.run(
   null,
   "Diet + exercise managed"
 );
+
+// #2594 dial: textLength (#3631). One problem-list entry at the length a coded
+// import writes, so the chips and pickers that render condition names have a value
+// nothing in the app bounds. Resolved, so it never joins the active problem list the
+// baseline story is about — only the surfaces that render every condition.
+if (DIALS.textLength === "long") {
+  condIns.run(
+    LONG_NAMES.condition,
+    "I10",
+    "ICD-10",
+    "resolved",
+    "2018-02-05",
+    "2019-02-28",
+    "Imported problem list"
+  );
+}
 condIns.run(
   "Hyperlipidemia",
   "E78.5",
@@ -2925,21 +3024,31 @@ reconcileFlags(SEED_PROFILE_ID, tempIds);
 // ── Menstrual cycle log (issue #714) ─────────────────────────────────────────
 // A few synthetic, roughly-regular cycles so the Cycle surface (derived phase +
 // cycle-length/variability trend), the Timeline day-view phase/period chip, and the
-// #718 phase-aware ranges all have data. Three completed cycles (~28-day, 5-day
-// periods) plus the most recent still within its follicular span. Obviously-fictional,
-// no PHI. Clear first for a re-seed.
+// #718 phase-aware ranges all have data. Baseline uses three completed cycles
+// (~28-day, 5-day periods) plus the most recent still within its follicular
+// span. The named #3489 D5 middle state stores exactly two periods, yielding
+// exactly one completed start-to-start interval. Obviously-fictional, no PHI.
+// Clear first for a re-seed.
 db.prepare("DELETE FROM cycles WHERE profile_id = ?").run(SEED_PROFILE_ID);
 const seedCycle = db.prepare(
   `INSERT INTO cycles (profile_id, period_start, period_end, flow, note)
    VALUES (?, ?, ?, ?, ?)`
 );
-const seededCycles: [number, number, string, string | null][] = [
+const baselineCycles: [number, number, string, string | null][] = [
   // [startDaysAgo, endDaysAgo, flow, note]
   [103, 99, "medium", null],
   [75, 71, "heavy", "cramps day 1"],
   [47, 43, "medium", null],
   [19, 15, "light", null],
 ];
+const oneCompletedCycle: [number, number, string, string | null][] = [
+  [47, 43, "medium", null],
+  [19, 15, "light", null],
+];
+const seededCycles =
+  DIALS.middleState === "one-completed-cycle"
+    ? oneCompletedCycle
+    : baselineCycles;
 for (const [startAgo, endAgo, flow, note] of seededCycles) {
   seedCycle.run(
     SEED_PROFILE_ID,

@@ -48,7 +48,6 @@ export default function RawPayloadDialog({ id }: { id: number }) {
         onClick={() => void open_()}
         data-testid={`raw-payload-open-${id}`}
         aria-label="View the raw provider payload for this run"
-        title="View raw payload"
         className="inline-flex items-center gap-1 text-xs font-medium text-slate-500 hover:text-brand-600 hover:underline dark:text-slate-400 dark:hover:text-brand-400"
       >
         <IconCode className="h-3.5 w-3.5" stroke={1.75} />

@@ -142,10 +142,8 @@ test("a routine edited from its chip actually persists (#2888)", async ({
   await page.locator('select[name="scope_value"]').selectOption(OWNED);
   await settledFill(page, card.locator('input[name="per_week"]'), "2");
   await settledClick(page, card.getByRole("button", { name: "Save" }));
-  await expect(chip()).toHaveAttribute(
-    "title",
-    new RegExp(`${OWNED}: \\d+/2 this week`)
-  );
+  await expect(chip()).toContainText(OWNED);
+  await expect(chip().locator("span.tabular-nums")).toHaveText(/\d+\/2/);
 
   try {
     // Clicking a chip loads it into the form — a pure client state change, so the
@@ -161,10 +159,8 @@ test("a routine edited from its chip actually persists (#2888)", async ({
 
     // The edit survives a fresh server render: four squares, not two.
     await page.reload();
-    await expect(chip()).toHaveAttribute(
-      "title",
-      new RegExp(`${OWNED}: \\d+/4 this week`)
-    );
+    await expect(chip()).toContainText(OWNED);
+    await expect(chip().locator("span.tabular-nums")).toHaveText(/\d+\/4/);
     await expect(chip().locator("span.h-3")).toHaveCount(4);
   } finally {
     // Leave the fixture as found.

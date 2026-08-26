@@ -30,6 +30,7 @@ import type { BiomarkerDirection } from "./types";
 import type { Finding } from "./findings";
 import type { AppRoute } from "./hrefs";
 import { biomarkerFlagDismissalKey } from "./dismissal-keys";
+import { displayUnit } from "./display-unit";
 
 // ---- Thresholds (exported so the tests pin the exact boundaries) ----
 
@@ -190,8 +191,8 @@ function fmt(n: number): string {
   return String(round(n, 2));
 }
 
-function unitSuffix(unit: string | null | undefined): string {
-  return unit && unit.trim() ? ` ${unit.trim()}` : "";
+function unitSuffix(shownUnit: string | null | undefined): string {
+  return shownUnit ? ` ${shownUnit}` : "";
 }
 
 // A human phrase for a non-optimal status ("above the optimal range", …).
@@ -302,7 +303,7 @@ function approachingBoundary(
   const horizon = HORIZON_RETEST_MULTIPLE * input.retestDays;
   if (projectedDays > horizon) return null;
 
-  const u = unitSuffix(input.unit);
+  const u = unitSuffix(displayUnit(input.unit));
   const side = rising ? "high" : "low";
   const boundaryWord =
     target.kind === "reference" ? "reference range" : "optimal range";
@@ -376,7 +377,7 @@ function persistentNonOptimal(
   if (!NON_GOOD.has(status)) return null;
   if (!statuses.every((s) => s === status)) return null;
 
-  const u = unitSuffix(input.unit);
+  const u = unitSuffix(displayUnit(input.unit));
   const latest = recent[recent.length - 1].value;
   const phrase = statusPhrase(status);
 
@@ -422,7 +423,7 @@ function velocity(
   else fires = Math.abs(slopePerYear) > threshold;
   if (!fires) return null;
 
-  const u = unitSuffix(input.unit);
+  const u = unitSuffix(displayUnit(input.unit));
   const rising = slopePerYear > 0;
   const verb = rising ? "rising" : "falling";
   const points = input.points;

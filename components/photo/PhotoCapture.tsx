@@ -382,7 +382,7 @@ export default function PhotoCapture({
     <>
       <button
         type="button"
-        className={className ?? "btn"}
+        className={`min-h-11 sm:min-h-0 ${className ?? "btn"}`}
         onClick={() => void open(true)}
         disabled={disabled}
         data-testid={triggerTestId}
@@ -504,7 +504,7 @@ export default function PhotoCapture({
                   </p>
                 ) : (
                   <p className="text-sm text-slate-600 dark:text-slate-300">
-                    The live camera could not open. You can try again or use the
+                    Couldn&apos;t open the live camera. Try again or use the
                     device camera picker.
                   </p>
                 )}

@@ -9,6 +9,7 @@ import {
 } from "@/lib/api-token-format";
 import type { ApiTokenSummary } from "@/lib/api-tokens";
 import { CopyButton } from "@/components/TokenRow";
+import InfoTooltipIcon from "@/components/InfoTooltipIcon";
 import { useFormatPrefs } from "@/components/FormatPrefsProvider";
 import { formatTimestamp } from "@/lib/format-date";
 import { createApiTokenAction, revokeApiTokenAction } from "./token-actions";
@@ -29,12 +30,17 @@ import { createApiTokenAction, revokeApiTokenAction } from "./token-actions";
 
 function ScopeBadge({ scope }: { scope: ApiTokenScope }) {
   return (
-    <span
-      className="badge shrink-0 bg-slate-100 text-slate-600 dark:bg-ink-750 dark:text-slate-300"
-      title={apiTokenScopeSummary(scope)}
-      data-testid="api-token-scope"
-    >
-      {apiTokenScopeLabel(scope)}
+    <span className="inline-flex shrink-0 items-center">
+      <span
+        className="badge bg-slate-100 text-slate-600 dark:bg-ink-750 dark:text-slate-300"
+        data-testid="api-token-scope"
+      >
+        {apiTokenScopeLabel(scope)}
+      </span>
+      <InfoTooltipIcon
+        label={apiTokenScopeSummary(scope)}
+        data-testid="api-token-scope-detail"
+      />
     </span>
   );
 }

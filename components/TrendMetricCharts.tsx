@@ -24,6 +24,7 @@ import SingleReadingMark from "./SingleReadingMark";
 import { useFormatPrefs } from "./FormatPrefsProvider";
 import { formatMonthDay } from "@/lib/format-date";
 import { glanceAgeToken } from "@/lib/glance-age";
+import InfoTooltipIcon from "@/components/InfoTooltipIcon";
 import {
   TREND_METRIC_PRESENTATION_FLOORS,
   trendMetricPresentationFreshness,
@@ -227,12 +228,14 @@ export default function TrendMetricCharts({
     return (
       <span className="flex flex-wrap items-baseline gap-x-1.5">
         {latest.text}
-        <span
-          data-testid="chart-card-headline-asof"
-          className={`text-xs font-normal ${asOf.className}`}
-          title={asOf.title ?? undefined}
-        >
-          {asOf.text}
+        <span className="inline-flex items-center">
+          <span
+            data-testid="chart-card-headline-asof"
+            className={`text-xs font-normal ${asOf.className}`}
+          >
+            {asOf.text}
+          </span>
+          {asOf.title ? <InfoTooltipIcon label={asOf.title} /> : null}
         </span>
       </span>
     );

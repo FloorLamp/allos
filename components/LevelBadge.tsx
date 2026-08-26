@@ -70,13 +70,13 @@ export default function LevelBadge({
           e.stopPropagation(); // don't trigger an enclosing row's onClick
           setOpen(true);
         }}
-        title="See strength standards"
         className={`inline-flex items-center gap-1 text-sm font-semibold transition hover:opacity-70 ${color} ${
           className ?? ""
         }`}
       >
         <IconMedal2 className="h-4 w-4" />
         {label}
+        <span className="sr-only"> — see strength standards</span>
       </button>
 
       {open && (

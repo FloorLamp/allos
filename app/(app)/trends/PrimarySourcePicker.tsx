@@ -2,6 +2,7 @@
 
 import { useState, useTransition } from "react";
 import { setMetricPrimarySource } from "./source-actions";
+import InfoTooltipIcon from "@/components/InfoTooltipIcon";
 
 // The per-metric primary-source picker (issue #14): "Automatic" (default
 // provider preference) or one explicit source. Saves on change via the server
@@ -71,24 +72,24 @@ export default function PrimarySourcePicker({
           ))}
         </select>
       </label>
-      <label
-        className="col-start-2 inline-flex items-center gap-1.5 sm:col-auto"
-        title="Show only this source — days it didn't cover stay empty instead of falling back"
-      >
-        <input
-          type="checkbox"
-          checked={onlyThis}
-          disabled={isPending || source === ""}
-          data-testid={`primary-source-strict-${metric}`}
-          className="h-3.5 w-3.5 rounded-sm border-black/20 dark:border-white/20"
-          onChange={(e) => {
-            const next = e.currentTarget.checked;
-            setOnlyThis(next);
-            save(source, next);
-          }}
-        />
-        <span>Only this source</span>
-      </label>
+      <span className="col-start-2 inline-flex items-center gap-0.5 sm:col-auto">
+        <label className="inline-flex items-center gap-1.5">
+          <input
+            type="checkbox"
+            checked={onlyThis}
+            disabled={isPending || source === ""}
+            data-testid={`primary-source-strict-${metric}`}
+            className="h-3.5 w-3.5 rounded-sm border-black/20 dark:border-white/20"
+            onChange={(e) => {
+              const next = e.currentTarget.checked;
+              setOnlyThis(next);
+              save(source, next);
+            }}
+          />
+          <span>Only this source</span>
+        </label>
+        <InfoTooltipIcon label="Show only this source — days it didn't cover stay empty instead of falling back" />
+      </span>
       {saved && !isPending && (
         <span
           className="col-start-2 text-emerald-600 sm:col-auto dark:text-emerald-400"

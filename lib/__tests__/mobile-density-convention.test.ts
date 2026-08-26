@@ -487,14 +487,12 @@ describe("phone density conventions (#3466)", () => {
 
     // The takeout page's Status card is this link's only host, and it mounts it
     // INSIDE that card. Anchored on the link's OWN tag for the same reason the
-    // wrapper above is anchored on its id, and it was NOT before: matching the
-    // first `className=` in the file reads `SyncTimestamp`'s the moment this
-    // component's own className becomes a template literal, so `card` could be
-    // re-hardcoded here and both assertions would pass — on an element nobody
-    // asked about.
+    // wrapper above is anchored on its id. The overlay destination carries the
+    // full-panel hit area separately, so anchor this assertion on the visible
+    // sub-panel rather than the sibling link.
     const link = read("components/IntegrationSyncHistoryLink.tsx");
     expect(
-      hasClass(classTextOf(link, 'data-testid="sync-history-link"'), "card"),
+      hasClass(classTextOf(link, 'data-testid="sync-history-surface"'), "card"),
       "IntegrationSyncHistoryLink may not hardcode `card` on itself — every host it has mounts it inside one"
     ).toBe(false);
   });

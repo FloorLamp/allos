@@ -9,6 +9,7 @@ import type {
 } from "@/lib/portal-setup-stage";
 import type { PortalLoginStatus } from "@/lib/portal-status";
 import Avatar from "@/components/Avatar";
+import FilterPills from "@/components/FilterPills";
 import OverflowMenu, {
   MENU_ITEM,
   MENU_ITEM_DANGER,
@@ -157,49 +158,6 @@ function RowNote({ id, note }: { id: string; note: Note | null }) {
   );
 }
 
-// One household member as a pressable chip — face + name (#1874 point 5). A button, not
-// a ProfileSwitcherChip: tapping it answers "who is this patient", it never navigates or
-// switches the session's acting profile.
-function ProfileChip({
-  profile,
-  pressed,
-  onPress,
-  disabled,
-}: {
-  profile: ProfileChoice;
-  pressed: boolean;
-  onPress: () => void;
-  disabled?: boolean;
-}) {
-  return (
-    <button
-      type="button"
-      aria-pressed={pressed}
-      onClick={onPress}
-      disabled={disabled}
-      data-testid="profile-chip"
-      className={`inline-flex items-center gap-1.5 rounded-full border py-0.5 pl-0.5 pr-2.5 text-sm transition ${
-        pressed
-          ? "border-brand-500 bg-brand-50 text-brand-800 ring-1 ring-brand-500 dark:bg-brand-500/15 dark:text-brand-200"
-          : "border-(--border) bg-surface text-slate-700 hover:bg-(--ghost-hover) dark:text-slate-200"
-      }`}
-    >
-      <Avatar
-        profile={{
-          id: profile.id,
-          name: profile.name,
-          photo_path: profile.photoPath,
-          photo_version: profile.photoVersion,
-        }}
-        size="sm"
-      />
-      <span className="truncate" data-testid="profile-chip-name">
-        {profile.name}
-      </span>
-    </button>
-  );
-}
-
 // The read-only face of a mapping: the same chip shape, not pressable.
 function StaticChip({ profile }: { profile: ProfileChoice }) {
   return (
@@ -233,20 +191,37 @@ function ChipPicker({
   disabled?: boolean;
 }) {
   return (
-    <div
-      className="flex flex-wrap items-center gap-1.5"
-      data-testid="profile-picker"
-    >
-      {profiles.map((p) => (
-        <ProfileChip
-          key={p.id}
-          profile={p}
-          pressed={chosen === p.id}
-          onPress={() => onChoose(p.id)}
-          disabled={disabled}
-        />
-      ))}
-    </div>
+    <FilterPills
+      mode="button"
+      layout="wrap"
+      label="Household profile"
+      density="dense"
+      value={chosen ?? undefined}
+      onSelect={onChoose}
+      testId="profile-picker"
+      options={profiles.map((profile) => ({
+        value: profile.id,
+        label: profile.name,
+        disabled,
+        testId: "profile-chip",
+        content: (
+          <>
+            <Avatar
+              profile={{
+                id: profile.id,
+                name: profile.name,
+                photo_path: profile.photoPath,
+                photo_version: profile.photoVersion,
+              }}
+              size="sm"
+            />
+            <span className="truncate" data-testid="profile-chip-name">
+              {profile.name}
+            </span>
+          </>
+        ),
+      }))}
+    />
   );
 }
 
@@ -262,28 +237,20 @@ function SoftwareChips({
   disabled?: boolean;
 }) {
   return (
-    <div
-      className="flex flex-wrap items-center gap-1.5"
-      data-testid="software-picker"
-    >
-      {SOFTWARE_OPTIONS.map((o) => (
-        <button
-          key={o.value || "unsure"}
-          type="button"
-          aria-pressed={chosen === o.value}
-          onClick={() => onChoose(o.value)}
-          disabled={disabled}
-          data-testid={`software-chip-${o.value || "unsure"}`}
-          className={`rounded-full border px-2.5 py-0.5 text-xs transition ${
-            chosen === o.value
-              ? "border-brand-500 bg-brand-50 text-brand-800 ring-1 ring-brand-500 dark:bg-brand-500/15 dark:text-brand-200"
-              : "border-black/10 text-slate-600 hover:bg-slate-50 dark:border-white/10 dark:text-slate-300 dark:hover:bg-ink-850"
-          }`}
-        >
-          {o.label}
-        </button>
-      ))}
-    </div>
+    <FilterPills
+      mode="button"
+      layout="wrap"
+      label="Portal software"
+      density="dense"
+      value={chosen}
+      onSelect={onChoose}
+      testId="software-picker"
+      options={SOFTWARE_OPTIONS.map((option) => ({
+        ...option,
+        disabled,
+        testId: `software-chip-${option.value || "unsure"}`,
+      }))}
+    />
   );
 }
 
@@ -445,7 +412,6 @@ export default function PortalsSurface({
               type="button"
               data-testid="patient-chip"
               aria-label={`Change profile for ${i.patientLabel}`}
-              title="Change profile"
               onClick={() => {
                 setRemapping(remapping === i.id ? null : i.id);
                 setRemapChoice(i.profileId);
@@ -661,7 +627,6 @@ export default function PortalsSurface({
                     type="button"
                     className={MENU_ITEM}
                     data-testid="pending-dismiss"
-                    title="Clear this prompt — it returns if the tool reports the patient again"
                     onClick={() => {
                       close();
                       const fd = new FormData();
@@ -674,14 +639,17 @@ export default function PortalsSurface({
                       );
                     }}
                   >
-                    Not now
+                    <span className="block">Not now</span>
+                    <span className="block text-xs font-normal opacity-80">
+                      Clears this prompt; it returns if the tool reports the
+                      patient again.
+                    </span>
                   </button>
                   {isAdmin && (
                     <button
                       type="button"
                       className={MENU_ITEM_DANGER}
                       data-testid="pending-ignore"
-                      title="Never sync this patient — they stay refused, and stop appearing here"
                       onClick={async () => {
                         close();
                         // Durable, so it confirms and the copy states the gate
@@ -704,7 +672,10 @@ export default function PortalsSurface({
                         );
                       }}
                     >
-                      Ignore
+                      <span className="block">Ignore</span>
+                      <span className="block text-xs font-normal opacity-80">
+                        Never sync this patient; future uploads stay refused.
+                      </span>
                     </button>
                   )}
                 </>
@@ -915,7 +886,6 @@ export default function PortalsSurface({
               className="btn-ghost shrink-0 text-xs"
               disabled={busy}
               data-testid="sync-request-ask"
-              title="Ask whoever runs the companion tool for this login to run it"
               onClick={() => {
                 const fd = new FormData();
                 fd.set("account_id", String(account.id));
@@ -927,7 +897,10 @@ export default function PortalsSurface({
                 );
               }}
             >
-              Request sync
+              <span className="block">Request sync</span>
+              <span className="block text-xs font-normal opacity-80">
+                Ask whoever runs the companion tool for this login to run it.
+              </span>
             </button>
           )
         )}

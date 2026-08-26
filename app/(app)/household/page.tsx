@@ -1,6 +1,5 @@
 import { redirect } from "next/navigation";
-import Link from "next/link";
-import { IconChevronRight } from "@tabler/icons-react";
+import DestinationLink from "@/components/DestinationLink";
 import {
   requireSession,
   getAccessibleProfiles,
@@ -284,25 +283,16 @@ export default async function HouseholdPage() {
           // reached from the stable parents that consume it.
           <div className="flex flex-wrap items-center justify-end gap-x-3 gap-y-2">
             <SharedSuppliesLink count={countVisiblePools(profileIds)} />
-            {/* ONE glyph for the doors in this row (#3487 item 5). It used to say
-                "History →" beside the cabinet door's "›" — two arrow glyphs, one row.
-                The standing-door convention is the chevron (#3253), so this door
-                matches the door beside it, in treatment as well as glyph: the
-                hand-rolled sky pair here was the same per-widget near-copy #2719
-                retired, and a matched glyph in an unmatched colour would have traded
-                one mismatch for another. */}
-            <Link
+            {/* The owner-approved Household pair (#3487): both destinations keep
+                stable positions in this action row, and the shared primitive owns
+                their one matched indicator treatment. */}
+            <DestinationLink
               href={EPISODES_HREF}
               className="inline-flex shrink-0 items-center gap-1 whitespace-nowrap text-sm text-link"
               data-testid="household-history-link"
             >
-              History
-              <IconChevronRight
-                aria-hidden
-                className="h-4 w-4 shrink-0"
-                stroke={1.75}
-              />
-            </Link>
+              Illness episodes
+            </DestinationLink>
           </div>
         }
       />

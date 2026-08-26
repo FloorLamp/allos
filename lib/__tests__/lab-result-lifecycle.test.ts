@@ -182,4 +182,18 @@ describe("revisionSummary", () => {
       })
     ).toBe("Superseded — was 12 (2026-03-06)");
   });
+
+  it("normalizes a machine-spelled micro unit only in the rendered summary", () => {
+    const revision = {
+      value: "45",
+      value_num: 45,
+      unit: "ug / L",
+      superseded_at: "2026-03-06 08:00:00",
+      superseded_by_status: "amended",
+    };
+    expect(revisionSummary(revision)).toBe(
+      "Amended — was 45 µg / L (2026-03-06)"
+    );
+    expect(revision.unit).toBe("ug / L");
+  });
 });

@@ -52,7 +52,6 @@ export default function EpisodeLifecycleControl({
           meds={medReconciliation}
           triggerLabel="End episode"
           triggerTestId="episode-end"
-          triggerClassName="btn-ghost"
           icon={<IconMoodCheck className="h-4 w-4" stroke={1.75} />}
         />
       ) : (

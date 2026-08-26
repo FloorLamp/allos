@@ -245,12 +245,15 @@ test("a months-old blood pressure is age-labeled and loses its arrow, while yest
     // The VALUE stays — the newest of the visit's three readings, at full prominence.
     await expect(bp).toContainText("128/84");
     // ...and the raw ISO date is replaced by an age that reads as an age, amber, with a
-    // title explaining the tint (the treatment #1216 established on Recent labs).
+    // disclosure explaining the tint (the treatment #1216 established on Recent labs).
     const bpAge = bpCandidate.getByTestId("vitals-latest-bp-age");
     await expect(bpAge).toHaveText("10 months ago");
     await expect(bpAge).toHaveAttribute("data-stale", "true");
-    await expect(bpAge).toHaveAttribute(
-      "title",
+    const bpAgeDetails = bpCandidate.getByRole("button", {
+      name: "Older than six months — still your latest reading, but not a current one",
+    });
+    await bpAgeDetails.click();
+    await expect(page.getByRole("tooltip")).toHaveText(
       "Older than six months — still your latest reading, but not a current one"
     );
     // No arrow: the direction it used to claim was between two readings of one sitting.
@@ -288,8 +291,11 @@ test("a months-old blood pressure is age-labeled and loses its arrow, while yest
     const labAge = labs.getByTestId("recent-lab-date");
     await expect(labAge).toHaveText("4y");
     await expect(labAge).toHaveAttribute("data-stale", "true");
-    await expect(labAge).toHaveAttribute(
-      "title",
+    const labAgeDetails = labs.getByRole("button", {
+      name: "Older than a year — still your latest reading, but not a current one",
+    });
+    await labAgeDetails.click();
+    await expect(page.getByRole("tooltip")).toHaveText(
       "Older than a year — still your latest reading, but not a current one"
     );
     // The value is not hidden here either — the fix is what the card claims.

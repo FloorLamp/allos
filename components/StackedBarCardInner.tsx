@@ -25,6 +25,7 @@ import { formatLongDate } from "@/lib/format-date";
 import { useFormatPrefs } from "@/components/FormatPrefsProvider";
 import { roundChartValue } from "@/lib/chart-format";
 import { applyDayFillRows, type DayFillSpec } from "@/lib/trend-sparkline";
+import { EmptyState } from "@/components/ui";
 
 const ISO_DATE = /^\d{4}-\d{2}-\d{2}$/;
 
@@ -79,11 +80,7 @@ export default function StackedBarCard({
     ? (v: string) => `${labelPrefix}${formatLongDate(String(v), formatPrefs)}`
     : undefined;
   if (data.length === 0) {
-    return (
-      <div className="flex h-64 items-center justify-center text-sm text-slate-500 dark:text-slate-400">
-        No data yet
-      </div>
-    );
+    return <EmptyState message="No data yet" />;
   }
   return (
     <div className="h-64 min-w-0 max-w-full">

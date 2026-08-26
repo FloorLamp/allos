@@ -1,5 +1,5 @@
-import Link from "next/link";
-import { IconArrowRight, type TablerIcon } from "@tabler/icons-react";
+import type { TablerIcon } from "@tabler/icons-react";
+import DestinationLink from "@/components/DestinationLink";
 import type { AppRoute } from "@/lib/hrefs";
 
 // A compact setup atom for a domain with no data yet. It points at the pipeline
@@ -35,10 +35,9 @@ export default function DashboardSetupAtom({
       <p className="mb-3 text-sm text-slate-500 dark:text-slate-400">
         {message}
       </p>
-      <Link href={ctaHref} className="btn btn-sm">
+      <DestinationLink href={ctaHref} className="btn btn-sm">
         {ctaLabel}
-        <IconArrowRight className="h-4 w-4" stroke={1.75} />
-      </Link>
+      </DestinationLink>
     </div>
   );
 }

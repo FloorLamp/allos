@@ -8,6 +8,7 @@ import RecordTable, { type RecordColumn } from "@/components/RecordTable";
 import RecordProvenance from "@/components/RecordProvenance";
 import RecordEncounterLink from "@/components/RecordEncounterLink";
 import ProviderName from "@/components/ProviderName";
+import InfoTooltipIcon from "@/components/InfoTooltipIcon";
 import { formatRecordDate } from "@/lib/record-format";
 import { useFormatPrefs } from "@/components/FormatPrefsProvider";
 import type { DisplayFormatPrefs } from "@/lib/format-date";
@@ -77,11 +78,9 @@ function DoseChip({ study }: { study: ImagingStudy }) {
   const chip = doseChipLabel(dose);
   if (!chip) return null;
   return (
-    <span
-      className="ml-2 rounded-sm bg-slate-100 px-1.5 py-0.5 text-xs font-normal text-slate-600 dark:bg-slate-800 dark:text-slate-300"
-      title={doseSourceNote(dose)}
-    >
-      {chip}
+    <span className="ml-2 inline-flex items-center rounded-sm bg-slate-100 pl-1.5 text-xs font-normal text-slate-600 dark:bg-slate-800 dark:text-slate-300">
+      <span className="py-0.5">{chip}</span>
+      <InfoTooltipIcon label={doseSourceNote(dose)} />
     </span>
   );
 }

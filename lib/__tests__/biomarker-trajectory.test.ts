@@ -361,6 +361,18 @@ describe("rule 2 — persistent non-optimal", () => {
     expect(p.evidenceData.spanDays).toBe(120);
   });
 
+  it("normalizes machine-spelled micro units throughout finding copy", () => {
+    const fs = analyteTrajectoryFindings({
+      ...base,
+      analyte: "Selenium",
+      unit: "ug / L",
+      points: line([0, 60, 120], 110, 3),
+    });
+    const p = fs.find((f) => f.rule === "persistent")!;
+    expect(p.detail).toContain("116 µg / L");
+    expect(`${p.title} ${p.detail} ${p.evidence}`).not.toContain("ug / L");
+  });
+
   it("does NOT fire when the 3-reading span is under 90 days", () => {
     // 3 above-optimal readings but only 80 days apart.
     const pts = line([0, 40, 80], 110, 3);

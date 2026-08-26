@@ -2,6 +2,7 @@ import { describe, expect, it } from "vitest";
 import {
   CENSUS_EXEMPT_SUBTREES,
   CENSUS_KNOWN_OFFENDERS,
+  knownMachineDateOffender,
   machineDateHits,
   MACHINE_DATE_RE,
 } from "@/lib/machine-date-census";
@@ -168,5 +169,24 @@ describe("the known-offender ledger", () => {
         `${k.testId} does not say why it is not fixed here`
       ).toBeGreaterThan(60);
     }
+  });
+
+  it("licenses a collocated date hit but never a lab-unit hit", () => {
+    const known = CENSUS_KNOWN_OFFENDERS[0];
+    expect(known).toBeDefined();
+    if (!known) return;
+
+    expect(
+      knownMachineDateOffender(known.route, {
+        kind: "date",
+        testId: known.testId,
+      })
+    ).toBe(known);
+    expect(
+      knownMachineDateOffender(known.route, {
+        kind: "lab-unit",
+        testId: known.testId,
+      })
+    ).toBeUndefined();
   });
 });

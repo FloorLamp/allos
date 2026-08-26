@@ -315,6 +315,11 @@ describe("formatters — one phrase per state", () => {
         })
       )
     ).toBe("Vitamin D, 25-Hydroxy over 40 ng/mL");
+    expect(
+      biomarkerGoalTargetText(
+        goal({ biomarker_name: "Selenium", target_value: 45, unit: "ug / L" })
+      )
+    ).toBe("Selenium under 45 µg / L");
   });
 
   it("is null for a goal that is not a biomarker goal", () => {
@@ -353,6 +358,16 @@ describe("formatters — one phrase per state", () => {
         unavailable: null,
       })
     ).toBe("118 mg/dL now");
+    expect(
+      biomarkerGoalCurrentText({
+        current: 45,
+        target: 50,
+        pct: 50,
+        done: false,
+        unit: "ug / L",
+        unavailable: null,
+      })
+    ).toBe("45 µg / L now");
   });
 
   it("says when the next result is expected, not a recomputed verdict", () => {

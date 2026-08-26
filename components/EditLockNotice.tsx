@@ -50,14 +50,16 @@ export default function EditLockNotice({
       {appearance === "icon" ? (
         <InfoTooltipIcon label={consequence} data-testid="edit-lock-icon" />
       ) : (
-        <span
-          className="badge inline-flex items-center gap-1 bg-amber-100 text-amber-700 dark:bg-amber-950 dark:text-amber-300"
-          title={consequence}
-          data-testid="edit-lock-badge"
-        >
-          <IconLock className="h-3 w-3" stroke={2} aria-hidden />
-          Sync locked
-        </span>
+        <>
+          <span
+            className="badge inline-flex items-center gap-1 bg-amber-100 text-amber-700 dark:bg-amber-950 dark:text-amber-300"
+            data-testid="edit-lock-badge"
+          >
+            <IconLock className="h-3 w-3" stroke={2} aria-hidden />
+            Sync locked
+          </span>
+          <InfoTooltipIcon label={consequence} />
+        </>
       )}
       {showResume && (
         <button

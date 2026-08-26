@@ -3,6 +3,7 @@
 import { useTransition } from "react";
 import { IconX } from "@tabler/icons-react";
 import { useConfirm } from "@/components/ConfirmDialog";
+import IconButton from "@/components/IconButton";
 import { useToast } from "@/components/Toast";
 import { untrackFoodHabit } from "./actions";
 
@@ -51,15 +52,13 @@ export default function UntrackHabitButton({
   }
 
   return (
-    <button
+    <IconButton
       type="button"
       onClick={onClick}
       disabled={pending}
-      aria-label="Stop tracking this habit"
-      title="Stop tracking this habit"
-      className="flex h-6 w-6 items-center justify-center rounded-full text-slate-400 hover:bg-slate-100 hover:text-slate-600 disabled:opacity-40 dark:hover:bg-ink-800"
+      label="Stop tracking this habit"
     >
       <IconX className="h-4 w-4" stroke={2} />
-    </button>
+    </IconButton>
   );
 }

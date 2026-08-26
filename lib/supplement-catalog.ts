@@ -39,6 +39,37 @@ export interface SupplementCatalogEntry {
   // form says so out loud beside the seeded rows; claiming completeness we don't have
   // would be worse than the free-text notes this feature replaces.
   ingredientsPartial?: boolean;
+  // Nutrients this product is DELIBERATELY formulated above the general adult upper
+  // limit for, with the sentence the UL surface shows beside the exceedance (#3156).
+  //
+  // WHY THIS FIELD EXISTS. Seed a product, take it as its own label directs, and the
+  // app warns you about the product it just prefilled. That warning is correct — AREDS 2
+  // really is above the zinc UL, by design, and that is a real thing for someone to
+  // know — but presented as a generic exceedance it reads like a bug, and "looks like a
+  // bug" is how a real warning gets ignored. So the reason moves out of the source
+  // comment it used to live in (readable only by whoever opens this file) and onto the
+  // screen. The warning is NOT softened: the same total, the same limit, the same
+  // "discuss with your clinician" close.
+  //
+  // `nutrient` is a DRI nutrient key (lib/datasets/data/dri.json — 'zinc', 'vitamin_a',
+  // …), never a label string, so the note attaches to the ONE nutrient line it explains
+  // and no other. `reason` is one plain sentence naming the product and why it is high —
+  // ABOUT THE PRODUCT ONLY. It must not say anything about the reader's total, which
+  // depends on the rest of their stack and is the join's to describe (#3629).
+  //
+  // A declaration here is CHECKED BOTH WAYS by lib/__tests__/catalog-ul-notes.test.ts:
+  // an entry that trips a UL at one of its own stated servings must carry a reason, and
+  // a reason must name a nutrient the entry actually trips — so neither a new seeded
+  // product nor a reformulation can leave this file saying something untrue.
+  aboveUpperLimit?: CatalogUlNote[];
+}
+
+// One nutrient a catalogued product deliberately exceeds the general adult upper limit
+// for, and the sentence explaining it. See `aboveUpperLimit` above.
+export interface CatalogUlNote {
+  // A DRI nutrient key ('zinc'), matching lib/datasets/data/dri.json.
+  nutrient: string;
+  reason: string;
 }
 
 export const SUPPLEMENT_CATALOG: SupplementCatalogEntry[] = [
@@ -642,6 +673,23 @@ export const SUPPLEMENT_CATALOG: SupplementCatalogEntry[] = [
     // schedule (one softgel twice a day, or two at once) does the doubling. The zinc
     // this adds up to is deliberately above the upper limit: that is what the trial
     // formula contains, and it is exactly the fact a name-only stack could not see.
+    //
+    // 80 mg of zinc a day against an adult UL of 40 mg, so the warning fires on the
+    // app's own seeded serving. Owner ruling on #3156: the warning STAYS, and it says
+    // why — the sentence below is what the UL surface renders beside the exceedance.
+    //
+    // A sentence about THIS PRODUCT and nothing else. What the reader's TOTAL is made
+    // of is not a property of the bottle, so the catalog does not claim it: the join
+    // (lib/supplement-catalog-ul) adds the closing sentence about the total, and only
+    // when this product's own stated serving IS the total.
+    aboveUpperLimit: [
+      {
+        nutrient: "zinc",
+        reason:
+          "PreserVision AREDS 2 is above the general zinc limit by design: it matches " +
+          "the AREDS2 eye-health formula.",
+      },
+    ],
     ingredients: [
       { name: "Vitamin C", amount: "250 mg" },
       { name: "Vitamin E", amount: "200 IU" },

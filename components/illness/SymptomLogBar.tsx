@@ -13,7 +13,6 @@ import {
   resolveSymptomKey,
   symptomLabel,
   symptomBySlug,
-  SYMPTOM_SEVERITY_LEVELS,
   MAX_SYMPTOM_SEVERITY,
   symptomLabelOptions,
 } from "@/lib/symptoms";
@@ -42,6 +41,7 @@ import {
   suggestSymptomsFromText,
 } from "../../app/(app)/symptom-actions";
 import type { SymptomTextMapping } from "@/lib/symptom-text-map";
+import SymptomSeverityControl from "@/components/illness/SymptomSeverityControl";
 
 // One-tap symptom logger (issue #799/#857), modeled on the FoodLogBar one-tap pattern:
 // optimistic local severities, a Server Action per tap, and reconciliation to the
@@ -728,27 +728,16 @@ export default function SymptomLogBar({
                         )}
                       </span>
                       <div className="flex items-center gap-1">
-                        {SYMPTOM_SEVERITY_LEVELS.map((lvl) => (
-                          <button
-                            key={lvl.value}
-                            type="button"
-                            aria-pressed={s.severity === lvl.value}
-                            aria-label={`${s.label} — severity ${lvl.value} of ${MAX_SYMPTOM_SEVERITY} (${lvl.label})`}
-                            title={lvl.label}
-                            onClick={() => setStagedSeverity(idx, lvl.value)}
-                            className={`h-5 w-5 rounded text-xs font-semibold ${
-                              s.severity >= lvl.value
-                                ? "bg-brand-600 text-white"
-                                : "bg-slate-100 text-slate-500 hover:bg-slate-200 dark:bg-ink-800 dark:text-slate-400"
-                            }`}
-                          >
-                            {lvl.value}
-                          </button>
-                        ))}
+                        <SymptomSeverityControl
+                          symptomLabel={s.label}
+                          value={s.severity}
+                          onChange={(severity) =>
+                            setStagedSeverity(idx, severity)
+                          }
+                        />
                         <button
                           type="button"
                           aria-label={`Remove ${s.label} suggestion`}
-                          title="Remove suggestion"
                           onClick={() => dropStaged(idx)}
                           className="rounded-sm p-1 text-slate-400 hover:text-slate-600 dark:hover:text-slate-200"
                         >
@@ -861,7 +850,6 @@ export default function SymptomLogBar({
               type="submit"
               data-testid="symptom-custom-add"
               aria-label="Add symptom"
-              title="Add symptom"
               className="btn-ghost h-8 w-8 p-0"
             >
               <IconPlus className="h-3.5 w-3.5" />
@@ -1017,32 +1005,19 @@ export default function SymptomLogBar({
                     <span className="truncate">{r.label}</span>
                   </span>
                   <div className="flex items-center gap-1">
-                    {SYMPTOM_SEVERITY_LEVELS.map((lvl) => (
-                      <button
-                        key={lvl.value}
-                        type="button"
-                        data-testid={`symptom-${key}-sev-${lvl.value}`}
-                        aria-pressed={sev === lvl.value}
-                        aria-label={`${r.label} — severity ${lvl.value} of ${MAX_SYMPTOM_SEVERITY} (${lvl.label})`}
-                        title={lvl.label}
-                        onClick={() => {
-                          if (lvl.value < sev) void lower(key, lvl.value);
-                          else void tap(key, lvl.value);
-                        }}
-                        className={`h-6 w-6 rounded text-xs font-semibold ${
-                          sev >= lvl.value
-                            ? "bg-brand-600 text-white"
-                            : "bg-slate-100 text-slate-500 hover:bg-slate-200 dark:bg-ink-800 dark:text-slate-400 dark:hover:bg-ink-700"
-                        }`}
-                      >
-                        {lvl.value}
-                      </button>
-                    ))}
+                    <SymptomSeverityControl
+                      symptomLabel={r.label}
+                      value={sev}
+                      testIdPrefix={`symptom-${key}-sev`}
+                      onChange={(severity) => {
+                        if (severity < sev) void lower(key, severity);
+                        else void tap(key, severity);
+                      }}
+                    />
                     <button
                       type="button"
                       data-testid={`symptom-${key}-note-toggle`}
                       aria-label={`${note ? "Edit" : "Add"} note for ${r.label}`}
-                      title={note ? "Edit note" : "Add note"}
                       aria-pressed={editingNote}
                       onClick={() => {
                         if (editingNote) setNoteEditing(null);
@@ -1063,7 +1038,6 @@ export default function SymptomLogBar({
                       type="button"
                       data-testid={`symptom-${key}-clear`}
                       aria-label={`Clear ${r.label}`}
-                      title="Clear severity"
                       disabled={sev <= 0}
                       onClick={() => clear(key)}
                       className="rounded-sm p-1 text-slate-400 hover:text-slate-600 disabled:opacity-30 dark:hover:text-slate-200"

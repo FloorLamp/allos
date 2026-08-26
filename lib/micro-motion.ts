@@ -77,9 +77,9 @@ export const MICRO_MOTIONS = {
   count: {
     ms: 250,
     conveys:
-      "a QUANTITY changed, which reads differently from a value being replaced — the digits travel from the old number to the new one.",
+      "a QUANTITY changed, which reads differently from a value being replaced — the authoritative new digits pulse once in place.",
     carriedBy:
-      "the number itself, which is already the final value in the DOM's text on the frame the tap settles.",
+      "the number itself, which is the final value in the DOM before the first pulse frame can paint.",
     reducedEndState:
       "the new number is simply there, with no tween and no scale pulse.",
   },
@@ -133,6 +133,18 @@ export const MICRO_MOTIONS = {
       "the card itself, fully rendered with its own words on the frame it lands, plus the row's absence from Standing and the candidate id that is identical on both sides of the move.",
     reducedEndState:
       "the card is simply in Now on the frame the page re-renders, and Standing no longer lists the row; no keyframe is ever scheduled.",
+  },
+  // The seventh tenant (#3675). The quick-log sheet reserves the context slot
+  // before this asynchronous gather starts, so the opacity receipt can say
+  // "finished gathering" without moving the segment strip under the reader.
+  arrive: {
+    ms: 200,
+    conveys:
+      "the sheet just finished finding out what is due and usual for you: these offers were gathered after it opened, they were not waiting here.",
+    carriedBy:
+      "the section's own heading and rendered controls, plus its persistent aria-live status announcing that due and usual options are ready.",
+    reducedEndState:
+      "the gathered controls are simply present at full opacity on the frame the answer resolves; no keyframe is ever scheduled.",
   },
   fold: {
     ms: 500,
@@ -246,32 +258,4 @@ export function microMotionPlan(
     animate: true,
     className: `motion-${kind}`,
   };
-}
-
-// ── The counter roll ─────────────────────────────────────────────────────────
-//
-// The one requestAnimationFrame case in the vocabulary: digits travelling between
-// two quantities. Pure so the curve is unit-tested rather than eyeballed, and so
-// the reduced-motion answer is the SAME function rather than a second code path
-// the caller writes around it.
-//
-// Ease-out cubic, matching MICRO_MOTION_EASE's shape: fast off the mark, settling
-// onto the real number. `elapsedMs >= ms` — and `ms <= 0`, the reduced-motion
-// duration — both answer `to` exactly, so a frame that arrives late, a frame that
-// arrives at 0, and a viewer who asked for no motion all land on the true value.
-export function countRollValue(
-  from: number,
-  to: number,
-  elapsedMs: number,
-  ms: number
-): number {
-  if (ms <= 0 || elapsedMs >= ms) return to;
-  if (elapsedMs <= 0) return from;
-  const t = elapsedMs / ms;
-  const eased = 1 - (1 - t) ** 3;
-  const raw = from + (to - from) * eased;
-  // Rounded TOWARD the destination so the last visible frame before the settle is
-  // never the value we just left — a roll that shows `30` twice and then `31` reads
-  // as a stutter rather than a travel.
-  return to >= from ? Math.floor(raw) : Math.ceil(raw);
 }

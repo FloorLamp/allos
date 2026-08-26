@@ -1,6 +1,7 @@
 import { test, expect } from "./fixtures";
 import { closeEditor, openFact } from "./intake-form-helpers";
 import { type Page } from "@playwright/test";
+import Database from "better-sqlite3";
 import {
   comboboxRows,
   dismissToast,
@@ -8,8 +9,14 @@ import {
   hydratedClick,
   settledBoxes,
   settledClick,
+  settledFill,
 } from "./helpers";
 import { openMedDetailViaHref } from "./med-card-helpers";
+import {
+  expectDesktopOrdinarySubmit,
+  expectPhoneOrdinarySubmit,
+} from "./ordinary-submit-actions";
+import { workerDbPath } from "./worker-env";
 
 // #851 Medications follow-ups: the OTC-first add form (Rx/OTC flag with an on-demand
 // prescription-fields disclosure, the "Generic"-led brand picker, the amount-only PRN
@@ -21,6 +28,18 @@ import { openMedDetailViaHref } from "./med-card-helpers";
 // add-medication form is the "Add medication"
 // card's intake form; its name combobox picks the collapsed catalog option.
 const PRN_MED = "PRN Quicklog Med (e2e)";
+
+function removeOwnedSideEffect(effect: string) {
+  const db = new Database(workerDbPath());
+  try {
+    db.pragma("busy_timeout = 5000");
+    db.prepare("DELETE FROM intake_item_side_effects WHERE effect = ?").run(
+      effect
+    );
+  } finally {
+    db.close();
+  }
+}
 
 async function openFullAdd(page: Page) {
   await page.getByTestId("medication-add-toggle").click();
@@ -177,7 +196,7 @@ test("scheduled and PRN rows share the one Today-row primitive (#851 item 10)", 
   ).toBeLessThanOrEqual(1);
   expect(Math.max(...actionWidths)).toBeLessThanOrEqual(36);
   for (const button of actionButtons) {
-    await expect(button).toHaveAttribute("title", /\S+/);
+    await expect(button).toHaveAccessibleName(/\S+/);
   }
 });
 
@@ -226,6 +245,74 @@ test("detail page shows past-administration history (#851 item 13)", async ({
   await expect(history.getByText("Dose history")).toBeVisible();
 });
 
+test("adds and removes a medication side effect through the detail form", async ({
+  page,
+}, testInfo) => {
+  const effect = `E2E compact primary effect ${testInfo.repeatEachIndex}`;
+  removeOwnedSideEffect(effect);
+  try {
+    await page.goto("/medications");
+    const detail = await openMedDetailViaHref(page, PRN_MED);
+    await hydratedClick(
+      page,
+      detail.getByRole("button", { name: "Add side effect" })
+    );
+    const submit = detail.getByRole("button", {
+      name: "Add side effect",
+      exact: true,
+    });
+    const form = submit.locator("xpath=ancestor::form");
+    const field = form.getByRole("combobox", { name: "Side effect" });
+    await settledFill(page, field, effect);
+    await hydratedClick(
+      page,
+      page
+        .getByRole("listbox")
+        .getByRole("button", { name: `Use “${effect}”`, exact: true })
+    );
+    await expect(field).toHaveValue(effect);
+    const desktopViewport = page.viewportSize();
+    expect(
+      desktopViewport,
+      "the medication detail project has a fixed desktop viewport"
+    ).not.toBeNull();
+    await expectDesktopOrdinarySubmit({
+      form,
+      owner: form,
+      submit,
+      adjacent: field,
+      name: "medication side-effect primary",
+    });
+    await page.setViewportSize({ width: 390, height: 844 });
+    await expectPhoneOrdinarySubmit({
+      form,
+      owner: form,
+      submit,
+      adjacent: field,
+      name: "medication side-effect primary",
+    });
+    await settledClick(page, submit);
+
+    const row = detail.getByRole("listitem").filter({ hasText: effect });
+    await expect(row).toBeVisible();
+    await page.setViewportSize(desktopViewport!);
+    await hydratedClick(
+      page,
+      row.getByRole("button", { name: `Actions for ${effect}` })
+    );
+    await hydratedClick(page, page.getByRole("menuitem", { name: "Delete" }));
+    await settledClick(
+      page,
+      page
+        .getByTestId("confirm-dialog")
+        .getByRole("button", { name: "Delete", exact: true })
+    );
+    await expect(row).toHaveCount(0);
+  } finally {
+    removeOwnedSideEffect(effect);
+  }
+});
+
 test("logs, edits, and deletes a historical medication dose", async ({
   page,
 }, testInfo) => {
@@ -253,11 +340,35 @@ test("logs, edits, and deletes a historical medication dose", async ({
   await form.getByTestId("historical-dose-date").fill(beforeStart);
   await form.getByTestId("historical-dose-time").fill("03:17");
   await form.getByLabel("Amount").fill(loggedAmount);
-  await settledClick(page, form.getByRole("button", { name: "Save dose" }));
+  const submit = form.getByRole("button", { name: "Save dose" });
+  const actions = submit.locator("xpath=parent::div");
+  const cancel = actions.getByRole("button", { name: "Cancel" });
+  const desktopViewport = page.viewportSize();
+  expect(
+    desktopViewport,
+    "the medication history project has a fixed desktop viewport"
+  ).not.toBeNull();
+  await expectDesktopOrdinarySubmit({
+    form,
+    owner: actions,
+    submit,
+    adjacent: cancel,
+    name: "historical dose primary",
+  });
+  await page.setViewportSize({ width: 390, height: 844 });
+  await expectPhoneOrdinarySubmit({
+    form,
+    owner: actions,
+    submit,
+    adjacent: cancel,
+    name: "historical dose primary",
+  });
+  await settledClick(page, submit);
 
   await expect(page.getByText(`Logged past dose of ${PRN_MED}.`)).toBeVisible();
   await expect(history).toContainText(loggedAmount);
   await expect(history).toContainText(/(?:3:17am|03:17)/);
+  await page.setViewportSize(desktopViewport!);
 
   const loggedRow = history
     .getByTestId("dose-history-row")

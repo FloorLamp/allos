@@ -1,6 +1,7 @@
 import { Fragment } from "react";
 import Link from "next/link";
 import SegmentedControl from "@/components/SegmentedControl";
+import FilterPills from "@/components/FilterPills";
 import { timelineDayHref, type AppRoute } from "@/lib/hrefs";
 import {
   IconActivity,
@@ -27,6 +28,8 @@ import {
   IconSparkles,
   IconUsers,
   IconLayoutList,
+  IconApple,
+  IconGlassFull,
   type TablerIcon,
 } from "@tabler/icons-react";
 import { requireScope, stampSubjects, type SubjectInfo } from "@/lib/scope";
@@ -145,6 +148,8 @@ const CATEGORY_ICONS: Record<TimelineCategory, TablerIcon> = {
   injury: IconBandage,
   endurance: IconRun,
   practice: IconSparkles,
+  food: IconApple,
+  substance: IconGlassFull,
 };
 
 // Timeline rows are the quiet card tier: they share Botanical's card surface and
@@ -181,6 +186,9 @@ const BADGE_CLASS: Record<TimelineCategory, string> = {
   injury: "bg-red-100 text-red-700 dark:bg-red-950 dark:text-red-300",
   endurance: "bg-sky-100 text-sky-700 dark:bg-sky-950 dark:text-sky-300",
   practice: "bg-lime-100 text-lime-700 dark:bg-lime-950 dark:text-lime-300",
+  food: "bg-green-100 text-green-700 dark:bg-green-950 dark:text-green-300",
+  substance:
+    "bg-purple-100 text-purple-700 dark:bg-purple-950 dark:text-purple-300",
 };
 
 // The default page size and the increment each "Load more" reveals. The feed is
@@ -1008,7 +1016,7 @@ export default async function TimelinePage(props: {
                   buildHref={(r) =>
                     filterHref(category, r, undefined, [...openFolds])
                   }
-                  LinkComponent={TimelineFilterLink}
+                  linkBehavior="timeline"
                   idPrefix="timeline"
                   rightSlot={
                     <>
@@ -1033,36 +1041,29 @@ export default async function TimelinePage(props: {
                   }
                 />
 
-                <div className="-mx-2 flex gap-2 overflow-x-auto px-2 pb-1 sm:mx-0 sm:flex-wrap sm:overflow-visible sm:px-0 sm:pb-0">
-                  <TimelineFilterLink
-                    href={filterHref(undefined, range, undefined, [
-                      ...openFolds,
-                    ])}
-                    className={`shrink-0 rounded-full px-3 py-1 text-sm font-medium transition ${
-                      !category
-                        ? "bg-brand-500 text-white"
-                        : "bg-slate-100 text-slate-600 hover:bg-slate-200 dark:bg-ink-800 dark:text-slate-300 dark:hover:bg-ink-750"
-                    }`}
-                  >
-                    All
-                  </TimelineFilterLink>
-                  {visibleCategories.map((c) => {
-                    const active = c === category;
-                    return (
-                      <TimelineFilterLink
-                        key={c}
-                        href={filterHref(c, range, undefined, [...openFolds])}
-                        className={`shrink-0 rounded-full px-3 py-1 text-sm font-medium transition ${
-                          active
-                            ? "bg-brand-500 text-white"
-                            : "bg-slate-100 text-slate-600 hover:bg-slate-200 dark:bg-ink-800 dark:text-slate-300 dark:hover:bg-ink-750"
-                        }`}
-                      >
-                        {timelineCategoryLabel(c)}
-                      </TimelineFilterLink>
-                    );
-                  })}
-                </div>
+                <FilterPills
+                  mode="link"
+                  layout="responsive"
+                  label="Timeline category"
+                  value={category ?? null}
+                  linkBehavior="timeline"
+                  options={[
+                    {
+                      value: null,
+                      label: "All",
+                      href: filterHref(undefined, range, undefined, [
+                        ...openFolds,
+                      ]),
+                    },
+                    ...visibleCategories.map((visibleCategory) => ({
+                      value: visibleCategory,
+                      label: timelineCategoryLabel(visibleCategory),
+                      href: filterHref(visibleCategory, range, undefined, [
+                        ...openFolds,
+                      ]),
+                    })),
+                  ]}
+                />
               </div>
             }
           />

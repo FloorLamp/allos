@@ -105,10 +105,7 @@ export default function TodaysSessionCard({
                 : "Log this session"}
             </button>
           )}
-          <LogActivityButton
-            className="btn-ghost"
-            testId="training-overview-log-activity"
-          >
+          <LogActivityButton testId="training-overview-log-activity">
             Log activity
           </LogActivityButton>
         </div>

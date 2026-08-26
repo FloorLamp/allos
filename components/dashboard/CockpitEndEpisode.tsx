@@ -24,8 +24,7 @@ export default function CockpitEndEpisode({
       meds={meds}
       triggerLabel="Feeling better"
       triggerTestId="cockpit-end-episode"
-      triggerClassName="badge cursor-pointer border border-black/10 bg-transparent text-slate-600 hover:bg-slate-50 disabled:opacity-50 dark:border-white/15 dark:text-slate-300 dark:hover:bg-ink-850"
-      icon={<IconMoodCheck className="mr-1 inline h-3.5 w-3.5" stroke={1.75} />}
+      icon={<IconMoodCheck className="h-3.5 w-3.5" stroke={1.75} />}
     />
   );
 }

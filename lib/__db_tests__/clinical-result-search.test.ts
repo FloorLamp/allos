@@ -8,7 +8,7 @@
 // values only (no PHI).
 
 import { describe, it, expect, beforeAll } from "vitest";
-import { getClinicalObservations } from "@/lib/queries";
+import { getClinicalObservations, searchAll } from "@/lib/queries";
 import { db } from "@/lib/db";
 
 let profileId: number;
@@ -22,6 +22,11 @@ beforeAll(() => {
     `INSERT INTO medical_records
        (profile_id, date, category, name, canonical_name, value, value_num, unit)
      VALUES (?, '2024-05-01', 'lab', 'CHOLESTEROL, TOTAL', 'Total Cholesterol', '180', 180, 'mg/dL')`
+  ).run(profileId);
+  db.prepare(
+    `INSERT INTO medical_records
+       (profile_id, date, category, name, canonical_name, value, value_num, unit)
+     VALUES (?, '2024-05-02', 'lab', 'SELENIUM', 'Selenium', '45', 45, 'ug / L')`
   ).run(profileId);
 });
 
@@ -41,5 +46,12 @@ describe("getClinicalObservations free-text search matches the canonical name (#
   it("does not match unrelated text", () => {
     const rows = getClinicalObservations(profileId, { q: "glucose" });
     expect(rows).toHaveLength(0);
+  });
+
+  it("normalizes a micro unit in the precomposed global-search subtitle", () => {
+    const hit = searchAll(profileId, "selenium")
+      .flatMap((group) => group.hits)
+      .find((candidate) => candidate.domain === "clinical-result");
+    expect(hit?.subtitle).toBe("45 µg / L");
   });
 });

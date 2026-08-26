@@ -63,16 +63,17 @@ export function WeeklyTargetChip({
           />
         ))}
       </span>
+      <span className="text-xs tabular-nums text-slate-500 dark:text-slate-400">
+        {count}/{perWeek}
+      </span>
     </>
   );
-  const title = `${label}: ${count}/${perWeek} this week`;
 
   if (onClick) {
     return (
       <button
         type="button"
         onClick={onClick}
-        title={`${title} — click to edit`}
         data-testid="weekly-target-chip"
         data-tone={tone}
         className={`${base} cursor-pointer transition ${
@@ -86,12 +87,7 @@ export function WeeklyTargetChip({
     );
   }
   return (
-    <div
-      title={title}
-      data-testid="weekly-target-chip"
-      data-tone={tone}
-      className={base}
-    >
+    <div data-testid="weekly-target-chip" data-tone={tone} className={base}>
       {inner}
     </div>
   );

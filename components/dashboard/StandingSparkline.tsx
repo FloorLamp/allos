@@ -7,6 +7,7 @@ import {
 import { fillDailySeries } from "@/lib/day-fill";
 import { glanceSeriesToneClass } from "@/lib/glance-age";
 import SingleReadingMark from "@/components/SingleReadingMark";
+import VisualizationDetails from "@/components/VisualizationDetails";
 
 // THE STANDING SPARKLINE COLUMN (#3252) — one aligned column, desktop only.
 //
@@ -33,9 +34,8 @@ import SingleReadingMark from "@/components/SingleReadingMark";
 //
 // INLINE SVG, no chart library. The page adds none, and the marks here are the issue's
 // own spec: a 2px stroke, a ~12% area fill under it, an emphasized endpoint dot, and
-// a nearest-point hover naming the exact value and date. A `<title>` inside a hit band
-// IS the nearest-point tooltip — the browser draws it, so the column needs no client
-// component and no hover state to hydrate.
+// a nearest-point SVG title naming the exact value and date. The shared disclosure
+// below exposes the same history to touch and keyboard users without a custom scrub.
 //
 // The GAP is not decided here either: `seriesGapForSeriesKey` already declares, per
 // series, whether a missing day is a hole a level may cross or an absence the stroke
@@ -110,7 +110,7 @@ export default function StandingSparkline({
       <div
         data-testid="standing-sparkline"
         data-sparkline-state="single-reading"
-        className={`hidden min-[45rem]:block ${tone}`}
+        className={`hidden min-[45rem]:col-start-3 min-[45rem]:row-start-1 min-[45rem]:block min-[45rem]:justify-self-end ${tone}`}
         // Taller than the plot band, because this mark is a drawing AND a caption
         // while the plot is only a drawing. The shared component keeps its own type
         // size — a one-off smaller one here would be the micro-text the #794 guard
@@ -169,70 +169,84 @@ export default function StandingSparkline({
     dense.length > 1 ? (WIDTH - PAD * 2) / (dense.length - 1) : WIDTH;
 
   return (
-    <svg
-      data-testid="standing-sparkline"
-      data-sparkline-state="series"
-      data-sparkline-points={values.length}
-      viewBox={`0 0 ${WIDTH} ${HEIGHT}`}
-      width={WIDTH}
-      height={HEIGHT}
-      className={`hidden min-[45rem]:block ${tone}`}
-      role="img"
-      aria-label={series.name}
-      preserveAspectRatio="xMidYMid meet"
-    >
-      {strokes.map((run) => {
-        const key = `${run[0].date}-${run.at(-1)!.date}`;
-        const line = run.map((p) => `${p.x},${p.y}`).join(" ");
-        return (
-          <g key={key}>
-            {run.length > 1 && (
-              // The area, at ~12% of the line's own colour. `currentColor` carries the
-              // glance tone down from the wrapper, so the fill can never drift from
-              // the stroke it sits under.
-              <polygon
-                points={`${run[0].x},${HEIGHT} ${line} ${run.at(-1)!.x},${HEIGHT}`}
-                fill="currentColor"
-                fillOpacity={0.12}
-              />
-            )}
-            <polyline
-              points={line}
-              fill="none"
-              stroke="currentColor"
-              strokeWidth={2}
-              strokeLinecap="round"
-              strokeLinejoin="round"
-            />
-          </g>
-        );
-      })}
-      {last && (
-        // The endpoint is ALWAYS drawn: on a row whose whole point is the latest
-        // reading, the newest mark is the one the eye is looking for.
-        <circle
-          data-testid="standing-sparkline-endpoint"
-          cx={last.x}
-          cy={last.y}
-          r={2.5}
-          fill="currentColor"
-        />
-      )}
-      {strokes.flat().map((point) => (
-        // The nearest-point hover: one transparent band per reading, each as wide as
-        // the spacing between readings, carrying the sentence as a native tooltip.
-        <rect
-          key={point.date}
-          data-testid="standing-sparkline-point"
-          x={Math.max(0, point.x - band / 2)}
-          y={0}
-          width={band}
+    <>
+      <div
+        className={`hidden min-[45rem]:col-start-3 min-[45rem]:row-start-1 min-[45rem]:block min-[45rem]:justify-self-end ${tone}`}
+        style={{ width: WIDTH }}
+      >
+        <svg
+          data-testid="standing-sparkline"
+          data-sparkline-state="series"
+          data-sparkline-points={values.length}
+          viewBox={`0 0 ${WIDTH} ${HEIGHT}`}
+          width={WIDTH}
           height={HEIGHT}
-          fill="transparent"
+          className="hidden min-[45rem]:block"
+          role="img"
+          aria-label={series.name}
+          preserveAspectRatio="xMidYMid meet"
         >
-          <title>{series.pointLabel(point)}</title>
-        </rect>
-      ))}
-    </svg>
+          {strokes.map((run) => {
+            const key = `${run[0].date}-${run.at(-1)!.date}`;
+            const line = run.map((p) => `${p.x},${p.y}`).join(" ");
+            return (
+              <g key={key}>
+                {run.length > 1 && (
+                  // The area, at ~12% of the line's own colour. `currentColor` carries the
+                  // glance tone down from the wrapper, so the fill can never drift from
+                  // the stroke it sits under.
+                  <polygon
+                    points={`${run[0].x},${HEIGHT} ${line} ${run.at(-1)!.x},${HEIGHT}`}
+                    fill="currentColor"
+                    fillOpacity={0.12}
+                  />
+                )}
+                <polyline
+                  points={line}
+                  fill="none"
+                  stroke="currentColor"
+                  strokeWidth={2}
+                  strokeLinecap="round"
+                  strokeLinejoin="round"
+                />
+              </g>
+            );
+          })}
+          {last && (
+            // The endpoint is ALWAYS drawn: on a row whose whole point is the latest
+            // reading, the newest mark is the one the eye is looking for.
+            <circle
+              data-testid="standing-sparkline-endpoint"
+              cx={last.x}
+              cy={last.y}
+              r={2.5}
+              fill="currentColor"
+            />
+          )}
+          {strokes.flat().map((point) => (
+            // One transparent band per reading carries semantic SVG naming; the
+            // disclosure below carries the same values for sighted touch and keyboard.
+            <rect
+              key={point.date}
+              data-testid="standing-sparkline-point"
+              x={Math.max(0, point.x - band / 2)}
+              y={0}
+              width={band}
+              height={HEIGHT}
+              fill="transparent"
+            >
+              <title>{series.pointLabel(point)}</title>
+            </rect>
+          ))}
+        </svg>
+      </div>
+      <div className="hidden min-[45rem]:col-span-2 min-[45rem]:col-start-2 min-[45rem]:block">
+        <VisualizationDetails
+          label={`${series.name} history details`}
+          items={strokes.flat().map((point) => series.pointLabel(point))}
+          data-testid="standing-sparkline-details"
+        />
+      </div>
+    </>
   );
 }

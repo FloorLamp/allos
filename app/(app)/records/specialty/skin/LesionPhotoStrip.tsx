@@ -6,6 +6,7 @@ import SubmitButton from "@/components/SubmitButton";
 import { useToast } from "@/components/Toast";
 import PhotoGallery from "@/components/photo/PhotoGallery";
 import PhotoTimeline from "@/components/photo/PhotoTimeline";
+import SegmentedControl from "@/components/SegmentedControl";
 import type { GalleryPhoto } from "@/lib/photo/gallery-model";
 import { uploadLesionPhoto, deleteLesionPhoto } from "./actions";
 import type { LesionPhotoRow } from "@/lib/skin-photo-write";
@@ -63,28 +64,24 @@ export default function LesionPhotoStrip({
   return (
     <div className="space-y-2" data-testid={`lesion-photos-${lesionId}`}>
       {gallery.length > 1 ? (
-        <div
-          className="flex justify-end gap-1"
-          role="tablist"
-          aria-label="Photo view"
-        >
-          {(["grid", "compare"] as const).map((v) => (
-            <button
-              key={v}
-              type="button"
-              role="tab"
-              aria-selected={view === v}
-              className={`rounded-lg px-2.5 py-1 text-xs font-medium ${
-                view === v
-                  ? "bg-brand-600 text-white"
-                  : "bg-slate-100 text-slate-600 hover:bg-slate-200 dark:bg-ink-800 dark:text-slate-300 dark:hover:bg-ink-750"
-              }`}
-              onClick={() => setView(v)}
-              data-testid={`lesion-photo-view-${v}-${lesionId}`}
-            >
-              {v === "grid" ? "Browse" : "Compare"}
-            </button>
-          ))}
+        <div className="flex justify-end">
+          <SegmentedControl
+            options={[
+              {
+                value: "grid",
+                label: "Browse",
+                testId: `lesion-photo-view-grid-${lesionId}`,
+              },
+              {
+                value: "compare",
+                label: "Compare",
+                testId: `lesion-photo-view-compare-${lesionId}`,
+              },
+            ]}
+            value={view}
+            onChange={setView}
+            ariaLabel="Photo view"
+          />
         </div>
       ) : null}
 

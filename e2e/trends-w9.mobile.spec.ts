@@ -1,6 +1,7 @@
 import { test, expect } from "./fixtures";
 import { expectNoClippedContent } from "./helpers";
 import { expandTrendsContext } from "./trends-chrome";
+import { TAP_FLOOR_PX } from "@/lib/tap-floor-tokens";
 
 // Mobile-only seams from issues #1493 and #1485.
 //
@@ -114,7 +115,7 @@ test.describe("the compare block at 390px (#1493 B)", () => {
     expect(
       box.height,
       "the normalize toggle's tap target"
-    ).toBeGreaterThanOrEqual(44);
+    ).toBeGreaterThanOrEqual(TAP_FLOOR_PX);
 
     await expectNoClippedContent(page);
   });

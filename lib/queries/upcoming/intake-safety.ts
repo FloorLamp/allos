@@ -533,7 +533,7 @@ export function dietaryLimitItems(
     key: dietaryLimitSignalKey(w.key),
     domain: "dietary-limit" as const,
     title: ulWarningTitle(w),
-    detail: ulWarningDetail(w, w.conditionCaveat),
+    detail: ulWarningDetail(w, w.conditionCaveat, w.formulationNote),
     href: nutritionTabHref("supplements"),
     dueDate: null,
     band: "today" as const,

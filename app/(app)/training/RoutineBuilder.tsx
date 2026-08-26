@@ -9,6 +9,7 @@ import type { RoutineWithDays } from "@/lib/types";
 import Combobox from "@/components/Combobox";
 import SubmitButton from "@/components/SubmitButton";
 import { useToast } from "@/components/Toast";
+import Chip from "@/components/Chip";
 import { createRoutineAction, updateRoutineAction } from "./actions";
 import DraftRestoreBanner from "@/components/DraftRestoreBanner";
 import { useFormDraft } from "@/components/useFormDraft";
@@ -300,7 +301,6 @@ export default function RoutineBuilder({
                 <button
                   type="button"
                   aria-label={`Remove ${day.label || `day ${di + 1}`}`}
-                  title="Remove day"
                   onClick={() => setDays((ds) => ds.filter((_, i) => i !== di))}
                   className="shrink-0 text-slate-400 hover:text-rose-500"
                 >
@@ -318,18 +318,15 @@ export default function RoutineBuilder({
                 {REGION_SCOPES.map((r) => {
                   const active = day.focus.includes(r);
                   return (
-                    <button
+                    <Chip
                       key={r}
-                      type="button"
+                      role="filter"
+                      density="dense"
                       onClick={() => toggleFocus(di, r)}
-                      className={`rounded-full border px-2.5 py-0.5 text-xs font-medium transition ${
-                        active
-                          ? "border-brand-500 bg-brand-500 text-white"
-                          : "border-(--border) bg-surface text-slate-500 hover:bg-(--ghost-hover) dark:text-slate-400"
-                      }`}
+                      pressed={active}
                     >
                       {r}
-                    </button>
+                    </Chip>
                   );
                 })}
               </div>
@@ -365,7 +362,6 @@ export default function RoutineBuilder({
                             <button
                               type="button"
                               aria-label={`Remove ${c}`}
-                              title="Remove exercise"
                               onClick={() =>
                                 patchSlot(di, si, (s) => ({
                                   ...s,
@@ -386,7 +382,6 @@ export default function RoutineBuilder({
                       <button
                         type="button"
                         aria-label={`Remove slot ${si + 1}`}
-                        title="Remove slot"
                         onClick={() =>
                           patchDay(di, (d) => ({
                             ...d,

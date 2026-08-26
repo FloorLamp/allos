@@ -334,52 +334,12 @@ function getMetricDailyTotalsUncached(
       .all(profileId, metric, limitDays) as { date: string; value: number }[];
     return rows.reverse();
   }
-  // Additive metric: one source per day. pickOneSourcePerDay must run in JS,
-  // so we can't just LIMIT the aggregate; instead find the cutoff date of the
-  // limitDays most-recent dates-with-data first, then aggregate only from there.
-  // This is exact (the output is those same dates), while bounding both the SUM
-  // scan and the JS work to the window instead of all history.
-  const recentDates = db
-    .prepare(
-      `SELECT date FROM metric_samples WHERE profile_id = ? AND metric = ?
-        GROUP BY date ORDER BY date DESC LIMIT ?`
-    )
-    .all(profileId, metric, limitDays) as { date: string }[];
-  if (recentDates.length === 0) return [];
-  const cutoff = recentDates[recentDates.length - 1].date;
-  const rows = db
-    .prepare(
-      `SELECT date, source, origin, SUM(value) AS value
-         FROM metric_samples WHERE profile_id = ? AND metric = ? AND date >= ?
-        GROUP BY date, source, origin`
-    )
-    .all(profileId, metric, cutoff) as {
-    date: string;
-    source: string | null;
-    origin: string | null;
-    value: number;
-  }[];
-  return (
-    pickOneSourcePerDay(
-      pickRowsOneOriginPerSourceDay(
-        rows,
-        (r) => r.date,
-        (r) => r.source,
-        (r) => r.origin,
-        (r) => r.value
-      ),
-      resolveMetricSources(metric, priority, SOURCE_PREFERENCE)
-    )
-      .sort((a, b) => (a.date < b.date ? 1 : -1))
-      // ALL_ROWS is -1 ("no limit" — that is what SQLite's `LIMIT -1` means, and the
-      // recentDates query above already reads it that way). Passing it straight to
-      // slice meant `slice(0, -1)`, which drops the LAST element of a newest-first
-      // array — i.e. every unbounded additive series silently lost its OLDEST day.
-      // Found via #1541: the metric detail page reads its full series with ALL_ROWS,
-      // so a 3-day steps history rendered as 2 readings.
-      .slice(0, limitDays < 0 ? undefined : limitDays)
-      .reverse()
-  );
+  return getAdditiveMetricDailyTotalsBatchWithPriority(
+    profileId,
+    [metric],
+    limitDays,
+    priority
+  ).get(metric)!;
 }
 export const getMetricDailyTotals = snapshotCached(
   "metrics.daily-totals",
@@ -387,6 +347,94 @@ export const getMetricDailyTotals = snapshotCached(
     `${profileId}:${metric}:${limitDays}`,
   getMetricDailyTotalsUncached
 );
+
+type AdditiveDailyRow = {
+  metric: string;
+  date: string;
+  source: string | null;
+  origin: string | null;
+  value: number;
+};
+
+// The additive half of getMetricDailyTotals for several metrics at once. The
+// ranked-date CTE preserves the existing latest-N-DATES bound independently per
+// metric, while the shared projection below remains the one source-election rule.
+function getAdditiveMetricDailyTotalsBatchWithPriority(
+  profileId: number,
+  metrics: readonly string[],
+  limitDays: number,
+  priority: ReturnType<typeof getMetricSourcePriority>
+): Map<string, { date: string; value: number }[]> {
+  const unique = [...new Set(metrics)];
+  const out = new Map(
+    unique.map((metric) => [metric, [] as { date: string; value: number }[]])
+  );
+  if (unique.length === 0 || limitDays === 0) return out;
+  const placeholders = unique.map(() => "?").join(", ");
+  const bounded = limitDays >= 0;
+  const rows = db
+    .prepare(
+      `WITH ranked_dates AS (
+         SELECT metric, date,
+                ROW_NUMBER() OVER (
+                  PARTITION BY metric ORDER BY date DESC
+                ) AS recency
+           FROM metric_samples
+          WHERE profile_id = ? AND metric IN (${placeholders})
+          GROUP BY metric, date
+       )
+       SELECT samples.metric, samples.date, samples.source, samples.origin,
+              SUM(samples.value) AS value
+         FROM metric_samples samples
+         JOIN ranked_dates dates
+           ON dates.metric = samples.metric AND dates.date = samples.date
+          ${bounded ? "AND dates.recency <= ?" : ""}
+        WHERE samples.profile_id = ?
+        GROUP BY samples.metric, samples.date, samples.source, samples.origin`
+    )
+    .all(
+      profileId,
+      ...unique,
+      ...(bounded ? [limitDays] : []),
+      profileId
+    ) as AdditiveDailyRow[];
+
+  for (const metric of unique) {
+    const candidates = rows.filter((row) => row.metric === metric);
+    out.set(
+      metric,
+      pickOneSourcePerDay(
+        pickRowsOneOriginPerSourceDay(
+          candidates,
+          (row) => row.date,
+          (row) => row.source,
+          (row) => row.origin,
+          (row) => row.value
+        ),
+        resolveMetricSources(metric, priority, SOURCE_PREFERENCE)
+      ).sort((left, right) => left.date.localeCompare(right.date))
+    );
+  }
+  return out;
+}
+
+export function getAdditiveMetricDailyTotalsBatch(
+  profileId: number,
+  metrics: readonly string[],
+  limitDays = 180
+): Map<string, { date: string; value: number }[]> {
+  for (const metric of metrics) {
+    if (metricAggregation(metric) !== "SUM") {
+      throw new Error(`${metric} is not an additive metric`);
+    }
+  }
+  return getAdditiveMetricDailyTotalsBatchWithPriority(
+    profileId,
+    metrics,
+    limitDays,
+    getMetricSourcePriority(profileId)
+  );
+}
 
 // The most recent value for a point metric (e.g. 'height_cm'), or null.
 // The most recent metric_samples reading with its measured date (the ended_at's

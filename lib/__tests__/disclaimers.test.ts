@@ -14,14 +14,14 @@ import {
   stripDisclaimerSentences,
 } from "@/lib/disclaimers";
 
-// Source-scan guard for the disclaimer-consolidation invariant (issue #1049), in the
+// Structural guard for the disclaimer-consolidation invariant (issue #1049), in the
 // profile-scoping / telegram-chokepoint / immediate-tx / notes-text tradition. Disclaimer
 // copy used to live as ~40 inline literals that drifted into ~15 near-variants of one
 // sentence. Per the owner's ratified call, all of that boilerplate is now DELETED from the
 // surfaces: the disclaimer lives on ONE page (/disclaimer, footer-linked), and the domain
-// pages carry no disclaimer prose at all. This test reads the repo's own source as TEXT
-// (no DB, no network — it stays "pure") and fails the build if a disclaimer literal
-// reappears under app/ or components/, so the consolidation can't silently regrow.
+// pages carry no disclaimer prose at all. The rendered-phrase source scan now lives with
+// the other copy rules in copy-lint.test.ts (#3521); this file keeps the zero-escape and
+// import-boundary checks plus the dataset/runtime halves of the same contract.
 //
 // STRICT: because no legitimate inline disclaimer remains, there are ZERO `disclaimer-ok:`
 // escapes in the tree, and the second test below pins that count at 0. The escape hatch
@@ -36,9 +36,9 @@ const SCAN_DIRS = ["app", "components"];
 
 // The banned disclaimer phrasings. They used to be defined HERE, which is exactly why
 // #2342 could happen: a rule that lives in one test can only reach what that test reads.
-// The list now lives in lib/disclaimers.ts beside the copy it protects, and the dataset
-// scan below, the generator scan, and the runtime clamp in lib/coverage-gaps all read
-// the same one.
+// The list now lives in lib/disclaimers.ts beside the copy it protects, and copy-lint,
+// the dataset scan below, the generator scan, and the runtime clamp in
+// lib/coverage-gaps all read the same one.
 const BANNED: readonly RegExp[] = DISCLAIMER_PHRASINGS;
 
 // ── The curated-dataset half (#2342) ──────────────────────────────────────────
@@ -155,25 +155,6 @@ function stripComments(text: string): string {
 }
 
 describe("disclaimer consolidation guard (issue #1049)", () => {
-  it("no surface under app/ or components/ hand-writes a disclaimer literal", () => {
-    const offenders: string[] = [];
-    for (const { rel, text } of sourceFiles()) {
-      const code = stripComments(text);
-      const lines = code.split("\n");
-      lines.forEach((line, i) => {
-        if (line.includes("disclaimer-ok")) return; // marker escape
-        if (BANNED.some((re) => re.test(line)))
-          offenders.push(`${rel}:${i + 1}`);
-      });
-    }
-    expect(
-      offenders,
-      `These hand-write a disclaimer phrase. Render a reference to a constant from ` +
-        `lib/disclaimers.ts (MEDICAL_DISCLAIMER / NOT_A_DIAGNOSIS / NEVER_PRESCRIPTIVE / ` +
-        `DATASET_DISCLAIMER) instead of a literal:\n${offenders.join("\n")}`
-    ).toEqual([]);
-  });
-
   it("carries ZERO disclaimer-ok escapes — the surfaces hold no inline disclaimers", () => {
     const escapes: string[] = [];
     for (const { rel, text } of sourceFiles()) {
@@ -218,6 +199,15 @@ describe("disclaimer consolidation guard (issue #1049)", () => {
     expect(DISCLAIMER_FULL).toMatch(/extract/i);
     expect(DISCLAIMER_FULL).toMatch(/emergency/i);
     expect(DISCLAIMER_FULL).toMatch(/self-hosted|your data/i);
+  });
+
+  it("keeps the shared suggestions and reference-range caveat on the canonical surface", () => {
+    const section = DISCLAIMER_SECTIONS.find(
+      (candidate) => candidate.id === "suggestions-and-reference-ranges"
+    );
+    expect(section?.body).toMatch(/general guidelines/i);
+    expect(section?.body).toMatch(/vary by age, sex, and clinical context/i);
+    expect(section?.body).toMatch(/clinician's guidance takes priority/i);
   });
 
   it("the guard actually fires on a planted literal and passes a constant reference", () => {

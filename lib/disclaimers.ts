@@ -44,7 +44,11 @@ export const DISCUSS_WITH_PRESCRIBER =
 // reachable from the persistent footer link and Settings. Structured as titled
 // sections so the page can render them as headed paragraphs; DISCLAIMER_FULL is the
 // same content joined to plain text (the guard/test asserts the page renders it).
-export const DISCLAIMER_SECTIONS: { title: string; body: string }[] = [
+export const DISCLAIMER_SECTIONS: {
+  id?: string;
+  title: string;
+  body: string;
+}[] = [
   {
     title: "Informational, not medical advice",
     body: "Allos is a personal health-tracking tool. Everything it shows — trends, derived ranges, suggestions, interaction and safety flags — is informational and is not medical advice, diagnosis, or treatment. It is not a substitute for the judgment of a qualified clinician. Always talk to your own doctor, pharmacist, or other healthcare professional before making a decision about your health, medications, or care.",
@@ -52,6 +56,11 @@ export const DISCLAIMER_SECTIONS: { title: string; body: string }[] = [
   {
     title: "Not a diagnosis",
     body: "Screening scores, flagged biomarkers, growth and percentile curves, cycle phases, and every other derived readout describe your recorded data — they do not diagnose a condition. A flag is a prompt to look closer with a professional, never a verdict. The absence of a flag is not clearance.",
+  },
+  {
+    id: "suggestions-and-reference-ranges",
+    title: "Suggestions and reference ranges",
+    body: "Preventive suggestions are based on general guidelines. Reference and optimal ranges can be incomplete or inaccurate and may vary by age, sex, and clinical context. A clinician's guidance takes priority.",
   },
   {
     title: "Reference data is a curated subset",
@@ -91,10 +100,12 @@ export const DISCLAIMER_FULL: string = DISCLAIMER_SECTIONS.map(
 // posture — and the guard, the datasets scan, the generators and the runtime clamp all
 // read the SAME list rather than three drifting copies of it.
 export const DISCLAIMER_PHRASINGS: readonly RegExp[] = [
-  /not medical advice/i,
+  /not\s+medical\s+advice/i,
   /informational[^.\n]*\badvice\b/i,
-  /not a diagnosis/i,
-  /never prescriptive/i,
+  /\binformational\s+only\b/i,
+  /\bconsult\s+a\s+clinician\b/i,
+  /not\s+a\s+diagnosis/i,
+  /never\s+prescriptive/i,
 ];
 
 // Whether a piece of copy hand-writes a disclaimer phrasing.

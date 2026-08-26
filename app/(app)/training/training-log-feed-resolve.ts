@@ -98,15 +98,7 @@ export async function resolveTrainingLogFeedContext(
         const subject = pid != null ? subjectByProfile.get(pid) : undefined;
         return {
           ...c,
-          subject: subject
-            ? {
-                profileId: subject.profileId,
-                name: subject.name,
-                photoPath: subject.photoPath,
-                photoVersion: subject.photoVersion,
-                canWrite: subject.access === "write",
-              }
-            : undefined,
+          subject,
         };
       }),
     }));

@@ -1,5 +1,6 @@
 import { chartActivityRamp } from "@/lib/chart-colors";
 import type { ProtocolHeatmap } from "@/lib/protocol-heatmap";
+import VisualizationDetails from "@/components/VisualizationDetails";
 
 const LEVEL_CLASS = [
   chartActivityRamp.emptyClass,
@@ -43,46 +44,56 @@ export default function PracticeHeatmap({
       data-start={data.start}
       data-end={data.end}
       data-visible-start={data.visibleStart}
-      role="img"
-      aria-label={`${label} from ${data.start} to ${data.end}: ${summary}${
-        data.truncated
-          ? `. Heatmap shows the most recent ${data.columns.length} weeks from ${data.visibleStart}`
-          : ""
-      }`}
     >
-      <div className="max-w-full overflow-x-auto pb-0.5">
-        <div className={`flex w-max ${density.gap}`}>
-          {data.columns.map((column, columnIndex) => (
-            <div key={columnIndex} className={`flex flex-col ${density.gap}`}>
-              {column.map((cell) => (
-                <span
-                  key={cell.date}
-                  title={
-                    cell.outside
-                      ? undefined
-                      : `${cell.date} — ${cell.count} ${
-                          cell.count === 1 ? "session" : "sessions"
-                        }`
-                  }
-                  data-date={cell.date}
-                  data-count={cell.outside ? undefined : cell.count}
-                  data-level={cell.outside ? undefined : cell.level}
-                  data-outside={cell.outside ? "true" : undefined}
-                  aria-hidden="true"
-                  className={`${density.cell} shrink-0 rounded-[1px] ${
-                    cell.outside ? "bg-transparent" : LEVEL_CLASS[cell.level]
-                  }`}
-                />
-              ))}
-            </div>
-          ))}
+      <div
+        role="img"
+        aria-label={`${label} from ${data.start} to ${data.end}: ${summary}${
+          data.truncated
+            ? `. Heatmap shows the most recent ${data.columns.length} weeks from ${data.visibleStart}`
+            : ""
+        }`}
+      >
+        <div className="max-w-full overflow-x-auto pb-0.5">
+          <div className={`flex w-max ${density.gap}`}>
+            {data.columns.map((column, columnIndex) => (
+              <div key={columnIndex} className={`flex flex-col ${density.gap}`}>
+                {column.map((cell) => (
+                  <span
+                    key={cell.date}
+                    data-date={cell.date}
+                    data-count={cell.outside ? undefined : cell.count}
+                    data-level={cell.outside ? undefined : cell.level}
+                    data-outside={cell.outside ? "true" : undefined}
+                    aria-hidden="true"
+                    className={`${density.cell} shrink-0 rounded-[1px] ${
+                      cell.outside ? "bg-transparent" : LEVEL_CLASS[cell.level]
+                    }`}
+                  />
+                ))}
+              </div>
+            ))}
+          </div>
         </div>
+        <span className="mt-1 block text-xs text-slate-500 dark:text-slate-400">
+          {data.truncated
+            ? `Recent ${data.columns.length} weeks · ${summary}`
+            : summary}
+        </span>
       </div>
-      <span className="mt-1 block text-xs text-slate-500 dark:text-slate-400">
-        {data.truncated
-          ? `Recent ${data.columns.length} weeks · ${summary}`
-          : summary}
-      </span>
+      <VisualizationDetails
+        label={`${label} daily details`}
+        items={data.columns.flatMap((column) =>
+          column.flatMap((cell) =>
+            cell.outside
+              ? []
+              : [
+                  `${cell.date} — ${cell.count} ${
+                    cell.count === 1 ? "session" : "sessions"
+                  }`,
+                ]
+          )
+        )}
+      />
     </div>
   );
 }

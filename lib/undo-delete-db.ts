@@ -45,6 +45,7 @@ import {
 import { nullEncounterLinks } from "./queries/visit-links";
 import { practiceIdentity } from "./practice";
 import { TRASH_EXCLUDED_KIND } from "./trash";
+import { detachConditionIntakeLinks } from "./condition-delete";
 
 // A captured counter row's identity values BESIDE profile_id and date, positional to the
 // ledger's `keyColumns` (i.e. the `CounterSpec.key` order minus `date`). Read straight
@@ -308,13 +309,10 @@ export function captureDelete(
     // every sibling null-out in this function they are side effects undo does NOT
     // invert: the clinical row comes back, the other row's link stays honestly cleared.
     if (spec.ownedTable === "conditions") {
-      // A medication may name this condition as its indication (#1052) — a REFERENCES
-      // FK with no ON DELETE. (Before #1847 only deleteCondition nulled it, so a bulk
-      // delete of a condition a med treated threw on the FK.)
-      db.prepare(
-        `UPDATE intake_items SET indication_condition_id = NULL
-          WHERE indication_condition_id = ? AND profile_id = ?`
-      ).run(rootId, profileId);
+      // Shared with imported-footprint cleanup and every non-undo condition delete.
+      // It only detaches same-profile intake facts; a corrupt cross-profile reference
+      // remains so the root DELETE fails and this transaction rolls back.
+      detachConditionIntakeLinks(profileId, rootId);
     }
     if (spec.ownedTable === "encounters") {
       // A visit is the most linked-TO row in the passport (#1847 fifth kind). An

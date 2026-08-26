@@ -1,23 +1,6 @@
-// The Training hub's tab vocabulary (issue #1496) — the lib/trends-tabs.ts shape
-// applied to /training so the page can build ONLY the active tab (#105).
-//
-// The page used to hand every section to `Tabs` as a `content:` prop, which rendered
-// (and ran the queries for) all six during the RSC pass on every request — the client
-// `keepMounted` flag only gated DOM. Reading `?tab=` here and switching on the result
-// makes each visit compute one tab.
-//
-// The tab NAMES stay the deep-link vocabulary: `/training?tab=log` (the coaching
-// engine, the timeline's activity links, every integration page), `?tab=overview`,
-// `?tab=analyze` (the plateau finding), `?tab=fitness` (#158's longevity link),
-// and `?tab=plan`. RETIRED NAMES KEEP RESOLVING (#2892): `routines` and `goals`
-// merged into Plan, and their historic links — timeline goal events, every
-// goal-pacing finding, onboarding, and Telegram messages that can never be
-// rewritten — map to `plan` here rather than falling to the default, which would
-// land a goal link on the wrong surface. An unknown value falls back to the
-// default, exactly as `Tabs` did.
-//
-// PURE + unit-tested: the tab set, the parser and the strip are one decision here
-// instead of three inline literals on a Server Component the pure tier can't see.
+// The Training hub's tab vocabulary (issue #1496). Parsing here lets the page
+// build only the active tab (#105), while retired names keep historic deep links
+// resolving to the section that absorbed them (#2892).
 
 import type { AppRoute } from "./hrefs";
 
@@ -40,13 +23,8 @@ const TAB_LABELS: Record<TrainingTab, string> = {
 };
 
 // Retired tab names → the canonical URL the training page redirects them to.
-// ONE mechanism for every retired name (#2892/#2894 review): a redirect
-// NORMALIZES the URL, which is what makes the client tab strip highlight the
-// right tab (NavTabsStrip resolves ?tab= itself and knows nothing of merges)
-// and what restores the section anchor historic hashless links relied on —
-// ?tab=goals used to open directly on the goal cards, so it must land on
-// plan#goals, not the top of Plan. The MERGED_TABS parser mapping above stays
-// as the belt for any caller that parses without redirecting.
+// The redirect normalizes both the selected tab and the historic section anchor;
+// the parser mapping below covers callers that parse without redirecting.
 const RETIRED_TAB_TARGETS: Record<string, AppRoute> = {
   goals: "/training?tab=plan#goals",
   routines: "/training?tab=plan#routines",

@@ -21,6 +21,50 @@ export interface KeyedToast {
   // outgoing bar has left rather than underneath it — but its countdown is over and
   // it leaves the list when the animation ends.
   exiting?: boolean;
+  // Profile-owned receipts may outlive the route that posted them. The provider
+  // keeps this subject stamp so a profile switch can clear every old-profile
+  // card, including phone snackbars still waiting in the queue (#3611).
+  profileId?: number;
+  // Generation of the authenticated profile scope that created this receipt.
+  // Profile id alone is insufficient when A logs out and later signs back into A:
+  // a completion from the old session must not enter the new session's queue.
+  profileToken?: number;
+  // Optional interaction-lifecycle ownership for conditional keyed publication
+  // and cleanup. A newer claim replaces this stamp along with the receipt.
+  owner?: symbol;
+}
+
+export interface ProfileToastScope {
+  profileId: number;
+  token: number;
+}
+
+export function acceptsProfileToast(
+  active: ProfileToastScope | null,
+  incoming: Pick<KeyedToast, "profileId" | "profileToken">
+): boolean {
+  if (incoming.profileId == null) return true;
+  return (
+    active != null &&
+    active.profileId === incoming.profileId &&
+    active.token === incoming.profileToken
+  );
+}
+
+export function clearProfileToasts<T extends KeyedToast>(list: T[]): T[] {
+  return list.filter((toast) => toast.profileId == null);
+}
+
+// Keep only unscoped toasts and receipts owned by the profile now in force. This
+// is deliberately list-wide: below `md`, a previous profile's receipt may be
+// queued and therefore have no mounted DOM node to dismiss individually.
+export function dismissOtherProfileToasts<T extends KeyedToast>(
+  list: T[],
+  activeProfileId: number
+): T[] {
+  return list.filter(
+    (toast) => toast.profileId == null || toast.profileId === activeProfileId
+  );
 }
 
 // Insert `incoming`, or REPLACE the live toast with the same key in place. On a
@@ -49,13 +93,17 @@ export function upsertToast<T extends KeyedToast>(list: T[], incoming: T): T[] {
   return [...list, incoming];
 }
 
-// Remove the live toast with this key. An unknown key is a no-op (the list is
-// returned unchanged in content).
+// Remove the live toast with this key. When an owner is supplied, remove it only
+// while that owner still holds the slot; a newer same-key upsert is left alone.
+// An unknown key is a no-op (the list is returned unchanged in content).
 export function dismissKeyed<T extends KeyedToast>(
   list: T[],
-  key: string
+  key: string,
+  owner?: symbol
 ): T[] {
-  return list.filter((t) => t.key !== key);
+  return list.filter(
+    (toast) => toast.key !== key || (owner != null && toast.owner !== owner)
+  );
 }
 
 // Start the exit animation for one toast. The item stays in the list, marked, so

@@ -29,6 +29,7 @@ import {
 } from "./queries/visit-links";
 import { normalizeSituationName } from "./situations";
 import type { IllnessEpisode } from "./symptom-episode";
+import { detachConditionIntakeLinks } from "./condition-delete";
 
 export interface IllnessEpisodeRow {
   id: number;
@@ -483,10 +484,20 @@ export function deleteEpisodeRow(profileId: number, id: number): boolean {
     db.prepare(
       `DELETE FROM episode_stopped_meds WHERE episode_id = ? AND profile_id = ?`
     ).run(id, profileId);
-    db.prepare(
-      `DELETE FROM conditions
-        WHERE profile_id = ? AND external_id = ? AND source = 'episode'`
-    ).run(profileId, episodeConditionExternalId(id));
+    const condition = db
+      .prepare(
+        `SELECT id FROM conditions
+          WHERE profile_id = ? AND external_id = ? AND source = 'episode'`
+      )
+      .get(profileId, episodeConditionExternalId(id)) as
+      { id: number } | undefined;
+    if (condition) {
+      detachConditionIntakeLinks(profileId, condition.id);
+      db.prepare(
+        `DELETE FROM conditions
+          WHERE id = ? AND profile_id = ? AND source = 'episode'`
+      ).run(condition.id, profileId);
+    }
     return (
       db
         .prepare(`DELETE FROM illness_episodes WHERE id = ? AND profile_id = ?`)
@@ -542,6 +553,7 @@ export function mergeEpisodeRows(
       )
       .get(profileId, dropExternal) as { id: number } | undefined;
     if (dropCondition && keepCondition) {
+      detachConditionIntakeLinks(profileId, dropCondition.id);
       db.prepare(
         `DELETE FROM conditions
           WHERE id = ? AND profile_id = ? AND source = 'episode'`

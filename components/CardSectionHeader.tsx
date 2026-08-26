@@ -1,5 +1,4 @@
-import Link from "next/link";
-import { IconArrowRight } from "@tabler/icons-react";
+import DestinationLink from "@/components/DestinationLink";
 import type { AppRoute } from "@/lib/hrefs";
 import type { ReactNode } from "react";
 
@@ -33,12 +32,12 @@ export default function CardSectionHeader({
         }
       >
         {titleHref ? (
-          <Link
+          <DestinationLink
             href={titleHref}
             className="inline-flex items-center gap-1 text-link"
           >
-            {title} <IconArrowRight className="h-4 w-4" />
-          </Link>
+            {title}
+          </DestinationLink>
         ) : (
           title
         )}
@@ -46,13 +45,13 @@ export default function CardSectionHeader({
       <div className="flex flex-wrap items-center justify-end gap-2">
         {action}
         {showPageLink ? (
-          <Link
+          <DestinationLink
             href={href}
             aria-label={`${linkLabel} ${title.toLowerCase()}`}
             className="inline-flex items-center gap-1 text-xs text-link"
           >
-            {linkLabel} <IconArrowRight className="h-4 w-4" />
-          </Link>
+            {linkLabel}
+          </DestinationLink>
         ) : null}
       </div>
     </div>

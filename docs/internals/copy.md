@@ -162,8 +162,9 @@ owner-ruled and ships with its guard (the guards-mandatory ruling recorded on
 
 Stored machine forms never reach user-facing copy verbatim: dates render
 through the profile's display format prefs (never raw ISO — #3492, shipped),
-units display-normalized (UCUM bracket stripping per #1018's equivalence —
-#3493), enum-ish values through label maps with the raw value as fallback
+lab units display-normalized (UCUM bracket stripping per #1018's equivalence —
+#3493; ASCII micro tokens such as `ug`/`uL` render with `µ` — #3545), while the
+dose vocabulary deliberately keeps `mcg`; enum-ish values use label maps with the raw value as fallback
 (#3493). List joins never use a separator the joined names can contain
 (`summarizeNames` and template joins — #3496, shipped), and clinical names are never
 title-cased (`lib/allergen-vocabulary.ts`'s recorded doctrine; imported
@@ -416,20 +417,12 @@ budget is a proxy and a rendered box is the thing the reader meets:
 
 Registered in `design-system.md` §3 and closed by the same change: the
 suppression pair (`scrollbar-none` + `[&::-webkit-scrollbar]:hidden`) lives on
-the shared strips — `components/Tabs.tsx` and every arm of
-`components/NavTabs.tsx` — never at a call site.
+the shared strip in `components/TabList.tsx`, never at a call site.
 
-Its guard is in the same census spec, and it is a CASCADE reading rather than a
-geometric one, for a measured reason: headless Chromium draws overlay
-scrollbars, so an unsuppressed control scroller built beside the strip reports
-`offsetHeight − clientHeight === 0` too (measured 2026-08-22, with and without
-touch emulation). A gutter assertion would therefore have passed on a strip with
-no suppression at all. The probe reads the computed value ON THE LIVE ELEMENT —
-which answers what a class-string grep cannot, namely whether the rule reached
-THIS element — against a control in the same document that must come back
-`auto`, so the reading is a discriminator rather than a constant. It clamps each
-strip's width first, so "it still scrolls" is a claim about a row that is
-actually scrolling.
+Its guard uses a computed-style cascade reading because headless Chromium's
+overlay scrollbars consume no geometry. It compares each live, forcibly
+overflowing strip with an unsuppressed control, proving both that suppression
+reached the element and that scrolling remains possible.
 
 ### 11. State honesty at low n
 
@@ -458,6 +451,10 @@ the scope directories. It fails CI on:
    Household and Family homes, shared profile/subject chips, and TSX components
    carrying `ProfileScope`, `SubjectInfo`, or `viewIds`. Login-scoped control copy
    requires an exact, justified entry in the shrinking allowlist.
+4. **Inline disclaimer prose** — `not medical advice`, `informational only`,
+   `consult a clinician`, `never prescriptive`, and `not a diagnosis` phrasing
+   outside `lib/disclaimers.ts` and the canonical `/disclaimer` page. Domain
+   surfaces may carry at most a one-line link to the relevant canonical section.
 
 It structurally **excludes** non-user-facing contexts so they can't trip it:
 comments, `import`/`export … from` lines, `console.*` and `log.<level>(…)`
@@ -466,6 +463,12 @@ per #478). A genuinely-legitimate remaining hit goes on the test's frozen
 `ALLOW` list, keyed by `(file, exact substring)` with a per-entry justification
 — the same immutable-manifest discipline as the migration hash manifest and the
 e2e-hygiene allowlist: **the list only ever shrinks.**
+
+Disclaimer prose has a stricter boundary rather than a general exception list:
+only `lib/disclaimers.ts` owns the wording, and `/disclaimer` is the only page
+allowed to render it. The scan strips code comments before matching, so design
+notes can describe the posture without becoming false positives. The two paths
+are asserted as a frozen allowlist; domain surfaces cannot join it.
 
 The scan is intentionally narrow — it catches the measured drift patterns, not
 tone. Cross-profile voice (rule 2) is mechanical; active-profile voice remains a

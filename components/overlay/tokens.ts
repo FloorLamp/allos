@@ -40,7 +40,7 @@ export const OVERLAY_PANEL_RADIUS_BOTTOM = "rounded-t-2xl sm:rounded-2xl";
 export const OVERLAY_SAFE_BOTTOM = "pb-[max(1rem,env(safe-area-inset-bottom))]";
 
 // The drag handle. Two pieces on purpose: a 40x6 BAR you can see, inside a
-// 64x24 HIT TARGET you can actually land a thumb on — the visible affordance is
+// 64x44 HIT TARGET you can actually land a thumb on — the visible affordance is
 // far too thin to be the touch target, and every hand-rolled sheet gets this
 // wrong the same way.
 //
@@ -58,7 +58,7 @@ export const OVERLAY_SAFE_BOTTOM = "pb-[max(1rem,env(safe-area-inset-bottom))]";
 // the drag back to the scroller, so this stays. docs/internals/overlays.md
 // carries the measurements and the e2e suite's answer to it.
 export const OVERLAY_DRAG_HANDLE_HIT =
-  "mx-auto flex h-6 w-16 shrink-0 touch-none items-center justify-center";
+  "mx-auto flex h-11 w-16 shrink-0 touch-none items-center justify-center";
 export const OVERLAY_DRAG_HANDLE_BAR =
   "h-1.5 w-10 rounded-full bg-slate-300 dark:bg-ink-700";
 

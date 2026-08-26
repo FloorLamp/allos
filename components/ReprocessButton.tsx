@@ -104,7 +104,6 @@ export default function ReprocessButton() {
         onClick={run}
         disabled={pending}
         data-testid="reprocess-all"
-        title="Re-run extraction on all documents"
         aria-label="Re-run extraction on all documents"
         className="inline-flex items-center gap-1.5 text-sm font-medium text-slate-500 hover:text-brand-600 disabled:cursor-not-allowed disabled:opacity-50 dark:text-slate-400 dark:hover:text-brand-400"
       >

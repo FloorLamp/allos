@@ -306,7 +306,6 @@ export default function ActivityPartsList({
                           disabled={pi === 0}
                           className="flex h-11 w-11 shrink-0 items-center justify-center rounded-sm text-slate-500 hover:bg-slate-100 hover:text-brand-600 disabled:opacity-30 disabled:hover:bg-transparent sm:h-8 sm:w-7 dark:text-slate-400 dark:hover:bg-ink-800"
                           aria-label="Move activity up"
-                          title="Move activity up"
                         >
                           <IconChevronUp className="h-4 w-4" />
                         </button>
@@ -316,7 +315,6 @@ export default function ActivityPartsList({
                           disabled={pi === parts.length - 1}
                           className="flex h-11 w-11 shrink-0 items-center justify-center rounded-sm text-slate-500 hover:bg-slate-100 hover:text-brand-600 disabled:opacity-30 disabled:hover:bg-transparent sm:h-8 sm:w-7 dark:text-slate-400 dark:hover:bg-ink-800"
                           aria-label="Move activity down"
-                          title="Move activity down"
                         >
                           <IconChevronDown className="h-4 w-4" />
                         </button>
@@ -325,7 +323,6 @@ export default function ActivityPartsList({
                           onClick={() => onRemovePart(pi)}
                           className="flex h-11 w-11 shrink-0 items-center justify-center rounded-sm text-rose-400 hover:bg-rose-50 hover:text-rose-600 sm:h-8 sm:w-8 dark:text-rose-500/80 dark:hover:bg-rose-950/40 dark:hover:text-rose-400"
                           aria-label="Remove activity"
-                          title="Remove activity"
                         >
                           <IconX className="h-4 w-4" />
                         </button>
@@ -435,19 +432,21 @@ export default function ActivityPartsList({
       </div>
 
       <div className="flex flex-wrap items-center justify-between gap-2">
-        <button
-          type="button"
-          onClick={onAddPart}
-          disabled={!canAddPart}
-          title={
-            canAddPart
-              ? "Add another activity"
-              : "Complete the current activity first"
-          }
-          className="btn-ghost"
-        >
-          + Add another activity
-        </button>
+        <div>
+          <button
+            type="button"
+            onClick={onAddPart}
+            disabled={!canAddPart}
+            className="btn-ghost"
+          >
+            + Add another activity
+          </button>
+          {!canAddPart && (
+            <p className="mt-1 text-xs text-slate-500 dark:text-slate-400">
+              Complete the current activity first.
+            </p>
+          )}
+        </div>
         {/* Live multisport roll-up (issue #337): Σ distance / Σ duration across
             the legs while editing, matching the save-time fold. */}
         {showRollup && (

@@ -2,6 +2,7 @@
 
 import { useEffect, useMemo, useRef, useState } from "react";
 import IntakeItemCombobox from "@/components/IntakeItemCombobox";
+import FilterPills from "@/components/FilterPills";
 import ProviderCombobox from "@/components/ProviderCombobox";
 import { useIntakeOptions } from "@/components/IntakeOptionsContext";
 import DateField from "@/components/DateField";
@@ -39,7 +40,6 @@ import IntakeFactRow, {
 import FactEditorHost, {
   useFactEditor,
 } from "@/components/facts/FactEditorHost";
-import IntakeKindChip from "@/components/intake/IntakeKindChip";
 import IntakeRulesEditor from "@/components/intake/IntakeRulesEditor";
 import { parseWeekdays, cadenceLabel } from "@/lib/intake-cadence";
 import {
@@ -53,6 +53,13 @@ import {
 import { listSharedSupplyOptions } from "@/app/(app)/supplies/actions";
 import type { InteractionItem } from "@/lib/drug-interactions";
 import type { IntakeItemIngredient } from "@/lib/intake-ingredients";
+import PurposesEditor from "@/components/intake/PurposesEditor";
+import {
+  purposeToDraft,
+  purposeLabel,
+  type IntakeItemPurpose,
+  type PurposeDraft,
+} from "@/lib/intake-purposes";
 import type { PgxVariantInput } from "@/lib/pgx";
 import {
   medicationBrandOptions,
@@ -86,7 +93,6 @@ import {
   defaultFoodTiming,
   pauseLinkNeedsConfirm,
 } from "@/lib/intake-schedule";
-import { deriveIntakeKind } from "@/lib/intake-kind";
 import {
   brandOptionsFor,
   dosageOptionsFor,
@@ -118,6 +124,7 @@ import type {
   IntakePair,
   MedicationCourse,
 } from "@/lib/types";
+import { requireIntakeFormKind } from "@/lib/intake-form-kind";
 
 const CATALOG_BY_NAME = new Map(
   SUPPLEMENT_CATALOG.map((c) => [c.name.toLowerCase(), c])
@@ -154,9 +161,11 @@ const CATALOG_BY_NAME = new Map(
 export default function IntakeItemForm({
   action,
   item,
-  kind: lockedKind = null,
+  kind: requestedKind,
   doses: initialDoses,
   ingredients: initialIngredients = [],
+  purposes: initialPurposes = [],
+  biomarkers = [],
   retiredDoses = [],
   allIntakeItems = [],
   conditions = [],
@@ -174,11 +183,16 @@ export default function IntakeItemForm({
   action: (formData: FormData) => Promise<FormResult>;
   // Present ⇒ edit mode, seeded from the row; absent ⇒ create.
   item?: IntakeItem;
-  // A kind-locked door (/medications, Nutrition → Supplements) skips the question
-  // entirely — the existing kind-locked `action` prop pattern, made explicit.
-  kind?: IntakeItemKind | null;
+  // Every shipped door is kind-locked (/medications or Nutrition → Supplements).
+  // There is no generic chooser route, so the host must state which write it owns.
+  kind: IntakeItemKind;
   doses?: IntakeDose[];
   ingredients?: IntakeItemIngredient[];
+  // Declared purpose links (#2857), seeding the "What you take it for" control on edit.
+  purposes?: IntakeItemPurpose[];
+  // Canonical biomarker names this profile has results for (getUsedCanonicalNames) —
+  // the biomarker purpose's picker source. Empty ⇒ that row does not render.
+  biomarkers?: string[];
   retiredDoses?: IntakeDose[];
   allIntakeItems?: { id: number; name: string }[];
   conditions?: { id: number; name: string }[];
@@ -193,6 +207,7 @@ export default function IntakeItemForm({
   initialSupply?: SupplyOption | null;
   activityScheduleAvailable?: boolean;
 }) {
+  const lockedKind = requireIntakeFormKind(requestedKind);
   const s = item;
   const fid = s?.id ?? "new";
   const toast = useToast();
@@ -217,13 +232,8 @@ export default function IntakeItemForm({
   const supplySeed = initialSupply ? itemSeedFromPool(initialSupply) : null;
   const seededRef = useRef(supplySeed);
 
-  // ---- The one field, and what the form derives from it ----
+  // ---- The one field ----
   const [name, setName] = useState(s?.name ?? supplySeed?.name ?? "");
-  const [chosenKind, setChosenKind] = useState<IntakeItemKind | null>(
-    s?.kind ?? null
-  );
-  const [bottleSiblingKind, setBottleSiblingKind] =
-    useState<IntakeItemKind | null>(null);
   // The household's bottles, offered in the SAME field as the vocabularies (#3216
   // decision 3). This is the #1705 create-mode branch promoted from the refill fold to
   // the front door: "there is a shared bottle of D3 5000 IU; add it for my daughter"
@@ -245,17 +255,7 @@ export default function IntakeItemForm({
   }, [s]);
   const rx = useIntakeRxcui(s);
 
-  const derivation = deriveIntakeKind({
-    name,
-    locked: lockedKind,
-    chosen: chosenKind,
-    bottleSiblingKind,
-    inMedicationVocabulary: getMedicationInfo(name) != null,
-    inSupplementVocabulary: CATALOG_BY_NAME.has(name.trim().toLowerCase()),
-  });
-  // Until the kind is known the form has nothing to summarize; the medication shape
-  // is used only to type the state below, never rendered.
-  const kind: IntakeItemKind = derivation.kind ?? "medication";
+  const kind = lockedKind;
   const isMed = kind === "medication";
   const affordances = intakeKindAffordances(kind, {
     activityScheduleAvailable,
@@ -346,6 +346,33 @@ export default function IntakeItemForm({
   );
   const [ingredientSeedNote, setIngredientSeedNote] = useState<string | null>(
     null
+  );
+  const [purposes, setPurposes] = useState<PurposeDraft[]>(() =>
+    initialPurposes
+      .map(purposeToDraft)
+      .filter((d): d is PurposeDraft => d != null)
+  );
+  // The declared purposes as one phrase for the fact chip. Built HERE because only the
+  // form holds the live condition names — a purpose row stores the id (#203).
+  const purposeSummary = useMemo(
+    () =>
+      purposes
+        .map((d) =>
+          purposeLabel(
+            {
+              kind: d.kind,
+              goal_key: d.kind === "goal" ? d.goalKey : null,
+              biomarker_key: d.kind === "biomarker" ? d.biomarkerKey : null,
+              direction: d.kind === "biomarker" ? (d.direction ?? null) : null,
+            },
+            d.kind === "condition"
+              ? (conditions.find((c) => c.id === d.conditionId)?.name ?? null)
+              : null
+          )
+        )
+        .filter((l): l is string => !!l)
+        .join(" · "),
+    [purposes, conditions]
   );
   const [doses, setDoses] = useState<DoseState[]>(
     initialDoses && initialDoses.length
@@ -514,13 +541,9 @@ export default function IntakeItemForm({
   function onPickName(picked: string, query?: string) {
     setSelectedPediatricBandMinLbs(null);
     setFormulationSlug("");
-    // A new name is new evidence: the kind is re-derived rather than staying at
-    // whatever the previous name decided.
-    setChosenKind(null);
-
     // A BOTTLE row. It seeds the product facts the pool is authoritative for, rides as
-    // supply_id on this item's own save, and lends its members' kind — a bottle has
-    // none of its own, so one with nothing linked yet falls through to the ask.
+    // supply_id on this item's own save. The locked door filters the bottle choices
+    // to its own kind before this point.
     const bottle = bottleForOptionLabel(
       bottlesForKindDoor(bottles, lockedKind),
       picked
@@ -628,8 +651,8 @@ export default function IntakeItemForm({
 
   // Picking a shared bottle (#1705), promoted from the refill fold to the front door:
   // it seeds the product facts the pool is authoritative for, rides as `supply_id` on
-  // this item's own save, and — because a bottle has no kind — lends the kind of a
-  // sibling item already drawing from it.
+  // this item's own save. The door's locked kind already scoped which bottles were
+  // offered, so a bottle never changes the form's kind.
   function onPickSupply(supply: SupplyOption | null): void {
     const seed = supply ? itemSeedFromPool(supply) : null;
     const previous = seededRef.current;
@@ -652,7 +675,6 @@ export default function IntakeItemForm({
     );
     setSupplyId(supply ? String(supply.id) : "");
     setSupplyLabel(supply?.name ?? null);
-    setBottleSiblingKind(supply?.siblingKind ?? null);
     seededRef.current = seed;
   }
 
@@ -710,6 +732,7 @@ export default function IntakeItemForm({
       })),
       pairs: ruleFields.pairs,
       ingredients,
+      purposes,
       notes,
       rxcui: rx.rxcui,
       rxcuiIngredients: rx.rxcuiIngredients ?? [],
@@ -750,6 +773,7 @@ export default function IntakeItemForm({
       cadence,
       doses,
       ingredients,
+      purposes,
       notes,
       rx.rxcui,
       rx.rxcuiIngredients,
@@ -805,6 +829,7 @@ export default function IntakeItemForm({
     quantityOnHand,
     stopDate: endDate,
     ingredientCount: ingredients.filter((g) => g.name.trim()).length,
+    purposeSummary,
     notes,
     rules,
     itemNames,
@@ -813,10 +838,10 @@ export default function IntakeItemForm({
 
   // ---- Draft (#1699) ----
   const draftExtra = useMemo(
-    () => ({ state: formState, rules, chosenKind, formulationSlug }),
+    () => ({ state: formState, rules, formulationSlug }),
     // The whole posted state is the draft, so one dependency is honest: any change
     // to any fact rewrites it.
-    [formState, rules, chosenKind, formulationSlug]
+    [formState, rules, formulationSlug]
   );
   type IntakeDraft = typeof draftExtra;
   const draft = useFormDraft<IntakeDraft>({
@@ -827,7 +852,6 @@ export default function IntakeItemForm({
     onRestore: (d) => {
       const v = d.state;
       setName(v.name);
-      setChosenKind(d.chosenKind ?? null);
       setBrand(v.brand);
       setProduct(v.product);
       setStack(v.stack);
@@ -855,6 +879,7 @@ export default function IntakeItemForm({
       setCadence(v.cadence);
       setDoses(v.doses);
       setIngredients(v.ingredients);
+      setPurposes(v.purposes);
       setRules(d.rules ?? []);
       setFormulationSlug(d.formulationSlug ?? "");
     },
@@ -869,10 +894,6 @@ export default function IntakeItemForm({
 
   async function handle() {
     setError(null);
-    if (derivation.kind == null) {
-      setError("Choose whether this is a medication or a supplement.");
-      return;
-    }
     const label = name.trim() || (isMed ? "Medication" : "Supplement");
     const pause = ruleFields.pauseSituation.trim();
     if (
@@ -924,8 +945,6 @@ export default function IntakeItemForm({
     formRef.current?.reset();
     setName("");
     rx.reset();
-    setChosenKind(null);
-    setBottleSiblingKind(null);
     setBrand("");
     setBrandNarrowing(null);
     setProduct("");
@@ -996,7 +1015,7 @@ export default function IntakeItemForm({
       action={handle}
       onKeyDown={onFormKeyDown}
       data-testid="intake-item-form"
-      data-kind={derivation.kind ?? ""}
+      data-kind={kind}
       className="grid gap-4 sm:grid-cols-2"
     >
       <DraftRestoreBanner
@@ -1017,7 +1036,6 @@ export default function IntakeItemForm({
             if (v !== name) {
               setFormulationSlug("");
               setSelectedPediatricBandMinLbs(null);
-              setChosenKind(null);
             }
             setName(v);
             rx.onNameChange();
@@ -1057,14 +1075,7 @@ export default function IntakeItemForm({
         )}
       </div>
 
-      {lockedKind == null && (
-        <IntakeKindChip
-          derivation={derivation}
-          onChoose={(next) => setChosenKind(next)}
-        />
-      )}
-
-      {derivation.kind != null && choices.length > 0 && (
+      {choices.length > 0 && (
         <div
           data-testid="intake-formulation-row"
           className="flex flex-wrap items-center gap-1.5 sm:col-span-2"
@@ -1072,23 +1083,21 @@ export default function IntakeItemForm({
           <span className="text-sm text-slate-500 dark:text-slate-400">
             Form
           </span>
-          {choices.map((choice) => (
-            <button
-              key={choice.slug || "default"}
-              type="button"
-              data-testid="intake-formulation-choice"
-              data-slug={choice.slug || DEFAULT_FORMULATION_SLUG}
-              aria-pressed={choice.slug === activeSlug}
-              onClick={() => pickFormulation(choice.slug)}
-              className={`tap-target rounded-full px-3 py-1.5 text-sm transition ${
-                choice.slug === activeSlug
-                  ? "bg-brand-600 font-medium text-white"
-                  : "border border-(--border) bg-surface text-slate-700 hover:bg-(--ghost-hover) dark:text-slate-200"
-              }`}
-            >
-              {choice.label}
-            </button>
-          ))}
+          <FilterPills
+            mode="button"
+            layout="wrap"
+            label="Form"
+            value={activeSlug}
+            onSelect={pickFormulation}
+            options={choices.map((choice) => ({
+              value: choice.slug,
+              label: choice.label,
+              testId: "intake-formulation-choice",
+              data: {
+                "data-slug": choice.slug || DEFAULT_FORMULATION_SLUG,
+              },
+            }))}
+          />
         </div>
       )}
 
@@ -1114,35 +1123,34 @@ export default function IntakeItemForm({
         age={age}
       />
 
-      {derivation.kind != null &&
-        (openPanel == null ? (
-          <IntakeFactRow
-            summary={summary}
-            openEditor={openPanel}
-            onOpen={(key, focusKey) => {
-              setRulesStartOnMenu(false);
-              setOpenPanel(key, focusKey);
-            }}
-            onAddRule={(focusKey) => {
-              setRulesStartOnMenu(true);
-              setOpenPanel("rules", focusKey);
-            }}
-            onRemoveRule={(id) =>
-              setRules((current) => current.filter((r) => r.id !== id))
-            }
-          />
-        ) : (
-          <FactEditorHost
-            testId="intake-editor"
-            doneTestId="intake-editor-done"
-            panel={openPanel}
-            onDone={closePanel}
-            className="sm:col-span-2"
-            bodyClassName="grid gap-4 sm:grid-cols-2"
-          >
-            {renderPanel()}
-          </FactEditorHost>
-        ))}
+      {openPanel == null ? (
+        <IntakeFactRow
+          summary={summary}
+          openEditor={openPanel}
+          onOpen={(key, focusKey) => {
+            setRulesStartOnMenu(false);
+            setOpenPanel(key, focusKey);
+          }}
+          onAddRule={(focusKey) => {
+            setRulesStartOnMenu(true);
+            setOpenPanel("rules", focusKey);
+          }}
+          onRemoveRule={(id) =>
+            setRules((current) => current.filter((r) => r.id !== id))
+          }
+        />
+      ) : (
+        <FactEditorHost
+          testId="intake-editor"
+          doneTestId="intake-editor-done"
+          panel={openPanel}
+          onDone={closePanel}
+          className="sm:col-span-2"
+          bodyClassName="grid gap-4 sm:grid-cols-2"
+        >
+          {renderPanel()}
+        </FactEditorHost>
+      )}
 
       {error && (
         <p
@@ -1357,9 +1365,12 @@ export default function IntakeItemForm({
                         setMaxDailyCount(String(redoseDefaults.maxDailyCount));
                         markTouched("minIntervalHours", "maxDailyCount");
                       }}
-                      title={`Use ${redoseDefaults.tier} label defaults: ${redoseDefaults.minIntervalHours} hours, maximum ${redoseDefaults.maxDailyCount} doses per day`}
                     >
-                      Use label defaults
+                      <span className="block">Use label defaults</span>
+                      <span className="block text-xs font-normal text-slate-500 dark:text-slate-400">
+                        {redoseDefaults.minIntervalHours} hours · maximum{" "}
+                        {redoseDefaults.maxDailyCount} doses/day
+                      </span>
                     </button>
                   )}
                 </div>
@@ -1462,7 +1473,16 @@ export default function IntakeItemForm({
 
       case "rules":
         return (
-          <div className="sm:col-span-2">
+          // `min-w-0` releases this grid item's content floor, and it is load-bearing
+          // rather than decorative (#3631). The rules editor renders a `select` of
+          // ITEM NAMES — unbounded by anything the page controls — and a grid item's
+          // `min-width: auto` resolves to its CONTENT minimum, so the track widened to
+          // the widest option and nothing downstream could shrink it. Measured at
+          // 390px with a 63-character imported name: the select rendered 476px wide,
+          // 119px past the viewport, WITH `min-w-0` already on the select itself.
+          // #3478's fix on the control is necessary and was not sufficient here; the
+          // guard is in e2e/dose-ledger-phone.mobile.spec.ts.
+          <div className="min-w-0 sm:col-span-2">
             <IntakeRulesEditor
               key={rulesStartOnMenu ? "add" : "edit"}
               rules={rules}
@@ -1752,6 +1772,19 @@ export default function IntakeItemForm({
           </div>
         );
 
+      case "purpose":
+        return (
+          <PurposesEditor
+            rows={purposes}
+            setRows={setPurposes}
+            name={name}
+            ingredientNames={ingredientNames}
+            conditions={conditions}
+            biomarkers={biomarkers}
+            fid={fid}
+          />
+        );
+
       case "notes":
         return <IntakeNotesField fid={fid} value={notes} onChange={setNotes} />;
 
@@ -1764,7 +1797,7 @@ export default function IntakeItemForm({
                 type="button"
                 data-testid={`intake-more-${key}`}
                 onClick={() => setOpenPanel(key)}
-                className="tap-target rounded-full border border-(--border) px-3 py-1.5 text-sm transition hover:bg-(--ghost-hover)"
+                className="min-h-11 rounded-full border border-(--border) px-3 py-1.5 text-sm transition hover:bg-(--ghost-hover)"
               >
                 {INTAKE_FACT_NOUNS[key]}
               </button>

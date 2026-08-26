@@ -34,6 +34,12 @@ test("medication row shows the adherence summary and refill badge (#747)", async
   await expect(badge).toContainText(/days?\s+left/);
   await expect(badge).toContainText(/based on (your last 30 days|schedule)/);
   await expect(refillRunOut(badge)).toContainText(/runs out ~/);
+  const listUrl = page.url();
+  await row.getByTestId("refill-help").click();
+  await expect(page.getByRole("tooltip")).toContainText(
+    /Runs out around .* — based on/
+  );
+  await expect(page).toHaveURL(listUrl);
 
   // Adherence summary — the shared AdherenceSummaryLine (#313). The all-taken log
   // run yields a deterministic percentage with an explicit due-day denominator.

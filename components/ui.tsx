@@ -1,9 +1,11 @@
 import Link from "next/link";
 import { IconCaretUpFilled, IconCaretDownFilled } from "@tabler/icons-react";
 import ActivityIcon from "@/components/ActivityIcon";
+import DestinationIndicator from "@/components/DestinationIndicator";
 import { PendingTextLink } from "@/components/PendingLink";
 import { flagTone } from "@/lib/reference-range";
 import { medicalValueCaret, medicalValueFlagText } from "@/lib/medical-value";
+import { displayUnit } from "@/lib/display-unit";
 import type { AppRoute } from "@/lib/hrefs";
 
 export function PageHeader({
@@ -204,7 +206,7 @@ export function EmptyState({
               label={link.label.toLowerCase()}
               className="btn btn-sm"
             >
-              {link.label} →
+              {link.label} <DestinationIndicator />
             </PendingTextLink>
           ))}
         </div>
@@ -284,7 +286,7 @@ export function MedicalValue({
   const text = medicalValueFlagText(flag, showFlagLabel);
   return (
     <span className={medicalValueClass(flag)}>
-      {value ?? "—"} {unit ?? ""}
+      {value ?? "—"} {displayUnit(unit) ?? ""}
       {/* The caret is decorative (aria-hidden) — `text` below is its equivalent. */}
       {caret === "up" ? (
         <IconCaretUpFilled
@@ -336,8 +338,8 @@ export function ActivityTypeIcon({
   // Bare icon, matching the activity modal heading — no circle, no per-type color.
   return (
     <span
-      title={title || type}
-      aria-label={type}
+      role="img"
+      aria-label={title || type}
       className="shrink-0 text-brand-600 dark:text-brand-400"
     >
       <ActivityIcon

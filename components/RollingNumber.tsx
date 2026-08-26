@@ -1,22 +1,24 @@
 "use client";
 
-import { useEffect, useRef, useState } from "react";
-import { countRollValue, microMotionPlan } from "@/lib/micro-motion";
+import { useEffect, useState } from "react";
+import { microMotionPlan } from "@/lib/micro-motion";
 import { usePrefersReducedMotion } from "./usePrefersReducedMotion";
 
-// A day counter that ROLLS when its quantity changes (#2654, motion 3).
+// A day counter that PULSES when its quantity changes (#2654, motion 3).
+// `RollingNumber` and `data-rolling` are legacy public names retained for caller and
+// browser-test stability; they describe the active receipt, not a digit tween.
 //
 // A quantity changing reads differently from a value being replaced, and that
-// difference IS the information: after a one-tap log the number travels from the old
-// total to the new one over 250 ms with one subtle scale pulse, so the tap's
+// difference IS the information: after a one-tap log the authoritative new number
+// lands immediately and receives one subtle 250 ms scale pulse, so the tap's
 // consequence is visible in the number itself instead of only in a toast.
 //
 // The contract, in the order it matters:
 //
 //  * THE FINAL VALUE IS ALWAYS THE TRUTH IN THE DOM. `value` renders verbatim on the
-//    server, on the first client paint, and on every mount. The roll only ever plays
+//    server, on the first client paint, and on every change. The pulse only ever plays
 //    on a CHANGE, so a screen reader, a no-JS reader and an exact-text assertion all
-//    read the real number, never a frame of a tween.
+//    read the real number. The visual receipt may wait for a paint; truth never does.
 //  * Reduced motion is the designed state, not a fallback: the new number is simply
 //    there. `microMotionPlan` returns 0 ms, no rAF loop is started, and no pulse
 //    class is applied. Published as `data-reduced-motion` so the browser suite can
@@ -33,7 +35,7 @@ export default function RollingNumber({
   className,
   testId,
 }: {
-  // The authoritative quantity. Rendered as-is on mount; a change rolls to it.
+  // The authoritative quantity. Rendered as-is on mount and every change.
   value: number;
   // How the number reads. Defaults to the integer, with the locale PINNED for the
   // repo's date/number-locale guard and so SSR and hydration agree byte for byte.
@@ -42,59 +44,64 @@ export default function RollingNumber({
   testId?: string;
 }) {
   const reduced = usePrefersReducedMotion();
-  const [shown, setShown] = useState(value);
-  const [rolling, setRolling] = useState(false);
-  // The last value we were ASKED for — compared against `value` so the effect fires
-  // on a real change and not on every re-render of the parent.
-  const target = useRef(value);
+  const [receipt, setReceipt] = useState({
+    target: value,
+    rolling: false,
+    runs: 0,
+  });
+  if (receipt.target !== value) {
+    const plan = microMotionPlan("count", reduced);
+    const animate = plan.animate && plan.ms > 0;
+    // React's documented adjust-state-during-render pattern: this rerenders before
+    // children commit, so the receipt joins the authoritative value's own paint.
+    // Unlike the removed `shown` state, this stores no health value — only whether
+    // its bounded visual acknowledgement is active.
+    setReceipt({
+      target: value,
+      rolling: animate,
+      runs: receipt.runs + (animate ? 1 : 0),
+    });
+  }
 
-  // `reduced` is a dependency so the effect always reads the CURRENT preference, and
-  // the identity guard on the first line means a preference flip on its own restarts
-  // nothing — it only decides how the NEXT change is drawn.
+  // `value` itself renders below, so this effect schedules only the bounded pulse
+  // receipt, never displayed truth. A preference flip alone restarts nothing.
   useEffect(() => {
-    if (value === target.current) return;
-    const from = target.current;
-    target.current = value;
-    const { ms, animate } = microMotionPlan("count", reduced);
-    if (!animate || ms <= 0 || from === value) {
-      // The reduced-motion design, and the degenerate case: the number is there.
-      setShown(value);
-      setRolling(false);
-      return;
-    }
-    setRolling(true);
+    if (!receipt.rolling) return;
+    const { ms } = microMotionPlan("count", false);
     const start = performance.now();
     let frame = 0;
     const tick = (now: number) => {
       const elapsed = now - start;
-      setShown(countRollValue(from, value, elapsed, ms));
       if (elapsed < ms) {
         frame = requestAnimationFrame(tick);
         return;
       }
-      setRolling(false);
+      setReceipt((current) =>
+        current.target === receipt.target
+          ? { ...current, rolling: false }
+          : current
+      );
     };
     frame = requestAnimationFrame(tick);
     return () => {
       cancelAnimationFrame(frame);
-      // A second change mid-roll settles the first one honestly rather than
-      // abandoning it on whatever frame it reached.
-      setShown(value);
-      setRolling(false);
+      // A second change cancels the old receipt; its own pulse is already the
+      // current render state. The rendered `value` remains independent.
     };
-  }, [value, reduced]);
+  }, [receipt.rolling, receipt.target]);
 
   return (
     <span
       data-testid={testId}
       data-motion="count"
       data-reduced-motion={reduced ? "true" : "false"}
-      data-rolling={rolling ? "true" : "false"}
-      className={`tabular-nums${rolling ? " motion-count" : ""}${
+      data-rolling={receipt.rolling ? "true" : "false"}
+      data-motion-runs={receipt.runs}
+      className={`tabular-nums${receipt.rolling ? " motion-count" : ""}${
         className ? ` ${className}` : ""
       }`}
     >
-      {format ? format(shown) : shown.toLocaleString("en-US")}
+      {format ? format(value) : value.toLocaleString("en-US")}
     </span>
   );
 }

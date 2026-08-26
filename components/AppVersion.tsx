@@ -1,4 +1,5 @@
 import { getAppVersion } from "@/lib/version";
+import InfoTooltipIcon from "@/components/InfoTooltipIcon";
 
 // Renders the running commit hash, linked to its GitHub commit when known.
 // Server component — reads the hash via lib/version.ts.
@@ -25,24 +26,24 @@ export default function AppVersion({
 
   if (sha && commitUrl) {
     return (
-      <a
-        href={commitUrl}
-        target="_blank"
-        rel="noreferrer"
-        title={commitMessage ?? undefined}
-        className={`${base} ${linkHover} ${className ?? ""}`}
-      >
-        {sha}
-      </a>
+      <span className="inline-flex items-center">
+        <a
+          href={commitUrl}
+          target="_blank"
+          rel="noreferrer"
+          className={`${base} ${linkHover} ${className ?? ""}`}
+        >
+          {sha}
+        </a>
+        {commitMessage ? <InfoTooltipIcon label={commitMessage} /> : null}
+      </span>
     );
   }
 
   return (
-    <span
-      title={commitMessage ?? undefined}
-      className={`${base} ${className ?? ""}`}
-    >
-      {sha ?? "unknown"}
+    <span className="inline-flex items-center">
+      <span className={`${base} ${className ?? ""}`}>{sha ?? "unknown"}</span>
+      {commitMessage ? <InfoTooltipIcon label={commitMessage} /> : null}
     </span>
   );
 }

@@ -3,6 +3,7 @@ import { type Page } from "@playwright/test";
 import { hydratedClick, touchSwipe, touchSwipeFrom } from "./helpers";
 import { loginAs } from "./nav";
 import { E2E_LOGIN_PRESENCE, E2E_MEMBER_PASSWORD } from "./fixture-logins";
+import { TAP_FLOOR_PX } from "@/lib/tap-floor-tokens";
 
 // Overlay gestures (issues #1425, #1469).
 //
@@ -99,13 +100,78 @@ test.describe("bottom sheet: swipe down discards", () => {
     await page.goto("/");
     await hydrated(page);
     const sheet = await openQuickLogSheet(page);
+    const handle = sheet.getByTestId("sheet-drag-handle");
 
-    await touchSwipeFrom(page, sheet.getByTestId("sheet-drag-handle"), {
+    const hit = await handle.boundingBox();
+    const bar = await handle.locator("span").boundingBox();
+    expect(hit!.height).toBeGreaterThanOrEqual(TAP_FLOOR_PX);
+    expect(bar).toMatchObject({ width: 40, height: 6 });
+
+    await touchSwipeFrom(page, handle, {
       dy: 240,
     });
 
     // The sheet is transactional: dismissal means discard, and the panel is gone
     // from the tree (not merely hidden) once its exit finishes.
+    await expect(sheet).toHaveCount(0);
+  });
+
+  test("a body drag dismisses only when its scroller started at the top", async ({
+    page,
+  }) => {
+    await page.goto("/");
+    await hydrated(page);
+    const sheet = await openQuickLogSheet(page);
+    const content = sheet.locator("[data-sheet-content]");
+    await content.evaluate((node) => {
+      node.scrollTop = 0;
+    });
+
+    await touchSwipeFrom(page, content, { dy: 240 });
+    await expect(sheet).toHaveCount(0);
+  });
+
+  test("a scroll-origin body drag stays a scroll after it reaches the top", async ({
+    page,
+  }) => {
+    await page.goto("/?quick=log-measurements");
+    const sheet = page.getByTestId("quick-entry-sheet");
+    await expect(sheet.getByTestId("measurements-quick-add")).toBeVisible();
+    const content = sheet.locator("[data-sheet-content]");
+    const startingScroll = await content.evaluate((node) => {
+      const available = node.scrollHeight - node.clientHeight;
+      node.scrollTop = Math.min(160, available);
+      return { available, scrollTop: node.scrollTop };
+    });
+    expect(
+      startingScroll.available,
+      "the real quick-entry body must overflow enough to exercise native scrolling"
+    ).toBeGreaterThanOrEqual(80);
+    expect(startingScroll.scrollTop).toBeGreaterThan(0);
+
+    await touchSwipeFrom(page, content, { dy: 240 }, { stepDelayMs: 20 });
+
+    await expect(sheet).toBeVisible();
+    await expect.poll(() => content.evaluate((node) => node.scrollTop)).toBe(0);
+  });
+
+  test("the handle dismisses while the real sheet body is scrolled", async ({
+    page,
+  }) => {
+    await page.goto("/?quick=log-measurements");
+    const sheet = page.getByTestId("quick-entry-sheet");
+    await expect(sheet.getByTestId("measurements-quick-add")).toBeVisible();
+    const content = sheet.locator("[data-sheet-content]");
+    const scrollTop = await content.evaluate((node) => {
+      node.scrollTop = Math.min(160, node.scrollHeight - node.clientHeight);
+      return node.scrollTop;
+    });
+    expect(scrollTop).toBeGreaterThan(0);
+
+    await touchSwipeFrom(page, sheet.getByTestId("sheet-drag-handle"), {
+      dy: 240,
+    });
+
     await expect(sheet).toHaveCount(0);
   });
 

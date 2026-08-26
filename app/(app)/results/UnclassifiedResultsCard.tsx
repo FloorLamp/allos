@@ -6,11 +6,18 @@ import { classifyResultCategory } from "./clinical-result-actions";
 import { ASSIGNABLE_MEDICAL_CATEGORIES } from "@/lib/medical-categories";
 import type { UnclassifiedClinicalObservation } from "@/lib/queries";
 import { useToast } from "@/components/Toast";
+import { displayUnit } from "@/lib/display-unit";
 
 export type UnclassifiedResultRow = UnclassifiedClinicalObservation & {
   subjectLabel?: string;
   canWrite: boolean;
 };
+
+function displayResultValue(row: UnclassifiedResultRow): string | null {
+  if (!row.value) return null;
+  const unit = displayUnit(row.unit);
+  return `${row.value}${unit ? ` ${unit}` : ""}`;
+}
 
 export default function UnclassifiedResultsCard({
   rows,
@@ -51,11 +58,7 @@ export default function UnclassifiedResultsCard({
               )}
             </div>
             <p className="mt-1 text-sm text-muted">
-              {[
-                row.value && `${row.value}${row.unit ? ` ${row.unit}` : ""}`,
-                row.provider_name,
-                row.source,
-              ]
+              {[displayResultValue(row), row.provider_name, row.source]
                 .filter(Boolean)
                 .join(" · ") || "No additional context"}
             </p>

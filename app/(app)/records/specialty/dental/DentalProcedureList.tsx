@@ -169,6 +169,7 @@ export default function DentalProcedureList({
       {/* The family's ONE filter affordance (#1449, cluster C). The tooth box is a
           free-text search, not a filter CONTROL, so it keeps its input. */}
       <FilterPills
+        mode="button"
         options={[
           { value: "", label: "All" },
           ...DENTAL_STATUSES.map((s) => ({

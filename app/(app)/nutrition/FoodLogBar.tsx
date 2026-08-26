@@ -2,7 +2,7 @@
 import { useLoggedViaStamp } from "@/components/LoggedViaSurface";
 
 import type { ReactNode } from "react";
-import { useMemo, useState } from "react";
+import { useEffect, useLayoutEffect, useMemo, useRef, useState } from "react";
 import {
   IconAdjustmentsHorizontal,
   IconPlus,
@@ -28,13 +28,39 @@ import FoodGroupIcon, {
   FOOD_GROUP_TIER_TINT,
 } from "@/components/FoodGroupIcon";
 import ModalShell from "@/components/ModalShell";
-import SegmentedControl from "@/components/SegmentedControl";
-import CompactDateMenu from "@/components/CompactDateMenu";
-import { useToast } from "@/components/Toast";
+import IntakeContextBar from "@/components/IntakeContextBar";
+import FilterPills from "@/components/FilterPills";
+import {
+  useClaimToastKey,
+  useDismissToast,
+  useToast,
+  useToastProfileScopeGetter,
+} from "@/components/Toast";
+import RollingNumber from "@/components/RollingNumber";
+import { useUndoableAction } from "@/components/useUndoableAction";
+import { usePrefersReducedMotion } from "@/components/usePrefersReducedMotion";
 // The list-naming phrase is shared with the dashboard's composed control (#2458), so
 // the Food tab and the dashboard can never name a write differently.
 import { namesPhrase } from "@/lib/usual-routine";
 import { useOptimisticLedger } from "@/components/useOptimisticLedger";
+import {
+  foodServingCoordinate,
+  foodServingFeedback,
+  foodServingInverseKey,
+  foodServingToastKey,
+  beginFoodServingAdd,
+  beginFoodServingNonAddMutation,
+  dropFoodServingAdd,
+  emptyFoodServingBurst,
+  finishFoodServingNonAddMutation,
+  requestFoodServingTruth,
+  settleFoodServingAdd,
+  type FoodServingAddTap,
+  type FoodServingBurstSettlement,
+  type FoodServingBurstState,
+} from "@/lib/food-serving-feedback";
+import { microMotionPlan } from "@/lib/micro-motion";
+import { useActiveProfileId } from "@/components/ActiveProfileProvider";
 import { UNDO_TOAST_MS } from "@/components/useUndoableDelete";
 import { undoDelete } from "@/app/(app)/undo-actions";
 import { useOfflineQueue } from "@/components/OfflineQueueProvider";
@@ -55,24 +81,33 @@ import OverflowMenu, {
 } from "@/components/OverflowMenu";
 import { usualFoodOffer } from "@/lib/food-regularity";
 import { foodLimitNoteText } from "@/lib/food-limit-note";
+import { applyFoodServingPlacements } from "@/lib/food-serving-projection";
+import type { ProfileToastScope } from "@/lib/toast-upsert";
 import { endFastAction, undoEndFastAction } from "./fast-actions";
 import {
   deleteFoodLogEvent,
   logFoodServing,
   logUsualFood,
+  readFoodServingTruth,
   undoFoodServing,
   updateFoodLogEvent,
   type FoodEventDeleteResult,
   type FoodEventEditResult,
   type FoodLogResult,
+  type FoodServingTruthResult,
   type UsualFoodResult,
 } from "./actions";
-import { useFoodSelectedDate } from "./FoodSuggestionsLayout";
+import {
+  useFoodSelectedDate,
+  type FoodProjectionState,
+} from "./FoodSuggestionsLayout";
 
 // Where one corrected serving landed, with the server's authoritative counts for that
 // coordinate. Named off the action's result so the bar and the write core can never
 // drift on the shape.
 type FoodPlacement = Extract<FoodEventEditResult, { ok: true }>["from"];
+type FoodServingTruth = Extract<FoodServingTruthResult, { ok: true }>;
+type FoodNoticeScope = ProfileToastScope;
 
 // One-tap food-group serving logger (issue #579), modeled on the dose-confirm one-tap
 // bar (components/DoseStatusControl): optimistic local counts, a Server Action per tap,
@@ -157,25 +192,6 @@ function FoodRowLabel({
       </span>
     </>
   );
-}
-
-// A pressed/unpressed eating-time chip (#2053). Pressed reads as the brand-tinted
-// selection the meal cards already use, so "a statement is in force" is legible at a
-// glance rather than only from the note under the row.
-// `min-h-8` is the `.tap-target` claim made true (#3486's reach). `text-xs` over
-// `py-1` inside a border is 26px, and the overlay adds a fixed 12px — 38
-// effective, under #3514's 44px floor, on a control whose class list says the
-// floor is met. 32px rendered is the smallest box the mechanism can lift, and it
-// is `min-h-` rather than `h-` so the chip still grows with its own label.
-// Found by the rendered sweep in e2e/button-height-floor.mobile.spec.ts, which is
-// the half lib/tap-floor-reach.ts cannot see: this chip pins no height in source,
-// so only a measurement knows how tall it is.
-function chipClass(pressed: boolean): string {
-  return `tap-target inline-flex min-h-8 items-center rounded-full border px-2.5 py-1 text-xs font-medium transition ${
-    pressed
-      ? "border-brand-400 bg-brand-50 text-brand-700 dark:border-brand-600 dark:bg-brand-950/60 dark:text-brand-200"
-      : "border-(--border) bg-surface text-slate-600 hover:bg-(--ghost-hover) dark:text-slate-300"
-  }`;
 }
 
 // One logged serving, as the correction list renders it (#1934). The aggregate counts
@@ -269,10 +285,19 @@ export default function FoodLogBar({
     activeDate,
     setActiveDate,
     countsByDate,
-    setCountsByDate,
     slotCountsByDate,
-    setSlotCountsByDate,
+    setProjection,
   } = useFoodSelectedDate();
+  const activeProfileId = useActiveProfileId();
+  // This component only mounts in the authenticated app shell, under
+  // ActiveProfileProvider. The fallback keeps story/static mounts inert rather
+  // than inventing a cross-profile target.
+  const receiptProfileId = activeProfileId ?? 0;
+  const projectionRef = useRef<FoodProjectionState>({
+    countsByDate,
+    slotCountsByDate,
+  });
+  projectionRef.current = { countsByDate, slotCountsByDate };
   const [activeSlot, setActiveSlot] = useState<FoodSlot>(slot);
   // The eating-time statement in force for the next taps (#2053), or null for the default
   // and honest silence: nobody said, so nothing is written. STICKY across taps on purpose
@@ -305,12 +330,30 @@ export default function FoodLogBar({
     mealTouched: boolean;
   } | null>(null);
   const [saving, setSaving] = useState(false);
+  const correctionUiGeneration = useRef(0);
   // The serving whose row-scoped removal is in flight (#1963), or null. An id, so the
   // one row the user named is the only one that dims.
   const [removingId, setRemovingId] = useState<number | null>(null);
+  const removalUiGeneration = useRef(0);
   // Which serving's ⋯ menu is open (#1488 row-action convention). Ids, not indexes.
   const [openMenuId, setOpenMenuId] = useState<number | null>(null);
   const toast = useToast();
+  const dismissToast = useDismissToast();
+  const claimToastKey = useClaimToastKey();
+  const announceUndoable = useUndoableAction();
+  const toastLifecycles = useRef(new Map<string, symbol>());
+  const cleanupLifecycles = useRef(new Map<string, symbol>());
+  const reserveToastLifecycle = (
+    key: string,
+    dismissCurrent = true,
+    cleanupOnUnmount = true
+  ) => {
+    const owner = Symbol(key);
+    toastLifecycles.current.set(key, owner);
+    if (cleanupOnUnmount) cleanupLifecycles.current.set(key, owner);
+    claimToastKey(key, owner, dismissCurrent);
+    return owner;
+  };
   // "End your fast?" (#2756). A FOLLOW-UP OFFER beside a log that has ALREADY landed —
   // never a confirm-before-write, and the serving is on the counter whatever happens
   // next. DECLINING IS DOING NOTHING: the toast times out on its own and the fast is
@@ -334,33 +377,51 @@ export default function FoodLogBar({
   // behind it would be accepted — so a restricted profile's close-out through this same
   // toast draws no Undo, exactly as its card does, and this island asks no life-stage
   // question of its own.
-  const undoEnd = (undoFastId: number) => {
+  const undoEnd = (
+    scope: FoodNoticeScope | null,
+    undoFastId: number,
+    owner: symbol
+  ) => {
+    if (!isMountedProfile()) return;
     const fd = new FormData();
     fd.set("id", String(undoFastId));
     void undoEndFastAction(fd).then((back) => {
-      toast(back.ok ? back.message : back.error, {
+      if (!isMountedProfile()) return;
+      profileToast(scope, back.ok ? back.message : back.error, {
         key: "end-fast-offer",
+        owner,
+        onlyIfOwner: true,
         ...(back.ok ? {} : { tone: "error" as const }),
       });
     });
   };
-  const offerEndFast = (offered: true | undefined) => {
-    if (!offered) return;
-    toast("Serving logged. End your fast?", {
+  const offerEndFast = (
+    scope: FoodNoticeScope | null,
+    offered: true | undefined,
+    owner: symbol
+  ) => {
+    if (!offered || !isMountedProfile()) return;
+    profileToast(scope, "Serving logged. End your fast?", {
       key: "end-fast-offer",
+      owner,
+      onlyIfOwner: true,
       action: {
         label: "End fast",
         onClick: () => {
+          if (!isMountedProfile()) return;
           void endFastAction(new FormData()).then((r) => {
+            if (!isMountedProfile()) return;
             const undoFastId = r.ok ? r.undoFastId : undefined;
-            toast(r.ok ? r.message : r.error, {
+            profileToast(scope, r.ok ? r.message : r.error, {
               key: "end-fast-offer",
+              owner,
+              onlyIfOwner: true,
               ...(r.ok ? {} : { tone: "error" as const }),
               ...(undoFastId != null
                 ? {
                     action: {
                       label: "Undo",
-                      onClick: () => undoEnd(undoFastId),
+                      onClick: () => undoEnd(scope, undoFastId, owner),
                     },
                   }
                 : {}),
@@ -375,14 +436,115 @@ export default function FoodLogBar({
   const tz = useTimezone();
   // Offline quick-log queue (#1596): an ADD tap with no signal queues for replay.
   const { enqueue } = useOfflineQueue();
-  // The shared one-tap ledger (#2041): the optimistic bump, the rollback and the
-  // adoption of the server's authoritative counts, plus the post-success cooldown that
-  // absorbs a double-tap (#2007 layer 1). A serving is ADDITIVE and declares no expected
-  // interval, so a deliberate second serving a moment later still lands and — the rule
-  // this classification exists for — never raises a confirm.
+  // The shared one-tap ledger (#2041): optimistic bump, rollback, and adoption of
+  // the server's authoritative counts. A serving is ADDITIVE and declares no
+  // expected interval, so repeats never raise a confirm; #3611 keys each add tap
+  // independently so a rapid sequence lands in full.
   const ledger = useOptimisticLedger<{ day: number; meal: number }>(
     "food-serving"
   );
+  // Serving taps are ADDITIVE: three quick taps are three servings, not one tap
+  // plus two swallowed repeats (#3611). A per-tap key lets the existing ledger
+  // guard each request independently while the toast key below deliberately stays
+  // stable and cumulative.
+  // The toast key is stable, but each OFFERED inverse is a distinct write. A
+  // second add after Undo must not inherit the first inverse's cooldown.
+  const servingInverseSequence = useRef(0);
+  // Pending add identity for each full rendered/write coordinate. Response totals
+  // are deliberately not ordered or combined here; the final response triggers
+  // one current snapshot below.
+  const servingBursts = useRef(new Map<string, FoodServingBurstState>());
+  const deferredServingTruth = useRef(
+    new Map<string, { date: string; slug: string }>()
+  );
+  const getToastProfileScope = useToastProfileScopeGetter();
+  const currentReceiptProfileScope = (): FoodNoticeScope | null => {
+    const scope = getToastProfileScope();
+    return scope?.profileId === activeProfileId ? scope : null;
+  };
+  // An old async completion may outlive a same-component profile transition. The
+  // profile coordinate joins the burst epoch guard so it cannot reconcile one
+  // subject's counts into the next subject's mounted bar.
+  const activeProfileRef = useRef<number | null | undefined>(activeProfileId);
+  activeProfileRef.current = activeProfileId;
+  // A hydration-replayed/discrete interaction may run after commit but before
+  // passive effects. The bar is live from render; cleanup is the only transition
+  // that makes this origin stale.
+  const barMountedRef = useRef(true);
+  useLayoutEffect(() => {
+    const lifecycles = cleanupLifecycles.current;
+    activeProfileRef.current = activeProfileId;
+    barMountedRef.current = true;
+    return () => {
+      // The provider is keyed by subject, but this bar's promises outlive its
+      // subtree. Invalidate both identity and mutation state before any old
+      // completion can publish another subject's projection. Root toast tokens
+      // reject cross-profile notes; this mounted origin additionally gates every
+      // local-state success claim and action-bearing receipt.
+      for (const [key, owner] of lifecycles) dismissToast(key, owner);
+      barMountedRef.current = false;
+      activeProfileRef.current = undefined;
+      correctionUiGeneration.current += 1;
+      removalUiGeneration.current += 1;
+    };
+  }, [activeProfileId, dismissToast]);
+
+  function isMountedProfile() {
+    return (
+      barMountedRef.current && activeProfileRef.current === activeProfileId
+    );
+  }
+
+  function profileToast(
+    scope: FoodNoticeScope | null,
+    message: string,
+    options: Parameters<typeof toast>[1] = {}
+  ) {
+    // The token is the toast provider's profile GENERATION, not only the subject
+    // id. A completion from an unmounted A bar is therefore refused after A→B,
+    // logout, or a later A session even if an async path misses a local guard.
+    if (!scope) return;
+    toast(message, {
+      ...options,
+      profileId: scope.profileId,
+      profileToken: scope.token,
+    });
+  }
+
+  // The row itself is the immediate receipt. A successful add gets the shipped
+  // settle token; reduced motion keeps the same count/button end state and simply
+  // schedules no class. One timer per slug keeps independent rows independent.
+  const reducedMotion = usePrefersReducedMotion();
+  const settlePlan = microMotionPlan("settle", reducedMotion);
+  const [settlingCoordinates, setSettlingCoordinates] = useState<
+    ReadonlySet<string>
+  >(() => new Set());
+  const settleTimers = useRef(new Map<string, ReturnType<typeof setTimeout>>());
+  useEffect(() => {
+    const timers = settleTimers.current;
+    return () => {
+      for (const timer of timers.values()) clearTimeout(timer);
+      timers.clear();
+    };
+  }, []);
+
+  function settleServing(coordinate: string) {
+    if (!settlePlan.animate) return;
+    const running = settleTimers.current.get(coordinate);
+    if (running) clearTimeout(running);
+    setSettlingCoordinates((current) => new Set(current).add(coordinate));
+    settleTimers.current.set(
+      coordinate,
+      setTimeout(() => {
+        settleTimers.current.delete(coordinate);
+        setSettlingCoordinates((current) => {
+          const next = new Set(current);
+          next.delete(coordinate);
+          return next;
+        });
+      }, settlePlan.ms)
+    );
+  }
   // The "log my usual <window>" shortcut (#2380) is its OWN affordance, not a batch of
   // serving taps: it is idempotent (its contents are the habitual groups this window
   // still has nothing logged for, so a second tap has nothing to offer) and answered
@@ -512,75 +674,205 @@ export default function FoodLogBar({
     proteinRank
   );
 
-  // Set one slug's daily count, leaving every other day untouched.
-  function setCount(slug: string, next: (prev: number) => number) {
-    setCountsByDate((m) => {
-      const day = m[activeDate] ?? {};
-      return {
-        ...m,
-        [activeDate]: { ...day, [slug]: Math.max(0, next(day[slug] ?? 0)) },
-      };
-    });
+  function commitProjection(next: FoodProjectionState) {
+    if (!isMountedProfile()) return;
+    // Keep the async mutation boundary and the provider on the exact same object.
+    // Every caller below computes both halves before this one publication.
+    projectionRef.current = next;
+    setProjection(next);
   }
 
-  function setSlotCount(
+  // Set one serving coordinate in the day and meal projections together.
+  function setServingCounts(
+    date: string,
     targetSlot: FoodSlot,
     slug: string,
-    next: (prev: number) => number
+    next: (prev: { day: number; meal: number }) => {
+      day: number;
+      meal: number;
+    }
   ) {
-    setSlotCountsByDate((allDays) => {
-      const day = allDays[activeDate] ?? {
-        Morning: {},
-        Midday: {},
-        Evening: {},
-      };
-      const meal = day[targetSlot] ?? {};
-      return {
-        ...allDays,
-        [activeDate]: {
-          ...day,
+    const current = projectionRef.current;
+    const dayCounts = current.countsByDate[date] ?? {};
+    const slotDay = current.slotCountsByDate[date] ?? {
+      Morning: {},
+      Midday: {},
+      Evening: {},
+    };
+    const mealCounts = slotDay[targetSlot] ?? {};
+    const value = next({
+      day: dayCounts[slug] ?? 0,
+      meal: mealCounts[slug] ?? 0,
+    });
+    commitProjection({
+      countsByDate: {
+        ...current.countsByDate,
+        [date]: {
+          ...dayCounts,
+          [slug]: Math.max(0, value.day),
+        },
+      },
+      slotCountsByDate: {
+        ...current.slotCountsByDate,
+        [date]: {
+          ...slotDay,
           [targetSlot]: {
-            ...meal,
-            [slug]: Math.max(0, next(meal[slug] ?? 0)),
+            ...mealCounts,
+            [slug]: Math.max(0, value.meal),
           },
         },
-      };
+      },
     });
   }
 
-  // Adopt the server's authoritative counts for ONE (date, group, window) coordinate
-  // (#1934). A correction answers with the placement the serving LEFT and the one it
-  // LANDED in; applying both — rather than incrementing here and decrementing there —
-  // is what makes a slot change a MOVE and not a second serving. Note it is a SET, not
-  // a delta, so replaying it can never drift.
+  // Adopt one or more server-named coordinates as ONE client projection (#1934).
+  // A correction answers with the placement the serving LEFT and the one it LANDED
+  // in. Both must be folded before either context state is published: publishing the
+  // source first lets a render restore the old slot map before the destination write.
+  // These are SETs, not deltas, so replaying the result can never drift.
+  function applyPlacements(placements: readonly FoodPlacement[]) {
+    const next = applyFoodServingPlacements(
+      projectionRef.current.countsByDate,
+      projectionRef.current.slotCountsByDate,
+      placements
+    );
+    commitProjection(next);
+  }
+
   function applyPlacement(placement: FoodPlacement) {
-    setCountsByDate((all) => {
-      const day = all[placement.date] ?? {};
-      return {
-        ...all,
-        [placement.date]: {
-          ...day,
-          [placement.groupKey]: placement.servings,
-        },
+    applyPlacements([placement]);
+  }
+
+  // Reconcile a completed add burst in one paint from one post-burst server
+  // snapshot. All meal projections travel together so a cross-slot burst cannot
+  // repair its latest row while leaving an earlier row optimistic or stale.
+  function applyServingTruth(
+    date: string,
+    slug: string,
+    truth: FoodServingTruth
+  ) {
+    const current = projectionRef.current;
+    const day = current.countsByDate[date] ?? {};
+    const nextCounts = {
+      ...current.countsByDate,
+      [date]: { ...day, [slug]: truth.servings },
+    };
+
+    const slotDay = current.slotCountsByDate[date] ?? {
+      Morning: {},
+      Midday: {},
+      Evening: {},
+    };
+    const nextDay = { ...slotDay };
+    for (const slot of FOOD_SLOTS) {
+      nextDay[slot] = {
+        ...(slotDay[slot] ?? {}),
+        [slug]: truth.mealServings[slot],
       };
+    }
+    const nextSlotCounts = {
+      ...current.slotCountsByDate,
+      [date]: nextDay,
+    };
+    commitProjection({
+      countsByDate: nextCounts,
+      slotCountsByDate: nextSlotCounts,
     });
-    setSlotCountsByDate((all) => {
-      const day = all[placement.date] ?? {
-        Morning: {},
-        Midday: {},
-        Evening: {},
-      };
-      return {
-        ...all,
-        [placement.date]: {
-          ...day,
-          [placement.mealSlot]: {
-            ...(day[placement.mealSlot] ?? {}),
-            [placement.groupKey]: placement.mealServings,
-          },
-        },
-      };
-    });
+  }
+
+  async function reconcileServingTruthIfIdle(
+    receiptKey: string,
+    date: string,
+    slug: string
+  ) {
+    if (!isMountedProfile()) return;
+    const captured =
+      servingBursts.current.get(receiptKey) ?? emptyFoodServingBurst();
+    // A current add burst owns the final read after its last response. Reading
+    // before that would snapshot only a prefix of its writes.
+    if (captured.pending.size > 0) {
+      deferredServingTruth.current.set(receiptKey, { date, slug });
+      return;
+    }
+    const requested = requestFoodServingTruth(captured);
+    servingBursts.current.set(receiptKey, requested.state);
+    if (!requested.readNow) {
+      deferredServingTruth.current.set(receiptKey, { date, slug });
+      return;
+    }
+    deferredServingTruth.current.delete(receiptKey);
+    const form = new FormData();
+    form.set("group_key", slug);
+    form.set("date", date);
+    if (activeProfileId != null) form.set("profileId", String(activeProfileId));
+    let truth: FoodServingTruthResult;
+    try {
+      truth = await readFoodServingTruth(form);
+    } catch {
+      return;
+    }
+    const current =
+      servingBursts.current.get(receiptKey) ?? emptyFoodServingBurst();
+    if (
+      isMountedProfile() &&
+      current.epoch === captured.epoch &&
+      current.nextTapId === captured.nextTapId &&
+      current.truthRevision === captured.truthRevision &&
+      current.pending.size === 0 &&
+      current.nonAddPending.size === 0 &&
+      truth.ok
+    )
+      applyServingTruth(date, slug, truth);
+  }
+
+  function isServingMutationCurrent(receiptKey: string, epoch: number) {
+    return (
+      isMountedProfile() &&
+      (servingBursts.current.get(receiptKey) ?? emptyFoodServingBurst())
+        .epoch === epoch
+    );
+  }
+
+  type ServingMutationClaim = { epoch: number; owner: symbol };
+  function beginServingMutations(
+    receiptKeys: readonly string[],
+    existingOwners: ReadonlyMap<string, symbol> = new Map()
+  ) {
+    const epochs = new Map<string, ServingMutationClaim>();
+    for (const key of new Set(receiptKeys)) {
+      const next = beginFoodServingNonAddMutation(
+        servingBursts.current.get(key) ?? emptyFoodServingBurst()
+      );
+      servingBursts.current.set(key, next);
+      const owner = existingOwners.get(key) ?? reserveToastLifecycle(key);
+      epochs.set(key, { epoch: next.epoch, owner });
+    }
+    return epochs;
+  }
+
+  function finishServingMutations(
+    epochs: ReadonlyMap<string, ServingMutationClaim>
+  ) {
+    for (const [key, claim] of epochs) {
+      const finished = finishFoodServingNonAddMutation(
+        servingBursts.current.get(key) ?? emptyFoodServingBurst(),
+        claim.epoch
+      );
+      servingBursts.current.set(key, finished.state);
+      if (!finished.refreshDeferredTruth) continue;
+      const deferred = deferredServingTruth.current.get(key);
+      deferredServingTruth.current.delete(key);
+      if (deferred)
+        void reconcileServingTruthIfIdle(key, deferred.date, deferred.slug);
+    }
+  }
+
+  function areServingMutationsCurrent(
+    epochs: ReadonlyMap<string, ServingMutationClaim>
+  ) {
+    return [...epochs].every(([key, claim]) =>
+      isServingMutationCurrent(key, claim.epoch)
+    );
   }
 
   // The bounded recent days the sheet may correct within — the same seven-day policy
@@ -590,6 +882,8 @@ export default function FoodLogBar({
   const minCorrectionDay = days[days.length - 1]?.date ?? today;
 
   function openCorrection(event: FoodLogEvent) {
+    correctionUiGeneration.current += 1;
+    setSaving(false);
     setEditing(event);
     setDraft({
       groupKey: event.groupKey,
@@ -610,6 +904,13 @@ export default function FoodLogBar({
       },
       mealTouched: false,
     });
+  }
+
+  function closeCorrection() {
+    correctionUiGeneration.current += 1;
+    setSaving(false);
+    setEditing(null);
+    setDraft(null);
   }
 
   // The day + eating-time pair moved (via the shared control, which owns the pair
@@ -642,6 +943,7 @@ export default function FoodLogBar({
 
   async function saveCorrection() {
     if (!editing || !draft) return;
+    const noticeScope = currentReceiptProfileScope();
     // The bounded-days policy the retired Day dropdown physically enforced, kept at
     // save time for a hand-typed date: this sheet recovers a recent meal, it is not an
     // unrestricted historical editor.
@@ -650,9 +952,16 @@ export default function FoodLogBar({
       draft.when.date < minCorrectionDay ||
       draft.when.date > maxCorrectionDay
     ) {
-      toast("Pick a day from the log's own recent range.", { tone: "error" });
+      profileToast(noticeScope, "Pick a day from the log's own recent range.", {
+        tone: "error",
+      });
       return;
     }
+    const correctionEpochs = beginServingMutations([
+      foodServingToastKey(receiptProfileId, editing.date, editing.groupKey),
+      foodServingToastKey(receiptProfileId, draft.when.date, draft.groupKey),
+    ]);
+    const correctionUi = ++correctionUiGeneration.current;
     setSaving(true);
     const fd = new FormData();
     fd.set("event_id", String(editing.id));
@@ -677,22 +986,52 @@ export default function FoodLogBar({
     try {
       outcome = await updateFoodLogEvent(fd);
     } catch {
-      setSaving(false);
-      toast("Couldn't correct that serving — try again.", { tone: "error" });
+      const current = areServingMutationsCurrent(correctionEpochs);
+      finishServingMutations(correctionEpochs);
+      if (correctionUiGeneration.current === correctionUi) setSaving(false);
+      if (current || !isMountedProfile())
+        profileToast(
+          noticeScope,
+          "Couldn't correct that serving — try again.",
+          {
+            tone: "error",
+          }
+        );
       return;
     }
-    setSaving(false);
+    const current = areServingMutationsCurrent(correctionEpochs);
+    finishServingMutations(correctionEpochs);
+    if (correctionUiGeneration.current === correctionUi) setSaving(false);
     if (!outcome.ok) {
-      toast(outcome.error, { tone: "error" });
+      if (current || !isMountedProfile())
+        profileToast(noticeScope, outcome.error, { tone: "error" });
       return;
     }
-    // `from` first, then `to`: when a correction only changes the window, both name the
-    // same (date, group) and the second write settles it at the post-move truth.
-    applyPlacement(outcome.from);
-    applyPlacement(outcome.to);
-    setEditing(null);
-    setDraft(null);
-    toast("Serving corrected.");
+    if (correctionUiGeneration.current === correctionUi) closeCorrection();
+    if (!current) {
+      if (isMountedProfile()) {
+        void reconcileServingTruthIfIdle(
+          foodServingToastKey(receiptProfileId, editing.date, editing.groupKey),
+          editing.date,
+          editing.groupKey
+        );
+        void reconcileServingTruthIfIdle(
+          foodServingToastKey(
+            receiptProfileId,
+            draft.when.date,
+            draft.groupKey
+          ),
+          draft.when.date,
+          draft.groupKey
+        );
+      }
+      return;
+    }
+    // The pair is one projection transition. When only the window changes, both name
+    // the same (date, group), with `from` clearing the source window and `to` settling
+    // the destination at post-move truth.
+    applyPlacements([outcome.from, outcome.to]);
+    profileToast(noticeScope, "Serving corrected.");
   }
 
   // Remove the ONE serving the ⋯ menu named (#1963). The row's "−" peer is group-scoped
@@ -712,14 +1051,27 @@ export default function FoodLogBar({
   // UnitMislabelReview's is its token shape.
   async function removeServing(event: FoodLogEvent) {
     if (removingId !== null) return;
+    const noticeScope = currentReceiptProfileScope();
     // A delete is not a capture (the lib/offline/queue.ts scope comment), so it stays
     // online-only and says so rather than pretending, exactly as the group "−" does.
     if (typeof navigator !== "undefined" && navigator.onLine === false) {
-      toast("You're offline — removing a serving needs a connection.", {
-        tone: "error",
-      });
+      profileToast(
+        noticeScope,
+        "You're offline — removing a serving needs a connection.",
+        {
+          tone: "error",
+        }
+      );
       return;
     }
+    const mutationReceiptKey = foodServingToastKey(
+      receiptProfileId,
+      event.date,
+      event.groupKey
+    );
+    const removalEpochs = beginServingMutations([mutationReceiptKey]);
+    const removalOwner = removalEpochs.get(mutationReceiptKey)!.owner;
+    const removalUi = ++removalUiGeneration.current;
     setRemovingId(event.id);
     const fd = new FormData();
     fd.set("event_id", String(event.id));
@@ -727,35 +1079,102 @@ export default function FoodLogBar({
     try {
       outcome = await deleteFoodLogEvent(fd);
     } catch (err) {
-      setRemovingId(null);
-      toast(
-        shouldQueueOffline(navigator.onLine !== false, err)
-          ? "You're offline — removing a serving needs a connection."
-          : "Couldn't remove that serving — try again.",
-        { tone: "error" }
-      );
+      const current = areServingMutationsCurrent(removalEpochs);
+      finishServingMutations(removalEpochs);
+      if (removalUiGeneration.current === removalUi) setRemovingId(null);
+      if (current || !isMountedProfile())
+        profileToast(
+          noticeScope,
+          shouldQueueOffline(navigator.onLine !== false, err)
+            ? "You're offline — removing a serving needs a connection."
+            : "Couldn't remove that serving — try again.",
+          { tone: "error" }
+        );
       return;
     }
-    setRemovingId(null);
+    const current = areServingMutationsCurrent(removalEpochs);
+    finishServingMutations(removalEpochs);
+    if (removalUiGeneration.current === removalUi) setRemovingId(null);
     if (!outcome.ok) {
-      toast(outcome.error, { tone: "error" });
+      if (current || !isMountedProfile())
+        profileToast(noticeScope, outcome.error, { tone: "error" });
+      return;
+    }
+    if (!current) {
+      if (isMountedProfile())
+        void reconcileServingTruthIfIdle(
+          mutationReceiptKey,
+          event.date,
+          event.groupKey
+        );
       return;
     }
     // The authoritative post-write counts for the coordinate the serving vacated. A SET,
     // not a delta — the same reconciliation a correction does, so a dropped or refused
     // write can never leave a phantom count behind.
     const vacated = outcome.vacated;
-    applyPlacement(vacated);
+    if (current) applyPlacement(vacated);
     const undoId = outcome.undoId;
-    toast("Serving removed.", {
+    // Precise removal supersedes the cumulative add receipt for this day/group.
+    // Reusing its slot prevents two generic Undo buttons on desktop and keeps the
+    // just-completed correction at the head of the phone snackbar queue.
+    const receiptKey = foodServingToastKey(
+      receiptProfileId,
+      event.date,
+      event.groupKey
+    );
+    if (!noticeScope) return;
+    profileToast(noticeScope, "Serving removed.", {
+      key: receiptKey,
+      owner: removalOwner,
+      onlyIfOwner: true,
       duration: UNDO_TOAST_MS,
       action: {
         label: "Undo",
         onClick: () => {
+          if (!isMountedProfile()) return;
           void (async () => {
-            const restored = await undoDelete(undoId);
+            const restoreEpochs = beginServingMutations(
+              [receiptKey],
+              new Map([[receiptKey, removalOwner]])
+            );
+            let restored: Awaited<ReturnType<typeof undoDelete>>;
+            try {
+              restored = await undoDelete(undoId);
+            } catch {
+              const current = areServingMutationsCurrent(restoreEpochs);
+              finishServingMutations(restoreEpochs);
+              if (current)
+                profileToast(noticeScope, "Couldn’t undo — try again.", {
+                  tone: "error",
+                  key: receiptKey,
+                  owner: removalOwner,
+                  onlyIfOwner: true,
+                });
+              return;
+            }
+            const current = areServingMutationsCurrent(restoreEpochs);
+            finishServingMutations(restoreEpochs);
+            if (!current) {
+              if (isMountedProfile())
+                void reconcileServingTruthIfIdle(
+                  receiptKey,
+                  event.date,
+                  event.groupKey
+                );
+              return;
+            }
             if (!restored.ok) {
-              toast("Couldn’t undo — it may have expired.", { tone: "error" });
+              profileToast(
+                noticeScope,
+                "Couldn’t undo — it may have expired.",
+                {
+                  tone: "error",
+                  key: receiptKey,
+                  owner: removalOwner,
+                  onlyIfOwner: true,
+                }
+              );
               return;
             }
             // The restore puts back exactly the one serving this delete took, at the
@@ -766,7 +1185,11 @@ export default function FoodLogBar({
               servings: vacated.servings + 1,
               mealServings: vacated.mealServings + 1,
             });
-            toast("Restored.");
+            profileToast(noticeScope, "Restored.", {
+              key: receiptKey,
+              owner: removalOwner,
+              onlyIfOwner: true,
+            });
           })();
         },
       },
@@ -819,22 +1242,62 @@ export default function FoodLogBar({
   // — so the ledger carries them as one slice.
   type ServingCounts = { day: number; meal: number };
 
-  async function bump(slug: string, delta: 1 | -1) {
+  async function bump(
+    group: FoodGroup,
+    delta: 1 | -1,
+    expectedServings?: number,
+    inverseWriteKey?: string,
+    inverseSlot?: FoodSlot,
+    expectedEventId?: number,
+    onMutationStarted?: (epoch: number) => void,
+    existingReceiptOwner?: symbol
+  ): Promise<boolean> {
+    const noticeScope = currentReceiptProfileScope();
+    const slug = group.slug;
     // WHERE the tap lands (#2269): an add with a statement in force files under the
     // stated time's derived window — the tab stays navigation, the chip stated the
     // consequence — so the optimistic bump moves THAT section's count, not the cell
     // being looked at. An undo (and an add with no statement) stays tab-scoped.
-    const filingSlot = (delta === 1 ? statedFilingSlot() : null) ?? activeSlot;
+    const filingSlot =
+      inverseSlot ?? (delta === 1 ? statedFilingSlot() : null) ?? activeSlot;
+    const coordinate = foodServingCoordinate(
+      receiptProfileId,
+      activeDate,
+      filingSlot,
+      slug
+    );
+    const receiptKey = foodServingToastKey(receiptProfileId, activeDate, slug);
+    // Reserve every keyed lifecycle when the interaction STARTS. A slower older
+    // response can then neither publish nor dismiss over a newer bar/tap.
+    const receiptOwner =
+      existingReceiptOwner ?? reserveToastLifecycle(receiptKey);
+    const endFastOwner =
+      delta === 1 ? reserveToastLifecycle("end-fast-offer") : null;
+    const limitNoteKey = `food-limit-${slug}`;
+    const limitNoteOwner =
+      delta === 1 ? reserveToastLifecycle(limitNoteKey, false, false) : null;
+    let mutationEpoch: number;
+    let nonAddEpochs: ReadonlyMap<string, ServingMutationClaim> | null = null;
+    if (delta === -1) {
+      nonAddEpochs = beginServingMutations(
+        [receiptKey],
+        new Map([[receiptKey, receiptOwner]])
+      );
+      mutationEpoch = nonAddEpochs.get(receiptKey)!.epoch;
+      onMutationStarted?.(mutationEpoch);
+    }
     const before: ServingCounts = {
-      day: counts[slug] ?? 0,
-      meal: slotCountsByDate[activeDate]?.[filingSlot]?.[slug] ?? 0,
+      day: projectionRef.current.countsByDate[activeDate]?.[slug] ?? 0,
+      meal:
+        projectionRef.current.slotCountsByDate[activeDate]?.[filingSlot]?.[
+          slug
+        ] ?? 0,
     };
     const commit = (next: ServingCounts) => {
-      setCount(slug, () => next.day);
-      setSlotCount(filingSlot, slug, () => next.meal);
+      setServingCounts(activeDate, filingSlot, slug, () => next);
     };
-    // Queue an ADD tap while offline (#1596): the captured slug + the meal window
-    // and day under the user's finger replay through the same write core on
+    // Queue an ADD tap while offline (#1596): the captured slug + the active meal
+    // window and day under the user's finger replay through the same write core on
     // reconnect, so a kitchen-moment tap never fails. The optimistic count stands
     // in for the server total until then. UNDO stays online-only — a decrement is
     // not a capture (see the lib/offline/queue.ts scope comment) — so an offline
@@ -843,6 +1306,10 @@ export default function FoodLogBar({
       const kept = await enqueue("food", activeDate, {
         entry: "serving",
         groupKey: slug,
+        // This is the fallback declaration, not an echo of a stated instant. If
+        // the replay accepts eatenAt, the write core derives its slot from that
+        // instant. If a fast device clock makes eatenAt unusable, the serving
+        // stays in the active window the person actually tapped.
         mealSlot: activeSlot,
         grams: null,
         // The statement travels as a RESOLVED instant, because a replay has no server to
@@ -855,16 +1322,26 @@ export default function FoodLogBar({
       // The device can refuse the capture (#3038) — say so in the shared sentence
       // and report it, so the caller rolls the optimistic counts back.
       if (!kept) {
-        toast(OFFLINE_CAPTURE_REFUSED_MESSAGE, { tone: "error" });
+        if (isCurrentMutation() || !isMountedProfile())
+          profileToast(noticeScope, OFFLINE_CAPTURE_REFUSED_MESSAGE, {
+            tone: "error",
+          });
         return false;
       }
-      toast("Saved offline — will sync when you reconnect.");
+      if (isCurrentMutation())
+        profileToast(
+          noticeScope,
+          "Saved offline — will sync when you reconnect."
+        );
       return true;
     };
     const undoNeedsConnection = () => {
-      toast("You're offline — removing a serving needs a connection.", {
-        tone: "error",
-      });
+      if (isCurrentMutation() || !isMountedProfile())
+        profileToast(
+          noticeScope,
+          "You're offline — removing a serving needs a connection.",
+          { tone: "error" }
+        );
     };
     // Whether the tap reached a write at all, and what the write said — modeled so
     // the ledger sees exactly one settlement per tap. "refused" is the queue
@@ -875,12 +1352,59 @@ export default function FoodLogBar({
       | { kind: "refused" }
       | { kind: "offline-undo" }
       | { kind: "wrote"; outcome: FoodLogResult };
-    await ledger.tap<ServingTap>({
+    let addTap: FoodServingAddTap | null = null;
+    if (delta === 1) {
+      const begun = beginFoodServingAdd(
+        servingBursts.current.get(receiptKey) ?? emptyFoodServingBurst(),
+        coordinate,
+        filingSlot
+      );
+      servingBursts.current.set(receiptKey, begun.state);
+      addTap = begun.tap;
+      mutationEpoch = addTap.epoch;
+    }
+    const isCurrentMutation = () =>
+      isServingMutationCurrent(receiptKey, mutationEpoch);
+    const reconcileAfterStaleMutation = () => {
+      if (isMountedProfile())
+        void reconcileServingTruthIfIdle(receiptKey, activeDate, slug);
+    };
+    const addSettlementBox: { value: FoodServingBurstSettlement | null } = {
+      value: null,
+    };
+    let refreshRefusedInverseTruth = false;
+    const settleAddBurst = (
+      outcome: { ok: true; eventId: number } | { ok: false }
+    ): FoodServingBurstSettlement | null => {
+      if (!addTap) return null;
+      const settled = settleFoodServingAdd(
+        servingBursts.current.get(receiptKey) ?? emptyFoodServingBurst(),
+        addTap,
+        outcome
+      );
+      servingBursts.current.set(receiptKey, settled.state);
+      addSettlementBox.value = settled;
+      return settled;
+    };
+    const dropAddBurst = () => {
+      if (!addTap) return;
+      servingBursts.current.set(
+        receiptKey,
+        dropFoodServingAdd(
+          servingBursts.current.get(receiptKey) ?? emptyFoodServingBurst(),
+          addTap
+        )
+      );
+    };
+    const result = await ledger.tap<ServingTap>({
       // The key names the WRITE, not the row: a "−" correction straight after a "+"
-      // is a different write and must not be absorbed by its cooldown. Two taps of
-      // the same row's "+" — the accidental double — share this key and are. Keyed on
-      // the FILING slot (#2269), the coordinate the write actually moves.
-      key: `${activeDate}:${filingSlot}:${slug}:${delta}`,
+      // is a different write and must not be absorbed by its cooldown. Adds carry a
+      // tap sequence because each one is a serving; the cumulative TOAST, not the
+      // additive write, is what collapses by coordinate (#3611).
+      key:
+        delta === 1
+          ? `${activeDate}:${filingSlot}:${slug}:add:${addTap!.id}`
+          : (inverseWriteKey ?? `${activeDate}:${filingSlot}:${slug}:undo`),
       from: before,
       // Optimistic: reflect the tap immediately.
       optimistic: {
@@ -898,7 +1422,13 @@ export default function FoodLogBar({
         const fd = new FormData();
         fd.set("group_key", slug);
         fd.set("date", activeDate);
-        fd.set("meal_slot", activeSlot);
+        fd.set("meal_slot", filingSlot);
+        if (expectedServings != null)
+          fd.set("expected_servings", String(expectedServings));
+        if (expectedEventId != null)
+          fd.set("event_id", String(expectedEventId));
+        if (activeProfileId != null)
+          fd.set("profileId", String(activeProfileId));
         // The CHOICE, not an instant: online the server resolves it against its own clock
         // and the profile's timezone, so a tab open since breakfast cannot stamp a stale
         // "now". Only an add states a time — an undo removes a serving and asserts
@@ -913,15 +1443,52 @@ export default function FoodLogBar({
         };
       },
       settle: (tap) => {
-        if (tap.kind === "queued") return { kind: "keep" };
+        if (tap.kind === "queued") {
+          dropAddBurst();
+          return { kind: "keep" };
+        }
         // Refused capture: queueOffline already said so; the counts roll back.
-        if (tap.kind === "refused") return { kind: "rollback" };
+        if (tap.kind === "refused") {
+          const settled = settleAddBurst({ ok: false });
+          if (!settled?.accepted || !isCurrentMutation())
+            return { kind: "keep" };
+          return { kind: "rollback" };
+        }
         if (tap.kind === "offline-undo") {
           undoNeedsConnection();
+          if (!isCurrentMutation()) return { kind: "keep" };
           return { kind: "rollback" };
         }
         const outcome = tap.outcome;
         if (outcome.ok) {
+          if (delta === 1) {
+            if (outcome.eventId == null) {
+              settleAddBurst({ ok: false });
+              return { kind: "keep" };
+            }
+            const settled = settleAddBurst({
+              ok: true,
+              eventId: outcome.eventId,
+            });
+            if (!settled?.accepted) return { kind: "keep" };
+            if (
+              !isMountedProfile() &&
+              settled.completed &&
+              settled.reportFailure
+            )
+              profileToast(
+                noticeScope,
+                "Couldn't save one of those servings — try again.",
+                { tone: "error" }
+              );
+            if (!isCurrentMutation() && isMountedProfile()) {
+              reconcileAfterStaleMutation();
+              return { kind: "keep" };
+            }
+          } else if (!isCurrentMutation()) {
+            reconcileAfterStaleMutation();
+            return { kind: "keep" };
+          }
           // The serving landed and the stated minute did not (#2296). The write is a
           // success, so this is a NOTICE on a normal toast — never an error tone that
           // would read as "your tap failed" for a row that is sitting right there. It
@@ -929,8 +1496,9 @@ export default function FoodLogBar({
           // (the form sends the CHOICE and the server resolves it, so no client clock
           // can push it into the future); the offline capture, which carries a client
           // instant, is where a fast clock actually costs the minute.
-          if (outcome.statedTimeRefused) {
-            toast(
+          if (isCurrentMutation() && outcome.statedTimeRefused) {
+            profileToast(
+              noticeScope,
               `Serving saved without its time \u2014 ${
                 STATED_TIME_REFUSAL_NOTE[outcome.statedTimeRefused]
               }.`
@@ -944,12 +1512,26 @@ export default function FoodLogBar({
           // interaction holds until the reader dismisses it, a dietary note takes the
           // ordinary timer. The server already ranked them; at most one ever arrives.
           if (outcome.limitNote) {
-            toast(foodLimitNoteText(outcome.limitNote), {
-              key: `food-limit-${outcome.limitNote.groupKey}`,
+            profileToast(noticeScope, foodLimitNoteText(outcome.limitNote), {
+              key: limitNoteKey,
+              ...(limitNoteOwner != null
+                ? { owner: limitNoteOwner, onlyIfOwner: true }
+                : {}),
               ...(outcome.limitNote.hold ? { duration: null } : {}),
             });
           }
-          offerEndFast(outcome.endFastOffer);
+          if (endFastOwner != null)
+            offerEndFast(noticeScope, outcome.endFastOffer, endFastOwner);
+          if (delta === 1) {
+            if (isMountedProfile()) settleServing(coordinate);
+            // Preserve every still-pending optimistic tap. The final response's
+            // caller performs one authoritative read and reconciles the whole
+            // day/meal slice below; a partial response never commits a smaller
+            // settled-only number over later taps.
+            return { kind: "keep" };
+          } else {
+            dismissToast(receiptKey, receiptOwner);
+          }
           // Reconcile with the server's authoritative daily total (#748 item 2) so a
           // dropped/failed write can never leave a phantom count.
           return {
@@ -970,27 +1552,216 @@ export default function FoodLogBar({
             },
           };
         }
-        // Roll back this tap and tell the user it didn't stick.
-        toast(outcome.error || "Couldn't save that serving — try again.", {
-          tone: "error",
-        });
+        // A failed add still settles the whole rapid burst. If earlier taps
+        // succeeded, the final effect publishes their cumulative receipt and
+        // reports this failure separately.
+        if (delta === 1) {
+          const settled = settleAddBurst({ ok: false });
+          if (
+            !isMountedProfile() &&
+            settled?.completed &&
+            settled.reportFailure
+          )
+            profileToast(
+              noticeScope,
+              outcome.error || "Couldn't save that serving — try again.",
+              { tone: "error" }
+            );
+          return { kind: "keep" };
+        }
+        if (!isCurrentMutation()) {
+          reconcileAfterStaleMutation();
+          return { kind: "keep" };
+        }
+        // A guarded inverse refusal means some other writer changed this coordinate.
+        // Its action result cannot always name every meal slot, so keep the optimistic
+        // projection only until one fresh day + meal truth read completes below.
+        if (
+          (expectedServings != null || expectedEventId != null) &&
+          outcome.servings != null
+        ) {
+          refreshRefusedInverseTruth = true;
+          return { kind: "keep" };
+        }
+        if (expectedServings == null && expectedEventId == null) {
+          profileToast(
+            noticeScope,
+            outcome.error || "Couldn't save that serving — try again.",
+            {
+              tone: "error",
+            }
+          );
+        }
         return { kind: "rollback" };
       },
       onError: async (err) => {
         // Connection dropped mid-tap — queue an add instead of a false failure.
         if (shouldQueueOffline(navigator.onLine !== false, err)) {
           if (delta === 1) {
-            return (await queueOffline())
-              ? { kind: "keep" }
-              : { kind: "rollback" };
+            const kept = await queueOffline();
+            if (!isCurrentMutation()) {
+              if (!kept) settleAddBurst({ ok: false });
+              return { kind: "keep" };
+            }
+            if (kept) dropAddBurst();
+            else settleAddBurst({ ok: false });
+            return kept ? { kind: "keep" } : { kind: "rollback" };
           }
           undoNeedsConnection();
           return { kind: "rollback" };
         }
-        toast("Couldn't save that serving — try again.", { tone: "error" });
+        if (!isCurrentMutation()) {
+          if (delta === 1) {
+            const settled = settleAddBurst({ ok: false });
+            if (
+              !isMountedProfile() &&
+              settled?.completed &&
+              settled.reportFailure
+            )
+              profileToast(
+                noticeScope,
+                "Couldn't save that serving — try again.",
+                { tone: "error" }
+              );
+          }
+          reconcileAfterStaleMutation();
+          return { kind: "keep" };
+        }
+        if (delta === 1) {
+          settleAddBurst({ ok: false });
+          return { kind: "keep" };
+        }
+        profileToast(noticeScope, "Couldn't save that serving — try again.", {
+          tone: "error",
+        });
         return { kind: "rollback" };
       },
     });
+
+    if (nonAddEpochs) finishServingMutations(nonAddEpochs);
+    if (refreshRefusedInverseTruth && isCurrentMutation())
+      await reconcileServingTruthIfIdle(receiptKey, activeDate, slug);
+    if (delta === 1) {
+      const deferred = deferredServingTruth.current.get(receiptKey);
+      if (deferred)
+        await reconcileServingTruthIfIdle(
+          receiptKey,
+          deferred.date,
+          deferred.slug
+        );
+    }
+
+    const addSettlement = addSettlementBox.value;
+    if (
+      delta === 1 &&
+      addTap &&
+      addSettlement?.accepted &&
+      addSettlement.completed &&
+      isMountedProfile()
+    ) {
+      const completionEpoch = addTap.epoch;
+      const completionNextTapId = addSettlement.state.nextTapId;
+      const truthForm = new FormData();
+      truthForm.set("group_key", slug);
+      truthForm.set("date", activeDate);
+      if (activeProfileId != null)
+        truthForm.set("profileId", String(activeProfileId));
+      const isStillLatest = () => {
+        const currentBurst =
+          servingBursts.current.get(receiptKey) ?? emptyFoodServingBurst();
+        return (
+          currentBurst.epoch === completionEpoch &&
+          currentBurst.nextTapId === completionNextTapId &&
+          currentBurst.pending.size === 0
+        );
+      };
+      let truth: FoodServingTruthResult;
+      try {
+        truth = await readFoodServingTruth(truthForm);
+      } catch {
+        if (isStillLatest() && noticeScope) {
+          profileToast(
+            noticeScope,
+            "Saved, but couldn't refresh the count — reload to check it.",
+            {
+              tone: "error",
+            }
+          );
+        }
+        return (
+          result.status === "settled" &&
+          result.result.kind === "wrote" &&
+          result.result.outcome.ok
+        );
+      }
+      const stillLatest = isStillLatest();
+      if (stillLatest && truth.ok) {
+        if (isMountedProfile()) applyServingTruth(activeDate, slug, truth);
+        const receipt = addSettlement.receipt;
+        const completedOwner = toastLifecycles.current.get(receiptKey);
+        if (receipt && noticeScope && completedOwner != null) {
+          const feedback = foodServingFeedback(
+            receiptProfileId,
+            activeDate,
+            slug,
+            group.name,
+            truth.servings,
+            activeDay.label
+          );
+          const inverseKey = foodServingInverseKey(
+            receipt.coordinate,
+            ++servingInverseSequence.current
+          );
+          let inverseEpoch: number | null = null;
+          announceUndoable({
+            ...feedback,
+            profileId: noticeScope.profileId,
+            profileToken: noticeScope.token,
+            owner: completedOwner,
+            undo: {
+              undoneMessage: "Serving undone.",
+              isCurrent: () =>
+                inverseEpoch != null &&
+                isServingMutationCurrent(feedback.key, inverseEpoch),
+              run: async () => {
+                if (!isMountedProfile())
+                  return { ok: false, reason: "changed" };
+                return (await bump(
+                  group,
+                  -1,
+                  truth.servings,
+                  inverseKey,
+                  receipt.mealSlot as FoodSlot,
+                  receipt.eventId,
+                  (epoch) => {
+                    inverseEpoch = epoch;
+                  },
+                  completedOwner
+                ))
+                  ? { ok: true }
+                  : { ok: false, reason: "changed" };
+              },
+            },
+          });
+        }
+        if (addSettlement.reportFailure && noticeScope) {
+          profileToast(
+            noticeScope,
+            "Couldn't save one of those servings — try again.",
+            { tone: "error" }
+          );
+        }
+      } else if (stillLatest && !truth.ok) {
+        if (noticeScope) {
+          profileToast(noticeScope, truth.error, { tone: "error" });
+        }
+      }
+    }
+    return (
+      result.status === "settled" &&
+      result.result.kind === "wrote" &&
+      result.result.outcome.ok
+    );
   }
 
   // ---- "Log my usual <window>" (#2380) ----
@@ -1031,6 +1802,12 @@ export default function FoodLogBar({
   async function logUsual() {
     const slugs = usualGroups.map((g) => g.slug);
     if (slugs.length === 0) return;
+    const noticeScope = currentReceiptProfileScope();
+    for (const slug of slugs)
+      reserveToastLifecycle(
+        foodServingToastKey(receiptProfileId, activeDate, slug)
+      );
+    const endFastOwner = reserveToastLifecycle("end-fast-offer");
     const window = activeSlot;
     const before: Record<string, ServingCounts> = Object.fromEntries(
       slugs.map((slug) => [
@@ -1043,8 +1820,7 @@ export default function FoodLogBar({
     );
     const commit = (next: Record<string, ServingCounts>) => {
       for (const [slug, value] of Object.entries(next)) {
-        setCount(slug, () => value.day);
-        setSlotCount(window, slug, () => value.meal);
+        setServingCounts(activeDate, window, slug, () => value);
       }
     };
     await usualLedger.tap<UsualFoodResult>({
@@ -1070,12 +1846,18 @@ export default function FoodLogBar({
           // The offer went stale between render and tap (logged from another device,
           // from the Telegram button). Answered from the typed outcome — never
           // confirmed unconditionally — and the optimistic bump rolls back.
-          toast(result.error || "Couldn't log those servings — try again.", {
-            tone: "error",
-          });
-          return { kind: "rollback" };
+          profileToast(
+            noticeScope,
+            result.error || "Couldn't log those servings — try again.",
+            {
+              tone: "error",
+            }
+          );
+          return isMountedProfile() ? { kind: "rollback" } : { kind: "keep" };
         }
-        toast(
+        if (!isMountedProfile()) return { kind: "keep" };
+        profileToast(
+          noticeScope,
           `Logged ${namesPhrase(
             result.groups.map(
               (g) =>
@@ -1086,7 +1868,7 @@ export default function FoodLogBar({
         );
         // ONE prompt for the whole bundle (#2756): the server answers a bundled write
         // with a single flag, so a usual-tap that landed five servings asks once.
-        offerEndFast(result.endFastOffer);
+        offerEndFast(noticeScope, result.endFastOffer, endFastOwner);
         // Adopt the server's authoritative figures for every group it actually wrote —
         // which may be FEWER than the button named, if part of the offer expired.
         // Groups it did not write keep their pre-tap counts, so the display matches
@@ -1100,8 +1882,10 @@ export default function FoodLogBar({
         // Online-only by declaration (lib/offline/queue.ts): the offer's justification
         // is server state, and an additive replay could double-log a window. The
         // single-serving rows beside it still queue, so nothing is unreachable.
-        toast("Couldn't log those servings — try again.", { tone: "error" });
-        return { kind: "rollback" };
+        profileToast(noticeScope, "Couldn't log those servings — try again.", {
+          tone: "error",
+        });
+        return isMountedProfile() ? { kind: "rollback" } : { kind: "keep" };
       },
     });
   }
@@ -1156,6 +1940,12 @@ export default function FoodLogBar({
       {list.map((g) => {
         const mealCount = slotCounts[g.slug] ?? 0;
         const isExpanded = expanded.has(g.slug);
+        const renderedCoordinate = foodServingCoordinate(
+          receiptProfileId,
+          activeDate,
+          statedFilingSlot() ?? activeSlot,
+          g.slug
+        );
         return (
           <li
             key={g.slug}
@@ -1206,50 +1996,62 @@ export default function FoodLogBar({
                 up. At `h-7` this stepper was 28 + 12 = 40 effective while wearing
                 the class that says the floor is met, which is worse than a plainly
                 undersized control: nothing was ever going to look at it again.
-                lib/tap-floor-reach.ts holds the arithmetic for the whole class. */}
+                lib/tap-floor-tokens.ts holds the arithmetic for the whole class. */}
             <button
               type="button"
               data-testid={`undo-${g.slug}`}
               aria-label={`Remove a ${g.name} serving from ${activeSlot}`}
-              title="Remove a serving"
               disabled={mealCount <= 0}
-              onClick={() => bump(g.slug, -1)}
+              onClick={() => void bump(g, -1)}
               className="tap-target flex h-8 w-8 items-center justify-center rounded-full text-slate-400 transition hover:bg-slate-100 disabled:opacity-30 dark:hover:bg-ink-800"
             >
               <IconMinus className="h-4 w-4" stroke={2} />
             </button>
             <span
               data-testid={`count-${g.slug}`}
-              title={`${mealCount} ${mealCount === 1 ? "serving" : "servings"} in ${activeSlot} ${activeDay.label.toLowerCase()}`}
               className={`w-5 text-center text-sm font-semibold tabular-nums ${
                 mealCount === 0
                   ? "text-slate-500 dark:text-slate-400"
                   : "text-slate-700 dark:text-slate-200"
               }`}
             >
-              {mealCount}
+              <RollingNumber
+                value={mealCount}
+                testId={`rolling-count-${g.slug}`}
+              />
             </span>
             <button
               type="button"
               data-testid={`log-${g.slug}`}
               aria-label={`Add a ${g.name} serving to ${activeSlot}`}
-              title="Add a serving"
-              onClick={() => bump(g.slug, 1)}
-              className="tap-target flex h-8 w-8 items-center justify-center rounded-full bg-brand-600 text-white transition hover:bg-brand-700"
+              onClick={() => void bump(g, 1)}
+              className="group tap-target flex h-8 w-8 items-center justify-center rounded-full text-white"
             >
-              <IconPlus className="h-4 w-4" stroke={2} />
+              {/* Keep the control's own class list static/readable to the tap-floor
+                  census; the full-size painted chip inside it carries the one-shot
+                  settle class. It is still the tapped chip people see, while the
+                  button keeps focus and its 44px effective target throughout. */}
+              <span
+                data-testid={`food-settle-${g.slug}`}
+                data-motion="settle"
+                data-reduced-motion={reducedMotion ? "true" : "false"}
+                data-settling={
+                  settlingCoordinates.has(renderedCoordinate) ? "true" : "false"
+                }
+                className={`flex h-full w-full items-center justify-center rounded-full bg-brand-600 transition group-hover:bg-brand-700${
+                  settlingCoordinates.has(renderedCoordinate)
+                    ? ` ${settlePlan.className}`
+                    : ""
+                }`}
+              >
+                <IconPlus className="h-4 w-4" stroke={2} />
+              </span>
             </button>
           </li>
         );
       })}
     </ul>
   );
-  const dayTestId = (day: FoodLogDay) =>
-    day.date === today
-      ? "food-day-today"
-      : day.label === "Yesterday"
-        ? "food-day-yesterday"
-        : `food-day-${day.date}`;
   const totalForSlot = (meal: FoodSlot) =>
     Object.values(slotCountsByDate[activeDate]?.[meal] ?? {}).reduce(
       (sum, n) => sum + n,
@@ -1264,113 +2066,19 @@ export default function FoodLogBar({
 
   return (
     <div>
-      <div
-        data-testid="food-log-context"
-        // THE FULL BLEED IS PAGE-SCOPED (#3360). `-mx-2 px-2` is the trick that
-        // lets the `md:sticky` frosted header paint over the Nutrition page's
-        // gutter; it is net-zero for the content inside (the negative margin and
-        // the padding cancel) and only widens the BACKGROUND. But this component
-        // is also mounted in the #1468 quick-entry sheet, whose content region
-        // has no gutter to bleed into — there the wrapper was simply 16px wider
-        // than its container, which is the horizontal overflow that let one thumb
-        // drag park the sheet sideways. Scoping the three classes to `md:` — the
-        // width where `md:sticky` actually engages, and which `lg:` already
-        // unwinds — removes the overflow at the source. `overflow-x-hidden` on
-        // the sheet's content region (components/BottomSheet.tsx) is the defense
-        // for the whole class; this is the one instance.
-        //
-        // BELOW `md` NOTHING MOVES, BUT THE BAND DOES GO. Content stays put — the
-        // negative margin and the padding cancelled, so dropping both leaves every
-        // child at the same x. The BACKGROUND is a different answer than the issue
-        // predicted: it expected `bg-surface/95` to be sitting on the same
-        // `bg-surface`, and on the sheet's panel it is, but on the Nutrition page
-        // nothing between this wrapper and `<body>` paints, so it was sitting on
-        // the app canvas — a near-white edge-to-edge strip behind "Today · Midday
-        // · N servings" that no other element on that page wears. It is canvas
-        // now, like its neighbours. Sticky and frost were always `md:`-only, so an
-        // unsticky full-bleed band below `md` was doing nothing on purpose.
-        //
-        // `pr-1.5` BELOW `md` IS THE TAP EXTENSION'S ROOM, and it is here because
-        // scoping the bleed took away the padding that used to hold it (#3384).
-        // `tap-target` extends a compact control's hit area with an
-        // `inset: -6px` pseudo-element under `@media (pointer: coarse)`
-        // (app/globals.css). The preferences button is `sm:hidden`, 40px, and the
-        // LAST thing in this row — flush with the container's right edge — so
-        // that transparent 6px pokes out and counts as horizontal overflow, which
-        // is exactly what the sheet's content region must not be handed. It never
-        // showed before because `px-2` absorbed it while `-mx-2` paid for the
-        // bleed; with both gone below `md` the extension had nowhere to sit.
-        // Measured: `scrollWidth 363 / clientWidth 358` in the quick-entry sheet
-        // at 390px, gone at 0 with this. Six pixels, right side only — the left
-        // side cannot contribute to scrollable width in LTR — and it also lands
-        // the button nearer the `px-3` inset the food rows give their own
-        // controls. From `md` up `md:px-2` is back and owns the problem again.
-        className="mb-3 py-2 pr-1.5 md:sticky md:top-0 md:z-10 md:-mx-2 md:bg-surface/95 md:px-2 md:pr-2 md:backdrop-blur-sm lg:static lg:mx-0 lg:bg-transparent lg:p-0"
-      >
-        <div className="flex flex-wrap items-center justify-between gap-3">
-          <div className="min-w-0">
-            <h2
-              data-testid="food-context-heading"
-              aria-label={`${activeDay.label} ${activeSlot} Food Log`}
-              className="flex flex-wrap items-center gap-2 font-semibold text-slate-800 dark:text-slate-100"
-            >
-              <CompactDateMenu
-                days={days}
-                value={activeDate}
-                onChange={setActiveDate}
-                label="Choose day to log"
-                testIdPrefix="food"
-              />
-              <span className="hidden sm:inline">{activeDay.label}</span>
-              <span
-                data-testid="food-context-label"
-                className="text-sm font-medium text-slate-500 dark:text-slate-400"
-              >
-                <span
-                  data-testid="food-slot-chip"
-                  data-slot={activeSlot}
-                  className="text-slate-500 dark:text-slate-400"
-                >
-                  {activeSlot}
-                </span>
-              </span>
-            </h2>
-          </div>
-          <div className="flex shrink-0 items-center gap-2">
-            <span
-              data-testid="food-day-total"
-              className="text-sm font-medium tabular-nums text-slate-500 dark:text-slate-400"
-            >
-              {dayTotal} {dayTotal === 1 ? "serving" : "servings"}
-            </span>
-            <button
-              type="button"
-              data-testid="food-preferences-open-mobile"
-              aria-label="Dietary preferences"
-              title="Dietary preferences"
-              onClick={() => setPreferencesOpen(true)}
-              className="btn-ghost tap-target h-10 w-10 shrink-0 p-0 sm:hidden"
-            >
-              <IconAdjustmentsHorizontal className="h-4 w-4" />
-            </button>
-          </div>
-        </div>
-        <div className="mt-2 hidden min-w-0 overflow-x-auto pb-0.5 sm:block">
-          <SegmentedControl
-            options={days.map((day, daysAgo) => ({
-              value: day.date,
-              label: day.label,
-              testId: dayTestId(day),
-              dataAttributes: { "data-days-ago": daysAgo },
-            }))}
-            value={activeDate}
-            onChange={setActiveDate}
-            ariaLabel="Day to log"
-            testId="food-day-toggle"
-            className="min-w-max"
-          />
-        </div>
-      </div>
+      <IntakeContextBar
+        purpose="food-log"
+        today={today}
+        days={days}
+        value={activeDate}
+        onChange={setActiveDate}
+        context={{ label: activeSlot, value: activeSlot }}
+        status={{ kind: "servings", count: dayTotal }}
+        action={{
+          kind: "food-preferences",
+          onActivate: () => setPreferencesOpen(true),
+        }}
+      />
       <div data-testid="food-log-bar" className="space-y-5">
         <section data-testid="food-meal-summary" className="sm:space-y-2">
           <div className="hidden items-center justify-between gap-3 sm:flex">
@@ -1544,7 +2252,6 @@ export default function FoodLogBar({
               aria-label={`Log your usual ${activeSlot}: ${namesPhrase(
                 usualGroups.map((g) => g.name)
               )}`}
-              title={`One tap logs the ${usualGroups.length} servings you log most ${activeSlot.toLowerCase()}s`}
               disabled={usualLedger.blocked()}
               onClick={() => void logUsual()}
               className="mb-2.5 flex w-full items-center gap-3 rounded-lg border border-brand-200 bg-brand-50/60 px-3 py-2 text-left transition hover:bg-brand-50 disabled:opacity-50 dark:border-brand-900 dark:bg-brand-950/40 dark:hover:bg-brand-950/60"
@@ -1569,40 +2276,59 @@ export default function FoodLogBar({
           {statingTime && (
             <div
               data-testid="food-eating-time"
-              role="group"
-              aria-label="When the servings you add were eaten"
               className="mb-2.5 flex flex-wrap items-center gap-1.5"
             >
               <span className="text-xs text-slate-500 dark:text-slate-400">
                 Eaten
               </span>
-              <button
-                type="button"
-                data-testid="food-eating-now"
-                aria-pressed={statedChoice?.kind === "now"}
-                title="Record the servings you add as eaten now"
-                onClick={() => {
+              <FilterPills
+                mode="button"
+                layout="wrap"
+                density="dense"
+                label="When the servings you add were eaten"
+                value={
+                  statedChoice?.kind === "now" ? "__now" : statedChoice?.hhmm
+                }
+                onSelect={(choice) => {
+                  if (choice === "__now") {
+                    setEarlierOpen(false);
+                    setEatingTime((prev) =>
+                      prev?.kind === "now" ? null : { kind: "now" }
+                    );
+                    return;
+                  }
                   setEarlierOpen(false);
                   setEatingTime((prev) =>
-                    prev?.kind === "now" ? null : { kind: "now" }
+                    prev?.kind === "at" && prev.hhmm === choice
+                      ? null
+                      : { kind: "at", hhmm: choice }
                   );
                 }}
-                className={chipClass(statedChoice?.kind === "now")}
-              >
-                Now
-              </button>
+                options={[
+                  {
+                    value: "__now",
+                    label: "Now",
+                    testId: "food-eating-now",
+                  },
+                  ...(earlierOpen
+                    ? eatingTimeOptions.map((option) => ({
+                        value: option.hhmm,
+                        label: `${option.hhmm} \u00b7 ${option.slot}`,
+                        testId: `food-eating-at-${option.hhmm}`,
+                        data: { "data-slot": option.slot },
+                      }))
+                    : []),
+                ]}
+              />
               {eatingTimeOptions.length > 0 && (
                 <button
                   type="button"
                   data-testid="food-eating-earlier"
                   aria-expanded={earlierOpen}
-                  title="State an earlier time instead"
                   onClick={() => setEarlierOpen((open) => !open)}
-                  className={chipClass(statedChoice?.kind === "at")}
+                  className="btn-ghost"
                 >
-                  {/* The pressed chip keeps announcing the filing (#2269): the hour
-                      wins over the tab, so `19:00 \u00b7 Evening` is what the next "+"
-                      will actually do. */}
+                  {/* A disclosure for the time choices, not a selected option. */}
                   {statedChoice?.kind === "at"
                     ? `${statedChoice.hhmm} \u00b7 ${
                         eatingTimeOptions.find(
@@ -1612,37 +2338,6 @@ export default function FoodLogBar({
                     : "Earlier\u2026"}
                 </button>
               )}
-              {earlierOpen &&
-                eatingTimeOptions.map((option) => (
-                  <button
-                    key={option.hhmm}
-                    type="button"
-                    data-testid={`food-eating-at-${option.hhmm}`}
-                    data-slot={option.slot}
-                    aria-pressed={
-                      statedChoice?.kind === "at" &&
-                      statedChoice.hhmm === option.hhmm
-                    }
-                    onClick={() => {
-                      setEarlierOpen(false);
-                      setEatingTime((prev) =>
-                        prev?.kind === "at" && prev.hhmm === option.hhmm
-                          ? null
-                          : { kind: "at", hhmm: option.hhmm }
-                      );
-                    }}
-                    className={chipClass(
-                      statedChoice?.kind === "at" &&
-                        statedChoice.hhmm === option.hhmm
-                    )}
-                  >
-                    {/* The chip states the CONSEQUENCE before the tap (#2269): the
-                        hour AND the meal window it files under \u2014 the #2268 correction
-                        sheet's per-hour enrichment, worn at log time. The tab stays
-                        navigation; a stated time wins the filing. */}
-                    {`${option.hhmm} \u00b7 ${option.slot}`}
-                  </button>
-                ))}
               <span
                 data-testid="food-eating-time-note"
                 className="w-full text-xs text-slate-500 dark:text-slate-400"
@@ -1766,10 +2461,7 @@ export default function FoodLogBar({
       {editing && draft && (
         <ModalShell
           title="Correct this serving"
-          onClose={() => {
-            setEditing(null);
-            setDraft(null);
-          }}
+          onClose={closeCorrection}
           size="sm"
         >
           <div data-testid="food-correct-modal" className="space-y-3">
@@ -1860,10 +2552,7 @@ export default function FoodLogBar({
               type="button"
               data-testid="food-correct-cancel"
               className="btn-ghost"
-              onClick={() => {
-                setEditing(null);
-                setDraft(null);
-              }}
+              onClick={closeCorrection}
             >
               Cancel
             </button>

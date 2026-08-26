@@ -9,6 +9,8 @@ import { IconMinus, IconPencil } from "@tabler/icons-react";
 import type { ActivityType } from "@/lib/types";
 import type { ActivityEditData } from "./model";
 import SaveStatus from "@/components/SaveStatus";
+import Button from "@/components/Button";
+import InfoTooltipIcon from "@/components/InfoTooltipIcon";
 
 // The activity form's header section: the type icon + live title, the date
 // subtitle, the stored-row provenance line, and the close control. Presentational
@@ -132,26 +134,26 @@ export default function ActivityFormHeader({
             header. Mobile retains its existing sticky footer. */}
         <div className="hidden h-8 items-center gap-1.5 text-xs md:flex">
           {blocker && (
-            <span
-              className="font-medium text-amber-600 dark:text-amber-400"
-              title={blocker}
-            >
+            <span className="inline-flex items-center font-medium text-amber-600 dark:text-amber-400">
               Not saved
+              <InfoTooltipIcon label={blocker} />
             </span>
           )}
           <SaveStatus pending={pending} savedAt={savedAt} error={saveError} />
         </div>
         {showMinimize ? (
-          <button
-            type="button"
-            onClick={() => void onClose()}
-            className="hidden h-9 shrink-0 items-center gap-1.5 rounded-lg px-2 text-sm font-medium text-slate-500 transition hover:bg-slate-100 hover:text-slate-700 sm:inline-flex dark:text-slate-400 dark:hover:bg-ink-800 dark:hover:text-slate-200"
-            aria-label="Minimize workout"
-            title="Minimize workout"
-          >
-            <IconMinus className="h-5 w-5" />
-            Minimize
-          </button>
+          // The activity workspace's drag handle owns phone minimization. This
+          // layout wrapper keeps the ordinary labelled action desktop-only.
+          <span className="hidden sm:inline-flex">
+            <Button
+              type="button"
+              onClick={() => void onClose()}
+              aria-label="Minimize workout"
+            >
+              <IconMinus className="h-5 w-5" />
+              Minimize
+            </Button>
+          </span>
         ) : null}
       </div>
     </div>

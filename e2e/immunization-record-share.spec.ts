@@ -1,6 +1,6 @@
 import { test, expect } from "./fixtures";
 import type { Page } from "@playwright/test";
-import { followLink } from "./helpers";
+import { expectNoClippedContent, followLink, settledBoxes } from "./helpers";
 
 // The printable immunization record and its revocable share link (#1849). The one
 // record type whose stated purpose is being handed to a registrar had neither, while
@@ -29,7 +29,6 @@ test.describe("Immunization record print + share (#1849)", () => {
   }) => {
     // Local `next dev` compiles /immunizations/print + /share on first hit.
     test.slow();
-
     await page.goto("/records/history/immunizations");
     // PRINT AND SHARE FOLD BEHIND THE PANE'S ⋯ (#3408, item C): one primary per
     // pane, and print/share/import are rare-cadence. Both keep their testids,
@@ -71,6 +70,26 @@ test.describe("Immunization record print + share (#1849)", () => {
     await expect(urlField).toBeVisible();
     const shareUrl = await urlField.inputValue();
     expect(shareUrl).toContain("/share/");
+
+    await page.setViewportSize({ width: 390, height: 844 });
+    const result = page.getByTestId("created-share-link");
+    const copy = result.getByRole("button", { name: "Copy link" });
+    const [resultBox, valueBox, copyBox] = await settledBoxes([
+      result,
+      urlField,
+      copy,
+    ]);
+    expect(Math.min(copyBox.width, copyBox.height)).toBeGreaterThanOrEqual(44);
+    expect(copyBox.x).toBeGreaterThanOrEqual(resultBox.x - 1);
+    expect(copyBox.y).toBeGreaterThanOrEqual(resultBox.y - 1);
+    expect(copyBox.x + copyBox.width).toBeLessThanOrEqual(
+      resultBox.x + resultBox.width + 1
+    );
+    expect(copyBox.y + copyBox.height).toBeLessThanOrEqual(
+      resultBox.y + resultBox.height + 1
+    );
+    expect(valueBox.x + valueBox.width).toBeLessThanOrEqual(copyBox.x);
+    await expectNoClippedContent(page);
 
     // The tokenized view: no login, the SAME record component, and no way into the
     // app from it.

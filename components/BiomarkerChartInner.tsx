@@ -47,6 +47,7 @@ import {
   type TrendWindow,
 } from "@/lib/trend-annotations";
 import { protocolWindowEpochs } from "@/lib/chart-windows";
+import { EmptyState } from "@/components/ui";
 
 export interface BiomarkerBands {
   refLow?: number | null;
@@ -90,11 +91,7 @@ export default function BiomarkerChart({
   const c = useChartColors();
   const motion = useChartMotion();
   if (data.length === 0) {
-    return (
-      <div className="flex h-64 items-center justify-center text-sm text-slate-500 dark:text-slate-400">
-        No numeric readings to chart yet
-      </div>
-    );
+    return <EmptyState message="No numeric readings to chart yet" />;
   }
 
   // ONE READING IS A MARK, NOT A PLOT (docs/internals/charts.md, #1485 G / #2615).

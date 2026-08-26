@@ -5,6 +5,7 @@ import {
   type WeekSpine as WeekSpineData,
 } from "@/lib/training-week-spine";
 import { ACTIVITY_TYPES } from "@/lib/types";
+import VisualizationDetails from "@/components/VisualizationDetails";
 
 // THE WEEK SPINE (#2566, Viz 1) — Training → Overview's week, as a band.
 //
@@ -64,7 +65,6 @@ export default function WeekSpine({ spine }: { spine: WeekSpineData }) {
               data-date={day.date}
               data-state={day.state}
               data-sessions={day.sessions}
-              title={summary}
               aria-label={summary}
               className="flex flex-col items-center gap-1"
             >
@@ -109,6 +109,11 @@ export default function WeekSpine({ spine }: { spine: WeekSpineData }) {
           );
         })}
       </div>
+      <VisualizationDetails
+        label="Daily details"
+        items={spine.days.map(weekSpineDaySummary)}
+        data-testid="week-spine-details"
+      />
 
       <p
         className="mt-2 text-sm text-slate-600 dark:text-slate-300"

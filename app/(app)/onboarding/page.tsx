@@ -1,5 +1,7 @@
 import Link from "next/link";
-import { IconArrowRight, IconCheck, IconLock } from "@tabler/icons-react";
+import { IconCheck, IconLock } from "@tabler/icons-react";
+import DestinationIndicator from "@/components/DestinationIndicator";
+import DestinationLink from "@/components/DestinationLink";
 import { PageHeader } from "@/components/ui";
 import SubmitButton from "@/components/SubmitButton";
 import TimezoneSelect from "@/components/TimezoneSelect";
@@ -149,7 +151,9 @@ function WizardActions({
         <Link href={`/onboarding?step=${backStep}`} className="btn-ghost">
           Back
         </Link>
-        {children}
+        <div data-testid="onboarding-primary-action" className="grid w-36">
+          {children}
+        </div>
       </div>
       {showExit && (
         <div
@@ -302,7 +306,6 @@ export default async function OnboardingPage({
               {!readOnly && (
                 <WizardActions backStep={1}>
                   <SubmitButton
-                    className="btn w-36"
                     pendingLabel="Continuing…"
                     requireSelection="focus"
                   >
@@ -417,9 +420,7 @@ export default async function OnboardingPage({
               {!readOnly && (
                 <div className="sm:col-span-2">
                   <WizardActions backStep={2}>
-                    <SubmitButton className="btn w-36" pendingLabel="Saving…">
-                      Next
-                    </SubmitButton>
+                    <SubmitButton pendingLabel="Saving…">Next</SubmitButton>
                   </WizardActions>
                 </div>
               )}
@@ -429,7 +430,7 @@ export default async function OnboardingPage({
 
         {activeStep === 4 && (
           <section className="card" data-testid="onboarding-first-value">
-            <Link
+            <DestinationLink
               href="/data?section=import#integrations"
               className="group mb-5 flex items-center justify-between gap-4 rounded-xl border border-brand-200 bg-brand-50 p-4 transition hover:border-brand-400 dark:border-brand-500/25 dark:bg-brand-500/10 dark:hover:border-brand-500/50"
             >
@@ -442,8 +443,7 @@ export default async function OnboardingPage({
                   services you already use.
                 </span>
               </span>
-              <IconArrowRight className="h-5 w-5 shrink-0 text-brand-600 transition group-hover:translate-x-0.5 dark:text-brand-400" />
-            </Link>
+            </DestinationLink>
 
             {state.focuses.includes("fitness") && strengthTrainingAvailable && (
               <RoutineStarter
@@ -469,7 +469,9 @@ export default async function OnboardingPage({
                     <span className="text-sm font-medium text-slate-800 group-hover:text-brand-700 dark:text-slate-100 dark:group-hover:text-brand-400">
                       {def.actionLabel}
                     </span>
-                    <IconArrowRight className="ml-1 inline h-4 w-4" />
+                    <span className="ml-1 inline-flex align-middle">
+                      <DestinationIndicator />
+                    </span>
                     <span className="mt-1 block text-xs text-slate-500 dark:text-slate-400">
                       {def.description}
                     </span>
@@ -485,7 +487,9 @@ export default async function OnboardingPage({
                     <span className="text-sm font-medium text-slate-800 group-hover:text-brand-700 dark:text-slate-100 dark:group-hover:text-brand-400">
                       Add a profile or login
                     </span>
-                    <IconArrowRight className="ml-1 inline h-4 w-4" />
+                    <span className="ml-1 inline-flex align-middle">
+                      <DestinationIndicator />
+                    </span>
                     <span className="mt-1 block text-xs text-slate-500 dark:text-slate-400">
                       A profile can be tracked without giving that person a
                       login.
@@ -504,9 +508,7 @@ export default async function OnboardingPage({
             <div className="mt-4">
               <form action={continueOnboardingData}>
                 <WizardActions backStep={3}>
-                  <SubmitButton className="btn w-36" pendingLabel="Continuing…">
-                    Next
-                  </SubmitButton>
+                  <SubmitButton pendingLabel="Continuing…">Next</SubmitButton>
                 </WizardActions>
               </form>
             </div>
@@ -559,7 +561,6 @@ export default async function OnboardingPage({
               {!readOnly && (
                 <WizardActions backStep={4}>
                   <SubmitButton
-                    className="btn w-36"
                     pendingLabel="Saving…"
                     requireSelection="notification_intent"
                   >
@@ -609,10 +610,7 @@ export default async function OnboardingPage({
               {!readOnly && (
                 <form action={completeOnboarding}>
                   <WizardActions backStep={5} showExit={false}>
-                    <SubmitButton
-                      className="btn w-36"
-                      pendingLabel="Finishing…"
-                    >
+                    <SubmitButton pendingLabel="Finishing…">
                       View dashboard
                     </SubmitButton>
                   </WizardActions>

@@ -2,7 +2,7 @@ import type { HTMLAttributes } from "react";
 
 type CardFootnoteProps = Omit<
   HTMLAttributes<HTMLParagraphElement>,
-  "className"
+  "className" | "title"
 > & {
   divided?: boolean;
 };

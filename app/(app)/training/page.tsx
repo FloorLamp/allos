@@ -16,6 +16,7 @@ import { isRealIsoDate } from "@/lib/date";
 import { today } from "@/lib/db";
 import { getProfileAge } from "@/lib/settings/profile-attrs";
 import { isTrainingRelevant } from "@/lib/life-stage";
+import AddTrainingActivityButton from "./AddTrainingActivityButton";
 
 export const dynamic = "force-dynamic";
 
@@ -47,14 +48,8 @@ export default async function TrainingPage(props: {
       ? requestedDate
       : undefined;
 
-  // #105 (the Trends pattern, #1496): build ONLY the active section server-side.
-  // Handing every section to `Tabs` as a `content:` prop rendered — and ran the
-  // queries for — all SIX on every request; the client `keepMounted` flag gated DOM,
-  // not the RSC pass. Each tab switch is already a URL navigation (NavTabs → Link),
-  // so this makes a /training visit compute one tab instead of all of them, at no
-  // extra round-trips. The `?tab=` vocabulary is unchanged, so every deep link
-  // (?tab=log from the timeline/integrations, ?tab=analyze from the plateau finding,
-  // ?tab=goals from the dashboard presentation, …) lands exactly where it always did.
+  // Build only the server-selected section (#105/#1496); URL links keep each tab
+  // deep-linkable without evaluating every tab's queries during the RSC pass.
   const activeSection: React.ReactNode = (() => {
     switch (activeTab) {
       case "analyze":
@@ -83,7 +78,8 @@ export default async function TrainingPage(props: {
     // (Analyze's chart + 28rem aside). The cap wraps the WHOLE tab-first shell
     // — header, tab strip, and panel — the way records and nutrition cap
     // theirs: capping only the panel left the tab strip running to the shell's
-    // 3xl (~1760px) edge, wider than the content beneath it.
+    // 3xl (1920px with the browser-default 16px initial font size) edge, wider
+    // than the content beneath it.
     <PageContainer width="wide" className="mx-auto">
       <TabFirstPage
         config={TRAINING_TAB_FIRST_PAGE}
@@ -94,13 +90,16 @@ export default async function TrainingPage(props: {
         // full-width row above every tab, and the Plan tab's Equipment card is
         // the phone door now.
         action={
-          <Link
-            href="/equipment"
-            data-testid="training-equipment-link"
-            className="hidden shrink-0 items-center py-1 text-sm text-link md:inline-flex"
-          >
-            Equipment
-          </Link>
+          <div className="flex items-center gap-3">
+            {activeTab === "log" && <AddTrainingActivityButton />}
+            <Link
+              href="/equipment"
+              data-testid="training-equipment-link"
+              className="hidden shrink-0 items-center py-1 text-sm text-link md:inline-flex"
+            >
+              Equipment
+            </Link>
+          </div>
         }
       >
         {activeSection}

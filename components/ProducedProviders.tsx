@@ -1,9 +1,6 @@
+import { IconUser, IconBuildingHospital } from "@tabler/icons-react";
 import Link from "next/link";
-import {
-  IconChevronRight,
-  IconUser,
-  IconBuildingHospital,
-} from "@tabler/icons-react";
+import DestinationIndicator from "@/components/DestinationIndicator";
 import type { ProducedProvider } from "@/lib/import-browser";
 import { EmptyState } from "./ui";
 
@@ -58,7 +55,9 @@ export default function ProducedProviders({
                   <span className="text-xs text-slate-500 dark:text-slate-400">
                     {p.type === "individual" ? "Individual" : "Organization"}
                   </span>
-                  <IconChevronRight className="ml-auto h-3.5 w-3.5 shrink-0 self-center text-slate-300 group-hover:text-brand-600 dark:text-slate-600 dark:group-hover:text-brand-400" />
+                  <span className="ml-auto">
+                    <DestinationIndicator />
+                  </span>
                 </Link>
               </li>
             );

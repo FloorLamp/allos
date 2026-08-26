@@ -4,6 +4,7 @@ import Link from "next/link";
 import { useCallback, useEffect, useRef, useState } from "react";
 import { IconLogout, IconSearch, IconX } from "@tabler/icons-react";
 import Nav from "@/components/Nav";
+import IconButton from "@/components/IconButton";
 import { openGlobalSearch } from "@/components/CommandPalette";
 import Wordmark from "@/components/Wordmark";
 import ProfileIdentityBar from "@/components/ProfileIdentityBar";
@@ -23,10 +24,15 @@ import LogActivityButton from "@/components/LogActivityButton";
 import FrequentPages from "@/components/FrequentPages";
 import TrainingLogCalendar from "@/components/TrainingLogCalendar";
 import ThemeToggle from "@/components/ThemeToggle";
+import InfoTooltipIcon from "@/components/InfoTooltipIcon";
 import WhatsNewLink from "@/components/WhatsNewLink";
 import type { SessionProfile } from "@/lib/auth";
 import type { AppVersion } from "@/lib/version";
 import { DEFAULT_NAV_RELEVANCE, type NavRelevance } from "@/lib/nav-relevance";
+import {
+  clearProfileToastsForLogout,
+  restoreToastProfileAfterFailedLogout,
+} from "@/components/Toast";
 
 // ── THE LOGOUT'S FAILURE RELAY, AT MODULE SCOPE ON PURPOSE (#3605) ───────────────────
 //
@@ -176,6 +182,10 @@ export default function SidebarContent({
   onClose?: () => void;
 }) {
   const logoutButtonRef = useRef<HTMLButtonElement>(null);
+  const activeProfileIdRef = useRef(active.id);
+  useEffect(() => {
+    activeProfileIdRef.current = active.id;
+  }, [active.id]);
   // A logout STARTS ONCE. Two callers can reach `logoutAfterWipe` (the queued-tap
   // effect below and the button's own onClick), and there is a real interval —
   // React attached, its effect not yet run — in which a single tap reaches both.
@@ -303,8 +313,10 @@ export default function SidebarContent({
     } catch (err) {
       unstable_rethrow(err);
       await reopenUnlessSessionEnded();
+      restoreToastProfileAfterFailedLogout(activeProfileIdRef.current);
       logoutStarted.current = false;
       setLogoutPending(false);
+      restoreToastProfileAfterFailedLogout(activeProfileIdRef.current);
       clearQueuedLogoutTap(logoutButtonRef.current);
       throw err;
     }
@@ -347,6 +359,7 @@ export default function SidebarContent({
     if (logoutStarted.current) return;
     logoutStarted.current = true;
     setLogoutPending(true);
+    clearProfileToastsForLogout();
     try {
       await wipeDeviceForSignOut();
       // ISSUED BY CALLING IT, NOT BY REACHING FOR A NODE (#3605). See the relay at the
@@ -420,15 +433,9 @@ export default function SidebarContent({
           <Wordmark markClassName="h-6 w-10" />
         </Link>
         {onClose && (
-          <button
-            type="button"
-            aria-label="Close menu"
-            title="Close menu"
-            onClick={onClose}
-            className="flex h-9 w-9 shrink-0 items-center justify-center rounded-lg text-slate-500 transition hover:bg-slate-100 dark:text-slate-400 dark:hover:bg-ink-750"
-          >
+          <IconButton type="button" label="Close menu" onClick={onClose}>
             <IconX className="h-5 w-5" stroke={1.75} />
-          </button>
+          </IconButton>
         )}
       </div>
       {/* The identity bar (#1801) at the TOP of the sidebar — "whose data am I
@@ -590,24 +597,25 @@ export default function SidebarContent({
             {/* commitUrl is non-null only when sha is (see lib/version.ts), so
             the link branch always has a hash; the span mirrors AppVersion's
             "cell" variant, falling back to "unknown" when the sha is missing. */}
-            {version.commitUrl ? (
-              <a
-                href={version.commitUrl}
-                target="_blank"
-                rel="noreferrer"
-                title={version.commitMessage ?? undefined}
-                className="font-mono text-xs text-slate-500 underline-offset-2 transition hover:text-slate-700 hover:underline dark:text-slate-400 dark:hover:text-slate-200"
-              >
-                {version.sha}
-              </a>
-            ) : (
-              <span
-                title={version.commitMessage ?? undefined}
-                className="font-mono text-xs text-slate-500 dark:text-slate-400"
-              >
-                {version.sha ?? "unknown"}
-              </span>
-            )}
+            <span className="inline-flex items-center">
+              {version.commitUrl ? (
+                <a
+                  href={version.commitUrl}
+                  target="_blank"
+                  rel="noreferrer"
+                  className="font-mono text-xs text-slate-500 underline-offset-2 transition hover:text-slate-700 hover:underline dark:text-slate-400 dark:hover:text-slate-200"
+                >
+                  {version.sha}
+                </a>
+              ) : (
+                <span className="font-mono text-xs text-slate-500 dark:text-slate-400">
+                  {version.sha ?? "unknown"}
+                </span>
+              )}
+              {version.commitMessage ? (
+                <InfoTooltipIcon label={version.commitMessage} />
+              ) : null}
+            </span>
           </div>
         </div>
         {/* Persistent footer link to the single Disclaimer surface (issue #1049).

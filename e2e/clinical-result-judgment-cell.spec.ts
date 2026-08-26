@@ -81,7 +81,8 @@ test("the Reference cell states the bands the flag came from, and keeps the lab'
   await expect(cell).toHaveAttribute("data-judged", "true");
   // The lab's own string did not disappear — it moved from assertion to
   // provenance, on the cell that replaced it.
-  await expect(cell).toHaveAttribute("title", "Lab reference: <90");
+  await row.getByTestId("clinical-reference-help").click();
+  await expect(page.getByRole("tooltip")).toHaveText("Lab reference: <90");
 
   // Nothing on this filtered view falls back: every lipid analyte is canonical, so
   // no row is still printing the lab's range as if it were the deciding one.

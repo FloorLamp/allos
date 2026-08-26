@@ -4,6 +4,7 @@
 
 import { useState } from "react";
 import LineChartCard from "@/components/LineChartCard";
+import SegmentedControl from "@/components/SegmentedControl";
 import { chartNeutral, chartSeries } from "@/lib/chart-colors";
 import { CYCLING_METRICS } from "@/lib/cycling-metrics";
 import type { SessionTrace, SessionTraceKey } from "@/lib/cycling-analytics";
@@ -61,41 +62,23 @@ export default function SessionTelemetryChart({
   return (
     <div className="mt-4" data-testid="session-telemetry">
       {traces.length > 1 ? (
-        <div
-          className="flex flex-wrap gap-1"
-          aria-label="Recorded metrics"
-          role="group"
-        >
-          {traces.map((trace) => {
-            const active = trace.key === selected.key;
+        <SegmentedControl
+          options={traces.map((trace) => {
             const zeroOnly = hasOnlyZeroValues(trace);
-            return (
-              <button
-                key={trace.key}
-                type="button"
-                aria-pressed={active}
-                aria-label={
-                  zeroOnly
-                    ? `${trace.shortLabel}, all recorded values are 0`
-                    : undefined
-                }
-                title={zeroOnly ? "All recorded values are 0" : undefined}
-                onClick={() => setSelectedKey(trace.key)}
-                className={`rounded-full px-3 py-1 text-sm font-medium transition focus:outline-hidden focus-visible:ring-2 focus-visible:ring-brand-500 focus-visible:ring-offset-2 dark:focus-visible:ring-offset-ink-950 ${
-                  active
-                    ? zeroOnly
-                      ? "bg-slate-200 text-slate-500 dark:bg-ink-750 dark:text-slate-400"
-                      : "bg-brand-600 text-white"
-                    : zeroOnly
-                      ? "text-slate-400 hover:bg-slate-100 dark:text-slate-600 dark:hover:bg-ink-750"
-                      : "text-slate-600 hover:bg-slate-100 dark:text-slate-300 dark:hover:bg-ink-750"
-                }`}
-              >
-                {trace.shortLabel}
-              </button>
-            );
+            return {
+              value: trace.key,
+              label: trace.shortLabel,
+              accessibleLabel: zeroOnly
+                ? `${trace.shortLabel}, all recorded values are 0`
+                : undefined,
+              title: zeroOnly ? "All recorded values are 0" : undefined,
+            };
           })}
-        </div>
+          value={selected.key}
+          onChange={setSelectedKey}
+          ariaLabel="Recorded metrics"
+          fill
+        />
       ) : null}
       <div className="mt-3" data-testid="session-telemetry-chart">
         <LineChartCard

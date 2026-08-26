@@ -16,11 +16,10 @@ import {
 // (`LiftDef.primaryMuscles`/`secondaryMuscles`, #736's `musclesWorked` /
 // `coverageFromSets`); it computes nothing of its own (#221/#482).
 //
-// Accessibility (never color-only): every muscle group carries a `<title>` (the
-// native hover tooltip, the pattern the app already uses for e.g. the cardio
-// intensity mix) plus an aria-label. Larger hosting surfaces also provide their
-// permanent list-first rendering (#736); compact hosts can omit captions because
-// the SVG and every muscle remain named to assistive technology.
+// Accessibility (never color-only): every muscle group carries a semantic SVG
+// `<title>` plus an aria-label. Every live host also provides the same meanings in
+// a permanent text list: the exercise guide names primary/secondary muscles and the
+// coverage surface is list-first (#736).
 //
 // No hooks/handlers, so it renders in both Server Component hosts (Training →
 // Overview) and client trees (ExerciseDetailPanel's guide section).
@@ -215,7 +214,7 @@ function BodyView({
               r.fill ? { fill: r.fill, fillOpacity: r.fillOpacity } : undefined
             }
           >
-            {/* Native hover/tap tooltip naming the muscle (never color-only). */}
+            {/* Semantic SVG naming; the host's text list carries sighted parity. */}
             <title>{r.title}</title>
             {shapes.map((s, i) => (
               <g key={i}>

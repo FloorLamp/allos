@@ -1,7 +1,7 @@
 import { test, expect } from "./fixtures";
 import type { Locator, Page } from "@playwright/test";
 import Database from "better-sqlite3";
-import { hydratedClick, settledClick } from "./helpers";
+import { awaitHydrated, hydratedClick, settledClick } from "./helpers";
 import { loginAs } from "./nav";
 import {
   E2E_LOGIN_FOODPIN,
@@ -66,14 +66,19 @@ test("button counts are labeled for the selected meal and day", async ({
     /text-slate-500/
   );
   await expect(page.getByTestId("food-slot-chip")).not.toHaveClass(/\bbadge\b/);
-  await expect(page.getByTestId("count-eggs")).toHaveAttribute(
-    "title",
-    new RegExp(`in ${meal} today$`)
+  await expect(page.getByTestId("food-slot-chip")).toHaveText(meal!);
+  await expect(page.getByTestId("count-eggs")).toHaveText(/\d+/);
+  await expect(page.getByTestId("food-context-heading")).toHaveAccessibleName(
+    new RegExp(`Today ${meal} Food Log`)
   );
   await page.getByTestId("food-day-yesterday").click();
-  await expect(page.getByTestId("count-eggs")).toHaveAttribute(
-    "title",
-    new RegExp(`in ${meal} yesterday$`)
+  await expect(page.getByTestId("food-slot-chip")).toHaveText(meal!);
+  await expect(page.getByTestId("food-day-yesterday")).toHaveAttribute(
+    "aria-pressed",
+    "true"
+  );
+  await expect(page.getByTestId("food-context-heading")).toHaveAccessibleName(
+    new RegExp(`Yesterday ${meal} Food Log`)
   );
 });
 
@@ -489,7 +494,7 @@ test("the Trends → Nutrition tab is the over-time view, not the duplicate roll
   await expect(page.getByTestId("food-weekly-rollup")).toHaveCount(0);
 });
 
-test("a double-tap logs ONE serving, and a food tap never asks (#2007)", async ({
+test("a rapid double-tap logs TWO additive servings and never asks (#2007/#3611)", async ({
   page,
 }) => {
   await page.goto("/nutrition");
@@ -500,35 +505,72 @@ test("a double-tap logs ONE serving, and a food tap never asks (#2007)", async (
   await revealFoodGroup(page, slug);
   const count = page.getByTestId(`count-${slug}`);
   const before = Number((await count.textContent())?.trim() || "0");
+  const today = frozenNow().toISOString().slice(0, 10);
+  // The shared authenticated fixture starts on its canonical profile 1 (file header).
+  // Read the DAY axis directly: the visible row count above is meal-scoped, while the
+  // cumulative receipt deliberately reports the group's whole-day total.
+  const db = new Database(workerDbPath(), { readonly: true });
+  const beforeDay = (() => {
+    try {
+      return (
+        (
+          db
+            .prepare(
+              `SELECT servings FROM food_daily_totals
+                WHERE profile_id = 1 AND date = ? AND group_key = ?`
+            )
+            .get(today, slug) as { servings: number } | undefined
+        )?.servings ?? 0
+      );
+    } finally {
+      db.close();
+    }
+  })();
   const add = page.getByTestId(`log-${slug}`);
 
-  // The fat-finger double: two taps in the same instant. The second lands inside the
-  // post-success cooldown and is absorbed — no second request, no queued write.
+  // #3611 supersedes the old #2007 cooldown for this uncadenced additive row:
+  // two taps mean two servings, even in the same instant.
+  await awaitHydrated(add);
   await add.click();
   await add.click();
-  await expect(count).toHaveText(String(before + 1));
+  await expect(count).toHaveText(String(before + 2));
   // A food serving is ADDITIVE and declares no expected interval, so it must never
   // raise the re-log question, however many times it is tapped.
   await expect(page.getByTestId("confirm-dialog")).toHaveCount(0);
 
+  // The count is optimistic. The one keyed cumulative toast is published only
+  // after every pending add has settled and a fresh authoritative truth read says
+  // both servings exist; wait for that durable marker before navigating away.
+  const toast = page.locator(
+    `[data-toast-key^="food-serving:"][data-toast-key$=":${today}:${slug}"]`
+  );
+  await expect(toast).toContainText(
+    `${beforeDay + 2} servings of Legumes & beans today`
+  );
+
   // The pin: a reload re-reads the server's own count, so this is the row that
-  // exists and not the optimistic number the second tap would also have shown.
+  // exists and not merely the optimistic number shown above.
   await page.reload();
   await revealFoodGroup(page, slug);
   await expect(page.getByTestId(`count-${slug}`)).toHaveText(
-    String(before + 1)
+    String(before + 2)
   );
 
-  // A deliberate repeat still lands — the reload cleared the window — and still
-  // asks nothing.
+  // A deliberate repeat still lands after the server-truth pin and asks nothing.
   await settledClick(page, page.getByTestId(`log-${slug}`));
   await expect(page.getByTestId(`count-${slug}`)).toHaveText(
-    String(before + 2)
+    String(before + 3)
   );
   await expect(page.getByTestId("confirm-dialog")).toHaveCount(0);
 
   // Restore the fixture. An undo is a DIFFERENT write from the log above it, so it
   // is never absorbed by that tap's cooldown.
+  await settledClick(page, page.getByTestId(`undo-${slug}`));
+  await expect(page.getByTestId(`count-${slug}`)).toHaveText(
+    String(before + 2)
+  );
+  await page.reload();
+  await revealFoodGroup(page, slug);
   await settledClick(page, page.getByTestId(`undo-${slug}`));
   await expect(page.getByTestId(`count-${slug}`)).toHaveText(
     String(before + 1)
@@ -884,49 +926,4 @@ test("the eating-time chips are a today-only affordance (#2053)", async ({
 
   await hydratedClick(page, page.getByTestId("food-day-today"));
   await expect(page.getByTestId("food-eating-time")).toBeVisible();
-});
-
-// THE FULL BLEED IS PAGE-SCOPED, AND STILL THERE WHERE IT EARNS ITS KEEP (#3360).
-//
-// `-mx-2 px-2 bg-surface/95` on the log bar's header wrapper exists so the
-// `md:sticky` frosted header paints over the page's gutter as the rows scroll
-// under it. It was unconditional, which made it 16px of real horizontal overflow
-// inside the #1468 quick-entry sheet — the region that has no gutter to bleed into
-// — and one thumb drag then parked the whole sheet sideways. Scoping the three
-// classes to `md:` removes that at the source; this pins the half that must
-// SURVIVE, so the scoping cannot later be "simplified" into deleting the bleed.
-//
-// `lg:` already unwinds the whole thing (the two-column layout gives the bar its
-// own card), so the band lives in exactly one range: [md, lg).
-test.describe("the sticky food-log header keeps its full bleed from md up (#3360)", () => {
-  test.use({ viewport: { width: 800, height: 900 } });
-
-  test("the header bleeds past its column and is painted and sticky", async ({
-    page,
-  }) => {
-    await page.goto("/nutrition");
-    await expect(page.getByTestId("food-log-bar")).toBeVisible();
-    const context = page.getByTestId("food-log-context");
-    await expect(context).toBeVisible();
-
-    const measured = await context.evaluate((el) => {
-      const parent = el.parentElement as HTMLElement;
-      const style = getComputedStyle(el);
-      return {
-        bleedLeft:
-          parent.getBoundingClientRect().left - el.getBoundingClientRect().left,
-        bleedRight:
-          el.getBoundingClientRect().right -
-          parent.getBoundingClientRect().right,
-        position: style.position,
-        // A frosted band, not a transparent one: `bg-surface/95` resolves to a
-        // colour with alpha, never to `transparent`.
-        backgroundColor: style.backgroundColor,
-      };
-    });
-    expect(measured.bleedLeft).toBeGreaterThan(0);
-    expect(measured.bleedRight).toBeGreaterThan(0);
-    expect(measured.position).toBe("sticky");
-    expect(measured.backgroundColor).not.toBe("rgba(0, 0, 0, 0)");
-  });
 });

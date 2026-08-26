@@ -28,7 +28,7 @@ describe("dashboard progress atoms", () => {
     );
 
     expect(html).toContain("Yoga");
-    expect(html).toContain('title="Yoga: 3/3 this week"');
+    expect(html).toContain(">3/3</span>");
     expect(html).not.toContain("All weekly habits complete");
   });
 });

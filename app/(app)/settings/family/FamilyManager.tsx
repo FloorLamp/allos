@@ -12,6 +12,7 @@ import NotifyScopeEditor from "@/components/NotifyScopeEditor";
 import PhotoPicker from "@/components/PhotoPicker";
 import { useConfirm } from "@/components/ConfirmDialog";
 import { NOTICE_TONE } from "@/components/Notice";
+import InfoTooltipIcon from "@/components/InfoTooltipIcon";
 import { membersLosingAllAccess } from "@/lib/family-deletion";
 import { grantCountSummary, type Access } from "@/lib/grants";
 import {
@@ -320,15 +321,15 @@ function ProfileRow({
                 setConfirmOpen(true);
               }}
               disabled={busy || !canDelete}
-              title={
-                canDelete
-                  ? undefined
-                  : "The only profile can't be deleted — at least one must remain."
-              }
               className="text-xs font-medium text-rose-600 hover:underline disabled:cursor-not-allowed disabled:text-slate-400 disabled:no-underline dark:text-rose-400 dark:disabled:text-slate-500"
             >
               Delete profile
             </button>
+          )}
+          {!canDelete && (
+            <span className="text-xs text-slate-500 dark:text-slate-400">
+              At least one profile must remain.
+            </span>
           )}
         </div>
 
@@ -834,12 +835,17 @@ function LoginRow({
             {login.role}
           </span>
           {login.role === "member" && grantCount === 0 && (
-            <span
-              data-testid="login-no-access"
-              title="This login has no profile access — it can sign in but has nowhere to land. Grant it a profile under Access."
-              className="badge bg-amber-100 text-amber-800 dark:bg-amber-950 dark:text-amber-300"
-            >
-              no access
+            <span className="inline-flex items-center gap-0.5">
+              <span
+                data-testid="login-no-access"
+                className="badge bg-amber-100 text-amber-800 dark:bg-amber-950 dark:text-amber-300"
+              >
+                no access
+              </span>
+              <InfoTooltipIcon
+                label="This login has no profile access — it can sign in but has nowhere to land. Grant it a profile under Access."
+                data-testid="login-no-access-help"
+              />
             </span>
           )}
           <span className="text-xs text-slate-500 dark:text-slate-400">
@@ -884,11 +890,6 @@ function LoginRow({
             type="button"
             onClick={revokeSessions}
             disabled={pending || sessionCount === 0}
-            title={
-              sessionCount === 0
-                ? "This login has no active sessions."
-                : "Sign this login out of every device without changing the password."
-            }
             className="btn-ghost"
           >
             Sign out devices
@@ -897,16 +898,22 @@ function LoginRow({
             type="button"
             onClick={del}
             disabled={pending || isLastAdmin}
-            title={
-              isLastAdmin
-                ? "The only admin login can't be deleted — create another admin first."
-                : undefined
-            }
             className="btn-ghost text-rose-600 dark:text-rose-400"
           >
             Delete
           </button>
         </div>
+        {(sessionCount === 0 || isLastAdmin) && (
+          <p className="mt-1 text-xs text-slate-500 dark:text-slate-400">
+            {sessionCount === 0 ? "No active sessions to sign out. " : ""}
+            {isLastAdmin
+              ? "Create another admin before deleting this login."
+              : ""}
+          </p>
+        )}
+        <p className="mt-1 text-xs text-slate-500 dark:text-slate-400">
+          Signing out devices does not change the password.
+        </p>
       </div>
       {emailOpen && (
         <div className="mt-3 flex items-end gap-2">

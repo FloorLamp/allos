@@ -176,10 +176,16 @@ describe("parseFoodOptInCallback", () => {
 describe("foodLogAnswerText", () => {
   it("names the group and running count on a logged serving", () => {
     expect(
-      foodLogAnswerText({ kind: "logged", servings: 1 }, "fatty_fish")
+      foodLogAnswerText(
+        { kind: "logged", eventId: 1, servings: 1 },
+        "fatty_fish"
+      )
     ).toBe("Logged ✅ Fatty fish");
     expect(
-      foodLogAnswerText({ kind: "logged", servings: 3 }, "fatty_fish")
+      foodLogAnswerText(
+        { kind: "logged", eventId: 1, servings: 3 },
+        "fatty_fish"
+      )
     ).toBe("Logged ✅ Fatty fish ×3 today");
   });
   it("answers honestly for an unknown/stale group — never a false confirm", () => {

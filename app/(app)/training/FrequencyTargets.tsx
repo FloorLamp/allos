@@ -176,7 +176,7 @@ export default function FrequencyTargets({
         onClick={() => (formOpen ? reset() : setFormOpen(true))}
         className={
           formOpen
-            ? "mt-3 flex w-full items-center justify-between gap-2 text-left text-sm font-semibold text-slate-800 dark:text-slate-100"
+            ? "mt-3 flex min-h-11 w-full items-center justify-between gap-2 text-left text-sm font-semibold text-slate-800 dark:text-slate-100"
             : "btn-ghost mt-3 text-sm"
         }
       >

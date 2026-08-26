@@ -30,6 +30,7 @@ import {
   timeAxisDomain,
   timeAxisTicks,
 } from "@/lib/chart-time-axis";
+import { EmptyState } from "@/components/ui";
 
 // Multi-series line chart grouped by SOURCE (issue #14): one line per provider
 // reporting the same metric, so overlapping devices can be compared instead of
@@ -85,13 +86,7 @@ export default function SourceCompareChartInner({
   const withYear = spansYearBoundary(xDomain);
 
   if (rows.length === 0) {
-    return (
-      <div
-        className={`flex ${heightClass} items-center justify-center text-sm text-slate-500 dark:text-slate-400`}
-      >
-        No data yet
-      </div>
-    );
+    return <EmptyState message="No data yet" />;
   }
   return (
     <div className={`${heightClass} flex w-full flex-col`}>

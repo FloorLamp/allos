@@ -13,6 +13,7 @@ import ResultForm from "./ResultForm";
 import OverflowMenu, { MENU_ITEM, MENU_ITEM_DANGER } from "./OverflowMenu";
 import { useConfirm } from "./ConfirmDialog";
 import { useUndoableDelete } from "./useUndoableDelete";
+import InfoTooltipIcon from "./InfoTooltipIcon";
 import {
   updateResult,
   deleteResult,
@@ -92,26 +93,34 @@ function qs(params: Record<string, string | undefined>): AppRoute {
 // (over a year old — a yearly-retest heuristic).
 function staleBadge() {
   return (
-    <span
-      className="ml-2 rounded-full bg-amber-50 px-1.5 py-0.5 align-middle text-xs font-medium uppercase tracking-wide text-amber-700 dark:bg-amber-400/10 dark:text-amber-400"
-      title="Latest result over a year old — consider retesting"
-    >
-      Stale
+    <span className="ml-2 inline-flex items-center gap-0.5 align-middle">
+      <span className="rounded-full bg-amber-50 px-1.5 py-0.5 text-xs font-medium uppercase tracking-wide text-amber-700 dark:bg-amber-400/10 dark:text-amber-400">
+        Stale
+      </span>
+      <InfoTooltipIcon
+        label="Latest result over a year old — consider retesting"
+        data-testid="clinical-stale-help"
+      />
     </span>
   );
 }
 
 // A small slate badge marking a read-time DERIVED index (issue #40) — computed
-// from other readings, not measured. The formula (with the component values) is the
-// hover title so the derivation is inspectable.
+// from other readings, not measured. The touch/keyboard info affordance keeps the
+// formula (with its component values) inspectable.
 function derivedBadge(formula?: string) {
+  const detail = formula
+    ? `Derived: ${formula}`
+    : "Computed from other readings";
   return (
-    <span
-      data-testid="derived-badge"
-      className="ml-2 rounded-full bg-slate-100 px-1.5 py-0.5 align-middle text-xs font-medium uppercase tracking-wide text-slate-600 dark:bg-slate-700 dark:text-slate-300"
-      title={formula ? `Derived: ${formula}` : "Computed from other readings"}
-    >
-      Derived
+    <span className="ml-2 inline-flex items-center gap-0.5 align-middle">
+      <span
+        data-testid="derived-badge"
+        className="rounded-full bg-slate-100 px-1.5 py-0.5 text-xs font-medium uppercase tracking-wide text-slate-600 dark:bg-slate-700 dark:text-slate-300"
+      >
+        Derived
+      </span>
+      <InfoTooltipIcon label={detail} data-testid="clinical-derived-help" />
     </span>
   );
 }
@@ -142,7 +151,6 @@ function nameCell(r: {
       <Link
         href={clinicalResultDetailHref(r.canonical_name)}
         className="font-medium text-brand-700 hover:underline dark:text-brand-400"
-        title={`View ${r.canonical_name} over time`}
       >
         {r.canonical_name}
       </Link>
@@ -159,14 +167,15 @@ function nameCell(r: {
 // lines under one DATE label, two of which say the same thing and one of which is
 // not a date at all. The age is the shared compact formatter now (#1216, via
 // lib/reading-date-line) so this row and the dashboard's clinical-result readout round
-// into the same buckets, the over-a-year amber treatment and its title ride on the
-// AGE token (the age is what went stale), and the provenance link moved to the row's
+// into the same buckets, the over-a-year amber treatment and its pinned detail ride
+// on the AGE token (the age is what went stale), and provenance moved to the row's
 // ⋯ menu, which is what that menu is for. Older readings in a run still omit the age.
 function dateCell(
   r: { date: string; category: string | null },
   now: string,
   showAge: boolean,
-  prefs: DisplayFormatPrefs
+  prefs: DisplayFormatPrefs,
+  reportedPanelDetail?: string
 ) {
   const line = readingDateLine(r, now, showAge, prefs);
   return (
@@ -175,18 +184,38 @@ function dateCell(
       {line.age ? (
         <>
           {DATE_AGE_SEPARATOR}
-          <span
-            data-testid="clinical-result-age"
-            className={`text-xs ${line.ageClassName}`}
-            title={line.ageTitle ?? undefined}
-          >
-            {line.stale && "⚠️ "}
-            {line.age}
+          <span className="inline-flex items-center gap-0.5">
+            <span
+              data-testid="clinical-result-age"
+              className={`text-xs ${line.ageClassName}`}
+            >
+              {line.stale && "⚠️ "}
+              {line.age}
+            </span>
+            {line.ageTitle && (
+              <InfoTooltipIcon
+                label={line.ageTitle}
+                data-testid="clinical-age-help"
+              />
+            )}
           </span>
         </>
       ) : null}
+      {reportedPanelDetail ? (
+        <InfoTooltipIcon
+          label={reportedPanelDetail}
+          data-testid="clinical-reported-panel-help"
+        />
+      ) : null}
     </span>
   );
+}
+
+function reportedPanelDisclosureLabel(
+  observation: ClinicalResultTableObservation,
+  reported: string
+) {
+  return `Reported under “${reported}” — ${tableNameKey(observation)}, ${observation.date}`;
 }
 
 // The Panel cell (#1502). It shows the NORMALIZED clinical panel resolved from the
@@ -195,8 +224,8 @@ function dateCell(
 // free-text heading (in practice the lab VENDOR: "Quest Diagnostics", "LabCorp").
 //
 // The stored `panel` column is untouched PROVENANCE and still surfaces two ways:
-// as the cell's tooltip on a resolved row ("Reported under …"), and as the visible
-// text for a row the taxonomy can't place — an un-canonicalized analyte the
+// through the row date's shared disclosure on a resolved row ("Reported under …"), and
+// as the visible text for a row the taxonomy can't place — an un-canonicalized analyte the
 // extractor coined, where the document's own heading is the best label we have.
 // That fallback row is deliberately NOT a filter link: "everything drawn at
 // LabCorp" is the useless facet this issue removed, and `?panel=other` (reachable
@@ -221,7 +250,6 @@ function PanelCell({
       <Td label="Panel" className="hidden md:table-cell">
         <Link
           href={href(id)}
-          title={reported ? `Reported under “${reported}”` : undefined}
           className="text-xs text-slate-500 hover:text-brand-700 hover:underline dark:text-slate-400 dark:hover:text-brand-400"
         >
           {panelLabel(id)}
@@ -232,11 +260,9 @@ function PanelCell({
   return (
     <Td label="Panel" empty={!reported} className="hidden md:table-cell">
       {reported ? (
-        <span
-          className="text-xs text-slate-500 dark:text-slate-400"
-          title="Not mapped to a clinical panel — showing the heading it was reported under"
-        >
-          {reported}
+        <span className="inline-flex items-center gap-0.5 text-xs text-slate-500 dark:text-slate-400">
+          <span>{reported}</span>
+          <InfoTooltipIcon label="Not mapped to a clinical panel — showing the heading it was reported under" />
         </span>
       ) : (
         <span className="text-slate-300 dark:text-slate-600">—</span>
@@ -283,12 +309,19 @@ function ReferenceCellTd({
       empty={!resolved.text}
       className="hidden text-slate-500 sm:table-cell dark:text-slate-400"
     >
-      <span
-        data-testid="clinical-result-reference"
-        data-judged={resolved.judged ? "true" : "false"}
-        title={resolved.title ?? undefined}
-      >
-        {resolved.text ?? "—"}
+      <span className="inline-flex items-center gap-0.5">
+        <span
+          data-testid="clinical-result-reference"
+          data-judged={resolved.judged ? "true" : "false"}
+        >
+          {resolved.text ?? "—"}
+        </span>
+        {resolved.title && (
+          <InfoTooltipIcon
+            label={resolved.title}
+            data-testid="clinical-reference-help"
+          />
+        )}
       </span>
     </Td>
   );
@@ -354,6 +387,10 @@ function ClinicalResultRow({
   const showChip =
     !!multiView && !!r.subject && subjectChipVisible({ multi: true, isActing });
   const writeProfileId = multiView ? r.profileId : undefined;
+  const reportedPanelAlias =
+    !r.derived && tablePanelId(r) !== OTHER_PANEL
+      ? r.panel?.trim() || null
+      : null;
   // The leading subject cell (multi-view only), rendered first in every row. On a
   // card it's the first meta item — the chip IS its own label (#534), so no
   // "Profile" prefix — and it drops out entirely on an acting-profile row.
@@ -509,14 +546,21 @@ function ClinicalResultRow({
             dir,
             current: current ? "1" : undefined,
           })}
-          title={`Filter by ${r.category}`}
           className="hover:opacity-80"
         >
           {r.category ? <Tag value={r.category} /> : null}
         </Link>
       </Td>
       <Td slot="meta" label="Date">
-        {dateCell(r, now, !!r.is_latest, prefs)}
+        {dateCell(
+          r,
+          now,
+          !!r.is_latest,
+          prefs,
+          reportedPanelAlias
+            ? reportedPanelDisclosureLabel(r, reportedPanelAlias)
+            : undefined
+        )}
       </Td>
       <Td slot="actions">
         {/* The menu renders whenever it has at least one item (#2316). It used to be

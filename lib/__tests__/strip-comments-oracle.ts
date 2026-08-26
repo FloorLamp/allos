@@ -22,17 +22,18 @@
 // The two directions are not equally bad and the report keeps them apart for that
 // reason. Over-blanking is the direction that hides a defect.
 //
-// IT IS NOT A TEST AND IT DOES NOT REPLACE THE SCANNER. Depending on `typescript` at
-// scan time would make every census in `lib/__tests__` pay a full tokenizer, and the
-// scanner's whole design is that it does not need one (it never deletes, so its
-// failures are bounded). This is the instrument that says how far the heuristic is
-// from the real answer, run by hand and pinned by the cases in
+// IT IS NOT A TEST AND IT DOES NOT REPLACE THE DEFAULT SCANNER. Depending on
+// `typescript` at scan time would make every census in `lib/__tests__` pay for a full
+// parse. The dialog census opts into the parser-backed projection exported below
+// because over-blanking there can hide the exact ModalShell it guards (#3532); the
+// other consumers retain the lightweight scanner and this instrument says how far
+// that heuristic is from the real answer, run by hand and pinned by the cases in
 // `lib/__tests__/strip-comments.test.ts`.
 import { execFileSync } from "node:child_process";
 import fs from "node:fs";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
-import ts from "typescript";
+import { parsedCommentRanges } from "../../scripts/source-comment-ranges";
 import { stripComments } from "./strip-comments";
 
 const REPO = path.resolve(fileURLToPath(new URL("../..", import.meta.url)));
@@ -54,32 +55,7 @@ export function oracleCommentRanges(
   rel: string,
   src: string
 ): [number, number][] {
-  const sf = ts.createSourceFile(rel, src, ts.ScriptTarget.Latest, true);
-  const out: [number, number][] = [];
-  const seen = new Set<number>();
-  const visit = (node: ts.Node): void => {
-    const kids = node.getChildren(sf);
-    if (kids.length === 0) {
-      const at = node.getFullStart();
-      // BOTH halves, and the reason is a real trap: `getLeadingCommentRanges` starts
-      // collecting only after a line break (unless `pos` is 0), so a comment sitting
-      // immediately at the token's full start — every `{/* … */}` in JSX, every
-      // trailing `// …` — is invisible to it. `getTrailingCommentRanges` collects
-      // from `pos` and stops at the first line break. The union is the file's trivia.
-      for (const r of [
-        ...(ts.getTrailingCommentRanges(src, at) ?? []),
-        ...(ts.getLeadingCommentRanges(src, at) ?? []),
-      ])
-        if (!seen.has(r.pos)) {
-          seen.add(r.pos);
-          out.push([r.pos, r.end]);
-        }
-      return;
-    }
-    for (const k of kids) visit(k);
-  };
-  visit(sf);
-  return out;
+  return parsedCommentRanges(rel, src);
 }
 
 export interface Disagreement {

@@ -56,10 +56,11 @@ test("mobile Health record starts with four shell-owned group tabs", async ({
   await expect(tabs).toBeVisible();
   await expect(tabs.getByRole("tab")).toHaveCount(4);
 
-  await expect(tabs.getByRole("tab", { name: "History" })).toHaveAttribute(
-    "aria-selected",
-    "true"
-  );
+  const history = tabs.getByRole("tab", { name: "History" });
+  await expect(history).toHaveAttribute("aria-selected", "true");
+  await expect(history).toHaveAttribute("aria-current", "page");
+  await expect(history).toHaveAttribute("aria-controls", "records-tabpanel");
+  await expect(page.locator("#records-tabpanel")).toBeVisible();
   await followLink(
     page,
     tabs.getByRole("tab", { name: "Problems" }),
@@ -242,12 +243,72 @@ test("the CDC schedule grid scrolls in-container on a phone (#1449)", async ({
   expect(overflow.scrollable).toBe(true);
   expect(overflow.overflowX).toBe("auto");
 
+  // The same detail panel that follows a desktop mouse can be pinned by tap on a
+  // phone, and Escape returns focus to the trigger instead of leaving a hover-only
+  // dead end.
+  const trigger = grid.getByTestId("schedule-grid-vaccine-trigger").first(); // first-ok: the first CDC vaccine row is deterministic registry content; every row owns the same tap contract
+  await trigger.click();
+  const pinnedTip = page.getByTestId("schedule-grid-tip");
+  await expect(pinnedTip).toBeVisible();
+  await expect(pinnedTip).toHaveAttribute("data-pinned", "true");
+  await expect(pinnedTip).not.toBeEmpty();
+  await page.keyboard.press("Escape");
+  await expect(pinnedTip).toHaveCount(0);
+  await expect(trigger).toBeFocused();
+
+  // The per-DOSE branch has the same complete contract, including native
+  // keyboard activation and an ARIA relationship to the panel it opened.
+  const doseTrigger = grid.getByTestId("schedule-grid-dose-trigger").first(); // first-ok: the first recommended CDC dose is deterministic registry content; every populated dose cell owns this contract
+  await doseTrigger.focus();
+  await page.keyboard.press("Enter");
+  await expect(pinnedTip).toBeVisible();
+  await expect(pinnedTip).toHaveAttribute("id", "schedule-grid-tip");
+  await expect(pinnedTip).toHaveAttribute("data-pinned", "true");
+  await expect(pinnedTip).toContainText(/Recommended|Received|Dose \d/);
+  await expect(doseTrigger).toHaveAttribute("aria-expanded", "true");
+  await expect(doseTrigger).toHaveAttribute(
+    "aria-describedby",
+    "schedule-grid-tip"
+  );
+
+  // The visible, inert legend is a deterministic outside pointer target. It
+  // dismisses the panel without activating the surrounding Records shell.
+  const immunizationsUrl = page.url();
+  await grid.getByTestId("schedule-grid-legend").click();
+  await expect(pinnedTip).toHaveCount(0);
+  await expect(doseTrigger).toHaveAttribute("aria-expanded", "false");
+  await expect(page).toHaveURL(immunizationsUrl);
+
+  await doseTrigger.focus();
+  await page.keyboard.press("Space");
+  await expect(pinnedTip).toBeVisible();
+  await expect(doseTrigger).toHaveAttribute("aria-expanded", "true");
+  await page.keyboard.press("Escape");
+  await expect(pinnedTip).toHaveCount(0);
+  await expect(doseTrigger).toBeFocused();
+
   // …and the grid's width is CONTAINED: every element's right edge inside the
   // viewport unless it sits in a scroller that itself fits (which is exactly the
   // grid's own container, asserted above). The page-level width comparison this
   // replaces could not fail (#1543) — the app shell clips the overflow, so the
   // document never reports itself wider than the viewport, in either direction.
   await expectNoClippedContent(page);
+});
+
+test("the CDC schedule grid keeps its desktop mouse detail path (#3375)", async ({
+  page,
+}) => {
+  await page.setViewportSize({ width: 1280, height: 900 });
+  await page.goto("/records/history/immunizations");
+  await page
+    .locator("summary", { hasText: "CDC recommended schedule" })
+    .click();
+
+  await page.getByTestId("schedule-grid-vaccine-cell").first().hover(); // first-ok: the first CDC vaccine row is deterministic registry content; every vaccine cell owns the same hover contract
+  const tip = page.getByTestId("schedule-grid-tip");
+  await expect(tip).toBeVisible();
+  await expect(tip).not.toHaveAttribute("data-pinned", "true");
+  await expect(tip).not.toBeEmpty();
 });
 
 test("the six specialty sub-tabs render with rare entry collapsed and the crisis line present (#1079, #1497, #1600)", async ({

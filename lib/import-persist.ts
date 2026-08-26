@@ -40,6 +40,7 @@ import {
 export { autoCompleteAppointmentsFromEncounters } from "./import-persist/appointments";
 import { autoCompleteAppointmentsFromEncounters } from "./import-persist/appointments";
 import { persistExtractedMedications } from "./import-persist/medications";
+import { detachConditionIntakeLinks } from "./condition-delete";
 
 // The single persist core shared by every document import path — the AI
 // extractor (runExtraction in lib/medical-pipeline.ts) and the deterministic
@@ -230,20 +231,18 @@ export function clearImportedDocumentRows(
            SELECT id FROM encounters WHERE profile_id = ? AND document_id = ?
          )`
   ).run(profileId, profileId, docId);
-  // Row-ops side-state (#1051/#1052): a medication (possibly from ANOTHER document, or
-  // manual) may link a condition (indication_condition_id) THIS document produced — a
-  // REFERENCES FK with no ON DELETE. NULL those back-links FIRST so deleting the
-  // condition (in the footprint loop) can't trip the FK. The med survives, its
-  // indication link honestly gone (a tier-1 link re-derives on its own reprocess).
-  // (source_record_id was retired in #1178 — an imported prescription IS the med now,
-  // never a paired medical_records row, so there is no prescription→med back-link.)
-  db.prepare(
-    `UPDATE intake_items SET indication_condition_id = NULL
-       WHERE profile_id = ?
-         AND indication_condition_id IN (
-           SELECT id FROM conditions WHERE profile_id = ? AND document_id = ?
-         )`
-  ).run(profileId, profileId, docId);
+  // Row-ops side-state (#1051/#1052/#2857): imported-condition cleanup uses the SAME
+  // scoped detach as manual and derived-condition deletes. Capture the exact owned ids
+  // before the footprint loop removes them. (source_record_id was retired in #1178 —
+  // an imported prescription IS the med now, so there is no sibling back-link.)
+  const importedConditionIds = db
+    .prepare(
+      `SELECT id FROM conditions WHERE profile_id = ? AND document_id = ?`
+    )
+    .all(profileId, docId) as { id: number }[];
+  for (const { id: conditionId } of importedConditionIds) {
+    detachConditionIntakeLinks(profileId, conditionId);
+  }
   // (#1204 note: a CROSS-DOCUMENT renewal course this document contributed to a med
   // owned by ANOTHER document is NOT cleared here — a course is not document-keyed. It
   // is deduped on (item_id, started_on), so a reprocess re-adds nothing, and it is
@@ -394,6 +393,16 @@ export function moveImportedDocumentRows(
       `UPDATE intake_items SET indication_condition_id = NULL
          WHERE profile_id = ? AND indication_condition_id IS NOT NULL
            AND indication_condition_id NOT IN (
+             SELECT id FROM conditions WHERE profile_id = ?
+           )`
+    ).run(pid, pid);
+    // A purpose link (#2857) must not cross profiles either, and for the same reason:
+    // no FK fires on the profile_id UPDATE a reassign performs. Removed, not nulled.
+    db.prepare(
+      `DELETE FROM intake_item_purposes
+         WHERE condition_id IS NOT NULL
+           AND item_id IN (SELECT id FROM intake_items WHERE profile_id = ?)
+           AND condition_id NOT IN (
              SELECT id FROM conditions WHERE profile_id = ?
            )`
     ).run(pid, pid);
@@ -590,6 +599,15 @@ export function persistDocumentImport(
       c.external_id?.startsWith("ccda:social-smoking:")
     );
     if (hasSmokingStatus) {
+      const supersededSmokingConditionIds = db
+        .prepare(
+          `SELECT id FROM conditions
+            WHERE profile_id = ? AND external_id LIKE '%ccda:social-smoking:%'`
+        )
+        .all(profileId) as { id: number }[];
+      for (const { id: conditionId } of supersededSmokingConditionIds) {
+        detachConditionIntakeLinks(profileId, conditionId);
+      }
       db.prepare(
         "DELETE FROM conditions WHERE profile_id = ? AND external_id LIKE '%ccda:social-smoking:%'"
       ).run(profileId);

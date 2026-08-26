@@ -2,11 +2,10 @@
 
 import { useState } from "react";
 import Link from "next/link";
-import { IconCopy, IconCheck } from "@tabler/icons-react";
 import ModalShell from "@/components/ModalShell";
+import CreatedShareLink from "@/components/CreatedShareLink";
 import OverflowMenu, { MENU_ITEM } from "@/components/OverflowMenu";
 import MyChartImport from "./MyChartImport";
-import { NOTICE_TONE } from "@/components/Notice";
 import SubmitButton from "@/components/SubmitButton";
 import { SHARE_TTL_OPTIONS } from "@/lib/share-links";
 import type { AppRoute } from "@/lib/hrefs";
@@ -64,13 +63,11 @@ export default function ImmunizationRecordActions({
   const [createdUrl, setCreatedUrl] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [creating, setCreating] = useState(false);
-  const [copied, setCopied] = useState(false);
 
   async function onCreate(e: React.FormEvent<HTMLFormElement>) {
     e.preventDefault();
     setError(null);
     setCreatedUrl(null);
-    setCopied(false);
     setCreating(true);
     const res = await createImmunizationShareLinkAction(
       new FormData(e.currentTarget)
@@ -78,17 +75,6 @@ export default function ImmunizationRecordActions({
     setCreating(false);
     if (res.ok) setCreatedUrl(window.location.origin + res.path);
     else setError(res.error);
-  }
-
-  async function copy() {
-    if (!createdUrl) return;
-    try {
-      await navigator.clipboard.writeText(createdUrl);
-      setCopied(true);
-      setTimeout(() => setCopied(false), 1500);
-    } catch {
-      /* clipboard unavailable — URL shown for manual copy */
-    }
   }
 
   return (
@@ -181,34 +167,11 @@ export default function ImmunizationRecordActions({
           </form>
 
           {createdUrl && (
-            <div
-              className={`mt-4 rounded-lg border p-3 ${NOTICE_TONE.emerald}`}
-            >
-              <div className="text-xs font-medium text-emerald-800 dark:text-emerald-300">
-                Link created — copy it now (it won’t be shown again):
-              </div>
-              <div className="mt-2 flex items-center gap-2">
-                <input
-                  readOnly
-                  value={createdUrl}
-                  onFocus={(e) => e.currentTarget.select()}
-                  data-testid="immunization-share-url"
-                  className="input font-mono text-xs"
-                />
-                <button
-                  type="button"
-                  onClick={copy}
-                  className="btn-ghost shrink-0"
-                  aria-label="Copy link"
-                  title="Copy link"
-                >
-                  {copied ? (
-                    <IconCheck className="h-4 w-4" stroke={1.75} />
-                  ) : (
-                    <IconCopy className="h-4 w-4" stroke={1.75} />
-                  )}
-                </button>
-              </div>
+            <>
+              <CreatedShareLink
+                value={createdUrl}
+                valueTestId="immunization-share-url"
+              />
               <p className="mt-2 text-xs text-emerald-800 dark:text-emerald-300">
                 Manage or revoke it under{" "}
                 <Link href={MANAGE_HREF} className="font-medium underline">
@@ -216,7 +179,7 @@ export default function ImmunizationRecordActions({
                 </Link>
                 .
               </p>
-            </div>
+            </>
           )}
         </ModalShell>
       )}

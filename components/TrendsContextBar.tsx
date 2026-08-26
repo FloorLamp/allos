@@ -60,12 +60,11 @@ export default function TrendsContextBar({
           aria-controls={controlsId}
           aria-label={`Date range: ${rangeLabel}`}
           onClick={toggleRangeControls}
-          className="-mb-px flex max-w-40 items-center gap-1 border-b border-l border-black/10 px-3 text-sm font-semibold text-slate-600 sm:hidden dark:border-white/10 dark:text-slate-300"
+          className="-mb-px flex items-center gap-1 border-b border-l border-black/10 px-3 text-sm font-semibold text-slate-600 sm:hidden dark:border-white/10 dark:text-slate-300"
         >
           <span
             data-testid="trends-context-label"
-            className="truncate"
-            title={rangeLabel}
+            className="whitespace-nowrap"
           >
             {rangeLabel === "All time" ? "All" : rangeLabel}
           </span>

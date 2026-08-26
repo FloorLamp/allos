@@ -67,6 +67,7 @@ import {
   type DayFillSpec,
   type SeriesHole,
 } from "@/lib/trend-sparkline";
+import { EmptyState } from "@/components/ui";
 
 // A full ISO date (YYYY-MM-DD) — distinguishes date series (which get the
 // compact-axis + friendly-tooltip default below) from time/category x-values.
@@ -382,13 +383,7 @@ export default function LineChartCard({
     ...(referenceBands ?? []),
   ];
   if (data.length === 0) {
-    return (
-      <div
-        className={`flex ${heightClass} items-center justify-center text-sm text-slate-500 dark:text-slate-400`}
-      >
-        No data yet
-      </div>
-    );
+    return <EmptyState message="No data yet" />;
   }
   // ONE READING IS A MARKER, NOT A PLOT (#2653 state 1).
   //

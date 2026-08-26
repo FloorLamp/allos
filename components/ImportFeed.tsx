@@ -13,6 +13,7 @@ import RelativeTime from "@/components/RelativeTime";
 import RawPayloadViewer from "@/components/RawPayloadViewer";
 import ReprocessButton from "@/components/ReprocessButton";
 import SyncRowsDrilldown from "@/components/SyncRowsDrilldown";
+import InfoTooltipIcon from "@/components/InfoTooltipIcon";
 
 // Data → Review, "Imports": the chronological feed of ONE-OFF imports into this
 // profile — uploaded documents/archives and pasted/CSV jobs — merged newest-first,
@@ -99,12 +100,12 @@ function FeedRow({
         </span>
       )}
       {mismatch && (
-        <span
-          className="inline-flex items-center gap-1 text-xs text-amber-600 dark:text-amber-400"
-          title={`Document names “${v.patientName}”, which doesn’t match this profile.`}
-        >
+        <span className="inline-flex items-center gap-1 text-xs text-amber-600 dark:text-amber-400">
           <IconAlertTriangle className="h-3.5 w-3.5" />
           {v.patientName}
+          <InfoTooltipIcon
+            label={`Document names “${v.patientName}”, which doesn’t match this profile.`}
+          />
         </span>
       )}
       <span className="text-sm text-slate-500 dark:text-slate-400">
@@ -128,10 +129,12 @@ function FeedRow({
           <span
             className="text-amber-600 dark:text-amber-400"
             data-testid="feed-scrutiny"
-            title={`${v.scrutiny} extracted ${v.scrutiny === 1 ? "row" : "rows"} the extractor was unsure about — open this import to review them first.`}
           >
             {" "}
             · {v.scrutiny} to check
+            <InfoTooltipIcon
+              label={`${v.scrutiny} extracted ${v.scrutiny === 1 ? "row" : "rows"} the extractor was unsure about — open this import to review them first.`}
+            />
           </span>
         )}
       </span>

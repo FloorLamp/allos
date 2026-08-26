@@ -2,6 +2,7 @@ import { test, expect } from "./fixtures";
 import { hydratedClick } from "./helpers";
 import { expandTrendsContext } from "./trends-chrome";
 import { expandTimelineFilters } from "./timeline-chrome";
+import { TAP_FLOOR_PX } from "@/lib/tap-floor-tokens";
 
 // Trends "charts above the fold" on a phone (#1455). The page used to spend ~1.9
 // screens on chrome before the first chart: the always-open From/To card, a
@@ -29,7 +30,7 @@ function firstBodyTile(page: import("@playwright/test").Page) {
     .first(); // first-ok: this helper deliberately names the first census metric
 }
 
-test.describe("the custom From/To form collapses behind a Custom… pill (A)", () => {
+test.describe("the custom From/To form collapses behind a Custom… disclosure (A)", () => {
   test("collapsed by default, with the quick-range row as the primary control", async ({
     page,
   }) => {
@@ -54,6 +55,11 @@ test.describe("the custom From/To form collapses behind a Custom… pill (A)", (
     const toggle = page.getByTestId("custom-range-toggle");
     await expect(toggle).toBeVisible();
     await expect(toggle).toHaveAttribute("aria-expanded", "false");
+    await expect(toggle).not.toHaveAttribute("aria-pressed");
+    await expect(toggle).toHaveClass(/btn-ghost/);
+    expect((await toggle.boundingBox())?.height).toBeGreaterThanOrEqual(
+      TAP_FLOOR_PX
+    );
     // The panel is in the DOM (the form's server-rendered defaults never leave)
     // but not shown — that is the ~230px this reclaims.
     await expect(page.getByTestId("custom-range-panel")).toBeHidden();
@@ -72,6 +78,7 @@ test.describe("the custom From/To form collapses behind a Custom… pill (A)", (
     await expect(page.locator("#trends-to")).toBeVisible();
     await expect(page.getByRole("button", { name: "Apply" })).toBeVisible();
     await expect(toggle).toHaveAttribute("aria-expanded", "true");
+    await expect(toggle).not.toHaveAttribute("aria-pressed");
   });
 
   test("a shared ?from= URL lands with the form already expanded", async ({
@@ -84,10 +91,9 @@ test.describe("the custom From/To form collapses behind a Custom… pill (A)", (
 
     const panel = page.getByTestId("custom-range-panel");
     await expect(panel).toBeVisible();
-    await expect(page.getByTestId("custom-range-toggle")).toHaveAttribute(
-      "aria-expanded",
-      "true"
-    );
+    const toggle = page.getByTestId("custom-range-toggle");
+    await expect(toggle).toHaveAttribute("aria-expanded", "true");
+    await expect(toggle).not.toHaveAttribute("aria-pressed");
     // The dates are the whole reason it opens. DateField shows a friendly label in
     // its text box and submits the ISO value from a hidden input, so assert the
     // canonical one.
@@ -145,7 +151,7 @@ test.describe("Overview leads with charts (B)", () => {
     await expect(page.getByTestId("starred-results")).toBeVisible();
   });
 
-  test("the compact movers row leads with the top few behind a show-all disclosure", async ({
+  test("the compact movers row caps its lead chips with full tap targets", async ({
     page,
   }) => {
     await page.goto("/trends");
@@ -158,13 +164,15 @@ test.describe("Overview leads with charts (B)", () => {
     const inline = digest.getByTestId("digest-dismiss");
     await expect.poll(() => inline.count()).toBeLessThanOrEqual(LEAD_CHIPS);
 
-    // The seed yields more movers than the cap, so the disclosure renders; opening
-    // it reveals the rest into the same chip row.
-    const showAll = digest.getByTestId("digest-show-all");
-    await expect(showAll).toBeVisible();
-    const capped = await inline.count();
-    await hydratedClick(page, showAll);
-    await expect.poll(() => inline.count()).toBeGreaterThan(capped);
+    // The shared IconButton owns a RENDERED target. Measure one real mount rather
+    // than inferring geometry from its Tailwind classes; all mounts receive this
+    // same root box from the primitive.
+    const dismiss = inline.first(); // first-ok: every digest dismiss is one mount of the same IconButton primitive
+    await expect(dismiss).toHaveAttribute("data-icon-button", "");
+    const dismissBox = await dismiss.boundingBox();
+    expect(dismissBox).not.toBeNull();
+    expect(dismissBox!.height).toBeGreaterThanOrEqual(TAP_FLOOR_PX);
+    expect(dismissBox!.width).toBeGreaterThanOrEqual(TAP_FLOOR_PX);
   });
 });
 

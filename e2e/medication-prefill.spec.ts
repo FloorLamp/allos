@@ -54,13 +54,11 @@ test("med form is medication-shaped and selection-prefills on pick (#846)", asyn
     .first() // first-ok: transient combobox list this spec just opened (Naproxen suggestion); first match is intended
     .click();
 
-  // A kind-locked door answers the kind outright, so no chip and no question (#3216) —
-  // but the form is still medication-shaped, and says which shape it is.
+  // The medication door owns the required kind, and the form states that shape.
   await expect(addCard.getByTestId("intake-item-form")).toHaveAttribute(
     "data-kind",
     "medication"
   );
-  await expect(addCard.getByTestId("intake-kind-chip")).toHaveCount(0);
 
   // Prefill, read off the SUMMARY the form will save: as-needed, interval 8h / max 3,
   // dose 220 mg — marked "from label defaults", because a prefilled value is an

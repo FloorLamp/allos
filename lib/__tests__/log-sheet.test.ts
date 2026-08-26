@@ -4,6 +4,7 @@ import {
   dueDoseChipLabel,
   habitualLogSegment,
   logSheetSegments,
+  maxLogSheetRows,
   openingLogSegment,
   LOG_HABIT_MIN_DAYS,
   LOG_HABIT_WINDOW_DAYS,
@@ -52,23 +53,28 @@ describe("logSheetSegments", () => {
     }
   });
 
-  // #3327 — the substance row is Care, on the segment's own definition: something you
-  // ADMINISTER to yourself. Not Food, even though the one curated substance that
-  // happens to ride the food ledger is alcohol.
-  it("puts the substance row in Care, and drops it entirely when the bit is off", () => {
-    const withRow = logSheetSegments(true, true).find((s) => s.id === "care");
+  it("groups food, doses, and substances under Consume, and gates substances", () => {
+    const withRow = logSheetSegments(true, true).find((s) => s.id === "food");
+    expect(withRow?.label).toBe("Consume");
     expect(withRow?.items.map((i) => i.id)).toEqual([
+      "log-food",
       "log-dose",
+      "log-substance",
+    ]);
+    const without = logSheetSegments(true, false).find((s) => s.id === "food");
+    expect(without?.items.map((i) => i.id)).not.toContain("log-substance");
+    // Consume survives regardless — it has food and doses — so the gate removes a
+    // row, never a segment.
+    expect(without?.items.length).toBe(2);
+  });
+
+  it("keeps practices, mood, and documents in Care", () => {
+    const care = logSheetSegments(true, true).find((s) => s.id === "care");
+    expect(care?.items.map((i) => i.id)).toEqual([
       "log-practice",
       "log-mood",
-      "log-substance",
       "add-document",
     ]);
-    const without = logSheetSegments(true, false).find((s) => s.id === "care");
-    expect(without?.items.map((i) => i.id)).not.toContain("log-substance");
-    // Care survives regardless — it has four other rows — so the gate removes a
-    // row, never a segment.
-    expect(without?.items.length).toBe(4);
   });
 
   it("keeps the Body segment when the cycle bit is off", () => {
@@ -81,13 +87,20 @@ describe("logSheetSegments", () => {
     ]);
   });
 
-  it("orders the track Train · Food · Body · Care", () => {
+  it("orders the track Train · Consume · Body · Care", () => {
     expect(logSheetSegments(true).map((s) => s.id)).toEqual([
       "train",
       "food",
       "body",
       "care",
     ]);
+  });
+
+  it("derives the fixed list reserve from only the surviving segment rows", () => {
+    const all = logSheetSegments(true, true);
+    expect(maxLogSheetRows(all)).toBe(3);
+    expect(maxLogSheetRows([{ items: all[0]!.items.slice(0, 1) }])).toBe(1);
+    expect(maxLogSheetRows([])).toBe(0);
   });
 });
 
@@ -96,7 +109,7 @@ describe("defaultLogSegment", () => {
 
   it("opens on the segment holding the route's promoted log", () => {
     expect(defaultLogSegment(all, "/nutrition", null)).toBe("food");
-    expect(defaultLogSegment(all, "/medications", null)).toBe("care");
+    expect(defaultLogSegment(all, "/medications", null)).toBe("food");
     // /trends' default tab promotes measurements, which lives in Body.
     expect(defaultLogSegment(all, "/trends", null)).toBe("body");
   });
@@ -183,12 +196,19 @@ describe("openingLogSegment", () => {
   });
 
   it("leaves every route that promotes its own domain alone", () => {
-    // The ruling's scope in one assertion: Nutrition still opens on Food and
-    // Medications on Care no matter what the history says.
+    // The ruling's scope in one assertion: Nutrition and Medications both open
+    // on Consume because their promoted entries are food and doses.
     expect(
       openingLogSegment({
         segments: all,
         pathname: "/nutrition",
+        habitDays: heavyCare,
+      })
+    ).toBe("food");
+    expect(
+      openingLogSegment({
+        segments: all,
+        pathname: "/medications",
         habitDays: heavyCare,
       })
     ).toBe("food");

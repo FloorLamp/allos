@@ -19,7 +19,8 @@
 //
 // Or let the harness own the server lifecycle (scratch DB, boot, poll-ready,
 // teardown; UX_SEED=1 seeds first for a data-rich census, UX_SEED=thin seeds and
-// then trims observations to the last ~7 days — the week-old-phone shape):
+// trims to a week, UX_SEED=dirty pins import residue + long names, and
+// UX_SEED=one-cycle pins the one-completed-cycle honesty boundary):
 //
 //   node scripts/ux-walkthrough.mjs --serve onboarding pages
 //
@@ -98,6 +99,23 @@ import {
   hoverAuditSections,
   measureHover,
 } from "./ux-hover-census.mjs";
+import {
+  consistencyAuditSection,
+  consistencyReviewEntries,
+  consistencyReviewHtml,
+} from "./ux-consistency-review.mjs";
+import {
+  applyUxSeedShapeEnv,
+  uxSeedRunInfo,
+  uxSeedShapeFromEnv,
+} from "./ux-seed-shapes.mjs";
+import {
+  allocateUxServedDb,
+  assertUxServedDbOwned,
+  assertUxServedDbUnused,
+  cleanupUxServedDb,
+} from "./ux-served-db.mjs";
+import { runCleanupSteps } from "./ux-cleanup.mjs";
 
 const BASE = process.env.UX_BASE || "http://localhost:3111";
 const SHOTS =
@@ -105,6 +123,14 @@ const SHOTS =
 const ADMIN_USER = process.env.UX_ADMIN_USER || "admin";
 const ADMIN_PASS = process.env.UX_ADMIN_PASS || "first-boot-pw-1";
 const MAIL_FILE = process.env.EMAIL_TEST_CAPTURE || "/tmp/ux-mail.jsonl";
+const UX_SEED_SELECTION = uxSeedShapeFromEnv(process.env);
+if (UX_SEED_SELECTION.kind === "unknown")
+  throw new Error(
+    `Unknown UX_SEED "${UX_SEED_SELECTION.raw}". Known seeded shapes: ${UX_SEED_SELECTION.known.join(", ")}; leave it unset for fresh.`
+  );
+if (UX_SEED_SELECTION.kind === "conflict")
+  throw new Error(UX_SEED_SELECTION.reason);
+const UX_SEED_SHAPE = UX_SEED_SELECTION.shape;
 // Invitee fixture — synthetic values only (no real PHI/emails, per repo policy).
 const INVITEE = {
   username: "jordan",
@@ -134,11 +160,11 @@ const recentHashes = [];
 // while the audit row beside it said five elements had been revealed. A picture
 // that contradicts its own caption is the worst available outcome here, because
 // the picture is what gets believed.
-async function shot(page, name, { fullPage = true } = {}) {
+async function shot(page, name, { fullPage = true, consistency = null } = {}) {
   const file = `${String(shotSeq++).padStart(2, "0")}-${name}.png`;
   const p = path.join(SHOTS, file);
   await page.screenshot({ path: p, fullPage });
-  manifest.push({ file, name });
+  manifest.push({ file, name, ...(consistency ? { consistency } : {}) });
   recentHashes.push(
     crypto.createHash("md5").update(fs.readFileSync(p)).digest("hex")
   );
@@ -299,15 +325,28 @@ function tapGesture() {
 // action (step-function damage — no percentage threshold, per #1510).
 function writeAuditArtifacts(baselineDir) {
   const out = [];
+  // #3489 D2+D7: one reduced artifact, not an every-shot assignment. It carries
+  // exactly one explicitly marked DEFAULT DESKTOP capture per reached route;
+  // mobile, expanded and hover shots stay in index.html but cannot leak into the
+  // between-page lane by filename convention or reviewer memory.
+  const consistencyEntries = consistencyReviewEntries(
+    manifest,
+    metricsRows
+      .filter((row) => row.viewport === "desktop")
+      .map((row) => row.route)
+  );
+  if (consistencyEntries.length) {
+    fs.writeFileSync(
+      path.join(SHOTS, "consistency.html"),
+      consistencyReviewHtml(consistencyEntries)
+    );
+    out.push("consistency.html");
+  }
   // The run's data shape (#2594): which census shape seeded it and which
   // entropy seed shaped the data. Written beside metrics.json so a look is
   // reproducible from its artifacts, and so --baseline can refuse to compare
   // incomparable shapes below.
-  const runInfo = {
-    uxSeed: process.env.UX_SEED ?? null,
-    seedRng: process.env.SEED_RNG ?? null,
-    seedPersona: process.env.SEED_PERSONA ?? null,
-  };
+  const runInfo = uxSeedRunInfo(UX_SEED_SHAPE, process.env);
   fs.writeFileSync(
     path.join(SHOTS, "run.json"),
     JSON.stringify(runInfo, null, 1)
@@ -348,7 +387,7 @@ function writeAuditArtifacts(baselineDir) {
     "",
     // Name the data shape up front (#2594): a finding filed from this run must
     // say which look produced it, and a re-run needs both knobs.
-    `Data shape: UX_SEED=${runInfo.uxSeed ?? "unset (fresh)"} · SEED_RNG=${runInfo.seedRng ?? "unset (pinned baseline)"} · SEED_PERSONA=${runInfo.seedPersona ?? "none (baseline character)"}`,
+    `Data shape: UX_SEED=${runInfo.uxSeed ?? "unset (fresh)"} · SEED_RNG=${runInfo.seedRng ?? "unset (pinned baseline)"} · SEED_PERSONA=${runInfo.seedPersona ?? "none (baseline character)"} · SEED_DIAL_SHAPE=${runInfo.seedDialShape ?? "none"}`,
     "",
   ];
   // Render health first (#1544) — a route that rendered the error boundary or the
@@ -387,6 +426,10 @@ function writeAuditArtifacts(baselineDir) {
     for (const r of aliased) lines.push(`| ${r.route} | ${r.landedOn} |`);
     lines.push("");
   }
+  // #3489 D2+D7: put the lane in every pages run's report. This is process, not
+  // an automated verdict: the generated section names the artifact, scope and
+  // dimensions so omission cannot masquerade as a completed census review.
+  lines.push(...consistencyAuditSection(consistencyEntries));
   // #3489 deliverable 1: geometry findings rank ABOVE the existing tables. They
   // are the only rows here that name a specific broken element rather than a
   // page-level number, so they are what a reader should meet first — and unlike
@@ -463,10 +506,11 @@ function writeAuditArtifacts(baselineDir) {
       oldRun &&
       ((oldRun.uxSeed ?? null) !== runInfo.uxSeed ||
         (oldRun.seedRng ?? null) !== runInfo.seedRng ||
-        (oldRun.seedPersona ?? null) !== runInfo.seedPersona)
+        (oldRun.seedPersona ?? null) !== runInfo.seedPersona ||
+        (oldRun.seedDialShape ?? null) !== runInfo.seedDialShape)
     ) {
       lines.push(
-        `- **BASELINE SHAPE MISMATCH** — baseline ran UX_SEED=${oldRun.uxSeed ?? "unset"} SEED_RNG=${oldRun.seedRng ?? "unset"} SEED_PERSONA=${oldRun.seedPersona ?? "unset"}, this run UX_SEED=${runInfo.uxSeed ?? "unset"} SEED_RNG=${runInfo.seedRng ?? "unset"} SEED_PERSONA=${runInfo.seedPersona ?? "unset"}. The diffs below compare different data shapes; re-run with matching seeds before trusting them.`,
+        `- **BASELINE SHAPE MISMATCH** — baseline ran UX_SEED=${oldRun.uxSeed ?? "unset"} SEED_RNG=${oldRun.seedRng ?? "unset"} SEED_PERSONA=${oldRun.seedPersona ?? "unset"} SEED_DIAL_SHAPE=${oldRun.seedDialShape ?? "unset"}, this run UX_SEED=${runInfo.uxSeed ?? "unset"} SEED_RNG=${runInfo.seedRng ?? "unset"} SEED_PERSONA=${runInfo.seedPersona ?? "unset"} SEED_DIAL_SHAPE=${runInfo.seedDialShape ?? "unset"}. The diffs below compare different data shapes; re-run with matching seeds before trusting them.`,
         ""
       );
     }
@@ -1091,7 +1135,9 @@ async function pagesJourney(browser) {
       try {
         await page.goto(`${BASE}${target}`);
         await page.waitForTimeout(1200);
-        await shot(page, `page-${tag}-${slug}`);
+        await shot(page, `page-${tag}-${slug}`, {
+          consistency: { kind: "page-default", route, viewport: tag },
+        });
         // #2616: a route that redirects captures its destination — fine, but
         // record WHERE, so the hash-validation step can tell a known alias's
         // byte-identical shot from a stuck census.
@@ -1948,104 +1994,224 @@ const picked = args.filter(
 if (!picked.length) {
   console.error(
     `usage: node scripts/ux-walkthrough.mjs [--serve] [--baseline <prior shots dir>] <journey...>\njourneys: ${Object.keys(journeys).join(", ")}
---serve boots the dev server itself on a scratch DB (ALLOS_DB_PATH, default /tmp/ux-walkthrough.db; UX_SEED=1 seeds it first, UX_SEED=thin seeds then trims to the last ~7 days) and tears it down after. SEED_RNG=<int> (#2594) gives a seeded shape a distinct, reproducible scenario-dial look; unset = the pinned baseline.
+--serve boots the dev server itself on a unique tool-owned scratch DB (caller ALLOS_DB_PATH is ignored; UX_SEED=1 seeds, UX_SEED=thin trims to ~7 days, UX_SEED=dirty pins import quirks + long names, UX_SEED=one-cycle pins one completed cycle) and tears it down after. SEED_RNG=<int> (#2594) gives the 1/thin shapes a distinct, reproducible scenario-dial look; unset = the pinned baseline.
 --baseline diffs a prior run's metrics.json/taps.json (pages/workflows journeys write them) into audit.md.`
   );
   process.exit(1);
 }
 
-// --serve: own the server lifecycle — scratch-DB env, boot, poll ready, and
-// tear down in finally. NEVER defaults to the real data/allos.db.
+// --serve owns both the server and database lifecycle. Atomic mkdtemp ownership
+// replaces content-based "is this DB empty?" guesses and keeps caller paths,
+// :memory:, stale rows, and schema metadata outside the census run.
 let server = null;
-if (serve) {
-  const dbPath = process.env.ALLOS_DB_PATH || "/tmp/ux-walkthrough.db";
-  const port = new URL(BASE).port || "3111";
-  const env = {
-    ...process.env,
-    ALLOS_DB_PATH: dbPath,
-    ADMIN_USERNAME: ADMIN_USER,
-    ADMIN_PASSWORD: ADMIN_PASS,
-    EMAIL_TEST_CAPTURE: MAIL_FILE,
-    PORT: port,
-  };
-  // Census data shapes: unset = fresh DB (empty states), `1` = the full seed
-  // (~3 weeks of history), `thin` = seed then trim observations to the last ~7
-  // days (#1544) — the week-old-phone shape where trailing 7/30/90-day windows
-  // coincide, which neither pole reproduces. SEED_PERSONA (forwarded through
-  // the env spread) makes the seed write a persona character instead of the
-  // baseline story; it still needs UX_SEED=1 to trigger seeding at all.
-  if (process.env.SEED_PERSONA && process.env.UX_SEED !== "1") {
+let servedDb = null;
+let browser = null;
+let cleanupPromise = null;
+
+function verifyServedDb(env) {
+  assertUxServedDbOwned(servedDb);
+  const result = spawnSync(
+    process.execPath,
+    ["--import", "tsx", "scripts/verify-ux-seed-shape.ts"],
+    { env, stdio: "inherit" }
+  );
+  if (result.status !== 0) {
     throw new Error(
-      `SEED_PERSONA=${process.env.SEED_PERSONA} is set but UX_SEED=${process.env.UX_SEED ?? "unset"} — persona runs need UX_SEED=1, otherwise the census would label a differently-shaped DB with a persona it doesn't contain.`
+      `database witness verification exited non-zero for ${UX_SEED_SHAPE.label}`
     );
   }
-  if (process.env.UX_SEED === "1" || process.env.UX_SEED === "thin") {
-    log("seeding scratch DB…");
-    const r = spawnSync("npx", ["tsx", "scripts/seed.ts"], {
-      env,
-      stdio: "inherit",
-    });
-    if (r.status !== 0) {
-      // A persona run's label IS its persona — censusing an unseeded DB under
-      // that label would be worse than no run, so fail instead of warning.
-      if (process.env.SEED_PERSONA)
-        throw new Error(
-          "seed exited non-zero on a SEED_PERSONA run — aborting instead of censusing a fresh DB under a persona label"
-        );
-      log("WARNING: seed exited non-zero — continuing unseeded");
-    }
-    if (process.env.UX_SEED === "thin") {
-      log("thinning scratch DB to the last ~7 days…");
-      const t = spawnSync("npx", ["tsx", "scripts/ux-thin-data.ts"], {
-        env,
-        stdio: "inherit",
-      });
-      if (t.status !== 0)
-        log(
-          "WARNING: thin trim exited non-zero — this run is the FULL seed shape, not thin"
-        );
-    }
-  }
-  log(`starting dev server on :${port} (db: ${dbPath})…`);
-  server = spawn("npm", ["run", "dev"], {
-    env,
-    stdio: "ignore",
-    detached: true,
-  });
-  let ready = false;
-  // First compile can take minutes on a slow filesystem — poll patiently.
-  for (let i = 0; i < 120 && !ready; i++) {
-    await new Promise((r) => setTimeout(r, 5000));
-    ready = await fetch(`${BASE}/login`)
-      .then((r) => r.status === 200)
-      .catch(() => false);
-  }
-  if (!ready) {
-    try {
-      process.kill(-server.pid);
-    } catch {}
-    throw new Error("--serve: dev server never became ready");
-  }
-  log("server ready");
 }
 
-const browser = await chromium.launch({
-  executablePath: process.env.UX_CHROMIUM || undefined,
-});
+async function stopDevServer(child) {
+  if (!child?.pid) return;
+  const groupAlive = () => {
+    try {
+      process.kill(-child.pid, 0);
+      return true;
+    } catch (error) {
+      return error?.code !== "ESRCH";
+    }
+  };
+  const waitForGroup = async (timeoutMs) => {
+    const deadline = Date.now() + timeoutMs;
+    while (groupAlive() && Date.now() < deadline) {
+      await new Promise((resolve) => setTimeout(resolve, 50));
+    }
+    return !groupAlive();
+  };
+  try {
+    process.kill(-child.pid, "SIGTERM");
+  } catch (error) {
+    if (error?.code !== "ESRCH") throw error;
+  }
+  if (!(await waitForGroup(5000))) {
+    try {
+      process.kill(-child.pid, "SIGKILL");
+    } catch (error) {
+      if (error?.code !== "ESRCH") throw error;
+    }
+    if (!(await waitForGroup(1000))) {
+      throw new Error(`dev server process group ${child.pid} survived SIGKILL`);
+    }
+  }
+}
+
+function cleanupRun() {
+  if (cleanupPromise) return cleanupPromise;
+  cleanupPromise = (async () => {
+    const steps = [];
+    if (browser)
+      steps.push(
+        ["browser", () => browser.close()],
+        ["contact sheet", () => writeContactSheet()],
+        ["audit artifacts", () => writeAuditArtifacts(baselineDir)]
+      );
+    if (server)
+      steps.push([
+        "server process group",
+        async () => {
+          await stopDevServer(server);
+          log("dev server stopped");
+        },
+      ]);
+    if (servedDb)
+      steps.push([
+        "scratch database",
+        () => {
+          cleanupUxServedDb(servedDb);
+          log("scratch DB and sidecars removed");
+        },
+      ]);
+    await runCleanupSteps(steps);
+  })();
+  return cleanupPromise;
+}
+
+let receivedSignal = false;
+function handleSignal(signal) {
+  if (receivedSignal) return;
+  receivedSignal = true;
+  log(`${signal} received; cleaning up owned census resources`);
+  void cleanupRun()
+    .catch((error) => console.error(error))
+    .finally(() => process.exit(signal === "SIGINT" ? 130 : 143));
+}
+const onSigint = () => handleSignal("SIGINT");
+const onSigterm = () => handleSignal("SIGTERM");
+process.on("SIGINT", onSigint);
+process.on("SIGTERM", onSigterm);
+
 try {
+  if (serve) {
+    servedDb = allocateUxServedDb();
+    assertUxServedDbUnused(servedDb);
+    const dbPath = servedDb.dbPath;
+    const port = new URL(BASE).port || "3111";
+    const env = applyUxSeedShapeEnv(
+      {
+        ...process.env,
+        ALLOS_DB_PATH: dbPath,
+        UX_OWNED_DB_DIR: servedDb.dir,
+        ADMIN_USERNAME: ADMIN_USER,
+        ADMIN_PASSWORD: ADMIN_PASS,
+        EMAIL_TEST_CAPTURE: MAIL_FILE,
+        PORT: port,
+        UX_CENSUS_SERVER_NONCE: crypto.randomUUID(),
+      },
+      UX_SEED_SHAPE
+    );
+    log(`claimed private scratch DB path: ${dbPath}`);
+    if (process.env.ALLOS_DB_PATH) {
+      log("ignoring caller ALLOS_DB_PATH for this served census run");
+    }
+    // Census data shapes: unset = fresh DB (empty states), `1` = the full seed
+    // (~3 weeks of history), `thin` = seed then trim observations to the last ~7
+    // days (#1544), `dirty` = the fixed dirty-profile vector (#3489 D3), and
+    // `one-cycle` = two periods yielding one completed interval (#3489 D5).
+    if (UX_SEED_SHAPE.seed) {
+      log(`seeding scratch DB (${UX_SEED_SHAPE.label})…`);
+      assertUxServedDbUnused(servedDb);
+      const r = spawnSync(
+        process.execPath,
+        ["--import", "tsx", "scripts/seed.ts"],
+        { env, stdio: "inherit" }
+      );
+      if (r.status !== 0) {
+        throw new Error(
+          `seed exited non-zero for ${UX_SEED_SHAPE.label} — aborting instead of censusing stale or unseeded data under that label`
+        );
+      }
+      if (UX_SEED_SHAPE.postSeed === "thin") {
+        log("thinning scratch DB to the last ~7 days…");
+        assertUxServedDbOwned(servedDb);
+        const t = spawnSync(
+          process.execPath,
+          ["--import", "tsx", "scripts/ux-thin-data.ts"],
+          { env, stdio: "inherit" }
+        );
+        if (t.status !== 0) {
+          throw new Error(
+            "post-seed transform exited non-zero for thin — aborting instead of censusing the full seed under the thin label"
+          );
+        }
+      }
+      verifyServedDb(env);
+    } else {
+      assertUxServedDbUnused(servedDb);
+    }
+    log(`starting dev server on :${port} (db: ${dbPath})…`);
+    assertUxServedDbOwned(servedDb);
+    server = spawn("npm", ["run", "dev"], {
+      env,
+      stdio: "ignore",
+      detached: true,
+    });
+    let serverFailure = null;
+    server.once("error", (error) => {
+      serverFailure = error;
+    });
+    server.once("exit", (code, signal) => {
+      if (code !== null || signal) {
+        serverFailure = new Error(
+          `dev server exited before readiness (code ${code}, signal ${signal})`
+        );
+      }
+    });
+    let ready = false;
+    // First compile can take minutes on a slow filesystem — poll patiently.
+    for (let i = 0; i < 120 && !ready && !serverFailure; i++) {
+      await new Promise((r) => setTimeout(r, 5000));
+      const ownsConfiguredDb = await fetch(`${BASE}/api/health`)
+        .then(
+          (response) =>
+            response.headers.get("x-allos-ux-census-nonce") ===
+            env.UX_CENSUS_SERVER_NONCE
+        )
+        .catch(() => false);
+      ready =
+        ownsConfiguredDb &&
+        (await fetch(`${BASE}/login`)
+          .then((response) => response.status === 200)
+          .catch(() => false));
+    }
+    if (!ready) {
+      if (serverFailure) throw serverFailure;
+      throw new Error("--serve: dev server never became ready");
+    }
+    verifyServedDb(env);
+    log("server ready");
+  }
+
+  browser = await chromium.launch({
+    executablePath: process.env.UX_CHROMIUM || undefined,
+  });
   for (const name of picked) {
     log(`— journey: ${name} —`);
     await journeys[name](browser);
   }
 } finally {
-  await browser.close();
-  writeContactSheet();
-  writeAuditArtifacts(baselineDir);
-  if (server) {
-    try {
-      process.kill(-server.pid);
-    } catch {}
-    log("dev server stopped");
-  }
+  await cleanupRun();
+  process.off("SIGINT", onSigint);
+  process.off("SIGTERM", onSigterm);
 }
 log("screenshots in", SHOTS);

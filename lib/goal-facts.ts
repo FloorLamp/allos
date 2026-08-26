@@ -42,6 +42,7 @@ import type {
   OutcomeGoalMetric,
 } from "./types";
 import { formatSeconds } from "./duration";
+import { displayUnit } from "./display-unit";
 import {
   DEFAULT_FORMAT_PREFS,
   formatDateWithYear,
@@ -191,7 +192,8 @@ export function targetFactLabel(t: GoalTargetInput): string | null {
   if (t.kind === "biomarker") {
     const value = num(t.value);
     if (!value) return null;
-    return `${DIRECTION_WORD[t.direction]} ${value}${t.unit ? ` ${t.unit}` : ""}`;
+    const shownUnit = displayUnit(t.unit);
+    return `${DIRECTION_WORD[t.direction]} ${value}${shownUnit ? ` ${shownUnit}` : ""}`;
   }
   const value = num(t.value);
   if (!value) return null;
@@ -459,7 +461,7 @@ export function goalStartingFrom(i: GoalStartingFromInput): string | null {
       ? null
       : startingFromFactLabel({
           value: i.biomarkerLatest,
-          unit: i.biomarkerUnit,
+          unit: displayUnit(i.biomarkerUnit),
         });
   const typed = Number(i.currentValue.trim());
   if (!i.currentValue.trim() || !Number.isFinite(typed)) return null;

@@ -4,6 +4,7 @@ import {
   IconInfoCircle,
 } from "@tabler/icons-react";
 import { NOTICE_TONE } from "@/components/Notice";
+import InfoTooltipIcon from "@/components/InfoTooltipIcon";
 import { joinNamesForSentence } from "@/lib/summarize-names";
 import { FOOD_TIMING_HINTS } from "@/lib/intake-schedule";
 import type {
@@ -65,12 +66,17 @@ export default function CuratedSupplementSuggestions({
                     {reasons.length > 1 ? "are" : "is"}{" "}
                     {s.side === "high" ? "HIGH." : "LOW."} Options to consider:
                   </p>
-                  <span
-                    data-testid="suggestion-origin-badge"
-                    title="From the curated, human-reviewed biomarker→supplement map — the same suggestion every time, with no AI involved."
-                    className="rounded-sm bg-emerald-100 px-1.5 py-0.5 text-xs font-medium uppercase tracking-wide text-emerald-700 dark:bg-emerald-900 dark:text-emerald-300"
-                  >
-                    Curated
+                  <span className="inline-flex items-center gap-1">
+                    <span
+                      data-testid="suggestion-origin-badge"
+                      className="rounded-sm bg-emerald-100 px-1.5 py-0.5 text-xs font-medium uppercase tracking-wide text-emerald-700 dark:bg-emerald-900 dark:text-emerald-300"
+                    >
+                      Curated
+                    </span>
+                    <InfoTooltipIcon
+                      label="From the curated, human-reviewed biomarker→supplement map — the same suggestion every time, with no AI involved."
+                      data-testid="curated-origin-help"
+                    />
                   </span>
                 </div>
                 <ul

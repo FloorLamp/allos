@@ -1,6 +1,7 @@
 "use client";
 
 import { INTENSITIES } from "./model";
+import InfoTooltipIcon from "@/components/InfoTooltipIcon";
 
 // The activity form's intensity selector (a 3-up toggle grid). Presentational
 // only — extracted from ActivityForm so the parent stays composition (#319).
@@ -17,6 +18,11 @@ export default function IntensityPicker({
   return (
     <fieldset>
       <legend className="label">Intensity</legend>
+      <InfoTooltipIcon
+        label={INTENSITIES.map(
+          (option) => `${option.label}: ${option.hint}`
+        ).join(" · ")}
+      />
       <div className="grid grid-cols-3 gap-2">
         {INTENSITIES.map((opt) => {
           const active = intensity === opt.value;
@@ -24,7 +30,6 @@ export default function IntensityPicker({
             <button
               key={opt.value}
               type="button"
-              title={opt.hint}
               aria-pressed={active}
               onClick={() => onChange(active ? "" : opt.value)}
               className={`rounded-lg border px-2 py-2 text-sm font-medium transition ${

@@ -8,7 +8,6 @@ interface TabFirstPageBase {
   mobileColumns: 2 | 3 | 4;
   mobileLayout?: "equal" | "scroll";
   testId?: string;
-  desktopStripClassName?: string;
 }
 
 export interface QueryTabFirstPageConfig extends TabFirstPageBase {
@@ -81,7 +80,6 @@ export const RECORDS_TAB_FIRST_PAGE = {
     "Your health record in one place — history, problems, care, and specialty records.",
   mobileColumns: 4,
   testId: "records-group-tabs",
-  desktopStripClassName: "mb-2",
   tabs: [
     { href: "/records/history", label: "History" },
     { href: "/records/problems", label: "Problems" },
@@ -99,7 +97,6 @@ export const RESULTS_TAB_FIRST_PAGE = {
     "Lab results, imaging studies, narrative reports, and genomics in one place.",
   mobileColumns: 4,
   testId: "results-tabs",
-  desktopStripClassName: "mb-6",
   tabs: [
     { href: "/results/clinical-results", label: "Clinical results" },
     { href: "/results/imaging", label: "Imaging" },

@@ -153,7 +153,7 @@ export default function AddEntryPanel({
         onClick={() => setOpen((v) => !v)}
         className={
           open
-            ? `flex w-full items-center justify-between gap-2 text-left font-semibold text-slate-800 dark:text-slate-100${
+            ? `flex min-h-11 w-full items-center justify-between gap-2 text-left font-semibold text-slate-800 dark:text-slate-100${
                 dense ? " text-sm" : ""
               }`
             : "btn-ghost text-sm"

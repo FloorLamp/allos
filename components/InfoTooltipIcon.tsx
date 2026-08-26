@@ -16,11 +16,9 @@ type TooltipPosition = {
 
 export default function InfoTooltipIcon({
   label,
-  className,
   "data-testid": testId,
 }: {
   label: string;
-  className?: string;
   "data-testid"?: string;
 }) {
   const tooltipId = useId();
@@ -112,9 +110,7 @@ export default function InfoTooltipIcon({
 
   return (
     <span
-      className={["relative z-10 inline-flex align-middle", className]
-        .filter(Boolean)
-        .join(" ")}
+      className="pointer-events-auto relative z-10 inline-flex align-middle"
       data-escape-layer={open ? "true" : undefined}
       onMouseEnter={() => setHovered(true)}
       onMouseLeave={() => setHovered(false)}
@@ -123,7 +119,6 @@ export default function InfoTooltipIcon({
         ref={buttonRef}
         type="button"
         aria-label={label}
-        title="More information"
         aria-describedby={open ? tooltipId : undefined}
         aria-expanded={open}
         data-testid={testId}
@@ -139,7 +134,7 @@ export default function InfoTooltipIcon({
             return next;
           })
         }
-        className="inline-flex h-6 w-6 shrink-0 items-center justify-center rounded-full text-slate-500 transition hover:bg-slate-100 hover:text-slate-600 focus:outline-hidden focus-visible:ring-2 focus-visible:ring-brand-500 dark:text-slate-400 dark:hover:bg-ink-750 dark:hover:text-slate-300"
+        className="tap-target inline-flex h-8 w-8 shrink-0 items-center justify-center rounded-full text-slate-500 transition hover:bg-slate-100 hover:text-slate-600 focus:outline-hidden focus-visible:ring-2 focus-visible:ring-brand-500 dark:text-slate-400 dark:hover:bg-ink-750 dark:hover:text-slate-300"
       >
         <IconInfoCircle className="h-4 w-4" stroke={2} aria-hidden />
       </button>

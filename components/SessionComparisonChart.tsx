@@ -2,7 +2,8 @@
 
 import { useState } from "react";
 import Link from "next/link";
-import { IconChevronRight } from "@tabler/icons-react";
+import DestinationIndicator from "@/components/DestinationIndicator";
+import SegmentedControl from "@/components/SegmentedControl";
 import { useFormatPrefs } from "@/components/FormatPrefsProvider";
 import { CYCLING_METRICS } from "@/lib/cycling-metrics";
 import { roundChartValue } from "@/lib/chart-format";
@@ -70,31 +71,17 @@ export default function SessionComparisonChart({
   return (
     <div className="mt-4 min-w-0" data-testid={`${testIdPrefix}-chart`}>
       {metrics.length > 1 && (
-        <div
-          className="flex flex-wrap gap-1"
-          aria-label="Comparison metric"
-          role="group"
-          data-testid={`${testIdPrefix}-metrics`}
-        >
-          {metrics.map((metric) => {
-            const active = metric.key === selected.key;
-            return (
-              <button
-                key={metric.key}
-                type="button"
-                aria-pressed={active}
-                onClick={() => setSelectedKey(metric.key)}
-                className={`rounded-full px-3 py-1 text-sm font-medium transition focus:outline-hidden focus-visible:ring-2 focus-visible:ring-brand-500 focus-visible:ring-offset-2 dark:focus-visible:ring-offset-ink-950 ${
-                  active
-                    ? "bg-brand-600 text-white"
-                    : "text-slate-600 hover:bg-slate-100 dark:text-slate-300 dark:hover:bg-ink-750"
-                }`}
-              >
-                {metric.shortLabel}
-              </button>
-            );
-          })}
-        </div>
+        <SegmentedControl
+          options={metrics.map((metric) => ({
+            value: metric.key,
+            label: metric.shortLabel,
+          }))}
+          value={selected.key}
+          onChange={setSelectedKey}
+          ariaLabel="Comparison metric"
+          testId={`${testIdPrefix}-metrics`}
+          fill
+        />
       )}
 
       <div className="mt-3" data-testid={`${testIdPrefix}-ranking`}>
@@ -134,10 +121,7 @@ export default function SessionComparisonChart({
                           year: "always",
                         })}
                   </p>
-                  <p
-                    className="truncate text-xs text-slate-500 dark:text-slate-400"
-                    title={point.title}
-                  >
+                  <p className="wrap-break-word text-xs text-slate-500 dark:text-slate-400">
                     {point.title}
                   </p>
                 </div>
@@ -176,12 +160,7 @@ export default function SessionComparisonChart({
                     selected.decimals,
                     selected.unit
                   )}
-                  {!point.current && (
-                    <IconChevronRight
-                      className="h-3.5 w-3.5 text-slate-400"
-                      aria-hidden="true"
-                    />
-                  )}
+                  {!point.current && <DestinationIndicator />}
                 </span>
               </div>
             );

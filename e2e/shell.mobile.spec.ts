@@ -1,7 +1,12 @@
 import { test, expect } from "./fixtures";
 import { type Page } from "@playwright/test";
 import Database from "better-sqlite3";
-import { openMobileDrawer, settledClick, expectInView } from "./helpers";
+import {
+  expectInView,
+  expectPhoneTapTargets,
+  openMobileDrawer,
+  settledClick,
+} from "./helpers";
 import { openLogSheet, showLogRow } from "./log-sheet-helpers";
 import { loginAs, openCommandPalette } from "./nav";
 import type { QuickLogId } from "@/lib/quick-log";
@@ -140,6 +145,9 @@ test.describe("auto-hiding top chrome (#1416 B)", () => {
     // The drawer still opens from the fixed dock; top-chrome motion never owns
     // navigation reachability after #2746.
     const drawer = await openMobileDrawer(page);
+    const close = drawer.getByRole("button", { name: "Close menu" });
+    await expect(close).toHaveAttribute("data-icon-button", "");
+    await expectPhoneTapTargets(page, "mobile drawer close", [close]);
     // A TOP-LEVEL row (#3079 moved Timeline into the collapsed "Plan & review"
     // group). What this case claims is that the drawer opens and its navigation is
     // reachable — an assertion about the drawer, not about the nav registry.
@@ -204,7 +212,10 @@ test("the identity bar rides in the sticky chrome and opens the top drawer (#141
     // Anchored to the TOP of the viewport, under the finger that opened it.
     expect(panelBox!.y).toBeLessThan(40);
 
-    await settledClick(page, panel.getByTestId(`view-toggle-${sharedId}`));
+    const viewToggle = panel.getByTestId(`view-toggle-${sharedId}`);
+    await expect(viewToggle).toHaveAttribute("data-icon-button", "");
+    await expectPhoneTapTargets(page, "profile view toggle", [viewToggle]);
+    await settledClick(page, viewToggle);
 
     // The bar now stacks both profiles — the view-set round-trip, read off the ONE
     // surface that reports it.

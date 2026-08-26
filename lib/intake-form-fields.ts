@@ -27,6 +27,7 @@ import type {
   IntakeObligation,
 } from "./types";
 import type { IntakePairDraft } from "./intake-rules";
+import type { PurposeDraft } from "./intake-purposes";
 import { serializeRxcuiIngredients } from "./rxnorm";
 
 // One dose row, structurally what DoseRowsEditor edits (declared here so the mapping
@@ -87,6 +88,10 @@ export interface IntakeItemFormState {
   doses: IntakeDoseDraft[];
   pairs: IntakePairDraft[];
   ingredients: IntakeIngredientDraft[];
+  // Purpose links (#2857) — the structured "why". Supplement surface only, exactly like
+  // `ingredients` above and for the reason the issue names: medications already carry
+  // the #1052 indication link, and supplements are where the reason had nowhere to live.
+  purposes: PurposeDraft[];
   notes: string;
   rxcui: string | null;
   rxcuiIngredients: string[];
@@ -181,6 +186,7 @@ export function intakeItemFields(
   } else {
     set("stack", state.stack.trim());
     set("ingredients", JSON.stringify(state.ingredients));
+    set("purposes", JSON.stringify(state.purposes));
   }
 
   set("doses", JSON.stringify(state.doses));
@@ -255,6 +261,7 @@ export function emptyIntakeItemFormState(
     ],
     pairs: [],
     ingredients: [],
+    purposes: [],
     notes: "",
     rxcui: null,
     rxcuiIngredients: [],

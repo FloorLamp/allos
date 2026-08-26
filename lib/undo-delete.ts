@@ -581,6 +581,26 @@ const KIND_SPECS = {
         childBinds: 1,
       },
       {
+        entity: "purposes",
+        table: "intake_item_purposes",
+        // Purpose links (#2857): the structured "why", restated in full on every save
+        // like the composition above. Nothing else references them, so they come back
+        // with the item — and must, or an undone delete would restore an item whose
+        // owner's own statement of why they take it had silently gone.
+        //
+        // `condition_id` is a REFERENCES with no ON DELETE, so a condition deleted
+        // between the capture and the undo would abort the restore on the FK (#375/#598).
+        // Drop such a row rather than null it: a condition purpose with no condition is
+        // not a purpose, and the schema CHECK refuses it anyway. Profile-owned, probed
+        // WITH the profile_id scope.
+        fks: [{ column: "item_id", ref: "item" }],
+        externalRefs: [
+          { column: "condition_id", table: "conditions", onMissing: "drop" },
+        ],
+        childWhere: "item_id = ?",
+        childBinds: 1,
+      },
+      {
         entity: "side_effects",
         table: "intake_item_side_effects",
         // Re-inserted after `courses` (its nullable course_id target) and `item`.
@@ -814,10 +834,13 @@ const KIND_SPECS = {
   //    re-promotion in the undo window WOULD re-take the external_id, which is exactly
   //    what `uniqueKey` adopts instead of failing the restore on the unique index.
   //
-  // The delete's one inbound null-out (`intake_items.indication_condition_id`, #1052)
-  // moves into captureDelete so both delete paths inherit it; like the sibling
-  // protocol/follow-up null-outs it is NOT restored on undo — the condition returns,
-  // the med's "For:" link stays honestly cleared.
+  // The delete's inbound detaches move into captureDelete so both delete paths inherit
+  // them; like the sibling protocol/follow-up null-outs they are NOT restored on undo —
+  // the condition returns, the item's "For:" link stays honestly cleared. There are two:
+  // `intake_items.indication_condition_id` (#1052), NULLed, and any
+  // `intake_item_purposes` row naming this condition (#2857), REMOVED — a purpose row
+  // with a null condition_id is not a purpose and the schema CHECK refuses it, so row
+  // removal is that link's null-out.
   condition: {
     kind: "condition",
     ownedTable: "conditions",

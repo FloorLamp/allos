@@ -8,6 +8,7 @@ import {
 } from "@tabler/icons-react";
 import { formatSeconds } from "@/lib/duration";
 import { useHaptics } from "@/components/useHaptics";
+import FilterPills from "@/components/FilterPills";
 import {
   REST_PRESETS_SEC,
   REST_STEP_SEC,
@@ -198,7 +199,6 @@ export default function RestTimer({
             type="button"
             onClick={() => (running ? setRunning(false) : start())}
             aria-label={running ? "Pause rest timer" : "Start rest timer"}
-            title={running ? "Pause rest timer" : "Start rest timer"}
             data-testid="rest-toggle"
             className="flex h-11 w-11 items-center justify-center rounded-lg bg-brand-600 text-white hover:bg-brand-500 active:scale-95"
           >
@@ -212,29 +212,25 @@ export default function RestTimer({
             type="button"
             onClick={reset}
             aria-label="Reset rest timer"
-            title="Reset rest timer"
             className="flex h-11 w-11 items-center justify-center rounded-lg border border-black/10 bg-surface text-slate-600 hover:bg-slate-50 active:scale-95 dark:border-white/10 dark:text-slate-300"
           >
             <IconRotateClockwise className="h-5 w-5" />
           </button>
         </div>
       </div>
-      <div className="mt-2 flex flex-wrap gap-1.5">
-        {REST_PRESETS_SEC.map((secs) => (
-          <button
-            key={secs}
-            type="button"
-            onClick={() => pickPreset(secs)}
-            aria-pressed={target === secs}
-            className={`rounded-full border px-3 py-1 text-xs font-medium transition pointer-coarse:text-sm ${
-              target === secs
-                ? "border-brand-500 bg-brand-500 text-white"
-                : "border-black/10 bg-surface text-slate-600 hover:bg-slate-50 dark:border-white/10 dark:text-slate-300"
-            }`}
-          >
-            {formatSeconds(secs)}
-          </button>
-        ))}
+      <div className="mt-2">
+        <FilterPills
+          mode="button"
+          layout="wrap"
+          label="Rest duration"
+          density="dense"
+          value={target}
+          onSelect={pickPreset}
+          options={REST_PRESETS_SEC.map((secs) => ({
+            value: secs,
+            label: formatSeconds(secs),
+          }))}
+        />
       </div>
     </div>
   );

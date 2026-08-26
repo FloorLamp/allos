@@ -17,6 +17,7 @@
 import { round } from "./units";
 import { cleanMedicationName } from "./prescription-parse";
 import { encodeDiagnosisRanks } from "./visit-diagnosis-rank";
+import { displayUnit, storedLabUnit } from "./display-unit";
 import type { PersistInput, PersistClinicalObservation } from "./import-shape";
 
 // The entity kinds an import writes that the diff tracks. Kept in a fixed display
@@ -171,14 +172,15 @@ export function recordRow(f: RecordFields): DiffRow {
     ? `ext:${f.external_id}`
     : `rec:${f.date}|${f.category}|${f.name.trim().toLowerCase()}`;
   const value = f.value ?? (f.value_num != null ? String(f.value_num) : "");
+  const shownUnit = displayUnit(f.unit);
   return {
     key,
-    label: `${f.name}${value ? ` — ${value}${f.unit ? ` ${f.unit}` : ""}` : ""}`,
+    label: `${f.name}${value ? ` — ${value}${shownUnit ? ` ${shownUnit}` : ""}` : ""}`,
     detail: f.date,
     fields: serializeFields({
       value: f.value,
       value_num: f.value_num,
-      unit: f.unit,
+      unit: storedLabUnit(f.unit),
       reference_range: f.reference_range,
       panel: f.panel,
       flag: f.flag,
@@ -393,7 +395,7 @@ export function snapshotFromPersistInput(input: PersistInput): ImportSnapshot {
           name: r.name,
           value: r.value,
           value_num: r.value_num,
-          unit: r.unit,
+          unit: storedLabUnit(r.unit),
           reference_range: r.reference_range,
           panel: r.panel,
           flag: r.flag,

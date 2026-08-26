@@ -4,6 +4,7 @@ import {
   ANNOTATION_KIND_META,
   type AnnotationKind,
 } from "@/lib/trend-annotations";
+import Chip from "@/components/Chip";
 
 // The per-event-type toggle for the Trends event annotations.
 // Presentational + controlled: the parent owns which kinds are enabled
@@ -28,16 +29,12 @@ export default function AnnotationToggleBar({
         const meta = ANNOTATION_KIND_META[kind];
         const on = enabled[kind];
         return (
-          <button
+          <Chip
             key={kind}
-            type="button"
-            aria-pressed={on}
+            role="filter"
+            density="dense"
+            pressed={on}
             onClick={() => onToggle(kind)}
-            className={`flex items-center gap-1.5 rounded-full border px-2.5 py-1 text-xs font-medium transition ${
-              on
-                ? "border-(--border) bg-surface text-slate-700 dark:text-slate-200"
-                : "border-black/10 bg-transparent text-slate-500 dark:border-white/10 dark:text-slate-400"
-            }`}
           >
             <span
               className="inline-block h-2.5 w-2.5 rounded-full"
@@ -47,7 +44,7 @@ export default function AnnotationToggleBar({
               }}
             />
             {meta.label}
-          </button>
+          </Chip>
         );
       })}
     </div>

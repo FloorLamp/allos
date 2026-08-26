@@ -9,6 +9,7 @@ import {
 } from "@/lib/protocol-outcome-picker";
 import { formatOutcomeDelta } from "@/lib/protocol-compare";
 import type { PanelId } from "@/lib/biomarker-panels";
+import { displayUnit } from "@/lib/display-unit";
 
 export default function ProtocolOutcomePicker({
   options,
@@ -77,7 +78,6 @@ export default function ProtocolOutcomePicker({
                 type="button"
                 className="rounded-full p-1 hover:bg-brand-100 dark:hover:bg-brand-500/20"
                 aria-label={`Remove ${option.label}`}
-                title="Remove outcome metric"
                 onClick={() => remove(option.key)}
               >
                 <IconX className="h-3.5 w-3.5" stroke={2} aria-hidden />
@@ -108,14 +108,18 @@ export default function ProtocolOutcomePicker({
           badgeFor={(key) => {
             const preview = byKey.get(key)?.preview;
             if (!preview) return null;
-            const unit = preview.unit ? ` ${preview.unit}` : "";
+            const shownUnit = displayUnit(preview.unit);
+            const unitSuffix = shownUnit ? ` ${shownUnit}` : "";
             return (
-              <span
-                className="shrink-0 text-xs tabular-nums text-slate-500 dark:text-slate-400"
-                title={`${preview.beforeMean} → ${preview.duringMean}${unit} (${preview.beforeN} before, ${preview.duringN} during)`}
-              >
-                {formatOutcomeDelta(preview.meanDelta)}
-                {unit}
+              <span className="flex max-w-[55%] shrink-0 flex-col items-end text-right text-xs tabular-nums text-slate-500 dark:text-slate-400">
+                <span>
+                  {formatOutcomeDelta(preview.meanDelta)}
+                  {unitSuffix}
+                </span>
+                <span className="wrap-break-word text-xs leading-tight">
+                  {preview.beforeMean} → {preview.duringMean}
+                  {unitSuffix} · {preview.beforeN}/{preview.duringN} readings
+                </span>
               </span>
             );
           }}

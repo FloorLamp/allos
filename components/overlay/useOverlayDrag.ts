@@ -51,13 +51,16 @@ export interface OverlayDragOptions {
   // Where the gesture may START. Defaults to the whole panel — right for the
   // drawer, whose swipe-left has no scrollable rival on its axis.
   //
-  // A bottom-anchored panel passes its DRAG HANDLE instead, and that is a safety
-  // decision, not an ergonomic one: the sheet's body scrolls and holds real
-  // controls, so a panel-wide grab would make "drag down over a button" a
-  // dismissal and put the gesture in a race with the scroller. The handle is the
-  // affordance that already says "flick me away", it owns its axis outright
-  // (`touch-none`), and nothing inside it can be hit by accident.
+  // A consumer with a scrollable body may instead use `canStart` to decide from
+  // the exact touch origin and its state at touch-start. BottomSheet does this:
+  // its non-scrolling chrome always admits while its body admits only when its
+  // scroller started at the top; the handle's rendered box separately gates
+  // whether that whole gesture is available at the current breakpoint.
   grabRef?: React.RefObject<HTMLElement | null>;
+  // Optional one-shot origin admission, forwarded to the shared recognizer.
+  // This is intentionally not a per-move guard: gesture ownership cannot flip
+  // after a scroll has already begun.
+  canStart?: (origin: Node) => boolean;
   // Which way the panel leaves: "down" for a bottom-anchored sheet or dock,
   // "left" for the edge-anchored drawer, "up" for the top-anchored profile
   // switcher (#1801), which retreats back through the bar it dropped from.
@@ -106,6 +109,7 @@ export interface OverlayDragOptions {
 export function useOverlayDrag({
   panelRef,
   grabRef,
+  canStart,
   direction,
   onOutcome,
   commitSettle = "away",
@@ -185,6 +189,7 @@ export function useOverlayDrag({
 
   useDragGesture({
     targetRef: grabRef ?? panelRef,
+    canStart,
     direction,
     enabled,
     onStart: () => setSuppressMotion(true),

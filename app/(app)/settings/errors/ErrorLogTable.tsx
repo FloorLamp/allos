@@ -1,15 +1,14 @@
 "use client";
 
-import { useState, useTransition } from "react";
 import type { ErrorEvent } from "@/lib/error-log-format";
 import { countLabel } from "@/lib/plural";
+import ClearLogControl from "@/components/ClearLogControl";
 import LogTable from "@/components/LogTable";
 import { useFormatPrefs } from "@/components/FormatPrefsProvider";
 import { formatTimestamp } from "@/lib/format-date";
 
-// Read-only table of persisted server errors, newest first, with an admin-only
-// "Clear" button (issue #596). No live stream — errors are rare and low-volume,
-// so an SSR snapshot with a manual refresh reads cleaner than the AI-logs SSE.
+// Persisted server errors, newest first. Errors are rare and low-volume, so an
+// SSR snapshot with a manual refresh reads cleaner than the AI-logs SSE.
 export default function ErrorLogTable({
   events,
   profileNames,
@@ -20,51 +19,14 @@ export default function ErrorLogTable({
   clearAction: () => Promise<void>;
 }) {
   const formatPrefs = useFormatPrefs();
-  const [pending, startTransition] = useTransition();
-  const [confirming, setConfirming] = useState(false);
 
   return (
     <div data-testid="error-log">
       <div className="mb-2 flex items-center gap-2 text-xs text-slate-500 dark:text-slate-400">
         <span className="ml-auto">{countLabel(events.length, "error")}</span>
-        {events.length > 0 &&
-          (confirming ? (
-            <span className="flex items-center gap-2">
-              <span className="text-slate-500 dark:text-slate-400">
-                Clear all?
-              </span>
-              <button
-                type="button"
-                disabled={pending}
-                onClick={() =>
-                  startTransition(async () => {
-                    await clearAction();
-                    setConfirming(false);
-                  })
-                }
-                className="btn-danger btn-sm"
-                data-testid="error-log-clear-confirm"
-              >
-                {pending ? "Clearing…" : "Confirm"}
-              </button>
-              <button
-                type="button"
-                onClick={() => setConfirming(false)}
-                className="rounded-md px-2 py-1 text-slate-500 hover:text-slate-700 dark:text-slate-400 dark:hover:text-slate-200"
-              >
-                Cancel
-              </button>
-            </span>
-          ) : (
-            <button
-              type="button"
-              onClick={() => setConfirming(true)}
-              className="rounded-md border border-black/10 px-2 py-1 font-medium text-slate-500 hover:text-slate-700 dark:border-white/10 dark:text-slate-400 dark:hover:text-slate-200"
-              data-testid="error-log-clear"
-            >
-              Clear
-            </button>
-          ))}
+        {events.length > 0 && (
+          <ClearLogControl log="error" clear={clearAction} />
+        )}
       </div>
 
       <LogTable

@@ -1,6 +1,6 @@
 import { test, expect } from "./fixtures";
 import { type Page } from "@playwright/test";
-import { comboboxRows, deleteActivityFromForm } from "./helpers";
+import { comboboxRows, deleteActivityFromForm, settledBoxes } from "./helpers";
 
 // #2870 step 3 — ONE URL. Starting a workout creates its row up front
 // (create-at-start) and stands the tab on the session's canonical page; the
@@ -31,6 +31,23 @@ test("live start → set → finish: the record settles at the session's own URL
     exact: true,
   });
   await expect(minimize).toBeVisible();
+  await expect(minimize).toHaveAttribute("data-button-control", "");
+  const header = page.getByTestId("activity-form-header");
+  const identity = page.getByTestId("activity-form-identity");
+  const [headerBox, identityBox, minimizeBox] = await settledBoxes([
+    header,
+    identity,
+    minimize,
+  ]);
+  // This action is structurally desktop-only: the phone workspace uses its
+  // shared drag handle. Button returns to compact desktop density, stays inside
+  // the header that owns its placement, and cannot cover the editable identity.
+  expect(minimizeBox.height).toBeLessThan(44);
+  expect(minimizeBox.x).toBeGreaterThanOrEqual(headerBox.x);
+  expect(minimizeBox.x + minimizeBox.width).toBeLessThanOrEqual(
+    headerBox.x + headerBox.width
+  );
+  expect(identityBox.x + identityBox.width).toBeLessThanOrEqual(minimizeBox.x);
   await expect(page.getByTestId("workout-drag-handle")).toHaveCount(0);
   await expect(
     page.getByRole("button", { name: "Close", exact: true })
