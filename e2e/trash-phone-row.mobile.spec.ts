@@ -311,3 +311,197 @@ test.describe("Data → Trash at phone width (#3491)", () => {
     await expect(dialog).toHaveCount(0);
   });
 });
+
+// ── THE TRASH CARD'S HEADER, AT PHONE WIDTH (#3716) ──────────────────────────
+//
+// #3502's phone sweep reported Data → Trash rendering "the card title and body as
+// one collided string" — `Recently deletedDeleted rows…` — and asked for a guard
+// that fails when the two boxes overlap or collapse onto one line.
+//
+// MEASURED FIRST, 2026-08-26 at 390x844, BEFORE ANY CHANGE: the `<h2>` occupies
+// [128, 152] and the `<p>` [156, 276], both `display: block`, both inside the
+// card's 358px column. They have never collided. What the sweep read was
+// `textContent` — which concatenates two correctly stacked block elements with no
+// separator, because a line break is a LAYOUT fact and text extraction has no
+// access to it. That is not a small correction: a text-extraction audit reports
+// this shape for every heading-above-paragraph in the app, so the string alone can
+// never distinguish a real collision from a clean one.
+//
+// So this asserts the thing the string could not, and does it in the two states
+// this spec owns — a populated list and a swept one. The card's header renders
+// ABOVE the list/empty branch in app/(app)/data/TrashSection.tsx, so no trash
+// state can reach it; running both is what turns that from a claim into a
+// reading. And the last leg FORGES the collision the sweep described, so a probe
+// that had gone blind cannot report the layout clean.
+interface HeaderShape {
+  /** The card's own box — 0 means nothing rendered and the verdict is about nothing. */
+  cardWidth: number;
+  titleTop: number;
+  titleBottom: number;
+  titleRight: number;
+  bodyTop: number;
+  bodyBottom: number;
+  bodyRight: number;
+  /** What a text-extraction audit sees. Kept so the artifact stays legible here. */
+  concatenated: string;
+}
+
+async function headerShape(page: Page): Promise<HeaderShape> {
+  return page.evaluate(() => {
+    const card = document.querySelector<HTMLElement>(
+      '[data-testid="data-trash"] .card'
+    );
+    const title = card?.querySelector<HTMLElement>("h2") ?? null;
+    const body = card?.querySelector<HTMLElement>("p") ?? null;
+    if (!card || !title || !body)
+      return {
+        cardWidth: 0,
+        titleTop: 0,
+        titleBottom: 0,
+        titleRight: 0,
+        bodyTop: 0,
+        bodyBottom: 0,
+        bodyRight: 0,
+        concatenated: "",
+      };
+    const t = title.getBoundingClientRect();
+    const b = body.getBoundingClientRect();
+    return {
+      cardWidth: card.getBoundingClientRect().width,
+      titleTop: t.top,
+      titleBottom: t.bottom,
+      titleRight: t.right,
+      bodyTop: b.top,
+      bodyBottom: b.bottom,
+      bodyRight: b.right,
+      concatenated: (card.textContent ?? "").trim().slice(0, 40),
+    };
+  });
+}
+
+function expectStacked(
+  shape: HeaderShape,
+  state: string,
+  viewportWidth: number
+) {
+  expect(
+    shape.cardWidth,
+    `${state}: the Trash card did not render, so the readings below are about nothing`
+  ).toBeGreaterThan(0);
+  expect(
+    shape.bodyTop,
+    `${state}: the explanatory body starts at y=${shape.bodyTop}, above the ` +
+      `title's bottom edge at y=${shape.titleBottom} — the two boxes overlap, ` +
+      `which is the collision #3716 describes`
+  ).toBeGreaterThanOrEqual(shape.titleBottom);
+  expect(
+    shape.titleBottom - shape.titleTop,
+    `${state}: the title has no height of its own`
+  ).toBeGreaterThan(0);
+  expect(
+    shape.bodyBottom - shape.bodyTop,
+    `${state}: the body has no height of its own`
+  ).toBeGreaterThan(0);
+  for (const [what, right] of [
+    ["title", shape.titleRight],
+    ["body", shape.bodyRight],
+  ] as const) {
+    expect(
+      right,
+      `${state}: the ${what}'s right edge is past the ${viewportWidth}px viewport`
+    ).toBeLessThanOrEqual(viewportWidth + 1);
+  }
+}
+
+test.describe("Data → Trash's card header stacks at phone width (#3716)", () => {
+  test.afterAll(sweepTrashProbes);
+
+  test("the title and its body occupy distinct lines, populated and swept", async ({
+    page,
+  }) => {
+    test.slow();
+    const viewportWidth = page.viewportSize()?.width ?? 0;
+    expect(viewportWidth).toBe(PHONE_WIDTH);
+
+    // ── POPULATED ─────────────────────────────────────────────────────────────
+    sweepTrashProbes();
+    plantTrashCaptures([
+      { labelSuffix: "header untitled", title: null, date: UNTITLED_DATE },
+      { labelSuffix: "header titled", title: TITLED, date: TITLED_DATE },
+    ]);
+    await page.goto(ROUTE);
+    // WAIT FOR THE CONTENT, NOT THE CONTAINER (#3384). The card's own heading is
+    // the thing being measured, so it is what gets waited for.
+    await expect(
+      page.getByTestId("data-trash").getByRole("heading", {
+        name: "Recently deleted",
+      })
+    ).toBeVisible();
+    await expect(
+      page.getByTestId("trash-row").filter({ hasText: TITLED })
+    ).toHaveCount(1);
+    const populated = await headerShape(page);
+    expectStacked(populated, "populated", viewportWidth);
+
+    // The artifact itself, recorded rather than described: extraction still reads
+    // as a collision over a layout that measured clean.
+    expect(
+      populated.concatenated.startsWith("Recently deletedDeleted rows"),
+      "the card's textContent no longer runs the two strings together. That is " +
+        "fine — but #3716's report was that string, so if the copy changed, the " +
+        "note above about what the sweep actually saw needs re-deriving."
+    ).toBe(true);
+
+    // ── SWEPT ─────────────────────────────────────────────────────────────────
+    // The header renders above the list/empty branch, so it must not move. The
+    // list below is NOT asserted empty: this profile is shared, and a sibling
+    // spec's delete can add to it (#3388) — what is asserted is the header, in
+    // both states.
+    sweepTrashProbes();
+    await page.goto(ROUTE);
+    await expect(
+      page.getByTestId("data-trash").getByRole("heading", {
+        name: "Recently deleted",
+      })
+    ).toBeVisible();
+    await expect(
+      page.getByTestId("trash-row").filter({ hasText: TITLED })
+    ).toHaveCount(0);
+    expectStacked(await headerShape(page), "swept", viewportWidth);
+  });
+
+  test("the probe can SEE the collision the sweep described — forged", async ({
+    page,
+  }) => {
+    test.slow();
+    await page.goto(ROUTE);
+    await expect(
+      page.getByTestId("data-trash").getByRole("heading", {
+        name: "Recently deleted",
+      })
+    ).toBeVisible();
+    expect((await headerShape(page)).bodyTop).toBeGreaterThanOrEqual(
+      (await headerShape(page)).titleBottom
+    );
+
+    // FORGED BY A SPEC on purpose — never a real render. Both blocks put inline,
+    // which is the arrangement that would actually produce the reported string as
+    // a rendered result rather than as an extraction artifact.
+    await page.evaluate(() => {
+      const card = document.querySelector<HTMLElement>(
+        '[data-testid="data-trash"] .card'
+      )!;
+      card.querySelector<HTMLElement>("h2")!.style.display = "inline";
+      const body = card.querySelector<HTMLElement>("p")!;
+      body.style.display = "inline";
+      body.style.marginTop = "0";
+    });
+
+    const forged = await headerShape(page);
+    expect(
+      forged.bodyTop < forged.titleBottom,
+      "the probe did NOT see a title and body it was just made to share a line, " +
+        "so its clean verdict above was never a measurement"
+    ).toBe(true);
+  });
+});

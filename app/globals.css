@@ -1126,13 +1126,41 @@
      plot height — square below `sm`, `plotHeightClass` (default h-64) above — and
      this rule is what makes that ownership real: whatever the caller renders into
      the slot (the chart, its lazy-loading placeholder, its offline/error fallback)
-     fills the box instead of carrying its own `h-32`/`h-40`/`h-64`. A class selector
-     plus an element selector outranks the utility's single class, so it wins over
-     the chart's own height without `!important` — and a call site therefore cannot
-     silently reintroduce a per-chart height vocabulary. */
+     fills the box instead of carrying its own `h-32`/`h-40`/`h-64`. */
   & > * {
     height: 100%;
     width: 100%;
+  }
+
+  /* AND IT DID NOT, FOR ANY CHILD THAT BROUGHT ITS OWN HEIGHT (#3574).
+     The comment here used to claim "a class selector plus an element selector
+     outranks the utility's single class". `*` is the UNIVERSAL selector and
+     contributes NOTHING to specificity, so `.chart-card-plot > *` is (0,1,0) —
+     exactly tied with `.h-64`, and the tie goes to whichever Tailwind emits last,
+     which is `.h-64`. Measured 2026-08-26 at 390px on `/trends/metric/weight`: a
+     324x324 square plot holding a 256px child, 68px of dead card under the axis.
+     Not one call site either — the chart, `ChartLoading` and `ChartUnavailable`
+     all default to `h-64`, so every phone chart square in the app under-filled
+     unless its caller passed `CHART_PLOT_FILL` (only BodySection's full-bleed
+     intraday panel did).
+
+     `:not([data-empty-state])` is an attribute selector, so this complex selector
+     is (0,2,0) and beats a lone utility. The exclusion is not a specificity trick:
+     it names THE ONE CHILD THAT MUST NOT FILL, which is the #2399 empty path
+     directly below.
+
+     MIN-height, deliberately, and this is the whole difference between closing
+     the class and re-opening a different one. `height: 100%` here would also
+     SHRINK a child that is taller than the box its card reserved, and five cards
+     are in that position on desktop today (`PracticeTrends`' two `sm:h-48` cards
+     and BodySection's three `sm:h-56` intraday point cards, each holding an
+     `h-64` chart). Whether a chart may exceed its card's declared plot height is
+     a real question and it is NOT this one; #3574 is about a square the child
+     leaves EMPTY, and its acceptance says desktop rendering is unchanged. A floor
+     answers exactly that: a short child grows to the box, a tall one is left
+     where it was. */
+  & > *:not([data-empty-state]) {
+    min-block-size: 100%;
   }
 
   /* THE EMPTY PATH (#2399). An ABSENCE is not a plot. The card kept reserving the

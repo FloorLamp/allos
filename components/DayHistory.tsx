@@ -1057,9 +1057,27 @@ export default function DayHistory({
         </div>
       )}
 
+      {/* ONE COLUMN THAT IS THE CONTAINER'S WIDTH, NOT THE CALENDAR'S (#3712).
+        This band used to be a bare `grid`, whose single implicit column is an
+        `auto` track — and an `auto` track's floor is its items' min-content
+        width. The calendar panel's min-content is its whole grid (a 30px weekday
+        gutter plus 13 columns of 24px cells and 3px gaps = 378px at a quarter
+        window), so at 390px the track was sized by the CALENDAR and the panel
+        overhung the viewport by 4px, taking the last day column's three 24px
+        buttons past the right edge with it. The `overflow-x-auto` scroller
+        inside could not save them: it had grown to its own content's width, so
+        `scrollWidth === clientWidth` and there was nothing to swipe.
+
+        Tailwind's `grid-cols-1` is `repeat(1, minmax(0, 1fr))` — an explicit
+        zero floor — so the track is the container's width and the scroller
+        scrolls the way `docs/internals/day-history.md` says both halves do.
+        Nothing is resized: the cells stay at their measured 24px and the
+        reachability comes from the scroller, exactly as the matrix half has
+        always worked. `xl:grid-cols-2` below is the same `minmax(0, 1fr)`
+        shape, which is why the two-column case never showed this. */}
       <div
         data-testid="day-history-calendar-band"
-        className={`grid gap-4 ${
+        className={`grid grid-cols-1 gap-4 ${
           (calendar || strip) && (selectedDay || selectedRow)
             ? "xl:grid-cols-2 xl:items-start"
             : ""
