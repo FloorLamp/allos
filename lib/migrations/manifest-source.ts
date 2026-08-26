@@ -274,16 +274,29 @@ export function readManifest(
 // rehash from a laundered one, and `rm` was the quieter of the two.
 //
 // The reference is therefore the manifest AS OF THE MERGE-BASE WITH origin/main:
-// the hashes on main as of the last time this checkout FETCHED, which no
-// working-tree operation can move.
+// `git merge-base origin/main HEAD`, read out of git's object store rather than off
+// disk. NO EDIT TO A TRACKED FILE CAN MOVE IT — that, and only that, is the
+// property the refusal rests on. `rm`, a hand-typed hash and a laundered
+// regenerate all leave it exactly where it was.
 //
-// THAT SECOND CLAUSE USED TO READ "the hashes that are actually on main", and it
-// was false (#3635 R4). `refs/remotes/origin/main` is an ordinary local ref whose
-// value is whenever somebody last ran `git fetch`. One fetch behind, a branch that
-// deletes a migration main already carries prints `GONE: 0` — which is the same
-// output as asked-and-clean, and the reassuring direction. So the report now
-// carries the base commit's COMMIT DATE beside its sha, and the report is the
-// thing a reviewer reads. A stale reference is legible instead of invisible.
+// IT IS NOT, HOWEVER, IMMOVABLE, AND THIS COMMENT USED TO SAY IT WAS (#3635 R4).
+// Two ordinary operations move it, and neither is an edit:
+//
+//   - `git fetch` advances `refs/remotes/origin/main`. It is an ordinary LOCAL ref
+//     whose value is whenever somebody last ran that command — the earlier version
+//     of this sentence called it "the hashes that are actually on main", which is
+//     what a stale ref is precisely not.
+//   - `git merge origin/main` (or a rebase onto it) advances HEAD's side, which
+//     drags the merge-base forward with it. That is a working-tree operation and it
+//     moves the reference, so "no working-tree operation can move it" was wrong as
+//     written, in the direction that discourages checking.
+//
+// Both move it FORWARD, so neither can resurrect a hash that was already released;
+// what they change is HOW MUCH has shipped as far as this checkout knows. One fetch
+// behind, a branch that deletes a migration main already carries prints `GONE: 0` —
+// the same output as asked-and-clean, and the reassuring direction. So the report
+// carries the base commit's COMMIT DATE beside its sha, and the report is the thing
+// a reviewer reads. A stale reference is legible instead of invisible.
 //
 // Not a refusal, deliberately: "origin/main is older than your newest local
 // commit" is true of essentially every branch anyone is working on, so refusing on
