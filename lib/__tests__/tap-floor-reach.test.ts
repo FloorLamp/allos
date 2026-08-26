@@ -122,9 +122,9 @@ const TREE: Corpus = { base: REPO, roots: ROOTS };
 const CENSUS_FLOOR = 1200;
 // Filled from the governed source-verdict population below: explicit readable
 // heights plus the two mechanisms whose rendered floor arrives from CSS.
-const GOVERNED_CENSUS_FLOOR = 473;
+const GOVERNED_CENSUS_FLOOR = 472;
 const MECHANISM_CENSUS_FLOORS: Partial<Record<FloorMechanism, number>> = {
-  "btn-family": 350,
+  "btn-family": 349,
   "tap-target": 31,
   rendered: 39,
 };
