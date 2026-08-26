@@ -101,6 +101,11 @@ const PANE_ROW = "text-xs text-slate-700 dark:text-slate-200";
 const PANE_VALUE =
   "shrink-0 text-xs tabular-nums text-slate-500 dark:text-slate-400";
 
+type DetailDisclosureOwner =
+  | { kind: "aggregate"; date: string }
+  | { kind: "matrix"; rowKey: string; date: string }
+  | { kind: "row"; rowKey: string };
+
 function plural(n: number, one: string, many: string): string {
   return `${n} ${n === 1 ? one : many}`;
 }
@@ -174,29 +179,11 @@ export default function DayHistory({
   const levelClasses = [ramp.emptyClass, ...ramp.stepClasses];
   const [selected, setSelected] = useState<ReadonlySet<string> | null>(null);
   const [detail, setDetail] = useState<string | null>(null);
-  const disclosureContext = useMemo(
-    () =>
-      JSON.stringify([
-        domain,
-        grain,
-        end,
-        weeks,
-        weekStart,
-        selected ? [...selected].sort() : null,
-        groups,
-        values,
-      ]),
-    [domain, end, grain, groups, selected, values, weekStart, weeks]
-  );
-  const [disclosure, setDisclosure] = useState<{
-    context: string;
-    text: string;
-  } | null>(null);
-  const disclosureDetail =
-    disclosure?.context === disclosureContext ? disclosure.text : null;
-  const previewDetail = (text: string) => {
+  const [disclosureOwner, setDisclosureOwner] =
+    useState<DetailDisclosureOwner | null>(null);
+  const previewDetail = (text: string, owner: DetailDisclosureOwner) => {
     setDetail(text);
-    setDisclosure({ context: disclosureContext, text });
+    setDisclosureOwner(owner);
   };
   const [expanded, setExpanded] = useState(false);
   const [filtersExpanded, setFiltersExpanded] = useState(false);
@@ -585,6 +572,13 @@ export default function DayHistory({
     )}${mins}${notes}${partialSuffix(cell.date)}`;
   };
 
+  const matrixRowSummary = (row: DayHistoryRow): string =>
+    `${row.label}: ${plural(row.total, spec.unitOne, spec.unitMany)} across ${plural(
+      row.activeDays,
+      bw.one,
+      bw.many
+    )}`;
+
   const minsSuffix =
     spec.detailSuffix === "min" && totalDetail > 0
       ? ` · ${durationLabel(totalDetail)}`
@@ -703,13 +697,45 @@ export default function DayHistory({
   const calendarCellSummary = (cell: DayHistoryCalendarCell): string =>
     aggregateCellSummary(cell);
 
+  const disclosureDetail = (() => {
+    if (!disclosureOwner) return null;
+    if (disclosureOwner.kind === "aggregate") {
+      const cell =
+        calendar?.columns
+          .flat()
+          .find(
+            (candidate) =>
+              !candidate.future && candidate.date === disclosureOwner.date
+          ) ??
+        strip?.cells.find(
+          (candidate) => candidate.date === disclosureOwner.date
+        );
+      return cell ? aggregateCellSummary(cell) : null;
+    }
+    const row = rows.find(
+      (candidate) => candidate.key === disclosureOwner.rowKey
+    );
+    if (!row) return null;
+    if (disclosureOwner.kind === "row") return matrixRowSummary(row);
+    const column = buckets.indexOf(disclosureOwner.date);
+    return column >= 0 && row.cells[column]?.date === disclosureOwner.date
+      ? matrixCellSummary(row, column)
+      : null;
+  })();
+  if (disclosureOwner && disclosureDetail === null) {
+    // Filtering, folding, or changing the window can remove the owning visual.
+    // Clear during render like the selected-row/day repairs above so restoring a
+    // prior filter cannot resurrect detail the reader has not previewed again.
+    setDisclosureOwner(null);
+  }
+
   // Hover for pointers, focus for keyboards, tap for touch — every path pushes
   // the same accessible summary into the visible caption and disclosure.
   // Calendar cells drive the shared hover day; a click SELECTS (toggling),
   // never navigates.
   const calendarCellProps = (text: string, date: string) => ({
     onMouseEnter: () => {
-      previewDetail(text);
+      previewDetail(text, { kind: "aggregate", date });
       setHoverDay(date);
     },
     onMouseLeave: () => {
@@ -717,7 +743,7 @@ export default function DayHistory({
       setHoverDay(null);
     },
     onFocus: () => {
-      previewDetail(text);
+      previewDetail(text, { kind: "aggregate", date });
       setHoverDay(date);
     },
     onBlur: () => {
@@ -725,7 +751,7 @@ export default function DayHistory({
       setHoverDay(null);
     },
     onClick: () => {
-      previewDetail(text);
+      previewDetail(text, { kind: "aggregate", date });
       selectDay(date, true);
     },
   });
@@ -822,7 +848,7 @@ export default function DayHistory({
     ci: number
   ) => ({
     onMouseEnter: () => {
-      previewDetail(text);
+      previewDetail(text, { kind: "matrix", rowKey, date });
       setHoverDay(date);
       setHoverRow(rowKey);
     },
@@ -833,7 +859,7 @@ export default function DayHistory({
     },
     onFocus: () => {
       setFocusCell({ row: ri, col: ci });
-      previewDetail(text);
+      previewDetail(text, { kind: "matrix", rowKey, date });
       setHoverDay(date);
       setHoverRow(rowKey);
     },
@@ -843,7 +869,7 @@ export default function DayHistory({
       setHoverRow(null);
     },
     onClick: () => {
-      previewDetail(text);
+      previewDetail(text, { kind: "matrix", rowKey, date });
       selectDay(date, false);
     },
     onKeyDown: (event: React.KeyboardEvent<HTMLElement>) => {
@@ -1591,14 +1617,13 @@ export default function DayHistory({
                       <span className="truncate">{row.short}</span>
                     </>
                   );
-                  const rowSummary = `${row.label}: ${plural(
-                    row.total,
-                    spec.unitOne,
-                    spec.unitMany
-                  )} across ${plural(row.activeDays, bw.one, bw.many)}`;
+                  const rowSummary = matrixRowSummary(row);
                   const rowHoverProps = {
                     onMouseEnter: () => {
-                      previewDetail(rowSummary);
+                      previewDetail(rowSummary, {
+                        kind: "row",
+                        rowKey: row.key,
+                      });
                       setHoverDay(null);
                       setHoverRow(row.key);
                     },
@@ -1631,7 +1656,10 @@ export default function DayHistory({
                           className={`sticky left-0 z-2 flex w-24 shrink-0 cursor-pointer items-center justify-end gap-1 self-stretch px-3 text-xs font-medium text-brand-700 hover:font-semibold sm:w-28 dark:text-brand-400 ${MATRIX_LABEL_BG}`}
                           {...rowHoverProps}
                           onFocus={() => {
-                            previewDetail(rowSummary);
+                            previewDetail(rowSummary, {
+                              kind: "row",
+                              rowKey: row.key,
+                            });
                             setHoverDay(null);
                             setHoverRow(row.key);
                           }}
@@ -1660,10 +1688,16 @@ export default function DayHistory({
                               setSelectedRowKey((prev) =>
                                 prev === row.key ? null : row.key
                               );
-                              previewDetail(rowSummary);
+                              previewDetail(rowSummary, {
+                                kind: "row",
+                                rowKey: row.key,
+                              });
                             }}
                             onFocus={() => {
-                              previewDetail(rowSummary);
+                              previewDetail(rowSummary, {
+                                kind: "row",
+                                rowKey: row.key,
+                              });
                               setHoverDay(null);
                               setHoverRow(row.key);
                             }}

@@ -41,17 +41,19 @@ describe("visual title parity", () => {
         disconnect() {}
       }
     );
+    const values = [
+      { date: "2026-08-26", group: "strength", value: 1 },
+      { date: "2026-08-26", group: "cardio", value: 1 },
+    ];
+    const groups = [
+      { key: "strength", label: "Strength" },
+      { key: "cardio", label: "Cardio" },
+    ];
     const { rerender } = render(
       <DayHistory
         domain="workout"
-        values={[
-          { date: "2026-08-26", group: "strength", value: 1 },
-          { date: "2026-08-26", group: "cardio", value: 1 },
-        ]}
-        groups={[
-          { key: "strength", label: "Strength" },
-          { key: "cardio", label: "Cardio" },
-        ]}
+        values={values}
+        groups={groups}
         end="2026-08-26"
         weeks={1}
         weekStart={0}
@@ -59,39 +61,36 @@ describe("visual title parity", () => {
         formatPrefs={DEFAULT_FORMAT_PREFS}
       />
     );
-    const cell = screen
-      .getAllByRole("gridcell")
-      .find((candidate) =>
-        candidate.getAttribute("aria-label")?.includes("Strength")
-      );
-    expect(cell).toBeTruthy();
-    const detail = cell!.getAttribute("aria-label")!;
-    fireEvent.focus(cell!);
-    fireEvent.blur(cell!);
+    const aggregate = screen.getByRole("button", {
+      name: /August 26, 2026 — 2 sessions.*today/,
+    });
+    const detail = aggregate.getAttribute("aria-label")!;
+    fireEvent.focus(aggregate);
+    fireEvent.blur(aggregate);
 
-    const disclosure = screen.getByRole("button", { name: detail });
+    const disclosure = within(
+      screen.getByTestId("day-history-matrix-header")
+    ).getByRole("button", { name: detail });
     fireEvent.click(disclosure);
     expect(screen.getByRole("tooltip").textContent).toBe(detail);
 
+    // The same semantic owner re-derives its current format/today wording.
     rerender(
       <DayHistory
         domain="workout"
-        values={[
-          { date: "2026-08-26", group: "strength", value: 1 },
-          { date: "2026-08-26", group: "cardio", value: 1 },
-        ]}
-        groups={[
-          { key: "strength", label: "Strength" },
-          { key: "cardio", label: "Cardio" },
-        ]}
-        end="2026-08-27"
+        values={values}
+        groups={groups}
+        end="2026-08-26"
         weeks={1}
         weekStart={0}
         today="2026-08-27"
-        formatPrefs={DEFAULT_FORMAT_PREFS}
+        formatPrefs={{ ...DEFAULT_FORMAT_PREFS, dateFormat: "dmy" }}
       />
     );
-    expect(screen.queryByRole("button", { name: detail })).toBeNull();
+    const updatedDetail = "Wednesday, 26 August 2026 — 2 sessions";
+    const header = within(screen.getByTestId("day-history-matrix-header"));
+    expect(header.queryByRole("button", { name: detail })).toBeNull();
+    expect(header.getByRole("button", { name: updatedDetail })).toBeTruthy();
 
     const currentCell = screen
       .getAllByRole("gridcell")
@@ -102,10 +101,39 @@ describe("visual title parity", () => {
     const currentDetail = currentCell!.getAttribute("aria-label")!;
     fireEvent.focus(currentCell!);
     fireEvent.blur(currentCell!);
-    expect(screen.getByRole("button", { name: currentDetail })).toBeTruthy();
+    expect(header.getByRole("button", { name: currentDetail })).toBeTruthy();
 
     fireEvent.click(screen.getByRole("button", { name: "Strength" }));
-    expect(screen.queryByRole("button", { name: currentDetail })).toBeNull();
+    expect(header.queryByRole("button", { name: currentDetail })).toBeNull();
+    fireEvent.click(screen.getByRole("button", { name: "Strength" }));
+    expect(header.queryByRole("button", { name: currentDetail })).toBeNull();
+
+    const restoredCell = screen
+      .getAllByRole("gridcell")
+      .find((candidate) =>
+        candidate.getAttribute("aria-label")?.includes("Strength")
+      );
+    expect(restoredCell).toBeTruthy();
+    const restoredDetail = restoredCell!.getAttribute("aria-label")!;
+    fireEvent.focus(restoredCell!);
+    fireEvent.blur(restoredCell!);
+    expect(header.getByRole("button", { name: restoredDetail })).toBeTruthy();
+
+    // Moving the window beyond the owner removes it rather than resurrecting it
+    // if the old window later returns.
+    rerender(
+      <DayHistory
+        domain="workout"
+        values={values}
+        groups={groups}
+        end="2026-09-10"
+        weeks={1}
+        weekStart={0}
+        today="2026-09-10"
+        formatPrefs={{ ...DEFAULT_FORMAT_PREFS, dateFormat: "dmy" }}
+      />
+    );
+    expect(screen.queryByRole("button", { name: restoredDetail })).toBeNull();
   });
 
   it("keeps intensity choices exact and discloses every hint", () => {
