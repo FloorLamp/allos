@@ -125,7 +125,13 @@ describe("eventLedgerEmptyNote", () => {
 
   it("states the bare fact when there is no window to blame", () => {
     expect(
-      eventLedgerEmptyNote({}, "servings", FOOD_NEXT, DEFAULT_FORMAT_PREFS, TODAY)
+      eventLedgerEmptyNote(
+        {},
+        "servings",
+        FOOD_NEXT,
+        DEFAULT_FORMAT_PREFS,
+        TODAY
+      )
     ).toBe(
       "No servings were logged. Change the range or log food from Nutrition."
     );

@@ -115,9 +115,7 @@ describe("compiler-API imports go through the pinned alias (#3559)", () => {
     // is the floor that makes the green above mean something: the conversion moved
     // sixteen files onto the alias, and they are all still here.
     const onAlias = candidates.filter((file) =>
-      fs
-        .readFileSync(file, "utf8")
-        .includes(`from "${SANCTIONED}"`)
+      fs.readFileSync(file, "utf8").includes(`from "${SANCTIONED}"`)
     );
     expect(onAlias.length).toBeGreaterThanOrEqual(14);
   });
@@ -152,9 +150,9 @@ describe("compiler-API imports go through the pinned alias (#3559)", () => {
         `import ts from "typescript/lib/typescript.js";`
       )
     ).toEqual(["typescript/lib/typescript.js"]);
-    expect(rootCompilerApiSpecifiers(`const ts = require("typescript");`)).toEqual(
-      ["typescript"]
-    );
+    expect(
+      rootCompilerApiSpecifiers(`const ts = require("typescript");`)
+    ).toEqual(["typescript"]);
     expect(
       rootCompilerApiSpecifiers(`const ts = await import("typescript");`)
     ).toEqual(["typescript"]);
@@ -167,9 +165,9 @@ describe("compiler-API imports go through the pinned alias (#3559)", () => {
   // takes the real guard with it. `typescript-eslint` is the trap: a prefix match on
   // "typescript" flags the lint toolchain the whole repo depends on.
   it("stays SILENT on the alias and on its lookalike neighbours", () => {
-    expect(rootCompilerApiSpecifiers(`import ts from "typescript-api";`)).toEqual(
-      []
-    );
+    expect(
+      rootCompilerApiSpecifiers(`import ts from "typescript-api";`)
+    ).toEqual([]);
     expect(
       rootCompilerApiSpecifiers(`import tseslint from "typescript-eslint";`)
     ).toEqual([]);
