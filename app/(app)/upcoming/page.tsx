@@ -4,6 +4,7 @@ import DestinationLink, {
 } from "@/components/DestinationLink";
 import SegmentedControl from "@/components/SegmentedControl";
 import IconButton from "@/components/IconButton";
+import SubjectChip from "@/components/SubjectChip";
 import {
   IconPill,
   IconRefresh,
@@ -794,35 +795,6 @@ function DemographicsNudge({
   );
 }
 
-// A small subject chip (#534/#900) rendered on a cross-profile row for a NON-acting
-// member (issue #1327 fix 1: the acting profile's rows are implied by the view strip).
-// On-element identity, never spatial (#531). The name truncates so the chip fits its
-// fixed-width aligned slot.
-function SubjectChip({ subject }: { subject: SubjectInfo }) {
-  return (
-    <span
-      data-testid={`subject-chip-${subject.profileId}`}
-      className="flex min-w-0 items-center gap-1 rounded-full border border-black/10 bg-slate-50 py-0.5 pl-0.5 pr-2 text-xs font-medium text-slate-600 dark:border-white/10 dark:bg-ink-850 dark:text-slate-300"
-    >
-      <Avatar
-        profile={{
-          id: subject.profileId,
-          name: subject.name,
-          photo_path: subject.photoPath,
-          photo_version: subject.photoVersion,
-        }}
-        size="sm"
-      />
-      <span className="truncate">{subject.name}</span>
-      {subject.access === "read" && (
-        <span className="shrink-0 rounded-full bg-amber-100 px-1 text-xs font-semibold uppercase tracking-wide text-amber-700 dark:bg-amber-950 dark:text-amber-300">
-          RO
-        </span>
-      )}
-    </span>
-  );
-}
-
 // The collapsed "Snoozed & dismissed" section — the COMPLETE window over the
 // findings-suppression bus (issue #1151), now cross-profile (#1096): each row's
 // Restore targets the ITEM's own profile (profile_id threaded), never the acting
@@ -1018,7 +990,11 @@ function SuppressedSection({
                           : "Dismissed"}
                       </div>
                     </div>
-                    {subject && <SubjectChip subject={subject} />}
+                    {subject && (
+                      <div className="flex min-w-0 max-w-44 shrink-0">
+                        <SubjectChip subject={subject} />
+                      </div>
+                    )}
                     <form
                       action={async (fd) => {
                         "use server";
