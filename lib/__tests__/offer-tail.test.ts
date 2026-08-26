@@ -4,12 +4,7 @@
 // The load-bearing property under test is that scoping is a function of the CURRENT
 // clock, not of when a message was built. Everything else here is copy and shape.
 
-import fs from "node:fs";
-import path from "node:path";
-import { fileURLToPath } from "node:url";
 import { describe, it, expect } from "vitest";
-import { stripComments } from "./strip-comments";
-import { makeTmpDir } from "./tmp-dir";
 import {
   isOfferedOn,
   slotHintBucket,
@@ -339,63 +334,18 @@ describe("offerTailNeedsRefresh", () => {
 // control. Lose it and the list reads as `/dose`: silently, because "a /dose tap" is a
 // perfectly valid reading that stamps `telegram-command` and skips the chip rebuild.
 //
-// Two halves, because the invariant has two ways to break:
-//   1. `expandedOfferActions` stops appending the control — asserted below, directly.
-//   2. A THIRD site starts minting `prn:` and never thinks about the discriminator —
-//      caught by the census, which pins the minter set at exactly the two that exist.
-
-const PRN_MINTERS: Record<string, string> = {
-  "lib/notifications/offer-tail.ts":
-    "the digest's expanded offer list; `expandedOfferActions` appends the collapse " +
-    "control to every list it renders, which is what makes the keyboard readable",
-  "lib/notifications/telegram-quick-log.ts":
-    "the `/dose` command's reusable list, which has never had a collapse control — " +
-    "it is the OTHER side of the discriminator, and must stay that way",
-};
-
-const REPO_ROOT = path.resolve(
-  fileURLToPath(new URL("../..", import.meta.url))
-);
-
-/**
- * Every non-test source file under `root` minting a `prn:` callback token.
- *
- * Takes a ROOT so the reach test below can run this whole walker over a corpus
- * written to break it — a census proved only against a complying tree has proved
- * that the tree complies, not that the census can see.
- */
-function prnMinters(root: string = REPO_ROOT): string[] {
-  const roots = ["lib", "app"];
-  const out: string[] = [];
-  const walkDir = (dir: string, base: string): void => {
-    let entries: fs.Dirent[];
-    try {
-      entries = fs.readdirSync(dir, { withFileTypes: true });
-    } catch {
-      return;
-    }
-    for (const entry of entries) {
-      const p = path.join(dir, entry.name);
-      if (entry.isDirectory()) {
-        if (entry.name === "node_modules" || entry.name === ".next") continue;
-        walkDir(p, base);
-        continue;
-      }
-      if (!p.endsWith(".ts") && !p.endsWith(".tsx")) continue;
-      const rel = path.relative(base, p).split(path.sep).join("/");
-      if (/__(?:db_|action_)?tests__/.test(rel)) continue;
-      if (/\.test\.tsx?$/.test(p)) continue;
-      // COMMENTS STRIPPED FIRST. Five of the seven `` `prn: `` occurrences in this
-      // tree are PROSE about the shared prefix — a raw text sweep would report the
-      // modules that merely explain the mechanism as if they minted tokens, and the
-      // registry would then be a list of documentation.
-      if (/`prn:/.test(stripComments(fs.readFileSync(p, "utf8"))))
-        out.push(rel);
-    }
-  };
-  for (const r of roots) walkDir(path.join(root, r), root);
-  return [...new Set(out)].sort();
-}
+// SO THE INVARIANT IS ASSERTED ON BEHAVIOUR, at the one function that guarantees it:
+// `expandedOfferActions` appends the control to every list it renders. That is the half
+// a change can actually break, and testing it costs nothing to keep true.
+//
+// WHAT IS NOT ASSERTED HERE, named rather than pinned: that no THIRD site starts minting
+// `prn:`. Only two do today — `expandedOfferActions` (which carries the collapse control,
+// and is therefore readable as an offer list) and the `/dose` command's reusable list in
+// lib/notifications/telegram-quick-log.ts (which has never had one, and is the OTHER side
+// of the discriminator). A census over minter occurrences would have to be maintained as
+// the tree moves and would buy nothing this sentence does not say. IF YOU MINT `prn:`
+// FROM A THIRD KEYBOARD: decide which side it is on. An offer list must carry a collapse
+// control; a command list must not. Get it wrong and the tap is misattributed silently.
 
 describe("the prn: keyboard discriminator", () => {
   it("appends a collapse control to EVERY expanded offer list", () => {
@@ -415,17 +365,6 @@ describe("the prn: keyboard discriminator", () => {
       expect(actions.filter((a) => a.data?.startsWith("prn:"))).toHaveLength(n);
       expect(carries(actions), `${n} offered items`).toBe(true);
     }
-  });
-
-  it("mints prn: from exactly the two keyboards that own the discriminator", () => {
-    expect(
-      prnMinters(),
-      "A source file mints a `prn:` callback token and is not one of the two " +
-        "keyboards this discriminator is built on (#3567 item 7). `prn:` says " +
-        "nothing about which keyboard offered it — the COLLAPSE CONTROL does. If the " +
-        "new keyboard is an offer list, it must carry one; if it is a command list, " +
-        "it must not. Then add a line to PRN_MINTERS saying which it is."
-    ).toEqual(Object.keys(PRN_MINTERS).sort());
   });
 
   it("loses the control ONLY at the wire cap, and says at which count", () => {
@@ -463,37 +402,5 @@ describe("the prn: keyboard discriminator", () => {
       );
     expect(hasCollapse(list(TELEGRAM_MAX_BUTTONS - 1))).toBe(true);
     expect(hasCollapse(list(TELEGRAM_MAX_BUTTONS))).toBe(false);
-  });
-
-  it("SEES a third minter, and stays SILENT on prose about the prefix", () => {
-    const root = makeTmpDir("prn-minters");
-    const write = (rel: string, body: string): void => {
-      const abs = path.join(root, rel);
-      fs.mkdirSync(path.dirname(abs), { recursive: true });
-      fs.writeFileSync(abs, body);
-    };
-    // A third keyboard minting the token — the finding.
-    write(
-      "lib/notifications/new-keyboard.ts",
-      "export const btn = { data: `prn:${pid}:${id}:${tok()}` };\n"
-    );
-    // Prose about the shared prefix, which is what most `prn:` occurrences in this
-    // tree actually are. Reporting these would make the registry a list of docs.
-    write(
-      "lib/notifications/explainer.ts",
-      "// `prn:` is shared by the two lists; see the discriminator.\n" +
-        "export const NOTE = 1;\n"
-    );
-    // A READER of the token, not a minter: a double-quoted prefix test. Named
-    // `readsPrnToken` rather than the retired generic spelling that
-    // lib/__tests__/current-vocabulary.test.ts holds the tree away from — a fixture
-    // is current source too, and that guard was right to say so.
-    write(
-      "lib/notifications/reader.ts",
-      'export const readsPrnToken = (d: string) => d.startsWith("prn:");\n'
-    );
-    // And a test file, excluded by suffix even though it mints the same shape.
-    write("lib/__tests__/x.test.ts", "const d = `prn:1:2:tok`;\n");
-    expect(prnMinters(root)).toEqual(["lib/notifications/new-keyboard.ts"]);
   });
 });

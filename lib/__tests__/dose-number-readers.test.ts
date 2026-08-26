@@ -966,6 +966,19 @@ describe("the census's reach", () => {
 // questions are asked, so an alias is transparent and the dose unit hiding behind
 // `${DOSE_UNIT}` is visible.
 //
+// THE TWO REGISTRIES BELOW ARE CLASSIFICATIONS, NOT AN OCCURRENCE ALLOWLIST, and the
+// difference is why they earn their keep. Neither lists PLACES the defect is tolerated.
+// `NOT_A_NUMBER_SCAN` answers "is this export a number a reader returns?" — a question
+// about what a constant IS, asked once of each thing lib/dri.ts publishes, and the
+// answer does not change as the tree moves. `ALLOWED_NON_REFUSING` answers "is this a
+// name grammar or a quantity reader?" — the distinction #3464 created and the exact
+// distinction this census exists to be able to draw. Both are ONE entry.
+//
+// So do not delete them as ratchet machinery, and do not grow them as one either. A
+// second entry in `ALLOWED_NON_REFUSING` is a claim that another module's answer is a
+// NAME and not a QUANTITY; if that is not true of it, the reader is the defect and the
+// registry is not where it belongs.
+//
 // WHAT IS STILL OUT OF REACH, in the register this file already uses:
 //   * a scan reached through a FUNCTION, an object property or an import alias
 //     (`import { WRITTEN_NUMBER_SCAN as N }`) — expansion follows plain `const X = Y;`
