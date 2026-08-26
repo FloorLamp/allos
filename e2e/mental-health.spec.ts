@@ -277,6 +277,11 @@ test.describe("correcting a recorded score (#1396)", () => {
     await expect(form).toBeVisible();
     const total = page.getByTestId(`instrument-reading-total-${id}`);
     const submit = form.getByRole("button", { name: "Save" });
+    const desktopViewport = page.viewportSize();
+    expect(
+      desktopViewport,
+      "the mental-health project has a fixed desktop viewport"
+    ).not.toBeNull();
     await expectDesktopOrdinarySubmit({
       form,
       owner: form,
@@ -299,7 +304,7 @@ test.describe("correcting a recorded score (#1396)", () => {
     await expect(
       page.getByTestId(`instrument-reading-band-${id}`)
     ).not.toContainText("Severe");
-    await page.setViewportSize({ width: 1280, height: 720 });
+    await page.setViewportSize(desktopViewport!);
   });
 
   test("a mis-entered score can be removed from the History list", async () => {
