@@ -9,6 +9,7 @@ import {
   hydratedClick,
   settledBoxes,
   settledClick,
+  settledFill,
 } from "./helpers";
 import { openMedDetailViaHref } from "./med-card-helpers";
 import {
@@ -262,8 +263,14 @@ test("adds and removes a medication side effect through the detail form", async 
     });
     const form = submit.locator("xpath=ancestor::form");
     const field = form.getByRole("combobox", { name: "Side effect" });
-    await field.fill(effect);
-    await page.keyboard.press("Escape");
+    await settledFill(page, field, effect);
+    await hydratedClick(
+      page,
+      page
+        .getByRole("listbox")
+        .getByRole("button", { name: `Use “${effect}”`, exact: true })
+    );
+    await expect(field).toHaveValue(effect);
     const desktopViewport = page.viewportSize();
     expect(
       desktopViewport,
