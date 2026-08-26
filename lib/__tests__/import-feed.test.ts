@@ -168,7 +168,7 @@ describe("feedItemView — sync", () => {
           updated: null,
           unchanged: null,
           written: null,
-          error: "token refresh failed",
+          error: "Your Strava connection expired. Reconnect to resume syncing.",
         })
       ),
       sourceName

@@ -37,7 +37,7 @@ beforeAll(() => {
   // beating it on `at` — sorts LAST in a global newest-first ordering.
   recordSyncEvent(profileId, "strava", {
     ok: false,
-    error: "Strava token refresh failed (400): invalid_grant",
+    error: "Your Strava connection expired. Reconnect to resume syncing.",
   });
   markConnectionNeedsReauth(profileId, "strava");
 

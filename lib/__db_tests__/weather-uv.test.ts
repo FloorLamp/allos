@@ -486,6 +486,24 @@ describe("runWeatherSync — idempotent hourly cache (#1172)", () => {
       expect(ev.details ?? "").not.toMatch(/constraint|NOT NULL|SQLITE/i);
     });
 
+    // The shape openMeteoFetchDaily returns when its air-quality half alone failed:
+    // the weather rows stand, the partial carries its status. Shared by the cases
+    // below so they differ in ONE input — the status — and nothing else.
+    const failWith = (status: number): WeatherSource => ({
+      id: "fixture",
+      async fetchHourly() {
+        return { ok: true, rows: [uvRow(`${DATE}T10:00`, 5)] };
+      },
+      async fetchDaily() {
+        return {
+          ok: true,
+          rows: [],
+          partial: `air-quality fetch failed (${status})`,
+          partialStatus: status,
+        };
+      },
+    });
+
     // ── #3007: a deterministic half-failure stops promising a retry ─────────
     //
     // The air-quality request was one day past its host's ceiling, so it 400'd on
@@ -493,23 +511,6 @@ describe("runWeatherSync — idempotent hourly cache (#1172)", () => {
     // re-fetches it" every one of those times. That sentence was written for #2567's
     // load-shedding window, where the next run genuinely does fix it.
     it("a 4xx partial says it will KEEP failing; a 5xx keeps the retry promise", async () => {
-      const failWith = (status: number): WeatherSource => ({
-        id: "fixture",
-        async fetchHourly() {
-          return { ok: true, rows: [uvRow(`${DATE}T10:00`, 5)] };
-        },
-        async fetchDaily() {
-          // The shape openMeteoFetchDaily returns when its air-quality half alone
-          // failed: the weather rows stand, the partial carries its status.
-          return {
-            ok: true,
-            rows: [],
-            partial: `air-quality fetch failed (${status})`,
-            partialStatus: status,
-          };
-        },
-      });
-
       const deterministic = newProfile("weather-partial-4xx");
       await runWeatherSync(deterministic, failWith(400));
       const badLine = parseSyncEventDetails(
@@ -532,6 +533,29 @@ describe("runWeatherSync — idempotent hourly cache (#1172)", () => {
         weatherPartialWarning("air-quality fetch failed (503)")
       );
       expect(okLine).toMatch(/the next run re-fetches it/);
+    });
+
+    // ── #3633 review D1: one 429, one card, one answer ─────────────────────
+    //
+    // A rate limit is the one 4xx the next run DOES fix, which is why #3618 moved
+    // 429/408 out of the family whose contract is "nothing for a person to do". This
+    // half read the bare 4xx boundary and did not move with it, so one Open-Meteo
+    // 429 rendered both answers at once: `IntegrationStatusHeader` prints the run's
+    // failure line, and `SyncDetailsNotes` prints this warning right under it.
+    //
+    // Read off the RECORDED event rather than off the helper, because the
+    // contradiction was a rendered one — this is the string a person met.
+    it("a 429 partial keeps the retry promise, like the run's own line does", async () => {
+      const rateLimited = newProfile("weather-partial-429");
+      await runWeatherSync(rateLimited, failWith(429));
+      const line = parseSyncEventDetails(
+        latestEvent(rateLimited).details ?? null
+      )!.warnings[0];
+      expect(line).toBe(
+        weatherPartialWarning("air-quality fetch failed (429)")
+      );
+      expect(line).toMatch(/the next run re-fetches it/);
+      expect(line).not.toMatch(/stays missing until it's fixed/);
     });
   });
 

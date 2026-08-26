@@ -116,13 +116,14 @@ describe("a connected integration that stopped syncing (#1685)", () => {
     const p = newProfile("FailingAndOld");
     connect(p, "withings");
     syncEvent(p, "withings", 20 * DAYS); // last success, long ago …
-    syncEvent(p, "withings", 1, 0, "Withings token refresh failed (401)"); // … then a failure
+    // The sentence a dead Withings refresh token actually records (#3618).
+    syncEvent(p, "withings", 1, 0, "Your Withings connection expired. Reconnect to resume syncing."); // … then a failure
 
     const issues = getImportIssues(p);
     // Exactly ONE row for the source: the recorded failure, which names the cause.
     expect(issues.filter((e) => e.source_id === "withings")).toHaveLength(1);
     expect(staleIssues(p)).toEqual([]);
-    expect(issues[0].error).toContain("401");
+    expect(issues[0].error).toContain("Withings connection expired");
   });
 
   it("ignores a disconnected connection — being off is not being broken", () => {
@@ -184,8 +185,8 @@ describe("the stale signal reaches the surfaces that read import issues", () => 
     // whether data is arriving); the recorded failure is what the copy then names,
     // which is the surviving job of consecutiveLeadingFailures.
     syncEvent(p, "strava", 5 * DAYS);
-    syncEvent(p, "strava", 2, 0, "Strava token refresh failed (401)");
-    syncEvent(p, "strava", 1, 0, "Strava token refresh failed (401)");
+    syncEvent(p, "strava", 2, 0, "Your Strava connection expired. Reconnect to resume syncing.");
+    syncEvent(p, "strava", 1, 0, "Your Strava connection expired. Reconnect to resume syncing.");
 
     const item = integrationToItem(getIntegrationAttention(p)[0]);
     expect(item.title).toBe("Strava sync needs attention");

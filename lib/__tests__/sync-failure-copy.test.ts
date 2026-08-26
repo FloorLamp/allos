@@ -19,6 +19,7 @@ import {
   syncFailureCopy,
   syncFailureFamily,
 } from "@/lib/integrations/sync-failure-copy";
+import { isDeterministicFailure } from "@/lib/integrations/weather-sync";
 import { userErrorCopy } from "@/lib/user-error-copy";
 
 const OURA = { doing: "sync your Oura data", service: "Oura" } as const;
@@ -156,6 +157,57 @@ describe("the sentences", () => {
       expect(line, `status ${status}`).not.toMatch(/\d/);
       expect(line, `status ${status}`).not.toContain("/");
     }
+  });
+});
+
+// ── ONE RULE, NOT TWO SPELLINGS OF ONE RULE (#3633 review D1) ────────────────
+//
+// #3007's `isDeterministicFailure` decides the weather PARTIAL's tail ("the next run
+// re-fetches it" vs "stays missing until it's fixed"); `syncFailureFamily` decides
+// the RUN's failure line. They ask the same question, and until this change they
+// spelled it differently: the family moved 429/408 out of `refused` and the bare 4xx
+// boundary in weather-sync.ts did not. One Open-Meteo 429 then rendered both answers
+// on one card from one run — "Couldn't refresh the weather forecast. Try again." as
+// the red line, and "the next run … gets the same answer, so this stays missing until
+// it's fixed" as the Review detail underneath it.
+//
+// This sweep is the guard. It is not a spot check at 429: it asserts the two agree
+// at EVERY status either dialect can produce, so the next code that moves in the
+// family cannot be moved on one side alone.
+describe("#3007's retry advice reads this same rule, not a copy of it", () => {
+  it("agrees with syncFailureFamily at every status", () => {
+    for (let status = -10; status <= 3000; status++) {
+      expect(isDeterministicFailure(status), `status ${status}`).toBe(
+        syncFailureFamily(status) === "refused"
+      );
+    }
+  });
+
+  it("offers no retry on the codes that will answer the same way", () => {
+    // #3007's own worked example: the air-quality end_date one day past its host's
+    // ceiling, 400 on every run since the daily half shipped. Unmoved by this change.
+    expect(isDeterministicFailure(400)).toBe(true);
+    expect(isDeterministicFailure(404)).toBe(true);
+    // #2567's load-shedding case, also unmoved: the next run genuinely does fix it.
+    expect(isDeterministicFailure(503)).toBe(false);
+    expect(isDeterministicFailure(0)).toBe(false);
+  });
+
+  it('does not call "not now" deterministic — the next tick is the fix', () => {
+    // The two codes the family moved. Neither weather half has a rate-limit truncate
+    // ahead of the classifier, so before this the SAME 429 said "Try again." on the
+    // run's line and "stays missing until it's fixed" in the partial's detail.
+    expect(isDeterministicFailure(429)).toBe(false);
+    expect(isDeterministicFailure(408)).toBe(false);
+    // Their neighbours are untouched — two codes, not a boundary move.
+    expect(isDeterministicFailure(428)).toBe(true);
+    expect(isDeterministicFailure(430)).toBe(true);
+  });
+
+  it("has nothing to say about a half that failed without a status", () => {
+    // The daily upsert's write failure carries no status and is transient by
+    // construction; `undefined` must stay false rather than becoming NaN-shaped.
+    expect(isDeterministicFailure(undefined)).toBe(false);
   });
 });
 

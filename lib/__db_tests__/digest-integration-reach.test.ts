@@ -99,6 +99,10 @@ afterEach(() => {
   vi.unstubAllGlobals();
 });
 
+// What runPullSync records when a refresh token is dead (#3618) — the state
+// sentence, chosen from the connection's own needs_reauth, not from a status.
+const RECONNECT = "Your Strava connection expired. Reconnect to resume syncing.";
+
 describe("a broken sync rides the morning digest (#1685)", () => {
   it("names the failing provider and links its reconnect page", async () => {
     const p = newProfile("DigestReauth");
@@ -108,8 +112,11 @@ describe("a broken sync rides the morning digest (#1685)", () => {
     // it. The silence is what escalates (#2263); the recorded failure is what the
     // line then names. Failures with a recent success behind them reach nothing.
     syncEvent(p, "strava", 5 * DAYS);
-    syncEvent(p, "strava", 2, 0, "Strava token refresh failed (401): expired");
-    syncEvent(p, "strava", 1, 0, "Strava token refresh failed (401): expired");
+    // Spelled as the producer writes it (#3618): a dead refresh token is marked
+    // needs_reauth and thrown by connections.ts, and runPullSync records the
+    // reconnect sentence — never the throw's own "token refresh failed (401)" text.
+    syncEvent(p, "strava", 2, 0, RECONNECT);
+    syncEvent(p, "strava", 1, 0, RECONNECT);
     seedActivityYesterday(p); // ordinary content, so this isn't a sync-only digest
     configureTelegram(p, "555685");
     const fetchMock = stubFetch();
@@ -122,7 +129,9 @@ describe("a broken sync rides the morning digest (#1685)", () => {
     // ONE ENTRY (#1913 items 2/5). It used to appear twice — once in the band line and
     // again as the named 🔌 line — which is the same 503 restated in one message.
     expect(body).toContain("🔌 <b>Strava sync needs attention</b>");
-    expect(body).toContain("401");
+    // The token proving the RECORDED reason reached the rendered text. "Reconnect"
+    // alone would not: the line carries its own reconnect LINK.
+    expect(body).toContain("Strava connection expired");
     expect(body).not.toContain("🗓️ Today: Strava sync needs attention");
     expect(body.match(/Strava sync needs attention/g)).toHaveLength(1);
   });

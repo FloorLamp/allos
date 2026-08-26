@@ -1,6 +1,6 @@
 import { createLogger } from "@/lib/log";
 import { userErrorCopy } from "@/lib/user-error-copy";
-import { syncFailureCopy } from "./sync-failure-copy";
+import { syncFailureCopy, syncFailureFamily } from "./sync-failure-copy";
 import { getHomeLocation } from "@/lib/settings";
 import { getTimezone } from "@/lib/settings";
 import { WEATHER_ID, recordSync, recordSyncEvent } from "./connections";
@@ -82,8 +82,24 @@ export function weatherPartialWarning(
 // A response status that will answer the same way next time. 4xx is the request being
 // wrong (a bad parameter, an out-of-range window); 5xx and 0 (network error/timeout)
 // are the ones a retry can clear.
+//
+// #3007 WROTE THIS AS THE BARE 4xx BOUNDARY, AND #3618 MOVED THE BOUNDARY. That change
+// took 429 and 408 out of `refused` because the question both rules are asking is
+// "will asking again help?", which parts company with "was it a 4xx?" at exactly those
+// two codes. It moved them on the RUN's failure line and left this half alone, so one
+// Open-Meteo 429 produced two opposite instructions on one card from one run: the
+// hourly half's red line said "Couldn't refresh the weather forecast. Try again." while
+// this half's Review detail said the next run "gets the same answer, so this stays
+// missing until it's fixed." Neither half has a rate-limit truncate ahead of it, so
+// there was no fact under the disagreement — only two spellings of one rule.
+//
+// So it is READ OFF that rule now rather than re-spelled. #3007's own case is
+// unmoved: its air-quality 400 is `refused` and still says it will keep failing, and
+// #2567's 5xx still keeps the retry promise. What moved is 429/408, which #3007 never
+// considered — its worked example is a deterministic 400 that had never once
+// succeeded, not a rate limit the next tick clears.
 export function isDeterministicFailure(status: number | undefined): boolean {
-  return status != null && status >= 400 && status < 500;
+  return status != null && syncFailureFamily(status) === "refused";
 }
 
 function shiftDate(day: string, n: number): string {

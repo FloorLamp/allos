@@ -261,7 +261,7 @@ describe("the waiting window is scoped to the sleep source (#2192)", () => {
   function breakSource(sourceId: string): void {
     recordSyncEvent(profileId, sourceId, {
       ok: false,
-      error: "token refresh failed (400)",
+      error: "Your Strava connection expired. Reconnect to resume syncing.",
     });
     markConnectionNeedsReauth(profileId, sourceId);
   }

@@ -6,6 +6,7 @@
 
 import { describe, it, expect } from "vitest";
 import type { IntegrationKind } from "@/lib/types/integrations";
+import { reconnectCopy } from "@/lib/integrations/sync-failure-copy";
 import {
   KIND_DELIVERY,
   isScheduledKind,
@@ -506,7 +507,9 @@ describe("one question, one computation", () => {
   it("gives every surface the same outcome text for the same fixture", () => {
     const cases: { ev: SyncEventFacts; kind: IntegrationKind }[] = [
       { ev: ev({ inserted: 30, updated: 10 }), kind: "push" },
-      { ev: ev({ ok: 0, error: "token refresh failed" }), kind: "oauth" },
+      // The payload is opaque to this pin, but it is spelled the way the producer
+      // spells it (#3618) so no fixture preserves copy the tree can no longer write.
+      { ev: ev({ ok: 0, error: reconnectCopy("Strava") }), kind: "oauth" },
       { ev: ev({ inserted: 12, updated: 4, unchanged: 320 }), kind: "public" },
       { ev: ev({ unchanged: 48 }), kind: "token" },
     ];
