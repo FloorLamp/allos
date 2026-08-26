@@ -2,7 +2,7 @@ import Link from "next/link";
 import type { CoachingTone, Recommendation } from "@/lib/coaching";
 import { canAcknowledgeRest } from "@/lib/coaching";
 import { coachingDedupeKey } from "@/lib/findings";
-import SubmitButton from "@/components/SubmitButton";
+import Button from "@/components/Button";
 import { snoozeCoaching, acknowledgeRest } from "@/app/(app)/actions";
 import CardSectionHeader from "@/components/CardSectionHeader";
 
@@ -86,13 +86,13 @@ export default function CoachingRecommendationAtom({
                 name="reason_ids"
                 value={(recommendation.firingReasonIds ?? []).join(",")}
               />
-              <SubmitButton
+              <Button
+                type="submit"
                 pendingLabel="…"
                 data-testid="coaching-training-anyway"
-                className="btn-ghost text-slate-500 dark:text-slate-400"
               >
                 Training anyway
-              </SubmitButton>
+              </Button>
             </form>
           )}
           {/* Snooze this recommendation until tomorrow (findings bus, #39;
@@ -103,13 +103,13 @@ export default function CoachingRecommendationAtom({
               name="dedupe_key"
               value={coachingDedupeKey(recommendation.id)}
             />
-            <SubmitButton
+            <Button
+              type="submit"
               pendingLabel="…"
               data-testid="coaching-snooze"
-              className="btn-ghost text-slate-500 dark:text-slate-400"
             >
               Snooze
-            </SubmitButton>
+            </Button>
           </form>
         </div>
       </div>

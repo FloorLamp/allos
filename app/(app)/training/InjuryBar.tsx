@@ -2,6 +2,7 @@
 
 import { useMemo, useRef, useState } from "react";
 import { IconPencil, IconPlus, IconX } from "@tabler/icons-react";
+import Button from "@/components/Button";
 import SubmitButton from "@/components/SubmitButton";
 import NotesText from "@/components/NotesText";
 import DateField from "@/components/DateField";
@@ -228,13 +229,13 @@ export default function InjuryBar({
                   }}
                 >
                   <input type="hidden" name="id" value={inj.id} />
-                  <SubmitButton
+                  <Button
+                    type="submit"
                     pendingLabel="…"
-                    className="btn-ghost p-1 text-slate-400 hover:text-rose-500"
                     aria-label={`Delete ${inj.label}`}
                   >
                     <IconX size={16} />
-                  </SubmitButton>
+                  </Button>
                 </form>
               </div>
               {inj.notes && (
@@ -984,13 +985,9 @@ function StatusButton({
     >
       <input type="hidden" name="id" value={id} />
       <input type="hidden" name="status" value={to} />
-      <SubmitButton
-        pendingLabel="…"
-        className="btn-ghost px-2 py-1 text-xs"
-        data-testid={`injury-set-${to}`}
-      >
+      <Button type="submit" pendingLabel="…" data-testid={`injury-set-${to}`}>
         {label}
-      </SubmitButton>
+      </Button>
     </form>
   );
 }

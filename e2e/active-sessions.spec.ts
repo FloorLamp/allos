@@ -1,5 +1,8 @@
 import { test, expect } from "./fixtures";
-import { hydratedClick, settledBoxes } from "./helpers";
+import { hydratedClick, settledBoxes, settledClick } from "./helpers";
+import { loginAs } from "./nav";
+import { expectPhoneOrdinarySubmit } from "./ordinary-submit-actions";
+import { ADMIN_PASSWORD, ADMIN_USERNAME } from "./worker-env";
 
 // The Active sessions list on Settings → Account & security (#1451.A).
 //
@@ -9,9 +12,6 @@ import { hydratedClick, settledBoxes } from "./helpers";
 // could only pick between by timestamp. The fix has four parts, three of which are
 // structural and asserted here (the fourth, the "Chrome · Linux" parsing itself, is
 // unit-tested in lib/__tests__/user-agent-label.test.ts over real UA strings).
-//
-// READ-ONLY: this spec never revokes a session, so it can't disturb the shared
-// storageState the rest of the suite runs on.
 test.describe("Active sessions list (#1451.A)", () => {
   test("rows carry a parsed device label, not a truncated raw user-agent", async ({
     page,
@@ -38,8 +38,15 @@ test.describe("Active sessions list (#1451.A)", () => {
 
   test("'Sign out everywhere else' sits above the list, and the list collapses past a handful", async ({
     page,
+    browser,
   }) => {
     test.slow();
+    const spare = await loginAs(browser, {
+      username: ADMIN_USERNAME,
+      password: ADMIN_PASSWORD,
+    });
+    await spare.context().close();
+    await page.setViewportSize({ width: 390, height: 844 });
     await page.goto("/settings/account");
     const card = page.getByTestId("active-sessions");
     await expect(card).toBeVisible();
@@ -49,13 +56,18 @@ test.describe("Active sessions list (#1451.A)", () => {
     // another session to sign out.
     const bulk = card.getByRole("button", { name: "Sign out everywhere else" });
     const rows = card.getByTestId("session-row");
-    if ((await bulk.count()) > 0) {
-      const [bulkBox, firstRowBox] = await settledBoxes([
-        bulk,
-        rows.first(), // first-ok: comparing the bulk control against the topmost row is the assertion
-      ]);
-      expect(bulkBox.y).toBeLessThan(firstRowBox.y);
-    }
+    await expect(bulk).toHaveAttribute("data-button-control", "");
+    await expectPhoneOrdinarySubmit({
+      form: card,
+      owner: card,
+      submit: bulk,
+      name: "session bulk action",
+    });
+    const [bulkBox, firstRowBox] = await settledBoxes([
+      bulk,
+      rows.first(), // first-ok: comparing the bulk control against the topmost row is the assertion
+    ]);
+    expect(bulkBox.y).toBeLessThan(firstRowBox.y);
 
     // Collapse rule: at most five rows are shown until "Show all N" is used. Asserted
     // in both directions so it holds whatever the fixture DB's session count is.
@@ -74,5 +86,8 @@ test.describe("Active sessions list (#1451.A)", () => {
       await hydratedClick(page, card.getByTestId("sessions-show-all"));
       await expect(rows).toHaveCount(5);
     }
+
+    await settledClick(page, bulk);
+    await expect(bulk).toHaveCount(0);
   });
 });

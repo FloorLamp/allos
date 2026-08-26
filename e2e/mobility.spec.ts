@@ -85,6 +85,14 @@ test.describe("Mobility (#840)", () => {
         adjacent: dismiss,
         name: "mobility target primary",
       });
+      await expect(dismiss).toHaveAttribute("data-button-control", "");
+      await expectPhoneOrdinarySubmit({
+        form: suggestion,
+        owner: suggestion,
+        submit: dismiss,
+        adjacent: submit,
+        name: "mobility dismissal",
+      });
       await settledClick(page, submit);
       const target = page
         .getByTestId("weekly-target-chip")
