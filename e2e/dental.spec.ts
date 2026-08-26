@@ -99,15 +99,22 @@ test.describe("Dental records — add → view → filter → track recheck → 
     await expect(list.getByRole("row").filter({ hasText: NAME })).toBeVisible();
 
     // Track a recheck follow-up on it — the row's control turns into a tracked state.
-    const trackForm = page.getByTestId(/^track-dental-followup-/);
-    await trackForm
-      .locator("select")
-      .first() // first-ok: the recheck-interval select in the scoped dental-followup form this spec drives
-      .selectOption({ label: "6 months" });
-    await trackForm
-      .getByRole("button", { name: "Track recheck" })
-      .first() // first-ok: the Track-recheck button in the scoped dental-followup form this spec drives
-      .click();
+    const trackForm = row.getByTestId(/^track-dental-followup-/);
+    const interval = trackForm.getByLabel("Recheck interval");
+    const track = trackForm.getByRole("button", { name: "Track recheck" });
+    expect(
+      await trackForm.evaluate((form) => {
+        const select = form.querySelector("select")!.getBoundingClientRect();
+        const button = form.querySelector("button")!.getBoundingClientRect();
+        const bounds = form.getBoundingClientRect();
+        return [
+          bounds.left >= 0 && bounds.right <= innerWidth,
+          Math.abs(select.top - button.top) < 8,
+        ];
+      })
+    ).toEqual([true, true]);
+    await interval.selectOption({ label: "6 months" });
+    await track.click();
     await expect(page.getByTestId(/^dental-followup-state-/)).toContainText(
       "Recheck:",
       { timeout: 15000 }
