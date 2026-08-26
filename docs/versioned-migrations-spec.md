@@ -36,7 +36,10 @@ migrations 1..V):
   first name-keyed one.
 - **A new migration is `versions/YYYYMMDD-slug.ts`**, exports
   `{ name, up }` with no `id`, is appended LAST to the array, and adds its
-  sha256 to `manifest.json`. Names are the ledger's primary key; uniqueness and
+  sha256 to `manifest.json` via `npm run gen:migration-manifest`
+  (`scripts/gen-migration-manifest.ts`, which recomputes every entry from disk
+  and refuses when a shipped migration's hash moved). Names are the ledger's
+  primary key; uniqueness and
   the two filename shapes are enforced by `assertRegistry` at boot and
   `lib/__tests__/migration-immutability.test.ts` in CI.
 - **The array stays the single ordering authority** (deliberately not filename
