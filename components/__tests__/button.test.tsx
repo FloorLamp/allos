@@ -63,12 +63,7 @@ describe("Button", () => {
     const submitted = vi.fn((_formData: FormData) => result.promise);
     render(
       <form action={submitted}>
-        <Button
-          type="submit"
-          name="intent"
-          value="archive"
-          pendingLabel="Archiving…"
-        >
+        <Button type="submit" name="intent" value="archive">
           Archive
         </Button>
       </form>
@@ -81,27 +76,10 @@ describe("Button", () => {
     expect(submitted.mock.calls[0][0].get("intent")).toBe("archive");
     expect(button.getAttribute("aria-busy")).toBe("true");
     expect((button as HTMLButtonElement).disabled).toBe(true);
-    expect(button.textContent).toBe("Archiving…");
+    expect(button.textContent).toBe("Archive");
     expect(button.querySelector('svg[aria-hidden="true"]')).not.toBeNull();
 
     await act(async () => result.resolve());
     await waitFor(() => expect(button.textContent).toBe("Archive"));
-  });
-
-  it("keeps the idle label as the pending fallback", async () => {
-    const result = Promise.withResolvers<void>();
-    render(
-      <form action={() => result.promise}>
-        <Button type="submit">Restore</Button>
-      </form>
-    );
-
-    const button = screen.getByRole("button", { name: "Restore" });
-    fireEvent.click(button);
-    await waitFor(() => expect(button.getAttribute("aria-busy")).toBe("true"));
-    expect(button.textContent).toBe("Restore");
-    expect(button.querySelector('svg[aria-hidden="true"]')).not.toBeNull();
-
-    await act(async () => result.resolve());
   });
 });
