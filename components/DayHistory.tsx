@@ -174,10 +174,29 @@ export default function DayHistory({
   const levelClasses = [ramp.emptyClass, ...ramp.stepClasses];
   const [selected, setSelected] = useState<ReadonlySet<string> | null>(null);
   const [detail, setDetail] = useState<string | null>(null);
-  const [disclosureDetail, setDisclosureDetail] = useState<string | null>(null);
+  const disclosureContext = useMemo(
+    () =>
+      JSON.stringify([
+        domain,
+        grain,
+        end,
+        weeks,
+        weekStart,
+        selected ? [...selected].sort() : null,
+        groups,
+        values,
+      ]),
+    [domain, end, grain, groups, selected, values, weekStart, weeks]
+  );
+  const [disclosure, setDisclosure] = useState<{
+    context: string;
+    text: string;
+  } | null>(null);
+  const disclosureDetail =
+    disclosure?.context === disclosureContext ? disclosure.text : null;
   const previewDetail = (text: string) => {
     setDetail(text);
-    setDisclosureDetail(text);
+    setDisclosure({ context: disclosureContext, text });
   };
   const [expanded, setExpanded] = useState(false);
   const [filtersExpanded, setFiltersExpanded] = useState(false);

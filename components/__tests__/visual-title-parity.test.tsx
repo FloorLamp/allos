@@ -41,11 +41,17 @@ describe("visual title parity", () => {
         disconnect() {}
       }
     );
-    render(
+    const { rerender } = render(
       <DayHistory
         domain="workout"
-        values={[{ date: "2026-08-26", group: "strength", value: 1 }]}
-        groups={[{ key: "strength", label: "Strength" }]}
+        values={[
+          { date: "2026-08-26", group: "strength", value: 1 },
+          { date: "2026-08-26", group: "cardio", value: 1 },
+        ]}
+        groups={[
+          { key: "strength", label: "Strength" },
+          { key: "cardio", label: "Cardio" },
+        ]}
         end="2026-08-26"
         weeks={1}
         weekStart={0}
@@ -66,6 +72,40 @@ describe("visual title parity", () => {
     const disclosure = screen.getByRole("button", { name: detail });
     fireEvent.click(disclosure);
     expect(screen.getByRole("tooltip").textContent).toBe(detail);
+
+    rerender(
+      <DayHistory
+        domain="workout"
+        values={[
+          { date: "2026-08-26", group: "strength", value: 1 },
+          { date: "2026-08-26", group: "cardio", value: 1 },
+        ]}
+        groups={[
+          { key: "strength", label: "Strength" },
+          { key: "cardio", label: "Cardio" },
+        ]}
+        end="2026-08-27"
+        weeks={1}
+        weekStart={0}
+        today="2026-08-27"
+        formatPrefs={DEFAULT_FORMAT_PREFS}
+      />
+    );
+    expect(screen.queryByRole("button", { name: detail })).toBeNull();
+
+    const currentCell = screen
+      .getAllByRole("gridcell")
+      .find((candidate) =>
+        candidate.getAttribute("aria-label")?.includes("Strength")
+      );
+    expect(currentCell).toBeTruthy();
+    const currentDetail = currentCell!.getAttribute("aria-label")!;
+    fireEvent.focus(currentCell!);
+    fireEvent.blur(currentCell!);
+    expect(screen.getByRole("button", { name: currentDetail })).toBeTruthy();
+
+    fireEvent.click(screen.getByRole("button", { name: "Strength" }));
+    expect(screen.queryByRole("button", { name: currentDetail })).toBeNull();
   });
 
   it("keeps intensity choices exact and discloses every hint", () => {
