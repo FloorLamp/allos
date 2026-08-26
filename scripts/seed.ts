@@ -46,6 +46,7 @@ import {
 } from "./seed-rng";
 import { personaFromEnv } from "./seed-personas";
 import { LONG_NAMES } from "./seed-long-names";
+import { VIA_IMPORTED, VIA_SEEDED } from "./seed-logged-via";
 
 // The seed populates the bootstrap profile. Owned-table
 // rows are born NOT NULL on a fresh DB, so every insert carries profile_id = 1.
@@ -211,8 +212,8 @@ if (PERSONA_SELECTION.kind === "found") {
 }
 
 const insertActivity = db.prepare(
-  `INSERT INTO activities (profile_id, date, type, title, notes, duration_min, distance_km, intensity)
-   VALUES (1,?,?,?,?,?,?,?)`
+  `INSERT INTO activities (profile_id, date, type, title, notes, duration_min, distance_km, intensity, logged_via)
+   VALUES (1,?,?,?,?,?,?,?, ${VIA_SEEDED})`
 );
 const insertSet = db.prepare(
   `INSERT INTO exercise_sets (activity_id, exercise, set_number, weight_kg, reps) VALUES (?,?,?,?,?)`
@@ -287,8 +288,8 @@ for (let w = PPL_WEEKS - 1; w >= 0; w--) {
 // freeform), so repeated activities — e.g. several "Running" sessions logged
 // under different titles — combine in the Training page's analytics.
 const insertActivityC = db.prepare(
-  `INSERT INTO activities (profile_id, date, type, title, notes, duration_min, distance_km, intensity, components)
-   VALUES (1,?,?,?,?,?,?,?,?)`
+  `INSERT INTO activities (profile_id, date, type, title, notes, duration_min, distance_km, intensity, components, logged_via)
+   VALUES (1,?,?,?,?,?,?,?,?, ${VIA_SEEDED})`
 );
 function logEffort(
   ago: number,
@@ -342,8 +343,8 @@ logEffort(
 // tier). Populates the mobility log, the region-coverage strip, and the mobility_region
 // weekly target below. Move slugs match lib/datasets/data/mobility-moves.json.
 const insertMobility = db.prepare(
-  `INSERT INTO activities (profile_id, date, type, title, duration_min, components)
-   VALUES (1, ?, 'mobility', 'Mobility', ?, ?)`
+  `INSERT INTO activities (profile_id, date, type, title, duration_min, components, logged_via)
+   VALUES (1, ?, 'mobility', 'Mobility', ?, ?, ${VIA_SEEDED})`
 );
 function logMobility(ago: number, durationMin: number | null, moves: string[]) {
   const components = JSON.stringify(
@@ -383,9 +384,9 @@ const healthConnect5kEndIso = healthConnect5kEnd.toISOString();
 db.prepare(
   `INSERT INTO activities
      (profile_id, date, type, title, duration_min, distance_km,
-      start_time, end_time, source, external_id, edited)
+      start_time, end_time, source, external_id, edited, logged_via)
    VALUES (1, ?, 'cardio', '5k run', 24, 5.0,
-           '06:45', '07:09', 'health-connect', ?, 0)`
+           '06:45', '07:09', 'health-connect', ?, 0, ${VIA_IMPORTED})`
 ).run(healthConnect5kDate, `health-connect:${healthConnect5kStartIso}`);
 // Health Connect reports active energy as a separate interval metric rather
 // than an activities column. Key it to the same absolute exercise window so
@@ -446,12 +447,12 @@ const insertActivityStrava = db.prepare(
       start_time, end_time, components, source, external_id,
       avg_hr, max_hr, elevation_m, avg_speed_kmh, max_speed_kmh,
       relative_effort, avg_power_w, max_power_w, weighted_avg_power_w,
-      avg_cadence, avg_temp_c, kilojoules, workout_type)
+      avg_cadence, avg_temp_c, kilojoules, workout_type, logged_via)
    VALUES (1, @date, 'cardio', @title, @durationMin, @distanceKm,
            @startTime, @endTime, @components, 'strava', @externalId,
            @avgHr, @maxHr, @elevationM, @avgSpeedKmh, @maxSpeedKmh,
            @relativeEffort, @avgPowerW, @maxPowerW, @weightedAvgPowerW,
-           @avgCadence, @avgTempC, @kilojoules, @workoutType)`
+           @avgCadence, @avgTempC, @kilojoules, @workoutType, ${VIA_IMPORTED})`
 );
 const stravaRideId = Number(
   insertActivityStrava.run({
@@ -532,7 +533,7 @@ const coreId = Number(
 
 // Body metrics trending down over the same few months (about one per week).
 const wi = db.prepare(
-  `INSERT INTO body_metrics (profile_id, date, weight_kg, body_fat_pct, resting_hr, notes) VALUES (1,?,?,?,?,?)`
+  `INSERT INTO body_metrics (profile_id, date, weight_kg, body_fat_pct, resting_hr, notes, logged_via) VALUES (1,?,?,?,?,?, ${VIA_SEEDED})`
 );
 for (let w = PPL_WEEKS - 1; w >= 0; w--) {
   const i = PPL_WEEKS - 1 - w; // 0 = oldest
@@ -1135,8 +1136,8 @@ const PANELS: Panel[] = [
 
 const insMed = db.prepare(
   `INSERT INTO medical_records
-     (profile_id, date, category, name, value, unit, reference_range, value_num, canonical_name, panel)
-   VALUES (1,?,?,?,?,?,?,?,?,?)`
+     (profile_id, date, category, name, value, unit, reference_range, value_num, canonical_name, panel, logged_via)
+   VALUES (1,?,?,?,?,?,?,?,?,?, ${VIA_SEEDED})`
 );
 const medIds: number[] = [];
 for (const p of PANELS) {
@@ -1334,7 +1335,7 @@ for (let i = 0; i < 8; i++) {
 
 // Non-analyte clinical observations (no optimal range; kept for category variety).
 const med = db.prepare(
-  `INSERT INTO medical_records (profile_id, date, category, name, value, unit, reference_range, notes) VALUES (1,?,?,?,?,?,?,?)`
+  `INSERT INTO medical_records (profile_id, date, category, name, value, unit, reference_range, notes, logged_via) VALUES (1,?,?,?,?,?,?,?, ${VIA_SEEDED})`
 );
 med.run(
   daysAgo(60),
@@ -1687,8 +1688,8 @@ courseIns.run(ibuprofenId, daysAgo(30), null, null, "PRN for pain");
 {
   const prnDay = today(SEED_PROFILE_ID);
   const admIns = db.prepare(
-    `INSERT INTO intake_item_logs (dose_id, item_id, date, recorded_at, amount, status)
-     VALUES (?, ?, ?, ?, '200 mg', 'taken')`
+    `INSERT INTO intake_item_logs (dose_id, item_id, date, recorded_at, amount, status, logged_via)
+     VALUES (?, ?, ?, ?, '200 mg', 'taken', ${VIA_SEEDED})`
   );
   for (const minutesAgo of [300, 90]) {
     admIns.run(
@@ -1796,7 +1797,7 @@ const allDoses = db
   .prepare("SELECT id, item_id FROM intake_item_doses")
   .all() as { id: number; item_id: number }[];
 const supLog = db.prepare(
-  `INSERT OR IGNORE INTO intake_item_logs (dose_id, item_id, date) VALUES (?,?,?)`
+  `INSERT OR IGNORE INTO intake_item_logs (dose_id, item_id, date, logged_via) VALUES (?,?,?, ${VIA_SEEDED})`
 );
 for (let d = 6; d >= 1; d--) {
   for (const dd of allDoses) {
@@ -2117,8 +2118,8 @@ if (DIALS.importQuirks === "quirky") {
   // exercises family grouping, the shared retest clock, and every surface that
   // must label the family rather than leak its identity key.
   const quirkRec = db.prepare(
-    `INSERT INTO medical_records (profile_id, date, category, name, value, value_num, unit)
-     VALUES (1, ?, 'lab', ?, ?, ?, 'ng/mL')`
+    `INSERT INTO medical_records (profile_id, date, category, name, value, value_num, unit, logged_via)
+     VALUES (1, ?, 'lab', ?, ?, ?, 'ng/mL', ${VIA_SEEDED})`
   );
   quirkRec.run(daysAgo(700), "25-Hydroxy Vitamin D", "24", 24);
   quirkRec.run(daysAgo(520), "Vitamin D, Total", "27", 27);
@@ -2332,8 +2333,8 @@ imgIns.run(
 // catalog. Synthetic organism/findings text, no real PHI.
 const reportIns = db.prepare(
   `INSERT INTO medical_records
-     (profile_id, date, category, name, value, notes, loinc, canonical_name, source, external_id)
-   VALUES (1, ?, 'report', ?, NULL, ?, ?, ?, 'document:seed', ?)`
+     (profile_id, date, category, name, value, notes, loinc, canonical_name, source, external_id, logged_via)
+   VALUES (1, ?, 'report', ?, NULL, ?, ?, ?, 'document:seed', ?, ${VIA_IMPORTED})`
 );
 reportIns.run(
   daysAgo(30),
@@ -2653,8 +2654,8 @@ db.prepare(
 // ~5 weeks of sessions, mostly 3–4 days/week (some days two sessions). Each row is a
 // real session with an optional local time + duration in minutes (canonical).
 const redLightSession = db.prepare(
-  `INSERT INTO practice_logs (profile_id, practice, date, time, duration_min)
-   VALUES (1, 'Red light therapy', ?, ?, ?)`
+  `INSERT INTO practice_logs (profile_id, practice, date, time, duration_min, logged_via)
+   VALUES (1, 'Red light therapy', ?, ?, ?, ${VIA_SEEDED})`
 );
 for (let d = 34; d >= 0; d--) {
   // Mon/Wed/Fri/Sun rhythm → ~4 distinct days/week (a comfortable in-range week).
@@ -2681,8 +2682,8 @@ const foodLog = db.prepare(
 // the evening. Default boundaries are 11:00/15:00, so these land in Morning/Midday/
 // Evening respectively.
 const foodEvent = db.prepare(
-  `INSERT INTO food_log_events (profile_id, group_key, date, recorded_at)
-   VALUES (1, ?, ?, ?)`
+  `INSERT INTO food_log_events (profile_id, group_key, date, recorded_at, logged_via)
+   VALUES (1, ?, ?, ?, ${VIA_SEEDED})`
 );
 const logFood = (
   date: string,
@@ -2757,8 +2758,8 @@ for (let d = 30; d >= 8; d--) {
   const suScore = db
     .prepare(
       `INSERT INTO medical_records
-        (date, category, name, value, value_num, unit, canonical_name, profile_id)
-       VALUES (?, 'instrument', 'AUDIT-C', '3', 3, NULL, 'AUDIT-C', 1)`
+        (date, category, name, value, value_num, unit, canonical_name, profile_id, logged_via)
+       VALUES (?, 'instrument', 'AUDIT-C', '3', 3, NULL, 'AUDIT-C', 1, ${VIA_SEEDED})`
     )
     .run(daysAgo(20));
   const suAnswers = db.prepare(
@@ -2874,8 +2875,8 @@ for (const run of episodesForSituation("Illness", situationEvents, true)) {
 // custom free-text name ("Sinus headache") demos the custom vocabulary + #203 hygiene.
 // Worst-severity upsert mirrors the runtime write core; synthetic, no real PHI.
 const seedSymptom = db.prepare(
-  `INSERT INTO symptom_logs (profile_id, date, symptom, severity, note)
-   VALUES (1, ?, ?, ?, ?)
+  `INSERT INTO symptom_logs (profile_id, date, symptom, severity, note, logged_via)
+   VALUES (1, ?, ?, ?, ?, ${VIA_SEEDED})
    ON CONFLICT (profile_id, date, symptom)
    DO UPDATE SET severity = MAX(symptom_logs.severity, excluded.severity)`
 );
@@ -2988,8 +2989,8 @@ for (const [ago, valence, energy, anxiety, factors, note] of seededMoods) {
 // reconcileFlags, exactly like an imported reading.
 const insTemp = db.prepare(
   `INSERT INTO medical_records
-     (profile_id, date, category, name, value, value_num, unit, canonical_name, source, occurred_at)
-   VALUES (1, ?, 'vitals', 'Body Temperature', ?, ?, 'degF', 'Body Temperature', 'manual', ?)`
+     (profile_id, date, category, name, value, value_num, unit, canonical_name, source, occurred_at, logged_via)
+   VALUES (1, ?, 'vitals', 'Body Temperature', ?, ?, 'degF', 'Body Temperature', 'manual', ?, ${VIA_SEEDED})`
 );
 const tempReadings: [number, string, number][] = [
   [3, "09:00", 99.6],
@@ -3241,7 +3242,7 @@ if (!existingChild) {
   // Weight history (kg) → body_metrics. Dates run oldest→newest over the last
   // ~6 months (child aged ~12 mo → ~18 mo across the window).
   const insChildWeight = db.prepare(
-    `INSERT INTO body_metrics (profile_id, date, weight_kg, notes) VALUES (?, ?, ?, ?)`
+    `INSERT INTO body_metrics (profile_id, date, weight_kg, notes, logged_via) VALUES (?, ?, ?, ?, ${VIA_SEEDED})`
   );
   const weighIns: [number, number][] = [
     [180, 9.6],
@@ -3288,8 +3289,8 @@ if (!existingChild) {
   //    (Elevated systolic for age; normal diastolic) instead of the adult cutoffs.
   const insChildMed = db.prepare(
     `INSERT INTO medical_records
-       (profile_id, date, category, name, value, unit, reference_range, value_num, canonical_name, panel)
-     VALUES (?,?,?,?,?,?,?,?,?,?)`
+       (profile_id, date, category, name, value, unit, reference_range, value_num, canonical_name, panel, logged_via)
+     VALUES (?,?,?,?,?,?,?,?,?,?, ${VIA_SEEDED})`
   );
   const childLab = (
     canonical: string,
