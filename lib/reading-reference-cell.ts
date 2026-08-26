@@ -16,9 +16,8 @@
 // themselves are whatever the judgement says, and the digits are `formatBand`, the
 // one band formatter the metric card shares (#221).
 //
-// The lab's own string does not disappear: the cell exposes it through the shared
-// information disclosure (and it stays in full on the reading detail page, under
-// its own "Lab reference" column).
+// The lab's own string does not disappear: it becomes the cell's hover title (and
+// stays in full on the reading detail page, under its own "Lab reference" column).
 // It moves from assertion to provenance, which is what it always was.
 //
 // AND THE BAND LABEL IS THE SAFETY HALF. When the applied band is age-curated, the

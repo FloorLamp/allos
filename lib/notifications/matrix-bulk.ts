@@ -65,9 +65,9 @@ export function applyColumnBulk(
   return on ? kept : [...kept, ...new Set(sweepable)];
 }
 
-// The header control's accessible name. It says what the tap will do AND states the
-// safety carve-out, because "turn off this column" that quietly spares three rows
-// would otherwise be a lie of omission.
+// The header control's accessible name, which is also its hover tooltip. It says what
+// the tap will do AND states the safety carve-out, because "turn off this column" that
+// quietly spares three rows would otherwise be a lie of omission.
 export function columnBulkLabel(
   channelLabel: string,
   state: ColumnBulkState

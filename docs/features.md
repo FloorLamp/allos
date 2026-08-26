@@ -1823,10 +1823,10 @@ wrapped lines on a phone. This is about wrapping and nothing else — it groups 
 long shared stem, including two genuinely different diagnoses, and it never claims
 they are one. Nothing is hidden: the stem plus each tail is exactly the stored
 name, and a compacted chip carries every full name — each with whatever the source
-stated about it — in its shared information disclosure and as the text a screen
-reader reads instead of the fragments. (An uncompacted chip already prints its whole
-name, so it needs no disclosure.) A source-stated rank and a fragment of a name are
-styled apart, because they are different claims.
+stated about it — as its hover text and as the text a screen reader reads instead
+of the fragments. (An uncompacted chip already prints its whole name, so it has no
+hover text of its own.) A source-stated rank and a fragment of a name are styled
+apart, because they are different claims.
 
 ### Providers
 
@@ -3106,9 +3106,9 @@ Vertical scrolling wins over an ambiguous drag, and short or slow gestures
 settle without acting. Reduced-motion mode removes finger-following animation
 while preserving the resulting action.
 
-A button showing only an icon names its action for assistive technology. Every
-destructive icon action—delete, remove, retire—asks for confirmation before it
-acts.
+A button showing only an icon names its action in a hover tooltip. A phone has
+no hover, so every destructive icon action—delete, remove, retire—asks for
+confirmation before it acts.
 
 ### Dense data on small screens
 
