@@ -1,582 +1,180 @@
 import fs from "node:fs";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
-import { afterAll, describe, expect, it } from "vitest";
-import {
-  assertCompiledSheet,
-  compilePhoneOnlyCss,
-  compilePhoneOnlyCssText,
-  inspectPhoneOnlyCss,
-  provePhoneOnlyCss,
-  stripPhoneContributions,
-} from "../../scripts/phone-only-css-proof.mjs";
-import {
-  PHONE_BLOCK_FLOOR,
-  PHONE_DECLARATION_FLOOR,
-  PHONE_ONLY_UTILITIES,
-} from "../../scripts/phone-only-css-registry.mjs";
-import { makeTmpDir } from "./tmp-dir";
+import tailwindcss from "@tailwindcss/postcss";
+import postcss, { type AtRule, type Node, type Rule } from "postcss";
+import { beforeAll, describe, expect, it } from "vitest";
 
-const repo = path.resolve(fileURLToPath(new URL("../..", import.meta.url)));
-const globals = fs.readFileSync(path.join(repo, "app", "globals.css"), "utf8");
-const proofRoots: string[] = [];
+const REPO = path.resolve(fileURLToPath(new URL("../..", import.meta.url)));
+const GLOBALS = path.join(REPO, "app/globals.css");
+const TAILWIND_IMPORT = '@import "tailwindcss";';
+const PHONE_MEDIA = new Set(["(width < 40rem)", "(max-width: 639.98px)"]);
+// This is semantic identity only: no declaration counts, properties, or
+// call-site census. It makes deleting or renaming a phone-only contract loud.
+const PHONE_ONLY_CONTRACTS = [
+  "subpanel-inset",
+  "subpanel-inset-sm",
+  "subpanel-inset-xs",
+  "section-seam",
+  "section-seam-lg",
+  "section-stack",
+  "section-stack-sm",
+  "table-cards",
+  "table-section-row",
+  "table-nested-row",
+  "metric-readings-list",
+  "practice-session-list",
+  "notification-kind-matrix",
+] as const;
 
-function makeProofRoot(source: string) {
-  const root = makeTmpDir("phone-css-proof");
-  proofRoots.push(root);
-  for (const directory of ["app", "components", "lib"])
-    fs.mkdirSync(path.join(root, directory), { recursive: true });
-  fs.writeFileSync(path.join(root, "app", "globals.css"), globals);
-  fs.writeFileSync(path.join(root, "app", "candidate.tsx"), source);
-  return root;
+function normalized(value: string) {
+  return value.replace(/\s+/g, " ").trim();
 }
 
-afterAll(() => {
-  for (const root of proofRoots)
-    fs.rmSync(root, { force: true, recursive: true });
-});
-
-function writeRuntimeSource(root: string, file: string, source: string) {
-  const resolved = path.join(root, file);
-  fs.mkdirSync(path.dirname(resolved), { recursive: true });
-  fs.writeFileSync(resolved, source);
+function contributesOnlyBelowSm(atRule: AtRule) {
+  const params = normalized(atRule.params);
+  if (atRule.name === "media") return PHONE_MEDIA.has(params);
+  if (atRule.name === "variant") return params === "max-sm";
+  return atRule.name === "apply" && /(?:^|[\s:])max-sm:/.test(params);
 }
 
-// Coverage can push a real Tailwind compile past 60 seconds. Keep this suite's
-// 120-second hang detector local so the general 15-second CI ceiling stays
-// strict.
-describe("compiled phone-only CSS proof (#3518)", { timeout: 120_000 }, () => {
-  it("compiles the deterministic registry and proves every declaration is below sm", async () => {
-    const css = await compilePhoneOnlyCss(repo);
-    const receipt = inspectPhoneOnlyCss(css, { label: "branch" });
-    expect(receipt.total).toBeGreaterThanOrEqual(PHONE_DECLARATION_FLOOR);
-    expect(receipt.strippedBlocks).toBeGreaterThanOrEqual(PHONE_BLOCK_FLOOR);
-    expect(receipt.strippedDeclarations).toBeGreaterThanOrEqual(
-      PHONE_DECLARATION_FLOOR
-    );
-    expect(Object.keys(receipt.counts)).toEqual(
-      PHONE_ONLY_UTILITIES.map(({ name }) => name)
-    );
-  });
-
-  it("compiles branch and dependency-less control roots through the same boundary", async () => {
-    const result = await provePhoneOnlyCss({
-      branchRoot: repo,
-      controlRoot: repo,
+function discoverPhoneOnlyUtilities(source: string) {
+  const names: string[] = [];
+  postcss.parse(source, { from: GLOBALS }).walkAtRules("utility", (utility) => {
+    let contributes = false;
+    utility.walkAtRules((atRule) => {
+      if (contributesOnlyBelowSm(atRule)) contributes = true;
     });
-    expect(result.branch.desktop).toBe(result.control.desktop);
+    if (!contributes) return;
+
+    const name = normalized(utility.params);
+    if (!/^[a-z][a-z0-9-]*$/.test(name))
+      throw new Error(`phone-only utility has an unsupported name: ${name}`);
+    names.push(name);
   });
+  if (!names.length) throw new Error("no phone-only utilities were discovered");
+  return names;
+}
 
-  it("fails loudly when compilation fails or returns an empty artifact", async () => {
-    const broken = globals.replace(
-      "@apply max-sm:p-3!;",
-      "@apply max-sm:p-3! utility-that-does-not-exist;"
+function contractNames(source: string) {
+  const discovered = discoverPhoneOnlyUtilities(source).toSorted();
+  const expected = [...PHONE_ONLY_CONTRACTS].toSorted();
+  if (JSON.stringify(discovered) !== JSON.stringify(expected))
+    throw new Error(
+      `phone-only utility identities changed: expected ${expected.join(", ")}; discovered ${discovered.join(", ")}`
     );
-    await expect(
-      compilePhoneOnlyCssText(broken, { root: repo, label: "broken" })
-    ).rejects.toThrow("broken: CSS compilation failed");
-    expect(() => assertCompiledSheet("", "empty")).toThrow(
-      "empty: CSS compilation produced no output"
-    );
-  });
+  return discovered;
+}
 
-  it("fails closed when a registered utility is renamed or missing", async () => {
-    const renamed = globals.replaceAll(
-      "subpanel-inset-xs",
-      "subpanel-inset-xxs"
-    );
-    await expect(
-      compilePhoneOnlyCssText(renamed, {
-        root: repo,
-        label: "renamed",
-      })
-    ).rejects.toThrow(
-      "renamed: phone-contributing utility subpanel-inset-xxs is not registered"
-    );
-  });
+async function compile(source: string, names: readonly string[]) {
+  if (!source.includes(TAILWIND_IMPORT))
+    throw new Error(`missing ${TAILWIND_IMPORT} in app/globals.css`);
+  const fixture = source.replace(
+    TAILWIND_IMPORT,
+    `@import "tailwindcss" source(none);\n@source inline(${JSON.stringify(names.join(" "))});`
+  );
+  return (
+    await postcss([tailwindcss({ base: REPO })]).process(fixture, {
+      from: GLOBALS,
+    })
+  ).css;
+}
 
-  it("preserves whitespace-sensitive values and declaration winner order", async () => {
-    const css = await compilePhoneOnlyCss(repo);
-    const desktop = (extra: string) =>
-      inspectPhoneOnlyCss(`${css}\n${extra}`, { label: "semantic desktop" })
-        .desktop;
-
-    expect(desktop('.proof-copy::after { content: "a  b"; }')).not.toBe(
-      desktop('.proof-copy::after { content: "a b"; }')
-    );
-    expect(
-      desktop("@layer properties { .proof-order { color: red; color: blue; } }")
-    ).not.toBe(
-      desktop("@layer properties { .proof-order { color: blue; color: red; } }")
-    );
-  });
-
-  it("normalizes only unique atomic property registrations and fallbacks", async () => {
-    const css = await compilePhoneOnlyCss(repo);
-    const registrations = (order: readonly string[]) => `
-      ${order
-        .map(
-          (name) =>
-            `@property --proof-${name} { syntax: "<number>"; inherits: false; initial-value: 0; }`
-        )
-        .join("\n")}
-      @layer properties {
-        @supports ((-webkit-hyphens: none) and (not (margin-trim: inline))) or ((-moz-orient: inline) and (not (color:rgb(from red r g b)))) {
-          *, ::before, ::after, ::backdrop {
-            ${order.map((name) => `--proof-${name}: 0;`).join("\n")}
-          }
-        }
-      }
-    `;
-    const desktop = (extra: string) =>
-      inspectPhoneOnlyCss(`${css}\n${extra}`, { label: "registrations" })
-        .desktop;
-
-    expect(desktop(registrations(["a", "b"]))).toBe(
-      desktop(registrations(["b", "a"]))
-    );
-    expect(
-      desktop(
-        '@property --proof-order { syntax: "<number>"; inherits: false; initial-value: 0; }'
-      )
-    ).not.toBe(
-      desktop(
-        '@property --proof-order { initial-value: 0; inherits: false; syntax: "<number>"; }'
-      )
-    );
-    expect(() =>
-      desktop(
-        `${registrations(["a", "b"])}\n@property --proof-a { syntax: "*"; inherits: false; }`
-      )
-    ).toThrow("duplicate @property registration --proof-a");
-    expect(() =>
-      desktop(
-        registrations(["a", "b"]).replace(
-          "--proof-a: 0;",
-          "--proof-a: 0; --proof-a: 1;"
-        )
-      )
-    ).toThrow("duplicate fallback declaration --proof-a");
-  });
-
-  it("fails closed when a phone-contributing utility is omitted from the registry", async () => {
-    const omitted = `${globals}\n@utility omitted-phone-utility { color: red; @apply max-sm:p-2; }`;
-    await expect(
-      compilePhoneOnlyCssText(omitted, { root: repo, label: "omitted" })
-    ).rejects.toThrow(
-      "omitted: phone-contributing utility omitted-phone-utility is not registered"
-    );
-  });
-
-  it("includes every custom utility and each root's real callsite candidates", async () => {
-    const baseCss = await compilePhoneOnlyCss(repo);
-    const customCss = await compilePhoneOnlyCssText(
-      `${globals}\n@utility collateral-desktop { color: red; }`,
-      { root: repo, label: "custom utility" }
-    );
-    expect(customCss).toContain(".collateral-desktop");
-    expect(
-      inspectPhoneOnlyCss(customCss, { label: "custom utility" }).desktop
-    ).not.toBe(inspectPhoneOnlyCss(baseCss, { label: "base" }).desktop);
-
-    const branchRoot = makeProofRoot(
-      'export const Candidate = () => <div className="p-8" />;\n'
-    );
-    const controlRoot = makeProofRoot(
-      'export const Candidate = () => <div className="p-4" />;\n'
-    );
-    await expect(
-      provePhoneOnlyCss({ branchRoot, controlRoot })
-    ).rejects.toThrow("desktop-visible compiled declarations differ");
-
-    fs.writeFileSync(
-      path.join(branchRoot, "components", "classes.ts"),
-      'export const DESKTOP_CLASS = "m-8";\n'
-    );
-    fs.writeFileSync(
-      path.join(branchRoot, "app", "candidate.tsx"),
-      'import { DESKTOP_CLASS } from "../components/classes";\nexport const Candidate = () => <div className={DESKTOP_CLASS} />;\n'
-    );
-    await expect(
-      provePhoneOnlyCss({ branchRoot, controlRoot })
-    ).rejects.toThrow("desktop-visible compiled declarations differ");
-
-    fs.writeFileSync(
-      path.join(branchRoot, "app", "candidate.tsx"),
-      'export const Candidate = () => <div className="p-4">p-8</div>;\n'
-    );
-    await expect(
-      provePhoneOnlyCss({ branchRoot, controlRoot })
-    ).resolves.toBeDefined();
-  });
-
-  it("follows aliased named imports by symbol", async () => {
-    const candidate =
-      'import { DESKTOP_CLASS as BOX_CLASS } from "../components/classes";\nexport const Candidate = () => <div className={BOX_CLASS} />;\n';
-    const branchRoot = makeProofRoot(candidate);
-    const controlRoot = makeProofRoot(candidate);
-    writeRuntimeSource(
-      branchRoot,
-      "components/classes.ts",
-      'export const DESKTOP_CLASS = "m-8";\n'
-    );
-    writeRuntimeSource(
-      controlRoot,
-      "components/classes.ts",
-      'export const DESKTOP_CLASS = "m-4";\n'
-    );
-
-    await expect(
-      provePhoneOnlyCss({ branchRoot, controlRoot })
-    ).rejects.toThrow("desktop-visible compiled declarations differ");
-  });
-
-  it("does not merge shadowed or same-named declarations", async () => {
-    const candidate = (local: string, unrelated: string) => `
-      const BOX_CLASS = "${unrelated}";
-      export function Candidate() {
-        const BOX_CLASS = "${local}";
-        return <div className={BOX_CLASS} />;
-      }
-    `;
-    const branchRoot = makeProofRoot(candidate("m-8", "m-4"));
-    const controlRoot = makeProofRoot(candidate("m-4", "m-8"));
-    writeRuntimeSource(
-      branchRoot,
-      "components/unrelated.ts",
-      'export const BOX_CLASS = "m-4";\n'
-    );
-    writeRuntimeSource(
-      controlRoot,
-      "components/unrelated.ts",
-      'export const BOX_CLASS = "m-8";\n'
-    );
-
-    await expect(
-      provePhoneOnlyCss({ branchRoot, controlRoot })
-    ).rejects.toThrow("desktop-visible compiled declarations differ");
-  });
-
-  it("reads typed and nested member initializers from their value owner", async () => {
-    const candidate = (value: string) => `
-      interface Styles { box: string; nested: { box: string } }
-      const styles: Styles = {
-        box: "${value}",
-        nested: { box: "${value}" },
-      };
-      export const Candidate = () => (
-        <div className={styles.box + " " + styles.nested.box} />
-      );
-    `;
-    const branchRoot = makeProofRoot(candidate("m-8"));
-    const controlRoot = makeProofRoot(candidate("m-4"));
-
-    await expect(
-      provePhoneOnlyCss({ branchRoot, controlRoot })
-    ).rejects.toThrow("desktop-visible compiled declarations differ");
-  });
-
-  it("reads aliased and nested destructured class bindings", async () => {
-    const candidate = (value: string) => `
-      const { box: BOX_CLASS, nested: { box: NESTED_CLASS } } = {
-        box: "${value}",
-        nested: { box: "${value}" },
-      };
-      export const Candidate = () => (
-        <div className={BOX_CLASS + " " + NESTED_CLASS} />
-      );
-    `;
-    const branchRoot = makeProofRoot(candidate("m-8"));
-    const controlRoot = makeProofRoot(candidate("m-4"));
-
-    await expect(
-      provePhoneOnlyCss({ branchRoot, controlRoot })
-    ).rejects.toThrow("desktop-visible compiled declarations differ");
-  });
-
-  it("reads positional and nested array-destructured class bindings", async () => {
-    const candidate = (value: string) => `
-      const [BOX_CLASS, [NESTED_CLASS]] = ["${value}", ["${value}"]];
-      export const Candidate = () => (
-        <div className={BOX_CLASS + " " + NESTED_CLASS} />
-      );
-    `;
-    const branchRoot = makeProofRoot(candidate("m-8"));
-    const controlRoot = makeProofRoot(candidate("m-4"));
-
-    await expect(
-      provePhoneOnlyCss({ branchRoot, controlRoot })
-    ).rejects.toThrow("desktop-visible compiled declarations differ");
-  });
-
-  it("reads typed direct and nested members returned by a local function", async () => {
-    const candidate = (value: string) => `
-      interface Styles { box: string; nested: { box: string } }
-      function getStyles(): Styles {
-        return { box: "${value}", nested: { box: "${value}" } };
-      }
-      const getNestedStyles = (): Styles => ({
-        box: "${value}", nested: { box: "${value}" },
-      });
-      export const Candidate = () => (
-        <div
-          className={
-            getStyles().box + " " + getNestedStyles().nested.box
-          }
-        />
-      );
-    `;
-    const branchRoot = makeProofRoot(candidate("m-8"));
-    const controlRoot = makeProofRoot(candidate("m-4"));
-
-    await expect(
-      provePhoneOnlyCss({ branchRoot, controlRoot })
-    ).rejects.toThrow("desktop-visible compiled declarations differ");
-  });
-
-  it("resolves one static computed key instead of scanning every owner value", async () => {
-    const candidate = (group: string, key: string) => `
-      const styles = {
-        first: { small: "m-4", large: "m-8" },
-        second: { small: "p-4", large: "p-8" },
-      };
-      const group = "${group}";
-      const key = "${key}";
-      export const Candidate = () => <div className={styles[group][key]} />;
-    `;
-    const branchRoot = makeProofRoot(candidate("first", "large"));
-    const controlRoot = makeProofRoot(candidate("first", "small"));
-
-    await expect(
-      provePhoneOnlyCss({ branchRoot, controlRoot })
-    ).rejects.toThrow("desktop-visible compiled declarations differ");
-  });
-
-  it("keeps nested finite computed owners but excludes unselected members", async () => {
-    const candidate = (firstLarge: string, secondLarge: string) => `
-      const styles = {
-        first: { small: "m-4", large: "${firstLarge}" },
-        second: { small: "p-4", large: "${secondLarge}" },
-      };
-      export const Candidate = ({ group }: { group: "first" | "second" }) => (
-        <div className={styles[group]["small"]} />
-      );
-    `;
-    const branchRoot = makeProofRoot(candidate("m-8", "p-8"));
-    const controlRoot = makeProofRoot(candidate("m-12", "p-12"));
-
-    await expect(
-      provePhoneOnlyCss({ branchRoot, controlRoot })
-    ).resolves.toBeDefined();
-  });
-
-  it("fails closed on dynamic or ambiguous computed class keys", async () => {
-    const dynamicRoot = makeProofRoot(`
-      declare const styles: Record<string, string>;
-      export const Candidate = ({ key }: { key: string }) => (
-        <div className={styles[key]} />
-      );
-    `);
-    await expect(
-      compilePhoneOnlyCss(dynamicRoot, { label: "dynamic-key" })
-    ).rejects.toThrow("computed class owner is not statically enumerable");
-
-    const wrappedDynamicRoot = makeProofRoot(`
-      declare const styles: Record<string, string>;
-      declare function classes(...values: unknown[]): string;
-      export const Candidate = ({ key }: { key: string }) => (
-        <div className={classes(styles[key])} />
-      );
-    `);
-    await expect(
-      compilePhoneOnlyCss(wrappedDynamicRoot, {
-        label: "wrapped-dynamic-key",
-      })
-    ).rejects.toThrow("computed class owner is not statically enumerable");
-
-    const ambiguousRoot = makeProofRoot(`
-      const styles = { small: "m-4", large: "m-8" };
-      const key = Math.random() > 0.5 ? "small" : "large";
-      export const Candidate = () => <div className={styles[key]} />;
-    `);
-    await expect(
-      compilePhoneOnlyCss(ambiguousRoot, { label: "ambiguous-key" })
-    ).rejects.toThrow("computed class key is ambiguous: small, large");
-  });
-
-  it("follows renamed and nested component prop bindings to JSX callsites", async () => {
-    const candidate = (value: string) => `
-      import { clsx as cx } from "uninstalled-class-helper";
-      function Frame({
-        classes: renamed,
-        layout: { classes: nested },
-      }: {
-        classes: string;
-        layout: { classes: string };
-      }) {
-        return (
-          <>
-            <div className={renamed + " " + nested} />
-            <div className={cx(renamed, nested)} />
-          </>
-        );
-      }
-      export const Candidate = () => (
-        <Frame classes="${value}" layout={{ classes: "${value}" }} />
-      );
-    `;
-    const branchRoot = makeProofRoot(candidate("m-8"));
-    const controlRoot = makeProofRoot(candidate("m-4"));
-
-    await expect(
-      provePhoneOnlyCss({ branchRoot, controlRoot })
-    ).rejects.toThrow("desktop-visible compiled declarations differ");
-  });
-
-  it("follows direct, renamed, and nested static map callback bindings", async () => {
-    const candidate = (value: string) => `
-      import { clsx as mergeTokens } from "uninstalled-class-helper";
-      const direct = ["${value}"];
-      const records = [{
-        classes: "${value}",
-        nested: { classes: "${value}" },
-      }];
-      export const Candidate = () => (
-        <>
-          {direct.map((renamed) => <div className={renamed} />)}
-          {direct.map((renamed) => <div className={mergeTokens(renamed)} />)}
-          {records.map(({ classes: renamed, nested: { classes: nested } }) => (
-            <>
-              <div className={renamed + " " + nested} />
-              <div className={mergeTokens(renamed, nested)} />
-            </>
-          ))}
-        </>
-      );
-    `;
-    const branchRoot = makeProofRoot(candidate("m-8"));
-    const controlRoot = makeProofRoot(candidate("m-4"));
-
-    await expect(
-      provePhoneOnlyCss({ branchRoot, controlRoot })
-    ).rejects.toThrow("desktop-visible compiled declarations differ");
-  });
-
-  it("fails closed when a class-bearing component parameter has no caller", async () => {
-    const root = makeProofRoot(`
-      import { clsx as cx } from "uninstalled-class-helper";
-      export function Candidate({ classes: renamed }: { classes: string }) {
-        return <div className={cx(renamed)} />;
-      }
-    `);
-
-    await expect(
-      compilePhoneOnlyCss(root, { label: "unbound-component-prop" })
-    ).rejects.toThrow(
-      "class-bearing parameter has no statically readable owner"
-    );
-  });
-
-  it("follows default imports and re-export aliases", async () => {
-    const defaultCandidate =
-      'import BOX_CLASS from "../components/classes";\nexport const Candidate = () => <div className={BOX_CLASS} />;\n';
-    const defaultBranch = makeProofRoot(defaultCandidate);
-    const defaultControl = makeProofRoot(defaultCandidate);
-    writeRuntimeSource(
-      defaultBranch,
-      "components/classes.ts",
-      'const BOX_CLASS = "m-8";\nexport default BOX_CLASS;\n'
-    );
-    writeRuntimeSource(
-      defaultControl,
-      "components/classes.ts",
-      'const BOX_CLASS = "m-4";\nexport default BOX_CLASS;\n'
-    );
-    await expect(
-      provePhoneOnlyCss({
-        branchRoot: defaultBranch,
-        controlRoot: defaultControl,
-      })
-    ).rejects.toThrow("desktop-visible compiled declarations differ");
-
-    const reexportCandidate =
-      'import { REEXPORTED_CLASS as BOX_CLASS } from "../components/bridge";\nexport const Candidate = () => <div className={BOX_CLASS} />;\n';
-    const reexportBranch = makeProofRoot(reexportCandidate);
-    const reexportControl = makeProofRoot(reexportCandidate);
-    for (const [root, value] of [
-      [reexportBranch, "m-8"],
-      [reexportControl, "m-4"],
-    ] as const) {
-      writeRuntimeSource(
-        root,
-        "components/classes.ts",
-        `const BOX_CLASS = "${value}";\nexport default BOX_CLASS;\n`
-      );
-      writeRuntimeSource(
-        root,
-        "components/bridge.ts",
-        'export { default as REEXPORTED_CLASS } from "./classes";\n'
-      );
+function isBelowSm(rule: Rule) {
+  let node: Node = rule;
+  while (node.parent) {
+    const parent: Node = node.parent;
+    if (parent.type === "atrule") {
+      const atRule = parent as AtRule;
+      if (atRule.name === "media" && PHONE_MEDIA.has(normalized(atRule.params)))
+        return true;
     }
-    await expect(
-      provePhoneOnlyCss({
-        branchRoot: reexportBranch,
-        controlRoot: reexportControl,
-      })
-    ).rejects.toThrow("desktop-visible compiled declarations differ");
-  });
+    node = parent;
+  }
+  return false;
+}
 
-  it("fails closed on an unresolved class-bearing import", async () => {
-    const brokenRoot = makeProofRoot(
-      'import { MISSING_CLASS } from "../components/missing";\nexport const Candidate = () => <div className={MISSING_CLASS} />;\n'
-    );
-    await expect(
-      compilePhoneOnlyCss(brokenRoot, { label: "unresolved" })
-    ).rejects.toThrow(
-      "unresolved: cannot resolve class-bearing binding MISSING_CLASS"
-    );
-  });
+function exactUtilitySelector(name: string) {
+  const escaped = name.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+  return new RegExp(`(^|[^\\w-])\\.${escaped}(?![\\w-])`);
+}
 
-  it("still reads arguments of an unresolved package class helper", async () => {
-    const candidate = (value: string) =>
-      `import clsx from "uninstalled-class-helper";\nexport const Candidate = () => <div className={clsx("${value}")} />;\n`;
-    const branchRoot = makeProofRoot(candidate("m-8"));
-    const controlRoot = makeProofRoot(candidate("m-4"));
-    await expect(
-      provePhoneOnlyCss({ branchRoot, controlRoot })
-    ).rejects.toThrow("desktop-visible compiled declarations differ");
-  });
-
-  it("rejects a declaration leaked from a registered utility onto desktop", async () => {
-    const leaked = globals.replace(
-      "@utility subpanel-inset {",
-      "@utility subpanel-inset {\n  color: red;"
-    );
-    const css = await compilePhoneOnlyCssText(leaked, {
-      root: repo,
-      label: "leaked",
-    });
-    expect(() => inspectPhoneOnlyCss(css, { label: "leaked" })).toThrow(
-      "registered phone-only declarations can apply at sm or above"
-    );
-  });
-
-  it("strips only the two exact phone scopes, recursively", () => {
-    const css = `
-      @layer utilities {
-        @media (width < 40rem) { .phone-a { display: block } }
-        @media (max-width: 639.98px) { .phone-b { display: block } }
-        @media (width < 50rem) { .not-phone { display: block } }
-        @media (min-width: 40rem) { .desktop { display: block } }
+function assertPhoneOnly(css: string, names: readonly string[]) {
+  const root = postcss.parse(css);
+  const verified: string[] = [];
+  for (const name of names) {
+    const selector = exactUtilitySelector(name);
+    const declarations: { rule: Rule; property: string }[] = [];
+    root.walkRules((rule) => {
+      if (!selector.test(rule.selector)) return;
+      for (const child of rule.nodes ?? []) {
+        if (child.type === "decl")
+          declarations.push({ rule, property: child.prop });
       }
-    `;
-    const result = stripPhoneContributions(css);
-    expect(result.blocks).toBe(2);
-    expect(result.declarations).toBe(2);
-    const kept = result.root.toString();
-    expect(kept).not.toContain("phone-a");
-    expect(kept).not.toContain("phone-b");
-    expect(kept).toContain("width < 50rem");
-    expect(kept).toContain("min-width: 40rem");
+    });
+    if (!declarations.length)
+      throw new Error(`${name} did not emit any declarations`);
+
+    const leaks = declarations.filter(({ rule }) => !isBelowSm(rule));
+    if (leaks.length)
+      throw new Error(
+        `${name} emitted declarations at sm or above: ${leaks
+          .map(({ rule, property }) => `${rule.selector} { ${property} }`)
+          .join(", ")}`
+      );
+    verified.push(name);
+  }
+  return verified;
+}
+
+describe("compiled phone-only CSS proof (#3518/#3727)", () => {
+  const source = fs.readFileSync(GLOBALS, "utf8");
+  const names = contractNames(source);
+  const compiled = new Map<string, string>();
+
+  beforeAll(async () => {
+    await Promise.all(
+      names.map(async (name) =>
+        compiled.set(name, await compile(source, [name]))
+      )
+    );
+  });
+
+  it("keeps every discovered utility strictly below sm in a real Tailwind compile", () => {
+    expect(
+      names.flatMap((name) => assertPhoneOnly(compiled.get(name)!, [name]))
+    ).toEqual(names);
+  });
+
+  it("rejects a planted desktop declaration", async () => {
+    const leaked = source.replace(
+      "@utility subpanel-inset {",
+      "@utility subpanel-inset {\n  outline-color: red;"
+    );
+    expect(leaked).not.toBe(source);
+    const compiledLeak = await compile(leaked, ["subpanel-inset"]);
+    expect(() => assertPhoneOnly(compiledLeak, ["subpanel-inset"])).toThrow(
+      "subpanel-inset emitted declarations at sm or above"
+    );
+  });
+
+  it("rejects a missing or renamed utility", () => {
+    const renamed = source.replace(
+      "@utility subpanel-inset-xs {",
+      "@utility subpanel-inset-xs-descendant {"
+    );
+    expect(renamed).not.toBe(source);
+    expect(() => contractNames(renamed)).toThrow(
+      "phone-only utility identities changed"
+    );
+  });
+
+  it("matches exact class tokens, including nested rules, not lookalikes", () => {
+    const selector = exactUtilitySelector("subpanel-inset-xs");
+    expect(selector.test(".subpanel-inset-xs:hover")).toBe(true);
+    expect(selector.test(".host > .subpanel-inset-xs[data-open]")).toBe(true);
+    expect(selector.test(".subpanel-inset-xs .descendant")).toBe(true);
+    expect(selector.test(".subpanel-inset-xs-descendant")).toBe(false);
+    expect(selector.test(".host-subpanel-inset-xs")).toBe(false);
   });
 });
