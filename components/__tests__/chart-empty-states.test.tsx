@@ -1,6 +1,6 @@
-import { render, screen } from "@testing-library/react";
+import { cleanup, render, screen } from "@testing-library/react";
 import type { ReactElement } from "react";
-import { beforeEach, describe, expect, it } from "vitest";
+import { beforeAll, beforeEach, describe, expect, it } from "vitest";
 import BarSparkline from "@/components/BarSparkline";
 import BiomarkerChart from "@/components/BiomarkerChart";
 import ChartCard from "@/components/ChartCard";
@@ -69,20 +69,56 @@ const EMPTY_CHARTS: ReadonlyArray<{
   },
 ];
 
+function stubMatchMedia(): void {
+  window.matchMedia = (query: string) =>
+    ({
+      matches: false,
+      media: query,
+      onchange: null,
+      addListener: () => {},
+      removeListener: () => {},
+      addEventListener: () => {},
+      removeEventListener: () => {},
+      dispatchEvent: () => false,
+    }) satisfies MediaQueryList;
+}
+
+// Bounds the LAZY IMPORT in the hook below, not a render, so it can be generous:
+// nothing is asserted under it and it only has to fit vitest's hook budget (2x the
+// per-test ceiling, 30 000 ms in CI). Measured mounting a chart through its public
+// wrapper: 2 157 ms cold / 56 ms warm idle, 5 682-7 793 ms cold / 121-466 ms warm
+// with four extra CPU burners on the box.
+const CHART_CHUNK_WARMUP_MS = 20_000;
+
 describe("chart empty states", () => {
-  beforeEach(() => {
-    window.matchMedia = (query: string) =>
-      ({
-        matches: false,
-        media: query,
-        onchange: null,
-        addListener: () => {},
-        removeListener: () => {},
-        addEventListener: () => {},
-        removeEventListener: () => {},
-        dispatchEvent: () => false,
-      }) satisfies MediaQueryList;
+  // Each chart is reached through its PUBLIC wrapper, a `next/dynamic` boundary, so
+  // mounting one waits on a lazy import of the chart module graph. The FIRST mount
+  // in the file pays that graph and the rest come from the module cache (the warm
+  // numbers above) — while findBy*'s ceiling is a 1 000 ms default, below the cold
+  // cost. So whichever case was listed first failed and the other seven passed,
+  // reading as a broken `bar sparkline` (#3801). Raising `--testTimeout` 15x did not
+  // help because that knob does not reach findBy's own ceiling.
+  //
+  // Pay the import once here; each case below then measures the render it names at
+  // the strict default. Warming through the same table keeps it honest — no second
+  // list to drift, and nothing reaches past the wrapper.
+  beforeAll(async () => {
+    stubMatchMedia();
+    for (const { message, plot } of EMPTY_CHARTS) {
+      render(
+        <ChartCard title="Warm up" detailHref="/">
+          {plot}
+        </ChartCard>
+      );
+      await screen.findByText(message, undefined, {
+        timeout: CHART_CHUNK_WARMUP_MS,
+      });
+      // `afterEach` in the tier setup cannot reach a `beforeAll` render.
+      cleanup();
+    }
   });
+
+  beforeEach(stubMatchMedia);
 
   it.each(EMPTY_CHARTS)(
     "$name keeps its reason and directly releases the chart footprint",

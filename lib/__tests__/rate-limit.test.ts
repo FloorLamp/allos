@@ -3,6 +3,7 @@ import {
   decideRateLimit,
   checkRateLimit,
   forwardedClientIdentity,
+  resetRateLimitState,
 } from "@/lib/rate-limit";
 
 describe("decideRateLimit", () => {
@@ -65,6 +66,17 @@ describe("checkRateLimit", () => {
     const rejected = checkRateLimit(key, opts);
     expect(rejected.ok).toBe(false);
     expect(rejected.retryAfterSec).toBeGreaterThan(0);
+  });
+
+  // The seam the DB tier's shared registry needs (#3809): one Node process hosts
+  // hundreds of suites, so a spent budget has to be droppable between them.
+  it("starts a fresh window for a spent key after a reset", () => {
+    const key = "reset-key";
+    const opts = { limit: 1, windowMs: 60_000 };
+    expect(checkRateLimit(key, opts).ok).toBe(true);
+    expect(checkRateLimit(key, opts).ok).toBe(false);
+    resetRateLimitState();
+    expect(checkRateLimit(key, opts).ok).toBe(true);
   });
 
   it("keeps independent keys from interfering", () => {
