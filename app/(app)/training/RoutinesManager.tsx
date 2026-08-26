@@ -5,6 +5,10 @@ import { IconPlus } from "@tabler/icons-react";
 import type { RoutineWithDays } from "@/lib/types";
 import { EmptyState } from "@/components/ui";
 import ModalShell from "@/components/ModalShell";
+import {
+  SectionCreateHeader,
+  useCreateActionLabel,
+} from "@/components/CreateAction";
 import { useConfirm } from "@/components/ConfirmDialog";
 import { useToast } from "@/components/Toast";
 import RoutineBuilder from "./RoutineBuilder";
@@ -32,6 +36,24 @@ export interface TemplateSummary {
 export interface ReplaceTarget {
   label: string;
   perWeek: number;
+}
+
+export function RoutineCreateControl({
+  onActivate,
+}: {
+  onActivate: () => void;
+}) {
+  const label = useCreateActionLabel();
+  return (
+    <button
+      type="button"
+      data-testid="routine-new"
+      onClick={onActivate}
+      className="btn inline-flex items-center gap-1.5"
+    >
+      <IconPlus className="h-4 w-4" /> {label}
+    </button>
+  );
 }
 
 function dayCountLabel(n: number): string {
@@ -141,36 +163,25 @@ export default function RoutinesManager({
       data-testid="routines-section"
       className="scroll-mt-[calc(5rem+env(safe-area-inset-top))]"
     >
-      {/* flex-wrap (#2892): on phones the shrink-proof button cluster used to
-          squeeze the heading cell — the actions wrap to their own line instead. */}
-      <div className="mb-3 flex flex-wrap items-center justify-between gap-2">
-        <div className="min-w-0">
-          <h2 className="text-lg font-semibold text-slate-800 dark:text-slate-100">
-            Routines
-          </h2>
-          <p className="mt-0.5 text-xs text-slate-500 dark:text-slate-400">
-            Adopt a template or build your own. Activating a routine sets your
-            weekly training targets; at most one routine is active at a time.
-          </p>
-        </div>
-        <div className="flex shrink-0 gap-2">
-          <button
-            type="button"
-            data-testid="routine-adopt-open"
-            onClick={() => setShowPicker(true)}
-            className="btn-ghost"
-          >
-            Adopt a template
-          </button>
-          <button
-            type="button"
-            data-testid="routine-new"
-            onClick={() => setBuilder({})}
-            className="btn inline-flex items-center gap-1.5"
-          >
-            <IconPlus className="h-4 w-4" /> Add routine
-          </button>
-        </div>
+      <div className="mb-3">
+        <SectionCreateHeader
+          title="Routines"
+          subtitle="Adopt a template or build your own. Activating a routine sets your weekly training targets; at most one routine is active at a time."
+          action={
+            <button
+              type="button"
+              data-testid="routine-adopt-open"
+              onClick={() => setShowPicker(true)}
+              className="btn-ghost"
+            >
+              Adopt a template
+            </button>
+          }
+          createAction={{
+            kind: "routine",
+            control: <RoutineCreateControl onActivate={() => setBuilder({})} />,
+          }}
+        />
       </div>
 
       {/* The state, and nothing else (#3474 item 3). The subtitle one screen-height

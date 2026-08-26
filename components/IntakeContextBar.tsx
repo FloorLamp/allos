@@ -3,10 +3,10 @@
 import { IconAdjustmentsHorizontal } from "@tabler/icons-react";
 import CompactDateMenu from "@/components/CompactDateMenu";
 import IconButton from "@/components/IconButton";
+import CreateAction, {
+  type CreateActionDeclaration,
+} from "@/components/CreateAction";
 import SegmentedControl from "@/components/SegmentedControl";
-import AddSupplementModal, {
-  type AddSupplementModalProps,
-} from "@/components/nutrition/AddSupplementModal";
 
 type SharedProps = {
   today: string;
@@ -27,21 +27,21 @@ type Props = SharedProps &
     | {
         purpose: "supplement-review";
         status: { kind: "taken"; taken: number; total: number };
-        action: { kind: "add-supplement"; modal: AddSupplementModalProps };
+        createAction: CreateActionDeclaration;
       }
   );
 
-export default function IntakeContextBar({
-  purpose,
-  today,
-  days,
-  value,
-  onChange,
-  context,
-  todayContext,
-  status,
-  action,
-}: Props) {
+export default function IntakeContextBar(input: Props) {
+  const {
+    purpose,
+    today,
+    days,
+    value,
+    onChange,
+    context,
+    todayContext,
+    status,
+  } = input;
   const food = purpose === "food-log";
   const prefix = food ? "food" : "supplement";
   const title = food ? "Food Log" : "Supplements";
@@ -131,18 +131,23 @@ export default function IntakeContextBar({
               compactStatus
             )}
           </p>
-          {action.kind === "food-preferences" ? (
+          {purpose === "food-log" ? (
             <span className="sm:hidden">
               <IconButton
                 label="Dietary preferences"
                 data-testid="food-preferences-open-mobile"
-                onClick={action.onActivate}
+                onClick={input.action.onActivate}
               >
                 <IconAdjustmentsHorizontal className="h-4 w-4" />
               </IconButton>
             </span>
           ) : (
-            <AddSupplementModal {...action.modal} />
+            input.createAction.available !== false && (
+              <CreateAction
+                declaration={input.createAction}
+                housing="section"
+              />
+            )
           )}
         </div>
       </div>

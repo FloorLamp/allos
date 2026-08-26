@@ -3,6 +3,10 @@
 import { useId, useState, useTransition } from "react";
 import { IconPlus, IconX } from "@tabler/icons-react";
 import DestinationLink from "@/components/DestinationLink";
+import {
+  SectionCreateHeader,
+  useCreateActionLabel,
+} from "@/components/CreateAction";
 import OverflowMenu, {
   MENU_ITEM,
   MENU_ITEM_DANGER,
@@ -27,6 +31,23 @@ import {
 // live on the detail page — this is just the at-a-glance count.
 export interface EquipmentUsageBadge {
   sessions: number;
+}
+
+export function EquipmentCreateControl({
+  onActivate,
+}: {
+  onActivate: () => void;
+}) {
+  const label = useCreateActionLabel();
+  return (
+    <button
+      type="button"
+      onClick={onActivate}
+      className="btn inline-flex items-center gap-1"
+    >
+      <IconPlus className="h-4 w-4" stroke={2.5} /> {label}
+    </button>
+  );
 }
 
 interface Draft {
@@ -299,20 +320,14 @@ export default function EquipmentManager({
 
   return (
     <div className="card max-w-2xl space-y-4">
-      <div className="flex items-center justify-between">
-        <h2 className="font-semibold text-slate-800 dark:text-slate-100">
-          Your equipment
-        </h2>
-        {creationAvailable && !adding && editingId == null && (
-          <button
-            type="button"
-            onClick={startAdd}
-            className="btn inline-flex items-center gap-1"
-          >
-            <IconPlus className="h-4 w-4" stroke={2.5} /> Add equipment
-          </button>
-        )}
-      </div>
+      <SectionCreateHeader
+        title="Your equipment"
+        createAction={{
+          kind: "equipment",
+          available: creationAvailable && !adding && editingId == null,
+          control: <EquipmentCreateControl onActivate={startAdd} />,
+        }}
+      />
 
       <p className="text-xs text-slate-500 dark:text-slate-400">
         {!creationAvailable
