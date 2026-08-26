@@ -135,22 +135,6 @@ export default function DashboardStandingCluster({
                             data-standing-row=""
                             data-standing-trend={rowSeries ? "" : undefined}
                           >
-                            {primaryPresentation?.href &&
-                              (destination ? (
-                                <StandingDestinationLink
-                                  href={primaryPresentation.href}
-                                  destinationLabel={destination}
-                                >
-                                  {primaryName}
-                                </StandingDestinationLink>
-                              ) : (
-                                <Link
-                                  href={primaryPresentation.href}
-                                  className="absolute inset-0"
-                                >
-                                  <span className="sr-only">{primaryName}</span>
-                                </Link>
-                              ))}
                             <div className="text-sm font-medium text-slate-600 dark:text-slate-300">
                               {rowIndex === 0 ? (
                                 family.label
@@ -249,6 +233,22 @@ export default function DashboardStandingCluster({
                             {rowSeries && (
                               <StandingSparkline series={rowSeries} />
                             )}
+                            {primaryPresentation?.href &&
+                              (destination ? (
+                                <StandingDestinationLink
+                                  href={primaryPresentation.href}
+                                  destinationLabel={destination}
+                                >
+                                  {primaryName}
+                                </StandingDestinationLink>
+                              ) : (
+                                <Link
+                                  href={primaryPresentation.href}
+                                  className="absolute inset-0"
+                                >
+                                  <span className="sr-only">{primaryName}</span>
+                                </Link>
+                              ))}
                           </div>
                         );
                       })}

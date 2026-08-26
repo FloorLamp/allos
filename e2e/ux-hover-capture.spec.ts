@@ -41,6 +41,12 @@ import { HOVER_THRESHOLDS, measureHover } from "../scripts/ux-hover-census.mjs";
 // added to SURFACES cannot get the floor and the subject while quietly skipping the
 // half that proves the probe is not blind. That is tracked as #3509.
 //
+// EVERY READING IS RENDERED. `.standing-row:hover .standing-door { opacity: 1 }` is
+// a DECLARATION; what is measured here is the engine's own `checkVisibility()` and
+// the bytes of two clipped PNGs. The forged offender below is therefore given a
+// real stylesheet and hovered with a real pointer — not a class toggled by script,
+// which would prove only that the probe can read the DOM it was handed.
+//
 // DESKTOP. The whole deliverable is desktop-only (a phone has no hover), so this
 // file deliberately carries no `.mobile.` in its name and runs in the default
 // 1280×900 project.
@@ -64,6 +70,12 @@ interface Surface {
 }
 
 const SURFACES: Surface[] = [
+  {
+    route: "/",
+    why: "The dashboard's Standing cluster: #3459 item 2's door labels, the named miss this deliverable exists for.",
+    // measured 2647, 2647, 2647 across --repeat-each=3 on 2026-08-22
+    minExamined: 900,
+  },
   {
     route: "/records/history/immunizations",
     why: "The CDC schedule grid: #3375's load-bearing case, where the mouse panel is the ONLY path to the content.",
@@ -100,7 +112,11 @@ const REGISTERED: { surface: Surface; entry: HoverEntry }[] = SURFACES.map(
 
 // ── THE FORGERIES ─────────────────────────────────────────────────────────────
 //
-// A real stylesheet and real geometry, never a class the app owns.
+// A real stylesheet and real geometry, never a class the app owns: borrowing
+// `.standing-row` would make this fail the day somebody renames it for an
+// unrelated reason, and would put the app's own DECLARATION back in the middle of
+// a measurement of the probe.
+//
 // `position: absolute` at the document origin, with the page scrolled to the top,
 // so viewport coordinates and document coordinates coincide — the clip the probe
 // cuts is in document coordinates, and a `position: fixed` host would put the two

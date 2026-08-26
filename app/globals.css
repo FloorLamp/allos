@@ -1261,7 +1261,8 @@
 }
 
 /* ── SECTION: Dashboard hover doors ── */
-/* Standing's row destination on hover and focus (#3555). */
+/* Standing's whole-row link reveals its destination on hover and focus. The date
+   stays visible; only the out-of-flow door moves (#3555). */
 .standing-row .standing-door {
   bottom: auto;
   height: 1.5rem;
@@ -1278,6 +1279,7 @@
   }
 }
 
+/* A plotted row's rail ends immediately before its 11rem plot and 1rem gap. */
 @media (min-width: 45rem) {
   [data-standing-row][data-standing-trend] > .standing-row .standing-door {
     right: 13rem;

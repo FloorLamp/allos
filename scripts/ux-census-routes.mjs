@@ -211,6 +211,14 @@ export const DISCLOSURE_EXPANSIONS = [
 /** @type {HoverCapture[]} */
 export const HOVER_CAPTURES = [
   {
+    // #3555: the hover shot shows both the door and the date.
+    route: "/",
+    label: "Standing family door labels",
+    target: "a.standing-row",
+    reveals: '[data-testid="standing-door"]',
+    ruling: "#3253 decision 2, re-ruled by #3459 item 2",
+  },
+  {
     // #3375's load-bearing case: the CDC schedule grid's per-vaccine and per-dose
     // content uses the same panel for mouse hover and pinned tap/keyboard access.
     // The grid itself sits behind a closed <details>, which is what `openFirst` is
