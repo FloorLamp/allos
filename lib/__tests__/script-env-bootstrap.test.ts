@@ -350,11 +350,31 @@ describe("standalone script environment bootstrap", () => {
   describe("the env match reads code, not prose (#3340)", () => {
     it.each([
       ["const seed = process.env.SEED_RNG;", true, "a plain read"],
-      ["export const x = 1; // process.env.SEED is loaded by ./load-env", false, "a trailing sentence about one"],
-      ["// The frozen instant is NOT read from process.env here.", false, "a line comment explaining a removal"],
-      ["/**\n * Why no process.env read: ./load-env owns it.\n */\nexport const x = 1;", false, "a JSDoc explaining one"],
-      ["const k = process.env.SEED; // and process.env.OTHER is deliberately unread", true, "a read a comment shares a line with"],
-      ['const cmd = "process.env.TZ";', true, "one inside a string, which the scanner cannot follow"],
+      [
+        "export const x = 1; // process.env.SEED is loaded by ./load-env",
+        false,
+        "a trailing sentence about one",
+      ],
+      [
+        "// The frozen instant is NOT read from process.env here.",
+        false,
+        "a line comment explaining a removal",
+      ],
+      [
+        "/**\n * Why no process.env read: ./load-env owns it.\n */\nexport const x = 1;",
+        false,
+        "a JSDoc explaining one",
+      ],
+      [
+        "const k = process.env.SEED; // and process.env.OTHER is deliberately unread",
+        true,
+        "a read a comment shares a line with",
+      ],
+      [
+        'const cmd = "process.env.TZ";',
+        true,
+        "one inside a string, which the scanner cannot follow",
+      ],
     ])("%s -> %s (%s)", (source, expected) => {
       expect(sourceUsesProcessEnv(source)).toBe(expected);
     });
@@ -363,8 +383,14 @@ describe("standalone script environment bootstrap", () => {
     // not a comment opener — inside a string, inside a regex — must leave the code
     // after it visible. Both shapes over-blank under a naive line regex.
     it.each([
-      ['const url = "https://x/"; const k = process.env.SEED;', "a URL earlier on the line"],
-      ["const re = /\\/\\//; const k = process.env.SEED;", "a regex literal containing a slash pair"],
+      [
+        'const url = "https://x/"; const k = process.env.SEED;',
+        "a URL earlier on the line",
+      ],
+      [
+        "const re = /\\/\\//; const k = process.env.SEED;",
+        "a regex literal containing a slash pair",
+      ],
     ])("still sees the read past %s (%s)", (source) => {
       expect(sourceUsesProcessEnv(source)).toBe(true);
     });
