@@ -361,6 +361,12 @@ export function shipsRuntimeCode(files) {
 // of the hole it closes: scope only lets the TEXT tier look. #2963 is in scope under
 // this rule and still `ordinary`, because its own prose names no safety term. A
 // deletion described in neutral words stays invisible, and no scope rule fixes that.
+/**
+ * @param {string[]} files
+ * @param {Record<string, string>} [patches] filename -> unified diff, when the
+ *   caller has it. Absent means the pre-#3044 filename-only scope rule.
+ * @returns {string[]}
+ */
 export function weakenedTests(files, patches) {
   return files.filter(
     (f) => TEST_FILE.test(f) && netExpectDelta(patches?.[f]) < 0
@@ -490,7 +496,10 @@ export function vocabularyHits(sources) {
 
 /**
  * The whole decision, over facts a caller supplies — so it can be tested without
- * a network. Returns { verdict, exit, pathHits, vocabHits, scoped }.
+ * a network. Returns { verdict, exit, pathHits, vocabHits, weakened, scoped }.
+ *
+ * @param {{ files: string[], sources: { where: string, text: string }[],
+ *   patches?: Record<string, string> }} input
  */
 export function classify({ files, sources, patches }) {
   const pathHits = [];

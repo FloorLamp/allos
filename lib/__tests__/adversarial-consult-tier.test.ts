@@ -682,7 +682,8 @@ describe("the exit codes", () => {
 // across 12 files), and it is pinned below because it stays `ordinary` — scope only
 // lets the TEXT tier look, and #2963's prose names no safety term.
 describe("a diff that only removes assertions is in scope (#3044)", () => {
-  const patch = (...lines) => ["@@ -1,4 +1,4 @@", ...lines].join("\n");
+  const patch = (...lines: string[]) =>
+    ["@@ -1,4 +1,4 @@", ...lines].join("\n");
 
   it.each([
     [
