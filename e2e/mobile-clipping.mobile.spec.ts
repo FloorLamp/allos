@@ -385,6 +385,120 @@ test.describe("mobile clipping batch (#2614)", () => {
     );
     expect(pageScale).toBe(1);
   });
+
+  test("item 6: Training → Analyze's day-history calendar scrolls instead of running past the edge (#3712)", async ({
+    page,
+  }) => {
+    // The #3502 phone sweep measured three 24px day buttons 4px past the 390px
+    // viewport here, and the mechanism is this file's thesis in its purest form:
+    // the calendar HAS an `overflow-x-auto` scroller, and the scroller had grown
+    // to its own content's width, so there was nothing to swipe. Its band was a
+    // bare `grid`, whose implicit `auto` track takes its floor from the items'
+    // min-content — and the calendar's min-content is its whole grid (a 30px
+    // weekday gutter + 13 columns of 24px cells and 3px gaps = 378px at the
+    // default quarter window), 20px more than the 358px the shell leaves.
+    //
+    // So this asks the two questions in order: does the CONTAINER fit, and is
+    // the content it holds REACHABLE. Either one alone passes on the defect —
+    // the cells were "reachable" in the sense that a scroller existed.
+    await page.goto("/training?tab=analyze");
+    const calendar = page.getByTestId("day-history-calendar");
+    await expect(calendar).toBeVisible();
+
+    // WAIT FOR THE CELLS, NOT THE SCROLLER (#3384). The calendar sizes its own
+    // cells from its container in an effect after mount, so a box read before
+    // they land is a box that fits any width — and every assertion below is an
+    // ABSENCE, the direction an unrendered page flatters.
+    const days = calendar.getByTestId("day-history-day");
+    await expect(days.first()).toBeVisible(); // first-ok: presence proves the grid laid out; the assertions below read ALL of them
+    const panel = page.getByTestId("day-history-calendar-panel");
+
+    // 1. THE CONTAINER FITS. The panel is the grid item that used to be sized by
+    // its content; the scroller is the box that must hold everything.
+    const viewport = page.viewportSize()!;
+    const [panelBox, calendarBox] = await settledBoxes([panel, calendar]);
+    expect(
+      panelBox.x + panelBox.width,
+      "the calendar panel's right edge is past the phone viewport"
+    ).toBeLessThanOrEqual(viewport.width + 1);
+    expect(
+      calendarBox.x + calendarBox.width,
+      "the calendar scroller's own right edge is past the phone viewport, so " +
+        "nothing inside it can be reached by scrolling it"
+    ).toBeLessThanOrEqual(viewport.width + 1);
+
+    // 2. AND EVERY CELL IS INSIDE IT. Measured, not asserted from the container:
+    // this is the reading the sweep took, and the one the fix has to move.
+    const escaping = await days.evaluateAll((cells, vw) => {
+      const out: string[] = [];
+      for (const cell of cells) {
+        const box = cell.getBoundingClientRect();
+        if (box.width === 0 || box.height === 0) continue;
+        if (box.right <= vw + 1) continue;
+        out.push(
+          `${cell.getAttribute("data-date") ?? "?"} right=${Math.round(box.right)}`
+        );
+      }
+      return out;
+    }, viewport.width);
+    expect(
+      escaping,
+      `day-history buttons past the ${viewport.width}px viewport: ${escaping.join(", ")}`
+    ).toEqual([]);
+
+    // 3. NO CELL WAS MADE SMALLER OR MADE TO OVERLAP to buy that fit — #3712's
+    // own constraint on the fix. 24px is the calendar's floor cell
+    // (`CAL_CELL` in components/DayHistory.tsx, from which cells GROW toward 34
+    // on a short window); the hit box adds the 3px gap the day owns, measured
+    // 24x27 at the default quarter window on 2026-08-26.
+    const geometry = await days.evaluateAll((cells) =>
+      cells.map((cell) => {
+        const box = cell.getBoundingClientRect();
+        return {
+          date: cell.getAttribute("data-date") ?? "?",
+          left: box.left,
+          right: box.right,
+          top: box.top,
+          bottom: box.bottom,
+          width: box.width,
+          height: box.height,
+        };
+      })
+    );
+    const undersized = geometry.filter(
+      (cell) => cell.width < 24 - 0.01 || cell.height < 24 - 0.01
+    );
+    expect(
+      undersized.map((c) => `${c.date} ${c.width}x${c.height}`),
+      "a day cell rendered under the calendar's 24px floor"
+    ).toEqual([]);
+    const overlapping: string[] = [];
+    for (let a = 0; a < geometry.length; a += 1) {
+      for (let b = a + 1; b < geometry.length; b += 1) {
+        const x = geometry[a],
+          y = geometry[b];
+        const over =
+          x.left < y.right - 0.5 &&
+          y.left < x.right - 0.5 &&
+          x.top < y.bottom - 0.5 &&
+          y.top < x.bottom - 0.5;
+        if (over) overlapping.push(`${x.date} overlaps ${y.date}`);
+      }
+    }
+    expect(
+      overlapping,
+      `day-history targets overlap: ${overlapping.join(", ")}`
+    ).toEqual([]);
+
+    // 4. THE SWIPE IS REAL. The whole point of a scroller that fits is that the
+    // columns it cannot show are still reachable; a scroller with nothing to
+    // scroll is how the defect looked from the inside.
+    expect(
+      await scrollableBy(calendar),
+      "the calendar has no horizontal scroll range, so the week columns it " +
+        "cannot fit are unreachable rather than swipeable"
+    ).toBeGreaterThan(0);
+  });
 });
 
 // Fixing a clip must never be paid for by letting content out of the viewport,
@@ -392,7 +506,15 @@ test.describe("mobile clipping batch (#2614)", () => {
 // element-level guard: it names the offending box rather than asserting a
 // document width the app shell clips anyway (#1543).
 test.describe("no surface pays for its fix with content past the edge (#2614)", () => {
-  for (const path of ["/", "/trends", "/sleep", "/import/908"] as const) {
+  for (const path of [
+    "/",
+    "/trends",
+    "/sleep",
+    "/import/908",
+    // #3712: the day-history calendar overhung by 4px here, invisibly, because
+    // `<main>`'s clip absorbed it and no page-level reading could see it.
+    "/training?tab=analyze",
+  ] as const) {
     test(`${path} keeps every box inside the viewport`, async ({ page }) => {
       await page.goto(path);
       await expectNoClippedContent(page);
