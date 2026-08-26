@@ -9,6 +9,12 @@
 - Check profile scoping, write transactions, authorization boundaries, identity
   handling, and shared one-question-one-computation models.
 - Require tests at the tier that can observe the defect.
+- Check the ruling's OWN condition, not the one the implementation makes
+  easy. Verifying values where they change is a different question from
+  rendering the case the ruling names.
+- A guard's existence is not its coverage. Ask which widths, states and
+  roles it runs at, and say which in the review.
+- Receipts for both: incidents, "The review that checked the arithmetic".
 - A REMOVAL is checked against the issue's acceptance criteria before it is
   accepted. An unreachable export can be debris or an unfinished requirement,
   and the code cannot tell you which — only the issue can. Delete it once the
