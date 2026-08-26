@@ -2325,7 +2325,6 @@ export default function FoodLogBar({
                   type="button"
                   data-testid="food-eating-earlier"
                   aria-expanded={earlierOpen}
-                  aria-label="State an earlier time instead"
                   onClick={() => setEarlierOpen((open) => !open)}
                   className="btn-ghost"
                 >

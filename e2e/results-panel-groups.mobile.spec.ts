@@ -4,6 +4,7 @@ import {
   expectNoClippedContent,
   hydratedClick,
   settledCheck,
+  settledBoxes,
   settledSelect,
 } from "./helpers";
 import { loginAs } from "./nav";
@@ -35,13 +36,17 @@ async function openBrowser(
   browser: Parameters<typeof loginAs>[0],
   url: string = CLINICAL_RESULTS
 ) {
-  const page = await loginAs(browser, {
-    username: E2E_LOGIN_PANELGROUPS,
-    password: E2E_MEMBER_PASSWORD,
-  });
-  // loginAs opens a raw context, which does not inherit the `mobile` project's
-  // viewport — pin it so the assertions are about the phone layout.
-  await page.setViewportSize({ width: 390, height: 844 });
+  const page = await loginAs(
+    browser,
+    {
+      username: E2E_LOGIN_PANELGROUPS,
+      password: E2E_MEMBER_PASSWORD,
+    },
+    {
+      viewport: { width: 390, height: 844 },
+      hasTouch: true,
+    }
+  );
   await page.goto(url);
   return page;
 }
@@ -142,6 +147,91 @@ test("tapping a group expands its results, and only that group (#1499)", async (
   await expect(lipids).toHaveAttribute("data-open", "false");
 
   await page.context().close();
+});
+
+test("a mapped panel's reported heading is available by touch and keyboard at 390px", async ({
+  browser,
+}) => {
+  const page = await openBrowser(browser);
+  const lipids = group(page, "lipids");
+  await hydratedClick(page, lipids.getByTestId("clinical-result-panel-toggle"));
+
+  // Every mapped row was reported under the fixture lab heading. The one shared
+  // disclosure stays beside its row date, and each control includes analyte + date so a
+  // controls list does not collapse eleven E2E Lab rows into identical choices.
+  const triggers = lipids.getByTestId("clinical-reported-panel-help");
+  await expect(triggers).toHaveCount(11);
+  const names = await triggers.evaluateAll((elements) =>
+    elements.map((element) => element.getAttribute("aria-label") ?? "")
+  );
+  expect(new Set(names).size).toBe(names.length);
+  expect(
+    names.every((name) =>
+      /^Reported under “E2E Lab” — .+, \d{4}-\d{2}-\d{2}$/.test(name)
+    )
+  ).toBe(true);
+
+  const trigger = triggers.first(); // first-ok: all eleven uniquely named controls share the same closed tooltip interaction; the complete unique-name set is asserted above
+  const triggerName = names[0];
+  const [box] = await settledBoxes([trigger]);
+  await page.touchscreen.tap(box.x + box.width / 2, box.y + box.height / 2);
+  const tooltip = page.getByRole("tooltip");
+  await expect(tooltip).toHaveText(triggerName);
+  await expectNoClippedContent(page);
+
+  await page.keyboard.press("Escape");
+  await trigger.focus();
+  await expect(tooltip).toHaveText(triggerName);
+  await page.keyboard.press("Escape");
+  await expect(tooltip).toHaveCount(0);
+
+  await page.context().close();
+});
+
+test("table continuation rows keep one contextual alias control at 700 and 1280px", async ({
+  browser,
+}) => {
+  for (const width of [700, 1280]) {
+    const page = await loginAs(
+      browser,
+      {
+        username: E2E_LOGIN_PANELGROUPS,
+        password: E2E_MEMBER_PASSWORD,
+      },
+      { viewport: { width, height: 900 }, hasTouch: false }
+    );
+    await page.goto(CLINICAL_RESULTS);
+    const lipids = group(page, "lipids");
+    await hydratedClick(
+      page,
+      lipids.getByTestId("clinical-result-panel-toggle")
+    );
+
+    const ldlRows = lipids.locator("tr").filter({
+      has: page.getByRole("link", {
+        name: "LDL Cholesterol",
+        exact: true,
+        includeHidden: true,
+      }),
+    });
+    await expect(ldlRows).toHaveCount(3);
+    const continuation = ldlRows.nth(1);
+    const trigger = continuation.getByTestId("clinical-reported-panel-help");
+    await expect(trigger).toBeVisible();
+    await expect(trigger).toHaveAccessibleName(
+      /^Reported under “E2E Lab” — LDL Cholesterol, \d{4}-\d{2}-\d{2}$/
+    );
+    const dateCell = trigger.locator("xpath=ancestor::td[1]");
+    await expect(dateCell).toHaveAttribute("data-card", "meta");
+    await expect(dateCell).toContainText(/\d{4}-\d{2}-\d{2}/);
+    await expect(
+      continuation
+        .locator('td[data-card="title"]')
+        .getByTestId("clinical-reported-panel-help")
+    ).toHaveCount(0);
+
+    await page.context().close();
+  }
 });
 
 test("search expands the groups it matched, so a hit is never hidden (#1499)", async ({

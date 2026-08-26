@@ -501,7 +501,6 @@ export default function PlateBuilderModal({
                 <button
                   key={i}
                   type="button"
-                  aria-label="Remove one"
                   onClick={() => {
                     // Remove one plate of this denomination.
                     const idx = plates.indexOf(p);
@@ -509,7 +508,8 @@ export default function PlateBuilderModal({
                   }}
                   className="inline-flex items-center gap-1 rounded-md bg-slate-100 px-2 py-1 text-xs font-medium text-slate-600 hover:bg-rose-50 hover:text-rose-600 dark:bg-slate-800 dark:text-slate-300 dark:hover:bg-rose-950"
                 >
-                  {p} <IconX className="h-3 w-3" />
+                  {p} <IconX className="h-3 w-3" aria-hidden />
+                  <span className="sr-only"> — remove one plate</span>
                 </button>
               ))}
             </div>

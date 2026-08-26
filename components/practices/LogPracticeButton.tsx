@@ -406,7 +406,7 @@ export default function LogPracticeButton({
           // whole sentence while the visible label stays short enough for a phone.
           aria-label={
             count === 0
-              ? `Log a ${practice} session for today`
+              ? `Log now — log a ${practice} session for today`
               : `Log another ${practice} session — ${count} already logged today`
           }
           className={`${DOSE_ACTION_LABEL} ${

@@ -327,6 +327,7 @@ test("one-tap practice logging: a double-tap logs once, the label states today, 
   // Nothing logged yet: the first tap is offered as a first tap.
   await expect(todayLine).toContainText("No sessions yet");
   await expect(button).toHaveText("Log now");
+  await expect(button).toHaveAccessibleName(/^Log now — /);
 
   // #2204, owner ruling: the CARD carries the inline stepper too, alongside the
   // expanded form rather than instead of it. "The modal is one tap away" answered
@@ -346,6 +347,7 @@ test("one-tap practice logging: a double-tap logs once, the label states today, 
   await button.click();
   await expect(page.getByTestId("confirm-dialog")).toHaveCount(0);
   await expect(todayLine).toContainText("1 session logged");
+  await expect(button).toHaveAccessibleName(/^Log another /);
 
   // Layer 2 — the affordance now renders today's state, so the next tap is visibly
   // a SECOND one before it is taken.

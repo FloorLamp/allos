@@ -68,14 +68,12 @@ export function WeeklyTargetChip({
       </span>
     </>
   );
-  const title = `${label}: ${count}/${perWeek} this week`;
 
   if (onClick) {
     return (
       <button
         type="button"
         onClick={onClick}
-        aria-label={`${title} — click to edit`}
         data-testid="weekly-target-chip"
         data-tone={tone}
         className={`${base} cursor-pointer transition ${

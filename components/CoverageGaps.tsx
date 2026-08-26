@@ -315,11 +315,11 @@ function TrackedRow({
               onClick={onEnrich}
               disabled={enriching}
               data-testid="enrich-gap"
-              aria-label={`Generate via ${aiLabel}`}
               className="btn-ghost inline-flex items-center gap-1 text-xs"
             >
               <IconSparkles className="h-3.5 w-3.5" />
               {gap.aiDescription ? "Regenerate context" : "Generate context"}
+              {` via ${aiLabel}`}
             </button>
           )}
           <button

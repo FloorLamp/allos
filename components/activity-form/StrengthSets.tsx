@@ -894,7 +894,6 @@ export default function StrengthSets({
                       type="button"
                       data-testid="recent-session-fill"
                       onClick={() => onFillFromSession(sess.sets)}
-                      aria-label="Fill the set editor with this session"
                       className="-mx-1 flex w-full items-center justify-between gap-3 rounded-sm px-1 py-0.5 text-left text-slate-600 transition hover:bg-brand-50 hover:text-brand-700 dark:text-slate-300 dark:hover:bg-brand-950/40 dark:hover:text-brand-300"
                     >
                       {dateEl}
@@ -938,7 +937,6 @@ export default function StrengthSets({
               <button
                 type="button"
                 onClick={() => onApplySuggestion(suggestion)}
-                aria-label="Fill this into a set"
                 className="rounded-md border border-brand-300 px-2 py-0.5 font-medium text-brand-600 transition hover:bg-brand-500 hover:text-white dark:border-brand-800 dark:text-brand-400 dark:hover:bg-brand-600 dark:hover:text-white"
               >
                 Use
@@ -987,7 +985,6 @@ export default function StrengthSets({
                 onClick={() =>
                   onApplyPerSideSuggestion(suggestionLeft, suggestionRight)
                 }
-                aria-label="Fill both sides into a set"
                 className="rounded-md border border-brand-300 px-2 py-0.5 font-medium text-brand-600 transition hover:bg-brand-500 hover:text-white dark:border-brand-800 dark:text-brand-400 dark:hover:bg-brand-600 dark:hover:text-white"
               >
                 Use
@@ -1660,15 +1657,6 @@ export default function StrengthSets({
             type="button"
             onClick={() => onAddSet()}
             disabled={!canAddSet}
-            aria-label={
-              canAddSet
-                ? "Add another set"
-                : timed
-                  ? "Enter a hold time first"
-                  : isBodyweight(p.name)
-                    ? "Enter reps first"
-                    : "Enter weight and reps first"
-            }
             className={`-mx-2 -my-2 px-2 py-2 text-xs font-medium ${
               canAddSet
                 ? "text-link"

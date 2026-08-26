@@ -174,7 +174,8 @@ function dateCell(
   r: { date: string; category: string | null },
   now: string,
   showAge: boolean,
-  prefs: DisplayFormatPrefs
+  prefs: DisplayFormatPrefs,
+  reportedPanelDetail?: string
 ) {
   const line = readingDateLine(r, now, showAge, prefs);
   return (
@@ -200,8 +201,21 @@ function dateCell(
           </span>
         </>
       ) : null}
+      {reportedPanelDetail ? (
+        <InfoTooltipIcon
+          label={reportedPanelDetail}
+          data-testid="clinical-reported-panel-help"
+        />
+      ) : null}
     </span>
   );
+}
+
+function reportedPanelDisclosureLabel(
+  observation: ClinicalResultTableObservation,
+  reported: string
+) {
+  return `Reported under “${reported}” — ${tableNameKey(observation)}, ${observation.date}`;
 }
 
 // The Panel cell (#1502). It shows the NORMALIZED clinical panel resolved from the
@@ -210,7 +224,7 @@ function dateCell(
 // free-text heading (in practice the lab VENDOR: "Quest Diagnostics", "LabCorp").
 //
 // The stored `panel` column is untouched PROVENANCE and still surfaces two ways:
-// through the cell's shared disclosure on a resolved row ("Reported under …"), and
+// through the row date's shared disclosure on a resolved row ("Reported under …"), and
 // as the visible text for a row the taxonomy can't place — an un-canonicalized analyte the
 // extractor coined, where the document's own heading is the best label we have.
 // That fallback row is deliberately NOT a filter link: "everything drawn at
@@ -234,17 +248,12 @@ function PanelCell({
   if (id !== OTHER_PANEL) {
     return (
       <Td label="Panel" className="hidden md:table-cell">
-        <span className="inline-flex items-center gap-0.5">
-          <Link
-            href={href(id)}
-            className="text-xs text-slate-500 hover:text-brand-700 hover:underline dark:text-slate-400 dark:hover:text-brand-400"
-          >
-            {panelLabel(id)}
-          </Link>
-          {reported ? (
-            <InfoTooltipIcon label={`Reported under “${reported}”`} />
-          ) : null}
-        </span>
+        <Link
+          href={href(id)}
+          className="text-xs text-slate-500 hover:text-brand-700 hover:underline dark:text-slate-400 dark:hover:text-brand-400"
+        >
+          {panelLabel(id)}
+        </Link>
       </Td>
     );
   }
@@ -378,6 +387,10 @@ function ClinicalResultRow({
   const showChip =
     !!multiView && !!r.subject && subjectChipVisible({ multi: true, isActing });
   const writeProfileId = multiView ? r.profileId : undefined;
+  const reportedPanelAlias =
+    !r.derived && tablePanelId(r) !== OTHER_PANEL
+      ? r.panel?.trim() || null
+      : null;
   // The leading subject cell (multi-view only), rendered first in every row. On a
   // card it's the first meta item — the chip IS its own label (#534), so no
   // "Profile" prefix — and it drops out entirely on an acting-profile row.
@@ -539,7 +552,15 @@ function ClinicalResultRow({
         </Link>
       </Td>
       <Td slot="meta" label="Date">
-        {dateCell(r, now, !!r.is_latest, prefs)}
+        {dateCell(
+          r,
+          now,
+          !!r.is_latest,
+          prefs,
+          reportedPanelAlias
+            ? reportedPanelDisclosureLabel(r, reportedPanelAlias)
+            : undefined
+        )}
       </Td>
       <Td slot="actions">
         {/* The menu renders whenever it has at least one item (#2316). It used to be

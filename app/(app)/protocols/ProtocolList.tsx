@@ -73,7 +73,7 @@ export default function ProtocolList({
                   </div>
                   <PracticeHeatmap
                     data={heatmaps[p.id]}
-                    label="Protocol activity"
+                    label={`${p.name} protocol activity`}
                     testId="protocol-heatmap"
                     className="mt-2"
                   />

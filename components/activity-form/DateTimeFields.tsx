@@ -144,7 +144,7 @@ export default function DateTimeFields({
                   type="button"
                   data-testid="start-time-shortcut"
                   onClick={() => onStartTime(derivedStart)}
-                  aria-label={`Set start to end − ${derivableDurationMin} min`}
+                  aria-label={`−${derivableDurationMin}m — set start to end − ${derivableDurationMin} min`}
                   className="-mx-2 -my-2 px-2 py-2 text-xs text-link"
                 >
                   −{derivableDurationMin}m
@@ -180,7 +180,7 @@ export default function DateTimeFields({
                   type="button"
                   data-testid="end-time-shortcut"
                   onClick={() => onEndTime(derivedEnd)}
-                  aria-label={`Set end to start + ${derivableDurationMin} min`}
+                  aria-label={`+${derivableDurationMin}m — set end to start + ${derivableDurationMin} min`}
                   className="-mx-2 -my-2 px-2 py-2 text-xs text-link"
                 >
                   +{derivableDurationMin}m

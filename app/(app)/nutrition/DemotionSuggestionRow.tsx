@@ -60,7 +60,6 @@ export default function DemotionSuggestionRow({
           disabled={pending}
           onClick={() => run(acceptAction)}
           data-testid="demotion-accept"
-          aria-label={`Move ${finding.title} to May`}
           className="btn btn-sm"
         >
           Move to May
@@ -70,12 +69,14 @@ export default function DemotionSuggestionRow({
           disabled={pending}
           onClick={() => run(dismissAction)}
           data-testid="demotion-dismiss"
-          aria-label="Keep the current obligation and hide this suggestion"
           className="btn-ghost btn-sm"
         >
           Keep as is
         </button>
       </div>
+      <p className="mt-1.5 text-xs text-slate-500 dark:text-slate-400">
+        “Keep as is” keeps the current obligation and hides this suggestion.
+      </p>
       {error && (
         <p
           data-testid="demotion-outcome"

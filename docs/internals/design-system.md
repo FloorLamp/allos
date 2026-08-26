@@ -144,8 +144,8 @@ no selected-option ARIA, and are not deferred chip variants.
 rendered `min-h-11` target. The track's padding is not clickable and therefore
 does not count toward the 44px floor; sibling option boxes must remain disjoint.
 Its `fill` mode is opt-in: the primitive owns `flex w-full`, divides options with
-`flex-1 min-w-0`, and truncates only the visual label while preserving the full
-accessible name and `title`. Quick log uses that mode for its four equal phone
+`flex-1 min-w-0`, and lets the full visible label wrap; that same label is the
+accessible name. Quick log uses that mode for its four equal phone
 segments; the other thirteen consumers keep intrinsic `inline-flex` sizing (#3675).
 
 Dense in-row strips request `density="dense"` from `Chip`; the component owns

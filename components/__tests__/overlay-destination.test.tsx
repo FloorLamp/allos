@@ -105,6 +105,13 @@ describe("OverlayDestination", () => {
               end_date: null,
               outcomeKeys: [],
             },
+            {
+              id: 2,
+              name: "Hydration experiment",
+              start_date: "2026-08-26",
+              end_date: null,
+              outcomeKeys: [],
+            },
           ] as unknown as Protocol[]
         }
         heatmaps={{
@@ -126,6 +133,24 @@ describe("OverlayDestination", () => {
               ],
             ],
           },
+          2: {
+            start: "2026-08-26",
+            end: "2026-08-26",
+            visibleStart: "2026-08-26",
+            truncated: false,
+            totalSessions: 0,
+            activeDays: 0,
+            columns: [
+              [
+                {
+                  date: "2026-08-26",
+                  count: 0,
+                  level: 0,
+                  outside: false,
+                },
+              ],
+            ],
+          },
         }}
         formatPrefs={DEFAULT_FORMAT_PREFS}
       />
@@ -133,8 +158,14 @@ describe("OverlayDestination", () => {
     const destination = screen.getByRole("link", {
       name: "Open Sleep experiment protocol",
     });
-    const summary = screen.getByText("Protocol activity daily details");
+    const summary = screen.getByText(
+      "Sleep experiment protocol activity daily details"
+    );
+    expect(
+      screen.getByText("Hydration experiment protocol activity daily details")
+    ).toBeTruthy();
     expect(destination.contains(summary)).toBe(false);
+    expect(summary.closest('[role="img"]')).toBeNull();
     fireEvent.click(summary);
     expect(summary.closest("details")?.hasAttribute("open")).toBe(true);
     expect(window.location.pathname).toBe("/");
