@@ -99,7 +99,7 @@ test("a registered detail works by touch and keyboard without covering its trigg
   expect(overlaps).toBe(false);
 
   const [headingBox] = await settledBoxes([
-    page.getByRole("heading", { name: "API tokens", exact: true }),
+    page.getByRole("heading", { name: /API tokens$/ }),
   ]);
   await page.touchscreen.tap(
     headingBox.x + headingBox.width / 2,

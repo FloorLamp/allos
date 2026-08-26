@@ -533,10 +533,11 @@ export default function TrainingLogView({
           type="button"
           onClick={() => openRepeat(lastActivity)}
           data-testid="repeat-last"
+          aria-label={`Repeat last — log again: ${lastActivity.title}`}
           className="btn-ghost"
         >
           <IconRepeat className="h-4 w-4" stroke={2} />
-          Repeat {lastActivity.title}
+          Repeat last
         </button>
       )}
       {canStartWorkout && (

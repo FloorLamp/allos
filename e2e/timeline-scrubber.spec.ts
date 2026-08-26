@@ -205,7 +205,6 @@ test.describe("timeline jump rail (#2657 item 4)", () => {
     await expect(rail).toHaveAttribute("role", "slider");
     await expect(rail).toHaveAttribute("aria-orientation", "vertical");
     await expect(rail).toHaveAttribute("aria-label", /month/i);
-    await expect(rail).toHaveAttribute("title", /month/i);
     await expect(rail).toHaveAttribute(
       "aria-valuetext",
       /^([A-Z][a-z]+ )?\d{4}$/

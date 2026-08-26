@@ -352,7 +352,7 @@ test("one-tap practice logging: a double-tap logs once, the label states today, 
   // Layer 2 — the affordance now renders today's state, so the next tap is visibly
   // a SECOND one before it is taken.
   await expect(button).toHaveText("Log another");
-  await expect(button).toHaveAttribute("title", /1 already logged today/);
+  await expect(button).toHaveAccessibleName(/1 already logged today/);
 
   // The pin: exactly one session reached the store. The reload also clears the
   // client-side cooldown, which is why the next tap below is accepted at all.

@@ -5,11 +5,29 @@ import StandingSparkline from "@/components/dashboard/StandingSparkline";
 import SupplementWeeklyAdherence from "@/components/SupplementWeeklyAdherence";
 import BristolStoolPanel from "@/components/BristolStoolPanel";
 import FiberSymptomPanel from "@/components/FiberSymptomPanel";
+import IntensityPicker from "@/components/activity-form/IntensityPicker";
 import { buildBristolPanel } from "@/lib/bristol-stool";
 import { buildFiberSymptomPanel } from "@/lib/fiber-symptom-panel";
 import { DEFAULT_FORMAT_PREFS } from "@/lib/format-date";
 
 describe("visual title parity", () => {
+  it("keeps intensity choices exact and discloses every hint", () => {
+    render(<IntensityPicker intensity="" onChange={() => undefined} />);
+
+    for (const label of ["Easy", "Moderate", "Hard"]) {
+      expect(screen.getByRole("button", { name: label })).toBeTruthy();
+    }
+
+    const disclosure = screen.getByRole("button", {
+      name: /Easy:.*Moderate:.*Hard:/,
+    });
+    fireEvent.click(disclosure);
+    const tooltip = screen.getByRole("tooltip");
+    expect(tooltip.textContent).toContain("Easy:");
+    expect(tooltip.textContent).toContain("Moderate:");
+    expect(tooltip.textContent).toContain("Hard:");
+  });
+
   it("keeps the real anatomy host list-first", () => {
     render(<ExerciseGuideSection name="Back Squat" />);
     const host = screen.getByTestId("guide-muscles");

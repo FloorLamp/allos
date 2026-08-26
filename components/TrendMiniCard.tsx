@@ -58,6 +58,7 @@ import DelegatedCard from "./DelegatedCard";
 // robust endpoint, so the tile still names the current value.
 export default function TrendMiniCard({
   title,
+  shortTitle,
   href,
   data,
   unit = "",
@@ -80,6 +81,9 @@ export default function TrendMiniCard({
   testid = "trend-mini-card",
 }: {
   title: string;
+  // Registry-owned compact name. The primitive owns the responsive swap and keeps
+  // the canonical title in the link's accessible name.
+  shortTitle?: string;
   href: AppRoute;
   data: { date: string; value: number | null }[];
   unit?: string;
@@ -189,11 +193,20 @@ export default function TrendMiniCard({
     return (
       <DelegatedCard data-testid={testid}>
         <DelegatedCard.Header href={href} data-testid="trend-mini-header-link">
-          <span
-            // Same breakpoint swap, same fix as the full variant's title below.
-            className="wrap-break-word text-sm font-medium text-slate-500 group-hover:text-brand-700 group-hover:underline dark:text-slate-400 dark:group-hover:text-brand-300"
-          >
-            {title}
+          <span className="truncate text-sm font-medium text-slate-500 group-hover:text-brand-700 group-hover:underline sm:wrap-break-word sm:whitespace-normal dark:text-slate-400 dark:group-hover:text-brand-300">
+            {shortTitle && shortTitle !== title ? (
+              <>
+                <span className="sr-only">{title}</span>
+                <span aria-hidden className="sm:hidden">
+                  {shortTitle}
+                </span>
+                <span aria-hidden className="hidden sm:inline">
+                  {title}
+                </span>
+              </>
+            ) : (
+              title
+            )}
           </span>
           <span className="truncate text-xs text-slate-500 dark:text-slate-400">
             No data in this range
@@ -269,8 +282,20 @@ export default function TrendMiniCard({
               : "sm:flex-row sm:items-baseline sm:justify-between sm:gap-3"
           } ${menu ? "" : "rounded-tr-xl"}`}
         >
-          <span className="min-w-0 wrap-break-word group-hover:underline sm:min-w-28 sm:flex-1 sm:text-base sm:font-semibold">
-            {title}
+          <span className="min-w-0 truncate group-hover:underline sm:min-w-28 sm:flex-1 sm:wrap-break-word sm:whitespace-normal sm:text-base sm:font-semibold">
+            {shortTitle && shortTitle !== title ? (
+              <>
+                <span className="sr-only">{title}</span>
+                <span aria-hidden className="sm:hidden">
+                  {shortTitle}
+                </span>
+                <span aria-hidden className="hidden sm:inline">
+                  {title}
+                </span>
+              </>
+            ) : (
+              title
+            )}
           </span>
           {value}
         </Link>

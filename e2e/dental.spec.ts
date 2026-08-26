@@ -179,8 +179,7 @@ test.describe("Dental records — add → view → filter → track recheck → 
     // `md` this menu is a sheet that has left the row behind by the time anyone
     // reads its heading. The tooth is part of that name because it is part of how
     // the list prints the record (lib/dental.ts, dentalDisplayLabel).
-    await expect(actions).toHaveAttribute(
-      "title",
+    await expect(actions).toHaveAccessibleName(
       `Record actions for ${NAME} \u00b7 #${TOOTH}`
     );
     await hydratedClick(page, actions);

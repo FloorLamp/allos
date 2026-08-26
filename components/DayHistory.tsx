@@ -1439,17 +1439,22 @@ export default function DayHistory({
             <h3 id={`${testId}-matrix-title`} className="sr-only">
               {spec.matrixTitle}
             </h3>
-            <span
+            <div
               data-testid={detail ? "day-history-detail" : undefined}
-              aria-live="polite"
-              className={`min-w-0 wrap-break-word text-xs ${
-                detail
-                  ? "text-slate-500 dark:text-slate-400"
-                  : "font-semibold uppercase tracking-wide text-slate-600 dark:text-slate-300"
-              }`}
+              className="flex min-h-8 min-w-0 items-center"
             >
-              {detail ?? spec.matrixTitle}
-            </span>
+              <span
+                aria-live="polite"
+                className={`min-w-0 truncate text-xs ${
+                  detail
+                    ? "text-slate-500 dark:text-slate-400"
+                    : "font-semibold uppercase tracking-wide text-slate-600 dark:text-slate-300"
+                }`}
+              >
+                {detail ?? spec.matrixTitle}
+              </span>
+              {detail ? <InfoTooltipIcon label={detail} /> : null}
+            </div>
             <div className="flex shrink-0 items-center gap-3">
               {matrixRange && (
                 <span

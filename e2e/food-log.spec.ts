@@ -66,14 +66,19 @@ test("button counts are labeled for the selected meal and day", async ({
     /text-slate-500/
   );
   await expect(page.getByTestId("food-slot-chip")).not.toHaveClass(/\bbadge\b/);
-  await expect(page.getByTestId("count-eggs")).toHaveAttribute(
-    "title",
-    new RegExp(`in ${meal} today$`)
+  await expect(page.getByTestId("food-slot-chip")).toHaveText(meal!);
+  await expect(page.getByTestId("count-eggs")).toHaveText(/\d+/);
+  await expect(page.getByTestId("food-context-heading")).toHaveAccessibleName(
+    new RegExp(`Today ${meal} Food Log`)
   );
   await page.getByTestId("food-day-yesterday").click();
-  await expect(page.getByTestId("count-eggs")).toHaveAttribute(
-    "title",
-    new RegExp(`in ${meal} yesterday$`)
+  await expect(page.getByTestId("food-slot-chip")).toHaveText(meal!);
+  await expect(page.getByTestId("food-day-yesterday")).toHaveAttribute(
+    "aria-pressed",
+    "true"
+  );
+  await expect(page.getByTestId("food-context-heading")).toHaveAccessibleName(
+    new RegExp(`Yesterday ${meal} Food Log`)
   );
 });
 

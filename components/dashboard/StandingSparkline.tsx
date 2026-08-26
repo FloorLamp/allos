@@ -181,6 +181,7 @@ export default function StandingSparkline({
           viewBox={`0 0 ${WIDTH} ${HEIGHT}`}
           width={WIDTH}
           height={HEIGHT}
+          className="hidden min-[45rem]:block"
           role="img"
           aria-label={series.name}
           preserveAspectRatio="xMidYMid meet"

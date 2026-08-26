@@ -192,7 +192,6 @@ export default function ActivityPartRows({
                       className="relative z-10 shrink-0 text-xs text-slate-500 hover:text-brand-600 hover:underline dark:text-slate-400 dark:hover:text-brand-400"
                     >
                       {part.muscle}
-                      <span className="sr-only"> activities</span>
                     </button>
                   ) : (
                     <span className="shrink-0 text-xs text-slate-500 dark:text-slate-400">

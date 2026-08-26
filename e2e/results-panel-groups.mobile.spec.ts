@@ -223,7 +223,7 @@ test("table continuation rows keep one contextual alias control at 700 and 1280p
     );
     const dateCell = trigger.locator("xpath=ancestor::td[1]");
     await expect(dateCell).toHaveAttribute("data-card", "meta");
-    await expect(dateCell).toContainText(/\d{4}-\d{2}-\d{2}/);
+    await expect(dateCell).toContainText(/Date[A-Z][a-z]{2} \d{1,2}, \d{4}/);
     await expect(
       continuation
         .locator('td[data-card="title"]')

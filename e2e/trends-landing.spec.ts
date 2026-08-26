@@ -150,7 +150,7 @@ test("every census tile shows its whole title, never a mid-word clip (#2523)", a
   // always carries the full string; the loss is purely visual, hence measured.)
   const clipped = await grid
     .getByTestId("trend-mini-header-link")
-    .locator("span[title]")
+    .locator(":scope > span:first-child")
     .evaluateAll((titles) =>
       titles
         .filter(

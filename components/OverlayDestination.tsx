@@ -19,10 +19,10 @@ export default function OverlayDestination({
         href={href}
         aria-label={label}
         data-testid={testId}
-        className="absolute inset-0 rounded-xl focus:outline-hidden focus-visible:ring-2 focus-visible:ring-brand-500"
+        className="absolute inset-0 z-0 rounded-xl focus:outline-hidden focus-visible:ring-2 focus-visible:ring-brand-500"
       />
       <div
-        className="pointer-events-none relative h-full"
+        className="pointer-events-none relative z-10 h-full"
         data-overlay-destination-content=""
       >
         {children}

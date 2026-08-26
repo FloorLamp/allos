@@ -196,7 +196,7 @@ test("scheduled and PRN rows share the one Today-row primitive (#851 item 10)", 
   ).toBeLessThanOrEqual(1);
   expect(Math.max(...actionWidths)).toBeLessThanOrEqual(36);
   for (const button of actionButtons) {
-    await expect(button).toHaveAttribute("title", /\S+/);
+    await expect(button).toHaveAccessibleName(/\S+/);
   }
 });
 

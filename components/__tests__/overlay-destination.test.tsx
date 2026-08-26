@@ -42,8 +42,9 @@ describe("OverlayDestination", () => {
     const destination = screen.getByRole("link", { name: "Open protocol" });
     const summary = screen.getByText("Protocol activity daily details");
     expect(destination.contains(summary)).toBe(false);
+    expect(summary.classList.contains("pointer-events-auto")).toBe(true);
     expect(
-      summary.closest("details")?.classList.contains("pointer-events-auto")
+      summary.closest("details")?.classList.contains("pointer-events-none")
     ).toBe(true);
     fireEvent.click(summary);
     expect(summary.closest("details")?.hasAttribute("open")).toBe(true);

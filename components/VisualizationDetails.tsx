@@ -12,10 +12,10 @@ export default function VisualizationDetails({
 
   return (
     <details
-      className="pointer-events-auto relative z-10 mt-2 text-xs text-slate-500 dark:text-slate-400"
+      className="pointer-events-none relative z-10 mt-2 text-xs text-slate-500 dark:text-slate-400"
       data-testid={testId}
     >
-      <summary className="button-control min-h-11! min-w-11! w-fit max-w-full cursor-pointer list-none whitespace-normal text-left text-link marker:hidden">
+      <summary className="button-control pointer-events-auto min-h-11! min-w-11! w-fit max-w-full cursor-pointer list-none whitespace-normal text-left text-link marker:hidden">
         {label}
       </summary>
       <ul className="mt-1 space-y-0.5 pl-3">

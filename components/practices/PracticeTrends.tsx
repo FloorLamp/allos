@@ -51,10 +51,6 @@ function WeeksInRange({ practice }: { practice: PracticeTrend }) {
           </li>
         ))}
       </ol>
-      <VisualizationDetails
-        label={`${practice.name} weekly details`}
-        items={practice.weeks.map((week) => weekCellTitle(week, weekly))}
-      />
       <p
         className="mt-2 flex flex-wrap items-center gap-x-3 gap-y-1 text-xs text-slate-500 dark:text-slate-400"
         data-testid="practice-weeks-legend"
@@ -89,76 +85,79 @@ export default function PracticeTrends({
     "subpanel-inset rounded-lg border border-black/5 p-4 sm:p-5 dark:border-white/10";
 
   return (
-    <details
-      className="border-t border-black/5 pt-3 dark:border-white/10"
-      data-testid="wellness-practice-trends"
-    >
-      <summary className="cursor-pointer text-sm font-medium text-brand-700 dark:text-brand-300">
-        26-week trend
-      </summary>
-      <p className="mt-2 text-xs text-slate-500 dark:text-slate-400">
-        Completed weeks through today, using a fixed window of up to 26 weeks.
-      </p>
-      <div className="mt-3 space-y-3">
-        <ChartCard
-          testid="practice-cadence-card"
-          title="Cadence"
-          headingLevel="h3"
-          headline={weekly}
-          description="Days logged per completed week against your weekly range."
-          note={practiceConsistencyText(practice.consistency)}
-          detailHref={
-            null
-          } /* detail-none: this chart already lives on the practice's detail card. */
-          surfaceClass={embeddedSurface}
-          plotHeightClass="sm:h-48"
-          footer={<WeeksInRange practice={practice} />}
-        >
-          <LineChartCard
-            // gap-exempt: WEEK-grain cadence (days logged per completed week),
-            // already contiguous over the fixed 26-week lens.
-            data={cadence}
-            label="Days logged"
-            color={chartSeries.brand}
-            unit=" days"
-            decimals={0}
-            yDomain={[0, "auto"]}
-            referenceBand={
-              practice.perWeekMax != null
-                ? { low: practice.perWeek, high: practice.perWeekMax }
-                : null
-            }
-            referenceValue={
-              practice.perWeekMax == null
-                ? { value: practice.perWeek, label: weekly }
-                : null
-            }
-          />
-        </ChartCard>
-
-        {practice.duration.length >= 2 && (
+    <div className="border-t border-black/5 pt-3 dark:border-white/10">
+      <details data-testid="wellness-practice-trends">
+        <summary className="cursor-pointer text-sm font-medium text-brand-700 dark:text-brand-300">
+          26-week trend
+        </summary>
+        <p className="mt-2 text-xs text-slate-500 dark:text-slate-400">
+          Completed weeks through today, using a fixed window of up to 26 weeks.
+        </p>
+        <div className="mt-3 space-y-3">
           <ChartCard
-            testid="practice-duration-card"
-            title="Session length"
+            testid="practice-cadence-card"
+            title="Cadence"
             headingLevel="h3"
-            description="Average recorded minutes per day you practised."
+            headline={weekly}
+            description="Days logged per completed week against your weekly range."
+            note={practiceConsistencyText(practice.consistency)}
             detailHref={
               null
             } /* detail-none: this chart already lives on the practice's detail card. */
             surfaceClass={embeddedSurface}
             plotHeightClass="sm:h-48"
+            footer={<WeeksInRange practice={practice} />}
           >
             <LineChartCard
-              // gap-exempt: week-grain average session length, same lens.
-              data={practice.duration}
-              label="Minutes"
-              color={chartSeries.violet}
-              unit=" min"
+              // gap-exempt: WEEK-grain cadence (days logged per completed week),
+              // already contiguous over the fixed 26-week lens.
+              data={cadence}
+              label="Days logged"
+              color={chartSeries.brand}
+              unit=" days"
               decimals={0}
+              yDomain={[0, "auto"]}
+              referenceBand={
+                practice.perWeekMax != null
+                  ? { low: practice.perWeek, high: practice.perWeekMax }
+                  : null
+              }
+              referenceValue={
+                practice.perWeekMax == null
+                  ? { value: practice.perWeek, label: weekly }
+                  : null
+              }
             />
           </ChartCard>
-        )}
-      </div>
-    </details>
+
+          {practice.duration.length >= 2 && (
+            <ChartCard
+              testid="practice-duration-card"
+              title="Session length"
+              headingLevel="h3"
+              description="Average recorded minutes per day you practised."
+              detailHref={
+                null
+              } /* detail-none: this chart already lives on the practice's detail card. */
+              surfaceClass={embeddedSurface}
+              plotHeightClass="sm:h-48"
+            >
+              <LineChartCard
+                // gap-exempt: week-grain average session length, same lens.
+                data={practice.duration}
+                label="Minutes"
+                color={chartSeries.violet}
+                unit=" min"
+                decimals={0}
+              />
+            </ChartCard>
+          )}
+        </div>
+      </details>
+      <VisualizationDetails
+        label={`${practice.name} weekly details`}
+        items={practice.weeks.map((week) => weekCellTitle(week, weekly))}
+      />
+    </div>
   );
 }
