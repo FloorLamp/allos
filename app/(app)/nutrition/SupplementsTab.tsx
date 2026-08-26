@@ -136,9 +136,10 @@ import AdherenceFindings from "./AdherenceFindings";
 import DemotionSuggestions from "./DemotionSuggestions";
 import SupplementSchedule from "./SupplementSchedule";
 import SupplementInsightBadges from "./SupplementInsightBadges";
-import AddSupplementModal from "./AddSupplementModal";
+import AddSupplementModal from "@/components/nutrition/AddSupplementModal";
 import SupplementWeeklyAdherence from "@/components/SupplementWeeklyAdherence";
 import {
+  addIntakeItem,
   toggleSituation,
   acceptSuggestion,
   activateSurgerySituation,
@@ -944,6 +945,14 @@ export default async function SupplementsTab({
       )}
     </>
   );
+  const addSupplementModal = {
+    action: addIntakeItem,
+    initialSupply,
+    allIntakeItems: intakeItems,
+    stackItems,
+    pgxVariants,
+    activityScheduleAvailable,
+  };
 
   return (
     <SituationOptionsProvider options={situationOptionNames}>
@@ -1269,13 +1278,9 @@ export default async function SupplementsTab({
                     <h2 className="mb-3 section-label">Manage</h2>
                     <div className="flex flex-wrap items-center justify-between gap-3">
                       <AddSupplementModal
-                        initialSupply={initialSupply}
-                        purposeConditions={purposeConditions}
-                        purposeBiomarkers={purposeBiomarkers}
-                        allIntakeItems={intakeItems}
-                        stackItems={stackItems}
-                        pgxVariants={pgxVariants}
-                        activityScheduleAvailable={activityScheduleAvailable}
+                        {...addSupplementModal}
+                        conditions={purposeConditions}
+                        biomarkers={purposeBiomarkers}
                       />
                       <SharedSuppliesLink count={cabinetCount} />
                       <DoseLedgerLink kind="supplement" />
@@ -1295,16 +1300,7 @@ export default async function SupplementsTab({
                   days={scheduleDays}
                   secondary={secondarySchedule}
                   context={dayContext}
-                  action={
-                    <AddSupplementModal
-                      key="add-supplement"
-                      initialSupply={initialSupply}
-                      allIntakeItems={intakeItems}
-                      stackItems={stackItems}
-                      pgxVariants={pgxVariants}
-                      activityScheduleAvailable={activityScheduleAvailable}
-                    />
-                  }
+                  addSupplement={addSupplementModal}
                 />
               </div>
               <aside

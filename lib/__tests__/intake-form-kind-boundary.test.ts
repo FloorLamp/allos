@@ -11,10 +11,10 @@ const INTAKE_FORM_MODULE = "@/components/IntakeItemForm";
 const EXPECTED_CALLERS = [
   ["app/(app)/medications/MedicationAddWorkspace.tsx", "medication"],
   ["app/(app)/medications/MedicationCard.tsx", "medication"],
-  ["app/(app)/nutrition/AddSupplementModal.tsx", "supplement"],
   ["app/(app)/nutrition/EditableSupplementRow.tsx", "supplement"],
   ["components/illness/IllnessMedicationLogger.tsx", "medication"],
   ["components/illness/SymptomMedQuickAdd.tsx", "medication"],
+  ["components/nutrition/AddSupplementModal.tsx", "supplement"],
 ] as const;
 
 function isScannedSource(name: string): boolean {

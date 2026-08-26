@@ -28,8 +28,7 @@ import FoodGroupIcon, {
   FOOD_GROUP_TIER_TINT,
 } from "@/components/FoodGroupIcon";
 import ModalShell from "@/components/ModalShell";
-import SegmentedControl from "@/components/SegmentedControl";
-import CompactDateMenu from "@/components/CompactDateMenu";
+import IntakeContextBar from "@/components/IntakeContextBar";
 import FilterPills from "@/components/FilterPills";
 import {
   useClaimToastKey,
@@ -2056,12 +2055,6 @@ export default function FoodLogBar({
       })}
     </ul>
   );
-  const dayTestId = (day: FoodLogDay) =>
-    day.date === today
-      ? "food-day-today"
-      : day.label === "Yesterday"
-        ? "food-day-yesterday"
-        : `food-day-${day.date}`;
   const totalForSlot = (meal: FoodSlot) =>
     Object.values(slotCountsByDate[activeDate]?.[meal] ?? {}).reduce(
       (sum, n) => sum + n,
@@ -2076,113 +2069,19 @@ export default function FoodLogBar({
 
   return (
     <div>
-      <div
-        data-testid="food-log-context"
-        // THE FULL BLEED IS PAGE-SCOPED (#3360). `-mx-2 px-2` is the trick that
-        // lets the `md:sticky` frosted header paint over the Nutrition page's
-        // gutter; it is net-zero for the content inside (the negative margin and
-        // the padding cancel) and only widens the BACKGROUND. But this component
-        // is also mounted in the #1468 quick-entry sheet, whose content region
-        // has no gutter to bleed into — there the wrapper was simply 16px wider
-        // than its container, which is the horizontal overflow that let one thumb
-        // drag park the sheet sideways. Scoping the three classes to `md:` — the
-        // width where `md:sticky` actually engages, and which `lg:` already
-        // unwinds — removes the overflow at the source. `overflow-x-hidden` on
-        // the sheet's content region (components/BottomSheet.tsx) is the defense
-        // for the whole class; this is the one instance.
-        //
-        // BELOW `md` NOTHING MOVES, BUT THE BAND DOES GO. Content stays put — the
-        // negative margin and the padding cancelled, so dropping both leaves every
-        // child at the same x. The BACKGROUND is a different answer than the issue
-        // predicted: it expected `bg-surface/95` to be sitting on the same
-        // `bg-surface`, and on the sheet's panel it is, but on the Nutrition page
-        // nothing between this wrapper and `<body>` paints, so it was sitting on
-        // the app canvas — a near-white edge-to-edge strip behind "Today · Midday
-        // · N servings" that no other element on that page wears. It is canvas
-        // now, like its neighbours. Sticky and frost were always `md:`-only, so an
-        // unsticky full-bleed band below `md` was doing nothing on purpose.
-        //
-        // `pr-1.5` BELOW `md` IS THE TAP EXTENSION'S ROOM, and it is here because
-        // scoping the bleed took away the padding that used to hold it (#3384).
-        // `tap-target` extends a compact control's hit area with an
-        // `inset: -6px` pseudo-element under `@media (pointer: coarse)`
-        // (app/globals.css). The preferences button is `sm:hidden`, 40px, and the
-        // LAST thing in this row — flush with the container's right edge — so
-        // that transparent 6px pokes out and counts as horizontal overflow, which
-        // is exactly what the sheet's content region must not be handed. It never
-        // showed before because `px-2` absorbed it while `-mx-2` paid for the
-        // bleed; with both gone below `md` the extension had nowhere to sit.
-        // Measured: `scrollWidth 363 / clientWidth 358` in the quick-entry sheet
-        // at 390px, gone at 0 with this. Six pixels, right side only — the left
-        // side cannot contribute to scrollable width in LTR — and it also lands
-        // the button nearer the `px-3` inset the food rows give their own
-        // controls. From `md` up `md:px-2` is back and owns the problem again.
-        className="mb-3 py-2 pr-1.5 md:sticky md:top-0 md:z-10 md:-mx-2 md:bg-surface/95 md:px-2 md:pr-2 md:backdrop-blur-sm lg:static lg:mx-0 lg:bg-transparent lg:p-0"
-      >
-        <div className="flex flex-wrap items-center justify-between gap-3">
-          <div className="min-w-0">
-            <h2
-              data-testid="food-context-heading"
-              aria-label={`${activeDay.label} ${activeSlot} Food Log`}
-              className="flex flex-wrap items-center gap-2 font-semibold text-slate-800 dark:text-slate-100"
-            >
-              <CompactDateMenu
-                days={days}
-                value={activeDate}
-                onChange={setActiveDate}
-                label="Choose day to log"
-                testIdPrefix="food"
-              />
-              <span className="hidden sm:inline">{activeDay.label}</span>
-              <span
-                data-testid="food-context-label"
-                className="text-sm font-medium text-slate-500 dark:text-slate-400"
-              >
-                <span
-                  data-testid="food-slot-chip"
-                  data-slot={activeSlot}
-                  className="text-slate-500 dark:text-slate-400"
-                >
-                  {activeSlot}
-                </span>
-              </span>
-            </h2>
-          </div>
-          <div className="flex shrink-0 items-center gap-2">
-            <span
-              data-testid="food-day-total"
-              className="text-sm font-medium tabular-nums text-slate-500 dark:text-slate-400"
-            >
-              {dayTotal} {dayTotal === 1 ? "serving" : "servings"}
-            </span>
-            <button
-              type="button"
-              data-testid="food-preferences-open-mobile"
-              aria-label="Dietary preferences"
-              title="Dietary preferences"
-              onClick={() => setPreferencesOpen(true)}
-              className="btn-ghost tap-target h-10 w-10 shrink-0 p-0 sm:hidden"
-            >
-              <IconAdjustmentsHorizontal className="h-4 w-4" />
-            </button>
-          </div>
-        </div>
-        <div className="mt-2 hidden min-w-0 overflow-x-auto pb-0.5 sm:block">
-          <SegmentedControl
-            options={days.map((day, daysAgo) => ({
-              value: day.date,
-              label: day.label,
-              testId: dayTestId(day),
-              dataAttributes: { "data-days-ago": daysAgo },
-            }))}
-            value={activeDate}
-            onChange={setActiveDate}
-            ariaLabel="Day to log"
-            testId="food-day-toggle"
-            className="min-w-max"
-          />
-        </div>
-      </div>
+      <IntakeContextBar
+        purpose="food-log"
+        today={today}
+        days={days}
+        value={activeDate}
+        onChange={setActiveDate}
+        context={{ label: activeSlot, value: activeSlot }}
+        status={{ kind: "servings", count: dayTotal }}
+        action={{
+          kind: "food-preferences",
+          onActivate: () => setPreferencesOpen(true),
+        }}
+      />
       <div data-testid="food-log-bar" className="space-y-5">
         <section data-testid="food-meal-summary" className="sm:space-y-2">
           <div className="hidden items-center justify-between gap-3 sm:flex">
