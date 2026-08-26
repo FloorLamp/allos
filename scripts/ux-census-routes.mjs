@@ -211,7 +211,11 @@ export const DISCLOSURE_EXPANSIONS = [
 /** @type {HoverCapture[]} */
 export const HOVER_CAPTURES = [
   {
-    // #3555: the hover shot shows both the door and the date.
+    // #3459 item 2 / #3253 decision 2: the door label slides in at the right edge
+    // of the facts cell, an opacity/transform reveal in app/globals.css ("Dashboard
+    // hover doors"), so the census's static shot never shows it. The age it used to
+    // trade places with now stays put through the reveal (#3555 ruling 1), so the
+    // hover shot should show BOTH.
     route: "/",
     label: "Standing family door labels",
     target: "a.standing-row",

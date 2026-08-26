@@ -10,10 +10,7 @@ type DestinationLinkProps = Omit<
   className?: string;
 };
 
-type StandingDestinationLinkProps = Omit<
-  DestinationLinkProps,
-  "className" | "style"
-> & {
+type StandingDestinationLinkProps = DestinationLinkProps & {
   destinationLabel: string;
 };
 
@@ -60,18 +57,25 @@ export function DestinationActionLink({
   );
 }
 
-// Standing's primary destination covers its whole grid row. Visible facts are its
-// accessible name; the caller renders them once more in the row for layout.
+// Standing's hover/focus rail is a real presentation variant: its destination name
+// and indicator arrive in a fixed, out-of-flow rail at the right edge of the row's
+// facts cell. Nothing is exchanged for it — the reading's own age text stays fully
+// visible underneath (#3555 ruling 1).
 export function StandingDestinationLink({
   children,
+  className = "",
   destinationLabel,
   ...props
 }: StandingDestinationLinkProps) {
   return (
-    <Link {...props} className="standing-row absolute inset-0">
-      <span className="sr-only">{children}</span>
+    <Link {...props} className={className || undefined}>
+      {children}
       <span
-        className="standing-door pointer-events-none absolute inset-y-0 right-4 inline-flex items-center gap-1 bg-surface pl-3 text-xs font-medium whitespace-nowrap text-brand-700 dark:text-brand-400"
+        // `z-20` keeps the door above the members that share its line: those sit at
+        // `z-10` so their own text stays the pointer's target under the row-wide link
+        // surface (#3555 ruling 2), and without this the door's `bg-surface` would
+        // fall behind the very text it exists to cover.
+        className="standing-door pointer-events-none absolute inset-y-0 right-0 z-20 inline-flex shrink-0 items-center gap-1 bg-surface pl-3 text-xs font-medium whitespace-nowrap text-brand-700 dark:text-brand-400"
         data-testid="standing-door"
         aria-hidden="true"
       >

@@ -240,6 +240,11 @@ export default function StandingSparkline({
           ))}
         </svg>
       </div>
+      {/* `z-10` lifts this disclosure out of the row's link surface (#3555 ruling 2),
+        which is stretched across the row's first grid line and would otherwise take
+        the pointer for a control the reader is meant to open. The plot itself stays
+        inside the surface on purpose: pointing anywhere in the row, the trend column
+        included, is pointing at the row. */}
       <div className="relative z-10 hidden min-[45rem]:col-span-2 min-[45rem]:col-start-2 min-[45rem]:block">
         <VisualizationDetails
           label={`${series.name} history details`}

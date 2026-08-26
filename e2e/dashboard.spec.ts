@@ -8,7 +8,7 @@ import {
   E2E_MEMBER_PASSWORD,
 } from "./fixture-logins";
 import { workerDbPath } from "./worker-env";
-import { openDashboardAll, settledBoxes, settledClick } from "./helpers";
+import { openDashboardAll, settledClick } from "./helpers";
 
 function resetDashboardAllOffer(): void {
   const db = new Database(workerDbPath());
@@ -491,51 +491,61 @@ test("Now carries a visible header at its siblings' scale (#3238)", async ({
   expect(new Set(sizes).size).toBe(1);
 });
 
-test("a Standing row is one link and its door never covers the date", async ({
+test("a Standing row reveals its door on hover and on keyboard focus alike", async ({
   page,
 }) => {
-  for (const width of [390, 720, 1280]) {
-    await page.setViewportSize({ width, height: 900 });
-    await page.goto("/");
-    const row = page
-      .locator("[data-standing-row][data-standing-trend]")
-      .filter({ has: page.locator(".standing-age") })
-      .first(); // first-ok: the plotted date row exercises the same closed primitive
-    const link = row.locator(":scope > a.standing-row");
-    const door = link.getByTestId("standing-door");
-    const age = row.locator(".standing-age");
-    const name = row.locator(":scope > div").first(); // first-ok: the row's name cell
-    const opacity = () =>
-      door.evaluate((node) => getComputedStyle(node).opacity);
+  await page.goto("/");
+  const row = page
+    .locator('[data-testid="dashboard-candidate"][data-lane="standing"]')
+    .filter({ has: page.getByTestId("standing-door") })
+    .first(); // first-ok: every doored row behaves identically; this asserts the mechanism
+  const link = row.getByRole("link").first(); // first-ok: the row above is one candidate; its link IS the row
+  const door = row.getByTestId("standing-door");
+  const opacity = (target: typeof door) =>
+    target.evaluate((node) => getComputedStyle(node).opacity);
 
-    await link.scrollIntoViewIfNeeded();
-    const before = (await row.boundingBox())!;
-    await name.hover();
-    await expect.poll(opacity).toBe("1");
-    expect(await age.evaluate((node) => getComputedStyle(node).opacity)).toBe(
-      "1"
-    );
-    const during = (await row.boundingBox())!;
-    expect(during).toEqual(before);
+  // At rest the door is invisible and the row's own age text is not.
+  await expect(door).toBeAttached();
+  expect(await opacity(door)).toBe("0");
+  // Settle the scroll position BEFORE measuring: `hover()` scrolls the row into view
+  // on its own, and a boundingBox is viewport-relative, so an unscrolled baseline
+  // would report the page's scroll as a 2,000px "layout shift".
+  await link.scrollIntoViewIfNeeded();
+  const before = (await link.boundingBox())!;
 
-    if (width >= 720) {
-      const [ageBox, doorBox] = await settledBoxes([age, door]);
-      expect(ageBox.x + ageBox.width).toBeLessThanOrEqual(doorBox.x + 1);
-      const plot = (await row.getByTestId("standing-sparkline").boundingBox())!;
-      await page.mouse.move(plot.x + plot.width / 2, plot.y + plot.height / 2);
-      await expect.poll(opacity).toBe("1");
-    }
+  await link.hover();
+  await expect.poll(() => opacity(door)).toBe("1");
 
-    await page.mouse.move(0, 0);
-    await link.focus();
-    await expect.poll(opacity).toBe("1");
+  // NO LAYOUT SHIFT: the exchange is opacity and transform only, so the row it
+  // happens inside never moves or resizes.
+  const during = (await link.boundingBox())!;
+  expect(Math.abs(during.width - before.width)).toBeLessThan(1);
+  expect(Math.abs(during.y - before.y)).toBeLessThan(1);
 
-    if (width === 390) {
-      const href = await link.getAttribute("href");
-      await name.click();
-      await page.waitForURL((url) => `${url.pathname}${url.hash}` === href);
-    }
-  }
+  // AND IT LANDS ON THE RAIL (#3459 item 2): the right edge of the family row's
+  // facts cell, whichever member is hovered — not trailing whatever text this
+  // member happens to end with. Polled rather than read once, because the door
+  // slides 0.25rem on its way in and a single read can catch it mid-transition.
+  await expect
+    .poll(async () =>
+      Math.round(
+        await row.evaluate((li) => {
+          const facts = li.closest("dd")!.getBoundingClientRect();
+          const label = li
+            .querySelector("[data-testid='standing-door']")!
+            .getBoundingClientRect();
+          return facts.right - label.right;
+        })
+      )
+    )
+    .toBe(0);
+
+  // The IDENTICAL treatment from the keyboard. Move the mouse away first, so what is
+  // being measured is focus and not a lingering hover.
+  await page.mouse.move(0, 0);
+  await expect.poll(() => opacity(door)).toBe("0");
+  await link.focus();
+  await expect.poll(() => opacity(door)).toBe("1");
 });
 
 test("a stacked family's door lands on the member you are pointing at, not on the stack", async ({
@@ -558,7 +568,7 @@ test("a stacked family's door lands on the member you are pointing at, not on th
   await expect(family).toBeVisible();
 
   const doored = family
-    .locator("[data-standing-row]")
+    .getByTestId("dashboard-candidate")
     .filter({ has: page.getByTestId("standing-door") });
   const count = await doored.count();
   // A one-member "stack" is not a stack: it would make this test green against
@@ -570,7 +580,7 @@ test("a stacked family's door lands on the member you are pointing at, not on th
   // The LAST member — furthest from the top of the stack, so a door anchored to
   // the stack is furthest from where it belongs.
   const member = doored.nth(count - 1);
-  const link = member.locator(":scope > a.standing-row");
+  const link = member.getByRole("link").first(); // first-ok: the member row IS its link
   await link.scrollIntoViewIfNeeded();
   await link.hover();
   const door = member.getByTestId("standing-door");
@@ -578,15 +588,13 @@ test("a stacked family's door lands on the member you are pointing at, not on th
     .poll(() => door.evaluate((n) => getComputedStyle(n).opacity))
     .toBe("1");
 
-  const placed = await member.evaluate((rowNode) => {
-    const row = rowNode.getBoundingClientRect();
-    const stack = rowNode.parentElement!.getBoundingClientRect();
-    const label = rowNode
+  const placed = await member.evaluate((li) => {
+    const row = li.getBoundingClientRect();
+    const stack = li.closest("ul")!.getBoundingClientRect();
+    const label = li
       .querySelector("[data-testid='standing-door']")!
       .getBoundingClientRect();
-    const facts = rowNode
-      .querySelector("[data-standing-facts]")!
-      .getBoundingClientRect();
+    const facts = li.closest("dd")!.getBoundingClientRect();
     return {
       rowCentre: row.top + row.height / 2,
       rowHeight: row.height,
@@ -613,38 +621,232 @@ test("a stacked family's door lands on the member you are pointing at, not on th
   expect(placed.railGap).toBeCloseTo(0, 0);
 });
 
-test("Standing keeps secondary destinations and the plotless rail", async ({
+test("one door at a time: the shared rail answers with the row's own door", async ({
+  page,
+}) => {
+  // Every member of a family shares ONE door rail, so their door boxes overlap
+  // exactly. `pointer-events-none` on the door is what keeps that overlap from
+  // deciding anything: the pointer falls through to the row's link surface
+  // underneath, and the surface — not whichever door happens to be painted on top —
+  // says which door opens.
+  //
+  // THIS USED TO ASSERT THE RAIL REVEALED NOTHING. #3555 ruling 2 overruled that:
+  // the whole row is the link and hover surface, gutters included, so a pointer at
+  // the far right of the facts cell is pointing AT the row and must be answered.
+  // What survives the ruling is the discriminating half — exactly ONE door, and the
+  // one belonging to the surface the pointer is actually over.
+  //
+  // Paired with a PRESENCE check on purpose: an absence assertion that never had
+  // a door to suppress would pass against a page with no doors at all.
+  await page.goto("/");
+  const family = page
+    .locator('[data-standing-family][data-standing-composition="composed"]')
+    .filter({ has: page.getByTestId("standing-door") })
+    .first(); // first-ok: composed families all share one rail the same way
+  await expect(family).toBeVisible();
+  const doors = family.getByTestId("standing-door");
+  expect(await doors.count()).toBeGreaterThan(1);
+  const opacities = () =>
+    doors.evaluateAll((nodes) =>
+      nodes.map((node) => getComputedStyle(node).opacity)
+    );
+
+  // PRESENCE: a member's own text does reveal that member's door.
+  const first = family
+    .getByTestId("dashboard-candidate")
+    .filter({ has: page.getByTestId("standing-door") })
+    .first(); // first-ok: the leading member, hovered to prove a door can appear
+  await first.getByRole("link").first().hover(); // first-ok: the member row IS its link
+  await expect.poll(async () => (await opacities()).includes("1")).toBe(true);
+
+  // THE RAIL: the far right of the facts cell, past every member's text. It belongs
+  // to the line's own surface — the family's first link — so exactly one door
+  // answers, and it is that one. A door that took the pointer would put whichever
+  // door is painted on top in charge of the whole rail instead.
+  const rail = await family.evaluate((node) => {
+    const facts = node.querySelector("dd")!.getBoundingClientRect();
+    const list = node.querySelector("ul")!.getBoundingClientRect();
+    return { x: facts.right - 5, y: list.top + list.height / 2 };
+  });
+  await page.mouse.move(rail.x, rail.y);
+  await expect
+    .poll(async () => (await opacities()).join(","))
+    .toMatch(/^1(,0)*$/);
+});
+
+test("the whole Standing row is the link, and the date stays visible while its door is up (#3555)", async ({
+  page,
+}) => {
+  // ONE spec for the whole row anatomy, because the three defects it covers are one
+  // shape: the surface decides what "this row" means, the door says where that row
+  // goes, and the date is what must survive the door arriving. Split across three
+  // files, the intersection of #3253 decision 2 (a door on hover) and #3459 item 2
+  // (one aligned x per row) is exactly what nobody would be looking at — and that
+  // intersection is what produced the swap this issue removed. The date assertion is
+  // therefore a RIDER here rather than a test of its own: it must be read beside the
+  // door it used to trade places with.
+  await page.goto("/");
+
+  // A PLOTTED family. The fork is read from the row's own marker, never from whether
+  // a plot happened to draw: a series of fewer than two readable points draws
+  // nothing while still declaring the trend track, and inferring the template from
+  // the picture would silently test the wrong row.
+  const plotted = page
+    .locator("[data-standing-family][data-standing-trend]")
+    .filter({ has: page.getByTestId("standing-door") })
+    .filter({ has: page.locator(".standing-age") })
+    .first(); // first-ok: every plotted family carries the same anatomy
+  await expect(plotted).toBeVisible();
+  const link = plotted.locator("a.standing-row").first(); // first-ok: the family's own surface is its first link
+  const door = link.getByTestId("standing-door");
+  const age = plotted.locator(".standing-age").first(); // first-ok: the row's own age text
+  const opacity = (target: typeof door) =>
+    target.evaluate((node) => getComputedStyle(node).opacity);
+
+  await link.scrollIntoViewIfNeeded();
+  const restingAge = (await age.boundingBox())!;
+  expect(await opacity(door)).toBe("0");
+
+  // ── THE NAME CELL ────────────────────────────────────────────────────────────
+  // The 10rem first column, dead to hover and to the click until this change. Its
+  // own box is read rather than the row's, so this points at the name and not at
+  // the row's padding.
+  const nameCell = (await plotted.locator("dt").boundingBox())!;
+  await page.mouse.move(
+    nameCell.x + nameCell.width / 2,
+    nameCell.y + nameCell.height / 2
+  );
+  await expect.poll(() => opacity(door)).toBe("1");
+
+  // THE RIDER: the date is still there, at full opacity and in the same place. It
+  // used to fade to 0 on exactly this hover.
+  await expect(age).toBeVisible();
+  expect(await opacity(age)).toBe("1");
+  const shownAge = (await age.boundingBox())!;
+  expect(Math.abs(shownAge.x - restingAge.x)).toBeLessThan(1);
+  expect(Math.abs(shownAge.width - restingAge.width)).toBeLessThan(1);
+
+  // ── THE SPARKLINE ────────────────────────────────────────────────────────────
+  // The 11rem trailing column at >=45rem, the other end of the same row.
+  await page.mouse.move(0, 0);
+  await expect.poll(() => opacity(door)).toBe("0");
+  const plot = (await plotted.getByTestId("standing-sparkline").boundingBox())!;
+  await page.mouse.move(plot.x + plot.width / 2, plot.y + plot.height / 2);
+  await expect.poll(() => opacity(door)).toBe("1");
+  expect(await opacity(age)).toBe("1");
+
+  // ── AND IT CLICKS ────────────────────────────────────────────────────────────
+  // Pointing is half the ruling; the row has to GO there. Clicked in the name cell,
+  // which carries no anchor of its own.
+  const href = (await link.getAttribute("href"))!;
+  await page.mouse.click(
+    nameCell.x + nameCell.width / 2,
+    nameCell.y + nameCell.height / 2
+  );
+  await page.waitForURL((url) => `${url.pathname}${url.hash}` === href);
+});
+
+test("a plotless Standing family's door lands on the row's own edge, not on a reserved track (#3555)", async ({
   page,
 }) => {
   await page.goto("/");
-  const composed = page
-    .locator('[data-standing-family][data-standing-composition="composed"]')
-    .filter({ has: page.locator("a.standing-row") })
-    .first(); // first-ok: composed families share the same link structure
-  const hrefs = await composed
-    .locator("a")
-    .evaluateAll((links) => links.map((link) => link.getAttribute("href")));
-  expect(new Set(hrefs).size).toBeGreaterThan(1);
-
-  const row = page
-    .locator("[data-standing-row]:not([data-standing-trend])")
+  const plotless = page
+    .locator("[data-standing-family]:not([data-standing-trend])")
     .filter({ has: page.getByTestId("standing-door") })
-    .first(); // first-ok: every plotless row uses the same rail
-  const link = row.locator(":scope > a.standing-row");
+    .first(); // first-ok: no plotless family declares the trend track
+  await expect(plotless).toBeVisible();
+  // The census this fix turns on: the plotless row is the COMMON case, so a fixture
+  // with none of them would pass this file while proving nothing.
+  expect(
+    await page
+      .locator("[data-standing-family]:not([data-standing-trend])")
+      .count()
+  ).toBeGreaterThan(0);
+
+  const link = plotless.locator("a.standing-row").first(); // first-ok: the family's own surface is its first link
+  await link.scrollIntoViewIfNeeded();
   await link.hover();
+  const door = link.getByTestId("standing-door");
   await expect
-    .poll(() =>
-      row.evaluate((node) => {
-        const facts = node
-          .querySelector("[data-standing-facts]")!
-          .getBoundingClientRect();
-        const door = node
-          .querySelector("[data-testid='standing-door']")!
-          .getBoundingClientRect();
-        return Math.round(facts.right - door.right);
-      })
+    .poll(() => door.evaluate((node) => getComputedStyle(node).opacity))
+    .toBe("1");
+
+  // The row's CONTENT-box right edge — inside `px-4`, which is where the facts cell
+  // ends and therefore where the rail now is. Polled, because the door slides
+  // 0.25rem on its way in and a single read can catch it mid-transition.
+  await expect
+    .poll(async () =>
+      Math.round(
+        await link.evaluate((anchor) => {
+          const row = anchor.closest("[data-standing-family]")!;
+          const style = getComputedStyle(row);
+          const contentRight =
+            row.getBoundingClientRect().right -
+            parseFloat(style.borderRightWidth) -
+            parseFloat(style.paddingRight);
+          const label = anchor
+            .querySelector("[data-testid='standing-door']")!
+            .getBoundingClientRect();
+          return contentRight - label.right;
+        })
+      )
     )
     .toBe(0);
+  // And no trend cell was rendered to be inset by.
+  await expect(plotless.getByTestId("standing-sparkline")).toHaveCount(0);
+});
+
+test("in a stacked Standing family, the name cell answers with the line you are on (#3555)", async ({
+  page,
+}) => {
+  // THE NO-LEAK CASE. The row-wide surface is per LINE in a stacked family, so
+  // pointing at the shared name column beside the LAST member must reveal that
+  // member's door and no other. A surface anchored to the family instead of to the
+  // line would answer with the first member's door here, and look correct doing it.
+  await page.goto("/");
+  const family = page
+    .locator('[data-standing-family][data-standing-composition="members"]')
+    .filter({ has: page.getByTestId("standing-door") })
+    .first(); // first-ok: every stacked family anchors its surfaces the same way
+  await expect(family).toBeVisible();
+  const doored = family
+    .getByTestId("dashboard-candidate")
+    .filter({ has: page.getByTestId("standing-door") });
+  const count = await doored.count();
+  // A one-member "stack" cannot discriminate: it would pass against the very
+  // anchoring this test exists to reject.
+  expect(count, "the stacked family under test has one member").toBeGreaterThan(
+    1
+  );
+
+  const last = doored.nth(count - 1);
+  await last.scrollIntoViewIfNeeded();
+  // A point in the NAME column at the last member's own y — outside every anchor in
+  // the DOM, which is the whole point of the ruling.
+  const point = await last.evaluate((li) => {
+    const row = li.closest("[data-standing-family]")!;
+    const style = getComputedStyle(row);
+    const rect = row.getBoundingClientRect();
+    const band = li.getBoundingClientRect();
+    return {
+      x: rect.left + parseFloat(style.borderLeftWidth) + 8,
+      y: band.top + band.height / 2,
+    };
+  });
+  await page.mouse.move(point.x, point.y);
+
+  const doors = family.getByTestId("standing-door");
+  await expect
+    .poll(() =>
+      doors.evaluateAll((nodes) =>
+        nodes.map((node) => getComputedStyle(node).opacity)
+      )
+    )
+    .toEqual(
+      Array.from({ length: count }, (_, index) =>
+        index === count - 1 ? "1" : "0"
+      )
+    );
 });
 
 test("cards carry exactly one kind glyph and reading lines carry none", async ({
@@ -725,9 +927,7 @@ test("Standing draws its aligned sparkline column on the desktop", async ({
     // ruling is about POSITION, so position is what this pins: the plot sits to
     // the right of the facts it belongs to, on the same row as them.
     const column = await weight.evaluate((row) => {
-      const facts = row
-        .querySelector("[data-standing-facts]")!
-        .getBoundingClientRect();
+      const facts = row.querySelector("dd")!.getBoundingClientRect();
       const plot = row
         .querySelector("[data-testid='standing-sparkline']")!
         .getBoundingClientRect();
