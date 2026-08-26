@@ -11,8 +11,9 @@ import { getHomeLocation, getSkinType } from "@/lib/settings";
 import { today } from "@/lib/db";
 import { getUvDoseForDay } from "@/lib/queries/weather";
 import IntegrationStatusHeader from "@/components/integrations/IntegrationStatusHeader";
+import IntegrationDisconnectButton from "@/components/integrations/IntegrationDisconnectButton";
 import SyncHistoryTable from "@/components/integrations/SyncHistoryTable";
-import SyncNowButton from "@/components/SyncNowButton";
+import IntegrationActionButton from "@/components/integrations/IntegrationActionButton";
 import { enableWeatherAction, disconnectWeatherAction } from "./actions";
 import BackLink from "@/components/BackLink";
 
@@ -107,12 +108,11 @@ export default async function WeatherPage(props: {
                 isAdmin={login.role === "admin"}
                 controls={
                   <>
-                    <SyncNowButton sourceId="weather" />
-                    <form action={disconnectWeatherAction}>
-                      <button className="rounded-lg border border-rose-200 px-3 py-2 text-sm font-medium text-rose-600 hover:bg-rose-50 dark:border-rose-900 dark:text-rose-400 dark:hover:bg-rose-950">
-                        Disable
-                      </button>
-                    </form>
+                    <IntegrationActionButton kind="sync" sourceId="weather" />
+                    <IntegrationDisconnectButton
+                      kind="disable"
+                      serverAction={disconnectWeatherAction}
+                    />
                   </>
                 }
               />

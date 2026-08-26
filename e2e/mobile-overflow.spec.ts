@@ -1,8 +1,9 @@
 import { test, expect } from "./fixtures";
 import { type Page } from "@playwright/test";
 import { loginAs } from "./nav";
-import { expectNoClippedContent } from "./helpers";
+import { expectNoClippedContent, settledBoxes } from "./helpers";
 import { E2E_LOGIN_MOBILE_HC, E2E_MEMBER_PASSWORD } from "./fixture-logins";
+import { TAP_FLOOR_PX } from "@/lib/tap-floor-tokens";
 
 // Mobile clipped-content audit (issue #1063). The app shell's `overflow-x-clip`
 // means a phone-width layout that blows past the viewport doesn't page-scroll —
@@ -54,12 +55,38 @@ test.describe("mobile clipped-content audit (#1063)", () => {
     page,
   }) => {
     test.slow();
-    await phone(page);
+    await page.setViewportSize({ width: 390, height: 844 });
     // Profile 1's Strava connection is seeded `connected`, so the status card +
     // the Setup card (callback domain/URL rows) all render.
     await page.goto("/integrations/strava");
     await expect(page.getByRole("button", { name: "Sync now" })).toBeVisible();
     await expect(page.getByRole("heading", { name: "Setup" })).toBeVisible();
+    const status = page.getByTestId("strava-integration-status");
+    const controls = status.locator(
+      "[data-button-control], [data-integration-disconnect]"
+    );
+    const count = await controls.count();
+    expect(count).toBeGreaterThanOrEqual(3);
+    const boxes = await settledBoxes(
+      Array.from({ length: count }, (_, index) => controls.nth(index))
+    );
+    const [owner] = await settledBoxes([status]);
+    for (const box of boxes) {
+      expect(box.height).toBeGreaterThanOrEqual(TAP_FLOOR_PX);
+      expect(box.x).toBeGreaterThanOrEqual(owner.x);
+      expect(box.x + box.width).toBeLessThanOrEqual(owner.x + owner.width);
+      expect(box.y).toBeGreaterThanOrEqual(owner.y);
+      expect(box.y + box.height).toBeLessThanOrEqual(owner.y + owner.height);
+      expect(box.x + box.width).toBeLessThanOrEqual(390);
+    }
+    for (let index = 1; index < boxes.length; index += 1) {
+      const previous = boxes[index - 1];
+      const current = boxes[index];
+      expect(
+        previous.x + previous.width <= current.x ||
+          previous.y + previous.height <= current.y
+      ).toBe(true);
+    }
     await expectNoClippedContent(page);
   });
 

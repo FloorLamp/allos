@@ -8,8 +8,9 @@ import { getConnection, getStravaConfig } from "@/lib/integrations/connections";
 import { getIntegrationState, SETUP_HISTORY_LIMIT } from "@/lib/queries";
 import { requireSession } from "@/lib/auth";
 import IntegrationStatusHeader from "@/components/integrations/IntegrationStatusHeader";
+import IntegrationDisconnectButton from "@/components/integrations/IntegrationDisconnectButton";
 import SyncHistoryTable from "@/components/integrations/SyncHistoryTable";
-import SyncNowButton from "@/components/SyncNowButton";
+import IntegrationActionButton from "@/components/integrations/IntegrationActionButton";
 import { TokenRow } from "@/components/TokenRow";
 import { stravaCallbackUrl } from "./url";
 import { externalBaseUrl } from "@/lib/external-url-server";
@@ -18,8 +19,6 @@ import {
   connectStrava,
   disconnectStravaAction,
 } from "./actions";
-import StravaBackfillButton from "./StravaBackfillButton";
-import StravaRecheckButton from "./StravaRecheckButton";
 import {
   countAnsweredNoneStravaSessions,
   countMissingStravaSessionDetails,
@@ -125,16 +124,22 @@ export default async function StravaPage(props: {
               detail="period"
               isAdmin={login.role === "admin"}
               watchBackfills
+              testid="strava-integration-status"
               controls={
                 <>
-                  <SyncNowButton sourceId="strava" />
-                  <StravaBackfillButton missing={missingRideDetails} />
-                  <StravaRecheckButton answeredNone={answeredNoneSessions} />
-                  <form action={disconnectStravaAction}>
-                    <button className="rounded-lg border border-rose-200 px-3 py-2 text-sm font-medium text-rose-600 hover:bg-rose-50 dark:border-rose-900 dark:text-rose-400 dark:hover:bg-rose-950">
-                      Disconnect
-                    </button>
-                  </form>
+                  <IntegrationActionButton kind="sync" sourceId="strava" />
+                  <IntegrationActionButton
+                    kind="backfill"
+                    count={missingRideDetails}
+                  />
+                  <IntegrationActionButton
+                    kind="recheck"
+                    count={answeredNoneSessions}
+                  />
+                  <IntegrationDisconnectButton
+                    kind="disconnect"
+                    serverAction={disconnectStravaAction}
+                  />
                 </>
               }
             />

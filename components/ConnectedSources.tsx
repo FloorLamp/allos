@@ -13,7 +13,7 @@ import {
   standingBadge,
   standingEscalates,
 } from "@/lib/integrations/source-state";
-import SyncNowButton from "@/components/SyncNowButton";
+import IntegrationActionButton from "@/components/integrations/IntegrationActionButton";
 import StatusBadge from "@/components/integrations/StatusBadge";
 import SyncTimestamp from "@/components/integrations/SyncTimestamp";
 import IntegrationStatusHeader from "@/components/integrations/IntegrationStatusHeader";
@@ -46,9 +46,8 @@ function homeHref(source: ConnectedSource) {
   return integrationDetailHref(source.id as IntegrationId);
 }
 
-// The action a source in the inbox offers. A pull source that is connected can be
-// pulled on demand; one that was removed (#294) or whose token died (#326) gets a way
-// back to reconnect; a push-only source explains why there is no button.
+// A connected pull source can run on demand; a removed or expired source gets a
+// reconnect path, while a push-only source explains why there is no action.
 function SourceAction({ source }: { source: ConnectedSource }) {
   const href = homeHref(source);
   // Push FIRST: a push-only source (Health Connect) has nothing to pull and nothing
@@ -63,7 +62,7 @@ function SourceAction({ source }: { source: ConnectedSource }) {
     );
   }
   if (source.connected && source.canSyncNow) {
-    return <SyncNowButton sourceId={source.id} />;
+    return <IntegrationActionButton kind="sync" sourceId={source.id} />;
   }
   if (!source.connected && href) {
     return (
