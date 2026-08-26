@@ -88,11 +88,8 @@ export const CARD_MODE_TABLE_ONLY = {
    *
    * KNOWN EDGE, so the next author meets it as a note rather than as a trap: an
    * ADD AFFORDANCE's label uses the same two classes for a different reason (an
-   * icon-only create below `sm`), and `lib/add-affordance-grammar.ts` recognises
-   * that composition by matching the LITERAL. Reaching for this constant on such
-   * a button would make that guard stop seeing the control as icon-only, and its
-   * `aria-label` requirement would go quiet. If a card-mode consumer ever grows
-   * one, the two guards have to be reconciled — not the literal re-spelled.
+   * icon-only create below `sm`). Create actions now declare their semantic via
+   * `CreateAction`; this constant remains only the card-mode vocabulary.
    */
   inline: "hidden sm:inline",
   /**

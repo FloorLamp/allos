@@ -3,12 +3,40 @@
 import { useState } from "react";
 import { IconPlus, IconX } from "@tabler/icons-react";
 import { PageHeader } from "@/components/ui";
+import CreateAction, { useCreateActionLabel } from "@/components/CreateAction";
 import IntakeItemForm from "@/components/IntakeItemForm";
 import type { InteractionItem } from "@/lib/drug-interactions";
 import type { PgxVariantInput } from "@/lib/pgx";
 import type { PediatricFormContext } from "@/lib/prn-dosing";
 import type { FormResult } from "@/lib/types";
 import type { SupplyOption } from "@/lib/supply-product";
+
+export function MedicationCreateControl({
+  open,
+  onToggle,
+}: {
+  open: boolean;
+  onToggle: () => void;
+}) {
+  const label = useCreateActionLabel();
+  return (
+    <button
+      type="button"
+      className={`${open ? "btn-ghost" : "btn"} whitespace-nowrap`}
+      aria-expanded={open}
+      aria-controls="medication-add-panel"
+      data-testid="medication-add-toggle"
+      onClick={onToggle}
+    >
+      {open ? (
+        <IconX className="h-4 w-4" stroke={1.75} />
+      ) : (
+        <IconPlus className="h-4 w-4" stroke={2} />
+      )}
+      {open ? "Close" : label}
+    </button>
+  );
+}
 
 export default function MedicationAddWorkspace({
   subtitle,
@@ -60,24 +88,13 @@ export default function MedicationAddWorkspace({
         // title and a counts subtitle at 390px the group would still be sharing a line
         // it does not fit on. The rule is untouched; only its content shrank.
         stackActionBelowSm
-        action={
-          <div className="flex flex-wrap items-center justify-end gap-x-3 gap-y-2">
-            <button
-              type="button"
-              className={`${open ? "btn-ghost" : "btn"} whitespace-nowrap`}
-              aria-expanded={open}
-              aria-controls="medication-add-panel"
-              data-testid="medication-add-toggle"
-              onClick={() => setOpen((value) => !value)}
-            >
-              {open ? (
-                <IconX className="h-4 w-4" stroke={1.75} />
-              ) : (
-                <IconPlus className="h-4 w-4" stroke={2} />
-              )}
-              {open ? "Close" : "Add medication"}
-            </button>
-          </div>
+        createAction={
+          <CreateAction kind="medication">
+            <MedicationCreateControl
+              open={open}
+              onToggle={() => setOpen((value) => !value)}
+            />
+          </CreateAction>
         }
       />
 

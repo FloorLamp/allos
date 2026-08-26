@@ -1,6 +1,7 @@
 import Link from "next/link";
 import { IconCaretUpFilled, IconCaretDownFilled } from "@tabler/icons-react";
 import ActivityIcon from "@/components/ActivityIcon";
+import type { CreateActionElement } from "@/components/CreateAction";
 import DestinationIndicator from "@/components/DestinationIndicator";
 import { PendingTextLink } from "@/components/PendingLink";
 import { flagTone } from "@/lib/reference-range";
@@ -13,6 +14,7 @@ export function PageHeader({
   subtitle,
   leading,
   action,
+  createAction,
   compactBelowSm = false,
   hideSubtitleBelowSm = false,
   stackActionBelowSm = false,
@@ -22,6 +24,8 @@ export function PageHeader({
   title: string;
   subtitle?: React.ReactNode;
   leading?: React.ReactNode;
+  /** The page's one registered create. Unrelated controls stay in `action`. */
+  createAction?: CreateActionElement;
   action?: React.ReactNode;
   // Give up the whole heading band below `sm` (issue #1485 F, following the #1413
   // dashboard precedent): the title goes `sr-only` and the subtitle is dropped, so
@@ -40,6 +44,12 @@ export function PageHeader({
   actionAlign?: "start" | "end";
   className?: string;
 }) {
+  // `available` is declaration data, so a Server Component can decide whether
+  // its action cell exists without calling through the client boundary.
+  const createAvailable = Boolean(
+    createAction && createAction.props.available !== false
+  );
+  const hasTrailing = Boolean(createAvailable || action);
   // Compact below `md` (issue #1416, section A/D): a phone gives the heading a
   // smaller share of a much shorter screen, so the title drops to text-xl and
   // the gap to the content below halves. Desktop is unchanged. One tokenized
@@ -94,13 +104,22 @@ export function PageHeader({
           own line the Medications group still ran 60px past a 390px viewport, into an
           app shell that clips rather than scrolls. Below `sm` it shrinks and wraps
           exactly as it did before; from `sm` up the protection is back on. */}
-      {action ? (
+      {hasTrailing ? (
         <div
           className={
             stackActionBelowSm ? "ml-auto sm:ml-0 sm:shrink-0" : "shrink-0"
           }
         >
-          {action}
+          {createAvailable && createAction && action ? (
+            <div className="flex items-center gap-3">
+              {createAction}
+              {action}
+            </div>
+          ) : createAvailable && createAction ? (
+            createAction
+          ) : (
+            action
+          )}
         </div>
       ) : null}
     </div>

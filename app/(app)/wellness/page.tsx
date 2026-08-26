@@ -11,9 +11,10 @@ import { MAX_PRACTICE_TREND_WEEKS } from "@/lib/trends-practices";
 import { WELLNESS_PRACTICE_HEATMAP_WEEKS } from "@/lib/practice-heatmap";
 import { DAY_HISTORY_DOMAINS, dayHistoryStart } from "@/lib/day-history";
 import { PageHeader, EmptyState } from "@/components/ui";
+import CreateAction from "@/components/CreateAction";
 import PageContainer from "@/components/PageContainer";
 import RightSizeSuggestions from "@/components/RightSizeSuggestions";
-import AddPracticeButton from "./AddPracticeButton";
+import AddPracticeButton from "@/app/(app)/wellness/AddPracticeButton";
 import PracticeCard from "./PracticeCard";
 import DayHistory from "@/components/DayHistory";
 import PracticeBackfillLauncher from "@/components/practices/PracticeBackfillLauncher";
@@ -85,7 +86,11 @@ export default async function WellnessPage(props: {
       <PageHeader
         title="Wellness"
         subtitle="Track recurring wellness routines such as sauna, meditation, breathwork, and light exposure."
-        action={<AddPracticeButton defaultOpen={searchParams.new === "1"} />}
+        createAction={
+          <CreateAction kind="practice">
+            <AddPracticeButton defaultOpen={searchParams.new === "1"} />
+          </CreateAction>
+        }
         actionAlign="start"
       />
 

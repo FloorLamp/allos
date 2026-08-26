@@ -160,11 +160,8 @@ export class UnreadableControlError extends Error {}
  * (#3509: an e2e census once counted a `.first()` written in English, and
  * Tailwind's content scanner once compiled a class out of a comment).
  *
- * Shared in spirit with `lib/add-affordance-grammar.ts`'s copy and deliberately
- * NOT imported from it: that module blanks comments for the affordance grammar's
- * own reasons and its signature is free to change with that rule. One helper
- * serving two unrelated sweeps is a coupling nobody would want to discover from
- * a failing test in the other one.
+ * Kept local to this interpreter: one helper serving unrelated sweeps is a
+ * coupling nobody would want to discover from a failing test in the other one.
  */
 export function withoutComments(source: string): string {
   // Let the TSX parser decide what is trivia. A lexical `//` scanner cannot

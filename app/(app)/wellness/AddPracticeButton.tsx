@@ -3,6 +3,7 @@
 import { useRef, useState } from "react";
 import { IconPlus } from "@tabler/icons-react";
 import ModalShell from "@/components/ModalShell";
+import { useCreateActionLabel } from "@/components/CreateAction";
 import PracticeEditor from "./PracticeEditor";
 
 export default function AddPracticeButton({
@@ -11,6 +12,7 @@ export default function AddPracticeButton({
   defaultOpen?: boolean;
 }) {
   const [open, setOpen] = useState(defaultOpen);
+  const label = useCreateActionLabel();
   const practiceInputRef = useRef<HTMLInputElement>(null);
 
   return (
@@ -19,7 +21,7 @@ export default function AddPracticeButton({
         type="button"
         className="btn shrink-0 whitespace-nowrap"
         onClick={() => setOpen(true)}
-        aria-label="Add practice"
+        aria-label={label}
         data-testid="practice-create-trigger"
       >
         <IconPlus className="h-4 w-4" stroke={2} aria-hidden />
@@ -27,7 +29,7 @@ export default function AddPracticeButton({
       </button>
       {open && (
         <ModalShell
-          title="Add a practice"
+          title={label}
           onClose={() => setOpen(false)}
           initialFocusRef={practiceInputRef}
           size="sm"

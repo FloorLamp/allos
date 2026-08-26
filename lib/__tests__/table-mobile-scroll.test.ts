@@ -28,7 +28,7 @@ import { makeTmpDir } from "./tmp-dir";
 // `ResponsiveTable` had replaced, and this scan read it as a rendered table. The
 // lane that met it reworded the comment, which fixed that file and left the scanner
 // unchanged. The sibling scanner in this tier
-// (`lib/__tests__/add-affordance-grammar.test.ts`) already blanks comments, so the
+// (the retired add-affordance source sweep) already blanked comments, so the
 // repo held both behaviours and the difference was nobody's decision.
 //
 // The blanking happens INSIDE `unwrappedTables` rather than at the call site, so a

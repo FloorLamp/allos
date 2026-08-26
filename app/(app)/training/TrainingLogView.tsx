@@ -11,6 +11,7 @@ import {
 import type { ActivityType } from "@/lib/types";
 import { useActivityEditor } from "@/components/ActivityEditorProvider";
 import { PageHeader, EmptyState } from "@/components/ui";
+import CreateAction from "@/components/CreateAction";
 import TrainingLogRow from "./TrainingLogRow";
 import { loadTrainingLogPage } from "./activity-actions";
 import ActiveDaysStrip from "@/components/ActiveDaysStrip";
@@ -36,7 +37,7 @@ import {
   type TrainingLogFilters,
 } from "@/lib/training-log-filters";
 import type { TrainingLogSourceOption } from "./training-log-feed-resolve";
-import AddTrainingActivityButton from "./AddTrainingActivityButton";
+import AddTrainingActivityButton from "@/app/(app)/training/AddTrainingActivityButton";
 export type { TrainingLogCardData, DayGroup };
 
 // The Training Log's per-list multi-view context (issue #1330). Present ONLY when more
@@ -524,7 +525,7 @@ export default function TrainingLogView({
   }, []);
 
   // The Training Log's secondary actions stay with its search controls. The one
-  // page-level primary, Add activity, lives in PageHeader.action (#3486). These
+  // page-level primary, Add activity, lives in PageHeader.createAction (#3486/#3731). These
   // remain desktop-only; MobileNav's always-mounted quick-log owns phone entry.
   const secondaryActions = (
     <>
@@ -564,7 +565,11 @@ export default function TrainingLogView({
       {showHeader && (
         <PageHeader
           title="Training Log"
-          action={<AddTrainingActivityButton />}
+          createAction={
+            <CreateAction kind="training-activity">
+              <AddTrainingActivityButton />
+            </CreateAction>
+          }
           // The week summary stands in for a static tagline — a compact strip.
           subtitle={
             <span className="flex flex-wrap items-baseline gap-x-4 gap-y-1">

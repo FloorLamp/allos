@@ -2,8 +2,11 @@
 
 import { useState, type ReactNode } from "react";
 import IntakeContextBar from "@/components/IntakeContextBar";
+import CreateAction from "@/components/CreateAction";
 import { EmptyState } from "@/components/ui";
-import type { AddSupplementModalProps } from "@/components/nutrition/AddSupplementModal";
+import AddSupplementModal, {
+  type AddSupplementModalProps,
+} from "@/components/nutrition/AddSupplementModal";
 import { TIME_BUCKET_LABELS, type TimeBucket } from "@/lib/intake-schedule";
 
 type SlotSelection = "all" | TimeBucket;
@@ -65,7 +68,11 @@ export default function SupplementSchedule({
           taken: activeDay.takenCount,
           total: activeDay.totalCount,
         }}
-        action={{ kind: "add-supplement", modal: addSupplement }}
+        createAction={
+          <CreateAction kind="supplement">
+            <AddSupplementModal {...addSupplement} />
+          </CreateAction>
+        }
       />
 
       <section className="mb-4">
