@@ -83,28 +83,25 @@ function stubMatchMedia(): void {
     }) satisfies MediaQueryList;
 }
 
-// Bounds the LAZY IMPORT below, not a render, and it is deliberately generous
-// because of where it sits: it is spent in a hook, so vitest's hook budget (2x the
-// per-test ceiling, so 30 000 ms in CI) is what it has to fit inside, and no
-// assertion runs under it. Measured mounting a chart through its public wrapper on
-// the dispatch box: 2 157 ms cold / 56 ms warm on an idle tree, 5 682-7 793 ms cold
-// / 121-466 ms warm with four extra CPU burners running.
+// Bounds the LAZY IMPORT in the hook below, not a render, so it can be generous:
+// nothing is asserted under it and it only has to fit vitest's hook budget (2x the
+// per-test ceiling, 30 000 ms in CI). Measured mounting a chart through its public
+// wrapper: 2 157 ms cold / 56 ms warm idle, 5 682-7 793 ms cold / 121-466 ms warm
+// with four extra CPU burners on the box.
 const CHART_CHUNK_WARMUP_MS = 20_000;
 
 describe("chart empty states", () => {
-  // Every chart here is reached through its PUBLIC wrapper, which is a
-  // `next/dynamic` boundary — so mounting one waits on a lazy import of the chart
-  // module graph, not only on a render. The FIRST chart to mount in this file pays
-  // that graph; the rest are served from the module cache (the warm numbers above).
-  // testing-library's findBy* ceiling is a 1 000 ms default, under the cold cost and
-  // far under it when the box is loaded, so whichever case was listed first failed
-  // while the other seven passed — a footprint failure in `bar sparkline` that was
-  // really the bundler, and it survived a 15x `--testTimeout` because that knob does
-  // not reach findBy's own ceiling.
+  // Each chart is reached through its PUBLIC wrapper, a `next/dynamic` boundary, so
+  // mounting one waits on a lazy import of the chart module graph. The FIRST mount
+  // in the file pays that graph and the rest come from the module cache (the warm
+  // numbers above) — while findBy*'s ceiling is a 1 000 ms default, below the cold
+  // cost. So whichever case was listed first failed and the other seven passed,
+  // reading as a broken `bar sparkline` (#3801). Raising `--testTimeout` 15x did not
+  // help because that knob does not reach findBy's own ceiling.
   //
-  // Pay the import once, here, and each case below then measures the render it
-  // names at the strict default. Warming through the same table keeps this honest:
-  // no second list to drift, and nothing reaches past the wrapper.
+  // Pay the import once here; each case below then measures the render it names at
+  // the strict default. Warming through the same table keeps it honest — no second
+  // list to drift, and nothing reaches past the wrapper.
   beforeAll(async () => {
     stubMatchMedia();
     for (const { message, plot } of EMPTY_CHARTS) {
