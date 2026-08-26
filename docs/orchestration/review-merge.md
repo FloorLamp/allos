@@ -9,23 +9,12 @@
 - Check profile scoping, write transactions, authorization boundaries, identity
   handling, and shared one-question-one-computation models.
 - Require tests at the tier that can observe the defect.
-- CHECK THE RULING'S OWN CONDITION, not the one the implementation makes easy.
-  A ruling names where it applies — "the entire row", "at phone width", "the date
-  never hides". Verify the behaviour THERE. Reviewing the values at the breakpoints
-  where an implementation changes them is a different question, and it can pass
-  while the named condition fails. Receipt (2026-08-26): #3800 was reviewed by
-  checking `--standing-lead`/`--standing-trail` at `sm` and `min-[45rem]`, both
-  correct, and merged green. Below `sm` the row is a single-column grid where the
-  name cell is its own grid row, so the stretched surface anchored in the facts
-  cell never covered it — at 390px, the phone width #3555 is about, "the entire row
-  is the link" was false. The owner reverted the merge and rebuilt it at -453 lines.
-  The review verified arithmetic at two breakpoints and never rendered the base case.
-- A GUARD'S EXISTENCE IS NOT ITS COVERAGE. Ask which cases it runs at, not whether
-  it is present. The same PR shipped an e2e asserting the date stays visible while
-  the door shows — and the door still covered age content at widths that spec never
-  visited, which the rebuild had to prove separately at 720px and 1280px. When a
-  ruling exists because a defect recurred, the guard has to visit the widths, states
-  or roles where it could recur, and the review has to say which those are.
+- Check the ruling's OWN condition, not the one the implementation makes
+  easy. Verifying values where they change is a different question from
+  rendering the case the ruling names.
+- A guard's existence is not its coverage. Ask which widths, states and
+  roles it runs at, and say which in the review.
+- Receipts for both: incidents, "The review that checked the arithmetic".
 - A REMOVAL is checked against the issue's acceptance criteria before it is
   accepted. An unreachable export can be debris or an unfinished requirement,
   and the code cannot tell you which — only the issue can. Delete it once the
