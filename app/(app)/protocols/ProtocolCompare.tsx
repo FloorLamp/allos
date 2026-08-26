@@ -223,7 +223,10 @@ export default function ProtocolCompare({
               }
             />
           </div>
-          <div className="flex flex-col-reverse gap-2 border-t border-black/5 pt-3 sm:flex-row sm:justify-end dark:border-white/10">
+          <div
+            className="flex flex-col-reverse gap-2 border-t border-black/5 pt-3 sm:flex-row sm:justify-end dark:border-white/10"
+            data-testid="protocol-outcomes-actions"
+          >
             <button
               type="button"
               className="btn-ghost w-full sm:w-auto"
@@ -231,12 +234,12 @@ export default function ProtocolCompare({
             >
               Cancel
             </button>
-            <SubmitButton
-              className="btn w-full sm:w-auto"
-              pendingLabel="Saving…"
+            <div
+              className="grid w-full sm:w-auto"
+              data-testid="protocol-outcomes-primary-action"
             >
-              Save outcomes
-            </SubmitButton>
+              <SubmitButton pendingLabel="Saving…">Save outcomes</SubmitButton>
+            </div>
           </div>
         </form>
       )}

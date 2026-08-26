@@ -1,7 +1,136 @@
 import { test, expect } from "./fixtures";
-import { hydratedClick, settledClick } from "./helpers";
+import type { Locator } from "@playwright/test";
+import {
+  dismissToast,
+  expectPhoneTapTargets,
+  hydratedClick,
+  settledBoxes,
+  settledClick,
+} from "./helpers";
 import { frozenNow } from "./worker-env";
 import { openProtocolFact, withProtocolFact } from "./protocol-form-helpers";
+import {
+  TAP_FLOOR_FLOAT_EPSILON_PX,
+  TAP_FLOOR_PX,
+} from "@/lib/tap-floor-tokens";
+
+const PHONE = { width: 390, height: 844 };
+const PROTOCOL_FORM_PRIMARY_MIN_WIDTH_PX = 6 * 16;
+
+type Box = { x: number; y: number; width: number; height: number };
+
+function expectContained(outer: Box, inner: Box, name: string) {
+  expect(
+    inner.x + TAP_FLOOR_FLOAT_EPSILON_PX,
+    `${name} left containment`
+  ).toBeGreaterThanOrEqual(outer.x);
+  expect(
+    inner.y + TAP_FLOOR_FLOAT_EPSILON_PX,
+    `${name} top containment`
+  ).toBeGreaterThanOrEqual(outer.y);
+  expect(
+    inner.x + inner.width,
+    `${name} right containment`
+  ).toBeLessThanOrEqual(outer.x + outer.width + TAP_FLOOR_FLOAT_EPSILON_PX);
+  expect(
+    inner.y + inner.height,
+    `${name} bottom containment`
+  ).toBeLessThanOrEqual(outer.y + outer.height + TAP_FLOOR_FLOAT_EPSILON_PX);
+}
+
+function expectDisjoint(a: Box, b: Box, name: string) {
+  const overlapX = Math.min(a.x + a.width, b.x + b.width) - Math.max(a.x, b.x);
+  const overlapY =
+    Math.min(a.y + a.height, b.y + b.height) - Math.max(a.y, b.y);
+  expect(
+    overlapX > TAP_FLOOR_FLOAT_EPSILON_PX &&
+      overlapY > TAP_FLOOR_FLOAT_EPSILON_PX,
+    name
+  ).toBe(false);
+}
+
+async function expectDesktopProtocolActions({
+  actions,
+  cancel,
+  primaryOwner,
+  submit,
+  primaryMinWidth = 0,
+}: {
+  actions: Locator;
+  cancel: Locator;
+  primaryOwner: Locator;
+  submit: Locator;
+  primaryMinWidth?: number;
+}) {
+  const [actionsBox, cancelBox, ownerBox, submitBox] = await settledBoxes([
+    actions,
+    cancel,
+    primaryOwner,
+    submit,
+  ]);
+
+  expect(cancelBox.height, "desktop Cancel stays compact").toBeLessThan(
+    TAP_FLOOR_PX
+  );
+  expect(submitBox.height, "desktop submit stays compact").toBeLessThan(
+    TAP_FLOOR_PX
+  );
+  expect(cancelBox.width, "desktop Cancel does not fill its row").toBeLessThan(
+    actionsBox.width / 2
+  );
+  expect(submitBox.width, "desktop submit does not fill its row").toBeLessThan(
+    actionsBox.width / 2
+  );
+  if (primaryMinWidth > 0)
+    expect(ownerBox.width).toBeGreaterThanOrEqual(primaryMinWidth);
+  expect(submitBox.width, "submit stretches to its layout owner").toBe(
+    ownerBox.width
+  );
+  expectContained(actionsBox, cancelBox, "desktop Cancel in actions");
+  expectContained(actionsBox, ownerBox, "desktop primary owner in actions");
+  expectContained(ownerBox, submitBox, "desktop submit in primary owner");
+  expectDisjoint(cancelBox, submitBox, "desktop actions stay disjoint");
+}
+
+async function expectPhoneProtocolActions({
+  actions,
+  cancel,
+  primaryOwner,
+  submit,
+  name,
+}: {
+  actions: Locator;
+  cancel: Locator;
+  primaryOwner: Locator;
+  submit: Locator;
+  name: string;
+}) {
+  await expectPhoneTapTargets(actions.page(), name, [cancel, submit], {
+    disjoint: true,
+  });
+  const [actionsBox, cancelBox, ownerBox, submitBox] = await settledBoxes([
+    actions,
+    cancel,
+    primaryOwner,
+    submit,
+  ]);
+
+  expect(cancelBox.x, `${name} controls share one column`).toBeCloseTo(
+    ownerBox.x,
+    1
+  );
+  expect(cancelBox.width, `${name} controls fill one column`).toBeCloseTo(
+    ownerBox.width,
+    1
+  );
+  expect(submitBox.width, `${name} submit fills its owner`).toBeCloseTo(
+    ownerBox.width,
+    1
+  );
+  expectContained(actionsBox, cancelBox, `${name} Cancel in actions`);
+  expectContained(actionsBox, ownerBox, `${name} primary owner in actions`);
+  expectContained(ownerBox, submitBox, `${name} submit in primary owner`);
+}
 // N-of-1 protocols + healthspan pillars (issue #161).
 //   1. Full create → compare flow: create a protocol with two body-metric outcomes
 //      and a past start date, land on its detail page, and see before/during
@@ -19,6 +148,7 @@ test.describe("protocols create → compare (issue #161)", () => {
     test.slow(); // next dev compiles these routes on first hit
 
     const uniqueName = `E2E Creatine ${Date.now()}`; // clock-ok: unique fixture-name suffix, never a stored timestamp
+    const updatedName = `${uniqueName} updated`;
     // A relative past start so the baseline/intervention windows both have seeded
     // weekly body-metric readings (never a hardcoded date that ages out).
     const start = new Date(frozenNow().getTime() - 42 * 86_400_000)
@@ -27,6 +157,11 @@ test.describe("protocols create → compare (issue #161)", () => {
 
     await page.goto("/longevity#protocols");
     const main = page.getByRole("main");
+    const desktopViewport = page.viewportSize();
+    expect(
+      desktopViewport,
+      "the desktop project has a fixed viewport"
+    ).not.toBeNull();
 
     await main.getByTestId("new-protocol-toggle").click();
     const form = page.getByTestId("protocol-form");
@@ -59,7 +194,20 @@ test.describe("protocols create → compare (issue #161)", () => {
     await outcomeOptions
       .getByRole("option", { name: "Resting heart rate", exact: true })
       .click();
-    await form.getByRole("button", { name: "Create protocol" }).click();
+    await expectDesktopProtocolActions({
+      actions: form.getByTestId("protocol-form-actions"),
+      cancel: form.getByRole("button", { name: "Cancel", exact: true }),
+      primaryOwner: form.getByTestId("protocol-form-primary-action"),
+      submit: form.getByRole("button", {
+        name: "Create protocol",
+        exact: true,
+      }),
+      primaryMinWidth: PROTOCOL_FORM_PRIMARY_MIN_WIDTH_PX,
+    });
+    await settledClick(
+      page,
+      form.getByRole("button", { name: "Create protocol", exact: true })
+    );
 
     // Redirects to the detail page.
     await page.waitForURL(/\/protocols\/\d+/);
@@ -67,6 +215,7 @@ test.describe("protocols create → compare (issue #161)", () => {
     await expect(detailMain.getByTestId("protocol-header")).toContainText(
       uniqueName
     );
+    await dismissToast(page, "Protocol created");
     await expect(
       detailMain.getByRole("link", { name: "Back to protocols" })
     ).toHaveAttribute("href", "/longevity#protocols");
@@ -93,6 +242,45 @@ test.describe("protocols create → compare (issue #161)", () => {
     await outcomes.getByRole("button", { name: "Edit outcomes" }).click();
     const editOutcomes = outcomes.getByTestId("protocol-outcomes-form");
     await expect(editOutcomes).toBeVisible();
+    await expectDesktopProtocolActions({
+      actions: editOutcomes.getByTestId("protocol-outcomes-actions"),
+      cancel: editOutcomes.getByRole("button", {
+        name: "Cancel",
+        exact: true,
+      }),
+      primaryOwner: editOutcomes.getByTestId(
+        "protocol-outcomes-primary-action"
+      ),
+      submit: editOutcomes.getByRole("button", {
+        name: "Save outcomes",
+        exact: true,
+      }),
+    });
+    await hydratedClick(
+      page,
+      editOutcomes.getByRole("button", { name: "Cancel", exact: true })
+    );
+    await expect(editOutcomes).toHaveCount(0);
+
+    await outcomes.getByRole("button", { name: "Edit outcomes" }).click();
+    const phoneEditOutcomes = outcomes.getByTestId("protocol-outcomes-form");
+    await expect(phoneEditOutcomes).toBeVisible();
+    await page.setViewportSize(PHONE);
+    await expectPhoneProtocolActions({
+      actions: phoneEditOutcomes.getByTestId("protocol-outcomes-actions"),
+      cancel: phoneEditOutcomes.getByRole("button", {
+        name: "Cancel",
+        exact: true,
+      }),
+      primaryOwner: phoneEditOutcomes.getByTestId(
+        "protocol-outcomes-primary-action"
+      ),
+      submit: phoneEditOutcomes.getByRole("button", {
+        name: "Save outcomes",
+        exact: true,
+      }),
+      name: "phone protocol outcome actions",
+    });
     await expect(page.getByRole("dialog", { name: /outcomes/i })).toHaveCount(
       0
     );
@@ -105,11 +293,12 @@ test.describe("protocols create → compare (issue #161)", () => {
       .click();
     await settledClick(
       page,
-      editOutcomes.getByRole("button", { name: "Save outcomes" })
+      phoneEditOutcomes.getByRole("button", { name: "Save outcomes" })
     );
     await expect(
       outcomes.getByRole("button", { name: "Choose outcomes" })
     ).toBeVisible();
+    await dismissToast(page, "Outcomes updated");
     await expect(
       detailMain.getByTestId("protocol-outcome-metric:weight")
     ).toHaveCount(0);
@@ -144,9 +333,11 @@ test.describe("protocols create → compare (issue #161)", () => {
     await expect(
       detailMain.getByTestId("protocol-outcome-metric:weight")
     ).toBeVisible();
+    await dismissToast(page, "Outcomes updated");
 
     // Edit opens a bounded, sectioned modal with persistent actions instead of
     // replacing the narrow detail card inline.
+    await page.setViewportSize(desktopViewport!);
     await hydratedClick(
       page,
       detailMain.getByRole("button", { name: "More protocol actions" })
@@ -177,6 +368,20 @@ test.describe("protocols create → compare (issue #161)", () => {
     await expect(
       editDialog.getByRole("button", { name: "Save", exact: true })
     ).toBeVisible();
+    await expectDesktopProtocolActions({
+      actions: editDialog.getByTestId("protocol-form-actions"),
+      cancel: editDialog.getByRole("button", { name: "Cancel", exact: true }),
+      primaryOwner: editDialog.getByTestId("protocol-form-primary-action"),
+      submit: editDialog.getByRole("button", { name: "Save", exact: true }),
+      primaryMinWidth: PROTOCOL_FORM_PRIMARY_MIN_WIDTH_PX,
+    });
+    const [desktopSaveOwnerBox] = await settledBoxes([
+      editDialog.getByTestId("protocol-form-primary-action"),
+    ]);
+    expect(
+      desktopSaveOwnerBox.width,
+      "ProtocolForm's parent keeps the 6rem desktop minimum"
+    ).toBe(PROTOCOL_FORM_PRIMARY_MIN_WIDTH_PX);
     const dialogBox = await editDialog.boundingBox();
     const viewport = page.viewportSize();
     expect(dialogBox).not.toBeNull();
@@ -196,6 +401,47 @@ test.describe("protocols create → compare (issue #161)", () => {
     expect(dialogBox!.y).toBeLessThan(viewport!.height);
     await editDialog.getByRole("button", { name: "Cancel" }).click();
     await expect(editDialog).toHaveCount(0);
+
+    await page.setViewportSize(PHONE);
+    await hydratedClick(
+      page,
+      detailMain.getByRole("button", { name: "More protocol actions" })
+    );
+    await page
+      .getByRole("menu")
+      .getByRole("button", { name: "Edit", exact: true })
+      .click();
+    const phoneEditDialog = page.getByRole("dialog", { name: "Edit protocol" });
+    await expect(phoneEditDialog).toBeVisible();
+    await expectPhoneProtocolActions({
+      actions: phoneEditDialog.getByTestId("protocol-form-actions"),
+      cancel: phoneEditDialog.getByRole("button", {
+        name: "Cancel",
+        exact: true,
+      }),
+      primaryOwner: phoneEditDialog.getByTestId("protocol-form-primary-action"),
+      submit: phoneEditDialog.getByRole("button", {
+        name: "Save",
+        exact: true,
+      }),
+      name: "phone protocol form actions",
+    });
+    await phoneEditDialog.getByLabel("Name").fill(updatedName);
+    await settledClick(
+      page,
+      phoneEditDialog.getByRole("button", { name: "Save", exact: true })
+    );
+    await expect(phoneEditDialog).toHaveCount(0);
+    await expect(detailMain.getByTestId("protocol-header")).toContainText(
+      updatedName
+    );
+    await page.reload();
+    await expect(detailMain.getByTestId("protocol-header")).toContainText(
+      updatedName
+    );
+    await expect(
+      detailMain.getByTestId("protocol-outcome-metric:weight")
+    ).toBeVisible();
 
     // End → Resume stays on the same protocol run inside the seven-day window.
     await hydratedClick(
