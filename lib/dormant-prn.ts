@@ -23,10 +23,9 @@ export interface DormantPrnInput {
   name: string;
   asNeeded: boolean;
   active: boolean;
-  // The most recent administration DATE (YYYY-MM-DD), or null if never dosed.
+  // Profile-local calendar days; both are compared with profile-local `todayStr`.
   lastAdministration: string | null;
-  // Fallback age anchor when never dosed — the med's created DATE.
-  createdOn: string;
+  createdOnLocalDay: string | null;
 }
 
 export interface DormantPrnSuggestion {
@@ -48,7 +47,8 @@ export function dormantPrnCandidates(
   const out: DormantPrnSuggestion[] = [];
   for (const m of meds) {
     if (!m.active || !m.asNeeded) continue;
-    const anchor = m.lastAdministration ?? m.createdOn;
+    const anchor = m.lastAdministration ?? m.createdOnLocalDay;
+    if (anchor == null) continue;
     const days = daysBetweenDateStr(anchor, todayStr);
     if (days == null || days < thresholdDays) continue;
     out.push({
