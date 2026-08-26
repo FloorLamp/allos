@@ -8,6 +8,7 @@ import type { InteractionItem } from "@/lib/drug-interactions";
 import type { PgxVariantInput } from "@/lib/pgx";
 import type { SupplyOption } from "@/lib/supply-product";
 import type { FormResult } from "@/lib/types";
+import { useCreateActionLabel } from "@/components/CreateAction";
 
 export interface AddSupplementModalProps {
   action: (formData: FormData) => Promise<FormResult>;
@@ -36,6 +37,7 @@ export default function AddSupplementModal({
   biomarkers = [],
 }: AddSupplementModalProps) {
   const [open, setOpen] = useState(initialSupply != null);
+  const label = useCreateActionLabel();
   const close = () => setOpen(false);
 
   return (
@@ -43,15 +45,15 @@ export default function AddSupplementModal({
       <button
         type="button"
         data-testid="supplement-add-toggle"
-        aria-label="Add supplement"
+        aria-label={label}
         onClick={() => setOpen(true)}
         className="btn btn-sm px-2 sm:px-3"
       >
         <IconPlus className="h-4 w-4" stroke={2} />
-        <span className="hidden sm:inline">Add supplement</span>
+        <span className="hidden sm:inline">{label}</span>
       </button>
       {open && (
-        <ModalShell title="Add supplement" onClose={close} size="lg">
+        <ModalShell title={label} onClose={close} size="lg">
           {/* ModalShell remains the only scroll owner; overflow here clips the
               portaled name combobox (#2774). */}
           <div data-testid="supplement-add-panel" className="px-1">

@@ -3,6 +3,7 @@
 import { useState } from "react";
 import ModalShell from "@/components/ModalShell";
 import ProtocolForm, { type ProtocolFormProps } from "./ProtocolForm";
+import { useCreateActionLabel } from "@/components/CreateAction";
 
 type CreateProtocolFormProps = Omit<
   ProtocolFormProps,
@@ -14,6 +15,7 @@ type CreateProtocolFormProps = Omit<
 // outcome picker and intervention fields the width of a real work surface.
 export default function ProtocolFormModal(props: CreateProtocolFormProps) {
   const [open, setOpen] = useState(props.template != null);
+  const label = useCreateActionLabel();
 
   return (
     <>
@@ -23,14 +25,10 @@ export default function ProtocolFormModal(props: CreateProtocolFormProps) {
         onClick={() => setOpen(true)}
         data-testid="new-protocol-toggle"
       >
-        + Add protocol
+        {label}
       </button>
       {open && (
-        <ModalShell
-          title="Add protocol"
-          onClose={() => setOpen(false)}
-          size="md"
-        >
+        <ModalShell title={label} onClose={() => setOpen(false)} size="md">
           <ProtocolForm {...props} onDone={() => setOpen(false)} />
         </ModalShell>
       )}
