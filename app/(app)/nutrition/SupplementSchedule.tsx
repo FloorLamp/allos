@@ -8,18 +8,12 @@ import { TIME_BUCKET_LABELS, type TimeBucket } from "@/lib/intake-schedule";
 
 type SlotSelection = "all" | TimeBucket;
 
-export interface SupplementScheduleBucket {
-  slot: TimeBucket;
-  count: number;
-  content: ReactNode;
-}
-
 export interface SupplementScheduleDay {
   date: string;
   label: string;
   totalCount: number;
   takenCount: number;
-  buckets: SupplementScheduleBucket[];
+  buckets: { slot: TimeBucket; count: number; content: ReactNode }[];
 }
 
 export default function SupplementSchedule({
@@ -43,12 +37,8 @@ export default function SupplementSchedule({
     activeDay.label === "Today" || activeDay.label === "Yesterday"
       ? activeDay.label.toLowerCase()
       : activeDay.label;
-  const slotOptions: Array<{
-    value: SlotSelection;
-    label: string;
-    count: number;
-  }> = [
-    { value: "all", label: "All", count: activeDay.totalCount },
+  const slotOptions = [
+    { value: "all" as const, label: "All", count: activeDay.totalCount },
     ...activeDay.buckets.map((bucket) => ({
       value: bucket.slot,
       label: TIME_BUCKET_LABELS[bucket.slot],
@@ -75,10 +65,7 @@ export default function SupplementSchedule({
           taken: activeDay.takenCount,
           total: activeDay.totalCount,
         }}
-        action={{
-          kind: "add-supplement",
-          modal: addSupplement,
-        }}
+        action={{ kind: "add-supplement", modal: addSupplement }}
       />
 
       <section className="mb-4">

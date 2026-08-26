@@ -945,6 +945,14 @@ export default async function SupplementsTab({
       )}
     </>
   );
+  const addSupplementModal = {
+    action: addIntakeItem,
+    initialSupply,
+    allIntakeItems: intakeItems,
+    stackItems,
+    pgxVariants,
+    activityScheduleAvailable,
+  };
 
   return (
     <SituationOptionsProvider options={situationOptionNames}>
@@ -1270,14 +1278,9 @@ export default async function SupplementsTab({
                     <h2 className="mb-3 section-label">Manage</h2>
                     <div className="flex flex-wrap items-center justify-between gap-3">
                       <AddSupplementModal
-                        action={addIntakeItem}
-                        initialSupply={initialSupply}
-                        purposeConditions={purposeConditions}
-                        purposeBiomarkers={purposeBiomarkers}
-                        allIntakeItems={intakeItems}
-                        stackItems={stackItems}
-                        pgxVariants={pgxVariants}
-                        activityScheduleAvailable={activityScheduleAvailable}
+                        {...addSupplementModal}
+                        conditions={purposeConditions}
+                        biomarkers={purposeBiomarkers}
                       />
                       <SharedSuppliesLink count={cabinetCount} />
                       <DoseLedgerLink kind="supplement" />
@@ -1297,14 +1300,7 @@ export default async function SupplementsTab({
                   days={scheduleDays}
                   secondary={secondarySchedule}
                   context={dayContext}
-                  addSupplement={{
-                    action: addIntakeItem,
-                    initialSupply,
-                    allIntakeItems: intakeItems,
-                    stackItems,
-                    pgxVariants,
-                    activityScheduleAvailable,
-                  }}
+                  addSupplement={addSupplementModal}
                 />
               </div>
               <aside

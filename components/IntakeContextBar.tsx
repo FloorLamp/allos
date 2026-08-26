@@ -8,23 +8,28 @@ import AddSupplementModal, {
   type AddSupplementModalProps,
 } from "@/components/nutrition/AddSupplementModal";
 
-type IntakeContextAction =
-  | { kind: "food-preferences"; onActivate: () => void }
-  | { kind: "add-supplement"; modal: AddSupplementModalProps };
-
-type Props = {
-  purpose: "food-log" | "supplement-review";
+type SharedProps = {
   today: string;
   days: readonly { date: string; label: string }[];
   value: string;
   onChange: (date: string) => void;
   context?: { label: string; value?: string };
   todayContext?: string | null;
-  status:
-    | { kind: "servings"; count: number }
-    | { kind: "taken"; taken: number; total: number };
-  action: IntakeContextAction;
 };
+
+type Props = SharedProps &
+  (
+    | {
+        purpose: "food-log";
+        status: { kind: "servings"; count: number };
+        action: { kind: "food-preferences"; onActivate: () => void };
+      }
+    | {
+        purpose: "supplement-review";
+        status: { kind: "taken"; taken: number; total: number };
+        action: { kind: "add-supplement"; modal: AddSupplementModalProps };
+      }
+  );
 
 export default function IntakeContextBar({
   purpose,
@@ -44,19 +49,15 @@ export default function IntakeContextBar({
   const group = food ? "Day to log" : "Day to review";
   const activeDay = days.find((day) => day.date === value) ?? days[0];
   const currentContext = value === today ? todayContext : null;
-  const nothingScheduled = status.kind === "taken" && status.total === 0;
-  const compactStatus =
+  const [compactStatus, expandedStatus] =
     status.kind === "servings"
-      ? `${status.count} ${status.count === 1 ? "serving" : "servings"}`
-      : nothingScheduled
-        ? "0 scheduled"
-        : `${status.taken}/${status.total} taken`;
-  const expandedStatus =
-    status.kind === "servings"
-      ? null
-      : nothingScheduled
-        ? "Nothing scheduled"
-        : `${status.taken} of ${status.total} taken`;
+      ? [`${status.count} ${status.count === 1 ? "serving" : "servings"}`, null]
+      : status.total === 0
+        ? ["0 scheduled", "Nothing scheduled"]
+        : [
+            `${status.taken}/${status.total} taken`,
+            `${status.taken} of ${status.total} taken`,
+          ];
   const heading = [activeDay?.label, context?.label, title, currentContext]
     .filter(Boolean)
     .join(" ");
