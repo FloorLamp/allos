@@ -210,8 +210,8 @@ function dateCell(
 // free-text heading (in practice the lab VENDOR: "Quest Diagnostics", "LabCorp").
 //
 // The stored `panel` column is untouched PROVENANCE and still surfaces two ways:
-// as the cell's tooltip on a resolved row ("Reported under …"), and as the visible
-// text for a row the taxonomy can't place — an un-canonicalized analyte the
+// through the cell's shared disclosure on a resolved row ("Reported under …"), and
+// as the visible text for a row the taxonomy can't place — an un-canonicalized analyte the
 // extractor coined, where the document's own heading is the best label we have.
 // That fallback row is deliberately NOT a filter link: "everything drawn at
 // LabCorp" is the useless facet this issue removed, and `?panel=other` (reachable
@@ -234,12 +234,17 @@ function PanelCell({
   if (id !== OTHER_PANEL) {
     return (
       <Td label="Panel" className="hidden md:table-cell">
-        <Link
-          href={href(id)}
-          className="text-xs text-slate-500 hover:text-brand-700 hover:underline dark:text-slate-400 dark:hover:text-brand-400"
-        >
-          {panelLabel(id)}
-        </Link>
+        <span className="inline-flex items-center gap-0.5">
+          <Link
+            href={href(id)}
+            className="text-xs text-slate-500 hover:text-brand-700 hover:underline dark:text-slate-400 dark:hover:text-brand-400"
+          >
+            {panelLabel(id)}
+          </Link>
+          {reported ? (
+            <InfoTooltipIcon label={`Reported under “${reported}”`} />
+          ) : null}
+        </span>
       </Td>
     );
   }

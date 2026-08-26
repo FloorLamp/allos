@@ -168,21 +168,17 @@ export default function ActivityPartRows({
                 </span>
               ) : null}
               {part.status === "met" && (
-                <span
-                  role="img"
-                  aria-label={SET_STATUS_TITLES.met}
-                  className="text-brand-600 dark:text-brand-400"
-                >
+                <span className="inline-flex items-center gap-1 text-xs text-brand-600 dark:text-brand-400">
                   <IconCheck className="h-4 w-4" stroke={2.5} />
+                  Target met
+                  <InfoTooltipIcon label={SET_STATUS_TITLES.met} />
                 </span>
               )}
               {part.status === "missed" && (
-                <span
-                  role="img"
-                  aria-label={SET_STATUS_TITLES.missed}
-                  className="text-amber-500 dark:text-amber-400"
-                >
+                <span className="inline-flex items-center gap-1 text-xs text-amber-500 dark:text-amber-400">
                   <IconAlertTriangle className="h-4 w-4" stroke={2} />
+                  Target missed
+                  <InfoTooltipIcon label={SET_STATUS_TITLES.missed} />
                 </span>
               )}
             </span>

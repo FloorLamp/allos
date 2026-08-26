@@ -3,13 +3,14 @@ import { formatMonthDay } from "@/lib/format-date";
 import type { FiberSymptomPanel as PanelModel } from "@/lib/fiber-symptom-panel";
 import { chartFiberPanelMarks } from "@/lib/chart-colors";
 import { severityLabelFor, symptomLabel } from "@/lib/symptoms";
+import VisualizationDetails from "@/components/VisualizationDetails";
 
 // The fiber × GI-symptom read-together panel (issue #2788): the daily fiber series
 // and the GI-symptom days on ONE time axis, so the reader can draw their own
 // connection — the app draws none. A pure formatter over the panel model
 // (lib/fiber-symptom-panel.ts, where the vocabulary and the #2385 declaration live):
 // no computed correlation, no verdict copy, no finding, no send. Server-rendered,
-// no client JS — a day's detail is its title text.
+// no custom scrub — the shared visualization disclosure carries each day's detail.
 //
 // Encoding: one column per calendar day, colors from the chart chokepoint
 // (chartFiberPanelMarks — the fiber-series sky for bars, the palette amber for dots).
@@ -122,6 +123,10 @@ export default function FiberSymptomPanel({
           {formatMonthDay(panel.days[panel.days.length - 1].date, formatPrefs)}
         </span>
       </div>
+      <VisualizationDetails
+        label="Fiber and symptom daily details"
+        items={panel.days.map((day) => dayTitle(day, formatPrefs))}
+      />
       {/* What the marks ARE — the encoding, never a connection between the series. */}
       <p className="mt-1 text-xs text-slate-500 dark:text-slate-400">
         Bars: fiber per day, {Math.round(panel.maxGrams)} g at full height — a

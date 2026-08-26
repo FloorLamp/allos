@@ -1,5 +1,6 @@
 import { IconFlask2 } from "@tabler/icons-react";
-import DestinationLink from "@/components/DestinationLink";
+import OverlayDestination from "@/components/OverlayDestination";
+import DestinationIndicator from "@/components/DestinationIndicator";
 import { formatLongDate, type DisplayFormatPrefs } from "@/lib/format-date";
 import { protocolHref } from "@/lib/hrefs";
 import type { Protocol } from "@/lib/types";
@@ -38,45 +39,48 @@ export default function ProtocolList({
             )}`;
         return (
           <li key={p.id}>
-            <DestinationLink
+            <OverlayDestination
               href={protocolHref(p.id)}
-              className="flex items-start gap-3 rounded-lg px-3 py-3 transition hover:bg-white/70 dark:hover:bg-white/5"
+              label={`Open ${p.name} protocol`}
               data-testid={`protocol-row-${p.id}`}
             >
-              <IconFlask2
-                className="mt-0.5 h-5 w-5 shrink-0 text-brand-500"
-                stroke={1.75}
-                aria-hidden
-              />
-              <div className="min-w-0 flex-1">
-                <div className="flex flex-wrap items-center gap-x-2 gap-y-0.5">
-                  <span className="min-w-0 basis-full font-semibold text-slate-800 sm:basis-auto sm:truncate dark:text-slate-100">
-                    {p.name}
-                  </span>
-                  {ongoing && (
-                    <span className="rounded-full bg-emerald-100 px-2 py-0.5 text-xs font-medium text-emerald-700 dark:bg-emerald-950 dark:text-emerald-300">
-                      Ongoing
-                    </span>
-                  )}
-                </div>
-                <div className="text-xs text-slate-500 dark:text-slate-400">
-                  {range}
-                  {p.outcomeKeys.length > 0 && (
-                    <>
-                      {" · "}
-                      {p.outcomeKeys.length} outcome
-                      {p.outcomeKeys.length === 1 ? "" : "s"}
-                    </>
-                  )}
-                </div>
-                <PracticeHeatmap
-                  data={heatmaps[p.id]}
-                  label="Protocol activity"
-                  testId="protocol-heatmap"
-                  className="mt-2"
+              <div className="flex items-start gap-3 rounded-lg px-3 py-3 transition group-hover:bg-white/70 dark:group-hover:bg-white/5">
+                <IconFlask2
+                  className="mt-0.5 h-5 w-5 shrink-0 text-brand-500"
+                  stroke={1.75}
+                  aria-hidden
                 />
+                <div className="min-w-0 flex-1">
+                  <div className="flex flex-wrap items-center gap-x-2 gap-y-0.5">
+                    <span className="min-w-0 basis-full font-semibold text-slate-800 sm:basis-auto sm:truncate dark:text-slate-100">
+                      {p.name}
+                    </span>
+                    {ongoing && (
+                      <span className="rounded-full bg-emerald-100 px-2 py-0.5 text-xs font-medium text-emerald-700 dark:bg-emerald-950 dark:text-emerald-300">
+                        Ongoing
+                      </span>
+                    )}
+                  </div>
+                  <div className="text-xs text-slate-500 dark:text-slate-400">
+                    {range}
+                    {p.outcomeKeys.length > 0 && (
+                      <>
+                        {" · "}
+                        {p.outcomeKeys.length} outcome
+                        {p.outcomeKeys.length === 1 ? "" : "s"}
+                      </>
+                    )}
+                  </div>
+                  <PracticeHeatmap
+                    data={heatmaps[p.id]}
+                    label="Protocol activity"
+                    testId="protocol-heatmap"
+                    className="mt-2"
+                  />
+                </div>
+                <DestinationIndicator />
               </div>
-            </DestinationLink>
+            </OverlayDestination>
           </li>
         );
       })}

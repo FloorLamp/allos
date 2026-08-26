@@ -71,6 +71,10 @@ function buildColumns(
                   >
                     {hit.medName}
                   </Link>
+                  <span className="text-rose-600 dark:text-rose-300">
+                    {" "}
+                    ({drugAllergyMatchLabel(hit)})
+                  </span>
                 </span>
               ))}
             </div>

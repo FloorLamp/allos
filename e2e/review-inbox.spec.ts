@@ -115,6 +115,7 @@ test.describe("Data → Review import inbox", () => {
     // from (the XML counterpart is asserted in import-records-browser.spec.ts).
     const downloadBtn = viewer.getByTestId("raw-download");
     await expect(downloadBtn).toHaveText(/Download JSON/);
+    await expect(downloadBtn).toContainText(/sync-payload-\d+\.json/);
     const [saved] = await Promise.all([
       page.waitForEvent("download"),
       downloadBtn.click(),

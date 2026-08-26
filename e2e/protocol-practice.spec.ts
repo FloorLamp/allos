@@ -284,8 +284,23 @@ test("wellness practice: range target + one-tap logging (#1259)", async ({
   await expect(heatmap.locator('[data-outside="true"]')).not.toHaveCount(0);
   await expectNoClippedContent(page);
 
-  // Self-clean.
+  // The whole card remains the destination, while the shared daily disclosure is
+  // its DOM sibling and intercepts pointer/keyboard activation without navigating.
   const detailLink = row.getByRole("link");
+  const details = heatmap.locator("details");
+  const summary = details.locator("summary");
+  await expect(detailLink.locator("summary, button")).toHaveCount(0);
+  const listUrl = page.url();
+  await summary.click();
+  await expect(details).toHaveAttribute("open", "");
+  expect(page.url()).toBe(listUrl);
+  await summary.click();
+  await summary.focus();
+  await page.keyboard.press("Enter");
+  await expect(details).toHaveAttribute("open", "");
+  expect(page.url()).toBe(listUrl);
+
+  // Self-clean.
   await expect(detailLink).toHaveAttribute("href", /\/protocols\/\d+/);
   await followLink(page, detailLink, /\/protocols\/\d+/);
   await hydratedClick(

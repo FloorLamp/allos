@@ -8,6 +8,7 @@ import {
   bristolStoolType,
   type BristolPanel as PanelModel,
 } from "@/lib/bristol-stool";
+import VisualizationDetails from "@/components/VisualizationDetails";
 
 // The Bristol stool-form panel (issue #2785): a DISTRIBUTION and a per-day dot strip,
 // never an averaged line.
@@ -29,8 +30,8 @@ import {
 // ships a recording surface, and any observation about what a run of types means is a
 // later decision under the findings doctrine.
 //
-// A pure formatter, server-rendered with no client JS: a day's detail is its title text
-// and its `aria-label`, the fiber panel's shape (#2788).
+// A pure formatter, server-rendered with no client JS: the shared visualization
+// disclosure and each mark's accessible name carry the exact values.
 
 // Where a type's dot sits in the strip's track: type 1 at the top, type 7 at the
 // bottom, which is the scale's own direction (hard → liquid) and the direction its
@@ -49,6 +50,14 @@ function dayTitle(
     .map((t) => `type ${t} (${bristolStoolType(t)?.label ?? ""})`.trim())
     .join(", ");
   return `${date} · ${marks}`;
+}
+
+function distributionTitle(
+  entry: PanelModel["distribution"][number],
+  total: number
+): string {
+  const scale = BRISTOL_STOOL_TYPES.find((type) => type.type === entry.type)!;
+  return `Type ${entry.type}, ${scale.description}: ${entry.count} of ${total}`;
 }
 
 export default function BristolStoolPanel({
@@ -80,8 +89,7 @@ export default function BristolStoolPanel({
         data-testid="bristol-distribution"
       >
         {panel.distribution.map((d) => {
-          const scale = BRISTOL_STOOL_TYPES.find((t) => t.type === d.type)!;
-          const label = `Type ${d.type}, ${scale.description}: ${d.count} of ${panel.total}`;
+          const label = distributionTitle(d, panel.total);
           return (
             <div
               key={d.type}
@@ -146,6 +154,16 @@ export default function BristolStoolPanel({
           );
         })}
       </div>
+
+      <VisualizationDetails
+        label="Stool-form chart details"
+        items={[
+          ...panel.distribution.map((entry) =>
+            distributionTitle(entry, panel.total)
+          ),
+          ...panel.days.map((day) => dayTitle(day, formatPrefs)),
+        ]}
+      />
 
       <p className="mt-2 text-xs text-slate-500 dark:text-slate-400">
         {panel.total === 1

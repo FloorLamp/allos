@@ -206,7 +206,7 @@ test("the band's blocks are named — the week's sessions read on the card", asy
     // then yesterday's run, then the mobility day.
     const sessions = list.getByTestId("recent-session");
     await expect(sessions).toHaveCount(4);
-    await expect(sessions.getByTestId("recent-session-link")).toHaveText([
+    await expect(sessions).toHaveText([
       /Evening accessories/,
       /Squat day/,
       /Easy run/,
