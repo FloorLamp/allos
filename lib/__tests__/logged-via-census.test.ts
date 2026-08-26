@@ -4,6 +4,7 @@ import path from "node:path";
 import { fileURLToPath } from "node:url";
 import { describe, expect, it } from "vitest";
 import { LEDGERS_WITH_LOGGED_VIA } from "@/lib/logged-via";
+import { stripComments } from "./strip-comments";
 import { makeTmpDir } from "./tmp-dir";
 
 // THE USER-WRITE LEDGER CENSUS (#3087).
@@ -421,17 +422,19 @@ function migrationTranche(root: string): string[] {
  * demotion written as `// "symptom_logs" — demoted` was invisible here and only the DB
  * tier saw it. This guard exists precisely so the claim survives WITHOUT a database.
  *
- * Line comments and block comments both, because either spelling hides a name. The
- * captured block holds nothing but string literals and punctuation, so there is no
- * string that could contain `//` for this to mangle.
+ * THROUGH THE SHARED SCANNER, not a local pair of regexes. The obvious two-line
+ * spelling strips BLOCK comments first, so a `/*` written inside a `//` sentence opens
+ * a comment nothing was meant to close and everything to the next unrelated `*\/`
+ * disappears (#3595, and #3087's 1,244 swallowed lines of ActivityForm.tsx). Stripping
+ * the WHOLE file before matching the block also means a `const TRANCHE = [` quoted
+ * inside a comment cannot be the block this reads.
  */
 function trancheFromSource(src: string): string[] {
-  const block = /const TRANCHE = \[([\s\S]*?)\] as const;/.exec(src);
+  const block = /const TRANCHE = \[([\s\S]*?)\] as const;/.exec(
+    stripComments(src)
+  );
   if (!block) return [];
-  const uncommented = block[1]
-    .replace(/\/\*[\s\S]*?\*\//g, "")
-    .replace(/\/\/[^\n]*/g, "");
-  return [...uncommented.matchAll(/"([a-z_][a-z0-9_]*)"/g)].map((m) => m[1]);
+  return [...block[1].matchAll(/"([a-z_][a-z0-9_]*)"/g)].map((m) => m[1]);
 }
 
 describe("the user-write ledger census", () => {

@@ -482,10 +482,13 @@ describe("the prn: keyboard discriminator", () => {
       "// `prn:` is shared by the two lists; see the discriminator.\n" +
         "export const NOTE = 1;\n"
     );
-    // A READER of the token, not a minter: a double-quoted prefix test.
+    // A READER of the token, not a minter: a double-quoted prefix test. Named
+    // `readsPrnToken` rather than the retired generic spelling that
+    // lib/__tests__/current-vocabulary.test.ts holds the tree away from — a fixture
+    // is current source too, and that guard was right to say so.
     write(
       "lib/notifications/reader.ts",
-      'export const isPrn = (d: string) => d.startsWith("prn:");\n'
+      'export const readsPrnToken = (d: string) => d.startsWith("prn:");\n'
     );
     // And a test file, excluded by suffix even though it mints the same shape.
     write(
