@@ -575,6 +575,13 @@
   }
 }
 
+@utility inline-submit-action {
+  @apply inline-flex;
+  & > .button-control {
+    @apply border-0 bg-transparent px-0 text-sm text-link hover:bg-transparent disabled:bg-transparent disabled:text-brand-600 disabled:opacity-60 dark:disabled:bg-transparent dark:disabled:text-brand-400;
+  }
+}
+
 @utility badge {
   /* Botanical's pale badge fills sit ~1.2:1 on its tinted cards, so every badge
      wears a border mixed from its own text tone — automatically tone-matched,

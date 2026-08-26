@@ -18,8 +18,10 @@ describe("FindingFollowUpScheduler", () => {
     ]).toEqual(["365", "3 months", "6 months", "12 months"]);
     expect(form.className).toContain("inline-flex max-w-full");
     expect(
-      screen.getByRole("button", { name: "Track follow-up" }).className
-    ).toContain("shrink-0");
+      screen
+        .getByRole("button", { name: "Track follow-up" })
+        .getAttribute("data-button-control")
+    ).toBe("");
   });
 
   it("posts the owned fields and keeps its name while pending", async () => {

@@ -1,6 +1,6 @@
 "use client";
 
-import SubmitButton from "@/components/SubmitButton";
+import { SubmitActionChip } from "@/components/Button";
 import { followUpStateLabel } from "@/lib/followup";
 
 const INTERVALS = [
@@ -78,13 +78,9 @@ export default function FindingFollowUpScheduler({
           </option>
         ))}
       </select>
-      <SubmitButton
-        aria-label={submitLabel}
-        pendingLabel="…"
-        className="shrink-0 whitespace-nowrap rounded-lg border border-black/10 px-2 py-1 text-xs font-medium text-slate-600 transition hover:bg-slate-100 focus:outline-hidden focus-visible:ring-2 focus-visible:ring-brand-500 disabled:opacity-60 dark:border-white/10 dark:text-slate-300 dark:hover:bg-ink-750"
-      >
+      <SubmitActionChip aria-label={submitLabel} pendingLabel="…">
         {submitLabel}
-      </SubmitButton>
+      </SubmitActionChip>
     </form>
   );
 }

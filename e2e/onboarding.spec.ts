@@ -114,6 +114,19 @@ test("a new profile completes the six-step onboarding journey", async ({
   try {
     await expect(page).toHaveURL(/\/onboarding/);
     await expect(page.getByText("Step 1 of 6", { exact: true })).toBeVisible();
+    const exit = page.getByTestId("onboarding-exit-section");
+    const defer = exit.getByRole("button", {
+      name: "Set up later, take me to my dashboard",
+    });
+    await expect(defer).toHaveAttribute("type", "submit");
+    await expectPhoneTapTargets(page, "onboarding defer sentence action", [
+      defer,
+    ]);
+    const [exitBox, deferBox] = await settledBoxes([exit, defer]);
+    expect(deferBox.x).toBeGreaterThanOrEqual(exitBox.x);
+    expect(deferBox.x + deferBox.width).toBeLessThanOrEqual(
+      exitBox.x + exitBox.width + TAP_FLOOR_FLOAT_EPSILON_PX
+    );
     await page
       .getByTestId("onboarding-profile-path")
       .getByLabel("Set up my own profile")
