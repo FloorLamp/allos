@@ -38,7 +38,7 @@ test("chart absences release the 390px plot footprint while chart states retain 
   }
 
   const populated = page.getByTestId("populated-card");
-  await expect(plot(populated).locator("svg").first()).toBeVisible();
+  await expect(plot(populated).getByRole("application")).toBeVisible();
   await expectSquareFootprint(populated);
 
   const loading = page.getByTestId("loading-card");

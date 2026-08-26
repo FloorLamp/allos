@@ -26,7 +26,13 @@ function FixtureCard({
   children: React.ReactNode;
 }) {
   return (
-    <ChartCard title={testid} detailHref={null} testid={testid}>
+    <ChartCard
+      title={testid}
+      detailHref={
+        null
+      } /* detail-none: this E2E-only geometry card has no product destination. */
+      testid={testid}
+    >
       {children}
     </ChartCard>
   );
@@ -36,7 +42,11 @@ export default function ChartEmptyHarness() {
   return (
     <main className="space-y-4" data-testid="chart-empty-harness">
       <FixtureCard testid="ordinary-empty-card">
-        <LineChartCard data={[]} label="Reading" />
+        <LineChartCard
+          // gap-exempt: this fixture proves an empty footprint, not continuity.
+          data={[]}
+          label="Reading"
+        />
       </FixtureCard>
       <FixtureCard testid="no-overlap-empty-card">
         <CompareChart
@@ -55,6 +65,7 @@ export default function ChartEmptyHarness() {
       </FixtureCard>
       <FixtureCard testid="populated-card">
         <LineChartCard
+          // gap-exempt: this fixture proves populated geometry, not continuity.
           data={[
             { date: "2026-08-24", value: 1 },
             { date: "2026-08-25", value: 2 },
