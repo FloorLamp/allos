@@ -1,7 +1,7 @@
 import { render, screen } from "@testing-library/react";
 import type { ReactElement } from "react";
 import { beforeEach, describe, expect, it } from "vitest";
-import BarSparkline from "@/components/BarSparkline";
+import BarSparklineInner from "@/components/BarSparklineInner";
 import BiomarkerChart from "@/components/BiomarkerChart";
 import ChartCard from "@/components/ChartCard";
 import CompareChart from "@/components/CompareChart";
@@ -19,7 +19,7 @@ const EMPTY_CHARTS: ReadonlyArray<{
   {
     name: "bar sparkline",
     message: "No data yet",
-    plot: <BarSparkline data={[]} label="Volume" />,
+    plot: <BarSparklineInner data={[]} label="Volume" />,
   },
   {
     name: "biomarker",
