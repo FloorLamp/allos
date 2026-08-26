@@ -2077,18 +2077,10 @@ export default function FoodLogBar({
         onChange={setActiveDate}
         context={{ label: activeSlot, value: activeSlot }}
         status={{ kind: "servings", count: dayTotal }}
-        action={
-          <button
-            type="button"
-            data-testid="food-preferences-open-mobile"
-            aria-label="Dietary preferences"
-            title="Dietary preferences"
-            onClick={() => setPreferencesOpen(true)}
-            className="btn-ghost tap-target h-10 w-10 shrink-0 p-0 sm:hidden"
-          >
-            <IconAdjustmentsHorizontal className="h-4 w-4" />
-          </button>
-        }
+        action={{
+          kind: "food-preferences",
+          onActivate: () => setPreferencesOpen(true),
+        }}
       />
       <div data-testid="food-log-bar" className="space-y-5">
         <section data-testid="food-meal-summary" className="sm:space-y-2">

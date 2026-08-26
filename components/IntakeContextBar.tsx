@@ -1,8 +1,16 @@
 "use client";
 
-import type { ReactNode } from "react";
+import { IconAdjustmentsHorizontal } from "@tabler/icons-react";
 import CompactDateMenu from "@/components/CompactDateMenu";
+import IconButton from "@/components/IconButton";
 import SegmentedControl from "@/components/SegmentedControl";
+import AddSupplementModal, {
+  type AddSupplementModalProps,
+} from "@/components/nutrition/AddSupplementModal";
+
+type IntakeContextAction =
+  | { kind: "food-preferences"; onActivate: () => void }
+  | { kind: "add-supplement"; modal: AddSupplementModalProps };
 
 type Props = {
   purpose: "food-log" | "supplement-review";
@@ -15,7 +23,7 @@ type Props = {
   status:
     | { kind: "servings"; count: number }
     | { kind: "taken"; taken: number; total: number };
-  action?: ReactNode;
+  action: IntakeContextAction;
 };
 
 export default function IntakeContextBar({
@@ -62,7 +70,7 @@ export default function IntakeContextBar({
   return (
     <div
       data-testid={food ? "food-log-context" : "intake-schedule-context"}
-      className="mb-3 py-2 pr-1.5 md:sticky md:top-0 md:z-10 md:-mx-2 md:bg-surface/95 md:px-2 md:pr-2 md:backdrop-blur-sm lg:static lg:mx-0 lg:bg-transparent lg:p-0"
+      className="mb-3 py-2 pr-1.5 md:sticky md:top-0 md:z-10 md:-mx-2 md:bg-surface/95 md:px-2 md:pr-2 md:backdrop-blur-sm lg:static lg:mx-0 lg:bg-transparent lg:p-0 lg:backdrop-filter-none"
     >
       <div className="flex flex-wrap items-center justify-between gap-3">
         <h2
@@ -86,6 +94,7 @@ export default function IntakeContextBar({
               <span
                 data-testid={`${prefix}-slot-chip`}
                 data-slot={context.value}
+                className="text-slate-500 dark:text-slate-400"
               >
                 {context.label}
               </span>
@@ -121,7 +130,19 @@ export default function IntakeContextBar({
               compactStatus
             )}
           </p>
-          {action}
+          {action.kind === "food-preferences" ? (
+            <span className="sm:hidden">
+              <IconButton
+                label="Dietary preferences"
+                data-testid="food-preferences-open-mobile"
+                onClick={action.onActivate}
+              >
+                <IconAdjustmentsHorizontal className="h-4 w-4" />
+              </IconButton>
+            </span>
+          ) : (
+            <AddSupplementModal {...action.modal} />
+          )}
         </div>
       </div>
       <div className="mt-2 hidden min-w-0 overflow-x-auto pb-0.5 sm:block">

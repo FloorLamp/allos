@@ -136,9 +136,10 @@ import AdherenceFindings from "./AdherenceFindings";
 import DemotionSuggestions from "./DemotionSuggestions";
 import SupplementSchedule from "./SupplementSchedule";
 import SupplementInsightBadges from "./SupplementInsightBadges";
-import AddSupplementModal from "./AddSupplementModal";
+import AddSupplementModal from "@/components/nutrition/AddSupplementModal";
 import SupplementWeeklyAdherence from "@/components/SupplementWeeklyAdherence";
 import {
+  addIntakeItem,
   toggleSituation,
   acceptSuggestion,
   activateSurgerySituation,
@@ -1269,6 +1270,7 @@ export default async function SupplementsTab({
                     <h2 className="mb-3 section-label">Manage</h2>
                     <div className="flex flex-wrap items-center justify-between gap-3">
                       <AddSupplementModal
+                        action={addIntakeItem}
                         initialSupply={initialSupply}
                         purposeConditions={purposeConditions}
                         purposeBiomarkers={purposeBiomarkers}
@@ -1295,16 +1297,14 @@ export default async function SupplementsTab({
                   days={scheduleDays}
                   secondary={secondarySchedule}
                   context={dayContext}
-                  action={
-                    <AddSupplementModal
-                      key="add-supplement"
-                      initialSupply={initialSupply}
-                      allIntakeItems={intakeItems}
-                      stackItems={stackItems}
-                      pgxVariants={pgxVariants}
-                      activityScheduleAvailable={activityScheduleAvailable}
-                    />
-                  }
+                  addSupplement={{
+                    action: addIntakeItem,
+                    initialSupply,
+                    allIntakeItems: intakeItems,
+                    stackItems,
+                    pgxVariants,
+                    activityScheduleAvailable,
+                  }}
                 />
               </div>
               <aside

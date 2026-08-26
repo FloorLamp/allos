@@ -332,16 +332,25 @@ test.describe("nutrition food-log controls stay in the viewport on mobile", () =
             position: computed.position,
             backgroundColor: computed.backgroundColor,
             backdropFilter: computed.backdropFilter,
-            bleed:
+            padding: computed.padding,
+            bleed: [
               parent.getBoundingClientRect().left -
-              element.getBoundingClientRect().left,
+                element.getBoundingClientRect().left,
+              element.getBoundingClientRect().right -
+                parent.getBoundingClientRect().right,
+            ],
           };
         });
         expect(style.position).toBe(width < 1024 ? "sticky" : "static");
         if (width < 1024) {
           expect(style.backgroundColor).not.toBe("rgba(0, 0, 0, 0)");
           expect(style.backdropFilter).not.toBe("none");
-          expect(style.bleed).toBeGreaterThan(0);
+          expect(style.bleed.every((value) => value > 0)).toBe(true);
+        } else {
+          expect(style.backgroundColor).toBe("rgba(0, 0, 0, 0)");
+          expect(style.backdropFilter).toBe("none");
+          expect(style.bleed).toEqual([0, 0]);
+          expect(style.padding).toBe("0px");
         }
       }
     }

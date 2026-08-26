@@ -7,19 +7,10 @@ import IntakeItemForm from "@/components/IntakeItemForm";
 import type { InteractionItem } from "@/lib/drug-interactions";
 import type { PgxVariantInput } from "@/lib/pgx";
 import type { SupplyOption } from "@/lib/supply-product";
-import { addIntakeItem } from "./intake-actions";
+import type { FormResult } from "@/lib/types";
 
-// The add workflow is intentionally absent from the resting schedule. A compact
-// action opens the same kind-locked form in the shared accessible modal shell.
-export default function AddSupplementModal({
-  allIntakeItems,
-  stackItems,
-  pgxVariants,
-  initialSupply = null,
-  activityScheduleAvailable = true,
-  purposeConditions = [],
-  purposeBiomarkers = [],
-}: {
+export interface AddSupplementModalProps {
+  action: (formData: FormData) => Promise<FormResult>;
   allIntakeItems: { id: number; name: string }[];
   stackItems: InteractionItem[];
   pgxVariants: PgxVariantInput[];
@@ -30,7 +21,20 @@ export default function AddSupplementModal({
   // Picker sources for the "What you take it for" control (#2857).
   purposeConditions?: { id: number; name: string }[];
   purposeBiomarkers?: string[];
-}) {
+}
+
+// The add workflow is intentionally absent from the resting schedule. A compact
+// action opens the same kind-locked form in the shared accessible modal shell.
+export default function AddSupplementModal({
+  action,
+  allIntakeItems,
+  stackItems,
+  pgxVariants,
+  initialSupply = null,
+  activityScheduleAvailable = true,
+  purposeConditions = [],
+  purposeBiomarkers = [],
+}: AddSupplementModalProps) {
   const [open, setOpen] = useState(initialSupply != null);
 
   return (
@@ -62,7 +66,7 @@ export default function AddSupplementModal({
               `overflow` clips whether or not it is currently scrolling. */}
           <div data-testid="supplement-add-panel" className="px-1">
             <IntakeItemForm
-              action={addIntakeItem}
+              action={action}
               kind="supplement"
               allIntakeItems={allIntakeItems}
               stackItems={stackItems}

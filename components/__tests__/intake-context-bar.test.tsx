@@ -1,6 +1,5 @@
 import { fireEvent, render, screen } from "@testing-library/react";
-import { useState } from "react";
-import { expect, it } from "vitest";
+import { expect, it, vi } from "vitest";
 import IntakeContextBar from "@/components/IntakeContextBar";
 
 const DAYS = [
@@ -8,32 +7,29 @@ const DAYS = [
   { date: "2026-08-25", label: "Yesterday" },
 ];
 
-function SupplementBar() {
-  const [date, setDate] = useState(DAYS[0].date);
-  return (
+it("owns intake context, status, and semantic actions", () => {
+  const onChange = vi.fn();
+  const onActivate = vi.fn();
+  render(
     <IntakeContextBar
-      purpose="supplement-review"
+      purpose="food-log"
       today={DAYS[0].date}
       days={DAYS}
-      value={date}
-      onChange={setDate}
+      value={DAYS[0].date}
+      onChange={onChange}
       context={{ label: "Morning", value: "morning" }}
       todayContext="Workout day"
-      status={{ kind: "taken", taken: 1, total: 2 }}
+      status={{ kind: "servings", count: 2 }}
+      action={{ kind: "food-preferences", onActivate }}
     />
   );
-}
 
-it("owns responsive intake context, status, and day selection", () => {
-  render(<SupplementBar />);
-
-  expect(
-    screen.getByRole("heading", {
-      name: "Today Morning Supplements Workout day",
-    })
-  ).toBeTruthy();
-  fireEvent.click(screen.getByTestId("supplement-day-yesterday"));
-  expect(
-    screen.getByRole("heading", { name: "Yesterday Morning Supplements" })
-  ).toBeTruthy();
+  const heading = screen.getByTestId("food-context-heading");
+  expect(heading.getAttribute("aria-label")).toBe(
+    "Today Morning Food Log Workout day"
+  );
+  fireEvent.click(screen.getByTestId("food-day-yesterday"));
+  expect(onChange).toHaveBeenCalledWith(DAYS[1].date);
+  fireEvent.click(screen.getByTestId("food-preferences-open-mobile"));
+  expect(onActivate).toHaveBeenCalledOnce();
 });
