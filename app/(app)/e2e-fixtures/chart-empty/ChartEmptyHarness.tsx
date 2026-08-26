@@ -9,6 +9,7 @@ import ChartLoading from "@/components/ChartLoading";
 import CompareChart from "@/components/CompareChart";
 import LineChartCard from "@/components/LineChartCard";
 import ScatterChartCard from "@/components/ScatterChartCard";
+import { chartSeries } from "@/lib/chart-colors";
 
 function FailedChart() {
   if (typeof window !== "undefined") {
@@ -42,8 +43,8 @@ export default function ChartEmptyHarness() {
           data={[]}
           labelA="A"
           labelB="B"
-          colorA="#2563eb"
-          colorB="#dc2626"
+          colorA={chartSeries.brand}
+          colorB={chartSeries.rose}
           unitA=""
           unitB=""
           normalized={false}
