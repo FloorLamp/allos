@@ -2,14 +2,9 @@
 
 import { useState } from "react";
 import Link from "next/link";
-import {
-  IconPrinter,
-  IconShare,
-  IconCopy,
-  IconCheck,
-} from "@tabler/icons-react";
+import { IconPrinter, IconShare } from "@tabler/icons-react";
+import CreatedShareLink from "@/components/CreatedShareLink";
 import ModalShell from "@/components/ModalShell";
-import { NOTICE_TONE } from "@/components/Notice";
 import SubmitButton from "@/components/SubmitButton";
 import { SHARE_TTL_OPTIONS } from "@/lib/share-links";
 import type { AppRoute } from "@/lib/hrefs";
@@ -27,13 +22,11 @@ export default function MedicationListActions() {
   const [createdUrl, setCreatedUrl] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [creating, setCreating] = useState(false);
-  const [copied, setCopied] = useState(false);
 
   async function onCreate(e: React.FormEvent<HTMLFormElement>) {
     e.preventDefault();
     setError(null);
     setCreatedUrl(null);
-    setCopied(false);
     setCreating(true);
     const res = await createMedicationShareLinkAction(
       new FormData(e.currentTarget)
@@ -41,17 +34,6 @@ export default function MedicationListActions() {
     setCreating(false);
     if (res.ok) setCreatedUrl(window.location.origin + res.path);
     else setError(res.error);
-  }
-
-  async function copy() {
-    if (!createdUrl) return;
-    try {
-      await navigator.clipboard.writeText(createdUrl);
-      setCopied(true);
-      setTimeout(() => setCopied(false), 1500);
-    } catch {
-      /* clipboard unavailable — URL shown for manual copy */
-    }
   }
 
   return (
@@ -120,35 +102,10 @@ export default function MedicationListActions() {
           </form>
 
           {createdUrl && (
-            <div
-              className={`mt-4 rounded-lg border p-3 ${NOTICE_TONE.emerald}`}
-            >
-              <div className="text-xs font-medium text-emerald-800 dark:text-emerald-300">
-                Link created — copy it now (it won’t be shown again):
-              </div>
-              <div className="mt-2 flex items-center gap-2">
-                <input
-                  readOnly
-                  value={createdUrl}
-                  onFocus={(e) => e.currentTarget.select()}
-                  data-testid="medication-share-url"
-                  className="input font-mono text-xs"
-                />
-                <button
-                  type="button"
-                  onClick={copy}
-                  className="btn-ghost shrink-0"
-                  aria-label="Copy link"
-                  title="Copy link"
-                >
-                  {copied ? (
-                    <IconCheck className="h-4 w-4" stroke={1.75} />
-                  ) : (
-                    <IconCopy className="h-4 w-4" stroke={1.75} />
-                  )}
-                </button>
-              </div>
-            </div>
+            <CreatedShareLink
+              value={createdUrl}
+              valueTestId="medication-share-url"
+            />
           )}
         </ModalShell>
       )}
