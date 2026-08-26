@@ -190,9 +190,9 @@ export function unwiredPosters(root: string): string[] {
 const POSTER_CONDUITS: Record<string, string> = {
   "app/(app)/palette-actions.ts posts logPractice (app/(app)/wellness/actions.ts)":
     "a Server Action calling another Server Action — no FormData crosses a client, " +
-    "and this module names its own surface as a literal (`loggedVia: \"quick-log\"`)",
+    'and this module names its own surface as a literal (`loggedVia: "quick-log"`)',
   "app/(app)/upcoming/page.tsx posts markTaken (app/(app)/upcoming/actions.ts)":
-    "a server page building `\"use server\"` closures for a generic row control; the " +
+    'a server page building `"use server"` closures for a generic row control; the ' +
     "FormData is built by that control, and markTaken's `page` fallback is the " +
     "correct answer for this mounting, which its own comment says",
   "components/activity-form/useActivityAutosave.ts posts saveActivity (app/(app)/training/activity-actions.ts)":

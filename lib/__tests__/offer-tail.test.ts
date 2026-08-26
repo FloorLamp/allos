@@ -353,7 +353,9 @@ const PRN_MINTERS: Record<string, string> = {
     "it is the OTHER side of the discriminator, and must stay that way",
 };
 
-const REPO_ROOT = path.resolve(fileURLToPath(new URL("../..", import.meta.url)));
+const REPO_ROOT = path.resolve(
+  fileURLToPath(new URL("../..", import.meta.url))
+);
 
 /**
  * Every non-test source file under `root` minting a `prn:` callback token.
@@ -491,10 +493,7 @@ describe("the prn: keyboard discriminator", () => {
       'export const readsPrnToken = (d: string) => d.startsWith("prn:");\n'
     );
     // And a test file, excluded by suffix even though it mints the same shape.
-    write(
-      "lib/__tests__/x.test.ts",
-      "const d = `prn:1:2:tok`;\n"
-    );
+    write("lib/__tests__/x.test.ts", "const d = `prn:1:2:tok`;\n");
     expect(prnMinters(root)).toEqual(["lib/notifications/new-keyboard.ts"]);
   });
 });

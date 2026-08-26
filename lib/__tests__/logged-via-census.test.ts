@@ -455,11 +455,13 @@ describe("the user-write ledger census", () => {
   it("has every inserted table either in the tranche or excluded with a reason", () => {
     const undeclared = [
       ...new Set(
-        census().filter(
-          (i) =>
-            !TRANCHE.has(i.table) &&
-            !Object.hasOwn(NOT_A_USER_WRITE_LEDGER, i.table)
-        ).map((i) => `${i.table} (first seen in ${i.file})`)
+        census()
+          .filter(
+            (i) =>
+              !TRANCHE.has(i.table) &&
+              !Object.hasOwn(NOT_A_USER_WRITE_LEDGER, i.table)
+          )
+          .map((i) => `${i.table} (first seen in ${i.file})`)
       ),
     ].sort();
     expect(
@@ -746,7 +748,10 @@ describe("the census's reach", () => {
     // And it stays silent on a comment that quotes no name at all — the ordinary
     // case, which must keep reading exactly the live list.
     const annotated = `const TRANCHE = [\n  // the three that already carry the pointer\n  "activities",\n  "body_metrics",\n] as const;\n`;
-    expect(trancheFromSource(annotated)).toEqual(["activities", "body_metrics"]);
+    expect(trancheFromSource(annotated)).toEqual([
+      "activities",
+      "body_metrics",
+    ]);
   });
 
   it("throws rather than reporting green when the corpus collapses", () => {

@@ -1143,14 +1143,12 @@ describe("the composed-scan census (#3468)", () => {
     // it is a scan a reader composes as its number (SCAN_SOURCES, and `canRefuse`
     // classifies it by running it) or it is not (NOT_A_NUMBER_SCAN, with a sentence).
     const exported = [
-      ...stripComments(readFileSync(path.join(REPO, "lib/dri.ts"), "utf8"))
-        .matchAll(/^export const ([A-Z0-9_]*NUMBER[A-Z0-9_]*)\s*=/gm),
+      ...stripComments(
+        readFileSync(path.join(REPO, "lib/dri.ts"), "utf8")
+      ).matchAll(/^export const ([A-Z0-9_]*NUMBER[A-Z0-9_]*)\s*=/gm),
     ].map((m) => m[1]);
     expect(exported.sort()).toEqual(
-      [
-        ...Object.keys(SCAN_SOURCES),
-        ...Object.keys(NOT_A_NUMBER_SCAN),
-      ].sort()
+      [...Object.keys(SCAN_SOURCES), ...Object.keys(NOT_A_NUMBER_SCAN)].sort()
     );
   });
 
