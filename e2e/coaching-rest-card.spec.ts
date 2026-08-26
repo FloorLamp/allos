@@ -3,6 +3,7 @@ import { type Page } from "@playwright/test";
 import Database from "better-sqlite3";
 import { loginAs } from "./nav";
 import { openDashboardAll, settledClick } from "./helpers";
+import { expectPhoneOrdinarySubmit } from "./ordinary-submit-actions";
 import {
   E2E_LOGIN_REST,
   REST_CARD_PROFILE,
@@ -104,6 +105,7 @@ test.describe("Coaching rest card — multi-reason + Training anyway (#1148/#115
       password: E2E_MEMBER_PASSWORD,
     });
     try {
+      await page.setViewportSize({ width: 390, height: 844 });
       await page.goto("/");
       await openDashboardAll(page);
       const card = coachingCard(page, "Rest or take it easy today");
@@ -118,8 +120,17 @@ test.describe("Coaching rest card — multi-reason + Training anyway (#1148/#115
       await expect(also).toBeVisible();
       await expect(also).toContainText("resting HR");
       // Both actions present and labelled distinctly (#1150).
-      await expect(card.getByTestId("coaching-training-anyway")).toBeVisible();
-      await expect(card.getByTestId("coaching-snooze")).toBeVisible();
+      const trainingAnyway = card.getByTestId("coaching-training-anyway");
+      const snooze = card.getByTestId("coaching-snooze");
+      await expect(trainingAnyway).toHaveAttribute("data-button-control", "");
+      await expect(snooze).toHaveAttribute("data-button-control", "");
+      await expectPhoneOrdinarySubmit({
+        form: card,
+        owner: trainingAnyway.locator("..").locator(".."),
+        submit: trainingAnyway,
+        adjacent: snooze,
+        name: "coaching actions",
+      });
     } finally {
       await page.context().close();
     }

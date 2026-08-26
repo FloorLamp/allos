@@ -9,6 +9,7 @@ import { isFindingSuppressed } from "@/lib/findings";
 import { formatRelativeDate } from "@/lib/format-date";
 import { createFrequencyTarget } from "./frequency-actions";
 import { dismissCoachingObservation } from "../actions";
+import Button from "@/components/Button";
 import SubmitButton from "@/components/SubmitButton";
 import MobilityLogBar from "./MobilityLogBar";
 
@@ -102,13 +103,13 @@ export default async function MobilitySection({
                       name="dedupe_key"
                       value={s.dedupeKey}
                     />
-                    <SubmitButton
+                    <Button
+                      type="submit"
                       data-testid={`mobility-dismiss-${s.region}`}
-                      className="btn-ghost btn-sm"
                       pendingLabel="Dismissing…"
                     >
                       Dismiss
-                    </SubmitButton>
+                    </Button>
                   </form>
                 </div>
               </li>
