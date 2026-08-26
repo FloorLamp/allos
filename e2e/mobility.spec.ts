@@ -1,14 +1,38 @@
 import { test, expect } from "./fixtures";
+import Database from "better-sqlite3";
 import { loginAs } from "./nav";
 import { settledClick } from "./helpers";
-import { E2E_LOGIN_MOBILITY, E2E_MEMBER_PASSWORD } from "./fixture-logins";
+import {
+  expectDesktopOrdinarySubmit,
+  expectPhoneOrdinarySubmit,
+} from "./ordinary-submit-actions";
+import {
+  E2E_LOGIN_MOBILITY,
+  E2E_MEMBER_PASSWORD,
+  MOBILITY_PROFILE,
+} from "./fixture-logins";
+import { workerDbPath } from "./worker-env";
+
+function clearLegsMobilityTarget() {
+  const db = new Database(workerDbPath());
+  try {
+    db.pragma("busy_timeout = 5000");
+    db.prepare(
+      `DELETE FROM frequency_targets
+        WHERE profile_id = (SELECT id FROM profiles WHERE name = ?)
+          AND scope_kind = 'mobility_region' AND scope_value = 'Legs'`
+    ).run(MOBILITY_PROFILE);
+  } finally {
+    db.close();
+  }
+}
 
 // Mobility on the Training overview (issue #840). Drives a dedicated fixture profile (an
 // isolated member login) so tapping moves never perturbs a shared-seed profile under
 // --repeat-each. The fixture carries a LOW sit-and-reach vital, so a deficit→habit
-// SUGGESTION renders. Exactly ONE test in this spec MUTATES the profile (the log-flow
-// test, which cleans up its own toggle); the render test is read-only, and neither clicks
-// Accept (which would create a persistent target and hide the suggestion on a later run).
+// SUGGESTION renders. The two mutating flows own their cleanup: the log flow untaps its
+// move, and the suggestion flow removes the target it accepts, so every repeat starts
+// from the same deficit suggestion.
 test.describe("Mobility (#840)", () => {
   test("renders the mobility section, region coverage, and a deficit suggestion", async ({
     browser,
@@ -19,6 +43,7 @@ test.describe("Mobility (#840)", () => {
     });
     test.slow(); // local next dev compiles the training route on first hit
 
+    clearLegsMobilityTarget();
     await page.goto("/training?tab=overview");
 
     const section = page.getByTestId("mobility-section");
@@ -30,12 +55,47 @@ test.describe("Mobility (#840)", () => {
     // All 7 MuscleRegions surface (including 0-coverage ones — the point of the view).
     await expect(page.getByTestId("mobility-coverage-row")).toHaveCount(7);
 
-    // The deficit→habit suggestion renders with a one-tap accept + dismiss (not clicked).
-    await expect(page.getByTestId("mobility-suggestion").first()).toBeVisible(); // first-ok: asserts a mobility suggestion renders — order-agnostic presence
-    await expect(page.getByTestId("mobility-accept-Legs")).toBeVisible();
-    await expect(page.getByTestId("mobility-dismiss-Legs")).toBeVisible();
-
-    await page.close();
+    // The deficit→habit suggestion's primary creates a real weekly target, then
+    // this dedicated fixture removes that target so the next repeat sees the same
+    // suggestion.
+    try {
+      const suggestion = page
+        .getByTestId("mobility-suggestion")
+        .filter({ has: page.getByTestId("mobility-accept-Legs") });
+      await expect(suggestion).toBeVisible();
+      const submit = suggestion.getByTestId("mobility-accept-Legs");
+      const dismiss = suggestion.getByTestId("mobility-dismiss-Legs");
+      const desktopViewport = page.viewportSize();
+      expect(
+        desktopViewport,
+        "the mobility project has a fixed desktop viewport"
+      ).not.toBeNull();
+      await expectDesktopOrdinarySubmit({
+        form: suggestion,
+        owner: suggestion,
+        submit,
+        adjacent: dismiss,
+        name: "mobility target primary",
+      });
+      await page.setViewportSize({ width: 390, height: 844 });
+      await expectPhoneOrdinarySubmit({
+        form: suggestion,
+        owner: suggestion,
+        submit,
+        adjacent: dismiss,
+        name: "mobility target primary",
+      });
+      await settledClick(page, submit);
+      const target = page
+        .getByTestId("weekly-target-chip")
+        .filter({ hasText: "Mobility: Legs" });
+      await expect(target).toBeVisible();
+      await page.reload();
+      await expect(target).toBeVisible();
+    } finally {
+      clearLegsMobilityTarget();
+      await page.close();
+    }
   });
 
   test("tapping a move logs a mobility session that persists and shows on the training log", async ({

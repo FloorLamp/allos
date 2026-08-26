@@ -9,6 +9,10 @@ import {
   settledClick,
 } from "./helpers";
 import {
+  expectDesktopOrdinarySubmit,
+  expectPhoneOrdinarySubmit,
+} from "./ordinary-submit-actions";
+import {
   ensureUnlogged,
   addFromPicker,
   raiseSeverity,
@@ -388,7 +392,34 @@ test.describe("Illness-episode follow-ups (#856)", () => {
     await symptomEditor
       .getByLabel("Note")
       .fill("Peaked in the evening — corrected");
-    await symptomEditor.getByRole("button", { name: "Save" }).click();
+    const symptomActions = symptomEditor.getByTestId(
+      "illness-event-editor-actions"
+    );
+    const symptomSave = symptomActions.getByRole("button", { name: "Save" });
+    const symptomCancel = symptomActions.getByRole("button", {
+      name: "Cancel",
+    });
+    const desktopViewport = page.viewportSize();
+    expect(
+      desktopViewport,
+      "the illness episode project has a fixed desktop viewport"
+    ).not.toBeNull();
+    await expectDesktopOrdinarySubmit({
+      form: symptomEditor,
+      owner: symptomActions,
+      submit: symptomSave,
+      adjacent: symptomCancel,
+      name: "episode timeline Save",
+    });
+    await page.setViewportSize({ width: 390, height: 844 });
+    await expectPhoneOrdinarySubmit({
+      form: symptomEditor,
+      owner: symptomActions,
+      submit: symptomSave,
+      adjacent: symptomCancel,
+      name: "episode timeline Save",
+    });
+    await settledClick(page, symptomSave);
     await expect(historicalSymptom).toContainText(
       "Peaked in the evening — corrected"
     );
@@ -396,6 +427,7 @@ test.describe("Illness-episode follow-ups (#856)", () => {
     // is long enough that the ⋯ trigger re-opened next sits in the same quadrant —
     // so the toast intercepts the re-open for its whole 6s window (#2861).
     await dismissToast(page, "Symptom updated.");
+    await page.setViewportSize(desktopViewport!);
     await hydratedClick(
       page,
       historicalSymptom.getByTestId("overflow-menu-trigger")
