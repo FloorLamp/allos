@@ -1,15 +1,15 @@
 import { render, screen } from "@testing-library/react";
 import type { ReactElement } from "react";
 import { beforeEach, describe, expect, it } from "vitest";
-import BarSparklineInner from "@/components/BarSparklineInner";
-import BiomarkerChartInner from "@/components/BiomarkerChartInner";
+import BarSparkline from "@/components/BarSparkline";
+import BiomarkerChart from "@/components/BiomarkerChart";
 import ChartCard from "@/components/ChartCard";
-import CompareChartInner from "@/components/CompareChartInner";
-import LineChartCardInner from "@/components/LineChartCardInner";
-import ScatterChartCardInner from "@/components/ScatterChartCardInner";
-import SourceCompareChartInner from "@/components/SourceCompareChartInner";
-import StackedBarCardInner from "@/components/StackedBarCardInner";
-import ZoneMinutesCardInner from "@/components/ZoneMinutesCardInner";
+import CompareChart from "@/components/CompareChart";
+import LineChartCard from "@/components/LineChartCard";
+import ScatterChartCard from "@/components/ScatterChartCard";
+import SourceCompareChart from "@/components/SourceCompareChart";
+import StackedBarCard from "@/components/StackedBarCard";
+import ZoneMinutesCard from "@/components/ZoneMinutesCard";
 
 const EMPTY_CHARTS: ReadonlyArray<{
   name: string;
@@ -19,18 +19,18 @@ const EMPTY_CHARTS: ReadonlyArray<{
   {
     name: "bar sparkline",
     message: "No data yet",
-    plot: <BarSparklineInner data={[]} label="Volume" />,
+    plot: <BarSparkline data={[]} label="Volume" />,
   },
   {
     name: "biomarker",
     message: "No numeric readings to chart yet",
-    plot: <BiomarkerChartInner data={[]} bands={{}} />,
+    plot: <BiomarkerChart data={[]} bands={{}} />,
   },
   {
     name: "compare",
     message: "No overlapping data in this range",
     plot: (
-      <CompareChartInner
+      <CompareChart
         data={[]}
         labelA="A"
         labelB="B"
@@ -45,27 +45,27 @@ const EMPTY_CHARTS: ReadonlyArray<{
   {
     name: "line",
     message: "No data yet",
-    plot: <LineChartCardInner data={[]} label="Reading" />,
+    plot: <LineChartCard data={[]} label="Reading" />,
   },
   {
     name: "scatter",
     message: "No paired data yet",
-    plot: <ScatterChartCardInner data={[]} xLabel="X" yLabel="Y" />,
+    plot: <ScatterChartCard data={[]} xLabel="X" yLabel="Y" />,
   },
   {
     name: "source comparison",
     message: "No data yet",
-    plot: <SourceCompareChartInner series={[]} />,
+    plot: <SourceCompareChart series={[]} />,
   },
   {
     name: "stacked bars",
     message: "No data yet",
-    plot: <StackedBarCardInner data={[]} series={[]} />,
+    plot: <StackedBarCard data={[]} series={[]} />,
   },
   {
     name: "zone minutes",
     message: "No zone minutes yet",
-    plot: <ZoneMinutesCardInner data={[]} />,
+    plot: <ZoneMinutesCard data={[]} />,
   },
 ];
 
@@ -86,7 +86,7 @@ describe("chart empty states", () => {
 
   it.each(EMPTY_CHARTS)(
     "$name keeps its reason and directly releases the chart footprint",
-    ({ message, plot }) => {
+    async ({ message, plot }) => {
       render(
         <ChartCard title="Test chart" detailHref="/">
           {plot}
@@ -94,7 +94,7 @@ describe("chart empty states", () => {
       );
 
       const plotSlot = screen.getByTestId("chart-card-plot");
-      const empty = screen.getByText(message);
+      const empty = await screen.findByText(message);
       expect(empty.getAttribute("data-empty-state")).not.toBeNull();
       expect(plotSlot.firstElementChild).toBe(empty);
     }
