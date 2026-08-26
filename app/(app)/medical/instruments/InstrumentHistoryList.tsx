@@ -249,9 +249,7 @@ export default function InstrumentHistoryList({
                   required
                 />
               </div>
-              <SubmitButton className="btn" pendingLabel="Saving…">
-                Save
-              </SubmitButton>
+              <SubmitButton pendingLabel="Saving…">Save</SubmitButton>
             </form>
           )}
 

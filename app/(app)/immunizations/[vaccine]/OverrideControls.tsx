@@ -181,7 +181,7 @@ export default function OverrideControls({
             defaultValue={current?.note ?? ""}
           />
         </div>
-        <SubmitButton className="btn" pendingLabel="Saving…">
+        <SubmitButton pendingLabel="Saving…">
           {current ? "Update override" : "Set override"}
         </SubmitButton>
       </form>

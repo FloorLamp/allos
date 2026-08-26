@@ -1,6 +1,10 @@
 import { test, expect } from "./fixtures";
 import Database from "better-sqlite3";
 import { settledClick } from "./helpers";
+import {
+  expectDesktopOrdinarySubmit,
+  expectPhoneOrdinarySubmit,
+} from "./ordinary-submit-actions";
 import { workerDbPath } from "./worker-env";
 
 // Issue #1008: the medical-document upload accepts SEVERAL files per submit — a
@@ -59,6 +63,24 @@ test.describe("Multi-file medical upload (issue #1008)", () => {
 
     const submit = page.getByTestId("medical-upload-submit");
     await expect(submit).toBeEnabled();
+    const owner = page.getByTestId("medical-upload-submit-row");
+    const form = submit.locator("xpath=ancestor::form");
+    const explainer = owner.locator(":scope > span");
+    await expectDesktopOrdinarySubmit({
+      form,
+      owner,
+      submit,
+      adjacent: explainer,
+      name: "medical upload",
+    });
+    await page.setViewportSize({ width: 390, height: 844 });
+    await expectPhoneOrdinarySubmit({
+      form,
+      owner,
+      submit,
+      adjacent: explainer,
+      name: "medical upload",
+    });
     await settledClick(page, submit);
 
     // Count-aware confirmation toast.
