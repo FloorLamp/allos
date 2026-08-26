@@ -554,10 +554,32 @@ export function bandForItem(item: UpcomingItem, today: string): UrgencyBand {
 // page where that fact is the answer. So the Later band prints the DATE ("Sep 26")
 // and Overdue/Today/This week keep the countdown grammar, where it means something.
 //
+// AND BOUNDED THE OTHER WAY TOO (#2806). The overdue side had no ceiling, so a
+// stale anchor reached the formatter as a raw day count: the persona walkthroughs
+// read "2035 days overdue", "1835 days overdue" and "970 days overdue" sitting
+// beside a meaningful "9 days overdue". 5.5 years rendered as a day counter is
+// noise that buries the real urgency signal, and it is the same defect the Later
+// band already fixed, pointing the other way. So past the ceiling the row says WHEN
+// it lapsed — "overdue since Oct 9, 2013" — which is the fact a reader can act on,
+// and it keeps the word "overdue" that a bare date would have dropped.
+//
+// This supersedes #2579-B's decision to leave the whole overdue band on countdown
+// grammar. That decision was right about the near side and is unchanged there;
+// what it did not have was a magnitude at which the count stops being a statement
+// about lateness and becomes arithmetic.
+//
 // Display only. The band this asks for is the one the row is already rendered under
 // (`bandForItem`, override included), so the text can never disagree with the heading
 // above it — and keys, banding and suppression identity are untouched, exactly as the
 // #1504 fold left them.
+
+// WHOLE DAYS PAST DUE, the ceiling on countdown grammar. Compared against
+// `daysUntilDue`'s negative offset, so 30 means "a month late still counts the
+// days; a month and a day names the date". A month is where the census splits: the
+// walkthrough's meaningful rows were all inside a fortnight, and everything it
+// flagged as noise was over 900 days.
+const OVERDUE_COUNTDOWN_MAX_DAYS = 30;
+
 export function upcomingDueText(
   item: UpcomingItem,
   today: string,
@@ -567,6 +589,9 @@ export function upcomingDueText(
   if (item.dueDate == null) return "Today";
   if (bandForItem(item, today) === "later") {
     return formatMonthDay(item.dueDate, prefs, { today });
+  }
+  if (daysUntilDue(item.dueDate, today) < -OVERDUE_COUNTDOWN_MAX_DAYS) {
+    return `overdue since ${formatMonthDay(item.dueDate, prefs, { today })}`;
   }
   return daysRemainingLabel(item.dueDate, today) ?? item.dueDate;
 }
