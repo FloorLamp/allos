@@ -15,6 +15,7 @@ export default function ClearLogControl({
   onCleared?: () => void;
 }) {
   const [confirming, setConfirming] = useState(false);
+  const [failed, setFailed] = useState(false);
   const [pending, startTransition] = useTransition();
   const clearRef = useRef<HTMLButtonElement>(null);
   const confirmRef = useRef<HTMLButtonElement>(null);
@@ -32,6 +33,7 @@ export default function ClearLogControl({
     try {
       await clear();
     } catch {
+      setFailed(true);
       return;
     }
     onCleared?.();
@@ -42,7 +44,10 @@ export default function ClearLogControl({
     return (
       <Button
         ref={clearRef}
-        onClick={() => setConfirming(true)}
+        onClick={() => {
+          setFailed(false);
+          setConfirming(true);
+        }}
         data-testid={testId}
       >
         Clear
@@ -51,22 +56,38 @@ export default function ClearLogControl({
   }
 
   return (
-    <span className="flex items-center gap-2">
-      <span className="text-slate-500 dark:text-slate-400">Clear all?</span>
-      <button
-        ref={confirmRef}
-        type="button"
-        disabled={pending}
-        aria-busy={pending}
-        onClick={() => startTransition(runClear)}
-        className="btn-danger btn-sm"
-        data-testid={`${testId}-confirm`}
-      >
-        {pending ? "Clearing…" : "Confirm"}
-      </button>
-      <Button disabled={pending} onClick={() => setConfirming(false)}>
-        Cancel
-      </Button>
+    <span className="inline-flex flex-col items-start gap-1">
+      <span className="flex items-center gap-2">
+        <span className="text-slate-500 dark:text-slate-400">Clear all?</span>
+        <button
+          ref={confirmRef}
+          type="button"
+          disabled={pending}
+          aria-busy={pending}
+          onClick={() => {
+            setFailed(false);
+            startTransition(runClear);
+          }}
+          className="btn-danger btn-sm"
+          data-testid={`${testId}-confirm`}
+        >
+          {pending ? "Clearing…" : "Confirm"}
+        </button>
+        <Button
+          disabled={pending}
+          onClick={() => {
+            setFailed(false);
+            setConfirming(false);
+          }}
+        >
+          Cancel
+        </Button>
+      </span>
+      {failed && (
+        <span role="alert" className="text-sm text-rose-600 dark:text-rose-400">
+          Couldn&apos;t clear the log. Try again.
+        </span>
+      )}
     </span>
   );
 }
