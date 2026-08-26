@@ -112,7 +112,7 @@ import {
 import { compareDoseDay, type DoseDayEntry } from "@/lib/dose-order";
 import type { IntakeItem, IntakeDose } from "@/lib/types";
 import { EmptyState } from "@/components/ui";
-import SubmitButton from "@/components/SubmitButton";
+import { InlineSubmitAction, SubmitActionChip } from "@/components/Button";
 import { SituationOptionsProvider } from "@/components/SituationOptionsContext";
 import { IntakeOptionsProvider } from "@/components/IntakeOptionsContext";
 import EditableSupplementRow from "./EditableSupplementRow";
@@ -928,12 +928,9 @@ export default async function SupplementsTab({
                     }}
                   >
                     <input type="hidden" name="id" value={suggestion.id} />
-                    <SubmitButton
-                      pendingLabel="Adding…"
-                      className="font-medium text-brand-700 hover:underline disabled:opacity-60 dark:text-brand-400"
-                    >
+                    <InlineSubmitAction pendingLabel="Adding…">
                       Add to schedule
-                    </SubmitButton>
+                    </InlineSubmitAction>
                   </form>
                   <DismissSuggestionButton
                     id={suggestion.id}
@@ -1013,12 +1010,9 @@ export default async function SupplementsTab({
                         await dismissDerivedPoorSleep();
                       }}
                     >
-                      <SubmitButton
-                        data-testid="derived-poor-sleep-override"
-                        className="badge cursor-pointer border border-slate-300 bg-transparent text-slate-500 hover:bg-slate-100 disabled:opacity-60 dark:border-slate-600 dark:text-slate-400 dark:hover:bg-ink-800"
-                      >
+                      <SubmitActionChip data-testid="derived-poor-sleep-override">
                         Not today
-                      </SubmitButton>
+                      </SubmitActionChip>
                     </form>
                   )}
                 </div>
@@ -1080,12 +1074,9 @@ export default async function SupplementsTab({
                   key={sit}
                 >
                   <input type="hidden" name="situation" value={sit} />
-                  <SubmitButton
-                    data-testid={`situation-bridge-${sit}`}
-                    className="badge cursor-pointer border border-dashed border-brand-400 bg-transparent text-brand-700 hover:bg-brand-50 disabled:opacity-60 dark:border-brand-700 dark:text-brand-300 dark:hover:bg-brand-950"
-                  >
+                  <SubmitActionChip data-testid={`situation-bridge-${sit}`}>
                     + {sit}
-                  </SubmitButton>
+                  </SubmitActionChip>
                 </form>
               ))}
             </div>
@@ -1134,12 +1125,11 @@ export default async function SupplementsTab({
                     name="situation"
                     value={activateSituation}
                   />
-                  <SubmitButton
+                  <SubmitActionChip
                     data-testid={`surgery-bridge-activate-${sug.visitId}`}
-                    className="badge cursor-pointer bg-brand-600 text-white hover:bg-brand-700 disabled:opacity-60"
                   >
                     Activate {activateSituation}
-                  </SubmitButton>
+                  </SubmitActionChip>
                 </form>
                 {!isPre && sug.presurgeryActive && (
                   <form
@@ -1153,12 +1143,11 @@ export default async function SupplementsTab({
                       name="situation"
                       value={BUILTIN_PRESURGERY_SITUATION}
                     />
-                    <SubmitButton
+                    <SubmitActionChip
                       data-testid={`surgery-bridge-clear-${sug.visitId}`}
-                      className="badge cursor-pointer border border-slate-300 bg-transparent text-slate-600 hover:bg-slate-50 disabled:opacity-60 dark:border-slate-600 dark:text-slate-300"
                     >
                       Clear {BUILTIN_PRESURGERY_SITUATION}
-                    </SubmitButton>
+                    </SubmitActionChip>
                   </form>
                 )}
                 <form
@@ -1168,12 +1157,11 @@ export default async function SupplementsTab({
                   }}
                 >
                   <input type="hidden" name="key" value={card.dismissKey} />
-                  <SubmitButton
+                  <SubmitActionChip
                     data-testid={`surgery-bridge-dismiss-${sug.visitId}`}
-                    className="badge cursor-pointer bg-transparent text-slate-500 hover:text-slate-700 disabled:opacity-60 dark:text-slate-400"
                   >
                     Dismiss
-                  </SubmitButton>
+                  </SubmitActionChip>
                 </form>
               </div>
             );

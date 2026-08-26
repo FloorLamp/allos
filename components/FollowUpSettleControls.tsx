@@ -2,11 +2,8 @@
 
 import { useState } from "react";
 import DateField from "@/components/DateField";
-import SubmitButton from "@/components/SubmitButton";
+import Button, { SubmitActionChip } from "@/components/Button";
 import type { FormResult } from "@/lib/types";
-
-const CHIP =
-  "rounded-lg border border-black/10 px-2.5 py-1 text-xs font-medium text-slate-600 transition hover:bg-slate-100 disabled:opacity-60 dark:border-white/10 dark:text-slate-300 dark:hover:bg-ink-750";
 
 // The finding follow-up TERMINATOR controls (issue #1866): the first-class,
 // per-item resolve/decline action that permanently ends the overdue-push
@@ -40,28 +37,24 @@ export default function FollowUpSettleControls({
         data-testid={`followup-settle-${carePlanItemId}`}
         className="flex shrink-0 items-center gap-1"
       >
-        <button
-          type="button"
+        <Button
           data-testid={`followup-settle-done-${carePlanItemId}`}
-          className={CHIP}
           onClick={() => {
             setError(null);
             setMode("done");
           }}
         >
           Done…
-        </button>
-        <button
-          type="button"
+        </Button>
+        <Button
           data-testid={`followup-settle-decline-${carePlanItemId}`}
-          className={CHIP}
           onClick={() => {
             setError(null);
             setMode("declined");
           }}
         >
           Not doing it…
-        </button>
+        </Button>
       </div>
     );
   }
@@ -101,19 +94,17 @@ export default function FollowUpSettleControls({
         maxLength={500}
         className="input w-36 py-1 text-xs"
       />
-      <SubmitButton pendingLabel="…" className={CHIP}>
+      <SubmitActionChip pendingLabel="…">
         {mode === "done" ? "Mark done" : "Decline"}
-      </SubmitButton>
-      <button
-        type="button"
-        className={CHIP}
+      </SubmitActionChip>
+      <Button
         onClick={() => {
           setError(null);
           setMode(null);
         }}
       >
         Cancel
-      </button>
+      </Button>
       {error && (
         <span
           data-testid={`followup-settle-error-${carePlanItemId}`}

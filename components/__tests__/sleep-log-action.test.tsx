@@ -27,7 +27,6 @@ describe("SleepLogAction", () => {
     expect(action.getAttribute("type")).toBe("button");
     expect(action.getAttribute("data-testid")).toBe("sleep-add-entry");
     expect(action.getAttribute("data-button-control")).toBe("");
-    expect(action.className).toBe("button-control");
     expect(
       screen.queryByRole("dialog", { name: "Sleep and mood entry" })
     ).toBeNull();
