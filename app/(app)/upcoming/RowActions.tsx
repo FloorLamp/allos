@@ -141,6 +141,10 @@ export function RowActionChips({
     >
       {actions.map((a) => {
         const Icon = a.icon ? ACTION_ICON[a.icon] : null;
+        const accessibleLabel =
+          a.fullLabel && a.fullLabel !== a.label
+            ? `${a.label} — ${a.fullLabel}`
+            : a.label;
         if (a.kind === "link") {
           return (
             <span key={a.id} className="inline-flex items-center">
@@ -148,7 +152,7 @@ export function RowActionChips({
                 href={a.href}
                 data-testid={a.testId}
                 className={CHIP}
-                aria-label={a.fullLabel}
+                aria-label={accessibleLabel}
               >
                 {Icon && <Icon className="h-3.5 w-3.5" stroke={1.75} />}
                 {a.label}
@@ -167,7 +171,7 @@ export function RowActionChips({
                 pendingLabel="…"
                 data-testid={a.testId}
                 className={CHIP}
-                aria-label={a.fullLabel}
+                aria-label={accessibleLabel}
               >
                 {Icon && <Icon className="h-3.5 w-3.5" stroke={1.75} />}
                 {a.label}

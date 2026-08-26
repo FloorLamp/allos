@@ -1,8 +1,8 @@
 import { test, expect } from "./fixtures";
 import {
   expectNoClippedContent,
-  followLink,
   hydratedClick,
+  settledBoxes,
   settledClick,
 } from "./helpers";
 import { frozenNow } from "./worker-env";
@@ -304,9 +304,23 @@ test("wellness practice: range target + one-tap logging (#1259)", async ({
   await summary.click();
   await expect(details).not.toHaveAttribute("open", "");
 
-  // Self-clean.
+  // The closed disclosure only owns its summary footprint. Tapping the blank
+  // remainder of the details row still reaches the whole-card destination.
   await expect(detailLink).toHaveAttribute("href", /\/protocols\/\d+/);
-  await followLink(page, detailLink, /\/protocols\/\d+/);
+  await page.setViewportSize({ width: 768, height: 844 });
+  const [detailsBox, summaryBox] = await settledBoxes([details, summary]);
+  expect(detailsBox.x + detailsBox.width).toBeGreaterThan(
+    summaryBox.x + summaryBox.width + 8
+  );
+  await Promise.all([
+    page.waitForURL(/\/protocols\/\d+/),
+    page.mouse.click(
+      detailsBox.x + detailsBox.width - 2,
+      summaryBox.y + summaryBox.height / 2
+    ),
+  ]);
+
+  // Self-clean.
   await hydratedClick(
     page,
     page.getByRole("main").getByRole("button", {

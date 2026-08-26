@@ -44,12 +44,16 @@ describe("OverlayDestination", () => {
     expect(destination.contains(summary)).toBe(false);
     expect(summary.classList.contains("pointer-events-auto")).toBe(true);
     expect(
-      summary.closest("details")?.classList.contains("pointer-events-auto")
+      summary.closest("details")?.classList.contains("pointer-events-none")
     ).toBe(true);
     fireEvent.click(summary);
     const details = summary.closest("details")!;
     expect(details.hasAttribute("open")).toBe(true);
-    fireEvent.click(within(details).getByText("2026-08-26 — 1 session"));
+    const item = within(details).getByText("2026-08-26 — 1 session");
+    expect(item.closest("ul")?.classList.contains("pointer-events-auto")).toBe(
+      true
+    );
+    fireEvent.click(item);
     expect(window.location.pathname).toBe("/");
   });
 

@@ -196,7 +196,9 @@ export default function TrendMiniCard({
           <span className="truncate text-sm font-medium text-slate-500 group-hover:text-brand-700 group-hover:underline sm:wrap-break-word sm:whitespace-normal dark:text-slate-400 dark:group-hover:text-brand-300">
             {shortTitle && shortTitle !== title ? (
               <>
-                <span className="sr-only">{title}</span>
+                <span className="sr-only">
+                  {shortTitle} — {title}
+                </span>
                 <span aria-hidden className="sm:hidden">
                   {shortTitle}
                 </span>
@@ -285,7 +287,9 @@ export default function TrendMiniCard({
           <span className="min-w-0 truncate group-hover:underline sm:min-w-28 sm:flex-1 sm:wrap-break-word sm:whitespace-normal sm:text-base sm:font-semibold">
             {shortTitle && shortTitle !== title ? (
               <>
-                <span className="sr-only">{title}</span>
+                <span className="sr-only">
+                  {shortTitle} — {title}
+                </span>
                 <span aria-hidden className="sm:hidden">
                   {shortTitle}
                 </span>

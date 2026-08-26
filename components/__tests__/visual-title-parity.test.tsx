@@ -1,16 +1,73 @@
 import { fireEvent, render, screen, within } from "@testing-library/react";
-import { describe, expect, it } from "vitest";
+import { describe, expect, it, vi } from "vitest";
 import ExerciseGuideSection from "@/components/ExerciseGuideSection";
 import StandingSparkline from "@/components/dashboard/StandingSparkline";
 import SupplementWeeklyAdherence from "@/components/SupplementWeeklyAdherence";
 import BristolStoolPanel from "@/components/BristolStoolPanel";
 import FiberSymptomPanel from "@/components/FiberSymptomPanel";
 import IntensityPicker from "@/components/activity-form/IntensityPicker";
+import DayHistory from "@/components/DayHistory";
+import TrendMiniCard from "@/components/TrendMiniCard";
 import { buildBristolPanel } from "@/lib/bristol-stool";
 import { buildFiberSymptomPanel } from "@/lib/fiber-symptom-panel";
 import { DEFAULT_FORMAT_PREFS } from "@/lib/format-date";
+import { metricDetailHref } from "@/lib/hrefs";
 
 describe("visual title parity", () => {
+  it("keeps compact trend labels in both link presentations' names", () => {
+    const props = {
+      title: "Resting heart rate",
+      shortTitle: "RHR",
+      href: metricDetailHref("resting-heart-rate"),
+      data: [],
+    };
+    const { rerender } = render(<TrendMiniCard {...props} />);
+    expect(
+      screen.getByRole("link", { name: /^RHR — Resting heart rate/ })
+    ).toBeTruthy();
+
+    rerender(<TrendMiniCard {...props} compact />);
+    expect(
+      screen.getByRole("link", { name: /^RHR — Resting heart rate/ })
+    ).toBeTruthy();
+  });
+
+  it("keeps the last day-history detail reachable after preview leaves", () => {
+    vi.stubGlobal(
+      "ResizeObserver",
+      class ResizeObserver {
+        observe() {}
+        unobserve() {}
+        disconnect() {}
+      }
+    );
+    render(
+      <DayHistory
+        domain="workout"
+        values={[{ date: "2026-08-26", group: "strength", value: 1 }]}
+        groups={[{ key: "strength", label: "Strength" }]}
+        end="2026-08-26"
+        weeks={1}
+        weekStart={0}
+        today="2026-08-26"
+        formatPrefs={DEFAULT_FORMAT_PREFS}
+      />
+    );
+    const cell = screen
+      .getAllByRole("gridcell")
+      .find((candidate) =>
+        candidate.getAttribute("aria-label")?.includes("Strength")
+      );
+    expect(cell).toBeTruthy();
+    const detail = cell!.getAttribute("aria-label")!;
+    fireEvent.focus(cell!);
+    fireEvent.blur(cell!);
+
+    const disclosure = screen.getByRole("button", { name: detail });
+    fireEvent.click(disclosure);
+    expect(screen.getByRole("tooltip").textContent).toBe(detail);
+  });
+
   it("keeps intensity choices exact and discloses every hint", () => {
     render(<IntensityPicker intensity="" onChange={() => undefined} />);
 

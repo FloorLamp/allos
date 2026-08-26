@@ -126,11 +126,11 @@ test("an offered item's chip wears the short name and still announces the full o
     // first draft of this spec pass against a build that had not shortened anything.
     const control = chip.getByTestId("available-mark-taken");
     await expect(control).toHaveText(`${SHORT_NAME} · Morning`);
-    // The record's whole name is the control's accessible name, so the abbreviation
-    // is a presentation of the item and never a rename of it.
+    // The compact visible name leads the accessible name, followed by the full
+    // record name, so speech users can target what they see without losing identity.
     await expect(control).toHaveAttribute(
       "aria-label",
-      `${FULL_NAME} · Morning`
+      `${SHORT_NAME} · Morning — ${FULL_NAME} · Morning`
     );
     const fullLabel = chip.getByRole("button", {
       name: `Full label: ${FULL_NAME} · Morning`,

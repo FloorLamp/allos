@@ -174,6 +174,11 @@ export default function DayHistory({
   const levelClasses = [ramp.emptyClass, ...ramp.stepClasses];
   const [selected, setSelected] = useState<ReadonlySet<string> | null>(null);
   const [detail, setDetail] = useState<string | null>(null);
+  const [disclosureDetail, setDisclosureDetail] = useState<string | null>(null);
+  const previewDetail = (text: string) => {
+    setDetail(text);
+    setDisclosureDetail(text);
+  };
   const [expanded, setExpanded] = useState(false);
   const [filtersExpanded, setFiltersExpanded] = useState(false);
   const [calCell, setCalCell] = useState(CAL_CELL);
@@ -679,14 +684,13 @@ export default function DayHistory({
   const calendarCellSummary = (cell: DayHistoryCalendarCell): string =>
     aggregateCellSummary(cell);
 
-  // Hover for pointers, focus for keyboards, tap for touch — `title` never
-  // fires on touch, so taps push the same summaries into the caption.
+  // Hover for pointers, focus for keyboards, tap for touch — every path pushes
+  // the same accessible summary into the visible caption and disclosure.
   // Calendar cells drive the shared hover day; a click SELECTS (toggling),
   // never navigates.
   const calendarCellProps = (text: string, date: string) => ({
-    title: text,
     onMouseEnter: () => {
-      setDetail(text);
+      previewDetail(text);
       setHoverDay(date);
     },
     onMouseLeave: () => {
@@ -694,7 +698,7 @@ export default function DayHistory({
       setHoverDay(null);
     },
     onFocus: () => {
-      setDetail(text);
+      previewDetail(text);
       setHoverDay(date);
     },
     onBlur: () => {
@@ -702,7 +706,7 @@ export default function DayHistory({
       setHoverDay(null);
     },
     onClick: () => {
-      setDetail(text);
+      previewDetail(text);
       selectDay(date, true);
     },
   });
@@ -798,9 +802,8 @@ export default function DayHistory({
     ri: number,
     ci: number
   ) => ({
-    title: text,
     onMouseEnter: () => {
-      setDetail(text);
+      previewDetail(text);
       setHoverDay(date);
       setHoverRow(rowKey);
     },
@@ -811,7 +814,7 @@ export default function DayHistory({
     },
     onFocus: () => {
       setFocusCell({ row: ri, col: ci });
-      setDetail(text);
+      previewDetail(text);
       setHoverDay(date);
       setHoverRow(rowKey);
     },
@@ -821,7 +824,7 @@ export default function DayHistory({
       setHoverRow(null);
     },
     onClick: () => {
-      setDetail(text);
+      previewDetail(text);
       selectDay(date, false);
     },
     onKeyDown: (event: React.KeyboardEvent<HTMLElement>) => {
@@ -1453,7 +1456,9 @@ export default function DayHistory({
               >
                 {detail ?? spec.matrixTitle}
               </span>
-              {detail ? <InfoTooltipIcon label={detail} /> : null}
+              {disclosureDetail ? (
+                <InfoTooltipIcon label={disclosureDetail} />
+              ) : null}
             </div>
             <div className="flex shrink-0 items-center gap-3">
               {matrixRange && (
@@ -1574,7 +1579,7 @@ export default function DayHistory({
                   )} across ${plural(row.activeDays, bw.one, bw.many)}`;
                   const rowHoverProps = {
                     onMouseEnter: () => {
-                      setDetail(rowSummary);
+                      previewDetail(rowSummary);
                       setHoverDay(null);
                       setHoverRow(row.key);
                     },
@@ -1607,7 +1612,7 @@ export default function DayHistory({
                           className={`sticky left-0 z-2 flex w-24 shrink-0 cursor-pointer items-center justify-end gap-1 self-stretch px-3 text-xs font-medium text-brand-700 hover:font-semibold sm:w-28 dark:text-brand-400 ${MATRIX_LABEL_BG}`}
                           {...rowHoverProps}
                           onFocus={() => {
-                            setDetail(rowSummary);
+                            previewDetail(rowSummary);
                             setHoverDay(null);
                             setHoverRow(row.key);
                           }}
@@ -1636,10 +1641,10 @@ export default function DayHistory({
                               setSelectedRowKey((prev) =>
                                 prev === row.key ? null : row.key
                               );
-                              setDetail(rowSummary);
+                              previewDetail(rowSummary);
                             }}
                             onFocus={() => {
-                              setDetail(rowSummary);
+                              previewDetail(rowSummary);
                               setHoverDay(null);
                               setHoverRow(row.key);
                             }}
