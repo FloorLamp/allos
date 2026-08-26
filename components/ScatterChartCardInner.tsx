@@ -23,6 +23,7 @@ import {
   chartTooltipSurfaceStyle,
   useChartMotion,
 } from "./chart-scaffold";
+import { EmptyState } from "@/components/ui";
 
 export interface ScatterPoint {
   x: number;
@@ -62,13 +63,7 @@ export default function ScatterChartCard({
   const motion = useChartMotion();
 
   if (data.length === 0) {
-    return (
-      <div
-        className={`flex ${heightClass} items-center justify-center text-sm text-slate-500 dark:text-slate-400`}
-      >
-        No paired data yet
-      </div>
-    );
+    return <EmptyState message="No paired data yet" />;
   }
 
   return (
