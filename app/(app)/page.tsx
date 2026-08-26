@@ -1913,7 +1913,7 @@ async function renderDashboard(
               className="inline-flex flex-wrap items-baseline gap-x-2"
               data-testid="vitals-latest-resting-hr"
             >
-              <span>{`${vitalsModel.restingHr.value} bpm resting`}</span>
+              <span>{`${vitalsModel.restingHr.value} bpm`}</span>
               <span
                 data-testid="vitals-latest-resting-hr-age"
                 data-stale={age.stale ? "true" : undefined}

@@ -71,9 +71,9 @@ test.describe("dashboard daily loop (#1221)", () => {
     await expect(bpCandidate.getByTestId("vitals-latest-bp")).toContainText(
       /\d{2,3}\/\d{2,3}/
     );
-    await expect(
-      hrCandidate.getByTestId("vitals-latest-resting-hr")
-    ).toContainText(/bpm resting/);
+    const hrReading = hrCandidate.getByTestId("vitals-latest-resting-hr");
+    await expect(hrReading).toContainText(/\d+ bpm/);
+    await expect(hrReading).not.toContainText("bpm resting");
     // Both readings are recent, so both provenance lines state a plain date with no
     // staleness tint — the #2303 floor frames only what it must (the age-labeled side is
     // pinned by e2e/dashboard-vitals-recency.spec.ts).
