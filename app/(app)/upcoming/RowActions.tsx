@@ -12,6 +12,7 @@ import {
 } from "@tabler/icons-react";
 import OverflowMenu, {
   MENU_ITEM,
+  OverflowMenuSubmitItem,
   type MenuActionResult,
   type MenuHelpers,
 } from "@/components/OverflowMenu";
@@ -218,14 +219,10 @@ function RowActionMenuItems({
         return (
           <form key={a.id} action={(fd) => runAction(a.action, fd, a.toast)}>
             <HiddenFields fields={a.fields} />
-            <button
-              type="submit"
-              role="menuitem"
-              className={`${MENU_ITEM} flex items-center gap-1.5`}
-            >
+            <OverflowMenuSubmitItem>
               {Icon && <Icon className="h-3.5 w-3.5" stroke={1.75} />}
               {a.label}
-            </button>
+            </OverflowMenuSubmitItem>
           </form>
         );
       })}
@@ -252,26 +249,18 @@ function PreventiveOverrideItems({
       >
         <input type="hidden" name="rule_key" value={ruleKey} />
         <input type="hidden" name="kind" value="not_applicable" />
-        <button
-          type="submit"
-          role="menuitem"
-          className={`${MENU_ITEM} flex items-center gap-1.5`}
-        >
+        <OverflowMenuSubmitItem>
           <IconCircleMinus className="h-3.5 w-3.5" stroke={1.75} />
           Not applicable
-        </button>
+        </OverflowMenuSubmitItem>
       </form>
       <form action={(fd) => runAction(overrideAction, fd, "Marked declined")}>
         <input type="hidden" name="rule_key" value={ruleKey} />
         <input type="hidden" name="kind" value="declined" />
-        <button
-          type="submit"
-          role="menuitem"
-          className={`${MENU_ITEM} flex items-center gap-1.5`}
-        >
+        <OverflowMenuSubmitItem>
           <IconCircleX className="h-3.5 w-3.5" stroke={1.75} />
           Declined
-        </button>
+        </OverflowMenuSubmitItem>
       </form>
     </div>
   );

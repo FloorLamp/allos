@@ -71,9 +71,14 @@ test.describe("dashboard daily loop (#1221)", () => {
     await expect(bpCandidate.getByTestId("vitals-latest-bp")).toContainText(
       /\d{2,3}\/\d{2,3}/
     );
-    await expect(
-      hrCandidate.getByTestId("vitals-latest-resting-hr")
-    ).toContainText(/bpm resting/);
+    // "60 bpm", NOT "60 bpm resting" (#3544 item 2): the unit is `bpm` and the word
+    // "resting" is the row LABEL's job — the family this row sits in is already
+    // called "Resting heart rate". Anchored on the number so the check is about the
+    // reading and not about a stray "bpm" elsewhere in the row, and paired with the
+    // negative because `toContainText(/\d+ bpm/)` alone matches the defect too.
+    const hrReading = hrCandidate.getByTestId("vitals-latest-resting-hr");
+    await expect(hrReading).toContainText(/\d+ bpm/);
+    await expect(hrReading).not.toContainText("bpm resting");
     // Both readings are recent, so both provenance lines state a plain date with no
     // staleness tint — the #2303 floor frames only what it must (the age-labeled side is
     // pinned by e2e/dashboard-vitals-recency.spec.ts).

@@ -57,8 +57,10 @@ export function DestinationActionLink({
   );
 }
 
-// Standing's hover/focus rail is a real presentation variant: its destination
-// name and indicator exchange with the age in a fixed, out-of-flow rail.
+// Standing's hover/focus rail is a real presentation variant: its destination name
+// and indicator arrive in a fixed, out-of-flow rail at the right edge of the row's
+// facts cell. Nothing is exchanged for it — the reading's own age text stays fully
+// visible underneath (#3555 ruling 1).
 export function StandingDestinationLink({
   children,
   className = "",
@@ -69,7 +71,11 @@ export function StandingDestinationLink({
     <Link {...props} className={className || undefined}>
       {children}
       <span
-        className="standing-door pointer-events-none absolute inset-y-0 right-0 inline-flex shrink-0 items-center gap-1 bg-surface pl-3 text-xs font-medium whitespace-nowrap text-brand-700 dark:text-brand-400"
+        // `z-20` keeps the door above the members that share its line: those sit at
+        // `z-10` so their own text stays the pointer's target under the row-wide link
+        // surface (#3555 ruling 2), and without this the door's `bg-surface` would
+        // fall behind the very text it exists to cover.
+        className="standing-door pointer-events-none absolute inset-y-0 right-0 z-20 inline-flex shrink-0 items-center gap-1 bg-surface pl-3 text-xs font-medium whitespace-nowrap text-brand-700 dark:text-brand-400"
         data-testid="standing-door"
         aria-hidden="true"
       >
