@@ -3,6 +3,7 @@ import Database from "better-sqlite3";
 import { loginAs } from "./nav";
 import { E2E_LOGIN_DUP, E2E_MEMBER_PASSWORD } from "./fixture-logins";
 import { workerDbPath } from "./worker-env";
+import { TAP_FLOOR_PX } from "@/lib/tap-floor-tokens";
 
 const DB_PATH = workerDbPath();
 
@@ -102,6 +103,94 @@ test.describe("Duplicate review disambiguation (#531)", () => {
       } finally {
         db.close();
       }
+    } finally {
+      await page.context().close();
+    }
+  });
+});
+
+test.describe("duplicate resolution actions at phone width (#3747)", () => {
+  test.use({ viewport: { width: 390, height: 844 } });
+
+  test("renders every pair action at the shared floor and wraps inside its card", async ({
+    browser,
+  }) => {
+    const page = await loginAs(browser, {
+      username: E2E_LOGIN_DUP,
+      password: E2E_MEMBER_PASSWORD,
+    });
+    try {
+      await page.goto("/data?section=review");
+      const pair = page
+        .getByTestId("dup-body-metric-pair")
+        .filter({ hasText: "2026-06-15" });
+      await expect(pair).toHaveCount(1);
+
+      const actions = pair.getByTestId("duplicate-resolution-actions");
+      await expect(actions).toBeVisible();
+      const buttons = actions.getByRole("button");
+      await expect(buttons).toHaveCount(4);
+
+      const boxes = await buttons.evaluateAll((elements) =>
+        elements.map((element) => {
+          const box = element.getBoundingClientRect();
+          return {
+            left: box.left,
+            right: box.right,
+            top: box.top,
+            bottom: box.bottom,
+            height: box.height,
+          };
+        })
+      );
+      const cardBox = await pair.boundingBox();
+      expect(cardBox).not.toBeNull();
+      for (const box of boxes) {
+        expect(box.height).toBeGreaterThanOrEqual(TAP_FLOOR_PX);
+        expect(box.left).toBeGreaterThanOrEqual(cardBox!.x);
+        expect(box.right).toBeLessThanOrEqual(cardBox!.x + cardBox!.width);
+      }
+      for (let a = 0; a < boxes.length; a += 1) {
+        for (let b = a + 1; b < boxes.length; b += 1) {
+          const first = boxes[a];
+          const second = boxes[b];
+          expect(
+            first.right <= second.left ||
+              second.right <= first.left ||
+              first.bottom <= second.top ||
+              second.bottom <= first.top
+          ).toBe(true);
+          expect(
+            Math.max(
+              second.left - first.right,
+              first.left - second.right,
+              second.top - first.bottom,
+              first.top - second.bottom
+            )
+          ).toBeGreaterThanOrEqual(7);
+        }
+      }
+      expect(
+        await actions.evaluate(
+          (element) => element.scrollWidth <= element.clientWidth
+        )
+      ).toBe(true);
+
+      const primary = buttons.nth(0);
+      const alternate = buttons.nth(1);
+      await primary.focus();
+      await page.keyboard.press("Tab");
+      await expect(alternate).toBeFocused();
+      expect(
+        await alternate.evaluate((element) => {
+          const style = getComputedStyle(element);
+          return (
+            style.boxShadow !== "none" ||
+            (style.outlineStyle !== "none" &&
+              Number.parseFloat(style.outlineWidth) > 0)
+          );
+        })
+      ).toBe(true);
     } finally {
       await page.context().close();
     }
