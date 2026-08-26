@@ -510,7 +510,11 @@ test("a Standing row is one link and its door never covers the date", async ({
 
     await link.scrollIntoViewIfNeeded();
     const before = (await row.boundingBox())!;
-    await name.hover();
+    const nameBox = (await name.boundingBox())!;
+    await page.mouse.move(
+      nameBox.x + nameBox.width / 2,
+      nameBox.y + nameBox.height / 2
+    );
     await expect.poll(opacity).toBe("1");
     expect(await age.evaluate((node) => getComputedStyle(node).opacity)).toBe(
       "1"
@@ -532,7 +536,10 @@ test("a Standing row is one link and its door never covers the date", async ({
 
     if (width === 390) {
       const href = await link.getAttribute("href");
-      await name.click();
+      await page.mouse.click(
+        nameBox.x + nameBox.width / 2,
+        nameBox.y + nameBox.height / 2
+      );
       await page.waitForURL((url) => `${url.pathname}${url.hash}` === href);
     }
   }
@@ -541,15 +548,6 @@ test("a Standing row is one link and its door never covers the date", async ({
 test("a stacked family's door lands on the member you are pointing at, not on the stack", async ({
   page,
 }) => {
-  // THE `members` BRANCH, which nothing else exercises. A `single`/`composed`
-  // family puts every member on ONE line, so anchoring its doors to the `ul` and
-  // to the `li` are indistinguishable — and the door test above happens to pick a
-  // `composed` row. A `members` family STACKS, so the two differ by the whole
-  // height of the stack, and only here can the wrong anchor be seen.
-  //
-  // The rail assertion in the test above reads x ONLY, by construction: a door
-  // anchored to the stack keeps the identical right edge and moves in y. So this
-  // reads y.
   await page.goto("/");
   const family = page
     .locator('[data-standing-family][data-standing-composition="members"]')
@@ -561,14 +559,10 @@ test("a stacked family's door lands on the member you are pointing at, not on th
     .locator("[data-standing-row]")
     .filter({ has: page.getByTestId("standing-door") });
   const count = await doored.count();
-  // A one-member "stack" is not a stack: it would make this test green against
-  // the very anchor it exists to reject, so the fixture must really stack.
   expect(count, "the stacked family under test has one member").toBeGreaterThan(
     1
   );
 
-  // The LAST member — furthest from the top of the stack, so a door anchored to
-  // the stack is furthest from where it belongs.
   const member = doored.nth(count - 1);
   const link = member.locator(":scope > a.standing-row");
   await link.scrollIntoViewIfNeeded();
@@ -597,19 +591,16 @@ test("a stacked family's door lands on the member you are pointing at, not on th
     };
   });
 
-  // The fixture must actually stack, or the assertions below cannot discriminate.
   expect(
     placed.stackHeight,
     `stack ${placed.stackHeight} vs row ${placed.rowHeight}`
   ).toBeGreaterThan(placed.rowHeight + 8);
 
-  // ON THE MEMBER'S OWN LINE: same centre, and no taller than the line itself.
   expect(
     placed.doorCentre - placed.rowCentre,
     `door centre is ${placed.doorCentre - placed.rowCentre}px off the row it belongs to`
   ).toBeCloseTo(0, 0);
   expect(placed.doorHeight).toBeLessThanOrEqual(placed.rowHeight + 1);
-  // And still on the rail — the x half, unchanged.
   expect(placed.railGap).toBeCloseTo(0, 0);
 });
 

@@ -60,8 +60,7 @@ export function DestinationActionLink({
   );
 }
 
-// Standing's primary destination covers its whole grid row. Visible facts are its
-// accessible name; the caller renders them once more in the row for layout.
+// Standing's primary destination covers its whole grid row.
 export function StandingDestinationLink({
   children,
   destinationLabel,
