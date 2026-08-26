@@ -1,0 +1,40 @@
+import { act, fireEvent, render, screen } from "@testing-library/react";
+import { describe, expect, it, vi } from "vitest";
+import ClearLogControl from "@/components/ClearLogControl";
+
+describe("ClearLogControl", () => {
+  it("owns confirmation, focus, pending, completion, failure, and cancel", async () => {
+    const failure = Promise.withResolvers<void>();
+    const success = Promise.withResolvers<void>();
+    const clear = vi
+      .fn<() => Promise<void>>()
+      .mockReturnValueOnce(failure.promise)
+      .mockReturnValueOnce(success.promise);
+    const onCleared = vi.fn();
+    render(<ClearLogControl log="ai" clear={clear} onCleared={onCleared} />);
+    const initial = screen.getByTestId("ai-log-clear");
+    expect(initial.textContent).toBe("Clear");
+    fireEvent.click(initial);
+    let confirm = screen.getByTestId("ai-log-clear-confirm");
+    expect(document.activeElement).toBe(confirm);
+    fireEvent.click(screen.getByRole("button", { name: "Cancel" }));
+    expect(document.activeElement).toBe(screen.getByTestId("ai-log-clear"));
+    fireEvent.click(screen.getByTestId("ai-log-clear"));
+    confirm = screen.getByTestId("ai-log-clear-confirm");
+    fireEvent.click(confirm);
+    expect(confirm.hasAttribute("disabled")).toBe(true);
+    expect(
+      screen.getByRole("button", { name: "Cancel" }).hasAttribute("disabled")
+    ).toBe(true);
+    expect(confirm.textContent).toBe("Clearing…");
+    await act(async () => failure.reject(new Error("failed")));
+    expect(confirm.hasAttribute("disabled")).toBe(false);
+    expect(document.activeElement).toBe(confirm);
+    expect(onCleared).not.toHaveBeenCalled();
+
+    fireEvent.click(confirm);
+    await act(async () => success.resolve());
+    expect(onCleared).toHaveBeenCalledOnce();
+    expect(document.activeElement).toBe(screen.getByTestId("ai-log-clear"));
+  });
+});
