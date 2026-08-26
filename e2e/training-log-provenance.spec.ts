@@ -284,11 +284,13 @@ test("strength target status is named and muscle filters are quiet text", async 
   await expect(push.getByTestId("activity-summary")).toContainText("kcal");
   await expect(push.getByTestId("activity-metrics")).toHaveCount(0);
   await expect(push.getByText("Target met", { exact: true })).toBeVisible();
-  const targetDetails = push.getByRole("button", {
-    name: "All sets hit their target reps",
-  });
+  const benchRow = push
+    .getByTestId("training-log-strength-row")
+    .filter({ hasText: "Barbell Bench Press" })
+    .first(); // first-ok: filtered to the Barbell Bench Press strength row — one match
+  const targetDetails = benchRow.getByTestId("exercise-row-info");
   await targetDetails.click();
-  await expect(page.getByRole("tooltip")).toHaveText(
+  await expect(page.getByRole("tooltip")).toContainText(
     "All sets hit their target reps"
   );
   // Edit flows through the canonical activity page.
@@ -307,10 +309,6 @@ test("strength target status is named and muscle filters are quiet text", async 
 
   // Exercise name, set summary, and context form one compact row rather than a
   // forced two-line name/metadata block with the summary pushed to the far edge.
-  const benchRow = push
-    .getByTestId("training-log-strength-row")
-    .filter({ hasText: "Barbell Bench Press" })
-    .first(); // first-ok: filtered to the Barbell Bench Press strength row — one match
   const exerciseName = benchRow.getByRole("link", {
     name: "Barbell Bench Press",
     exact: true,

@@ -93,6 +93,13 @@ export default function ActivityPartRows({
         const recordPresentation = record
           ? strengthRecordPresentation(record)
           : null;
+        const rowHelp = [
+          delta?.title,
+          recordPresentation?.help,
+          part.status ? SET_STATUS_TITLES[part.status] : null,
+        ]
+          .filter((help): help is string => Boolean(help))
+          .join(" · ");
         const href = exerciseHref?.(part.name);
         const highlightMuscles =
           highlightMusclesByExercise[part.name.trim().toLowerCase()] ?? [];
@@ -123,7 +130,7 @@ export default function ActivityPartRows({
                 {part.name}
               </span>
             )}
-            <span className="inline-flex min-w-0 flex-wrap items-start gap-x-1 gap-y-0.5">
+            <span className="inline-flex min-w-0 flex-wrap items-center gap-x-1 gap-y-0.5">
               <span
                 data-testid="exercise-set-summary"
                 className="text-sm tabular-nums text-slate-600 dark:text-slate-300"
@@ -147,7 +154,6 @@ export default function ActivityPartRows({
                       ? "▼ "
                       : ""}
                   {delta.label}
-                  <InfoTooltipIcon label={delta.title} />
                 </span>
               )}
               {record && recordPresentation ? (
@@ -161,26 +167,26 @@ export default function ActivityPartRows({
                   >
                     {recordPresentation.label}
                   </Link>
-                  <InfoTooltipIcon
-                    label={recordPresentation.help}
-                    data-testid="exercise-pr-info"
-                  />
                 </span>
               ) : null}
               {part.status === "met" && (
                 <span className="inline-flex items-center gap-1 text-xs text-brand-600 dark:text-brand-400">
                   <IconCheck className="h-4 w-4" stroke={2.5} />
                   Target met
-                  <InfoTooltipIcon label={SET_STATUS_TITLES.met} />
                 </span>
               )}
               {part.status === "missed" && (
                 <span className="inline-flex items-center gap-1 text-xs text-amber-500 dark:text-amber-400">
                   <IconAlertTriangle className="h-4 w-4" stroke={2} />
                   Target missed
-                  <InfoTooltipIcon label={SET_STATUS_TITLES.missed} />
                 </span>
               )}
+              {rowHelp ? (
+                <InfoTooltipIcon
+                  label={rowHelp}
+                  data-testid="exercise-row-info"
+                />
+              ) : null}
             </span>
             {(part.muscle || part.equipment) && (
               <span className="flex min-w-0 items-center gap-x-1 overflow-hidden whitespace-nowrap">

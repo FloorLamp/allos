@@ -8,12 +8,56 @@ import FiberSymptomPanel from "@/components/FiberSymptomPanel";
 import IntensityPicker from "@/components/activity-form/IntensityPicker";
 import DayHistory from "@/components/DayHistory";
 import TrendMiniCard from "@/components/TrendMiniCard";
+import ActivityPartRows from "@/components/activity/ActivityPartRows";
 import { buildBristolPanel } from "@/lib/bristol-stool";
 import { buildFiberSymptomPanel } from "@/lib/fiber-symptom-panel";
 import { DEFAULT_FORMAT_PREFS } from "@/lib/format-date";
-import { metricDetailHref } from "@/lib/hrefs";
+import { metricDetailHref, strengthAnalyzeHref } from "@/lib/hrefs";
 
 describe("visual title parity", () => {
+  it("combines a strength row's explanations behind one disclosure", () => {
+    render(
+      <ActivityPartRows
+        parts={[
+          {
+            kind: "strength",
+            name: "Bench Press",
+            muscle: "Chest",
+            text: "3 × 5 at 60 kg",
+            status: "met",
+          },
+        ]}
+        partDeltas={[
+          {
+            direction: "up",
+            label: "+5 kg",
+            title: "Top set up 5 kg vs last time",
+          },
+        ]}
+        partRecords={[
+          {
+            e1rm: "all-time",
+            weight: null,
+            href: strengthAnalyzeHref("Bench Press"),
+          },
+        ]}
+      />
+    );
+
+    expect(screen.getByText(/\+5 kg/)).toBeTruthy();
+    expect(screen.getByText("All-time PR")).toBeTruthy();
+    expect(screen.getByText("Target met")).toBeTruthy();
+    const disclosure = screen.getByTestId("exercise-row-info");
+    expect(screen.getAllByTestId("exercise-row-info")).toHaveLength(1);
+    expect(disclosure.getAttribute("aria-label")).toBe(
+      "Top set up 5 kg vs last time · Still your all-time estimated 1RM record. · All sets hit their target reps"
+    );
+    fireEvent.click(disclosure);
+    expect(screen.getByRole("tooltip").textContent).toBe(
+      disclosure.getAttribute("aria-label")
+    );
+  });
+
   it("keeps compact trend labels in both link presentations' names", () => {
     const props = {
       title: "Resting heart rate",

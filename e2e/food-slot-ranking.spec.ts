@@ -111,9 +111,9 @@ test("a tracked habit shows the N-week consistency trend; a fresh one shows a sh
     ).toBeVisible();
     // Its shared detail disclosure says so.
     const greensDetails = card.getByTestId("habit-leafy_greens");
-    await greensDetails
-      .getByRole("button", { name: "Leafy greens weekly details" })
-      .click();
+    const greensSummary = greensDetails.locator("summary");
+    await expect(greensSummary).toHaveText("Leafy greens weekly details");
+    await greensSummary.click();
     await expect(
       greensDetails
         .locator("details li")
