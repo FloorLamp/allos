@@ -299,6 +299,10 @@ test("wellness practice: range target + one-tap logging (#1259)", async ({
   await page.keyboard.press("Enter");
   await expect(details).toHaveAttribute("open", "");
   expect(page.url()).toBe(listUrl);
+  await details.getByText(/ — 1 session$/).click();
+  expect(page.url()).toBe(listUrl);
+  await summary.click();
+  await expect(details).not.toHaveAttribute("open", "");
 
   // Self-clean.
   await expect(detailLink).toHaveAttribute("href", /\/protocols\/\d+/);
