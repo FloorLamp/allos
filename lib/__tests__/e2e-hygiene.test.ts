@@ -687,6 +687,34 @@ export function hygieneScanText(
   return stripComments(kept);
 }
 
+/**
+ * Line indices in an e2e source that BRANCH on `process.env.CI` with no `ci-ok:`
+ * reason within a line either side.
+ *
+ * ONE ANSWER IN THIS FILE TO "IS THIS PROSE" (#3402). This check used to hand-roll
+ * its own strip — `line.replace(/\/\/.*$/, "")` — while the frequency counts above
+ * use the shared scanner, and the divergence failed toward PASS: a `//` that opens a
+ * URL rather than a comment blanked the rest of the line, so
+ * `page.goto("https://…/" + (process.env.CI ? … : …))` was a real unmarked branch this
+ * guard could not see. Specs are full of URLs, so that is the spelling to worry about.
+ *
+ * `stripComments` preserves newlines and byte offsets, so the blanked lines index
+ * identically to the raw ones. The marker window deliberately still reads the RAW
+ * lines: the `ci-ok:` escape LIVES in a comment.
+ */
+export function unmarkedCiBranchLines(text: string): number[] {
+  const lines = text.split("\n");
+  const code = stripComments(text).split("\n");
+  const out: number[] = [];
+  lines.forEach((line, i) => {
+    if (!CI_ENV_RE.test(code[i] ?? "")) return;
+    const window = [lines[i - 1], line, lines[i + 1]];
+    if (window.some((l) => l?.includes(CI_OK_MARKER))) return;
+    out.push(i);
+  });
+  return out;
+}
+
 function checkPattern(
   label: string,
   re: RegExp,
@@ -802,6 +830,48 @@ describe("the hygiene counts read code, not prose (#3621)", () => {
   });
 });
 
+// The ci-ok check reads the SAME projection, and both directions matter (#3402).
+// The URL case is the one the hand-rolled strip got wrong, and it got it wrong
+// toward PASS — the silent direction — while the prose cases are the ones an author
+// meets when they document a branch they removed.
+describe("the ci-ok check reads code, not prose (#3402)", () => {
+  it.each([
+    ["if (process.env.CI) await slow();", [0], "a bare branch"],
+    [
+      'await page.goto("https://x.test/" + (process.env.CI ? "?ci" : ""));',
+      [0],
+      "a branch after a URL on the same line",
+    ],
+    [
+      "const re = /\\/\\//; if (process.env.CI) await slow();",
+      [0],
+      "a branch after a regex holding a slash pair",
+    ],
+    [
+      "// this used to sit behind `if (process.env.CI)` and no longer does",
+      [],
+      "prose about a removed branch",
+    ],
+    [
+      "/**\n * Why there is no process.env.CI branch: one build shape.\n */",
+      [],
+      "a JSDoc explaining one",
+    ],
+    [
+      "if (process.env.CI) await slow(); // ci-ok: only the runner has the artifact dir",
+      [],
+      "a reviewed same-line escape",
+    ],
+    [
+      "// ci-ok: only the runner has the artifact dir\nif (process.env.CI) await slow();",
+      [],
+      "the escape on the line above",
+    ],
+  ])("%s -> %j (%s)", (text, expected) => {
+    expect(unmarkedCiBranchLines(text)).toEqual(expected);
+  });
+});
+
 describe("e2e suite hygiene guard (issue #868)", () => {
   it('no NEW waitForLoadState("networkidle") in an e2e/*.ts (use e2e/helpers.ts)', () => {
     checkPattern(
@@ -842,17 +912,7 @@ describe("e2e suite hygiene guard (issue #868)", () => {
   it("no e2e/*.ts branch on process.env.CI without a written reason (mark ci-ok)", () => {
     const violations: string[] = [];
     for (const { name, text } of specFiles()) {
-      const lines = text.split("\n");
-      lines.forEach((line, i) => {
-        if (!CI_ENV_RE.test(line)) return;
-        // The marker may sit on this line or on either line touching it.
-        const window = [lines[i - 1], line, lines[i + 1]];
-        if (window.some((l) => l?.includes(CI_OK_MARKER))) return;
-        // Strip a trailing line comment and a block-comment continuation line, so
-        // PROSE naming the variable (including a note about a branch that was
-        // REMOVED) is not mistaken for a branch. What remains is code.
-        const code = line.replace(/\/\/.*$/, "").replace(/^\s*\*.*$/, "");
-        if (!CI_ENV_RE.test(code)) return;
+      for (const i of unmarkedCiBranchLines(text)) {
         violations.push(
           `${name}:${i + 1}: branches on process.env.CI with no written reason. ` +
             `The harness serves ONE build shape — e2e/fixtures.ts spawns every ` +
@@ -863,7 +923,7 @@ describe("e2e suite hygiene guard (issue #868)", () => {
             `add a \`ci-ok: <why>\` comment naming it, on this line or the one ` +
             `above/below; see docs/internals/e2e-hygiene.md.`
         );
-      });
+      }
     }
     expect(violations, violations.join("\n")).toEqual([]);
   });

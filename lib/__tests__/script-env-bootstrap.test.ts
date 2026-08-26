@@ -19,6 +19,7 @@
 import fs from "node:fs";
 import path from "node:path";
 import { describe, expect, it } from "vitest";
+import { stripComments } from "./strip-comments";
 
 const ROOT = process.cwd();
 const DB_MODULE = "lib/db.ts";
@@ -203,13 +204,31 @@ function isPlaywrightFile(rel: string): boolean {
   return playwrightOnly.has(rel);
 }
 
+// THE QUESTION IS "DOES THIS MODULE READ THE ENVIRONMENT", AND THAT IS ABOUT CODE.
+// Matching raw characters could not tell a MENTION from a USE, so a comment saying
+// why an env read was REMOVED re-failed the gate that had just been satisfied by
+// removing it (#3340) — which makes deleting the explanation the cheapest way to go
+// green, and this repo asks for the opposite everywhere else. Two shipped files
+// (e2e/emergency-card.spec.ts, e2e/security-headers.spec.ts) carry exactly that
+// sentence today and are read as env-sensitive by the raw match; they escape only
+// because they are Playwright files, which is luck rather than a rule.
+//
+// A STRING LITERAL STILL COUNTS, and `stripComments` preserves literals for that
+// reason. `process.env` inside a string is a read the scanner cannot follow — a
+// spawned command's environment, a template assembled into code — so it stays on the
+// side this file already declares safe: "errs toward COUNTING", because a false
+// positive costs a conversation and a false negative costs the #679 bug class.
+function sourceUsesProcessEnv(source: string): boolean {
+  return /\bprocess\.env\b/.test(stripComments(source));
+}
+
 function usesProcessEnv(rel: string): boolean {
   // Deliberately per-file, not transitive. Importing a helper that CONTAINS an env
   // read does not prove that read executes: library reads commonly live inside a
   // function the entrypoint may never call. Reaching lib/db or directly importing
   // better-sqlite3 is a declared database-ownership boundary; a transitive
   // process.env rule would need call/evaluation analysis, not reachability alone.
-  return /\bprocess\.env\b/.test(read(rel));
+  return sourceUsesProcessEnv(read(rel));
 }
 
 function walk(dir: string): string[] {
@@ -321,6 +340,59 @@ describe("standalone script environment bootstrap", () => {
       expect(reachesDb(generator)).toBe(false);
       expect(usesProcessEnv(generator)).toBe(false);
       expect(ENTRYPOINTS).not.toContain(generator);
+    });
+  });
+
+  // WHAT THE ENV MATCH CAN AND CANNOT SEE (#3340). A green sweep over a tree that
+  // complies says nothing about what the sweep sees, so these run the predicate over
+  // sources authored to break it in BOTH directions: the prose that must not count,
+  // and the read that must still count no matter what shares its line.
+  describe("the env match reads code, not prose (#3340)", () => {
+    it.each([
+      ["const seed = process.env.SEED_RNG;", true, "a plain read"],
+      [
+        "export const x = 1; // process.env.SEED is loaded by ./load-env",
+        false,
+        "a trailing sentence about one",
+      ],
+      [
+        "// The frozen instant is NOT read from process.env here.",
+        false,
+        "a line comment explaining a removal",
+      ],
+      [
+        "/**\n * Why no process.env read: ./load-env owns it.\n */\nexport const x = 1;",
+        false,
+        "a JSDoc explaining one",
+      ],
+      [
+        "const k = process.env.SEED; // and process.env.OTHER is deliberately unread",
+        true,
+        "a read a comment shares a line with",
+      ],
+      [
+        'const cmd = "process.env.TZ";',
+        true,
+        "one inside a string, which the scanner cannot follow",
+      ],
+    ])("%s -> %s (%s)", (source, expected) => {
+      expect(sourceUsesProcessEnv(source)).toBe(expected);
+    });
+
+    // The strip must not become a way to SMUGGLE a read past the gate: a `//` that is
+    // not a comment opener — inside a string, inside a regex — must leave the code
+    // after it visible. Both shapes over-blank under a naive line regex.
+    it.each([
+      [
+        'const url = "https://x/"; const k = process.env.SEED;',
+        "a URL earlier on the line",
+      ],
+      [
+        "const re = /\\/\\//; const k = process.env.SEED;",
+        "a regex literal containing a slash pair",
+      ],
+    ])("still sees the read past %s (%s)", (source) => {
+      expect(sourceUsesProcessEnv(source)).toBe(true);
     });
   });
 

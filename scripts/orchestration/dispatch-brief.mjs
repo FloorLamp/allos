@@ -348,10 +348,12 @@ function allocatePortBase(active, opts = {}) {
 const MIGRATION_LINES = `- Migrations are NAME-KEYED — there is NO slot to reserve. If your work needs a
   schema change: create lib/migrations/versions/YYYYMMDD-<slug>.ts exporting
   { name: "YYYYMMDD-<slug>", up } (no id), append it LAST to the MIGRATIONS array
-  in versions/index.ts, and add its sha256 to lib/migrations/manifest.json in the
-  same change. Never edit a shipped migration. If index.ts conflicts when you
-  merge origin/main, keep BOTH sides (both import lines, both array entries —
-  merge order is the order) and re-run the DB tier.`;
+  in versions/index.ts, then run \`npm run gen:migration-manifest\` to add its
+  sha256 to lib/migrations/manifest.json in the same change — never hand-type a
+  hash. Never edit a shipped migration. If index.ts conflicts when you merge
+  origin/main, keep BOTH sides (both import lines, both array entries — merge
+  order is the order); if manifest.json conflicts, re-run the generator rather
+  than resolving the hash lines by hand, and re-run the DB tier.`;
 
 function buildBrief(opts) {
   const node24 = discoverNode24();
