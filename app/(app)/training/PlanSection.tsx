@@ -1,4 +1,4 @@
-import Link from "next/link";
+import DestinationLink from "@/components/DestinationLink";
 import { requireSession } from "@/lib/auth";
 import { getFrequencyTargetProgressForHome } from "@/lib/queries";
 import { getProfileAge, getWeekMode } from "@/lib/settings";
@@ -96,13 +96,13 @@ export default async function PlanSection() {
                 : "Bikes, shoes, and recovery gear — the registry keeps usage history and per-gear defaults."}
             </p>
           </div>
-          <Link
+          <DestinationLink
             href="/equipment"
             data-testid="plan-equipment-link"
             className="text-sm text-link"
           >
-            Open registry →
-          </Link>
+            Open registry
+          </DestinationLink>
         </div>
       </section>
     </div>

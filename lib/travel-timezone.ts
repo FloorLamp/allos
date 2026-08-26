@@ -48,7 +48,7 @@ export function comparePositions(a: LocalPosition, b: LocalPosition): number {
 
 // One recorded move of a profile's timezone. `at` is the canonical UTC instant the
 // switch took effect; `from`/`to` are IANA zones. Written by every path that moves
-// the zone for TRAVEL (the one-tap switch and the automatic return), so the rules
+// the zone for TRAVEL (the accepted outbound and return offers), so the rules
 // below can be asked about a day after the fact.
 export interface TimezoneSwitch {
   at: string;
@@ -122,28 +122,89 @@ export function occurredTwice(sw: TimezoneSwitch, p: LocalPosition): boolean {
   return comparePositions(r.landed, p) <= 0 && comparePositions(p, r.left) <= 0;
 }
 
-// EXCUSED: this profile-local slot never occurred, under ANY of the switches on
-// record. The word matters — "excused" is not "missed" and not "skipped" and not
-// "not due". It is a slot the calendar demanded and the planet refused, and it is
-// out of the day's adherence denominator for exactly that reason.
+// Accept a history only when every retained switch forms one valid, chronological
+// chain that actually leads to `currentZone`. The history is a bounded JSON setting
+// rather than an event ledger, so an old client, a manual Settings edit, or a corrupt
+// duplicate can leave a discontinuity. A valid-looking suffix is NOT enough: the
+// missing seam at its boundary could cancel a crossing in that suffix. Failing open
+// means rejecting the whole retained history so uncertainty never silently excuses
+// a real dose or suppresses its reminder.
+//
+// When no current zone is supplied, the newest record's destination anchors the
+// chain. This keeps the pure predicates safe for callers that only have history;
+// profile-scoped consumers pass the stored current zone as the stronger anchor.
+export function connectedTimezoneSwitchHistory(
+  switches: readonly TimezoneSwitch[],
+  currentZone?: string
+): TimezoneSwitch[] {
+  if (switches.length === 0) return [];
+
+  let expectedDestination = currentZone ?? switches.at(-1)?.to;
+  let nextInstant = Number.POSITIVE_INFINITY;
+  const connected: TimezoneSwitch[] = [];
+
+  for (let i = switches.length - 1; i >= 0; i -= 1) {
+    const sw = switches[i];
+    const instant = Date.parse(sw.at);
+    if (
+      !expectedDestination ||
+      !Number.isFinite(instant) ||
+      !isValidTimezone(sw.from) ||
+      !isValidTimezone(sw.to) ||
+      sw.to !== expectedDestination ||
+      instant >= nextInstant
+    ) {
+      return [];
+    }
+    connected.unshift(sw);
+    expectedDestination = sw.from;
+    nextInstant = instant;
+  }
+
+  return connected;
+}
+
+// How many times this position occurred after the ordered switch history adjusts
+// the ordinary once-per-day wall clock. A forward crossing removes an occurrence;
+// a backward crossing adds one. Counting the whole trajectory matters: a quick
+// eastward switch can skip noon and a later westward switch can put noon back into
+// the same day. Treating the forward spans as a union would still call that real
+// noon impossible.
+function positionOccurrences(
+  switches: readonly TimezoneSwitch[],
+  p: LocalPosition
+): number {
+  let occurrences = 1;
+  for (const sw of connectedTimezoneSwitchHistory(switches)) {
+    if (neverOccurred(sw, p)) occurrences -= 1;
+    else if (occurredTwice(sw, p)) occurrences += 1;
+  }
+  return occurrences;
+}
+
+// EXCUSED: this profile-local slot did not occur after the complete switch
+// trajectory is accounted for. The word matters — "excused" is not "missed" and
+// not "skipped" and not "not due". It is a slot the calendar demanded and the
+// planet refused, and it is out of the day's adherence denominator for exactly
+// that reason.
 export function isExcusedSlot(
   switches: readonly TimezoneSwitch[],
   day: string,
   minute: number
 ): boolean {
   const p = { day, minute };
-  return switches.some((sw) => neverOccurred(sw, p));
+  return positionOccurrences(switches, p) <= 0;
 }
 
-// The mirror predicate, for the westward pins: this slot's wall clock came round a
-// second time on this local day.
+// The mirror predicate, for the westward pins: after the complete trajectory this
+// slot's wall clock came round more than once on this local day.
 export function isRepeatedSlot(
   switches: readonly TimezoneSwitch[],
   day: string,
   minute: number
 ): boolean {
   const p = { day, minute };
-  return switches.some((sw) => occurredTwice(sw, p));
+  return positionOccurrences(switches, p) > 1;
 }
 
 // ---- Stored switch history ----
@@ -158,29 +219,45 @@ export const MAX_STORED_SWITCHES = 24;
 // Beyond it the switch day is off every strip and the record is dead weight.
 export const SWITCH_RETENTION_DAYS = 120;
 
-// Decode the stored JSON array. Tolerant by design (see resolveSwitch): anything
-// that is not a well-shaped record is dropped rather than thrown, because this is
-// read on every render and every tick.
-export function parseTimezoneSwitches(
+export interface DecodedTimezoneSwitchHistory {
+  switches: TimezoneSwitch[];
+  valid: boolean;
+}
+
+// Decode the stored JSON array without throwing while preserving whether it was
+// trustworthy. Writers need the validity bit: treating malformed history as an
+// ordinary empty history and appending one new seam would launder the corruption
+// into a trusted one-way crossing.
+export function decodeTimezoneSwitchHistory(
   raw: string | null | undefined
-): TimezoneSwitch[] {
-  if (!raw) return [];
+): DecodedTimezoneSwitchHistory {
+  if (raw == null) return { switches: [], valid: true };
   let parsed: unknown;
   try {
     parsed = JSON.parse(raw);
   } catch {
-    return [];
+    return { switches: [], valid: false };
   }
-  if (!Array.isArray(parsed)) return [];
+  if (!Array.isArray(parsed)) return { switches: [], valid: false };
   const out: TimezoneSwitch[] = [];
   for (const entry of parsed) {
-    if (!entry || typeof entry !== "object") continue;
+    if (!entry || typeof entry !== "object")
+      return { switches: [], valid: false };
     const { at, from, to } = entry as Record<string, unknown>;
-    if (typeof at !== "string") continue;
-    if (typeof from !== "string" || typeof to !== "string") continue;
+    if (typeof at !== "string") return { switches: [], valid: false };
+    if (typeof from !== "string" || typeof to !== "string")
+      return { switches: [], valid: false };
     out.push({ at, from, to });
   }
-  return out;
+  return { switches: out, valid: true };
+}
+
+// Reader convenience. Invalid storage is the ordinary fail-open empty history;
+// switch writers use decodeTimezoneSwitchHistory so they do not erase its taint.
+export function parseTimezoneSwitches(
+  raw: string | null | undefined
+): TimezoneSwitch[] {
+  return decodeTimezoneSwitchHistory(raw).switches;
 }
 
 export function serializeTimezoneSwitches(
@@ -212,9 +289,9 @@ export function appendTimezoneSwitch(
 //
 //   "offer"  — the device is somewhere the profile is not; ASK before moving the
 //              day, because a layover or a VPN must not move it (#2471).
-//   "return" — the device is back on the zone the profile left; the app reverts on
-//              its own and TELLS afterwards, because that action is lossless and
-//              reverses a state the person explicitly entered (#2471 again).
+//   "return" — the device reports the zone the profile left. This is still an
+//              OFFER: a home-terminating VPN can produce the same browser signal,
+//              so returning asks exactly as travelling out does (#3684).
 export type TravelPrompt =
   | { kind: "none" }
   | { kind: "offer"; deviceZone: string; profileZone: string }
@@ -249,12 +326,12 @@ export function travelPrompt(input: TravelPromptInput): TravelPrompt {
   // A `timezone_home` equal to the profile's current zone is stale bookkeeping, not
   // a trip — treat it as absent so it can never manufacture a return prompt.
   const homeZone = input.homeZone === profileZone ? null : input.homeZone;
+  // Both directions are offers. A permanently tunnelled device reporting home
+  // should ask once, not on every page view.
+  if (dismissedZone && dismissedZone === deviceZone) return { kind: "none" };
   if (homeZone && deviceZone === homeZone) {
     return { kind: "return", homeZone, awayZone: profileZone };
   }
-  // The dismissal suppresses the OFFER only. Coming home is not a question, so it
-  // is not something a dismissal can answer.
-  if (dismissedZone && dismissedZone === deviceZone) return { kind: "none" };
   return { kind: "offer", deviceZone, profileZone };
 }
 
@@ -271,8 +348,6 @@ export function travelOfferText(deviceZone: string): string {
   return `Your device is on ${zonePlaceLabel(deviceZone)} time — move your day there?`;
 }
 
-// The tell-after. Names BOTH zones on purpose: "back on New York time" alone leaves
-// the person guessing which of their trip's zones the app had been running on.
-export function travelReturnText(homeZone: string, awayZone: string): string {
-  return `Back on ${zonePlaceLabel(homeZone)} time — you were on ${zonePlaceLabel(awayZone)} time.`;
+export function travelReturnOfferText(homeZone: string): string {
+  return `Your device is back on ${zonePlaceLabel(homeZone)} time — move your day back?`;
 }

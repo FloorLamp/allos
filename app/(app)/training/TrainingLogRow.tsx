@@ -3,7 +3,7 @@
 import { memo } from "react";
 import Link from "next/link";
 import { ActivityTypeIcon } from "@/components/ui";
-import Avatar from "@/components/Avatar";
+import SubjectChip from "@/components/SubjectChip";
 import type { TrainingLogCardData } from "@/lib/training-log-card";
 import {
   activityComponentSportNames,
@@ -12,6 +12,7 @@ import {
 import { trainingActivityPageHref } from "@/lib/hrefs";
 import ActivityPartRows from "@/components/activity/ActivityPartRows";
 import ActivitySummaryLine from "@/components/activity/ActivitySummaryLine";
+import InfoTooltipIcon from "@/components/InfoTooltipIcon";
 
 const LOG_ROW_PART_LIMIT = 3;
 
@@ -74,18 +75,11 @@ function TrainingLogRow({
             {activity.title}
           </Link>
           {card.fault && (
-            <span
-              role="img"
-              // Deliberately avoids the word "saved": Playwright's getByLabel
-              // matches accessible names by case-insensitive SUBSTRING, and the
-              // autosave indicator's spec asserts `getByLabel("Saved")` has no
-              // matches after a failed save (#332). An accessible name is part
-              // of the page's contract with every reader, tests included.
-              aria-label={`Editor can’t re-save this as-is: ${card.fault}`}
-              title={card.fault}
-              data-testid="row-fault-dot"
-              className="h-1.5 w-1.5 shrink-0 rounded-full bg-amber-500"
-            />
+            <span data-testid="row-fault-dot">
+              <InfoTooltipIcon
+                label={`Editor can’t re-save this as-is: ${card.fault}`}
+              />
+            </span>
           )}
         </span>
         <ActivitySummaryLine
@@ -137,23 +131,9 @@ function TrainingLogRow({
       {showSubjectChip && subject && (
         <span
           data-testid={`subject-chip-${subject.profileId}-row`}
-          className="col-start-2 mt-2 flex min-w-0 shrink-0 items-center gap-1 justify-self-start rounded-full border border-black/10 bg-slate-50 py-0.5 pl-0.5 pr-2 text-xs font-medium text-slate-600 sm:col-start-3 sm:row-start-1 sm:mt-0 dark:border-white/10 dark:bg-ink-850 dark:text-slate-300"
+          className="col-start-2 mt-2 flex min-w-0 max-w-40 shrink-0 justify-self-start sm:col-start-3 sm:row-start-1 sm:mt-0"
         >
-          <Avatar
-            profile={{
-              id: subject.profileId,
-              name: subject.name,
-              photo_path: subject.photoPath,
-              photo_version: subject.photoVersion,
-            }}
-            size="sm"
-          />
-          <span className="max-w-24 truncate">{subject.name}</span>
-          {!subject.canWrite && (
-            <span className="shrink-0 rounded-full bg-amber-100 px-1 text-xs font-semibold uppercase tracking-wide text-amber-700 dark:bg-amber-950 dark:text-amber-300">
-              RO
-            </span>
-          )}
+          <SubjectChip subject={subject} />
         </span>
       )}
     </div>

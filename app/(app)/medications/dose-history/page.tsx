@@ -1,12 +1,12 @@
 import { requireScope } from "@/lib/scope";
 import PageContainer from "@/components/PageContainer";
-import DoseLedgerView from "@/components/intake/DoseLedgerView";
+import DoseLedgerMount from "@/components/intake/DoseLedgerMount";
 
 export const dynamic = "force-dynamic";
 
 // The medications surface's door into the cross-item dose ledger (#2417) — the same
-// shared DoseLedgerView /nutrition/dose-history renders, pre-filtered to the other
-// kind. See that file and components/intake/DoseLedgerView.tsx: one ledger, two doors,
+// shared DoseLedgerMount /nutrition/dose-history renders, pre-filtered to the other
+// kind. See that file and components/intake/DoseLedgerMount.tsx: one ledger, two doors,
 // because a medication and a supplement are one table and one set of dose machinery.
 export default async function MedicationDoseHistoryPage(props: {
   searchParams: Promise<{
@@ -23,7 +23,7 @@ export default async function MedicationDoseHistoryPage(props: {
   const scope = await requireScope();
   return (
     <PageContainer width="reading" className="mx-auto">
-      <DoseLedgerView
+      <DoseLedgerMount
         profileId={scope.actingProfileId}
         loginId={scope.loginId}
         canWrite={scope.access.get(scope.actingProfileId) === "write"}

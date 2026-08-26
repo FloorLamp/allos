@@ -1,6 +1,10 @@
 import { test, expect } from "./fixtures";
 import Database from "better-sqlite3";
 import { settledClick, followLink } from "./helpers";
+import {
+  expectDesktopOrdinarySubmit,
+  expectPhoneOrdinarySubmit,
+} from "./ordinary-submit-actions";
 import { workerDbPath } from "./worker-env";
 
 // The provider-domain closeout sweep (#1055/#1056/#1057/#1058/#1088), driven as the
@@ -21,6 +25,19 @@ function providerId(name: string): number {
       .get(name) as { id: number } | undefined;
     if (!row) throw new Error(`no seeded provider "${name}"`);
     return row.id;
+  } finally {
+    db.close();
+  }
+}
+
+function removeAffiliation(individualName: string, organizationName: string) {
+  const db = new Database(DB_PATH);
+  try {
+    db.prepare(
+      `DELETE FROM provider_affiliations
+        WHERE individual_id = (SELECT id FROM providers WHERE name = ?)
+          AND organization_id = (SELECT id FROM providers WHERE name = ?)`
+    ).run(individualName, organizationName);
   } finally {
     db.close();
   }
@@ -87,6 +104,56 @@ test.describe("Provider registry closeout", () => {
       .getByRole("dialog", { name: "Link affiliation" })
       .getByRole("button", { name: "Close" })
       .click();
+  });
+
+  test("the manual affiliation primary links and unlinks at phone size", async ({
+    page,
+  }) => {
+    const individual = "Dr. Cora Bell (e2e)";
+    const organization = "Ng Family Practice (e2e)";
+    removeAffiliation(individual, organization);
+    try {
+      await page.goto(`/providers/${providerId(individual)}`);
+      const affiliations = page.getByTestId("provider-affiliations");
+      await affiliations.getByTestId("affiliation-add-toggle").click();
+      const dialog = page.getByRole("dialog", { name: "Link affiliation" });
+      const form = dialog.getByTestId("affiliation-add-form");
+      const field = dialog.getByLabel("Affiliated with");
+      await field.fill(organization);
+      await page.keyboard.press("Escape");
+      const submit = form.getByRole("button", { name: "Link", exact: true });
+      await expectDesktopOrdinarySubmit({
+        form,
+        owner: form,
+        submit,
+        adjacent: field,
+        name: "provider affiliation Link",
+      });
+      await page.setViewportSize({ width: 390, height: 844 });
+      await expectPhoneOrdinarySubmit({
+        form,
+        owner: form,
+        submit,
+        adjacent: field,
+        name: "provider affiliation Link",
+      });
+      await settledClick(page, submit);
+
+      const linked = affiliations
+        .getByTestId("affiliation-list")
+        .getByRole("listitem")
+        .filter({ hasText: organization });
+      await expect(linked).toBeVisible();
+      await settledClick(
+        page,
+        linked.getByRole("button", {
+          name: `Remove affiliation with ${organization}`,
+        })
+      );
+      await expect(linked).toHaveCount(0);
+    } finally {
+      removeAffiliation(individual, organization);
+    }
   });
 
   test("the affiliation picker answers for itself; Escape asks, Close does not (#3371, #3420)", async ({

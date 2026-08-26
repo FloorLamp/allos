@@ -15,9 +15,10 @@
 //     look, byte-stable. `npm run seed`, the e2e template DB, and `--baseline`
 //     census diffing all depend on that pin. Entropy is a seeing-tool feature,
 //     never a test-tier one.
-//   - Same seed ⇒ same dials, forever: dials draw IN DECLARATION ORDER from a
-//     fresh stream, so a new dial is APPENDED (one draw at the end), never
-//     inserted — inserting would silently re-deal every existing seed's look.
+//   - Same seed ⇒ same dials, forever: randomized dials draw IN DECLARATION
+//     ORDER from a fresh stream, so a new randomized dial is APPENDED (one draw
+//     at the end), never inserted. Named-only middle states stay at baseline in
+//     numbered looks and consume NO draw.
 //   - Jitter (`jitterStream`) is a separate stream derived from the same seed,
 //     so adding or removing a jitter call in seed.ts can never shift which
 //     dials a seed samples.
@@ -55,6 +56,11 @@ export interface SeedDials {
   gapiness: "continuous" | "gappy";
   // Long names — truncation and wrap behavior.
   textLength: "short" | "long";
+  // Named boundary-state looks that should not be dealt randomly. Keep this
+  // field at the END and at `baseline` for every numbered seed: adding a new
+  // middle-state census shape must not consume a PRNG draw or re-deal the five
+  // historical entropy dimensions (#3489 D5).
+  middleState: "baseline" | "one-completed-cycle";
 }
 
 // The pinned default: exactly the hand-authored look the seed has always
@@ -65,22 +71,67 @@ export const BASELINE_DIALS: SeedDials = {
   volume: "lean",
   gapiness: "continuous",
   textLength: "short",
+  middleState: "baseline",
 };
+
+export interface NamedSeedDialShape {
+  /** The SEED_DIAL_SHAPE value handed to scripts/seed.ts. */
+  name: string;
+  /** One-line audit/log description of what this fixed look exercises. */
+  description: string;
+  /** A complete vector, never a seed whose sampled meaning can drift. */
+  dials: SeedDials;
+}
+
+// Named census looks that need to stay in the standard rotation. These are
+// complete vectors by construction: adding or reordering RNG draws cannot
+// change what a name means. Keep unrelated dimensions on the baseline so a
+// dirty-profile review is about imported residue and uncontrolled names, not a
+// simultaneous illness/volume/gap scenario.
+export const NAMED_SEED_DIAL_SHAPES: readonly NamedSeedDialShape[] = [
+  {
+    name: "dirty",
+    description: "portal import quirks + long uncontrolled names",
+    dials: {
+      ...BASELINE_DIALS,
+      importQuirks: "quirky",
+      textLength: "long",
+    },
+  },
+  {
+    name: "one-cycle",
+    description: "two periods yielding one completed cycle",
+    dials: {
+      ...BASELINE_DIALS,
+      middleState: "one-completed-cycle",
+    },
+  },
+];
+
+export type SeedDialSelection =
+  | { kind: "entropy"; seed: number; dials: SeedDials }
+  | { kind: "named"; shape: NamedSeedDialShape; dials: SeedDials }
+  | { kind: "unknown"; raw: string; known: string[] }
+  | { kind: "conflict"; raw: string; reason: string };
 
 // Sample the dial vector for a seed. DEFAULT_SEED is special-cased to the
 // baseline BY CONSTRUCTION (not by hoping draws land right), so the pin cannot
-// rot as dials are appended. Every other seed draws one value per dial, in
-// declaration order — append new dials at the END (see module comment).
-export function sampleDials(seed: number): SeedDials {
-  if (seed === DEFAULT_SEED) return { ...BASELINE_DIALS };
-  const rng = mulberry32(seed);
+// rot as dials are appended. Every other seed draws the five historical
+// randomized values in declaration order; named-only middleState consumes none.
+export function sampleNumberedDials(rng: () => number): SeedDials {
   return {
     illnessNow: rng() < 0.5 ? "active" : "past",
     importQuirks: rng() < 0.5 ? "clean" : "quirky",
     volume: rng() < 0.5 ? "lean" : "heavy",
     gapiness: rng() < 0.5 ? "continuous" : "gappy",
     textLength: rng() < 0.5 ? "short" : "long",
+    middleState: "baseline",
   };
+}
+
+export function sampleDials(seed: number): SeedDials {
+  if (seed === DEFAULT_SEED) return { ...BASELINE_DIALS };
+  return sampleNumberedDials(mulberry32(seed));
 }
 
 // One line for logs and audit.md: names only the non-baseline dials, or says
@@ -94,6 +145,8 @@ export function describeDials(dials: SeedDials): string {
   if (dials.volume !== BASELINE_DIALS.volume) parts.push("heavy volume");
   if (dials.gapiness !== BASELINE_DIALS.gapiness) parts.push("logging gaps");
   if (dials.textLength !== BASELINE_DIALS.textLength) parts.push("long names");
+  if (dials.middleState === "one-completed-cycle")
+    parts.push("one completed cycle");
   return parts.length ? parts.join(" + ") : "baseline look";
 }
 
@@ -115,4 +168,32 @@ export function seedFromEnv(env: Record<string, string | undefined>): number {
   if (!raw) return DEFAULT_SEED;
   const n = Number(raw);
   return Number.isInteger(n) ? n : DEFAULT_SEED;
+}
+
+// Resolve the vector scripts/seed.ts will actually use. A named shape and an
+// entropy seed are mutually exclusive: recording both would make a run claim a
+// sampled look while the fixed vector won. Unknown names fail at the entrypoint
+// instead of quietly producing baseline data under a dirty label.
+export function seedDialsFromEnv(
+  env: Record<string, string | undefined>
+): SeedDialSelection {
+  const raw = env.SEED_DIAL_SHAPE?.trim();
+  if (!raw) {
+    const seed = seedFromEnv(env);
+    return { kind: "entropy", seed, dials: sampleDials(seed) };
+  }
+  const shape = NAMED_SEED_DIAL_SHAPES.find((entry) => entry.name === raw);
+  if (!shape)
+    return {
+      kind: "unknown",
+      raw,
+      known: NAMED_SEED_DIAL_SHAPES.map((entry) => entry.name),
+    };
+  if (env.SEED_RNG?.trim())
+    return {
+      kind: "conflict",
+      raw,
+      reason: `SEED_DIAL_SHAPE=${raw} pins a complete vector; remove SEED_RNG`,
+    };
+  return { kind: "named", shape, dials: { ...shape.dials } };
 }

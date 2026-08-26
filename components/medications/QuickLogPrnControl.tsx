@@ -140,7 +140,6 @@ export default function QuickLogPrnControl({
         disabled={busy}
         className={`${compactActions ? DOSE_ACTION_ICON : DOSE_ACTION_LABEL} ${redosePrimary ? DOSE_ACTION_BRAND : DOSE_ACTION_NEUTRAL}`}
         aria-label="Taken now"
-        title="Taken now"
         data-testid="prn-log-now"
       >
         <IconCheck className="h-3.5 w-3.5" stroke={2.5} />
@@ -155,7 +154,6 @@ export default function QuickLogPrnControl({
         className={`${compactActions ? DOSE_ACTION_ICON : DOSE_ACTION_LABEL} ${DOSE_ACTION_NEUTRAL}`}
         aria-expanded={open}
         aria-label="Earlier dose"
-        title="Earlier dose"
         data-testid="prn-log-more"
       >
         <IconClock className="h-4 w-4" stroke={2} />

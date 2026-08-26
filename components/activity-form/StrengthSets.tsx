@@ -1,6 +1,9 @@
 "use client";
 
 import EquipmentRegistryLink from "./EquipmentRegistryLink";
+import InfoTooltipIcon from "@/components/InfoTooltipIcon";
+import IconButton from "@/components/IconButton";
+import Chip from "@/components/Chip";
 import FactChipRow, { FactChip } from "@/components/facts/FactChipRow";
 import { useEffect, useRef, useState } from "react";
 import type { Equipment } from "@/lib/types";
@@ -72,7 +75,6 @@ import {
   sidePartial,
   blockedField,
   blockedRing,
-  chipCls,
   partSetsSummary,
   type PartEntry,
   type SetEntry,
@@ -147,7 +149,6 @@ function RpeStepper({
   return (
     <div
       data-testid={testId}
-      title="RPE — rate of perceived exertion (5–10, optional)"
       className="flex items-center overflow-hidden rounded-md border border-black/10 text-xs dark:border-white/10"
     >
       <button
@@ -602,17 +603,20 @@ export default function StrengthSets({
   };
   // Small button that opens the plate builder for a specific weight field.
   const plateButton = (si: number, field: "weight" | "weightRight") => (
-    <button
-      type="button"
-      // Pointer affordance only — keep it out of the weight→reps tab order (#336).
-      tabIndex={-1}
-      onClick={() => onPlateTarget(si, field)}
-      title="Plate builder"
-      aria-label="Open plate builder"
-      className="flex h-9 w-7 shrink-0 items-center justify-center rounded-sm text-slate-500 hover:bg-slate-100 hover:text-brand-600 dark:text-slate-400 dark:hover:bg-ink-800 dark:hover:text-brand-400"
-    >
-      <IconBarbell className="h-4 w-4" />
-    </button>
+    // Keep the set grid's established 28px plate COLUMN while IconButton owns a
+    // centered 44px TARGET. The heading reserves this same w-7 slot below, so
+    // widening the layout column would move both value-column centers (#337).
+    <span className="flex w-7 min-w-0 shrink-0 items-center justify-center">
+      <IconButton
+        type="button"
+        // Pointer affordance only — keep it out of the weight→reps tab order (#336).
+        tabIndex={-1}
+        onClick={() => onPlateTarget(si, field)}
+        label="Open plate builder"
+      >
+        <IconBarbell className="h-4 w-4" />
+      </IconButton>
+    </span>
   );
   // Increment steppers (issue #337). The weight step is lift-appropriate and
   // plate-loadable — the SAME weightIncrementKg/Lb the next-set suggestion adds
@@ -690,9 +694,6 @@ export default function StrengthSets({
         onChange={(e) => onChange(e.target.value)}
         placeholder="m:ss"
         aria-invalid={invalid || undefined}
-        title={
-          invalid ? "Enter time as m:ss or seconds, e.g. 1:30 or 90" : undefined
-        }
         className={`input ${
           invalid
             ? "border-rose-300 dark:border-rose-800"
@@ -765,30 +766,31 @@ export default function StrengthSets({
             // implement is chosen.
             const active = variant.equipment === eq && p.equipmentId == null;
             return (
-              <button
+              <Chip
                 key={eq}
-                type="button"
+                role="filter"
+                density="dense"
                 onClick={() => {
                   onUpdatePartName(composeVariant(variant.group, eq));
                   onUpdatePart({ equipmentId: null });
                 }}
-                className={chipCls(active)}
+                pressed={active}
               >
                 {eq}
-              </button>
+              </Chip>
             );
           })}
         {/* This lift's default implement — click to clear any custom
               implement and use the default; highlighted while it's active. */}
         {defaultEq && (
-          <button
-            type="button"
+          <Chip
+            role="filter"
+            density="dense"
             onClick={() => onUpdatePart({ equipmentId: null })}
-            title="Use the default equipment"
-            className={chipCls(p.equipmentId == null)}
+            pressed={p.equipmentId == null}
           >
             {defaultEq}
-          </button>
+          </Chip>
         )}
         {/* User-defined implement: a compact dropdown sharing the chip row.
               Selecting one drops any variant equipment (resets to the base). */}
@@ -799,7 +801,7 @@ export default function StrengthSets({
             onChange={(e) =>
               selectEquipment(e.target.value ? Number(e.target.value) : null)
             }
-            className={chipCls(p.equipmentId != null)}
+            className="input min-h-11 w-auto px-2.5 py-0.5 text-xs"
           >
             <option value="">Equipment</option>
             {equipmentList.map((eq) => (
@@ -818,7 +820,7 @@ export default function StrengthSets({
             type="button"
             onClick={() => setAddingEquipment(true)}
             data-testid="strength-equipment-add"
-            className={chipCls(false)}
+            className="btn-ghost min-h-11 px-2.5 py-0.5 text-xs"
           >
             + Equipment
           </button>
@@ -878,11 +880,9 @@ export default function StrengthSets({
                   {/* Same missed-target marker as the training log card; the
                       session status is judged server-side. */}
                   {sess.status === "missed" && (
-                    <span
-                      className="text-amber-500 dark:text-amber-400"
-                      title={SET_STATUS_TITLES.missed}
-                    >
+                    <span className="inline-flex items-center gap-0.5 text-xs text-amber-500 dark:text-amber-400">
                       <IconAlertTriangle className="h-3.5 w-3.5" stroke={2} />
+                      Missed target
                     </span>
                   )}
                 </span>
@@ -894,7 +894,6 @@ export default function StrengthSets({
                       type="button"
                       data-testid="recent-session-fill"
                       onClick={() => onFillFromSession(sess.sets)}
-                      title="Fill the set editor with this session"
                       className="-mx-1 flex w-full items-center justify-between gap-3 rounded-sm px-1 py-0.5 text-left text-slate-600 transition hover:bg-brand-50 hover:text-brand-700 dark:text-slate-300 dark:hover:bg-brand-950/40 dark:hover:text-brand-300"
                     >
                       {dateEl}
@@ -938,7 +937,6 @@ export default function StrengthSets({
               <button
                 type="button"
                 onClick={() => onApplySuggestion(suggestion)}
-                title="Fill this into a set"
                 className="rounded-md border border-brand-300 px-2 py-0.5 font-medium text-brand-600 transition hover:bg-brand-500 hover:text-white dark:border-brand-800 dark:text-brand-400 dark:hover:bg-brand-600 dark:hover:text-white"
               >
                 Use
@@ -948,15 +946,13 @@ export default function StrengthSets({
               {showPlate &&
                 !suggestion.bodyweight &&
                 suggestion.weightKg > 0 && (
-                  <button
+                  <IconButton
                     type="button"
                     onClick={() => onPlateFromSuggestion(suggestion.weightKg)}
-                    title="Load these plates on the bar"
-                    aria-label="Load these plates on the bar"
-                    className="flex h-6 w-6 items-center justify-center rounded-md border border-brand-300 text-brand-600 transition hover:bg-brand-500 hover:text-white dark:border-brand-800 dark:text-brand-400 dark:hover:bg-brand-600 dark:hover:text-white"
+                    label="Load these plates on the bar"
                   >
                     <IconBarbell className="h-3.5 w-3.5" />
-                  </button>
+                  </IconButton>
                 )}
             </span>
           </div>
@@ -989,7 +985,6 @@ export default function StrengthSets({
                 onClick={() =>
                   onApplyPerSideSuggestion(suggestionLeft, suggestionRight)
                 }
-                title="Fill both sides into a set"
                 className="rounded-md border border-brand-300 px-2 py-0.5 font-medium text-brand-600 transition hover:bg-brand-500 hover:text-white dark:border-brand-800 dark:text-brand-400 dark:hover:bg-brand-600 dark:hover:text-white"
               >
                 Use
@@ -1018,16 +1013,14 @@ export default function StrengthSets({
                 surfaces, pre-rendered by the one-computation helper. */}
             <span>{plateauHint.hintText}</span>
           </span>
-          <button
+          <IconButton
             type="button"
             onClick={() => dismissPlateau(plateauHint.dedupeKey)}
             data-testid="plateau-hint-dismiss"
-            aria-label="Dismiss plateau hint"
-            title="Dismiss"
-            className="flex h-5 w-5 shrink-0 items-center justify-center rounded-full text-slate-500 transition hover:bg-slate-200 hover:text-slate-600 dark:text-slate-400 dark:hover:bg-ink-800 dark:hover:text-slate-300"
+            label="Dismiss plateau hint"
           >
             <IconX className="h-3.5 w-3.5" stroke={2} />
-          </button>
+          </IconButton>
         </div>
       )}
       {/* One options row: the per-side toggle (unilateral lifts), the declared
@@ -1094,20 +1087,25 @@ export default function StrengthSets({
           {/* Rep-based sets only — a timed hold's effort IS its duration, so there
               is nothing for a rating to add. */}
           {!timed && (
-            <label
-              className={`flex items-center gap-2 ${
-                rpeToggling ? "cursor-progress opacity-60" : "cursor-pointer"
-              }`}
-              title="Adds an effort rating to every set row, on this and future sessions."
-            >
-              <BrandedCheckbox
-                checked={!!rpeTracking}
-                onChange={() => void toggleRpeTracking()}
-                inputTestId="rpe-tracking-checkbox"
-                controlTestId="rpe-tracking-control"
+            <span className="inline-flex items-center gap-1">
+              <label
+                className={`flex items-center gap-2 ${
+                  rpeToggling ? "cursor-progress opacity-60" : "cursor-pointer"
+                }`}
+              >
+                <BrandedCheckbox
+                  checked={!!rpeTracking}
+                  onChange={() => void toggleRpeTracking()}
+                  inputTestId="rpe-tracking-checkbox"
+                  controlTestId="rpe-tracking-control"
+                />
+                Rate effort (RPE)
+              </label>
+              <InfoTooltipIcon
+                label="RPE means rate of perceived exertion (5–10, optional). It adds an effort rating to every set row, now and in future sessions."
+                data-testid="rpe-help"
               />
-              Rate effort (RPE)
-            </label>
+            </span>
           )}
         </div>
       )}
@@ -1605,11 +1603,6 @@ export default function StrengthSets({
                       onClick={() => onUpdateSet(si, { warmup: !s.warmup })}
                       aria-pressed={s.warmup}
                       data-testid={si === 0 ? "set1-warmup" : undefined}
-                      title={
-                        s.warmup
-                          ? "Warmup set — excluded from volume & target markers"
-                          : "Mark as a warmup set"
-                      }
                       aria-label={
                         s.warmup ? "Unmark warmup set" : "Mark warmup set"
                       }
@@ -1628,7 +1621,6 @@ export default function StrengthSets({
                         data-testid={`set-remove-${si + 1}`}
                         className="flex h-11 w-11 shrink-0 items-center justify-center rounded-sm text-rose-400 hover:bg-rose-50 hover:text-rose-600 sm:mt-1 sm:h-8 sm:w-8 dark:text-rose-500/80 dark:hover:bg-rose-950/40 dark:hover:text-rose-400"
                         aria-label="Remove set"
-                        title="Remove set"
                       >
                         <IconX className="h-4 w-4" />
                       </button>
@@ -1665,15 +1657,6 @@ export default function StrengthSets({
             type="button"
             onClick={() => onAddSet()}
             disabled={!canAddSet}
-            title={
-              canAddSet
-                ? "Add another set"
-                : timed
-                  ? "Enter a hold time first"
-                  : isBodyweight(p.name)
-                    ? "Enter reps first"
-                    : "Enter weight and reps first"
-            }
             className={`-mx-2 -my-2 px-2 py-2 text-xs font-medium ${
               canAddSet
                 ? "text-link"
@@ -1682,6 +1665,15 @@ export default function StrengthSets({
           >
             + Add set
           </button>
+        )}
+        {!canAddSet && (
+          <span className="text-xs text-slate-500 dark:text-slate-400">
+            {timed
+              ? "Enter a hold time first."
+              : isBodyweight(p.name)
+                ? "Enter reps first."
+                : "Enter weight and reps first."}
+          </span>
         )}
         <span className="ml-auto flex items-center gap-3">
           {targetStatus && (
@@ -1692,7 +1684,6 @@ export default function StrengthSets({
                   ? "text-amber-500 dark:text-amber-400"
                   : "text-brand-600 dark:text-brand-400"
               }`}
-              title={SET_STATUS_TITLES[targetStatus]}
             >
               {targetStatus === "missed" ? (
                 <IconAlertTriangle className="h-3.5 w-3.5" stroke={2} />
@@ -1709,6 +1700,11 @@ export default function StrengthSets({
           )}
         </span>
       </div>
+      {showGrid && (
+        <p className="mt-1 text-xs text-slate-500 dark:text-slate-400">
+          Warmup sets do not count toward volume or target markers.
+        </p>
+      )}
       {badDuration && (
         <p className="mt-1 text-xs text-rose-500 dark:text-rose-400">
           Enter hold time as m:ss (e.g. 1:30) or seconds (e.g. 90).

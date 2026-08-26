@@ -82,9 +82,12 @@ export default function ProfilePathChoices({
         {!readOnly &&
           (selected ? (
             <div className="flex justify-end">
-              <SubmitButton className="btn w-36" pendingLabel="Continuing…">
-                Next
-              </SubmitButton>
+              <div
+                data-testid="onboarding-primary-action"
+                className="grid w-36"
+              >
+                <SubmitButton pendingLabel="Continuing…">Next</SubmitButton>
+              </div>
             </div>
           ) : (
             <p className="text-xs text-slate-500 dark:text-slate-400">

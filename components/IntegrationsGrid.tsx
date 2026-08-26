@@ -1,5 +1,6 @@
 import Link from "next/link";
-import { IconArrowRight } from "@tabler/icons-react";
+import DestinationIndicator from "@/components/DestinationIndicator";
+import OverlayDestination from "@/components/OverlayDestination";
 import { INTEGRATIONS } from "@/lib/integrations/registry";
 import { integrationDetailHref } from "@/lib/hrefs";
 import { getIntegrationState } from "@/lib/queries";
@@ -124,9 +125,10 @@ function StatusCard({
 }) {
   const attention = standingEscalates(state.standing);
   const badge = standingBadge(state.standing, syncRunNounForKind(state.kind));
-  return (
+  const href = integrationDetailHref(def.id);
+  const card = (
     <div
-      className={`card h-full transition hover:shadow-md ${
+      className={`card h-full transition group-hover:shadow-md ${
         attention ? "border-rose-300 dark:border-rose-900" : ""
       }`}
       data-testid={`integration-card-${def.id}`}
@@ -141,9 +143,16 @@ function StatusCard({
       <StatusFact state={state} />
       <div className="mt-3 inline-flex items-center gap-1 text-sm font-medium text-brand-700 dark:text-brand-400">
         {attention ? "Reconnect" : "Manage"}
-        <IconArrowRight className="h-4 w-4" />
+        <DestinationIndicator />
       </div>
     </div>
+  );
+  return href ? (
+    <OverlayDestination href={href} label={`Open ${def.name} settings`}>
+      {card}
+    </OverlayDestination>
+  ) : (
+    card
   );
 }
 
@@ -184,7 +193,7 @@ function PitchCard({ def }: { def: IntegrationDef }) {
       {!planned && (
         <div className="mt-4 inline-flex items-center gap-1 text-sm font-medium text-brand-700 dark:text-brand-400">
           Set up
-          <IconArrowRight className="h-4 w-4" />
+          <DestinationIndicator />
         </div>
       )}
     </div>
@@ -252,9 +261,7 @@ export default function IntegrationsGrid({ profileId }: { profileId: number }) {
           data-testid="grid-connected"
         >
           {ordered.map(({ def, state }) => (
-            <LinkedCard key={def.id} def={def}>
-              <StatusCard def={def} state={state!} />
-            </LinkedCard>
+            <StatusCard key={def.id} def={def} state={state!} />
           ))}
         </div>
       )}

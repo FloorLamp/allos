@@ -1,4 +1,5 @@
 import Link from "next/link";
+import DestinationLink from "@/components/DestinationLink";
 import { panelLabel, type PanelId } from "@/lib/biomarker-panels";
 import { clinicalResultPanelHref, clinicalResultDetailHref } from "@/lib/hrefs";
 
@@ -28,12 +29,12 @@ export function PanelSiblingsCard({
           </span>{" "}
           Also measured:
         </span>
-        <Link
+        <DestinationLink
           href={clinicalResultPanelHref(panelId)}
           className="shrink-0 font-medium text-brand-700 hover:underline dark:text-brand-400"
         >
-          See the whole panel →
-        </Link>
+          See the whole panel
+        </DestinationLink>
       </div>
       <ul className="flex flex-wrap gap-2">
         {names.map((name) => (

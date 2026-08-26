@@ -1,4 +1,5 @@
 import { requireSession } from "@/lib/auth";
+import Link from "next/link";
 import { today } from "@/lib/db";
 import {
   getPracticeDays,
@@ -12,7 +13,7 @@ import { DAY_HISTORY_DOMAINS, dayHistoryStart } from "@/lib/day-history";
 import { PageHeader, EmptyState } from "@/components/ui";
 import PageContainer from "@/components/PageContainer";
 import RightSizeSuggestions from "@/components/RightSizeSuggestions";
-import AddPracticeButton from "./AddPracticeButton";
+import AddPracticeButton from "@/app/(app)/wellness/AddPracticeButton";
 import PracticeCard from "./PracticeCard";
 import DayHistory from "@/components/DayHistory";
 import PracticeBackfillLauncher from "@/components/practices/PracticeBackfillLauncher";
@@ -84,7 +85,10 @@ export default async function WellnessPage(props: {
       <PageHeader
         title="Wellness"
         subtitle="Track recurring wellness routines such as sauna, meditation, breathwork, and light exposure."
-        action={<AddPracticeButton defaultOpen={searchParams.new === "1"} />}
+        createAction={{
+          kind: "practice",
+          control: <AddPracticeButton defaultOpen={searchParams.new === "1"} />,
+        }}
         actionAlign="start"
       />
 
@@ -139,7 +143,16 @@ export default async function WellnessPage(props: {
       )}
 
       <section>
-        <h2 className="mb-2 section-label">Your practices</h2>
+        <div className="mb-2 flex items-center justify-between gap-3">
+          <h2 className="section-label">Your practices</h2>
+          <Link
+            href="/wellness/practice-history"
+            className="text-sm font-medium text-brand-700 hover:underline dark:text-brand-400"
+            data-testid="practice-ledger-link"
+          >
+            View practice history
+          </Link>
+        </div>
         {practices.length === 0 ? (
           <EmptyState message="No practices yet. Add one to set a weekly goal and start logging sessions." />
         ) : (

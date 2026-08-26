@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, type ReactNode } from "react";
+import { useEffect, type MouseEventHandler, type ReactNode } from "react";
 import PendingLink, { PendingOverlay } from "@/components/PendingLink";
 import type { AppRoute } from "@/lib/hrefs";
 
@@ -119,7 +119,8 @@ export default function TimelineFilterLink({
   children,
   testId,
   label,
-  "aria-current": ariaCurrent,
+  ariaCurrent,
+  onClick,
   // Disclosure state for the link-driven fold headers (#2657). `aria-expanded` IS
   // supported on `role="link"` — unlike `aria-pressed`, which the #2535 scan bans
   // outright — so a month card announces open/closed to assistive technology while
@@ -129,15 +130,15 @@ export default function TimelineFilterLink({
   href: AppRoute;
   className: string;
   children: ReactNode;
+  ariaCurrent?: "page" | "true" | "location";
+  onClick?: MouseEventHandler<HTMLAnchorElement>;
   testId?: string;
   /**
    * What the pending state announces. Optional because this component is also
-   * passed as `DateRangeControl`'s `LinkComponent`, whose contract is
-   * href/className/children only — a chip whose children ARE its label names
-   * itself, and anything richer says so explicitly.
+   * passed as `DateRangeControl`'s Chip link renderer. A chip whose children ARE
+   * its label names itself, and anything richer says so explicitly.
    */
   label?: string;
-  "aria-current"?: "page";
   ariaExpanded?: boolean;
 }) {
   const announced =
@@ -148,9 +149,10 @@ export default function TimelineFilterLink({
       label={announced}
       scroll={false}
       testId={testId}
-      current={ariaCurrent === "page"}
+      ariaCurrent={ariaCurrent}
       ariaExpanded={ariaExpanded}
-      onClick={() => {
+      onClick={(event) => {
+        onClick?.(event);
         if (typeof window === "undefined") return;
         const controls = document.getElementById("timeline-controls");
         const feed = document.getElementById("timeline-feed");

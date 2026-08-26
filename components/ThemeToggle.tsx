@@ -134,10 +134,9 @@ export default function ThemeToggle({ bare = false }: { bare?: boolean }) {
       suppressHydrationWarning
       className={
         bare
-          ? "flex w-full items-center justify-start gap-2 rounded-md px-3 py-2 text-sm font-medium text-slate-700 transition hover:bg-white dark:text-slate-200 dark:hover:bg-ink-750"
+          ? "flex min-h-11 w-full items-center justify-start gap-2 rounded-md px-3 py-2 text-sm font-medium text-slate-700 transition hover:bg-white dark:text-slate-200 dark:hover:bg-ink-750"
           : "btn-ghost w-full justify-start"
       }
-      title="Toggle color theme"
       aria-label={`Color theme: ${LABELS[theme]}`}
     >
       {/* Until mounted, render the same icon/label the server did (system) to

@@ -1,24 +1,27 @@
 # Micro-motion: the small moves that carry information
 
 The app is almost entirely static, and that is the calm identity working — no
-garnish, nothing looping, nothing moving without a gesture. The exception this
-document governs is motion that answers **"did that work?"** inside the interface
-itself, which is faster and quieter than a toast. Motion here is information, and
-it is held to the same standard as copy.
+garnish and nothing looping. Motion begins only from a gesture, a write, or a
+bounded async state transition the reader is already waiting for. It answers
+**"did that work?"** or **"what just arrived?"** inside the interface, faster and
+quieter than a toast. Motion here is information, and it is held to the same
+standard as copy.
 
-Five motions ship today (#2654, #2657). `slide` and `fold` are the two halves of one
+Seven motions ship today (#2654, #2657, #3253, #3675). `slide` and `fold` are the two halves of one
 gesture — a dismissal travelling, and the fold answering — and they are deliberately
 **two** tokens, because they are two durations with two different justifications.
 
-| Motion   | Token             | Duration             | What it says                                               |
-| -------- | ----------------- | -------------------- | ---------------------------------------------------------- |
-| `settle` | `--motion-settle` | 300 ms               | the control you tapped **became** its done state           |
-| `count`  | `--motion-count`  | 250 ms               | a **quantity** changed, rather than a value being replaced |
-| `slide`  | `--motion-slide`  | 300 ms               | the finding you dismissed **went somewhere**               |
-| `tick`   | `--motion-tick`   | 180 ms               | the scrub crossed **into a different month**               |
-| `fold`   | `--motion-fold`   | 500 ms (band-exempt) | the fold **caught** it — this is where to look             |
+| Motion    | Token              | Duration             | What it says                                               |
+| --------- | ------------------ | -------------------- | ---------------------------------------------------------- |
+| `settle`  | `--motion-settle`  | 300 ms               | the control you tapped **became** its done state           |
+| `count`   | `--motion-count`   | 250 ms               | a **quantity** changed, rather than a value being replaced |
+| `slide`   | `--motion-slide`   | 300 ms               | the finding you dismissed **went somewhere**               |
+| `tick`    | `--motion-tick`    | 180 ms               | the scrub crossed **into a different month**               |
+| `promote` | `--motion-promote` | 300 ms               | a witnessed reading **moved into Now**                     |
+| `arrive`  | `--motion-arrive`  | 200 ms               | due-and-usual offers **finished gathering**                |
+| `fold`    | `--motion-fold`    | 500 ms (band-exempt) | the fold **caught** it — this is where to look             |
 
-One ease curve for all five, `--motion-ease`, decelerating: the move arrives and
+One ease curve for all seven, `--motion-ease`, decelerating: the move arrives and
 settles, it never bounces back.
 
 ## The four rules
@@ -85,16 +88,21 @@ smuggle the row's travel out of the band too, and the test fails that.
 
 - `lib/micro-motion.ts` — the pure half. Durations, the ease curve, the `MICRO_MOTIONS`
   declaration table, `microMotionPlan(kind, reduceMotion)` (which folds the preference
-  into a duration and a class name, returning `0` and `""` under the preference), and
-  `countRollValue()`, the roll's eased curve.
-- `app/globals.css`, `SECTION: Micro-motion` — the custom properties and the two
+  into a duration and a class name, returning `0` and `""` under the preference).
+- `app/globals.css`, `SECTION: Micro-motion` — the custom properties and the declared
   `.motion-*` classes, plus a `prefers-reduced-motion: reduce` block that neutralizes
   them. Belt and braces: the planner already returns no class, but a stylesheet that
   only works because its JS caller remembered to check is one refactor from animating
   someone who asked it not to.
-- `components/RollingNumber.tsx` — the one `requestAnimationFrame` case.
+- `components/RollingNumber.tsx` — renders authoritative digits immediately; its one
+  `requestAnimationFrame` loop only retires the bounded scale-pulse receipt.
+- `app/(app)/nutrition/FoodLogBar.tsx` — serving-chip settle and serving-count pulse.
+- `components/quick-entry/QuickStoolForm.tsx` — type-chip settle and today's-count pulse.
 - `app/(app)/timeline/TimelineScrubber.tsx` — the jump rail's bubble, beating once per
   month boundary a drag crosses.
+- `components/dashboard/NowCards.tsx` — a witnessed reading promoted into Now.
+- `components/QuickLogSheet.tsx` — due-and-usual offers fading into a slot reserved
+  before their asynchronous gather starts.
 - `components/SnoozeDismissMenu.tsx` — the dismissal's travel, started on the tap.
 - `app/(app)/upcoming/FoldSummary.tsx` — the fold line that pulses when it catches one.
 - `lib/__tests__/micro-motion.test.ts` — pins the CSS numbers to the module's, and
@@ -116,18 +124,23 @@ separately, so widening the pattern is not a permanent chase.
 
 `lib/motion.ts` owns a different question — a panel _arriving_, at 240 ms, with an
 enter/exit pair and a `usePresence` unmount window (see `docs/internals/overlays.md`).
-That is navigation. Micro-motion is feedback on a write — and, since `tick`, on a
-GESTURE, which is the same question ("did that register?") asked of a drag instead of a
-save. Keep the vocabularies apart:
+That is navigation. Micro-motion is feedback on a write, a gesture, or a bounded
+witnessed async state transition. `tick` asks "did that register?" of a drag;
+`arrive` identifies content whose pending gather just resolved. Keep the vocabularies apart:
 a surface that slides a sheet does not reach into this module, and the token test
 fails a micro-motion name that collides with an overlay one.
 
 ## The tenants
 
-**`settle` — `components/DoseStatusControl.tsx`.** A dose check-off is the app's most
-tap-shaped confirm, and the control becoming its done state is the receipt — which is
-why the happy path here has never needed a toast. The class is hung on the take button
-for one 300 ms run, and only when all of these hold:
+**`settle` — `components/DoseStatusControl.tsx`, the food serving chips in
+`app/(app)/nutrition/FoodLogBar.tsx`, and the quick stool type chips.** A dose check-off is the app's most tap-shaped
+confirm, and the control becoming its done state is the receipt — which is why the
+happy path here has never needed a toast. The food and stool chips adopt the same
+receipt while food's keyed toast carries the separate Undo escape hatch. The class is hung on the
+tapped control for one 300 ms run after a write lands; a refusal or dropped request
+animates nothing.
+
+The dose tenant remains narrower, and only runs when all of these hold:
 
 - the tap was a **tap**. Server state arriving already-taken (a reload, a revalidation,
   another device) never animates; a settle claims "you just did that".
@@ -140,16 +153,21 @@ transition already made, and no tap ever waits on it. The carriers of "taken" ar
 button's `aria-pressed`, its accessible name, its title and its colour — all correct on
 the first paint after the tap, motion or no motion.
 
-**`count` — `components/RollingNumber.tsx`, in the protein quick-add.** A quantity
-changing reads differently from a value being replaced, and that difference is the
-information. Contract:
+**`count` — `components/RollingNumber.tsx`, in protein quick-add, food serving rows,
+and the quick stool today's count.** A quantity changing reads differently from a value being replaced, and that
+difference is the information. Contract:
 
 - the **final value is always the truth in the DOM**. It renders verbatim on the server,
-  on the first client paint, and on every mount. The roll plays only on a **change**, so a
+  on the first client paint, and on every change. The scale pulse is only a receipt, so a
   screen reader, a no-JS reader and an exact-text assertion all read the real number.
 - **`tabular-nums` is applied by the component**, not by the caller: digits that change
   width relayout the row around them, which is the one thing this motion must not do.
-- it never plays on mount and only plays on a change.
+- it never pulses on mount and only pulses on a change.
+
+`RollingNumber`, `data-rolling`, and the existing `rolling-count-*` test IDs are
+legacy public names retained for caller and browser-test stability. “Rolling” in those
+identifiers now means that the scale-pulse receipt is active; the digits do not roll or
+tween, and no animation frame controls their text.
 
 **`slide` + `fold` — the dismissal and the fold that catches it, on `/upcoming`.** One
 gesture, two motions, two components, because the two ends of it are on opposite sides
@@ -208,6 +226,15 @@ between scrubbing _through_ history and sliding around inside one month.
 - The beat is replayed by **remounting the bubble's label** (React `key` on a counter),
   because a one-shot CSS animation cannot re-run from a class that never left.
 
+**`arrive` — `components/QuickLogSheet.tsx`, the due-and-usual gather.** The sheet
+reserves the context slot before it asks the server what is due and usual, so the
+answer never changes panel height or moves the segment strip. When a non-empty answer
+lands, its section fades once for 200 ms, opacity only. The heading and controls are
+already authoritative on that frame, and a persistent `aria-live` status announces
+that the options are ready. Under reduced motion they are simply present at full
+opacity; no class or keyframe is scheduled. An empty or failed gather stays silent and
+the reserved slot remains, so silence never reintroduces the shove.
+
 ## How the suite proves it
 
 `lib/__tests__/micro-motion.test.ts` owns the animation contract directly: registry ↔
@@ -222,7 +249,7 @@ browser scheduling while duplicating those domain flows.
 | Deferred                                                    | Why                                                                                                                                                                                               |
 | ----------------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
 | A login-scoped "reduce motion" display setting beside theme | `prefers-reduced-motion` already reaches every motion here, at the OS level where most people who need it have already set it. The app-tier duplicate is a settings surface, not a motion change. |
-| Settle on quick-log chips and mark-done rows                | Same vocabulary, more surfaces. Adopting one is a class and a plan call; adopting all of them thinly is how a motion pass sprawls.                                                                |
+| Settle on remaining quick-log chips and mark-done rows      | Same vocabulary, more surfaces. Food serving and the applicable stool chip/count adopted it (#3611); adopting every other chip thinly is still how a motion pass sprawls.                         |
 
 Explicitly out of scope for this vocabulary, permanently: skeleton shimmer, attention
 pulses on findings (a finding may not campaign — see the reach policy in

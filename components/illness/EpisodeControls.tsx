@@ -1,17 +1,12 @@
 "use client";
 
 import { useState } from "react";
-import {
-  IconPrinter,
-  IconShare,
-  IconCopy,
-  IconCheck,
-} from "@tabler/icons-react";
+import { IconPrinter, IconShare } from "@tabler/icons-react";
+import CreatedShareLink from "@/components/CreatedShareLink";
 import ModalShell from "@/components/ModalShell";
 import { useConfirm } from "@/components/ConfirmDialog";
 import OverflowMenu, { MENU_ITEM } from "@/components/OverflowMenu";
 import EpisodeEditor from "@/components/illness/EpisodeEditor";
-import { NOTICE_TONE } from "@/components/Notice";
 import SubmitButton from "@/components/SubmitButton";
 import { useToast } from "@/components/Toast";
 import { SHARE_TTL_OPTIONS } from "@/lib/share-links";
@@ -60,7 +55,6 @@ export default function EpisodeControls({
   const [createdUrl, setCreatedUrl] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [creating, setCreating] = useState(false);
-  const [copied, setCopied] = useState(false);
   const [conditionBusy, setConditionBusy] = useState(false);
   const confirm = useConfirm();
   const toast = useToast();
@@ -69,7 +63,6 @@ export default function EpisodeControls({
     e.preventDefault();
     setError(null);
     setCreatedUrl(null);
-    setCopied(false);
     setCreating(true);
     const res = await createEpisodeShareLinkAction(
       new FormData(e.currentTarget)
@@ -105,17 +98,6 @@ export default function EpisodeControls({
     return fd;
   }
 
-  async function copy() {
-    if (!createdUrl) return;
-    try {
-      await navigator.clipboard.writeText(createdUrl);
-      setCopied(true);
-      setTimeout(() => setCopied(false), 1500);
-    } catch {
-      /* clipboard unavailable — URL shown for manual copy */
-    }
-  }
-
   return (
     <div
       className="flex flex-wrap items-center gap-2 print:hidden"
@@ -126,7 +108,6 @@ export default function EpisodeControls({
         className="btn-ghost h-9 w-9 p-0"
         onClick={() => window.print()}
         aria-label="Print episode"
-        title="Print"
       >
         <IconPrinter className="h-4 w-4" stroke={1.75} />
       </button>
@@ -137,7 +118,6 @@ export default function EpisodeControls({
           className="btn-ghost h-9 w-9 p-0"
           onClick={() => setShareOpen(true)}
           aria-label="Share episode"
-          title="Share"
         >
           <IconShare className="h-4 w-4" stroke={1.75} />
         </button>
@@ -241,36 +221,7 @@ export default function EpisodeControls({
             </SubmitButton>
           </form>
 
-          {createdUrl && (
-            <div
-              className={`mt-4 rounded-lg border p-3 ${NOTICE_TONE.emerald}`}
-            >
-              <div className="text-xs font-medium text-emerald-800 dark:text-emerald-300">
-                Link created — copy it now (it won’t be shown again):
-              </div>
-              <div className="mt-2 flex items-center gap-2">
-                <input
-                  readOnly
-                  value={createdUrl}
-                  onFocus={(e) => e.currentTarget.select()}
-                  className="input font-mono text-xs"
-                />
-                <button
-                  type="button"
-                  onClick={copy}
-                  className="btn-ghost shrink-0"
-                  aria-label="Copy link"
-                  title="Copy link"
-                >
-                  {copied ? (
-                    <IconCheck className="h-4 w-4" stroke={1.75} />
-                  ) : (
-                    <IconCopy className="h-4 w-4" stroke={1.75} />
-                  )}
-                </button>
-              </div>
-            </div>
-          )}
+          {createdUrl && <CreatedShareLink value={createdUrl} />}
         </ModalShell>
       )}
       {editor && (

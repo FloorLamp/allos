@@ -1,12 +1,17 @@
 import { test, expect } from "./fixtures";
-import { type Page } from "@playwright/test";
+import { type Locator, type Page } from "@playwright/test";
 import { followLink } from "./nav";
 import {
   dismissToast,
   expectNoClippedContent,
   hydratedClick,
+  settledBoxes,
   settledClick,
 } from "./helpers";
+import {
+  expectDesktopOrdinarySubmit,
+  expectPhoneOrdinarySubmit,
+} from "./ordinary-submit-actions";
 import {
   ensureUnlogged,
   addFromPicker,
@@ -14,6 +19,36 @@ import {
   openTempEntry,
 } from "./symptom-helpers";
 import { frozenNow } from "./worker-env";
+import {
+  TAP_FLOOR_FLOAT_EPSILON_PX,
+  TAP_FLOOR_PX,
+} from "@/lib/tap-floor-tokens";
+
+const PHONE = { width: 390, height: 844 };
+
+async function expectClosedEpisodeAction(
+  locator: Locator,
+  name: string
+): Promise<void> {
+  await expect(locator).toHaveAttribute("data-button-control", "");
+  await expect(locator).toHaveAccessibleName(name);
+  const [box] = await settledBoxes([locator]);
+  expect(
+    box.width + TAP_FLOOR_FLOAT_EPSILON_PX,
+    `${name} rendered width`
+  ).toBeGreaterThanOrEqual(TAP_FLOOR_PX);
+  expect(
+    box.height + TAP_FLOOR_FLOAT_EPSILON_PX,
+    `${name} rendered height`
+  ).toBeGreaterThanOrEqual(TAP_FLOOR_PX);
+  expect(
+    box.x + TAP_FLOOR_FLOAT_EPSILON_PX,
+    `${name} left viewport edge`
+  ).toBeGreaterThanOrEqual(0);
+  expect(box.x + box.width, `${name} right viewport edge`).toBeLessThanOrEqual(
+    PHONE.width + TAP_FLOOR_FLOAT_EPSILON_PX
+  );
+}
 
 async function openCurrentEpisode(page: Page) {
   await page.goto("/medical/episodes");
@@ -89,8 +124,8 @@ test.describe("Illness-episode follow-ups (#856)", () => {
     ).toBeVisible();
     const printAction = page.getByRole("button", { name: "Print episode" });
     const shareAction = page.getByRole("button", { name: "Share episode" });
-    await expect(printAction).toHaveAttribute("title", "Print");
-    await expect(shareAction).toHaveAttribute("title", "Share");
+    await expect(printAction).toHaveAccessibleName("Print episode");
+    await expect(shareAction).toHaveAccessibleName("Share episode");
     await expect(printAction).toHaveText("");
     await expect(shareAction).toHaveText("");
     await expect(page.getByTestId("episode-care-context")).toBeVisible();
@@ -231,7 +266,7 @@ test.describe("Illness-episode follow-ups (#856)", () => {
     ).toBeLessThanOrEqual(1);
     expect(Math.max(...illnessDoseActionWidths)).toBeLessThanOrEqual(36);
     for (const button of illnessDoseActions) {
-      await expect(button).toHaveAttribute("title", /\S+/);
+      await expect(button).toHaveAccessibleName(/\S+/);
       await expect(button.locator("span")).toHaveClass(/sr-only/);
     }
     const medNameBox = await doseWorkingRow
@@ -347,17 +382,65 @@ test.describe("Illness-episode follow-ups (#856)", () => {
       .getByTestId("illness-event-symptom")
       .filter({ hasText: "Peaked in the evening" })
       .first(); // first-ok: filtered to the note THIS spec logged — one match
-    await hydratedClick(
-      page,
-      historicalSymptom.getByTestId("overflow-menu-trigger")
+    const openSymptomEditor = async () => {
+      await hydratedClick(
+        page,
+        historicalSymptom.getByTestId("overflow-menu-trigger")
+      );
+      await hydratedClick(
+        page,
+        page
+          .getByRole("menu")
+          .getByRole("button", { name: "Edit", exact: true })
+      );
+      const editor = historicalSymptom.locator(
+        "xpath=following-sibling::tr[@data-testid='illness-event-editor'][1]"
+      );
+      await expect(editor.getByLabel("Severity")).toBeVisible();
+      return editor;
+    };
+
+    let symptomEditor = await openSymptomEditor();
+    let symptomActions = symptomEditor.getByTestId(
+      "illness-event-editor-actions"
     );
-    await page.getByRole("button", { name: "Edit", exact: true }).click();
-    let symptomEditor = page.getByTestId("illness-event-editor");
-    await expect(symptomEditor.getByLabel("Severity")).toBeVisible();
+    let symptomSave = symptomActions.getByRole("button", { name: "Save" });
+    let symptomCancel = symptomActions.getByRole("button", {
+      name: "Cancel",
+    });
+    const desktopViewport = page.viewportSize();
+    expect(
+      desktopViewport,
+      "the illness episode project has a fixed desktop viewport"
+    ).not.toBeNull();
+    await expectDesktopOrdinarySubmit({
+      form: symptomEditor,
+      owner: symptomActions,
+      submit: symptomSave,
+      adjacent: symptomCancel,
+      name: "episode timeline Save",
+    });
+    await hydratedClick(page, symptomCancel);
+    await page.setViewportSize({ width: 390, height: 844 });
+    const earlierHistory = page.getByTestId("illness-history-earlier-toggle");
+    if ((await earlierHistory.getAttribute("aria-expanded")) !== "true")
+      await hydratedClick(page, earlierHistory);
+    await expect(historicalSymptom).toBeVisible();
+    symptomEditor = await openSymptomEditor();
     await symptomEditor
       .getByLabel("Note")
       .fill("Peaked in the evening — corrected");
-    await symptomEditor.getByRole("button", { name: "Save" }).click();
+    symptomActions = symptomEditor.getByTestId("illness-event-editor-actions");
+    symptomSave = symptomActions.getByRole("button", { name: "Save" });
+    symptomCancel = symptomActions.getByRole("button", { name: "Cancel" });
+    await expectPhoneOrdinarySubmit({
+      form: symptomEditor,
+      owner: symptomActions,
+      submit: symptomSave,
+      adjacent: symptomCancel,
+      name: "episode timeline Save",
+    });
+    await settledClick(page, symptomSave);
     await expect(historicalSymptom).toContainText(
       "Peaked in the evening — corrected"
     );
@@ -365,14 +448,13 @@ test.describe("Illness-episode follow-ups (#856)", () => {
     // is long enough that the ⋯ trigger re-opened next sits in the same quadrant —
     // so the toast intercepts the re-open for its whole 6s window (#2861).
     await dismissToast(page, "Symptom updated.");
-    await hydratedClick(
-      page,
-      historicalSymptom.getByTestId("overflow-menu-trigger")
-    );
-    await page.getByRole("button", { name: "Edit", exact: true }).click();
-    symptomEditor = page.getByTestId("illness-event-editor");
+    await page.setViewportSize(desktopViewport!);
+    symptomEditor = await openSymptomEditor();
     await symptomEditor.getByLabel("Note").fill("Peaked in the evening");
-    await symptomEditor.getByRole("button", { name: "Save" }).click();
+    await settledClick(
+      page,
+      symptomEditor.getByRole("button", { name: "Save" })
+    );
     await expect(historicalSymptom).toContainText("Peaked in the evening");
     await dismissToast(page, "Symptom updated.");
 
@@ -543,6 +625,7 @@ test.describe("Illness-episode follow-ups (#856)", () => {
     page,
   }) => {
     test.slow();
+    await page.setViewportSize(PHONE);
     await openCurrentEpisode(page);
     const timeline = page.getByTestId("episode-illness-timeline");
     const historyRows = timeline.locator(
@@ -554,7 +637,9 @@ test.describe("Illness-episode follow-ups (#856)", () => {
       timeline.getByRole("heading", { name: "History" })
     ).toBeVisible();
 
-    await page.getByRole("button", { name: "End episode" }).click();
+    const endEpisode = page.getByTestId("episode-end");
+    await expectClosedEpisodeAction(endEpisode, "End episode");
+    await endEpisode.click();
     const endDialog = page.getByRole("dialog", {
       name: "End this episode?",
     });
@@ -583,6 +668,7 @@ test.describe("Illness-episode follow-ups (#856)", () => {
     await expect(historyRows).toHaveCount(historyCountBeforeEnd);
     const reopen = page.getByTestId("episode-reopen-action");
     await expect(reopen).toBeVisible();
+    await expectClosedEpisodeAction(reopen, "Reopen episode");
     await expect(reopen.locator(".tabler-icon-restore")).toBeVisible();
     await expect(page.getByTestId("resolved-episode-backfill-note")).toHaveText(
       "Add a past update to this episode. This won’t reopen it."

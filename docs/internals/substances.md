@@ -1,5 +1,13 @@
 # Substances
 
+The cross-domain Timeline browses alcohol, nicotine, cannabis, and custom
+substances as one per-day `substance` rollup. Alcohol is counted from its shared
+food serving events; the other substances are counted from their current daily
+totals. This is browse-only. #3295 owns the later event-row schema and writers,
+and its row ledger must mount `components/ledger/EventLedgerFrame.tsx` as
+recorded in `docs/internals/event-ledger.md` rather than creating a substance
+shell beside it.
+
 Status: vocabulary shipped (#3279); the surfaces that consume it are in flight
 
 This is the file to read before adding anything to the substance domain. It records
@@ -176,9 +184,10 @@ defect. The same two facts are re-checked server-side in `loadQuickEntry`, so a
 hand-written `?quick=log-substance` cannot reach the offer either.
 
 A substance tap is also one hand-entered row of logging evidence, so `LOG_DAY_SOURCES`
-declares `substance_daily_totals` for the Care segment. Alcohol is deliberately **not**
-declared there: its taps land on `food_daily_totals`, which the Food arm already counts,
-and naming that store twice would make one tap evidence for two segments.
+declares `substance_daily_totals` for the Consume segment. Alcohol is deliberately **not**
+declared there: its taps land on `food_daily_totals`, which the Consume arm already counts,
+through the `log-food` entry that owns that writer. The substance entry declares only its
+dedicated store, so one store never has two quick-log owners in the census.
 
 ## Reach
 

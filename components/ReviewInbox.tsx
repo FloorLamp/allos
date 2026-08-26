@@ -1,5 +1,5 @@
-import Link from "next/link";
 import { IconAlertTriangle } from "@tabler/icons-react";
+import DestinationLink from "@/components/DestinationLink";
 import type { IntegrationSyncEvent, IntegrationId } from "@/lib/types";
 import type { UnitPrefs } from "@/lib/settings";
 import { getIntegration } from "@/lib/integrations/registry";
@@ -173,12 +173,12 @@ export default function ReviewInbox({
                       </p>
                     )}
                     {href && (
-                      <Link
+                      <DestinationLink
                         href={href}
                         className="mt-2 inline-block text-sm text-link"
                       >
-                        Check {sourceName(ev.source_id)} settings →
-                      </Link>
+                        Check {sourceName(ev.source_id)} settings
+                      </DestinationLink>
                     )}
                     {isAdmin && ev.raw_ref && <RawPayloadViewer id={ev.id} />}
                   </li>

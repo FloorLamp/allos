@@ -16,6 +16,7 @@ import OverflowMenu, {
   type MenuHelpers,
 } from "@/components/OverflowMenu";
 import SubmitButton from "@/components/SubmitButton";
+import InfoTooltipIcon from "@/components/InfoTooltipIcon";
 import { useToast } from "@/components/Toast";
 import {
   SnoozeDismissItems,
@@ -48,8 +49,8 @@ const ACTION_ICON: Record<string, TablerIcon> = {
 };
 
 // A chip whose VISIBLE label is an abbreviation states the unabbreviated form here
-// (#2858): it becomes the control's accessible name and its hover title, so a
-// shortened supplement name is never the only form the chip can be read as. Absent
+// (#2858): the compact text remains visible, while the full form is both the
+// control's accessible name and a sibling shared disclosure. Absent
 // on every chip whose label already IS the whole thing.
 //
 // A CHIP concern only. The overflow-menu presenter below renders `label` verbatim,
@@ -140,39 +141,46 @@ export function RowActionChips({
     >
       {actions.map((a) => {
         const Icon = a.icon ? ACTION_ICON[a.icon] : null;
+        const accessibleLabel =
+          a.fullLabel && a.fullLabel !== a.label
+            ? `${a.label} — ${a.fullLabel}`
+            : a.label;
         if (a.kind === "link") {
           return (
-            <Link
-              key={a.id}
-              href={a.href}
-              data-testid={a.testId}
-              className={CHIP}
-              title={a.fullLabel}
-              aria-label={a.fullLabel}
-            >
-              {Icon && <Icon className="h-3.5 w-3.5" stroke={1.75} />}
-              {a.label}
-            </Link>
+            <span key={a.id} className="inline-flex items-center">
+              <Link
+                href={a.href}
+                data-testid={a.testId}
+                className={CHIP}
+                aria-label={accessibleLabel}
+              >
+                {Icon && <Icon className="h-3.5 w-3.5" stroke={1.75} />}
+                {a.label}
+              </Link>
+              {a.fullLabel ? (
+                <InfoTooltipIcon label={`Full label: ${a.fullLabel}`} />
+              ) : null}
+            </span>
           );
         }
         return (
-          <form
-            key={a.id}
-            action={(fd) => runChipAction(a, fd)}
-            className="shrink-0"
-          >
-            <HiddenFields fields={a.fields} />
-            <SubmitButton
-              pendingLabel="…"
-              data-testid={a.testId}
-              className={CHIP}
-              title={a.fullLabel}
-              aria-label={a.fullLabel}
-            >
-              {Icon && <Icon className="h-3.5 w-3.5" stroke={1.75} />}
-              {a.label}
-            </SubmitButton>
-          </form>
+          <span key={a.id} className="inline-flex items-center">
+            <form action={(fd) => runChipAction(a, fd)} className="shrink-0">
+              <HiddenFields fields={a.fields} />
+              <SubmitButton
+                pendingLabel="…"
+                data-testid={a.testId}
+                className={CHIP}
+                aria-label={accessibleLabel}
+              >
+                {Icon && <Icon className="h-3.5 w-3.5" stroke={1.75} />}
+                {a.label}
+              </SubmitButton>
+            </form>
+            {a.fullLabel ? (
+              <InfoTooltipIcon label={`Full label: ${a.fullLabel}`} />
+            ) : null}
+          </span>
         );
       })}
     </div>

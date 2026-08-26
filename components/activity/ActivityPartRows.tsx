@@ -93,6 +93,13 @@ export default function ActivityPartRows({
         const recordPresentation = record
           ? strengthRecordPresentation(record)
           : null;
+        const rowHelp = [
+          delta?.title,
+          recordPresentation?.help,
+          part.status ? SET_STATUS_TITLES[part.status] : null,
+        ]
+          .filter((help): help is string => Boolean(help))
+          .join(" · ");
         const href = exerciseHref?.(part.name);
         const highlightMuscles =
           highlightMusclesByExercise[part.name.trim().toLowerCase()] ?? [];
@@ -115,7 +122,6 @@ export default function ActivityPartRows({
               <Link
                 href={href}
                 className="text-left font-medium text-slate-800 hover:text-brand-600 dark:text-slate-100 dark:hover:text-brand-400"
-                title={`See ${part.name} progression`}
               >
                 {part.name}
               </Link>
@@ -134,7 +140,6 @@ export default function ActivityPartRows({
               {delta && (
                 <span
                   data-testid="exercise-vs-last"
-                  title={delta.title}
                   className={`whitespace-nowrap text-xs tabular-nums ${
                     delta.direction === "up"
                       ? "text-brand-600 dark:text-brand-400"
@@ -162,62 +167,58 @@ export default function ActivityPartRows({
                   >
                     {recordPresentation.label}
                   </Link>
-                  <InfoTooltipIcon
-                    label={recordPresentation.help}
-                    className="-ml-0.5"
-                    data-testid="exercise-pr-info"
-                  />
                 </span>
               ) : null}
-              {part.status === "met" && (
-                <span
-                  role="img"
-                  aria-label={SET_STATUS_TITLES.met}
-                  className="text-brand-600 dark:text-brand-400"
-                  title={SET_STATUS_TITLES.met}
-                >
-                  <IconCheck className="h-4 w-4" stroke={2.5} />
-                </span>
-              )}
-              {part.status === "missed" && (
-                <span
-                  role="img"
-                  aria-label={SET_STATUS_TITLES.missed}
-                  className="text-amber-500 dark:text-amber-400"
-                  title={SET_STATUS_TITLES.missed}
-                >
-                  <IconAlertTriangle className="h-4 w-4" stroke={2} />
-                </span>
-              )}
             </span>
-            {(part.muscle || part.equipment) && (
-              <span className="flex min-w-0 items-center gap-x-1 overflow-hidden whitespace-nowrap">
-                {part.muscle &&
-                  (onFilterTag ? (
-                    <button
-                      type="button"
-                      onClick={() => onFilterTag("muscle", part.muscle!)}
-                      title={`Show ${part.muscle} activities`}
-                      className="relative z-10 shrink-0 text-xs text-slate-500 hover:text-brand-600 hover:underline dark:text-slate-400 dark:hover:text-brand-400"
-                    >
-                      {part.muscle}
-                    </button>
-                  ) : (
-                    <span className="shrink-0 text-xs text-slate-500 dark:text-slate-400">
-                      {part.muscle}
-                    </span>
-                  ))}
-                {part.muscle && part.equipment && (
-                  <span
-                    aria-hidden
-                    className="shrink-0 text-xs text-slate-500 dark:text-slate-400"
-                  >
-                    ·
+            {(part.status || rowHelp || part.muscle || part.equipment) && (
+              <span className="flex min-w-0 flex-wrap items-center gap-x-1 gap-y-0.5">
+                {part.status === "met" && (
+                  <span className="inline-flex items-center gap-1 text-xs text-brand-600 dark:text-brand-400">
+                    <IconCheck className="h-4 w-4" stroke={2.5} />
+                    Target met
                   </span>
                 )}
-                {part.equipment && (
-                  <span className="min-w-0 truncate text-xs text-slate-500 dark:text-slate-400">
-                    {part.equipment}
+                {part.status === "missed" && (
+                  <span className="inline-flex items-center gap-1 text-xs text-amber-500 dark:text-amber-400">
+                    <IconAlertTriangle className="h-4 w-4" stroke={2} />
+                    Target missed
+                  </span>
+                )}
+                {rowHelp ? (
+                  <InfoTooltipIcon
+                    label={rowHelp}
+                    data-testid="exercise-row-info"
+                  />
+                ) : null}
+                {(part.muscle || part.equipment) && (
+                  <span className="flex min-w-0 items-center gap-x-1 overflow-hidden whitespace-nowrap">
+                    {part.muscle &&
+                      (onFilterTag ? (
+                        <button
+                          type="button"
+                          onClick={() => onFilterTag("muscle", part.muscle!)}
+                          className="relative z-10 shrink-0 text-xs text-slate-500 hover:text-brand-600 hover:underline dark:text-slate-400 dark:hover:text-brand-400"
+                        >
+                          {part.muscle}
+                        </button>
+                      ) : (
+                        <span className="shrink-0 text-xs text-slate-500 dark:text-slate-400">
+                          {part.muscle}
+                        </span>
+                      ))}
+                    {part.muscle && part.equipment && (
+                      <span
+                        aria-hidden
+                        className="shrink-0 text-xs text-slate-500 dark:text-slate-400"
+                      >
+                        ·
+                      </span>
+                    )}
+                    {part.equipment && (
+                      <span className="min-w-0 truncate text-xs text-slate-500 dark:text-slate-400">
+                        {part.equipment}
+                      </span>
+                    )}
                   </span>
                 )}
               </span>

@@ -114,7 +114,6 @@ export default function ProviderAffiliations({
                   type="button"
                   className="btn-ghost shrink-0 p-1"
                   aria-label={`Remove affiliation with ${a.name}`}
-                  title="Remove affiliation"
                   data-testid="affiliation-unlink"
                   onClick={() => {
                     const fd = new FormData();
@@ -251,7 +250,7 @@ export default function ProviderAffiliations({
                     }
                   />
                 </div>
-                <SubmitButton className="btn inline-flex items-center gap-1.5">
+                <SubmitButton>
                   <IconPlus className="h-4 w-4" stroke={1.75} />
                   Link
                 </SubmitButton>

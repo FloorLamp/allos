@@ -7,6 +7,8 @@ import type { MobilityMove } from "@/lib/mobility-moves";
 import { regionsForMove } from "@/lib/mobility-coverage";
 import type { MuscleRegion } from "@/lib/lifts";
 import { useToast } from "@/components/Toast";
+import Chip from "@/components/Chip";
+import VisualizationDetails from "@/components/VisualizationDetails";
 import { useOfflineQueue } from "@/components/OfflineQueueProvider";
 import { useOptimisticLedger } from "@/components/useOptimisticLedger";
 import {
@@ -185,25 +187,25 @@ export default function MobilityLogBar({
               {regionMoves.map((m) => {
                 const on = selected.has(m.slug);
                 return (
-                  <button
+                  <Chip
                     key={m.slug}
-                    type="button"
-                    data-testid={`mobility-move-${m.slug}`}
-                    aria-pressed={on}
-                    title={m.description}
+                    role="filter"
+                    pressed={on}
+                    testId={`mobility-move-${m.slug}`}
                     onClick={() => toggle(m.slug)}
-                    className={`tap-target inline-flex items-center gap-1.5 rounded-full border px-3 py-1.5 text-sm font-medium transition ${
-                      on
-                        ? "border-brand-600 bg-brand-600 text-white"
-                        : "border-(--border) bg-surface text-slate-700 hover:bg-(--ghost-hover) dark:text-slate-200"
-                    }`}
                   >
                     {on && <IconCheck className="h-3.5 w-3.5" stroke={2.5} />}
                     {m.name}
-                  </button>
+                  </Chip>
                 );
               })}
             </div>
+            <VisualizationDetails
+              label={`${region} move details`}
+              items={regionMoves.map(
+                (move) => `${move.name} — ${move.description}`
+              )}
+            />
           </div>
         ))}
       </div>

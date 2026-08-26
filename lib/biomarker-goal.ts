@@ -31,6 +31,7 @@
 // the next one is due.
 
 import { shiftDateStr, daysBetweenDateStr } from "./date";
+import { displayUnit, storedLabUnit } from "./display-unit";
 import {
   baselineTargetProgress,
   type GoalCheckIn,
@@ -123,7 +124,7 @@ export function computeBiomarkerGoalProgress(
 ): BiomarkerGoalProgress {
   const base = {
     target: target.value,
-    unit: target.unit ?? seriesUnit,
+    unit: storedLabUnit(target.unit) ?? seriesUnit,
   };
   if (!sameUnit(target.unit, seriesUnit)) {
     return {
@@ -132,7 +133,7 @@ export function computeBiomarkerGoalProgress(
       pct: 0,
       done: false,
       asOf: null,
-      unit: target.unit,
+      unit: storedLabUnit(target.unit),
       unavailable: "unit-mismatch",
     };
   }
@@ -228,9 +229,9 @@ export function biomarkerGoalTargetText(goal: {
 }): string | null {
   if (!isBiomarkerGoal(goal) || goal.target_value == null) return null;
   const word = goal.target_direction === "below" ? "under" : "over";
-  const unit = goal.unit?.trim();
+  const unitSuffix = displayUnit(goal.unit)?.trim();
   return `${goal.biomarker_name!.trim()} ${word} ${goal.target_value}${
-    unit ? ` ${unit}` : ""
+    unitSuffix ? ` ${unitSuffix}` : ""
   }`;
 }
 
@@ -244,7 +245,7 @@ export function biomarkerTargetOf(
   return {
     name: goal.biomarker_name!.trim(),
     value: goal.target_value,
-    unit: goal.unit,
+    unit: storedLabUnit(goal.unit),
     direction: goal.target_direction!,
     baselineValue: goal.baseline_value,
   };
@@ -262,8 +263,8 @@ export function biomarkerGoalCurrentText(
   if (progress.unavailable === "unit-mismatch")
     return "Units changed — re-set this target";
   if (progress.unavailable === "no-readings") return "No result yet";
-  const unit = progress.unit?.trim();
-  return `${progress.current}${unit ? ` ${unit}` : ""} now`;
+  const unitSuffix = displayUnit(progress.unit)?.trim();
+  return `${progress.current}${unitSuffix ? ` ${unitSuffix}` : ""} now`;
 }
 
 // The check-in line: when the next result that could move this goal is expected.

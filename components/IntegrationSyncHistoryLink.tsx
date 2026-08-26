@@ -1,5 +1,5 @@
-import Link from "next/link";
-import { IconArrowRight } from "@tabler/icons-react";
+import DestinationIndicator from "@/components/DestinationIndicator";
+import OverlayDestination from "@/components/OverlayDestination";
 import SyncTimestamp from "./integrations/SyncTimestamp";
 
 // The link from a ONE-OFF archive importer's page (Fitbit Takeout) to its entries in
@@ -21,37 +21,42 @@ export default function IntegrationSyncHistoryLink({
   lastSuccessAt: string | null;
 }) {
   return (
-    <Link
+    <OverlayDestination
       href="/data?section=review"
+      label="Open import history"
       data-testid="sync-history-link"
-      // NOT A `.card` (#3466 class B). Its only host — the Fitbit Takeout page's
-      // Status card — mounts it INSIDE a `.card`, so the card chrome drew a second
-      // border and spent a second gutter within the first. It is a SUB-PANEL of its
-      // host: same border language, same hover affordance, the class A inset.
-      className="subpanel-inset flex items-center justify-between gap-3 rounded-lg border border-black/10 p-4 transition hover:border-brand-300 dark:border-white/10 dark:hover:border-brand-800"
     >
-      <div>
-        <h2 className="font-semibold text-slate-800 dark:text-slate-100">
-          Import history
-        </h2>
-        <p className="text-sm text-slate-500 dark:text-slate-400">
-          {lastSuccessAt ? (
-            <>
-              Last successful import{" "}
-              <SyncTimestamp
-                value={lastSuccessAt}
-                className="font-medium text-slate-600 dark:text-slate-300"
-                relativeOnly
-              />
-              . See every attempt — what it wrote, skipped, or errored — in
-              Review’s Imports.
-            </>
-          ) : (
-            "No successful import yet. Track each attempt — what it wrote, skipped, or errored — in Review’s Imports."
-          )}
-        </p>
+      <div
+        // NOT A `.card` (#3466 class B). Its only host — the Fitbit Takeout page's
+        // Status card — mounts it INSIDE a `.card`, so the card chrome drew a second
+        // border and spent a second gutter within the first. It is a SUB-PANEL of its
+        // host: same border language, same hover affordance, the class A inset.
+        className="subpanel-inset flex items-center justify-between gap-3 rounded-lg border border-black/10 p-4 transition group-hover:border-brand-300 dark:border-white/10 dark:group-hover:border-brand-800"
+        data-testid="sync-history-surface"
+      >
+        <div>
+          <h2 className="inline-flex items-center gap-1 font-semibold text-link">
+            Import history
+            <DestinationIndicator />
+          </h2>
+          <p className="text-sm text-slate-500 dark:text-slate-400">
+            {lastSuccessAt ? (
+              <>
+                Last successful import{" "}
+                <SyncTimestamp
+                  value={lastSuccessAt}
+                  className="font-medium text-slate-600 dark:text-slate-300"
+                  relativeOnly
+                />
+                . See every attempt — what it wrote, skipped, or errored — in
+                Review’s Imports.
+              </>
+            ) : (
+              "No successful import yet. Track each attempt — what it wrote, skipped, or errored — in Review’s Imports."
+            )}
+          </p>
+        </div>
       </div>
-      <IconArrowRight className="h-5 w-5 shrink-0 text-brand-600 dark:text-brand-400" />
-    </Link>
+    </OverlayDestination>
   );
 }

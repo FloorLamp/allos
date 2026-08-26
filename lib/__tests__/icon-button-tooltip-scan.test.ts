@@ -3,41 +3,9 @@ import fs from "node:fs";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
 
-// Icon-only button tooltip convention (issue #1535), in the repo's established
-// source-scan idiom (`telegram-chokepoint.test.ts`, `chart-scaffold-scan.test.ts`,
-// `micro-text-size.test.ts`): read the app's own TSX as TEXT — no DB, no network,
-// so it stays "pure" in the vitest sense — and fail the build when a new
-// icon-only button ships without a tooltip.
-//
-// ── the convention ──────────────────────────────────────────────────────────
-//
-// An icon-only <button> — a button whose visible content is a glyph and nothing
-// else — carries BOTH:
-//
-//   aria-label   the accessible name. Where the control acts on a specific
-//                object, the label names it ("Remove {name} from view").
-//   title        the hover tooltip, for the sighted user who cannot read the
-//                glyph. Short. It never repeats the dynamic object already in
-//                the aria-label ("Remove from view"); when the aria-label is a
-//                bare verb ("Delete"), the title is the one that names the
-//                object ("Delete appointment").
-//
-// The two are deliberately allowed to differ, and deliberately never both long:
-// some screen readers announce `title` as a description AFTER the accessible
-// name, so an icon-only button with `aria-label="Dismiss <finding>"` plus
-// `title="Dismiss <finding>"` is announced twice. `components/FindingRow.tsx`
-// is the model — specific aria-label, short title.
-//
-// Both attributes are written LITERALLY on the element, even where they carry
-// the same string. A `{...iconLabel("Delete")}` spread helper would read more
-// tersely and blind this guard completely, which is the wrong trade: the point
-// of the convention is that a new button cannot ship without one.
-//
-// One caution the sweep learned the hard way: an aria-label that interpolates a
-// user-supplied name ("Delete {e.name}") is better a11y but makes Playwright's
-// default substring name matching ambiguous when several row controls share the
-// interpolated word. Where a row's controls are all named off the same object,
-// keep the labels short.
+// Icon-only controls still need an accessible name after #3729 removed native
+// hover titles. This source scan detects glyph-only buttons and requires an
+// explicit aria-label; the raw-title boundary separately rejects title attributes.
 //
 // ── what "icon-only" means here ─────────────────────────────────────────────
 //
@@ -47,16 +15,7 @@ import { fileURLToPath } from "node:url";
 // anything VISIBLE besides a glyph renders. Text in a nested element counts;
 // text in an `sr-only` element does not; an expression counts only if one of
 // its value positions (the branches of ?:, the right of &&) is something other
-// than a JSX element. `<button title="…">Delete<IconTrash/></button>` is
-// icon+text and is not the convention's business.
-//
-// ── touch ───────────────────────────────────────────────────────────────────
-//
-// `title` is a hover affordance and there is no hover on a phone; it is the
-// desktop half of the answer, not the whole one. The destructive icon actions
-// route through `useConfirm()` so a mis-tap is recoverable without a tooltip —
-// see the "destructive icon-only buttons confirm" case at the bottom, which is
-// the touch half and the reason the sweep was worth doing.
+// than a JSX element. An icon+text button is not the convention's business.
 
 const REPO = path.resolve(fileURLToPath(new URL("../..", import.meta.url)));
 const SCAN_DIRS = ["app", "components"];
@@ -368,7 +327,6 @@ const hasAttribute = (attrs: string, name: string): boolean =>
 export interface IconButton {
   rel: string;
   line: number;
-  hasTitle: boolean;
   hasAriaLabel: boolean;
 }
 
@@ -397,7 +355,6 @@ function iconOnlyButtons(rel: string, text: string): IconButton[] {
       found.push({
         rel,
         line: text.slice(0, lt).split("\n").length,
-        hasTitle: hasAttribute(tag.attrs, "title"),
         hasAriaLabel: hasAttribute(tag.attrs, "aria-label"),
       });
     }
@@ -431,32 +388,13 @@ function scanRepo(): IconButton[] {
   return found;
 }
 
-const HOW = [
-  "Every icon-only <button> carries a `title` (the hover tooltip) as well as an",
-  "`aria-label` (the accessible name). Keep the aria-label specific — it names",
-  "the object it acts on — and the title short, so a screen reader that",
-  "announces `title` as a description does not read the same sentence twice:",
-  '  aria-label={`Remove ${p.name} from view`}  title="Remove from view"',
-  'A bare-verb aria-label is the other way round: aria-label="Delete" pairs with',
-  'title="Delete appointment", the tooltip naming what the glyph deletes.',
-  "A button that already shows text needs neither — add the text, not a tooltip.",
-].join("\n");
+const HOW = "Every icon-only <button> carries an aria-label naming its action.";
 
-describe("icon-only button tooltip convention (issue #1535)", () => {
+describe("icon-only button naming convention (issue #1535/#3729)", () => {
   const buttons = scanRepo();
 
   it("finds the icon-only buttons at all (the scan is not silently empty)", () => {
     expect(buttons.length).toBeGreaterThan(50);
-  });
-
-  it("every icon-only button carries a title", () => {
-    const offenders = buttons
-      .filter((b) => !b.hasTitle)
-      .map((b) => `${b.rel}:${b.line}`);
-    expect(
-      offenders,
-      `${HOW}\n\nMissing title:\n${offenders.join("\n")}`
-    ).toEqual([]);
   });
 
   it("every icon-only button carries an aria-label", () => {
@@ -473,21 +411,20 @@ describe("icon-only button tooltip convention (issue #1535)", () => {
 describe("the icon-only classifier itself", () => {
   const scan = (src: string) => iconOnlyButtons("fixture.tsx", src);
 
-  it("flags an icon-only button with no title", () => {
+  it("finds a named icon-only button", () => {
     const found = scan(
       `<button type="button" aria-label="Delete"><IconTrash className="h-4 w-4" /></button>`
     );
     expect(found).toHaveLength(1);
-    expect(found[0].hasTitle).toBe(false);
     expect(found[0].hasAriaLabel).toBe(true);
   });
 
-  it("passes an icon-only button that carries both attributes", () => {
+  it("still classifies obsolete title metadata", () => {
     const found = scan(
       `<button aria-label="Delete dose" title="Delete dose"><IconTrash /></button>`
     );
     expect(found).toHaveLength(1);
-    expect(found[0].hasTitle).toBe(true);
+    expect(found[0].hasAriaLabel).toBe(true);
   });
 
   it("ignores an icon+text button", () => {
@@ -515,7 +452,6 @@ describe("the icon-only classifier itself", () => {
       `<button aria-label="Toggle">{open ? <IconChevronUp /> : <IconChevronDown />}</button>`
     );
     expect(found).toHaveLength(1);
-    expect(found[0].hasTitle).toBe(false);
   });
 
   it("treats sr-only text as invisible — the glyph is still all a sighted user sees", () => {
@@ -536,7 +472,6 @@ describe("the icon-only classifier itself", () => {
         <IconX className="h-4 w-4" />
       </button>`);
     expect(found).toHaveLength(1);
-    expect(found[0].hasTitle).toBe(true);
     expect(found[0].hasAriaLabel).toBe(true);
   });
 
@@ -546,13 +481,12 @@ describe("the icon-only classifier itself", () => {
         <button aria-label="Delete"><IconTrash /></button>
         <button title="Save"><span><strong>Save</strong></span></button>
       </div>`);
-    expect(found.map((b) => b.hasTitle)).toEqual([true, false]);
+    expect(found.map((b) => b.hasAriaLabel)).toEqual([true, true]);
   });
 });
 
-describe("destructive icon-only buttons are recoverable without a hover", () => {
-  // The touch half of #1535: a phone has no hover, so `title` alone cannot make
-  // a destructive glyph safe. These are the shared row/table surfaces where a
+describe("destructive icon-only buttons are recoverable", () => {
+  // These are the shared row/table surfaces where a
   // single tap deletes a record — each routes through `useConfirm()`, so the
   // tap is recoverable whether or not the tooltip was ever readable.
   const CONFIRMS = [

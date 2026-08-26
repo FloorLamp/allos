@@ -32,6 +32,7 @@ const BARE = "Creatinine, Urine";
 // its fasting sibling kept 70–99. The same surface, one analyte apart.
 const UNQUALIFIED_GLUCOSE = "Glucose";
 const FASTING_GLUCOSE = "Glucose, Fasting";
+const TOUCH_STALE = "Touch tooltip stale result (e2e #3375)";
 
 // #2347: the band-less reading is dated off the RUN'S FROZEN CLOCK, far enough back
 // that the yearly retest clock has run out, so ONE reading carries all three halves of
@@ -60,7 +61,12 @@ function withDb<T>(fn: (handle: Database.Database, pid: number) => T): T {
 }
 
 function cleanup() {
-  withDb((handle) => {
+  withDb((handle, pid) => {
+    handle
+      .prepare(
+        "DELETE FROM saved_items WHERE profile_id = ? AND kind = 'clinical-result' AND key = ?"
+      )
+      .run(pid, TOUCH_STALE);
     handle.prepare("DELETE FROM medical_records WHERE source = ?").run(SOURCE);
   });
 }
@@ -143,11 +149,67 @@ test.beforeEach(() => {
       "high",
       SOURCE
     );
+    insert.run(
+      pid,
+      BARE_DATE,
+      TOUCH_STALE,
+      TOUCH_STALE,
+      "7",
+      7,
+      "mg/L",
+      null,
+      null,
+      SOURCE
+    );
+    handle
+      .prepare(
+        "INSERT INTO saved_items (profile_id, kind, key) VALUES (?, 'clinical-result', ?)"
+      )
+      .run(pid, TOUCH_STALE);
   });
 });
 
 test.afterEach(() => {
   cleanup();
+});
+
+test("a stale clinical-result explanation is reachable by tap (#3375)", async ({
+  page,
+}) => {
+  await page.setViewportSize({ width: 390, height: 844 });
+  await page.goto(`/results/clinical-results?q=${encodeURIComponent(BARE)}`);
+  const row = page
+    .getByTestId("clinical-results-table")
+    .getByRole("row")
+    .filter({ hasText: BARE });
+  await expect(row).toBeVisible();
+  await row.getByTestId("clinical-stale-help").click();
+  await expect(page.getByRole("tooltip")).toHaveText(
+    "Latest result over a year old — consider retesting"
+  );
+});
+
+test("a starred stale-result help tap does not activate its detail link (#3375)", async ({
+  page,
+}) => {
+  await page.setViewportSize({ width: 390, height: 844 });
+  await page.goto("/results/clinical-results");
+  const card = page.getByTestId("starred-results");
+  await expect(card).toBeVisible();
+  const tile = card
+    .getByTestId("starred-tile")
+    .filter({ hasText: TOUCH_STALE });
+  await expect(tile).toHaveCount(1);
+  if (!(await tile.isVisible()))
+    await card.getByTestId("starred-fold-toggle").click();
+  await expect(tile).toBeVisible();
+
+  const listUrl = page.url();
+  await tile.getByTestId("starred-stale-help").click();
+  await expect(page.getByRole("tooltip")).toHaveText(
+    "Over a year old — consider retesting"
+  );
+  await expect(page).toHaveURL(listUrl);
 });
 
 test("a band-less analyte shows the source's own range, attributed, and keeps its colour", async ({

@@ -746,7 +746,6 @@ export default function IntradayChart({
             type="button"
             onClick={resetZoom}
             data-testid="intraday-zoom-reset"
-            title="Show the whole day again"
             className="rounded-sm border border-slate-300 px-2 py-0.5 text-xs text-slate-600 dark:border-slate-600 dark:text-slate-300"
           >
             {`Full day · showing ${clock(geo.view.from)}–${clock(geo.view.to)}`}

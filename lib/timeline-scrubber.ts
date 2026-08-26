@@ -83,6 +83,7 @@
 
 import type { TimelineWindowed, WindowableDay } from "./timeline-window";
 import { MONTHS_SHORT } from "./date";
+import { TAP_FLOOR_PX } from "./tap-floor-tokens";
 import { timelineMonthLabel, timelineMonthKey } from "./timeline-window";
 
 /**
@@ -91,7 +92,7 @@ import { timelineMonthLabel, timelineMonthKey } from "./timeline-window";
  * you can actually hit is the whole edge. The component owns the gutter that keeps
  * this strip from sitting on top of the feed's own tap targets.
  */
-export const SCRUBBER_HIT_WIDTH_PX = 44;
+export const SCRUBBER_HIT_WIDTH_PX = TAP_FLOOR_PX;
 
 /**
  * The app content column's own right margin below `md`, in CSS pixels —

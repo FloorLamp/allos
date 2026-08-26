@@ -31,7 +31,6 @@ export default function SourceDocumentLink({
     <Link
       href={importHref(id)}
       className={className}
-      title="View source document"
       data-testid={testId}
       role={role}
       onClick={onClick}

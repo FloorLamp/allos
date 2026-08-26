@@ -39,10 +39,7 @@ export default function TrainingOverviewActions({
   const { openLive, canStartWorkout, workoutOffer } = useActivityEditor();
 
   const logActivity = (
-    <LogActivityButton
-      className="btn-ghost"
-      testId="training-overview-log-activity"
-    >
+    <LogActivityButton testId="training-overview-log-activity">
       Log activity
     </LogActivityButton>
   );

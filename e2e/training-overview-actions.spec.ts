@@ -1,12 +1,16 @@
 import { expect, test } from "./fixtures";
 import { type Page } from "@playwright/test";
 import { loginAs } from "./nav";
-import { deleteActivityFromForm } from "./helpers";
+import { deleteActivityFromForm, settledBoxes } from "./helpers";
 import {
   E2E_LOGIN_OVERVIEW_NO_ROUTINE,
   E2E_LOGIN_OVERVIEW_REST,
   E2E_MEMBER_PASSWORD,
 } from "./fixture-logins";
+import {
+  TAP_FLOOR_FLOAT_EPSILON_PX,
+  TAP_FLOOR_PX,
+} from "@/lib/tap-floor-tokens";
 
 async function expectStandingActions(page: Page): Promise<void> {
   const card = page.getByTestId("next-workout-card");
@@ -143,7 +147,7 @@ const ALL_ACTIONS = [PRIMARY, ...GHOSTS];
 interface RailProbe {
   /** Every interactive control in the card outside its context chips. The corpus. */
   controls: string[];
-  /** Those controls bucketed by rounded `top`: one entry per band, top down. */
+  /** Those controls bucketed by vertical overlap: one entry per band, top down. */
   bands: string[][];
   /** First control's top to last control's bottom — what the block costs. */
   blockHeight: number;
@@ -157,12 +161,12 @@ interface RailProbe {
  * Read the action block's rendered shape. No class names, no computed styles.
  *
  * `bands` is the load-bearing reading and it comes from geometry alone: controls
- * are bucketed by their rounded `top`, so controls laid side by side report one
- * band and stacked ones report several. The corpus is every `button`/`a` in the
- * card that is not one of its context chips — scoped to the CARD and not to the
- * actions wrapper on purpose, because which wrapper holds "View details" is
- * exactly what this change moves, and a probe that assumed the new grouping
- * could not see the old one.
+ * whose vertical intervals overlap are on one rendered line, even when their
+ * closed primitives own different heights. Stacked controls report several
+ * bands. The corpus is every `button`/`a` in the card that is not one of its
+ * context chips — scoped to the CARD and not to the actions wrapper on purpose,
+ * because which wrapper holds "View details" is exactly what this change moves,
+ * and a probe that assumed the new grouping could not see the old one.
  */
 async function probeActions(page: Page): Promise<RailProbe> {
   return page.evaluate(() => {
@@ -189,18 +193,30 @@ async function probeActions(page: Page): Promise<RailProbe> {
     const name = (el: HTMLElement) =>
       el.dataset.testid ?? (el.textContent ?? "").trim();
 
-    const byTop = new Map<number, string[]>();
-    for (const el of controls) {
-      const top = Math.round(el.getBoundingClientRect().top);
-      byTop.set(top, [...(byTop.get(top) ?? []), name(el)]);
-    }
     const rects = controls.map((el) => el.getBoundingClientRect());
+    const bandRects: { top: number; bottom: number; names: string[] }[] = [];
+    for (const { el, rect } of controls
+      .map((el, index) => ({ el, rect: rects[index] }))
+      .sort((a, b) => a.rect.top - b.rect.top || a.rect.left - b.rect.left)) {
+      const band = bandRects.find(
+        ({ top, bottom }) => rect.top < bottom && rect.bottom > top
+      );
+      if (band) {
+        band.top = Math.min(band.top, rect.top);
+        band.bottom = Math.max(band.bottom, rect.bottom);
+        band.names.push(name(el));
+      } else {
+        bandRects.push({
+          top: rect.top,
+          bottom: rect.bottom,
+          names: [name(el)],
+        });
+      }
+    }
     const title = card.querySelector('[data-testid="next-workout-title"]');
     return {
       controls: controls.map(name),
-      bands: [...byTop.entries()]
-        .sort((a, b) => a[0] - b[0])
-        .map(([, names]) => names),
+      bands: bandRects.sort((a, b) => a.top - b.top).map(({ names }) => names),
       blockHeight: Math.round(
         Math.max(...rects.map((r) => r.bottom)) -
           Math.min(...rects.map((r) => r.top))
@@ -373,6 +389,38 @@ test("at phone width the primary keeps its own line and the ghost pair shares th
       expected: "primary-then-pair",
       besideText: false,
     });
+    const card = page.getByTestId("next-workout-card");
+    const logActivity = card.getByTestId("training-overview-log-activity");
+    const details = card.getByTestId("next-workout-details");
+    await expect(logActivity).toHaveAttribute("data-button-control", "");
+    await expect(logActivity).toHaveAccessibleName("Log activity");
+    const [logBox, detailsBox] = await settledBoxes([logActivity, details]);
+    expect(
+      logBox.width + TAP_FLOOR_FLOAT_EPSILON_PX,
+      "Log activity rendered width"
+    ).toBeGreaterThanOrEqual(TAP_FLOOR_PX);
+    expect(
+      logBox.height + TAP_FLOOR_FLOAT_EPSILON_PX,
+      "Log activity rendered height"
+    ).toBeGreaterThanOrEqual(TAP_FLOOR_PX);
+    expect(logBox.x, "Log activity left viewport edge").toBeGreaterThanOrEqual(
+      0
+    );
+    expect(
+      logBox.x + logBox.width,
+      "Log activity right viewport edge"
+    ).toBeLessThanOrEqual(PHONE_WIDTH);
+    const overlapX =
+      Math.min(logBox.x + logBox.width, detailsBox.x + detailsBox.width) -
+      Math.max(logBox.x, detailsBox.x);
+    const overlapY =
+      Math.min(logBox.y + logBox.height, detailsBox.y + detailsBox.height) -
+      Math.max(logBox.y, detailsBox.y);
+    expect(
+      overlapX > TAP_FLOOR_FLOAT_EPSILON_PX &&
+        overlapY > TAP_FLOOR_FLOAT_EPSILON_PX,
+      "Log activity and View details share an interactive point"
+    ).toBe(false);
     // WHAT THE REARRANGEMENT IS WORTH, in the units the issue argued in. The
     // three-line block forged at this very width is the layout that shipped, so
     // this is a measured comparison rather than a remembered number.

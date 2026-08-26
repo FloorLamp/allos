@@ -27,6 +27,9 @@ export function seedTravel(): void {
     "timezone_home",
     "timezone_switches",
     "timezone_travel_dismissed",
+    // Retired by #3684. Clearing the fixture's legacy residue makes the E2E
+    // assertion below prove that no current path writes it.
+    "timezone_travel_tell",
   ]) {
     db.prepare(
       "DELETE FROM profile_settings WHERE profile_id = ? AND key = ?"

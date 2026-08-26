@@ -1491,6 +1491,30 @@ export const DATASETS: ExportDataset[] = [
        WHERE ii.profile_id = ?`,
   }),
   tableDataset({
+    // Purpose links of an intake item (#2857) — the structured "why", a child of
+    // intake_items via item_id, so browse/export-only. It exports rather than being
+    // argued away for the reason the composition above does: the rows are the person's
+    // own statement of why an item is in their stack, recorded nowhere else once it
+    // stopped living in `notes` prose. The condition is exported by NAME (the row holds
+    // an id, #203) so the export reads without a second lookup; a condition deleted
+    // since leaves the name blank rather than an unresolvable number.
+    key: "intake_item_purposes",
+    label: "Purposes",
+    table: "intake_item_purposes",
+    deletable: false,
+    columns: ["item", "kind", "goal", "condition", "biomarker", "direction"],
+    select: `SELECT p.id, ii.name AS item, p.kind, p.goal_key AS goal,
+              (SELECT c.name FROM conditions c
+                WHERE c.id = p.condition_id AND c.profile_id = ii.profile_id)
+                AS condition,
+              p.biomarker_key AS biomarker, p.direction
+       FROM intake_item_purposes p JOIN intake_items ii ON ii.id = p.item_id
+       WHERE ii.profile_id = ? ORDER BY ii.name, p.sort, p.id`,
+    countSql: `SELECT COUNT(*) AS n
+       FROM intake_item_purposes p JOIN intake_items ii ON ii.id = p.item_id
+       WHERE ii.profile_id = ?`,
+  }),
+  tableDataset({
     // Recorded medication/supplement side effects (a child of intake_items via
     // item_id, so browse/export-only).
     key: "intake_item_side_effects",

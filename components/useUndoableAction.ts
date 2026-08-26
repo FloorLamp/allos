@@ -25,6 +25,13 @@ import {
 export interface UndoAnnouncement {
   message: string;
   tone?: "success" | "error";
+  // A repeated announcement for one logical slot replaces in place. The undo
+  // closure therefore upgrades with the message instead of pointing at an older
+  // write after a cumulative counter moves again (#3611).
+  key?: string;
+  profileId?: number;
+  profileToken?: number;
+  owner?: symbol;
   // Absent/null = no undo (a refusal, or a write with no complete local inverse).
   undo?: UndoOffer | null;
 }
@@ -41,12 +48,25 @@ export function useUndoableAction(): (announcement: UndoAnnouncement) => void {
         hasUndo: offer != null,
       });
       if (!plan.offerUndo || !offer) {
-        toast(plan.message, { tone: plan.tone, duration: plan.duration });
+        toast(plan.message, {
+          tone: plan.tone,
+          duration: plan.duration,
+          key: announcement.key,
+          profileId: announcement.profileId,
+          profileToken: announcement.profileToken,
+          owner: announcement.owner,
+          onlyIfOwner: announcement.owner != null,
+        });
         return;
       }
       toast(plan.message, {
         tone: plan.tone,
         duration: plan.duration,
+        key: announcement.key,
+        profileId: announcement.profileId,
+        profileToken: announcement.profileToken,
+        owner: announcement.owner,
+        onlyIfOwner: announcement.owner != null,
         action: {
           label: "Undo",
           onClick: () => {
@@ -59,8 +79,31 @@ export function useUndoableAction(): (announcement: UndoAnnouncement) => void {
                 // inverse did or did not land — say so instead of claiming either.
                 outcome = { ok: false, reason: "failed" };
               }
-              if (outcome.ok) toast(offer.undoneMessage);
-              else toast(undoRefusalText(outcome.reason), { tone: "error" });
+              if (offer.isCurrent && !offer.isCurrent()) return;
+              // A keyed cumulative lifecycle stays in ONE snackbar slot all the
+              // way through its inverse. On phones, posting this result keyless
+              // would put it at the head of the one-at-a-time queue and leave a
+              // subsequent keyed write waiting invisibly behind it (#3611).
+              // Reusing the key also cancels the action click's in-flight exit and
+              // restarts the slot timer; consumers without a key keep the original
+              // append-only behavior.
+              if (outcome.ok)
+                toast(offer.undoneMessage, {
+                  key: announcement.key,
+                  profileId: announcement.profileId,
+                  profileToken: announcement.profileToken,
+                  owner: announcement.owner,
+                  onlyIfOwner: announcement.owner != null,
+                });
+              else
+                toast(undoRefusalText(outcome.reason), {
+                  tone: "error",
+                  key: announcement.key,
+                  profileId: announcement.profileId,
+                  profileToken: announcement.profileToken,
+                  owner: announcement.owner,
+                  onlyIfOwner: announcement.owner != null,
+                });
             })();
           },
         },

@@ -254,10 +254,15 @@ export default function ImmunizationForm({
           {error}
         </p>
       )}
-      <div className="flex gap-2">
-        <SubmitButton className="btn w-full" pendingLabel="Saving…">
-          {editing ? "Save" : "Add"}
-        </SubmitButton>
+      <div className="flex gap-2" data-testid="immunization-form-actions">
+        <div
+          className="grid w-full sm:w-auto"
+          data-testid="immunization-form-primary-action"
+        >
+          <SubmitButton pendingLabel="Saving…">
+            {editing ? "Save" : "Add"}
+          </SubmitButton>
+        </div>
         {editing && onDone && (
           <button type="button" className="btn-ghost" onClick={onDone}>
             Cancel

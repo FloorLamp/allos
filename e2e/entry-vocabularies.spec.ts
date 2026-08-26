@@ -17,6 +17,10 @@ import {
   pgxWarnings,
   pgxWarningRows,
 } from "./intake-warnings-helpers";
+import {
+  expectDesktopSpecialtySubmit as expectDesktopFormSubmit,
+  expectPhoneSpecialtySubmit as expectPhoneFormSubmit,
+} from "./specialty-form-actions";
 import { workerDbPath, frozenNow } from "./worker-env";
 
 // The #1676 entry vocabularies, driven through the real forms.
@@ -42,6 +46,7 @@ const THIOPURINE_MED = "E2E VOCAB Azathioprine";
 const PGX_LAB = "E2E VOCAB Lab";
 const CARE_ITEM = "E2E VOCAB scope";
 const DRIFTED_ALLERGEN = "Anti-inflammatories";
+const PHONE = { width: 390, height: 844 };
 // #3100's field. The stack that already exists, and a name for a brand-new one.
 const STACK_MEMBER = "E2E VOCAB Magnesium";
 const EXISTING_STACK = "E2E VOCAB Evening";
@@ -305,11 +310,41 @@ test.describe("Entry vocabularies (#1676)", () => {
     // a plain fill is right here — the settled fills above already proved this form
     // is hydrated.
     await carePlanDialog.locator("#cp-date-new").fill(plannedDate());
-    await settledClick(
-      page,
-      carePlanDialog.getByRole("button", { name: "Add", exact: true })
-    );
+    // Filling the display field opens its anchored calendar. Close that real
+    // layer before measuring or submitting so it cannot cover the action row.
+    await page.keyboard.press("Escape");
+    await expect(
+      carePlanDialog.getByTestId("date-field-calendar")
+    ).toBeHidden();
+    const desktopViewport = page.viewportSize();
+    expect(
+      desktopViewport,
+      "the desktop project supplies the compact-width baseline"
+    ).not.toBeNull();
+    const addForm = carePlanDialog.locator("form");
+    const addSubmit = addForm.getByRole("button", {
+      name: "Add",
+      exact: true,
+    });
+    await expectDesktopFormSubmit({
+      form: addForm,
+      actions: addForm.getByTestId("care-plan-form-actions"),
+      primaryOwner: addForm.getByTestId("care-plan-form-primary-action"),
+      submit: addSubmit,
+      name: "care-plan add",
+    });
+    await page.setViewportSize(PHONE);
+    await expectPhoneFormSubmit({
+      form: addForm,
+      actions: addForm.getByTestId("care-plan-form-actions"),
+      primaryOwner: addForm.getByTestId("care-plan-form-primary-action"),
+      submit: addSubmit,
+      fillsActions: true,
+      name: "phone care-plan add",
+    });
+    await settledClick(page, addSubmit);
     await expect(page.getByText("Care-plan item saved")).toBeVisible();
+    await page.setViewportSize(desktopViewport!);
 
     // A dated open item nudges.
     await page.goto("/upcoming");
@@ -342,8 +377,27 @@ test.describe("Entry vocabularies (#1676)", () => {
     await expect(
       editForm.locator('[data-testid^="cp-status-unrecognized-"]')
     ).toContainText("keeps counting as open");
-    await settledClick(page, editForm.getByRole("button", { name: "Save" }));
+    const editSubmit = editForm.getByRole("button", { name: "Save" });
+    const editCancel = editForm.getByRole("button", { name: "Cancel" });
+    await expectDesktopFormSubmit({
+      form: editForm,
+      actions: editForm.getByTestId("care-plan-form-actions"),
+      primaryOwner: editForm.getByTestId("care-plan-form-primary-action"),
+      submit: editSubmit,
+      name: "care-plan edit",
+    });
+    await page.setViewportSize(PHONE);
+    await expectPhoneFormSubmit({
+      form: editForm,
+      actions: editForm.getByTestId("care-plan-form-actions"),
+      primaryOwner: editForm.getByTestId("care-plan-form-primary-action"),
+      submit: editSubmit,
+      adjacent: editCancel,
+      name: "phone care-plan edit",
+    });
+    await settledClick(page, editSubmit);
     await expect(page.getByText("Care-plan item updated")).toBeVisible();
+    await page.setViewportSize(desktopViewport!);
 
     await page.goto("/upcoming");
     await expect(

@@ -208,11 +208,10 @@ export default function ProfileIdentityBar({
       // The accessible name states the ACTING fact, not the view — that is the
       // fact you need before tapping anything that writes.
       aria-label={identityBarLabel(view.acting.name)}
-      title="Switch profile"
       onClick={() => setOpen((v) => !v)}
-      className={`flex min-w-0 items-center gap-2 rounded-lg px-2 py-1.5 text-sm transition ${
+      className={`flex min-h-11 min-w-0 items-center gap-2 rounded-lg px-2 py-1.5 text-sm transition sm:min-h-0 ${
         isMobile
-          ? "tap-target press -ml-1 flex-1 hover:bg-slate-100 dark:hover:bg-ink-750"
+          ? "press -ml-1 flex-1 hover:bg-slate-100 dark:hover:bg-ink-750"
           : "w-full border border-black/10 bg-(--ghost) hover:bg-(--ghost-hover) dark:border-white/10"
       } ${mounted ? "" : "cursor-progress"}`}
     >

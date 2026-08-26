@@ -178,12 +178,10 @@ export default function ProteinQuickAdd({
           data-testid="protein-quickadd-total"
           className="block truncate text-xs tabular-nums text-slate-500 dark:text-slate-400"
         >
-          {/* The grams ROLL to the new total (#2654, motion 3): the optimistic
-              paint above has already made the change, and this is what makes the
-              change visible AS a quantity moving rather than a label rewritten.
-              Under reduced motion the new number is simply there — the text is the
-              carrier either way, which is why an exact-text assertion on this line
-              stays honest. */}
+          {/* The authoritative grams land immediately (#2654, motion 3); a bounded
+              scale pulse acknowledges the optimistic change without delaying the
+              text. Under reduced motion the new number is simply there, which is why
+              an exact-text assertion on this line stays honest either way. */}
           <RollingNumber
             value={Math.round(total)}
             testId="protein-quickadd-grams"
@@ -194,12 +192,11 @@ export default function ProteinQuickAdd({
       {/* 32px RENDERED, NOT 28 (#3486's reach). `.tap-target`'s `inset: -6px`
           adds a fixed 12px, so it reaches #3514's 44px floor only from 32px up;
           at `h-7` this pair was 40px effective while carrying the class that
-          claims the floor. lib/tap-floor-reach.ts holds the arithmetic. */}
+          claims the floor. lib/tap-floor-tokens.ts holds the arithmetic. */}
       <button
         type="button"
         data-testid="protein-quickadd-undo"
         aria-label="Remove protein grams"
-        title="Remove protein grams"
         disabled={!canSubmit || total <= 0}
         onClick={() => apply(-1)}
         className="tap-target flex h-8 w-8 shrink-0 items-center justify-center rounded-full text-slate-400 transition hover:bg-slate-100 disabled:opacity-30 dark:hover:bg-ink-800"
@@ -228,7 +225,6 @@ export default function ProteinQuickAdd({
         type="button"
         data-testid="protein-quickadd-add"
         aria-label="Add protein grams"
-        title="Add protein grams"
         disabled={!canSubmit}
         onClick={() => apply(1)}
         className="tap-target flex h-8 w-8 shrink-0 items-center justify-center rounded-full bg-brand-600 text-white transition hover:bg-brand-700 disabled:opacity-30"

@@ -566,7 +566,6 @@ export default function MedicationCard({
                         type="button"
                         data-testid="prn-administration-remove"
                         aria-label={`Remove ${a.label} dose`}
-                        title="Remove this dose"
                         className="tap-target flex h-8 w-8 shrink-0 items-center justify-center rounded-lg text-slate-500 transition hover:bg-rose-50 hover:text-rose-600 dark:text-slate-400 dark:hover:bg-rose-950 dark:hover:text-rose-400"
                         onClick={async () => {
                           const fd = new FormData();
@@ -994,7 +993,7 @@ export default function MedicationCard({
                     className="input text-sm"
                   />
                 </div>
-                <SubmitButton pendingLabel="Saving…" className="btn btn-sm">
+                <SubmitButton pendingLabel="Saving…">
                   Add side effect
                 </SubmitButton>
               </form>

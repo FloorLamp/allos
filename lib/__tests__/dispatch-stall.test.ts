@@ -275,14 +275,23 @@ describe("the dispatch-brief CLI", () => {
   it("still answers every subcommand it is the only tooling for", () => {
     // A rename or a dropped branch in the dispatcher strands the orchestrator
     // and every agent at once, so the command surface is asserted rather than
-    // assumed. `new`, `list`, `brief`, `done`, `resume` and `adopt` are each
+    // assumed. These commands are each
     // named somewhere in a live runbook.
     const run = spawnSync(process.execPath, [SCRIPT, "no-such-command"], {
       encoding: "utf8",
       env: { ...process.env, ALLOS_DISPATCH_LEDGER: ledgerIn(tempDir(), []) },
     });
     expect(run.status).toBe(2);
-    for (const cmd of ["new", "list", "brief", "done", "resume", "adopt"]) {
+    for (const cmd of [
+      "new",
+      "list",
+      "brief",
+      "promote",
+      "update",
+      "done",
+      "resume",
+      "adopt",
+    ]) {
       expect(run.stderr).toContain(cmd);
     }
   }, 20_000);
@@ -311,5 +320,194 @@ describe("the dispatch-brief CLI", () => {
 
     expect(never).toContain("age=13h00m");
     expect(never).toContain("NO WORKTREE AND NO BRANCH");
+  }, 20_000);
+
+  it("persists candidate promotion and prints distinct candidate and banked briefs", () => {
+    const dir = tempDir();
+    const ledger = ledgerIn(dir, []);
+    const env = { ...process.env, ALLOS_DISPATCH_LEDGER: ledger };
+    const run = (...args: string[]) =>
+      spawnSync(process.execPath, [SCRIPT, ...args], {
+        encoding: "utf8",
+        env,
+      });
+
+    const first = run(
+      "new",
+      "--branch",
+      "x/first",
+      "--candidate",
+      "--priority",
+      "P1",
+      "--lane",
+      "user-data"
+    );
+    expect(first.status).toBe(0);
+    expect(first.stdout).toContain("LANDING STATE: CANDIDATE");
+    expect(first.stdout).toContain("Open or refresh the PR READY");
+
+    const second = run(
+      "new",
+      "--branch",
+      "x/second",
+      "--priority",
+      "P2",
+      "--lane",
+      "operator"
+    );
+    expect(second.status).toBe(0);
+    expect(second.stdout).toContain("LANDING STATE: BANKED");
+    expect(second.stdout).toContain(
+      "Do not open a PR while this branch is banked"
+    );
+
+    const promoted = run("promote", "x/second");
+    expect(promoted.status).toBe(0);
+    expect(promoted.stdout).toContain("displaced x/first to banked");
+    expect(promoted.stdout).toContain("ROLE UPDATE for x/second: CANDIDATE");
+    expect(promoted.stdout).toContain("ROLE UPDATE for x/first: BANKED");
+    const promotionRows = fs
+      .readFileSync(ledger, "utf8")
+      .split("\n")
+      .filter(Boolean)
+      .map((line) => JSON.parse(line))
+      .filter((row) => row.status === "promotion");
+    expect(promotionRows).toEqual([
+      expect.objectContaining({
+        status: "promotion",
+        target: "x/second",
+        displaced: "x/first",
+      }),
+    ]);
+    expect(
+      fs
+        .readFileSync(ledger, "utf8")
+        .split("\n")
+        .filter(Boolean)
+        .map((line) => JSON.parse(line))
+        .filter((row) => row.status === "update" && "candidate" in row)
+    ).toEqual([]);
+
+    const firstBrief = run("brief", "x/first");
+    const secondBrief = run("brief", "x/second");
+    expect(firstBrief.stdout).toContain("LANDING STATE: BANKED");
+    expect(firstBrief.stdout).toContain(
+      "Defer them until promotion; the landing candidate's CI runs them."
+    );
+    expect(firstBrief.stdout).not.toContain("Push, and read candidate CI.");
+    expect(secondBrief.stdout).toContain("LANDING STATE: CANDIDATE");
+
+    const listed = run("list");
+    expect(listed.stdout).toContain("x/first");
+    expect(listed.stdout).toContain("[banked]");
+    expect(listed.stdout).toContain("x/second");
+    expect(listed.stdout).toContain("[candidate]");
+    expect(listed.stdout).toContain("priority=P2  lane=operator");
+
+    const updated = run(
+      "update",
+      "x/first",
+      "--priority",
+      "P3",
+      "--lane",
+      "presentation-guard"
+    );
+    expect(updated.status).toBe(0);
+    expect(updated.stdout).toContain("priority=P3 lane=presentation-guard");
+    const recovered = run("list");
+    expect(recovered.stdout).toContain("priority=P3  lane=presentation-guard");
+
+    const invalid = run("update", "x/first", "--priority", "P9");
+    expect(invalid.status).toBe(1);
+    expect(invalid.stderr).toContain("invalid priority P9");
+  }, 20_000);
+
+  it("announces when resume collision banks a former candidate", () => {
+    const now = Date.now();
+    const ledger = ledgerIn(tempDir(), [
+      {
+        at: iso(now - 3 * HOUR),
+        status: "active",
+        branch: "x/former",
+        worktree: "wt-former",
+        issues: [],
+        portBase: 5400,
+        candidate: true,
+      },
+      {
+        at: iso(now - 2 * HOUR),
+        status: "done",
+        branch: "x/former",
+      },
+      {
+        at: iso(now - HOUR),
+        status: "active",
+        branch: "x/current",
+        worktree: "wt-current",
+        issues: [],
+        portBase: 5600,
+        candidate: true,
+      },
+    ]);
+    const run = spawnSync(process.execPath, [SCRIPT, "resume", "x/former"], {
+      encoding: "utf8",
+      env: { ...process.env, ALLOS_DISPATCH_LEDGER: ledger },
+    });
+    expect(run.status).toBe(0);
+    expect(run.stdout).toContain("ROLE UPDATE for x/former: BANKED");
+  }, 20_000);
+
+  it("resumes promoted and displaced branches from the last atomic promotion", () => {
+    const now = Date.now();
+    const ledger = ledgerIn(tempDir(), [
+      {
+        at: iso(now - 5 * HOUR),
+        status: "active",
+        branch: "x/old",
+        worktree: "wt-old",
+        issues: [],
+        portBase: 5400,
+        candidate: true,
+      },
+      {
+        at: iso(now - 4 * HOUR),
+        status: "active",
+        branch: "x/next",
+        worktree: "wt-next",
+        issues: [],
+        portBase: 5600,
+        candidate: false,
+      },
+      {
+        at: iso(now - 3 * HOUR),
+        status: "promotion",
+        target: "x/next",
+        displaced: "x/old",
+      },
+      {
+        at: iso(now - 2 * HOUR),
+        status: "done",
+        branch: "x/old",
+      },
+      {
+        at: iso(now - HOUR),
+        status: "done",
+        branch: "x/next",
+      },
+    ]);
+    const env = { ...process.env, ALLOS_DISPATCH_LEDGER: ledger };
+    const resume = (branch: string) =>
+      spawnSync(process.execPath, [SCRIPT, "resume", branch], {
+        encoding: "utf8",
+        env,
+      });
+
+    const old = resume("x/old");
+    expect(old.status).toBe(0);
+    expect(old.stdout).toContain("ROLE UPDATE for x/old: BANKED");
+
+    const next = resume("x/next");
+    expect(next.status).toBe(0);
+    expect(next.stdout).toContain("ROLE UPDATE for x/next: CANDIDATE");
   }, 20_000);
 });

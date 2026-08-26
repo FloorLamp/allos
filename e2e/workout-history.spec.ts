@@ -58,7 +58,11 @@ test("Training → Analyze leads with workout history and its active days (#186/
   await expect(section.getByTestId("day-history-row")).not.toHaveCount(0);
   const rowHeader = section.locator('[role="rowheader"]').first(); // first-ok: any activity row proves the shared row interaction
   const rowSummary = await rowHeader.getAttribute("aria-label");
-  const rowLabel = await rowHeader.getAttribute("title");
+  const rowLabel = (
+    await rowHeader
+      .getByRole("button", { name: /View occurrences for/ })
+      .getAttribute("aria-label")
+  )?.replace(/^View occurrences for /, "");
   const rowCells = rowHeader.locator("xpath=..").locator('[role="gridcell"]');
   const activeDates = await rowCells.evaluateAll((cells) =>
     cells

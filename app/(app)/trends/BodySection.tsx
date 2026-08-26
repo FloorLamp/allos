@@ -1,5 +1,5 @@
 import Link from "next/link";
-import { IconArrowRight } from "@tabler/icons-react";
+import DestinationLink from "@/components/DestinationLink";
 import { requireSession } from "@/lib/auth";
 import { today } from "@/lib/db";
 import { chartSeries } from "@/lib/chart-colors";
@@ -629,12 +629,12 @@ export default async function BodySection({
       referenceValue: { value: FEVER_F, label: "Fever" },
       note: "Temperature is an acute signal — a fever is tracked on the illness/fever chart, not interpreted as a slow long-term trajectory.",
       headerAction: (
-        <Link
+        <DestinationLink
           href="/medical/episodes"
           className="inline-flex shrink-0 items-center gap-1 text-sm font-medium text-brand-700 hover:underline dark:text-brand-400"
         >
-          Illness episodes <IconArrowRight size={14} />
-        </Link>
+          Illness episodes
+        </DestinationLink>
       ),
     });
   }
@@ -796,13 +796,13 @@ export default async function BodySection({
       // the header row is the card's full-width tap target (#1488, pinned by
       // chart-tap-through.spec) and must not cede width to a sibling affordance.
       footerAction: (
-        <Link
+        <DestinationLink
           href="/data?section=review&fix=weight#bulk-correction"
           className="inline-flex shrink-0 items-center gap-1 text-sm font-medium text-brand-700 hover:underline dark:text-brand-400"
           data-testid="body-weight-fix-range"
         >
-          Fix a range <IconArrowRight size={14} />
-        </Link>
+          Fix a range
+        </DestinationLink>
       ),
     },
     bodyfat: {
@@ -1371,8 +1371,8 @@ export default async function BodySection({
       detailHref={metricDetailHref(slug)}
       footer={
         <p className="mt-2 text-xs text-slate-500 dark:text-slate-400">
-          A subjective self-rating from your daily check-ins — informational
-          only, never range-checked.
+          A subjective self-rating from your daily check-ins — never
+          range-checked.
         </p>
       }
     >
@@ -1647,13 +1647,13 @@ export default async function BodySection({
     <div className="space-y-6" data-testid="trends-body">
       {/* The retired Today card's real navigation stays at the section head. */}
       <div className="flex justify-end">
-        <Link
+        <DestinationLink
           href={timelineDayHref(todayStr)}
           data-testid="body-timeline-link"
           className="inline-flex items-center gap-1.5 text-sm font-medium text-brand-700 hover:underline dark:text-brand-400"
         >
-          View today on Timeline <IconArrowRight size={14} stroke={1.75} />
-        </Link>
+          View today on Timeline
+        </DestinationLink>
       </div>
 
       {/* Body-metric data-hygiene findings (issue #45, domain 5): probable-error

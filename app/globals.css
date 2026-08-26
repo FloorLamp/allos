@@ -40,7 +40,7 @@
    chokepoint tokens in the `:root` blocks after this one. */
 
 @theme {
-  --breakpoint-3xl: 1920px;
+  --breakpoint-3xl: 120rem;
 
   --color-brand-50: #f0fdf4;
   --color-brand-100: #dcfce7;
@@ -259,6 +259,25 @@
   &:has([role="combobox"][aria-expanded="true"]) {
     @apply relative z-20;
   }
+}
+
+/* A card that delegates its own gutter to rendered cells. The parent premise
+   and the three current horizontal roles are tokens so a density sweep cannot
+   mistake those cells for a second inset layer (#3507). */
+@utility card-delegated {
+  @apply overflow-hidden p-0!;
+}
+
+@utility card-gutter-standard {
+  @apply px-4 sm:px-5;
+}
+
+@utility card-gutter-compact {
+  @apply px-2 sm:px-5;
+}
+
+@utility card-gutter-action {
+  @apply px-2 sm:px-3;
 }
 
 @utility card-quiet {
@@ -543,6 +562,19 @@
   @apply px-3 py-1.5 text-sm;
 }
 
+@utility button-control {
+  /* The typed Button / DestinationActionLink treatment (#3720). One ordinary
+     secondary action, not a menu of caller-selected variants: callers provide
+     behavior and content while the primitives own paint, focus, and geometry.
+     It renders at the 44px phone floor, then returns to its compact 26px row
+     height from sm upward so touch repair does not spend desktop density. */
+  @apply inline-flex min-h-11 min-w-11 items-center justify-center gap-1 whitespace-nowrap rounded-lg border border-black/10 px-2.5 py-1 text-xs font-medium text-slate-600 transition hover:bg-slate-100 focus:outline-hidden focus-visible:ring-2 focus-visible:ring-brand-500 disabled:cursor-not-allowed disabled:bg-slate-100 disabled:text-slate-500 dark:border-white/10 dark:text-slate-300 dark:hover:bg-ink-750 dark:disabled:bg-ink-750 dark:disabled:text-slate-400;
+  @media (min-width: 40rem) {
+    min-block-size: 0;
+    min-inline-size: 0;
+  }
+}
+
 @utility badge {
   /* Botanical's pale badge fills sit ~1.2:1 on its tinted cards, so every badge
      wears a border mixed from its own text tone — automatically tone-matched,
@@ -566,9 +598,9 @@
    TWO ROLES, ALREADY SHIPPED AND ALREADY RULED (#3408). This does not invent a
    vocabulary; it registers the one the app already speaks:
 
-     .chip .chip-nav     — a DESTINATION. Outline pill, `rounded-full`, selected
+     chip-base + chip-nav — a DESTINATION. Outline pill, `rounded-full`, selected
                            = brand outline + brand tint. Records' pane strip.
-     .chip .chip-filter  — a CONTROL that narrows a list in place. Inset well,
+     chip-base + chip-filter — a CONTROL that narrows a list in place. Inset well,
                            `rounded-md`, no border, selected = brand FILL.
                            `components/FilterPills.tsx` is the app's one filter
                            affordance and renders through this.
@@ -599,21 +631,26 @@
    call site cannot spell the selected shade differently because it no longer
    spells it at all.
 
-   NO HEIGHT FLOOR, DELIBERATELY. The `.btn` family's below-`sm` 44px floor
-   (SECTION: Touch tap targets) names `.btn`/`.btn-ghost`/`.btn-danger` and does
-   not reach here — chips are acquired by their WIDTH along a scrolling row, and
-   a 44px-tall strip of seven is a band of chrome above the list it narrows
-   (FilterPills' own measured note). #3514 has since RULED the floor at 44px
-   effective, by rendered size OR by `.tap-target`'s hit-area extension; this
-   primitive declares neither, so nothing here changed. A strip that genuinely needs a bigger target
-   still says so at its call site and wins — `@utility` sorts into the utilities
-   layer, so it cannot lower a call site's `min-h-*`. */
-@utility chip {
-  @apply inline-flex shrink-0 items-center gap-1.5 whitespace-nowrap px-3 py-1.5 text-sm font-medium transition focus:outline-hidden focus-visible:ring-2 focus-visible:ring-brand-500 focus-visible:ring-offset-2 dark:focus-visible:ring-offset-ink-950;
+   REGULAR chips have NO RENDERED HEIGHT FLOOR, DELIBERATELY; their established
+   34px box remains the navigation/filter default. THE DENSE SIZE OWNS ITS
+   RENDERED FLOOR. #3514 ruled 44px effective everywhere.
+   An 11px pseudo-element around a 22px chip appeared to reach it, but adjacent
+   chips overlap those invisible regions and native selects cannot reliably grow
+   through `::after`. `chip-sm` therefore renders at least 44px itself. Call sites
+   do not add their own `min-h-*` or coarse-pointer shell variants. */
+@utility chip-base {
+  @apply inline-flex shrink-0 items-center gap-1.5 whitespace-nowrap px-3 py-1.5 text-sm font-medium transition disabled:cursor-not-allowed disabled:opacity-40 focus:outline-hidden focus-visible:ring-2 focus-visible:ring-brand-500 focus-visible:ring-offset-2 dark:focus-visible:ring-offset-ink-950;
   /* Reserved so a bordered role and a borderless one occupy the same box. The
      fill paints under it (`background-clip` is `border-box` by default), so a
      transparent border is invisible rather than a 1px light seam. */
   border: 1px solid transparent;
+}
+
+/* The dense in-row size records the tree-wide horizontal/type consensus from
+   #3525 and renders the 44px target itself. This works for native selects and
+   leaves every neighboring hit region disjoint. */
+@utility chip-sm {
+  @apply min-h-11 px-2.5 py-0.5 text-xs;
 }
 
 @utility chip-nav {
@@ -629,7 +666,8 @@
      it. `[aria-current="false"]` is excluded because React renders that string
      when a call site passes the literal false rather than undefined. */
   &[aria-current]:not([aria-current="false"]),
-  &[aria-pressed="true"] {
+  &[aria-pressed="true"],
+  &[aria-selected="true"] {
     @apply border-brand-600 bg-brand-50 text-brand-700 dark:border-brand-400 dark:bg-brand-950/40 dark:text-brand-300;
   }
 }
@@ -640,7 +678,8 @@
     @apply bg-slate-200 dark:bg-ink-700;
   }
   &[aria-current]:not([aria-current="false"]),
-  &[aria-pressed="true"] {
+  &[aria-pressed="true"],
+  &[aria-selected="true"] {
     @apply bg-brand-600 text-white dark:bg-brand-500 dark:text-ink-950;
   }
 }
@@ -1048,7 +1087,7 @@
   & [data-matrix-head-cell] > span {
     @apply max-sm:inline!;
   }
-  & [data-matrix-head-cell] > input {
+  & [data-matrix-head-cell] > [data-matrix-head-control] {
     @apply max-sm:order-first! max-sm:m-0!;
   }
 }
@@ -1326,7 +1365,7 @@
 
 /* ── SECTION: Micro-motion ── */
 /* Micro-motion (issue #2654) — the small moves that answer "did that work?".
-   Five of them, and their whole justification is that they carry INFORMATION: a
+   Seven of them, and their whole justification is that they carry INFORMATION: a
    tap-shaped confirm visibly BECOMING its done state, a quantity visibly CHANGING
    rather than being replaced, a dismissed finding visibly TRAVELLING toward the fold
    that catches it, that fold visibly ANSWERING, and the jump rail's bubble BEATING as
@@ -1334,10 +1373,10 @@
    that answers for a gesture rather than for a write).
 
    The numbers live in these custom properties and nowhere else. lib/micro-motion.ts
-   mirrors them (its MICRO_MOTIONS table hands the same number to the counter's
-   requestAnimationFrame tween) and lib/__tests__/micro-motion.test.ts pins the two
-   copies together, fails a duration outside the 150–300 ms band, and fails any rule
-   in this section that loops.
+   mirrors them (its MICRO_MOTIONS table gives the counter pulse the same bounded
+   receipt duration) and lib/__tests__/micro-motion.test.ts pins the two copies
+   together, fails a duration outside the 150–300 ms band, and fails any rule in this
+   section that loops.
 
    ONE duration here is outside that band, by owner ruling of 2026-08-13 recorded on
    #2654: `--motion-fold`, the fold line's pulse, at 500 ms. Its reasoning lives with
@@ -1345,9 +1384,11 @@
    be constructed without one. It is not a precedent — the dismissed row's own
    `--motion-slide` stays inside the band, and so does everything else.
 
-   NOTHING HERE LOOPS, autoplays, or moves without a user gesture. Explicitly not in
-   this vocabulary: skeleton shimmer, attention pulses on findings (a finding may not
-   campaign — reach policy), chart draw-in, page transitions. The fold pulse is the
+   NOTHING HERE LOOPS or autoplays as an attention claim. `arrive` is the one
+   asynchronous receipt: it fires once when the quick-log gather finishes, inside a
+   box that already exists, and announces that same completion through aria-live.
+   Explicitly not in this vocabulary: skeleton shimmer, attention pulses on findings
+   (a finding may not campaign — reach policy), chart draw-in, page transitions. The fold pulse is the
    near miss to keep an eye on: it fires ONCE, on the tap that incremented the count,
    and never on arrival at the page. The overlay family below is a different question
    at a different duration; do not cross-wire them.
@@ -1361,6 +1402,7 @@
   --motion-slide: 300ms;
   --motion-tick: 180ms;
   --motion-promote: 300ms;
+  --motion-arrive: 200ms;
   /* Band-exempt, see the note above. */
   --motion-fold: 500ms;
   /* ONE curve for the whole vocabulary. Decelerating: the move arrives and
@@ -1392,9 +1434,9 @@
   animation: micro-settle var(--motion-settle) var(--motion-ease);
 }
 
-/* The scale pulse that rides the counter roll. The DIGITS are tweened in JS
-   (components/RollingNumber.tsx over lib/micro-motion.ts's countRollValue); this is
-   the one subtle beat that says the quantity moved rather than being rewritten. */
+/* The scale pulse that acknowledges a changed count. The authoritative new digits
+   render immediately; this bounded receipt is the one subtle beat that says the
+   quantity moved rather than being silently rewritten. */
 @keyframes micro-count {
   0% {
     transform: scale(1);
@@ -1501,6 +1543,21 @@
   animation: micro-promote var(--motion-promote) var(--motion-ease);
 }
 
+/* Offers gathered after the quick-log sheet opened arriving inside a box that
+   was already reserved. Opacity alone: the receipt says the async answer landed
+   without moving the segment strip or any other control under the reader. */
+@keyframes micro-arrive {
+  0% {
+    opacity: 0;
+  }
+  100% {
+    opacity: 1;
+  }
+}
+.motion-arrive {
+  animation: micro-arrive var(--motion-arrive) var(--motion-ease);
+}
+
 @media (prefers-reduced-motion: reduce) {
   /* Belt and braces. `microMotionPlan()` already returns no class under the
      preference, so these are not applied at all — but a stylesheet that only works
@@ -1513,6 +1570,7 @@
   .motion-slide,
   .motion-tick,
   .motion-promote,
+  .motion-arrive,
   .motion-fold {
     animation: none;
   }
@@ -1989,6 +2047,22 @@ input[type="time"]::-webkit-datetime-edit-ampm-field:focus {
       min-block-size: 2.75rem;
       min-inline-size: 2.75rem;
     }
+  }
+}
+
+/* A checkbox keeps its compact native paint while its associated label owns the
+   interaction floor on phone layouts and coarse-pointer devices. The label, not
+   a pseudo-element, is the target so native checkbox click semantics do the work. */
+.checkbox-control {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+}
+
+@media (max-width: 639.98px), (pointer: coarse) {
+  .checkbox-control {
+    min-block-size: 2.75rem;
+    min-inline-size: 2.75rem;
   }
 }
 

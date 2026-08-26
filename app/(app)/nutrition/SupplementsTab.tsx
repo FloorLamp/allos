@@ -7,6 +7,8 @@ import {
   getIntakeLogsInRange,
   getIntakePairs,
   getIntakeIngredientsByItem,
+  getIntakePurposesByItem,
+  getUsedCanonicalNames,
   getRefillRates,
   getPoolChips,
   findLinkableSupply,
@@ -129,13 +131,16 @@ import {
 } from "@/lib/intake-pairs";
 import SuggestionsForm from "./SuggestionsForm";
 import CuratedSupplementSuggestions from "@/components/CuratedSupplementSuggestions";
+import InfoTooltipIcon from "@/components/InfoTooltipIcon";
 import AdherenceFindings from "./AdherenceFindings";
 import DemotionSuggestions from "./DemotionSuggestions";
 import SupplementSchedule from "./SupplementSchedule";
 import SupplementInsightBadges from "./SupplementInsightBadges";
-import AddSupplementModal from "./AddSupplementModal";
+import AddSupplementModal from "@/components/nutrition/AddSupplementModal";
+import { SectionCreateHeader } from "@/components/CreateAction";
 import SupplementWeeklyAdherence from "@/components/SupplementWeeklyAdherence";
 import {
+  addIntakeItem,
   toggleSituation,
   acceptSuggestion,
   activateSurgerySituation,
@@ -496,6 +501,15 @@ export default async function SupplementsTab({
   // Label composition (#2856), for the "What's in this" line on each card and for the
   // edit form's repeater. One profile-scoped read for the whole page, indexed by item.
   const ingredientsBySupp = getIntakeIngredientsByItem(profile.id);
+  // Purpose links (#2857), for the edit form's "What you take it for" control. Rides on
+  // the same item read the composition does, so it costs no extra statement. The
+  // pickers behind it read the profile's own conditions and the biomarker names it
+  // actually has results for — a reason names something the person has seen.
+  const purposesBySupp = getIntakePurposesByItem(profile.id);
+  const purposeConditions = getConditions(profile.id, { status: "active" }).map(
+    (c) => ({ id: c.id, name: c.name })
+  );
+  const purposeBiomarkers = getUsedCanonicalNames(profile.id);
   // Filtered through the findings bus (#435): a keep-apart warning the profile has
   // dismissed (on this page or Upcoming) is held out, keyed by its keep-apart:<lo>-<hi>
   // dedupeKey. `suppressions`/`todayStr` are resolved above.
@@ -685,6 +699,9 @@ export default async function SupplementsTab({
         pgxVariants={pgxVariants}
         pairs={pairsFor(it.supplement.id)}
         ingredients={ingredientsBySupp.get(it.supplement.id) ?? []}
+        purposes={purposesBySupp.get(it.supplement.id) ?? []}
+        purposeConditions={purposeConditions}
+        purposeBiomarkers={purposeBiomarkers}
         isTaken={isTaken}
         isSkipped={isSkipped}
         strip={stripFor(it.supplement)}
@@ -864,12 +881,17 @@ export default async function SupplementsTab({
                   </span>
                   {/* The other half of the #2378 distinction: this one was WRITTEN BY A
                       MODEL from your data, not looked up in a reviewed map. */}
-                  <span
-                    data-testid="suggestion-origin-badge"
-                    title="Written by AI from your data — not from the curated map. Review it before acting on it."
-                    className="badge bg-violet-100 text-violet-700 dark:bg-violet-950 dark:text-violet-300"
-                  >
-                    Generated
+                  <span className="inline-flex items-center gap-1">
+                    <span
+                      data-testid="suggestion-origin-badge"
+                      className="badge bg-violet-100 text-violet-700 dark:bg-violet-950 dark:text-violet-300"
+                    >
+                      Generated
+                    </span>
+                    <InfoTooltipIcon
+                      label="Written by AI from your data — not from the curated map. Review it before acting on it."
+                      data-testid="generated-origin-help"
+                    />
                   </span>
                   {suggestion.dosage && (
                     <span className="text-sm text-slate-500 dark:text-slate-400">
@@ -924,6 +946,14 @@ export default async function SupplementsTab({
       )}
     </>
   );
+  const addSupplementModal = {
+    action: addIntakeItem,
+    initialSupply,
+    allIntakeItems: intakeItems,
+    stackItems,
+    pgxVariants,
+    activityScheduleAvailable,
+  };
 
   return (
     <SituationOptionsProvider options={situationOptionNames}>
@@ -1158,7 +1188,11 @@ export default async function SupplementsTab({
                   testid={`ul-warning-${w.key}`}
                   tone="amber"
                   title={ulWarningTitle(w)}
-                  detail={ulWarningDetail(w, w.conditionCaveat)}
+                  detail={ulWarningDetail(
+                    w,
+                    w.conditionCaveat,
+                    w.formulationNote
+                  )}
                   evidence={`From: ${ulWarningEvidence(w)}`}
                   dismissKey={dietaryLimitSignalKey(w.key)}
                   dismissLabel={`Dismiss ${ulWarningTitle(w)}`}
@@ -1242,18 +1276,25 @@ export default async function SupplementsTab({
                     />
                   </section>
                   <section className="p-4">
-                    <h2 className="mb-3 section-label">Manage</h2>
-                    <div className="flex flex-wrap items-center justify-between gap-3">
-                      <AddSupplementModal
-                        initialSupply={initialSupply}
-                        allIntakeItems={intakeItems}
-                        stackItems={stackItems}
-                        pgxVariants={pgxVariants}
-                        activityScheduleAvailable={activityScheduleAvailable}
-                      />
-                      <SharedSuppliesLink count={cabinetCount} />
-                      <DoseLedgerLink kind="supplement" />
-                    </div>
+                    <SectionCreateHeader
+                      title="Manage"
+                      action={
+                        <>
+                          <SharedSuppliesLink count={cabinetCount} />
+                          <DoseLedgerLink kind="supplement" />
+                        </>
+                      }
+                      createAction={{
+                        kind: "supplement",
+                        control: (
+                          <AddSupplementModal
+                            {...addSupplementModal}
+                            conditions={purposeConditions}
+                            biomarkers={purposeBiomarkers}
+                          />
+                        ),
+                      }}
+                    />
                   </section>
                 </div>
               </aside>
@@ -1269,16 +1310,7 @@ export default async function SupplementsTab({
                   days={scheduleDays}
                   secondary={secondarySchedule}
                   context={dayContext}
-                  action={
-                    <AddSupplementModal
-                      key="add-supplement"
-                      initialSupply={initialSupply}
-                      allIntakeItems={intakeItems}
-                      stackItems={stackItems}
-                      pgxVariants={pgxVariants}
-                      activityScheduleAvailable={activityScheduleAvailable}
-                    />
-                  }
+                  addSupplement={addSupplementModal}
                 />
               </div>
               <aside

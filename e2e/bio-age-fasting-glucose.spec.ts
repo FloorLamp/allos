@@ -105,10 +105,11 @@ test("the hero computes from a fasting-glucose draw and says it rests on a censo
   await expect(crpRow.getByTestId("bio-age-effect")).toContainText(
     /[+−±]\d+\.\d yr/
   );
-  await expect(crpRow.getByTestId("bio-age-effect")).toHaveAttribute(
-    "title",
-    /substituted limit/
-  );
+  const effectDetails = crpRow.getByRole("button", {
+    name: /substituted limit/,
+  });
+  await effectDetails.click();
+  await expect(page.getByRole("tooltip")).toHaveText(/substituted limit/);
   // The glucose row DOES have a curated target here (the fasting entry carries a
   // band; the unqualified one deliberately does not), so it states one.
   await expect(inputs.filter({ hasText: "Glucose, Fasting" })).toContainText(

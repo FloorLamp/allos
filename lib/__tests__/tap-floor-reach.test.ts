@@ -3,18 +3,23 @@ import path from "node:path";
 import { fileURLToPath } from "node:url";
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
 import {
-  TAP_FLOOR_PX,
-  TAP_TARGET_INSET_PX,
-  TAP_TARGET_MIN_RENDERED_PX,
   UnreadableControlError,
   belowSmHeightPx,
+  buttonFloorClasses,
   findFlooredControls,
   floorMiss,
   usesTapTarget,
   withoutComments,
+  type FloorMechanism,
   type FlooredControl,
   type ImportedModule,
 } from "../tap-floor-reach";
+import {
+  TAP_FLOOR_FLOAT_EPSILON_PX,
+  TAP_FLOOR_PX,
+  TAP_TARGET_INSET_PX,
+  TAP_TARGET_MIN_RENDERED_PX,
+} from "../tap-floor-tokens";
 import { makeTmpDir } from "./tmp-dir";
 
 // THE TAP FLOOR'S REACH, SWEPT OVER THE TREE (#3486 part 3, under #3514).
@@ -49,16 +54,16 @@ import { makeTmpDir } from "./tmp-dir";
 //   4. QUIET ON THE BENIGN NEIGHBOURS. #3325's census had to stay silent on five
 //      shipped `ORDER BY … COLLATE NOCASE` sorts, because a guard that cries wolf
 //      is deleted within a week and takes the real rule with it. Here the
-//      neighbours are the `.btn` family, `.tap-target` used where its arithmetic
-//      works, and `.chip` — which app/globals.css declares floor-free ON PURPOSE.
-//   5. A RATCHET over what already misses. 105 controls miss today — 60 once the
-//      45 native boxes with a `<label>` taking the tap are licensed — and this file
-//      does not pretend otherwise; what it does is stop the number growing, and
-//      record what each group is waiting on.
-//   6. AND A SECOND ROSTER FOR WHAT THIS CENSUS CANNOT JUDGE. 22 `.tap-target`
-//      controls pin no height in source, so `floorMiss` returns null at its first
-//      line and they are neither findings nor cleared. Counting them is what
-//      turns a silent blind spot into a number that can go up (#3557 review).
+//      neighbours are the `.btn` family and `.tap-target` used where its arithmetic
+//      works.
+//   5. A RATCHET over what already misses. Labelled native boxes are licensed
+//      separately and counted exactly below; this file does not pretend the rest
+//      comply — it stops the number growing and records what each group awaits.
+//   6. AND A SECOND ROSTER FOR WHAT THIS CENSUS CANNOT JUDGE. A `.tap-target`
+//      control that pins no height in source makes `floorMiss` return null at its
+//      first line, so it is neither a finding nor cleared. The roster is empty
+//      after #3562, and keeping that exact assertion prevents the blind spot from
+//      returning silently.
 //   7. AND A THIRD FOR WHAT IT CANNOT EVEN READ. A control whose class list is
 //      composed somewhere else — a forwarded `className` prop, a `.map()`
 //      variable — comes back `readable: false`, and those are rostered EXACTLY
@@ -66,10 +71,14 @@ import { makeTmpDir } from "./tmp-dir";
 //      constant reached the scan as its own IDENTIFIER, matched no height token,
 //      and read as a control that simply pins no height. Three live 40px controls
 //      were behind that (`TrainingLogCalendar`, raised here) and a fourth turned
-//      up the moment it closed (`ActivityOverlay`, registered below).
+//      up when that closed (`ActivityOverlay`, subsequently cleared by the
+//      shared 44px overlay-handle target in #3691).
 
 const REPO = path.resolve(fileURLToPath(new URL("../..", import.meta.url)));
 const ROOTS = ["app", "components"];
+const BUTTON_FLOOR_CLASSES = buttonFloorClasses(
+  fs.readFileSync(path.join(REPO, "app/globals.css"), "utf8")
+);
 
 /**
  * ONE CORPUS THIS CENSUS CAN BE POINTED AT: a base directory, and the roots to
@@ -97,18 +106,29 @@ const TREE: Corpus = { base: REPO, roots: ROOTS };
 // THE FLOOR THE CENSUS MUST CLEAR. Not the exact count — controls arrive with
 // every feature — but a number well above zero, so a sweep that has stopped
 // seeing them fails LOUDLY instead of passing over an empty list. Measured
-// 2026-08-23: 1456 interactive controls carrying a `className`, of which 345 are
-// `.btn`-family members and 51 take `.tap-target` as their mechanism. It only
+// 2026-08-25: 1464 interactive controls carrying a `className`, of which 350 are
+// `.btn`-family members and 31 take `.tap-target` as their mechanism. It only
 // ever moves up, and only when someone has looked.
 //
 // The same 1456 measured 2026-08-22, before #3561 taught the scan to resolve a
 // hoisted class list. The TOTAL did not move, because an unreadable class list was
 // always counted here — it is what the scan then DID with it that changed. What
-// moved is underneath: 159 controls could receive a verdict and now 178 can, and
-// `.tap-target` as a mechanism went 38 -> 51. A headline that holds still across
-// that is a headline measuring the wrong population, which is #3563's third item
-// and is not fixed here.
+// moved is underneath: 159 controls could receive a verdict and now 178 explicit
+// heights can. The governed floor below also counts authenticated CSS mechanisms,
+// so the subset this rule can actually clear or reject cannot disappear behind a
+// stable headline. `.tap-target` as a mechanism separately went 38 -> 51, then
+// back to 35 as adjacent controls took rendered ownership in #3562's first
+// pass, then 31 when the four owner-held controls converged.
 const CENSUS_FLOOR = 1200;
+// Filled from the governed source-verdict population below: explicit readable
+// heights plus the two mechanisms whose rendered floor arrives from CSS.
+const GOVERNED_CENSUS_FLOOR = 469;
+const MECHANISM_CENSUS_FLOORS: Partial<Record<FloorMechanism, number>> = {
+  "btn-family": 346,
+  "tap-target": 31,
+  rendered: 39,
+};
+const LICENSED_NATIVE_BOXES = 52;
 
 /**
  * THE CONTROLS THAT MISS THE FLOOR TODAY, by file, with what each is waiting on.
@@ -136,15 +156,6 @@ const DENSE_EDITOR =
   "dense in-form editor row: raising the control raises the row, which is a phone-idiom " +
   "decision for the surface (#3374/#3378 shape), not a height edit — the #3536 precedent";
 
-// A dismiss/secondary glyph riding inside a line of text. Its box is sized to the
-// text it sits in, so the floor cannot be met by growing it without moving the
-// line. `.tap-target` does not rescue these either: below 32px rendered the
-// overlay lands short (see TAP_TARGET_MIN_RENDERED_PX).
-const INLINE_GLYPH =
-  "inline dismiss/secondary glyph sized to the text line it rides in; below " +
-  `${TAP_TARGET_MIN_RENDERED_PX}px even \`.tap-target\` cannot reach the floor, so this needs a ` +
-  "layout answer rather than a class";
-
 // A native `<select>` or text field. #3514 ruled the floor for TARGETS and its
 // converged list is controls; whether a typed field's box is the same quantity is
 // genuinely undecided, and this register records the question rather than
@@ -153,87 +164,28 @@ const TYPED_FIELD =
   "typed field (`<select>` / text `<input>`), not an icon target: #3514 converged CONTROLS " +
   "and never said whether a field's box is the same quantity — an open question, recorded";
 
-// A bare native checkbox with no `<label>` taking the tap on its behalf. The 41
-// labelled boxes in the tree are licensed by that association and are not
-// registered here; these five are the ones where the 16px box IS the whole
-// target.
-const BARE_BOX =
-  "bare native checkbox: no `<label>` takes the tap, so the 16px box is the whole target";
-
 const UNDER_FLOOR_REGISTER: Registered[] = [
-  // ── inline glyphs ────────────────────────────────────────────────────────
-  { file: "components/FoodGuidance.tsx", controls: 1, why: INLINE_GLYPH },
-  { file: "components/HouseholdCard.tsx", controls: 1, why: INLINE_GLYPH },
-  {
-    file: "app/(app)/trends/TrendingDigest.tsx",
-    controls: 1,
-    why: INLINE_GLYPH,
-  },
-  { file: "app/(app)/upcoming/page.tsx", controls: 1, why: INLINE_GLYPH },
-  { file: "components/FindingCard.tsx", controls: 1, why: INLINE_GLYPH },
-  { file: "components/FindingRow.tsx", controls: 1, why: INLINE_GLYPH },
-  { file: "components/InfoTooltipIcon.tsx", controls: 1, why: INLINE_GLYPH },
-  {
-    file: "app/(app)/nutrition/UntrackHabitButton.tsx",
-    controls: 1,
-    why: INLINE_GLYPH,
-  },
-  {
-    file: "app/(app)/results/TrajectoryWatchCard.tsx",
-    controls: 1,
-    why: INLINE_GLYPH,
-  },
-  {
-    file: "components/facts/FactChipRow.tsx",
-    controls: 1,
-    why:
-      "the fact chip's remove `x`, 24px inside a 34px chip. It CARRIES `.tap-target` and " +
-      `still lands at ${24 + 2 * TAP_TARGET_INSET_PX}px effective, because the overlay adds a fixed ` +
-      `2x${TAP_TARGET_INSET_PX}px. Reaching ${TAP_FLOOR_PX} needs ${TAP_TARGET_MIN_RENDERED_PX}px rendered, which grows the chip ` +
-      "from 34px to 46 and re-lays every fact row in the app — the #3536 shape, recorded " +
-      "rather than forced. The four steppers this PR did raise had the headroom; this does not",
-  },
-  {
-    file: "components/illness/SymptomLogBar.tsx",
-    controls: 4,
-    why: `${INLINE_GLYPH}; and two 32px severity fields on the same bar (${TYPED_FIELD})`,
-  },
-
   // ── dense editors ────────────────────────────────────────────────────────
   {
+    file: "components/illness/SymptomLogBar.tsx",
+    controls: 2,
+    why: "compact symptom editor: two 32px typed fields await #3708",
+  },
+  {
     file: "components/activity-form/StrengthSets.tsx",
-    controls: 11,
+    controls: 8,
     why: DENSE_EDITOR,
   },
-  { file: "components/DayHistory.tsx", controls: 4, why: DENSE_EDITOR },
   {
     file: "components/activity-form/ActivityFormHeader.tsx",
-    controls: 2,
-    why: DENSE_EDITOR,
-  },
-  {
-    file: "components/activity-form/FitnessTestTimer.tsx",
     controls: 1,
     why: DENSE_EDITOR,
   },
-  { file: "components/MoodValencePicker.tsx", controls: 1, why: DENSE_EDITOR },
   {
     file: "app/(app)/training/TrainingLogView.tsx",
     controls: 1,
     why: DENSE_EDITOR,
   },
-  {
-    file: "components/ProfileSwitcherPanel.tsx",
-    controls: 1,
-    why: DENSE_EDITOR,
-  },
-  { file: "components/SidebarContent.tsx", controls: 1, why: DENSE_EDITOR },
-  {
-    file: "app/(app)/trends/ChartJumpMenu.tsx",
-    controls: 1,
-    why: DENSE_EDITOR,
-  },
-  { file: "components/CompactDateMenu.tsx", controls: 1, why: DENSE_EDITOR },
   { file: "components/MobileDetailPage.tsx", controls: 1, why: DENSE_EDITOR },
 
   // ── typed fields ─────────────────────────────────────────────────────────
@@ -258,52 +210,17 @@ const UNDER_FLOOR_REGISTER: Registered[] = [
   {
     file: "components/video/VideoClipGrid.tsx",
     controls: 2,
-    // NAMED, because this entry was read as covering the whole file and it does
-    // not. The two controls here are the CAPTION TEXT INPUTS —
+    // The two controls here are the CAPTION TEXT INPUTS —
     // `video-clip-caption-input-*` (`input h-8`) and the new-clip `Caption
     // (optional)` field (`input h-9`). The file's two icon buttons at the
-    // figcaption are a different population entirely: they pin no height, this
-    // census renders no verdict on them, and they are recorded in
-    // MEASURED_UNDER_FLOOR below at 24px and 22px rendered. A count of 2 with a
-    // `why` about typed fields silently covered them, which is worse than
-    // leaving them out — the ratchet was green and the sentence was false
-    // (#3557 review, blocker 3).
-    why: `${TYPED_FIELD}. This entry is the two caption text inputs ONLY; the file's two icon buttons pin no height and are recorded in MEASURED_UNDER_FLOOR`,
+    // figcaption now has one standard OverflowMenu trigger instead of the two
+    // under-floor glyphs (#3562).
+    why: `${TYPED_FIELD}. This entry is the two caption text inputs only`,
   },
   {
     file: "components/medications/PediatricDoseBandPicker.tsx",
     controls: 1,
     why: TYPED_FIELD,
-  },
-
-  // ── bare native boxes ────────────────────────────────────────────────────
-  {
-    file: "app/(app)/settings/notifications/NotificationPrefs.tsx",
-    controls: 2,
-    // Two, not three: #3558 gave one of the three boxes a `<label>` and the
-    // licence took it out of the finding. The entry is the number the tree
-    // holds today, not the number it held when the census was first taken.
-    why: `${BARE_BOX} — the #1868 kind x channel matrix, whose phone idiom is #3495/#3550`,
-  },
-  { file: "components/DataTableManager.tsx", controls: 2, why: BARE_BOX },
-
-  // ── the drag affordance that doubles as a control ────────────────────────
-  {
-    file: "components/ActivityOverlay.tsx",
-    controls: 1,
-    // FOUND BY FAILING CLOSED (#3561), not by anyone looking. Its class list is
-    // `OVERLAY_DRAG_HANDLE_HIT`, an identifier imported through the `./overlay`
-    // barrel from `./tokens` — three hops the scan could not take, so a 24px
-    // `<button>` read as a control pinning no height.
-    why:
-      "the workout overlay's minimize handle, `h-6 w-16` (24px) from " +
-      "`OVERLAY_DRAG_HANDLE_HIT` in components/overlay/tokens.ts. That constant is the " +
-      "SHARED drag affordance — `OverlayDragHandle` renders it `aria-hidden` on the " +
-      "sheet, the drawer and the dock, where it is a gesture hint and not a target — so " +
-      "raising it to 44 changes the handle's box on every overlay in the app, which is a " +
-      "visual decision for the overlay vocabulary (#1469) rather than a height edit. What " +
-      "closes this is either a 44px box for the one site where the handle IS the button, " +
-      "or the token growing everywhere on purpose",
   },
 
   // ── the one range track ──────────────────────────────────────────────────
@@ -321,11 +238,8 @@ const UNDER_FLOOR_REGISTER: Registered[] = [
  * THE `.tap-target` CONTROLS THIS CENSUS CANNOT JUDGE, ENUMERATED.
  *
  * `floorMiss` returns null on its FIRST LINE for a control that pins no height —
- * see the module header on what a class-list scan can see. That is a stated
- * bound and it is honest, but until now it was also SILENT: twenty-two controls
- * wearing the token that says "the floor was reached by hit area" were neither
- * findings nor cleared, and nothing counted them. A blind spot with no number
- * cannot grow visibly, which is the #3206 shape one level down.
+ * see the module header on what a class-list scan can see. The exact empty roster
+ * after #3562 makes a future blind spot fail instead of growing silently.
  *
  * So they are rostered here, by file and count, and the census asserts the
  * roster is EXACTLY what it finds. A new unpinned `.tap-target` is red until
@@ -334,36 +248,11 @@ const UNDER_FLOOR_REGISTER: Registered[] = [
  * size of the question this scan cannot answer.
  *
  * Why it matters and is not bookkeeping: `.tap-target` adds a FIXED 12px, so a
- * control's compliance depends entirely on a rendered height none of these
- * declare. Three of the twenty-two have now been measured (MEASURED_UNDER_FLOOR)
- * and all three are under the floor. The other nineteen are UNMEASURED — nobody
- * has looked, and this file says so rather than implying they are fine.
+ * control's compliance depends entirely on its rendered height.
  */
 type UnjudgedTapTarget = { file: string; controls: number };
 
-const UNJUDGED_TAP_TARGETS: UnjudgedTapTarget[] = [
-  { file: "app/(app)/encounters/AddVisitEntry.tsx", controls: 2 },
-  { file: "app/(app)/protocols/ProtocolForm.tsx", controls: 1 },
-  { file: "app/(app)/training/GoalForm.tsx", controls: 2 },
-  // The injury bar's trailing-affordance MENU (#3221), the same control ProtocolForm
-  // and GoalForm are rostered for: a `.tap-target` chip whose height is whatever its
-  // padding and text come to. Unjudged for the same reason and counted for the same one.
-  { file: "app/(app)/training/InjuryBar.tsx", controls: 1 },
-  { file: "app/(app)/training/MobilityLogBar.tsx", controls: 1 },
-  { file: "components/IntakeItemForm.tsx", controls: 2 },
-  // Two arrived with #3561: this file's dock button and one more chip in
-  // FactChipRow, both of whose class lists were hoisted constants the scan
-  // returned as identifiers. They were always unjudged; now they are counted.
-  { file: "components/MobileDock.tsx", controls: 1 },
-  { file: "components/ProfileIdentityBar.tsx", controls: 1 },
-  { file: "components/QuickLogSheet.tsx", controls: 2 },
-  { file: "components/encounters/VisitFactRow.tsx", controls: 1 },
-  { file: "components/facts/FactChipRow.tsx", controls: 3 },
-  { file: "components/intake/CadenceEditor.tsx", controls: 1 },
-  { file: "components/intake/IntakeKindChip.tsx", controls: 1 },
-  { file: "components/intake/IntakeRulesEditor.tsx", controls: 1 },
-  { file: "components/video/VideoClipGrid.tsx", controls: 2 },
-];
+const UNJUDGED_TAP_TARGETS: UnjudgedTapTarget[] = [];
 
 /**
  * THE CLASS LISTS THIS CENSUS CANNOT READ AT ALL, ENUMERATED.
@@ -384,45 +273,20 @@ const UNJUDGED_TAP_TARGETS: UnjudgedTapTarget[] = [
  * someone removes it.
  *
  * Before #3561 there was no list, because there was no way to tell these apart
- * from a control that had been read and pinned no height. Thirteen is the number
+ * from a control that had been read and pinned no height. Twelve is the number
  * after the resolver reaches module constants, imported constants, barrel
  * re-exports, record lookups and single-`return` helpers; without those it was 153.
+ * CustomRangeToggle left this roster when it took exact ownership of its
+ * button-family class instead of accepting an unreadable forwarded `className`.
  */
 const UNREADABLE_CLASS_LISTS: { file: string; controls: number }[] = [
-  { file: "app/(app)/sleep/SleepLogAction.tsx", controls: 1 },
-  { file: "app/(app)/upcoming/FoldSummary.tsx", controls: 1 },
   { file: "components/Combobox.tsx", controls: 1 },
-  { file: "components/CustomRangeDisclosure.tsx", controls: 1 },
   { file: "components/DateField.tsx", controls: 1 },
-  { file: "components/DoseStatusControl.tsx", controls: 1 },
-  { file: "components/ExerciseDetailPanel.tsx", controls: 1 },
   { file: "components/HrefSelect.tsx", controls: 1 },
-  { file: "components/LogActivityButton.tsx", controls: 1 },
   { file: "components/SubmitButton.tsx", controls: 1 },
   { file: "components/activity-form/IntensityPicker.tsx", controls: 1 },
-  { file: "components/illness/EndEpisodeReconcile.tsx", controls: 1 },
-  { file: "components/illness/ReopenEpisodeReconcile.tsx", controls: 1 },
 ];
 
-/**
- * THE THREE OF THOSE NINETEEN THAT HAVE BEEN MEASURED, and all three are short.
- *
- * Measured against the app's own compiled CSS at a 390px viewport with a coarse
- * pointer (#3557 review). These are the same defect this module is named for —
- * a control wearing `.tap-target`, which says the floor was reached by hit area,
- * while its rendered box is under the 32px the overlay's fixed 12px needs. They
- * were invisible to the source census because their height is their content's.
- *
- * RECORDED, NOT FIXED. Raising these is a phone-idiom decision in a dense row —
- * the weekday cadence toggles are seven across a phone, the clip glyphs ride a
- * figcaption line — and that is #3562's call, on the #3536 precedent this file
- * already follows for `FactChipRow`. What is fixed here is the RECORD: two of
- * the three were standing behind a register entry about `<select>` boxes.
- *
- * `testid` is what pins each entry to its control. A line number drifts with any
- * edit above it; a testid is the thing the control is addressed by, and the
- * census asserts it is still in the file.
- */
 type MeasuredUnderFloor = {
   file: string;
   /** 1-based line of the opening tag when this was measured, for the reader. */
@@ -434,47 +298,9 @@ type MeasuredUnderFloor = {
   what: string;
 };
 
-const MEASURED_UNDER_FLOOR: MeasuredUnderFloor[] = [
-  {
-    file: "components/intake/CadenceEditor.tsx",
-    line: 56,
-    testid: "-weekday-",
-    renderedPx: 24,
-    what:
-      "the cadence editor's weekday toggles (`px-2 py-1 text-xs`, seven across a phone). " +
-      "Raising them to 32 rendered re-lays the row, which is the #3374/#3378 phone-idiom " +
-      "question and not a class edit",
-  },
-  {
-    file: "components/video/VideoClipGrid.tsx",
-    line: 217,
-    testid: "video-clip-edit-",
-    renderedPx: 24,
-    what:
-      "the clip caption's edit glyph (`p-1` around a text-sized character), riding the " +
-      "figcaption line. The INLINE_GLYPH shape: its box is the line's, so the floor needs " +
-      "a layout answer",
-  },
-  {
-    file: "components/video/VideoClipGrid.tsx",
-    line: 231,
-    testid: "video-clip-delete-",
-    renderedPx: 22,
-    what:
-      "the clip's delete glyph (`p-1` around a 14px icon), beside the edit glyph above and " +
-      "2px shorter because the icon is smaller than the line box",
-  },
-];
+const MEASURED_UNDER_FLOOR: MeasuredUnderFloor[] = [];
 
-/**
- * The nineteen nobody has measured. Stated as a number rather than left as
- * subtraction, because "we have not looked" is the fact worth being able to
- * read off this file. It went 16 -> 18 when #3561 made two hoisted class lists
- * readable — the controls did not change, the scan's sight did — and 18 -> 19
- * when #3221 gave the injury bar the trailing-affordance menu the other
- * facts-with-editors hosts already had, which is a NEW control and not new sight.
- */
-const UNMEASURED_TAP_TARGETS = 19;
+const UNMEASURED_TAP_TARGETS = 0;
 
 function read(rel: string, base: string = REPO): string {
   return fs.readFileSync(path.join(base, rel), "utf8");
@@ -490,6 +316,7 @@ function sourceFiles(root: string, base: string = REPO): string[] {
       if (entry.isDirectory()) {
         if (entry.name === "node_modules" || entry.name.startsWith("."))
           continue;
+        if (entry.name === "__tests__") continue;
         walk(rel);
       } else if (entry.name.endsWith(".tsx")) {
         out.push(rel);
@@ -551,7 +378,8 @@ function census(corpus: Corpus = TREE): Found[] {
       try {
         controls = findFlooredControls(
           withoutComments(read(file, corpus.base)),
-          moduleReader(corpus, path.dirname(path.join(corpus.base, file)))
+          moduleReader(corpus, path.dirname(path.join(corpus.base, file))),
+          BUTTON_FLOOR_CLASSES
         );
       } catch (error) {
         if (error instanceof UnreadableControlError)
@@ -577,6 +405,22 @@ function misses(found: Found[]): { control: Found; why: string }[] {
   return out;
 }
 
+/** The controls for which this source rule can issue a pass or a finding. */
+function governedControls<T extends FlooredControl>(found: T[]): T[] {
+  return found.filter((control) => {
+    if (!control.readable) return false;
+    // The associated label is the target, so the native box itself is outside
+    // this rule's verdict population. Its exact licensed inventory is pinned.
+    if (control.kind === "native-box" && control.labelled) return false;
+    if (control.governedAlternative) return true;
+    // These mechanisms receive their floor from CSS even when the call site
+    // writes no height. The other mechanisms need an explicit rendered height
+    // before a source-only rule can prove their arithmetic.
+    if (control.mechanism === "btn-family") return true;
+    return control.belowSmPx !== null;
+  });
+}
+
 // The tree's own census, taken once and shared by every describe below.
 const found = census();
 const missed = misses(found);
@@ -591,15 +435,37 @@ describe("the tap floor's reach (#3486 part 3 / #3514)", () => {
         "stopped seeing them (a rename, a move, a JSX shape it cannot parse) or the " +
         "controls really are gone — check which before lowering this number."
     ).toBeGreaterThanOrEqual(CENSUS_FLOOR);
-    // Both registered mechanisms are really present, so the verdicts below are
-    // not green over a corpus that happens to contain neither.
-    const mechanisms = found.map((c) => c.mechanism);
-    expect(mechanisms.filter((m) => m === "btn-family").length).toBeGreaterThan(
-      100
-    );
-    expect(mechanisms.filter((m) => m === "tap-target").length).toBeGreaterThan(
-      10
-    );
+    const governed = governedControls(found);
+    expect(
+      governed.length,
+      `Only ${governed.length} controls remain in the governed source-verdict ` +
+        `population, below its floor of ${GOVERNED_CENSUS_FLOOR}. The headline ${found.length} ` +
+        "controls cannot prove that the subset this source census can judge is still visible."
+    ).toBeGreaterThanOrEqual(GOVERNED_CENSUS_FLOOR);
+    expect(
+      found.filter(
+        (control) => control.kind === "native-box" && control.labelled
+      ).length,
+      "The licensed native-box count changed. Each one is exempt only because an " +
+        "associated label owns its tap; inspect any added/removed association before updating it."
+    ).toBe(LICENSED_NATIVE_BOXES);
+    // Every registered mechanism has its own live-population ratchet. One can no
+    // longer disappear while growth in another keeps the aggregate floor green.
+    for (const [mechanism, floor] of Object.entries(
+      MECHANISM_CENSUS_FLOORS
+    ) as [FloorMechanism, number][]) {
+      const population = found.filter(
+        (control) =>
+          control.mechanism === mechanism ||
+          control.reachableMechanisms?.includes(mechanism)
+      ).length;
+      expect(
+        population,
+        `Only ${population} controls still authenticate the ${mechanism} mechanism, ` +
+          `below its live-population floor of ${floor}. Inspect whether the mechanism ` +
+          "really lost adopters or the scanner stopped recognizing them."
+      ).toBeGreaterThanOrEqual(floor);
+    }
   });
 
   // THE NAMED SUBJECT. Without this the corpus assertion above can stay green
@@ -621,7 +487,8 @@ describe("the tap floor's reach (#3486 part 3 / #3514)", () => {
       const source = withoutComments(read(subject.file));
       const controls = findFlooredControls(
         source,
-        moduleReader(TREE, path.dirname(path.join(REPO, subject.file)))
+        moduleReader(TREE, path.dirname(path.join(REPO, subject.file))),
+        BUTTON_FLOOR_CLASSES
       ).filter((c) => c.mechanism === "tap-target" && c.belowSmPx !== null);
       expect(
         controls.length,
@@ -725,13 +592,18 @@ describe("the tap floor's reach (#3486 part 3 / #3514)", () => {
     expect(
       Number(inset![1]),
       `app/globals.css extends \`.tap-target\` by ${inset?.[1]}px per side, but ` +
-        `lib/tap-floor-reach.ts prices it at ${TAP_TARGET_INSET_PX}px. Move the constant, ` +
+        `lib/tap-floor-tokens.ts prices it at ${TAP_TARGET_INSET_PX}px. Move the constant, ` +
         "or the census is judging every hit-area control against arithmetic that is not " +
         "the app's."
     ).toBe(TAP_TARGET_INSET_PX);
     expect(TAP_TARGET_MIN_RENDERED_PX).toBe(
       TAP_FLOOR_PX - 2 * TAP_TARGET_INSET_PX
     );
+    expect([...BUTTON_FLOOR_CLASSES].sort()).toEqual([
+      "btn",
+      "btn-danger",
+      "btn-ghost",
+    ]);
     // And the family's own rendered floor is the same number the module names.
     // `2.75rem` is 44px; the census and the stylesheet hold ONE floor, which is
     // the property `lib/__tests__/card-mode-boundary.test.ts` keeps for the card
@@ -741,6 +613,21 @@ describe("the tap floor's reach (#3486 part 3 / #3514)", () => {
       "The `.btn` family's below-`sm` floor in app/globals.css is no longer " +
         `${TAP_FLOOR_PX / 16}rem (${TAP_FLOOR_PX}px). The census and the stylesheet must hold one number.`
     ).toContain(`min-block-size: ${TAP_FLOOR_PX / 16}rem`);
+  });
+
+  it("keeps browser float tolerance below a genuine layout miss", () => {
+    expect(TAP_FLOOR_FLOAT_EPSILON_PX).toBe(0.01);
+    expect(
+      TAP_FLOOR_PX - 0.001 + TAP_FLOOR_FLOAT_EPSILON_PX
+    ).toBeGreaterThanOrEqual(TAP_FLOOR_PX);
+    expect(TAP_FLOOR_PX - 0.02 + TAP_FLOOR_FLOAT_EPSILON_PX).toBeLessThan(
+      TAP_FLOOR_PX
+    );
+    for (const rendered of [31.99994, 32.00006])
+      expect(Math.abs(rendered - 32)).toBeLessThanOrEqual(
+        TAP_FLOOR_FLOAT_EPSILON_PX
+      );
+    expect(Math.abs(31.98 - 32)).toBeGreaterThan(TAP_FLOOR_FLOAT_EPSILON_PX);
   });
 });
 
@@ -791,7 +678,7 @@ describe("the `.tap-target` controls this census cannot judge", () => {
     ).toBe(total - MEASURED_UNDER_FLOOR.length);
   });
 
-  it("holds the three measured ones to the arithmetic, not to a memory of it", () => {
+  it("holds any measured ones to the arithmetic, not to a memory of it", () => {
     for (const m of MEASURED_UNDER_FLOOR) {
       // It really is the control described — the testid is how it is addressed,
       // and a line number would only tell you the file has been edited since.
@@ -899,16 +786,99 @@ describe("the class lists this census cannot read (#3561)", () => {
         )![1]
       ),
       "components/TrainingLogCalendar.tsx's DAY_HIT is the day cell's hit box on a " +
-        "phone. It tiles a grid column, so its WIDTH is the 40.9px seven columns fit " +
-        "into a 288px drawer and cannot reach the floor (#3536); its HEIGHT has the " +
-        "room and must."
+        "phone. It tiles one of seven columns in the widened drawer, so both its " +
+        "rendered width and height reach the floor (#3536)."
     ).toBeGreaterThanOrEqual(TAP_FLOOR_PX);
+    const drawerSource = read("components/MobileNav.tsx");
+    expect(
+      drawerSource,
+      "the phone drawer must reserve seven 44px columns after its safe-area gutter"
+    ).toContain(
+      "w-[max(20rem,calc(19.3125rem+env(safe-area-inset-left)))] max-w-full"
+    );
+    expect(
+      read("components/TrainingLogCalendar.tsx"),
+      "the calendar may cancel the ordinary drawer gutter, never the safe-area inset"
+    ).toContain(
+      "ml-[calc(env(safe-area-inset-left)_-_max(1rem,env(safe-area-inset-left)))]"
+    );
+    const calendarDrawerGeometry = (viewport: number, safeLeft: number) => {
+      const drawer = Math.min(viewport, Math.max(320, 309 + safeLeft));
+      const leftPadding = Math.max(16, safeLeft);
+      const calendarMarginLeft = safeLeft - leftPadding;
+      return {
+        gridLeft: leftPadding + calendarMarginLeft,
+        gridWidth: drawer - 1 - leftPadding - 16 - calendarMarginLeft + 16,
+      };
+    };
+    for (const [viewport, safeLeft] of [
+      [320, 0],
+      [390, 10],
+      [390, 16],
+      [390, 44],
+      [430, 60],
+    ]) {
+      const geometry = calendarDrawerGeometry(viewport, safeLeft);
+      expect(
+        geometry.gridLeft,
+        `a ${viewport}px viewport must keep its calendar inside a ${safeLeft}px left safe inset`
+      ).toBeGreaterThanOrEqual(safeLeft);
+      expect(
+        geometry.gridWidth,
+        `a ${viewport}px viewport with ${safeLeft}px left safe inset`
+      ).toBeGreaterThanOrEqual(7 * TAP_FLOOR_PX);
+    }
   });
 });
 
 // ── THE HALF THAT MAKES THE GREEN ABOVE WORTH ANYTHING ──────────────────────
 //
 // A green sweep over a complying tree says nothing about what the sweep can see.
+
+describe("the TSX source reader", () => {
+  it("preserves comment-shaped JSX text while blanking real comments", () => {
+    const source = [
+      `const hidden = "h-11"; // code comment h-4`,
+      `export default function X() {`,
+      `  return <><p>a // b</p><span>https://x.co</span><p>a /* b</p>`,
+      `    {/* real JSX comment <button className="h-4">z</button> */}`,
+      `    <button title="a > b" type="button" className="h-7 w-7">x</button></>;`,
+      `}`,
+    ].join("\n");
+    const clean = withoutComments(source);
+    expect(clean).toContain("<p>a // b</p>");
+    expect(clean).toContain("<span>https://x.co</span>");
+    expect(clean).toContain("<p>a /* b</p>");
+    expect(clean).not.toContain("code comment h-4");
+    expect(clean).not.toContain("real JSX comment");
+    const [control] = findFlooredControls(
+      clean,
+      undefined,
+      BUTTON_FLOOR_CLASSES
+    );
+    expect(control.className).toBe("h-7 w-7");
+    expect(floorMiss(control)).not.toBeNull();
+  });
+
+  it("keeps a nested control after line-leading comment-shaped JSX text", () => {
+    const source = `export function X() {
+      return <div>
+        // visible prefix <button className="h-4">x</button>
+        <button className="h-7">y</button>
+      </div>;
+    }`;
+    const clean = withoutComments(source);
+    expect(clean).toContain("// visible prefix");
+    const controls = findFlooredControls(
+      clean,
+      undefined,
+      BUTTON_FLOOR_CLASSES
+    );
+    expect(controls).toHaveLength(2);
+    expect(controls.map((control) => control.belowSmPx)).toEqual([16, 28]);
+    expect(controls.map(floorMiss).every((miss) => miss !== null)).toBe(true);
+  });
+});
 
 describe("the height reader", () => {
   it("reads only what governs below `sm`", () => {
@@ -928,6 +898,8 @@ describe("the height reader", () => {
     // Arbitrary values in units it knows.
     expect(belowSmHeightPx("input h-[38px]")).toBe(38);
     expect(belowSmHeightPx("h-[2rem]")).toBe(32);
+    expect(belowSmHeightPx("[min-height:2rem]")).toBe(32);
+    expect(belowSmHeightPx("pointer-coarse:h-8")).toBe(32);
     // Half steps and the 1px step.
     expect(belowSmHeightPx("h-3.5")).toBe(14);
     expect(belowSmHeightPx("h-px")).toBe(1);
@@ -937,7 +909,8 @@ describe("the height reader", () => {
   });
 });
 
-const scan = (source: string) => findFlooredControls(withoutComments(source));
+const scan = (source: string) =>
+  findFlooredControls(withoutComments(source), undefined, BUTTON_FLOOR_CLASSES);
 
 /**
  * The same scan with a handful of in-memory modules behind it, so an import hop
@@ -955,10 +928,38 @@ function scanWith(
           readModule: reader,
         }
       : null;
-  return findFlooredControls(withoutComments(source), reader);
+  return findFlooredControls(
+    withoutComments(source),
+    reader,
+    BUTTON_FLOOR_CLASSES
+  );
 }
 
 describe("the sweep can see an offender", () => {
+  it("counts the actual source-verdict population and names its exclusions", () => {
+    const controls = scan(
+      `export default function X() {
+         return <>
+           <button className="btn">family</button>
+           <button className="tap-target h-8">overlay</button>
+           <button className="h-7">explicit offender</button>
+           <button className="tap-target">unmeasured overlay</button>
+           <label><input type="checkbox" className="h-4" />label owns tap</label>
+         </>;
+       }`
+    );
+    expect(controls.map((control) => control.mechanism)).toEqual([
+      "btn-family",
+      "tap-target",
+      "none",
+      "tap-target",
+      "none",
+    ]);
+    expect(
+      governedControls(controls).map((control) => control.mechanism)
+    ).toEqual(["btn-family", "tap-target", "none"]);
+  });
+
   it("catches a hand-rolled control outside the family — #3486's own shape", () => {
     const [control] = scan(
       `export default function X() {
@@ -1115,10 +1116,11 @@ describe("the sweep resolves a class list written somewhere else", () => {
   });
 
   it("follows a BARREL, which is how this tree actually writes its tokens", () => {
-    // `ActivityOverlay` imports `OVERLAY_DRAG_HANDLE_HIT` from "./overlay", an
+    // This is the shape ActivityOverlay uses for
+    // `OVERLAY_DRAG_HANDLE_HIT`: imported from "./overlay", an
     // index that re-exports it from "./tokens", whose value is composed from a
     // constant that never crosses either hop. Stopping at the first module reads
-    // nothing; the 24px button behind those three hops is a real finding.
+    // nothing; a sub-floor button behind those three hops must remain visible.
     const [control] = scanWith(
       `import { HANDLE } from "./overlay";
        export default function X() {
@@ -1279,6 +1281,364 @@ describe("the sweep is quiet on the benign neighbours", () => {
     }
   });
 
+  it("derives family membership and catches a call-site minimum that lowers it", () => {
+    const [modifierOnly] = scan(
+      `export default function X() {
+         return <button type="button" className="btn-sm min-h-7">x</button>;
+       }`
+    );
+    expect(modifierOnly.mechanism).toBe("none");
+    expect(floorMiss(modifierOnly)).toContain("neither registered mechanism");
+
+    const [lowered] = scan(
+      `export default function X() {
+         return <button type="button" className="btn min-h-8">x</button>;
+       }`
+    );
+    expect(lowered.mechanism).toBe("btn-family");
+    expect(floorMiss(lowered)).toContain(
+      "32px call-site minimum replaces the button family's 44px"
+    );
+
+    const [heightOnly] = scan(
+      `export default function X() {
+         return <button type="button" className="btn h-8">x</button>;
+       }`
+    );
+    expect(floorMiss(heightOnly)).toBeNull();
+  });
+
+  it("does not authenticate a variant-prefixed button-family suffix", () => {
+    for (const token of ["sm:btn", "hover:btn", "max-sm:btn"]) {
+      const [control] = scan(
+        `export default function X() {
+           return <button type="button" className="${token} h-7">x</button>;
+         }`
+      );
+      expect(control.mechanism, token).toBe("none");
+      expect(floorMiss(control), token).toContain(
+        "with neither registered mechanism"
+      );
+    }
+  });
+
+  it("requires every reachable conditional or logical class arm to be safe", () => {
+    for (const expression of [
+      `ok ? "btn" : "h-7"`,
+      `"h-7 " + (ok && "btn")`,
+      `ok ? "h-7" : "tap-target h-8"`,
+    ]) {
+      const [control] = scan(
+        `export default function X() {
+           return <button type="button" className={${expression}}>x</button>;
+         }`
+      );
+      expect(control.belowSmPx, expression).toBe(28);
+      expect(floorMiss(control), expression).toContain(
+        "with neither registered mechanism"
+      );
+    }
+
+    for (const expression of [
+      `ok ? "btn" : "min-h-11"`,
+      `"min-h-11 " + (ok && "btn")`,
+      `ok ? "min-h-11" : "tap-target h-8"`,
+    ]) {
+      const [control] = scan(
+        `export default function X() {
+           return <button type="button" className={${expression}}>x</button>;
+         }`
+      );
+      expect(floorMiss(control), expression).toBeNull();
+    }
+  });
+
+  it("does not let a governed class arm lend its proof to an empty arm", () => {
+    for (const expression of [
+      `ok && "btn"`,
+      `ok ? "btn" : ""`,
+      `ok ? "btn" : "px-1"`,
+    ]) {
+      const [control] = scan(
+        `export default function X() {
+           return <button type="button" className={${expression}}>x</button>;
+         }`
+      );
+      expect(floorMiss(control), expression).toContain(
+        "reachable class-expression arm"
+      );
+      expect(control.reachableMechanisms, expression).not.toContain(
+        "btn-family"
+      );
+    }
+  });
+
+  it("fails closed instead of flattening more than 64 class alternatives", () => {
+    const expression = ["a", "b", "c", "d", "e", "f", "g"]
+      .map(
+        (condition, index) =>
+          `(${condition} && "${index === 0 ? "btn" : `x${index}`}")`
+      )
+      .join(' + " " + ');
+    expect(() =>
+      scan(
+        `export default function X() {
+           return <button type="button" className={${expression}}>x</button>;
+         }`
+      )
+    ).toThrow(/more than 64 reachable alternatives/);
+
+    const atBound = ["a", "b", "c", "d", "e", "f"]
+      .map(
+        (condition, index) =>
+          `(${condition} && "${index === 0 ? "btn" : `x${index}`}")`
+      )
+      .join(' + " " + ');
+    const [control] = scan(
+      `export default function X() {
+         return <button type="button" className={${atBound}}>x</button>;
+       }`
+    );
+    expect(floorMiss(control)).toContain("reachable class-expression arm");
+  });
+
+  it("requires priced tap-target arithmetic in every governed class arm", () => {
+    for (const expression of [
+      `ok ? "btn" : "tap-target"`,
+      `ok ? "tap-target" : "btn"`,
+    ]) {
+      const [control] = scan(
+        `export default function X() {
+           return <button type="button" className={${expression}}>x</button>;
+         }`
+      );
+      expect(control.mechanism, expression).toBe("tap-target");
+      expect(control.belowSmPx, expression).toBeNull();
+      expect(control.unprovenAlternative, expression).toBe(true);
+      expect(floorMiss(control), expression).toContain(
+        "reachable class-expression arm"
+      );
+      expect(control.reachableMechanisms, expression).toEqual([]);
+      expect(
+        control.readable &&
+          usesTapTarget(control.className) &&
+          control.belowSmPx === null,
+        expression
+      ).toBe(true);
+    }
+
+    const [safe] = scan(
+      `export default function X() {
+         return <button className={ok ? "btn" : "tap-target h-8"}>x</button>;
+       }`
+    );
+    expect(floorMiss(safe)).toBeNull();
+    expect(safe.reachableMechanisms).toEqual(["btn-family", "tap-target"]);
+
+    const [short] = scan(
+      `export default function X() {
+         return <button className={ok ? "btn" : "tap-target h-7"}>x</button>;
+       }`
+    );
+    expect(floorMiss(short)).toContain("40px effective");
+    expect(short.reachableMechanisms).toEqual([]);
+  });
+
+  it("fails closed on explicit and important button-family minimum overrides", () => {
+    for (const [classes, fragment] of [
+      ["btn min-h-auto h-7", "cannot prove"],
+      ["btn max-sm:min-h-auto h-7", "cannot prove"],
+      ["btn min-h-7! min-h-11 h-7", "28px call-site minimum"],
+      ["btn min-h-7 min-h-11 h-7", "cannot prove"],
+    ] as const) {
+      const [control] = scan(
+        `export default function X() {
+           return <button type="button" className="${classes}">x</button>;
+         }`
+      );
+      expect(control.mechanism, classes).toBe("btn-family");
+      expect(floorMiss(control), classes).toContain(fragment);
+    }
+
+    const [safe] = scan(
+      `export default function X() {
+         return <button type="button" className="btn min-h-7 min-h-11! h-7">x</button>;
+       }`
+    );
+    expect(floorMiss(safe)).toBeNull();
+  });
+
+  it("rejects phone-applicable, custom-property and inline family minima", () => {
+    for (const token of [
+      "max-md:min-h-7",
+      "dark:min-h-7",
+      "landscape:min-h-7",
+    ]) {
+      const [control] = scan(
+        `export default function X() {
+           return <button className="btn h-7 ${token}">x</button>;
+         }`
+      );
+      expect(floorMiss(control), token).toContain("cannot prove");
+    }
+
+    expect(() =>
+      scan(
+        `export default function X() {
+           return <button className="btn h-7 min-h-(--compact)">x</button>;
+         }`
+      )
+    ).toThrow(UnreadableControlError);
+
+    for (const source of [
+      `export default function X() {
+         return <button className="btn h-7" style={{ minHeight: 28 }}>x</button>;
+       }`,
+      `const LOW = { style: { minHeight: 28 } };
+       export default function X() {
+         return <button {...LOW} className="btn h-7">x</button>;
+       }`,
+    ]) {
+      const [control] = scan(source);
+      expect(floorMiss(control), source).toContain(
+        "28px call-site minimum replaces the button family's 44px"
+      );
+    }
+
+    const [desktopOnly] = scan(
+      `export default function X() {
+         return <button className="btn h-7 sm:min-h-7">x</button>;
+       }`
+    );
+    expect(floorMiss(desktopOnly)).toBeNull();
+    const [inlineSafe] = scan(
+      `export default function X() {
+         return <button className="btn h-7" style={{ minHeight: 44 }}>x</button>;
+       }`
+    );
+    expect(floorMiss(inlineSafe)).toBeNull();
+  });
+
+  it("resolves referenced and spread inline minima, including block-size", () => {
+    for (const source of [
+      `const SMALL = { minHeight: 28 };
+       export default function X() {
+         return <button className="btn h-7" style={SMALL}>x</button>;
+       }`,
+      `const SMALL = { minHeight: 28 };
+       export default function X() {
+         return <button className="btn h-7" style={{ ...SMALL }}>x</button>;
+       }`,
+      `export default function X() {
+         return <button className="btn h-7" style={{ minBlockSize: 28 }}>x</button>;
+       }`,
+      `export default function X() {
+         return <button className="btn h-7" style={{ "min-block-size": 28 }}>x</button>;
+       }`,
+    ]) {
+      const [control] = scan(source);
+      expect(floorMiss(control), source).toContain(
+        "28px call-site minimum replaces the button family's 44px"
+      );
+    }
+
+    for (const source of [
+      `const SAFE = { minHeight: 44 };
+       export default function X() {
+         return <button className="btn h-7" style={SAFE}>x</button>;
+       }`,
+      `const SAFE = { minBlockSize: 44 };
+       export default function X() {
+         return <button className="btn h-7" style={{ ...SAFE }}>x</button>;
+       }`,
+      `const SMALL = { minHeight: 28 };
+       export default function X() {
+         return <button className="btn h-7" style={{ ...SMALL, minHeight: 44 }}>x</button>;
+       }`,
+    ]) {
+      const [control] = scan(source);
+      expect(floorMiss(control), source).toBeNull();
+    }
+
+    expect(() =>
+      scan(
+        `export default function X({ style }) {
+           return <button className="btn h-7" style={style}>x</button>;
+         }`
+      )
+    ).toThrow(UnreadableControlError);
+
+    const [lateLow] = scan(
+      `const SAFE = { minHeight: 44 };
+       export default function X() {
+         return <button className="btn h-7" style={{ ...SAFE, minHeight: 28 }}>x</button>;
+       }`
+    );
+    expect(floorMiss(lateLow)).toContain(
+      "28px call-site minimum replaces the button family's 44px"
+    );
+  });
+
+  it("resolves numeric arguments passed through style helpers", () => {
+    for (const helper of [
+      `const makeStyle = (n: number) => ({ minHeight: n });`,
+      `const makeStyle = (n: number) => ({ minBlockSize: n });`,
+      `const makeStyle = (minHeight: number) => ({ minHeight });`,
+      `const makeStyle = (minBlockSize: number) => ({ minBlockSize });`,
+    ]) {
+      const [safe] = scan(
+        `${helper}
+         export default function X() {
+           return <button className="btn h-7" style={makeStyle(44)}>x</button>;
+         }`
+      );
+      expect(floorMiss(safe), helper).toBeNull();
+
+      const [low] = scan(
+        `${helper}
+         export default function X() {
+           return <button className="btn h-7" style={makeStyle(28)}>x</button>;
+         }`
+      );
+      expect(floorMiss(low), helper).toContain(
+        "28px call-site minimum replaces the button family's 44px"
+      );
+
+      expect(
+        () =>
+          scan(
+            `${helper}
+             export default function X({ size }: { size: number }) {
+               return <button className="btn h-7" style={makeStyle(size)}>x</button>;
+             }`
+          ),
+        helper
+      ).toThrow(UnreadableControlError);
+    }
+  });
+
+  it("accepts known-safe phone-applicable family minima", () => {
+    for (const token of [
+      "dark:min-h-11",
+      "max-md:min-h-11",
+      "landscape:min-h-11",
+    ]) {
+      const [control] = scan(
+        `export default function X() {
+           return <button className="btn h-7 ${token}">x</button>;
+         }`
+      );
+      expect(floorMiss(control), token).toBeNull();
+    }
+
+    const [conflicting] = scan(
+      `export default function X() {
+         return <button className="btn h-7 dark:min-h-11 dark:min-h-7">x</button>;
+       }`
+    );
+    expect(floorMiss(conflicting)).toContain("cannot prove");
+  });
+
   it("says nothing about `.tap-target` where its arithmetic works", () => {
     const [control] = scan(
       `export default function X() {
@@ -1298,26 +1658,6 @@ describe("the sweep is quiet on the benign neighbours", () => {
       );
       expect(floorMiss(control), cls).toBeNull();
     }
-  });
-
-  it("says nothing about a `.chip`, which app/globals.css declares floor-free ON PURPOSE", () => {
-    // The single most important silence here. A chip is acquired by its WIDTH
-    // along a scrolling row, and app/globals.css says so in as many words ("NO
-    // HEIGHT FLOOR, DELIBERATELY"). A census that flagged the app's filter pills
-    // would be switched off within a week and would take the real rule with it.
-    const [control] = scan(
-      `export default function X() {
-         return <button type="button" className="chip chip-filter" aria-pressed={on}>Meds</button>;
-       }`
-    );
-    expect(control.belowSmPx).toBeNull();
-    expect(floorMiss(control)).toBeNull();
-    expect(
-      fs.readFileSync(path.join(REPO, "app/globals.css"), "utf8"),
-      "app/globals.css no longer records that `.chip` declares no height floor on " +
-        "purpose. The silence above is licensed by that sentence; if the decision " +
-        "changed, this census should stop being quiet."
-    ).toContain("NO HEIGHT FLOOR, DELIBERATELY");
   });
 
   it("says nothing about a non-interactive element that happens to be short", () => {

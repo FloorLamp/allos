@@ -27,6 +27,7 @@ import {
 import { formatLongDate } from "@/lib/format-date";
 import { useFormatPrefs } from "@/components/FormatPrefsProvider";
 import { ZONES, ZONE_COLORS } from "@/lib/training-zones";
+import { EmptyState } from "@/components/ui";
 
 const ISO_DATE = /^\d{4}-\d{2}-\d{2}$/;
 
@@ -56,11 +57,7 @@ export default function ZoneMinutesCardInner({
   const c = useChartColors();
   const motion = useChartMotion();
   if (data.length === 0) {
-    return (
-      <div className="flex h-64 items-center justify-center text-sm text-slate-500 dark:text-slate-400">
-        No zone minutes yet
-      </div>
-    );
+    return <EmptyState message="No zone minutes yet" />;
   }
   const tickFmt = ISO_DATE.test(data[0].week)
     ? (v: string) => String(v).slice(5)

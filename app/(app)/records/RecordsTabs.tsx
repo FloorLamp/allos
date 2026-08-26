@@ -1,8 +1,8 @@
 "use client";
 
-import Link from "next/link";
 import { usePathname } from "next/navigation";
 import ScrollFade from "@/components/ScrollFade";
+import Chip from "@/components/Chip";
 import type { RecordsGroup } from "./nav";
 
 // The second level of the Health-record tab hierarchy (#1079). The four group tabs
@@ -24,7 +24,7 @@ import type { RecordsGroup } from "./nav";
 // hard-coding two lists of Tailwind classes.
 //
 // AND THE OUTLINE PILL IS NOW THE PRIMITIVE'S NAV ROLE (#3475). The class list
-// this file used to hand-write moved verbatim into `chip chip-nav` in
+// this file used to hand-write moved verbatim into `chip-base chip-nav` in
 // app/globals.css — one padding (`py-1` -> the primitive's `py-1.5`, 30px -> the
 // 32px the filter role already measured, so the two strips are the same height
 // and differ only where they are meant to: shape and fill) and one selected
@@ -71,14 +71,9 @@ export default function RecordsTabs({ groups }: { groups: RecordsGroup[] }) {
         {activeGroup.panes.map((p) => {
           const active = pathname === p.href;
           return (
-            <Link
-              key={p.id}
-              href={p.href}
-              aria-current={active ? "page" : undefined}
-              className="chip chip-nav"
-            >
+            <Chip key={p.id} role="nav" href={p.href} current={active}>
               {p.label}
-            </Link>
+            </Chip>
           );
         })}
       </ScrollFade>

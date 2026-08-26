@@ -22,6 +22,7 @@ import { requireSession } from "@/lib/auth";
 import { PHONE_STARRED_TILE_CAP, splitAtPhoneCap } from "@/lib/phone-fold";
 import BiomarkerScale from "./BiomarkerScale";
 import PhoneFold from "./PhoneFold";
+import InfoTooltipIcon from "./InfoTooltipIcon";
 
 // Pinned card of the user's starred clinical results, shown at the top of Results →
 // Clinical results — its one card surface. (The comment used to claim a dashboard render
@@ -112,40 +113,47 @@ export default async function StarredResults({
           ? "today"
           : `${humanizeAge(ageDays)} ago`;
     return (
-      <Link
+      <div
         key={b.canonical_name}
-        href={clinicalResultDetailHref(b.canonical_name)}
         data-testid="starred-tile"
         className="rounded-lg border border-black/5 p-3 transition hover:border-brand-200 hover:shadow-xs dark:border-white/10"
       >
-        <div className="flex items-start justify-between gap-2">
-          <span className="truncate text-sm font-medium text-slate-700 dark:text-slate-200">
-            {b.canonical_name}
-          </span>
-          {badge !== "unknown" && (
-            <span className={`badge shrink-0 ${meta.chip}`}>{meta.label}</span>
-          )}
-        </div>
-        <div className="mt-2">
-          <BiomarkerScale
-            b={b}
-            sex={sex}
-            age={age}
-            status={reproductiveStatus}
-          />
-        </div>
+        <Link
+          href={clinicalResultDetailHref(b.canonical_name)}
+          className="block rounded-sm focus:outline-hidden focus-visible:ring-2 focus-visible:ring-brand-500"
+        >
+          <div className="flex items-start justify-between gap-2">
+            <span className="truncate text-sm font-medium text-slate-700 dark:text-slate-200">
+              {b.canonical_name}
+            </span>
+            {badge !== "unknown" && (
+              <span className={`badge shrink-0 ${meta.chip}`}>
+                {meta.label}
+              </span>
+            )}
+          </div>
+          <div className="mt-2">
+            <BiomarkerScale
+              b={b}
+              sex={sex}
+              age={age}
+              status={reproductiveStatus}
+            />
+          </div>
+        </Link>
         <div className="mt-2 text-xs text-slate-500 dark:text-slate-400">
           {relative}
           {stale && (
-            <span
-              className="ml-1.5 text-amber-600 dark:text-amber-400"
-              title="Over a year old — consider retesting"
-            >
-              · ⏳ stale
+            <span className="ml-1.5 inline-flex items-center gap-0.5 text-amber-600 dark:text-amber-400">
+              <span>· ⏳ stale</span>
+              <InfoTooltipIcon
+                label="Over a year old — consider retesting"
+                data-testid="starred-stale-help"
+              />
             </span>
           )}
         </div>
-      </Link>
+      </div>
     );
   };
 

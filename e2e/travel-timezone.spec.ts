@@ -1,8 +1,12 @@
 import { test, expect } from "./fixtures";
 import Database from "better-sqlite3";
-import { settledClick } from "./helpers";
+import { settledBoxes, settledClick } from "./helpers";
 import { loginAs } from "./nav";
 import { switchToProfile } from "./family-helpers";
+import {
+  TAP_FLOOR_FLOAT_EPSILON_PX,
+  TAP_FLOOR_PX,
+} from "@/lib/tap-floor-tokens";
 import {
   E2E_MEMBER_PASSWORD,
   E2E_LOGIN_TRAVEL,
@@ -32,9 +36,10 @@ test.describe.configure({ mode: "serial" });
 
 const AWAY = "Asia/Tokyo";
 const SECOND_AWAY = "Europe/Paris";
+const PHONE = { width: 390, height: 844 };
 
 // The zone the traveller profile's day runs on before anything moves it: the run's
-// own rotating pin, which is also the zone the auto-revert has to recognise as home.
+// own rotating pin, which is also the zone the return offer has to recognise as home.
 function homeZone(): string {
   return pinnedTimezone(frozenNow().toISOString()).zone;
 }
@@ -95,7 +100,7 @@ test.describe("travel timezone banner (#3263)", () => {
     const page = await loginAs(
       browser,
       { username: E2E_LOGIN_TRAVEL, password: E2E_MEMBER_PASSWORD },
-      { timezoneId: AWAY }
+      { timezoneId: AWAY, viewport: PHONE, hasTouch: true }
     );
     try {
       await page.goto("/");
@@ -111,6 +116,33 @@ test.describe("travel timezone banner (#3263)", () => {
       await expect(banner).toContainText("move your day there?");
       // Shown, never sent: nothing has moved yet.
       expect(travellerSettings().timezone).toBeNull();
+
+      // This banner is mounted by the shared app layout, so one short action is
+      // repeated on every own-profile route. Measure both real targets where the
+      // defect was reported: phone width, after hydration has painted the offer.
+      const [acceptBox, dismissBox] = await settledBoxes([
+        page.getByTestId("travel-timezone-accept"),
+        page.getByTestId("travel-timezone-dismiss"),
+      ]);
+      for (const box of [acceptBox, dismissBox])
+        expect(box.height + TAP_FLOOR_FLOAT_EPSILON_PX).toBeGreaterThanOrEqual(
+          TAP_FLOOR_PX
+        );
+      const horizontalOverlap =
+        Math.min(
+          acceptBox.x + acceptBox.width,
+          dismissBox.x + dismissBox.width
+        ) - Math.max(acceptBox.x, dismissBox.x);
+      const verticalOverlap =
+        Math.min(
+          acceptBox.y + acceptBox.height,
+          dismissBox.y + dismissBox.height
+        ) - Math.max(acceptBox.y, dismissBox.y);
+      expect(
+        horizontalOverlap > 0 && verticalOverlap > 0,
+        `travel banner targets overlap at ${PHONE.width}px: ` +
+          `accept=${JSON.stringify(acceptBox)} dismiss=${JSON.stringify(dismissBox)}`
+      ).toBe(false);
 
       await settledClick(page, page.getByTestId("travel-timezone-dismiss"));
       await expect(banner).toBeHidden();
@@ -172,7 +204,7 @@ test.describe("travel timezone banner (#3263)", () => {
     }
   });
 
-  test("reverts on its own when the device comes home, and says so afterwards", async ({
+  test("offers the return, survives navigation without moving, then moves on accept", async ({
     browser,
   }) => {
     const home = homeZone();
@@ -183,59 +215,36 @@ test.describe("travel timezone banner (#3263)", () => {
     );
     try {
       await page.goto("/");
-      // THE SERVER-SIDE FACT FIRST, and that order is load-bearing. The whole
-      // revert is a client chain — hydrate, read the device zone in an effect, call
-      // the action, re-render — and only its LAST link is the notice. Asserting the
-      // notice first meant a 5 s default absorbing all four links, which is fine on
-      // an idle box (1.8 s) and not fine on a loaded one: two concurrent workers
-      // pushed it past the ceiling and the failure read as "element(s) not found",
-      // the shape that looks like a missing feature rather than a slow one.
-      //
-      // So wait on the STATE that proves the chain completed — the zone actually
-      // moved, server-side — and only then assert the tell. Once the database says
-      // the revert landed, the notice is not a race any more.
+      const banner = page.getByTestId("travel-timezone-banner");
+      await expect(banner).toBeVisible({ timeout: 20_000 });
+      await expect(banner).toContainText("Your device is back on");
+      await expect(banner).toContainText("move your day back?");
+
+      // A browser reporting home is only an offer. This is the VPN case: hydration
+      // has definitely read the zone (the banner is visible), yet the profile's day
+      // and trip marker remain away until the person accepts.
+      expect(travellerSettings().timezone).toBe(SECOND_AWAY);
+      expect(travellerSettings().timezone_home).toBe(home);
+
+      // Navigate exactly where the old effect raced the outgoing document. The old
+      // implementation could finish its write after this page was gone; now an
+      // ordinary navigation has no write to race and the return offer simply renders
+      // again on the destination.
+      const navigation = await page.goto("/settings/display");
+      expect(navigation?.status()).toBe(200);
+      const navigatedBanner = page.getByTestId("travel-timezone-banner");
+      await expect(navigatedBanner).toBeVisible({ timeout: 20_000 });
+      expect(travellerSettings().timezone).toBe(SECOND_AWAY);
+      expect(travellerSettings().timezone_home).toBe(home);
+      expect(travellerSettings().timezone_travel_tell).toBeNull();
+
+      await settledClick(page, page.getByTestId("travel-timezone-accept"));
+      await expect(navigatedBanner).toBeHidden();
       await expect
-        .poll(() => travellerSettings().timezone, { timeout: 30_000 })
+        .poll(() => travellerSettings().timezone, { timeout: 10_000 })
         .toBe(home);
-      // The trip is over, so the marker that said "away" is gone.
       expect(travellerSettings().timezone_home).toBeNull();
-
-      // AND NOW NAVIGATE, which is the whole point of the tell being durable.
-      //
-      // The revert fires from an effect on the page that was open when the device
-      // came home, and this test — like a person tapping a link — leaves that page
-      // while the switch is still in flight. The document that would have shown the
-      // message is gone. If the tell lived in that component, it died with it; the
-      // day would have moved and nothing would ever have said so.
-      //
-      // It is a server fact instead, so the NEXT render owes it. This reload is the
-      // next render.
-      await page.reload();
-
-      // NO PROMPT. Coming home is lossless and reverses a state the person entered
-      // deliberately, so it happens and then tells (#2471).
-      const notice = page.getByTestId("travel-timezone-notice");
-      await expect(notice).toBeVisible({ timeout: 20_000 });
-      await expect(page.getByTestId("travel-timezone-accept")).toHaveCount(0);
-      // The tell names BOTH zones — "back on home time" alone leaves the person
-      // guessing which of the trip's zones the app had been running on.
-      await expect(notice).toContainText("Paris");
-      await expect(notice).toContainText("Back on");
-      // The tell is a server fact until it is READ, which is what lets it survive a
-      // navigation made while the revert was still in flight.
-      expect(travellerSettings().timezone_travel_tell).toBe(SECOND_AWAY);
-
-      // Acknowledging it puts it away for good — on the tap, and on the server.
-      await settledClick(
-        page,
-        page.getByTestId("travel-timezone-notice-dismiss")
-      );
-      await expect(notice).toBeHidden();
-      await expect
-        .poll(() => travellerSettings().timezone_travel_tell, {
-          timeout: 10_000,
-        })
-        .toBeNull();
+      expect(travellerSettings().timezone_travel_tell).toBeNull();
     } finally {
       await page.context().close();
     }

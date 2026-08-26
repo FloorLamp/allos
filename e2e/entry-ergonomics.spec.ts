@@ -7,6 +7,7 @@ import {
   followLink,
   hydratedClick,
   openCombobox,
+  expectPhoneTapTargets,
   settledBoxes,
   settledFill,
 } from "./helpers";
@@ -146,7 +147,7 @@ test("'Duplicate activity' pre-fills a create form that saves a new activity (#2
   await expect(titleRows).toHaveCount(before);
 });
 
-test("Training Log actions share the search toolbar and stay outside the editor scroller", async ({
+test("Training Log houses its primary in the header and keeps secondary actions with search", async ({
   page,
 }) => {
   await page.setViewportSize({ width: 1800, height: 900 });
@@ -202,14 +203,27 @@ test("Training Log actions share the search toolbar and stay outside the editor 
   await expect(page.getByTestId("activity-editor-scroll")).toBeHidden();
 
   const actions = page.getByTestId("training-log-actions");
+  const addActivity = page.getByTestId("training-log-add-activity");
   const button = page.getByTestId("repeat-last");
   await expect(actions).toContainText("Repeat last");
   await expect(actions).toContainText("Start workout");
-  await expect(actions).toContainText("Add activity");
+  await expect(actions).not.toContainText("Add activity");
+  await expect(addActivity).toBeVisible();
+  await expect(addActivity).toHaveAccessibleName("Add activity");
   await expect(button).toBeVisible();
 
-  // These are page-level actions, aligned with search rather than living in the
-  // independently scrolling activity panel.
+  // The create is the page-header primary. Repeat/start are secondary controls
+  // aligned with search; neither group lives in the editor's scroller.
+  await expect(
+    addActivity.locator(
+      'xpath=ancestor::*[@data-testid="training-page-action"][1]'
+    )
+  ).toHaveCount(1);
+  await expect(
+    addActivity.locator(
+      'xpath=ancestor::*[@data-testid="training-log-controls"]'
+    )
+  ).toHaveCount(0);
   await expect(
     button.locator('xpath=ancestor::*[@data-testid="training-log-controls"][1]')
   ).toHaveCount(1);
@@ -255,16 +269,16 @@ test("Training Log actions share the search toolbar and stay outside the editor 
       )
   ).toBe(14);
   await expect(actions).toBeHidden();
-  await expect(
-    actions.getByRole("button", { name: "Add activity" })
-  ).toBeHidden();
+  await expect(addActivity).toBeHidden();
 
   // The mobile nav remains through 767px, so page actions must not reappear at
   // the earlier 640px breakpoint and create duplicate controls.
   await page.setViewportSize({ width: 700, height: 844 });
   await expect(actions).toBeHidden();
+  await expect(addActivity).toBeHidden();
   await page.setViewportSize({ width: 800, height: 844 });
   await expect(actions).toBeVisible();
+  await expect(addActivity).toBeVisible();
   const narrowFiltersBox = await types.boundingBox();
   const narrowActionsBox = await actions.boundingBox();
   expect(narrowFiltersBox).not.toBeNull();
@@ -272,6 +286,44 @@ test("Training Log actions share the search toolbar and stay outside the editor 
   expect(narrowActionsBox!.y).toBeGreaterThan(
     narrowFiltersBox!.y + narrowFiltersBox!.height
   );
+});
+
+test("Training header confines Add activity to the Log tab", async ({
+  page,
+}) => {
+  await page.setViewportSize({ width: 1280, height: 900 });
+  const addActivity = page.getByTestId("training-log-add-activity");
+  const tabs = [
+    { id: "overview", label: "Overview", present: false },
+    { id: "log", label: "Log", present: true },
+    { id: "analyze", label: "Analyze", present: false },
+    { id: "plan", label: "Plan", present: false },
+  ] as const;
+
+  for (const tab of tabs) {
+    await page.goto(`/training?tab=${tab.id}`);
+    await expect(
+      page.getByTestId("training-tabs").getByRole("tab", { name: tab.label })
+    ).toHaveAttribute("aria-selected", "true");
+    const pageAction = page.getByTestId("training-page-action");
+    await expect(pageAction).toBeVisible();
+    await expect(pageAction.locator("button:visible")).toHaveCount(
+      tab.present ? 1 : 0
+    );
+    if (tab.present) {
+      await expect(addActivity).toBeVisible();
+      await expect(addActivity).toHaveAccessibleName("Add activity");
+      await expect(
+        addActivity.locator(
+          'xpath=ancestor::*[@data-testid="training-page-action"][1]'
+        )
+      ).toHaveCount(1);
+      await addActivity.click();
+      await expect(page.getByPlaceholder(/What did you do/)).toBeVisible();
+    } else {
+      await expect(addActivity).toHaveCount(0);
+    }
+  }
 });
 
 test("edit mode surfaces the exercise's previous sessions (#188)", async ({
@@ -1210,10 +1262,72 @@ test("the plate builder opens on the converged dialog host (#3405)", async ({
   const weight = page.getByTestId("set1-weight");
   await expect(weight).toBeVisible();
 
-  await hydratedClick(
-    page,
-    page.getByRole("button", { name: "Open plate builder" })
+  // The phone route has no desktop Add-activity entry. Open and pick through the
+  // real desktop flow first, then resize the mounted editor to measure its phone
+  // target without pretending that absent entry point exists.
+  await page.setViewportSize({ width: 390, height: 844 });
+  const plateButton = page.getByRole("button", {
+    name: "Open plate builder",
+  });
+  const plateSlot = plateButton.locator("..");
+  const setRow = page.getByTestId("set-values-1");
+  const weightStepper = page.getByTestId("set1-weight-stepper");
+  await expect(plateButton).toHaveAttribute("data-icon-button", "");
+  await expectPhoneTapTargets(page, "strength-set plate builder", [
+    plateButton,
+  ]);
+  await expect(plateSlot).toBeVisible();
+  await expect(setRow).toBeVisible();
+  await expect(weightStepper).toBeVisible();
+
+  // One atomic DOM read proves the split ownership: the wrapper keeps the old
+  // 28px grid slot while IconButton supplies the 44px target. A half pixel covers
+  // browser sub-pixel rounding without admitting a real one-pixel layout shift.
+  const geometry = await plateButton.evaluate((button) => {
+    const slot = button.parentElement;
+    const row = button.closest('[data-testid="set-values-1"]');
+    const stepper = row?.querySelector('[data-testid="set1-weight-stepper"]');
+    if (!slot || !row || !stepper)
+      throw new Error("Plate target is detached from its owning set row");
+    const box = (element: Element) => {
+      const rect = element.getBoundingClientRect();
+      return {
+        left: rect.left,
+        top: rect.top,
+        right: rect.right,
+        bottom: rect.bottom,
+        width: rect.width,
+        height: rect.height,
+      };
+    };
+    return {
+      target: box(button),
+      slot: box(slot),
+      row: box(row),
+      stepper: box(stepper),
+    };
+  });
+  const pixelEpsilon = 0.5;
+  expect(geometry.target.width).toBeGreaterThanOrEqual(44);
+  expect(geometry.target.height).toBeGreaterThanOrEqual(44);
+  expect(Math.abs(geometry.slot.width - 28)).toBeLessThanOrEqual(pixelEpsilon);
+  expect(geometry.target.left).toBeGreaterThanOrEqual(
+    geometry.row.left - pixelEpsilon
   );
+  expect(geometry.target.right).toBeLessThanOrEqual(
+    geometry.row.right + pixelEpsilon
+  );
+  expect(geometry.target.top).toBeGreaterThanOrEqual(
+    geometry.row.top - pixelEpsilon
+  );
+  expect(geometry.target.bottom).toBeLessThanOrEqual(
+    geometry.row.bottom + pixelEpsilon
+  );
+  expect(geometry.target.left + pixelEpsilon).toBeGreaterThanOrEqual(
+    geometry.stepper.right
+  );
+
+  await hydratedClick(page, plateButton);
 
   const builder = page.getByTestId("plate-builder");
   await expect(builder).toBeVisible();

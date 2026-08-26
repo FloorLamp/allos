@@ -90,6 +90,7 @@ const NOT_A_USER_WRITE_LEDGER: Record<string, string> = {
   intake_item_doses: "the schedule, not a dose taken",
   intake_item_ingredients: "composition of an item",
   intake_item_pairs: "a declared relationship between items",
+  intake_item_purposes: "why an item is taken, not a dose taken",
   intake_items: "the item being tracked",
   medication_courses: "the prescribed course, not an administration",
   preventive_overrides: "a standing decision about screening",

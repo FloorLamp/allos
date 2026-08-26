@@ -5,6 +5,7 @@ import {
   type FitnessContext,
 } from "@/lib/fitness-norms";
 import type { Sex } from "@/lib/types";
+import InfoTooltipIcon from "@/components/InfoTooltipIcon";
 
 // Age/sex PERCENTILE + FITNESS AGE context for the longevity fitness markers
 // (VO2 Max, grip strength, 30-second chair stand, single-leg balance) — issue #158.
@@ -66,12 +67,13 @@ export function FitnessPercentileInline({
 }) {
   if (!ctx) return null;
   return (
-    <span
-      data-testid="fitness-percentile-inline"
-      className="ml-2 whitespace-nowrap text-xs font-medium text-brand-600 dark:text-brand-400"
-      title={`Compared with same-age, same-sex norms (${ctx.source})`}
-    >
-      · {formatPercentile(ctx.percentile)}
+    <span className="ml-2 inline-flex items-center whitespace-nowrap text-xs font-medium text-brand-600 dark:text-brand-400">
+      <span data-testid="fitness-percentile-inline">
+        · {formatPercentile(ctx.percentile)}
+      </span>
+      <InfoTooltipIcon
+        label={`Compared with same-age, same-sex norms (${ctx.source})`}
+      />
     </span>
   );
 }

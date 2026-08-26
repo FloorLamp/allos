@@ -14,6 +14,7 @@ import { referenceRange } from "@/lib/reference-range";
 import { isBiomarkerGoalTargetable } from "@/lib/biomarker-goal";
 import { seriesPickerOptions } from "@/lib/series-picker-options";
 import { BIOMARKER_GROUP_LABELS } from "@/lib/biomarker-rank";
+import { storedLabUnit } from "@/lib/display-unit";
 
 // The analyte options the goal form's target picker offers (#1853).
 //
@@ -111,11 +112,11 @@ export function getGoalBiomarkerOptions(
       name: row.key,
       label: row.label,
       group: row.group,
-      unit: cb?.unit ?? null,
+      unit: storedLabUnit(cb?.unit) ?? null,
       low: ref?.low ?? null,
       high: ref?.high ?? null,
       latest: latest?.value ?? null,
-      latestUnit: latest ? (plot?.unit ?? null) : null,
+      latestUnit: latest ? (storedLabUnit(plot?.unit) ?? null) : null,
     };
   });
 }

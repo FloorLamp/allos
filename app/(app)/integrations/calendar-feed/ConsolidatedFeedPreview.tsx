@@ -88,10 +88,7 @@ export default function ConsolidatedFeedPreview({
                           </span>
                         )}
                         {r.hasReminders && (
-                          <span
-                            className="inline-flex items-center gap-0.5"
-                            title="This event carries a 1-day and 1-hour reminder"
-                          >
+                          <span className="inline-flex items-center gap-0.5">
                             <IconBell className="h-3 w-3" aria-hidden />
                             1-day + 1-hour reminders
                           </span>

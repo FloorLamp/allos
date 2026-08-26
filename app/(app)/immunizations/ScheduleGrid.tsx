@@ -1,6 +1,13 @@
 "use client";
 
-import { Fragment, useState } from "react";
+import {
+  Fragment,
+  useEffect,
+  useLayoutEffect,
+  useRef,
+  useState,
+  type MouseEvent as ReactMouseEvent,
+} from "react";
 import { createPortal } from "react-dom";
 import { ageInMonthsFromBirthdate } from "@/lib/date";
 import {
@@ -146,6 +153,22 @@ interface TipContent {
   title: string;
   lines: string[];
 }
+interface HoverTip {
+  c: TipContent;
+  x: number;
+  y: number;
+}
+interface PinnedTip {
+  c: TipContent;
+  code: string;
+  key: string;
+  anchor: HTMLElement;
+}
+interface TipPosition {
+  left: number;
+  top: number;
+  width: number;
+}
 interface GridRecord {
   vaccine: string;
   date: string;
@@ -165,12 +188,90 @@ export default function ScheduleGrid({
   ageMonths: number | null;
   assessments: VaccineAssessment[];
 }) {
-  const [tip, setTip] = useState<{
-    c: TipContent;
-    x: number;
-    y: number;
-  } | null>(null);
+  const [hoverTip, setHoverTip] = useState<HoverTip | null>(null);
+  const [pinnedTip, setPinnedTip] = useState<PinnedTip | null>(null);
+  const [pinnedPosition, setPinnedPosition] = useState<TipPosition | null>(
+    null
+  );
   const [hoverCode, setHoverCode] = useState<string | null>(null);
+  const [focusCode, setFocusCode] = useState<string | null>(null);
+  const tipRef = useRef<HTMLDivElement>(null);
+
+  useLayoutEffect(() => {
+    if (!pinnedTip) return;
+    const place = () => {
+      if (!pinnedTip.anchor.isConnected) {
+        setPinnedTip(null);
+        return;
+      }
+      const rect = pinnedTip.anchor.getBoundingClientRect();
+      const margin = 12;
+      const gap = 8;
+      const width = Math.min(256, window.innerWidth - margin * 2);
+      const height = tipRef.current?.offsetHeight ?? 0;
+      const left = Math.min(
+        Math.max(margin, rect.left + rect.width / 2 - width / 2),
+        window.innerWidth - width - margin
+      );
+      const below = rect.bottom + gap;
+      const top =
+        below + height <= window.innerHeight - margin
+          ? below
+          : Math.max(margin, rect.top - gap - height);
+      setPinnedPosition({ left, top, width });
+    };
+    place();
+    const frame = requestAnimationFrame(place);
+    window.addEventListener("resize", place);
+    window.addEventListener("scroll", place, true);
+    return () => {
+      cancelAnimationFrame(frame);
+      window.removeEventListener("resize", place);
+      window.removeEventListener("scroll", place, true);
+    };
+  }, [pinnedTip]);
+
+  useEffect(() => {
+    if (!pinnedTip) return;
+    const onPointerDown = (event: PointerEvent) => {
+      if (pinnedTip.anchor.contains(event.target as Node)) return;
+      setPinnedTip(null);
+    };
+    const onKeyDown = (event: KeyboardEvent) => {
+      if (event.key !== "Escape") return;
+      event.preventDefault();
+      setPinnedTip(null);
+      setHoverTip(null);
+      pinnedTip.anchor.focus();
+    };
+    document.addEventListener("pointerdown", onPointerDown);
+    window.addEventListener("keydown", onKeyDown, true);
+    return () => {
+      document.removeEventListener("pointerdown", onPointerDown);
+      window.removeEventListener("keydown", onKeyDown, true);
+    };
+  }, [pinnedTip]);
+
+  function showHover(
+    event: ReactMouseEvent<HTMLElement>,
+    content: TipContent | null
+  ) {
+    setHoverTip(
+      content ? { c: content, x: event.clientX, y: event.clientY } : null
+    );
+  }
+
+  function togglePinned(
+    anchor: HTMLElement,
+    content: TipContent,
+    code: string,
+    key: string
+  ) {
+    setPinnedPosition(null);
+    setPinnedTip((current) =>
+      current?.key === key ? null : { c: content, code, key, anchor }
+    );
+  }
 
   const currentBand = ageMonths == null ? null : bandIndex(ageMonths);
 
@@ -248,7 +349,7 @@ export default function ScheduleGrid({
       data-testid="cdc-schedule-grid"
       className="card overflow-x-auto p-0"
       onMouseLeave={() => {
-        setTip(null);
+        setHoverTip(null);
         setHoverCode(null);
       }}
     >
@@ -295,12 +396,15 @@ export default function ScheduleGrid({
                   const rec = recommendedBands(entry);
                   const doseMap = bandDoses.get(entry.code);
                   const a = statusByCode.get(entry.code);
-                  const rowHover = hoverCode === entry.code;
+                  const rowActive =
+                    hoverCode === entry.code ||
+                    focusCode === entry.code ||
+                    pinnedTip?.code === entry.code;
                   return (
                     <tr
                       key={entry.code}
                       className={`border-t border-black/5 dark:border-white/5 ${
-                        rowHover ? "bg-slate-50 dark:bg-ink-850" : ""
+                        rowActive ? "bg-slate-50 dark:bg-ink-850" : ""
                       }`}
                       onMouseEnter={() => setHoverCode(entry.code)}
                     >
@@ -313,24 +417,42 @@ export default function ScheduleGrid({
                         // being captured. Measured 2026-08-22, on the first run.
                         data-testid="schedule-grid-vaccine-cell"
                         className={`sticky left-0 z-10 cursor-help px-3 py-1.5 ${
-                          rowHover
+                          rowActive
                             ? "bg-slate-50 dark:bg-ink-850"
                             : "bg-surface"
                         }`}
-                        onMouseEnter={(e) =>
-                          setTip({
-                            c: nameTip(entry),
-                            x: e.clientX,
-                            y: e.clientY,
-                          })
-                        }
+                        onMouseEnter={(e) => showHover(e, nameTip(entry))}
                         onMouseMove={(e) =>
-                          setTip((t) =>
+                          setHoverTip((t) =>
                             t ? { ...t, x: e.clientX, y: e.clientY } : t
                           )
                         }
                       >
-                        <div className="flex items-center gap-2 whitespace-nowrap">
+                        <button
+                          type="button"
+                          className="tap-target flex h-8 w-full items-center gap-2 whitespace-nowrap rounded-sm text-left focus:outline-hidden focus-visible:ring-2 focus-visible:ring-brand-500"
+                          data-testid="schedule-grid-vaccine-trigger"
+                          data-schedule-tip-key={`vaccine:${entry.code}`}
+                          aria-label={`Details for ${entry.name}`}
+                          aria-expanded={
+                            pinnedTip?.key === `vaccine:${entry.code}`
+                          }
+                          aria-describedby={
+                            pinnedTip?.key === `vaccine:${entry.code}`
+                              ? "schedule-grid-tip"
+                              : undefined
+                          }
+                          onFocus={() => setFocusCode(entry.code)}
+                          onBlur={() => setFocusCode(null)}
+                          onClick={(event) =>
+                            togglePinned(
+                              event.currentTarget,
+                              nameTip(entry),
+                              entry.code,
+                              `vaccine:${entry.code}`
+                            )
+                          }
+                        >
                           <span
                             className={`h-2 w-2 shrink-0 rounded-full ${
                               STATUS_DOT[a?.status ?? "not_recommended"]
@@ -339,7 +461,7 @@ export default function ScheduleGrid({
                           <span className="font-medium text-slate-700 dark:text-slate-200">
                             {entry.abbrev}
                           </span>
-                        </div>
+                        </button>
                       </td>
                       {BANDS.map((b, i) => {
                         const isRec = rec.has(i);
@@ -354,25 +476,47 @@ export default function ScheduleGrid({
                                 ? "bg-brand-100/70 dark:bg-brand-950/60"
                                 : ""
                             } ${content ? "cursor-help" : ""}`}
-                            onMouseEnter={(e) =>
-                              setTip(
-                                content
-                                  ? { c: content, x: e.clientX, y: e.clientY }
-                                  : null
-                              )
-                            }
+                            onMouseEnter={(e) => showHover(e, content)}
                             onMouseMove={(e) =>
-                              setTip((t) =>
+                              setHoverTip((t) =>
                                 t ? { ...t, x: e.clientX, y: e.clientY } : t
                               )
                             }
                           >
-                            {isGot ? (
-                              <span className="inline-block rounded-sm bg-emerald-500 px-1 text-xs font-bold text-white">
-                                ✓
-                              </span>
-                            ) : isRec ? (
-                              <span className="inline-block h-3 w-full min-w-4 rounded-sm bg-brand-200 dark:bg-brand-800/70" />
+                            {content ? (
+                              <button
+                                type="button"
+                                className="tap-target mx-auto flex h-8 min-w-8 items-center justify-center rounded-sm focus:outline-hidden focus-visible:ring-2 focus-visible:ring-brand-500"
+                                data-testid="schedule-grid-dose-trigger"
+                                data-schedule-tip-key={`dose:${entry.code}:${i}`}
+                                aria-label={`Details for ${entry.name}, ${b.label}`}
+                                aria-expanded={
+                                  pinnedTip?.key === `dose:${entry.code}:${i}`
+                                }
+                                aria-describedby={
+                                  pinnedTip?.key === `dose:${entry.code}:${i}`
+                                    ? "schedule-grid-tip"
+                                    : undefined
+                                }
+                                onFocus={() => setFocusCode(entry.code)}
+                                onBlur={() => setFocusCode(null)}
+                                onClick={(event) =>
+                                  togglePinned(
+                                    event.currentTarget,
+                                    content,
+                                    entry.code,
+                                    `dose:${entry.code}:${i}`
+                                  )
+                                }
+                              >
+                                {isGot ? (
+                                  <span className="inline-block rounded-sm bg-emerald-500 px-1 text-xs font-bold text-white">
+                                    ✓
+                                  </span>
+                                ) : (
+                                  <span className="inline-block h-3 w-full min-w-4 rounded-sm bg-brand-200 dark:bg-brand-800/70" />
+                                )}
+                              </button>
                             ) : null}
                           </td>
                         );
@@ -390,27 +534,41 @@ export default function ScheduleGrid({
           it the containing block for position:fixed, so a tooltip rendered in
           place would be offset by the card's origin. Escaping to <body> restores
           true viewport-relative fixed positioning against clientX/clientY. */}
-      {tip &&
+      {(pinnedTip || hoverTip) &&
         typeof document !== "undefined" &&
         createPortal(
           <div
             // Named so the UX census's hover pass (#3489 deliverable 4) can say
-            // WHICH element a hover revealed. This panel is the sole path to the
-            // grid's per-dose content (#3375), and it is portalled out of <main>,
-            // so a capture that could not name it would be a picture of a page
-            // with something extra on it and no way to say what.
+            // WHICH element a hover revealed. Since #3375 the same panel also has
+            // a pinned tap/keyboard path; it remains portalled out of <main>, so a
+            // capture that could not name it would be a picture of a page with
+            // something extra on it and no way to say what.
+            ref={tipRef}
+            id="schedule-grid-tip"
+            role="tooltip"
             data-testid="schedule-grid-tip"
+            data-pinned={pinnedTip ? "true" : undefined}
             className="pointer-events-none fixed z-50 max-w-xs rounded-lg border border-(--border) bg-surface px-3 py-2 text-xs shadow-lg"
-            style={{
-              left: Math.min(tip.x + 14, window.innerWidth - 250),
-              top: tip.y + 14,
-            }}
+            style={
+              pinnedTip
+                ? pinnedPosition
+                  ? {
+                      left: pinnedPosition.left,
+                      top: pinnedPosition.top,
+                      width: pinnedPosition.width,
+                    }
+                  : { visibility: "hidden" }
+                : {
+                    left: Math.min(hoverTip!.x + 14, window.innerWidth - 250),
+                    top: hoverTip!.y + 14,
+                  }
+            }
           >
             <div className="font-semibold text-slate-800 dark:text-slate-100">
-              {tip.c.title}
+              {(pinnedTip?.c ?? hoverTip!.c).title}
             </div>
             <div className="mt-0.5 space-y-0.5 text-slate-500 dark:text-slate-400">
-              {tip.c.lines.map((l, i) => (
+              {(pinnedTip?.c ?? hoverTip!.c).lines.map((l, i) => (
                 <div key={i}>{l}</div>
               ))}
             </div>
@@ -423,7 +581,10 @@ export default function ScheduleGrid({
 
 function Legend() {
   return (
-    <div className="flex flex-wrap items-center gap-x-4 gap-y-1 px-3 py-2 text-xs text-slate-500 dark:text-slate-400">
+    <div
+      data-testid="schedule-grid-legend"
+      className="flex flex-wrap items-center gap-x-4 gap-y-1 px-3 py-2 text-xs text-slate-500 dark:text-slate-400"
+    >
       <span className="flex items-center gap-1.5">
         <span className="inline-block h-3 w-4 rounded-sm bg-brand-200 dark:bg-brand-800/70" />
         Recommended

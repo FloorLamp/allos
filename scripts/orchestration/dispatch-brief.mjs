@@ -16,9 +16,13 @@
 // Usage:
 //   node scripts/orchestration/dispatch-brief.mjs new --branch <branch> \
 //     [--worktree wt-<name>] [--issues 123,456] [--task "one line"] \
-//     [--e2e] [--port-base N]
+//     [--e2e] [--port-base N] [--candidate] [--priority P1] \
+//     [--lane user-data]
 //   node scripts/orchestration/dispatch-brief.mjs list
 //   node scripts/orchestration/dispatch-brief.mjs brief <branch>
+//   node scripts/orchestration/dispatch-brief.mjs promote <branch>
+//   node scripts/orchestration/dispatch-brief.mjs update <branch> \
+//     [--priority P1] [--lane user-data]
 //   node scripts/orchestration/dispatch-brief.mjs done <branch> [--keep]
 //   node scripts/orchestration/dispatch-brief.mjs resume <branch>
 //   node scripts/orchestration/dispatch-brief.mjs adopt <branch> \
@@ -113,6 +117,15 @@ function appendLedger(entry) {
   fs.appendFileSync(ledgerPath, JSON.stringify(entry) + "\n");
 }
 
+const PRIORITIES = new Set(["P0", "P1", "P2", "P3", "parked", "unclassified"]);
+const LANES = new Set([
+  "user-data",
+  "operator",
+  "product",
+  "presentation-guard",
+  "unclassified",
+]);
+
 // $SCRATCH/.roster is what scripts/orchestrator-checkin.sh reads to tell a
 // LIVE agent's dirty worktree (expected) from an abandoned one (rescue NOW).
 // The ledger is history and measurement; the roster is the live view — both
@@ -160,12 +173,67 @@ function activeDispatches(rows) {
   const byBranch = new Map();
   for (const row of rows) {
     if (row.status === "active") byBranch.set(row.branch, row);
+    if (row.status === "update" && byBranch.has(row.branch)) {
+      const current = byBranch.get(row.branch);
+      byBranch.set(row.branch, {
+        ...current,
+        ...row,
+        at: current.at,
+        status: "active",
+        updatedAt: row.at,
+      });
+    }
+    if (row.status === "promotion") {
+      for (const [branch, current] of byBranch) {
+        byBranch.set(branch, {
+          ...current,
+          candidate: branch === row.target,
+          ...(branch === row.displaced ? { displacedBy: row.target } : {}),
+          ...(branch === row.target
+            ? { promotedFrom: row.displaced ?? null }
+            : {}),
+          updatedAt: row.at,
+        });
+      }
+    }
     if (row.status === "done" && byBranch.has(row.branch)) {
       byBranch.get(row.branch).doneAt = row.at;
       byBranch.delete(row.branch);
     }
   }
   return [...byBranch.values()];
+}
+
+function latestDispatchState(rows, branch) {
+  let state = null;
+  for (const row of rows) {
+    if (row.status === "promotion") {
+      if (state) {
+        state = {
+          ...state,
+          candidate: row.target === branch,
+          ...(row.displaced === branch ? { displacedBy: row.target } : {}),
+          ...(row.target === branch
+            ? { promotedFrom: row.displaced ?? null }
+            : {}),
+          updatedAt: row.at,
+        };
+      }
+      continue;
+    }
+    if (row.branch !== branch) continue;
+    if (row.status === "active") state = row;
+    if (row.status === "update" && state) {
+      state = {
+        ...state,
+        ...row,
+        at: state.at,
+        status: "active",
+        updatedAt: row.at,
+      };
+    }
+  }
+  return state;
 }
 
 function completedDurationsMs(rows) {
@@ -342,10 +410,24 @@ function buildBrief(opts) {
         .join("\n")
     : "  (no tracker issues — the task statement above is the whole spec)";
 
+  const landingLines = opts.candidate
+    ? `- LANDING STATE: CANDIDATE. This is the one branch allowed to consume final
+  rebase, exact-head PR review, and the full CI matrix. Merge current main, push,
+  open or refresh the READY PR, then obtain review against that exact remote head.
+  A local pre-review is useful but does not replace the exact-head PR review.`
+    : `- LANDING STATE: BANKED. Push durable branch checkpoints, but DO NOT open a
+  PR. Run authored/edited specs and assigned local gates, then return the branch
+  and head SHA. Non-authored blast-radius specs wait for CI after the orchestrator
+  promotes this branch and reprints its brief.`;
+  const blastRadiusInstruction = opts.candidate
+    ? "Push, and read candidate CI."
+    : "Defer them until promotion; the landing candidate's CI runs them.";
+
   const brief = `${opts.task ? `Task: ${opts.task}\n\n` : ""}\
 - Worktree setup: git fetch origin main && git worktree add $SCRATCH/${opts.worktree} -b ${opts.branch} origin/main
 - cp -al ${nm.path}/. $SCRATCH/${opts.worktree}/node_modules${nm.verified ? "" : "\n  (WARNING: better-sqlite3 not found in that tree — run npm ci there first)"}
 ${nodeLine}
+${landingLines}
 - npm ci in the worktree if better-sqlite3 fails to load — the parent checkout drifts.
   AND IF TYPECHECK FAILS NAMING A PACKAGE YOU DID NOT ADD, that is the same drift
   wearing a different error. Your node_modules is HARD-LINKED from the parent tree,
@@ -682,7 +764,7 @@ ${MIGRATION_LINES}
     E2E_PORT, never PORT. This is usually one to three files and it is where you can
     actually introduce a flake, so the repeat is earned here.
   * EVERY OTHER SPEC — the blast radius, the geometry-asserting sweep, the specs that
-    merely exercise code you changed: DO NOT RUN THEM LOCALLY. Push, and read CI.
+    merely exercise code you changed: DO NOT RUN THEM LOCALLY. ${blastRadiusInstruction}
   Do NOT run the full suite locally — the orchestrator owns full-suite runs.
 
   WHY, IN NUMBERS, because this reverses what lanes did until 2026-08-21: CI runs ALL
@@ -711,12 +793,14 @@ ${MIGRATION_LINES}
   confirm you matched it. This is for DIAGNOSING a specific red, not for routine
   verification — the policy above is unchanged.
 
-- THE PR IS AN INSTRUMENT, NOT A FINISH LINE. CI triggers on \`pull_request\` only —
-  never on a branch push — so until the PR exists you have no CI, and the policy
-  above cannot work. Open it as soon as lint, typecheck and the pure tier are clean,
-  then iterate against CI. \`concurrency: cancel-in-progress\` is keyed per ref, so a
-  second push CANCELS your own earlier run rather than queueing behind it or behind
-  a sibling; pushing again is cheap and is the intended loop.
+- A PR IS AN INSTRUMENT, AND FULL CI IS A SERIAL LANDING RESOURCE. Branch pushes
+  are durable checkpoints; CI triggers only after a PR exists. Unless the
+  orchestrator named this branch the NEXT LANDING CANDIDATE, push the branch but
+  do not open its PR merely to obtain a full matrix that an earlier merge will
+  invalidate. When promoted, merge current main, run the assigned local gates,
+  open or refresh the PR once, and iterate against that exact-head CI.
+  \`concurrency: cancel-in-progress\` makes a correction to THIS candidate cheap;
+  it does not make simultaneous matrices on several soon-stale bases useful.
   A red on your own PR before review is not a broken window. A red you LEAVE is.
   Read every CI red and say what it was — yours, contention, or a re-partition.
 - \`e2e (N)\` IS NOT \`--shard=N/12\`, and reaching for the obvious spelling gives you a
@@ -824,14 +908,18 @@ ${MIGRATION_LINES}
     Co-Authored-By: Claude <model> <noreply@anthropic.com>
     Claude-Session: <session URL>
 - No model identifiers in commits/PR/code
-- Open the PR READY (not draft) via REST, base main
+${
+  opts.candidate
+    ? "- Open or refresh the PR READY (not draft) via REST, base main, before exact-head review"
+    : "- Do not open a PR while this branch is banked; promotion changes this instruction"
+}
 - NEVER run \`dispatch-brief.mjs done\` — retiring a dispatch is the ORCHESTRATOR's,
   after the PR merges. Opening the PR is not the end of your dispatch: review
   findings, CI reds and adversarial refutations all come back to you afterwards, and
   a retired dispatch drops you off the roster that a restart reads to find unrescued
   work. If you see a "Close with:" line anywhere near this brief, it is addressed to
   the orchestrator, not to you.
-- Return: PR number/URL, per-issue fix summary, VERBATIM gate results (say plainly if
+- Return: ${opts.candidate ? "PR number/URL" : "branch and exact head SHA"}, per-issue fix summary, VERBATIM gate results (say plainly if
   something failed — never report a green you did not see), surprises, and OPEN
   QUESTIONS as their own labelled list — every decision you made provisionally and
   every one you could not make, stated as questions. A question buried mid-prose is
@@ -849,6 +937,9 @@ function parseArgs(argv) {
     e2e: false,
     portBase: null,
     task: null,
+    candidate: false,
+    priority: "unclassified",
+    lane: "unclassified",
   };
   for (let i = 0; i < argv.length; i++) {
     const a = argv[i];
@@ -866,9 +957,28 @@ function parseArgs(argv) {
       );
     else if (a === "--e2e") opts.e2e = true;
     else if (a === "--port-base") opts.portBase = Number(argv[++i]);
+    else if (a === "--candidate") opts.candidate = true;
+    else if (a === "--priority") opts.priority = argv[++i];
+    else if (a === "--lane") opts.lane = argv[++i];
     else throw new Error(`unknown flag: ${a}`);
   }
+  if (!PRIORITIES.has(opts.priority)) {
+    throw new Error(
+      `invalid priority ${opts.priority}; expected ${[...PRIORITIES].join(" | ")}`
+    );
+  }
+  if (!LANES.has(opts.lane)) {
+    throw new Error(
+      `invalid lane ${opts.lane}; expected ${[...LANES].join(" | ")}`
+    );
+  }
   return opts;
+}
+
+function roleHandoff(entry) {
+  return entry.candidate
+    ? `ROLE UPDATE for ${entry.branch}: CANDIDATE. Rebase onto current main, push, open or refresh the READY PR, then obtain exact-remote-head review and full CI.`
+    : `ROLE UPDATE for ${entry.branch}: BANKED. Push durable checkpoints only; do not open or refresh a PR, and defer non-authored blast-radius specs until promoted.`;
 }
 
 function cmdNew(argv) {
@@ -876,7 +986,7 @@ function cmdNew(argv) {
   if (!opts.branch) {
     console.error(
       "usage: dispatch-brief.mjs new --branch <branch> [--worktree wt-x] [--issues 1,2]" +
-        ' [--task "..."] [--e2e] [--port-base N]'
+        ' [--task "..."] [--e2e] [--port-base N] [--candidate] [--priority P1] [--lane user-data]'
     );
     process.exit(2);
   }
@@ -895,6 +1005,14 @@ function cmdNew(argv) {
       `REFUSED: ${opts.branch} is already an active dispatch — re-running \`new\` would ` +
         "duplicate its ledger row and its roster cluster. To reprint the brief for a live " +
         `agent, use \`dispatch-brief.mjs brief ${opts.branch}\`; to retire it, \`done ${opts.branch}\`.`
+    );
+    process.exit(1);
+  }
+  const currentCandidate = active.find((d) => d.candidate);
+  if (opts.candidate && currentCandidate) {
+    console.error(
+      `REFUSED: ${currentCandidate.branch} is already the landing candidate. ` +
+        `Use \`promote ${opts.branch}\` after creating this dispatch banked; promotion records the displacement.`
     );
     process.exit(1);
   }
@@ -964,6 +1082,9 @@ function cmdNew(argv) {
     task: opts.task,
     portBase,
     e2e: opts.e2e,
+    candidate: opts.candidate,
+    priority: opts.priority,
+    lane: opts.lane,
   };
   appendLedger(entry);
   const rostered = rosterAdd(entry);
@@ -1055,6 +1176,8 @@ function cmdList() {
       console.log(
         `  ${d.branch}  age=${fmt(age)}  idle=${idle === null ? "(no trace)" : fmt(idle)}` +
           `  port=${d.portBase}` +
+          `  [${d.candidate ? "candidate" : "banked"}]` +
+          `  priority=${d.priority ?? "unclassified"}  lane=${d.lane ?? "unclassified"}` +
           `${d.e2e ? "  [e2e]" : ""}${d.issues?.length ? `  issues=${d.issues.join(",")}` : ""}` +
           flag
       );
@@ -1539,6 +1662,9 @@ function cmdBrief(argv) {
     task: entry.task,
     e2e: entry.e2e,
     portBase: entry.portBase,
+    candidate: Boolean(entry.candidate),
+    priority: entry.priority ?? "unclassified",
+    lane: entry.lane ?? "unclassified",
   });
   console.log(brief);
 }
@@ -1555,9 +1681,7 @@ function cmdResume(argv) {
     console.error(`${branch} is already active — nothing to resume.`);
     process.exit(1);
   }
-  const prior = [...rows]
-    .reverse()
-    .find((r) => r.branch === branch && r.status === "active");
+  const prior = latestDispatchState(rows, branch);
   if (!prior) {
     console.error(
       `no prior dispatch for ${branch} in the ledger — use \`new --branch ${branch}\`.`
@@ -1591,6 +1715,11 @@ function cmdResume(argv) {
     task: prior.task ?? null,
     portBase,
     e2e: Boolean(prior.e2e),
+    candidate:
+      Boolean(prior.candidate) &&
+      !active.some((dispatch) => dispatch.candidate),
+    priority: prior.priority ?? "unclassified",
+    lane: prior.lane ?? "unclassified",
   };
   appendLedger(entry);
   const rostered = rosterAdd(entry);
@@ -1603,6 +1732,7 @@ function cmdResume(argv) {
         ? ""
         : `\nWARNING: could not write ${rosterPath} — the check-in script will not see this agent as live.`)
   );
+  console.log(roleHandoff(entry));
 }
 
 // A dispatch that never went through `new` — an Agent-tool run — is live but
@@ -1614,7 +1744,7 @@ function cmdAdopt(argv) {
   const branch = argv.find((a) => !a.startsWith("--"));
   if (!branch) {
     console.error(
-      'usage: dispatch-brief.mjs adopt <branch> [--issues 1,2] [--task "..."] [--e2e] [--port-base N]'
+      'usage: dispatch-brief.mjs adopt <branch> [--issues 1,2] [--task "..."] [--e2e] [--port-base N] [--candidate] [--priority P1] [--lane user-data]'
     );
     process.exit(2);
   }
@@ -1622,6 +1752,13 @@ function cmdAdopt(argv) {
   const active = activeDispatches(readLedger());
   if (active.some((d) => d.branch === branch)) {
     console.error(`${branch} is already active — nothing to adopt.`);
+    process.exit(1);
+  }
+  const currentCandidate = active.find((d) => d.candidate);
+  if (opts.candidate && currentCandidate) {
+    console.error(
+      `REFUSED: ${currentCandidate.branch} is already the landing candidate. Adopt banked, then use \`promote ${branch}\`.`
+    );
     process.exit(1);
   }
   // Adopt an agent that EXISTS: the worktree is the evidence. With no worktree
@@ -1682,6 +1819,9 @@ function cmdAdopt(argv) {
     task: opts.task,
     portBase,
     e2e: opts.e2e,
+    candidate: opts.candidate,
+    priority: opts.priority,
+    lane: opts.lane,
   };
   appendLedger(entry);
   const rostered = rosterAdd(entry);
@@ -1694,18 +1834,93 @@ function cmdAdopt(argv) {
   );
 }
 
+function cmdPromote(argv) {
+  const branch = argv[0];
+  if (!branch) {
+    console.error("usage: dispatch-brief.mjs promote <branch>");
+    process.exit(2);
+  }
+  const active = activeDispatches(readLedger());
+  const target = active.find((d) => d.branch === branch);
+  if (!target) {
+    console.error(
+      `no active dispatch for ${branch}; create or adopt it first.`
+    );
+    process.exit(1);
+  }
+  const previous = active.find((d) => d.candidate && d.branch !== branch);
+  const at = new Date().toISOString();
+  appendLedger({
+    at,
+    status: "promotion",
+    target: branch,
+    displaced: previous?.branch ?? null,
+  });
+  const refreshed = activeDispatches(readLedger());
+  const promoted = refreshed.find((entry) => entry.branch === branch);
+  const displaced = previous
+    ? refreshed.find((entry) => entry.branch === previous.branch)
+    : null;
+  console.log(
+    `promoted ${branch} to landing candidate` +
+      (previous ? `; displaced ${previous.branch} to banked` : "") +
+      ". Deliver every ROLE UPDATE below to its running agent."
+  );
+  if (promoted) console.log(roleHandoff(promoted));
+  if (displaced) console.log(roleHandoff(displaced));
+}
+
+function cmdUpdate(argv) {
+  const branch = argv[0];
+  if (!branch) {
+    console.error(
+      "usage: dispatch-brief.mjs update <branch> [--priority P1] [--lane user-data]"
+    );
+    process.exit(2);
+  }
+  const flagArgs = argv.slice(1);
+  if (!flagArgs.includes("--priority") && !flagArgs.includes("--lane")) {
+    console.error("update requires --priority, --lane, or both.");
+    process.exit(2);
+  }
+  const opts = parseArgs(flagArgs);
+  const active = activeDispatches(readLedger());
+  const entry = active.find((dispatch) => dispatch.branch === branch);
+  if (!entry) {
+    console.error(`no active dispatch for ${branch}.`);
+    process.exit(1);
+  }
+  const update = {
+    at: new Date().toISOString(),
+    status: "update",
+    branch,
+    ...(flagArgs.includes("--priority") ? { priority: opts.priority } : {}),
+    ...(flagArgs.includes("--lane") ? { lane: opts.lane } : {}),
+  };
+  appendLedger(update);
+  const refreshed = activeDispatches(readLedger()).find(
+    (dispatch) => dispatch.branch === branch
+  );
+  console.log(
+    `updated ${branch}: priority=${refreshed.priority} lane=${refreshed.lane} ` +
+      `(append-only ledger); deliver this allocation change to the running agent.`
+  );
+}
+
 function main(argv) {
   const [cmd = "new", ...rest] = argv;
   try {
     if (cmd === "new") cmdNew(rest);
     else if (cmd === "list") cmdList();
     else if (cmd === "brief") cmdBrief(rest);
+    else if (cmd === "promote") cmdPromote(rest);
+    else if (cmd === "update") cmdUpdate(rest);
     else if (cmd === "done") cmdDone(rest);
     else if (cmd === "resume") cmdResume(rest);
     else if (cmd === "adopt") cmdAdopt(rest);
     else {
       console.error(
-        `unknown command: ${cmd} (expected new | list | brief | done | resume | adopt)`
+        `unknown command: ${cmd} (expected new | list | brief | promote | update | done | resume | adopt)`
       );
       process.exit(2);
     }

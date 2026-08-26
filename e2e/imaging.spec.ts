@@ -3,6 +3,10 @@ import type { Locator, Page } from "@playwright/test";
 import Database from "better-sqlite3";
 import { hydratedClick, settledClick, settledBoxes } from "./helpers";
 import { loginAs } from "./nav";
+import {
+  expectDesktopRecordFormSubmit,
+  expectPhoneRecordFormSubmit,
+} from "./record-form-actions";
 import { E2E_LOGIN_RECS_ENRICH, E2E_MEMBER_PASSWORD } from "./fixture-logins";
 import { workerDbPath, frozenNow } from "./worker-env";
 
@@ -15,6 +19,7 @@ import { workerDbPath, frozenNow } from "./worker-env";
 // idempotent across CI retries — it only ever touches rows it created.
 const DB_PATH = workerDbPath();
 const REGION = "E2EREGION1";
+const PHONE = { width: 390, height: 844 };
 const DOSE_REGION = "E2EDOSEREGION1";
 // A second CT with the SAME recorded dose. Two studies at 10.05 mSv are what make the
 // card's addition checkable on the surface: each row prints 10.1, so the headline owes
@@ -154,6 +159,26 @@ test.describe("Imaging studies — add → view → filter → edit → delete (
     await expect(dialog).toBeVisible();
     const form = dialog.getByTestId("imaging-study-form");
     await expect(form).toBeVisible();
+    const addSubmit = form.getByRole("button", {
+      name: "Add",
+      exact: true,
+    });
+    await expectDesktopRecordFormSubmit({
+      form,
+      actions: form.getByTestId("imaging-study-actions"),
+      primaryOwner: form.getByTestId("imaging-study-primary-action"),
+      submit: addSubmit,
+      name: "imaging study add",
+    });
+    await page.setViewportSize(PHONE);
+    await expectPhoneRecordFormSubmit({
+      form,
+      actions: form.getByTestId("imaging-study-actions"),
+      primaryOwner: form.getByTestId("imaging-study-primary-action"),
+      submit: addSubmit,
+      fillsActions: true,
+      name: "phone imaging study add",
+    });
 
     // Add an MRI with contrast.
     await form.getByLabel("Modality").selectOption("mri");
@@ -161,11 +186,7 @@ test.describe("Imaging studies — add → view → filter → edit → delete (
     await form.getByLabel("Laterality").selectOption("left");
     await form.getByLabel("Contrast given").check();
     await form.getByLabel("Impression").fill("No acute abnormality.");
-    await submitWithToast(
-      page,
-      form.getByRole("button", { name: "Add", exact: true }),
-      "Study saved"
-    );
+    await submitWithToast(page, addSubmit, "Study saved");
 
     // It appears in the list with its factual identity + contrast badge.
     const list = page.getByTestId("imaging-study-list");
@@ -193,6 +214,17 @@ test.describe("Imaging studies — add → view → filter → edit → delete (
     await page.getByRole("menuitem", { name: "Edit" }).click();
     const editForm = list.getByTestId("imaging-study-form");
     await expect(editForm).not.toHaveClass(/\bcard\b/);
+    await expectPhoneRecordFormSubmit({
+      form: editForm,
+      actions: editForm.getByTestId("imaging-study-actions"),
+      primaryOwner: editForm.getByTestId("imaging-study-primary-action"),
+      submit: editForm.getByRole("button", { name: "Save", exact: true }),
+      adjacent: editForm.getByRole("button", {
+        name: "Cancel",
+        exact: true,
+      }),
+      name: "phone imaging study edit",
+    });
     await editForm.getByLabel("Impression").fill("Interval improvement.");
     await submitWithToast(
       page,

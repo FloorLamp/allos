@@ -1,5 +1,5 @@
-import Link from "next/link";
-import { IconMoon, IconArrowRight } from "@tabler/icons-react";
+import { IconMoon } from "@tabler/icons-react";
+import DestinationLink from "@/components/DestinationLink";
 import {
   baselineDeltaPhrase,
   formatHm,
@@ -49,7 +49,6 @@ function StageBar({
             <div
               key={s.key}
               style={{ width: `${pct}%`, backgroundColor: s.color }}
-              title={`${s.label} ${formatHm(stages[s.key])}`}
             />
           );
         })}
@@ -94,14 +93,13 @@ export default function SleepHero({
             {presentation.label}
           </span>
         </div>
-        <Link
+        <DestinationLink
           href={timelineDayHref(summary.wakeDay)}
           className="inline-flex items-center gap-1 text-sm text-link"
           data-testid="sleep-hero-day-link"
         >
           See in day context
-          <IconArrowRight className="h-4 w-4" stroke={1.75} aria-hidden />
-        </Link>
+        </DestinationLink>
       </div>
 
       <div className="mt-4 grid gap-x-8 gap-y-4 sm:grid-cols-3">

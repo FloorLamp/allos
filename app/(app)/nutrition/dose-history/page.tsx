@@ -1,12 +1,12 @@
 import { requireScope } from "@/lib/scope";
 import PageContainer from "@/components/PageContainer";
-import DoseLedgerView from "@/components/intake/DoseLedgerView";
+import DoseLedgerMount from "@/components/intake/DoseLedgerMount";
 
 export const dynamic = "force-dynamic";
 
 // The supplements surface's door into the cross-item dose ledger (#2417).
 //
-// The whole page body is the shared DoseLedgerView — /medications/dose-history is the
+// The whole page body is the shared DoseLedgerMount — /medications/dose-history is the
 // same component with the other `surface`, because the ledger is intake machinery and
 // intake machinery is not split by kind. This file's entire job is the auth boundary
 // and the pre-filter: a caller arriving from Nutrition → Supplements opens on
@@ -26,7 +26,7 @@ export default async function SupplementDoseHistoryPage(props: {
   const scope = await requireScope();
   return (
     <PageContainer width="reading" className="mx-auto">
-      <DoseLedgerView
+      <DoseLedgerMount
         profileId={scope.actingProfileId}
         loginId={scope.loginId}
         canWrite={scope.access.get(scope.actingProfileId) === "write"}

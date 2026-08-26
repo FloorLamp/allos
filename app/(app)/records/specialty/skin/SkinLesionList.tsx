@@ -107,11 +107,8 @@ function LesionRecordRow({
         </span>
         <StatusBadge status={record.status} />
         {letters && (
-          <span
-            className="rounded-sm bg-slate-100 px-1.5 py-0.5 text-xs text-slate-600 dark:bg-slate-800 dark:text-slate-300"
-            title="Recorded ABCDE observations"
-          >
-            ABCDE {letters}
+          <span className="rounded-sm bg-slate-100 px-1.5 py-0.5 text-xs text-slate-600 dark:bg-slate-800 dark:text-slate-300">
+            ABCDE observations: {letters}
           </span>
         )}
         {record.size_mm != null && (
@@ -253,6 +250,7 @@ export default function SkinLesionList({
       {/* The family's ONE filter affordance (#1449, cluster C) — this was an
           "All statuses" <select>, one of four controls for the same job. */}
       <FilterPills
+        mode="button"
         options={[
           { value: "", label: "All" },
           ...SKIN_LESION_STATUSES.map((s) => ({

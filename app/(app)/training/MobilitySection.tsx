@@ -92,10 +92,7 @@ export default async function MobilitySection({
                     />
                     <input type="hidden" name="scope_value" value={s.region} />
                     <input type="hidden" name="per_week" value={s.perWeek} />
-                    <SubmitButton
-                      data-testid={`mobility-accept-${s.region}`}
-                      className="btn btn-sm"
-                    >
+                    <SubmitButton data-testid={`mobility-accept-${s.region}`}>
                       Track {s.perWeek}×/week
                     </SubmitButton>
                   </form>

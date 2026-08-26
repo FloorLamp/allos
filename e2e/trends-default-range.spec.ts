@@ -31,11 +31,8 @@ test("a no-param load opens on 90D, with All time one tap away", async ({
 
   // The lit pill is the answer to "what window am I looking at?", so the default
   // has to LIGHT one — a window matching no pill would read as custom.
-  await expect(rangePill(page, "90D")).toHaveAttribute("aria-current", "page");
-  await expect(rangePill(page, "All time")).not.toHaveAttribute(
-    "aria-current",
-    "page"
-  );
+  await expect(rangePill(page, "90D")).toHaveAttribute("aria-current", "true");
+  await expect(rangePill(page, "All time")).not.toHaveAttribute("aria-current");
 
   // All time still reachable in one tap — and it must SURVIVE, which is the whole
   // reason it needs an explicit sentinel: it used to clear the params, and a
@@ -43,12 +40,9 @@ test("a no-param load opens on 90D, with All time one tap away", async ({
   await followLink(page, rangePill(page, "All time"), /range=all/);
   await expect(rangePill(page, "All time")).toHaveAttribute(
     "aria-current",
-    "page"
+    "true"
   );
-  await expect(rangePill(page, "90D")).not.toHaveAttribute(
-    "aria-current",
-    "page"
-  );
+  await expect(rangePill(page, "90D")).not.toHaveAttribute("aria-current");
 
   // ...including across a Body layout switch, which rebuilds every hub link. A
   // sentinel dropped here would silently rewind the user to 90D. (#1644 retired the
@@ -57,7 +51,7 @@ test("a no-param load opens on 90D, with All time one tap away", async ({
   await expect(page).toHaveURL(/range=all/);
   await expect(rangePill(page, "All time")).toHaveAttribute(
     "aria-current",
-    "page"
+    "true"
   );
 });
 
@@ -70,9 +64,6 @@ test("an explicit window in the URL always wins over the default", async ({
   await expect(page.getByTestId("range-summary-chip")).toHaveText(
     "2026-01-01 → 2026-02-01"
   );
-  await expect(rangePill(page, "90D")).not.toHaveAttribute(
-    "aria-current",
-    "page"
-  );
+  await expect(rangePill(page, "90D")).not.toHaveAttribute("aria-current");
   await expect(page).toHaveURL(/from=2026-01-01&to=2026-02-01/);
 });

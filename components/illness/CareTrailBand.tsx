@@ -1,5 +1,6 @@
 import Avatar, { type AvatarProfile } from "@/components/Avatar";
 import type { Swimlane } from "@/lib/care-trail-swimlane";
+import VisualizationDetails from "@/components/VisualizationDetails";
 
 // The care-trail "at-a-glance band" (#1373 Part 2): trailing-window per-member swimlanes,
 // one lane per in-view member, illness episodes as duration bars + visits as point markers
@@ -10,8 +11,8 @@ import type { Swimlane } from "@/lib/care-trail-swimlane";
 // The band is a purely VISUAL overview — non-interactive by design (the grouped list below
 // owns navigation), so its tiny absolutely-positioned bars/markers never intercept a click
 // on, or compete for the accessible name of, the list's episode links. House dataviz rules:
-// never color-only — every bar/marker carries a title tooltip and the lane its member
-// label; theme-aware both modes; the band lives in its own overflow-x container so the PAGE
+// never color-only — the shared detail disclosure carries every bar/marker label;
+// theme-aware both modes; the band lives in its own overflow-x container so the PAGE
 // body never scrolls horizontally (#1063). Collapses (renders nothing) for sparse data —
 // the caller checks `swimlane.hasData`.
 
@@ -76,7 +77,6 @@ export default function CareTrailBand({
                       key={`e-${bar.episodeId}`}
                       data-testid="care-trail-bar"
                       data-episode-id={bar.episodeId}
-                      title={`${bar.situation}${bar.ongoing ? " (ongoing)" : ""}`}
                       className={`absolute top-1 flex h-3 items-center rounded-xs ${barTone(
                         bar.maxTempF
                       )} ${bar.ongoing ? "ring-1 ring-inset ring-white/70" : ""}`}
@@ -96,9 +96,6 @@ export default function CareTrailBand({
                             key={`m-${m.encounterId}`}
                             data-testid="care-trail-visit-marker"
                             data-linked="true"
-                            title={`Visit${m.type ? ` — ${m.type}` : ""}${
-                              m.dayNumber != null ? ` (Day ${m.dayNumber})` : ""
-                            }`}
                             className="absolute top-1/2 h-2.5 w-2.5 -translate-x-1/2 -translate-y-1/2 rounded-full border border-white bg-slate-800 dark:border-ink-900 dark:bg-white"
                             style={{
                               left: `${Math.max(0, Math.min(100, rel))}%`,
@@ -115,7 +112,6 @@ export default function CareTrailBand({
                         key={`c-${c.courseId}`}
                         data-testid="care-trail-course-bar"
                         data-overhang={c.overhang}
-                        title={`${c.medName}${c.overhang ? " (continues past illness)" : ""}`}
                         className={`absolute bottom-1 h-1.5 rounded-full ${
                           c.overhang
                             ? "bg-emerald-500/80 dark:bg-emerald-400/70"
@@ -134,7 +130,6 @@ export default function CareTrailBand({
                       key={`uv-${m.encounterId}`}
                       data-testid="care-trail-visit-marker"
                       data-linked="false"
-                      title={`Visit${m.type ? ` — ${m.type}` : ""}`}
                       className="absolute top-1/2 h-2.5 w-2.5 -translate-x-1/2 -translate-y-1/2 rotate-45 border border-white bg-slate-400 dark:border-ink-900 dark:bg-slate-500"
                       style={{ left: `${m.pct}%` }}
                     />
@@ -145,6 +140,33 @@ export default function CareTrailBand({
           })}
         </div>
       </div>
+      <VisualizationDetails
+        label="Timeline details"
+        items={swimlane.lanes.flatMap((lane) => {
+          const subject = subjectById.get(lane.profileId)?.name ?? "Profile";
+          return [
+            ...lane.episodes.flatMap((bar) => [
+              `${subject}: ${bar.situation}${bar.ongoing ? " (ongoing)" : ""}`,
+              ...bar.visitMarkers.map(
+                (marker) =>
+                  `${subject}: Visit${marker.type ? ` — ${marker.type}` : ""}${
+                    marker.dayNumber != null ? ` (Day ${marker.dayNumber})` : ""
+                  }`
+              ),
+              ...bar.courseBars.map(
+                (course) =>
+                  `${subject}: ${course.medName}${
+                    course.overhang ? " (continues past illness)" : ""
+                  }`
+              ),
+            ]),
+            ...lane.visitMarkers.map(
+              (marker) =>
+                `${subject}: Visit${marker.type ? ` — ${marker.type}` : ""}`
+            ),
+          ];
+        })}
+      />
     </section>
   );
 }

@@ -27,7 +27,11 @@
 // lib/__tests__/bottom-edge-tokens.test.ts fails CI if a bottom-anchored surface
 // hand-writes its own inset instead.
 
-export { useDragGesture, type DragGestureOptions } from "./useDragGesture";
+export {
+  useDragGesture,
+  verticalScrollOwnersAtTop,
+  type DragGestureOptions,
+} from "./useDragGesture";
 export { useOverlayDrag, type OverlayDragOptions } from "./useOverlayDrag";
 export { default as OverlayDragHandle } from "./OverlayDragHandle";
 export { useBottomEdgeClaim } from "./useBottomEdgeClaim";

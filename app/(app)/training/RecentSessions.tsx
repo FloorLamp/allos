@@ -1,4 +1,5 @@
-import Link from "next/link";
+import DestinationLink from "@/components/DestinationLink";
+import OverlayDestination from "@/components/OverlayDestination";
 import { ActivityTypeIcon } from "@/components/ui";
 import ActivityPartRows from "@/components/activity/ActivityPartRows";
 import ActivitySummaryLine from "@/components/activity/ActivitySummaryLine";
@@ -29,13 +30,13 @@ export default function RecentSessions({ view }: { view: RecentSessionsView }) {
         <h4 className="section-label">
           {view.scope === "week" ? "What you did" : "Last session"}
         </h4>
-        <Link
+        <DestinationLink
           href="/training?tab=log"
           data-testid="recent-sessions-log-link"
           className="text-xs text-link"
         >
-          {view.more > 0 ? `${view.more} more in Log →` : "Open log →"}
-        </Link>
+          {view.more > 0 ? `${view.more} more in Log` : "Open log"}
+        </DestinationLink>
       </div>
 
       <ul className="mt-3 space-y-4">
@@ -43,43 +44,45 @@ export default function RecentSessions({ view }: { view: RecentSessionsView }) {
           <li key={row.id} data-testid="recent-session" data-id={row.id}>
             {/* The header is the link; the exercise lines below stay plain text
                 so a long session isn't one enormous tap target. */}
-            <Link
+            <OverlayDestination
               href={row.href}
+              label={`Open ${row.card.activity.title} session`}
               data-testid="recent-session-link"
-              className="group flex items-start gap-3"
             >
-              <ActivityTypeIcon
-                type={row.card.activity.type}
-                title={row.card.activity.title}
-                sportNames={activityComponentSportNames(
-                  row.card.activity.components
-                )}
-                composite={activityComponentsHaveCompositeIconIdentity(
-                  row.card.activity.components
-                )}
-              />
-              <div className="min-w-0 flex-1">
-                <span className="flex flex-wrap items-baseline gap-x-2">
-                  <span className="font-semibold text-slate-800 group-hover:text-brand-600 dark:text-slate-100 dark:group-hover:text-brand-400">
-                    {row.card.activity.title}
-                  </span>
-                  <span className="text-xs text-slate-500 dark:text-slate-400">
-                    {row.dayLabel}
-                  </span>
-                </span>
-                <ActivitySummaryLine
-                  timeText={row.card.timeText}
-                  durationText={row.card.durationText}
-                  distanceText={row.card.distanceText}
-                  speedText={row.card.speedText}
-                  heartRateText={row.card.heartRateText}
-                  calorieText={row.card.calorieText}
-                  intensity={row.card.activity.intensity}
-                  heartRateZone={row.card.activity.heart_rate_zone}
-                  testId="recent-session-meta"
+              <div className="flex items-start gap-3">
+                <ActivityTypeIcon
+                  type={row.card.activity.type}
+                  title={row.card.activity.title}
+                  sportNames={activityComponentSportNames(
+                    row.card.activity.components
+                  )}
+                  composite={activityComponentsHaveCompositeIconIdentity(
+                    row.card.activity.components
+                  )}
                 />
+                <div className="min-w-0 flex-1">
+                  <span className="flex flex-wrap items-baseline gap-x-2">
+                    <span className="font-semibold text-slate-800 group-hover:text-brand-600 dark:text-slate-100 dark:group-hover:text-brand-400">
+                      {row.card.activity.title}
+                    </span>
+                    <span className="text-xs text-slate-500 dark:text-slate-400">
+                      {row.dayLabel}
+                    </span>
+                  </span>
+                  <ActivitySummaryLine
+                    timeText={row.card.timeText}
+                    durationText={row.card.durationText}
+                    distanceText={row.card.distanceText}
+                    speedText={row.card.speedText}
+                    heartRateText={row.card.heartRateText}
+                    calorieText={row.card.calorieText}
+                    intensity={row.card.activity.intensity}
+                    heartRateZone={row.card.activity.heart_rate_zone}
+                    testId="recent-session-meta"
+                  />
+                </div>
               </div>
-            </Link>
+            </OverlayDestination>
 
             <ActivityPartRows
               parts={row.parts}

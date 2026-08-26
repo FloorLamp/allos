@@ -28,6 +28,27 @@ function series(
   };
 }
 
+// Four readings spanning the same predictable 10 days. Stable halves around a
+// real level shift provide enough evidence for dispersion-based admission.
+function shiftedSeries(
+  key: string,
+  first: number,
+  last: number,
+  extra: Partial<DigestSeries> = {}
+): DigestSeries {
+  return {
+    key,
+    label: extra.label ?? key,
+    points: [
+      { date: "2024-01-01", value: first },
+      { date: "2024-01-02", value: first },
+      { date: "2024-01-10", value: last },
+      { date: "2024-01-11", value: last },
+    ],
+    ...extra,
+  };
+}
+
 describe("summarizeTrends — exclusions", () => {
   it("excludes series with fewer than two points", () => {
     const s: DigestSeries = {
@@ -57,7 +78,10 @@ describe("summarizeTrends — exclusions", () => {
 describe("summarizeTrends — direction, magnitude, labels", () => {
   it("labels a downward percentage move", () => {
     const [item] = summarizeTrends([
-      series("resting_hr", 64, 60, { label: "Resting HR", unit: " bpm" }),
+      shiftedSeries("resting_hr", 64, 60, {
+        label: "Resting HR",
+        unit: " bpm",
+      }),
     ]);
     expect(item.direction).toBe("down");
     expect(item.days).toBe(10);
@@ -69,7 +93,7 @@ describe("summarizeTrends — direction, magnitude, labels", () => {
 
   it("labels an upward percentage move", () => {
     const [item] = summarizeTrends([
-      series("weight", 80, 88, { label: "Weight" }),
+      shiftedSeries("weight", 80, 88, { label: "Weight" }),
     ]);
     expect(item.direction).toBe("up");
     expect(item.text).toBe("Weight ↑ 10% — larger than its recent variation");
@@ -77,7 +101,7 @@ describe("summarizeTrends — direction, magnitude, labels", () => {
 
   it("uses an absolute-change label when the first value is 0", () => {
     const [item] = summarizeTrends([
-      series("volume", 0, 1500, { label: "Volume", unit: " kg" }),
+      shiftedSeries("volume", 0, 1500, { label: "Volume", unit: " kg" }),
     ]);
     expect(item.pctChange).toBeNull();
     expect(item.text).toBe(
@@ -120,7 +144,7 @@ describe("summarizeTrends — reference-range crossings", () => {
 
   it("does not flag a move that stays in range", () => {
     const [item] = summarizeTrends([
-      series("result:LDL", 40, 60, { label: "LDL", range }),
+      shiftedSeries("result:LDL", 40, 60, { label: "LDL", range }),
     ]);
     expect(item.rangeShift).toBeNull();
   });
@@ -148,7 +172,10 @@ describe("summarizeTrends — reference-range crossings", () => {
 
   it("does NOT flag a move that stays out on the same side (both above)", () => {
     const [item] = summarizeTrends([
-      series("result:LDL", 110, 130, { label: "LDL", range: bounded }),
+      shiftedSeries("result:LDL", 110, 130, {
+        label: "LDL",
+        range: bounded,
+      }),
     ]);
     // Both endpoints above range — only magnitude, no range annotation.
     expect(item.rangeShift).toBeNull();
@@ -157,7 +184,10 @@ describe("summarizeTrends — reference-range crossings", () => {
 
   it("does NOT flag a move that stays out on the same side (both below)", () => {
     const [item] = summarizeTrends([
-      series("result:Iron", 30, 20, { label: "Iron", range: bounded }),
+      shiftedSeries("result:Iron", 30, 20, {
+        label: "Iron",
+        range: bounded,
+      }),
     ]);
     expect(item.rangeShift).toBeNull();
     expect(item.text).not.toContain("range");
@@ -180,7 +210,7 @@ describe("summarizeTrends — reference-range crossings", () => {
 describe("summarizeTrends — ranking and limit", () => {
   it("ranks range crossings above ordinary moves", () => {
     const items = summarizeTrends([
-      series("weight", 100, 150, { label: "Weight" }), // +50%, no range
+      shiftedSeries("weight", 100, 150, { label: "Weight" }), // +50%, no range
       series("result:LDL", 99, 101, {
         label: "LDL",
         range: { low: null, high: 100 },
@@ -190,28 +220,45 @@ describe("summarizeTrends — ranking and limit", () => {
     expect(items[1].key).toBe("weight");
   });
 
+  it("keeps a tiny crossing ahead of an arbitrarily larger plain mover", () => {
+    const items = summarizeTrends([
+      shiftedSeries("extreme-mover", 0.0001, 1),
+      series("tiny-crossing", 99, 101, {
+        range: { low: null, high: 100 },
+      }),
+    ]);
+
+    expect(items[1].magnitude).toBeGreaterThan(items[0].magnitude);
+    expect(items.map((item) => item.key)).toEqual([
+      "tiny-crossing",
+      "extreme-mover",
+    ]);
+  });
+
   it("respects the limit", () => {
     const many = [
-      series("a", 100, 200, { label: "A" }),
-      series("b", 100, 190, { label: "B" }),
-      series("c", 100, 180, { label: "C" }),
+      shiftedSeries("a", 100, 200, { label: "A" }),
+      shiftedSeries("b", 100, 190, { label: "B" }),
+      shiftedSeries("c", 100, 180, { label: "C" }),
     ];
     expect(summarizeTrends(many, { limit: 2 })).toHaveLength(2);
   });
 
   it("breaks magnitude ties by label", () => {
     const items = summarizeTrends([
-      series("z", 100, 150, { label: "Zeta" }),
-      series("a", 100, 150, { label: "Alpha" }),
+      shiftedSeries("z", 100, 150, { label: "Zeta" }),
+      shiftedSeries("a", 100, 150, { label: "Alpha" }),
     ]);
     expect(items.map((i) => i.label)).toEqual(["Alpha", "Zeta"]);
   });
 
   it("honors a custom minPctChange threshold", () => {
     // 3% move: excluded at default 5%, included at 2%.
-    expect(summarizeTrends([series("w", 100, 103)])).toEqual([]);
+    expect(summarizeTrends([shiftedSeries("w", 100, 103)])).toEqual([]);
     expect(
-      summarizeTrends([series("w", 100, 103)], { minPctChange: 0.02 })
+      summarizeTrends([shiftedSeries("w", 100, 103)], {
+        minPctChange: 0.02,
+      })
     ).toHaveLength(1);
   });
 });
@@ -290,6 +337,27 @@ describe("summarizeTrends — news admission (#3389)", () => {
       direction: "down",
       admissionReason: "dispersion-shift",
     });
+  });
+
+  it("keeps a material two-point mover quiet unless a range or stored verdict crossed", () => {
+    const sparseMover = series("sparse", 100, 110);
+    const rangeCrossing = series("range-crossing", 99, 101, {
+      range: { low: null, high: 100 },
+    });
+    const storedCrossing = series("stored-crossing", 90, 92, {
+      endpointFlags: { first: "normal", last: "non-optimal" },
+    });
+
+    expect(robustSeriesSummary(sparseMover)?.material).toBe(true);
+    expect(summarizeTrends([sparseMover])).toEqual([]);
+    const crossings = summarizeTrends([rangeCrossing, storedCrossing]);
+    expect(crossings).toHaveLength(2);
+    expect(crossings.map((item) => [item.key, item.admissionReason])).toEqual(
+      expect.arrayContaining([
+        ["range-crossing", "range-crossing"],
+        ["stored-crossing", "range-crossing"],
+      ])
+    );
   });
 
   it.each([4, 5, 6, 7, 8, 9, 10, 12])(
@@ -402,7 +470,7 @@ describe("summarizeTrends — stored notability verdict (#3389)", () => {
   });
 
   it("does not invent a crossing from plain bounds when stored flags stay non-notable", () => {
-    const normal = series("result:Example", 90, 110, {
+    const normal = shiftedSeries("result:Example", 90, 110, {
       range: { low: 0, high: 100 },
       endpointFlags: { first: "normal", last: "normal" },
     });
@@ -423,7 +491,10 @@ describe("summarizeTrends — per-series thresholds (#37)", () => {
   it("uses a per-series minPctChange over the global default", () => {
     // A 3% move: kept because this series sets a 2% bar, despite the 5% default.
     const [item] = summarizeTrends([
-      series("weight", 100, 103, { label: "Weight", minPctChange: 0.02 }),
+      shiftedSeries("weight", 100, 103, {
+        label: "Weight",
+        minPctChange: 0.02,
+      }),
     ]);
     expect(item.key).toBe("weight");
   });
@@ -432,7 +503,10 @@ describe("summarizeTrends — per-series thresholds (#37)", () => {
     // A 10% move that clears the 5% default but not this series' 15% bar.
     expect(
       summarizeTrends([
-        series("volume", 100, 110, { label: "Volume", minPctChange: 0.15 }),
+        shiftedSeries("volume", 100, 110, {
+          label: "Volume",
+          minPctChange: 0.15,
+        }),
       ])
     ).toEqual([]);
   });
@@ -440,7 +514,7 @@ describe("summarizeTrends — per-series thresholds (#37)", () => {
   it("per-series threshold overrides the global option too", () => {
     // Global bar 0.20 would drop a 10% move, but the series pins its own 0.05.
     const [item] = summarizeTrends(
-      [series("w", 100, 110, { label: "W", minPctChange: 0.05 })],
+      [shiftedSeries("w", 100, 110, { label: "W", minPctChange: 0.05 })],
       { minPctChange: 0.2 }
     );
     expect(item.key).toBe("w");

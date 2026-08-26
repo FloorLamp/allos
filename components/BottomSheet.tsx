@@ -1,6 +1,6 @@
 "use client";
 
-import { useId, useRef } from "react";
+import { useCallback, useId, useRef } from "react";
 import { createPortal } from "react-dom";
 import { useFocusTrap } from "./useFocusTrap";
 import { usePresence } from "./usePresence";
@@ -11,6 +11,7 @@ import {
   OverlayDragHandle,
   overlayMotionClass,
   useOverlayDrag,
+  verticalScrollOwnersAtTop,
   OVERLAY_PANEL_BORDER,
   OVERLAY_PANEL_ELEVATION,
   OVERLAY_PANEL_MAX_WIDTH,
@@ -225,6 +226,7 @@ export default function BottomSheet({
   const localPanelRef = useRef<HTMLDivElement>(null);
   const panelRef = externalPanelRef ?? localPanelRef;
   const handleRef = useRef<HTMLDivElement>(null);
+  const contentRef = useRef<HTMLDivElement>(null);
   const titleId = useId();
   const descriptionId = useId();
 
@@ -248,14 +250,39 @@ export default function BottomSheet({
     active: open,
   });
 
-  // Drag-to-dismiss (#1425), on the shared recognizer (#1469). THE SHEET'S
+  // Drag-to-dismiss (#1425, #3691), on the shared recognizer (#1469). THE SHEET'S
   // OUTCOME IS DISCARD — that is what the lifecycle contract above licenses, and
   // it is the whole difference between this call site and the activity dock's,
   // which passes `onMinimize` to the very same hook. Enabled only while open, so
   // a sheet already playing its exit can't be re-grabbed.
+  const canStartSheetDrag = useCallback((origin: Node): boolean => {
+    const handle = handleRef.current;
+    const content = contentRef.current;
+
+    // THE RENDERED HANDLE GATES THE WHOLE SHEET GESTURE, separately from where
+    // this particular touch began. The responsive dialog keeps the handle node
+    // mounted but hides it from `md` up; its zero rendered boxes are the DOM
+    // truth that no part of the centred desktop card may arm a drag. Do not fold
+    // this into an origin-is-the-handle rule: the visible handle advertises the
+    // gesture for the whole non-scrolling chrome below it — title, description
+    // and Close included.
+    if (!handle || handle.getClientRects().length === 0) return false;
+
+    // Chrome outside the content scroller owns no competing vertical scroll,
+    // so it always admits. Inside the content region, body ownership is decided
+    // once from every effective scroll owner between the origin and this
+    // boundary. Starting below any owner's top belongs to native scrolling for
+    // that touch's whole lifecycle, even if it reaches zero. When all owners
+    // start at zero the touch may pull the sheet down, and later scroll changes
+    // cannot revoke that already-claimed origin.
+    if (!content || !content.contains(origin)) return true;
+
+    return verticalScrollOwnersAtTop(origin, content);
+  }, []);
+
   const { suppressMotion } = useOverlayDrag({
     panelRef,
-    grabRef: handleRef,
+    canStart: canStartSheetDrag,
     direction: "down",
     onOutcome: onGestureDismiss ?? onClose,
     // The panel unmounts between opens, so the motion latch expires with it
@@ -405,12 +432,14 @@ export default function BottomSheet({
         // locked body behind it is the whole of that fix.
         className={`relative flex w-full flex-col overflow-hidden bg-surface outline-hidden ${panelMaxWidth} ${OVERLAY_PANEL_BORDER} ${OVERLAY_PANEL_ELEVATION} ${panelShape} ${panelMotion}`}
       >
-        {/* The drag affordance, now functional (#1425): a downward drag from
-        here dismisses the sheet. A centered dialog is not flickable, so the
+        {/* The visible drag affordance gates the whole gesture (#1425/#3721):
+        the handle and the non-scrolling chrome below it dismiss at any body
+        scroll position. The body itself joins only when its scroller started
+        at the top (#3691). A centered dialog is not flickable, so the
         responsive presentation drops the handle from `md` up exactly where that
         stops being true (#1428) — and the recognizer goes with it, since a
-        hidden element receives no pointer events. A card centred at EVERY width
-        never draws one at all. */}
+        hidden handle has no rendered box. A card centred at EVERY width never
+        draws one at all. */}
         {!asCentered && (
           <OverlayDragHandle
             handleRef={handleRef}
@@ -477,7 +506,7 @@ export default function BottomSheet({
                     // 2.16/2.56: ONE disabled look for one control, at both
                     // widths, rather than a second one invented for the phone.
                     "-mr-2 min-h-11 px-2 text-sm font-medium text-brand-700 hover:text-brand-800 disabled:pointer-events-none disabled:text-slate-500 disabled:opacity-50 md:mr-0 md:min-h-0 md:shrink-0 md:px-0 md:text-slate-500 md:hover:text-slate-600 dark:text-brand-400 dark:hover:text-brand-300 dark:disabled:text-slate-400 md:dark:text-slate-400 md:dark:hover:text-slate-300"
-                  : "shrink-0 text-slate-500 hover:text-slate-600 disabled:pointer-events-none disabled:opacity-50 dark:text-slate-400 dark:hover:text-slate-300"
+                  : "min-h-11 min-w-11 shrink-0 text-slate-500 hover:text-slate-600 disabled:pointer-events-none disabled:opacity-50 dark:text-slate-400 dark:hover:text-slate-300"
               }
               // "Cancel" at BOTH widths when full-screen, so the accessible
               // name matches the visible one below `md` (WCAG 2.5.3) instead of
@@ -485,7 +514,6 @@ export default function BottomSheet({
               // up the glyph is the same "✕" as every other card and only its
               // name differs, which is the accurate word for abandoning a search.
               aria-label={asFullScreen ? "Cancel" : "Close"}
-              title={asFullScreen ? "Cancel" : "Close"}
               data-testid={`${testId}-close`}
             >
               {asFullScreen && (
@@ -535,6 +563,7 @@ export default function BottomSheet({
         layer (bodies that do not overflow in the first place) is what closes
         that, which is why #3360 asked for both. */}
         <div
+          ref={contentRef}
           className={`mt-3 flex min-h-0 flex-1 flex-col overflow-x-hidden overflow-y-auto overscroll-contain ${
             asDialog ? "md:overflow-visible" : ""
           }`}

@@ -67,6 +67,10 @@ export type UndoOutcome = { ok: true } | { ok: false; reason: UndoRefusal };
 // happened.
 export interface UndoOffer {
   undoneMessage: string;
+  // Async inverses can outlive a newer write in the same keyed lifecycle. The
+  // caller supplies its mutation-sequence check so an older outcome cannot
+  // replace the newer receipt with stale success/refusal copy.
+  isCurrent?: () => boolean;
   // Re-derives validity server-side and answers. Never throws for a refusal — a throw is
   // reported as `failed`.
   run: () => Promise<UndoOutcome>;

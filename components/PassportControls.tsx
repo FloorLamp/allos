@@ -3,14 +3,9 @@
 import { useState } from "react";
 import { formatDateShape, type DisplayFormatPrefs } from "@/lib/format-date";
 import { useFormatPrefs } from "@/components/FormatPrefsProvider";
-import {
-  IconPrinter,
-  IconShare,
-  IconCopy,
-  IconCheck,
-} from "@tabler/icons-react";
+import { IconPrinter, IconShare } from "@tabler/icons-react";
+import CreatedShareLink from "@/components/CreatedShareLink";
 import ModalShell from "@/components/ModalShell";
-import { NOTICE_TONE } from "@/components/Notice";
 import SubmitButton from "@/components/SubmitButton";
 import { printRegion } from "@/components/print-scope";
 import {
@@ -94,13 +89,11 @@ export default function PassportControls({
   const [createdUrl, setCreatedUrl] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [creating, setCreating] = useState(false);
-  const [copied, setCopied] = useState(false);
 
   async function onCreate(e: React.FormEvent<HTMLFormElement>) {
     e.preventDefault();
     setError(null);
     setCreatedUrl(null);
-    setCopied(false);
     setCreating(true);
     const res = await createShareLinkAction(new FormData(e.currentTarget));
     setCreating(false);
@@ -115,17 +108,6 @@ export default function PassportControls({
   // Action returns a result object); the page auto-refreshes via revalidatePath.
   async function onRevoke(fd: FormData) {
     await revokeShareLinkAction(fd);
-  }
-
-  async function copy() {
-    if (!createdUrl) return;
-    try {
-      await navigator.clipboard.writeText(createdUrl);
-      setCopied(true);
-      setTimeout(() => setCopied(false), 1500);
-    } catch {
-      /* clipboard unavailable — the URL is shown for manual copy */
-    }
   }
 
   return (
@@ -202,36 +184,7 @@ export default function PassportControls({
             </SubmitButton>
           </form>
 
-          {createdUrl && (
-            <div
-              className={`mt-4 rounded-lg border p-3 ${NOTICE_TONE.emerald}`}
-            >
-              <div className="text-xs font-medium text-emerald-800 dark:text-emerald-300">
-                Link created — copy it now (it won’t be shown again):
-              </div>
-              <div className="mt-2 flex items-center gap-2">
-                <input
-                  readOnly
-                  value={createdUrl}
-                  onFocus={(e) => e.currentTarget.select()}
-                  className="input font-mono text-xs"
-                />
-                <button
-                  type="button"
-                  onClick={copy}
-                  className="btn-ghost shrink-0"
-                  aria-label="Copy link"
-                  title="Copy link"
-                >
-                  {copied ? (
-                    <IconCheck className="h-4 w-4" stroke={1.75} />
-                  ) : (
-                    <IconCopy className="h-4 w-4" stroke={1.75} />
-                  )}
-                </button>
-              </div>
-            </div>
-          )}
+          {createdUrl && <CreatedShareLink value={createdUrl} />}
 
           {links.length > 0 && (
             <div className="mt-5">

@@ -23,7 +23,10 @@ import { kgTo, round } from "@/lib/units";
 import { formatSeconds } from "@/lib/duration";
 import { BODY_METRIC_LABELS } from "@/lib/outcome-goals";
 import { biomarkerSearchTerms } from "@/lib/canonical-name";
+import { displayUnit, storedLabUnit } from "@/lib/display-unit";
 import ActivityCombobox from "@/components/ActivityCombobox";
+import Chip from "@/components/Chip";
+import FilterPills from "@/components/FilterPills";
 import Combobox from "@/components/Combobox";
 import DateField from "@/components/DateField";
 import SubmitButton from "@/components/SubmitButton";
@@ -66,16 +69,6 @@ const DIRECTION_LABEL: Record<OutcomeGoalDirection, string> = {
   below: "Under",
   above: "Over",
 };
-
-const PILL =
-  "rounded-full border px-3 py-1 text-sm font-medium transition disabled:cursor-not-allowed disabled:opacity-40";
-const PILL_ON = "border-brand-500 bg-brand-500 text-white";
-const PILL_OFF =
-  "border-(--border) bg-surface text-slate-600 hover:bg-(--ghost-hover) dark:text-slate-300";
-
-function pillClass(active: boolean): string {
-  return `${PILL} ${active ? PILL_ON : PILL_OFF}`;
-}
 
 // Create or edit a goal (#3220), in the shared facts-with-editors grammar (#3218).
 //
@@ -252,8 +245,8 @@ export default function GoalForm({
   // shows the number in the unit it was actually captured in.
   const bioUnit =
     editGoal?.biomarker_name && editGoal.biomarker_name === bioOption?.name
-      ? (editGoal.unit ?? bioOption?.unit ?? null)
-      : (bioOption?.unit ?? null);
+      ? (storedLabUnit(editGoal.unit) ?? storedLabUnit(bioOption?.unit) ?? null)
+      : (storedLabUnit(bioOption?.unit) ?? null);
 
   // The thresholds the app already holds for this analyte, stated beside the number
   // the user is about to type — the reference band the biomarker chart draws, for
@@ -261,12 +254,14 @@ export default function GoalForm({
   // context, and picking someone's target for them is a different (clinical) act.
   const referenceHint = (() => {
     if (!bioOption) return null;
-    const { low, high, unit } = bioOption;
-    const suffix = unit ? ` ${unit}` : "";
+    const { low, high } = bioOption;
+    const suffix = displayUnit(bioOption.unit);
     if (low != null && high != null)
-      return `Reference range ${low}–${high}${suffix}`;
-    if (high != null) return `Reference under ${high}${suffix}`;
-    if (low != null) return `Reference over ${low}${suffix}`;
+      return `Reference range ${low}–${high}${suffix ? ` ${suffix}` : ""}`;
+    if (high != null)
+      return `Reference under ${high}${suffix ? ` ${suffix}` : ""}`;
+    if (low != null)
+      return `Reference over ${low}${suffix ? ` ${suffix}` : ""}`;
     return null;
   })();
 
@@ -455,7 +450,7 @@ export default function GoalForm({
     bodyLatest: latestBodyMetrics[bodyMetric] ?? null,
     bodyMetric,
     biomarkerLatest: bioOption?.latest ?? null,
-    biomarkerUnit: bioOption?.latestUnit ?? null,
+    biomarkerUnit: storedLabUnit(bioOption?.latestUnit) ?? null,
     currentValue,
     freeformUnit: unitText,
     toDisplayWeight: (kg) => round(kgTo(kg, weightUnit), 1),
@@ -648,26 +643,23 @@ export default function GoalForm({
                 placeholder="e.g. Bench Press, Squat, Plank"
               />
               {showEquipment && (
-                <div className="mt-2 flex flex-wrap items-center gap-1.5">
-                  {variant!.group.equipment.map((eq) => {
-                    const active = variant!.equipment === eq;
-                    return (
-                      <button
-                        key={eq}
-                        type="button"
-                        onClick={() =>
-                          chooseExerciseSubject(
-                            composeVariant(variant!.group, eq)
-                          )
-                        }
-                        className={`rounded-full border px-2.5 py-1 text-xs font-medium transition ${
-                          active ? PILL_ON : PILL_OFF
-                        }`}
-                      >
-                        {eq}
-                      </button>
-                    );
-                  })}
+                <div className="mt-2">
+                  <FilterPills
+                    mode="button"
+                    layout="wrap"
+                    label="Equipment variant"
+                    density="dense"
+                    value={variant!.equipment ?? undefined}
+                    onSelect={(equipment) =>
+                      chooseExerciseSubject(
+                        composeVariant(variant!.group, equipment)
+                      )
+                    }
+                    options={variant!.group.equipment.map((equipment) => ({
+                      value: equipment,
+                      label: equipment,
+                    }))}
+                  />
                   {variant!.equipment === null && (
                     <span className="text-xs text-slate-500 dark:text-slate-400">
                       Pick equipment
@@ -683,19 +675,18 @@ export default function GoalForm({
             {kind === "body" && (
               <input type="hidden" name="body_metric" value={bodyMetric} />
             )}
-            <div className="flex flex-wrap gap-1.5">
-              {BODY_METRICS.map((bm) => (
-                <button
-                  key={bm}
-                  type="button"
-                  data-testid={`goal-body-metric-${bm}`}
-                  onClick={() => chooseBodyMetric(bm)}
-                  className={pillClass(kind === "body" && bodyMetric === bm)}
-                >
-                  {BODY_METRIC_LABELS[bm]}
-                </button>
-              ))}
-            </div>
+            <FilterPills
+              mode="button"
+              layout="wrap"
+              label="Body metric"
+              value={kind === "body" ? bodyMetric : undefined}
+              onSelect={chooseBodyMetric}
+              options={BODY_METRICS.map((bodyMetricOption) => ({
+                value: bodyMetricOption,
+                label: BODY_METRIC_LABELS[bodyMetricOption],
+                testId: `goal-body-metric-${bodyMetricOption}`,
+              }))}
+            />
           </div>
 
           <div>
@@ -737,19 +728,14 @@ export default function GoalForm({
                 the button would unmount the control the person just pressed and drop
                 focus to <body>, outside the form's own keydown handler — the same
                 defect #3311 fixed for the chips. */}
-            <button
-              type="button"
-              data-testid="goal-kind-freeform"
-              aria-pressed={kind === "freeform"}
+            <Chip
+              role="filter"
+              testId="goal-kind-freeform"
+              pressed={kind === "freeform"}
               onClick={() => chooseKind("freeform")}
-              className={`tap-target rounded-full border px-3 py-1.5 text-sm transition ${
-                kind === "freeform"
-                  ? PILL_ON
-                  : "border-dashed border-(--border) text-slate-600 hover:bg-(--ghost-hover) dark:text-slate-300"
-              }`}
             >
               Track something else
-            </button>
+            </Chip>
             {kind === "freeform" && (
               <div className="mt-3">
                 <label className="label" htmlFor={`goal-ff-title-${uid}`}>
@@ -774,24 +760,19 @@ export default function GoalForm({
             <>
               <label className="label">Target</label>
               <input type="hidden" name="metric" value={metric} />
-              <div className="flex flex-wrap gap-1.5">
-                {METRICS.map((m) => {
-                  const disabled = timed
-                    ? m.value !== "hold"
-                    : m.value === "hold";
-                  return (
-                    <button
-                      key={m.value}
-                      type="button"
-                      disabled={disabled}
-                      onClick={() => chooseMetric(m.value)}
-                      className={pillClass(metric === m.value)}
-                    >
-                      {m.label}
-                    </button>
-                  );
-                })}
-              </div>
+              <FilterPills
+                mode="button"
+                layout="wrap"
+                label="Goal target"
+                value={metric}
+                onSelect={chooseMetric}
+                options={METRICS.map((option) => ({
+                  ...option,
+                  disabled: timed
+                    ? option.value !== "hold"
+                    : option.value === "hold",
+                }))}
+              />
               {/* Metric-conditional inputs — mounted only for the metric that uses
                   them; see the header for why this one block is not merely hidden. */}
               <div key={metric} className="mt-3 grid gap-3 sm:grid-cols-2">
@@ -949,22 +930,22 @@ export default function GoalForm({
             <>
               <label className="label">Target</label>
               <input type="hidden" name="target_direction" value={direction} />
-              <div className="flex flex-wrap gap-1.5">
-                {OUTCOME_GOAL_DIRECTIONS.map((d) => (
-                  <button
-                    key={d}
-                    type="button"
-                    data-testid={`goal-direction-${d}`}
-                    onClick={() => setDirection(d)}
-                    className={pillClass(direction === d)}
-                  >
-                    {DIRECTION_LABEL[d]}
-                  </button>
-                ))}
-              </div>
+              <FilterPills
+                mode="button"
+                layout="wrap"
+                label="Target direction"
+                value={direction}
+                onSelect={setDirection}
+                options={OUTCOME_GOAL_DIRECTIONS.map((directionOption) => ({
+                  value: directionOption,
+                  label: DIRECTION_LABEL[directionOption],
+                  testId: `goal-direction-${directionOption}`,
+                }))}
+              />
               <div className="mt-3">
                 <label className="label" htmlFor="goal-biomarker-target">
-                  Target value{bioUnit ? ` (${bioUnit})` : ""}
+                  Target value
+                  {bioUnit ? ` (${displayUnit(bioUnit)})` : ""}
                 </label>
                 <input
                   id="goal-biomarker-target"
@@ -1185,7 +1166,7 @@ export default function GoalForm({
                 type="button"
                 data-testid={`goal-more-${key}`}
                 onClick={() => openPanel(key)}
-                className="tap-target rounded-full border border-(--border) px-3 py-1.5 text-sm transition hover:bg-(--ghost-hover)"
+                className="min-h-11 rounded-full border border-(--border) px-3 py-1.5 text-sm transition hover:bg-(--ghost-hover)"
               >
                 {GOAL_FACT_NOUNS[key]}
               </button>

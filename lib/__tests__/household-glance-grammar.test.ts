@@ -2,7 +2,7 @@ import fs from "node:fs";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
 import { describe, expect, it } from "vitest";
-import { withoutComments } from "../add-affordance-grammar";
+import { stripComments } from "./strip-comments";
 
 // THE HOUSEHOLD GLANCE'S READS AND LINK TREATMENTS (#3487), as a source scan.
 //
@@ -20,7 +20,7 @@ import { withoutComments } from "../add-affordance-grammar";
 const REPO = path.resolve(fileURLToPath(new URL("../..", import.meta.url)));
 
 function read(rel: string): string {
-  return withoutComments(fs.readFileSync(path.join(REPO, rel), "utf8"));
+  return stripComments(fs.readFileSync(path.join(REPO, rel), "utf8"));
 }
 
 const PAGE = "app/(app)/household/page.tsx";
@@ -110,11 +110,15 @@ describe("the setup block's links join text-link (#3487 item 2 / #2719)", () => 
 });
 
 describe("one arrow glyph for the doors in one row (#3487 item 5)", () => {
-  it("the History door draws the chevron the cabinet door draws", () => {
+  it("both doors delegate their chevron to DestinationLink", () => {
     const page = read(PAGE);
     const door = read("components/intake/SharedSuppliesLink.tsx");
-    expect(door).toContain("IconChevronRight");
-    expect(page).toContain("IconChevronRight");
+    const primitive = read("components/DestinationLink.tsx");
+    const indicator = read("components/DestinationIndicator.tsx");
+    expect(door).toContain("DestinationLink");
+    expect(page).toContain("DestinationLink");
+    expect(primitive).toContain("DestinationIndicator");
+    expect(indicator).toContain("IconChevronRight");
     // The literal arrow this row used to end on is gone.
     expect(page).not.toContain("History →");
   });

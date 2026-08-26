@@ -2,6 +2,7 @@ import Link from "next/link";
 import CardFootnote from "@/components/CardFootnote";
 import CardGroup, { CardGroupSection } from "@/components/CardGroup";
 import LineChartCard from "@/components/LineChartCard";
+import VisualizationDetails from "@/components/VisualizationDetails";
 import { StatBox } from "@/components/StatBox";
 import { chartSeries } from "@/lib/chart-colors";
 import {
@@ -93,6 +94,11 @@ export default function CyclingOverviewDetails({
   );
   const noun = data.indoorOnly ? "session" : "ride";
   const plural = data.indoorOnly ? "sessions" : "rides";
+  const monthDetails = data.distribution.months.map((month) =>
+    month.observedMonths === 0
+      ? `${month.label}: outside recorded history`
+      : `${month.label}: ${month.sessions} ${month.sessions === 1 ? noun : plural} across ${month.observedMonths} observed ${month.label}s`
+  );
   const records = data.indoorOnly
     ? rollup.records.filter((record) => record.key !== "elevation")
     : rollup.records;
@@ -265,7 +271,7 @@ export default function CyclingOverviewDetails({
               className="mt-4 grid h-36 grid-cols-12 items-end gap-1 sm:gap-2"
               aria-label={`Average ${plural} by calendar month`}
             >
-              {data.distribution.months.map((month) => {
+              {data.distribution.months.map((month, index) => {
                 const maxRate = Math.max(
                   ...data.distribution.months.map(
                     (candidate) => candidate.sessionsPerObservedMonth
@@ -281,15 +287,11 @@ export default function CyclingOverviewDetails({
                           8,
                           (month.sessionsPerObservedMonth / maxRate) * 100
                         );
-                const description =
-                  month.observedMonths === 0
-                    ? `${month.label}: outside recorded history`
-                    : `${month.label}: ${month.sessions} ${month.sessions === 1 ? noun : plural} across ${month.observedMonths} observed ${month.label}s`;
+                const description = monthDetails[index];
                 return (
                   <div
                     key={month.month}
                     className="flex h-full min-w-0 flex-col items-center justify-end gap-1"
-                    title={description}
                     aria-label={description}
                   >
                     <span className="text-xs font-semibold tabular-nums text-slate-500 dark:text-slate-400">
@@ -320,6 +322,10 @@ export default function CyclingOverviewDetails({
                 );
               })}
             </div>
+            <VisualizationDetails
+              label={`${data.activityName} calendar-month details`}
+              items={monthDetails}
+            />
             <p className="mt-2 text-xs text-slate-500 dark:text-slate-400">
               Bar height is {plural} per observed occurrence of that month. A
               dot means the month falls outside your recorded history; a flat
@@ -470,7 +476,6 @@ export default function CyclingOverviewDetails({
                     width: `${zone.percent}%`,
                     backgroundColor: ZONE_COLORS[index],
                   }}
-                  title={`${zone.name}: ${zone.percent}%`}
                 />
               ) : null
             )}
@@ -572,7 +577,6 @@ export default function CyclingOverviewDetails({
                         backgroundColor:
                           ZONE_COLORS[index % ZONE_COLORS.length],
                       }}
-                      title={`Zone ${zone.zone}: ${zone.percent}%`}
                     />
                   ) : null
                 )}

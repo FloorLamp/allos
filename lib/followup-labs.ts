@@ -14,6 +14,7 @@
 // grouping every biomarker surface keys on, biomarkerFamily().
 
 import { biomarkerFamily } from "./canonical-name";
+import { displayUnit } from "./display-unit";
 import type { FollowUpAdapter, FollowUpItemLike } from "./followup";
 
 // The labs source kind stored in care_plan_items.source_kind.
@@ -65,7 +66,7 @@ export function labValueLabel(record: LabFollowUpObservation): string {
       : record.value_num != null
         ? String(record.value_num)
         : "";
-  const u = record.unit?.trim();
+  const u = displayUnit(record.unit);
   if (!v) return u ?? "";
   if (!u) return v;
   return u === "%" ? `${v}${u}` : `${v} ${u}`;

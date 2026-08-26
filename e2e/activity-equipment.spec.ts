@@ -268,12 +268,7 @@ test("the strength picker creates and selects a travel machine without losing th
   // those two are being fixed alongside.
   try {
     await page.goto("/training?tab=log"); // default "Log" tab renders the Training Log feed
-    await hydratedClick(
-      page,
-      page
-        .getByTestId("training-log-actions")
-        .getByRole("button", { name: "Add activity" })
-    );
+    await hydratedClick(page, page.getByTestId("training-log-add-activity"));
 
     await page.getByRole("textbox", { name: "Activity name" }).fill(title);
     // A fully-qualified variant (never the bare base, which needs a per-set equipment
@@ -496,12 +491,7 @@ test("gear chosen behind a closed panel still saves, and still counts as a chang
 
   try {
     await page.goto("/training?tab=log"); // default "Log" tab renders the Training Log feed
-    await hydratedClick(
-      page,
-      page
-        .getByTestId("training-log-actions")
-        .getByRole("button", { name: "Add activity" })
-    );
+    await hydratedClick(page, page.getByTestId("training-log-add-activity"));
 
     await page.getByRole("textbox", { name: "Activity name" }).fill(title);
     await page.getByPlaceholder(/What did you do/).fill("Rowing");

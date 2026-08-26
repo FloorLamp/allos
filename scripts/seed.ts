@@ -39,10 +39,10 @@ import {
   serializeOnboardingState,
 } from "../lib/onboarding";
 import {
+  DEFAULT_SEED,
   describeDials,
   jitterStream,
-  sampleDials,
-  seedFromEnv,
+  seedDialsFromEnv,
 } from "./seed-rng";
 import { personaFromEnv } from "./seed-personas";
 import { LONG_NAMES } from "./seed-long-names";
@@ -62,8 +62,20 @@ function daysAgo(n: number): string {
 // pinned baseline — exactly the hand-authored look below, which `npm run seed`,
 // the e2e template DB, and census `--baseline` diffing all rely on. The dial
 // hooks are inline at their data sites, each tagged "#2594 dial".
-const SEED_ENTROPY = seedFromEnv(process.env);
-const DIALS = sampleDials(SEED_ENTROPY);
+const DIAL_SELECTION = seedDialsFromEnv(process.env);
+if (DIAL_SELECTION.kind === "unknown") {
+  console.error(
+    `Unknown SEED_DIAL_SHAPE "${DIAL_SELECTION.raw}". Known shapes: ${DIAL_SELECTION.known.join(", ")}`
+  );
+  process.exit(1);
+}
+if (DIAL_SELECTION.kind === "conflict") {
+  console.error(DIAL_SELECTION.reason);
+  process.exit(1);
+}
+const SEED_ENTROPY =
+  DIAL_SELECTION.kind === "entropy" ? DIAL_SELECTION.seed : DEFAULT_SEED;
+const DIALS = DIAL_SELECTION.dials;
 const rand = jitterStream(SEED_ENTROPY);
 // Persona axis (SEED_PERSONA, scripts/seed-personas.ts): WHO the profile is,
 // orthogonal to the dial vector's HOW-the-baseline-varies. A persona run
@@ -78,9 +90,20 @@ if (PERSONA_SELECTION.kind === "unknown") {
   );
   process.exit(1);
 }
-if (PERSONA_SELECTION.kind === "none") {
+if (PERSONA_SELECTION.kind === "found" && DIAL_SELECTION.kind === "named") {
+  console.error(
+    `SEED_PERSONA=${PERSONA_SELECTION.persona.name} cannot be combined with SEED_DIAL_SHAPE=${DIAL_SELECTION.shape.name}`
+  );
+  process.exit(1);
+}
+if (PERSONA_SELECTION.kind === "none" && DIAL_SELECTION.kind === "entropy") {
   console.log(
     `seed entropy: SEED_RNG=${SEED_ENTROPY} — ${describeDials(DIALS)}`
+  );
+}
+if (PERSONA_SELECTION.kind === "none" && DIAL_SELECTION.kind === "named") {
+  console.log(
+    `seed shape: ${DIAL_SELECTION.shape.name} — ${DIAL_SELECTION.shape.description}`
   );
 }
 // The current illness episode's day offset (#2594 dial: illnessNow). "active"
@@ -104,15 +127,25 @@ if (!profileOne) {
   process.exit(1);
 }
 
-const count = db
+type CountRow = { c: number };
+
+// Ordinary direct seed invocations keep their longstanding no-op behavior.
+// Served census freshness is not inferred from a moving table allowlist: the
+// walkthrough owns a newly-created directory and a never-before-used DB path.
+const existing = db
   .prepare(
-    `SELECT (SELECT COUNT(*) FROM activities WHERE profile_id = ?)
-          + (SELECT COUNT(*) FROM medical_records WHERE profile_id = ?) c`
+    `SELECT
+       (SELECT COUNT(*) FROM activities WHERE profile_id = ?) +
+       (SELECT COUNT(*) FROM medical_records WHERE profile_id = ?) AS c`
   )
-  .get(SEED_PROFILE_ID, SEED_PROFILE_ID) as {
-  c: number;
-};
-if (count.c > 0) {
+  .get(SEED_PROFILE_ID, SEED_PROFILE_ID) as CountRow;
+if (existing.c > 0) {
+  if (DIAL_SELECTION.kind === "named") {
+    console.error(
+      `Database already has data — refusing named seed shape ${DIAL_SELECTION.shape.name}. Use a fresh scratch DB for each census shape.`
+    );
+    process.exit(1);
+  }
   console.log(
     "Database already has data — skipping seed. (Delete data/allos.db to reseed.)"
   );
@@ -2991,21 +3024,31 @@ reconcileFlags(SEED_PROFILE_ID, tempIds);
 // ── Menstrual cycle log (issue #714) ─────────────────────────────────────────
 // A few synthetic, roughly-regular cycles so the Cycle surface (derived phase +
 // cycle-length/variability trend), the Timeline day-view phase/period chip, and the
-// #718 phase-aware ranges all have data. Three completed cycles (~28-day, 5-day
-// periods) plus the most recent still within its follicular span. Obviously-fictional,
-// no PHI. Clear first for a re-seed.
+// #718 phase-aware ranges all have data. Baseline uses three completed cycles
+// (~28-day, 5-day periods) plus the most recent still within its follicular
+// span. The named #3489 D5 middle state stores exactly two periods, yielding
+// exactly one completed start-to-start interval. Obviously-fictional, no PHI.
+// Clear first for a re-seed.
 db.prepare("DELETE FROM cycles WHERE profile_id = ?").run(SEED_PROFILE_ID);
 const seedCycle = db.prepare(
   `INSERT INTO cycles (profile_id, period_start, period_end, flow, note)
    VALUES (?, ?, ?, ?, ?)`
 );
-const seededCycles: [number, number, string, string | null][] = [
+const baselineCycles: [number, number, string, string | null][] = [
   // [startDaysAgo, endDaysAgo, flow, note]
   [103, 99, "medium", null],
   [75, 71, "heavy", "cramps day 1"],
   [47, 43, "medium", null],
   [19, 15, "light", null],
 ];
+const oneCompletedCycle: [number, number, string, string | null][] = [
+  [47, 43, "medium", null],
+  [19, 15, "light", null],
+];
+const seededCycles =
+  DIALS.middleState === "one-completed-cycle"
+    ? oneCompletedCycle
+    : baselineCycles;
 for (const [startAgo, endAgo, flow, note] of seededCycles) {
   seedCycle.run(
     SEED_PROFILE_ID,

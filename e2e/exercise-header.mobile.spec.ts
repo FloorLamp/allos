@@ -7,6 +7,7 @@ import {
   settledFill,
 } from "./helpers";
 import { openLogSheet, showLogRow } from "./log-sheet-helpers";
+import { TAP_FLOOR_PX } from "@/lib/tap-floor-tokens";
 
 // Issue #1613 — the activity form's sticky exercise header at phone width.
 //
@@ -142,12 +143,12 @@ test("a multi-part exercise header reads and taps at 390px (#1613)", async ({
     const b = await box(control);
     expect(
       b.width,
-      "action target is narrower than 44px"
-    ).toBeGreaterThanOrEqual(44);
+      `action target is narrower than ${TAP_FLOOR_PX}px`
+    ).toBeGreaterThanOrEqual(TAP_FLOOR_PX);
     expect(
       b.height,
-      "action target is shorter than 44px"
-    ).toBeGreaterThanOrEqual(44);
+      `action target is shorter than ${TAP_FLOOR_PX}px`
+    ).toBeGreaterThanOrEqual(TAP_FLOOR_PX);
     // All on one band with the toolbar.
     expect(b.y).toBeGreaterThanOrEqual(actionsBox.y - 1);
     expect(b.y + b.height).toBeLessThanOrEqual(

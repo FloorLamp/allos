@@ -134,7 +134,6 @@ export default function DormantPrnSweep({
                     onClick={() => dismiss(s)}
                     disabled={busyId != null}
                     aria-label={`Dismiss ${s.name}`}
-                    title="Dismiss"
                     data-testid="dormant-prn-dismiss"
                     className="tap-target flex h-8 w-8 items-center justify-center rounded-sm text-slate-500 transition hover:bg-slate-100 hover:text-slate-700 dark:text-slate-400 dark:hover:bg-ink-750 dark:hover:text-slate-200"
                   >

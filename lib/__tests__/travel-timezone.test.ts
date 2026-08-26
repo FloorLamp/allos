@@ -3,6 +3,8 @@ import {
   MAX_STORED_SWITCHES,
   appendTimezoneSwitch,
   comparePositions,
+  connectedTimezoneSwitchHistory,
+  decodeTimezoneSwitchHistory,
   isExcusedSlot,
   isRepeatedSlot,
   localPositionIn,
@@ -13,7 +15,7 @@ import {
   serializeTimezoneSwitches,
   travelOfferText,
   travelPrompt,
-  travelReturnText,
+  travelReturnOfferText,
   zonePlaceLabel,
   type TimezoneSwitch,
 } from "@/lib/travel-timezone";
@@ -247,8 +249,44 @@ describe("isExcusedSlot / isRepeatedSlot over a history", () => {
     { at: "2026-05-08T14:00:00Z", from: TOKYO, to: NY },
   ];
 
-  it("excuses a slot skipped by ANY switch on record", () => {
+  it("excuses a slot the complete trip trajectory never contained", () => {
     expect(isExcusedSlot(history, "2026-05-01", EVENING)).toBe(true);
+  });
+
+  it("re-arms a skipped slot when a later reverse switch makes it occur", () => {
+    const quickReturn: TimezoneSwitch[] = [
+      { at: "2026-05-01T14:00:00Z", from: NY, to: TOKYO },
+      { at: "2026-05-01T14:01:00Z", from: TOKYO, to: NY },
+    ];
+    // 10:00 -> 23:00 skips noon, then 23:01 -> 10:01 puts noon back ahead
+    // of the profile. Across the combined trajectory it occurs exactly once.
+    expect(isExcusedSlot(quickReturn, "2026-05-01", MIDDAY)).toBe(false);
+    expect(isRepeatedSlot(quickReturn, "2026-05-01", MIDDAY)).toBe(false);
+  });
+
+  it("ignores a duplicate crossing instead of cancelling a legitimate return", () => {
+    const duplicatedOutbound: TimezoneSwitch[] = [
+      { at: "2026-05-01T13:59:00Z", from: NY, to: TOKYO },
+      { at: "2026-05-01T14:00:00Z", from: NY, to: TOKYO },
+      { at: "2026-05-01T14:01:00Z", from: TOKYO, to: NY },
+    ];
+    expect(isExcusedSlot(duplicatedOutbound, "2026-05-01", MIDDAY)).toBe(false);
+    expect(isRepeatedSlot(duplicatedOutbound, "2026-05-01", MIDDAY)).toBe(
+      false
+    );
+  });
+
+  it("fails open across a discontinuity or a current-zone mismatch", () => {
+    const disconnected: TimezoneSwitch[] = [
+      { at: "2026-05-01T14:00:00Z", from: NY, to: TOKYO },
+      { at: "2026-05-01T14:01:00Z", from: "Europe/Paris", to: TOKYO },
+    ];
+    // Paris 16:01 → Tokyo 23:01 appears to skip 20:00, but the unrecorded
+    // boundary that put the profile in Paris can cancel that crossing. The
+    // retained history is uncertain, so even an in-gap slot must fail open.
+    expect(isExcusedSlot(disconnected, "2026-05-01", EVENING)).toBe(false);
+    expect(connectedTimezoneSwitchHistory(history, NY)).toEqual(history);
+    expect(connectedTimezoneSwitchHistory([history[0]], NY)).toEqual([]);
   });
 
   it("does not excuse a slot the westward leg merely repeated", () => {
@@ -279,15 +317,22 @@ describe("stored switch history", () => {
     );
   });
 
-  it("drops junk rather than throwing, so one bad row cannot take a render down", () => {
+  it("fails open without throwing when any stored row is malformed", () => {
     expect(parseTimezoneSwitches(undefined)).toEqual([]);
+    expect(decodeTimezoneSwitchHistory("")).toEqual({
+      switches: [],
+      valid: false,
+    });
     expect(parseTimezoneSwitches("{")).toEqual([]);
     expect(parseTimezoneSwitches('{"at":"x"}')).toEqual([]);
     expect(
       parseTimezoneSwitches(
         `[{"at":"${NOON_UTC}","from":"${NY}"},{"at":"${NOON_UTC}","from":"${NY}","to":"${TOKYO}"},null,7]`
       )
-    ).toEqual([{ at: NOON_UTC, from: NY, to: TOKYO }]);
+    ).toEqual([]);
+    expect(
+      decodeTimezoneSwitchHistory(`[{"at":"${NOON_UTC}","from":"${NY}"}]`)
+    ).toEqual({ switches: [], valid: false });
   });
 
   it("prunes records older than the retention window on append", () => {
@@ -391,8 +436,9 @@ describe("travelPrompt", () => {
     ).toEqual({ kind: "return", homeZone: NY, awayZone: TOKYO });
   });
 
-  it("reports the return even when that zone was once dismissed", () => {
-    // Coming home is not a question, so a dismissal is not an answer to it.
+  it("suppresses a return offer dismissed for the reported home zone", () => {
+    // A home-terminating VPN can stay on indefinitely. It asks once, rather than
+    // once per render, for the same reason an outbound offer does.
     expect(
       travelPrompt({
         ...base,
@@ -401,7 +447,7 @@ describe("travelPrompt", () => {
         homeZone: NY,
         dismissedZone: NY,
       })
-    ).toEqual({ kind: "return", homeZone: NY, awayZone: TOKYO });
+    ).toEqual({ kind: "none" });
   });
 
   it("treats a home zone equal to the profile's own zone as stale, not a trip", () => {
@@ -433,10 +479,9 @@ describe("copy", () => {
     );
   });
 
-  it("names BOTH zones when it tells you it moved the day back", () => {
-    const text = travelReturnText(NY, TOKYO);
-    expect(text).toContain("New York");
-    expect(text).toContain("Tokyo");
-    expect(text).toBe("Back on New York time — you were on Tokyo time.");
+  it("asks explicitly before moving the day back", () => {
+    expect(travelReturnOfferText(NY)).toBe(
+      "Your device is back on New York time — move your day back?"
+    );
   });
 });

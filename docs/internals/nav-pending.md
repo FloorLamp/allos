@@ -166,7 +166,7 @@ that would make it pending), and `TrainingLogRow` — which navigates nowhere at
 all: it opens the reading pane or expands in place, so there is no transition for
 `useLinkStatus` to report.
 
-The shared `?tab=` STRIP (`components/NavTabs.tsx`) is also still floor-only.
+The shared query-tab strip (`components/TabList.tsx`) is also still floor-only.
 Every hub in the app renders through it, so adopting the doctrine there is an
 app-wide change to tab behaviour rather than a training one, and it is the
 owner's call rather than a sweep's.

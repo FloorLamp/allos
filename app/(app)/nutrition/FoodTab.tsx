@@ -1,4 +1,5 @@
 import { requireSession } from "@/lib/auth";
+import Link from "next/link";
 import { getDisplayFormatPrefs } from "@/lib/settings";
 import { today } from "@/lib/db";
 import { now as clockNow } from "@/lib/clock";
@@ -460,6 +461,15 @@ export default async function FoodTab({
             data-testid="food-log-shell"
             className="min-w-0"
           >
+            <div className="mb-2 flex justify-end">
+              <Link
+                href="/nutrition/food-history"
+                className="text-sm font-medium text-brand-700 hover:underline dark:text-brand-400"
+                data-testid="food-ledger-link"
+              >
+                View food history
+              </Link>
+            </div>
             {/* Fasting (#2756) sits ABOVE the log bar because it is the same kind of
                 thing — an act, in the "Act" column — and because the state chip has to
                 be visible before the bar's taps start meeting "End your fast?".

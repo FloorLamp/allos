@@ -86,6 +86,7 @@ import TrendMetricCharts, {
 import MetricReadingsTable, {
   type MetricReadingRow,
 } from "@/components/MetricReadingsTable";
+import DelegatedCard from "@/components/DelegatedCard";
 import PeakFlowZoneCard from "@/components/PeakFlowZoneCard";
 import { getPeakFlowPersonalBest } from "@/lib/settings";
 import { suggestedPersonalBest } from "@/lib/peak-flow";
@@ -723,41 +724,6 @@ export default async function TrendMetricDetailPage(props: {
 // value broke mid-range onto a second line — by arithmetic, not by accident. Four
 // windows (the #1938 365d column) wrap into a 2×2 grid for the same reason: four
 // abreast at 640px is back under that arithmetic's floor.
-const PERIOD_COLS: Record<number, string> = {
-  1: "sm:grid-cols-1",
-  2: "sm:grid-cols-2",
-  3: "sm:grid-cols-3",
-  4: "sm:grid-cols-2",
-};
-
-// How many `sm` columns the grid above resolves to — the input the per-item
-// borders need (divide-x/divide-y utilities assume one row or one column, which a
-// 2×2 grid is neither, so each cell draws its own edges instead).
-function periodGridCols(statCount: number): number {
-  return statCount === 4 ? 2 : Math.max(1, statCount);
-}
-
-// The separators between period cells, per cell: a top rule in the phone stack, a
-// left rule between `sm` row neighbours plus a top rule for the second 2×2 row,
-// and (in the desktop sidebar) back to top rules only when `xl` restacks to one
-// column.
-function periodItemBorders(
-  index: number,
-  cols: number,
-  desktopSidebar: boolean
-): string {
-  if (index === 0) return "";
-  const out = ["border-black/10", "dark:border-white/10", "border-t"];
-  const startsRow = index % cols === 0;
-  if (!startsRow) out.push("sm:border-l");
-  if (index < cols) out.push("sm:border-t-0");
-  if (desktopSidebar) {
-    if (!startsRow) out.push("xl:border-l-0");
-    if (index < cols) out.push("xl:border-t");
-  }
-  return out.join(" ");
-}
-
 function PeriodStatsCard({
   stats,
   unit,
@@ -792,12 +758,11 @@ function PeriodStatsCard({
   const dayOne = stats.length > 0 && stats.every((s) => s.dayOne);
 
   return (
-    <section
-      className="card overflow-hidden p-0!"
+    <DelegatedCard
+      labelledBy="metric-period-stats-heading"
       data-testid="metric-period-stats"
-      aria-labelledby="metric-period-stats-heading"
     >
-      <div className="border-b border-black/10 bg-slate-50/55 px-4 py-3.5 sm:px-5 dark:border-white/10 dark:bg-ink-900/35">
+      <DelegatedCard.Header subdued data-testid="metric-period-stats-header">
         <h2
           id="metric-period-stats-heading"
           className="font-semibold text-slate-800 dark:text-slate-100"
@@ -826,23 +791,12 @@ function PeriodStatsCard({
             </>
           )}
         </p>
-      </div>
-      <div
-        className={`grid grid-cols-1 ${
-          desktopSidebar
-            ? `xl:grid-cols-1 ${PERIOD_COLS[stats.length] ?? "sm:grid-cols-3"}`
-            : (PERIOD_COLS[stats.length] ?? "sm:grid-cols-3")
-        }`}
-      >
-        {stats.map((s, i) => (
-          <article
+      </DelegatedCard.Header>
+      <DelegatedCard.Grid desktopStack={desktopSidebar}>
+        {stats.map((s) => (
+          <DelegatedCard.Cell
             key={s.label}
             data-testid={`period-stat-${s.days}`}
-            className={`min-w-0 px-4 py-4 sm:px-5 ${periodItemBorders(
-              i,
-              periodGridCols(stats.length),
-              desktopSidebar
-            )}`}
           >
             <div className="flex min-w-0 items-start justify-between gap-3">
               <span className="inline-flex rounded-full bg-brand-50 px-2.5 py-1 text-xs font-semibold text-brand-700 dark:bg-brand-950/70 dark:text-brand-300">
@@ -921,9 +875,9 @@ function PeriodStatsCard({
                 </dl>
               </div>
             )}
-          </article>
+          </DelegatedCard.Cell>
         ))}
-      </div>
-    </section>
+      </DelegatedCard.Grid>
+    </DelegatedCard>
   );
 }

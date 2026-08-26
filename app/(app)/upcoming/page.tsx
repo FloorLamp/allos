@@ -1,5 +1,10 @@
 import Link from "next/link";
+import DestinationLink, {
+  DestinationActionLink,
+} from "@/components/DestinationLink";
 import SegmentedControl from "@/components/SegmentedControl";
+import IconButton from "@/components/IconButton";
+import SubjectChip from "@/components/SubjectChip";
 import {
   IconPill,
   IconRefresh,
@@ -25,7 +30,6 @@ import {
   IconInfoCircle,
   IconCalendarCheck,
   IconClipboardPlus,
-  IconArrowRight,
   IconSun,
   IconUsers,
   IconLayoutList,
@@ -377,11 +381,12 @@ export default async function UpcomingPage(props: {
             className="mt-0.5 h-3.5 w-3.5 shrink-0"
             stroke={1.75}
           />
-          <span>
-            Preventive visit &amp; screening suggestions are based on general
-            guidelines and are informational only — individual clinician
-            guidance wins.
-          </span>
+          <DestinationLink
+            href="/disclaimer#suggestions-and-reference-ranges"
+            className="text-link"
+          >
+            About these suggestions
+          </DestinationLink>
         </p>
       )}
     </div>
@@ -700,15 +705,14 @@ function MultiviewHint() {
         }}
         className="shrink-0"
       >
-        <button
+        <IconButton
           type="submit"
           data-testid="multiview-hint-dismiss"
-          aria-label="Dismiss hint"
-          title="Dismiss hint"
-          className="flex h-6 w-6 items-center justify-center rounded-full text-brand-500 transition hover:bg-brand-100 dark:hover:bg-brand-500/20"
+          label="Dismiss hint"
+          tone="brand"
         >
           <IconX className="h-4 w-4" stroke={2} />
-        </button>
+        </IconButton>
       </form>
     </div>
   );
@@ -788,35 +792,6 @@ function DemographicsNudge({
         </div>
       )}
     </div>
-  );
-}
-
-// A small subject chip (#534/#900) rendered on a cross-profile row for a NON-acting
-// member (issue #1327 fix 1: the acting profile's rows are implied by the view strip).
-// On-element identity, never spatial (#531). The name truncates so the chip fits its
-// fixed-width aligned slot.
-function SubjectChip({ subject }: { subject: SubjectInfo }) {
-  return (
-    <span
-      data-testid={`subject-chip-${subject.profileId}`}
-      className="flex min-w-0 items-center gap-1 rounded-full border border-black/10 bg-slate-50 py-0.5 pl-0.5 pr-2 text-xs font-medium text-slate-600 dark:border-white/10 dark:bg-ink-850 dark:text-slate-300"
-    >
-      <Avatar
-        profile={{
-          id: subject.profileId,
-          name: subject.name,
-          photo_path: subject.photoPath,
-          photo_version: subject.photoVersion,
-        }}
-        size="sm"
-      />
-      <span className="truncate">{subject.name}</span>
-      {subject.access === "read" && (
-        <span className="shrink-0 rounded-full bg-amber-100 px-1 text-xs font-semibold uppercase tracking-wide text-amber-700 dark:bg-amber-950 dark:text-amber-300">
-          RO
-        </span>
-      )}
-    </span>
   );
 }
 
@@ -978,10 +953,7 @@ function SuppressedSection({
           a client component: it pulses ONCE when its count goes up (#2654, motion 2),
           which is the other half of the dismissed row's travel toward it. The count
           itself is server truth on every paint; the pulse only decorates a change. */}
-      <FoldSummary
-        count={items.length}
-        className="cursor-pointer section-label"
-      />
+      <FoldSummary count={items.length} />
       <div className="card mt-2 space-y-3 p-2">
         {groups.map((g) => (
           <div key={g.domain}>
@@ -1018,7 +990,11 @@ function SuppressedSection({
                           : "Dismissed"}
                       </div>
                     </div>
-                    {subject && <SubjectChip subject={subject} />}
+                    {subject && (
+                      <div className="flex min-w-0 max-w-44 shrink-0">
+                        <SubjectChip subject={subject} />
+                      </div>
+                    )}
                     <form
                       action={async (fd) => {
                         "use server";
@@ -1253,14 +1229,12 @@ function Row({
   // onto a line by itself (#1446).
   const cta =
     item.actionLabel != null && item.preventiveRuleKey != null ? (
-      <Link
+      <DestinationActionLink
         href={item.href}
         data-testid={`upcoming-cta-${item.key}`}
-        className="flex min-w-0 items-center gap-1 truncate rounded-lg border border-black/10 px-2.5 py-1 text-xs font-medium text-slate-600 transition hover:bg-slate-100 dark:border-white/10 dark:text-slate-300 dark:hover:bg-ink-750"
       >
-        <IconArrowRight className="h-3.5 w-3.5 shrink-0" stroke={1.75} />
         <span className="truncate">{item.actionLabel}</span>
-      </Link>
+      </DestinationActionLink>
     ) : null;
 
   const hasFollowUp = actionVisible && item.followUpResolve != null;
@@ -1318,8 +1292,7 @@ function Row({
               + `sm:w-28` pins it to one x for every row in the card. */}
           <div
             data-testid="upcoming-status"
-            title={dueText}
-            className={`shrink-0 truncate text-xs font-medium sm:w-28 ${tone}`}
+            className={`shrink-0 wrap-break-word text-xs font-medium sm:w-28 ${tone}`}
           >
             {dueText}
           </div>
@@ -1407,7 +1380,10 @@ function Row({
           {/* The primary CTA and the row's ONE overflow trigger, glued into a single
               nowrap group so a wrap can never strand the "⋯" alone on its own line
               (#1446). */}
-          <div className="flex min-w-0 shrink-0 items-center gap-1">
+          <div
+            className="flex min-w-0 items-center gap-2 sm:gap-1"
+            data-testid="upcoming-primary-actions"
+          >
             {cta}
             <UpcomingRowMenu
               itemName={item.title}

@@ -171,6 +171,7 @@ export default function PendingLink({
   label,
   className,
   current = false,
+  ariaCurrent,
   testId,
   scroll,
   ariaExpanded,
@@ -183,6 +184,8 @@ export default function PendingLink({
   className?: string;
   /** Renders `aria-current="page"` when this control is the page being viewed. */
   current?: boolean;
+  /** Exact current-state token for a registered navigation adapter. */
+  ariaCurrent?: "page" | "true" | "location";
   testId?: string;
   /** Passed straight to `<Link>` — the timeline's filter links suppress scroll. */
   scroll?: boolean;
@@ -207,7 +210,7 @@ export default function PendingLink({
   return (
     <Link
       href={href}
-      aria-current={current ? "page" : undefined}
+      aria-current={ariaCurrent ?? (current ? "page" : undefined)}
       aria-expanded={ariaExpanded}
       data-testid={testId}
       scroll={scroll}

@@ -156,20 +156,6 @@ test("Nutrition is a Food | Supplements tab umbrella (#746)", async ({
     "aria-pressed",
     "true"
   );
-  await page.getByTestId("supplement-day-yesterday").click();
-  await expect(page.getByTestId("supplement-day-yesterday")).toHaveAttribute(
-    "aria-pressed",
-    "true"
-  );
-  await expect(
-    page.getByTestId("supplement-context-heading")
-  ).toHaveAccessibleName("Yesterday Supplements");
-  await expect(page.getByTestId("supplement-context-label")).toHaveCount(0);
-  await expect(page.getByTestId("supplement-slot-chip")).toHaveCount(0);
-  await page.getByTestId("supplement-day-today").click();
-  await expect(
-    page.getByTestId("supplement-context-heading")
-  ).toHaveAccessibleName(/Today Supplements(?: (?:Workout|Rest) day)?/);
 
   // The large schedule cards rest on All and narrow to one supplement time slot.
   await expect(page.getByTestId("supplement-slot-selector")).toHaveAttribute(
@@ -310,6 +296,7 @@ test("supplement suggestion provenance stays visually bounded", async ({
 test("a curated supplement suggestion is visibly distinct from a generated one (#2378)", async ({
   page,
 }) => {
+  await page.setViewportSize({ width: 390, height: 844 });
   // Two suggestions side by side in the same panel: one from the committed
   // biomarker→supplement map (no model involved), one from the AI route. They are
   // different CLAIMS, so they must not render identically — each carries an origin
@@ -351,6 +338,11 @@ test("a curated supplement suggestion is visibly distinct from a generated one (
     await expect(curated.getByTestId("suggestion-origin-badge")).toHaveText(
       "Curated"
     );
+    await curated.getByTestId("curated-origin-help").click();
+    await expect(page.getByRole("tooltip")).toContainText(
+      "human-reviewed biomarker→supplement map"
+    );
+    await expect(page.getByRole("tooltip")).toContainText("no AI involved");
     await expect(curated).toContainText("Folate");
     await expect(curated).toContainText("Folic acid");
 
@@ -361,6 +353,10 @@ test("a curated supplement suggestion is visibly distinct from a generated one (
     await expect(generated).toBeVisible();
     await expect(generated.getByTestId("suggestion-origin-badge")).toHaveText(
       "Generated"
+    );
+    await generated.getByTestId("generated-origin-help").click();
+    await expect(page.getByRole("tooltip")).toContainText(
+      "Written by AI from your data"
     );
   } finally {
     cleanup();

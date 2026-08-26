@@ -1,5 +1,4 @@
 import {
-  IconChevronRight,
   IconTrendingDown,
   IconTrendingUp,
   IconMinus,
@@ -12,8 +11,11 @@ import {
   IconChecklist,
   IconX,
 } from "@tabler/icons-react";
-import Link from "next/link";
+import DestinationIndicator from "@/components/DestinationIndicator";
+import DestinationLink from "@/components/DestinationLink";
 import Avatar from "@/components/Avatar";
+import IconButton from "@/components/IconButton";
+import InfoTooltipIcon from "@/components/InfoTooltipIcon";
 import {
   PILLAR_TONE_CLASS,
   PillarToneBadge,
@@ -126,12 +128,10 @@ function TrendArrow({ trend, unit }: { trend: WeightTrend; unit: WeightUnit }) {
       ? "steady"
       : `${trend.dir === "up" ? "up" : "down"} ${fmtWeight(Math.abs(trend.deltaKg), unit)}`;
   return (
-    <span
-      className="inline-flex items-center text-slate-500 dark:text-slate-400"
-      title={`Weight ${label} since the previous reading`}
-    >
+    <span className="inline-flex items-center text-slate-500 dark:text-slate-400">
       <Icon className="h-4 w-4" stroke={1.75} aria-hidden="true" />
       <span className="sr-only">{label}</span>
+      <InfoTooltipIcon label={`Weight ${label} since the previous reading`} />
     </span>
   );
 }
@@ -166,8 +166,8 @@ function AttentionRow({
   Icon: typeof IconPill;
   title: string;
   // The unabbreviated form when `title` is a curated short name (#2858) — the
-  // truncating line's hover title, so the whole name is always retrievable on a row
-  // that has no link of its own. Absent when the title already IS the whole thing.
+  // value disclosed beside the truncating line, so the whole name is retrievable on
+  // a row that has no link of its own. Absent when the title is already complete.
   titleFull?: string;
   detail?: string | null;
   action?: React.ReactNode;
@@ -181,11 +181,9 @@ function AttentionRow({
         aria-hidden="true"
       />
       <div className="min-w-0 flex-1">
-        <div
-          className="truncate text-sm font-medium text-slate-700 dark:text-slate-200"
-          title={titleFull}
-        >
-          {title}
+        <div className="flex min-w-0 items-center text-sm font-medium text-slate-700 dark:text-slate-200">
+          <span className="truncate">{title}</span>
+          {titleFull ? <InfoTooltipIcon label={titleFull} /> : null}
         </div>
         {detail && (
           <div className="truncate text-xs text-slate-500 dark:text-slate-400">
@@ -226,8 +224,8 @@ function DueDoseRow({
   // A caregiver's card is a GLANCE at up to a dozen of these rows, each one an
   // icon + a truncating name + a Confirm button in a card-width column, so the name
   // here is the control form (#2858) — the abbreviation buys the slot name beside it
-  // room to survive the truncation. The record's full name stays on the hover title
-  // and inside the confirm's accessible name below; a medication is never shortened.
+  // room to survive the truncation. The record's full name stays in the shared
+  // disclosure and the confirm's accessible name below; a medication is never shortened.
   const shortTitle = item.shortLabel ?? item.title;
   return (
     <AttentionRow
@@ -259,7 +257,6 @@ function DueDoseRow({
               `Confirm ${[item.title, detail].filter(Boolean).join(" · ")}`,
               subjectName
             )}
-            className="inline-flex items-center gap-1 rounded-md border border-black/10 px-2 py-1 text-xs font-medium text-slate-600 transition hover:bg-slate-100 focus:outline-hidden focus-visible:ring-2 focus-visible:ring-brand-500 disabled:opacity-60 dark:border-white/10 dark:text-slate-300 dark:hover:bg-ink-750"
           >
             <IconCheck className="h-3.5 w-3.5" stroke={2} aria-hidden="true" />
             {subjectActionLabel("Confirm", subjectName)}
@@ -410,13 +407,13 @@ function SetupCheckRow({
           // People & access (the grant UI `setGrants` can finally act on since #2345) or
           // Settings → Notifications. No profile switch is involved, so it is an
           // ordinary link.
-          <Link
+          <DestinationLink
             href={check.cta.href}
             data-testid="household-setup-cta"
             className="mt-1 inline-block text-xs text-link"
           >
-            {check.cta.label} →
-          </Link>
+            {check.cta.label}
+          </DestinationLink>
         ) : (
           // A route about THIS MEMBER's own data. It needs the profile switch first
           // (#879), and the destination is re-derived server-side from the check id —
@@ -427,9 +424,10 @@ function SetupCheckRow({
             <button
               type="submit"
               data-testid="household-setup-cta"
-              className="text-xs text-link focus:outline-hidden focus-visible:ring-2 focus-visible:ring-brand-500"
+              className="inline-flex items-center gap-1 text-xs text-link focus:outline-hidden focus-visible:ring-2 focus-visible:ring-brand-500"
             >
-              {check.cta.label} →
+              {check.cta.label}
+              <DestinationIndicator />
             </button>
           </form>
         ))}
@@ -464,15 +462,13 @@ function Setup({
           <form action={dismissMemberSetupAction}>
             <input type="hidden" name="profileId" value={profile.id} />
             <input type="hidden" name="dedupe_key" value={setup.dedupeKey} />
-            <button
+            <IconButton
               type="submit"
               data-testid="household-setup-dismiss"
-              aria-label={`Dismiss setup notes for ${profile.name}`}
-              title="Dismiss"
-              className="flex h-5 w-5 shrink-0 items-center justify-center rounded-full text-slate-500 transition hover:bg-slate-100 hover:text-slate-600 focus:outline-hidden focus-visible:ring-2 focus-visible:ring-brand-500 dark:text-slate-400 dark:hover:bg-ink-800 dark:hover:text-slate-300"
+              label={`Dismiss setup notes for ${profile.name}`}
             >
               <IconX className="h-3.5 w-3.5" stroke={2} aria-hidden="true" />
-            </button>
+            </IconButton>
           </form>
         )}
       </div>
@@ -524,11 +520,7 @@ export default function HouseholdCard({ data }: { data: HouseholdCardData }) {
           <span className="min-w-0 flex-1 truncate text-base font-semibold text-slate-900 dark:text-slate-100">
             {profile.name}
           </span>
-          <IconChevronRight
-            className="h-5 w-5 shrink-0 text-slate-300 dark:text-slate-600"
-            stroke={1.75}
-            aria-hidden="true"
-          />
+          <DestinationIndicator />
         </button>
       </form>
 

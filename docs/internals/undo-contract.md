@@ -98,9 +98,24 @@ Deliberate gaps, not oversights:
   an undo would have to put back;
 - finding dismiss / snooze (which would also make #2386's dismissal-fatigue
   counting more honest: an undone dismissal was not an answer);
-- quick-log serving / protein / substance ticks, already ledger-backed by
-  `dayCounterLedger`;
+- quick-log protein / substance ticks, already ledger-backed by `dayCounterLedger`;
 - preventive mark-done, star and watch toggles.
+
+Food serving is wired through `FoodLogBar` (#3611): its keyed cumulative toast
+captures the authoritative day total, and the inverse re-checks that total under the
+same write lock as the guarded decrement. A newer serving therefore turns an older
+Undo into `changed` rather than removing a write the toast did not announce. Each
+upgraded offer has its own inverse write identity (the toast slot stays stable; its
+cooldown does not), and every receipt is subject-stamped: a profile switch clears both
+shown and queued receipts while the action also reauthorizes the originating profile.
+The keyed slot also carries an opaque lifecycle reservation minted when the interaction
+starts. A later interaction supersedes it immediately; every post-await publish/dismiss
+and the inverse outcome is conditional on that exact reservation still being current.
+An action click preserves the reservation while its card exits so a slow valid inverse
+can answer, while manual/timeout dismissal cancels it. This prevents an older response,
+action or island cleanup from erasing a newer island's valid Undo.
+Precise serving removal replaces the same day/group slot, so its newer Undo never sits
+behind or beside an older add inverse.
 
 Each is a candidate BECAUSE its inverse is complete and local. None of them is a
 confirm being removed.

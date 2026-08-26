@@ -1,11 +1,14 @@
 "use client";
 
-import { useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import BristolStoolIcon from "@/components/BristolStoolIcon";
 import { useToast } from "@/components/Toast";
 import { useOptimisticLedger } from "@/components/useOptimisticLedger";
 import { BRISTOL_STOOL_TYPES } from "@/lib/bristol-stool";
 import { logStoolForm } from "@/app/(app)/stool-actions";
+import RollingNumber from "@/components/RollingNumber";
+import { usePrefersReducedMotion } from "@/components/usePrefersReducedMotion";
+import { microMotionPlan } from "@/lib/micro-motion";
 
 // The quick-entry overlay's STOOL form (issue #2785): the Bristol Stool Form Scale as
 // seven one-tap buttons.
@@ -41,6 +44,27 @@ export default function QuickStoolForm({
   const toast = useToast();
   const ledger = useOptimisticLedger<number>("stool-form");
   const [count, setCount] = useState(todayCount);
+  const reducedMotion = usePrefersReducedMotion();
+  const settlePlan = microMotionPlan("settle", reducedMotion);
+  const [settlingType, setSettlingType] = useState<number | null>(null);
+  const [settleRuns, setSettleRuns] = useState<Record<number, number>>({});
+  const settleTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
+  useEffect(
+    () => () => {
+      if (settleTimer.current) clearTimeout(settleTimer.current);
+    },
+    []
+  );
+
+  function settle(type: number) {
+    if (!settlePlan.animate) return;
+    if (settleTimer.current) clearTimeout(settleTimer.current);
+    setSettlingType(type);
+    settleTimer.current = setTimeout(() => {
+      settleTimer.current = null;
+      setSettlingType(null);
+    }, settlePlan.ms);
+  }
   // Follow the server whenever it disagrees — a reading can be removed elsewhere, and
   // a local count frozen at mount would keep claiming a day that no longer holds it.
   const [serverCount, setServerCount] = useState(todayCount);
@@ -65,6 +89,7 @@ export default function QuickStoolForm({
           toast(res.error, { tone: "error" });
           return { kind: "rollback" };
         }
+        settle(type);
         toast(`Logged type ${res.type}`);
         return { kind: "adopt", value: res.todayCount };
       },
@@ -81,12 +106,31 @@ export default function QuickStoolForm({
             data-testid={`stool-type-${t.type}`}
             onClick={() => void tap(t.type)}
             aria-label={`Type ${t.type}, ${t.description}`}
-            className="flex flex-col items-center gap-1 rounded-lg border border-(--border) bg-surface px-1 py-2 text-slate-700 hover:border-slate-400 dark:text-slate-200 dark:hover:border-slate-500"
+            className="group relative flex flex-col items-center gap-1 px-1 py-2 text-slate-700 dark:text-slate-200"
           >
-            <BristolStoolIcon type={t.type} />
-            <span className="text-sm font-medium tabular-nums">{t.type}</span>
-            <span className="text-center text-xs leading-tight text-slate-500 dark:text-slate-400">
-              {t.label}
+            <span
+              aria-hidden="true"
+              data-testid={`stool-settle-${t.type}`}
+              data-motion="settle"
+              data-reduced-motion={reducedMotion ? "true" : "false"}
+              data-settling={settlingType === t.type ? "true" : "false"}
+              data-motion-runs={settleRuns[t.type] ?? 0}
+              onAnimationStart={() =>
+                setSettleRuns((runs) => ({
+                  ...runs,
+                  [t.type]: (runs[t.type] ?? 0) + 1,
+                }))
+              }
+              className={`absolute inset-0 rounded-lg border border-(--border) bg-surface transition group-hover:border-slate-400 dark:group-hover:border-slate-500${
+                settlingType === t.type ? ` ${settlePlan.className}` : ""
+              }`}
+            />
+            <span className="relative flex flex-col items-center gap-1">
+              <BristolStoolIcon type={t.type} />
+              <span className="text-sm font-medium tabular-nums">{t.type}</span>
+              <span className="text-center text-xs leading-tight text-slate-500 dark:text-slate-400">
+                {t.label}
+              </span>
             </span>
           </button>
         ))}
@@ -95,11 +139,17 @@ export default function QuickStoolForm({
         data-testid="quick-entry-stool-count"
         className="mt-3 text-sm text-slate-500 dark:text-slate-400"
       >
-        {count === 0
-          ? "Nothing logged today."
-          : count === 1
-            ? "1 logged today."
-            : `${count} logged today.`}
+        <RollingNumber
+          value={count}
+          testId="quick-entry-stool-rolling-count"
+          format={(value) =>
+            value === 0
+              ? "Nothing logged today."
+              : value === 1
+                ? "1 logged today."
+                : `${value} logged today.`
+          }
+        />
       </p>
     </div>
   );

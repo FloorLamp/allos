@@ -4,6 +4,7 @@ import { useState, useTransition } from "react";
 import { IconRestore } from "@tabler/icons-react";
 import { useToast } from "@/components/Toast";
 import { useConfirm } from "@/components/ConfirmDialog";
+import Button from "@/components/Button";
 import ModalShell from "@/components/ModalShell";
 import { reopenEpisodeAction } from "@/app/(app)/medical/episodes/actions";
 
@@ -25,13 +26,11 @@ export default function ReopenEpisodeReconcile({
   episodeId,
   profileId,
   meds,
-  triggerClassName = "btn-ghost",
   triggerTestId = "episode-reopen-action",
 }: {
   episodeId: number;
   profileId?: number;
   meds: ReopenRestoreMed[];
-  triggerClassName?: string;
   triggerTestId?: string;
 }) {
   const [open, setOpen] = useState(false);
@@ -92,16 +91,14 @@ export default function ReopenEpisodeReconcile({
 
   return (
     <>
-      <button
-        type="button"
+      <Button
         data-testid={triggerTestId}
         disabled={pending}
         onClick={() => void onTrigger()}
-        className={triggerClassName}
       >
         <IconRestore className="h-4 w-4" stroke={1.75} />
         {pending ? "Reopening…" : "Reopen episode"}
-      </button>
+      </Button>
 
       {open && (
         <ModalShell

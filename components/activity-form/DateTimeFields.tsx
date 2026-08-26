@@ -110,9 +110,6 @@ export default function DateTimeFields({
                 step={1}
                 value={sessionDuration}
                 readOnly={durationDerived}
-                title={
-                  durationDerived ? "Calculated from start and end" : undefined
-                }
                 onChange={(e) => onSessionDuration(e.target.value)}
                 className={`input h-[38px] pr-9 ${
                   durationDerived ? "text-slate-500 dark:text-slate-400" : ""
@@ -122,6 +119,11 @@ export default function DateTimeFields({
                 min
               </span>
             </div>
+            {durationDerived && (
+              <p className="mt-1 text-xs text-slate-500 dark:text-slate-400">
+                Calculated from start and end.
+              </p>
+            )}
             {durationError && (
               <p className="mt-1 text-xs text-rose-500 dark:text-rose-400">
                 Total must cover timed components.
@@ -142,7 +144,7 @@ export default function DateTimeFields({
                   type="button"
                   data-testid="start-time-shortcut"
                   onClick={() => onStartTime(derivedStart)}
-                  title={`Set start to end − ${derivableDurationMin} min`}
+                  aria-label={`−${derivableDurationMin}m — set start to end − ${derivableDurationMin} min`}
                   className="-mx-2 -my-2 px-2 py-2 text-xs text-link"
                 >
                   −{derivableDurationMin}m
@@ -178,7 +180,7 @@ export default function DateTimeFields({
                   type="button"
                   data-testid="end-time-shortcut"
                   onClick={() => onEndTime(derivedEnd)}
-                  title={`Set end to start + ${derivableDurationMin} min`}
+                  aria-label={`+${derivableDurationMin}m — set end to start + ${derivableDurationMin} min`}
                   className="-mx-2 -my-2 px-2 py-2 text-xs text-link"
                 >
                   +{derivableDurationMin}m

@@ -8,6 +8,7 @@ import {
   openMobileDrawer,
   settledBoxes,
 } from "./helpers";
+import { TAP_FLOOR_PX } from "@/lib/tap-floor-tokens";
 
 // Mobile / touch-target polish (#640, #641, #644). Driven at a phone viewport so
 // the clipping and undersized-target defects are observable — the desktop layout
@@ -146,89 +147,92 @@ test.describe("touch targets clear the 40px minimum (#644)", () => {
 });
 
 // #3514's floor, spelled the way e2e/button-height-floor.mobile.spec.ts spells it —
-// a rendered measurement cannot import the source census's constant without importing
-// the census, and the two numbers are held equal by that spec.
-const TAP_FLOOR_PX = 44;
+// Rendered measurements import the small design token, never the source census.
 
 // THE FLOOR THIS MEASURES MOVED UNDER IT. #3377 built these boxes at 40 and this
 // test was written to that number; #3514 ruled the floor to 44px EFFECTIVE and the
 // assertion below kept passing, because 40 is not less than 40. A bound that survives
 // the rule it exists to enforce is not a bound (#3561).
 //
-// HEIGHT IS 44 AND WIDTH IS 40, and the gap is arithmetic rather than an exemption:
-// seven day columns need 7 × 44 = 308px and the drawer is 288px wide. The calendar
-// already spends the drawer's gutter and its own padding to reach 40.9px columns and
-// has nothing left — the #3536 shape, recorded in TrainingLogCalendar.tsx at the
-// constant. The ARROWS have the room and are held to 44 in both.
+// Seven day columns need 7 × 44 = 308px. #3536 widens the drawer enough to pay that
+// arithmetic even at a 320px viewport; no exception or overlapping hit slop remains.
 test.describe("the phone drawer's month calendar clears the floor too (#3377/#3514)", () => {
   test.use({ viewport: PHONE });
 
-  test("every day cell is >=44px tall and both month arrows are >=44px square in the drawer", async ({
+  test("every day cell is >=44px square and disjoint at 320px and 390px", async ({
     page,
   }) => {
     test.slow(); // opening the drawer costs a hydration wait on a cold route
-    await page.goto("/");
-    // The drawer, not the desktop sidebar: `components/MobileNav.tsx` renders the
-    // SAME <SidebarContent> — and therefore the same <TrainingLogCalendar> — inside
-    // the phone nav drawer, which is what makes this grid a phone surface at all.
-    // The desktop copy is `display: none` here and would measure 0.
-    const drawer = await openMobileDrawer(page);
-    const prevMonth = drawer.getByLabel("Previous month");
-    const nextMonth = drawer.getByLabel("Next month");
-    await expect(prevMonth).toBeVisible();
-    // Settle the drawer's slide-in before reading any box: mid-animation the aside
-    // is still translated and every child reads a few pixels off.
-    await settledBoxes([drawer, prevMonth, nextMonth]);
+    for (const width of [320, PHONE.width]) {
+      await page.setViewportSize({ width, height: PHONE.height });
+      await page.goto("/");
+      // The drawer, not the desktop sidebar: `components/MobileNav.tsx` renders the
+      // SAME <SidebarContent> — and therefore the same <TrainingLogCalendar> — inside
+      // the phone nav drawer, which is what makes this grid a phone surface at all.
+      const drawer = await openMobileDrawer(page);
+      const prevMonth = drawer.getByLabel("Previous month");
+      const nextMonth = drawer.getByLabel("Next month");
+      await expect(prevMonth).toBeVisible();
+      await settledBoxes([drawer, prevMonth, nextMonth]);
 
-    // Both arrows AND every day of the rendered month — a floor that only the
-    // first cell clears is not a floor. The 28px circle and the 16px chevron are
-    // unchanged; what is measured here is the box a finger lands in.
-    const cells = await drawer.evaluate((aside) => {
-      const prev = aside.querySelector('[aria-label="Previous month"]')!;
-      const calendar = prev.closest("div")!.parentElement!;
-      const grids = calendar.querySelectorAll(".grid");
-      const days = Array.from(grids[grids.length - 1].children);
-      const box = (el: Element) => {
-        const r = el.getBoundingClientRect();
-        return { w: r.width, h: r.height };
-      };
-      return {
-        days: days.map(box),
-        dayCount: days.length,
-        glyph: box(days[0].firstElementChild!),
-      };
-    });
-    expect(cells.dayCount).toBeGreaterThanOrEqual(28);
-    for (const day of cells.days) {
-      // Width: the widest seven equal columns the 288px drawer can hold. See the
-      // describe block — this one is short of the floor and cannot not be.
-      expect(day.w).toBeGreaterThanOrEqual(40);
-      expect(day.h).toBeGreaterThanOrEqual(TAP_FLOOR_PX);
+      // Both arrows AND every day of the rendered month — a floor that only the
+      // first cell clears is not a floor. The 28px circle and the 16px chevron are
+      // unchanged; what is measured here is the box a finger lands in.
+      const cells = await drawer.evaluate((aside) => {
+        const prev = aside.querySelector('[aria-label="Previous month"]')!;
+        const calendar = prev.closest("div")!.parentElement!;
+        const grids = calendar.querySelectorAll(".grid");
+        const days = Array.from(grids[grids.length - 1].children);
+        const box = (el: Element) => {
+          const r = el.getBoundingClientRect();
+          return { x: r.x, y: r.y, w: r.width, h: r.height };
+        };
+        return {
+          days: days.map(box),
+          dayCount: days.length,
+          glyph: box(days[0].firstElementChild!),
+        };
+      });
+      expect(cells.dayCount).toBeGreaterThanOrEqual(28);
+      for (const [index, day] of cells.days.entries()) {
+        expect(day.w).toBeGreaterThanOrEqual(TAP_FLOOR_PX);
+        expect(day.h).toBeGreaterThanOrEqual(TAP_FLOOR_PX);
+        if (index % 7 !== 0) {
+          const previous = cells.days[index - 1];
+          expect(previous.y).toBeCloseTo(day.y, 0);
+          expect(previous.x + previous.w).toBeLessThanOrEqual(day.x + 0.5);
+        }
+        if (index >= 7) {
+          const above = cells.days[index - 7];
+          expect(above.x).toBeCloseTo(day.x, 0);
+          expect(above.y + above.h).toBeLessThanOrEqual(day.y + 0.5);
+        }
+      }
+      // …and the glyph inside did NOT grow with it. This is the padding/hit-slop
+      // idiom, not a bigger calendar: 28px circles, 44px-tall targets.
+      expect(cells.glyph.w).toBeLessThanOrEqual(30);
+
+      const [prevBox, nextBox] = await settledBoxes([prevMonth, nextMonth]);
+      for (const arrow of [prevBox, nextBox]) {
+        expect(arrow.width).toBeGreaterThanOrEqual(TAP_FLOOR_PX);
+        expect(arrow.height).toBeGreaterThanOrEqual(TAP_FLOOR_PX);
+      }
+
+      // The destinations are untouched — growing a hit area must not re-point a day.
+      // EVERY day link, not a sampled one: a hit box that grew over its neighbour
+      // would still leave the first link's href correct.
+      const hrefs = await drawer
+        .locator('a[href^="/timeline?from="]')
+        .evaluateAll((nodes) => nodes.map((n) => n.getAttribute("href") ?? ""));
+      expect(hrefs.length).toBeGreaterThan(0);
+      const shape =
+        /^\/timeline\?from=(\d{4}-\d{2}-\d{2})&to=\1#timeline-day-\1$/;
+      expect(hrefs.filter((href) => !shape.test(href))).toEqual([]);
+      // Nothing in the drawer sits past the viewport: the calendar gives up the
+      // drawer's own side padding to buy those 44px columns, so this is the check
+      // that the breakout lands flush rather than overhanging.
+      await expectNoClippedContent(page);
     }
-    // …and the glyph inside did NOT grow with it. This is the padding/hit-slop
-    // idiom, not a bigger calendar: 28px circles, 44px-tall targets.
-    expect(cells.glyph.w).toBeLessThanOrEqual(30);
-
-    const [prevBox, nextBox] = await settledBoxes([prevMonth, nextMonth]);
-    for (const arrow of [prevBox, nextBox]) {
-      expect(arrow.width).toBeGreaterThanOrEqual(TAP_FLOOR_PX);
-      expect(arrow.height).toBeGreaterThanOrEqual(TAP_FLOOR_PX);
-    }
-
-    // The destinations are untouched — growing a hit area must not re-point a day.
-    // EVERY day link, not a sampled one: a hit box that grew over its neighbour
-    // would still leave the first link's href correct.
-    const hrefs = await drawer
-      .locator('a[href^="/timeline?from="]')
-      .evaluateAll((nodes) => nodes.map((n) => n.getAttribute("href") ?? ""));
-    expect(hrefs.length).toBeGreaterThan(0);
-    const shape =
-      /^\/timeline\?from=(\d{4}-\d{2}-\d{2})&to=\1#timeline-day-\1$/;
-    expect(hrefs.filter((href) => !shape.test(href))).toEqual([]);
-    // Nothing in the drawer sits past the viewport: the calendar gives up the
-    // drawer's own side padding to buy those 40px columns, so this is the check
-    // that the breakout lands flush rather than overhanging.
-    await expectNoClippedContent(page);
   });
 });
 
@@ -261,16 +265,21 @@ test.describe("nutrition food-log controls stay in the viewport on mobile", () =
         .getByTestId("supplement-context-heading")
         .getByTestId("supplement-day-menu-trigger")
     ).toBeVisible();
-    await expect(supplementDate).toHaveCSS("border-top-width", "0px");
+    await expect(supplementDate).toHaveAttribute("data-button-control", "");
+    await expect(supplementDate).toHaveAccessibleName("Choose day to review");
     await expect(page.getByTestId("supplement-day-toggle")).toBeHidden();
     await supplementDate.click();
     const supplementDateMenu = page.getByTestId("supplement-day-menu");
     await expect(supplementDateMenu).toBeVisible();
-    await expect(supplementDateMenu.getByRole("menuitemradio")).toHaveCount(7);
-    await expect(
-      supplementDateMenu.getByRole("menuitemradio", { name: "Today" })
-    ).toHaveAttribute("aria-checked", "true");
     await supplementDateMenu
+      .getByRole("menuitemradio", { name: "Yesterday" })
+      .click();
+    await expect(
+      page.getByTestId("supplement-context-heading")
+    ).toHaveAccessibleName("Yesterday Supplements");
+    await supplementDate.click();
+    await page
+      .getByTestId("supplement-day-menu")
       .getByRole("menuitemradio", { name: "Today" })
       .click();
     await expect(page.getByTestId("supplements-status-mobile")).toHaveText(
@@ -298,6 +307,53 @@ test.describe("nutrition food-log controls stay in the viewport on mobile", () =
     expect(morning.y).toBeCloseTo(midday.y, 0);
     expect(midday.y).toBeCloseTo(evening.y, 0);
     expect(evening.height).toBeGreaterThanOrEqual(48);
+    await expectNoClippedContent(page);
+  });
+
+  test("both intake context bars share the md frost and become static at lg", async ({
+    page,
+  }) => {
+    for (const width of [800, 1100]) {
+      await page.setViewportSize({ width, height: 900 });
+      for (const surface of [
+        { href: "/nutrition", testId: "food-log-context" },
+        {
+          href: "/nutrition?tab=supplements",
+          testId: "intake-schedule-context",
+        },
+      ]) {
+        await page.goto(surface.href);
+        const context = page.getByTestId(surface.testId);
+        await expect(context).toBeVisible();
+        const style = await context.evaluate((element) => {
+          const parent = element.parentElement as HTMLElement;
+          const computed = getComputedStyle(element);
+          return {
+            position: computed.position,
+            backgroundColor: computed.backgroundColor,
+            backdropFilter: computed.backdropFilter,
+            padding: computed.padding,
+            bleed: [
+              parent.getBoundingClientRect().left -
+                element.getBoundingClientRect().left,
+              element.getBoundingClientRect().right -
+                parent.getBoundingClientRect().right,
+            ],
+          };
+        });
+        expect(style.position).toBe(width < 1024 ? "sticky" : "static");
+        if (width < 1024) {
+          expect(style.backgroundColor).not.toBe("rgba(0, 0, 0, 0)");
+          expect(style.backdropFilter).not.toBe("none");
+          expect(style.bleed.every((value) => value > 0)).toBe(true);
+        } else {
+          expect(style.backgroundColor).toBe("rgba(0, 0, 0, 0)");
+          expect(style.backdropFilter).toBe("none");
+          expect(style.bleed).toEqual([0, 0]);
+          expect(style.padding).toBe("0px");
+        }
+      }
+    }
   });
 
   // The /nutrition two-column grid (lg:grid-cols-[1fr_320px]) collapses to a
@@ -344,7 +400,6 @@ test.describe("the food overflow disclosure matches the list it extends (#3362)"
 
   // The app's own touch floor (app/globals.css, `tap-target`), which is what the
   // 42px control was under.
-  const TAP_FLOOR = 44;
 
   // Every number this spec compares, read in ONE evaluate so they describe a
   // single layout rather than four independent round-trips (#1538's settledBoxes
@@ -405,7 +460,7 @@ test.describe("the food overflow disclosure matches the list it extends (#3362)"
 
   function expectCitizenOfTheList(m: Awaited<ReturnType<typeof listMetrics>>) {
     expect(m.rowCount).toBeGreaterThanOrEqual(2);
-    expect(m.summaryHeight).toBeGreaterThanOrEqual(TAP_FLOOR);
+    expect(m.summaryHeight).toBeGreaterThanOrEqual(TAP_FLOOR_PX);
     // The row idiom, not a literal height: same card width, and a height within a
     // couple of px of the rows it extends (`min-h-14` against 58px content rows).
     expect(m.summaryLeft).toBeCloseTo(m.rowLeft, 0);
@@ -529,7 +584,6 @@ test.describe("the pager offers thumb-sized steps at 390px (#3378)", () => {
   test.use({ viewport: PHONE });
 
   // The app's own touch floor (app/globals.css, `tap-target`; #644).
-  const TAP_FLOOR = 44;
 
   // Every number compared here, read in ONE evaluate so they describe a single
   // layout rather than three independent round-trips (#1538's settledBoxes
@@ -573,8 +627,8 @@ test.describe("the pager offers thumb-sized steps at 390px (#3378)", () => {
   function expectThumbShape(m: Awaited<ReturnType<typeof pagerMetrics>>) {
     expect(m.labels).toEqual(["Prev", "Next"]);
     for (const box of m.boxes) {
-      expect(box.height).toBeGreaterThanOrEqual(TAP_FLOOR);
-      expect(box.width).toBeGreaterThanOrEqual(TAP_FLOOR);
+      expect(box.height).toBeGreaterThanOrEqual(TAP_FLOOR_PX);
+      expect(box.width).toBeGreaterThanOrEqual(TAP_FLOOR_PX);
     }
     // At the row's EDGES, with the extent between them — the thumb shape, not the
     // desktop huddle. Measured against the row itself, so its padding moves the

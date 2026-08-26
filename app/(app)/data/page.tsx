@@ -1,5 +1,4 @@
-import Link from "next/link";
-import { IconArrowRight } from "@tabler/icons-react";
+import DestinationLink from "@/components/DestinationLink";
 import {
   getTrashRetentionDays,
   getUnitPrefs,
@@ -9,11 +8,10 @@ import {
 import { isStrengthTrainingRelevant } from "@/lib/life-stage";
 import { requireSession } from "@/lib/auth";
 import { isDemoMode, isDemoRestricted } from "@/lib/demo";
-import Tabs from "@/components/Tabs";
 import TabFirstPage from "@/components/TabFirstPage";
 import { DATA_TAB_FIRST_PAGE } from "@/components/tab-first-pages";
-import UploadForm from "@/components/UploadForm";
-import ImportClient, { ImportJobList } from "@/components/ImportClient";
+import { ImportJobList } from "@/components/ImportClient";
+import ImportMethodTabs from "@/app/(app)/data/ImportMethodTabs";
 import IntegrationsGrid from "@/components/IntegrationsGrid";
 import StreamLifecycleOffers from "@/components/integrations/StreamLifecycleOffers";
 import DataExport from "@/components/DataExport";
@@ -153,31 +151,10 @@ export default async function DataPage(
             in-flight review cards render below, always visible. */}
         <section id="paste-import" className="scroll-mt-4 space-y-4">
           <div className="card">
-            <Tabs
-              tabs={[
-                {
-                  id: "upload",
-                  label: "File upload (incl. CSV)",
-                  content: (
-                    <div>
-                      <h2 className="font-semibold text-slate-800 dark:text-slate-100">
-                        Upload a lab report, scan, or health-record export
-                      </h2>
-                      <UploadForm demo={demo} />
-                    </div>
-                  ),
-                },
-                {
-                  id: "paste",
-                  label: "Paste CSV",
-                  content: (
-                    <ImportClient
-                      units={{ weightUnit: units.weightUnit }}
-                      workoutImportAvailable={strengthTrainingAvailable}
-                    />
-                  ),
-                },
-              ]}
+            <ImportMethodTabs
+              demo={demo}
+              weightUnit={units.weightUnit}
+              workoutImportAvailable={strengthTrainingAvailable}
             />
           </div>
 
@@ -222,7 +199,7 @@ export default async function DataPage(
         {/* The import history now lives in one place — the Review tab's unified
             feed — so there's a single source of truth for everything imported
             (documents, pastes, and background syncs), not two competing logs. */}
-        <Link
+        <DestinationLink
           href="/data?section=review"
           className="card flex items-center justify-between gap-3 transition hover:border-brand-300 dark:hover:border-brand-800"
         >
@@ -235,8 +212,7 @@ export default async function DataPage(
               resolve duplicates — in the Review tab.
             </p>
           </div>
-          <IconArrowRight className="h-5 w-5 shrink-0 text-brand-600 dark:text-brand-400" />
-        </Link>
+        </DestinationLink>
       </div>
     );
   }

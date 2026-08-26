@@ -4,6 +4,7 @@ import type {
   AdherenceCalendarCell,
   AdherenceCalendarState,
 } from "@/lib/adherence-calendar";
+import VisualizationDetails from "@/components/VisualizationDetails";
 
 // The month adherence calendar on a medication's detail page (issue #852 item 5): the
 // 14-day strip's own vocabulary (taken / partial / skipped / missed / not-due) at month
@@ -14,8 +15,9 @@ const WEEKDAYS = ["S", "M", "T", "W", "T", "F", "S"];
 
 // Cell colors come from the ONE blessed adherence palette (issue #1445), whose
 // steps are validated in CI: `taken`/`partial` are two steps of the same brand
-// ramp, `skipped` the neutral, `missed` the rose. Each cell also carries a title,
-// a `data-state`, and a legend row below, so state is never color-alone.
+// ramp, `skipped` the neutral, `missed` the rose. Each cell also carries a
+// `data-state`, and the legend and shared detail disclosure keep state from being
+// color-alone.
 const STATE_STYLE: Record<AdherenceCalendarState, string> = {
   taken: chartAdherenceState.taken.class,
   partial: chartAdherenceState.partial.class,
@@ -54,7 +56,6 @@ function Cell({ cell }: { cell: AdherenceCalendarCell }) {
     <div
       data-testid="adherence-cal-day"
       data-state={cell.state}
-      title={`${cell.date} · ${STATE_LABEL[cell.state]}`}
       className={`flex aspect-square items-center justify-center rounded-sm text-xs font-medium ${STATE_STYLE[cell.state]}`}
     >
       {dayNumber(cell.date)}
@@ -99,6 +100,16 @@ export default function AdherenceCalendar({
             week.map((cell, ci) => <Cell key={`${wi}-${ci}`} cell={cell} />)
           )}
         </div>
+        <VisualizationDetails
+          label="Daily details"
+          items={model.weeks.flatMap((week) =>
+            week.flatMap((cell) =>
+              cell.date && cell.state
+                ? [`${cell.date} · ${STATE_LABEL[cell.state]}`]
+                : []
+            )
+          )}
+        />
       </div>
       <ul
         className="grid grid-cols-2 gap-x-4 gap-y-2 text-xs text-slate-500 lg:mt-5 lg:w-32 lg:flex-none lg:grid-cols-1 lg:border-l lg:border-black/5 lg:pl-3 dark:text-slate-400 dark:lg:border-white/5"

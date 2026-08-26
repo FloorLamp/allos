@@ -5,7 +5,6 @@ import {
   IconX,
   IconAlertTriangle,
   IconBolt,
-  IconPlus,
   IconRepeat,
   IconSearch,
 } from "@tabler/icons-react";
@@ -17,6 +16,8 @@ import { loadTrainingLogPage } from "./activity-actions";
 import ActiveDaysStrip from "@/components/ActiveDaysStrip";
 import { useLatestRef } from "@/components/useLatestRef";
 import { useResettableState } from "@/components/useResettableState";
+import SegmentedControl from "@/components/SegmentedControl";
+import Chip from "@/components/Chip";
 import type { ActiveDaysStrip as ActiveDaysStripData } from "@/lib/workout-heatmap";
 
 // TrainingLogCardData / DayGroup moved to lib/training-log-card.ts (issue #334), built by the
@@ -35,6 +36,7 @@ import {
   type TrainingLogFilters,
 } from "@/lib/training-log-filters";
 import type { TrainingLogSourceOption } from "./training-log-feed-resolve";
+import AddTrainingActivityButton from "@/app/(app)/training/AddTrainingActivityButton";
 export type { TrainingLogCardData, DayGroup };
 
 // The Training Log's per-list multi-view context (issue #1330). Present ONLY when more
@@ -521,19 +523,17 @@ export default function TrainingLogView({
     return () => window.removeEventListener("scroll", update);
   }, []);
 
-  // The Log-activity affordances (desktop). Extracted so the full controls grid
-  // and the first-run empty variant share ONE definition rather than duplicating
-  // the button row (issue #809). "Repeat last" self-hides on first-run because
-  // `lastActivity` is null. This row is `hidden md:flex` in both places — the
-  // mobile entry point is MobileNav's always-mounted quick-log chrome.
-  const actionButtons = (
+  // The Training Log's secondary actions stay with its search controls. The one
+  // page-level primary, Add activity, lives in PageHeader.createAction (#3486/#3731). These
+  // remain desktop-only; MobileNav's always-mounted quick-log owns phone entry.
+  const secondaryActions = (
     <>
       {lastActivity && hasLastActivity && (
         <button
           type="button"
           onClick={() => openRepeat(lastActivity)}
           data-testid="repeat-last"
-          title={`Log again: ${lastActivity.title}`}
+          aria-label={`Repeat last — log again: ${lastActivity.title}`}
           className="btn-ghost"
         >
           <IconRepeat className="h-4 w-4" stroke={2} />
@@ -554,18 +554,20 @@ export default function TrainingLogView({
           {workoutOffer.label}
         </button>
       )}
-      <button type="button" onClick={() => openCreate()} className="btn">
-        <IconPlus className="h-4 w-4" stroke={2.5} />
-        Add activity
-      </button>
     </>
   );
+  const hasSecondaryActions =
+    Boolean(lastActivity && hasLastActivity) || canStartWorkout;
 
   return (
     <div>
       {showHeader && (
         <PageHeader
           title="Training Log"
+          createAction={{
+            kind: "training-activity",
+            control: <AddTrainingActivityButton />,
+          }}
           // The week summary stands in for a static tagline — a compact strip.
           subtitle={
             <span className="flex flex-wrap items-baseline gap-x-4 gap-y-1">
@@ -624,15 +626,17 @@ export default function TrainingLogView({
       )}
 
       {/* Controls. On first-run (issue #809) the search/filter controls are
-          meaningless over an empty history, so only the action row renders — the
-          bare wrapper drops the grid placement the full controls need. */}
+          meaningless over an empty history, so only any available secondary
+          workout action renders below the housed page primary. */}
       {!hasActivities ? (
-        <div
-          data-testid="training-log-actions"
-          className="mb-4 hidden flex-wrap items-center gap-2 md:flex"
-        >
-          {actionButtons}
-        </div>
+        hasSecondaryActions && (
+          <div
+            data-testid="training-log-actions"
+            className="mb-4 hidden flex-wrap items-center gap-2 md:flex"
+          >
+            {secondaryActions}
+          </div>
+        )
       ) : (
         <div
           data-testid="training-log-controls"
@@ -658,7 +662,6 @@ export default function TrainingLogView({
                 type="button"
                 onClick={() => setFilters((f) => ({ ...f, query: "" }))}
                 aria-label="Clear search"
-                title="Clear search"
                 className="absolute top-1/2 right-1 flex h-8 w-8 -translate-y-1/2 items-center justify-center rounded-md text-slate-500 hover:bg-slate-100 hover:text-slate-600 dark:text-slate-400 dark:hover:bg-ink-800 dark:hover:text-slate-300"
               >
                 <IconX className="h-4 w-4" />
@@ -666,35 +669,19 @@ export default function TrainingLogView({
             )}
           </div>
           <div className="flex flex-wrap items-center gap-2 lg:col-span-2 lg:row-start-2">
-            <div
-              role="group"
-              aria-label="Activity type"
-              className="inline-flex overflow-hidden rounded-lg border border-black/10 bg-field divide-x divide-black/10 dark:border-white/10 dark:divide-white/10"
-            >
-              {TYPE_FILTERS.map((f) => {
-                const active = (activeFilters.type ?? "all") === f.value;
-                return (
-                  <button
-                    key={f.value}
-                    type="button"
-                    onClick={() =>
-                      setFilters((prev) => ({
-                        ...prev,
-                        type: f.value === "all" ? null : f.value,
-                      }))
-                    }
-                    aria-pressed={active}
-                    className={`px-3 py-1.5 text-sm font-medium transition ${
-                      active
-                        ? "bg-(--seg-active-bg) text-(--seg-active-fg)"
-                        : "text-slate-600 hover:bg-slate-50 dark:text-slate-300 dark:hover:bg-ink-800"
-                    }`}
-                  >
-                    {f.label}
-                  </button>
-                );
-              })}
-            </div>
+            {/* Mutually exclusive client-state views use the registry's
+                SegmentedControl button binding (#2730). */}
+            <SegmentedControl
+              options={TYPE_FILTERS}
+              value={activeFilters.type ?? "all"}
+              onChange={(value) =>
+                setFilters((prev) => ({
+                  ...prev,
+                  type: value === "all" ? null : value,
+                }))
+              }
+              ariaLabel="Activity type"
+            />
             {/* Source (issue #1634): the providers this ledger ACTUALLY contains,
               labelled by the same activityProvenanceLabel the cards render, so the
               filter and the chip can't name one provider two ways. Filtering happens
@@ -730,32 +717,20 @@ export default function TrainingLogView({
               count is the WHOLE ledger's (#1634), so a faulty row in an unfetched
               window still surfaces the toggle that can reach it. */}
             {faultCount > 0 && (
-              <button
-                type="button"
+              <Chip
+                role="filter"
                 onClick={() =>
                   setFilters((f) => ({ ...f, faultOnly: !f.faultOnly }))
                 }
-                aria-pressed={activeFilters.faultOnly}
-                data-testid="training-log-fault-filter"
-                title="Show only rows that can't be saved as-is"
-                className={`inline-flex items-center gap-1.5 rounded-full border px-3 py-1 text-sm font-medium transition ${
-                  activeFilters.faultOnly
-                    ? "border-rose-500 bg-rose-500 text-white"
-                    : "border-rose-300 bg-surface text-rose-600 hover:bg-rose-50 dark:border-rose-500/40 dark:text-rose-400 dark:hover:bg-rose-950/40"
-                }`}
+                pressed={activeFilters.faultOnly}
+                testId="training-log-fault-filter"
               >
                 <IconAlertTriangle className="h-4 w-4" stroke={2} />
                 Can’t be saved
-                <span
-                  className={`rounded-full px-1.5 text-xs tabular-nums ${
-                    activeFilters.faultOnly
-                      ? "bg-white/25"
-                      : "bg-rose-100 text-rose-700 dark:bg-rose-950 dark:text-rose-300"
-                  }`}
-                >
+                <span className="rounded-full bg-black/10 px-1.5 text-xs tabular-nums dark:bg-white/15">
                   {faultCount}
                 </span>
-              </button>
+              </Chip>
             )}
             {activeFilters.tag && (
               <span
@@ -776,12 +751,14 @@ export default function TrainingLogView({
               </button>
             )}
           </div>
-          <div
-            data-testid="training-log-actions"
-            className="hidden flex-wrap items-center gap-2 md:ml-auto md:flex lg:col-start-2 lg:row-start-1 lg:ml-0"
-          >
-            {actionButtons}
-          </div>
+          {hasSecondaryActions && (
+            <div
+              data-testid="training-log-actions"
+              className="hidden flex-wrap items-center gap-2 md:ml-auto md:flex lg:col-start-2 lg:row-start-1 lg:ml-0"
+            >
+              {secondaryActions}
+            </div>
+          )}
         </div>
       )}
 

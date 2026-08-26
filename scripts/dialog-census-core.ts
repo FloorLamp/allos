@@ -50,6 +50,7 @@
 import fs from "node:fs";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
+import { stripCommentsParsed } from "./source-comment-ranges";
 
 export const REPO_ROOT = path.resolve(
   fileURLToPath(new URL("..", import.meta.url))
@@ -223,60 +224,18 @@ export function readSourceFiles(root: string = REPO_ROOT): SourceFile[] {
  * makes a file that merely NAMES `ModalShell` in prose stop counting as a
  * consumer of it.
  *
- * String literals are copied through VERBATIM, comment openers and all. That is
- * load-bearing rather than fussy — `accept="image/*"` opens a phantom block
- * comment that would blank the next hundred lines, and a scan that silently
- * throws away source reports a green it never checked.
+ * Strings, templates and regular-expression literals are copied through verbatim,
+ * comment openers and all. Both halves are load-bearing: `accept="image/*"` and
+ * `/\/*$/` must not open phantom block comments that blank everything after them.
+ * This census uses the parser-backed path because its failure direction is
+ * security-guard-shaped: deleting source can hide a dialog. A raw scanner cannot
+ * distinguish division from a regex after `)` or `}`, so `/[/*]/` in either position
+ * can otherwise open a phantom block comment and blank a later ModalShell (#3532).
+ * Invalid source stops the census with its file and parse location: raw comments may
+ * not authenticate a host, and malformed code may not silently disappear.
  */
-export function withoutComments(text: string): string {
-  const out: string[] = [];
-  let inBlock = false;
-  for (let i = 0; i < text.length; i += 1) {
-    const ch = text[i];
-    if (ch === "\n") {
-      out.push(ch);
-      continue;
-    }
-    if (inBlock) {
-      if (ch === "*" && text[i + 1] === "/") {
-        inBlock = false;
-        out.push("  ");
-        i += 1;
-      } else out.push(" ");
-      continue;
-    }
-    if (ch === '"' || ch === "'" || ch === "`") {
-      out.push(ch);
-      i += 1;
-      while (i < text.length && text[i] !== ch) {
-        if (text[i] === "\\") {
-          out.push(text[i], text[i + 1] ?? "");
-          i += 2;
-          continue;
-        }
-        out.push(text[i]);
-        i += 1;
-      }
-      out.push(text[i] ?? "");
-      continue;
-    }
-    if (ch === "/" && text[i + 1] === "*") {
-      inBlock = true;
-      out.push("  ");
-      i += 1;
-      continue;
-    }
-    if (ch === "/" && text[i + 1] === "/") {
-      while (i < text.length && text[i] !== "\n") {
-        out.push(" ");
-        i += 1;
-      }
-      i -= 1;
-      continue;
-    }
-    out.push(ch);
-  }
-  return out.join("");
+export function withoutComments(text: string, rel = "source.tsx"): string {
+  return stripCommentsParsed(rel, text);
 }
 
 // ── Imports ──────────────────────────────────────────────────────────────────
@@ -328,7 +287,7 @@ export function resolveSpecifier(fromRel: string, spec: string): string {
  * "@/components/ModalShell"`) is still recognised as the host it is.
  */
 export function importedBindings(file: SourceFile): ImportedBinding[] {
-  const code = withoutComments(file.text);
+  const code = withoutComments(file.text, file.rel);
   const out: ImportedBinding[] = [];
   for (const m of code.matchAll(IMPORT_RE)) {
     const wholeClauseIsType = m[1] != null;
@@ -540,7 +499,7 @@ export function handRolled(
   file: SourceFile,
   bindings: ImportedBinding[]
 ): HandRolled {
-  const code = withoutComments(file.text);
+  const code = withoutComments(file.text, file.rel);
   const imports = (module: string, local?: string) =>
     bindings.some(
       (b) => b.module === module && (local == null || b.local === local)
@@ -694,7 +653,7 @@ export interface DialogCensus {
 export function censusDialogs(files: SourceFile[]): DialogCensus {
   const entries: DialogEntry[] = [];
   for (const file of files) {
-    const code = withoutComments(file.text);
+    const code = withoutComments(file.text, file.rel);
     const bindings = importedBindings(file);
 
     const hosts: string[] = [];

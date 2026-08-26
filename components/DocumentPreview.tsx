@@ -54,7 +54,7 @@ export default function DocumentPreview({
     return (
       <iframe
         src={src}
-        title={filename}
+        aria-label={filename}
         onError={() => setFailed(true)}
         className="h-[80vh] w-full rounded-lg border border-black/10 dark:border-white/10"
       />

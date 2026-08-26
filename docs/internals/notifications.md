@@ -302,6 +302,25 @@ never validation: a stored off-grid time stays valid and keeps firing
 late-but-correctly, so a scheduler hiccup can never strand a time somebody
 deliberately chose.
 
+**Travel removes both attempt bands for a skipped reminder slot (#3685).** The
+retry band cannot distinguish a failed first send from an eastward timezone switch
+that jumped over the first band, so `tickProfile` resolves the profile's switch
+history once and applies `isReminderSlotExcused` to the dose, usual-routine,
+PreWorkout, household-round, food, mood, wear and inferred-workout slots. The
+complete ordered switch trajectory decides whether the minute occurred: a later
+reverse switch can put a previously skipped minute back into the day. Westward
+repeated slots remain due and the ordinary per-day marker keeps them once-only.
+The entire retained history must be one valid, chronological switch chain ending in
+the profile's current timezone before any slot may be excused; a duplicate,
+discontinuity, invalid row, ordering fault, or bare timezone correction rejects all
+of it and fails open. Settings records a compensating seam when it changes the
+timezone during an active trip, including a manual return home, while ordinary
+non-travel timezone corrections remain unrecorded.
+The morning digest and weekly recap are deliberately outside this gate: each
+summarizes a period and makes no missed-slot claim, so a late summary remains
+truthful. Dynamic digest mode also follows an arrival floor and deadline rather
+than one authoritative slot; both digest modes keep one travel contract.
+
 **The email channel (#1855).** Email is the fourth channel: login-scoped like
 Telegram/push (the address is `logins.email` — the auth address; the enable,
 content mode, and matrix column are `login_settings` keys), fanned out over the

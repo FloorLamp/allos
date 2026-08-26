@@ -86,6 +86,7 @@ function probeDiskSpace(): { freeBytes: number; totalBytes: number } | null {
 
 export async function GET() {
   let readOk = true;
+  let censusNonce: string | null = null;
   let lastBackupAt: string | null = null;
   let liveIntegrityOk: boolean | null = null;
   let backupsEnabled = false;
@@ -97,7 +98,16 @@ export async function GET() {
   const now = new Date();
   try {
     const { db, dbFilePath } = await import("@/lib/db");
+    const requestedNonce = process.env.UX_CENSUS_SERVER_NONCE?.trim();
+    const configuredDb = process.env.ALLOS_DB_PATH?.trim();
     db.prepare("SELECT 1").get();
+    if (
+      requestedNonce &&
+      configuredDb &&
+      path.resolve(dbFilePath()) === path.resolve(configuredDb)
+    ) {
+      censusNonce = requestedNonce;
+    }
     // Live DB size (#1856): one stat, for the snapshot-headroom clause below —
     // VACUUM INTO writes a full copy, so "free space" only means something
     // relative to how big the database currently is.
@@ -164,6 +174,11 @@ export async function GET() {
       ...(result.reason ? { reason: result.reason } : {}),
       lastBackupAgeHours: result.lastBackupAgeHours,
     },
-    { status: result.httpStatus }
+    {
+      status: result.httpStatus,
+      ...(censusNonce
+        ? { headers: { "x-allos-ux-census-nonce": censusNonce } }
+        : {}),
+    }
   );
 }

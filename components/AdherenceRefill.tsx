@@ -1,5 +1,4 @@
-import Link from "next/link";
-import { IconChevronRight } from "@tabler/icons-react";
+import DestinationLink from "@/components/DestinationLink";
 import {
   adherenceSummary,
   adherenceSummaryVisibility,
@@ -13,9 +12,10 @@ import {
   type DoseRate,
 } from "@/lib/refill";
 import { SUPPLIES_HREF } from "@/lib/hrefs";
-import { bottleLabel, productLabel } from "@/lib/supply-product";
+import { bottleLabel } from "@/lib/supply-product";
 import { formatMonthDay } from "@/lib/format-date";
 import { useFormatPrefs } from "@/components/FormatPrefsProvider";
+import InfoTooltipIcon from "@/components/InfoTooltipIcon";
 
 // The refill "≈N days of supply left" badge (#38/#301), shared by the supplement
 // ROW and the medication CARD so both surface the same estimate identically
@@ -50,33 +50,35 @@ export function RefillBadge({
   const lowSupply = isLowSupply(daysLeft);
   const refillBasis = refillBasisLabel(refillRate?.basis ?? "schedule");
   const runOut = todayStr ? runOutDateStr(todayStr, daysLeft) : null;
+  const detail = runOut
+    ? `Runs out around ${formatMonthDay(runOut, formatPrefs)} — ${refillBasis}`
+    : `Estimated days of supply remaining — ${refillBasis}`;
   return (
-    <span
-      data-testid="refill-days-left"
-      className={`badge whitespace-nowrap ${
-        lowSupply
-          ? "bg-amber-100 text-amber-700 dark:bg-amber-950 dark:text-amber-300"
-          : "bg-slate-100 text-slate-500 dark:bg-ink-800 dark:text-slate-400"
-      }`}
-      title={
-        runOut
-          ? `Runs out around ${formatMonthDay(runOut, formatPrefs)} — ${refillBasis}`
-          : `Estimated days of supply remaining — ${refillBasis}`
-      }
-    >
-      {lowSupply ? "Low · " : ""}≈{daysLeft} day{daysLeft === 1 ? "" : "s"} left
-      {/* The projected run-out DATE alongside the days-left duration (#852 item 3) —
+    <span className="inline-flex items-center gap-0.5">
+      <span
+        data-testid="refill-days-left"
+        className={`badge whitespace-nowrap ${
+          lowSupply
+            ? "bg-amber-100 text-amber-700 dark:bg-amber-950 dark:text-amber-300"
+            : "bg-slate-100 text-slate-500 dark:bg-ink-800 dark:text-slate-400"
+        }`}
+      >
+        {lowSupply ? "Low · " : ""}≈{daysLeft} day{daysLeft === 1 ? "" : "s"}{" "}
+        left
+        {/* The projected run-out DATE alongside the days-left duration (#852 item 3) —
           a date is what you tell the pharmacy. Shown only where todayStr is threaded
           (the medication row + card); the supplement row keeps the compact form. */}
-      {runOut && (
-        <span className="hidden sm:inline" data-testid="refill-run-out">
-          {" "}
-          · runs out ~{formatMonthDay(runOut, formatPrefs)}
+        {runOut && (
+          <span className="hidden sm:inline" data-testid="refill-run-out">
+            {" "}
+            · runs out ~{formatMonthDay(runOut, formatPrefs)}
+          </span>
+        )}
+        <span className="ml-1 hidden font-normal opacity-70 sm:inline">
+          · {refillBasis}
         </span>
-      )}
-      <span className="ml-1 hidden font-normal opacity-70 sm:inline">
-        · {refillBasis}
       </span>
+      <InfoTooltipIcon label={detail} data-testid="refill-help" />
     </span>
   );
 }
@@ -102,7 +104,6 @@ export function SharedSupplyChip({
   if (!pool) return null;
   // DERIVED, never stored on the item (#1705): the bottle owns the product facts, so
   // editing its strength updates every member's chip with no write to any item row.
-  const product = productLabel(pool);
   const across = pool.memberCount > 1 ? " across everyone" : "";
   const days =
     pool.daysLeft == null
@@ -111,29 +112,21 @@ export function SharedSupplyChip({
         ? `out of supply${across}`
         : `≈${pool.daysLeft} day${pool.daysLeft === 1 ? "" : "s"}${across}`;
   return (
-    <Link
+    <DestinationLink
       href={SUPPLIES_HREF}
       data-testid="shared-supply-chip"
-      className={`inline-flex items-center gap-0.5 whitespace-nowrap text-xs font-medium underline-offset-2 hover:underline ${
+      className={`text-xs font-medium underline-offset-2 hover:underline ${
         pool.low
           ? "text-amber-700 dark:text-amber-300"
           : "text-brand-700 dark:text-brand-400"
       }`}
-      title={`Shared supply — ${bottleLabel(pool)}, drawn from by ${
-        pool.memberCount
-      } tracked item${pool.memberCount === 1 ? "" : "s"}`}
     >
       <span>
-        {pool.low ? "Low · " : ""}Shared bottle
-        {product ? ` · ${product}` : ""}
+        {pool.low ? "Low · " : ""}Shared bottle · {bottleLabel(pool)} ·{" "}
+        {pool.memberCount} tracked item{pool.memberCount === 1 ? "" : "s"}
         {days ? ` · ${days}` : ""}
       </span>
-      <IconChevronRight
-        className="h-3.5 w-3.5"
-        stroke={1.75}
-        aria-hidden="true"
-      />
-    </Link>
+    </DestinationLink>
   );
 }
 
@@ -161,8 +154,8 @@ export function AdherenceSummaryLine({
     <div
       data-testid="adherence-summary"
       className="mt-1.5 flex items-center gap-1.5 text-xs"
-      title="Adherence over the last 14 days"
     >
+      <span className="text-slate-500 dark:text-slate-400">Last 14 days:</span>
       {visibility.showDetail && adherence.pct !== null && (
         <span className="text-slate-500 dark:text-slate-400">
           {Number.isInteger(adherence.takenDays + adherence.partialDays * 0.5)

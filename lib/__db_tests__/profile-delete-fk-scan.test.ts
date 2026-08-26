@@ -144,6 +144,10 @@ describe("profile-delete sweep completeness (#2126)", () => {
       why: "dose schedule of one supplement/medication",
     },
     {
+      table: "intake_item_purposes",
+      why: "why one supplement/medication is taken (#2857); its condition link is same-profile, enforced at the write boundary",
+    },
+    {
       table: "intake_dose_schedule_versions",
       why: "schedule history of one dose (#1973)",
     },

@@ -53,11 +53,8 @@ export default function StrengthExplorer({
         <span className="inline-flex items-center gap-1.5">
           {e.exercise}
           {lastSessionPR(e).e1rm && (
-            <span
-              className="badge bg-amber-100 text-amber-700 dark:bg-amber-950 dark:text-amber-300"
-              title="New personal record in the latest session"
-            >
-              🏆 PR
+            <span className="badge bg-amber-100 text-amber-700 dark:bg-amber-950 dark:text-amber-300">
+              🏆 Latest personal record
             </span>
           )}
         </span>

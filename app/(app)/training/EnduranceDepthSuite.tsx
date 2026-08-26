@@ -1,4 +1,4 @@
-import Link from "next/link";
+import DestinationLink from "@/components/DestinationLink";
 import type { CardioZoneCoverage } from "@/lib/queries";
 import type { SessionOverviewRollup } from "@/lib/session-overview";
 import type { FitnessPercentile } from "@/lib/fitness-norms";
@@ -6,6 +6,7 @@ import { formatPercentile } from "@/lib/fitness-norms";
 import { fmtDistance } from "@/lib/units";
 import { formatMinutes } from "@/lib/duration";
 import type { DistanceUnit } from "@/lib/settings";
+import VisualizationDetails from "@/components/VisualizationDetails";
 
 function changeText(value: number | null): string {
   if (value == null) return "no prior block";
@@ -33,12 +34,12 @@ export default function EnduranceDepthSuite({
         <h3 className="font-semibold text-slate-800 dark:text-slate-100">
           Endurance
         </h3>
-        <Link
+        <DestinationLink
           href="/training?tab=analyze&kind=cardio"
           className="text-xs text-link"
         >
-          Analyze →
-        </Link>
+          Analyze
+        </DestinationLink>
       </div>
       {!hasHistory ? (
         <p className="mt-3 text-sm text-slate-500 dark:text-slate-400">
@@ -69,10 +70,15 @@ export default function EnduranceDepthSuite({
                       style={{
                         width: `${zones.totalMinutes > 0 ? (minutes / zones.totalMinutes) * 100 : 0}%`,
                       }}
-                      title={`Zone ${index + 1}: ${minutes} min`}
                     />
                   ))}
                 </div>
+                <VisualizationDetails
+                  label="Zone details"
+                  items={zones.minutes.map(
+                    (minutes, index) => `Zone ${index + 1}: ${minutes} min`
+                  )}
+                />
                 <p className="mt-2 text-sm text-slate-600 dark:text-slate-300">
                   Zone 2 {zones.minutes[1] ?? 0} min · {zones.easyPercent}% easy
                   / {100 - zones.easyPercent}% hard
@@ -106,12 +112,12 @@ export default function EnduranceDepthSuite({
               <p className="mt-2 text-lg font-semibold text-slate-800 dark:text-slate-100">
                 {vo2 ? formatPercentile(vo2) : "No current VO₂ result"}
               </p>
-              <Link
+              <DestinationLink
                 href="/training/fitness-check"
                 className="text-xs text-link"
               >
-                Fitness check →
-              </Link>
+                Fitness check
+              </DestinationLink>
             </div>
           )}
         </div>

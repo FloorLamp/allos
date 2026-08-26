@@ -3,6 +3,7 @@ import type { Locator, Page } from "@playwright/test";
 import { hydratedClick, settledBoxes } from "./helpers";
 import { loginAs } from "./nav";
 import { E2E_LOGIN_HHHIST, E2E_MEMBER_PASSWORD } from "./fixture-logins";
+import { TAP_FLOOR_PX } from "@/lib/tap-floor-tokens";
 
 // The Records hub's PHONE ANATOMY (issue #3408).
 //
@@ -53,7 +54,6 @@ const VIEWPORT_HEIGHT = 844;
 // whether the chrome came off, so the number is a comparison, not a guess.
 const LIST_TOP_CEILING = 455;
 // The app's own touch floor (app/globals.css, `tap-target`; #644).
-const TAP_FLOOR = 44;
 
 async function documentOrder(
   page: Page,
@@ -181,10 +181,8 @@ test.describe("Records panes — phone anatomy (#3408)", () => {
   // What it would have caught: the defect #3475 was filed on is four heights for
   // one idea — the nav chip at `py-1` + border (30px), one Analyze strip at
   // `py-1.5` + border (34) and a second at `py-1` + border (30), and FilterPills
-  // at `py-1.5` borderless (32) — which the source scan in
-  // lib/__tests__/chip-primitive-census.test.ts can only see while everyone
-  // spells the size in `app/globals.css`. A call site that re-overrides padding
-  // is invisible there and visible here.
+  // at `py-1.5` borderless (32). A call site that re-overrides padding is
+  // invisible to a token residual and visible here.
   test("the two chip roles render at ONE size, and differ only where they mean to", async ({
     page,
   }) => {
@@ -344,7 +342,7 @@ test.describe("Records panes — phone anatomy (#3408)", () => {
     // hanging off a kebab — the fork lives in AnchoredPanel and no consumer
     // chose it (#3374). Its rows clear the tap floor because the sheet's do.
     const printBox = await print.boundingBox();
-    expect(printBox!.height).toBeGreaterThanOrEqual(TAP_FLOOR);
+    expect(printBox!.height).toBeGreaterThanOrEqual(TAP_FLOOR_PX);
     await page.keyboard.press("Escape");
 
     // THE LIST STARTS 137px HIGHER THAN IT DID. The issue's headline complaint,

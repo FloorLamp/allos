@@ -61,6 +61,9 @@ describe("labs adapter — identity + labels", () => {
     expect(
       labValueLabel(rec({ id: 1, value: null, value_num: 5.4, unit: "%" }))
     ).toBe("5.4%");
+    const selenium = rec({ id: 2, value: "45", unit: "ug / L" });
+    expect(labValueLabel(selenium)).toBe("45 µg / L");
+    expect(selenium.unit).toBe("ug / L");
   });
 
   it("labsSourceLabel names the FLAGGED value + reading month (the #656 reason tail)", () => {
@@ -85,6 +88,11 @@ describe("labs adapter — identity + labels", () => {
         rec({ id: 2, value: "5.4", unit: "%", date: "2026-08-20" })
       )
     ).toBe("5.4% · 2026-08");
+    expect(
+      labsResolvingLabel(
+        rec({ id: 3, value: "46", unit: "ug / L", date: "2026-08-21" })
+      )
+    ).toBe("46 µg / L · 2026-08");
   });
 });
 

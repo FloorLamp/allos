@@ -15,6 +15,7 @@ import type { FormResult } from "@/lib/types";
 import type { OutcomeOption } from "@/lib/queries/protocols";
 import type { PanelId } from "@/lib/biomarker-panels";
 import ProtocolOutcomePicker from "./ProtocolOutcomePicker";
+import { displayUnit } from "@/lib/display-unit";
 
 // Round a window mean for display: 2 dp for small magnitudes, 1 dp otherwise.
 function fmtStat(n: number | null): string {
@@ -36,7 +37,8 @@ function OutcomePanel({
   o: OutcomeComparison;
   onRemove?: () => void;
 }) {
-  const unit = o.unit ? ` ${o.unit}` : "";
+  const shownUnit = displayUnit(o.unit);
+  const unitSuffix = shownUnit ? ` ${shownUnit}` : "";
   return (
     <div
       className="card"
@@ -62,7 +64,6 @@ function OutcomePanel({
               type="button"
               className="btn-ghost btn-sm h-8 w-8 p-0!"
               aria-label={`Remove ${o.label}`}
-              title="Remove outcome"
               onClick={onRemove}
             >
               <IconX className="h-4 w-4" stroke={2} aria-hidden />
@@ -82,7 +83,7 @@ function OutcomePanel({
               <div className="text-lg font-semibold text-slate-800 dark:text-slate-100">
                 {fmtStat(o.baseline.mean)}
                 <span className="ml-1 text-xs font-normal text-slate-400">
-                  {unit.trim()}
+                  {unitSuffix.trim()}
                 </span>
               </div>
               <div className="text-xs text-slate-400">
@@ -95,7 +96,7 @@ function OutcomePanel({
               <div className="text-lg font-semibold text-slate-800 dark:text-slate-100">
                 {fmtStat(o.intervention.mean)}
                 <span className="ml-1 text-xs font-normal text-slate-400">
-                  {unit.trim()}
+                  {unitSuffix.trim()}
                 </span>
               </div>
               <div className="text-xs text-slate-400">
@@ -221,7 +222,10 @@ export default function ProtocolCompare({
               }
             />
           </div>
-          <div className="flex flex-col-reverse gap-2 border-t border-black/5 pt-3 sm:flex-row sm:justify-end dark:border-white/10">
+          <div
+            className="flex flex-col-reverse gap-2 border-t border-black/5 pt-3 sm:flex-row sm:justify-end dark:border-white/10"
+            data-testid="protocol-outcomes-actions"
+          >
             <button
               type="button"
               className="btn-ghost w-full sm:w-auto"
@@ -229,12 +233,12 @@ export default function ProtocolCompare({
             >
               Cancel
             </button>
-            <SubmitButton
-              className="btn w-full sm:w-auto"
-              pendingLabel="Saving…"
+            <div
+              className="grid w-full sm:w-auto"
+              data-testid="protocol-outcomes-primary-action"
             >
-              Save outcomes
-            </SubmitButton>
+              <SubmitButton pendingLabel="Saving…">Save outcomes</SubmitButton>
+            </div>
           </div>
         </form>
       )}

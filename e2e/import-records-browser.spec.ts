@@ -5,6 +5,7 @@ import {
   openConfirm,
   settledClick,
 } from "./helpers";
+import { TAP_FLOOR_PX } from "@/lib/tap-floor-tokens";
 
 // Import detail — tabbed per-category records browser (issue #271). The e2e seed
 // (e2e/seed-events.ts) plants document 908 with produced rows across several
@@ -39,6 +40,11 @@ test.describe("Import detail: tabbed records browser", () => {
     await expect(strip.getByTestId("import-tab-providers")).toHaveText(
       "Providers 1"
     );
+    const denseLink = strip.getByTestId("import-tab-lab");
+    await expect(denseLink).toBeVisible();
+    await expect
+      .poll(async () => (await denseLink.boundingBox())?.height ?? 0)
+      .toBeGreaterThanOrEqual(TAP_FLOOR_PX);
 
     // Default tab (no ?tab=) is the FIRST non-empty tab — Labs — marked current,
     // and its editable table renders the lab rows.
@@ -212,6 +218,7 @@ test.describe("Import detail: tabbed records browser", () => {
     // companion JSON case is asserted in review-inbox.spec.ts.
     const downloadBtn = viewer.getByTestId("raw-download");
     await expect(downloadBtn).toHaveText(/Download XML/);
+    await expect(downloadBtn).toContainText("extraction-908.xml");
     const [saved] = await Promise.all([
       page.waitForEvent("download"),
       downloadBtn.click(),

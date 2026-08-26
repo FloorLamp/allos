@@ -56,8 +56,11 @@ test.describe("day-grouped sync history (#1991)", () => {
         .getByTestId("sync-history-latest")
         .locator("xpath=ancestor::li[1]");
       await expect(latestRun.locator("time")).toHaveText(expectedProfileClock);
-      await expect(latestRun.locator("time")).toHaveAttribute(
-        "title",
+      const timestampDisclosure = latestRun.getByRole("button", {
+        name: new RegExp(`, ${expectedProfileClock}$`),
+      });
+      await timestampDisclosure.click();
+      await expect(member.getByRole("tooltip")).toHaveText(
         new RegExp(`, ${expectedProfileClock}$`)
       );
       // It counts runs in the source's own noun and carries the day's totals.

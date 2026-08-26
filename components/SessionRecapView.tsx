@@ -72,18 +72,17 @@ export default function SessionRecapView({
                 {(ex.e1rmPR || ex.weightPR) && (
                   <span
                     className="inline-flex items-center gap-0.5 rounded-full bg-amber-100 px-1.5 py-0.5 text-xs font-semibold text-amber-700 dark:bg-amber-900/40 dark:text-amber-300"
-                    title="Personal record this session"
                     data-testid="recap-pr"
                   >
                     <IconTrophy className="h-3 w-3" />
-                    PR
+                    Personal record
                   </span>
                 )}
                 {ex.verdict === "missed" && (
-                  <IconAlertTriangle
-                    className="h-3.5 w-3.5 text-amber-500"
-                    title="At least one set fell short of its target"
-                  />
+                  <span className="inline-flex items-center gap-0.5 text-xs text-amber-600 dark:text-amber-400">
+                    <IconAlertTriangle className="h-3.5 w-3.5" />
+                    Missed target
+                  </span>
                 )}
               </span>
               <span className="shrink-0 whitespace-nowrap tabular-nums text-slate-500 dark:text-slate-400">

@@ -7,9 +7,6 @@
 //                         Absent means "not away".
 //   timezone_switches   — the bounded switch history the switch-day rules read.
 //   timezone_travel_dismissed — the device zone an offer was last dismissed for.
-//   timezone_travel_tell — the zone a completed auto-revert still owes the person
-//                         a word about. Set by the revert, cleared when they
-//                         acknowledge it.
 //
 // PER PROFILE rather than per login, deliberately: every one of them is a fact
 // about the PROFILE's day (where it runs, where it came from, which offer about it
@@ -26,6 +23,8 @@ import { isValidTimezone } from "../timezone";
 import { instantNow, now as clockNow } from "../clock";
 import {
   appendTimezoneSwitch,
+  connectedTimezoneSwitchHistory,
+  decodeTimezoneSwitchHistory,
   parseTimezoneSwitches,
   serializeTimezoneSwitches,
   type TimezoneSwitch,
@@ -34,7 +33,6 @@ import {
 const HOME_KEY = "timezone_home";
 const SWITCHES_KEY = "timezone_switches";
 const DISMISSED_KEY = "timezone_travel_dismissed";
-const TELL_KEY = "timezone_travel_tell";
 
 // The zone this profile's day came from while it is away, or null when it is home.
 // A stored value equal to the profile's CURRENT zone is stale bookkeeping (a manual
@@ -69,45 +67,15 @@ export function clearDismissedTravelZone(profileId: number): void {
   deleteProfileSetting(profileId, DISMISSED_KEY);
 }
 
-// THE TELL-AFTER, AND WHY THE SERVER OWNS IT.
-//
-// #2471 lets the return leg act without asking, on the bargain that it REPORTS
-// afterwards. That makes the report part of the feature, not decoration — so it
-// cannot live in the state of the component that happened to trigger it.
-//
-// It did, once, and the tell was lost to an ordinary navigation: the revert fires
-// from an effect on whatever page is open, and a person who taps a link while it is
-// in flight takes that document down with them. The server still completed the
-// switch — their day moved — and the promise that would have shown the message
-// resolved into a document that no longer existed. Their timezone changed and
-// nothing ever said so, which is precisely the outcome the ask-free revert traded
-// away.
-//
-// Stored as the zone the profile was ON (the away zone). The other half of the
-// sentence is the profile's CURRENT zone, which is by definition home again once
-// the revert has landed, so there is nothing to keep in sync.
-export function getTravelTell(profileId: number): string | null {
-  const stored = getProfileSetting(profileId, TELL_KEY);
-  if (!stored || !isValidTimezone(stored)) return null;
-  return stored;
-}
-
-export function setTravelTell(profileId: number, awayZone: string): void {
-  setProfileSetting(profileId, TELL_KEY, awayZone);
-}
-
-export function clearTravelTell(profileId: number): void {
-  deleteProfileSetting(profileId, TELL_KEY);
-}
-
 // THE TRAVEL CHOKEPOINT. Move a profile's day to `tz` and record the seam that
 // leaves in its wall clock, so the switch-day rules can be asked about it later.
 //
 // Deliberately NOT folded into `setTimezone`. That setter is the primitive every
 // seed, fixture and onboarding path binds, and a first-ever zone or a fixture's
 // setup is not a journey — recording those would fill the history with switches
-// nobody took and excuse slots nobody flew over. Travel goes through here; the
-// Settings form keeps its own path unchanged (#3263 leaves that form alone).
+// nobody took and excuse slots nobody flew over. Travel goes through here. The
+// Settings form uses the helper below so an edit DURING an active trip records the
+// same seam, while ordinary onboarding/correction edits stay bare.
 //
 // Returns the switch it recorded, or null when the zone did not actually move.
 export function switchProfileTimezone(
@@ -119,19 +87,52 @@ export function switchProfileTimezone(
   const from = getTimezone(profileId);
   if (from === tz) return null;
   const at = instantNow();
+  const decodedHistory = decodeTimezoneSwitchHistory(
+    getProfileSetting(profileId, SWITCHES_KEY)
+  );
+  const connectedHistory = connectedTimezoneSwitchHistory(
+    decodedHistory.switches,
+    from
+  );
+  const historyTrusted =
+    decodedHistory.valid &&
+    connectedHistory.length === decodedHistory.switches.length;
   setTimezone(profileId, tz);
   const record: TimezoneSwitch = { at, from, to: tz };
-  const history = appendTimezoneSwitch(
-    getTravelSwitches(profileId),
-    record,
-    clockNow()
-  );
-  setProfileSetting(
-    profileId,
-    SWITCHES_KEY,
-    serializeTimezoneSwitches(history)
-  );
+  // Preserve malformed storage instead of laundering it into a clean one-way
+  // history. Consumers continue to fail open; the timezone still moves and the
+  // home marker still follows the explicit user choice.
+  if (historyTrusted) {
+    const history = appendTimezoneSwitch(connectedHistory, record, clockNow());
+    setProfileSetting(
+      profileId,
+      SWITCHES_KEY,
+      serializeTimezoneSwitches(history)
+    );
+  }
   if (homeZone) setProfileSetting(profileId, HOME_KEY, homeZone);
   else clearHomeTimezone(profileId);
   return record;
+}
+
+// A timezone selected explicitly in Settings is normally a correction, not proof
+// of travel. During an active trip, however, changing the away zone or selecting
+// home crosses the same wall-clock seam as the travel prompt and must be recorded;
+// otherwise a stale outbound jump can keep suppressing a slot after the person has
+// returned. The original home remains stable across intermediate legs.
+export function setProfileTimezoneFromSettings(
+  profileId: number,
+  tz: string
+): void {
+  if (!isValidTimezone(tz)) throw new Error(`Invalid timezone: ${tz}`);
+  if (getTimezone(profileId) === tz) return;
+
+  const homeZone = getHomeTimezone(profileId);
+  if (!homeZone) {
+    setTimezone(profileId, tz);
+    return;
+  }
+
+  switchProfileTimezone(profileId, tz, tz === homeZone ? null : homeZone);
+  clearDismissedTravelZone(profileId);
 }

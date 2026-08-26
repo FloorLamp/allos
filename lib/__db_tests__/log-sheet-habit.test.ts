@@ -3,7 +3,7 @@
 // The decision over these counts is pure and covered in
 // lib/__tests__/log-sheet.test.ts. What needs a database is everything the gather
 // itself claims: that it counts DAYS rather than rows, that it stops at the window
-// edge, that a synced row is not a log, that the Body and Care segments are fed by
+// edge, that a synced row is not a log, that Body and Consume are fed by
 // every store their entries write to, and that one profile's logging never lands
 // in another's count.
 //
@@ -161,7 +161,7 @@ describe("getSegmentLogDays", () => {
     expect(getSegmentLogDays(profileId, anchor).body ?? 0).toBe(0);
   });
 
-  it("feeds Care from doses and practices, and never from the check-in store", () => {
+  it("feeds Consume from doses and Care from practices, never from check-ins", () => {
     const { profileId, anchor } = makeProfile("Habit Care");
     const itemId = Number(
       db
@@ -183,19 +183,25 @@ describe("getSegmentLogDays", () => {
     db.prepare(
       "INSERT INTO practice_logs (profile_id, practice, date) VALUES (?, 'sauna', ?)"
     ).run(profileId, shiftDateStr(anchor, -1));
-    expect(getSegmentLogDays(profileId, anchor).care).toBe(2);
+    expect(getSegmentLogDays(profileId, anchor)).toMatchObject({
+      food: 1,
+      care: 1,
+    });
     // A check-in on a third day adds nothing: the #992 contract keeps its store
     // out of every engine, and this measure is an engine.
     db.prepare(
       "INSERT INTO mood_logs (profile_id, date, valence) VALUES (?, ?, 3)"
     ).run(profileId, shiftDateStr(anchor, -2));
-    expect(getSegmentLogDays(profileId, anchor).care).toBe(2);
+    expect(getSegmentLogDays(profileId, anchor)).toMatchObject({
+      food: 1,
+      care: 1,
+    });
   });
 
-  // #3327 added the fourth Care arm. The store has no ingest path, so the only
+  // #3327 added the substance arm. The store has no ingest path, so the only
   // question its filter answers is the one every other arm answers: are these rows
   // hand-entered?
-  it("counts substance taps toward Care, and alcohol's toward Food where they land", () => {
+  it("counts substance and alcohol taps toward Consume where they land", () => {
     const { profileId, anchor } = makeProfile("Habit Substance");
     db.prepare(
       `INSERT INTO substance_daily_totals (profile_id, date, substance, units)
@@ -205,7 +211,7 @@ describe("getSegmentLogDays", () => {
       `INSERT INTO substance_daily_totals (profile_id, date, substance, units)
        VALUES (?, ?, 'Kratom', 1)`
     ).run(profileId, shiftDateStr(anchor, -1));
-    expect(getSegmentLogDays(profileId, anchor).care).toBe(2);
+    expect(getSegmentLogDays(profileId, anchor).food).toBe(2);
 
     // TWO substances on ONE day is one logged day, like every other arm: the
     // measure counts days, never rows, which is what keeps a burst from moving it.
@@ -213,14 +219,14 @@ describe("getSegmentLogDays", () => {
       `INSERT INTO substance_daily_totals (profile_id, date, substance, units)
        VALUES (?, ?, 'cannabis', 1)`
     ).run(profileId, anchor);
-    expect(getSegmentLogDays(profileId, anchor).care).toBe(2);
+    expect(getSegmentLogDays(profileId, anchor).food).toBe(2);
 
-    // Alcohol's taps land on food_daily_totals (#860/#944), which the Food arm
+    // Alcohol's taps land on food_daily_totals (#860/#944), which the Consume arm
     // already counts. `LOG_DAY_SOURCES` deliberately does not name that store twice,
     // so a drink is one segment's evidence rather than two.
     logFood(profileId, shiftDateStr(anchor, -2));
-    expect(getSegmentLogDays(profileId, anchor).care).toBe(2);
-    expect(getSegmentLogDays(profileId, anchor).food).toBe(1);
+    expect(getSegmentLogDays(profileId, anchor).care ?? 0).toBe(0);
+    expect(getSegmentLogDays(profileId, anchor).food).toBe(3);
   });
 
   it("counts one profile's logging only", () => {
@@ -236,7 +242,7 @@ describe("getSegmentLogDays", () => {
   it("hands the dashboard a segment the profile actually logs in", () => {
     const { profileId, anchor } = makeProfile("Habit Dashboard");
     // Two weeks of food, one hand-logged walk. Before that history exists the
-    // dashboard opens on Train — the historical fallback — and after it, on Food.
+    // dashboard opens on Train — the historical fallback — and after it, on Consume.
     const segments = logSheetSegments(true);
     logActivity(profileId, anchor);
     expect(

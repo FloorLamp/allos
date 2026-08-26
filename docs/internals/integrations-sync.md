@@ -555,11 +555,11 @@ surface FORMATS its answers:
   " UTC" suffix, and Review showed relative-only labels that could collide.
 - **One Sync now.** The four redirecting per-provider form actions
   (`sync{Strava,Oura,Withings,Weather}Action`) are gone; `SyncNowButton` serves
-  both the setup page and Review, and since #2040 it calls ONE generic
-  `syncNow(id)` (`app/(app)/integrations/sync-actions.ts`) rather than four
-  `sync*Now` actions with an identical skeleton. The action revalidates the
-  surfaces the run feeds (so no client-side refresh) from the registry's
-  `pull.revalidates`.
+  both the setup page and Review. It owns the source-specific binding, copy and
+  test id, calls the generic `syncNow(id)` action, and delegates only the shared
+  transition/button/toast mechanics to `IntegrationActionButton`. The action
+  revalidates the surfaces the run feeds (so no client-side refresh) from the
+  registry's `pull.revalidates`.
 - **Deliberate surface roles (#1880 item 2: the alert IS the card).** The setup
   page is the provider's home — shared status header (`IntegrationStatusHeader`),
   controls, and the full history table. On Review, an ESCALATED source renders

@@ -195,7 +195,7 @@ test.describe.serial("kids growth trends", () => {
         name: "90D",
         exact: true,
       })
-    ).toHaveAttribute("aria-current", "page");
+    ).toHaveAttribute("aria-current", "true");
 
     // The detail page's shared range controls all four trajectories. An old window
     // keeps the chart identities visible but empties their profile measurements.

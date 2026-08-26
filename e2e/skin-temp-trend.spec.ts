@@ -46,6 +46,9 @@ test.describe("Skin temperature variation trend", () => {
       const tile = member.getByTestId("body-tile-skin-temp");
       await expect(tile).toBeVisible();
       await expect(tile.getByText("Skin Temp", { exact: true })).toBeVisible();
+      await expect(
+        tile.getByTestId("trend-mini-header-link")
+      ).toHaveAccessibleName(/^Skin Temp — Skin Temperature Variation/);
     } finally {
       await member.context().close();
     }

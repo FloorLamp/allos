@@ -1,7 +1,7 @@
 "use client";
 
 import { useState } from "react";
-import Link from "next/link";
+import DestinationLink from "@/components/DestinationLink";
 import ModalShell from "@/components/ModalShell";
 import FitnessTestTimer from "@/components/activity-form/FitnessTestTimer";
 import FitnessDomainBars from "@/components/FitnessDomainBars";
@@ -330,12 +330,11 @@ function Tile({
             {tile.label}
           </span>
         </div>
-        {/* Below sm the chip collapses to its glyph + a title, with the text kept
-            for AT (sr-only) — the 2-col tiles are too narrow for glyph AND text. */}
+        {/* Below sm the chip collapses to its glyph, with the text kept for AT and
+            repeated visibly in the modal — the 2-col tiles are too narrow for both. */}
         <span
           data-testid="fitness-tile-domain"
-          className="inline-flex shrink-0 items-center gap-1 rounded-sm bg-black/5 px-1 py-0.5 text-xs uppercase tracking-wide opacity-70 dark:bg-white/10"
-          title={DOMAIN_LABEL[tile.domain] ?? tile.domain}
+          className="inline-flex shrink-0 items-center gap-1 rounded-sm bg-black/5 pl-1 text-xs uppercase tracking-wide opacity-70 dark:bg-white/10"
         >
           <FitnessDomainGlyph domain={tile.domain} className="h-3 w-3" />
           <span className="sr-only sm:not-sr-only">
@@ -529,6 +528,9 @@ function EntryModal({
           testKey={def.key}
           className="mb-2 h-8 w-8 shrink-0 text-slate-500 dark:text-slate-400"
         />
+        <p className="section-label mb-2" data-testid="fitness-entry-domain">
+          {DOMAIN_LABEL[tile.domain] ?? tile.domain}
+        </p>
 
         {saved && outcome ? (
           <OutcomePanel outcome={outcome} onDone={done} testKey={def.key} />
@@ -562,13 +564,13 @@ function EntryModal({
             naming a page. */}
         {def.store.kind === "vital" && tile.measured && (
           <p className="mb-2 text-xs">
-            <Link
+            <DestinationLink
               href={clinicalResultDetailHref(def.store.canonical)}
               className="text-link"
               data-testid={`fitness-history-${def.key}`}
             >
-              View history &amp; percentile →
-            </Link>
+              View history &amp; percentile
+            </DestinationLink>
           </p>
         )}
         {tile.roughGuide && tile.selfNormCitation && (
