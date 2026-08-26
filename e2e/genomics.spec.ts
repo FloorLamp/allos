@@ -1,6 +1,10 @@
 import { test, expect } from "./fixtures";
 import Database from "better-sqlite3";
 import { hydratedClick, settledClick, settledFill } from "./helpers";
+import {
+  expectDesktopRecordFormSubmit,
+  expectPhoneRecordFormSubmit,
+} from "./record-form-actions";
 import { workerDbPath } from "./worker-env";
 
 // Genomic variants CRUD on the #genomics section of /results (#709, #1042 phase 5): add a structured variant through the
@@ -12,6 +16,7 @@ import { workerDbPath } from "./worker-env";
 // across CI retries — it only ever touches rows it created.
 const DB_PATH = workerDbPath();
 const GENE = "E2EGENE1";
+const PHONE = { width: 390, height: 844 };
 
 function cleanup() {
   const handle = new Database(DB_PATH);
@@ -41,6 +46,26 @@ test.describe("Genomic variants — add → view → edit → delete (#709)", ()
     await expect(dialog).toBeVisible();
     const form = dialog.getByTestId("genomic-variant-form");
     await expect(form).toBeVisible();
+    const addSubmit = form.getByRole("button", {
+      name: "Add",
+      exact: true,
+    });
+    await expectDesktopRecordFormSubmit({
+      form,
+      actions: form.getByTestId("genomic-variant-actions"),
+      primaryOwner: form.getByTestId("genomic-variant-primary-action"),
+      submit: addSubmit,
+      name: "genomic variant add",
+    });
+    await page.setViewportSize(PHONE);
+    await expectPhoneRecordFormSubmit({
+      form,
+      actions: form.getByTestId("genomic-variant-actions"),
+      primaryOwner: form.getByTestId("genomic-variant-primary-action"),
+      submit: addSubmit,
+      fillsActions: true,
+      name: "phone genomic variant add",
+    });
 
     // Add a hereditary-risk variant with an ACMG significance.
     // Gene is a controlled Combobox over the PGx symbols since #1676; a non-PGx
@@ -54,10 +79,7 @@ test.describe("Genomic variants — add → view → edit → delete (#709)", ()
       .getByLabel("Clinical significance")
       .selectOption("likely-pathogenic");
     await form.getByLabel("Source lab").fill("E2E Genetics Lab");
-    await settledClick(
-      page,
-      form.getByRole("button", { name: "Add", exact: true })
-    );
+    await settledClick(page, addSubmit);
     await expect(page.getByText("Variant saved")).toBeVisible();
 
     // It appears in the list with its factual identity + reported classification.
@@ -73,6 +95,17 @@ test.describe("Genomic variants — add → view → edit → delete (#709)", ()
     await page.getByRole("menuitem", { name: "Edit" }).click();
     const editForm = list.getByTestId("genomic-variant-form");
     await expect(editForm).not.toHaveClass(/\bcard\b/);
+    await expectPhoneRecordFormSubmit({
+      form: editForm,
+      actions: editForm.getByTestId("genomic-variant-actions"),
+      primaryOwner: editForm.getByTestId("genomic-variant-primary-action"),
+      submit: editForm.getByRole("button", { name: "Save", exact: true }),
+      adjacent: editForm.getByRole("button", {
+        name: "Cancel",
+        exact: true,
+      }),
+      name: "phone genomic variant edit",
+    });
     await editForm
       .getByLabel("Clinical significance")
       .selectOption("pathogenic");
