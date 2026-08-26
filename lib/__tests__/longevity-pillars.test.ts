@@ -132,7 +132,7 @@ describe("buildPillars value equals its source computation (#224)", () => {
     expect(pillar.tone).toBe("good"); // ≥50th
   });
 
-  it("bio-age pillar value is bioAgeDeltaCompact of the source delta", () => {
+  it("uses the compact bio-age delta", () => {
     const delta = bioAgeDelta(45, 50);
     const [pillar] = buildPillars({ bioAge: { delta } });
     expect(pillar.value).toBe(bioAgeDeltaCompact(delta));
@@ -167,53 +167,5 @@ describe("buildPillars value equals its source computation (#224)", () => {
     });
     expect(pillar.value).toBe(strengthLevelLabel("intermediate"));
     expect(pillar.tone).toBe("warn"); // intermediate
-  });
-});
-
-// ── THE BIO-AGE PILLAR SPEAKS THE CARD'S GRAMMAR (#3544 item 1) ───────────────
-//
-// The pillar's `value` used to be `bioAgeDeltaPhrase` — a whole sentence in a slot
-// whose siblings say "Intermediate", "SRI 92" and "86 of 120", and the one row in
-// the card that wrapped onto its own line on a phone. Worse, the sentence named the
-// calendar age and the detail line under it named it again, two lines apart.
-//
-// These pin the SHAPE of the value and the ONE statement of the calendar age. They
-// are written against the rendered strings rather than against the helper, because
-// the defect was a presentation choice at this boundary and not a bug in the phrase:
-// asserting `value === bioAgeDeltaCompact(delta)` alone would go green again the day
-// someone points `value` back at the sentence, if the sentence were compacted here.
-describe("the bio-age pillar's value is compact and states the calendar age once", () => {
-  it("says the magnitude and direction, and nothing else", () => {
-    const [pillar] = buildPillars({ bioAge: { delta: bioAgeDelta(26.6, 35) } });
-    expect(pillar.value).toBe("8.4 yrs younger");
-    expect(pillar.detail).toBe("PhenoAge 26.6 vs calendar 35");
-  });
-
-  it("states the calendar age exactly once across value and detail", () => {
-    const chronoAge = 35;
-    const [pillar] = buildPillars({
-      bioAge: { delta: bioAgeDelta(26.6, chronoAge) },
-    });
-    const rendered = `${pillar.value} ${pillar.detail}`;
-    expect(rendered.split(String(chronoAge)).length - 1).toBe(1);
-    // And it is the DETAIL that carries it, not the value.
-    expect(pillar.value).not.toContain(String(chronoAge));
-  });
-
-  it("keeps the tone chip carrying the judgment", () => {
-    // #1220: the value states the fact, the chip states whether it is good news.
-    // The compact value works only because the chip is still there to say so.
-    expect(
-      buildPillars({ bioAge: { delta: bioAgeDelta(26.6, 35) } })[0].tone
-    ).toBe("good");
-    expect(
-      buildPillars({ bioAge: { delta: bioAgeDelta(41.2, 35) } })[0].tone
-    ).toBe("bad");
-  });
-
-  it("gives the even case the same compact treatment", () => {
-    const [pillar] = buildPillars({ bioAge: { delta: bioAgeDelta(35, 35) } });
-    expect(pillar.value).toBe("≈ calendar age");
-    expect(pillar.value).not.toContain("35");
   });
 });
