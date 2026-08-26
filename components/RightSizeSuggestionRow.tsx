@@ -66,7 +66,7 @@ export default function RightSizeSuggestionRow({
             disabled={pending}
             onClick={() => run(lowerAction)}
             data-testid="right-size-lower"
-            title={`Lower ${candidate.label} to ${candidate.suggestedFloor}× a week`}
+            aria-label={`Lower ${candidate.label} to ${candidate.suggestedFloor}× a week`}
             className="btn btn-sm"
           >
             Lower to {candidate.suggestedFloor}× a week
@@ -77,7 +77,7 @@ export default function RightSizeSuggestionRow({
           disabled={pending}
           onClick={() => run(stopAction)}
           data-testid="right-size-stop"
-          title={`${stopLabel} — ${candidate.label}`}
+          aria-label={`${stopLabel} — ${candidate.label}`}
           className="btn-ghost btn-sm"
         >
           {stopLabel}
@@ -87,7 +87,7 @@ export default function RightSizeSuggestionRow({
           disabled={pending}
           onClick={() => run(dismissAction)}
           data-testid="right-size-dismiss"
-          title="Keep the current weekly target and hide this suggestion"
+          aria-label="Keep the current weekly target and hide this suggestion"
           className="btn-ghost btn-sm"
         >
           Keep as is

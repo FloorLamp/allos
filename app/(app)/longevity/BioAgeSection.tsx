@@ -18,6 +18,7 @@ import {
   type BioAgeDirection,
 } from "@/lib/bio-age";
 import { isLongevityRelevant } from "@/lib/life-stage";
+import InfoTooltipIcon from "@/components/InfoTooltipIcon";
 import { formatLongDate } from "@/lib/format-date";
 import { clinicalResultDetailHref } from "@/lib/hrefs";
 import CardFootnote from "@/components/CardFootnote";
@@ -209,12 +210,11 @@ export default async function BioAgeSection() {
                             {e.name}
                           </Link>
                         )}
-                        <span
-                          className="shrink-0 tabular-nums font-medium text-slate-700 dark:text-slate-200"
-                          data-testid="bio-age-effect"
-                          title={bioAgeEffectPhrase(e)}
-                        >
-                          {label ?? "no comparison"}
+                        <span className="inline-flex shrink-0 items-center tabular-nums font-medium text-slate-700 dark:text-slate-200">
+                          <span data-testid="bio-age-effect">
+                            {label ?? "no comparison"}
+                          </span>
+                          <InfoTooltipIcon label={bioAgeEffectPhrase(e)} />
                         </span>
                       </div>
                       <div className="text-xs text-slate-500 dark:text-slate-400">

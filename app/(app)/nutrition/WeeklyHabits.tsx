@@ -20,6 +20,7 @@ import {
 import FoodGroupIcon from "@/components/FoodGroupIcon";
 import RightSizeSuggestions from "@/components/RightSizeSuggestions";
 import SubmitButton from "@/components/SubmitButton";
+import VisualizationDetails from "@/components/VisualizationDetails";
 import { trackFoodHabit } from "./actions";
 import UntrackHabitButton from "./UntrackHabitButton";
 
@@ -119,21 +120,26 @@ export default function WeeklyHabits({
                   const cells = trends.get(p.target.id) ?? [];
                   if (cells.length === 0) return null;
                   return (
-                    <div
-                      data-testid={`habit-trend-${p.target.scope_value}`}
-                      className="mt-1.5 flex items-center gap-1"
-                      role="img"
-                      aria-label={`Consistency over the last ${cells.length} weeks`}
-                    >
-                      {cells.map((c) => (
-                        <span
-                          key={c.start}
-                          data-verdict={c.verdict}
-                          title={c.label}
-                          className={`h-3 w-3 shrink-0 rounded-xs ${TREND_CELL_CLASS[c.verdict]}`}
-                        />
-                      ))}
-                    </div>
+                    <>
+                      <div
+                        data-testid={`habit-trend-${p.target.scope_value}`}
+                        className="mt-1.5 flex items-center gap-1"
+                        role="img"
+                        aria-label={`Consistency over the last ${cells.length} weeks`}
+                      >
+                        {cells.map((c) => (
+                          <span
+                            key={c.start}
+                            data-verdict={c.verdict}
+                            className={`h-3 w-3 shrink-0 rounded-xs ${TREND_CELL_CLASS[c.verdict]}`}
+                          />
+                        ))}
+                      </div>
+                      <VisualizationDetails
+                        label={`${frequencyScopeLabel("food_group", p.target.scope_value)} weekly details`}
+                        items={cells.map((cell) => cell.label)}
+                      />
+                    </>
                   );
                 })()}
                 {interactions.length > 0 && (

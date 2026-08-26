@@ -1,5 +1,6 @@
 import Link from "next/link";
 import DestinationIndicator from "@/components/DestinationIndicator";
+import OverlayDestination from "@/components/OverlayDestination";
 import { INTEGRATIONS } from "@/lib/integrations/registry";
 import { integrationDetailHref } from "@/lib/hrefs";
 import { getIntegrationState } from "@/lib/queries";
@@ -124,9 +125,10 @@ function StatusCard({
 }) {
   const attention = standingEscalates(state.standing);
   const badge = standingBadge(state.standing, syncRunNounForKind(state.kind));
-  return (
+  const href = integrationDetailHref(def.id);
+  const card = (
     <div
-      className={`card h-full transition hover:shadow-md ${
+      className={`card h-full transition group-hover:shadow-md ${
         attention ? "border-rose-300 dark:border-rose-900" : ""
       }`}
       data-testid={`integration-card-${def.id}`}
@@ -144,6 +146,13 @@ function StatusCard({
         <DestinationIndicator />
       </div>
     </div>
+  );
+  return href ? (
+    <OverlayDestination href={href} label={`Open ${def.name} settings`}>
+      {card}
+    </OverlayDestination>
+  ) : (
+    card
   );
 }
 
@@ -252,9 +261,7 @@ export default function IntegrationsGrid({ profileId }: { profileId: number }) {
           data-testid="grid-connected"
         >
           {ordered.map(({ def, state }) => (
-            <LinkedCard key={def.id} def={def}>
-              <StatusCard def={def} state={state!} />
-            </LinkedCard>
+            <StatusCard key={def.id} def={def} state={state!} />
           ))}
         </div>
       )}

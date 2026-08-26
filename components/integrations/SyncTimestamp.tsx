@@ -2,6 +2,7 @@
 
 import { useEffect, useState } from "react";
 import { useFormatPrefs } from "@/components/FormatPrefsProvider";
+import InfoTooltipIcon from "@/components/InfoTooltipIcon";
 import { formatRelativeTime, formatTimestampDisplay } from "@/lib/format-date";
 
 // The ONE timestamp treatment for a sync (#1772): the absolute local time AND the
@@ -25,12 +26,10 @@ export default function SyncTimestamp({
 }: {
   value: string;
   className?: string;
-  // Dense rows (the grid card's one-line hint) take the relative half alone, with the
-  // absolute time still on the tooltip — never the raw stored string.
+  // Dense rows show the relative half and disclose the absolute time on demand.
   relativeOnly?: boolean;
   // Day-grouped ledgers already establish the calendar date in their header. Their
-  // aligned TIME column uses only the reader's clock, with the full absolute stamp
-  // retained in the tooltip.
+  // aligned TIME column shows the reader's clock and discloses the full absolute stamp.
   clockOnly?: boolean;
   // A day-grouped profile ledger passes the same timezone that assigned its day.
   // Other compact status surfaces retain their established reader-local display.
@@ -61,36 +60,34 @@ export default function SyncTimestamp({
     : parsed.toISOString();
   const clock = display?.clock ?? value;
 
+  if (clockOnly || relativeOnly) {
+    return (
+      <span className={className} data-testid="sync-timestamp-compact">
+        <time dateTime={machine} suppressHydrationWarning>
+          {clockOnly ? clock : relative}
+        </time>
+        <InfoTooltipIcon label={absolute} />
+      </span>
+    );
+  }
+
   return (
-    <time
-      dateTime={machine}
-      title={relativeOnly || clockOnly ? absolute : undefined}
-      className={className}
-      suppressHydrationWarning
-    >
-      {clockOnly ? (
-        clock
-      ) : relativeOnly ? (
-        relative
-      ) : (
-        <>
-          {absolute}
-          {/* suppressHydrationWarning does NOT cascade: the <time>'s own flag
+    <time dateTime={machine} className={className} suppressHydrationWarning>
+      {absolute}
+      {/* suppressHydrationWarning does NOT cascade: the <time>'s own flag
               cannot cover text inside this child, so the relative half — whose
               value moves with the real clock between server render and
               hydration — needs its own. Without it a minute boundary crossed
               in that gap is an uncaught React #418 that regenerates the whole
               tree client-side (seen in #2839's CI browser logs on the
               integrations surfaces, exactly where this component renders). */}
-          <span
-            className="text-slate-500 dark:text-slate-400"
-            suppressHydrationWarning
-          >
-            {" · "}
-            {relative}
-          </span>
-        </>
-      )}
+      <span
+        className="text-slate-500 dark:text-slate-400"
+        suppressHydrationWarning
+      >
+        {" · "}
+        {relative}
+      </span>
     </time>
   );
 }

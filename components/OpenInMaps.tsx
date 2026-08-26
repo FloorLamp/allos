@@ -28,7 +28,7 @@ export default function OpenInMaps({
       target="_blank"
       rel="noreferrer"
       data-testid="open-in-maps"
-      title={`${label} — opens your maps app`}
+      aria-label={`${label} — opens your maps app`}
       className={
         className ??
         "inline-flex items-center gap-1 text-brand-700 hover:underline dark:text-brand-300"

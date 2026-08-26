@@ -60,7 +60,7 @@ export default function DemotionSuggestionRow({
           disabled={pending}
           onClick={() => run(acceptAction)}
           data-testid="demotion-accept"
-          title={`Move ${finding.title} to May`}
+          aria-label={`Move ${finding.title} to May`}
           className="btn btn-sm"
         >
           Move to May
@@ -70,7 +70,7 @@ export default function DemotionSuggestionRow({
           disabled={pending}
           onClick={() => run(dismissAction)}
           data-testid="demotion-dismiss"
-          title="Keep the current obligation and hide this suggestion"
+          aria-label="Keep the current obligation and hide this suggestion"
           className="btn-ghost btn-sm"
         >
           Keep as is

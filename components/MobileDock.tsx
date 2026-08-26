@@ -173,7 +173,6 @@ export default function MobileDock({
           <button
             type="button"
             aria-label="Log"
-            title="Log"
             aria-expanded={logSheetOpen}
             data-testid="dock-log-puck"
             onClick={() => setLogSheetOpen(true)}

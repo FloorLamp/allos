@@ -8,6 +8,7 @@ import {
   practiceConsistencyText,
   type PracticeWeekVerdict,
 } from "@/lib/trends-practices";
+import VisualizationDetails from "@/components/VisualizationDetails";
 
 // One practice, one complete story (#2151): the fixed 26-week lens lives beside
 // the practice's affordances and history on /wellness. The card has no competing
@@ -44,13 +45,16 @@ function WeeksInRange({ practice }: { practice: PracticeTrend }) {
             key={week.start}
             data-testid="practice-week-cell"
             data-verdict={week.verdict}
-            title={weekCellTitle(week, weekly)}
             className={`h-4 w-4 rounded-xs ${VERDICT_CELL[week.verdict]}`}
           >
             <span className="sr-only">{weekCellTitle(week, weekly)}</span>
           </li>
         ))}
       </ol>
+      <VisualizationDetails
+        label={`${practice.name} weekly details`}
+        items={practice.weeks.map((week) => weekCellTitle(week, weekly))}
+      />
       <p
         className="mt-2 flex flex-wrap items-center gap-x-3 gap-y-1 text-xs text-slate-500 dark:text-slate-400"
         data-testid="practice-weeks-legend"

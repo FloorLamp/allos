@@ -121,7 +121,6 @@ export default function ConsistencyStrip({
                     ? chartSeries.amber
                     : chartSeries.violet,
                 }}
-                title={clockRange(n, timeFormat)}
                 data-testid="sleep-consistency-bar"
               />
             </span>

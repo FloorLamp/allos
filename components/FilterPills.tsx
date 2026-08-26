@@ -17,7 +17,6 @@ type FilterPillBaseOption<T extends FilterPillValue> = {
   value: T;
   label: string;
   content?: ReactNode;
-  title?: string;
   testId?: string;
 };
 
@@ -77,7 +76,6 @@ export default function FilterPills<T extends FilterPillValue>(
               href={o.href}
               current={active}
               linkBehavior={props.linkBehavior}
-              title={o.title}
               testId={o.testId ?? props.optionTestId?.(o.value)}
             >
               {o.content ?? o.label}
@@ -94,7 +92,6 @@ export default function FilterPills<T extends FilterPillValue>(
               pressed={active}
               accessibleLabel={o.content ? o.label : undefined}
               disabled={o.disabled}
-              title={o.title}
               testId={o.testId ?? props.optionTestId?.(o.value)}
               data={o.data}
               onClick={() => props.onSelect(o.value)}

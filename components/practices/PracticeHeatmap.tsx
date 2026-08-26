@@ -1,5 +1,6 @@
 import { chartActivityRamp } from "@/lib/chart-colors";
 import type { ProtocolHeatmap } from "@/lib/protocol-heatmap";
+import VisualizationDetails from "@/components/VisualizationDetails";
 
 const LEVEL_CLASS = [
   chartActivityRamp.emptyClass,
@@ -57,13 +58,6 @@ export default function PracticeHeatmap({
               {column.map((cell) => (
                 <span
                   key={cell.date}
-                  title={
-                    cell.outside
-                      ? undefined
-                      : `${cell.date} — ${cell.count} ${
-                          cell.count === 1 ? "session" : "sessions"
-                        }`
-                  }
                   data-date={cell.date}
                   data-count={cell.outside ? undefined : cell.count}
                   data-level={cell.outside ? undefined : cell.level}
@@ -83,6 +77,20 @@ export default function PracticeHeatmap({
           ? `Recent ${data.columns.length} weeks · ${summary}`
           : summary}
       </span>
+      <VisualizationDetails
+        label={`${label} daily details`}
+        items={data.columns.flatMap((column) =>
+          column.flatMap((cell) =>
+            cell.outside
+              ? []
+              : [
+                  `${cell.date} — ${cell.count} ${
+                    cell.count === 1 ? "session" : "sessions"
+                  }`,
+                ]
+          )
+        )}
+      />
     </div>
   );
 }

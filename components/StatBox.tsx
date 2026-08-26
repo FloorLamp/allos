@@ -2,6 +2,7 @@ import type { CSSProperties, ReactNode } from "react";
 import { goalBarClass } from "@/lib/outcome-goals";
 import { PendingTextLink } from "@/components/PendingLink";
 import type { AppRoute } from "@/lib/hrefs";
+import InfoTooltipIcon from "@/components/InfoTooltipIcon";
 
 // A labelled stat box: an uppercase label over a bold value, with optional
 // sub-text, link, label badge, and a goal-style progress bar.
@@ -61,9 +62,8 @@ export function StatBox({
         {badge}
       </dt>
       <dd
-        className="mt-0.5 font-semibold text-slate-800 dark:text-slate-100"
+        className="mt-0.5 flex items-center font-semibold text-slate-800 dark:text-slate-100"
         style={valueStyle}
-        title={valueTitle}
       >
         {href ? (
           // A raw <a> to an INTERNAL route was a full document load out of the
@@ -84,6 +84,7 @@ export function StatBox({
         ) : (
           value
         )}
+        {valueTitle ? <InfoTooltipIcon label={valueTitle} /> : null}
       </dd>
       {sub && (
         <dd

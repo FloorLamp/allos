@@ -24,7 +24,6 @@ export default function IntensityPicker({
             <button
               key={opt.value}
               type="button"
-              title={opt.hint}
               aria-pressed={active}
               onClick={() => onChange(active ? "" : opt.value)}
               className={`rounded-lg border px-2 py-2 text-sm font-medium transition ${
@@ -36,7 +35,10 @@ export default function IntensityPicker({
                     `bg-field ${opt.cls} hover:bg-slate-50 dark:hover:bg-ink-800`
               }`}
             >
-              {opt.label}
+              <span className="block">{opt.label}</span>
+              <span className="mt-0.5 block text-xs font-normal leading-tight opacity-80">
+                {opt.hint}
+              </span>
             </button>
           );
         })}

@@ -89,7 +89,6 @@ export default function BristolStoolPanel({
               data-count={d.count}
               role="img"
               aria-label={label}
-              title={label}
               className="flex min-w-0 flex-1 flex-col items-center gap-1"
             >
               <span className="text-xs tabular-nums text-slate-500 dark:text-slate-400">
@@ -128,7 +127,6 @@ export default function BristolStoolPanel({
               data-types={day.types.join(",") || undefined}
               role="img"
               aria-label={label}
-              title={label}
               className="relative min-w-0 flex-1"
               style={{ height: "3rem" }}
             >

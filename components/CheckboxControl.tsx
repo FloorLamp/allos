@@ -9,7 +9,6 @@ export interface CheckboxControlProps {
   onChange: (checked: boolean) => void;
   disabled?: boolean;
   indeterminate?: boolean;
-  title?: string;
   "data-testid"?: string;
 }
 
@@ -22,7 +21,6 @@ export default function CheckboxControl({
   onChange,
   disabled = false,
   indeterminate = false,
-  title,
   "data-testid": testId,
 }: CheckboxControlProps) {
   const inputRef = useRef<HTMLInputElement>(null);
@@ -44,7 +42,6 @@ export default function CheckboxControl({
         checked={checked}
         disabled={disabled}
         onChange={handleChange}
-        title={title}
         data-testid={testId}
         className="h-4 w-4 accent-brand-600"
       />

@@ -3,6 +3,7 @@ import CardSectionHeader from "@/components/CardSectionHeader";
 import { MedicalValue } from "@/components/ui";
 import { RECENT_LAB_STALE_LABEL, type RecentLabRow } from "@/lib/recent-labs";
 import { glanceAgeToken } from "@/lib/glance-age";
+import InfoTooltipIcon from "@/components/InfoTooltipIcon";
 
 // One latest clinical result, flattened for display by the page. Its selection
 // policy lives in lib/recent-labs (issue #313).
@@ -54,13 +55,15 @@ export default function RecentLabReadout({
               showFlagLabel
             />
           </span>
-          <span
-            data-testid="recent-lab-date"
-            data-stale={age.stale ? "true" : undefined}
-            title={age.title ?? undefined}
-            className={`w-12 shrink-0 whitespace-nowrap text-right text-xs sm:w-14 ${age.className}`}
-          >
-            {age.text}
+          <span className="ml-auto inline-flex shrink-0 items-center">
+            <span
+              data-testid="recent-lab-date"
+              data-stale={age.stale ? "true" : undefined}
+              className={`w-12 whitespace-nowrap text-right text-xs sm:w-14 ${age.className}`}
+            >
+              {age.text}
+            </span>
+            {age.title ? <InfoTooltipIcon label={age.title} /> : null}
           </span>
         </li>
       </ul>

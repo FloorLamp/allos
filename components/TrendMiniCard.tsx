@@ -58,7 +58,6 @@ import DelegatedCard from "./DelegatedCard";
 // robust endpoint, so the tile still names the current value.
 export default function TrendMiniCard({
   title,
-  mobileTitle,
   href,
   data,
   unit = "",
@@ -81,10 +80,6 @@ export default function TrendMiniCard({
   testid = "trend-mini-card",
 }: {
   title: string;
-  // Compact surfaces use the registry's short label on phones while retaining the
-  // full chart title on larger screens. Omitted for non-registry series such as
-  // biomarkers, where `title` is already the canonical display name.
-  mobileTitle?: string;
   href: AppRoute;
   data: { date: string; value: number | null }[];
   unit?: string;
@@ -196,17 +191,9 @@ export default function TrendMiniCard({
         <DelegatedCard.Header href={href} data-testid="trend-mini-header-link">
           <span
             // Same breakpoint swap, same fix as the full variant's title below.
-            className="truncate text-sm font-medium text-slate-500 group-hover:text-brand-700 group-hover:underline sm:wrap-break-word sm:whitespace-normal dark:text-slate-400 dark:group-hover:text-brand-300"
-            title={title}
+            className="wrap-break-word text-sm font-medium text-slate-500 group-hover:text-brand-700 group-hover:underline dark:text-slate-400 dark:group-hover:text-brand-300"
           >
-            {mobileTitle && mobileTitle !== title ? (
-              <>
-                <span className="sm:hidden">{mobileTitle}</span>
-                <span className="hidden sm:inline">{title}</span>
-              </>
-            ) : (
-              title
-            )}
+            {title}
           </span>
           <span className="truncate text-xs text-slate-500 dark:text-slate-400">
             No data in this range
@@ -282,41 +269,8 @@ export default function TrendMiniCard({
               : "sm:flex-row sm:items-baseline sm:justify-between sm:gap-3"
           } ${menu ? "" : "rounded-tr-xl"}`}
         >
-          <span
-            // `truncate` is the MOBILE contract (nowrap + ellipsis in a one-line
-            // box) and it reads correctly there. From `sm:` the title WRAPS
-            // instead — but `truncate`'s `overflow: hidden` comes along, and
-            // `sm:text-clip` took the ellipsis away, so a token wider than the
-            // line box was cut mid-glyph with nothing to signal the loss:
-            // `Lipoprotein(` for `Lipoprotein(a)`, `Trainir`/`Volum` for
-            // `Training Volume` (#2523). The `(a)` is the entire distinction
-            // between Lp(a) and ordinary lipoprotein, so that render is not
-            // truncation, it is a WRONG LABEL — and the box is narrowest on the
-            // tiles carrying the most value+delta context, which is backwards.
-            //
-            // `wrap-break-word` gives an unbreakable token break opportunities,
-            // so the whole name renders across lines and nothing is lost; the
-            // ellipsis stays behind it for anything that still cannot fit. NOT
-            // `wrap-anywhere`: `anywhere` collapses the title's min-content
-            // width to ~one glyph, so a wide value squeezed the flex title to a
-            // sliver and shredded "Traini/ng/Volu/me" one syllable per line
-            // (#2719 walkthrough). `break-word` alone is not enough: `min-w-0`
-            // (needed for the ellipsis path) lets flex shrink the title below
-            // its longest word, so the `sm:min-w-28` floor is what actually
-            // guarantees whole-word wrapping; the value's delta chip wraps
-            // beneath the number when the row runs tight. Below `sm:` this is
-            // inert — `white-space: nowrap` leaves nothing to wrap.
-            className="min-w-0 truncate group-hover:underline sm:min-w-28 sm:flex-1 sm:wrap-break-word sm:whitespace-normal sm:text-base sm:font-semibold"
-            title={title}
-          >
-            {mobileTitle && mobileTitle !== title ? (
-              <>
-                <span className="sm:hidden">{mobileTitle}</span>
-                <span className="hidden sm:inline">{title}</span>
-              </>
-            ) : (
-              title
-            )}
+          <span className="min-w-0 wrap-break-word group-hover:underline sm:min-w-28 sm:flex-1 sm:text-base sm:font-semibold">
+            {title}
           </span>
           {value}
         </Link>

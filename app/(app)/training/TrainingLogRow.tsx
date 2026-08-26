@@ -12,6 +12,7 @@ import {
 import { trainingActivityPageHref } from "@/lib/hrefs";
 import ActivityPartRows from "@/components/activity/ActivityPartRows";
 import ActivitySummaryLine from "@/components/activity/ActivitySummaryLine";
+import InfoTooltipIcon from "@/components/InfoTooltipIcon";
 
 const LOG_ROW_PART_LIMIT = 3;
 
@@ -74,18 +75,11 @@ function TrainingLogRow({
             {activity.title}
           </Link>
           {card.fault && (
-            <span
-              role="img"
-              // Deliberately avoids the word "saved": Playwright's getByLabel
-              // matches accessible names by case-insensitive SUBSTRING, and the
-              // autosave indicator's spec asserts `getByLabel("Saved")` has no
-              // matches after a failed save (#332). An accessible name is part
-              // of the page's contract with every reader, tests included.
-              aria-label={`Editor can’t re-save this as-is: ${card.fault}`}
-              title={card.fault}
-              data-testid="row-fault-dot"
-              className="h-1.5 w-1.5 shrink-0 rounded-full bg-amber-500"
-            />
+            <span data-testid="row-fault-dot">
+              <InfoTooltipIcon
+                label={`Editor can’t re-save this as-is: ${card.fault}`}
+              />
+            </span>
           )}
         </span>
         <ActivitySummaryLine

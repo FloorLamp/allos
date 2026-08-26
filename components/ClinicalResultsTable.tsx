@@ -151,7 +151,6 @@ function nameCell(r: {
       <Link
         href={clinicalResultDetailHref(r.canonical_name)}
         className="font-medium text-brand-700 hover:underline dark:text-brand-400"
-        title={`View ${r.canonical_name} over time`}
       >
         {r.canonical_name}
       </Link>
@@ -237,7 +236,6 @@ function PanelCell({
       <Td label="Panel" className="hidden md:table-cell">
         <Link
           href={href(id)}
-          title={reported ? `Reported under “${reported}”` : undefined}
           className="text-xs text-slate-500 hover:text-brand-700 hover:underline dark:text-slate-400 dark:hover:text-brand-400"
         >
           {panelLabel(id)}
@@ -530,7 +528,6 @@ function ClinicalResultRow({
             dir,
             current: current ? "1" : undefined,
           })}
-          title={`Filter by ${r.category}`}
           className="hover:opacity-80"
         >
           {r.category ? <Tag value={r.category} /> : null}

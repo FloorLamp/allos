@@ -412,7 +412,6 @@ export default function PortalsSurface({
               type="button"
               data-testid="patient-chip"
               aria-label={`Change profile for ${i.patientLabel}`}
-              title="Change profile"
               onClick={() => {
                 setRemapping(remapping === i.id ? null : i.id);
                 setRemapChoice(i.profileId);
@@ -628,7 +627,6 @@ export default function PortalsSurface({
                     type="button"
                     className={MENU_ITEM}
                     data-testid="pending-dismiss"
-                    title="Clear this prompt — it returns if the tool reports the patient again"
                     onClick={() => {
                       close();
                       const fd = new FormData();
@@ -641,14 +639,17 @@ export default function PortalsSurface({
                       );
                     }}
                   >
-                    Not now
+                    <span className="block">Not now</span>
+                    <span className="block text-xs font-normal opacity-80">
+                      Clears this prompt; it returns if the tool reports the
+                      patient again.
+                    </span>
                   </button>
                   {isAdmin && (
                     <button
                       type="button"
                       className={MENU_ITEM_DANGER}
                       data-testid="pending-ignore"
-                      title="Never sync this patient — they stay refused, and stop appearing here"
                       onClick={async () => {
                         close();
                         // Durable, so it confirms and the copy states the gate
@@ -671,7 +672,10 @@ export default function PortalsSurface({
                         );
                       }}
                     >
-                      Ignore
+                      <span className="block">Ignore</span>
+                      <span className="block text-xs font-normal opacity-80">
+                        Never sync this patient; future uploads stay refused.
+                      </span>
                     </button>
                   )}
                 </>
@@ -882,7 +886,6 @@ export default function PortalsSurface({
               className="btn-ghost shrink-0 text-xs"
               disabled={busy}
               data-testid="sync-request-ask"
-              title="Ask whoever runs the companion tool for this login to run it"
               onClick={() => {
                 const fd = new FormData();
                 fd.set("account_id", String(account.id));
@@ -894,7 +897,10 @@ export default function PortalsSurface({
                 );
               }}
             >
-              Request sync
+              <span className="block">Request sync</span>
+              <span className="block text-xs font-normal opacity-80">
+                Ask whoever runs the companion tool for this login to run it.
+              </span>
             </button>
           )
         )}

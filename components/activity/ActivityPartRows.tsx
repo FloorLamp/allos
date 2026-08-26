@@ -115,7 +115,6 @@ export default function ActivityPartRows({
               <Link
                 href={href}
                 className="text-left font-medium text-slate-800 hover:text-brand-600 dark:text-slate-100 dark:hover:text-brand-400"
-                title={`See ${part.name} progression`}
               >
                 {part.name}
               </Link>
@@ -134,7 +133,6 @@ export default function ActivityPartRows({
               {delta && (
                 <span
                   data-testid="exercise-vs-last"
-                  title={delta.title}
                   className={`whitespace-nowrap text-xs tabular-nums ${
                     delta.direction === "up"
                       ? "text-brand-600 dark:text-brand-400"
@@ -149,6 +147,7 @@ export default function ActivityPartRows({
                       ? "▼ "
                       : ""}
                   {delta.label}
+                  <InfoTooltipIcon label={delta.title} />
                 </span>
               )}
               {record && recordPresentation ? (
@@ -164,7 +163,6 @@ export default function ActivityPartRows({
                   </Link>
                   <InfoTooltipIcon
                     label={recordPresentation.help}
-                    className="-ml-0.5"
                     data-testid="exercise-pr-info"
                   />
                 </span>
@@ -174,7 +172,6 @@ export default function ActivityPartRows({
                   role="img"
                   aria-label={SET_STATUS_TITLES.met}
                   className="text-brand-600 dark:text-brand-400"
-                  title={SET_STATUS_TITLES.met}
                 >
                   <IconCheck className="h-4 w-4" stroke={2.5} />
                 </span>
@@ -184,7 +181,6 @@ export default function ActivityPartRows({
                   role="img"
                   aria-label={SET_STATUS_TITLES.missed}
                   className="text-amber-500 dark:text-amber-400"
-                  title={SET_STATUS_TITLES.missed}
                 >
                   <IconAlertTriangle className="h-4 w-4" stroke={2} />
                 </span>
@@ -197,7 +193,7 @@ export default function ActivityPartRows({
                     <button
                       type="button"
                       onClick={() => onFilterTag("muscle", part.muscle!)}
-                      title={`Show ${part.muscle} activities`}
+                      aria-label={`Show ${part.muscle} activities`}
                       className="relative z-10 shrink-0 text-xs text-slate-500 hover:text-brand-600 hover:underline dark:text-slate-400 dark:hover:text-brand-400"
                     >
                       {part.muscle}

@@ -360,18 +360,13 @@ describe("FoodLogBar projection publication", () => {
     };
     const view = mountBar({ profileId: 7, day: profileSeven });
     expect(screen.getByTestId("food-slot-total-midday").textContent).toBe("1");
-    expect(screen.getByTestId("count-cruciferous").getAttribute("title")).toBe(
-      "1 serving in Midday today"
-    );
+    expect(screen.getByTestId("count-cruciferous").textContent).toBe("1");
 
     view.rerender(barTree({ profileId: 8, day: profileEight }));
 
-    // Plain total/title derive directly from the provider projection, so this
+    // Plain totals derive directly from the provider projection, so this
     // proves subject reset independently of RollingNumber's visual lifecycle.
     expect(screen.getByTestId("food-slot-total-midday").textContent).toBe("9");
-    expect(screen.getByTestId("count-cruciferous").getAttribute("title")).toBe(
-      "9 servings in Midday today"
-    );
     expect(screen.getByTestId("count-cruciferous").textContent).toBe("9");
   });
 
@@ -452,9 +447,7 @@ describe("FoodLogBar projection publication", () => {
     await act(async () => {});
 
     expect(screen.getByTestId("food-slot-total-midday").textContent).toBe("9");
-    expect(screen.getByTestId("count-cruciferous").getAttribute("title")).toBe(
-      "9 servings in Midday today"
-    );
+    expect(screen.getByTestId("count-cruciferous").textContent).toBe("9");
     expect(screen.queryByText("Serving corrected.")).toBeNull();
     expect(screen.queryByTestId("toast")).toBeNull();
     expect(screen.queryByTestId("food-correct-save")).toBeNull();
@@ -625,9 +618,7 @@ describe("FoodLogBar projection publication", () => {
     await act(async () => add.resolve(outcome));
 
     expect(screen.getByTestId("food-slot-total-midday").textContent).toBe("5");
-    expect(screen.getByTestId("count-cruciferous").getAttribute("title")).toBe(
-      "5 servings in Midday today"
-    );
+    expect(screen.getByTestId("count-cruciferous").textContent).toBe("5");
     expect(screen.queryByText("Food interaction note.")).toBeNull();
     expect(screen.queryByTestId("toast")).toBeNull();
     expect(actions.readFoodServingTruth).not.toHaveBeenCalled();
@@ -683,9 +674,7 @@ describe("FoodLogBar projection publication", () => {
     await act(async () => add.resolve(outcome));
 
     expect(screen.getByTestId("food-slot-total-midday").textContent).toBe("2");
-    expect(screen.getByTestId("count-cruciferous").getAttribute("title")).toBe(
-      "2 servings in Midday today"
-    );
+    expect(screen.getByTestId("count-cruciferous").textContent).toBe("2");
     expect(
       screen.getByText(/Same-profile interaction note\./).textContent
     ).toContain("Keep this receipt after an ordinary remount.");
@@ -1339,13 +1328,10 @@ describe("FoodLogBar projection publication", () => {
     await act(async () => correction.resolve(outcome));
 
     // Both consumers read the same provider projection. The raw meal totals and
-    // the row's title prove it is already Morning=0/Evening=1 even though the
+    // row count prove it is already Morning=0/Evening=1 even though the
     // visual receipt's queued frame has deliberately not run.
     expect(screen.getByTestId("food-slot-total-morning").textContent).toBe("0");
     expect(screen.getByTestId("food-slot-total-evening").textContent).toBe("1");
-    expect(screen.getByTestId("count-cruciferous").getAttribute("title")).toBe(
-      "0 servings in Morning today"
-    );
     expect(screen.getByTestId("count-cruciferous").textContent).toBe("0");
     expect(frames).toHaveLength(1);
   });

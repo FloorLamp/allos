@@ -33,7 +33,6 @@ export default function SymptomSeverityControl({
           }
           aria-pressed={value === level.value}
           aria-label={`${symptomLabel} — severity ${level.value} of ${SYMPTOM_SEVERITY_LEVELS.length} (${level.label})`}
-          title={level.label}
           onClick={() => onChange(level.value)}
           className={`inline-flex h-11 w-11 shrink-0 items-center justify-center rounded text-xs font-semibold ${
             value >= level.value

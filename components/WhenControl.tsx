@@ -184,7 +184,6 @@ export default function WhenControl({
           className="input h-8 w-28 text-sm"
           id={`${testId}-time`}
           aria-label={timeLabel}
-          title={timeLabel}
           data-testid={`${testId}-time`}
         />
       ) : (
@@ -199,7 +198,6 @@ export default function WhenControl({
           className="input h-8 w-32 text-sm"
           id={`${testId}-time`}
           aria-label={timeLabel}
-          title={timeLabel}
           data-testid={`${testId}-time`}
         >
           {mode === "correct" ? (

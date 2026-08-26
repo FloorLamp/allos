@@ -64,7 +64,6 @@ function OutcomePanel({
               type="button"
               className="btn-ghost btn-sm h-8 w-8 p-0!"
               aria-label={`Remove ${o.label}`}
-              title="Remove outcome"
               onClick={onRemove}
             >
               <IconX className="h-4 w-4" stroke={2} aria-hidden />

@@ -947,11 +947,6 @@ export default async function ImportDetailPage(props: {
                             <Link
                               href={importTabHref(id, target.tabKey, f.label)}
                               data-testid="confidence-row-link"
-                              title={
-                                target.status === "row"
-                                  ? `Go to ${f.label} in the rows below`
-                                  : `Show the rows named ${f.label}`
-                              }
                               className="font-medium text-brand-700 hover:underline dark:text-brand-400"
                             >
                               {f.label}

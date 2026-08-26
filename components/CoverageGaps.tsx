@@ -286,7 +286,6 @@ function TrackedRow({
           disabled={pending}
           data-testid="untrack-gap"
           aria-label="Stop tracking"
-          title="Stop tracking"
           className="shrink-0 text-slate-300 hover:text-rose-500 disabled:opacity-50 dark:text-slate-600"
         >
           <IconX className="h-4 w-4" />
@@ -316,7 +315,7 @@ function TrackedRow({
               onClick={onEnrich}
               disabled={enriching}
               data-testid="enrich-gap"
-              title={`Generate via ${aiLabel}`}
+              aria-label={`Generate via ${aiLabel}`}
               className="btn-ghost inline-flex items-center gap-1 text-xs"
             >
               <IconSparkles className="h-3.5 w-3.5" />

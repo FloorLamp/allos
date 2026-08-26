@@ -277,7 +277,6 @@ export default function ProfileForm({
               // Derived (read-only) when a birthdate is set; editable otherwise.
               value={birthdate ? (derivedAge ?? "") : ageFallback}
               disabled={!!birthdate}
-              title={birthdate ? "Derived from the birthdate" : "Age in years"}
               onChange={(e) => {
                 const v = e.target.value;
                 setAgeFallback(v);

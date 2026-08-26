@@ -289,7 +289,6 @@ export default function CyclingOverviewDetails({
                   <div
                     key={month.month}
                     className="flex h-full min-w-0 flex-col items-center justify-end gap-1"
-                    title={description}
                     aria-label={description}
                   >
                     <span className="text-xs font-semibold tabular-nums text-slate-500 dark:text-slate-400">
@@ -470,7 +469,6 @@ export default function CyclingOverviewDetails({
                     width: `${zone.percent}%`,
                     backgroundColor: ZONE_COLORS[index],
                   }}
-                  title={`${zone.name}: ${zone.percent}%`}
                 />
               ) : null
             )}
@@ -572,7 +570,6 @@ export default function CyclingOverviewDetails({
                         backgroundColor:
                           ZONE_COLORS[index % ZONE_COLORS.length],
                       }}
-                      title={`Zone ${zone.zone}: ${zone.percent}%`}
                     />
                   ) : null
                 )}

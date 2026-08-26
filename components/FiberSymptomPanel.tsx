@@ -83,7 +83,6 @@ export default function FiberSymptomPanel({
               data-symptoms={day.symptoms.length || undefined}
               role="img"
               aria-label={label}
-              title={label}
               className="flex min-w-0 flex-1 flex-col items-center gap-0.5"
             >
               <div className="flex h-14 w-full items-end">

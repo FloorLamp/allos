@@ -4,6 +4,7 @@ import { strengthLevelLabel } from "@/lib/strength-standards";
 import type { StrengthLadderRow } from "@/lib/strength-ladder";
 import { fmtWeight } from "@/lib/units";
 import type { WeightUnit } from "@/lib/settings";
+import VisualizationDetails from "@/components/VisualizationDetails";
 
 const BANDS = [
   "Untrained",
@@ -63,7 +64,6 @@ export default function StrengthStandardsLadder({
                   {BANDS.map((band, index) => (
                     <span
                       key={band}
-                      title={band}
                       className={
                         [
                           "bg-slate-300 dark:bg-slate-700",
@@ -82,7 +82,6 @@ export default function StrengthStandardsLadder({
                   <span
                     className="absolute top-1/2 h-3 w-3 -translate-x-1/2 -translate-y-1/2 rounded-full border-2 border-slate-500 bg-white dark:bg-ink-900"
                     style={{ left: `${placement.priorPercent}%` }}
-                    title={`About 90 days ago: ${fmtWeight(placement.prior!.e1rmKg, weightUnit)}`}
                     data-testid="strength-ladder-prior"
                   />
                 )}
@@ -92,6 +91,17 @@ export default function StrengthStandardsLadder({
                   data-testid="strength-ladder-current"
                 />
               </div>
+              <VisualizationDetails
+                label={`${exercise} ladder details`}
+                items={[
+                  ...BANDS,
+                  ...(placement.prior
+                    ? [
+                        `About 90 days ago: ${fmtWeight(placement.prior.e1rmKg, weightUnit)}`,
+                      ]
+                    : []),
+                ]}
+              />
             </div>
           ))}
         </div>

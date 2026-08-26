@@ -2001,7 +2001,6 @@ export default function FoodLogBar({
               type="button"
               data-testid={`undo-${g.slug}`}
               aria-label={`Remove a ${g.name} serving from ${activeSlot}`}
-              title="Remove a serving"
               disabled={mealCount <= 0}
               onClick={() => void bump(g, -1)}
               className="tap-target flex h-8 w-8 items-center justify-center rounded-full text-slate-400 transition hover:bg-slate-100 disabled:opacity-30 dark:hover:bg-ink-800"
@@ -2010,7 +2009,6 @@ export default function FoodLogBar({
             </button>
             <span
               data-testid={`count-${g.slug}`}
-              title={`${mealCount} ${mealCount === 1 ? "serving" : "servings"} in ${activeSlot} ${activeDay.label.toLowerCase()}`}
               className={`w-5 text-center text-sm font-semibold tabular-nums ${
                 mealCount === 0
                   ? "text-slate-500 dark:text-slate-400"
@@ -2026,7 +2024,6 @@ export default function FoodLogBar({
               type="button"
               data-testid={`log-${g.slug}`}
               aria-label={`Add a ${g.name} serving to ${activeSlot}`}
-              title="Add a serving"
               onClick={() => void bump(g, 1)}
               className="group tap-target flex h-8 w-8 items-center justify-center rounded-full text-white"
             >
@@ -2255,7 +2252,6 @@ export default function FoodLogBar({
               aria-label={`Log your usual ${activeSlot}: ${namesPhrase(
                 usualGroups.map((g) => g.name)
               )}`}
-              title={`One tap logs the ${usualGroups.length} servings you log most ${activeSlot.toLowerCase()}s`}
               disabled={usualLedger.blocked()}
               onClick={() => void logUsual()}
               className="mb-2.5 flex w-full items-center gap-3 rounded-lg border border-brand-200 bg-brand-50/60 px-3 py-2 text-left transition hover:bg-brand-50 disabled:opacity-50 dark:border-brand-900 dark:bg-brand-950/40 dark:hover:bg-brand-950/60"
@@ -2312,7 +2308,6 @@ export default function FoodLogBar({
                   {
                     value: "__now",
                     label: "Now",
-                    title: "Record the servings you add as eaten now",
                     testId: "food-eating-now",
                   },
                   ...(earlierOpen
@@ -2330,7 +2325,7 @@ export default function FoodLogBar({
                   type="button"
                   data-testid="food-eating-earlier"
                   aria-expanded={earlierOpen}
-                  title="State an earlier time instead"
+                  aria-label="State an earlier time instead"
                   onClick={() => setEarlierOpen((open) => !open)}
                   className="btn-ghost"
                 >

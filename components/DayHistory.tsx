@@ -3,6 +3,7 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import Link from "next/link";
 import DestinationLink from "@/components/DestinationLink";
+import InfoTooltipIcon from "@/components/InfoTooltipIcon";
 import { chartActivityRamp, chartObservationRamp } from "@/lib/chart-colors";
 import {
   formatLongDate,
@@ -906,7 +907,6 @@ export default function DayHistory({
                 data={{ "data-group": g.key }}
                 pressed={isOn(g.key)}
                 accessibleLabel={g.label}
-                title={g.label}
                 onClick={() => toggle(g.key)}
               >
                 {g.foodSlug && (
@@ -1295,7 +1295,6 @@ export default function DayHistory({
                 <button
                   type="button"
                   aria-label={`Close ${bw.one} details`}
-                  title="Close"
                   onClick={() => setSelectedDay(null)}
                   className="text-slate-400 hover:text-slate-600 dark:hover:text-slate-300"
                 >
@@ -1325,10 +1324,16 @@ export default function DayHistory({
                       {/* The abbreviated form (#2858): this row is a truncating
                           half of a two-column line whose other half is the count
                           and its notes, so it is a dense label like the chips and
-                          the matrix gutter, not the record. The full label stays on
-                          the hover title. */}
-                      <span className="truncate" title={item.meta?.label}>
-                        {item.meta?.short ?? item.meta?.label ?? item.key}
+                          the matrix gutter, not the record. The shared disclosure
+                          beside it exposes the full label. */}
+                      <span className="inline-flex min-w-0 items-center">
+                        <span className="truncate">
+                          {item.meta?.short ?? item.meta?.label ?? item.key}
+                        </span>
+                        {item.meta?.label &&
+                        item.meta.label !== item.meta.short ? (
+                          <InfoTooltipIcon label={item.meta.label} />
+                        ) : null}
                       </span>
                     </span>
                     <span className={PANE_VALUE}>
@@ -1367,7 +1372,6 @@ export default function DayHistory({
               <button
                 type="button"
                 aria-label={`Close ${spec.groupOne} details`}
-                title="Close"
                 onClick={() => {
                   setSelectedRowKey(null);
                   setAutoSelectedRowKey(null);
@@ -1438,8 +1442,7 @@ export default function DayHistory({
             <span
               data-testid={detail ? "day-history-detail" : undefined}
               aria-live="polite"
-              title={detail ?? undefined}
-              className={`min-w-0 truncate text-xs ${
+              className={`min-w-0 wrap-break-word text-xs ${
                 detail
                   ? "text-slate-500 dark:text-slate-400"
                   : "font-semibold uppercase tracking-wide text-slate-600 dark:text-slate-300"
@@ -1594,7 +1597,6 @@ export default function DayHistory({
                           type="button"
                           data-testid="day-history-expand"
                           onClick={() => setExpanded(true)}
-                          title={row.foldedKeys.map(labelFor).join(", ")}
                           data-matrix-label
                           aria-label={`${row.label}; expand ${row.foldedKeys.map(labelFor).join(", ")}`}
                           className={`sticky left-0 z-2 flex w-24 shrink-0 cursor-pointer items-center justify-end gap-1 self-stretch px-3 text-xs font-medium text-brand-700 hover:font-semibold sm:w-28 dark:text-brand-400 ${MATRIX_LABEL_BG}`}
@@ -1617,7 +1619,6 @@ export default function DayHistory({
                           data-matrix-label
                           aria-label={rowSummary}
                           className={`sticky left-0 z-2 flex w-24 shrink-0 cursor-pointer items-center justify-end self-stretch px-3 text-xs text-slate-600 transition-colors hover:text-slate-900 sm:w-28 dark:text-slate-300 dark:hover:text-slate-100 ${MATRIX_LABEL_BG}`}
-                          title={row.label}
                           {...rowHoverProps}
                         >
                           <button

@@ -1,6 +1,7 @@
 import DestinationIndicator from "@/components/DestinationIndicator";
 import { PendingTextLink } from "@/components/PendingLink";
 import type { FitnessCheckModel } from "@/lib/fitness-check-model";
+import VisualizationDetails from "@/components/VisualizationDetails";
 
 export default function FitnessCheckStrip({
   model,
@@ -41,7 +42,6 @@ export default function FitnessCheckStrip({
               <span
                 key={result.key}
                 className={`h-2.5 w-2.5 rounded-full ${color}`}
-                title={`${result.label} — ${word}`}
                 aria-label={`${result.label} — ${word}`}
                 data-testid="fitness-freshness-dot"
                 data-state={state}
@@ -49,6 +49,19 @@ export default function FitnessCheckStrip({
             );
           })}
         </div>
+        <VisualizationDetails
+          label="Test details"
+          items={model.results.map((result) => {
+            const state = !result.measured ? "unmeasured" : result.freshness;
+            const word =
+              state === "current"
+                ? "current"
+                : state === "due"
+                  ? "retest due"
+                  : "not measured";
+            return `${result.label} — ${word}`;
+          })}
+        />
         <p className="text-sm text-slate-500 dark:text-slate-400">
           {model.coverage.fresh} of {model.coverage.total} current
           {retest > 0 ? ` · ${retest} due` : ""}

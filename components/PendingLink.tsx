@@ -173,7 +173,6 @@ export default function PendingLink({
   current = false,
   ariaCurrent,
   testId,
-  title,
   scroll,
   ariaExpanded,
   onClick,
@@ -188,7 +187,6 @@ export default function PendingLink({
   /** Exact current-state token for a registered navigation adapter. */
   ariaCurrent?: "page" | "true" | "location";
   testId?: string;
-  title?: string;
   /** Passed straight to `<Link>` — the timeline's filter links suppress scroll. */
   scroll?: boolean;
   /**
@@ -215,7 +213,6 @@ export default function PendingLink({
       aria-current={ariaCurrent ?? (current ? "page" : undefined)}
       aria-expanded={ariaExpanded}
       data-testid={testId}
-      title={title}
       scroll={scroll}
       className={className}
       onClick={(e) => {

@@ -148,7 +148,7 @@ export default function PhotoTimeline({
           <button
             key={p.id}
             type="button"
-            title={`${p.date} — set compare endpoint`}
+            aria-label={`${p.date} — set compare endpoint`}
             className={`shrink-0 overflow-hidden rounded-md border-2 ${
               i === bIdx
                 ? "border-brand-500"

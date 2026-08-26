@@ -27,7 +27,6 @@ export function DismissFindingButton({
         type="submit"
         data-testid="intake-finding-dismiss"
         label={label}
-        tooltip="Dismiss"
       >
         <IconX className="h-4 w-4" stroke={2} />
       </IconButton>

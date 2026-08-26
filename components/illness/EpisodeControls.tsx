@@ -108,7 +108,6 @@ export default function EpisodeControls({
         className="btn-ghost h-9 w-9 p-0"
         onClick={() => window.print()}
         aria-label="Print episode"
-        title="Print"
       >
         <IconPrinter className="h-4 w-4" stroke={1.75} />
       </button>
@@ -119,7 +118,6 @@ export default function EpisodeControls({
           className="btn-ghost h-9 w-9 p-0"
           onClick={() => setShareOpen(true)}
           aria-label="Share episode"
-          title="Share"
         >
           <IconShare className="h-4 w-4" stroke={1.75} />
         </button>

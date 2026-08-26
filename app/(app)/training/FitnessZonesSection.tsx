@@ -95,7 +95,6 @@ export default async function FitnessZonesSection({
                 key={b.intensity}
                 className={INTENSITY_COLOR[b.intensity] ?? "bg-slate-400"}
                 style={{ width: `${(b.minutes / mixTotal) * 100}%` }}
-                title={`${b.intensity}: ${formatMinutes(b.minutes)}`}
               />
             ))}
           </div>

@@ -514,7 +514,6 @@ export default function BottomSheet({
               // up the glyph is the same "✕" as every other card and only its
               // name differs, which is the accurate word for abandoning a search.
               aria-label={asFullScreen ? "Cancel" : "Close"}
-              title={asFullScreen ? "Cancel" : "Close"}
               data-testid={`${testId}-close`}
             >
               {asFullScreen && (

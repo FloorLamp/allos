@@ -100,7 +100,6 @@ export default function FoodGuidance({
                 type="submit"
                 data-testid="food-guidance-dismiss"
                 label={`Dismiss ${hit.food} guidance for ${name}`}
-                tooltip="Dismiss"
                 tone="amber"
               >
                 <IconX className="h-3 w-3" stroke={2} />

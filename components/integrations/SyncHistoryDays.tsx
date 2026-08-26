@@ -3,12 +3,13 @@
 import { useState } from "react";
 import { IconChevronDown, IconChevronRight } from "@tabler/icons-react";
 import { useFormatPrefs } from "@/components/FormatPrefsProvider";
+import InfoTooltipIcon from "@/components/InfoTooltipIcon";
 import {
   loadSyncHistoryPage,
   loadSyncHistoryRuns,
 } from "@/app/(app)/integrations/sync-actions";
 import { daysBetweenDateStr } from "@/lib/date";
-import { formatMonthDay } from "@/lib/format-date";
+import { formatMonthDay, formatTimestampDisplay } from "@/lib/format-date";
 import type { IntegrationId } from "@/lib/types";
 import type {
   SyncDayEntryView,
@@ -37,6 +38,29 @@ function LatestBadge() {
       data-testid="sync-history-latest"
     >
       Latest
+    </span>
+  );
+}
+
+function SyncTimestampRange({
+  oldestAt,
+  newestAt,
+  timeZone,
+}: {
+  oldestAt: string;
+  newestAt: string;
+  timeZone: string;
+}) {
+  const prefs = useFormatPrefs();
+  const oldest = formatTimestampDisplay(oldestAt, prefs, { timeZone });
+  const newest = formatTimestampDisplay(newestAt, prefs, { timeZone });
+  return (
+    <span className="whitespace-nowrap">
+      <time>{oldest?.clock ?? oldestAt}</time> –{" "}
+      <time>{newest?.clock ?? newestAt}</time>
+      <InfoTooltipIcon
+        label={`${oldest?.absolute ?? oldestAt} – ${newest?.absolute ?? newestAt}`}
+      />
     </span>
   );
 }
@@ -193,10 +217,12 @@ function RangeLine({
       data-testid="sync-history-range"
     >
       <div className={LEDGER_GRID}>
-        <span className="whitespace-nowrap text-xs tabular-nums">
-          <SyncTimestamp value={entry.oldestAt} clockOnly timeZone={timeZone} />{" "}
-          –{" "}
-          <SyncTimestamp value={entry.newestAt} clockOnly timeZone={timeZone} />
+        <span className="text-xs tabular-nums">
+          <SyncTimestampRange
+            oldestAt={entry.oldestAt}
+            newestAt={entry.newestAt}
+            timeZone={timeZone}
+          />
         </span>
         <span className="text-xs font-medium uppercase tracking-wide">
           Routine
@@ -286,19 +312,11 @@ function RepeatRunLine({
     <li className="px-3 py-3" data-testid={style.testId}>
       <div className={LEDGER_GRID}>
         <div className="flex items-center gap-1.5 whitespace-nowrap text-xs tabular-nums text-slate-500 dark:text-slate-400">
-          <span>
-            <SyncTimestamp
-              value={entry.oldestAt}
-              clockOnly
-              timeZone={timeZone}
-            />{" "}
-            –{" "}
-            <SyncTimestamp
-              value={entry.newestAt}
-              clockOnly
-              timeZone={timeZone}
-            />
-          </span>
+          <SyncTimestampRange
+            oldestAt={entry.oldestAt}
+            newestAt={entry.newestAt}
+            timeZone={timeZone}
+          />
           {entry.isLatest && <LatestBadge />}
         </div>
         <span className={`text-sm font-medium ${style.tone}`}>

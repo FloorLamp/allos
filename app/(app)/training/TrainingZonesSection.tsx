@@ -9,6 +9,7 @@ import ZoneMinutesCard, {
 import ChartCard from "@/components/ChartCard";
 import { getProfileAge } from "@/lib/settings";
 import { isLongevityRelevant } from "@/lib/life-stage";
+import VisualizationDetails from "@/components/VisualizationDetails";
 
 // The bpm range label for a zone id (1..5): "[lower]–[nextLower−1] bpm", open at
 // the top for Zone 5.
@@ -104,16 +105,21 @@ export default async function TrainingZonesSection({
                         width: `${data.split.easyPct}%`,
                         backgroundColor: ZONE_COLORS[1],
                       }}
-                      title={`Easy (Z1–Z2): ${data.split.easyMin} min`}
                     />
                     <div
                       style={{
                         width: `${data.split.hardPct}%`,
                         backgroundColor: ZONE_COLORS[3],
                       }}
-                      title={`Hard (Z3–Z5): ${data.split.hardMin} min`}
                     />
                   </div>
+                  <VisualizationDetails
+                    label="Split details"
+                    items={[
+                      `Easy (Z1–Z2): ${data.split.easyMin} min`,
+                      `Hard (Z3–Z5): ${data.split.hardMin} min`,
+                    ]}
+                  />
                   <p className="mt-1 text-xs text-slate-500 dark:text-slate-400">
                     Easy = at/below the aerobic threshold (Zones 1–2); hard =
                     above it (Zones 3–5). A polarized base keeps ~80% easy.

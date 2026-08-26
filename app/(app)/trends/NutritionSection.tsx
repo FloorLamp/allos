@@ -34,6 +34,7 @@ import { EmptyState } from "@/components/ui";
 import StackedBarCard from "@/components/StackedBarCard";
 import ChartCard from "@/components/ChartCard";
 import DayHistory from "@/components/DayHistory";
+import VisualizationDetails from "@/components/VisualizationDetails";
 
 // Trends → Nutrition (issue #1166): the OVER-TIME nutrition view. `/nutrition` keeps the
 // log + today's adequacy + the raw servings rollup; this tab is the trend layer, re-homing
@@ -367,11 +368,6 @@ export default async function NutritionSection({
                 data-testid="adherence-week"
                 data-rate={w.rate == null ? "" : w.rate.toFixed(2)}
                 className="flex flex-col items-center gap-1"
-                title={`${w.label} · ${
-                  w.rate == null
-                    ? "no goal tracked"
-                    : `${w.met} of ${w.applicable} goals met`
-                }`}
               >
                 <span
                   className={`h-8 w-6 rounded-xs ${adherenceCellClass(w)}`}
@@ -387,6 +383,17 @@ export default async function NutritionSection({
                 </span>
               </div>
             ))}
+            <VisualizationDetails
+              label="Weekly details"
+              items={adherence.map(
+                (week) =>
+                  `${week.label} · ${
+                    week.rate == null
+                      ? "no goal tracked"
+                      : `${week.met} of ${week.applicable} goals met`
+                  }`
+              )}
+            />
           </div>
         )}
       </div>

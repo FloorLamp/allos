@@ -1,6 +1,7 @@
 "use client";
 
 import { IconRefresh, IconX } from "@tabler/icons-react";
+import InfoTooltipIcon from "@/components/InfoTooltipIcon";
 import {
   BOTTOM_EDGE_GUTTER_LEFT,
   BOTTOM_EDGE_NOTICE_BOTTOM,
@@ -57,13 +58,15 @@ export default function UpdateReadyBar({
           Update ready
         </p>
         {commitMessage && (
-          <p
-            className="line-clamp-2 text-xs text-slate-600 dark:text-slate-300"
-            data-testid="update-ready-commit"
-            title={commitMessage}
-          >
-            {commitMessage}
-          </p>
+          <div className="flex items-center">
+            <p
+              className="line-clamp-2 text-xs text-slate-600 dark:text-slate-300"
+              data-testid="update-ready-commit"
+            >
+              {commitMessage}
+            </p>
+            <InfoTooltipIcon label={commitMessage} />
+          </div>
         )}
         <p className="text-xs text-slate-500 dark:text-slate-400">
           {unsavedWork
@@ -83,7 +86,6 @@ export default function UpdateReadyBar({
         type="button"
         onClick={onDismiss}
         aria-label="Dismiss the update notice"
-        title="Dismiss"
         className="shrink-0 rounded-sm p-1 text-slate-400 transition hover:bg-slate-100 hover:text-slate-600 dark:hover:bg-ink-750 dark:hover:text-slate-300"
         data-testid="update-ready-dismiss"
       >

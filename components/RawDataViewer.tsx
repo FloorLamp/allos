@@ -447,7 +447,7 @@ export default function RawDataViewer({
           type="button"
           onClick={() => downloadText(text, download.filename, download.mime)}
           data-testid="raw-download"
-          title={download.filename}
+          aria-label={`Download ${download.filename}`}
           className="btn-ghost inline-flex items-center gap-1 text-xs"
         >
           <IconDownload className="h-3.5 w-3.5" /> {download.label}

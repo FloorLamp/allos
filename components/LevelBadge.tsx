@@ -70,7 +70,7 @@ export default function LevelBadge({
           e.stopPropagation(); // don't trigger an enclosing row's onClick
           setOpen(true);
         }}
-        title="See strength standards"
+        aria-label={`${label} — see strength standards`}
         className={`inline-flex items-center gap-1 text-sm font-semibold transition hover:opacity-70 ${color} ${
           className ?? ""
         }`}

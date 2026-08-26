@@ -61,7 +61,7 @@ export default function CreatedShareLink(props: CreatedShareLinkProps) {
           data-testid={valueTestId}
           className="input min-w-0 font-mono text-xs"
         />
-        <Button onClick={copy} aria-label="Copy link" title="Copy link">
+        <Button onClick={copy} aria-label="Copy link">
           {status === "Link copied." ? (
             <IconCheck className="h-4 w-4" stroke={1.75} />
           ) : (

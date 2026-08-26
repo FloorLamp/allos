@@ -612,7 +612,6 @@ export default function StrengthSets({
         // Pointer affordance only — keep it out of the weight→reps tab order (#336).
         tabIndex={-1}
         onClick={() => onPlateTarget(si, field)}
-        tooltip="Plate builder"
         label="Open plate builder"
       >
         <IconBarbell className="h-4 w-4" />
@@ -695,9 +694,6 @@ export default function StrengthSets({
         onChange={(e) => onChange(e.target.value)}
         placeholder="m:ss"
         aria-invalid={invalid || undefined}
-        title={
-          invalid ? "Enter time as m:ss or seconds, e.g. 1:30 or 90" : undefined
-        }
         className={`input ${
           invalid
             ? "border-rose-300 dark:border-rose-800"
@@ -791,7 +787,6 @@ export default function StrengthSets({
             role="filter"
             density="dense"
             onClick={() => onUpdatePart({ equipmentId: null })}
-            title="Use the default equipment"
             pressed={p.equipmentId == null}
           >
             {defaultEq}
@@ -899,7 +894,7 @@ export default function StrengthSets({
                       type="button"
                       data-testid="recent-session-fill"
                       onClick={() => onFillFromSession(sess.sets)}
-                      title="Fill the set editor with this session"
+                      aria-label="Fill the set editor with this session"
                       className="-mx-1 flex w-full items-center justify-between gap-3 rounded-sm px-1 py-0.5 text-left text-slate-600 transition hover:bg-brand-50 hover:text-brand-700 dark:text-slate-300 dark:hover:bg-brand-950/40 dark:hover:text-brand-300"
                     >
                       {dateEl}
@@ -943,7 +938,7 @@ export default function StrengthSets({
               <button
                 type="button"
                 onClick={() => onApplySuggestion(suggestion)}
-                title="Fill this into a set"
+                aria-label="Fill this into a set"
                 className="rounded-md border border-brand-300 px-2 py-0.5 font-medium text-brand-600 transition hover:bg-brand-500 hover:text-white dark:border-brand-800 dark:text-brand-400 dark:hover:bg-brand-600 dark:hover:text-white"
               >
                 Use
@@ -992,7 +987,7 @@ export default function StrengthSets({
                 onClick={() =>
                   onApplyPerSideSuggestion(suggestionLeft, suggestionRight)
                 }
-                title="Fill both sides into a set"
+                aria-label="Fill both sides into a set"
                 className="rounded-md border border-brand-300 px-2 py-0.5 font-medium text-brand-600 transition hover:bg-brand-500 hover:text-white dark:border-brand-800 dark:text-brand-400 dark:hover:bg-brand-600 dark:hover:text-white"
               >
                 Use
@@ -1026,7 +1021,6 @@ export default function StrengthSets({
             onClick={() => dismissPlateau(plateauHint.dedupeKey)}
             data-testid="plateau-hint-dismiss"
             label="Dismiss plateau hint"
-            tooltip="Dismiss"
           >
             <IconX className="h-3.5 w-3.5" stroke={2} />
           </IconButton>
@@ -1612,11 +1606,6 @@ export default function StrengthSets({
                       onClick={() => onUpdateSet(si, { warmup: !s.warmup })}
                       aria-pressed={s.warmup}
                       data-testid={si === 0 ? "set1-warmup" : undefined}
-                      title={
-                        s.warmup
-                          ? "Warmup set — excluded from volume & target markers"
-                          : "Mark as a warmup set"
-                      }
                       aria-label={
                         s.warmup ? "Unmark warmup set" : "Mark warmup set"
                       }
@@ -1635,7 +1624,6 @@ export default function StrengthSets({
                         data-testid={`set-remove-${si + 1}`}
                         className="flex h-11 w-11 shrink-0 items-center justify-center rounded-sm text-rose-400 hover:bg-rose-50 hover:text-rose-600 sm:mt-1 sm:h-8 sm:w-8 dark:text-rose-500/80 dark:hover:bg-rose-950/40 dark:hover:text-rose-400"
                         aria-label="Remove set"
-                        title="Remove set"
                       >
                         <IconX className="h-4 w-4" />
                       </button>
@@ -1672,7 +1660,7 @@ export default function StrengthSets({
             type="button"
             onClick={() => onAddSet()}
             disabled={!canAddSet}
-            title={
+            aria-label={
               canAddSet
                 ? "Add another set"
                 : timed
@@ -1689,6 +1677,15 @@ export default function StrengthSets({
           >
             + Add set
           </button>
+        )}
+        {!canAddSet && (
+          <span className="text-xs text-slate-500 dark:text-slate-400">
+            {timed
+              ? "Enter a hold time first."
+              : isBodyweight(p.name)
+                ? "Enter reps first."
+                : "Enter weight and reps first."}
+          </span>
         )}
         <span className="ml-auto flex items-center gap-3">
           {targetStatus && (

@@ -367,7 +367,6 @@ export default function LogPracticeButton({
               disabled={pending || ledger.pending() || duration === ""}
               className={`${DOSE_ACTION_LABEL} ${DOSE_ACTION_NEUTRAL} px-1.5`}
               aria-label={`Shorten the ${practice} session by ${PRACTICE_DURATION_STEP_MIN} minutes`}
-              title={`−${PRACTICE_DURATION_STEP_MIN} min`}
               data-testid="practice-duration-down"
             >
               <IconMinus className="h-3.5 w-3.5" stroke={2.5} aria-hidden />
@@ -390,7 +389,6 @@ export default function LogPracticeButton({
               disabled={pending || ledger.pending()}
               className={`${DOSE_ACTION_LABEL} ${DOSE_ACTION_NEUTRAL} px-1.5`}
               aria-label={`Lengthen the ${practice} session by ${PRACTICE_DURATION_STEP_MIN} minutes`}
-              title={`+${PRACTICE_DURATION_STEP_MIN} min`}
               data-testid="practice-duration-up"
             >
               <IconPlus className="h-3.5 w-3.5" stroke={2.5} aria-hidden />
@@ -404,9 +402,9 @@ export default function LogPracticeButton({
           data-testid="practice-log-button"
           // Layer 2 (#1893's doctrine): the affordance renders today's state, so the
           // second tap of a day is visibly a SECOND one before it is taken. The
-          // count itself is on the line beside it — the title carries the whole
-          // sentence for a pointer, and the label stays short enough for a phone.
-          title={
+          // count itself is on the line beside it; the accessible name composes the
+          // whole sentence while the visible label stays short enough for a phone.
+          aria-label={
             count === 0
               ? `Log a ${practice} session for today`
               : `Log another ${practice} session — ${count} already logged today`
@@ -425,7 +423,6 @@ export default function LogPracticeButton({
             disabled={pending}
             className={`${DOSE_ACTION_LABEL} ${DOSE_ACTION_NEUTRAL}`}
             aria-label="Log with details"
-            title="Log with details"
             data-testid="practice-log-details-trigger"
           >
             <IconClock className="h-4 w-4" stroke={2} aria-hidden />

@@ -1,4 +1,6 @@
 import DestinationLink from "@/components/DestinationLink";
+import DestinationIndicator from "@/components/DestinationIndicator";
+import OverlayDestination from "@/components/OverlayDestination";
 import type { IntegrationId } from "@/lib/types/integrations";
 import { integrationDetailHref } from "@/lib/hrefs";
 import { getIntegration } from "@/lib/integrations/registry";
@@ -232,19 +234,20 @@ function HealthyRow({ source }: { source: ConnectedSource }) {
       </span>
     </>
   );
+  const surface = (
+    <div className="flex flex-wrap items-center justify-between gap-2 rounded-lg border border-black/5 px-3 py-2 transition group-hover:border-brand-300 dark:border-white/5 dark:group-hover:border-brand-800">
+      {body}
+      {href ? <DestinationIndicator /> : null}
+    </div>
+  );
   return (
     <li data-testid={`source-${source.id}`}>
       {href ? (
-        <DestinationLink
-          href={href}
-          className="flex flex-wrap items-center justify-between gap-2 rounded-lg border border-black/5 px-3 py-2 transition hover:border-brand-300 dark:border-white/5 dark:hover:border-brand-800"
-        >
-          {body}
-        </DestinationLink>
+        <OverlayDestination href={href} label={`Open ${source.name} settings`}>
+          {surface}
+        </OverlayDestination>
       ) : (
-        <div className="flex flex-wrap items-center justify-between gap-2 rounded-lg border border-black/5 px-3 py-2 dark:border-white/5">
-          {body}
-        </div>
+        surface
       )}
     </li>
   );

@@ -152,7 +152,6 @@ export default function DoseHistoryPanel({
             onClick={() => setAdding((value) => !value)}
             className="btn-ghost btn-sm"
             disabled={!!backfillDisabledReason}
-            title={backfillDisabledReason}
             aria-expanded={adding}
             data-testid="dose-history-add"
           >
@@ -160,6 +159,11 @@ export default function DoseHistoryPanel({
           </button>
         ) : null}
       </div>
+      {canWrite && backfillDisabledReason ? (
+        <p className="mb-1 text-xs text-slate-500 dark:text-slate-400">
+          {backfillDisabledReason}
+        </p>
+      ) : null}
       {note ? (
         <p className="mb-1 text-xs text-slate-500 dark:text-slate-400">
           {note}

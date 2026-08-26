@@ -67,7 +67,6 @@ function buildColumns(
                   <Link
                     href={medicationHref(hit.medId)}
                     className="font-medium underline decoration-rose-400/60 underline-offset-2 hover:decoration-rose-500"
-                    title={drugAllergyMatchLabel(hit)}
                     data-testid={`allergy-contra-${hit.dedupeKey}`}
                   >
                     {hit.medName}

@@ -197,7 +197,6 @@ export default function ActivityOverlay({
               onClick={minimizeRunningWorkout}
               data-testid="minimize-workout"
               aria-label="Minimize workout"
-              title="Minimize workout"
               className={OVERLAY_DRAG_HANDLE_HIT}
             >
               <span className={OVERLAY_DRAG_HANDLE_BAR} />

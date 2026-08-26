@@ -2,6 +2,7 @@
 
 import { useActionState, useState } from "react";
 import SubmitButton from "@/components/SubmitButton";
+import InfoTooltipIcon from "@/components/InfoTooltipIcon";
 import type { SessionSummary } from "@/lib/auth";
 import { deviceLabel } from "@/lib/user-agent-label";
 import {
@@ -102,12 +103,11 @@ export default function ActiveSessions({
             >
               <div className="min-w-0 space-y-1">
                 <div className="flex flex-wrap items-center gap-2">
-                  <span
-                    className="text-sm font-medium text-slate-800 dark:text-slate-100"
-                    title={s.userAgent ?? undefined}
-                    data-testid="session-device"
-                  >
-                    {device.label}
+                  <span className="inline-flex items-center text-sm font-medium text-slate-800 dark:text-slate-100">
+                    <span data-testid="session-device">{device.label}</span>
+                    {s.userAgent ? (
+                      <InfoTooltipIcon label={s.userAgent} />
+                    ) : null}
                   </span>
                   {s.current && (
                     <span className="badge shrink-0 bg-brand-100 text-brand-700 dark:bg-brand-950 dark:text-brand-300">

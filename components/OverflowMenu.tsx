@@ -162,7 +162,6 @@ export default function OverflowMenu({
           else onOpenChange(true);
         }}
         aria-label={label}
-        title={label}
         aria-haspopup="menu"
         data-testid="overflow-menu-trigger"
         // ≥44px EFFECTIVE hit box (#644, one number ruled on #3514): a 16px glyph

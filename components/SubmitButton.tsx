@@ -14,7 +14,6 @@ type SubmitButtonProps = {
   "aria-label"?: NativeButtonProps["aria-label"];
   "data-testid"?: string;
   name?: NativeButtonProps["name"];
-  title?: NativeButtonProps["title"];
   value?: NativeButtonProps["value"];
 };
 
@@ -33,7 +32,6 @@ export default function SubmitButton({
   "aria-label": ariaLabel,
   "data-testid": testId,
   name,
-  title,
   value,
 }: SubmitButtonProps) {
   const { pending } = useFormStatus();
@@ -76,7 +74,6 @@ export default function SubmitButton({
       className={className}
       data-testid={testId}
       name={name}
-      title={title}
       value={value}
     >
       {pending ? (
