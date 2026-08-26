@@ -32,20 +32,12 @@ export interface FitnessWindow {
   allTime: boolean;
 }
 
-// The widest heatmap a window may draw: ~12 months (53 columns is a hair over a
-// year, so a trailing 12 months is always fully visible). All time CAPS here —
-// unchanged from the pre-#1492 grid — rather than growing without bound.
-export const MAX_FITNESS_WEEKS = 53;
-// The narrowest: below about a month of columns the weekly charts have too few
-// bars to read as a trend, so a very short window still draws a month of context.
-export const MIN_FITNESS_WEEKS = 4;
-
 // This lens's week-column caps. Only the CAPS are the lens's own decision; the
 // anchor rule that turns a DateRange into a window belongs to `lensWindow` and is
 // shared with every other lens on the hub (#2043).
-export const FITNESS_WEEK_CAPS: LensWeekCaps = {
-  minWeeks: MIN_FITNESS_WEEKS,
-  maxWeeks: MAX_FITNESS_WEEKS,
+const FITNESS_WEEK_CAPS: LensWeekCaps = {
+  minWeeks: 4,
+  maxWeeks: 53,
 };
 
 // Resolve the hub's DateRange into the concrete window every Fitness builder reads.

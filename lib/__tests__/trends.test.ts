@@ -7,11 +7,7 @@ import {
   outOfWindowLatest,
   rangeSummaryLabel,
 } from "../trends";
-import {
-  MAX_FITNESS_WEEKS,
-  MIN_FITNESS_WEEKS,
-  fitnessWindow,
-} from "../trends-fitness";
+import { fitnessWindow } from "../trends-fitness";
 import {
   MAX_PRACTICE_TREND_WEEKS,
   MIN_PRACTICE_TREND_WEEKS,
@@ -358,7 +354,7 @@ describe("outOfWindowAgeLabel", () => {
 
 describe("lensWindow", () => {
   const TODAY = "2026-03-15";
-  const FITNESS = { minWeeks: MIN_FITNESS_WEEKS, maxWeeks: MAX_FITNESS_WEEKS };
+  const FITNESS = { minWeeks: 4, maxWeeks: 53 };
   const PRACTICE = {
     minWeeks: MIN_PRACTICE_TREND_WEEKS,
     maxWeeks: MAX_PRACTICE_TREND_WEEKS,
@@ -370,7 +366,7 @@ describe("lensWindow", () => {
       to: TODAY,
       days: null,
       allTime: true,
-      weeks: MAX_FITNESS_WEEKS,
+      weeks: 53,
     });
   });
 
@@ -395,7 +391,7 @@ describe("lensWindow", () => {
 
   it("still applies each lens's OWN week cap — those stay per-lens decisions", () => {
     const allTime = lensWindow({}, TODAY, FITNESS);
-    expect(allTime.weeks).toBe(MAX_FITNESS_WEEKS);
+    expect(allTime.weeks).toBe(53);
     expect(lensWindow({}, TODAY, PRACTICE).weeks).toBe(
       MAX_PRACTICE_TREND_WEEKS
     );
@@ -410,7 +406,7 @@ describe("lensWindow", () => {
   it("floors a very short window and rounds a partial week up", () => {
     expect(
       lensWindow({ from: TODAY, to: TODAY }, TODAY, FITNESS)
-    ).toMatchObject({ days: 1, weeks: MIN_FITNESS_WEEKS });
+    ).toMatchObject({ days: 1, weeks: 4 });
     expect(clampLensWeeks(30, FITNESS)).toBe(5);
     expect(clampLensWeeks(36, FITNESS)).toBe(6);
   });

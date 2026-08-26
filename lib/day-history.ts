@@ -50,7 +50,7 @@ export type DayHistoryLevel = 0 | 1 | 2 | 3 | 4;
 export type DayHistoryGrain = "day" | "week";
 
 // The most week cells a week-grain history renders — the trailing-12-months
-// convention already shared with `MAX_FITNESS_WEEKS`.
+// convention already shared with `fitnessWindowWeeks`.
 export const MAX_HISTORY_WEEK_COLUMNS = 53;
 
 // The most week COLUMNS of day cells a history renders before it re-grains.
