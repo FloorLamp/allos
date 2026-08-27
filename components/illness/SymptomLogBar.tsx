@@ -42,6 +42,8 @@ import {
 } from "../../app/(app)/symptom-actions";
 import type { SymptomTextMapping } from "@/lib/symptom-text-map";
 import SymptomSeverityControl from "@/components/illness/SymptomSeverityControl";
+import Button from "@/components/Button";
+import IconButton from "@/components/IconButton";
 
 // One-tap symptom logger (issue #799/#857), modeled on the FoodLogBar one-tap pattern:
 // optimistic local severities, a Server Action per tap, and reconciliation to the
@@ -684,14 +686,13 @@ export default function SymptomLogBar({
                   maxLength={500}
                   className="input h-8 flex-1 text-sm"
                 />
-                <button
+                <Button
                   type="submit"
                   data-testid="symptom-text-suggest"
                   disabled={intakePending || intakeText.trim() === ""}
-                  className="badge cursor-pointer bg-brand-600 text-white hover:bg-brand-700 disabled:opacity-50"
                 >
                   {intakePending ? "Reading…" : "Suggest"}
-                </button>
+                </Button>
               </form>
               <p className="mt-1 text-xs text-slate-500 dark:text-slate-400">
                 Review the suggestions and confirm — nothing is logged until you
@@ -735,14 +736,13 @@ export default function SymptomLogBar({
                             setStagedSeverity(idx, severity)
                           }
                         />
-                        <button
+                        <IconButton
                           type="button"
-                          aria-label={`Remove ${s.label} suggestion`}
+                          label={`Remove ${s.label} suggestion`}
                           onClick={() => dropStaged(idx)}
-                          className="rounded-sm p-1 text-slate-400 hover:text-slate-600 dark:hover:text-slate-200"
                         >
                           <IconX className="h-3.5 w-3.5" />
-                        </button>
+                        </IconButton>
                       </div>
                     </div>
                   ))}
@@ -762,21 +762,20 @@ export default function SymptomLogBar({
                       <span className="min-w-0 flex-1 truncate">
                         Couldn&apos;t map: “{u}”
                       </span>
-                      <button
+                      <Button
                         type="button"
                         onClick={() => {
                           void tap(u, 1);
                           dropUnmapped(idx);
                         }}
-                        className="btn-ghost btn-sm border-dashed"
                       >
                         + Add as custom
-                      </button>
+                      </Button>
                     </div>
                   ))}
 
                   <div className="flex items-center gap-2 pt-1">
-                    <button
+                    <Button
                       type="button"
                       data-testid="symptom-text-confirm"
                       disabled={
@@ -785,18 +784,16 @@ export default function SymptomLogBar({
                           !intakeStaged.temperature)
                       }
                       onClick={() => void confirmIntake()}
-                      className="badge cursor-pointer bg-brand-600 text-white hover:bg-brand-700 disabled:opacity-50"
                     >
                       {intakePending ? "Logging…" : "Confirm & log"}
-                    </button>
-                    <button
+                    </Button>
+                    <Button
                       type="button"
                       data-testid="symptom-text-cancel"
                       onClick={() => setIntakeStaged(null)}
-                      className="badge cursor-pointer bg-slate-100 text-slate-600 hover:bg-slate-200 dark:bg-ink-800 dark:text-slate-300"
                     >
                       Cancel
-                    </button>
+                    </Button>
                   </div>
                 </div>
               )}
@@ -808,16 +805,15 @@ export default function SymptomLogBar({
               const r = rowMap.get(key);
               if (!r) return null;
               return (
-                <button
+                <Button
                   key={key}
                   type="button"
                   data-testid={`symptom-pick-${key}`}
                   onClick={() => void tap(key, 1)}
-                  className="badge cursor-pointer bg-slate-100 text-slate-600 hover:bg-brand-50 hover:text-brand-700 dark:bg-ink-800 dark:text-slate-300 dark:hover:bg-brand-950 dark:hover:text-brand-300"
                 >
                   {r.icon && <span aria-hidden>{r.icon} </span>}
                   {r.label}
-                </button>
+                </Button>
               );
             })}
           </div>
@@ -846,14 +842,13 @@ export default function SymptomLogBar({
                 inputClassName="h-8 text-sm"
               />
             </div>
-            <button
+            <IconButton
               type="submit"
               data-testid="symptom-custom-add"
-              aria-label="Add symptom"
-              className="btn-ghost h-8 w-8 p-0"
+              label="Add symptom"
             >
               <IconPlus className="h-3.5 w-3.5" />
-            </button>
+            </IconButton>
           </form>
         </div>
       )}
@@ -1004,7 +999,7 @@ export default function SymptomLogBar({
                     {r.icon && <span aria-hidden>{r.icon}</span>}
                     <span className="truncate">{r.label}</span>
                   </span>
-                  <div className="flex items-center gap-1">
+                  <div className="flex flex-wrap items-center gap-1">
                     <SymptomSeverityControl
                       symptomLabel={r.label}
                       value={sev}
@@ -1014,11 +1009,12 @@ export default function SymptomLogBar({
                         else void tap(key, severity);
                       }}
                     />
-                    <button
+                    <IconButton
                       type="button"
                       data-testid={`symptom-${key}-note-toggle`}
-                      aria-label={`${note ? "Edit" : "Add"} note for ${r.label}`}
-                      aria-pressed={editingNote}
+                      label={`${note ? "Edit" : "Add"} note for ${r.label}`}
+                      pressed={editingNote}
+                      tone={note ? "brand" : "neutral"}
                       onClick={() => {
                         if (editingNote) setNoteEditing(null);
                         else {
@@ -1026,24 +1022,18 @@ export default function SymptomLogBar({
                           setNoteEditing(key);
                         }
                       }}
-                      className={`ml-1 rounded p-1 hover:text-slate-600 dark:hover:text-slate-200 ${
-                        note
-                          ? "text-brand-600 dark:text-brand-400"
-                          : "text-slate-400"
-                      }`}
                     >
                       <IconNote className="h-3.5 w-3.5" />
-                    </button>
-                    <button
+                    </IconButton>
+                    <IconButton
                       type="button"
                       data-testid={`symptom-${key}-clear`}
-                      aria-label={`Clear ${r.label}`}
+                      label={`Clear ${r.label}`}
                       disabled={sev <= 0}
                       onClick={() => clear(key)}
-                      className="rounded-sm p-1 text-slate-400 hover:text-slate-600 disabled:opacity-30 dark:hover:text-slate-200"
                     >
                       <IconX className="h-3.5 w-3.5" />
-                    </button>
+                    </IconButton>
                   </div>
                 </div>
 
@@ -1069,13 +1059,12 @@ export default function SymptomLogBar({
                       maxLength={500}
                       className="input h-8 flex-1 text-sm"
                     />
-                    <button
+                    <Button
                       type="submit"
                       data-testid={`symptom-${key}-note-save`}
-                      className="btn-ghost btn-sm"
                     >
                       Save
-                    </button>
+                    </Button>
                   </form>
                 )}
 

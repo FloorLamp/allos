@@ -117,6 +117,29 @@ function BrandedCheckbox({
   );
 }
 
+// Weight and reps share one symmetric control; stepReps keeps #1524's zero clamp.
+function StepperButton({
+  direction,
+  label,
+  onClick,
+}: {
+  direction: -1 | 1;
+  label: string;
+  onClick: () => void;
+}) {
+  return (
+    <button
+      type="button"
+      tabIndex={-1}
+      onClick={onClick}
+      aria-label={label}
+      className="flex h-11 w-11 shrink-0 items-center justify-center text-sm font-semibold text-slate-500 hover:bg-slate-100 hover:text-brand-600 sm:h-9 sm:w-7 dark:text-slate-400 dark:hover:bg-ink-800 dark:hover:text-brand-400"
+    >
+      {direction === -1 ? "−" : "+"}
+    </button>
+  );
+}
+
 // A compact, optional per-set RPE selector (issue #743): −/value/+ in half-point
 // steps over the 5–10 scale, BLANK by default (logging RPE is never required).
 // Stepping down off the floor clears it back to blank; stepping up from blank
@@ -1248,6 +1271,14 @@ export default function StrengthSets({
                       const sideR = isRight ? s.repsRight : s.reps;
                       const sideD = isRight ? s.durationRight : s.duration;
                       const flags = sideFlags(sideW, sideR, sideD);
+                      const stepSideWeight = (direction: -1 | 1) =>
+                        stepWeight(
+                          si,
+                          isRight ? "weightRight" : "weight",
+                          direction * weightStep
+                        );
+                      const stepSideReps = (direction: -1 | 1) =>
+                        stepReps(si, isRight ? "repsRight" : "reps", direction);
                       return (
                         <div key={sideIdx} className="flex items-center gap-2">
                           <span className="w-4 shrink-0 text-xs font-semibold text-slate-500 dark:text-slate-400">
@@ -1262,21 +1293,11 @@ export default function StrengthSets({
                                   : "border-black/10 dark:border-white/10"
                               }`}
                             >
-                              <button
-                                type="button"
-                                tabIndex={-1}
-                                onClick={() =>
-                                  stepWeight(
-                                    si,
-                                    isRight ? "weightRight" : "weight",
-                                    -weightStep
-                                  )
-                                }
-                                aria-label="Decrease weight"
-                                className="flex h-9 w-7 shrink-0 items-center justify-center text-sm font-semibold text-slate-500 hover:bg-slate-100 hover:text-brand-600 dark:text-slate-400 dark:hover:bg-ink-800 dark:hover:text-brand-400"
-                              >
-                                −
-                              </button>
+                              <StepperButton
+                                direction={-1}
+                                onClick={() => stepSideWeight(-1)}
+                                label="Decrease weight"
+                              />
                               <input
                                 type="number"
                                 step="0.5"
@@ -1300,21 +1321,11 @@ export default function StrengthSets({
                                 placeholder={units.weightUnit}
                                 className="number-no-spinner min-w-0 w-full border-x border-y-0 border-black/10 bg-transparent px-2 py-2 text-sm outline-hidden focus:ring-0 dark:border-white/10 dark:text-slate-100 dark:placeholder:text-slate-500"
                               />
-                              <button
-                                type="button"
-                                tabIndex={-1}
-                                onClick={() =>
-                                  stepWeight(
-                                    si,
-                                    isRight ? "weightRight" : "weight",
-                                    weightStep
-                                  )
-                                }
-                                aria-label="Increase weight"
-                                className="flex h-9 w-7 shrink-0 items-center justify-center text-sm font-semibold text-slate-500 hover:bg-slate-100 hover:text-brand-600 dark:text-slate-400 dark:hover:bg-ink-800 dark:hover:text-brand-400"
-                              >
-                                +
-                              </button>
+                              <StepperButton
+                                direction={1}
+                                onClick={() => stepSideWeight(1)}
+                                label="Increase weight"
+                              />
                             </div>
                           ) : (
                             <input
@@ -1355,21 +1366,11 @@ export default function StrengthSets({
                                   : "border-black/10 dark:border-white/10"
                               }`}
                             >
-                              <button
-                                type="button"
-                                tabIndex={-1}
-                                onClick={() =>
-                                  stepReps(
-                                    si,
-                                    isRight ? "repsRight" : "reps",
-                                    -1
-                                  )
-                                }
-                                aria-label="Decrease reps"
-                                className="flex h-9 w-7 shrink-0 items-center justify-center text-sm font-semibold text-slate-500 hover:bg-slate-100 hover:text-brand-600 dark:text-slate-400 dark:hover:bg-ink-800 dark:hover:text-brand-400"
-                              >
-                                −
-                              </button>
+                              <StepperButton
+                                direction={-1}
+                                onClick={() => stepSideReps(-1)}
+                                label="Decrease reps"
+                              />
                               {effortInput(
                                 sideR,
                                 (v) =>
@@ -1382,21 +1383,11 @@ export default function StrengthSets({
                                 canAddSet ? onAddSet : undefined,
                                 true
                               )}
-                              <button
-                                type="button"
-                                tabIndex={-1}
-                                onClick={() =>
-                                  stepReps(
-                                    si,
-                                    isRight ? "repsRight" : "reps",
-                                    1
-                                  )
-                                }
-                                aria-label="Add a rep"
-                                className="flex h-9 w-7 shrink-0 items-center justify-center text-sm font-semibold text-slate-500 hover:bg-slate-100 hover:text-brand-600 dark:text-slate-400 dark:hover:bg-ink-800 dark:hover:text-brand-400"
-                              >
-                                +
-                              </button>
+                              <StepperButton
+                                direction={1}
+                                onClick={() => stepSideReps(1)}
+                                label="Add a rep"
+                              />
                             </div>
                           ) : (
                             effortInput(
@@ -1433,15 +1424,11 @@ export default function StrengthSets({
                             : "border-black/10 dark:border-white/10"
                         }`}
                       >
-                        <button
-                          type="button"
-                          tabIndex={-1}
+                        <StepperButton
+                          direction={-1}
                           onClick={() => stepWeight(si, "weight", -weightStep)}
-                          aria-label="Decrease weight"
-                          className="flex h-9 w-7 shrink-0 items-center justify-center text-sm font-semibold text-slate-500 hover:bg-slate-100 hover:text-brand-600 dark:text-slate-400 dark:hover:bg-ink-800 dark:hover:text-brand-400"
-                        >
-                          −
-                        </button>
+                          label="Decrease weight"
+                        />
                         <input
                           type="number"
                           step="0.5"
@@ -1467,15 +1454,11 @@ export default function StrengthSets({
                           }
                           className="number-no-spinner min-w-0 w-full border-x border-y-0 border-black/10 bg-transparent px-2 py-2 text-sm outline-hidden focus:ring-0 dark:border-white/10 dark:text-slate-100 dark:placeholder:text-slate-500"
                         />
-                        <button
-                          type="button"
-                          tabIndex={-1}
+                        <StepperButton
+                          direction={1}
                           onClick={() => stepWeight(si, "weight", weightStep)}
-                          aria-label="Increase weight"
-                          className="flex h-9 w-7 shrink-0 items-center justify-center text-sm font-semibold text-slate-500 hover:bg-slate-100 hover:text-brand-600 dark:text-slate-400 dark:hover:bg-ink-800 dark:hover:text-brand-400"
-                        >
-                          +
-                        </button>
+                          label="Increase weight"
+                        />
                       </div>
                     ) : (
                       <input
@@ -1519,20 +1502,11 @@ export default function StrengthSets({
                             : "border-black/10 dark:border-white/10"
                         }`}
                       >
-                        {/* Reps steps −/+ symmetrically with weight and RPE (#1524):
-                        the decrement was simply missing, so a mis-tapped rep count
-                        could only be fixed by editing the field by hand. Same
-                        h-9 w-7 tap target the row's other steppers use (#337);
-                        stepReps clamps at 0. */}
-                        <button
-                          type="button"
-                          tabIndex={-1}
+                        <StepperButton
+                          direction={-1}
                           onClick={() => stepReps(si, "reps", -1)}
-                          aria-label="Decrease reps"
-                          className="flex h-9 w-7 shrink-0 items-center justify-center text-sm font-semibold text-slate-500 hover:bg-slate-100 hover:text-brand-600 dark:text-slate-400 dark:hover:bg-ink-800 dark:hover:text-brand-400"
-                        >
-                          −
-                        </button>
+                          label="Decrease reps"
+                        />
                         {effortInput(
                           s.reps,
                           (v) => onUpdateSet(si, { reps: v }),
@@ -1542,15 +1516,11 @@ export default function StrengthSets({
                           true,
                           `set${si + 1}-reps`
                         )}
-                        <button
-                          type="button"
-                          tabIndex={-1}
+                        <StepperButton
+                          direction={1}
                           onClick={() => stepReps(si, "reps", 1)}
-                          aria-label="Add a rep"
-                          className="flex h-9 w-7 shrink-0 items-center justify-center text-sm font-semibold text-slate-500 hover:bg-slate-100 hover:text-brand-600 dark:text-slate-400 dark:hover:bg-ink-800 dark:hover:text-brand-400"
-                        >
-                          +
-                        </button>
+                          label="Add a rep"
+                        />
                       </div>
                     ) : (
                       effortInput(
