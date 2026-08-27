@@ -14,12 +14,23 @@
 // STRONGER than a token that named the sets: a same-day replay can never write more
 // than was offered, and a stale offer can never write more than still stands.
 //
+// ── AN OFFER'S IDENTITY IS ITS CONTENT, NOT ITS ALLOCATION (#3282) ───────────
+//
+// `mintOffer` is get-or-create: the same bundle offered twice to the same profile on
+// the same day is ONE row, and the second mint is a read. Every tenant inherits this,
+// so a tenant that mints from a RENDER is safe — its token does not move when nothing
+// about the offer moved. Two consequences worth knowing before adding a third tenant:
+// a payload must be built deterministically (fixed key order, deterministic member
+// order) or it will not match itself, and an offer id is not a per-mint receipt, so
+// nothing may use one to count how many times a button was rendered.
+//
 // ── EXPIRY IS THE DAY ROLLOVER, AND NOTHING ELSE ─────────────────────────────
 //
 // `date` is the subject's local day at mint time, exactly as `notify_messages.date`
-// is, and `readOffer` refuses a row whose day is not the day asked for. That is the
-// same rule that retires yesterday's keyboards, so an offer cannot outlive the message
-// carrying it. `pruneNotifyOffers` then reclaims the rows on the reconcile sweep.
+// is, and `readOffer` refuses a row whose day is not the day asked for — the same rule
+// that retires yesterday's keyboards. A tenant whose payload is dated by the SCHEDULE
+// rather than by the offer reads `readOfferRow` and judges the day itself; see the note
+// there. `pruneNotifyOffers` reclaims the rows on the reconcile sweep either way.
 //
 // Profile-scoped: every statement names `profile_id`, and a read for the wrong profile
 // answers null rather than another profile's bundle.
@@ -70,28 +81,45 @@ export function mintOffer(
   });
 }
 
-// The bundle an offer id names, or null when there is no such offer FOR THIS PROFILE,
-// IN THIS FAMILY, ON THIS DAY. All four are the same refusal on purpose: the caller's
-// answer is the honest "this is out of date" either way, and distinguishing them would
-// tell a forged token whether an id exists.
+// The bundle an offer id names AND the day it was minted for, or null when there is no
+// such offer for this profile in this family. Both refusals are the same on purpose:
+// distinguishing them would tell a forged token whether an id exists.
+//
+// THE DAY IS RETURNED, NOT MATCHED, because the tenants judge it differently. `usual:`
+// expires at the rollover — its food half is a claim about today. `stacktake:` names
+// doses whose day the SCHEDULE assigned before the message was sent, so it rides the
+// same ±DOSE_LOG_DATE_WINDOW_DAYS window every dose button uses. Matching here would
+// have imposed one answer on both.
+export function readOfferRow<T>(
+  profileId: number,
+  family: OfferFamily,
+  offerId: number
+): { payload: T; date: string } | null {
+  const row = db
+    .prepare(
+      `SELECT payload, date FROM notify_offers
+        WHERE id = ? AND profile_id = ? AND family = ?`
+    )
+    .get(offerId, profileId, family) as
+    { payload: string; date: string } | undefined;
+  if (!row) return null;
+  try {
+    return { payload: JSON.parse(row.payload) as T, date: row.date };
+  } catch {
+    return null;
+  }
+}
+
+// The same read, refused unless the offer is FOR THIS DAY — the day-rollover expiry
+// `usual:` was built with (#2460).
 export function readOffer<T>(
   profileId: number,
   family: OfferFamily,
   offerId: number,
   date: string
 ): T | null {
-  const row = db
-    .prepare(
-      `SELECT payload FROM notify_offers
-        WHERE id = ? AND profile_id = ? AND family = ? AND date = ?`
-    )
-    .get(offerId, profileId, family, date) as { payload: string } | undefined;
-  if (!row) return null;
-  try {
-    return JSON.parse(row.payload) as T;
-  } catch {
-    return null;
-  }
+  const row = readOfferRow<T>(profileId, family, offerId);
+  return row?.date === date ? row.payload : null;
 }
 
 // The retention sweep, run beside `pruneMessagePointers` on every reconcile pass —

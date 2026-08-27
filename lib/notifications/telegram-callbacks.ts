@@ -158,7 +158,7 @@ import {
   collectWindowDoses,
   renderDoseSession,
   slotSessionForKeyboard,
-  stackOfferDoseIds,
+  standingStackOffer,
   withDoseCorrections,
 } from "./intake";
 import {
@@ -1236,10 +1236,11 @@ async function handleAllTaken(
 // profile chain besides); a dose meanwhile resolved is left alone; a second tap finds
 // an empty intersection and answers nothing-to-log rather than confirming.
 //
-// NO DATE CROSSES THE WIRE. `today(profileId)` is resolved here, and the offer row is
-// read scoped by profile, family and that day — so a forged id, another profile's
-// offer and one minted before the rollover are the same single refusal, and this path
-// cannot backfill.
+// NO DATE CROSSES THE WIRE, AND THE DAY IS STILL THE SESSION'S. The day comes off the
+// stored offer, gated by the same ±2-day predicate `markDoseTaken` applies, so this
+// path cannot backfill AND a reminder tapped after midnight still confirms the day it
+// was sent for — the property the `take:` and `all:` buttons beside it have, and which
+// RECONCILE_DATE_GUARD["intake-dose"] rules is not optional.
 async function handleStackTaken(
   cq: TelegramCallbackQuery,
   token: OfferCallback
@@ -1255,12 +1256,12 @@ async function handleStackTaken(
     });
     return;
   }
-  const date = today(profileId);
-  const offered = stackOfferDoseIds(profileId, token.offerId, date);
-  if (!offered) {
+  const offer = standingStackOffer(profileId, token.offerId, today(profileId));
+  if (!offer) {
     await answerCallbackQuery(cq.id, OUTDATED_MESSAGE_TEXT, { alert: true });
     return;
   }
+  const { doseIds: offered, date } = offer;
 
   // Re-derive the day's notifiable dose session from CURRENT state, across every
   // send slot — the offer deliberately carries no slot, and a dose lives in exactly

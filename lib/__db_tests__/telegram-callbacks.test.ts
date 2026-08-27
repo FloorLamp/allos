@@ -27,6 +27,7 @@ import { refillSignalKey } from "@/lib/refill-nudge";
 import { escalationMarkerKey } from "@/lib/notifications/escalate";
 import { handleCallbackQuery } from "@/lib/notifications/telegram-callbacks";
 import { stackOfferToken } from "@/lib/notifications/intake";
+import { DOSE_LOG_DATE_WINDOW_DAYS } from "@/lib/dose-log-window";
 import {
   answerCallbackQuery,
   editMessageTextRaw,
@@ -797,26 +798,33 @@ describe("stacktake writes only the listed-and-still-pending intersection (#3098
     expect(lastAnswerText()).toBe(OUTDATED_MESSAGE_TEXT);
   });
 
-  // NO OFFER, NO WRITE (#3282). Four ways a token can name nothing this profile is
-  // owed today, and all four are the SAME refusal on purpose — distinguishing them
-  // would tell a forged token whether an offer id exists. The last is the migration's
-  // own case: a `stacktake:` button minted before this shipped spells its ids inline,
-  // so it does not even parse, and the dispatcher's unknown-token fallback answers it.
+  // NO OFFER, NO WRITE (#3282), and the refusal must be SEEN. Four ways a token can
+  // name nothing this profile may write, all answered with the same text so a forged
+  // token cannot learn whether an offer id exists — but not all with the same urgency.
+  // A refusal `handleStackTaken` speaks gets `alert: true`, the intake safety tier's
+  // modal (telegram-api.ts: a Desktop toast "fades on its own and is easy to miss
+  // entirely"). The retired ids-in-token shape does NOT reach the handler — it fails
+  // the 3-field parse and lands on the dispatcher's bare unknown-token answer — so it
+  // is a toast. Recorded as a row rather than smoothed over: it lasts one reminder
+  // cycle, and the alternative is a parser that recognises the old shape.
   it.each([
     [
       "an offer id that was never minted",
+      true,
       () => `stacktake:${sp.profileId}:99999`,
     ],
     [
-      "an offer minted before the day rolled over",
+      "an offer older than the dose-log window",
+      true,
       () =>
         stackOfferToken(
           sp.profileId,
-          shiftDateStr(today(sp.profileId), -1)
+          shiftDateStr(today(sp.profileId), -(DOSE_LOG_DATE_WINDOW_DAYS + 1))
         )([doseA, doseB]),
     ],
     [
       "another profile's offer",
+      true,
       () =>
         stackOfferToken(
           other.profileId,
@@ -825,10 +833,11 @@ describe("stacktake writes only the listed-and-still-pending intersection (#3098
     ],
     [
       "a pre-#3282 ids-in-token button still on the phone",
+      false,
       () =>
         `stacktake:${sp.profileId}:${today(sp.profileId)}:${doseA},${doseB}`,
     ],
-  ])("writes nothing for %s", async (_why, mkToken) => {
+  ])("writes nothing for %s", async (_why, alerts, mkToken) => {
     const date = today(sp.profileId);
     db.prepare(`DELETE FROM intake_item_logs WHERE dose_id IN (?, ?)`).run(
       doseA,
@@ -838,7 +847,31 @@ describe("stacktake writes only the listed-and-still-pending intersection (#3098
     expect(logsFor(doseA, date)).toEqual([]);
     expect(logsFor(doseB, date)).toEqual([]);
     expect(lastAnswerText()).toBe(OUTDATED_MESSAGE_TEXT);
+    expect(answerMock.mock.calls.at(-1)?.[2]?.alert).toBe(alerts || undefined);
   });
+
+  // THE DAY IS THE SESSION'S, NOT THE TAP'S (#3282 fix). A dose's day is assigned by
+  // the schedule before the message is sent, so a reminder sent at 21:00 and tapped at
+  // 00:05 confirms the day it was sent for — the `take:` and `all:` buttons beside it
+  // already do, through the same ±DOSE_LOG_DATE_WINDOW_DAYS predicate, and
+  // RECONCILE_DATE_GUARD["intake-dose"] rules that deleting the button at midnight was
+  // pure loss. This dies the moment the handler scopes the offer to `today` instead.
+  it.each([0, -1, -DOSE_LOG_DATE_WINDOW_DAYS])(
+    "logs to the offer's own day, %s days back",
+    async (shift) => {
+      const day = shiftDateStr(today(sp.profileId), shift);
+      db.prepare(`DELETE FROM intake_item_logs WHERE dose_id IN (?, ?)`).run(
+        doseA,
+        doseB
+      );
+      await handleCallbackQuery(
+        cq(stackOfferToken(sp.profileId, day)([doseA, doseB]), STACK_CHAT)
+      );
+      expect(logsFor(doseA, day).map((r) => r.status)).toEqual(["taken"]);
+      expect(logsFor(doseB, day).map((r) => r.status)).toEqual(["taken"]);
+      expect(lastAnswerText()).toBe("Logged ✅");
+    }
+  );
 });
 
 // ---- Bulk dose-tap hardening (#3120) ---------------------------------------

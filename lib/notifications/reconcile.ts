@@ -83,7 +83,7 @@ import {
   collectWindowDoses,
   renderDoseSession,
   slotSessionForKeyboard,
-  stackOfferDoseIds,
+  standingStackOffer,
   withDoseCorrections,
 } from "./intake";
 import { type IntakeSendSlot } from "./intake-format";
@@ -457,8 +457,12 @@ const intakeDose: FamilyReconciler = {
         // resolved — the same ledger the tap handler intersects with. An offer that no
         // longer stands at all is dead too, which is also how a pre-#3282 token (its
         // ids spelled inline, so its offer id does not parse) leaves a live keyboard.
-        const ids = stackOfferDoseIds(profileId, Number(f[2]), p.date);
-        if (!ids || ids.every((id) => resolvedFor(p.date).has(id))) dead.add(t);
+        const offer = standingStackOffer(profileId, Number(f[2]), p.date);
+        if (
+          !offer ||
+          offer.doseIds.every((id) => resolvedFor(offer.date).has(id))
+        )
+          dead.add(t);
       } else if (f[0] === "usual") {
         // The composed one-tap (#2460) is HOST-INHERITED: it elects no family, so
         // whichever family owns the message it rides decides when it dies — and both

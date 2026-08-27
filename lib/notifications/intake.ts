@@ -48,7 +48,8 @@ import {
 } from "./intake-format";
 import { preWorkoutSlotMinute } from "./schedule";
 import { offerCallback } from "./callback-data";
-import { mintOffer, readOffer } from "./offer-store";
+import { mintOffer, readOfferRow } from "./offer-store";
+import { isDoseDateAccepted } from "../dose-log-window";
 import type { NotificationMessage } from "./types";
 import { isOnDemand } from "../intake-schedule";
 import { demotionCandidateItemIds } from "../rule-findings";
@@ -409,18 +410,30 @@ export function stackOfferToken(
     );
 }
 
-// The dose ids a stack offer named, or null for anything that is not this profile's
-// offer on this day. That single refusal is also what a pre-#3282 button becomes: its
+// The stack a token names, and the DAY its doses belong to — or null for anything that
+// is not this profile's stack offer, or whose day is outside the window `markDoseTaken`
+// itself accepts. That single refusal is also what a pre-#3282 button becomes: its
 // ids-in-token shape has no offer id to read.
-export function stackOfferDoseIds(
+//
+// THE DAY IS THE OFFER'S, NOT `today`. A dose's day is a fact the SCHEDULE established
+// before the message was sent, so a reminder sent at 21:00 and tapped at 00:05 still
+// confirms the day it was sent for — exactly as the `take:` and `all:` buttons beside
+// it do, through the same predicate they gate on. Scoping this to `today` instead
+// deleted the button at midnight while its neighbours kept working, which
+// RECONCILE_DATE_GUARD["intake-dose"] already calls pure loss.
+export function standingStackOffer(
   profileId: number,
   offerId: number,
-  date: string
-): number[] | null {
-  return (
-    readOffer<StoredStackOffer>(profileId, STACK_OFFER_FAMILY, offerId, date)
-      ?.doseIds ?? null
+  todayStr: string
+): { doseIds: number[]; date: string } | null {
+  const row = readOfferRow<StoredStackOffer>(
+    profileId,
+    STACK_OFFER_FAMILY,
+    offerId
   );
+  return row && isDoseDateAccepted(todayStr, row.date)
+    ? { doseIds: row.payload.doseIds, date: row.date }
+    : null;
 }
 
 // The dose-session message every send and every rebuild renders — the one place stack
