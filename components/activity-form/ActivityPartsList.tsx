@@ -254,7 +254,6 @@ export default function ActivityPartsList({
                         : "Add another activity…"
                     }
                     autoFocus={pi === 0 && !isEdit}
-                    inputClassName=""
                     // A committed custom part isn't "unrecognized" — its
                     // pending type shows as amber chips, not a red border.
                     invalid={p.name.trim() !== "" && !valid && !p.custom}
