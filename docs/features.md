@@ -902,6 +902,14 @@ different questions, so they no longer wear the same name. Both compute through
 one shared helper whose window basis and today-inclusion are declared per
 caller.
 
+**A partial day is not compared to whole ones.** The Steps-today card used to
+print a percentage against that baseline from the first minute of the day, so it
+opened every morning at −100% and climbed until bedtime — one unchanged day read
+−73% at midday and −47% that evening. The percentage now waits until the
+profile-local day is materially complete and the card shows the neutral
+prior-7-day average until then. Completed days are untouched: yesterday's
+comparison, and the full-day comparisons on the recap and Trends, are unchanged.
+
 **Day one is the one exception, and it says so.** On the day of a first-ever
 reading there is no complete day to average, and the Rolling summary used to read
 "No readings" all day — exactly when someone is checking whether their entry
@@ -1324,7 +1332,14 @@ question "am I meeting my target this week?" is asked over, and the surfaces say
 "this week". The dashboard's Nutrition card says "7-day average" and now shows
 one: a trailing seven **calendar** days of complete days, through the same shared
 helper the other trailing averages use. Days without a log stay unknown rather
-than counting as zero. This
+than counting as zero. **The dashboard's protein line is a number and a goal.**
+It read "≥ 69 g · Goal ~80–105 g/day (1.2–1.6 g/kg, general fitness) · … · From
+logged foods + protein logged — a floor, actual likely higher": an inequality to
+parse, the band's derivation, the names of two data sources, and a hedge about
+how the figure was estimated. It now reads **"69 g+ · Goal 80–105 g"** — the same
+words the Telegram protein line has used since it was unstacked — and the hover
+carries the derivation and the plain sentence the hedge was standing in for:
+_only some meals are logged, so today's true total is higher_. This
 granularity is where dietary evidence actually lives ("2 servings of fatty fish
 a week") and is sufficient for the biomarker→food and habit-target features;
 full macro tracking stays possible later as an additive tier. Informational, not
