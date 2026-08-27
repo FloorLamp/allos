@@ -162,13 +162,8 @@ for (;;) {
     ci?.status === "completed" &&
     ci.conclusion !== "success" &&
     s.failed.length === 0
-  ) {
-    s.failed.push({
-      conclusion: ci.conclusion,
-      name: "CI workflow",
-      html_url: ci.html_url,
-    });
-  }
+  )
+    s.failed.push(ci);
   const stamp = new Date().toISOString().slice(11, 19);
   console.log(
     `[${stamp}] ${s.total} checks registered, ${s.pending.length} pending, ${s.failed.length} failed` +

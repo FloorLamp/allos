@@ -22,7 +22,7 @@ case "$*" in
   *check-runs*) body='{"total_count":1,"check_runs":[{"id":1,"name":"gitleaks","status":"completed","conclusion":"success"}]}' ;;
   *workflows/ci.yml/runs*)
     if [ "$CI_STATUS" = absent ]; then body='{"workflow_runs":[]}'
-    else body='{"workflow_runs":[{"id":1,"event":"pull_request","head_sha":"0123456789abcdef","status":"completed","conclusion":"success"},{"id":2,"event":"pull_request","head_sha":"0123456789abcdef","status":"'"$CI_STATUS"'","conclusion":"'"$CI_CONCLUSION"'","html_url":"https://example.test/ci"}]}'
+    else body='{"workflow_runs":[{"id":1,"event":"pull_request","head_sha":"0123456789abcdef","status":"completed","conclusion":"success"},{"id":2,"name":"CI","event":"pull_request","head_sha":"0123456789abcdef","status":"'"$CI_STATUS"'","conclusion":"'"$CI_CONCLUSION"'","html_url":"https://example.test/ci"}]}'
     fi ;;
   *) body='{"mergeable_state":"clean","head":{"sha":"0123456789abcdef"}}' ;;
 esac
