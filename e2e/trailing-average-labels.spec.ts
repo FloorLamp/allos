@@ -177,7 +177,8 @@ test.describe("what a trailing average covers, and what it says (#1909/#1917)", 
     }
     await page.goto("/");
     await expect(protein).toContainText(
-      `7-day average ${DAY_ONE_PROTEIN_COMPLETE_DAY} g/day`
+      // "g", not "g/day": the row's own label already names the window (#3257).
+      `7-day average ${DAY_ONE_PROTEIN_COMPLETE_DAY} g`
     );
   });
 });
