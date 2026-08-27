@@ -1,5 +1,6 @@
 "use client";
 
+import type { ReactNode } from "react";
 import { IconAdjustmentsHorizontal } from "@tabler/icons-react";
 import CompactDateMenu from "@/components/CompactDateMenu";
 import IconButton from "@/components/IconButton";
@@ -15,6 +16,15 @@ type SharedProps = {
   onChange: (date: string) => void;
   context?: { label: string; value?: string };
   todayContext?: string | null;
+  /**
+   * THE DOOR TO THIS SURFACE'S LEDGER (#3671), mounted where the log is.
+   * Both intake surfaces route their door through this ONE slot, which is what
+   * stops "the way to the history" being a different shape and a different place
+   * on each tab: supplements' door used to live in a desktop rail that stacks to
+   * the bottom of a long page below `lg`, and Food's floated in a row of its own
+   * above the fasting card.
+   */
+  ledgerDoor?: ReactNode;
 };
 
 type Props = SharedProps &
@@ -40,6 +50,7 @@ export default function IntakeContextBar(input: Props) {
     onChange,
     context,
     todayContext,
+    ledgerDoor,
     status,
   } = input;
   const food = purpose === "food-log";
@@ -108,6 +119,7 @@ export default function IntakeContextBar(input: Props) {
           )}
         </h2>
         <div className="flex shrink-0 items-center gap-2">
+          {ledgerDoor}
           <p
             data-testid={food ? "food-day-total" : "supplements-status"}
             className="text-sm font-medium tabular-nums text-slate-500 dark:text-slate-400"

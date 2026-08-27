@@ -99,6 +99,16 @@ const SURFACES: Surface[] = [
     subject: '[data-testid="metric-measurement-toggle"]',
   },
   {
+    // #3671's own annotation (#1510). The event ledger is a whole shell shape the
+    // baseline had never recorded: a BackLink above the title, and page content that
+    // is one full-width list rather than a column of cards. The rows inside it just
+    // became a compact tap-to-expand row, which is exactly the class of change this
+    // file exists to make a reviewer meet as a diff of numbers.
+    route: "/nutrition/dose-history",
+    why: "An event ledger — the #3647 shared frame, with a BackLink above the title and a full-width row list as its content.",
+    subject: '[data-testid="dose-ledger-item-filter"]',
+  },
+  {
     route: "/settings",
     why: "A settings index — a group list rather than a data page, and the densest column of controls in the app.",
     subject: '[data-testid="settings-index"]',

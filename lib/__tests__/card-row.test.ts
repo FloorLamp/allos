@@ -17,10 +17,17 @@ describe("cardCellAttrs", () => {
     expect(cardCellAttrs({ slot: "meta" })).toEqual({ "data-card": "meta" });
   });
 
-  it("drops an empty meta or value cell so a card never shows a bare placeholder", () => {
-    expect(cardCellAttrs({ slot: "meta", empty: true })).toEqual({});
-    expect(cardCellAttrs({ slot: "value", empty: true })).toEqual({});
-  });
+  // The OPTIONAL slots, which is the whole rule: a slot a card can do without drops
+  // out when the caller says the cell is empty, so a card never shows a bare
+  // placeholder — and a dose with no stated time gets a clean compact row rather
+  // than a right-aligned em-dash (#3671).
+  it.each(["meta", "value", "trailing"] as const)(
+    "drops an empty %s cell",
+    (slot) => {
+      expect(cardCellAttrs({ slot, empty: true })).toEqual({});
+      expect(cardCellAttrs({ slot })).toEqual({ "data-card": slot });
+    }
+  );
 
   it("keeps structural slots even when the caller calls them empty", () => {
     // A group-continuation row's blank name cell still anchors the card's layout,
@@ -33,6 +40,11 @@ describe("cardCellAttrs", () => {
     });
     expect(cardCellAttrs({ slot: "full", empty: true })).toEqual({
       "data-card": "full",
+    });
+    // The disclosure control is structural too: a row that renders one always
+    // renders it, and #3671's table decides whether to render it at all.
+    expect(cardCellAttrs({ slot: "toggle", empty: true })).toEqual({
+      "data-card": "toggle",
     });
   });
 });

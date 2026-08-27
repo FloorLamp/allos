@@ -1,6 +1,7 @@
 "use client";
 
 import { useState, type ReactNode } from "react";
+import { IconChevronDown } from "@tabler/icons-react";
 import { useConfirm } from "@/components/ConfirmDialog";
 import { useUndoableDelete } from "@/components/useUndoableDelete";
 import OverflowMenu, {
@@ -8,6 +9,8 @@ import OverflowMenu, {
   MENU_ITEM_DANGER,
 } from "@/components/OverflowMenu";
 import { ResponsiveTable, Td } from "@/components/ResponsiveTable";
+import LoggedEventRow from "@/components/LoggedEventRow";
+import { CARD_MODE_ONLY } from "@/lib/card-row";
 
 // One column of an entry-history table. `slot` is the cell's card placement
 // below `sm` (see components/ResponsiveTable.tsx); `label` is the card-mode
@@ -16,7 +19,10 @@ import { ResponsiveTable, Td } from "@/components/ResponsiveTable";
 export interface EntryHistoryColumn<T> {
   header: string;
   headerClassName?: string;
-  slot: "title" | "value" | "meta";
+  // `title` is the row's identity, `trailing` the one attribute beside it on the
+  // phone's head line, and `value`/`meta` the labelled detail the compact row
+  // discloses on tap (#3671). The vocabulary is lib/card-row.ts's.
+  slot: "title" | "trailing" | "value" | "meta";
   label?: string;
   cellClassName?: string;
   empty?: (item: T) => boolean;
@@ -123,6 +129,9 @@ export default function EntryHistoryTable<T extends { id: number }>({
   const [menuOpenId, setMenuOpenId] = useState<number | null>(null);
   const [deletingId, setDeletingId] = useState<number | null>(null);
   const [expanded, setExpanded] = useState(false);
+  // THE DISCLOSURE IS ONE ROW'S AND IT IS LOCAL (#3671): nothing is fetched, nothing
+  // routes, and the row keeps its ⋯ throughout so an edit never costs an extra tap.
+  const [detailId, setDetailId] = useState<number | null>(null);
 
   async function remove(item: T) {
     const opts = confirmDelete(item);
@@ -147,13 +156,26 @@ export default function EntryHistoryTable<T extends { id: number }>({
     }
   }
 
+  // Whether this row has anything BEHIND the compact line. A row whose only
+  // detail cells are empty (`cardCellAttrs` drops those from the card) discloses
+  // nothing, so it gets no toggle rather than a control that opens onto silence.
+  function hasDetail(item: T): boolean {
+    return columns.some(
+      (col) =>
+        (col.slot === "value" || col.slot === "meta") && !col.empty?.(item)
+    );
+  }
+
   const visible =
     expanded || !expandToggle ? items : items.slice(0, collapsedCount);
   const colSpan = columns.length + (readOnly ? 0 : 1);
 
   return (
     <>
-      <ResponsiveTable className={tableClassName}>
+      {/* `logged-event-rows` is EVERY consumer's, never a caller's choice: this
+          component IS the seam #3671 scoped its change to, and a class a caller
+          could omit would be a second shape of the same row within a week. */}
+      <ResponsiveTable className={`logged-event-rows ${tableClassName}`}>
         <thead>
           <tr className="border-b border-black/10 text-xs text-slate-500 dark:border-white/10 dark:text-slate-400">
             {columns.map((col) => (
@@ -176,6 +198,7 @@ export default function EntryHistoryTable<T extends { id: number }>({
             <tr
               key={item.id}
               data-testid={rowTestId?.(item)}
+              data-expanded={detailId === item.id ? "" : undefined}
               className="border-b border-black/5 align-top last:border-0 dark:border-white/5"
             >
               {editingId === item.id ? (
@@ -192,9 +215,40 @@ export default function EntryHistoryTable<T extends { id: number }>({
                       empty={col.empty?.(item)}
                       className={`px-2 py-2 ${col.cellClassName ?? ""}`}
                     >
-                      {col.cell(item)}
+                      {col.slot === "title" ? (
+                        <LoggedEventRow>{col.cell(item)}</LoggedEventRow>
+                      ) : (
+                        col.cell(item)
+                      )}
                     </Td>
                   ))}
+                  {hasDetail(item) ? (
+                    <Td slot="toggle" className={`px-2 py-2 ${CARD_MODE_ONLY}`}>
+                      <button
+                        type="button"
+                        className="tap-target flex h-8 w-8 items-center justify-center rounded-full text-slate-500 dark:text-slate-400"
+                        aria-expanded={detailId === item.id}
+                        aria-label={
+                          detailId === item.id ? "Hide details" : "Show details"
+                        }
+                        data-testid={
+                          rowTestId ? `${rowTestId(item)}-toggle` : undefined
+                        }
+                        onClick={() =>
+                          setDetailId((current) =>
+                            current === item.id ? null : item.id
+                          )
+                        }
+                      >
+                        <IconChevronDown
+                          aria-hidden
+                          className={`h-4 w-4 transition-transform ${
+                            detailId === item.id ? "rotate-180" : ""
+                          }`}
+                        />
+                      </button>
+                    </Td>
+                  ) : null}
                   {readOnly ? null : (
                     <Td slot="actions" className="px-2 py-2">
                       <div className="flex justify-end">

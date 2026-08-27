@@ -61,7 +61,10 @@ const FAMILY = [
   "table-section-row",
   "table-nested-row",
   "metric-readings-list",
-  "practice-session-list",
+  // The five EntryHistoryTable surfaces' compact logged-event row (#3671): a
+  // timeline of one fact each, collapsed to a line below the boundary with its
+  // labelled detail one tap away.
+  "logged-event-rows",
   // Not a table at all (#3495): the Settings → Notifications kind × channel
   // matrix, whose four channel columns become labeled chips below the boundary.
   // It is in the family because it answers the same question the table utilities

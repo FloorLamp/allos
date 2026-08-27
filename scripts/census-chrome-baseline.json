@@ -42,6 +42,21 @@
       }
     },
     {
+      "route": "/nutrition/dose-history",
+      "viewport": "desktop",
+      "why": "An event ledger — the #3647 shared frame, with a BackLink above the title and a full-width row list as its content.",
+      "landmarks": {
+        "sidebarWidth": 240,
+        "mainInsetLeft": 240,
+        "mainInsetRight": 0,
+        "contentGutterLeft": 20,
+        "contentGutterRight": 20,
+        "contentTopInset": 32,
+        "contentWidth": 1000,
+        "pageTitleHeight": 32
+      }
+    },
+    {
       "route": "/settings",
       "viewport": "desktop",
       "why": "A settings index — a group list rather than a data page, and the densest column of controls in the app.",
@@ -115,6 +130,22 @@
         "contentGutterRight": 16,
         "contentTopInset": 123,
         "contentWidth": 358
+      }
+    },
+    {
+      "route": "/nutrition/dose-history",
+      "viewport": "mobile",
+      "why": "An event ledger — the #3647 shared frame, with a BackLink above the title and a full-width row list as its content.",
+      "landmarks": {
+        "shellChromeHeight": 57,
+        "dockHeight": 57,
+        "mainInsetLeft": 0,
+        "mainInsetRight": 0,
+        "contentGutterLeft": 16,
+        "contentGutterRight": 16,
+        "contentTopInset": 73,
+        "contentWidth": 358,
+        "pageTitleHeight": 28
       }
     },
     {

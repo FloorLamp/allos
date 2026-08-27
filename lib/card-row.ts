@@ -137,12 +137,28 @@ export const CARD_MODE_ROW_STACK = {
 
 // Where a cell lands in the card presentation. A cell with NO slot is dropped from
 // the card entirely — the deliberate "this column is desktop-only detail" choice.
-//   title   — the row's identity (biomarker name, session date). One per row.
-//   value   — the headline number/state, rendered prominently under the title.
-//   meta    — a secondary attribute; all of them flow into one wrapped meta line.
-//   actions — the row's kebab/controls, pinned to the card's top-right corner.
-//   full    — a full-width cell that replaces the card body (an inline edit form).
-export type CardSlot = "title" | "value" | "meta" | "actions" | "full";
+//   title    — the row's identity (biomarker name, session date). One per row.
+//   trailing — the ONE attribute that stays beside the title on the head line, set
+//              right-aligned in tabular figures. See below.
+//   toggle   — the row's own disclosure control, beside its ⋯ on the head line.
+//   value    — the headline number/state, rendered prominently under the title.
+//   meta     — a secondary attribute; all of them flow into one wrapped meta line.
+//   actions  — the row's kebab/controls, pinned to the card's top-right corner.
+//   full     — a full-width cell that replaces the card body (an inline edit form).
+export type CardSlot =
+  "title" | "trailing" | "toggle" | "value" | "meta" | "actions" | "full";
+
+// WHY `trailing` IS A SLOT AND NOT A `meta` WITH A CLASS (issue #3671).
+//
+// Every other slot answers "where does this cell go in the stack". This one answers
+// "which single cell earns the head line", and only the authoring consumer can
+// answer it — the date identifies a dose ledger row, the amount is the fact on a
+// substance day. Deriving it positionally ("the first meta cell") is how the column
+// ladder above already went wrong once (#3457).
+//
+// CAPPED AT ONE PER ROW BY THE LAYOUT, not by a check: `title` grows from a zero
+// basis and `trailing` is `shrink-0`, so a second trailing cell squeezes the
+// identity visibly — a better teacher than an assertion in a tier nobody watches.
 
 // The attributes a `<td>` carries so the card CSS can place it. Rendered by
 // `Td` in components/ResponsiveTable.tsx; kept here so the "empty cells vanish
@@ -160,8 +176,14 @@ export function cardCellAttrs(opts: { slot?: CardSlot; empty?: boolean }): {
   if (!opts.slot) return {};
   // A title/actions/full cell is structural — it holds its slot even when the
   // caller believes it's empty (a group-continuation row's blank name cell still
-  // anchors the card's grid). Only the optional slots drop out.
-  if (opts.empty && (opts.slot === "meta" || opts.slot === "value")) return {};
+  // anchors the card's grid). Only the optional slots drop out — `trailing`
+  // among them, so a dose with no stated time gets a clean row rather than a
+  // right-aligned em-dash.
+  if (
+    opts.empty &&
+    (opts.slot === "meta" || opts.slot === "value" || opts.slot === "trailing")
+  )
+    return {};
   return { "data-card": opts.slot };
 }
 

@@ -60,7 +60,8 @@ import { parseRxcuiIngredients } from "@/lib/rxnorm";
 import { requireSession } from "@/lib/auth";
 import { requireScope } from "@/lib/scope";
 import SharedSuppliesLink from "@/components/intake/SharedSuppliesLink";
-import DoseLedgerLink from "@/components/intake/DoseLedgerLink";
+import LedgerDoorLink from "@/components/LedgerDoorLink";
+import { doseLedgerHref } from "@/lib/hrefs";
 import { lastNDates, shiftDateStr, zonedDateParts } from "@/lib/date";
 import { bestKnownInstant } from "@/lib/row-instants";
 import { formatGivenAtClock } from "@/lib/administration-format";
@@ -1273,7 +1274,15 @@ export default async function SupplementsTab({
                       action={
                         <>
                           <SharedSuppliesLink count={cabinetCount} />
-                          <DoseLedgerLink kind="supplement" />
+                          {/* The EMPTY branch keeps its door here: with no
+                              supplements there is no schedule to hang it on, and
+                              this page is short. The populated branch — the long
+                              one the owner scrolled — is the one that moved. */}
+                          <LedgerDoorLink
+                            href={doseLedgerHref("supplement")}
+                            label="Dose history"
+                            testId="dose-ledger-link"
+                          />
                         </>
                       }
                       createAction={{
@@ -1303,6 +1312,17 @@ export default async function SupplementsTab({
                   secondary={secondarySchedule}
                   context={dayContext}
                   addSupplement={addSupplementModal}
+                  ledgerDoor={
+                    // THE DOOR MOVES TO THE LOG IT OPENS (#3671). It used to sit in
+                    // the desktop rail, which stacks to the very bottom of this page
+                    // below `lg` — present in the DOM, functionally absent on a
+                    // phone, which is what the owner reported as a missing link.
+                    <LedgerDoorLink
+                      href={doseLedgerHref("supplement")}
+                      label="Dose history"
+                      testId="dose-ledger-link"
+                    />
+                  }
                 />
               </div>
               <aside
@@ -1334,7 +1354,6 @@ export default async function SupplementsTab({
                     <h2 className="mb-3 section-label">Manage</h2>
                     <div className="flex flex-wrap items-center gap-3">
                       <SharedSuppliesLink count={cabinetCount} />
-                      <DoseLedgerLink kind="supplement" />
                     </div>
                   </section>
                 </div>

@@ -1,10 +1,10 @@
 import { IconCircleCheck } from "@tabler/icons-react";
-import DoseLedgerLink from "@/components/intake/DoseLedgerLink";
+import LedgerDoorLink from "@/components/LedgerDoorLink";
 import QuickLogPrnControl from "@/components/medications/QuickLogPrnControl";
 import TodayMedRow from "@/components/medications/TodayMedRow";
 import ScheduledDoseAction from "@/components/medications/ScheduledDoseAction";
 import MomentSlot from "@/components/medications/MomentSlot";
-import { medicationHref } from "@/lib/hrefs";
+import { doseLedgerHref, medicationHref } from "@/lib/hrefs";
 import { buildTodayPanelModel } from "@/lib/medication-today";
 import { buildMomentSections, type MomentDose } from "@/lib/moment-sections";
 import {
@@ -217,7 +217,13 @@ export default function MedicationsTodayPanel({
             Check off scheduled doses or log an as-needed medication.
           </p>
         </div>
-        {ledgerDoor ? <DoseLedgerLink kind="medication" /> : null}
+        {ledgerDoor ? (
+          <LedgerDoorLink
+            href={doseLedgerHref("medication")}
+            label="Dose history"
+            testId="dose-ledger-link"
+          />
+        ) : null}
       </div>
       {model.allDone && (
         <div

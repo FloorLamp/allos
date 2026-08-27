@@ -1,5 +1,4 @@
 import { requireSession } from "@/lib/auth";
-import Link from "next/link";
 import { getDisplayFormatPrefs } from "@/lib/settings";
 import { today } from "@/lib/db";
 import { now as clockNow } from "@/lib/clock";
@@ -48,6 +47,8 @@ import {
 import type { FiberAdequacy } from "@/lib/fiber";
 import { EmptyState } from "@/components/ui";
 import FoodLogBar, { type FoodLogDay } from "./FoodLogBar";
+import LedgerDoorLink from "@/components/LedgerDoorLink";
+import { foodLedgerHref } from "@/lib/hrefs";
 import ProteinQuickAdd from "./ProteinQuickAdd";
 import WeeklyHabits from "./WeeklyHabits";
 import { trackFoodHabit } from "./actions";
@@ -461,15 +462,6 @@ export default async function FoodTab({
             data-testid="food-log-shell"
             className="min-w-0"
           >
-            <div className="mb-2 flex justify-end">
-              <Link
-                href="/nutrition/food-history"
-                className="text-sm font-medium text-brand-700 hover:underline dark:text-brand-400"
-                data-testid="food-ledger-link"
-              >
-                View food history
-              </Link>
-            </div>
             {/* Fasting (#2756) sits ABOVE the log bar because it is the same kind of
                 thing — an act, in the "Act" column — and because the state chip has to
                 be visible before the bar's taps start meeting "End your fast?".
@@ -499,6 +491,13 @@ export default async function FoodTab({
               slotBoundaries={profileFoodSlotBoundaries(profile.id)}
               eatingTimeOptions={eatingTimeOptions}
               nutrientSummaryByDate={mobileNutrients}
+              ledgerDoor={
+                <LedgerDoorLink
+                  href={foodLedgerHref()}
+                  label="Food history"
+                  testId="food-ledger-link"
+                />
+              }
               proteinQuickAdd={
                 <ProteinQuickAdd
                   key="protein-quickadd"

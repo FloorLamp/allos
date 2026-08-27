@@ -144,7 +144,7 @@ export default function PracticeSessionHistory({
       <EntryHistoryTable
         items={sessions}
         columns={columns}
-        tableClassName="practice-session-list w-full text-left text-sm"
+        tableClassName="w-full text-left text-sm"
         actionsHeaderClassName="w-28"
         expandToggle={
           ledger
