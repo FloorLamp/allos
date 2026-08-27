@@ -201,9 +201,10 @@ export default function ConsumptionSection({
       cell: (entry) => formatDateWithYear(entry.date, formatPrefs),
     },
     {
+      // A substance day IS its amount, so that is what stays on the phone's head
+      // line beside the date (#3671); the note is the detail behind the tap.
       header: "Amount",
-      slot: "value",
-      label: "Amount",
+      slot: "trailing",
       cell: (entry) =>
         `${entry.amount} ${entry.amount === 1 ? def.unitSingular : def.unitPlural}`,
     },

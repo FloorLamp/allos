@@ -841,6 +841,23 @@
   & td[data-card="actions"] {
     @apply max-sm:order-2 max-sm:ml-auto max-sm:shrink-0;
   }
+  /* THE HEAD LINE'S RIGHT-HAND FACT (#3671). A logged event is one fact with a
+     clock on it, and the row that reads best for it is the food log's: identity on
+     the left, the time on the right, in tabular figures so a column of them lines
+     up. `lib/card-row.ts` says which cell claims it; this only places it. */
+  & td[data-card="trailing"] {
+    @apply max-sm:order-2 max-sm:ml-auto max-sm:shrink-0 max-sm:text-xs max-sm:tabular-nums max-sm:text-slate-500 max-sm:dark:text-slate-400;
+  }
+  /* A row that HAS a trailing cell gives its title a ZERO basis instead of the #2588
+     reserved-gutter one. That rule reserves the ⋯'s gutter so metas always break to
+     their own line; with a second cell to seat ON the head line, the same
+     reservation is what pushes the trailing fact off it. `:has()` scopes the change
+     to rows that declare a trailing cell, so the deterministic wrap every other list
+     depends on is untouched — and the title still grows, so nothing renders
+     narrower. */
+  & tr:has(td[data-card="trailing"]) td[data-card="title"] {
+    @apply max-sm:min-w-0 max-sm:basis-0;
+  }
   & td[data-card="value"] {
     @apply max-sm:order-3 max-sm:w-full max-sm:basis-full max-sm:text-base;
   }
@@ -987,6 +1004,41 @@
      tie in the only direction that keeps a label distinguishable from its value. */
   & td[data-card="meta"] {
     @apply max-sm:mt-1 max-sm:w-full max-sm:basis-full max-sm:text-sm;
+  }
+}
+
+@utility logged-event-rows {
+  /* THE COMPACT LOGGED-EVENT ROW (#3671, over #3077's "a dense cluster of rows, not
+     N cards" ruling).
+     Every `components/EntryHistoryTable.tsx` consumer carries this class, and only
+     those five: a timeline of ONE fact each — a dose, a serving, a session, a day's
+     substance total. `ResponsiveTable`'s other consumers are records with genuinely
+     multi-field bodies and keep the labelled stack below.
+     THE COST WAS THE LABELS, NOT CARD CHROME. #1616 already took the frame, fill and
+     margin off every stacked row; what was left still spent four lines and ~130px on
+     one logged dose ("Wednesday, August 19" / "AMOUNT 3 g" / "TIME 1:46am"), so two
+     entries filled a phone. Collapsed, the row is title + trailing time + its
+     controls, on one line at the #644 tap floor; the labelled detail is one tap
+     away and is EXACTLY what the card showed before — this hides it, it does not
+     drop it. */
+  & tr {
+    @apply max-sm:min-h-11! max-sm:items-center! max-sm:gap-y-2! max-sm:px-3! max-sm:py-2!;
+  }
+  /* COLLAPSED IS THE DEFAULT, and the default is the ABSENCE of the attribute, so a
+     row that never renders the toggle (nothing to disclose) is correct without one.
+     The row's `data-expanded` is written by EntryHistoryTable's disclosure state. */
+  & tr:not([data-expanded]) td[data-card="value"],
+  & tr:not([data-expanded]) td[data-card="meta"] {
+    @apply max-sm:hidden;
+  }
+  /* Expanded, the metas take a full line each rather than packing onto the head line
+     the zero-basis title above no longer fills — the same reason
+     `metric-readings-list` reinstates it, and the same one #2588's basis exists for. */
+  & td[data-card="meta"] {
+    @apply max-sm:basis-full;
+  }
+  & td[data-card="toggle"] {
+    @apply max-sm:order-2 max-sm:shrink-0;
   }
 }
 

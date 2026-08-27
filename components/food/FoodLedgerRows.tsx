@@ -90,9 +90,11 @@ export default function FoodLedgerRows({
       cell: (row) => row.mealSlot,
     },
     {
+      // THE HEAD LINE'S RIGHT-HAND FACT (#3671): when a serving was eaten or logged
+      // is the one attribute worth a phone row's trailing edge; the food group and
+      // the meal are the labelled detail behind the tap.
       header: "Time",
-      slot: "meta",
-      label: "Time",
+      slot: "trailing",
       empty: (row) => !row.clock,
       cell: (row) =>
         row.clock

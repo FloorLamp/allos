@@ -43,6 +43,11 @@ import { usePrefersReducedMotion } from "@/components/usePrefersReducedMotion";
 // the Food tab and the dashboard can never name a write differently.
 import { namesPhrase } from "@/lib/usual-routine";
 import { useOptimisticLedger } from "@/components/useOptimisticLedger";
+import LoggedEventRow, {
+  LOGGED_EVENT_LIST,
+  LOGGED_EVENT_ROW,
+  LOGGED_EVENT_TRAILING,
+} from "@/components/LoggedEventRow";
 import {
   foodServingCoordinate,
   foodServingFeedback,
@@ -232,6 +237,7 @@ export default function FoodLogBar({
   initialFoodGroup,
   nutrientSummaryByDate = [],
   proteinQuickAdd,
+  ledgerDoor,
 }: {
   // The acting profile's today (YYYY-MM-DD) and bounded recent meal history.
   today: string;
@@ -280,6 +286,9 @@ export default function FoodLogBar({
   // Gram-based protein logging styled as a peer to the serving rows. It remains
   // day-scoped, so it is only rendered while Today is selected.
   proteinQuickAdd?: ReactNode;
+  // The door to the food ledger (#3671), mounted in the day header beside the log
+  // it opens rather than in a row of its own above the fasting card.
+  ledgerDoor?: ReactNode;
 }) {
   const {
     activeDate,
@@ -2068,6 +2077,7 @@ export default function FoodLogBar({
     <div>
       <IntakeContextBar
         purpose="food-log"
+        ledgerDoor={ledgerDoor}
         today={today}
         days={days}
         value={activeDate}
@@ -2168,7 +2178,7 @@ export default function FoodLogBar({
             <h3 className="mb-2 section-label">
               Logged {activeDay.label.toLowerCase()}
             </h3>
-            <ul className="space-y-1">
+            <ul className={LOGGED_EVENT_LIST}>
               {loggedEvents.map((event) => (
                 <li
                   key={event.id}
@@ -2176,18 +2186,21 @@ export default function FoodLogBar({
                   data-slot={event.mealSlot}
                   data-group={event.groupKey}
                   aria-busy={removingId === event.id || undefined}
-                  className={`flex items-center gap-2 rounded-lg border border-(--border) bg-surface px-3 py-1.5 text-sm ${
-                    removingId === event.id ? "opacity-50" : ""
+                  className={`${LOGGED_EVENT_ROW}${
+                    removingId === event.id ? " opacity-50" : ""
                   }`}
                 >
-                  <FoodGroupIcon
-                    slug={event.groupKey}
-                    className="h-4 w-4 shrink-0 text-slate-400"
-                  />
-                  <span className="min-w-0 flex-1 truncate font-medium text-slate-800 dark:text-slate-100">
+                  <LoggedEventRow
+                    icon={
+                      <FoodGroupIcon
+                        slug={event.groupKey}
+                        className="h-4 w-4 shrink-0 text-slate-400"
+                      />
+                    }
+                  >
                     {event.name}
-                  </span>
-                  <span className="shrink-0 text-xs text-slate-500 tabular-nums dark:text-slate-400">
+                  </LoggedEventRow>
+                  <span className={LOGGED_EVENT_TRAILING}>
                     {event.mealSlot} · {event.eatenAt ?? event.loggedTime}
                   </span>
                   <OverflowMenu

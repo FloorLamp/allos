@@ -58,8 +58,7 @@ export default function DoseLedgerRows({
     },
     {
       header: "Time",
-      slot: "meta",
-      label: "Time",
+      slot: "trailing",
       empty: (row) => !row.time,
       cellClassName: "text-xs text-slate-500 dark:text-slate-400",
       cell: (row) => row.time || "—",
