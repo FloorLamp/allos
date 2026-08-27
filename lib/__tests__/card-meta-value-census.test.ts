@@ -212,8 +212,8 @@ function arrowBody(text: string, from: number): string | null {
   return null;
 }
 
-// (2) CELLS AUTHORED AS COLUMNS. RecordTable and ExplorerShell render
-// `columns[i].cell(item)` into `slot={i === 0 ? "title" : "meta"}` — so every
+// (2) CELLS AUTHORED AS COLUMNS. RecordTable renders `columns[i].cell(item)`
+// into `slot={i === 0 ? "title" : "meta"}` — so every
 // `cell:` in a `RecordColumn` list EXCEPT the first is a meta value, and its shape
 // is decided in the consumer, not in the renderer. This is where the two real
 // findings were: a scan that stopped at `slot="meta"` reads eleven files and
