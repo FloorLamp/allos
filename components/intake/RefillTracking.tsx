@@ -2,6 +2,7 @@
 
 import { useEffect, useState } from "react";
 import type { IntakeItem } from "@/lib/types";
+import type { IntakeItemKind } from "@/lib/types/intake";
 import type { SupplyOption } from "@/lib/supply-product";
 import SharedSupplyPicker from "./SharedSupplyPicker";
 
@@ -13,6 +14,7 @@ import SharedSupplyPicker from "./SharedSupplyPicker";
 export default function RefillTracking({
   fid,
   item,
+  kind,
   initialSupply = null,
   onPickSupply,
   quantityOnHand,
@@ -22,6 +24,9 @@ export default function RefillTracking({
 }: {
   fid: string | number;
   item?: IntakeItem;
+  // The form's locked kind, threaded to the shared-supply picker so it offers only
+  // bottles this item may honestly draw from (#3315).
+  kind: IntakeItemKind;
   // Controlled by the form (#3216). The merged form shows one editor at a time, so a
   // count that lived only in this block's DOM would save only when the supply editor
   // happened to be open; every posted value is state.
@@ -110,6 +115,7 @@ export default function RefillTracking({
       <SharedSupplyPicker
         itemId={s?.id}
         itemName={s?.name ?? ""}
+        kind={kind}
         supplyId={s?.supply_id ?? null}
         supplyName={s?.supply_name ?? null}
         initialSupply={initialSupply}

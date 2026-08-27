@@ -503,11 +503,37 @@ describe("substance vocabulary: curated + custom (#3279)", () => {
         expect(text, `${key}: banned "${banned}"`).not.toContain(banned);
       }
     }
-    // The article agrees with the name the person typed.
-    expect(substanceDef("Kratom").freeWeekPhrase).toBe("a Kratom-free week");
-    expect(substanceDef("Energy drinks").freeWeekPhrase).toBe(
-      "an Energy drinks-free week"
+  });
+
+  // #3333 part 2. The article used to be picked from whether the name starts with a
+  // vowel, which is wrong for the ordinary English exceptions in both directions and
+  // unbounded because the name is user text. The phrase now puts the article in front
+  // of "week", so these cases have no article decision left to get wrong — "an hour"
+  // and "MDMA" (an EM, vowel sound, consonant letter) are the two that used to.
+  it.each([
+    ["Kratom", "a week free of Kratom"],
+    ["Energy drinks", "a week free of Energy drinks"],
+    ["hour-long sessions", "a week free of hour-long sessions"],
+    ["MDMA", "a week free of MDMA"],
+  ])("%s's free-week phrase needs no a/an choice", (key, phrase) => {
+    expect(substanceDef(key).freeWeekPhrase).toBe(phrase);
+  });
+
+  // #3333 part 1. Cannabis authors the sentence and a custom substance derives it;
+  // one constant means an edit to either is a deliberate edit to both.
+  it("the session unit note exists once, shared by cannabis and custom", () => {
+    expect(substanceDef("Kratom").unitNote).toBe(
+      substanceDef("cannabis").unitNote
     );
+  });
+
+  // The curated three are authored copy and this widening must not move them.
+  it.each([
+    ["alcohol", "an alcohol-free week"],
+    ["nicotine", "a nicotine-free week"],
+    ["cannabis", "a cannabis-free week"],
+  ])("%s keeps its authored free-week phrase", (key, phrase) => {
+    expect(substanceDef(key).freeWeekPhrase).toBe(phrase);
   });
 
   it("the cap line works for a custom substance — but ONLY reachable through a status", () => {
@@ -522,7 +548,7 @@ describe("substance vocabulary: curated + custom (#3279)", () => {
     );
     // cap 0 is an OPTED-IN target (a substance-free week), never "no cap".
     expect(capProgressLine(substanceCapStatus(0, 0), "Kratom")).toBe(
-      "No uses logged this week — your target is a Kratom-free week."
+      "No uses logged this week — your target is a week free of Kratom."
     );
   });
 

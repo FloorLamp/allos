@@ -384,6 +384,12 @@ export interface SubstanceDef {
   unitNote: string; // the plain unit explainer under the one-tap bar
 }
 
+// The unit explainer for a substance counted in plain sessions. Cannabis authors it
+// and every CUSTOM substance derives it, and the sentence is true of both — so it is
+// written ONCE (#3333). Two copies drift the first time one is edited, and the drift
+// is invisible: both surfaces keep rendering something plausible.
+const SESSION_UNIT_NOTE = "One use = one session, whatever the form.";
+
 const SUBSTANCE_DEFS: Record<Substance, SubstanceDef> = {
   alcohol: {
     key: "alcohol",
@@ -425,7 +431,7 @@ const SUBSTANCE_DEFS: Record<Substance, SubstanceDef> = {
     countPlural: "uses",
     logLabel: "Log a use",
     freeWeekPhrase: "a cannabis-free week",
-    unitNote: "One use = one session, whatever the form.",
+    unitNote: SESSION_UNIT_NOTE,
   },
 };
 
@@ -600,19 +606,18 @@ export function substanceLabel(key: SubstanceKey): string {
   return isSubstance(key) ? SUBSTANCE_DEFS[key].label : key;
 }
 
-// "a"/"an" for a custom label, used ONLY inside freeWeekPhrase below. A vowel-initial
-// heuristic: right for the ordinary nouns people type here, wrong for the English
-// exceptions ("an hour", "a unicorn"). It is deliberately not worth more than this —
-// the phrase surfaces only after a person has opted into a weekly cap, and a curated
-// substance never reaches it (its article is authored).
-function indefiniteArticle(label: string): string {
-  return /^[aeiou]/i.test(label) ? "an" : "a";
-}
-
 // The derived def for a custom substance. Everything a curated def AUTHORS, this
 // computes: count semantics ("use"/"uses"), the substance-log ledger, and the person's
-// own name as the label. The unit note is byte-identical to cannabis's — one honest
-// sentence about what a count means, reused rather than re-worded.
+// own name as the label. It shares cannabis's unit note rather than re-wording it.
+//
+// THE FREE-WEEK PHRASE PUTS THE ARTICLE BEFORE "week", NOT BEFORE THE NAME (#3333).
+// A custom name is arbitrary user text, so "a"/"an" in front of it cannot be chosen
+// correctly by any rule — "an hour", "a unicorn", "an MRI" go wrong in both
+// directions, and a better heuristic is only a wrong answer that is harder to notice.
+// Phrasing it as "a week free of X" removes the choice instead of shrinking it: the
+// article now agrees with "week" for every name anybody types. The curated three keep
+// their authored "an alcohol-free week" wording — their articles were written by hand
+// and are right, and nothing a person reads today should move for this.
 function customSubstanceDef(key: SubstanceKey): SubstanceDef {
   return {
     key,
@@ -623,8 +628,8 @@ function customSubstanceDef(key: SubstanceKey): SubstanceDef {
     countSingular: "use",
     countPlural: "uses",
     logLabel: "Log a use",
-    freeWeekPhrase: `${indefiniteArticle(key)} ${key}-free week`,
-    unitNote: "One use = one session, whatever the form.",
+    freeWeekPhrase: `a week free of ${key}`,
+    unitNote: SESSION_UNIT_NOTE,
   };
 }
 

@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useState, useTransition } from "react";
+import { useEffect, useMemo, useState, useTransition } from "react";
 import DestinationLink from "@/components/DestinationLink";
 import {
   listSharedSupplyOptions,
@@ -9,7 +9,12 @@ import {
   unlinkItemAction,
 } from "@/app/(app)/supplies/actions";
 import { SUPPLIES_HREF } from "@/lib/hrefs";
-import { bottleLabel, type SupplyOption } from "@/lib/supply-product";
+import {
+  bottleLabel,
+  bottlesForKindDoor,
+  type SupplyOption,
+} from "@/lib/supply-product";
+import type { IntakeItemKind } from "@/lib/types/intake";
 import { useResettableState } from "@/components/useResettableState";
 
 // The "Shared supply" control (#1374), rendered inside the refill block of BOTH intake
@@ -31,6 +36,7 @@ import { useResettableState } from "@/components/useResettableState";
 export default function SharedSupplyPicker({
   itemId,
   itemName,
+  kind,
   supplyId,
   supplyName,
   initialSupply = null,
@@ -38,6 +44,10 @@ export default function SharedSupplyPicker({
 }: {
   itemId?: number;
   itemName: string;
+  // The item's kind — the form's locked kind, the same value that already scopes the
+  // name combobox's bottle rows. Required, not defaulted: an unfiltered list is the
+  // #3315 bug, so a caller that cannot say which kind it owns must not compile.
+  kind: IntakeItemKind;
   supplyId: number | null;
   supplyName: string | null;
   // CREATE mode only (#1705): the bottle this form was opened from, e.g. the cabinet's
@@ -76,6 +86,22 @@ export default function SharedSupplyPicker({
   const [success, setSuccess] = useState<string | null>(null);
   const [pending, start] = useTransition();
 
+  // WHICH BOTTLES THIS ITEM MAY DRAW FROM (#3315). The rule and its reasoning live in
+  // lib/supply-product.ts beside #3270's, because the kind-locked door asks the same
+  // question — a bottle has no kind of its own, so what is compared is the kind its
+  // MEMBERS lend, and a bottle nobody links yet is offered everywhere.
+  //
+  // The currently linked bottle is kept whatever it lends. Without it, an item already
+  // on a mixed bottle would open its own picker with the link missing and no way to
+  // unlink.
+  const offered = useMemo(() => {
+    const fits = bottlesForKindDoor(options, kind);
+    const linked = options.find((o) => o.id === supplyId);
+    return linked && !fits.some((f) => f.id === linked.id)
+      ? [linked, ...fits]
+      : fits;
+  }, [options, kind, supplyId]);
+
   useEffect(() => {
     if (loaded) return;
     let live = true;
@@ -93,7 +119,7 @@ export default function SharedSupplyPicker({
   // call: the chosen bottle rides on the item form's OWN submit as `supply_id`, and the
   // pick is handed up so the form can seed the product fields from it.
   if (!itemId) {
-    const picked = options.find((o) => String(o.id) === choice) ?? null;
+    const picked = offered.find((o) => String(o.id) === choice) ?? null;
     return (
       <div
         data-testid="shared-supply-picker"
@@ -115,11 +141,11 @@ export default function SharedSupplyPicker({
           onChange={(e) => {
             const next = e.target.value;
             setChoice(next);
-            onPickSupply?.(options.find((o) => String(o.id) === next) ?? null);
+            onPickSupply?.(offered.find((o) => String(o.id) === next) ?? null);
           }}
         >
           <option value="">Not shared</option>
-          {options.map((o) => (
+          {offered.map((o) => (
             <option key={o.id} value={String(o.id)}>
               {bottleLabel(o)}
             </option>
@@ -235,7 +261,7 @@ export default function SharedSupplyPicker({
           }}
         >
           <option value="">Not shared</option>
-          {options.map((o) => (
+          {offered.map((o) => (
             <option key={o.id} value={String(o.id)}>
               {bottleLabel(o)}
             </option>

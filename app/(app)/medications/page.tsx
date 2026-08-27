@@ -126,6 +126,7 @@ export default async function MedicationsPage(props: {
   const medConditions = getConditions(actingProfileId).map((c) => ({
     id: c.id,
     name: c.name,
+    status: c.status,
   }));
   const situationOptions = mergedSituationOptions(
     getSituations(actingProfileId)
