@@ -53,7 +53,6 @@ import {
   type WeightUnit,
 } from "@/lib/settings";
 import {
-  isLongevityRelevant,
   isStrengthTrainingRelevant,
   isTrainingRelevant,
 } from "@/lib/life-stage";

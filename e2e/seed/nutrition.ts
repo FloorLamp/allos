@@ -45,7 +45,6 @@ import {
 import { getTimezone } from "../../lib/settings";
 import { setFixtureTimezone } from "../fixture-timezones";
 import {
-  ins,
   seedMemberLogin,
   adultFixtureProfileId,
   fixtureProfileId,

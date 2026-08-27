@@ -1,4 +1,4 @@
-import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
+import { beforeEach, describe, expect, it, vi } from "vitest";
 import { revalidatePath } from "next/cache";
 import {
   completeOnboarding,
@@ -20,7 +20,6 @@ import {
   getProfileBirthdate,
   getProfileSex,
   setOnboardingState,
-  setProfileBirthdate,
   setStoredAge,
 } from "@/lib/settings";
 import { initialOnboardingState } from "@/lib/onboarding";

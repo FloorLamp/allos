@@ -11,7 +11,6 @@ import {
 } from "./fixture-logins";
 import { workerDbPath } from "./worker-env";
 import { comboboxRows, deleteActivityFromForm, hydratedClick } from "./helpers";
-import { shiftDateStr } from "@/lib/date";
 
 // Derived workout presence (issue #921), driven end-to-end:
 //   • the household presence chip (grants-scoped, active-only),

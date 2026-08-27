@@ -12,7 +12,6 @@
 
 import { afterAll, beforeAll } from "vitest";
 import fs from "node:fs";
-import os from "node:os";
 import path from "node:path";
 import { installFixtureProfileSpace } from "./fixture-profile-space";
 import { makeTmpDir } from "../__tests__/tmp-dir";

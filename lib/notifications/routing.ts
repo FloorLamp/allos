@@ -31,7 +31,7 @@
 // edge-set query itself (lib/notifications/managing-logins.ts). The one profile-scoped
 // read here (the Home Assistant webhook) goes through `getProfileHomeAssistant`.
 
-import { db, hoistedStatement } from "../db";
+import { hoistedStatement } from "../db";
 import { cache } from "../request-cache";
 import type { RoutingFacts } from "../household-setup";
 import {

@@ -25,7 +25,6 @@
 import {
   MIN_LABEL_PX,
   clampLabel,
-  elideToWidth,
   placeRowLabels,
   textWidth,
   viewBoxFontSize,

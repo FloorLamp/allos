@@ -5,7 +5,6 @@
 
 import { describe, expect, it } from "vitest";
 import crypto from "node:crypto";
-import { db } from "@/lib/db";
 import {
   connectHealthConnect,
   disconnect,

@@ -1,17 +1,13 @@
 import type {
   AgeBandedRange,
-  BiomarkerDirection,
   CanonicalResultDefinition,
   CyclePhaseRanges,
-  MedicalFlag,
   ReproductiveStatus,
   ReproductiveStatusRange,
   ReproductiveStatusRanges,
   Sex,
 } from "../types";
 import type { CyclePhase } from "../cycle";
-import { convertToCanonical } from "../unit-conversions";
-import { qualitativeClassForLoinc } from "../canonical-result-loinc";
 
 // The identity of the age band a range came from, returned by referenceRange /
 // optimalBand for labeling ("range for age 6–12"). Null when the adult (top-level)

@@ -1,12 +1,5 @@
 import { test, expect } from "./fixtures";
-import { loginAs, followLink } from "./nav";
-import { switchToProfile } from "./family-helpers";
-import { medicationDetail, medicationOverview } from "./med-card-helpers";
-import {
-  E2E_MEMBER_PASSWORD,
-  E2E_LOGIN_ILLNESS_CAREGIVER,
-  E2E_LOGIN_ILLNESS_RO,
-} from "./fixture-logins";
+import { followLink } from "./nav";
 
 // Illness-episode view (issue #801). The seed makes profile 1 currently sick — an
 // ongoing "Illness" situation with day-by-day symptoms, a fever curve (#800), and PRN

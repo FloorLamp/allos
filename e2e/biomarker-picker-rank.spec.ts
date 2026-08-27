@@ -11,8 +11,6 @@ import {
   E2E_LOGIN_BIOMARKER_PICKER,
   E2E_MEMBER_PASSWORD,
   BIOMARKER_PICKER_OVERDUE,
-  BIOMARKER_PICKER_FLAGGED,
-  BIOMARKER_PICKER_MEASURED,
 } from "./fixture-logins";
 
 // Relevance-ranked biomarker pickers (#1675). ~200 canonical analytes used to render

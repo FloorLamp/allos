@@ -22,8 +22,6 @@ import {
 } from "@/lib/settings";
 import { generateAndStoreSuggestions } from "@/lib/supplement-suggest";
 import {
-  decrementSupply,
-  incrementSupply,
   ensureMedicationCourse,
   setMedicationEndDate,
   setCourseStartDate,

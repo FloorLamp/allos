@@ -1,11 +1,7 @@
 // Pure helpers for Telegram callback payloads — no DB/network, so they can be
 // unit-tested (lib/__tests__). Consumed by telegram-callbacks.ts.
 
-import type {
-  DoseTakenOutcome,
-  EscalationAckOutcome,
-  PracticeLogOutcome,
-} from "../types";
+import type { DoseTakenOutcome, EscalationAckOutcome } from "../types";
 import type {
   DiscardWorkoutOutcome,
   FinishWorkoutOutcome,

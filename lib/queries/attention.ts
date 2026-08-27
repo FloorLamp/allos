@@ -22,7 +22,6 @@ import {
   mergeAttentionPageGroups,
   groupAttentionByPerson,
   emptyMemberIds,
-  type AttentionIntegration,
   type AttentionPageGroup,
   type MemberAttention,
   type MemberSection,
@@ -30,14 +29,12 @@ import {
 } from "../attention";
 import { getNewlyFlaggedBiomarkers } from "../notifications/digest-data";
 import type { DigestFlaggedBiomarker } from "../notifications/digest";
-import { getIntegration } from "../integrations/registry";
 import { biomarkerFlagDismissalKey } from "../dismissal-keys";
 import { isSuppressed } from "../upcoming-suppress";
 import { retestModulationFor } from "../risk-stratification";
 import { riskReasonsFrom, type Reason } from "../reasons";
 import { getRiskFactors } from "./upcoming/risk";
 import type { RiskFactor } from "../risk-stratification";
-import type { IntegrationId } from "../types";
 import {
   CANONICAL_DISPLAY_UNITS,
   type UpcomingDisplayUnits,

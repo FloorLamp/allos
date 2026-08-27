@@ -1,21 +1,5 @@
-import type {
-  AgeBandedRange,
-  BiomarkerDirection,
-  CanonicalResultDefinition,
-  CyclePhaseRanges,
-  MedicalFlag,
-  ReproductiveStatus,
-  ReproductiveStatusRange,
-  ReproductiveStatusRanges,
-  Sex,
-} from "../types";
-import type { CyclePhase } from "../cycle";
 import { qualitativeClassForLoinc } from "../canonical-result-loinc";
-import {
-  parseLeadingNumeric,
-  parseReferenceRange,
-  referenceStatus,
-} from "./parsing";
+import { parseReferenceRange, referenceStatus } from "./parsing";
 import { isNormalFlag, isOutOfRange } from "./flags";
 import { daysBetween, retestIntervalDays } from "./retest";
 import { freshnessState, type FreshnessState } from "../freshness";

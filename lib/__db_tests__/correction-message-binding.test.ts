@@ -8,15 +8,7 @@
 // (migration 170's provenance link), the real callback dispatcher, the real builders
 // and the real sweep, with only the raw Telegram transport stubbed.
 
-import {
-  afterEach,
-  beforeAll,
-  beforeEach,
-  describe,
-  expect,
-  it,
-  vi,
-} from "vitest";
+import { afterEach, beforeAll, beforeEach, describe, expect, it } from "vitest";
 import {
   answerCallbackQuery as answerSpy,
   stubTelegramSends,

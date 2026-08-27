@@ -18,7 +18,6 @@ import {
   raiseSeverity,
   openTempEntry,
 } from "./symptom-helpers";
-import { frozenNow } from "./worker-env";
 import {
   TAP_FLOOR_FLOAT_EPSILON_PX,
   TAP_FLOOR_PX,

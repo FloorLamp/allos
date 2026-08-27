@@ -2,7 +2,7 @@ import { test, expect } from "./fixtures";
 import { closeEditor, openFact } from "./intake-form-helpers";
 import { type Page, type Locator, type Browser } from "@playwright/test";
 import Database from "better-sqlite3";
-import { followLink, loginAs } from "./nav";
+import { loginAs } from "./nav";
 import { comboboxRows, settledClick } from "./helpers";
 import { hashPasswordSync } from "../lib/password";
 import { E2E_MEMBER_PASSWORD } from "./fixture-logins";
@@ -11,7 +11,6 @@ import {
   medicationRow,
   medicationList,
   pastMedications,
-  prnTodayItem,
 } from "./med-card-helpers";
 import { workerDbPath } from "./worker-env";
 

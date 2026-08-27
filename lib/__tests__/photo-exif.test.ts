@@ -13,7 +13,6 @@ import {
 } from "../photo/exif";
 import {
   buildMinimalExifJpeg,
-  buildTiffBlock,
   spliceExifIntoJpeg,
 } from "../photo/exif-fixture";
 

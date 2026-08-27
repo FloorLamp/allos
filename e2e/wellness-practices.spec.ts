@@ -17,7 +17,6 @@ import {
   PRACTICE_ZERO_PROFILE,
 } from "./fixture-logins";
 import { frozenNow, workerDbPath } from "./worker-env";
-import { formatDateWithYear } from "@/lib/format-date";
 import { practiceIdentity } from "@/lib/practice";
 
 async function openPracticeCreate(page: Page) {

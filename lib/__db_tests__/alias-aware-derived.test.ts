@@ -9,7 +9,7 @@
 // The db singleton is redirected at a per-file temp DB by setup.ts before import.
 
 import { describe, it, expect, beforeAll } from "vitest";
-import { db, today } from "@/lib/db";
+import { db } from "@/lib/db";
 import { getDerivedBiomarkerReadings, getBioAgeReadings } from "@/lib/queries";
 
 let profileId: number;

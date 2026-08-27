@@ -8,7 +8,6 @@ import {
   DEFAULT_RECOMMENDATION_CADENCE,
   DEFAULT_MAX_RUNS_PER_DAY,
   MAX_RUNS_PER_DAY_CEILING,
-  type RecommendationCadence,
 } from "../recommendation-run";
 import { offlineModelTag } from "../offline-narrative";
 

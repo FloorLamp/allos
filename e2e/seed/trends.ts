@@ -7,7 +7,6 @@ import "../../scripts/load-env";
 
 import { db, today } from "../../lib/db";
 import { shiftDateStr, zonedWallTimeToUtc } from "../../lib/date";
-import { createFixtureProfile } from "../fixture-profile";
 import {
   getTimezone,
   setProfileBirthdate,
@@ -83,7 +82,6 @@ import {
   TRENDS_CURRENCY_BODY_FAT_PCT,
 } from "../fixture-logins";
 import {
-  ins,
   seedMemberLogin,
   adultFixtureProfileId,
   fixtureProfileId,

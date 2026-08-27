@@ -9,7 +9,6 @@
 
 import { describe, it, expect, beforeAll } from "vitest";
 import { db, today } from "@/lib/db";
-import { shiftDateStr } from "@/lib/date";
 import {
   getProtocols,
   getProtocol,
@@ -18,7 +17,6 @@ import {
   getProtocolWindows,
   getProtocolWindowsForOutcome,
   getActiveProtocolSummaries,
-  getFrequencyTargetProgress,
   getProtocolIntakeItem,
   getProtocolOutcomeOptions,
   resolveOutcomeSeries,

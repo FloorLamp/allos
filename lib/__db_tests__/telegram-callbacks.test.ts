@@ -21,7 +21,7 @@ import {
 
 import { db, today } from "@/lib/db";
 import { shiftDateStr } from "@/lib/date";
-import { setProfileSetting, getProfileSetting } from "@/lib/settings";
+import { getProfileSetting } from "@/lib/settings";
 import { preventiveSignalKey } from "@/lib/preventive-upcoming";
 import { refillSignalKey } from "@/lib/refill-nudge";
 import { escalationMarkerKey } from "@/lib/notifications/escalate";

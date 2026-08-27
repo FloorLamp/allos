@@ -5,7 +5,6 @@
 
 import "../../scripts/load-env";
 
-import path from "node:path";
 import { zonedWallTimeToUtc, utcSqlString } from "../../lib/date";
 import { db, today } from "../../lib/db";
 import { extractionToPersistInput } from "../../lib/import-shape";

@@ -1,5 +1,4 @@
 import { test, expect } from "./fixtures";
-import { followLink } from "./helpers";
 
 // #1076: the biomarker surfaces scope to labs, and the physiologic vitals gain a
 // Trends → Vitals home. These specs prove (a) the Clinical results catalog lists labs and

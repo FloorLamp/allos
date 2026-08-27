@@ -29,7 +29,7 @@
 import Database from "better-sqlite3";
 import { describe, it, expect, beforeAll } from "vitest";
 import { db, today } from "@/lib/db";
-import { MIGRATIONS, NUMBERED_MIGRATIONS } from "@/lib/migrations/versions";
+import { NUMBERED_MIGRATIONS } from "@/lib/migrations/versions";
 import { up as up114 } from "@/lib/migrations/versions/114-standard-metric-seeds";
 import {
   STANDARD_TREND_METRIC_IDS,

@@ -16,7 +16,6 @@
 // already evaluated.
 import { afterAll, beforeAll, vi } from "vitest";
 import fs from "node:fs";
-import os from "node:os";
 import path from "node:path";
 import { templateDbPath } from "./shared-template";
 import { resetTelegramSpies } from "./telegram-spies";

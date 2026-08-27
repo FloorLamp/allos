@@ -1,8 +1,6 @@
 import { test, expect } from "./fixtures";
 import { type Locator, type Page } from "@playwright/test";
 import { comboboxRows, deleteActivityFromForm, followLink } from "./helpers";
-import { loginAs } from "./nav";
-import { E2E_LOGIN_RECAP, E2E_MEMBER_PASSWORD } from "./fixture-logins";
 
 // Post-workout session recap (issue #924), driven end-to-end:
 //   • live → Finish opens the "Session complete" recap step (the ONLY live-gated

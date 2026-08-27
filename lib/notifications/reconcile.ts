@@ -52,7 +52,6 @@ import { createLogger } from "../log";
 import {
   getIntakeItemNames,
   getIntakeItems,
-  getIntakeDoses,
   getTakenDoseIds,
   getSkippedDoseIds,
   getTakenDoseTimes,

@@ -1358,7 +1358,6 @@ import {
 
 import {
   getCustomSymptomNames,
-  getDoseEscalateChatId,
   getIntakeItemName,
   getPrnMedicationsForQuickLog,
   getSymptomLogOrder,
@@ -1385,7 +1384,6 @@ import {
   getProfileMoodCheckin,
   getProfilesByTelegramChatId,
   getTimezone,
-  getProfileAge,
   resetMoodCheckinIgnored,
 } from "../settings";
 import { getProfileNameById } from "../profile-summary-load";
@@ -1437,13 +1435,8 @@ import { fmtTemp } from "../units";
 import { formatMedicationDoseProduct } from "../medication-dose-format";
 import { queueTempRedFlagDispatch } from "./temp-red-flag";
 import {
-  parseMoodCheckinCallback,
-  parseMoodKeepCallback,
   moodKeepAnswerText,
   moodKeepCloseText,
-  parsePrnLogCallback,
-  parseSymptomPickCallback,
-  parseSymptomSeverityCallback,
   parseTempReply,
   parseTempReplyMarker,
   parseWeightReplyMarker,

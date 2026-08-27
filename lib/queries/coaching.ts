@@ -1,4 +1,4 @@
-import { db, today } from "../db";
+import { today } from "../db";
 import { localDayOf } from "../local-day-window";
 import { getLiveNiggles } from "../niggle-store";
 import { niggleLabel, type NiggleCoachingContext } from "../niggle-model";

@@ -18,29 +18,7 @@ import {
   isItemHiddenBySuppression,
   type SuppressionRecord,
 } from "../../upcoming-suppress";
-import { isDueOn, timeBucket } from "../../intake-schedule";
-import { doseSortKey } from "../../dose-order";
-import { formatMedicationDoseProduct } from "../../medication-dose-format";
-import {
-  daysOfSupplyLeft,
-  isLowSupply,
-  DEFAULT_LOW_SUPPLY_DAYS,
-} from "../../refill";
-import {
-  clinicalResultDetailHref,
-  intakeHref,
-  nutritionTabHref,
-  timelineDayHref,
-  MEDICATIONS_HREF,
-  INSTRUMENTS_HREF,
-  SUPPLIES_HREF,
-} from "../../hrefs";
-import { getInstrumentStates } from "../../instrument-records";
-import { mentalHealthCrisisKey, severityBand } from "../../mental-health";
-import { crisisFindingLine } from "../../crisis-resources";
-import { getResolvedCrisisResources } from "../../settings";
-import { refillSignalKey, poolRefillSignalKey } from "../../refill-nudge";
-import { getPoolView } from "../intake/supply-pool";
+import { clinicalResultDetailHref } from "../../hrefs";
 import { assessSchedule } from "../../immunization-status";
 import { preventiveAssessmentToUpcomingItem } from "../../preventive-upcoming";
 import { scheduledMatchForRule } from "../../preventive-appointment";
@@ -75,7 +53,6 @@ import {
   profileAgeMonths,
   getMentalHealthShareFull,
 } from "../../settings";
-import { getEffectiveActiveSituations } from "../derived-situations";
 import { sharedSurfaceDetail } from "../../appointment-sensitivity";
 import {
   CANONICAL_DISPLAY_UNITS,
@@ -84,55 +61,15 @@ import {
 } from "../../upcoming";
 import type { DistanceUnit, TemperatureUnit } from "../../settings";
 import {
-  type Reason,
   riskReasonsFrom,
   flaggedReason,
-  situationReason,
   concatReasons,
   plainRiskReasons,
 } from "../../reasons";
 import { isFlaggedForRetest } from "../../biomarker-retest-copy";
 import type { ClinicalObservation } from "../../types";
 import { pickNextAppointment } from "../../household";
-import {
-  getIntakeItems,
-  getIntakeDoses,
-  getTakenDoseIds,
-  getRefillRates,
-  getDietaryLimitWarnings,
-  getInteractionWarnings,
-  getPgxWarnings,
-  getContrastSafetyWarnings,
-  getDentalSafetyWarnings,
-  getOtotoxicWarnings,
-  getDrugAllergyWarnings,
-  getMedMonitoringItems,
-  getPrnOverMaxItems,
-} from "../intake";
-import { prnMaxSignalKey } from "../../prn-redose";
-import {
-  dietaryLimitSignalKey,
-  ulWarningTitle,
-  ulWarningDetail,
-} from "../../dri";
-import { interactionTitle, interactionDetail } from "../../drug-interactions";
-import { pgxTitle, pgxDetail } from "../../pgx";
-import {
-  contrastTitle,
-  contrastDetail,
-  type ContrastStudySource,
-} from "../../contrast-safety";
-import { dentalSafetyTitle, dentalSafetyDetail } from "../../dental-safety";
-import { ototoxicTitle, ototoxicDetail } from "../../ototoxic";
-import { drugAllergyTitle, drugAllergyFullDetail } from "../../drug-allergy";
-import {
-  medMonitoringTitle,
-  medMonitoringDetail,
-} from "../../medication-monitoring";
-import { medMonitoringReason } from "../../reasons";
-import type { AppRoute } from "../../hrefs";
 import { getScheduledAppointments, kindedScheduled } from "../appointments";
-import { getActivitiesByDate, isPredictedWorkoutDay } from "../training";
 import {
   getClinicalObservations,
   getImmunizations,
@@ -149,13 +86,10 @@ import { foodDrugEventItems } from "../../food-drug-ledger-findings";
 import { conditionReviewItems } from "../../condition-suggestion-findings";
 import { tempRedFlagItems } from "../../temp-red-flag-findings";
 import { followUpItems } from "../../followup-findings";
-import { getUvDoseForDay } from "../weather";
-import { decideUvOverexposure } from "../../uv-overexposure";
 import {
   carePlanItems,
   enduranceEventItems,
   goalItems,
-  markCarePlanItemDone,
   practiceItems,
   stepsPaceItems,
   trainingItems,

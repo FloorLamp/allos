@@ -18,11 +18,7 @@ import {
   type SportStat,
 } from "@/lib/queries";
 import { requireSession } from "@/lib/auth";
-import {
-  exerciseHistoryKey,
-  loadContextLabel,
-  regionForExercise,
-} from "@/lib/lifts";
+import { exerciseHistoryKey, loadContextLabel } from "@/lib/lifts";
 import { getFormDeloadContext } from "@/lib/routines";
 import { getInjuryConstraints } from "@/lib/injuries";
 import { exerciseInjuryVerdict } from "@/lib/injury-model";

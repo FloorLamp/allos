@@ -20,7 +20,6 @@ import {
   defaultEquipment,
   exerciseHistoryKey,
   loadKindOf,
-  regionForExercise,
 } from "@/lib/lifts";
 import {
   exerciseInjuryVerdict,
@@ -29,11 +28,7 @@ import {
 import { isValidDuration } from "@/lib/duration";
 import { formatLongDate } from "@/lib/format-date";
 import { useFormatPrefs } from "@/components/FormatPrefsProvider";
-import {
-  judgeTargets,
-  summarizeExercise,
-  SET_STATUS_TITLES,
-} from "@/lib/training-log-format";
+import { judgeTargets, summarizeExercise } from "@/lib/training-log-format";
 import {
   suggestNextSet,
   contextualNextSet,
