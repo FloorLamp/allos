@@ -25,3 +25,29 @@ export function normalizePose(
     ? (v as ProgressPose)
     : null;
 }
+
+// ── The in-domain DOOR (#3284) ───────────────────────────────────────────────
+//
+// Distinct from the #1119 nav gate, which hides the nav row until a photo exists
+// and is CORRECT — a zero-row store should not hold a nav row. The defect that
+// gate leaves behind is that the command palette was then the only always-visible
+// way in, and a palette-only door is invisible to anyone who does not already know
+// to search for it.
+//
+// A nav row asks one question ("is there anything here?"). A door has to answer a
+// second one — "and what does it invite?" — so this fold is three-valued rather
+// than boolean. `first-capture` is the #3077 never-recorded-keeps-its-CTA state:
+// nothing on file, so the entry IS the invitation.
+export type ProgressPhotoDoor = "browse" | "first-capture" | "hidden";
+
+export function progressPhotoDoor(input: {
+  hasPhotos: boolean;
+  /** The acting session's grant is read-only (`session.access === "read"`). */
+  readOnly: boolean;
+}): ProgressPhotoDoor {
+  if (input.hasPhotos) return "browse";
+  // Nothing recorded AND no write grant is the one state with no door: the page
+  // behind it is empty and the invitation could not be accepted. Hiding it here is
+  // not the nav gate's rule — a read-only viewer WITH photos still gets `browse`.
+  return input.readOnly ? "hidden" : "first-capture";
+}

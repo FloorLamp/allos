@@ -2,6 +2,7 @@
 
 import LogPracticeButton from "@/components/practices/LogPracticeButton";
 import PracticeWeeklyProgress from "@/components/practices/PracticeWeeklyProgress";
+import PracticeEditor from "@/app/(app)/wellness/PracticeEditor";
 import type { TrackedPractice } from "@/lib/queries/wellness";
 
 // The quick-entry overlay's PRACTICE form (issue #1633): every tracked wellness
@@ -29,12 +30,42 @@ import type { TrackedPractice } from "@/lib/queries/wellness";
 export default function QuickPracticeList({
   practices,
   today,
+  onDone,
 }: {
   practices: TrackedPractice[];
   // The acting profile's today (YYYY-MM-DD) — the day the counts are counting, and
   // the day the re-log question is asked about (#2007 layer 3).
   today: string;
+  // Dismisses the sheet. Used ONLY by the zero-state create branch below — the
+  // logging branch deliberately stays open (see the paragraph above).
+  onDone?: () => void;
 }) {
+  // ZERO STATE: the first practice is offered here (#3066). The /wellness nav row is
+  // hidden until practice state exists (#1620, correct), and every other door onto
+  // practices — the palette sheet, the Telegram nudges, the habits widget, the trends
+  // lens, the frequent-pages row — also requires an existing practice. This sheet row
+  // is always visible, so it is where the bootstrap belongs.
+  //
+  // It mounts the SAME PracticeEditor the Wellness page's Add button mounts, over the
+  // same `savePractice` action — no second create path, and nothing here to drift.
+  // Inline rather than behind the page's modal trigger: stacking a dialog over this
+  // sheet is not what a one-tap surface is for.
+  //
+  // UNLIKE the logging branch, this one CLOSES on success. Declaring a practice is a
+  // transaction with a real end, and the sheet's props were gathered on open — so
+  // staying would show the create form again over a list that has since changed.
+  // Reopening "Log practice" now finds the practice, and the nav row has appeared.
+  if (practices.length === 0) {
+    return (
+      <div className="space-y-3" data-testid="quick-entry-practice-empty">
+        <p className="text-sm text-slate-500 dark:text-slate-400">
+          Nothing tracked yet. Start a practice and log it from here.
+        </p>
+        <PracticeEditor compact onDone={onDone} />
+      </div>
+    );
+  }
+
   return (
     <ul data-testid="quick-entry-practice-list" className="flex flex-col gap-2">
       {practices.map((practice) => (

@@ -2,8 +2,9 @@
 //
 // What matters here is that neither surface grew a write path of its own:
 //   - loadQuickEntry("practice") gathers the SAME tracked-practice standing the
-//     Wellness page reads, per acting profile, and answers honestly when there is
-//     none — it is also the list the command palette matches typed input against;
+//     Wellness page reads, per acting profile, and offers the first practice when
+//     there is none (#3066) — it is also the list the command palette matches typed
+//     input against;
 //   - loadQuickEntry("document") only reports the demo gate the Data page applies;
 //   - paletteQuickLog re-parses AUTHORITATIVELY: an untracked name can never be
 //     written (the finite preimage), a tracked one goes through the same logPractice
@@ -15,6 +16,7 @@ import { db, today } from "@/lib/db";
 import { loadQuickEntry } from "@/app/(app)/quick-entry-actions";
 import { paletteQuickLog } from "@/app/(app)/palette-actions";
 import { practiceIdentity } from "@/lib/practice";
+import { getNavRelevance } from "@/lib/queries/nav-relevance";
 import { createLogin, createProfile, actAs, seedActor } from "./harness";
 
 function trackPractice(
@@ -70,12 +72,20 @@ describe("loadQuickEntry — practice (#1633)", () => {
     expect(data.practices[0]).toMatchObject({ todayCount: 0, perWeek: 5 });
   });
 
-  it("says so instead of offering an empty list", async () => {
-    seedActor({ profileName: "No Practices" });
+  // THE BOOTSTRAPPING PROPERTY (#3066). Both halves against one profile, because the
+  // defect was that only one of them was ever decided: the #1620 nav gate correctly
+  // hides /wellness for an empty ledger, and the zero state used to answer "add one
+  // under Wellness" — naming the page that gate hides, so the only creation path sat
+  // behind a gate requiring what it creates. The gate stays shut here; what changes
+  // is that the always-visible sheet row now carries the offer itself (the empty
+  // `practices` list is what QuickPracticeList renders the create form for).
+  it("with nothing tracked, the nav row stays hidden and this row becomes the offer", async () => {
+    const { profile } = seedActor({ profileName: "No Practices" });
+    expect(getNavRelevance(profile.id).wellness).toBe(false);
     const data = await loadQuickEntry("practice");
-    expect(data.form).toBe("unavailable");
-    if (data.form !== "unavailable") return;
-    expect(data.message).toMatch(/Wellness/);
+    expect(data.form).toBe("practice");
+    if (data.form !== "practice") return;
+    expect(data.practices).toEqual([]);
   });
 
   it("never leaks another profile's practices", async () => {
@@ -85,7 +95,10 @@ describe("loadQuickEntry — practice (#1633)", () => {
     trackPractice(theirs.id, "Cold plunge");
     actAs(admin, mine);
 
-    expect((await loadQuickEntry("practice")).form).toBe("unavailable");
+    const mineData = await loadQuickEntry("practice");
+    expect(mineData.form).toBe("practice");
+    if (mineData.form !== "practice") return;
+    expect(mineData.practices).toEqual([]);
 
     actAs(admin, theirs);
     const data = await loadQuickEntry("practice");

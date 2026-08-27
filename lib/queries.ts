@@ -53,6 +53,7 @@ export * from "./queries/sun";
 export * from "./queries/providers";
 export * from "./queries/provider-options";
 export * from "./queries/affiliations";
+export * from "./queries/progress-photos";
 export * from "./queries/nav-relevance";
 export * from "./queries/derived-situations";
 export * from "./queries/data-quality";

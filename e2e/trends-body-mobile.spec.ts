@@ -51,6 +51,30 @@ test.describe("Trends → Overview → body census responsive views (#1067)", ()
   // (the #1468 overlay is the mobile path). That behaviour is covered by
   // e2e/trends-body-merge.mobile.spec.ts, which owns the merged tab.
 
+  // #3284's third state, and the only fixture in this suite that can show it: this
+  // profile holds a READ grant and no progress photos, so the door would be an
+  // invitation it cannot accept onto a page with nothing on it. Both widths, because
+  // the door lives in the head row that the phone layout keeps.
+  test("the progress-photos door stays away from a read-only, photo-less profile", async ({
+    browser,
+  }) => {
+    const page = await loginAs(browser, {
+      username: E2E_LOGIN_TRENDS_BODY,
+      password: E2E_MEMBER_PASSWORD,
+    });
+    for (const viewport of [PHONE, DESKTOP]) {
+      await page.setViewportSize(viewport);
+      await openBodyTab(page);
+      // The head row itself renders — so the absence below is an observation about
+      // the door, not about a section that never mounted.
+      await expect(page.getByTestId("body-timeline-link")).toBeVisible();
+      await expect(page.getByTestId("body-progress-photos-link")).toHaveCount(
+        0
+      );
+    }
+    await page.context().close();
+  });
+
   test("mobile stays tiles-only even when an old all-charts URL is opened", async ({
     browser,
   }) => {
