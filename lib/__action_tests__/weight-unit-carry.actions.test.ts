@@ -243,13 +243,11 @@ describe("createGoal honors the submitted weight unit (issue #630)", () => {
   });
 });
 
-// The dashboard weight quick-add's payload shape (#2863) — `date` + `weight` +
-// `weight_unit`, the three fields components/dashboard/WeightQuickAdd.tsx posts. The
-// widget printed its unit in the label and posted only the number, so this action
-// resolved the unit from the login's pref and a Settings flip between render and
-// submit re-interpreted a correctly-typed weigh-in. That the form now carries the
-// field is pinned in components/__tests__/weight-quick-add-unit.test.tsx; this is
-// what the carried value BUYS, over a stored pref that says the opposite.
+// The dashboard weight quick-add's payload shape (#2863) — the three fields
+// components/dashboard/WeightQuickAdd.tsx posts, which until now omitted the unit and
+// let a Settings flip between render and submit re-interpret a correctly-typed
+// weigh-in. That the form carries the field is pinned in
+// components/__tests__/weight-quick-add-unit.test.tsx; this is what carrying it BUYS.
 describe("addBodyMetric honors the submitted weight unit (issues #630, #2863)", () => {
   it.each([
     // typed under a (kg) label; 82 kg is 180.8 lb, so a pref-read write would have

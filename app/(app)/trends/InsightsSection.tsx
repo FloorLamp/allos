@@ -36,13 +36,11 @@ function recapTitle(
   return `${cap} recap · ${window}`;
 }
 
-// What a reader is told when AI isn't running (#3715). Both generate forms below
-// print THIS string, so the two can't drift apart again — they used to carry the
-// same sentence twice, and that sentence named the provider and the environment
-// variable that switches it. Neither is a fact about the reader's health or about
-// what they will get back; the limitation they can act on is that the summary is
-// simpler, so that is all this says. Who is asked to write it, and how an operator
-// turns that on, stay out of the product surface.
+// What a reader is told when AI isn't running (#3715). Both generate forms below print
+// THIS string, so they can't drift apart again — they used to carry the same sentence
+// twice, naming the provider and the environment variable that switches it. Neither is
+// something a person reading their own trends can act on; that the summary is simpler
+// is, so that is all this says.
 const SIMPLE_SUMMARY_NOTE =
   "When AI isn't available, you get a simpler summary built from the same data.";
 
