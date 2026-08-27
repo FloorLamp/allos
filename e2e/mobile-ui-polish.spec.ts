@@ -174,7 +174,7 @@ test.describe("the phone drawer's month calendar clears the floor too (#3377/#35
       await page.setViewportSize({ width, height: PHONE.height });
       await page.goto("/");
       // The drawer, not the desktop sidebar: `components/MobileNav.tsx` renders the
-      // SAME <SidebarContent> — and therefore the same <TrainingLogCalendar> — inside
+      // SAME <SidebarContent> — and therefore the same <EventCalendar> — inside
       // the phone nav drawer, which is what makes this grid a phone surface at all.
       const drawer = await openMobileDrawer(page);
       const prevMonth = drawer.getByLabel("Previous month");
