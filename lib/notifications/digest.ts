@@ -372,6 +372,11 @@ export function digestDocumentLine(
 // name-then-count shape the band summaries and the recent-changes collector use.
 export const MAX_NAMED_DOCUMENTS = 3;
 
+// How many flagged results a morning names before it collapses to a count (#3872). The
+// digest is one glanceable message and still has to stop somewhere; the read behind it
+// no longer does, so the tail counts what is REALLY left rather than the cap itself.
+export const MAX_NAMED_FLAGGED = 8;
+
 export interface DigestSection {
   heading: string;
   // A line is a MessageBody since #2392, not a string: the digest emits RICH TEXT, so a
@@ -779,12 +784,29 @@ export function buildDigest(input: DigestInput): DigestModel | null {
 
   // New since the last digest: things to look at.
   const newLines: MessageBody[] = [];
-  for (const b of input.newFlaggedBiomarkers) {
+  const namedFlagged = input.newFlaggedBiomarkers.slice(0, MAX_NAMED_FLAGGED);
+  for (const b of namedFlagged) {
     const val = b.value ? ` ${b.value}` : "";
     newLines.push(
       formatEmphasizedLine({
         glyph: GLYPH.flagged,
         head: `${b.name}${val} (${b.flag})`,
+      })
+    );
+  }
+  const moreFlagged = input.newFlaggedBiomarkers.length - namedFlagged.length;
+  if (moreFlagged > 0) {
+    // CAUTION, not 🚩: that glyph claims "a READING fell outside its reference range"
+    // and this line is not a reading, while ⚠️'s role names this exact shape, "a message
+    // that had to be cut short". The link is the "see the rest" affordance and the only
+    // one the grammar offers — `because` takes a cause, `notes` facts, `deadline`
+    // refuses a CTA — and it degrades away with no configured public URL.
+    const base = (input.deepLinkBase ?? "").replace(/\/$/, "");
+    newLines.push(
+      formatEmphasizedLine({
+        glyph: GLYPH.caution,
+        head: `+${moreFlagged} more flagged result${moreFlagged === 1 ? "" : "s"}`,
+        link: base || null,
       })
     );
   }
