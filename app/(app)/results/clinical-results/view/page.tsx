@@ -57,7 +57,7 @@ import {
   RECHECK_BASIS_HEADING,
 } from "@/lib/biomarker-care-basis";
 import { convertToCanonical, sameUnit } from "@/lib/unit-conversions";
-import { displayUnit, storedLabUnit } from "@/lib/display-unit";
+import { displayUnit } from "@/lib/display-unit";
 import { getBiomarkerInfo } from "@/lib/datasets/biomarker-descriptions";
 import {
   getDisplayFormatPrefs,
@@ -309,7 +309,7 @@ export default async function ClinicalResultDetailPage(props: {
   let bands: BiomarkerBands = {};
 
   if (cb && cb.unit) {
-    chartUnit = storedLabUnit(cb.unit);
+    chartUnit = cb.unit;
     const converted = plottable.map((x) => ({
       ...x,
       v: convertToCanonical(x.value, x.r.unit, cb),
@@ -319,9 +319,7 @@ export default async function ClinicalResultDetailPage(props: {
       .map((x) => ({ date: x.r.date, value: x.v as number, bound: x.bound }));
     otherUnits = [
       ...new Set(
-        converted
-          .filter((x) => x.v == null)
-          .map((x) => storedLabUnit(x.r.unit) ?? "—")
+        converted.filter((x) => x.v == null).map((x) => x.r.unit ?? "—")
       ),
     ];
     if (cbHasRange) {
@@ -333,7 +331,7 @@ export default async function ClinicalResultDetailPage(props: {
       };
     }
   } else {
-    chartUnit = storedLabUnit(latestPlottable?.r.unit) ?? null;
+    chartUnit = latestPlottable?.r.unit ?? null;
     chartPoints = plottable
       .filter((x) => sameUnit(x.r.unit, chartUnit))
       .map((x) => ({ date: x.r.date, value: x.value, bound: x.bound }));
@@ -341,7 +339,7 @@ export default async function ClinicalResultDetailPage(props: {
       ...new Set(
         plottable
           .filter((x) => !sameUnit(x.r.unit, chartUnit))
-          .map((x) => storedLabUnit(x.r.unit) ?? "—")
+          .map((x) => x.r.unit ?? "—")
       ),
     ];
     const parsed = parseReferenceRange(latest.reference_range);

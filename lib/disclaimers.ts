@@ -1,49 +1,4 @@
-// The ONE place the app's disclaimer copy is maintained (issue #1049).
-//
-// Disclaimer text used to live as ~40 inline literals across app/ and components/,
-// drifted into ~15 near-variants of one sentence ("Informational only, not medical
-// advice", "not medical advice", "informational — not medical advice", …). That is
-// the "one question, one computation" discipline (#221) unapplied to legal copy: the
-// same statement maintained in 40 places drifts, and there was no single authoritative
-// place a user (or an auditor) could read the app's actual medical-disclaimer posture.
-//
-// This module is the canonical source. Every surface renders a REFERENCE to one of
-// these constants, never its own copy. A pure source-scan guard
-// (lib/__tests__/disclaimers.test.ts) fails CI on a new inline disclaimer literal
-// under app/ or components/, so the 40→1 consolidation can't silently regrow.
-//
-// Pure string module: NO imports, no DB, no network — client-safe and importable from
-// any tier (a Server Component page, a client card, a lib finding builder).
-
-// The canonical app-wide medical-disclaimer line. This exact wording is asserted by
-// e2e (illness-care.spec.ts) and is the tail of several finding `evidence` strings, so
-// it stays "Informational, not medical advice." — the shortest phrasing that carries
-// the posture.
-export const MEDICAL_DISCLAIMER = "Informational, not medical advice.";
-
-// The interpretive framing for screening scores, derived ranges, and biomarker
-// readouts: the app records and organizes, it does not diagnose.
-export const NOT_A_DIAGNOSIS = "Informational, not a diagnosis.";
-
-// The interpretive framing for suggestion/interaction surfaces: the app describes and
-// flags, it never tells you what to take or change.
-export const NEVER_PRESCRIPTIVE = "Informational, never prescriptive.";
-
-// The curated-dataset framing (#860/#1032): the reference datasets are a hand-reviewed
-// subset for personal tracking, not exhaustive clinical software — so the ABSENCE of a
-// flag is never clearance.
-export const DATASET_DISCLAIMER =
-  "A curated subset for personal tracking — not clinical software.";
-
-// The point-of-action clause carried by a medication-safety finding's `evidence`: the
-// finding is a prompt to talk to a professional, not an instruction to change anything.
-export const DISCUSS_WITH_PRESCRIBER =
-  "discuss with your prescriber or pharmacist";
-
-// The long-form legal text rendered by the single Disclaimer surface (/disclaimer),
-// reachable from the persistent footer link and Settings. Structured as titled
-// sections so the page can render them as headed paragraphs; DISCLAIMER_FULL is the
-// same content joined to plain text (the guard/test asserts the page renders it).
+// Canonical copy rendered by /disclaimer (issue #1049).
 export const DISCLAIMER_SECTIONS: {
   id?: string;
   title: string;
@@ -80,25 +35,7 @@ export const DISCLAIMER_SECTIONS: {
   },
 ];
 
-export const DISCLAIMER_FULL: string = DISCLAIMER_SECTIONS.map(
-  (s) => `${s.title}. ${s.body}`
-).join("\n\n");
-
-// ── The banned phrasings (#1049 guard vocabulary, widened by #2342) ───────────
-//
-// The disclaimer sentence, as it appears when someone hand-writes it instead of
-// referencing a constant above. High-signal by design: these do not occur in
-// ordinary UI copy or ordinary clinical prose, so a synthetic fixture or a constant
-// reference never trips them while every hand-written variant does.
-//
-// This list used to live inside lib/__tests__/disclaimers.test.ts, which reads SOURCE
-// under app/ and components/. #2342 found the same sentences arriving by two routes
-// that scan cannot see: curated dataset FIELDS under lib/ that render verbatim on a
-// domain page, and AI-written descriptions stored at RUNTIME, where no source scan can
-// ever reach. The rule is about rendered user-facing COPY, not about file type, so the
-// vocabulary moves here — the one module that already owns the app's disclaimer
-// posture — and the guard, the datasets scan, the generators and the runtime clamp all
-// read the SAME list rather than three drifting copies of it.
+// Shared by focused dataset/generator checks and runtime copy stripping (#2342).
 export const DISCLAIMER_PHRASINGS: readonly RegExp[] = [
   /not\s+medical\s+advice/i,
   /informational[^.\n]*\badvice\b/i,
@@ -108,7 +45,7 @@ export const DISCLAIMER_PHRASINGS: readonly RegExp[] = [
   /never\s+prescriptive/i,
 ];
 
-// Whether a piece of copy hand-writes a disclaimer phrasing.
+// Whether copy contains a disclaimer phrasing.
 export function hasDisclaimerPhrasing(
   text: string | null | undefined
 ): boolean {
