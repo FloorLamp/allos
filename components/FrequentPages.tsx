@@ -1,6 +1,7 @@
 "use client";
 
 import { useEffect, useSyncExternalStore } from "react";
+import { useCompactViewport } from "@/components/useCompactViewport";
 import Link from "next/link";
 import { usePathname } from "next/navigation";
 import { IconHistory } from "@tabler/icons-react";
@@ -51,10 +52,18 @@ function publishVisits(raw: string): void {
 // "Frequent" shortcuts at the top of the shared sidebar content (issue #1416,
 // section E3) — the browser half over the pure tally in lib/recent-pages.ts.
 //
-// Rendered inside the ONE shared <SidebarContent>, so the desktop sidebar and
-// the mobile drawer show the same shortcuts (the responsive-surfaces rule); the
-// phone is where it pays off most, since the drawer is otherwise a full tree to
-// scroll.
+// DRAWER-ONLY since #3154, on the rationale two lines above this one: "the phone
+// is where it pays off most, since the drawer is otherwise a full tree to
+// scroll". On desktop the nav these shortcuts duplicate is one glance below, and
+// after #3079's grouping the list is shorter still — so the section was paying
+// vertical rent in the surface that had none to spare.
+//
+// THE TALLY IS NOT DRAWER-ONLY, and that is why the width check sits beside the
+// RENDER rather than above the effect. This component is also the recorder: the
+// effect below is what counts a visit, it runs on every route at every width in
+// the always-mounted desktop <aside>, and a desktop session that stopped counting
+// would hand the phone drawer a list of the pages that person visits ON A PHONE.
+// The visit machinery in lib/recent-pages.ts is untouched.
 //
 // Storage is `localStorage`, per device, never the DB: visit counts are a
 // display preference, not health data, and the allowlist in lib/recent-pages.ts
@@ -71,6 +80,7 @@ export default function FrequentPages({
   trainingRelevant?: boolean;
 }) {
   const pathname = usePathname();
+  const compact = useCompactViewport();
   const storedSnapshot = useSyncExternalStore(
     subscribeVisits,
     readVisitsSnapshot,
@@ -106,7 +116,7 @@ export default function FrequentPages({
     }
   }, [pathname]);
 
-  if (pages.length === 0) return null;
+  if (!compact || pages.length === 0) return null;
 
   return (
     <div data-testid="frequent-pages" className="flex flex-col gap-1">
