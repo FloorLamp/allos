@@ -41,10 +41,15 @@ export default function PhotoDeleteAction({ remove, close, testId }: Props) {
   );
 
   return (
-    <span className="inline-flex [&>.button-control]:border-rose-800 [&>.button-control]:bg-rose-950 [&>.button-control]:text-rose-100 [&>.button-control:hover]:bg-rose-900 [&>.button-control:focus-visible]:ring-white">
-      <Button disabled={pending} onClick={run} data-testid={testId}>
-        {pending ? "Deleting…" : "Delete photo"}
-      </Button>
-    </span>
+    <button
+      type="button"
+      disabled={pending}
+      aria-busy={pending || undefined}
+      onClick={run}
+      data-testid={testId}
+      className="inline-flex min-h-11 min-w-11 shrink-0 items-center justify-center whitespace-nowrap rounded-lg border border-rose-800 bg-rose-950 px-2.5 py-1 text-xs font-medium text-rose-100 transition hover:bg-rose-900 focus:outline-hidden focus-visible:ring-2 focus-visible:ring-white disabled:cursor-not-allowed disabled:opacity-60 sm:min-h-0 sm:min-w-0"
+    >
+      {pending ? "Deleting…" : "Delete photo"}
+    </button>
   );
 }

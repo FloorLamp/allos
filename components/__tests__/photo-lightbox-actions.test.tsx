@@ -43,11 +43,13 @@ describe("photo lightbox delete action", () => {
     await waitFor(() =>
       expect(toast).toHaveBeenCalledWith("Gone", { tone: "error" })
     );
-    expect(
-      screen
-        .getByRole("button", { name: "Delete photo" })
-        .hasAttribute("disabled")
-    ).toBe(false);
+    await waitFor(() =>
+      expect(
+        screen
+          .getByRole("button", { name: "Delete photo" })
+          .hasAttribute("disabled")
+      ).toBe(false)
+    );
     expect(close).not.toHaveBeenCalled();
   });
 

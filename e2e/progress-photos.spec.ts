@@ -347,7 +347,7 @@ test("upload → grid → lightbox → compare → delete round trip (fallback c
     await expect(page.getByTestId("photo-lightbox")).toBeHidden();
     await dismissToast(page, "Photo deleted.");
     await expect(items).toHaveCount(1);
-    await items.first().click();
+    await items.click();
     await expect(page.getByTestId("photo-lightbox")).toContainText(
       "2026-07-01"
     );

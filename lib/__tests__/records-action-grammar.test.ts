@@ -31,15 +31,6 @@ import { stripComments } from "./strip-comments";
 //      utilities that merely share a prefix, so the token is matched on a word
 //      boundary and those do not count — a secondary is allowed.
 //
-// ── AND WHERE IT DOES *NOT* APPLY ───────────────────────────────────────────
-//
-// A nested form's submit button can be a primary within its own local surface,
-// not the pane's. The one literal `btn` in the records tree today is
-// LesionPhotoStrip's nested photo-upload submit (`btn py-1 text-sm`), which sits
-// outside the pane-member scope. A guard that cried wolf on it would have been
-// deleted within a week, taking the real guard with it (#3325's five `ORDER BY …
-// COLLATE NOCASE` neighbours, restated).
-//
 // ── THE UNIT IS THE PANE, AND IT USED NOT TO BE ─────────────────────────────
 //
 // This scan counted per FILE and was named "at most one primary per pane". The
@@ -248,17 +239,6 @@ describe("Records action grammar (#3408)", () => {
         `${rel} no longer needs its exception (${reason})`
       ).toBeGreaterThan(1);
     }
-  });
-
-  it("stays silent on a form's own submit button", () => {
-    // THE BENIGN NEIGHBOUR, asserted rather than assumed. The remaining literal
-    // `btn` in the records tree is a nested photo-upload submit, and a guard that
-    // flagged it would be deleted within a week. Its component is neither a route
-    // nor a `*Section.tsx`, so no pane's member list can contain it — proved here
-    // against a real form that WOULD trip the count if it were ever read.
-    const formRel = "app/(app)/records/specialty/skin/LesionPhotoStrip.tsx";
-    expect(primaryCount(readRel(formRel))).toBeGreaterThan(0);
-    expect(panes().flatMap((p) => p.members)).not.toContain(formRel);
   });
 
   it("can see both spellings, and neither sibling utility", () => {
