@@ -3146,10 +3146,10 @@ The canonical wording is maintained once in `lib/disclaimers.ts` and rendered
 only by that page: the ~40 hand-written inline disclaimer banners that used to
 drift across domain pages, and the disclaimer tails appended to
 finding/notification text, were **removed** — the domain surfaces carry no
-disclaimer prose at all. A pure source-scan guard
-(`lib/__tests__/disclaimers.test.ts`) fails the build if a disclaimer literal
-reappears anywhere under `app/`/`components/`, and pins that zero surfaces still
-import the canonical module. Two things deliberately stay: the crisis-resources
+disclaimer prose at all. An import-boundary test prevents other `app/` and
+`components/` modules from importing the shared disclaimer copy, and the
+canonical page has rendered E2E coverage. There is no global source scan for
+inline disclaimer wording. Two things deliberately stay: the crisis-resources
 line on the mental-health screening instruments (a non-dismissible safety
 surface shown at the moment of need — it renders crisis _resources_, not a
 disclaimer), and the point-of-action "discuss with your prescriber / pharmacist
@@ -3159,15 +3159,14 @@ The rule is about **rendered user-facing copy, not about file type** (#2342). A
 source scan under `app/`/`components/` could not see the two other routes the
 sentence took to the same pages: 40 entries of curated JSON under `lib/` —
 `canonical-result-definitions.json`'s `note` and `biomarker-descriptions.json`'s
-`description`, both rendered verbatim on the reading detail page, one of them
-byte-identical to the `NOT_A_DIAGNOSIS` constant — and AI-written coverage
-descriptions, which are generated and stored at runtime and never pass through a
-source file at all. All three now read the same banned-phrasing list, which lives in
-`lib/disclaimers.ts` beside the copy it protects: the guard scans every curated
-dataset's entry payloads (file-level `$comment`/`citation`/provenance metadata is
-out of scope — no surface renders it), `clampAiDescription` strips a disclaimer
-sentence out of a stored AI description, and `scripts/gen-canonical-result-definitions.ts`
-both forbids the sentence in its prompt and strips one from a generated `note`. The
+`description`, both rendered verbatim on the reading detail page — and AI-written
+coverage descriptions, which are generated and stored at runtime and never pass through a
+source file at all. These indirect paths share the phrasing definitions in
+`lib/disclaimers.ts`: focused tests check every curated dataset entry payload
+(file-level `$comment`/`citation`/provenance metadata is out of scope — no surface
+renders it), `clampAiDescription` strips a disclaimer sentence out of a stored AI
+description, and `scripts/gen-canonical-result-definitions.ts` both forbids the
+sentence in its prompt and strips one from a generated `note`. The
 prompt was the root cause: it used to tell the model "These are INFORMATIONAL, not
 medical advice", which is what taught it to append the framing to the rows it wrote.
 The same generator constraint now also forbids **restating a numeric band** the row

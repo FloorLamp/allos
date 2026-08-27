@@ -13,9 +13,6 @@ import MuscleAnatomy from "@/components/MuscleAnatomy";
 // Graceful absence: a custom (non-catalog) lift has no guide, so getExerciseGuide
 // returns undefined and this renders nothing — the affordance/section simply
 // doesn't appear, matching custom-lift behavior elsewhere.
-//
-// INFORMATIONAL FORM REFERENCE, NOT MEDICAL ADVICE. The app carries a medical
-// passport, so the disclaimer is stated explicitly.
 export default function ExerciseGuideSection({
   name,
   equipment,

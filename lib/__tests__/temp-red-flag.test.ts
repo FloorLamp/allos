@@ -143,7 +143,7 @@ describe("display units (#1019 — web pref / Telegram dual, identity untouched)
 });
 
 describe("tempRedFlagFullDetail / inlineTempRedFlagNote", () => {
-  it("full detail carries the source + the disclaimer tail", () => {
+  it("full detail carries the source without disclaimer boilerplate", () => {
     const f = detectEpisodeTempRedFlag(
       ep({ temperatures: [tp(104.5)], latestTemp: tp(104.5) }),
       { ageMonths: null }

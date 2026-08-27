@@ -94,7 +94,7 @@ describe("illness-care builder — duration variant (#448 fixture)", () => {
     expect(dur[0].domain).toBe("illness-care");
     expect(dur[0].tone).toBe("caution");
     expect(dur[0].title).toContain("Fever logged 4 days running");
-    // Cites the source; the disclaimer now lives on /disclaimer, not the finding (#1049).
+    // Cites the source without appending disclaimer boilerplate.
     expect(dur[0].evidence).toContain("Source:");
     expect(dur[0].evidence).not.toContain("Informational, not medical advice.");
     expect(dur[0].detail).toContain("more than 3 days");
@@ -105,7 +105,7 @@ describe("illness-care builder — duration variant (#448 fixture)", () => {
     expect(tierForDedupeKey(dur[0].dedupeKey)).toBe("care");
 
     // And it reaches the CARE surfaces: an Upcoming item banded "today" (→ dashboard),
-    // self-contained detail (source + disclaimer), same dedupeKey.
+    // self-contained source detail, same dedupeKey.
     const items = illnessCareItems(p, today(p));
     const item = items.find((i) => i.key === dur[0].dedupeKey);
     expect(item).toBeTruthy();

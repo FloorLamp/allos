@@ -542,8 +542,7 @@ export default function ProfilePassport({
               <Empty>No body metrics recorded.</Empty>
             )}
 
-            {/* Pediatric growth percentiles, shown only for a child in
-              chart range. "Reference — not medical advice" per the disclaimer. */}
+            {/* Pediatric growth percentiles, shown only for a child in chart range. */}
             {body.growth && (
               <div className="mt-4 border-t border-black/5 pt-3 dark:border-white/10">
                 <div className="mb-2 flex flex-wrap gap-2">
