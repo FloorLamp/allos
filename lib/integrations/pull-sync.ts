@@ -3,6 +3,7 @@ import { createLogger } from "@/lib/log";
 import { userErrorCopy } from "@/lib/user-error-copy";
 import type { IntegrationId } from "@/lib/types";
 import {
+  getConnection,
   markConnectionNeedsReauth,
   recordSync,
   recordSyncEvent,
@@ -196,17 +197,26 @@ export async function runPullSync<
   } catch (err) {
     // HOUSE COPY ON THE COLUMN, RAW CAUSE IN THE LOG (#3592). This string is written
     // to `integration_sync_events.error`, which the integration card renders in red,
-    // and it is also returned to `syncNow`, which renders it as "Sync failed: …".
+    // and it is also returned to `syncNow`, which shows it in the "Sync now" toast.
     // Both readers are the person tracking their health; the refresh's own text
     // ("fetch failed", a 400 body) is for an operator and belongs in the error log.
     log.error("authorize failed", {
       sourceId: spec.id,
       err: err instanceof Error ? err.message : String(err),
     });
-    const message = userErrorCopy(err, {
-      doing: `connect to ${name}`,
-      service: name,
-    });
+    // A DEAD GRANT IS A DOOR, AND THIS IS WHERE THE MOST COMMON ONE ARRIVES (#3618).
+    // Strava and Withings resolve credentials through their own refresh, which calls
+    // `markConnectionNeedsReauth` and THEN throws; the throw's text is an operator's
+    // ("Strava token refresh failed (401): …") and the classifier below can only
+    // reduce it to "Couldn't connect to Strava." — true, and silent about the one
+    // thing the person can do. The connection row is the evidence, already written,
+    // so ask it rather than re-deriving the verdict from the message.
+    const message = getConnection(profileId, spec.id)?.status === "needs_reauth"
+      ? `Reconnect ${name} to resume syncing.`
+      : userErrorCopy(err, {
+          doing: `connect to ${name}`,
+          service: name,
+        });
     recordSyncEvent(profileId, spec.id, { ok: false, error: message });
     return { error: message };
   }
@@ -305,7 +315,7 @@ export async function runPullSync<
     // Same rule as the authorize catch above: the SQLite vocabulary a failed write
     // throws ("UNIQUE constraint failed: activities.profile_id, …") is exactly the
     // text #3198 stopped rendering to people. It goes to the log; the column and the
-    // "Sync failed: …" toast get the classifier's sentence.
+    // "Sync now" toast get the classifier's sentence.
     log.error("sync write failed", {
       sourceId: spec.id,
       err: err instanceof Error ? err.message : String(err),

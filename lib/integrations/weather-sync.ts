@@ -3,6 +3,7 @@ import { userErrorCopy } from "@/lib/user-error-copy";
 import { getHomeLocation } from "@/lib/settings";
 import { getTimezone } from "@/lib/settings";
 import { WEATHER_ID, recordSync, recordSyncEvent } from "./connections";
+import { syncFailureCopy } from "./auth-failure";
 import { openMeteoSource, type WeatherSource } from "./open-meteo";
 import { upsertUvHours, upsertWeatherDays } from "./weather-cache";
 import {
@@ -28,6 +29,11 @@ import { truncatedSyncDetails } from "./sync-details";
 // WeatherSource is injected (defaulting to Open-Meteo) so tests run fully offline.
 
 const log = createLogger("weather-sync");
+
+// The host this module reaches for, named as #3592 already named it in
+// open-meteo.ts's throw branch ("Couldn't reach Open-Meteo. Try again."), so both
+// halves of the same failure speak of the same thing.
+const SOURCE_NAME = "Open-Meteo";
 
 // How many trailing days to (re-)fetch each run. Covers recent logged days for the
 // backfill and keeps the archive/forecast window bounded. Idempotent, so re-fetching
@@ -137,8 +143,13 @@ export async function runWeatherSync(
     timezone
   );
   if (!res.ok) {
+    // The hourly half's failure IS the run's failure, so this string is the one the
+    // integration card, the "Sync now" toast and the morning digest all show (#3618).
+    // `res.error` is already the house sentence when the request THREW; a rejection
+    // gets one from the shared vocabulary, which — for a keyless source with no grant
+    // to renew — is only ever "wait" or "we couldn't", never "reconnect".
     const error =
-      res.error ?? `weather fetch failed (${res.status ?? "unknown"})`;
+      res.error ?? syncFailureCopy(SOURCE_NAME, res.status ?? 0, false);
     recordSyncEvent(profileId, WEATHER_ID, {
       ok: false,
       windowStart: startDate,
@@ -153,7 +164,7 @@ export async function runWeatherSync(
     counts = upsertUvHours(home.lat, home.lng, res.rows, source.id);
   } catch (err) {
     // The UV cache write refused (a constraint, a locked DB). Its SQLite vocabulary
-    // is for an operator; the card and the "Sync failed: …" toast get the house
+    // is for an operator; the card and the "Sync now" toast get the house
     // sentence (#3592).
     log.error("weather UV upsert failed", {
       profile: profileId,

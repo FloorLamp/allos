@@ -12,6 +12,7 @@ import {
 } from "./connections";
 import { mapStravaActivity, mapStravaActivityArtifacts } from "./strava";
 import { autoMergeActivityDuplicates } from "@/lib/import-review/auto-merge";
+import { syncFailureCopy } from "./auth-failure";
 import { pullPaging } from "./registry";
 import { isPullRateLimited, DAY_SECONDS } from "./pull-window";
 import { runPullSync, type PullOutcome, type PullSpec } from "./pull-sync";
@@ -67,6 +68,8 @@ function streamFinallyAbsent(status: number): boolean {
 const log = createLogger("strava-sync");
 
 const API = "https://www.strava.com/api/v3";
+// The brand a person recognises, shared by every sentence this module writes.
+const SOURCE_NAME = "Strava";
 const PER_PAGE = 200;
 const { timeoutMs, maxPages: maxRequests, rescanDays } = pullPaging(STRAVA_ID);
 const RESCAN_MARGIN_SEC = rescanDays * DAY_SECONDS;
@@ -127,7 +130,7 @@ async function stravaGet(
     // text and end up rendered — "Strava activities request failed: ECONNRESET" on
     // the integration card. WHICH request failed is what an operator reads, so the
     // path goes to `log.error` with the raw cause; `error` carries the house sentence
-    // the card and the "Sync failed: …" toast show a person.
+    // the card and the "Sync now" toast show a person.
     log.error("Strava request failed", {
       path,
       err: err instanceof Error ? err.message : String(err),
@@ -137,7 +140,7 @@ async function stravaGet(
       status: 0,
       error: userErrorCopy(err, {
         doing: "sync your Strava activities",
-        service: "Strava",
+        service: SOURCE_NAME,
       }),
     };
   }
@@ -244,11 +247,13 @@ const stravaSpec: PullSpec<
         // status 0 = a network throw/timeout caught in stravaGet, which already
         // logged the path and the real cause and put HOUSE COPY on `error` (#3592).
         // It is passed through unprefixed: prefixing it would rebuild the raw-text
-        // sentence this change removed.
+        // sentence this change removed. An HTTP status gets its own house sentence
+        // from the shared failure vocabulary (#3618); the status itself goes to the
+        // log, which is the only reader it was ever any use to.
+        log.error("Strava activity list rejected", { status: listRes.status });
         return {
           error:
-            listRes.error ??
-            `Strava activities request failed (${listRes.status})`,
+            listRes.error ?? syncFailureCopy(SOURCE_NAME, listRes.status, true),
         };
       }
       const list = Array.isArray(listRes.json)

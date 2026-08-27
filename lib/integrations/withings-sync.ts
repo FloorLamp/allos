@@ -14,6 +14,7 @@ import {
   mapWithingsMeasureGroup,
   mapWithingsSleep,
 } from "./withings";
+import { syncFailureCopy } from "./auth-failure";
 import { pullPaging } from "./registry";
 import { pageOutcome, pullSecondsWindow } from "./pull-window";
 import { runPullSync, type PullOutcome, type PullSpec } from "./pull-sync";
@@ -35,6 +36,8 @@ import type { NormBodyMetric, NormMetricSample, NormVital } from "./normalize";
 const log = createLogger("withings-sync");
 
 const BASE = "https://wbsapi.withings.net";
+// The brand a person recognises, shared by every sentence this module writes.
+const SOURCE_NAME = "Withings";
 const MEASURE_PATH = "/measure";
 const SLEEP_PATH = "/v2/sleep";
 const { timeoutMs, maxPages, rescanDays, backfillDays } =
@@ -94,7 +97,7 @@ async function withingsPost(
   } catch (err) {
     // Network error / timeout / DNS. WHICH request failed goes to the log with the
     // raw cause; `error` carries the house sentence, because it is rendered on the
-    // integration card and in the "Sync failed: …" toast (#3592).
+    // integration card and in the "Sync now" toast (#3592).
     log.error("Withings request failed", {
       path,
       err: err instanceof Error ? err.message : String(err),
@@ -104,7 +107,7 @@ async function withingsPost(
       status: 0,
       error: userErrorCopy(err, {
         doing: "sync your Withings data",
-        service: "Withings",
+        service: SOURCE_NAME,
       }),
     };
   }
@@ -148,15 +151,18 @@ async function fetchPages(
     if (!res.ok) {
       if (pageOutcome(res.status, RATE_LIMIT_STATUSES) === "truncate")
         return { items, timezone, updatetime, truncated: true };
+      // withingsPost only sets `error` for a network throw, where it is already the
+      // house sentence (#3592). An HTTP or envelope status now gets one too, from the
+      // shared failure vocabulary (#3618) — an envelope 401 is a rejected token, and
+      // every other Withings code is a number only its own API reference explains.
+      // The path and the code move to the log, where they are worth having.
+      log.error("Withings request rejected", { path, status: res.status });
       return {
         items,
         timezone,
         updatetime,
         truncated: false,
-        // withingsPost only sets `error` for a network throw, where it is already
-        // the house sentence (#3592) — and where this line's alternative would be
-        // the meaningless "(0)". An HTTP/envelope status keeps the authored line.
-        error: res.error ?? `Withings ${path} request failed (${res.status})`,
+        error: res.error ?? syncFailureCopy(SOURCE_NAME, res.status, true),
       };
     }
     const body = res.body;

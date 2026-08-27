@@ -40,3 +40,52 @@ export function isAuthRefreshFailure(
   }
   return false;
 }
+
+// ---- What the person reads when a source answers with a status (#3618) ------
+
+// A status the source will plausibly answer differently next time: it said "slow
+// down" (429), it broke on its own side (5xx), or there was no HTTP response at all
+// (the status-0 sentinel a network error/timeout maps to).
+//
+// BOUNDED AT 600 rather than left open, because this also receives Withings'
+// ENVELOPE codes, which are not HTTP statuses and run into four digits: an
+// unqualified `>= 500` read 2555 as a server error and promised a retry for
+// something nobody had classified.
+function isTransientStatus(status: number): boolean {
+  return status === 0 || status === 429 || (status >= 500 && status < 600);
+}
+
+// The sentence for a failed sync, keyed on WHAT THE STATUS MEANS rather than on the
+// number. `Oura /v2/usercollection/sleep request failed (401)` named a path, a status
+// and nothing a reader could do; the three branches here are three different asks,
+// and collapsing them into one "sync failed" would throw away the half a person can
+// act on:
+//
+//   • a dead grant is a DOOR — the card's Reconnect link and the digest item both
+//     lead through it, so the sentence should say so;
+//   • a source outage is not the person's problem and invites nothing;
+//   • anything else is ours to look at, so it gets no retry advice (copy.md rule 1).
+//
+// The path and the status are not deleted — each source logs them beside the raw
+// cause, which is where whoever debugs this reads.
+//
+// Keyed on `isAuthRefreshFailure` rather than a second status table, so this sentence
+// and `markConnectionNeedsReauth` can never disagree about what a 401 meant.
+// `canReconnect` is the caller's answer to "is there anything to reconnect?": a
+// keyless source (Open-Meteo) holds no grant, and its bare 400 — which the predicate
+// above reads as a rejected grant, correctly, for the token-refresh path it was
+// written for — must not send a person hunting for a connect button that does not
+// exist.
+export function syncFailureCopy(
+  sourceName: string,
+  status: number,
+  canReconnect: boolean
+): string {
+  if (canReconnect && isAuthRefreshFailure(status)) {
+    return `Reconnect ${sourceName} to resume syncing.`;
+  }
+  if (isTransientStatus(status)) {
+    return `${sourceName} is having trouble. The next sync will pick it up.`;
+  }
+  return `Couldn't sync ${sourceName}.`;
+}
