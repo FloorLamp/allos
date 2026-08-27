@@ -113,7 +113,6 @@ export interface StaleSync {
   minutes: number;
 }
 
-
 // Whole minutes between a stored timestamp and `now`, or null when either is
 // unreadable. Negative when the stamp is in the FUTURE (a container whose clock
 // stepped back), which every caller reads as "not silent" rather than as a breach.

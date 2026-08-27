@@ -162,7 +162,9 @@ export function portalLoginStatus(
     return plain(
       "attention",
       report.message
-        ? sentence(`Last run failed ${day(report.at, timeZone)}: ${report.message}`)
+        ? sentence(
+            `Last run failed ${day(report.at, timeZone)}: ${report.message}`
+          )
         : `Last run failed ${day(report.at, timeZone)}.`
     );
   }
@@ -183,7 +185,9 @@ export function portalLoginStatus(
     // the per-day grouping out of SQL, which is a larger change than this sweep; the
     // report's OWN day, which every other branch names, is now correct.
     const on =
-      delivered && delivered.count > 0 ? delivered.day : day(report.at, timeZone);
+      delivered && delivered.count > 0
+        ? delivered.day
+        : day(report.at, timeZone);
     const suffix = checkClockSuffix(report, on, timeZone);
     if (!delivered || delivered.count <= 0) {
       // The run kind is still stated. A delivery that re-offered only documents allos

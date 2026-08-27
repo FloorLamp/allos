@@ -461,9 +461,7 @@ export default function PortalsSurface({
               {i.lastSyncedOnDay
                 ? `Last synced ${i.lastSyncedOnDay}`
                 : "Not synced yet"}
-              {i.lastFailedOnDay
-                ? ` · last failure ${i.lastFailedOnDay}`
-                : ""}
+              {i.lastFailedOnDay ? ` · last failure ${i.lastFailedOnDay}` : ""}
             </span>
           )}
           <RowNote id={rowKey} note={note} />

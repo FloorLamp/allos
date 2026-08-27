@@ -90,7 +90,10 @@ export default async function HealthConnectPage() {
           status={status}
           createdAt={tokenInfo.createdAt}
           lastUsedAt={tokenInfo.lastUsedAt}
-          expiresOnDay={dateFromCreatedAt(tokenInfo.expiresAt, getTimezone(profile.id))}
+          expiresOnDay={dateFromCreatedAt(
+            tokenInfo.expiresAt,
+            getTimezone(profile.id)
+          )}
         />
 
         {connected && (
