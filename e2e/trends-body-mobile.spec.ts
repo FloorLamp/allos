@@ -68,9 +68,9 @@ test.describe("Trends → Overview → body census responsive views (#1067)", ()
       // The head row itself renders — so the absence below is an observation about
       // the door, not about a section that never mounted.
       await expect(page.getByTestId("body-timeline-link")).toBeVisible();
-      await expect(
-        page.getByTestId("body-progress-photos-link")
-      ).toHaveCount(0);
+      await expect(page.getByTestId("body-progress-photos-link")).toHaveCount(
+        0
+      );
     }
     await page.context().close();
   });
