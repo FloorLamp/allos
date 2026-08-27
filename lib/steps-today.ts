@@ -26,8 +26,11 @@ export interface StepsTodaySummary {
   // figures are present AND the day is complete enough to compare (see
   // STEPS_DELTA_COMPLETE_HOUR).
   deltaPct: number | null;
-  // Direction of today vs the trailing average; null on the same terms as deltaPct —
-  // it answers the same comparison and cannot be honest when that one is not.
+  // Direction of today vs the trailing average; null on the same terms as deltaPct,
+  // because it answers the same comparison and cannot be honest when that one is not.
+  // NOTE it currently has NO renderer — only tests read it — so gating it changed
+  // nothing a person sees. It is kept, and gated, because the day it gains one the
+  // partial-day arrow would be the same false signal deltaPct was.
   direction: StepsDirection | null;
 }
 
