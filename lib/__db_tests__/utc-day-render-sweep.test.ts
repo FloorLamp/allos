@@ -195,7 +195,11 @@ describe("the read models #3836 converted", () => {
       skipped: 0,
     })!;
     recordSyncRows(eventId, [
-      { target_table: "medical_documents", target_id: docId, disposition: "inserted" },
+      {
+        target_table: "medical_documents",
+        target_id: docId,
+        disposition: "inserted",
+      },
     ]);
     expect(getSyncRowProvenance(profile.id, eventId)[0].date).toBe(day);
 

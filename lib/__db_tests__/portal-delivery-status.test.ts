@@ -255,18 +255,26 @@ describe("deliveredDocumentCountsByAccount (#2914)", () => {
     // is what made this page say "1" while the drill-in listed 3 — one delivery with two
     // numbers, which is the thing #1991 exists to forbid.
     expect(
-      deliveredDocumentCountsByAccount(authorized([profileOne]), false, "UTC").get(
-        accountOne.id
-      )
+      deliveredDocumentCountsByAccount(
+        authorized([profileOne]),
+        false,
+        "UTC"
+      ).get(accountOne.id)
     ).toEqual({ count: 4, day: "2026-08-15" });
   });
 
   it("never lends one household's documents to another's login row", () => {
-    const forOne = deliveredDocumentCountsByAccount(authorized([profileOne]),
-      false, "UTC");
+    const forOne = deliveredDocumentCountsByAccount(
+      authorized([profileOne]),
+      false,
+      "UTC"
+    );
     expect(forOne.has(accountTwo.id)).toBe(false);
-    const forTwo = deliveredDocumentCountsByAccount(authorized([profileTwo]),
-      false, "UTC");
+    const forTwo = deliveredDocumentCountsByAccount(
+      authorized([profileTwo]),
+      false,
+      "UTC"
+    );
     // Nine, over a report whose split was all zeroes: the run said `nothing-new` about
     // the portal visit it did not make, and nine archives arrived anyway.
     expect(forTwo.get(accountTwo.id)).toEqual({ count: 9, day: "2026-08-15" });
@@ -274,9 +282,9 @@ describe("deliveredDocumentCountsByAccount (#2914)", () => {
   });
 
   it("answers nothing at all for a login with no accessible profile", () => {
-    expect(deliveredDocumentCountsByAccount(authorized([]), false, "UTC").size).toBe(
-      0
-    );
+    expect(
+      deliveredDocumentCountsByAccount(authorized([]), false, "UTC").size
+    ).toBe(0);
   });
 });
 
@@ -320,8 +328,11 @@ describe("a push that straddles UTC midnight (#2914)", () => {
     });
     stampReport(account, "2026-08-15 00:00:06", null);
 
-    const delivered = deliveredDocumentCountsByAccount(authorized([profile]),
-      false, "UTC").get(account.id);
+    const delivered = deliveredDocumentCountsByAccount(
+      authorized([profile]),
+      false,
+      "UTC"
+    ).get(account.id);
     // The most recent delivery day, and everything that landed on it.
     expect(delivered).toEqual({ count: 2, day: "2026-08-15" });
 
@@ -351,8 +362,11 @@ describe("the sentence a delivery-only login row renders (#2914)", () => {
       authorized([profileOne]),
       false
     ).find((r) => r.accountId === accountOne.id)!;
-    const delivered = deliveredDocumentCountsByAccount(authorized([profileOne]),
-      false, "UTC");
+    const delivered = deliveredDocumentCountsByAccount(
+      authorized([profileOne]),
+      false,
+      "UTC"
+    );
     const line = portalLoginStatus(
       { ...report, delivered: delivered.get(accountOne.id) ?? null },
       "UTC"
@@ -373,8 +387,11 @@ describe("the sentence a delivery-only login row renders (#2914)", () => {
       authorized([profileTwo]),
       false
     ).find((r) => r.accountId === accountTwo.id)!;
-    const delivered = deliveredDocumentCountsByAccount(authorized([profileTwo]),
-      false, "UTC");
+    const delivered = deliveredDocumentCountsByAccount(
+      authorized([profileTwo]),
+      false,
+      "UTC"
+    );
     expect(
       portalLoginStatus(
         { ...report, delivered: delivered.get(accountTwo.id) ?? null },
