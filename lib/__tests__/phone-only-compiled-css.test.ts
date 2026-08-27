@@ -24,6 +24,7 @@ const PHONE_ONLY_CONTRACTS = [
   "table-nested-row",
   "metric-readings-list",
   "practice-session-list",
+  "logged-event-rows",
   "notification-kind-matrix",
 ] as const;
 

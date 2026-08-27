@@ -146,7 +146,9 @@ test("a supplement's dose history offers the medication row actions, and an edit
   // #2876: Mark taken asserts an administration at the tap while recorded_at keeps
   // the separate immutable storage instant. The history therefore shows the stated
   // administration clock, not the record-chain fallback label.
-  await expect(entry).toContainText(/Time\d{1,2}:\d{2}/);
+  // The clock is the row's TRAILING fact since #3671, so it no longer reprints the
+  // hidden column header beside itself — the pattern used to read `Time7:02`.
+  await expect(entry).toContainText(/\d{1,2}:\d{2}/);
   await expect(entry).not.toContainText("recorded");
 
   // ── The same ⋯ row actions the medication history offers ───────────────────
