@@ -19,8 +19,7 @@ import {
 // copy used to live as ~40 inline literals that drifted into ~15 near-variants of one
 // sentence. Per the owner's ratified call, all of that boilerplate is now DELETED from the
 // surfaces: the disclaimer lives on ONE page (/disclaimer, footer-linked), and the domain
-// pages carry no disclaimer prose at all. The rendered-phrase source scan now lives with
-// the other copy rules in copy-lint.test.ts (#3521); this file keeps the zero-escape and
+// pages carry no disclaimer prose at all. This file keeps the zero-escape and
 // import-boundary checks plus the dataset/runtime halves of the same contract.
 //
 // STRICT: because no legitimate inline disclaimer remains, there are ZERO `disclaimer-ok:`
