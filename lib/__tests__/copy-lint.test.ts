@@ -47,13 +47,6 @@ const BANNED: { re: RegExp; label: string }[] = [
 const COULDNT_LITERAL = /(["'])(Couldn['’]t [^"']*?)\1/g;
 const TERMINAL = /[.?!]$/;
 
-const ALLOW: { file: string; substring: string }[] = [
-  {
-    file: "app/(app)/onboarding/actions.ts",
-    substring: "The adopted routine could not be activated.",
-  },
-];
-
 const FAMILY_LOGIN_COPY =
   "Family settings administers the signed-in login's roster and grants.";
 const VIEW_CONTROL_COPY =
@@ -217,10 +210,7 @@ describe("copy-lint: user-facing tone standard (issue #945)", () => {
         .forEach((line, index) => {
           if (isInternalLine(line)) return;
           for (const { re, label } of BANNED) {
-            const allowed = ALLOW.some(
-              (entry) => entry.file === rel && line.includes(entry.substring)
-            );
-            if (re.test(line) && !allowed) {
+            if (re.test(line)) {
               violations.push(
                 `${rel}:${index + 1} — ${label} in: ${line.trim()}`
               );
@@ -276,16 +266,6 @@ describe("copy-lint: user-facing tone standard (issue #945)", () => {
     expect(
       [...CROSS_PROFILE_FILES].filter((file) => !knownFiles.has(file))
     ).toEqual([]);
-    expect(
-      ALLOW.filter(
-        (entry) =>
-          !files.some(
-            (file) =>
-              file.rel === entry.file && file.text.includes(entry.substring)
-          )
-      )
-    ).toEqual([]);
-
     const crossProfileFiles = crossProfileSourceFiles();
     expect(
       CROSS_PROFILE_VOICE_ALLOW.filter(

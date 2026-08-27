@@ -455,10 +455,7 @@ the scope directories. It fails CI on:
 It structurally **excludes** non-user-facing contexts so they can't trip it:
 comments, `import`/`export … from` lines, `console.*` and `log.<level>(…)`
 logging calls, and `throw new Error(…)` (internal, masked to a generic message
-per #478). A genuinely-legitimate remaining hit goes on the test's frozen
-`ALLOW` list, keyed by `(file, exact substring)` with a per-entry justification
-— the same immutable-manifest discipline as the migration hash manifest and the
-e2e-hygiene allowlist: **the list only ever shrinks.**
+per #478).
 
 Disclaimer prose is not part of this source scan. `lib/disclaimers.ts` owns the
 shared wording, and an import-boundary test prevents other `app/` and
