@@ -57,7 +57,6 @@ import {
 } from "./practices";
 import {
   getRecentDoseTaps,
-  getRecentFoodTaps,
   getRecentPracticeTaps,
   restampDoseLogsCore,
   type DoseRestampOutcome,
@@ -79,7 +78,7 @@ import {
   PRACTICE_TIME_PREFIXES,
 } from "./correction-rows";
 import { plainBody } from "./rich-text";
-import { buildFoodNudge } from "./food";
+import { buildFoodNudge, consentedFoodTaps } from "./food";
 import { keyboardChatOrigin, withChatOrigin } from "./chat-origin";
 import { FOOD_NUDGE_WINDOWS, type FoodNudgeWindow } from "./food-format";
 import { countVisibleFoodButtons } from "./food-format";
@@ -307,7 +306,7 @@ export async function handleFoodTimeChip(
   cq: TelegramCallbackQuery,
   token: CorrectionChipToken
 ): Promise<void> {
-  const r = await resolve(cq, token, getRecentFoodTaps, FOOD_TIME_PREFIXES);
+  const r = await resolve(cq, token, consentedFoodTaps, FOOD_TIME_PREFIXES);
   if (!r) return;
   const outcome = restampFoodEventsCore(
     r.profileId,
@@ -337,7 +336,7 @@ export async function handleFoodTimeAt(
   cq: TelegramCallbackQuery,
   token: CorrectionAtToken
 ): Promise<void> {
-  const r = await resolve(cq, token, getRecentFoodTaps, FOOD_TIME_PREFIXES);
+  const r = await resolve(cq, token, consentedFoodTaps, FOOD_TIME_PREFIXES);
   if (!r) return;
   // `open` and `back` WRITE NOTHING — they swap the picker in and out — so the ack
   // precedes the edit (#2418's ordering rule, the same one the offer tail follows).

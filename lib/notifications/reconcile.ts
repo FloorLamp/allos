@@ -89,10 +89,10 @@ import {
   renderMergedIntakeMessage,
   type IntakeSendSlot,
 } from "./intake-format";
-import { buildFoodNudge } from "./food";
+import { buildFoodNudge, consentedFoodTaps } from "./food";
 import { keyboardChatOrigin, withChatOrigin } from "./chat-origin";
 import { now as clockNow } from "../clock";
-import { correctionTokenAnchor } from "../correction-time";
+import { correctionBursts, correctionTokenAnchor } from "../correction-time";
 import {
   DOSE_TIME_PREFIXES,
   FOOD_TIME_PREFIXES,
@@ -100,10 +100,7 @@ import {
   openPickerAnchor,
   type CorrectionPrefixes,
 } from "./correction-rows";
-import {
-  getFoodCorrectionBursts,
-  getPracticeCorrectionBursts,
-} from "../queries";
+import { getPracticeCorrectionBursts } from "../queries";
 import { getDoseCorrectionBursts } from "../queries/intake/adherence";
 import {
   countVisibleFoodButtons,
@@ -743,8 +740,8 @@ const food: FamilyReconciler = {
       tokens,
       FOOD_TIME_PREFIXES,
       new Set(
-        getFoodCorrectionBursts(
-          profileId,
+        correctionBursts(
+          consentedFoodTaps(profileId, clockNow()),
           clockNow(),
           correctionMessageBinding(profileId, "food", {
             chatId: p.chatId,
@@ -790,8 +787,8 @@ const food: FamilyReconciler = {
       const anchor = openPickerAnchor(tokens, FOOD_TIME_PREFIXES);
       const picker =
         anchor != null
-          ? getFoodCorrectionBursts(
-              profileId,
+          ? correctionBursts(
+              consentedFoodTaps(profileId, now),
               now,
               correctionMessageBinding(profileId, "food", ref)
             ).find((b) => b.fromId === anchor)
