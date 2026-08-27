@@ -1010,3 +1010,38 @@ suspect the world.
 Corollary for anyone extending this script: nothing that runs AFTER the last
 `echo` may be load-bearing unless the process is protected from its own
 stdout.
+
+## The line budget (2026-08-27)
+
+Seventeen orchestrated merges added **+6,382 net lines**. The owner called that
+too much growth and ruled: design convergence must be **production-negative**,
+and no diff may introduce a scanner, registry, allowlist, variant, or
+compatibility layer.
+
+The composition is why the second half of the ruling is separate from the first.
+By path, that +6,382 was:
+
+| path                      | net    |
+| ------------------------- | ------ |
+| `__tests__` / `*.test.ts` | +3,382 |
+| `e2e/`                    | +1,372 |
+| production                | +1,222 |
+| `scripts/`                | +219   |
+| docs                      | +187   |
+
+**Three quarters of it is proof, not product.** Production averaged ~72 lines a
+merge across seventeen. So a rule aimed only at production lines would have
+reached a fifth of the growth, and a rule that cut test volume would have reached
+the layer that caught the four blocking defects that session — a manifest refusal
+bypassable by deleting a key, a partial-save message that turned a duplicated
+weigh-in into a silently lost one, "Reconnect" written onto pages that hide the
+reconnect control, and a body-less 400 that stopped a source syncing forever.
+None was caught by CI. All were caught by tests written to be red first.
+
+The available slack is **verbosity, not coverage**, and it is measured: the owner
+rewrote one lane's tests from `it()` blocks to `it.each([...])` tables at
+−212/+67 — identical assertions, a quarter of the lines. Compact the proof before
+questioning whether to have one.
+
+Encoded in `scripts/orchestration/dispatch-brief.mjs` (LINE BUDGET) and
+`docs/orchestration/review-merge.md`.
