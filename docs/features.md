@@ -3159,9 +3159,8 @@ The rule is about **rendered user-facing copy, not about file type** (#2342). A
 source scan under `app/`/`components/` could not see the two other routes the
 sentence took to the same pages: 40 entries of curated JSON under `lib/` —
 `canonical-result-definitions.json`'s `note` and `biomarker-descriptions.json`'s
-`description`, both rendered verbatim on the reading detail page, one of them
-byte-identical to the `NOT_A_DIAGNOSIS` constant — and AI-written coverage
-descriptions, which are generated and stored at runtime and never pass through a
+`description`, both rendered verbatim on the reading detail page — and AI-written
+coverage descriptions, which are generated and stored at runtime and never pass through a
 source file at all. These indirect paths share the phrasing definitions in
 `lib/disclaimers.ts`: focused tests check every curated dataset entry payload
 (file-level `$comment`/`citation`/provenance metadata is out of scope — no surface

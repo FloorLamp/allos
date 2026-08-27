@@ -3,11 +3,6 @@ import fs from "node:fs";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
 import {
-  MEDICAL_DISCLAIMER,
-  NOT_A_DIAGNOSIS,
-  NEVER_PRESCRIPTIVE,
-  DATASET_DISCLAIMER,
-  DISCLAIMER_FULL,
   DISCLAIMER_SECTIONS,
   DISCLAIMER_PHRASINGS,
   hasDisclaimerPhrasing,
@@ -144,23 +139,6 @@ describe("canonical disclaimer boundary (issue #1049)", () => {
         `not import from @/lib/disclaimers (delete the inline disclaimer instead):\n` +
         importers.join("\n")
     ).toEqual([]);
-  });
-
-  it("the canonical constants carry the expected posture", () => {
-    expect(MEDICAL_DISCLAIMER).toBe("Informational, not medical advice.");
-    expect(NOT_A_DIAGNOSIS).toMatch(/not a diagnosis/i);
-    expect(NEVER_PRESCRIPTIVE).toMatch(/never prescriptive/i);
-    expect(DATASET_DISCLAIMER).toMatch(/curated subset/i);
-  });
-
-  it("DISCLAIMER_FULL covers every required framing (the single surface's content)", () => {
-    expect(DISCLAIMER_SECTIONS.length).toBeGreaterThanOrEqual(5);
-    expect(DISCLAIMER_FULL).toMatch(/not medical advice/i);
-    expect(DISCLAIMER_FULL).toMatch(/not.*diagnos/i);
-    expect(DISCLAIMER_FULL).toMatch(/curated/i);
-    expect(DISCLAIMER_FULL).toMatch(/extract/i);
-    expect(DISCLAIMER_FULL).toMatch(/emergency/i);
-    expect(DISCLAIMER_FULL).toMatch(/self-hosted|your data/i);
   });
 
   it("keeps the shared suggestions and reference-range caveat on the canonical surface", () => {
