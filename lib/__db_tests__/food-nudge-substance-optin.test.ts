@@ -12,7 +12,15 @@
 // Ported to origin/main with the opt-in read removed, the `false` rows of the table
 // below FAIL — which is the statement that the ungated send is reachable today.
 
-import { beforeAll, beforeEach, describe, expect, it, vi } from "vitest";
+import {
+  afterEach,
+  beforeAll,
+  beforeEach,
+  describe,
+  expect,
+  it,
+  vi,
+} from "vitest";
 import { stubTelegramSends } from "./telegram-spies";
 import { db, today } from "@/lib/db";
 import { shiftDateStr } from "@/lib/date";
@@ -102,6 +110,9 @@ describe("substance content reaches Telegram only after this profile opts in (#3
     vi.setSystemTime(new Date("2026-06-17T08:00:00Z"));
     sendMock.mockClear();
   });
+  // The db tier shares one process: a fake clock left installed here reaches every
+  // spec that runs after it.
+  afterEach(() => vi.useRealTimers());
 
   // THE TABLE: every Telegram surface that can carry the substance ledger × the two
   // states of the opt-in. The three surfaces are three different senders — the
