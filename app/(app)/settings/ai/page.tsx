@@ -1,6 +1,7 @@
 import { getAiPrefs } from "@/lib/settings";
 import { getTierConfigView } from "@/lib/settings/ai-tiers";
 import { requireAdmin } from "@/lib/auth";
+import { db } from "@/lib/db";
 import PageContainer from "@/components/PageContainer";
 import SettingsGroupLayout from "../SettingsGroupLayout";
 import AiTierSettings from "./AiTierSettings";
@@ -23,8 +24,8 @@ export default async function AiSettingsPage() {
     <SettingsGroupLayout group="server" login={login} profile={profile}>
       <PageContainer width="form" className="space-y-6">
         <AiTierSettings
-          heavy={getTierConfigView("heavy")}
-          light={getTierConfigView("light")}
+          heavy={getTierConfigView(db, "heavy")}
+          light={getTierConfigView(db, "light")}
         />
         <AiSettings prefs={getAiPrefs()} />
       </PageContainer>

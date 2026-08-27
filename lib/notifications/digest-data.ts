@@ -14,7 +14,7 @@ import {
   getSkippedDoseIds,
   getActivitiesByDate,
   collectUpcoming,
-  getCurrentFlaggedBiomarkers,
+  getNewlyFlaggedBiomarkers,
   getSleepSignal,
   getSleepRegularityThrough,
   getSleepStageComposition,
@@ -107,11 +107,9 @@ import type { MessageLine } from "./message-line";
 import type { NotificationAction } from "./types";
 import {
   buildDigest,
-  dedupeFlaggedByAnalyte,
   renderDigestMessage,
   type DigestActivity,
   type DigestDocument,
-  type DigestFlaggedBiomarker,
   type DigestInput,
   type DigestSleep,
 } from "./digest";
@@ -135,16 +133,15 @@ const log = createLogger("notify");
 
 // A few labels are enough for a glanceable line; the section says the count.
 const MAX_NEW_DOCS = 5;
-const MAX_FLAGGED = 8;
 
 // The "since" cursor for the "new since last digest" reads: the stored last-digest
 // timestamp, or 24h ago on the first run so the first digest doesn't dump the
 // entire history of flagged results. created_at/uploaded_at are datetime('now')
 // UTC strings, so this is computed in the same format for a correct string
 // comparison. This cursor is the DIGEST's window only (it advances on every send)
-// — the dashboard passes its own stable window into
-// getNewlyFlaggedBiomarkers (lib/queries/attention.ts), so sending a digest never
-// changes what dashboard placement shows (issue #283).
+// — the dashboard passes its own stable window into getNewlyFlaggedBiomarkers
+// (lib/queries/attention.ts), so sending a digest never changes what dashboard
+// placement shows (issue #283).
 export function digestSince(profileId: number): string {
   return (
     db
@@ -153,42 +150,6 @@ export function digestSince(profileId: number): string {
       since: string;
     }
   ).since;
-}
-
-// Out-of-range biomarkers newly flagged since `since` (profile-scoped). This is the
-// single read behind BOTH the digest's "New" section and the dashboard's
-// flagged-biomarker attention items, so the two can never disagree on which results
-// are "newly flagged" — each surface passes its OWN window (`since`): the digest
-// its send cursor, the dashboard a stable trailing window (issue #283).
-//
-// The heavy lifting is getCurrentFlaggedBiomarkers (lib/queries/medical.ts): it
-// restricts to each analyte family's CURRENT (latest-per-family) reading via the
-// SAME LATEST_IDS_CTE machinery the household/passport surfaces use, so a
-// SUPERSEDED historical out-of-range reading (a 5-year-old low that a later normal
-// reading replaced) never surfaces here — the #557 fix, a "one question, one
-// computation" consolidation with the two sibling surfaces. It also windows on the
-// COLLECTION date as well as the import cursor, so a history backfill (created_at
-// today, collected years ago) can't light the window. "immune" is a good
-// durable-immunity status (#544/#549), excluded there too. Names are
-// canonical-preferred so links/dedupe key on the same identity the biomarker view
-// resolves; repeat flags of one analyte already collapse to the current reading in
-// the CTE, and dedupeFlaggedByAnalyte stays as a defensive collapse-by-name before
-// the MAX_FLAGGED slice.
-export function getNewlyFlaggedBiomarkers(
-  profileId: number,
-  since: string,
-  limit = MAX_FLAGGED
-): DigestFlaggedBiomarker[] {
-  return dedupeFlaggedByAnalyte(
-    getCurrentFlaggedBiomarkers(profileId, since).map(
-      (r): DigestFlaggedBiomarker => ({
-        name: r.name,
-        canonicalName: r.canonicalName,
-        value: r.value,
-        flag: r.flag,
-      })
-    )
-  ).slice(0, limit);
 }
 
 // Last night's sleep for the morning digest's Sleep section (issue #1117), or null
@@ -497,11 +458,7 @@ export function gatherDigestInput(
   // New since the last digest: newly flagged out-of-range biomarkers + new
   // extracted documents. Both bounded by the shared `since` cursor.
   const since = digestSince(profileId);
-  const newFlaggedBiomarkers = getNewlyFlaggedBiomarkers(
-    profileId,
-    since,
-    MAX_FLAGGED
-  );
+  const newFlaggedBiomarkers = getNewlyFlaggedBiomarkers(profileId, since);
 
   // "New" means the extraction COMPLETED since the cursor (issue #1022) — not
   // uploaded since. `extraction_completed_at` is stamped by the one 'done'

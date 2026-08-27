@@ -51,6 +51,11 @@ const ALLOWLIST = new Set<string>([
   // the Database handle in hand, so importing lib/db here would close the
   // db → boot-tasks → db import cycle.
   "lib/cycling-stream-summary-db.ts",
+  // The AI tier store (#875) takes the Database handle for the same reason (#2958):
+  // lib/db imports it to register the tier-config provider, so importing lib/db back
+  // is a runtime cycle. Its one write transaction is opened `.immediate()` by hand —
+  // this entry exempts the whole file, so nothing here checks that it stays that way.
+  "lib/settings/ai-tiers.ts",
   "lib/offline/queue-db.ts",
   // Same story as queue-db: the browser IndexedDB `db.transaction(store, mode)`,
   // nothing to do with SQLite write locks (#1699).
