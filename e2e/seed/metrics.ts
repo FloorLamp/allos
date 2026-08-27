@@ -5,7 +5,6 @@
 
 import "../../scripts/load-env";
 
-import path from "node:path";
 import { db, today } from "../../lib/db";
 import { now as clockNow } from "../../lib/clock";
 import {
@@ -56,7 +55,7 @@ import {
 } from "../fixture-logins";
 import { seedNwayMergeFixture } from "../nway-merge-fixture";
 import { getTimezone } from "../../lib/settings";
-import { PROFILE_ID, ins, seedMemberLogin, fixtureProfileId } from "./common";
+import { PROFILE_ID, seedMemberLogin, fixtureProfileId } from "./common";
 
 // ── Multi-source metric fixture ──
 export function seedMultiSourceMetric(): void {

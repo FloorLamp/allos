@@ -14,7 +14,6 @@ import {
 } from "@/lib/activity-import-details";
 import { formatLongDate, type DisplayFormatPrefs } from "@/lib/format-date";
 import {
-  cyclingOverviewHref,
   cyclingRideHref,
   equipmentHref,
   trainingActivityPageHref,

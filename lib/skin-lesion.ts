@@ -321,11 +321,6 @@ export function abcdeLetters(l: Pick<SkinLesion, AbcdeKey>): string {
     .join("·");
 }
 
-// YYYY-MM of an observation date (for a compact "(2026-03)" reason tail).
-function observedMonth(l: Pick<SkinLesion, "observed_date">): string {
-  return l.observed_date ? l.observed_date.slice(0, 7) : "";
-}
-
 // The lesion's display label — the free-text identity name, or a body-map fallback so
 // an unlabeled lesion still reads ("Forearm lesion"). Never empty.
 export function skinLesionDisplayLabel(

@@ -23,8 +23,8 @@
 //
 // Pure over the dataset entry.
 
-import type { PrnDefaultEntry, PrnFormulation } from "./datasets/prn-defaults";
-import { mlForBand, PEDIATRIC_DOSE_CAVEAT } from "./prn-dosing";
+import type { PrnDefaultEntry } from "./datasets/prn-defaults";
+import { PEDIATRIC_DOSE_CAVEAT } from "./prn-dosing";
 import { redoseLabelDefaults } from "./prn-defaults";
 
 // The stable value of the row's default chip — the ingredient's own form, the one the

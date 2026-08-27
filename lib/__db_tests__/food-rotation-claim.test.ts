@@ -56,7 +56,6 @@ import {
 import {
   claimMessagePointerKeyboard,
   liveMessagePointersForKind,
-  messagePointerAt,
 } from "@/lib/notifications/message-pointers";
 import { rotatePointer } from "@/lib/notifications/telegram";
 import { reconcileProfileMessages } from "@/lib/notifications/reconcile";

@@ -8,7 +8,7 @@
 
 import { plainBody } from "@/lib/notifications/rich-text";
 import { describe, it, expect, beforeAll } from "vitest";
-import { db, today } from "@/lib/db";
+import { today } from "@/lib/db";
 import { setProfileSetting, setProfileBirthdate } from "@/lib/settings";
 import { setProfileSubstanceTelegram } from "@/lib/settings/notifications";
 import { logFoodServingCore } from "@/lib/food-log-write";

@@ -373,7 +373,6 @@ describe("a food tap records the KEYBOARD it came from, not the file it is handl
 
 describe("a prn: tap records which KEYBOARD offered it", () => {
   const CHAT = "5559110";
-  let profileId: number;
   let itemId: number;
 
   beforeEach(() => {
@@ -405,7 +404,7 @@ describe("a prn: tap records which KEYBOARD offered it", () => {
   }
 
   it("stores telegram-command for the /dose list, which carries no collapse token", async () => {
-    ({ profileId, itemId } = seedMayMed("LV3087-dose"));
+    ({ itemId } = seedMayMed("LV3087-dose"));
     await handleIncomingMessage({
       message_id: 1,
       chat: { id: CHAT },

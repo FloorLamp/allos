@@ -1,16 +1,8 @@
 import type {
-  AgeBandedRange,
   BiomarkerDirection,
   CanonicalResultDefinition,
-  CyclePhaseRanges,
-  MedicalFlag,
-  ReproductiveStatus,
-  ReproductiveStatusRange,
-  ReproductiveStatusRanges,
   Sex,
 } from "../types";
-import type { CyclePhase } from "../cycle";
-import { convertToCanonical } from "../unit-conversions";
 import {
   optimalBand,
   type OptimalFields,

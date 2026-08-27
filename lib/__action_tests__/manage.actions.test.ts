@@ -65,7 +65,7 @@ describe("deleteDatasetRows — immunizations (regression: missing DELETE_POLICY
   });
 
   it("never deletes another profile's immunization rows", async () => {
-    const { login, profile: profileA } = seedActor();
+    const { login } = seedActor();
     const profileB = createProfile("ManageB", login.id);
     const idB = addImmunizationRow(profileB.id, "mmr");
 

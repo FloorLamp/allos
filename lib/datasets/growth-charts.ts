@@ -13,7 +13,6 @@ import { nameStrategy } from "./matcher";
 import type {
   GrowthChartEntry,
   GrowthChartsMeta,
-  GrowthMetric,
   SexRows,
   Row,
 } from "@/scripts/gen-growth-charts";

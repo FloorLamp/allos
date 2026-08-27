@@ -1,7 +1,7 @@
 // PURE magic-byte + container sniffing for uploaded VIDEO / AUDIO clips (issue
 // #1224 — the upload-first sibling of the #1119 photo core). No DB / network /
 // ffmpeg — this module is unit-tested over synthetic Buffer fixtures
-// (lib/__tests__/video-sniff.test.ts, built by lib/video/fixture.ts).
+// (lib/__tests__/video-sniff.test.ts, built by e2e/video-fixture.ts).
 //
 // file-sniff.ts deliberately sniffs MP4/MOV/WebM containers to `null` (they are
 // not supported IMAGE uploads). This module is the counterpart that DOES

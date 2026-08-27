@@ -1,7 +1,6 @@
 import { test, expect } from "./fixtures";
 import Database from "better-sqlite3";
 import { type Locator, type Page } from "@playwright/test";
-import { loginAs } from "./nav";
 import {
   hydratedClick,
   openMeasurementGroup,
@@ -11,7 +10,6 @@ import {
 import { frozenLocalHHMM, frozenNow, workerDbPath } from "./worker-env";
 import { pinnedTimezone } from "./pinned-timezone";
 import { utcInstant, zonedWallTimeToUtc } from "@/lib/date";
-import { E2E_LOGIN_DAILY, E2E_MEMBER_PASSWORD } from "./fixture-logins";
 
 // The "Log measurements" form's LAYOUT and DISCLOSURE (issue #2014).
 //

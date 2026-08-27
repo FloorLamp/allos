@@ -14,7 +14,6 @@
 // them to a per-profile JSON log (key "situation_events"), same precedent as
 // trend_pins — again no owned table.
 
-import { daysBetweenDateStr } from "./date";
 import type { DateRange } from "./timeline-format";
 
 export type AnnotationKind =

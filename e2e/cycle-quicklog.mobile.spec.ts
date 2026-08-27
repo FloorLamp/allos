@@ -2,7 +2,6 @@ import { test, expect } from "./fixtures";
 import type { Page } from "@playwright/test";
 import Database from "better-sqlite3";
 import { loginAs } from "./nav";
-import { settledClick } from "./helpers";
 import { openLogSheet, showLogRow } from "./log-sheet-helpers";
 import {
   E2E_LOGIN_CYCLE_CTA,

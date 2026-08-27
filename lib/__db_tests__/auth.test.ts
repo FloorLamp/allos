@@ -40,7 +40,6 @@ import {
   accessibleProfilesForLogin,
   adminLoginCount,
   canAccessProfile,
-  type CurrentSession,
 } from "@/lib/auth";
 import {
   beginTotpEnrollment,

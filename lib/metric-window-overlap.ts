@@ -1,5 +1,4 @@
 import { utcInstant } from "./date";
-import { isStaleMetricSnapshot } from "./metric-snapshot";
 import {
   DAY_BUCKET_METRICS,
   SUB_DAILY_WINDOW_MAX_MIN,

@@ -10,7 +10,7 @@
 
 import Database from "better-sqlite3";
 import { describe, it, expect } from "vitest";
-import { MIGRATIONS, NUMBERED_MIGRATIONS } from "@/lib/migrations/versions";
+import { NUMBERED_MIGRATIONS } from "@/lib/migrations/versions";
 import { up as up142 } from "@/lib/migrations/versions/142-trend-views-cleanup";
 
 process.env.ADMIN_PASSWORD = process.env.ADMIN_PASSWORD ?? "db-test-admin-pw";

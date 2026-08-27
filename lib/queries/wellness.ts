@@ -26,7 +26,6 @@ import {
 import type { ProtocolHeatmap } from "../protocol-heatmap";
 import {
   groupPracticeSpellings,
-  MAX_PRACTICE_SPELLINGS_PER_IDENTITY,
   practiceDisplayName,
   practiceIdentity,
   practiceSpellingsFor,

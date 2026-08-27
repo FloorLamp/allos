@@ -195,9 +195,7 @@ describe("the composed one-tap's offer and write (#2460)", () => {
   let sp: { profileId: number };
   let doseA: number;
   let doseB: number;
-  let retiredDose: number;
   let foreign: { profileId: number };
-  let foreignDose: number;
 
   beforeAll(() => {
     sp = makeProfile("TG2460");
@@ -207,11 +205,11 @@ describe("the composed one-tap's offer and write (#2460)", () => {
     seedHabitualMornings(sp.profileId, ["fermented", "berries"]);
     doseA = mkDose(mkItem(sp.profileId, "TG2460 Creatine"));
     doseB = mkDose(mkItem(sp.profileId, "TG2460 Collagen"));
-    retiredDose = mkDose(mkItem(sp.profileId, "TG2460 Retired"), 1);
+    mkDose(mkItem(sp.profileId, "TG2460 Retired"), 1);
     foreign = makeProfile("TG2460B");
     setTimezone(foreign.profileId, "UTC");
     seedLoginTelegram(foreign.profileId, OTHER_CHAT);
-    foreignDose = mkDose(mkItem(foreign.profileId, "TG2460 Foreign"));
+    mkDose(mkItem(foreign.profileId, "TG2460 Foreign"));
   });
 
   it("the standing offer is both halves, and the token names it in constant size", () => {

@@ -242,9 +242,6 @@ export default function ProtocolForm({
   //   * a DateField's named input is `type="hidden"`, which the registry excludes
   //     outright (NON_INPUT_TYPES), so it is not tracked at all and #3352 does not
   //     reach it.
-  const [name, setName] = useState(
-    protocol?.name ?? initialTemplate?.name ?? ""
-  );
   const [practiceSelection, setPracticeSelection] = useState(
     initialPractice.selection
   );
@@ -352,7 +349,6 @@ export default function ProtocolForm({
     setSelectedKeys(
       (next?.outcomeKeys ?? []).filter((key) => available.has(key))
     );
-    setName(next?.name ?? "");
     setPracticeSelection(defaults.selection);
     setPracticeCustom(defaults.custom);
     setPerWeek(String(next?.practicePerWeek ?? ""));
@@ -482,7 +478,6 @@ export default function ProtocolForm({
               name="name"
               className="input"
               defaultValue={protocol?.name ?? activeTemplate?.name ?? ""}
-              onChange={(event) => setName(event.target.value)}
               placeholder="e.g. Creatine 5 g/day, Sauna 4×/week"
               required
             />

@@ -8,7 +8,6 @@
 
 import { describe, it, expect, beforeEach, vi } from "vitest";
 import { revalidatePath } from "next/cache";
-import { db } from "@/lib/db";
 import {
   logInjury,
   updateInjury,

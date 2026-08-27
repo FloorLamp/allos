@@ -50,10 +50,7 @@ import {
 import { sourceDay, sourceInstant } from "../../source-time";
 import { normalizeDurationValue } from "../../duration-value";
 import { foldInstrumentScores } from "../../instrument-import";
-import type {
-  DocumentSubjectScope,
-  InstrumentSubject,
-} from "../../instrument-recognize";
+import type { InstrumentSubject } from "../../instrument-recognize";
 import type { ImportDrop } from "../../import-report";
 
 // ── Source-stated reference range + abnormal flag (CDA labs) ────────────────

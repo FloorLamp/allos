@@ -18,7 +18,7 @@ import { stubTelegramSends } from "./telegram-spies";
 // the edited wire text/keyboard this test inspects is the genuine rendered output.
 
 import { db, today } from "@/lib/db";
-import { setProfileSetting, setPublicUrl } from "@/lib/settings";
+import { setPublicUrl } from "@/lib/settings";
 import { handleCallbackQuery } from "@/lib/notifications/telegram-callbacks";
 import { buildFoodNudge } from "@/lib/notifications/food";
 import { rankFoodGroups } from "@/lib/queries";

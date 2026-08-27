@@ -27,7 +27,6 @@ import {
   accountsForPortal,
   bindPortalIdentity,
   createPortal,
-  createPortalAccount,
   identitySyncStatuses,
   listPortalIdentities,
   listPortalRunReports,

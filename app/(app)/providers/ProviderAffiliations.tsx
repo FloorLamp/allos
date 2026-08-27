@@ -135,10 +135,6 @@ export default function ProviderAffiliations({
           <div className="section-label mb-1">Suggested from your visits</div>
           <ul className="flex flex-col gap-2">
             {suggestions.map((s) => {
-              const otherId =
-                s.individualId === providerId
-                  ? s.organizationId
-                  : s.individualId;
               const otherName =
                 s.individualId === providerId
                   ? s.organizationName

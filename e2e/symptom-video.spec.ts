@@ -10,7 +10,7 @@ import {
   HH_HISTORY_CHILD_PROFILE,
   SICK_VIDEO_PROFILE,
 } from "./fixture-logins";
-import { buildM4aFixture, buildMp4Fixture } from "../lib/video/fixture";
+import { buildM4aFixture, buildMp4Fixture } from "./video-fixture";
 import { workerDbPath } from "./worker-env";
 import { TAP_FLOOR_PX, TAP_TARGET_INSET_PX } from "../lib/tap-floor-tokens";
 
@@ -43,7 +43,7 @@ import { TAP_FLOOR_PX, TAP_TARGET_INSET_PX } from "../lib/tap-floor-tokens";
 // well parent + a currently-sick child) rather than minting another fixture login, and
 // removes the one clip it attaches to the child.
 //
-// The clip bytes are LOW-ENTROPY synthetic container headers (lib/video/fixture.ts) — no
+// The clip bytes are LOW-ENTROPY synthetic container headers (e2e/video-fixture.ts) — no
 // real recording. They carry no decodable frames, so the client poster extraction
 // correctly yields nothing and the posterless path is the one under test.
 

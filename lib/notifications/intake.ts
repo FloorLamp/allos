@@ -38,7 +38,6 @@ import type { IntakeItem, IntakeDose } from "../types";
 import {
   doseSendSlot,
   notifiableWindowDoses,
-  renderWindowMessage,
   renderMergedIntakeMessage,
   type IntakeSendSlot,
   type IntakeSlotPart,

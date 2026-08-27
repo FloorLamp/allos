@@ -6,7 +6,7 @@
 
 import Database from "better-sqlite3";
 import { describe, expect, it } from "vitest";
-import { MIGRATIONS, NUMBERED_MIGRATIONS } from "@/lib/migrations/versions";
+import { NUMBERED_MIGRATIONS } from "@/lib/migrations/versions";
 import { up as up123 } from "@/lib/migrations/versions/123-practice-target-unique";
 import { practiceIdentity, practiceSignalKey } from "@/lib/practice";
 

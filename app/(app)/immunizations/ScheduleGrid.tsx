@@ -393,7 +393,6 @@ export default function ScheduleGrid({
                   </td>
                 </tr>
                 {rows.map((entry) => {
-                  const rec = recommendedBands(entry);
                   const doseMap = bandDoses.get(entry.code);
                   const a = statusByCode.get(entry.code);
                   const rowActive =
@@ -464,7 +463,6 @@ export default function ScheduleGrid({
                         </button>
                       </td>
                       {BANDS.map((b, i) => {
-                        const isRec = rec.has(i);
                         const isGot = (doseMap?.get(i)?.length ?? 0) > 0;
                         const isCur = i === currentBand;
                         const content = tipFor(entry, i);

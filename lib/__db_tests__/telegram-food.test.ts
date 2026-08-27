@@ -8,9 +8,8 @@
 import { beforeAll, beforeEach, describe, expect, it, vi } from "vitest";
 import { stubTelegramSends } from "./telegram-spies";
 
-import { db, today, yesterday } from "@/lib/db";
+import { today, yesterday } from "@/lib/db";
 import {
-  setProfileSetting,
   getProfileFoodTelegram,
   getProfilesByTelegramChatId,
 } from "@/lib/settings";
