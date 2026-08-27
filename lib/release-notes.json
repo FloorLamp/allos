@@ -1,6 +1,65 @@
 {
   "days": [
     {
+      "date": "2026-08-27",
+      "entries": [
+        {
+          "pr": 3846,
+          "title": "Alcohol no longer reaches Telegram unless you turn it on for that profile",
+          "kind": "security",
+          "issues": [3330]
+        },
+        {
+          "pr": 3859,
+          "title": "The one-tap stack button works again for long medication lists, and keeps working after midnight",
+          "kind": "fix",
+          "issues": [3282]
+        },
+        {
+          "pr": 3835,
+          "title": "Seven screens showed the wrong calendar day if your timezone differs from UTC",
+          "kind": "fix",
+          "issues": [3573]
+        },
+        {
+          "pr": 3832,
+          "title": "A broken sync now says to reconnect, instead of showing an HTTP path and a status code",
+          "kind": "fix",
+          "issues": [3618]
+        },
+        {
+          "pr": 3831,
+          "title": "Progress photos and wellness practices can be reached before you have added your first one",
+          "kind": "feature",
+          "issues": [3284, 3066]
+        },
+        {
+          "pr": 3850,
+          "title": "The dashboard weight box records the unit it showed you, and Insights stops naming its AI provider",
+          "kind": "fix",
+          "issues": [2863, 3715]
+        },
+        {
+          "pr": 3829,
+          "title": "Long-overdue items show a date instead of a huge day count, and four screens stop overstating what they mean",
+          "kind": "fix",
+          "issues": [3556, 3118, 2806, 2809, 3353]
+        },
+        {
+          "pr": 3874,
+          "title": "Correcting a weight keeps the unit you were shown, even if your preference changed elsewhere",
+          "kind": "fix",
+          "issues": [3853]
+        },
+        {
+          "pr": 3877,
+          "title": "What's New fits a phone screen again, and two failure messages stop naming a setting you can't change",
+          "kind": "fix",
+          "issues": [3867, 3852]
+        }
+      ]
+    },
+    {
       "date": "2026-08-26",
       "entries": [
         {

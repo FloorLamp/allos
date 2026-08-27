@@ -13,6 +13,8 @@ import {
   PORTAL_HOUSEHOLD_A_PROFILE,
 } from "./fixture-logins";
 import { TAP_FLOOR_PX } from "@/lib/tap-floor-tokens";
+import { utcSqlString, zonedWallTimeToUtc } from "@/lib/date";
+import { pinnedTimezone } from "./pinned-timezone";
 
 // The Patient portals page (#1739, reshaped by #1826, re-reshaped by #1874): the
 // portal → login → patient OBJECT MODEL rendered as permanent card-sections, with
@@ -36,6 +38,19 @@ function sectionFor(page: Page, name: string): Locator {
   return page.locator(
     `[data-testid="portal-section"][data-portal-name="${name}"]`
   );
+}
+
+// A stored instant whose LOCAL wall time is the one the assertions name (#1417).
+//
+// The pending row and the login status print these columns as profile-LOCAL calendar
+// days (#3573, landed by #3835) — they used to print the UTC truncation. The seed pins
+// a per-run instance timezone at offset 13 − utcHour, so it is WEST of UTC for every
+// run starting after 13:00, and a naive "2026-01-02 03:04:05" then reads as 2026-01-01
+// from 17:00 UTC onward. That is not a flake: it is red for about seven hours of every
+// day and green for the rest, which is exactly how it reached main unnoticed.
+function localStamp(day: string, hhmm: string): string {
+  const zone = pinnedTimezone(frozenNow().toISOString()).zone;
+  return utcSqlString(zonedWallTimeToUtc(zone, day, hhmm)!);
 }
 
 function pendingRowFor(page: Page, label: string): Locator {
@@ -192,9 +207,16 @@ function plantPending(
       .prepare(
         `INSERT INTO pending_portal_identities
            (portal_id, account_id, patient_label, first_seen_at, last_seen_at, seen_count, last_outcome)
-         VALUES (?, ?, ?, '2026-01-02 03:04:05', '2026-01-03 03:04:05', 2, ?)`
+         VALUES (?, ?, ?, ?, ?, 2, ?)`
       )
-      .run(portal.id, account.id, label, outcome);
+      .run(
+        portal.id,
+        account.id,
+        label,
+        localStamp("2026-01-02", "03:04"),
+        localStamp("2026-01-03", "03:04"),
+        outcome
+      );
   });
 }
 
@@ -918,7 +940,7 @@ test.describe("Patient portals — ignore and dismiss (#1739)", () => {
     await addPortal(page, portal);
     // An OLD run, so the request raised below stays open — a report at or after a
     // request's creation is what answers it.
-    plantRunReport(portal, "2026-01-05 09:00:00");
+    plantRunReport(portal, localStamp("2026-01-05", "09:00"));
     await page.reload();
 
     const section = sectionFor(page, portal);
@@ -960,7 +982,7 @@ test.describe("Patient portals — ignore and dismiss (#1739)", () => {
     await prebind(page, portal, label);
     // An OLD genuine run, so the request raised below stays open — and so the check
     // clock has a real date to lag behind.
-    plantRunReport(portal, "2026-01-05 09:00:00");
+    plantRunReport(portal, localStamp("2026-01-05", "09:00"));
     await page.reload();
 
     const section = sectionFor(page, portal);
@@ -1046,8 +1068,14 @@ test.describe("Patient portals — member view (#1874/#1875)", () => {
       db.prepare(
         `INSERT INTO pending_portal_identities
            (portal_id, account_id, patient_label, first_seen_at, last_seen_at, seen_count, last_outcome)
-         VALUES (?, ?, ?, '2026-01-02 03:04:05', '2026-01-03 03:04:05', 1, 'discovered')`
-      ).run(portalId, accountId, pendingLabel);
+         VALUES (?, ?, ?, ?, ?, 1, 'discovered')`
+      ).run(
+        portalId,
+        accountId,
+        pendingLabel,
+        localStamp("2026-01-02", "03:04"),
+        localStamp("2026-01-03", "03:04")
+      );
       return { portalId };
     });
 
