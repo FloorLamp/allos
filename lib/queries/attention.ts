@@ -66,9 +66,6 @@ import { getIntegrationAttention, getReviewPairCount } from "./integrations";
 // window is per-surface.
 export const FLAGGED_ATTENTION_WINDOW_DAYS = 14;
 
-// A few labels are enough for a glanceable digest line; the section says the count.
-const MAX_FLAGGED = 8;
-
 // Out-of-range biomarkers newly flagged since `since` (profile-scoped). This is the
 // single read behind BOTH the digest's "New" section and the dashboard's
 // flagged-biomarker attention items, so the two can never disagree on which results
@@ -86,15 +83,26 @@ const MAX_FLAGGED = 8;
 // durable-immunity status (#544/#549), excluded there too. Names are
 // canonical-preferred so links/dedupe key on the same identity the biomarker view
 // resolves; repeat flags of one analyte already collapse to the current reading in
-// the CTE, and dedupeFlaggedByAnalyte stays as a defensive collapse-by-name before
-// the MAX_FLAGGED slice.
+// the CTE, and dedupeFlaggedByAnalyte stays as a backstop collapse-by-name.
+//
+// THAT BACKSTOP IS UNREACHABLE TODAY, which matters because the digest's "+N more" is
+// arithmetic on this list: a duplicate would burn a named slot AND overstate the
+// remainder. It cannot arrive — the LATEST CTE keeps ROW_NUMBER() = 1 per (profile,
+// family) and the emitted name is the expression that family key is computed FROM, so
+// two rows sharing a name shared a partition and one is already gone. Measured over
+// eight shapes; deleting this call leaves the suite green. Kept as a guard on that
+// TWO-MODULE invariant, not on this function's own control flow.
+//
+// IT RETURNS EVERY FLAGGED ANALYTE, and used to stop at eight (#3872): one cap here fell
+// on both callers, so a broad panel lost its ninth result and beyond from each, silently.
+// Truncating is a RENDERING choice — the digest names MAX_NAMED_FLAGGED and counts the
+// rest; the dashboard is a page and shows what it has.
 // It lives HERE, not beside the digest that also calls it (#2958): a read the
 // dashboard depends on cannot sit in lib/notifications without the notification and
 // read layers importing each other in a runtime cycle.
 export function getNewlyFlaggedBiomarkers(
   profileId: number,
-  since: string,
-  limit = MAX_FLAGGED
+  since: string
 ): DigestFlaggedBiomarker[] {
   return dedupeFlaggedByAnalyte(
     getCurrentFlaggedBiomarkers(profileId, since).map(
@@ -105,7 +113,7 @@ export function getNewlyFlaggedBiomarkers(
         flag: r.flag,
       })
     )
-  ).slice(0, limit);
+  );
 }
 
 // The window start as a datetime('now')-format UTC string (medical_records

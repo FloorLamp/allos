@@ -1920,7 +1920,7 @@
    A weekday grid is seven columns and each one has to clear the app's tap floor
    — 44px EFFECTIVE, the one number ruled on #3514 — so the narrowest a week can
    honestly be rendered at is 7 x 2.75rem. Two files need that quantity and they
-   need it for opposite reasons: components/TrainingLogCalendar.tsx renders the
+   need it for opposite reasons: components/EventCalendar.tsx renders the
    columns, and components/MobileNav.tsx has to be WIDE ENOUGH TO PAY FOR THEM,
    because the phone nav drawer is where that calendar becomes a touch surface at
    all (#3377/#3536).

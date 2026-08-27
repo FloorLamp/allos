@@ -200,8 +200,8 @@ const PLAN_REVIEW: Group = {
     // everything past today) is a separate issue and is untouched here.
     { href: "/upcoming", label: "Upcoming", icon: IconCalendarClock },
     // TIMELINE — used constantly, never from the nav. It is the target of every
-    // DayHistory heatmap cell, every mini-calendar day (TrainingLogCalendar, which
-    // sits in this very sidebar ABOVE this nav), the weekly recap widget, and
+    // DayHistory heatmap cell, every mini-calendar day (EventCalendar, the
+    // Calendar row just BELOW this nav), the weekly recap widget, and
     // several sleep and trends surfaces; it also holds a permanent mobile dock slot
     // (lib/mobile-dock.ts). It is a destination reached FROM CONTEXT. The unused
     // thing was the row, not the page — so the row is what moves.
@@ -281,8 +281,8 @@ const PLAN_REVIEW: Group = {
 // ORDER (#1042 design principle 1): frequency earns nav position; urgency earns
 // dashboard promotion; NEITHER earns both. The nav is a directory, ordered by
 // how often each surface is deliberately visited — the daily loop deliberately
-// does NOT run through it (dose confirms = dashboard presentation/Telegram; activity
-// log = the sidebar's pinned LogActivityButton; live workout = the dock), and
+// does NOT run through it (dose confirms = dashboard presentation/Telegram; any
+// quick log = the sidebar's pinned "+ Log" panel; live workout = the dock), and
 // episodic surfaces (illness, cycle) get contextual promotion via the existing
 // heroes, not permanent prominence. Reference surfaces (Medical, Data, Settings)
 // sit at the bottom regardless of how important their content is.

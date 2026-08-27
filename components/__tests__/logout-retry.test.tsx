@@ -67,11 +67,11 @@ vi.mock("next/navigation", async () => {
 // its form, its refs, its effect and its guard are the real ones — that is the part
 // under test.
 vi.mock("../Nav", () => ({ default: () => <nav data-testid="nav" /> }));
-vi.mock("../LogActivityButton", () => ({
-  default: () => <button type="button">Log activity</button>,
+vi.mock("../SidebarLogButton", () => ({
+  default: () => <button type="button">+ Log</button>,
 }));
 vi.mock("../FrequentPages", () => ({ default: () => null }));
-vi.mock("../TrainingLogCalendar", () => ({ default: () => null }));
+vi.mock("../EventCalendar", () => ({ default: () => null }));
 vi.mock("../ThemeToggle", () => ({ default: () => null }));
 vi.mock("../WhatsNewLink", () => ({ default: () => null }));
 vi.mock("../ProfileIdentityBar", () => ({ default: () => null }));
@@ -99,8 +99,7 @@ const ACTIVE = { id: 1, name: "Sam", photo_path: null, photo_version: 0 };
 function mountSidebar() {
   return render(
     <SidebarContent
-      activityDates={[]}
-      version={{ sha: null, commitMessage: null, commitUrl: null }}
+      eventDates={[]}
       active={ACTIVE}
       username="sam"
       profiles={[ACTIVE]}

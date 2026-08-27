@@ -96,7 +96,11 @@ describe("Training Log vocabulary (#2486)", () => {
     const currentFiles = [
       "app/(app)/training/TrainingLogView.tsx",
       "app/(app)/training/training-log-feed-resolve.ts",
-      "components/TrainingLogCalendar.tsx",
+      // components/TrainingLogCalendar.tsx was on this list and is not any more
+      // (#3154): it never rendered training data — the layout fed it the union of
+      // every event store — so it was the one entry here that was not a Training
+      // Log surface. It is components/EventCalendar.tsx now, and out of scope for
+      // a Training Log naming guard rather than renamed within it.
       "lib/training-log-card.ts",
       "lib/training-log-feed.ts",
       "lib/training-log-filters.ts",
