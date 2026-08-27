@@ -29,7 +29,6 @@
 
 import {
   arguedExclusion,
-  plannedVerb,
   type ArguedExclusion,
   type LoggableDomain,
   type PlannedVerb,

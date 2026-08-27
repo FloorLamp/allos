@@ -12,7 +12,7 @@
 //     re-validated server-side (a forged id is dropped) and ignored for an admin,
 //     who is implicit-all.
 
-import { describe, it, expect, beforeEach, afterAll, vi } from "vitest";
+import { describe, it, expect, beforeEach, afterAll } from "vitest";
 import fs from "node:fs";
 import os from "node:os";
 import path from "node:path";

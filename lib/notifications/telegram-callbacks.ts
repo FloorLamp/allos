@@ -13,10 +13,9 @@ import {
   intakeItemExists,
   getDoseEscalateChatId,
   escalationAckState,
-  logAdministration,
 } from "../queries";
 import { today } from "../db";
-import { now as clockNow, instantNow } from "../clock";
+import { instantNow } from "../clock";
 import {
   parseCorrectionAtToken,
   parseCorrectionChipToken,
@@ -109,8 +108,6 @@ import {
   parseMoodKeepCallback,
   parseSymptomPickCallback,
   parseSymptomSeverityCallback,
-  parseTempReply,
-  parseTempReplyMarker,
   parseWorkoutFinishCallback,
   workoutDiscardAnswerText,
   workoutFinishAnswerText,
@@ -118,13 +115,6 @@ import {
   activityTypeAskAnswerText,
   type ActivityTypeAskCallback,
   type WorkoutFinishCallback,
-  tempReplyMarker,
-  SYMPTOM_SEVERITY_LABELS,
-  type MoodCheckinCallback,
-  type PrnLogCallback,
-  type PracticeDoneCallback,
-  type SymptomPickCallback,
-  type SymptomSeverityCallback,
   preventiveAnswerText,
   preventiveCloseText,
   refillAnswerText,
@@ -179,9 +169,7 @@ import {
   updateMessageKeyboard,
   type TelegramCallbackQuery,
 } from "./telegram";
-import type { TelegramMessage } from "./telegram-api";
 import { resolveTelegramRecipients } from "./fan-out";
-import type { NotificationAction } from "./types";
 import type { DoseTakenOutcome } from "../types";
 export {
   handleDoseCommand,

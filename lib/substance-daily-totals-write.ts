@@ -20,7 +20,6 @@ import {
   MAX_SUBSTANCE_ENTRY_AMOUNT,
   resolveSubstanceKey,
   substanceDef,
-  type SubstanceKey,
 } from "./substance-use";
 
 export type SubstanceHistoryMutationOutcome =

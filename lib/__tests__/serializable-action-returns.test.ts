@@ -497,11 +497,15 @@ const CENSUSED_MODULES = [
   "app/(auth)/set-password/actions.ts",
 ] as const;
 
-// Neither list may name a module the other does not.
+// Neither list may name a module the other does not. Exported because the check IS
+// the declaration — a local nothing references reads as dead to `noUnusedLocals`,
+// and deleting it would delete the proof.
 type CensusKey = keyof Census;
 type ListedKey = (typeof CENSUSED_MODULES)[number];
-type _ListedAreCensused = Expect<ListedKey extends CensusKey ? true : false>;
-type _CensusedAreListed = Expect<CensusKey extends ListedKey ? true : false>;
+export type ListsAgree = [
+  Expect<ListedKey extends CensusKey ? true : false>,
+  Expect<CensusKey extends ListedKey ? true : false>,
+];
 
 // ---------------------------------------------------------------------------
 // The compile-time negatives

@@ -7,7 +7,6 @@
 // lib/medical-pipeline.ts, where the DB test tier can reach it. Two "use server"
 // files coexist per route, so callers import each action from whichever file owns it.
 import {
-  requireSession,
   requireWriteAccess,
   getAccessibleProfiles,
   accessForProfile,

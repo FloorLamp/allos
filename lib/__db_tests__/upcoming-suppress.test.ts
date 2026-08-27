@@ -10,7 +10,7 @@
 //   - the digest, built from the same collectUpcoming, reflects the suppression.
 
 import { describe, it, expect, beforeAll } from "vitest";
-import { db, today } from "@/lib/db";
+import { db } from "@/lib/db";
 import { shiftDateStr } from "@/lib/date";
 import { collectUpcoming, collectSuppressedUpcoming } from "@/lib/queries";
 import { groupUpcoming } from "@/lib/upcoming";

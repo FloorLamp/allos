@@ -1,12 +1,7 @@
 import { test, expect } from "./fixtures";
 import { type Page } from "@playwright/test";
 import { loginAs } from "./nav";
-import {
-  followLink,
-  hydratedClick,
-  settledClick,
-  settledFill,
-} from "./helpers";
+import { followLink, hydratedClick, settledFill } from "./helpers";
 import { closeGoalFact, openGoalFact } from "./goal-form-helpers";
 import {
   E2E_MEMBER_PASSWORD,

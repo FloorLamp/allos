@@ -281,23 +281,12 @@ export const STATUS_OBS_TEMPLATE = "2.16.840.1.113883.10.20.22.4.6";
 // EMER / …) that rides alongside a CPT/local type code on an Encounter.
 export const ACT_CODE_OID = "2.16.840.1.113883.5.4";
 
-// Procedure Activity entry templates (procedure / act / observation flavors) —
-// the three shapes a Procedures-section entry can carry.
-const PROCEDURE_ACT_TEMPLATES = [
-  "2.16.840.1.113883.10.20.22.4.14", // Procedure Activity Procedure
-  "2.16.840.1.113883.10.20.22.4.12", // Procedure Activity Act
-  "2.16.840.1.113883.10.20.22.4.13", // Procedure Activity Observation
-];
-
 // Family History Observation (a relative's condition) + the Age Observation nested
 // under it (the relative's age at onset). The organizer's subject/relatedSubject
 // carries the relationship + deceased status.
 export const FAMILY_OBS_TEMPLATE = "2.16.840.1.113883.10.20.22.4.46";
 
 export const AGE_OBS_TEMPLATE = "2.16.840.1.113883.10.20.22.4.31";
-
-// Goal Observation (a single goal statement in a Goals section).
-const GOAL_OBS_TEMPLATE = "2.16.840.1.113883.10.20.22.4.121";
 
 // The US National Provider Identifier assigning authority OID. An <id> with this
 // root carries a provider's NPI (authoritative for the global provider dedup).

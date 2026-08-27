@@ -10,7 +10,7 @@
 
 import Database from "better-sqlite3";
 import { describe, it, expect } from "vitest";
-import { MIGRATIONS, NUMBERED_MIGRATIONS } from "@/lib/migrations/versions";
+import { NUMBERED_MIGRATIONS } from "@/lib/migrations/versions";
 import { up as up038 } from "@/lib/migrations/versions/038-food-habit-unique";
 
 function applyThrough(maxId: number): Database.Database {

@@ -23,7 +23,6 @@
 //     (Senior Fitness Test / CDC STEADI shapes past OLDER_ADULT_MIN_AGE) so the check
 //     never hands a 78-year-old a Cooper run and a dead hang.
 
-import { FITNESS_NORM_MARKERS } from "@/lib/fitness-norms";
 import { OLDER_ADULT_MIN_AGE } from "@/lib/life-stage";
 import type { Sex } from "@/lib/types";
 import {

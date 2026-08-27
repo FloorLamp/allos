@@ -40,7 +40,7 @@ import {
   HABIT_TREND_WEEKS,
   type HabitWeekCell,
 } from "../food-habit-trend";
-import { foodSlotAnchors, FOOD_SLOTS, type FoodSlot } from "../food-slot";
+import { FOOD_SLOTS, type FoodSlot } from "../food-slot";
 import {
   FOOD_REGULARITY_SPAN_DAYS,
   foodPeriodRegularity,
@@ -75,12 +75,7 @@ import type { DateRange } from "../timeline-format";
 import { foodEventWindow, type FoodLedgerEvent } from "../food-slot-count";
 import { hhmmToMinutes } from "../date";
 import { isProteinNudgeKey, PROTEIN_NUDGE_KEY } from "../protein-nudge";
-import {
-  correctionBursts,
-  CORRECTION_FRESH_MIN,
-  type CorrectionBurst,
-  type CorrectionMessageBinding,
-} from "../correction-time";
+import { CORRECTION_FRESH_MIN } from "../correction-time";
 import type { FoodTapRow } from "../food-log-write";
 import { PROTEIN_QUICKADD_LAST_KEY } from "../protein-daily-totals-write";
 import { bodyweightAsOf } from "../bodyweight";

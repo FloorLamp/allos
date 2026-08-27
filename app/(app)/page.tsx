@@ -1,5 +1,4 @@
 import { cloneElement, type ReactElement, type ReactNode } from "react";
-import Link from "next/link";
 import { redirect } from "next/navigation";
 import { IconFlask, IconMoon } from "@tabler/icons-react";
 import { now as clockNow } from "@/lib/clock";
@@ -99,7 +98,6 @@ import {
   dormancyState,
   dormantRecordLine,
   dormantRecordSince,
-  type DormancyDomain,
 } from "@/lib/domain-dormancy";
 import { getLastSleepRecordDate } from "@/lib/queries/domain-dormancy";
 import { freshnessAgeDays } from "@/lib/freshness";
@@ -119,7 +117,6 @@ import {
   orderedIllnessGroupKeys,
   rankDashboardCandidates,
   type DashboardCandidate,
-  type DashboardTiming,
 } from "@/lib/dashboard-relevance";
 import {
   cappedFamilyGather,
@@ -182,7 +179,6 @@ import { disambiguateProfileNames } from "@/lib/profile-disambiguation";
 import { householdFanoutWithActing } from "@/lib/household-fanout";
 import DashboardSetupAtom from "@/components/dashboard/DashboardSetupAtom";
 import LogReadingButton from "@/components/dashboard/LogReadingButton";
-import SessionRecapCard from "@/components/dashboard/SessionRecapCard";
 import WeightQuickAddAtom from "@/components/dashboard/WeightQuickAddAtom";
 import {
   GoalProgressAtom,

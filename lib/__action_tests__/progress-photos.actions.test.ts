@@ -20,7 +20,7 @@ import {
 import { GET as serveProgressPhoto } from "@/app/api/progress-photo/[id]/route";
 import { db } from "@/lib/db";
 import { readJpegExif } from "@/lib/photo/exif";
-import { spliceExifIntoJpeg } from "@/lib/photo/exif-fixture";
+import { spliceExifIntoJpeg } from "@/lib/__tests__/exif-fixture";
 import { seedActor, createLogin, createProfile, actAs } from "./harness";
 
 const revalidate = vi.mocked(revalidatePath);

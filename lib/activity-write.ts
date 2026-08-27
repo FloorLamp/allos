@@ -23,7 +23,6 @@ import { queuePostWorkoutDispatch } from "@/lib/notifications/post-workout-queue
 import type { ActivityType, SaveActivityOutcome } from "@/lib/types";
 import type { WeightUnit, DistanceUnit } from "@/lib/settings";
 import {
-  toKg,
   toKm,
   resolveWeightKg,
   submittedWeightUnit,

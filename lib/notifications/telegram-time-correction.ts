@@ -22,7 +22,6 @@
 // more conservative, never less. That is the safe direction, and it is a property of the
 // offer set (chips are −Nh; picker hours are all in the past), not of a check here.
 
-import { today } from "../db";
 import {
   getProfilesByTelegramChatId,
   getTimezone,

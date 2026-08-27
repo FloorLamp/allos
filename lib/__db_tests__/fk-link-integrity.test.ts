@@ -20,7 +20,7 @@
 
 import Database from "better-sqlite3";
 import { describe, it, expect, beforeEach, afterEach } from "vitest";
-import { MIGRATIONS, NUMBERED_MIGRATIONS } from "@/lib/migrations/versions";
+import { NUMBERED_MIGRATIONS } from "@/lib/migrations/versions";
 import { bootstrapAuth } from "@/lib/migrations/boot-tasks";
 import {
   up,

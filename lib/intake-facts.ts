@@ -20,7 +20,7 @@
 //
 // Pure: no React, no DB. The form is a renderer over `intakeFactSummary`.
 
-import type { FoodTiming, IntakeItemKind, IntakeObligation } from "./types";
+import type { IntakeItemKind, IntakeObligation } from "./types";
 import {
   FOOD_TIMING_LABELS,
   TIME_BUCKET_LABELS,

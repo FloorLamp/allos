@@ -9,7 +9,7 @@
 // and be REJECTED, freezing the message on its pre-tap state. A cap on one side of a
 // round trip is not a cap.
 
-import { vi, describe, it, expect, beforeEach, afterEach } from "vitest";
+import { describe, it, expect, beforeEach, afterEach } from "vitest";
 
 import { setTelegramBotConfig } from "@/lib/settings";
 import {

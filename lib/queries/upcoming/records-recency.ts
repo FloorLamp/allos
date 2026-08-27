@@ -23,7 +23,7 @@
 // an export is not a fault to repair.
 
 import { cache } from "../../request-cache";
-import { db, hoistedStatement } from "../../db";
+import { hoistedStatement } from "../../db";
 import type { UpcomingItem } from "../../upcoming";
 import type { ArchiveStreamSelector } from "../../types";
 import {

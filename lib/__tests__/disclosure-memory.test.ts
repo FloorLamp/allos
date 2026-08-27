@@ -177,26 +177,6 @@ describe("DISCLOSURE_BOOT_SCRIPT ≡ disclosureOpen (the pre-paint restore)", ()
   // restore and the post-hydration render can never answer differently. A drift here is
   // the exact bug this script exists to fix, reintroduced.
 
-  type FakeEl = { open: boolean; key: string | null };
-
-  function fakeDetails(key: string | null, open = false) {
-    const el: FakeEl = { open, key };
-    return {
-      el,
-      node: {
-        nodeType: 1,
-        open,
-        getAttribute: (a: string) => (a === DISCLOSURE_KEY_ATTR ? key : null),
-        matches: (sel: string) =>
-          key !== null && sel === `details[${DISCLOSURE_KEY_ATTR}]`,
-        querySelectorAll: () => [],
-        set _open(v: boolean) {
-          el.open = v;
-        },
-      },
-    };
-  }
-
   /** Run the script over one streamed-in fold and report the `open` it left behind. */
   function runBoot(
     stored: string | null,

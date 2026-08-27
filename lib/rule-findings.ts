@@ -18,7 +18,6 @@ import {
   getStrengthByExercise,
   getExerciseSetCountsSince,
   getExerciseE1rmSeries,
-  getWeights,
   getWeightsOneSourcePerDay,
   getBodyMetricDailySeries,
   getOutcomeGoals,
@@ -42,7 +41,6 @@ import {
 } from "./queries";
 import { activeFindings } from "./findings";
 import { exerciseHistoryKey } from "./lifts";
-import type { MuscleRegion } from "./lifts";
 import {
   getActiveSituations,
   getSituationEvents,

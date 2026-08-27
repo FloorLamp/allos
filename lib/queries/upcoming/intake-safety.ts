@@ -1,14 +1,7 @@
-import { cache } from "../../request-cache";
 import { shiftDateStr } from "../../date";
-import {
-  signalKey,
-  isItemHiddenBySuppression,
-  type SuppressionRecord,
-} from "../../upcoming-suppress";
 import {
   doseDueOn,
   currentTimeBucket,
-  isDueOn,
   isOfferedOn,
   isPushedIntake,
   slotHintBucket,
@@ -26,7 +19,6 @@ import {
   DEFAULT_LOW_SUPPLY_DAYS,
 } from "../../refill";
 import {
-  clinicalResultDetailHref,
   intakeHref,
   nutritionTabHref,
   timelineDayHref,
@@ -48,37 +40,6 @@ import {
   poolIdsForProfile,
   poolPushes,
 } from "../intake/supply-pool";
-import { assessSchedule } from "../../immunization-status";
-import { preventiveAssessmentToUpcomingItem } from "../../preventive-upcoming";
-import { scheduledMatchForRule } from "../../preventive-appointment";
-import {
-  isBiomarkerStale,
-  isBeyondRetestHorizon,
-  retestIntervalDays,
-  daysBetween,
-} from "../../reference-range";
-import { retestDaysForBiomarker, isRetestWorthy } from "../../biomarker-retest";
-import {
-  biomarkerRetestTitle,
-  biomarkerRetestDetail,
-} from "../../biomarker-retest-copy";
-import {
-  retestModulationFor,
-  screeningPriorityFor,
-  immunizationPriorityFor,
-  isAnchoredOneShotReading,
-} from "../../risk-stratification";
-import { lifeStage } from "../../life-stage";
-import { getRiskFactors } from "./risk";
-import { biomarkerRetestIdentity } from "../../canonical-name";
-import { biomarkerDismissalKey } from "../../dismissal-keys";
-import { derivedInputCanonicalNamesFor } from "../../derived-biomarkers";
-import {
-  getProfileSex,
-  getProfileAgeOn,
-  profileAgeMonths,
-  getMentalHealthShareFull,
-} from "../../settings";
 import { getEffectiveActiveSituations } from "../derived-situations";
 import { getWeatherDay, weatherSituationHolds } from "../weather-situations";
 import { getWeatherMedWarnings } from "../intake/warnings";
@@ -91,25 +52,10 @@ import {
   BUILTIN_HEATWAVE_SITUATION,
   fmtAmbientTemp,
 } from "../../weather-situations";
-import { sharedSurfaceDetail } from "../../appointment-sensitivity";
-import {
-  CANONICAL_DISPLAY_UNITS,
-  type UpcomingDisplayUnits,
-  type UpcomingItem,
-} from "../../upcoming";
+import { type UpcomingItem } from "../../upcoming";
 import type { DoseDayProgress } from "../../upcoming-aggregate";
-import type { DistanceUnit, TemperatureUnit } from "../../settings";
-import {
-  type Reason,
-  riskReasonsFrom,
-  flaggedReason,
-  situationReason,
-  concatReasons,
-  plainRiskReasons,
-} from "../../reasons";
-import { isFlaggedForRetest } from "../../biomarker-retest-copy";
-import type { ClinicalObservation } from "../../types";
-import { pickNextAppointment } from "../../household";
+import type { TemperatureUnit } from "../../settings";
+import { type Reason, situationReason } from "../../reasons";
 import {
   getIntakeItems,
   getIntakeDoses,
@@ -148,20 +94,7 @@ import {
 } from "../../medication-monitoring";
 import { medMonitoringReason } from "../../reasons";
 import type { AppRoute } from "../../hrefs";
-import { getScheduledAppointments, kindedScheduled } from "../appointments";
 import { getActivitiesByDate, isPredictedWorkoutDay } from "../training";
-import {
-  getClinicalObservations,
-  getImmunizations,
-  getImmunityTiters,
-  getImmunizationOverrides,
-} from "../medical";
-import { assessProfilePreventive } from "./preventive";
-import { getFindingSuppressions } from "./suppressions";
-import { illnessCareItems } from "../../illness-care-findings";
-import { conditionReviewItems } from "../../condition-suggestion-findings";
-import { tempRedFlagItems } from "../../temp-red-flag-findings";
-import { followUpItems } from "../../followup-findings";
 import { getUvDoseForDay } from "../weather";
 import { decideUvOverexposure } from "../../uv-overexposure";
 // Doses pending TODAY across active intake items (reuses the

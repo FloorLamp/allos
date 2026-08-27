@@ -5,7 +5,7 @@ import type {
   ImportedProvider,
   ImportedClinicalObservation,
 } from "../health-import";
-import { fhirSourceTime, sourceDay, type SourceTime } from "../source-time";
+import { fhirSourceTime, type SourceTime } from "../source-time";
 import { VITAL_CANONICAL, normalizeImportedTemperature } from "../vitals-input";
 import { isColonDurationUnit, normalizeDurationValue } from "../duration-value";
 

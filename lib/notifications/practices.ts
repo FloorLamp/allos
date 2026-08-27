@@ -61,7 +61,6 @@ import { getFindingSuppressions } from "../queries/upcoming";
 import { isSuppressed } from "../upcoming-suppress";
 import {
   practiceSignalKey,
-  practiceCadenceText,
   practiceNudgeReleased,
   practiceRhythmDaysText,
 } from "../practice";

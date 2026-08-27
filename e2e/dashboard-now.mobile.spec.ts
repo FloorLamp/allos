@@ -338,9 +338,6 @@ test("the illness cockpit names its situation exactly once at 390px (#3238)", as
 // desktop suite measures at 1280 — because "denser on a phone, untouched on the
 // desktop" is two assertions, and only the pair of them says what was ruled.
 
-/** The card's own gutter, and the only one an ordinary Now card may carry. */
-const CARD_CONTENT_TOLERANCE_PX = 1;
-
 /** Phone and desktop are two halves of ONE ruling, so they are asserted together. */
 const ATOM_VIEWPORTS = [
   { label: "phone", size: { width: 390, height: 844 }, oneLine: true },

@@ -84,12 +84,6 @@ const PROVIDER_PROPS = {
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
 } as any;
 
-/** Reads the region the editor declares, from inside it. */
-function RegionProbe({ onRead }: { onRead: (v: WebLoggedVia) => void }) {
-  onRead(useLoggedVia());
-  return null;
-}
-
 function renderShell(children: React.ReactNode) {
   return render(
     <TimezoneProvider tz="UTC">

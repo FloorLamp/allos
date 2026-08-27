@@ -33,7 +33,6 @@ import {
   successCadenceLabel,
   syncRunNounForKind,
   syncVocabularyForKind,
-  STANDING_RUN_WINDOW,
   type AttendedStanding,
   type OutboundStanding,
   type SourceStanding,

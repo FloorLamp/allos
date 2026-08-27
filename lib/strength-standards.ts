@@ -26,7 +26,6 @@ import { assistedBaseLift, defaultEquipment, variantOf } from "@/lib/lifts";
 import {
   STRENGTH_STANDARD_LIFTS_MAP,
   type LiftStandards,
-  type SexStandards,
   type StandardBand,
 } from "@/lib/datasets/strength-standards";
 

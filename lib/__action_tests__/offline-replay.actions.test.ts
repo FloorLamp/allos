@@ -19,7 +19,6 @@ import { createLogin, createProfile, actAs } from "./harness";
 import {
   shiftDateStr,
   utcInstant,
-  utcSqlString,
   zonedDateParts,
   zonedWallTimeToUtc,
 } from "@/lib/date";

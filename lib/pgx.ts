@@ -32,11 +32,7 @@
 
 import { PGX_DRUGS, PGX_ALLELES, PGX_GUIDANCE } from "./datasets/pgx";
 import { compositeKey } from "./datasets/matcher";
-import {
-  itemRxcuis,
-  matchConceptKeysIn,
-  type Concept,
-} from "./drug-interactions";
+import { matchConceptKeysIn, type Concept } from "./drug-interactions";
 
 export type Phenotype =
   "poor" | "intermediate" | "normal" | "rapid" | "ultrarapid";

@@ -4,7 +4,7 @@ import {
   clampTrashRetentionDays,
 } from "../retention";
 import { DEFAULT_BACKUP_STALENESS_HOURS } from "../health-status";
-import { db, writeTx } from "../db";
+import { writeTx } from "../db";
 import { getSetting, setSetting } from "./kv";
 import {
   clampMaxRunsPerDay,

@@ -5,7 +5,6 @@
 
 import "../../scripts/load-env";
 
-import path from "node:path";
 import { db, today } from "../../lib/db";
 import { now as clockNow } from "../../lib/clock";
 import {
@@ -93,7 +92,6 @@ import { adoptTemplate, activateRoutine } from "../../lib/routines";
 import { collectAttentionModel, dismissFinding } from "../../lib/queries";
 import {
   PROFILE_ID,
-  ins,
   seedMemberLogin,
   adultFixtureProfileId,
   fixtureProfileId,

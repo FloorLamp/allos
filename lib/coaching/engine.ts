@@ -37,12 +37,11 @@ import type { WeatherTrainingContext } from "../workout-recommendation";
 import type { EquipmentAvailability } from "../equipment-availability";
 import type { TemperatureUnit, WeightUnit } from "../settings";
 import type { AppRoute } from "../hrefs";
-import { regionForExercise, type MuscleRegion } from "../lifts";
+import { type MuscleRegion } from "../lifts";
 import {
   contextualNextSet,
   suggestNextSet,
   nextSetText,
-  type NextSet,
   type NextSetSeed,
 } from "./strength";
 import { coachingHeldReason, type Reason } from "../reasons";

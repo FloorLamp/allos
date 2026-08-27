@@ -1,10 +1,5 @@
 import { test, expect } from "./fixtures";
-import {
-  expectNoClippedContent,
-  followLink,
-  hydratedClick,
-  settledClick,
-} from "./helpers";
+import { followLink, hydratedClick, settledClick } from "./helpers";
 import { frozenNow } from "./worker-env";
 import { openProtocolFact, withProtocolFact } from "./protocol-form-helpers";
 

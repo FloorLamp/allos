@@ -25,7 +25,6 @@ import {
   summarizeEquipmentAvailability,
   deRankUnavailableLifts,
 } from "@/lib/equipment-availability";
-import { round } from "@/lib/units";
 import { IconAlertTriangle } from "@tabler/icons-react";
 import PlateBuilderModal from "./PlateBuilderModal";
 import { isRealIsoDate } from "@/lib/date";

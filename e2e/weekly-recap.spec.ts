@@ -1,5 +1,5 @@
 import { test, expect } from "./fixtures";
-import { openDashboardAll, settledSelectSave } from "./helpers";
+import { openDashboardAll } from "./helpers";
 // Issue #32: dashboard recap-line atoms and a milestone Timeline entry. The e2e
 // seed plants recap input plus a "50 workouts logged" milestone so both surfaces
 // have deterministic content.
