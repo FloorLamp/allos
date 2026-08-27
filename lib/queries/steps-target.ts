@@ -50,7 +50,9 @@ export function getStepsDigestLines(
   const target = getStepsDailyTarget(profileId);
   if (target == null) return { yesterday: null, today: null };
   const points = getMetricDailyTotals(profileId, "steps", STEPS_LOOKBACK_DAYS);
-  const summary = summarizeStepsToday(points, date);
+  // null hour: this caller reads only `average7`, and the digest states no
+  // today-vs-prior-days delta at all (#3258).
+  const summary = summarizeStepsToday(points, date, null);
   return {
     yesterday: stepsVerdictLine(
       stepsOn(points, shiftDateStr(date, -1)),

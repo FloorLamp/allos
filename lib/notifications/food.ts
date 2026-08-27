@@ -29,7 +29,7 @@ import {
   type CorrectionBurst,
   type CorrectionDay,
 } from "../correction-time";
-import { proteinTodayNudgeParts } from "../protein";
+import { proteinTodayLineParts } from "../protein";
 import { PROTEIN_NUDGE_KEY } from "../protein-nudge";
 import {
   foodOptInCallbackData,
@@ -149,8 +149,8 @@ export function buildFoodNudge(
   const pt = getProteinToday(profileId);
   // Gathered as PARTS (#1710) so the "reached / below" conclusion is decided once in
   // lib/protein and the renderer only decides emphasis.
-  let proteinLine: ReturnType<typeof proteinTodayNudgeParts> | string | null =
-    pt ? proteinTodayNudgeParts(pt) : null;
+  let proteinLine: ReturnType<typeof proteinTodayLineParts> | string | null =
+    pt ? proteinTodayLineParts(pt) : null;
   // A protein-tracker with no target (no bodyweight) still gets a day-grams line when
   // they've logged protein today, so the "+Xg protein" button's contribution is visible and
   // distinct from the food-serving tally (#1073). getProteinDailyGrams is a raw stored

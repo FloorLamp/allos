@@ -1,6 +1,10 @@
 import { describe, expect, it } from "vitest";
 import { trailingAverage } from "@/lib/trailing-average";
-import { summarizeStepsToday, STEPS_TRAILING_DAYS } from "@/lib/steps-today";
+import {
+  summarizeStepsToday,
+  STEPS_DELTA_COMPLETE_HOUR,
+  STEPS_TRAILING_DAYS,
+} from "@/lib/steps-today";
 import { trendMetricPeriodStats } from "@/lib/trend-metrics";
 
 // Pure tier: the ONE trailing-average computation (#1909) and the two surfaces that
@@ -307,7 +311,11 @@ describe("the day-one fallback fires on no history, never on a gap (#1909)", () 
   });
 
   it("the Steps card DECLINES it — today cannot be its own baseline", () => {
-    const summary = summarizeStepsToday(series([[TODAY, 8432]]), TODAY)!;
+    const summary = summarizeStepsToday(
+      series([[TODAY, 8432]]),
+      TODAY,
+      STEPS_DELTA_COMPLETE_HOUR
+    )!;
     expect(summary.today).toBe(8432);
     // No baseline, so no delta and no direction: the card compares today against
     // PRIOR days, and there are none.
@@ -321,7 +329,10 @@ describe("the day-one fallback fires on no history, never on a gap (#1909)", () 
       ["2026-07-22", 9000],
       [TODAY, 8432],
     ]);
-    expect(summarizeStepsToday(withYesterday, TODAY)!.average7).toBe(9000);
+    expect(
+      summarizeStepsToday(withYesterday, TODAY, STEPS_DELTA_COMPLETE_HOUR)!
+        .average7
+    ).toBe(9000);
     expect(trendMetricPeriodStats(withYesterday, TODAY, 0)[0]).toMatchObject({
       dayOne: false,
       avg: 9000,
@@ -346,7 +357,11 @@ describe("both '7-day average' surfaces delegate to the one helper (#221/#1909)"
       days: STEPS_TRAILING_DAYS,
       basis: "data-bearing",
     });
-    const summary = summarizeStepsToday(POINTS, TODAY)!;
+    const summary = summarizeStepsToday(
+      POINTS,
+      TODAY,
+      STEPS_DELTA_COMPLETE_HOUR
+    )!;
     expect(summary.average7).toBe(Math.round(helper.average!));
     // …and the delta the arrow renders is measured against exactly that baseline.
     expect(summary.deltaPct).toBe(
@@ -369,7 +384,11 @@ describe("both '7-day average' surfaces delegate to the one helper (#221/#1909)"
   });
 
   it("the two surfaces still differ — by the DECLARED basis, not by accident", () => {
-    const summary = summarizeStepsToday(POINTS, TODAY)!;
+    const summary = summarizeStepsToday(
+      POINTS,
+      TODAY,
+      STEPS_DELTA_COMPLETE_HOUR
+    )!;
     const sevenDay = trendMetricPeriodStats(POINTS, TODAY, 0).find((s) =>
       s.windows.includes(7)
     )!;

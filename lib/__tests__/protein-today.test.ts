@@ -3,7 +3,8 @@ import {
   proteinGaugeMarker,
   proteinIntake,
   proteinTarget,
-  proteinTodayNudgeParts,
+  proteinTodayExplanation,
+  proteinTodayLineParts,
   proteinTodayStatus,
   type ProteinToday,
 } from "@/lib/protein";
@@ -12,7 +13,7 @@ import { proteinNudgeLine } from "@/lib/notifications/food-format";
 // The plain rendering moved to the module that serves the surface (#2391); the parts
 // still come from lib/protein, so this stays a test of one conclusion rendered once.
 const proteinTodayNudgeLine = (t: ProteinToday) =>
-  proteinNudgeLine(proteinTodayNudgeParts(t));
+  proteinNudgeLine(proteinTodayLineParts(t));
 
 // Pure-tier tests for the #974 protein band gauge model + food-nudge status line. The
 // gather (getProteinToday) is DB-tier-tested; here we pin the pure formatters and the
@@ -95,7 +96,7 @@ describe("proteinTodayNudgeLine", () => {
     expect(proteinTodayStatus(makeToday({ todayGrams: 94 }))).toBe("below");
     // The parts and the joined line can't disagree.
     const t = makeToday({ todayGrams: 140 });
-    const parts = proteinTodayNudgeParts(t);
+    const parts = proteinTodayLineParts(t);
     // The em dash introduces the FIRST qualifier the line has and `·` separates the
     // rest (#2391) — the same grammar every other system-initiated line uses.
     expect(proteinTodayNudgeLine(t)).toBe(
@@ -194,5 +195,81 @@ describe("proteinGaugeMarker (#2328)", () => {
 
   it("no marker at all when neither window holds a figure", () => {
     expect(proteinGaugeMarker(makeToday({}))).toBeNull();
+  });
+});
+
+// The dashboard's protein row and card (#3257). The owner's own line read
+// "≥ 69 g · Goal ~80–105 g/day (1.2–1.6 g/kg, general fitness) · 7-day average
+// 117 g/day · From logged foods + protein logged — a floor, actual likely higher".
+// Four defects in one line: an inequality to parse, the band's derivation, two table
+// names, and a hedge about the ESTIMATOR. The honesty the last clause carried is
+// CORRECT for this profile and survives — as a sentence about the SITUATION, one tap
+// away, while the glance line is a number and a goal.
+describe("the dashboard protein line says the situation, not the estimator (#3257)", () => {
+  const BASES = [
+    [
+      "combined",
+      { dailyTracked: null, dailyLogged: 30, dailyEstimated: 25 },
+      "55 g+",
+      "from foods and logged protein",
+    ],
+    [
+      "estimated",
+      { dailyTracked: null, dailyEstimated: 40 },
+      "40 g+",
+      "from your food log",
+    ],
+    [
+      "logged",
+      { dailyTracked: null, dailyLogged: 45, dailyEstimated: 0 },
+      "45 g+",
+      "from the protein you logged",
+    ],
+    [
+      "tracked",
+      { dailyTracked: 120, dailyEstimated: 0 },
+      "120 g",
+      "from the daily total your health app sends",
+    ],
+  ] as const;
+
+  it.each(BASES)(
+    "a %s basis: a plain figure on the row, the situation in the hover",
+    (basis, args, amount, situation) => {
+      const todayIntake = proteinIntake(args)!;
+      expect(todayIntake.basis).toBe(basis);
+      const t = makeToday({ todayIntake, todayGrams: todayIntake.grams });
+      const parts = proteinTodayLineParts(t);
+
+      // THE GLANCE, exactly as the row composes it: value plus "Goal <band>". The
+      // floor rides on one character, the same "+" Telegram has used since #1822.
+      expect(parts.amount).toBe(amount);
+      expect(parts.band).toBe("95–130 g");
+      expect(`${parts.amount} · Goal ${parts.band}`).not.toMatch(
+        /≥|g\/kg|\(|floor|likely/
+      );
+
+      // THE HOVER: the derivation the row stopped carrying, where the figure came
+      // from, and — for a floor basis only — why today's number is not the whole day.
+      const hover = proteinTodayExplanation(t);
+      expect(hover).toContain("1.2–1.6 g/kg");
+      expect(hover).toContain(`Today's total is ${situation}.`);
+      expect(hover).not.toMatch(/floor|likely higher|≥/);
+      expect(hover).toContain(
+        basis === "tracked" ? "" : "Only some meals are logged"
+      );
+      expect(hover.includes("Only some meals are logged")).toBe(
+        basis !== "tracked"
+      );
+    }
+  );
+
+  it("reaches no adequacy verdict — that is proteinAdequacyTitle's question (#221)", () => {
+    // Far under the band and far over it, the explanation is the SAME sentence: the
+    // row reports, the adequacy computation judges, and neither does the other's job.
+    const under = proteinTodayExplanation(makeToday({ todayGrams: 20 }));
+    const over = proteinTodayExplanation(makeToday({ todayGrams: 200 }));
+    expect(under).toBe(over);
+    expect(under).not.toMatch(/below|above|short|may be|within|goal reached/i);
   });
 });

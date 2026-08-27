@@ -23,14 +23,38 @@ export interface StepsTodaySummary {
   // declines it (see summarizeStepsToday).
   average7: number | null;
   // today − average7 as a signed percentage of the average, rounded; null unless both
-  // figures are present.
+  // figures are present AND the day is complete enough to compare (see
+  // STEPS_DELTA_COMPLETE_HOUR).
   deltaPct: number | null;
-  // Direction of today vs the trailing average; null unless both figures are present.
+  // Direction of today vs the trailing average; null on the same terms as deltaPct —
+  // it answers the same comparison and cannot be honest when that one is not.
   direction: StepsDirection | null;
 }
 
 // The trailing window the average spans (days before today, data-bearing only).
 export const STEPS_TRAILING_DAYS = 7;
+
+// The PROFILE-LOCAL HOUR (0..23) from which today's running total may be compared
+// against complete days (#3258). Before it, deltaPct and direction are null and the
+// card shows only the neutral prior-7-day average.
+//
+// WHY THE COMPARISON WAS NEVER HONEST BEFORE IT. today is a partial sum and average7
+// is a mean of whole days, so the percentage starts every single morning at −100% and
+// climbs until bedtime: the owner's own two screenshots of one day read −73% at midday
+// and −47% that evening, with no change in behaviour between them. That is a clock
+// artifact wearing a behaviour change's clothes — a permanent daily false alarm, the
+// mirror of #2385's deceptive success.
+//
+// WHY 20 AND NOT lib/steps-target's STEPS_AFTERNOON_HOUR (16). That constant gates a
+// DIFFERENT claim — "less than HALF a declared target with the afternoon gone" — where
+// the half-target fraction is what makes 4pm defensible. This claim is a whole-day
+// total measured against whole-day totals, and nothing but the day being nearly over
+// makes those two comparable, so the hour has to carry the honesty alone.
+//
+// It is a floor on WHEN, never a claim that the day is finished: a late walk still
+// moves the number afterwards. What it buys is that the number stops being wrong by
+// construction — before 8pm the shortfall was arithmetic about the clock.
+export const STEPS_DELTA_COMPLETE_HOUR = 20;
 
 // Summarize a per-day steps series (ascending by date) against a capture date. Returns
 // null only when the series is empty (the card's data-aware empty state). A series with
@@ -38,7 +62,11 @@ export const STEPS_TRAILING_DAYS = 7;
 // the trailing average.
 export function summarizeStepsToday(
   points: readonly { date: string; value: number }[],
-  todayStr: string
+  todayStr: string,
+  // The profile-LOCAL hour right now, or null when the caller has no clock (or wants
+  // no delta). Required rather than optional so every call site declares which it is —
+  // a defaulted hour would silently restore the partial-vs-complete comparison.
+  localHour: number | null
 ): StepsTodaySummary | null {
   if (points.length === 0) return null;
 
@@ -63,13 +91,19 @@ export function summarizeStepsToday(
 
   let deltaPct: number | null = null;
   let direction: StepsDirection | null = null;
-  if (today != null && average7 != null && average7 > 0) {
-    deltaPct = Math.round(((today - average7) / average7) * 100);
-    direction = today > average7 ? "up" : today < average7 ? "down" : "flat";
-  } else if (today != null && average7 != null) {
-    // average is zero — any positive today is "up", else flat.
-    deltaPct = today > 0 ? 100 : 0;
-    direction = today > 0 ? "up" : "flat";
+  // The day-completeness veto, before any of the value clauses: a partial total is not
+  // comparable to complete ones at any count, so there is nothing to compute yet.
+  const comparable =
+    localHour != null && localHour >= STEPS_DELTA_COMPLETE_HOUR;
+  if (comparable && today != null && average7 != null) {
+    if (average7 > 0) {
+      deltaPct = Math.round(((today - average7) / average7) * 100);
+      direction = today > average7 ? "up" : today < average7 ? "down" : "flat";
+    } else {
+      // average is zero — any positive today is "up", else flat.
+      deltaPct = today > 0 ? 100 : 0;
+      direction = today > 0 ? "up" : "flat";
+    }
   }
 
   return { today, average7, deltaPct, direction };

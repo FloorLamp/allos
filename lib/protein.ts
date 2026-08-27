@@ -283,17 +283,19 @@ function g(n: number): string {
   return String(Math.round(n));
 }
 
-// A phrase naming the intake's basis, for the copy.
+// Where today's figure came from, said as something the person DID rather than as a
+// list of the tables it was read from (#3257). "logged foods + protein logged" named
+// two sources; these name one situation, and read as the tail of "Today's total is …".
 export function proteinBasisPhrase(basis: ProteinBasis): string {
   switch (basis) {
     case "tracked":
-      return "tracked intake";
+      return "from the daily total your health app sends";
     case "combined":
-      return "logged foods + protein logged";
+      return "from foods and logged protein";
     case "logged":
-      return "logged protein";
+      return "from the protein you logged";
     case "estimated":
-      return "logged foods";
+      return "from your food log";
   }
 }
 
@@ -554,10 +556,16 @@ export function proteinTodayStatus(t: ProteinToday): ProteinTodayStatus {
   return t.todayGrams >= t.target.gramsLow ? "reached" : "below";
 }
 
-// The pieces of the food-nudge protein line, so one surface can render it plain and
-// another can emphasize the figure without either re-deriving the conclusion (#1710).
-// A floor basis (anything but a measured tracked reading) keeps its floor marker per the
-// #767 floor-copy discipline; a tracked reading states the figure directly.
+// The pieces of today's protein line, so one surface can render it plain and another
+// can emphasize the figure without either re-deriving the conclusion (#1710). A floor
+// basis (anything but a measured tracked reading) keeps its floor marker per the #767
+// floor-copy discipline; a tracked reading states the figure directly.
+//
+// NOT nudge-only any more (#3257): the dashboard's protein row and card read the SAME
+// amount and band, so the Telegram line and the web glance state today's protein in
+// exactly the same words. The dashboard used to spell it "≥ 69 g" and
+// "~80–105 g/day (1.2–1.6 g/kg, general fitness)" — a second policy for one
+// question, and the one the owner called useless.
 //
 // HEDGE ARRANGEMENT, NOT SEMANTICS (#1822 item 4). The line used to read "Protein · at
 // least 36 g of ~80–105 g" — three hedges stacked in six words ("at least", "of", "~"),
@@ -567,7 +575,7 @@ export function proteinTodayStatus(t: ProteinToday): ProteinTodayStatus {
 //
 // The STATUS WORDS are in the text, not carried by the emoji alone, so the meaning
 // survives screen readers and notification previews that strip emoji.
-export interface ProteinNudgeLineParts {
+export interface ProteinTodayLineParts {
   emoji: string;
   // "107 g+" (floor basis — the trailing plus IS the #767 floor marker) or "107 g" (a
   // tracked reading, which states the figure exactly).
@@ -580,7 +588,7 @@ export interface ProteinNudgeLineParts {
   statusWords: string | null;
 }
 
-export function proteinTodayNudgeParts(t: ProteinToday): ProteinNudgeLineParts {
+export function proteinTodayLineParts(t: ProteinToday): ProteinTodayLineParts {
   const grams = Math.round(t.todayGrams);
   const isFloor = t.todayIntake ? t.todayIntake.basis !== "tracked" : true;
   const status = proteinTodayStatus(t);
@@ -591,6 +599,28 @@ export function proteinTodayNudgeParts(t: ProteinToday): ProteinNudgeLineParts {
     status,
     statusWords: status === "reached" ? "goal reached" : null,
   };
+}
+
+// THE ROW STATES, THE HOVER EXPLAINS (#3257). Everything a reader only wants when they
+// ask — how the goal band was derived, where today's grams came from, and why a floor
+// basis is not the whole day — in one string both dashboard surfaces show, so the glance
+// line can be a number and a goal and nothing else.
+//
+// It states the SITUATION, never the estimator: "a floor, actual likely higher" explained
+// how the sum was computed, which is machinery. And it reaches NO verdict — whether the
+// intake is adequate is proteinAdequacyTitle's one question (#221), and a row that
+// re-hedged it would be answering it twice.
+export function proteinTodayExplanation(t: ProteinToday): string {
+  const basis = t.todayIntake?.basis ?? null;
+  return [
+    `Goal ${proteinTargetSummary(t.target)}.`,
+    basis ? `Today's total is ${proteinBasisPhrase(basis)}.` : null,
+    basis === "tracked"
+      ? null
+      : "Only some meals are logged, so today's true total is higher.",
+  ]
+    .filter(Boolean)
+    .join(" ");
 }
 
 // The RENDERING of these parts — plain and emphasized — lives in

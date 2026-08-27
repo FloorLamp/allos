@@ -84,7 +84,12 @@ import {
 import { countPushSubscriptionsForLogin } from "@/lib/notifications/push";
 import { hasConnectedDataSource } from "@/lib/integrations/connections";
 import { dispWeight, fmtDistance, fmtKmh, fmtWeight } from "@/lib/units";
-import { shiftDateStr, hhmmToMinutes, zonedDateParts } from "@/lib/date";
+import {
+  shiftDateStr,
+  hhmmToMinutes,
+  hourInTz,
+  zonedDateParts,
+} from "@/lib/date";
 import { ALL_ROWS } from "@/lib/trends";
 import {
   formatClockMinutes,
@@ -228,7 +233,7 @@ import {
   withSettingReadCache,
 } from "@/lib/settings/kv";
 import { withReadSnapshot } from "@/lib/read-snapshot";
-import { proteinBasisPhrase, proteinTargetSummary } from "@/lib/protein";
+import { proteinTodayExplanation, proteinTodayLineParts } from "@/lib/protein";
 import { MedicalValue } from "@/components/ui";
 import {
   clinicalResultBecameNotable,
@@ -976,9 +981,16 @@ async function renderDashboard(
   // steps-today (#1221): today's steps vs the prior 7 days, a formatter over
   // summarizeStepsToday fed by the deduped one-source-per-day steps series (#14/#221).
   // Empty series → the data-aware CTA (connect a source).
+  //
+  // The PROFILE-LOCAL hour decides whether today is complete enough to compare against
+  // whole days (#3258); before STEPS_DELTA_COMPLETE_HOUR the summary carries no delta
+  // and this row shows the neutral average alone. Local, not UTC — a delta that came
+  // and went on the server's clock would be the same artifact in a different disguise.
   const stepsRows = getMetricDailyTotals(profile.id, "steps");
   const stepsSummary =
-    stepsRows.length > 0 ? summarizeStepsToday(stepsRows, on) : null;
+    stepsRows.length > 0
+      ? summarizeStepsToday(stepsRows, on, hourInTz(timezone, dashboardNow))
+      : null;
 
   // vitals-latest (#1221): the latest BP + resting HR readings with a trend arrow, over
   // the SAME series queries behind Trends → Vitals, each reduced via the shared
@@ -1687,7 +1699,15 @@ async function renderDashboard(
     );
   }
 
-  if (proteinToday)
+  if (proteinToday) {
+    // The glance line is a number and a goal (#3257). It used to read "≥ 69 g · Goal
+    // ~80–105 g/day (1.2–1.6 g/kg, general fitness) · … · From logged foods + protein
+    // logged — a floor, actual likely higher": an inequality to parse, the band's
+    // derivation, two table names, and a hedge about the ESTIMATOR. The amount and band
+    // now come from the same parts the Telegram protein line reads, so the "+" carries
+    // the floor honestly in one character; the derivation and the partial-logging
+    // situation moved to the row's hover.
+    const proteinLine = proteinTodayLineParts(proteinToday);
     add(
       dailyCandidates.protein(
         {
@@ -1701,21 +1721,21 @@ async function renderDashboard(
       ),
       <ProteinTodayAtom today={proteinToday} />,
       {
-        value: `${proteinToday.todayIntake?.basis === "tracked" ? "" : "≥ "}${Math.round(proteinToday.todayGrams)} g`,
+        value: proteinLine.amount,
         detail: [
-          `Goal ${proteinTargetSummary(proteinToday.target)}`,
+          `Goal ${proteinLine.band}`,
           proteinToday.trailing.grams != null && !proteinToday.trailing.dayOne
-            ? `7-day average ${Math.round(proteinToday.trailing.grams)} g/day`
+            ? `7-day average ${Math.round(proteinToday.trailing.grams)} g`
             : null,
-          `From ${proteinToday.todayIntake ? proteinBasisPhrase(proteinToday.todayIntake.basis) : "logged foods"}${proteinToday.todayIntake?.basis === "tracked" ? "" : " — a floor, actual likely higher"}`,
         ]
           .filter(Boolean)
           .join(" · "),
+        disclosure: proteinTodayExplanation(proteinToday),
         href: "/nutrition",
         presence: "current",
       }
     );
-  else if (foodLoggingApplicable)
+  } else if (foodLoggingApplicable)
     addStandingOnly(
       dailyCandidates.nutritionBootstrap({
         subject: profileSubject,
@@ -1760,6 +1780,10 @@ async function renderDashboard(
             stepsSummary.average7 == null
               ? null
               : `Prior 7 days · ${stepsSummary.average7.toLocaleString("en-US")} steps a day`,
+            // Absent for most of the day BY DESIGN (#3258): the summary withholds the
+            // delta until today is complete enough to compare against whole days, so
+            // this row states the neutral average alone until the evening rather than
+            // a percentage that was only ever counting the hours.
             stepsSummary.deltaPct == null
               ? null
               : `${stepsSummary.deltaPct > 0 ? "+" : ""}${stepsSummary.deltaPct}% vs prior 7 days`,

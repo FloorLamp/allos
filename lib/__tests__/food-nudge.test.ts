@@ -31,7 +31,7 @@ import { plainBody } from "@/lib/notifications/rich-text";
 import { correctionBursts } from "@/lib/correction-time";
 import { correctionBodyStatement } from "@/lib/notifications/correction-rows";
 import {
-  proteinTodayNudgeParts,
+  proteinTodayLineParts,
   proteinIntake,
   proteinTarget,
   type ProteinToday,
@@ -115,12 +115,12 @@ describe("renderFoodNudge", () => {
       trailing: { grams: 92, dayOne: false },
     };
     const msg = renderFoodNudge(1, "Morning", DATE, RANKED, new Map(), {
-      proteinLine: proteinTodayNudgeParts(t),
+      proteinLine: proteinTodayLineParts(t),
     });
     // The nudge renders the SAME line lib/protein composes for any other surface —
     // one classification, one set of words (#221).
     expect(plainBody(msg.body)).toContain(
-      proteinNudgeLine(proteinTodayNudgeParts(t))
+      proteinNudgeLine(proteinTodayLineParts(t))
     );
     // #1822 item 4: the same facts, unstacked — the floor marker is the trailing "+".
     expect(plainBody(msg.body)).toContain(

@@ -2,9 +2,10 @@ import { IconSalad } from "@tabler/icons-react";
 import CardSectionHeader from "@/components/CardSectionHeader";
 import {
   type ProteinToday,
-  proteinBasisPhrase,
-  proteinTargetSummary,
+  proteinTodayExplanation,
+  proteinTodayLineParts,
 } from "@/lib/protein";
+import InfoTooltipIcon from "@/components/InfoTooltipIcon";
 import UsualRoutineControl, {
   type UsualRoutineControlProps,
 } from "@/components/dashboard/UsualRoutineControl";
@@ -13,8 +14,8 @@ import UsualRoutineControl, {
 // band, plus the trailing 7-day average — a thin FORMATTER over the SAME ProteinToday
 // model the Nutrition → Food gauge and the Telegram food-nudge read (getProteinToday,
 // #974/#221), so the card and those surfaces can never disagree. Today is IN PROGRESS,
-// so it's never colored as a shortfall; a non-tracked basis is a FLOOR ("at least"),
-// per the #767 floor-copy discipline.
+// so it's never colored as a shortfall; a non-tracked basis is a FLOOR, marked by the
+// trailing "+" on the figure per the #767 floor-copy discipline as #1822 unstacked it.
 //
 // The average line reads `trailing`, NOT `weeklyAverageGrams` (#1917). This card said
 // "7-day average" over the week-to-date figure: on a Tuesday it covered two days, it
@@ -48,13 +49,11 @@ export function UsualRoutineAtom(props: UsualRoutineControlProps) {
 }
 
 function ProteinReadout({ today }: { today: ProteinToday }) {
-  const grams = Math.round(today.todayGrams);
-  const isFloor = today.todayIntake
-    ? today.todayIntake.basis !== "tracked"
-    : true;
-  const basis = today.todayIntake
-    ? proteinBasisPhrase(today.todayIntake.basis)
-    : "logged foods";
+  // The SAME parts the Standing row and the Telegram line read (#3257): one policy per
+  // phrase. The card carried the identical four defects the row did — "≥ 69 g", the
+  // band's g/kg derivation, a source list, and the estimator hedge — so it loses them
+  // in the same change rather than becoming the fork the row was fixed to avoid.
+  const parts = proteinTodayLineParts(today);
   return (
     <div className="flex items-start gap-3">
       <IconSalad
@@ -68,28 +67,24 @@ function ProteinReadout({ today }: { today: ProteinToday }) {
             className="text-2xl font-bold tabular-nums text-slate-800 dark:text-slate-100"
             data-testid="nutrition-today-protein"
           >
-            {isFloor ? "≥ " : ""}
-            {grams} g
+            {parts.amount}
           </span>
           <span className="text-sm text-slate-500 dark:text-slate-400">
             protein today
           </span>
         </div>
-        <div className="text-sm text-slate-600 dark:text-slate-300">
-          Goal {proteinTargetSummary(today.target)}
+        <div className="flex items-center gap-1 text-sm text-slate-600 dark:text-slate-300">
+          <span>Goal {parts.band}</span>
+          <InfoTooltipIcon label={proteinTodayExplanation(today)} />
         </div>
         {today.trailing.grams != null && !today.trailing.dayOne && (
           <div
             className="mt-0.5 text-xs text-slate-500 dark:text-slate-400"
             data-testid="nutrition-trailing-average"
           >
-            7-day average · {Math.round(today.trailing.grams)} g/day
+            7-day average · {Math.round(today.trailing.grams)} g
           </div>
         )}
-        <div className="mt-0.5 text-xs text-slate-500 dark:text-slate-400">
-          From {basis}
-          {isFloor ? " — a floor, actual likely higher" : ""}.
-        </div>
       </div>
     </div>
   );
