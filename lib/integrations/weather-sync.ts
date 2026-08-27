@@ -3,7 +3,7 @@ import { userErrorCopy } from "@/lib/user-error-copy";
 import { getHomeLocation } from "@/lib/settings";
 import { getTimezone } from "@/lib/settings";
 import { WEATHER_ID, recordSync, recordSyncEvent } from "./connections";
-import { syncFailureCopy } from "./auth-failure";
+import { syncFailureCopy, syncFailureKind } from "./auth-failure";
 import { openMeteoSource, type WeatherSource } from "./open-meteo";
 import { upsertUvHours, upsertWeatherDays } from "./weather-cache";
 import {
@@ -146,10 +146,12 @@ export async function runWeatherSync(
     // The hourly half's failure IS the run's failure, so this string is the one the
     // integration card, the "Sync now" toast and the morning digest all show (#3618).
     // `res.error` is already the house sentence when the request THREW; a rejection
-    // gets one from the shared vocabulary, which — for a keyless source with no grant
-    // to renew — is only ever "wait" or "we couldn't", never "reconnect".
+    // gets one from the shared vocabulary. Weather never reaches the reconnect
+    // sentence at all: that one is written by the pull RUNNER off a connection row,
+    // and a keyless source has neither.
     const error =
-      res.error ?? syncFailureCopy(SOURCE_NAME, res.status ?? 0, false);
+      res.error ??
+      syncFailureCopy(SOURCE_NAME, syncFailureKind(res.status ?? 0));
     recordSyncEvent(profileId, WEATHER_ID, {
       ok: false,
       windowStart: startDate,

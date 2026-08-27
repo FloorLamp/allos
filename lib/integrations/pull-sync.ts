@@ -9,7 +9,7 @@ import {
   recordSyncEvent,
   recordSyncRows,
 } from "./connections";
-import { isAuthRefreshFailure } from "./auth-failure";
+import { syncFailureCopy } from "./auth-failure";
 import {
   dateWindow,
   emptyCounts,
@@ -104,10 +104,11 @@ export interface PullGather<TCursor extends string | number> {
 }
 
 // A gather that could not complete. `status` is the failing HTTP status when there
-// was one — a DEFINITIVE auth failure (a revoked personal access token) flips the
-// connection to needs_reauth so the tick stops retrying forever (#326). A source
-// that resolves credentials through its own refresh path leaves it unset, because
-// that path already owns the reauth transition.
+// was one; a 401 — a revoked personal access token — flips the connection to
+// needs_reauth so the tick stops retrying forever (#326). A source that resolves
+// credentials through its own refresh path leaves it unset, because that path
+// already owns the reauth transition. `error` is the sentence the source wrote for
+// a NON-auth failure; the runner replaces it when the row says needs_reauth.
 export interface PullFailure {
   error: string;
   status?: number;
@@ -177,6 +178,30 @@ export interface PullSpec<
   truncationReason?: string;
 }
 
+// THE RECONNECT SENTENCE HAS ONE AUTHOR, AND IT IS THE CONNECTION ROW (#3618).
+//
+// Every other failure sentence is derived from a status, and a dead grant cannot be:
+// the two are not the same fact. Withings' and Strava's gathers report no status to
+// this runner at all (their own refresh path owns the reauth transition), so a
+// status-keyed guess wrote "Reconnect Strava to resume syncing." onto a row still
+// marked `connected` — and app/(app)/integrations/strava/page.tsx gates its
+// reconnect affordance on `needsReauth && !connected`, so the page offered Sync now
+// and Disconnect and nothing else. The app asked for the one thing it was hiding.
+//
+// Read AFTER the transition, so the row is the evidence rather than a prediction of
+// it. This is also why the sentence cannot live in `syncFailureCopy`'s status
+// classifier: that function is pure and has never met the connection.
+function failureSentence(
+  profileId: number,
+  sourceId: IntegrationId,
+  name: string,
+  otherwise: string
+): string {
+  return getConnection(profileId, sourceId)?.status === "needs_reauth"
+    ? syncFailureCopy(name, "reconnect")
+    : otherwise;
+}
+
 // Run one source's scheduled pull. Returns its own count summary (plus
 // `truncated: true` when the run was cut short), or `{ error }` for a graceful
 // failure — never throws for an ordinary source/network problem.
@@ -209,15 +234,13 @@ export async function runPullSync<
     // `markConnectionNeedsReauth` and THEN throws; the throw's text is an operator's
     // ("Strava token refresh failed (401): …") and the classifier below can only
     // reduce it to "Couldn't connect to Strava." — true, and silent about the one
-    // thing the person can do. The connection row is the evidence, already written,
-    // so ask it rather than re-deriving the verdict from the message.
-    const message =
-      getConnection(profileId, spec.id)?.status === "needs_reauth"
-        ? `Reconnect ${name} to resume syncing.`
-        : userErrorCopy(err, {
-            doing: `connect to ${name}`,
-            service: name,
-          });
+    // thing the person can do.
+    const message = failureSentence(
+      profileId,
+      spec.id,
+      name,
+      userErrorCopy(err, { doing: `connect to ${name}`, service: name })
+    );
     recordSyncEvent(profileId, spec.id, { ok: false, error: message });
     return { error: message };
   }
@@ -227,11 +250,18 @@ export async function runPullSync<
   const cursor = spec.cursor.read(profileId);
   const outcome = await spec.gather(profileId, token, cursor);
   if (isFailure(outcome)) {
-    if (outcome.status != null && isAuthRefreshFailure(outcome.status)) {
-      markConnectionNeedsReauth(profileId, spec.id);
-    }
-    recordSyncEvent(profileId, spec.id, { ok: false, error: outcome.error });
-    return { error: outcome.error };
+    // 401 AND NOTHING ELSE on a data pull (#3618). This used to ask
+    // `isAuthRefreshFailure`, which reads a body-LESS 400 as a rejected grant — right
+    // for a token refresh, where the grant IS the request, and wrong for a data
+    // endpoint, where a 400 is a bad parameter. #3007 is this repo's own measurement
+    // of a data endpoint answering 400 for an out-of-range window. Flipping
+    // needs_reauth on that is not a copy defect: pull-tick auto-syncs `connected`
+    // rows only, so one malformed request stopped the source permanently, and the
+    // number that would have explained it now reaches only the log.
+    if (outcome.status === 401) markConnectionNeedsReauth(profileId, spec.id);
+    const message = failureSentence(profileId, spec.id, name, outcome.error);
+    recordSyncEvent(profileId, spec.id, { ok: false, error: message });
+    return { error: message };
   }
 
   const { batch, raw, skipped, truncated } = outcome;

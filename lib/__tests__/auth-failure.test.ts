@@ -2,6 +2,7 @@ import { describe, it, expect } from "vitest";
 import {
   isAuthRefreshFailure,
   syncFailureCopy,
+  syncFailureKind,
 } from "@/lib/integrations/auth-failure";
 
 // Issue #326: classify an OAuth/token-refresh failure as a DEFINITIVE auth failure
@@ -49,39 +50,67 @@ describe("isAuthRefreshFailure", () => {
   });
 });
 
-// Issue #3618: the SENTENCE a status turns into. The end-to-end proof that these
-// reach the card, the toast and the digest is lib/__db_tests__/sync-failure-copy;
-// this table is the vocabulary itself, including the two edges that decide whether
-// it can be wrong — a keyless source has no grant to renew, and a Withings envelope
-// code is not an HTTP status however much it looks like one.
+// Issue #3618: the SENTENCE a failed sync shows, in two halves — what a status
+// MEANS, and how that is said. The end-to-end proof that these reach the card, the
+// toast and the digest is lib/__db_tests__/sync-failure-copy.
+describe("syncFailureKind", () => {
+  it.each([
+    // An HTTP status: transient is exactly {0, 429, [500,600)}.
+    [0, "http", "transient"], // no response at all
+    [429, "http", "transient"],
+    [500, "http", "transient"],
+    [599, "http", "transient"],
+    [600, "http", "unknown"], // past the bound
+    [601, "http", "unknown"],
+    [2555, "http", "unknown"],
+    [400, "http", "unknown"],
+    [401, "http", "unknown"],
+    [403, "http", "unknown"],
+    [404, "http", "unknown"],
+    // A VENDOR code is never transient, whatever it looks like. Withings' envelope
+    // 503 is "Action parameters are incorrect" — deterministic, and sitting exactly
+    // where HTTP puts "service unavailable".
+    [503, "vendor", "unknown"],
+    [0, "vendor", "unknown"],
+    [429, "vendor", "unknown"],
+    [601, "vendor", "unknown"],
+    [250, "vendor", "unknown"],
+  ] as const)("%i (%s) → %s", (status, origin, expected) => {
+    expect(syncFailureKind(status, origin)).toBe(expected);
+  });
+
+  // THE INVARIANT THE DOC ASSERTS, MADE CHECKABLE. A dead grant is a fact about the
+  // connection, not about a status — `runPullSync` reads it off the row AFTER the
+  // transition. If this classifier could ever answer "reconnect", the app would be
+  // able to ask for a reconnect on a row still marked `connected`, whose setup page
+  // hides the reconnect affordance behind `needsReauth && !connected`.
+  it("never answers reconnect, for any status in either space", () => {
+    for (const origin of ["http", "vendor"] as const) {
+      for (let status = -1; status <= 700; status++) {
+        expect(syncFailureKind(status, origin)).not.toBe("reconnect");
+      }
+      for (const status of [2555, 601, 250, 342, NaN]) {
+        expect(syncFailureKind(status, origin)).not.toBe("reconnect");
+      }
+    }
+  });
+});
+
 describe("syncFailureCopy", () => {
   it.each([
-    // status, canReconnect, expected
-    [401, true, "Reconnect Oura to resume syncing."],
-    [400, true, "Reconnect Oura to resume syncing."], // a rejected grant
-    [401, false, "Couldn't sync Oura."], // nothing to reconnect
-    [400, false, "Couldn't sync Oura."], // #3007's out-of-range window
-    [0, true, "Oura is having trouble. The next sync will pick it up."],
-    [429, true, "Oura is having trouble. The next sync will pick it up."],
-    [503, true, "Oura is having trouble. The next sync will pick it up."],
-    [601, true, "Couldn't sync Oura."], // a vendor code, not a 6xx server error
-    [2555, true, "Couldn't sync Oura."],
-    [403, true, "Couldn't sync Oura."],
-    [404, true, "Couldn't sync Oura."],
-  ] as const)(
-    "%i (reconnectable: %s) → %s",
-    (status, canReconnect, expected) => {
-      expect(syncFailureCopy("Oura", status, canReconnect)).toBe(expected);
-    }
-  );
+    ["reconnect", "Reconnect Oura Ring to resume syncing."],
+    // NO retry promise: this line only reaches the card and the digest after days of
+    // continuous failure, by which point "the next sync will fix it" has been
+    // falsified once an hour throughout (#3007's lesson).
+    ["transient", "Oura Ring is having trouble."],
+    ["unknown", "Couldn't sync Oura Ring."],
+  ] as const)("%s → %s", (kind, expected) => {
+    expect(syncFailureCopy("Oura Ring", kind)).toBe(expected);
+  });
 
   it("never names a path, a status or a vendor error number", () => {
-    for (const status of [0, 400, 401, 403, 429, 500, 503, 601, 2555]) {
-      for (const canReconnect of [true, false]) {
-        expect(syncFailureCopy("Oura", status, canReconnect)).not.toMatch(
-          /\d|\//
-        );
-      }
+    for (const kind of ["reconnect", "transient", "unknown"] as const) {
+      expect(syncFailureCopy("Oura Ring", kind)).not.toMatch(/\d|\//);
     }
   });
 });

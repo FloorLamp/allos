@@ -1,6 +1,6 @@
 import { createLogger } from "@/lib/log";
 import { userErrorCopy } from "@/lib/user-error-copy";
-import { syncFailureCopy } from "./auth-failure";
+import { syncFailureCopy, syncFailureKind } from "./auth-failure";
 import {
   OURA_ID,
   getOuraToken,
@@ -14,7 +14,7 @@ import {
   OURA_SLEEP_SCORE_METRIC,
   OURA_READINESS_SCORE_METRIC,
 } from "./oura";
-import { pullPaging } from "./registry";
+import { getIntegration, pullPaging } from "./registry";
 import { pageOutcome, pullDayWindow } from "./pull-window";
 import { runPullSync, type PullOutcome, type PullSpec } from "./pull-sync";
 import type {
@@ -35,8 +35,11 @@ import type {
 const log = createLogger("oura-sync");
 
 const BASE = "https://api.ouraring.com";
-// The brand a person recognises, shared by every sentence this module writes.
-const SOURCE_NAME = "Oura";
+// The name the CARD, the digest title and the setup page already use, taken from the
+// registry rather than re-spelled here — a module that says "Oura" under a heading
+// reading "Oura Ring" is two vocabularies for one source, which is the defect this
+// whole change is about.
+const SOURCE_NAME = getIntegration(OURA_ID)?.name ?? OURA_ID;
 const { timeoutMs, maxPages, rescanDays, backfillDays } = pullPaging(OURA_ID);
 
 export interface OuraSyncResult {
@@ -140,14 +143,17 @@ async function fetchPages(
         return { items, truncated: true };
       // ouraGet only sets `error` for a network throw, where it is already the house
       // sentence (#3592). An HTTP status now gets one too, from the shared failure
-      // vocabulary (#3618): a 401 here is a revoked personal access token, the same
-      // fact `markConnectionNeedsReauth` acts on a moment later. WHICH request failed
-      // moves to the log, which is where it was always useful.
+      // vocabulary (#3618). NOT the reconnect sentence, even for the 401 that means a
+      // revoked personal access token: only the runner knows whether the connection
+      // row actually moved, and it rewrites this line when it did. WHICH request
+      // failed moves to the log, which is where it was always useful.
       log.error("Oura request rejected", { path, status: res.status });
       return {
         items,
         truncated: false,
-        error: res.error ?? syncFailureCopy(SOURCE_NAME, res.status, true),
+        error:
+          res.error ??
+          syncFailureCopy(SOURCE_NAME, syncFailureKind(res.status)),
         status: res.status,
       };
     }

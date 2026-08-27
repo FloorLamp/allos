@@ -2146,32 +2146,54 @@ It used to carry the wire: `Oura /v2/usercollection/sleep request failed (401)`,
 strings, so they survived both sweeps and were the common case — an expired token
 is the most frequent sync failure there is, and it read as a status code.
 
-`syncFailureCopy` (`lib/integrations/auth-failure.ts`) is the vocabulary, keyed on
-what a status MEANS rather than on the number, because the three meanings are
-three different asks:
+The vocabulary is `syncFailureCopy` (`lib/integrations/auth-failure.ts`), and it
+is deliberately split in two, because only two of the three sentences can be
+derived from a status:
 
-| the status                | what it says                                                 |
-| ------------------------- | ------------------------------------------------------------ |
-| a definitive auth failure | `Reconnect <source> to resume syncing.`                      |
-| 0 / 429 / 5xx             | `<source> is having trouble. The next sync will pick it up.` |
-| anything else             | `Couldn't sync <source>.`                                    |
+| the failure                                   | what it says                            |
+| --------------------------------------------- | --------------------------------------- |
+| the connection needs reconnecting             | `Reconnect <source> to resume syncing.` |
+| transient — `0`, `429`, `[500,600)` over HTTP | `<source> is having trouble.`           |
+| anything else                                 | `Couldn't sync <source>.`               |
 
-Three things about it are load-bearing:
+`syncFailureKind(status, origin)` answers the second and third; **it can never
+answer the first, and that is the load-bearing part.**
 
-- **A dead grant is a door.** The card escalates to a `Reconnect →` CTA on the
-  same evidence, so the sentence and the affordance point at the same place. The
-  branch is keyed on `isAuthRefreshFailure`, the predicate
-  `markConnectionNeedsReauth` already uses, so the sentence and the connection
-  state can never disagree about what a 401 meant.
-- **A transient failure invites nothing.** A 503 from a source is not the
-  person's to fix, and the hourly tick already retries. `Couldn't sync …` gets no
-  `Try again.` either — copy.md rule 1 allows it only where retrying can
-  plausibly succeed.
-- **`canReconnect` is the caller's answer to "is there anything to reconnect?"**
-  A keyless source holds no grant. Open-Meteo's out-of-range 400 (#3007) is read
-  as a rejected grant by the shared predicate — correctly, for the token-refresh
-  path it was written for — and must never send someone hunting for a connect
-  button that does not exist.
+- **A dead grant is a fact about the CONNECTION, not about a status.** Only the
+  paths that call `markConnectionNeedsReauth` know it, and only Oura's gather
+  reports a status to `runPullSync` at all — Withings and Strava let their own
+  refresh path own the transition. So the reconnect sentence is written in exactly
+  one place, `runPullSync`'s `failureSentence`, which reads the connection row
+  AFTER the transition. Guessing it from a status wrote "Reconnect Strava to
+  resume syncing." onto a row still marked `connected`, and
+  `app/(app)/integrations/strava/page.tsx` gates its reconnect affordance on
+  `needsReauth && !connected` — so the app asked for the one thing it was hiding,
+  and the only route to the connect flow was Disconnect. The invariant is asserted
+  in both directions on every row of the proof below: the sentence starts with
+  "Reconnect" if and only if the row says `needs_reauth`.
+- **On a data pull, `401` is the only definitive auth status.**
+  `isAuthRefreshFailure` reads a body-less `400` as a rejected grant, which is
+  right for a token refresh — the grant IS the request — and wrong for a data
+  endpoint, where a `400` is a bad parameter (#3007 measured exactly that against
+  Open-Meteo). It is not merely wrong copy: `pull-tick` auto-syncs `connected`
+  rows only, so flipping `needs_reauth` on a malformed request stopped the source
+  for good.
+- **A transient failure promises nothing.** No `Try again.` (copy.md rule 1 allows
+  it only where retrying can plausibly succeed) and — since #3618 — no "the next
+  sync will pick it up" either. This line reaches the card and the digest only
+  after a source has failed continuously past its multi-day silence tolerance, by
+  which point such a promise has been falsified once an hour for days. That is
+  #3007's lesson second-hand: `weatherPartialWarning` grew its `deterministic`
+  flag because the same sentence was printed hourly and forever over a 400 that
+  had never once succeeded.
+- **A VENDOR code is never transient.** Withings answers over HTTP 200 with its
+  own code in `{ status }`, and those codes overlap HTTP's: envelope `503` is
+  "Action parameters are incorrect", a deterministic client error sitting exactly
+  where HTTP puts "service unavailable". `withingsPost` tags each failure with its
+  `origin`, and nothing generic may guess which numbers in one company's table
+  clear on their own. (The paging layer's `RATE_LIMIT_STATUSES` knowingly treats
+  envelope `601` as a rate limit; that is a Withings-specific rule and is
+  unaffected.)
 
 **The path and the status are not deleted, they are relocated.** Every call site
 logs them (`log.error("Oura request rejected", { path, status })`), alongside the
@@ -2179,11 +2201,14 @@ vendor's own explanation of a rejection where there is one — that is the half
 #3007 needed, and the operator log is where it was always the right answer. The
 same rule as #3592: house copy on the column, raw cause in the log.
 
-The two Review-only channels are deliberately NOT on this vocabulary.
-`details.warnings` carries a PARTIAL run's warning (`weatherPartialWarning`,
-which quotes Open-Meteo's sentence for the air-quality half), and
-`repeatedRunReason` collapses a stripe of identical failures in the history
-table. Neither is the failure sentence a person meets first.
+**What ELSE reads this column.** `repeatedRunReason` collapses a stripe of
+identical failures in Review's history table and appends a count, so it now reads
+`Reconnect Withings to resume syncing. — all 8 runs`; the composition predates
+this vocabulary (a #3592 sentence already produced the same shape) and is left
+alone. `details.warnings` is a different channel and keeps its own register: it
+carries a PARTIAL run's warning (`weatherPartialWarning`), which still quotes
+Open-Meteo's sentence for the air-quality half, because a partial is not a run
+failure and Review is not the card.
 
 `lib/__db_tests__/sync-failure-copy.test.ts` is the reachability proof: a table
 over source × arrival × status that drives the real runners against a stubbed

@@ -41,43 +41,67 @@ export function isAuthRefreshFailure(
   return false;
 }
 
-// ---- What the person reads when a source answers with a status (#3618) ------
+// ---- What the person reads when a sync fails (#3618) ------------------------
 
-// BOUNDED AT 600 rather than left open: this also receives Withings' ENVELOPE
-// codes, which are not HTTP statuses and run into four digits. An unqualified
-// `>= 500` read 2555 as a server error and promised a retry for something nobody
-// had classified.
-function isTransientStatus(status: number): boolean {
-  return status === 0 || status === 429 || (status >= 500 && status < 600);
+// The three things a broken sync can be, FROM THE PERSON'S SIDE. It is not a
+// taxonomy of statuses: it is a taxonomy of what there is to do, which is why
+// `reconnect` is not derivable from a status at all (see below).
+export type SyncFailureKind = "reconnect" | "transient" | "unknown";
+
+// WHERE a number came from, because the two spaces collide. Withings answers over
+// HTTP 200 with its own code in the envelope, and its 503 is "Action parameters are
+// incorrect" — a deterministic client error sitting exactly where HTTP puts
+// "service unavailable". Nothing generic can know which numbers in one company's
+// table will clear on their own, so a vendor code is never read as transient.
+export type StatusOrigin = "http" | "vendor";
+
+// What a failing STATUS means. Transient is exactly {0, 429, [500,600)}: it said
+// "slow down", it broke on its own side, or there was no HTTP response at all (the
+// status-0 sentinel a network error/timeout maps to). The upper bound is closed
+// because an unbounded `>= 500` swept up Withings' four-digit envelope codes.
+//
+// IT NEVER RETURNS `reconnect`, AND THAT IS THE POINT. A dead grant is a fact about
+// the CONNECTION, not about a status: only the paths that call
+// `markConnectionNeedsReauth` know it, and only ONE of the three pull gathers
+// (Oura's) reports a status to the runner at all. A status-keyed guess wrote "Reconnect Strava" onto
+// a row still marked `connected`, whose setup page gates its reconnect affordance on
+// `needsReauth && !connected` — so the app asked for something it was hiding. The
+// runner reads the row instead, AFTER the transition.
+export function syncFailureKind(
+  status: number,
+  origin: StatusOrigin = "http"
+): SyncFailureKind {
+  if (origin !== "http") return "unknown";
+  const transient =
+    status === 0 || status === 429 || (status >= 500 && status < 600);
+  return transient ? "transient" : "unknown";
 }
 
-// The sentence a failed sync shows: the integration card, the "Sync now" toast and
-// the morning digest all render `integration_sync_events.error` verbatim, and
-// `Oura /v2/usercollection/sleep request failed (401)` named a path, a status, and
-// nothing a reader could do. Each source keeps the path and the status in its own
-// log.error, which is the only reader they were any use to.
+// THE ONE AUTHOR of every sentence a failed sync shows a person. The integration
+// card, the "Sync now" toast and the morning digest all render
+// `integration_sync_events.error` verbatim, and it used to hold the wire —
+// `Oura /v2/usercollection/sleep request failed (401)`. Each source keeps the path
+// and the status in its own log.error, the only reader they were any use to.
 //
-// The auth branch reads `isAuthRefreshFailure` rather than a second status table, so
-// this sentence and `markConnectionNeedsReauth` cannot disagree about what a 401
-// meant — the card escalates to its Reconnect link on the same evidence.
-//
-// `canReconnect` is the caller's answer to "is there anything to reconnect?" A
-// keyless source holds no grant, and the predicate above reads its bare 400 as a
-// rejected grant — correctly, for the token-refresh path it was written for — so
-// Open-Meteo's out-of-range 400 (#3007) would otherwise send a person hunting for a
-// connect button that does not exist.
+// Every sentence NAMES THE SOURCE because the toast is global (Toast, not a card
+// slot) and a digest line is read on a phone: none of these can borrow their subject
+// from what happens to be next to them.
 export function syncFailureCopy(
   sourceName: string,
-  status: number,
-  canReconnect: boolean
+  kind: SyncFailureKind
 ): string {
-  if (canReconnect && isAuthRefreshFailure(status)) {
-    return `Reconnect ${sourceName} to resume syncing.`;
+  switch (kind) {
+    case "reconnect":
+      return `Reconnect ${sourceName} to resume syncing.`;
+    case "transient":
+      // NO "the next sync will try again" (#3007's lesson, second-hand). This
+      // sentence only reaches the card and the digest once a source has failed
+      // continuously past its multi-day silence tolerance — by which point the
+      // promise has been falsified once an hour for days. Saying whose problem it
+      // is was the whole of what a person could use anyway.
+      return `${sourceName} is having trouble.`;
+    case "unknown":
+      // No retry advice for a failure nobody has classified (copy.md rule 1).
+      return `Couldn't sync ${sourceName}.`;
   }
-  if (isTransientStatus(status)) {
-    // Not the person's to fix, and the hourly tick already retries.
-    return `${sourceName} is having trouble. The next sync will pick it up.`;
-  }
-  // No retry advice for a failure nobody has classified (copy.md rule 1).
-  return `Couldn't sync ${sourceName}.`;
 }

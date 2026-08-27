@@ -12,8 +12,8 @@ import {
 } from "./connections";
 import { mapStravaActivity, mapStravaActivityArtifacts } from "./strava";
 import { autoMergeActivityDuplicates } from "@/lib/import-review/auto-merge";
-import { syncFailureCopy } from "./auth-failure";
-import { pullPaging } from "./registry";
+import { syncFailureCopy, syncFailureKind } from "./auth-failure";
+import { getIntegration, pullPaging } from "./registry";
 import { isPullRateLimited, DAY_SECONDS } from "./pull-window";
 import { runPullSync, type PullOutcome, type PullSpec } from "./pull-sync";
 import type {
@@ -68,8 +68,9 @@ function streamFinallyAbsent(status: number): boolean {
 const log = createLogger("strava-sync");
 
 const API = "https://www.strava.com/api/v3";
-// The brand a person recognises, shared by every sentence this module writes.
-const SOURCE_NAME = "Strava";
+// The name the card, the digest title and the setup page already use — read from the
+// registry so one source can never speak under two names.
+const SOURCE_NAME = getIntegration(STRAVA_ID)?.name ?? STRAVA_ID;
 const PER_PAGE = 200;
 const { timeoutMs, maxPages: maxRequests, rescanDays } = pullPaging(STRAVA_ID);
 const RESCAN_MARGIN_SEC = rescanDays * DAY_SECONDS;
@@ -248,12 +249,15 @@ const stravaSpec: PullSpec<
         // logged the path and the real cause and put HOUSE COPY on `error` (#3592).
         // It is passed through unprefixed: prefixing it would rebuild the raw-text
         // sentence this change removed. An HTTP status gets its own house sentence
-        // from the shared failure vocabulary (#3618); the status itself goes to the
-        // log, which is the only reader it was ever any use to.
+        // from the shared failure vocabulary (#3618) — never the reconnect one, which
+        // only the runner may write, because this gather reports no status and so
+        // triggers no reauth transition. The status goes to the log, which is the
+        // only reader it was ever any use to.
         log.error("Strava activity list rejected", { status: listRes.status });
         return {
           error:
-            listRes.error ?? syncFailureCopy(SOURCE_NAME, listRes.status, true),
+            listRes.error ??
+            syncFailureCopy(SOURCE_NAME, syncFailureKind(listRes.status)),
         };
       }
       const list = Array.isArray(listRes.json)

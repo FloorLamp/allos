@@ -8,9 +8,16 @@
 // which names a path and a number and asks for nothing.
 //
 // The table below is the reachability proof for every one of those sentences: each
-// row runs a REAL runner against a stubbed network and reads back the row the
-// runner actually wrote. On origin/main every `expected` here is the jargon
-// instead, so each row reds there and greens on this branch.
+// row runs a REAL runner against a stubbed network and reads back the row the runner
+// actually wrote. Every row records a DIFFERENT string on origin/main, so each one
+// reds there and greens here.
+//
+// It also carries the invariant, in both directions and on every row: the app says
+// "Reconnect …" exactly when the connection row says a reconnect is needed. Asserting
+// only the sentence would let the two drift, which is how the first draft of this
+// change came to write "Reconnect Strava" onto a row still marked `connected` — on a
+// setup page that gates its reconnect affordance behind `needsReauth && !connected`,
+// and so offered Sync now and Disconnect and no way to reconnect at all.
 //
 // SEAM. Every provider bottoms out in global fetch; there is no injection point, so
 // (like sync-orchestrators and pull-runner) we stub fetch and route by URL. The real
@@ -117,21 +124,27 @@ interface Case {
   arrival: Arrival;
   status: number;
   expected: string;
-  // Did this failure leave the connection asking to be reconnected? Only a
-  // definitive auth failure may, and the sentence must agree with the state.
+  // Did this failure leave the connection asking to be reconnected? THE INVARIANT
+  // asserted below is that this and the sentence agree: "Reconnect …" is written if
+  // and only if the row actually moved, because the setup pages gate their reconnect
+  // affordance on `needsReauth && !connected` and would otherwise be hiding the one
+  // thing the sentence asks for.
   reauth: boolean;
 }
 
 const CASES: Case[] = [
-  // A dead grant is a DOOR: the card's Reconnect link, the digest's Reconnect
-  // action and this sentence all point at the same place.
+  // ── A dead grant, and it is the CONNECTION ROW that says so ────────────────
+  // Oura's PAT has no refresh, so a 401 on the data pull IS the revocation; its
+  // gather reports the status and the runner flips the row.
   {
     source: "oura",
     arrival: "http",
     status: 401,
-    expected: "Reconnect Oura to resume syncing.",
+    expected: "Reconnect Oura Ring to resume syncing.",
     reauth: true,
   },
+  // Strava and Withings meet an expired grant at their own token refresh, which
+  // marks the row and then throws — the most common sync failure there is.
   {
     source: "strava",
     arrival: "refresh",
@@ -146,51 +159,77 @@ const CASES: Case[] = [
     expected: "Reconnect Withings to resume syncing.",
     reauth: true,
   },
+  // ── …and NOT where the row did not move ────────────────────────────────────
+  // Strava's and Withings' gathers report no status to the runner (their refresh
+  // path owns the reauth transition), so a 401 on the DATA request leaves the row
+  // `connected` — and their setup pages then render Sync now and Disconnect with no
+  // connect flow at all. Whatever else this line should say, it must not say
+  // "Reconnect". Unchanged from main, which recorded the raw status here.
+  {
+    source: "strava",
+    arrival: "http",
+    status: 401,
+    expected: "Couldn't sync Strava.",
+    reauth: false,
+  },
   {
     source: "withings",
     arrival: "envelope",
     status: 401,
-    expected: "Reconnect Withings to resume syncing.",
-    // The PULL path reports no status to the runner on purpose — the refresh path
-    // owns the transition — so the standing stays `failing`. The card escalates on
-    // both, so the Reconnect affordance is reachable either way.
+    expected: "Couldn't sync Withings.",
     reauth: false,
   },
-  // A source having a bad day is nothing of the person's to fix.
+  // A body-less 400 on a DATA endpoint is a bad parameter, not a dead grant.
+  // `isAuthRefreshFailure` reads it as one — right for a token refresh, where the
+  // grant is the request — and flipping needs_reauth on it makes pull-tick skip the
+  // source for good, so a malformed request would stop syncing permanently while the
+  // copy told the person to reconnect. #3007 measured exactly this status against a
+  // data endpoint.
+  {
+    source: "oura",
+    arrival: "http",
+    status: 400,
+    expected: "Couldn't sync Oura Ring.",
+    reauth: false,
+  },
+  // ── A source having a bad day is nothing of the person's to fix ────────────
   {
     source: "oura",
     arrival: "http",
     status: 500,
-    expected: "Oura is having trouble. The next sync will pick it up.",
+    expected: "Oura Ring is having trouble.",
     reauth: false,
   },
   {
     source: "strava",
     arrival: "http",
     status: 502,
-    expected: "Strava is having trouble. The next sync will pick it up.",
+    expected: "Strava is having trouble.",
     reauth: false,
   },
   {
     source: "withings",
     arrival: "http",
     status: 503,
-    expected: "Withings is having trouble. The next sync will pick it up.",
+    expected: "Withings is having trouble.",
     reauth: false,
   },
   {
     source: "weather",
     arrival: "http",
     status: 503,
-    expected: "Open-Meteo is having trouble. The next sync will pick it up.",
+    expected: "Open-Meteo is having trouble.",
     reauth: false,
   },
-  // Anything else: say it failed, and offer no retry a retry cannot honour.
+  // ── A VENDOR code is not an HTTP status, however much it looks like one ────
+  // Withings' ENVELOPE 503 is "Action parameters are incorrect" — deterministic, and
+  // sitting exactly where HTTP puts "service unavailable". The row above sends the
+  // same number over HTTP and gets the opposite answer; that pair is the whole point.
   {
-    source: "oura",
-    arrival: "http",
-    status: 403,
-    expected: "Couldn't sync Oura.",
+    source: "withings",
+    arrival: "envelope",
+    status: 503,
+    expected: "Couldn't sync Withings.",
     reauth: false,
   },
   {
@@ -200,10 +239,14 @@ const CASES: Case[] = [
     expected: "Couldn't sync Withings.",
     reauth: false,
   },
-  // A KEYLESS source has no grant, so its bare 400 — which the shared auth
-  // predicate reads as a rejected grant, correctly, for the refresh path it was
-  // written for — must never send a person hunting for a connect button (#3007's
-  // out-of-range window is exactly this status).
+  // ── Anything else: say it failed, and promise nothing ──────────────────────
+  {
+    source: "oura",
+    arrival: "http",
+    status: 403,
+    expected: "Couldn't sync Oura Ring.",
+    reauth: false,
+  },
   {
     source: "weather",
     arrival: "http",
@@ -236,7 +279,11 @@ describe("what a broken sync tells a person (#3618)", () => {
       // The diagnostic left for the log, not the reader: no HTTP path, no status
       // code, no vendor error number anywhere in the sentence.
       expect(ev.error).not.toMatch(/\d|\//);
-      expect(getConnection(p, source)?.status === "needs_reauth").toBe(reauth);
+      // THE INVARIANT, both directions: the app asks for a reconnect exactly when
+      // the connection row says one is needed, and never when it does not.
+      const needsReauth = getConnection(p, source)?.status === "needs_reauth";
+      expect(needsReauth).toBe(reauth);
+      expect(ev.error!.startsWith("Reconnect")).toBe(needsReauth);
     }
   );
 });
