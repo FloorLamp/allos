@@ -359,7 +359,12 @@ describe("paletteQuickLog honors the captured unit (issues #630, #3853)", () => 
       input: "weight 180 lb",
       expectKg: 180 / LB_PER_KG,
     },
-    { captured: undefined, stored: "lb", input: "weight 180", expectKg: 180 / LB_PER_KG },
+    {
+      captured: undefined,
+      stored: "lb",
+      input: "weight 180",
+      expectKg: 180 / LB_PER_KG,
+    },
   ] as const)(
     "commits `$input` previewed in $captured with the login pref on $stored",
     async ({ captured, stored, input, expectKg }) => {
@@ -367,7 +372,9 @@ describe("paletteQuickLog honors the captured unit (issues #630, #3853)", () => 
       const profile = createProfile(`palette-${captured ?? "none"}-${stored}`);
       actAs(login, profile);
 
-      expect(await paletteQuickLog(input, captured)).toMatchObject({ ok: true });
+      expect(await paletteQuickLog(input, captured)).toMatchObject({
+        ok: true,
+      });
       expect(weightRowKg(profile.id)).toBeCloseTo(expectKg, 6);
     }
   );

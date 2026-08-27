@@ -1,4 +1,10 @@
-import { act, cleanup, fireEvent, render, screen } from "@testing-library/react";
+import {
+  act,
+  cleanup,
+  fireEvent,
+  render,
+  screen,
+} from "@testing-library/react";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import CommandPalette, { SEARCH_OPEN_EVENT } from "@/components/CommandPalette";
 import MetricReadingsTable from "@/components/MetricReadingsTable";
@@ -183,7 +189,10 @@ async function drivePalette(unit: WeightUnit): Promise<void> {
 
 describe("a weight write carries the unit it was captured in", () => {
   it.each([
-    { surface: "the metric detail page's readings table", drive: driveReadingsTable },
+    {
+      surface: "the metric detail page's readings table",
+      drive: driveReadingsTable,
+    },
     { surface: "the Trends body census row menu", drive: driveRowMenu },
   ])("$surface posts weight_unit for both units", async ({ drive }) => {
     // BOTH units, because a hard-coded field satisfies either one alone — and the
