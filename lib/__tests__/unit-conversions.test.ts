@@ -5,7 +5,7 @@ import {
   isConvertible,
   sameUnit,
 } from "@/lib/unit-conversions";
-import { displayUnit, storedLabUnit } from "@/lib/display-unit";
+import { displayUnit } from "@/lib/display-unit";
 
 // #3493 item 2. The equivalence machinery below has stripped UCUM's brackets and
 // annotations since #1018 — for MATCHING. The display side never did, so an imported
@@ -13,11 +13,6 @@ import { displayUnit, storedLabUnit } from "@/lib/display-unit";
 // person as "60 mm[Hg]". `displayUnit` is that same stripping at the display boundary,
 // sharing one implementation with `sameUnit` so the two cannot drift.
 describe("displayUnit (#3493/#3545)", () => {
-  it("preserves exact stored evidence at explicit non-display transfers", () => {
-    expect(storedLabUnit(" ug / L ")).toBe(" ug / L ");
-    expect(storedLabUnit(null)).toBeNull();
-  });
-
   it("renders the UCUM spellings documents ship as a person writes them", () => {
     expect(displayUnit("mm[Hg]")).toBe("mmHg");
     expect(displayUnit("[degF]")).toBe("degF");

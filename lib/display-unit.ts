@@ -16,17 +16,6 @@ const ASCII_MICRO_TOKENS = {
 const ASCII_MICRO_TOKEN_RE = /\b(?:ug|uL|uIU|uU|umol)\b/g;
 
 /**
- * Preserve a stored lab-unit spelling across an explicitly non-display boundary.
- *
- * The source census authenticates this exact import so storage, comparison, and
- * export DTOs can retain source evidence without licensing visible copy. Rendered
- * units must use `displayUnit` instead.
- */
-export function storedLabUnit<T extends string | null | undefined>(unit: T): T {
-  return unit;
-}
-
-/**
  * Remove UCUM presentation syntax while preserving the represented unit (#1018).
  *
  * `{annotation}` braces are unity comments; square brackets mark non-metric atoms.
