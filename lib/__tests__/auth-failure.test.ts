@@ -1,5 +1,9 @@
 import { describe, it, expect } from "vitest";
-import { isAuthRefreshFailure } from "@/lib/integrations/auth-failure";
+import {
+  isAuthRefreshFailure,
+  syncFailureCopy,
+  syncFailureKind,
+} from "@/lib/integrations/auth-failure";
 
 // Issue #326: classify an OAuth/token-refresh failure as a DEFINITIVE auth failure
 // (dead/revoked grant → needs re-auth) vs a TRANSIENT one (retry next tick). Only the
@@ -43,5 +47,70 @@ describe("isAuthRefreshFailure", () => {
   it("does not misclassify other 4xx (403/404) as an auth-grant failure", () => {
     expect(isAuthRefreshFailure(403)).toBe(false);
     expect(isAuthRefreshFailure(404)).toBe(false);
+  });
+});
+
+// Issue #3618: the SENTENCE a failed sync shows, in two halves — what a status
+// MEANS, and how that is said. The end-to-end proof that these reach the card, the
+// toast and the digest is lib/__db_tests__/sync-failure-copy.
+describe("syncFailureKind", () => {
+  it.each([
+    // An HTTP status: transient is exactly {0, 429, [500,600)}.
+    [0, "http", "transient"], // no response at all
+    [429, "http", "transient"],
+    [500, "http", "transient"],
+    [599, "http", "transient"],
+    [600, "http", "unknown"], // past the bound
+    [601, "http", "unknown"],
+    [2555, "http", "unknown"],
+    [400, "http", "unknown"],
+    [401, "http", "unknown"],
+    [403, "http", "unknown"],
+    [404, "http", "unknown"],
+    // A VENDOR code is never transient, whatever it looks like. Withings' envelope
+    // 503 is "Action parameters are incorrect" — deterministic, and sitting exactly
+    // where HTTP puts "service unavailable".
+    [503, "vendor", "unknown"],
+    [0, "vendor", "unknown"],
+    [429, "vendor", "unknown"],
+    [601, "vendor", "unknown"],
+    [250, "vendor", "unknown"],
+  ] as const)("%i (%s) → %s", (status, origin, expected) => {
+    expect(syncFailureKind(status, origin)).toBe(expected);
+  });
+
+  // THE INVARIANT THE DOC ASSERTS, MADE CHECKABLE. A dead grant is a fact about the
+  // connection, not about a status — `runPullSync` reads it off the row AFTER the
+  // transition. If this classifier could ever answer "reconnect", the app would be
+  // able to ask for a reconnect on a row still marked `connected`, whose setup page
+  // hides the reconnect affordance behind `needsReauth && !connected`.
+  it("never answers reconnect, for any status in either space", () => {
+    for (const origin of ["http", "vendor"] as const) {
+      for (let status = -1; status <= 700; status++) {
+        expect(syncFailureKind(status, origin)).not.toBe("reconnect");
+      }
+      for (const status of [2555, 601, 250, 342, NaN]) {
+        expect(syncFailureKind(status, origin)).not.toBe("reconnect");
+      }
+    }
+  });
+});
+
+describe("syncFailureCopy", () => {
+  it.each([
+    ["reconnect", "Reconnect Oura Ring to resume syncing."],
+    // NO retry promise: this line only reaches the card and the digest after days of
+    // continuous failure, by which point "the next sync will fix it" has been
+    // falsified once an hour throughout (#3007's lesson).
+    ["transient", "Oura Ring is having trouble."],
+    ["unknown", "Couldn't sync Oura Ring."],
+  ] as const)("%s → %s", (kind, expected) => {
+    expect(syncFailureCopy("Oura Ring", kind)).toBe(expected);
+  });
+
+  it("never names a path, a status or a vendor error number", () => {
+    for (const kind of ["reconnect", "transient", "unknown"] as const) {
+      expect(syncFailureCopy("Oura Ring", kind)).not.toMatch(/\d|\//);
+    }
   });
 });

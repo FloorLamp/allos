@@ -606,19 +606,38 @@ describe("openMeteoFetchDaily sends each endpoint its OWN end_date (#3007)", () 
       );
     });
 
-    it("the HOURLY fetch reports it as well", async () => {
-      stubTotalFailure("Parameter 'hourly' has an invalid value");
-      const res = await openMeteoFetch(
-        40.7,
-        -74,
-        "2026-08-03",
-        "2026-08-23",
-        "America/New_York"
-      );
-      expect(res.ok).toBe(false);
-      expect(res.error).toBe(
-        "weather fetch failed (400): Parameter 'hourly' has an invalid value"
-      );
+    // THE HOURLY HALF IS THE EXCEPTION, AND IT MOVED (#3618). Its failure IS the
+    // run's failure, so anything it put on `error` became the sentence the
+    // integration card, the "Sync now" toast and the morning digest showed a
+    // person — "weather fetch failed (400): Parameter 'hourly' has an invalid
+    // value" is a diagnosis, and none of it is theirs to act on. So it carries no
+    // `error` at all now: the STATUS travels to weather-sync, which writes the
+    // house sentence, and #3007's point survives in the log line below.
+    it("the HOURLY fetch sends the host's sentence to the log, not to a reader", async () => {
+      const lines: string[] = [];
+      const spy = vi
+        .spyOn(console, "error")
+        .mockImplementation((...args: unknown[]) => {
+          lines.push(args.map(String).join(" "));
+        });
+      try {
+        stubTotalFailure("Parameter 'hourly' has an invalid value");
+        const res = await openMeteoFetch(
+          40.7,
+          -74,
+          "2026-08-03",
+          "2026-08-23",
+          "America/New_York"
+        );
+        expect(res.ok).toBe(false);
+        expect(res.error).toBeUndefined();
+        expect(res.status).toBe(400);
+        expect(lines.join("\n")).toContain(
+          "Parameter 'hourly' has an invalid value"
+        );
+      } finally {
+        spy.mockRestore();
+      }
     });
   });
 });
