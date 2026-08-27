@@ -2,6 +2,7 @@ import { describe, expect, it } from "vitest";
 import {
   cyclingLoad,
   distanceSplits,
+  outputHrDrift,
   powerCurve,
   powerZoneTimes,
   rideDynamics,
@@ -134,5 +135,65 @@ describe("cycling telemetry analytics", () => {
     expect(routeFingerprint(route)).toBe(routeFingerprint(route));
     expect(routeFingerprint(route)).not.toBeNull();
     expect(routeFingerprint("")).toBeNull();
+  });
+});
+
+describe("outputHrDrift (#2566 item 2 / #3009)", () => {
+  const times = Array.from({ length: 200 }, (_, i) => i);
+  const flat = (n: number) => times.map(() => n);
+  const moving = times.map(() => true);
+
+  it("reports a POSITIVE percent when the same heart rate buys less later", () => {
+    // Output halves in the back half at identical HR: efficiency falls by 50%.
+    const output = times.map((t) => (t <= 99.5 ? 4 : 2));
+    expect(
+      outputHrDrift(times, output, flat(150), moving, {
+        minOutput: 1,
+        minHr: 60,
+        minSamples: 30,
+      })
+    ).toBeCloseTo(50, 1);
+  });
+
+  it("is zero for a session that held its efficiency", () => {
+    expect(
+      outputHrDrift(times, flat(4), flat(150), moving, {
+        minOutput: 1,
+        minHr: 60,
+        minSamples: 30,
+      })
+    ).toBe(0);
+  });
+
+  it("declines rather than compare a full half against a fragment", () => {
+    // Only the first half carries usable samples.
+    const output = times.map((t) => (t <= 99.5 ? 4 : null));
+    expect(
+      outputHrDrift(times, output, flat(150), moving, {
+        minOutput: 1,
+        minHr: 60,
+        minSamples: 30,
+      })
+    ).toBeNull();
+  });
+
+  it("ignores stopped, resting, and below-floor samples", () => {
+    // The back half is all stopped: what remains is one half, so: null.
+    const stopped = times.map((t) => t <= 99.5);
+    expect(
+      outputHrDrift(times, flat(4), flat(150), stopped, {
+        minOutput: 1,
+        minHr: 60,
+        minSamples: 30,
+      })
+    ).toBeNull();
+    // Resting HR throughout: nothing to measure against.
+    expect(
+      outputHrDrift(times, flat(4), flat(50), moving, {
+        minOutput: 1,
+        minHr: 60,
+        minSamples: 30,
+      })
+    ).toBeNull();
   });
 });

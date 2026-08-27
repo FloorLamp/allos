@@ -5,7 +5,7 @@
 // what "efficiency" means when the output is pace rather than power.
 
 import type { DistanceUnit } from "./settings";
-import { numeric, booleans } from "./cycling-analytics";
+import { numeric, booleans, outputHrDrift } from "./cycling-analytics";
 import type { ActivityStreams } from "./integrations/activity-telemetry";
 
 // The metres in one unit of the reader's distance — the natural split for anyone
@@ -49,71 +49,6 @@ export function streamDistanceKm(streams: ActivityStreams): number | null {
     if (metres != null) return metres / 1000;
   }
   return null;
-}
-
-/**
- * Aerobic decoupling: how much the session's OUTPUT-per-heartbeat fell between
- * its first and second half. A positive percentage means the same heart rate
- * bought less in the back half — the established endurance signal for "the
- * effort cost more as it went on".
- *
- * This is the same question the ride page's power-HR drift asks, computed over
- * pace instead of power (#2566 item 2), so it is the same function: `output` is
- * whichever series the session HAS. Sampling rules matter as much as the
- * arithmetic — a stopped stretch, a coasting descent, or a heart rate below a
- * plausible working floor would each report a drift that is really an artifact:
- *
- *   - samples where the recording says NOT moving are skipped;
- *   - `minOutput` drops the coasting/standing samples the ride math already
- *     dropped at 50 W — for pace, walking speed rather than a stopped GPS jitter;
- *   - `minHr` drops resting-rate samples the same way;
- *   - both halves need `minSamples`, so a session with a gap in one half returns
- *     null rather than comparing a full half against a fragment.
- */
-export function outputHrDrift(
-  times: (number | null)[],
-  output: (number | null)[],
-  heartrate: (number | null)[],
-  moving: (boolean | null)[],
-  opts: { minOutput: number; minHr: number; minSamples: number }
-): number | null {
-  const first = { output: 0, hr: 0, count: 0 };
-  const second = { output: 0, hr: 0, count: 0 };
-  const stamps = times.filter((value): value is number => value != null);
-  if (stamps.length === 0) return null;
-  const midpoint = (stamps[0] + stamps[stamps.length - 1]) / 2;
-
-  for (let index = 0; index < times.length; index++) {
-    const time = times[index];
-    const value = output[index];
-    const hr = heartrate[index];
-    if (
-      time == null ||
-      value == null ||
-      value < opts.minOutput ||
-      hr == null ||
-      hr < opts.minHr ||
-      moving[index] === false
-    ) {
-      continue;
-    }
-    const half = time <= midpoint ? first : second;
-    half.output += value;
-    half.hr += hr;
-    half.count++;
-  }
-  if (first.count < opts.minSamples || second.count < opts.minSamples) {
-    return null;
-  }
-  const firstEfficiency = first.output / first.count / (first.hr / first.count);
-  const secondEfficiency =
-    second.output / second.count / (second.hr / second.count);
-  if (firstEfficiency <= 0) return null;
-  return (
-    Math.round(
-      ((firstEfficiency - secondEfficiency) / firstEfficiency) * 1000
-    ) / 10
-  );
 }
 
 // Walking pace as the floor: below this the recording is a stopped GPS wandering,
