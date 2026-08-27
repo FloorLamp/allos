@@ -23,7 +23,6 @@ import {
 import { motionMs } from "@/lib/motion";
 import type { SegmentLogDays } from "@/lib/log-sheet";
 import type { SessionProfile } from "@/lib/auth";
-import type { AppVersion } from "@/lib/version";
 import { DEFAULT_NAV_RELEVANCE, type NavRelevance } from "@/lib/nav-relevance";
 
 // Mobile-only top bar + slide-in drawer. The desktop sidebar in app/layout.tsx is
@@ -69,8 +68,7 @@ import { DEFAULT_NAV_RELEVANCE, type NavRelevance } from "@/lib/nav-relevance";
 // states, no travel.
 
 export default function MobileNav({
-  activityDates,
-  version,
+  eventDates,
   active,
   username,
   profiles,
@@ -89,10 +87,8 @@ export default function MobileNav({
   substanceRelevant = false,
   logHabitDays = null,
 }: {
-  activityDates: string[];
-  // Resolved on the server (git/env) and passed in — this client component
-  // can't read the commit hash itself.
-  version: AppVersion;
+  // Every day this profile has ANY event on; marks the drawer calendar's days.
+  eventDates: string[];
   // The active profile + accessible profiles feed the shared sidebar's profile
   // bar + switcher panel (#1801); resolved from the session on the server.
   active: SessionProfile;
@@ -302,8 +298,7 @@ export default function MobileNav({
               className={`absolute inset-y-0 left-0 flex w-[max(20rem,calc(var(--week-grid-min)+1px+env(safe-area-inset-left)))] max-w-full flex-col gap-4 overflow-y-auto overscroll-contain border-r border-black/10 bg-(--nav) pt-[max(1rem,env(safe-area-inset-top))] pr-4 pb-[max(1rem,env(safe-area-inset-bottom))] pl-[max(1rem,env(safe-area-inset-left))] dark:border-white/5 ${panelMotion}`}
             >
               <SidebarContent
-                activityDates={activityDates}
-                version={version}
+                eventDates={eventDates}
                 active={active}
                 username={username}
                 profiles={profiles}
@@ -323,6 +318,8 @@ export default function MobileNav({
                 reviewCount={reviewCount}
                 readOnly={readOnly}
                 whatsNewUnseen={whatsNewUnseen}
+                substanceRelevant={substanceRelevant}
+                logHabitDays={logHabitDays}
                 onNavigate={() => setOpen(false)}
                 onClose={() => setOpen(false)}
               />
