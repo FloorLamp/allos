@@ -146,14 +146,6 @@ export default async function PatientPortalsPage() {
   // admin-only unclaimed clause as everything else on this page.
   const reports = listVisiblePortalRunReports(accessibleIds, isAdmin);
   const reportByAccount = new Map(reports.map((r) => [r.accountId, r]));
-  // What each login most recently DELIVERED, and the day it landed (#2914) — the count
-  // the status line names and links to Data → Review. Same scoping as the reports
-  // themselves, and read from the documents so it outlives the retention sweep.
-  const deliveredByAccount = deliveredDocumentCountsByAccount(
-    accessibleIds,
-    isAdmin
-  );
-
   // Sync requests may be raised by the same population that can act on the page at all.
   const canAct = isAdmin || writableProfiles.length > 0;
   // The expiry countdown reads the SESSION's day — a formatting context for "expires in
@@ -166,6 +158,17 @@ export default async function PatientPortalsPage() {
   // is the reader's calendar, not a claim about whose data this is. Everything that DOES
   // have a profile (the mapped patient rows) uses that profile's zone instead.
   const viewerTimeZone = getTimezone(profile.id);
+
+  // What each login most recently DELIVERED, and the day it landed (#2914) — the count
+  // the status line names and links to Data → Review. Same scoping as the reports
+  // themselves, and read from the documents so it outlives the retention sweep. It takes
+  // the VIEWER's zone because the status line compares this day against the check clock
+  // beside it, which is stated in that zone (#3836).
+  const deliveredByAccount = deliveredDocumentCountsByAccount(
+    accessibleIds,
+    isAdmin,
+    viewerTimeZone
+  );
   const visibleAccountIds = new Set(accounts.map((a) => a.id));
   const requestLines = new Map<number, string>();
   if (canAct) {

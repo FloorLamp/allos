@@ -191,11 +191,14 @@ export function supersedesReading(
 // `Corrected — was 5.2 % (2026-03-04)`. `statusNow` is the status the LIVE reading
 // carries after the overwrite, so an unstated re-issue still reads honestly as
 // "Superseded" rather than claiming the lab called it a correction.
+//
+// The date is taken as a DAY, never as an instant to truncate here (#3836): the read
+// model resolved it in the profile's zone, and this module has no zone to do it with.
 export function revisionSummary(rev: {
   value: string | null;
   value_num: number | null;
   unit: string | null;
-  superseded_at: string;
+  supersededOnDay: string;
   superseded_by_status?: string | null;
 }): string {
   const shown =
@@ -209,6 +212,5 @@ export function revisionSummary(rev: {
   const lead = isCorrectionStatus(rev.superseded_by_status)
     ? RESULT_STATUS_LABELS[rev.superseded_by_status as ResultStatus]
     : "Superseded";
-  const day = rev.superseded_at.slice(0, 10);
-  return `${lead} — was ${shown}${suffix} (${day})`;
+  return `${lead} — was ${shown}${suffix} (${rev.supersededOnDay})`;
 }

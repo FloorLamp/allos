@@ -240,6 +240,12 @@ describe("the check clock reaches the page (#2914)", () => {
   });
 });
 
+// "UTC" throughout, deliberately (#3836). The delivery day is now bucketed in the zone
+// the caller states, and these fixtures land at 09:00Z, 19:36Z and 20:00Z — instants a
+// real zone would move onto a neighbouring day, silently retargeting assertions written
+// about scoping and about one-number-per-delivery. Passing UTC keeps every expectation
+// below meaning exactly what it meant. The zone-crossing behaviour is proved where it
+// belongs, over STRADDLING fixtures, in lib/__db_tests__/utc-day-render-sweep.test.ts.
 describe("deliveredDocumentCountsByAccount (#2914)", () => {
   it("counts the documents a login delivered on its most recent delivery day", () => {
     // Four archives landed on the 15th (3 + 1). The single document from the 10th is a
@@ -249,21 +255,25 @@ describe("deliveredDocumentCountsByAccount (#2914)", () => {
     // is what made this page say "1" while the drill-in listed 3 — one delivery with two
     // numbers, which is the thing #1991 exists to forbid.
     expect(
-      deliveredDocumentCountsByAccount(authorized([profileOne]), false).get(
-        accountOne.id
-      )
+      deliveredDocumentCountsByAccount(
+        authorized([profileOne]),
+        false,
+        "UTC"
+      ).get(accountOne.id)
     ).toEqual({ count: 4, day: "2026-08-15" });
   });
 
   it("never lends one household's documents to another's login row", () => {
     const forOne = deliveredDocumentCountsByAccount(
       authorized([profileOne]),
-      false
+      false,
+      "UTC"
     );
     expect(forOne.has(accountTwo.id)).toBe(false);
     const forTwo = deliveredDocumentCountsByAccount(
       authorized([profileTwo]),
-      false
+      false,
+      "UTC"
     );
     // Nine, over a report whose split was all zeroes: the run said `nothing-new` about
     // the portal visit it did not make, and nine archives arrived anyway.
@@ -272,9 +282,58 @@ describe("deliveredDocumentCountsByAccount (#2914)", () => {
   });
 
   it("answers nothing at all for a login with no accessible profile", () => {
-    expect(deliveredDocumentCountsByAccount(authorized([]), false).size).toBe(
-      0
+    expect(
+      deliveredDocumentCountsByAccount(authorized([]), false, "UTC").size
+    ).toBe(0);
+  });
+
+  // WHAT THE ACCOUNT PREDICATE IS FOR, witnessed. Every other case in this file is
+  // already excluded by the `d.profile_id IN (…)` filter alone, so `reachableAccountSql`
+  // never gets to decide anything and tautologizing it to `OR 1=1` leaves them all
+  // green. This is the one state where the two filters disagree: a document the viewer
+  // DOES own, carrying an identity on a login claimed only by the other household — the
+  // shape a re-bind leaves behind, since re-pointing an identity at another profile does
+  // not move the archives already delivered under it. The document is theirs; the login
+  // row is not, and a count hung on it would name a household they cannot reach.
+  it("will not attach the viewer's own document to a login it cannot reach", () => {
+    const identityId = (
+      db
+        .prepare(
+          "SELECT id FROM portal_identities WHERE account_id = ? AND patient_label = ?"
+        )
+        .get(accountTwo.id, "Two Patient") as { id: number }
+    ).id;
+    const at = "2026-08-16 09:00:00";
+    const docId = Number(
+      db
+        .prepare(
+          `INSERT INTO medical_documents
+             (filename, stored_path, mime_type, size_bytes, extraction_status,
+              uploaded_at, delivered_at, profile_id, acquired_identity_id)
+           VALUES ('rebound-bundle.xml', '', 'application/xml', 20, 'done', ?, ?, ?, ?)`
+        )
+        .run(at, at, profileOne, identityId).lastInsertRowid
     );
+    try {
+      expect(
+        deliveredDocumentCountsByAccount(
+          authorized([profileOne]),
+          false,
+          "UTC"
+        ).has(accountTwo.id)
+      ).toBe(false);
+      // The unclaimed arm is the other half of the same predicate. It is what
+      // `canSeeUnclaimed` buys, and it must not reach a CLAIMED login either.
+      expect(
+        deliveredDocumentCountsByAccount(
+          authorized([profileOne]),
+          true,
+          "UTC"
+        ).has(accountTwo.id)
+      ).toBe(false);
+    } finally {
+      db.prepare("DELETE FROM medical_documents WHERE id = ?").run(docId);
+    }
   });
 });
 
@@ -320,7 +379,8 @@ describe("a push that straddles UTC midnight (#2914)", () => {
 
     const delivered = deliveredDocumentCountsByAccount(
       authorized([profile]),
-      false
+      false,
+      "UTC"
     ).get(account.id);
     // The most recent delivery day, and everything that landed on it.
     expect(delivered).toEqual({ count: 2, day: "2026-08-15" });
@@ -353,7 +413,8 @@ describe("the sentence a delivery-only login row renders (#2914)", () => {
     ).find((r) => r.accountId === accountOne.id)!;
     const delivered = deliveredDocumentCountsByAccount(
       authorized([profileOne]),
-      false
+      false,
+      "UTC"
     );
     const line = portalLoginStatus(
       { ...report, delivered: delivered.get(accountOne.id) ?? null },
@@ -377,7 +438,8 @@ describe("the sentence a delivery-only login row renders (#2914)", () => {
     ).find((r) => r.accountId === accountTwo.id)!;
     const delivered = deliveredDocumentCountsByAccount(
       authorized([profileTwo]),
-      false
+      false,
+      "UTC"
     );
     expect(
       portalLoginStatus(

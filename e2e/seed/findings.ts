@@ -6,8 +6,9 @@
 import "../../scripts/load-env";
 
 import { db, today } from "../../lib/db";
-import { shiftDateStr } from "../../lib/date";
+import { shiftDateStr, utcSqlString, zonedWallTimeToUtc } from "../../lib/date";
 import { now as clockNow } from "../../lib/clock";
+import { getTimezone } from "../../lib/settings";
 import { syncInstantBefore } from "../sync-instants";
 import { setFixtureTimezone } from "../fixture-timezones";
 import { upsertConnection } from "../../lib/integrations/connections";
@@ -143,7 +144,18 @@ export function seedRuleDomains(): void {
   // Backdated created_at: the #430 lifetime clamp bounds each dose's adherence
   // strip to max(item created, dose created/re-timed), so the item + dose must
   // PREDATE the 63-day backfilled log window or the pattern rules see no history.
-  const adhereBorn = `${shiftDateStr(today(PROFILE_ID), -70)} 08:00:00`;
+  // A real INSTANT for 08:00 local, never the naive string `${day} 08:00:00`
+  // (#1417/#3836): `created_at` is a UTC-SQL instant, the clamp converts it back
+  // through the profile's zone, and the passport prints this item's "since" day from
+  // the same column — so a local wall time stored as if it were UTC lands a day off
+  // for the CI start hours whose pinned offset crosses 08:00.
+  const adhereBorn = utcSqlString(
+    zonedWallTimeToUtc(
+      getTimezone(PROFILE_ID),
+      shiftDateStr(today(PROFILE_ID), -70),
+      "08:00"
+    )!
+  );
   const adhereItemId = Number(
     db
       .prepare(
