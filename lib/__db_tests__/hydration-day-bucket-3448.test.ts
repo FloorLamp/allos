@@ -6,7 +6,7 @@
 // `SUB_DAILY_WINDOW_MAX_MIN` = 60 minutes). #3448 asks whether the SECOND gate alone
 // separates hydration's two behaviours, so `hydration_l` could simply join the list.
 //
-// IT DOES NOT, and the two rows below are the measurement. `isDayBucketWindow` is a
+// IT DOES NOT, and the three rows below are the measurement. `isDayBucketWindow` is a
 // SIXTY-MINUTE gate, not a "sub-daily" one, so any hydration record longer than an hour
 // clears it — in both roles. Add `hydration_l` to `DAY_BUCKET_METRICS` and case 1 starts
 // reading 1.8 (good) while case 2 DELETES the 1.5 L bottle and the day reads 0.5 for 2.0
@@ -26,9 +26,12 @@
 // raw.githubusercontent.com/androidx/androidx/androidx-main/health/connect/connect-client/
 //   src/main/java/androidx/health/connect/client/records/{Hydration,Steps,Distance}Record.kt
 //
-// SO CASE 1 IS AN ACCEPTED COST, NOT A PASSING GRADE. The switch day genuinely reads 3.2
-// for 1.8 drunk, permanently — no later push collapses it. A fix would flip case 1's
-// `hydrationDay` to 1.8, and it must not be bought by making case 2 delete a reading.
+// SO CASES 1 AND 3 ARE AN ACCEPTED COST, NOT A PASSING GRADE. Case 1 is #3424's prod
+// shape: the switch day genuinely reads 3.2 L for 1.8 L drunk, permanently, because no
+// later push collapses it. Case 3 is the same defect with a quieter face — a switch that
+// moves the nominal day strands the stale bucket on a day of its own, so nothing reads
+// high and nothing is reported. Both are fixed by joining `DAY_BUCKET_METRICS`, and
+// neither may be bought at the price of case 2.
 //
 // SYNTHETIC ONLY: fictional profiles, invented volumes, no PHI.
 
@@ -45,6 +48,8 @@ import {
 
 const NY = "America/New_York";
 const LA = "America/Los_Angeles";
+const TOKYO = "Asia/Tokyo";
+const HONOLULU = "Pacific/Honolulu";
 // One origin app throughout: the supersede group is (profile, metric, source, origin),
 // and `dataOrigin` reads `metadata.data_origin` only — a top-level key parses to
 // `origin = null`, which is a different (wider) group than this file claims to test.
@@ -79,14 +84,17 @@ afterEach(() => {
 const CASES: {
   name: string;
   tz: string;
-  day: string;
   pushes: Push[];
-  /** `metric_samples.value` for hydration_l, ordered by `started_at`. */
-  storedLitres: number[];
-  /** What `getMetricDailyTotals` reads for `day`. */
-  hydrationDay: number;
-  /** The same-push control, where one is carried. */
-  stepsDay: number | null;
+  /**
+   * `[date, litres]` per stored `hydration_l` row, ordered by `started_at`. The DATE is
+   * half the point: case 3 is entirely about which profile-local day a stale bucket is
+   * filed under, and a litres-only expectation cannot see it.
+   */
+  storedHydration: [string, number][];
+  /** Every row `getMetricDailyTotals` returns, as `[date, litres]`. */
+  hydrationTotals: [string, number][];
+  /** The same-push steps control, where one is carried. */
+  stepsTotals: [string, number][];
 }[] = [
   {
     // #3424's prod shape, on hydration. Both anchorings attribute to the same nominal
@@ -95,7 +103,6 @@ const CASES: {
     // rides along in the same pushes and collapses to 11721; hydration does not.
     name: "a re-anchored day bucket across a NY->LA switch — the day reads 3.2 L for 1.8 L drunk, while steps in the SAME pushes collapses to 11721",
     tz: NY,
-    day: "2026-08-20",
     pushes: [
       {
         at: "2026-08-20T20:00:05Z",
@@ -133,9 +140,12 @@ const CASES: {
         ],
       },
     ],
-    storedLitres: [1.4, 1.8],
-    hydrationDay: 3.2,
-    stepsDay: 11721,
+    storedHydration: [
+      ["2026-08-20", 1.4],
+      ["2026-08-20", 1.8],
+    ],
+    hydrationTotals: [["2026-08-20", 3.2]],
+    stepsTotals: [["2026-08-20", 11721]],
   },
   {
     // THE REASON THE FIRST ROW IS NOT FIXED. A 1.5 L bottle sipped 09:00-13:00 local and
@@ -146,7 +156,6 @@ const CASES: {
     // twice.
     name: "a drink logged INSIDE another drink — both survive and the day reads the 2.0 L drunk; adding hydration_l to DAY_BUCKET_METRICS deletes the 1.5 L bottle and leaves 0.5",
     tz: NY,
-    day: "2026-05-04",
     pushes: [
       {
         at: "2026-05-04T17:05:00Z",
@@ -169,20 +178,78 @@ const CASES: {
         ],
       },
     ],
-    storedLitres: [1.5, 0.5],
-    hydrationDay: 2,
-    stepsDay: null,
+    storedHydration: [
+      ["2026-05-04", 1.5],
+      ["2026-05-04", 0.5],
+    ],
+    hydrationTotals: [["2026-05-04", 2]],
+    stepsTotals: [],
+  },
+  {
+    // THE SAME DEFECT WEARING A QUIETER FACE, and #3448 does not name it. A switch big
+    // enough to move the NOMINAL day (Tokyo 05-02 -> Honolulu 05-01) does not leave two
+    // rows on one date, so nothing reads high on the switch day and `overlapsLeft` — which
+    // is scoped to the victim's own `date` — reports nothing either. The 1.4 L is instead
+    // stranded on 05-02, a day the traveller had not started yet.
+    //
+    // WHY IT STRANDS IS THE EXCLUSION ITSELF, through a second door: `resendDay` (#3428)
+    // re-derives a re-sent row's `date` only for a row `isSupersedingWindow` calls a
+    // re-anchorable day bucket, and `hydration_l` is not one. So the Tokyo attribution is
+    // frozen. For steps the same row would be re-dated onto 05-01 and then collapsed —
+    // which is why joining `DAY_BUCKET_METRICS` would fix this row too, and why the case
+    // against joining has to be strong enough to outweigh two shapes rather than one.
+    name: "a large westward switch (Tokyo -> Honolulu) STRANDS the stale bucket on 05-02, so no day reads high and nothing reports it",
+    tz: TOKYO,
+    pushes: [
+      {
+        at: "2026-05-01T23:00:05Z",
+        hydration: [
+          {
+            start_time: "2026-05-01T15:00:00Z",
+            end_time: "2026-05-01T23:00:00Z",
+            liters: 1.4,
+          },
+        ],
+      },
+      {
+        at: "2026-05-02T01:00:05Z",
+        switchTo: HONOLULU,
+        hydration: [
+          // The rolling ~48 h window re-sends the pre-switch record beside the
+          // re-anchored one, which is what gives `resendDay` its chance to re-date.
+          {
+            start_time: "2026-05-01T15:00:00Z",
+            end_time: "2026-05-01T23:00:00Z",
+            liters: 1.4,
+          },
+          {
+            start_time: "2026-05-01T10:00:00Z",
+            end_time: "2026-05-02T01:00:00Z",
+            liters: 1.8,
+          },
+        ],
+      },
+    ],
+    storedHydration: [
+      ["2026-05-01", 1.8],
+      ["2026-05-02", 1.4],
+    ],
+    hydrationTotals: [
+      ["2026-05-01", 1.8],
+      ["2026-05-02", 1.4],
+    ],
+    stepsTotals: [],
   },
 ];
 
 describe("hydration and the day-bucket supersede (#3448)", () => {
   it.each(CASES)(
     "$name",
-    ({ tz, day, pushes, storedLitres, hydrationDay, stepsDay }) => {
+    ({ tz, pushes, storedHydration, hydrationTotals, stepsTotals }) => {
       const profileId = Number(
         db
           .prepare("INSERT INTO profiles (name) VALUES (?)")
-          .run(`HC hydration ${day}`).lastInsertRowid
+          .run(`HC hydration ${pushes[0].at}`).lastInsertRowid
       );
       setTimezone(profileId, tz);
 
@@ -210,22 +277,17 @@ describe("hydration and the day-bucket supersede (#3448)", () => {
 
       const rows = db
         .prepare(
-          `SELECT value FROM metric_samples
+          `SELECT date, value FROM metric_samples
             WHERE profile_id = ? AND metric = 'hydration_l'
             ORDER BY started_at`
         )
-        .all(profileId) as { value: number }[];
-      expect(rows.map((r) => r.value)).toEqual(storedLitres);
+        .all(profileId) as { date: string; value: number }[];
+      expect(rows.map((r) => [r.date, r.value])).toEqual(storedHydration);
 
-      const hydration = getMetricDailyTotals(profileId, "hydration_l").find(
-        (t) => t.date === day
-      );
-      expect(hydration?.value).toBe(hydrationDay);
-
-      const steps = getMetricDailyTotals(profileId, "steps").find(
-        (t) => t.date === day
-      );
-      expect(steps?.value ?? null).toBe(stepsDay);
+      const totals = (metric: string) =>
+        getMetricDailyTotals(profileId, metric).map((t) => [t.date, t.value]);
+      expect(totals("hydration_l")).toEqual(hydrationTotals);
+      expect(totals("steps")).toEqual(stepsTotals);
     }
   );
 });
