@@ -217,6 +217,11 @@ describe("the dashboard protein line says the situation, not the estimator (#325
   // entry (lib/queries/nutrition.ts returns todayIntake: null, todayGrams: 0), and it
   // is why #3257's dictated "Only some meals are logged" could not ship: there, and
   // for a `logged` basis, the number of meals logged is ZERO.
+  //
+  // `none` names NO source and still carries the floor sentence. That pairing is the
+  // point: it is the one state with no basis phrase to explain the figure, so a bare
+  // "0 g+" without the sentence reads as "you ate no protein" instead of "nothing is
+  // logged yet". The "+" cannot carry it — "at least zero" is contentless.
   //   label | proteinIntake args (null = nothing logged) | amount | source clause | floor?
   const STATES = [
     [
@@ -247,7 +252,7 @@ describe("the dashboard protein line says the situation, not the estimator (#325
       "Today's total is from the daily total your health app sends.",
       false,
     ],
-    ["none", null, "0 g+", null, false],
+    ["none", null, "0 g+", null, true],
   ] as const;
 
   it.each(STATES)(

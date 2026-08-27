@@ -58,9 +58,11 @@ describe("the Nutrition-today card states a number and a goal (#3257)", () => {
     );
   });
 
-  it("names no source and claims no missing food before the first entry of the day", () => {
+  it("says what 0 g+ MEANS before the first entry of the day", () => {
     // An established logger every morning (lib/queries/nutrition.ts returns
-    // todayIntake: null, todayGrams: 0). There are no meals to be partial about.
+    // todayIntake: null, todayGrams: 0). There is no source to name — and this is the
+    // state that needs the floor sentence MOST, because "0 g+" alone reads as "you ate
+    // no protein" rather than "nothing is logged yet".
     render(
       <ProteinTodayAtom today={today({ todayIntake: null, todayGrams: 0 })} />
     );
@@ -68,7 +70,10 @@ describe("the Nutrition-today card states a number and a goal (#3257)", () => {
       "0 g+"
     );
     const label = screen.getByRole("button").getAttribute("aria-label")!;
-    expect(label).toBe("Goal ~80–105 g/day (1.2–1.6 g/kg, general fitness).");
-    expect(label).not.toMatch(/meals are logged|haven't logged/);
+    expect(label).toBe(
+      "Goal ~80–105 g/day (1.2–1.6 g/kg, general fitness). Foods you haven't logged aren't counted, so your real total may be higher."
+    );
+    // No source is invented, and no meal is counted.
+    expect(label).not.toMatch(/Today's total is|meals are logged/);
   });
 });

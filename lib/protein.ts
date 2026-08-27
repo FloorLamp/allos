@@ -622,16 +622,29 @@ const UNLOGGED_FOODS_SENTENCE =
 // zero, i.e. raw grams and no meals logged either. Shipping it would have traded one
 // unsupported statement for another inside the PR that exists to stop exactly that.
 //
-// So the floor is stated as a fact about the LEDGER rather than a count of meals: what
-// is not logged is not counted, which is true of every floor basis at every hour and
-// claims nothing about what the person did. And the `null` state carries no floor
-// sentence at all — there is no total yet for anything to be missing from.
+// The defect was that it counted MEALS. `basis` distinguishes which columns fed the sum,
+// not how many sittings anyone sat down to: `estimated > 0` means a protein-bearing food
+// group was tapped, and nothing in the model says whether that was one meal or all of
+// them. So no wording keyed on a meal count can be true across the states. The floor is
+// stated as a fact about the LEDGER instead — what is not logged is not counted — which
+// is what actually makes every non-`tracked` basis a floor (untracked foods stay
+// invisible, see the module header), holds at every hour, and claims nothing about
+// behaviour. "may be higher", not "is": someone who logged everything is at equality.
+//
+// AND `null` CARRIES IT TOO, which is the opposite of where this landed first. The
+// argument for withholding it was that the "+" already says "at least" — but that is
+// true of every floor basis, so it never distinguished `null`, and it is weakest
+// precisely here: "0 g+" means "at least zero", which is close to contentless. `null` is
+// also the ONE state with no basis phrase to explain the figure, so a bare "0 g+" at 9am
+// reads as "you ate no protein" rather than "nothing is logged yet" — which is the
+// misreading this sentence exists to prevent. It is true here for the same reason it is
+// true everywhere else: nothing is counted, so the real total may be higher.
 export function proteinTodayExplanation(t: ProteinToday): string {
   const basis = t.todayIntake?.basis ?? null;
   return [
     `Goal ${proteinTargetSummary(t.target)}.`,
     basis ? `Today's total is ${proteinBasisPhrase(basis)}.` : null,
-    basis == null || basis === "tracked" ? null : UNLOGGED_FOODS_SENTENCE,
+    basis === "tracked" ? null : UNLOGGED_FOODS_SENTENCE,
   ]
     .filter(Boolean)
     .join(" ");
