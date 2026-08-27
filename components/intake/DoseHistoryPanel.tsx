@@ -134,8 +134,7 @@ export default function DoseHistoryPanel({
     },
     {
       header: "Time",
-      slot: "meta",
-      label: "Time",
+      slot: "trailing",
       empty: (entry) => !entry.time,
       cellClassName: "text-xs text-slate-500 dark:text-slate-400",
       cell: (entry) => entry.time || "—",

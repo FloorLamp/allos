@@ -24,12 +24,15 @@ export default function SupplementSchedule({
   secondary,
   context,
   addSupplement,
+  ledgerDoor,
 }: {
   today: string;
   days: SupplementScheduleDay[];
   secondary?: ReactNode;
   context?: string | null;
   addSupplement: AddSupplementModalProps;
+  /** The door to this surface's ledger, mounted in the day header (#3671). */
+  ledgerDoor?: ReactNode;
 }) {
   const [activeDate, setActiveDate] = useState(today);
   const [slot, setSlot] = useState<SlotSelection>("all");
@@ -52,6 +55,7 @@ export default function SupplementSchedule({
     <div data-testid="intake-schedule">
       <IntakeContextBar
         purpose="supplement-review"
+        ledgerDoor={ledgerDoor}
         today={today}
         days={days}
         value={activeDate}
