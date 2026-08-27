@@ -56,6 +56,18 @@
           "title": "What's New fits a phone screen again, and two failure messages stop naming a setting you can't change",
           "kind": "fix",
           "issues": [3867, 3852]
+        },
+        {
+          "pr": 3880,
+          "title": "Seven more screens show the date in your own day, not a UTC one that can be a day off",
+          "kind": "fix",
+          "issues": [3836]
+        },
+        {
+          "pr": 3882,
+          "title": "A busy AI no longer tells you to delete a document, and four more messages drop a setting name",
+          "kind": "fix",
+          "issues": [3876, 3875]
         }
       ]
     },
