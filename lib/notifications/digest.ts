@@ -796,10 +796,19 @@ export function buildDigest(input: DigestInput): DigestModel | null {
   }
   const moreFlagged = input.newFlaggedBiomarkers.length - namedFlagged.length;
   if (moreFlagged > 0) {
+    // CAUTION, not the flagged glyph: 🚩 claims "a READING fell outside its reference
+    // range", and this line is not a reading — while ⚠️'s registry role names this exact
+    // shape, "a message that had to be cut short". The link is the affordance, and it is
+    // the ONLY one the grammar offers: `because` takes a cause, `notes` take facts and
+    // `deadline` explicitly refuses a CTA, so "open the app" has no honest slot here.
+    // Without a configured public URL it degrades to the bare count, like every other
+    // deep link in this message.
+    const base = (input.deepLinkBase ?? "").replace(/\/$/, "");
     newLines.push(
       formatEmphasizedLine({
-        glyph: GLYPH.flagged,
+        glyph: GLYPH.caution,
         head: `+${moreFlagged} more flagged result${moreFlagged === 1 ? "" : "s"}`,
+        link: base || null,
       })
     );
   }

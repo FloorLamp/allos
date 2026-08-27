@@ -83,7 +83,17 @@ export const FLAGGED_ATTENTION_WINDOW_DAYS = 14;
 // durable-immunity status (#544/#549), excluded there too. Names are
 // canonical-preferred so links/dedupe key on the same identity the biomarker view
 // resolves; repeat flags of one analyte already collapse to the current reading in
-// the CTE, and dedupeFlaggedByAnalyte stays as a defensive collapse-by-name.
+// the CTE, and dedupeFlaggedByAnalyte stays as a backstop collapse-by-name.
+//
+// THAT BACKSTOP IS CURRENTLY UNREACHABLE, and the digest's counted tail is why it is
+// worth saying so: the tail is arithmetic on this list, so a duplicate would burn a
+// named slot AND overstate the remainder. It cannot arrive. The LATEST CTE takes
+// ROW_NUMBER() = 1 per (profile, family), and the emitted name is the very expression
+// the family key is computed FROM — so two rows sharing a name share a partition, and
+// one of them is already gone. Measured over eight shapes (case-differing spellings,
+// canonical-vs-raw, two members of one family, one analyte read twice): every one
+// returns a single row, and deleting this call leaves the whole suite green. It is kept
+// as a guard on a TWO-MODULE invariant, not on this function's own control flow.
 //
 // IT RETURNS EVERY FLAGGED ANALYTE, and used to stop at eight (#3872): one cap here fell
 // on both callers, so a broad panel lost its ninth result and beyond from each, silently.

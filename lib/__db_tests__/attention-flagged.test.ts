@@ -27,6 +27,7 @@ import {
 } from "@/lib/queries/upcoming";
 import { attentionBadgeItems, groupAttentionForPage } from "@/lib/attention";
 import { digestSince } from "@/lib/notifications/digest-data";
+import { MAX_NAMED_FLAGGED } from "@/lib/notifications/digest";
 import { getNewlyFlaggedBiomarkers } from "@/lib/queries/attention";
 import { getCurrentFlaggedBiomarkers } from "@/lib/queries/medical";
 import { setProfileSetting } from "@/lib/settings";
@@ -311,6 +312,46 @@ describe("a broad panel is not silently truncated (issue #3872)", () => {
         (i) => i.domain === "biomarker-flag"
       ).length
     ).toBe(names.length);
+  });
+
+  // THE TAIL COUNTS ANALYTES, NOT ROWS. The digest's "+N more" is arithmetic on this
+  // list, so a repeat reading of one analyte reaching it would both burn a named slot
+  // and overstate the remainder. Twelve flagged ROWS here, nine analytes: one read
+  // twice today, one under two spellings of a single family (#482).
+  it("collapses repeat readings of one analyte, so the counted tail is analytes and not rows", () => {
+    const pid = createProfile("Attention Test K");
+    for (const name of [
+      "Glucose",
+      "Sodium",
+      "Potassium",
+      "Calcium",
+      "Albumin",
+      "Ferritin",
+      "Cholesterol",
+    ]) {
+      insertFlagged(pid, { name, canonical: name });
+    }
+    // The eighth analyte, read twice today (a re-draw, or one panel imported twice).
+    insertFlagged(pid, {
+      name: "Creatinine",
+      canonical: "Creatinine",
+      value: "2.1",
+    });
+    insertFlagged(pid, {
+      name: "Creatinine",
+      canonical: "Creatinine",
+      value: "2.3",
+    });
+    // The ninth, arriving under two spellings the family layer already unifies.
+    insertFlagged(pid, { name: "HbA1c" });
+    insertFlagged(pid, { name: "Hemoglobin A1c" });
+
+    const flagged = getNewlyFlaggedBiomarkers(pid, flaggedSince(14));
+    const keys = flagged.map((f) => f.name.trim().toLowerCase());
+    expect(new Set(keys).size).toBe(keys.length);
+    expect(flagged).toHaveLength(9);
+    // …so the digest names eight and counts exactly one more, never two.
+    expect(flagged.length - MAX_NAMED_FLAGGED).toBe(1);
   });
 });
 
