@@ -1,11 +1,13 @@
 import { test, expect } from "./fixtures";
-import { type Page } from "@playwright/test";
+import { type Locator, type Page } from "@playwright/test";
 import Database from "better-sqlite3";
 import sharp from "sharp";
 import { loginAs } from "./nav";
 import {
   capturePhotoFile,
+  dismissToast,
   expectNoClippedContent,
+  expectPhoneTapTargets,
   followLink,
   primeCameraFallback,
   settledClick,
@@ -34,6 +36,32 @@ import { workerDbPath } from "./worker-env";
 // the data-gated entry.
 
 const DB_PATH = workerDbPath();
+
+async function expectReadableOnBlack(control: Locator, name: string) {
+  const ratio = await control.evaluate((element) => {
+    const luminance = (color: string) => {
+      const channels = color
+        .match(/[\d.]+/g)!
+        .slice(0, 3)
+        .map(Number)
+        .map((channel) => {
+          const value = channel / 255;
+          return value <= 0.04045
+            ? value / 12.92
+            : ((value + 0.055) / 1.055) ** 2.4;
+        });
+      return 0.2126 * channels[0] + 0.7152 * channels[1] + 0.0722 * channels[2];
+    };
+    const style = getComputedStyle(element);
+    const foreground = luminance(style.color);
+    const background = luminance(style.backgroundColor);
+    return (
+      (Math.max(foreground, background) + 0.05) /
+      (Math.min(foreground, background) + 0.05)
+    );
+  });
+  expect(ratio, `${name} computed contrast`).toBeGreaterThanOrEqual(4.5);
+}
 
 function fixtureProfileId(): number {
   const handle = new Database(DB_PATH);
@@ -279,14 +307,51 @@ test("upload → grid → lightbox → compare → delete round trip (fallback c
     // Delete from the lightbox through the app confirmation → one photo remains.
     await page.getByTestId("progress-view-grid").click();
     await items.nth(0).click();
-    await page.getByTestId("photo-lightbox-delete").click();
+    await page.setViewportSize({ width: 390, height: 844 });
+    await expectPhoneTapTargets(
+      page,
+      "photo lightbox actions",
+      [
+        page.getByTestId("photo-lightbox-compare"),
+        page.getByTestId("photo-lightbox-edit"),
+        page.getByTestId("photo-lightbox-delete"),
+      ],
+      { disjoint: true }
+    );
+    const actions = [
+      page.getByTestId("photo-lightbox-compare"),
+      page.getByTestId("photo-lightbox-edit"),
+      page.getByTestId("photo-lightbox-delete"),
+    ];
+    for (const dark of [false, true]) {
+      await page.evaluate(
+        (enabled) => document.documentElement.classList.toggle("dark", enabled),
+        dark
+      );
+      for (const [index, action] of actions.entries())
+        await expectReadableOnBlack(action, `photo action ${index}`);
+    }
+
+    const deleteAction = page.getByTestId("photo-lightbox-delete");
+    await deleteAction.click();
+    const confirm = page.getByTestId("confirm-dialog");
+    await confirm.getByRole("button", { name: "Cancel" }).click();
+    await expect(confirm).toBeHidden();
+    await expect(deleteAction).toBeFocused();
+
+    await deleteAction.click();
     await settledClick(
       page,
-      page
-        .getByTestId("confirm-dialog")
-        .getByRole("button", { name: "Delete photo" })
+      confirm.getByRole("button", { name: "Delete photo" })
     );
+    await expect(page.getByTestId("photo-lightbox")).toBeHidden();
+    await dismissToast(page, "Photo deleted.");
     await expect(items).toHaveCount(1);
+    await items.click();
+    await expect(page.getByTestId("photo-lightbox")).toContainText(
+      "2026-07-01"
+    );
+    await page.getByTestId("photo-lightbox-close").click();
   } finally {
     await page.context().close();
   }

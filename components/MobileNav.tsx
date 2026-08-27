@@ -54,10 +54,10 @@ import { DEFAULT_NAV_RELEVANCE, type NavRelevance } from "@/lib/nav-relevance";
 // `fixed inset-0`, locks the body behind it and takes a click-to-dismiss
 // backdrop — and for a long time it declared none of that: no `role`, no
 // `aria-modal`, no focus trap, so a keyboard or screen-reader user could tab
-// straight out of it into the scroll-locked page underneath. Its RECORDED
-// EXCEPTION (scripts/dialog-census-core.ts, docs/internals/overlays.md) is about
-// PRESENTATION — the edge anatomy below, which a centred host cannot express —
-// and never was a licence to skip the a11y floor. So it now declares the role and
+// straight out of it into the scroll-locked page underneath. Its presentation
+// exception in docs/internals/overlays.md is about the edge anatomy below, which
+// a centred host cannot express, and never was a licence to skip the a11y floor.
+// So it now declares the role and
 // takes the SHARED useFocusTrap, which owns initial focus, the Tab trap,
 // capture-phase Escape and focus restore to the control that opened it. The edge
 // swipe, the backdrop and the drag are untouched.

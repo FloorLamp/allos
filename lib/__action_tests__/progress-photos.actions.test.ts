@@ -210,7 +210,7 @@ describe("deleteProgressPhoto + serve-route scoping", () => {
     expect(thumb.status).toBe(200);
 
     // ANOTHER login acting as ANOTHER profile: same id → 404 (no cross-profile
-    // fetch-by-id), and its delete is a silent no-op on the owner's row.
+    // fetch-by-id), and its delete reports that the owner's row is unavailable.
     const intruder = seedActor();
     const denied = await serveProgressPhoto(
       new Request(`http://test/api/progress-photo/${row.id}`),
@@ -221,7 +221,10 @@ describe("deleteProgressPhoto + serve-route scoping", () => {
 
     const fdDel = new FormData();
     fdDel.set("photo_id", String(row.id));
-    expect((await deleteProgressPhoto(fdDel)).ok).toBe(true); // gated, but scoped: no-op
+    expect(await deleteProgressPhoto(fdDel)).toEqual({
+      ok: false,
+      error: "That photo is no longer available.",
+    });
     expect(
       db
         .prepare(`SELECT COUNT(*) c FROM progress_photos WHERE id = ?`)

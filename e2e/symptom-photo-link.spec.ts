@@ -68,9 +68,14 @@ test.describe("Symptom photo ↔ log link (#1093)", () => {
       for (let remaining = await tiles.count(); remaining > 0; remaining--) {
         await tiles.first().click(); // first-ok: loop deletes EVERY photo on a spec-owned episode — order-agnostic
         await expect(lightbox).toBeVisible();
+        await lightbox
+          .locator('[data-testid^="symptom-photo-delete-"]')
+          .click();
         await settledClick(
           page,
-          lightbox.locator('[data-testid^="symptom-photo-delete-"]')
+          page
+            .getByTestId("confirm-dialog")
+            .getByRole("button", { name: "Delete photo" })
         );
         await expect(tiles).toHaveCount(remaining - 1, { timeout: 15_000 });
       }
@@ -160,9 +165,14 @@ test.describe("Symptom photo ↔ log link (#1093)", () => {
       for (let remaining = await tiles.count(); remaining > 0; remaining--) {
         await tiles.first().click(); // first-ok: loop deletes EVERY photo on a spec-owned episode — order-agnostic
         await expect(lightbox).toBeVisible();
+        await lightbox
+          .locator('[data-testid^="symptom-photo-delete-"]')
+          .click();
         await settledClick(
           page,
-          lightbox.locator('[data-testid^="symptom-photo-delete-"]')
+          page
+            .getByTestId("confirm-dialog")
+            .getByRole("button", { name: "Delete photo" })
         );
         await expect(tiles).toHaveCount(remaining - 1, { timeout: 15_000 });
       }

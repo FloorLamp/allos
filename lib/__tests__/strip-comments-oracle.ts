@@ -22,13 +22,6 @@
 // The two directions are not equally bad and the report keeps them apart for that
 // reason. Over-blanking is the direction that hides a defect.
 //
-// IT IS NOT A TEST AND IT DOES NOT REPLACE THE DEFAULT SCANNER. Depending on
-// `typescript` at scan time would make every census in `lib/__tests__` pay for a full
-// parse. The dialog census opts into the parser-backed projection exported below
-// because over-blanking there can hide the exact ModalShell it guards (#3532); the
-// other consumers retain the lightweight scanner and this instrument says how far
-// that heuristic is from the real answer, run by hand and pinned by the cases in
-// `lib/__tests__/strip-comments.test.ts`.
 import { execFileSync } from "node:child_process";
 import fs from "node:fs";
 import path from "node:path";

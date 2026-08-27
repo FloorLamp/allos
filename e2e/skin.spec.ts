@@ -136,6 +136,14 @@ test.describe("Skin lesions — add → view → track recheck → photo → fil
     await tile.click();
     const lightbox = page.getByTestId("photo-lightbox");
     await expect(lightbox.getByTestId("photo-lightbox-image")).toBeVisible();
+    const photoDelete = lightbox.getByTestId(/^lesion-photo-delete-/);
+    await photoDelete.click();
+    const photoConfirm = page.getByTestId("confirm-dialog");
+    await expect(photoConfirm).toContainText(
+      "This photo and its stored files will be permanently deleted."
+    );
+    await photoConfirm.getByRole("button", { name: "Cancel" }).click();
+    await expect(photoDelete).toBeFocused();
     await lightbox.getByTestId("photo-lightbox-close").click();
 
     // Filter by "Removed" hides it; back to "All" shows it again. The status filter

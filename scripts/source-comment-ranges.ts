@@ -48,11 +48,3 @@ export function parsedCommentRanges(
   visit(sf);
   return out;
 }
-
-/** Blank parser-authenticated comments in place, preserving lines and literals. */
-export function stripCommentsParsed(rel: string, src: string): string {
-  const out = src.split("");
-  for (const [from, to] of parsedCommentRanges(rel, src))
-    for (let i = from; i < to; i += 1) if (out[i] !== "\n") out[i] = " ";
-  return out.join("");
-}

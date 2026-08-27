@@ -36,6 +36,14 @@ function recapTitle(
   return `${cap} recap · ${window}`;
 }
 
+// What a reader is told when AI isn't running (#3715). Both generate forms below print
+// THIS string, so they can't drift apart again — they used to carry the same sentence
+// twice, naming the provider and the environment variable that switches it. Neither is
+// something a person reading their own trends can act on; that the summary is simpler
+// is, so that is all this says.
+const SIMPLE_SUMMARY_NOTE =
+  "When AI isn't available, you get a simpler summary built from the same data.";
+
 // The Trends hub's Insights tab: the hub's DERIVED VIEWS over your own data —
 // the AI daily insights (reusing getDailyInsights), the AI period recap
 // narratives (issue #20) and their generate forms, the situation-impact analytics
@@ -93,8 +101,7 @@ export default async function InsightsSection({
               <p className="max-w-md text-xs text-slate-500 dark:text-slate-400">
                 An AI narrative of your training, adherence, and body-metric
                 trends over the last week, month or quarter, grounded in your
-                recap data. Uses Claude when <code>ANTHROPIC_API_KEY</code> is
-                set; otherwise a built-in summary is generated.
+                recap data. {SIMPLE_SUMMARY_NOTE}
               </p>
             </div>
             {/* One button per recap SCALE, from the registry (#2178) — the
@@ -159,9 +166,8 @@ export default async function InsightsSection({
               ✦ Generate analysis
             </SubmitButton>
             <p className="text-xs text-slate-500 dark:text-slate-400">
-              AI-generated daily analysis of your activity, metrics, and goals.
-              Uses Claude when <code>ANTHROPIC_API_KEY</code> is set; otherwise
-              a built-in summary is generated.
+              AI-generated daily analysis of your activity, metrics, and goals.{" "}
+              {SIMPLE_SUMMARY_NOTE}
             </p>
           </form>
 

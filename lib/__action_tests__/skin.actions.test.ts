@@ -198,6 +198,10 @@ describe("lesion photos (attach / delete, and delete-lesion clears them first)",
     expect(
       db.prepare(`SELECT 1 FROM lesion_photos WHERE id = ?`).get(row!.id)
     ).toBeUndefined();
+    expect(await deleteLesionPhoto(fd({ photo_id: String(row!.id) }))).toEqual({
+      ok: false,
+      error: "That photo is no longer available.",
+    });
   });
 
   it("deleting a lesion captures its photos and answers with an undo token (#1847)", async () => {
