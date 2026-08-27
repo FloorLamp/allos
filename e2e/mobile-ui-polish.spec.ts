@@ -9,6 +9,10 @@ import {
   settledBoxes,
 } from "./helpers";
 import { TAP_FLOOR_PX } from "@/lib/tap-floor-tokens";
+import {
+  WHATS_NEW_PAGE_ENTRIES,
+  loadReleaseNotes,
+} from "../lib/release-notes";
 
 // Mobile / touch-target polish (#640, #641, #644). Driven at a phone viewport so
 // the clipping and undersized-target defects are observable — the desktop layout
@@ -677,6 +681,18 @@ test.describe("the pager offers thumb-sized steps at 390px (#3378)", () => {
     expect(m.pageSentence).toBe(false);
   }
 
+  // #3867: the trailing link run that clipped is never on page 1 — page 1's
+  // longest entry carries 3 issue links and it takes 4+ to overflow 390px — so
+  // the containment check below passed for as long as it only ever saw page 1.
+  // DERIVED, not pinned: the notes file is append-only, so the entry holding the
+  // longest run drifts one page further back every WHATS_NEW_PAGE_ENTRIES notes.
+  const ENTRIES = loadReleaseNotes().days.flatMap((day) => day.entries);
+  const LONGEST = ENTRIES.reduce((a, b) =>
+    b.issues.length > a.issues.length ? b : a
+  );
+  const LONGEST_PAGE =
+    Math.floor(ENTRIES.indexOf(LONGEST) / WHATS_NEW_PAGE_ENTRIES) + 1;
+
   test("link steps: /whats-new", async ({ page }) => {
     await page.goto("/whats-new");
     const pager = page.getByTestId("whats-new-pagination");
@@ -685,6 +701,18 @@ test.describe("the pager offers thumb-sized steps at 390px (#3378)", () => {
     // exist once the page knows there is more than one page.
     await expect(pager.getByRole("link", { name: "Next" })).toBeVisible();
     expectThumbShape(await pagerMetrics(pager));
+    await expectNoClippedContent(page);
+
+    // And again where the long link runs live. Wait for the run itself, not the
+    // entry: a half-painted entry fits any width, so the measurement would be
+    // taken against a placeholder (#3384).
+    await page.goto(`/whats-new?page=${LONGEST_PAGE}`);
+    const entry = page.getByTestId("whats-new-entry").filter({
+      has: page.getByRole("link", { name: `#${LONGEST.pr}`, exact: true }),
+    });
+    await expect(entry.getByRole("link", { name: /^issue #/ })).toHaveCount(
+      LONGEST.issues.length
+    );
     await expectNoClippedContent(page);
   });
 
