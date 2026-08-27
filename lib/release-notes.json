@@ -80,6 +80,18 @@
           "title": "The desktop sidebar fits one screen: Log opens a panel, the calendar opens on tap, and nothing hides below the fold",
           "kind": "feature",
           "issues": [3154]
+        },
+        {
+          "pr": 3891,
+          "title": "A logged dose is one scannable line on a phone, tap to see the rest, and both history links look the same",
+          "kind": "feature",
+          "issues": [3671]
+        },
+        {
+          "pr": 3888,
+          "title": "The protein row says a number instead of hedging, and the steps comparison waits until the day is done",
+          "kind": "fix",
+          "issues": [3257, 3258]
         }
       ]
     },
