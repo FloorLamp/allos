@@ -13,7 +13,7 @@ import {
   foodGroupShortName,
 } from "../food-groups";
 import { FOOD_QUICK_COUNT } from "../food-rank";
-import type { ProteinNudgeLineParts } from "../protein";
+import type { ProteinTodayLineParts } from "../protein";
 import { bold, joinBody, richFrom, type MessageBody } from "./rich-text";
 import { formatMessageLine, formatRichMessageLine } from "./message-line";
 import {
@@ -176,7 +176,7 @@ export function foodOptInCallbackData(
 // The protein line's qualifiers, declared once for both renderings: the goal band, then
 // the status words when there are any (the below-band case is deliberately NEUTRAL —
 // a marker, no nag, no praise, #1710/#992).
-function proteinLineNotes(parts: ProteinNudgeLineParts): (string | null)[] {
+function proteinLineNotes(parts: ProteinTodayLineParts): (string | null)[] {
   return [`goal ${parts.band}`, parts.statusWords];
 }
 
@@ -184,7 +184,7 @@ function proteinLineNotes(parts: ProteinNudgeLineParts): (string | null)[] {
 // "🍗 Protein: 36 g+ so far — goal 80–105 g". The channels that carry no emphasis get
 // this; it is the same MessageLine as the emphasized body above, which is what keeps
 // #221's one-conclusion-one-set-of-words true across channels.
-export function proteinNudgeLine(parts: ProteinNudgeLineParts): string {
+export function proteinNudgeLine(parts: ProteinTodayLineParts): string {
   return formatMessageLine({
     glyph: parts.emoji,
     head: `Protein: ${parts.amount} so far`,
@@ -193,7 +193,7 @@ export function proteinNudgeLine(parts: ProteinNudgeLineParts): string {
 }
 
 function proteinBody(
-  parts: ProteinNudgeLineParts | string | null | undefined
+  parts: ProteinTodayLineParts | string | null | undefined
 ): MessageBody | null {
   if (!parts) return null;
   // No goal band ⇒ no conclusion to state, and none is invented.
@@ -298,7 +298,7 @@ export interface FoodNudgeRenderOpts {
   // tally.
   // A plain string is the no-target case (#1073): grams logged but no band to compare
   // against, so it states the figure and claims NOTHING about a goal.
-  proteinLine?: ProteinNudgeLineParts | string | null;
+  proteinLine?: ProteinTodayLineParts | string | null;
   // How many ranked buttons to show (#1075 progressive expansion). Defaults to
   // FOOD_QUICK_COUNT so every existing send starts compact; "Show more" bumps it.
   visibleCount?: number;

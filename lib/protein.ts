@@ -283,17 +283,19 @@ function g(n: number): string {
   return String(Math.round(n));
 }
 
-// A phrase naming the intake's basis, for the copy.
+// Where today's figure came from, said as something the person DID rather than as a
+// list of the tables it was read from (#3257). "logged foods + protein logged" named
+// two sources; these name one situation, and read as the tail of "Today's total is …".
 export function proteinBasisPhrase(basis: ProteinBasis): string {
   switch (basis) {
     case "tracked":
-      return "tracked intake";
+      return "from the daily total your health app sends";
     case "combined":
-      return "logged foods + protein logged";
+      return "from foods and logged protein";
     case "logged":
-      return "logged protein";
+      return "from the protein you logged";
     case "estimated":
-      return "logged foods";
+      return "from your food log";
   }
 }
 
@@ -554,10 +556,15 @@ export function proteinTodayStatus(t: ProteinToday): ProteinTodayStatus {
   return t.todayGrams >= t.target.gramsLow ? "reached" : "below";
 }
 
-// The pieces of the food-nudge protein line, so one surface can render it plain and
-// another can emphasize the figure without either re-deriving the conclusion (#1710).
-// A floor basis (anything but a measured tracked reading) keeps its floor marker per the
-// #767 floor-copy discipline; a tracked reading states the figure directly.
+// The pieces of today's protein line, so one surface can render it plain and another
+// can emphasize the figure without either re-deriving the conclusion (#1710). A floor
+// basis (anything but a measured tracked reading) keeps its floor marker per the #767
+// floor-copy discipline; a tracked reading states the figure directly.
+//
+// NOT nudge-only any more (#3257): the dashboard's protein row and card read the SAME
+// amount and band, so Telegram and the web glance state today's protein in identical
+// words. The dashboard used to spell it "≥ 69 g" over its own copy of the band — a
+// second policy for one question.
 //
 // HEDGE ARRANGEMENT, NOT SEMANTICS (#1822 item 4). The line used to read "Protein · at
 // least 36 g of ~80–105 g" — three hedges stacked in six words ("at least", "of", "~"),
@@ -567,7 +574,7 @@ export function proteinTodayStatus(t: ProteinToday): ProteinTodayStatus {
 //
 // The STATUS WORDS are in the text, not carried by the emoji alone, so the meaning
 // survives screen readers and notification previews that strip emoji.
-export interface ProteinNudgeLineParts {
+export interface ProteinTodayLineParts {
   emoji: string;
   // "107 g+" (floor basis — the trailing plus IS the #767 floor marker) or "107 g" (a
   // tracked reading, which states the figure exactly).
@@ -580,7 +587,7 @@ export interface ProteinNudgeLineParts {
   statusWords: string | null;
 }
 
-export function proteinTodayNudgeParts(t: ProteinToday): ProteinNudgeLineParts {
+export function proteinTodayLineParts(t: ProteinToday): ProteinTodayLineParts {
   const grams = Math.round(t.todayGrams);
   const isFloor = t.todayIntake ? t.todayIntake.basis !== "tracked" : true;
   const status = proteinTodayStatus(t);
@@ -591,6 +598,56 @@ export function proteinTodayNudgeParts(t: ProteinToday): ProteinNudgeLineParts {
     status,
     statusWords: status === "reached" ? "goal reached" : null,
   };
+}
+
+// The floor, said as the situation it is. Every non-`tracked` basis is a floor because
+// untracked foods stay invisible (module header) — so the sentence names the ledger, not
+// the estimator, and holds whether the person logged one meal or all of them.
+const UNLOGGED_FOODS_SENTENCE =
+  "Foods you haven't logged aren't counted, so your real total may be higher.";
+
+// THE ROW STATES, THE HOVER EXPLAINS (#3257) — the band's derivation, where today's
+// grams came from, and why a floor basis is not the whole day, in one string both
+// dashboard surfaces show, so the glance line can be a number and a goal.
+//
+// It states the SITUATION, never the estimator: "a floor, actual likely higher" described
+// how the sum was computed, which is machinery. And it reaches NO verdict — adequacy is
+// proteinAdequacyTitle's one question (#221), and re-hedging it here answers it twice.
+//
+// EACH BASIS SAYS ONLY WHAT ITS OWN STATE SUPPORTS, which took two passes to get right.
+// #3257 dictated one sentence — "Only some meals are logged, so today's true total is
+// higher" — and it is false in two of the four states this function actually meets:
+// `null` (an established logger before their first entry today, the most common morning
+// state) has NO meals logged, and `logged` is set only when the food-group estimate is
+// zero, i.e. raw grams and no meals logged either. Shipping it would have traded one
+// unsupported statement for another inside the PR that exists to stop exactly that.
+//
+// The defect was that it counted MEALS. `basis` distinguishes which columns fed the sum,
+// not how many sittings anyone sat down to: `estimated > 0` means a protein-bearing food
+// group was tapped, and nothing in the model says whether that was one meal or all of
+// them. So no wording keyed on a meal count can be true across the states. The floor is
+// stated as a fact about the LEDGER instead — what is not logged is not counted — which
+// is what actually makes every non-`tracked` basis a floor (untracked foods stay
+// invisible, see the module header), holds at every hour, and claims nothing about
+// behaviour. "may be higher", not "is": someone who logged everything is at equality.
+//
+// AND `null` CARRIES IT TOO, which is the opposite of where this landed first. The
+// argument for withholding it was that the "+" already says "at least" — but that is
+// true of every floor basis, so it never distinguished `null`, and it is weakest
+// precisely here: "0 g+" means "at least zero", which is close to contentless. `null` is
+// also the ONE state with no basis phrase to explain the figure, so a bare "0 g+" at 9am
+// reads as "you ate no protein" rather than "nothing is logged yet" — which is the
+// misreading this sentence exists to prevent. It is true here for the same reason it is
+// true everywhere else: nothing is counted, so the real total may be higher.
+export function proteinTodayExplanation(t: ProteinToday): string {
+  const basis = t.todayIntake?.basis ?? null;
+  return [
+    `Goal ${proteinTargetSummary(t.target)}.`,
+    basis ? `Today's total is ${proteinBasisPhrase(basis)}.` : null,
+    basis === "tracked" ? null : UNLOGGED_FOODS_SENTENCE,
+  ]
+    .filter(Boolean)
+    .join(" ");
 }
 
 // The RENDERING of these parts — plain and emphasized — lives in

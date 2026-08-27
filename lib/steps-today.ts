@@ -23,14 +23,31 @@ export interface StepsTodaySummary {
   // declines it (see summarizeStepsToday).
   average7: number | null;
   // today − average7 as a signed percentage of the average, rounded; null unless both
-  // figures are present.
+  // figures are present AND the day is complete enough to compare (see
+  // STEPS_DELTA_COMPLETE_HOUR).
   deltaPct: number | null;
-  // Direction of today vs the trailing average; null unless both figures are present.
+  // Direction of today vs the trailing average; null on the same terms as deltaPct,
+  // because it answers the same comparison and cannot be honest when that one is not.
+  // NOTE it currently has NO renderer — only tests read it — so gating it changed
+  // nothing a person sees. It is kept, and gated, because the day it gains one the
+  // partial-day arrow would be the same false signal deltaPct was.
   direction: StepsDirection | null;
 }
 
 // The trailing window the average spans (days before today, data-bearing only).
 export const STEPS_TRAILING_DAYS = 7;
+
+// The PROFILE-LOCAL HOUR (0..23) from which today's running total may be compared
+// against complete days (#3258). `today` is a partial sum and `average7` a mean of
+// whole days, so before it the percentage was arithmetic about the clock: −100% every
+// morning, climbing until bedtime — one unchanged day read −73% at midday and −47%
+// that evening.
+//
+// 20, not lib/steps-target's STEPS_AFTERNOON_HOUR (16): that gates a different claim
+// ("under HALF a declared target with the afternoon gone"), where the half-target
+// fraction is what makes 4pm defensible. Here the claim is a whole-day total against
+// whole-day totals, so only the day being nearly over makes the two comparable.
+export const STEPS_DELTA_COMPLETE_HOUR = 20;
 
 // Summarize a per-day steps series (ascending by date) against a capture date. Returns
 // null only when the series is empty (the card's data-aware empty state). A series with
@@ -38,7 +55,11 @@ export const STEPS_TRAILING_DAYS = 7;
 // the trailing average.
 export function summarizeStepsToday(
   points: readonly { date: string; value: number }[],
-  todayStr: string
+  todayStr: string,
+  // The profile-LOCAL hour right now, or null when the caller has no clock (or wants
+  // no delta). Required rather than optional so every call site declares which it is —
+  // a defaulted hour would silently restore the partial-vs-complete comparison.
+  localHour: number | null
 ): StepsTodaySummary | null {
   if (points.length === 0) return null;
 
@@ -63,13 +84,18 @@ export function summarizeStepsToday(
 
   let deltaPct: number | null = null;
   let direction: StepsDirection | null = null;
-  if (today != null && average7 != null && average7 > 0) {
-    deltaPct = Math.round(((today - average7) / average7) * 100);
-    direction = today > average7 ? "up" : today < average7 ? "down" : "flat";
-  } else if (today != null && average7 != null) {
-    // average is zero — any positive today is "up", else flat.
-    deltaPct = today > 0 ? 100 : 0;
-    direction = today > 0 ? "up" : "flat";
+  // A veto, ahead of the value clauses: at any count, a partial total is not comparable.
+  const comparable =
+    localHour != null && localHour >= STEPS_DELTA_COMPLETE_HOUR;
+  if (comparable && today != null && average7 != null) {
+    if (average7 > 0) {
+      deltaPct = Math.round(((today - average7) / average7) * 100);
+      direction = today > average7 ? "up" : today < average7 ? "down" : "flat";
+    } else {
+      // average is zero — any positive today is "up", else flat.
+      deltaPct = today > 0 ? 100 : 0;
+      direction = today > 0 ? "up" : "flat";
+    }
   }
 
   return { today, average7, deltaPct, direction };

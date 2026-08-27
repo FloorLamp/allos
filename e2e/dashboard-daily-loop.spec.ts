@@ -4,6 +4,9 @@ import { loginAs } from "./nav";
 import { E2E_LOGIN_DAILY, E2E_MEMBER_PASSWORD } from "./fixture-logins";
 import { dashboardCandidatePrefix } from "./dashboard-candidate";
 import { openDashboardAll } from "./helpers";
+import { frozenLocalHHMM, frozenNow } from "./worker-env";
+import { pinnedTimezone } from "./pinned-timezone";
+import { STEPS_DELTA_COMPLETE_HOUR } from "@/lib/steps-today";
 
 // Dashboard daily-loop recomposition (issue #1221): the four new cards — Nutrition
 // today, Steps today, Latest vitals, and Cycle phase — plus the folded "Take any
@@ -33,13 +36,28 @@ test.describe("dashboard daily loop (#1221)", () => {
     await page.goto("/");
     const card = dashboardCandidatePrefix(page, "nutrition.protein:");
     await expect(card).toBeVisible();
-    // Today's protein figure (a floor, "≥ N g") — the seeded food gives a non-zero read.
-    await expect(card).toContainText(/\d+ g/);
-    await expect(card).toContainText(/Goal/);
+    // Today's protein figure. A floor basis marks itself with a trailing "+" (#3257,
+    // the #1822 marker) — never "≥ N g", and never a hedge about the estimator.
+    await expect(card).toContainText(/\d+ g\+/);
+    await expect(card).toContainText(/Goal \d+–\d+ g/);
+    // The band's derivation and the goal label live in the row's hover now, not in the
+    // glance line, and no source list or floor hedging survives anywhere in the row.
+    await expect(card).not.toContainText("≥");
+    await expect(card).not.toContainText("g/kg");
+    await expect(card).not.toContainText(/floor|likely higher|logged foods \+/);
     await expect(card.getByRole("link")).toHaveAttribute("href", "/nutrition");
+
+    // The honesty MOVED — it was not deleted (#3257). The row's disclosure control is
+    // the whole mechanism for that, so its accessible name is asserted here: without
+    // this, removing `disclosure:` from the presentation is a silent green.
+    const explain = card.getByRole("button");
+    await expect(explain).toHaveAttribute(
+      "aria-label",
+      /g\/kg.*Today's total is from.*aren't counted, so your real total may be higher\./s
+    );
   });
 
-  test("Steps-today card shows today's steps versus the prior 7 days", async () => {
+  test("Steps-today card shows the prior-7-day baseline, and no partial-day delta", async () => {
     await page.goto("/");
     const card = dashboardCandidatePrefix(page, "activity.steps:");
     await expect(card).toBeVisible();
@@ -49,8 +67,23 @@ test.describe("dashboard daily loop (#1221)", () => {
     // different question over a different window and would own that label.
     await expect(card).toContainText(/Prior 7 days · [\d,]+ steps a day/);
     await expect(card).not.toContainText(/7-day average/);
-    // Today (9,400) is above the baseline → an up delta line renders.
-    await expect(card).toContainText(/% vs prior 7 days/);
+
+    // …and NO percentage, because the frozen clock sits at 13:mm profile-local (the
+    // #1103 pin) and today is not a complete day yet (#3258). Today's 9,400 is above
+    // the baseline, so the old line would have rendered a cheerful "+21% vs prior 7
+    // days" over a partial sum measured against seven whole ones — the same artifact
+    // that read −73% at midday and −47% that evening on one unchanged day.
+    const localHour = Number(
+      frozenLocalHHMM(pinnedTimezone(frozenNow().toISOString()).zone).slice(
+        0,
+        2
+      )
+    );
+    expect(
+      localHour,
+      "the pinned local hour must sit BELOW the gate, or this asserts nothing"
+    ).toBeLessThan(STEPS_DELTA_COMPLETE_HOUR);
+    await expect(card).not.toContainText(/% vs prior 7 days/);
   });
 
   test("Latest-vitals card shows the most recent BP and resting HR", async () => {

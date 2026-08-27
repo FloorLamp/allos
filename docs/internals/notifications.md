@@ -1112,7 +1112,7 @@ path, not a serving. The status line reads
 "🍗 Protein: 36 g+ so far · goal 80–105 g" (#1822 item 4): the same facts the
 pre-#1822 "Protein · at least 36 g of ~80–105 g" carried — the #767 floor marker,
 the band, the neutral #1710/#992 below-band tone — with the hedges unstacked so it
-parses in one pass. `ProteinNudgeLineParts` still separates amount/band/status, so
+parses in one pass. `ProteinTodayLineParts` still separates amount/band/status, so
 the plain and emphasized renderings can differ only in emphasis.
 
 That 6 is also the **page size** in both directions. "➕ Show more" (#1075) reveals
