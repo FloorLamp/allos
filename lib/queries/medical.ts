@@ -3,7 +3,6 @@ import { cache } from "../request-cache";
 import { snapshotCached } from "../read-snapshot";
 import { biomarkerFamily } from "../canonical-name";
 import { BIOMARKER_FAMILY_FN, BIOMARKER_PANEL_FN } from "../sql-functions";
-import { storedLabUnit } from "../display-unit";
 import { panelOrderOfPanelExpr, type PanelId } from "../biomarker-panels";
 import { NON_IDENTITY_CATEGORIES } from "../medical-categories";
 import {
@@ -1307,7 +1306,7 @@ export function getSavedClinicalResults(
       canonical_name: name,
       latest_value: latest?.value ?? null,
       latest_value_num: latest?.value_num ?? null,
-      latest_unit: storedLabUnit(latest?.unit) ?? null,
+      latest_unit: latest?.unit ?? null,
       latest_flag: latest?.flag ?? null,
       latest_date: latest?.date ?? null,
       latest_category: latest?.category ?? null,

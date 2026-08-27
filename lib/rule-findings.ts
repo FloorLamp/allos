@@ -14,7 +14,6 @@
 
 import { joinNamesForSentence } from "./summarize-names";
 import { travelExcusalResolver } from "./travel-excusal";
-import { storedLabUnit } from "./display-unit";
 import {
   getStrengthByExercise,
   getExerciseSetCountsSince,
@@ -1820,7 +1819,7 @@ export function buildSunExposureFindings(
     avgWeeklyDaylightMin,
     vitaminDStatus: status,
     vitaminDValue: latest.value_num,
-    vitaminDUnit: storedLabUnit(latest.unit),
+    vitaminDUnit: latest.unit,
     vitaminDDate: latest.date,
   });
   if (!obs) return [];

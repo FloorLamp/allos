@@ -1,7 +1,6 @@
 import { classifyLoinc, isUnmappedLabLoinc } from "../canonical-result-loinc";
 import { isNoKnownAllergyText } from "../clinical-parse";
 import { codeFromVaccineCode } from "../cvx-map";
-import { storedLabUnit } from "../display-unit";
 import type {
   ImportDemographics,
   ImportResult,
@@ -746,7 +745,7 @@ export function entriesToImportResult(
       .map((rec) => ({
         loinc: rec.loinc,
         name: rec.name,
-        unit: storedLabUnit(rec.unit),
+        unit: rec.unit,
       }))
   );
   const report: ImportReport = {
