@@ -9,10 +9,7 @@ import {
   settledBoxes,
 } from "./helpers";
 import { TAP_FLOOR_PX } from "@/lib/tap-floor-tokens";
-import {
-  WHATS_NEW_PAGE_ENTRIES,
-  loadReleaseNotes,
-} from "../lib/release-notes";
+import { WHATS_NEW_PAGE_ENTRIES, loadReleaseNotes } from "../lib/release-notes";
 
 // Mobile / touch-target polish (#640, #641, #644). Driven at a phone viewport so
 // the clipping and undersized-target defects are observable — the desktop layout
