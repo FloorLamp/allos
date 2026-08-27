@@ -6,7 +6,7 @@ import { useToast } from "@/components/Toast";
 import PhotoGallery from "@/components/photo/PhotoGallery";
 import PhotoTimeline from "@/components/photo/PhotoTimeline";
 import PhotoDeleteAction from "@/components/photo/PhotoLightboxActions";
-import { Action } from "@/components/photo/PhotoLightboxActions";
+import { LightboxAction } from "@/components/photo/PhotoLightboxActions";
 import SegmentedControl from "@/components/SegmentedControl";
 import { filterBySeries, type GalleryPhoto } from "@/lib/photo/gallery-model";
 import {
@@ -207,18 +207,20 @@ export default function SymptomPhotoStrip({
                   maxLength={500}
                   autoFocus
                 />
-                <Action onClick={() => setEditingId(null)}>Cancel</Action>
-                <Action
+                <LightboxAction onClick={() => setEditingId(null)}>
+                  Cancel
+                </LightboxAction>
+                <LightboxAction
                   type="submit"
                   disabled={pending}
                   data-testid={`symptom-photo-caption-save-${photo.id}`}
                 >
                   {pending ? "Saving…" : "Save"}
-                </Action>
+                </LightboxAction>
               </form>
             ) : (
               <>
-                <Action
+                <LightboxAction
                   data-testid={`symptom-photo-edit-${photo.id}`}
                   disabled={pending}
                   onClick={() => {
@@ -227,7 +229,7 @@ export default function SymptomPhotoStrip({
                   }}
                 >
                   Edit caption
-                </Action>
+                </LightboxAction>
                 <PhotoDeleteAction
                   testId={`symptom-photo-delete-${photo.id}`}
                   close={close}

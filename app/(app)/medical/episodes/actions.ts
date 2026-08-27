@@ -741,7 +741,6 @@ export async function updateSymptomPhotoCaptionAction(
   return { ok: true };
 }
 
-// Delete one profile-scoped symptom photo and its stored files (#879).
 export async function deleteSymptomPhotoAction(
   formData: FormData
 ): Promise<EpisodeActionResult> {

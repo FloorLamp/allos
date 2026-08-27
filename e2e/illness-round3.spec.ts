@@ -148,6 +148,13 @@ test.describe("Illness round 3 (#859)", () => {
     await lightbox
       .getByRole("button", { name: "Edit caption", exact: true })
       .click();
+    await lightbox.getByRole("button", { name: "Cancel" }).click();
+    await expect(
+      lightbox.getByLabel("Photo caption", { exact: true })
+    ).toHaveCount(0);
+    await lightbox
+      .getByRole("button", { name: "Edit caption", exact: true })
+      .click();
     await settledFill(
       page,
       lightbox.getByLabel("Photo caption", { exact: true }),

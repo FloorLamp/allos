@@ -16,21 +16,10 @@ import {
   type GalleryPhoto,
 } from "@/lib/photo/gallery-model";
 
-// The BROWSE half of the shared photo core's view pair (#1119 phase 1). Per-
-// domain but domain-SELECTABLE: exactly one domain's photos render at a time
-// (physique OR skin OR symptom — never co-mingled; the privacy tier separation
-// is the point), with a segmented control to switch domains. Only domains that
-// actually have photos are offered (#1042-style gating), and a single-domain
-// gallery collapses the selector entirely. Within a domain, series chips narrow
-// the grid (pose / lesion / episode); "All" shows the whole collection,
-// most-recent-first, date-grouped. The grid reads THUMBNAILS; the lightbox loads
-// the original on open (still id-and-profile-scoped by the serve route) with
-// prev/next paging within the current filtered set.
-//
-// Sibling of PhotoTimeline over the same series model (#221): the gallery is the
-// index, the timeline is the comparison — `renderCompare`/`renderActions` let
-// the domain surface wire "jump to compare" and delete without this component
-// knowing any domain's routes or actions.
+// One domain at a time, with optional series filters, thumbnails in the grid,
+// and profile-scoped originals in the focus-trapped lightbox. PhotoTimeline owns
+// comparison; renderActions adds domain behavior without teaching this gallery
+// its routes.
 
 export default function PhotoGallery({
   domains,
@@ -43,10 +32,7 @@ export default function PhotoGallery({
   // the gallery share one state). Uncontrolled when omitted.
   seriesFilter?: string | null;
   onSeriesFilterChange?: (key: string | null) => void;
-  // Domain-owned lightbox actions for a photo (delete button, compare link…).
-  // `close` lets an action dismiss the lightbox — a domain edit that changes the
-  // photo's SERIES or DATE re-sorts the filtered set under the open index, so the
-  // honest move is to return to the grid rather than page a stale position.
+  // Close after an edit/delete so a re-sorted gallery cannot retain a stale index.
   renderActions?: (
     photo: GalleryPhoto,
     helpers: { close: () => void }

@@ -43,6 +43,11 @@ describe("photo lightbox delete action", () => {
     await waitFor(() =>
       expect(toast).toHaveBeenCalledWith("Gone", { tone: "error" })
     );
+    expect(
+      screen
+        .getByRole("button", { name: "Delete photo" })
+        .hasAttribute("disabled")
+    ).toBe(false);
     expect(close).not.toHaveBeenCalled();
   });
 
@@ -60,8 +65,13 @@ describe("photo lightbox delete action", () => {
           .hasAttribute("disabled")
       ).toBe(true)
     );
+    fireEvent.click(screen.getByRole("button", { name: "Deleting…" }));
+    expect(confirm).toHaveBeenCalledOnce();
     await act(async () => result.resolve({ ok: true }));
     await waitFor(() => expect(close).toHaveBeenCalledOnce());
     expect(toast).toHaveBeenCalledWith("Photo deleted.");
+    expect(toast.mock.invocationCallOrder[0]).toBeLessThan(
+      close.mock.invocationCallOrder[0]
+    );
   });
 });

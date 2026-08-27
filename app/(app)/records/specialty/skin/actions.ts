@@ -241,7 +241,6 @@ export async function uploadLesionPhoto(
   return formOk();
 }
 
-// Delete one profile-scoped lesion photo and its stored files.
 export async function deleteLesionPhoto(
   formData: FormData
 ): Promise<FormResult> {

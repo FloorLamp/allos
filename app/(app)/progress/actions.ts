@@ -89,7 +89,6 @@ export async function updateProgressPhoto(
   return formOk();
 }
 
-// Delete one profile-scoped progress photo and its stored files.
 export async function deleteProgressPhoto(
   formData: FormData
 ): Promise<FormResult> {

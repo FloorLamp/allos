@@ -5,7 +5,7 @@ import PhotoCapture from "@/components/photo/PhotoCapture";
 import PhotoGallery from "@/components/photo/PhotoGallery";
 import PhotoTimeline from "@/components/photo/PhotoTimeline";
 import PhotoDeleteAction from "@/components/photo/PhotoLightboxActions";
-import { Action } from "@/components/photo/PhotoLightboxActions";
+import { LightboxAction } from "@/components/photo/PhotoLightboxActions";
 import SegmentedControl from "@/components/SegmentedControl";
 import FilterPills from "@/components/FilterPills";
 import DateField from "@/components/DateField";
@@ -198,36 +198,36 @@ export default function ProgressPhotosView({
           }}
           renderActions={(photo, { close }) => (
             <>
-              <Action
+              <LightboxAction
                 onClick={() => setView("compare")}
                 data-testid="photo-lightbox-compare"
               >
                 Compare series
-              </Action>
+              </LightboxAction>
               {!readOnly && (
-                <Action
-                  data-testid="photo-lightbox-edit"
-                  onClick={() => {
-                    close();
-                    openEdit(
-                      photos.find((p) => p.id === photo.id) ??
-                        (photo as ProgressGalleryPhoto)
-                    );
-                  }}
-                >
-                  Edit details
-                </Action>
-              )}
-              {!readOnly && (
-                <PhotoDeleteAction
-                  testId="photo-lightbox-delete"
-                  close={close}
-                  remove={() => {
-                    const formData = new FormData();
-                    formData.set("photo_id", String(photo.id));
-                    return deleteProgressPhoto(formData);
-                  }}
-                />
+                <>
+                  <LightboxAction
+                    data-testid="photo-lightbox-edit"
+                    onClick={() => {
+                      close();
+                      openEdit(
+                        photos.find((p) => p.id === photo.id) ??
+                          (photo as ProgressGalleryPhoto)
+                      );
+                    }}
+                  >
+                    Edit details
+                  </LightboxAction>
+                  <PhotoDeleteAction
+                    testId="photo-lightbox-delete"
+                    close={close}
+                    remove={() => {
+                      const formData = new FormData();
+                      formData.set("photo_id", String(photo.id));
+                      return deleteProgressPhoto(formData);
+                    }}
+                  />
+                </>
               )}
             </>
           )}
