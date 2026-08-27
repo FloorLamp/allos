@@ -45,7 +45,7 @@ export default function CalendarFeedConfig({
   status,
   createdAt,
   lastUsedAt,
-  expiresAt,
+  expiresOnDay,
 }: {
   enabled: boolean;
   detail: CalendarFeedDetail;
@@ -57,7 +57,9 @@ export default function CalendarFeedConfig({
   status: TokenLifecycleStatus;
   createdAt: string | null;
   lastUsedAt: string | null;
-  expiresAt: string | null;
+  // A profile-local DAY, converted by the page (#3573) — this component only
+  // passes it through to TokenLifecycleNote, which no longer sees the instant.
+  expiresOnDay: string | null;
 }) {
   const [createdUrl, setCreatedUrl] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
@@ -203,7 +205,7 @@ export default function CalendarFeedConfig({
           status={status}
           createdAt={createdAt}
           lastUsedAt={lastUsedAt}
-          expiresAt={expiresAt}
+          expiresOnDay={expiresOnDay}
         />
 
         {error && (

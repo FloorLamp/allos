@@ -26,7 +26,7 @@ export default function HealthConnectSetup({
   status,
   createdAt,
   lastUsedAt,
-  expiresAt,
+  expiresOnDay,
 }: {
   endpoint: string;
   connected: boolean;
@@ -35,7 +35,9 @@ export default function HealthConnectSetup({
   status: TokenLifecycleStatus;
   createdAt: string | null;
   lastUsedAt: string | null;
-  expiresAt: string | null;
+  // A profile-local DAY, converted by the page (#3573) — this component only
+  // passes it through to TokenLifecycleNote, which no longer sees the instant.
+  expiresOnDay: string | null;
 }) {
   const [revealedToken, setRevealedToken] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
@@ -163,7 +165,7 @@ export default function HealthConnectSetup({
           status={status}
           createdAt={createdAt}
           lastUsedAt={lastUsedAt}
-          expiresAt={expiresAt}
+          expiresOnDay={expiresOnDay}
           // The EXPIRY select sits directly below this list, so "Never expires"
           // was being stated twice on one card (#3490 item 3).
           expiryStatedByControl

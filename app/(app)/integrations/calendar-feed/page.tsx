@@ -11,6 +11,7 @@ import {
 } from "@/lib/settings";
 import { tokenLifecycleStatus } from "@/lib/token-lifecycle";
 import { requireSession, getAccessibleProfiles } from "@/lib/auth";
+import { dateFromCreatedAt } from "@/lib/timeline-format";
 import { today } from "@/lib/db";
 import { getAppointments, collectUpcoming } from "@/lib/queries";
 import {
@@ -46,6 +47,11 @@ export default async function CalendarFeedPage() {
   // currently enabled, so the user can decide what to expose before turning it on.
   // The heavier Upcoming read only runs when a non-appointment category is enabled.
   const profileToday = today(profile.id);
+  // The zone a token's expiry DAY is named in (#3573). The instant reaches
+  // tokenLifecycleStatus below, which is instant arithmetic and correct as it is; only
+  // the printed day needs a calendar, and this profile's is the one the rest of the
+  // page already uses.
+  const timeZone = getTimezone(profile.id);
   const wantsAppointments = feed.categories.includes("appointment");
   const wantsSignals = feed.categories.some((c) => c !== "appointment");
   const previewRows = composeFeedPreviewRows({
@@ -142,7 +148,7 @@ export default async function CalendarFeedPage() {
           )}
           createdAt={feed.createdAt}
           lastUsedAt={feed.lastUsedAt}
-          expiresAt={feed.expiresAt}
+          expiresOnDay={dateFromCreatedAt(feed.expiresAt, timeZone)}
         />
 
         <CalendarFeedPreview rows={previewRows} detail={feed.detail} />
@@ -198,7 +204,7 @@ export default async function CalendarFeedPage() {
               )}
               createdAt={familyFeed.createdAt}
               lastUsedAt={familyFeed.lastUsedAt}
-              expiresAt={familyFeed.expiresAt}
+              expiresOnDay={dateFromCreatedAt(familyFeed.expiresAt, timeZone)}
               profileCount={accessible.length}
             />
 

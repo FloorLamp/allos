@@ -4,6 +4,8 @@ import { useState, useTransition } from "react";
 import { IconBan } from "@tabler/icons-react";
 import { allowDocumentReacquisition } from "@/app/(app)/data/review-actions";
 import type { DocumentTombstone } from "@/lib/document-tombstones";
+import { useFormatPrefs } from "@/components/FormatPrefsProvider";
+import { formatDateWithYear } from "@/lib/format-date";
 
 // Data → Review: "Blocked from re-acquisition" (#1777) — the documents a user deleted,
 // which an acquirer is therefore refused when it offers them again.
@@ -35,6 +37,7 @@ function documentLabel(t: DocumentTombstone): string {
 }
 
 function BlockedRow({ tombstone }: { tombstone: DocumentTombstone }) {
+  const prefs = useFormatPrefs();
   const [pending, startTransition] = useTransition();
   const [outcome, setOutcome] = useState<string | null>(null);
   const [settled, setSettled] = useState(false);
@@ -69,9 +72,21 @@ function BlockedRow({ tombstone }: { tombstone: DocumentTombstone }) {
         <p className="truncate text-sm text-slate-800 dark:text-slate-100">
           {documentLabel(tombstone)}
         </p>
-        <p className="text-xs text-slate-500 dark:text-slate-400">
-          Deleted {tombstone.deletedAt.slice(0, 10)}
-        </p>
+        {/* THE DISPLAY BOUNDARY, both halves of it (#3573).
+            WHICH day this is was settled before the row got here: the entry carries the
+            profile-local day the delete instant fell on and no longer carries the
+            instant, so there is nothing here left to truncate. HOW it reads is this
+            line's own job (#3492) — through the login's date-shape preference, never
+            the raw ISO string that used to print here. Always-year, matching the Trash
+            list this sits beside on /data: a block can outlive the year it was made in,
+            and a list that carries the year on some rows and not others reads ragged.
+            Dropped entirely when the stored stamp would not parse — a row that cannot
+            say WHEN says nothing, rather than showing an unreadable stamp. */}
+        {tombstone.deletedOnDay && (
+          <p className="text-xs text-slate-500 dark:text-slate-400">
+            Deleted {formatDateWithYear(tombstone.deletedOnDay, prefs)}
+          </p>
+        )}
       </div>
       {settled ? (
         <span

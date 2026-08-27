@@ -42,6 +42,7 @@
 
 import type { IntegrationDef } from "../types";
 import { parseSyncEventAt, pullCadenceMinutes } from "./pull-cadence";
+import { syncEventDay } from "./sync-history-days";
 
 // How many missed POLLS a source tolerates before its silence is treated as broken,
 // when it does not override the number itself. Twelve — half a day of missed polls at
@@ -112,15 +113,6 @@ export interface StaleSync {
   minutes: number;
 }
 
-// The YYYY-MM-DD day part of a stored timestamp. Sync-event `at` values are written as
-// an ISO instant ("YYYY-MM-DDTHH:MM:SSZ", #2205) and legacy rows may still hold
-// SQLite's bare "YYYY-MM-DD HH:MM:SS"; both begin with the day, so the day is the first
-// 10 chars. Kept only where a DAY is genuinely wanted — the "No data since <date>"
-// copy — never for the arithmetic, which is on instants now.
-export function syncDay(at: string): string {
-  return at.slice(0, 10);
-}
-
 // Whole minutes between a stored timestamp and `now`, or null when either is
 // unreadable. Negative when the stamp is in the FUTURE (a container whose clock
 // stepped back), which every caller reads as "not silent" rather than as a breach.
@@ -185,9 +177,17 @@ export function isSyncStale(f: SyncFreshness, now: string): boolean {
 // Every quiet source among the connected ones, in input order. The single entry point
 // the DB layer calls; the badge, the attention item and the digest line all read its
 // output, so they cannot disagree about which sources have stopped (#221).
+// `timeZone` is REQUIRED, not defaulted (#3573). `since` is the only DAY this module
+// produces, and it is read out loud ("No data since 2026-08-14"). It used to be
+// `lastSuccessAt.slice(0, 10)` — the UTC day of an instant — so a household in UTC+13
+// was told its source went quiet a day later than it did, and one in UTC−07:00 a day
+// earlier. The module stays pure, so the caller supplies the zone; the conversion is
+// `syncEventDay`, which the day-grouped sync history already resolves the SAME column
+// with, rather than a second answer to one question.
 export function staleSyncs(
   freshness: readonly SyncFreshness[],
-  now: string
+  now: string,
+  timeZone: string
 ): StaleSync[] {
   const out: StaleSync[] = [];
   for (const f of freshness) {
@@ -195,7 +195,7 @@ export function staleSyncs(
     const sinceAt = f.lastSuccessAt!;
     out.push({
       sourceId: f.sourceId,
-      since: syncDay(sinceAt),
+      since: syncEventDay(sinceAt, timeZone),
       sinceAt,
       minutes: silenceMinutes(sinceAt, now) ?? 0,
     });

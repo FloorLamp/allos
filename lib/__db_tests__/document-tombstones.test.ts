@@ -120,7 +120,8 @@ describe("document tombstone store", () => {
       (t) => t.contentHash === hash
     );
     expect(listed?.label).toBe("labs-march.pdf");
-    expect(listed?.deletedAt).toBeTruthy();
+    // The DAY, not the instant — the row's only time field since #3573.
+    expect(listed?.deletedOnDay).toMatch(/^\d{4}-\d{2}-\d{2}$/);
 
     // Clearing answers whether it actually removed anything — the allow-again action
     // renders that outcome instead of confirming a write that may not have happened.

@@ -40,6 +40,8 @@
 // on `profile_id`, and authorization happens at the Server Action / route boundary.
 
 import { db } from "@/lib/db";
+import { getTimezone } from "@/lib/settings";
+import { dateFromCreatedAt } from "@/lib/timeline-format";
 
 // The `target_table` discriminator for a document tombstone. A literal rather than a
 // member of `TombstoneTable`, for the reason in the header: this row shares the storage
@@ -53,8 +55,24 @@ export interface DocumentTombstone {
   // The filename captured at delete time (migration 134), or null for a row written
   // before that column existed. The UI falls back to a hash prefix.
   label: string | null;
-  // When the delete happened.
-  deletedAt: string;
+  // THE PROFILE-LOCAL CALENDAR DAY THE DELETE HAPPENED ON, and the raw instant is
+  // deliberately NOT here beside it — the same narrowing #3546 made to a Trash entry,
+  // for the same reason (#3573).
+  //
+  // `import_tombstones.created_at` is an INSTANT. The row prints it as a DAY, and the
+  // surface did that with `deletedAt.slice(0, 10)` — the first ten characters of a UTC
+  // stamp, which is the UTC calendar day and not this profile's. A document deleted at
+  // 18:00 in UTC−07:00 was listed as blocked since TOMORROW. The project rule is
+  // explicit — preserve the distinction between an instant and a profile-local day —
+  // and truncating a string is the one conversion that cannot honour it.
+  //
+  // The field the surface holds is therefore the derived day, not the stamp: a
+  // convention ("convert, don't truncate") is re-broken by the next author who has the
+  // raw stamp in hand, and a field that is not there cannot be sliced.
+  //
+  // Null when the stored stamp is unreadable, which the row renders by dropping the
+  // line rather than by printing a stamp nobody can read as a date.
+  deletedOnDay: string | null;
 }
 
 // Record that this profile deleted a document with these bytes.
@@ -117,15 +135,29 @@ export function clearDocumentTombstone(
 
 // Every blocked document for this profile, newest deletion first — the Data → Review
 // list, and nothing else reads it.
+//
+// The ORDER stays on the stored instant while the rendered value is the derived day:
+// two deletes on one local day are still ordered by the minute they happened, which a
+// day-grained sort would lose.
 export function listDocumentTombstones(profileId: number): DocumentTombstone[] {
-  return db
+  const timeZone = getTimezone(profileId);
+  const rows = db
     .prepare(
       `SELECT natural_key AS contentHash, label, created_at AS deletedAt
          FROM import_tombstones
         WHERE profile_id = ? AND target_table = ?
         ORDER BY created_at DESC, id DESC`
     )
-    .all(profileId, DOCUMENT_TOMBSTONE_TABLE) as DocumentTombstone[];
+    .all(profileId, DOCUMENT_TOMBSTONE_TABLE) as {
+    contentHash: string;
+    label: string | null;
+    deletedAt: string;
+  }[];
+  return rows.map((r) => ({
+    contentHash: r.contentHash,
+    label: r.label,
+    deletedOnDay: dateFromCreatedAt(r.deletedAt, timeZone),
+  }));
 }
 
 // What "Allow re-acquisition" did. A TYPED outcome rather than a bare void, because the
