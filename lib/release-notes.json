@@ -68,6 +68,18 @@
           "title": "A busy AI no longer tells you to delete a document, and four more messages drop a setting name",
           "kind": "fix",
           "issues": [3876, 3875]
+        },
+        {
+          "pr": 3885,
+          "title": "Flagged lab results past the eighth stop vanishing, and the digest says how many it left out",
+          "kind": "fix",
+          "issues": [3872]
+        },
+        {
+          "pr": 3889,
+          "title": "The desktop sidebar fits one screen: Log opens a panel, the calendar opens on tap, and nothing hides below the fold",
+          "kind": "feature",
+          "issues": [3154]
         }
       ]
     },
