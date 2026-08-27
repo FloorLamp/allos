@@ -2,7 +2,7 @@ import Link from "next/link";
 import DestinationLink from "@/components/DestinationLink";
 import { requireSession } from "@/lib/auth";
 import { progressPhotoDoor } from "@/lib/progress-photos";
-import { hasProgressPhotos } from "@/lib/progress-photo-write";
+import { hasProgressPhotos } from "@/lib/queries/progress-photos";
 import { today } from "@/lib/db";
 import { chartSeries } from "@/lib/chart-colors";
 import BristolStoolPanel from "@/components/BristolStoolPanel";

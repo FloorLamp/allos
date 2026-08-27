@@ -28,10 +28,10 @@ import {
   addProgressPhotoCore,
   deleteProgressPhotoCore,
   getProgressPhotos,
-  hasProgressPhotos,
   updateProgressPhotoCore,
   weightSnapshotForDate,
 } from "@/lib/progress-photo-write";
+import { hasProgressPhotos } from "@/lib/queries/progress-photos";
 import { progressPhotoDoor } from "@/lib/progress-photos";
 import { getNavRelevance } from "@/lib/queries/nav-relevance";
 

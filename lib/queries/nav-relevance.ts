@@ -19,7 +19,7 @@ import {
   type SpecialtyRelevance,
 } from "../nav-relevance";
 import { isMentalHealthScreeningRelevant, isMinor } from "../life-stage";
-import { hasProgressPhotos } from "../progress-photo-write";
+import { hasProgressPhotos } from "./progress-photos";
 import { hasSleepData } from "./sleep";
 
 // The two Specialty DATA probes. Hoisted because #2557 made them a per-profile read
