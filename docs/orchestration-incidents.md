@@ -1045,3 +1045,67 @@ questioning whether to have one.
 
 Encoded in `scripts/orchestration/dispatch-brief.mjs` (LINE BUDGET) and
 `docs/orchestration/review-merge.md`.
+
+## The fixture that told the time (2026-08-27)
+
+`main` went red at 17:00 UTC on a spec nobody had touched. It would have gone
+green again on its own at midnight.
+
+PR #3835 closed #3573 by converting seven surfaces from the UTC truncation of a
+stored instant to the profile-local calendar day. The change is correct and its
+author proved it — a table over both sides of UTC, Pacific/Auckland and
+America/Los_Angeles, at the unit tier, exactly as the issue asked.
+
+What moved with the render was the meaning of every fixture feeding it.
+`e2e/patient-portals-setup.spec.ts` still seeded naive instants:
+
+```sql
+VALUES (?, ?, ?, '2026-01-02 03:04:05', '2026-01-03 03:04:05', 2, ?)
+```
+
+`e2e/pinned-timezone.ts` pins the instance zone at offset `13 − utcHour`, so it
+is west of UTC for every run starting after 13:00. From 17:00 the offset reaches
+−4, `03:04` falls back across midnight, and the row renders `first seen
+2026-01-01` against an assertion naming `2026-01-02`.
+
+Seventeen hours green, seven hours red. That is why #3835's own CI passed, why
+the failure surfaced on an unrelated PR whose diff was two lines of JSON, and
+why it reads as a flake to anyone who looks in the morning. A re-run never
+clears it — the run's start hour picks the zone.
+
+Feeding both fixture shapes through the app's own `dateFromCreatedAt` at each of
+the 24 zones the rotation can draw:
+
+```
+naive breaks  utcHour=17 Etc/GMT+4  2026-01-02 -> 2026-01-01
+…
+naive breaks  utcHour=23 Etc/GMT+10 2026-01-02 -> 2026-01-01
+
+fixed wrong: 0/72   naive wrong: 15/72
+```
+
+A second stamp in the same file, `portal last checked 2026-01-05`, was one hour
+a day from the same failure: `09:00` only crosses midnight at the western
+extreme.
+
+Three things this bought, all of them already stated somewhere and none of them
+connected:
+
+1. The #1417 fixture rule covered fixtures whose feature _already_ grouped by
+   profile-local day. It said nothing about a fixture that becomes local-dependent
+   because a render was converted underneath it. The dispatch brief now says both.
+2. A green e2e run is evidence about one timezone — the one that run's clock drew.
+   Proof has to enumerate the zones, which is cheaper than running the spec twice
+   and strictly more conclusive.
+3. "I checked and there is no fixture here" and "I did not check" are the same
+   sentence in a report that omits both. The brief now asks for the negative
+   explicitly, per site.
+
+The cost was bounded only because the failure landed on a two-line release-notes
+PR, where "my diff cannot have caused this" was obvious enough to check properly
+instead of re-running. On a larger diff it would have been absorbed as a flake.
+#3836 converts roughly eight more of these sites; without the rule it would have
+recurred once per site, each with a seven-hour daily window and a plausible flake
+story attached.
+
+Filed as #3878; fixed in #3866.
