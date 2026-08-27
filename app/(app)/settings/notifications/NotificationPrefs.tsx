@@ -377,6 +377,7 @@ export default function NotificationPrefs({
   workoutSummary,
   trainingRelevant = true,
   foodTelegramEnabled,
+  substanceTelegramEnabled,
   foodLoggingRelevant,
   moodCheckinEnabled,
   moodRecapEnabled,
@@ -401,6 +402,10 @@ export default function NotificationPrefs({
   workoutSummary: string;
   trainingRelevant?: boolean;
   foodTelegramEnabled: boolean;
+  // #3330: whether the food nudge's buttons and tally may carry this profile's alcohol
+  // rows. Profile tier and off by default — the consumption belongs to the data subject,
+  // and one login's chat receives every profile it manages.
+  substanceTelegramEnabled: boolean;
   foodLoggingRelevant: boolean;
   moodCheckinEnabled: boolean;
   moodRecapEnabled: boolean;
@@ -459,6 +464,7 @@ export default function NotificationPrefs({
   // not a new piece of hand-wired state.
   const [values, setValues] = useState<Record<string, string>>(() => ({
     food_telegram_enabled: foodTelegramEnabled ? "1" : "0",
+    substance_telegram_enabled: substanceTelegramEnabled ? "1" : "0",
     mood_checkin_enabled: moodCheckinEnabled ? "1" : "0",
     mood_recap_enabled: moodRecapEnabled ? "1" : "0",
     digest_sleep_enabled: sleepDigestEnabled ? "1" : "0",
