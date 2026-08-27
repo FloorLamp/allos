@@ -628,12 +628,13 @@ describe("stack clustering and one-taps (#3098)", () => {
     expect(labels[0]).toBe("✅ All (5)");
     expect(labels).toContain("✅ AM stack (2)");
     expect(labels).toContain("✅ Longevity (2)");
-    // The token carries the member dose ids — an upper bound the handler
-    // re-derives against fresh state.
+    // One offer minted per stack, and the token names it — the member ids are the
+    // stored bundle's business, an upper bound the handler re-derives against fresh
+    // state (#3282).
     const am = msg.actions!.find((a) => a.label === "✅ AM stack (2)")!;
-    expect(am.data).toBe("stacktake:1:2026-07-05:11,12");
+    expect(am.data).toBe("stacktake:1:11");
     const lon = msg.actions!.find((a) => a.label === "✅ Longevity (2)")!;
-    expect(lon.data).toBe("stacktake:1:2026-07-05:13,14");
+    expect(lon.data).toBe("stacktake:1:13");
     // Stack buttons sit above the per-dose rows.
     expect(labels.indexOf("✅ AM stack (2)")).toBeLessThan(
       labels.indexOf("✅ Creatine")
@@ -726,7 +727,11 @@ describe("stack clustering and one-taps (#3098)", () => {
     );
   });
 
-  it("drops — never truncates — a stack button whose ids exceed the callback limit", () => {
+  // THE AMPUTATION #3282 REMOVES, WITH THE FIXTURE THAT REACHED IT. Six 8-digit dose
+  // ids in one stack spelled `stacktake:1:2026-07-05:` + 53 more bytes: over 64, so
+  // the pre-#3282 renderer dropped this person's button entirely. This case is RED on
+  // the ids-in-token shape and green on the stored offer, which is the whole change.
+  it("a stack too big to spell out still gets its button — the token names an offer", () => {
     const members = Array.from({ length: 6 }, (_, i) =>
       entry({
         doseId: 90000000 + i,
@@ -743,12 +748,39 @@ describe("stack clustering and one-taps (#3098)", () => {
       null,
       OFFER
     );
+    const big = msg.actions!.find((a) => a.label === "✅ Big stack (6)")!;
+    expect(big).toBeDefined();
+    expect(big.data).toBe("stacktake:1:90000000");
+    // Constant size: the same six ids would have spent 76 bytes on the wire.
+    expect(new TextEncoder().encode(big.data!).length).toBeLessThan(64);
     const labels = msg.actions!.map((a) => a.label);
-    // "stacktake:1:2026-07-05:" + six 8-digit ids does not fit 64 bytes.
-    expect(labels.some((l) => l.includes("Big stack"))).toBe(false);
-    // The slot-wide All and the per-dose rows still stand — an offer may never
-    // name less than the tap would write, so the over-limit offer is absent.
     expect(labels[0]).toBe("✅ All (7)");
+    expect(labels).toContain("✅ Zinc");
+  });
+
+  // THE DROP RULE, STILL LOAD-BEARING. No offer id this app can mint reaches 64 bytes,
+  // so the only way to witness the rule is to hand the renderer a token that does not
+  // fit — which the injected mint makes possible, and which is why the check is
+  // CHECKED rather than assumed. Delete the `callbackDataFits` guard in
+  // doseSessionActions and this dies: an offer may never name less than the tap would
+  // write (#2460), so the button goes, never a shortened one.
+  it("drops — never truncates — a stack button whose token does not fit", () => {
+    const msg = renderWindowMessage(
+      1,
+      "Morning",
+      DATE,
+      [
+        entry({ doseId: 11, itemId: 1, name: "Creatine", stack: "Big stack" }),
+        entry({ doseId: 12, itemId: 2, name: "Magnesium", stack: "Big stack" }),
+        entry({ doseId: 15, itemId: 5, name: "Zinc" }),
+      ],
+      null,
+      () => `stacktake:1:${"9".repeat(54)}`
+    );
+    const labels = msg.actions!.map((a) => a.label);
+    expect(labels.some((l) => l.includes("Big stack"))).toBe(false);
+    // The slot-wide All and the per-dose rows still stand.
+    expect(labels[0]).toBe("✅ All (3)");
     expect(labels).toContain("✅ Zinc");
   });
 

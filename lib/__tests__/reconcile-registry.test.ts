@@ -125,6 +125,13 @@ function mintedPrefixes(): Map<string, string[]> {
     for (const m of src.matchAll(/\b(?:chip|at):\s*"([a-z][a-z0-9]*)"/g)) {
       note(m[1], rel);
     }
+    // 7. `type OfferPrefix = "usual" | "stacktake";` — the offer tokens (#2460, joined
+    // by `stacktake:` in #3282) share ONE builder parameterised by the prefix, so the
+    // mint site carries no literal. Same situation as (6), same answer: the union type
+    // IS where the vocabulary is declared.
+    for (const m of src.matchAll(/type OfferPrefix\s*=\s*([^;]+);/g)) {
+      for (const lit of m[1].matchAll(/"([a-z][a-z0-9]*)"/g)) note(lit[1], rel);
+    }
   }
   return found;
 }
@@ -145,6 +152,10 @@ describe("the callback-vocabulary completeness guard (#1779)", () => {
       "foodtime",
       "dosetimeat",
       "redose",
+      // Both offer prefixes, so harvest rule (7) cannot quietly stop matching and
+      // turn the shared-builder families into a blind spot.
+      "usual",
+      "stacktake",
     ]) {
       expect(minted.has(known), `scan missed the "${known}:" prefix`).toBe(
         true
