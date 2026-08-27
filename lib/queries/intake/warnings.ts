@@ -10,6 +10,7 @@ import {
   getProfileSex,
   getProfileBirthdate,
   getStoredAge,
+  getTimezone,
 } from "../../settings";
 import {
   stackUlWarnings,
@@ -529,6 +530,7 @@ export function getMedMonitoringItems(
     arr.push({ started_on: c.started_on, stopped_on: c.stopped_on });
     coursesByItem.set(c.item_id, arr);
   }
+  const timeZone = getTimezone(profileId);
   const doseChangeByItem = new Map<number, string>();
   for (const d of getIntakeDoses(profileId)) {
     const changed = (d.updated_at ?? d.created_at ?? "").slice(0, 10);
@@ -541,7 +543,8 @@ export function getMedMonitoringItems(
     const courses = coursesByItem.get(m.id) ?? [];
     const startDate = medicationStartDate(
       courses,
-      createdById.get(m.id) ?? null
+      createdById.get(m.id) ?? null,
+      timeZone
     );
     const dates = [
       startDate,

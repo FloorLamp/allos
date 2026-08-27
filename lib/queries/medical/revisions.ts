@@ -18,6 +18,8 @@
 // `WHERE profile_id = ? AND external_id = ?` lookup).
 
 import { db } from "../../db";
+import { getTimezone } from "../../settings";
+import { dateFromCreatedAt } from "../../timeline-format";
 import {
   normalizeResultStatus,
   type ReadingState,
@@ -69,7 +71,8 @@ export function insertObservationRevision(
 }
 
 function rowToRevision(
-  r: Record<string, unknown>
+  r: Record<string, unknown>,
+  timeZone: string
 ): ClinicalObservationRevision {
   return {
     id: Number(r.id),
@@ -85,7 +88,12 @@ function rowToRevision(
       r.superseded_by_status as string | null
     ) as ResultStatus | null,
     source: (r.source as string | null) ?? null,
-    superseded_at: String(r.superseded_at),
+    // The stored prefix stands only for a stamp that will not parse: a value that
+    // cannot become an instant has no local day, and printing nothing where a date
+    // belongs is worse than printing what was stored.
+    supersededOnDay:
+      dateFromCreatedAt(String(r.superseded_at), timeZone) ??
+      String(r.superseded_at).slice(0, 10),
   };
 }
 
@@ -105,7 +113,8 @@ export function getObservationRevisions(
         ORDER BY rev.superseded_at DESC, rev.id DESC`
     )
     .all(observationId, profileId) as Record<string, unknown>[];
-  return rows.map(rowToRevision);
+  const timeZone = getTimezone(profileId);
+  return rows.map((r) => rowToRevision(r, timeZone));
 }
 
 // The revisions for a SET of readings, grouped by observation id — the list-surface twin
@@ -128,8 +137,9 @@ export function getRevisionsByObservation(
         ORDER BY rev.superseded_at DESC, rev.id DESC`
     )
     .all(profileId, ...ids) as Record<string, unknown>[];
+  const timeZone = getTimezone(profileId);
   for (const r of rows) {
-    const rev = rowToRevision(r);
+    const rev = rowToRevision(r, timeZone);
     const list = out.get(rev.record_id) ?? [];
     list.push(rev);
     out.set(rev.record_id, list);

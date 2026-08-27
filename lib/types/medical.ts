@@ -254,7 +254,13 @@ export interface ClinicalObservationRevision {
   result_status: ResultStatus | null;
   superseded_by_status: ResultStatus | null;
   source: string | null;
-  superseded_at: string;
+  // THE PROFILE-LOCAL CALENDAR DAY the overwrite happened on, not the instant it was
+  // derived from (#3836). `medical_record_revisions.superseded_at` is an instant; the
+  // only reader is the "Superseded — was 5.4 mmol/L (2026-08-14)" line under a clinical
+  // result, which took its first ten characters — the UTC day. A correction filed at
+  // 18:00 in UTC-07:00 was dated TOMORROW on a row a clinician reads as fact. The
+  // instant does not travel on beside it: a field that is not there cannot be sliced.
+  supersededOnDay: string;
 }
 
 // "higher is better", "lower is better", or "best inside a range" — governs how

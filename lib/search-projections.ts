@@ -44,9 +44,14 @@ export interface SearchHitText {
   subtitle: string | null;
 }
 
-// Trim a stored datetime ("2026-07-06 12:00:00") down to its ISO day. The ONE
-// place that trim happens for search text; lib/queries/search.ts reuses it for a
-// hit's `date` field so a subtitle and the recency tiebreak can never disagree.
+// Take the ISO day off a value that is ALREADY DAY-GRAINED — every column this
+// reaches is declared `day` in docs/internals/time-columns.md (study_date,
+// report_date, procedure_date, observed_date, practice_logs.date, a protocol's
+// window). It is not an instant→day conversion and must not be used as one: the one
+// caller that held an INSTANT (a document's uploaded_at) converts through the
+// profile's zone before it gets here (#3836). The ONE place the trim happens for
+// search text; lib/queries/search.ts reuses it for a hit's `date` field so a subtitle
+// and the recency tiebreak can never disagree.
 export function isoDay(value: string | null | undefined): string | null {
   return value ? value.slice(0, 10) : null;
 }
