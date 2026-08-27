@@ -211,12 +211,13 @@ export async function runPullSync<
     // reduce it to "Couldn't connect to Strava." — true, and silent about the one
     // thing the person can do. The connection row is the evidence, already written,
     // so ask it rather than re-deriving the verdict from the message.
-    const message = getConnection(profileId, spec.id)?.status === "needs_reauth"
-      ? `Reconnect ${name} to resume syncing.`
-      : userErrorCopy(err, {
-          doing: `connect to ${name}`,
-          service: name,
-        });
+    const message =
+      getConnection(profileId, spec.id)?.status === "needs_reauth"
+        ? `Reconnect ${name} to resume syncing.`
+        : userErrorCopy(err, {
+            doing: `connect to ${name}`,
+            service: name,
+          });
     recordSyncEvent(profileId, spec.id, { ok: false, error: message });
     return { error: message };
   }

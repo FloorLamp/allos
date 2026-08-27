@@ -2130,3 +2130,88 @@ the bedtime reminder's derived paused state (`wearReminderPausedNote`) beside th
 toggle rather than implying tonight's send. The toggle itself is untouched — the
 pause is presentation of derived state, never a stored flag, the shape #1668
 shipped for the mood check-in's auto-pause.
+
+---
+
+## What a broken sync SAYS, and what it says it to (#3618)
+
+`integration_sync_events.error` is not a diagnostic field. It is rendered
+verbatim in three places — the connect card on Data → Import, the "Sync now"
+toast, and the morning digest's `because` line — so whatever a runner writes
+there is a sentence addressed to the person tracking their health.
+
+It used to carry the wire: `Oura /v2/usercollection/sleep request failed (401)`,
+`Withings /measure request failed (401)`, `weather fetch failed (503)`. #3198 and
+#3592 had already stopped raw CAUGHT text reaching a reader; these were authored
+strings, so they survived both sweeps and were the common case — an expired token
+is the most frequent sync failure there is, and it read as a status code.
+
+`syncFailureCopy` (`lib/integrations/auth-failure.ts`) is the vocabulary, keyed on
+what a status MEANS rather than on the number, because the three meanings are
+three different asks:
+
+| the status                | what it says                                                 |
+| ------------------------- | ------------------------------------------------------------ |
+| a definitive auth failure | `Reconnect <source> to resume syncing.`                      |
+| 0 / 429 / 5xx             | `<source> is having trouble. The next sync will pick it up.` |
+| anything else             | `Couldn't sync <source>.`                                    |
+
+Three things about it are load-bearing:
+
+- **A dead grant is a door.** The card escalates to a `Reconnect →` CTA on the
+  same evidence, so the sentence and the affordance point at the same place. The
+  branch is keyed on `isAuthRefreshFailure`, the predicate
+  `markConnectionNeedsReauth` already uses, so the sentence and the connection
+  state can never disagree about what a 401 meant.
+- **A transient failure invites nothing.** A 503 from a source is not the
+  person's to fix, and the hourly tick already retries. `Couldn't sync …` gets no
+  `Try again.` either — copy.md rule 1 allows it only where retrying can
+  plausibly succeed.
+- **`canReconnect` is the caller's answer to "is there anything to reconnect?"**
+  A keyless source holds no grant. Open-Meteo's out-of-range 400 (#3007) is read
+  as a rejected grant by the shared predicate — correctly, for the token-refresh
+  path it was written for — and must never send someone hunting for a connect
+  button that does not exist.
+
+**The path and the status are not deleted, they are relocated.** Every call site
+logs them (`log.error("Oura request rejected", { path, status })`), alongside the
+vendor's own explanation of a rejection where there is one — that is the half
+#3007 needed, and the operator log is where it was always the right answer. The
+same rule as #3592: house copy on the column, raw cause in the log.
+
+The two Review-only channels are deliberately NOT on this vocabulary.
+`details.warnings` carries a PARTIAL run's warning (`weatherPartialWarning`,
+which quotes Open-Meteo's sentence for the air-quality half), and
+`repeatedRunReason` collapses a stripe of identical failures in the history
+table. Neither is the failure sentence a person meets first.
+
+`lib/__db_tests__/sync-failure-copy.test.ts` is the reachability proof: a table
+over source × arrival × status that drives the real runners against a stubbed
+network and reads back the row each one wrote.
+
+---
+
+## Adding a source: check how it spells its id key (#3593)
+
+`ID_KEY_NAMES` in `lib/integrations/json-big-ids.ts` is **enumerated, not a
+pattern** — `id|[A-Za-z0-9]+_id|grpid` — and that is a decision with an
+obligation attached, not an oversight. Widening it to "any key ending in id"
+would take `valid`, `paid`, `android` and `deviceid` with it and lean on the
+precision gate never firing for them, which is "safe because it never happens".
+
+The consequence: **a new source's id key is invisible to the big-id pass until
+someone adds its spelling.** Withings' `grpid` was missed for exactly this
+reason — no underscore, so the `<word>_id` half does not reach it — and nothing
+told the person who added Withings that there was a question to ask. An int64 id
+that slips through arrives already rounded by `JSON.parse`, mints a wrong
+`external_id`, and can collide with a sibling on
+`UNIQUE(profile_id, source, external_id)`, which is how #3194 killed a backfill
+at 48 of 208 for a fortnight.
+
+So, when adding a source: read its API reference for the field it keys records
+on, and if that field is documented as an integer (`format: int64` or unbounded),
+add its spelling to `ID_KEY_NAMES` with the evidence beside it and parse the
+response with `parseJsonPreservingIds` rather than `res.json()`. If every id it
+mints is a string — Oura's whole v2 schema is, and `oura-sync.ts` says so at its
+plain `res.json()` — record that instead. Either answer is fine; not having
+looked is the failure mode.

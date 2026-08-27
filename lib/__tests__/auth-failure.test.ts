@@ -1,5 +1,8 @@
 import { describe, it, expect } from "vitest";
-import { isAuthRefreshFailure } from "@/lib/integrations/auth-failure";
+import {
+  isAuthRefreshFailure,
+  syncFailureCopy,
+} from "@/lib/integrations/auth-failure";
 
 // Issue #326: classify an OAuth/token-refresh failure as a DEFINITIVE auth failure
 // (dead/revoked grant → needs re-auth) vs a TRANSIENT one (retry next tick). Only the
@@ -43,5 +46,42 @@ describe("isAuthRefreshFailure", () => {
   it("does not misclassify other 4xx (403/404) as an auth-grant failure", () => {
     expect(isAuthRefreshFailure(403)).toBe(false);
     expect(isAuthRefreshFailure(404)).toBe(false);
+  });
+});
+
+// Issue #3618: the SENTENCE a status turns into. The end-to-end proof that these
+// reach the card, the toast and the digest is lib/__db_tests__/sync-failure-copy;
+// this table is the vocabulary itself, including the two edges that decide whether
+// it can be wrong — a keyless source has no grant to renew, and a Withings envelope
+// code is not an HTTP status however much it looks like one.
+describe("syncFailureCopy", () => {
+  it.each([
+    // status, canReconnect, expected
+    [401, true, "Reconnect Oura to resume syncing."],
+    [400, true, "Reconnect Oura to resume syncing."], // a rejected grant
+    [401, false, "Couldn't sync Oura."], // nothing to reconnect
+    [400, false, "Couldn't sync Oura."], // #3007's out-of-range window
+    [0, true, "Oura is having trouble. The next sync will pick it up."],
+    [429, true, "Oura is having trouble. The next sync will pick it up."],
+    [503, true, "Oura is having trouble. The next sync will pick it up."],
+    [601, true, "Couldn't sync Oura."], // a vendor code, not a 6xx server error
+    [2555, true, "Couldn't sync Oura."],
+    [403, true, "Couldn't sync Oura."],
+    [404, true, "Couldn't sync Oura."],
+  ] as const)(
+    "%i (reconnectable: %s) → %s",
+    (status, canReconnect, expected) => {
+      expect(syncFailureCopy("Oura", status, canReconnect)).toBe(expected);
+    }
+  );
+
+  it("never names a path, a status or a vendor error number", () => {
+    for (const status of [0, 400, 401, 403, 429, 500, 503, 601, 2555]) {
+      for (const canReconnect of [true, false]) {
+        expect(syncFailureCopy("Oura", status, canReconnect)).not.toMatch(
+          /\d|\//
+        );
+      }
+    }
   });
 });

@@ -94,11 +94,7 @@ function connect(p: number, source: SourceId, arrival: Arrival): void {
 // source that rides an error in its `{ status }` envelope over HTTP 200 — both its
 // refresh and its data endpoints do — and the runner reading that envelope rather
 // than the HTTP status is part of what these rows exercise.
-function stubNetwork(
-  source: SourceId,
-  arrival: Arrival,
-  status: number
-): void {
+function stubNetwork(source: SourceId, arrival: Arrival, status: number): void {
   const inEnvelope =
     source === "withings" && (arrival === "envelope" || arrival === "refresh");
   vi.stubGlobal(
