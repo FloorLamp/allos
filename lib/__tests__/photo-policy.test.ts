@@ -13,7 +13,11 @@ import {
   sniffImageMime,
 } from "../photo/policy";
 import { MAX_AVATAR_BYTES } from "../profile-photo";
-import { normalizePose, PROGRESS_POSES } from "../progress-photos";
+import {
+  normalizePose,
+  progressPhotoDoor,
+  PROGRESS_POSES,
+} from "../progress-photos";
 
 describe("fitWithin", () => {
   it("caps the long edge and preserves aspect ratio", () => {
@@ -117,4 +121,22 @@ describe("normalizePose", () => {
     expect(normalizePose(null)).toBeNull();
     expect(normalizePose(undefined)).toBeNull();
   });
+});
+
+// The in-domain door's three states (#3284). All four input combinations, because
+// the interesting one is the asymmetry: read-only WITH photos still gets a door
+// (there is something to look at), read-only WITHOUT photos gets none (the
+// invitation could not be accepted and the page behind it is empty).
+describe("progressPhotoDoor", () => {
+  it.each([
+    { hasPhotos: true, readOnly: false, door: "browse" },
+    { hasPhotos: true, readOnly: true, door: "browse" },
+    { hasPhotos: false, readOnly: false, door: "first-capture" },
+    { hasPhotos: false, readOnly: true, door: "hidden" },
+  ])(
+    "photos=$hasPhotos readOnly=$readOnly -> $door",
+    ({ hasPhotos, readOnly, door }) => {
+      expect(progressPhotoDoor({ hasPhotos, readOnly })).toBe(door);
+    }
+  );
 });

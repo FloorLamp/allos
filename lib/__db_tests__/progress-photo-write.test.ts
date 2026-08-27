@@ -28,9 +28,12 @@ import {
   addProgressPhotoCore,
   deleteProgressPhotoCore,
   getProgressPhotos,
+  hasProgressPhotos,
   updateProgressPhotoCore,
   weightSnapshotForDate,
 } from "@/lib/progress-photo-write";
+import { progressPhotoDoor } from "@/lib/progress-photos";
+import { getNavRelevance } from "@/lib/queries/nav-relevance";
 
 let profileId: number;
 
@@ -475,5 +478,48 @@ describe("updateProgressPhotoCore — metadata correction (#1934)", () => {
       .get(added.id, profileId) as { pose: string; caption: string | null };
     expect(row).toEqual({ pose: "front", caption: null });
     expect(artifacts(added.id)).toEqual(before);
+  });
+});
+
+// THE BOOTSTRAPPING PROPERTY (#3284). The #1119 nav gate is data-presence and it is
+// right, but it used to be the ONLY thing the zero state decided — leaving the
+// command palette as the only always-visible way in. This pins both halves at once,
+// against the same profile: the gate still hides the nav row with nothing on file,
+// AND the in-domain door is open in exactly that state. A future change that closes
+// the door to match the gate reds here.
+describe("the zero state keeps a door while the nav gate stays shut (#3284)", () => {
+  let subject: number;
+  beforeAll(() => {
+    subject = Number(
+      db.prepare(`INSERT INTO profiles (name) VALUES ('Photo Door')`).run()
+        .lastInsertRowid
+    );
+  });
+  afterAll(() => {
+    fs.rmSync(path.join(photoDomainRoot("progress"), String(subject)), {
+      recursive: true,
+      force: true,
+    });
+  });
+
+  it("nothing on file: nav row hidden, door open", () => {
+    expect(hasProgressPhotos(subject)).toBe(false);
+    expect(getNavRelevance(subject).progress).toBe(false);
+    expect(progressPhotoDoor({ hasPhotos: false, readOnly: false })).toBe(
+      "first-capture"
+    );
+  });
+
+  it("one photo: the same presence fact flips both", async () => {
+    addProgressPhotoCore(
+      subject,
+      { date: today(subject), pose: "front", caption: null },
+      await processed(320, 240, { r: 5, g: 90, b: 5 })
+    );
+    expect(hasProgressPhotos(subject)).toBe(true);
+    expect(getNavRelevance(subject).progress).toBe(true);
+    expect(progressPhotoDoor({ hasPhotos: true, readOnly: false })).toBe(
+      "browse"
+    );
   });
 });

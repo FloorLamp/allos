@@ -5,6 +5,8 @@ import sharp from "sharp";
 import { loginAs } from "./nav";
 import {
   capturePhotoFile,
+  expectNoClippedContent,
+  followLink,
   primeCameraFallback,
   settledClick,
   settledSelect,
@@ -102,6 +104,45 @@ async function addPhoto(
   await expect(page.getByTestId("photo-capture-preview")).toBeHidden();
 }
 
+// THE IN-DOMAIN DOOR (#3284). The #1119 nav gate is data-presence and correct, which
+// left the command palette as the only always-visible entry point — invisible to
+// anyone who does not already know to search for it. Trends → Overview is where the
+// body census is read, which is the context physique photos belong to.
+//
+// Runs FIRST in this file and clears the fixture itself, so the zero-state label is
+// a real observation under --repeat-each rather than a leftover from the round trip
+// below (which deliberately leaves one photo behind).
+test("Trends → Body carries the always-visible first-capture door, at phone and desktop width (#3284)", async ({
+  browser,
+}) => {
+  cleanup();
+  const page = await loginAs(browser, {
+    username: E2E_LOGIN_PHOTOS,
+    password: E2E_MEMBER_PASSWORD,
+  });
+  try {
+    const door = page.getByTestId("body-progress-photos-link");
+    // BOTH widths, because a door that overflows its row at 390 is not a door. 1280
+    // is the desktop project's own viewport; 390 is the phone, and the head row it
+    // shares with the Timeline link is where a two-link row can run out of width.
+    for (const width of [390, 1280]) {
+      await page.setViewportSize({ width, height: 844 });
+      await page.goto("/trends");
+      await expect(door).toBeVisible();
+      // Zero photos + a write grant: the entry IS the invitation (#3077).
+      await expect(door).toHaveText("Add a progress photo");
+      await expectNoClippedContent(page);
+    }
+    await followLink(page, door, /\/progress$/);
+    await expect(page.getByTestId("photo-gallery-empty")).toBeVisible();
+    // Two taps from the census to the capture flow, with no palette involved.
+    await page.getByTestId("photo-capture-open").click();
+    await expect(page.getByTestId("photo-capture-file")).toHaveCount(1);
+  } finally {
+    await page.context().close();
+  }
+});
+
 test("upload → grid → lightbox → compare → delete round trip (fallback capture path)", async ({
   browser,
 }) => {
@@ -133,7 +174,15 @@ test("upload → grid → lightbox → compare → delete round trip (fallback c
     await expect(
       sidebarNav.getByRole("link", { name: "Progress photos" })
     ).toHaveCount(0);
-    await page.goto("/progress");
+    // Reach the page through the #3284 door rather than by URL, so this case also
+    // carries the acceptance criterion that a first capture made THROUGH the Trends
+    // door flips the nav relevance bit asserted below.
+    await page.goto("/trends");
+    await followLink(
+      page,
+      page.getByTestId("body-progress-photos-link"),
+      /\/progress$/
+    );
     await expect(
       page.getByRole("heading", { name: "Progress photos" })
     ).toBeVisible();
@@ -155,10 +204,16 @@ test("upload → grid → lightbox → compare → delete round trip (fallback c
     const items = page.locator('[data-testid^="photo-gallery-item-"]');
     await expect(items).toHaveCount(2);
 
-    // The nav entry lit up for THIS profile now that it has photos.
+    // The nav entry lit up for THIS profile now that it has photos, and the door
+    // drops its invitation for the browse label over the same destination.
     await expect(
       page.locator("aside").getByRole("link", { name: "Progress photos" })
     ).toBeVisible();
+    await page.goto("/trends");
+    await expect(page.getByTestId("body-progress-photos-link")).toHaveText(
+      "Progress photos"
+    );
+    await page.goBack();
 
     // Pose sub-filter: everything is front; side is empty.
     await page.getByTestId("photo-gallery-series-side").click();

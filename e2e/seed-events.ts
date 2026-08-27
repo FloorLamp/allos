@@ -37,6 +37,7 @@ import {
 } from "./seed/integrations";
 import { seedPortalHouseholds } from "./seed/portals";
 import { seedTravel } from "./seed/travel";
+import { seedPracticeZero } from "./seed/wellness";
 import { seedMergeFixtures } from "./seed/merge";
 import {
   seedImportFeed,
@@ -299,6 +300,10 @@ seedTravel();
 // every existing fixture's row ids stay exactly where they were — and the Trash the
 // "Empty trash" test empties is a bin no other spec writes to.
 seedTrashZones();
+// Appended LAST (#3066): one new profile + login whose whole fixture is an ABSENCE
+// (no practice target, no practice log), so every existing fixture's row ids stay
+// exactly where they were.
+seedPracticeZero();
 // LAST, and it must stay last: this mints the admin session every worker starts
 // with, and `createSession` records the profile the session lands on. Running it
 // before a fixture that adds profiles or grants would pin the session to a world
