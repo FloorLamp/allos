@@ -254,7 +254,6 @@ export default function BulkCorrectionCard({
                 setFrom(v);
                 resetPreview();
               }}
-              inputClassName="w-full"
               data-testid="bulk-correction-from"
             />
           </label>
@@ -268,7 +267,6 @@ export default function BulkCorrectionCard({
                 setTo(v);
                 resetPreview();
               }}
-              inputClassName="w-full"
               data-testid="bulk-correction-to"
             />
           </label>

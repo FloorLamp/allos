@@ -85,7 +85,6 @@ export default function DateTimeFields({
               id="activity-date"
               value={date}
               onChange={onDate}
-              inputClassName=""
               required
             />
           </div>
