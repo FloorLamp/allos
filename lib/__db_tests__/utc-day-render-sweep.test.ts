@@ -132,7 +132,8 @@ describe("a portal patient's 'Last synced' day is the bound profile's (#3573)", 
 // Three sites the issue listed are NOT here, because auditing them found nothing to
 // fix, and the reasons are worth keeping:
 //   * SessionHeartRateChart's tooltip stamp is a profile-LOCAL wall clock
-//     (SessionHeartRatePoint.date, "YYYY-MM-DDTHH:MM" — lib/training-zones.ts), so its
+//     (SessionHeartRatePoint.date, "YYYY-MM-DDTHH:MM" — lib/session-detail.ts, which
+//     says so: "Local timestamps are treated as calendar numerals"), so its
 //     first ten characters ARE the local day. Converting it would have introduced the
 //     bug, and broken its `date === activityDate` comparison against a day column.
 //   * intake-cadence's `unrecordedScheduleChangeOn` and warnings' dose-change day are
@@ -140,8 +141,13 @@ describe("a portal patient's 'Last synced' day is the bound profile's (#3573)", 
 //     arithmetic, which #3573's own conditional sends to #3572 (the ruling #3835 made
 //     for lib/sync-requests.ts).
 //   * illness-timeline-view's three slices sit over `encounters.date`,
-//     `medication_courses.started_on` and `COALESCE(document_date, date(uploaded_at))`,
-//     all declared DAY columns in docs/internals/time-columns.md. Nothing to convert.
+//     `medication_courses.started_on` and `COALESCE(document_date, date(uploaded_at))`.
+//     The first two are declared DAY columns (lib/time-columns.ts), so the slice is a
+//     no-op and there is nothing to convert. The third is already ten characters wide
+//     too — but `date(uploaded_at)` is a SQL UTC truncation, and it is the range FILTER
+//     in getEpisodeInRangeEvents as well as the rendered value, so correcting it means
+//     moving episode-window containment out of SQL. That is a read-model change, not
+//     this sweep's formatting fix.
 
 describe("the read models #3836 converted", () => {
   it.each(STRADDLING)("%s reads %s as %s", (tz, at, day) => {
