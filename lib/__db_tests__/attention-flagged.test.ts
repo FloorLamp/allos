@@ -301,11 +301,15 @@ describe("a broad panel is not silently truncated (issue #3872)", () => {
     ];
     for (const name of names) insertFlagged(pid, { name, canonical: name });
 
-    expect(getNewlyFlaggedBiomarkers(pid, flaggedSince(14)).map((f) => f.name)
-      .sort()).toEqual([...names].sort());
     expect(
-      collectAttentionModel(pid, td).filter((i) => i.domain === "biomarker-flag")
-        .length
+      getNewlyFlaggedBiomarkers(pid, flaggedSince(14))
+        .map((f) => f.name)
+        .sort()
+    ).toEqual([...names].sort());
+    expect(
+      collectAttentionModel(pid, td).filter(
+        (i) => i.domain === "biomarker-flag"
+      ).length
     ).toBe(names.length);
   });
 });

@@ -172,8 +172,13 @@ describe("buildDigest", () => {
           flag: "high",
         })),
       });
-      expect(plain(model?.sections.find((x) => x.heading === "New")?.lines)).toEqual([
-        ...Array.from({ length: named }, (_, i) => `🚩 Analyte ${i + 1} (high)`),
+      expect(
+        plain(model?.sections.find((x) => x.heading === "New")?.lines)
+      ).toEqual([
+        ...Array.from(
+          { length: named },
+          (_, i) => `🚩 Analyte ${i + 1} (high)`
+        ),
         ...(tail ? [tail] : []),
       ]);
     }
