@@ -637,10 +637,8 @@ describe("the #388 retention sweep does not release a claimed archive (#2999)", 
     );
     pruneSyncEvents();
 
-    const delivered = deliveredDocumentCountsByAccount(
-      authorized([profileOne]),
-      false
-    ).get(accountOne.id);
+    const delivered = deliveredDocumentCountsByAccount(authorized([profileOne]),
+      false, "UTC").get(accountOne.id);
     expect(delivered?.count).toBeGreaterThan(0);
   });
 });
@@ -756,10 +754,8 @@ describe("a delivery reported as nothing-new is still a delivery (#2914)", () =>
 
     // The page's number is everything this login delivered on that day — every run this
     // file has driven — so the two surfaces are compared to EACH OTHER, not to a literal.
-    const page = deliveredDocumentCountsByAccount(
-      authorized([profileOne]),
-      false
-    ).get(accountOne.id)!;
+    const page = deliveredDocumentCountsByAccount(authorized([profileOne]),
+      false, "UTC").get(accountOne.id)!;
     const deliveredThatDay = (
       db
         .prepare(
@@ -782,10 +778,8 @@ describe("a delivery reported as nothing-new is still a delivery (#2914)", () =>
     // DID deliver three archives, and saying otherwise would rewrite history. The
     // drill-in marks the missing one `deleted` rather than inventing a link, which is
     // #1991's rule doing its job: what the label promises is still what the list shows.
-    const before = deliveredDocumentCountsByAccount(
-      authorized([profileOne]),
-      false
-    ).get(accountOne.id)!;
+    const before = deliveredDocumentCountsByAccount(authorized([profileOne]),
+      false, "UTC").get(accountOne.id)!;
     const victim = (
       db
         .prepare(
@@ -806,10 +800,8 @@ describe("a delivery reported as nothing-new is still a delivery (#2914)", () =>
 
     db.prepare("DELETE FROM medical_documents WHERE id = ?").run(victim);
 
-    const after = deliveredDocumentCountsByAccount(
-      authorized([profileOne]),
-      false
-    ).get(accountOne.id)!;
+    const after = deliveredDocumentCountsByAccount(authorized([profileOne]),
+      false, "UTC").get(accountOne.id)!;
     // The page counts the archives allos still holds…
     expect(after.count).toBe(before.count - 1);
     // …the run still lists everything it delivered, and names the gap honestly.
