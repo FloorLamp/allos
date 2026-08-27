@@ -20,7 +20,6 @@ import {
   staleSyncs,
   staleSyncDetail,
   staleSyncTitle,
-  syncDay,
   type SyncFreshness,
 } from "@/lib/integrations/staleness";
 import { pullCadenceMinutes } from "@/lib/integrations/pull-cadence";
@@ -196,7 +195,8 @@ describe("staleSyncs", () => {
         }), // exempt
         fresh(99 * DAY, { sourceId: "withings", alreadyFailing: true }), // reauth wins
       ],
-      NOW
+      NOW,
+      "UTC"
     );
     expect(out.map((s) => s.sourceId)).toEqual(["oura"]);
     expect(out[0]).toMatchObject({
@@ -210,7 +210,7 @@ describe("staleSyncs", () => {
 
   it("is empty for a healthy set — a working setup produces no signal at all", () => {
     expect(
-      staleSyncs([fresh(0), fresh(1 * DAY, { sourceId: "oura" })], NOW)
+      staleSyncs([fresh(0), fresh(1 * DAY, { sourceId: "oura" })], NOW, "UTC")
     ).toEqual([]);
   });
 });
@@ -266,10 +266,28 @@ describe("copy", () => {
   });
 });
 
-describe("syncDay", () => {
-  it("takes the day from either stored timestamp shape", () => {
-    // SQLite datetime('now') and an ISO instant both lead with the day.
-    expect(syncDay("2026-07-12 04:00:00")).toBe("2026-07-12");
-    expect(syncDay("2026-07-12T04:00:00.000Z")).toBe("2026-07-12");
+// WHICH CALENDAR "No data since <date>" NAMES (#3573). `since` was
+// `lastSuccessAt.slice(0, 10)` — the UTC day of an instant — so a household was told
+// its source went quiet on a day it did not, for the hours it sits on the far side of
+// UTC midnight. The module stays pure and takes the zone; the conversion is
+// `syncEventDay`, the one the day-grouped sync history already applies to this column.
+//
+// Both directions, because a fixed-sign mistake passes one and fails the other. The
+// last success is 2026-07-30T12:00:00Z minus the offset below, chosen so the UTC day
+// and the local day disagree; a fixture at local midday would agree in every zone,
+// which is exactly why this defect survived.
+describe("staleSyncs — since is the profile's day, not UTC's", () => {
+  it.each([
+    // 2026-07-20T23:30Z is already the 21st in UTC+13 …
+    ["Pacific/Auckland", "2026-07-20T23:30:00Z", "2026-07-21"],
+    // … and 2026-07-20T04:30Z is still the 19th in UTC−7.
+    ["America/Los_Angeles", "2026-07-20T04:30:00Z", "2026-07-19"],
+  ])("%s reads a last success of %s as %s", (tz, lastSuccessAt, day) => {
+    const [out] = staleSyncs([{ ...fresh(10 * DAY), lastSuccessAt }], NOW, tz);
+    expect(out.since).toBe(day);
+    // The INSTANT is untouched by the conversion — the synthetic issue row still
+    // stamps its instant columns with it (#2263).
+    expect(out.sinceAt).toBe(lastSuccessAt);
+    expect(staleSyncDetail("Oura", out)).toContain(`No data since ${day}`);
   });
 });

@@ -9,6 +9,7 @@ import {
   getUnitPrefs,
   getDisplayFormatPrefs,
   getProfileAge,
+  getTimezone,
 } from "@/lib/settings";
 import { kindOf } from "@/lib/types";
 import {
@@ -18,6 +19,7 @@ import {
 import { kgTo, kmTo, round } from "@/lib/units";
 import { formatLastUsed } from "@/lib/usage-format";
 import { formatRecordDate } from "@/lib/record-format";
+import { dateFromCreatedAt } from "@/lib/timeline-format";
 import { PageHeader, EmptyState } from "@/components/ui";
 import PageContainer from "@/components/PageContainer";
 import EquipmentTrend from "@/components/EquipmentTrend";
@@ -152,7 +154,16 @@ export default async function EquipmentDetailPage(props: {
         />
         <Stat
           label="Added"
-          value={formatRecordDate(equipment.created_at.slice(0, 10), "—", fmt)}
+          // WHICH day, then how it reads (#3573). `equipment.created_at` is an
+          // instant; this printed its first ten characters, which is the UTC day.
+          // A bike added at 17:00 in UTC−08:00 read as Added tomorrow. The fallback
+          // is `null`, which formatRecordDate renders as "—": a stamp that will not
+          // parse has no day, and "—" is what this Stat already says for absent.
+          value={formatRecordDate(
+            dateFromCreatedAt(equipment.created_at, getTimezone(profile.id)),
+            "—",
+            fmt
+          )}
         />
       </div>
 

@@ -97,16 +97,23 @@ export interface IdentityView {
   // badge, no notification, and the staleness/post-visit nags suppress for this identity
   // because asking someone to collect what the portal will not give is a pointless nag.
   declined: boolean;
-  lastOkAt: string | null;
-  lastFailedAt: string | null;
+  // PROFILE-LOCAL CALENDAR DAYS, resolved before they reach this surface (#3573), and
+  // the instants they came from are deliberately not here beside them. Whose local day
+  // is settled too: the profile this patient is BOUND to, never the viewer's — the same
+  // rule the "Last synced" line has always followed for WHICH events it counts.
+  lastSyncedOnDay: string | null;
+  lastFailedOnDay: string | null;
 }
 
 export interface PendingView {
   id: number;
   accountId: number;
   patientLabel: string;
-  firstSeenAt: string;
-  lastSeenAt: string;
+  // Profile-local days, resolved on the server (#3573). A pending row is bound to NO
+  // profile — that is what makes it pending — so the page names these in the VIEWER's
+  // zone; see the note at the conversion in page.tsx.
+  firstSeenOnDay: string;
+  lastSeenOnDay: string;
   seenCount: number;
   // Cross-login "same person" assist (#1874 point 6): the profile an IDENTICAL label is
   // already mapped to on another login, and where — suggest-only, never auto-applied.
@@ -127,10 +134,6 @@ const SOFTWARE_OPTIONS: { value: string; label: string }[] = [
 function softwareLabel(value: string | null): string | null {
   if (!value) return null;
   return SOFTWARE_OPTIONS.find((o) => o.value === value)?.label ?? value;
-}
-
-function day(stamp: string): string {
-  return stamp.slice(0, 10);
 }
 
 type ActionFn = (fd: FormData) => Promise<{ ok: boolean; error?: string }>;
@@ -455,8 +458,10 @@ export default function PortalsSurface({
                   ruling, and untouched here — so the one word this page reserves for an
                   actual portal visit must not ride on it. The login row's own check
                   clock is where "checked" renders. */}
-              {i.lastOkAt ? `Last synced ${day(i.lastOkAt)}` : "Not synced yet"}
-              {i.lastFailedAt ? ` · last failure ${day(i.lastFailedAt)}` : ""}
+              {i.lastSyncedOnDay
+                ? `Last synced ${i.lastSyncedOnDay}`
+                : "Not synced yet"}
+              {i.lastFailedOnDay ? ` · last failure ${i.lastFailedOnDay}` : ""}
             </span>
           )}
           <RowNote id={rowKey} note={note} />
@@ -608,7 +613,7 @@ export default function PortalsSurface({
             {p.patientLabel}
           </span>
           <span className="text-xs text-slate-500 dark:text-slate-400">
-            first seen {day(p.firstSeenAt)} · last seen {day(p.lastSeenAt)}
+            first seen {p.firstSeenOnDay} · last seen {p.lastSeenOnDay}
             {p.seenCount > 1 ? ` · seen ${p.seenCount}×` : ""}
           </span>
           <span className="min-w-0 flex-1" />

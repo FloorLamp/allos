@@ -201,7 +201,7 @@ describe("a delivery-only report (contacted: false)", () => {
     // moves: the sync event, the per-identity "Last synced" chip, the connection stamp.
     const statuses = identitySyncStatuses(f.profile, PROVIDER);
     const chip = statuses.find((s) => s.patientLabel === f.label);
-    expect(chip?.lastOkAt).toBeTruthy();
+    expect(chip?.lastSyncedOnDay).toBeTruthy();
     const events = db
       .prepare(
         "SELECT COUNT(*) AS n FROM integration_sync_events WHERE profile_id = ? AND source_id = ?"
