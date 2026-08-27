@@ -119,9 +119,6 @@ These are the current non-host rows. Some are genuine anatomy-driven exceptions
 to the shared primitives; some have already converged onto
 `components/overlay` rather than the dialog host. Primitive-first convergence
 onto `ModalShell` or `components/overlay` stays the default.
-`HOSTLESS_DIALOGS` (`scripts/dialog-census-core.ts`) is documentary input to
-the detector, and `lib/__tests__/dialog-census.test.ts` keeps that input and
-this table aligned.
 
 | Dialog                                          | Why the shared host cannot serve it                                                                                                                                                                                                                                                                                                                                                          |
 | ----------------------------------------------- | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
@@ -135,20 +132,15 @@ this table aligned.
 `components/MobileDetailPage.tsx` is **not on this table and not an exception**.
 It is a full-page mobile takeover — it replaces the page rather than floating
 over it, carries no scrim, and is dismissed by the back gesture the way a page
-is. It leaves the dialog family by ANATOMY, so the census reports it under
-`SCOPED OUT` rather than counting it as an exception to a rule it was never an
-instance of.
+is. It leaves the dialog family by anatomy rather than counting as an exception
+to a rule it was never an instance of.
 
 **A recorded exception is about presentation, not about the a11y floor.**
 `ActivityOverlay`, `ProfileIdentityBar`, `PhotoGallery` (the photo lightbox) and
-`MobileNav` (the phone nav drawer) take the shared `useFocusTrap` — named rather
-than counted, so the claim stays checkable against `npm run census:dialogs`,
-which prints "shared focus trap" against exactly these and nothing else, and
-against `lib/__tests__/dialog-census.test.ts`, which reads this paragraph and
-holds the names to the register in both directions. The lightbox adopted it as
-part of this ruling: its Escape lived on the panel's own `onKeyDown`, which fires
-only once focus is inside, and nothing ever put it there — so Escape did nothing
-at all unless the viewer happened to Tab first.
+`MobileNav` (the phone nav drawer) take the shared `useFocusTrap`. The lightbox
+adopted it as part of this ruling: its Escape lived on the panel's own
+`onKeyDown`, which fires only once focus is inside, and nothing ever put it there
+— so Escape did nothing at all unless the viewer happened to Tab first.
 
 The nav drawer was the counterexample this sentence carried for a while. It was
 recorded as an exception for its EDGE anatomy and then declared nothing at all —
@@ -490,55 +482,6 @@ is pinned in `e2e/dialog-convergence.mobile.spec.ts`.
 ones — the number exists in both because one times the paint and the other times
 the unmount, and a stylesheet that outlives its JS duration leaves a frozen
 panel on screen.
-
-### Censusing this family
-
-Use `npm run census:dialogs` — not a grep — when you sweep the dialogs.
-
-    npm run census:dialogs              # hosts, hosted, confirm callers, hostless
-    npm run census:dialogs -- --hostless
-
-Three earlier sweeps enumerated this family with a file-level
-`grep -l 'ModalShell|BottomSheet'`. That asks whether a FILE mentions the string,
-which is a cheaper question than whether a component USES the host, and it is
-wrong in both directions: it counted `MergeConflictDialog` off a comment, and it
-could not see any dialog that hand-rolls its own surface.
-`scripts/dialog-census-core.ts`
-matches on the import and on the rendered JSX instead.
-
-**What "sees a hand-rolled dialog" means, stated so you can check it.** That
-sentence was true of the over-match and only half true of the under-match until
-#3445: the census asked whether a file spelled `role="dialog"`, `role="alertdialog"`
-or `aria-modal`, so what it really reported was "hand-rolls a dialog **and
-remembered the ARIA**" — the weaker claim, reading as the stronger one, in the
-paragraph above. It now asks two questions and prints which one answered:
-
-- **by ARIA** — the file declares a dialog: `role="dialog"` / `role="alertdialog"`
-  (including a computed `role={danger ? "alertdialog" : "dialog"}`), `aria-modal`,
-  or a native `<dialog>` element.
-- **by ANATOMY** — the file declares nothing, and is recognised by what it
-  renders: a full-viewport layer of its own, **and** a portal or the shared body
-  lock, **and** a dismissal (Escape, a click on that layer or its scrim, or a
-  labelled Close control). All three, because each holds something out: an
-  anchored popover has no full-viewport layer (`components/Combobox.tsx`,
-  `components/InfoTooltipIcon.tsx`), a click-catcher under a menu never leaves its
-  own DOM neighbourhood (`components/CompactDateMenu.tsx`), and a blocking curtain
-  with no dismissal is not a dialog.
-
-The anatomy route deliberately **reports and lets a human decide** rather than
-staying silent — the same bias the module states over `handRolled`. Being found
-by anatomy is itself a finding: it means the surface tells assistive technology
-nothing, so `npm run census:dialogs` prints it as `found by ANATOMY`.
-
-It reports dialogs belonging to no dialog host rather than omitting them, in two
-sections that are two different answers: RECORDED EXCEPTIONS (the table above),
-and SCOPED OUT BY ANATOMY (surfaces the convergence rule was never about).
-`lib/__tests__/dialog-census.test.ts` is the detection layer: it fails when a
-new hostless dialog appears, when a documentary `HOSTLESS_DIALOGS` entry
-outlives its subject, and when that input and the table above drift apart. It
-does not make hostless dialogs the goal; the default remains convergence onto
-`ModalShell` or `components/overlay`, and the remaining rows are explained here
-rather than minted by recurrence.
 
 ## Testing gestures
 
