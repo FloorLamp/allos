@@ -286,6 +286,55 @@ describe("deliveredDocumentCountsByAccount (#2914)", () => {
       deliveredDocumentCountsByAccount(authorized([]), false, "UTC").size
     ).toBe(0);
   });
+
+  // WHAT THE ACCOUNT PREDICATE IS FOR, witnessed. Every other case in this file is
+  // already excluded by the `d.profile_id IN (…)` filter alone, so `reachableAccountSql`
+  // never gets to decide anything and tautologizing it to `OR 1=1` leaves them all
+  // green. This is the one state where the two filters disagree: a document the viewer
+  // DOES own, carrying an identity on a login claimed only by the other household — the
+  // shape a re-bind leaves behind, since re-pointing an identity at another profile does
+  // not move the archives already delivered under it. The document is theirs; the login
+  // row is not, and a count hung on it would name a household they cannot reach.
+  it("will not attach the viewer's own document to a login it cannot reach", () => {
+    const identityId = (
+      db
+        .prepare(
+          "SELECT id FROM portal_identities WHERE account_id = ? AND patient_label = ?"
+        )
+        .get(accountTwo.id, "Two Patient") as { id: number }
+    ).id;
+    const at = "2026-08-16 09:00:00";
+    const docId = Number(
+      db
+        .prepare(
+          `INSERT INTO medical_documents
+             (filename, stored_path, mime_type, size_bytes, extraction_status,
+              uploaded_at, delivered_at, profile_id, acquired_identity_id)
+           VALUES ('rebound-bundle.xml', '', 'application/xml', 20, 'done', ?, ?, ?, ?)`
+        )
+        .run(at, at, profileOne, identityId).lastInsertRowid
+    );
+    try {
+      expect(
+        deliveredDocumentCountsByAccount(
+          authorized([profileOne]),
+          false,
+          "UTC"
+        ).has(accountTwo.id)
+      ).toBe(false);
+      // The unclaimed arm is the other half of the same predicate. It is what
+      // `canSeeUnclaimed` buys, and it must not reach a CLAIMED login either.
+      expect(
+        deliveredDocumentCountsByAccount(
+          authorized([profileOne]),
+          true,
+          "UTC"
+        ).has(accountTwo.id)
+      ).toBe(false);
+    } finally {
+      db.prepare("DELETE FROM medical_documents WHERE id = ?").run(docId);
+    }
+  });
 });
 
 describe("a push that straddles UTC midnight (#2914)", () => {
