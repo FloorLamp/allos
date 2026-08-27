@@ -125,6 +125,13 @@ export default function WeightQuickAdd({
           />
         </div>
         <input type="hidden" name="date" value={today} />
+        {/* The unit the number was CAPTURED in, posted with it (#630, #2863). It is
+            the same `weightUnit` the label above prints, so the field can never
+            disagree with what the person read — where the action's fallback, the
+            login's pref re-read at write time, can: a dashboard rendered before a
+            Settings flip in another tab submits after it. The offline payload has
+            always carried the unit; this is its online twin. */}
+        <input type="hidden" name="weight_unit" value={weightUnit} />
         <SubmitButton
           data-testid="weight-quick-add-save"
           pendingLabel="Saving…"
