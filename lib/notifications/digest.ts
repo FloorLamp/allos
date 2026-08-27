@@ -372,6 +372,13 @@ export function digestDocumentLine(
 // name-then-count shape the band summaries and the recent-changes collector use.
 export const MAX_NAMED_DOCUMENTS = 3;
 
+// How many flagged results a morning names before it collapses to a count (#3872). The
+// digest is one glanceable message, so a broad panel still has to stop somewhere — but
+// the read behind it no longer truncates, so the tail counts what is REALLY left rather
+// than reporting the cap back to itself. The dashboard shares that read and shows all of
+// them.
+export const MAX_NAMED_FLAGGED = 8;
+
 export interface DigestSection {
   heading: string;
   // A line is a MessageBody since #2392, not a string: the digest emits RICH TEXT, so a
@@ -779,12 +786,22 @@ export function buildDigest(input: DigestInput): DigestModel | null {
 
   // New since the last digest: things to look at.
   const newLines: MessageBody[] = [];
-  for (const b of input.newFlaggedBiomarkers) {
+  const namedFlagged = input.newFlaggedBiomarkers.slice(0, MAX_NAMED_FLAGGED);
+  for (const b of namedFlagged) {
     const val = b.value ? ` ${b.value}` : "";
     newLines.push(
       formatEmphasizedLine({
         glyph: GLYPH.flagged,
         head: `${b.name}${val} (${b.flag})`,
+      })
+    );
+  }
+  const moreFlagged = input.newFlaggedBiomarkers.length - namedFlagged.length;
+  if (moreFlagged > 0) {
+    newLines.push(
+      formatEmphasizedLine({
+        glyph: GLYPH.flagged,
+        head: `+${moreFlagged} more flagged result${moreFlagged === 1 ? "" : "s"}`,
       })
     );
   }

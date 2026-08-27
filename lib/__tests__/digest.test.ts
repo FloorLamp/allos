@@ -153,6 +153,32 @@ describe("buildDigest", () => {
     ]);
   });
 
+  // #3872: the shared read no longer stops at eight, so the digest applies the only
+  // remaining cap — and the tail counts what is REALLY left instead of the cap counting
+  // itself. The pinned 8 is the boundary: a change to it must turn this red.
+  const flaggedCap: [total: number, named: number, tail: string | null][] = [
+    [8, 8, null],
+    [9, 8, "🚩 +1 more flagged result"],
+    [12, 8, "🚩 +4 more flagged results"],
+  ];
+  it.each(flaggedCap)(
+    "names %i flagged results as %i lines and counts the rest",
+    (total, named, tail) => {
+      const model = buildDigest({
+        ...empty,
+        newFlaggedBiomarkers: Array.from({ length: total }, (_, i) => ({
+          name: `Analyte ${i + 1}`,
+          value: null,
+          flag: "high",
+        })),
+      });
+      expect(plain(model?.sections.find((x) => x.heading === "New")?.lines)).toEqual([
+        ...Array.from({ length: named }, (_, i) => `🚩 Analyte ${i + 1} (high)`),
+        ...(tail ? [tail] : []),
+      ]);
+    }
+  );
+
   it("uses singular wording for a single dose", () => {
     const model = buildDigest({ ...empty, doseCount: 1 });
     expect(plain(model?.sections[0].lines)[0]).toBe(

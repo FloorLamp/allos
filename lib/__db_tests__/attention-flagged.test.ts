@@ -276,6 +276,40 @@ describe("current-reading filter (issue #557)", () => {
   });
 });
 
+// A broad panel is the case with the most to look at, and it used to be the one shown
+// least: the shared read stopped at eight analytes and said nothing about the rest
+// (#3872). It now returns the whole set, so the dashboard shows every flagged analyte and
+// the digest — the one surface that still has to be short — does its own naming and
+// counting (lib/__tests__/digest.test.ts).
+describe("a broad panel is not silently truncated (issue #3872)", () => {
+  it("returns every currently-flagged analyte, and the dashboard carries them all", () => {
+    const pid = createProfile("Attention Test J");
+    const td = today(pid);
+    const names = [
+      "Glucose",
+      "Sodium",
+      "Potassium",
+      "Calcium",
+      "Albumin",
+      "Ferritin",
+      "Cholesterol",
+      "Triglycerides",
+      "Creatinine",
+      "Bilirubin",
+      "Magnesium",
+      "Phosphate",
+    ];
+    for (const name of names) insertFlagged(pid, { name, canonical: name });
+
+    expect(getNewlyFlaggedBiomarkers(pid, flaggedSince(14)).map((f) => f.name)
+      .sort()).toEqual([...names].sort());
+    expect(
+      collectAttentionModel(pid, td).filter((i) => i.domain === "biomarker-flag")
+        .length
+    ).toBe(names.length);
+  });
+});
+
 describe("card ⊂ page — the strict subset invariant (issue #524)", () => {
   it("a far-future appointment is on the page/model but EXCLUDED from the card subset and the household count", () => {
     const pid = createProfile("Attention Test E");
