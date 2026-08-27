@@ -32,6 +32,25 @@ export function currentStreak(today: string, dates: string[]): number {
   // Walk back from the anchor "today" by calendar-date string (DST-immune),
   // matching the day boundaries used everywhere else. If today has no activity,
   // allow yesterday to anchor the run; otherwise there is no current run.
+  //
+  // KNOWN, DELIBERATE, AND CONSERVATIVE (#3294). DST-immune is not skip-immune. An
+  // EASTWARD skip can delete a whole profile-local calendar date — a zone realigning
+  // across the date line (Pacific/Apia has no 2011-12-30, Pacific/Kiritimati no
+  // 1994-12-31), or a travel switch jumping more than 24h (Pago Pago → Kiritimati is
+  // 25). The deleted date can never be in `dates`, so this walk reads it as a gap and
+  // stops: the run is reported from the skip forward only. It UNDERCOUNTS, and only
+  // ever undercounts — a day nobody lived cannot become a day they trained. The sole
+  // caller is the coaching overtraining nudge, which reads the count as a magnitude,
+  // so short means the rest advice arrives late, never that it cries wolf.
+  //
+  // Not "fixed" here, because both available repairs can INVENT a day, which is the
+  // strictly worse error. Skipping an absent date because the CURRENT zone has no such
+  // date would erase a real rest day for anyone who spent it in a zone that did have
+  // one and moved afterwards — a stored activity `date` is a day attribution made at
+  // log time (#94), not re-projected on a zone change. And the travel switch history
+  // (lib/travel-timezone.ts) is a bounded, best-effort profile setting, not a complete
+  // record of where the profile was, so it cannot prove a day never happened either.
+  // Pinned, both directions, in lib/__tests__/streak.test.ts.
   let cur = today;
   if (!set.has(cur)) {
     cur = shiftDateStr(cur, -1);
