@@ -6,6 +6,7 @@ import { loginAs } from "./nav";
 import {
   capturePhotoFile,
   expectNoClippedContent,
+  expectPhoneTapTargets,
   followLink,
   primeCameraFallback,
   settledClick,
@@ -279,6 +280,17 @@ test("upload → grid → lightbox → compare → delete round trip (fallback c
     // Delete from the lightbox through the app confirmation → one photo remains.
     await page.getByTestId("progress-view-grid").click();
     await items.nth(0).click();
+    await page.setViewportSize({ width: 390, height: 844 });
+    await expectPhoneTapTargets(
+      page,
+      "photo lightbox actions",
+      [
+        page.getByTestId("photo-lightbox-compare"),
+        page.getByTestId("photo-lightbox-edit"),
+        page.getByTestId("photo-lightbox-delete"),
+      ],
+      { disjoint: true }
+    );
     await page.getByTestId("photo-lightbox-delete").click();
     await settledClick(
       page,

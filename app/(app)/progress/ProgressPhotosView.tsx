@@ -4,11 +4,12 @@ import { useMemo, useState } from "react";
 import PhotoCapture from "@/components/photo/PhotoCapture";
 import PhotoGallery from "@/components/photo/PhotoGallery";
 import PhotoTimeline from "@/components/photo/PhotoTimeline";
+import PhotoDeleteAction from "@/components/photo/PhotoLightboxActions";
+import { Action } from "@/components/photo/PhotoLightboxActions";
 import SegmentedControl from "@/components/SegmentedControl";
 import FilterPills from "@/components/FilterPills";
 import DateField from "@/components/DateField";
 import ModalShell from "@/components/ModalShell";
-import { useConfirm } from "@/components/ConfirmDialog";
 import {
   filterBySeries,
   timelineOrder,
@@ -42,7 +43,6 @@ export default function ProgressPhotosView({
   readOnly: boolean;
   autoCapture?: boolean;
 }) {
-  const confirm = useConfirm();
   const [pose, setPose] = useState<ProgressPose>("front");
   const [seriesFilter, setSeriesFilter] = useState<string | null>(null);
   const [view, setView] = useState<"grid" | "compare">("grid");
@@ -197,24 +197,17 @@ export default function ProgressPhotosView({
             if (key) setPose(key as ProgressPose);
           }}
           renderActions={(photo, { close }) => (
-            <div className="flex items-center gap-2">
-              {/* Compare is a READ affordance — available to every grant. */}
-              <button
-                type="button"
-                className="rounded-lg bg-white/10 px-3 py-1.5 text-sm font-medium text-white hover:bg-white/20"
+            <>
+              <Action
                 onClick={() => setView("compare")}
                 data-testid="photo-lightbox-compare"
               >
                 Compare series
-              </button>
-              {!readOnly ? (
-                <button
-                  type="button"
-                  className="rounded-lg bg-white/10 px-3 py-1.5 text-sm font-medium text-white hover:bg-white/20"
+              </Action>
+              {!readOnly && (
+                <Action
                   data-testid="photo-lightbox-edit"
                   onClick={() => {
-                    // Leave the lightbox first: a pose or date change re-sorts the
-                    // filtered set, so the open index would no longer mean this photo.
                     close();
                     openEdit(
                       photos.find((p) => p.id === photo.id) ??
@@ -223,32 +216,20 @@ export default function ProgressPhotosView({
                   }}
                 >
                   Edit details
-                </button>
-              ) : null}
-              {!readOnly ? (
-                <button
-                  type="button"
-                  className="rounded-lg bg-rose-600/80 px-3 py-1.5 text-sm font-medium text-white hover:bg-rose-600"
-                  data-testid="photo-lightbox-delete"
-                  onClick={async () => {
-                    const ok = await confirm({
-                      title: "Delete this photo?",
-                      message:
-                        "This progress photo will be permanently removed.",
-                      confirmLabel: "Delete photo",
-                      danger: true,
-                    });
-                    if (!ok) return;
-                    const fd = new FormData();
-                    fd.set("photo_id", String(photo.id));
-                    const res = await deleteProgressPhoto(fd);
-                    setNotice(res.ok ? "Photo deleted." : res.error);
+                </Action>
+              )}
+              {!readOnly && (
+                <PhotoDeleteAction
+                  testId="photo-lightbox-delete"
+                  close={close}
+                  remove={() => {
+                    const formData = new FormData();
+                    formData.set("photo_id", String(photo.id));
+                    return deleteProgressPhoto(formData);
                   }}
-                >
-                  Delete
-                </button>
-              ) : null}
-            </div>
+                />
+              )}
+            </>
           )}
         />
       ) : (

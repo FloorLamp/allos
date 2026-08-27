@@ -241,15 +241,15 @@ export async function uploadLesionPhoto(
   return formOk();
 }
 
-// Delete a lesion photo (row + on-disk file). The core is profile-scoped by id, so a
-// forged photo id from another profile is dropped.
+// Delete one profile-scoped lesion photo and its stored files.
 export async function deleteLesionPhoto(
   formData: FormData
 ): Promise<FormResult> {
   const { profile } = await requireWriteAccess();
   const id = Number(formData.get("photo_id"));
   if (!id) return formError("That photo is no longer available.");
-  deleteLesionPhotoCore(profile.id, id);
+  if (!deleteLesionPhotoCore(profile.id, id))
+    return formError("That photo is no longer available.");
   revalidateSkin();
   return formOk();
 }

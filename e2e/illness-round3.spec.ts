@@ -92,9 +92,14 @@ test.describe("Illness round 3 (#859)", () => {
       for (let remaining = await tiles.count(); remaining > 0; remaining--) {
         await tiles.first().click(); // first-ok: loop deletes EVERY photo; first-of-remaining is order-agnostic
         await expect(lightbox).toBeVisible();
+        await lightbox
+          .locator('[data-testid^="symptom-photo-delete-"]')
+          .click();
         await settledClick(
           page,
-          lightbox.locator('[data-testid^="symptom-photo-delete-"]')
+          page
+            .getByTestId("confirm-dialog")
+            .getByRole("button", { name: "Delete photo" })
         );
         await expect(tiles).toHaveCount(remaining - 1, { timeout: 15_000 });
       }

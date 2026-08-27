@@ -276,7 +276,7 @@ export default function PhotoGallery({
             </div>
             {renderActions ? (
               <div className="flex items-center gap-2">
-                {renderActions(open, { close: () => setLightbox(null) })}
+                {renderActions(open, { close: closeLightbox })}
               </div>
             ) : null}
           </div>

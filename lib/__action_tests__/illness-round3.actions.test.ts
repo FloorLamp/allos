@@ -164,6 +164,10 @@ describe("symptom photo attach / delete", () => {
       db.prepare(`SELECT 1 FROM symptom_photos WHERE id = ?`).get(row!.id)
     ).toBeUndefined();
     expect(fs.existsSync(row!.stored_path)).toBe(false);
+    expect(await deleteSymptomPhotoAction(fd({ photoId: row!.id }))).toEqual({
+      ok: false,
+      error: "That photo is no longer available.",
+    });
   });
 
   // The load-bearing #1844 pin: a photo of a child's rash is among the most sensitive
