@@ -29,7 +29,7 @@ export const LOGGED_EVENT_LIST =
  * under 44px.
  */
 export const LOGGED_EVENT_ROW =
-  "flex min-h-11 items-center gap-2 border-t border-(--divider) px-3 py-1.5 text-sm text-slate-800 first:border-t-0 dark:text-slate-100";
+  "flex min-h-11 items-center gap-2 border-t border-(--divider) px-3 py-1.5 text-sm font-medium text-slate-800 first:border-t-0 dark:text-slate-100";
 
 /**
  * The head line's right-hand fact, in tabular figures so a column of times lines up.
@@ -38,7 +38,7 @@ export const LOGGED_EVENT_ROW =
  * `sm`.
  */
 export const LOGGED_EVENT_TRAILING =
-  "shrink-0 text-xs tabular-nums text-slate-500 dark:text-slate-400";
+  "shrink-0 text-xs font-normal tabular-nums text-slate-500 dark:text-slate-400";
 
 export default function LoggedEventRow({
   icon,
@@ -55,11 +55,15 @@ export default function LoggedEventRow({
       className="flex min-w-0 flex-1 items-center gap-2"
     >
       {icon}
-      {/* Truncation is card-mode-only: it is what keeps the compact row to ONE line
-          on a phone, while a desktop table cell must be free to size its column. */}
-      <span className="min-w-0 flex-1 font-medium max-sm:truncate">
-        {children}
-      </span>
+      {/* NO WEIGHT AND NO TONE HERE, deliberately: the card-mode title cell already
+          carries them (`.table-cards td[data-card="title"]`) and two of the five
+          ledgers do NOT set a weight on their desktop column — spelling `font-medium`
+          in this span would have quietly bolded the practice and substance date
+          columns at every width, which "desktop tables are unchanged" forbids. The
+          food log's own row supplies its weight through LOGGED_EVENT_ROW.
+          Truncation is card-mode-only: it keeps the compact row to ONE line on a
+          phone, while a desktop table cell must be free to size its column. */}
+      <span className="min-w-0 flex-1 max-sm:truncate">{children}</span>
     </span>
   );
 }

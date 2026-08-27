@@ -354,6 +354,51 @@ test.describe("the compact logged-event row at 430px (#3671)", () => {
     ).toBeGreaterThan(0);
   });
 
+  // ── THE OTHER SIDE OF THE BOUNDARY ────────────────────────────────────────────
+  //
+  // "Desktop tables are unchanged" is the invariant a compact-row change is most
+  // likely to break WITHOUT any spec noticing, because every desktop spec here
+  // addresses text and the change is presentational. It nearly did: the shared
+  // primitive's identity span carried `font-medium`, and two of the five ledgers
+  // set no weight on their desktop title column, so those two would have rendered
+  // bold at every width with nothing red. So this asserts the two properties the
+  // phone work could leak upward — the disclosure and the weight — above `sm`.
+  test("above the boundary the ledger is still a table: no disclosure, no borrowed weight", async ({
+    page,
+  }) => {
+    seedDose();
+    await page.setViewportSize({ width: 1280, height: 900 });
+    await page.goto(`/nutrition/dose-history?from=${DAY}&to=${DAY}&kind=all`);
+
+    const row = page.getByTestId("dose-ledger-row").filter({ hasText: ITEM });
+    await expect(row).toHaveCount(1);
+    // Every cell is a column again: nothing is behind a toggle, and no toggle is
+    // rendered to be behind.
+    await expect(row.locator('[data-card="value"]:visible')).toHaveCount(2);
+    await expect(row.getByRole("button", { name: /details$/ })).toHaveCount(0);
+    await expect(row.locator("thead")).toHaveCount(0);
+    // The card-mode column labels stay card-mode-only.
+    await expect(row.locator(".card-cell-label:visible")).toHaveCount(0);
+
+    // THE WEIGHT IS THE COLUMN'S, not the primitive's. A substance day's Date
+    // column declares none, so it must still resolve to the document default.
+    await page.goto("/records/specialty/substance-use");
+    const title = page
+      .locator('table.logged-event-rows td[data-card="title"]')
+      .first(); // first-ok: every row of every substance card takes the same column classes
+    await expect(title).toBeVisible();
+    expect(await title.evaluate((el) => getComputedStyle(el).fontWeight)).toBe(
+      "400"
+    );
+    expect(
+      await title.evaluate(
+        (el) =>
+          getComputedStyle(el.querySelector("[data-logged-event-row] span")!)
+            .fontWeight
+      )
+    ).toBe("400");
+  });
+
   test("both intake surfaces open their ledger from the day header, in one shape", async ({
     page,
   }) => {
