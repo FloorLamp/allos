@@ -1093,7 +1093,7 @@ export async function reprocessOne(
     db.prepare(
       "UPDATE medical_documents SET extraction_status = 'skipped', extraction_error = ? WHERE id = ? AND profile_id = ?"
     ).run(
-      "AI not configured — set ANTHROPIC_API_KEY or AI_BASE_URL to reprocess.",
+      "AI not configured — configure the Heavy AI tier under Settings → Server → AI, then reprocess.",
       docId,
       profileId
     );
@@ -1343,7 +1343,7 @@ export function reprocessDocumentById(
     db.prepare(
       "UPDATE medical_documents SET extraction_status = 'skipped', extraction_error = ? WHERE id = ? AND profile_id = ?"
     ).run(
-      "AI not configured — set ANTHROPIC_API_KEY or AI_BASE_URL to reprocess.",
+      "AI not configured — configure the Heavy AI tier under Settings → Server → AI, then reprocess.",
       id,
       profileId
     );
@@ -1577,7 +1577,7 @@ async function extractPersistInputForPreview(
   // PersistInput (never persisted). A skip/fail has nothing to diff.
   if (!isTaskConfigured("extraction")) {
     return {
-      skip: "AI not configured — set ANTHROPIC_API_KEY or AI_BASE_URL to preview a re-extraction.",
+      skip: "AI not configured — configure the Heavy AI tier under Settings → Server → AI to preview a re-extraction.",
     };
   }
   // A preview re-extraction is a real Claude call, so it consumes the profile's
