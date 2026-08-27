@@ -283,8 +283,8 @@ export async function generateInsight(
       error: err instanceof Error ? err.message : "unknown error",
     });
     // The key is set and the call errored — an honest "temporarily unavailable"
-    // note (issue #411), not the misleading "set ANTHROPIC_API_KEY". The specific
-    // error stays in the AI log above, not in the surfaced coaching copy.
+    // note (issue #411), not the misleading no-key line. The specific error stays
+    // in the AI log above, not in the surfaced coaching copy.
     return {
       summary: fallbackInsight(context, "failed"),
       model: offlineModelTag("failed"),
