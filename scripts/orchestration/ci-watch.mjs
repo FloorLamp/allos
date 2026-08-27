@@ -8,8 +8,8 @@
 //     the registered check set must be identical across two consecutive polls
 //     with nothing queued or in progress before any verdict is issued.
 //   - A fresh push registers `gitleaks` first and alone for a window — a
-//     sampled "all green" then is a false green. Wait for every GitHub Actions
-//     suite to complete before evaluating settlement.
+//     sampled "all green" then is a false green. Wait for this head's CI
+//     workflow run to complete before evaluating settlement.
 //   - A conflict-dirty PR starts NO CI at all. "1-2 runs registered" for many
 //     polls means check `mergeable`, not wait longer — so mergeable_state is
 //     checked FIRST and dirty exits immediately.
@@ -150,12 +150,25 @@ for (;;) {
   }
 
   const s = snapshot(await checkRuns(pr.head.sha));
-  const { check_suites: suites } = await gh(
-    `repos/${repo}/commits/${pr.head.sha}/check-suites?per_page=100`
+  const { workflow_runs: ciRuns } = await gh(
+    `repos/${repo}/actions/workflows/ci.yml/runs?event=pull_request&head_sha=${pr.head.sha}&per_page=100`
   );
-  const actions = suites.filter(
-    (suite) => suite.app?.slug === "github-actions"
-  );
+  const ci = ciRuns
+    .filter(
+      (run) => run.event === "pull_request" && run.head_sha === pr.head.sha
+    )
+    .sort((a, b) => b.id - a.id)[0];
+  if (
+    ci?.status === "completed" &&
+    ci.conclusion !== "success" &&
+    s.failed.length === 0
+  ) {
+    s.failed.push({
+      conclusion: ci.conclusion,
+      name: "CI workflow",
+      html_url: ci.html_url,
+    });
+  }
   const stamp = new Date().toISOString().slice(11, 19);
   console.log(
     `[${stamp}] ${s.total} checks registered, ${s.pending.length} pending, ${s.failed.length} failed` +
@@ -163,8 +176,7 @@ for (;;) {
   );
 
   const settled =
-    actions.length > 0 &&
-    actions.every((suite) => suite.status === "completed") &&
+    ci?.status === "completed" &&
     s.pending.length === 0 &&
     s.total > 0 &&
     s.fingerprint === lastFingerprint;
@@ -209,7 +221,7 @@ for (;;) {
 
   if ((once && polls >= 2) || Date.now() >= deadline) {
     console.log(
-      "UNSETTLED — CI suite incomplete or registration/pending not yet stable. This is NOT a verdict; re-invoke."
+      "UNSETTLED — CI workflow incomplete or registration/pending not yet stable. This is NOT a verdict; re-invoke."
     );
     process.exit(2);
   }

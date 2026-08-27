@@ -19,8 +19,11 @@ fs.writeFileSync(
   curl,
   `#!/bin/sh
 case "$*" in
-  *check-runs*) body='{"total_count":1,"check_runs":[{"id":1,"name":"gitleaks","status":"completed","conclusion":"'"$RUN_CONCLUSION"'"}]}' ;;
-  *check-suites*) body='{"check_suites":[{"app":{"slug":"github-actions"},"status":"completed"},{"app":{"slug":"github-actions"},"status":"'"$ACTIONS_STATUS"'"}]}' ;;
+  *check-runs*) body='{"total_count":1,"check_runs":[{"id":1,"name":"gitleaks","status":"completed","conclusion":"success"}]}' ;;
+  *workflows/ci.yml/runs*)
+    if [ "$CI_STATUS" = absent ]; then body='{"workflow_runs":[]}'
+    else body='{"workflow_runs":[{"id":1,"event":"pull_request","head_sha":"0123456789abcdef","status":"completed","conclusion":"success"},{"id":2,"event":"pull_request","head_sha":"0123456789abcdef","status":"'"$CI_STATUS"'","conclusion":"'"$CI_CONCLUSION"'","html_url":"https://example.test/ci"}]}'
+    fi ;;
   *) body='{"mergeable_state":"clean","head":{"sha":"0123456789abcdef"}}' ;;
 esac
 printf '%s\\n200' "$body"
@@ -31,22 +34,26 @@ fs.chmodSync(curl, 0o755);
 afterAll(() => fs.rmSync(bin, { recursive: true, force: true }));
 
 it.each([
+  ["absent", "success", 2, "UNSETTLED"],
   ["queued", "success", 2, "UNSETTLED"],
   ["in_progress", "success", 2, "UNSETTLED"],
   ["completed", "success", 0, "GREEN"],
   ["completed", "failure", 1, "RED"],
+  ["completed", "cancelled", 1, "RED"],
+  ["completed", "timed_out", 1, "RED"],
+  ["completed", "startup_failure", 1, "RED"],
 ])(
-  "treats an Actions suite that is %s with a %s check correctly",
+  "treats a %s CI run with a %s conclusion correctly",
   (status, conclusion, code, verdict) => {
     const result = spawnSync(process.execPath, [SCRIPT, "123", "--once"], {
       encoding: "utf8",
       env: {
         ...process.env,
-        ACTIONS_STATUS: status,
+        CI_CONCLUSION: conclusion,
+        CI_STATUS: status,
         GH_TOKEN: "test",
         NODE_OPTIONS: `--import=${fastTimers}`,
         PATH: `${bin}:${process.env.PATH}`,
-        RUN_CONCLUSION: conclusion,
       },
     });
 
