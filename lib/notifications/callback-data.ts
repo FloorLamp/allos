@@ -80,9 +80,7 @@ export function parseAllCallback(data: unknown): AllCallback | null {
 // (`notify_offers`, ./offer-store.ts) and the token carries the row id, constant size.
 //
 // NO DATE CROSSES THE WIRE either: the offer ROW carries the day, so a token cannot
-// backfill. How old a row may be is each tenant's own rule — `usual:` expires at the
-// rollover, `stacktake:` rides the dose-log window (./offer-store.ts, ./intake.ts).
-//
+// backfill; how old a row may be is each tenant's own rule (./offer-store.ts).
 // AND THE ID IS THE WHOLE TOKEN, which is why `notify_offers.id` is AUTOINCREMENT
 // (20260827-notify-offers-autoincrement): a reissued row id silently re-points a button
 // still sitting in a chat at a bundle it never named.
