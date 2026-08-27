@@ -1,8 +1,14 @@
 "use client";
 
-import { useState } from "react";
+import { useRef, useState } from "react";
 import Link from "next/link";
-import { IconChevronLeft, IconChevronRight } from "@tabler/icons-react";
+import {
+  IconCalendar,
+  IconChevronLeft,
+  IconChevronRight,
+} from "@tabler/icons-react";
+import AnchoredPanel from "@/components/overlay/AnchoredPanel";
+import { useCompactViewport } from "@/components/useCompactViewport";
 import {
   dateStrInTz,
   isoDate,
@@ -12,6 +18,35 @@ import {
 } from "@/lib/date";
 import { useTimezone } from "@/components/TimezoneProvider";
 import { useWeekStart } from "@/components/WeekStartProvider";
+
+// THE SIDEBAR'S EVENT CALENDAR — a month grid whose marked days are a door into
+// the Timeline (#3079's usage review), one row at rest (#3154).
+//
+// IT IS NOT A TRAINING CALENDAR AND HAS NOT BEEN FOR A LONG TIME. It was named
+// `TrainingLogCalendar` with an `activeDates` prop, and the app layout fed it
+// `getTimelineDates` — the union of EVERY event store: body metrics, doses,
+// symptoms, practices, immunizations, encounters, milestones, protocols, with
+// training as one optional member. The name outlived the data, and the
+// `trainingRelevant` gate that came with it took the calendar away from exactly
+// the profiles whose events it marks best — a child's immunizations, milestones
+// and symptoms. Both are gone; the union itself (lib/timeline.ts) is untouched.
+//
+// TWO HOSTS, ONE GRID, the fork components/overlay/AnchoredPanel.tsx already
+// makes for every other anchored panel in the app:
+//
+//   * FROM `md` UP — one ~40px "Calendar" row that opens the grid in an anchored
+//     popover, over the same primitive the sidebar's "+ Log" panel uses. The
+//     resting cost was ~230px of permanent single-column chrome, which is what
+//     pushed Data, Settings and the whole footer below the fold; the popover is
+//     portaled and `fixed`, so opening it shifts neither the nav nor the footer,
+//     and the grid is no longer confined to the column's width.
+//   * BELOW `md` — the phone drawer's full-bleed band, unchanged. The drawer
+//     scrolls, so it never had the fold problem the row solves, and its 44px
+//     columns are a tap-floor claim (#3377/#3452/#3536) that a popover would
+//     drop on the floor.
+//
+// No badge, no count, no dot on the row: the dock's never-campaigns doctrine
+// (#2651) applies to permanent chrome wherever it sits.
 
 // Single-letter weekday labels indexed by 0=Sun … 6=Sat.
 const DOW = ["S", "M", "T", "W", "T", "F", "S"];
@@ -45,16 +80,25 @@ const ARROW_HIT =
 // width for it (#3536). The desktop sidebar keeps the bare 28px circles.
 const DAY_HIT =
   "flex h-11 w-full items-center justify-center md:mx-auto md:h-7 md:w-7";
+// `w-72`, told to the positioner so the panel's first paint is already clamped
+// inside the viewport rather than measured into place afterwards.
+const PANEL_WIDTH_PX = 288;
+
 // The circle a reader sees. Unchanged at every width.
 const DAY_GLYPH =
   "flex h-7 w-7 items-center justify-center rounded-full text-xs";
 
-export default function TrainingLogCalendar({
-  activeDates,
+function MonthGrid({
+  eventDates,
+  hostClassName,
 }: {
-  activeDates: string[];
+  eventDates: string[];
+  // The band the grid sits in — the ONE thing its two hosts do not share. The
+  // phone drawer's is a full-bleed break-out (see the note above it below); the
+  // desktop popover already has the panel's own border and padding around it.
+  hostClassName: string;
 }) {
-  const active = new Set(activeDates);
+  const active = new Set(eventDates);
   // Match the rest of the app's notion of "today" (the configured app timezone, as
   // used by lib/db `today()`), so the circled day lines up with logged-today entries.
   const todayStr = dateStrInTz(useTimezone());
@@ -64,21 +108,21 @@ export default function TrainingLogCalendar({
   const weekStart = useWeekStart();
   const dowOrder = weekdayOrder(weekStart);
 
-  // Navigation is bounded: back to January of the earliest year with logged
-  // activity, and forward to the current month (or the latest logged activity,
-  // if one is somehow dated ahead of today). Month indices are y*12 + m.
+  // Navigation is bounded: back to January of the earliest year holding an
+  // event, and forward to the current month (or the latest event, if one is
+  // somehow dated ahead of today). Month indices are y*12 + m.
   let minAct = Infinity;
   let maxAct = -Infinity;
-  for (const d of activeDates) {
+  for (const d of eventDates) {
     const [y, m] = d.split("-").map(Number);
     const idx = y * 12 + (m - 1);
     if (idx < minAct) minAct = idx;
     if (idx > maxAct) maxAct = idx;
   }
   const nowIdx = ty * 12 + (tm - 1);
-  // Earliest navigable year: January of the earliest activity year, but never
-  // later than the current year — today must always be reachable, even if the
-  // only logged activity is (somehow) dated in the future.
+  // Earliest navigable year: January of the earliest event year, but never later
+  // than the current year — today must always be reachable, even if the only
+  // event is (somehow) dated in the future.
   const minYear =
     minAct === Infinity ? ty : Math.min(ty, Math.floor(minAct / 12));
   const minIdx = minYear * 12;
@@ -107,29 +151,7 @@ export default function TrainingLogCalendar({
   }
 
   return (
-    // FULL-BLEED IN THE PHONE DRAWER, THE BORDERED CARD ON DESKTOP (#3377).
-    //
-    // This grid is a PHONE surface: components/MobileNav.tsx renders the same
-    // <SidebarContent> inside the nav drawer, where its 28px day links sat ~35%
-    // under the old 40px tap floor (#644). #3536 raised the drawer to a 320px
-    // preferred width that grows with any left safe-area inset, so this full-bleed
-    // band can give all seven columns at least 44px. Below `md` the card gives up
-    // the drawer's right gutter and only the part of its left gutter outside the
-    // safe-area inset. Its left edge therefore lands exactly on
-    // `env(safe-area-inset-left)`, never behind it, while the drawer width pays for
-    // the whole week. The side borders and the corner radius go with it, so it
-    // reads as a band rather than a card jammed against the drawer's edges.
-    //
-    // `min-w-(--week-grid-min)` is that bill, CLAIMED rather than assumed (#3452).
-    // It is slack at every width the drawer actually offers — which is the point:
-    // if a host ever gets narrower than a week, the columns overflow visibly
-    // instead of quietly redistributing themselves back under the tap floor, which
-    // is exactly the failure #3377 found and no DOM assertion would have caught.
-    //
-    // From `md` up every one of those is put back — the minimum included, since the
-    // desktop sidebar is narrower than a touch week and renders the bare 28px
-    // circles instead — and the desktop sidebar is byte-identical to before.
-    <div className="-mr-4 ml-[calc(env(safe-area-inset-left)_-_max(1rem,env(safe-area-inset-left)))] min-w-(--week-grid-min) border-y border-black/10 py-3 md:mx-0 md:min-w-0 md:rounded-lg md:border-x md:px-3 dark:border-white/10">
+    <div className={hostClassName}>
       <div className="mb-2 flex items-center justify-between gap-1">
         <button
           type="button"
@@ -198,9 +220,9 @@ export default function TrainingLogCalendar({
         {cells.map((cell, i) => {
           const ds = isoDate(cell.y, cell.m, cell.d);
           const isToday = ds === todayStr;
-          const hasActivity = active.has(ds);
+          const marked = active.has(ds);
 
-          if (hasActivity) {
+          if (marked) {
             return (
               <Link
                 key={i}
@@ -233,5 +255,62 @@ export default function TrainingLogCalendar({
         })}
       </div>
     </div>
+  );
+}
+
+// The phone drawer's band, CLAIMED rather than assumed (#3377/#3452). Its
+// `min-w-(--week-grid-min)` is what seven 44px columns cost, stated once in
+// app/globals.css and read here and by the drawer's own width class (#3536) —
+// slack at every width the drawer offers, which is the point: a host narrower
+// than a week overflows visibly instead of quietly redistributing the columns
+// back under the tap floor, the failure #3377 found and no DOM assertion would
+// have caught. The band gives up the drawer's right gutter and the part of its
+// left gutter outside the safe-area inset, so its left edge lands exactly on
+// `env(safe-area-inset-left)` and never behind it; the side borders and corner
+// radius go with it, so it reads as a band rather than a card jammed against the
+// drawer's edges.
+const PHONE_BAND =
+  "-mr-4 ml-[calc(env(safe-area-inset-left)_-_max(1rem,env(safe-area-inset-left)))] min-w-(--week-grid-min) border-y border-black/10 py-3 dark:border-white/10";
+
+export default function EventCalendar({
+  eventDates,
+}: {
+  eventDates: string[];
+}) {
+  const compact = useCompactViewport();
+  const [open, setOpen] = useState(false);
+  const anchorRef = useRef<HTMLButtonElement>(null);
+
+  if (compact)
+    return <MonthGrid eventDates={eventDates} hostClassName={PHONE_BAND} />;
+
+  return (
+    <>
+      <button
+        ref={anchorRef}
+        type="button"
+        data-testid="sidebar-calendar"
+        aria-haspopup="dialog"
+        aria-expanded={open}
+        aria-controls="sidebar-calendar-panel"
+        onClick={() => setOpen((v) => !v)}
+        className="flex items-center gap-2 rounded-lg px-2 py-2 text-sm font-medium text-slate-600 transition hover:bg-(--ghost-hover) dark:text-slate-300"
+      >
+        <IconCalendar className="h-4 w-4 shrink-0" stroke={1.75} />
+        Calendar
+      </button>
+      <AnchoredPanel
+        open={open}
+        onClose={() => setOpen(false)}
+        anchorRef={anchorRef}
+        title="Calendar"
+        panelId="sidebar-calendar-panel"
+        testId="sidebar-calendar-panel"
+        fallbackWidth={PANEL_WIDTH_PX}
+        panelClassName="w-72"
+      >
+        {() => <MonthGrid eventDates={eventDates} hostClassName="p-3" />}
+      </AnchoredPanel>
+    </>
   );
 }

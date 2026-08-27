@@ -76,11 +76,11 @@ vi.mock("next/navigation", async () => {
 // needs a context this question does not turn on. The control, its refs, its effect,
 // its guard and the failure relay are the real ones.
 vi.mock("../Nav", () => ({ default: () => <nav data-testid="nav" /> }));
-vi.mock("../LogActivityButton", () => ({
-  default: () => <button type="button">Log activity</button>,
+vi.mock("../SidebarLogButton", () => ({
+  default: () => <button type="button">+ Log</button>,
 }));
 vi.mock("../FrequentPages", () => ({ default: () => null }));
-vi.mock("../TrainingLogCalendar", () => ({ default: () => null }));
+vi.mock("../EventCalendar", () => ({ default: () => null }));
 vi.mock("../ThemeToggle", () => ({ default: () => null }));
 vi.mock("../WhatsNewLink", () => ({ default: () => null }));
 vi.mock("../ProfileIdentityBar", () => ({ default: () => null }));
@@ -126,8 +126,7 @@ function mountSidebar(onError: (err: unknown) => void = () => {}) {
   return render(
     <Boundary onError={onError}>
       <SidebarContent
-        activityDates={[]}
-        version={{ sha: null, commitMessage: null, commitUrl: null }}
+        eventDates={[]}
         active={ACTIVE}
         username="sam"
         profiles={[ACTIVE]}

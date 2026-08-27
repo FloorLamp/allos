@@ -18,7 +18,6 @@ import OfflineSnapshotRefresher from "@/components/OfflineSnapshotRefresher";
 import ShellChrome from "@/components/ShellChrome";
 import OnboardingReturnBanner from "@/components/OnboardingReturnBanner";
 import TravelTimezoneBanner from "@/components/TravelTimezoneBanner";
-import { getAppVersion } from "@/lib/version";
 import {
   hasUnseenNotes,
   loadReleaseNotes,
@@ -177,7 +176,6 @@ export default async function AppLayout({
       : null;
   const liveStartEpochMs =
     presence?.state === "active" ? nowMs - presence.sinceMin * 60_000 : null;
-  const version = getAppVersion();
   // Unopened bundled release notes for this LOGIN (issue #1421) — the ONE pure
   // comparison (hasUnseenNotes over the newest bundled note date vs the login's
   // stored seen marker), resolved once here and threaded into the shared sidebar
@@ -218,17 +216,20 @@ export default async function AppLayout({
   // Which domain this profile actually logs in, as DAYS-LOGGED per sheet segment
   // over the trailing quarter (#2709). It decides the log sheet's opening segment
   // on the DASHBOARD only — every other route either promotes its own domain or
-  // keeps the historical activity fallback — but the sheet is mounted by this
+  // keeps the historical activity fallback — but the menu is mounted by this
   // shell on every route, so the gather is here rather than on the page. ONE
   // hoisted statement; the decision, the window and the no-history fallback all
   // live in lib/log-sheet.ts, never in a component.
   //
   // Its COST is unconditional, and that was weighed rather than overlooked
-  // (#2720): it runs on every route and every viewport, including desktop, where
-  // the sheet does not exist and nothing reads the result. It stays unconditional
-  // because the layout cannot see the pathname — that is exactly why `pathname
-  // === "/"` is decided client-side in the sheet — and because a lazy fetch would
-  // cost more than it saves. EXPLAIN QUERY PLAN on the migrated schema: all eight
+  // (#2720). The reason used to be that it stays unconditional DESPITE desktop,
+  // "where the sheet does not exist and nothing reads the result" — #3154 made
+  // that sentence false: the desktop sidebar's "+ Log" panel renders the same
+  // menu and opens on the same segment. It is now read at both widths. It stays
+  // unconditional for the other half of the original reason — the layout cannot
+  // see the pathname, which is exactly why `pathname === "/"` is decided
+  // client-side in the menu — and because a lazy fetch would cost more than it
+  // saves. EXPLAIN QUERY PLAN on the migrated schema: all eight
   // arms are index SEARCHes, six of them seeking straight to (profile, date) and
   // four covering; `metric_samples` and the `intake_item_logs` join seek on the
   // profile alone and filter the date, so those two read a profile's own history
@@ -236,10 +237,9 @@ export default async function AppLayout({
   // Against one compiled statement on a synchronous local SQLite that is cheaper
   // than the round trip deferring it would add, on the hottest path there is. So
   // the trigger for revisiting this is an arm losing its index — or those two
-  // gaining a date-leading one, if a heavy profile ever makes it worth measuring —
-  // never the desktop waste.
+  // gaining a date-leading one, if a heavy profile ever makes it worth measuring.
   const logHabitDays = getSegmentLogDays(profile.id, now);
-  // Whether the log sheet offers a SUBSTANCE row (#3327), which is two facts and not
+  // Whether the log menu offers a SUBSTANCE row (#3327), which is two facts and not
   // a nav bit — no nav entry reads it, so it deliberately does not join `relevance`.
   //
   //   • the #1174 life-stage gate the whole substance surface carries (`isMinor`, the
@@ -330,8 +330,7 @@ export default async function AppLayout({
                         <div className="flex min-h-screen">
                           <aside className="sticky top-0 hidden h-screen w-60 shrink-0 flex-col gap-4 overflow-y-auto border-r border-black/10 bg-(--nav) p-4 md:flex print:hidden dark:border-white/5">
                             <SidebarContent
-                              activityDates={timelineDates}
-                              version={version}
+                              eventDates={timelineDates}
                               active={session.profile}
                               username={login.username}
                               // The scope's DISAMBIGUATED set (#534) — two accessible
@@ -350,6 +349,8 @@ export default async function AppLayout({
                               reviewCount={reviewCount}
                               readOnly={readOnly}
                               whatsNewUnseen={whatsNewUnseen}
+                              substanceRelevant={substanceRelevant}
+                              logHabitDays={logHabitDays}
                             />
                           </aside>
                           {/* clip (not hidden) so it doesn't force overflow-y to auto, which
@@ -366,8 +367,7 @@ export default async function AppLayout({
                     one surface, not two. */}
                             <ShellChrome>
                               <MobileNav
-                                activityDates={timelineDates}
-                                version={version}
+                                eventDates={timelineDates}
                                 active={session.profile}
                                 username={login.username}
                                 profiles={scope.profiles}

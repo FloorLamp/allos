@@ -20,14 +20,13 @@ import {
   LOGOUT_BUTTON_ATTR,
   LOGOUT_PENDING_ATTR,
 } from "@/lib/logout-tap";
-import LogActivityButton from "@/components/LogActivityButton";
+import SidebarLogButton from "@/components/SidebarLogButton";
 import FrequentPages from "@/components/FrequentPages";
-import TrainingLogCalendar from "@/components/TrainingLogCalendar";
+import EventCalendar from "@/components/EventCalendar";
 import ThemeToggle from "@/components/ThemeToggle";
-import InfoTooltipIcon from "@/components/InfoTooltipIcon";
 import WhatsNewLink from "@/components/WhatsNewLink";
 import type { SessionProfile } from "@/lib/auth";
-import type { AppVersion } from "@/lib/version";
+import type { SegmentLogDays } from "@/lib/log-sheet";
 import { DEFAULT_NAV_RELEVANCE, type NavRelevance } from "@/lib/nav-relevance";
 import {
   clearProfileToastsForLogout,
@@ -80,10 +79,11 @@ function raiseLogoutFailure(err: unknown): void {
 // viewport — the two responsive surfaces can no longer drift (which is how the
 // mobile drawer silently lacked the profile switcher/logout).
 //
-// The version hash is rendered from a passed-in value rather than the AppVersion
-// server component: this is a client component (the drawer that hosts it is), so
-// it can't read git itself; the layout resolves the hash once and hands it to
-// both surfaces.
+// The footer carries no commit hash (#3154). It was the one sidebar element a
+// non-technical person never reads, and "what am I running?" already has an
+// answer where "what changed?" is asked — the What's new page renders
+// <AppVersion /> in its own subtitle, as do Settings and Settings → Server. So
+// this is a deletion and not a move: nothing had to be built to receive it.
 //
 // Drawer-specific behavior is opt-in via props, so the desktop sidebar renders
 // the same content without it:
@@ -102,8 +102,7 @@ function raiseLogoutFailure(err: unknown): void {
 // control that ends the login — because login identity belongs with logout, not
 // in a profile switcher.
 export default function SidebarContent({
-  activityDates,
-  version,
+  eventDates,
   active,
   username,
   profiles,
@@ -118,13 +117,16 @@ export default function SidebarContent({
   hasIntakeItems = false,
   relevance = DEFAULT_NAV_RELEVANCE,
   reviewCount = 0,
+  substanceRelevant = false,
+  logHabitDays = null,
   readOnly = false,
   whatsNewUnseen = false,
   onNavigate,
   onClose,
 }: {
-  activityDates: string[];
-  version: AppVersion;
+  // Every day this profile has ANY event on (`getTimelineDates`, lib/timeline.ts)
+  // — the union across every store, not one domain's. Marks the calendar's days.
+  eventDates: string[];
   active: SessionProfile;
   // The signed-in login's username — shown as "Signed in as <username>" in the
   // profile-menu overlay (issue #1013), answering "which login am I?" without
@@ -166,6 +168,11 @@ export default function SidebarContent({
   // Count of integrations currently needing attention (failed syncs) — shown as
   // a badge on the profile menu, linking to Data → Review. Resolved server-side.
   reviewCount?: number;
+  // The two inputs the log menu needs beyond `relevance` (#3327, #2709), resolved
+  // once by the shell and threaded through this ONE shared component so the
+  // desktop panel and the phone sheet offer the same rows in the same order.
+  substanceRelevant?: boolean;
+  logHabitDays?: SegmentLogDays | null;
   // The active profile is shared with this login as READ-ONLY (issue #33). On a
   // multi-profile instance the hint rides the identity bar; on a single-profile
   // one (where there is no bar) it rides the login footer beside "Signed in as",
@@ -470,18 +477,27 @@ export default function SidebarContent({
           ⌘K
         </kbd>
       </button>
-      <LogActivityButton onClick={onNavigate} />
+      {/* One log affordance for every profile (#3154): the anchored panel above
+      `md`, the phone's existing log sheet below it. No relevance gate — the
+      per-entry ones inside the menu decide the content (#2651). */}
+      <SidebarLogButton
+        onNavigate={onNavigate}
+        cycleRelevant={relevance.cycle}
+        substanceRelevant={substanceRelevant}
+        logHabitDays={logHabitDays}
+      />
       {/* Most-visited shortcuts (issue #1416, section E3). Client-side visit
-      counts in localStorage — no schema change, no server round-trip — and it
-      lives in the SHARED content, so the desktop sidebar and the mobile drawer
-      offer the same jumps. Renders nothing until a page clears the "this is a
-      habit" floor, so a fresh login sees no empty section. */}
+      counts in localStorage — no schema change, no server round-trip. DRAWER-ONLY
+      since #3154: on desktop the nav these duplicate is one glance below, and
+      after #3079's grouping the list is shorter still. FrequentPages itself makes
+      that call, because it also owns the visit TALLY and that must keep running on
+      every route at every width. Renders nothing until a page clears the "this is
+      a habit" floor, so a fresh login sees no empty section. */}
       <FrequentPages
         onNavigate={onNavigate}
         adultContentAvailable={adultContentAvailable}
         trainingRelevant={trainingRelevant}
       />
-      {trainingRelevant && <TrainingLogCalendar activeDates={activityDates} />}
       <Nav
         adultContentAvailable={adultContentAvailable}
         trainingRelevant={trainingRelevant}
@@ -492,8 +508,11 @@ export default function SidebarContent({
         relevance={relevance}
         reviewCount={reviewCount}
       />
-      {/* The LOGIN block above one bordered box holding the theme toggle and
-      version hash as equal, borderless halves (a single segmented control).
+      {/* One row at rest, below the nav it used to push off the fold — the month
+      grid opens in an anchored popover above `md` and stays the drawer's inline
+      band below it. Ungated: the dates are every store's, not training's. */}
+      <EventCalendar eventDates={eventDates} />
+      {/* The LOGIN block above the bordered box holding the theme toggle.
       "Signed in as <username>" (#1013) sits with logout because it names the
       thing logout ends — it was never a fact about the acting PROFILE, which is
       why it left the switcher in #1801. */}
@@ -589,42 +608,20 @@ export default function SidebarContent({
             Log out
           </button>
         </div>
-        <div className="grid grid-cols-2 rounded-lg border border-(--border) bg-surface p-1">
+        {/* The theme toggle keeps the box; the commit hash that shared it as the
+        second half is gone (#3154). */}
+        <div className="flex rounded-lg border border-(--border) bg-surface p-1">
           <ThemeToggle bare />
-          {/* The wrapper (not the link) fills the cell, so the clickable area
-          stays as small as the hash itself. */}
-          <div className="flex items-center justify-end px-3">
-            {/* commitUrl is non-null only when sha is (see lib/version.ts), so
-            the link branch always has a hash; the span mirrors AppVersion's
-            "cell" variant, falling back to "unknown" when the sha is missing. */}
-            <span className="inline-flex items-center">
-              {version.commitUrl ? (
-                <a
-                  href={version.commitUrl}
-                  target="_blank"
-                  rel="noreferrer"
-                  className="font-mono text-xs text-slate-500 underline-offset-2 transition hover:text-slate-700 hover:underline dark:text-slate-400 dark:hover:text-slate-200"
-                >
-                  {version.sha}
-                </a>
-              ) : (
-                <span className="font-mono text-xs text-slate-500 dark:text-slate-400">
-                  {version.sha ?? "unknown"}
-                </span>
-              )}
-              {version.commitMessage ? (
-                <InfoTooltipIcon label={version.commitMessage} />
-              ) : null}
-            </span>
-          </div>
         </div>
         {/* Persistent footer link to the single Disclaimer surface (issue #1049).
         Lives in the shared content so it renders on BOTH the desktop sidebar and
         the mobile drawer (the responsive-surfaces rule) — the one always-reachable
         pointer to the app's medical-disclaimer posture, replacing the ~40 inline
         banners that used to hand-write it. */}
-        {/* "What's new" sits with the version hash and the Disclaimer link (issue
-        #1421): the bundled release notes answer "what did that pull bring?", and a
+        {/* "What's new" sits beside the Disclaimer link (issue #1421): the
+        bundled release notes answer "what did that pull bring?" — and since #3154
+        they also carry the running commit hash, which is where the footer's own
+        copy went. A
         subtle dot appears until this login has opened them. Calm by design — a
         display affordance only, never a notification or a finding. */}
         <div className="flex flex-wrap items-center gap-x-3 gap-y-1 px-2 text-xs text-slate-500 dark:text-slate-400">
