@@ -8,7 +8,8 @@
 //     the registered check set must be identical across two consecutive polls
 //     with nothing queued or in progress before any verdict is issued.
 //   - A fresh push registers `gitleaks` first and alone for a window — a
-//     sampled "all green" then is a false green. Same fix: settlement first.
+//     sampled "all green" then is a false green. Wait for every GitHub Actions
+//     suite to complete before evaluating settlement.
 //   - A conflict-dirty PR starts NO CI at all. "1-2 runs registered" for many
 //     polls means check `mergeable`, not wait longer — so mergeable_state is
 //     checked FIRST and dirty exits immediately.
@@ -149,6 +150,12 @@ for (;;) {
   }
 
   const s = snapshot(await checkRuns(pr.head.sha));
+  const { check_suites: suites } = await gh(
+    `repos/${repo}/commits/${pr.head.sha}/check-suites?per_page=100`
+  );
+  const actions = suites.filter(
+    (suite) => suite.app?.slug === "github-actions"
+  );
   const stamp = new Date().toISOString().slice(11, 19);
   console.log(
     `[${stamp}] ${s.total} checks registered, ${s.pending.length} pending, ${s.failed.length} failed` +
@@ -156,7 +163,11 @@ for (;;) {
   );
 
   const settled =
-    s.pending.length === 0 && s.total > 0 && s.fingerprint === lastFingerprint;
+    actions.length > 0 &&
+    actions.every((suite) => suite.status === "completed") &&
+    s.pending.length === 0 &&
+    s.total > 0 &&
+    s.fingerprint === lastFingerprint;
   lastFingerprint = s.fingerprint;
 
   if (settled) {
@@ -198,7 +209,7 @@ for (;;) {
 
   if ((once && polls >= 2) || Date.now() >= deadline) {
     console.log(
-      "UNSETTLED — registration/pending not yet stable. This is NOT a verdict; re-invoke."
+      "UNSETTLED — CI suite incomplete or registration/pending not yet stable. This is NOT a verdict; re-invoke."
     );
     process.exit(2);
   }
