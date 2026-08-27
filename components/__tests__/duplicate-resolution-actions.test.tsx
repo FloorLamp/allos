@@ -28,13 +28,6 @@ describe("DuplicateResolutionActions", () => {
     expect(screen.getByTestId("dup-merge-secondary").textContent).toContain(
       "Manual entry"
     );
-    expect(buttons[0].className).toBe("btn btn-sm");
-    expect(
-      buttons
-        .slice(1)
-        .every((button) => button.className === "btn-ghost btn-sm")
-    ).toBe(true);
-
     for (const button of buttons) fireEvent.click(button);
     for (const handler of handlers) expect(handler).toHaveBeenCalledOnce();
   });

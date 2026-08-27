@@ -26,6 +26,7 @@ export interface ButtonProps {
   "aria-haspopup"?: AriaAttributes["aria-haspopup"];
   "aria-expanded"?: boolean;
   "aria-controls"?: string;
+  role?: "menuitem";
   "data-testid"?: string;
 }
 
@@ -47,6 +48,7 @@ const Button = forwardRef<HTMLButtonElement, ButtonProps>(function Button(
     "aria-haspopup": ariaHasPopup,
     "aria-expanded": ariaExpanded,
     "aria-controls": ariaControls,
+    role,
     "data-testid": testId,
   },
   ref
@@ -67,6 +69,7 @@ const Button = forwardRef<HTMLButtonElement, ButtonProps>(function Button(
       aria-haspopup={ariaHasPopup}
       aria-expanded={ariaExpanded}
       aria-controls={ariaControls}
+      role={role}
       aria-busy={busy || undefined}
       data-testid={testId}
       data-button-control=""

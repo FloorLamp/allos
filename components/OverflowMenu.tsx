@@ -5,7 +5,7 @@ import { IconDots } from "@tabler/icons-react";
 import { useToast } from "@/components/Toast";
 import { useConfirmOpen } from "@/components/ConfirmDialog";
 import { useLatestRef } from "@/components/useLatestRef";
-import SubmitButton from "@/components/SubmitButton";
+import Button from "@/components/Button";
 import AnchoredPanel from "@/components/overlay/AnchoredPanel";
 import { overflowMenuLabel } from "@/lib/overflow-menu-label";
 
@@ -50,13 +50,9 @@ export function OverflowMenuSubmitItem({
   pendingLabel,
 }: MenuSubmitProps) {
   return (
-    <SubmitButton
-      role="menuitem"
-      className={`${MENU_ITEM} flex items-center gap-1.5`}
-      pendingLabel={pendingLabel}
-    >
+    <Button type="submit" role="menuitem" pendingLabel={pendingLabel}>
       {children}
-    </SubmitButton>
+    </Button>
   );
 }
 
