@@ -183,7 +183,8 @@ function buildMedicationListData(
           timesOfDay: own.map((d) => d.time_of_day),
           startedOn: medicationStartDate(
             coursesByItem.get(item.id) ?? [],
-            item.created_at
+            item.created_at,
+            ctx.timeZone
           ),
         };
       })

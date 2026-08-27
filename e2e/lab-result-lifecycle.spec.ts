@@ -1,7 +1,9 @@
 import { test, expect } from "./fixtures";
 import Database from "better-sqlite3";
 import { hydratedClick, settledFill, settledSelect } from "./helpers";
-import { workerDbPath } from "./worker-env";
+import { workerDbPath, frozenNow } from "./worker-env";
+import { utcSqlString, zonedWallTimeToUtc } from "@/lib/date";
+import { pinnedTimezone } from "./pinned-timezone";
 
 // The lab RESULT LIFECYCLE on the surfaces a user actually reads (#1404).
 //
@@ -21,6 +23,7 @@ import { workerDbPath } from "./worker-env";
 
 const DB_PATH = workerDbPath();
 const DRAW_DATE = "2026-01-12";
+const SUPERSEDED_DAY = "2026-01-14";
 const CORRECTED = "E2E Lifecycle Potassium";
 const FASTING = "E2E Lifecycle Fasting Glucose";
 const CLINICAL_RESULTS = "/results/clinical-results";
@@ -40,6 +43,19 @@ function withDb<T>(fn: (handle: Database.Database, pid: number) => T): T {
   } finally {
     handle.close();
   }
+}
+
+// A stored instant whose LOCAL wall time is the one this spec names (#1417).
+//
+// The revision line prints `superseded_at` as a profile-LOCAL calendar day (#3836) — it
+// used to print the UTC truncation. The seed pins a per-run instance timezone at offset
+// 13 - utcHour, so a naive "2026-01-14 09:00:00" reads as 2026-01-13 on a run starting
+// at 23:00 UTC. No assertion below names that day today, which is the only reason it has
+// never gone red; the fixture states the day it means anyway, so the assertion that
+// eventually wants it is safe to write.
+function localStamp(day: string, hhmm: string): string {
+  const zone = pinnedTimezone(frozenNow().toISOString()).zone;
+  return utcSqlString(zonedWallTimeToUtc(zone, day, hhmm)!);
 }
 
 function cleanup() {
@@ -82,9 +98,9 @@ function seedCorrectedReading() {
            (record_id, date, value, value_num, unit, result_status,
             superseded_by_status, source, superseded_at)
          VALUES (?, ?, '5.2', 5.2, 'mmol/L', 'final', 'corrected', 'e2e-lab-feed',
-                 '2026-01-14 09:00:00')`
+                 ?)`
       )
-      .run(id, DRAW_DATE);
+      .run(id, DRAW_DATE, localStamp(SUPERSEDED_DAY, "09:00"));
   });
 }
 

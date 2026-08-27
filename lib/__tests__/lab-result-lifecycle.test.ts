@@ -158,6 +158,9 @@ describe("supersedesReading — the correction decision", () => {
   });
 });
 
+// The date arrives as a DAY the read model already resolved in the profile's zone
+// (#3836) — this module has no zone and no longer truncates an instant. The
+// instant→day step is proved in lib/__db_tests__/utc-day-render-sweep.test.ts.
 describe("revisionSummary", () => {
   it("names the prior value and what replaced it", () => {
     expect(
@@ -165,7 +168,7 @@ describe("revisionSummary", () => {
         value: "5.2",
         value_num: 5.2,
         unit: "mmol/L",
-        superseded_at: "2026-03-06 08:00:00",
+        supersededOnDay: "2026-03-06",
         superseded_by_status: "corrected",
       })
     ).toBe("Corrected — was 5.2 mmol/L (2026-03-06)");
@@ -177,7 +180,7 @@ describe("revisionSummary", () => {
         value: null,
         value_num: 12,
         unit: null,
-        superseded_at: "2026-03-06 08:00:00",
+        supersededOnDay: "2026-03-06",
         superseded_by_status: null,
       })
     ).toBe("Superseded — was 12 (2026-03-06)");
@@ -188,7 +191,7 @@ describe("revisionSummary", () => {
       value: "45",
       value_num: 45,
       unit: "ug / L",
-      superseded_at: "2026-03-06 08:00:00",
+      supersededOnDay: "2026-03-06",
       superseded_by_status: "amended",
     };
     expect(revisionSummary(revision)).toBe(
