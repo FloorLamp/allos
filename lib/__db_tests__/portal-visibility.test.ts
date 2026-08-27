@@ -164,11 +164,11 @@ describe("listVisiblePortalRunReports — the #1787 disclosure boundary", () => 
     const bReport = listPortalRunReports().find(
       (r) => r.accountId === accountB.id
     )!;
-    expect(portalLoginStatus(bReport).text).toContain(B_MESSAGE);
+    expect(portalLoginStatus(bReport, "UTC").text).toContain(B_MESSAGE);
 
     // …while the scoped read hands household A no report that could ever format it.
     const sentences = listVisiblePortalRunReports(authorized([profileA]), true)
-      .map((r) => portalLoginStatus(r).text)
+      .map((r) => portalLoginStatus(r, "UTC").text)
       .join("\n");
     expect(sentences).not.toContain(B_MESSAGE);
     expect(sentences).not.toContain(B_ACCOUNT);

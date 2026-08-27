@@ -329,7 +329,7 @@ describe("a push that straddles UTC midnight (#2914)", () => {
       authorized([profile]),
       false
     ).find((r) => r.accountId === account.id)!;
-    expect(portalLoginStatus({ ...report, delivered }).text).toBe(
+    expect(portalLoginStatus({ ...report, delivered }, "UTC").text).toBe(
       "Delivered 2 documents 2026-08-15 · portal never checked"
     );
     // The other three are not lost — they are the previous day's delivery, which is
@@ -355,10 +355,10 @@ describe("the sentence a delivery-only login row renders (#2914)", () => {
       authorized([profileOne]),
       false
     );
-    const line = portalLoginStatus({
-      ...report,
-      delivered: delivered.get(accountOne.id) ?? null,
-    });
+    const line = portalLoginStatus(
+      { ...report, delivered: delivered.get(accountOne.id) ?? null },
+      "UTC"
+    );
     expect(line.tone).toBe("ok");
     expect(line.text).toBe(
       "Delivered 4 documents 2026-08-15 · portal last checked 2026-08-10"
@@ -380,10 +380,10 @@ describe("the sentence a delivery-only login row renders (#2914)", () => {
       false
     );
     expect(
-      portalLoginStatus({
-        ...report,
-        delivered: delivered.get(accountTwo.id) ?? null,
-      }).text
+      portalLoginStatus(
+        { ...report, delivered: delivered.get(accountTwo.id) ?? null },
+        "UTC"
+      ).text
     ).toBe("Delivered 9 documents 2026-08-15 · portal never checked");
   });
 });
