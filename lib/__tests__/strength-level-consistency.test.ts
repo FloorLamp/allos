@@ -11,8 +11,8 @@ import type { Sex } from "@/lib/types";
 // "One question, one computation" guard (#152, per AGENTS.md / issues #221/#222/
 // #223): the strength LEVEL a lifter is at must be IDENTICAL across every surface's
 // formatter for the same fixture. All surfaces route through strengthStanding, so
-// this pins the label the badge (ExerciseDetailPanel / StrengthExplorer /
-// LevelBadge), the Analyze benchmark card, and the healthspan pillar each show —
+// this pins the label the badge (ExerciseDetailPanel / LevelBadge), the Analyze
+// benchmark card, and the healthspan pillar each show —
 // exactly the drift that used to let the flat-ratio badge and a second model
 // disagree by a tier on the same panel.
 
@@ -49,7 +49,7 @@ describe("strength level is one computation across every surface", () => {
       const level = standing.level;
       const label = strengthLevelLabel(level);
 
-      // Badge (ExerciseDetailPanel header + StrengthExplorer row + LevelBadge).
+      // Badge (ExerciseDetailPanel header + LevelBadge).
       const badge = strengthBadge(f.exercise, f.e1rmKg, f.sex, f.bodyweightKg)!;
       expect(badge.level).toBe(level);
       expect(badge.label).toBe(label);
