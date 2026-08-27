@@ -83,12 +83,12 @@ export interface InsightContext extends NarrativeInput {
 export type OfflineReason = "no-key" | "cap-exhausted" | "failed";
 
 // The one-line note appended to an offline insight, matched to WHY it ran. The
-// cap-exhausted user already has a key set, so "set ANTHROPIC_API_KEY" would be a
-// lie; the failed path errored mid-call, so "temporarily unavailable" is honest.
+// cap-exhausted user already has AI set up, so "isn't set up" would be a lie; the
+// failed path errored mid-call, so "temporarily unavailable" is honest.
 export function offlineReasonNote(reason: OfflineReason): string {
   switch (reason) {
     case "no-key":
-      return "(Generated offline — set ANTHROPIC_API_KEY for AI-powered coaching analysis.)";
+      return "(Generated offline — AI coaching isn’t set up; an admin can turn it on under Settings → Server → AI.)";
     case "cap-exhausted":
       return "(Generated offline — daily AI limit reached; try again tomorrow.)";
     case "failed":

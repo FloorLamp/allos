@@ -33,6 +33,10 @@ const log = createLogger("medical-extract");
 // client's own `err.message` no longer do (#3198): the raw text added nothing a
 // person could act on and everything a stack frame or a request URL carries. The
 // caller logs the error, which is where the detail belongs.
+//
+// NO branch may advise a delete (#3852, #3876) — the document's own page carries the
+// preview-first reprocess control (#1071), rendered unconditionally, so every failure
+// here already has a non-destructive recovery, a self-clearing rate limit included.
 export function describeError(err: unknown): string {
   if (err instanceof APIConnectionTimeoutError) {
     return "The AI request timed out before responding. The document may be large or the model took too long — try again, or split it into smaller files.";
@@ -44,14 +48,12 @@ export function describeError(err: unknown): string {
     const s = err.status;
     if (s === 401 || s === 403)
       // The reader's half, not the operator's (#3852): the rejection is ours and
-      // their file is intact. NEVER advise a delete here — the document's own
-      // page carries the preview-first reprocess control (#1071), which is
-      // rendered unconditionally and simply declines while AI is unavailable.
+      // their file is intact.
       return "The AI isn’t accepting requests from this app, so the document couldn’t be read. Nothing is wrong with your file — it’s saved, and you can try reading it again from this document’s page once AI is working again.";
     if (s === 413)
       return "The document is too large for a single AI request. Try a smaller file or split it.";
     if (s === 429)
-      return "Rate limited by the AI. Wait a moment, then delete this document and re-upload.";
+      return "The AI is busy right now, so the document couldn’t be read. Nothing is wrong with your file — it’s saved, and you can try reading it again from this document’s page in a few minutes.";
     if (typeof s === "number" && s >= 500)
       return `The AI service returned a server error (${s}). Try again shortly.`;
     return `The AI request didn\u2019t go through${s ? ` (HTTP ${s})` : ""}. Try again.`;

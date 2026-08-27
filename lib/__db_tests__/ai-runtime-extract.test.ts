@@ -267,7 +267,7 @@ describe("runExtraction failure honesty (issue #675)", () => {
         fakeClient(
           new APIError(429, { type: "error" }, "too many", new Headers())
         ),
-      errorMatch: /rate limited/i,
+      errorMatch: /busy right now/i,
     },
   ];
 
