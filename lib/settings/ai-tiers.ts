@@ -92,8 +92,8 @@ export function getTierConfig(
 // Persist one tier's config. An empty api key is treated as "leave the stored key
 // unchanged" so a masked/write-only key field (which submits blank when untouched)
 // never wipes a saved secret; pass a sentinel clear separately when needed.
-// `.immediate()` is the BEGIN IMMEDIATE writeTx takes; it is spelled out because
-// taking the handle is what keeps this module off lib/db.
+// `.immediate()` is the BEGIN IMMEDIATE writeTx takes. The #468 guard exempts this
+// file wholesale, so dropping it here would not be caught — keep it by hand.
 export function setTierConfig(
   db: Database.Database,
   tier: TierName,
