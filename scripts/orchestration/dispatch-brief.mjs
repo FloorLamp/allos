@@ -889,6 +889,17 @@ ${MIGRATION_LINES}
   via zonedWallTimeToUtc(getTimezone(profileId), day, "HH:MM") — never naive
   \`\${day}THH:MM\` strings — the seed pins a ROTATING per-run instance timezone
   (e2e/pinned-timezone.ts), so naive strings parse host-UTC (#1417)
+- AND IF YOU CONVERT A RENDER FROM A UTC-TRUNCATED DAY TO A PROFILE-LOCAL ONE, EVERY
+  FIXTURE FEEDING IT JUST BECAME ZONE-DEPENDENT. Grep e2e/ for fixtures seeding that
+  column and convert them in the same change. A GREEN RUN IS NOT THE PROOF: the zone
+  is offset 13 − utcHour, so a run only exercises the zone its own start hour drew.
+  Prove it by feeding both shapes through the app's own reader at all 24 zones.
+  Measured 2026-08-27 (#3878): #3835 converted the portals row correctly and proved it
+  over two zones at the unit tier; its fixture kept naive instants, and main went red
+  for the seven hours a day the offset reaches −4 — green the other seventeen, so it
+  passed its own CI, looked exactly like a flake, and no re-run would ever clear it.
+  Where a converted site has no e2e fixture, SAY SO per site: "I checked and there is
+  none" and "I did not check" must not read the same.
 - NO high-entropy random-looking string literals in tests/fixtures (synthetic tokens
   included) — use low-entropy words+digits values
 - AN ARTIFACT THAT SATISFIES AN ACCEPTANCE CRITERION MUST BE COMMITTED, NOT LEFT IN
