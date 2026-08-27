@@ -16,21 +16,17 @@
 //
 // ── AN OFFER'S IDENTITY IS ITS CONTENT, NOT ITS ALLOCATION (#3282) ───────────
 //
-// `mintOffer` is get-or-create: the same bundle offered twice to the same profile on
-// the same day is ONE row, and the second mint is a read. Every tenant inherits this,
-// so a tenant that mints from a RENDER is safe — its token does not move when nothing
-// about the offer moved. Two consequences worth knowing before adding a third tenant:
-// a payload must be built deterministically (fixed key order, deterministic member
-// order) or it will not match itself, and an offer id is not a per-mint receipt, so
-// nothing may use one to count how many times a button was rendered.
+// `mintOffer` is get-or-create, so a tenant may mint from a RENDER: its token does not
+// move when nothing about the offer moved. Two consequences for a third tenant — build
+// the payload deterministically (fixed key order, deterministic member order) or it
+// will not match itself, and never read an offer id as a per-mint receipt.
 //
 // ── EXPIRY IS THE DAY ROLLOVER, AND NOTHING ELSE ─────────────────────────────
 //
 // `date` is the subject's local day at mint time, exactly as `notify_messages.date`
-// is, and `readOffer` refuses a row whose day is not the day asked for — the same rule
-// that retires yesterday's keyboards. A tenant whose payload is dated by the SCHEDULE
-// rather than by the offer reads `readOfferRow` and judges the day itself; see the note
-// there. `pruneNotifyOffers` reclaims the rows on the reconcile sweep either way.
+// is, and `readOffer` refuses a row whose day is not the day asked for — the rule that
+// retires yesterday's keyboards. A tenant whose payload is dated by the SCHEDULE reads
+// `readOfferRow` and judges the day itself. `pruneNotifyOffers` reclaims either way.
 //
 // Profile-scoped: every statement names `profile_id`, and a read for the wrong profile
 // answers null rather than another profile's bundle.
@@ -48,14 +44,9 @@ export type OfferFamily = "usual-routine" | "stack-take";
 // redeemed from a live message, so it can never usefully outlive one.
 export const OFFER_RETENTION_DAYS = 3;
 
-// Mint one offer row and return its id. The id is what the button's token carries.
-//
-// THE SAME BUNDLE, OFFERED TWICE IN A DAY, IS ONE OFFER. A tenant that mints from a
-// RENDER — the per-stack one-tap does, because its buttons are re-derived on every
-// rebuild — would otherwise put a fresh id in the token every time, and a keyboard
-// that differs is a keyboard the reconcile sweep EDITS: the zero-Telegram-call steady
-// state a quiet tick relies on would be gone, and the table would grow a row per tick.
-// So the identity of an offer is its content, and re-offering is a read.
+// Mint one offer row and return its id — or the id of the identical bundle already
+// offered to this profile today, because re-offering is a READ (see the header). The
+// per-stack one-tap mints on every rebuild and would otherwise move its own token.
 export function mintOffer(
   profileId: number,
   family: OfferFamily,
@@ -81,15 +72,11 @@ export function mintOffer(
   });
 }
 
-// The bundle an offer id names AND the day it was minted for, or null when there is no
-// such offer for this profile in this family. Both refusals are the same on purpose:
-// distinguishing them would tell a forged token whether an id exists.
-//
-// THE DAY IS RETURNED, NOT MATCHED, because the tenants judge it differently. `usual:`
-// expires at the rollover — its food half is a claim about today. `stacktake:` names
-// doses whose day the SCHEDULE assigned before the message was sent, so it rides the
-// same ±DOSE_LOG_DATE_WINDOW_DAYS window every dose button uses. Matching here would
-// have imposed one answer on both.
+// The bundle an offer id names AND the day it was minted for, or null when this profile
+// has no such offer in this family (one refusal for both, so a forged token cannot
+// learn whether an id exists). The day is RETURNED, not matched, because the tenants
+// judge it differently: `usual:` expires at the rollover, while `stacktake:` names doses
+// whose day the schedule assigned, so matching here would impose one answer on both.
 export function readOfferRow<T>(
   profileId: number,
   family: OfferFamily,
@@ -110,8 +97,7 @@ export function readOfferRow<T>(
   }
 }
 
-// The same read, refused unless the offer is FOR THIS DAY — the day-rollover expiry
-// `usual:` was built with (#2460).
+// The same read, refused unless the offer is FOR THIS DAY (#2460's rollover expiry).
 export function readOffer<T>(
   profileId: number,
   family: OfferFamily,

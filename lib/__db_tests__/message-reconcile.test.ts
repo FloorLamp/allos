@@ -320,15 +320,14 @@ describe("a dose resolved IN THE APP stops being displayed as outstanding", () =
 
   // ---- The per-stack one-tap on the offer substrate (#3282) ----------------
   //
-  // Both cases below pin a mechanism the rest of the suite CANNOT SEE. Each was
-  // deleted outright during review and all 17193 pure and 6843 db tests stayed green,
-  // while the behaviour underneath was plainly wrong — which is the only reason they
-  // are here.
+  // Both cases pin a mechanism the rest of the suite CANNOT SEE: each was deleted
+  // outright during review and all 17193 pure and 6843 db tests stayed green while the
+  // behaviour underneath was plainly wrong. That is the only reason they are here.
 
   // THE STACK BUTTON MUST BE ABLE TO DIE. The sweep's `stacktake:` arm is the only
-  // thing that retires this token. Without it the token never goes dead, so a fully
-  // resolved reminder EDITS into a completion summary instead of CLOSING, and the
-  // outcome-detail receipt this family closes with (#2170/#2274) is never spoken.
+  // thing that retires this token; without it a fully resolved reminder EDITS into a
+  // completion summary instead of CLOSING, and the outcome-detail receipt this family
+  // closes with (#2170/#2274) is never spoken.
   it("a fully resolved stack lets the reminder CLOSE, not merely re-render", async () => {
     const pid = newProfile("Stack Steph");
     const a = seedDose(pid, "Steph A", "AM stack");

@@ -454,14 +454,11 @@ const intakeDose: FamilyReconciler = {
           dead.add(t);
       } else if (f[0] === "stacktake") {
         // "✅ <Stack> (n)" (#3098) is dead once every dose its STORED offer names is
-        // resolved — the same ledger the tap handler intersects with. An offer that no
-        // longer stands at all is dead too, which is also how a pre-#3282 token (its
-        // ids spelled inline, so its offer id does not parse) leaves a live keyboard.
+        // resolved — the same ledger the tap handler intersects with — and dead when no
+        // offer stands at all, so the button cannot outlive what it was offering.
         const offer = standingStackOffer(profileId, Number(f[2]), p.date);
-        if (
-          !offer ||
-          offer.doseIds.every((id) => resolvedFor(offer.date).has(id))
-        )
+        if (!offer) dead.add(t);
+        else if (offer.doseIds.every((d) => resolvedFor(offer.date).has(d)))
           dead.add(t);
       } else if (f[0] === "usual") {
         // The composed one-tap (#2460) is HOST-INHERITED: it elects no family, so

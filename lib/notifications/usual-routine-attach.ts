@@ -241,13 +241,10 @@ export function standingUsualAttachment(
 export function usualTokenOn(
   rows: readonly { callback_data?: string }[][]
 ): string | null {
-  for (const row of rows) {
-    for (const b of row) {
-      if (b.callback_data && parseOfferCallback(b.callback_data, "usual"))
-        return b.callback_data;
-    }
-  }
-  return null;
+  return (
+    rows.flat().find((b) => parseOfferCallback(b.callback_data, "usual"))
+      ?.callback_data ?? null
+  );
 }
 
 // THE PRE-DISPATCH ASSERTION (#2460). Two things must hold of any message carrying the

@@ -242,9 +242,7 @@ export async function handleCallbackQuery(
     return;
   }
 
-  // "✅ <Stack> (n)" — mark one stack's still-pending doses taken (#3098). The token
-  // names a STORED offer whose dose ids are an UPPER BOUND; the handler re-derives the
-  // pending set and writes only the intersection.
+  // "✅ <Stack> (n)" — mark one stack's still-pending doses taken (#3098).
   const stackTake = parseOfferCallback(cq.data, "stacktake");
   if (stackTake) {
     await handleStackTaken(cq, stackTake);
@@ -886,11 +884,9 @@ async function handleActivityTypeAskTap(
 // run the verified write, answer honestly from the outcome union, then rebuild
 // the session message so resolved doses drop their buttons.
 // Re-render a dose session onto the message that carried it. Every dose-tier rebuild
-// goes through here — a take, a skip, ✅ All, a stack tap, the composed one-tap — so
-// they cannot drift: the correction chips ride along (#2020), the stack offers are
-// re-derived (#3282), and `rebuildMessage` re-applies the send-time "[Name] " prefix
-// (prefixForProfile, one computation — #377/#454) that a handler rendering its own
-// wire text would lose.
+// goes through here — take, skip, ✅ All, a stack tap, the composed one-tap — so they
+// cannot drift: correction chips ride along (#2020) and `rebuildMessage` re-applies the
+// send-time "[Name] " prefix (#377/#454) a handler rendering its own text would lose.
 async function rebuildDoseSession(
   profileId: number,
   chatId: number | string,
@@ -1236,11 +1232,9 @@ async function handleAllTaken(
 // profile chain besides); a dose meanwhile resolved is left alone; a second tap finds
 // an empty intersection and answers nothing-to-log rather than confirming.
 //
-// NO DATE CROSSES THE WIRE, AND THE DAY IS STILL THE SESSION'S. The day comes off the
-// stored offer, gated by the same ±2-day predicate `markDoseTaken` applies, so this
-// path cannot backfill AND a reminder tapped after midnight still confirms the day it
-// was sent for — the property the `take:` and `all:` buttons beside it have, and which
-// RECONCILE_DATE_GUARD["intake-dose"] rules is not optional.
+// NO DATE CROSSES THE WIRE, AND THE DAY IS STILL THE SESSION'S — it comes off the
+// stored offer, gated by the predicate `markDoseTaken` applies (see
+// `standingStackOffer`), so this path can neither backfill nor die at midnight.
 async function handleStackTaken(
   cq: TelegramCallbackQuery,
   token: OfferCallback

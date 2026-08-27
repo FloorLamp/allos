@@ -381,21 +381,13 @@ export function collectWindowDoses(
 }
 
 // ---- The per-stack one-tap's stored offer (#3098, on #3268's substrate since
-// #3282) -----------------------------------------------------------------------
-//
-// `stacktake:` used to spell its member dose ids into the token, which grows with the
-// stack and self-amputated at Telegram's 64 bytes — a large enough stack silently lost
-// its button. It names a `notify_offers` row now, as `usual:` does. The stored ids stay
-// an UPPER BOUND: the handler re-derives the pending set and writes the intersection.
+// #3282; the byte problem it solves is in ./callback-data.ts) ------------------
 export const STACK_OFFER_FAMILY = "stack-take" as const;
 
-interface StoredStackOffer {
-  doseIds: number[];
-}
+type StoredStackOffer = { doseIds: number[] };
 
-// The mint the DB-free renderer is handed. Re-offering the same members on the same day
-// is a READ (see `mintOffer`), so a rebuilt keyboard is byte-identical to the delivered
-// one and the reconcile sweep stays at zero Telegram calls.
+// The mint the DB-free renderer is handed. Re-offering the same members is a READ (see
+// `mintOffer`), so a rebuild is byte-identical and the sweep stays at zero calls.
 export function stackOfferToken(
   profileId: number,
   date: string
@@ -410,17 +402,15 @@ export function stackOfferToken(
     );
 }
 
-// The stack a token names, and the DAY its doses belong to — or null for anything that
+// The stack a token names and the DAY its doses belong to — or null for anything that
 // is not this profile's stack offer, or whose day is outside the window `markDoseTaken`
-// itself accepts. That single refusal is also what a pre-#3282 button becomes: its
-// ids-in-token shape has no offer id to read.
+// itself accepts. A pre-#3282 button lands in that same refusal: no offer id to read.
 //
 // THE DAY IS THE OFFER'S, NOT `today`. A dose's day is a fact the SCHEDULE established
-// before the message was sent, so a reminder sent at 21:00 and tapped at 00:05 still
-// confirms the day it was sent for — exactly as the `take:` and `all:` buttons beside
-// it do, through the same predicate they gate on. Scoping this to `today` instead
-// deleted the button at midnight while its neighbours kept working, which
-// RECONCILE_DATE_GUARD["intake-dose"] already calls pure loss.
+// before the message was sent, so a reminder sent at 21:00 and tapped at 00:05 confirms
+// the day it was sent for, through the predicate the `take:` and `all:` buttons beside
+// it gate on. Scoping this to `today` deletes the button at midnight while its
+// neighbours keep working — RECONCILE_DATE_GUARD["intake-dose"] calls that pure loss.
 export function standingStackOffer(
   profileId: number,
   offerId: number,

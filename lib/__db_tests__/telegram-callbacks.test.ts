@@ -798,15 +798,14 @@ describe("stacktake writes only the listed-and-still-pending intersection (#3098
     expect(lastAnswerText()).toBe(OUTDATED_MESSAGE_TEXT);
   });
 
-  // NO OFFER, NO WRITE (#3282), and the refusal must be SEEN. Four ways a token can
-  // name nothing this profile may write, all answered with the same text so a forged
-  // token cannot learn whether an offer id exists — but not all with the same urgency.
-  // A refusal `handleStackTaken` speaks gets `alert: true`, the intake safety tier's
-  // modal (telegram-api.ts: a Desktop toast "fades on its own and is easy to miss
-  // entirely"). The retired ids-in-token shape does NOT reach the handler — it fails
-  // the 3-field parse and lands on the dispatcher's bare unknown-token answer — so it
-  // is a toast. Recorded as a row rather than smoothed over: it lasts one reminder
-  // cycle, and the alternative is a parser that recognises the old shape.
+  // NO OFFER, NO WRITE (#3282), and the refusal must be SEEN. All four answer with the
+  // same text, so a forged token cannot learn whether an offer id exists — but not with
+  // the same urgency. A refusal `handleStackTaken` speaks gets the intake tier's modal
+  // (telegram-api.ts: a Desktop toast "fades on its own and is easy to miss entirely").
+  // The retired ids-in-token shape never reaches the handler — it fails the 3-field
+  // parse and lands on the dispatcher's bare answer — so it is only a toast. A row
+  // rather than a smoothing-over: it lasts one reminder cycle, and the alternative is
+  // a parser that recognises the old shape.
   it.each([
     [
       "an offer id that was never minted",
@@ -850,12 +849,11 @@ describe("stacktake writes only the listed-and-still-pending intersection (#3098
     expect(answerMock.mock.calls.at(-1)?.[2]?.alert).toBe(alerts || undefined);
   });
 
-  // THE DAY IS THE SESSION'S, NOT THE TAP'S (#3282 fix). A dose's day is assigned by
-  // the schedule before the message is sent, so a reminder sent at 21:00 and tapped at
-  // 00:05 confirms the day it was sent for — the `take:` and `all:` buttons beside it
-  // already do, through the same ±DOSE_LOG_DATE_WINDOW_DAYS predicate, and
-  // RECONCILE_DATE_GUARD["intake-dose"] rules that deleting the button at midnight was
-  // pure loss. This dies the moment the handler scopes the offer to `today` instead.
+  // THE DAY IS THE SESSION'S, NOT THE TAP'S (#3282 fix). A reminder sent at 21:00 and
+  // tapped at 00:05 confirms the day it was sent for, like the `take:` and `all:`
+  // buttons beside it and through the same ±DOSE_LOG_DATE_WINDOW_DAYS predicate —
+  // RECONCILE_DATE_GUARD["intake-dose"] rules that deleting it at midnight is pure
+  // loss. Dies the moment the handler scopes the offer to `today` instead.
   it.each([0, -1, -DOSE_LOG_DATE_WINDOW_DAYS])(
     "logs to the offer's own day, %s days back",
     async (shift) => {
