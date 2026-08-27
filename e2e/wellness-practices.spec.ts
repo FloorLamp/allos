@@ -10,7 +10,12 @@ import {
   settledClick,
   settledFill,
 } from "./helpers";
-import { openCommandPalette } from "./nav";
+import { loginAs, openCommandPalette } from "./nav";
+import {
+  E2E_LOGIN_PRACTICE_ZERO,
+  E2E_MEMBER_PASSWORD,
+  PRACTICE_ZERO_PROFILE,
+} from "./fixture-logins";
 import { frozenNow, workerDbPath } from "./worker-env";
 import { formatDateWithYear } from "@/lib/format-date";
 import { practiceIdentity } from "@/lib/practice";
@@ -155,6 +160,91 @@ test("a relevant Wellness profile can reach its practice home from nav (#1620)",
   const actionBounds = await rowAction.boundingBox();
   expect(actionBounds).not.toBeNull();
   expect(actionBounds!.x + actionBounds!.width).toBeLessThanOrEqual(390);
+});
+
+// THE ZERO STATE (#3066). Every other test in this file runs on a profile that
+// already tracks practices — which is exactly how the defect survived: the #1620 nav
+// gate hides /wellness until practice state exists (right, for an empty ledger), and
+// the ONE creation path was on the hidden page, so a profile in this state could
+// reach practices only by typing the URL.
+//
+// Dedicated fixture (#868) whose whole content is an absence, and the test removes
+// the practice it creates, so --repeat-each stays clean.
+test("with nothing tracked, the always-visible quick-log row offers the first practice (#3066)", async ({
+  browser,
+}) => {
+  test.slow(); // a sign-in, two palette opens and a Server-Action create
+  const practiceName = `E2E First Practice ${frozenNow().getTime()}`;
+  const page = await loginAs(browser, {
+    username: E2E_LOGIN_PRACTICE_ZERO,
+    password: E2E_MEMBER_PASSWORD,
+  });
+  try {
+    // The gate, observed rather than assumed. EXPAND THE GROUP FIRST (#3079):
+    // Wellness is a child of "Plan & review", collapsed on "/", so this absence
+    // would read as a pass whether the gate worked or not — the ungated Timeline
+    // sibling proves the expansion actually happened.
+    await page.goto("/");
+    const sidebarNav = page.locator("aside nav");
+    await sidebarNav.getByRole("button", { name: "Plan & review" }).click();
+    await expect(
+      sidebarNav.getByRole("link", { name: "Timeline" })
+    ).toBeVisible();
+    await expect(
+      sidebarNav.getByRole("link", { name: "Wellness", exact: true })
+    ).toHaveCount(0);
+
+    // The door, at PHONE width — the width the quick-log sheet is designed for and
+    // the one a first-capture offer has to survive.
+    await page.setViewportSize({ width: 390, height: 844 });
+    const input = await openCommandPalette(page);
+    await input.fill("practice");
+    await page.getByTestId("palette-action-wellness-practices").click();
+    await expect(page.getByTestId("quick-entry-body")).toHaveAttribute(
+      "data-form",
+      "practice"
+    );
+    const offer = page.getByTestId("quick-entry-practice-empty");
+    await expect(offer).toBeVisible();
+    const create = offer.getByTestId("practice-create-form");
+    await expect(create).toBeVisible();
+    await expectNoClippedContent(page);
+
+    await settledFill(page, create.getByLabel("Practice"), practiceName);
+    await settledClick(page, create.getByRole("button", { name: "Save" }));
+    // Declaring a practice is a transaction with an end, so the sheet closes.
+    await expect(page.getByTestId("quick-entry-sheet")).toBeHidden();
+    await dismissToast(page, "Practice added");
+
+    // The gate's own rule, unchanged, now answers the other way — and the sheet row
+    // has become the log list it always promised.
+    await page.setViewportSize({ width: 1280, height: 900 });
+    await page.goto("/");
+    await sidebarNav.getByRole("button", { name: "Plan & review" }).click();
+    await expect(
+      sidebarNav.getByRole("link", { name: "Wellness", exact: true })
+    ).toBeVisible();
+    const reopened = await openCommandPalette(page);
+    await reopened.fill("practice");
+    await page.getByTestId("palette-action-wellness-practices").click();
+    await expect(page.getByTestId("quick-entry-practice-list")).toBeVisible();
+    await expect(page.getByTestId("quick-entry-practice-empty")).toHaveCount(0);
+  } finally {
+    const handle = new Database(workerDbPath());
+    handle.pragma("busy_timeout = 5000");
+    try {
+      handle
+        .prepare(
+          `DELETE FROM frequency_targets
+            WHERE scope_kind = 'practice'
+              AND profile_id IN (SELECT id FROM profiles WHERE name = ?)`
+        )
+        .run(PRACTICE_ZERO_PROFILE);
+    } finally {
+      handle.close();
+    }
+    await page.context().close();
+  }
 });
 
 test("the command palette opens the practice overlay in place; the deep link keeps the first-practice path (#1620/#2184)", async ({

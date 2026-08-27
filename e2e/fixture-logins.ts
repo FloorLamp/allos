@@ -36,3 +36,4 @@ export * from "./logins/training";
 export * from "./logins/trash";
 export * from "./logins/travel";
 export * from "./logins/trends";
+export * from "./logins/wellness";
