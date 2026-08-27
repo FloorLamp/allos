@@ -523,10 +523,9 @@ per-DATE, so a correction to an older day cannot silence a genuine miss today. P
 names — 64-byte limit, AUTOINCREMENT ids never recycle), and a button that writes a
 whole named SET carries one **offer id** instead of the set (`notify_offers`,
 #2460): `usual:` and `stacktake:` are both `<prefix>:<profileId>:<offerId>`, constant
-size. An offer id is **not** in the never-recycle class above — `notify_offers.id` has
-no `AUTOINCREMENT` and its rows are pruned — so what makes a redeemed offer safe is not
-the id but the upper-bound rule: the handler intersects the stored bundle with what
-currently stands. Every handler answers
+size, and the id never recycles (`notify_offers.id` is `AUTOINCREMENT` — a pruned
+offer's id must never be handed to a later one, because the upper-bound rule bounds how
+MUCH a tap writes, not WHAT). Every handler answers
 from a **typed outcome union** (the `DoseTakenOutcome` pattern — never
 unconditionally confirm; a stale/foreign tap gets the outdated-message
 replacement), buttons are removed/replaced on consumption, and escalation taps

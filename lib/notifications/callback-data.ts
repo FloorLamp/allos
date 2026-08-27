@@ -83,9 +83,13 @@ export function parseAllCallback(data: unknown): AllCallback | null {
 // once a stack outgrew the limit. So neither names its set: the bundle is stored
 // (`notify_offers`, ./offer-store.ts) and the token carries the row id, constant size.
 //
-// NO DATE CROSSES THE WIRE either — the offer row carries the subject's local day and
-// the handler resolves `today(profileId)` itself, so nothing here can backfill, and an
-// offer expires on the day rollover.
+// NO DATE CROSSES THE WIRE either: the offer ROW carries the day, so a token cannot
+// backfill. How old a row may be is each tenant's own rule — `usual:` expires at the
+// rollover, `stacktake:` rides the dose-log window (./offer-store.ts, ./intake.ts).
+//
+// AND THE ID IS THE WHOLE TOKEN, which is why `notify_offers.id` is AUTOINCREMENT
+// (20260827-notify-offers-autoincrement): a reissued row id silently re-points a button
+// still sitting in a chat at a bundle it never named.
 
 // Telegram's hard cap on a button's callback_data, in bytes.
 export const TELEGRAM_CALLBACK_DATA_MAX_BYTES = 64;

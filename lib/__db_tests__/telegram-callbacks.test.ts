@@ -836,6 +836,26 @@ describe("stacktake writes only the listed-and-still-pending intersection (#3098
       () =>
         `stacktake:${sp.profileId}:${today(sp.profileId)}:${doseA},${doseB}`,
     ],
+    // THE ID IS THE WHOLE TOKEN, so a reissued id is a different button. `notify_offers`
+    // is pruned on the same 3-day horizon that retires the message pointer, so without
+    // AUTOINCREMENT the freed rowid went to the next offer on exactly the day the sweep
+    // could no longer retire the button — and the scroll-back tap redeemed a bundle it
+    // never named, IN FULL, because the upper-bound rule bounds how much is written and
+    // not what. This row mints a harmless offer, prunes it, then mints a writable one:
+    // under the old schema the stale token resolves to `doseA`/`doseB` and logs them.
+    [
+      "an offer id whose row was pruned and reissued to another bundle",
+      true,
+      () => {
+        const mint = stackOfferToken(sp.profileId, today(sp.profileId));
+        const stale = mint([retiredDose]);
+        db.prepare(`DELETE FROM notify_offers WHERE profile_id = ?`).run(
+          sp.profileId
+        );
+        mint([doseA, doseB]);
+        return stale;
+      },
+    ],
   ])("writes nothing for %s", async (_why, alerts, mkToken) => {
     const date = today(sp.profileId);
     db.prepare(`DELETE FROM intake_item_logs WHERE dose_id IN (?, ?)`).run(

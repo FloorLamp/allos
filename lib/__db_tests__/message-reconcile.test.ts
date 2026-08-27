@@ -76,7 +76,9 @@ import {
   buildIntakeReminderForSlots,
   renderDoseSession,
   slotSessionForKeyboard,
+  STACK_OFFER_FAMILY,
 } from "@/lib/notifications/intake";
+import { mintOffer } from "@/lib/notifications/offer-store";
 import { reconcileProfileMessages } from "@/lib/notifications/reconcile";
 import {
   claimMessagePointerClose,
@@ -383,6 +385,27 @@ describe("a dose resolved IN THE APP stops being displayed as outstanding", () =
     const out = await reconcileProfileMessages(pid);
     expect([out.edited, out.closed]).toEqual([0, 0]);
     expect(liveTokens(pid)).toContain(first);
+  });
+
+  // AN OFFER ID IS NEVER REISSUED. The id is the entire token, and the row is pruned
+  // on the same 3-day horizon that retires the message pointer, so a recycled rowid
+  // hands a stale button someone else's bundle at exactly the moment the sweep can no
+  // longer retire it. AUTOINCREMENT (20260827-notify-offers-autoincrement) is what
+  // makes that impossible; delete the migration and this reds.
+  it("a pruned offer's id is never handed to a later offer", async () => {
+    const pid = newProfile("Recycle Rita");
+    const a = seedDose(pid, "Rita A", "AM stack");
+    const b = seedDose(pid, "Rita B", "AM stack");
+    const first = mintOffer(pid, STACK_OFFER_FAMILY, today(pid), {
+      doseIds: [a.doseId],
+    });
+
+    db.prepare(`DELETE FROM notify_offers WHERE profile_id = ?`).run(pid);
+
+    const second = mintOffer(pid, STACK_OFFER_FAMILY, today(pid), {
+      doseIds: [b.doseId],
+    });
+    expect(second).not.toBe(first);
   });
 
   it("a SKIP resolves the claim exactly like a take (#232)", async () => {
