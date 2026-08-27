@@ -44,6 +44,18 @@
           "title": "Long-overdue items show a date instead of a huge day count, and four screens stop overstating what they mean",
           "kind": "fix",
           "issues": [3556, 3118, 2806, 2809, 3353]
+        },
+        {
+          "pr": 3874,
+          "title": "Correcting a weight keeps the unit you were shown, even if your preference changed elsewhere",
+          "kind": "fix",
+          "issues": [3853]
+        },
+        {
+          "pr": 3877,
+          "title": "What's New fits a phone screen again, and two failure messages stop naming a setting you can't change",
+          "kind": "fix",
+          "issues": [3867, 3852]
         }
       ]
     },
