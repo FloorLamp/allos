@@ -50,7 +50,6 @@ export interface GrowthPlotPoint {
 // profile's own measurement trajectory overlaid, plotted on an age (months) x-axis
 // that spans the WHO→CDC transition. The plot scales to its card; a fixed minimum
 // width would overflow now that the four references render as separate grid cards.
-// REFERENCE CURVES — NOT MEDICAL ADVICE (disclaimer rendered by the caller card).
 export default function GrowthChart({
   bands,
   points,

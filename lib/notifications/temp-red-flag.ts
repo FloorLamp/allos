@@ -37,8 +37,7 @@ const MARKER_PREFIX = "notify_last_tempredflag_";
 const markerKey = (dedupeKey: string) => `${MARKER_PREFIX}${dedupeKey}`;
 const dedupeKeyFromMarker = (key: string) => key.slice(MARKER_PREFIX.length);
 
-// Render the nudge — the fact + cited line + source + the "not medical advice" tail
-// (the #798/#805 discipline: cite, never generate). A "View episode" deep-link is the
+// Render the nudge from the fact, cited line, and source. A "View episode" deep-link is the
 // only affordance (nothing idempotent to toggle), following the two-way principle.
 export function renderTempRedFlagMessage(
   profileName: string,
