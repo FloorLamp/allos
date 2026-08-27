@@ -68,11 +68,29 @@ export function applyColumnBulk(
 // The header control's accessible name, which is also its hover tooltip. It says what
 // the tap will do AND states the safety carve-out, because "turn off this column" that
 // quietly spares three rows would otherwise be a lie of omission.
+//
+// IT LEADS WITH THE TEXT THE COLUMN SHOWS (#3556, WCAG 2.5.3 Label in Name, Level A).
+// The header prints a SHORT form because the desktop column is 40px wide — "HA", not
+// "Home Assistant" (#3495) — and that short form is a visible label on this checkbox.
+// A name that said only "Home Assistant" contains no "HA", so a speech-input user
+// saying what they can see cannot reach the control. Both forms are kept rather than
+// one traded for the other: shortening the name would degrade what a screen-reader
+// user hears, and widening the column is the layout defect #3495 fixed. The visible
+// form goes FIRST because speech input matches from the start of the name.
+//
+// A channel whose short form is already inside its full name says the full name once:
+// "Push" is inside "Web Push", and Telegram and Email spell both forms the same. The
+// criterion is containment, so "Push (Web Push)" would be noise. Home Assistant is
+// today's only column where the two forms share no substring.
 export function columnBulkLabel(
+  visibleLabel: string,
   channelLabel: string,
   state: ColumnBulkState
 ): string {
+  const name = channelLabel.toLowerCase().includes(visibleLabel.toLowerCase())
+    ? channelLabel
+    : `${visibleLabel} (${channelLabel})`;
   return state === "all"
-    ? `${channelLabel}: turn off everything except safety reminders`
-    : `${channelLabel}: turn on every kind`;
+    ? `${name}: turn off everything except safety reminders`
+    : `${name}: turn on every kind`;
 }

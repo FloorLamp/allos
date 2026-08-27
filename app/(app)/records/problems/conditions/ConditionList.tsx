@@ -125,12 +125,16 @@ export default function ConditionList({
   treatedWith = {},
   diagnosedAt = {},
   illnessEpisodes = {},
+  filtered = false,
   multiView,
 }: {
   items: Stamped<Condition>[];
   treatedWith?: Record<number, string[]>;
   diagnosedAt?: Record<number, LinkedEncounterRef>;
   illnessEpisodes?: Record<number, EpisodeLinkRef[]>;
+  // Whether a status filter is actually narrowing the list (#2809). It decides
+  // which of the two empty states this is: nothing recorded, or nothing matching.
+  filtered?: boolean;
   multiView?: ListMultiView;
 }) {
   const columns = buildColumns(
@@ -147,7 +151,15 @@ export default function ConditionList({
       items={items}
       columns={columns}
       itemName={(c) => conditionDisplayLabel(c)}
-      emptyMessage="No conditions match this filter."
+      // TWO EMPTY STATES, NOT ONE (#2809). "No conditions match this filter" told a
+      // profile with nothing recorded that something was being hidden from it. The
+      // filter is the only thing that can narrow this list, so it is also the only
+      // thing that can make the two states differ.
+      emptyMessage={
+        filtered
+          ? "No conditions match this filter."
+          : "No conditions recorded. Add one, or import a MyChart / CCD health record to populate your problem list."
+      }
       multiView={
         multiView
           ? {

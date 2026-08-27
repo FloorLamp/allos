@@ -316,6 +316,78 @@ async function readLabelInName(page: Page) {
   );
 }
 
+// The COLUMN SWEEP boxes' 2.5.3 corpus (#3556): each column's visible header text
+// beside the accessible name of the sweep checkbox that header names. Same shape as
+// readLabelInName above, over the other family of checkboxes on this page — and read
+// at BOTH widths, because unlike the routing chip this visible label is painted at
+// every width.
+async function readHeadLabelInName(page: Page) {
+  return page.evaluate(() =>
+    [...document.querySelectorAll<HTMLElement>("[data-matrix-head-cell]")].map(
+      (cell) => {
+        const short = cell.querySelector<HTMLElement>(
+          "[data-matrix-head-short]"
+        );
+        const input = cell.querySelector<HTMLInputElement>(
+          'input[type="checkbox"]'
+        );
+        const r = short?.getBoundingClientRect();
+        return {
+          id: cell.getAttribute("data-matrix-head-cell") ?? "",
+          visible:
+            short && r && r.width > 0 && r.height > 0
+              ? (short.textContent ?? "").trim()
+              : "",
+          name: input?.getAttribute("aria-label") ?? "",
+        };
+      }
+    )
+  );
+}
+
+// The sweep-box half of WCAG 2.5.3, asserted identically at phone and desktop width
+// (#3556). Before the fix the "HA" column headed a checkbox named "Home Assistant:
+// turn off everything except safety reminders" — a name containing no "HA" — so a
+// speech-input user saying the only thing the column shows could not reach it.
+async function expectHeadLabelsInNames(page: Page, ids: readonly string[]) {
+  const heads = await readHeadLabelInName(page);
+  expect(
+    heads.map((h) => h.id),
+    "the header sweep probe did not find the four channel columns, so the " +
+      "2.5.3 verdict below is a claim about nothing"
+  ).toEqual([...ids]);
+  expect(
+    heads.filter((h) => h.visible === "").map((h) => h.id),
+    "a column header painted no visible text at all — the corpus below would " +
+      "then pass by having nothing to contain"
+  ).toEqual([]);
+  // THE CORPUS CARRIES THE HARD CASE, named rather than discovered. Three columns
+  // spell the short form inside the full name already ("Push" in "Web Push",
+  // Telegram and Email identically), so a verdict over those three alone is green
+  // on the defect. Home Assistant is the one where the two forms share nothing.
+  const ha = heads.find((h) => h.id === "ha");
+  expect(ha?.visible, "the HA column no longer paints the short form").toBe(
+    "HA"
+  );
+  expect(
+    ha?.name,
+    "the sweep name dropped the full channel name — the fix must not trade the " +
+      "screen-reader wording for the visible one"
+  ).toContain("Home Assistant");
+  expect(
+    heads
+      .filter((h) => !h.name.includes(h.visible))
+      .map((h) => `${h.id}: visible "${h.visible}" ∉ name "${h.name}"`),
+    "a column sweep checkbox's visible label is not contained in its accessible " +
+      "name — WCAG 2.5.3 (Label in Name, Level A)"
+  ).toEqual([]);
+  // The probe reads `aria-label`; this proves that is what the accname computation
+  // resolves to for these checkboxes too.
+  await expect(page.getByTestId("matrix-column-all-ha")).toHaveAccessibleName(
+    ha!.name
+  );
+}
+
 test.describe("Message kinds at phone width (#3495)", () => {
   test("the channel columns become labeled chips that fit, on one baseline", async ({
     page,
@@ -560,6 +632,12 @@ test.describe("Message kinds at phone width (#3495)", () => {
         )!.name
       );
 
+      // ── (5d) THE SAME CRITERION ONE LEVEL UP (#3556) ──────────────────────
+      // The four column sweep boxes, at PHONE width. Their visible label is the
+      // short form the header paints, which is why this one is not card-mode-only:
+      // the desktop case below runs the identical check at 1280px.
+      await expectHeadLabelsInNames(member, CHANNEL_IDS);
+
       // ── (6) THE META BUDGET ───────────────────────────────────────────────
       // "Meta copy before the first control fits in ~3 lines at 390px." Read as
       // lines, which is the unit the criterion is written in.
@@ -753,6 +831,11 @@ test.describe("Message kinds at desktop width — unchanged (#3495)", () => {
         "a routing checkbox grew a visible label at desktop width; the chip is " +
           "card-mode-only and #3495 rules the desktop matrix unchanged"
       ).toEqual([]);
+
+      // THE SWEEP BOXES ARE THE OTHER FAMILY, and they DO have a visible label
+      // here: the short form that makes a 40px column fit (#3556). So 2.5.3 applies
+      // at this width as well as at 390px, and the same helper says so.
+      await expectHeadLabelsInNames(member, CHANNEL_IDS);
 
       // Four cells, one baseline, evenly spaced — the desktop grid, measured.
       const cys = shape.row.map((c) => c.boxCy);

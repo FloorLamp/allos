@@ -124,12 +124,10 @@ describe("upcomingDueText past the This-week boundary (#2579-B)", () => {
     ).toBe("Jul 16");
   });
 
-  it("leaves Overdue and Today on countdown grammar", () => {
-    // Far overdue stays a countdown: "97 days overdue" is a statement about how late
-    // something is, which is exactly the urgency reading the Later band lacks.
+  it("leaves near Overdue and Today on countdown grammar", () => {
     expect(
-      upcomingDueText(item({ key: "o", dueDate: "2026-04-02" }), TODAY)
-    ).toBe("97 days overdue");
+      upcomingDueText(item({ key: "o", dueDate: "2026-07-01" }), TODAY)
+    ).toBe("7 days overdue");
     expect(
       upcomingDueText(item({ key: "t", dueDate: "2026-07-08" }), TODAY)
     ).toBe("today");
@@ -178,6 +176,58 @@ describe("upcomingDueText past the This-week boundary (#2579-B)", () => {
     expect(
       upcomingDueText(item({ key: "n", dueDate: "2027-01-05" }), TODAY)
     ).toBe("Jan 5, 2027");
+  });
+});
+
+// #2806 — the Later ceiling's downward mirror.
+//
+// The overdue side had no ceiling at all, so `/upcoming` printed "2035 days overdue"
+// beside a meaningful "9 days overdue". Past a month the count stops being a
+// statement about lateness, so the row names the DATE it lapsed instead — and keeps
+// the word "overdue", which is what a reader (and e2e/screening-coldstart.spec.ts)
+// reads the row for. Every expectation is a PINNED LITERAL.
+//
+// This flips the #2579-B case above that pinned "97 days overdue": that decision was
+// about the whole overdue band and is kept on its near side, which is where the
+// urgency reading it names actually lives.
+describe("upcomingDueText past the overdue ceiling (#2806)", () => {
+  it.each([
+    { days: 1, dueDate: "2026-07-07", text: "1 day overdue" },
+    { days: 30, dueDate: "2026-06-08", text: "30 days overdue" },
+    { days: 31, dueDate: "2026-06-07", text: "overdue since Jun 7" },
+    { days: 97, dueDate: "2026-04-02", text: "overdue since Apr 2" },
+    // The walkthrough's own magnitude, and the year it left behind.
+    { days: 2035, dueDate: "2020-12-11", text: "overdue since Dec 11, 2020" },
+  ])('$days days overdue reads "$text"', ({ dueDate, text }) => {
+    expect(upcomingDueText(item({ key: `o:${dueDate}`, dueDate }), TODAY)).toBe(
+      text
+    );
+  });
+
+  it("keeps the ceiling on the row's own grammar, not on the band heading", () => {
+    // A deep-past item forced into another band still refuses the raw count: the
+    // number is noise wherever the row is filed. An explicit dueText still wins.
+    expect(
+      upcomingDueText(
+        item({ key: "b", dueDate: "2020-12-11", band: "week" }),
+        TODAY
+      )
+    ).toBe("overdue since Dec 11, 2020");
+    expect(
+      upcomingDueText(
+        item({ key: "s", dueDate: "2020-12-11", dueText: "Overdue" }),
+        TODAY
+      )
+    ).toBe("Overdue");
+  });
+
+  it("renders the lapse date in the viewer's own shape", () => {
+    expect(
+      upcomingDueText(item({ key: "p", dueDate: "2020-12-11" }), TODAY, {
+        timeFormat: "24h",
+        dateFormat: "iso",
+      })
+    ).toBe("overdue since 2020-12-11");
   });
 });
 

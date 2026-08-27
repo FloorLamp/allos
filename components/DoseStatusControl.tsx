@@ -150,10 +150,11 @@ export default function DoseStatusControl({
     tappedAt: Date
   ): Promise<boolean> {
     setOptimistic(next);
-    const kept = await enqueue(kind, localDate(tappedAt), {
-      doseId,
-      ...(kind === "dose" ? { clientTakenAt: tappedAt.toISOString() } : {}),
-    });
+    const kept =
+      (await enqueue(kind, localDate(tappedAt), {
+        doseId,
+        ...(kind === "dose" ? { clientTakenAt: tappedAt.toISOString() } : {}),
+      })) === "kept";
     // READ THE ANSWER. The queue can refuse — this device is logged out, or has no
     // IndexedDB to queue into — and the toast below promises the tap will sync. Claiming
     // a save that did not happen is worse than the missing save, because nothing later

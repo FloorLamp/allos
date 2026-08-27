@@ -101,13 +101,14 @@ export default function QuickMoodCheckin({
             err
           )
         ) {
-          const kept = await enqueue("mood", target.date, {
-            valence: n,
-            energy: target.mood?.energy ?? null,
-            anxiety: target.mood?.anxiety ?? null,
-            factors: target.mood?.factors ?? [],
-            note: target.mood?.notes ?? null,
-          });
+          const kept =
+            (await enqueue("mood", target.date, {
+              valence: n,
+              energy: target.mood?.energy ?? null,
+              anxiety: target.mood?.anxiety ?? null,
+              factors: target.mood?.factors ?? [],
+              note: target.mood?.notes ?? null,
+            })) === "kept";
           // The device refused the capture (#3038): nothing queued, so the face
           // rolls back and the sheet STAYS OPEN — closing it is this surface's
           // claim that the check-in landed.

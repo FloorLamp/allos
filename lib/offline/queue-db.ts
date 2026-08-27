@@ -21,6 +21,7 @@ import {
   openOfflineDb as openDb,
   txDone as done,
 } from "@/lib/offline/idb";
+import type { DeviceWriteOutcome } from "@/lib/offline/write-gate";
 import {
   closeSession,
   guardedWrite,
@@ -37,10 +38,12 @@ function rejectedTx(db: IDBDatabase, mode: IDBTransactionMode): IDBObjectStore {
 }
 
 // Append an intent to the queue. Best-effort: resolves even if IndexedDB is
-// unavailable (returns false) so a caller can still surface a "queued" toast when it
+// unavailable (answers "failed") so a caller can still surface a "queued" toast when it
 // at least has the intent in memory — but in practice IndexedDB is present wherever a
 // service worker is.
-export async function enqueueIntent(intent: QueuedIntent): Promise<boolean> {
+export async function enqueueIntent(
+  intent: QueuedIntent
+): Promise<DeviceWriteOutcome> {
   // Gated like every other device-local PHI write (#2908's write gate), and gated as the
   // FOREGROUND write it is: the tap has already happened, so there is no in-flight work
   // for a wipe to land inside and no token worth carrying. `guardedWriteNow` asks the
@@ -48,9 +51,12 @@ export async function enqueueIntent(intent: QueuedIntent): Promise<boolean> {
   // — a logged-out device must not accept new PHI just because a stale tab still has a
   // button.
   //
-  // The answer is the caller's to read. It is `false` when the device refused to keep the
+  // The answer is the caller's to read. Anything but "kept" means the device refused the
   // write, and components/OfflineQueueProvider says so rather than letting a flow toast
   // "saved offline — will sync when you reconnect" over a queue that captured nothing.
+  // "closed" additionally means THIS STORE WAS JUST CLEARED — `clearQueue` below wipes it
+  // and closes the gate in one transaction — which is what a caller making two enqueues
+  // from one tap has to know before it claims the first one survived (#3118).
   return guardedWriteNow([STORE], "queue", (tx) => {
     tx.objectStore(STORE).put(intent);
   });

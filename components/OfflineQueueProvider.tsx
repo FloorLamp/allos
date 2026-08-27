@@ -31,6 +31,7 @@ import {
   type RejectedEntry,
 } from "@/lib/offline/queue";
 import type { StatedTimeRefusal } from "@/lib/stated-time";
+import type { DeviceWriteOutcome } from "@/lib/offline/write-gate";
 import {
   captureWriteToken,
   openSessionForDocument,
@@ -70,15 +71,17 @@ interface OfflineQueueApi {
   // Persist an intent for later replay. `date` is the captured local date the write
   // lands on; `payload` is the flow's raw fields.
   //
-  // ANSWERS WHETHER THE DEVICE ACTUALLY KEPT IT. It can say no — the write gate is closed
-  // because this device was logged out (#2908), or there is no IndexedDB at all (private
-  // mode, an embedded webview) — and a caller that ignores the answer tells someone
-  // "saved offline, will sync when you reconnect" about a write that was never recorded.
+  // ANSWERS WHETHER THE DEVICE ACTUALLY KEPT IT, AND WHY NOT. A caller that ignores the
+  // answer tells someone "saved offline, will sync when you reconnect" about a write that
+  // was never recorded. Most surfaces make ONE enqueue per tap and only need
+  // `=== "kept"`; the two refusals differ only for a surface making two, because
+  // "closed" means the logout wipe has already committed and took the earlier half with
+  // it, while "failed" leaves it standing (#3118 — see lib/offline/write-gate.ts).
   enqueue: (
     flow: FlowKind,
     date: string,
     payload: IntentPayload
-  ) => Promise<boolean>;
+  ) => Promise<DeviceWriteOutcome>;
   // Attempt to replay the whole queue now (safe to call redundantly).
   flush: () => Promise<void>;
 }
@@ -314,13 +317,13 @@ export default function OfflineQueueProvider({
     async (flow: FlowKind, date: string, payload: IntentPayload) => {
       // Stamp the write with the profile it's captured under (issue #599) so replay
       // attributes it correctly no matter which profile is active on reconnect.
-      const kept = await enqueueIntent(
+      const outcome = await enqueueIntent(
         buildIntent(flow, date, payload, activeProfileId)
       );
-      if (!kept) return false;
+      if (outcome !== "kept") return outcome;
       await refreshCount();
       void registerBackgroundSync();
-      return true;
+      return "kept";
     },
     [refreshCount, activeProfileId]
   );

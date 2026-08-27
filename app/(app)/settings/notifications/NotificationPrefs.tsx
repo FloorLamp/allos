@@ -878,10 +878,17 @@ export default function NotificationPrefs({
             {columns.map((c) => {
               const sweep = columnSweep(c.id);
               const state = columnBulkState(sweep, disabled[c.id]);
-              const label = columnBulkLabel(c.label, state);
+              const label = columnBulkLabel(c.short, c.label, state);
               return (
                 <span key={c.id} className="block" data-matrix-head-cell={c.id}>
-                  <span className="inline-flex items-center justify-center">
+                  {/* The column's VISIBLE label, marked so the 2.5.3 probe can
+                      read the same text a person sees (#3556). It is the short
+                      form at every width, and the sweep box's accessible name
+                      contains it (columnBulkLabel). */}
+                  <span
+                    className="inline-flex items-center justify-center"
+                    data-matrix-head-short
+                  >
                     {c.short}
                     <InfoTooltipIcon
                       label={`${c.label} — follows ${c.owner}`}

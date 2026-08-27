@@ -101,6 +101,11 @@ export default function ConditionsSection({
         treatedWith={treatedWith}
         diagnosedAt={diagnosedAt}
         illnessEpisodes={illnessEpisodes}
+        // The list's empty state has to know whether anything was filtered OUT
+        // (#2809). `status`, not `active`: an unrecognised `?cond=` value marks no
+        // pill and narrows nothing, so an empty list under it means "none recorded"
+        // exactly as the All pill does.
+        filtered={status !== undefined}
         multiView={
           multi ? { actingProfileId: scope.actingProfileId } : undefined
         }

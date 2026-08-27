@@ -100,8 +100,9 @@ test.describe("never-recorded screenings read as setup, not overdue (#1433)", ()
 
     // The seeded 2011 cleaning is real evidence that a 6-month interval elapsed.
     // Since #2805 the row carries the assessor's own due date instead of a hard-set
-    // band, so it says how far past it is ("N days overdue") rather than the bare word
-    // the status fallback used to supply. The band is what this test is about, and the
+    // band, so it says WHEN it lapsed ("overdue since Oct 9, 2013") rather than the bare
+    // word the status fallback used to supply — a 2011 anchor is far past #2806's
+    // 30-day ceiling on countdown grammar. The band is what this test is about, and the
     // row still has to say overdue in its own text — case-insensitively, because the
     // date-derived phrasing is a sentence fragment rather than a label.
     const dental = main
