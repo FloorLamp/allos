@@ -86,13 +86,21 @@ export function TokenLifecycleNote({
   status,
   createdAt,
   lastUsedAt,
-  expiresAt,
+  expiresOnDay,
   expiryStatedByControl = false,
 }: {
   status: TokenLifecycleStatus;
   createdAt: string | null;
   lastUsedAt: string | null;
-  expiresAt: string | null;
+  // THE PROFILE-LOCAL CALENDAR DAY THE TOKEN EXPIRES ON — not the expiry instant
+  // (#3573). This took `expiresAt` and printed `.slice(0, 10)`, the UTC day, so a
+  // token expiring at 22:00 UTC was shown to a household in UTC−05:00 as expiring
+  // tomorrow — while the "Expired" badge beside it, which is instant arithmetic
+  // through `tokenLifecycleStatus`, was right. Two halves of one card disagreeing.
+  // The caller converts because the caller knows the profile; this component is
+  // rendered from three surfaces and has no profile of its own to ask.
+  // `createdAt` and `lastUsedAt` stay instants: RelativeTime wants the instant.
+  expiresOnDay: string | null;
   /**
    * ONE STATEMENT OF ONE FACT (#3490 item 3). Set by a surface that renders
    * `ExpirySelect` on the same card: "Never expires" was appearing in this facts
@@ -100,7 +108,7 @@ export function TokenLifecycleNote({
    * card disagreeing with itself about which one is the setting.
    *
    * It suppresses the line ONLY when there is no expiry date to state. When
-   * `expiresAt` is set, this line carries a fact the control does not have — the
+   * `expiresOnDay` is set, this line carries a fact the control does not have — the
    * date — and dropping it would be losing information rather than de-duplicating
    * it. The control describes the token you are ABOUT to mint; this line describes
    * the one you have. They coincide only in the "never" case, which is the case
@@ -108,7 +116,7 @@ export function TokenLifecycleNote({
    */
   expiryStatedByControl?: boolean;
 }) {
-  const showExpiryLine = expiresAt !== null || !expiryStatedByControl;
+  const showExpiryLine = expiresOnDay !== null || !expiryStatedByControl;
   return (
     <div className="space-y-1.5 text-xs text-slate-500 dark:text-slate-400">
       <p data-testid="token-last-used">
@@ -126,10 +134,10 @@ export function TokenLifecycleNote({
       )}
       {showExpiryLine && (
         <p data-testid="token-expiry">
-          {expiresAt ? (
+          {expiresOnDay ? (
             <>
               {status === "expired" ? "Expired on" : "Expires on"}{" "}
-              <span className="font-medium">{expiresAt.slice(0, 10)}</span>
+              <span className="font-medium">{expiresOnDay}</span>
             </>
           ) : (
             <span>Never expires</span>

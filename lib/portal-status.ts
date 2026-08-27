@@ -59,6 +59,7 @@
 // delivery) say "Last synced" for the same reason.
 
 import { dataSectionHref, type AppRoute } from "./hrefs";
+import { dateFromCreatedAt } from "./timeline-format";
 
 export type PortalStatusTone = "ok" | "attention" | "idle";
 
@@ -103,8 +104,17 @@ export interface PortalRunLike {
   delivered?: { count: number; day: string } | null;
 }
 
-function day(stamp: string): string {
-  return stamp.slice(0, 10);
+// The PROFILE-LOCAL calendar day a stored run instant fell on (#3573). `at` and
+// `checkedAt` are instants — SQLite's bare "YYYY-MM-DD HH:MM:SS" on the older rows,
+// the canonical "…Z" form on the newer ones — and this used to take the first ten
+// characters, which is the UTC day and nobody's local one. A run reported at 19:00
+// in UTC−07:00 printed TOMORROW's date on a page whose whole job is telling a
+// household when their portal was last read. The fallback is the old truncation and
+// only for a stamp that will not parse: a row that cannot become an instant has no
+// local day to state, and printing nothing where a date belongs is worse than
+// printing the stored prefix.
+function day(stamp: string, timeZone: string): string {
+  return dateFromCreatedAt(stamp, timeZone) ?? stamp.slice(0, 10);
 }
 
 function sentence(text: string): string {
@@ -125,17 +135,25 @@ function joined(
 // What a delivery-only row says about the portal visit it did NOT make. Appended only
 // when the check clock actually LAGS the delivery: when a genuine check landed the same
 // day, the row would only be restating its own date.
-function checkClockSuffix(report: PortalRunLike, on: string): string {
+function checkClockSuffix(
+  report: PortalRunLike,
+  on: string,
+  timeZone: string
+): string {
   if (report.checkedAt === null) return " · portal never checked";
-  const checked = day(report.checkedAt);
+  const checked = day(report.checkedAt, timeZone);
   return checked < on ? ` · portal last checked ${checked}` : "";
 }
 
 // One login's last reported run, as its row states it. `null` means the login has never
 // reported at all — honest idle, not failure: this integration is attended, so a quiet
 // login is a login nobody has run yet, not a broken one.
+// `timeZone` is REQUIRED and threaded rather than resolved here (#3573): this module
+// is pure by design — no DB, no login — so the caller, which knows whose page this is,
+// supplies the zone. Defaulting it would put a silent UTC back one layer down.
 export function portalLoginStatus(
-  report: PortalRunLike | null
+  report: PortalRunLike | null,
+  timeZone: string
 ): PortalLoginStatus {
   if (!report) {
     return plain("idle", "No run reported yet.");
@@ -144,8 +162,8 @@ export function portalLoginStatus(
     return plain(
       "attention",
       report.message
-        ? sentence(`Last run failed ${day(report.at)}: ${report.message}`)
-        : `Last run failed ${day(report.at)}.`
+        ? sentence(`Last run failed ${day(report.at, timeZone)}: ${report.message}`)
+        : `Last run failed ${day(report.at, timeZone)}.`
     );
   }
   // A DELIVERY, not a visit (#1888/#2914). The tool shipped records already on disk and
@@ -155,9 +173,18 @@ export function portalLoginStatus(
     const delivered = report.delivered ?? null;
     // The day the ARCHIVES landed when there are any, and the report's own day when the
     // delivery carried nothing — there is no delivery day to name in that case.
+    //
+    // MIXED GRAIN, KNOWINGLY (#3573). `delivered.day` is grouped UTC-side by
+    // `substr(delivered_at, 1, 10)` in deliveredDocumentCountsByAccount, which #3573
+    // holds out of scope — that is the SQL truncation family, a different question. So
+    // on a delivery-only report this branch can pair a UTC delivery day with the local
+    // check day below, and `checked < on` can therefore compare across grains for the
+    // few hours a household sits either side of UTC midnight. Converting it means moving
+    // the per-day grouping out of SQL, which is a larger change than this sweep; the
+    // report's OWN day, which every other branch names, is now correct.
     const on =
-      delivered && delivered.count > 0 ? delivered.day : day(report.at);
-    const suffix = checkClockSuffix(report, on);
+      delivered && delivered.count > 0 ? delivered.day : day(report.at, timeZone);
+    const suffix = checkClockSuffix(report, on, timeZone);
     if (!delivered || delivered.count <= 0) {
       // The run kind is still stated. A delivery that re-offered only documents allos
       // already holds genuinely delivered nothing new, and saying so is the honest
@@ -177,5 +204,5 @@ export function portalLoginStatus(
   }
   // A run that found nothing new still counts as a check — that is the point of the
   // every-run report: a quiet week reads as healthy rather than broken.
-  return plain("ok", `Last run ${day(report.at)}`);
+  return plain("ok", `Last run ${day(report.at, timeZone)}`);
 }

@@ -14,6 +14,8 @@ import {
 import { tokenLifecycleStatus } from "@/lib/token-lifecycle";
 import { getIntegrationState, SETUP_HISTORY_LIMIT } from "@/lib/queries";
 import { requireSession } from "@/lib/auth";
+import { getTimezone } from "@/lib/settings";
+import { dateFromCreatedAt } from "@/lib/timeline-format";
 import IntegrationStatusHeader from "@/components/integrations/IntegrationStatusHeader";
 import SyncHistoryTable from "@/components/integrations/SyncHistoryTable";
 import HealthConnectSetup from "./HealthConnectSetup";
@@ -88,7 +90,7 @@ export default async function HealthConnectPage() {
           status={status}
           createdAt={tokenInfo.createdAt}
           lastUsedAt={tokenInfo.lastUsedAt}
-          expiresAt={tokenInfo.expiresAt}
+          expiresOnDay={dateFromCreatedAt(tokenInfo.expiresAt, getTimezone(profile.id))}
         />
 
         {connected && (
