@@ -34,9 +34,8 @@ const log = createLogger("medical-extract");
 // person could act on and everything a stack frame or a request URL carries. The
 // caller logs the error, which is where the detail belongs.
 //
-// NO branch may advise a delete (#3852, #3876) — the document's own page carries the
-// preview-first reprocess control (#1071), rendered unconditionally, so every failure
-// here already has a non-destructive recovery, a self-clearing rate limit included.
+// NO branch may advise a delete (#3852, #3876): the document's page renders the
+// preview-first reprocess control (#1071) unconditionally, so nothing is stuck.
 export function describeError(err: unknown): string {
   if (err instanceof APIConnectionTimeoutError) {
     return "The AI request timed out before responding. The document may be large or the model took too long — try again, or split it into smaller files.";
@@ -47,8 +46,6 @@ export function describeError(err: unknown): string {
   if (err instanceof APIError) {
     const s = err.status;
     if (s === 401 || s === 403)
-      // The reader's half, not the operator's (#3852): the rejection is ours and
-      // their file is intact.
       return "The AI isn’t accepting requests from this app, so the document couldn’t be read. Nothing is wrong with your file — it’s saved, and you can try reading it again from this document’s page once AI is working again.";
     if (s === 413)
       return "The document is too large for a single AI request. Try a smaller file or split it.";
