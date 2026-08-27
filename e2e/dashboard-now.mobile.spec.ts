@@ -2,7 +2,11 @@ import { test, expect } from "./fixtures";
 import { type Browser, type Page } from "@playwright/test";
 import Database from "better-sqlite3";
 import { loginAs } from "./nav";
-import { expectNoClippedContent, settledBoxes } from "./helpers";
+import {
+  expectNoClippedContent,
+  expectPhoneTapTargets,
+  settledBoxes,
+} from "./helpers";
 import { frozenNow, workerDbPath } from "./worker-env";
 import {
   E2E_MEMBER_PASSWORD,
@@ -316,6 +320,13 @@ test("the illness cockpit names its situation exactly once at 390px (#3238)", as
     await expect(cockpit.getByTestId("illness-cockpit-day")).toHaveText(
       /^Day \d+$/
     );
+
+    const actions = ["note-toggle", "clear"].map((id) =>
+      cockpit.getByTestId(`symptom-cough-${id}`)
+    );
+    await expectPhoneTapTargets(page, "logged symptom actions", actions, {
+      disjoint: true,
+    });
   } finally {
     await page.context().close();
   }

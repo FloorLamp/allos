@@ -11,18 +11,16 @@ export default function HrefSelect({
   ariaLabel,
   value,
   options,
-  className = "input h-auto w-auto py-1.5 text-sm",
 }: {
   ariaLabel: string;
   value: string;
   options: { value: string; label: string; href: AppRoute }[];
-  className?: string;
 }) {
   const router = useRouter();
   return (
     <select
       aria-label={ariaLabel}
-      className={className}
+      className="input h-auto w-auto py-1.5 text-sm"
       value={value}
       onChange={(e) => {
         const opt = options.find((o) => o.value === e.target.value);
