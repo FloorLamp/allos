@@ -27,7 +27,8 @@ describe("medicationStartDate", () => {
           { started_on: "2026-01-01", stopped_on: "2026-02-01" },
           { started_on: "2026-06-01", stopped_on: null },
         ],
-        "2025-01-01 12:00:00"
+        "2025-01-01 12:00:00",
+        "UTC"
       )
     ).toBe("2026-06-01");
   });
@@ -39,25 +40,36 @@ describe("medicationStartDate", () => {
           { started_on: "2026-03-01", stopped_on: null },
           { started_on: "2026-05-01", stopped_on: null },
         ],
-        null
+        null,
+        "UTC"
       )
     ).toBe("2026-05-01");
   });
 
-  it("falls back to the created date (date portion) when no course is open", () => {
+  // The created_at fallback is an INSTANT, so the zone decides which calendar day it
+  // lands on (#3836). Both fixtures STRADDLE — 21:30Z has already tipped over in
+  // Auckland, 02:30Z has not yet arrived in Los Angeles — so neither can pass by
+  // truncating the stamp, which is what the site did before. A midday fixture agrees
+  // with UTC in every zone and would be green against the bug.
+  it.each([
+    ["Pacific/Auckland", "2025-07-08 21:30:00", "2025-07-09"],
+    ["America/Los_Angeles", "2025-07-08 02:30:00", "2025-07-07"],
+  ])("falls back to the created day in %s", (tz, createdAt, day) => {
+    expect(createdAt.slice(0, 10)).toBe("2025-07-08"); // the UTC day, i.e. the old answer
     expect(
       medicationStartDate(
         [{ started_on: "2026-01-01", stopped_on: "2026-02-01" }],
-        "2025-07-08 09:30:00"
+        createdAt,
+        tz
       )
-    ).toBe("2025-07-08");
-    expect(medicationStartDate([], "2025-07-08 09:30:00")).toBe("2025-07-08");
+    ).toBe(day);
+    expect(medicationStartDate([], createdAt, tz)).toBe(day);
   });
 
   it("is null when there is no open course and no created date", () => {
-    expect(medicationStartDate([], null)).toBeNull();
+    expect(medicationStartDate([], null, "UTC")).toBeNull();
     expect(
-      medicationStartDate([{ started_on: null, stopped_on: null }], null)
+      medicationStartDate([{ started_on: null, stopped_on: null }], null, "UTC")
     ).toBeNull();
   });
 });

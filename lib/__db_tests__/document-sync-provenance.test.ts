@@ -639,7 +639,8 @@ describe("the #388 retention sweep does not release a claimed archive (#2999)", 
 
     const delivered = deliveredDocumentCountsByAccount(
       authorized([profileOne]),
-      false
+      false,
+      "UTC"
     ).get(accountOne.id);
     expect(delivered?.count).toBeGreaterThan(0);
   });
@@ -758,7 +759,8 @@ describe("a delivery reported as nothing-new is still a delivery (#2914)", () =>
     // file has driven — so the two surfaces are compared to EACH OTHER, not to a literal.
     const page = deliveredDocumentCountsByAccount(
       authorized([profileOne]),
-      false
+      false,
+      "UTC"
     ).get(accountOne.id)!;
     const deliveredThatDay = (
       db
@@ -784,7 +786,8 @@ describe("a delivery reported as nothing-new is still a delivery (#2914)", () =>
     // #1991's rule doing its job: what the label promises is still what the list shows.
     const before = deliveredDocumentCountsByAccount(
       authorized([profileOne]),
-      false
+      false,
+      "UTC"
     ).get(accountOne.id)!;
     const victim = (
       db
@@ -808,7 +811,8 @@ describe("a delivery reported as nothing-new is still a delivery (#2914)", () =>
 
     const after = deliveredDocumentCountsByAccount(
       authorized([profileOne]),
-      false
+      false,
+      "UTC"
     ).get(accountOne.id)!;
     // The page counts the archives allos still holds…
     expect(after.count).toBe(before.count - 1);

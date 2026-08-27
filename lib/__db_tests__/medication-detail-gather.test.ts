@@ -179,7 +179,7 @@ function calendarTheOldWay(
   );
   return buildAdherenceCalendar(
     strip,
-    medicationStartDate(courses, med.created_at)
+    medicationStartDate(courses, med.created_at, getTimezone(profileId))
   );
 }
 

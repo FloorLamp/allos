@@ -9,6 +9,7 @@ import type {
   PortalSoftware,
 } from "@/lib/portals";
 import type { SyncReportStatus } from "@/lib/acquirer-identity";
+import { dateFromCreatedAt } from "@/lib/timeline-format";
 
 // WHO MAY SEE A PORTAL ACCOUNT'S RUN REPORT (#1787) — AND ITS REGISTRY ROW (#1796).
 //
@@ -179,35 +180,58 @@ export interface DeliveredDocuments {
   day: string;
 }
 
+// GROUPED IN JS, NOT IN SQL (#3836), and that is the whole point of this shape.
+// `delivered_at` is an INSTANT. The per-day tally used to be `GROUP BY
+// substr(delivered_at, 1, 10)`, which buckets by the UTC day — so the sentence named a
+// day this household never had, and worse, #3835 made the CHECK clock beside it local:
+// `checked < on` in portalLoginStatus then compared a UTC day against a local one and
+// could flip for the hours a household sits either side of UTC midnight. SQLite has no
+// timezone database, so the bucket boundary cannot be computed there; it is computed
+// here instead, from the same conversion every other day on this page goes through.
+//
+// `timeZone` is the VIEWER's, required and not defaulted — the same zone the login row's
+// other dates use (#3835: a run report belongs to no profile, so it is the reader's
+// calendar). It must stay the same zone as the check clock's, because the two are
+// compared: two correct local days in different zones would be the same bug again.
 export function deliveredDocumentCountsByAccount(
   accessibleProfileIds: AuthorizedProfileIds,
-  canSeeUnclaimed: boolean
+  canSeeUnclaimed: boolean,
+  timeZone: string
 ): Map<number, DeliveredDocuments> {
   const ids = accessibleProfileIds;
-  // `substr(delivered_at, 1, 10)` rather than `date()`: the column is stored bare
-  // (lib/time-columns.ts), and the leading ten characters are its calendar day.
   const rows = db
     .prepare(
-      `SELECT pi.account_id AS accountId,
-              substr(d.delivered_at, 1, 10) AS day,
-              COUNT(*) AS delivered
+      `SELECT pi.account_id AS accountId, d.delivered_at AS deliveredAt
          FROM medical_documents d
          JOIN portal_identities pi ON pi.id = d.acquired_identity_id
         WHERE d.delivered_at IS NOT NULL
           AND d.profile_id IN ${profileIdsIn(ids)}
-          AND ${reachableAccountSql(ids, "pi.account_id")}
-        GROUP BY pi.account_id, day
-        ORDER BY pi.account_id, day`
+          AND ${reachableAccountSql(ids, "pi.account_id")}`
     )
     .all(...ids, ...ids, canSeeUnclaimed ? 1 : 0) as {
     accountId: number;
-    day: string;
-    delivered: number;
+    deliveredAt: string;
   }[];
-  // Ordered by day ascending, so the last row per account is its most recent delivery.
-  const out = new Map<number, DeliveredDocuments>();
+  // account → (local day → how many archives landed that day).
+  const tally = new Map<number, Map<string, number>>();
   for (const r of rows) {
-    out.set(r.accountId, { count: r.delivered, day: r.day });
+    // A stamp that will not parse keeps the stored prefix rather than dropping the
+    // document out of its login's count.
+    const day =
+      dateFromCreatedAt(r.deliveredAt, timeZone) ?? r.deliveredAt.slice(0, 10);
+    const days = tally.get(r.accountId) ?? new Map<string, number>();
+    days.set(day, (days.get(day) ?? 0) + 1);
+    tally.set(r.accountId, days);
+  }
+  const out = new Map<number, DeliveredDocuments>();
+  for (const [accountId, days] of tally) {
+    // The login's MOST RECENT delivery day, as the header says — the max, which the
+    // old SQL got from `ORDER BY day` and the last row winning.
+    let latest: DeliveredDocuments | null = null;
+    for (const [day, count] of days) {
+      if (latest === null || day > latest.day) latest = { count, day };
+    }
+    if (latest) out.set(accountId, latest);
   }
   return out;
 }

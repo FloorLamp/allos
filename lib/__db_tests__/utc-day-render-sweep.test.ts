@@ -25,6 +25,7 @@
 import { describe, expect, it } from "vitest";
 import { db } from "@/lib/db";
 import { setTimezone } from "@/lib/settings";
+import { shiftDateStr } from "@/lib/date";
 import {
   listDocumentTombstones,
   writeDocumentTombstone,
@@ -35,7 +36,19 @@ import {
   createPortal,
   identitySyncStatuses,
 } from "@/lib/portals";
+import { deliveredDocumentCountsByAccount } from "@/lib/portal-visibility";
+import { portalLoginStatus } from "@/lib/portal-status";
+import { revisionSummary } from "@/lib/lab-result-lifecycle";
+import { getObservationRevisions } from "@/lib/queries/medical";
+import { getSyncRowProvenance } from "@/lib/queries/integrations";
+import { searchAll } from "@/lib/queries/search";
+import { getProfileSummary } from "@/lib/profile-summary-load";
+import {
+  recordSyncEvent,
+  recordSyncRows,
+} from "@/lib/integrations/connections";
 import { seedActor } from "@/lib/__action_tests__/harness";
+import { testAuthorizedIds } from "../__tests__/authorized-ids";
 
 // zone, an instant, and the calendar day that instant falls on THERE. 22:30Z has
 // already tipped into the next day in Auckland; 02:30Z has not yet reached the stated
@@ -106,5 +119,174 @@ describe("a portal patient's 'Last synced' day is the bound profile's (#3573)", 
     expect(status.lastSyncedOnDay).toBe(day);
     expect(status.lastFailedOnDay).toBe(day);
     expect(status.lastSyncedOnDay).not.toBe(UTC_DAY);
+  });
+});
+
+// ── #3836: the same defect, at the read models #3573's table did not list ─────
+//
+// Identical shape, identical fixtures — deliberately the same STRADDLING table above,
+// because it is one question and a second table would be a second answer to it. Each
+// assertion below names one site; the zones are the axis. All of them returned UTC_DAY
+// on origin/main, in both zones.
+//
+// Three sites the issue listed are NOT here, because auditing them found nothing to
+// fix, and the reasons are worth keeping:
+//   * SessionHeartRateChart's tooltip stamp is a profile-LOCAL wall clock
+//     (SessionHeartRatePoint.date, "YYYY-MM-DDTHH:MM" — lib/session-detail.ts, which
+//     says so: "Local timestamps are treated as calendar numerals"), so its
+//     first ten characters ARE the local day. Converting it would have introduced the
+//     bug, and broken its `date === activityDate` comparison against a day column.
+//   * intake-cadence's `unrecordedScheduleChangeOn` and warnings' dose-change day are
+//     never rendered — they are compared against `effective_from` / `today`. That is
+//     arithmetic, which #3573's own conditional sends to #3572 (the ruling #3835 made
+//     for lib/sync-requests.ts).
+//   * illness-timeline-view's three slices sit over `encounters.date`,
+//     `medication_courses.started_on` and `COALESCE(document_date, date(uploaded_at))`.
+//     The first two are declared DAY columns (lib/time-columns.ts), so the slice is a
+//     no-op and there is nothing to convert. The third is already ten characters wide
+//     too — but `date(uploaded_at)` is a SQL UTC truncation, and it is the range FILTER
+//     in getEpisodeInRangeEvents as well as the rendered value, so correcting it means
+//     moving episode-window containment out of SQL. That is a read-model change, not
+//     this sweep's formatting fix.
+
+describe("the read models #3836 converted", () => {
+  it.each(STRADDLING)("%s reads %s as %s", (tz, at, day) => {
+    const { profile } = seedActor();
+    setTimezone(profile.id, tz);
+
+    // A lab supersession: "Superseded — was 5.4 mmol/L (<day>)" under a clinical result.
+    const recordId = Number(
+      db
+        .prepare(
+          `INSERT INTO medical_records (profile_id, date, category, name, value, unit)
+           VALUES (?, '2026-03-01', 'lab', 'Potassium', '5.4', 'mmol/L')`
+        )
+        .run(profile.id).lastInsertRowid
+    );
+    db.prepare(
+      `INSERT INTO medical_record_revisions
+         (record_id, date, value, value_num, unit, superseded_by_status, superseded_at)
+       VALUES (?, '2026-03-01', '5.4', 5.4, 'mmol/L', 'corrected', ?)`
+    ).run(recordId, at);
+    const revision = getObservationRevisions(profile.id, recordId)[0];
+    expect(revision.supersededOnDay).toBe(day);
+    expect(revisionSummary(revision)).toBe(
+      `Corrected — was 5.4 mmol/L (${day})`
+    );
+
+    // A document with no clinical date: both the search-hit subtitle and the Review row
+    // fall back to `uploaded_at`, which is an instant.
+    const docId = Number(
+      db
+        .prepare(
+          `INSERT INTO medical_documents
+             (filename, stored_path, mime_type, size_bytes, extraction_status,
+              uploaded_at, profile_id)
+           VALUES (?, '', 'application/pdf', 20, 'done', ?, ?)`
+        )
+        .run(`sweep-labs-${day}.pdf`, at, profile.id).lastInsertRowid
+    );
+    const hit = searchAll(profile.id, "sweep-labs")
+      .flatMap((g) => g.hits)
+      .find((h) => h.key === `document:${docId}`)!;
+    expect(hit.date).toBe(day);
+
+    const eventId = recordSyncEvent(profile.id, "patient-portals", {
+      ok: true,
+      received: 1,
+      written: 1,
+      inserted: 1,
+      updated: 0,
+      unchanged: 0,
+      skipped: 0,
+    })!;
+    recordSyncRows(eventId, [
+      {
+        target_table: "medical_documents",
+        target_id: docId,
+        disposition: "inserted",
+      },
+    ]);
+    expect(getSyncRowProvenance(profile.id, eventId)[0].date).toBe(day);
+
+    // The passport's two intake rows: a supplement has no modeled start date and a
+    // medication with no course on file has none either, so both date from created_at.
+    for (const [name, kind] of [
+      ["Sweep Magnesium", "supplement"],
+      ["Sweep Lisinopril", "medication"],
+    ] as const) {
+      db.prepare(
+        `INSERT INTO intake_items
+           (profile_id, name, active, kind, condition, obligation, created_at)
+         VALUES (?, ?, 1, ?, 'daily', 'should', ?)`
+      ).run(profile.id, name, kind, at);
+    }
+    const summary = getProfileSummary(profile.id, "Sweep");
+    expect(summary.supplements[0].date).toBe(day);
+    expect(summary.medications[0].date).toBe(day);
+
+    // Every one of them, and none of them the UTC day.
+    expect([
+      revision.supersededOnDay,
+      hit.date,
+      summary.supplements[0].date,
+      summary.medications[0].date,
+    ]).not.toContain(UTC_DAY);
+  });
+});
+
+// THE MIXED-GRAIN COMPARISON #3835 CREATED AND FLAGGED (#3836). `delivered.day` was
+// grouped UTC-side in SQL while the check clock beside it became local, so
+// `checked < on` in portalLoginStatus compared across grains and could flip near UTC
+// midnight. Both halves are now the same calendar's, which is what this asserts: the
+// SENTENCE, not just the field, because the sentence is where the two meet.
+describe("a delivery-only login row states one calendar's days", () => {
+  it.each(STRADDLING)("%s reads %s as %s", (tz, at, day) => {
+    const { profile } = seedActor();
+    const portal = createPortal(`Sweep Clinic ${day}`);
+    expect(portal.ok).toBe(true);
+    const account = accountsForPortal(portal.ok ? portal.id : 0)[0];
+    const label = "Robin Sweep";
+    expect(bindPortalIdentity(account.id, label, profile.id).ok).toBe(true);
+    const identityId = (
+      db
+        .prepare(
+          "SELECT id FROM portal_identities WHERE account_id = ? AND patient_label = ?"
+        )
+        .get(account.id, label) as { id: number }
+    ).id;
+    db.prepare(
+      `INSERT INTO medical_documents
+         (filename, stored_path, mime_type, size_bytes, extraction_status,
+          uploaded_at, delivered_at, profile_id, acquired_identity_id)
+       VALUES (?, '', 'application/xml', 20, 'done', ?, ?, ?, ?)`
+    ).run(`sweep-bundle-${day}.xml`, at, at, profile.id, identityId);
+
+    const delivered = deliveredDocumentCountsByAccount(
+      testAuthorizedIds([profile.id]),
+      false,
+      tz
+    ).get(account.id);
+    expect(delivered).toEqual({ count: 1, day });
+
+    // The check clock is the SAME instant two days earlier, so its local day is
+    // `day - 2` in either zone and the "portal last checked" suffix must appear. That
+    // suffix is emitted only when `checked < on`, which is the comparison that used to
+    // straddle two grains — so the sentence is the assertion, not the field.
+    const checkedDay = shiftDateStr(day, -2);
+    const line = portalLoginStatus(
+      {
+        at,
+        ok: true,
+        message: null,
+        contacted: false,
+        checkedAt: `${shiftDateStr(at.slice(0, 10), -2)}${at.slice(10)}`,
+        delivered,
+      },
+      tz
+    );
+    expect(line.text).toBe(
+      `Delivered 1 document ${day} · portal last checked ${checkedDay}`
+    );
   });
 });
