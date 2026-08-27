@@ -87,8 +87,7 @@ const OVERLAY_SURFACES = new Map<string, string>([
 // and none of them is new — they are the surfaces the `createPortal` requirement
 // hid (see isFullViewportOverlay). Each carries the anatomy reason it is not one
 // of the converged overlay surfaces, which is what this register has always been
-// for; whether a DIALOG belongs on the dialog host is a different question,
-// answered in scripts/dialog-census-core.ts and docs/internals/overlays.md.
+// for; docs/internals/overlays.md owns the separate dialog-host decision.
 const OTHER_FULL_VIEWPORT_OVERLAYS = new Map<string, string>([
   [
     "components/CompactDateMenu.tsx",
