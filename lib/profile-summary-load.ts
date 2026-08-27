@@ -6,6 +6,7 @@ import {
   getProfileBirthdate,
   getProfileFullName,
   getBloodType,
+  getTimezone,
 } from "./settings";
 import { ageInMonthsFromBirthdate } from "./date";
 import {
@@ -54,6 +55,7 @@ import {
 import type { ClinicalObservation, MedicationCourse } from "./types";
 import { medicationDoseDetail } from "./medication-list";
 import { isOnDemand } from "./intake-schedule";
+import { dateFromCreatedAt } from "./timeline-format";
 
 // Server-side gathering for the profile passport: it runs the
 // individual profile-scoped latest-value queries and hands the raw results to the
@@ -91,6 +93,9 @@ export function getProfileSummary(
   // immunization schedule assessment; resolve them up front.
   const birthdate = getProfileBirthdate(profileId);
   const now = today(profileId);
+  // Two passport rows date an intake item by when it was CREATED, and that column is
+  // an instant (#3836). The zone is resolved once here and threaded down.
+  const timeZone = getTimezone(profileId);
   const ageMonths = birthdate ? ageInMonthsFromBirthdate(birthdate, now) : null;
   const sex = getProfileSex(profileId);
 
@@ -167,7 +172,11 @@ export function getProfileSummary(
       return {
         name: s.name,
         detail,
-        date: medicationStartDate(coursesByItem.get(s.id) ?? [], s.created_at),
+        date: medicationStartDate(
+          coursesByItem.get(s.id) ?? [],
+          s.created_at,
+          timeZone
+        ),
       };
     });
   // #1178 retired the medical_records prescription fallback: an imported prescription
@@ -180,9 +189,13 @@ export function getProfileSummary(
     .map((s) => ({
       name: s.name,
       detail: [s.brand, s.product].filter(Boolean).join(" · ") || null,
-      // Supplements carry no modeled start date, so the created date stands in
-      // (date portion only, to render like the other date-only rows).
-      date: s.created_at ? s.created_at.slice(0, 10) : null,
+      // Supplements carry no modeled start date, so the created DAY stands in. That
+      // column is an instant, and taking its first ten characters printed the UTC day
+      // — a different date from this profile's for part of every day (#3836).
+      date: s.created_at
+        ? (dateFromCreatedAt(s.created_at, timeZone) ??
+          s.created_at.slice(0, 10))
+        : null,
     }));
 
   // Immunizations passport table: one row per catalog vaccine the profile

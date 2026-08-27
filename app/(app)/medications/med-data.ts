@@ -624,8 +624,11 @@ export function loadMedicationsData(
 // engine; this maps the already-gathered Current cards into its input). "Current" is
 // the medications page's Current set (active, structured meds); prescriber + start date
 // + schedule come straight off the card data, no second DB pass.
+// `timeZone` is the profile's, and required: a med with no course on file dates from
+// its item's created_at, which is an instant (#3836).
 export function medicationListFromCards(
-  cards: MedCardData[]
+  cards: MedCardData[],
+  timeZone: string
 ): MedicationListRow[] {
   return buildMedicationList(
     cards.map((c) => ({
@@ -638,7 +641,7 @@ export function medicationListFromCards(
       prescriber: c.med.prescriber,
       doseAmounts: c.doses.map((d) => d.amount).filter((a): a is string => !!a),
       timesOfDay: c.doses.map((d) => d.time_of_day),
-      startedOn: medicationStartDate(c.courses, c.med.created_at),
+      startedOn: medicationStartDate(c.courses, c.med.created_at, timeZone),
     }))
   );
 }
@@ -648,7 +651,8 @@ export function medicationListFromCards(
 export function getCurrentMedicationList(
   profileId: number
 ): MedicationListRow[] {
-  return medicationListFromCards(loadMedicationsData(profileId).current);
+  const data = loadMedicationsData(profileId);
+  return medicationListFromCards(data.current, data.tz);
 }
 
 // The number of days the detail-page month adherence calendar spans (#852 item 5) — a
@@ -687,6 +691,10 @@ export function getMedicationAdherenceCalendar(
     data.tz,
     travelExcusalResolver(profileId)
   );
-  const startedOn = medicationStartDate(card.courses, card.med.created_at);
+  const startedOn = medicationStartDate(
+    card.courses,
+    card.med.created_at,
+    data.tz
+  );
   return buildAdherenceCalendar(strip, startedOn);
 }

@@ -94,7 +94,8 @@ export interface PortalRunLike {
   // Null means the portal has never actually been checked. Never advanced by a
   // delivery, which is the whole reason this can be stated beside one.
   checkedAt: string | null;
-  // What this login most recently delivered, and the day the archives landed. See
+  // What this login most recently delivered, and the day the archives landed, resolved
+  // in the SAME zone this module's `timeZone` states (#3836) — the two are compared. See
   // deliveredDocumentCountsByAccount (lib/portal-visibility.ts) for why the count is the
   // documents themselves and why the day is the DELIVERY's rather than the report's — a
   // push that straddles UTC midnight files its last report on the far side of it, and the
@@ -176,14 +177,12 @@ export function portalLoginStatus(
     // The day the ARCHIVES landed when there are any, and the report's own day when the
     // delivery carried nothing — there is no delivery day to name in that case.
     //
-    // MIXED GRAIN, KNOWINGLY (#3573). `delivered.day` is grouped UTC-side by
-    // `substr(delivered_at, 1, 10)` in deliveredDocumentCountsByAccount, which #3573
-    // holds out of scope — that is the SQL truncation family, a different question. So
-    // on a delivery-only report this branch can pair a UTC delivery day with the local
-    // check day below, and `checked < on` can therefore compare across grains for the
-    // few hours a household sits either side of UTC midnight. Converting it means moving
-    // the per-day grouping out of SQL, which is a larger change than this sweep; the
-    // report's OWN day, which every other branch names, is now correct.
+    // ONE GRAIN, IN ONE ZONE (#3836). `delivered.day` was grouped UTC-side by
+    // `substr(delivered_at, 1, 10)`, so this branch paired a UTC delivery day with the
+    // local check day below and `checked < on` compared across grains for the hours a
+    // household sits either side of UTC midnight. deliveredDocumentCountsByAccount now
+    // buckets in JS, in the zone the caller states — the same zone `day()` uses here —
+    // so both halves of that comparison are the same calendar's.
     const on =
       delivered && delivered.count > 0
         ? delivered.day

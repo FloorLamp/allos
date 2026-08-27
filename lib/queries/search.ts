@@ -1,6 +1,7 @@
 import { db } from "../db";
 import { SETTINGS_GROUPS, type SettingsGroupId } from "../settings-groups";
-import { getProfileAge } from "../settings";
+import { getProfileAge, getTimezone } from "../settings";
+import { dateFromCreatedAt } from "../timeline-format";
 import { isTrainingRelevant } from "../life-stage";
 import { vaccineDisplayName } from "../immunization-catalog";
 import { displayUnit } from "../display-unit";
@@ -165,10 +166,19 @@ function documentHits(profileId: number, like: string): SearchHit[] {
     document_date: string | null;
     uploaded_at: string;
   }[];
+  const timeZone = getTimezone(profileId);
   return rows.map((r) => {
     // Mirror documentLabel(): lab/provider, else doc type, else filename.
     const title = r.source || r.doc_type || r.filename || "Document";
-    const date = isoDate(r.document_date ?? r.uploaded_at);
+    // `document_date` IS a day and is taken as one. `uploaded_at` is an INSTANT, and
+    // the fallback used to trim it to ten characters — the UTC day (#3836). It is the
+    // ONE instant that reaches isoDate: every other caller here already holds a day
+    // column (the temporal-column index, docs/internals/time-columns.md), which is why
+    // the conversion lands at this call site rather than inside the shared trimmer.
+    const date =
+      r.document_date ??
+      dateFromCreatedAt(r.uploaded_at, timeZone) ??
+      isoDate(r.uploaded_at);
     return {
       domain: "document",
       key: `document:${r.id}`,

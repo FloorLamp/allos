@@ -36,6 +36,7 @@ import {
   type IntegrationDelivery,
 } from "@/lib/integrations/delivery";
 import { syncEventDay } from "@/lib/integrations/sync-history-days";
+import { dateFromCreatedAt } from "@/lib/timeline-format";
 import {
   timelineDayHref,
   clinicalResultDetailHref,
@@ -1078,6 +1079,7 @@ export function getSyncRowProvenance(
     "SELECT document_date, uploaded_at, filename FROM medical_documents WHERE id = ? AND profile_id = ?"
   );
 
+  const timeZone = getTimezone(profileId);
   const out: SyncRowLink[] = [];
   for (const r of rows) {
     let date: string | null = null;
@@ -1131,7 +1133,14 @@ export function getSyncRowProvenance(
           }
         | undefined;
       deleted = !rec;
-      date = rec ? (rec.document_date ?? rec.uploaded_at.slice(0, 10)) : null;
+      // `document_date` IS a day; `uploaded_at` is an INSTANT and the fallback used to
+      // take its first ten characters — the UTC day, which is not this profile's for
+      // part of every day (#3836). The Review row prints the result as a date.
+      date = rec
+        ? (rec.document_date ??
+          dateFromCreatedAt(rec.uploaded_at, timeZone) ??
+          rec.uploaded_at.slice(0, 10))
+        : null;
       label = rec?.filename || "Document";
       href = importHref(r.target_id);
     } else {
