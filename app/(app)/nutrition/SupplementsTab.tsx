@@ -1274,12 +1274,10 @@ export default async function SupplementsTab({
                       action={
                         <>
                           <SharedSuppliesLink count={cabinetCount} />
-                          {/* THE EMPTY BRANCH KEEPS ITS DOOR HERE, and it is not the
-                              #3671 defect: with no supplements there is no schedule
-                              and so no day header to hang it on, and this page is
-                              short enough that the rail is not below a fold. The
-                              POPULATED branch — the long one the owner scrolled — is
-                              the one whose door moved. */}
+                          {/* The EMPTY branch keeps its door here: with no
+                              supplements there is no schedule to hang it on, and
+                              this page is short. The populated branch — the long
+                              one the owner scrolled — is the one that moved. */}
                           <LedgerDoorLink
                             href={doseLedgerHref("supplement")}
                             label="Dose history"

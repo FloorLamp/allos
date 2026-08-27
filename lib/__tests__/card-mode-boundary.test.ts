@@ -61,7 +61,6 @@ const FAMILY = [
   "table-section-row",
   "table-nested-row",
   "metric-readings-list",
-  "practice-session-list",
   // The five EntryHistoryTable surfaces' compact logged-event row (#3671): a
   // timeline of one fact each, collapsed to a line below the boundary with its
   // labelled detail one tap away.

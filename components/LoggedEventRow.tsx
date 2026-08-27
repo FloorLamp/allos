@@ -2,27 +2,22 @@ import type { ReactNode } from "react";
 
 // THE LOGGED-EVENT ROW (#3671).
 //
-// A logged event is ONE fact with a clock on it — a serving, a dose, a session, a
-// day's substance total — and the app had two shapes for it. The Food tab's
-// "Logged today" list was a hand-rolled one-line row (icon · name · slot·time · ⋯)
-// that fits seven entries on a phone; every ledger of the same facts rendered the
-// stacked label/value card, which fits two. The owner asked for the first one
-// everywhere, so it stops being FoodLogBar's and becomes this.
+// A logged event is one fact with a clock on it — a serving, a dose, a session, a
+// day's substance total — and the app drew it two ways: the Food tab's one-line row
+// fitted seven on a phone, every ledger of the same facts fitted two. The owner
+// asked for the first one everywhere, so it stops being FoodLogBar's and becomes
+// this.
 //
-// WHAT IS SHARED IS THE ANATOMY, not a wrapper element: the food log's rows are
-// `<li>`s and a ledger's are `<tr>`s that CSS re-lays below `sm`
-// (components/ResponsiveTable.tsx), and neither may become the other. So this owns
-// the identity half — the optional leading glyph and the truncating title beside it
-// — and the two class constants that draw the container and the row around it. Both
-// surfaces render this component, which is what stops them drifting into two shapes
-// again; #3647 did the same one level up, where the ledger FRAME stopped being three
-// frames.
+// WHAT IS SHARED IS THE ANATOMY, NOT A WRAPPER ELEMENT, and that is why this owns
+// the identity half rather than the whole row: the food log's rows are `<li>`s and a
+// ledger's are `<tr>`s that CSS re-lays below `sm` (components/ResponsiveTable.tsx),
+// and neither may become the other. Both render this, which is what stops them
+// drifting into two shapes again.
 //
-// DIVIDERS, NOT PER-ROW CARDS (owner decision, 2026-08-24, following #3077's "one
-// dense cluster of rows, not N cards"). One frame around the run, a hairline between
-// rows — `DashboardStandingCluster` is the reference markup and `--divider` the token
-// it uses. FoodLogBar's list carried a border and a fill PER ROW; that is the second
-// shape this exists to retire, so it goes too.
+// DIVIDERS, NOT PER-ROW CARDS (owner decision 2026-08-24, over #3077's "one dense
+// cluster of rows, not N cards"); `DashboardStandingCluster` is the reference markup.
+// FoodLogBar's list carried a border and a fill PER ROW — the second shape this
+// exists to retire, so it goes too.
 
 /** The frame a run of logged-event rows sits in: one border, hairlines inside. */
 export const LOGGED_EVENT_LIST =
@@ -38,9 +33,9 @@ export const LOGGED_EVENT_ROW =
 
 /**
  * The head line's right-hand fact, in tabular figures so a column of times lines up.
- * The table half of the same anatomy gets this from `td[data-card="trailing"]` in
- * app/globals.css, where it is card-mode-scoped because a table keeps its columns
- * above `sm`; the two are deliberately the same three tokens.
+ * The table half gets the same three tokens from `td[data-card="trailing"]` in
+ * app/globals.css — card-mode-scoped there, because a table keeps its columns above
+ * `sm`.
  */
 export const LOGGED_EVENT_TRAILING =
   "shrink-0 text-xs tabular-nums text-slate-500 dark:text-slate-400";
@@ -49,7 +44,7 @@ export default function LoggedEventRow({
   icon,
   children,
 }: {
-  /** The row's leading glyph, already sized and `aria-hidden`. Optional: a ledger of dates has nothing to draw here, and an empty gutter is worse than none. */
+  /** The leading glyph, already sized and `aria-hidden`. Optional: a ledger of dates has nothing to draw here, and an empty gutter is worse than none. */
   icon?: ReactNode;
   /** The row's identity — the food's name, the dose's date, the session. */
   children: ReactNode;

@@ -19,11 +19,9 @@ import { CARD_MODE_ONLY } from "@/lib/card-row";
 export interface EntryHistoryColumn<T> {
   header: string;
   headerClassName?: string;
-  // `title` is the row's identity and `trailing` the one attribute that stays beside
-  // it on the phone's head line (#3671); `value` and `meta` are the labelled detail
-  // the compact row discloses on tap. Which is which is the CONSUMER's call — the
-  // date identifies a dose ledger row, the amount is the fact on a substance day —
-  // and lib/card-row.ts is where the vocabulary is defined.
+  // `title` is the row's identity, `trailing` the one attribute beside it on the
+  // phone's head line, and `value`/`meta` the labelled detail the compact row
+  // discloses on tap (#3671). The vocabulary is lib/card-row.ts's.
   slot: "title" | "trailing" | "value" | "meta";
   label?: string;
   cellClassName?: string;
@@ -131,9 +129,7 @@ export default function EntryHistoryTable<T extends { id: number }>({
   const [menuOpenId, setMenuOpenId] = useState<number | null>(null);
   const [deletingId, setDeletingId] = useState<number | null>(null);
   const [expanded, setExpanded] = useState(false);
-  // THE DISCLOSURE IS ONE ROW'S AND IT IS LOCAL (#3671). Below `sm` a row shows its
-  // identity and its trailing fact; tapping reveals exactly the labelled detail the
-  // card showed before. Disclosure, not navigation: nothing is fetched, nothing
+  // THE DISCLOSURE IS ONE ROW'S AND IT IS LOCAL (#3671): nothing is fetched, nothing
   // routes, and the row keeps its ⋯ throughout so an edit never costs an extra tap.
   const [detailId, setDetailId] = useState<number | null>(null);
 

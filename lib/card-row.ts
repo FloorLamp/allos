@@ -150,19 +150,15 @@ export type CardSlot =
 
 // WHY `trailing` IS A SLOT AND NOT A `meta` WITH A CLASS (issue #3671).
 //
-// A logged event is ONE fact with a time on it, and the phone row that reads best for
-// it is the food log's: identity on the left, the clock on the right, nothing else
-// until you ask. Every other slot answers "where does this cell go in the stack";
-// this one answers "which single cell earns the head line", and that is a question
-// only the authoring consumer can answer — the date is the identity on a dose ledger
-// and the amount is the fact on a substance day. Encoding it as "the first meta cell"
-// would make the answer positional, which is how the column ladder above already
-// went wrong once (#3457).
+// Every other slot answers "where does this cell go in the stack". This one answers
+// "which single cell earns the head line", and only the authoring consumer can
+// answer it — the date identifies a dose ledger row, the amount is the fact on a
+// substance day. Deriving it positionally ("the first meta cell") is how the column
+// ladder above already went wrong once (#3457).
 //
-// It is DELIBERATELY CAPPED AT ONE PER ROW by the layout rather than by a check:
-// `title` grows from a zero basis and `trailing` is `shrink-0`, so a second trailing
-// cell would simply squeeze the identity — visible immediately, which is a better
-// teacher than a runtime assertion that fires in a tier nobody is looking at.
+// CAPPED AT ONE PER ROW BY THE LAYOUT, not by a check: `title` grows from a zero
+// basis and `trailing` is `shrink-0`, so a second trailing cell squeezes the
+// identity visibly — a better teacher than an assertion in a tier nobody watches.
 
 // The attributes a `<td>` carries so the card CSS can place it. Rendered by
 // `Td` in components/ResponsiveTable.tsx; kept here so the "empty cells vanish
