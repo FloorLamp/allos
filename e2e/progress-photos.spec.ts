@@ -11,6 +11,7 @@ import {
   followLink,
   primeCameraFallback,
   settledClick,
+  settledBoxes,
   settledSelect,
 } from "./helpers";
 import {
@@ -304,6 +305,30 @@ test("upload → grid → lightbox → compare → delete round trip (fallback c
     await expect(page.getByTestId("photo-timeline-overlay")).toBeVisible();
     await expect(page.getByTestId("photo-timeline-side")).toHaveCount(0);
 
+    await page.setViewportSize({ width: 390, height: 844 });
+    const opacity = page.getByRole("slider", { name: "Blend" });
+    await expectPhoneTapTargets(page, "photo opacity range", [opacity]);
+    const [toggleBox, opacityBox] = await settledBoxes([
+      page.getByText("Onion-skin overlay", { exact: true }),
+      opacity,
+    ]);
+    expect(
+      Math.min(toggleBox.x + toggleBox.width, opacityBox.x + opacityBox.width) -
+        Math.max(toggleBox.x, opacityBox.x) >
+        0 &&
+        Math.min(
+          toggleBox.y + toggleBox.height,
+          opacityBox.y + opacityBox.height
+        ) -
+          Math.max(toggleBox.y, opacityBox.y) >
+          0,
+      "Blend target overlaps its adjacent onion-skin target"
+    ).toBe(false);
+    await opacity.focus();
+    await expect(opacity).toBeFocused();
+    await page.keyboard.press("ArrowRight");
+    await expect(opacity).toHaveValue("51");
+
     // Delete from the lightbox through the app confirmation → one photo remains.
     await page.getByTestId("progress-view-grid").click();
     await items.nth(0).click();
@@ -355,6 +380,33 @@ test("upload → grid → lightbox → compare → delete round trip (fallback c
   } finally {
     await page.context().close();
   }
+});
+
+test("crop zoom keeps native range behavior and fixed phone geometry", async ({
+  page,
+}) => {
+  await page.setViewportSize({ width: 390, height: 844 });
+  await page.goto("/settings/health");
+  await page.locator('input[type="file"]').setInputFiles({
+    name: "crop.jpg",
+    mimeType: "image/jpeg",
+    buffer: await jpeg({ r: 90, g: 140, b: 180 }),
+  });
+  const zoom = page.getByRole("slider", { name: "Zoom" });
+  await expect(zoom).toBeEnabled();
+  await expectPhoneTapTargets(
+    page,
+    "crop zoom range",
+    [zoom, page.getByRole("button", { name: "Save photo" })],
+    { disjoint: true }
+  );
+  await zoom.focus();
+  await expect(zoom).toBeFocused();
+  await page.keyboard.press("ArrowRight");
+  await expect(zoom).toHaveValue("1.01");
+  await page.setViewportSize({ width: 1280, height: 844 });
+  expect((await zoom.boundingBox())!.height).toBeLessThan(44);
+  await page.getByRole("button", { name: "Cancel" }).click();
 });
 
 test("a denied auto-open explains recovery, while missing hardware stays picker-only", async ({

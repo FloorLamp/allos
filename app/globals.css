@@ -2127,9 +2127,7 @@ input[type="time"]::-webkit-datetime-edit-ampm-field:focus {
   }
 }
 
-/* A checkbox keeps its compact native paint while its associated label owns the
-   interaction floor on phone layouts and coarse-pointer devices. The label, not
-   a pseudo-element, is the target so native checkbox click semantics do the work. */
+/* Compact native controls keep their paint inside a 44px interaction box. */
 .checkbox-control {
   display: inline-flex;
   align-items: center;
@@ -2137,7 +2135,8 @@ input[type="time"]::-webkit-datetime-edit-ampm-field:focus {
 }
 
 @media (max-width: 639.98px), (pointer: coarse) {
-  .checkbox-control {
+  .checkbox-control,
+  input[type="range"] {
     min-block-size: 2.75rem;
     min-inline-size: 2.75rem;
   }
