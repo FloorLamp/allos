@@ -373,10 +373,8 @@ export function digestDocumentLine(
 export const MAX_NAMED_DOCUMENTS = 3;
 
 // How many flagged results a morning names before it collapses to a count (#3872). The
-// digest is one glanceable message, so a broad panel still has to stop somewhere — but
-// the read behind it no longer truncates, so the tail counts what is REALLY left rather
-// than reporting the cap back to itself. The dashboard shares that read and shows all of
-// them.
+// digest is one glanceable message and still has to stop somewhere; the read behind it
+// no longer does, so the tail counts what is REALLY left rather than the cap itself.
 export const MAX_NAMED_FLAGGED = 8;
 
 export interface DigestSection {

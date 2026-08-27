@@ -85,11 +85,10 @@ export const FLAGGED_ATTENTION_WINDOW_DAYS = 14;
 // resolves; repeat flags of one analyte already collapse to the current reading in
 // the CTE, and dedupeFlaggedByAnalyte stays as a defensive collapse-by-name.
 //
-// IT RETURNS EVERY FLAGGED ANALYTE, and used to stop at eight (#3872). A cap here fell
-// on both callers, so a broad panel lost its ninth result and beyond from the dashboard
-// AND the digest with nothing said. Truncating is a RENDERING choice and belongs where
-// the length matters: the digest names MAX_NAMED_FLAGGED and counts the rest, and the
-// dashboard is a page, so it shows what it has.
+// IT RETURNS EVERY FLAGGED ANALYTE, and used to stop at eight (#3872): one cap here fell
+// on both callers, so a broad panel lost its ninth result and beyond from each, silently.
+// Truncating is a RENDERING choice — the digest names MAX_NAMED_FLAGGED and counts the
+// rest; the dashboard is a page and shows what it has.
 // It lives HERE, not beside the digest that also calls it (#2958): a read the
 // dashboard depends on cannot sit in lib/notifications without the notification and
 // read layers importing each other in a runtime cycle.
