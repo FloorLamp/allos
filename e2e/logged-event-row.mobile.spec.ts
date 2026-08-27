@@ -40,11 +40,14 @@ const ITEM_AMOUNT = "3 g";
 const FOOD_GROUP = "berries";
 const FOOD_NAME = "Berries";
 
-// The compact row is ONE line. Measured 2026-08-27 at 430px: 44px on every one of
-// the five consumers, which is `min-h-11` — the row's content (a 15px title beside
-// a 12px clock, `py-2`) asks for less, so the floor is what sets the height. The
-// ceiling is the floor plus one 20px line of slack: a row that gained a second line
-// reads 64px or more, and this catches it while tolerating a font-metric change.
+// THE COMPACT ROW IS ONE LINE, and this bounds its HEIGHT IN CSS PIXELS at 430px.
+// Measured 2026-08-27: 56px on the dose ledger, 57px on the food ledger, on a
+// practice session and on a substance day, 52px on the food log's own list. None of
+// those is the `min-h-11` floor — what sets the height is the row's ⋯ trigger (40px)
+// inside the row's own vertical padding, and the floor is what stops a row WITHOUT
+// one going under 44. A row that gained a second 20px line would read 76px or more,
+// so the ceiling sits between: the tap floor plus one line of slack, which tolerates
+// a font-metric change and still catches a wrapped row.
 const COMPACT_ROW_CEILING_PX = TAP_FLOOR_PX + 20;
 
 function openDb(): Database.Database {
