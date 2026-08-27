@@ -2028,10 +2028,9 @@ export default function FoodLogBar({
               onClick={() => void bump(g, 1)}
               className="group tap-target flex h-8 w-8 items-center justify-center rounded-full text-white"
             >
-              {/* Keep the control's own class list static/readable to the tap-floor
-                  census; the full-size painted chip inside it carries the one-shot
-                  settle class. It is still the tapped chip people see, while the
-                  button keeps focus and its 44px effective target throughout. */}
+              {/* The full-size painted chip inside carries the one-shot settle class.
+                  It is still the tapped chip people see, while the button keeps focus
+                  and its 44px effective target throughout. */}
               <span
                 data-testid={`food-settle-${g.slug}`}
                 data-motion="settle"

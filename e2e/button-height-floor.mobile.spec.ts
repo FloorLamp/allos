@@ -284,15 +284,12 @@ test.describe("segmented controls own disjoint rendered targets (#3514)", () => 
 // That is worse than a plainly undersized control, because nothing was ever going
 // to look at it again.
 //
-// WHY THIS IS MEASURED HERE AND NOT ONLY IN THE SOURCE CENSUS.
-// `lib/__tests__/tap-floor-reach.test.ts` reads the class list, which is how it
-// can cover every route and every state at once. It cannot tell you the rule
-// REACHED the element: `@media (pointer: coarse)` is a real condition, and this
-// project's own history is a floor that read correctly in the stylesheet and did
-// not arrive (#3514's cascade bug, caught by a bounding box). So the numbers below
-// come from `getBoundingClientRect()` and from the browser's own computed style
-// for the pseudo-element, and the effective target is those two measurements
-// added — never a class name.
+// WHY THIS IS MEASURED IN THE BROWSER. A class name cannot prove that a conditional
+// rule reached the element: `@media (pointer: coarse)` is a real condition, and
+// this project's own history is a floor that read correctly in the stylesheet and
+// did not arrive (#3514's cascade bug, caught by a bounding box). So the numbers
+// below come from `getBoundingClientRect()` and the browser's computed style for
+// the pseudo-element, and the effective target is those two measurements added.
 test.describe("the hit-area mechanism reaches the floor it claims (#3486)", () => {
   test.use({ viewport: PHONE });
 
@@ -399,9 +396,8 @@ test.describe("the hit-area mechanism reaches the floor it claims (#3486)", () =
       tooSmall,
       `A \`.tap-target\` control renders under ${TAP_TARGET_MIN_RENDERED_PX}px at ${PHONE.width}px. The ` +
         `overlay adds a fixed 2x${TAP_TARGET_INSET_PX}px, so below that it lands short of the ` +
-        `${TAP_FLOOR_PX}px floor while carrying the class that claims it. Either give the ` +
-        "control the rendered height, or register it in " +
-        "`lib/__tests__/tap-floor-reach.test.ts` with what would close it."
+        `${TAP_FLOOR_PX}px floor while carrying the class that claims it. Give the ` +
+        "control the rendered height or migrate it to a primitive that owns the floor."
     ).toEqual([]);
   });
 });
