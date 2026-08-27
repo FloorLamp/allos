@@ -130,8 +130,8 @@ function buildTierClient(opts: ResolvedClientOptions): Anthropic {
 // The runtime tier configs live in the DB (Settings → Server), but this module must
 // stay DB-free: it's imported by the pure client-construction tests and, transitively,
 // by the extraction barrels the pure suite loads. So the DB-backed reader is INJECTED
-// at boot (lib/migrations/boot-tasks.ts registers it — the same "pull the fs/DB sink
-// onto the Node boot path" trick the error log uses), and until it is, resolution
+// at boot (lib/db.ts registers it — the same "pull the fs/DB sink onto the Node boot
+// path" trick the error log uses), and until it is, resolution
 // falls back to the environment (the first-boot seed, and every pure test path).
 
 let tierConfigProvider: (() => TierConfigs) | null = null;

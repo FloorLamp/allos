@@ -23,10 +23,8 @@ import {
   getCurrentFlaggedBiomarkers,
   getClinicalObservations,
 } from "@/lib/queries";
-import {
-  getNewlyFlaggedBiomarkers,
-  digestSince,
-} from "@/lib/notifications/digest-data";
+import { digestSince } from "@/lib/notifications/digest-data";
+import { getNewlyFlaggedBiomarkers } from "@/lib/queries/attention";
 import { collectUpcoming } from "@/lib/queries/upcoming";
 import { recentLabHighlights } from "@/lib/recent-labs";
 import { isBiomarkerStale } from "@/lib/reference-range";

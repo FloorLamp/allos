@@ -26,10 +26,8 @@ import {
   restoreFinding,
 } from "@/lib/queries/upcoming";
 import { attentionBadgeItems, groupAttentionForPage } from "@/lib/attention";
-import {
-  digestSince,
-  getNewlyFlaggedBiomarkers,
-} from "@/lib/notifications/digest-data";
+import { digestSince } from "@/lib/notifications/digest-data";
+import { getNewlyFlaggedBiomarkers } from "@/lib/queries/attention";
 import { getCurrentFlaggedBiomarkers } from "@/lib/queries/medical";
 import { setProfileSetting } from "@/lib/settings";
 
