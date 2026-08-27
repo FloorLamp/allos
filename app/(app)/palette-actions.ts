@@ -3,11 +3,12 @@
 import { requireWriteAccess } from "@/lib/auth";
 import { revalidateRoute } from "@/lib/revalidate";
 import { today } from "@/lib/db";
-import { getUnitPrefs } from "@/lib/settings";
+import { getUnitPrefs, type WeightUnit } from "@/lib/settings";
 import { insertBodyMetric } from "@/lib/offline/writes";
 import { getTrackedPractices } from "@/lib/queries";
 import { practiceLogOutcomeText } from "@/lib/practice";
 import { parseQuickLog } from "@/lib/palette-quick-log";
+import { submittedWeightUnit } from "@/lib/units";
 import { logPractice } from "@/app/(app)/wellness/actions";
 
 // Server action behind the command palette's inline quick-log (issue #29, extended to
@@ -18,11 +19,18 @@ import { logPractice } from "@/app/(app)/wellness/actions";
 // validation as the body-metrics form and the offline replay; logPractice, the same
 // action the Wellness card's button and the quick-entry overlay post). Mutating, so it
 // gates on requireWriteAccess.
+//
+// `capturedUnit` is the unit the PREVIEW was parsed against, so an unsuffixed number
+// commits as the row the person read ("Log weight · 82.5 kg") rather than against the
+// pref re-read here (#630, #3853) — the same carry every weight form makes, validated
+// like one because a Server Action argument arrives over the wire.
 export async function paletteQuickLog(
-  input: string
+  input: string,
+  capturedUnit?: WeightUnit
 ): Promise<{ ok: boolean; message: string }> {
   const { login, profile } = await requireWriteAccess();
   const prefs = getUnitPrefs(login.id);
+  const weightUnit = submittedWeightUnit(capturedUnit, prefs.weightUnit);
   // The finite preimage (#394): only a practice this profile actually tracks can be
   // written, so a forged input can never invent one — and the identity folding is the
   // shared practiceIdentity, so a quick log lands in the same family the card counts.
@@ -30,7 +38,7 @@ export async function paletteQuickLog(
     identity: p.identity,
     name: p.name,
   }));
-  const parsed = parseQuickLog(input, prefs.weightUnit, practices);
+  const parsed = parseQuickLog(input, weightUnit, practices);
   if (!parsed) return { ok: false, message: "Unrecognized quick log." };
   if (parsed.error) return { ok: false, message: parsed.error };
 

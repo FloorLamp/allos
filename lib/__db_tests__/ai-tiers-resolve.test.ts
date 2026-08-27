@@ -62,7 +62,7 @@ afterAll(() => {
 describe("getTierConfigs — env fallback + settings override", () => {
   it("falls the Heavy tier back to the legacy env vars when unset in the DB", () => {
     setEnv("sk-env", "", "env-model");
-    const { heavy, light } = getTierConfigs();
+    const { heavy, light } = getTierConfigs(db);
     expect(heavy.apiKey).toBe("sk-env");
     expect(heavy.model).toBe("env-model");
     // Light has no env fallback — an unconfigured Light tier falls back to Heavy at
@@ -72,13 +72,13 @@ describe("getTierConfigs — env fallback + settings override", () => {
 
   it("prefers a stored Heavy config over the env", () => {
     setEnv("sk-env", "", "env-model");
-    setTierConfig("heavy", {
+    setTierConfig(db, "heavy", {
       apiShape: "anthropic",
       baseUrl: "",
       model: "db-model",
       apiKey: "sk-db",
     });
-    const { heavy } = getTierConfigs();
+    const { heavy } = getTierConfigs(db);
     expect(heavy.apiKey).toBe("sk-db");
     expect(heavy.model).toBe("db-model");
   });
@@ -86,7 +86,7 @@ describe("getTierConfigs — env fallback + settings override", () => {
 
 describe("setTierConfig — a blank key never wipes a stored secret", () => {
   it("keeps the stored key when the model/url are edited with a blank key field", () => {
-    setTierConfig("light", {
+    setTierConfig(db, "light", {
       apiShape: "openai-compatible",
       baseUrl: "http://local:8000/v1",
       model: "llama",
@@ -94,30 +94,30 @@ describe("setTierConfig — a blank key never wipes a stored secret", () => {
     });
     // Re-save the same tier with a BLANK key (the masked field submits blank when
     // untouched) but a changed model.
-    setTierConfig("light", {
+    setTierConfig(db, "light", {
       apiShape: "openai-compatible",
       baseUrl: "http://local:8000/v1",
       model: "llama-2",
       apiKey: "",
     });
-    expect(getTierConfig("light").apiKey).toBe("secret-key");
-    expect(getTierConfig("light").model).toBe("llama-2");
+    expect(getTierConfig(db, "light").apiKey).toBe("secret-key");
+    expect(getTierConfig(db, "light").model).toBe("llama-2");
     // The view never leaks the key, only whether one is set.
-    const view = getTierConfigView("light");
+    const view = getTierConfigView(db, "light");
     expect(view).not.toHaveProperty("apiKey");
     expect(view.hasApiKey).toBe(true);
   });
 
   it("clearTierApiKey removes the stored secret", () => {
-    setTierConfig("light", {
+    setTierConfig(db, "light", {
       apiShape: "anthropic",
       baseUrl: "",
       model: "m",
       apiKey: "secret",
     });
-    clearTierApiKey("light");
-    expect(getTierConfig("light").apiKey).toBe("");
-    expect(getTierConfigView("light").hasApiKey).toBe(false);
+    clearTierApiKey(db, "light");
+    expect(getTierConfig(db, "light").apiKey).toBe("");
+    expect(getTierConfigView(db, "light").hasApiKey).toBe(false);
   });
 });
 
@@ -125,36 +125,36 @@ describe("seedAiTiersFromEnv — first-boot idempotence", () => {
   it("seeds Heavy from env once, then never overwrites an admin edit", () => {
     setEnv("sk-seed", "", "seed-model");
     seedAiTiersFromEnv(db);
-    expect(getTierConfig("heavy").apiKey).toBe("sk-seed");
+    expect(getTierConfig(db, "heavy").apiKey).toBe("sk-seed");
 
     // Admin changes the key; a later boot must not clobber it back to the env.
-    setTierConfig("heavy", {
+    setTierConfig(db, "heavy", {
       apiShape: "anthropic",
       baseUrl: "",
       model: "seed-model",
       apiKey: "sk-admin",
     });
     seedAiTiersFromEnv(db);
-    expect(getTierConfig("heavy").apiKey).toBe("sk-admin");
+    expect(getTierConfig(db, "heavy").apiKey).toBe("sk-admin");
   });
 
   it("seeds nothing when the AI env is entirely empty", () => {
     setEnv(undefined, undefined, undefined);
     seedAiTiersFromEnv(db);
-    expect(getTierConfig("heavy").apiKey).toBe("");
+    expect(getTierConfig(db, "heavy").apiKey).toBe("");
     expect(isTaskConfigured("extraction")).toBe(false);
   });
 });
 
 describe("resolveTaskClient — task → tier routing", () => {
   it("routes a light task to the Light tier when configured", () => {
-    setTierConfig("heavy", {
+    setTierConfig(db, "heavy", {
       apiShape: "anthropic",
       baseUrl: "",
       model: "heavy-model",
       apiKey: "sk-heavy",
     });
-    setTierConfig("light", {
+    setTierConfig(db, "light", {
       apiShape: "openai-compatible",
       baseUrl: "http://local:8000/v1",
       model: "local-light",
@@ -168,7 +168,7 @@ describe("resolveTaskClient — task → tier routing", () => {
   });
 
   it("falls a light task back to Heavy when Light is unconfigured", () => {
-    setTierConfig("heavy", {
+    setTierConfig(db, "heavy", {
       apiShape: "anthropic",
       baseUrl: "",
       model: "heavy-model",
@@ -180,7 +180,7 @@ describe("resolveTaskClient — task → tier routing", () => {
   });
 
   it("never routes extraction to the Light tier (misroute guard)", () => {
-    setTierConfig("light", {
+    setTierConfig(db, "light", {
       apiShape: "anthropic",
       baseUrl: "",
       model: "light",

@@ -27,8 +27,11 @@ import {
   type MemberSection,
   type ProfiledUpcomingItem,
 } from "../attention";
-import { getNewlyFlaggedBiomarkers } from "../notifications/digest-data";
-import type { DigestFlaggedBiomarker } from "../notifications/digest";
+import { getCurrentFlaggedBiomarkers } from "./medical";
+import {
+  dedupeFlaggedByAnalyte,
+  type DigestFlaggedBiomarker,
+} from "../notifications/digest";
 import { biomarkerFlagDismissalKey } from "../dismissal-keys";
 import { isSuppressed } from "../upcoming-suppress";
 import { retestModulationFor } from "../risk-stratification";
@@ -62,6 +65,48 @@ import { getIntegrationAttention, getReviewPairCount } from "./integrations";
 // digest keeps its own send-cursor window (digestSince) — the read is shared, the
 // window is per-surface.
 export const FLAGGED_ATTENTION_WINDOW_DAYS = 14;
+
+// A few labels are enough for a glanceable digest line; the section says the count.
+const MAX_FLAGGED = 8;
+
+// Out-of-range biomarkers newly flagged since `since` (profile-scoped). This is the
+// single read behind BOTH the digest's "New" section and the dashboard's
+// flagged-biomarker attention items, so the two can never disagree on which results
+// are "newly flagged" — each surface passes its OWN window (`since`): the digest
+// its send cursor, the dashboard a stable trailing window (issue #283).
+//
+// The heavy lifting is getCurrentFlaggedBiomarkers (lib/queries/medical.ts): it
+// restricts to each analyte family's CURRENT (latest-per-family) reading via the
+// SAME LATEST_IDS_CTE machinery the household/passport surfaces use, so a
+// SUPERSEDED historical out-of-range reading (a 5-year-old low that a later normal
+// reading replaced) never surfaces here — the #557 fix, a "one question, one
+// computation" consolidation with the two sibling surfaces. It also windows on the
+// COLLECTION date as well as the import cursor, so a history backfill (created_at
+// today, collected years ago) can't light the window. "immune" is a good
+// durable-immunity status (#544/#549), excluded there too. Names are
+// canonical-preferred so links/dedupe key on the same identity the biomarker view
+// resolves; repeat flags of one analyte already collapse to the current reading in
+// the CTE, and dedupeFlaggedByAnalyte stays as a defensive collapse-by-name before
+// the MAX_FLAGGED slice.
+// It lives HERE, not beside the digest that also calls it (#2958): a read the
+// dashboard depends on cannot sit in lib/notifications without the notification and
+// read layers importing each other in a runtime cycle.
+export function getNewlyFlaggedBiomarkers(
+  profileId: number,
+  since: string,
+  limit = MAX_FLAGGED
+): DigestFlaggedBiomarker[] {
+  return dedupeFlaggedByAnalyte(
+    getCurrentFlaggedBiomarkers(profileId, since).map(
+      (r): DigestFlaggedBiomarker => ({
+        name: r.name,
+        canonicalName: r.canonicalName,
+        value: r.value,
+        flag: r.flag,
+      })
+    )
+  ).slice(0, limit);
+}
 
 // The window start as a datetime('now')-format UTC string (medical_records
 // created_at values compare lexically in that format).

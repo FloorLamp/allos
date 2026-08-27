@@ -202,9 +202,9 @@ export function reopenDatabaseForTests(): void {
 // lib/ai-resolve can resolve task → tier → client without importing the DB layer. Done
 // here rather than in boot-tasks so that module stays off the lib/settings import (the
 // db → boot-tasks → settings cycle otherwise TDZ-faults some import orders). The
-// closure defers getTierConfigs to call time — it reads the assigned singleton, never
-// during module evaluation — so a settings-first import order stays safe.
-setTierConfigProvider(() => getTierConfigs());
+// closure defers the singleton read to call time, and getTierConfigs takes the handle
+// rather than importing it back (#2958), so this edge does not close a cycle.
+setTierConfigProvider(() => getTierConfigs(db));
 
 // Run a WRITE transaction with the reserved-write lock taken at BEGIN (IMMEDIATE)
 // (issue #468). A plain `db.transaction(fn)` is DEFERRED: it opens a read snapshot
