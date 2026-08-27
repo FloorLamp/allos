@@ -125,6 +125,11 @@ export default function WeightQuickAdd({
           />
         </div>
         <input type="hidden" name="date" value={today} />
+        {/* The unit CAPTURED with the number (#630, #2863) — the same one the label
+            above prints, so the write cannot read it differently from the person who
+            typed it. The action's fallback, the pref re-read at write time, can: a
+            dashboard rendered before a Settings flip submits after it. */}
+        <input type="hidden" name="weight_unit" value={weightUnit} />
         <SubmitButton
           data-testid="weight-quick-add-save"
           pendingLabel="Saving…"

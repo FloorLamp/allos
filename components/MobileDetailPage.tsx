@@ -10,10 +10,8 @@ import { useLockBodyScroll } from "./useLockBodyScroll";
 // 2026-08-20). This is a full-page mobile TAKEOVER, not a centred dialog: it
 // replaces the page rather than floating over it, it has no scrim, and it is
 // dismissed by the back gesture (useHistoryBackClose) the way a page is. It is
-// recorded in scripts/dialog-census-core.ts so no sweep of full-viewport surfaces
-// loses it again, but it is recorded as SCOPED OUT — not as an exception to the
-// convergence rule, which it was never an instance of. Converging it onto a
-// centred-dialog host would be the wrong shape.
+// not an exception to the convergence rule, which it was never an instance of.
+// Converging it onto a centred-dialog host would be the wrong shape.
 //
 // A mobile-only (`lg:hidden`) full-page detail surface for master/detail views.
 // On desktop the Explorer pages and the training log show the detail beside the

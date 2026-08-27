@@ -5,6 +5,8 @@ import { IconCamera } from "@tabler/icons-react";
 import { useToast } from "@/components/Toast";
 import PhotoGallery from "@/components/photo/PhotoGallery";
 import PhotoTimeline from "@/components/photo/PhotoTimeline";
+import PhotoDeleteAction from "@/components/photo/PhotoLightboxActions";
+import { LightboxAction } from "@/components/photo/PhotoLightboxActions";
 import SegmentedControl from "@/components/SegmentedControl";
 import { filterBySeries, type GalleryPhoto } from "@/lib/photo/gallery-model";
 import {
@@ -185,8 +187,8 @@ export default function SymptomPhotoStrip({
             !canWrite ? null : editingId === photo.id ? (
               <form
                 className="flex items-center gap-1.5"
-                onSubmit={(e) => {
-                  e.preventDefault();
+                onSubmit={(event) => {
+                  event.preventDefault();
                   saveCaption(photo.id, close);
                 }}
               >
@@ -201,31 +203,24 @@ export default function SymptomPhotoStrip({
                   data-testid={`symptom-photo-caption-input-${photo.id}`}
                   className="input h-8 w-48 px-2 text-xs text-slate-900 dark:text-slate-100"
                   value={captionDraft}
-                  onChange={(e) => setCaptionDraft(e.target.value)}
+                  onChange={(event) => setCaptionDraft(event.target.value)}
                   maxLength={500}
                   autoFocus
                 />
-                <button
-                  type="button"
-                  className="rounded-lg bg-white/10 px-3 py-1.5 text-sm font-medium text-white hover:bg-white/20"
-                  onClick={() => setEditingId(null)}
-                >
+                <LightboxAction onClick={() => setEditingId(null)}>
                   Cancel
-                </button>
-                <button
+                </LightboxAction>
+                <LightboxAction
                   type="submit"
-                  className="rounded-lg bg-white/10 px-3 py-1.5 text-sm font-medium text-white hover:bg-white/20"
                   disabled={pending}
                   data-testid={`symptom-photo-caption-save-${photo.id}`}
                 >
                   {pending ? "Saving…" : "Save"}
-                </button>
+                </LightboxAction>
               </form>
             ) : (
               <>
-                <button
-                  type="button"
-                  className="rounded-lg bg-white/10 px-3 py-1.5 text-sm font-medium text-white hover:bg-white/20"
+                <LightboxAction
                   data-testid={`symptom-photo-edit-${photo.id}`}
                   disabled={pending}
                   onClick={() => {
@@ -234,30 +229,18 @@ export default function SymptomPhotoStrip({
                   }}
                 >
                   Edit caption
-                </button>
-                <button
-                  type="button"
-                  className="rounded-lg bg-rose-600/80 px-3 py-1.5 text-sm font-medium text-white hover:bg-rose-600"
-                  data-testid={`symptom-photo-delete-${photo.id}`}
-                  disabled={pending}
-                  onClick={() =>
-                    start(async () => {
-                      const fd = new FormData();
-                      fd.set("photoId", String(photo.id));
-                      if (profileId != null)
-                        fd.set("profileId", String(profileId));
-                      const res = await deleteSymptomPhotoAction(fd);
-                      if (!res.ok) {
-                        toast(res.error, { tone: "error" });
-                        return;
-                      }
-                      // The photo the lightbox is showing no longer exists.
-                      close();
-                    })
-                  }
-                >
-                  Delete
-                </button>
+                </LightboxAction>
+                <PhotoDeleteAction
+                  testId={`symptom-photo-delete-${photo.id}`}
+                  close={close}
+                  remove={() => {
+                    const formData = new FormData();
+                    formData.set("photoId", String(photo.id));
+                    if (profileId != null)
+                      formData.set("profileId", String(profileId));
+                    return deleteSymptomPhotoAction(formData);
+                  }}
+                />
               </>
             )
           }
