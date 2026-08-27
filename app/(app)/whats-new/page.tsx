@@ -141,12 +141,10 @@ export default async function WhatsNewPage(props: {
                       {entry.title}{" "}
                       <span className="inline-flex flex-wrap items-baseline gap-x-2 gap-y-1 text-xs text-slate-500 dark:text-slate-400">
                         {/* Repo links are EXTERNAL URLs, so plain strings (#285).
-                            The run WRAPS (#3867): adjacent anchors separated only
-                            by an `ml-2` carry no break opportunity, so a 7-issue
-                            entry was one word and ran off a 390px phone. The flex
-                            line gives the break at the same 8px gap; the nowrap
-                            moves onto each `issue #N`, the half that must stay
-                            whole. */}
+                            The run also WRAPS (#3867): `ml-2` was a gap, not a
+                            break opportunity, so seven adjacent anchors read as
+                            one word and ran off a 390px phone. Same 8px, now
+                            breakable — and the nowrap moves onto each `issue #N`. */}
                         <a
                           href={pullRequestUrl(entry.pr)}
                           target="_blank"

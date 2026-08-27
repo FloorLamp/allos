@@ -238,9 +238,8 @@ function TrackedRow({
       if (outcome.status === "ok") {
         toast("Context generated.", { tone: "success" });
       } else if (outcome.status === "not-configured") {
-        // No retry advice and no setup instructions (#3852): this one will not
-        // succeed on a second press, and which backend is missing is an operator
-        // fact a person reading their own gaps cannot act on.
+        // No retry advice, no setup instructions (#3852): a second press fails
+        // the same way, and which backend is missing is an operator's fact.
         toast("Couldn't generate context — AI isn't available.", {
           tone: "error",
         });

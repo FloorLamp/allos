@@ -43,9 +43,8 @@ export function describeError(err: unknown): string {
   if (err instanceof APIError) {
     const s = err.status;
     if (s === 401 || s === 403)
-      // What the reader can act on, not what an operator would fix (#3852): the
-      // rejection is ours, the document is untouched, and the recovery is the
-      // same delete-and-re-upload the 429 branch below already names.
+      // The reader's half, not the operator's (#3852): the rejection is ours,
+      // their file is intact, and re-upload is the recovery 429 already names.
       return "The AI isn’t accepting requests from this app, so the document couldn’t be read. Nothing is wrong with your file — delete this document and re-upload it once AI is working again.";
     if (s === 413)
       return "The document is too large for a single AI request. Try a smaller file or split it.";
