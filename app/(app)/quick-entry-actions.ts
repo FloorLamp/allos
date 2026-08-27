@@ -320,18 +320,22 @@ export async function loadQuickEntry(
 
   if (form === "practice") {
     // The tracked-practice list (a practice-scope frequency target IS the user's
-    // declaration that they mean to keep doing it). A profile with none gets an honest
-    // answer pointing at where practices are set up, the same shape "no doses are due"
-    // takes — never an empty list to stare at.
-    const practices = getTrackedPractices(profile.id, date);
-    if (practices.length === 0) {
-      return {
-        form: "unavailable",
-        message:
-          "No tracked practices yet. Add one under Wellness to log sessions from here.",
-      };
-    }
-    return { form: "practice", practices, today: date };
+    // declaration that they mean to keep doing it).
+    //
+    // AN EMPTY LIST IS NOT AN `unavailable` (#3066). It used to be: the answer was
+    // "add one under Wellness", which named a page whose nav row the #1620 gate hides
+    // until a practice exists — the only creation path sat behind a gate that
+    // requires what it creates, so a profile that had never tracked one could reach
+    // practices only by typing the URL. The gate is right and stays; the zero-state
+    // answer becomes the offer itself, which is #1633's own argument continued (this
+    // row exists because "the web app made you find /wellness first"). The empty list
+    // IS the bootstrap state, so it is a `practice` payload and the list component
+    // renders the create form in it.
+    return {
+      form: "practice",
+      practices: getTrackedPractices(profile.id, date),
+      today: date,
+    };
   }
 
   if (form === "substance") {

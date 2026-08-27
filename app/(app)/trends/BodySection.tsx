@@ -1,6 +1,8 @@
 import Link from "next/link";
 import DestinationLink from "@/components/DestinationLink";
 import { requireSession } from "@/lib/auth";
+import { progressPhotoDoor } from "@/lib/progress-photos";
+import { hasProgressPhotos } from "@/lib/progress-photo-write";
 import { today } from "@/lib/db";
 import { chartSeries } from "@/lib/chart-colors";
 import BristolStoolPanel from "@/components/BristolStoolPanel";
@@ -218,7 +220,7 @@ export default async function BodySection({
   historyPage: number;
   historyPageHref: (page: number) => AppRoute;
 }) {
-  const { login, profile } = await requireSession();
+  const { login, profile, access } = await requireSession();
   const units = getUnitPrefs(login.id);
   const formatPrefs = getDisplayFormatPrefs(login.id);
   const todayStr = today(profile.id);
@@ -1643,10 +1645,33 @@ export default async function BodySection({
       }
     : null;
 
+  // The VISIBLE first-capture door onto progress photos (#3284). The #1119 nav
+  // gate is untouched and still hides the row for a zero-row store; what it left
+  // behind was a feature whose only always-visible entry point was a command-palette
+  // search, and physique photos read against the body census — this is the context
+  // they belong to.
+  const photoDoor = progressPhotoDoor({
+    hasPhotos: hasProgressPhotos(profile.id),
+    readOnly: access === "read",
+  });
+
   return (
     <div className="space-y-6" data-testid="trends-body">
-      {/* The retired Today card's real navigation stays at the section head. */}
-      <div className="flex justify-end">
+      {/* The retired Today card's real navigation stays at the section head, now
+          shared with the progress-photos door. `flex-wrap` because the phone width
+          cannot always hold both: wrapping costs a line, clipping costs the door. */}
+      <div className="flex flex-wrap items-center justify-end gap-x-4 gap-y-1">
+        {photoDoor !== "hidden" && (
+          <DestinationLink
+            href="/progress"
+            data-testid="body-progress-photos-link"
+            className="inline-flex items-center gap-1.5 text-sm font-medium text-brand-700 hover:underline dark:text-brand-400"
+          >
+            {photoDoor === "first-capture"
+              ? "Add a progress photo"
+              : "Progress photos"}
+          </DestinationLink>
+        )}
         <DestinationLink
           href={timelineDayHref(todayStr)}
           data-testid="body-timeline-link"

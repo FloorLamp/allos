@@ -19,6 +19,7 @@ import {
   type SpecialtyRelevance,
 } from "../nav-relevance";
 import { isMentalHealthScreeningRelevant, isMinor } from "../life-stage";
+import { hasProgressPhotos } from "../progress-photo-write";
 import { hasSleepData } from "./sleep";
 
 // The two Specialty DATA probes. Hoisted because #2557 made them a per-profile read
@@ -72,10 +73,7 @@ export function getNavRelevance(profileId: number): NavRelevance {
     // Data presence only (any recorded sleep session) — the #1066 Sleep nav gate.
     sleep: hasSleepData(profileId),
     // Data presence only (any progress photo) — the #1119 Progress-photos gate.
-    progress:
-      db
-        .prepare(`SELECT 1 FROM progress_photos WHERE profile_id = ? LIMIT 1`)
-        .get(profileId) != null,
+    progress: hasProgressPhotos(profileId),
     // Either half of the practice store makes its daily home relevant (#1620).
     wellness: wellnessTrackingRelevant({
       hasPracticeTargets,

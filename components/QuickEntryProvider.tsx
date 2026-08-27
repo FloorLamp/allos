@@ -329,8 +329,16 @@ function QuickEntryBody({
       // moment — multi-session days are the point and a morning check may log two
       // different practices. The user dismisses when they're done; the taps already
       // refresh the page behind, so "stay put" still holds.
+      //
+      // `onDone` is threaded anyway for the #3066 ZERO STATE only, where the body is
+      // the create form rather than a log list — declaring a first practice IS a
+      // transaction with an end. The list branch ignores it.
       return (
-        <QuickPracticeList practices={data.practices} today={data.today} />
+        <QuickPracticeList
+          practices={data.practices}
+          today={data.today}
+          onDone={onDone}
+        />
       );
     case "stool":
       // No `onSaved`: like the food bar and the practice list, stool logging has no

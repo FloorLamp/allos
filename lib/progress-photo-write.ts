@@ -183,6 +183,17 @@ export function updateProgressPhotoCore(
   });
 }
 
+// Whether this profile has any progress photo at all. ONE definition of the
+// presence question, read by both the #1119 nav gate and the #3284 in-domain
+// door — a second `SELECT 1` elsewhere would be a second opinion about one fact.
+export function hasProgressPhotos(profileId: number): boolean {
+  return (
+    db
+      .prepare(`SELECT 1 FROM progress_photos WHERE profile_id = ? LIMIT 1`)
+      .get(profileId) != null
+  );
+}
+
 // Every progress photo for a profile, newest first. The page derives per-pose
 // series / gallery grouping in JS (lib/photo/gallery-model.ts).
 export function getProgressPhotos(profileId: number): ProgressPhotoRow[] {
