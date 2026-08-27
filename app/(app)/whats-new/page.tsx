@@ -139,8 +139,12 @@ export default async function WhatsNewPage(props: {
                         </span>
                       )}
                       {entry.title}{" "}
-                      <span className="text-xs whitespace-nowrap text-slate-500 dark:text-slate-400">
-                        {/* Repo links are EXTERNAL URLs, so plain strings (#285). */}
+                      <span className="inline-flex flex-wrap items-baseline gap-x-2 gap-y-1 text-xs text-slate-500 dark:text-slate-400">
+                        {/* Repo links are EXTERNAL URLs, so plain strings (#285).
+                            The run also WRAPS (#3867): `ml-2` was a gap, not a
+                            break opportunity, so seven adjacent anchors read as
+                            one word and ran off a 390px phone. Same 8px, now
+                            breakable — and the nowrap moves onto each `issue #N`. */}
                         <a
                           href={pullRequestUrl(entry.pr)}
                           target="_blank"
@@ -155,7 +159,7 @@ export default async function WhatsNewPage(props: {
                             href={issueUrl(issue)}
                             target="_blank"
                             rel="noreferrer"
-                            className="ml-2 underline-offset-2 hover:text-slate-700 hover:underline dark:hover:text-slate-200"
+                            className="underline-offset-2 whitespace-nowrap hover:text-slate-700 hover:underline dark:hover:text-slate-200"
                           >
                             issue #{issue}
                           </a>

@@ -43,7 +43,11 @@ export function describeError(err: unknown): string {
   if (err instanceof APIError) {
     const s = err.status;
     if (s === 401 || s === 403)
-      return "AI authentication failed — check that ANTHROPIC_API_KEY (or the AI_BASE_URL endpoint's credentials) is set and valid.";
+      // The reader's half, not the operator's (#3852): the rejection is ours and
+      // their file is intact. NEVER advise a delete here — the document's own
+      // page carries the preview-first reprocess control (#1071), which is
+      // rendered unconditionally and simply declines while AI is unavailable.
+      return "The AI isn’t accepting requests from this app, so the document couldn’t be read. Nothing is wrong with your file — it’s saved, and you can try reading it again from this document’s page once AI is working again.";
     if (s === 413)
       return "The document is too large for a single AI request. Try a smaller file or split it.";
     if (s === 429)

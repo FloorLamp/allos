@@ -238,10 +238,11 @@ function TrackedRow({
       if (outcome.status === "ok") {
         toast("Context generated.", { tone: "success" });
       } else if (outcome.status === "not-configured") {
-        toast(
-          "No AI backend configured. Set ANTHROPIC_API_KEY or AI_BASE_URL to generate context privately.",
-          { tone: "error" }
-        );
+        // No retry advice, no setup instructions (#3852): a second press fails
+        // the same way, and which backend is missing is an operator's fact.
+        toast("Couldn't generate context — AI isn't available.", {
+          tone: "error",
+        });
       } else if (outcome.status === "cap-exhausted") {
         toast("Daily AI limit reached — try again tomorrow.", {
           tone: "error",

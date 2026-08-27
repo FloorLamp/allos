@@ -1,5 +1,7 @@
 import { describe, it, expect } from "vitest";
+import { APIError } from "@anthropic-ai/sdk";
 import {
+  describeError,
   normalizeSex,
   normalizeBirthdate,
   normalizeAge,
@@ -618,5 +620,39 @@ describe("extraction tool schema: confidence is asked for uniformly (#1601)", ()
   it("tells the model the signal orders review and gates nothing", () => {
     expect(SYSTEM).toContain("confidence_reason");
     expect(SYSTEM).toMatch(/rows a human looks at first/);
+  });
+});
+
+// The SDK-error sentences a reader meets when their own upload fails (#3852).
+//
+// 401/403 used to answer with an environment variable to set, which is an
+// operator fact: the person who uploaded the document cannot act on it, and it
+// arrives at the worst moment — the extraction they started has just failed.
+// What it says now is what they can use — the app was turned away, the file is
+// intact, and the recovery is the document's own reprocess control.
+describe("describeError: what a failed extraction tells the reader (#3852)", () => {
+  const apiError = (status: number) =>
+    new APIError(status, undefined, "upstream detail", undefined);
+
+  it.each([
+    [401, /isn’t accepting requests from this app/],
+    [403, /Nothing is wrong with your file/],
+    [413, /too large for a single AI request/],
+    [429, /Rate limited by the AI/],
+    [503, /server error \(503\)/],
+  ])("status %i reads as house copy", (status, expected) => {
+    const copy = describeError(apiError(status));
+    expect(copy).toMatch(expected);
+    // No configuration vocabulary in any branch — the operator's half of the
+    // story lives in the server log the caller writes, not on this screen.
+    expect(copy).not.toMatch(/ANTHROPIC_API_KEY|AI_BASE_URL/);
+  });
+
+  // A SEPARATE property from "reads as house copy": the 401/403 recovery must
+  // stay NON-DESTRUCTIVE. An earlier draft borrowed 429's delete-and-re-upload,
+  // which tells a person to throw away a medical document when the preview-first
+  // reprocess control on that same page (#1071) would have recovered it.
+  it.each([401, 403])("status %i never advises deleting the document", (s) => {
+    expect(describeError(apiError(s))).not.toMatch(/delet/i);
   });
 });
