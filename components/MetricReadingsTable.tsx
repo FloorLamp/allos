@@ -187,8 +187,6 @@ function ReadingRow({
     fd.set("kind", kind);
     fd.set("target", row.target);
     fd.set("value", value);
-    // The unit the edited number was CAPTURED in — the field opens on the value this
-    // page converted for display, so its unit is this page's (#3853).
     fd.set("weight_unit", weightUnit);
     setBusy(true);
     try {
