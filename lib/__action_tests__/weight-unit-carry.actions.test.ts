@@ -17,6 +17,9 @@ import {
 } from "@/app/(app)/training/activity-actions";
 import { createGoal } from "@/app/(app)/training/goal-actions";
 import { addBodyMetric } from "@/app/(app)/trends/body-actions";
+import { updateMetricReading } from "@/app/(app)/trends/reading-actions";
+import { paletteQuickLog } from "@/app/(app)/palette-actions";
+import { readingTargetToken } from "@/lib/reading-placement";
 import { LB_PER_KG } from "@/lib/units";
 import { setStoredAge } from "@/lib/settings";
 import { createLogin, createProfile, actAs, fd } from "./harness";
@@ -276,6 +279,96 @@ describe("addBodyMetric honors the submitted weight unit (issues #630, #2863)", 
         )
         .get(profile.id) as { weight_kg: number };
       expect(row.weight_kg).toBeCloseTo(expectKg, 6);
+    }
+  );
+});
+
+// THE CORRECTION PATH AND THE PALETTE (#3853), the two write paths that still
+// re-read the pref after #3850 closed the dashboard's.
+//
+// Both are seeded with the login's STORED pref set OPPOSITE to the captured unit, so a
+// pref-reading write is off by 2.2046× and the assertion cannot pass by coincidence.
+// A correction is the worse of the two to get wrong: the person is already looking at
+// the number because they thought it was wrong, so a silent 2.2× "fix" is the one
+// they are likeliest to accept.
+
+function weightRowKg(profileId: number): number {
+  return (
+    db
+      .prepare(
+        "SELECT weight_kg FROM body_metrics WHERE profile_id = ? ORDER BY id DESC LIMIT 1"
+      )
+      .get(profileId) as { weight_kg: number }
+  ).weight_kg;
+}
+
+describe("updateMetricReading honors the submitted weight unit (issues #630, #3853)", () => {
+  it.each([
+    { submitted: "kg", stored: "lb", entered: 82, expectKg: 82 },
+    { submitted: "lb", stored: "kg", entered: 180, expectKg: 180 / LB_PER_KG },
+    // Field absent (an older client): the pref remains the documented fallback.
+    { submitted: null, stored: "lb", entered: 180, expectKg: 180 / LB_PER_KG },
+  ] as const)(
+    "corrects to $entered $submitted with the login pref on $stored",
+    async ({ submitted, stored, entered, expectKg }) => {
+      const login = createLogin({ weightUnit: stored });
+      const profile = createProfile(`fix-${submitted ?? "none"}-${stored}`);
+      actAs(login, profile);
+      const id = Number(
+        db
+          .prepare(
+            "INSERT INTO body_metrics (profile_id, date, weight_kg) VALUES (?, ?, ?)"
+          )
+          .run(profile.id, "2026-07-01", 70).lastInsertRowid
+      );
+
+      const res = await updateMetricReading(
+        fd({
+          kind: "weight",
+          target: readingTargetToken({
+            store: "body_metrics",
+            id,
+            column: "weight_kg",
+          }),
+          value: entered,
+          weight_unit: submitted,
+        })
+      );
+
+      expect([res, weightRowKg(profile.id)]).toEqual([
+        { ok: true },
+        expect.closeTo(expectKg, 6),
+      ]);
+    }
+  );
+});
+
+describe("paletteQuickLog honors the captured unit (issues #630, #3853)", () => {
+  it.each([
+    { captured: "kg", stored: "lb", input: "weight 82", expectKg: 82 },
+    {
+      captured: "lb",
+      stored: "kg",
+      input: "weight 180",
+      expectKg: 180 / LB_PER_KG,
+    },
+    // An explicit suffix is the person's own statement and outranks both.
+    {
+      captured: "kg",
+      stored: "kg",
+      input: "weight 180 lb",
+      expectKg: 180 / LB_PER_KG,
+    },
+    { captured: undefined, stored: "lb", input: "weight 180", expectKg: 180 / LB_PER_KG },
+  ] as const)(
+    "commits `$input` previewed in $captured with the login pref on $stored",
+    async ({ captured, stored, input, expectKg }) => {
+      const login = createLogin({ weightUnit: stored });
+      const profile = createProfile(`palette-${captured ?? "none"}-${stored}`);
+      actAs(login, profile);
+
+      expect(await paletteQuickLog(input, captured)).toMatchObject({ ok: true });
+      expect(weightRowKg(profile.id)).toBeCloseTo(expectKg, 6);
     }
   );
 });

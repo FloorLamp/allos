@@ -4,7 +4,7 @@ import { revalidateRoute } from "@/lib/revalidate";
 import { requireWriteAccess } from "@/lib/auth";
 import { getUnitPrefs } from "@/lib/settings";
 import { anxietyStoredValue } from "@/lib/mood";
-import { toKg } from "@/lib/units";
+import { submittedWeightUnit, toKg } from "@/lib/units";
 import {
   deleteMetricRow as deleteReadingCore,
   updateMetricRow as updateReadingCore,
@@ -27,6 +27,13 @@ import { isTrendMetricSlug, type TrendMetricSlug } from "@/lib/trend-metrics";
 // login's display unit and stored in kilograms. Every other metric on the detail page
 // is stored in the unit it is charted in, so its submitted value passes straight
 // through — the one conversion is named rather than a `switch` of unit math.
+//
+// AND THE SUBMISSION SAYS WHICH UNIT (#630, #3853). A correction form opens pre-filled
+// with the row's value converted for DISPLAY, so the unit the person edits in is the
+// one their row printed — which is why both callers post it. Re-reading the pref here
+// instead would convert against whatever it says at WRITE time, and a flip in another
+// tab or on another device lands a correction 2.2046× out on a number the person was
+// already looking at because they thought it was wrong.
 //
 // TWO FIELDS, TWO DIFFERENT QUESTIONS (#2032). `kind` is the PAGE: it decides the display
 // unit to convert back from and the routes to revalidate. `target` is the ROW: it decides
@@ -70,7 +77,13 @@ export async function updateMetricReading(
   // here, at the same boundary, rather than letting a display slot reach the store.
   const value =
     target.slug === "weight"
-      ? toKg(entered, getUnitPrefs(login.id).weightUnit)
+      ? toKg(
+          entered,
+          submittedWeightUnit(
+            formData.get("weight_unit"),
+            getUnitPrefs(login.id).weightUnit
+          )
+        )
       : target.slug === "calm"
         ? anxietyStoredValue(entered)
         : entered;

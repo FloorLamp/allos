@@ -13,6 +13,7 @@ import {
   deleteMetricReading,
   updateMetricReading,
 } from "@/app/(app)/trends/reading-actions";
+import type { WeightUnit } from "@/lib/settings";
 
 // The readings TABLE under a metric detail page's chart (issue #1488, absorbing
 // #1397) — the chart's accessible, inspectable companion: date, value, source, flag.
@@ -67,6 +68,7 @@ export default function MetricReadingsTable({
   kind,
   rows,
   unit,
+  weightUnit,
   readOnlyReason,
   truncated = false,
 }: {
@@ -75,6 +77,12 @@ export default function MetricReadingsTable({
   kind: string;
   rows: MetricReadingRow[];
   unit: string;
+  /**
+   * The weight unit this page RENDERED in, posted with a correction so the action
+   * converts by the unit the row printed rather than the pref re-read at write time
+   * (#630, #3853). Ignored for every other metric, which is charted in its stored unit.
+   */
+  weightUnit: WeightUnit;
   /**
    * Set for a DERIVED metric (BMI, daily-average HR, sun minutes): there is no row to
    * edit, and saying so is better than an empty table implying the data is missing.
@@ -136,6 +144,7 @@ export default function MetricReadingsTable({
                       kind={kind}
                       row={row}
                       unit={unit}
+                      weightUnit={weightUnit}
                     />
                   ))}
                 </tbody>
@@ -158,10 +167,12 @@ function ReadingRow({
   kind,
   row,
   unit,
+  weightUnit,
 }: {
   kind: string;
   row: MetricReadingRow;
   unit: string;
+  weightUnit: WeightUnit;
 }) {
   const [editing, setEditing] = useState(false);
   const [menuOpen, setMenuOpen] = useState(false);
@@ -176,6 +187,9 @@ function ReadingRow({
     fd.set("kind", kind);
     fd.set("target", row.target);
     fd.set("value", value);
+    // The unit the edited number was CAPTURED in — the field opens on the value this
+    // page converted for display, so its unit is this page's (#3853).
+    fd.set("weight_unit", weightUnit);
     setBusy(true);
     try {
       const res = await updateMetricReading(fd);
