@@ -242,7 +242,9 @@ test("Training Log houses its primary in the header and keeps secondary actions 
   // Search owns an inline clear action, while activity types behave as one
   // segmented control with a single reset for all active filters.
   await search.fill("Bench");
-  await page.getByRole("button", { name: "Clear search" }).click();
+  const clearSearch = page.getByRole("button", { name: "Clear search" });
+  expect((await clearSearch.boundingBox())?.height).toBe(26);
+  await clearSearch.click();
   await expect(search).toHaveValue("");
   const types = page.getByRole("group", { name: "Activity type" });
   await expect(types.getByRole("button", { name: "All" })).toHaveAttribute(
@@ -259,6 +261,20 @@ test("Training Log houses its primary in the header and keeps secondary actions 
   // Mobile navigation already owns activity creation, so the page-level action
   // group disappears rather than duplicating all three controls.
   await page.setViewportSize({ width: 390, height: 844 });
+  await search.fill("Bench");
+  await expectPhoneTapTargets(page, "training search clear", [clearSearch]);
+  const searchRow = search.locator("..").locator("..");
+  const [phoneRow, phoneSearch, phoneClear] = await settledBoxes([
+    searchRow,
+    search,
+    clearSearch,
+  ]);
+  expect(phoneSearch.x + phoneSearch.width).toBeLessThanOrEqual(phoneClear.x);
+  expect(phoneClear.x + phoneClear.width).toBeLessThanOrEqual(
+    phoneRow.x + phoneRow.width
+  );
+  await clearSearch.click();
+  await expect(search).toHaveValue("");
   await expect(cadence.getByTestId("active-days-label-compact")).toBeVisible();
   expect(
     await cadence
@@ -532,6 +548,15 @@ test("logging a manual cardio activity auto-fills an editable estimated-calorie 
     1
   );
   expect(new Set(comparableStyles.map((style) => style.height)).size).toBe(1);
+  await page.setViewportSize({ width: 390, height: 844 });
+  const intensityTargets = ["Easy", "Moderate", "Hard"].map((name) =>
+    page.getByRole("button", { name, exact: true })
+  );
+  await expectPhoneTapTargets(page, "activity intensity", intensityTargets, {
+    disjoint: true,
+  });
+  await hydratedClick(page, intensityTargets[2]);
+  await expect(intensityTargets[2]).toHaveAttribute("aria-pressed", "true");
   // Back to the chips, so the rest of this test drives the form's normal shape.
   await page.getByTestId("activity-fact-editor-done").click();
   await expect(page.getByTestId("activity-fact-equipment")).toBeVisible();
@@ -983,39 +1008,45 @@ test("weight steppers bump a set's load by the lift-appropriate increment (#337)
     // Dividers on BOTH sides since #1524 gave reps its missing − button: the reps
     // stepper is the same − input + segment the weight one has always been.
   ).toEqual({ top: "0px", right: "1px", bottom: "0px", left: "1px" });
-  const weightStepperBox = await weightStepper.boundingBox();
-  const repsStepperBox = await repsStepper.boundingBox();
-  expect(weightStepperBox).not.toBeNull();
-  expect(repsStepperBox).not.toBeNull();
+  const weightHeading = page.getByTestId("weight-column-heading");
+  const repsHeading = page.getByTestId("reps-column-heading");
+  const [weightStepperBox, repsStepperBox, weightHeadingBox, repsHeadingBox] =
+    await settledBoxes([
+      weightStepper,
+      repsStepper,
+      weightHeading,
+      repsHeading,
+    ]);
   expect(
-    Math.abs(weightStepperBox!.width - repsStepperBox!.width)
+    Math.abs(weightStepperBox.width - repsStepperBox.width)
   ).toBeLessThanOrEqual(1);
-  const weightHeadingBox = await page
-    .getByTestId("weight-column-heading")
-    .boundingBox();
-  const repsHeadingBox = await page
-    .getByTestId("reps-column-heading")
-    .boundingBox();
-  expect(weightHeadingBox).not.toBeNull();
-  expect(repsHeadingBox).not.toBeNull();
-  expect(
-    Math.abs(
-      weightHeadingBox!.x +
-        weightHeadingBox!.width / 2 -
-        (weightStepperBox!.x + weightStepperBox!.width / 2)
-    )
-  ).toBeLessThanOrEqual(1);
-  expect(
-    Math.abs(
-      repsHeadingBox!.x +
-        repsHeadingBox!.width / 2 -
-        (repsStepperBox!.x + repsStepperBox!.width / 2)
-    )
-  ).toBeLessThanOrEqual(1);
+  for (const [heading, stepper] of [
+    [weightHeadingBox, weightStepperBox],
+    [repsHeadingBox, repsStepperBox],
+  ]) {
+    expect(
+      Math.abs(heading.x + heading.width / 2 - (stepper.x + stepper.width / 2))
+    ).toBeLessThanOrEqual(1);
+  }
+
+  const stepTargets = [
+    "Decrease weight",
+    "Increase weight",
+    "Decrease reps",
+    "Add a rep",
+  ].map((name) => page.getByTestId("set-row-1").getByLabel(name));
+  expect(await stepTargets[0].boundingBox()).toMatchObject({
+    width: 28,
+    height: 36,
+  });
+  await page.setViewportSize({ width: 390, height: 844 });
+  await expectPhoneTapTargets(page, "strength-set steppers", stepTargets, {
+    disjoint: true,
+  });
 
   // The + stepper bumps the (empty) weight by one increment → 2.5. Only weight is
   // set, so the set stays half-filled and nothing auto-saves — no cleanup needed.
-  await page.getByLabel("Increase weight").first().click(); // first-ok: the first set's increase-weight control on the opened card — order-agnostic
+  await hydratedClick(page, stepTargets[1]);
   await expect(page.getByTestId("set1-weight")).toHaveValue("2.5");
 
   await page.keyboard.press("Escape");

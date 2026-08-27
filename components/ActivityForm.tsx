@@ -1505,11 +1505,7 @@ export default function ActivityForm({
             <div
               className={`mt-3 grid gap-x-4 gap-y-2 ${sessionEquipmentType != null ? "sm:grid-cols-2" : ""}`}
             >
-              <IntensityPicker
-                intensity={intensity}
-                compact
-                onChange={setIntensity}
-              />
+              <IntensityPicker intensity={intensity} onChange={setIntensity} />
 
               {/* Session-level equipment (issue #342), stated as a fact rather than as
               its own machinery (#3334): the row said "Equipment", a <select> and a
