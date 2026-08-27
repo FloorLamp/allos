@@ -5,10 +5,8 @@ import {
   escalationAckCloseText,
   escalationTakeCloseText,
   parseAllCallback,
-  parseStackTakeCallback,
-  stackTakeCallback,
-  parseUsualRoutineCallback,
-  usualRoutineCallback,
+  offerCallback,
+  parseOfferCallback,
   callbackDataFits,
   TELEGRAM_CALLBACK_DATA_MAX_BYTES,
   parseEscalationCallback,
@@ -114,68 +112,51 @@ describe("parseAllCallback", () => {
   });
 });
 
-describe("parseStackTakeCallback (#3098)", () => {
-  it("round-trips the builder's token — one source of truth for the shape", () => {
-    const token = stackTakeCallback(2, "2026-07-03", [11, 12, 13]);
-    expect(token).toBe("stacktake:2:2026-07-03:11,12,13");
-    expect(parseStackTakeCallback(token)).toEqual({
-      profileId: 2,
-      date: "2026-07-03",
-      doseIds: [11, 12, 13],
-    });
-  });
-
-  it("rejects malformed tokens — the ids are an upper bound, never a free-text field", () => {
-    expect(parseStackTakeCallback("stacktake:1:2026-07-03:")).toBeNull(); // empty ids
-    expect(parseStackTakeCallback("stacktake:1:2026-07-03:11,x")).toBeNull(); // non-numeric id
-    expect(parseStackTakeCallback("stacktake:0:2026-07-03:11")).toBeNull(); // zero profile
-    expect(parseStackTakeCallback("stacktake:1::11")).toBeNull(); // no date
-    expect(parseStackTakeCallback("all:1:Morning:2026-07-03")).toBeNull();
-    expect(parseStackTakeCallback(undefined)).toBeNull();
-  });
-
-  it("rejects a forged non-date date at parse time (#3120)", () => {
-    expect(parseStackTakeCallback("stacktake:1:banana:11")).toBeNull();
-    expect(parseStackTakeCallback("stacktake:1:2026-13-45:11")).toBeNull();
-  });
-
-  it("declares Telegram's callback ceiling for the compose-time drop rule", () => {
-    expect(TELEGRAM_CALLBACK_DATA_MAX_BYTES).toBe(64);
-  });
-
-  it("its profile id resolves against a shared chat like every tap token", () => {
-    expect(resolveTapProfile({ profileId: 2 }, [1, 2, 3])).toBe(2);
-    expect(resolveTapProfile({ profileId: 9 }, [1, 2, 3])).toBeNull();
-  });
-});
-
-describe("parseUsualRoutineCallback (#2460)", () => {
-  it("round-trips the mint site's token — one source of truth for the shape", () => {
-    const token = usualRoutineCallback(2, 4471);
-    expect(token).toBe("usual:2:4471");
-    expect(parseUsualRoutineCallback(token)).toEqual({
+// ONE GRAMMAR, TWO PREFIXES (#2460 shipped it, #3282 moved `stacktake:` onto it).
+// Both offer tokens name a STORED bundle and nothing else, so the same table has to
+// answer for both — a shape that drifted apart per prefix is exactly what the shared
+// parser exists to prevent.
+describe("parseOfferCallback — <prefix>:<profileId>:<offerId>", () => {
+  it.each([
+    ["usual", "usual:2:4471"],
+    ["stacktake", "stacktake:2:4471"],
+  ] as const)("round-trips the mint site's %s token", (prefix, expected) => {
+    const token = offerCallback(prefix, 2, 4471);
+    expect(token).toBe(expected);
+    expect(parseOfferCallback(token, prefix)).toEqual({
       profileId: 2,
       offerId: 4471,
     });
   });
 
-  it("rejects malformed tokens — the offer id is an id, never a free-text field", () => {
-    expect(parseUsualRoutineCallback("usual:2:")).toBeNull(); // no offer
-    expect(parseUsualRoutineCallback("usual:2:banana")).toBeNull();
-    expect(parseUsualRoutineCallback("usual:0:7")).toBeNull(); // zero profile
-    expect(parseUsualRoutineCallback("usual:2:0")).toBeNull(); // zero offer
-    expect(parseUsualRoutineCallback("usual:2:-7")).toBeNull(); // negative offer
-    expect(parseUsualRoutineCallback("usual:2:7.5")).toBeNull(); // non-integer
-    expect(parseUsualRoutineCallback("usual:2:7:Morning")).toBeNull(); // extra field
-    expect(parseUsualRoutineCallback("usual:2")).toBeNull(); // truncated
-    expect(parseUsualRoutineCallback("stacktake:2:2026-07-03:11")).toBeNull();
-    expect(parseUsualRoutineCallback(undefined)).toBeNull();
+  // The offer id is an id, never a free-text field — and a token addressed to ANOTHER
+  // prefix is refused too, so one family can never reach another's handler.
+  it.each([
+    ["no offer", "usual:2:"],
+    ["non-numeric offer", "usual:2:banana"],
+    ["zero profile", "usual:0:7"],
+    ["zero offer", "usual:2:0"],
+    ["negative offer", "usual:2:-7"],
+    ["non-integer offer", "usual:2:7.5"],
+    ["extra field", "usual:2:7:Morning"],
+    ["truncated", "usual:2"],
+    ["another prefix", "stacktake:2:7"],
+    // A pre-#3282 `stacktake:` button still sitting in someone's chat: its ids are
+    // spelled inline, so it has four fields and no offer id. Refused here, answered
+    // by the dispatcher's out-of-date fallback, and swept off the keyboard as dead.
+    ["a retired ids-in-token stacktake", "stacktake:1:2026-07-03:11,12"],
+    ["undefined", undefined],
+  ])("refuses %s", (_why, data) => {
+    expect(parseOfferCallback(data, "usual")).toBeNull();
   });
 
-  it("carries NO date — the handler resolves today server-side, so it cannot backfill", () => {
-    // The whole token, so a date field cannot be added without this failing.
-    expect(usualRoutineCallback(2, 4471).split(":")).toHaveLength(3);
-  });
+  it.each(["usual", "stacktake"] as const)(
+    "%s carries NO date — the handler resolves today server-side, so it cannot backfill",
+    (prefix) => {
+      // The whole token, so a date field cannot be added without this failing.
+      expect(offerCallback(prefix, 2, 4471).split(":")).toHaveLength(3);
+    }
+  );
 
   it("its profile id resolves against a shared chat like every tap token", () => {
     expect(resolveTapProfile({ profileId: 2 }, [1, 2, 3])).toBe(2);
@@ -208,14 +189,21 @@ describe("callbackDataFits — the compose-time drop rule", () => {
     expect(callbackDataFits(wide)).toBe(false);
   });
 
-  it("the stored-offer token shape is nowhere near the cliff, at implausible ids", () => {
-    // The point of the stored offer (#2460): the token is CONSTANT size, so neither
-    // growth axis that killed the named-sets shape — a third habitual group, a seventh
-    // dose — can reach it. Pinned at ids far past anything this app will mint.
-    expect(callbackDataFits(usualRoutineCallback(999999999, 999999999))).toBe(
-      true
-    );
-  });
+  // The point of the stored offer (#2460, extended to `stacktake:` by #3282): the
+  // token is CONSTANT size, so no growth axis that killed the spelled-out shapes — a
+  // third habitual group, a seventh dose, a twelfth stack member — can reach the
+  // cliff. Pinned at ids far past anything this app will mint, and past what SQLite
+  // can allocate: a rowid maxes out at 19 digits.
+  it.each(["usual", "stacktake"] as const)(
+    "the %s stored-offer token is nowhere near the cliff, at implausible ids",
+    (prefix) => {
+      expect(
+        callbackDataFits(
+          offerCallback(prefix, 9223372036854775807, 9223372036854775807)
+        )
+      ).toBe(true);
+    }
+  );
 });
 
 describe("takeMatchesProfile", () => {

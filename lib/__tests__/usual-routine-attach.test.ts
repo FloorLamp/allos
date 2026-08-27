@@ -8,7 +8,7 @@ import {
 } from "@/lib/notifications/usual-routine-attach";
 import { dispatchableUsual } from "@/lib/notifications/usual-routine-plan";
 import {
-  usualRoutineCallback,
+  offerCallback,
   TELEGRAM_CALLBACK_DATA_MAX_BYTES,
 } from "@/lib/notifications/callback-data";
 import { usualRoutinePhrase } from "@/lib/usual-routine";
@@ -27,7 +27,7 @@ const OFFER = {
     { doseId: 10, itemId: 10, name: "B-complex", detail: null },
   ],
 };
-const TOKEN = usualRoutineCallback(4, 77);
+const TOKEN = offerCallback("usual", 4, 77);
 
 function host(): NotificationMessage {
   return {
@@ -130,9 +130,9 @@ describe("attaching the bundle to a message that is already sending", () => {
         [{ callback_data: TOKEN }],
       ])
     ).toBe(TOKEN);
-    expect(
-      usualTokenOn([[{ callback_data: "stacktake:4:2026-08-19:1,8" }]])
-    ).toBeNull();
+    // The sibling offer token: same grammar, different prefix, and NOT this one's
+    // (#3282) — the whole reason `parseOfferCallback` takes the prefix.
+    expect(usualTokenOn([[{ callback_data: "stacktake:4:78" }]])).toBeNull();
     expect(usualTokenOn([])).toBeNull();
   });
 });
@@ -156,7 +156,11 @@ describe("a message carrying the bundle is checked before it is sent", () => {
       ...base,
       actions: [
         { label: "Usual A", data: TOKEN, row: USUAL_ROW },
-        { label: "Usual B", data: usualRoutineCallback(4, 78), row: USUAL_ROW },
+        {
+          label: "Usual B",
+          data: offerCallback("usual", 4, 78),
+          row: USUAL_ROW,
+        },
         ...(base.actions ?? []),
       ],
     };
