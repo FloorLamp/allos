@@ -16,6 +16,8 @@ import {
   getLoggedFoodWindows,
 } from "../queries";
 import { getTimezone, getProfileAge } from "../settings";
+import { getProfileSubstanceTelegram } from "../settings/notifications";
+import { ALCOHOL_FOOD_GROUP } from "../substance-use";
 import { isFoodLoggingRelevant } from "../life-stage";
 import { now as clockNow } from "../clock";
 import { dateStrInTz, minuteOfDayInTz } from "../date";
@@ -86,6 +88,35 @@ export function buildFoodNudge(
   // Buttons AND the tally line both read the DAY total (#2019 retired the slot-scoped
   // "(n)" suffix along with the read-time window derivation it depended on).
   const dayServings = getFoodServingsOnDate(profileId, date);
+  // ── THE SUBSTANCE REACH GATE (#3330, #3279 ruling 4) ──────────────────────
+  //
+  // Alcohol is the one food group whose `food_daily_totals` counter IS the substance
+  // ledger, so it arrives through the ordinary ranking and — before this gate — rendered
+  // as a chat BUTTON and a "🍷 Alcohol ×3" tally entry, off-device, with no per-profile
+  // choice anywhere. Screeners and caps are opt-in tools; the channel carrying the
+  // consumption itself is the same question one layer out.
+  //
+  // HERE, because this is the one gather every Telegram food surface funnels through:
+  // the tick's send, the `/food` reply, every callback rebuild and the reconcile sweep
+  // all call `buildFoodNudge`, and nothing else mints a `food:` keyboard. A filter in
+  // the settings UI or in the pure renderer would leave four of those five still
+  // sending — and because the sweep rebuilds through here, an already-delivered
+  // keyboard drops its substance button rather than staying live until rollover.
+  //
+  // Removing, not redacting or suppressing: the key leaves both inputs, and the nudge
+  // still sends with every other group intact. Only `kind: "food"` passes through this
+  // builder, so no dose reminder, escalation, redose notice — or the "avoid alcohol"
+  // food-interaction guidance on a dose tail, which is a fact about the medication and
+  // not a record of anyone's drinking — is reachable from this branch.
+  //
+  // ONE CONSTANT, NOT A FIRST MEMBER: every other substance (curated or custom) lives in
+  // `substance_daily_totals` and has no food-group row to reach this list. A second
+  // `ledger: "food-log"` substance would have to be filtered here too.
+  if (!getProfileSubstanceTelegram(profileId)) {
+    const i = rankedKeys.indexOf(ALCOHOL_FOOD_GROUP);
+    if (i >= 0) rankedKeys.splice(i, 1);
+    dayServings.delete(ALCOHOL_FOOD_GROUP);
+  }
   // The protein button's own day count (#1379's sibling consistency, on #2019's day
   // meaning). The reserved key never lands in the food_daily_totals counter `dayServings` reads,
   // so its taps are counted off the ledger and merged in here — the renderer then applies

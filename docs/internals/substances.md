@@ -193,9 +193,26 @@ dedicated store, so one store never has two quick-log owners in the census.
 
 Substance data stays out of share links, the emergency card, print surfaces, and every
 send, by default. The neutral stance changes what the **owner** can do, not what the app
-broadcasts. No substance ever generates a finding-driven send. Telegram carries substance
-buttons only after an explicit per-profile opt-in, the same consent shape as food buttons
-(`getProfileFoodTelegram`).
+broadcasts. No substance ever generates a finding-driven send.
+
+Telegram carries substance content only after an explicit per-profile opt-in —
+`substance_telegram_enabled`, off by default, the same consent shape as food buttons
+(`getProfileFoodTelegram`) and profile-scoped for the same reason: one login's chat
+receives every profile it manages, so the choice belongs to the data subject. There is no
+backfill; an existing profile with Telegram already wired up reads "off" on first deploy
+and stops carrying substance content until someone says otherwise (#3330).
+
+The reach it governs is **alcohol**, because alcohol is the one substance whose ledger is a
+food group (`ledger: "food-log"`) and so rides the food nudge's ranked buttons and its
+"Today:" tally. Every other substance, curated or custom, lives in
+`substance_daily_totals`, has no Telegram surface at all, and `TELEGRAM_DOMAIN_CENSUS`
+keeps `substance` off the slash-command vocabulary. The gate is in `buildFoodNudge` — the
+one gather the proactive tick, the `/food` reply, every callback rebuild and the reconcile
+sweep all share — so an already-delivered keyboard loses its substance button at the next
+sweep rather than staying live. It REMOVES rather than redacts or suppresses: the nudge
+still sends with every other group intact, and nothing safety-class is downstream of it,
+including the "avoid alcohol" food-interaction line on a dose reminder's tail, which is a
+fact about the medication rather than a record of anyone's drinking.
 
 Reduction targets are excluded from `getFrequencyTargetProgress` and always will be: a cap
 is a ceiling and every other frequency scope is a floor, so a floor-semantics reader would

@@ -222,6 +222,17 @@ export const NOTIFICATION_KIND_REGISTRY: readonly NotificationKindEntry[] = [
     requiresFoodLogging: true,
     // FOOD_NUDGE_WINDOWS — Bedtime is deliberately excluded from the food nudge.
     ridesSlots: ["Morning", "Midday", "Evening"],
+    // #3330: alcohol is a food group whose counter is the substance ledger, so it would
+    // otherwise ride these buttons with no choice attached. Off by default and nested
+    // here rather than given its own kind — it changes what a food nudge CONTAINS, not
+    // whether one is sent.
+    extras: [
+      {
+        field: "substance_telegram_enabled",
+        label: "Include alcohol in the buttons and tally",
+        testId: "substance-telegram-enabled",
+      },
+    ],
     more: "Tapping a button logs a serving; your full food log stays on the Nutrition page. Buttons need a chat channel, so Web Push and Email can't deliver this kind.",
   },
   {

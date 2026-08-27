@@ -19,6 +19,7 @@ import {
   setStoredAge,
   getTimezone,
   setProfileFoodTelegram,
+  setProfileSubstanceTelegram,
   setProfileMoodCheckin,
   setProfileMoodRecap,
   resetMoodCheckinIgnored,
@@ -375,6 +376,15 @@ export async function saveNotificationPrefs(formData: FormData) {
   if (formData.has("food_telegram_enabled")) {
     const v = formData.get("food_telegram_enabled");
     setProfileFoodTelegram(profile.id, v === "on" || v === "1");
+  }
+
+  // Substance content in those chat buttons (#3330): a SECOND, narrower consent inside
+  // the food opt-in — alcohol's counter is the substance ledger, so "I want food buttons"
+  // was never a statement about substance data. Off by default and presence-gated like
+  // its neighbours, so a form that omits the checkbox cannot turn it on.
+  if (formData.has("substance_telegram_enabled")) {
+    const v = formData.get("substance_telegram_enabled");
+    setProfileSubstanceTelegram(profile.id, v === "on" || v === "1");
   }
 
   // Daily mood check-in (#992): per-profile opt-in (off by default), plus the
