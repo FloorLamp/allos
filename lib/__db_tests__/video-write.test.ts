@@ -1,6 +1,6 @@
 // DB INTEGRATION TIER — the video-capture domains over the shared video core
 // (#1224 phase 1). Drives the REAL pipeline: synthetic container fixtures
-// (lib/video/fixture.ts — no real recording) → ingestVideo (sniff, caps, hash) →
+// (lib/__tests__/video-fixture.ts — no real recording) → ingestVideo (sniff, caps, hash) →
 // the domain write cores (dedup, file store, row insert) against the real temp-DB
 // schema (migration 098 replayed by setup).
 //
@@ -18,7 +18,7 @@ import {
   buildMp4Fixture,
   buildM4aFixture,
   buildWebmFixture,
-} from "@/lib/video/fixture";
+} from "@/lib/__tests__/video-fixture";
 import { MAX_VIDEO_BYTES } from "@/lib/video/policy";
 import {
   attachSymptomVideoCore,

@@ -1,7 +1,7 @@
 // The photo core's EXIF privacy contract (#1119): harvest the capture date (and
 // ONLY the capture date — GPS is never decoded), detect a GPS block so the
 // pipeline's strip-verification has teeth, and never throw on malformed bytes.
-// Fixtures are built by the synthetic serializer in lib/photo/exif-fixture.ts —
+// Fixtures are built by the synthetic serializer in lib/__tests__/exif-fixture.ts —
 // no real photograph (or real capture metadata) exists anywhere in the repo.
 
 import { describe, expect, it } from "vitest";
@@ -11,10 +11,7 @@ import {
   exifDateToIso,
   EMPTY_EXIF_SUMMARY,
 } from "../photo/exif";
-import {
-  buildMinimalExifJpeg,
-  spliceExifIntoJpeg,
-} from "../photo/exif-fixture";
+import { buildMinimalExifJpeg, spliceExifIntoJpeg } from "./exif-fixture";
 
 describe("exifDateToIso", () => {
   it("converts the EXIF date form and keeps only the date", () => {

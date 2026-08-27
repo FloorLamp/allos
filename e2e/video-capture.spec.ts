@@ -13,7 +13,7 @@ import {
   E2E_MEMBER_PASSWORD,
   VIDEO_PROFILE,
 } from "./fixture-logins";
-import { buildMp4Fixture } from "../lib/video/fixture";
+import { buildMp4Fixture } from "../lib/__tests__/video-fixture";
 import { workerDbPath } from "./worker-env";
 
 // Video capture over the shared video core (#1224 phase 1): the upload-first
@@ -48,7 +48,7 @@ import { workerDbPath } from "./worker-env";
 // rows and unlink nothing on disk that another spec reads, so exact-count grid
 // assertions are repeat-safe and the shared admin sidebar never changes.
 //
-// The clip bytes are a LOW-ENTROPY synthetic MP4 header (lib/video/fixture.ts) —
+// The clip bytes are a LOW-ENTROPY synthetic MP4 header (lib/__tests__/video-fixture.ts) —
 // no real recording, and it carries a synthetic ©xyz location atom so the privacy
 // note renders. A synthetic clip won't decode client-side, so the poster is
 // (correctly) absent and the grid falls back to its play glyph — exactly the

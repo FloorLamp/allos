@@ -9,7 +9,7 @@ import fs from "node:fs";
 import path from "node:path";
 import sharp from "sharp";
 import { readJpegExif } from "@/lib/photo/exif";
-import { spliceExifIntoJpeg } from "@/lib/photo/exif-fixture";
+import { spliceExifIntoJpeg } from "@/lib/__tests__/exif-fixture";
 import { thumbSiblingPath } from "@/lib/photo/store";
 import { db, today } from "@/lib/db";
 import { shiftDateStr } from "@/lib/date";
