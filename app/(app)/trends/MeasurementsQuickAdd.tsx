@@ -437,6 +437,16 @@ export default function MeasurementsQuickAdd({
     // It is a refusal — no success toast, no reset, no group memory — but it is not
     // the shared sentence, because the weight WILL sync and telling someone it did
     // not is what makes them log it twice.
+    //
+    // WHICH IS ONLY TRUE OF ONE OF THE TWO CAUSES, and that is why the queue answers
+    // with a cause rather than a boolean. A "failed" vitals half (the quota edge) leaves
+    // the body intent sitting in the store. A "closed" one does not: the gate is closed
+    // only by `clearQueue`, which clears the intents store in the SAME transaction (see
+    // lib/offline/write-gate.ts), so a logout landing in the gap took the body half with
+    // it. Claiming "Body measurements were saved" there tells the person to re-enter only
+    // the vitals and silently loses the weigh-in — a worse trade than the duplicate this
+    // sentence exists to prevent. So a close falls back to the shared sentence, which is
+    // then simply true: nothing is queued and no badge says otherwise.
     const queueOffline = async (): Promise<
       "queued" | "refused" | "partial" | "unqueueable"
     > => {
@@ -454,7 +464,7 @@ export default function MeasurementsQuickAdd({
           // Time still clears — same trichotomy the online action posts.
           occurredAt: s("occurred_at"),
         });
-        if (!kept) return "refused";
+        if (kept !== "kept") return "refused";
         keptBody = true;
       }
       if (hasVitals) {
@@ -466,7 +476,8 @@ export default function MeasurementsQuickAdd({
           ...vitals,
           occurredAt: s("occurred_at"),
         });
-        if (!kept) return keptBody ? "partial" : "refused";
+        if (kept !== "kept")
+          return keptBody && kept === "failed" ? "partial" : "refused";
       }
       rememberWritten();
       toast("Saved offline — will sync when you reconnect.");

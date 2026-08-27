@@ -790,6 +790,13 @@ async function renderDashboard(
           formatLongDate(d, formatPrefs),
           formatPrefs
         ),
+        // COUNTDOWN GRAMMAR, UNBOUNDED, and deliberately not the household card's
+        // `upcomingDueText` (#2806 bounds the overdue side there at 30 days). #303
+        // binds the two surfaces to the same PICK — `pickNextAppointment` above — not
+        // to the same phrasing, and their phrasings already differ on the future side
+        // (#2579-B prints "Sep 26" on the card and "in 45 days" here). Routing this
+        // through the shared formatter would change both ends of that at once, which
+        // is a decision about the dashboard's copy and not about #2806.
         dueText: daysRemainingLabel(d, on) ?? d,
         detail: detailParts.length ? detailParts.join(" · ") : null,
         href: soonest.encounter_id

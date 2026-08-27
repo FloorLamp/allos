@@ -45,7 +45,7 @@ vi.mock("@/app/(app)/undo-actions", () => ({ undoDelete: vi.fn() }));
 vi.mock("@/components/OfflineQueueProvider", () => ({
   useOfflineQueue: () => ({
     pending: 0,
-    enqueue: vi.fn(async () => true),
+    enqueue: vi.fn(async () => "kept" as const),
     flush: vi.fn(async () => {}),
   }),
 }));

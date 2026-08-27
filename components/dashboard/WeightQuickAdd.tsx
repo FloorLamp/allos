@@ -62,13 +62,14 @@ export default function WeightQuickAdd({
     // reconnect — don't fail the log (issue #28; same payload shape as the
     // Trends → Overview → body census quick-add so the one replay path serves both).
     const queueOffline = async () => {
-      const kept = await enqueue("body-metric", today, {
-        weight: String(formData.get("weight") ?? ""),
-        weightUnit,
-        bodyFatPct: null,
-        restingHr: null,
-        notes: null,
-      });
+      const kept =
+        (await enqueue("body-metric", today, {
+          weight: String(formData.get("weight") ?? ""),
+          weightUnit,
+          bodyFatPct: null,
+          restingHr: null,
+          notes: null,
+        })) === "kept";
       // The device can refuse the capture (#3038) — nothing was queued, so say
       // so and skip the success toast. (The fields clear either way: React
       // resets a form after its action, refused or not.)

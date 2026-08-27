@@ -197,11 +197,12 @@ export default function LogPracticeButton({
   // there is no server to ask.
   async function queueOffline(): Promise<void> {
     const mins = stepperShown ? durationValue() : null;
-    const kept = await enqueue("practice", today, {
-      practice,
-      identity: practiceIdentity(practice),
-      durationMin: mins,
-    });
+    const kept =
+      (await enqueue("practice", today, {
+        practice,
+        identity: practiceIdentity(practice),
+        durationMin: mins,
+      })) === "kept";
     // READ THE ANSWER. The queue can refuse — this device is logged out, or has no
     // IndexedDB to queue into — and the toast below promises the tap will sync. Nothing
     // contradicts that promise afterwards: no badge, no dead-letter entry, no replay. The
