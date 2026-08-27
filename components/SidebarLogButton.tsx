@@ -8,9 +8,16 @@ import { useCompactViewport } from "./useCompactViewport";
 import { useMobileChrome } from "./MobileChromeProvider";
 import type { SegmentLogDays } from "@/lib/log-sheet";
 
-// `w-80`, told to the positioner so the FIRST paint of the panel is already
+// `w-96`, told to the positioner so the FIRST paint of the panel is already
 // clamped inside the viewport rather than measured into place afterwards.
-const PANEL_WIDTH_PX = 320;
+//
+// NOT the sidebar's own 240px, and not a compact desktop menu width either: this
+// panel hangs off the column into the page, and 384 leaves its four-segment track
+// the same ~88px per segment the phone sheet gets at 390px. At 320 the track was
+// tight enough to break "Consume" across two lines — the same content in a
+// narrower box is exactly the drift a shared menu exists to avoid, so the box is
+// what changed.
+const PANEL_WIDTH_PX = 384;
 
 // THE SIDEBAR'S ONE LOG AFFORDANCE (#3154).
 //
@@ -90,7 +97,7 @@ export default function SidebarLogButton({
         panelId="sidebar-log-panel"
         testId="sidebar-log-panel"
         fallbackWidth={PANEL_WIDTH_PX}
-        panelClassName="w-80"
+        panelClassName="w-96"
       >
         {/* The panel SCROLLS ITSELF rather than being capped by the positioner:
             `preferredMaxHeight` is for a list whose height is unknown, and this
