@@ -207,6 +207,16 @@ export const SUB_DAILY_WINDOW_MAX_MIN = 60;
 // data types, which is this file's subject; lib/metric-window-overlap.ts re-exports it
 // for the rule's readers. Nutrition, hydration and sleep are absent on purpose — the
 // parser emits those on each record's own real window, so they nest legitimately.
+//
+// HYDRATION WAS RE-EXAMINED AND STAYS OUT (#3448). The hope was that the SECOND gate,
+// `isDayBucketWindow`, already separates a `full`-setting drink from a day bucket, so
+// the metric list would be redundant here. It is not: that gate is SIXTY MINUTES, and a
+// drink logged over a longer window clears it in both roles. AndroidX states the
+// non-overlap contract on StepsRecord and DistanceRecord and states none on
+// HydrationRecord ("a single drink", validated only as `startTime < endTime`), so the
+// nested pair is a shape the platform permits. Both halves are driven through the real
+// ingest in lib/__db_tests__/hydration-day-bucket-3448.test.ts: adding `hydration_l`
+// here fixes a visible travel double count and erases a 1.5 L drink a person logged.
 export const DAY_BUCKET_METRICS: ReadonlySet<string> = new Set([
   "steps",
   "distance_km",
