@@ -12,6 +12,7 @@
 //
 // EMPTY SINCE #2957, and that is the state to keep it in: its one entry recorded
 // `components/illness/SymptomLogCard.tsx` as dead pending a decision to delete it,
-// and that deletion has now happened. An empty registry means the walk currently
-// has no permitted dead ends — every new one is a finding.
+// and that deletion has now happened. Empty means no permitted dead ends on the
+// chains this walk takes — every new one is a finding. It seeds only from stamping
+// controls, so an orphan file that stamps nothing is outside its reach, not absent.
 export const UNMOUNTED_ROOTS: Record<string, string> = {};
