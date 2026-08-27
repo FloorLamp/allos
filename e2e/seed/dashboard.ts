@@ -772,7 +772,10 @@ export function seedDailyLoop(): void {
     insBm.run(dailyId, dToday, 63.6, 58);
 
     // Steps: today + a trailing week (additive; one source per day) so the Steps-today
-    // card shows today vs the prior 7 days with a direction arrow.
+    // card has a prior-7-day baseline to state. Today (9,400) sits ABOVE it, which is
+    // what makes the spec's absence assertion mean something: the pinned 13:mm local
+    // clock is below STEPS_DELTA_COMPLETE_HOUR, so no delta renders even though there
+    // is a flattering one to render (#3258).
     db.prepare(
       `DELETE FROM metric_samples WHERE profile_id = ? AND metric = 'steps'`
     ).run(dailyId);
