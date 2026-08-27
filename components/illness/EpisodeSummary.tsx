@@ -83,7 +83,7 @@ export default function EpisodeSummary({
   episode,
   note,
   outcome,
-  generatedAt,
+  generatedOnDay,
   temperatureUnit = "F",
   timeZone,
   nowIso,
@@ -106,7 +106,13 @@ export default function EpisodeSummary({
   // the public /share render (which has no row) simply omits them.
   note?: string | null;
   outcome?: string | null;
-  generatedAt?: string;
+  // The profile-local calendar day this render was PREPARED on (#3573). It was an
+  // instant, printed as `generatedAt.slice(0, 10)` — the UTC day — so a summary
+  // prepared at 21:00 in UTC−06:00 and carried into a clinic was footed with
+  // tomorrow's date. The caller converts: both callers hold the subject profile's
+  // zone, and this component's own `timeZone` prop is optional, so resolving here
+  // would mean a silent UTC fallback exactly where the defect lives.
+  generatedOnDay?: string;
   // The viewer's login temperature-unit preference (#857). Storage is canonical °F;
   // this only changes display. Defaults to °F so the public /share render and any
   // caller without a login pref stay in Fahrenheit.
@@ -321,22 +327,26 @@ export default function EpisodeSummary({
         tz={timeZone}
       />
 
-      {generatedAt && <EpisodeSummaryFooter generatedAt={generatedAt} />}
+      {generatedOnDay && (
+        <EpisodeSummaryFooter generatedOnDay={generatedOnDay} />
+      )}
     </section>
   );
 }
 
 export function EpisodeSummaryFooter({
-  generatedAt,
+  generatedOnDay,
   formatPrefs = DEFAULT_FORMAT_PREFS,
 }: {
-  generatedAt: string;
+  // A `YYYY-MM-DD` calendar day, already resolved in the subject profile's zone
+  // (#3573) — never an instant, so there is nothing here left to truncate.
+  generatedOnDay: string;
   formatPrefs?: DisplayFormatPrefs;
 }) {
   return (
     <p className="text-xs text-slate-400" data-testid="episode-summary-footer">
-      Prepared {fmtDate(generatedAt.slice(0, 10), formatPrefs)}. For reference
-      only — not a medical record.
+      Prepared {fmtDate(generatedOnDay, formatPrefs)}. For reference only — not
+      a medical record.
     </p>
   );
 }

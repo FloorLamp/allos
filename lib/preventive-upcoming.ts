@@ -21,7 +21,7 @@ import {
   type PreventiveAssessment,
 } from "./preventive-status";
 import { clinicalResultAddHref, type AppRoute } from "./hrefs";
-import type { UpcomingItem, UrgencyBand } from "./upcoming";
+import type { UpcomingItem } from "./upcoming";
 import {
   appointmentKindForRule,
   suggestedBookDate,

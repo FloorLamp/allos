@@ -56,8 +56,8 @@ import {
   planUsualRoutine,
 } from "@/lib/notifications/usual-routine-plan";
 import {
-  parseUsualRoutineCallback,
-  usualRoutineCallback,
+  offerCallback,
+  parseOfferCallback,
 } from "@/lib/notifications/callback-data";
 import { mintOffer, readOffer } from "@/lib/notifications/offer-store";
 import { getUsualRoutineOffer } from "@/lib/queries/usual-routine";
@@ -195,9 +195,7 @@ describe("the composed one-tap's offer and write (#2460)", () => {
   let sp: { profileId: number };
   let doseA: number;
   let doseB: number;
-  let retiredDose: number;
   let foreign: { profileId: number };
-  let foreignDose: number;
 
   beforeAll(() => {
     sp = makeProfile("TG2460");
@@ -207,11 +205,11 @@ describe("the composed one-tap's offer and write (#2460)", () => {
     seedHabitualMornings(sp.profileId, ["fermented", "berries"]);
     doseA = mkDose(mkItem(sp.profileId, "TG2460 Creatine"));
     doseB = mkDose(mkItem(sp.profileId, "TG2460 Collagen"));
-    retiredDose = mkDose(mkItem(sp.profileId, "TG2460 Retired"), 1);
+    mkDose(mkItem(sp.profileId, "TG2460 Retired"), 1);
     foreign = makeProfile("TG2460B");
     setTimezone(foreign.profileId, "UTC");
     seedLoginTelegram(foreign.profileId, OTHER_CHAT);
-    foreignDose = mkDose(mkItem(foreign.profileId, "TG2460 Foreign"));
+    mkDose(mkItem(foreign.profileId, "TG2460 Foreign"));
   });
 
   it("the standing offer is both halves, and the token names it in constant size", () => {
@@ -240,7 +238,7 @@ describe("the composed one-tap's offer and write (#2460)", () => {
   it("stores the bundle as IDS, and the payload is exactly what the offer named", () => {
     const date = today(sp.profileId);
     const a = mintUsualRoutineAttachment(sp.profileId, "Morning", date)!;
-    const offerId = parseUsualRoutineCallback(a.token)!.offerId;
+    const offerId = parseOfferCallback(a.token, "usual")!.offerId;
     expect(
       readOffer<{ window: string; groups: string[]; doseIds: number[] }>(
         sp.profileId,
@@ -258,7 +256,7 @@ describe("the composed one-tap's offer and write (#2460)", () => {
   it("an offer is unreadable for another profile, another family, or another day", () => {
     const date = today(sp.profileId);
     const a = mintUsualRoutineAttachment(sp.profileId, "Morning", date)!;
-    const offerId = parseUsualRoutineCallback(a.token)!.offerId;
+    const offerId = parseOfferCallback(a.token, "usual")!.offerId;
     expect(
       readOffer(foreign.profileId, USUAL_OFFER_FAMILY, offerId, date)
     ).toBeNull();
@@ -303,7 +301,7 @@ describe("the composed one-tap's offer and write (#2460)", () => {
       )
       .get(sp.profileId) as { id: number };
     await handleCallbackQuery(
-      cq(usualRoutineCallback(sp.profileId, stale.id), CHAT)
+      cq(offerCallback("usual", sp.profileId, stale.id), CHAT)
     );
     expect(servingsToday(sp.profileId, "fermented")).toBe(1);
     expect(doseLogs(doseA, date)).toHaveLength(1);
@@ -341,7 +339,7 @@ describe("the stored offer is an upper bound, never an instruction (#2460)", () 
       doseIds: [doseA, retiredDose, foreignDose],
     });
     await handleCallbackQuery(
-      cq(usualRoutineCallback(sp.profileId, offerId), "5552462")
+      cq(offerCallback("usual", sp.profileId, offerId), "5552462")
     );
     expect(servingsToday(sp.profileId, "fermented")).toBe(1);
     expect(servingsToday(sp.profileId, "berries")).toBe(1);
@@ -367,7 +365,7 @@ describe("the stored offer is an upper bound, never an instruction (#2460)", () 
     });
     // The token names sp2, but it arrives from a chat sp2 has no login on.
     await handleCallbackQuery(
-      cq(usualRoutineCallback(sp2.profileId, offerId), "5552462")
+      cq(offerCallback("usual", sp2.profileId, offerId), "5552462")
     );
     expect(servingsToday(sp2.profileId, "fermented")).toBe(0);
   });
@@ -385,7 +383,7 @@ describe("the stored offer is an upper bound, never an instruction (#2460)", () 
       doseIds: [],
     });
     await handleCallbackQuery(
-      cq(usualRoutineCallback(sp3.profileId, offerId), "5552463")
+      cq(offerCallback("usual", sp3.profileId, offerId), "5552463")
     );
     // The whole point of the day-scoped row: the bundle cannot be backfilled into
     // today, and it cannot be written to yesterday either.
@@ -561,7 +559,7 @@ describe("the re-render reduces, then removes (#2460)", () => {
     const doseB = mkDose(itemB);
     const date = today(sp.profileId);
     const a = mintUsualRoutineAttachment(sp.profileId, "Morning", date)!;
-    const offerId = parseUsualRoutineCallback(a.token)!.offerId;
+    const offerId = parseOfferCallback(a.token, "usual")!.offerId;
     expect(
       [
         ...(standingUsualOffer(sp.profileId, offerId, date)?.groups ?? []),
@@ -620,7 +618,7 @@ describe("the re-render reduces, then removes (#2460)", () => {
     const doseB = mkDose(itemB);
     const date = today(sp.profileId);
     const a = mintUsualRoutineAttachment(sp.profileId, "Morning", date)!;
-    const offerId = parseUsualRoutineCallback(a.token)!.offerId;
+    const offerId = parseOfferCallback(a.token, "usual")!.offerId;
     expect(
       standingUsualOffer(sp.profileId, offerId, date)?.groups
     ).toHaveLength(2);
@@ -765,7 +763,7 @@ describe("the composed one-tap rides exactly one of the window's sends (#2460)",
 
   const usualCount = (msgs: ReturnType<typeof sentMessages>) =>
     msgs.filter((m) =>
-      m.tokens.some((t) => parseUsualRoutineCallback(t) != null)
+      m.tokens.some((t) => parseOfferCallback(t, "usual") != null)
     );
 
   beforeEach(() => {

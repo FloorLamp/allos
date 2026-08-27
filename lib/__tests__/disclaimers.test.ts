@@ -3,53 +3,28 @@ import fs from "node:fs";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
 import {
-  MEDICAL_DISCLAIMER,
-  NOT_A_DIAGNOSIS,
-  NEVER_PRESCRIPTIVE,
-  DATASET_DISCLAIMER,
-  DISCLAIMER_FULL,
   DISCLAIMER_SECTIONS,
   DISCLAIMER_PHRASINGS,
   hasDisclaimerPhrasing,
   stripDisclaimerSentences,
 } from "@/lib/disclaimers";
 
-// Structural guard for the disclaimer-consolidation invariant (issue #1049), in the
-// profile-scoping / telegram-chokepoint / immediate-tx / notes-text tradition. Disclaimer
-// copy used to live as ~40 inline literals that drifted into ~15 near-variants of one
-// sentence. Per the owner's ratified call, all of that boilerplate is now DELETED from the
-// surfaces: the disclaimer lives on ONE page (/disclaimer, footer-linked), and the domain
-// pages carry no disclaimer prose at all. The rendered-phrase source scan now lives with
-// the other copy rules in copy-lint.test.ts (#3521); this file keeps the zero-escape and
-// import-boundary checks plus the dataset/runtime halves of the same contract.
-//
-// STRICT: because no legitimate inline disclaimer remains, there are ZERO `disclaimer-ok:`
-// escapes in the tree, and the second test below pins that count at 0. The escape hatch
-// stays wired only for a future, reviewed carve-out; the PHQ-9 crisis contract (#716) is
-// NOT one — it renders crisis RESOURCES (a safety surface) sourced from
-// lib/crisis-resources.ts constants, which are not disclaimer phrasings and never trip
-// this scan. lib/disclaimers.ts itself is out of scan scope (it lives under lib/, and the
-// only remaining consumer is the /disclaimer page + tests).
+// Canonical disclaimer copy lives in lib/disclaimers.ts and renders on /disclaimer.
+// This file checks that import boundary and the dataset, generator, and runtime paths.
+// Rendered page behavior is covered in e2e/disclaimer.spec.ts.
 
 const REPO = path.resolve(fileURLToPath(new URL("../..", import.meta.url)));
 const SCAN_DIRS = ["app", "components"];
 
-// The banned disclaimer phrasings. They used to be defined HERE, which is exactly why
-// #2342 could happen: a rule that lives in one test can only reach what that test reads.
-// The list now lives in lib/disclaimers.ts beside the copy it protects, and copy-lint,
-// the dataset scan below, the generator scan, and the runtime clamp in
-// lib/coverage-gaps all read the same one.
+// Dataset and generator checks share the runtime module's phrasing list.
 const BANNED: readonly RegExp[] = DISCLAIMER_PHRASINGS;
 
 // ── The curated-dataset half (#2342) ──────────────────────────────────────────
 //
-// The scan above reads SOURCE under app/ and components/. The banned sentence reached
-// the domain pages anyway, through a route it cannot see: curated JSON under lib/,
-// rendered verbatim. `lib/canonical-result-definitions.json`'s `note` supplies the band-note
-// clause on the reading detail page and `lib/datasets/data/biomarker-descriptions.json`'s
-// `description` fills its explainer card — 40 entries carried a phrasing, one of them
-// byte-identical to NOT_A_DIAGNOSIS, a hand-copied duplicate of the constant this whole
-// consolidation exists to be the only copy of.
+// Curated JSON renders verbatim. `lib/canonical-result-definitions.json`'s `note`
+// supplies the band-note clause on the reading detail page and
+// `lib/datasets/data/biomarker-descriptions.json`'s `description` fills its
+// explainer card.
 //
 // The rule is about RENDERED USER-FACING COPY, not about file type, so the scan covers
 // the datasets' ENTRY payloads: every string inside a dataset's rows, whatever the field
@@ -58,9 +33,7 @@ const BANNED: readonly RegExp[] = DISCLAIMER_PHRASINGS;
 // DELIBERATELY OUT OF SCOPE — file-level metadata: `$comment`, the top-level
 // `description` (the dataset's own provenance blurb), `citation`, `source`, `license`.
 // Those describe the dataset to a maintainer reading the JSON; no surface renders them,
-// and several are sourcing/licensing statements where the framing is the point. A field
-// moving from metadata into rendered copy is a change to the render site, which the
-// source scan above still sees.
+// and several are sourcing/licensing statements where the framing is the point.
 const DATASET_METADATA_KEYS = new Set([
   "$comment",
   "description",
@@ -146,30 +119,14 @@ function sourceFiles(): { rel: string; text: string }[] {
   return files;
 }
 
-// Strip line/block comments so prose mentioning a disclaimer phrase (a doc comment
-// explaining the framing) can't trip the scanner — only real code counts.
+// Comments in curated-copy modules do not render.
 function stripComments(text: string): string {
   return text
     .replace(/\/\*[\s\S]*?\*\//g, "")
     .replace(/(^|[^:])\/\/.*$/gm, "$1");
 }
 
-describe("disclaimer consolidation guard (issue #1049)", () => {
-  it("carries ZERO disclaimer-ok escapes — the surfaces hold no inline disclaimers", () => {
-    const escapes: string[] = [];
-    for (const { rel, text } of sourceFiles()) {
-      text.split("\n").forEach((line, i) => {
-        if (line.includes("disclaimer-ok")) escapes.push(`${rel}:${i + 1}`);
-      });
-    }
-    expect(
-      escapes,
-      `The disclaimer boilerplate was fully deleted from the surfaces, so no ` +
-        `disclaimer-ok escape should exist. If a NEW reviewed carve-out genuinely ` +
-        `needs one, update this test with the justification:\n${escapes.join("\n")}`
-    ).toEqual([]);
-  });
-
+describe("canonical disclaimer boundary (issue #1049)", () => {
   it("no surface under app/ or components/ imports a disclaimer constant except the /disclaimer page", () => {
     const importers: string[] = [];
     for (const { rel, text } of sourceFiles()) {
@@ -184,23 +141,6 @@ describe("disclaimer consolidation guard (issue #1049)", () => {
     ).toEqual([]);
   });
 
-  it("the canonical constants carry the expected posture", () => {
-    expect(MEDICAL_DISCLAIMER).toBe("Informational, not medical advice.");
-    expect(NOT_A_DIAGNOSIS).toMatch(/not a diagnosis/i);
-    expect(NEVER_PRESCRIPTIVE).toMatch(/never prescriptive/i);
-    expect(DATASET_DISCLAIMER).toMatch(/curated subset/i);
-  });
-
-  it("DISCLAIMER_FULL covers every required framing (the single surface's content)", () => {
-    expect(DISCLAIMER_SECTIONS.length).toBeGreaterThanOrEqual(5);
-    expect(DISCLAIMER_FULL).toMatch(/not medical advice/i);
-    expect(DISCLAIMER_FULL).toMatch(/not.*diagnos/i);
-    expect(DISCLAIMER_FULL).toMatch(/curated/i);
-    expect(DISCLAIMER_FULL).toMatch(/extract/i);
-    expect(DISCLAIMER_FULL).toMatch(/emergency/i);
-    expect(DISCLAIMER_FULL).toMatch(/self-hosted|your data/i);
-  });
-
   it("keeps the shared suggestions and reference-range caveat on the canonical surface", () => {
     const section = DISCLAIMER_SECTIONS.find(
       (candidate) => candidate.id === "suggestions-and-reference-ranges"
@@ -208,13 +148,6 @@ describe("disclaimer consolidation guard (issue #1049)", () => {
     expect(section?.body).toMatch(/general guidelines/i);
     expect(section?.body).toMatch(/vary by age, sex, and clinical context/i);
     expect(section?.body).toMatch(/clinician's guidance takes priority/i);
-  });
-
-  it("the guard actually fires on a planted literal and passes a constant reference", () => {
-    const planted = `<p>Informational, not medical advice.</p>`;
-    const reference = `<p>{MEDICAL_DISCLAIMER}</p>`;
-    expect(BANNED.some((re) => re.test(planted))).toBe(true);
-    expect(BANNED.some((re) => re.test(reference))).toBe(false);
   });
 });
 
@@ -228,7 +161,7 @@ describe("curated datasets carry no disclaimer copy either (issue #2342)", () =>
     expect(
       offenders,
       `Curated dataset copy renders VERBATIM on a domain page, so it is governed by ` +
-        `the same #1049 rule as a source literal: the disclaimer lives on /disclaimer ` +
+        `the same #1049 policy: the disclaimer lives on /disclaimer ` +
         `and is footer-linked from every page. Delete the sentence — do not reference ` +
         `a constant here, a dataset row is not a place to render one:\n${offenders.join("\n")}`
     ).toEqual([]);

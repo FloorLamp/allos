@@ -46,7 +46,8 @@ import { markDoseTaken } from "@/lib/queries";
 import { restampDoseLogsCore } from "@/lib/queries/intake/adherence";
 import { now as clockNow } from "@/lib/clock";
 import { burstLabel } from "@/lib/correction-time";
-import { getFoodCorrectionBursts } from "@/lib/queries";
+import { getRecentFoodTaps } from "@/lib/queries";
+import { correctionBursts } from "@/lib/correction-time";
 import { getDoseCorrectionBursts } from "@/lib/queries/intake/adherence";
 import { getMedicationFamilyStates } from "@/lib/queries/intake/prn-family";
 import { seedLoginTelegram } from "./fixtures";
@@ -254,9 +255,13 @@ describe("the correction rows are a QUERY over ledger state (#2019)", () => {
     await tapFood(pid, "5552021", "leafy_greens", "2026-08-05T19:00:00Z");
 
     setNow("2026-08-05T19:45:00Z");
-    expect(getFoodCorrectionBursts(pid, clockNow())).toHaveLength(1);
+    expect(
+      correctionBursts(getRecentFoodTaps(pid, clockNow()), clockNow())
+    ).toHaveLength(1);
     setNow("2026-08-05T20:15:00Z");
-    expect(getFoodCorrectionBursts(pid, clockNow())).toEqual([]);
+    expect(
+      correctionBursts(getRecentFoodTaps(pid, clockNow()), clockNow())
+    ).toEqual([]);
   });
 });
 
@@ -420,9 +425,13 @@ describe("a chip re-stamps the whole burst in one transaction (#2019)", () => {
     expect(foodEvents(pid)[0].occurred_at).toBe("2026-08-05T18:00:00Z");
     // Freshness is keyed on the TAP, which the correction never touched — so correcting
     // at 19:50 does not buy the row another hour past 20:00.
-    expect(getFoodCorrectionBursts(pid, clockNow())).toHaveLength(1);
+    expect(
+      correctionBursts(getRecentFoodTaps(pid, clockNow()), clockNow())
+    ).toHaveLength(1);
     setNow("2026-08-05T20:05:00Z");
-    expect(getFoodCorrectionBursts(pid, clockNow())).toEqual([]);
+    expect(
+      correctionBursts(getRecentFoodTaps(pid, clockNow()), clockNow())
+    ).toEqual([]);
     // And nothing is stranded: the correction that DID land is committed, and a further
     // tap is refused in words rather than silently.
     answer.mockClear();
@@ -516,7 +525,10 @@ describe("the picker's absolute hour, and the cross-midnight re-date (#2019)", (
     // rebuild the exact nudge instead of guessing at a window.
     const open = buildFoodNudge(pid, "Evening", today(pid), undefined, {
       now: new Date(NOW_ISO),
-      picker: getFoodCorrectionBursts(pid, new Date(NOW_ISO))[0],
+      picker: correctionBursts(
+        getRecentFoodTaps(pid, new Date(NOW_ISO)),
+        new Date(NOW_ISO)
+      )[0],
     })!;
     const tokens = keyboardTokens(messageKeyboard(open));
     expect(tokens.some((t) => t.startsWith("food:"))).toBe(true);
@@ -574,7 +586,10 @@ describe("the sweep strips a lapsed correction row, then reconciles to zero (#20
     seedLoginTelegram(pid, "5552029");
     setNow("2026-08-05T19:00:00Z");
     await tapFood(pid, "5552029", "berries", "2026-08-05T19:00:00Z");
-    const burst = getFoodCorrectionBursts(pid, clockNow())[0];
+    const burst = correctionBursts(
+      getRecentFoodTaps(pid, clockNow()),
+      clockNow()
+    )[0];
     const open = buildFoodNudge(pid, "Evening", today(pid), undefined, {
       now: clockNow(),
       picker: burst,

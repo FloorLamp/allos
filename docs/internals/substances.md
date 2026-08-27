@@ -193,9 +193,47 @@ dedicated store, so one store never has two quick-log owners in the census.
 
 Substance data stays out of share links, the emergency card, print surfaces, and every
 send, by default. The neutral stance changes what the **owner** can do, not what the app
-broadcasts. No substance ever generates a finding-driven send. Telegram carries substance
-buttons only after an explicit per-profile opt-in, the same consent shape as food buttons
-(`getProfileFoodTelegram`).
+broadcasts. No substance ever generates a finding-driven send.
+
+Telegram carries this profile's alcohol rows only after an explicit per-profile opt-in —
+`substance_telegram_enabled`, off by default, the same consent shape as food buttons
+(`getProfileFoodTelegram`) and profile-scoped for the same reason: one login's chat
+receives every profile it manages, so the choice belongs to the data subject. There is no
+backfill; an existing profile with Telegram already wired up reads "off" on first deploy
+and stops carrying substance content until someone says otherwise (#3330).
+
+Alcohol is the reach it governs, because alcohol is the one substance whose ledger is a
+food group (`ledger: "food-log"`) and so rides the food nudge. Every other substance,
+curated or custom, lives in `substance_daily_totals`, has no Telegram surface at all, and
+`TELEGRAM_DOMAIN_CENSUS` keeps `substance` off the slash-command vocabulary.
+
+The flag is read in exactly two gathers, and the pair is the whole of it — the first
+attempt gated only the first, and the eating-time correction rows kept naming the drink
+from a second read thirty lines downstream:
+
+- `buildFoodNudge` drops the group from the ranked keys and the day totals, which is the
+  quick-log **button** and the `Today:` **tally**.
+- `consentedFoodTaps` (same file) drops it from the recent-tap read every eating-time
+  **correction** surface takes — the chips beside the nudge, the `Recorded: … (corrected)`
+  statement in the prose, the reconcile sweep's dead-token set and picker anchor, and the
+  picker handler's own `resolve` in `telegram-time-correction.ts`, which is outside the
+  nudge builder entirely. Filtered before `collapseBursts`, so a mixed burst collapses to
+  a form naming a neighbour or naming nothing, never a gap; an all-substance burst is
+  gone, and a token aimed at it takes the refusal that already exists for one that aged
+  out.
+
+Both gathers are read in `lib/__db_tests__/food-nudge-substance-optin.test.ts` over five
+senders — the proactive tick, `/food`, a fully expanded keyboard, the reconcile sweep and
+the picker — against everything the transport is asked to show, rather than against one
+field of the message.
+
+It REMOVES rather than redacts or suppresses: the nudge still sends with every other food
+group intact. The WRITE core is deliberately not gated — `restampFoodEventsCore` re-derives
+a burst from the ledger, so a correction still moves every row of the meal it names;
+consent governs what is sent, and stranding one row of an eating event at the old time
+would corrupt the record rather than protect it. Nothing safety-class is downstream of
+either gather, including the "avoid alcohol" food-interaction line on a dose reminder's
+tail, which is a fact about the medication and not a record of anyone's drinking.
 
 Reduction targets are excluded from `getFrequencyTargetProgress` and always will be: a cap
 is a ceiling and every other frequency scope is a floor, so a floor-semantics reader would

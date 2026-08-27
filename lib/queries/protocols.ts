@@ -39,7 +39,6 @@ import {
   type ProtocolComparison,
 } from "../protocol-compare";
 import type { ProtocolWindowInput } from "../trend-annotations";
-import type { Betterness } from "../protocol-compare";
 import { daysBetweenDateStr } from "../date";
 import {
   CADENCE_SCOPES,

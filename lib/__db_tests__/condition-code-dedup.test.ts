@@ -39,10 +39,8 @@ function insertCondition(
   );
 }
 
-let profileId: number;
-
 beforeAll(() => {
-  profileId = newProfile("COND-CODE-DEDUP");
+  newProfile("COND-CODE-DEDUP");
 });
 
 describe("condition collapse prefers code equality (#155)", () => {

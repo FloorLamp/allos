@@ -17,7 +17,6 @@ import {
   PRACTICE_ZERO_PROFILE,
 } from "./fixture-logins";
 import { frozenNow, workerDbPath } from "./worker-env";
-import { formatDateWithYear } from "@/lib/format-date";
 import { practiceIdentity } from "@/lib/practice";
 
 async function openPracticeCreate(page: Page) {
@@ -57,15 +56,6 @@ async function choosePracticeAction(
     page,
     card.getByTestId("wellness-practice-actions").getByRole("button")
   );
-  await page.getByTestId(actionTestId).click();
-}
-
-async function chooseSessionAction(
-  page: Page,
-  row: Locator,
-  actionTestId: string
-) {
-  await openRowMenu(page, row.getByRole("button", { name: "Session actions" }));
   await page.getByTestId(actionTestId).click();
 }
 
@@ -412,7 +402,6 @@ test("one-tap practice logging: a double-tap logs once, the label states today, 
   await expect(card).toBeVisible();
   const button = card.getByTestId("practice-log-button");
   const todayLine = card.getByTestId("practice-today-count");
-  const rows = card.getByTestId("practice-session-history").locator("tbody tr");
 
   // Nothing logged yet: the first tap is offered as a first tap.
   await expect(todayLine).toContainText("No sessions yet");

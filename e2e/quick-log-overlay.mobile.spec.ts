@@ -1,7 +1,6 @@
 import { test, expect } from "./fixtures";
 import { type Page } from "@playwright/test";
 import Database from "better-sqlite3";
-import path from "node:path";
 import {
   expectPhoneTapTargets,
   hydratedClick,

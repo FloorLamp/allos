@@ -13,7 +13,6 @@ import type { SectionExtractor } from "../constants";
 import {
   asArray,
   buildNarrativeIdMap,
-  collectText,
   effTime,
   hl7Time,
   providerFromAssignedEntity,

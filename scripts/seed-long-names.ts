@@ -53,9 +53,9 @@
 // ever covers what someone remembered". UNBOUNDED_NAME_FIELDS below is that
 // enumeration, and it is deliberately a ROSTER RATHER THAN A LIST OF WINS: a family
 // this corpus does NOT yet plant is carried with `planted: false` and its reason,
-// in the lib/__tests__/tap-floor-reach.test.ts tradition, so a blind spot is a
-// number that can go up instead of a silence. Adding a family means adding an entry
-// and a hook in scripts/seed.ts — the test below fails until both exist.
+// so a blind spot is a number that can go up instead of a silence. Adding a family
+// means adding an entry and a hook in scripts/seed.ts — the test below fails until
+// both exist.
 //
 // docs/internals/design-system.md §3 ("Selects are width-capped; no control renders
 // past the viewport") points here.

@@ -17,9 +17,8 @@ import { describe, it, expect, afterAll } from "vitest";
 import fs from "node:fs";
 import path from "node:path";
 import crypto from "node:crypto";
-import { db, today } from "@/lib/db";
+import { db } from "@/lib/db";
 import type { ProcessedPhoto } from "@/lib/photo/ingest";
-import { shiftDateStr } from "@/lib/date";
 import {
   logSymptomCore,
   setSymptomEpisodeCore,

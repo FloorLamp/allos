@@ -22,12 +22,7 @@
 // more conservative, never less. That is the safe direction, and it is a property of the
 // offer set (chips are −Nh; picker hours are all in the past), not of a check here.
 
-import { today } from "../db";
-import {
-  getProfilesByTelegramChatId,
-  getTimezone,
-  getProfileAge,
-} from "../settings";
+import { getProfilesByTelegramChatId, getTimezone } from "../settings";
 import { now as clockNow } from "../clock";
 import {
   burstFrom,
@@ -57,7 +52,6 @@ import {
 } from "./practices";
 import {
   getRecentDoseTaps,
-  getRecentFoodTaps,
   getRecentPracticeTaps,
   restampDoseLogsCore,
   type DoseRestampOutcome,
@@ -79,12 +73,12 @@ import {
   PRACTICE_TIME_PREFIXES,
 } from "./correction-rows";
 import { plainBody } from "./rich-text";
-import { buildFoodNudge } from "./food";
+import { buildFoodNudge, consentedFoodTaps } from "./food";
 import { keyboardChatOrigin, withChatOrigin } from "./chat-origin";
 import { FOOD_NUDGE_WINDOWS, type FoodNudgeWindow } from "./food-format";
 import { countVisibleFoodButtons } from "./food-format";
-import { slotSessionForKeyboard } from "./intake";
-import { renderMergedIntakeMessage } from "./intake-format";
+import { renderDoseSession, slotSessionForKeyboard } from "./intake";
+
 import { answerCallbackQuery } from "./telegram-api";
 import { closeMessage, rebuildMessage } from "./telegram";
 import type { TelegramCallbackQuery } from "./telegram-api";
@@ -307,7 +301,7 @@ export async function handleFoodTimeChip(
   cq: TelegramCallbackQuery,
   token: CorrectionChipToken
 ): Promise<void> {
-  const r = await resolve(cq, token, getRecentFoodTaps, FOOD_TIME_PREFIXES);
+  const r = await resolve(cq, token, consentedFoodTaps, FOOD_TIME_PREFIXES);
   if (!r) return;
   const outcome = restampFoodEventsCore(
     r.profileId,
@@ -337,7 +331,7 @@ export async function handleFoodTimeAt(
   cq: TelegramCallbackQuery,
   token: CorrectionAtToken
 ): Promise<void> {
-  const r = await resolve(cq, token, getRecentFoodTaps, FOOD_TIME_PREFIXES);
+  const r = await resolve(cq, token, consentedFoodTaps, FOOD_TIME_PREFIXES);
   if (!r) return;
   // `open` and `back` WRITE NOTHING — they swap the picker in and out — so the ack
   // precedes the edit (#2418's ordering rule, the same one the offer tail follows).
@@ -443,12 +437,7 @@ function doseRebuild(
   if (!date) return null;
   const parts = slotSessionForKeyboard(profileId, doseIds, slots, date);
   if (parts.length === 0) return null;
-  return renderMergedIntakeMessage(
-    profileId,
-    parts,
-    date,
-    getProfileAge(profileId)
-  );
+  return renderDoseSession(profileId, parts, date);
 }
 
 // The anchor row's own dose + day, read back from the ledger.

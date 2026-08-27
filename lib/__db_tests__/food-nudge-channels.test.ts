@@ -32,7 +32,7 @@ vi.mock("web-push", () => ({
 
 import webpush from "web-push";
 import { db } from "@/lib/db";
-import { setSetting, setProfileSetting } from "@/lib/settings";
+import { setSetting } from "@/lib/settings";
 import { dispatch } from "@/lib/notifications";
 import { buildFoodNudge } from "@/lib/notifications/food";
 import { sendMessageRaw } from "@/lib/notifications/telegram-api";

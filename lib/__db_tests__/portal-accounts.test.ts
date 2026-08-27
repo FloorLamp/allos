@@ -1196,11 +1196,11 @@ describe("POST /api/documents/sync-report", () => {
     expect(statuses).toHaveLength(2);
     const jane = statuses.find((s) => s.patientLabel === "Jane Doe")!;
     const john = statuses.find((s) => s.patientLabel === "John Doe")!;
-    expect(jane.lastOkAt).toBeTruthy();
-    expect(jane.lastFailedAt).toBeNull();
+    expect(jane.lastSyncedOnDay).toBeTruthy();
+    expect(jane.lastFailedOnDay).toBeNull();
     // A failure never invents a success, and never erases one either.
-    expect(john.lastOkAt).toBeNull();
-    expect(john.lastFailedAt).toBeTruthy();
+    expect(john.lastSyncedOnDay).toBeNull();
+    expect(john.lastFailedOnDay).toBeTruthy();
   });
 
   it("records a failed run as ok:false with its message", async () => {

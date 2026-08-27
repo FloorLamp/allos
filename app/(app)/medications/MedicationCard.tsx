@@ -692,7 +692,6 @@ export default function MedicationCard({
                   options={SIDE_EFFECT_OPTIONS}
                   allowFreeText
                   placeholder="e.g. Nausea"
-                  inputClassName="text-sm"
                 />
               </div>
               <div>
@@ -959,7 +958,6 @@ export default function MedicationCard({
                     options={SIDE_EFFECT_OPTIONS}
                     allowFreeText
                     placeholder="e.g. Nausea"
-                    inputClassName="text-sm"
                   />
                 </div>
                 <div className="grid gap-3 sm:grid-cols-2">
@@ -989,7 +987,6 @@ export default function MedicationCard({
                       id={`side-date-${s.id}`}
                       name="noted_on"
                       defaultValue={todayStr}
-                      inputClassName="text-sm"
                     />
                   </div>
                 </div>

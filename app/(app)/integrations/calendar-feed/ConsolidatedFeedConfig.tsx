@@ -29,7 +29,7 @@ export default function ConsolidatedFeedConfig({
   status,
   createdAt,
   lastUsedAt,
-  expiresAt,
+  expiresOnDay,
   profileCount,
 }: {
   enabled: boolean;
@@ -37,7 +37,9 @@ export default function ConsolidatedFeedConfig({
   status: TokenLifecycleStatus;
   createdAt: string | null;
   lastUsedAt: string | null;
-  expiresAt: string | null;
+  // A profile-local DAY, converted by the page (#3573) — this component only
+  // passes it through to TokenLifecycleNote, which no longer sees the instant.
+  expiresOnDay: string | null;
   profileCount: number;
 }) {
   const [createdUrl, setCreatedUrl] = useState<string | null>(null);
@@ -163,7 +165,7 @@ export default function ConsolidatedFeedConfig({
         status={status}
         createdAt={createdAt}
         lastUsedAt={lastUsedAt}
-        expiresAt={expiresAt}
+        expiresOnDay={expiresOnDay}
       />
 
       {error && (

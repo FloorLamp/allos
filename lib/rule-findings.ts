@@ -14,12 +14,10 @@
 
 import { joinNamesForSentence } from "./summarize-names";
 import { travelExcusalResolver } from "./travel-excusal";
-import { storedLabUnit } from "./display-unit";
 import {
   getStrengthByExercise,
   getExerciseSetCountsSince,
   getExerciseE1rmSeries,
-  getWeights,
   getWeightsOneSourcePerDay,
   getBodyMetricDailySeries,
   getOutcomeGoals,
@@ -43,7 +41,6 @@ import {
 } from "./queries";
 import { activeFindings } from "./findings";
 import { exerciseHistoryKey } from "./lifts";
-import type { MuscleRegion } from "./lifts";
 import {
   getActiveSituations,
   getSituationEvents,
@@ -1820,7 +1817,7 @@ export function buildSunExposureFindings(
     avgWeeklyDaylightMin,
     vitaminDStatus: status,
     vitaminDValue: latest.value_num,
-    vitaminDUnit: storedLabUnit(latest.unit),
+    vitaminDUnit: latest.unit,
     vitaminDDate: latest.date,
   });
   if (!obs) return [];

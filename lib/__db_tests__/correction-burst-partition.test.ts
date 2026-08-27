@@ -52,13 +52,13 @@ import {
   restampDoseLogsCore,
 } from "@/lib/queries/intake/adherence";
 import {
-  getFoodCorrectionBursts,
+  getRecentFoodTaps,
   getPracticeCorrectionBursts,
   logPracticeByTargetId,
 } from "@/lib/queries";
 import { restampFoodEventsCore } from "@/lib/food-log-write";
 import { restampPracticeLogsCore } from "@/lib/practice-log";
-import { burstFrom, chipTarget } from "@/lib/correction-time";
+import { burstFrom, chipTarget, correctionBursts } from "@/lib/correction-time";
 import { correctionWriteBinding } from "@/lib/notifications/telegram-time-correction";
 import {
   DOSE_TIME_PREFIXES,
@@ -393,10 +393,11 @@ describe("the food twin: two nudges answered minutes apart stay two bursts (#309
     const { date, first } = await twoNudges(pid, chatId);
 
     const [greens, berries] = foodEvents(pid);
-    expect(getFoodCorrectionBursts(pid, clockNow()).map((b) => b.ids)).toEqual([
-      [berries.id],
-      [greens.id],
-    ]);
+    expect(
+      correctionBursts(getRecentFoodTaps(pid, clockNow()), clockNow()).map(
+        (b) => b.ids
+      )
+    ).toEqual([[berries.id], [greens.id]]);
 
     // Each message renders exactly its own burst.
     const onFirst = foodtimeTokens(

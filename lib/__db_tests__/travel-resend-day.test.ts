@@ -20,7 +20,7 @@
 //
 // SYNTHETIC ONLY: fictional profiles, invented sleep minutes, no PHI.
 
-import { afterEach, beforeAll, describe, expect, it } from "vitest";
+import { afterEach, describe, expect, it } from "vitest";
 import { db } from "@/lib/db";
 import { parseHealthConnectPayload } from "@/lib/integrations/health-connect";
 import { ingestHealthConnectPayload } from "@/lib/integrations/health-connect-ingest";

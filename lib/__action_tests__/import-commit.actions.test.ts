@@ -14,7 +14,7 @@ import { revalidatePath } from "next/cache";
 import { db } from "@/lib/db";
 import { commitImportJob } from "@/app/(app)/data/actions";
 import type { ImportResult } from "@/app/(app)/data/actions";
-import { seedActor, type TestLogin, type TestProfile } from "./harness";
+import { seedActor, type TestProfile } from "./harness";
 import {
   computeWorkoutPresence,
   type PresenceActivityRow,
@@ -45,11 +45,10 @@ function jobStatus(id: number): string | undefined {
 }
 
 describe("commitImportJob — save a ready paste import", () => {
-  let login: TestLogin;
   let profile: TestProfile;
 
   beforeEach(() => {
-    ({ login, profile } = seedActor({ profileName: "Test Patient" }));
+    ({ profile } = seedActor({ profileName: "Test Patient" }));
     setStoredAge(profile.id, 30);
     revalidate.mockClear();
   });

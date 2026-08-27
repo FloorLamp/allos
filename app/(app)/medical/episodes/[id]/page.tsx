@@ -36,7 +36,7 @@ import {
 } from "@/lib/settings";
 import IllnessMedicationLogger from "@/components/illness/IllnessMedicationLogger";
 import { PICKER_SYMPTOMS, symptomLabel } from "@/lib/symptoms";
-import { isRealIsoDate } from "@/lib/date";
+import { dateStrInTz, isRealIsoDate } from "@/lib/date";
 import { episodeAlternateLogDate } from "@/lib/illness-episode-format";
 import { getEpisodeInRangeEvents } from "@/lib/illness-episode-events";
 import { episodeComparisonFor } from "@/lib/illness-episode-compare";
@@ -507,7 +507,9 @@ export default async function EpisodePage(props: {
       )}
 
       <EpisodeSummaryFooter
-        generatedAt={new Date().toISOString()}
+        // The day this page was prepared, on the SUBJECT's calendar (#3573) — the
+        // same `timeZone` the summary above renders every other date with.
+        generatedOnDay={dateStrInTz(timeZone)}
         formatPrefs={formatPrefs}
       />
     </PageContainer>

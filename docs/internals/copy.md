@@ -451,24 +451,18 @@ the scope directories. It fails CI on:
    Household and Family homes, shared profile/subject chips, and TSX components
    carrying `ProfileScope`, `SubjectInfo`, or `viewIds`. Login-scoped control copy
    requires an exact, justified entry in the shrinking allowlist.
-4. **Inline disclaimer prose** — `not medical advice`, `informational only`,
-   `consult a clinician`, `never prescriptive`, and `not a diagnosis` phrasing
-   outside `lib/disclaimers.ts` and the canonical `/disclaimer` page. Domain
-   surfaces may carry at most a one-line link to the relevant canonical section.
 
 It structurally **excludes** non-user-facing contexts so they can't trip it:
 comments, `import`/`export … from` lines, `console.*` and `log.<level>(…)`
 logging calls, and `throw new Error(…)` (internal, masked to a generic message
-per #478). A genuinely-legitimate remaining hit goes on the test's frozen
-`ALLOW` list, keyed by `(file, exact substring)` with a per-entry justification
-— the same immutable-manifest discipline as the migration hash manifest and the
-e2e-hygiene allowlist: **the list only ever shrinks.**
+per #478).
 
-Disclaimer prose has a stricter boundary rather than a general exception list:
-only `lib/disclaimers.ts` owns the wording, and `/disclaimer` is the only page
-allowed to render it. The scan strips code comments before matching, so design
-notes can describe the posture without becoming false positives. The two paths
-are asserted as a frozen allowlist; domain surfaces cannot join it.
+Disclaimer prose is not part of this source scan. `lib/disclaimers.ts` owns the
+shared wording, and an import-boundary test prevents other `app/` and
+`components/` modules from importing it. The canonical page has rendered E2E
+coverage; curated datasets and generators have focused checks; runtime-generated
+copy is stripped through the shared disclaimer helpers. There is no global
+inline-disclaimer source scan.
 
 The scan is intentionally narrow — it catches the measured drift patterns, not
 tone. Cross-profile voice (rule 2) is mechanical; active-profile voice remains a

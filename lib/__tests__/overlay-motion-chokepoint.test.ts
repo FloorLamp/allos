@@ -87,16 +87,11 @@ const OVERLAY_SURFACES = new Map<string, string>([
 // and none of them is new — they are the surfaces the `createPortal` requirement
 // hid (see isFullViewportOverlay). Each carries the anatomy reason it is not one
 // of the converged overlay surfaces, which is what this register has always been
-// for; whether a DIALOG belongs on the dialog host is a different question,
-// answered in scripts/dialog-census-core.ts and docs/internals/overlays.md.
+// for; docs/internals/overlays.md owns the separate dialog-host decision.
 const OTHER_FULL_VIEWPORT_OVERLAYS = new Map<string, string>([
   [
     "components/CompactDateMenu.tsx",
     "NOT A PANEL AT ALL — its `fixed inset-0 z-20` is a transparent CLICK-CATCHER underneath an anchored day menu. Nothing is drawn on it, it holds no content and it traps no focus, so there is no overlay anatomy here to converge. The MENU above it is answered by rule 7, where this file is a recorded ANCHORED_MENU_EXCEPTIONS entry with its own reason",
-  ],
-  [
-    "components/MobileDetailPage.tsx",
-    "SCOPED OUT BY ANATOMY (owner ruling on #3405): a full-page mobile takeover for master/detail. It REPLACES the page rather than floating over it — no scrim, dismissed by the back gesture the way a page is — so it is neither one of the anchored overlay surfaces nor a member of the dialog family. Recorded rather than converged, and recorded as scoped out rather than as an exception",
   ],
   [
     "components/activity-form/FitnessTestTimer.tsx",
@@ -262,9 +257,9 @@ const byPath = new Map(FILES.map((f) => [f.rel, f.text]));
 // THE `createPortal` HALF IS GONE (#3405, owner ruling 2026-08-20), and dropping
 // it is the whole point of that ruling rather than a tidy-up. This used to read
 // `text.includes("createPortal") && text.includes("fixed inset-0")`, and the
-// conjunction is exactly why the guard could not see FOUR of the nine hostless
-// dialogs the census found: MobileDetailPage, PhotoGallery, FitnessTestTimer and
-// FitnessCheckView never portal at all — they render `fixed inset-0` inline — so
+// conjunction is exactly why the guard could not see THREE of the hostless
+// dialogs the census found: PhotoGallery, FitnessTestTimer and FitnessCheckView
+// never portal at all — they render `fixed inset-0` inline — so
 // they sat outside every rule below BY CONSTRUCTION, not by exemption and not by
 // anyone's decision. FitnessCheckView shipped the #2774 overscroll defect through
 // three sweeps of its own family that way (#3421).

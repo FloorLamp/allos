@@ -271,6 +271,40 @@ export function setProfileFoodTelegram(
   setProfileSetting(profileId, "food_telegram_enabled", enabled ? "1" : "0");
 }
 
+// ---- Substance content over Telegram (issue #3330) — per-profile opt-in ----
+// Whether this profile's SUBSTANCE consumption may appear in a chat message. Off by
+// default: `substance_telegram_enabled` absent reads as "0", so no profile — including
+// one that already has Telegram wired up and alcohol in its ledger — carries substance
+// content into a chat until someone ticks the box for that profile. There is
+// deliberately NO migration backfilling "1" for existing profiles: a send is the
+// irreversible act (a message on a lock screen cannot be recalled by a later settings
+// change), so the only safe direction for the flag's first read is silence, and the cost
+// of being wrong that way is a button someone has to go and re-enable.
+//
+// PROFILE-SCOPED, not login-scoped, and that distinction is the whole point here: one
+// login can manage several profiles and the Telegram fan-out delivers a profile's message
+// to every managing login's chat. Consent belongs to the data subject whose consumption
+// it is, so a household member ticking their own box says nothing about anyone else's.
+//
+// It is NOT a delivery toggle and does not suppress a message: the gate lives in
+// `buildFoodNudge` (lib/notifications/food.ts), which drops the substance-ledger rows
+// from the keyboard and the tally and sends the rest. Nothing safety-class is downstream
+// of it — see the comment at the gate.
+export function getProfileSubstanceTelegram(profileId: number): boolean {
+  return getProfileSetting(profileId, "substance_telegram_enabled") === "1";
+}
+
+export function setProfileSubstanceTelegram(
+  profileId: number,
+  enabled: boolean
+): void {
+  setProfileSetting(
+    profileId,
+    "substance_telegram_enabled",
+    enabled ? "1" : "0"
+  );
+}
+
 // ---- Daily mood check-in (issue #992) — per-profile opt-in, off by default ----
 // Whether this profile gets the gentle once-daily wellbeing check-in
 // (Telegram/push). A `mood_checkin_enabled` "1"/"0" flag in profile_settings,

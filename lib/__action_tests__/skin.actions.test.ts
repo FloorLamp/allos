@@ -11,7 +11,7 @@ import fs from "node:fs";
 import path from "node:path";
 import sharp from "sharp";
 import { readJpegExif } from "@/lib/photo/exif";
-import { spliceExifIntoJpeg } from "@/lib/photo/exif-fixture";
+import { spliceExifIntoJpeg } from "@/lib/__tests__/exif-fixture";
 import { thumbSiblingPath } from "@/lib/photo/store";
 import { revalidatePath } from "next/cache";
 import {
@@ -198,6 +198,10 @@ describe("lesion photos (attach / delete, and delete-lesion clears them first)",
     expect(
       db.prepare(`SELECT 1 FROM lesion_photos WHERE id = ?`).get(row!.id)
     ).toBeUndefined();
+    expect(await deleteLesionPhoto(fd({ photo_id: String(row!.id) }))).toEqual({
+      ok: false,
+      error: "That photo is no longer available.",
+    });
   });
 
   it("deleting a lesion captures its photos and answers with an undo token (#1847)", async () => {

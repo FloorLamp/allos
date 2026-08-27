@@ -11,6 +11,7 @@ import {
 import type { ActivityType } from "@/lib/types";
 import { useActivityEditor } from "@/components/ActivityEditorProvider";
 import { PageHeader, EmptyState } from "@/components/ui";
+import Button from "@/components/Button";
 import TrainingLogRow from "./TrainingLogRow";
 import { loadTrainingLogPage } from "./activity-actions";
 import ActiveDaysStrip from "@/components/ActiveDaysStrip";
@@ -642,30 +643,30 @@ export default function TrainingLogView({
           data-testid="training-log-controls"
           className="mb-4 grid gap-2 lg:grid-cols-[minmax(12rem,1fr)_auto]"
         >
-          <div className="relative min-w-48 lg:col-start-1 lg:row-start-1">
-            <IconSearch
-              aria-hidden
-              className="pointer-events-none absolute top-1/2 left-3 h-4 w-4 -translate-y-1/2 text-slate-500 dark:text-slate-400"
-              stroke={2}
-            />
-            <input
-              type="search"
-              value={filters.query}
-              onChange={(e) =>
-                setFilters((f) => ({ ...f, query: e.target.value }))
-              }
-              placeholder="Search activities or exercises…"
-              className="input appearance-none pr-10 pl-9 [&::-webkit-search-cancel-button]:appearance-none"
-            />
+          <div className="flex min-w-48 items-center gap-2 lg:col-start-1 lg:row-start-1">
+            <div className="relative min-w-0 flex-1">
+              <IconSearch
+                aria-hidden
+                className="pointer-events-none absolute top-1/2 left-3 h-4 w-4 -translate-y-1/2 text-slate-500 dark:text-slate-400"
+                stroke={2}
+              />
+              <input
+                type="search"
+                value={filters.query}
+                onChange={(e) =>
+                  setFilters((f) => ({ ...f, query: e.target.value }))
+                }
+                placeholder="Search activities or exercises…"
+                className="input appearance-none pl-9 [&::-webkit-search-cancel-button]:appearance-none"
+              />
+            </div>
             {filters.query && (
-              <button
-                type="button"
+              <Button
                 onClick={() => setFilters((f) => ({ ...f, query: "" }))}
                 aria-label="Clear search"
-                className="absolute top-1/2 right-1 flex h-8 w-8 -translate-y-1/2 items-center justify-center rounded-md text-slate-500 hover:bg-slate-100 hover:text-slate-600 dark:text-slate-400 dark:hover:bg-ink-800 dark:hover:text-slate-300"
               >
-                <IconX className="h-4 w-4" />
-              </button>
+                Clear
+              </Button>
             )}
           </div>
           <div className="flex flex-wrap items-center gap-2 lg:col-span-2 lg:row-start-2">

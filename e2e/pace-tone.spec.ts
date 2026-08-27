@@ -12,12 +12,6 @@ import { type Locator } from "@playwright/test";
 // The shared map (mirrors lib/goals PACE_FILL_CLASS / PACE_BORDER_CLASS). A tone's
 // bar/square fill and chip border must match these exactly — that's the "one map"
 // contract the two surfaces can't drift from.
-const FILL: Record<string, string> = {
-  met: "bg-emerald-600",
-  "on-pace": "bg-brand-600",
-  behind: "bg-amber-500",
-  failed: "bg-rose-500",
-};
 const BORDER: Record<string, string> = {
   met: "border-emerald-400",
   "on-pace": "border-brand-400",

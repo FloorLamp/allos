@@ -25,6 +25,7 @@ import { getCurrentMedicationList } from "@/app/(app)/medications/med-data";
 import ImmunizationRecordView from "@/components/immunizations/ImmunizationRecordView";
 import { getImmunizationRecord } from "@/app/(app)/immunizations/record-data";
 import { getTimezone } from "@/lib/settings";
+import { dateStrInTz } from "@/lib/date";
 
 // A human opening a shared passport hits this a handful of times; 30 requests/min
 // per token is far above that while capping a client scraping this PHI-bearing,
@@ -97,6 +98,7 @@ export default async function SharePage(props: {
           : null;
     if (!episode) notFound();
     const assembled = assembleIllnessEpisode(link.profile_id, episode);
+    const episodeTimeZone = getTimezone(link.profile_id);
     return (
       <ConfirmProvider>
         <PageContainer
@@ -108,8 +110,11 @@ export default async function SharePage(props: {
           </div>
           <EpisodeSummary
             episode={assembled}
-            generatedAt={new Date().toISOString()}
-            timeZone={getTimezone(link.profile_id)}
+            // Prepared-on, in the SHARED profile's zone (#3573). A shared summary is
+            // printed or handed to a clinician, so its one date has to be the day the
+            // household would call it — not the UTC day the server happened to be in.
+            generatedOnDay={dateStrInTz(episodeTimeZone)}
+            timeZone={episodeTimeZone}
             nowIso={clockNow().toISOString()}
           />
         </PageContainer>

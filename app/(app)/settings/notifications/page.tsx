@@ -1,6 +1,7 @@
 import {
   getLoginTelegram,
   getProfileFoodTelegram,
+  getProfileSubstanceTelegram,
   getProfileMoodCheckin,
   getProfileMoodRecap,
   getProfileSleepDigest,
@@ -326,6 +327,9 @@ export default async function NotificationsSettingsPage() {
                 }
                 trainingRelevant={trainingRelevant}
                 foodTelegramEnabled={getProfileFoodTelegram(profile.id)}
+                substanceTelegramEnabled={getProfileSubstanceTelegram(
+                  profile.id
+                )}
                 foodLoggingRelevant={isFoodLoggingRelevant(profileAge)}
                 moodCheckinEnabled={getProfileMoodCheckin(profile.id)}
                 moodRecapEnabled={getProfileMoodRecap(profile.id)}

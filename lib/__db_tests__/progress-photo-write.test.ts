@@ -1,6 +1,6 @@
 // DB INTEGRATION TIER — the physique progress-photo domain over the shared photo
 // core (#1119 phases 1+2). Drives the REAL pipeline end to end: sharp-generated
-// JPEGs with synthetic EXIF spliced in (lib/photo/exif-fixture.ts — no real
+// JPEGs with synthetic EXIF spliced in (lib/__tests__/exif-fixture.ts — no real
 // photograph exists in the repo) → processPhoto (harvest → auto-orient → STRIP →
 // downscale → thumbnail) → addProgressPhotoCore (dedup, weight snapshot, file
 // store) against the real temp-DB schema (migration 096 replayed by setup).
@@ -17,7 +17,7 @@ import { db, today } from "@/lib/db";
 import { shiftDateStr } from "@/lib/date";
 import { processPhoto, type ProcessedPhoto } from "@/lib/photo/ingest";
 import { readJpegExif } from "@/lib/photo/exif";
-import { spliceExifIntoJpeg } from "@/lib/photo/exif-fixture";
+import { spliceExifIntoJpeg } from "@/lib/__tests__/exif-fixture";
 import {
   fitWithin,
   PHOTO_MAX_EDGE,

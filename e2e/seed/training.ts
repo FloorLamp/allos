@@ -5,7 +5,6 @@
 
 import "../../scripts/load-env";
 
-import path from "node:path";
 import { db, today } from "../../lib/db";
 import { shiftDateStr, utcMinute, zonedWallTimeToUtc } from "../../lib/date";
 import { localDayRange } from "../../lib/local-day-window";

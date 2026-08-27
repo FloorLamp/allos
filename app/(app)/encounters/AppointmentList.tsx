@@ -43,7 +43,6 @@ import {
   sourceDocumentId,
 } from "@/lib/record-format";
 import { useFormatPrefs } from "@/components/FormatPrefsProvider";
-import type { DisplayFormatPrefs } from "@/lib/format-date";
 import type { Appointment, AppointmentStatus } from "@/lib/types";
 import type { EpisodeLinkRef } from "@/lib/queries";
 

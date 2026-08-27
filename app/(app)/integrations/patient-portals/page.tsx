@@ -1,4 +1,3 @@
-import Link from "next/link";
 import { PageHeader } from "@/components/ui";
 import PageContainer from "@/components/PageContainer";
 import {
@@ -30,6 +29,8 @@ import {
   syncRequestCopy,
 } from "@/lib/sync-requests";
 import { today } from "@/lib/db";
+import { getTimezone } from "@/lib/settings";
+import { dateFromCreatedAt } from "@/lib/timeline-format";
 import BackLink from "@/components/BackLink";
 import PortalsSurface, {
   type AccountView,
@@ -158,6 +159,13 @@ export default async function PatientPortalsPage() {
   // The expiry countdown reads the SESSION's day — a formatting context for "expires in
   // N days", not a scope claim about whose data the page shows.
   const cardToday = today(profile.id);
+  // The SAME formatting context, as a zone (#3573). Two things on this household-wide
+  // page name a day but belong to no profile — a login's run report, and a PENDING
+  // patient nobody has bound yet — and a day cannot be stated without one. The session
+  // profile's zone is the honest choice for exactly the reason the line above gives: it
+  // is the reader's calendar, not a claim about whose data this is. Everything that DOES
+  // have a profile (the mapped patient rows) uses that profile's zone instead.
+  const viewerTimeZone = getTimezone(profile.id);
   const visibleAccountIds = new Set(accounts.map((a) => a.id));
   const requestLines = new Map<number, string>();
   if (canAct) {
@@ -219,8 +227,10 @@ export default async function PatientPortalsPage() {
       profileId: i.profileId,
       ignored: i.ignored,
       declined: i.declined,
-      lastOkAt: st?.lastOkAt ?? null,
-      lastFailedAt: st?.lastFailedAt ?? null,
+      // Already the BOUND profile's local days — identitySyncStatuses converts them
+      // against the profile it was asked about (#3573).
+      lastSyncedOnDay: st?.lastSyncedOnDay ?? null,
+      lastFailedOnDay: st?.lastFailedOnDay ?? null,
     };
   });
 
@@ -247,8 +257,15 @@ export default async function PatientPortalsPage() {
       id: p.id,
       accountId: p.accountId,
       patientLabel: p.patientLabel,
-      firstSeenAt: p.firstSeenAt,
-      lastSeenAt: p.lastSeenAt,
+      // Instant → day here rather than in the surface (#3573). `first_seen_at` /
+      // `last_seen_at` are instants and the row prints them as days; the fallback is
+      // the old truncation and only for a stamp that will not parse.
+      firstSeenOnDay:
+        dateFromCreatedAt(p.firstSeenAt, viewerTimeZone) ??
+        p.firstSeenAt.slice(0, 10),
+      lastSeenOnDay:
+        dateFromCreatedAt(p.lastSeenAt, viewerTimeZone) ??
+        p.lastSeenAt.slice(0, 10),
       seenCount: p.seenCount,
       suggestion,
     };
@@ -266,7 +283,8 @@ export default async function PatientPortalsPage() {
         report && {
           ...report,
           delivered: deliveredByAccount.get(a.id) ?? null,
-        }
+        },
+        viewerTimeZone
       ),
       openRequestLine: requestLines.get(a.id) ?? null,
     };

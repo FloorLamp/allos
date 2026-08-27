@@ -11,7 +11,7 @@ import { now as clockNow } from "../../lib/clock";
 import { db, writeTx } from "../../lib/db";
 import { utcInstant, zonedDateParts, zonedWallTimeToUtc } from "../../lib/date";
 import { setDeliveryFailure } from "../../lib/notifications/delivery-marker";
-import { getTimezone, setInstanceTimezone } from "../../lib/settings";
+import { setInstanceTimezone } from "../../lib/settings";
 import { pinnedTimezone } from "../pinned-timezone";
 
 // Re-anchor the APP SEED's stated instants into the instance timezone this run

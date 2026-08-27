@@ -52,7 +52,6 @@ import { createLogger } from "../log";
 import {
   getIntakeItemNames,
   getIntakeItems,
-  getIntakeDoses,
   getTakenDoseIds,
   getSkippedDoseIds,
   getTakenDoseTimes,
@@ -74,7 +73,6 @@ import {
 import {
   getProfileFoodTelegram,
   getProfileSetting,
-  getProfileAge,
   setProfileSetting,
 } from "../settings";
 import { getWorkoutPresence } from "../queries/presence";
@@ -82,17 +80,16 @@ import { getTimezone } from "../settings";
 import { parseUtcSql } from "../date";
 import {
   collectWindowDoses,
+  renderDoseSession,
   slotSessionForKeyboard,
+  standingStackOffer,
   withDoseCorrections,
 } from "./intake";
-import {
-  renderMergedIntakeMessage,
-  type IntakeSendSlot,
-} from "./intake-format";
-import { buildFoodNudge } from "./food";
+import { type IntakeSendSlot } from "./intake-format";
+import { buildFoodNudge, consentedFoodTaps } from "./food";
 import { keyboardChatOrigin, withChatOrigin } from "./chat-origin";
 import { now as clockNow } from "../clock";
-import { correctionTokenAnchor } from "../correction-time";
+import { correctionBursts, correctionTokenAnchor } from "../correction-time";
 import {
   DOSE_TIME_PREFIXES,
   FOOD_TIME_PREFIXES,
@@ -100,10 +97,7 @@ import {
   openPickerAnchor,
   type CorrectionPrefixes,
 } from "./correction-rows";
-import {
-  getFoodCorrectionBursts,
-  getPracticeCorrectionBursts,
-} from "../queries";
+import { getPracticeCorrectionBursts } from "../queries";
 import { getDoseCorrectionBursts } from "../queries/intake/adherence";
 import {
   countVisibleFoodButtons,
@@ -458,15 +452,12 @@ const intakeDose: FamilyReconciler = {
         if (entries.length > 0 && entries.every((e) => e.taken || e.skipped))
           dead.add(t);
       } else if (f[0] === "stacktake") {
-        // "✅ <Stack> (n)" (#3098) is dead once every dose it names is resolved —
-        // the same ledger the tap handler intersects with.
-        const date = f[2];
-        const ids = (f[3] ?? "").split(",").map(Number);
-        if (
-          date &&
-          ids.length > 0 &&
-          ids.every((id) => id && resolvedFor(date).has(id))
-        )
+        // "✅ <Stack> (n)" (#3098) is dead once every dose its STORED offer names is
+        // resolved — the same ledger the tap handler intersects with — and dead when no
+        // offer stands at all, so the button cannot outlive what it was offering.
+        const offer = standingStackOffer(profileId, Number(f[2]), p.date);
+        if (!offer) dead.add(t);
+        else if (offer.doseIds.every((d) => resolvedFor(offer.date).has(d)))
           dead.add(t);
       } else if (f[0] === "usual") {
         // The composed one-tap (#2460) is HOST-INHERITED: it elects no family, so
@@ -512,13 +503,6 @@ const intakeDose: FamilyReconciler = {
       } else if (f[0] === "all") {
         slots.push(f[2] as IntakeSendSlot);
         date ??= f[3] ?? null;
-      } else if (f[0] === "stacktake") {
-        // The per-stack one-tap (#3098) names its member doses; harvest them so a
-        // partially resolved stack message rebuilds over its whole session.
-        for (const id of (f[3] ?? "").split(",").map(Number)) {
-          if (id) doseIds.push(id);
-        }
-        date ??= f[2] ?? null;
       }
     }
     if (!date) return null;
@@ -530,12 +514,7 @@ const intakeDose: FamilyReconciler = {
     // zero-call steady state this sweep exists to hold would be gone.
     return withDoseCorrections(
       profileId,
-      renderMergedIntakeMessage(
-        profileId,
-        parts,
-        date,
-        getProfileAge(profileId)
-      ),
+      renderDoseSession(profileId, parts, date),
       {
         now: clockNow(),
         pickerAnchor: openPickerAnchor(tokens, DOSE_TIME_PREFIXES),
@@ -743,8 +722,8 @@ const food: FamilyReconciler = {
       tokens,
       FOOD_TIME_PREFIXES,
       new Set(
-        getFoodCorrectionBursts(
-          profileId,
+        correctionBursts(
+          consentedFoodTaps(profileId, clockNow()),
           clockNow(),
           correctionMessageBinding(profileId, "food", {
             chatId: p.chatId,
@@ -790,8 +769,8 @@ const food: FamilyReconciler = {
       const anchor = openPickerAnchor(tokens, FOOD_TIME_PREFIXES);
       const picker =
         anchor != null
-          ? getFoodCorrectionBursts(
-              profileId,
+          ? correctionBursts(
+              consentedFoodTaps(profileId, now),
               now,
               correctionMessageBinding(profileId, "food", ref)
             ).find((b) => b.fromId === anchor)

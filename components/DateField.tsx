@@ -243,7 +243,7 @@ export default function DateField({
         // pinned geometry (the activity editor's Date/Duration/Start/End are one
         // equal-width row, #188), so a floor here would break those instead. Where
         // a date genuinely could not fit, the CONTAINER was too narrow and is
-        // widened at the container (components/ListRailLayout.tsx).
+        // widened at the container.
         className={`input pr-9 ${inputClassName}`}
       />
       {/* The visible field can show a friendly date, so the ISO value is

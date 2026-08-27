@@ -1,7 +1,6 @@
 "use client";
 
 import Link from "next/link";
-import type { ReactNode } from "react";
 import type { SportStat } from "@/lib/queries";
 import { formatMinutes } from "@/lib/duration";
 import { formatLongDate, formatRelativeDate } from "@/lib/format-date";
@@ -17,13 +16,10 @@ import { StatBox } from "@/components/StatBox";
 // is the lightweight cousin of the cardio/exercise panels.
 export default function SportDetailPanel({
   stat,
-  headerRight,
   showTrend = true,
   showRecent = true,
 }: {
   stat: SportStat;
-  // Optional control pinned to the right of the header (e.g. a close button).
-  headerRight?: ReactNode;
   showTrend?: boolean;
   showRecent?: boolean;
 }) {
@@ -37,12 +33,10 @@ export default function SportDetailPanel({
   return (
     <div>
       <div className="flex items-center justify-between gap-2">
-        {/* Below lg the panel renders inside MobileDetailPage, whose header
-            already shows the name — hide the inline one there. */}
+        {/* Analyze owns the compact-width sport heading. */}
         <h2 className="font-semibold text-slate-800 max-lg:hidden dark:text-slate-100">
           {stat.sport}
         </h2>
-        {headerRight}
       </div>
 
       <dl className="mt-4 grid grid-cols-2 gap-3">

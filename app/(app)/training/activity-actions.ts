@@ -4,7 +4,7 @@ import { LOGGED_VIA_FIELD, parseWebOrigin } from "@/lib/logged-via";
 import { gateItemProfile } from "@/app/(app)/gate-item";
 
 import { revalidateRoute } from "@/lib/revalidate";
-import { db, today, writeTx } from "@/lib/db";
+import { db, writeTx } from "@/lib/db";
 import { queuePostWorkoutDispatch } from "@/lib/notifications/post-workout-queue";
 import { type TrainingLogFeedPage } from "@/lib/training-log-feed";
 import { normalizeTrainingLogFilters } from "@/lib/training-log-filters";
@@ -22,7 +22,7 @@ import {
   pairSignature,
 } from "@/lib/import-review/detect";
 import { parseOverrideChoices } from "@/lib/import-review/conflicts";
-import type { ActivityType, SaveActivityOutcome } from "@/lib/types";
+import type { SaveActivityOutcome } from "@/lib/types";
 import { getUnitPrefs, type WeightUnit } from "@/lib/settings";
 import { toKg, submittedWeightUnit } from "@/lib/units";
 import { saveActivityCore } from "@/lib/activity-write";

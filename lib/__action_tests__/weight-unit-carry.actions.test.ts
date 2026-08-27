@@ -16,6 +16,7 @@ import {
   logBodyweight,
 } from "@/app/(app)/training/activity-actions";
 import { createGoal } from "@/app/(app)/training/goal-actions";
+import { addBodyMetric } from "@/app/(app)/trends/body-actions";
 import { LB_PER_KG } from "@/lib/units";
 import { setStoredAge } from "@/lib/settings";
 import { createLogin, createProfile, actAs, fd } from "./harness";
@@ -240,4 +241,41 @@ describe("createGoal honors the submitted weight unit (issue #630)", () => {
       .get(profile.id) as { target_weight_kg: number };
     expect(row.target_weight_kg).toBe(100);
   });
+});
+
+// The dashboard weight quick-add's payload shape (#2863) — the three fields
+// components/dashboard/WeightQuickAdd.tsx posts, which until now omitted the unit and
+// let a Settings flip between render and submit re-interpret a correctly-typed
+// weigh-in. That the form carries the field is pinned in
+// components/__tests__/weight-quick-add-unit.test.tsx; this is what carrying it BUYS.
+describe("addBodyMetric honors the submitted weight unit (issues #630, #2863)", () => {
+  it.each([
+    // typed under a (kg) label; 82 kg is 180.8 lb, so a pref-read write would have
+    // stored 37.2 kg — the 2.2046× corruption the carried unit prevents.
+    { submitted: "kg", stored: "lb", typed: 82, expectKg: 82 },
+    { submitted: "lb", stored: "kg", typed: 180, expectKg: 180 / LB_PER_KG },
+    // No field at all (older client, other callers): the fallback is the contract.
+    { submitted: null, stored: "lb", typed: 180, expectKg: 180 / LB_PER_KG },
+  ] as const)(
+    "stores $typed submitted as $submitted with the login pref on $stored",
+    async ({ submitted, stored, typed, expectKg }) => {
+      const login = createLogin({ weightUnit: stored });
+      const profile = createProfile(
+        `dash-${submitted ?? "none"}-${stored}`,
+        login.id
+      );
+      actAs(login, profile);
+
+      await addBodyMetric(
+        fd({ date: "2026-07-01", weight: typed, weight_unit: submitted })
+      );
+
+      const row = db
+        .prepare(
+          "SELECT weight_kg FROM body_metrics WHERE profile_id = ? ORDER BY id DESC LIMIT 1"
+        )
+        .get(profile.id) as { weight_kg: number };
+      expect(row.weight_kg).toBeCloseTo(expectKg, 6);
+    }
+  );
 });

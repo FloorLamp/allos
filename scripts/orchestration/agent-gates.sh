@@ -69,6 +69,10 @@ db_tier_paths=(
   middleware.ts
   scripts/
   ":(exclude)scripts/orchestration/"
+  # The ONE e2e file the DB+action tier imports: the synthetic video-container
+  # builder, which lives beside the specs that also use it. Named as a single file,
+  # not as `e2e/`, so a diff confined to the browser suite still spares this gate.
+  e2e/video-fixture.ts
   vitest.db.config.ts
   vitest.isolation.ts
   vitest.timeouts.ts

@@ -575,6 +575,21 @@
   }
 }
 
+@utility duplicate-resolution-primary {
+  @apply contents;
+  & > .button-control:not(:disabled) {
+    @apply border-transparent bg-(--btn) text-(--btn-fg) hover:bg-(--btn-hover);
+  }
+}
+
+@utility destructive-submit {
+  @apply contents;
+  & > .button-control {
+    @apply gap-2 border-0 bg-(--danger-btn) px-4 py-2 text-sm text-(--danger-btn-fg) shadow-xs hover:bg-(--danger-btn-hover) disabled:bg-slate-100 disabled:text-slate-500 disabled:hover:bg-slate-100 dark:disabled:bg-ink-750 dark:disabled:text-slate-400 dark:disabled:hover:bg-ink-750;
+    border-radius: var(--radius-control);
+  }
+}
+
 @utility inline-submit-action {
   @apply inline-flex;
   & > .button-control {
@@ -1887,10 +1902,8 @@
 
    `calc(7 * 2.75rem)` rather than `19.25rem` on purpose: the derivation IS the
    value, and a reader who wants to change the column floor should not have to
-   reverse-engineer a decimal. lib/__tests__/tap-floor-reach.test.ts holds both
-   consumers to it — it re-reads this declaration, checks the column against the
-   floor it sweeps the tree for, builds the drawer/calendar geometry model from
-   the number declared here, and refuses the retired literals in any class list. */
+   reverse-engineer a decimal. The rendered phone geometry in
+   `e2e/mobile-ui-polish.spec.ts` proves both consumers still fit. */
 :root {
   --week-grid-min: calc(7 * 2.75rem);
 }
@@ -2114,9 +2127,7 @@ input[type="time"]::-webkit-datetime-edit-ampm-field:focus {
   }
 }
 
-/* A checkbox keeps its compact native paint while its associated label owns the
-   interaction floor on phone layouts and coarse-pointer devices. The label, not
-   a pseudo-element, is the target so native checkbox click semantics do the work. */
+/* Compact native controls keep their paint inside a 44px interaction box. */
 .checkbox-control {
   display: inline-flex;
   align-items: center;
@@ -2124,7 +2135,8 @@ input[type="time"]::-webkit-datetime-edit-ampm-field:focus {
 }
 
 @media (max-width: 639.98px), (pointer: coarse) {
-  .checkbox-control {
+  .checkbox-control,
+  input[type="range"] {
     min-block-size: 2.75rem;
     min-inline-size: 2.75rem;
   }

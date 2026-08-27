@@ -336,7 +336,10 @@ function resolveSourceFacts(
             alreadyFailing: false,
           },
         ],
-        nowAt
+        nowAt,
+        // The profile whose local day "No data since <date>" names. Resolved here
+        // because this is the layer that has the profile; staleness.ts is pure (#3573).
+        getTimezone(profileId)
       )[0] ?? null)
     : null;
   const delivery = integrationDelivery(def);

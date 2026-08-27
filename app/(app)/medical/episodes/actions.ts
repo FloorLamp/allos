@@ -741,8 +741,6 @@ export async function updateSymptomPhotoCaptionAction(
   return { ok: true };
 }
 
-// Delete a symptom photo (row + on-disk file). Cross-profile gated (issue #879); the core
-// is profile-scoped by id, so a forged photo id from another profile is dropped.
 export async function deleteSymptomPhotoAction(
   formData: FormData
 ): Promise<EpisodeActionResult> {
@@ -757,7 +755,8 @@ export async function deleteSymptomPhotoAction(
   const id = Number(formData.get("photoId"));
   if (!Number.isInteger(id) || id <= 0)
     return { ok: false, error: "That photo is no longer available." };
-  deleteSymptomPhotoCore(profileId, id);
+  if (!deleteSymptomPhotoCore(profileId, id))
+    return { ok: false, error: "That photo is no longer available." };
   revalidateRoute("/medical/episodes/[id]", "page");
   return { ok: true };
 }

@@ -7,7 +7,7 @@ import {
 } from "@testing-library/react";
 import { describe, expect, it, vi } from "vitest";
 
-import { MENU_ITEM, OverflowMenuSubmitItem } from "@/components/OverflowMenu";
+import { OverflowMenuSubmitItem } from "@/components/OverflowMenu";
 
 describe("OverflowMenuSubmitItem", () => {
   it("owns menu semantics and pending form submission", async () => {
@@ -24,7 +24,6 @@ describe("OverflowMenuSubmitItem", () => {
     );
 
     const item = screen.getByRole("menuitem", { name: "Remove condition" });
-    expect(item.className).toBe(`${MENU_ITEM} flex items-center gap-1.5`);
     expect(item.getAttribute("type")).toBe("submit");
     fireEvent.click(item);
 

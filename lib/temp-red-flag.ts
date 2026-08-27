@@ -38,7 +38,7 @@ export interface TempRedFlagFinding {
   date: string; // the reading's day
   dedupeKey: string;
   title: string;
-  detail: string; // logged fact + the cited line (no source/disclaimer)
+  detail: string; // logged fact + the cited line (no source)
   source: string;
 }
 
@@ -85,21 +85,19 @@ export function tempRedFlagDetail(
   return `A temperature of ${fmtRedFlagTemp(degF, display)} was logged — ${entry.line}.`;
 }
 
-// The self-contained secondary line every non-Finding surface shows (Upcoming item,
-// Telegram nudge, inline toast): the fact + line, the source, then the mandatory
-// "informational, not medical advice" tail.
+// The self-contained secondary line every non-Finding surface shows.
 export function tempRedFlagFullDetail(f: TempRedFlagFinding): string {
   return `${f.detail} Source: ${f.source}`;
 }
 
-// The Finding.evidence line: the source + the non-negotiable disclaimer tail.
+// The Finding.evidence line.
 export function tempRedFlagEvidence(f: TempRedFlagFinding): string {
   return `Source: ${f.source}`;
 }
 
 // The inline note shown at the MOMENT of logging (the temperature toast/card), or
 // null when the just-logged reading crosses no red flag. Same source-quoting posture
-// as the finding surfaces — the fact, the source's own line, the source, the tail. One
+// as the finding surfaces — the fact, the source's own line, and the source. One
 // helper so the toast and the finding never phrase the same reading differently.
 export function inlineTempRedFlagNote(
   degF: number,

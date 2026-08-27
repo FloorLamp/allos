@@ -14,7 +14,12 @@ import {
   mapWithingsMeasureGroup,
   mapWithingsSleep,
 } from "./withings";
-import { pullPaging } from "./registry";
+import {
+  syncFailureCopy,
+  syncFailureKind,
+  type StatusOrigin,
+} from "./auth-failure";
+import { getIntegration, pullPaging } from "./registry";
 import { pageOutcome, pullSecondsWindow } from "./pull-window";
 import { runPullSync, type PullOutcome, type PullSpec } from "./pull-sync";
 import type { NormBodyMetric, NormMetricSample, NormVital } from "./normalize";
@@ -35,6 +40,9 @@ import type { NormBodyMetric, NormMetricSample, NormVital } from "./normalize";
 const log = createLogger("withings-sync");
 
 const BASE = "https://wbsapi.withings.net";
+// The name the card, the digest title and the setup page already use — read from the
+// registry so one source can never speak under two names.
+const SOURCE_NAME = getIntegration(WITHINGS_ID)?.name ?? WITHINGS_ID;
 const MEASURE_PATH = "/measure";
 const SLEEP_PATH = "/v2/sleep";
 const { timeoutMs, maxPages, rescanDays, backfillDays } =
@@ -51,9 +59,17 @@ export interface WithingsSyncResult {
   truncated?: true;
 }
 
+// TWO NUMBER SPACES, ONE FIELD, SO THE FIELD MUST SAY WHICH (#3618). Withings
+// answers over HTTP 200 with its own code in `{ status }`, and those codes overlap
+// HTTP's: envelope 503 is "Action parameters are incorrect" — a deterministic
+// client-side error — sitting exactly where HTTP puts "service unavailable". Read as
+// an HTTP status it would be called transient and a person told to wait for
+// something that will never clear. `origin` is what keeps the two apart; the paging
+// rules above (`RATE_LIMIT_STATUSES`) knowingly treat 601 as a rate limit and are
+// unaffected, because that is a Withings-specific rule and this is a generic one.
 type WGet =
   | { ok: true; body: Record<string, unknown> }
-  | { ok: false; status: number; error?: string };
+  | { ok: false; status: number; origin: StatusOrigin; error?: string };
 
 async function withingsPost(
   path: string,
@@ -70,7 +86,7 @@ async function withingsPost(
       body: new URLSearchParams(params).toString(),
       signal: AbortSignal.timeout(timeoutMs),
     });
-    if (!res.ok) return { ok: false, status: res.status };
+    if (!res.ok) return { ok: false, status: res.status, origin: "http" };
     // NOT `res.json()`. Withings documents `measuregrps[].grpid` — the id this app
     // stores as `withings:<grpid>:<analyte>` — as `type: integer, format: int64`,
     // so nothing in the contract keeps it under 2^53 and an ordinary parse would
@@ -85,7 +101,7 @@ async function withingsPost(
     // (bad/expired token, rate limit) rides in the envelope with HTTP 200, so the
     // envelope status is authoritative.
     const status = typeof json.status === "number" ? json.status : -1;
-    if (status !== 0) return { ok: false, status };
+    if (status !== 0) return { ok: false, status, origin: "vendor" };
     const body =
       json.body && typeof json.body === "object"
         ? (json.body as Record<string, unknown>)
@@ -94,7 +110,7 @@ async function withingsPost(
   } catch (err) {
     // Network error / timeout / DNS. WHICH request failed goes to the log with the
     // raw cause; `error` carries the house sentence, because it is rendered on the
-    // integration card and in the "Sync failed: …" toast (#3592).
+    // integration card and in the "Sync now" toast (#3592).
     log.error("Withings request failed", {
       path,
       err: err instanceof Error ? err.message : String(err),
@@ -102,9 +118,10 @@ async function withingsPost(
     return {
       ok: false,
       status: 0,
+      origin: "http",
       error: userErrorCopy(err, {
         doing: "sync your Withings data",
-        service: "Withings",
+        service: SOURCE_NAME,
       }),
     };
   }
@@ -148,15 +165,24 @@ async function fetchPages(
     if (!res.ok) {
       if (pageOutcome(res.status, RATE_LIMIT_STATUSES) === "truncate")
         return { items, timezone, updatetime, truncated: true };
+      // withingsPost only sets `error` for a network throw, where it is already the
+      // house sentence (#3592). A status gets one from the shared failure vocabulary
+      // (#3618), which is told WHICH number space it came from — never the reconnect
+      // sentence, which only the runner may write. The path and the code move to the
+      // log, where they are worth having.
+      log.error("Withings request rejected", {
+        path,
+        status: res.status,
+        origin: res.origin,
+      });
       return {
         items,
         timezone,
         updatetime,
         truncated: false,
-        // withingsPost only sets `error` for a network throw, where it is already
-        // the house sentence (#3592) — and where this line's alternative would be
-        // the meaningless "(0)". An HTTP/envelope status keeps the authored line.
-        error: res.error ?? `Withings ${path} request failed (${res.status})`,
+        error:
+          res.error ??
+          syncFailureCopy(SOURCE_NAME, syncFailureKind(res.status, res.origin)),
       };
     }
     const body = res.body;

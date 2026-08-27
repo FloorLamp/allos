@@ -146,8 +146,8 @@ test.describe("touch targets clear the 40px minimum (#644)", () => {
   });
 });
 
-// #3514's floor, spelled the way e2e/button-height-floor.mobile.spec.ts spells it —
-// Rendered measurements import the small design token, never the source census.
+// #3514's floor, spelled the way e2e/button-height-floor.mobile.spec.ts spells it.
+// Rendered measurements import the small shared design token.
 
 // THE FLOOR THIS MEASURES MOVED UNDER IT. #3377 built these boxes at 40 and this
 // test was written to that number; #3514 ruled the floor to 44px EFFECTIVE and the
@@ -159,10 +159,9 @@ test.describe("touch targets clear the 40px minimum (#644)", () => {
 // any more. #3536 widened the drawer enough to pay that bill even at a 320px
 // viewport; no exception or overlapping hit slop remains.
 //
-// THIS IS THE RENDERED PROOF for the token swap. lib/__tests__/tap-floor-reach.test.ts
-// checks the arithmetic in source; only a browser can say the columns still land
-// where they did, which is why #3452's ownership fix was measured here rather than
-// asserted to be geometry-neutral.
+// THIS IS THE RENDERED PROOF for the token swap. The browser says whether the
+// columns still land where they did, which is why #3452's ownership fix was
+// measured here rather than asserted to be geometry-neutral.
 test.describe("the phone drawer's month calendar clears the floor too (#3377/#3514)", () => {
   test.use({ viewport: PHONE });
 

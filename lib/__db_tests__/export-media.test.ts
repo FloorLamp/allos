@@ -15,7 +15,7 @@
 // It writes real bytes under the repo's data/uploads (gitignored, the
 // progress-photo-write.test.ts precedent) and removes its fixture dirs afterward.
 
-import { describe, it, expect, beforeAll, afterAll, afterEach } from "vitest";
+import { describe, it, expect, beforeAll, afterAll } from "vitest";
 import fs from "node:fs";
 import path from "node:path";
 import { db } from "@/lib/db";

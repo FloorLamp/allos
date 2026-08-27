@@ -3,7 +3,6 @@ import { speedKmh } from "./coaching/cardio";
 import {
   cyclingActivityName,
   cyclingActivityPresentation,
-  isCyclingActivity,
   isSameCyclingActivity,
   type CyclingActivityIdentity,
 } from "./cycling-activity";

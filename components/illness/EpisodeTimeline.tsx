@@ -27,6 +27,7 @@ import {
 } from "@/lib/illness-timeline-view";
 import type { EpisodeInRangeEvents } from "@/lib/illness-episode-events";
 import NotesText from "@/components/NotesText";
+import Button from "@/components/Button";
 import SubmitButton from "@/components/SubmitButton";
 import FilterPills from "@/components/FilterPills";
 import ScrollFade from "@/components/ScrollFade";
@@ -517,8 +518,7 @@ export default function EpisodeTimeline({
           className="flex items-center justify-end gap-2 border-t border-black/5 pt-3 dark:border-white/5"
           data-testid="illness-event-editor-actions"
         >
-          <button
-            className="btn-ghost btn-sm"
+          <Button
             type="button"
             onClick={() => {
               setEditing(null);
@@ -526,7 +526,7 @@ export default function EpisodeTimeline({
             }}
           >
             Cancel
-          </button>
+          </Button>
           <SubmitButton pendingLabel="Saving…">Save</SubmitButton>
         </div>
       </form>

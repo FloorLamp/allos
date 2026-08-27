@@ -17,7 +17,7 @@
 //   • the Fitbit vendor scores stay engine-inert — the ask reads their DATE, and the
 //     verdict is unchanged by their VALUE.
 
-import { describe, it, expect, beforeEach } from "vitest";
+import { describe, it, expect } from "vitest";
 import { db, today } from "@/lib/db";
 import { shiftDateStr } from "@/lib/date";
 import { collectUpcoming, dismissFinding } from "@/lib/queries";

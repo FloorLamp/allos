@@ -17,7 +17,6 @@ import OverflowMenu, {
 } from "@/components/OverflowMenu";
 import { formatRecordDate } from "@/lib/record-format";
 import { useFormatPrefs } from "@/components/FormatPrefsProvider";
-import type { DisplayFormatPrefs } from "@/lib/format-date";
 import { updateSkinLesion, deleteSkinLesion } from "./actions";
 import {
   skinLesionDisplayLabel,

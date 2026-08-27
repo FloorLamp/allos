@@ -2,6 +2,8 @@ import { db, hoistedStatement, writeTx } from "./db";
 import { log } from "./log";
 import { insertSyncRows } from "./integrations/connections";
 import { sqlNow } from "./clock";
+import { getTimezone } from "./settings";
+import { dateFromCreatedAt } from "./timeline-format";
 import {
   isAccountSlug,
   isPatientLabel,
@@ -1593,8 +1595,15 @@ export function listPortalRunReports(): PortalRunReport[] {
 export interface IdentitySyncStatus {
   accountId: number;
   patientLabel: string;
-  lastOkAt: string | null;
-  lastFailedAt: string | null;
+  // THE PROFILE-LOCAL CALENDAR DAYS, not the instants they were derived from (#3573).
+  // `integration_sync_events.at` is an instant; the only reader of these two fields is
+  // the Patient portals row, which prints them as days, and it did that with
+  // `.slice(0, 10)` — the UTC day. A check that landed at 20:00 in UTC−05:00 was shown
+  // as tomorrow. The conversion happens here, where the profile is already in hand, and
+  // the instant does not travel on: a field that is not there cannot be truncated.
+  // Null both when nothing has happened yet and when a stored stamp will not parse.
+  lastSyncedOnDay: string | null;
+  lastFailedOnDay: string | null;
 }
 
 // "Last synced" for every (account, patient) this profile has events for — the card's
@@ -1612,7 +1621,11 @@ export function identitySyncStatuses(
   profileId: number,
   sourceId: string
 ): IdentitySyncStatus[] {
-  return db
+  // The MAX() stays on the stored instant — picking the latest run is instant
+  // arithmetic, and doing it on a truncated day would tie every run in one day.
+  // Only the answer is converted.
+  const timeZone = getTimezone(profileId);
+  const rows = db
     .prepare(
       `SELECT account_id AS accountId, patient_label AS patientLabel,
               MAX(CASE WHEN ok = 1 THEN at END) AS lastOkAt,
@@ -1622,5 +1635,16 @@ export function identitySyncStatuses(
           AND account_id IS NOT NULL AND patient_label IS NOT NULL
         GROUP BY account_id, patient_label`
     )
-    .all(profileId, sourceId) as IdentitySyncStatus[];
+    .all(profileId, sourceId) as {
+    accountId: number;
+    patientLabel: string;
+    lastOkAt: string | null;
+    lastFailedAt: string | null;
+  }[];
+  return rows.map((r) => ({
+    accountId: r.accountId,
+    patientLabel: r.patientLabel,
+    lastSyncedOnDay: dateFromCreatedAt(r.lastOkAt, timeZone),
+    lastFailedOnDay: dateFromCreatedAt(r.lastFailedAt, timeZone),
+  }));
 }

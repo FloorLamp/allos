@@ -12,7 +12,6 @@ import {
   persistDocumentImport,
   clearImportedDocumentRows,
 } from "@/lib/import-persist";
-import { captureDelete } from "@/lib/undo-delete-db";
 import { up as backfillPrescriberLinks } from "@/lib/migrations/versions/088-backfill-prescriber-links";
 import type { PersistInput } from "@/lib/import-shape";
 import {

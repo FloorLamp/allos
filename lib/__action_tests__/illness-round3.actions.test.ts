@@ -9,7 +9,7 @@ import fs from "node:fs";
 import path from "node:path";
 import sharp from "sharp";
 import { readJpegExif } from "@/lib/photo/exif";
-import { spliceExifIntoJpeg } from "@/lib/photo/exif-fixture";
+import { spliceExifIntoJpeg } from "@/lib/__tests__/exif-fixture";
 import { thumbSiblingPath } from "@/lib/photo/store";
 import { db, today } from "@/lib/db";
 import { shiftDateStr } from "@/lib/date";
@@ -164,6 +164,10 @@ describe("symptom photo attach / delete", () => {
       db.prepare(`SELECT 1 FROM symptom_photos WHERE id = ?`).get(row!.id)
     ).toBeUndefined();
     expect(fs.existsSync(row!.stored_path)).toBe(false);
+    expect(await deleteSymptomPhotoAction(fd({ photoId: row!.id }))).toEqual({
+      ok: false,
+      error: "That photo is no longer available.",
+    });
   });
 
   // The load-bearing #1844 pin: a photo of a child's rash is among the most sensitive

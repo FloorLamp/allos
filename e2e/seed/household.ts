@@ -5,7 +5,7 @@
 
 import "../../scripts/load-env";
 
-import { db, today } from "../../lib/db";
+import { db } from "../../lib/db";
 import { now as clockNow } from "../../lib/clock";
 import {
   createFixtureProfile,

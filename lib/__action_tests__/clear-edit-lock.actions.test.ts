@@ -62,7 +62,7 @@ describe("clearEditLock", () => {
   });
 
   it("does not touch a row owned by another profile (scoping)", async () => {
-    const { login, profile } = seedActor();
+    const { login } = seedActor();
     const other = createProfile("Other", login.id);
     const foreignId = addLockedBodyMetric(other.id, 70);
 

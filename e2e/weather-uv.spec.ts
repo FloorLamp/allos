@@ -1,12 +1,7 @@
 import Database from "better-sqlite3";
 import { test, expect } from "./fixtures";
 import { loginAs } from "./nav";
-import {
-  followLink,
-  hydratedClick,
-  openDashboardAll,
-  settledClick,
-} from "./helpers";
+import { followLink, openDashboardAll, settledClick } from "./helpers";
 import { E2E_LOGIN_WEATHER, E2E_MEMBER_PASSWORD } from "./fixture-logins";
 import { WEATHER_PROFILE } from "./logins/findings";
 import { workerDbPath, frozenSyncInstant } from "./worker-env";

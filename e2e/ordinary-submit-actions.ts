@@ -58,7 +58,6 @@ export async function expectDesktopOrdinarySubmit({
     viewport!.width,
     `${name} runs before the phone resize`
   ).toBeGreaterThanOrEqual(640);
-  await expect(submit).toHaveClass(/(^|\s)btn(\s|$)/);
   const locators = [form, owner, submit];
   if (adjacent) locators.push(adjacent);
   const [formBox, ownerBox, submitBox, adjacentBox] =

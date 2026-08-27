@@ -52,8 +52,6 @@ import {
   suggestNextSet,
   type CardioPR,
 } from "@/lib/coaching";
-import { regionForExercise } from "@/lib/lifts";
-import { RECOVERING_LOAD_FACTOR } from "@/lib/injury-model";
 import { loadingDates } from "@/lib/training-zones";
 import { recommendNextWorkout } from "@/lib/workout-recommendation";
 import { getActiveRoutine, getRoutineCycleStatus } from "@/lib/routines";

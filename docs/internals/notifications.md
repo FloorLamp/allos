@@ -520,7 +520,12 @@ vacated, exactly as a real escalation or an ack would. The system may reduce
 contact unilaterally and may never increase it off its own reading of state, and
 a bookkeeping correction is not a request to be chased. The suppression is
 per-DATE, so a correction to an older day cannot silence a genuine miss today. Payloads carry **ids only** (never
-names — 64-byte limit, AUTOINCREMENT ids never recycle), every handler answers
+names — 64-byte limit, AUTOINCREMENT ids never recycle), and a button that writes a
+whole named SET carries one **offer id** instead of the set (`notify_offers`,
+#2460): `usual:` and `stacktake:` are both `<prefix>:<profileId>:<offerId>`, constant
+size, and the id never recycles (`notify_offers.id` is `AUTOINCREMENT` — a pruned
+offer's id must never be handed to a later one, because the upper-bound rule bounds how
+MUCH a tap writes, not WHAT). Every handler answers
 from a **typed outcome union** (the `DoseTakenOutcome` pattern — never
 unconditionally confirm; a stale/foreign tap gets the outdated-message
 replacement), buttons are removed/replaced on consumption, and escalation taps

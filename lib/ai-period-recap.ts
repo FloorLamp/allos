@@ -13,7 +13,6 @@
 // second narrative, was removed with the Trends → Biomarkers tab — #1164.)
 
 import Anthropic from "@anthropic-ai/sdk";
-import { today } from "./db";
 import { resolveTaskClient, isTaskConfigured } from "./ai-resolve";
 import { recordAiEvent, capDetail, LOG_PROMPTS, usageFrom } from "./ai-log";
 import { checkAndIncrementAiUsage, narrativeDailyLimit } from "./ai-usage";

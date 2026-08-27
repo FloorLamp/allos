@@ -9,6 +9,9 @@
 - Check profile scoping, write transactions, authorization boundaries, identity
   handling, and shared one-question-one-computation models.
 - Require tests at the tier that can observe the defect.
+- Convergence is production-NEGATIVE or it is a third way of doing the thing.
+- Reject any scanner, registry, allowlist, variant, or compatibility layer.
+- Weigh line cost; compact proofs before doubting coverage that found a defect.
 - Check the ruling's OWN condition, not the one the implementation makes
   easy. Verifying values where they change is a different question from
   rendering the case the ruling names.

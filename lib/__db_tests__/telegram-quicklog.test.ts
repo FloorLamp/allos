@@ -9,7 +9,6 @@ import { beforeAll, describe, expect, it, vi } from "vitest";
 import { stubTelegramSends } from "./telegram-spies";
 
 import { db, today } from "@/lib/db";
-import { setProfileSetting } from "@/lib/settings";
 import {
   handleCallbackQuery,
   handleIncomingMessage,

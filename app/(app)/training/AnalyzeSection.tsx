@@ -18,11 +18,7 @@ import {
   type SportStat,
 } from "@/lib/queries";
 import { requireSession } from "@/lib/auth";
-import {
-  exerciseHistoryKey,
-  loadContextLabel,
-  regionForExercise,
-} from "@/lib/lifts";
+import { exerciseHistoryKey, loadContextLabel } from "@/lib/lifts";
 import { getFormDeloadContext } from "@/lib/routines";
 import { getInjuryConstraints } from "@/lib/injuries";
 import { exerciseInjuryVerdict } from "@/lib/injury-model";
@@ -819,8 +815,7 @@ function strengthView({
             goalProgress={goalProgress}
             showTrend={false}
             showRecent={false}
-            showLevel={false}
-            sex={sex}
+            sex={adultClinicalContent ? sex : null}
             nextSetContext={nextSetContext}
           />
         </div>
@@ -1056,30 +1051,16 @@ function BenchmarkCard({
   state: BenchmarkState;
   weightUnit: "kg" | "lb";
 }) {
-  const { currentLevel, rankedLevelLabel, rows, currentE1rmKg, bodyweightKg } =
-    state;
-  const currentRatio = currentE1rmKg / bodyweightKg;
+  const { rankedLevelLabel, rows, bodyweightKg } = state;
 
   return (
     <div className="card">
-      <div className="flex items-start justify-between gap-3">
-        <div>
-          <h3 className="font-semibold text-slate-800 dark:text-slate-100">
-            Benchmarks
-          </h3>
-          <p className="mt-1 text-xs text-slate-500 dark:text-slate-400">
-            {exercise} estimated 1RM progression · for your bodyweight & sex
-          </p>
-        </div>
-        <div className="text-right">
-          <div className={`text-sm font-semibold ${currentLevel.color}`}>
-            {currentLevel.label}
-          </div>
-          <div className="text-xs text-slate-500 dark:text-slate-400">
-            {currentRatio.toFixed(2)}× BW
-          </div>
-        </div>
-      </div>
+      <h3 className="font-semibold text-slate-800 dark:text-slate-100">
+        Benchmarks
+      </h3>
+      <p className="mt-1 text-xs text-slate-500 dark:text-slate-400">
+        {exercise} estimated 1RM progression · for your bodyweight & sex
+      </p>
 
       <div className="relative mt-5">
         <div className="absolute bottom-2 left-2.5 top-2 w-px -translate-x-1/2 rounded-full bg-slate-200 dark:bg-white/10" />

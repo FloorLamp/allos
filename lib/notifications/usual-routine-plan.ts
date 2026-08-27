@@ -40,7 +40,7 @@ import {
   type UsualRoutineAttachment,
 } from "./usual-routine-attach";
 import { getUsualRoutineOffer } from "../queries/usual-routine";
-import { parseUsualRoutineCallback } from "./callback-data";
+import { parseOfferCallback } from "./callback-data";
 import { createLogger } from "../log";
 import type { NotificationMessage } from "./types";
 
@@ -125,7 +125,7 @@ export function dispatchableUsual(
   return {
     ...message,
     actions: (message.actions ?? []).filter(
-      (a) => a.data == null || parseUsualRoutineCallback(a.data) == null
+      (a) => a.data == null || parseOfferCallback(a.data, "usual") == null
     ),
   };
 }

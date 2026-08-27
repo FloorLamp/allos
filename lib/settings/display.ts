@@ -1,5 +1,5 @@
 import * as React from "react";
-import { db, writeTx } from "../db";
+import { writeTx } from "../db";
 
 // React's per-request cache() only exists in the canary React that Next vendors
 // for server components. This module is also imported directly by tsx scripts

@@ -46,7 +46,7 @@ import type { AppRoute } from "./hrefs";
 import type { Reason } from "./reasons";
 import type { TrendItem } from "./trends-digest";
 import type { WeightUnit, DistanceUnit } from "./settings";
-import { fmtWeight, fmtDistance, fmtKmh } from "./units";
+import { fmtDistance, fmtKmh } from "./units";
 import { formatMinutes } from "./duration";
 import {
   isSuppressed,

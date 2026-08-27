@@ -1,6 +1,6 @@
 // DB INTEGRATION TIER (#2264) — correction rows bind to the MESSAGE that produced them.
 //
-// The reported defect: `getFoodCorrectionBursts(profileId, now)` was message-blind, so a
+// The reported defect: `correctionBursts(getRecentFoodTaps(profileId, now), now)` was message-blind, so a
 // 7:30 "Morning food log" message — rebuilt by the food family's sweep after a midday
 // tap — adopted the 12:42 midday burst's rows, and its chips RESTAMPED the midday
 // servings from the wrong message. The dose side (`getDoseCorrectionBursts`) was
@@ -8,15 +8,7 @@
 // (migration 170's provenance link), the real callback dispatcher, the real builders
 // and the real sweep, with only the raw Telegram transport stubbed.
 
-import {
-  afterEach,
-  beforeAll,
-  beforeEach,
-  describe,
-  expect,
-  it,
-  vi,
-} from "vitest";
+import { afterEach, beforeAll, beforeEach, describe, expect, it } from "vitest";
 import {
   answerCallbackQuery as answerSpy,
   stubTelegramSends,
@@ -47,7 +39,8 @@ import {
   getRecentDoseTaps,
   markDoseTaken,
 } from "@/lib/queries/intake/adherence";
-import { getFoodCorrectionBursts } from "@/lib/queries";
+import { getRecentFoodTaps } from "@/lib/queries";
+import { correctionBursts } from "@/lib/correction-time";
 import { seedLoginTelegram } from "./fixtures";
 
 // This spec exercises the logic ABOVE the wire, so the four Telegram
@@ -240,7 +233,9 @@ describe("a food correction row renders only on the message that produced it (#2
     const middayBurstAnchor = events[1].id;
     // The midday burst is fresh and would previously have ridden EVERY live food
     // keyboard — that unfiltered set is exactly one burst.
-    expect(getFoodCorrectionBursts(pid, clockNow())).toHaveLength(1);
+    expect(
+      correctionBursts(getRecentFoodTaps(pid, clockNow()), clockNow())
+    ).toHaveLength(1);
 
     // The Morning message's own rebuild — the reported failure: it grew the midday
     // burst's chips, whose taps restamp the midday servings from the wrong message.

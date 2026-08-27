@@ -3,7 +3,7 @@
 
 import { describe, it, expect, beforeEach } from "vitest";
 import Database from "better-sqlite3";
-import { MIGRATIONS, NUMBERED_MIGRATIONS } from "@/lib/migrations/versions";
+import { NUMBERED_MIGRATIONS } from "@/lib/migrations/versions";
 import { migration as m052 } from "@/lib/migrations/versions/052-blood-type-parts";
 
 let db: Database.Database;

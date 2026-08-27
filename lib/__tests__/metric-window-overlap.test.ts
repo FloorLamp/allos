@@ -165,8 +165,12 @@ describe("the DAY-BUCKET METRIC gate", () => {
   });
 
   it("keeps NUTRITION, HYDRATION and SLEEP out of reach", () => {
-    // MUTATION: add any of these to DAY_BUCKET_METRICS and the nested-interval cases
-    // below start deleting real readings.
+    // MUTATION, MEASURED 2026-08-27: adding `nutrition_kcal` reds this, the registry
+    // assertion above, and the granularity case — plus the nested meal below, since
+    // #3448 widened its windows past the granularity gate. Adding `hydration_l` reds the
+    // same three here and, at the DB tier, both rows of
+    // lib/__db_tests__/hydration-day-bucket-3448.test.ts — where the second one deletes a
+    // 1.5 L drink a person really logged.
     for (const metric of [
       "nutrition_kcal",
       "protein_g",
@@ -180,18 +184,24 @@ describe("the DAY-BUCKET METRIC gate", () => {
     }
   });
 
+  // BOTH WINDOWS ARE LONGER THAN `SUB_DAILY_WINDOW_MAX_MIN`, and that is the whole point
+  // of the fixture (#3448). Until 2026-08-27 the meal was 12:00-13:00 and the snack ten
+  // minutes: the granularity gate refused both regardless of the metric, so adding
+  // `nutrition_kcal` to DAY_BUCKET_METRICS left this case GREEN and only the registry
+  // assertions above went red. A case that claims to prove the metric list is
+  // load-bearing has to use windows the OTHER gate would let through.
   it("refuses to plan anything for a nested meal and snack", () => {
     const meal = win(
       1,
       "2026-05-01",
       "2026-05-01T12:00:00Z",
-      "2026-05-01T13:00:00Z"
+      "2026-05-01T14:00:00Z"
     );
     const snack = {
       metric: "nutrition_kcal",
       date: "2026-05-01",
       started_at: "2026-05-01T12:10:00Z",
-      ended_at: "2026-05-01T12:20:00Z",
+      ended_at: "2026-05-01T13:30:00Z",
       pushedAt: "2030-01-01T00:00:00Z",
     };
     expect(planSupersede(snack, [meal]).supersede).toEqual([]);
@@ -200,13 +210,13 @@ describe("the DAY-BUCKET METRIC gate", () => {
       2,
       "2026-05-01",
       "2026-05-01T12:10:00Z",
-      "2026-05-01T12:20:00Z"
+      "2026-05-01T13:30:00Z"
     );
     const mealIn = {
       metric: "nutrition_kcal",
       date: "2026-05-01",
       started_at: "2026-05-01T12:00:00Z",
-      ended_at: "2026-05-01T13:00:00Z",
+      ended_at: "2026-05-01T14:00:00Z",
       pushedAt: "2030-01-01T00:00:00Z",
     };
     expect(planSupersede(mealIn, [snackRow]).supersede).toEqual([]);

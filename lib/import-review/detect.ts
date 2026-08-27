@@ -25,16 +25,12 @@
 import { daysBetweenDateStr } from "../date";
 import {
   canonicalizeSourceClock,
-  clockAtMinute,
   formatOffset,
   minutesFromBase,
   nearMidnightCandidate,
   plausibleOffsetMinutes,
-  EVENING_CANDIDATE_MIN,
-  MORNING_CANDIDATE_MIN,
   MAX_PLAUSIBLE_OFFSET_MIN,
   MIN_PLAUSIBLE_OFFSET_MIN,
-  MINUTES_PER_DAY,
   PLAUSIBLE_OFFSET_MINUTE_PARTS,
   type ClockReading,
 } from "../clock-skew";

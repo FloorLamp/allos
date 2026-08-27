@@ -1,4 +1,3 @@
-import Link from "next/link";
 import SegmentedControl from "@/components/SegmentedControl";
 import { requireScope } from "@/lib/scope";
 import { today } from "@/lib/db";

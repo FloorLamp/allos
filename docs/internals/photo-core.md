@@ -131,7 +131,7 @@ judgment anywhere in the core (product-decided, #1119).
 3. Server Action: `requireWriteAccess` → parse → `processPhoto` →
    `resolvePhotoDate` → core → `revalidatePath`; an action-tier test proves the
    stored file is metadata-free (`spliceExifIntoJpeg` from
-   `lib/photo/exif-fixture.ts` builds GPS-tagged synthetic fixtures).
+   `lib/__tests__/exif-fixture.ts` builds GPS-tagged synthetic fixtures).
 4. Serve route scoped `id AND profile_id` with `?thumb=1`.
 5. Row-ops side-state: `deleteProfile` gathers `stored_path`+`thumb_path` before
    the sweep and unlinks under the domain root; the export-completeness

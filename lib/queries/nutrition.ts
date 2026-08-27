@@ -40,7 +40,7 @@ import {
   HABIT_TREND_WEEKS,
   type HabitWeekCell,
 } from "../food-habit-trend";
-import { foodSlotAnchors, FOOD_SLOTS, type FoodSlot } from "../food-slot";
+import { FOOD_SLOTS, type FoodSlot } from "../food-slot";
 import {
   FOOD_REGULARITY_SPAN_DAYS,
   foodPeriodRegularity,
@@ -75,12 +75,7 @@ import type { DateRange } from "../timeline-format";
 import { foodEventWindow, type FoodLedgerEvent } from "../food-slot-count";
 import { hhmmToMinutes } from "../date";
 import { isProteinNudgeKey, PROTEIN_NUDGE_KEY } from "../protein-nudge";
-import {
-  correctionBursts,
-  CORRECTION_FRESH_MIN,
-  type CorrectionBurst,
-  type CorrectionMessageBinding,
-} from "../correction-time";
+import { CORRECTION_FRESH_MIN } from "../correction-time";
 import type { FoodTapRow } from "../food-log-write";
 import { PROTEIN_QUICKADD_LAST_KEY } from "../protein-daily-totals-write";
 import { bodyweightAsOf } from "../bodyweight";
@@ -1023,19 +1018,12 @@ export function getRecentFoodTaps(
   }));
 }
 
-// The correction rows one food keyboard should carry right now — the fresh taps,
-// collapsed into bursts, bound to the rendering message (#2264), newest first, capped.
-// One computation for the send, every rebuild, and the hourly sweep (#221), so a chat
-// can never show a chip the handler would refuse. `binding` is the rendering message's
-// #2264 identity (correctionMessageBinding); omitting it returns the profile-wide set,
-// which only a caller that is not rendering a message may use.
-export function getFoodCorrectionBursts(
-  profileId: number,
-  now: Date = clockNow(),
-  binding?: CorrectionMessageBinding
-): CorrectionBurst[] {
-  return correctionBursts(getRecentFoodTaps(profileId, now), now, binding);
-}
+// `getFoodCorrectionBursts` — the unfiltered taps-to-bursts pairing — lived here until
+// #3330. Every one of its production callers was a CHAT surface, and every one of them
+// now takes `consentedFoodTaps` (lib/notifications/food.ts) so the substance opt-in is
+// asked in the gather rather than at each site. Keeping the neutral wrapper would have
+// advertised a consumer that no longer exists, and left the ungated pairing one import
+// away from the surface it leaked through (#2227's rule, applied to itself).
 
 // ---- Food-habit N-week consistency trend (issue #954) ----
 
