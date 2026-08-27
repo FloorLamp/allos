@@ -6,6 +6,7 @@ import SubmitButton from "@/components/SubmitButton";
 import { useToast } from "@/components/Toast";
 import PhotoGallery from "@/components/photo/PhotoGallery";
 import PhotoTimeline from "@/components/photo/PhotoTimeline";
+import PhotoDeleteAction from "@/components/photo/PhotoLightboxActions";
 import SegmentedControl from "@/components/SegmentedControl";
 import type { GalleryPhoto } from "@/lib/photo/gallery-model";
 import { uploadLesionPhoto, deleteLesionPhoto } from "./actions";
@@ -94,21 +95,16 @@ export default function LesionPhotoStrip({
           domains={[
             { key: "skin", label: "Skin", photos: gallery, series: [] },
           ]}
-          renderActions={(photo) => (
-            <form
-              action={async (fd) => {
-                await deleteLesionPhoto(fd);
+          renderActions={(photo, { close }) => (
+            <PhotoDeleteAction
+              close={close}
+              testId={`lesion-photo-delete-${photo.id}`}
+              remove={() => {
+                const formData = new FormData();
+                formData.set("photo_id", String(photo.id));
+                return deleteLesionPhoto(formData);
               }}
-            >
-              <input type="hidden" name="photo_id" value={photo.id} />
-              <button
-                type="submit"
-                className="rounded-lg bg-rose-600/80 px-3 py-1.5 text-sm font-medium text-white hover:bg-rose-600"
-                data-testid={`lesion-photo-delete-${photo.id}`}
-              >
-                Delete photo
-              </button>
-            </form>
+            />
           )}
         />
       ) : (
@@ -157,9 +153,7 @@ export default function LesionPhotoStrip({
               className="text-sm"
             />
           </div>
-          <SubmitButton className="btn py-1 text-sm" pendingLabel="Adding…">
-            Add photo
-          </SubmitButton>
+          <SubmitButton pendingLabel="Adding…">Add photo</SubmitButton>
           {error && (
             <p
               role="alert"

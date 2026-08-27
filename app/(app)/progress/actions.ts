@@ -89,15 +89,14 @@ export async function updateProgressPhoto(
   return formOk();
 }
 
-// Delete one progress photo (row + on-disk files). The core is profile-scoped by
-// id, so a forged photo id from another profile is dropped.
 export async function deleteProgressPhoto(
   formData: FormData
 ): Promise<FormResult> {
   const { profile } = await requireWriteAccess();
   const id = Number(formData.get("photo_id"));
   if (!id) return formError("That photo is no longer available.");
-  deleteProgressPhotoCore(profile.id, id);
+  if (!deleteProgressPhotoCore(profile.id, id))
+    return formError("That photo is no longer available.");
   revalidateRoute("/progress");
   // Deleting the last photo re-hides the nav entry — revalidate "/" so the shared
   // layout's nav relevance re-resolves, matching the upload path (#1282).
