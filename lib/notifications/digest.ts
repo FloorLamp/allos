@@ -796,13 +796,11 @@ export function buildDigest(input: DigestInput): DigestModel | null {
   }
   const moreFlagged = input.newFlaggedBiomarkers.length - namedFlagged.length;
   if (moreFlagged > 0) {
-    // CAUTION, not the flagged glyph: 🚩 claims "a READING fell outside its reference
-    // range", and this line is not a reading — while ⚠️'s registry role names this exact
-    // shape, "a message that had to be cut short". The link is the affordance, and it is
-    // the ONLY one the grammar offers: `because` takes a cause, `notes` take facts and
-    // `deadline` explicitly refuses a CTA, so "open the app" has no honest slot here.
-    // Without a configured public URL it degrades to the bare count, like every other
-    // deep link in this message.
+    // CAUTION, not 🚩: that glyph claims "a READING fell outside its reference range"
+    // and this line is not a reading, while ⚠️'s role names this exact shape, "a message
+    // that had to be cut short". The link is the "see the rest" affordance and the only
+    // one the grammar offers — `because` takes a cause, `notes` facts, `deadline`
+    // refuses a CTA — and it degrades away with no configured public URL.
     const base = (input.deepLinkBase ?? "").replace(/\/$/, "");
     newLines.push(
       formatEmphasizedLine({
