@@ -8,15 +8,10 @@
 //
 // A REGISTRY, NOT A FILTER: adding a line is a claim somebody has to write down and
 // review, and `staleUnmountedRoots` fails if a registered file is gone or is mounted
-// after all. It lives in its own module rather than inside that test because a SECOND
-// guard pins one of these files and the two must not be able to disagree about
-// whether it is dead — `lib/__tests__/episode-logbar-reuse.test.ts` reads
-// `components/illness/SymptomLogCard.tsx`'s bytes and asserts on them, which is a
-// perfectly green assertion about a component nothing renders (#3580 item 5).
-export const UNMOUNTED_ROOTS: Record<string, string> = {
-  "components/illness/SymptomLogCard.tsx":
-    "dead code — no file in app/ or components/ imports it, confirmed by review on " +
-    "PR #3560. Deleting it is out of that PR's scope, so it is registered rather " +
-    "than removed; delete the component and this line together. " +
-    "lib/__tests__/episode-logbar-reuse.test.ts pins this same file and says so.",
-};
+// after all.
+//
+// EMPTY SINCE #2957, and that is the state to keep it in: its one entry recorded
+// `components/illness/SymptomLogCard.tsx` as dead pending a decision to delete it,
+// and that deletion has now happened. An empty registry means the walk currently
+// has no permitted dead ends — every new one is a finding.
+export const UNMOUNTED_ROOTS: Record<string, string> = {};

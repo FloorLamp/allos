@@ -13,7 +13,6 @@ const EXPECTED_CALLERS = [
   ["app/(app)/medications/MedicationCard.tsx", "medication"],
   ["app/(app)/nutrition/EditableSupplementRow.tsx", "supplement"],
   ["components/illness/IllnessMedicationLogger.tsx", "medication"],
-  ["components/illness/SymptomMedQuickAdd.tsx", "medication"],
   ["components/nutrition/AddSupplementModal.tsx", "supplement"],
 ] as const;
 
