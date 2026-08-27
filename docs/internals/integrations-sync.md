@@ -1018,6 +1018,17 @@ carry it explicitly:
   `recommendedSettingForKey` says `daily` for both, but nothing enforces it —
   `FINE_GRAINED_CHECK` is informational by its own comment, and does not cover
   nutrition at all.
+  **`hydration_l` was re-examined and stays out (#3448).** The question was whether
+  `isDayBucketWindow` alone separates a `full`-setting drink record from a day bucket,
+  making the metric list redundant for hydration. It does not: that gate is sixty
+  minutes, so any drink logged over a longer window clears it in BOTH roles. AndroidX
+  states the non-overlap contract on `StepsRecord` and `DistanceRecord` and states none
+  on `HydrationRecord` — "a single drink", validated only as `startTime < endTime`, with
+  no maximum duration — so the nested pair is a shape the platform permits.
+  `lib/__db_tests__/hydration-day-bucket-3448.test.ts` drives both halves through the
+  real ingest: with hydration in the set, a 0.5 L drink erases the 1.5 L bottle it was
+  drunk inside. The cost accepted instead is a VISIBLE double count on a travel switch
+  day (3.2 L stored for 1.8 L drunk), pinned in the same file.
 - **`isDayBucketWindow`** — the OBSERVED window must be longer than
   `SUB_DAILY_WINDOW_MAX_MIN`, the constant the at-ingest granularity detector already
   uses for this judgement. The metric list alone is not enough: the same four metrics
