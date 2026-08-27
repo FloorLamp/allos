@@ -189,6 +189,32 @@ export async function guardedWrite(
 }
 
 /**
+ * WHY A FOREGROUND WRITE ANSWERS WITH A CAUSE AND NOT A BOOLEAN (#3118).
+ *
+ * The two ways this refuses are not the same event on the device:
+ *
+ *   • `"closed"` — the gate said no. Only `closeSession` sets `sessionClosed`, only
+ *     `clearQueue` (lib/offline/queue-db.ts) calls it, and it closes the gate IN THE SAME
+ *     TRANSACTION that clears the stores. So a close observed here is proof that a wipe
+ *     has already committed, and therefore that ANY EARLIER WRITE THIS CALLER MADE TO A
+ *     WIPED STORE IS GONE TOO — including one this same tap made moments ago.
+ *   • `"failed"` — quota, a blocked open, a throwing `work`. The device simply did not
+ *     keep THIS copy; nothing else was touched.
+ *
+ * "A close means a wipe" holds for the two lanes that come through here — `queue` and
+ * `drafts`, where `sessionClosed` is the only thing `gateAllows` can refuse on. The
+ * `snapshots` lane has a second refusal (`snapshotsClosed`, the reads off switch) that
+ * clears nothing, so a snapshots caller reading this for durability would have to say
+ * which close it saw. None does today; this is the sentence to re-decide if one appears.
+ *
+ * A caller making two writes from one tap cannot tell those apart from `false`, and
+ * MeasurementsQuickAdd guessed wrong in the direction that loses data: it told the person
+ * the first half was safe and to re-enter only the second, on a device that had just
+ * thrown the first half away. The cause is the fix — see that file's `queueOffline`.
+ */
+export type DeviceWriteOutcome = "kept" | "closed" | "failed";
+
+/**
  * A FOREGROUND write: one the person is making right now, with nothing between the
  * decision and the write for a wipe to slip into. `enqueueIntent` and a draft autosave
  * are both this — by the time they run, the tap has happened and the debounce has already
@@ -208,8 +234,10 @@ export async function guardedWriteNow(
   stores: readonly string[],
   lane: WriteLane,
   work: (tx: IDBTransaction) => void
-): Promise<boolean> {
-  if (!hasIndexedDB()) return false;
+): Promise<DeviceWriteOutcome> {
+  // No storage at all is a failure to keep this copy, not a wipe: nothing was ever
+  // written here, so no earlier write of the caller's was taken away.
+  if (!hasIndexedDB()) return "failed";
   try {
     const db = await openDb();
     const tx = db.transaction([META_STORE, ...stores], "readwrite");
@@ -217,14 +245,14 @@ export async function guardedWriteNow(
     if (!gateAllows(gate, lane, gate.generation)) {
       tx.abort();
       db.close();
-      return false;
+      return "closed";
     }
     work(tx);
     await done(tx);
     db.close();
-    return true;
+    return "kept";
   } catch {
-    return false;
+    return "failed";
   }
 }
 

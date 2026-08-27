@@ -107,6 +107,27 @@ export function practiceSelectValue(
   return value;
 }
 
+// WHICH SCOPES HAVE A WEEKLY RANGE AT ALL (#3353). The ceiling is a wellness-practice
+// concept: `parseScopedPractice` stores it for that scope and drops it for an activity
+// type and for a food group. The EDITOR has to ask the same question — it used to
+// offer a Maximum field for every scope, so a person typed a number into a field that
+// discarded it and only found out by noticing the protocol's chip disagree. One
+// predicate, used by the parse below AND by the form, so the field offered and the
+// value stored cannot drift apart.
+//
+// It reads the SELECT VALUE, not a parsed practice: the custom sentinel has no name
+// typed yet, and a field that appeared only once the name was filled would be its own
+// small surprise.
+export function scopeAcceptsPerWeekMax(
+  rawValue: string | null | undefined
+): boolean {
+  const value = (rawValue ?? "").trim();
+  return (
+    value === CUSTOM_PRACTICE_VALUE ||
+    value.startsWith(WELLNESS_PRACTICE_PREFIX)
+  );
+}
+
 // Parse the combined practice select value into a scoped practice, or null. A value
 // prefixed `food_group:` resolves to a food-group scope (validated against the curated
 // catalog); `practice:<name>` resolves to a wellness-practice scope (the custom sentinel
@@ -146,10 +167,7 @@ export function parseScopedPractice(
       perWeekMax: null,
     };
   }
-  if (
-    value === CUSTOM_PRACTICE_VALUE ||
-    value.startsWith(WELLNESS_PRACTICE_PREFIX)
-  ) {
+  if (scopeAcceptsPerWeekMax(value)) {
     const name =
       value === CUSTOM_PRACTICE_VALUE
         ? normalizePracticeName(rawCustom)

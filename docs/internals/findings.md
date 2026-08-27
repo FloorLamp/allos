@@ -155,6 +155,14 @@ untouched. The date follows the viewer's `dateFormat` pref, and its auto-year is
 decided against the PROFILE's today rather than the process wall clock
 (`formatMonthDay(iso, prefs, { today })`).
 
+**And bounded downward too (#2806).** The overdue side had no ceiling, so a stale
+anchor printed "2035 days overdue" beside a meaningful "9 days overdue". More than
+`OVERDUE_COUNTDOWN_MAX_DAYS` (30 whole days) past due, the row says **"overdue
+since &lt;date&gt;"** — the same formatter, the same prefs, the same profile-today
+auto-year as the Later band, and the word "overdue" kept because a bare date would
+have dropped it. Inside the ceiling the countdown is unchanged: that is where
+#2579-B's urgency reading actually lives.
+
 ---
 
 ## The finding-producing builder registry (#860 Track A, extending #448)

@@ -6,7 +6,11 @@ import {
   settledClick,
 } from "./helpers";
 import { frozenNow } from "./worker-env";
-import { withProtocolFact } from "./protocol-form-helpers";
+import {
+  closeProtocolFact,
+  openProtocolFact,
+  withProtocolFact,
+} from "./protocol-form-helpers";
 
 // Recovery gear + practice adherence on protocols (issue #344). Creates a protocol
 // that references a seeded recovery device ("E2E Protocol Sauna") and declares a
@@ -461,4 +465,69 @@ test("activity and food protocols open their owning prefilled loggers (#1584)", 
   await page.keyboard.press("Escape");
   await expect(sheet).toHaveCount(0);
   await deleteCurrentProtocol();
+});
+
+// #3353 — an editor must not offer a field the write discards.
+//
+// `parseScopedPractice` honours `practice_per_week_max` ONLY for a wellness practice
+// and drops it for an activity type and a food group. The editor offered the Maximum
+// for every scope, so a person typed a number into a sport protocol, saw it accepted,
+// and it silently did not exist — discoverable only by noticing the saved chip say
+// "4×/week" and reading that as the CHIP being wrong. The chip is right; this is the
+// half that was not.
+//
+// Creates no protocol, so there is nothing to clean up: the whole claim is about what
+// the form offers before anything is saved.
+test("the cadence editor offers a Maximum only for a scope that stores one (#3353)", async ({
+  page,
+}) => {
+  test.slow(); // next dev compiles /longevity on first hit
+
+  await page.goto("/longevity#protocols");
+  await page.getByRole("main").getByTestId("new-protocol-toggle").click();
+  const form = page.getByTestId("protocol-form");
+  await expect(form).toBeVisible();
+  const min = form.getByTestId("protocol-practice-per-week");
+  const max = form.getByTestId("protocol-practice-per-week-max");
+  const cadence = form.getByTestId("protocol-fact-cadence");
+
+  // A WELLNESS PRACTICE has a weekly range, so the field is offered and the range
+  // reaches the chip.
+  await withProtocolFact(form, "practice", async () => {
+    await form
+      .getByTestId("protocol-practice-type")
+      .selectOption({ label: "Sauna" });
+  });
+  await openProtocolFact(form, "cadence");
+  await min.fill("3");
+  await expect(max).toBeVisible();
+  await max.fill("5");
+  await closeProtocolFact(form);
+  await expect(cadence).toContainText("3–5×/week");
+
+  // A SPORT does not: the ceiling is dropped on the way to storage, so the field is
+  // not offered — and the live chip stops claiming a range it is about to discard.
+  await withProtocolFact(form, "practice", async () => {
+    await form.getByTestId("protocol-practice-type").selectOption("sport");
+  });
+  await openProtocolFact(form, "cadence");
+  await expect(min).toBeVisible();
+  await expect(max).toBeHidden();
+  await closeProtocolFact(form);
+  await expect(cadence).toContainText("3×/week");
+  await expect(cadence).not.toContainText("–");
+
+  // Switching scope KEEPS what was typed, which is this form's convention for every
+  // other field (the custom-practice name says so in its own comment). Nothing was
+  // blanked behind the person's back; the field simply stopped being offered.
+  await withProtocolFact(form, "practice", async () => {
+    await form
+      .getByTestId("protocol-practice-type")
+      .selectOption({ label: "Sauna" });
+  });
+  await openProtocolFact(form, "cadence");
+  await expect(max).toBeVisible();
+  await expect(max).toHaveValue("5");
+  await closeProtocolFact(form);
+  await expect(cadence).toContainText("3–5×/week");
 });

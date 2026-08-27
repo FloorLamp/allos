@@ -1303,22 +1303,23 @@ export default function FoodLogBar({
     // not a capture (see the lib/offline/queue.ts scope comment) — so an offline
     // "−" rolls back with an honest message instead of pretending.
     const queueOffline = async (): Promise<boolean> => {
-      const kept = await enqueue("food", activeDate, {
-        entry: "serving",
-        groupKey: slug,
-        // This is the fallback declaration, not an echo of a stated instant. If
-        // the replay accepts eatenAt, the write core derives its slot from that
-        // instant. If a fast device clock makes eatenAt unusable, the serving
-        // stays in the active window the person actually tapped.
-        mealSlot: activeSlot,
-        grams: null,
-        // The statement travels as a RESOLVED instant, because a replay has no server to
-        // resolve a choice against: "now" is this device's clock at the tap, and an
-        // "earlier…" hour is the instant the server computed when it rendered that
-        // option. The replay validates both (judgeEatenAt) rather than trusting them,
-        // and an unusable one costs the statement, never the serving.
-        eatenAt: statedInstant(),
-      });
+      const kept =
+        (await enqueue("food", activeDate, {
+          entry: "serving",
+          groupKey: slug,
+          // This is the fallback declaration, not an echo of a stated instant. If
+          // the replay accepts eatenAt, the write core derives its slot from that
+          // instant. If a fast device clock makes eatenAt unusable, the serving
+          // stays in the active window the person actually tapped.
+          mealSlot: activeSlot,
+          grams: null,
+          // The statement travels as a RESOLVED instant, because a replay has no server to
+          // resolve a choice against: "now" is this device's clock at the tap, and an
+          // "earlier…" hour is the instant the server computed when it rendered that
+          // option. The replay validates both (judgeEatenAt) rather than trusting them,
+          // and an unusable one costs the statement, never the serving.
+          eatenAt: statedInstant(),
+        })) === "kept";
       // The device can refuse the capture (#3038) — say so in the shared sentence
       // and report it, so the caller rolls the optimistic counts back.
       if (!kept) {

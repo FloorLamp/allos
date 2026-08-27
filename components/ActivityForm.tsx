@@ -920,7 +920,8 @@ export default function ActivityForm({
       const capturedDate = isRealIsoDate(fields.date ?? "")
         ? fields.date
         : todayStr(tz);
-      const kept = await enqueueOffline("set", capturedDate, { fields });
+      const kept =
+        (await enqueueOffline("set", capturedDate, { fields })) === "kept";
       // The device refused the capture (#3038): the queue owns nothing, so say
       // so in the shared sentence, KEEP the draft (whatever it still holds is
       // strictly better than nothing), and report false — the autosave hook then

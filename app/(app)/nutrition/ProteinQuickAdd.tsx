@@ -83,12 +83,13 @@ export default function ProteinQuickAdd({
     // online-only — a decrement is not a capture (lib/offline/queue.ts scope
     // comment) — so an offline "−" rolls back with an honest message.
     const queueOffline = async (): Promise<boolean> => {
-      const kept = await enqueue("food", today, {
-        entry: "protein",
-        groupKey: null,
-        mealSlot: null,
-        grams,
-      });
+      const kept =
+        (await enqueue("food", today, {
+          entry: "protein",
+          groupKey: null,
+          mealSlot: null,
+          grams,
+        })) === "kept";
       // The device can refuse the capture (#3038) — say so in the shared sentence
       // and report it, so the caller rolls the optimistic total back.
       if (!kept) {

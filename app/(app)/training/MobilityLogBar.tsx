@@ -125,7 +125,8 @@ export default function MobilityLogBar({
             err
           )
         ) {
-          const kept = await enqueue("mobility", today, { move: slug });
+          const kept =
+            (await enqueue("mobility", today, { move: slug })) === "kept";
           // The device refused the capture (#3038): nothing queued, so the chip
           // rolls back rather than standing in for a write that never happened.
           if (!kept) {

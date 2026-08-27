@@ -137,15 +137,56 @@ describe("applyColumnBulk", () => {
 
 describe("columnBulkLabel", () => {
   it("states the safety carve-out on the turn-off tap", () => {
-    const label = columnBulkLabel("Telegram", "all");
+    const label = columnBulkLabel("Telegram", "Telegram", "all");
     expect(label).toContain("Telegram");
     expect(label).toMatch(/except safety reminders/i);
   });
 
   it("says plainly what a turn-on tap does", () => {
-    expect(columnBulkLabel("Web Push", "mixed")).toMatch(/turn on every kind/i);
-    expect(columnBulkLabel("Home Assistant", "none")).toMatch(
+    expect(columnBulkLabel("Push", "Web Push", "mixed")).toMatch(
       /turn on every kind/i
+    );
+    expect(columnBulkLabel("HA", "Home Assistant", "none")).toMatch(
+      /turn on every kind/i
+    );
+  });
+
+  // WCAG 2.5.3 (Label in Name, Level A) as a string property, over the four columns
+  // NotificationPrefs renders and both things the tap can do (#3556). The header
+  // paints the SHORT form — "HA" — and the sweep checkbox's accessible name is this
+  // string, so the name has to contain that short form; it must also still say the
+  // full channel name, because trading one for the other is what the issue rules out.
+  // The DOM half of the claim — that this string really is the checkbox's accessible
+  // name, and that the short form really is what the header paints — is measured at
+  // 390px and at 1280px in e2e/notification-matrix-phone.mobile.spec.ts.
+  const COLUMNS = [
+    { short: "Telegram", label: "Telegram" },
+    { short: "Push", label: "Web Push" },
+    { short: "HA", label: "Home Assistant" },
+    { short: "Email", label: "Email" },
+  ] as const;
+  it.each(
+    COLUMNS.flatMap((c) =>
+      (["all", "none", "mixed"] as const).map((state) => ({ ...c, state }))
+    )
+  )(
+    "$short ($label), $state: the name contains the visible label and still names the channel",
+    ({ short, label, state }) => {
+      const name = columnBulkLabel(short, label, state);
+      expect(name).toContain(short);
+      expect(name).toContain(label);
+    }
+  );
+
+  it("does not repeat a short form its full name already contains", () => {
+    // "Push (Web Push)" satisfies containment and is noise; the criterion is met by
+    // the full name alone whenever the short form is inside it.
+    expect(columnBulkLabel("Push", "Web Push", "all")).toBe(
+      "Web Push: turn off everything except safety reminders"
+    );
+    // …and the column that needs both forms carries both, visible one first.
+    expect(columnBulkLabel("HA", "Home Assistant", "all")).toBe(
+      "HA (Home Assistant): turn off everything except safety reminders"
     );
   });
 });
