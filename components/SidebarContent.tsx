@@ -433,23 +433,38 @@ export default function SidebarContent({
   // call stack.
   if (logoutFailure) throw logoutFailure();
 
+  // IDENTITY CHROME **OR** BRAND CHROME, NEVER BOTH — #1801's own rule, applied
+  // here in #3154 where it had only ever been applied to the phone top bar.
+  //
+  // The sidebar rendered the wordmark line AND the identity bar stacked, which is
+  // 48px (a 32px row plus the column's gap) of a 768px viewport spent saying the
+  // app's name directly above a bar that already says whose data this is. On the
+  // seeded multi-profile admin at 1366x768 the refit's other four moves land the
+  // column at 796px against 768 of room, and this is the 48 that closes it — so
+  // the last thing still below the fold (the What's new / Disclaimer line) comes
+  // back above it. A single-profile instance grows no identity bar, so it keeps
+  // the wordmark exactly as before, and so does the phone drawer, whose bar lives
+  // in the top bar and whose close ✕ rides this row.
+  const brandChrome = !(showIdentityBar && multiProfile);
   return (
     <>
-      <div className="flex items-center justify-between gap-2">
-        <Link href="/" className="flex items-center gap-2 rounded-lg px-2">
-          <Wordmark markClassName="h-6 w-10" />
-        </Link>
-        {onClose && (
-          <IconButton type="button" label="Close menu" onClick={onClose}>
-            <IconX className="h-5 w-5" stroke={1.75} />
-          </IconButton>
-        )}
-      </div>
+      {brandChrome && (
+        <div className="flex items-center justify-between gap-2">
+          <Link href="/" className="flex items-center gap-2 rounded-lg px-2">
+            <Wordmark markClassName="h-6 w-10" />
+          </Link>
+          {onClose && (
+            <IconButton type="button" label="Close menu" onClick={onClose}>
+              <IconX className="h-5 w-5" stroke={1.75} />
+            </IconButton>
+          )}
+        </div>
+      )}
       {/* The identity bar (#1801) at the TOP of the sidebar — "whose data am I
       looking at, and who am I acting as?" answered before anything else on the
       page. Gated on multiProfile: identity chrome when identity is ambiguous,
       brand chrome when it isn't. */}
-      {showIdentityBar && multiProfile && (
+      {!brandChrome && (
         <ProfileIdentityBar
           profiles={profiles}
           actingProfileId={active.id}
