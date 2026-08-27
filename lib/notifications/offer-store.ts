@@ -27,29 +27,45 @@
 import { db, writeTx } from "../db";
 import { sqlNow } from "../clock";
 
-// The offer FAMILY. One tenant today; `stacktake:`, the #2320 digest offer tail and
+// The offer FAMILY. Two tenants: the composed one-tap (#2460) and the per-stack
+// one-tap (#3282, the substrate's first migration); the #2320 digest offer tail and
 // #3087's interaction provenance are the named future ones. Matching on it is what
 // stops one family from redeeming another's payload.
-export type OfferFamily = "usual-routine";
+export type OfferFamily = "usual-routine" | "stack-take";
 
 // Rows are pruned on the same horizon message pointers use — an offer is only ever
 // redeemed from a live message, so it can never usefully outlive one.
 export const OFFER_RETENTION_DAYS = 3;
 
 // Mint one offer row and return its id. The id is what the button's token carries.
+//
+// THE SAME BUNDLE, OFFERED TWICE IN A DAY, IS ONE OFFER. A tenant that mints from a
+// RENDER — the per-stack one-tap does, because its buttons are re-derived on every
+// rebuild — would otherwise put a fresh id in the token every time, and a keyboard
+// that differs is a keyboard the reconcile sweep EDITS: the zero-Telegram-call steady
+// state a quiet tick relies on would be gone, and the table would grow a row per tick.
+// So the identity of an offer is its content, and re-offering is a read.
 export function mintOffer(
   profileId: number,
   family: OfferFamily,
   date: string,
   payload: unknown
 ): number {
+  const json = JSON.stringify(payload);
   return writeTx(() => {
+    const existing = db
+      .prepare(
+        `SELECT id FROM notify_offers
+          WHERE profile_id = ? AND family = ? AND date = ? AND payload = ?`
+      )
+      .get(profileId, family, date, json) as { id: number } | undefined;
+    if (existing) return existing.id;
     const res = db
       .prepare(
         `INSERT INTO notify_offers (profile_id, family, date, payload, created_at)
          VALUES (?, ?, ?, ?, ?)`
       )
-      .run(profileId, family, date, JSON.stringify(payload), sqlNow());
+      .run(profileId, family, date, json, sqlNow());
     return Number(res.lastInsertRowid);
   });
 }

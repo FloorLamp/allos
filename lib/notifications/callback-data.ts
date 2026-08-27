@@ -74,91 +74,61 @@ export function parseAllCallback(data: unknown): AllCallback | null {
   return { profileId, window: window as IntakeSendSlot, date };
 }
 
-// ---- The per-stack one-tap (issue #3098) -----------------------------------
+// ---- OFFER TOKENS: the button names a STORED bundle, not its contents -------
 //
-// A profile's own stack name ("Sleep stack") is free text and cannot ride
-// Telegram's 64-byte callback limit, so the button carries DOSE IDS — the same
-// currency `take:` uses. The id list is an UPPER BOUND: the handler re-derives the
-// pending, notifiable set fresh (the parseAllCallback → handler posture) and
-// writes only the intersection through markDoseTaken, so a stale, forged or
-// replayed token cannot write outside what currently stands. When the ids do not
-// fit the limit the button is DROPPED at compose time, never truncated — an offer
-// may never name less than the tap would write (#2460's rule, inherited verbatim).
+// Two buttons write a whole named set in one tap — the composed "your usual <window>"
+// (#2460) and the per-stack one-tap (#3098) — and both hit the same wall: Telegram
+// gives `callback_data` 64 bytes, and a token that spells its set out grows with the
+// set. `usual:` measured 63 of 64 at two food groups and six doses; `stacktake:` spent
+// its bytes on dose ids and DROPPED its own button once a stack outgrew them. Both are
+// largest at send time, before anything is logged — exactly when the offer helps most.
+//
+// So neither names its set. The bundle is stored (`notify_offers`,
+// lib/notifications/offer-store.ts) and the token carries the row id:
+// "<prefix>:<profileId>:<offerId>" — constant size, immune to every growth axis. The
+// prefix stays the family's own, because the dispatcher and the reconcile registry key
+// off it; only the GRAMMAR is shared, the way `take:` and `skip:` share theirs.
+//
+// THE STORED OFFER IS AN UPPER BOUND, NOT AN INSTRUCTION. Each handler re-derives what
+// currently stands and writes only the intersection, so a forged, replayed or stale
+// token can never write outside the offer that currently stands.
+//
+// NO DATE CROSSES THE WIRE. The offer row carries the subject's local day at mint time
+// and the handler resolves `today(profileId)` itself, so an offer expires on the day
+// rollover and no token can backfill.
 
 // Telegram's hard cap on a button's callback_data, in bytes.
 export const TELEGRAM_CALLBACK_DATA_MAX_BYTES = 64;
 
-export interface StackTakeCallback {
-  profileId: number;
-  date: string;
-  doseIds: number[];
-}
+// The prefixes that spell an offer token. Not a registry of behaviour — the dispatcher
+// still routes each one to its own handler; this is only which words the shared
+// grammar is spoken in.
+export type OfferPrefix = "usual" | "stacktake";
 
-// The single source of truth for the token shape (the reminder keyboard mints it,
-// the parser reads it): "stacktake:<profileId>:<date>:<doseId,doseId,…>".
-export function stackTakeCallback(
-  profileId: number,
-  date: string,
-  doseIds: readonly number[]
-): string {
-  return `stacktake:${profileId}:${date}:${doseIds.join(",")}`;
-}
-
-// Parse a stacktake token. Malformed (wrong prefix, bad ids, missing or non-date
-// date — #3120, empty id list) → null. The profile id is a cross-check like every
-// other tap token — the handler re-resolves the acting profile from the chat, and
-// every write is re-verified against the dose → item → profile chain.
-export function parseStackTakeCallback(
-  data: unknown
-): StackTakeCallback | null {
-  if (typeof data !== "string" || !data.startsWith("stacktake:")) return null;
-  const [, profStr, date, idsStr] = data.split(":");
-  const profileId = Number(profStr);
-  if (!profileId || !isRealIsoDate(date) || !idsStr) return null;
-  const doseIds = idsStr.split(",").map(Number);
-  if (doseIds.length === 0 || doseIds.some((id) => !id)) return null;
-  return { profileId, date, doseIds };
-}
-
-// ---- The composed "your usual <window>" one-tap (issue #2460) ---------------
-//
-// One button, the whole morning: the habitual food groups AND the declared doses
-// still owed in the window, written by `logUsualRoutineCore` in one tap.
-//
-// THE TOKEN NAMES AN OFFER, NOT THE SETS. Spelling both sets into the token
-// (`usual:<profileId>:<window>:<date>:<slug,slug>:<doseId,doseId>`) measured 63 of the
-// 64 available bytes for the motivating profile's two groups and six doses — and it is
-// LARGEST at send time, before anything is logged, so a third habitual group or a
-// seventh dose would silently delete the button exactly when it helps most. So the
-// bundle is stored (`notify_offers`, lib/notifications/offer-store.ts) and the token
-// carries its id: constant size, immune to both growth axes.
-//
-// The stored offer stays an UPPER BOUND, exactly as the named sets were: the handler
-// re-derives what currently stands and writes only the intersection, so a forged,
-// replayed or stale token can never write outside the offer that currently stands.
-
-export interface UsualRoutineCallback {
+export interface OfferCallback {
   profileId: number;
   offerId: number;
 }
 
-// The single source of truth for the token shape (the send plan mints it, the parser
-// and the reconcile sweep read it): "usual:<profileId>:<offerId>".
-export function usualRoutineCallback(
+// The single source of truth for the shape (the mint sites write it, the parsers and
+// the reconcile sweep read it): "<prefix>:<profileId>:<offerId>".
+export function offerCallback(
+  prefix: OfferPrefix,
   profileId: number,
   offerId: number
 ): string {
-  return `usual:${profileId}:${offerId}`;
+  return `${prefix}:${profileId}:${offerId}`;
 }
 
-// Parse a usual-routine token. Malformed (wrong prefix, non-numeric or zero ids,
-// trailing fields) → null. The profile id is a cross-check like every other tap token:
-// the handler re-resolves the acting profile from the chat, and the offer row is read
-// scoped by that profile.
-export function parseUsualRoutineCallback(
-  data: unknown
-): UsualRoutineCallback | null {
-  if (typeof data !== "string" || !data.startsWith("usual:")) return null;
+// Parse an offer token for one prefix. Malformed (wrong prefix, non-numeric, zero or
+// negative ids, missing or trailing fields) → null. The profile id is a cross-check
+// like every other tap token: the handler re-resolves the acting profile from the chat
+// and the offer row is read scoped by that profile.
+export function parseOfferCallback(
+  data: unknown,
+  prefix: OfferPrefix
+): OfferCallback | null {
+  if (typeof data !== "string" || !data.startsWith(`${prefix}:`)) return null;
   const parts = data.split(":");
   if (parts.length !== 3) return null;
   const profileId = Number(parts[1]);
@@ -198,9 +168,6 @@ export function keyboardDoseFootprint(rows: InlineKeyboard): {
         parseTakeCallback(b.callback_data) ??
         parseSkipCallback(b.callback_data);
       if (tap) doseIds.add(tap.doseId);
-      // A per-stack one-tap (#3098) names its member doses too.
-      const stack = parseStackTakeCallback(b.callback_data);
-      if (stack) for (const id of stack.doseIds) doseIds.add(id);
       const all = parseAllCallback(b.callback_data);
       if (all) slots.add(all.window);
     }

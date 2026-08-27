@@ -23,11 +23,7 @@
 // offer set (chips are −Nh; picker hours are all in the past), not of a check here.
 
 import { today } from "../db";
-import {
-  getProfilesByTelegramChatId,
-  getTimezone,
-  getProfileAge,
-} from "../settings";
+import { getProfilesByTelegramChatId, getTimezone } from "../settings";
 import { now as clockNow } from "../clock";
 import {
   burstFrom,
@@ -82,8 +78,8 @@ import { buildFoodNudge, consentedFoodTaps } from "./food";
 import { keyboardChatOrigin, withChatOrigin } from "./chat-origin";
 import { FOOD_NUDGE_WINDOWS, type FoodNudgeWindow } from "./food-format";
 import { countVisibleFoodButtons } from "./food-format";
-import { slotSessionForKeyboard } from "./intake";
-import { renderMergedIntakeMessage } from "./intake-format";
+import { renderDoseSession, slotSessionForKeyboard } from "./intake";
+
 import { answerCallbackQuery } from "./telegram-api";
 import { closeMessage, rebuildMessage } from "./telegram";
 import type { TelegramCallbackQuery } from "./telegram-api";
@@ -442,12 +438,7 @@ function doseRebuild(
   if (!date) return null;
   const parts = slotSessionForKeyboard(profileId, doseIds, slots, date);
   if (parts.length === 0) return null;
-  return renderMergedIntakeMessage(
-    profileId,
-    parts,
-    date,
-    getProfileAge(profileId)
-  );
+  return renderDoseSession(profileId, parts, date);
 }
 
 // The anchor row's own dose + day, read back from the ledger.

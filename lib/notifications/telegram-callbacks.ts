@@ -40,7 +40,6 @@ import {
   setProfileSetting,
   setProfileFoodTelegram,
   setFoodTelegramPrompted,
-  getProfileAge,
 } from "../settings";
 import { logFoodServingCore } from "../food-log-write";
 import { addProteinGramsCore } from "../protein-daily-totals-write";
@@ -82,10 +81,8 @@ import {
   tapDateGuard,
   keyboardDoseFootprint,
   parseAllCallback,
-  parseStackTakeCallback,
-  parseUsualRoutineCallback,
-  type StackTakeCallback,
-  type UsualRoutineCallback,
+  parseOfferCallback,
+  type OfferCallback,
   parseEscalationCallback,
   parseFoodLogCallback,
   parseFoodExpandCallback,
@@ -159,14 +156,12 @@ import {
 } from "./workout-presence";
 import {
   collectWindowDoses,
+  renderDoseSession,
   slotSessionForKeyboard,
+  stackOfferDoseIds,
   withDoseCorrections,
 } from "./intake";
-import {
-  INTAKE_SEND_SLOTS,
-  notifiableWindowDoses,
-  renderMergedIntakeMessage,
-} from "./intake-format";
+import { INTAKE_SEND_SLOTS, notifiableWindowDoses } from "./intake-format";
 import { buildFoodNudge } from "./food";
 import { keyboardChatOrigin, withChatOrigin } from "./chat-origin";
 import { countVisibleFoodButtons } from "./food-format";
@@ -243,10 +238,10 @@ export async function handleCallbackQuery(
     return;
   }
 
-  // "✅ <Stack> (n)" — mark one stack's still-pending doses taken (#3098). The
-  // token's dose ids are an UPPER BOUND; the handler re-derives the pending set
-  // and writes only the intersection.
-  const stackTake = parseStackTakeCallback(cq.data);
+  // "✅ <Stack> (n)" — mark one stack's still-pending doses taken (#3098). The token
+  // names a STORED offer whose dose ids are an UPPER BOUND; the handler re-derives the
+  // pending set and writes only the intersection.
+  const stackTake = parseOfferCallback(cq.data, "stacktake");
   if (stackTake) {
     await handleStackTaken(cq, stackTake);
     return;
@@ -254,7 +249,7 @@ export async function handleCallbackQuery(
 
   // "✅ Your usual <window> (n)" — the composed one-tap (#2460). The token names a
   // STORED offer; the handler re-derives what stands and writes only the intersection.
-  const usual = parseUsualRoutineCallback(cq.data);
+  const usual = parseOfferCallback(cq.data, "usual");
   if (usual) {
     await handleUsualRoutineTap(cq, usual);
     return;
@@ -975,13 +970,10 @@ async function handleDoseTap(
       messageId,
       withDoseCorrections(
         profileId,
-        renderMergedIntakeMessage(
-          profileId,
-          parts,
-          tap.date,
-          getProfileAge(profileId)
-        ),
-        { ref: { chatId, messageId } }
+        renderDoseSession(profileId, parts, tap.date),
+        {
+          ref: { chatId, messageId },
+        }
       )
     );
     return;
@@ -1229,34 +1221,36 @@ async function handleAllTaken(
     messageId,
     withDoseCorrections(
       profileId,
-      renderMergedIntakeMessage(
-        profileId,
-        parts,
-        all.date,
-        getProfileAge(profileId)
-      ),
-      { ref: { chatId, messageId } }
+      renderDoseSession(profileId, parts, all.date),
+      {
+        ref: { chatId, messageId },
+      }
     )
   );
 }
 
-// Mark one STACK's still-pending doses taken in one tap (#3098). The token's dose
-// ids are an UPPER BOUND, exactly the parseAllCallback → handler posture one
-// button over: the pending, notifiable set is re-derived fresh from current state
-// and the write is the INTERSECTION of that set with the ids the button named —
-// so a stale, forged, or replayed token cannot write outside what currently
-// stands. Another profile's dose id or a retired dose is not in the re-derived
-// set (and markDoseTaken independently re-verifies the dose → item → profile
-// chain besides); a dose meanwhile resolved is left alone; a second tap finds an
-// empty intersection and answers nothing-to-log rather than confirming.
+// Mark one STACK's still-pending doses taken in one tap (#3098). The token names a
+// STORED offer (#3282) whose dose ids are an UPPER BOUND, exactly the parseAllCallback
+// → handler posture one button over: the pending, notifiable set is re-derived fresh
+// from current state and the write is the INTERSECTION of that set with the ids the
+// offer named — so a stale, forged, or replayed token cannot write outside what
+// currently stands. Another profile's dose id or a retired dose is not in the
+// re-derived set (and markDoseTaken independently re-verifies the dose → item →
+// profile chain besides); a dose meanwhile resolved is left alone; a second tap finds
+// an empty intersection and answers nothing-to-log rather than confirming.
+//
+// NO DATE CROSSES THE WIRE. `today(profileId)` is resolved here, and the offer row is
+// read scoped by profile, family and that day — so a forged id, another profile's
+// offer and one minted before the rollover are the same single refusal, and this path
+// cannot backfill.
 async function handleStackTaken(
   cq: TelegramCallbackQuery,
-  stack: StackTakeCallback
+  token: OfferCallback
 ): Promise<void> {
   const chatId = cq.message?.chat?.id;
   const profileId =
     chatId != null
-      ? resolveTapProfile(stack, getProfilesByTelegramChatId(String(chatId)))
+      ? resolveTapProfile(token, getProfilesByTelegramChatId(String(chatId)))
       : null;
   if (profileId == null) {
     await answerCallbackQuery(cq.id, OUTDATED_MESSAGE_TEXT, {
@@ -1264,15 +1258,21 @@ async function handleStackTaken(
     });
     return;
   }
+  const date = today(profileId);
+  const offered = stackOfferDoseIds(profileId, token.offerId, date);
+  if (!offered) {
+    await answerCallbackQuery(cq.id, OUTDATED_MESSAGE_TEXT, { alert: true });
+    return;
+  }
 
   // Re-derive the day's notifiable dose session from CURRENT state, across every
-  // send slot — the token deliberately carries no slot (its bytes are spent on the
-  // ids), and a dose lives in exactly one slot, so the union is the same floored
-  // set the slot sends listed. Floor-filtered (#1156) like the All tap: a `may`
-  // supplement the send excluded is never logged by a bulk tap.
-  const listed = new Set(stack.doseIds);
+  // send slot — the offer deliberately carries no slot, and a dose lives in exactly
+  // one slot, so the union is the same floored set the slot sends listed.
+  // Floor-filtered (#1156) like the All tap: a `may` supplement the send excluded is
+  // never logged by a bulk tap.
+  const listed = new Set(offered);
   const current = INTAKE_SEND_SLOTS.flatMap((slot) =>
-    notifiableWindowDoses(collectWindowDoses(profileId, slot, stack.date))
+    notifiableWindowDoses(collectWindowDoses(profileId, slot, date))
   ).filter((e) => listed.has(e.dose.id));
   const messageId = cq.message?.message_id;
   const notifyMessageId =
@@ -1292,7 +1292,7 @@ async function handleStackTaken(
         profileId,
         e.dose.id,
         e.item.id,
-        stack.date,
+        date,
         NUDGE,
         undefined,
         notifyMessageId
@@ -1332,9 +1332,9 @@ async function handleStackTaken(
   const footprint = keyboardDoseFootprint(rows);
   const parts = slotSessionForKeyboard(
     profileId,
-    [...footprint.doseIds, ...stack.doseIds],
+    [...footprint.doseIds, ...offered],
     footprint.slots,
-    stack.date
+    date
   );
   if (parts.length === 0) {
     if (rows.length === 0) return;
@@ -1350,16 +1350,9 @@ async function handleStackTaken(
     profileId,
     chatId,
     messageId,
-    withDoseCorrections(
-      profileId,
-      renderMergedIntakeMessage(
-        profileId,
-        parts,
-        stack.date,
-        getProfileAge(profileId)
-      ),
-      { ref: { chatId, messageId } }
-    )
+    withDoseCorrections(profileId, renderDoseSession(profileId, parts, date), {
+      ref: { chatId, messageId },
+    })
   );
 }
 
@@ -1394,7 +1387,7 @@ async function handleStackTaken(
 // the toast on the dashboard and this ack cannot round the same outcome differently.
 async function handleUsualRoutineTap(
   cq: TelegramCallbackQuery,
-  token: UsualRoutineCallback
+  token: OfferCallback
 ): Promise<void> {
   const chatId = cq.message?.chat?.id;
   const profileId =
@@ -1477,13 +1470,10 @@ async function handleUsualRoutineTap(
       messageId,
       withDoseCorrections(
         profileId,
-        renderMergedIntakeMessage(
-          profileId,
-          parts,
-          date,
-          getProfileAge(profileId)
-        ),
-        { ref: { chatId, messageId } }
+        renderDoseSession(profileId, parts, date),
+        {
+          ref: { chatId, messageId },
+        }
       )
     );
     return;

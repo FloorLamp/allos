@@ -11,10 +11,20 @@ import {
   renderWindowMessage,
   renderMergedIntakeMessage,
   INTAKE_SLOT_LABELS,
+  type StackOfferToken,
   type WindowDose,
 } from "../notifications/intake-format";
 import { preWorkoutSlotMinute } from "../notifications/schedule";
+
+// The renderer is DB-free, so the mint that turns a stack's members into an offer
+// token is handed in (#3282). This stand-in is a notify_offers row id's understudy:
+// it is the smallest member dose id only so each stack gets a distinct, stable token
+// the assertions can name.
+const OFFER: StackOfferToken = (doseIds) =>
+  offerCallback("stacktake", 1, Math.min(...doseIds));
+
 import {
+  offerCallback,
   parseAllCallback,
   keyboardDoseFootprint,
 } from "../notifications/callback-data";
@@ -244,8 +254,17 @@ describe("renderMergedIntakeMessage", () => {
 
   it("a single slot renders EXACTLY the classic window message", () => {
     const parts = [{ slot: "Morning" as const, entries: [entry(s1, d1)] }];
-    expect(renderMergedIntakeMessage(1, parts, "2026-07-20")).toEqual(
-      renderWindowMessage(1, "Morning", "2026-07-20", [entry(s1, d1)])
+    expect(
+      renderMergedIntakeMessage(1, parts, "2026-07-20", null, OFFER)
+    ).toEqual(
+      renderWindowMessage(
+        1,
+        "Morning",
+        "2026-07-20",
+        [entry(s1, d1)],
+        null,
+        OFFER
+      )
     );
   });
 
@@ -257,7 +276,7 @@ describe("renderMergedIntakeMessage", () => {
       },
       { slot: "PreWorkout" as const, entries: [entry(preSupp, preDose)] },
     ];
-    const msg = renderMergedIntakeMessage(7, parts, "2026-07-20");
+    const msg = renderMergedIntakeMessage(7, parts, "2026-07-20", null, OFFER);
     expect(msg.title).toBe("💊 Morning & Pre-workout supplements");
     expect(msg.body).toContain("Morning:");
     expect(msg.body).toContain("Pre-workout:");
@@ -283,7 +302,9 @@ describe("renderMergedIntakeMessage", () => {
     const msg = renderMergedIntakeMessage(
       1,
       [{ slot: "PreWorkout", entries: [entry(preSupp, preDose)] }],
-      "2026-07-20"
+      "2026-07-20",
+      null,
+      OFFER
     );
     expect(msg.title).toBe("💊 Pre-workout supplements");
     expect(INTAKE_SLOT_LABELS.PreWorkout).toBe("Pre-workout");
@@ -297,7 +318,7 @@ describe("renderMergedIntakeMessage", () => {
         entries: [entry(s2, d2, { skipped: true })],
       },
     ];
-    const msg = renderMergedIntakeMessage(1, parts, "2026-07-20");
+    const msg = renderMergedIntakeMessage(1, parts, "2026-07-20", null, OFFER);
     expect(msg.actions ?? []).toEqual([]);
     expect(msg.title).toContain("all done");
   });

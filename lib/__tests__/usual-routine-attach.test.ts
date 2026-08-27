@@ -8,7 +8,7 @@ import {
 } from "@/lib/notifications/usual-routine-attach";
 import { dispatchableUsual } from "@/lib/notifications/usual-routine-plan";
 import {
-  usualRoutineCallback,
+  offerCallback,
   TELEGRAM_CALLBACK_DATA_MAX_BYTES,
 } from "@/lib/notifications/callback-data";
 import { usualRoutinePhrase } from "@/lib/usual-routine";
@@ -27,7 +27,7 @@ const OFFER = {
     { doseId: 10, itemId: 10, name: "B-complex", detail: null },
   ],
 };
-const TOKEN = usualRoutineCallback(4, 77);
+const TOKEN = offerCallback("usual", 4, 77);
 
 function host(): NotificationMessage {
   return {
@@ -156,7 +156,7 @@ describe("a message carrying the bundle is checked before it is sent", () => {
       ...base,
       actions: [
         { label: "Usual A", data: TOKEN, row: USUAL_ROW },
-        { label: "Usual B", data: usualRoutineCallback(4, 78), row: USUAL_ROW },
+        { label: "Usual B", data: offerCallback("usual", 4, 78), row: USUAL_ROW },
         ...(base.actions ?? []),
       ],
     };

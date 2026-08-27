@@ -74,7 +74,6 @@ import {
 import {
   getProfileFoodTelegram,
   getProfileSetting,
-  getProfileAge,
   setProfileSetting,
 } from "../settings";
 import { getWorkoutPresence } from "../queries/presence";
@@ -82,13 +81,12 @@ import { getTimezone } from "../settings";
 import { parseUtcSql } from "../date";
 import {
   collectWindowDoses,
+  renderDoseSession,
   slotSessionForKeyboard,
+  stackOfferDoseIds,
   withDoseCorrections,
 } from "./intake";
-import {
-  renderMergedIntakeMessage,
-  type IntakeSendSlot,
-} from "./intake-format";
+import { type IntakeSendSlot } from "./intake-format";
 import { buildFoodNudge, consentedFoodTaps } from "./food";
 import { keyboardChatOrigin, withChatOrigin } from "./chat-origin";
 import { now as clockNow } from "../clock";
@@ -455,16 +453,12 @@ const intakeDose: FamilyReconciler = {
         if (entries.length > 0 && entries.every((e) => e.taken || e.skipped))
           dead.add(t);
       } else if (f[0] === "stacktake") {
-        // "✅ <Stack> (n)" (#3098) is dead once every dose it names is resolved —
-        // the same ledger the tap handler intersects with.
-        const date = f[2];
-        const ids = (f[3] ?? "").split(",").map(Number);
-        if (
-          date &&
-          ids.length > 0 &&
-          ids.every((id) => id && resolvedFor(date).has(id))
-        )
-          dead.add(t);
+        // "✅ <Stack> (n)" (#3098) is dead once every dose its STORED offer names is
+        // resolved — the same ledger the tap handler intersects with. An offer that no
+        // longer stands at all is dead too, which is also how a pre-#3282 token (its
+        // ids spelled inline, so its offer id does not parse) leaves a live keyboard.
+        const ids = stackOfferDoseIds(profileId, Number(f[2]), p.date);
+        if (!ids || ids.every((id) => resolvedFor(p.date).has(id))) dead.add(t);
       } else if (f[0] === "usual") {
         // The composed one-tap (#2460) is HOST-INHERITED: it elects no family, so
         // whichever family owns the message it rides decides when it dies — and both
@@ -509,13 +503,6 @@ const intakeDose: FamilyReconciler = {
       } else if (f[0] === "all") {
         slots.push(f[2] as IntakeSendSlot);
         date ??= f[3] ?? null;
-      } else if (f[0] === "stacktake") {
-        // The per-stack one-tap (#3098) names its member doses; harvest them so a
-        // partially resolved stack message rebuilds over its whole session.
-        for (const id of (f[3] ?? "").split(",").map(Number)) {
-          if (id) doseIds.push(id);
-        }
-        date ??= f[2] ?? null;
       }
     }
     if (!date) return null;
@@ -527,12 +514,7 @@ const intakeDose: FamilyReconciler = {
     // zero-call steady state this sweep exists to hold would be gone.
     return withDoseCorrections(
       profileId,
-      renderMergedIntakeMessage(
-        profileId,
-        parts,
-        date,
-        getProfileAge(profileId)
-      ),
+      renderDoseSession(profileId, parts, date),
       {
         now: clockNow(),
         pickerAnchor: openPickerAnchor(tokens, DOSE_TIME_PREFIXES),

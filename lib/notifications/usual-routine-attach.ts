@@ -38,8 +38,8 @@ import {
 import { getUsualRoutineOffer } from "../queries/usual-routine";
 import {
   callbackDataFits,
-  parseUsualRoutineCallback,
-  usualRoutineCallback,
+  offerCallback,
+  parseOfferCallback,
 } from "./callback-data";
 import { mintOffer, readOffer } from "./offer-store";
 import { keyboardFamilyValid } from "./reconcile-registry";
@@ -123,7 +123,7 @@ export function attachUsualRoutine(
   // in the body, and a message may never promise the same write twice.
   const actions = message.actions ?? [];
   const already = actions.some(
-    (a) => a.data != null && parseUsualRoutineCallback(a.data) != null
+    (a) => a.data != null && parseOfferCallback(a.data, "usual") != null
   );
   return {
     ...message,
@@ -133,7 +133,7 @@ export function attachUsualRoutine(
     actions: [
       button,
       ...actions.filter(
-        (a) => a.data == null || parseUsualRoutineCallback(a.data) == null
+        (a) => a.data == null || parseOfferCallback(a.data, "usual") == null
       ),
     ],
   };
@@ -181,7 +181,7 @@ export function mintUsualRoutineAttachment(
   const offerId = mintOffer(profileId, USUAL_OFFER_FAMILY, date, payload);
   return usualRoutineAttachmentFor(
     offer,
-    usualRoutineCallback(profileId, offerId)
+    offerCallback("usual", profileId, offerId)
   );
 }
 
@@ -229,7 +229,7 @@ export function standingUsualAttachment(
   token: string,
   date: string
 ): UsualRoutineAttachment | null {
-  const parsed = parseUsualRoutineCallback(token);
+  const parsed = parseOfferCallback(token, "usual");
   if (!parsed || parsed.profileId !== profileId) return null;
   const offer = standingUsualOffer(profileId, parsed.offerId, date);
   return offer ? usualRoutineAttachmentFor(offer, token) : null;
@@ -243,7 +243,7 @@ export function usualTokenOn(
 ): string | null {
   for (const row of rows) {
     for (const b of row) {
-      if (b.callback_data && parseUsualRoutineCallback(b.callback_data))
+      if (b.callback_data && parseOfferCallback(b.callback_data, "usual"))
         return b.callback_data;
     }
   }
@@ -268,7 +268,7 @@ export function usualDispatchProblem(
   const tokens = (message.actions ?? [])
     .map((a) => a.data)
     .filter((d): d is string => d != null);
-  const usual = tokens.filter((t) => parseUsualRoutineCallback(t) != null);
+  const usual = tokens.filter((t) => parseOfferCallback(t, "usual") != null);
   if (usual.length === 0) return null;
   if (usual.length > 1)
     return `${usual.length} composed one-tap tokens on one message`;

@@ -33,11 +33,7 @@ import type { NotificationMessage, NotificationAction } from "./types";
 import { formatMedicationDoseProduct } from "../medication-dose-format";
 import { formatMessageLine } from "./message-line";
 import { GLYPH } from "./glyphs";
-import {
-  MED_STOP_PREFIX,
-  stackTakeCallback,
-  TELEGRAM_CALLBACK_DATA_MAX_BYTES,
-} from "./callback-data";
+import { callbackDataFits, MED_STOP_PREFIX } from "./callback-data";
 
 export type ReminderWindow = "Morning" | "Midday" | "Evening" | "Bedtime";
 
@@ -294,6 +290,13 @@ function doseLine(
 // nothing is left pending the message becomes a completion summary — the title
 // is marked done, the body lists every dose taken with its adherence percentage,
 // and there are no buttons.
+// How a per-stack one-tap gets its token (#3282). The token names a STORED offer, so
+// minting one is a database write — and this module is DB-free on purpose, so the
+// caller hands the mint in. `lib/notifications/intake.ts` owns the only real one; a
+// test can hand in any string, which is what keeps the drop rule below testable now
+// that no plausible offer id can reach 64 bytes.
+export type StackOfferToken = (doseIds: readonly number[]) => string;
+
 export function renderWindowMessage(
   profileId: number,
   window: IntakeSendSlot,
@@ -301,7 +304,8 @@ export function renderWindowMessage(
   entries: WindowDose[],
   // The profile's age in whole years (issue #851 item 4), so an age-gated food note
   // (alcohol → adult) is dropped from a child's reminder tail. Null = unknown = shown.
-  age: number | null = null
+  age: number | null,
+  stackToken: StackOfferToken
 ): NotificationMessage {
   const pending = entries.filter((e) => !e.taken && !e.skipped).sort(byDoseDay);
   // Resolved doses (taken or skipped) list after the pending ones; ⏭️ marks a skip.
@@ -334,7 +338,14 @@ export function renderWindowMessage(
     ...pending.map((e) => doseLine(e, true, age)),
     ...resolved.map((e) => doseLine(e, false, age)),
   ].join("\n");
-  const actions = doseSessionActions(profileId, window, date, pending, false);
+  const actions = doseSessionActions(
+    profileId,
+    window,
+    date,
+    pending,
+    false,
+    stackToken
+  );
   return {
     title: `${GLYPH.dose} ${label} ${noun}`,
     body,
@@ -355,7 +366,8 @@ function doseSessionActions(
   slot: IntakeSendSlot,
   date: string,
   pending: WindowDose[],
-  labelAll: boolean
+  labelAll: boolean,
+  stackToken: StackOfferToken
 ): NotificationAction[] {
   const actions: NotificationAction[] = [];
   // PER-STACK ONE-TAPS (#3098). Grouped over the already-floored pending set, so a
@@ -387,22 +399,16 @@ function doseSessionActions(
     });
   }
   // One button per qualifying stack, above the per-dose rows, when the slot holds
-  // other doses too. The token carries the member dose ids as an UPPER BOUND (the
-  // handler re-derives the pending set and writes only the intersection); when the
-  // ids do not fit Telegram's callback limit the button is DROPPED, never
-  // truncated — an offer may never name less than the tap would write (#2460).
+  // other doses too. The token names a STORED offer holding the member dose ids as an
+  // UPPER BOUND (the handler re-derives the pending set and writes only the
+  // intersection) — constant size, so a stack can grow without the button vanishing
+  // (#3282). The fit check stays: when a token does not fit Telegram's callback limit
+  // the button is DROPPED, never truncated — an offer may never name less than the tap
+  // would write (#2460).
   if (wholeSlotStack == null) {
     for (const [stack, members] of stacks) {
-      const data = stackTakeCallback(
-        profileId,
-        date,
-        members.map((m) => m.dose.id)
-      );
-      if (
-        new TextEncoder().encode(data).length > TELEGRAM_CALLBACK_DATA_MAX_BYTES
-      ) {
-        continue;
-      }
+      const data = stackToken(members.map((m) => m.dose.id));
+      if (!callbackDataFits(data)) continue;
       actions.push({
         label: `${GLYPH.done} ${stack} (${members.length})`,
         data,
@@ -481,7 +487,8 @@ export function renderMergedIntakeMessage(
   profileId: number,
   parts: IntakeSlotPart[],
   date: string,
-  age: number | null = null
+  age: number | null,
+  stackToken: StackOfferToken
 ): NotificationMessage {
   if (parts.length === 1) {
     return renderWindowMessage(
@@ -489,7 +496,8 @@ export function renderMergedIntakeMessage(
       parts[0].slot,
       date,
       parts[0].entries,
-      age
+      age,
+      stackToken
     );
   }
 
@@ -513,7 +521,9 @@ export function renderMergedIntakeMessage(
       ...resolved.map((e) => doseLine(e, false, age)),
     ];
     sections.push(lines.join("\n"));
-    actions.push(...doseSessionActions(profileId, p.slot, date, pending, true));
+    actions.push(
+      ...doseSessionActions(profileId, p.slot, date, pending, true, stackToken)
+    );
   }
 
   const title = formatMessageLine({

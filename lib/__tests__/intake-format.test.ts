@@ -5,8 +5,10 @@ import {
   renderMergedIntakeMessage,
   intakeWindowNoun,
   intakeItemNoun,
+  type StackOfferToken,
   type WindowDose,
 } from "../notifications/intake-format";
+import { offerCallback } from "../notifications/callback-data";
 import { renderPostWorkoutFinishMessage } from "../notifications/workout-presence";
 import type { IntakeItemKind } from "../types";
 import type { AdherenceSummary } from "../intake-adherence";
@@ -16,6 +18,13 @@ import type {
   IntakeDose,
   IntakeObligation,
 } from "../types";
+
+// The renderer is DB-free, so the mint that turns a stack's members into an offer
+// token is handed in (#3282). This stand-in is a notify_offers row id's understudy:
+// it is the smallest member dose id only so each stack gets a distinct, stable token
+// the assertions can name.
+const OFFER: StackOfferToken = (doseIds) =>
+  offerCallback("stacktake", 1, Math.min(...doseIds));
 
 function item(
   id: number,
@@ -146,10 +155,22 @@ describe("renderWindowMessage", () => {
   // The curated map aliases these two names onto "CoQ10" on purpose, so the pair
   // must keep its full names — resolved over the message's own pending set.
   it("never labels two take buttons alike in one message", () => {
-    const msg = renderWindowMessage(1, "Morning", DATE, [
-      entry({ doseId: 10, itemId: 1, name: "Coenzyme Q10", amount: "200 mg" }),
-      entry({ doseId: 11, itemId: 2, name: "Ubiquinone", amount: "200 mg" }),
-    ]);
+    const msg = renderWindowMessage(
+      1,
+      "Morning",
+      DATE,
+      [
+        entry({
+          doseId: 10,
+          itemId: 1,
+          name: "Coenzyme Q10",
+          amount: "200 mg",
+        }),
+        entry({ doseId: 11, itemId: 2, name: "Ubiquinone", amount: "200 mg" }),
+      ],
+      null,
+      OFFER
+    );
     const takes = msg.actions!.filter((a) => a.data?.startsWith("take:"));
     expect(takes.map((a) => a.label)).toEqual([
       "✅ Coenzyme Q10",
@@ -159,39 +180,65 @@ describe("renderWindowMessage", () => {
   });
 
   it("still shortens a take button with nothing to collide with", () => {
-    const msg = renderWindowMessage(1, "Morning", DATE, [
-      entry({ doseId: 10, itemId: 1, name: "Coenzyme Q10", amount: "200 mg" }),
-    ]);
+    const msg = renderWindowMessage(
+      1,
+      "Morning",
+      DATE,
+      [
+        entry({
+          doseId: 10,
+          itemId: 1,
+          name: "Coenzyme Q10",
+          amount: "200 mg",
+        }),
+      ],
+      null,
+      OFFER
+    );
     expect(msg.actions!.find((a) => a.data?.startsWith("take:"))!.label).toBe(
       "✅ CoQ10"
     );
   });
 
   it("keeps a medication formulation beside its scheduled dose", () => {
-    const msg = renderWindowMessage(1, "Morning", DATE, [
-      entry({
-        doseId: 10,
-        itemId: 1,
-        name: "Acetaminophen",
-        amount: "160 mg",
-        kind: "medication",
-        product: "Children's oral suspension (160 mg / 5 mL)",
-      }),
-    ]);
+    const msg = renderWindowMessage(
+      1,
+      "Morning",
+      DATE,
+      [
+        entry({
+          doseId: 10,
+          itemId: 1,
+          name: "Acetaminophen",
+          amount: "160 mg",
+          kind: "medication",
+          product: "Children's oral suspension (160 mg / 5 mL)",
+        }),
+      ],
+      null,
+      OFFER
+    );
     expect(msg.body).toContain("Acetaminophen — 160 mg / 5 mL");
   });
 
   it("lists pending doses with taps and no already-taken section when nothing is taken", () => {
-    const msg = renderWindowMessage(1, "Morning", DATE, [
-      entry({
-        doseId: 10,
-        itemId: 1,
-        name: "Vitamin D",
-        amount: "2000 IU",
-        obligation: "must",
-      }),
-      entry({ doseId: 11, itemId: 2, name: "Magnesium", amount: "400 mg" }),
-    ]);
+    const msg = renderWindowMessage(
+      1,
+      "Morning",
+      DATE,
+      [
+        entry({
+          doseId: 10,
+          itemId: 1,
+          name: "Vitamin D",
+          amount: "2000 IU",
+          obligation: "must",
+        }),
+        entry({ doseId: 11, itemId: 2, name: "Magnesium", amount: "400 mg" }),
+      ],
+      null,
+      OFFER
+    );
     expect(msg.title).toBe("💊 Morning supplements");
     expect(msg.body).toBe("🔴 Vitamin D — 2000 IU\n• Magnesium — 400 mg");
     // With ≥2 pending, an "All" tap leads; each pending dose then gets a paired
@@ -206,10 +253,17 @@ describe("renderWindowMessage", () => {
   });
 
   it("omits the All button when only one dose is pending", () => {
-    const msg = renderWindowMessage(1, "Morning", DATE, [
-      entry({ doseId: 10, itemId: 1, name: "Vitamin D", amount: "2000 IU" }),
-      entry({ doseId: 11, itemId: 2, name: "Magnesium", taken: true }),
-    ]);
+    const msg = renderWindowMessage(
+      1,
+      "Morning",
+      DATE,
+      [
+        entry({ doseId: 10, itemId: 1, name: "Vitamin D", amount: "2000 IU" }),
+        entry({ doseId: 11, itemId: 2, name: "Magnesium", taken: true }),
+      ],
+      null,
+      OFFER
+    );
     // Only the single pending dose's ✅ take + ⏭️ skip — no redundant "All".
     expect(msg.actions).toEqual([
       { label: "✅ Vitamin D", data: "take:1:10:1:2026-07-05", row: "dose:10" },
@@ -218,16 +272,23 @@ describe("renderWindowMessage", () => {
   });
 
   it("reflects what was already taken this session: taken doses shown after pending, no tap for taken", () => {
-    const msg = renderWindowMessage(2, "Evening", DATE, [
-      entry({
-        doseId: 10,
-        itemId: 1,
-        name: "Vitamin D",
-        amount: "2000 IU",
-        taken: true,
-      }),
-      entry({ doseId: 11, itemId: 2, name: "Magnesium", amount: "400 mg" }),
-    ]);
+    const msg = renderWindowMessage(
+      2,
+      "Evening",
+      DATE,
+      [
+        entry({
+          doseId: 10,
+          itemId: 1,
+          name: "Vitamin D",
+          amount: "2000 IU",
+          taken: true,
+        }),
+        entry({ doseId: 11, itemId: 2, name: "Magnesium", amount: "400 mg" }),
+      ],
+      null,
+      OFFER
+    );
     expect(msg.title).toBe("💊 Evening supplements");
     // pending first, taken (✅) after
     expect(msg.body).toBe("• Magnesium — 400 mg\n✅ Vitamin D — 2000 IU");
@@ -239,23 +300,30 @@ describe("renderWindowMessage", () => {
   });
 
   it("shows a completion summary (not a bare 'all done') once every dose is taken", () => {
-    const msg = renderWindowMessage(1, "Morning", DATE, [
-      entry({
-        doseId: 10,
-        itemId: 1,
-        name: "Vitamin D",
-        amount: "2000 IU",
-        taken: true,
-      }),
-      entry({
-        doseId: 11,
-        itemId: 2,
-        name: "Magnesium",
-        amount: "400 mg",
-        taken: true,
-      }),
-      entry({ doseId: 12, itemId: 3, name: "Omega-3", taken: true }),
-    ]);
+    const msg = renderWindowMessage(
+      1,
+      "Morning",
+      DATE,
+      [
+        entry({
+          doseId: 10,
+          itemId: 1,
+          name: "Vitamin D",
+          amount: "2000 IU",
+          taken: true,
+        }),
+        entry({
+          doseId: 11,
+          itemId: 2,
+          name: "Magnesium",
+          amount: "400 mg",
+          taken: true,
+        }),
+        entry({ doseId: 12, itemId: 3, name: "Omega-3", taken: true }),
+      ],
+      null,
+      OFFER
+    );
     expect(msg.title).toBe("💊 Morning supplements — all 3 taken ✅");
     expect(msg.body).toBe(
       "✅ Magnesium — 400 mg\n✅ Omega-3\n✅ Vitamin D — 2000 IU"
@@ -265,46 +333,65 @@ describe("renderWindowMessage", () => {
   });
 
   it("appends the take-with (food) condition on pending lines only", () => {
-    const msg = renderWindowMessage(1, "Morning", DATE, [
-      entry({
-        doseId: 10,
-        itemId: 1,
-        name: "Vitamin D",
-        amount: "2000 IU",
-        food: "with_fat",
-      }),
-      entry({
-        doseId: 11,
-        itemId: 2,
-        name: "Zinc",
-        food: "empty_stomach",
-        taken: true,
-      }),
-    ]);
+    const msg = renderWindowMessage(
+      1,
+      "Morning",
+      DATE,
+      [
+        entry({
+          doseId: 10,
+          itemId: 1,
+          name: "Vitamin D",
+          amount: "2000 IU",
+          food: "with_fat",
+        }),
+        entry({
+          doseId: 11,
+          itemId: 2,
+          name: "Zinc",
+          food: "empty_stomach",
+          taken: true,
+        }),
+      ],
+      null,
+      OFFER
+    );
     // pending shows the condition, taken drops it (guidance for taking is moot)
     expect(msg.body).toBe("• Vitamin D — 2000 IU · with fat\n✅ Zinc");
   });
 
   it("omits the take-with note when the dose is 'any' food timing", () => {
-    const msg = renderWindowMessage(1, "Morning", DATE, [
-      entry({ doseId: 10, itemId: 1, name: "Creatine", food: "any" }),
-    ]);
+    const msg = renderWindowMessage(
+      1,
+      "Morning",
+      DATE,
+      [entry({ doseId: 10, itemId: 1, name: "Creatine", food: "any" })],
+      null,
+      OFFER
+    );
     expect(msg.body).toBe("• Creatine");
   });
 
   it("carries a food–drug guidance note on a matching pending med (#154), pending only", () => {
-    const msg = renderWindowMessage(1, "Evening", DATE, [
-      // A statin pending → grapefruit guidance appended to the tail.
-      entry({ doseId: 10, itemId: 1, name: "Simvastatin", amount: "40 mg" }),
-      // A taken statin dose drops the guidance (moot once taken).
-      entry({
-        doseId: 11,
-        itemId: 2,
-        name: "Simvastatin",
-        amount: "40 mg",
-        taken: true,
-      }),
-    ]);
+    const msg = renderWindowMessage(
+      1,
+      "Evening",
+      DATE,
+      [
+        // A statin pending → grapefruit guidance appended to the tail.
+        entry({ doseId: 10, itemId: 1, name: "Simvastatin", amount: "40 mg" }),
+        // A taken statin dose drops the guidance (moot once taken).
+        entry({
+          doseId: 11,
+          itemId: 2,
+          name: "Simvastatin",
+          amount: "40 mg",
+          taken: true,
+        }),
+      ],
+      null,
+      OFFER
+    );
     expect(msg.body).toContain("⚠️");
     expect(plainBody(msg.body).toLowerCase()).toContain("grapefruit");
     // The taken line (after the pending one) carries no guidance.
@@ -318,23 +405,30 @@ describe("renderWindowMessage", () => {
   // the message that arrives when you have NOT yet taken today's dose should not
   // also tell you what you stand to lose. The percentage says it without the cliff.
   it("appends the adherence percentage and no flame", () => {
-    const msg = renderWindowMessage(1, "Morning", DATE, [
-      entry({
-        doseId: 10,
-        itemId: 1,
-        name: "Vitamin D",
-        amount: "2000 IU",
-        obligation: "must",
-        food: "with_fat",
-        adherence: { pct: 93 },
-      }),
-      entry({
-        doseId: 11,
-        itemId: 2,
-        name: "Magnesium",
-        adherence: { pct: 50 },
-      }),
-    ]);
+    const msg = renderWindowMessage(
+      1,
+      "Morning",
+      DATE,
+      [
+        entry({
+          doseId: 10,
+          itemId: 1,
+          name: "Vitamin D",
+          amount: "2000 IU",
+          obligation: "must",
+          food: "with_fat",
+          adherence: { pct: 93 },
+        }),
+        entry({
+          doseId: 11,
+          itemId: 2,
+          name: "Magnesium",
+          adherence: { pct: 50 },
+        }),
+      ],
+      null,
+      OFFER
+    );
     // The em dash introduces the FIRST qualifier a line actually has (#2391): the
     // Magnesium row carries no amount, so its percentage leads the tail instead of
     // arriving after a `·` with nothing in front of it.
@@ -345,27 +439,41 @@ describe("renderWindowMessage", () => {
   });
 
   it("shows the percentage (but not food) on the completion summary", () => {
-    const msg = renderWindowMessage(1, "Bedtime", DATE, [
-      entry({
-        doseId: 10,
-        itemId: 1,
-        name: "Magnesium",
-        amount: "400 mg",
-        food: "with_food",
-        taken: true,
-        adherence: { pct: 100 },
-      }),
-    ]);
+    const msg = renderWindowMessage(
+      1,
+      "Bedtime",
+      DATE,
+      [
+        entry({
+          doseId: 10,
+          itemId: 1,
+          name: "Magnesium",
+          amount: "400 mg",
+          food: "with_food",
+          taken: true,
+          adherence: { pct: 100 },
+        }),
+      ],
+      null,
+      OFFER
+    );
     expect(msg.title).toBe("💊 Bedtime supplements — all 1 taken ✅");
     expect(msg.body).toBe("✅ Magnesium — 400 mg · 100%");
   });
 
   it("sorts pending by priority then name, keeping buttons aligned with the lines", () => {
-    const msg = renderWindowMessage(1, "Morning", DATE, [
-      entry({ doseId: 10, itemId: 1, name: "Zinc", obligation: "may" }),
-      entry({ doseId: 11, itemId: 2, name: "Creatine", obligation: "must" }),
-      entry({ doseId: 12, itemId: 3, name: "Iron", obligation: "should" }),
-    ]);
+    const msg = renderWindowMessage(
+      1,
+      "Morning",
+      DATE,
+      [
+        entry({ doseId: 10, itemId: 1, name: "Zinc", obligation: "may" }),
+        entry({ doseId: 11, itemId: 2, name: "Creatine", obligation: "must" }),
+        entry({ doseId: 12, itemId: 3, name: "Iron", obligation: "should" }),
+      ],
+      null,
+      OFFER
+    );
     expect(msg.body).toBe("🔴 Creatine\n• Iron\n• Zinc");
     // Buttons follow the sorted lines; each dose contributes ✅ then ⏭️. #232
     expect(msg.actions?.map((a) => a.label)).toEqual([
@@ -390,30 +498,61 @@ describe("renderWindowMessage", () => {
   });
 
   it("titles a medications-only window 'medications', not 'supplements' (#380)", () => {
-    const msg = renderWindowMessage(1, "Morning", DATE, [
-      entry({ doseId: 10, itemId: 1, name: "Lisinopril", kind: "medication" }),
-    ]);
+    const msg = renderWindowMessage(
+      1,
+      "Morning",
+      DATE,
+      [
+        entry({
+          doseId: 10,
+          itemId: 1,
+          name: "Lisinopril",
+          kind: "medication",
+        }),
+      ],
+      null,
+      OFFER
+    );
     expect(msg.title).toBe("💊 Morning medications");
   });
 
   it("titles a mixed window 'supplements & meds' (#380)", () => {
-    const msg = renderWindowMessage(1, "Morning", DATE, [
-      entry({ doseId: 10, itemId: 1, name: "Lisinopril", kind: "medication" }),
-      entry({ doseId: 11, itemId: 2, name: "Vitamin D", kind: "supplement" }),
-    ]);
+    const msg = renderWindowMessage(
+      1,
+      "Morning",
+      DATE,
+      [
+        entry({
+          doseId: 10,
+          itemId: 1,
+          name: "Lisinopril",
+          kind: "medication",
+        }),
+        entry({ doseId: 11, itemId: 2, name: "Vitamin D", kind: "supplement" }),
+      ],
+      null,
+      OFFER
+    );
     expect(msg.title).toBe("💊 Morning supplements & meds");
   });
 
   it("uses the kinded noun on the completion summary too (#380)", () => {
-    const msg = renderWindowMessage(1, "Evening", DATE, [
-      entry({
-        doseId: 10,
-        itemId: 1,
-        name: "Metformin",
-        kind: "medication",
-        taken: true,
-      }),
-    ]);
+    const msg = renderWindowMessage(
+      1,
+      "Evening",
+      DATE,
+      [
+        entry({
+          doseId: 10,
+          itemId: 1,
+          name: "Metformin",
+          kind: "medication",
+          taken: true,
+        }),
+      ],
+      null,
+      OFFER
+    );
     expect(msg.title).toBe("💊 Evening medications — all 1 taken ✅");
   });
 });
@@ -451,12 +590,19 @@ describe("stack clustering and one-taps (#3098)", () => {
   const DATE = "2026-07-05";
 
   it("orders body lines by the shared dose-day comparator — stack members cluster", () => {
-    const msg = renderWindowMessage(1, "Morning", DATE, [
-      entry({ doseId: 14, itemId: 4, name: "Ashwagandha" }),
-      entry({ doseId: 12, itemId: 2, name: "Magnesium", stack: "AM stack" }),
-      entry({ doseId: 10, itemId: 1, name: "Zinc", obligation: "must" }),
-      entry({ doseId: 11, itemId: 3, name: "Creatine", stack: "AM stack" }),
-    ]);
+    const msg = renderWindowMessage(
+      1,
+      "Morning",
+      DATE,
+      [
+        entry({ doseId: 14, itemId: 4, name: "Ashwagandha" }),
+        entry({ doseId: 12, itemId: 2, name: "Magnesium", stack: "AM stack" }),
+        entry({ doseId: 10, itemId: 1, name: "Zinc", obligation: "must" }),
+        entry({ doseId: 11, itemId: 3, name: "Creatine", stack: "AM stack" }),
+      ],
+      null,
+      OFFER
+    );
     // Obligation first (#297), then STACK — members sit together, unstacked last.
     expect(msg.body).toBe(
       ["🔴 Zinc", "• Creatine", "• Magnesium", "• Ashwagandha"].join("\n")
@@ -464,13 +610,20 @@ describe("stack clustering and one-taps (#3098)", () => {
   });
 
   it("offers one button per ≥2-member stack when the slot holds other doses, All stays", () => {
-    const msg = renderWindowMessage(1, "Morning", DATE, [
-      entry({ doseId: 11, itemId: 1, name: "Creatine", stack: "AM stack" }),
-      entry({ doseId: 12, itemId: 2, name: "Magnesium", stack: "AM stack" }),
-      entry({ doseId: 13, itemId: 3, name: "Glycine", stack: "Longevity" }),
-      entry({ doseId: 14, itemId: 4, name: "NMN", stack: "Longevity" }),
-      entry({ doseId: 15, itemId: 5, name: "Zinc" }),
-    ]);
+    const msg = renderWindowMessage(
+      1,
+      "Morning",
+      DATE,
+      [
+        entry({ doseId: 11, itemId: 1, name: "Creatine", stack: "AM stack" }),
+        entry({ doseId: 12, itemId: 2, name: "Magnesium", stack: "AM stack" }),
+        entry({ doseId: 13, itemId: 3, name: "Glycine", stack: "Longevity" }),
+        entry({ doseId: 14, itemId: 4, name: "NMN", stack: "Longevity" }),
+        entry({ doseId: 15, itemId: 5, name: "Zinc" }),
+      ],
+      null,
+      OFFER
+    );
     const labels = msg.actions!.map((a) => a.label);
     expect(labels[0]).toBe("✅ All (5)");
     expect(labels).toContain("✅ AM stack (2)");
@@ -488,10 +641,27 @@ describe("stack clustering and one-taps (#3098)", () => {
   });
 
   it("relabels the All button when one stack IS the whole pending set — no duplicate sibling", () => {
-    const msg = renderWindowMessage(1, "Bedtime", DATE, [
-      entry({ doseId: 11, itemId: 1, name: "Collagen", stack: "Sleep stack" }),
-      entry({ doseId: 12, itemId: 2, name: "Magnesium", stack: "Sleep stack" }),
-    ]);
+    const msg = renderWindowMessage(
+      1,
+      "Bedtime",
+      DATE,
+      [
+        entry({
+          doseId: 11,
+          itemId: 1,
+          name: "Collagen",
+          stack: "Sleep stack",
+        }),
+        entry({
+          doseId: 12,
+          itemId: 2,
+          name: "Magnesium",
+          stack: "Sleep stack",
+        }),
+      ],
+      null,
+      OFFER
+    );
     const labels = msg.actions!.map((a) => a.label);
     expect(labels[0]).toBe("✅ Sleep stack (2)");
     // Same all: token, same handler — only the label changed.
@@ -503,27 +673,51 @@ describe("stack clustering and one-taps (#3098)", () => {
   });
 
   it("a resolved member leaves the rest of the stack as the whole pending set", () => {
-    const msg = renderWindowMessage(1, "Bedtime", DATE, [
-      entry({ doseId: 11, itemId: 1, name: "Collagen", stack: "Sleep stack" }),
-      entry({ doseId: 12, itemId: 2, name: "Magnesium", stack: "Sleep stack" }),
-      entry({
-        doseId: 13,
-        itemId: 3,
-        name: "Ashwagandha",
-        stack: "Sleep stack",
-        taken: true,
-      }),
-    ]);
+    const msg = renderWindowMessage(
+      1,
+      "Bedtime",
+      DATE,
+      [
+        entry({
+          doseId: 11,
+          itemId: 1,
+          name: "Collagen",
+          stack: "Sleep stack",
+        }),
+        entry({
+          doseId: 12,
+          itemId: 2,
+          name: "Magnesium",
+          stack: "Sleep stack",
+        }),
+        entry({
+          doseId: 13,
+          itemId: 3,
+          name: "Ashwagandha",
+          stack: "Sleep stack",
+          taken: true,
+        }),
+      ],
+      null,
+      OFFER
+    );
     // Two still-pending members of one stack = the whole pending set.
     expect(msg.actions![0].label).toBe("✅ Sleep stack (2)");
     expect(msg.actions![0].data).toBe("all:1:Bedtime:2026-07-05");
   });
 
   it("a one-member stack earns no button — the chip stays page furniture", () => {
-    const msg = renderWindowMessage(1, "Morning", DATE, [
-      entry({ doseId: 11, itemId: 1, name: "Creatine", stack: "AM stack" }),
-      entry({ doseId: 12, itemId: 2, name: "Zinc" }),
-    ]);
+    const msg = renderWindowMessage(
+      1,
+      "Morning",
+      DATE,
+      [
+        entry({ doseId: 11, itemId: 1, name: "Creatine", stack: "AM stack" }),
+        entry({ doseId: 12, itemId: 2, name: "Zinc" }),
+      ],
+      null,
+      OFFER
+    );
     const labels = msg.actions!.map((a) => a.label);
     expect(labels[0]).toBe("✅ All (2)");
     expect(labels.some((l) => l.includes("AM stack"))).toBe(false);
@@ -541,10 +735,14 @@ describe("stack clustering and one-taps (#3098)", () => {
         stack: "Big stack",
       })
     );
-    const msg = renderWindowMessage(1, "Morning", DATE, [
-      ...members,
-      entry({ doseId: 15, itemId: 5, name: "Zinc" }),
-    ]);
+    const msg = renderWindowMessage(
+      1,
+      "Morning",
+      DATE,
+      [...members, entry({ doseId: 15, itemId: 5, name: "Zinc" })],
+      null,
+      OFFER
+    );
     const labels = msg.actions!.map((a) => a.label);
     // "stacktake:1:2026-07-05:" + six 8-digit ids does not fit 64 bytes.
     expect(labels.some((l) => l.includes("Big stack"))).toBe(false);
@@ -581,7 +779,9 @@ describe("stack clustering and one-taps (#3098)", () => {
           }),
         ]),
       ],
-      DATE
+      DATE,
+      null,
+      OFFER
     );
     const labels = (msg.actions ?? []).map((a) => a.label);
     expect(labels).toContain("✅ AM stack Morning (2)");

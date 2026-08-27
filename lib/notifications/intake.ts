@@ -43,9 +43,12 @@ import {
   type IntakeSendSlot,
   type IntakeSlotPart,
   type ReminderWindow,
+  type StackOfferToken,
   type WindowDose,
 } from "./intake-format";
 import { preWorkoutSlotMinute } from "./schedule";
+import { offerCallback } from "./callback-data";
+import { mintOffer, readOffer } from "./offer-store";
 import type { NotificationMessage } from "./types";
 import { isOnDemand } from "../intake-schedule";
 import { demotionCandidateItemIds } from "../rule-findings";
@@ -376,6 +379,72 @@ export function collectWindowDoses(
   return gatherWindowDoses(profileId, slot, date, getIntakeDoses(profileId));
 }
 
+// ---- The per-stack one-tap's stored offer (#3098, moved onto #3268's substrate
+// by #3282) -------------------------------------------------------------------
+//
+// `stacktake:` used to spell its member dose ids into the token, which grows with the
+// stack and self-amputated at Telegram's 64 bytes: a person with a large enough stack
+// silently lost the button. It now names a `notify_offers` row instead, exactly as
+// `usual:` does — `stacktake:<profileId>:<offerId>`, constant size.
+//
+// The offer is an UPPER BOUND, unchanged: the handler re-derives the pending,
+// notifiable set from fresh state and writes only the intersection, so a stale,
+// forged or replayed token can never write outside what currently stands.
+export const STACK_OFFER_FAMILY = "stack-take" as const;
+
+interface StoredStackOffer {
+  doseIds: number[];
+}
+
+// The mint the DB-free renderer is handed. Re-offering the same members on the same
+// day is a READ (see `mintOffer`), so a rebuilt keyboard is byte-identical to the
+// delivered one and the reconcile sweep stays at zero Telegram calls.
+export function stackOfferToken(
+  profileId: number,
+  date: string
+): StackOfferToken {
+  return (doseIds) =>
+    offerCallback(
+      "stacktake",
+      profileId,
+      mintOffer(profileId, STACK_OFFER_FAMILY, date, {
+        doseIds: [...doseIds],
+      } satisfies StoredStackOffer)
+    );
+}
+
+// The dose ids a stack offer named, or null when there is no such offer for this
+// profile on this day — a forged id, another profile's, another family's payload, or
+// one minted before the day rolled over. All the same single refusal, which is also
+// what an OLD ids-in-token `stacktake:` button becomes once this ships: its offer id
+// does not parse, so it writes nothing and the sweep retires the button.
+export function stackOfferDoseIds(
+  profileId: number,
+  offerId: number,
+  date: string
+): number[] | null {
+  return (
+    readOffer<StoredStackOffer>(profileId, STACK_OFFER_FAMILY, offerId, date)
+      ?.doseIds ?? null
+  );
+}
+
+// The dose session message every send and every rebuild renders — the one place the
+// stack offers are minted, so no caller has to know they exist.
+export function renderDoseSession(
+  profileId: number,
+  parts: IntakeSlotPart[],
+  date: string
+): NotificationMessage {
+  return renderMergedIntakeMessage(
+    profileId,
+    parts,
+    date,
+    getProfileAge(profileId),
+    stackOfferToken(profileId, date)
+  );
+}
+
 // The merged send for every slot due (and unsent) this hour — issue #1154's
 // one-reminder-per-hour invariant. Gathers each slot, applies the #1156 obligation
 // floor, drops empty slots, and renders ONE message (a single slot renders the
@@ -406,7 +475,7 @@ export function buildIntakeReminderForSlots(
   if (all.every((e) => e.taken || e.skipped)) return null;
   const message = withDoseCorrections(
     profileId,
-    renderMergedIntakeMessage(profileId, parts, date, getProfileAge(profileId))
+    renderDoseSession(profileId, parts, date)
   );
   // RIDE-ALONG (#1505 Part 1, class 3). A reminder that is going out anyway for this
   // slot's must/should doses carries a More… row exposing the SAME slot's `may`
