@@ -184,10 +184,20 @@ export function integrationToItem(i: AttentionIntegration): UpcomingItem {
       ? `${i.sourceName} sync has stopped`
       : `${i.sourceName} sync needs attention`,
     detail,
-    // The digest's named line asks for a CAUSE FRAGMENT (#1913 item 6). This producer's
-    // detail already IS one — the recorded error text ("weather fetch failed (503)"), or
-    // the observation behind a quiet stop — so the field is declared rather than derived,
-    // and the rendered line is unchanged from what it printed before.
+    // The digest's named line asks for the WHY beside the what (#1913 item 6), and
+    // this producer's detail is it — whatever the source recorded, or the observation
+    // behind a quiet stop — so the field is declared rather than derived.
+    //
+    // WHAT THAT DETAIL IS CHANGED IN #3618, and the old wording here is worth
+    // correcting rather than quietly leaving: it used to be a cause FRAGMENT quoting
+    // the wire ("weather fetch failed (503)"), and it is now a whole sentence, which
+    // for the commonest failure is an instruction ("Reconnect Oura Ring to resume
+    // syncing."). That is the right trade for this slot: a person reading a digest
+    // line on their phone can act on "reconnect" and could never act on a status, and
+    // the cause a fragment used to carry is now in the operator log where it is
+    // legible. The line still names the source twice — its title and its sentence —
+    // because the sentence has to survive being read in a toast, where nothing else
+    // names the source.
     because: detail,
     // Match the CTA's promise: known, connectable sources go straight to their
     // setup page. Unknown/planned sources safely fall back to Review.

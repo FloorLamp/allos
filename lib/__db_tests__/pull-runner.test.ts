@@ -271,7 +271,9 @@ describe("two providers through the one runner", () => {
 
     const ouraEv = getLatestSyncEvent(p, "oura")!;
     expect(ouraEv.ok).toBe(0);
-    expect(String(ouraEv.error)).toContain("500");
+    // The recorded reason is the house sentence for a transient status, not the
+    // status (#3618); lib/__db_tests__/sync-failure-copy pins the vocabulary.
+    expect(String(ouraEv.error)).toContain("Oura Ring is having trouble");
     // A transient failure must never tear down the connection (#326).
     expect(getConnection(p, "oura")?.status).toBe("connected");
     // …and the cursor is untouched, so the next run re-fetches the whole window.

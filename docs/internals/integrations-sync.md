@@ -2130,3 +2130,113 @@ the bedtime reminder's derived paused state (`wearReminderPausedNote`) beside th
 toggle rather than implying tonight's send. The toggle itself is untouched — the
 pause is presentation of derived state, never a stored flag, the shape #1668
 shipped for the mood check-in's auto-pause.
+
+---
+
+## What a broken sync SAYS, and what it says it to (#3618)
+
+`integration_sync_events.error` is not a diagnostic field. It is rendered
+verbatim in three places — the connect card on Data → Import, the "Sync now"
+toast, and the morning digest's `because` line — so whatever a runner writes
+there is a sentence addressed to the person tracking their health.
+
+It used to carry the wire: `Oura /v2/usercollection/sleep request failed (401)`,
+`Withings /measure request failed (401)`, `weather fetch failed (503)`. #3198 and
+#3592 had already stopped raw CAUGHT text reaching a reader; these were authored
+strings, so they survived both sweeps and were the common case — an expired token
+is the most frequent sync failure there is, and it read as a status code.
+
+The vocabulary is `syncFailureCopy` (`lib/integrations/auth-failure.ts`), and it
+is deliberately split in two, because only two of the three sentences can be
+derived from a status:
+
+| the failure                                   | what it says                            |
+| --------------------------------------------- | --------------------------------------- |
+| the connection needs reconnecting             | `Reconnect <source> to resume syncing.` |
+| transient — `0`, `429`, `[500,600)` over HTTP | `<source> is having trouble.`           |
+| anything else                                 | `Couldn't sync <source>.`               |
+
+`syncFailureKind(status, origin)` answers the second and third; **it can never
+answer the first, and that is the load-bearing part.**
+
+- **A dead grant is a fact about the CONNECTION, not about a status.** Only the
+  paths that call `markConnectionNeedsReauth` know it, and only Oura's gather
+  reports a status to `runPullSync` at all — Withings and Strava let their own
+  refresh path own the transition. So the reconnect sentence is written in exactly
+  one place, `runPullSync`'s `failureSentence`, which reads the connection row
+  AFTER the transition. Guessing it from a status wrote "Reconnect Strava to
+  resume syncing." onto a row still marked `connected`, and
+  `app/(app)/integrations/strava/page.tsx` gates its reconnect affordance on
+  `needsReauth && !connected` — so the app asked for the one thing it was hiding,
+  and the only route to the connect flow was Disconnect. The invariant is asserted
+  in both directions on every row of the proof below: the sentence starts with
+  "Reconnect" if and only if the row says `needs_reauth`.
+- **On a data pull, `401` is the only definitive auth status.**
+  `isAuthRefreshFailure` reads a body-less `400` as a rejected grant, which is
+  right for a token refresh — the grant IS the request — and wrong for a data
+  endpoint, where a `400` is a bad parameter (#3007 measured exactly that against
+  Open-Meteo). It is not merely wrong copy: `pull-tick` auto-syncs `connected`
+  rows only, so flipping `needs_reauth` on a malformed request stopped the source
+  for good.
+- **A transient failure promises nothing.** No `Try again.` (copy.md rule 1 allows
+  it only where retrying can plausibly succeed) and — since #3618 — no "the next
+  sync will pick it up" either. This line reaches the card and the digest only
+  after a source has failed continuously past its multi-day silence tolerance, by
+  which point such a promise has been falsified once an hour for days. That is
+  #3007's lesson second-hand: `weatherPartialWarning` grew its `deterministic`
+  flag because the same sentence was printed hourly and forever over a 400 that
+  had never once succeeded.
+- **A VENDOR code is never transient.** Withings answers over HTTP 200 with its
+  own code in `{ status }`, and those codes overlap HTTP's: envelope `503` is
+  "Action parameters are incorrect", a deterministic client error sitting exactly
+  where HTTP puts "service unavailable". `withingsPost` tags each failure with its
+  `origin`, and nothing generic may guess which numbers in one company's table
+  clear on their own. (The paging layer's `RATE_LIMIT_STATUSES` knowingly treats
+  envelope `601` as a rate limit; that is a Withings-specific rule and is
+  unaffected.)
+
+**The path and the status are not deleted, they are relocated.** Every call site
+logs them (`log.error("Oura request rejected", { path, status })`), alongside the
+vendor's own explanation of a rejection where there is one — that is the half
+#3007 needed, and the operator log is where it was always the right answer. The
+same rule as #3592: house copy on the column, raw cause in the log.
+
+**What ELSE reads this column.** `repeatedRunReason` collapses a stripe of
+identical failures in Review's history table and appends a count, so it now reads
+`Reconnect Withings to resume syncing. — all 8 runs`; the composition predates
+this vocabulary (a #3592 sentence already produced the same shape) and is left
+alone. `details.warnings` is a different channel and keeps its own register: it
+carries a PARTIAL run's warning (`weatherPartialWarning`), which still quotes
+Open-Meteo's sentence for the air-quality half, because a partial is not a run
+failure and Review is not the card.
+
+`lib/__db_tests__/sync-failure-copy.test.ts` is the reachability proof: a table
+over source × arrival × status that drives the real runners against a stubbed
+network and reads back the row each one wrote.
+
+---
+
+## Adding a source: check how it spells its id key (#3593)
+
+`ID_KEY_NAMES` in `lib/integrations/json-big-ids.ts` is **enumerated, not a
+pattern** — `id|[A-Za-z0-9]+_id|grpid` — and that is a decision with an
+obligation attached, not an oversight. Widening it to "any key ending in id"
+would take `valid`, `paid`, `android` and `deviceid` with it and lean on the
+precision gate never firing for them, which is "safe because it never happens".
+
+The consequence: **a new source's id key is invisible to the big-id pass until
+someone adds its spelling.** Withings' `grpid` was missed for exactly this
+reason — no underscore, so the `<word>_id` half does not reach it — and nothing
+told the person who added Withings that there was a question to ask. An int64 id
+that slips through arrives already rounded by `JSON.parse`, mints a wrong
+`external_id`, and can collide with a sibling on
+`UNIQUE(profile_id, source, external_id)`, which is how #3194 killed a backfill
+at 48 of 208 for a fortnight.
+
+So, when adding a source: read its API reference for the field it keys records
+on, and if that field is documented as an integer (`format: int64` or unbounded),
+add its spelling to `ID_KEY_NAMES` with the evidence beside it and parse the
+response with `parseJsonPreservingIds` rather than `res.json()`. If every id it
+mints is a string — Oura's whole v2 schema is, and `oura-sync.ts` says so at its
+plain `res.json()` — record that instead. Either answer is fine; not having
+looked is the failure mode.

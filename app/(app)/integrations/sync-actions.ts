@@ -121,10 +121,16 @@ export async function syncNow(id: IntegrationId): Promise<SyncNowResult> {
   try {
     const res = await runner.run(profile.id);
     if ("error" in res && typeof res.error === "string") {
+      // NO "Sync failed: " PREFIX ANY MORE (#3618). It was load-bearing while the
+      // runner could hand back a status fragment ("Oura /v2/usercollection/sleep
+      // request failed (401)") that needed a sentence built around it. Every failure
+      // the runner returns is now a whole house sentence — "Reconnect Oura to resume
+      // syncing.", "Couldn't reach Strava. Try again." — and the prefix doubled up on
+      // it. The toast's error TONE already says the run failed.
       const message =
         res.error === "not connected"
           ? `Connect ${def.name} first, then sync.`
-          : `Sync failed: ${res.error}`;
+          : res.error;
       log.error("sync-now failed", { sourceId: id, error: res.error });
       return { status: "error", message };
     }

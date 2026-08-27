@@ -459,26 +459,32 @@ export async function openMeteoFetch(
     const res = await fetch(`${base}?${qs.toString()}`, {
       signal: AbortSignal.timeout(TIMEOUT_MS),
     });
-    if (!res.ok)
-      return {
-        ok: false,
-        rows: [],
+    if (!res.ok) {
+      // NO `error` FIELD, SINCE #3618. The hourly half's failure IS the run's
+      // failure, so whatever went here was the line the integration card, the
+      // "Sync now" toast and the morning digest all showed a person — and
+      // "weather fetch failed (503)" named a status and asked for nothing. The
+      // status travels instead, and weather-sync turns it into a sentence.
+      //
+      // #3007's point survives: the host's own explanation of a rejection is
+      // exactly what an operator needs, so it goes to the log rather than being
+      // discarded. (The air-quality half still renders it — that line is a
+      // partial-run warning in Review, not a person's failure sentence.)
+      log.error("weather hourly fetch rejected", {
+        endpoint,
         status: res.status,
-        // The host's own sentence, not just the number (#3007): the hourly half's
-        // failure is the run's failure, so it is the line Review shows.
-        error: fetchFailureLine("weather fetch", {
-          status: res.status,
-          reason: await failureReason(res),
-        }),
-      };
+        reason: await failureReason(res),
+      });
+      return { ok: false, rows: [], status: res.status };
+    }
     const rows = parseOpenMeteoHourly(await res.json());
     return { ok: true, rows };
   } catch (err) {
     // A network throw (DNS, TLS, the timeout above). THIS `error` IS THE RUN'S
     // FAILURE LINE — weather-sync writes it to `integration_sync_events.error`, the
-    // integration card renders it in red, and "Sync now" shows it as
-    // "Sync failed: …". So the raw cause goes to the log and the column gets the
-    // house sentence (#3592).
+    // integration card renders it in red, and the "Sync now" toast shows it as
+    // written. So the raw cause goes to the log and the column gets the house
+    // sentence (#3592).
     log.error("weather hourly fetch failed", {
       endpoint,
       err: err instanceof Error ? err.message : String(err),

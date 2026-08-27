@@ -1,5 +1,6 @@
 import { createLogger } from "@/lib/log";
 import { userErrorCopy } from "@/lib/user-error-copy";
+import { syncFailureCopy, syncFailureKind } from "./auth-failure";
 import {
   OURA_ID,
   getOuraToken,
@@ -13,7 +14,7 @@ import {
   OURA_SLEEP_SCORE_METRIC,
   OURA_READINESS_SCORE_METRIC,
 } from "./oura";
-import { pullPaging } from "./registry";
+import { getIntegration, pullPaging } from "./registry";
 import { pageOutcome, pullDayWindow } from "./pull-window";
 import { runPullSync, type PullOutcome, type PullSpec } from "./pull-sync";
 import type {
@@ -34,6 +35,11 @@ import type {
 const log = createLogger("oura-sync");
 
 const BASE = "https://api.ouraring.com";
+// The name the CARD, the digest title and the setup page already use, taken from the
+// registry rather than re-spelled here — a module that says "Oura" under a heading
+// reading "Oura Ring" is two vocabularies for one source, which is the defect this
+// whole change is about.
+const SOURCE_NAME = getIntegration(OURA_ID)?.name ?? OURA_ID;
 const { timeoutMs, maxPages, rescanDays, backfillDays } = pullPaging(OURA_ID);
 
 export interface OuraSyncResult {
@@ -69,7 +75,7 @@ async function ouraGet(path: string, token: string): Promise<OuraGet> {
     //
     // WHICH request failed goes to the log with the raw cause; `error` carries the
     // house sentence, because it is rendered on the integration card and in the
-    // "Sync failed: …" toast (#3592).
+    // "Sync now" toast (#3592).
     log.error("Oura request failed", {
       path,
       err: err instanceof Error ? err.message : String(err),
@@ -79,7 +85,7 @@ async function ouraGet(path: string, token: string): Promise<OuraGet> {
       status: 0,
       error: userErrorCopy(err, {
         doing: "sync your Oura data",
-        service: "Oura",
+        service: SOURCE_NAME,
       }),
     };
   }
@@ -135,13 +141,19 @@ async function fetchPages(
     if (!res.ok) {
       if (pageOutcome(res.status) === "truncate")
         return { items, truncated: true };
+      // ouraGet only sets `error` for a network throw, where it is already the house
+      // sentence (#3592). An HTTP status now gets one too, from the shared failure
+      // vocabulary (#3618). NOT the reconnect sentence, even for the 401 that means a
+      // revoked personal access token: only the runner knows whether the connection
+      // row actually moved, and it rewrites this line when it did. WHICH request
+      // failed moves to the log, which is where it was always useful.
+      log.error("Oura request rejected", { path, status: res.status });
       return {
         items,
         truncated: false,
-        // ouraGet only sets `error` for a network throw, where it is already the
-        // house sentence (#3592) — and where this line's alternative would be the
-        // meaningless "(0)". An HTTP status keeps the authored line that names it.
-        error: res.error ?? `Oura ${path} request failed (${res.status})`,
+        error:
+          res.error ??
+          syncFailureCopy(SOURCE_NAME, syncFailureKind(res.status)),
         status: res.status,
       };
     }
