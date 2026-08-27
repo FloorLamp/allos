@@ -1,5 +1,5 @@
 // PURE tier — container sniffing for uploaded video/audio clips (#1224). Every
-// fixture is built by lib/__tests__/video-fixture.ts from LOW-ENTROPY, obviously-synthetic
+// fixture is built by e2e/video-fixture.ts from LOW-ENTROPY, obviously-synthetic
 // bytes (fixed brands, zero-padded boxes) — no real recording, and nothing a
 // secret scanner trips. Mirrors lib/__tests__/file-sniff.test.ts.
 
@@ -12,7 +12,7 @@ import {
   buildWebmFixture,
   buildOggFixture,
   buildMp3Fixture,
-} from "@/lib/__tests__/video-fixture";
+} from "@/e2e/video-fixture";
 
 describe("sniffVideo — container detection", () => {
   it("detects an MP4 (ftyp isom) as video/mp4", () => {

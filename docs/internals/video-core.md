@@ -53,7 +53,7 @@ byte-level container parsing in pure TS (`lib/video-sniff.ts`):
   metadata-clean by construction (a MediaRecorder blob carries no GPS).
 
 `lib/video-sniff.ts` is fully unit-tested over **synthetic, low-entropy** byte
-fixtures built by `lib/__tests__/video-fixture.ts` (a real `ftyp`/`moov` tree and a real
+fixtures built by `e2e/video-fixture.ts` (a real `ftyp`/`moov` tree and a real
 EBML `Segment` tree — no real recording, nothing a secret scanner trips).
 
 ## The pipeline (server)

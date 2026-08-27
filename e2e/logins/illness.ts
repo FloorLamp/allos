@@ -175,6 +175,6 @@ export const SICK_PHOTO_PROFILE = "Sick Photo Link (e2e)";
 // and then not rendered. Isolated + spec-owned: symptom-video.spec attaches and removes
 // every clip it asserts on (exact counts, delete-back-to-empty), which is only safe on a
 // profile nothing else touches, and kept apart from SICK_PHOTO so the two strips' delete-all
-// loops never contend. Its clips are synthetic container headers (lib/__tests__/video-fixture.ts).
+// loops never contend. Its clips are synthetic container headers (e2e/video-fixture.ts).
 export const E2E_LOGIN_SICK_VIDEO = "e2e_sick_video";
 export const SICK_VIDEO_PROFILE = "Sick Video (e2e)";

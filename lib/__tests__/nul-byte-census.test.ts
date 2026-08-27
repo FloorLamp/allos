@@ -49,7 +49,7 @@ const DELIBERATE_NULS: Record<string, string> = {
   "lib/migrations/versions/20260812-saved-biomarker-backed.ts":
     "composite key: profile id and biomarker family",
   "lib/queries/coverage.ts": "composite key: item kind and item key",
-  "lib/__tests__/video-fixture.ts":
+  "e2e/video-fixture.ts":
     "literal bytes of a synthetic QuickTime atom, where a zero byte is the format",
   "scripts/orchestration/reconcile-tracker-core.ts":
     "composite key: issue file and citation path",

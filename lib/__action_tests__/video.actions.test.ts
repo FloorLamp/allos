@@ -26,7 +26,7 @@ import { GET as serveActivityVideo } from "@/app/api/activity-video/[id]/route";
 import { db, today } from "@/lib/db";
 import { readJpegExif } from "@/lib/photo/exif";
 import { spliceExifIntoJpeg } from "@/lib/__tests__/exif-fixture";
-import { buildMp4Fixture } from "@/lib/__tests__/video-fixture";
+import { buildMp4Fixture } from "@/e2e/video-fixture";
 import { MAX_VIDEO_BYTES } from "@/lib/video/policy";
 import { seedActor, createLogin, createProfile, actAs } from "./harness";
 
