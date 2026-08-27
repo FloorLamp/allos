@@ -27,36 +27,19 @@ import StrengthStandards from "./StrengthStandards";
 // whether a file spelled `role="dialog"`, and this one did not. Both halves are
 // answered by rendering the host, which is the default (docs/internals/overlays.md).
 //
-// NOTHING RENDERS THIS BADGE TODAY, and that is worth knowing before you change
-// it. There are two call sites. `components/StrengthExplorer.tsx` is reached only
-// from `app/(app)/training/StrengthSection.tsx`, which nothing imports — the
-// Training hub's tab vocabulary (lib/training-tabs.ts) has no `strength` tab, so
-// that section is unmounted. `components/ExerciseDetailPanel.tsx` is mounted from
-// Analyze, which passes `showLevel={false}` on purpose, because Analyze owns the
-// tier presentation in its Benchmarks card. So the standards reference — this
-// dialog and `components/StrengthStandards.tsx`, whose only consumer is this file
-// — cannot currently be opened in the app. THAT is why no e2e spec drives it, and
-// why the size below has arithmetic behind it rather than a measurement.
-//
-// SIZE, stated so the next reader can finish the decision. The hand-rolled card
-// was `max-w-lg` (32rem). `OverlaySize` declares `sm` (28rem) and `md` (42rem)
-// and nothing at 32rem, so this rounds UP: the reference is a six-column table
-// and cutting columns is the worse failure. Nobody has seen it rendered at either
-// size, because nobody can. If this badge gets a live surface again, look at the
-// table at both widths before trusting `md`.
+// Analyze renders the badge as the compact current-tier answer. Its Benchmarks
+// ladder shows the placement in context without repeating a second tier headline.
 export default function LevelBadge({
   level,
   exercise,
-  className,
   sex,
   bodyweightKg,
 }: {
   level: StrengthLevel;
-  exercise?: string;
-  className?: string;
-  sex?: Sex | null;
+  exercise: string;
+  sex: Sex | null;
   // The lifter's bodyweight, so the reference table shows floors adjusted for it.
-  bodyweightKg?: number | null;
+  bodyweightKg: number | null;
 }) {
   const [open, setOpen] = useState(false);
   const label = strengthLevelLabel(level);
@@ -66,13 +49,8 @@ export default function LevelBadge({
     <>
       <button
         type="button"
-        onClick={(e) => {
-          e.stopPropagation(); // don't trigger an enclosing row's onClick
-          setOpen(true);
-        }}
-        className={`inline-flex items-center gap-1 text-sm font-semibold transition hover:opacity-70 ${color} ${
-          className ?? ""
-        }`}
+        onClick={() => setOpen(true)}
+        className={`tap-target inline-flex min-h-8 items-center gap-1 text-sm font-semibold transition hover:opacity-70 ${color}`}
       >
         <IconMedal2 className="h-4 w-4" />
         {label}

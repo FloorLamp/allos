@@ -1,6 +1,5 @@
 "use client";
 
-import type { ReactNode } from "react";
 import type { UnitPrefs } from "@/lib/settings";
 import type { CardioStat } from "@/lib/queries";
 import { fmtDistance, fmtKmh, kmTo, round } from "@/lib/units";
@@ -30,14 +29,11 @@ function cumulativeDistanceChart(
 export default function CardioDetailPanel({
   stat,
   units,
-  headerRight,
   showTrend = true,
   showRecent = true,
 }: {
   stat: CardioStat;
   units: UnitPrefs;
-  // Optional control pinned to the right of the header (e.g. a close button).
-  headerRight?: ReactNode;
   showTrend?: boolean;
   showRecent?: boolean;
 }) {
@@ -62,12 +58,10 @@ export default function CardioDetailPanel({
   return (
     <div>
       <div className="flex items-center justify-between gap-2">
-        {/* Below lg the panel renders inside MobileDetailPage, whose header
-            already shows the name — hide the inline one there. */}
+        {/* Analyze owns the compact-width activity heading. */}
         <h2 className="font-semibold text-slate-800 max-lg:hidden dark:text-slate-100">
           {stat.activity}
         </h2>
-        {headerRight}
       </div>
 
       <dl className="mt-4 grid grid-cols-2 gap-3">

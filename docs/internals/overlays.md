@@ -129,12 +129,6 @@ onto `ModalShell` or `components/overlay` stays the default.
 | `components/ProfileIdentityBar.tsx`             | Converged onto `components/overlay` the same way, TOP-anchored: the panel drops out of the identity bar and a swipe **up** retreats through it (#1801). A centred host has no anchor to drop from.                                                                                                                                                                                           |
 | `components/MobileNav.tsx`                      | Converged onto `components/overlay` the same way, EDGE-anchored: the drawer travels in from the left screen edge and an edge swipe both opens it and retreats through it (#1416/#2746). A centred card has no edge to travel from. Found by ANATOMY, not by ARIA (#3445), because it declared neither — #3463 closed that: it carries `role="dialog"`, `aria-modal` and the shared trap now. |
 
-`components/MobileDetailPage.tsx` is **not on this table and not an exception**.
-It is a full-page mobile takeover — it replaces the page rather than floating
-over it, carries no scrim, and is dismissed by the back gesture the way a page
-is. It leaves the dialog family by anatomy rather than counting as an exception
-to a rule it was never an instance of.
-
 **A recorded exception is about presentation, not about the a11y floor.**
 `ActivityOverlay`, `ProfileIdentityBar`, `PhotoGallery` (the photo lightbox) and
 `MobileNav` (the phone nav drawer) take the shared `useFocusTrap`. The lightbox
@@ -439,8 +433,8 @@ is never the only way to do anything.
    different anatomy (centred dialogs/popovers are scoped out of #1469, each
    recorded with a justification). **Not just a portalled one** — the
    `createPortal` half of that test was dropped in #3405, because it is exactly
-   why the guard could not see four of the nine hostless dialogs the census
-   found. They render `fixed inset-0` inline, so they sat outside every rule here
+   why the guard could not see the hostless dialogs the census found. They
+   render `fixed inset-0` inline, so they sat outside every rule here
    by construction. The stated cost of the widening: every `fixed inset-0`
    surface now answers to these rules and some legitimately should not — a
    full-bleed chart, a camera viewfinder — so expect recorded exceptions rather

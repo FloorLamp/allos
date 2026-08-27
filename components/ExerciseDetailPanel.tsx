@@ -1,7 +1,6 @@
 "use client";
 
 import Link from "next/link";
-import type { ReactNode } from "react";
 import type { UnitPrefs } from "@/lib/settings";
 import type { ExerciseStat, GoalProgress } from "@/lib/queries";
 import type { OutcomeGoal, Sex } from "@/lib/types";
@@ -9,8 +8,6 @@ import { dispWeight, fmtWeight } from "@/lib/units";
 import { liftInfo } from "@/lib/lifts";
 import {
   strengthStanding,
-  strengthLevelLabel,
-  strengthLevelColor,
   strengthStandingPhrase,
   bodyweightMultiple,
 } from "@/lib/strength-standards";
@@ -63,9 +60,8 @@ export function bestSetText(
   return `${fmtWeight(e.bestWeightKg, wu)} × ${e.bestReps}`;
 }
 
-// Per-exercise detail: muscle/region badges, benchmark stat grid, training-volume
-// trend, and any matching goals. Shared by the Strength page and the training log's
-// right-hand detail pane.
+// Analyze's per-exercise detail: muscle/region badges, benchmark stat grid,
+// training-volume trend, and any matching goals.
 export default function ExerciseDetailPanel({
   stat,
   bodyweightKg,
@@ -73,11 +69,8 @@ export default function ExerciseDetailPanel({
   goals,
   goalProgress,
   recent,
-  headerRight,
   showTrend = true,
   showRecent = true,
-  showLevel = true,
-  showStrengthStandard = true,
   sex,
   nextSetContext,
 }: {
@@ -85,7 +78,7 @@ export default function ExerciseDetailPanel({
   bodyweightKg: number | null;
   units: UnitPrefs;
   // Profile sex, so strength standards/levels use the sex-appropriate chart.
-  sex?: Sex | null;
+  sex: Sex | null;
   goals?: OutcomeGoal[];
   // Auto-derived progress keyed by goal id (plain object — crosses the
   // server/client boundary, unlike a Map).
@@ -100,24 +93,15 @@ export default function ExerciseDetailPanel({
     equipment: string | null;
     text: string;
   }[];
-  // Optional control pinned to the right of the header, after the level badge
-  // (e.g. a close button when shown in a dismissable panel).
-  headerRight?: ReactNode;
-  // Compare owns the main chart; other surfaces keep the compact embedded trend.
+  // Analyze owns the main chart.
   showTrend?: boolean;
-  // Compare also owns the full session table.
+  // Analyze also owns the full session table.
   showRecent?: boolean;
-  // Whether to show the compact level badge in this panel's header. Analyze
-  // owns that tier presentation in its dedicated Benchmarks card.
-  showLevel?: boolean;
-  // Whether to show the explanatory coaching line. This is independent from
-  // the badge so Analyze can keep one tier display without losing the guidance.
-  showStrengthStandard?: boolean;
   // Routine context modifiers for the next-set target (#1115 Fix B): a deload week and/
   // or a recovering-injury region. When set, the panel routes its next-set through the
   // SAME contextualNextSet every other surface uses — so the "How to" deep-link from the
   // "Deload week" nudge seeds the shaved load, not the full progression. Absent ⇒ the
-  // plain progression (this panel's prior behavior on the non-Analyze surfaces).
+  // plain progression.
   nextSetContext?: NextSetContext;
 }) {
   const formatPrefs = useFormatPrefs();
@@ -129,13 +113,12 @@ export default function ExerciseDetailPanel({
   // Both the header level badge AND the coaching line below derive from this one
   // computation (no more flat-ratio second model that could disagree by a tier).
   // Hidden entirely when sex or bodyweight is unset, or the lift isn't covered.
-  // Analyze may hide the compact badge while retaining the explanatory line.
   // Scored from freeWeightE1rmKg (#2326): a lift backed entirely by machine sets
   // gets no badge and no coaching line — "untested against the standard", which is
   // honest, rather than the wrong claim a barbell-table placing would make. The
   // panel's own e1RM readout is unchanged; the machine set is a real set.
   const standing =
-    (showLevel || showStrengthStandard) && sex && bodyweightKg
+    sex && bodyweightKg
       ? strengthStanding(
           stat.exercise,
           stat.freeWeightE1rmKg,
@@ -143,20 +126,10 @@ export default function ExerciseDetailPanel({
           bodyweightKg
         )
       : null;
-  const badge =
-    showLevel && standing
-      ? {
-          level: standing.level,
-          label: strengthLevelLabel(standing.level),
-          color: strengthLevelColor(standing.level),
-        }
-      : null;
   // standing is non-null only when sex was set (see the gate above); the extra
   // `&& sex` narrows the type for strengthStandingPhrase's Sex parameter.
   const standingMsg =
-    showStrengthStandard && standing && sex
-      ? strengthStandingPhrase(standing, sex, wu)
-      : null;
+    standing && sex ? strengthStandingPhrase(standing, sex, wu) : null;
   const matchedGoals = goals
     ? goalsForExercise(goals, stat.exercise).filter((g) => !g.archived)
     : [];
@@ -182,8 +155,7 @@ export default function ExerciseDetailPanel({
   return (
     <div>
       <div className="flex flex-wrap items-center gap-2">
-        {/* Below lg the panel renders inside MobileDetailPage, whose header
-            already shows the name — hide the inline one there. */}
+        {/* Analyze owns the compact-width exercise heading. */}
         <h2 className="font-semibold text-slate-800 max-lg:hidden dark:text-slate-100">
           {stat.exercise}
         </h2>
@@ -198,17 +170,14 @@ export default function ExerciseDetailPanel({
             info.region,
             "bg-slate-100 text-slate-500 dark:bg-ink-800 dark:text-slate-400"
           )}
-        {(badge || headerRight) && (
+        {standing && (
           <div className="ml-auto flex items-center gap-2">
-            {badge && (
-              <LevelBadge
-                level={badge.level}
-                exercise={stat.exercise}
-                sex={sex}
-                bodyweightKg={bodyweightKg}
-              />
-            )}
-            {headerRight}
+            <LevelBadge
+              level={standing.level}
+              exercise={stat.exercise}
+              sex={sex}
+              bodyweightKg={bodyweightKg}
+            />
           </div>
         )}
       </div>

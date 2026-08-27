@@ -91,7 +91,7 @@ a guide, so a new catalog lift cannot ship guideless.
 The app ALREADY has the per-exercise surface:
 `components/ExerciseDetailPanel.tsx` renders e1RM trend, strength-standards
 standing, the coached next-set target, PRs, and linked goals, and is hosted by
-`TrainingLogView`, the Training Analyze section, and `StrengthExplorer`. Guides
+the Training Analyze section. Guides
 become a new "How to" section of that ONE panel — a separate
 `ExerciseGuideSheet` would be a hand-mirrored second exercise surface, the exact
 disease the responsive-surfaces/one-computation rules exist to prevent.
@@ -102,7 +102,6 @@ overlay:
 - the activity part header in `components/activity-form/ActivityPartsList.tsx`,
   which owns the strength editor's "How to" trigger and overlay state since the
   #1613 mobile header rework — one affordance per part,
-- `StrengthSection` history rows,
 - the next-workout recommendation card's exercise list,
 - Telegram nudges via deep link (`/training?exercise=…` — two-way principle:
   buttons carry names/ids and deep-link, no new mutation).
