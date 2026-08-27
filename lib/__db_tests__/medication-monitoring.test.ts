@@ -15,6 +15,7 @@
 import { describe, it, expect } from "vitest";
 import { db, today } from "@/lib/db";
 import { shiftDateStr } from "@/lib/date";
+import { setTimezone } from "@/lib/settings";
 import {
   getMedMonitoringItems,
   collectUpcoming,
@@ -169,4 +170,52 @@ describe("getMedMonitoringItems — active monitored meds (#995)", () => {
     );
     expect(metabolic).toBeUndefined(); // the eAG satisfied the A1c clock
   });
+});
+
+// #3836 — THE GRAIN THE INIT WINDOW IS ANCHORED IN.
+//
+// `recentChangeDate` is the MAX of the med's start date and its most recent dose change,
+// and it anchors phaseFor's MONITORING_INIT_WINDOW_DAYS window. Converting the start date
+// to the profile's local day without converting the dose stamp beside it would compare a
+// local day against a UTC one — and the window's boundary is exactly where a one-day
+// disagreement becomes a different phase, a different cadence, and a nudge that appears
+// or does not. Both stamps below STRADDLE: the instant's UTC day and the profile's local
+// day genuinely differ, and the two zones point opposite ways, so a fixed-sign mistake
+// fails one of them. The med carries NO course, so its start date falls back to the
+// item's created_at — dated 400 days back, which leaves the DOSE stamp as the anchor.
+describe("the dose-change day the init window is measured from is the profile's (#3836)", () => {
+  it.each([
+    // zone, the dose stamp's UTC day relative to today, its wall time, the local day
+    // that instant falls on, and the phase that local day implies. The UTC truncation
+    // this replaced would have said the opposite in both rows.
+    ["Pacific/Auckland", -91, "22:30:00", -90, "init"],
+    ["America/Los_Angeles", -90, "02:30:00", -91, "maintenance"],
+  ] as const)(
+    "%s: a dose stamp on UTC day today%s at %s falls on today%s locally → %s",
+    (zone, utcDay, wall, localDay, phase) => {
+      const profileId = makeProfile(`medmon-grain-${localDay}`);
+      setTimezone(profileId, zone);
+      const td = today(profileId);
+      const medId = addMedication(profileId, "Lithium carbonate 300 mg");
+      db.prepare("UPDATE intake_items SET created_at = ? WHERE id = ?").run(
+        `${shiftDateStr(td, -400)} 12:00:00`,
+        medId
+      );
+      db.prepare(
+        `INSERT INTO intake_item_doses
+           (item_id, amount, time_of_day, food_timing, sort, updated_at)
+         VALUES (?, '300 mg', 'Morning', 'any', 0, ?)`
+      ).run(medId, `${shiftDateStr(td, utcDay)} ${wall}`);
+      // A stale lithium level, so a hit is emitted in EITHER phase and `phase` is the only
+      // thing the two rows disagree about.
+      addLab(profileId, "Lithium", shiftDateStr(td, -400));
+
+      const hit = getMedMonitoringItems(profileId, td).find(
+        (h) => h.entryKey === "lithium"
+      )!;
+      expect(hit.phase).toBe(phase);
+      // The anchor really is the dose stamp's LOCAL day, not the UTC day beside it.
+      expect(shiftDateStr(td, localDay)).not.toBe(shiftDateStr(td, utcDay));
+    }
+  );
 });

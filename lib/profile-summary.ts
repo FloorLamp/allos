@@ -1,4 +1,5 @@
 import { isNonOptimal, isOutOfRange } from "./reference-range";
+import { dateFromCreatedAt } from "./timeline-format";
 import type { GrowthBadge } from "./growth-series";
 import type {
   AllergyCriticality,
@@ -376,19 +377,29 @@ export function computeBmi(
 // Resolve a medication's "started on" date for the passport:
 // a currently-taken med has exactly one OPEN course (stopped_on IS NULL) by
 // invariant, so its started_on is the start date. When several are open we take
-// the most recent start; when no course is on file we fall back to the item's
-// created date (date portion only, so it renders like the other date-only rows).
-// Pure so it's unit-tested without a DB.
+// the most recent start; when no course is on file we fall back to the day the item
+// was created. Pure so it's unit-tested without a DB.
+//
+// `started_on` is a DAY column and is returned untouched. `createdAt` is an INSTANT,
+// and the fallback used to take its first ten characters — the UTC day, which is a
+// different date from the profile's for part of every day (#3836). A med added at
+// 20:00 in UTC-05:00 was listed as started TOMORROW on the passport and on the
+// printed/shared medication list. `timeZone` is REQUIRED rather than defaulted:
+// every caller already holds the profile, and a defaulted zone is how this returns.
 export function medicationStartDate(
   courses: readonly { started_on: string | null; stopped_on: string | null }[],
-  createdAt: string | null
+  createdAt: string | null,
+  timeZone: string
 ): string | null {
   const openStarts = courses
     .filter((c) => c.stopped_on == null && c.started_on != null)
     .map((c) => c.started_on as string)
     .sort((a, b) => b.localeCompare(a));
   if (openStarts.length > 0) return openStarts[0];
-  return createdAt ? createdAt.slice(0, 10) : null;
+  // The stored prefix stands only for a stamp that will not parse.
+  return createdAt
+    ? (dateFromCreatedAt(createdAt, timeZone) ?? createdAt.slice(0, 10))
+    : null;
 }
 
 // Severity rank for ordering vitals: out-of-range (high/low/abnormal) first, then

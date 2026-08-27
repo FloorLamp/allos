@@ -6,7 +6,7 @@
 import "../../scripts/load-env";
 
 import { db, today } from "../../lib/db";
-import { shiftDateStr, zonedWallTimeToUtc } from "../../lib/date";
+import { shiftDateStr, utcSqlString, zonedWallTimeToUtc } from "../../lib/date";
 import { getTimezone } from "../../lib/settings";
 import { PROFILE_ID, fixtureProfileId, seedMemberLogin } from "./common";
 import {
@@ -240,7 +240,19 @@ export function seedSleep(): void {
     )
     .get(PROFILE_ID) as { dose_id: number; item_id: number } | undefined;
   if (bedtimeDose) {
-    const bedtimeFixtureStart = `${shiftDateStr(COACH_TODAY, -30)} 00:00:00`;
+    // A real INSTANT for profile-local midnight 30 days back, never the naive string
+    // `${day} 00:00:00` (#1417/#3836). `created_at` is a UTC-SQL instant, and the
+    // passport now converts it back through the profile's zone to print this
+    // supplement's "since" day — so a local wall time stored as if it were UTC reads
+    // a day EARLY under the #1103 pin (Etc/GMT+10 → local 14:00 the previous day).
+    // Same rule and same shape as e2e/seed/imports.ts's dose-order anchor.
+    const bedtimeFixtureStart = utcSqlString(
+      zonedWallTimeToUtc(
+        getTimezone(PROFILE_ID),
+        shiftDateStr(COACH_TODAY, -30),
+        "00:00"
+      )!
+    );
     db.prepare(
       `UPDATE intake_items SET created_at = ? WHERE id = ? AND profile_id = ?`
     ).run(bedtimeFixtureStart, bedtimeDose.item_id, PROFILE_ID);

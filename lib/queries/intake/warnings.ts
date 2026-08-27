@@ -10,6 +10,7 @@ import {
   getProfileSex,
   getProfileBirthdate,
   getStoredAge,
+  getTimezone,
 } from "../../settings";
 import {
   stackUlWarnings,
@@ -27,6 +28,7 @@ import {
   type InteractionItem,
 } from "../../drug-interactions";
 import { crossCheckPgx, type PgxHit, type PgxMedInput } from "../../pgx";
+import { dateFromCreatedAt } from "../../timeline-format";
 import {
   crossCheckContrast,
   parsePlannedStudy,
@@ -529,9 +531,21 @@ export function getMedMonitoringItems(
     arr.push({ started_on: c.started_on, stopped_on: c.stopped_on });
     coursesByItem.set(c.item_id, arr);
   }
+  const timeZone = getTimezone(profileId);
   const doseChangeByItem = new Map<number, string>();
   for (const d of getIntakeDoses(profileId)) {
-    const changed = (d.updated_at ?? d.created_at ?? "").slice(0, 10);
+    // ONE GRAIN (#3836). Both dose stamps are instants (lib/time-columns.ts), and the
+    // UTC truncation that used to stand here agreed with `startDate` below only because
+    // startDate was wrong the same way. Now that startDate is the profile's local day,
+    // the two are maxed against each other into `recentChangeDate`, which anchors
+    // phaseFor's init window (lib/medication-monitoring.ts) — so a one-day disagreement
+    // flips init to maintenance at the boundary and silences a monitoring nudge. This
+    // is arithmetic, not a render, and #3573 sends arithmetic to #3572; it is converted
+    // anyway because moving ONE side of a comparison is what creates the defect.
+    const stamp = d.updated_at ?? d.created_at ?? null;
+    const changed = stamp
+      ? (dateFromCreatedAt(stamp, timeZone) ?? stamp.slice(0, 10))
+      : null;
     if (!changed) continue;
     const prev = doseChangeByItem.get(d.item_id);
     if (!prev || changed > prev) doseChangeByItem.set(d.item_id, changed);
@@ -541,7 +555,8 @@ export function getMedMonitoringItems(
     const courses = coursesByItem.get(m.id) ?? [];
     const startDate = medicationStartDate(
       courses,
-      createdById.get(m.id) ?? null
+      createdById.get(m.id) ?? null,
+      timeZone
     );
     const dates = [
       startDate,
