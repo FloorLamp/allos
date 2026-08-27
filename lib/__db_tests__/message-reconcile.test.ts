@@ -72,7 +72,13 @@ import { setProfileFoodTelegram } from "@/lib/settings/notifications";
 import { discardWorkoutSession } from "@/lib/workout-finish";
 import { dispatch, prefixForProfile } from "@/lib/notifications";
 import { prefixMessage } from "@/lib/notifications/types";
-import { buildIntakeReminderForSlots } from "@/lib/notifications/intake";
+import {
+  buildIntakeReminderForSlots,
+  renderDoseSession,
+  slotSessionForKeyboard,
+  STACK_OFFER_FAMILY,
+} from "@/lib/notifications/intake";
+import { mintOffer } from "@/lib/notifications/offer-store";
 import { reconcileProfileMessages } from "@/lib/notifications/reconcile";
 import {
   claimMessagePointerClose,
@@ -161,16 +167,17 @@ function newProfile(name: string): number {
 // A daily `must` supplement with one morning dose — the safety-tier shape.
 function seedDose(
   profileId: number,
-  name: string
+  name: string,
+  stack: string | null = null
 ): { itemId: number; doseId: number } {
   const itemId = Number(
     db
       .prepare(
         `INSERT INTO intake_items
-           (profile_id, name, active, kind, condition, obligation)
-         VALUES (?, ?, 1, 'supplement', 'daily', 'must')`
+           (profile_id, name, active, kind, condition, obligation, stack)
+         VALUES (?, ?, 1, 'supplement', 'daily', 'must', ?)`
       )
-      .run(profileId, name).lastInsertRowid
+      .run(profileId, name, stack).lastInsertRowid
   );
   const doseId = Number(
     db
@@ -311,6 +318,94 @@ describe("a dose resolved IN THE APP stops being displayed as outstanding", () =
     expect(liveTokens(pid).some((t) => t.includes(`:${doseId}:`))).toBe(false);
     // Both copies were CLOSED, not silently sent again.
     expect(editText).toHaveBeenCalledTimes(2);
+  });
+
+  // ---- The per-stack one-tap on the offer substrate (#3282) ----------------
+  //
+  // Both cases pin a mechanism the rest of the suite CANNOT SEE: each was deleted
+  // outright during review and all 17193 pure and 6843 db tests stayed green while the
+  // behaviour underneath was plainly wrong. That is the only reason they are here.
+
+  // THE STACK BUTTON MUST BE ABLE TO DIE. The sweep's `stacktake:` arm is the only
+  // thing that retires this token; without it a fully resolved reminder EDITS into a
+  // completion summary instead of CLOSING, and the outcome-detail receipt this family
+  // closes with (#2170/#2274) is never spoken.
+  it("a fully resolved stack lets the reminder CLOSE, not merely re-render", async () => {
+    const pid = newProfile("Stack Steph");
+    const a = seedDose(pid, "Steph A", "AM stack");
+    const b = seedDose(pid, "Steph B", "AM stack");
+    const c = seedDose(pid, "Steph C");
+    seedLoginTelegram(pid, "5553282");
+    await sendMorningReminder(pid);
+    expect(liveTokens(pid).some((t) => t.startsWith("stacktake:"))).toBe(true);
+
+    for (const d of [a, b, c])
+      markDoseTaken(pid, d.doseId, d.itemId, today(pid), "page");
+
+    expect((await reconcileProfileMessages(pid)).closed).toBe(1);
+  });
+
+  // RE-OFFERING THE SAME BUNDLE IS A READ. The stack button is re-derived on every
+  // render, so a mint that allocated a fresh row each time would move the token every
+  // tick — and a keyboard that differs is a keyboard the sweep EDITS, which is the
+  // zero-call steady state gone and a `notify_offers` row per tick besides.
+  it("re-rendering a stack re-uses its offer, so a quiet tick stays quiet", async () => {
+    const pid = newProfile("Steady Stan");
+    const a = seedDose(pid, "Stan A", "AM stack");
+    const b = seedDose(pid, "Stan B", "AM stack");
+    seedDose(pid, "Stan C");
+    seedLoginTelegram(pid, "5553283");
+    await sendMorningReminder(pid);
+
+    const offerRows = () =>
+      (
+        db
+          .prepare(
+            `SELECT COUNT(*) AS n FROM notify_offers WHERE profile_id = ?`
+          )
+          .get(pid) as { n: number }
+      ).n;
+    const parts = slotSessionForKeyboard(
+      pid,
+      [a.doseId, b.doseId],
+      [],
+      today(pid)
+    );
+    const stackToken = () =>
+      renderDoseSession(pid, parts, today(pid)).actions!.find((x) =>
+        x.data?.startsWith("stacktake:")
+      )!.data;
+
+    const first = stackToken();
+    expect(first).toBeDefined();
+    for (let i = 0; i < 4; i++) expect(stackToken()).toBe(first);
+    expect(offerRows()).toBe(1);
+
+    // And the sweep, which re-renders the same keyboard, sends nothing.
+    const out = await reconcileProfileMessages(pid);
+    expect([out.edited, out.closed]).toEqual([0, 0]);
+    expect(liveTokens(pid)).toContain(first);
+  });
+
+  // AN OFFER ID IS NEVER REISSUED. The id is the entire token, and the row is pruned
+  // on the same 3-day horizon that retires the message pointer, so a recycled rowid
+  // hands a stale button someone else's bundle at exactly the moment the sweep can no
+  // longer retire it. AUTOINCREMENT (20260827-notify-offers-autoincrement) is what
+  // makes that impossible; delete the migration and this reds.
+  it("a pruned offer's id is never handed to a later offer", async () => {
+    const pid = newProfile("Recycle Rita");
+    const a = seedDose(pid, "Rita A", "AM stack");
+    const b = seedDose(pid, "Rita B", "AM stack");
+    const first = mintOffer(pid, STACK_OFFER_FAMILY, today(pid), {
+      doseIds: [a.doseId],
+    });
+
+    db.prepare(`DELETE FROM notify_offers WHERE profile_id = ?`).run(pid);
+
+    const second = mintOffer(pid, STACK_OFFER_FAMILY, today(pid), {
+      doseIds: [b.doseId],
+    });
+    expect(second).not.toBe(first);
   });
 
   it("a SKIP resolves the claim exactly like a take (#232)", async () => {

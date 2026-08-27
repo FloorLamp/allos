@@ -5,8 +5,10 @@ import {
   renderMergedIntakeMessage,
   intakeWindowNoun,
   intakeItemNoun,
+  type StackOfferToken,
   type WindowDose,
 } from "../notifications/intake-format";
+import { offerCallback } from "../notifications/callback-data";
 import { renderPostWorkoutFinishMessage } from "../notifications/workout-presence";
 import type { IntakeItemKind } from "../types";
 import type { AdherenceSummary } from "../intake-adherence";
@@ -16,6 +18,24 @@ import type {
   IntakeDose,
   IntakeObligation,
 } from "../types";
+
+// The renderer takes the profile's age and the stack-offer mint (#3282); every case
+// below is about the message, so both are fixed here. OFFER stands in for a
+// notify_offers row id — it is the smallest member dose id only so each stack gets a
+// distinct, stable token the assertions can name.
+const OFFER: StackOfferToken = (doseIds) =>
+  offerCallback("stacktake", 1, Math.min(...doseIds));
+const renderWindow = (
+  profileId: number,
+  window: Parameters<typeof renderWindowMessage>[1],
+  date: string,
+  entries: WindowDose[]
+) => renderWindowMessage(profileId, window, date, entries, null, OFFER);
+const renderMerged = (
+  profileId: number,
+  parts: Parameters<typeof renderMergedIntakeMessage>[1],
+  date: string
+) => renderMergedIntakeMessage(profileId, parts, date, null, OFFER);
 
 function item(
   id: number,
@@ -146,7 +166,7 @@ describe("renderWindowMessage", () => {
   // The curated map aliases these two names onto "CoQ10" on purpose, so the pair
   // must keep its full names — resolved over the message's own pending set.
   it("never labels two take buttons alike in one message", () => {
-    const msg = renderWindowMessage(1, "Morning", DATE, [
+    const msg = renderWindow(1, "Morning", DATE, [
       entry({ doseId: 10, itemId: 1, name: "Coenzyme Q10", amount: "200 mg" }),
       entry({ doseId: 11, itemId: 2, name: "Ubiquinone", amount: "200 mg" }),
     ]);
@@ -159,7 +179,7 @@ describe("renderWindowMessage", () => {
   });
 
   it("still shortens a take button with nothing to collide with", () => {
-    const msg = renderWindowMessage(1, "Morning", DATE, [
+    const msg = renderWindow(1, "Morning", DATE, [
       entry({ doseId: 10, itemId: 1, name: "Coenzyme Q10", amount: "200 mg" }),
     ]);
     expect(msg.actions!.find((a) => a.data?.startsWith("take:"))!.label).toBe(
@@ -168,7 +188,7 @@ describe("renderWindowMessage", () => {
   });
 
   it("keeps a medication formulation beside its scheduled dose", () => {
-    const msg = renderWindowMessage(1, "Morning", DATE, [
+    const msg = renderWindow(1, "Morning", DATE, [
       entry({
         doseId: 10,
         itemId: 1,
@@ -182,7 +202,7 @@ describe("renderWindowMessage", () => {
   });
 
   it("lists pending doses with taps and no already-taken section when nothing is taken", () => {
-    const msg = renderWindowMessage(1, "Morning", DATE, [
+    const msg = renderWindow(1, "Morning", DATE, [
       entry({
         doseId: 10,
         itemId: 1,
@@ -206,7 +226,7 @@ describe("renderWindowMessage", () => {
   });
 
   it("omits the All button when only one dose is pending", () => {
-    const msg = renderWindowMessage(1, "Morning", DATE, [
+    const msg = renderWindow(1, "Morning", DATE, [
       entry({ doseId: 10, itemId: 1, name: "Vitamin D", amount: "2000 IU" }),
       entry({ doseId: 11, itemId: 2, name: "Magnesium", taken: true }),
     ]);
@@ -218,7 +238,7 @@ describe("renderWindowMessage", () => {
   });
 
   it("reflects what was already taken this session: taken doses shown after pending, no tap for taken", () => {
-    const msg = renderWindowMessage(2, "Evening", DATE, [
+    const msg = renderWindow(2, "Evening", DATE, [
       entry({
         doseId: 10,
         itemId: 1,
@@ -239,7 +259,7 @@ describe("renderWindowMessage", () => {
   });
 
   it("shows a completion summary (not a bare 'all done') once every dose is taken", () => {
-    const msg = renderWindowMessage(1, "Morning", DATE, [
+    const msg = renderWindow(1, "Morning", DATE, [
       entry({
         doseId: 10,
         itemId: 1,
@@ -265,7 +285,7 @@ describe("renderWindowMessage", () => {
   });
 
   it("appends the take-with (food) condition on pending lines only", () => {
-    const msg = renderWindowMessage(1, "Morning", DATE, [
+    const msg = renderWindow(1, "Morning", DATE, [
       entry({
         doseId: 10,
         itemId: 1,
@@ -286,14 +306,14 @@ describe("renderWindowMessage", () => {
   });
 
   it("omits the take-with note when the dose is 'any' food timing", () => {
-    const msg = renderWindowMessage(1, "Morning", DATE, [
+    const msg = renderWindow(1, "Morning", DATE, [
       entry({ doseId: 10, itemId: 1, name: "Creatine", food: "any" }),
     ]);
     expect(msg.body).toBe("• Creatine");
   });
 
   it("carries a food–drug guidance note on a matching pending med (#154), pending only", () => {
-    const msg = renderWindowMessage(1, "Evening", DATE, [
+    const msg = renderWindow(1, "Evening", DATE, [
       // A statin pending → grapefruit guidance appended to the tail.
       entry({ doseId: 10, itemId: 1, name: "Simvastatin", amount: "40 mg" }),
       // A taken statin dose drops the guidance (moot once taken).
@@ -318,7 +338,7 @@ describe("renderWindowMessage", () => {
   // the message that arrives when you have NOT yet taken today's dose should not
   // also tell you what you stand to lose. The percentage says it without the cliff.
   it("appends the adherence percentage and no flame", () => {
-    const msg = renderWindowMessage(1, "Morning", DATE, [
+    const msg = renderWindow(1, "Morning", DATE, [
       entry({
         doseId: 10,
         itemId: 1,
@@ -345,7 +365,7 @@ describe("renderWindowMessage", () => {
   });
 
   it("shows the percentage (but not food) on the completion summary", () => {
-    const msg = renderWindowMessage(1, "Bedtime", DATE, [
+    const msg = renderWindow(1, "Bedtime", DATE, [
       entry({
         doseId: 10,
         itemId: 1,
@@ -361,7 +381,7 @@ describe("renderWindowMessage", () => {
   });
 
   it("sorts pending by priority then name, keeping buttons aligned with the lines", () => {
-    const msg = renderWindowMessage(1, "Morning", DATE, [
+    const msg = renderWindow(1, "Morning", DATE, [
       entry({ doseId: 10, itemId: 1, name: "Zinc", obligation: "may" }),
       entry({ doseId: 11, itemId: 2, name: "Creatine", obligation: "must" }),
       entry({ doseId: 12, itemId: 3, name: "Iron", obligation: "should" }),
@@ -390,14 +410,14 @@ describe("renderWindowMessage", () => {
   });
 
   it("titles a medications-only window 'medications', not 'supplements' (#380)", () => {
-    const msg = renderWindowMessage(1, "Morning", DATE, [
+    const msg = renderWindow(1, "Morning", DATE, [
       entry({ doseId: 10, itemId: 1, name: "Lisinopril", kind: "medication" }),
     ]);
     expect(msg.title).toBe("💊 Morning medications");
   });
 
   it("titles a mixed window 'supplements & meds' (#380)", () => {
-    const msg = renderWindowMessage(1, "Morning", DATE, [
+    const msg = renderWindow(1, "Morning", DATE, [
       entry({ doseId: 10, itemId: 1, name: "Lisinopril", kind: "medication" }),
       entry({ doseId: 11, itemId: 2, name: "Vitamin D", kind: "supplement" }),
     ]);
@@ -405,7 +425,7 @@ describe("renderWindowMessage", () => {
   });
 
   it("uses the kinded noun on the completion summary too (#380)", () => {
-    const msg = renderWindowMessage(1, "Evening", DATE, [
+    const msg = renderWindow(1, "Evening", DATE, [
       entry({
         doseId: 10,
         itemId: 1,
@@ -451,7 +471,7 @@ describe("stack clustering and one-taps (#3098)", () => {
   const DATE = "2026-07-05";
 
   it("orders body lines by the shared dose-day comparator — stack members cluster", () => {
-    const msg = renderWindowMessage(1, "Morning", DATE, [
+    const msg = renderWindow(1, "Morning", DATE, [
       entry({ doseId: 14, itemId: 4, name: "Ashwagandha" }),
       entry({ doseId: 12, itemId: 2, name: "Magnesium", stack: "AM stack" }),
       entry({ doseId: 10, itemId: 1, name: "Zinc", obligation: "must" }),
@@ -464,7 +484,7 @@ describe("stack clustering and one-taps (#3098)", () => {
   });
 
   it("offers one button per ≥2-member stack when the slot holds other doses, All stays", () => {
-    const msg = renderWindowMessage(1, "Morning", DATE, [
+    const msg = renderWindow(1, "Morning", DATE, [
       entry({ doseId: 11, itemId: 1, name: "Creatine", stack: "AM stack" }),
       entry({ doseId: 12, itemId: 2, name: "Magnesium", stack: "AM stack" }),
       entry({ doseId: 13, itemId: 3, name: "Glycine", stack: "Longevity" }),
@@ -475,12 +495,13 @@ describe("stack clustering and one-taps (#3098)", () => {
     expect(labels[0]).toBe("✅ All (5)");
     expect(labels).toContain("✅ AM stack (2)");
     expect(labels).toContain("✅ Longevity (2)");
-    // The token carries the member dose ids — an upper bound the handler
-    // re-derives against fresh state.
+    // One offer minted per stack, and the token names it — the member ids are the
+    // stored bundle's business, an upper bound the handler re-derives against fresh
+    // state (#3282).
     const am = msg.actions!.find((a) => a.label === "✅ AM stack (2)")!;
-    expect(am.data).toBe("stacktake:1:2026-07-05:11,12");
+    expect(am.data).toBe("stacktake:1:11");
     const lon = msg.actions!.find((a) => a.label === "✅ Longevity (2)")!;
-    expect(lon.data).toBe("stacktake:1:2026-07-05:13,14");
+    expect(lon.data).toBe("stacktake:1:13");
     // Stack buttons sit above the per-dose rows.
     expect(labels.indexOf("✅ AM stack (2)")).toBeLessThan(
       labels.indexOf("✅ Creatine")
@@ -488,7 +509,7 @@ describe("stack clustering and one-taps (#3098)", () => {
   });
 
   it("relabels the All button when one stack IS the whole pending set — no duplicate sibling", () => {
-    const msg = renderWindowMessage(1, "Bedtime", DATE, [
+    const msg = renderWindow(1, "Bedtime", DATE, [
       entry({ doseId: 11, itemId: 1, name: "Collagen", stack: "Sleep stack" }),
       entry({ doseId: 12, itemId: 2, name: "Magnesium", stack: "Sleep stack" }),
     ]);
@@ -503,7 +524,7 @@ describe("stack clustering and one-taps (#3098)", () => {
   });
 
   it("a resolved member leaves the rest of the stack as the whole pending set", () => {
-    const msg = renderWindowMessage(1, "Bedtime", DATE, [
+    const msg = renderWindow(1, "Bedtime", DATE, [
       entry({ doseId: 11, itemId: 1, name: "Collagen", stack: "Sleep stack" }),
       entry({ doseId: 12, itemId: 2, name: "Magnesium", stack: "Sleep stack" }),
       entry({
@@ -520,7 +541,7 @@ describe("stack clustering and one-taps (#3098)", () => {
   });
 
   it("a one-member stack earns no button — the chip stays page furniture", () => {
-    const msg = renderWindowMessage(1, "Morning", DATE, [
+    const msg = renderWindow(1, "Morning", DATE, [
       entry({ doseId: 11, itemId: 1, name: "Creatine", stack: "AM stack" }),
       entry({ doseId: 12, itemId: 2, name: "Zinc" }),
     ]);
@@ -532,7 +553,12 @@ describe("stack clustering and one-taps (#3098)", () => {
     );
   });
 
-  it("drops — never truncates — a stack button whose ids exceed the callback limit", () => {
+  // THE AMPUTATION #3282 REMOVES, WITH THE FIXTURE THAT REACHED IT. Six 8-digit dose
+  // ids spelled out cost `stacktake:1:2026-07-05:` + 53 more bytes — 76 in all, so the
+  // pre-#3282 renderer dropped this person's button entirely (measured on origin/main:
+  // present at 6-digit ids, absent at 7 and 8, so the discriminator is bytes and not
+  // the stack rule). This case is RED there and green here, which is the whole change.
+  it("a stack too big to spell out still gets its button — the token names an offer", () => {
     const members = Array.from({ length: 6 }, (_, i) =>
       entry({
         doseId: 90000000 + i,
@@ -541,16 +567,40 @@ describe("stack clustering and one-taps (#3098)", () => {
         stack: "Big stack",
       })
     );
-    const msg = renderWindowMessage(1, "Morning", DATE, [
+    const msg = renderWindow(1, "Morning", DATE, [
       ...members,
       entry({ doseId: 15, itemId: 5, name: "Zinc" }),
     ]);
+    const big = msg.actions!.find((a) => a.label === "✅ Big stack (6)")!;
+    expect(big.data).toBe("stacktake:1:90000000");
+    expect(new TextEncoder().encode(big.data!).length).toBeLessThan(64);
     const labels = msg.actions!.map((a) => a.label);
-    // "stacktake:1:2026-07-05:" + six 8-digit ids does not fit 64 bytes.
-    expect(labels.some((l) => l.includes("Big stack"))).toBe(false);
-    // The slot-wide All and the per-dose rows still stand — an offer may never
-    // name less than the tap would write, so the over-limit offer is absent.
     expect(labels[0]).toBe("✅ All (7)");
+    expect(labels).toContain("✅ Zinc");
+  });
+
+  // THE DROP RULE, STILL LOAD-BEARING. No offer id this app can mint reaches 64 bytes,
+  // so the only way to witness the rule is to hand the renderer a token that does not
+  // fit — which the injected mint makes possible, and which is why the fit is CHECKED
+  // rather than assumed. Delete `callbackDataFits` from doseSessionActions and this
+  // dies: the button goes, never a shortened one, because an offer may never name less
+  // than the tap would write (#2460).
+  it("drops — never truncates — a stack button whose token does not fit", () => {
+    const msg = renderWindowMessage(
+      1,
+      "Morning",
+      DATE,
+      [
+        entry({ doseId: 11, itemId: 1, name: "Creatine", stack: "Big stack" }),
+        entry({ doseId: 12, itemId: 2, name: "Magnesium", stack: "Big stack" }),
+        entry({ doseId: 15, itemId: 5, name: "Zinc" }),
+      ],
+      null,
+      () => `stacktake:1:${"9".repeat(54)}`
+    );
+    const labels = msg.actions!.map((a) => a.label);
+    expect(labels.some((l) => l.includes("Big stack"))).toBe(false);
+    expect(labels[0]).toBe("✅ All (3)");
     expect(labels).toContain("✅ Zinc");
   });
 
@@ -559,7 +609,7 @@ describe("stack clustering and one-taps (#3098)", () => {
       slot,
       entries: doses,
     });
-    const msg = renderMergedIntakeMessage(
+    const msg = renderMerged(
       1,
       [
         slotOf("Morning", [

@@ -26,6 +26,8 @@ import { preventiveSignalKey } from "@/lib/preventive-upcoming";
 import { refillSignalKey } from "@/lib/refill-nudge";
 import { escalationMarkerKey } from "@/lib/notifications/escalate";
 import { handleCallbackQuery } from "@/lib/notifications/telegram-callbacks";
+import { stackOfferToken } from "@/lib/notifications/intake";
+import { DOSE_LOG_DATE_WINDOW_DAYS } from "@/lib/dose-log-window";
 import {
   answerCallbackQuery,
   editMessageTextRaw,
@@ -652,14 +654,16 @@ describe("handleAllTaken tolerates an already-logged dose (#616)", () => {
   });
 });
 
-// ---- The per-stack one-tap (#3098) ----------------------------------------
+// ---- The per-stack one-tap (#3098, on the offer substrate since #3282) ------
 //
-// `stacktake:` carries dose ids as an UPPER BOUND. The handler re-derives the
-// pending, notifiable set from current state and writes only the INTERSECTION
-// through markDoseTaken — each guard below is red if that intersection rule is
-// removed: a forged foreign id, a retired dose, a floored `may` dose and an
-// already-resolved dose must all be refused or left alone, with the honest
-// answer, while the still-pending listed doses log.
+// `stacktake:` names a STORED offer whose dose ids are an UPPER BOUND. The handler
+// re-derives the pending, notifiable set from current state and writes only the
+// INTERSECTION through markDoseTaken — each guard below is red if that intersection
+// rule is removed: a forged foreign id, a retired dose, a floored `may` dose and an
+// already-resolved dose must all be refused or left alone, with the honest answer,
+// while the still-pending listed doses log. The offers are minted through the
+// production mint (`stackOfferToken`), so the token these taps carry is the token the
+// reminder keyboard would have rendered.
 describe("stacktake writes only the listed-and-still-pending intersection (#3098)", () => {
   const STACK_CHAT = "5553098";
   const FOREIGN_CHAT = "5553099";
@@ -724,6 +728,11 @@ describe("stacktake writes only the listed-and-still-pending intersection (#3098
     foreignDose = mkDose(foreignItem);
   });
 
+  // The reminder keyboard's own mint: a notify_offers row for these members, and the
+  // constant-size token that names it.
+  const offerToken = (date: string, doseIds: number[]) =>
+    stackOfferToken(sp.profileId, date)(doseIds);
+
   const logsFor = (doseId: number, date: string) =>
     db
       .prepare(
@@ -736,10 +745,14 @@ describe("stacktake writes only the listed-and-still-pending intersection (#3098
     // The token lists the two real members PLUS a forged foreign id, a retired
     // dose, and a floored `may` dose — the upper bound a stale or forged token
     // could carry.
-    const ids = [doseA, doseB, mayDose, retiredDose, foreignDose].join(",");
-    await handleCallbackQuery(
-      cq(`stacktake:${sp.profileId}:${date}:${ids}`, STACK_CHAT)
-    );
+    const token = offerToken(date, [
+      doseA,
+      doseB,
+      mayDose,
+      retiredDose,
+      foreignDose,
+    ]);
+    await handleCallbackQuery(cq(token, STACK_CHAT));
     expect(logsFor(doseA, date).map((r) => r.status)).toEqual(["taken"]);
     expect(logsFor(doseB, date).map((r) => r.status)).toEqual(["taken"]);
     // Outside the re-derived pending set: nothing written.
@@ -751,9 +764,7 @@ describe("stacktake writes only the listed-and-still-pending intersection (#3098
 
   it("a second tap answers nothing-to-log instead of confirming again", async () => {
     const date = today(sp.profileId);
-    await handleCallbackQuery(
-      cq(`stacktake:${sp.profileId}:${date}:${doseA},${doseB}`, STACK_CHAT)
-    );
+    await handleCallbackQuery(cq(offerToken(date, [doseA, doseB]), STACK_CHAT));
     // Still exactly one log per dose — idempotent, and answered as the standing
     // state rather than a fresh confirm (#280).
     expect(logsFor(doseA, date)).toHaveLength(1);
@@ -764,10 +775,7 @@ describe("stacktake writes only the listed-and-still-pending intersection (#3098
   it("a token whose every id is outside the current session answers out-of-date", async () => {
     const date = today(sp.profileId);
     await handleCallbackQuery(
-      cq(
-        `stacktake:${sp.profileId}:${date}:${retiredDose},${foreignDose}`,
-        STACK_CHAT
-      )
+      cq(offerToken(date, [retiredDose, foreignDose]), STACK_CHAT)
     );
     expect(logsFor(retiredDose, date)).toEqual([]);
     expect(logsFor(foreignDose, date)).toEqual([]);
@@ -783,12 +791,105 @@ describe("stacktake writes only the listed-and-still-pending intersection (#3098
       doseB
     );
     await handleCallbackQuery(
-      cq(`stacktake:${sp.profileId}:${date}:${doseA},${doseB}`, FOREIGN_CHAT)
+      cq(offerToken(date, [doseA, doseB]), FOREIGN_CHAT)
     );
     expect(logsFor(doseA, date)).toEqual([]);
     expect(logsFor(doseB, date)).toEqual([]);
     expect(lastAnswerText()).toBe(OUTDATED_MESSAGE_TEXT);
   });
+
+  // NO OFFER, NO WRITE (#3282), and the refusal must be SEEN. All four answer with the
+  // same text, so a forged token cannot learn whether an offer id exists — but not with
+  // the same urgency. A refusal `handleStackTaken` speaks gets the intake tier's modal
+  // (telegram-api.ts: a Desktop toast "fades on its own and is easy to miss entirely").
+  // The retired ids-in-token shape never reaches the handler — it fails the 3-field
+  // parse and lands on the dispatcher's bare answer — so it is only a toast. A row
+  // rather than a smoothing-over: it lasts one reminder cycle, and the alternative is
+  // a parser that recognises the old shape.
+  it.each([
+    [
+      "an offer id that was never minted",
+      true,
+      () => `stacktake:${sp.profileId}:99999`,
+    ],
+    [
+      "an offer older than the dose-log window",
+      true,
+      () =>
+        stackOfferToken(
+          sp.profileId,
+          shiftDateStr(today(sp.profileId), -(DOSE_LOG_DATE_WINDOW_DAYS + 1))
+        )([doseA, doseB]),
+    ],
+    [
+      "another profile's offer",
+      true,
+      () =>
+        stackOfferToken(
+          other.profileId,
+          today(other.profileId)
+        )([doseA, doseB]),
+    ],
+    [
+      "a pre-#3282 ids-in-token button still on the phone",
+      false,
+      () =>
+        `stacktake:${sp.profileId}:${today(sp.profileId)}:${doseA},${doseB}`,
+    ],
+    // THE ID IS THE WHOLE TOKEN, so a reissued id is a different button. `notify_offers`
+    // is pruned on the same 3-day horizon that retires the message pointer, so without
+    // AUTOINCREMENT the freed rowid went to the next offer on exactly the day the sweep
+    // could no longer retire the button — and the scroll-back tap redeemed a bundle it
+    // never named, IN FULL, because the upper-bound rule bounds how much is written and
+    // not what. This row mints a harmless offer, prunes it, then mints a writable one:
+    // under the old schema the stale token resolves to `doseA`/`doseB` and logs them.
+    [
+      "an offer id whose row was pruned and reissued to another bundle",
+      true,
+      () => {
+        const mint = stackOfferToken(sp.profileId, today(sp.profileId));
+        const stale = mint([retiredDose]);
+        db.prepare(`DELETE FROM notify_offers WHERE profile_id = ?`).run(
+          sp.profileId
+        );
+        mint([doseA, doseB]);
+        return stale;
+      },
+    ],
+  ])("writes nothing for %s", async (_why, alerts, mkToken) => {
+    const date = today(sp.profileId);
+    db.prepare(`DELETE FROM intake_item_logs WHERE dose_id IN (?, ?)`).run(
+      doseA,
+      doseB
+    );
+    await handleCallbackQuery(cq(mkToken(), STACK_CHAT));
+    expect(logsFor(doseA, date)).toEqual([]);
+    expect(logsFor(doseB, date)).toEqual([]);
+    expect(lastAnswerText()).toBe(OUTDATED_MESSAGE_TEXT);
+    expect(answerMock.mock.calls.at(-1)?.[2]?.alert).toBe(alerts || undefined);
+  });
+
+  // THE DAY IS THE SESSION'S, NOT THE TAP'S (#3282 fix). A reminder sent at 21:00 and
+  // tapped at 00:05 confirms the day it was sent for, like the `take:` and `all:`
+  // buttons beside it and through the same ±DOSE_LOG_DATE_WINDOW_DAYS predicate —
+  // RECONCILE_DATE_GUARD["intake-dose"] rules that deleting it at midnight is pure
+  // loss. Dies the moment the handler scopes the offer to `today` instead.
+  it.each([0, -1, -DOSE_LOG_DATE_WINDOW_DAYS])(
+    "logs to the offer's own day, %s days back",
+    async (shift) => {
+      const day = shiftDateStr(today(sp.profileId), shift);
+      db.prepare(`DELETE FROM intake_item_logs WHERE dose_id IN (?, ?)`).run(
+        doseA,
+        doseB
+      );
+      await handleCallbackQuery(
+        cq(stackOfferToken(sp.profileId, day)([doseA, doseB]), STACK_CHAT)
+      );
+      expect(logsFor(doseA, day).map((r) => r.status)).toEqual(["taken"]);
+      expect(logsFor(doseB, day).map((r) => r.status)).toEqual(["taken"]);
+      expect(lastAnswerText()).toBe("Logged ✅");
+    }
+  );
 });
 
 // ---- Bulk dose-tap hardening (#3120) ---------------------------------------
@@ -875,9 +976,9 @@ describe("bulk dose-tap hardening (#3120)", () => {
     expect(editTextMock).not.toHaveBeenCalled();
   });
 
-  it("a forged non-date `stacktake:` token is refused at parse time", async () => {
+  it("a forged non-numeric `stacktake:` offer id is refused at parse time", async () => {
     await handleCallbackQuery(
-      cq(`stacktake:${bp.profileId}:banana:${doseA},${doseB}`, HARD_CHAT)
+      cq(`stacktake:${bp.profileId}:banana`, HARD_CHAT)
     );
     expect(logsOn("banana")).toEqual([]);
     expect(lastAnswerText()).toBe(OUTDATED_MESSAGE_TEXT);
@@ -904,7 +1005,7 @@ describe("bulk dose-tap hardening (#3120)", () => {
   it("a stack tap on a fully-skipped set shares the same answer string", async () => {
     const date = today(bp.profileId);
     await handleCallbackQuery(
-      cq(`stacktake:${bp.profileId}:${date}:${doseA},${doseB}`, HARD_CHAT)
+      cq(stackOfferToken(bp.profileId, date)([doseA, doseB]), HARD_CHAT)
     );
     expect(logsOn(date).map((r) => r.status)).toEqual(["skipped", "skipped"]);
     expect(lastAnswerText()).toBe(BULK_ALL_SKIPPED_TEXT);

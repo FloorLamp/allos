@@ -42,9 +42,13 @@ import {
   type IntakeSendSlot,
   type IntakeSlotPart,
   type ReminderWindow,
+  type StackOfferToken,
   type WindowDose,
 } from "./intake-format";
 import { preWorkoutSlotMinute } from "./schedule";
+import { offerCallback } from "./callback-data";
+import { mintOffer, readOfferRow } from "./offer-store";
+import { isDoseDateAccepted } from "../dose-log-window";
 import type { NotificationMessage } from "./types";
 import { isOnDemand } from "../intake-schedule";
 import { demotionCandidateItemIds } from "../rule-findings";
@@ -375,6 +379,68 @@ export function collectWindowDoses(
   return gatherWindowDoses(profileId, slot, date, getIntakeDoses(profileId));
 }
 
+// ---- The per-stack one-tap's stored offer (#3098, on #3268's substrate since
+// #3282; the byte problem it solves is in ./callback-data.ts) ------------------
+export const STACK_OFFER_FAMILY = "stack-take" as const;
+
+type StoredStackOffer = { doseIds: number[] };
+
+// The mint the DB-free renderer is handed. Re-offering the same members is a READ (see
+// `mintOffer`), so a rebuild is byte-identical and the sweep stays at zero calls.
+export function stackOfferToken(
+  profileId: number,
+  date: string
+): StackOfferToken {
+  return (doseIds) =>
+    offerCallback(
+      "stacktake",
+      profileId,
+      mintOffer(profileId, STACK_OFFER_FAMILY, date, {
+        doseIds: [...doseIds],
+      } satisfies StoredStackOffer)
+    );
+}
+
+// The stack a token names and the DAY its doses belong to — or null for anything that
+// is not this profile's stack offer, or whose day is outside the window `markDoseTaken`
+// itself accepts. A pre-#3282 button lands in that same refusal: no offer id to read.
+//
+// THE DAY IS THE OFFER'S, NOT `today`. A dose's day is a fact the SCHEDULE established
+// before the message was sent, so a reminder sent at 21:00 and tapped at 00:05 confirms
+// the day it was sent for, through the predicate the `take:` and `all:` buttons beside
+// it gate on. Scoping this to `today` deletes the button at midnight while its
+// neighbours keep working — RECONCILE_DATE_GUARD["intake-dose"] calls that pure loss.
+export function standingStackOffer(
+  profileId: number,
+  offerId: number,
+  todayStr: string
+): { doseIds: number[]; date: string } | null {
+  const row = readOfferRow<StoredStackOffer>(
+    profileId,
+    STACK_OFFER_FAMILY,
+    offerId
+  );
+  return row && isDoseDateAccepted(todayStr, row.date)
+    ? { doseIds: row.payload.doseIds, date: row.date }
+    : null;
+}
+
+// The dose-session message every send and every rebuild renders — the one place stack
+// offers are minted, so no caller has to know they exist.
+export function renderDoseSession(
+  profileId: number,
+  parts: IntakeSlotPart[],
+  date: string
+): NotificationMessage {
+  return renderMergedIntakeMessage(
+    profileId,
+    parts,
+    date,
+    getProfileAge(profileId),
+    stackOfferToken(profileId, date)
+  );
+}
+
 // The merged send for every slot due (and unsent) this hour — issue #1154's
 // one-reminder-per-hour invariant. Gathers each slot, applies the #1156 obligation
 // floor, drops empty slots, and renders ONE message (a single slot renders the
@@ -405,7 +471,7 @@ export function buildIntakeReminderForSlots(
   if (all.every((e) => e.taken || e.skipped)) return null;
   const message = withDoseCorrections(
     profileId,
-    renderMergedIntakeMessage(profileId, parts, date, getProfileAge(profileId))
+    renderDoseSession(profileId, parts, date)
   );
   // RIDE-ALONG (#1505 Part 1, class 3). A reminder that is going out anyway for this
   // slot's must/should doses carries a More… row exposing the SAME slot's `may`

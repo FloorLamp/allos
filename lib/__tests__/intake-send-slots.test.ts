@@ -11,10 +11,30 @@ import {
   renderWindowMessage,
   renderMergedIntakeMessage,
   INTAKE_SLOT_LABELS,
+  type StackOfferToken,
   type WindowDose,
 } from "../notifications/intake-format";
 import { preWorkoutSlotMinute } from "../notifications/schedule";
+// The renderer takes the profile's age and the stack-offer mint (#3282); every case
+// below is about the message, so both are fixed here. OFFER stands in for a
+// notify_offers row id — it is the smallest member dose id only so each stack gets a
+// distinct, stable token the assertions can name.
+const OFFER: StackOfferToken = (doseIds) =>
+  offerCallback("stacktake", 1, Math.min(...doseIds));
+const renderWindow = (
+  profileId: number,
+  window: Parameters<typeof renderWindowMessage>[1],
+  date: string,
+  entries: WindowDose[]
+) => renderWindowMessage(profileId, window, date, entries, null, OFFER);
+const renderMerged = (
+  profileId: number,
+  parts: Parameters<typeof renderMergedIntakeMessage>[1],
+  date: string
+) => renderMergedIntakeMessage(profileId, parts, date, null, OFFER);
+
 import {
+  offerCallback,
   parseAllCallback,
   keyboardDoseFootprint,
 } from "../notifications/callback-data";
@@ -244,8 +264,8 @@ describe("renderMergedIntakeMessage", () => {
 
   it("a single slot renders EXACTLY the classic window message", () => {
     const parts = [{ slot: "Morning" as const, entries: [entry(s1, d1)] }];
-    expect(renderMergedIntakeMessage(1, parts, "2026-07-20")).toEqual(
-      renderWindowMessage(1, "Morning", "2026-07-20", [entry(s1, d1)])
+    expect(renderMerged(1, parts, "2026-07-20")).toEqual(
+      renderWindow(1, "Morning", "2026-07-20", [entry(s1, d1)])
     );
   });
 
@@ -257,7 +277,7 @@ describe("renderMergedIntakeMessage", () => {
       },
       { slot: "PreWorkout" as const, entries: [entry(preSupp, preDose)] },
     ];
-    const msg = renderMergedIntakeMessage(7, parts, "2026-07-20");
+    const msg = renderMerged(7, parts, "2026-07-20");
     expect(msg.title).toBe("💊 Morning & Pre-workout supplements");
     expect(msg.body).toContain("Morning:");
     expect(msg.body).toContain("Pre-workout:");
@@ -280,7 +300,7 @@ describe("renderMergedIntakeMessage", () => {
   });
 
   it("the PreWorkout single-slot title uses the human label", () => {
-    const msg = renderMergedIntakeMessage(
+    const msg = renderMerged(
       1,
       [{ slot: "PreWorkout", entries: [entry(preSupp, preDose)] }],
       "2026-07-20"
@@ -297,7 +317,7 @@ describe("renderMergedIntakeMessage", () => {
         entries: [entry(s2, d2, { skipped: true })],
       },
     ];
-    const msg = renderMergedIntakeMessage(1, parts, "2026-07-20");
+    const msg = renderMerged(1, parts, "2026-07-20");
     expect(msg.actions ?? []).toEqual([]);
     expect(msg.title).toContain("all done");
   });
