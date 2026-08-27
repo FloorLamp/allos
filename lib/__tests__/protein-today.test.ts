@@ -206,39 +206,59 @@ describe("proteinGaugeMarker (#2328)", () => {
 // CORRECT for this profile and survives — as a sentence about the SITUATION, one tap
 // away, while the glance line is a number and a goal.
 describe("the dashboard protein line says the situation, not the estimator (#3257)", () => {
-  const BASES = [
+  // The one sentence that carries the floor, pinned as a LITERAL: it is the claim most
+  // at risk of drifting back into something the data does not support, so a reword has
+  // to show up here rather than sliding through a regex.
+  const UNLOGGED =
+    "Foods you haven't logged aren't counted, so your real total may be higher.";
+
+  // Every state proteinTodayExplanation actually meets, and what is TRUE in each.
+  // `none` is the state an established logger is in every morning until their first
+  // entry (lib/queries/nutrition.ts returns todayIntake: null, todayGrams: 0), and it
+  // is why #3257's dictated "Only some meals are logged" could not ship: there, and
+  // for a `logged` basis, the number of meals logged is ZERO.
+  //   label | proteinIntake args (null = nothing logged) | amount | source clause | floor?
+  const STATES = [
     [
       "combined",
       { dailyTracked: null, dailyLogged: 30, dailyEstimated: 25 },
       "55 g+",
-      "from foods and logged protein",
+      "Today's total is from foods and logged protein.",
+      true,
     ],
     [
       "estimated",
       { dailyTracked: null, dailyEstimated: 40 },
       "40 g+",
-      "from your food log",
+      "Today's total is from your food log.",
+      true,
     ],
     [
       "logged",
       { dailyTracked: null, dailyLogged: 45, dailyEstimated: 0 },
       "45 g+",
-      "from the protein you logged",
+      "Today's total is from the protein you logged.",
+      true,
     ],
     [
       "tracked",
       { dailyTracked: 120, dailyEstimated: 0 },
       "120 g",
-      "from the daily total your health app sends",
+      "Today's total is from the daily total your health app sends.",
+      false,
     ],
+    ["none", null, "0 g+", null, false],
   ] as const;
 
-  it.each(BASES)(
-    "a %s basis: a plain figure on the row, the situation in the hover",
-    (basis, args, amount, situation) => {
-      const todayIntake = proteinIntake(args)!;
-      expect(todayIntake.basis).toBe(basis);
-      const t = makeToday({ todayIntake, todayGrams: todayIntake.grams });
+  it.each(STATES)(
+    "%s: a plain figure on the row, and only true statements in the hover",
+    (label, args, amount, sourceClause, floorSentence) => {
+      const todayIntake = args ? proteinIntake(args)! : null;
+      if (todayIntake) expect(todayIntake.basis).toBe(label);
+      const t = makeToday({
+        todayIntake,
+        todayGrams: todayIntake?.grams ?? 0,
+      });
       const parts = proteinTodayLineParts(t);
 
       // THE GLANCE, exactly as the row composes it: value plus "Goal <band>". The
@@ -249,27 +269,38 @@ describe("the dashboard protein line says the situation, not the estimator (#325
         /≥|g\/kg|\(|floor|likely/
       );
 
-      // THE HOVER: the derivation the row stopped carrying, where the figure came
-      // from, and — for a floor basis only — why today's number is not the whole day.
+      // THE HOVER carries the derivation the row stopped carrying, and nothing that
+      // counts meals — the retracted sentence must not reappear in any state.
       const hover = proteinTodayExplanation(t);
       expect(hover).toContain("1.2–1.6 g/kg");
-      expect(hover).toContain(`Today's total is ${situation}.`);
-      expect(hover).not.toMatch(/floor|likely higher|≥/);
-      expect(hover).toContain(
-        basis === "tracked" ? "" : "Only some meals are logged"
-      );
-      expect(hover.includes("Only some meals are logged")).toBe(
-        basis !== "tracked"
-      );
+      expect(hover).not.toMatch(/floor|likely higher|≥|meals are logged/);
+
+      // The source is named only when there IS one.
+      if (sourceClause) expect(hover).toContain(sourceClause);
+      else expect(hover).not.toContain("Today's total is");
+
+      // …and the floor sentence appears in exactly the states where it is true.
+      expect(hover.includes(UNLOGGED)).toBe(floorSentence);
     }
   );
 
   it("reaches no adequacy verdict — that is proteinAdequacyTitle's question (#221)", () => {
-    // Far under the band and far over it, the explanation is the SAME sentence: the
-    // row reports, the adequacy computation judges, and neither does the other's job.
-    const under = proteinTodayExplanation(makeToday({ todayGrams: 20 }));
-    const over = proteinTodayExplanation(makeToday({ todayGrams: 200 }));
+    // Far under the band and far over it, on a real floor basis, the explanation is
+    // the SAME sentence: the row reports, the adequacy computation judges, and
+    // neither does the other's job.
+    const floorBasis = proteinIntake({
+      dailyTracked: null,
+      dailyEstimated: 20,
+    })!;
+    const under = proteinTodayExplanation(
+      makeToday({ todayIntake: floorBasis, todayGrams: 20 })
+    );
+    const over = proteinTodayExplanation(
+      makeToday({ todayIntake: floorBasis, todayGrams: 200 })
+    );
     expect(under).toBe(over);
-    expect(under).not.toMatch(/below|above|short|may be|within|goal reached/i);
+    expect(under).not.toMatch(
+      /below|above|short of|within|goal reached|enough/i
+    );
   });
 });

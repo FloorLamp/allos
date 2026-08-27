@@ -600,6 +600,12 @@ export function proteinTodayLineParts(t: ProteinToday): ProteinTodayLineParts {
   };
 }
 
+// The floor, said as the situation it is. Every non-`tracked` basis is a floor because
+// untracked foods stay invisible (module header) — so the sentence names the ledger, not
+// the estimator, and holds whether the person logged one meal or all of them.
+const UNLOGGED_FOODS_SENTENCE =
+  "Foods you haven't logged aren't counted, so your real total may be higher.";
+
 // THE ROW STATES, THE HOVER EXPLAINS (#3257) — the band's derivation, where today's
 // grams came from, and why a floor basis is not the whole day, in one string both
 // dashboard surfaces show, so the glance line can be a number and a goal.
@@ -607,14 +613,25 @@ export function proteinTodayLineParts(t: ProteinToday): ProteinTodayLineParts {
 // It states the SITUATION, never the estimator: "a floor, actual likely higher" described
 // how the sum was computed, which is machinery. And it reaches NO verdict — adequacy is
 // proteinAdequacyTitle's one question (#221), and re-hedging it here answers it twice.
+//
+// EACH BASIS SAYS ONLY WHAT ITS OWN STATE SUPPORTS, which took two passes to get right.
+// #3257 dictated one sentence — "Only some meals are logged, so today's true total is
+// higher" — and it is false in two of the four states this function actually meets:
+// `null` (an established logger before their first entry today, the most common morning
+// state) has NO meals logged, and `logged` is set only when the food-group estimate is
+// zero, i.e. raw grams and no meals logged either. Shipping it would have traded one
+// unsupported statement for another inside the PR that exists to stop exactly that.
+//
+// So the floor is stated as a fact about the LEDGER rather than a count of meals: what
+// is not logged is not counted, which is true of every floor basis at every hour and
+// claims nothing about what the person did. And the `null` state carries no floor
+// sentence at all — there is no total yet for anything to be missing from.
 export function proteinTodayExplanation(t: ProteinToday): string {
   const basis = t.todayIntake?.basis ?? null;
   return [
     `Goal ${proteinTargetSummary(t.target)}.`,
     basis ? `Today's total is ${proteinBasisPhrase(basis)}.` : null,
-    basis === "tracked"
-      ? null
-      : "Only some meals are logged, so today's true total is higher.",
+    basis == null || basis === "tracked" ? null : UNLOGGED_FOODS_SENTENCE,
   ]
     .filter(Boolean)
     .join(" ");

@@ -180,5 +180,8 @@ test.describe("what a trailing average covers, and what it says (#1909/#1917)", 
       // "g", not "g/day": the row's own label already names the window (#3257).
       `7-day average ${DAY_ONE_PROTEIN_COMPLETE_DAY} g`
     );
+    // …and the line above CANNOT see a revert on its own — Playwright's string match is
+    // a substring, and "117 g/day" contains "117 g". This is the assertion that fails.
+    await expect(protein).not.toContainText("g/day");
   });
 });

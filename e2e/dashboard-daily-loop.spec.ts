@@ -46,6 +46,15 @@ test.describe("dashboard daily loop (#1221)", () => {
     await expect(card).not.toContainText("g/kg");
     await expect(card).not.toContainText(/floor|likely higher|logged foods \+/);
     await expect(card.getByRole("link")).toHaveAttribute("href", "/nutrition");
+
+    // The honesty MOVED — it was not deleted (#3257). The row's disclosure control is
+    // the whole mechanism for that, so its accessible name is asserted here: without
+    // this, removing `disclosure:` from the presentation is a silent green.
+    const explain = card.getByRole("button");
+    await expect(explain).toHaveAttribute(
+      "aria-label",
+      /g\/kg.*Today's total is from.*aren't counted, so your real total may be higher\./s
+    );
   });
 
   test("Steps-today card shows the prior-7-day baseline, and no partial-day delta", async () => {
