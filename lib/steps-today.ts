@@ -35,25 +35,15 @@ export interface StepsTodaySummary {
 export const STEPS_TRAILING_DAYS = 7;
 
 // The PROFILE-LOCAL HOUR (0..23) from which today's running total may be compared
-// against complete days (#3258). Before it, deltaPct and direction are null and the
-// card shows only the neutral prior-7-day average.
+// against complete days (#3258). `today` is a partial sum and `average7` a mean of
+// whole days, so before it the percentage was arithmetic about the clock: −100% every
+// morning, climbing until bedtime — one unchanged day read −73% at midday and −47%
+// that evening.
 //
-// WHY THE COMPARISON WAS NEVER HONEST BEFORE IT. today is a partial sum and average7
-// is a mean of whole days, so the percentage starts every single morning at −100% and
-// climbs until bedtime: the owner's own two screenshots of one day read −73% at midday
-// and −47% that evening, with no change in behaviour between them. That is a clock
-// artifact wearing a behaviour change's clothes — a permanent daily false alarm, the
-// mirror of #2385's deceptive success.
-//
-// WHY 20 AND NOT lib/steps-target's STEPS_AFTERNOON_HOUR (16). That constant gates a
-// DIFFERENT claim — "less than HALF a declared target with the afternoon gone" — where
-// the half-target fraction is what makes 4pm defensible. This claim is a whole-day
-// total measured against whole-day totals, and nothing but the day being nearly over
-// makes those two comparable, so the hour has to carry the honesty alone.
-//
-// It is a floor on WHEN, never a claim that the day is finished: a late walk still
-// moves the number afterwards. What it buys is that the number stops being wrong by
-// construction — before 8pm the shortfall was arithmetic about the clock.
+// 20, not lib/steps-target's STEPS_AFTERNOON_HOUR (16): that gates a different claim
+// ("under HALF a declared target with the afternoon gone"), where the half-target
+// fraction is what makes 4pm defensible. Here the claim is a whole-day total against
+// whole-day totals, so only the day being nearly over makes the two comparable.
 export const STEPS_DELTA_COMPLETE_HOUR = 20;
 
 // Summarize a per-day steps series (ascending by date) against a capture date. Returns
@@ -91,8 +81,7 @@ export function summarizeStepsToday(
 
   let deltaPct: number | null = null;
   let direction: StepsDirection | null = null;
-  // The day-completeness veto, before any of the value clauses: a partial total is not
-  // comparable to complete ones at any count, so there is nothing to compute yet.
+  // A veto, ahead of the value clauses: at any count, a partial total is not comparable.
   const comparable =
     localHour != null && localHour >= STEPS_DELTA_COMPLETE_HOUR;
   if (comparable && today != null && average7 != null) {

@@ -983,9 +983,8 @@ async function renderDashboard(
   // Empty series → the data-aware CTA (connect a source).
   //
   // The PROFILE-LOCAL hour decides whether today is complete enough to compare against
-  // whole days (#3258); before STEPS_DELTA_COMPLETE_HOUR the summary carries no delta
-  // and this row shows the neutral average alone. Local, not UTC — a delta that came
-  // and went on the server's clock would be the same artifact in a different disguise.
+  // whole days (#3258). Local, not UTC — a delta appearing on the server's clock would
+  // be the same artifact in a different disguise.
   const stepsRows = getMetricDailyTotals(profile.id, "steps");
   const stepsSummary =
     stepsRows.length > 0
@@ -1700,13 +1699,11 @@ async function renderDashboard(
   }
 
   if (proteinToday) {
-    // The glance line is a number and a goal (#3257). It used to read "≥ 69 g · Goal
-    // ~80–105 g/day (1.2–1.6 g/kg, general fitness) · … · From logged foods + protein
-    // logged — a floor, actual likely higher": an inequality to parse, the band's
-    // derivation, two table names, and a hedge about the ESTIMATOR. The amount and band
-    // now come from the same parts the Telegram protein line reads, so the "+" carries
-    // the floor honestly in one character; the derivation and the partial-logging
-    // situation moved to the row's hover.
+    // A number and a goal (#3257). It read "≥ 69 g · Goal ~80–105 g/day (1.2–1.6 g/kg,
+    // general fitness) · … · From logged foods + protein logged — a floor, actual likely
+    // higher": an inequality, the band's derivation, two table names, and a hedge about
+    // the ESTIMATOR. Amount and band now come from the parts Telegram reads, so the "+"
+    // carries the floor in one character; the rest moved to the row's hover.
     const proteinLine = proteinTodayLineParts(proteinToday);
     add(
       dailyCandidates.protein(
@@ -1780,10 +1777,9 @@ async function renderDashboard(
             stepsSummary.average7 == null
               ? null
               : `Prior 7 days · ${stepsSummary.average7.toLocaleString("en-US")} steps a day`,
-            // Absent for most of the day BY DESIGN (#3258): the summary withholds the
-            // delta until today is complete enough to compare against whole days, so
-            // this row states the neutral average alone until the evening rather than
-            // a percentage that was only ever counting the hours.
+            // Absent for most of the day BY DESIGN (#3258): the summary withholds it
+            // until today can be compared, so the row states the neutral average alone
+            // rather than a percentage that was only ever counting the hours.
             stepsSummary.deltaPct == null
               ? null
               : `${stepsSummary.deltaPct > 0 ? "+" : ""}${stepsSummary.deltaPct}% vs prior 7 days`,

@@ -49,10 +49,9 @@ export function UsualRoutineAtom(props: UsualRoutineControlProps) {
 }
 
 function ProteinReadout({ today }: { today: ProteinToday }) {
-  // The SAME parts the Standing row and the Telegram line read (#3257): one policy per
-  // phrase. The card carried the identical four defects the row did — "≥ 69 g", the
-  // band's g/kg derivation, a source list, and the estimator hedge — so it loses them
-  // in the same change rather than becoming the fork the row was fixed to avoid.
+  // The SAME parts the Standing row and the Telegram line read (#3257). The card
+  // carried the identical four defects, so it loses them in the same change rather
+  // than becoming the fork the row was fixed to avoid.
   const parts = proteinTodayLineParts(today);
   return (
     <div className="flex items-start gap-3">

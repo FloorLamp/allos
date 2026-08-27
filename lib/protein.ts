@@ -562,10 +562,9 @@ export function proteinTodayStatus(t: ProteinToday): ProteinTodayStatus {
 // floor-copy discipline; a tracked reading states the figure directly.
 //
 // NOT nudge-only any more (#3257): the dashboard's protein row and card read the SAME
-// amount and band, so the Telegram line and the web glance state today's protein in
-// exactly the same words. The dashboard used to spell it "≥ 69 g" and
-// "~80–105 g/day (1.2–1.6 g/kg, general fitness)" — a second policy for one
-// question, and the one the owner called useless.
+// amount and band, so Telegram and the web glance state today's protein in identical
+// words. The dashboard used to spell it "≥ 69 g" over its own copy of the band — a
+// second policy for one question.
 //
 // HEDGE ARRANGEMENT, NOT SEMANTICS (#1822 item 4). The line used to read "Protein · at
 // least 36 g of ~80–105 g" — three hedges stacked in six words ("at least", "of", "~"),
@@ -601,15 +600,13 @@ export function proteinTodayLineParts(t: ProteinToday): ProteinTodayLineParts {
   };
 }
 
-// THE ROW STATES, THE HOVER EXPLAINS (#3257). Everything a reader only wants when they
-// ask — how the goal band was derived, where today's grams came from, and why a floor
-// basis is not the whole day — in one string both dashboard surfaces show, so the glance
-// line can be a number and a goal and nothing else.
+// THE ROW STATES, THE HOVER EXPLAINS (#3257) — the band's derivation, where today's
+// grams came from, and why a floor basis is not the whole day, in one string both
+// dashboard surfaces show, so the glance line can be a number and a goal.
 //
-// It states the SITUATION, never the estimator: "a floor, actual likely higher" explained
-// how the sum was computed, which is machinery. And it reaches NO verdict — whether the
-// intake is adequate is proteinAdequacyTitle's one question (#221), and a row that
-// re-hedged it would be answering it twice.
+// It states the SITUATION, never the estimator: "a floor, actual likely higher" described
+// how the sum was computed, which is machinery. And it reaches NO verdict — adequacy is
+// proteinAdequacyTitle's one question (#221), and re-hedging it here answers it twice.
 export function proteinTodayExplanation(t: ProteinToday): string {
   const basis = t.todayIntake?.basis ?? null;
   return [
