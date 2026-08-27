@@ -146,13 +146,7 @@ export const CARD_MODE_ROW_STACK = {
 //   actions  — the row's kebab/controls, pinned to the card's top-right corner.
 //   full     — a full-width cell that replaces the card body (an inline edit form).
 export type CardSlot =
-  | "title"
-  | "trailing"
-  | "toggle"
-  | "value"
-  | "meta"
-  | "actions"
-  | "full";
+  "title" | "trailing" | "toggle" | "value" | "meta" | "actions" | "full";
 
 // WHY `trailing` IS A SLOT AND NOT A `meta` WITH A CLASS (issue #3671).
 //
@@ -191,9 +185,7 @@ export function cardCellAttrs(opts: { slot?: CardSlot; empty?: boolean }): {
   // right-aligned em-dash.
   if (
     opts.empty &&
-    (opts.slot === "meta" ||
-      opts.slot === "value" ||
-      opts.slot === "trailing")
+    (opts.slot === "meta" || opts.slot === "value" || opts.slot === "trailing")
   )
     return {};
   return { "data-card": opts.slot };
