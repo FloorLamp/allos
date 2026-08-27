@@ -153,6 +153,55 @@ describe("buildDigest", () => {
     ]);
   });
 
+  // #3872: the shared read no longer stops at eight, so the digest applies the only
+  // remaining cap — and the tail counts what is REALLY left instead of the cap counting
+  // itself. The pinned 8 is the boundary: a change to it must turn this red. The tail
+  // wears the CAUTION glyph (a cut-short message), never the flagged one (a reading),
+  // and carries the deep link that is its "see the rest" affordance.
+  const flaggedCap: [total: number, named: number, tail: string | null][] = [
+    [8, 8, null],
+    [9, 8, "⚠️ +1 more flagged result https://allos.example"],
+    [12, 8, "⚠️ +4 more flagged results https://allos.example"],
+  ];
+  it.each(flaggedCap)(
+    "names %i flagged results as %i lines and counts the rest",
+    (total, named, tail) => {
+      const model = buildDigest({
+        ...empty,
+        deepLinkBase: "https://allos.example",
+        newFlaggedBiomarkers: Array.from({ length: total }, (_, i) => ({
+          name: `Analyte ${i + 1}`,
+          value: null,
+          flag: "high",
+        })),
+      });
+      expect(
+        plain(model?.sections.find((x) => x.heading === "New")?.lines)
+      ).toEqual([
+        ...Array.from(
+          { length: named },
+          (_, i) => `🚩 Analyte ${i + 1} (high)`
+        ),
+        ...(tail ? [tail] : []),
+      ]);
+    }
+  );
+
+  // No public URL configured: the count survives, the link degrades away.
+  it("counts the rest without a link when no public URL is configured", () => {
+    const model = buildDigest({
+      ...empty,
+      newFlaggedBiomarkers: Array.from({ length: 9 }, (_, i) => ({
+        name: `Analyte ${i + 1}`,
+        value: null,
+        flag: "high",
+      })),
+    });
+    expect(
+      plain(model?.sections.find((x) => x.heading === "New")?.lines).at(-1)
+    ).toBe("⚠️ +1 more flagged result");
+  });
+
   it("uses singular wording for a single dose", () => {
     const model = buildDigest({ ...empty, doseCount: 1 });
     expect(plain(model?.sections[0].lines)[0]).toBe(
