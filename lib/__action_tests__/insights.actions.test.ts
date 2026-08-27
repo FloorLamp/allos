@@ -28,7 +28,7 @@ describe("generateForDate", () => {
 });
 
 // Issue #411: the persisted offline insight must state the REAL reason it ran. With
-// no key configured, that's the honest "set ANTHROPIC_API_KEY" note + a distinct
+// no key configured, that's the honest "AI coaching isn’t set up" note + a distinct
 // "offline/no-key" model tag — never a lie, and never collapsed into one opaque
 // "offline-fallback" the list view can't distinguish.
 describe("generateForDate offline-reason honesty (#411)", () => {
@@ -57,8 +57,8 @@ describe("generateForDate offline-reason honesty (#411)", () => {
 
     const insight = getDailyInsight(profile.id, "2026-07-02");
     expect(insight?.model).toBe("offline/no-key");
-    expect(insight?.summary).toContain("set ANTHROPIC_API_KEY");
-    // Honesty invariant: the "set a key" line only ever appears on the no-key tag.
+    expect(insight?.summary).toContain("AI coaching isn’t set up");
+    // Honesty invariant: the "not set up" line only ever appears on the no-key tag.
     expect(insight?.summary).not.toContain("daily AI limit reached");
     expect(insight?.summary).not.toContain("temporarily unavailable");
   });

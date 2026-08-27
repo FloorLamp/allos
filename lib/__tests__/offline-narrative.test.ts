@@ -329,22 +329,22 @@ function baseCtx(over: Partial<InsightContext> = {}): InsightContext {
 // Issue #411: the offline note states the ACTUAL reason it ran, never a lie about
 // a missing key when the real cause is the daily cap or a failed call.
 describe("offlineReasonNote (#411)", () => {
-  it("tells the unconfigured user to set the key", () => {
-    expect(offlineReasonNote("no-key")).toContain("set ANTHROPIC_API_KEY");
+  it("tells the unconfigured user AI isn’t set up", () => {
+    expect(offlineReasonNote("no-key")).toContain("isn’t set up");
   });
 
-  it("tells the rate-limited user the daily limit was reached — never to set a key", () => {
+  it("tells the rate-limited user the daily limit was reached — never to set AI up", () => {
     const note = offlineReasonNote("cap-exhausted");
     expect(note).toContain("daily AI limit reached");
     expect(note).toContain("try again tomorrow");
-    // The key IS set — never send them to configure one.
-    expect(note).not.toContain("ANTHROPIC_API_KEY");
+    // AI IS set up — never send them to configure it.
+    expect(note).not.toContain("isn’t set up");
   });
 
-  it("tells the errored user the AI was temporarily unavailable — never to set a key", () => {
+  it("tells the errored user the AI was temporarily unavailable — never to set AI up", () => {
     const note = offlineReasonNote("failed");
     expect(note).toContain("temporarily unavailable");
-    expect(note).not.toContain("ANTHROPIC_API_KEY");
+    expect(note).not.toContain("isn’t set up");
   });
 
   it("gives each reason a distinct, honest model tag", () => {

@@ -638,7 +638,7 @@ describe("describeError: what a failed extraction tells the reader (#3852)", () 
     [401, /isn’t accepting requests from this app/],
     [403, /Nothing is wrong with your file/],
     [413, /too large for a single AI request/],
-    [429, /Rate limited by the AI/],
+    [429, /The AI is busy right now/],
     [503, /server error \(503\)/],
   ])("status %i reads as house copy", (status, expected) => {
     const copy = describeError(apiError(status));
@@ -648,11 +648,14 @@ describe("describeError: what a failed extraction tells the reader (#3852)", () 
     expect(copy).not.toMatch(/ANTHROPIC_API_KEY|AI_BASE_URL/);
   });
 
-  // A SEPARATE property from "reads as house copy": the 401/403 recovery must
-  // stay NON-DESTRUCTIVE. An earlier draft borrowed 429's delete-and-re-upload,
-  // which tells a person to throw away a medical document when the preview-first
-  // reprocess control on that same page (#1071) would have recovered it.
-  it.each([401, 403])("status %i never advises deleting the document", (s) => {
-    expect(describeError(apiError(s))).not.toMatch(/delet/i);
-  });
+  // A SEPARATE property from "reads as house copy": the recovery must stay
+  // NON-DESTRUCTIVE. Telling a person to throw away a medical document is wrong
+  // when the preview-first reprocess control on that same page (#1071) recovers
+  // it — and worst on 429 (#3876), where the fault clears by itself in minutes.
+  it.each([401, 403, 429])(
+    "status %i never advises deleting the document",
+    (s) => {
+      expect(describeError(apiError(s))).not.toMatch(/delet/i);
+    }
+  );
 });
