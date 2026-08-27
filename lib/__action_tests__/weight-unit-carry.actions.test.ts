@@ -262,7 +262,10 @@ describe("addBodyMetric honors the submitted weight unit (issues #630, #2863)", 
     "stores $typed submitted as $submitted with the login pref on $stored",
     async ({ submitted, stored, typed, expectKg }) => {
       const login = createLogin({ weightUnit: stored });
-      const profile = createProfile(`dash-${submitted ?? "none"}-${stored}`, login.id);
+      const profile = createProfile(
+        `dash-${submitted ?? "none"}-${stored}`,
+        login.id
+      );
       actAs(login, profile);
 
       await addBodyMetric(

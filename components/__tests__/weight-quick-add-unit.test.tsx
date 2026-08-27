@@ -33,7 +33,11 @@ const queued: { weightUnit: WeightUnit }[] = [];
 vi.mock("@/components/OfflineQueueProvider", () => ({
   useOfflineQueue: () => ({
     pending: 0,
-    enqueue: async (_kind: string, _date: string, p: { weightUnit: WeightUnit }) => {
+    enqueue: async (
+      _kind: string,
+      _date: string,
+      p: { weightUnit: WeightUnit }
+    ) => {
       queued.push(p);
       return "kept" as const;
     },
@@ -58,25 +62,28 @@ function logWeight(unit: WeightUnit, typed: string): void {
   fireEvent.change(screen.getByTestId("weight-quick-add-input"), {
     target: { value: typed },
   });
-  act(() => fireEvent.submit(container.querySelector("form") as HTMLFormElement));
+  act(() =>
+    fireEvent.submit(container.querySelector("form") as HTMLFormElement)
+  );
 }
 
 describe("the dashboard quick-add posts the unit its label printed", () => {
   it.each([
-    ["kg", "82"],
-    ["lb", "180"],
-  ] as [WeightUnit, string][])(
-    "a weigh-in typed under a (%s) label posts weight_unit=%s",
-    async (unit, typed) => {
+    { unit: "kg", typed: "82" },
+    { unit: "lb", typed: "180" },
+  ] as { unit: WeightUnit; typed: string }[])(
+    "$typed typed under a ($unit) label posts weight_unit=$unit",
+    async ({ unit, typed }) => {
       logWeight(unit, typed);
       await act(async () => {});
       // The label is the person's only statement of what they typed, so the field
       // must agree with it — asserted together, since a hard-coded unit would satisfy
       // either one alone.
       expect(screen.getByText(`Log today's weight (${unit})`)).toBeTruthy();
-      expect([posted.at(-1)?.get("weight"), posted.at(-1)?.get("weight_unit")]).toEqual(
-        [typed, unit]
-      );
+      expect([
+        posted.at(-1)?.get("weight"),
+        posted.at(-1)?.get("weight_unit"),
+      ]).toEqual([typed, unit]);
     }
   );
 
