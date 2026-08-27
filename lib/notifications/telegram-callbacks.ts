@@ -161,7 +161,11 @@ import {
   stackOfferDoseIds,
   withDoseCorrections,
 } from "./intake";
-import { INTAKE_SEND_SLOTS, notifiableWindowDoses } from "./intake-format";
+import {
+  INTAKE_SEND_SLOTS,
+  notifiableWindowDoses,
+  type IntakeSlotPart,
+} from "./intake-format";
 import { buildFoodNudge } from "./food";
 import { keyboardChatOrigin, withChatOrigin } from "./chat-origin";
 import { countVisibleFoodButtons } from "./food-format";
@@ -881,6 +885,29 @@ async function handleActivityTypeAskTap(
 // Apply a single ✅ take or ⏭️ skip tap: resolve the acting profile from the chat,
 // run the verified write, answer honestly from the outcome union, then rebuild
 // the session message so resolved doses drop their buttons.
+// Re-render a dose session onto the message that carried it. Every dose-tier rebuild
+// goes through here — a take, a skip, ✅ All, a stack tap, the composed one-tap — so
+// they cannot drift: the correction chips ride along (#2020), the stack offers are
+// re-derived (#3282), and `rebuildMessage` re-applies the send-time "[Name] " prefix
+// (prefixForProfile, one computation — #377/#454) that a handler rendering its own
+// wire text would lose.
+async function rebuildDoseSession(
+  profileId: number,
+  chatId: number | string,
+  messageId: number,
+  parts: IntakeSlotPart[],
+  date: string
+): Promise<void> {
+  await rebuildMessage(
+    profileId,
+    chatId,
+    messageId,
+    withDoseCorrections(profileId, renderDoseSession(profileId, parts, date), {
+      ref: { chatId, messageId },
+    })
+  );
+}
+
 async function handleDoseTap(
   cq: TelegramCallbackQuery,
   tap: TakeCallback,
@@ -959,23 +986,7 @@ async function handleDoseTap(
     tap.date
   );
   if (parts.length > 0) {
-    // Rebuild through the channel chokepoint, which re-applies the SAME send-time
-    // "[Name] " prefix (prefixForProfile — one computation, #377/#454), so a
-    // shared-chat rebuild keeps the profile label instead of collapsing to an
-    // unattributable title. The handler hands over the un-prefixed message and
-    // cannot render the wire text itself.
-    await rebuildMessage(
-      profileId,
-      chatId,
-      messageId,
-      withDoseCorrections(
-        profileId,
-        renderDoseSession(profileId, parts, tap.date),
-        {
-          ref: { chatId, messageId },
-        }
-      )
-    );
+    await rebuildDoseSession(profileId, chatId, messageId, parts, tap.date);
     return;
   }
 
@@ -1212,21 +1223,7 @@ async function handleAllTaken(
     );
     return;
   }
-  // Rebuild through the chokepoint, which re-applies the send-time "[Name] "
-  // prefix (one computation, #377/#454) so the rebuilt completion summary stays
-  // attributable in a shared chat.
-  await rebuildMessage(
-    profileId,
-    chatId,
-    messageId,
-    withDoseCorrections(
-      profileId,
-      renderDoseSession(profileId, parts, all.date),
-      {
-        ref: { chatId, messageId },
-      }
-    )
-  );
+  await rebuildDoseSession(profileId, chatId, messageId, parts, all.date);
 }
 
 // Mark one STACK's still-pending doses taken in one tap (#3098). The token names a
@@ -1346,14 +1343,7 @@ async function handleStackTaken(
     );
     return;
   }
-  await rebuildMessage(
-    profileId,
-    chatId,
-    messageId,
-    withDoseCorrections(profileId, renderDoseSession(profileId, parts, date), {
-      ref: { chatId, messageId },
-    })
-  );
+  await rebuildDoseSession(profileId, chatId, messageId, parts, date);
 }
 
 // THE COMPOSED ONE-TAP (#2460): one button, the whole morning — the habitual food
@@ -1464,18 +1454,7 @@ async function handleUsualRoutineTap(
       );
       return;
     }
-    await rebuildMessage(
-      profileId,
-      chatId,
-      messageId,
-      withDoseCorrections(
-        profileId,
-        renderDoseSession(profileId, parts, date),
-        {
-          ref: { chatId, messageId },
-        }
-      )
-    );
+    await rebuildDoseSession(profileId, chatId, messageId, parts, date);
     return;
   }
   if (family === "food") {

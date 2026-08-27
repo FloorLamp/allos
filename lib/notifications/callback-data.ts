@@ -77,32 +77,22 @@ export function parseAllCallback(data: unknown): AllCallback | null {
 // ---- OFFER TOKENS: the button names a STORED bundle, not its contents -------
 //
 // Two buttons write a whole named set in one tap — the composed "your usual <window>"
-// (#2460) and the per-stack one-tap (#3098) — and both hit the same wall: Telegram
-// gives `callback_data` 64 bytes, and a token that spells its set out grows with the
-// set. `usual:` measured 63 of 64 at two food groups and six doses; `stacktake:` spent
-// its bytes on dose ids and DROPPED its own button once a stack outgrew them. Both are
-// largest at send time, before anything is logged — exactly when the offer helps most.
+// (#2460) and the per-stack one-tap (#3098) — and a token that spells its set out
+// grows with the set, against a hard 64 bytes, and is LARGEST at send time before
+// anything is logged. `usual:` measured 63 of 64; `stacktake:` dropped its own button
+// once a stack outgrew the limit. So neither names its set: the bundle is stored
+// (`notify_offers`, ./offer-store.ts) and the token carries the row id, constant size.
 //
-// So neither names its set. The bundle is stored (`notify_offers`,
-// lib/notifications/offer-store.ts) and the token carries the row id:
-// "<prefix>:<profileId>:<offerId>" — constant size, immune to every growth axis. The
-// prefix stays the family's own, because the dispatcher and the reconcile registry key
-// off it; only the GRAMMAR is shared, the way `take:` and `skip:` share theirs.
-//
-// THE STORED OFFER IS AN UPPER BOUND, NOT AN INSTRUCTION. Each handler re-derives what
-// currently stands and writes only the intersection, so a forged, replayed or stale
-// token can never write outside the offer that currently stands.
-//
-// NO DATE CROSSES THE WIRE. The offer row carries the subject's local day at mint time
-// and the handler resolves `today(profileId)` itself, so an offer expires on the day
-// rollover and no token can backfill.
+// NO DATE CROSSES THE WIRE either — the offer row carries the subject's local day and
+// the handler resolves `today(profileId)` itself, so nothing here can backfill, and an
+// offer expires on the day rollover.
 
 // Telegram's hard cap on a button's callback_data, in bytes.
 export const TELEGRAM_CALLBACK_DATA_MAX_BYTES = 64;
 
 // The prefixes that spell an offer token. Not a registry of behaviour — the dispatcher
-// still routes each one to its own handler; this is only which words the shared
-// grammar is spoken in.
+// still routes each to its own handler, and each keeps its own reconcile family; only
+// the GRAMMAR is shared, the way `take:` and `skip:` share theirs.
 export type OfferPrefix = "usual" | "stacktake";
 
 export interface OfferCallback {

@@ -379,26 +379,22 @@ export function collectWindowDoses(
   return gatherWindowDoses(profileId, slot, date, getIntakeDoses(profileId));
 }
 
-// ---- The per-stack one-tap's stored offer (#3098, moved onto #3268's substrate
-// by #3282) -------------------------------------------------------------------
+// ---- The per-stack one-tap's stored offer (#3098, on #3268's substrate since
+// #3282) -----------------------------------------------------------------------
 //
 // `stacktake:` used to spell its member dose ids into the token, which grows with the
-// stack and self-amputated at Telegram's 64 bytes: a person with a large enough stack
-// silently lost the button. It now names a `notify_offers` row instead, exactly as
-// `usual:` does — `stacktake:<profileId>:<offerId>`, constant size.
-//
-// The offer is an UPPER BOUND, unchanged: the handler re-derives the pending,
-// notifiable set from fresh state and writes only the intersection, so a stale,
-// forged or replayed token can never write outside what currently stands.
+// stack and self-amputated at Telegram's 64 bytes — a large enough stack silently lost
+// its button. It names a `notify_offers` row now, as `usual:` does. The stored ids stay
+// an UPPER BOUND: the handler re-derives the pending set and writes the intersection.
 export const STACK_OFFER_FAMILY = "stack-take" as const;
 
 interface StoredStackOffer {
   doseIds: number[];
 }
 
-// The mint the DB-free renderer is handed. Re-offering the same members on the same
-// day is a READ (see `mintOffer`), so a rebuilt keyboard is byte-identical to the
-// delivered one and the reconcile sweep stays at zero Telegram calls.
+// The mint the DB-free renderer is handed. Re-offering the same members on the same day
+// is a READ (see `mintOffer`), so a rebuilt keyboard is byte-identical to the delivered
+// one and the reconcile sweep stays at zero Telegram calls.
 export function stackOfferToken(
   profileId: number,
   date: string
@@ -413,11 +409,9 @@ export function stackOfferToken(
     );
 }
 
-// The dose ids a stack offer named, or null when there is no such offer for this
-// profile on this day — a forged id, another profile's, another family's payload, or
-// one minted before the day rolled over. All the same single refusal, which is also
-// what an OLD ids-in-token `stacktake:` button becomes once this ships: its offer id
-// does not parse, so it writes nothing and the sweep retires the button.
+// The dose ids a stack offer named, or null for anything that is not this profile's
+// offer on this day. That single refusal is also what a pre-#3282 button becomes: its
+// ids-in-token shape has no offer id to read.
 export function stackOfferDoseIds(
   profileId: number,
   offerId: number,
@@ -429,8 +423,8 @@ export function stackOfferDoseIds(
   );
 }
 
-// The dose session message every send and every rebuild renders — the one place the
-// stack offers are minted, so no caller has to know they exist.
+// The dose-session message every send and every rebuild renders — the one place stack
+// offers are minted, so no caller has to know they exist.
 export function renderDoseSession(
   profileId: number,
   parts: IntakeSlotPart[],

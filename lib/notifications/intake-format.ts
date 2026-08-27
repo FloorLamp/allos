@@ -284,12 +284,6 @@ function doseLine(
   });
 }
 
-// Build the message for a window from its entries. Pending doses (each with a
-// tap, and its take-with condition shown) are listed first and already-taken
-// ones after, so the message reflects what's been taken this session. When
-// nothing is left pending the message becomes a completion summary — the title
-// is marked done, the body lists every dose taken with its adherence percentage,
-// and there are no buttons.
 // How a per-stack one-tap gets its token (#3282). The token names a STORED offer, so
 // minting one is a database write — and this module is DB-free on purpose, so the
 // caller hands the mint in. `lib/notifications/intake.ts` owns the only real one; a
@@ -297,6 +291,12 @@ function doseLine(
 // that no plausible offer id can reach 64 bytes.
 export type StackOfferToken = (doseIds: readonly number[]) => string;
 
+// Build the message for a window from its entries. Pending doses (each with a
+// tap, and its take-with condition shown) are listed first and already-taken
+// ones after, so the message reflects what's been taken this session. When
+// nothing is left pending the message becomes a completion summary — the title
+// is marked done, the body lists every dose taken with its adherence percentage,
+// and there are no buttons.
 export function renderWindowMessage(
   profileId: number,
   window: IntakeSendSlot,
