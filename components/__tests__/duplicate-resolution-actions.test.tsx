@@ -1,4 +1,10 @@
-import { act, fireEvent, render, screen } from "@testing-library/react";
+import {
+  act,
+  fireEvent,
+  render,
+  screen,
+  waitFor,
+} from "@testing-library/react";
 import { describe, expect, it, vi } from "vitest";
 import DuplicateResolutionActions from "@/components/DuplicateResolutionActions";
 
@@ -55,9 +61,11 @@ describe("DuplicateResolutionActions", () => {
   });
 
   it("posts the local server-form controller and its exact payload", async () => {
+    const result = Promise.withResolvers<void>();
     const submitted: Record<string, FormDataEntryValue>[] = [];
     const merge = vi.fn(async (formData: FormData) => {
       submitted.push(Object.fromEntries(formData.entries()));
+      await result.promise;
     });
 
     render(
@@ -76,12 +84,14 @@ describe("DuplicateResolutionActions", () => {
       />
     );
 
-    await act(async () => {
-      fireEvent.click(screen.getByRole("button", { name: "Merge, keep A" }));
-    });
-    expect(merge).toHaveBeenCalledOnce();
+    const button = screen.getByRole("button", { name: "Merge, keep A" });
+    fireEvent.click(button);
+    await waitFor(() => expect(merge).toHaveBeenCalledOnce());
     expect(submitted).toEqual([
       { keep_id: "7", drop_id: "9", signature: "activity:7:9" },
     ]);
+    expect(button.getAttribute("aria-busy")).toBe("true");
+    expect((button as HTMLButtonElement).disabled).toBe(true);
+    await act(async () => result.resolve());
   });
 });

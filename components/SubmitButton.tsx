@@ -3,15 +3,14 @@
 import { useCallback, useRef, useSyncExternalStore } from "react";
 import Button, { type ButtonProps } from "@/components/Button";
 
-type SubmitButtonProps = Pick<
+type SubmitButtonProps = Omit<
   ButtonProps,
-  | "children"
-  | "pendingLabel"
-  | "disabled"
-  | "aria-label"
-  | "data-testid"
-  | "name"
-  | "value"
+  | "type"
+  | "onClick"
+  | "onKeyDown"
+  | "aria-haspopup"
+  | "aria-expanded"
+  | "aria-controls"
 > & {
   requireSelection?: string;
 };

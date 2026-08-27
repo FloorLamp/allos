@@ -46,14 +46,14 @@ function ResolutionControl({ action, pending }: ControlProps) {
             : kind === "keep-all"
               ? "Keep all"
               : "Dismiss";
-  const Icon =
-    kind === "keeper" || kind === "cluster-keeper"
-      ? IconGitMerge
-      : kind === "keep-both" || kind === "keep-all"
-        ? IconCopyCheck
-        : kind === "dismiss"
-          ? IconEyeOff
-          : null;
+  const primary = kind === "keeper" || kind === "cluster-keeper";
+  const Icon = primary
+    ? IconGitMerge
+    : kind === "keep-both" || kind === "keep-all"
+      ? IconCopyCheck
+      : kind === "dismiss"
+        ? IconEyeOff
+        : null;
   const props = {
     disabled: pending,
     "data-testid":
@@ -74,9 +74,11 @@ function ResolutionControl({ action, pending }: ControlProps) {
 
   if (action.length === 3) {
     return (
-      <Button onClick={action[2]} {...props}>
-        {contents}
-      </Button>
+      <span className={primary ? "duplicate-resolution-primary" : "contents"}>
+        <Button onClick={action[2]} {...props}>
+          {contents}
+        </Button>
+      </span>
     );
   }
   return (
@@ -84,9 +86,11 @@ function ResolutionControl({ action, pending }: ControlProps) {
       {Object.entries(action[3]).map(([name, value]) => (
         <input key={name} type="hidden" name={name} value={value} />
       ))}
-      <Button type="submit" {...props}>
-        {contents}
-      </Button>
+      <span className={primary ? "duplicate-resolution-primary" : "contents"}>
+        <Button type="submit" {...props}>
+          {contents}
+        </Button>
+      </span>
     </form>
   );
 }

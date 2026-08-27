@@ -573,23 +573,20 @@
     min-block-size: 0;
     min-inline-size: 0;
   }
-  &[role="menuitem"] {
-    @apply w-full justify-start gap-1.5 rounded-none border-0 px-3 py-3 text-left text-sm whitespace-normal text-slate-700 hover:bg-slate-50 md:pointer-fine:py-1.5 md:pointer-coarse:py-3 dark:text-slate-200 dark:hover:bg-ink-800;
+}
+
+@utility duplicate-resolution-primary {
+  @apply contents;
+  & > .button-control:not(:disabled) {
+    @apply border-transparent bg-(--btn) text-(--btn-fg) hover:bg-(--btn-hover);
   }
 }
 
 @utility destructive-submit {
-  display: contents;
+  @apply contents;
   & > .button-control {
-    @apply gap-2 border-0 px-4 py-2 text-sm shadow-xs;
+    @apply gap-2 border-0 bg-(--danger-btn) px-4 py-2 text-sm text-(--danger-btn-fg) shadow-xs hover:bg-(--danger-btn-hover) disabled:bg-slate-100 disabled:text-slate-500 disabled:hover:bg-slate-100 dark:disabled:bg-ink-750 dark:disabled:text-slate-400 dark:disabled:hover:bg-ink-750;
     border-radius: var(--radius-control);
-  }
-  & > .button-control:not(:disabled) {
-    background-color: var(--danger-btn);
-    color: var(--danger-btn-fg);
-  }
-  & > .button-control:hover:not(:disabled) {
-    background-color: var(--danger-btn-hover);
   }
 }
 
