@@ -619,6 +619,25 @@ ${MIGRATION_LINES}
   A COMMENT MUST CARRY REASONING THE CODE CANNOT. This repo rewards that and the briefs
   above ask for it — but the ratio is part of the judgement, and a diff whose production
   delta is three-quarters prose will be read as one that lost it.
+- LINE BUDGET, OWNER RULING 2026-08-27. Fourteen merges added ~6,000 net lines and the
+  owner called that too much growth. Two rules follow, and the first is absolute:
+  DESIGN CONVERGENCE MUST BE PRODUCTION-NEGATIVE. If your change is convergence — moving
+  call sites onto a shared owner, unifying two spellings of one thing — it must DELETE
+  more production lines than it adds. Not net-neutral, negative. Convergence that grows
+  production has not converged anything; it has added a third way of doing it.
+  AND NOTHING IN THIS LIST MAY BE INTRODUCED, by convergence or by any other work:
+  a SCANNER (source/AST reading), a REGISTRY, an ALLOWLIST, a VARIANT (a second shape of
+  an existing component or helper, selected by a flag or a prop), or a COMPATIBILITY
+  LAYER (a shim that lets old and new coexist). If the fix appears to need one, that is
+  the signal to STOP and put it in OPEN QUESTIONS — building it is how the last three
+  closed PRs got closed.
+  FOR NON-CONVERGENCE WORK the bar is proportionality, not negativity: a behaviour fix
+  may add production lines, and the number should be recognisable as the cost of THAT
+  behaviour. Measured on the 2026-08-26/27 session: 75% of added lines were test and e2e
+  code, so that is where the slack is. Compact the PROOFS first — tables over repeated
+  \`it()\` blocks, one fixture reused over three near-copies, an assertion that names the
+  property over five that enumerate it — before you consider dropping coverage. Do not
+  buy a smaller diff by proving less; say in your report what the diff cost and why.
 - A GUARD'S PATTERN COMES FROM HOW THE REPO WRITES THE CONSTRUCT, NOT FROM HOW THE
   ISSUE DESCRIBES IT. An issue names the defect in the shape its author had in mind.
   If you encode THAT shape, your guard is green against a tree that never used it, and
