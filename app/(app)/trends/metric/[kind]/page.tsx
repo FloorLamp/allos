@@ -705,6 +705,7 @@ export default async function TrendMetricDetailPage(props: {
           kind={kind}
           rows={readings}
           unit={unit}
+          weightUnit={weightUnit}
           readOnlyReason={
             METRIC_READING_STORE[kind]
               ? null

@@ -10,6 +10,7 @@ import { useConfirm } from "@/components/ConfirmDialog";
 import { useToast } from "@/components/Toast";
 import { useUndoableDelete } from "@/components/useUndoableDelete";
 import type { BodyMetricMeasure } from "@/lib/body-metric-measures";
+import type { WeightUnit } from "@/lib/settings";
 import { deleteBodyMetric } from "./body-actions";
 import { updateMetricReading } from "./reading-actions";
 
@@ -36,11 +37,14 @@ export default function BodyMetricRowMenu({
   id,
   label,
   measures,
+  weightUnit,
 }: {
   id: number;
   /** The row's own date, already formatted — names the row in every prompt. */
   label: string;
   measures: BodyMetricMeasure[];
+  /** The unit `measures` were converted for display in — posted with a correction. */
+  weightUnit: WeightUnit;
 }) {
   const confirm = useConfirm();
   const toast = useToast();
@@ -126,6 +130,7 @@ export default function BodyMetricRowMenu({
           key={editing.target}
           measure={editing}
           dateLabel={label}
+          weightUnit={weightUnit}
           onClose={() => setEditing(null)}
           onSaved={(message) => {
             setEditing(null);
@@ -137,17 +142,20 @@ export default function BodyMetricRowMenu({
   );
 }
 
-// One measure's correction dialog. The value posts in the login's DISPLAY unit and
-// `updateMetricReading` converts at the boundary (weight through `toKg`), so nothing
-// here knows what a kilogram is.
+// One measure's correction dialog. The value posts in the DISPLAY unit it was rendered
+// in — named alongside it, so the write cannot read it differently from the person who
+// typed it (#630, #3853) — and `updateMetricReading` converts at the boundary (weight
+// through `toKg`), so nothing here knows what a kilogram is.
 function EditMeasureDialog({
   measure,
   dateLabel,
+  weightUnit,
   onClose,
   onSaved,
 }: {
   measure: BodyMetricMeasure;
   dateLabel: string;
+  weightUnit: WeightUnit;
   onClose: () => void;
   onSaved: (message: string) => void;
 }) {
@@ -165,6 +173,7 @@ function EditMeasureDialog({
       fd.set("kind", measure.slug);
       fd.set("target", measure.target);
       fd.set("value", value);
+      fd.set("weight_unit", weightUnit);
       const result = await updateMetricReading(fd);
       if (!result.ok) {
         setError(result.error ?? "Couldn’t save that reading.");

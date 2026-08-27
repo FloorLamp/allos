@@ -1883,6 +1883,7 @@ export default async function BodySection({
                                 id={w.id}
                                 label={formatMonthDay(w.date, formatPrefs)}
                                 measures={bodyMetricMeasures(w, wu)}
+                                weightUnit={wu}
                               />
                             </td>
                           </tr>

@@ -388,7 +388,9 @@ export default function CommandPalette({
       if (log.error || committing) return;
       setCommitting(true);
       try {
-        const res = await paletteQuickLog(query);
+        // The unit the previewed row was parsed and printed in — carried so the
+        // authoritative re-parse reads an unsuffixed number the same way (#3853).
+        const res = await paletteQuickLog(query, weightUnit);
         toast(res.message, { tone: res.ok ? "success" : "error" });
         if (res.ok) {
           close();
@@ -397,7 +399,7 @@ export default function CommandPalette({
         setCommitting(false);
       }
     },
-    [query, committing, toast, close]
+    [query, weightUnit, committing, toast, close]
   );
 
   // Run a per-hit contextual action (#662). A navigate action (add-result) just
