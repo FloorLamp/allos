@@ -47,7 +47,7 @@ export default function PhotoDeleteAction({ remove, close, testId }: Props) {
       aria-busy={pending || undefined}
       onClick={run}
       data-testid={testId}
-      className="inline-flex min-h-11 min-w-11 shrink-0 items-center justify-center whitespace-nowrap rounded-lg border border-rose-800 bg-rose-950 px-2.5 py-1 text-xs font-medium text-rose-100 transition hover:bg-rose-900 focus:outline-hidden focus-visible:ring-2 focus-visible:ring-white disabled:cursor-not-allowed disabled:opacity-60 sm:min-h-0 sm:min-w-0"
+      className="inline-flex min-h-11 min-w-11 shrink-0 items-center justify-center whitespace-nowrap rounded-lg border border-rose-800 bg-rose-950 px-2.5 py-1 text-xs font-medium text-white transition hover:bg-rose-900 focus:outline-hidden focus-visible:ring-2 focus-visible:ring-white disabled:cursor-not-allowed disabled:opacity-60 sm:min-h-0 sm:min-w-0"
     >
       {pending ? "Deleting…" : "Delete photo"}
     </button>
