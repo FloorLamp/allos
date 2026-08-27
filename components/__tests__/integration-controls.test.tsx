@@ -89,7 +89,6 @@ describe("integration disconnect controls", () => {
     const button = screen.getByTestId("family-feed-disable");
     button.focus();
     expect(document.activeElement).toBe(button);
-    expect(button.className).toBe("btn-danger");
     fireEvent.click(button);
     await waitFor(() => expect(button.textContent).toBe("Disabling…"));
     expect(button.hasAttribute("disabled")).toBe(true);

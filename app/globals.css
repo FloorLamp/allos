@@ -575,6 +575,21 @@
   }
 }
 
+@utility duplicate-resolution-primary {
+  @apply contents;
+  & > .button-control:not(:disabled) {
+    @apply border-transparent bg-(--btn) text-(--btn-fg) hover:bg-(--btn-hover);
+  }
+}
+
+@utility destructive-submit {
+  @apply contents;
+  & > .button-control {
+    @apply gap-2 border-0 bg-(--danger-btn) px-4 py-2 text-sm text-(--danger-btn-fg) shadow-xs hover:bg-(--danger-btn-hover) disabled:bg-slate-100 disabled:text-slate-500 disabled:hover:bg-slate-100 dark:disabled:bg-ink-750 dark:disabled:text-slate-400 dark:disabled:hover:bg-ink-750;
+    border-radius: var(--radius-control);
+  }
+}
+
 @utility inline-submit-action {
   @apply inline-flex;
   & > .button-control {

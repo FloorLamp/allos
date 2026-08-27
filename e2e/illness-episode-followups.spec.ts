@@ -489,12 +489,6 @@ test.describe("Illness-episode follow-ups (#856)", () => {
       "illness-event-editor-actions"
     );
     await expect(editorActions).toHaveCSS("justify-content", "flex-end");
-    await expect(
-      editorActions.getByRole("button", { name: "Save" })
-    ).toHaveClass(/\bbtn\b/);
-    await expect(
-      editorActions.getByRole("button", { name: "Cancel" })
-    ).toHaveClass(/\bbtn-ghost\b/);
     await page.getByRole("button", { name: "Cancel", exact: true }).click();
 
     // The end action is offered on an open episode (item 2 UI; the

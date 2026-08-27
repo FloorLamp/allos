@@ -1,7 +1,7 @@
 "use client";
 
 import { IconCopyCheck, IconEyeOff, IconGitMerge } from "@tabler/icons-react";
-import SubmitButton from "@/components/SubmitButton";
+import Button from "@/components/Button";
 
 type Payload = Readonly<Record<string, string | number>>;
 type FormAction<K extends string, Detail = null> = readonly [
@@ -55,7 +55,6 @@ function ResolutionControl({ action, pending }: ControlProps) {
         ? IconEyeOff
         : null;
   const props = {
-    className: primary ? "btn btn-sm" : "btn-ghost btn-sm",
     disabled: pending,
     "data-testid":
       kind === "keeper"
@@ -75,9 +74,11 @@ function ResolutionControl({ action, pending }: ControlProps) {
 
   if (action.length === 3) {
     return (
-      <button type="button" onClick={action[2]} {...props}>
-        {contents}
-      </button>
+      <span className={primary ? "duplicate-resolution-primary" : "contents"}>
+        <Button onClick={action[2]} {...props}>
+          {contents}
+        </Button>
+      </span>
     );
   }
   return (
@@ -85,7 +86,11 @@ function ResolutionControl({ action, pending }: ControlProps) {
       {Object.entries(action[3]).map(([name, value]) => (
         <input key={name} type="hidden" name={name} value={value} />
       ))}
-      <SubmitButton {...props}>{contents}</SubmitButton>
+      <span className={primary ? "duplicate-resolution-primary" : "contents"}>
+        <Button type="submit" {...props}>
+          {contents}
+        </Button>
+      </span>
     </form>
   );
 }

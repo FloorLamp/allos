@@ -1,11 +1,11 @@
 "use client";
 
 import { useEffect, useRef, type ReactNode, type RefObject } from "react";
-import { IconDots } from "@tabler/icons-react";
+import { useFormStatus } from "react-dom";
+import { IconDots, IconLoader2 } from "@tabler/icons-react";
 import { useToast } from "@/components/Toast";
 import { useConfirmOpen } from "@/components/ConfirmDialog";
 import { useLatestRef } from "@/components/useLatestRef";
-import SubmitButton from "@/components/SubmitButton";
 import AnchoredPanel from "@/components/overlay/AnchoredPanel";
 import { overflowMenuLabel } from "@/lib/overflow-menu-label";
 
@@ -49,14 +49,20 @@ export function OverflowMenuSubmitItem({
   children,
   pendingLabel,
 }: MenuSubmitProps) {
+  const { pending } = useFormStatus();
   return (
-    <SubmitButton
+    <button
+      type="submit"
       role="menuitem"
+      disabled={pending}
+      aria-busy={pending || undefined}
       className={`${MENU_ITEM} flex items-center gap-1.5`}
-      pendingLabel={pendingLabel}
     >
-      {children}
-    </SubmitButton>
+      {pending && (
+        <IconLoader2 className="size-4 motion-safe:animate-spin" aria-hidden />
+      )}
+      {pending ? (pendingLabel ?? children) : children}
+    </button>
   );
 }
 

@@ -1,42 +1,32 @@
 "use client";
 
 import { useCallback, useRef, useSyncExternalStore } from "react";
-import { useFormStatus } from "react-dom";
+import Button, { type ButtonProps } from "@/components/Button";
 
-type NativeButtonProps = React.ButtonHTMLAttributes<HTMLButtonElement>;
-
-type SubmitButtonProps = {
-  children: React.ReactNode;
-  className?: string;
-  pendingLabel?: React.ReactNode;
-  disabled?: boolean;
+type SubmitButtonProps = Omit<
+  ButtonProps,
+  | "type"
+  | "onClick"
+  | "onKeyDown"
+  | "aria-haspopup"
+  | "aria-expanded"
+  | "aria-controls"
+> & {
   requireSelection?: string;
-  "aria-label"?: NativeButtonProps["aria-label"];
-  role?: "menuitem";
-  "data-testid"?: string;
-  name?: NativeButtonProps["name"];
-  value?: NativeButtonProps["value"];
 };
 
-// Shared pending-aware submit button. Drop it inside any <form> (server-action
-// or client-action) and useFormStatus disables it and shows a spinner while the
-// submission is in flight, so expensive writes can't be double-fired and the
-// user gets feedback. Pass `disabled` to combine an extra guard (e.g. an empty
-// required field) with the pending state; `pendingLabel` overrides the label
-// shown while busy.
+// Button owns submission state. This wrapper adds only the onboarding gate that
+// waits for a named radio selection.
 export default function SubmitButton({
   children,
-  className = "btn",
   pendingLabel,
   disabled = false,
   requireSelection,
   "aria-label": ariaLabel,
-  role,
   "data-testid": testId,
   name,
   value,
 }: SubmitButtonProps) {
-  const { pending } = useFormStatus();
   const buttonRef = useRef<HTMLButtonElement>(null);
   const selectionSnapshot = useCallback(() => {
     if (!requireSelection) return false;
@@ -67,49 +57,28 @@ export default function SubmitButton({
   );
 
   return (
-    <button
+    <Button
       ref={buttonRef}
       type="submit"
-      disabled={pending || disabled || selectionMissing}
-      aria-busy={pending}
+      disabled={disabled || selectionMissing}
+      pendingLabel={pendingLabel}
       aria-label={ariaLabel}
-      role={role}
-      className={className}
       data-testid={testId}
       name={name}
       value={value}
     >
-      {pending ? (
-        <span className="inline-flex items-center gap-2">
-          <svg
-            className="h-4 w-4 animate-spin motion-reduce:animate-none"
-            viewBox="0 0 24 24"
-            fill="none"
-            aria-hidden="true"
-          >
-            <circle
-              className="opacity-25"
-              cx="12"
-              cy="12"
-              r="10"
-              stroke="currentColor"
-              strokeWidth="4"
-            />
-            <path
-              className="opacity-75"
-              fill="currentColor"
-              d="M4 12a8 8 0 018-8v4a4 4 0 00-4 4H4z"
-            />
-          </svg>
-          {pendingLabel ?? children}
-        </span>
-      ) : (
-        children
-      )}
-    </button>
+      {children}
+    </Button>
   );
 }
 
-export const DestructiveSubmit = (
-  props: Omit<SubmitButtonProps, "className">
-) => <SubmitButton {...props} className="btn-danger" />;
+type DestructiveSubmitProps = Pick<
+  ButtonProps,
+  "children" | "pendingLabel" | "disabled" | "data-testid"
+>;
+
+export const DestructiveSubmit = (props: DestructiveSubmitProps) => (
+  <span className="destructive-submit">
+    <Button {...props} type="submit" />
+  </span>
+);
