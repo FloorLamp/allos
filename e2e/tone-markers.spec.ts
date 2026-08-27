@@ -20,17 +20,6 @@ const TONE_BADGE: Record<string, string> = {
   bad: "Poor",
 };
 
-const DIRECTIONAL_LABELS = ["High", "Low", "Above optimal", "Below optimal"];
-
-// Every word the widget can draw: the directional ones plus the directionless
-// statuses that never had a caret to hang an sr-only label on.
-const STATUS_LABELS = [
-  ...DIRECTIONAL_LABELS,
-  "Abnormal",
-  "Immune",
-  "Non-optimal",
-];
-
 // Assert every pillar card in `cards` pairs its tone with the badge text (or, for
 // neutral, deliberately carries none). The cards are server-rendered, so once the
 // container is visible the collection is stable and a plain count loop is safe.

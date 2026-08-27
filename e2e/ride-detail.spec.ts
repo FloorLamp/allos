@@ -739,7 +739,6 @@ test("a ride detail scopes wearable HR minutes to that ride's clock window", asy
 
   const heartRate = page.getByTestId("session-heart-rate");
   const chart = page.getByTestId("session-heart-rate-chart");
-  const zones = page.getByTestId("session-heart-rate-zones");
   await expect(page.getByTestId("activity-intensity")).toContainText(
     "Moderate"
   );

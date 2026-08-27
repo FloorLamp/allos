@@ -44,41 +44,6 @@ function resetAllergyDismissals(): void {
   }
 }
 
-// Write a page-dismissal row straight to the shared bus for the amoxicillin allergy
-// finding — the same row a "Dismiss" click on any surface would create — so the test
-// can prove the care-tier dashboard candidate RESISTS it (a page dismissal must never permanently
-// silence a live contraindication, #1092). Resolves the id-keyed dedupeKey
-// (`allergy-med:<allergyId>-<amoxicillinItemId>`) from the seeded rows.
-function dismissAmoxicillinAllergyViaBus(): void {
-  const db = new Database(DB_PATH);
-  try {
-    db.pragma("busy_timeout = 5000");
-    const profile = db
-      .prepare("SELECT id FROM profiles WHERE name = ?")
-      .get(DRUG_ALLERGY_PROFILE) as { id: number } | undefined;
-    if (!profile) throw new Error("drug-allergy fixture profile missing");
-    const allergy = db
-      .prepare(
-        "SELECT id FROM allergies WHERE profile_id = ? AND substance = 'Penicillin'"
-      )
-      .get(profile.id) as { id: number } | undefined;
-    const med = db
-      .prepare(
-        "SELECT id FROM intake_items WHERE profile_id = ? AND name LIKE 'Amoxicillin%'"
-      )
-      .get(profile.id) as { id: number } | undefined;
-    if (!allergy || !med) throw new Error("drug-allergy fixture rows missing");
-    db.prepare(
-      `INSERT INTO upcoming_dismissals (profile_id, signal_key, snooze_until, dismissed_at)
-         VALUES (?, ?, NULL, datetime('now'))
-       ON CONFLICT(profile_id, signal_key)
-         DO UPDATE SET dismissed_at = datetime('now'), snooze_until = NULL`
-    ).run(profile.id, `allergy-med:${allergy.id}-${med.id}`);
-  } finally {
-    db.close();
-  }
-}
-
 test.beforeEach(() => {
   resetAllergyDismissals();
 });

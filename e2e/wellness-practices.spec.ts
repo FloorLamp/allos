@@ -59,15 +59,6 @@ async function choosePracticeAction(
   await page.getByTestId(actionTestId).click();
 }
 
-async function chooseSessionAction(
-  page: Page,
-  row: Locator,
-  actionTestId: string
-) {
-  await openRowMenu(page, row.getByRole("button", { name: "Session actions" }));
-  await page.getByTestId(actionTestId).click();
-}
-
 test("a relevant Wellness profile can reach its practice home from nav (#1620)", async ({
   page,
 }) => {
@@ -411,7 +402,6 @@ test("one-tap practice logging: a double-tap logs once, the label states today, 
   await expect(card).toBeVisible();
   const button = card.getByTestId("practice-log-button");
   const todayLine = card.getByTestId("practice-today-count");
-  const rows = card.getByTestId("practice-session-history").locator("tbody tr");
 
   // Nothing logged yet: the first tap is offered as a first tap.
   await expect(todayLine).toContainText("No sessions yet");

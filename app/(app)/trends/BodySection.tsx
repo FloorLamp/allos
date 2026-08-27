@@ -985,18 +985,6 @@ export default async function BodySection({
           value: round(m.bpm, 0),
         }))
       : [];
-  const hasSynced =
-    stepsAll.length > 0 ||
-    activeCaloriesAll.length > 0 ||
-    hasSleep ||
-    hrAll.length > 0 ||
-    leanMassAll.length > 0 ||
-    boneMassAll.length > 0 ||
-    bmrAll.length > 0 ||
-    hydrationAll.length > 0 ||
-    caloriesAll.length > 0 ||
-    bmiAll.length > 0;
-
   // #1067 Phase 1 (re-based on #1490): the synced daily charts render from ONE
   // visible list that also feeds the chart menu, so it can never point at
   // an absent chart. Membership is each entry's `present` gate; the SEQUENCE is the
@@ -1321,12 +1309,6 @@ export default async function BodySection({
       ),
     },
   ];
-  const orderedSynced = applyCardOrder(
-    syncedEntries.filter((e) => e.present),
-    cardOrder,
-    (e) => e.id
-  );
-
   // ONE presence boolean per block, shared by its menu item and its render.
   const hasMood = moodAll.length > 0;
   const hasEnergy = energyAll.length > 0;

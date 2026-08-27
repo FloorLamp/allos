@@ -87,15 +87,6 @@ function rebuiltFoodButtonLabel(slug: string): string | undefined {
   return undefined;
 }
 
-function rebuiltProteinButtonLabel(): string | undefined {
-  for (const row of lastRebuiltKeyboard() ?? []) {
-    for (const b of row) {
-      if (b.callback_data?.startsWith("foodprotein:")) return b.text;
-    }
-  }
-  return undefined;
-}
-
 // A cq whose incoming keyboard carries food-log buttons for `window` — the stale nudge
 // the user is tapping. Its window is the TOKEN's window, deliberately not the tap's.
 function cqForWindow(

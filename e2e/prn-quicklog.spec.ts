@@ -20,12 +20,6 @@ import {
 // log/remove Server-Action clicks use settledClick — the blessed settled interactions.
 const MED = "PRN Quicklog Med (e2e)";
 
-// Parse "N today · last …" → N.
-function parseCount(text: string | null): number {
-  const m = (text ?? "").match(/(\d+)\s+today/);
-  return m ? Number(m[1]) : NaN;
-}
-
 test("Today panel shows the PRN med's administrations, detail shows the ledger (#797/#817)", async ({
   page,
 }) => {

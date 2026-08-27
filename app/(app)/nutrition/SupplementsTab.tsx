@@ -197,7 +197,6 @@ export default async function SupplementsTab({
   // excluded groups the same way the #577 suggestions do.
   const excludedGroups = getExcludedFoodGroups(profile.id);
   const intakeItems = getIntakeItems(profile.id);
-  const suppById = new Map(intakeItems.map((item) => [item.id, item]));
   const doses = getIntakeDoses(profile.id);
   const dosesBySupp = new Map<number, IntakeDose[]>();
   for (const d of doses) {
