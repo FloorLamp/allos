@@ -154,6 +154,9 @@ export const OFFLINE_QUEUE_COVERAGE = {
   "stool-form": arguedExclusion(
     "Not decided here, and deliberately not decided here. The capture would be mechanically ordinary — a date, a type and the captured instant, exactly the shape resolveCapturedInstant already carries, with no server-derived state behind the tap — so this is NOT the excluded class above. What is missing is a ruling: #2785 ships a v1 recording surface and says nothing about queueing a bodily-function timestamp from a device that may be shared or handed over, and inventing that ruling inside a vocabulary change is how a queue grows a flow nobody argued. Nothing is unreachable offline that was reachable before: the tap works online exactly as every other quick-entry form does."
   ),
+  "dose-backfill": arguedExclusion(
+    "Online-only, and nothing that was reachable offline becomes unreachable: the form this offer sits above has never queued either, so the whole backfill door keeps the behaviour it has always had. The offer itself is rendered from a server-computed adherence strip — the day is offered BECAUSE the server says nothing is logged there — and a capture would carry that justification into a replay that cannot recheck it. The core would still refuse honestly (idempotent per dose and date), so this is not the destructive class; it is a dated assertion about a closed day, which is not the `dose` flow's set-to-taken-today shape, and inventing a dated flow for it belongs to whoever takes offline backfill on purpose."
+  ),
   "period-lifecycle": arguedExclusion(
     "A lifecycle write rendered from server state (#1892): the offer's verb is only valid against the state that produced it, and the write core's typed refusals need fresh state to refuse honestly. Replaying start/end against state that moved is the destructive-overwrite class the queue's scope comment excludes."
   ),
