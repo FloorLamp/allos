@@ -338,10 +338,22 @@ function ProfileRow({
           // second-gutter tier, and below `sm` its de-card rule zeroes
           // padding-inline; measured at 390px this box's rose fill started at
           // exactly the x of its own first character, so the tint had no gutter
-          // to sit in. A notice-family tint is not a nested panel sharing a
-          // card's inset, it is the Notice shape, and the Notice shape keeps its
-          // `px-3` at every width. Desktop is untouched: the tier emits only
-          // inside `max-sm:`.
+          // to sit in.
+          //
+          // THE LINE, for the next person meeting a tinted `subpanel-inset*`: a
+          // NOTICE-FAMILY tint — a message block saying something is wrong — is
+          // not a sub-panel and keeps the `px-3` every Notice keeps at every
+          // width. A STRUCTURAL grey or brand fill (a nested panel that is a
+          // surface, not a message) is a sub-panel and gives its inline gutter up
+          // like everything else. The de-card rule is deliberately NOT taught to
+          // spare anything that paints a fill: that would resurrect a gutter on
+          // every structural inset and undo the left-edge dividend for a problem
+          // two surfaces had.
+          //
+          // This one stays hand-rolled rather than becoming a `<Notice>`: it is
+          // one of the six files that import NOTICE_TONE directly, and that
+          // divergence is #3899's to close, not this change's. Desktop is
+          // untouched either way: the tier emits only inside `max-sm:`.
           <div
             className={`space-y-3 rounded-lg border p-3 ${NOTICE_TONE.rose}`}
           >

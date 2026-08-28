@@ -449,7 +449,27 @@ test("#3673 the ledger's rows reclaim the same line", async ({ page }) => {
 // (a tone REMOVED from the export while an entry here still names it).
 type ToneSurface =
   | { route: string; locator: string; what: string; expand?: string }
-  | { unreachable: string };
+  // `offPrimitive` is what turns "I checked and there is none" from prose into an
+  // assertion, in BOTH directions. Each entry is a read-path route where the tone
+  // demonstrably renders but never through Notice or FindingCard:
+  //   `arrived`  — a marker proving the route rendered. An absence assertion goes
+  //     green the instant a page 404s or a `<main>` never arrives, which is the
+  //     fail-open this file refuses to accept anywhere else.
+  //   `open`/`settled` — the launcher to click and the panel to wait for. An
+  //     absence behind a closed door is not an absence.
+  //   `block`    — a selector for the tone's own hand-rolled box. Asserted
+  //     PRESENT, which is what stops the marker check below from passing because
+  //     there was nothing there to mark.
+  | {
+      unreachable: string;
+      offPrimitive?: readonly {
+        route: string;
+        arrived: string;
+        open: string;
+        settled: string;
+        block: string;
+      }[];
+    };
 
 const TONE_SURFACES: Record<NoticeTone, ToneSurface> = {
   // SAFETY — a nutrient over its upper limit.
@@ -498,9 +518,45 @@ const TONE_SURFACES: Record<NoticeTone, ToneSurface> = {
   // write" reason this entry used to give was wrong; they are unreachable because
   // the shared seed produces no suggestion for either. That half is a fact about
   // the SEED, stated here so a seed change cannot falsify this row silently.
+  // NOT "NOTHING RENDERS IT" — "NOTHING RENDERS IT THROUGH THE PRIMITIVE", and
+  // the distinction is the whole entry. This row used to say emerald was only a
+  // transient success after a write; then it said the two read-path suggestion
+  // blocks exist but the shared seed produces none of them. BOTH were false, and
+  // the second was inherited from an adversarial review that had asserted it.
+  // Measured at 390px on the shared seed: /nutrition?tab=supplements renders TWO
+  // curated supplement suggestions and /nutrition renders food suggestions, each
+  // an emerald-tinted `rounded-lg border` box — `bg rgb(216, 233, 207)`, border
+  // 1px, radius 8px — and every one of them has `data-notice === null`.
+  //
+  // So the tone is reachable and the NOTICE-FAMILY SHAPE is not. Both call sites
+  // are among the six files that hand-roll NOTICE_TONE without going through
+  // Notice or FindingCard, so there is no `data-notice="emerald"` surface for the
+  // loudness comparison to read. That reason does not rest on the seed, which is
+  // why it replaced one that did — and the probe below asserts both of its halves,
+  // so it goes red if the blocks disappear AND if they ever gain the marker. The
+  // second is the good failure: it means emerald has become reachable through the
+  // primitive and belongs above as a row with a real surface.
   emerald: {
     unreachable:
-      "every call site is either a transient success after a write (this file is read-only, #868) or a suggestion block — CuratedSupplementSuggestions / FoodSuggestions, both server-rendered on read paths — that the shared seed produces none of",
+      "renders on read paths but never THROUGH the primitive: CuratedSupplementSuggestions and FoodSuggestions both paint NOTICE_TONE.emerald on the shared seed, and both hand-roll it, so no emerald surface carries data-notice; every emerald that does go through Notice is a transient success after a write, and this file is read-only (#868)",
+    offPrimitive: [
+      {
+        route: "/nutrition?tab=supplements",
+        arrived: "supplement-workspace",
+        open: "supplement-suggestions-badge",
+        settled: "supplement-suggestions-panel",
+        block: '[data-testid^="curated-supplement-suggestion-"]',
+      },
+      {
+        route: "/nutrition",
+        arrived: "food-log-shell",
+        open: "nutrition-suggestions-summary",
+        settled: "nutrition-suggestions-panel",
+        // `add` is the emerald direction; a `reduce` suggestion takes the amber
+        // tint from the same map, and would prove nothing about this row.
+        block: '[data-testid^="food-suggestion-"][data-direction="add"]',
+      },
+    ],
   },
   // I CHECKED, AND NOTHING RENDERS THIS. Exported by NOTICE_TONE and no call site
   // in app/ or components/ passes it: `git grep 'NOTICE_TONE.sky'` and
@@ -528,6 +584,45 @@ async function openDisclosure(
   if (!(await details.evaluate((node) => (node as HTMLDetailsElement).open))) {
     await details.locator("summary").click();
   }
+}
+
+// The unreachable rows' own evidence. A tone this table reports as a NEGATIVE is
+// the one shape nothing else in the file measures, so the claim rests entirely on
+// the sentence beside it — and a sentence about the seed stops being true silently
+// when the seed changes. Three separate cases of a confident sentence outliving its
+// truth turned up in one day on this PR alone; two lines of assertion is the
+// inoculation.
+const OFF_PRIMITIVE_PROBES = (
+  Object.entries(TONE_SURFACES) as [NoticeTone, ToneSurface][]
+).flatMap(([tone, surface]) =>
+  "offPrimitive" in surface && surface.offPrimitive
+    ? surface.offPrimitive.map((probe) => [tone, probe] as const)
+    : []
+);
+
+for (const [tone, probe] of OFF_PRIMITIVE_PROBES) {
+  test(`#3897 the ${tone} row's reason is checkable on ${probe.route}`, async ({
+    page,
+  }) => {
+    test.slow();
+    await page.goto(probe.route);
+    // The route ARRIVED — without this, everything below is satisfied by a 404, a
+    // redirect, or a `<main>` that never rendered.
+    await expect(page.getByTestId(probe.arrived)).toBeVisible();
+    await page.getByTestId(probe.open).click();
+    await expect(page.getByTestId(probe.settled)).toBeVisible();
+
+    // THE TONE DOES RENDER HERE. Asserted first and deliberately: it is the
+    // premise of the row's reason, and without it the marker check below is a
+    // green that could never turn red — it would be counting markers on a page
+    // that had nothing to mark.
+    expect(await page.locator(probe.block).count()).toBeGreaterThan(0);
+
+    // …AND NONE OF IT GOES THROUGH THE PRIMITIVE, which is the reason itself. The
+    // day one of these becomes a real `<Notice>`, this fails — and the answer is
+    // to promote the tone to a reachable row above, not to soften this line.
+    await expect(page.locator(`[data-notice="${tone}"]`)).toHaveCount(0);
+  });
 }
 
 test("#3673 the tone table describes exactly the tones the primitive exports", () => {
