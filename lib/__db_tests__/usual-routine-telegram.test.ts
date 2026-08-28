@@ -842,8 +842,9 @@ describe("a tap sweeps the profile's other live messages (#3933)", () => {
     const doseA = mkDose(itemA);
     const date = today(sp.profileId);
     const a = mintUsualRoutineAttachment(sp.profileId, "Morning", date)!;
-    const reminder = buildIntakeReminderForSlots(sp.profileId, ["Morning"])!
-      .message;
+    const reminder = buildIntakeReminderForSlots(sp.profileId, [
+      "Morning",
+    ])!.message;
     const nudge = buildFoodNudge(sp.profileId, "Morning", date)!;
     const hosted = carrier === "dose" ? reminder : nudge;
     const decorated = attachUsualRoutine(hosted, a)!;
@@ -927,7 +928,7 @@ describe("a tap sweeps the profile's other live messages (#3933)", () => {
     // The dose is confirmed in the APP, so the live reminder is genuinely stale and the
     // sweep has real work waiting — without this the assertion below would pass on an
     // empty profile and prove nothing.
-    markDoseTaken(sp.profileId, doseA, itemA, date, "web");
+    markDoseTaken(sp.profileId, doseA, itemA, date, "dashboard-hero");
     editTextMock.mockClear();
     editMarkupMock.mockClear();
     // A forged offer id: unreadable, so the handler answers OUTDATED and writes nothing.
@@ -957,7 +958,7 @@ describe("a tap sweeps the profile's other live messages (#3933)", () => {
     const { sp, date, itemA, doseA } = setupHosts("TG3933D", "food");
     // BOTH messages go stale, by writes neither of them made: the reminder still offers
     // a dose confirmed in the app, the nudge still counts a serving short.
-    markDoseTaken(sp.profileId, doseA, itemA, date, "web");
+    markDoseTaken(sp.profileId, doseA, itemA, date, "dashboard-hero");
     tap(sp.profileId, "fermented", date, "08:00:00");
     editTextMock.mockClear();
     editMarkupMock.mockClear();

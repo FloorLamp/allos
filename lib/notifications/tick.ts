@@ -1064,6 +1064,10 @@ export async function tickProfile(
   // not notify on an edit, so no new interruption is spent. A steady state performs zero
   // API calls. Never allowed to fail the tick: a message that keeps a stale button for
   // another hour is bad, but a reconcile error that stops a medication reminder is worse.
+  //
+  // THE TICK IS NO LONGER THE ONLY TRIGGER (#3933). A chat TAP now runs the same sweep
+  // as it returns, so the hour above is the wait an APP write still pays, not a chat
+  // one. The failure isolation is what the tap copied; the cadence here is unchanged.
   try {
     const rc = await reconcileProfileMessages(profileId);
     if (
