@@ -21,7 +21,7 @@ import { getIntakeItems } from "./intake";
 import { getIntakeDoses } from "./intake/schedule";
 import { getSkippedDoseIds, getTakenDoseIds } from "./intake/adherence";
 import { getEffectiveActiveSituations } from "./derived-situations";
-import { doseDueOn, timeBucket } from "../intake-schedule";
+import { doseDueOn, timeBucket, type TimeBucket } from "../intake-schedule";
 import { formatMedicationDoseProduct } from "../medication-dose-format";
 import type { FoodSlot } from "../food-slot";
 import {
@@ -60,6 +60,27 @@ export function getPendingRoutineDoses(
   window: FoodSlot,
   date: string
 ): UsualRoutineDose[] {
+  return pendingDayDoses(profileId, date).filter((d) => d.bucket === window);
+}
+
+// One unresolved dose plus the bucket it was DECLARED in. The bucket is carried
+// rather than re-derived by the reader: `timeBucket` reads free text, and a surface
+// that grouped by its own second reading of `time_of_day` could file a dose under a
+// heading the offer above never used.
+export interface PendingDayDose extends UsualRoutineDose {
+  bucket: TimeBucket;
+}
+
+// EVERY dose `date` still owes, across all five buckets (#3936) — the whole-day set
+// the window-scoped offer above is a filter over, so the recent-past catch-up view
+// and the composed one-tap can never disagree about what a day still owes.
+//
+// The four memberships are the ones documented above; only the window filter moves
+// out. `date` is a profile-LOCAL day and every read below is scoped by `profileId`.
+export function pendingDayDoses(
+  profileId: number,
+  date: string
+): PendingDayDose[] {
   const items = getIntakeItems(profileId).filter((s) => s.active);
   if (items.length === 0) return [];
   const byId = new Map(items.map((s) => [s.id, s]));
@@ -74,14 +95,14 @@ export function getPendingRoutineDoses(
     activeSituations: getEffectiveActiveSituations(profileId, date),
     predictedWorkoutDay: isPredictedWorkoutDay(profileId, date),
   };
-  const out: UsualRoutineDose[] = [];
+  const out: PendingDayDose[] = [];
   for (const dose of getIntakeDoses(profileId)) {
     const item = byId.get(dose.item_id);
     if (!item) continue;
-    if (timeBucket(dose.time_of_day) !== window) continue;
     if (taken.has(dose.id) || skipped.has(dose.id)) continue;
     if (!doseDueOn(item, dose, ctx)) continue;
     out.push({
+      bucket: timeBucket(dose.time_of_day),
       doseId: dose.id,
       itemId: item.id,
       name: item.name,

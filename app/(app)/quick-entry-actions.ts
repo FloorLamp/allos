@@ -45,6 +45,13 @@ import {
   type TrackedPractice,
 } from "@/lib/queries";
 import { MOOD_LOG_DATE_WINDOW_DAYS } from "@/lib/mood";
+import { doseLogDays } from "@/lib/dose-log-window";
+import { TIME_BUCKETS, type TimeBucket } from "@/lib/intake-schedule";
+import { formatWeekdayDate } from "@/lib/format-date";
+import {
+  pendingDayDoses,
+  type PendingDayDose,
+} from "@/lib/queries/usual-routine";
 import { upcomingDueText } from "@/lib/upcoming";
 import { getDisplayFormatPrefs } from "@/lib/settings/display";
 import type { FoodGroup } from "@/lib/food-groups";
@@ -101,6 +108,29 @@ export interface QuickEntryDose {
   dueText: string;
 }
 
+// One recent-past day the dose sheet can switch to, with what it still owes grouped
+// by the bucket each dose was DECLARED in. A past day is NOT filtered by arrived
+// slot — every bucket of a closed day has arrived — so this is the day's whole
+// unresolved set, which is also exactly what the per-bucket bulk row writes.
+export interface QuickEntryPastDay {
+  date: string;
+  // "Yesterday", or the weekday+date in the reader's own format prefs.
+  label: string;
+  slots: {
+    bucket: TimeBucket;
+    doses: QuickEntryPastDose[];
+  }[];
+}
+
+// A past day's unresolved dose. `stack` (#3098) feeds the shared label compression
+// the bulk row promises with; nothing here is a second dueness derivation.
+export interface QuickEntryPastDose {
+  doseId: number;
+  name: string;
+  detail: string | null;
+  stack: string | null;
+}
+
 export type QuickEntryData =
   | {
       // ONE combined form since #1486 (weight + vitals + a minor's growth fields),
@@ -154,7 +184,22 @@ export type QuickEntryData =
       // narrower affordance than the page it opened over.
       eatingTimeOptions: EatingTimeOption[];
     }
-  | { form: "dose"; doses: QuickEntryDose[] }
+  | {
+      form: "dose";
+      // The acting profile's today (YYYY-MM-DD) — the day the switcher opens on and
+      // the anchor its other two days are shifted from.
+      today: string;
+      // TODAY's offer, unchanged: the arrived-slot due-now slice. An evening dose is
+      // still not "due right now" in the morning.
+      doses: QuickEntryDose[];
+      // The recent-past days the sheet may switch to (#3936), newest first — exactly
+      // `doseLogDays(today)` minus today, so the switcher offers precisely the window
+      // the write cores accept. A day with nothing left to log is still LISTED (with
+      // an empty `slots`): the switcher's job is to say what the window is, and a day
+      // that silently disappeared would read as "there is nothing back there" when
+      // the truth is "that day is already settled".
+      pastDays: QuickEntryPastDay[];
+    }
   | {
       // The tracked practices, each with the standing the shared card shows (#1633).
       // Plain rows, not a second opinion: they come from the same weekly-progress
@@ -433,6 +478,7 @@ export async function loadQuickEntry(
   // "due right now" in the morning while Household/Upcoming retain their honest
   // whole-day view.
   const nowHhmm = zonedDateParts(getTimezone(profile.id), clockNow()).hhmm;
+  const formatPrefs = getDisplayFormatPrefs(login.id);
   const doses = collectDueDosesNow(profile.id, date, nowHhmm).map((item) => ({
     doseId: item.doseId!,
     title: item.title,
@@ -440,10 +486,38 @@ export async function loadQuickEntry(
     // Every dose here is due TODAY, so the band-aware fallback (#2579-B) never
     // reaches its calendar-date arm — the prefs are passed because a formatter that
     // CAN render a date is called with the reader's shape, not because this one does.
-    dueText: upcomingDueText(item, date, getDisplayFormatPrefs(login.id)),
+    dueText: upcomingDueText(item, date, formatPrefs),
   }));
-  if (doses.length === 0) {
+  // The recent past (#3936). `doseLogDays` reads DOSE_LOG_DATE_WINDOW_DAYS, the same
+  // constant the write cores gate on, so the offer and the gate cannot drift; `date`
+  // is already the profile-LOCAL today, so each shifted day is a profile-local day.
+  const pastDays = doseLogDays(date)
+    .slice(1)
+    .map((day, back) => ({
+      date: day,
+      label: back === 0 ? "Yesterday" : formatWeekdayDate(day, formatPrefs),
+      slots: groupDosesByBucket(pendingDayDoses(profile.id, day)),
+    }));
+  if (doses.length === 0 && pastDays.every((day) => day.slots.length === 0)) {
     return { form: "unavailable", message: "No doses are due right now." };
   }
-  return { form: "dose", doses };
+  return { form: "dose", today: date, doses, pastDays };
+}
+
+// A day's unresolved doses in declared-bucket order, empty buckets dropped. The order
+// is TIME_BUCKETS' own, so a day reads down the clock the way the schedule does.
+function groupDosesByBucket(
+  pending: readonly PendingDayDose[]
+): QuickEntryPastDay["slots"] {
+  return TIME_BUCKETS.map((bucket) => ({
+    bucket,
+    doses: pending
+      .filter((dose) => dose.bucket === bucket)
+      .map((dose) => ({
+        doseId: dose.doseId,
+        name: dose.name,
+        detail: dose.detail,
+        stack: dose.stack ?? null,
+      })),
+  })).filter((slot) => slot.doses.length > 0);
 }

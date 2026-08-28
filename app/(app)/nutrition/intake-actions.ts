@@ -30,6 +30,10 @@ import {
   // The ONE intake_item_logs resolution core (#2039) — this action module holds no
   // dose-ledger SQL of its own.
   setDoseStatusCore,
+  // The scheduled-dose resolution pair the Telegram tap and the offline replay
+  // already write dated rows through (#3936).
+  markDoseTaken,
+  markDoseSkipped,
   // The dose-schedule lifecycle core (#2131) — this action module holds no
   // retire/version SQL of its own.
   recordScheduleVersion,
@@ -101,7 +105,8 @@ import {
   type DoseStatusTarget,
   type FormResult,
 } from "@/lib/types";
-import type { HistoricalDoseOutcome } from "@/lib/types";
+import type { DoseTakenOutcome, HistoricalDoseOutcome } from "@/lib/types";
+import { pendingDayDoses } from "@/lib/queries/usual-routine";
 import { historicalDoseErrorMessage } from "@/lib/historical-dose-error";
 import type {
   FoodTiming,
@@ -1320,6 +1325,78 @@ export async function setDoseStatus(formData: FormData): Promise<FormResult> {
   );
   revalidateIntake();
   return doseStatusResult(outcome);
+}
+
+// ── Recent-past dose catch-up (#3936) ───────────────────────────────────────────
+//
+// One dated resolution for a set of scheduled doses, behind the quick-log sheet's day
+// switcher. The switcher offers exactly `doseLogDays(today)` — the past half of
+// DOSE_LOG_DATE_WINDOW_DAYS — and this action adds NO second opinion about that
+// window: the day travels to `markDoseTaken` / `markDoseSkipped`, which already gate
+// it (`isDoseDateAccepted`), so an out-of-window day comes back as `stale-dose` from
+// the one predicate the Telegram tap and the offline replay also ride.
+//
+// ONE ACTION FOR THE ROW AND THE STACK, because a single-dose tap IS a stack of one:
+// both name a list of dose ids that is an UPPER BOUND on the write, never an
+// instruction. `pendingDayDoses` is re-run here against fresh state and the named ids
+// are intersected with it, so a forged id, another profile's dose, a retired dose, a
+// paused item or a dose already resolved from the phone writes nothing — the
+// `logUsualRoutineCore` contract (#2458), one day further back. Every survivor still
+// goes through the stateful core and can refuse on its own terms, and the answer
+// carries each typed outcome unflattened so the sheet reports what was written rather
+// than what was asked for.
+export type DayDoseResolution = {
+  doseId: number;
+  name: string;
+  outcome: DoseTakenOutcome;
+};
+
+export type ResolveDayDosesResult =
+  | { ok: false; error: string }
+  | { ok: true; date: string; doses: DayDoseResolution[] };
+
+export async function resolveDayDoses(
+  formData: FormData
+): Promise<ResolveDayDosesResult> {
+  const { profile } = await requireWriteAccess();
+  const date = String(formData.get("date") ?? "");
+  const status = String(formData.get("status") ?? "");
+  if (!isRealIsoDate(date) || (status !== "taken" && status !== "skipped")) {
+    return { ok: false, error: "Couldn't log those doses." };
+  }
+  const named = new Set(
+    String(formData.get("dose_ids") ?? "")
+      .split(",")
+      .map(Number)
+      .filter((id) => Number.isInteger(id) && id > 0)
+  );
+  // The quick-log sheet is the only mounting today; the field says so rather than the
+  // action assuming it (#3087).
+  const loggedVia = parseWebOrigin(formData.get(LOGGED_VIA_FIELD), "page");
+  const doses = pendingDayDoses(profile.id, date)
+    .filter((dose) => named.has(dose.doseId))
+    .map((dose) => ({
+      doseId: dose.doseId,
+      name: dose.name,
+      outcome:
+        status === "taken"
+          ? markDoseTaken(
+              profile.id,
+              dose.doseId,
+              dose.itemId,
+              date,
+              loggedVia
+            )
+          : markDoseSkipped(
+              profile.id,
+              dose.doseId,
+              dose.itemId,
+              date,
+              loggedVia
+            ),
+    }));
+  revalidateIntake();
+  return { ok: true, date, doses };
 }
 
 // ── Historical dose correction (#1933) ──────────────────────────────────────────

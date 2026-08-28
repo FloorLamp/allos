@@ -155,6 +155,18 @@ export const ONE_TAP_AFFORDANCES = {
     feedback: "outcome-toast",
     why: "The missed-day offer (#3674): the row names one (dose, past day) and the backfill core is idempotent on exactly that pair — a scheduled dose already resolved answers `already-taken` or `already-skipped` rather than writing a second administration. A separate id from `dose-status`, which resolves TODAY's dose from the row it stands on; this one asserts a day that has already closed, and folding the two would hide the dated write from every census that reads this registry.",
   },
+  "dose-day": {
+    repeat: "idempotent",
+    expectedInterval: "none",
+    feedback: "outcome-toast",
+    why: "The recent-past day switcher's single dated tap (#3936): one (dose, day) inside DOSE_LOG_DATE_WINDOW_DAYS, resolved through the SAME scheduled cores markDoseTaken/markDoseSkipped a Telegram tap uses, which are idempotent on exactly that pair and refuse an out-of-window day. A separate id from `dose-status` for `dose-backfill`'s reason — this one names a day that may already have closed — and a separate id from `dose-backfill` because that offer writes the audited historical core and is online-only, while this is the ordinary scheduled resolution and queues.",
+  },
+  "dose-day-stack": {
+    repeat: "idempotent",
+    expectedInterval: "none",
+    feedback: "outcome-toast",
+    why: "The same sheet's per-bucket bulk row (#3936): the label names every dose it will write and the action re-derives that bucket's still-unresolved set from fresh state, writing only the intersection — so a second or stale tap finds an empty set and answers `nothing-to-log` rather than double-logging a stack. A separate id from `dose-day` because its tap moves on-hand supply for N items at once, which is the property `routine-usual` was split out to keep visible to a census.",
+  },
   "practice-session": {
     repeat: "cadenced",
     expectedInterval: "day",

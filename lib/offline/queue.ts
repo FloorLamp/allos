@@ -157,6 +157,15 @@ export const OFFLINE_QUEUE_COVERAGE = {
   "dose-backfill": arguedExclusion(
     "Online-only, and nothing that was reachable offline becomes unreachable: the form this offer sits above has never queued either, so the whole backfill door keeps the behaviour it has always had. The offer itself is rendered from a server-computed adherence strip — the day is offered BECAUSE the server says nothing is logged there — and a capture would carry that justification into a replay that cannot recheck it. The core would still refuse honestly (idempotent per dose and date), so this is not the destructive class; it is a dated assertion about a closed day, which is not the `dose` flow's set-to-taken-today shape, and inventing a dated flow for it belongs to whoever takes offline backfill on purpose."
   ),
+  // #3936: the day switcher's single dated tap rides the SAME two flows the tri-state
+  // does. Nothing new is needed for it — a queued entry already carries its own date
+  // and the replay already refuses one that has aged out of the window
+  // (isDoseDateAccepted in lib/offline/writes.ts) — so the only thing that changes
+  // offline is which day the capture names.
+  "dose-day": "dose",
+  "dose-day-stack": arguedExclusion(
+    "Online-only, and for `routine-usual`'s dose-half reason narrowed to one bucket (#3936): the row is rendered from server state — these are the doses that bucket still owes on that day — and its write core re-derives the same set to write only the intersection. A capture would carry a justification that expired, and its replay decrements on-hand supply for every item in the stack at once, which is stock arithmetic against totals that may have moved (the excluded `medication-refill` class) rather than a capture of raw fields. Nothing becomes unreachable offline: every single-dose tap in the same list queues as `dose-day` above, so only the shortcut needs a connection."
+  ),
   "period-lifecycle": arguedExclusion(
     "A lifecycle write rendered from server state (#1892): the offer's verb is only valid against the state that produced it, and the write core's typed refusals need fresh state to refuse honestly. Replaying start/end against state that moved is the destructive-overwrite class the queue's scope comment excludes."
   ),
