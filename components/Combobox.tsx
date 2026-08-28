@@ -423,12 +423,8 @@ export default function Combobox({
           titleAppearance
             ? `input relative z-10 w-auto! max-w-full rounded-none! border-0! bg-transparent! px-0! py-1! pr-7! text-2xl leading-tight font-semibold tracking-tight text-transparent! shadow-none! caret-brand-600 focus:border-transparent! focus:ring-0! md:text-3xl dark:text-transparent! dark:caret-brand-400 ${inputClassName}`
             : `input pl-9 ${inputClassName} ${
-                badge
-                  ? value && !disabled
-                    ? "pr-36 max-sm:pr-37"
-                    : "pr-28"
-                  : ""
-              } ${value && !disabled && !badge ? "pr-10 max-sm:pr-11" : ""} ${
+                badge ? (value && !disabled ? "pr-37 sm:pr-36" : "pr-28") : ""
+              } ${value && !disabled && !badge ? "pr-11 sm:pr-10" : ""} ${
                 invalid
                   ? "border-rose-300 focus:border-rose-400 focus:ring-rose-400 dark:border-rose-800 dark:focus:border-rose-700 dark:focus:ring-rose-700"
                   : ""
@@ -438,7 +434,7 @@ export default function Combobox({
       {badge && (
         <span
           className={`pointer-events-none absolute inset-y-0 flex items-center ${
-            value && !disabled ? "right-10 max-sm:right-11" : "right-2"
+            value && !disabled ? "right-11 sm:right-10" : "right-2"
           }`}
         >
           {badge}
@@ -459,7 +455,7 @@ export default function Combobox({
           // the clear button a SECOND match for getByLabel(field) / screen-reader field
           // lookups now that the input carries an aria-label (#1177).
           aria-label="Clear"
-          className="absolute inset-y-0 right-0 z-10 flex w-10 items-center justify-center rounded-r-lg text-slate-500 max-sm:w-11 transition hover:bg-slate-100 hover:text-slate-600 focus:outline-hidden focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-brand-500 dark:text-slate-400 dark:hover:bg-ink-800 dark:hover:text-slate-300"
+          className="absolute inset-y-0 right-0 z-10 flex w-11 items-center justify-center rounded-r-lg text-slate-500 transition sm:w-10 hover:bg-slate-100 hover:text-slate-600 focus:outline-hidden focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-brand-500 dark:text-slate-400 dark:hover:bg-ink-800 dark:hover:text-slate-300"
           onMouseDown={(event) => event.preventDefault()}
           onClick={() => {
             onChange("");
@@ -541,7 +537,7 @@ export default function Combobox({
                       }}
                       onMouseEnter={() => setHighlight(i)}
                       data-testid="combobox-option"
-                      className={`flex w-full cursor-pointer items-center justify-between gap-2 px-3 py-2 text-left text-sm max-sm:min-h-11 ${
+                      className={`flex w-full cursor-pointer items-center justify-between gap-2 px-3 py-2 text-left text-sm min-h-11 sm:min-h-0 ${
                         i === highlight
                           ? highlightCls
                           : "text-slate-700 hover:bg-slate-50 dark:text-slate-200 dark:hover:bg-ink-800"
@@ -574,7 +570,7 @@ export default function Combobox({
                     pick(value.trim());
                   }}
                   onMouseEnter={() => setHighlight(filtered.length)}
-                  className={`flex w-full items-center px-3 py-2 text-left text-sm max-sm:min-h-11 ${
+                  className={`flex w-full items-center px-3 py-2 text-left text-sm min-h-11 sm:min-h-0 ${
                     highlight === filtered.length
                       ? highlightCls
                       : "text-slate-500 hover:bg-slate-50 dark:text-slate-400 dark:hover:bg-ink-800"

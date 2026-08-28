@@ -90,7 +90,7 @@ export default function ActivityFormHeader({
               value={title}
               onChange={(event) => onTitleChange(event.target.value)}
               placeholder={effectiveTitle}
-              className="h-8 w-full min-w-0 rounded-md border-0 bg-transparent py-0 pl-1 pr-8 text-xl leading-8 font-bold text-slate-900 outline-hidden max-sm:min-h-11 placeholder:text-slate-400 hover:bg-white/45 focus:bg-white/65 focus:ring-2 focus:ring-brand-500/40 dark:text-slate-100 dark:placeholder:text-slate-600 dark:hover:bg-white/5 dark:focus:bg-white/5"
+              className="h-8 w-full min-w-0 rounded-md border-0 bg-transparent py-0 pl-1 pr-8 text-xl leading-8 font-bold text-slate-900 min-h-11 outline-hidden sm:min-h-0 placeholder:text-slate-400 hover:bg-white/45 focus:bg-white/65 focus:ring-2 focus:ring-brand-500/40 dark:text-slate-100 dark:placeholder:text-slate-600 dark:hover:bg-white/5 dark:focus:bg-white/5"
             />
             <IconPencil
               aria-hidden
