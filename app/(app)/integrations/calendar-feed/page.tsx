@@ -29,6 +29,7 @@ import { requestNowMs } from "@/lib/request-now";
 // shared with Health Connect, Strava and Withings (#2959).
 import { externalBaseUrl } from "@/lib/external-url-server";
 import BackLink from "@/components/BackLink";
+import SetupStepsCard from "@/components/integrations/SetupStepsCard";
 
 export const dynamic = "force-dynamic";
 
@@ -152,32 +153,32 @@ export default async function CalendarFeedPage() {
 
         <CalendarFeedPreview rows={previewRows} detail={feed.detail} />
 
-        <div className="card space-y-3 text-sm text-slate-600 dark:text-slate-300">
-          <h2 className="font-semibold text-slate-800 dark:text-slate-100">
-            How to subscribe
-          </h2>
-          <ol className="list-decimal space-y-2 pl-5">
-            <li>Enable the feed above and copy the subscribe URL.</li>
-            <li>
+        <SetupStepsCard
+          title="How to subscribe"
+          steps={[
+            <>Enable the feed above and copy the subscribe URL.</>,
+            <>
               In <strong>Google Calendar</strong> → Other calendars →{" "}
               <em>From URL</em>, or <strong>Apple Calendar</strong> → File →{" "}
               <em>New Calendar Subscription</em>, or <strong>Outlook</strong> →
               Add calendar → <em>Subscribe from web</em> — paste the URL.
-            </li>
-            <li>
+            </>,
+            <>
               Your scheduled medical appointments appear with a 1-day and 1-hour
               reminder each. Cancelled visits propagate as cancellations; the
               calendar app refreshes on its own schedule (often every few
               hours).
-            </li>
-          </ol>
-          <p className="text-xs text-slate-500 dark:text-slate-400">
-            Keep this link private — anyone with it can see this profile&apos;s
-            appointment schedule. Regenerate it at any time to revoke the old
-            link. By default the feed shows only &ldquo;Medical
-            appointment&rdquo; with no sourceId or reason.
-          </p>
-        </div>
+            </>,
+          ]}
+          note={
+            <>
+              Keep this link private — anyone with it can see this
+              profile&apos;s appointment schedule. Regenerate it at any time to
+              revoke the old link. By default the feed shows only &ldquo;Medical
+              appointment&rdquo; with no sourceId or reason.
+            </>
+          }
+        />
 
         <div className="mt-2 border-t border-black/5 pt-6 dark:border-white/5">
           <h2 className="mb-1 text-lg font-semibold text-slate-900 dark:text-slate-50">

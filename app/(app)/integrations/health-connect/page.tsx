@@ -26,6 +26,7 @@ import { appUrl } from "@/lib/external-url-server";
 import { getProfileAge } from "@/lib/settings";
 import { isTrainingRelevant } from "@/lib/life-stage";
 import BackLink from "@/components/BackLink";
+import SetupStepsCard from "@/components/integrations/SetupStepsCard";
 
 export const dynamic = "force-dynamic";
 
@@ -98,12 +99,10 @@ export default async function HealthConnectPage() {
 
         {connected && (
           <>
-            <div className="card space-y-3 text-sm text-slate-600 dark:text-slate-300">
-              <h2 className="font-semibold text-slate-800 dark:text-slate-100">
-                Setup
-              </h2>
-              <ol className="list-decimal space-y-2 pl-5">
-                <li>
+            <SetupStepsCard
+              title="Setup"
+              steps={[
+                <>
                   Install{" "}
                   <a
                     href={def.docsUrl}
@@ -116,8 +115,8 @@ export default async function HealthConnectPage() {
                   on your Android phone (Android 14+, with Health Connect
                   installed) and grant it the health permissions you want to
                   sync.
-                </li>
-                <li>
+                </>,
+                <>
                   Add a webhook with the <strong>Endpoint URL</strong> above and
                   an{" "}
                   <code className="rounded-sm bg-slate-100 px-1 py-0.5 text-xs dark:bg-ink-800">
@@ -128,13 +127,13 @@ export default async function HealthConnectPage() {
                     Bearer &lt;token&gt;
                   </code>
                   .
-                </li>
-                <li>
+                </>,
+                <>
                   Choose a sync schedule (15–60 min interval and/or fixed
                   times). Each sync sends new records from a rolling 48-hour
                   window — re-sends are de-duplicated automatically.
-                </li>
-                <li>
+                </>,
+                <>
                   Tap <strong>Sync Now</strong> to test. Imported weight, body
                   fat, and resting HR appear under{" "}
                   <Link
@@ -151,24 +150,26 @@ export default async function HealthConnectPage() {
                     {trainingRelevant ? "Training history" : "Timeline"}
                   </Link>
                   .
-                </li>
-              </ol>
-              <p className="text-xs text-slate-500 dark:text-slate-400">
-                Steps, distance, calories, and heart-rate detail sync into Body
-                Metrics charts. Nutrition works the same way: enable Health
-                Connect sync in a food tracker (MyFitnessPal, Cronometer, Lose
-                It!, Yazio, …) and your logged macros land on{" "}
-                <Link
-                  href="/trends#body"
-                  className="text-brand-700 underline dark:text-brand-400"
-                >
-                  Trends → Nutrition → Macros
-                </Link>{" "}
-                — the supported path for food-log data, since those apps have no
-                usable direct API. Keep your token secret — anyone with it can
-                post data here.
-              </p>
-            </div>
+                </>,
+              ]}
+              note={
+                <>
+                  Steps, distance, calories, and heart-rate detail sync into
+                  Body Metrics charts. Nutrition works the same way: enable
+                  Health Connect sync in a food tracker (MyFitnessPal,
+                  Cronometer, Lose It!, Yazio, …) and your logged macros land on{" "}
+                  <Link
+                    href="/trends#body"
+                    className="text-brand-700 underline dark:text-brand-400"
+                  >
+                    Trends → Nutrition → Macros
+                  </Link>{" "}
+                  — the supported path for food-log data, since those apps have
+                  no usable direct API. Keep your token secret — anyone with it
+                  can post data here.
+                </>
+              }
+            />
 
             <div className="card">
               <IntegrationStatusHeader

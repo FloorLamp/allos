@@ -395,3 +395,147 @@ test("the ledger pages its rows, even on All time", async ({
     `of ${logged}`
   );
 });
+
+// Issue #3674 — "Log past dose" stops opening a blank form for a write the app has
+// already worked out. The adherence strip the card renders holds, dated, exactly the
+// days this item had a due dose and nothing logged; the control presents those days
+// as one-tap rows that post the SAME backfill action the form posts, with the form
+// itself behind "Another date…".
+test("the backfill offers the missed days the strip already computed (#3674)", async ({
+  page,
+}, testInfo) => {
+  const name = `Missed Days ${testInfo.repeatEachIndex}-${testInfo.retry}`;
+
+  await page.goto("/nutrition?tab=supplements");
+  await page.getByTestId("supplement-add-toggle").click();
+  const addDialog = page.getByRole("dialog", { name: "Add supplement" });
+  await addDialog.getByLabel("Name").fill(name);
+  const doseEditor = await openFact(page, "dose", addDialog);
+  await doseEditor.getByLabel("Amount").first().fill("250 mg"); // first-ok: the first (only) dose's Amount field in the scoped add modal
+  await doseEditor.getByLabel("Time of day").first().selectOption("Morning"); // first-ok: the first (only) dose's Time-of-day field in the scoped add modal
+  await closeEditor(page, addDialog);
+  await addDialog.getByRole("button", { name: "Add", exact: true }).click();
+  await expect(addDialog).toHaveCount(0);
+
+  // AN ITEM CREATED NOW HAS NO MISSED DAYS AT ALL — the #1442 lifetime clamp scores a
+  // day only against doses that already existed on it, which is the whole reason a
+  // cold start reads "no history" instead of 0%. So the fixture is the LIFETIME:
+  // backdate it four days and log nothing, and the strip reads those four days as
+  // lapses. Four rather than fourteen keeps this item's footprint small on a shared
+  // profile, and keeps the offer list short enough to count.
+  const MISSED_DAYS = 4;
+  const anchor = frozenNow().toISOString().slice(0, 10);
+  const { zone } = pinnedTimezone(frozenNow().toISOString());
+  const born = zonedWallTimeToUtc(
+    zone,
+    shiftDateStr(anchor, -MISSED_DAYS),
+    "07:00"
+  )!;
+  const bornSql = born.toISOString().slice(0, 19).replace("T", " ");
+  const handle = new Database(workerDbPath());
+  try {
+    handle.pragma("busy_timeout = 5000");
+    const item = handle
+      .prepare("SELECT id FROM intake_items WHERE name = ?")
+      .get(name) as { id: number };
+    handle
+      .prepare("UPDATE intake_items SET created_at = ? WHERE id = ?")
+      .run(bornSql, item.id);
+    handle
+      .prepare("UPDATE intake_item_doses SET created_at = ? WHERE item_id = ?")
+      .run(bornSql, item.id);
+  } finally {
+    handle.close();
+  }
+
+  await page.goto("/nutrition?tab=supplements");
+  const row = page
+    .locator("section")
+    .filter({ has: page.getByRole("heading", { name: "Morning" }) })
+    .locator("div.card")
+    .filter({ hasText: name });
+  await hydratedClick(
+    page,
+    row.getByRole("button", { name: "Supplement actions" })
+  );
+  await page.getByRole("menuitem", { name: "Dose history" }).click();
+  const panel = row.getByTestId("supplement-dose-history-panel");
+  const control = panel.getByRole("button", { name: "Log past dose" });
+
+  // ── The offer, not a form ──────────────────────────────────────────────────
+  await hydratedClick(page, control);
+  const offers = panel.getByTestId("dose-backfill-offer");
+  // Today is still in progress, so it is not among them: four elapsed lapses.
+  await expect(offers).toHaveCount(MISSED_DAYS);
+  await expect(panel.getByTestId("historical-dose-form")).toHaveCount(0);
+  // Newest first, and each row names EXACTLY what the tap will write. This dose's
+  // slot is the bucket word "Morning", which is not a clock and so cannot be
+  // written: the row therefore names the day and the amount and says nothing about
+  // a time, rather than printing "morning" over a write that records the default.
+  const newest = offers.first(); // first-ok: the offer list of a supplement this spec created and backdated itself; newest-first by construction, so this is yesterday
+  await expect(newest).toContainText("250 mg");
+  await expect(newest).not.toContainText("Morning");
+  // ONE identity: the control does not become "Cancel" because it is open.
+  await expect(control).toHaveText("Log past dose");
+  await expect(control).toHaveAttribute("aria-expanded", "true");
+
+  // ── The tap IS the write, through the form's own action ────────────────────
+  await settledClick(page, newest);
+  await expect(page.getByText(`Logged past dose of ${name}.`)).toBeVisible();
+  const history = panel.getByTestId("dose-history-row");
+  await expect(history).toHaveCount(1);
+  await expect(history).toContainText("250 mg");
+
+  // ...and the day it wrote is gone from the next offer, because the strip that
+  // produced the list now says the dose was taken. Nothing was re-derived to make
+  // that true — one computation, read twice.
+  await hydratedClick(page, control);
+  await expect(offers).toHaveCount(MISSED_DAYS - 1);
+
+  // ── "Another date…" holds the unchanged form ───────────────────────────────
+  await panel.getByTestId("dose-backfill-other").click();
+  await expect(panel.getByTestId("historical-dose-form")).toBeVisible();
+  await expect(control).toHaveText("Log past dose");
+
+  // ── ...and when the slot IS a clock, the row names it and writes it ────────
+  // The other arm of the same rule. Written straight to the dose row because the
+  // schedule editor offers the bucket words; what is under test is the OFFER's
+  // reading of stored slot text, not how the text got there.
+  const flip = new Database(workerDbPath());
+  try {
+    flip.pragma("busy_timeout = 5000");
+    flip
+      .prepare(
+        `UPDATE intake_item_doses SET time_of_day = '08:00'
+          WHERE item_id = (SELECT id FROM intake_items WHERE name = ?)`
+      )
+      .run(name);
+  } finally {
+    flip.close();
+  }
+  await page.goto("/nutrition?tab=supplements");
+  // The row LEFT the Morning section — a clock slot groups under its own window — so
+  // it is re-found by the name this spec owns rather than by where it used to sit.
+  const clockRow = page.locator("div.card").filter({ hasText: name });
+  await expect(clockRow).toHaveCount(1);
+  await hydratedClick(
+    page,
+    clockRow.getByRole("button", { name: "Supplement actions" })
+  );
+  await page.getByRole("menuitem", { name: "Dose history" }).click();
+  const clockPanel = clockRow.getByTestId("supplement-dose-history-panel");
+  await hydratedClick(
+    page,
+    clockPanel.getByRole("button", { name: "Log past dose" })
+  );
+  const clockOffer = clockPanel.getByTestId("dose-backfill-offer").first(); // first-ok: same spec-owned offer list, newest first
+  await expect(clockOffer).toContainText(/(?:8:00am|08:00)/);
+  await settledClick(page, clockOffer);
+  await expect(page.getByText(`Logged past dose of ${name}.`)).toBeVisible();
+  // The row the label promised: the dose's own slot clock, not the panel's default.
+  await expect(
+    clockPanel
+      .getByTestId("dose-history-row")
+      .filter({ hasText: /(?:8:00am|08:00)/ })
+  ).toHaveCount(1);
+});
