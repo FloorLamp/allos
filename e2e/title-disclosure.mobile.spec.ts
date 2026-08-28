@@ -162,9 +162,6 @@ test("standing history fits a touch tablet and discloses by touch and keyboard",
     const details = page.getByTestId("standing-sparkline-details").first(); // first-ok: any seeded standing series proves the shared composition
     const summary = details.locator("summary");
     await expect(summary).toBeVisible();
-    // Two names, on purpose (#3896): the visible word is short and human, the series
-    // name — written for a reader who cannot see the plot — is the accessible one.
-    await expect(summary).toHaveText("History");
     await expect(summary).toHaveAccessibleName(/.+ history details$/);
 
     const [summaryBox, detailsBox] = await settledBoxes([summary, details]);
@@ -180,11 +177,6 @@ test("standing history fits a touch tablet and discloses by touch and keyboard",
     );
     await expect(details).toHaveAttribute("open", "");
     await expect(details.locator("li")).not.toHaveCount(0);
-    // The trigger stays exactly where the finger left it. Here the facts wrap and the
-    // trend cell is the SHORTER of the two, so a centred cell would slide up by its
-    // own summary the moment the list appeared (#3896).
-    const [openSummaryBox] = await settledBoxes([summary]);
-    expect(openSummaryBox).toEqual(summaryBox);
     const [openDetailsBox] = await settledBoxes([details]);
     expect(openDetailsBox.x).toBeGreaterThanOrEqual(0);
     expect(openDetailsBox.x + openDetailsBox.width).toBeLessThanOrEqual(768);

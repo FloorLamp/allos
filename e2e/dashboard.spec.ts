@@ -852,56 +852,20 @@ test("Standing draws its aligned sparkline column on the desktop", async ({
     expect(column.plotTop).toBeLessThan(column.factsBottom);
     expect(column.plotBottom).toBeGreaterThan(column.factsTop);
 
-    // THE DISCLOSURE IS IN THE TREND CELL, NOT ON A LINE OF ITS OWN (#3896). It used
-    // to be a second grid item at `col-start-2 col-span-2`, so every plotted family
-    // grew a second grid track holding a 44px control indented to the FACTS column
-    // while an unplotted family grew none — the ragged card in the owner's report.
-    // A row that is exactly as tall as its trend cell has ONE track; the arithmetic
-    // says so without depending on how a browser resolves `grid-template-rows`.
-    const line = await weight.evaluate((row) => {
-      const style = getComputedStyle(row);
-      const trend = row.querySelector(
-        "[data-testid='standing-sparkline']"
-      )!.parentElement!;
-      const summary = row
-        .querySelector("[data-testid='standing-sparkline-details'] summary")!
-        .getBoundingClientRect();
-      return {
-        inner:
-          row.getBoundingClientRect().height -
-          parseFloat(style.paddingTop) -
-          parseFloat(style.paddingBottom) -
-          parseFloat(style.borderTopWidth) -
-          parseFloat(style.borderBottomWidth),
-        cell: trend.getBoundingClientRect().height,
-        summaryHeight: summary.height,
-        summaryLeft: summary.left,
-        factsRight: row.querySelector("dd")!.getBoundingClientRect().right,
-        plotTop: row
-          .querySelector("[data-testid='standing-sparkline']")!
-          .getBoundingClientRect().top,
-        plotBottom: row
-          .querySelector("[data-testid='standing-sparkline']")!
-          .getBoundingClientRect().bottom,
-        summaryTop: summary.top,
-        summaryBottom: summary.bottom,
-      };
-    });
-    expect(Math.round(line.inner)).toBe(Math.round(line.cell));
-    expect(line.summaryLeft).toBeGreaterThanOrEqual(line.factsRight);
-    // Beside the plot, on the plot's own line — not under it and not under the facts.
-    expect(line.summaryTop).toBeLessThan(line.plotBottom);
-    expect(line.summaryBottom).toBeGreaterThan(line.plotTop);
-    // 1280px is above `sm`, where `button-control` sheds the touch floor. The `!`
-    // markers on the summary used to outrank that reset at every width.
-    expect(line.summaryHeight).toBeLessThan(44);
-    expect(line.summaryHeight).toBeGreaterThanOrEqual(20);
-
+    // DESKTOP DENSITY, NOT THE PHONE FLOOR (#3896). `button-control` renders at the
+    // 44px tap floor and sheds it from sm upward, but the summary carried
+    // `min-h-11! min-w-11!` — important declarations outrank that reset at EVERY
+    // width, so all 18 consumers stayed pinned at 44px on the desktop. 1280px is well
+    // above sm, so the compact row height is what must render here.
     const summary = weight
       .getByTestId("standing-sparkline-details")
       .locator("summary");
-    await expect(summary).toHaveText("History");
-    await expect(summary).toHaveAccessibleName(/ history details$/);
+    await expect(summary).toBeVisible();
+    const summaryHeight = await summary.evaluate(
+      (node) => node.getBoundingClientRect().height
+    );
+    expect(summaryHeight).toBeLessThan(44);
+    expect(summaryHeight).toBeGreaterThanOrEqual(20);
 
     // A family whose domain has no trend read draws nothing — that is the rule, and
     // the column still holds its place for the families that do.

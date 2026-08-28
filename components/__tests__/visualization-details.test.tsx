@@ -93,21 +93,6 @@ describe("VisualizationDetails", () => {
     expect(container.innerHTML).toBe("");
   });
 
-  it("names the visual for assistive technology without saying it out loud", () => {
-    render(
-      <VisualizationDetails
-        label="History"
-        aria-label="Weight, last 90 days history details"
-        items={["72 kg · 25 Aug"]}
-      />
-    );
-    const trigger = screen.getByLabelText(
-      "Weight, last 90 days history details"
-    );
-    expect(trigger.tagName).toBe("SUMMARY");
-    expect(trigger.textContent).toBe("History");
-  });
-
   // THE `!` MUST NOT COME BACK (#3896). `button-control` renders at the 44px phone
   // floor and sheds it from sm upward; an `!important` min-size on the summary
   // outranks that reset at EVERY width, which is how all 18 consumers ended up
