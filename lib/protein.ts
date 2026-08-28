@@ -615,11 +615,8 @@ const UNLOGGED_FOODS_SENTENCE =
 // reading OVERRIDES the profile's own food log and quick-added grams (proteinIntake), so
 // what they entered here is not in the number either — which is what made this the one
 // basis where connecting a health app could LOWER the figure and remove every hedge from
-// it at the same time.
-//
-// Same discipline as its sibling: the LEDGER, not behaviour — it claims nothing about
-// how many meals anyone ate or synced, holds at every hour, and says "may", because a
-// fully-synced day with nothing logged here is at equality.
+// it at the same time. Same discipline as its sibling: the LEDGER, not behaviour, and
+// "may", because a fully-synced day with nothing logged here is at equality.
 const UNSYNCED_TRACKED_SENTENCE =
   "Only what your health app has sent so far is counted — what you log here isn't — so your real total may be higher.";
 
