@@ -95,7 +95,7 @@ const PRESENTATIONS = new Map<string, DashboardStandingPresentation>([
     DORMANT_BP.candidate.candidateId,
     {
       detail: "No blood pressure since Mar 2019",
-      href: "/vitals",
+      href: "/trends#body",
       actionLabel: "Log one",
       presence: "dormant",
     },
