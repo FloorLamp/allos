@@ -94,6 +94,11 @@ export default function SidebarLogButton({
         onClose={() => setOpen(false)}
         anchorRef={anchorRef}
         title="Log"
+        // The trigger says `aria-haspopup="dialog"`; this is what makes that true
+        // (#3905). The primitive moves focus into the panel and restores it to the
+        // button on close. Not `aria-modal`: the panel stays open across logs, so
+        // the page behind it is emphatically still in play.
+        role="dialog"
         panelId="sidebar-log-panel"
         testId="sidebar-log-panel"
         fallbackWidth={PANEL_WIDTH_PX}
