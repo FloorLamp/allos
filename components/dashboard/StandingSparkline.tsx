@@ -48,12 +48,20 @@ import VisualizationDetails from "@/components/VisualizationDetails";
 // The same rule #3235 enforces on EquipmentTrend, through the same `loneReading`
 // predicate, so a tile and a Standing row cannot draw the identical situation two ways.
 
-/** The plot box, in CSS pixels — 11rem × 2rem, so the viewBox renders ~1:1. */
-const WIDTH = 176;
+/** The trend column, in CSS pixels — the 11rem grid track this is placed in. */
+const TRACK = 176;
+/**
+ * The plot box, in CSS pixels. The track carries the history disclosure TOO, on the
+ * same line, so the plot takes the room the control does not (#3896) — a control on a
+ * line of its own is what made a plotted family stand a line taller than an unplotted
+ * one. 2rem tall, and the viewBox still renders ~1:1.
+ */
+const WIDTH = 104;
 const HEIGHT = 32;
 /** Room for the 2px stroke and the endpoint dot to sit fully inside the box. */
 const PAD = 4;
-/** The n = 1 state's box: the same width, plus a line for the caption it carries. */
+/** The n = 1 state's box: the whole track (it carries no disclosure), plus a line for
+ *  the caption. */
 const LONE_HEIGHT = 44;
 
 export interface StandingSparklineSeries {
@@ -115,7 +123,7 @@ export default function StandingSparkline({
         // while the plot is only a drawing. The shared component keeps its own type
         // size — a one-off smaller one here would be the micro-text the #794 guard
         // exists to stop, and the caption is the whole point of this state.
-        style={{ width: WIDTH, height: LONE_HEIGHT }}
+        style={{ width: TRACK, height: LONE_HEIGHT }}
       >
         <SingleReadingMark
           fill
@@ -169,15 +177,28 @@ export default function StandingSparkline({
     dense.length > 1 ? (WIDTH - PAD * 2) / (dense.length - 1) : WIDTH;
 
   return (
-    // ONE GRID ITEM, THE TREND CELL (#3896). The disclosure used to be a SECOND grid
-    // item at `col-start-2 col-span-2`, so it landed on a grid line of its own beneath
-    // the row and indented to the FACTS column: a plotted family stood a full line
-    // taller than an unplotted one, at an x nothing else in the card uses. It belongs
-    // under the plot it describes — where every other consumer of the shared
-    // disclosure already puts it — rather than under the facts it does not.
+    // ONE GRID ITEM, ONE LINE (#3896). The disclosure used to be a SECOND grid item at
+    // `col-start-2 col-span-2`, so it landed on a grid line of its own beneath the row
+    // and indented to the FACTS column: a plotted family stood a full line taller than
+    // an unplotted one, at an x nothing else in the card uses.
+    // It now shares the trend cell WITH the plot rather than stacking under it, and
+    // that is the whole trick. Stacked, the cell is the row's tallest thing by 46px and
+    // `items-center` then floats the family's own LABEL that far below the reading it
+    // names — trading one misalignment for a worse one. Side by side, the cell is one
+    // control tall, so the row keeps the rhythm the unplotted families already set.
+    // The plot is taken OUT OF FLOW so the open list gets the whole column instead of
+    // the sliver left beside it; the disclosure is what the cell measures.
+    // `self-start` keeps the cell's top on the row's top whether the facts wrap or not.
+    // Centred, the cell moves the instant the list opens and the cell becomes the
+    // tallest thing in the row — sliding the trigger out from under the finger that
+    // just opened it.
+    // `pointer-events-none` because POSITIONING this cell also lifts it above the row
+    // link's stretched hit surface, and #3459 ruled that the link covers the desktop
+    // plot. The shared disclosure re-enables events on its own summary and list, which
+    // are the only two things here that are meant to be pressed.
     <div
-      className={`hidden min-[45rem]:col-start-3 min-[45rem]:row-start-1 min-[45rem]:block min-[45rem]:justify-self-end ${tone}`}
-      style={{ width: WIDTH }}
+      className={`pointer-events-none relative hidden min-[45rem]:col-start-3 min-[45rem]:row-start-1 min-[45rem]:block min-[45rem]:justify-self-end min-[45rem]:self-start ${tone}`}
+      style={{ width: TRACK }}
     >
       <svg
         data-testid="standing-sparkline"
@@ -186,7 +207,7 @@ export default function StandingSparkline({
         viewBox={`0 0 ${WIDTH} ${HEIGHT}`}
         width={WIDTH}
         height={HEIGHT}
-        className="hidden min-[45rem]:block"
+        className="absolute right-0 top-0 hidden min-[45rem]:block"
         role="img"
         aria-label={series.name}
         preserveAspectRatio="xMidYMid meet"
@@ -247,8 +268,9 @@ export default function StandingSparkline({
       {/* `z-10` clears the row link's stretched hit surface, which reaches across this
           column; the shared disclosure keeps the link clickable through everything but
           its own summary and list. The visible word is for the eye — the series name is
-          written for a reader who never sees the plot, so it is the accessible name. */}
-      <div className="relative z-10 flex justify-end">
+          written for a reader who never sees the plot, so it is the accessible name,
+          and it is ONE short word so it fits the track beside the plot. */}
+      <div className="relative z-10">
         <VisualizationDetails
           label="History"
           aria-label={`${series.name} history details`}

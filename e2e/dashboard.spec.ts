@@ -876,16 +876,22 @@ test("Standing draws its aligned sparkline column on the desktop", async ({
         cell: trend.getBoundingClientRect().height,
         summaryHeight: summary.height,
         summaryLeft: summary.left,
-        summaryRight: summary.right,
         factsRight: row.querySelector("dd")!.getBoundingClientRect().right,
-        plotRight: row
+        plotTop: row
           .querySelector("[data-testid='standing-sparkline']")!
-          .getBoundingClientRect().right,
+          .getBoundingClientRect().top,
+        plotBottom: row
+          .querySelector("[data-testid='standing-sparkline']")!
+          .getBoundingClientRect().bottom,
+        summaryTop: summary.top,
+        summaryBottom: summary.bottom,
       };
     });
     expect(Math.round(line.inner)).toBe(Math.round(line.cell));
     expect(line.summaryLeft).toBeGreaterThanOrEqual(line.factsRight);
-    expect(Math.round(line.summaryRight)).toBe(Math.round(line.plotRight));
+    // Beside the plot, on the plot's own line — not under it and not under the facts.
+    expect(line.summaryTop).toBeLessThan(line.plotBottom);
+    expect(line.summaryBottom).toBeGreaterThan(line.plotTop);
     // 1280px is above `sm`, where `button-control` sheds the touch floor. The `!`
     // markers on the summary used to outrank that reset at every width.
     expect(line.summaryHeight).toBeLessThan(44);
