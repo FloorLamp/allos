@@ -253,6 +253,7 @@ const SITES: ReadonlyArray<readonly [string, string, string]> = [
   // The illness cockpit's three hand-rolled `p-3` panels, registered by #3673:
   // a sub-panel that never carried a tier still drew a frame on a phone.
   ["components/illness/SymptomLogBar.tsx", "subpanel-inset-sm", "p-3"],
+  ["app/(app)/nutrition/DemotionSuggestionRow.tsx", "subpanel-inset-sm", "p-3"],
   ["app/(app)/training/EndurancePlanBar.tsx", "subpanel-inset-sm", "py-3"],
   ["app/(app)/training/MuscleCoverageCard.tsx", "subpanel-inset-xs", "p-2.5"],
   ["app/(app)/encounters/AppointmentList.tsx", "subpanel-inset-sm", "p-3"],

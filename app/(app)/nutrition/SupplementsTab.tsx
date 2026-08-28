@@ -1253,7 +1253,7 @@ export default async function SupplementsTab({
               >
                 <div
                   data-testid="supplement-sidebar-surface"
-                  className="divide-y divide-(--divider) overflow-hidden rounded-xl border border-(--border) bg-surface shadow-xs"
+                  className="band divide-y divide-(--divider) overflow-hidden rounded-xl border border-(--border) bg-surface shadow-xs"
                 >
                   <section className="p-4">
                     <h2 className="mb-3 section-label">Insights</h2>
@@ -1331,7 +1331,7 @@ export default async function SupplementsTab({
               >
                 <div
                   data-testid="supplement-sidebar-surface"
-                  className="divide-y divide-(--divider) overflow-hidden rounded-xl border border-(--border) bg-surface shadow-xs"
+                  className="band divide-y divide-(--divider) overflow-hidden rounded-xl border border-(--border) bg-surface shadow-xs"
                 >
                   <SupplementWeeklyAdherence
                     days={weeklyAdherenceDays}

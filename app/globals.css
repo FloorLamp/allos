@@ -383,16 +383,19 @@
      tiers are untouched — each still declares its own `max-sm:p-*!` and each call
      site still carries it, which is what keeps the vertical rhythm and the review
      moment #3466 bought. What goes is the horizontal half and the frame. */
-  /* The horizontal half is gone from the TIERS themselves (`max-sm:py-*!`), not
-     from here, and that is forced rather than chosen: an `!important` declaration
-     in Tailwind's `utilities` layer is never beaten by an unlayered one — for
-     important declarations the layer order reverses and unlayered ranks LAST — so
-     a `padding-inline: 0 !important` written in this block would lose to
-     `@apply max-sm:p-3!` and this rule would ship silently doing nothing. The
-     frame is a normal declaration at the call site, so it comes off here. */
+  /* THE TIER AND THIS RULE SPLIT THE JOB, and the split is forced rather than
+     chosen. The tiers step VERTICALLY only now (`max-sm:py-*!`); the horizontal
+     half is zeroed here. It cannot be done the other way round: an `!important`
+     declaration in Tailwind's `utilities` layer is never beaten by an unlayered
+     one — for important declarations the layer order REVERSES and unlayered ranks
+     last — so a `padding-inline: 0 !important` written in this block would lose to
+     `@apply max-sm:p-2.5!` and would ship silently doing nothing. The call site's
+     own `p-2.5` and `rounded-lg border`, being normal declarations, do lose to
+     this block, which is what takes the frame off. */
   .subpanel-inset,
   .subpanel-inset-sm,
   .subpanel-inset-xs {
+    padding-inline: 0;
     border-inline-width: 0;
     border-radius: 0;
   }

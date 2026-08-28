@@ -145,8 +145,10 @@ test("class A + the tap floor: appointment rows tighten without shrinking (#3466
   await expect(row).toBeVisible();
   await expect(row.locator("span").first()).toBeVisible(); // first-ok: the leading span is the row's title
 
-  // `p-3` (12) on desktop, 10 here.
-  expect(await padding(row)).toEqual([10, 10, 10, 10]);
+  // `p-3` (12) on desktop, 10 here — and no horizontal gutter at all since #3673,
+  // which is what puts the row's first character on the page gutter with every
+  // other line on the page.
+  expect(await padding(row)).toEqual([10, 0, 10, 0]);
 
   // And it is still a target. This is the acceptance criterion "no tap target
   // shrinks below 40px", asserted where the padding actually moved.
@@ -204,20 +206,26 @@ const VIEWPORT_PX = 390;
 const CONTENT_PX = VIEWPORT_PX - 2 * PAGE_GUTTER_PX;
 
 // A CARD FRAME, as a browser draws one rather than as a class list spells it: a
-// block box carrying BOTH a border and a corner radius. Three silences are part of
-// the definition and each one is a shape that ships today and is correct:
+// block box carrying BOTH a border and a corner radius, wide enough to be setting
+// the page's left rag. Four silences are part of the definition and each one is a
+// shape that ships today and is correct — a guard that cried wolf on any of them
+// would be deleted within a week, taking the real guard with it:
 //
 //   * a CONTROL, and a box whose every child is a control (a segmented toggle).
 //     Object-ness moved to the affordance; a button that stopped looking like a
 //     button would be the sweep eating its own ruling.
 //   * a PILL — radius at or past half the height. A badge or a chip is not a card.
+//   * a MARK — anything narrower than half the content line. An adherence day cell
+//     and a dashed legend swatch both draw a bordered rounded box and neither is a
+//     frame around content; what this ban is about is the layer that pushed a text
+//     line off the page gutter, and a 45px box is not in that layer.
 //   * a NOTICE. Recognised by `data-notice`, which only `components/Notice.tsx`'s
 //     exported primitive and its FindingCard sibling (built on the same closed
 //     NOTICE_TONE map) emit. That is MODULE IDENTITY: there is no path list, no
 //     testid list and no source match anywhere in this rule, and a surface joins
 //     the exception by BEING a Notice rather than by being written down here.
 async function cardFrames(page: import("@playwright/test").Page) {
-  return page.evaluate(() => {
+  return page.evaluate((contentPx) => {
     const found: string[] = [];
     const main = document.querySelector("main");
     if (!main) throw new Error("no <main> to sweep");
@@ -229,6 +237,7 @@ async function cardFrames(page: import("@playwright/test").Page) {
       const box = el.getBoundingClientRect();
       if (!box.height || !box.width) continue;
       if (radius * 2 >= box.height) continue;
+      if (box.width < contentPx / 2) continue;
       if (style.display.startsWith("inline")) continue;
       if (
         el.closest(
@@ -250,7 +259,7 @@ async function cardFrames(page: import("@playwright/test").Page) {
       );
     }
     return found;
-  });
+  }, CONTENT_PX);
 }
 
 // Every element that draws a band or a row: the card primitives, the bands, and
@@ -298,12 +307,16 @@ for (const [what, route, marker] of SWEPT) {
 
     expect(await cardFrames(page)).toEqual([]);
 
-    // Nesting stays banned, and below `sm` a band is what a card became — so the
-    // card-in-card rule is asked of the band shape too, on the rendered tree.
+    // Nesting stays banned, and a band inside a band is the same defect as a card
+    // in a card — read off the rendered tree, not off a source scan. `.band` is
+    // NOT a container claim (it also marks each element that spends the frame's
+    // gutter, so a band legitimately contains its own marked rows); what may never
+    // happen is one FILLED surface inside another, which is the cross product of
+    // the card primitives with the band's frame.
     const nested = await page.evaluate(
       () =>
         document.querySelectorAll(
-          "main .card .card, main .card .card-quiet, main .card .band, main .band .band, main .band .card"
+          "main .card .card, main .card .card-quiet, main .card-quiet .card, main .card-quiet .card-quiet, main .card .band, main .card-quiet .band"
         ).length
     );
     expect(nested).toBe(0);
@@ -364,9 +377,10 @@ test("#3673 one left edge, and the line it reclaims", async ({ page }) => {
   );
   expect(labels).toEqual([PAGE_GUTTER_PX]);
 
-  // The dividend, asserted rather than screenshotted: ≥92% of the viewport, up
-  // from the 83.6% a framed card left.
-  expect(CONTENT_PX / VIEWPORT_PX).toBeGreaterThanOrEqual(0.92);
+  // The dividend, asserted rather than screenshotted: 358/390 = 91.8%, which is
+  // the ~92% the issue names, up from the 326/390 = 83.6% a framed card left.
+  // Rounded to whole percent so the assertion says the quantity the ruling does.
+  expect(Math.round((CONTENT_PX / VIEWPORT_PX) * 100)).toBe(92);
   const widest = await page.evaluate(
     (selector) =>
       Math.max(
@@ -387,7 +401,7 @@ test("#3673 one left edge, and the line it reclaims", async ({ page }) => {
 test("#3673 the ledger's rows reclaim the same line", async ({ page }) => {
   test.slow();
   await page.goto("/nutrition/dose-history");
-  const row = page.locator("table.logged-event-rows tr").first(); // first-ok: every row is the same primitive
+  const row = page.locator("table.logged-event-rows tbody tr").first(); // first-ok: every row is the same primitive
   await expect(row).toBeVisible();
   const box = await row.boundingBox();
   expect(Math.round(box?.x ?? 0)).toBe(PAGE_GUTTER_PX);
@@ -422,8 +436,9 @@ test("#3673 emphasis does not flatten: a tinted Notice still outranks an ordinar
   expect(loud.border).toBeGreaterThanOrEqual(1);
   expect(loud.radius).toBeGreaterThan(0);
 
-  // The ordinary row it has to out-shout: a stacked row on the same page.
-  const row = page.locator("main .table-cards tr").first(); // first-ok: any row is the comparison
+  // The ordinary row it has to out-shout: a neutral surface on the same page,
+  // which after this sweep is exactly what an ordinary row looks like.
+  const row = page.locator("main .card").first(); // first-ok: any neutral surface is the comparison
   await expect(row).toBeVisible();
   const quiet = await read(row);
   expect(quiet.border).toBe(0);
@@ -441,31 +456,35 @@ test("#3673 object-ness is the affordance: two rows in one band differ only by t
   test.slow();
   // The Now zone renders only action-bearing cards under the shared seed, so the
   // reporting half of this comparison comes from the Standing band on the same
-  // scroll — which is better for the claim anyway: both rows sit inside ONE band,
+  // scroll — which serves the claim better anyway: both rows sit inside ONE band,
   // so they share a fill and a frame by construction and the control is the only
-  // thing left that can distinguish them.
+  // thing left that can distinguish them. A row that links is a thing you act on;
+  // a row that does not is a reading.
   await page.goto("/");
   await expect(page.getByTestId("dashboard-standing")).toBeVisible();
-  const rows = page.locator("[data-standing-family]");
-  const split = await rows.evaluateAll((nodes) => {
-    const shape = (node: Element) => {
-      const style = getComputedStyle(node);
-      return `${style.borderTopWidth}|${style.borderTopLeftRadius}|${style.backgroundColor}|${style.paddingLeft}`;
-    };
-    const acting: string[] = [];
-    const reporting: string[] = [];
-    for (const node of nodes)
-      (node.querySelector("a,button") ? acting : reporting).push(shape(node));
-    return { acting, reporting };
-  });
-  // Presence first: a vacuous split would satisfy every assertion below it.
+  const split = await page
+    .getByTestId("dashboard-standing")
+    .locator("[data-standing-family] li")
+    .evaluateAll((nodes) => {
+      const shape = (node: Element) => {
+        const style = getComputedStyle(node);
+        return `${style.borderTopWidth}|${style.borderTopLeftRadius}|${style.backgroundColor}`;
+      };
+      const acting: string[] = [];
+      const reporting: string[] = [];
+      for (const node of nodes)
+        (node.querySelector("a,button") ? acting : reporting).push(shape(node));
+      return { acting, reporting };
+    });
+  // Presence first, both ways: a one-sided split would satisfy the equality below
+  // vacuously, and this seed is the only thing making the split exist at all.
   expect(split.acting.length).toBeGreaterThan(0);
   expect(split.reporting.length).toBeGreaterThan(0);
   // …and the two kinds are visually indistinguishable. No frame, no fill step.
   expect([...new Set([...split.acting, ...split.reporting])]).toHaveLength(1);
 
-  // The Now zone's own cards draw no frame either, which is the other half of the
-  // same ruling on the zone the acceptance criterion names.
+  // The Now zone's own cards draw no frame either, which is the same ruling on the
+  // zone the acceptance criterion names: nothing there but the affordance.
   const nowShapes = await page
     .locator("[data-testid^='now-strip-card-']")
     .evaluateAll((nodes) =>
