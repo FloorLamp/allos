@@ -12,6 +12,12 @@ import path from "node:path";
 import { installStreamRevealGuard } from "./helpers";
 import { pinnedTimezone } from "./pinned-timezone";
 import {
+  diffRecentActivities,
+  NO_LEFTOVERS,
+  repairAddedActivities,
+  sharedActivityDriftMessage,
+  type SharedProfileLeftovers,
+  snapshotRecentActivities,
   strandedDraftMessage,
   takeStrandedDrafts,
 } from "./shared-profile-guard";
@@ -85,10 +91,17 @@ type WorkerFixtures = {
 
 type TestFixtures = {
   /**
-   * The standing shared-fixture guard (#3173) — automatic, so no spec can opt out
-   * and no new spec has to remember to opt in. See e2e/shared-profile-guard.ts.
+   * The standing shared-fixture guard (#3173, widened by #3946) — automatic, so no
+   * spec can opt out and no new spec has to remember to opt in. See
+   * e2e/shared-profile-guard.ts.
    */
-  noStrandedSharedDraft: void;
+  noSharedProfileLeak: void;
+  /**
+   * The rows a spec MEANS to leave on the shared profile, declared in its own
+   * source: `test.use({ sharedProfileLeftovers: { why, titles } })`. Read by the
+   * guard above; there is deliberately no list of exempt spec names anywhere.
+   */
+  sharedProfileLeftovers: SharedProfileLeftovers;
 };
 
 // THE ONE CLOCK, CHECKED — the standing guard against #3364.
@@ -280,7 +293,8 @@ async function stopServer(server: ChildProcess): Promise<void> {
 }
 
 export const test = base.extend<TestFixtures, WorkerFixtures>({
-  // NO SPEC MAY STRAND A LIVE DRAFT ON THE SHARED PROFILE (#3173).
+  // NO SPEC MAY STRAND A LIVE DRAFT — OR A SAVED ROW — ON THE SHARED PROFILE
+  // (#3173, #3946).
   //
   // Declared FIRST and `auto`, so it is set up before the test's own fixtures and
   // therefore torn down after them — the check runs once the page and its context
@@ -294,17 +308,42 @@ export const test = base.extend<TestFixtures, WorkerFixtures>({
   // process's. The demo project is exempt: it runs a different seed (scripts/seed.ts
   // with no e2e event layer) against its own template, and its one spec drives the
   // demo login rather than acting as the shared admin.
-  noStrandedSharedDraft: [
+  noSharedProfileLeak: [
     // eslint-disable-next-line react-hooks/rules-of-hooks
-    async ({ workerApp }, use) => {
+    async ({ workerApp, sharedProfileLeftovers }, use) => {
+      // The BEFORE reading of the saved-row diff (#3946). It is taken here rather
+      // than in a `beforeEach` so that a `beforeAll` fixture — which runs before
+      // any test's fixtures — is already in it: a row a whole FILE owns and tears
+      // down in `afterAll` is in both readings and is correctly invisible here.
+      const at = frozenNow();
+      const before = workerApp.demo
+        ? new Map<number, string>()
+        : snapshotRecentActivities(at, workerApp.dbPath);
       // eslint-disable-next-line react-hooks/rules-of-hooks
       await use();
       if (workerApp.demo) return;
       const stranded = takeStrandedDrafts(workerApp.dbPath);
       if (stranded.length > 0) throw new Error(strandedDraftMessage(stranded));
+      if (sharedProfileLeftovers.titles.length > 0 && !sharedProfileLeftovers.why.trim())
+        throw new Error(
+          `sharedProfileLeftovers declares ${sharedProfileLeftovers.titles.length} ` +
+            `title(s) with no \`why\` — say what makes these rows worth leaving on ` +
+            `the shared profile (#3946).`
+        );
+      const drift = diffRecentActivities(
+        before,
+        snapshotRecentActivities(at, workerApp.dbPath),
+        sharedProfileLeftovers
+      );
+      if (drift.added.length + drift.disturbed.length === 0) return;
+      repairAddedActivities(drift, workerApp.dbPath);
+      throw new Error(sharedActivityDriftMessage(drift, at));
     },
     { auto: true },
   ],
+
+  // eslint-disable-next-line react-hooks/rules-of-hooks
+  sharedProfileLeftovers: [NO_LEFTOVERS, { option: true }],
 
   // THE BROWSER RUNS ON THE APP'S FROZEN CLOCK (#1538 follow-up).
   //

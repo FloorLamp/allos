@@ -525,7 +525,7 @@ const MENU_TRIGGER_CLICK_ALLOW: Record<string, number> = {
 // `setState` — so a spec that clicks it and then asserts a CLIENT fact, or asserts
 // nothing at all, has finished while `deleteActivity` is still in flight. That is
 // #3292's confirm-then-assert-a-client-fact pattern, and the discard is the copy of
-// it that costs other people merges: the `noStrandedSharedDraft` teardown guard
+// it that costs other people merges: the `noSharedProfileLeak` teardown guard
 // (e2e/fixtures.ts) reads the WORKER DATABASE once the page is gone, so it sees the
 // row on its way out and fails — with a green body, in whatever spec happened to
 // run, on whatever PR happened to be in CI.
@@ -1101,7 +1101,7 @@ describe("e2e suite hygiene guard (issue #868)", () => {
           `The confirm's Delete starts a Server Action, and the dialog closing is a ` +
           `\`setState\` — so "the dialog went away", "the form unmounted" and ending ` +
           `the test outright all finish while the DELETE is still in flight, and the ` +
-          `noStrandedSharedDraft teardown guard reads the row on its way out (#3454, ` +
+          `noSharedProfileLeak teardown guard reads the row on its way out (#3454, ` +
           `#3292). Use deleteActivityFromForm(page, { trigger? }) from e2e/helpers.ts: ` +
           `it settles on the "Activity deleted." toast, which is raised only after the ` +
           `action RESOLVED, and dismisses it (#3267). For a discard whose own next ` +

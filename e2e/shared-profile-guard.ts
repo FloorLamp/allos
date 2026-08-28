@@ -1,5 +1,6 @@
 import Database from "better-sqlite3";
 import fs from "node:fs";
+import { shiftDateStr } from "@/lib/date";
 import { workerDbPath } from "./worker-env";
 
 // THE STANDING SHARED-FIXTURE GUARD (issue #3173).
@@ -141,5 +142,250 @@ export function strandedDraftMessage(
     `Dispose of the draft in this test — from a \`finally\`, so an earlier failure ` +
     `cannot skip it — or give the fixture a profile of its own (#868). The rows above ` +
     `have been removed so the rest of this worker's run is unaffected.`
+  );
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+// THE SECOND THING THIS GUARD LOOKS AT: A SAVED ROW THAT OUTLIVES ITS TEST
+// (issue #3946).
+//
+// #3930 was the same defect one level down. `autosave-retry.spec.ts` saved a
+// today-dated cardio activity on profile 1 and never deleted it;
+// `analyzeQuickLinks` (lib/analyze-view.ts) gives each kind exactly ONE guaranteed
+// slot, filled by that kind's MOST RECENT item, so the stranded `Running` pushed
+// the seeded `Cycling` out of the strip for every later test in the same worker.
+// With `fullyParallel: true` and two workers per shard, whether that happened was
+// a per-run coin flip: nine consecutive merges alternated red on `e2e-main (3)`.
+// Seven other specs that create an activity on profile 1 already delete it by
+// hand; the eighth did not, which is a convention with no mechanism.
+//
+// THREE THINGS SHAPE IT, and each one is a way the obvious version would be wrong.
+//
+// 1. IT IS A DIFF, NOT A PRESENCE CHECK. "A row exists" is not the defect —
+//    `trash` and `undo-delete` legitimately create and destroy rows mid-test, and
+//    every spec runs against a database full of seeded rows. The defect is that
+//    profile 1's derived surfaces MOVED AND STAYED MOVED, so the signal is the
+//    per-test difference between two readings of the same query. Both readings are
+//    taken in the `auto` fixture slot the draft guard already occupies, which is
+//    what lets the failure name the test that leaked rather than the run.
+//    It looks in BOTH directions on purpose: a spec that deletes or re-dates a
+//    SEEDED row breaks the same neighbour just as thoroughly as one that adds a row.
+//
+// 2. IT IS DATE-SCOPED, AND THE SCOPE IS MEASURED FROM THE FROZEN INSTANT. What
+//    broke ride-detail was a row dated TODAY on a surface ranked by recency;
+//    `palette-deeplinks`' 2019-dated insert is inert and always was. Scoping to the
+//    recency horizon catches the real class at a fraction of the noise. The horizon
+//    MUST come from the run's frozen instant and never from the wall clock — a
+//    guard whose behaviour depends on when CI happens to run is the same defect it
+//    exists to catch.
+//
+// 3. A SPEC DECLARES ITS LEAVERS; THERE IS NO LIST OF EXEMPT SPEC NAMES. Some rows
+//    are meant to outlive their test. An allowlist keyed on spec name is the
+//    forbidden shape: it rots silently and it exempts the whole file including the
+//    leak nobody meant. Instead a spec says, in its own source, which titles it
+//    leaves and why — `test.use({ sharedProfileLeftovers: { why, titles } })`. The
+//    `why` is required and non-empty, carrying #3260's caveat unchanged: nothing
+//    checks that a `why` is still TRUE.
+
+/**
+ * How far back a later spec can still be moved by profile 1's activities, IN DAYS.
+ *
+ * It is 84 because that is `RANGES` "12w" in lib/analyze-view.ts — the range
+ * `coerceRange` falls back to, and therefore the window Training → Analyze reads
+ * when no one has chosen otherwise. That is the surface #3930 broke, so its default
+ * window is the honest bound: a row older than this cannot enter the quick-link
+ * strip a later test looks at, and watching it would only buy noise.
+ */
+export const SHARED_RECENCY_HORIZON_DAYS = 84;
+
+/** The oldest day inside the horizon, measured from the run's FROZEN instant. */
+export function recencyHorizonStart(now: Date): string {
+  return shiftDateStr(
+    now.toISOString().slice(0, 10),
+    -SHARED_RECENCY_HORIZON_DAYS
+  );
+}
+
+/** What a spec may leave behind, said in the spec's own source. */
+export interface SharedProfileLeftovers {
+  /** Why these rows must outlive the test. Required; NOT checked for truth (#3260). */
+  why: string;
+  /** Exact `activities.title` values this spec means to leave on the shared profile. */
+  titles: readonly string[];
+}
+
+export const NO_LEFTOVERS: SharedProfileLeftovers = { why: "", titles: [] };
+
+/** id → the fields a later test can observe, joined. */
+export type SharedActivitySnapshot = Map<number, string>;
+
+export interface SharedActivityDrift {
+  /** Rows that were not there before this test and are now. */
+  added: { id: number; title: string; date: string }[];
+  /** Rows whose observable fields this test changed, or that it deleted. */
+  disturbed: { id: number; title: string; before: string; after: string }[];
+}
+
+const RECENT_ACTIVITY_SQL = `SELECT id, date, type, title
+     FROM activities
+    WHERE profile_id = ?
+      AND date >= ?
+    ORDER BY id`;
+
+/**
+ * Read profile 1's in-horizon activities as `id → "date|type|title"`.
+ *
+ * Those three columns are what a recency-ranked surface actually consumes —
+ * `analyzeQuickLinks` sorts on `lastDate` and keys on kind and item — so a row
+ * re-dated, re-typed or renamed in place registers as a disturbance even though its
+ * id never moved. A count would have missed all three.
+ */
+export function snapshotRecentActivities(
+  now: Date,
+  dbPath: string = workerDbPath(),
+  profileId: number = SHARED_PROFILE_ID
+): SharedActivitySnapshot {
+  if (!fs.existsSync(dbPath)) return new Map();
+  const db = new Database(dbPath);
+  try {
+    db.pragma("busy_timeout = 5000");
+    const rows = db
+      .prepare(RECENT_ACTIVITY_SQL)
+      .all(profileId, recencyHorizonStart(now)) as {
+      id: number;
+      date: string;
+      type: string;
+      title: string;
+    }[];
+    return new Map(
+      rows.map((r) => [r.id, `${r.date}|${r.type}|${r.title}`] as const)
+    );
+  } finally {
+    db.close();
+  }
+}
+
+const titleOf = (signature: string) => signature.split("|").slice(2).join("|");
+
+/**
+ * Compare two snapshots and drop everything this spec DECLARED it would leave.
+ *
+ * The declaration is matched on TITLE, which is the same handle
+ * `deleteActivitiesTitled` cleans up by — so a spec cannot declare a row it has no
+ * way to name, and the two halves of the convention stay spelled the same way.
+ */
+export function diffRecentActivities(
+  before: SharedActivitySnapshot,
+  after: SharedActivitySnapshot,
+  declared: SharedProfileLeftovers = NO_LEFTOVERS
+): SharedActivityDrift {
+  const allowed = new Set(declared.titles);
+  const drift: SharedActivityDrift = { added: [], disturbed: [] };
+  for (const [id, signature] of after) {
+    if (before.has(id)) continue;
+    if (allowed.has(titleOf(signature))) continue;
+    const [date, , ...rest] = signature.split("|");
+    drift.added.push({ id, title: rest.join("|"), date });
+  }
+  for (const [id, was] of before) {
+    const now = after.get(id);
+    if (now === was) continue;
+    if (allowed.has(titleOf(was))) continue;
+    if (now !== undefined && allowed.has(titleOf(now))) continue;
+    drift.disturbed.push({
+      id,
+      title: titleOf(was),
+      before: was,
+      after: now ?? "<deleted, or moved out of the horizon>",
+    });
+  }
+  return drift;
+}
+
+/**
+ * Delete every activity on the shared profile with one of these titles.
+ *
+ * The one copy of the cleanup the convention asks for (#3946). It lived verbatim in
+ * `form-drafts.spec.ts` and `stale-build-save.spec.ts` and inline in
+ * `autosave-retry.spec.ts` before this. Child rows (components, routes, videos)
+ * cascade off the activity, which is why `foreign_keys` is on.
+ */
+export function deleteActivitiesTitled(...titles: string[]): void {
+  if (titles.length === 0) return;
+  const db = new Database(workerDbPath());
+  try {
+    db.pragma("busy_timeout = 5000");
+    db.pragma("foreign_keys = ON");
+    const drop = db.prepare(
+      "DELETE FROM activities WHERE profile_id = ? AND title = ?"
+    );
+    for (const title of titles) drop.run(SHARED_PROFILE_ID, title);
+  } finally {
+    db.close();
+  }
+}
+
+/**
+ * Remove the rows this test ADDED, so exactly one test fails instead of every test
+ * after it — the same repairing-detector argument `takeStrandedDrafts` makes.
+ *
+ * A disturbance CANNOT be repaired: the guard knows the row moved but not what the
+ * seed meant it to be, and inventing a restore would be a second producer of the
+ * seed's truth. The message says so rather than pretending otherwise.
+ */
+export function repairAddedActivities(
+  drift: SharedActivityDrift,
+  dbPath: string = workerDbPath(),
+  profileId: number = SHARED_PROFILE_ID
+): void {
+  if (drift.added.length === 0 || !fs.existsSync(dbPath)) return;
+  const db = new Database(dbPath);
+  try {
+    db.pragma("busy_timeout = 5000");
+    db.pragma("foreign_keys = ON");
+    const drop = db.prepare(
+      "DELETE FROM activities WHERE id = ? AND profile_id = ?"
+    );
+    for (const row of drift.added) drop.run(row.id, profileId);
+  } finally {
+    db.close();
+  }
+}
+
+/** The failure message a stranded saved row earns, naming the rows it moved. */
+export function sharedActivityDriftMessage(
+  drift: SharedActivityDrift,
+  now: Date
+): string {
+  const lines: string[] = [];
+  for (const row of drift.added)
+    lines.push(`  • ADDED activity ${row.id} "${row.title}" (${row.date})`);
+  for (const row of drift.disturbed)
+    lines.push(
+      `  • DISTURBED activity ${row.id} "${row.title}": ` +
+        `${row.before} → ${row.after}`
+    );
+  return (
+    `This test moved ${lines.length} activity row(s) on the SHARED profile ` +
+    `${SHARED_PROFILE_ID} and left them moved (#3946):\n${lines.join("\n")}\n\n` +
+    `Only rows dated on or after ${recencyHorizonStart(now)} are watched — ` +
+    `${SHARED_RECENCY_HORIZON_DAYS} days back from the run's frozen instant, which ` +
+    `is Analyze's default range. Analyze's quick links give each kind ONE slot, ` +
+    `filled by that kind's most recent item, so a row left here silently re-ranks ` +
+    `the strip for every later test on this worker and fails one of them instead ` +
+    `of this one (#3930).\n\n` +
+    `Delete the row in this test — \`deleteActivitiesTitled(...)\` from ` +
+    `e2e/shared-profile-guard.ts, called from an \`afterEach\` or a \`finally\` so ` +
+    `an earlier failure cannot skip it — or, if it genuinely must outlive the test, ` +
+    `say so in this spec:\n` +
+    `    test.use({ sharedProfileLeftovers: { why: "…", titles: ["…"] } });\n\n` +
+    (drift.added.length > 0
+      ? `The ADDED rows above have been removed so the rest of this worker's run is ` +
+        `unaffected. `
+      : ``) +
+    (drift.disturbed.length > 0
+      ? `The DISTURBED rows have NOT been restored — this guard knows they moved, ` +
+        `not what the seed meant them to be.`
+      : ``)
   );
 }

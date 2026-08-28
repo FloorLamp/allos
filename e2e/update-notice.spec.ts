@@ -39,7 +39,7 @@ import {
 // only exists while a create form re-keys onto the row its auto-save produced. It
 // discards that row through `deleteActivityFromForm`, so the write is gone before the
 // test ends — and the row it makes in the meantime is a LIVE draft, the one shape the
-// standing `noStrandedSharedDraft` guard both detects and repairs, so a mid-test
+// standing `noSharedProfileLeak` guard both detects and repairs, so a mid-test
 // failure names this spec and cleans up after it rather than haunting a neighbour.
 
 test.use({ serviceWorkers: "block" });

@@ -27,7 +27,7 @@ import { workerDbPath } from "./worker-env";
 //     is what every call site used to assert and what still happens immediately;
 //   • the SERVER one: `deleteActivity` runs and the row is gone.
 //
-// WHAT FAILS THIS TEST is `noStrandedSharedDraft` (e2e/fixtures.ts), deliberately.
+// WHAT FAILS THIS TEST is `noSharedProfileLeak` (e2e/fixtures.ts), deliberately.
 // This spec acts as the SHARED admin, so the standing guard is live over it, and the
 // guard reads the database after the page and its context are gone — an aborted
 // in-flight delete has therefore not happened. Take the toast settle out of

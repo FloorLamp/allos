@@ -830,7 +830,7 @@ test("a fresh strength part OFFERS the coached suggestion; arriving in the field
   // Clean up the auto-saved draft so the shared seed DB is left untouched.
   //
   // THE SITE #3454 WAS FILED FOR. This ended on the confirm's Delete and asserted
-  // nothing after it, so the `noStrandedSharedDraft` teardown guard read the worker
+  // nothing after it, so the `noSharedProfileLeak` teardown guard read the worker
   // database while the DELETE was still in flight — 2 failures in 4 runs on an
   // unmodified `origin/main`, and a red in `e2e (4)` on PR #3464, whose diff is
   // entirely `lib/` number readers.
