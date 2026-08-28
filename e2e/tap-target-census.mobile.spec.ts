@@ -371,6 +371,12 @@ test.describe("typed fields render the ruled 44px box on a phone (#3708)", () =>
     page,
   }) => {
     test.setTimeout(120_000);
+    // THE EDITOR IS OPENED AT 1280 AND THEN NARROWED, because Training's Add
+    // activity is `hidden md:inline-flex` and has no phone twin on this route. That
+    // makes the experiment BETTER, not weaker: one mounted editor, one DOM, and the
+    // only thing that changes between the two readings is the viewport width — which
+    // is precisely the variable the contract claims to key on.
+    await page.setViewportSize(DESKTOP);
     await page.goto("/training?tab=log");
     await hydratedClick(page, page.getByTestId("training-log-add-activity"));
 
@@ -384,6 +390,21 @@ test.describe("typed fields render the ruled 44px box on a phone (#3708)", () =>
     ] as const;
     await expect(page.getByTestId("date-time-fields")).toBeVisible();
 
+    // THE CONVERSE FIRST, on the wide editor. Desktop density is the half a
+    // one-directional guard cannot see, and it is the half #3896 lost.
+    for (const viewport of [DESKTOP, SM_EXACT]) {
+      await page.setViewportSize(viewport);
+      const wide = await fieldHeights(page, fields);
+      for (const [name, height] of Object.entries(wide))
+        expect(
+          height,
+          `${name} renders ${height}px at ${viewport.width}px. The phone floor has ` +
+            "leaked above `sm` — it is confined by a max-width media query, and an " +
+            "`!important` copy of it would rank ABOVE that query rather than below."
+        ).toBeLessThan(TAP_FLOOR_PX);
+    }
+
+    await page.setViewportSize(PHONE);
     const phone = await fieldHeights(page, fields);
     for (const [name, height] of Object.entries(phone))
       expect(
@@ -427,20 +448,6 @@ test.describe("typed fields render the ruled 44px box on a phone (#3708)", () =>
       "aria-label",
       "Activity name"
     );
-
-    // THE CONVERSE. Desktop density is the half a one-directional guard cannot see,
-    // and it is the half #3896 lost. Every one of these four must come back DOWN.
-    for (const viewport of [SM_EXACT, DESKTOP]) {
-      await page.setViewportSize(viewport);
-      const wide = await fieldHeights(page, fields);
-      for (const [name, height] of Object.entries(wide))
-        expect(
-          height,
-          `${name} still renders ${height}px at ${viewport.width}px. The phone floor has ` +
-            "leaked above `sm` — it is confined by a max-width media query, and an " +
-            "`!important` copy of it would rank ABOVE that query rather than below."
-        ).toBeLessThan(TAP_FLOOR_PX);
-    }
   });
 
   // THE PICKER OWNS THREE MORE TARGETS (#3706): its clear command, its option rows
@@ -590,6 +597,9 @@ test.describe("typed fields render the ruled 44px box on a phone (#3708)", () =>
     page,
   }) => {
     test.setTimeout(120_000);
+    // Opened wide for the same reason as the test above — Add activity is
+    // `hidden md:inline-flex`.
+    await page.setViewportSize(DESKTOP);
     await page.goto("/training?tab=log");
     await hydratedClick(page, page.getByTestId("training-log-add-activity"));
     await expect(page.getByTestId("date-time-fields")).toBeVisible();
@@ -606,19 +616,20 @@ test.describe("typed fields render the ruled 44px box on a phone (#3708)", () =>
         }))
       );
 
+    const wide = await measure();
+    expect(wide.length, "the sweep must find fields").toBeGreaterThan(2);
+    expect(
+      wide.filter((f) => f.height < TAP_FLOOR_PX).length,
+      "Every `.input` on this page is already at the phone floor at 1280px, so the " +
+        "contract is not confined below `sm` — the exact shape #3896 shipped."
+    ).toBeGreaterThan(0);
+
+    await page.setViewportSize(PHONE);
     const phone = await measure();
     expect(phone.length, "the sweep must find fields").toBeGreaterThan(2);
     expect(
       phone.filter((f) => f.height + TAP_FLOOR_FLOAT_EPSILON_PX < TAP_FLOOR_PX),
       `A \`.input\` renders under the ${TAP_FLOOR_PX}px floor at ${PHONE.width}px.`
     ).toEqual([]);
-
-    await page.setViewportSize(DESKTOP);
-    const wide = await measure();
-    expect(
-      wide.filter((f) => f.height < TAP_FLOOR_PX).length,
-      "Every `.input` on this page is still at the phone floor at 1280px, so the " +
-        "contract is not confined below `sm` — the exact shape #3896 shipped."
-    ).toBeGreaterThan(0);
   });
 });
