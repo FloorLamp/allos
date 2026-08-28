@@ -96,9 +96,7 @@ function cappedProfile(name: string, scope: string): number {
 
 const sendBody = (pid: number, scale: "week" | "month"): string => {
   const msg = renderRecapMessage(
-    buildRecap(
-      gatherRecapInput(pid, "kg", scale, true, today(pid), true)
-    ),
+    buildRecap(gatherRecapInput(pid, "kg", scale, true, today(pid), true)),
     "Robin",
     null,
     "https://example.test"
