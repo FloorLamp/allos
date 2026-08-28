@@ -139,3 +139,22 @@ export const FOOD_PIN_GROUP = "red_meat";
 // neighbour, and the dose half also moves on-hand supply.
 export const E2E_LOGIN_ROUTINEUSUAL = "e2e_routineusual";
 export const ROUTINE_USUAL_PROFILE = "Routine Usual (e2e)";
+
+// THE QUICK-LOG SHEET'S CONTEXT REGION AT ITS TALLEST (#3736). The sheet holds ONE
+// reserve, at the panel, and `LOG_SHEET_CONTEXT_RESERVE_PX` is the region's worst case
+// stated as a sum of measured parts: heading + UsualRoutineControl + TWO offer rows +
+// the section's own spacing. Every seeded persona reaches at most part of that, so the
+// SUM was never rendered by anything — which is the shape that let two wrong constants
+// ship (#3718 under-reserved both the context and every row by its border).
+//
+// So: a dedicated adult profile carrying all three at once — the composed routine
+// offer (the same ledger E2E_LOGIN_ROUTINEUSUAL gets, from one function, so the two
+// cannot drift), the due doses that ledger's own `should` supplements make pending,
+// and one live workout session so the `resume` arm of `workoutOffer` stands too.
+//
+// Dedicated rather than borrowing E2E_LOGIN_ROUTINEUSUAL: that profile is spec-OWNED
+// and its spec WRITES (it taps the offer, logging servings and confirming doses), so a
+// second reader measuring geometry there would be reading whatever the neighbour last
+// left. This one is read-only in its spec and stays repeat-safe.
+export const E2E_LOGIN_LOGSHEET_RESERVE = "e2e_logsheet_reserve";
+export const LOGSHEET_RESERVE_PROFILE = "Log Sheet Reserve (e2e)";

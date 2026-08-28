@@ -101,7 +101,7 @@ export default function SidebarLogButton({
       >
         {/* The panel SCROLLS ITSELF rather than being capped by the positioner:
             `preferredMaxHeight` is for a list whose height is unknown, and this
-            one's is known — a 208px context slot plus a fixed row block. 70vh is
+            one's is known — the menu's single panel-level reserve (#3736). 70vh is
             the height at which a short desktop window (a half-screen split, a
             laptop with a docked devtools pane) still shows the segment track
             under the offers instead of pushing it past the viewport edge. */}

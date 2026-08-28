@@ -76,9 +76,40 @@ export function formatClockMinutes(
   return formatClock(timeFormat, Math.floor(total / 60), total % 60, meridiem);
 }
 
+// Stored clock text as a canonical "HH:MM", or NULL when the text is not a clock at
+// all. The distinction is load-bearing wherever stored text is both rendered AND
+// written back: a dose's `time_of_day` is as often a bucket ("Morning", "with
+// dinner") as a time, and only a real clock may be posted as one (#3674). Accepts
+// canonical HH:MM[:SS] and legacy 12-hour display strings — the same pair
+// `formatClockValue` has always accepted, which now reads its answer from here
+// instead of keeping a second copy of both patterns.
+export function parseClockHhmm(
+  value: string | null | undefined
+): string | null {
+  const clock = value?.trim();
+  if (!clock) return null;
+  const twentyFour = /^(\d{1,2}):(\d{2})(?::\d{2})?$/.exec(clock);
+  if (twentyFour) {
+    const hour = Number(twentyFour[1]);
+    const minute = Number(twentyFour[2]);
+    if (hour <= 23 && minute <= 59) return `${pad2(hour)}:${pad2(minute)}`;
+  }
+  const twelveHour = /^(\d{1,2}):(\d{2})\s*([ap])\.?m\.?$/i.exec(clock);
+  if (twelveHour) {
+    const hour = Number(twelveHour[1]);
+    const minute = Number(twelveHour[2]);
+    if (hour >= 1 && hour <= 12 && minute <= 59) {
+      const hour24 =
+        (hour % 12) + (twelveHour[3].toLowerCase() === "p" ? 12 : 0);
+      return `${pad2(hour24)}:${pad2(minute)}`;
+    }
+  }
+  return null;
+}
+
 // Format stored/read-only clock text through the same login preference seam as
-// `formatClock`. Accepts canonical HH:MM[:SS] and legacy 12-hour display strings;
-// unknown imported text is preserved rather than silently disappearing.
+// `formatClock`. Unknown imported text is preserved rather than silently
+// disappearing.
 export function formatClockValue(
   value: string | null | undefined,
   timeFormat: TimeFormat = DEFAULT_FORMAT_PREFS.timeFormat,
@@ -88,25 +119,14 @@ export function formatClockValue(
   if (!value) return fallback;
   const clock = value.trim();
   if (!clock) return fallback;
-  const twentyFour = /^(\d{1,2}):(\d{2})(?::\d{2})?$/.exec(clock);
-  if (twentyFour) {
-    const hour = Number(twentyFour[1]);
-    const minute = Number(twentyFour[2]);
-    if (hour <= 23 && minute <= 59) {
-      return formatClock(timeFormat, hour, minute, meridiem);
-    }
-  }
-  const twelveHour = /^(\d{1,2}):(\d{2})\s*([ap])\.?m\.?$/i.exec(clock);
-  if (twelveHour) {
-    const hour = Number(twelveHour[1]);
-    const minute = Number(twelveHour[2]);
-    if (hour >= 1 && hour <= 12 && minute <= 59) {
-      const hour24 =
-        (hour % 12) + (twelveHour[3].toLowerCase() === "p" ? 12 : 0);
-      return formatClock(timeFormat, hour24, minute, meridiem);
-    }
-  }
-  return clock;
+  const hhmm = parseClockHhmm(clock);
+  if (!hhmm) return clock;
+  return formatClock(
+    timeFormat,
+    Number(hhmm.slice(0, 2)),
+    Number(hhmm.slice(3)),
+    meridiem
+  );
 }
 
 // Shape a calendar date (y full year, m 1-based 1–12, d day-of-month) into the

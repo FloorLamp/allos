@@ -12,7 +12,6 @@ import IntegrationDisconnectButton from "@/components/integrations/IntegrationDi
 import SyncHistoryTable from "@/components/integrations/SyncHistoryTable";
 import SyncNowButton from "@/components/SyncNowButton";
 import StravaActionButtons from "./StravaActionButtons";
-import { TokenRow } from "@/components/TokenRow";
 import { stravaCallbackUrl } from "./url";
 import { externalBaseUrl } from "@/lib/external-url-server";
 import {
@@ -27,6 +26,7 @@ import {
 import { getProfileAge } from "@/lib/settings";
 import { isTrainingRelevant } from "@/lib/life-stage";
 import BackLink from "@/components/BackLink";
+import SetupStepsCard from "@/components/integrations/SetupStepsCard";
 
 export const dynamic = "force-dynamic";
 
@@ -247,14 +247,14 @@ function SetupCard({
   trainingRelevant: boolean;
 }) {
   return (
-    <div className="card space-y-3 text-sm text-slate-600 dark:text-slate-300">
-      <h2 className="font-semibold text-slate-800 dark:text-slate-100">
-        Setup
-      </h2>
-      <TokenRow label="Authorization Callback Domain" value={callbackDomain} />
-      <TokenRow label="Callback URL" value={callbackUrl} />
-      <ol className="list-decimal space-y-2 pl-5">
-        <li>
+    <SetupStepsCard
+      title="Setup"
+      tokenRows={[
+        { label: "Authorization Callback Domain", value: callbackDomain },
+        { label: "Callback URL", value: callbackUrl },
+      ]}
+      steps={[
+        <>
           Create an application at{" "}
           <a
             href="https://www.strava.com/settings/api"
@@ -266,14 +266,14 @@ function SetupCard({
           </a>{" "}
           and set its <strong>Authorization Callback Domain</strong> to the
           domain above.
-        </li>
-        <li>Paste the Client ID and Client Secret here and save.</li>
-        <li>
+        </>,
+        <>Paste the Client ID and Client Secret here and save.</>,
+        <>
           Click <strong>Connect with Strava</strong> and approve access.
           Activities then sync automatically every hour, and you can press{" "}
           <strong>Sync now</strong> any time.
-        </li>
-        <li>
+        </>,
+        <>
           Imported runs, rides, and workouts appear under{" "}
           <Link
             href={trainingRelevant ? "/training?tab=log" : "/timeline"}
@@ -289,8 +289,8 @@ function SetupCard({
             Body metrics
           </Link>{" "}
           energy chart.
-        </li>
-      </ol>
-    </div>
+        </>,
+      ]}
+    />
   );
 }

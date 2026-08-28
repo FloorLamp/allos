@@ -137,9 +137,11 @@ describe("a portal patient's 'Last synced' day is the bound profile's (#3573)", 
 //     first ten characters ARE the local day. Converting it would have introduced the
 //     bug, and broken its `date === activityDate` comparison against a day column.
 //   * intake-cadence's `unrecordedScheduleChangeOn` and warnings' dose-change day are
-//     never rendered — they are compared against `effective_from` / `today`. That is
-//     arithmetic, which #3573's own conditional sends to #3572 (the ruling #3835 made
-//     for lib/sync-requests.ts).
+//     never rendered. THAT REASON WAS WRONG AND BOTH ARE NOW CONVERTED — warnings' by
+//     #3880, intake-cadence's by #3902, whose readers compare the day against
+//     `doseWindowSince`'s bound and `windowDates[0]`, both profile-local. Being
+//     arithmetic is not an exemption when the OTHER side of the comparison is already
+//     local; moving one side is what creates the defect.
 //   * illness-timeline-view's three slices sit over `encounters.date`,
 //     `medication_courses.started_on` and `COALESCE(document_date, date(uploaded_at))`.
 //     The first two are declared DAY columns (lib/time-columns.ts), so the slice is a

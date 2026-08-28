@@ -5,9 +5,19 @@ import HistoricalDoseForm from "@/components/medications/HistoricalDoseForm";
 import EntryHistoryTable, {
   type EntryHistoryColumn,
 } from "@/components/EntryHistoryTable";
-import { deleteAdministration } from "@/app/(app)/nutrition/intake-actions";
+import {
+  deleteAdministration,
+  logHistoricalDose,
+} from "@/app/(app)/nutrition/intake-actions";
 import { useFormatPrefs } from "@/components/FormatPrefsProvider";
-import { formatLongDate } from "@/lib/format-date";
+import { useToast } from "@/components/Toast";
+import { useOptimisticLedger } from "@/components/useOptimisticLedger";
+import {
+  formatClockValue,
+  formatLongDate,
+  parseClockHhmm,
+} from "@/lib/format-date";
+import { missedDoseDays, type AdherenceDot } from "@/lib/intake-adherence";
 import {
   formatMedicationDoseLine,
   formatMedicationDoseProduct,
@@ -31,6 +41,17 @@ export interface DoseHistoryEntry {
   amount: string | null;
   product: string | null;
 }
+
+// The offer row's shape: the sheet-row grammar the app already draws an offer in —
+// a full-width bordered row at the #644 tap floor, not a button-control. No new
+// `globals.css` utility for four rows that exist inside one panel.
+const OFFER_ROW_CLASS =
+  "press flex min-h-11 w-full items-center rounded-lg border border-(--border) bg-surface px-3 py-2 text-left text-sm text-slate-700 transition hover:bg-(--ghost-hover) disabled:opacity-50 dark:text-slate-200";
+
+// What the backfill door is showing. `offers` is the missed-day list; `form` is
+// today's form, either blank ("Another date…") or seeded with a day the offer could
+// not write on its own.
+type BackfillView = { kind: "offers" } | { kind: "form"; date?: string };
 
 // A live (non-retired) dose row the backfill form may log against.
 export interface DoseHistoryDose {
@@ -71,6 +92,7 @@ export default function DoseHistoryPanel({
   doses,
   asNeeded,
   history,
+  strip = [],
   minDate,
   maxDate,
   defaultTime,
@@ -85,6 +107,11 @@ export default function DoseHistoryPanel({
   doses: DoseHistoryDose[];
   asNeeded: boolean;
   history: DoseHistoryEntry[];
+  // The adherence strip the CARD already renders and already holds (#3674). Passed
+  // down rather than recomputed: the missed days the backfill offers are the same
+  // days this strip is drawing, and there is exactly one computation of them (#221,
+  // #3369). Defaulted so a caller with no strip simply offers no shortcut.
+  strip?: readonly AdherenceDot[];
   minDate?: string;
   maxDate: string;
   defaultTime: string;
@@ -99,8 +126,10 @@ export default function DoseHistoryPanel({
   // reads as "you have no older doses".
   note?: string;
 }) {
-  const [adding, setAdding] = useState(false);
+  const [backfill, setBackfill] = useState<BackfillView | null>(null);
   const formatPrefs = useFormatPrefs();
+  const toast = useToast();
+  const ledger = useOptimisticLedger("dose-backfill");
 
   const doseOptions = doses.map((dose) => ({
     id: dose.id,
@@ -114,6 +143,74 @@ export default function DoseHistoryPanel({
       }) || "Dose",
     amount: dose.amount,
   }));
+
+  // An offer may never promise what the core would refuse (#1505), so the days are
+  // clipped to the same bounds the form's date field is clipped to before any of them
+  // is drawn. Everything else the core re-checks server-side and can still refuse
+  // out loud — a course gap, a dose retired since the page rendered.
+  const offeredDays = missedDoseDays(strip).filter(
+    (date) => (!minDate || date >= minDate) && date <= maxDate
+  );
+  // A day with ONE live dose has a single answer to "which dose"; a day with more has
+  // none the app can pick, so that row routes into the form seeded with the date
+  // instead of guessing (#3674). The condition is per ITEM and not per day on
+  // purpose: the strip carries one state per DAY, so "two doses due on THAT day" is
+  // not a question it can answer, and asking it would mean deriving dueness a second
+  // time — the one thing this offer exists not to do.
+  const soleDose = doses.length === 1 ? doses[0]! : null;
+
+  // WHAT AN OFFER MAY PROMISE ABOUT THE TIME. A dose's `time_of_day` is free text and
+  // is as often a bucket ("Morning") as a clock ("08:00"), and only a clock can be
+  // written. When it is one, the offer both POSTS it and NAMES it. When it is not,
+  // the offer falls back to the form's own default and DROPS the slot word from its
+  // label — a row reading "morning" that records 13:04 promises what the tap does not
+  // do (#1505), and the label is the whole promise here because there is no visible
+  // field to correct it in.
+  const offerHhmm = parseClockHhmm(soleDose?.time_of_day);
+  const offerPromise = [
+    soleDose ? formatMedicationDoseProduct(soleDose.amount, product) : null,
+    offerHhmm ? formatClockValue(offerHhmm, formatPrefs.timeFormat) : null,
+  ]
+    .filter(Boolean)
+    .join(" · ");
+
+  function logMissedDay(date: string) {
+    if (!soleDose) {
+      setBackfill({ kind: "form", date });
+      return;
+    }
+    void ledger.tap({
+      // Per DAY: two offers in the list are two independent writes, and neither may
+      // be absorbed by the other's cooldown.
+      key: date,
+      write: () => {
+        const fd = new FormData();
+        fd.set("id", String(itemId));
+        fd.set("dose_id", String(soleDose.id));
+        fd.set("date", date);
+        // The same field names and the same amount the form posts, so the offer and
+        // the form produce one row rather than two spellings of one write. The TIME
+        // is the one value derived better than the form derives it — see
+        // `offerHhmm` — because this row's words are the only thing standing for it.
+        fd.set("time", offerHhmm ?? defaultTime);
+        if (soleDose.amount) fd.set("amount", soleDose.amount);
+        return logHistoricalDose(fd);
+      },
+      settle: (result) => {
+        if (!result.ok) {
+          toast(result.error, { tone: "error" });
+          return { kind: "rollback" };
+        }
+        toast(`Logged past dose of ${itemName}.`);
+        setBackfill(null);
+        return { kind: "keep" };
+      },
+      onError: () => {
+        toast("Couldn't log that — try again.", { tone: "error" });
+        return { kind: "rollback" };
+      },
+    });
+  }
 
   const columns: EntryHistoryColumn<DoseHistoryEntry>[] = [
     {
@@ -148,13 +245,26 @@ export default function DoseHistoryPanel({
         {canWrite ? (
           <button
             type="button"
-            onClick={() => setAdding((value) => !value)}
+            onClick={() =>
+              setBackfill(
+                backfill
+                  ? null
+                  : offeredDays.length > 0
+                    ? { kind: "offers" }
+                    : { kind: "form" }
+              )
+            }
             className="btn-ghost btn-sm"
             disabled={!!backfillDisabledReason}
-            aria-expanded={adding}
+            aria-expanded={!!backfill}
             data-testid="dose-history-add"
           >
-            {adding ? "Cancel" : "Log past dose"}
+            {/* ONE identity (#3674). The control used to rename itself "Cancel"
+                because it toggled a form; it now opens a surface that carries its
+                own dismissal, so the label says what the control is for. With no
+                missed day to offer it opens the form directly — no empty offer
+                state, and no button promising a list it cannot show. */}
+            Log past dose
           </button>
         ) : null}
       </div>
@@ -168,17 +278,61 @@ export default function DoseHistoryPanel({
           {note}
         </p>
       ) : null}
-      {canWrite && adding ? (
+      {canWrite && backfill?.kind === "offers" ? (
+        <div
+          className="mt-2 flex flex-col gap-1"
+          data-testid="dose-backfill-offers"
+        >
+          {/* THE TAP IS THE WRITE (#1505/#3674). Each row names the day and the dose
+              it will record, and posts the SAME backfill action the form below posts
+              — its plausibility gates, bounds, course binding and as-needed handling
+              unchanged and still re-checked server-side. There is no second write
+              path here, only a second way to reach the one there is. */}
+          {offeredDays.map((date) => (
+            <button
+              key={date}
+              type="button"
+              data-testid="dose-backfill-offer"
+              disabled={ledger.blocked(date)}
+              onClick={() => logMissedDay(date)}
+              className={OFFER_ROW_CLASS}
+            >
+              {`${formatLongDate(date, formatPrefs)} · ${
+                soleDose ? offerPromise : "choose a dose"
+              }`}
+            </button>
+          ))}
+          <button
+            type="button"
+            data-testid="dose-backfill-other"
+            onClick={() => setBackfill({ kind: "form" })}
+            className={OFFER_ROW_CLASS}
+          >
+            Another date…
+          </button>
+          <div>
+            <button
+              type="button"
+              onClick={() => setBackfill(null)}
+              className="btn-ghost btn-sm"
+            >
+              Cancel
+            </button>
+          </div>
+        </div>
+      ) : null}
+      {canWrite && backfill?.kind === "form" ? (
         <HistoricalDoseForm
           itemId={itemId}
           itemName={itemName}
           doses={doseOptions}
           minDate={minDate}
           maxDate={maxDate}
+          initialDate={backfill.date}
           defaultTime={defaultTime}
           asNeeded={asNeeded}
           courseBound={courseBound}
-          onDone={() => setAdding(false)}
+          onDone={() => setBackfill(null)}
         />
       ) : null}
       {history.length > 0 ? (

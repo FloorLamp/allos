@@ -206,11 +206,20 @@ describe("proteinGaugeMarker (#2328)", () => {
 // CORRECT for this profile and survives — as a sentence about the SITUATION, one tap
 // away, while the glance line is a number and a goal.
 describe("the dashboard protein line says the situation, not the estimator (#3257)", () => {
-  // The one sentence that carries the floor, pinned as a LITERAL: it is the claim most
-  // at risk of drifting back into something the data does not support, so a reword has
-  // to show up here rather than sliding through a regex.
+  // The two sentences that carry the floor, pinned as LITERALS: they are the claims
+  // most at risk of drifting back into something the data does not support, so a reword
+  // has to show up here rather than sliding through a regex. The retracted "Only some
+  // meals are logged, so today's true total is higher" cannot reappear in any state
+  // without breaking one of the five equalities below.
   const UNLOGGED =
     "Foods you haven't logged aren't counted, so your real total may be higher.";
+  // #3903: `tracked` was the ONE basis with no hedge, and it is a floor for two reasons
+  // that are not unlogged food — an integration writes today's total as it syncs, and a
+  // positive tracked reading overrides the profile's own food log entirely. So the
+  // sentence is its own, and this row is the one that moves.
+  const UNSYNCED =
+    "Only what your health app has sent so far is counted — what you log here isn't — so your real total may be higher.";
+  const GOAL = "Goal ~95–130 g/day (1.2–1.6 g/kg, general fitness).";
 
   // Every state proteinTodayExplanation actually meets, and what is TRUE in each.
   // `none` is the state an established logger is in every morning until their first
@@ -222,42 +231,38 @@ describe("the dashboard protein line says the situation, not the estimator (#325
   // point: it is the one state with no basis phrase to explain the figure, so a bare
   // "0 g+" without the sentence reads as "you ate no protein" instead of "nothing is
   // logged yet". The "+" cannot carry it — "at least zero" is contentless.
-  //   label | proteinIntake args (null = nothing logged) | amount | source clause | floor?
+  //   label | proteinIntake args (null = nothing logged) | amount | the hover, in full
   const STATES = [
     [
       "combined",
       { dailyTracked: null, dailyLogged: 30, dailyEstimated: 25 },
       "55 g+",
-      "Today's total is from foods and logged protein.",
-      true,
+      `${GOAL} Today's total is from foods and logged protein. ${UNLOGGED}`,
     ],
     [
       "estimated",
       { dailyTracked: null, dailyEstimated: 40 },
       "40 g+",
-      "Today's total is from your food log.",
-      true,
+      `${GOAL} Today's total is from your food log. ${UNLOGGED}`,
     ],
     [
       "logged",
       { dailyTracked: null, dailyLogged: 45, dailyEstimated: 0 },
       "45 g+",
-      "Today's total is from the protein you logged.",
-      true,
+      `${GOAL} Today's total is from the protein you logged. ${UNLOGGED}`,
     ],
     [
       "tracked",
       { dailyTracked: 120, dailyEstimated: 0 },
       "120 g",
-      "Today's total is from the daily total your health app sends.",
-      false,
+      `${GOAL} Today's total is from the daily total your health app sends. ${UNSYNCED}`,
     ],
-    ["none", null, "0 g+", null, true],
+    ["none", null, "0 g+", `${GOAL} ${UNLOGGED}`],
   ] as const;
 
   it.each(STATES)(
     "%s: a plain figure on the row, and only true statements in the hover",
-    (label, args, amount, sourceClause, floorSentence) => {
+    (label, args, amount, hover) => {
       const todayIntake = args ? proteinIntake(args)! : null;
       if (todayIntake) expect(todayIntake.basis).toBe(label);
       const t = makeToday({
@@ -274,18 +279,10 @@ describe("the dashboard protein line says the situation, not the estimator (#325
         /≥|g\/kg|\(|floor|likely/
       );
 
-      // THE HOVER carries the derivation the row stopped carrying, and nothing that
-      // counts meals — the retracted sentence must not reappear in any state.
-      const hover = proteinTodayExplanation(t);
-      expect(hover).toContain("1.2–1.6 g/kg");
-      expect(hover).not.toMatch(/floor|likely higher|≥|meals are logged/);
-
-      // The source is named only when there IS one.
-      if (sourceClause) expect(hover).toContain(sourceClause);
-      else expect(hover).not.toContain("Today's total is");
-
-      // …and the floor sentence appears in exactly the states where it is true.
-      expect(hover.includes(UNLOGGED)).toBe(floorSentence);
+      // THE HOVER, in full: the band's derivation, the source named only when there IS
+      // one, and the hedge that state's own data supports. Asserted as one equality so
+      // the row that moves is visible beside the four that must not.
+      expect(proteinTodayExplanation(t)).toBe(hover);
     }
   );
 
