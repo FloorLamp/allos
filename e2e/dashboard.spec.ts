@@ -8,7 +8,12 @@ import {
   E2E_MEMBER_PASSWORD,
 } from "./fixture-logins";
 import { workerDbPath } from "./worker-env";
-import { openDashboardAll, settledBoxes, settledClick } from "./helpers";
+import {
+  expectControlBoxHeight,
+  openDashboardAll,
+  settledBoxes,
+  settledClick,
+} from "./helpers";
 import { openStandingTail } from "./dashboard-candidate";
 
 function resetDashboardAllOffer(): void {
@@ -876,11 +881,12 @@ test("Standing draws its aligned sparkline column on the desktop", async ({
       .getByTestId("standing-sparkline-details")
       .locator("summary");
     await expect(summary).toBeVisible();
-    const summaryHeight = await summary.evaluate(
-      (node) => node.getBoundingClientRect().height
-    );
-    expect(summaryHeight).toBeLessThan(44);
-    expect(summaryHeight).toBeGreaterThanOrEqual(20);
+    // #3938 retired `button-control`'s compact desktop height into the one control
+    // box. `< 44` passed on 34, on 26 and on 12 — an inequality written for a value
+    // that no longer exists stops testing anything. This summary is
+    // `whitespace-normal`, so the claim is the box plus WHOLE line boxes: a wrap is
+    // the construction working, a fraction of a line is ad-hoc padding.
+    await expectControlBoxHeight(summary, "standing sparkline summary at 1280");
 
     // A family whose domain has no trend read draws nothing — that is the rule, and
     // the column still holds its place for the families that do.

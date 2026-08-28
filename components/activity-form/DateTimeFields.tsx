@@ -110,7 +110,7 @@ export default function DateTimeFields({
                 value={sessionDuration}
                 readOnly={durationDerived}
                 onChange={(e) => onSessionDuration(e.target.value)}
-                className={`input h-[38px] pr-9 ${
+                className={`input pr-9 ${
                   durationDerived ? "text-slate-500 dark:text-slate-400" : ""
                 } ${durationError ? "border-rose-300 dark:border-rose-800" : ""}`}
               />
@@ -166,7 +166,7 @@ export default function DateTimeFields({
               type="time"
               value={startTime}
               onChange={(e) => onStartTime(e.target.value)}
-              className="input mt-1 h-[38px]"
+              className="input mt-1"
             />
           </div>
           <div>
@@ -204,7 +204,7 @@ export default function DateTimeFields({
               value={endTime}
               min={startTime || undefined}
               onChange={(e) => onEndTime(e.target.value)}
-              className={`input mt-1 h-[38px] ${timeError ? "border-rose-300 dark:border-rose-800" : ""}`}
+              className={`input mt-1 ${timeError ? "border-rose-300 dark:border-rose-800" : ""}`}
             />
           </div>
         </div>

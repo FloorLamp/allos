@@ -131,14 +131,14 @@ export default function DateRangeControl({
               />
             </div>
             <div className="col-span-2 flex items-end sm:col-span-1">
-              <button type="submit" className="btn h-10 w-full px-3">
+              <button type="submit" className="btn w-full px-3">
                 Apply
               </button>
             </div>
             <div className="col-span-2 flex items-end sm:col-span-1">
               <Link
                 href={buildHref({})}
-                className="btn-ghost w-full py-1.5 text-center sm:py-2"
+                className="btn-ghost w-full text-center"
               >
                 Clear dates
               </Link>
@@ -161,9 +161,12 @@ export default function DateRangeControl({
         <div className="order-1 flex flex-col gap-2 sm:order-2 sm:flex-row sm:items-center sm:gap-3">
           <ScrollFade
             data-testid={`${idPrefix}-chip-row`}
-            className="flex min-w-0 flex-1 items-center gap-2 pb-1 sm:flex-wrap sm:justify-between sm:overflow-visible sm:pb-0"
+            className="flex min-w-0 flex-1 items-center gap-3 pb-1 sm:flex-wrap sm:justify-between sm:overflow-visible sm:pb-0"
           >
-            <div className="flex w-max min-w-full shrink-0 items-center justify-between gap-2 sm:w-auto sm:min-w-0 sm:justify-start sm:flex-wrap">
+            {/* `gap-3` is the reach floor (#3938): the chips and the "Custom…"
+                toggle are one control box each, and their hit regions must not
+                overlap. */}
+            <div className="flex w-max min-w-full shrink-0 items-center justify-between gap-3 sm:w-auto sm:min-w-0 sm:justify-start sm:flex-wrap">
               <FilterPills
                 mode="link"
                 layout="wrap"

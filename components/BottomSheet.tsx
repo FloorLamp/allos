@@ -562,9 +562,22 @@ export default function BottomSheet({
         drag moves it. A script that writes `scrollLeft` still can; the second
         layer (bodies that do not overflow in the first place) is what closes
         that, which is why #3360 asked for both. */}
+        {/* `pointer-coarse:pr-1.5` IS THE REACH'S ROOM, and it belongs here rather
+            than on any of the bodies (#3938, the shape #3392/#3395 named). Every
+            control now carries a 6px coarse-pointer hit-area extension, not just
+            the `.tap-target` ones — so a `w-full` or `flex-1` button, which is
+            flush by construction, pushes 6px of nothing past this region's right
+            edge and makes a body a thumb can nudge with no way back. THE FIX IS
+            THE CONTAINER: the extension is the accessibility feature, so it gets
+            room. Declared once on the scroll owner every sheet and dialog body
+            shares, and keyed on the POINTER rather than a width, because that is
+            the condition the extension itself is keyed on — a coarse-pointer
+            tablet at `md` needs the room as much as a phone does. Only the
+            trailing edge: in LTR, overflow past the leading edge is not
+            scrollable extent. */}
         <div
           ref={contentRef}
-          className={`mt-3 flex min-h-0 flex-1 flex-col overflow-x-hidden overflow-y-auto overscroll-contain ${
+          className={`mt-3 flex min-h-0 flex-1 flex-col overflow-x-hidden overflow-y-auto overscroll-contain pointer-coarse:pr-1.5 ${
             asDialog ? "md:overflow-visible" : ""
           }`}
           data-sheet-content

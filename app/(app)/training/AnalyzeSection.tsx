@@ -406,7 +406,7 @@ export default async function AnalyzeSection({
                 isCyclingOverview ? `latest ${cyclingNoun}` : "latest session"
               }
               testId="analyze-latest-link"
-              className="btn-ghost h-10 justify-center"
+              className="btn-ghost justify-center"
             >
               {isCyclingOverview ? `Latest ${cyclingNoun}` : "Latest session"}
             </PendingTextLink>

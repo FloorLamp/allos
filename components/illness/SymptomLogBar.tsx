@@ -684,7 +684,7 @@ export default function SymptomLogBar({
                   }}
                   placeholder="Describe it: “fever since lunch, croupy cough”…"
                   maxLength={500}
-                  className="input h-8 flex-1 text-sm"
+                  className="input flex-1 text-sm"
                 />
                 <Button
                   type="submit"
@@ -999,7 +999,8 @@ export default function SymptomLogBar({
                     {r.icon && <span aria-hidden>{r.icon}</span>}
                     <span className="truncate">{r.label}</span>
                   </span>
-                  <div className="flex flex-wrap items-center gap-1">
+                  {/* `gap-3` is the reach floor (#3938). */}
+                  <div className="flex flex-wrap items-center gap-3">
                     <SymptomSeverityControl
                       symptomLabel={r.label}
                       value={sev}
@@ -1057,7 +1058,7 @@ export default function SymptomLogBar({
                       }}
                       placeholder="Note (e.g. worse at night)…"
                       maxLength={500}
-                      className="input h-8 flex-1 text-sm"
+                      className="input flex-1 text-sm"
                     />
                     <Button
                       type="submit"

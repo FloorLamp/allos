@@ -8,9 +8,9 @@ import {
 import { openDashboardAll, settledBoxes } from "./helpers";
 import { loginAs } from "./nav";
 import {
+  CONTROL_BOX_PX,
   TAP_FLOOR_FLOAT_EPSILON_PX,
   TAP_FLOOR_PX,
-  TAP_TARGET_INSET_PX,
 } from "@/lib/tap-floor-tokens";
 
 const PHONE = { width: 390, height: 844 };
@@ -18,8 +18,20 @@ const DESKTOP = { width: 800, height: 900 };
 
 type Box = { x: number; y: number; width: number; height: number };
 
-function effectiveBox(box: Box, extended: boolean): Box {
-  const inset = extended ? TAP_TARGET_INSET_PX : 0;
+// The reach READ OFF THE RENDER, not off the class list (#3938). `button-control`
+// carries no `tap-target` token any more — the control box's own coarse-pointer
+// rule gives it the reach — so a class-name test would report zero extension for a
+// control that has one, and the effective floor would fail on a correct tree.
+async function reachOf(target: Locator): Promise<number> {
+  return target.evaluate((node) => {
+    const after = getComputedStyle(node, "::after");
+    if (after.content === "none") return 0;
+    const inset = Math.abs(Number.parseFloat(after.top));
+    return Number.isFinite(inset) ? inset : 0;
+  });
+}
+
+function effectiveBox(box: Box, inset: number): Box {
   return {
     x: box.x - inset,
     y: box.y - inset,
@@ -31,10 +43,7 @@ function effectiveBox(box: Box, extended: boolean): Box {
 async function expectEffectiveFloor(name: string, target: Locator) {
   await expect(target, name).toBeVisible();
   const [box] = await settledBoxes([target]);
-  const extended = await target.evaluate((node) =>
-    node.classList.contains("tap-target")
-  );
-  const effective = effectiveBox(box, extended);
+  const effective = effectiveBox(box, await reachOf(target));
   expect(
     effective.height + TAP_FLOOR_FLOAT_EPSILON_PX,
     `${name} effective height`
@@ -60,10 +69,15 @@ async function expectEffectiveTargetsDisjoint(name: string, group: Locator) {
   );
   const boxes = await settledBoxes(locators);
   const extended = await targets.evaluateAll((nodes) =>
-    nodes.map((node) => node.classList.contains("tap-target"))
+    nodes.map((node) => {
+      const after = getComputedStyle(node, "::after");
+      if (after.content === "none") return 0;
+      const inset = Math.abs(Number.parseFloat(after.top));
+      return Number.isFinite(inset) ? inset : 0;
+    })
   );
   const effective = boxes.map((box, index) =>
-    effectiveBox(box, extended[index] ?? false)
+    effectiveBox(box, extended[index] ?? 0)
   );
 
   for (let left = 0; left < effective.length; left += 1) {
@@ -263,7 +277,12 @@ test("Upcoming primary destinations stay one-line, contained, and disjoint from 
   }
 });
 
-test("Button and destination actions return to compact density at sm", async ({
+// THE DESKTOP HALF, AND WHAT IT CLAIMS NOW. This test used to prove
+// `button-control` dropped to its compact 26px row above `sm`; #3938 retired that
+// height into the one box, so the claim is the opposite one and it has to be
+// stated as an EQUALITY. `< 44` would still pass on a 34px tree — and on a 12px
+// one — which is exactly the way a boundary-crossing fixture goes quiet.
+test("Button and destination actions wear the same box above sm", async ({
   page,
 }) => {
   await page.setViewportSize(DESKTOP);
@@ -277,8 +296,8 @@ test("Button and destination actions return to compact density at sm", async ({
     const button = buttons.nth(index);
     await expect(button).toHaveAttribute("data-button-control", "");
     const [buttonBox] = await settledBoxes([button]);
-    expect(buttonBox.height, `desktop Button ${index} height`).toBeLessThan(
-      TAP_FLOOR_PX
+    expect(buttonBox.height, `desktop Button ${index} height`).toBe(
+      CONTROL_BOX_PX
     );
   }
 
@@ -296,7 +315,7 @@ test("Button and destination actions return to compact density at sm", async ({
     expect(
       destinationBox.height,
       `desktop DestinationActionLink ${index} height`
-    ).toBeLessThan(TAP_FLOOR_PX);
+    ).toBe(CONTROL_BOX_PX);
   }
 });
 

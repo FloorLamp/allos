@@ -3,7 +3,7 @@ import type { Locator, Page } from "@playwright/test";
 import { hydratedClick, settledBoxes } from "./helpers";
 import { loginAs } from "./nav";
 import { E2E_LOGIN_HHHIST, E2E_MEMBER_PASSWORD } from "./fixture-logins";
-import { TAP_FLOOR_PX } from "@/lib/tap-floor-tokens";
+import { CONTROL_BOX_PX, TAP_FLOOR_PX } from "@/lib/tap-floor-tokens";
 
 // The Records hub's PHONE ANATOMY (issue #3408).
 //
@@ -214,7 +214,9 @@ test.describe("Records panes — phone anatomy (#3408)", () => {
     // so one padding scale was still producing two heights. The primitive now
     // reserves the border on its BASE and a role only changes its colour. No
     // class-string check could have found that; this one found it on first run.
-    const CHIP_HEIGHT = 34;
+    // READ FROM THE TOKEN, not written down: #3938 made this the app's one control
+    // height, so a literal here would pin a number the primitive owns.
+    const CHIP_HEIGHT = CONTROL_BOX_PX;
     const [navBox, filterBox] = await settledBoxes([nav, filter]);
     expect(Math.round(navBox.height)).toBe(CHIP_HEIGHT);
     expect(Math.round(filterBox.height)).toBe(CHIP_HEIGHT);

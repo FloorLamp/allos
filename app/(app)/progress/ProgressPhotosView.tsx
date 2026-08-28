@@ -238,7 +238,6 @@ export default function ProgressPhotosView({
             mode="button"
             layout="wrap"
             label="Comparison pose"
-            density="dense"
             value={comparePose}
             onSelect={(pose) => {
               setSeriesFilter(pose);

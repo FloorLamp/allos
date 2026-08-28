@@ -11,8 +11,8 @@ describe("MoodValencePicker", () => {
     expect(choices).toHaveLength(5);
     for (const choice of choices) {
       expect(choice.getAttribute("data-icon-button")).toBe("");
-      expect(choice.className).toContain("min-h-11");
-      expect(choice.className).toContain("min-w-11");
+      expect(choice.className).toContain("min-h-(--control-box)");
+      expect(choice.className).toContain("min-w-(--control-box)");
     }
     expect(
       screen

@@ -990,7 +990,6 @@ export default function DayHistory({
               <Chip
                 key={g.key}
                 role="filter"
-                density="dense"
                 testId="day-history-chip"
                 data={{ "data-group": g.key }}
                 pressed={isOn(g.key)}
@@ -1016,7 +1015,7 @@ export default function DayHistory({
                 data-testid="day-history-filter-toggle"
                 aria-expanded={filtersExpanded}
                 onClick={() => setFiltersExpanded((v) => !v)}
-                className="btn-ghost min-h-11 px-2.5 py-0.5 text-xs"
+                className="btn-ghost px-2.5 text-xs"
               >
                 {filtersExpanded
                   ? "Show less"
@@ -1036,7 +1035,7 @@ export default function DayHistory({
                   clearAutomaticRowSelection();
                   setDetail(null);
                 }}
-                className="btn-ghost min-h-11 px-2.5 py-0.5 text-xs"
+                className="btn-ghost px-2.5 text-xs"
               >
                 All
               </button>
@@ -1048,7 +1047,7 @@ export default function DayHistory({
                   clearAutomaticRowSelection();
                   setDetail(null);
                 }}
-                className="btn-ghost min-h-11 px-2.5 py-0.5 text-xs"
+                className="btn-ghost px-2.5 text-xs"
               >
                 None
               </button>

@@ -648,7 +648,6 @@ export default function GoalForm({
                     mode="button"
                     layout="wrap"
                     label="Equipment variant"
-                    density="dense"
                     value={variant!.equipment ?? undefined}
                     onSelect={(equipment) =>
                       chooseExerciseSubject(

@@ -2297,7 +2297,6 @@ export default function FoodLogBar({
               <FilterPills
                 mode="button"
                 layout="wrap"
-                density="dense"
                 label="When the servings you add were eaten"
                 value={
                   statedChoice?.kind === "now" ? "__now" : statedChoice?.hhmm

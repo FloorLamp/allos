@@ -76,8 +76,7 @@ export default function PaginationControls({
   // invisible to a layout measurement. "Next, next, next" through 82 pages is the
   // most repeatedly tapped control on these surfaces, and it was ~36px. From `md`
   // up the control is the `btn-ghost text-sm` it has always been.
-  const STEP_CLASS =
-    "btn-ghost min-h-11 min-w-16 text-sm md:min-h-0 md:min-w-0";
+  const STEP_CLASS = "btn-ghost min-w-16 text-sm md:min-w-0";
 
   const step = (label: string, delta: -1 | 1, href: AppRoute | null) => {
     const disabled = delta < 0 ? page <= 1 : page >= pageCount;

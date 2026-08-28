@@ -321,7 +321,6 @@ export default function RoutineBuilder({
                     <Chip
                       key={r}
                       role="filter"
-                      density="dense"
                       onClick={() => toggleFocus(di, r)}
                       pressed={active}
                     >

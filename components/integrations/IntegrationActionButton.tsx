@@ -34,7 +34,16 @@ export default function IntegrationActionButton({ binding }: Props) {
         stroke={1.75}
       />
       {binding.copy[pending ? 1 : 0]}
-      {binding.count ? <span className="badge">{binding.count}</span> : null}
+      {/* A BADGE INSIDE A CONTROL IS CONTENT, NOT A CONTROL. The box spends what
+          the element's own line box leaves over, so that line box is also the
+          tallest child the control can hold before it grows past 34 — and
+          `.badge`'s own block padding put this at 22px inside a 16px line, which
+          rendered the button 40 beside its 34px neighbours (#3938). `py-0
+          leading-none` keeps the badge's paint and gives up the padding it does
+          not need in here. */}
+      {binding.count ? (
+        <span className="badge py-0 leading-none">{binding.count}</span>
+      ) : null}
     </Button>
   );
 }

@@ -2,7 +2,7 @@ import { test, expect } from "./fixtures";
 import { loginAs } from "./nav";
 import { settledBoxes } from "./helpers";
 import { E2E_LOGIN_NUTRITION, E2E_MEMBER_PASSWORD } from "./fixture-logins";
-import { TAP_FLOOR_PX } from "@/lib/tap-floor-tokens";
+import { CONTROL_BOX_PX } from "@/lib/tap-floor-tokens";
 
 // Food-tab composition (issue #980), driven against the dedicated NUTRITION_PROFILE
 // (seed-events: a weigh-in, this-week food servings, a confirmed fiber supplement, sex =
@@ -73,8 +73,8 @@ test("mobile nutrition leads with quick logging and a compact snapshot before th
       preferences,
     ]);
     const viewport = page.viewportSize()!;
-    expect(dateBox.width).toBeGreaterThanOrEqual(TAP_FLOOR_PX);
-    expect(dateBox.height).toBeGreaterThanOrEqual(TAP_FLOOR_PX);
+    expect(dateBox.width).toBeGreaterThanOrEqual(CONTROL_BOX_PX);
+    expect(dateBox.height).toBeGreaterThanOrEqual(CONTROL_BOX_PX);
     expect(dateBox.x).toBeGreaterThanOrEqual(0);
     expect(dateBox.x + dateBox.width).toBeLessThanOrEqual(viewport.width);
     const overlapX =

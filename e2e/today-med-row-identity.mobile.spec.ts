@@ -2,6 +2,7 @@ import { test, expect } from "./fixtures";
 import { closeEditor, openFact, setObligation } from "./intake-form-helpers";
 import type { Page } from "@playwright/test";
 import { expectNoClippedContent, settledClick, settledFill } from "./helpers";
+import { CONTROL_BOX_PX } from "@/lib/tap-floor-tokens";
 
 // #2940 — the Today check-off row must stay identifiable when its dose detail is
 // long. The detail span used to be `shrink-0` while the name was the only shrinkable
@@ -203,12 +204,14 @@ test("a name too long for one line wraps instead of truncating (#3479)", async (
   expect(truncated, truncated.join("\n")).toEqual([]);
   await expectNoClippedContent(page);
 
-  // THE BUTTONS ARE UNAFFECTED: same 32px box the shared style declares, and still
-  // top-aligned with the start of the row rather than dragged to the wrapped name's
-  // centre (the grid is `items-start`).
+  // THE BUTTONS ARE UNAFFECTED: the same box the shared style declares, READ FROM
+  // THE TOKEN rather than written down. A literal here is what made this a fixture
+  // pinning a pre-#3938 height in the first place — `DOSE_ACTION_*` moved from 32
+  // to `--control-box`, and a fresh literal would only re-arm it for the next move.
+  // The claim is "unchanged by the long detail", not "equal to some number".
   expect(measured.controls.length).toBeGreaterThan(0);
   for (const c of measured.controls) {
-    expect(c.h).toBe(32);
+    expect(c.h).toBe(CONTROL_BOX_PX);
     expect(c.w).toBeGreaterThan(0);
     expect(Math.abs(c.top - measured.rowTop)).toBeLessThanOrEqual(16);
   }

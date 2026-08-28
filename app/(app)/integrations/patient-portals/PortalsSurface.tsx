@@ -198,7 +198,6 @@ function ChipPicker({
       mode="button"
       layout="wrap"
       label="Household profile"
-      density="dense"
       value={chosen ?? undefined}
       onSelect={onChoose}
       testId="profile-picker"
@@ -244,7 +243,6 @@ function SoftwareChips({
       mode="button"
       layout="wrap"
       label="Portal software"
-      density="dense"
       value={chosen}
       onSelect={onChoose}
       testId="software-picker"

@@ -1,6 +1,5 @@
 import ScrollFade from "@/components/ScrollFade";
 import Chip from "@/components/Chip";
-import type { ChipDensity } from "@/components/Chip";
 import type { ReactNode } from "react";
 import type { AppRoute } from "@/lib/hrefs";
 
@@ -10,6 +9,9 @@ import type { AppRoute } from "@/lib/hrefs";
 // and one of three bounded layouts: scrolling, wrapping, or Timeline's
 // phone-scroll/`sm`-wrap response. It declares no client boundary, so link groups
 // remain server-renderable and button groups inherit their caller's.
+//
+// ONE GAP, AND IT IS THE REACH FLOOR (#3938, app/globals.css): every layout spends
+// `gap-3`. Dense used to tighten it to 6px, which would overlap the hit regions.
 
 type FilterPillValue = string | number | null;
 
@@ -40,7 +42,6 @@ type FilterPillsProps<T extends FilterPillValue> = {
   label: string;
   testId?: string;
   optionTestId?: (value: T) => string;
-  density?: ChipDensity;
   layout?: "scroll" | "wrap" | "responsive";
 } & (
   | {
@@ -72,7 +73,6 @@ export default function FilterPills<T extends FilterPillValue>(
             <Chip
               key={optionKey(o.value)}
               role="filter"
-              density={props.density}
               href={o.href}
               current={active}
               linkBehavior={props.linkBehavior}
@@ -88,7 +88,6 @@ export default function FilterPills<T extends FilterPillValue>(
             <Chip
               key={optionKey(o.value)}
               role="filter"
-              density={props.density}
               pressed={active}
               accessibleLabel={o.content ? o.label : undefined}
               disabled={o.disabled}
@@ -110,10 +109,7 @@ export default function FilterPills<T extends FilterPillValue>(
   };
   if (props.layout === "wrap") {
     return (
-      <div
-        {...groupProps}
-        className={`flex flex-wrap items-center ${props.density === "dense" ? "gap-1.5" : "gap-2"}`}
-      >
+      <div {...groupProps} className="flex flex-wrap items-center gap-3">
         {options}
       </div>
     );
@@ -123,8 +119,8 @@ export default function FilterPills<T extends FilterPillValue>(
       {...groupProps}
       className={
         props.layout === "responsive"
-          ? "-mx-2 flex gap-2 px-2 pb-1 sm:mx-0 sm:flex-wrap sm:overflow-visible sm:px-0 sm:pb-0"
-          : "flex gap-2"
+          ? "-mx-2 flex gap-3 px-2 pb-1 sm:mx-0 sm:flex-wrap sm:overflow-visible sm:px-0 sm:pb-0"
+          : "flex gap-3"
       }
     >
       {options}

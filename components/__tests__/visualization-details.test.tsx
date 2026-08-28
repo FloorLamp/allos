@@ -10,7 +10,6 @@ import VisualizationDetails from "@/components/VisualizationDetails";
 // vitest root instead — the same directory every project in vitest.config.ts runs from.
 const REPO = process.cwd();
 const GLOBALS = path.join(REPO, "app/globals.css");
-const SM = "(min-width: 40rem)";
 
 /**
  * Compile app/globals.css for exactly the classes a rendered summary wears (#3518's
@@ -93,11 +92,13 @@ describe("VisualizationDetails", () => {
     expect(container.innerHTML).toBe("");
   });
 
-  // THE `!` MUST NOT COME BACK (#3896). `button-control` renders at the 44px phone
-  // floor and sheds it from sm upward; an `!important` min-size on the summary
-  // outranks that reset at EVERY width, which is how all 18 consumers ended up
-  // pinned at the phone floor on the desktop. Rendered geometry proves the sizes;
-  // this proves the cascade the sizes rest on.
+  // THE `!` MUST NOT COME BACK (#3896), AND THERE IS NO LONGER A STEP FOR IT TO
+  // OUTRANK (#3938). `button-control` used to render 44 on a phone and shed it
+  // from `sm` up, and an `!important` min-size on the summary beat that reset at
+  // every width — that is how all 18 consumers ended up pinned at the phone floor
+  // on the desktop. The control box retires the step: one height, both viewports,
+  // and the floor that carries an icon-only composition is declared once and
+  // unconditionally. Rendered geometry proves the sizes; this proves the cascade.
   describe("compiled CSS (#3518 proof tier)", () => {
     let compiled = "";
     let planted = "";
@@ -117,20 +118,32 @@ describe("VisualizationDetails", () => {
       ).toEqual([]);
     });
 
-    it("keeps button-control's own compact reset above sm", () => {
+    it("takes no viewport step: one box at every width", () => {
       const root = postcss.parse(compiled);
-      const reset: string[] = [];
+      const stepped: string[] = [];
       root.walkAtRules("media", (atRule) => {
-        if (atRule.params.replace(/\s+/g, " ").trim() !== SM) return;
+        if (!/\bwidth\b/.test(atRule.params)) return;
         atRule.walkDecls(/^min-(block|inline)-size$/, (declaration) => {
           if (/\.button-control(?![\w-])/.test(owningSelector(declaration)))
-            reset.push(`${declaration.prop}: ${declaration.value}`);
+            stepped.push(
+              `${atRule.params.replace(/\s+/g, " ").trim()} { ${declaration.prop}: ${declaration.value} }`
+            );
         });
       });
-      expect(reset.toSorted()).toEqual([
-        "min-block-size: 0",
-        "min-inline-size: 0",
-      ]);
+      expect(
+        stepped,
+        "`button-control` may not change size with the viewport; it wears the one control box"
+      ).toEqual([]);
+      // …and the converse, so the empty list above is not empty because the
+      // selector vanished: the box's own floor is there, unconditionally.
+      expect(
+        minSizeDeclarations(compiled).filter(
+          (declaration) =>
+            /\.button-control(?![\w-])/.test(declaration.selector) &&
+            declaration.property === "min-block-size"
+        ).length,
+        "the control box's floor must reach `.button-control`"
+      ).toBeGreaterThan(0);
     });
 
     it("sees the markers if they are put back", () => {

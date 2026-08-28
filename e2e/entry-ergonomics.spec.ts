@@ -1,4 +1,5 @@
 import { test, expect } from "./fixtures";
+import { CONTROL_BOX_PX } from "@/lib/tap-floor-tokens";
 import { type Page } from "@playwright/test";
 import { openCommandPalette } from "./nav";
 import {
@@ -243,7 +244,8 @@ test("Training Log houses its primary in the header and keeps secondary actions 
   // segmented control with a single reset for all active filters.
   await search.fill("Bench");
   const clearSearch = page.getByRole("button", { name: "Clear search" });
-  expect((await clearSearch.boundingBox())?.height).toBe(26);
+  // The control box, not `button-control`'s retired 26px desktop height (#3938).
+  expect((await clearSearch.boundingBox())?.height).toBe(CONTROL_BOX_PX);
   await clearSearch.click();
   await expect(search).toHaveValue("");
   const types = page.getByRole("group", { name: "Activity type" });
@@ -1339,8 +1341,12 @@ test("the plate builder opens on the converged dialog host (#3405)", async ({
     };
   });
   const pixelEpsilon = 0.5;
-  expect(geometry.target.width).toBeGreaterThanOrEqual(44);
-  expect(geometry.target.height).toBeGreaterThanOrEqual(44);
+  // The control box, and the 28px slot it overhangs. The 44 this used to demand is
+  // EFFECTIVE now (#3938) — supplied by the reach a coarse pointer gets, which this
+  // fine-pointer run does not have — so the rendered claim is the box, and the
+  // overhang below is the half that was always the point.
+  expect(geometry.target.width).toBeGreaterThanOrEqual(CONTROL_BOX_PX);
+  expect(geometry.target.height).toBeGreaterThanOrEqual(CONTROL_BOX_PX);
   expect(Math.abs(geometry.slot.width - 28)).toBeLessThanOrEqual(pixelEpsilon);
   expect(geometry.target.left).toBeGreaterThanOrEqual(
     geometry.row.left - pixelEpsilon

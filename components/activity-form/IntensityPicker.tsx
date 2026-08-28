@@ -21,7 +21,8 @@ export default function IntensityPicker({
           (option) => `${option.label}: ${option.hint}`
         ).join(" · ")}
       />
-      <div className="grid grid-cols-3 gap-2">
+      {/* `gap-3` is the reach floor (#3938). */}
+      <div className="grid grid-cols-3 gap-3">
         {INTENSITIES.map((opt) => {
           const active = intensity === opt.value;
           return (
@@ -30,7 +31,7 @@ export default function IntensityPicker({
               type="button"
               aria-pressed={active}
               onClick={() => onChange(active ? "" : opt.value)}
-              className={`min-h-11 rounded-lg border px-2 py-2 text-sm font-medium transition sm:min-h-0 ${
+              className={`tap-target min-h-(--control-box) rounded-lg border px-2 py-1.5 text-sm font-medium transition ${
                 active
                   ? opt.active
                   : // bg-field, matching .input: these buttons sit among the

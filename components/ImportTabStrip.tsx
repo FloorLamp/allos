@@ -31,7 +31,6 @@ export default function ImportTabStrip({
           <Chip
             key={t.key}
             role="nav"
-            density="dense"
             href={importTabHref(docId, t.key)}
             current={active}
             testId={`import-tab-${t.key}`}

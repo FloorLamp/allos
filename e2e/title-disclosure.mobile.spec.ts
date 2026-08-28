@@ -1,6 +1,8 @@
 import { expect, test } from "./fixtures";
 import {
+  expectControlBoxHeight,
   expectNoClippedContent,
+  expectPhoneTapTargets,
   hydratedClick,
   settledBoxes,
   settledFill,
@@ -21,7 +23,8 @@ test("visualization details expand in flow by touch and keyboard", async ({
   await summary.scrollIntoViewIfNeeded();
 
   const [summaryBox] = await settledBoxes([summary]);
-  expect(summaryBox.height).toBeGreaterThanOrEqual(44);
+  // The control box, with the 44 supplied as reach around it (#3938).
+  await expectPhoneTapTargets(page, "week spine disclosure", [summary]);
   await page.touchscreen.tap(
     summaryBox.x + summaryBox.width / 2,
     summaryBox.y + summaryBox.height / 2
@@ -165,10 +168,12 @@ test("standing history fits a touch tablet and discloses by touch and keyboard",
     await expect(summary).toHaveAccessibleName(/.+ history details$/);
 
     const [summaryBox, detailsBox] = await settledBoxes([summary, details]);
-    // 768px is above `sm`, where `button-control` sheds the phone floor. The floor
-    // itself is asserted at 390px by the first test in this file.
-    expect(summaryBox.height).toBeLessThan(44);
-    expect(summaryBox.height).toBeGreaterThanOrEqual(20);
+    // 768px is above `sm`, and #3938 retired the step: `button-control` is the
+    // same control box here as at 390. `< 44` would pass on 34, on 26 and on 12,
+    // so it is not that — but this summary is `whitespace-normal` and WRAPS at
+    // this width, so it is not a flat equality either: it is the box plus whole
+    // line boxes. (Measured: 54 here, which is 34 + one 20px line.)
+    await expectControlBoxHeight(summary, "standing history summary at 768");
     expect(detailsBox.x).toBeGreaterThanOrEqual(0);
     expect(detailsBox.x + detailsBox.width).toBeLessThanOrEqual(768);
     await page.touchscreen.tap(
@@ -180,11 +185,23 @@ test("standing history fits a touch tablet and discloses by touch and keyboard",
     const [openDetailsBox] = await settledBoxes([details]);
     expect(openDetailsBox.x).toBeGreaterThanOrEqual(0);
     expect(openDetailsBox.x + openDetailsBox.width).toBeLessThanOrEqual(768);
+    // WHAT FITS IS THE CONTENT, MEASURED AS ELEMENT RECTANGLES. `scrollWidth` also
+    // counts the coarse-pointer HIT REGION the summary now carries (#3938) — an
+    // invisible `::after` reaching 6px past its edges — so a 2px "overflow" here
+    // was a phantom that no reader could see and no scrollbar could reach. Element
+    // rectangles exclude pseudo-elements, so this asks the question the test
+    // means: does anything DRAWN inside spill past the box.
     expect(
-      await details.evaluate(
-        (element) => element.scrollWidth <= element.clientWidth
-      )
-    ).toBe(true);
+      await details.evaluate((element) => {
+        const bounds = element.getBoundingClientRect();
+        return Array.from(element.querySelectorAll("*")).filter((child) => {
+          const rect = child.getBoundingClientRect();
+          return (
+            rect.right > bounds.right + 0.5 || rect.left < bounds.left - 0.5
+          );
+        }).length;
+      })
+    ).toBe(0);
     await expectNoClippedContent(page);
 
     await page.touchscreen.tap(

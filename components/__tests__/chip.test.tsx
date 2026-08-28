@@ -21,7 +21,7 @@ describe("Chip", () => {
   it("binds filter paint and disabled behavior to button semantics", () => {
     const onClick = vi.fn();
     render(
-      <Chip role="filter" density="dense" pressed disabled onClick={onClick}>
+      <Chip role="filter" pressed disabled onClick={onClick}>
         Breakfast
       </Chip>
     );
@@ -29,25 +29,28 @@ describe("Chip", () => {
     const button = screen.getByRole("button", { name: "Breakfast" });
     expect(button.getAttribute("aria-pressed")).toBe("true");
     expect((button as HTMLButtonElement).disabled).toBe(true);
-    expect(button.className).toBe("chip-base chip-filter chip-sm");
+    expect(button.className).toBe("chip-base chip-filter");
     fireEvent.click(button);
     expect(onClick).not.toHaveBeenCalled();
   });
 
-  it("gives dense links and buttons the same primitive-owned floor", () => {
+  // #3938 retired the dense size, so a link chip and a button chip carry the SAME
+  // class list — there is no second geometry for a call site to reach for, and the
+  // control box in app/globals.css is the only thing that sets their height.
+  it("gives links and buttons one geometry, with no size axis", () => {
     render(
       <>
-        <Chip role="nav" density="dense" href="/records" current={false}>
+        <Chip role="filter" href="/records" current={false}>
           Records
         </Chip>
-        <Chip role="filter" density="dense" pressed={false}>
+        <Chip role="filter" pressed={false}>
           Active
         </Chip>
       </>
     );
 
-    expect(screen.getByRole("link").className).toContain("chip-sm");
-    expect(screen.getByRole("button").className).toContain("chip-sm");
+    expect(screen.getByRole("link").className).toBe("chip-base chip-filter");
+    expect(screen.getByRole("button").className).toBe("chip-base chip-filter");
   });
 
   it("uses location semantics for current hash navigation", () => {
@@ -203,7 +206,6 @@ describe("FilterPills", () => {
         mode="button"
         layout="wrap"
         label="Pose"
-        density="dense"
         value="front"
         onSelect={onSelect}
         options={[

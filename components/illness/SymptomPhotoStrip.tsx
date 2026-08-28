@@ -201,7 +201,7 @@ export default function SymptomPhotoStrip({
                 <input
                   id={`photo-caption-${photo.id}`}
                   data-testid={`symptom-photo-caption-input-${photo.id}`}
-                  className="input h-8 w-48 px-2 text-xs text-slate-900 dark:text-slate-100"
+                  className="input w-48 px-2 text-xs text-slate-900 dark:text-slate-100"
                   value={captionDraft}
                   onChange={(event) => setCaptionDraft(event.target.value)}
                   maxLength={500}
@@ -274,7 +274,7 @@ export default function SymptomPhotoStrip({
                 data-testid="symptom-photo-symptom-select"
                 value={photoSymptom}
                 onChange={(e) => setPhotoSymptom(e.target.value)}
-                className="input mt-1 h-9 w-40 text-sm"
+                className="input mt-1 w-40 text-sm"
               >
                 <option value="">Whole day</option>
                 {symptomOptions.map((s) => (
@@ -295,7 +295,7 @@ export default function SymptomPhotoStrip({
               value={caption}
               onChange={(e) => setCaption(e.target.value)}
               placeholder="What changed?"
-              className="input mt-1 h-9 w-48 text-sm"
+              className="input mt-1 w-48 text-sm"
             />
           </div>
           <button

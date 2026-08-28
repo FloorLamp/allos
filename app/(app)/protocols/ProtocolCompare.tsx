@@ -62,7 +62,7 @@ function OutcomePanel({
           {onRemove && (
             <button
               type="button"
-              className="btn-ghost btn-sm h-8 w-8 p-0!"
+              className="btn-ghost btn-sm w-8 px-0"
               aria-label={`Remove ${o.label}`}
               onClick={onRemove}
             >

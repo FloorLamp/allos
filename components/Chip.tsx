@@ -4,7 +4,6 @@ import TimelineFilterLink from "@/components/TimelineFilterLink";
 import type { AppRoute } from "@/lib/hrefs";
 
 export type ChipRole = "nav" | "filter";
-export type ChipDensity = "regular" | "dense";
 
 interface InternalChipLinkProps {
   href: AppRoute | `#${string}`;
@@ -17,7 +16,6 @@ interface InternalChipLinkProps {
 
 type CommonProps = {
   role: ChipRole;
-  density?: ChipDensity;
   children: ReactNode;
   testId?: string;
 };
@@ -78,13 +76,12 @@ function DefaultChipLink({
   return href.startsWith("#") ? <a {...props} /> : <Link {...props} />;
 }
 
-// The one pressable chip primitive. Role chooses the visual language, density
-// chooses the registered regular or 44px-dense geometry, and interaction state
-// is the same state that paints the selected treatment. Callers provide content
-// and behavior, never presentation classes or independent ARIA state.
+// The one pressable chip primitive. Role chooses the visual language, geometry is
+// the control box every control wears (#3938 retired the dense size), and
+// interaction state is the same state that paints the selected treatment. Callers
+// provide content and behavior, never presentation classes or independent ARIA.
 export default function Chip(props: ChipProps) {
-  const density = props.density ?? "regular";
-  const className = `chip-base chip-${props.role}${density === "dense" ? " chip-sm" : ""}`;
+  const className = `chip-base chip-${props.role}`;
 
   if (props.href !== undefined) {
     const ariaCurrent = props.current

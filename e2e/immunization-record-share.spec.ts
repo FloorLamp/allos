@@ -1,4 +1,5 @@
 import { test, expect } from "./fixtures";
+import { CONTROL_BOX_PX } from "@/lib/tap-floor-tokens";
 import type { Page } from "@playwright/test";
 import { expectNoClippedContent, followLink, settledBoxes } from "./helpers";
 
@@ -79,7 +80,10 @@ test.describe("Immunization record print + share (#1849)", () => {
       urlField,
       copy,
     ]);
-    expect(Math.min(copyBox.width, copyBox.height)).toBeGreaterThanOrEqual(44);
+    // The control box (#3938): the 44 is effective now and needs a coarse pointer.
+    expect(Math.min(copyBox.width, copyBox.height)).toBeGreaterThanOrEqual(
+      CONTROL_BOX_PX
+    );
     expect(copyBox.x).toBeGreaterThanOrEqual(resultBox.x - 1);
     expect(copyBox.y).toBeGreaterThanOrEqual(resultBox.y - 1);
     expect(copyBox.x + copyBox.width).toBeLessThanOrEqual(

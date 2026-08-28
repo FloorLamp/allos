@@ -77,11 +77,13 @@ describe("DoseStatusControl", () => {
       expect(skip.getAttribute("type")).toBe("button");
       expect(take.getAttribute("aria-pressed")).toBe(takePressed);
       expect(skip.getAttribute("aria-pressed")).toBe(skipPressed);
+      // The control box, not a pill size of its own (#3938) — the same token the
+      // circle variant carries, so neither variant can drift from the other.
       expect(take.className.split(/\s+/)).toEqual(
-        expect.arrayContaining(["tap-target", "h-8"])
+        expect.arrayContaining(["tap-target", "h-(--control-box)"])
       );
       expect(skip.className.split(/\s+/)).toEqual(
-        expect.arrayContaining(["tap-target", "h-8"])
+        expect.arrayContaining(["tap-target", "h-(--control-box)"])
       );
     }
   );
@@ -112,12 +114,16 @@ describe("DoseStatusControl", () => {
     );
 
     const control = screen.getByTestId("dose-status");
-    expect(control.className).toBe("flex shrink-0 items-center gap-3");
+    // The circles render the control box and the container reserves the reach, the
+    // same geometry the pill variant already shipped (#3938).
+    expect(control.className).toBe(
+      "flex shrink-0 items-center -m-1.5 gap-3 p-1.5"
+    );
     for (const button of screen.getAllByRole("button")) {
       expect(button.className.split(/\s+/)).toEqual(
-        expect.arrayContaining(["h-11", "w-11"])
+        expect.arrayContaining(["h-(--control-box)", "w-(--control-box)"])
       );
-      expect(button.className.split(/\s+/)).not.toContain("tap-target");
+      expect(button.className.split(/\s+/)).toContain("tap-target");
     }
   });
 });

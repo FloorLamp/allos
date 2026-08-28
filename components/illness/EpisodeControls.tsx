@@ -105,7 +105,7 @@ export default function EpisodeControls({
     >
       <button
         type="button"
-        className="btn-ghost h-9 w-9 p-0"
+        className="btn-ghost w-9 px-0"
         onClick={() => window.print()}
         aria-label="Print episode"
       >
@@ -115,7 +115,7 @@ export default function EpisodeControls({
       {canWrite && (
         <button
           type="button"
-          className="btn-ghost h-9 w-9 p-0"
+          className="btn-ghost w-9 px-0"
           onClick={() => setShareOpen(true)}
           aria-label="Share episode"
         >

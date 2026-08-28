@@ -622,7 +622,6 @@ export default function EpisodeTimeline({
                 mode="button"
                 layout="wrap"
                 label="Filter illness history"
-                density="dense"
                 value={filter}
                 onSelect={setFilter}
                 options={availableFilters}

@@ -840,10 +840,22 @@ test.describe("no dialog body overflows sideways at a phone viewport (#3395)", (
     // while its container gives the extension room (#3392's `pr-1.5`).
     expect(await overflowStory(content)).toBe("nothing overflows");
 
-    // NOW REPRODUCE #3384, by the mechanism the issue names rather than by
-    // injecting an over-wide box: a compact control flush against the region's
-    // right edge, whose hit-area extension has nowhere to sit.
+    // NOW REPRODUCE #3384, BY THE MECHANISM THE ISSUE NAMES: not an over-wide
+    // box, but a container that LOST its horizontal room while holding a
+    // flush-edge control whose hit-area extension needs it.
+    //
+    // The forgery has to take the room away, and that is not a workaround for the
+    // guard — it is the trigger, stated. Since #3938 every control carries the
+    // extension, so the room is reserved once on this region
+    // (`pointer-coarse:pr-1.5` in components/BottomSheet.tsx) and a correctly
+    // sized control can no longer escape a body that still has it. What CAN still
+    // happen is the thing #3384 was: the reserve goes away — a refactor drops it,
+    // a body re-declares its own padding — and every flush control in every
+    // dialog starts pushing 6px of nothing past the edge at once. So the forgery
+    // removes the reserve first, and the assertions below are then measuring the
+    // real regression rather than a control nobody would write.
     await content.evaluate((node) => {
+      node.style.paddingRight = "0px";
       const row = document.createElement("div");
       row.style.display = "flex";
       row.style.justifyContent = "flex-end";

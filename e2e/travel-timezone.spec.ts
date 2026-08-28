@@ -5,7 +5,7 @@ import { loginAs } from "./nav";
 import { switchToProfile } from "./family-helpers";
 import {
   TAP_FLOOR_FLOAT_EPSILON_PX,
-  TAP_FLOOR_PX,
+  CONTROL_BOX_PX,
 } from "@/lib/tap-floor-tokens";
 import {
   E2E_MEMBER_PASSWORD,
@@ -124,10 +124,18 @@ test.describe("travel timezone banner (#3263)", () => {
         page.getByTestId("travel-timezone-accept"),
         page.getByTestId("travel-timezone-dismiss"),
       ]);
+      // BOTH HALVES. The floor is what each control owes on its own; the
+      // AGREEMENT is what the row owes, and only the second can see one action
+      // rendering 34 beside another at 44 — which is what happened here when the
+      // box landed and the quiet text action kept a floor of its own.
       for (const box of [acceptBox, dismissBox])
         expect(box.height + TAP_FLOOR_FLOAT_EPSILON_PX).toBeGreaterThanOrEqual(
-          TAP_FLOOR_PX
+          CONTROL_BOX_PX
         );
+      expect(
+        Math.round(acceptBox.height),
+        `the banner's two actions render ${acceptBox.height} and ${dismissBox.height}`
+      ).toBe(Math.round(dismissBox.height));
       const horizontalOverlap =
         Math.min(
           acceptBox.x + acceptBox.width,

@@ -8,6 +8,7 @@ import {
 } from "@playwright/test";
 import { AUTO_RELOAD_KEY } from "@/lib/sw-update";
 import {
+  CONTROL_BOX_PX,
   TAP_FLOOR_FLOAT_EPSILON_PX,
   TAP_FLOOR_PX,
 } from "@/lib/tap-floor-tokens";
@@ -1249,9 +1250,96 @@ export async function settledBoxes(
   }
 }
 
+// The per-side reach a coarse pointer actually got around each target, READ BACK
+// FROM THE BROWSER rather than inferred from a class list (#3938). The reach lives
+// under `@media (pointer: coarse)`, so whether it arrived is a rendered fact; and a
+// `<select>` or `<input>` renders no pseudo-element at all, which is why the floor
+// is stated as effective and some targets legitimately return 0.
+async function renderedReach(targets: Locator[]): Promise<number[]> {
+  return Promise.all(
+    targets.map((target) =>
+      target.evaluate((el) => {
+        const after = getComputedStyle(el, "::after");
+        if (after.content === "none") return 0;
+        const inset = Math.abs(Number.parseFloat(after.top));
+        return Number.isFinite(inset) ? inset : 0;
+      })
+    )
+  );
+}
+
+// THE CONTROL BOX IS A FLOOR PLUS WHOLE LINE BOXES, NOT AN IDENTITY (#3938).
+//
+// The box spends what the element's OWN line box leaves over
+// (`padding-block: calc((--control-box - 1lh - 2 * --control-border) / 2)`), and
+// that one derivation has two consequences a straight equality gets wrong in
+// opposite directions:
+//
+//   * the line box is the CEILING on the tallest child a control can hold — an
+//     18px badge or a 20px glyph inside a 16px line grows the control past 34,
+//     which shipped as a 40px button beside its 34px neighbours;
+//   * the line box is also the QUANTUM by which a control grows — a summary that
+//     WRAPS at 768 renders 54, which is 34 + one more 20px line, and that is the
+//     construction working rather than a defect.
+//
+// So a control that can wrap (`whitespace-normal`, a long label in a narrow
+// column) is asserted as the box plus a WHOLE NUMBER of its own line boxes. That
+// still reds on a stray `py-*`, a rogue `min-h-11` or any ad-hoc padding —
+// everything the equality was protecting — and only stops calling a second line a
+// failure. A control that is single-line by construction (`whitespace-nowrap`, an
+// `<input>`) passes `lines: 0` and keeps the stronger claim.
+export async function expectControlBoxHeight(
+  target: Locator,
+  name: string,
+  opts: { lines?: 0 | "any" } = {}
+): Promise<void> {
+  await expect(target, name).toBeVisible();
+  const measured = await target.evaluate((el) => ({
+    height: el.getBoundingClientRect().height,
+    lineHeight: Number.parseFloat(getComputedStyle(el).lineHeight),
+  }));
+  expect(
+    Number.isFinite(measured.lineHeight) && measured.lineHeight > 0,
+    `${name} has no resolvable line box, so the control box cannot be derived`
+  ).toBe(true);
+  const extra = (measured.height - CONTROL_BOX_PX) / measured.lineHeight;
+  const lines = Math.round(extra);
+  const detail =
+    `${name} renders ${measured.height}px with a ${measured.lineHeight}px line box: ` +
+    `${CONTROL_BOX_PX} + ${extra.toFixed(3)} line boxes`;
+  expect(
+    Math.abs(extra - lines) <= 0.02 && lines >= 0,
+    `${detail}. A control is the control box plus a WHOLE number of its own line ` +
+      "boxes — a fraction of one means ad-hoc padding or a height a call site set " +
+      "itself, which is the drift the box exists to close."
+  ).toBe(true);
+  if (opts.lines === 0)
+    expect(
+      lines,
+      `${detail}, so it is on ${lines + 1} lines. This control is single-line by ` +
+        "construction, so a second line is the defect and not the wrap."
+    ).toBe(0);
+}
+
 // A compact rendered-geometry assertion for primitive-owned phone targets. It
 // reads one settled layout snapshot, checks the actual boxes (not class names),
 // and optionally proves adjacent boxes do not overlap.
+//
+// THE FLOOR IT CHECKS IS EFFECTIVE, NOT RENDERED (owner ruling #3938). Every
+// control renders the 34px box; a coarse pointer gets the rest of the 44 back as
+// reach around it. So the height/width assertions add the measured reach, while
+// VIEWPORT CONTAINMENT stays on the rendered box — a hit region may hang over the
+// page edge, a visible control may not — and DISJOINTNESS moves to the effective
+// box, because two hit regions owning the same point is the defect the gap floor
+// (twice the reach) exists to prevent.
+//
+// AND THE FLOOR IT DEMANDS DEPENDS ON THE POINTER, WHICH IS READ FROM THE PAGE
+// RATHER THAN ASSUMED. 44 is a THUMB's floor; the reach that supplies it lives in
+// `@media (pointer: coarse)`. Most callers here set a phone viewport in the
+// desktop project, where Chromium reports a FINE pointer and no reach exists — so
+// demanding 44 there would fail every correct control in the app for a reason
+// that has nothing to do with the control. On a fine pointer the claim is the one
+// the ruling actually makes: the control renders the box.
 export async function expectPhoneTapTargets(
   page: Page,
   name: string,
@@ -1267,18 +1355,32 @@ export async function expectPhoneTapTargets(
     await target.scrollIntoViewIfNeeded();
   }
   const boxes = await settledBoxes(targets);
+  const reach = await renderedReach(targets);
+  const coarse = await page.evaluate(
+    () => window.matchMedia("(pointer: coarse)").matches
+  );
+  const floor = coarse ? TAP_FLOOR_PX : CONTROL_BOX_PX;
+  const effective = boxes.map((box, index) => {
+    const r = reach[index] ?? 0;
+    return {
+      x: box.x - r,
+      y: box.y - r,
+      width: box.width + 2 * r,
+      height: box.height + 2 * r,
+    };
+  });
   const viewport = page.viewportSize();
   expect(viewport, `${name} requires a fixed viewport`).not.toBeNull();
 
   for (const [index, box] of boxes.entries()) {
     expect(
-      box.width + TAP_FLOOR_FLOAT_EPSILON_PX,
-      `${name} target ${index} rendered width`
-    ).toBeGreaterThanOrEqual(TAP_FLOOR_PX);
+      effective[index]!.width + TAP_FLOOR_FLOAT_EPSILON_PX,
+      `${name} target ${index} width: ${box.width} rendered + 2x${reach[index]} reach, against the ${coarse ? "coarse-pointer" : "fine-pointer"} floor`
+    ).toBeGreaterThanOrEqual(floor);
     expect(
-      box.height + TAP_FLOOR_FLOAT_EPSILON_PX,
-      `${name} target ${index} rendered height`
-    ).toBeGreaterThanOrEqual(TAP_FLOOR_PX);
+      effective[index]!.height + TAP_FLOOR_FLOAT_EPSILON_PX,
+      `${name} target ${index} height: ${box.height} rendered + 2x${reach[index]} reach, against the ${coarse ? "coarse-pointer" : "fine-pointer"} floor`
+    ).toBeGreaterThanOrEqual(floor);
     expect(box.x, `${name} target ${index} left edge`).toBeGreaterThanOrEqual(
       0
     );
@@ -1294,10 +1396,10 @@ export async function expectPhoneTapTargets(
   }
 
   if (!opts.disjoint) return;
-  for (let left = 0; left < boxes.length; left += 1) {
-    for (let right = left + 1; right < boxes.length; right += 1) {
-      const a = boxes[left]!;
-      const b = boxes[right]!;
+  for (let left = 0; left < effective.length; left += 1) {
+    for (let right = left + 1; right < effective.length; right += 1) {
+      const a = effective[left]!;
+      const b = effective[right]!;
       const overlapX =
         Math.min(a.x + a.width, b.x + b.width) - Math.max(a.x, b.x);
       const overlapY =
@@ -1305,7 +1407,7 @@ export async function expectPhoneTapTargets(
       expect(
         overlapX > TAP_FLOOR_FLOAT_EPSILON_PX &&
           overlapY > TAP_FLOOR_FLOAT_EPSILON_PX,
-        `${name} targets ${left} and ${right} overlap`
+        `${name} targets ${left} and ${right} own the same point once their reach is counted`
       ).toBe(false);
     }
   }

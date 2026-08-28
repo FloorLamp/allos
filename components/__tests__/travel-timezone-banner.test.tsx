@@ -65,7 +65,9 @@ describe("the travel banner's action hierarchy and tap floor (#3711)", () => {
     const dismiss = screen.getByTestId("travel-timezone-dismiss");
 
     expect(accept.className).toMatch(/\bbtn\b/);
-    expect(dismiss.className).toMatch(/\bmin-h-11\b/);
+    // The same control box the `.btn` beside it wears (#3938), not a floor of its
+    // own — a text action at 44 next to a 34px button is two heights in one row.
+    expect(dismiss.className).toContain("min-h-(--control-box)");
     // "Not now" stays the quiet text action. The floor does not turn it into a
     // second filled or bordered CTA beside "Move my day".
     expect(dismiss.className).not.toMatch(/\bbtn(?:-ghost|-danger)?\b/);

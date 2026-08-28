@@ -20,7 +20,7 @@ import {
 } from "./symptom-helpers";
 import {
   TAP_FLOOR_FLOAT_EPSILON_PX,
-  TAP_FLOOR_PX,
+  CONTROL_BOX_PX,
 } from "@/lib/tap-floor-tokens";
 
 const PHONE = { width: 390, height: 844 };
@@ -32,14 +32,16 @@ async function expectClosedEpisodeAction(
   await expect(locator).toHaveAttribute("data-button-control", "");
   await expect(locator).toHaveAccessibleName(name);
   const [box] = await settledBoxes([locator]);
+  // The control box (#3938). The 44 these used to render is EFFECTIVE now, and
+  // the reach that supplies it exists only on a coarse pointer.
   expect(
     box.width + TAP_FLOOR_FLOAT_EPSILON_PX,
     `${name} rendered width`
-  ).toBeGreaterThanOrEqual(TAP_FLOOR_PX);
+  ).toBeGreaterThanOrEqual(CONTROL_BOX_PX);
   expect(
     box.height + TAP_FLOOR_FLOAT_EPSILON_PX,
     `${name} rendered height`
-  ).toBeGreaterThanOrEqual(TAP_FLOOR_PX);
+  ).toBeGreaterThanOrEqual(CONTROL_BOX_PX);
   expect(
     box.x + TAP_FLOOR_FLOAT_EPSILON_PX,
     `${name} left viewport edge`
