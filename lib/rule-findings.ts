@@ -1573,7 +1573,7 @@ export function buildAdherencePatternFindings(
     // today's rule would be the retroactive re-accusation #430 clamped to avoid. The
     // conservative bound stays for exactly those doses, and only until their next
     // schedule edit records a real version (see unrecordedScheduleChangeOn).
-    const unrecorded = unrecordedScheduleChangeOn(d);
+    const unrecorded = unrecordedScheduleChangeOn(d, tz);
     const since = [exists, unrecorded]
       .filter((v): v is string => v != null)
       .reduce<string | null>((a, b) => (a == null || b > a ? b : a), null);
@@ -1614,7 +1614,7 @@ export function buildAdherencePatternFindings(
       suppressMoveSuggestion:
         timeBucket(d.time_of_day) === "Before sleep" ||
         item.kind === "medication" ||
-        (windowDates.length > 0 && doseSlotChangedSince(d, windowDates[0])),
+        (windowDates.length > 0 && doseSlotChangedSince(d, windowDates[0], tz)),
     });
   }
 

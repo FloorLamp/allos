@@ -14,9 +14,9 @@ import IntegrationStatusHeader from "@/components/integrations/IntegrationStatus
 import IntegrationDisconnectButton from "@/components/integrations/IntegrationDisconnectButton";
 import SyncHistoryTable from "@/components/integrations/SyncHistoryTable";
 import SyncNowButton from "@/components/SyncNowButton";
-import { TokenRow } from "@/components/TokenRow";
 import { withingsCallbackUrl } from "./url";
 import BackLink from "@/components/BackLink";
+import SetupStepsCard from "@/components/integrations/SetupStepsCard";
 import {
   saveWithingsCredentials,
   connectWithings,
@@ -218,13 +218,11 @@ export default async function WithingsPage(props: {
 
 function SetupCard({ callbackUrl }: { callbackUrl: string }) {
   return (
-    <div className="card space-y-3 text-sm text-slate-600 dark:text-slate-300">
-      <h2 className="font-semibold text-slate-800 dark:text-slate-100">
-        Setup
-      </h2>
-      <TokenRow label="Callback URI" value={callbackUrl} />
-      <ol className="list-decimal space-y-2 pl-5">
-        <li>
+    <SetupStepsCard
+      title="Setup"
+      tokenRows={[{ label: "Callback URI", value: callbackUrl }]}
+      steps={[
+        <>
           Register an application in the{" "}
           <a
             href="https://developer.withings.com/dashboard/"
@@ -235,14 +233,14 @@ function SetupCard({ callbackUrl }: { callbackUrl: string }) {
             Withings developer dashboard
           </a>{" "}
           and set its <strong>Callback URI</strong> to the URL above.
-        </li>
-        <li>Paste the Client ID and Client Secret here and save.</li>
-        <li>
+        </>,
+        <>Paste the Client ID and Client Secret here and save.</>,
+        <>
           Click <strong>Connect with Withings</strong> and approve access.
           Measurements then sync automatically every hour, and you can press{" "}
           <strong>Sync now</strong> any time.
-        </li>
-        <li>
+        </>,
+        <>
           Weight, body fat, and resting heart rate feed the{" "}
           <Link
             href="/trends#body"
@@ -258,8 +256,8 @@ function SetupCard({ callbackUrl }: { callbackUrl: string }) {
             vitals
           </Link>{" "}
           alongside manually-entered readings; sleep feeds the Body charts.
-        </li>
-      </ol>
-    </div>
+        </>,
+      ]}
+    />
   );
 }

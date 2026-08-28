@@ -117,6 +117,7 @@ import {
   seedFoodSlots,
   seedFoodUsual,
   seedRoutineUsual,
+  seedLogSheetReserve,
   seedFoodPinSplit,
 } from "./seed/nutrition";
 import { seedProviderMergePair, seedProviderCloseout } from "./seed/providers";
@@ -194,6 +195,7 @@ seedIllness();
 seedFoodSlots();
 seedFoodUsual();
 seedRoutineUsual();
+seedLogSheetReserve();
 seedFoodPinSplit();
 seedEndurancePlans();
 seedFlaggedFollowups();

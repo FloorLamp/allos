@@ -403,6 +403,7 @@ export default function EditableSupplementRow({
               asNeeded={isOnDemand(s)}
               courseBound={isMed}
               history={doseHistory}
+              strip={strip}
               maxDate={historyMaxDate}
               defaultTime={defaultHistoryTime}
               note={`Showing the last ${historyWindowDays} days. A backfill can still reach any past date.`}

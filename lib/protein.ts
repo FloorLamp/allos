@@ -577,7 +577,9 @@ export function proteinTodayStatus(t: ProteinToday): ProteinTodayStatus {
 export interface ProteinTodayLineParts {
   emoji: string;
   // "107 g+" (floor basis — the trailing plus IS the #767 floor marker) or "107 g" (a
-  // tracked reading, which states the figure exactly).
+  // tracked reading, which states the figure exactly). Whether the marker belongs on
+  // `tracked` too is the open half of #3903 (it rides the Telegram nudge as well, and
+  // turns on the override ruling); the hover carries tracked's hedge either way.
   amount: string;
   // "80–105 g" — the goal band.
   band: string;
@@ -605,6 +607,18 @@ export function proteinTodayLineParts(t: ProteinToday): ProteinTodayLineParts {
 // the estimator, and holds whether the person logged one meal or all of them.
 const UNLOGGED_FOODS_SENTENCE =
   "Foods you haven't logged aren't counted, so your real total may be higher.";
+
+// `tracked` IS A FLOOR TOO, for two reasons and neither of them is unlogged food —
+// which is why it cannot reuse the sentence above (#3903). TODAY's tracked figure is a
+// RUNNING PARTIAL: getMetricDailyTotals sums the day's samples and an integration writes
+// one per meal record as it syncs, so at 09:00 it is breakfast. And a positive tracked
+// reading OVERRIDES the profile's own food log and quick-added grams (proteinIntake), so
+// what they entered here is not in the number either — which is what made this the one
+// basis where connecting a health app could LOWER the figure and remove every hedge from
+// it at the same time. Same discipline as its sibling: the LEDGER, not behaviour, and
+// "may", because a fully-synced day with nothing logged here is at equality.
+const UNSYNCED_TRACKED_SENTENCE =
+  "Only what your health app has sent so far is counted — what you log here isn't — so your real total may be higher.";
 
 // THE ROW STATES, THE HOVER EXPLAINS (#3257) — the band's derivation, where today's
 // grams came from, and why a floor basis is not the whole day, in one string both
@@ -644,7 +658,7 @@ export function proteinTodayExplanation(t: ProteinToday): string {
   return [
     `Goal ${proteinTargetSummary(t.target)}.`,
     basis ? `Today's total is ${proteinBasisPhrase(basis)}.` : null,
-    basis === "tracked" ? null : UNLOGGED_FOODS_SENTENCE,
+    basis === "tracked" ? UNSYNCED_TRACKED_SENTENCE : UNLOGGED_FOODS_SENTENCE,
   ]
     .filter(Boolean)
     .join(" ");
