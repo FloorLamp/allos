@@ -903,8 +903,18 @@ describe("anchorImpliedDay — the day a bucket names, read off its own anchor (
     // held at push time — the profile argument below is deliberately the WRONG zone for
     // two of the three, exactly as prod's lagging banner made it.
     ["HST anchor", "2026-08-25T10:00:00Z", HONOLULU, "2026-08-25"],
-    ["LA anchor, profile still Honolulu", "2026-08-26T07:00:00Z", HONOLULU, "2026-08-26"],
-    ["NY anchor, profile still LA", "2026-08-27T04:00:00Z", -7 * HOUR, "2026-08-27"],
+    [
+      "LA anchor, profile still Honolulu",
+      "2026-08-26T07:00:00Z",
+      HONOLULU,
+      "2026-08-26",
+    ],
+    [
+      "NY anchor, profile still LA",
+      "2026-08-27T04:00:00Z",
+      -7 * HOUR,
+      "2026-08-27",
+    ],
     // Quarter-hour offsets, which is why the grid is 15 minutes and not an hour.
     ["+05:30 (Kolkata)", "2026-08-25T18:30:00Z", KOLKATA, "2026-08-26"],
     ["+05:45 (Kathmandu)", "2026-08-25T18:15:00Z", KOLKATA, "2026-08-26"],
@@ -915,31 +925,73 @@ describe("anchorImpliedDay — the day a bucket names, read off its own anchor (
     ["+13 (Apia)", "2026-08-25T11:00:00Z", 13 * HOUR, "2026-08-26"],
     // THE ONLY AMBIGUOUS BAND, PINNED FROM BOTH SIDES. The same anchor, two profiles,
     // two answers — and each is the one that profile's own calendar keeps.
-    ["10:00Z, Honolulu profile keeps -10", "2026-08-25T10:00:00Z", HONOLULU, "2026-08-25"],
-    ["10:00Z, +14 profile keeps +14", "2026-08-25T10:00:00Z", KIRITIMATI, "2026-08-26"],
+    [
+      "10:00Z, Honolulu profile keeps -10",
+      "2026-08-25T10:00:00Z",
+      HONOLULU,
+      "2026-08-25",
+    ],
+    [
+      "10:00Z, +14 profile keeps +14",
+      "2026-08-25T10:00:00Z",
+      KIRITIMATI,
+      "2026-08-26",
+    ],
     ["12:00Z, -12 profile", "2026-08-25T12:00:00Z", -12 * HOUR, "2026-08-25"],
     ["12:00Z, +12 profile", "2026-08-25T12:00:00Z", 12 * HOUR, "2026-08-26"],
   ])("%s", (_name, start, offset, expected) => {
-    expect(anchorImpliedDay("steps", start, wide(start), offset)).toBe(expected);
+    expect(anchorImpliedDay("steps", start, wide(start), offset)).toBe(
+      expected
+    );
   });
 
   // WHAT IT DECLINES, AND EVERY ONE OF THESE IS A ROW THAT MUST KEEP THE PROFILE-ZONE
   // ATTRIBUTION. A null here is what routes the caller back to today's derivation.
   it.each([
     // Not a tiling metric — nutrition and sleep sit on their records' REAL windows.
-    ["nutrition", "nutrition_kcal", "2026-08-25T10:00:00Z", "2026-08-25T21:00:00Z"],
+    [
+      "nutrition",
+      "nutrition_kcal",
+      "2026-08-25T10:00:00Z",
+      "2026-08-25T21:00:00Z",
+    ],
     ["sleep", "sleep_min", "2026-08-25T04:00:00Z", "2026-08-25T12:00:00Z"],
-    ["hydration", "hydration_l", "2026-08-25T10:00:00Z", "2026-08-25T21:00:00Z"],
+    [
+      "hydration",
+      "hydration_l",
+      "2026-08-25T10:00:00Z",
+      "2026-08-25T21:00:00Z",
+    ],
     // A `15m` exporter setting sends the SAME metrics as minute buckets, and a 15-minute
     // window starting 14:00Z would otherwise "imply" UTC+10 and file a New York
     // afternoon on tomorrow. The granularity gate is what makes that unreachable.
-    ["a 15-minute bucket", "steps", "2026-08-25T14:00:00Z", "2026-08-25T14:15:00Z"],
-    ["a point reading", "steps", "2026-08-25T10:00:00Z", "2026-08-25T10:00:00Z"],
+    [
+      "a 15-minute bucket",
+      "steps",
+      "2026-08-25T14:00:00Z",
+      "2026-08-25T14:15:00Z",
+    ],
+    [
+      "a point reading",
+      "steps",
+      "2026-08-25T10:00:00Z",
+      "2026-08-25T10:00:00Z",
+    ],
     // An instant with no UTC designator is refused by `instantMs` and never compared.
-    ["a bare local string", "steps", "2026-08-25T10:00:00", "2026-08-25T21:00:00"],
+    [
+      "a bare local string",
+      "steps",
+      "2026-08-25T10:00:00",
+      "2026-08-25T21:00:00",
+    ],
     // Off the quarter-hour grid: no real zone keeps a midnight here, so the window
     // states no anchor and the profile attribution stands.
-    ["an anchor at 04:07Z", "steps", "2026-08-25T04:07:00Z", "2026-08-25T21:00:00Z"],
+    [
+      "an anchor at 04:07Z",
+      "steps",
+      "2026-08-25T04:07:00Z",
+      "2026-08-25T21:00:00Z",
+    ],
   ])("declines %s", (_name, metric, start, end) => {
     expect(anchorImpliedDay(metric, start, end, 0)).toBeNull();
   });
@@ -951,9 +1003,24 @@ describe("anchorRefusesDay — the supersede guard's own reader (#3901)", () => 
   // correctly-filed bucket look mislabeled.
   it.each([
     ["the day its anchor names", "2026-08-27T04:00:00Z", "2026-08-27", false],
-    ["the neighbour prod filed it under", "2026-08-27T04:00:00Z", "2026-08-26", true],
-    ["the westward admissible day", "2026-08-25T10:00:00Z", "2026-08-25", false],
-    ["the eastward admissible day", "2026-08-25T10:00:00Z", "2026-08-26", false],
+    [
+      "the neighbour prod filed it under",
+      "2026-08-27T04:00:00Z",
+      "2026-08-26",
+      true,
+    ],
+    [
+      "the westward admissible day",
+      "2026-08-25T10:00:00Z",
+      "2026-08-25",
+      false,
+    ],
+    [
+      "the eastward admissible day",
+      "2026-08-25T10:00:00Z",
+      "2026-08-26",
+      false,
+    ],
     ["neither admissible day", "2026-08-25T10:00:00Z", "2026-08-24", true],
     // No anchor to contradict: an unreadable instant and an off-grid start both refuse
     // nothing, so the guard cannot make the rule inert on a store it cannot read.

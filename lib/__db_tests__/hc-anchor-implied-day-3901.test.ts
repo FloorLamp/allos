@@ -101,26 +101,56 @@ describe("the prod sequence of #3901, through the profile's late flip", () => {
     };
 
     // 08-25, on Honolulu time: the day fills, then completes at HST midnight.
-    step("2026-08-25T20:00:05Z", "2026-08-25T10:00:00Z", "2026-08-25T20:00:00Z", 5200);
-    step("2026-08-26T09:58:05Z", "2026-08-25T10:00:00Z", "2026-08-26T09:58:00Z", 8672);
+    step(
+      "2026-08-25T20:00:05Z",
+      "2026-08-25T10:00:00Z",
+      "2026-08-25T20:00:00Z",
+      5200
+    );
+    step(
+      "2026-08-26T09:58:05Z",
+      "2026-08-25T10:00:00Z",
+      "2026-08-26T09:58:00Z",
+      8672
+    );
 
     // THE FIRST SKEW WINDOW. The traveller lands in Los Angeles and the phone re-anchors
     // to UTC-7 immediately; the profile is still Pacific/Honolulu because the banner has
     // not been tapped. Under the profile's zone 2026-08-26T07:00Z reads 2026-08-25
     // 21:00 — so this bucket used to be filed on 08-25, where it overlapped and
     // superseded the completed 8672 row above.
-    step("2026-08-26T21:00:05Z", "2026-08-26T07:00:00Z", "2026-08-26T21:00:00Z", 4100);
+    step(
+      "2026-08-26T21:00:05Z",
+      "2026-08-26T07:00:00Z",
+      "2026-08-26T21:00:00Z",
+      4100
+    );
     setTimezone(p, "America/Los_Angeles");
-    step("2026-08-27T06:58:05Z", "2026-08-26T07:00:00Z", "2026-08-27T06:58:00Z", 6608);
+    step(
+      "2026-08-27T06:58:05Z",
+      "2026-08-26T07:00:00Z",
+      "2026-08-27T06:58:00Z",
+      6608
+    );
 
     // THE SECOND SKEW WINDOW, and the exact prod push: the NY-anchored bucket
     // (`start_time 2026-08-27T04:00:00Z`) arrived at 21:51:56Z while the profile still
     // held America/Los_Angeles, which files it under LA-local 2026-08-26.
-    step("2026-08-27T21:51:56Z", "2026-08-27T04:00:00Z", "2026-08-27T21:51:56Z", 3300);
+    step(
+      "2026-08-27T21:51:56Z",
+      "2026-08-27T04:00:00Z",
+      "2026-08-27T21:51:56Z",
+      3300
+    );
     setTimezone(p, "America/New_York");
     // And the re-send after the flip, which is where the justifying row used to
     // re-derive its date and abandon the day it had emptied.
-    step("2026-08-28T02:00:05Z", "2026-08-27T04:00:00Z", "2026-08-28T02:00:00Z", 7150);
+    step(
+      "2026-08-28T02:00:05Z",
+      "2026-08-27T04:00:00Z",
+      "2026-08-28T02:00:00Z",
+      7150
+    );
 
     expect(stepRows(p)).toEqual([
       { date: "2026-08-25", value: 8672 },
@@ -143,18 +173,42 @@ describe("a bucket whose FIRST push is narrower than the granularity gate", () =
     const p = freshProfile("HC Sub-Hour First Push");
     setTimezone(p, "America/Los_Angeles");
     // The LA 08-26 day, last sent before the device re-anchored.
-    pushSteps(p, "2026-08-27T03:00:05Z", "2026-08-26T07:00:00Z", "2026-08-27T03:00:00Z", 6608);
+    pushSteps(
+      p,
+      "2026-08-27T03:00:05Z",
+      "2026-08-26T07:00:00Z",
+      "2026-08-27T03:00:00Z",
+      6608
+    );
     // NY midnight is 2026-08-27T04:00Z, which is 08-26 21:00 in Los Angeles: the first
     // push of the new anchoring lands 30 minutes later, under the profile's 08-26.
-    pushSteps(p, "2026-08-27T04:30:05Z", "2026-08-27T04:00:00Z", "2026-08-27T04:30:00Z", 120);
+    pushSteps(
+      p,
+      "2026-08-27T04:30:05Z",
+      "2026-08-27T04:00:00Z",
+      "2026-08-27T04:30:00Z",
+      120
+    );
     expect(stepRows(p)).toEqual([
       { date: "2026-08-26", value: 6608 },
       { date: "2026-08-26", value: 120 },
     ]);
     // Grown past the hour, so the anchor is now readable — and it says 08-27.
-    pushSteps(p, "2026-08-27T21:51:56Z", "2026-08-27T04:00:00Z", "2026-08-27T21:51:56Z", 3300);
+    pushSteps(
+      p,
+      "2026-08-27T21:51:56Z",
+      "2026-08-27T04:00:00Z",
+      "2026-08-27T21:51:56Z",
+      3300
+    );
     setTimezone(p, "America/New_York");
-    pushSteps(p, "2026-08-28T02:00:05Z", "2026-08-27T04:00:00Z", "2026-08-28T02:00:00Z", 7150);
+    pushSteps(
+      p,
+      "2026-08-28T02:00:05Z",
+      "2026-08-27T04:00:00Z",
+      "2026-08-28T02:00:00Z",
+      7150
+    );
     expect(stepRows(p)).toEqual([
       { date: "2026-08-26", value: 6608 },
       { date: "2026-08-27", value: 7150 },
@@ -210,9 +264,11 @@ describe("THE ANCHOR GUARD, behaviourally (#3901)", () => {
     expect(out.superseded).toBe(0);
     // Written, not withheld — and counted, so the day reading high is said out loud.
     expect(out.overlapsLeft).toBe(1);
-    expect(stepRows(p).map((r) => r.value).sort((a, b) => a - b)).toEqual([
-      3300, 6608,
-    ]);
+    expect(
+      stepRows(p)
+        .map((r) => r.value)
+        .sort((a, b) => a - b)
+    ).toEqual([3300, 6608]);
   });
 
   it("still supersedes the SAME-DAY re-anchor pair, which is #3424's own shape", () => {

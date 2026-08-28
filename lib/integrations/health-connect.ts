@@ -1,10 +1,5 @@
 import type { ActivityType } from "@/lib/types";
-import {
-  tzOffsetMs,
-  utcInstant,
-  utcMinute,
-  zonedDateParts,
-} from "@/lib/date";
+import { tzOffsetMs, utcInstant, utcMinute, zonedDateParts } from "@/lib/date";
 import { anchorImpliedDay } from "@/lib/metric-window-overlap";
 import { boundedOrNull, inTimeWindow } from "@/lib/ingest-bounds";
 import { toKg, toKm, type Kg } from "@/lib/units";
