@@ -247,16 +247,14 @@ export async function handleCallbackQuery(
 // swallowed, because the write has landed and the person has been answered — the same
 // failure isolation, without the hour's wait.
 //
-// THE TAPPED MESSAGE IS SWEPT TOO. An earlier revision excluded it, reasoning that its
-// handler had just rebuilt it from the same post-write state. That holds only for
-// handlers that re-render through a domain builder, and is false for the whole PROSE
-// class: `handleDigestTimeTap` and `handleTuneTap` edit the KEYBOARD only, and
+// THE TAPPED MESSAGE IS SWEPT TOO, and excluding it was tried and retracted. "Its
+// handler just rebuilt it" holds only for handlers that re-render through a domain
+// builder; `handleDigestTimeTap` and `handleTuneTap` edit the KEYBOARD only, and
 // `syncMessagePointerKeyboard` never touches `body_hash` — so the digest's own
-// sentences were the one thing no path could correct until the next tick, which is the
-// hour this hook exists to remove. Nothing is spent on the messages that WERE rebuilt:
-// their pointer is already in sync, so the sweep computes the same render and edits
-// zero times. Idempotence is what makes that true, and the exactly-once edit counts in
-// usual-routine-telegram.test.ts are the guard that keeps it true.
+// sentences were the one thing no path could correct until the next tick, the hour
+// this hook exists to remove. A message that WAS rebuilt costs nothing here: its
+// pointer is in sync, so the sweep computes the same render and edits zero times. The
+// exactly-once counts in usual-routine-telegram.test.ts are that idempotence's guard.
 async function sweepAfterTap(profileId: number): Promise<void> {
   try {
     const rc = await reconcileProfileMessages(profileId);
