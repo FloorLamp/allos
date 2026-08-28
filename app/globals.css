@@ -305,6 +305,92 @@
 }
 
 /* ────────────────────────────────────────────────────────────────────────────
+   BELOW `sm`, NO CARD DRAWS A FRAME (issue #3673).
+
+   #3466 ruled the page gutter and the card gutter both at the platform floor and
+   stepped down only the SECOND inset inside each. That reasoning was about
+   TIGHTENING a gutter. This removes the LAYER: on a phone a `.card` keeps its
+   `--surface` fill and its vertical rhythm and gives up everything that makes it
+   a frame — border, radius, shadow, and the horizontal gutter that pushed its
+   first character to 32px while an unframed neighbour's sat at 16.
+
+   WHY THE LEFT EDGE AND NOT THE PIXELS. The prototype that settled this put an
+   ochre 16px guide down three dashboard columns: a framed card's text starts at
+   32px, a band's at 16, so the left rag STEPS every time the page alternates
+   between them. One left edge is the property; the ~32px it also reclaims
+   (~83% -> ~92% of a 390px line) is the dividend.
+
+   Grouping is then carried by a label plus `--divider` hairlines over the band's
+   fill, and object-ness by the AFFORDANCE — a row with a control is a thing you
+   act on, a row without one reports. The button was already saying what the
+   border spent 16px repeating.
+
+   THE ONE EXCEPTION IS NOT WRITTEN HERE, and that is the mechanism rather than an
+   omission. The tinted Notice family (components/Notice.tsx) is a DIFFERENT
+   primitive — `rounded-lg border` plus a NOTICE_TONE tint, never `.card` — so it
+   keeps its frame below `sm` because this rule cannot reach it, not because a
+   list of paths spares it. There is nothing to allowlist and nothing to keep in
+   sync: the exception is module identity, and a surface joins it by being a
+   Notice. That matters because a Notice is now the app's loudest available
+   shape, and a refused write or a safety flag has nothing else to reach for.
+
+   PADDING-INLINE ONLY. The block padding is the card's vertical rhythm, not a
+   gutter, and it is what keeps a band's fill off its own first line; the issue's
+   whole arithmetic is horizontal. `card-delegated` sets `p-0!` and cells carry
+   their own `card-gutter-*`, which this steps to zero for the same reason: a
+   gutter delegated one level in is still the layer being removed.
+
+   Unlayered on purpose. `@utility` bodies land in Tailwind's `utilities` layer;
+   an unlayered rule beats every layer, so a call site's own `p-6` cannot win the
+   tie back. It also sits OUTSIDE any `@utility` block so
+   lib/__tests__/phone-only-compiled-css.test.ts still reads `.card` as the
+   desktop primitive it is.
+   ──────────────────────────────────────────────────────────────────────────── */
+@media (width < 40rem) {
+  .card,
+  .card-quiet {
+    padding-inline: 0;
+    border-width: 0;
+    border-radius: 0;
+    box-shadow: none;
+  }
+  .card-gutter-standard,
+  .card-gutter-compact,
+  .card-gutter-action {
+    padding-inline: 0;
+  }
+  /* The footnote's negative pull was cancelling a gutter that is no longer spent. */
+  .card-footnote {
+    margin-inline: 0;
+    padding-inline: 0;
+    border-end-start-radius: 0;
+    border-end-end-radius: 0;
+  }
+  /* THE SAME LAYER, ONE LEVEL IN. #3466 stepped these DOWN because they were a
+     second gutter inside a card's first; with the first gone they became the only
+     one, and a `rounded-lg border` box is the very frame this rule removes. Their
+     tiers are untouched — each still declares its own `max-sm:p-*!` and each call
+     site still carries it, which is what keeps the vertical rhythm and the review
+     moment #3466 bought. What goes is the horizontal half and the frame. */
+  /* `!important` because the tiers themselves are `@apply max-sm:p-*!` — an
+     important declaration is never beaten by a normal one, whatever the layer. */
+  .subpanel-inset,
+  .subpanel-inset-sm,
+  .subpanel-inset-xs {
+    padding-inline: 0 !important;
+    border-inline-width: 0;
+    border-radius: 0;
+  }
+  /* A stacked row's own `p-3` (#1616) is that layer again. `logged-event-rows`
+     already zeroed it by hand for the five ledger consumers, on the reasoning that
+     their host card had drawn the gutter; no card draws one now, so the rule
+     belongs to every stacked row and that override is deleted. */
+  .table-cards tr {
+    padding-inline: 0;
+  }
+}
+
+/* ────────────────────────────────────────────────────────────────────────────
    THE SUB-PANEL INSET CONVENTION (issue #3466 class A).
 
    A recurring shape: a `rounded-lg border p-*` (or tinted) box INSIDE a `.card`.
@@ -996,13 +1082,13 @@
      ~130px on one dose ("Wednesday, August 19" / "AMOUNT 3 g" / "TIME 1:46am").
      Collapsed the row is title + trailing time + controls at the #644 tap floor; the
      labelled detail is one tap away and is EXACTLY what the card showed. */
-  /* NO HORIZONTAL GUTTER: every one of the five sits inside a card that already
-     draws one, so paying `table-cards`'s `p-3` again is the #1539 double-inset.
-     (This absorbed `practice-session-list`, which said the same thing for one of
-     the five and would otherwise have been a same-specificity `!important` tie
-     against this rule, decided by Tailwind's utility sort rather than by anyone.) */
+  /* NO HORIZONTAL GUTTER — now every stacked row's, not these five's (#3673). The
+     `max-sm:px-0!` that used to sit on the rule below was this list saying, for its
+     own five consumers, what the de-card rule above now says for the whole tree.
+     (It had absorbed `practice-session-list`, which said the same thing for one of
+     the five; that absorption stands.) */
   & tr {
-    @apply max-sm:min-h-11! max-sm:items-center! max-sm:gap-y-2! max-sm:px-0! max-sm:py-2!;
+    @apply max-sm:min-h-11! max-sm:items-center! max-sm:gap-y-2! max-sm:py-2!;
   }
   /* COLLAPSED IS THE DEFAULT, and the default is the ABSENCE of the attribute, so a
      row that never renders the toggle (nothing to disclose) is correct without one.
