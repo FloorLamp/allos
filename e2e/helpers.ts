@@ -1249,9 +1249,35 @@ export async function settledBoxes(
   }
 }
 
+// The per-side reach a coarse pointer actually got around each target, READ BACK
+// FROM THE BROWSER rather than inferred from a class list (#3938). The reach lives
+// under `@media (pointer: coarse)`, so whether it arrived is a rendered fact; and a
+// `<select>` or `<input>` renders no pseudo-element at all, which is why the floor
+// is stated as effective and some targets legitimately return 0.
+async function renderedReach(targets: Locator[]): Promise<number[]> {
+  return Promise.all(
+    targets.map((target) =>
+      target.evaluate((el) => {
+        const after = getComputedStyle(el, "::after");
+        if (after.content === "none") return 0;
+        const inset = Math.abs(Number.parseFloat(after.top));
+        return Number.isFinite(inset) ? inset : 0;
+      })
+    )
+  );
+}
+
 // A compact rendered-geometry assertion for primitive-owned phone targets. It
 // reads one settled layout snapshot, checks the actual boxes (not class names),
 // and optionally proves adjacent boxes do not overlap.
+//
+// THE FLOOR IT CHECKS IS EFFECTIVE, NOT RENDERED (owner ruling #3938). Every
+// control renders the 34px box; a coarse pointer gets the rest of the 44 back as
+// reach around it. So the height/width assertions add the measured reach, while
+// VIEWPORT CONTAINMENT stays on the rendered box — a hit region may hang over the
+// page edge, a visible control may not — and DISJOINTNESS moves to the effective
+// box, because two hit regions owning the same point is the defect the gap floor
+// (twice the reach) exists to prevent.
 export async function expectPhoneTapTargets(
   page: Page,
   name: string,
@@ -1267,17 +1293,27 @@ export async function expectPhoneTapTargets(
     await target.scrollIntoViewIfNeeded();
   }
   const boxes = await settledBoxes(targets);
+  const reach = await renderedReach(targets);
+  const effective = boxes.map((box, index) => {
+    const r = reach[index] ?? 0;
+    return {
+      x: box.x - r,
+      y: box.y - r,
+      width: box.width + 2 * r,
+      height: box.height + 2 * r,
+    };
+  });
   const viewport = page.viewportSize();
   expect(viewport, `${name} requires a fixed viewport`).not.toBeNull();
 
   for (const [index, box] of boxes.entries()) {
     expect(
-      box.width + TAP_FLOOR_FLOAT_EPSILON_PX,
-      `${name} target ${index} rendered width`
+      effective[index]!.width + TAP_FLOOR_FLOAT_EPSILON_PX,
+      `${name} target ${index} effective width (${box.width} rendered + 2x${reach[index]} reach)`
     ).toBeGreaterThanOrEqual(TAP_FLOOR_PX);
     expect(
-      box.height + TAP_FLOOR_FLOAT_EPSILON_PX,
-      `${name} target ${index} rendered height`
+      effective[index]!.height + TAP_FLOOR_FLOAT_EPSILON_PX,
+      `${name} target ${index} effective height (${box.height} rendered + 2x${reach[index]} reach)`
     ).toBeGreaterThanOrEqual(TAP_FLOOR_PX);
     expect(box.x, `${name} target ${index} left edge`).toBeGreaterThanOrEqual(
       0
@@ -1294,10 +1330,10 @@ export async function expectPhoneTapTargets(
   }
 
   if (!opts.disjoint) return;
-  for (let left = 0; left < boxes.length; left += 1) {
-    for (let right = left + 1; right < boxes.length; right += 1) {
-      const a = boxes[left]!;
-      const b = boxes[right]!;
+  for (let left = 0; left < effective.length; left += 1) {
+    for (let right = left + 1; right < effective.length; right += 1) {
+      const a = effective[left]!;
+      const b = effective[right]!;
       const overlapX =
         Math.min(a.x + a.width, b.x + b.width) - Math.max(a.x, b.x);
       const overlapY =
@@ -1305,7 +1341,7 @@ export async function expectPhoneTapTargets(
       expect(
         overlapX > TAP_FLOOR_FLOAT_EPSILON_PX &&
           overlapY > TAP_FLOOR_FLOAT_EPSILON_PX,
-        `${name} targets ${left} and ${right} overlap`
+        `${name} targets ${left} and ${right} own the same point once their reach is counted`
       ).toBe(false);
     }
   }

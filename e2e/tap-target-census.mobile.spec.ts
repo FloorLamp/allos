@@ -7,24 +7,38 @@ import { E2E_MEMBER_PASSWORD } from "./logins/shared";
 import { hydratedClick } from "./helpers";
 import { loginAs } from "./nav";
 import {
+  CONTROL_BOX_PX,
   TAP_FLOOR_FLOAT_EPSILON_PX,
   TAP_FLOOR_PX,
-  TAP_TARGET_INSET_PX,
 } from "../lib/tap-floor-tokens";
 
 const PHONE = { width: 390, height: 844 };
 
-async function expectRenderedFloor(name: string, locator: Locator) {
+// THE FLOOR IS EFFECTIVE, THE BOX IS RENDERED (owner ruling #3938). This census
+// used to demand 44 RENDERED and to refuse `.tap-target` as a mechanism, on the
+// reasoning that an overlay overlaps its neighbours. The ruling settles it the
+// other way: every control renders the box, a coarse pointer gets the rest of the
+// 44 back as reach, and the disjointness the old rule was protecting is bought by
+// a gap floor of twice that reach instead. So the reach is READ OFF THE RENDER —
+// a class list cannot say whether `@media (pointer: coarse)` arrived — and the
+// pairwise check below moves to the extended boxes.
+async function reachOf(locator: Locator): Promise<number> {
+  return locator.evaluate((el) => {
+    const after = getComputedStyle(el, "::after");
+    if (after.content === "none") return 0;
+    const inset = Math.abs(Number.parseFloat(after.top));
+    return Number.isFinite(inset) ? inset : 0;
+  });
+}
+
+async function expectEffectiveFloor(name: string, locator: Locator) {
   await expect(locator, name).toBeVisible();
-  await expect(
-    locator,
-    `${name} owns its rendered target instead of overlapping its neighbours`
-  ).not.toHaveClass(/(?:^|\s)tap-target(?:\s|$)/);
   const box = await locator.boundingBox();
   expect(box, name).not.toBeNull();
+  const reach = await reachOf(locator);
   expect(
-    box!.height + TAP_FLOOR_FLOAT_EPSILON_PX,
-    `${name} rendered height`
+    box!.height + 2 * reach + TAP_FLOOR_FLOAT_EPSILON_PX,
+    `${name} effective height (${box!.height} rendered + 2x${reach} reach)`
   ).toBeGreaterThanOrEqual(TAP_FLOOR_PX);
 }
 
@@ -34,19 +48,13 @@ async function expectOverlayFloor(
   exactRenderedPx: number
 ) {
   await expect(locator, name).toBeVisible();
-  await expect(locator, `${name} hit-area mechanism`).toHaveClass(
-    /(?:^|\s)tap-target(?:\s|$)/
-  );
   const box = await locator.boundingBox();
   expect(box, name).not.toBeNull();
   expect(
     Math.abs(box!.height - exactRenderedPx),
     `${name} rendered height delta from ${exactRenderedPx}px`
   ).toBeLessThanOrEqual(TAP_FLOOR_FLOAT_EPSILON_PX);
-  expect(
-    box!.height + 2 * TAP_TARGET_INSET_PX + TAP_FLOOR_FLOAT_EPSILON_PX,
-    `${name} effective height`
-  ).toBeGreaterThanOrEqual(TAP_FLOOR_PX);
+  await expectEffectiveFloor(name, locator);
 }
 
 async function expectRenderedTargetsDisjoint(name: string, row: Locator) {
@@ -55,19 +63,25 @@ async function expectRenderedTargetsDisjoint(name: string, row: Locator) {
   const count = await targets.count();
   expect(count, `${name} must exercise adjacent targets`).toBeGreaterThan(1);
   const boxes = await Promise.all(
-    Array.from({ length: count }, (_, index) =>
-      targets.nth(index).boundingBox()
-    )
+    Array.from({ length: count }, async (_, index) => {
+      const target = targets.nth(index);
+      const box = await target.boundingBox();
+      const reach = await reachOf(target);
+      return box === null
+        ? null
+        : {
+            x: box.x - reach,
+            y: box.y - reach,
+            width: box.width + 2 * reach,
+            height: box.height + 2 * reach,
+          };
+    })
   );
   for (let left = 0; left < boxes.length; left += 1) {
-    await expect(
-      targets.nth(left),
-      `${name} target ${left} owns a rendered box`
-    ).not.toHaveClass(/(?:^|\s)tap-target(?:\s|$)/);
     expect(boxes[left], name).not.toBeNull();
     expect(
       boxes[left]!.height + TAP_FLOOR_FLOAT_EPSILON_PX,
-      `${name} target ${left}`
+      `${name} target ${left} effective height`
     ).toBeGreaterThanOrEqual(TAP_FLOOR_PX);
     for (let right = left + 1; right < boxes.length; right += 1) {
       const a = boxes[left]!;
@@ -77,7 +91,8 @@ async function expectRenderedTargetsDisjoint(name: string, row: Locator) {
       const overlapY =
         Math.min(a.y + a.height, b.y + b.height) - Math.max(a.y, b.y);
       expect(
-        overlapX > 0 && overlapY > 0,
+        overlapX > TAP_FLOOR_FLOAT_EPSILON_PX &&
+          overlapY > TAP_FLOOR_FLOAT_EPSILON_PX,
         `${name} targets ${left} and ${right} must not own the same point`
       ).toBe(false);
     }
@@ -95,7 +110,7 @@ test.describe("tap-target rendered census (#3562)", () => {
     );
     try {
       await page.goto("/");
-      await expectRenderedFloor(
+      await expectEffectiveFloor(
         "mobile profile identity",
         page.getByTestId("profile-identity-bar-mobile")
       );
@@ -113,7 +128,7 @@ test.describe("tap-target rendered census (#3562)", () => {
     );
     try {
       await page.goto("/");
-      await expectRenderedFloor(
+      await expectEffectiveFloor(
         "mobile dock slot",
         page.getByTestId("dock-slot-home")
       );
@@ -123,14 +138,14 @@ test.describe("tap-target rendered census (#3562)", () => {
       const trainSegment = sheet.getByTestId("log-sheet-segment-train");
       await hydratedClick(page, trainSegment);
       await expect(trainSegment).toHaveAttribute("aria-pressed", "true");
-      await expectRenderedFloor(
+      await expectEffectiveFloor(
         "quick-log row",
         sheet.getByTestId("quick-log-log-activity")
       );
       const context = sheet.getByTestId("log-sheet-context");
       const dueDose = context.getByTestId("log-sheet-chip-doses");
       await expect(dueDose).toHaveText(`Due: ${SHELL_DOSE_ITEM}`);
-      await expectRenderedFloor("owned due-dose context chip", dueDose);
+      await expectEffectiveFloor("owned due-dose context chip", dueDose);
     } finally {
       await page.context().close();
     }
@@ -149,16 +164,16 @@ test.describe("tap-target rendered census (#3562)", () => {
       dialog.getByTestId("visit-tense-past"),
       32
     );
-    await expectRenderedFloor(
+    await expectEffectiveFloor(
       "visit fact chip",
       dialog.getByTestId("visit-fact-when")
     );
-    await expectRenderedFloor(
+    await expectEffectiveFloor(
       "visit more trigger",
       dialog.getByTestId("visit-fact-more")
     );
     await hydratedClick(page, dialog.getByTestId("visit-fact-more"));
-    await expectRenderedFloor(
+    await expectEffectiveFloor(
       "visit more choice",
       dialog.getByTestId("visit-more-provider")
     );
@@ -182,12 +197,12 @@ test.describe("tap-target rendered census (#3562)", () => {
       page.getByRole("main").getByTestId("new-protocol-toggle")
     );
     const protocol = page.getByTestId("protocol-form");
-    await expectRenderedFloor(
+    await expectEffectiveFloor(
       "protocol more trigger",
       protocol.getByTestId("protocol-fact-more")
     );
     await hydratedClick(page, protocol.getByTestId("protocol-fact-more"));
-    await expectRenderedFloor(
+    await expectEffectiveFloor(
       "protocol more choice",
       protocol.getByTestId("protocol-more-notes")
     );
@@ -205,12 +220,12 @@ test.describe("tap-target rendered census (#3562)", () => {
     await hydratedClick(page, goal.getByTestId("goal-kind-freeform"));
     await goal.getByLabel("Title").fill("Geometry goal");
     await hydratedClick(page, goal.getByTestId("goal-editor-done"));
-    await expectRenderedFloor(
+    await expectEffectiveFloor(
       "goal more trigger",
       goal.getByTestId("goal-fact-more")
     );
     await hydratedClick(page, goal.getByTestId("goal-fact-more"));
-    await expectRenderedFloor(
+    await expectEffectiveFloor(
       "goal more choice",
       goal.getByTestId("goal-more-category")
     );
@@ -225,12 +240,12 @@ test.describe("tap-target rendered census (#3562)", () => {
       page.getByRole("button", { name: "Log injury", exact: true })
     );
     const injury = page.getByTestId("injury-form");
-    await expectRenderedFloor(
+    await expectEffectiveFloor(
       "injury more trigger",
       injury.getByTestId("injury-fact-more")
     );
     await hydratedClick(page, injury.getByTestId("injury-fact-more"));
-    await expectRenderedFloor(
+    await expectEffectiveFloor(
       "injury more choice",
       injury.getByTestId("injury-more-laterality")
     );
@@ -248,15 +263,15 @@ test.describe("tap-target rendered census (#3562)", () => {
     await expect(form).toBeVisible();
     await form.getByLabel("Name").fill("Geometry thing");
     await form.getByLabel("Name").press("Escape");
-    await expectRenderedFloor(
+    await expectEffectiveFloor(
       "intake fact chip",
       form.getByTestId("intake-fact-dose")
     );
-    await expectRenderedFloor(
+    await expectEffectiveFloor(
       "intake add-rule chip",
       form.getByTestId("intake-add-rule")
     );
-    await expectRenderedFloor(
+    await expectEffectiveFloor(
       "intake more trigger",
       form.getByTestId("intake-fact-more")
     );
@@ -270,7 +285,7 @@ test.describe("tap-target rendered census (#3562)", () => {
       "data-panel",
       "more"
     );
-    await expectRenderedFloor(
+    await expectEffectiveFloor(
       "intake more choice",
       form.getByTestId("intake-more-purpose")
     );
@@ -281,11 +296,11 @@ test.describe("tap-target rendered census (#3562)", () => {
     await hydratedClick(page, form.getByTestId("intake-more-purpose"));
     await form.getByLabel("Name").fill("Lutein");
     await form.getByLabel("Name").press("Escape");
-    await expectRenderedFloor(
+    await expectEffectiveFloor(
       "purpose goal",
       form.getByTestId("purpose-goal-energy")
     );
-    await expectRenderedFloor(
+    await expectEffectiveFloor(
       "purpose suggestion",
       form.getByTestId("purpose-suggest-eyes")
     );
@@ -295,7 +310,7 @@ test.describe("tap-target rendered census (#3562)", () => {
     );
     await hydratedClick(page, form.getByTestId("intake-editor-done"));
     await hydratedClick(page, form.getByTestId("intake-add-rule"));
-    await expectRenderedFloor(
+    await expectEffectiveFloor(
       "rule offer",
       form.getByTestId("intake-rule-add-only-when")
     );
@@ -312,7 +327,7 @@ test.describe("tap-target rendered census (#3562)", () => {
 
     await hydratedClick(page, form.getByTestId("intake-fact-timing"));
     await form.getByLabel("How often").selectOption("weekly");
-    await expectRenderedFloor(
+    await expectEffectiveFloor(
       "cadence weekday",
       form.getByTestId("cadence-weekday-1")
     );
@@ -323,20 +338,22 @@ test.describe("tap-target rendered census (#3562)", () => {
   });
 });
 
-// ── THE RULED TYPED-FIELD BOX (#3708, owner ruling 2026-08-28) ──────────────
+// ── THE RULED TYPED-FIELD BOX (#3708, superseded by #3938) ──────────────────
 //
 // The field BOX is the target. A labeled row beside it may not stand in for it,
 // so these assertions read the `<input>`/`<select>`'s own rendered rectangle and
 // nothing around it.
 //
-// TWO DIRECTIONS, ALWAYS, AND THAT IS THE WHOLE DESIGN OF THIS BLOCK. "Nothing is
-// under 44 at 390" passes on the tree we want AND on a tree pinned at 44 at every
-// width — which is exactly the defect #3896 shipped, where two `!` outranked a
-// primitive's own `sm`+ reset and held 18 consumers at the phone floor on desktop.
-// So every site measured below is measured at 390 AND above `sm`, and the desktop
-// reading asserts the field is SHORTER, not merely present. 640 is included by
-// name because `40rem` is the boundary itself and an off-by-one there is invisible
-// at 1280.
+// WHAT CHANGED, AND WHY THE MATCHERS TIGHTENED. #3708 ruled a 44px RENDERED field
+// below `sm` only, so this block asserted ">= 44 at 390" and "< 44 above sm".
+// #3938 rules ONE box at every width, and 34 satisfies "< 44" — so the old
+// desktop half would have gone on passing while saying nothing, which is exactly
+// the boundary-crossing fixture that stops testing what it claims. Every reading
+// below is now an EQUALITY against the box, at 390, at 639, at 640 and at 1280,
+// and the reach that carries a field's neighbours to 44 is deliberately absent
+// here: a replaced element renders no pseudo-element, so a typed field's target
+// IS its box. 639/640 stay named because they were the old contract's boundary
+// and a leftover media query there would be invisible at 390 and 1280.
 const SM_EXACT = { width: 640, height: 900 };
 const DESKTOP = { width: 1280, height: 900 };
 
@@ -422,29 +439,19 @@ test.describe("typed fields render the ruled 44px box on a phone (#3708)", () =>
     ] as const;
     await expect(page.getByTestId("date-time-fields")).toBeVisible();
 
-    // THE CONVERSE FIRST, on the wide editor. Desktop density is the half a
-    // one-directional guard cannot see, and it is the half #3896 lost.
-    for (const viewport of [DESKTOP, SM_EXACT]) {
+    // ONE BOX, AT EVERY WIDTH — the same editor, the same DOM, four viewports.
+    for (const viewport of [DESKTOP, SM_EXACT, PHONE]) {
       await page.setViewportSize(viewport);
-      const wide = await fieldHeights(page, fields);
-      for (const [name, height] of Object.entries(wide))
+      const measured = await fieldHeights(page, fields);
+      for (const [name, height] of Object.entries(measured))
         expect(
           height,
-          `${name} renders ${height}px at ${viewport.width}px. The phone floor has ` +
-            "leaked above `sm` — it is confined by a max-width media query, and an " +
-            "`!important` copy of it would rank ABOVE that query rather than below."
-        ).toBeLessThan(TAP_FLOOR_PX);
+          `${name} renders ${height}px at ${viewport.width}px, not the ${CONTROL_BOX_PX}px ` +
+            "control box. The box is declared once in app/globals.css (SECTION: " +
+            "Touch tap targets); a field outside `.input` carries it itself."
+        ).toBe(CONTROL_BOX_PX);
     }
-
     await page.setViewportSize(PHONE);
-    const phone = await fieldHeights(page, fields);
-    for (const [name, height] of Object.entries(phone))
-      expect(
-        height + TAP_FLOOR_FLOAT_EPSILON_PX,
-        `${name} renders ${height}px at ${PHONE.width}px. The floor is declared once for ` +
-          "`.input` in app/globals.css (SECTION: Touch tap targets); a field outside " +
-          "that family carries it itself."
-      ).toBeGreaterThanOrEqual(TAP_FLOOR_PX);
 
     // CONTAINMENT AND DISJOINTNESS, asked of the pair that shares a row. Start and
     // End sit in one two-column grid, so they are the adjacent fields the ruling's
@@ -488,27 +495,18 @@ test.describe("typed fields render the ruled 44px box on a phone (#3708)", () =>
         "field under a sticky header passes an absolute check and fails a person."
     ).toBe(true);
 
-    // THE BOUNDARY ITSELF, NAMED. `sm` is 40rem and the rule is written
-    // `max-width: 639.98px`, so 639 and 640 are the only two widths that can tell
-    // an off-by-one from a working contract; 390 and 1280 cannot see it at all.
-    for (const [width, floored] of [
-      [639, true],
-      [640, false],
-    ] as const) {
+    // THE OLD BOUNDARY, ASKED TO BE ABSENT. `sm` is 40rem and #3708's rule was
+    // written `max-width: 639.98px`, so 639 and 640 are the only two widths that
+    // can tell a surviving phone-only height from the one box; 390 and 1280
+    // cannot see it at all.
+    for (const width of [639, 640]) {
       await page.setViewportSize({ width, height: 900 });
       const at = (await boxOf(`end time at ${width}`, fields[3].locator))
         .height;
-      if (floored)
-        expect(
-          at + TAP_FLOOR_FLOAT_EPSILON_PX,
-          `end time is ${at}px at ${width}px, one pixel INSIDE the phone contract`
-        ).toBeGreaterThanOrEqual(TAP_FLOOR_PX);
-      else
-        expect(
-          at,
-          `end time is ${at}px at ${width}px — 40rem exactly, the first width the ` +
-            "contract must not reach"
-        ).toBeLessThan(TAP_FLOOR_PX);
+      expect(
+        at,
+        `end time is ${at}px at ${width}px — the box does not step at 40rem any more`
+      ).toBe(CONTROL_BOX_PX);
     }
   });
 
@@ -527,7 +525,7 @@ test.describe("typed fields render the ruled 44px box on a phone (#3708)", () =>
     await expect(dialog).toBeVisible();
 
     const name = dialog.getByRole("combobox", { name: "Name" });
-    await expectRenderedFloor("picker field", name);
+    expect((await boxOf("picker field", name)).height).toBe(CONTROL_BOX_PX);
     await name.click();
     await expect(name).toBeFocused();
     await expect(name).toHaveAttribute("aria-expanded", "true");
@@ -589,11 +587,11 @@ test.describe("typed fields render the ruled 44px box on a phone (#3708)", () =>
     await expect(name).toHaveValue("");
     await expect(name).toBeFocused();
 
-    // …and the same field is denser above `sm`, so the floor is a phone contract
-    // and not a new universal height.
+    // …and the same field is the same box above `sm`. An inequality here would
+    // pass on 34, on 26 and on 12; the ruling's claim is an equality.
     await page.setViewportSize(DESKTOP);
     const wide = await boxOf("picker field at 1280", name);
-    expect(wide.height).toBeLessThan(TAP_FLOOR_PX);
+    expect(wide.height).toBe(CONTROL_BOX_PX);
   });
 
   // #3706's own three typed fields, on the real component, at the mount that shows
@@ -617,9 +615,7 @@ test.describe("typed fields render the ruled 44px box on a phone (#3708)", () =>
         .getByTestId("symptom-custom-input")
         .getByRole("combobox");
       const customBox = await boxOf("custom symptom field", custom);
-      expect(
-        customBox.height + TAP_FLOOR_FLOAT_EPSILON_PX
-      ).toBeGreaterThanOrEqual(TAP_FLOOR_PX);
+      expect(customBox.height).toBe(CONTROL_BOX_PX);
       expect(customBox.x + customBox.width).toBeLessThanOrEqual(PHONE.width);
       await expect(custom).toHaveAttribute("aria-label", "Add another symptom");
 
@@ -640,25 +636,24 @@ test.describe("typed fields render the ruled 44px box on a phone (#3708)", () =>
       await bar.getByTestId("symptom-cough-note-toggle").click();
       const note = bar.getByTestId("symptom-cough-note-input");
       const noteBox = await boxOf("symptom note field", note);
-      expect(
-        noteBox.height + TAP_FLOOR_FLOAT_EPSILON_PX
-      ).toBeGreaterThanOrEqual(TAP_FLOOR_PX);
+      expect(noteBox.height).toBe(CONTROL_BOX_PX);
       await note.focus();
       await expect(note).toBeFocused();
 
       await page.setViewportSize(DESKTOP);
       const wideNote = await boxOf("symptom note field at 1280", note);
-      expect(wideNote.height).toBeLessThan(TAP_FLOOR_PX);
+      expect(wideNote.height).toBe(CONTROL_BOX_PX);
     } finally {
       await page.context().close();
     }
   });
 
   // THE SWEEP, IN BOTH DIRECTIONS, over two field surfaces on different routes and
-  // under different logins. On its own the empty-list assertion is the shape the
-  // #3673 review called structurally wrong — it is satisfied by a tree where every
-  // field is 44px at every width — so each surface is also asserted to hold SHORT
-  // fields at 1280. Neither half is worth anything without the other.
+  // under different logins. Under #3938 both directions are the SAME assertion —
+  // every `.input` is the box at 390 and at 1280 — which is stronger than the
+  // old pair of inequalities, and it is stated as the set of distinct heights
+  // rather than as "nothing is short", because an empty filter is satisfied by a
+  // tree where every field vanished.
   //
   // Family settings is here because it carries two of the reconciliation's own 15
   // named sites and neither one was edited: the whole migration for them is the
@@ -706,23 +701,31 @@ test.describe("typed fields render the ruled 44px box on a phone (#3708)", () =>
           }))
         );
 
+      // A textarea that asks for MORE keeps it — `min-block-size` is a floor, not
+      // a ceiling — so the sweep is over the single-line fields the box governs.
+      const singleLine = (fs: { what: string; height: number }[]) =>
+        fs.filter((f) => f.height <= CONTROL_BOX_PX + 1);
+
       const wide = await measure();
       expect(wide.length, "the sweep must find fields").toBeGreaterThan(1);
-      expect(
-        wide.filter((f) => f.height < TAP_FLOOR_PX).length,
-        `Every \`.input\` on ${surface.name} is already at the phone floor at ` +
-          "1280px, so the contract is not confined below `sm` — the exact shape " +
-          "#3896 shipped."
-      ).toBeGreaterThan(0);
-
       await page.setViewportSize(PHONE);
       const phone = await measure();
       expect(phone.length, "the sweep must find fields").toBeGreaterThan(1);
-      expect(
-        phone.filter(
-          (f) => f.height + TAP_FLOOR_FLOAT_EPSILON_PX < TAP_FLOOR_PX
-        ),
-        `A \`.input\` on ${surface.name} renders under the ${TAP_FLOOR_PX}px floor at ${PHONE.width}px.`
-      ).toEqual([]);
+
+      for (const [width, fields] of [
+        [DESKTOP.width, wide],
+        [PHONE.width, phone],
+      ] as const) {
+        const governed = singleLine([...fields]);
+        expect(
+          governed.length,
+          `the sweep on ${surface.name} at ${width}px must reach single-line fields`
+        ).toBeGreaterThan(1);
+        expect(
+          [...new Set(governed.map((f) => f.height))],
+          `\`.input\` renders more than one height on ${surface.name} at ${width}px: ` +
+            governed.map((f) => `${f.what}=${f.height}`).join(", ")
+        ).toEqual([CONTROL_BOX_PX]);
+      }
     });
 });

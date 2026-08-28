@@ -2419,7 +2419,8 @@ input[type="time"]::-webkit-datetime-edit-ampm-field:focus {
    rather than rendered.
 
    The guards measure RENDERED boxes at 390 / 639 / 640 / 1280, never a class
-   string: `e2e/control-box.spec.ts` for the one height and the disjoint reach, and
+   string: `e2e/button-height-floor.mobile.spec.ts` (named for the floor it used to
+   hold; it is the box's home now) for the one height and the disjoint reach, and
    `lib/__tests__/phone-only-compiled-css.test.ts` for where these declarations
    actually land in a real Tailwind compile. */
 .chip-base,
@@ -2433,6 +2434,23 @@ input[type="time"]::-webkit-datetime-edit-ampm-field:focus {
   padding-block: calc(
     (var(--control-box) - 1lh - 2 * var(--control-border)) / 2
   );
+}
+
+/* AND THE SAME NUMBER AS A FLOOR, because the derived padding is spent on the
+   element's LINE BOX and an icon-only composition has no line to spend it on: a
+   16px icon under `text-sm`'s 20px line renders 30, which is #3486's "shorter
+   wellness +" arriving by a new route. `@layer components`, not unlayered, so it
+   stays a floor rather than a ceiling — `min-block-size` REPLACES rather than
+   composes, and the `min-h-16`/`min-h-20` textareas must still win. */
+@layer components {
+  .chip-base,
+  .btn,
+  .btn-ghost,
+  .btn-danger,
+  .button-control,
+  .input {
+    min-block-size: var(--control-box);
+  }
 }
 
 /* The reach. `.tap-target` is the same mechanism under its own name, kept for the

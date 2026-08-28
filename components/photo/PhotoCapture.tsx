@@ -382,7 +382,7 @@ export default function PhotoCapture({
     <>
       <button
         type="button"
-        className={`min-h-11 sm:min-h-0 ${className ?? "btn"}`}
+        className={className ?? "btn"}
         onClick={() => void open(true)}
         disabled={disabled}
         data-testid={triggerTestId}

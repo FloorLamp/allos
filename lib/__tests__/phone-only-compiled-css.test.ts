@@ -28,6 +28,10 @@ const PHONE_ONLY_CONTRACTS = [
   "notification-kind-matrix",
 ] as const;
 
+// The control box's own selector list, spelled once (#3938).
+const CONTROL_BOX_SELECTOR =
+  ".chip-base, .btn, .btn-ghost, .btn-danger, .button-control, .input";
+
 function normalized(value: string) {
   return value.replace(/\s+/g, " ").trim();
 }
@@ -287,6 +291,19 @@ describe("compiled phone-only CSS proof (#3518/#3727)", () => {
       null,
       false,
     ],
+    // #3938: the control box is TWO declarations in two different places, and
+    // which place each one sits in is the whole design. The derived padding is
+    // UNLAYERED so it outranks a call site's own `py-*` in `utilities` — that is
+    // what makes 34 the box rather than a default. The floor for icon-only
+    // content is in `components` so it LOSES to a call site asking for more,
+    // because `min-block-size` replaces rather than composes and the
+    // `min-h-16`/`min-h-20` textareas must keep their height. Neither is
+    // `!important`: for important declarations the layer order reverses and
+    // unlayered would rank LAST, which is how #3896 pinned 18 consumers at the
+    // phone floor on desktop.
+    [CONTROL_BOX_SELECTOR, "padding-block", false, null, false],
+    [CONTROL_BOX_SELECTOR, "border-width", false, null, false],
+    [CONTROL_BOX_SELECTOR, "min-block-size", false, "components", false],
   ] as const)(
     "%s { %s } below-sm=%s compiles into layer %s important=%s",
     async (selector, property, belowSm, layer, important) => {
@@ -308,6 +325,33 @@ describe("compiled phone-only CSS proof (#3518/#3727)", () => {
       expect(found).toEqual([{ layer, important }]);
     }
   );
+
+  // A CONTROL BOX THAT LOST ITS RANK STILL COMPILES, AND STILL READS RIGHT (#3938).
+  // The failure this catches is the quiet one: wrap the box in a layer and every
+  // declaration is still there, still 34, still on the right selectors — it simply
+  // stops beating the `py-1` a call site already carries, and the height it prints
+  // depends on which call site you look at.
+  it("rejects a control box demoted into a layer, where a call site's own padding beats it", async () => {
+    const demoted = source.replace(
+      `${CONTROL_BOX_SELECTOR.split(", ").join(",\n")} {\n  border-width:`,
+      `@layer components {\n${CONTROL_BOX_SELECTOR.split(", ").join(",\n")} {\n  border-width:`
+    );
+    expect(demoted, "the control box rule must be found to mutate").not.toBe(
+      source
+    );
+    const compiledDemotion = await compile(
+      `${demoted}\n}`,
+      ["card"] // any real utility; the box's rules are plain CSS and always emit
+    );
+    expect(
+      declarationRanking(
+        compiledDemotion,
+        CONTROL_BOX_SELECTOR,
+        "padding-block",
+        false
+      )
+    ).toEqual([{ layer: "components", important: false }]);
+  });
 
   it("matches exact class tokens, including nested rules, not lookalikes", () => {
     const selector = exactUtilitySelector("subpanel-inset-xs");
