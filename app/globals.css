@@ -304,6 +304,188 @@
   border-end-end-radius: calc(var(--card-radius, 0.75rem) - 1px);
 }
 
+@utility band {
+  /* A HAND-ROLLED FRAME THAT IS REALLY A BAND (#3673). A surface built out of raw
+     `rounded-xl border bg-surface` cannot be reached by the `.card` rule below, so
+     it says so with this instead. Goes on the frame AND on each element that spends
+     the frame's gutter (labels, rows) — `card-delegated`'s shape, for a surface
+     whose desktop values are its own. */
+  @apply max-sm:rounded-none! max-sm:border-x-0! max-sm:px-0!;
+}
+
+/* ────────────────────────────────────────────────────────────────────────────
+   BELOW `sm`, NO CARD DRAWS A FRAME (issue #3673).
+
+   #3466 ruled the page gutter and the card gutter both at the platform floor and
+   stepped down only the SECOND inset inside each. That was about TIGHTENING a
+   gutter; this removes the LAYER. What decided it was not the pixels but the LEFT
+   EDGE: a framed card's first character sat at 32px and an unframed neighbour's at
+   16, so the left rag stepped 16px every time the page alternated. The reclaimed
+   line (358px instead of 326 on a 390px viewport) is the dividend.
+
+   THE MAIN EXCEPTION IS NOT WRITTEN HERE, and that is the mechanism rather than an
+   omission. The tinted Notice family (components/Notice.tsx) is a DIFFERENT
+   primitive — `rounded-lg border` plus a NOTICE_TONE tint, never `.card` — so it
+   keeps its frame because this rule cannot reach it, not because a list of paths
+   spares it. It matters because a tinted Notice is now the loudest shape the app
+   has, and a refused write has nothing else to reach for.
+
+   WHAT THE CODE ENFORCES IS "RENDERED THROUGH THOSE TWO COMPONENTS", NOT "IS A
+   NOTICE", and the difference is not pedantry. `data-notice` — the marker the
+   phone sweep reads — is emitted by components/Notice.tsx and components/
+   FindingCard.tsx and by nothing else, while SIX other files import NOTICE_TONE
+   and hand-roll the same markup without going through either (IntakeInteractionNotices
+   ×3, ProfilePassport, CuratedSupplementSuggestions, FoodSuggestions,
+   ServerTelegramSettings, FamilyManager). That divergence is known and deliberate
+   — lib/__tests__/notice-block.test.ts is where it is recorded — but a hand-rolled
+   tint is NOT part of the exception, and this comment used to promise it was.
+
+   AND THERE IS A SECOND FRAMED, TINTED SHAPE BELOW `sm`: `[data-matrix-head]` on
+   /settings/notifications (further down this file). #3550's review created it on
+   purpose — the notification matrix's sweep row is a panel of controls, and left
+   flat it read as a fifth kind's line of chips — so it re-frames and re-tints
+   itself with `max-sm:*!` overrides this rule cannot reach. It is an exception
+   because a review ruled it one, not because a mechanism recognises it.
+
+   PADDING-INLINE ONLY. Block padding is the card's vertical rhythm, not a gutter,
+   and it keeps a band's fill off its own first line.
+
+   Unlayered on purpose: `@utility` bodies land in Tailwind's `utilities` layer and
+   an unlayered normal declaration beats every layer, so a call site's own `p-6`
+   cannot win the tie back. It also sits OUTSIDE any `@utility` block so
+   lib/__tests__/phone-only-compiled-css.test.ts still reads `.card` as the desktop
+   primitive it is.
+   ──────────────────────────────────────────────────────────────────────────── */
+@media (width < 40rem) {
+  .card,
+  .card-quiet {
+    padding-inline: 0;
+    border-width: 0;
+    border-radius: 0;
+    box-shadow: none;
+  }
+  .card-gutter-standard,
+  .card-gutter-compact,
+  .card-gutter-action {
+    padding-inline: 0;
+  }
+  /* Its negative pull was cancelling a gutter that is no longer spent. */
+  .card-footnote {
+    margin-inline: 0;
+    padding-inline: 0;
+    border-end-start-radius: 0;
+    border-end-end-radius: 0;
+  }
+  /* THE SAME LAYER, ONE LEVEL IN: #3466 stepped these DOWN as a second gutter
+     inside the card's first, and with the first gone they became the only one.
+     The tiers step VERTICALLY only now (`max-sm:py-*!`) and the horizontal half is
+     zeroed here — that split is forced, not chosen. An `!important` declaration in
+     the `utilities` layer is never beaten by an unlayered one (for important
+     declarations the layer order REVERSES and unlayered ranks last), so a
+     `padding-inline: 0 !important` here would lose to `@apply max-sm:p-2.5!` and
+     ship silently doing nothing. A call site's own normal `rounded-lg border` does
+     lose to this block, which is what takes the frame off. */
+  .subpanel-inset,
+  .subpanel-inset-sm,
+  .subpanel-inset-xs {
+    padding-inline: 0;
+    border-inline-width: 0;
+    border-radius: 0;
+  }
+  /* A stacked row's own `p-3` (#1616) is that layer again. `logged-event-rows`
+     had zeroed it by hand for its five consumers because their host card drew the
+     gutter; no card draws one now, so the rule belongs to every stacked row and
+     that override is deleted. */
+  .table-cards tr {
+    padding-inline: 0;
+  }
+  /* AN INVISIBLE HIT AREA MUST NOT BECOME A REAL SWIPE. A trailing overflow
+     control extends its clickable box 6px past its visible one (`.tap-target`'s
+     `inset: -6px`, and `logged-event-rows`' own copy of the same arithmetic —
+     #3514), and that extension used to land inside the row's own `p-3`. With the
+     gutter gone it reached past the row's right edge and made every stacked row
+     carrying a ⋯ scrollable sideways by 6px, which e2e/mobile-clipping caught on
+     /sleep. The extension is SHIFTED, never shrunk: the whole 12px goes to the
+     leading side, where the row has space, so the hit area keeps the exact size
+     #3514 ruled and the cell keeps the exact width its flex line packed with. */
+  .table-cards td[data-card="actions"] .tap-target::after,
+  .table-cards
+    td[data-card="actions"]
+    [data-testid="overflow-menu-trigger"]::after {
+    inset-inline: -12px 0;
+  }
+}
+
+/* ────────────────────────────────────────────────────────────────────────────
+   AN EMBEDDED FINDING IS EMBEDDED ONLY WHERE ITS CONTAINER DRAWS THE FRAME
+   (issue #3897).
+
+   FindingCard's `embedded` fork exists so a grouped parent can supply one tinted
+   surface and dividers instead of nesting a card inside a card. The rule above
+   took that parent's surface away: on a phone the "Safety notices" strip and each
+   of its findings measured identical — border 0, radius 0, no tint — to the
+   ordinary medication list beside them, so a MAJOR Warfarin + Ibuprofen bleeding
+   interaction rendered as three rose sentences flush to the page gutter. The
+   frame ban could not see it, because a surface that LOSES a frame produces an
+   empty result and an empty result is a pass.
+
+   So the fork INVERTS. FindingCard always renders the tinted Notice shape, and
+   THIS rule takes it back off at `sm` and up, where the container really does
+   house it. Four stacked tinted boxes when four findings fire is the accepted
+   cost; it is the only shape that cannot misstate a severity by rendering it as
+   body copy.
+
+   WRITTEN AS A REMOVAL, NOT AN ADDITION, and that is forced rather than chosen: a
+   tone is ONE string of utilities in NOTICE_TONE, so adding the tint below `sm`
+   would mean spelling a `max-sm:` variant of every tone by hand — six copies of
+   the one map the whole Notice family exists to keep single. Removing it is one
+   rule for every tone at once.
+
+   Unlayered and outside `@utility`, for the cascade reasons the block above
+   states: the finding's own `rounded-lg border px-3 py-2.5` and its tone's
+   `bg-*`/`border-*` are normal declarations in the `utilities` layer, and an
+   unlayered normal declaration beats every layer.
+   ──────────────────────────────────────────────────────────────────────────── */
+@media (width < 40rem) {
+  /* Two tinted frames touching read as one blob, and the hairline that grouped
+     them was the SHARED surface's to draw. At this width there is no shared
+     surface, so the seam becomes a gap. It lives here rather than as a
+     `max-sm:space-y-*` on the grouping container because a per-file phone spacing
+     step is the second convention #3466 exists to prevent — and because the gap
+     belongs to the finding's own phone shape, which is what this section is. */
+  .finding-embedded + .finding-embedded {
+    margin-top: 0.5rem;
+  }
+}
+@media (width >= 40rem) {
+  .finding-embedded {
+    padding-block: 0.75rem;
+    padding-inline: 0;
+    border-width: 0;
+    border-radius: 0;
+    background-color: transparent;
+    /* The tone's own text colour goes back to the parent's, so the detail and
+       evidence lines keep the colours FindingCard already gives them. */
+    color: inherit;
+  }
+  .finding-embedded:first-child {
+    padding-top: 0;
+  }
+  .finding-embedded:last-child {
+    padding-bottom: 0;
+  }
+  /* THE GROUPING HAIRLINE, WHICH THE CONTAINER USED TO DRAW. It was a `divide-y`
+     on the section, and that stopped working the moment the finding carried a
+     tone: Tailwind wraps every `divide-*` rule in `:where()`, so the tone's own
+     `border-rose-300` (a real class) outranks `divide-black/5` (specificity 0)
+     and `border-width: 0` above outranks the divider's width. Both halves of the
+     seam therefore move HERE, beside the shape they belong to — the same seam at
+     both widths, a gap below `sm` and this hairline above it. */
+  .finding-embedded + .finding-embedded {
+    @apply border-t border-black/5 dark:border-white/5;
+  }
+}
+
 /* ────────────────────────────────────────────────────────────────────────────
    THE SUB-PANEL INSET CONVENTION (issue #3466 class A).
 
@@ -352,15 +534,15 @@
    gutters, so the guard would have to carry a ~100-entry allow-list and would be
    deleted within a week — taking the real convention with it. */
 @utility subpanel-inset {
-  @apply max-sm:p-3!;
+  @apply max-sm:py-3!;
 }
 
 @utility subpanel-inset-sm {
-  @apply max-sm:p-2.5!;
+  @apply max-sm:py-2.5!;
 }
 
 @utility subpanel-inset-xs {
-  @apply max-sm:p-2!;
+  @apply max-sm:py-2!;
 }
 
 /* ────────────────────────────────────────────────────────────────────────────
@@ -927,8 +1109,10 @@
 @utility metric-readings-list {
   /* A metric detail page already gives its readings one containing card. `table-cards`
      already renders every phone row as a flat divider-separated record (#1616), so
-     what is left here is the INSET: a row inside an existing card does not also pay
-     the card’s own `p-3` gutter. Nothing else about the flattening is restated —
+     what was left here was the INSET — a row inside a card did not also pay the
+     card's own `p-3` gutter — and #3673 took that too: no card spends an inline
+     gutter below `sm`, so the row's 8px was the only thing left holding this page's
+     readings off the page gutter. Nothing else about the flattening is restated —
      `mb-0`, `rounded-none`, `border-x-0`, `border-t-0`, `bg-transparent` and the
      last-child divider were byte-identical restatements of the base and came off in
      #3499, where an override kept without a reason is the drift the registry exists
@@ -937,7 +1121,7 @@
      that are genuinely intentional carry `!` and beat the generic `table-cards` rules
      regardless of that generated order. */
   & tr {
-    @apply max-sm:items-center! max-sm:gap-x-2! max-sm:gap-y-0.5! max-sm:pr-0! max-sm:pl-2! max-sm:pt-0! max-sm:pb-2!;
+    @apply max-sm:items-center! max-sm:gap-x-2! max-sm:gap-y-0.5! max-sm:pt-0! max-sm:pb-2!;
   }
   /* This list keeps its VALUE on the head line (below), so the title must NOT
      reserve the whole line the way the generic #2588 rule does — it goes back to a
@@ -996,13 +1180,13 @@
      ~130px on one dose ("Wednesday, August 19" / "AMOUNT 3 g" / "TIME 1:46am").
      Collapsed the row is title + trailing time + controls at the #644 tap floor; the
      labelled detail is one tap away and is EXACTLY what the card showed. */
-  /* NO HORIZONTAL GUTTER: every one of the five sits inside a card that already
-     draws one, so paying `table-cards`'s `p-3` again is the #1539 double-inset.
-     (This absorbed `practice-session-list`, which said the same thing for one of
-     the five and would otherwise have been a same-specificity `!important` tie
-     against this rule, decided by Tailwind's utility sort rather than by anyone.) */
+  /* NO HORIZONTAL GUTTER — now every stacked row's, not these five's (#3673). The
+     `max-sm:px-0!` that used to sit on the rule below was this list saying, for its
+     own five consumers, what the de-card rule above now says for the whole tree.
+     (It had absorbed `practice-session-list`, which said the same thing for one of
+     the five; that absorption stands.) */
   & tr {
-    @apply max-sm:min-h-11! max-sm:items-center! max-sm:gap-y-2! max-sm:px-0! max-sm:py-2!;
+    @apply max-sm:min-h-11! max-sm:items-center! max-sm:gap-y-2! max-sm:py-2!;
   }
   /* COLLAPSED IS THE DEFAULT, and the default is the ABSENCE of the attribute, so a
      row that never renders the toggle (nothing to disclose) is correct without one.
@@ -1379,6 +1563,13 @@
 @media (max-width: 39.999rem) {
   .standing-primary::after {
     top: -1.5rem;
+  }
+  /* The stretch reaches into the row's inline gutter so the WHOLE row is tappable.
+     #3673 removed that gutter below `sm`, so the reach now lands outside the row
+     and makes the band scrollable sideways by 32px. The row IS the full line now,
+     so reaching for a gutter is not just harmful, it is redundant. */
+  .standing-stretch::after {
+    inset-inline: 0;
   }
   .standing-door {
     display: none;

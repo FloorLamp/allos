@@ -39,7 +39,7 @@ export default function DemotionSuggestionRow({
   return (
     <li
       data-testid="demotion-suggestion-item"
-      className="rounded-xl border border-black/10 bg-slate-50/60 p-3 dark:border-white/10 dark:bg-ink-850/40"
+      className="subpanel-inset-sm rounded-xl border border-black/10 bg-slate-50/60 p-3 dark:border-white/10 dark:bg-ink-850/40"
     >
       <p className="font-medium text-slate-800 dark:text-slate-100">
         {finding.title}

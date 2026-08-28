@@ -1,5 +1,5 @@
 import { test, expect } from "./fixtures";
-import { type Page } from "@playwright/test";
+import { type Locator, type Page } from "@playwright/test";
 import Database from "better-sqlite3";
 import { loginAs } from "./nav";
 import { settledClick } from "./helpers";
@@ -131,32 +131,60 @@ test.describe("menstrual cycle (#714)", () => {
   // ── #3482 item 2: the two bare rows join the page's card grammar ───────────
   //
   // Presentation only — #2583's folds and the TTC declare/off treatment are ruled and
-  // untouched. Measured as a RENDERED border on the collapsed row, at both widths,
-  // because the defect was visual: cards above, cards below, two unhoused rows in
-  // between.
-  test("the TTC line and the add-period disclosure render housed at both widths (#3482)", async () => {
+  // untouched. The defect was visual and RELATIVE: cards above, cards below, two
+  // unhoused rows in between. So the claim is measured relatively too — each row's
+  // rendered frame is compared with a real neighbouring `.card` on this same page,
+  // never with a hardcoded number. That is what #3482 bought, and it is why this
+  // test survived #3673 taking the frame off every card below `sm` without either
+  // loosening or inverting: at 1280 the grammar is a border and a radius and the
+  // rows draw them; at 390 the grammar is no frame at all and the rows draw none.
+  test("the TTC line and the add-period disclosure draw whatever frame their neighbouring cards draw (#3482)", async () => {
     await page.goto("/medical/cycles");
     const ttc = page.getByTestId("ttc-section");
     const addPanel = page.getByTestId("cycle-add-panel");
+    // The reference neighbour: the Symptoms section directly above these two rows is
+    // an unconditional plain `.card`, so it IS the page's card grammar rather than a
+    // stand-in for it.
+    const neighbour = page.getByTestId("cycle-symptoms");
     // Collapsed is the state that was bare, so the add panel's precondition is
     // asserted. The TTC row's open/closed state is NOT asserted here: ttc.spec.ts
     // declares and stops TTC on this same profile, and both of that section's states
-    // draw a container since #3482 — so this reads the border on whichever branch
+    // draw a container since #3482 — so this reads the frame on whichever branch
     // rendered rather than racing a neighbour for a precondition it does not need.
     await expect(addPanel).toHaveAttribute("data-open", "false");
 
+    const frameOf = (row: Locator) =>
+      row.evaluate((el) => {
+        const s = getComputedStyle(el);
+        return {
+          border: Number.parseFloat(s.borderTopWidth),
+          radius: Number.parseFloat(s.borderTopLeftRadius),
+        };
+      });
+
     for (const width of [390, 1280]) {
       await page.setViewportSize({ width, height: 900 });
+      const grammar = await frameOf(neighbour);
+
+      // What the grammar IS at this width, stated so a relative test cannot pass by
+      // everything on the page losing its frame together. 640px is the `sm`
+      // breakpoint and #3673's `width < 40rem` cutover, the one line where the
+      // answer changes; the compiled-CSS proof that only phones are affected lives
+      // in lib/__tests__/phone-only-compiled-css.test.ts.
+      const framed = width >= 640;
+      expect(grammar.border > 0, `neighbour card at ${width}px`).toBe(framed);
+      expect(grammar.radius > 0, `neighbour card at ${width}px`).toBe(framed);
+
       for (const row of [ttc, addPanel]) {
-        const box = await row.evaluate((el) => {
-          const s = getComputedStyle(el);
-          return {
-            border: parseFloat(s.borderTopWidth),
-            radius: parseFloat(s.borderTopLeftRadius),
-          };
-        });
-        expect(box.border, `${width}px`).toBeGreaterThan(0);
-        expect(box.radius, `${width}px`).toBeGreaterThan(0);
+        const box = await frameOf(row);
+        // Border WIDTH is not compared numerically: a housed row takes the QUIET
+        // tier (1px, no shadow — #2701) and the neighbour is the standard tier
+        // (1.5px), and that difference is the tier, not the grammar. Drawn-or-not is
+        // the grammar. The radius IS compared exactly, because both tiers spend the
+        // same `--radius-card` and a row rounding differently would be the same
+        // mid-scroll break #3482 closed.
+        expect(box.border > 0, `${width}px`).toBe(grammar.border > 0);
+        expect(box.radius, `${width}px`).toBe(grammar.radius);
       }
     }
     await page.setViewportSize({ width: 1280, height: 900 });

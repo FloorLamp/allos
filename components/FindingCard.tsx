@@ -93,8 +93,11 @@ export function FindingCard({
   // The amber/rose/violet hazard blocks lead with an alert triangle; the calm
   // slate RDA block has no icon.
   icon?: boolean;
-  // A grouped parent can supply the shared surface and dividers. In that layout,
-  // keep the finding anatomy but avoid nesting another tinted card inside it.
+  // A grouped parent can supply the shared surface and dividers AT THE WIDTH IT
+  // HAS ONE. Above `sm` this keeps the finding anatomy without nesting a tinted
+  // card inside a tinted card; below `sm` no card draws a surface at all, so the
+  // finding draws its own tint in its own tone (#3897) and this flag only decides
+  // what `.finding-embedded` gives back at `sm`.
   embedded?: boolean;
   title: ReactNode;
   detail: ReactNode;
@@ -114,11 +117,16 @@ export function FindingCard({
   return (
     <div
       data-testid={testid}
-      className={
-        embedded
-          ? "py-3 text-sm first:pt-0 last:pb-0"
-          : `rounded-lg border px-3 py-2.5 text-sm ${NOTICE_TONE[tone]}`
-      }
+      // Notice's declaration, off the same closed NOTICE_TONE export (#3673),
+      // whenever this card draws the tinted frame — which below `sm` is ALWAYS,
+      // embedded or not (#3897). The `embedded` fork now renders the tinted shape
+      // and hands it back to its container at `sm` and up (`.finding-embedded` in
+      // app/globals.css); the marker is a phone rule, so it is true at the width
+      // the phone sweep reads it and inert above.
+      data-notice={tone}
+      className={`rounded-lg border px-3 py-2.5 text-sm ${
+        embedded ? "finding-embedded " : ""
+      }${NOTICE_TONE[tone]}`}
     >
       <div className="flex items-start justify-between gap-2">
         <div

@@ -257,8 +257,19 @@ test.describe("Trends → Overview → body census metric pages (#1067 Phase 2)"
           };
         }),
       ]);
+    // THE HORIZONTAL NUMBERS HERE ARE ZERO ON PURPOSE (#3673), and this is the
+    // claim rather than a loosened one. Below `sm` no card draws a frame: the
+    // delegated gutters (`card-gutter-standard` 16px on the header,
+    // `card-gutter-compact` 8px on the body) and the readings row's own 8px inset
+    // were the layer that held this page's text at 24–32px while an unframed
+    // neighbour's sat at 16, and the ruling is that the page has ONE left edge.
+    // The VERTICAL rhythm is untouched, which is why `paddingTop` still reads 10:
+    // a tier that stepped both halves now steps only the one the ruling is about.
+    // Do not "restore" the 16 — it is the pre-sweep arrangement, and desktop keeps
+    // it (every declaration is `max-sm:`-scoped; see the compiled-CSS proof in
+    // lib/__tests__/phone-only-compiled-css.test.ts).
     expect(readingsHeaderStyles).toEqual({
-      paddingLeft: "16px",
+      paddingLeft: "0px",
       paddingTop: "10px",
     });
     expect(readingsHeadingStyles).toEqual(sourceTitleStyles);
@@ -272,16 +283,20 @@ test.describe("Trends → Overview → body census metric pages (#1067 Phase 2)"
         (element) => getComputedStyle(element).paddingLeft
       )
     ).toBe("0px");
+    // Both were 8px before #3673 — the body's `card-gutter-compact` and the
+    // readings row's own `max-sm:pl-2!`, each a smaller gutter inside the card's
+    // 16px one. With the card's gone they were the only inset left, so the row's
+    // override was deleted and the delegated gutter steps to zero with the rest.
     expect(
       await readingsBody.evaluate(
         (element) => getComputedStyle(element).paddingLeft
       )
-    ).toBe("8px");
+    ).toBe("0px");
     expect(
       await firstReading.evaluate(
         (element) => getComputedStyle(element).paddingLeft
       )
-    ).toBe("8px");
+    ).toBe("0px");
     expect(
       await firstReading.evaluate(
         (element) => getComputedStyle(element).borderRadius
@@ -630,10 +645,18 @@ test.describe("Trends → Overview → body census metric pages (#1067 Phase 2)"
         paddingLeft: Number.parseFloat(style.paddingLeft),
       };
     });
-    expect(summaryFrame.borderLeft).toBeGreaterThan(0);
-    expect(summaryFrame.borderRight).toBeGreaterThan(0);
-    expect(headerBox.x - summaryBox.x).toBe(summaryFrame.borderLeft);
-    expect(gridBox.x - summaryBox.x).toBe(summaryFrame.borderLeft);
+    // THE FRAME IS GONE AT THIS VIEWPORT (#3673), and the topology claim outlives
+    // it. This block used to read the card's border and then prove the header and
+    // the grid were inset by exactly that border and nothing more — the way to say
+    // "no wrapper crept in" when there was a frame to be inset by. Below `sm` there
+    // is no border, so the same property is now the simpler statement it always
+    // reduced to: both parts start at their container's own x, and the grid spans
+    // its full width. The border is still READ, and asserted at zero, so this test
+    // still fails if a frame comes back on a phone rather than going quiet about it.
+    expect(summaryFrame.borderLeft).toBe(0);
+    expect(summaryFrame.borderRight).toBe(0);
+    expect(headerBox.x).toBe(summaryBox.x);
+    expect(gridBox.x).toBe(summaryBox.x);
     expect(gridBox.width).toBe(
       summaryBox.width - summaryFrame.borderLeft - summaryFrame.borderRight
     );
@@ -642,6 +665,10 @@ test.describe("Trends → Overview → body census metric pages (#1067 Phase 2)"
     expect(firstCellBox.width).toBeCloseTo(secondCellBox.width, 0);
     expect(secondCellBox.y - (firstCellBox.y + firstCellBox.height)).toBe(0);
     expect(summaryFrame.paddingLeft).toBe(0);
+    // The standard delegated gutter, which is 16px from `sm` up and zero below it
+    // (#3673): a card that spends no inline gutter cannot delegate one either, or
+    // the layer simply reappears one level in. Read per cell, because "the grid
+    // has no inset" would also pass if only one cell had lost its own.
     for (const cell of [firstCell, secondCell]) {
       expect(
         await cell
@@ -649,7 +676,7 @@ test.describe("Trends → Overview → body census metric pages (#1067 Phase 2)"
           .evaluate((element) =>
             Number.parseFloat(getComputedStyle(element).paddingLeft)
           )
-      ).toBe(16);
+      ).toBe(0);
     }
 
     // No value wraps onto a second line: a wrapped `dd` is ~2× the height of the

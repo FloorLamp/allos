@@ -78,6 +78,13 @@ export function Notice({
   return (
     <div
       data-testid={testid}
+      // THE ONE EXCEPTION, DECLARED BY THE PRIMITIVE THAT IS IT (#3673). Below `sm`
+      // every neutral frame is gone, so this tinted box is the loudest shape the app
+      // still has and a refusal has something to reach for. `data-notice` is how the
+      // phone sweep recognises it — MODULE IDENTITY (this file's export, and
+      // FindingCard, built on the same closed NOTICE_TONE map), never a path list, a
+      // testid list or a source match.
+      data-notice={tone}
       className={`rounded-lg border px-3 py-2.5 text-sm ${NOTICE_TONE[tone]}${
         className ? ` ${className}` : ""
       }`}
