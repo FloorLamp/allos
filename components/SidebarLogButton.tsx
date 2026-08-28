@@ -94,6 +94,10 @@ export default function SidebarLogButton({
         onClose={() => setOpen(false)}
         anchorRef={anchorRef}
         title="Log"
+        // What the trigger's `aria-haspopup="dialog"` promises, made true (#3905).
+        // Not `aria-modal`: this panel deliberately stays open across logs, so the
+        // page behind it is emphatically still in play.
+        role="dialog"
         panelId="sidebar-log-panel"
         testId="sidebar-log-panel"
         fallbackWidth={PANEL_WIDTH_PX}

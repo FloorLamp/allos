@@ -152,8 +152,8 @@ describe("the westward switch the prod incident and the repro both describe", ()
       [
         sample(
           "steps",
-          "2026-05-02",
-          "2026-05-01T15:00:00Z",
+          "2026-05-01",
+          "2026-05-01T04:00:00Z",
           "2026-05-01T23:00:00Z",
           3000
         ),
@@ -168,7 +168,7 @@ describe("the westward switch the prod incident and the repro both describe", ()
         sample(
           "steps",
           "2026-05-01",
-          "2026-05-01T15:00:00Z",
+          "2026-05-01T04:00:00Z",
           "2026-05-01T23:00:00Z",
           3000
         ),
@@ -182,7 +182,7 @@ describe("the westward switch the prod incident and the repro both describe", ()
       ],
       HC
     );
-    expect(storedRows(p, "steps").map((r) => r.value)).toEqual([3500, 3000]);
+    expect(storedRows(p, "steps").map((r) => r.value)).toEqual([3000, 3500]);
     // NOTHING WAS DELETED, and the count going 1 → 0 here is the owner's ruling on the
     // shape (#3424, option 2) rather than a weakening of the rule.
     //
@@ -213,8 +213,8 @@ describe("the westward switch the prod incident and the repro both describe", ()
       [
         sample(
           "steps",
-          "2026-05-02",
-          "2026-05-01T15:00:00Z",
+          "2026-05-01",
+          "2026-05-01T04:00:00Z",
           "2026-05-01T23:00:00Z",
           3000
         ),
@@ -227,7 +227,7 @@ describe("the westward switch the prod incident and the repro both describe", ()
         sample(
           "steps",
           "2026-05-01",
-          "2026-05-01T15:00:00Z",
+          "2026-05-01T04:00:00Z",
           "2026-05-01T23:00:00Z",
           3000
         ),
@@ -483,7 +483,7 @@ describe("what the rule must NEVER delete", () => {
         sample(
           "steps",
           "2026-05-01",
-          "2026-05-01T15:00:00Z",
+          "2026-05-01T04:00:00Z",
           "2026-05-01T23:00:00Z",
           3000
         ),
@@ -492,7 +492,7 @@ describe("what the rule must NEVER delete", () => {
     );
     db.prepare(
       "UPDATE metric_samples SET edited = 1 WHERE profile_id = ? AND started_at = ?"
-    ).run(p, "2026-05-01T15:00:00Z");
+    ).run(p, "2026-05-01T04:00:00Z");
 
     const counts = upsert(
       p,
@@ -570,7 +570,7 @@ describe("what the rule must NEVER delete", () => {
       "steps",
       HC,
       ORIGIN,
-      "2026-05-01T15:00:00Z"
+      "2026-05-01T04:00:00Z"
     );
     writeImportTombstone(p, "metric_samples", key);
     const counts = upsert(
@@ -579,7 +579,7 @@ describe("what the rule must NEVER delete", () => {
         sample(
           "steps",
           "2026-05-01",
-          "2026-05-01T15:00:00Z",
+          "2026-05-01T04:00:00Z",
           "2026-05-01T23:00:00Z",
           3000
         ),
@@ -627,7 +627,7 @@ describe("what the rule must NEVER delete", () => {
     writeImportTombstone(
       p,
       "metric_samples",
-      metricSampleTombstoneKey("steps", HC, ORIGIN, "2026-05-01T15:00:00Z")
+      metricSampleTombstoneKey("steps", HC, ORIGIN, "2026-05-01T04:00:00Z")
     );
     const counts = upsert(
       p,
@@ -635,7 +635,7 @@ describe("what the rule must NEVER delete", () => {
         sample(
           "steps",
           "2026-05-01",
-          "2026-05-01T15:00:00Z",
+          "2026-05-01T04:00:00Z",
           "2026-05-02T01:00:00Z",
           8500
         ),
@@ -807,7 +807,7 @@ describe("what the rule must NEVER delete", () => {
         sample(
           "steps",
           "2026-05-01",
-          "2026-05-01T15:00:00Z",
+          "2026-05-01T04:00:00Z",
           "2026-05-01T23:00:00Z",
           3000
         ),
@@ -955,7 +955,7 @@ describe("the accounting contract", () => {
         sample(
           "steps",
           "2026-05-01",
-          "2026-05-01T15:00:00Z",
+          "2026-05-01T04:00:00Z",
           "2026-05-01T23:00:00Z",
           3000
         ),

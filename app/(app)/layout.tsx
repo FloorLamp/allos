@@ -393,10 +393,15 @@ export default async function AppLayout({
               Density (issue #1416, section A): pt-4 / 1rem gutters below `md`,
               the unchanged pt-8 / 1.25rem from `md` up. The conditional variant
               this used to carry went with the view banner (#1801): the chrome no
-              longer grows a second row, so the padding is unconditional again. */}
+              longer grows a second row, so the padding is unconditional again.
+              THE HORIZONTAL PAIR IS A TOKEN, not the expression spelled here
+              (#3920): below `sm` a band CANCELS this gutter, and a cancel written
+              from a COPY of the expression is one edit away from under-cancelling a
+              notched side. `--page-gutter-left` / `--page-gutter-right` live in
+              app/globals.css, with the `md` step to 1.25rem. */}
                             <div
                               data-testid="app-content-container"
-                              className="mx-auto pt-4 pb-[calc(5rem+env(safe-area-inset-bottom))] pl-[max(1rem,env(safe-area-inset-left))] pr-[max(1rem,env(safe-area-inset-right))] md:pt-8 md:pb-[max(2rem,env(safe-area-inset-bottom))] md:pl-[max(1.25rem,env(safe-area-inset-left))] md:pr-[max(1.25rem,env(safe-area-inset-right))] 3xl:max-w-[110rem]"
+                              className="mx-auto pt-4 pb-[calc(5rem+env(safe-area-inset-bottom))] pl-(--page-gutter-left) pr-(--page-gutter-right) md:pt-8 md:pb-[max(2rem,env(safe-area-inset-bottom))] 3xl:max-w-[110rem]"
                             >
                               {/* This slot is OnboardingReturnBanner's alone again
                             (#1795). The deploy notice used to render here too, as a

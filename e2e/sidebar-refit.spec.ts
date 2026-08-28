@@ -1,7 +1,7 @@
 import { test, expect } from "./fixtures";
 import { type Locator, type Page } from "@playwright/test";
 import { loginAs } from "./nav";
-import { hydratedClick } from "./helpers";
+import { awaitHydrated, hydratedClick } from "./helpers";
 import { showLogRow } from "./log-sheet-helpers";
 import { E2E_LOGIN_CHILD, E2E_MEMBER_PASSWORD } from "./fixture-logins";
 
@@ -124,7 +124,81 @@ test.describe("the desktop sidebar refit (#3154)", () => {
     await anyMarked.click();
     await expect(page).toHaveURL(new RegExp(`/timeline\\?from=${day}`));
     await expect(page.locator(`#timeline-day-${day}`)).toBeVisible();
+    // …AND THE POPOVER ENDS WITH IT (#3905). `open` is state in a layout App
+    // Router does not remount, so the grid used to stay anchored to the sidebar
+    // row, floating over the very day it had just opened, until Escape. The two
+    // assertions above have already proved the destination rendered, so there is
+    // no window left for this absence to pass by arriving early.
+    await expect(panel).toHaveCount(0);
   });
+
+  // KEYBOARD REACH INTO BOTH PANELS (#3905). The refit portaled them to <body>
+  // under triggers declaring `aria-haspopup="dialog"` and moved no focus, so a
+  // keyboard user reached the grid's controls only by tabbing past the rest of the
+  // sidebar and the whole page. This is the browser half of
+  // components/__tests__/anchored-popover-focus.test.tsx, which pins the same
+  // contract in jsdom but cannot speak for a real browser's focus rules.
+  const KEYBOARD_PANELS = [
+    {
+      what: "Calendar",
+      trigger: "sidebar-calendar",
+      panel: "sidebar-calendar-panel",
+      // The panel's first control, named because the browser's answer to "what
+      // is focusable in here" is the part jsdom cannot give. The log panel's own
+      // first row depends on which segment `openingLogSegment` picks, so that
+      // case asserts the containment and lets the segment stay the app's choice.
+      firstControl: "Previous month",
+    },
+    {
+      what: "Log",
+      trigger: "sidebar-log",
+      panel: "sidebar-log-panel",
+      firstControl: null,
+    },
+  ] as const;
+
+  for (const { what, trigger, panel, firstControl } of KEYBOARD_PANELS) {
+    test(`the ${what} panel opens from the keyboard, is the dialog its trigger promises, and hands focus back`, async ({
+      page,
+    }) => {
+      await page.goto("/");
+      const button = page.locator("aside").getByTestId(trigger);
+      await awaitHydrated(button);
+      await button.focus();
+      await expect(button).toBeFocused();
+      await page.keyboard.press("Enter");
+
+      const opened = page.getByTestId(panel);
+      await expect(opened).toBeVisible();
+      // Exactly one dialog, named — `aria-haspopup="dialog"` and `aria-controls`
+      // on the trigger now point at something that answers to the description.
+      await expect(
+        page.getByRole("dialog", { name: what, exact: true })
+      ).toHaveCount(1);
+      // A popover, not a drawer: no `aria-modal`, and nothing is scroll-locked.
+      expect(await opened.getAttribute("aria-modal")).toBeNull();
+      expect(
+        await opened.evaluate((el) => el.contains(document.activeElement))
+      ).toBe(true);
+      if (firstControl) {
+        await expect(opened.getByLabel(firstControl)).toBeFocused();
+      }
+
+      await page.keyboard.press("Escape");
+      await expect(opened).toHaveCount(0);
+      await expect(button).toBeFocused();
+
+      // AND IT IS NOT A TRAP. Re-opened, Shift+Tab off the panel's first control
+      // leaves for the page behind it; a modal would have wrapped round to the
+      // panel's last control instead.
+      await page.keyboard.press("Enter");
+      await expect(opened).toBeVisible();
+      await page.keyboard.press("Shift+Tab");
+      expect(
+        await opened.evaluate((el) => el.contains(document.activeElement))
+      ).toBe(false);
+    });
+  }
 
   test("both panels close on Escape and on an outside click", async ({
     page,
