@@ -497,6 +497,23 @@ ${landingLines}
   is the set a census should be making a claim about anyway, so this is a correctness
   win and not only a speed one. Measured 2026-08-22 on #3457, where a lane lost a
   census run to it. The \`-a\` rule above still applies when you do reach for rg.
+- A SPEC CENSUS IS KEYED ON A SIGNATURE, AND THE SIGNATURE IS THE PART YOU GET
+  WRONG. If your change moves a rendered value, the specs that pin the old value are
+  the census — and three habits make one read clean when it is not. (1) FILENAME IS
+  NOT VIEWPORT. \`*.mobile.spec.ts\` is a naming convention; any spec can call
+  \`setViewportSize\`, and on 2026-08-27 the real phone-rendering population was 126
+  files where a lane had counted 64. (2) THE MATCHER IS NOT NEXT TO THE PROPERTY. A
+  spec that reads \`borderTopWidth\` inside a \`page.evaluate\` and asserts
+  \`toBeGreaterThan(0)\` on the returned local has the property and the matcher on
+  different lines, in different expressions; a line-keyed grep cannot see it. Search
+  for the PROPERTY and the MATCHER separately, then intersect by file. (3) THE
+  LITERAL MAY BE LOOP-BOUND. \`for (const width of [390, 1280])\` never writes
+  \`setViewportSize({ width: 390\`. Grep the bare number too. Measured on #3673: after
+  a rebuilt census over 126 files and 234 executed tests, the lane reported
+  trends-metric-pages.spec.ts as \"the only spec pinning the pre-sweep arrangement\";
+  cycle.spec.ts — desktop-named, loop-bound 390, split assertion — went red in CI on
+  the next push. Report a census as a TABLE of files with a per-file verdict, and
+  state the search that produced it, so the hole is visible when it is there.
 - SHUT DOWN ANY DEV SERVER BEFORE YOU REPORT. If you ran \`npm run dev\` (or
   anything that leaves \`next-server\` alive), stop it and confirm it is gone
   before your final message. A clean \`git status\` does NOT mean the tree is

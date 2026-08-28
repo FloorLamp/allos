@@ -1109,3 +1109,45 @@ recurred once per site, each with a seven-hour daily window and a plausible flak
 story attached.
 
 Filed as #3878; fixed in #3866.
+
+## The census that counted filenames (2026-08-28)
+
+#3673 removed the frame from every card below `40rem` — border, radius, shadow, and
+horizontal padding, in one unlayered media block. A change like that does not break
+code; it breaks the specs that pinned the old rendering. Finding those specs _is_ the
+work, and the lane did it twice.
+
+The first pass counted the phone-rendering population as 64 files, on the strength of
+the `*.mobile.spec.ts` suffix. That suffix is a naming convention, not a viewport
+census: any spec can call `setViewportSize`, and many do. Told so, the lane rebuilt
+the population at 126 files, ran 15 signature-hit files (149 tests) and 85 more on a
+wider net, and reported:
+
+> `trends-metric-pages.spec.ts` was the only spec pinning the pre-#3673 arrangement.
+
+The next CI run went red on `e2e/cycle.spec.ts:137`, at 390px, on
+`expect(box.border).toBeGreaterThan(0)`.
+
+The rebuilt population was right; the signature was wrong. Three things hid that spec
+from a search that had the correct file list in hand:
+
+1. **The property and the matcher are on different lines.** The spec reads
+   `borderTopWidth` inside a `page.evaluate` and asserts on the returned local. Grep
+   for `borderTopWidth.*toBeGreaterThan` and it does not exist anywhere in the file.
+2. **The viewport literal is loop-bound.** `for (const width of [390, 1280])` never
+   writes `setViewportSize({ width: 390`. A search for the call form misses it.
+3. **The filename is `cycle.spec.ts`.** Desktop-named, phone-asserting. This is the
+   first failure repeating in a second form: the corrected population was carried
+   forward, the correction's _reason_ was not.
+
+What generalises is not "search harder". It is that a census has two halves — the
+population and the signature — and a lane that gets one wrong tends to report the
+whole thing as clean, because a search that returns nothing looks identical whether
+the hole is in the file list or in the pattern. Both halves are now named in the
+dispatch brief, along with the instruction to report a census as a per-file table
+with the search that produced it, so a reviewer can see which half was tested.
+
+The failure was cheap here: one red shard on an unmerged PR, caught before merge, on
+a change whose whole purpose was to move the value the spec asserted. It is cheap in
+exactly the cases where the change is obvious. The expensive version is a census run
+against a subtle change, reported clean, believed.
