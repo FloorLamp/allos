@@ -68,19 +68,21 @@ test("class A: a sub-panel inside a card pads less than the card does (#3466)", 
   const inset = await padding(pillar);
   expect(inset).toEqual([8, 0, 8, 0]);
 
-  // …inside a card that keeps its #1416 vertical floor of 16 and no longer spends
-  // a horizontal one. The card is a DIFFERENT element, which is what makes this a
-  // comparison rather than a tautology: the sweep's finding was that the two
-  // layers were both spending a full gutter, and #3673's is that the outer one
-  // should not have been spending a horizontal gutter at all.
+  // …inside a card that keeps its #1416 vertical floor of 16 and spends the page
+  // gutter horizontally: since #3920 the card's fill reaches the viewport edge and
+  // re-spends that gutter inside itself, so there is still exactly ONE horizontal
+  // inset between the viewport and this text — the card's. The card is a DIFFERENT
+  // element, which is what makes this a comparison rather than a tautology.
   const card = main
     .getByTestId("longevity-fitness")
     .locator("xpath=ancestor-or-self::*[contains(@class,'card')][1]");
   const cardInset = await padding(card);
-  expect(cardInset).toEqual([16, 0, 16, 0]);
-  // The vertical step is still a step; the horizontal one is gone on both.
+  expect(cardInset).toEqual([16, 16, 16, 16]);
+  // The vertical step is still a step, and the sub-panel adds no second gutter to
+  // the card's one: its box starts exactly where the card's content does.
   expect(inset[0]).toBeLessThan(cardInset[0]);
-  expect(inset[3]).toBe(cardInset[3]);
+  const [pillarBox, cardBox] = await settledBoxes([pillar, card]);
+  expect(pillarBox.x).toBe(cardBox.x + cardInset[3]);
 
   // The box did not become a worse target for being tighter.
   const box = await pillar.boundingBox();
@@ -188,9 +190,13 @@ test("class B: /data draws one border around each integration, not two (#3466)",
   );
   expect(cardFill).not.toBe(canvas);
   expect(cardFill).not.toBe("rgba(0, 0, 0, 0)");
-  // …and neither spends a gutter of its own, which is the phone half of it.
+  // …the wrapper spends no gutter of its own, which is the phone half of it, and
+  // the card spends exactly one — its fill running edge to edge with the page
+  // gutter re-spent inside it (#3920), on a route that is not the dashboard.
   expect(await padding(wrapper)).toEqual([0, 0, 0, 0]);
-  expect(await px(card, "padding-left")).toBe(0);
+  expect(await px(card, "padding-left")).toBe(16);
+  const fill = await card.boundingBox();
+  expect([fill?.x, (fill?.x ?? 0) + (fill?.width ?? 0)]).toEqual([0, 390]);
 });
 
 // ── #3673: below `sm`, no card draws a frame ─────────────────────────────────
@@ -361,11 +367,22 @@ async function runsFlushWithTheirFill(
         while (fill && !(fill.matches(selector) && painted(fill)))
           fill = fill.parentElement;
         if (!fill) continue;
+        // AN `sr-only` RUN HAS NO LEFT EDGE A READER CAN SEE, and it is the one
+        // false positive this sweep meets: `sr-only` clips its host to a 1×1 box
+        // and pulls it back by `margin: -1px`, so the range inside it reports its
+        // full unclipped width one pixel LEFT of the gutter. Recognised by the
+        // host box, not by the class name — DiagnosisChips, RecapLineAtom and the
+        // Standing deltas each spell their own hidden label.
+        let hidden = false;
+        for (let el = node.parentElement; el; el = el.parentElement) {
+          const host = el.getBoundingClientRect();
+          if (host.width <= 1 || host.height <= 1) hidden = true;
+          if (el === fill) break;
+        }
+        if (hidden) continue;
         const range = document.createRange();
         range.selectNodeContents(node);
         const run = range.getBoundingClientRect();
-        // A 1px box is an `sr-only` run or a collapsed one: it is not on the rag
-        // and it has no left edge a reader can see.
         if (run.width < 2 || run.height < 2) continue;
         const clear = run.left - fill.getBoundingClientRect().left;
         if (clear + 0.5 >= minimum) continue;
@@ -488,24 +505,29 @@ test("#3673 one left edge, and the line it reclaims", async ({ page }) => {
   // The widest CONTENT line is the dividend; the widest FILL is the viewport,
   // which is the #3920 half. Read from the same set in one pass so the two
   // numbers describe one layout rather than two round-trips.
-  const [widestContent, widestFill] = await page.evaluate((selector) => {
-    const boxes = [...document.querySelectorAll<HTMLElement>(selector)].map(
-      (el) => {
-        const style = getComputedStyle(el);
-        const width = el.getBoundingClientRect().width;
-        return [
-          width -
-            Number.parseFloat(style.paddingLeft) -
-            Number.parseFloat(style.paddingRight),
-          width,
-        ];
-      }
-    );
-    return [
-      Math.max(...boxes.map(([content]) => content)),
-      Math.max(...boxes.map(([, fill]) => fill)),
-    ];
-  }, BAND_SELECTOR);
+  const [widestContent, widestFill] = await page.evaluate(
+    ([selector, gutter]: [string, number]) => {
+      const boxes = [...document.querySelectorAll<HTMLElement>(selector)].map(
+        (el) => {
+          const style = getComputedStyle(el);
+          const box = el.getBoundingClientRect();
+          const lead = Number.parseFloat(style.paddingLeft);
+          return {
+            content: box.width - lead - Number.parseFloat(style.paddingRight),
+            fill: box.width,
+            // A frame that DELEGATES its gutter has no content line of its own —
+            // its rows do — so it is a fill here and not a line.
+            spends: Math.round(box.left + lead) === gutter,
+          };
+        }
+      );
+      return [
+        Math.max(...boxes.filter((b) => b.spends).map((b) => b.content)),
+        Math.max(...boxes.map((b) => b.fill)),
+      ];
+    },
+    [BAND_SELECTOR, PAGE_GUTTER_PX] as [string, number]
+  );
   expect(widestContent).toBe(CONTENT_PX);
   expect(widestFill).toBe(VIEWPORT_PX);
 });
