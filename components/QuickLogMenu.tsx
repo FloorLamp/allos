@@ -395,7 +395,19 @@ function SheetRow({
         <Icon className="h-5 w-5" stroke={1.75} />
       </span>
       <span className="min-w-0 flex-1">
-        <span className="block text-sm font-medium text-slate-800 dark:text-slate-100">
+        {/* TWO LINES, BY CONSTRUCTION (#3736). The panel's reserve budgets an offer
+            row at its two-line height, and an OFFER's label is user data — item
+            names, through `dueDoseChipLabel` — so without a bound here the reserve
+            holds by luck and a fourth line is always reachable. Clamped, the row
+            cannot exceed the height the reserve already pays for. Nothing is lost:
+            the label is a compression already (two names plus `+N`) and the tap
+            opens the list holding the full ones. The long-tail entries below carry
+            authored constants that never reach two lines, so the clamp is inert
+            there rather than absent — one rule, no branch to drift. */}
+        <span
+          data-sheet-row-label
+          className="line-clamp-2 text-sm font-medium text-slate-800 dark:text-slate-100"
+        >
           {label}
         </span>
         {hint && (

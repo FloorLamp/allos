@@ -637,12 +637,20 @@ export function seedLogSheetReserve(): void {
   // decided by names the profile chose — and the ledger's own "Creatine, Collagen"
   // fits one line, which would leave the reserve's wrap allowance proved against the
   // case that never needed it. Renamed HERE rather than in the shared ledger, whose
-  // other profile asserts those names exactly. Lengths are the fixture: two
-  // portal-import-shaped names wrap this label at 390px.
+  // other profile asserts those names exactly.
+  //
+  // LENGTH IS THE FIXTURE, and it is the OVERFLOWING length on purpose: this label
+  // runs to three lines unclamped (measured 86px, 16px past the reserve), so what the
+  // persona renders is the case `line-clamp-2` exists for and the spec can assert the
+  // clamp engaged rather than assert a row that never needed one.
   const rename = db.prepare(
     `UPDATE intake_items SET name = ? WHERE profile_id = ? AND name = ?`
   );
-  rename.run("Calcium Carbonate 500 (e2e)", reserveId, "Creatine");
+  rename.run(
+    "Calcium Carbonate Cholecalciferol 500 Tablet (e2e)",
+    reserveId,
+    "Creatine"
+  );
   rename.run("Magnesium Glycinate 200 (e2e)", reserveId, "Collagen");
 
   // A live session is an in-app activity row on TODAY with a start and no end, touched

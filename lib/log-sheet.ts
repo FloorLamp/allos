@@ -156,13 +156,13 @@ export const LOG_SHEET_ROW_BLOCK_PX = 66;
  * in the row — an offer carries no hint under its label, unlike the long-tail entries
  * below — and every line after it costs a full 20px.
  *
- * SO THIS BOUND HOLDS TO TWO LINES AND NO FURTHER. `dueDoseChipLabel` prints
- * `Due: <two item names> +N` from names the profile chose, and nothing bounds them:
- * two portal-imported names reach three lines here and overrun this number by 16px,
- * which the panel would answer by growing AFTER the gather resolves — the resize
- * #3675 exists to stop. Covering that by picking a bigger number cannot work, since
- * a fourth line is always reachable; the label is what has to be bounded. Recorded
- * rather than fixed here: it is a live question on #3736, not a settled one.
+ * WHICH IS WHY THE LABEL IS CLAMPED TO TWO LINES rather than this number being made
+ * generous. `dueDoseChipLabel` prints `Due: <two item names> +N` from names the
+ * profile chose; unbounded, two portal-imported names reach three lines and overrun
+ * by 16px, and the panel would answer by growing AFTER the gather resolves — the
+ * resize #3675 exists to stop. No larger number fixes that, because a fourth line is
+ * always reachable. `SHEET_ROW_CLASS`'s label carries `line-clamp-2`, so 66 is the
+ * row's MAXIMUM and this bound holds by construction instead of by luck.
  */
 export const LOG_SHEET_CONTEXT_RESERVE_PX =
   16 + // the "Due & usual now" heading
