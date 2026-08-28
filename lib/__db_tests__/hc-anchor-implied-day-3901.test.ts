@@ -180,10 +180,22 @@ describe("an AMBIGUOUS anchor against a profile in the device's other hemisphere
     const p = freshProfile("HC Ambiguous Anchor");
     setTimezone(p, "Asia/Tokyo");
     // The completed Honolulu 08-25 day, delivered late.
-    pushSteps(p, "2026-08-26T12:00:05Z", "2026-08-25T10:00:00Z", "2026-08-26T09:58:00Z", 8672);
+    pushSteps(
+      p,
+      "2026-08-26T12:00:05Z",
+      "2026-08-25T10:00:00Z",
+      "2026-08-26T09:58:00Z",
+      8672
+    );
     // The genuine Tokyo 08-26 bucket: JST midnight is 2026-08-25T15:00Z, so it overlaps
     // the Honolulu window by nearly nineteen hours and its push is newer.
-    pushSteps(p, "2026-08-26T13:00:05Z", "2026-08-25T15:00:00Z", "2026-08-26T13:00:00Z", 5000);
+    pushSteps(
+      p,
+      "2026-08-26T13:00:05Z",
+      "2026-08-25T15:00:00Z",
+      "2026-08-26T13:00:00Z",
+      5000
+    );
     expect(stepRows(p)).toEqual([
       { date: "2026-08-25", value: 8672 },
       { date: "2026-08-26", value: 5000 },

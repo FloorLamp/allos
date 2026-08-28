@@ -809,7 +809,7 @@ profile further west than the anchor's own west representative). Choosing by off
 distance instead reintroduced this issue's own loss (#3924): a completed Honolulu 08-25
 bucket arriving against a profile already on Tokyo time is 5 h from +14 and 19 h from
 -10, so it filed on 08-26, where the genuine JST bucket superseded it and 08-25 kept
-nothing — and the guard below is structurally blind to it, because 08-26 *is* one of the
+nothing — and the guard below is structurally blind to it, because 08-26 _is_ one of the
 two admissible days. Break-even was `profileOffset > 12h - anchor`: any profile east of
 UTC+2 for a UTC-10 device, permanent for a profile left east of +2 while the device sits
 in HST.

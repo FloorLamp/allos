@@ -1125,7 +1125,10 @@ describe("day-bucket date derivation (#3901)", () => {
   const SPLIT = "2026-08-25T04:00:00Z";
 
   it("files a day-bucket-width steps row under the ANCHOR day", () => {
-    const out = parse(bucket(SPLIT, "2026-08-25T15:00:00Z"), "America/Los_Angeles");
+    const out = parse(
+      bucket(SPLIT, "2026-08-25T15:00:00Z"),
+      "America/Los_Angeles"
+    );
     expect(out.samples.map((s) => s.date)).toEqual(["2026-08-25"]);
   });
 
@@ -1143,7 +1146,11 @@ describe("day-bucket date derivation (#3901)", () => {
           { start_time: SPLIT, end_time: "2026-08-25T06:00:00Z", liters: 1.5 },
         ],
         nutrition: [
-          { start_time: SPLIT, end_time: "2026-08-25T06:00:00Z", calories: 700 },
+          {
+            start_time: SPLIT,
+            end_time: "2026-08-25T06:00:00Z",
+            calories: 700,
+          },
         ],
         sleep: [{ start_time: SPLIT, end_time: "2026-08-25T06:00:00Z" }],
         // A POINT reading, which has no window to read an anchor off at all.

@@ -956,7 +956,12 @@ describe("anchorImpliedDay — the day a bucket names, read off its own anchor (
       9 * HOUR,
       "2026-08-25",
     ],
-    ["10:00Z HST bucket, profile at +3", "2026-08-25T10:00:00Z", 3 * HOUR, "2026-08-25"],
+    [
+      "10:00Z HST bucket, profile at +3",
+      "2026-08-25T10:00:00Z",
+      3 * HOUR,
+      "2026-08-25",
+    ],
     // The same failure from the +12 side: break-even is `profileOffset > 12h - anchor`,
     // so at a 12:00Z anchor ANY profile east of UTC used to flip the day.
     [
