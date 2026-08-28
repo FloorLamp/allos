@@ -769,9 +769,13 @@ export function isPredictedPracticeDay(
 // rhythm question is "when do you train", which the profile-wide workout cadence
 // answers about SESSIONS, not about this target's scope — so it would re-open the
 // window on days that say nothing about Lower body. No rhythm means no moment, and
-// no moment means no promotion: `owed` (behind pace) still cards the target, the
-// `weekly-target-transition` promotion still celebrates it, and the log action still
-// sits one tap away in Show everything's Act group. It is un-promoted, not removed.
+// since #3245 no moment means no Now card AT ALL: `owed` composes with this
+// predicate rather than bypassing it, because a behind target with no learned
+// rhythm has no moment a card could be answering. The standing fact is still told —
+// the weekly-target reading states "Behind" and ranks into Standing's attention
+// tier (#3543 / #3548) — the `weekly-target-transition` promotion still celebrates
+// the change, and the log action still sits one tap away in Show everything's Act
+// group. It is un-promoted, not removed.
 export function frequencyTargetLogWindowOpen(
   profileId: number,
   target: Pick<FrequencyTarget, "scope_kind" | "scope_value">,

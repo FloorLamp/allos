@@ -22,8 +22,11 @@ export type { NowStripCard };
 export default function NowStrip({
   cards,
   dateLabel,
+  bootstrapClaim,
 }: {
   cards: readonly NowStripCard[];
+  /** Passed straight through — see NowCards. */
+  bootstrapClaim?: boolean;
   // The date, shown only below `md` — the desktop PageHeader still carries it, and
   // below `md` that header is gone entirely (#1413 section C), so this is where the
   // day's orientation survives on a phone. Absent → no line.
@@ -63,7 +66,7 @@ export default function NowStrip({
           client can answer (#3253 decision 4), and the kind glyph rides in the same
           wrapper. Both stay DIRECT children of this section — the grid and the
           sentence are addressed positionally by specs. */}
-      <NowCards cards={cards} />
+      <NowCards cards={cards} bootstrapClaim={bootstrapClaim} />
     </section>
   );
 }

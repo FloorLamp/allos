@@ -422,10 +422,29 @@ describe("actual atomic dashboard manifests", () => {
         ),
         `${persona}:Standing presentation`
       ).toBe(true);
-      const indices = standing.map((placement) =>
-        familyIndex.get(placement.standingFamilyKey!)
+      // #3548 SUPERSEDES #3103's fully-fixed order exactly this far: the registry's
+      // order survives INSIDE each band, and the bands themselves run
+      // attention → rest → tail. So the sortedness claim is now per band, and the
+      // band sequence is the claim that replaces the global one.
+      const bandOrder = ["attention", "rest", "tail"] as const;
+      const bands = standing.map((placement) => placement.standingBand!);
+      expect(
+        bands.map((band) => bandOrder.indexOf(band)),
+        `${persona}:band order`
+      ).toEqual(
+        bands.map((band) => bandOrder.indexOf(band)).toSorted((a, b) => a - b)
       );
-      expect(indices, persona).toEqual(indices.toSorted((a, b) => a! - b!));
+      for (const band of bandOrder) {
+        // The attention tier ranks by CLAIM, not by family, so only the two
+        // fixed-order bands carry the registry-order claim.
+        if (band === "attention") continue;
+        const indices = standing
+          .filter((placement) => placement.standingBand === band)
+          .map((placement) => familyIndex.get(placement.standingFamilyKey!));
+        expect(indices, `${persona}:${band}`).toEqual(
+          indices.toSorted((a, b) => a! - b!)
+        );
+      }
       expect(
         standing.every(
           ({ candidate }) =>

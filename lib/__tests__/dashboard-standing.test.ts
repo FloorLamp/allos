@@ -13,6 +13,7 @@ import {
 import {
   cappedFamilyGather,
   CLINICAL_RESULTS_CAP,
+  STANDING_CTA_CLAIM_CAP,
   STANDING_READING_ORDER,
 } from "../dashboard-standing";
 
@@ -171,15 +172,18 @@ describe("fixed Standing instrument cluster", () => {
       replacement("labs.bootstrap", "never", 1),
       { ...reading("cycle.phase:today", 0), applicable: false },
     ]).filter((placement) => placement.lane === "standing");
+    // #3548: a never-recorded family's CTA holds a cold-start claim and leads the
+    // attention tier; a source that recorded and went quiet folds into the tail.
     expect(
-      placements.map(({ candidate, standingFamilyKey }) => [
+      placements.map(({ candidate, standingFamilyKey, standingBand }) => [
         candidate.candidateId,
         standingFamilyKey,
+        standingBand,
       ])
     ).toEqual([
-      ["sleep.bootstrap", "last-night-sleep"],
-      ["weight.dormant", "weight"],
-      ["labs.bootstrap", "clinical-results"],
+      ["sleep.bootstrap", "last-night-sleep", "attention"],
+      ["labs.bootstrap", "clinical-results", "attention"],
+      ["weight.dormant", "weight", "tail"],
     ]);
   });
 
@@ -413,5 +417,205 @@ describe("a capped Standing family's tail", () => {
     );
     expect(rank(pillars).every(({ lane }) => lane === "standing")).toBe(true);
     expect(rank(pillars)).toHaveLength(pillars.length);
+  });
+});
+
+// ── The three ranked bands (#3548) ───────────────────────────────────────────
+//
+// Membership is derived from the candidate's OWN rank reasons and presence, never
+// from a list of ids kept in step by hand: every case below reaches its band by
+// declaring something the Now lane already understands.
+describe("Standing's ranked bands", () => {
+  const claimed = (
+    candidateId: string,
+    reason: "owed" | "changed",
+    sourceOrder: number
+  ) =>
+    reading(candidateId, sourceOrder, {
+      rankReasons: {
+        safety: false,
+        owed: reason === "owed",
+        windowOpen: false,
+        changed: reason === "changed",
+      },
+      ...(reason === "changed"
+        ? { readingPromotion: "clinical-non-notable-to-notable" as const }
+        : {}),
+    });
+
+  // Two owed actions fill Now's cap (2), so a reading whose promotion is live is
+  // pushed down into Standing — where the tier is what keeps it visible. Without
+  // them a `changed` reading cards in Now, which is #3077 and is unchanged.
+  const fillNow = (): DashboardCandidate[] =>
+    ["now-filler-a", "now-filler-b"].map((candidateId) =>
+      actionCandidate({
+        candidateId,
+        factKey: `fact:${candidateId}`,
+        groupKey: null,
+        subject: profile,
+        applicable: true,
+        relevance: { kind: "event" },
+        obligation: "must",
+        rankReasons: {
+          safety: false,
+          owed: true,
+          windowOpen: false,
+          changed: false,
+        },
+        sourceOrder: 0,
+      })
+    );
+
+  const bandOf = (candidate: DashboardCandidate) =>
+    rank([...fillNow(), candidate]).find(
+      (placement) => placement.lane === "standing"
+    )?.standingBand;
+
+  it.each([
+    [
+      "a behind weekly target (owed)",
+      claimed("target.weekly-progress:9", "owed", 900),
+      "attention",
+    ],
+    [
+      "a marker that just turned notable (changed)",
+      claimed("labs.latest:tsh", "changed", 300),
+      "attention",
+    ],
+    [
+      "a fresh daily instrument",
+      reading("activity.steps:2026-08-19", 12),
+      "rest",
+    ],
+    [
+      "an on-pace weekly target",
+      reading("target.weekly-progress:8", 901),
+      "rest",
+    ],
+    [
+      "a quiet pillar",
+      reading("healthspan.pillar:sleep-regularity", 199),
+      "tail",
+    ],
+    ["a quiet clinical result", reading("labs.latest:ldl", 301), "tail"],
+    [
+      "a source that went dormant",
+      replacement("weight.dormant", "dormant", 100),
+      "tail",
+    ],
+    [
+      "a never-recorded family's CTA",
+      replacement("sleep.bootstrap", "never", 1),
+      "attention",
+    ],
+  ])("bands %s as %s", (_label, candidate, band) => {
+    expect(bandOf(candidate)).toBe(band);
+  });
+
+  // The tier's order IS the ranker's reason precedence — safety, then owed, then
+  // changed, then a cold-start CTA. One vocabulary, no second score. A profile that
+  // records anything is past cold start, so its connect-a-source lines fold.
+  it("ranks the tier by claim and leaves the rest and the tail in registry order", () => {
+    const placements = rank([
+      ...fillNow(),
+      reading("activity.steps:2026-08-19", 12),
+      replacement("sleep.bootstrap", "never", 1),
+      claimed("labs.latest:tsh", "changed", 300),
+      reading("healthspan.pillar:vo2", 199),
+      claimed("target.weekly-progress:9", "owed", 900),
+      reading("weight.latest:2026-08-19", 100),
+      replacement("vitals.blood-pressure:2019-01-01", "dormant", 101),
+    ]).filter((placement) => placement.lane === "standing");
+    expect(
+      placements.map(({ candidate, standingBand }) => [
+        candidate.candidateId,
+        standingBand,
+      ])
+    ).toEqual([
+      ["target.weekly-progress:9", "attention"],
+      ["labs.latest:tsh", "attention"],
+      ["activity.steps:2026-08-19", "rest"],
+      ["weight.latest:2026-08-19", "rest"],
+      ["sleep.bootstrap", "tail"],
+      ["vitals.blood-pressure:2019-01-01", "tail"],
+      ["healthspan.pillar:vo2", "tail"],
+    ]);
+  });
+
+  // The cold-start cap is a cap on the getting-started LIST, so it counts across
+  // families rather than within one. Past it a CTA is out-ranked, not retired.
+  it("folds a connect-a-source line once the profile records anything", () => {
+    expect(
+      rank([
+        replacement("sleep.bootstrap", "never", 1),
+        reading("activity.steps:2026-08-19", 12),
+      ])
+        .filter((placement) => placement.lane === "standing")
+        .map(({ candidate, standingBand }) => [
+          candidate.candidateId,
+          standingBand,
+        ])
+    ).toEqual([
+      ["activity.steps:2026-08-19", "rest"],
+      ["sleep.bootstrap", "tail"],
+    ]);
+  });
+
+  it("caps the cold-start claim and folds the CTAs beyond it", () => {
+    const ctas = [
+      replacement("sleep.bootstrap", "never", 1),
+      replacement("activity.steps-bootstrap", "never", 2),
+      replacement("nutrition.bootstrap", "never", 3),
+      replacement("weight.bootstrap", "never", 4),
+      replacement("labs.bootstrap", "never", 5),
+    ];
+    expect(STANDING_CTA_CLAIM_CAP).toBe(3);
+    expect(
+      rank(ctas)
+        .filter((placement) => placement.lane === "standing")
+        .map(({ candidate, standingBand }) => [
+          candidate.candidateId,
+          standingBand,
+        ])
+    ).toEqual([
+      ["sleep.bootstrap", "attention"],
+      ["activity.steps-bootstrap", "attention"],
+      ["nutrition.bootstrap", "attention"],
+      ["weight.bootstrap", "tail"],
+      ["labs.bootstrap", "tail"],
+    ]);
+  });
+
+  // #3245's other half, at the tier that can see it: a behind target carries the
+  // claim as a READING. `nowScore` awards `owed` to actions only, so the reading
+  // states the pace in Standing and never takes a Now slot on its own.
+  it("keeps a behind target's reading out of Now", () => {
+    const placements = rank([claimed("target.weekly-progress:9", "owed", 900)]);
+    expect(placements.map(({ lane }) => lane)).toEqual(["standing"]);
+  });
+
+  // The stable rest is byte-stable while no claim moves: the same inputs in any
+  // gather order produce the same rest order (#3103's spatial memory, kept).
+  it("keeps the stable rest byte-stable across gather orders", () => {
+    const members = [
+      reading("activity.steps:2026-08-19", 12),
+      reading("nutrition.protein:2026-08-19", 13),
+      reading("weight.latest:2026-08-19", 100),
+      reading("target.weekly-progress:8", 901),
+    ];
+    const restOrder = (candidates: readonly DashboardCandidate[]) =>
+      rank(candidates)
+        .filter(
+          (placement) =>
+            placement.lane === "standing" && placement.standingBand === "rest"
+        )
+        .map(({ candidate }) => candidate.candidateId);
+    expect(restOrder(members)).toEqual(restOrder(members.toReversed()));
+    expect(restOrder(members)).toEqual([
+      "activity.steps:2026-08-19",
+      "nutrition.protein:2026-08-19",
+      "weight.latest:2026-08-19",
+      "target.weekly-progress:8",
+    ]);
   });
 });

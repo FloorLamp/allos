@@ -15,8 +15,10 @@ import {
   E2E_LOGIN_NOWSTRIP,
   E2E_LOGIN_NOWSAFETY,
   E2E_LOGIN_NOWQUIET,
+  E2E_LOGIN_PACEBEHIND,
   E2E_LOGIN_WHATSNEW,
   NOW_QUIET_TARGETS,
+  PACE_BEHIND_TARGETS,
 } from "./fixture-logins";
 
 const PHONE = { viewport: { width: 390, height: 844 }, hasTouch: true };
@@ -95,6 +97,46 @@ function insertRecentlyEndedNap(username: string): () => void {
   }
 }
 
+// #3548 cold start: the first record a profile makes. Direct-DB, spec-owned and
+// cleaned up, in the `insertRecentlyEndedNap` idiom above — the claim under test is
+// what the NEXT render does, so driving a real log form would only add ways for the
+// fixture to fail for reasons that are not the ruling.
+function insertFirstWeighIn(username: string): () => void {
+  const db = new Database(workerDbPath());
+  try {
+    db.pragma("busy_timeout = 5000");
+    const profile = db
+      .prepare(
+        `SELECT lp.profile_id
+           FROM logins l JOIN login_profiles lp ON lp.login_id = l.id
+          WHERE l.username = ?
+          ORDER BY lp.profile_id
+          LIMIT 1`
+      )
+      .get(username) as { profile_id: number };
+    const day = frozenNow().toISOString().slice(0, 10);
+    const id = Number(
+      db
+        .prepare(
+          `INSERT INTO body_metrics (profile_id, date, weight_kg, source)
+           VALUES (?, ?, 71.5, NULL)`
+        )
+        .run(profile.profile_id, day).lastInsertRowid
+    );
+    return () => {
+      const cleanupDb = new Database(workerDbPath());
+      try {
+        cleanupDb.pragma("busy_timeout = 5000");
+        cleanupDb.prepare("DELETE FROM body_metrics WHERE id = ?").run(id);
+      } finally {
+        cleanupDb.close();
+      }
+    };
+  } finally {
+    db.close();
+  }
+}
+
 test("phone leads with the bounded Now lane", async ({ browser }) => {
   const page = await openDashboard(browser, {
     username: E2E_LOGIN_NOWSTRIP,
@@ -152,8 +194,12 @@ test("desktop keeps the page header", async ({ browser }) => {
 test("an empty Now keeps its quiet state and mobile date", async ({
   browser,
 }) => {
+  // NOW_QUIET, not WHATS_NEW: since #3548 a profile that has recorded NOTHING is a
+  // cold start, and its tier is a getting-started list that the settled sentence may
+  // not sit over. This fixture's day is genuinely handled, which is the state the
+  // sentence is for.
   const page = await openDashboard(browser, {
-    username: E2E_LOGIN_WHATSNEW,
+    username: E2E_LOGIN_NOWQUIET,
   });
   try {
     const strip = page.getByTestId("now-strip");
@@ -250,6 +296,163 @@ test("unmet weekly targets leave a handled day's Now empty", async ({
   }
 });
 
+// ── The behind week: #3245, #3543 and #3548 on one fixture ──────────────────────────
+//
+// PACE_BEHIND sits on day 4 with two untouched 2x/week strength-group targets, so
+// `frequencyPace` reads BEHIND and neither target has a rhythm moment. That is the
+// exact state #3245 was filed about: before the ruling both log offers went straight
+// back into Now from day 4 of every week.
+test("a behind target tells its pace in Standing and takes no Now slot", async ({
+  browser,
+}) => {
+  const page = await openDashboard(browser, { username: E2E_LOGIN_PACEBEHIND });
+  try {
+    // #3245: the log offers are still one tap away, and not in Now.
+    const offers = page.locator(
+      '[data-testid="dashboard-candidate"][data-candidate-id^="target.log:"]'
+    );
+    await expect(offers).toHaveCount(PACE_BEHIND_TARGETS.length);
+    for (let i = 0; i < PACE_BEHIND_TARGETS.length; i++)
+      await expect(offers.nth(i)).toHaveAttribute("data-lane", "everything");
+
+    // #3543: the reading states the pace, as a WORD. Exact match with a count, so a
+    // neighbouring string that happens to contain "Behind" cannot satisfy it.
+    const pace = page.getByTestId("standing-pace");
+    await expect(pace).toHaveCount(PACE_BEHIND_TARGETS.length);
+    for (let i = 0; i < PACE_BEHIND_TARGETS.length; i++)
+      await expect(pace.nth(i)).toHaveText("Behind");
+
+    // #3548: and it is the attention tier that carries it.
+    const tier = page.locator('[data-standing-band="attention"]');
+    await expect(
+      tier.locator(
+        '[data-testid="dashboard-candidate"][data-candidate-id^="target.weekly-progress:"]'
+      )
+    ).toHaveCount(PACE_BEHIND_TARGETS.length);
+    await expect(tier.getByTestId("standing-pace")).toHaveCount(
+      PACE_BEHIND_TARGETS.length
+    );
+
+    // And the point of the whole ruling: with the pace told where it belongs, day 4
+    // of the week is a settled day again.
+    const strip = page.getByTestId("now-strip");
+    await expect(strip).toHaveAttribute("data-count", "0");
+    await expect(strip.getByTestId("now-strip-empty")).toHaveText(
+      "Nothing needs you."
+    );
+  } finally {
+    await page.context().close();
+  }
+});
+
+// The negative control, and the reason the day-1 fixture stayed pinned: an on-pace
+// target's reading is the quiet count it always was, in the stable rest.
+test("an on-pace target states no pace and stays out of the tier", async ({
+  browser,
+}) => {
+  const page = await openDashboard(browser, { username: E2E_LOGIN_NOWQUIET });
+  try {
+    const readings = page.locator(
+      '[data-testid="dashboard-candidate"][data-candidate-id^="target.weekly-progress:"]'
+    );
+    await expect(readings).toHaveCount(NOW_QUIET_TARGETS.length);
+    await expect(page.getByTestId("standing-pace")).toHaveCount(0);
+    await expect(
+      page.locator(
+        '[data-standing-band="attention"] [data-candidate-id^="target.weekly-progress:"]'
+      )
+    ).toHaveCount(0);
+    await expect(
+      page.locator(
+        '[data-standing-band="rest"] [data-candidate-id^="target.weekly-progress:"]'
+      )
+    ).toHaveCount(NOW_QUIET_TARGETS.length);
+  } finally {
+    await page.context().close();
+  }
+});
+
+// #3548's cold start, and the one profile that can show it: WHATS_NEW carries no
+// health data at all, so every family is never-recorded and the attention tier IS
+// the getting-started list. "Nothing needs you." may not render over it.
+test("a cold-start profile's tier is the getting-started list", async ({
+  browser,
+}) => {
+  const page = await openDashboard(browser, { username: E2E_LOGIN_WHATSNEW });
+  try {
+    const ctas = page.locator(
+      '[data-standing-band="attention"] [data-testid="dashboard-candidate"][data-presence="never"]'
+    );
+    const shown = await ctas.count();
+    expect(shown).toBeGreaterThanOrEqual(2);
+    expect(shown).toBeLessThanOrEqual(3);
+    await expect(page.getByTestId("now-strip-empty")).toHaveCount(0);
+    // The strip's own heading and the day's orientation are untouched — this is one
+    // page growing from onboarding, not a separate onboarding layout.
+    await expect(
+      page
+        .getByTestId("now-strip")
+        .getByRole("heading", { level: 2, name: "Right now", exact: true })
+    ).toBeVisible();
+    await expect(page.getByTestId("now-strip-date")).toBeVisible();
+    // Past the cap the remaining CTAs are folded, not dropped.
+    await expect(
+      page.locator(
+        '[data-standing-band="tail"] [data-testid="dashboard-candidate"][data-presence="never"]'
+      )
+    ).not.toHaveCount(0);
+  } finally {
+    await page.context().close();
+  }
+});
+
+// The other half of the cold-start ruling: a CTA's claim is SPENT by recording.
+// One weigh-in and the getting-started list retires into the fold on the next
+// render, with the new reading standing where the instrument panel keeps it. One
+// mechanism, no threshold cliff, no separate onboarding layout to leave.
+test("the first log retires the getting-started list to the fold", async ({
+  browser,
+}) => {
+  const before = await openDashboard(browser, {
+    username: E2E_LOGIN_WHATSNEW,
+  });
+  const tierCtas = (page: Page) =>
+    page.locator(
+      '[data-standing-band="attention"] [data-testid="dashboard-candidate"][data-presence="never"]'
+    );
+  try {
+    await expect(tierCtas(before)).not.toHaveCount(0);
+  } finally {
+    await before.context().close();
+  }
+
+  const cleanup = insertFirstWeighIn(E2E_LOGIN_WHATSNEW);
+  try {
+    const after = await openDashboard(browser, {
+      username: E2E_LOGIN_WHATSNEW,
+    });
+    try {
+      await expect(
+        after.locator(
+          '[data-standing-band="rest"] [data-standing-family="weight"]'
+        )
+      ).toBeVisible();
+      await expect(tierCtas(after)).toHaveCount(0);
+      // Retired, not dropped: every one of them is still in the document, in the
+      // tail, reachable behind the fold.
+      await expect(
+        after.locator(
+          '[data-standing-band="tail"] [data-testid="dashboard-candidate"][data-presence="never"]'
+        )
+      ).not.toHaveCount(0);
+    } finally {
+      await after.context().close();
+    }
+  } finally {
+    cleanup();
+  }
+});
+
 // ── The visual layer on a phone (#3252 / #3238) ─────────────────────────────────────
 
 test("the Standing sparkline column is absent below 720px", async ({
@@ -285,7 +488,8 @@ test("the Standing sparkline column is absent below 720px", async ({
 test("Now's header is visible on a phone too, above the empty sentence", async ({
   browser,
 }) => {
-  const page = await openDashboard(browser, { username: E2E_LOGIN_WHATSNEW });
+  // See the fixture note above: the settled sentence needs a settled profile now.
+  const page = await openDashboard(browser, { username: E2E_LOGIN_NOWQUIET });
   try {
     const strip = page.getByTestId("now-strip");
     await expect(

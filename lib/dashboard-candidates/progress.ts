@@ -34,11 +34,17 @@ export const progressCandidates = {
         : {}
     );
   },
+  // `behind` is the pace verdict, carried as the existing `owed` rank reason so
+  // Standing's attention tier reads one vocabulary (#3548). It is inert in Now:
+  // `nowScore` awards `owed` only to actions, so a behind READING never cards —
+  // which is exactly the #3245 split (the card is gated by the moment, the
+  // standing fact is told here).
   targetProgress(
     ctx: DomainCandidateContext,
     id: number,
     standingEligible = true,
-    promoted = false
+    promoted = false,
+    behind = false
   ) {
     return reading(
       ctx,
@@ -49,11 +55,14 @@ export const progressCandidates = {
       "current",
       {
         standingEligible,
+        rankReasons: {
+          safety: false,
+          owed: behind,
+          windowOpen: false,
+          changed: promoted,
+        },
         ...(promoted
-          ? {
-              rankReasons: changed,
-              readingPromotion: "weekly-target-transition" as const,
-            }
+          ? { readingPromotion: "weekly-target-transition" as const }
           : {}),
       }
     );

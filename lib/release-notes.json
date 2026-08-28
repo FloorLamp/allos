@@ -14,6 +14,24 @@
           "title": "Chart detail toggles go back to their normal size on a desktop screen",
           "kind": "fix",
           "issues": [3896]
+        },
+        {
+          "pr": 3897,
+          "title": "Cards stop drawing frames on phones, and medication safety warnings stay louder than the rows around them",
+          "kind": "feature",
+          "issues": [3673]
+        },
+        {
+          "pr": 3917,
+          "title": "“Log past dose” offers the days you missed as one tap each, and the quick-log sheet no longer leaves a gap",
+          "kind": "feature",
+          "issues": [3736, 3674]
+        },
+        {
+          "pr": 3915,
+          "title": "The protein row says when a health app total is only part of your day, and a re-timed dose stops prompting late",
+          "kind": "fix",
+          "issues": [3903, 3902]
         }
       ]
     },

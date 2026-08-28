@@ -1202,3 +1202,115 @@ that is a judgment no scan can make.
 
 Both halves are now in the dispatch brief. The PR was parked at green rather than
 merged; the cost was one review round.
+
+## The criterion that survived its own defect (2026-08-28)
+
+#3673 ruled that below `40rem` no card draws a frame, and gave the ruling a criterion:
+**every text run's left offset equals the page gutter.** PR #3897 implemented it, the
+sweep measured it, eighteen CI shards went green, an adversarial pass attacked the
+change from two directions and found a real flaw elsewhere. It merged.
+
+Three hours later the owner opened the dashboard on a phone: _"now there's no left
+padding on the sections, it looks broken."_
+
+It was. `.card` sets `background: var(--surface)`, and the shell insets its content by
+`max(1rem, env(safe-area-inset-left))`. Removing the card's internal padding while
+leaving the fill inside that gutter produces the one arrangement where a band's first
+character touches the edge of the fill it is printed on. Three elements on the dashboard
+at once.
+
+**The criterion was satisfied the whole time.** The text really was at 16px from the
+viewport. What nobody measured was the text's distance from _its own fill_, which was
+zero. Both are honestly described as "left offset", and the ruling's own words named the
+right shape — _"a full-bleed `--surface` fill"_ — but the criterion written to enforce
+it measured the wrong one of the two distances.
+
+That is the whole lesson, and it is not "test more". A guard measuring an **absolute**
+cannot see a defect that lives in a **relationship**. Text-to-viewport and
+text-to-its-container are different numbers; only one of them is what a person looking
+at the screen perceives, and the criterion picked the other. Every geometric assertion
+has this fork in it — a control 44px tall inside a row that clips it, a gutter correct
+against the page and wrong against its container, a gap right at one breakpoint and
+measured at another.
+
+Worth being precise about how much scrutiny this survived, because "the review was
+sloppy" is the comfortable reading and the wrong one. The diff was read line by line;
+the cascade arithmetic was checked and was right; the `!important` layer inversion was
+caught and correctly handled; the exception mechanism was verified as module identity
+rather than a path list; a positive control proved the sweep could see a frame; an
+adversarial lane found that the medication safety strip had gone flat and that was
+fixed before merge. Nobody asked what happened to the _fill_ when the padding came off.
+The question was one clause away from questions that were asked, and the guard's shape
+made it invisible.
+
+Third instance in one day of a guard measuring the wrong property — after a census keyed
+on the wrong signature, and a removal guard with no converse. All three now sit together
+in the dispatch brief, because they are one family: **a green assertion is a claim about
+what it measures, never about what you meant.**
+
+Filed as #3920, at P1, with the fix decided: the band cancels the page gutter on its
+frame and keeps it on its content, per side, mirroring the shell's own
+`max(1rem, env(safe-area-inset-*))` rather than assuming `1rem` — because the two sides
+differ on a notched device in landscape, and a symmetric cancel would pass the default
+case and leave a visible step in the one that matters.
+
+## The selector a function built (2026-08-28)
+
+#3548 moved a set of dashboard rows into a collapsed tail. The lane building it did the
+right thing and ran a census: which specs address a row that changed band? It searched
+the band's markers — `data-standing-*`, `dashboard-standing`, `standing-door`,
+`now-strip-empty` — found thirteen files, checked them, and shipped. Two shards went red.
+
+The two misses are worth separating, because only one of them is the old lesson.
+
+`machine-date-census.spec.ts` addresses its row as
+`[data-candidate-id="labs.latest:Selenium"]` and never uses the word "standing" — the
+familiar signature problem, and a wider token set finds it.
+
+`dashboard-vitals-recency.spec.ts` calls
+`dashboardCandidatePrefix(page, "labs.latest:")`. **There is no selector in that file at
+all.** A function assembles it. No search for `data-candidate-id`, however carefully
+spelled, can see this spec, because the attribute is not there to be found. The token set
+had to include the helper's NAME, as a symbol, beside the markup it builds.
+
+The lane found this itself on the second round, and the number it produced is the part
+worth keeping: it widened the census from 13 files to 25, then **intersected** with the
+rows that actually moved band, which cut 25 back to 6. Six files addressed the thing that
+changed; the original census had seen four. Neither the 13 nor the 25 was the number that
+mattered — the intersection was, and it is the only one of the three that can be checked
+against reality.
+
+Fourth clause now in the census rule. The family they belong to is unchanged: a search is
+a claim about a spelling, and the code is under no obligation to spell it.
+
+## The invariant that lived in a React key (2026-08-28)
+
+PR #3919 appended six lines to the day's release notes, two each from three PRs that had
+done two separable things. `lib/__tests__/release-notes.test.ts` passed, 34 tests. Shard
+11 went red on a locator:
+
+```
+strict mode violation: getByRole('link', { name: '#3897', exact: true })
+  resolved to 2 elements
+```
+
+A release-notes day can only carry one bullet per PR. Two places assume it and neither
+says so: `app/(app)/whats-new/page.tsx:130` keys the entry `<li>` by `entry.pr`, and the
+spec locates each entry's link by an exact `#<pr>` name. Thirty-three prior days happen to
+satisfy the rule, so it had never been tested. The validator refuses a duplicate _date_
+and says nothing about a duplicate _pr_, and the model's own doctrine says the unit is a
+**change**, not a PR — so the data was arguably right and the code arguably wrong.
+
+Two things to keep from it.
+
+The first is that the failing assertion was not the defect. The locator was the messenger;
+the duplicate React keys were the bug, and they would have shipped silently — a `key`
+collision does not fail a test, it just makes reconciliation wrong in ways nobody looks
+for. The spec caught the data, and the data caught the page.
+
+The second is about who fixes it. The unblocking move was data-only — collapse the three
+pairs, land the notes, one bullet per PR — because the model change is production code
+with tests and the orchestrator does not write production code to unblock itself. It is
+the same discipline as sending an E2E red back to its author: the cheap local fix is
+available and taking it is how a workaround becomes the permanent state. Filed as #3940
+with both options written out and the decision left to whoever takes it.
