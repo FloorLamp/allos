@@ -143,7 +143,7 @@ describe("the outbound recap asks the substance consent (#3900)", () => {
       expect(body).not.toContain(label);
       expect(body).not.toMatch(capSentence(label, scale));
       // Removed, not suppressed: the rest of the recap still goes out.
-      expect(body).toContain("kg");
+      expect(body).toContain("70.2 kg");
     }
   );
 
