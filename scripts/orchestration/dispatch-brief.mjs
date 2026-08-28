@@ -547,6 +547,20 @@ ${landingLines}
   (\`getByText("Watch", { exact: true })).toHaveCount(2)\`) over a substring, and scope to
   the element that owns the claim rather than to the page. Found 2026-08-28 in
   e2e/skin.spec.ts, where the assertion had already stopped testing the badge.
+- AN ABSOLUTE CANNOT SEE A RELATIONSHIP. Before you write a geometric assertion, say
+  out loud what the number is measured FROM — and check that it is the same thing a
+  person looking at the screen perceives. Measured 2026-08-28 on #3673/#3920: the
+  ruling's criterion was "every text run's left offset equals the page gutter", the
+  guard measured text-to-VIEWPORT, and the defect was text-to-ITS-OWN-FILL. The broken
+  dashboard satisfied the criterion exactly — the text really was at 16px — while every
+  band's first character sat flush against the edge of the fill it was printed on,
+  because the padding came off and the fill stayed inset. Both distances are honestly
+  called "left offset"; only one is the thing that looked broken. The same trap waits in
+  every height, gap and inset assertion: a control 44px tall inside a row that clips it,
+  a gutter correct against the page and wrong against its container. Assert the
+  RELATIONSHIP the ruling is about — element against the box it sits in — and keep the
+  absolute too when both matter. A criterion that survives the defect it was written for
+  is not a criterion.
 - SHUT DOWN ANY DEV SERVER BEFORE YOU REPORT. If you ran \`npm run dev\` (or
   anything that leaves \`next-server\` alive), stop it and confirm it is gone
   before your final message. A clean \`git status\` does NOT mean the tree is

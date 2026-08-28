@@ -1202,3 +1202,54 @@ that is a judgment no scan can make.
 
 Both halves are now in the dispatch brief. The PR was parked at green rather than
 merged; the cost was one review round.
+
+## The criterion that survived its own defect (2026-08-28)
+
+#3673 ruled that below `40rem` no card draws a frame, and gave the ruling a criterion:
+**every text run's left offset equals the page gutter.** PR #3897 implemented it, the
+sweep measured it, eighteen CI shards went green, an adversarial pass attacked the
+change from two directions and found a real flaw elsewhere. It merged.
+
+Three hours later the owner opened the dashboard on a phone: _"now there's no left
+padding on the sections, it looks broken."_
+
+It was. `.card` sets `background: var(--surface)`, and the shell insets its content by
+`max(1rem, env(safe-area-inset-left))`. Removing the card's internal padding while
+leaving the fill inside that gutter produces the one arrangement where a band's first
+character touches the edge of the fill it is printed on. Three elements on the dashboard
+at once.
+
+**The criterion was satisfied the whole time.** The text really was at 16px from the
+viewport. What nobody measured was the text's distance from _its own fill_, which was
+zero. Both are honestly described as "left offset", and the ruling's own words named the
+right shape — _"a full-bleed `--surface` fill"_ — but the criterion written to enforce
+it measured the wrong one of the two distances.
+
+That is the whole lesson, and it is not "test more". A guard measuring an **absolute**
+cannot see a defect that lives in a **relationship**. Text-to-viewport and
+text-to-its-container are different numbers; only one of them is what a person looking
+at the screen perceives, and the criterion picked the other. Every geometric assertion
+has this fork in it — a control 44px tall inside a row that clips it, a gutter correct
+against the page and wrong against its container, a gap right at one breakpoint and
+measured at another.
+
+Worth being precise about how much scrutiny this survived, because "the review was
+sloppy" is the comfortable reading and the wrong one. The diff was read line by line;
+the cascade arithmetic was checked and was right; the `!important` layer inversion was
+caught and correctly handled; the exception mechanism was verified as module identity
+rather than a path list; a positive control proved the sweep could see a frame; an
+adversarial lane found that the medication safety strip had gone flat and that was
+fixed before merge. Nobody asked what happened to the _fill_ when the padding came off.
+The question was one clause away from questions that were asked, and the guard's shape
+made it invisible.
+
+Third instance in one day of a guard measuring the wrong property — after a census keyed
+on the wrong signature, and a removal guard with no converse. All three now sit together
+in the dispatch brief, because they are one family: **a green assertion is a claim about
+what it measures, never about what you meant.**
+
+Filed as #3920, at P1, with the fix decided: the band cancels the page gutter on its
+frame and keeps it on its content, per side, mirroring the shell's own
+`max(1rem, env(safe-area-inset-*))` rather than assuming `1rem` — because the two sides
+differ on a notched device in landscape, and a symmetric cancel would pass the default
+case and leave a visible step in the one that matters.
