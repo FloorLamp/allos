@@ -4,6 +4,7 @@ import { useCallback, useEffect, type ReactNode } from "react";
 import { createPortal } from "react-dom";
 import BottomSheet from "@/components/BottomSheet";
 import { usePresence } from "@/components/usePresence";
+import { focusablesIn } from "@/components/useFocusTrap";
 import { useCompactViewport } from "@/components/useCompactViewport";
 import { motionMs } from "@/lib/motion";
 import { useAnchoredPopover } from "./useAnchoredPopover";
@@ -43,11 +44,26 @@ import type { AnchoredAlign } from "@/lib/anchored-position";
 //     always rendered: measured before paint, hidden until measured, following
 //     scroll/resize/layout-shift through the shared hook.
 //
-// FOCUS RETURNS TO THE TRIGGER IN BOTH (#3374's invariant), by two different
-// routes. The popover never takes focus — the trigger keeps it the whole time.
-// The sheet does take it, and useFocusTrap restores it to the invoking control
-// when the episode ends, which is more than the popover ever did for a menu item
-// click.
+// FOCUS RETURNS TO THE TRIGGER IN BOTH (#3374's invariant), and since #3905 it
+// goes INTO the panel in both as well — but only for a panel that declares a
+// `role`. A role here means the trigger declared `aria-haspopup`: it promised a
+// menu or a dialog, and a promised popup the keyboard cannot reach has not been
+// opened. The sheet has done this since #1416 through useFocusTrap; the popover
+// used to leave focus on the trigger, so its five-to-thirty controls sat behind
+// the whole rest of the page in the tab order.
+//
+// NOT the whole of useFocusTrap, deliberately. Three of its four jobs are what a
+// popover wants — initial focus, Escape, restore — and the fourth, the Tab
+// CYCLE, is the one that makes a surface MODAL. A popover is not: tabbing out of
+// it is how you leave it, and the page behind it is still in play. So no trap, no
+// `aria-modal`, no scroll lock. What IS shared is `focusablesIn`, the single
+// answer to "what is reachable in here", so the two hosts cannot come to disagree
+// about where focus lands.
+//
+// A ROLE-LESS PANEL IS LEFT ALONE, and that is the discriminating rule rather
+// than a new prop. DateField's calendar opens when the FIELD takes focus and the
+// typist has to keep it — manual ISO entry works at every width (#3376) — so its
+// trigger promises no popup, its panel claims no role, and nothing here fires.
 export default function AnchoredPanel({
   open,
   onClose,
@@ -79,9 +95,12 @@ export default function AnchoredPanel({
   // more length); the popover has no room for a heading and does not draw one.
   title: string;
   children: () => ReactNode;
-  // The panel's ARIA role, applied in BOTH presentations so a spec — and a
-  // screen reader — sees the same thing at either width.
-  role?: "menu";
+  // The panel's ARIA role. `menu` is applied in BOTH presentations so a spec —
+  // and a screen reader — sees the same thing at either width. `dialog` is the
+  // POPOVER's alone: below `md` BottomSheet already is the dialog, names itself
+  // from `title` and sets `aria-modal`, so repeating it on the content inside
+  // would be two dialogs where there is one surface.
+  role?: "menu" | "dialog";
   panelId?: string;
   testId?: string;
   // The sheet host's own testid, so `bottom-sheet` assertions elsewhere are not
@@ -109,7 +128,11 @@ export default function AnchoredPanel({
   remeasureKey?: unknown;
 }) {
   const compact = useCompactViewport();
-  const { pos, attachPanel } = useAnchoredPopover({
+  const {
+    pos,
+    attachPanel,
+    panelRef: popoverNodeRef,
+  } = useAnchoredPopover({
     // Inert in the sheet presentation: no anchor to measure, no scroll listeners
     // to keep, nothing to reposition.
     open: open && !compact,
@@ -144,6 +167,28 @@ export default function AnchoredPanel({
     },
     [panelRef]
   );
+
+  // Focus in on open, back to the opener on close — see the header. Keyed on
+  // MEASURED rather than on `open`: the portal mounts `visibility: hidden` until
+  // the positioner has placed it, and a hidden element cannot take focus in a
+  // browser. (jsdom lets it, which is why the browser case in
+  // e2e/sidebar-refit.spec.ts names the control focus actually lands on.)
+  const focusIntoPanel = open && !compact && !!role && pos !== null;
+  useEffect(() => {
+    if (!focusIntoPanel) return;
+    const panel = popoverNodeRef.current;
+    if (!panel) return;
+    const opener =
+      document.activeElement instanceof HTMLElement
+        ? document.activeElement
+        : null;
+    (focusablesIn(panel)[0] ?? panel).focus({ preventScroll: true });
+    return () => {
+      // A menu action can delete the row its trigger stood in; useFocusTrap
+      // guards the same way.
+      if (opener?.isConnected) opener.focus({ preventScroll: true });
+    };
+  }, [focusIntoPanel, popoverNodeRef]);
 
   // Escape closes the popover, matching its click-away catcher. The SHEET needs
   // nothing here: useFocusTrap answers Escape inside it, on the capture phase,
@@ -182,7 +227,7 @@ export default function AnchoredPanel({
         <div
           ref={attachSheet}
           id={panelId}
-          role={role}
+          role={role === "dialog" ? undefined : role}
           data-testid={testId}
           data-anchored-panel="sheet"
           onKeyDown={onPanelKeyDown}
@@ -205,6 +250,11 @@ export default function AnchoredPanel({
         ref={attach}
         id={panelId}
         role={role}
+        // A dialog owes a name and the popover draws no heading to take one from
+        // (the sheet does). A menu's name is its trigger's and is not repeated.
+        aria-label={role === "dialog" ? title : undefined}
+        // The landing spot when a panel has no focusable content of its own.
+        tabIndex={role ? -1 : undefined}
         data-testid={testId}
         data-anchored-panel="popover"
         data-escape-layer={escapeLayer ? "true" : undefined}
