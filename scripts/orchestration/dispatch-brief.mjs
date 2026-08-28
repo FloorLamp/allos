@@ -514,6 +514,22 @@ ${landingLines}
   cycle.spec.ts — desktop-named, loop-bound 390, split assertion — went red in CI on
   the next push. Report a census as a TABLE of files with a per-file verdict, and
   state the search that produced it, so the hole is visible when it is there.
+- A GUARD THAT REMOVES A PROPERTY CANNOT ALSO PROVE THE PROPERTY SURVIVED. When your
+  change takes something away — a frame, a gutter, a label, a permission, a field —
+  the natural guard asserts ABSENCE: nothing still has it. That assertion passes on
+  the tree you wanted AND on the tree where the thing vanished somewhere it was
+  load-bearing, because both produce an empty result. One direction, two very
+  different worlds, one green. So when you write a removal guard, write its CONVERSE
+  in the same commit: the named surfaces that must STILL carry the property, asserted
+  as a comparison between two real elements rather than against a constant. Measured
+  on #3673: a sweep collected every element that still drew a card frame below \`sm\`
+  and asserted the list was empty. It was — and the app's drug-interaction, allergy,
+  pharmacogenomic and ototoxicity strip had gone flat with it, rendering identically
+  to the ordinary medication list beneath it, with a MAJOR bleeding-risk warning as
+  three sentences flush to the page gutter. The sweep could not have failed on that;
+  it was structurally the wrong direction. Name the surfaces that must stay loud, keep
+  the list SHORT and hand-written (an exhaustive scanner is the forbidden shape), and
+  prove the converse assertion can fail before you trust it passing.
 - SHUT DOWN ANY DEV SERVER BEFORE YOU REPORT. If you ran \`npm run dev\` (or
   anything that leaves \`next-server\` alive), stop it and confirm it is gone
   before your final message. A clean \`git status\` does NOT mean the tree is

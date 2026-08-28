@@ -1151,3 +1151,54 @@ The failure was cheap here: one red shard on an unmerged PR, caught before merge
 a change whose whole purpose was to move the value the spec asserted. It is cheap in
 exactly the cases where the change is obvious. The expensive version is a census run
 against a subtle change, reported clean, believed.
+
+## The guard that could only fail one way (2026-08-28)
+
+#3673 removed the frame from every card below `40rem`. The guard written for it walks
+`main`, collects every element that still draws a border and a radius, and asserts the
+list is empty. It was empty. The change was correct, the sweep was green, and the
+adversarial pass found this on `/medications` at 390px:
+
+| element                                                              | border | radius | background         | padding-left |
+| -------------------------------------------------------------------- | ------ | ------ | ------------------ | ------------ |
+| the drug-interaction / allergy / pharmacogenomic / ototoxicity strip | `0px`  | `0px`  | `rgb(244,248,240)` | `0px`        |
+| `medications-today`, an ordinary card                                | `0px`  | `0px`  | `rgb(244,248,240)` | `0px`        |
+| `medication-list`, an ordinary card                                  | `0px`  | `0px`  | `rgb(244,248,240)` | `0px`        |
+
+Identical in every measured property. The content of the first row was _"Major ·
+Warfarin + Ibuprofen — … sharply raising the risk of serious (especially GI)
+bleeding."_ Three rose sentences flush to the page gutter, in a band indistinguishable
+from the list of medications above it.
+
+The ruling had anticipated this. #3673 registered the tinted Notice family as its one
+exception precisely so that a warning would have something to reach for once the
+neutral frames were gone. The implementation honoured that faithfully — `data-notice`
+emitted by the primitive, module identity rather than a path list, a compile-time tone
+census, a forged-frame positive control. What nobody checked was whether the app's
+safety copy actually goes through the primitive. It mostly does: 21 `Notice` call
+sites, integration re-auth, UL hazards, RDA findings. The medication safety strip is a
+plain `.card` whose findings are `embedded`, and `embedded` draws nothing.
+
+Two more of the same shape: the ASHA ototoxicity threshold-shift warning was
+`card border-amber-300` — a _border colour_ as its entire signal, erased completely
+when the border width went to zero — and the dashboard's active-illness rail was
+`border-l-4 border-l-rose-500`, on a route the sweep actually visits.
+
+The generalisable part is not "audit your safety surfaces". It is this:
+
+**A guard that proves a removal cannot also prove the property survived where it was
+load-bearing.** "Nothing still has it" returns an empty list on the tree you wanted and
+on the tree where the thing vanished from somewhere that needed it. One assertion, two
+very different worlds, one green. The direction is baked into the shape of the check,
+so no amount of extending its route list fixes it — the sweep could have visited every
+page in the app and still passed.
+
+The fix is to write the converse in the same commit: the named surfaces that must
+_still_ carry the property, asserted as a comparison between two real elements on the
+same page rather than against a constant. Short and hand-written — an exhaustive
+scanner is the shape the owner's line-budget ruling forbids, and it would be the wrong
+instrument anyway, because the question is which surfaces are _meant_ to be loud, and
+that is a judgment no scan can make.
+
+Both halves are now in the dispatch brief. The PR was parked at green rather than
+merged; the cost was one review round.
