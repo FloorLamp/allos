@@ -3,7 +3,7 @@ import { type Page } from "@playwright/test";
 import { loginAs } from "./nav";
 import { expectNoClippedContent, settledBoxes } from "./helpers";
 import { E2E_LOGIN_MOBILE_HC, E2E_MEMBER_PASSWORD } from "./fixture-logins";
-import { TAP_FLOOR_PX } from "@/lib/tap-floor-tokens";
+import { CONTROL_BOX_PX } from "@/lib/tap-floor-tokens";
 
 // Mobile clipped-content audit (issue #1063). The app shell's `overflow-x-clip`
 // means a phone-width layout that blows past the viewport doesn't page-scroll —
@@ -72,7 +72,7 @@ test.describe("mobile clipped-content audit (#1063)", () => {
     );
     const [owner] = await settledBoxes([status]);
     for (const box of boxes) {
-      expect(box.height).toBeGreaterThanOrEqual(TAP_FLOOR_PX);
+      expect(box.height).toBeGreaterThanOrEqual(CONTROL_BOX_PX);
       expect(box.x).toBeGreaterThanOrEqual(owner.x);
       expect(box.x + box.width).toBeLessThanOrEqual(owner.x + owner.width);
       expect(box.y).toBeGreaterThanOrEqual(owner.y);

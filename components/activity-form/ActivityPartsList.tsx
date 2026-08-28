@@ -210,19 +210,21 @@ export default function ActivityPartsList({
           // toolbar is a whole second row, so the set-schema row underneath has
           // to stick that much further down — `--set-schema-top` carries the
           // offset to StrengthSets, which is where the sticky row lives.
-          // THE PHONE OFFSETS ARE DERIVED FROM THE FIELD and moved with #3708:
-          // `py-1` (8px) around a picker that now renders the ruled 44px box, plus
-          // `gap-1` (4px) and a 44px toolbar row when there is one. The `sm`-and-up
-          // base is unchanged because the field's desktop height is.
+          // THE OFFSETS ARE DERIVED FROM THE CONTROL BOX, not written down: `py-1`
+          // (8px) around the exercise picker, plus — when the toolbar row is there
+          // — `gap-1` (4px) and that row's own 44px. #3708 moved these when the
+          // field grew to 44 and #3938 moves them again now every control is the
+          // 34px box, which is exactly why they read `var(--control-box)` instead
+          // of a rem literal that has to be recomputed by hand each time.
           const hasActions = !!guide || parts.length > 1;
           return (
             <div
               key={pi}
               data-testid="activity-part"
-              className={`border-b border-black/5 py-3 first:pt-0 last:border-b-0 [--set-schema-top:2.75rem] dark:border-white/5 ${
+              className={`border-b border-black/5 py-3 first:pt-0 last:border-b-0 [--set-schema-top:calc(0.5rem_+_var(--control-box))] dark:border-white/5 ${
                 hasActions
-                  ? "max-sm:[--set-schema-top:6.25rem]"
-                  : "max-sm:[--set-schema-top:3.25rem]"
+                  ? "max-sm:[--set-schema-top:calc(0.5rem_+_var(--control-box)_+_0.25rem_+_2.75rem)]"
+                  : ""
               } ${stickyFooter ? "-mx-4 px-4 sm:-mx-8 sm:px-8" : "-mx-5 px-5"}`}
             >
               {/* Below `sm` this is a TWO-ROW sticky header (#1613): the exercise

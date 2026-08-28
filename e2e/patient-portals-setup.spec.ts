@@ -12,7 +12,7 @@ import {
   PORTAL_B_NAME,
   PORTAL_HOUSEHOLD_A_PROFILE,
 } from "./fixture-logins";
-import { TAP_FLOOR_PX } from "@/lib/tap-floor-tokens";
+import { CONTROL_BOX_PX } from "@/lib/tap-floor-tokens";
 import { utcSqlString, zonedWallTimeToUtc } from "@/lib/date";
 import { pinnedTimezone } from "./pinned-timezone";
 
@@ -512,7 +512,7 @@ test.describe("Patient portals — the portal sections (#1874)", () => {
     await (await menuItem(page, "portal-software-edit")).click();
     const denseButton = section.getByTestId("software-chip-generic-ccd");
     const denseButtonBox = await denseButton.boundingBox();
-    expect(denseButtonBox?.height).toBeGreaterThanOrEqual(TAP_FLOOR_PX);
+    expect(denseButtonBox?.height).toBeGreaterThanOrEqual(CONTROL_BOX_PX);
     await hydratedClick(page, denseButton);
     await hydratedClick(page, section.getByTestId("portal-software-save"));
     await expect(

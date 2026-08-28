@@ -3,7 +3,7 @@ import Database from "better-sqlite3";
 import { loginAs } from "./nav";
 import { E2E_LOGIN_DUP, E2E_MEMBER_PASSWORD } from "./fixture-logins";
 import { workerDbPath } from "./worker-env";
-import { TAP_FLOOR_PX } from "@/lib/tap-floor-tokens";
+import { CONTROL_BOX_PX } from "@/lib/tap-floor-tokens";
 
 const DB_PATH = workerDbPath();
 
@@ -146,7 +146,9 @@ test.describe("duplicate resolution actions at phone width (#3747)", () => {
       const cardBox = await pair.boundingBox();
       expect(cardBox).not.toBeNull();
       for (const box of boxes) {
-        expect(box.height).toBeGreaterThanOrEqual(TAP_FLOOR_PX);
+        // The one control box (#3938) — the 44 is effective now, supplied by the
+        // reach a coarse pointer gets around it, which this run does not have.
+        expect(box.height).toBeGreaterThanOrEqual(CONTROL_BOX_PX);
         expect(box.left).toBeGreaterThanOrEqual(cardBox!.x);
         expect(box.right).toBeLessThanOrEqual(cardBox!.x + cardBox!.width);
       }

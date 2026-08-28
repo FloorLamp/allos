@@ -5,7 +5,7 @@ import {
   openConfirm,
   settledClick,
 } from "./helpers";
-import { TAP_FLOOR_PX } from "@/lib/tap-floor-tokens";
+import { CONTROL_BOX_PX } from "@/lib/tap-floor-tokens";
 
 // Import detail — tabbed per-category records browser (issue #271). The e2e seed
 // (e2e/seed-events.ts) plants document 908 with produced rows across several
@@ -44,7 +44,7 @@ test.describe("Import detail: tabbed records browser", () => {
     await expect(denseLink).toBeVisible();
     await expect
       .poll(async () => (await denseLink.boundingBox())?.height ?? 0)
-      .toBeGreaterThanOrEqual(TAP_FLOOR_PX);
+      .toBeGreaterThanOrEqual(CONTROL_BOX_PX);
 
     // Default tab (no ?tab=) is the FIRST non-empty tab — Labs — marked current,
     // and its editable table renders the lab rows.

@@ -22,7 +22,7 @@ import { createFixtureProfile, destroyFixtureProfile } from "./fixture-profile";
 import { workerDbPath, frozenNow } from "./worker-env";
 import {
   TAP_FLOOR_FLOAT_EPSILON_PX,
-  TAP_FLOOR_PX,
+  CONTROL_BOX_PX,
 } from "@/lib/tap-floor-tokens";
 
 const DB_PATH = workerDbPath();
@@ -810,14 +810,16 @@ test.describe("Sleep page (#1066)", () => {
     await expect(addEntry).toHaveAccessibleName("Add entry");
     await expect(addEntry).toHaveCSS("white-space", "nowrap");
     const [addEntryBox] = await settledBoxes([addEntry]);
+    // The control box (#3938): the 44 is effective now, and the reach that
+    // supplies it exists only on a coarse pointer, which this run is not.
     expect(
       addEntryBox.width + TAP_FLOOR_FLOAT_EPSILON_PX,
       "Add entry rendered width"
-    ).toBeGreaterThanOrEqual(TAP_FLOOR_PX);
+    ).toBeGreaterThanOrEqual(CONTROL_BOX_PX);
     expect(
       addEntryBox.height + TAP_FLOOR_FLOAT_EPSILON_PX,
       "Add entry rendered height"
-    ).toBeGreaterThanOrEqual(TAP_FLOOR_PX);
+    ).toBeGreaterThanOrEqual(CONTROL_BOX_PX);
     expect(
       addEntryBox.x + TAP_FLOOR_FLOAT_EPSILON_PX,
       "Add entry left viewport edge"

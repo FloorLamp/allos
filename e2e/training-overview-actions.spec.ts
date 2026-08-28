@@ -9,7 +9,7 @@ import {
 } from "./fixture-logins";
 import {
   TAP_FLOOR_FLOAT_EPSILON_PX,
-  TAP_FLOOR_PX,
+  CONTROL_BOX_PX,
 } from "@/lib/tap-floor-tokens";
 
 async function expectStandingActions(page: Page): Promise<void> {
@@ -395,14 +395,15 @@ test("at phone width the primary keeps its own line and the ghost pair shares th
     await expect(logActivity).toHaveAttribute("data-button-control", "");
     await expect(logActivity).toHaveAccessibleName("Log activity");
     const [logBox, detailsBox] = await settledBoxes([logActivity, details]);
+    // The control box (#3938); the 44 is effective and needs a coarse pointer.
     expect(
       logBox.width + TAP_FLOOR_FLOAT_EPSILON_PX,
       "Log activity rendered width"
-    ).toBeGreaterThanOrEqual(TAP_FLOOR_PX);
+    ).toBeGreaterThanOrEqual(CONTROL_BOX_PX);
     expect(
       logBox.height + TAP_FLOOR_FLOAT_EPSILON_PX,
       "Log activity rendered height"
-    ).toBeGreaterThanOrEqual(TAP_FLOOR_PX);
+    ).toBeGreaterThanOrEqual(CONTROL_BOX_PX);
     expect(logBox.x, "Log activity left viewport edge").toBeGreaterThanOrEqual(
       0
     );

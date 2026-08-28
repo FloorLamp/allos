@@ -1,8 +1,7 @@
 import { test, expect } from "./fixtures";
-import { hydratedClick } from "./helpers";
+import { expectPhoneTapTargets, hydratedClick } from "./helpers";
 import { expandTrendsContext } from "./trends-chrome";
 import { expandTimelineFilters } from "./timeline-chrome";
-import { TAP_FLOOR_PX } from "@/lib/tap-floor-tokens";
 
 // Trends "charts above the fold" on a phone (#1455). The page used to spend ~1.9
 // screens on chrome before the first chart: the always-open From/To card, a
@@ -57,9 +56,9 @@ test.describe("the custom From/To form collapses behind a Custom… disclosure (
     await expect(toggle).toHaveAttribute("aria-expanded", "false");
     await expect(toggle).not.toHaveAttribute("aria-pressed");
     await expect(toggle).toHaveClass(/btn-ghost/);
-    expect((await toggle.boundingBox())?.height).toBeGreaterThanOrEqual(
-      TAP_FLOOR_PX
-    );
+    // The control box, with the 44 supplied as reach around it (#3938): this row
+    // mixes the toggle with the quick-range chips and they are one height now.
+    await expectPhoneTapTargets(page, "Custom… disclosure", [toggle]);
     // The panel is in the DOM (the form's server-rendered defaults never leave)
     // but not shown — that is the ~230px this reclaims.
     await expect(page.getByTestId("custom-range-panel")).toBeHidden();
@@ -164,15 +163,12 @@ test.describe("Overview leads with charts (B)", () => {
     const inline = digest.getByTestId("digest-dismiss");
     await expect.poll(() => inline.count()).toBeLessThanOrEqual(LEAD_CHIPS);
 
-    // The shared IconButton owns a RENDERED target. Measure one real mount rather
-    // than inferring geometry from its Tailwind classes; all mounts receive this
-    // same root box from the primitive.
+    // The shared IconButton owns a RENDERED box and an EFFECTIVE target (#3938).
+    // Measure one real mount rather than inferring geometry from its Tailwind
+    // classes; all mounts receive this same root box from the primitive.
     const dismiss = inline.first(); // first-ok: every digest dismiss is one mount of the same IconButton primitive
     await expect(dismiss).toHaveAttribute("data-icon-button", "");
-    const dismissBox = await dismiss.boundingBox();
-    expect(dismissBox).not.toBeNull();
-    expect(dismissBox!.height).toBeGreaterThanOrEqual(TAP_FLOOR_PX);
-    expect(dismissBox!.width).toBeGreaterThanOrEqual(TAP_FLOOR_PX);
+    await expectPhoneTapTargets(page, "digest dismiss", [dismiss]);
   });
 });
 

@@ -5,7 +5,7 @@ import { loginAs } from "./nav";
 import { switchToProfile } from "./family-helpers";
 import {
   TAP_FLOOR_FLOAT_EPSILON_PX,
-  TAP_FLOOR_PX,
+  CONTROL_BOX_PX,
 } from "@/lib/tap-floor-tokens";
 import {
   E2E_MEMBER_PASSWORD,
@@ -126,7 +126,7 @@ test.describe("travel timezone banner (#3263)", () => {
       ]);
       for (const box of [acceptBox, dismissBox])
         expect(box.height + TAP_FLOOR_FLOAT_EPSILON_PX).toBeGreaterThanOrEqual(
-          TAP_FLOOR_PX
+          CONTROL_BOX_PX
         );
       const horizontalOverlap =
         Math.min(
