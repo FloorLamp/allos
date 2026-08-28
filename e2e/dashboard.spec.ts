@@ -97,7 +97,7 @@ test("the dashboard renders the fixed four-zone instrument cluster", async ({
           nodes.map((node) => node.getAttribute("data-standing-band"))
         ),
       ])
-  ).toEqual(["rest", "tail"]);
+  ).toEqual(["attention", "rest", "tail"]);
   expect(
     await standing
       .locator("[data-standing-section]")
