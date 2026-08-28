@@ -229,7 +229,10 @@ export default function VisitsSection({
             </section>
 
             {overdueScheduled.length > 0 && (
-              <details className="border-l-2 border-amber-300 pl-3 dark:border-amber-800">
+              // `bleed-none`: the amber rail is 14px of inset this disclosure
+              // supplies itself, so a card inside it stays inside it instead of
+              // cancelling the PAGE's gutter and crossing its own rail (#3931).
+              <details className="bleed-none border-l-2 border-amber-300 pl-3 dark:border-amber-800">
                 <summary className="cursor-pointer py-1 font-semibold text-amber-800 dark:text-amber-200">
                   Past date—update status{" "}
                   <span className="text-sm font-normal">
