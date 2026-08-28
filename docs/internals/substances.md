@@ -234,15 +234,28 @@ read thirty lines downstream, and the recap named the cap from a third module ou
   standing on, not sends. A stored AI narrative (#421) is written over that in-app recap
   and pasted into the send in place of the bullets, so it is not covered by this gate.
 
+  **This gate can suppress a whole recap, and that is the intended outcome.**
+  `renderRecapMessage` returns null on `recap.isEmpty || recap.lines.length === 0`, and
+  the gate moves the second clause: `isEmpty` is decided by gathered EVIDENCE, the lines
+  by the scale registry, so the two can disagree. A month holding one weigh-in and a
+  substance cap is not empty — but `weight` speaks only at week scale and
+  `weight-trajectory` needs a trend one reading cannot produce, so the cap line is the
+  recap's only line, and dropping it sends nothing where `main` sent
+  "over the Nicotine cap in 4 of 4 weeks". A message whose entire content was the gated
+  line must not go out as an empty shell.
+
 The first two gathers are read in `lib/__db_tests__/food-nudge-substance-optin.test.ts`
 over five senders — the proactive tick, `/food`, a fully expanded keyboard, the reconcile
 sweep and the picker — against everything the transport is asked to show, rather than
 against one field of the message. The third is read in
 `lib/__db_tests__/recap-substance-optin.test.ts`, against the rendered message string at
-both scales with the flag off and on, and against the in-app surfaces with it off.
+both scales with the flag off and on, against the in-app surfaces with it off, and
+against the cap-line-only month that the gate silences entirely.
 
-It REMOVES rather than redacts or suppresses: the nudge still sends with every other food
-group intact. The WRITE core is deliberately not gated — `restampFoodEventsCore` re-derives
+In the nudge it REMOVES rather than redacts or suppresses: that message still sends with
+every other food group intact. The recap is the one surface where removal can empty the
+message, for the reason stated in its bullet — and it then takes the silence an empty
+recap already takes, rather than sending a shell. The WRITE core is deliberately not gated — `restampFoodEventsCore` re-derives
 a burst from the ledger, so a correction still moves every row of the meal it names;
 consent governs what is sent, and stranding one row of an eating event at the old time
 would corrupt the record rather than protect it. Nothing safety-class is downstream of

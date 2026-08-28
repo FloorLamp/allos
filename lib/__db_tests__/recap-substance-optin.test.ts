@@ -94,6 +94,9 @@ function cappedProfile(name: string, scope: string): number {
   return pid;
 }
 
+const monthGather = (pid: number) =>
+  gatherRecapInput(pid, "kg", "month", true, today(pid), true);
+
 const sendBody = (pid: number, scale: "week" | "month"): string => {
   const msg = renderRecapMessage(
     buildRecap(gatherRecapInput(pid, "kg", scale, true, today(pid), true)),
@@ -172,11 +175,40 @@ describe("the outbound recap asks the substance consent (#3900)", () => {
     }
   );
 
-  it("cannot manufacture a new empty recap — a cap-only period was already silent", () => {
-    // Target verdicts and caps are deliberately not `isEmpty` evidence (lib/recap.ts),
-    // so a period whose only content is a substance cap renders nothing either way and
-    // dropping the cap changes no verdict. Nicotine, not alcohol: an alcohol row is a
-    // food row, and food coverage IS evidence.
+  // A SEND CAN DISAPPEAR ENTIRELY, AND THAT IS THE INTENDED OUTCOME — not something the
+  // gate is unable to cause. `renderRecapMessage` returns null on TWO clauses,
+  // `recap.isEmpty || recap.lines.length === 0`, and the gate moves the SECOND: `isEmpty`
+  // is decided by gathered EVIDENCE (weights, workouts, adherence, food), the lines by
+  // the scale registry, and the two predicates can disagree. A month with one weigh-in in
+  // it is not empty — but `weight` speaks only at week scale and `weight-trajectory`
+  // needs a trend one reading cannot produce, so the cap line can be the recap's ONLY
+  // line. Removing it then sends nothing, which is right: a message whose entire content
+  // was the gated line must not go out as an empty shell.
+  it("sends nothing when the gated cap line was the only line the recap had", () => {
+    const pid = newProfile("recap-optout-onlyline");
+    capTarget(pid, "nicotine");
+    for (let back = 0; back <= 70; back++)
+      logUse(pid, dayBack(pid, back), "nicotine");
+    // ONE reading inside the closed month: enough that `isEmpty` is false, never enough
+    // for a line at this scale. On origin/main this profile sends the cap sentence.
+    logWeight(pid, "2026-05-14");
+
+    expect(buildRecap(monthGather(pid)).isEmpty).toBe(false);
+    expect(sendBody(pid, "month")).toBe("");
+
+    setProfileSubstanceTelegram(pid, true);
+    expect(sendBody(pid, "month")).toMatch(capSentence("Nicotine", "month"));
+    // The suppression is the WHOLE message, never an empty shell around a dropped line.
+    expect(buildRecap(monthGather(pid)).lines.map((l) => l.key)).toEqual([
+      "caps",
+    ]);
+  });
+
+  it("leaves a period with no evidence at all silent, exactly as it already was", () => {
+    // The other clause, unmoved: caps are deliberately not `isEmpty` evidence
+    // (lib/recap.ts), so a period holding nothing but a substance cap rendered nothing
+    // before this gate and renders nothing after it, with the consent either way.
+    // Nicotine, not alcohol: an alcohol row is a food row, and food coverage IS evidence.
     const pid = newProfile("recap-optout-empty");
     capTarget(pid, "nicotine");
     for (let back = 0; back <= 70; back++)
