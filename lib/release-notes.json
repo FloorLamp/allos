@@ -32,6 +32,30 @@
           "title": "The protein row says when a health app total is only part of your day, and a re-timed dose stops prompting late",
           "kind": "fix",
           "issues": [3903, 3902]
+        },
+        {
+          "pr": 3934,
+          "title": "The dashboard puts what needs you above what's quiet, and a target you're behind on stops taking over",
+          "kind": "feature",
+          "issues": [3245, 3543, 3548]
+        },
+        {
+          "pr": 3947,
+          "title": "An undated result lands in the right illness episode wherever in the world you happen to open it",
+          "kind": "fix",
+          "issues": [3884]
+        },
+        {
+          "pr": 3939,
+          "title": "Tapping a Telegram button updates your other live messages right away instead of up to an hour later",
+          "kind": "fix",
+          "issues": [3933]
+        },
+        {
+          "pr": 3956,
+          "title": "Buttons, chips and fields are one height everywhere, and stay just as easy to tap on a phone",
+          "kind": "feature",
+          "issues": [3938]
         }
       ]
     },
