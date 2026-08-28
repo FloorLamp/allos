@@ -530,6 +530,23 @@ ${landingLines}
   it was structurally the wrong direction. Name the surfaces that must stay loud, keep
   the list SHORT and hand-written (an exhaustive scanner is the forbidden shape), and
   prove the converse assertion can fail before you trust it passing.
+- MEASURE YOUR DIFF WITH THREE DOTS. \`git diff origin/main HEAD\` is UNSAFE in this
+  container: every worktree shares one \`.git\`, so a SIBLING LANE's fetch moves
+  \`refs/remotes/origin/main\` under you with no action of your own, and a two-dot diff
+  silently starts reporting their merged work as yours. Use \`git diff origin/main...HEAD\`
+  (three dots — the merge base), and the same for \`--stat\` and for any line-count you
+  report. Measured 2026-08-28 on #3777: a lane's first production-line delta included a
+  release-notes change it had never made, and it only caught it because the file was
+  obviously not its own. A line count is exactly the kind of number that gets shrugged
+  at, so it is exactly the kind that has to be measured right.
+- A SUBSTRING ASSERTION IS SATISFIABLE BY A NEIGHBOUR. \`toContainText("watch")\` on a card
+  that also renders the user's note "Even brown, watch it." passes whether or not the
+  thing you meant to assert is there — and keeps passing after the badge changes, because
+  the note never does. When you assert on rendered text, ask what ELSE on that surface
+  contains your string: prefer an exact match with a count
+  (\`getByText("Watch", { exact: true })).toHaveCount(2)\`) over a substring, and scope to
+  the element that owns the claim rather than to the page. Found 2026-08-28 in
+  e2e/skin.spec.ts, where the assertion had already stopped testing the badge.
 - SHUT DOWN ANY DEV SERVER BEFORE YOU REPORT. If you ran \`npm run dev\` (or
   anything that leaves \`next-server\` alive), stop it and confirm it is gone
   before your final message. A clean \`git status\` does NOT mean the tree is
