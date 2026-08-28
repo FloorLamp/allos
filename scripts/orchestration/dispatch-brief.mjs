@@ -632,6 +632,13 @@ ${landingLines}
   \`mcp__github__get_job_logs\` with \`return_content: true\`, and that is the justified
   exception to "use curl REST, not the MCP tools". Note its tail lands in the runner's
   post-job cleanup, so ask for enough \`tail_lines\` (~140) to reach the test summary.
+  THAT NUMBER IS TIER-SPECIFIC AND ~140 IS AN E2E NUMBER. On \`test-db\` the useful
+  window sits roughly 2500 lines above the tail, behind the coverage table, so ~140
+  returns cleanup and coverage and nothing that says what failed — which reads as "the
+  log has no failure in it" rather than as "wrong window". Measured twice on
+  2026-08-28, once by an agent and once by the orchestrator. A tail large enough to
+  reach it overflows the tool cap but is saved to a file the result names; slicing
+  that file is the route. Better still, take the annotations first (next bullet).
 - BUT REACH FOR THE ANNOTATIONS FIRST — plain REST, no MCP, and it gives you the
   FAILING TEST AND ITS ASSERTION directly:
       GET /repos/FloorLamp/allos/commits/<sha>/check-runs
