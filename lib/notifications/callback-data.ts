@@ -34,6 +34,18 @@ import {
 } from "./digest-tune";
 import { GLYPH } from "./glyphs";
 
+// WHAT A TAP HANDLER REPORTS BACK (#3933): the profile whose records it WROTE, or
+// undefined when it wrote none. `handleCallbackQuery` sweeps that profile's other live
+// messages on a write and only on a write, so a refusal, a stale token and a pure
+// keyboard navigation (show more, expand, the picker's open/back) all answer undefined
+// and pay for no reconcile. It is the HANDLER's answer rather than something inferred
+// at the dispatcher because only the handler has seen the write core's outcome.
+//
+// For a cross-profile write it is the profile whose LEDGER moved, not the one whose
+// chat the message sits in: the household round writes under the member and the stale
+// keyboards it invalidates are the member's own.
+export type TapWrote = number | undefined;
+
 // A keyboard button carries EITHER a callback token or a deep-link url (issue
 // #233's refill "Open form"); mirrors telegram.ts's InlineKeyboard.
 export type InlineKeyboard = {
