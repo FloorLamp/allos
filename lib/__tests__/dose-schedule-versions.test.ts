@@ -253,10 +253,13 @@ describe("a legacy re-time, whose old slot nothing recorded", () => {
   // re-accusation #430 clamped to avoid, so the conservative bound stays for them.
   it("reports the edit day when no version records the change", () => {
     expect(
-      unrecordedScheduleChangeOn({
-        updated_at: "2026-07-20 09:00:00",
-        versions: [{ effective_from: "2026-06-01", time_of_day: "Evening" }],
-      }, TZ)
+      unrecordedScheduleChangeOn(
+        {
+          updated_at: "2026-07-20 09:00:00",
+          versions: [{ effective_from: "2026-06-01", time_of_day: "Evening" }],
+        },
+        TZ
+      )
     ).toBe("2026-07-20");
   });
 
@@ -270,22 +273,28 @@ describe("a legacy re-time, whose old slot nothing recorded", () => {
     // The self-heal: the write path records the pre-edit rule before appending the new
     // version, so the first edit after this ships gives the dose a real history.
     expect(
-      unrecordedScheduleChangeOn({
-        updated_at: "2026-07-20 09:00:00",
-        versions: [
-          { effective_from: "2026-06-01", time_of_day: "Evening" },
-          { effective_from: "2026-07-20", time_of_day: "Morning" },
-        ],
-      }, TZ)
+      unrecordedScheduleChangeOn(
+        {
+          updated_at: "2026-07-20 09:00:00",
+          versions: [
+            { effective_from: "2026-06-01", time_of_day: "Evening" },
+            { effective_from: "2026-07-20", time_of_day: "Morning" },
+          ],
+        },
+        TZ
+      )
     ).toBeNull();
   });
 
   it("is silent for a dose that was never edited", () => {
     expect(unrecordedScheduleChangeOn({ updated_at: null }, TZ)).toBeNull();
     expect(
-      unrecordedScheduleChangeOn({
-        versions: [{ effective_from: "2026-06-01" }],
-      }, TZ)
+      unrecordedScheduleChangeOn(
+        {
+          versions: [{ effective_from: "2026-06-01" }],
+        },
+        TZ
+      )
     ).toBeNull();
   });
 

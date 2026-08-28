@@ -1614,8 +1614,7 @@ export function buildAdherencePatternFindings(
       suppressMoveSuggestion:
         timeBucket(d.time_of_day) === "Before sleep" ||
         item.kind === "medication" ||
-        (windowDates.length > 0 &&
-          doseSlotChangedSince(d, windowDates[0], tz)),
+        (windowDates.length > 0 && doseSlotChangedSince(d, windowDates[0], tz)),
     });
   }
 
