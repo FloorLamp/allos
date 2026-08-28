@@ -2,6 +2,20 @@ import type { DashboardCandidate } from "./dashboard-relevance";
 
 export type StandingSectionKey = "today" | "body" | "longer-view";
 
+// Standing is one RANKED surface in three bands (#3548). Membership is derived
+// from the candidate model — never from a closed id list — so a new candidate with
+// a rank reason lifts into the tier with no edit here.
+export type StandingBandKey = "attention" | "rest" | "tail";
+
+// How many never-recorded bootstrap CTAs may hold a cold-start claim at once
+// (owner ruling #3548: 2-3, ordered by onboarding value). The order is
+// STANDING_READING_ORDER's own declaration order, which already puts the
+// integration connects (sleep, steps) ahead of the first-manual-log ones
+// (protein, weight) — so the ruling's ordering needs no second list. Past the cap
+// a CTA is out-ranked and folds, which is the same rule that retires one whose
+// family has recorded.
+export const STANDING_CTA_CLAIM_CAP = 3;
+
 export type StandingFamilyKey =
   | "last-night-sleep"
   | "steps-today"
@@ -22,6 +36,13 @@ export interface StandingReadingFamily {
   label: string;
   composition: "single" | "composed" | "members";
   matches: (candidate: DashboardCandidate) => boolean;
+  /**
+   * Where this family's members sit when they hold NO live claim (#3548). Default
+   * "rest": a daily instrument you glance by position stays where it always is.
+   * "tail" is for the families whose quiet rows are a months-old record rather
+   * than an instrument — the owner named quiet pillars and months-old results.
+   */
+  quietBand?: StandingBandKey;
   memberOrder:
     | { kind: "identity"; prefixes: readonly string[] }
     | {
@@ -173,6 +194,7 @@ export const STANDING_READING_ORDER: readonly StandingReadingFamily[] = [
     section: "longer-view",
     label: "Healthspan pillars",
     composition: "members",
+    quietBand: "tail",
     matches: idStartsWith("healthspan.pillar:"),
     memberOrder: { kind: "source", authority: "buildPillars" },
   },
@@ -181,6 +203,7 @@ export const STANDING_READING_ORDER: readonly StandingReadingFamily[] = [
     section: "longer-view",
     label: "Recent clinical results",
     composition: "members",
+    quietBand: "tail",
     matches: idStartsWith("labs.latest:", "labs.bootstrap"),
     memberOrder: { kind: "source", authority: "recentLabHighlights" },
     cap: CLINICAL_RESULTS_CAP,
@@ -212,6 +235,29 @@ export const STANDING_READING_ORDER: readonly StandingReadingFamily[] = [
 export interface StandingMember {
   candidate: DashboardCandidate;
   family: StandingReadingFamily;
+  band: StandingBandKey;
+}
+
+// A candidate's claim on the attention tier, read from the SAME `rankReasons`
+// the Now lane reads and in the same precedence `nowScore` scores them in
+// (safety > owed > changed). It is a precedence over existing reasons, not a
+// second scoring model: nothing here invents a signal, and a candidate that
+// declares a reason is liftable with no edit to this file.
+//
+// A never-recorded bootstrap CTA holds the weakest claim (0) — on an empty
+// profile the tier is the getting-started list, but a behind target or a result
+// that just turned notable outranks "connect a source".
+const CTA_CLAIM = 0;
+
+function reasonClaim(candidate: DashboardCandidate): number | null {
+  const reasons = candidate.rankReasons;
+  return reasons.safety ? 3 : reasons.owed ? 2 : reasons.changed ? 1 : null;
+}
+
+function presenceOf(candidate: DashboardCandidate): "never" | "current" | "dormant" {
+  return candidate.relevance.kind === "profile-data"
+    ? candidate.relevance.presence
+    : "current";
 }
 
 function identityOrder(
@@ -272,6 +318,9 @@ export function resolveStandingMembers(
 } {
   const members: StandingMember[] = [];
   const memberIds = new Set<string>();
+  // Cold-start CTAs are ranked across the whole surface, not per family, because
+  // the cap the owner set is a cap on the getting-started LIST.
+  let ctaRank = 0;
   const claimedFacts = new Set<string>();
   // Owner ruling (#3186): a capped family renders its capped members and nothing
   // else. What the family claims but does not seat is its tail, and the tail is
@@ -300,7 +349,19 @@ export function resolveStandingMembers(
     const selected =
       family.cap == null ? ordered : ordered.slice(0, family.cap);
     for (const candidate of selected) {
-      members.push({ candidate, family });
+      const claim = reasonClaim(candidate);
+      const presence = presenceOf(candidate);
+      const band: StandingBandKey =
+        claim != null
+          ? "attention"
+          : presence === "never"
+            ? ctaRank++ < STANDING_CTA_CLAIM_CAP
+              ? "attention"
+              : "tail"
+            : presence === "dormant"
+              ? "tail"
+              : (family.quietBand ?? "rest");
+      members.push({ candidate, family, band });
       memberIds.add(candidate.candidateId);
       claimedFacts.add(candidate.factKey);
     }
@@ -312,5 +373,31 @@ export function resolveStandingMembers(
     }
   }
 
-  return { members, memberIds, factKeys: claimedFacts, cappedOverflowIds };
+  // The bands ARE the render order: the tier first, ranked by claim; then the
+  // stable rest and the quiet tail, both in the registry's own declaration order,
+  // which is what keeps a glance-by-position row byte-stable while no claim moves.
+  const bandOrder: Record<StandingBandKey, number> = {
+    attention: 0,
+    rest: 1,
+    tail: 2,
+  };
+  const ranked = members
+    .map((member, index) => ({ member, index }))
+    .sort(
+      (a, b) =>
+        bandOrder[a.member.band] - bandOrder[b.member.band] ||
+        (b.member.band === "attention"
+          ? (reasonClaim(b.member.candidate) ?? CTA_CLAIM) -
+            (reasonClaim(a.member.candidate) ?? CTA_CLAIM)
+          : 0) ||
+        a.index - b.index
+    )
+    .map(({ member }) => member);
+
+  return {
+    members: ranked,
+    memberIds,
+    factKeys: claimedFacts,
+    cappedOverflowIds,
+  };
 }

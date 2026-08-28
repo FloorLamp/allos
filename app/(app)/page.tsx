@@ -57,9 +57,11 @@ import { collectCoachingFindings } from "@/lib/rule-findings";
 import { pickNextAppointment } from "@/lib/household";
 import { goalPct, isGoalLive } from "@/lib/outcome-goals";
 import {
+  frequencyPaceLabel,
   frequencyScopeLabel,
   isStrengthProgrammingScope,
 } from "@/lib/frequency-targets";
+import { PACE_BADGE_CLASS } from "@/lib/pace-presentation";
 import { activeByKey, activeFindings, coachingDedupeKey } from "@/lib/findings";
 import { routineOrder } from "@/lib/dismissal-fatigue";
 import { requireSession } from "@/lib/auth";
@@ -1557,12 +1559,23 @@ async function renderDashboard(
   sourceOrder += goals.length;
   orderedFreqTargets.forEach((progress, index) => {
     const id = progress.target.id;
+    // A moment, not the whole week (#3224). "Unmet" spans seven days, so spelling
+    // the window `!met` kept every open target parked in Now. The rhythm answers
+    // when this target normally gets done; with no rhythm there is no moment.
+    const momentOpen = frequencyTargetLogWindowOpen(
+      profile.id,
+      progress.target,
+      on,
+      nowMinutes
+    );
+    const behind = progress.pace === "behind";
     add(
       progressCandidates.targetProgress(
         { subject: profileSubject, sourceOrder: sourceOrder + index * 2 },
         id,
         !progress.met,
-        weeklyTargetStateChanged(progress, progress.previous ?? null)
+        weeklyTargetStateChanged(progress, progress.previous ?? null),
+        behind
       ),
       <HabitProgressAtom progress={progress} />,
       {
@@ -1571,7 +1584,22 @@ async function renderDashboard(
           progress.target.scope_value
         ),
         value: `${progress.count} of ${progress.per_week}`,
-        detail: "this week",
+        // #3543: the count alone made the reader do the division against the day
+        // of the week. The verdict already exists on this object; the word is the
+        // non-color channel (#1220) and the tint only seconds it.
+        detail: behind ? (
+          <>
+            this week ·{" "}
+            <span
+              data-testid="standing-pace"
+              className={`rounded px-1.5 py-0.5 text-[0.6875rem] font-semibold ${PACE_BADGE_CLASS.behind}`}
+            >
+              {frequencyPaceLabel("behind")}
+            </span>
+          </>
+        ) : (
+          "this week"
+        ),
         href:
           dashboardHabitDomain(progress.target.scope_kind) === "food"
             ? "/nutrition"
@@ -1590,17 +1618,13 @@ async function renderDashboard(
         },
         id,
         on,
-        progress.pace === "behind",
-        // A moment, not the whole week (#3224). "Unmet" spans seven days, so
-        // spelling the window `!met` kept every open target parked in Now and put
-        // "Nothing needs you." out of reach. The rhythm answers when this target
-        // normally gets done; with no rhythm there is no moment to open.
-        frequencyTargetLogWindowOpen(
-          profile.id,
-          progress.target,
-          on,
-          nowMinutes
-        )
+        // Owner ruling #3245: `owed` COMPOSES WITH THE MOMENT. Behind pace alone
+        // put a never-touched 2x/week target back in Now from day 4 of every
+        // week, filling the cap with cards nobody could act on. The standing fact
+        // is told by the pace word on the reading above; the card earns a Now slot
+        // only while this is a moment the person would normally do it.
+        behind && momentOpen,
+        momentOpen
       ),
       <DashboardAtomCard
         title={`Log ${progress.target.scope_value}`}
