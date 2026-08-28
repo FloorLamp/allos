@@ -347,6 +347,38 @@ async function boxOf(name: string, locator: Locator) {
   return box!;
 }
 
+/**
+ * IS THE 44px BOX ACTUALLY THE TARGET? A height is an absolute number; a target is
+ * a RELATIONSHIP. A field grown to 44px under a sticky header, or behind a
+ * neighbour's overlay, measures 44 and hands the tap to something else. So the two
+ * rows the enlargement ADDED — the field's own top and bottom edges — are
+ * hit-tested, because those are the two a covering element takes first.
+ */
+async function ownsItsOwnEdges(page: Page, locator: Locator) {
+  const box = await locator.boundingBox();
+  expect(
+    box,
+    "the field must be laid out before it is hit-tested"
+  ).not.toBeNull();
+  const handle = await locator.elementHandle();
+  try {
+    return await page.evaluate(
+      ([el, x, top, bottom]) => {
+        const at = (y: number) => document.elementFromPoint(x as number, y);
+        return at(top as number) === el && at(bottom as number) === el;
+      },
+      [
+        handle,
+        box!.x + box!.width / 2,
+        box!.y + 2,
+        box!.y + box!.height - 2,
+      ] as const
+    );
+  } finally {
+    await handle?.dispose();
+  }
+}
+
 /** Every named field's rendered height, at one viewport, in one pass. */
 async function fieldHeights(
   page: Page,
@@ -448,6 +480,36 @@ test.describe("typed fields render the ruled 44px box on a phone (#3708)", () =>
       "aria-label",
       "Activity name"
     );
+
+    // …and the box a thumb finds is this field, top edge and bottom edge.
+    expect(
+      await ownsItsOwnEdges(page, fields[3].locator),
+      "End time measures 44px but something else answers at its edges — a taller " +
+        "field under a sticky header passes an absolute check and fails a person."
+    ).toBe(true);
+
+    // THE BOUNDARY ITSELF, NAMED. `sm` is 40rem and the rule is written
+    // `max-width: 639.98px`, so 639 and 640 are the only two widths that can tell
+    // an off-by-one from a working contract; 390 and 1280 cannot see it at all.
+    for (const [width, floored] of [
+      [639, true],
+      [640, false],
+    ] as const) {
+      await page.setViewportSize({ width, height: 900 });
+      const at = (await boxOf(`end time at ${width}`, fields[3].locator))
+        .height;
+      if (floored)
+        expect(
+          at + TAP_FLOOR_FLOAT_EPSILON_PX,
+          `end time is ${at}px at ${width}px, one pixel INSIDE the phone contract`
+        ).toBeGreaterThanOrEqual(TAP_FLOOR_PX);
+      else
+        expect(
+          at,
+          `end time is ${at}px at ${width}px — 40rem exactly, the first width the ` +
+            "contract must not reach"
+        ).toBeLessThan(TAP_FLOOR_PX);
+    }
   });
 
   // THE PICKER OWNS THREE MORE TARGETS (#3706): its clear command, its option rows
@@ -519,6 +581,10 @@ test.describe("typed fields render the ruled 44px box on a phone (#3708)", () =>
     expect(clearBox.width + TAP_FLOOR_FLOAT_EPSILON_PX).toBeGreaterThanOrEqual(
       TAP_FLOOR_PX
     );
+    expect(
+      await ownsItsOwnEdges(page, clear),
+      "the clear command measures 44px but something else answers at its edges"
+    ).toBe(true);
     await clear.click();
     await expect(name).toHaveValue("");
     await expect(name).toBeFocused();
@@ -600,7 +666,6 @@ test.describe("typed fields render the ruled 44px box on a phone (#3708)", () =>
   const FIELD_SURFACES = [
     {
       name: "activity editor",
-      login: undefined,
       // Opened wide for the same reason as the tests above — Add activity is
       // `hidden md:inline-flex` and has no phone twin on this route.
       open: async (page: Page) => {
@@ -614,62 +679,50 @@ test.describe("typed fields render the ruled 44px box on a phone (#3708)", () =>
     },
     {
       name: "family settings",
-      login: E2E_LOGIN_MULTI,
       open: async (page: Page) => {
         await page.goto("/settings/family");
-        await expect(page.locator(".input").first()).toBeVisible(); // first-ok: the sweep measures every field on the page; this only waits for the form to mount
+        await expect(page.locator("#family-new-profile-name")).toBeVisible();
       },
     },
   ] as const;
 
   for (const surface of FIELD_SURFACES)
     test(`no \`.input\` is short at 390 on ${surface.name}, and it is dense at 1280`, async ({
-      browser,
+      page,
     }) => {
       test.setTimeout(120_000);
-      const page = await loginAs(
-        browser,
-        {
-          username: surface.login ?? E2E_LOGIN_SHELL,
-          password: E2E_MEMBER_PASSWORD,
-        },
-        { viewport: DESKTOP }
-      );
-      try {
-        await surface.open(page);
+      await page.setViewportSize(DESKTOP);
+      await surface.open(page);
 
-        const measure = async () =>
-          page.locator(".input:visible").evaluateAll((els) =>
-            els.map((el) => ({
-              what:
-                el.getAttribute("data-testid") ??
-                el.getAttribute("id") ??
-                el.getAttribute("aria-label") ??
-                el.tagName,
-              height: el.getBoundingClientRect().height,
-            }))
-          );
+      const measure = async () =>
+        page.locator(".input:visible").evaluateAll((els) =>
+          els.map((el) => ({
+            what:
+              el.getAttribute("data-testid") ??
+              el.getAttribute("id") ??
+              el.getAttribute("aria-label") ??
+              el.tagName,
+            height: el.getBoundingClientRect().height,
+          }))
+        );
 
-        const wide = await measure();
-        expect(wide.length, "the sweep must find fields").toBeGreaterThan(1);
-        expect(
-          wide.filter((f) => f.height < TAP_FLOOR_PX).length,
-          `Every \`.input\` on ${surface.name} is already at the phone floor at ` +
-            "1280px, so the contract is not confined below `sm` — the exact shape " +
-            "#3896 shipped."
-        ).toBeGreaterThan(0);
+      const wide = await measure();
+      expect(wide.length, "the sweep must find fields").toBeGreaterThan(1);
+      expect(
+        wide.filter((f) => f.height < TAP_FLOOR_PX).length,
+        `Every \`.input\` on ${surface.name} is already at the phone floor at ` +
+          "1280px, so the contract is not confined below `sm` — the exact shape " +
+          "#3896 shipped."
+      ).toBeGreaterThan(0);
 
-        await page.setViewportSize(PHONE);
-        const phone = await measure();
-        expect(phone.length, "the sweep must find fields").toBeGreaterThan(1);
-        expect(
-          phone.filter(
-            (f) => f.height + TAP_FLOOR_FLOAT_EPSILON_PX < TAP_FLOOR_PX
-          ),
-          `A \`.input\` on ${surface.name} renders under the ${TAP_FLOOR_PX}px floor at ${PHONE.width}px.`
-        ).toEqual([]);
-      } finally {
-        await page.context().close();
-      }
+      await page.setViewportSize(PHONE);
+      const phone = await measure();
+      expect(phone.length, "the sweep must find fields").toBeGreaterThan(1);
+      expect(
+        phone.filter(
+          (f) => f.height + TAP_FLOOR_FLOAT_EPSILON_PX < TAP_FLOOR_PX
+        ),
+        `A \`.input\` on ${surface.name} renders under the ${TAP_FLOOR_PX}px floor at ${PHONE.width}px.`
+      ).toEqual([]);
     });
 });
