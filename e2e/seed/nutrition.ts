@@ -632,6 +632,19 @@ export function seedLogSheetReserve(): void {
   const reserveId = adultFixtureProfileId(LOGSHEET_RESERVE_PROFILE);
   seedUsualRoutineLedger(reserveId);
 
+  // THE OFFER LABEL IS USER DATA, AND THAT IS THE TERM THE RESERVE HAS TO COVER.
+  // `dueDoseChipLabel` prints "Due: <first two item names> +N", so the row's height is
+  // decided by names the profile chose — and the ledger's own "Creatine, Collagen"
+  // fits one line, which would leave the reserve's wrap allowance proved against the
+  // case that never needed it. Renamed HERE rather than in the shared ledger, whose
+  // other profile asserts those names exactly. Lengths are the fixture: two
+  // portal-import-shaped names wrap this label at 390px.
+  const rename = db.prepare(
+    `UPDATE intake_items SET name = ? WHERE profile_id = ? AND name = ?`
+  );
+  rename.run("Calcium Carbonate 500 (e2e)", reserveId, "Creatine");
+  rename.run("Magnesium Glycinate 200 (e2e)", reserveId, "Collagen");
+
   // A live session is an in-app activity row on TODAY with a start and no end, touched
   // inside ACTIVE_MAX_QUIET_MIN (lib/workout-presence.ts). Both timestamps come off the
   // FROZEN clock, not `datetime('now')`: the run's wall time is hours from the app's,

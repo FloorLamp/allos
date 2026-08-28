@@ -147,17 +147,30 @@ export const LOG_SHEET_ROW_BLOCK_PX = 66;
  * common case is one with no routine control, which is exactly why this number may
  * no longer be spent as a fixed height on the region itself.
  *
- * Every term below was measured in the rendered sheet at 390px (2026-08-28); only
- * the wrap allowance is a judgement, and it is the one term user data can move: a
- * due-dose label is item names, and `Due: <two names> +N` wraps on a phone.
+ * EVERY TERM WAS MEASURED IN THE RENDERED SHEET at 390px (2026-08-28), and the
+ * `log-sheet-reserve` e2e persona renders all of them at once so the SUM is measured
+ * too, not only its parts.
+ *
+ * AN OFFER ROW BY LABEL LINES, measured: 62 / 66 / 86 for one, two and three. The
+ * first wrapped line is nearly free because the 36px icon is still the tallest thing
+ * in the row — an offer carries no hint under its label, unlike the long-tail entries
+ * below — and every line after it costs a full 20px.
+ *
+ * SO THIS BOUND HOLDS TO TWO LINES AND NO FURTHER. `dueDoseChipLabel` prints
+ * `Due: <two item names> +N` from names the profile chose, and nothing bounds them:
+ * two portal-imported names reach three lines here and overrun this number by 16px,
+ * which the panel would answer by growing AFTER the gather resolves — the resize
+ * #3675 exists to stop. Covering that by picking a bigger number cannot work, since
+ * a fourth line is always reachable; the label is what has to be bounded. Recorded
+ * rather than fixed here: it is a live question on #3736, not a settled one.
  */
 export const LOG_SHEET_CONTEXT_RESERVE_PX =
   16 + // the "Due & usual now" heading
   8 + // its `mb-2`
   54 + // UsualRoutineControl, absent unless the window has a usual set
   12 + // its `mb-3`
-  2 * 66 + // two offer rows, each allowed ONE wrapped label line (62 unwrapped)
-  4 + // the offers' single `gap-1`
+  2 * 66 + // the two offer rows at their TWO-LINE height (62 with a one-line label)
+  4 + // the ONE `gap-1` between those two rows
   12 + // the section's `pb-3`
   1 + // its rule
   16; // its `mb-4`

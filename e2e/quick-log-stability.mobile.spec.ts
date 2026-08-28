@@ -429,13 +429,29 @@ test("the context region at its tallest still fits the panel's one reserve (#373
     await expect(sheet.getByTestId("log-sheet-chip-doses")).toBeVisible();
     await expect(sheet.getByTestId("log-sheet-chip-session")).toBeVisible();
 
-    // The region fits INSIDE the number that stands for it. Under, not equal: the
-    // reserve allows each offer row one wrapped label line and this persona's labels
-    // do not wrap, so the slack it measures is the wrap allowance.
+    // The region fits INSIDE the number that stands for it, with the due-dose offer
+    // already wrapped: 251 against 255, the remaining 4px being the resume row's own
+    // unspent wrap allowance.
     const slot = await box(
       sheet.getByTestId("log-sheet-context-slot"),
       "context slot at its tallest"
     );
+    // THE WRAPPED CASE IS THE ONE PINNED. The reserve budgets each offer row at its
+    // TWO-LINE height, and a bound proved against the one-line case is the same defect
+    // #3736 exists to close. This persona's due-dose label is item names long enough
+    // to wrap at 390px, so the row it draws is the row the number is for.
+    const doseOffer = await box(
+      sheet.getByTestId("log-sheet-chip-doses"),
+      "the wrapped due-dose offer"
+    );
+    const sessionOffer = await box(
+      sheet.getByTestId("log-sheet-chip-session"),
+      "the one-line resume offer"
+    );
+    // "Resume workout" is authored and cannot wrap, so the difference IS the wrap —
+    // asserted as a comparison rather than a pinned 66, which would only restate the
+    // constant back to itself.
+    expect(doseOffer.height).toBeGreaterThan(sessionOffer.height);
     expect(slot.height).toBeLessThanOrEqual(LOG_SHEET_CONTEXT_RESERVE_PX);
 
     // ...and with the region at its tallest the PANEL is still the same height on
