@@ -86,6 +86,7 @@ import {
   getPublicUrl,
   getRecapScale,
   getProfileAge,
+  getProfileSubstanceTelegram,
 } from "../settings";
 import {
   isAdultForClinical,
@@ -251,12 +252,17 @@ function windowFood(
 // with the tick only because they were called a moment apart; a plan and a gather that
 // can disagree about which period they are talking about is a defect waiting for a tick
 // that straddles local midnight.
+//
+// `forSend` marks the gather whose output LEAVES the app (#3900) — the one place the
+// substance consent is asked, since that consent is about substance content reaching a
+// chat and not about what the profile may see on its own dashboard.
 export function gatherRecapInput(
   profileId: number,
   weightUnit: WeightUnit = "kg",
   scale: RecapScale = "week",
   completed = false,
-  asOf?: string
+  asOf?: string,
+  forSend = false
 ): RecapInput {
   const td = asOf ?? today(profileId);
   // "This week" per the profile's week_mode for the 7-day recap (issue #223), so
@@ -270,6 +276,21 @@ export function gatherRecapInput(
   const strengthTrainingRelevant = isStrengthTrainingRelevant(
     getProfileAge(profileId)
   );
+
+  // WHICH TARGETS BOTH CAP READERS MAY SEE — one predicate, because a target dropped
+  // from the week verdict and kept in the cap-weeks sentence would be named anyway.
+  //
+  // The substance half (#3900) is the consent `buildFoodNudge` already asks (#3330):
+  // `cadenceScopeNoun` names a substance cap by its own noun — the curated label for a
+  // curated key, the profile's OWN free-text name for a custom one — so these two lines
+  // carried substance content into a chat, a push body and an inbox. Alcohol included:
+  // its ledger is a food group but its cap is an ordinary `scope_kind: "substance"`.
+  // Removing, not redacting; the rest of the recap still sends.
+  const includeTarget = (target: { scope_kind: string }) =>
+    (trainingRelevant || !isTrainingFrequencyScope(target)) &&
+    (target.scope_kind !== "substance" ||
+      !forSend ||
+      getProfileSubstanceTelegram(profileId));
 
   // Only the recap's two windows (current + previous) reduce these, and win.prevStart
   // is the earliest bound of either, so bound the load there (issue #389) instead of
@@ -452,11 +473,7 @@ export function gatherRecapInput(
     // distinction, so nothing new decides it here.
     targetVerdicts:
       speaks("targets") && completed
-        ? getCadenceWeekVerdicts(profileId, win.end, {
-            includeTarget: trainingRelevant
-              ? undefined
-              : (target) => !isTrainingFrequencyScope(target),
-          })
+        ? getCadenceWeekVerdicts(profileId, win.end, { includeTarget })
         : [],
     // THE PERIOD'S FOOD HABITS (#2397): a share of the days food was logged at all, with
     // the curated nutrient rationale. One bounded rollup read over the period, skipped
@@ -474,9 +491,7 @@ export function gatherRecapInput(
           weeks: Math.floor(
             ((daysBetweenDateStr(win.start, win.end) ?? 0) + 1) / 7
           ),
-          includeTarget: trainingRelevant
-            ? undefined
-            : (target) => !isTrainingFrequencyScope(target),
+          includeTarget,
         })
       : [],
     // The window's per-night MAIN sleep minutes and the previous window's (#2396) — the
@@ -638,8 +653,10 @@ export async function runRecap(
 
   const scale = plan.send.scale;
   // The SAME `date` the plan above was decided on, not a second `today()` read.
+  // `forSend` (#3900): this gather's output leaves the app, so it is the one that asks
+  // the substance consent — the card and the AI narrative gather the same facts without.
   const recap = buildRecap(
-    gatherRecapInput(profileId, "kg", scale, true, date)
+    gatherRecapInput(profileId, "kg", scale, true, date, true)
   );
   // Surface the stored AI recap narrative when one exists for this window (#421).
   // READ-ONLY — the tick must never call Claude (quota atomicity assumes a single

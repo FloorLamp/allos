@@ -191,9 +191,10 @@ dedicated store, so one store never has two quick-log owners in the census.
 
 ## Reach
 
-Substance data stays out of share links, the emergency card, print surfaces, and every
-send, by default. The neutral stance changes what the **owner** can do, not what the app
-broadcasts. No substance ever generates a finding-driven send.
+Substance data stays out of share links, the emergency card and print surfaces by
+default, and a send names a substance only behind the per-profile opt-in below. The
+neutral stance changes what the **owner** can do, not what the app broadcasts. No
+substance ever generates a finding-driven send.
 
 Telegram carries this profile's alcohol rows only after an explicit per-profile opt-in —
 `substance_telegram_enabled`, off by default, the same consent shape as food buttons
@@ -202,14 +203,17 @@ receives every profile it manages, so the choice belongs to the data subject. Th
 backfill; an existing profile with Telegram already wired up reads "off" on first deploy
 and stops carrying substance content until someone says otherwise (#3330).
 
-Alcohol is the reach it governs, because alcohol is the one substance whose ledger is a
-food group (`ledger: "food-log"`) and so rides the food nudge. Every other substance,
-curated or custom, lives in `substance_daily_totals`, has no Telegram surface at all, and
-`TELEGRAM_DOMAIN_CENSUS` keeps `substance` off the slash-command vocabulary.
+Alcohol is the reach the food nudge governs, because alcohol is the one substance whose
+ledger is a food group (`ledger: "food-log"`) and so rides that nudge. Every other
+substance, curated or custom, lives in `substance_daily_totals` and has no food-nudge
+surface — but a declared **cap** on any substance, alcohol included, is named by its own
+noun on the periodic recap's two cap lines, which go out over Telegram, Web Push and
+Email (#3900). The same flag governs both reaches. `TELEGRAM_DOMAIN_CENSUS` keeps
+`substance` off the slash-command vocabulary.
 
-The flag is read in exactly two gathers, and the pair is the whole of it — the first
-attempt gated only the first, and the eating-time correction rows kept naming the drink
-from a second read thirty lines downstream:
+The flag is read in three gathers, and the three are the whole of it — the first attempt
+gated only the first, the eating-time correction rows kept naming the drink from a second
+read thirty lines downstream, and the recap named the cap from a third module out:
 
 - `buildFoodNudge` drops the group from the ranked keys and the day totals, which is the
   quick-log **button** and the `Today:` **tally**.
@@ -221,11 +225,21 @@ from a second read thirty lines downstream:
   a form naming a neighbour or naming nothing, never a gap; an all-substance burst is
   gone, and a token aimed at it takes the refusal that already exists for one that aged
   out.
+- `gatherRecapInput` drops `scope_kind: "substance"` targets from both cadence cap
+  readers when the gather is `forSend`, which removes the week **verdict** line ("over
+  the Nicotine cap") and the period **cap-weeks** line ("over the Nicotine cap in 2 of 4
+  weeks") — a custom substance names itself on both, since `cadenceScopeNoun` returns the
+  profile's own string. The dashboard recap card, the AI narrative and the year
+  retrospective gather the same facts unfiltered: they are surfaces the profile is
+  standing on, not sends. A stored AI narrative (#421) is written over that in-app recap
+  and pasted into the send in place of the bullets, so it is not covered by this gate.
 
-Both gathers are read in `lib/__db_tests__/food-nudge-substance-optin.test.ts` over five
-senders — the proactive tick, `/food`, a fully expanded keyboard, the reconcile sweep and
-the picker — against everything the transport is asked to show, rather than against one
-field of the message.
+The first two gathers are read in `lib/__db_tests__/food-nudge-substance-optin.test.ts`
+over five senders — the proactive tick, `/food`, a fully expanded keyboard, the reconcile
+sweep and the picker — against everything the transport is asked to show, rather than
+against one field of the message. The third is read in
+`lib/__db_tests__/recap-substance-optin.test.ts`, against the rendered message string at
+both scales with the flag off and on, and against the in-app surfaces with it off.
 
 It REMOVES rather than redacts or suppresses: the nudge still sends with every other food
 group intact. The WRITE core is deliberately not gated — `restampFoodEventsCore` re-derives
