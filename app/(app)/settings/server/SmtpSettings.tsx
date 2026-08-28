@@ -5,6 +5,7 @@ import { useRouter } from "next/navigation";
 import type { SmtpConfigView } from "@/lib/settings";
 import { saveSmtpConfig, sendTestEmail } from "./actions";
 import SaveStatus from "@/components/SaveStatus";
+import { Notice } from "@/components/Notice";
 import { useSaveStatus } from "@/components/useSaveStatus";
 
 // The GLOBAL SMTP relay (issue #985). Admin-only: one relay serves the whole
@@ -94,14 +95,29 @@ export default function SmtpSettings({
         required (port 465 implicit, 587 via STARTTLS).
       </p>
 
+      {/* A NOTICE, AND NOT A SUB-PANEL (#3897). This was a hand-rolled amber tint
+          carrying `subpanel-inset-sm`, and the tier's de-card rule zeroes
+          padding-inline below `sm`: measured at 390px the fill began at exactly
+          the x of its own first character, with no gutter to sit in.
+
+          THE LINE, for the next person meeting a tinted `subpanel-inset*`: a
+          NOTICE-FAMILY tint — a message block saying something is wrong — is not a
+          sub-panel and keeps the `px-3` every Notice keeps at every width. A
+          STRUCTURAL grey or brand fill (a nested panel that is a surface, not a
+          message) is a sub-panel and gives its inline gutter up like everything
+          else. The tier is for the second kind.
+
+          Going through the primitive rather than restoring the class does two
+          more things at once: it retires a hand-rolled tint, and it earns the
+          `data-notice` marker, so this box can never become a framed tinted shape
+          the phone sweep does not recognise. `text-xs` becomes the family's
+          `text-sm` — a warning was never the right thing to make the smallest
+          text on the page. */}
       {!publicUrl && (
-        <p
-          data-testid="smtp-needs-public-url"
-          className="subpanel-inset-sm rounded-lg border border-amber-400/40 bg-amber-50 p-3 text-xs text-amber-900 dark:border-amber-400/20 dark:bg-amber-950/40 dark:text-amber-200"
-        >
+        <Notice tone="amber" testid="smtp-needs-public-url">
           Set the public app URL in the card above — invite and reset links are
           built from it, so email can&apos;t be sent without it.
-        </p>
+        </Notice>
       )}
 
       <div className="grid gap-3 sm:grid-cols-2">

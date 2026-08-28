@@ -16,6 +16,7 @@ import SyncHistoryTable from "@/components/integrations/SyncHistoryTable";
 import SyncNowButton from "@/components/SyncNowButton";
 import { enableWeatherAction, disconnectWeatherAction } from "./actions";
 import BackLink from "@/components/BackLink";
+import SetupStepsCard from "@/components/integrations/SetupStepsCard";
 
 export const dynamic = "force-dynamic";
 
@@ -187,12 +188,10 @@ export default async function WeatherPage(props: {
 
 function SetupCard() {
   return (
-    <div className="card space-y-3 text-sm text-slate-600 dark:text-slate-300">
-      <h2 className="font-semibold text-slate-800 dark:text-slate-100">
-        How it works
-      </h2>
-      <ol className="list-decimal space-y-2 pl-5">
-        <li>
+    <SetupStepsCard
+      title="How it works"
+      steps={[
+        <>
           Set your coarse home location on{" "}
           <Link
             href="/settings/health"
@@ -201,8 +200,8 @@ function SetupCard() {
             Settings → Profile
           </Link>{" "}
           (stored at ~11 km precision — city scale, never a street address).
-        </li>
-        <li>
+        </>,
+        <>
           Enable here. The hourly UV index + solar irradiance for that spot sync
           automatically every hour via{" "}
           <a
@@ -214,17 +213,17 @@ function SetupCard() {
             Open-Meteo
           </a>{" "}
           — no API key or account.
-        </li>
-        <li>
+        </>,
+        <>
           Your outdoor daylight time then becomes a two-sided UV dose: enough
           for vitamin D and circadian light, with a heads-up before you&rsquo;d
           burn (add your skin type to switch on the burn side).
-        </li>
-        <li>
+        </>,
+        <>
           Offline or before the first sync, sun features still work from a
           clear-sky estimate — the UV layer only enhances them.
-        </li>
-      </ol>
-    </div>
+        </>,
+      ]}
+    />
   );
 }

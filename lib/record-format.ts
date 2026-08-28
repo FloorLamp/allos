@@ -136,6 +136,7 @@ const STATUS_TONES: Record<string, string> = {
   active: STATUS_TONE_AMBER,
   ongoing: STATUS_TONE_AMBER,
   "in progress": STATUS_TONE_AMBER,
+  watch: STATUS_TONE_AMBER, // a lesion flagged for a recheck (#715) is still open
   // Positive / closed-good
   resolved: STATUS_TONE_EMERALD,
   achieved: STATUS_TONE_EMERALD,
@@ -151,6 +152,7 @@ const STATUS_TONES: Record<string, string> = {
   // Neutral / closed-neutral
   inactive: STATUS_TONE_SLATE,
   archived: STATUS_TONE_SLATE,
+  removed: STATUS_TONE_SLATE, // an excised lesion is history, not a bad outcome
   cancelled: STATUS_TONE_SLATE,
   canceled: STATUS_TONE_SLATE,
   "on hold": STATUS_TONE_SLATE,

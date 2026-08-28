@@ -66,7 +66,7 @@ export default function DashboardStandingCluster({
         Standing
       </h2>
       <div
-        className="overflow-hidden rounded-xl border border-(--border) bg-surface"
+        className="band overflow-hidden rounded-xl border border-(--border) bg-surface"
         data-testid="dashboard-standing"
       >
         {SECTIONS.map((section) => {
@@ -87,7 +87,7 @@ export default function DashboardStandingCluster({
             >
               <h3
                 id={`dashboard-standing-${section.key}`}
-                className="bg-(--ghost) px-4 py-2 text-xs font-semibold tracking-wide text-slate-500 uppercase dark:text-slate-400"
+                className="band bg-(--ghost) px-4 py-2 text-xs font-semibold tracking-wide text-slate-500 uppercase dark:text-slate-400"
               >
                 {section.label}
               </h3>
@@ -122,7 +122,7 @@ export default function DashboardStandingCluster({
                     // visible on its own and auto-flowed onto a second grid row.
                     <div
                       key={family.key}
-                      className={`relative grid gap-1 border-t border-(--divider) px-4 py-3 [--standing-lead:1rem] [--standing-trail:1rem] first:border-t-0 sm:grid-cols-[10rem_minmax(0,1fr)] sm:gap-4 sm:[--standing-lead:12rem] min-[45rem]:items-center ${
+                      className={`band relative grid gap-1 border-t border-(--divider) px-4 py-3 [--standing-lead:1rem] [--standing-trail:1rem] first:border-t-0 sm:grid-cols-[10rem_minmax(0,1fr)] sm:gap-4 sm:[--standing-lead:12rem] min-[45rem]:items-center ${
                         series
                           ? "min-[45rem]:grid-cols-[10rem_minmax(0,1fr)_11rem] min-[45rem]:[--standing-trail:13rem]"
                           : ""

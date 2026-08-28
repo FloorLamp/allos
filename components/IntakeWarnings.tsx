@@ -107,8 +107,18 @@ export default function IntakeWarnings({
     .filter(Boolean)
     .join(" · ");
 
+  // Grouping by hairline is what a SHARED surface buys, and below `sm` there is no
+  // shared surface: each finding draws its own tinted frame in its own tone
+  // (#3897). A rule between two tinted boxes welds them into one blob, so the
+  // BETWEEN-SECTION seam is `sm:` only. The WITHIN-section seam left this string
+  // entirely: `divide-y` cannot survive a tinted child (Tailwind wraps divide
+  // rules in `:where()`, so the tone's own border class outranks them), and it now
+  // lives with the finding's shape in app/globals.css — a gap below `sm`, the same
+  // hairline above it.
   const sectionClass = (divided: boolean) =>
-    `${divided ? "mt-3 border-t border-black/5 pt-3 dark:border-white/5 " : ""}divide-y divide-black/5 dark:divide-white/5`;
+    divided
+      ? "mt-3 sm:border-t sm:border-black/5 sm:pt-3 sm:dark:border-white/5"
+      : "";
 
   return (
     <details

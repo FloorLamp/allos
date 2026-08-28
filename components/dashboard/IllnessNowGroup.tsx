@@ -153,7 +153,19 @@ export default function IllnessNowGroup({
             data-group-key={c.stateIdentity?.groupKey}
             data-active={c.isActive ? "true" : "false"}
             data-expanded={expanded ? "true" : "false"}
-            className="card border-l-4 border-l-rose-500 dark:border-l-rose-400"
+            // A RAIL IS A BORDER, AND BELOW `sm` THERE ARE NO BORDERS (#3897).
+            // "Someone here is ill right now" was carried by `border-l-4
+            // border-l-rose-500` alone, and the de-card rule measured this
+            // cockpit at `borderLeftWidth: 0px` with the rose still computed —
+            // indistinguishable from any other card on the dashboard. The signal
+            // moves to the fill the colour was decorating, at the width the
+            // border is gone. NOT a Notice: this is an interactive container
+            // carrying its own identity attributes, and a Notice keeps the `px-3`
+            // the de-card rule does not reach, which would step this cockpit's
+            // whole text 12px off the rag every other row on the page sits on.
+            // A fill is not a frame, so it claims no exception and the sweep
+            // still holds it to `border-width: 0`.
+            className="card border-l-4 border-l-rose-500 max-sm:bg-rose-50! dark:border-l-rose-400 max-sm:dark:bg-rose-950!"
           >
             <div
               data-testid="illness-cockpit-header-row"

@@ -12,6 +12,7 @@ const PHONE_MEDIA = new Set(["(width < 40rem)", "(max-width: 639.98px)"]);
 // This is semantic identity only: no declaration counts, properties, or
 // call-site census. It makes deleting or renaming a phone-only contract loud.
 const PHONE_ONLY_CONTRACTS = [
+  "band",
   "subpanel-inset",
   "subpanel-inset-sm",
   "subpanel-inset-xs",

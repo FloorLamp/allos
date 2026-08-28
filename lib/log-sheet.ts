@@ -115,6 +115,84 @@ export function maxLogSheetRows(
   );
 }
 
+// ── ONE RESERVE, AT THE PANEL (issue #3736) ──────────────────────────────────
+//
+// #3675 stopped the sheet resizing under the reader, and #3718 shipped that as
+// TWO worst-case reserves: a 208px context slot whose bottom rule was pinned to
+// the bottom of it, and a list drawn at the TALLEST segment's height on every
+// segment. Train has two entries where Consume has three, so Train drew two rows
+// inside a three-row box under a chip-row of emptiness above a horizontal rule.
+// Slack bounded below by a rule or a control reads as a rendering fault; slack
+// that simply collects after the last row reads as padding.
+//
+// So the PANEL's height is what is held constant. Every region sizes to its own
+// content, and ONE spacer, last in the panel, takes the whole difference — which
+// is also why the arithmetic lives here, in the pure module, rather than as three
+// literals inside the renderer.
+
+/**
+ * A row measures 62px — 36px icon + 24px vertical padding + the 1px border on
+ * each side — followed by the list's 4px gap. The list's `pb-1` spends that final
+ * gap after the last row, so N × 66px is the exact rendered list block rather
+ * than an approximate minimum (#3675).
+ *
+ * MEASURED, not derived: 1/2/3 rows render 66/132/198px at 390px (2026-08-28).
+ * #3718's 64 omitted the border and under-reserved every list by 2px a row.
+ */
+export const LOG_SHEET_ROW_BLOCK_PX = 66;
+
+/**
+ * The context region at its tallest, at 390px. Two offers is the most it can ever
+ * hold — `dueDoses.count > 0` and the `resume` arm of `workoutOffer` — and the
+ * common case is one with no routine control, which is exactly why this number may
+ * no longer be spent as a fixed height on the region itself.
+ *
+ * EVERY TERM WAS MEASURED IN THE RENDERED SHEET at 390px (2026-08-28), and the
+ * `log-sheet-reserve` e2e persona renders all of them at once so the SUM is measured
+ * too, not only its parts.
+ *
+ * AN OFFER ROW BY LABEL LINES, measured: 62 / 66 / 86 for one, two and three. The
+ * first wrapped line is nearly free because the 36px icon is still the tallest thing
+ * in the row — an offer carries no hint under its label, unlike the long-tail entries
+ * below — and every line after it costs a full 20px.
+ *
+ * WHICH IS WHY THE LABEL IS CLAMPED TO TWO LINES rather than this number being made
+ * generous. `dueDoseChipLabel` prints `Due: <two item names> +N` from names the
+ * profile chose; unbounded, two portal-imported names reach three lines and overrun
+ * by 16px, and the panel would answer by growing AFTER the gather resolves — the
+ * resize #3675 exists to stop. No larger number fixes that, because a fourth line is
+ * always reachable. `SHEET_ROW_CLASS`'s label carries `line-clamp-2`, so 66 is the
+ * row's MAXIMUM and this bound holds by construction instead of by luck.
+ */
+export const LOG_SHEET_CONTEXT_RESERVE_PX =
+  16 + // the "Due & usual now" heading
+  8 + // its `mb-2`
+  54 + // UsualRoutineControl, absent unless the window has a usual set
+  12 + // its `mb-3`
+  2 * 66 + // the two offer rows at their TWO-LINE height (62 with a one-line label)
+  4 + // the ONE `gap-1` between those two rows
+  12 + // the section's `pb-3`
+  1 + // its rule
+  16; // its `mb-4`
+
+/** The segmented track: a 44px target inside the control's `p-1`, plus `mb-3`. */
+export const LOG_SHEET_TRACK_BLOCK_PX = 64;
+
+/**
+ * The height the sheet's panel holds whatever it is showing — the floor the
+ * trailing spacer fills out to. A one-segment profile has no track to reserve
+ * for, and holds no rows it cannot reach (`maxLogSheetRows`).
+ */
+export function logSheetReservePx(
+  segments: readonly Pick<LogSegment, "items">[]
+): number {
+  return (
+    LOG_SHEET_CONTEXT_RESERVE_PX +
+    (segments.length > 1 ? LOG_SHEET_TRACK_BLOCK_PX : 0) +
+    maxLogSheetRows(segments) * LOG_SHEET_ROW_BLOCK_PX
+  );
+}
+
 /**
  * Which segment the track opens on: the one holding the CURRENT ROUTE's promoted
  * log (`primaryQuickLog`), so opening the puck on Nutrition lands on Consume. Falls
