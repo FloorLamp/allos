@@ -474,6 +474,16 @@
   .finding-embedded:last-child {
     padding-bottom: 0;
   }
+  /* THE GROUPING HAIRLINE, WHICH THE CONTAINER USED TO DRAW. It was a `divide-y`
+     on the section, and that stopped working the moment the finding carried a
+     tone: Tailwind wraps every `divide-*` rule in `:where()`, so the tone's own
+     `border-rose-300` (a real class) outranks `divide-black/5` (specificity 0)
+     and `border-width: 0` above outranks the divider's width. Both halves of the
+     seam therefore move HERE, beside the shape they belong to — the same seam at
+     both widths, a gap below `sm` and this hairline above it. */
+  .finding-embedded + .finding-embedded {
+    @apply border-t border-black/5 dark:border-white/5;
+  }
 }
 
 /* ────────────────────────────────────────────────────────────────────────────
