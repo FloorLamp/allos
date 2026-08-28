@@ -97,6 +97,46 @@ function insertRecentlyEndedNap(username: string): () => void {
   }
 }
 
+// #3548 cold start: the first record a profile makes. Direct-DB, spec-owned and
+// cleaned up, in the `insertRecentlyEndedNap` idiom above — the claim under test is
+// what the NEXT render does, so driving a real log form would only add ways for the
+// fixture to fail for reasons that are not the ruling.
+function insertFirstWeighIn(username: string): () => void {
+  const db = new Database(workerDbPath());
+  try {
+    db.pragma("busy_timeout = 5000");
+    const profile = db
+      .prepare(
+        `SELECT lp.profile_id
+           FROM logins l JOIN login_profiles lp ON lp.login_id = l.id
+          WHERE l.username = ?
+          ORDER BY lp.profile_id
+          LIMIT 1`
+      )
+      .get(username) as { profile_id: number };
+    const day = frozenNow().toISOString().slice(0, 10);
+    const id = Number(
+      db
+        .prepare(
+          `INSERT INTO body_metrics (profile_id, date, weight_kg, source)
+           VALUES (?, ?, 71.5, NULL)`
+        )
+        .run(profile.profile_id, day).lastInsertRowid
+    );
+    return () => {
+      const cleanupDb = new Database(workerDbPath());
+      try {
+        cleanupDb.pragma("busy_timeout = 5000");
+        cleanupDb.prepare("DELETE FROM body_metrics WHERE id = ?").run(id);
+      } finally {
+        cleanupDb.close();
+      }
+    };
+  } finally {
+    db.close();
+  }
+}
+
 test("phone leads with the bounded Now lane", async ({ browser }) => {
   const page = await openDashboard(browser, {
     username: E2E_LOGIN_NOWSTRIP,
@@ -363,6 +403,54 @@ test("a cold-start profile's tier is the getting-started list", async ({
     ).not.toHaveCount(0);
   } finally {
     await page.context().close();
+  }
+});
+
+
+// The other half of the cold-start ruling: a CTA's claim is SPENT by recording.
+// One weigh-in and the getting-started list retires into the fold on the next
+// render, with the new reading standing where the instrument panel keeps it. One
+// mechanism, no threshold cliff, no separate onboarding layout to leave.
+test("the first log retires the getting-started list to the fold", async ({
+  browser,
+}) => {
+  const before = await openDashboard(browser, {
+    username: E2E_LOGIN_WHATSNEW,
+  });
+  const tierCtas = (page: Page) =>
+    page.locator(
+      '[data-standing-band="attention"] [data-testid="dashboard-candidate"][data-presence="never"]'
+    );
+  try {
+    await expect(tierCtas(before)).not.toHaveCount(0);
+  } finally {
+    await before.context().close();
+  }
+
+  const cleanup = insertFirstWeighIn(E2E_LOGIN_WHATSNEW);
+  try {
+    const after = await openDashboard(browser, {
+      username: E2E_LOGIN_WHATSNEW,
+    });
+    try {
+      await expect(
+        after.locator(
+          '[data-standing-band="rest"] [data-standing-family="weight"]'
+        )
+      ).toBeVisible();
+      await expect(tierCtas(after)).toHaveCount(0);
+      // Retired, not dropped: every one of them is still in the document, in the
+      // tail, reachable behind the fold.
+      await expect(
+        after.locator(
+          '[data-standing-band="tail"] [data-testid="dashboard-candidate"][data-presence="never"]'
+        )
+      ).not.toHaveCount(0);
+    } finally {
+      await after.context().close();
+    }
+  } finally {
+    cleanup();
   }
 });
 
