@@ -175,9 +175,9 @@ describe("a re-timed dose: old days by the OLD time, new days by the new one", (
   });
 
   it("notices a slot change inside the window, and ignores one outside it", () => {
-    expect(doseSlotChangedSince(dose, "2026-06-01")).toBe(true);
+    expect(doseSlotChangedSince(dose, "2026-06-01", TZ)).toBe(true);
     // Window opening after the last change: nothing moved inside it.
-    expect(doseSlotChangedSince(dose, "2026-07-20")).toBe(false);
+    expect(doseSlotChangedSince(dose, "2026-07-20", TZ)).toBe(false);
   });
 
   it("does not call a within-bucket nudge a slot change", () => {
@@ -189,7 +189,7 @@ describe("a re-timed dose: old days by the OLD time, new days by the new one", (
         { effective_from: "2026-07-15", time_of_day: "07:30 morning" },
       ],
     };
-    expect(doseSlotChangedSince(nudged, "2026-06-01")).toBe(false);
+    expect(doseSlotChangedSince(nudged, "2026-06-01", TZ)).toBe(false);
   });
 });
 
@@ -256,13 +256,13 @@ describe("a legacy re-time, whose old slot nothing recorded", () => {
       unrecordedScheduleChangeOn({
         updated_at: "2026-07-20 09:00:00",
         versions: [{ effective_from: "2026-06-01", time_of_day: "Evening" }],
-      })
+      }, TZ)
     ).toBe("2026-07-20");
   });
 
   it("reports it for a dose carrying no history at all", () => {
     expect(
-      unrecordedScheduleChangeOn({ updated_at: "2026-07-20 09:00:00" })
+      unrecordedScheduleChangeOn({ updated_at: "2026-07-20 09:00:00" }, TZ)
     ).toBe("2026-07-20");
   });
 
@@ -276,16 +276,16 @@ describe("a legacy re-time, whose old slot nothing recorded", () => {
           { effective_from: "2026-06-01", time_of_day: "Evening" },
           { effective_from: "2026-07-20", time_of_day: "Morning" },
         ],
-      })
+      }, TZ)
     ).toBeNull();
   });
 
   it("is silent for a dose that was never edited", () => {
-    expect(unrecordedScheduleChangeOn({ updated_at: null })).toBeNull();
+    expect(unrecordedScheduleChangeOn({ updated_at: null }, TZ)).toBeNull();
     expect(
       unrecordedScheduleChangeOn({
         versions: [{ effective_from: "2026-06-01" }],
-      })
+      }, TZ)
     ).toBeNull();
   });
 
@@ -293,16 +293,65 @@ describe("a legacy re-time, whose old slot nothing recorded", () => {
     expect(
       doseSlotChangedSince(
         { time_of_day: "Morning", updated_at: "2026-07-20 09:00:00" },
-        "2026-06-09"
+        "2026-06-09",
+        TZ
       )
     ).toBe(true);
     // …but not when the edit predates the window being judged.
     expect(
       doseSlotChangedSince(
         { time_of_day: "Morning", updated_at: "2026-05-01 09:00:00" },
-        "2026-06-09"
+        "2026-06-09",
+        TZ
       )
     ).toBe(false);
+  });
+});
+
+// ONE GRAIN (#3902). The legacy stamp is an INSTANT, and both its readers compare the
+// day it yields against a profile-LOCAL one — `doseWindowSince`'s bound, and
+// `windowDates[0]` for the "move it earlier" suppression. The two zones below straddle
+// UTC, so a UTC truncation errs in OPPOSITE directions and no fixed-sign correction can
+// satisfy both rows: on origin/main Auckland's window opens a day early and returns
+// false for a re-time on its own morning, while Los Angeles drops a real day and
+// returns true for a change that predates the window.
+describe("the legacy dose-change day is on the profile's calendar (#3902)", () => {
+  const CREATED = "2026-01-05 00:00:00"; // long before the re-time, in either zone
+  const OPENINGS = ["2026-03-10", "2026-03-11", "2026-03-12"] as const;
+  //  tz | updated_at (UTC instant) | its profile-local day | suppressed at each opening
+  const ZONES = [
+    [
+      "Pacific/Auckland",
+      "2026-03-10 20:00:00",
+      "2026-03-11",
+      [true, true, false],
+    ],
+    [
+      "America/Los_Angeles",
+      "2026-03-11 03:00:00",
+      "2026-03-10",
+      [true, false, false],
+    ],
+  ] as const;
+
+  it.each(ZONES)("%s", (tz, updatedAt, localDay, suppressed) => {
+    const dose = { time_of_day: "Morning", updated_at: updatedAt };
+
+    // Consumer 1 — the pattern window bound, exactly the reduce in rule-findings:
+    // max(doseWindowSince, unrecordedScheduleChangeOn). Both sides, one calendar.
+    const since = [
+      doseWindowSince(CREATED, CREATED, undefined, tz),
+      unrecordedScheduleChangeOn(dose, tz),
+    ]
+      .filter((v): v is string => v != null)
+      .reduce<string | null>((a, b) => (a == null || b > a ? b : a), null);
+    expect(since).toBe(localDay);
+
+    // Consumer 2 — whether "move it earlier" is withheld, over the three window
+    // openings that bracket the re-time.
+    expect(OPENINGS.map((d) => doseSlotChangedSince(dose, d, tz))).toEqual(
+      suppressed
+    );
   });
 });
 
@@ -371,6 +420,6 @@ describe("a cosmetic edit moves no boundary at all", () => {
       expect(doseDueOn(ITEM, dose, ctx(date))).toBe(true);
       expect(doseBucketOn(dose, date)).toBe("Morning");
     }
-    expect(doseSlotChangedSince(dose, "2026-06-01")).toBe(false);
+    expect(doseSlotChangedSince(dose, "2026-06-01", TZ)).toBe(false);
   });
 });
