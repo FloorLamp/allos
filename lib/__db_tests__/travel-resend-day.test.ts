@@ -25,6 +25,7 @@ import { db } from "@/lib/db";
 import { parseHealthConnectPayload } from "@/lib/integrations/health-connect";
 import { ingestHealthConnectPayload } from "@/lib/integrations/health-connect-ingest";
 import { getMetricDailyTotals } from "@/lib/queries";
+import { upsertMetricSamples } from "@/lib/integrations/normalize";
 import {
   getTimezone,
   setTimezone,
@@ -299,7 +300,7 @@ describe("a re-sent row keeps the day it was attributed to (#3428, write side)",
     expect(day()).toEqual(["2026-05-01"]);
   });
 
-  it("a re-anchorable DAY BUCKET still re-derives — the one carve-out, and #3424 depends on it", () => {
+  it("a DAY BUCKET keeps the day its own anchor names, re-send or not (#3901)", () => {
     const profileId = newProfile("Resend Day Bucket", TOKYO);
     // The exporter's `daily` steps record for Tokyo 2026-05-02: Tokyo midnight → now.
     freeze("2026-05-01T23:00:00Z");
@@ -349,15 +350,57 @@ describe("a re-sent row keeps the day it was attributed to (#3428, write side)",
         getTimezone(profileId)
       )
     );
-    // A `daily` bucket's `date` is the DEVICE's local day label, not an attribution of
-    // an instant. It must follow the re-anchoring, or the stale bucket is stranded on a
-    // day #3424's supersede can never reach (`AND date = ?`) and its double count goes
-    // both permanent and unreported. See `resendDay`'s header for the measurement.
+    // STILL 2026-05-02, AND THAT IS THE WHOLE OF #3901. A `daily` bucket's `date` is the
+    // DEVICE's local day label, not an attribution of an instant — and `started_at` IS
+    // that label: 15:00Z is a UTC+9 midnight whichever zone the profile has flipped to.
+    // This case used to assert 2026-05-01, because the day was re-derived under the
+    // profile's zone on every re-send. That mutability is what emptied two prod days:
+    // a bucket filed on its neighbour's date superseded the neighbour's completed row,
+    // then re-derived away from the day it had just emptied. The day is now a function
+    // of the natural key, so there is nothing left for a re-send to move.
     expect(
       (
         db
           .prepare(
             "SELECT date FROM metric_samples WHERE profile_id = ? AND metric = 'steps'"
+          )
+          .all(profileId) as { date: string }[]
+      ).map((r) => r.date)
+    ).toEqual(["2026-05-02"]);
+  });
+});
+
+describe("the #3901 anchor repair is HEALTH CONNECT's, and reaches no other source", () => {
+  it("does not re-date a Strava workout row when the profile travels", () => {
+    // THE REPAIR OVERWRITES A STORED DAY, so it is sound only where `incoming.date` is
+    // itself read off the anchor — which is the Health Connect parser's doing, not this
+    // function's. Strava and Oura file `active_kcal` on a workout's REAL window, so a
+    // ride over an hour clears `isSupersedingWindow` and its start lands on the
+    // quarter-hour grid as often as people set off on the hour. Here the anchor-implied
+    // day (02:00Z, UTC-2 => 05-02) differs from the stored Honolulu day (05-01), so an
+    // UNGATED repair would hand the row whatever the new profile zone computes — #3428's
+    // defect, on a source that never re-anchors anything.
+    //
+    // MUTATION: drop `source === OVERLAP_SUPERSEDE_SOURCE` from `resendDay` and this
+    // reds, the ride moving to 2026-05-02 under Tokyo.
+    const profileId = newProfile("Resend Strava", HONOLULU);
+    const ride = {
+      metric: "active_kcal",
+      date: "2026-05-01",
+      started_at: "2026-05-02T02:00:00Z",
+      ended_at: "2026-05-02T04:00:00Z",
+      value: 900,
+      activity_external_id: "strava:9001",
+    };
+    upsertMetricSamples(profileId, [ride], "strava");
+    switchProfileTimezone(profileId, TOKYO, HONOLULU);
+    // The trailing re-scan re-sends the same activity, now dated under Tokyo.
+    upsertMetricSamples(profileId, [{ ...ride, date: "2026-05-02" }], "strava");
+    expect(
+      (
+        db
+          .prepare(
+            "SELECT date FROM metric_samples WHERE profile_id = ? AND metric = 'active_kcal'"
           )
           .all(profileId) as { date: string }[]
       ).map((r) => r.date)

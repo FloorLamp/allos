@@ -91,12 +91,16 @@ const DAY_GLYPH =
 function MonthGrid({
   eventDates,
   hostClassName,
+  onNavigate,
 }: {
   eventDates: string[];
   // The band the grid sits in — the ONE thing its two hosts do not share. The
   // phone drawer's is a full-bleed break-out (see the note above it below); the
   // desktop popover already has the panel's own border and padding around it.
   hostClassName: string;
+  // A marked day has just been taken. The popover host closes on it (#3905); the
+  // drawer's band is in flow and outlives every navigation, so it passes nothing.
+  onNavigate?: () => void;
 }) {
   const active = new Set(eventDates);
   // Match the rest of the app's notion of "today" (the configured app timezone, as
@@ -227,6 +231,7 @@ function MonthGrid({
               <Link
                 key={i}
                 href={`/timeline?from=${ds}&to=${ds}#timeline-day-${ds}`}
+                onClick={onNavigate}
                 className={DAY_HIT}
               >
                 <span
@@ -304,12 +309,25 @@ export default function EventCalendar({
         onClose={() => setOpen(false)}
         anchorRef={anchorRef}
         title="Calendar"
+        // What the trigger's `aria-haspopup="dialog"` above already promises, made
+        // true: the role, the name, and focus moving in (#3905). Not `aria-modal`
+        // — nothing here locks the page behind it.
+        role="dialog"
         panelId="sidebar-calendar-panel"
         testId="sidebar-calendar-panel"
         fallbackWidth={PANEL_WIDTH_PX}
         panelClassName="w-72"
       >
-        {() => <MonthGrid eventDates={eventDates} hostClassName="p-3" />}
+        {/* `open` lives in a layout App Router does not remount, so without this
+            the grid stays floating over the Timeline day it just opened (#3905).
+            The primitive cannot know a Link inside it ends the interaction. */}
+        {() => (
+          <MonthGrid
+            eventDates={eventDates}
+            hostClassName="p-3"
+            onNavigate={() => setOpen(false)}
+          />
+        )}
       </AnchoredPanel>
     </>
   );
