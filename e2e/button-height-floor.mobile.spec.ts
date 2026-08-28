@@ -1,7 +1,6 @@
 import { test, expect } from "./fixtures";
 import {
   CONTROL_BOX_PX,
-  CONTROL_GAP_FLOOR_PX,
   TAP_FLOOR_FLOAT_EPSILON_PX,
   TAP_FLOOR_PX,
   TAP_TARGET_INSET_PX,
@@ -253,14 +252,13 @@ test.describe("the control box: one height, every kind, every viewport (#3938)",
       geometry.overlaps,
       "two extended targets in the ledger row own the same point; the row's gap must be at least twice the reach"
     ).toEqual([]);
+    // The gap floor, stated as the quantity it actually bounds: a non-negative gap
+    // between EXTENDED boxes is exactly "the rendered gap is at least twice the
+    // reach", so this is the floor measured rather than the constant restated.
     expect(
       geometry.smallestGap + TAP_FLOOR_FLOAT_EPSILON_PX,
       `the ledger row's tightest gap between extended targets is ${geometry.smallestGap}px`
     ).toBeGreaterThanOrEqual(0);
-    expect(
-      CONTROL_GAP_FLOOR_PX,
-      "the gap floor is twice the reach, by construction"
-    ).toBe(2 * TAP_TARGET_INSET_PX);
   });
 });
 

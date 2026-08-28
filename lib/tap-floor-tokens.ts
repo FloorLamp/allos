@@ -13,9 +13,6 @@ export const TAP_FLOOR_FLOAT_EPSILON_PX = 0.01;
 /** Per-side extension a coarse pointer gets around a control (`--control-reach`). */
 export const TAP_TARGET_INSET_PX = 6;
 
-/** The gap two adjacent targets keep so their hit regions meet but never overlap. */
-export const CONTROL_GAP_FLOOR_PX = 2 * TAP_TARGET_INSET_PX;
-
 /** Smallest rendered box that the reach can extend to the floor. */
 export const TAP_TARGET_MIN_RENDERED_PX =
   TAP_FLOOR_PX - 2 * TAP_TARGET_INSET_PX;
