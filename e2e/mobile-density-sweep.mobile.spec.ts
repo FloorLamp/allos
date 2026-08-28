@@ -231,42 +231,67 @@ const CONTENT_PX = VIEWPORT_PX - 2 * PAGE_GUTTER_PX;
 //     forgiven by this rule (lib/__tests__/notice-block.test.ts carries that
 //     list). Below `sm` an `embedded` FindingCard emits it too, because at that
 //     width it draws the tinted frame its container no longer does (#3897).
-async function cardFrames(page: import("@playwright/test").Page) {
-  return page.evaluate((contentPx) => {
-    const found: string[] = [];
-    const main = document.querySelector("main");
-    if (!main) throw new Error("no <main> to sweep");
-    for (const el of main.querySelectorAll<HTMLElement>("*")) {
-      const style = getComputedStyle(el);
-      const border = Number.parseFloat(style.borderTopWidth);
-      const radius = Number.parseFloat(style.borderTopLeftRadius);
-      if (!(border >= 1 && radius > 0)) continue;
-      const box = el.getBoundingClientRect();
-      if (!box.height || !box.width) continue;
-      if (radius * 2 >= box.height) continue;
-      if (box.width < contentPx / 2) continue;
-      if (style.display.startsWith("inline")) continue;
-      if (
-        el.closest(
-          "button,a,input,select,textarea,summary,label,[role='button'],[role='tab'],[role='switch'],[contenteditable]"
+//
+// `forgeTestid` is the positive control's hook: the offender is created, scanned
+// for and removed INSIDE this one evaluate. It used to be appended by a separate
+// round trip, which is a race — a React re-render between the append and the scan
+// takes the node with it and the control reports "the sweep saw nothing" as a
+// FAILED DETECTION. That is the worst direction for a positive control to fail in,
+// because the reading it invites is "the rule is broken" rather than "the node was
+// never there". One evaluate leaves React no tick to intervene in, and the
+// forgery cannot outlive the measurement it exists for.
+async function cardFrames(
+  page: import("@playwright/test").Page,
+  forgeTestid?: string
+) {
+  return page.evaluate(
+    ([contentPx, forge]: [number, string | undefined]) => {
+      const found: string[] = [];
+      const main = document.querySelector("main");
+      if (!main) throw new Error("no <main> to sweep");
+      let forged: HTMLElement | null = null;
+      if (forge) {
+        forged = document.createElement("div");
+        forged.dataset.testid = forge;
+        forged.style.cssText =
+          "border:1.5px solid #888;border-radius:14px;padding:16px;height:80px";
+        forged.textContent = "FORGED BY A SPEC on purpose — not a shipped card";
+        main.append(forged);
+      }
+      for (const el of main.querySelectorAll<HTMLElement>("*")) {
+        const style = getComputedStyle(el);
+        const border = Number.parseFloat(style.borderTopWidth);
+        const radius = Number.parseFloat(style.borderTopLeftRadius);
+        if (!(border >= 1 && radius > 0)) continue;
+        const box = el.getBoundingClientRect();
+        if (!box.height || !box.width) continue;
+        if (radius * 2 >= box.height) continue;
+        if (box.width < contentPx / 2) continue;
+        if (style.display.startsWith("inline")) continue;
+        if (
+          el.closest(
+            "button,a,input,select,textarea,summary,label,[role='button'],[role='tab'],[role='switch'],[contenteditable]"
+          )
         )
-      )
-        continue;
-      const children = [...el.children];
-      if (
-        children.length > 0 &&
-        children.every((child) =>
-          child.matches("button,a,input,select,label,[role='button']")
+          continue;
+        const children = [...el.children];
+        if (
+          children.length > 0 &&
+          children.every((child) =>
+            child.matches("button,a,input,select,label,[role='button']")
+          )
         )
-      )
-        continue;
-      if (el.closest("[data-notice]")) continue;
-      found.push(
-        `${el.tagName}${el.dataset.testid ? `[${el.dataset.testid}]` : ""} border=${border} radius=${radius} class="${el.className}"`
-      );
-    }
-    return found;
-  }, CONTENT_PX);
+          continue;
+        if (el.closest("[data-notice]")) continue;
+        found.push(
+          `${el.tagName}${el.dataset.testid ? `[${el.dataset.testid}]` : ""} border=${border} radius=${radius} class="${el.className}"`
+        );
+      }
+      forged?.remove();
+      return found;
+    },
+    [CONTENT_PX, forgeTestid] as [number, string | undefined]
+  );
 }
 
 // Every element that draws a band or a row: the card primitives, the bands, and
@@ -343,16 +368,8 @@ test("#3673 the sweep can SEE a frame, and stays quiet on the Notice that keeps 
   await expect(notice).toBeVisible();
   expect(await cardFrames(page)).toEqual([]);
 
-  const forged = await page.evaluate(() => {
-    const el = document.createElement("div");
-    el.dataset.testid = "forged-card-frame";
-    el.style.cssText =
-      "border:1.5px solid #888;border-radius:14px;padding:16px;height:80px";
-    el.textContent = "FORGED BY A SPEC on purpose — not a shipped card";
-    document.querySelector("main")?.append(el);
-    return el.dataset.testid;
-  });
-  const caught = await cardFrames(page);
+  const forged = "forged-card-frame";
+  const caught = await cardFrames(page, forged);
   expect(caught.join(" ")).toContain(forged);
   // …and exactly one thing was caught: the Notice on the same page is still silent.
   expect(caught).toHaveLength(1);
