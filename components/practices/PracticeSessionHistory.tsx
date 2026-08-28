@@ -127,10 +127,20 @@ export default function PracticeSessionHistory({
       cell: (session) => sessionTitle(session, formatPrefs, showPracticeName),
     },
     {
+      // TWO COLUMNS, AND THE SECOND IS THE PERSON'S OWN PROSE (#3904). There is no
+      // `trailing` here on purpose: a session's date, clock and duration are one
+      // fact and they are the title, so the row has no second attribute to seat on
+      // the head line — which is exactly why EntryHistoryTable does not collapse it.
+      // `max-sm:text-sm!` restores the density the retired `practice-session-list`
+      // utility declared and #3891 deleted without naming: a whole line per note, one
+      // step up from the shared meta's `text-xs`, because this line is the row's
+      // content rather than a labelled attribute. Important-marked because
+      // `.table-cards td[data-card="meta"]` (0,2,1) outranks a bare utility (0,1,0).
       header: "Notes",
       slot: "meta",
       empty: (session) => !session.notes,
-      cellClassName: "max-w-sm text-slate-500 dark:text-slate-400",
+      cellClassName:
+        "max-w-sm text-slate-500 max-sm:text-sm! dark:text-slate-400",
       cell: (session) =>
         session.notes ? <NotesText notes={session.notes} /> : "—",
     },

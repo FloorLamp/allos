@@ -1274,7 +1274,10 @@
   }
   /* COLLAPSED IS THE DEFAULT, and the default is the ABSENCE of the attribute, so a
      row that never renders the toggle (nothing to disclose) is correct without one.
-     The row's `data-expanded` is written by EntryHistoryTable's disclosure state. */
+     The row's `data-expanded` is written by EntryHistoryTable's disclosure state —
+     including from the start for a row that renders NO `trailing` cell, because the
+     collapse then has no head-line fact to trade with and would spend the row's only
+     content (#3904; the rule is stated at `EntryHistoryColumn`). */
   & tr:not([data-expanded]) td[data-card="value"],
   & tr:not([data-expanded]) td[data-card="meta"] {
     @apply max-sm:hidden;

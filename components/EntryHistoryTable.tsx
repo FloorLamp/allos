@@ -22,6 +22,16 @@ export interface EntryHistoryColumn<T> {
   // `title` is the row's identity, `trailing` the one attribute beside it on the
   // phone's head line, and `value`/`meta` the labelled detail the compact row
   // discloses on tap (#3671). The vocabulary is lib/card-row.ts's.
+  //
+  // THE HEAD LINE MUST CARRY THE ROW'S IDENTITY AND ONE ATTRIBUTE, and the collapse
+  // may only take what is neither. Both halves of that sentence had a consumer
+  // getting it wrong: the cross-item dose ledger put an attribute in `title` and its
+  // identity in a disclosed `value`, so a day of stack doses was six identical dates
+  // (#3937); the practice history declared no `trailing` at all, so the collapse had
+  // nothing to trade with and hid the person's own note (#3904). The first is a
+  // consumer's slotting to get right; the second the table now enforces per row, at
+  // `collapses` below — a column set with no `trailing` is a legitimate shape, a
+  // collapse onto a bare identity is not.
   slot: "title" | "trailing" | "value" | "meta";
   label?: string;
   cellClassName?: string;
@@ -166,6 +176,25 @@ export default function EntryHistoryTable<T extends { id: number }>({
     );
   }
 
+  // WHAT LICENSES THE COLLAPSE (#3904). The compact row trades the labelled detail
+  // for a head line that still carries a fact, and `trailing` IS that fact. A row
+  // with none has nothing to trade: collapsing it spends the only content it had and
+  // buys back a line it already occupied, leaving a date beside two icon buttons.
+  //
+  // PER ROW, NOT PER COLUMN SET, because `trailing` is droppable per row: three of
+  // the five consumers declare `empty:` on theirs (a dose with no stated time, a
+  // serving with no clock), and `cardCellAttrs` takes an empty one off the card. A
+  // check on the column set would call those rows collapsible and be wrong exactly
+  // where the defect is. Declaring NO trailing at all — the practice history, whose
+  // second column is the person's own prose — is a legitimate configuration and
+  // reaches the same verdict through the same question.
+  //
+  // A row that does not collapse renders as one already open, which is what
+  // `data-expanded` means to `logged-event-rows`.
+  function collapses(item: T): boolean {
+    return columns.some((col) => col.slot === "trailing" && !col.empty?.(item));
+  }
+
   const visible =
     expanded || !expandToggle ? items : items.slice(0, collapsedCount);
   const colSpan = columns.length + (readOnly ? 0 : 1);
@@ -198,7 +227,9 @@ export default function EntryHistoryTable<T extends { id: number }>({
             <tr
               key={item.id}
               data-testid={rowTestId?.(item)}
-              data-expanded={detailId === item.id ? "" : undefined}
+              data-expanded={
+                !collapses(item) || detailId === item.id ? "" : undefined
+              }
               className="border-b border-black/5 align-top last:border-0 dark:border-white/5"
             >
               {editingId === item.id ? (
@@ -222,7 +253,7 @@ export default function EntryHistoryTable<T extends { id: number }>({
                       )}
                     </Td>
                   ))}
-                  {hasDetail(item) ? (
+                  {collapses(item) && hasDetail(item) ? (
                     <Td slot="toggle" className={`px-2 py-2 ${CARD_MODE_ONLY}`}>
                       <button
                         type="button"
