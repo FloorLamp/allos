@@ -8,10 +8,11 @@ import {
   TAP_TARGET_MIN_RENDERED_PX,
 } from "@/lib/tap-floor-tokens";
 
-// ONE CONTROL BOX, MEASURED (owner ruling #3938; the family floor it replaces was
-// #3486/#3514). THE FILENAME PREDATES THE RULING — this file held the `.btn`
+// THE CONTROL BOX (`--control-box` in app/globals.css, SECTION: Touch tap
+// targets), MEASURED — owner ruling #3938; the family floor it replaces was
+// #3486/#3514. THE FILENAME PREDATES THE RULING: this file held the `.btn`
 // family's below-`sm` height floor, the box superseded it in place, and renaming
-// the file would re-partition all twelve CI shards for a word.
+// the file would re-partition all twelve CI shards for a word. Grep the describe.
 //
 // Every control kind renders `CONTROL_BOX_PX` at every viewport, and the 44px floor
 // is met EFFECTIVELY — the rendered box plus the reach a coarse pointer gets around
@@ -138,7 +139,7 @@ async function measure(
   );
 }
 
-test.describe("one control box, every kind, every viewport (#3938)", () => {
+test.describe("the control box: one height, every kind, every viewport (#3938)", () => {
   test.use({ viewport: PHONE });
 
   for (const { route, ready, surfaces } of BOX_ROUTES) {

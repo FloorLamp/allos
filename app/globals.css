@@ -930,20 +930,15 @@
    call site cannot spell the selected shade differently because it no longer
    spells it at all.
 
-   NO CHIP DECLARES A HEIGHT, either role and either density: the box does, and
-   a coarse pointer repairs the reach around it. */
+   NO CHIP DECLARES A HEIGHT, AND THERE IS NO DENSE SIZE. `chip-sm` rendered its
+   own 44px target and #3938 retired that; what was left was `px-2.5 text-xs` — a
+   second spelling of one control, which is the size variant this file's own
+   history warns about. So the density prop went with it: a chip is a chip. */
 @utility chip-base {
   @apply inline-flex shrink-0 items-center gap-1.5 whitespace-nowrap px-3 text-sm font-medium transition disabled:cursor-not-allowed disabled:opacity-40 focus:outline-hidden focus-visible:ring-2 focus-visible:ring-brand-500 focus-visible:ring-offset-2 dark:focus-visible:ring-offset-ink-950;
   /* The fill paints under the reserved border (`background-clip` is `border-box`
      by default), so a borderless role is invisible rather than a 1px light seam. */
   border-color: transparent;
-}
-
-/* The dense in-row size is HORIZONTAL and TYPE density now (#3525's consensus,
-   #3938's box): it is the same 34px control as everything else, packed tighter
-   across. Its self-rendered 44px target retired with the rest of them. */
-@utility chip-sm {
-  @apply px-2.5 text-xs;
 }
 
 @utility chip-nav {

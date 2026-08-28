@@ -223,7 +223,6 @@ export default function RestTimer({
           mode="button"
           layout="wrap"
           label="Rest duration"
-          density="dense"
           value={target}
           onSelect={pickPreset}
           options={REST_PRESETS_SEC.map((secs) => ({

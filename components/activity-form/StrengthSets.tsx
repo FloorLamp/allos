@@ -787,7 +787,6 @@ export default function StrengthSets({
               <Chip
                 key={eq}
                 role="filter"
-                density="dense"
                 onClick={() => {
                   onUpdatePartName(composeVariant(variant.group, eq));
                   onUpdatePart({ equipmentId: null });
@@ -803,7 +802,6 @@ export default function StrengthSets({
         {defaultEq && (
           <Chip
             role="filter"
-            density="dense"
             onClick={() => onUpdatePart({ equipmentId: null })}
             pressed={p.equipmentId == null}
           >

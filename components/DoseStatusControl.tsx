@@ -48,12 +48,13 @@ import {
 export type DoseVariant = "circle" | "pill";
 
 // The tri-state owns the space its two targets consume, and this is the geometry
-// #3938 made general: `.tap-target` reaches 6px beyond every edge on a coarse
+// #3938 made general — both variants render `--control-box` now, and
+// `.tap-target` reaches 6px beyond every edge on a coarse
 // pointer, so 6px of outer padding contains that reach and a 12px gap — twice the
 // reach — lets the adjacent targets meet without overlapping. The equal negative
 // margin preserves the visible controls' flow position; ScheduledDoseAction
 // coordinates an outer reserve so its row still owns this full box. A fine-pointer
-// desktop keeps the original compact layout. The circles used to render 44px and
+// desktop keeps the original compact layout. The circles used to render 44 and
 // need no reserve; they are the control box now, so they take the same one.
 const DOSE_STATUS_GEOMETRY: Record<DoseVariant, string> = {
   circle: "-m-1.5 gap-3 p-1.5",

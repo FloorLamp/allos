@@ -138,7 +138,6 @@ export default function PhotoGallery({
           mode="button"
           layout="wrap"
           label="Photo series"
-          density="dense"
           value={series}
           onSelect={setSeries}
           options={[

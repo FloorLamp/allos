@@ -3,6 +3,7 @@ import { test, expect } from "./fixtures";
 import { settledBoxes } from "./helpers";
 import { medicationsToday } from "./med-card-helpers";
 import {
+  CONTROL_BOX_PX,
   TAP_FLOOR_FLOAT_EPSILON_PX,
   TAP_FLOOR_PX,
   TAP_TARGET_INSET_PX,
@@ -10,7 +11,9 @@ import {
 
 const PHONE = { width: 390, height: 844 };
 const DESKTOP = { width: 1280, height: 844 };
-const PILL_PX = 32;
+// The pill renders the control box, not a size of its own (#3938): 32 beside a
+// 34px chip in the same row was the reported defect, and 34 + 2x6 still clears 44.
+const PILL_PX = CONTROL_BOX_PX;
 const DESKTOP_GAP_PX = 6;
 
 type Box = { x: number; y: number; width: number; height: number };

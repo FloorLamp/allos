@@ -77,11 +77,13 @@ describe("DoseStatusControl", () => {
       expect(skip.getAttribute("type")).toBe("button");
       expect(take.getAttribute("aria-pressed")).toBe(takePressed);
       expect(skip.getAttribute("aria-pressed")).toBe(skipPressed);
+      // The control box, not a pill size of its own (#3938) — the same token the
+      // circle variant carries, so neither variant can drift from the other.
       expect(take.className.split(/\s+/)).toEqual(
-        expect.arrayContaining(["tap-target", "h-8"])
+        expect.arrayContaining(["tap-target", "h-(--control-box)"])
       );
       expect(skip.className.split(/\s+/)).toEqual(
-        expect.arrayContaining(["tap-target", "h-8"])
+        expect.arrayContaining(["tap-target", "h-(--control-box)"])
       );
     }
   );

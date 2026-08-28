@@ -32,7 +32,6 @@ export default function AnnotationToggleBar({
           <Chip
             key={kind}
             role="filter"
-            density="dense"
             pressed={on}
             onClick={() => onToggle(kind)}
           >

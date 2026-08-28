@@ -990,7 +990,6 @@ export default function DayHistory({
               <Chip
                 key={g.key}
                 role="filter"
-                density="dense"
                 testId="day-history-chip"
                 data={{ "data-group": g.key }}
                 pressed={isOn(g.key)}

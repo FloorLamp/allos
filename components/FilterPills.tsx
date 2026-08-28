@@ -1,6 +1,5 @@
 import ScrollFade from "@/components/ScrollFade";
 import Chip from "@/components/Chip";
-import type { ChipDensity } from "@/components/Chip";
 import type { ReactNode } from "react";
 import type { AppRoute } from "@/lib/hrefs";
 
@@ -43,7 +42,6 @@ type FilterPillsProps<T extends FilterPillValue> = {
   label: string;
   testId?: string;
   optionTestId?: (value: T) => string;
-  density?: ChipDensity;
   layout?: "scroll" | "wrap" | "responsive";
 } & (
   | {
@@ -75,7 +73,6 @@ export default function FilterPills<T extends FilterPillValue>(
             <Chip
               key={optionKey(o.value)}
               role="filter"
-              density={props.density}
               href={o.href}
               current={active}
               linkBehavior={props.linkBehavior}
@@ -91,7 +88,6 @@ export default function FilterPills<T extends FilterPillValue>(
             <Chip
               key={optionKey(o.value)}
               role="filter"
-              density={props.density}
               pressed={active}
               accessibleLabel={o.content ? o.label : undefined}
               disabled={o.disabled}

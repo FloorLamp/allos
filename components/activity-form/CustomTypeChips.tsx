@@ -33,7 +33,6 @@ export default function CustomTypeChips({
         mode="button"
         layout="wrap"
         label="Activity type"
-        density="dense"
         value={
           activeType === "cardio" || activeType === "sport"
             ? activeType

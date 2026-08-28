@@ -2,11 +2,17 @@
 // semantics differ (take/skip versus log-now/log-earlier), but both use the same
 // height, standard app button radius, typography, spacing, focus treatment, and
 // state colors.
+//
+// THE HEIGHT IS `--control-box` (#3938). These pills are hand-rolled rather than
+// `.btn`, so the box declared for that family in app/globals.css cannot reach
+// them — and at 32 they sat two pixels under every chip in the same row, which is
+// the "four heights for one idea" the ruling is about. `.tap-target` supplies the
+// reach, and DoseStatusControl's container reserves it.
 export const DOSE_ACTION_BASE =
-  "tap-target flex h-8 shrink-0 items-center text-sm font-medium transition disabled:opacity-50";
+  "tap-target flex h-(--control-box) shrink-0 items-center text-sm font-medium transition disabled:opacity-50";
 
 export const DOSE_ACTION_LABEL = `${DOSE_ACTION_BASE} gap-2 rounded-lg px-3`;
-export const DOSE_ACTION_ICON = `${DOSE_ACTION_BASE} w-8 justify-center rounded-lg`;
+export const DOSE_ACTION_ICON = `${DOSE_ACTION_BASE} w-(--control-box) justify-center rounded-lg`;
 
 export const DOSE_ACTION_NEUTRAL =
   "border border-black/10 bg-white/70 text-slate-600 hover:bg-white dark:border-white/10 dark:bg-ink-850 dark:text-slate-300 dark:hover:bg-ink-750";
