@@ -130,6 +130,38 @@ describe("the prod sequence of #3901, through the profile's late flip", () => {
   });
 });
 
+describe("a bucket whose FIRST push is narrower than the granularity gate", () => {
+  it("is repaired onto its anchor's day rather than frozen on the neighbour's", () => {
+    // THE HOLE THE CARVE-OUT'S REMOVAL RE-OPENS, and the narrow exception that closes it.
+    // A window of 30 minutes states no anchor the rule will read (`SUB_DAILY_WINDOW_MAX_MIN`
+    // is 60), so the parser files that first push under the PROFILE's zone — which inside a
+    // skew window is the neighbour's day. The exporter pushes every ~17 minutes, so every
+    // device midnight crossed while the banner is untapped produces one.
+    //
+    // MUTATION: delete the `anchorRefusesDay` branch in `resendDay` and this reds — the
+    // 08-27 bucket stays frozen on 08-26 beside the real 6608 and 2026-08-27 holds NO ROW.
+    const p = freshProfile("HC Sub-Hour First Push");
+    setTimezone(p, "America/Los_Angeles");
+    // The LA 08-26 day, last sent before the device re-anchored.
+    pushSteps(p, "2026-08-27T03:00:05Z", "2026-08-26T07:00:00Z", "2026-08-27T03:00:00Z", 6608);
+    // NY midnight is 2026-08-27T04:00Z, which is 08-26 21:00 in Los Angeles: the first
+    // push of the new anchoring lands 30 minutes later, under the profile's 08-26.
+    pushSteps(p, "2026-08-27T04:30:05Z", "2026-08-27T04:00:00Z", "2026-08-27T04:30:00Z", 120);
+    expect(stepRows(p)).toEqual([
+      { date: "2026-08-26", value: 6608 },
+      { date: "2026-08-26", value: 120 },
+    ]);
+    // Grown past the hour, so the anchor is now readable — and it says 08-27.
+    pushSteps(p, "2026-08-27T21:51:56Z", "2026-08-27T04:00:00Z", "2026-08-27T21:51:56Z", 3300);
+    setTimezone(p, "America/New_York");
+    pushSteps(p, "2026-08-28T02:00:05Z", "2026-08-27T04:00:00Z", "2026-08-28T02:00:00Z", 7150);
+    expect(stepRows(p)).toEqual([
+      { date: "2026-08-26", value: 6608 },
+      { date: "2026-08-27", value: 7150 },
+    ]);
+  });
+});
+
 describe("THE ANCHOR GUARD, behaviourally (#3901)", () => {
   // DEFENCE IN DEPTH, AND IT SHOULD NEVER FIRE. With the derivation above, a day
   // bucket's `date` is a function of its `started_at`, so a bucket cannot be filed

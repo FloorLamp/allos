@@ -788,6 +788,18 @@ dilemma its header recorded (freeze and the stale bucket strands, permanent and 
 re-derive and the justifying row abandons the day it emptied). "A date always keeps a
 reading" is now true ACROSS pushes and not only within one.
 
+ONE NARROW EXCEPTION SURVIVES IN `resendDay`, and it is a repair rather than a
+re-derive. A bucket narrower than `SUB_DAILY_WINDOW_MAX_MIN` states no anchor yet, so its
+FIRST push is filed under the profile's zone — the neighbour's day, inside a skew window —
+and freezing that provisional answer makes it permanent. Measured: a NY bucket first
+pushed 30 minutes after the device's midnight while the profile still held Los Angeles sat
+on 08-26 for good and **2026-08-27 never received a row at all**. So a re-send may move a
+row off a day its own anchor REFUSES, and only onto the day that anchor names. It cannot
+become the old mutability: `anchorRefusesDay` takes no zone, so a bucket in the ambiguous
+band is never moved when the profile travels; and a row that has justified a supersede is
+anchor-admissible by construction (the guard below refuses a victim to any bucket whose
+anchor contradicts its `date`), so a justifier still cannot walk off the day it emptied.
+
 AND A SECOND READER, because this path deletes health data: the supersede additionally
 **refuses a victim when the incoming bucket's own anchor contradicts the `date` it is
 filed under** (`anchorRefusesDay`). With the derivation correct it can never fire; it

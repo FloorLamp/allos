@@ -29,6 +29,7 @@ import {
 } from "./tombstone-keys";
 import { isStaleMetricSnapshot } from "@/lib/metric-snapshot";
 import {
+  anchorRefusesDay,
   compareWindowStarts,
   isSupersedingWindow,
   planSupersede,
@@ -1059,7 +1060,7 @@ export function supersedeMetricSampleOverlaps(
  * simply a stored `date` is not recomputed by a re-send" — and the resolver replaces it
  * when the history it needs is real.
  *
- * THERE IS NO LONGER AN EXCEPTION, AND ITS REMOVAL IS #3901's THIRD HALF.
+ * THE BROAD EXCEPTION IS GONE, AND ITS REMOVAL IS #3901's THIRD HALF.
  *
  * This function used to carve out the re-anchorable day buckets — `isSupersedingWindow`
  * rows, whose `date` was not an attribution of an instant at all but the profile's zone
@@ -1071,10 +1072,15 @@ export function supersedeMetricSampleOverlaps(
  *
  * BOTH HORNS CAME FROM DERIVING THE DAY FROM THE ZONE. `anchorImpliedDay` derives it
  * from `started_at`, which IS the natural key, so a re-send computes the same day it
- * computed last time: freeze and re-derive now agree, there is nothing left to choose,
- * and the freeze below is what makes that structural. A justifying row's `date` can no
+ * computed last time: freeze and re-derive agree, there is nothing left to choose, and
+ * the freeze below is what makes that structural. A justifying row's `date` can no
  * longer move after the delete it justified, so "a date always keeps a reading" holds
  * ACROSS pushes and not only within one.
+ *
+ * THEY AGREE ONLY ONCE THE BUCKET IS WIDE ENOUGH TO STATE ITS ANCHOR, which is the
+ * narrow exception that remains, and it is a repair rather than a re-derive: see the
+ * body. A bucket's first push can be narrower than `SUB_DAILY_WINDOW_MAX_MIN`, and the
+ * profile-zone day it is provisionally given must not be frozen in forever.
  *
  * NOT GATED ON THE SOURCE, unlike `OVERLAP_SUPERSEDE_SOURCE`. That gate exists because
  * the supersede DELETES readings, so it must never reach a source whose windows it has
@@ -1090,6 +1096,35 @@ function resendDay(
   twin: MetricSampleTwin | undefined
 ): string {
   if (!twin) return incoming.date;
+  // THE ONE DAY THE FREEZE MAY NOT KEEP: one the row's OWN ANCHOR REFUSES.
+  //
+  // A bucket narrower than `SUB_DAILY_WINDOW_MAX_MIN` states no anchor yet, so its first
+  // push is filed under the profile's zone — the NEIGHBOUR's day, inside a skew window.
+  // Freezing that provisional answer makes it permanent: the bucket grows past the hour,
+  // the parser derives the right day, and the freeze discards it on every push forever.
+  // MEASURED: a NY bucket (`04:00Z`) first pushed 30 minutes after the device's midnight
+  // while the profile still held Los Angeles sat on 08-26 beside the real 6608, and
+  // 2026-08-27 never received a row at all — the hole this issue is about, re-opened by
+  // the carve-out's removal rather than by the carve-out.
+  //
+  // IT IS A REPAIR, NOT A RE-DERIVE, and three things keep it from being the mutable
+  // date that emptied a prod day. It moves a row only OFF a day its own anchor says it
+  // was never lived in, and only ONTO the day that anchor names. `anchorRefusesDay` takes
+  // no zone, so in the ambiguous 10:00Z-12:00Z band BOTH days are admissible and a row
+  // there is never moved when the profile travels. And a row that has JUSTIFIED a
+  // supersede is anchor-admissible by construction — `planSupersede` refuses a victim to
+  // any bucket whose anchor contradicts its `date` — so the justifier can still never
+  // walk off the day it emptied.
+  if (
+    isSupersedingWindow(
+      incoming.metric,
+      incoming.started_at,
+      incoming.ended_at
+    ) &&
+    anchorRefusesDay(incoming.started_at, twin.date)
+  ) {
+    return incoming.date;
+  }
   return twin.date;
 }
 
