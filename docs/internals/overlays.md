@@ -174,8 +174,16 @@ The rules that make it one fork rather than thirty:
   44px below `md`, 40px on a coarse pointer above it, and the compact 32px
   desktop row under a mouse. The two `md:` rules are keyed on mutually exclusive
   pointer media so neither depends on stylesheet order.
-- **Focus returns to the trigger in both**, by different routes: the popover
-  never takes focus, and the sheet's trap restores it.
+- **Focus goes in and returns to the trigger in both**, by different routes: the
+  sheet's trap does it, and since #3905 the popover does it for any panel that
+  declares a `role`. A role means the trigger declared `aria-haspopup`, and a
+  promised popup the keyboard cannot reach has not been opened — #3889's two new
+  sidebar panels were portaled to `<body>` under `aria-haspopup="dialog"` with no
+  role, no name and no focus, so the calendar's controls sat behind the whole page
+  in the tab order. The popover takes three of `useFocusTrap`'s four jobs and not
+  the fourth: the Tab CYCLE is what makes a surface modal, and an anchored popover
+  is not one. A ROLE-LESS panel is left alone, which is what keeps `DateField`
+  typable — its calendar opens when the field takes focus and the typist keeps it.
 - **Every anchored menu goes through it**, enforced by the chokepoint test's
   anchored-menu rule. `components/CompactDateMenu.tsx` is the one recorded
   exception — a phone-only two-or-three-option day switcher inline in a heading,

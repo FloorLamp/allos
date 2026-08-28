@@ -2350,6 +2350,35 @@ input[type="time"]::-webkit-datetime-edit-ampm-field:focus {
   }
 }
 
+/* THE TYPED FIELD'S PHONE HEIGHT, DECLARED ONCE FOR THE WHOLE FAMILY (#3708).
+   The owner ruled the BOX, not a labeled row beside it, and allowed no per-site
+   exception; the rule and its guard are the typed-field row in
+   docs/internals/design-system.md §3.
+
+   IT REACHES EVERY `.input`, NOT ONLY THE 15 THE RECONCILIATION NAMED, because
+   `py-2` + `text-sm` is 38px — a field that asks for nothing was already under the
+   floor. The named `h-8` / `h-9` / `h-[38px]` sites therefore need no call-site
+   edit: `min-block-size` clamps a `height` whatever the cascade decides, so they
+   keep their desktop density and take the phone floor from here.
+
+   `@layer components`, exactly as the button floor above: `min-block-size`
+   REPLACES rather than composes, so this rule must LOSE to a call site asking for
+   more, or it would pull the `min-h-16`/`min-h-20` textareas down to 44. A floor
+   that can lower a taller field is not a floor.
+
+   AND NO `!`. Tailwind 4 inverts layer order for `!important` — unlayered ranks
+   LAST — which is how #3896 pinned 18 consumers at the phone floor on DESKTOP.
+   Here the reset above `sm` is the media query's own absence, and at 40rem exactly
+   the rule already does not apply. Height only: a select narrow enough to matter
+   is wider than 44px, and `min-inline-size` would fight the field grids. */
+@layer components {
+  @media (max-width: 639.98px) {
+    .input {
+      min-block-size: 2.75rem;
+    }
+  }
+}
+
 /* Compact native controls keep their paint inside a 44px interaction box. */
 .checkbox-control {
   display: inline-flex;

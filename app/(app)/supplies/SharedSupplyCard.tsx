@@ -250,15 +250,15 @@ export default function SharedSupplyCard({
                   (the shape the phone review reported) and 38px against 44px at
                   390px, where the `.btn` family's rendered tap floor (#3486/#3514)
                   lifts the button and the select is left short. Dropping `btn-sm`
-                  fixes the desktop half; the select carries the other half — `h-9`
-                  puts it on the `.btn` desktop height (36px), and `min-h-11` puts it
-                  on the same 44px phone floor the button already holds, by the
-                  call-site mechanism #3514 registers for exactly this. Both readings
-                  are RENDERED boxes; the guard is e2e/shared-supply-pool.spec.ts. */}
+                  fixes the desktop half; `h-9` puts the select on the `.btn` desktop
+                  height (36px). The phone half was a local `min-h-11 sm:min-h-0` and
+                  is now the `.input` family's own floor (#3708) — one number, in one
+                  place, for every field. Both readings are RENDERED boxes; the guard
+                  is e2e/shared-supply-pool.spec.ts. */}
               <select
                 id={`pool-add-for-${pool.id}`}
                 name="profileId"
-                className="input h-9 min-h-11 max-w-xs sm:min-h-0"
+                className="input h-9 max-w-xs"
                 data-testid="shared-supply-add-for-select"
                 defaultValue={String(pool.addTargets[0].id)}
               >
