@@ -188,21 +188,13 @@ test("every segment keeps the sheet still and fills the phone width (#3675)", as
     expect(spacer!.y - (lastRow.y + lastRow.height)).toBeLessThanOrEqual(
       4 + PX_EPSILON
     );
-    // Train reserves three rows' worth and draws two, so the spacer holds that
-    // difference rather than the list holding it.
-    expect(spacer!.height).toBeGreaterThan(LOG_SHEET_ROW_BLOCK_PX / 2);
+    // Whatever rows Train is short of the reserve, the SPACER is holding them
+    // and the list is not — derived from the two counts rather than pinned, so
+    // it stays true for a persona whose training gates leave a different number.
+    expect(spacer!.height + PX_EPSILON).toBeGreaterThanOrEqual(
+      (reserved - drawn) * LOG_SHEET_ROW_BLOCK_PX
+    );
 
-    const routineCount = await sheet.getByTestId("routine-usual-offer").count();
-    const routineBox = routineCount
-      ? await sheet.getByTestId("routine-usual-offer").boundingBox()
-      : null;
-    const slotBox = await sheet
-      .getByTestId("log-sheet-context-slot")
-      .boundingBox();
-    const headingBox = await sheet
-      .getByTestId("log-sheet-context")
-      .locator("h3")
-      .boundingBox();
     const section = await box(
       sheet.getByTestId("log-sheet-context"),
       "context section"
@@ -213,11 +205,6 @@ test("every segment keeps the sheet still and fills the phone width (#3675)", as
     );
     // `pb-3` (12px) plus the 1px rule is all that may separate the last offer
     // from the section's bottom border — the reserve is no longer pinned there.
-    console.log("MEASURE", JSON.stringify({
-      slot: slotBox, section: { h: section.height }, heading: headingBox,
-      routine: routineBox, offer: { h: lastOffer.height },
-      panel: (await sheetGeometry(sheet)).panelHeight,
-    }));
     expect(
       section.y + section.height - (lastOffer.y + lastOffer.height)
     ).toBeLessThanOrEqual(13 + PX_EPSILON);
@@ -415,50 +402,3 @@ test("a failed gather stays silent and reduced motion schedules no arrive keyfra
   }
 });
 
-test("TEMP measure", async ({ browser }) => {
-  const page = await loginAs(
-    browser,
-    { username: E2E_LOGIN_SHELL, password: E2E_MEMBER_PASSWORD },
-    PHONE_390
-  );
-  try {
-    await page.goto("/");
-    const sheet = await openLogSheet(page);
-    await expect(sheet.getByTestId("log-sheet-context")).toBeVisible();
-    const list = sheet.getByTestId("log-sheet-items");
-    for (const seg of ["train", "food", "body", "care"]) {
-      await sheet.getByTestId(`log-sheet-segment-${seg}`).click();
-      const n = await list.locator("> li").count();
-      const b = await list.boundingBox();
-      const panel = await sheet.locator("[data-sheet-panel]").boundingBox();
-      console.log("MEASURE-LIST", seg, n, b!.height, "panel", panel!.height);
-    }
-  } finally {
-    await page.context().close();
-  }
-});
-
-test("TEMP measure routine", async ({ browser }) => {
-  const { E2E_LOGIN_ROUTINEUSUAL } = await import("./logins/nutrition");
-  const page = await loginAs(
-    browser,
-    { username: E2E_LOGIN_ROUTINEUSUAL, password: E2E_MEMBER_PASSWORD },
-    PHONE_390
-  );
-  try {
-    await page.goto("/");
-    const sheet = await openLogSheet(page);
-    await expect(sheet.getByTestId("log-sheet-context")).toBeVisible();
-    const routine = await sheet
-      .getByTestId("routine-usual-offer")
-      .boundingBox();
-    const section = await sheet.getByTestId("log-sheet-context").boundingBox();
-    const panel = await sheet.locator("[data-sheet-panel]").boundingBox();
-    console.log(
-      "MEASURE-ROUTINE",
-      JSON.stringify({ routine, section: section!.height, panel: panel!.height })
-    );
-  } finally {
-    await page.context().close();
-  }
-});
