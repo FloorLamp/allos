@@ -199,14 +199,28 @@ export function deliveredDocumentCountsByAccount(
   timeZone: string
 ): Map<number, DeliveredDocuments> {
   const ids = accessibleProfileIds;
+  // THE SQL PREDICATE IS A BOUND, NOT THE TEST (#3944, the shape #3947 landed).
+  // The answer is one day per login — its LATEST — so reading every archive a
+  // household ever received to bucket them all in JS costs an `Intl` conversion per
+  // document forever. Local day is monotone in the instant, so the latest local day
+  // is the one `MAX(delivered_at)` falls on, and every delivery sharing that day sits
+  // within a day of it: real offsets run [-12:00, +14:00], so widening by exactly one
+  // day cannot miss one. What the bound lets through, the local-day comparison below
+  // drops — and that comparison stays the only test. A stamp SQLite cannot parse
+  // yields NULL and keeps its whole login, rather than silently emptying it.
   const rows = db
     .prepare(
-      `SELECT pi.account_id AS accountId, d.delivered_at AS deliveredAt
-         FROM medical_documents d
-         JOIN portal_identities pi ON pi.id = d.acquired_identity_id
-        WHERE d.delivered_at IS NOT NULL
-          AND d.profile_id IN ${profileIdsIn(ids)}
-          AND ${reachableAccountSql(ids, "pi.account_id")}`
+      `SELECT accountId, deliveredAt FROM (
+         SELECT pi.account_id AS accountId, d.delivered_at AS deliveredAt,
+                MAX(d.delivered_at) OVER (PARTITION BY pi.account_id) AS latestAt
+           FROM medical_documents d
+           JOIN portal_identities pi ON pi.id = d.acquired_identity_id
+          WHERE d.delivered_at IS NOT NULL
+            AND d.profile_id IN ${profileIdsIn(ids)}
+            AND ${reachableAccountSql(ids, "pi.account_id")}
+       )
+        WHERE date(latestAt, '-1 day') IS NULL
+           OR deliveredAt >= date(latestAt, '-1 day')`
     )
     .all(...ids, ...ids, canSeeUnclaimed ? 1 : 0) as {
     accountId: number;
