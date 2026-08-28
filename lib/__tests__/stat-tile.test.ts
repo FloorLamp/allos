@@ -38,5 +38,18 @@ describe("StatBox", () => {
     );
     expect(cycles.match(/<StatBox/g)).toHaveLength(4);
     expect(cycles).not.toMatch(/stat-tile|bg-slate-50|bg-ink-900/);
+
+    // #3775 folded the equipment detail grid in the same direction: its local
+    // `Stat` drew a BORDERED `rounded-lg border bg-surface` tile, the third
+    // treatment #3475 set out to end. The rendered converse — that the shared
+    // box still draws label/value/sub — is components/__tests__/stat-box.test.tsx.
+    const equipment = fs.readFileSync(
+      path.join(ROOT, "app/(app)/equipment/[id]/page.tsx"),
+      "utf8"
+    );
+    expect(equipment.match(/<StatBox/g)).toHaveLength(6);
+    expect(stripComments(equipment)).not.toMatch(
+      /function Stat\(|bg-surface px-4/
+    );
   });
 });
