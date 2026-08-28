@@ -257,19 +257,17 @@ test.describe("Trends → Overview → body census metric pages (#1067 Phase 2)"
           };
         }),
       ]);
-    // THE HORIZONTAL NUMBERS HERE ARE ZERO ON PURPOSE (#3673), and this is the
-    // claim rather than a loosened one. Below `sm` no card draws a frame: the
-    // delegated gutters (`card-gutter-standard` 16px on the header,
-    // `card-gutter-compact` 8px on the body) and the readings row's own 8px inset
-    // were the layer that held this page's text at 24–32px while an unframed
-    // neighbour's sat at 16, and the ruling is that the page has ONE left edge.
+    // ONE LEFT EDGE, AND IT IS THE PAGE GUTTER (#3673, then #3920). Below `sm` no
+    // card draws a frame — and since #3920 a card's FILL runs to the viewport edge
+    // while its content re-spends the page gutter, so the DELEGATED gutters are
+    // that one inset rather than a second one: the card itself sits at x=0 and its
+    // header pays the 16 back. #3673's arrangement put this page's text at 24–32px
+    // while an unframed neighbour's sat at 16; the 16 here is the page's own rag
+    // measured through the card, not the pre-#3673 second layer.
     // The VERTICAL rhythm is untouched, which is why `paddingTop` still reads 10:
-    // a tier that stepped both halves now steps only the one the ruling is about.
-    // Do not "restore" the 16 — it is the pre-sweep arrangement, and desktop keeps
-    // it (every declaration is `max-sm:`-scoped; see the compiled-CSS proof in
-    // lib/__tests__/phone-only-compiled-css.test.ts).
+    // a tier that stepped both halves steps only the one the ruling is about.
     expect(readingsHeaderStyles).toEqual({
-      paddingLeft: "0px",
+      paddingLeft: "16px",
       paddingTop: "10px",
     });
     expect(readingsHeadingStyles).toEqual(sourceTitleStyles);
@@ -278,6 +276,9 @@ test.describe("Trends → Overview → body census metric pages (#1067 Phase 2)"
       firstReadingBox.y - (readingsHeadingBox.y + readingsHeadingBox.height);
     expect(headingToFirstRow).toBeGreaterThanOrEqual(3);
     expect(headingToFirstRow).toBeLessThanOrEqual(5);
+    // The DELEGATING card spends nothing itself — `card-delegated`'s `p-0!` is
+    // important inside the `utilities` layer, which the phone rule cannot beat and
+    // should not — so the gutter its cells pay is the page's only one.
     expect(
       await readingsSection.evaluate(
         (element) => getComputedStyle(element).paddingLeft
@@ -285,13 +286,13 @@ test.describe("Trends → Overview → body census metric pages (#1067 Phase 2)"
     ).toBe("0px");
     // Both were 8px before #3673 — the body's `card-gutter-compact` and the
     // readings row's own `max-sm:pl-2!`, each a smaller gutter inside the card's
-    // 16px one. With the card's gone they were the only inset left, so the row's
-    // override was deleted and the delegated gutter steps to zero with the rest.
+    // 16px one. The row's override was deleted then and stays deleted; the
+    // delegated gutter is now the page gutter, paid once, inside a full-bleed fill.
     expect(
       await readingsBody.evaluate(
         (element) => getComputedStyle(element).paddingLeft
       )
-    ).toBe("0px");
+    ).toBe("16px");
     expect(
       await firstReading.evaluate(
         (element) => getComputedStyle(element).paddingLeft
@@ -665,10 +666,10 @@ test.describe("Trends → Overview → body census metric pages (#1067 Phase 2)"
     expect(firstCellBox.width).toBeCloseTo(secondCellBox.width, 0);
     expect(secondCellBox.y - (firstCellBox.y + firstCellBox.height)).toBe(0);
     expect(summaryFrame.paddingLeft).toBe(0);
-    // The standard delegated gutter, which is 16px from `sm` up and zero below it
-    // (#3673): a card that spends no inline gutter cannot delegate one either, or
-    // the layer simply reappears one level in. Read per cell, because "the grid
-    // has no inset" would also pass if only one cell had lost its own.
+    // The standard delegated gutter, 16px at every width — the desktop card's own,
+    // and below `sm` the page gutter re-spent inside a fill that reaches the
+    // viewport edge (#3920). Read per cell, because "the grid has one inset" would
+    // also pass if only one cell were paying it.
     for (const cell of [firstCell, secondCell]) {
       expect(
         await cell
@@ -676,7 +677,7 @@ test.describe("Trends → Overview → body census metric pages (#1067 Phase 2)"
           .evaluate((element) =>
             Number.parseFloat(getComputedStyle(element).paddingLeft)
           )
-      ).toBe(0);
+      ).toBe(16);
     }
 
     // No value wraps onto a second line: a wrapped `dd` is ~2× the height of the

@@ -628,22 +628,32 @@ test("the attention atom flows on one line inside one gutter on a phone, and kee
       expect(geometry.separatorDisplay).not.toBe("none");
 
       // ONE GUTTER, measured from OUTSIDE the card so it can see both ways it
-      // could be doubled: the card's own padding is the whole distance from the
-      // strip's edge to the row's first mark. A glyph gutter beside the card adds
-      // to this; the row's `px-2` inset adds to it too.
+      // could be doubled. Since #3920 the card CANCELS the page gutter outward and
+      // re-spends it inward, so the two net to zero and the first mark lands on the
+      // strip's own edge — the page's left rag. A glyph gutter beside the card
+      // still shows up here, and so does the row's `px-2` inset.
       expect(
         geometry.firstMarkInset,
         `first mark sits ${geometry.firstMarkInset}px from the strip edge, card gutter is ${geometry.cardGutter}px`
-      ).toBeCloseTo(geometry.cardGutter, 1);
+      ).toBeCloseTo(0, 1);
       expect({
         left: geometry.rowPaddingLeft,
         top: geometry.rowPaddingTop,
       }).toEqual({ left: "0px", top: "0px" });
 
       // And the CARD takes the width back — the atom itself, not the wrapper that
-      // contains the gutter and would match the strip whatever is inside it.
-      expect(geometry.atomLeft).toBeCloseTo(geometry.stripLeft, 1);
-      expect(geometry.atomWidth).toBeCloseTo(geometry.stripWidth, 1);
+      // contains the gutter and would match the strip whatever is inside it. Its
+      // FILL takes a page gutter more on each side since #3920, so the claim is
+      // about the atom's CONTENT line: read through the same `cardGutter` the mark
+      // is checked against, a gutter that moved on one side only cannot pass.
+      expect(geometry.atomLeft + geometry.cardGutter).toBeCloseTo(
+        geometry.stripLeft,
+        1
+      );
+      expect(geometry.atomWidth - 2 * geometry.cardGutter).toBeCloseTo(
+        geometry.stripWidth,
+        1
+      );
       expect(geometry.glyphDisplay).toBe("none");
     } else {
       // ABOVE `sm` NOTHING MOVED. The desktop block stays stacked, the separator

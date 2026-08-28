@@ -86,7 +86,7 @@ boundary did not respond to that preference.
 
 | container                     | rule                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                    | status                                                                                                                                                                                                                           | guard                                                                                                                                  |
 | ----------------------------- | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | -------------------------------------------------------------------------------------------------------------------------------------- |
-| Card / card-quiet             | the two surface tiers; nothing nests a card in a card; below `sm` neither draws a frame at all (#3673)                                                                                                                                                                                                                                                                                                                                                                                                                  | shipped; both nests unwrapped (#3466)                                                                                                                                                                                            | `mobile-density-convention.test.ts`, `mobile-density-sweep.mobile.spec.ts`                                                             |
+| Card / card-quiet             | the two surface tiers; nothing nests a card in a card; below `sm` neither draws a frame and each one's fill is full-bleed (#3673, #3920)                                                                                                                                                                                                                                                                                                                                                                                | shipped; both nests unwrapped (#3466)                                                                                                                                                                                            | `mobile-density-convention.test.ts`, `mobile-density-sweep.mobile.spec.ts`                                                             |
 | Sub-panel (box inside a card) | one stepped inset convention, one notch down below `sm`: `subpanel-inset` (16→12), `subpanel-inset-sm` (12→10), `subpanel-inset-xs` (10→8). `DelegatedCard` lets its rendered parts carry the one gutter layer and takes no tier                                                                                                                                                                                                                                                                                        | shipped — #3466, #3507, #3726                                                                                                                                                                                                    | `mobile-density-convention.test.ts`, `delegated-card.test.tsx`, `delegated-card-css.test.ts`, routed phone geometry                    |
 | Chip / pill                   | `components/Chip.tsx` owns navigation (`chip-nav`) and filter (`chip-filter`) presentation over its private `chip-base`. Its typed API admits regular/dense geometry and derives selected-state ARIA. `FilterPills` is the one single-choice filter-group composition: the whole group is links or buttons, carries its option metadata at the boundary, and chooses one bounded layout: scroll, wrap, or Timeline's phone-scroll/`sm`-wrap response. `SegmentedControl` remains the mutually-exclusive view primitive. | shipped — #3724 converged the ordinary single-choice groups and registered direct chip uses; heterogeneous equipment, multi-select toggles, typed fields, disclosures, and non-chip selected controls remain their own questions | `components/__tests__/chip.test.tsx`, raw-token residual `lib/__tests__/chip-residual.test.ts`, rendered geometry specs                |
 | Stat tile                     | `StatBox` is the blessed tier and draws the `stat-tile` utility: tokened fill (`--ghost`, so dark mode comes with it instead of a hand-maintained `bg-slate-50 dark:bg-ink-900` pair) and `--radius-card`, because a tile holds content and is not a control — it had been wearing the CONTROL radius on a surface. Page-local variants fold in                                                                                                                                                                         | shipped — #3475; /medical/cycles' bordered page-local `Stat` folded into `StatBox`                                                                                                                                               | same suite                                                                                                                             |
@@ -153,13 +153,33 @@ their `text-xs` / `px-2.5` / `py-0.5` scale and rendered 44px target. Regular
 chips omit the density prop. Timeline's category filters use the same typed
 filter-link path while preserving their pending and scroll-restoration behavior.
 
-### Below `sm`, no card draws a frame (#3673)
+### Below `sm`, no card draws a frame (#3673) and its fill is full-bleed (#3920)
 
-The card gutter is **removed** on a phone, not tightened. Below `sm` a `.card`,
-a `.card-quiet`, a delegated cell gutter and a sub-panel tier give up their
-border, their radius, their shadow and their **horizontal** padding; they keep
-their `--surface` fill and their vertical rhythm. Content sits at the page
-gutter, and the page has **one left edge**.
+The card **frame** is removed on a phone, not tightened. Below `sm` a `.card`, a
+`.card-quiet` and a sub-panel tier give up their border, their radius and their
+shadow; they keep their `--surface` fill and their vertical rhythm. Content sits
+at the page gutter, and the page has **one left edge**.
+
+**A band's FILL is full-bleed; its CONTENT keeps the page gutter.** #3673 took
+the frame off and left the fill where it was — a filled surface inset by the page
+gutter with no padding inside it — so a band's first character sat on its own fill
+boundary. The fix is not a second inset: the band **cancels** the page gutter on
+its frame and **re-spends** it on its content, so the fill runs 0→viewport width
+while the text stays on the same 16px rag. The cancel mirrors the shell's own
+expression per side — `--page-gutter-left` / `--page-gutter-right` in
+`app/globals.css`, which `app-content-container` also reads — because the two
+sides are independent and a symmetric `-mx-4` under-cancels a notched one.
+
+**Two quantities, not one (#3931).** The **gutter** is what a filled surface
+spends inside itself; the **bleed** is what it cancels outside itself. They are
+equal wherever the page container is the box above — and a negative margin cannot
+tell that box from a grid cell, so a container that places its children itself
+says so with `bleed-none`, which zeroes `--page-bleed-*` and leaves
+`--page-gutter-*` standing. Zeroing the gutter instead would take the card's own
+padding with it and put its first character back on its fill boundary. Two
+containers carry the marker today: the Body census grid and the overdue-visits
+disclosure with its amber rail. A container that forgets shows up in the sweep as
+a box that is **neither the viewport nor the cell it was placed in**.
 
 - **Grouping is a label plus dividers.** The band shape: a `--surface` fill, a
   section label above it, `--divider` hairlines between rows —
@@ -193,20 +213,22 @@ back. The one thing it cannot beat is an `!important` declaration inside a layer
 which is why the sub-panel tiers step `max-sm:py-*!` and their horizontal half is
 zeroed by the flat rule instead.
 
-| rule                                                                              | source | guard                                                                                                                             |
-| --------------------------------------------------------------------------------- | ------ | --------------------------------------------------------------------------------------------------------------------------------- |
-| No card frame below `sm` outside the Notice primitive; a band in a band is banned | #3673  | `mobile-density-sweep.mobile.spec.ts` (rendered sweep over ledger / Records / dashboard, a forged offender, the Notice's silence) |
-| One left edge: every band, row and zone label starts at the page gutter           | #3673  | same file — the set of content edges on a dashboard scroll must have exactly one member                                           |
-| A band stays separable from the canvas in both themes                             | #3673  | `lib/__tests__/band-separation-tokens.test.ts` (recorded fill/divider floors) + a dark-mode e2e                                   |
+| rule                                                                                  | source | guard                                                                                                                                           |
+| ------------------------------------------------------------------------------------- | ------ | ----------------------------------------------------------------------------------------------------------------------------------------------- |
+| No card frame below `sm` outside the Notice primitive; a band in a band is banned     | #3673  | `mobile-density-sweep.mobile.spec.ts` (rendered sweep over ledger / Records / dashboard / Body census, a forged offender, the Notice's silence) |
+| One left edge: every band, row and zone label starts at the page gutter               | #3673  | same file — the content edges on a dashboard scroll are the gutter and the full-bleed frame that delegates it, and nothing else                 |
+| A run on a band's fill has at least a page gutter of fill to its left                 | #3920  | same file — plus the named surfaces, a one-sided safe-area inset, and no sideways scroll at 390px                                               |
+| A fill is full-bleed against the page, or placed exactly in its cell — no third state | #3931  | same file — the law runs on every swept route, and names any container that should carry `bleed-none` and does not                              |
+| A band stays separable from the canvas in both themes                                 | #3673  | `lib/__tests__/band-separation-tokens.test.ts` (recorded fill/divider floors) + a dark-mode e2e                                                 |
 
 ### The two phone-density conventions, in one place (#3466)
 
 Three spacing layers stack on a 390px line. The page gutter (16px) and the card
 gutter (`p-4` below `sm`) were both at the platform floor and were **not**
-tightened — a text line inside a card was ~83% of a 390px viewport. **#3673 has
-since removed the card gutter's horizontal half entirely below `sm`**, so the
-tiers below are what remains of this convention on a phone: they step the
-**vertical** inset only, and the horizontal one is zero. Their desktop values,
+tightened — a text line inside a card was ~83% of a 390px viewport. **#3673
+removed the card's frame below `sm` and #3920 moved its fill to the viewport
+edge**, so a card spends the page gutter and nothing else spends a second one:
+the tiers below step the **vertical** inset only, and the horizontal one is zero. Their desktop values,
 and the whole convention at `sm` and up, are unchanged. Pick a tier by what the
 element carries **today**; add the class, change nothing else.
 

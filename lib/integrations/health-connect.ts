@@ -1,5 +1,6 @@
 import type { ActivityType } from "@/lib/types";
-import { utcInstant, utcMinute, zonedDateParts } from "@/lib/date";
+import { tzOffsetMs, utcInstant, utcMinute, zonedDateParts } from "@/lib/date";
+import { anchorImpliedDay } from "@/lib/metric-window-overlap";
 import { boundedOrNull, inTimeWindow } from "@/lib/ingest-bounds";
 import { toKg, toKm, type Kg } from "@/lib/units";
 import { metricAggregation } from "@/lib/metric-buckets";
@@ -924,9 +925,23 @@ export function parseHealthConnectPayload(
         out.skipped++;
         continue;
       }
+      // THE DAY A DAY BUCKET IS FILED UNDER IS THE ONE ITS OWN ANCHOR NAMES (#3901).
+      // `start` is a DEVICE-local midnight, and the profile's zone lags it by hours
+      // around every travel switch — long enough for a re-anchored bucket to land on
+      // its neighbour's date, supersede the neighbour's completed row, and then walk
+      // off that date on the next re-send. `anchorImpliedDay` answers only for the
+      // windows the supersede rule reads as device-cut day buckets; a fine-grained
+      // bucket, hydration, or a window that implies no real offset keeps the profile
+      // attribution above, which is what every non-bucket row still wants.
+      const anchorDay = anchorImpliedDay(
+        metric,
+        start,
+        end,
+        tzOffsetMs(tz, new Date(start))
+      );
       out.samples.push({
         metric,
-        date: p.date,
+        date: anchorDay ?? p.date,
         started_at: start,
         ended_at: end,
         value,

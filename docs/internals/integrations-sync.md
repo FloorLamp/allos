@@ -760,12 +760,82 @@ buckets under the zone in force at its instant. It is NOT `zoneAt`: that resolve
 the complete, unbounded switch history of #3428 item 2, which does not exist yet and is
 blocked on the owner's `kind: travel | settings` discriminator (#3524 / PR #3551).
 
-THE ONE CARVE-OUT is a re-anchorable day bucket (`isSupersedingWindow`), whose `date`
-is the DEVICE's local day label rather than an attribution of an instant. Those keep
-re-deriving, because the supersede below can only collapse a stale anchoring over
-candidates filed under the bucket's own `date`; freezing them strands the stale row on
-a day nothing reaches, and its double count becomes permanent AND unreported. Measured
-by removing the carve-out: 6500 stored for 3500 walked, split over two days.
+**A DAY BUCKET IS FILED UNDER THE DAY ITS OWN ANCHOR NAMES (#3901).** For the rows
+`isSupersedingWindow` admits, `date` is not an attribution of an instant at all — the
+window was cut by the DEVICE, and `started_at` IS a device-local midnight. So the day is
+read off the window: the implied offset is the one that makes `started_at` a midnight,
+`o = -(started_at mod 24h)`, normalized into the real-offset range **[-12:00, +14:00]** at
+**quarter-hour** granularity (for +05:30, +05:45, +12:45), and the bucket's day is the
+calendar date of `started_at + o`. Only anchors in **10:00Z-12:00Z** are ambiguous
+(UTC-10…-12 against UTC+12…+14); those tie-break toward the profile zone's own offset,
+which is hours wrong at worst rather than half the globe. Everything else — nutrition,
+sleep, hydration, point readings, and the same four metrics at a `1m`/`15m` setting —
+keeps the profile-zone derivation above.
+
+WHY, measured on prod: the profile's zone lags the device's for hours around every travel
+switch, because the phone re-anchors on landing and the profile flips when the person taps
+the travel banner. The NY-anchored bucket `2026-08-27T04:00:00Z` arrived while the profile
+still held `America/Los_Angeles`, was filed under LA-local **08-26**, met cover-the-day
+against the real completed 08-26 bucket and superseded it — and then the re-send re-derived
+its own day to 08-27 and walked off the day it had just emptied. Two days of steps,
+distance and kcal, outside the exporter's 48 h window and unrecoverable; restored by hand
+from the nightly backups on 2026-08-28T03:40Z.
+
+WHAT THE DERIVATION BUYS STRUCTURALLY: `date` becomes a pure function of `started_at`,
+which is IN the natural key, so a re-send cannot move it. `resendDay`'s carve-out for these
+rows is therefore **gone** — freeze and re-derive now give the same answer — and with it the
+dilemma its header recorded (freeze and the stale bucket strands, permanent and unreported;
+re-derive and the justifying row abandons the day it emptied). "A date always keeps a
+reading" is now true ACROSS pushes and not only within one.
+
+ONE NARROW EXCEPTION SURVIVES IN `resendDay`, and it is a repair rather than a
+re-derive. A bucket narrower than `SUB_DAILY_WINDOW_MAX_MIN` states no anchor yet, so its
+FIRST push is filed under the profile's zone — the neighbour's day, inside a skew window —
+and freezing that provisional answer makes it permanent. Measured: a NY bucket first
+pushed 30 minutes after the device's midnight while the profile still held Los Angeles sat
+on 08-26 for good and **2026-08-27 never received a row at all**. So a re-send may move a
+row off a day its own anchor REFUSES, and only onto the day that anchor names. It cannot
+become the old mutability: `anchorRefusesDay` takes no zone, so a bucket in the ambiguous
+band is never moved when the profile travels; and a row that has justified a supersede is
+anchor-admissible by construction (the guard below refuses a victim to any bucket whose
+anchor contradicts its `date`), so a justifier still cannot walk off the day it emptied.
+
+THE AMBIGUOUS BAND DEFERS TO THE PROFILE'S DAY, NOT TO THE NEAREST OFFSET, and the
+difference is a whole day rather than a rounding. Both candidate days are equally
+consistent with a 10:00Z-12:00Z anchor, so the window carries nothing the profile does
+not; the derivation therefore takes whichever candidate equals `parts(start, tz).date`
+when one of them does, and only falls back to the nearer offset when neither does (a
+profile further west than the anchor's own west representative). Choosing by offset
+distance instead reintroduced this issue's own loss (#3924): a completed Honolulu 08-25
+bucket arriving against a profile already on Tokyo time is 5 h from +14 and 19 h from
+-10, so it filed on 08-26, where the genuine JST bucket superseded it and 08-25 kept
+nothing — and the guard below is structurally blind to it, because 08-26 _is_ one of the
+two admissible days. Break-even was `profileOffset > 12h - anchor`: any profile east of
+UTC+2 for a UTC-10 device, permanent for a profile left east of +2 while the device sits
+in HST.
+
+A ONE-OFF RELABEL OF HISTORY follows from all of this, and it is not a migration. Every
+stored bucket whose pre-#3901 `date` is anchor-inadmissible moves the first time the
+exporter's ~48 h window re-sends it, so for about two days the store holds both
+conventions and buckets older than the window keep theirs indefinitely. Where it fires it
+is a correction. #3927 owns the historical set.
+
+AND A SECOND READER, because this path deletes health data: the supersede additionally
+**refuses a victim when the incoming bucket's own anchor contradicts the `date` it is
+filed under** (`anchorRefusesDay`). With the derivation correct it can never fire; it
+exists so the next attribution bug is a visible, counted double count rather than a hole.
+It takes no zone — in the ambiguous band either admissible day is accepted — so a profile
+that has since moved cannot make a correctly-filed bucket look mislabeled.
+
+TWO ANCHORINGS COLLAPSE ONLY WHEN THEY NAME ONE DAY, and that is the trade the derivation
+makes. A same-day re-cut (NY `04:00Z` then LA `07:00Z`, both naming 08-19 — the shape #3424's
+prod incident had) still meets cover-the-day and supersedes. A switch that crosses the
+international date line (Tokyo `15:00Z` naming 05-02 against Honolulu `10:00Z` naming 05-01)
+names two days, so the two buckets are two days' readings and neither collapses the other.
+Nothing is deleted either way; the residual is a total that reads high across two days
+rather than a day that reads high. Note the exporter re-queries under the device's current
+zone and does NOT re-send the old anchoring (measured, below), so the stale row is stranded
+in that case on `main` too.
 
 **A re-anchored day bucket SUPERSEDES what it overlaps (#3424).** #1101's key
 answers the moving-END case and cannot see the moving-START one. The exporter cuts

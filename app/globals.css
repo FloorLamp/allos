@@ -304,17 +304,70 @@
   border-end-end-radius: calc(var(--card-radius, 0.75rem) - 1px);
 }
 
+/* THE PAGE GUTTER, WRITTEN ONCE (#3920). `app-content-container`
+   (`app/(app)/layout.tsx`) spends it and the phone rules below CANCEL it, so the
+   two must be the SAME expression and not two copies: a cancel that assumed `1rem`
+   under-cancels a notched side, and the sides are independent.
+
+   TWO QUANTITIES, NOT ONE (#3931), and conflating them is what shipped a card 32px
+   wider than the grid cell it was placed in. The GUTTER is what a filled surface
+   spends inside itself; the BLEED is what it cancels outside itself. They are equal
+   wherever the page container is the box above — and a container that places its
+   children itself (a census grid track, a railed disclosure) says so with
+   `bleed-none`, which zeroes the BLEED and leaves the gutter standing. Zeroing the
+   gutter instead would take the card's padding with it and put its first character
+   back on its own fill boundary, which is the defect this whole rule exists for. */
+:root {
+  --page-gutter-left: max(1rem, env(safe-area-inset-left));
+  --page-gutter-right: max(1rem, env(safe-area-inset-right));
+  --page-bleed-left: var(--page-gutter-left);
+  --page-bleed-right: var(--page-gutter-right);
+}
+@media (width >= 48rem) {
+  :root {
+    --page-gutter-left: max(1.25rem, env(safe-area-inset-left));
+    --page-gutter-right: max(1.25rem, env(safe-area-inset-right));
+  }
+}
+
+/* A CONTAINER THAT PLACES ITS CHILDREN ITSELF (#3931). A negative margin does not
+   know what it is escaping — it pulls the same 16px whether the box above is the
+   page container or a two-column census track — so the container that is NOT the
+   page has to say so. One declaration pair, no selector list and no testid: the
+   marker goes on the container, and everything filled inside it stops bleeding.
+   e2e/mobile-density-sweep.mobile.spec.ts is where a container that forgot shows
+   up, as a box that is neither the viewport nor the cell it was placed in. */
+@utility bleed-none {
+  --page-bleed-left: 0px;
+  --page-bleed-right: 0px;
+}
+
 @utility band {
   /* A HAND-ROLLED FRAME THAT IS REALLY A BAND (#3673). A surface built out of raw
      `rounded-xl border bg-surface` cannot be reached by the `.card` rule below, so
      it says so with this instead. Goes on the frame AND on each element that spends
      the frame's gutter (labels, rows) — `card-delegated`'s shape, for a surface
-     whose desktop values are its own. */
-  @apply max-sm:rounded-none! max-sm:border-x-0! max-sm:px-0!;
+     whose desktop values are its own.
+
+     BELOW `sm` THE FRAME IS FULL-BLEED AND THE CONTENT IS NOT (#3920): it cancels
+     the page gutter per side and the labels and rows keep spending their own
+     `px-4`. THE FRAME IS THE OUTERMOST MARKED ELEMENT — this class marks the rows
+     too, and cancelling one gutter twice would hang a row 16px past the viewport,
+     so the nested reset takes the pull back off. Both are `!important` in the
+     `utilities` layer, like the two above them, so a call site's own
+     `rounded-xl border` cannot win the tie back. */
+  @apply max-sm:rounded-none! max-sm:border-x-0!;
+  @media (width < 40rem) {
+    margin-inline: calc(-1 * var(--page-bleed-left))
+      calc(-1 * var(--page-bleed-right)) !important;
+    & & {
+      margin-inline: 0 !important;
+    }
+  }
 }
 
 /* ────────────────────────────────────────────────────────────────────────────
-   BELOW `sm`, NO CARD DRAWS A FRAME (issue #3673).
+   BELOW `sm`, NO CARD DRAWS A FRAME AND ITS FILL IS FULL-BLEED (#3673, #3920).
 
    #3466 ruled the page gutter and the card gutter both at the platform floor and
    stepped down only the SECOND inset inside each. That was about TIGHTENING a
@@ -322,6 +375,14 @@
    EDGE: a framed card's first character sat at 32px and an unframed neighbour's at
    16, so the left rag stepped 16px every time the page alternated. The reclaimed
    line (358px instead of 326 on a 390px viewport) is the dividend.
+
+   THE FILL MOVES, THE PADDING STAYS (#3920). #3673 took the frame off and left the
+   fill where it was: a `--surface` box inset by the page gutter with no padding
+   inside it, so a card's first character sat on its own fill boundary and the owner
+   read the phone dashboard as broken. The card gutter is not restored as a second
+   inset — the card CANCELS the page gutter outward and re-spends it inward, so the
+   fill runs 0→viewport width and the text stays on the same 16px rag it already
+   had. The reclaimed line is unchanged; only the fill moved.
 
    THE MAIN EXCEPTION IS NOT WRITTEN HERE, and that is the mechanism rather than an
    omission. The tinted Notice family (components/Notice.tsx) is a DIFFERENT
@@ -347,8 +408,8 @@
    itself with `max-sm:*!` overrides this rule cannot reach. It is an exception
    because a review ruled it one, not because a mechanism recognises it.
 
-   PADDING-INLINE ONLY. Block padding is the card's vertical rhythm, not a gutter,
-   and it keeps a band's fill off its own first line.
+   BLOCK PADDING IS UNTOUCHED. It is the card's vertical rhythm, not a gutter, and
+   it keeps a band's fill off its own first line.
 
    Unlayered on purpose: `@utility` bodies land in Tailwind's `utilities` layer and
    an unlayered normal declaration beats every layer, so a call site's own `p-6`
@@ -359,26 +420,45 @@
 @media (width < 40rem) {
   .card,
   .card-quiet {
-    padding-inline: 0;
+    margin-inline: calc(-1 * var(--page-bleed-left))
+      calc(-1 * var(--page-bleed-right));
+    /* `max-w-full` resolves against the CONTAINER, so on its own it clips the
+       widened box straight back to the container's width and turns the pull into a
+       32px overhang on one side instead of a full-bleed fill. Inside `bleed-none`
+       both terms are zero and this is `max-w-full` again, unchanged. */
+    max-width: calc(100% + var(--page-bleed-left) + var(--page-bleed-right));
+    padding-inline: var(--page-gutter-left) var(--page-gutter-right);
     border-width: 0;
     border-radius: 0;
     box-shadow: none;
   }
+  /* A DELEGATED card keeps its `p-0!` — important in the `utilities` layer, which
+     the unlayered rule above cannot beat and should not — so its cells are what
+     spend the card's gutter, and with the card now reaching the viewport edge they
+     spend the page gutter rather than nothing. #3466 stepped these DOWN as a second
+     inset inside the card's first; there is one inset now and this is it. */
   .card-gutter-standard,
   .card-gutter-compact,
   .card-gutter-action {
-    padding-inline: 0;
+    padding-inline: var(--page-gutter-left) var(--page-gutter-right);
   }
-  /* Its negative pull was cancelling a gutter that is no longer spent. */
+  /* The footnote is a strip across the bottom of its card's fill, so it cancels the
+     card's gutter and re-spends it — the same shape as the card itself, one level
+     in. Only the radius goes, because the card below `sm` has no corners to meet.
+     THE GUTTER AND NOT THE BLEED: what this escapes is its own card's padding,
+     which a `bleed-none` container does not change. */
   .card-footnote {
-    margin-inline: 0;
-    padding-inline: 0;
+    margin-inline: calc(-1 * var(--page-gutter-left))
+      calc(-1 * var(--page-gutter-right));
+    padding-inline: var(--page-gutter-left) var(--page-gutter-right);
     border-end-start-radius: 0;
     border-end-end-radius: 0;
   }
   /* THE SAME LAYER, ONE LEVEL IN: #3466 stepped these DOWN as a second gutter
-     inside the card's first, and with the first gone they became the only one.
-     The tiers step VERTICALLY only now (`max-sm:py-*!`) and the horizontal half is
+     inside the card's first. The first is back since #3920 — the card re-spends the
+     page gutter inside its full-bleed fill — so a sub-panel that stepped its own
+     `px` would be that second layer again, and it stays zeroed.
+     The tiers step VERTICALLY only (`max-sm:py-*!`) and the horizontal half is
      zeroed here — that split is forced, not chosen. An `!important` declaration in
      the `utilities` layer is never beaten by an unlayered one (for important
      declarations the layer order REVERSES and unlayered ranks last), so a

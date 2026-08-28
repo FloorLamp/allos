@@ -212,13 +212,13 @@ function push(
 // R1 — the chunk split, at the SHIPPED default chunk size.
 // ─────────────────────────────────────────────────────────────────────────────
 
-/** 300 one-minute buckets in the 5 hours between the two anchorings. */
+/** 300 one-minute buckets in the 6 hours between the two anchorings. */
 function oneMinuteBuckets(
   key: string,
   valueKey: string
 ): Record<string, unknown> {
   const out: Record<string, unknown>[] = [];
-  const base = Date.UTC(2026, 4, 1, 10, 1, 0);
+  const base = Date.UTC(2026, 4, 1, 4, 1, 0);
   for (let i = 0; i < 300; i++) {
     out.push({
       start_time: new Date(base + i * 60000).toISOString(),
@@ -264,7 +264,7 @@ describe("R1 — a push bigger than INGEST_CHUNK_SIZE", () => {
       {
         total_calories: [
           {
-            start_time: "2026-05-01T15:00:00Z", // pre-switch anchoring
+            start_time: "2026-05-01T04:00:00Z", // pre-switch anchoring
             end_time: "2026-05-01T23:00:00Z",
             calories: 1800,
             metadata: { data_origin: ORIGIN },
@@ -284,7 +284,7 @@ describe("R1 — a push bigger than INGEST_CHUNK_SIZE", () => {
       "2026-05-02T01:00:05Z"
     );
     expect(result.split.superseded).toBe(0);
-    expect(stored(p, "total_kcal").map((r) => r.value)).toEqual([2400, 1800]);
+    expect(stored(p, "total_kcal").map((r) => r.value)).toEqual([1800, 2400]);
   });
 
   it("will not let one device's minute bucket delete another's", () => {
@@ -436,8 +436,14 @@ describe("a push carrying BOTH anchorings leaves a double count, and converges",
   //
   // So both rows are stored. The day reads HIGH — visible in every total, said out loud
   // in Review — and the next push whose stamp is newer collapses it.
-  const NY = steps("2026-08-20T04:00:00Z", "2026-08-21T04:00:00Z", 9000);
-  const TOKYO = steps("2026-08-20T15:00:00Z", "2026-08-21T06:00:00Z", 11000);
+  // BOTH BUCKETS NAME 2026-08-20, and since #3901 that is what makes them a double
+  // count rather than two days' readings: the still-filling NEW YORK bucket for 08-20
+  // (04:00Z is NY midnight) against the re-cut TOKYO bucket for the SAME local day,
+  // which +9 anchors at 08-19T15:00Z and which completed when Tokyo's 08-20 ended. A
+  // pair whose two anchorings named DIFFERENT days would not sum into one day at all,
+  // so it is not the shape this describe is about.
+  const NY = steps("2026-08-20T04:00:00Z", "2026-08-20T18:00:00Z", 9000);
+  const TOKYO = steps("2026-08-19T15:00:00Z", "2026-08-20T15:00:00Z", 11000);
 
   // SEEDED, NOT FRESH — and that is the correction the owner's ruling made explicit.
   // Every earlier version of these three cases pushed into an EMPTY store, where ruling
@@ -465,7 +471,7 @@ describe("a push carrying BOTH anchorings leaves a double count, and converges",
     seedNY(p);
     const only = push(p, { steps: [NY, TOKYO] }, "2026-08-21T06:00:05Z");
     expect(only.split.superseded).toBe(0);
-    expect(stored(p, "steps").map((r) => r.value)).toEqual([9000, 11000]);
+    expect(stored(p, "steps").map((r) => r.value)).toEqual([11000, 9000]);
     expect(warningsOf(only)).toContain(overlapsLeftWarning(1));
   });
 
@@ -489,7 +495,7 @@ describe("a push carrying BOTH anchorings leaves a double count, and converges",
     const p = freshProfile("BOTH-ANCHORINGS-EMPTY-STORE");
     const only = push(p, { steps: [NY, TOKYO] }, "2026-08-21T06:00:05Z");
     expect(only.split.superseded).toBe(0);
-    expect(stored(p, "steps").map((r) => r.value)).toEqual([9000, 11000]);
+    expect(stored(p, "steps").map((r) => r.value)).toEqual([11000, 9000]);
     // ONE, not two. The excess is what the day carries beyond the first reading, which is
     // the same number the seeded case above reports for the same symptom — there the
     // stale row is a stored one, here it is the push's own.
@@ -523,13 +529,12 @@ describe("a push carrying BOTH anchorings leaves a double count, and converges",
     const p = freshProfile("BOTH-ANCHORINGS-CONVERGE");
     seedNY(p);
     push(p, { steps: [NY, TOKYO] }, "2026-08-21T06:00:05Z");
-    const next = push(
-      p,
-      { steps: [steps("2026-08-20T15:00:00Z", "2026-08-21T12:00:00Z", 11400)] },
-      "2026-08-21T12:00:05Z"
-    );
+    // A COMPLETED bucket does not grow, so the next push re-sends the same window under
+    // a newer stamp — which is all the collapse ever needed: it lands on 08-20, overlaps
+    // the stored NY row filed there, and outranks the push that wrote it.
+    const next = push(p, { steps: [TOKYO] }, "2026-08-21T12:00:05Z");
     expect(next.split.superseded).toBe(1);
-    expect(stored(p, "steps").map((r) => r.value)).toEqual([11400]);
+    expect(stored(p, "steps").map((r) => r.value)).toEqual([11000]);
   });
 
   it("does the same when the pair is SPLIT across chunks", () => {
@@ -542,15 +547,15 @@ describe("a push carrying BOTH anchorings leaves a double count, and converges",
       p,
       {
         steps: [NY, TOKYO],
-        ...fillerBuckets("distance", "meters", 2026, 7, 20, 10),
-        ...fillerBuckets("active_calories", "calories", 2026, 7, 20, 10),
-        ...fillerBuckets("hydration", "liters", 2026, 7, 20, 10),
-        ...fillerBuckets("nutrition", "calories", 2026, 7, 20, 10),
+        ...fillerBuckets("distance", "meters", 2026, 7, 19, 16),
+        ...fillerBuckets("active_calories", "calories", 2026, 7, 19, 16),
+        ...fillerBuckets("hydration", "liters", 2026, 7, 19, 16),
+        ...fillerBuckets("nutrition", "calories", 2026, 7, 19, 16),
       },
       "2026-08-21T06:00:05Z"
     );
     expect(split.split.superseded).toBe(0);
-    expect(stored(p, "steps").map((r) => r.value)).toEqual([9000, 11000]);
+    expect(stored(p, "steps").map((r) => r.value)).toEqual([11000, 9000]);
   });
 });
 
@@ -731,7 +736,7 @@ describe("a re-anchored COMPLETED day still corrects the row it overlaps", () =>
       {
         steps: [
           {
-            start_time: "2026-05-01T15:00:00Z",
+            start_time: "2026-05-01T04:00:00Z",
             end_time: "2026-05-01T23:00:00Z",
             count: 3000,
             metadata: { data_origin: ORIGIN },
@@ -791,7 +796,7 @@ describe("a re-anchored COMPLETED day still corrects the row it overlaps", () =>
       ingestHealthConnectPayload(
         p,
         parseHealthConnectPayload(
-          body("2026-05-01T15:00:00Z", "2026-05-01T23:00:00Z", 3000),
+          body("2026-05-01T04:00:00Z", "2026-05-01T23:00:00Z", 3000),
           "UTC"
         )
       )
@@ -831,7 +836,7 @@ describe("a STAMPLESS push can never delete, however its rows are bundled", () =
   it("leaves the converged row alone when a stale record rides in beside a later one", () => {
     profile = freshProfile("STAMPLESS-BUNDLED");
     unstamped({
-      steps: [steps("2026-05-01T15:00:00Z", "2026-05-01T23:00:00Z", 3000)],
+      steps: [steps("2026-05-01T04:00:00Z", "2026-05-01T23:00:00Z", 3000)],
     });
     unstamped({
       steps: [steps("2026-05-01T10:00:00Z", "2026-05-02T01:00:00Z", 3500)],
@@ -840,7 +845,7 @@ describe("a STAMPLESS push can never delete, however its rows are bundled", () =
     // stored. MUTATION: give `pushStampFor` any window-derived fallback and the 3500
     // row is deleted here, by a push that stated no time at all.
     const third = unstamped({
-      steps: [steps("2026-05-01T15:00:00Z", "2026-05-01T23:00:00Z", 3000)],
+      steps: [steps("2026-05-01T04:00:00Z", "2026-05-01T23:00:00Z", 3000)],
       hydration: [
         {
           start_time: "2026-05-02T01:00:00Z",
@@ -885,7 +890,7 @@ describe("a STAMPLESS push can never delete, however its rows are bundled", () =
     // not outrank what is stored, so the day is left reading high and says so.
     const second = push(
       profile,
-      { steps: [steps("2026-05-01T15:00:00Z", "2026-05-01T23:00:00Z", 3000)] },
+      { steps: [steps("2026-05-01T04:00:00Z", "2026-05-01T23:00:00Z", 3000)] },
       "2026-05-02T02:00:00Z"
     );
     expect(second.split.superseded).toBe(0);
@@ -914,7 +919,7 @@ describe("a STAMPLESS push can never delete, however its rows are bundled", () =
     // alive purely to compute a warning, which is the construction rounds 7-9 died on.
     profile = freshProfile("OVERLAP-LEFT-STAMPLESS");
     unstamped({
-      steps: [steps("2026-05-01T15:00:00Z", "2026-05-01T23:00:00Z", 3000)],
+      steps: [steps("2026-05-01T04:00:00Z", "2026-05-01T23:00:00Z", 3000)],
     });
     const second = unstamped({
       steps: [steps("2026-05-01T10:00:00Z", "2026-05-02T01:00:00Z", 3500)],
@@ -1017,7 +1022,7 @@ describe("R4 — a byte-identical replay of a pre-switch push", () => {
   const TOKYO = {
     steps: [
       {
-        start_time: "2026-05-01T15:00:00Z",
+        start_time: "2026-05-01T04:00:00Z",
         end_time: "2026-05-01T23:00:00Z",
         count: 3000,
         metadata: { data_origin: ORIGIN },
@@ -1477,11 +1482,11 @@ describe("R7 — a row pass C will not write plans no delete", () => {
     // wrong reason, and the shipped tombstone case seeds a FRESH profile, which is why
     // the suite could not see this.
     expect(stored(p, "steps").map((r) => r.value)).toEqual([8000]);
-    tombstone(p, "2026-05-01T15:00:00Z");
+    tombstone(p, "2026-05-01T04:00:00Z");
 
     const result = pushAt(
       p,
-      { steps: [steps("2026-05-01T15:00:00Z", "2026-05-02T01:00:00Z", 8500)] },
+      { steps: [steps("2026-05-01T04:00:00Z", "2026-05-02T01:00:00Z", 8500)] },
       "2026-05-02T02:00:00Z",
       2
     );
@@ -1496,7 +1501,7 @@ describe("R7 — a row pass C will not write plans no delete", () => {
     // so the next push of the same rolling window is driven too.
     const again = pushAt(
       p,
-      { steps: [steps("2026-05-01T15:00:00Z", "2026-05-02T01:00:00Z", 8500)] },
+      { steps: [steps("2026-05-01T04:00:00Z", "2026-05-02T01:00:00Z", 8500)] },
       "2026-05-02T03:00:00Z",
       2
     );
@@ -1514,7 +1519,7 @@ describe("R7 — a row pass C will not write plans no delete", () => {
       {
         steps: [
           steps("2026-05-01T00:00:00Z", "2026-05-01T23:00:00Z", 8000),
-          steps("2026-05-01T15:00:00Z", "2026-05-02T01:00:00Z", 8500),
+          steps("2026-05-01T04:00:00Z", "2026-05-02T01:00:00Z", 8500),
         ],
       },
       "2026-05-02T00:00:00Z",
@@ -1524,11 +1529,11 @@ describe("R7 — a row pass C will not write plans no delete", () => {
     // The user hand-corrects the re-anchored one.
     db.prepare(
       "UPDATE metric_samples SET edited = 1 WHERE profile_id = ? AND started_at = ?"
-    ).run(p, "2026-05-01T15:00:00Z");
+    ).run(p, "2026-05-01T04:00:00Z");
 
     const result = pushAt(
       p,
-      { steps: [steps("2026-05-01T15:00:00Z", "2026-05-02T01:00:00Z", 9999)] },
+      { steps: [steps("2026-05-01T04:00:00Z", "2026-05-02T01:00:00Z", 9999)] },
       "2026-05-02T02:00:00Z",
       2
     );
@@ -1554,7 +1559,7 @@ describe("R7 — a row pass C will not write plans no delete", () => {
       {
         steps: [
           steps("2026-05-01T00:00:00Z", "2026-05-01T23:00:00Z", 8000),
-          steps("2026-05-01T15:00:00Z", "2026-05-02T01:00:00Z", 8500),
+          steps("2026-05-01T04:00:00Z", "2026-05-02T01:00:00Z", 8500),
         ],
       },
       "2026-05-02T00:00:00Z",
@@ -1565,7 +1570,7 @@ describe("R7 — a row pass C will not write plans no delete", () => {
     // smaller value. #1101 holds the stored snapshot, so this row lands nowhere.
     const result = pushAt(
       p,
-      { steps: [steps("2026-05-01T15:00:00Z", "2026-05-01T20:00:00Z", 6000)] },
+      { steps: [steps("2026-05-01T04:00:00Z", "2026-05-01T20:00:00Z", 6000)] },
       "2026-05-02T02:00:00Z",
       2
     );
@@ -1602,7 +1607,7 @@ describe("R7 — a row pass C will not write plans no delete", () => {
       {
         steps: [
           steps("2026-05-01T00:00:00Z", "2026-05-01T23:00:00Z", 8000),
-          steps("2026-05-01T15:00:00Z", "2026-05-02T01:00:00Z", 8500),
+          steps("2026-05-01T04:00:00Z", "2026-05-02T01:00:00Z", 8500),
         ],
       },
       "2026-05-02T00:00:00Z",
@@ -1611,14 +1616,14 @@ describe("R7 — a row pass C will not write plans no delete", () => {
     // The user hand-corrects the re-anchored row, so the push's re-send of it is vetoed.
     db.prepare(
       "UPDATE metric_samples SET edited = 1 WHERE profile_id = ? AND started_at = ?"
-    ).run(p, "2026-05-01T15:00:00Z");
+    ).run(p, "2026-05-01T04:00:00Z");
     const result = pushAt(
       p,
       {
         steps: [
           // Vetoed by the #133 lock — its twin stays, and the 8000 row it overlaps is
           // left standing on its account.
-          steps("2026-05-01T15:00:00Z", "2026-05-02T01:00:00Z", 9999),
+          steps("2026-05-01T04:00:00Z", "2026-05-02T01:00:00Z", 9999),
           // Lands, overlaps the same 8000 row, outranks it: that row is collapsed.
           steps("2026-05-01T07:00:00Z", "2026-05-02T07:00:00Z", 8100),
         ],
@@ -1628,7 +1633,7 @@ describe("R7 — a row pass C will not write plans no delete", () => {
     );
     expect(result.split.superseded).toBe(1);
     expect(result.split.edited).toBe(1);
-    expect(stored(p, "steps").map((r) => r.value)).toEqual([8100, 8500]);
+    expect(stored(p, "steps").map((r) => r.value)).toEqual([8500, 8100]);
     // ONE reading standing over the day, not two: the locked row. The 8000 row is gone.
     expect(warningsOf(result)).toContain(overlapsLeftWarning(1));
   });
@@ -1653,13 +1658,13 @@ describe("R7 — a row pass C will not write plans no delete", () => {
       "2026-05-02T00:00:00Z",
       2
     );
-    tombstone(p, "2026-05-01T15:00:00Z");
+    tombstone(p, "2026-05-01T04:00:00Z");
     const result = pushAt(
       p,
       {
         steps: [
           // Vetoed: tombstoned, lands nowhere.
-          steps("2026-05-01T15:00:00Z", "2026-05-02T01:00:00Z", 8500),
+          steps("2026-05-01T04:00:00Z", "2026-05-02T01:00:00Z", 8500),
           // Lands, overlaps the stored row, outranks it.
           steps("2026-05-01T07:00:00Z", "2026-05-02T07:00:00Z", 8100),
         ],
@@ -2025,7 +2030,7 @@ describe("R8b — a push carrying one natural key twice", () => {
     lastParsedDetails = parsed.details;
     return guarded(p, () => ingestHealthConnectPayload(p, parsed, HC, 2));
   }
-  const A = steps("2026-05-01T15:00:00Z", "2026-05-02T01:00:00Z", 9000);
+  const A = steps("2026-05-01T04:00:00Z", "2026-05-02T01:00:00Z", 9000);
 
   it("says nothing when one record arrives twice", () => {
     const p = freshProfile("R8B-TWICE");
@@ -2053,7 +2058,7 @@ describe("R8b — a push carrying one natural key twice", () => {
     const p = freshProfile("R8B-STALE-COPY");
     pushSteps(
       p,
-      [A, steps("2026-05-01T15:00:00Z", "2026-05-01T20:00:00Z", 6000)],
+      [A, steps("2026-05-01T04:00:00Z", "2026-05-01T20:00:00Z", 6000)],
       "2026-05-02T02:00:00Z"
     );
     expect(stored(p, "steps").map((r) => r.value)).toEqual([9000]);

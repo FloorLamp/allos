@@ -68,19 +68,21 @@ test("class A: a sub-panel inside a card pads less than the card does (#3466)", 
   const inset = await padding(pillar);
   expect(inset).toEqual([8, 0, 8, 0]);
 
-  // …inside a card that keeps its #1416 vertical floor of 16 and no longer spends
-  // a horizontal one. The card is a DIFFERENT element, which is what makes this a
-  // comparison rather than a tautology: the sweep's finding was that the two
-  // layers were both spending a full gutter, and #3673's is that the outer one
-  // should not have been spending a horizontal gutter at all.
+  // …inside a card that keeps its #1416 vertical floor of 16 and spends the page
+  // gutter horizontally: since #3920 the card's fill reaches the viewport edge and
+  // re-spends that gutter inside itself, so there is still exactly ONE horizontal
+  // inset between the viewport and this text — the card's. The card is a DIFFERENT
+  // element, which is what makes this a comparison rather than a tautology.
   const card = main
     .getByTestId("longevity-fitness")
     .locator("xpath=ancestor-or-self::*[contains(@class,'card')][1]");
   const cardInset = await padding(card);
-  expect(cardInset).toEqual([16, 0, 16, 0]);
-  // The vertical step is still a step; the horizontal one is gone on both.
+  expect(cardInset).toEqual([16, 16, 16, 16]);
+  // The vertical step is still a step, and the sub-panel adds no second gutter to
+  // the card's one: its box starts exactly where the card's content does.
   expect(inset[0]).toBeLessThan(cardInset[0]);
-  expect(inset[3]).toBe(cardInset[3]);
+  const [pillarBox, cardBox] = await settledBoxes([pillar, card]);
+  expect(pillarBox.x).toBe(cardBox.x + cardInset[3]);
 
   // The box did not become a worse target for being tighter.
   const box = await pillar.boundingBox();
@@ -188,9 +190,13 @@ test("class B: /data draws one border around each integration, not two (#3466)",
   );
   expect(cardFill).not.toBe(canvas);
   expect(cardFill).not.toBe("rgba(0, 0, 0, 0)");
-  // …and neither spends a gutter of its own, which is the phone half of it.
+  // …the wrapper spends no gutter of its own, which is the phone half of it, and
+  // the card spends exactly one — its fill running edge to edge with the page
+  // gutter re-spent inside it (#3920), on a route that is not the dashboard.
   expect(await padding(wrapper)).toEqual([0, 0, 0, 0]);
-  expect(await px(card, "padding-left")).toBe(0);
+  expect(await px(card, "padding-left")).toBe(16);
+  const fill = await card.boundingBox();
+  expect([fill?.x, (fill?.x ?? 0) + (fill?.width ?? 0)]).toEqual([0, 390]);
 });
 
 // ── #3673: below `sm`, no card draws a frame ─────────────────────────────────
@@ -316,8 +322,131 @@ async function contentEdges(page: import("@playwright/test").Page) {
       const key = `${left}/${width}`;
       edges.set(key, (edges.get(key) ?? 0) + 1);
     }
-    return [...edges].map(([key, count]) => ({ key, count }));
+    // Sorted, because the assertion is about the SET of values and Map order is
+    // DOM order — which would make the expectation depend on which band happens
+    // to render first.
+    return [...edges]
+      .map(([key, count]) => ({ key, count }))
+      .sort((a, b) => a.key.localeCompare(b.key));
   }, BAND_SELECTOR);
+}
+
+// ── #3920: the fill is full-bleed, the content keeps the gutter ──────────────
+//
+// #3673's criterion measured a text run against the VIEWPORT and never against
+// the fill it sits inside, and the defect it missed satisfies it exactly: with the
+// card's padding gone and its `--surface` fill still inset by the page gutter, the
+// text is at 16px AND flush against its own edge. So the criterion gains its other
+// half rather than being replaced — every run still starts at the page gutter, and
+// where it sits on a band's fill that fill reaches at least a gutter further left.
+//
+// SCOPED TO THE SURFACES #3673 RULED, and the scope is the honest part: a filled
+// `subpanel-inset*` one level inside a card is the same shape one layer in, and it
+// is #3673's residue rather than this rule's subject (the issue's own scope note).
+// The nearest FILLED band is what a run sits on; an unfilled row inside a filled
+// card resolves to the card, which is the surface a reader actually sees under it.
+const FILL_SELECTOR = "main .card, main .card-quiet, main .band";
+
+// ── #3920 scope: FULL-BLEED IS AGAINST THE PAGE, OR IT IS NOT A BLEED ────────
+//
+// The cancel is a negative margin, and a negative margin does not know what it is
+// escaping: it pulls the same 16px whether the box above is the page container or
+// a grid cell that owns its own width. So a filled surface has exactly TWO legal
+// shapes below `sm` and there is no third — it either spans the viewport, or it
+// sits exactly inside the box that placed it. A card 32px wider than the cell it
+// was placed in is the third state, and #3931 is what it looks like from outside:
+// a census tile and its non-card picker peer stopped being the same size.
+//
+// STATED AS A LAW RATHER THAN A LIST, because the container that must opt out is
+// not knowable from a selector — `main .card` inside a two-column census grid and
+// `main .card` inside a page section are the same query. What separates them is
+// where the box lands, which is the thing this reads.
+async function misplacedBleeds(
+  page: import("@playwright/test").Page,
+  viewport: number
+) {
+  return page.evaluate(
+    ([selector, width]: [string, number]) => {
+      const offenders: string[] = [];
+      const round = (value: number) => Math.round(value * 10) / 10;
+      for (const el of document.querySelectorAll<HTMLElement>(selector)) {
+        const box = el.getBoundingClientRect();
+        const parent = el.parentElement;
+        if (!box.width || !box.height || !parent) continue;
+        const style = getComputedStyle(parent);
+        const placed = parent.getBoundingClientRect();
+        const left =
+          placed.left +
+          Number.parseFloat(style.borderLeftWidth) +
+          Number.parseFloat(style.paddingLeft);
+        const right =
+          placed.right -
+          Number.parseFloat(style.borderRightWidth) -
+          Number.parseFloat(style.paddingRight);
+        const bleeds =
+          Math.abs(box.left) < 0.5 && Math.abs(box.right - width) < 0.5;
+        const placedExactly =
+          Math.abs(box.left - left) < 0.5 && Math.abs(box.right - right) < 0.5;
+        if (bleeds || placedExactly) continue;
+        offenders.push(
+          `${el.tagName}${el.dataset.testid ? `[${el.dataset.testid}]` : ""} box ${round(box.left)}→${round(box.right)} is neither the viewport nor its parent's content box ${round(left)}→${round(right)} — class="${el.className}"`
+        );
+      }
+      return offenders;
+    },
+    [FILL_SELECTOR, viewport] as [string, number]
+  );
+}
+
+async function runsFlushWithTheirFill(
+  page: import("@playwright/test").Page,
+  gutter: number
+) {
+  return page.evaluate(
+    ([selector, minimum]: [string, number]) => {
+      const main = document.querySelector("main");
+      if (!main) throw new Error("no <main> to sweep");
+      const painted = (el: HTMLElement) => {
+        const fill = getComputedStyle(el).backgroundColor;
+        return fill !== "rgba(0, 0, 0, 0)" && fill !== "transparent";
+      };
+      const flush: string[] = [];
+      const walker = document.createTreeWalker(main, NodeFilter.SHOW_TEXT);
+      for (let node = walker.nextNode(); node; node = walker.nextNode()) {
+        if (!node.nodeValue?.trim()) continue;
+        let fill: HTMLElement | null = node.parentElement;
+        while (fill && !(fill.matches(selector) && painted(fill)))
+          fill = fill.parentElement;
+        if (!fill) continue;
+        // AN `sr-only` RUN HAS NO LEFT EDGE A READER CAN SEE, and it is the one
+        // false positive this sweep meets: `sr-only` clips its host to a 1×1 box
+        // and pulls it back by `margin: -1px`, so the range inside it reports its
+        // full unclipped width one pixel LEFT of the gutter. Recognised by the
+        // host box, not by the class name — DiagnosisChips, RecapLineAtom and the
+        // Standing deltas each spell their own hidden label.
+        let hidden = false;
+        for (let el = node.parentElement; el; el = el.parentElement) {
+          const host = el.getBoundingClientRect();
+          if (host.width <= 1 || host.height <= 1) hidden = true;
+          if (el === fill) break;
+        }
+        if (hidden) continue;
+        const range = document.createRange();
+        range.selectNodeContents(node);
+        const run = range.getBoundingClientRect();
+        if (run.width < 2 || run.height < 2) continue;
+        const clear = run.left - fill.getBoundingClientRect().left;
+        if (clear + 0.5 >= minimum) continue;
+        flush.push(
+          `${clear}px of fill left of "${node.nodeValue.trim().slice(0, 40)}" on ${
+            fill.tagName
+          }${fill.dataset.testid ? `[${fill.dataset.testid}]` : ""} class="${fill.className}"`
+        );
+      }
+      return flush;
+    },
+    [FILL_SELECTOR, gutter] as [string, number]
+  );
 }
 
 // The three surfaces the ruling names, with the content marker each one must be
@@ -327,6 +456,9 @@ const SWEPT = [
   ["the ledger", "/nutrition/dose-history", "dose-ledger"],
   ["a Records pane", "/records", "records-visits"],
   ["the dashboard", "/", "dashboard-standing"],
+  // The census grid is the one surface on this list whose cards are placed into
+  // TRACKS rather than stacked down the page, and it is where #3931 was found.
+  ["the Body census", "/trends", "body-metric-tiles"],
 ] as const;
 
 for (const [what, route, marker] of SWEPT) {
@@ -352,6 +484,26 @@ for (const [what, route, marker] of SWEPT) {
         ).length
     );
     expect(nested).toBe(0);
+
+    // #3920: a full-bleed fill is only safe because `<main>` carries
+    // `overflow-x-clip` — asserted here rather than assumed, on the page's own
+    // scroller, because a pull that over-cancels shows up as sideways scroll
+    // before it shows up as anything a reader could name.
+    expect(
+      await page.evaluate(() => [
+        document.scrollingElement?.scrollWidth,
+        window.innerWidth,
+      ])
+    ).toEqual([VIEWPORT_PX, VIEWPORT_PX]);
+
+    // #3931: and every fill is bleeding against the PAGE or not bleeding at all.
+    expect(await misplacedBleeds(page, VIEWPORT_PX)).toEqual([]);
+
+    // #3920 on every swept route, not only the dashboard: a container that opts
+    // out of the bleed must not take the card's own gutter with it, and this is
+    // the assertion that says so — the tile inside a `bleed-none` grid still owes
+    // its first character a gutter's width of its own fill.
+    expect(await runsFlushWithTheirFill(page, PAGE_GUTTER_PX)).toEqual([]);
   });
 }
 
@@ -383,11 +535,19 @@ test("#3673 one left edge, and the line it reclaims", async ({ page }) => {
   await expect(page.getByTestId("dashboard-standing")).toBeVisible();
   await expect(page.getByTestId("now-strip")).toBeVisible();
 
-  // ONE value, not "no value greater than". A set with two entries is the 16px
-  // step the prototype's ochre guide made visible, whichever way it steps.
+  // TWO values, both named, neither a range. `16/358` is the gutter a band's rows
+  // and labels spend; `0/390` is the FRAME that delegates its gutter to them and
+  // since #3920 reaches the viewport edge to do it. A third entry is the 16px step
+  // the prototype's ochre guide made visible, whichever way it steps.
   expect(await contentEdges(page)).toEqual([
+    { key: `0/${VIEWPORT_PX}`, count: expect.any(Number) },
     { key: `${PAGE_GUTTER_PX}/${CONTENT_PX}`, count: expect.any(Number) },
   ]);
+
+  // …AND THE HALF #3673 COULD NOT SEE (#3920). The line above is satisfied by the
+  // broken rendering — text at 16 on a fill that also starts at 16 — so this is
+  // the assertion that fails on it: nothing sits on a fill it is flush against.
+  expect(await runsFlushWithTheirFill(page, PAGE_GUTTER_PX)).toEqual([]);
 
   // Zone labels sit on the same rag as the bands they head.
   const labels = await page.evaluate(() =>
@@ -405,21 +565,130 @@ test("#3673 one left edge, and the line it reclaims", async ({ page }) => {
   // the ~92% the issue names, up from the 326/390 = 83.6% a framed card left.
   // Rounded to whole percent so the assertion says the quantity the ruling does.
   expect(Math.round((CONTENT_PX / VIEWPORT_PX) * 100)).toBe(92);
-  const widest = await page.evaluate(
-    (selector) =>
-      Math.max(
-        ...[...document.querySelectorAll<HTMLElement>(selector)].map((el) => {
+  // The widest CONTENT line is the dividend; the widest FILL is the viewport,
+  // which is the #3920 half. Read from the same set in one pass so the two
+  // numbers describe one layout rather than two round-trips.
+  const [widestContent, widestFill] = await page.evaluate(
+    ([selector, gutter]: [string, number]) => {
+      const boxes = [...document.querySelectorAll<HTMLElement>(selector)].map(
+        (el) => {
           const style = getComputedStyle(el);
-          return (
-            el.getBoundingClientRect().width -
-            Number.parseFloat(style.paddingLeft) -
-            Number.parseFloat(style.paddingRight)
-          );
-        })
-      ),
-    BAND_SELECTOR
+          const box = el.getBoundingClientRect();
+          const lead = Number.parseFloat(style.paddingLeft);
+          return {
+            content: box.width - lead - Number.parseFloat(style.paddingRight),
+            fill: box.width,
+            // A frame that DELEGATES its gutter has no content line of its own —
+            // its rows do — so it is a fill here and not a line.
+            spends: Math.round(box.left + lead) === gutter,
+          };
+        }
+      );
+      return [
+        Math.max(...boxes.filter((b) => b.spends).map((b) => b.content)),
+        Math.max(...boxes.map((b) => b.fill)),
+      ];
+    },
+    [BAND_SELECTOR, PAGE_GUTTER_PX] as [string, number]
   );
-  expect(widest).toBe(CONTENT_PX);
+  expect(widestContent).toBe(CONTENT_PX);
+  expect(widestFill).toBe(VIEWPORT_PX);
+});
+
+// The three surfaces #3920 names, measured one at a time so a red says WHICH one
+// moved: the fill spans the viewport and the first character sits on the page
+// gutter. `contentEdges` above reads padding and this reads a rendered Range, so
+// a band whose gutter came back as a margin instead of padding is caught by one
+// and not the other.
+const FULL_BLEED_SURFACES = [
+  ["the Standing cluster", '[data-testid="dashboard-standing"]'],
+  ["its section label strip", "[data-standing-section] h3"],
+  ["an Ahead card", "[data-ahead-bucket]"],
+] as const;
+
+test("#3920 the fill reaches both edges and the first character does not", async ({
+  page,
+}) => {
+  test.slow();
+  await page.goto("/");
+  await expect(page.getByTestId("dashboard-standing")).toBeVisible();
+  await expect(page.getByTestId("dashboard-ahead")).toBeVisible();
+
+  const measured = await page.evaluate(
+    (surfaces) =>
+      surfaces.map(([what, selector]) => {
+        const el = document.querySelector<HTMLElement>(`main ${selector}`);
+        if (!el) return [what, "absent"] as const;
+        const box = el.getBoundingClientRect();
+        const walker = document.createTreeWalker(el, NodeFilter.SHOW_TEXT);
+        let first = Number.NaN;
+        for (let node = walker.nextNode(); node; node = walker.nextNode()) {
+          if (!node.nodeValue?.trim()) continue;
+          const range = document.createRange();
+          range.selectNodeContents(node);
+          const run = range.getBoundingClientRect();
+          if (run.width < 2 || run.height < 2) continue;
+          first = Math.round(run.left);
+          break;
+        }
+        return [
+          what,
+          `fill ${Math.round(box.left)}→${Math.round(box.right)}, first character ${first}`,
+        ] as const;
+      }),
+    FULL_BLEED_SURFACES as unknown as [string, string][]
+  );
+
+  expect(measured).toEqual(
+    FULL_BLEED_SURFACES.map(([what]) => [
+      what,
+      `fill 0→${VIEWPORT_PX}, first character ${PAGE_GUTTER_PX}`,
+    ])
+  );
+});
+
+// ONE SIDE ONLY, AND LARGER THAN THE FLOOR. The shell spends
+// `max(1rem, env(safe-area-inset-left))` and `…-right` INDEPENDENTLY, so a cancel
+// written as a symmetric `-mx-4` passes at the default inset (both sides 1rem) and
+// under-cancels the notched side by whatever the inset exceeds it — a visible step
+// exactly where the fill was meant to reach the edge, on the one device class that
+// cannot be seen in the default emulator. Both halves read the same
+// `--page-gutter-left` token, so overriding it here moves the shell's gutter and
+// the band's cancel together; an implementation that assumed `1rem` moves only one.
+const SIMULATED_INSET_PX = 40;
+
+test("#3920 a one-sided safe-area inset leaves no gap and no overhang", async ({
+  page,
+}) => {
+  test.slow();
+  await page.goto("/");
+  await expect(page.getByTestId("dashboard-standing")).toBeVisible();
+
+  await page.addStyleTag({
+    content: `:root { --page-gutter-left: ${SIMULATED_INSET_PX}px; }`,
+  });
+  // The shell really did take the inset, and only on one side — otherwise the
+  // measurement below is of the default case wearing this test's name.
+  const container = page.getByTestId("app-content-container");
+  expect(await padding(container)).toEqual([
+    expect.any(Number),
+    PAGE_GUTTER_PX,
+    expect.any(Number),
+    SIMULATED_INSET_PX,
+  ]);
+
+  const edges = await page.evaluate(
+    (selector) =>
+      [...document.querySelectorAll<HTMLElement>(selector)]
+        .filter((el) => el.getBoundingClientRect().width)
+        .map((el) => {
+          const box = el.getBoundingClientRect();
+          return `${Math.round(box.left)}→${Math.round(box.right)}`;
+        }),
+    'main [data-testid="dashboard-standing"], main [data-ahead-bucket], main .card'
+  );
+  expect(edges.length).toBeGreaterThan(0);
+  expect([...new Set(edges)]).toEqual([`0→${VIEWPORT_PX}`]);
 });
 
 test("#3673 the ledger's rows reclaim the same line", async ({ page }) => {

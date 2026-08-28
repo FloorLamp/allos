@@ -155,8 +155,13 @@ export default function SavedTilesGrid({
         lift="long-press"
         strategy="rect"
       >
+        {/* `bleed-none` because this grid places its tiles into TRACKS (#3931):
+            below `sm` a filled surface cancels the page gutter to reach the
+            viewport edge, and a tile that did that would be 32px wider than the
+            cell it sits in — which is how it was found, as a census tile that
+            stopped matching its non-card picker peer. */}
         <div
-          className="grid auto-rows-fr grid-cols-2 gap-3 sm:gap-4 lg:grid-cols-3"
+          className="bleed-none grid auto-rows-fr grid-cols-2 gap-3 sm:gap-4 lg:grid-cols-3"
           data-testid="body-metric-tiles"
         >
           {leading.map((item) => (
