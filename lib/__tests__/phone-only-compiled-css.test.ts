@@ -138,6 +138,31 @@ function assertPhoneOnly(css: string, names: readonly string[]) {
   return verified;
 }
 
+// The `@layer` a declaration lands in (null when unlayered) and whether it is
+// important — the two facts that decide every contest in the phone block.
+function declarationRanking(
+  css: string,
+  selector: string,
+  property: string,
+  belowSm: boolean
+) {
+  const found: { layer: string | null; important: boolean }[] = [];
+  postcss.parse(css).walkRules((rule) => {
+    if (normalized(rule.selector) !== selector) return;
+    if (isBelowSm(rule) !== belowSm) return;
+    let layer: string | null = null;
+    for (let node: Node = rule; node.parent; node = node.parent) {
+      const parent = node.parent as Node;
+      if (parent.type === "atrule" && (parent as AtRule).name === "layer")
+        layer = normalized((parent as AtRule).params) || null;
+    }
+    for (const child of rule.nodes ?? [])
+      if (child.type === "decl" && child.prop === property)
+        found.push({ layer, important: child.important === true });
+  });
+  return found;
+}
+
 describe("compiled phone-only CSS proof (#3518/#3727)", () => {
   const source = fs.readFileSync(GLOBALS, "utf8");
   const names = contractNames(source);
@@ -230,6 +255,54 @@ describe("compiled phone-only CSS proof (#3518/#3727)", () => {
       compile(`${source}\n${TAILWIND_IMPORT}`, ["subpanel-inset"])
     ).rejects.toThrow("expected exactly one plain");
   });
+
+  // WHICH DECLARATION WINS, READ OFF A COMPILE RATHER THAN REASONED ABOUT (#3920).
+  // `@utility` bodies land in Tailwind's `utilities` layer. For NORMAL declarations
+  // an unlayered one beats every layer; for IMPORTANT ones the order REVERSES and
+  // unlayered ranks last. The full-bleed rules depend on both halves at once — the
+  // band's pull has to beat a call site's own `rounded-xl border` in the same layer,
+  // the card's has to beat that card's layered `p-4` and `max-w-full`, and neither
+  // can beat `card-delegated`'s `p-0!`, which is exactly why the delegated cells
+  // spend the page gutter themselves. Three regressions in this file have come from
+  // getting that ranking wrong on paper, so it is a table of real compiled output.
+  it.each([
+    // selector, property, below `sm`, layer, important
+    [".band", "margin-inline", true, "utilities", true],
+    [".band", "border-radius", true, "utilities", true],
+    [".band .band", "margin-inline", true, "utilities", true],
+    [".card, .card-quiet", "margin-inline", true, null, false],
+    [".card, .card-quiet", "padding-inline", true, null, false],
+    [".card, .card-quiet", "max-width", true, null, false],
+    [".card", "padding", false, "utilities", false],
+    [".card", "max-width", false, "utilities", false],
+    [".card-delegated", "padding", false, "utilities", true],
+    [
+      ".card-gutter-standard, .card-gutter-compact, .card-gutter-action",
+      "padding-inline",
+      true,
+      null,
+      false,
+    ],
+  ] as const)(
+    "%s { %s } below-sm=%s compiles into layer %s important=%s",
+    async (selector, property, belowSm, layer, important) => {
+      const found = declarationRanking(
+        await compile(source, [
+          "band",
+          "card",
+          "card-quiet",
+          "card-delegated",
+          "card-gutter-standard",
+          "card-gutter-compact",
+          "card-gutter-action",
+        ]),
+        selector,
+        property,
+        belowSm
+      );
+      expect(found).toEqual([{ layer, important }]);
+    }
+  );
 
   it("matches exact class tokens, including nested rules, not lookalikes", () => {
     const selector = exactUtilitySelector("subpanel-inset-xs");
