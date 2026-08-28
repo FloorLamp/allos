@@ -281,7 +281,10 @@ describe("visual title parity", () => {
         }}
       />
     );
-    const summary = screen.getByText("Weight history details");
+    // The eye reads a short word; the series name is written for a reader who never
+    // sees the plot, so it is the accessible name and not the visible text (#3896).
+    const summary = screen.getByLabelText("Weight history details");
+    expect(summary.textContent).toBe("History");
     fireEvent.click(summary);
     const details = within(summary.parentElement!);
     expect(details.getByText("72 kg · 2026-08-25")).toBeTruthy();

@@ -852,6 +852,51 @@ test("Standing draws its aligned sparkline column on the desktop", async ({
     expect(column.plotTop).toBeLessThan(column.factsBottom);
     expect(column.plotBottom).toBeGreaterThan(column.factsTop);
 
+    // THE DISCLOSURE IS IN THE TREND CELL, NOT ON A LINE OF ITS OWN (#3896). It used
+    // to be a second grid item at `col-start-2 col-span-2`, so every plotted family
+    // grew a second grid track holding a 44px control indented to the FACTS column
+    // while an unplotted family grew none — the ragged card in the owner's report.
+    // A row that is exactly as tall as its trend cell has ONE track; the arithmetic
+    // says so without depending on how a browser resolves `grid-template-rows`.
+    const line = await weight.evaluate((row) => {
+      const style = getComputedStyle(row);
+      const trend = row.querySelector(
+        "[data-testid='standing-sparkline']"
+      )!.parentElement!;
+      const summary = row
+        .querySelector("[data-testid='standing-sparkline-details'] summary")!
+        .getBoundingClientRect();
+      return {
+        inner:
+          row.getBoundingClientRect().height -
+          parseFloat(style.paddingTop) -
+          parseFloat(style.paddingBottom) -
+          parseFloat(style.borderTopWidth) -
+          parseFloat(style.borderBottomWidth),
+        cell: trend.getBoundingClientRect().height,
+        summaryHeight: summary.height,
+        summaryLeft: summary.left,
+        summaryRight: summary.right,
+        factsRight: row.querySelector("dd")!.getBoundingClientRect().right,
+        plotRight: row
+          .querySelector("[data-testid='standing-sparkline']")!
+          .getBoundingClientRect().right,
+      };
+    });
+    expect(Math.round(line.inner)).toBe(Math.round(line.cell));
+    expect(line.summaryLeft).toBeGreaterThanOrEqual(line.factsRight);
+    expect(Math.round(line.summaryRight)).toBe(Math.round(line.plotRight));
+    // 1280px is above `sm`, where `button-control` sheds the touch floor. The `!`
+    // markers on the summary used to outrank that reset at every width.
+    expect(line.summaryHeight).toBeLessThan(44);
+    expect(line.summaryHeight).toBeGreaterThanOrEqual(20);
+
+    const summary = weight
+      .getByTestId("standing-sparkline-details")
+      .locator("summary");
+    await expect(summary).toHaveText("History");
+    await expect(summary).toHaveAccessibleName(/ history details$/);
+
     // A family whose domain has no trend read draws nothing — that is the rule, and
     // the column still holds its place for the families that do.
     expect(
