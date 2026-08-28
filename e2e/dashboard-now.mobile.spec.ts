@@ -15,8 +15,10 @@ import {
   E2E_LOGIN_NOWSTRIP,
   E2E_LOGIN_NOWSAFETY,
   E2E_LOGIN_NOWQUIET,
+  E2E_LOGIN_PACEBEHIND,
   E2E_LOGIN_WHATSNEW,
   NOW_QUIET_TARGETS,
+  PACE_BEHIND_TARGETS,
 } from "./fixture-logins";
 
 const PHONE = { viewport: { width: 390, height: 844 }, hasTouch: true };
@@ -249,6 +251,131 @@ test("unmet weekly targets leave a handled day's Now empty", async ({
     await page.context().close();
   }
 });
+
+// ── The behind week: #3245, #3543 and #3548 on one fixture ──────────────────────────
+//
+// PACE_BEHIND sits on day 4 with two untouched 2x/week strength-group targets, so
+// `frequencyPace` reads BEHIND and neither target has a rhythm moment. That is the
+// exact state #3245 was filed about: before the ruling both log offers went straight
+// back into Now from day 4 of every week.
+test("a behind target tells its pace in Standing and takes no Now slot", async ({
+  browser,
+}) => {
+  const page = await openDashboard(browser, { username: E2E_LOGIN_PACEBEHIND });
+  try {
+    // #3245: the log offers are still one tap away, and not in Now.
+    const offers = page.locator(
+      '[data-testid="dashboard-candidate"][data-candidate-id^="target.log:"]'
+    );
+    await expect(offers).toHaveCount(PACE_BEHIND_TARGETS.length);
+    for (let i = 0; i < PACE_BEHIND_TARGETS.length; i++)
+      await expect(offers.nth(i)).toHaveAttribute("data-lane", "everything");
+
+    // #3543: the reading states the pace, as a WORD. Exact match with a count, so a
+    // neighbouring string that happens to contain "Behind" cannot satisfy it.
+    const pace = page.getByTestId("standing-pace");
+    await expect(pace).toHaveCount(PACE_BEHIND_TARGETS.length);
+    for (let i = 0; i < PACE_BEHIND_TARGETS.length; i++)
+      await expect(pace.nth(i)).toHaveText("Behind");
+
+    // #3548: and it is the attention tier that carries it.
+    const tier = page.locator('[data-standing-band="attention"]');
+    await expect(
+      tier.locator(
+        '[data-testid="dashboard-candidate"][data-candidate-id^="target.weekly-progress:"]'
+      )
+    ).toHaveCount(PACE_BEHIND_TARGETS.length);
+    await expect(tier.getByTestId("standing-pace")).toHaveCount(
+      PACE_BEHIND_TARGETS.length
+    );
+
+    // #3548 cold start: this profile has never recorded, so the tier is also the
+    // getting-started list — and "Nothing needs you." may not render over it.
+    await expect(
+      tier.locator('[data-testid="dashboard-candidate"][data-presence="never"]')
+    ).not.toHaveCount(0);
+    await expect(page.getByTestId("now-strip-empty")).toHaveCount(0);
+  } finally {
+    await page.context().close();
+  }
+});
+
+// The negative control, and the reason the day-1 fixture stayed pinned: an on-pace
+// target's reading is the quiet count it always was, in the stable rest.
+test("an on-pace target states no pace and stays out of the tier", async ({
+  browser,
+}) => {
+  const page = await openDashboard(browser, { username: E2E_LOGIN_NOWQUIET });
+  try {
+    const readings = page.locator(
+      '[data-testid="dashboard-candidate"][data-candidate-id^="target.weekly-progress:"]'
+    );
+    await expect(readings).toHaveCount(NOW_QUIET_TARGETS.length);
+    await expect(page.getByTestId("standing-pace")).toHaveCount(0);
+    await expect(
+      page.locator(
+        '[data-standing-band="attention"] [data-candidate-id^="target.weekly-progress:"]'
+      )
+    ).toHaveCount(0);
+    await expect(
+      page.locator(
+        '[data-standing-band="rest"] [data-candidate-id^="target.weekly-progress:"]'
+      )
+    ).toHaveCount(NOW_QUIET_TARGETS.length);
+  } finally {
+    await page.context().close();
+  }
+});
+
+// #3548's third band, on a phone and on a desktop: the tail is PRESENT and closed,
+// its control is a real disclosure at the tap floor, and opening it reveals the rows
+// rather than fetching them.
+for (const [label, options] of [
+  ["a phone", PHONE],
+  ["a desktop", DESKTOP],
+] as const) {
+  test(`Standing's quiet tail folds on ${label}`, async ({ browser }) => {
+    const page = await openDashboard(browser, { username: E2E_LOGIN_DAILY }, options);
+    try {
+      const tail = page.getByTestId("dashboard-standing-tail");
+      await expect(tail).toBeVisible();
+      const summary = page.getByTestId("dashboard-standing-tail-summary");
+      // A native <details>: the expanded state is the element's own, published to
+      // assistive tech by the platform rather than by an attribute we maintain, and
+      // the summary's text is its accessible name.
+      await expect(tail).toHaveJSProperty("open", false);
+      await expect(summary).toHaveText(/^Quiet \(\d+\)$/);
+      const folded = tail.locator('[data-testid="dashboard-candidate"]');
+      const foldedCount = await folded.count();
+      expect(foldedCount).toBeGreaterThan(0);
+      // Hidden, not unmounted: the rows are in the document while the fold is shut.
+      await expect(folded.first()).toBeAttached(); // first-ok: any folded row proves the rows survive the fold
+      await expect(folded.first()).not.toBeVisible(); // first-ok: same row, same claim
+      if (options === PHONE)
+        await expectPhoneTapTargets(page, "the Standing fold control", [
+          summary,
+        ]);
+
+      await summary.click();
+      await expect(tail).toHaveJSProperty("open", true);
+      await expect(folded.first()).toBeVisible(); // first-ok: the fold opened, so its first row is on screen
+      await expect(folded).toHaveCount(foldedCount);
+
+      // THE CONVERSE OF THE FOLD, and the reason it is written next to it: an
+      // assertion that the tail swallowed the quiet rows passes just as happily on
+      // a page where Standing collapsed entirely. These named surfaces are the ones
+      // that must still stand on the OPEN page, above the fold.
+      for (const family of ["steps-today", "protein-today", "weight"])
+        await expect(
+          page.locator(
+            `[data-standing-band="rest"] [data-standing-family="${family}"]`
+          )
+        ).toBeVisible();
+    } finally {
+      await page.context().close();
+    }
+  });
+}
 
 // ── The visual layer on a phone (#3252 / #3238) ─────────────────────────────────────
 
