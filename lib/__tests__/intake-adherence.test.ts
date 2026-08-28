@@ -8,6 +8,7 @@ import {
   doseWindowSince,
   indexTakenByDose,
   intakeAdherenceStrip,
+  missedDoseDays,
   STRIP_DAYS,
   type AdherenceState,
 } from "@/lib/intake-adherence";
@@ -21,6 +22,7 @@ const S: Record<string, AdherenceState> = {
   m: "missed",
   n: "na",
   s: "skipped",
+  e: "excused",
 };
 const strip = (s: string) =>
   [...s].map((c, i) => ({ date: `d${i}`, state: S[c] }));
@@ -692,5 +694,26 @@ describe("dose-lifetime clamp / the no-history boundary (#1442)", () => {
       "missed",
       "missed",
     ]);
+  });
+});
+
+// #3674 — which days the backfill may OFFER. The strip is the input the card already
+// holds; the offer is a read of it, never a second derivation.
+describe("missedDoseDays", () => {
+  it.each([
+    // Newest first, and only the lapses.
+    ["a run of lapses", "mtmt", ["d2", "d0"]],
+    // A decision (#232) and an impossibility (#3263) are not lapses, so neither is
+    // ever offered — the whole point of the state existing as its own name.
+    ["skipped and excused beside a lapse", "smet", ["d1"]],
+    // Today is still in progress, not a lapse: the same trailing-pending day
+    // adherenceSummary drops from its denominator.
+    ["a trailing missed today", "tttm", []],
+    // ...but a lapse the day BEFORE a pending today still is one.
+    ["a lapse behind a pending today", "tmm", ["d1"]],
+    ["nothing due at all", "nnnn", []],
+    ["an empty strip", "", []],
+  ])("%s", (_name, states, expected) => {
+    expect(missedDoseDays(strip(states))).toEqual(expected);
   });
 });

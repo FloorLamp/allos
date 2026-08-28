@@ -38,6 +38,8 @@ import {
   FOOD_USUAL_PROFILE,
   E2E_LOGIN_ROUTINEUSUAL,
   ROUTINE_USUAL_PROFILE,
+  E2E_LOGIN_LOGSHEET_RESERVE,
+  LOGSHEET_RESERVE_PROFILE,
   E2E_LOGIN_FOODPIN,
   FOOD_PIN_PROFILE,
   FOOD_PIN_GROUP,
@@ -495,38 +497,12 @@ export function seedFoodUsual(): void {
   );
 }
 
-// ── The composed morning one-tap: food half + the doses declared in that window ──
-export function seedRoutineUsual(): void {
-  // ── The composed "your usual <window>" bundle (#2458) ────────────────────────
-  // The #2380 ledger shape, widened to every window so the run's frozen clock cannot
-  // decide whether the fixture has a habit: the same two groups every day for three
-  // weeks in Morning, Midday AND Evening, with today deliberately empty so the offer
-  // stands on arrival.
-  //
-  // Beside it, the stack that goes in the same glass: three `should` supplements, each
-  // carrying one dose row per window bucket, so exactly three doses are pending in
-  // whichever window the control renders for — and one `may` supplement doing exactly
-  // the same, which must NEVER appear. A `may` item has no dueness (#1505/#2419), and
-  // that is the predicate the exclusion rides; nothing in the offer reads obligation.
-  //
-  // THIS PROFILE FOLLOWS THE RUN'S PINNED INSTANCE TIMEZONE (#3260). It used to opt
-  // out to UTC, on the since-falsified claim that it needed "fixed 08:00Z/12:00Z/19:00Z
-  // events": every instant below is already built from a profile-LOCAL wall time through
-  // `zonedWallTimeToUtc` (#1417), so the opt-out bought the fixture nothing and cost it
-  // determinism. Under a UTC pin the profile's local minute-of-day IS the run's real UTC
-  // start hour, and the dashboard candidate this fixture exists to render carries
-  // meal-window timing (`mealTimeWindows`, the intake anchors ±60 min): past 21:00 local
-  // no meal window is left today, the candidate resolves `expired`, and an expired
-  // candidate is dropped from EVERY lane — `openDashboardAll` cannot reach it. The spec
-  // was therefore red for the ~3 hours of each day a run started in [21:00, 24:00) UTC
-  // and green the other 21. Following the pinned zone puts the frozen clock at 13:mm
-  // local, which IS `DEFAULT_INTAKE_REMINDER_MINUTES.Midday` (13:00), so the offer sits
-  // at the centre of a meal window at every possible UTC start hour rather than near an
-  // edge. lib/__tests__/pinned-timezone.test.ts pins that invariant.
-  //
-  // Local 08:00 is Morning, 12:00 Midday and 19:00 Evening under the default 11:00/15:00
-  // food boundaries. Idempotent: every fixture-owned row is cleared first.
-  const routineId = adultFixtureProfileId(ROUTINE_USUAL_PROFILE);
+// The #2458 ledger itself, as a function rather than as a block inside one fixture:
+// TWO profiles now need a standing composed offer — the spec that taps it, and the
+// quick-log sheet's reserve persona, which needs the sheet's context region at its
+// tallest (#3736/#3674). Copying fifty lines of ledger to get a second one is how the
+// two would drift; this way the offer both profiles see is the same offer.
+function seedUsualRoutineLedger(routineId: number): void {
   const routineAnchor = today(routineId);
   db.prepare(`DELETE FROM food_daily_totals WHERE profile_id = ?`).run(
     routineId
@@ -597,9 +573,108 @@ export function seedRoutineUsual(): void {
       );
     }
   }
+}
+
+// ── The composed morning one-tap: food half + the doses declared in that window ──
+export function seedRoutineUsual(): void {
+  // ── The composed "your usual <window>" bundle (#2458) ────────────────────────
+  // The #2380 ledger shape, widened to every window so the run's frozen clock cannot
+  // decide whether the fixture has a habit: the same two groups every day for three
+  // weeks in Morning, Midday AND Evening, with today deliberately empty so the offer
+  // stands on arrival.
+  //
+  // Beside it, the stack that goes in the same glass: three `should` supplements, each
+  // carrying one dose row per window bucket, so exactly three doses are pending in
+  // whichever window the control renders for — and one `may` supplement doing exactly
+  // the same, which must NEVER appear. A `may` item has no dueness (#1505/#2419), and
+  // that is the predicate the exclusion rides; nothing in the offer reads obligation.
+  //
+  // THIS PROFILE FOLLOWS THE RUN'S PINNED INSTANCE TIMEZONE (#3260). It used to opt
+  // out to UTC, on the since-falsified claim that it needed "fixed 08:00Z/12:00Z/19:00Z
+  // events": every instant below is already built from a profile-LOCAL wall time through
+  // `zonedWallTimeToUtc` (#1417), so the opt-out bought the fixture nothing and cost it
+  // determinism. Under a UTC pin the profile's local minute-of-day IS the run's real UTC
+  // start hour, and the dashboard candidate this fixture exists to render carries
+  // meal-window timing (`mealTimeWindows`, the intake anchors ±60 min): past 21:00 local
+  // no meal window is left today, the candidate resolves `expired`, and an expired
+  // candidate is dropped from EVERY lane — `openDashboardAll` cannot reach it. The spec
+  // was therefore red for the ~3 hours of each day a run started in [21:00, 24:00) UTC
+  // and green the other 21. Following the pinned zone puts the frozen clock at 13:mm
+  // local, which IS `DEFAULT_INTAKE_REMINDER_MINUTES.Midday` (13:00), so the offer sits
+  // at the centre of a meal window at every possible UTC start hour rather than near an
+  // edge. lib/__tests__/pinned-timezone.test.ts pins that invariant.
+  //
+  // Local 08:00 is Morning, 12:00 Midday and 19:00 Evening under the default 11:00/15:00
+  // food boundaries. Idempotent: every fixture-owned row is cleared first.
+  const routineId = adultFixtureProfileId(ROUTINE_USUAL_PROFILE);
+  seedUsualRoutineLedger(routineId);
   seedMemberLogin(E2E_LOGIN_ROUTINEUSUAL, routineId, "write");
   console.log(
     `e2e: seeded composed morning one-tap fixture — profile ${routineId} (${ROUTINE_USUAL_PROFILE}) (#2458)`
+  );
+}
+
+// ── The quick-log sheet's context region at its tallest ──
+export function seedLogSheetReserve(): void {
+  // THE SUM THE RESERVE IS A BOUND ON (#3736). `LOG_SHEET_CONTEXT_RESERVE_PX` budgets
+  // the heading, UsualRoutineControl, TWO offer rows and the section's spacing — and
+  // until this fixture no persona rendered all of it, so the bound's own arithmetic
+  // was the only thing asserting it. This profile makes the panel draw its worst case
+  // so the e2e can measure the region instead of trusting the sum.
+  //
+  //   • the composed routine offer — the same ledger seedRoutineUsual gets, from the
+  //     same function, so the offer cannot differ between the two profiles;
+  //   • the due doses that ledger's three `should` supplements leave pending in
+  //     whichever window the frozen clock lands in, which is the dose offer row;
+  //   • ONE live workout session, which is the `resume` arm and the second row.
+  //
+  // READ-ONLY in its spec: it is measured, never tapped.
+  const reserveId = adultFixtureProfileId(LOGSHEET_RESERVE_PROFILE);
+  seedUsualRoutineLedger(reserveId);
+
+  // THE OFFER LABEL IS USER DATA, AND THAT IS THE TERM THE RESERVE HAS TO COVER.
+  // `dueDoseChipLabel` prints "Due: <first two item names> +N", so the row's height is
+  // decided by names the profile chose — and the ledger's own "Creatine, Collagen"
+  // fits one line, which would leave the reserve's wrap allowance proved against the
+  // case that never needed it. Renamed HERE rather than in the shared ledger, whose
+  // other profile asserts those names exactly.
+  //
+  // LENGTH IS THE FIXTURE, and it is the OVERFLOWING length on purpose: this label
+  // runs to three lines unclamped (measured 86px, 16px past the reserve), so what the
+  // persona renders is the case `line-clamp-2` exists for and the spec can assert the
+  // clamp engaged rather than assert a row that never needed one.
+  const rename = db.prepare(
+    `UPDATE intake_items SET name = ? WHERE profile_id = ? AND name = ?`
+  );
+  rename.run(
+    "Calcium Carbonate Cholecalciferol 500 Tablet (e2e)",
+    reserveId,
+    "Creatine"
+  );
+  rename.run("Magnesium Glycinate 200 (e2e)", reserveId, "Collagen");
+
+  // A live session is an in-app activity row on TODAY with a start and no end, touched
+  // inside ACTIVE_MAX_QUIET_MIN (lib/workout-presence.ts). Both timestamps come off the
+  // FROZEN clock, not `datetime('now')`: the run's wall time is hours from the app's,
+  // and a draft "touched" then reads as abandoned rather than live.
+  db.prepare(`DELETE FROM activities WHERE profile_id = ?`).run(reserveId);
+  const reserveToday = today(reserveId);
+  const touched = utcSqlString(clockNow());
+  db.prepare(
+    `INSERT INTO activities
+       (profile_id, type, title, date, start_time, created_at, updated_at)
+     VALUES (?, 'strength', 'Reserve session (e2e)', ?, ?, ?, ?)`
+  ).run(
+    reserveId,
+    reserveToday,
+    zonedDateParts(getTimezone(reserveId), clockNow()).hhmm,
+    touched,
+    touched
+  );
+
+  seedMemberLogin(E2E_LOGIN_LOGSHEET_RESERVE, reserveId, "write");
+  console.log(
+    `e2e: seeded quick-log sheet reserve fixture — profile ${reserveId} (${LOGSHEET_RESERVE_PROFILE}): routine offer + due doses + a live session (#3736)`
   );
 }
 

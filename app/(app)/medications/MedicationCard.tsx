@@ -851,6 +851,7 @@ export default function MedicationCard({
             }))}
             asNeeded={isOnDemand(s)}
             history={doseHistory}
+            strip={strip}
             minDate={historyMinDate}
             maxDate={historyMaxDate}
             defaultTime={defaultHistoryTime}

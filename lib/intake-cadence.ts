@@ -23,6 +23,7 @@ import {
   isRealIsoDate,
   weekdayOfDateStr,
 } from "./date";
+import { dateFromCreatedAt } from "./timeline-format";
 
 // The item-level calendar rule.
 //   daily     every day the condition allows (the default; pre-#1602 behaviour)
@@ -212,10 +213,20 @@ export function doseScheduleAsOf(
 // new version, so the FIRST schedule edit after this ships gives the dose a real history
 // and this function goes quiet for it forever after. Returns null for every dose whose
 // history is recorded — which is every dose created or edited from now on.
+//
+// ONE GRAIN (#3902). `updated_at` is an instant (lib/time-columns.ts) and the day it
+// returns is maxed against `doseWindowSince` and compared to `windowDates[0]`, both of
+// which are profile-LOCAL by design — so a UTC truncation here moves one side of two
+// comparisons and nothing else, which is the shape that creates the defect. The
+// `effective_from` comparison below is against a stored day in the same local calendar,
+// so it wants the local day too.
 export function unrecordedScheduleChangeOn(
-  dose: DoseCadence & { updated_at?: string | null }
+  dose: DoseCadence & { updated_at?: string | null },
+  tz: string
 ): string | null {
-  const changedOn = dose.updated_at ? dose.updated_at.slice(0, 10) : null;
+  const changedOn = dose.updated_at
+    ? (dateFromCreatedAt(dose.updated_at, tz) ?? dose.updated_at.slice(0, 10))
+    : null;
   if (!changedOn) return null;
   const versions = dose.versions;
   if (!versions || versions.length === 0) return changedOn;

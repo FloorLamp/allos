@@ -6,6 +6,7 @@ import {
   formatClock,
   formatClockMinutes,
   formatClockValue,
+  parseClockHhmm,
   formatDateShape,
   formatDateWithYear,
   formatTimestamp,
@@ -201,6 +202,27 @@ describe("formatClockValue", () => {
   it("preserves unknown text and honors the fallback", () => {
     expect(formatClockValue("unknown", "12h")).toBe("unknown");
     expect(formatClockValue(null, "24h", "—")).toBe("—");
+  });
+});
+
+// #3674 — the answer a surface needs before it may WRITE stored clock text back: a
+// dose slot is as often a bucket word as a time, and only the times are postable.
+describe("parseClockHhmm", () => {
+  it.each([
+    ["canonical 24h", "08:00", "08:00"],
+    ["a one-digit hour", "8:05", "08:05"],
+    ["seconds trimmed", "21:30:00", "21:30"],
+    ["legacy 12-hour display text", "4:02pm", "16:02"],
+    ["midnight in 12-hour text", "12:15 a.m.", "00:15"],
+    // The bucket words the dose editor actually offers, and free text beside them:
+    // not clocks, so nothing may be written from them.
+    ["a bucket word", "Morning", null],
+    ["free text", "with dinner", null],
+    ["an impossible clock", "25:00", null],
+    ["empty", "", null],
+    ["null", null, null],
+  ])("%s", (_name, stored, expected) => {
+    expect(parseClockHhmm(stored)).toBe(expected);
   });
 });
 
