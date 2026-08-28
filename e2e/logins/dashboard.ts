@@ -230,8 +230,13 @@ export const NOW_SAFETY_PROFILE = "Now Safety (e2e)";
 // two targets alone filled Now (cap 2) every day of every week and the empty state
 // was unreachable. Their week is pinned to START today (a week_start matching the
 // run's frozen weekday) so a zero count is on pace rather than behind on whichever
-// weekday CI happens to run — behind is the `owed` path, which still cards, and is
-// covered separately in the pure ranker tests.
+// weekday CI happens to run.
+//
+// THE PIN IS NOW ABOUT THE PACE WORD, NOT ABOUT NOW (#3245). `owed` composes with
+// the rhythm moment, and a strength GROUP has no rhythm, so these two would leave
+// Now empty on day 4 as well. What the pin still buys is the ON-PACE side of the
+// reading: this profile is the negative control for #3543's behind word, and
+// PACE_BEHIND_PROFILE below is the positive one.
 //
 // Dedicated and read-only in its spec: the assertion is an ABSENCE, so any
 // neighbouring spec logging a dose, a workout or a reading here would erase it.
@@ -241,6 +246,26 @@ export const NOW_QUIET_MED = "Quiet Morning Med (e2e)";
 // The two open weekly targets — strength groups, the shape of the owner's own
 // "Log Lower body — 0 of 2" cards. Neither has a per-target rhythm to ask.
 export const NOW_QUIET_TARGETS = ["Lower", "Upper"] as const;
+
+// ── The behind week (#3245 / #3543 / #3548) ──────────────────────────────────
+// Now Quiet's other side of the day-4 boundary, and a SEPARATE profile because
+// #3245's own note forbids editing that day-1 fixture: a zero count on a 2x/week
+// target is on pace for three days and BEHIND from day 4, and the two issues need
+// opposite sides of it on the same run.
+//
+// Its week_start is pinned three days before the run's frozen weekday, so today is
+// always day 4 of 7 — `floor(2 x 4 / 7) = 1` owed against a count of zero, on every
+// CI day. Both targets are strength GROUPS, which have no per-target rhythm, so no
+// moment can open: after #3245 that is the whole point — behind alone must no longer
+// card, and the reading must say so instead.
+//
+// Dedicated and read-only in its spec: one logged session here would move a count
+// and take the fixture off the boundary it exists to sit on.
+export const E2E_LOGIN_PACEBEHIND = "e2e_pacebehind";
+export const PACE_BEHIND_PROFILE = "Pace Behind (e2e)";
+export const PACE_BEHIND_TARGETS = ["Lower", "Upper"] as const;
+/** Today's position in the pinned calendar week. Day 4 is the first behind day. */
+export const PACE_BEHIND_WEEK_DAY = 4;
 
 // ── Just-recovered dashboard band folds (issues #1548 / #1549) ────────────────
 // Three spec-owned caregiver fixtures for e2e/dashboard-household-folds.spec.ts, one

@@ -45,6 +45,10 @@ import {
   NOW_QUIET_PROFILE,
   NOW_QUIET_MED,
   NOW_QUIET_TARGETS,
+  E2E_LOGIN_PACEBEHIND,
+  PACE_BEHIND_PROFILE,
+  PACE_BEHIND_TARGETS,
+  PACE_BEHIND_WEEK_DAY,
   E2E_LOGIN_FOLDREOPEN,
   FOLD_REOPEN_PARENT_PROFILE,
   FOLD_REOPEN_KID_A_PROFILE,
@@ -277,9 +281,11 @@ export function seedNowStrip(): void {
   //
   // Determinism is the week window. A zero count is "behind" from the moment the
   // week is far enough along to owe one (floor(2 × elapsed / 7) ≥ 1, i.e. day 4 of
-  // 7), and behind is the `owed` path, which SHOULD card. So the profile's calendar
-  // week is pinned to start on the run's own frozen weekday: today is day 1, the
-  // targets owe nothing yet, and the fixture reads the same on every CI day.
+  // 7). So the profile's calendar week is pinned to start on the run's own frozen
+  // weekday: today is day 1, the targets owe nothing yet, and the fixture reads the
+  // same on every CI day. Since #3245 the pin no longer changes whether these card
+  // — a group target has no rhythm moment, so `owed` cannot promote it on any day —
+  // and what it holds fixed is the ON-PACE reading (#3543's negative control).
   // Idempotent hard-clear; synthetic, no PHI.
   const nowQuietId = adultFixtureProfileId(NOW_QUIET_PROFILE);
   {
@@ -336,8 +342,42 @@ export function seedNowStrip(): void {
   }
   seedMemberLogin(E2E_LOGIN_NOWQUIET, nowQuietId);
 
+  // The other side of the day-4 boundary (#3245 / #3543 / #3548). Same shape as
+  // Now Quiet — two untouched 2x/week strength-group targets, no rhythm to ask —
+  // with the week pinned so today is day 4 and both targets are BEHIND.
+  //
+  // Before #3245 that state put both log offers straight back into Now on a
+  // four-day-in-seven duty cycle. After it, `owed` composes with the moment, the
+  // groups have no moment, and the standing reading is what tells the person.
+  const paceBehindId = adultFixtureProfileId(PACE_BEHIND_PROFILE);
+  {
+    const behindDay = today(paceBehindId);
+    setWeekMode(paceBehindId, "calendar");
+    // Three days back from today's weekday, so `elapsedDays` is 4 on every run.
+    const behindWeekStart =
+      (new Date(behindDay + "T00:00:00Z").getUTCDay() -
+        (PACE_BEHIND_WEEK_DAY - 1) +
+        7) %
+      7;
+    db.prepare(
+      `INSERT INTO profile_settings (profile_id, key, value) VALUES (?, 'week_start', ?)
+         ON CONFLICT(profile_id, key) DO UPDATE SET value = excluded.value`
+    ).run(paceBehindId, String(behindWeekStart));
+    db.prepare(`DELETE FROM frequency_targets WHERE profile_id = ?`).run(
+      paceBehindId
+    );
+    for (const scopeValue of PACE_BEHIND_TARGETS) {
+      db.prepare(
+        `INSERT INTO frequency_targets
+           (profile_id, scope_kind, scope_value, per_week, created_at)
+         VALUES (?, 'group', ?, 2, ?)`
+      ).run(paceBehindId, scopeValue, `${shiftDateStr(behindDay, -60)} 00:00:00`);
+    }
+  }
+  seedMemberLogin(E2E_LOGIN_PACEBEHIND, paceBehindId);
+
   console.log(
-    `e2e: seeded #1413 Now-strip fixtures — profile ${nowStripId} (${NOW_STRIP_PROFILE}, finished session + due appointment), profile ${nowSafetyId} (${NOW_SAFETY_PROFILE}, uncapped safety fact) and profile ${nowQuietId} (${NOW_QUIET_PROFILE}, handled day + unmet on-pace targets, #3224)`
+    `e2e: seeded #1413 Now-strip fixtures — profile ${nowStripId} (${NOW_STRIP_PROFILE}, finished session + due appointment), profile ${nowSafetyId} (${NOW_SAFETY_PROFILE}, uncapped safety fact) and profile ${nowQuietId} (${NOW_QUIET_PROFILE}, handled day + unmet on-pace targets, #3224) and profile ${paceBehindId} (${PACE_BEHIND_PROFILE}, day 4 + behind targets, #3245)`
   );
 
   // Truly empty, isolated profiles for the goal-based onboarding paths (#719).

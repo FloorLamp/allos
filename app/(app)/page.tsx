@@ -1592,7 +1592,7 @@ async function renderDashboard(
             this week ·{" "}
             <span
               data-testid="standing-pace"
-              className={`rounded px-1.5 py-0.5 text-[0.6875rem] font-semibold ${PACE_BADGE_CLASS.behind}`}
+              className={`rounded px-1.5 py-0.5 text-xs font-semibold ${PACE_BADGE_CLASS.behind}`}
             >
               {frequencyPaceLabel("behind")}
             </span>
