@@ -10,7 +10,7 @@ import {
 } from "./helpers";
 import { expandTrendsContext } from "./trends-chrome";
 import { frozenNow } from "./worker-env";
-import { TAP_FLOOR_PX } from "@/lib/tap-floor-tokens";
+import { CONTROL_BOX_PX, TAP_FLOOR_PX } from "@/lib/tap-floor-tokens";
 import {
   E2E_MEMBER_PASSWORD,
   E2E_LOGIN_TRENDS_BODY,
@@ -378,7 +378,10 @@ test.describe("Trends → Overview → body census responsive views (#1067)", ()
     await expect(trigger).toBeFocused();
 
     const [compactTriggerBox] = await settledBoxes([trigger]);
-    expect(compactTriggerBox.height).toBeLessThan(44);
+    // The trigger is a typed `Button`, so it is the control box at every width
+    // (#3938). `< 44` was written for the retired 26px desktop height and now
+    // passes on anything shorter than the floor.
+    expect(compactTriggerBox.height).toBe(CONTROL_BOX_PX);
 
     // Keep the established pointer path and real anchor-scroll behavior too.
     await hydratedClick(page, trigger);

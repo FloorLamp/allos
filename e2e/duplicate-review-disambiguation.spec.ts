@@ -145,6 +145,15 @@ test.describe("duplicate resolution actions at phone width (#3747)", () => {
       );
       const cardBox = await pair.boundingBox();
       expect(cardBox).not.toBeNull();
+      // The relationship as well as the floor: a per-control minimum is satisfied
+      // by a row whose actions disagree, and one row of actions at two heights is
+      // the defect #3938 is about.
+      expect(
+        [...new Set(boxes.map((box) => Math.round(box.height)))],
+        `the pair's actions render more than one height: ${boxes
+          .map((box) => box.height)
+          .join(", ")}`
+      ).toHaveLength(1);
       for (const box of boxes) {
         // The one control box (#3938) — the 44 is effective now, supplied by the
         // reach a coarse pointer gets around it, which this run does not have.

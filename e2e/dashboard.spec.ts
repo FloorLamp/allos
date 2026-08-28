@@ -1,4 +1,5 @@
 import { test, expect } from "./fixtures";
+import { CONTROL_BOX_PX } from "@/lib/tap-floor-tokens";
 import Database from "better-sqlite3";
 import { loginAs } from "./nav";
 import {
@@ -879,8 +880,10 @@ test("Standing draws its aligned sparkline column on the desktop", async ({
     const summaryHeight = await summary.evaluate(
       (node) => node.getBoundingClientRect().height
     );
-    expect(summaryHeight).toBeLessThan(44);
-    expect(summaryHeight).toBeGreaterThanOrEqual(20);
+    // #3938 retired `button-control`'s compact desktop height into the one control
+    // box, so this is an EQUALITY. `< 44` passed on 34, on 26 and on 12 — an
+    // inequality written for a value that no longer exists stops testing anything.
+    expect(summaryHeight).toBe(CONTROL_BOX_PX);
 
     // A family whose domain has no trend read draws nothing — that is the rule, and
     // the column still holds its place for the families that do.

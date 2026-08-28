@@ -34,7 +34,12 @@ export default function IntegrationActionButton({ binding }: Props) {
         stroke={1.75}
       />
       {binding.copy[pending ? 1 : 0]}
-      {binding.count ? <span className="badge">{binding.count}</span> : null}
+      {/* `py-0`: a badge inside a control must not out-size the control's own
+          line box, or the control grows past the box that every other control
+          renders (#3938). Its paint is unchanged. */}
+      {binding.count ? (
+        <span className="badge py-0">{binding.count}</span>
+      ) : null}
     </Button>
   );
 }

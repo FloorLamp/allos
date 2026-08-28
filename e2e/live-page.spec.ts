@@ -1,4 +1,5 @@
 import { test, expect } from "./fixtures";
+import { CONTROL_BOX_PX } from "@/lib/tap-floor-tokens";
 import { type Page } from "@playwright/test";
 import { comboboxRows, deleteActivityFromForm, settledBoxes } from "./helpers";
 
@@ -39,10 +40,12 @@ test("live start → set → finish: the record settles at the session's own URL
     identity,
     minimize,
   ]);
-  // This action is structurally desktop-only: the phone workspace uses its
-  // shared drag handle. Button returns to compact desktop density, stays inside
-  // the header that owns its placement, and cannot cover the editable identity.
-  expect(minimizeBox.height).toBeLessThan(44);
+  // This action is structurally desktop-only: the phone workspace uses its shared
+  // drag handle. Button wears the one control box at every width (#3938 retired
+  // the compact desktop density it used to return to), stays inside the header
+  // that owns its placement, and cannot cover the editable identity. An equality,
+  // because `< 44` is satisfied by 34, by 26 and by 12 alike.
+  expect(minimizeBox.height).toBe(CONTROL_BOX_PX);
   expect(minimizeBox.x).toBeGreaterThanOrEqual(headerBox.x);
   expect(minimizeBox.x + minimizeBox.width).toBeLessThanOrEqual(
     headerBox.x + headerBox.width

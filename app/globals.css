@@ -846,7 +846,7 @@
      It renders THE CONTROL BOX at every viewport (#3938): the 44px phone height
      and the compact 26px desktop height it used to carry both retire, and a
      coarse pointer gets its reach back around the box instead. */
-  @apply inline-flex shrink-0 items-center justify-center gap-1 whitespace-nowrap rounded-lg border-black/10 px-2.5 text-xs font-medium text-slate-600 transition hover:bg-slate-100 focus:outline-hidden focus-visible:ring-2 focus-visible:ring-brand-500 disabled:cursor-not-allowed disabled:bg-slate-100 disabled:text-slate-500 dark:border-white/10 dark:text-slate-300 dark:hover:bg-ink-750 dark:disabled:bg-ink-750 dark:disabled:text-slate-400;
+  @apply inline-flex shrink-0 items-center justify-center gap-1 whitespace-nowrap rounded-lg border-black/10 px-2.5 text-sm font-medium text-slate-600 transition hover:bg-slate-100 focus:outline-hidden focus-visible:ring-2 focus-visible:ring-brand-500 disabled:cursor-not-allowed disabled:bg-slate-100 disabled:text-slate-500 dark:border-white/10 dark:text-slate-300 dark:hover:bg-ink-750 dark:disabled:bg-ink-750 dark:disabled:text-slate-400;
 }
 
 @utility duplicate-resolution-primary {

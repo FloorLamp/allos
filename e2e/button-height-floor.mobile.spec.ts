@@ -190,6 +190,129 @@ test.describe("the control box: one height, every kind, every viewport (#3938)",
     });
   }
 
+  // THE REACH HAS TO HAVE SOMEWHERE TO SIT — the other half of the disjointness
+  // test below, and the half neither it nor the one-height table above can see.
+  //
+  // Those two ask about a control against its NEIGHBOUR and against a constant.
+  // Neither can see a hit region hanging off the outside of the box that CONTAINS
+  // it, which is how three dialog bodies went red in CI on a tree where 78 local
+  // assertions were green (#3938; the shape is #3392/#3395's). Before this issue
+  // only `.tap-target` controls carried the extension, so only they could overflow
+  // a container; every `.btn`-family and `button-control` element is in that
+  // population now, and a `w-full` or `flex-1` button is flush by construction —
+  // no gap between neighbours can help it.
+  //
+  // WHY `overflow-x: hidden` AND NOT EVERY SCROLLPORT. A region that scrolls
+  // sideways ON PURPOSE (the ledger's chip row, any `overflow-x-auto` strip) has
+  // extent by construction and a reach inside it is reachable by scrolling — that
+  // is not the defect. A `hidden` region has declared it will NOT scroll sideways:
+  // extent there is invisible, unreachable, and per #3382 still lets a script park
+  // the box. So `hidden` is exactly the population, and it is the one the dialog
+  // bodies are in. Written the other way round this guard flagged every chip
+  // scrolled past its own strip's edge, which is not a defect at all.
+  //
+  // The fix when it fires is the CONTAINER — give the extension room — never the
+  // control; the extension is the accessibility feature.
+  //
+  // THE ROUTE LIST IS THE ENUMERATION, and it is not the whole app: this reads the
+  // pages below plus one open sheet. `e2e/mobile-clipping.mobile.spec.ts` owns the
+  // dialog-body half over its own list of sheets. Neither is a census of every
+  // container in the tree, and no assertion here implies one.
+  const REACH_CONTAINMENT_ROUTES = [
+    { route: "/", ready: "dashboard-canvas" },
+    { route: "/medications/dose-history", ready: "dose-ledger-chip-row" },
+    { route: "/nutrition?tab=supplements", ready: "supplement-add-toggle" },
+    // An OPEN SHEET, deliberately: a page absorbs the reach in `<main>`'s clip and
+    // a sheet body does not, so a page-only list would be green on the very tree
+    // that shipped the CI red.
+    { route: "/?quick=log-period", ready: "quick-cycle-panel" },
+  ] as const;
+
+  for (const { route, ready } of REACH_CONTAINMENT_ROUTES) {
+    test(`no sideways-clipped region on ${route} holds an escaping reach`, async ({
+      page,
+    }) => {
+      await page.goto(route);
+      await expect(page.getByTestId(ready)).toBeVisible();
+
+      const regions = await page.evaluate((reach) => {
+        const escaping: { what: string; over: number; culprit: string }[] = [];
+        let seen = 0;
+        for (const node of Array.from(document.querySelectorAll("*"))) {
+          if (!(node instanceof HTMLElement)) continue;
+          if (getComputedStyle(node).overflowX !== "hidden") continue;
+          const box = node.getBoundingClientRect();
+          // A region narrower or shorter than the extension itself cannot be a
+          // container holding a control with room for its reach. This is what
+          // skips `sr-only`, which is a 1px box clipping a whole sentence on
+          // purpose — twelve of them topped the first run of this list, and a
+          // guard that cries wolf on visually-hidden text gets deleted within a
+          // week, taking the real assertion with it. Derived from the reach, not
+          // a magic number.
+          if (box.width < 2 * reach || box.height < 2 * reach) continue;
+          seen += 1;
+          const over = node.scrollWidth - node.clientWidth;
+          if (over <= 0) continue;
+          const edge = box.right;
+          // `overflowStory`'s own formula and its own filter, so this and the
+          // dialog-body guard cannot disagree about what a culprit is: only
+          // overflow that ESCAPES can make a region scrollable, which is why a
+          // `truncate` label — the deliberate ellipsis, clipping every pixel of
+          // its own overrun — is not a suspect.
+          const culprit = Array.from(node.querySelectorAll("*"))
+            .filter(
+              (el): el is HTMLElement =>
+                el instanceof HTMLElement &&
+                getComputedStyle(el).overflowX === "visible"
+            )
+            .map((el) => ({
+              el,
+              reach:
+                el.getBoundingClientRect().right +
+                (el.scrollWidth - el.clientWidth) -
+                edge,
+            }))
+            .filter((c) => c.reach > -0.5)
+            .sort((a, b) => b.reach - a.reach)[0];
+          // NO ESCAPING ELEMENT, NO FINDING. A region whose extent is its own
+          // truncated TEXT is not this defect, and reporting it is how a guard
+          // gets deleted: the first run of this list was twelve `sr-only` boxes
+          // and every `truncate` label on the dashboard. The defect is an
+          // ELEMENT — a control and the hit region around it — arriving at the
+          // edge of a region that has declared it will not scroll.
+          if (!culprit) continue;
+          escaping.push({
+            what:
+              node.getAttribute("data-testid") ??
+              `${node.tagName.toLowerCase()}.${node.className}`.slice(0, 60),
+            over,
+            culprit: `<${culprit.el.tagName.toLowerCase()} data-testid="${
+              culprit.el.getAttribute("data-testid") ?? ""
+            }" class="${culprit.el.className}"> reaches ${Math.round(
+              culprit.reach
+            )}px past`,
+          });
+        }
+        return { escaping, seen };
+      }, TAP_TARGET_INSET_PX);
+
+      // A sweep over nothing is green and says nothing: prove the route HAS
+      // sideways-clipped regions before believing none of them overflows.
+      expect(
+        regions.seen,
+        `${route} must render at least one sideways-clipped region`
+      ).toBeGreaterThan(0);
+      expect(
+        regions.escaping,
+        `on ${route} a region that has declared it will not scroll sideways is ` +
+          "holding content past its edge — usually a flush control's hit-area " +
+          "extension with nowhere to sit. THE FIX IS THE CONTAINER: give the " +
+          "extension room (`pointer-coarse:pr-1.5` is what " +
+          "components/BottomSheet.tsx uses), never the control."
+      ).toEqual([]);
+    });
+  }
+
   // THE OWNER'S EXAMPLE, MEASURED AS A ROW. The dose ledger's quick-range strip
   // mixes chips with a `btn-ghost` disclosure and a native select; at 390 it used
   // to render 34 beside 44 beside 44. One height is half the claim — the other half

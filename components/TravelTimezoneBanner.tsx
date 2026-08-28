@@ -136,7 +136,11 @@ export default function TravelTimezoneBanner({
           type="button"
           data-testid="travel-timezone-dismiss"
           onClick={() => void dismiss()}
-          className="inline-flex min-h-11 items-center font-medium text-brand-700 hover:underline dark:text-brand-300"
+          // The control box, not a self-rendered 44 (#3938). It is a hand-rolled
+          // text action, so `.btn`'s box cannot reach it — and at 44 beside a
+          // 34px `.btn` it made this two-action row two heights again, which is
+          // the whole defect. `tap-target` keeps its effective floor.
+          className="tap-target inline-flex min-h-(--control-box) items-center font-medium text-brand-700 hover:underline dark:text-brand-300"
         >
           Not now
         </button>

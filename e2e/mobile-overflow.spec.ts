@@ -71,6 +71,12 @@ test.describe("mobile clipped-content audit (#1063)", () => {
       Array.from({ length: count }, (_, index) => controls.nth(index))
     );
     const [owner] = await settledBoxes([status]);
+    expect(
+      [...new Set(boxes.map((box) => Math.round(box.height)))],
+      `the integration status row renders more than one control height: ${boxes
+        .map((box) => box.height)
+        .join(", ")}`
+    ).toHaveLength(1);
     for (const box of boxes) {
       expect(box.height).toBeGreaterThanOrEqual(CONTROL_BOX_PX);
       expect(box.x).toBeGreaterThanOrEqual(owner.x);
