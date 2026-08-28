@@ -627,15 +627,19 @@ const LOUD_SURFACES = [
     what: "the ASHA threshold-shift warning",
     route: "/records/specialty/hearing",
     loud: '[data-testid="audiogram-shift"]',
-    // Any recorded hearing test on the same pane. Matched by prefix rather than by
-    // date: the seed's audiogram dates are relative to the run's frozen instant.
-    quiet: '[data-testid^="audiogram-"]:not([data-testid="audiogram-shift"])',
+    // Any recorded hearing test on the same pane. The `.card` half is load-bearing
+    // and not decoration: `audiogram-` also prefixes the entry FORM and the
+    // per-average sub-rows, and the form paints nothing, so a bare prefix could
+    // resolve to a transparent box and compare the tint to nothing at all.
+    quiet: 'main .card[data-testid^="audiogram-"]',
     ordinary: "a recorded hearing test",
   },
   {
     what: "the active-illness cockpit",
     route: "/",
-    loud: "[data-testid^='illness-cockpit-']",
+    // The cockpit CONTAINER — `illness-cockpit-` also prefixes its header row, its
+    // chevron and its status spans, none of which is the surface under test.
+    loud: "[data-testid^='illness-cockpit-'][data-episode-key]",
     // The Standing band — the ordinary neutral surface on this scroll. Every
     // `main .card` on the dashboard IS an illness cockpit, so a `.card` neighbour
     // would be comparing the surface to itself.
@@ -656,6 +660,17 @@ for (const surface of LOUD_SURFACES) {
     const quiet = page.locator(surface.quiet).first(); // first-ok: any ordinary neutral surface on this page is the comparison
     await expect(loud).toBeVisible();
     await expect(quiet).toBeVisible();
+
+    // TWO ELEMENTS, NOT ONE READ TWICE. Both selectors are prefix matches over a
+    // family, and a surface that lost its distinguishing shape can fall back INTO
+    // the ordinary set — which would make every comparison below true by
+    // construction, on exactly the tree this test exists to reject.
+    expect(
+      await page.evaluate(
+        ([a, b]) => document.querySelector(a) !== document.querySelector(b),
+        [surface.loud, surface.quiet] as [string, string]
+      )
+    ).toBe(true);
 
     const read = (locator: Locator) =>
       locator.evaluate((node) => {
