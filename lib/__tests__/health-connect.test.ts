@@ -1061,3 +1061,76 @@ describe("parseHealthConnectPayload — plausibility bounds (#132)", () => {
     expect(out.skipped).toBe(0);
   });
 });
+
+// ─────────────────────────────────────────────────────────────────────────────
+// #3901 — A DAY BUCKET IS FILED UNDER THE DAY ITS OWN ANCHOR NAMES.
+//
+// The exporter cuts a `daily` record at the DEVICE's local midnight, and the profile's
+// zone lags that by hours around every travel switch. Filing the bucket under the
+// profile's day let a re-anchored bucket land on its neighbour's date, supersede the
+// neighbour's completed row and then walk off the emptied day on the next re-send —
+// two prod days of steps, distance and kcal. Every case below passes a profile zone
+// that DISAGREES with the anchor, because agreement is what used to hide the bug.
+// ─────────────────────────────────────────────────────────────────────────────
+describe("day-bucket date derivation (#3901)", () => {
+  const bucket = (start: string, end: string, count = 4000) => ({
+    steps: [{ start_time: start, end_time: end, count }],
+  });
+
+  it.each([
+    // The prod sequence: each bucket names its own day whatever the profile holds.
+    ["HST anchor, profile Honolulu", "2026-08-25T10:00:00Z", "Pacific/Honolulu", "2026-08-25"],
+    ["LA anchor, profile still Honolulu", "2026-08-26T07:00:00Z", "Pacific/Honolulu", "2026-08-26"],
+    ["NY anchor, profile still LA", "2026-08-27T04:00:00Z", "America/Los_Angeles", "2026-08-27"],
+    // The ambiguous 10:00Z-12:00Z band, pinned from both sides by the profile zone.
+    ["10:00Z, +14 profile keeps +14", "2026-08-25T10:00:00Z", "Pacific/Kiritimati", "2026-08-26"],
+    // A quarter-hour zone: 18:30Z is the Kolkata midnight of the NEXT day.
+    ["+05:30 anchor", "2026-08-25T18:30:00Z", "Asia/Kolkata", "2026-08-26"],
+  ])("%s", (_name, start, tz, expected) => {
+    const out = parse(bucket(start, "2026-08-27T23:00:00Z"), tz);
+    expect(out.samples.map((s) => s.date)).toEqual([expected]);
+  });
+
+  // THE COMPARISON IS THE POINT, so every row below shares ONE instant chosen to make
+  // the two derivations DISAGREE: under Asia/Tokyo 2026-08-25T10:00Z is 19:00 local, so
+  // the profile attribution is 08-25 — while as an ANCHOR, with a +9 profile breaking
+  // the 10:00Z-12:00Z ambiguity eastward, it names 08-26. A test where the two agree
+  // cannot tell which one answered.
+  const SPLIT = "2026-08-25T10:00:00Z";
+
+  it("files a day-bucket-width steps row under the ANCHOR day", () => {
+    const out = parse(bucket(SPLIT, "2026-08-25T21:00:00Z"), "Asia/Tokyo");
+    expect(out.samples.map((s) => s.date)).toEqual(["2026-08-26"]);
+  });
+
+  it("keeps the PROFILE attribution for everything that is not a day bucket", () => {
+    // A `15m` exporter setting sends the SAME metrics as minute buckets whose start is
+    // no midnight at all; hydration, nutrition and sleep sit on their records' real
+    // windows and nest legitimately. None of them states an anchor, so all four keep the
+    // day the profile's zone gives them — 08-25, against the day-bucket row's 08-26.
+    const out = parse(
+      {
+        steps: [{ start_time: SPLIT, end_time: "2026-08-25T10:15:00Z", count: 300 }],
+        hydration: [
+          { start_time: SPLIT, end_time: "2026-08-25T21:00:00Z", liters: 1.5 },
+        ],
+        nutrition: [
+          { start_time: SPLIT, end_time: "2026-08-25T21:00:00Z", calories: 700 },
+        ],
+        sleep: [{ start_time: SPLIT, end_time: "2026-08-25T18:00:00Z" }],
+        // A POINT reading, which has no window to read an anchor off at all.
+        heart_rate_variability: [{ time: SPLIT, milliseconds: 40 }],
+      },
+      "Asia/Tokyo"
+    );
+    expect(out.samples.map((s) => [s.metric, s.date])).toEqual([
+      ["steps", "2026-08-25"],
+      ["hydration_l", "2026-08-25"],
+      ["nutrition_kcal", "2026-08-25"],
+      ["hrv_ms", "2026-08-25"],
+      // Sleep is filed on the profile-local WAKE day and always has been: 18:00Z is
+      // 08-26 03:00 in Tokyo. Unchanged by #3901, and it is the profile's zone deciding.
+      ["sleep_min", "2026-08-26"],
+    ]);
+  });
+});

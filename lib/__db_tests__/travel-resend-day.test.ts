@@ -299,7 +299,7 @@ describe("a re-sent row keeps the day it was attributed to (#3428, write side)",
     expect(day()).toEqual(["2026-05-01"]);
   });
 
-  it("a re-anchorable DAY BUCKET still re-derives — the one carve-out, and #3424 depends on it", () => {
+  it("a DAY BUCKET keeps the day its own anchor names, re-send or not (#3901)", () => {
     const profileId = newProfile("Resend Day Bucket", TOKYO);
     // The exporter's `daily` steps record for Tokyo 2026-05-02: Tokyo midnight → now.
     freeze("2026-05-01T23:00:00Z");
@@ -349,10 +349,14 @@ describe("a re-sent row keeps the day it was attributed to (#3428, write side)",
         getTimezone(profileId)
       )
     );
-    // A `daily` bucket's `date` is the DEVICE's local day label, not an attribution of
-    // an instant. It must follow the re-anchoring, or the stale bucket is stranded on a
-    // day #3424's supersede can never reach (`AND date = ?`) and its double count goes
-    // both permanent and unreported. See `resendDay`'s header for the measurement.
+    // STILL 2026-05-02, AND THAT IS THE WHOLE OF #3901. A `daily` bucket's `date` is the
+    // DEVICE's local day label, not an attribution of an instant — and `started_at` IS
+    // that label: 15:00Z is a UTC+9 midnight whichever zone the profile has flipped to.
+    // This case used to assert 2026-05-01, because the day was re-derived under the
+    // profile's zone on every re-send. That mutability is what emptied two prod days:
+    // a bucket filed on its neighbour's date superseded the neighbour's completed row,
+    // then re-derived away from the day it had just emptied. The day is now a function
+    // of the natural key, so there is nothing left for a re-send to move.
     expect(
       (
         db
@@ -361,6 +365,6 @@ describe("a re-sent row keeps the day it was attributed to (#3428, write side)",
           )
           .all(profileId) as { date: string }[]
       ).map((r) => r.date)
-    ).toEqual(["2026-05-01"]);
+    ).toEqual(["2026-05-02"]);
   });
 });
