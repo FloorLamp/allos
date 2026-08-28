@@ -293,12 +293,29 @@ export function claimRunRoot(root: string): void {
   }
 }
 
+// WHAT THE PRE-#3921 LAYOUT PUT DIRECTLY UNDER `e2e/.data`, enumerated.
+//
+// Every checkout that ran the suite before the root moved keeps these, and
+// nothing would ever come back for them: the sweep below only recognises
+// `port-*`, and `git clean` leaves them because they are gitignored (it takes
+// `-x`). They are multi-GB of SQLite on a disk-constrained box, so they are
+// reclaimed once, here.
+//
+// ENUMERATED AND WHOLE-NAME, never a wider match, for the same reason
+// lib/__tests__/tmp-dir.ts spells out its retired prefixes: this directory also
+// holds THIS RUN'S OWN ROOT, and a predicate that reached one entry it did not
+// mean would delete a live run's fixtures — the exact failure this whole change
+// exists to end.
+const LEGACY_FLAT_ENTRY =
+  /^(?:template|template-demo|worker-\d+|slot-\d+\.pid|run-context\.json)$/;
+
 /**
- * Drop the roots of runs that are over, so per-range roots don't accumulate one
- * directory per port anybody ever used. Only ever an UNCLAIMED root, which is what
- * makes this safe to do to a directory this run did not create; its recorded
- * servers are stopped first, because an orphan on another range holds a real
- * listener that nothing else would ever come back for.
+ * Drop the artifacts of runs that are over: the roots of finished runs on other
+ * port ranges, so per-range roots don't accumulate one directory per port anybody
+ * ever used, plus the flat layout that predates them. Only ever an UNCLAIMED root,
+ * which is what makes this safe to do to a directory this run did not create; the
+ * recorded servers are stopped first either way, because an orphan on another
+ * range holds a real listener that nothing else would ever come back for.
  */
 export function reclaimStaleRunRoots(parent: string, keep: string): string[] {
   const reclaimed: string[] = [];
@@ -307,6 +324,17 @@ export function reclaimStaleRunRoots(parent: string, keep: string): string[] {
     entries = fs.readdirSync(parent, { withFileTypes: true });
   } catch {
     return reclaimed;
+  }
+  const legacy = entries.filter((entry) => LEGACY_FLAT_ENTRY.test(entry.name));
+  if (legacy.length > 0) {
+    // The old layout recorded its slot pids directly here, so this is where an
+    // orphan of the last pre-move run is named.
+    stopLeftoverWorkerServers(parent);
+    for (const entry of legacy) {
+      const target = path.join(parent, entry.name);
+      fs.rmSync(target, { recursive: true, force: true });
+      reclaimed.push(target);
+    }
   }
   for (const entry of entries) {
     if (!entry.isDirectory() || !/^port-\d+$/.test(entry.name)) continue;
@@ -332,7 +360,7 @@ export default async function globalSetup(config: FullConfig): Promise<void> {
   // and its pid record is about to be deleted with the directory.
   claimRunRoot(E2E_DATA_DIR);
   for (const stale of reclaimStaleRunRoots(E2E_DATA_ROOTS, E2E_DATA_DIR)) {
-    console.log(`[e2e] reclaimed a finished run's root ${stale} (#3921)`);
+    console.log(`[e2e] reclaimed ${stale} — no live run owns it (#3921)`);
   }
 
   await ensureBuild();

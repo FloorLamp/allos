@@ -1664,6 +1664,20 @@ twelve runners compute the SAME twelve buckets and each takes its own. No planni
 job, nothing serialized ahead of the matrix, no artifact passed between runners.
 Measured on the real 391-file suite: buckets of 126–127s, max/mean 1.00.
 
+**`$TOTAL` IS PART OF A SHARD'S NAME, AND TWO WORKFLOWS DISAGREE ON IT.** The PR
+matrix (`ci.yml`) is **12-way**; the post-merge matrix (`e2e-main.yml`) is
+**4-way** — deliberately, so the per-shard setup floor is paid four times instead
+of twelve. The plan is a function of the shard COUNT, so the same `(N)` names two
+different file sets: `e2e-main (3)` is `e2e-shard-plan.ts 3 4`, never `3 12`.
+
+Reach for the wrong denominator and you do not get an error — you get a plausible
+file set that does not contain the failing spec, run it, watch it pass, and
+conclude the red is unreproducible. Measured 2026-08-28 on #3930: `e2e-main (3)`'s
+116-file 4-way bucket holds `ride-detail.spec.ts` **and** the spec that was
+polluting it; the 12-way shard 3 is 38 files holding neither, and `ride-detail`
+lives in 12-way shard 8. So read `$TOTAL` off the workflow that produced the red
+before you reproduce it.
+
 **The safety property is the partition, not the balance.** An unbalanced suite is
 merely slow; a lossy one is green while running nothing. `planShards`
 (`lib/e2e-shard-plan.ts`) therefore validates the buckets it just built and throws

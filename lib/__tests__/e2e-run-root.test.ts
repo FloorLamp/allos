@@ -136,4 +136,32 @@ describe("the e2e run root is per port range (#3921)", () => {
     expect(fs.existsSync(path.join(busy, "worker-0", "app.db"))).toBe(true);
     await orphanExit;
   });
+  // The flat layout every checkout that predates the move still holds. It is
+  // reclaimed once — and the same case pins the sweep's SILENCE on the neighbours
+  // that merely look like it, because this directory also holds live run roots and
+  // a predicate that over-reached would delete the fixtures of a running suite.
+  it("reclaims the pre-move flat layout and leaves its near-misses alone", () => {
+    const repo = makeTmpDir("e2e-run-root");
+    const parent = path.join(repo, "e2e", ".data");
+    const mine = dataRootFor(repo, 6500);
+    seedRoot(mine, process.pid);
+    const legacy = ["template", "template-demo", "worker-0", "worker-11"];
+    const benign = ["templates", "worker-notes", "portable", "port-notes"];
+    for (const name of [...legacy, ...benign]) {
+      fs.mkdirSync(path.join(parent, name), { recursive: true });
+    }
+    fs.writeFileSync(path.join(parent, "run-context.json"), "{}");
+    fs.writeFileSync(path.join(parent, "slot-0.pid"), String(deadPid()));
+
+    const reclaimed = reclaimStaleRunRoots(parent, mine).map((p) =>
+      path.basename(p)
+    );
+    expect(reclaimed.sort()).toEqual(
+      [...legacy, "run-context.json", "slot-0.pid"].sort()
+    );
+    for (const name of benign) {
+      expect(fs.existsSync(path.join(parent, name))).toBe(true);
+    }
+    expect(fs.existsSync(path.join(mine, "worker-0", "app.db"))).toBe(true);
+  });
 });
