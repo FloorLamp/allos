@@ -109,12 +109,12 @@ export default function IntakeWarnings({
 
   // Grouping by hairline is what a SHARED surface buys, and below `sm` there is no
   // shared surface: each finding draws its own tinted frame in its own tone
-  // (#3897). A divider between two tinted boxes reads as a seam welding them into
-  // one blob, so at that width the seams become gaps and the hairlines come back
-  // where the card does. Spelled `sm:` rather than `max-sm:` so nothing has to win
-  // an override tie against `divide-y`'s own child selector.
+  // (#3897). A rule between two tinted boxes welds them into one blob, so every
+  // divider here is `sm:` — desktop keeps the exact grouping it had, and the gap
+  // that replaces them at phone width is the findings' own (`.finding-embedded +
+  // .finding-embedded` in app/globals.css), not a spacing step spelled again here.
   const sectionClass = (divided: boolean) =>
-    `${divided ? "mt-2 sm:mt-3 sm:border-t sm:border-black/5 sm:pt-3 sm:dark:border-white/5 " : ""}max-sm:space-y-2 sm:divide-y sm:divide-black/5 sm:dark:divide-white/5`;
+    `${divided ? "mt-3 sm:border-t sm:border-black/5 sm:pt-3 sm:dark:border-white/5 " : ""}sm:divide-y sm:divide-black/5 sm:dark:divide-white/5`;
 
   return (
     <details

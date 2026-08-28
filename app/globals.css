@@ -446,6 +446,17 @@
    `bg-*`/`border-*` are normal declarations in the `utilities` layer, and an
    unlayered normal declaration beats every layer.
    ──────────────────────────────────────────────────────────────────────────── */
+@media (width < 40rem) {
+  /* Two tinted frames touching read as one blob, and the hairline that grouped
+     them was the SHARED surface's to draw. At this width there is no shared
+     surface, so the seam becomes a gap. It lives here rather than as a
+     `max-sm:space-y-*` on the grouping container because a per-file phone spacing
+     step is the second convention #3466 exists to prevent — and because the gap
+     belongs to the finding's own phone shape, which is what this section is. */
+  .finding-embedded + .finding-embedded {
+    margin-top: 0.5rem;
+  }
+}
 @media (width >= 40rem) {
   .finding-embedded {
     padding-block: 0.75rem;
