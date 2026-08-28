@@ -1268,6 +1268,59 @@ async function renderedReach(targets: Locator[]): Promise<number[]> {
   );
 }
 
+// THE CONTROL BOX IS A FLOOR PLUS WHOLE LINE BOXES, NOT AN IDENTITY (#3938).
+//
+// The box spends what the element's OWN line box leaves over
+// (`padding-block: calc((--control-box - 1lh - 2 * --control-border) / 2)`), and
+// that one derivation has two consequences a straight equality gets wrong in
+// opposite directions:
+//
+//   * the line box is the CEILING on the tallest child a control can hold — an
+//     18px badge or a 20px glyph inside a 16px line grows the control past 34,
+//     which shipped as a 40px button beside its 34px neighbours;
+//   * the line box is also the QUANTUM by which a control grows — a summary that
+//     WRAPS at 768 renders 54, which is 34 + one more 20px line, and that is the
+//     construction working rather than a defect.
+//
+// So a control that can wrap (`whitespace-normal`, a long label in a narrow
+// column) is asserted as the box plus a WHOLE NUMBER of its own line boxes. That
+// still reds on a stray `py-*`, a rogue `min-h-11` or any ad-hoc padding —
+// everything the equality was protecting — and only stops calling a second line a
+// failure. A control that is single-line by construction (`whitespace-nowrap`, an
+// `<input>`) passes `lines: 0` and keeps the stronger claim.
+export async function expectControlBoxHeight(
+  target: Locator,
+  name: string,
+  opts: { lines?: 0 | "any" } = {}
+): Promise<void> {
+  await expect(target, name).toBeVisible();
+  const measured = await target.evaluate((el) => ({
+    height: el.getBoundingClientRect().height,
+    lineHeight: Number.parseFloat(getComputedStyle(el).lineHeight),
+  }));
+  expect(
+    Number.isFinite(measured.lineHeight) && measured.lineHeight > 0,
+    `${name} has no resolvable line box, so the control box cannot be derived`
+  ).toBe(true);
+  const extra = (measured.height - CONTROL_BOX_PX) / measured.lineHeight;
+  const lines = Math.round(extra);
+  const detail =
+    `${name} renders ${measured.height}px with a ${measured.lineHeight}px line box: ` +
+    `${CONTROL_BOX_PX} + ${extra.toFixed(3)} line boxes`;
+  expect(
+    Math.abs(extra - lines) <= 0.02 && lines >= 0,
+    `${detail}. A control is the control box plus a WHOLE number of its own line ` +
+      "boxes — a fraction of one means ad-hoc padding or a height a call site set " +
+      "itself, which is the drift the box exists to close."
+  ).toBe(true);
+  if (opts.lines === 0)
+    expect(
+      lines,
+      `${detail}, so it is on ${lines + 1} lines. This control is single-line by ` +
+        "construction, so a second line is the defect and not the wrap."
+    ).toBe(0);
+}
+
 // A compact rendered-geometry assertion for primitive-owned phone targets. It
 // reads one settled layout snapshot, checks the actual boxes (not class names),
 // and optionally proves adjacent boxes do not overlap.

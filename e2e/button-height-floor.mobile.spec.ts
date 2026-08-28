@@ -110,6 +110,16 @@ type Measured = {
   height: number;
   reach: number;
   effective: number;
+  /** The element's own line box — the quantum the control grows by when it wraps. */
+  lineHeight: number;
+  /** Whole line boxes above the control box: 0 for a control on one line. */
+  extraLines: number;
+  /**
+   * Whether this control CANNOT wrap, read off the render rather than declared:
+   * `white-space: nowrap`, or a replaced element that has no wrapping to do.
+   * Declared per surface it would drift from the markup; measured it cannot.
+   */
+  singleLine: boolean;
 };
 
 async function measure(
@@ -132,7 +142,23 @@ async function measure(
               ? 0
               : Math.abs(Number.parseFloat(after.top));
           const height = el.getBoundingClientRect().height;
-          return { kind: s.kind, height, reach, effective: height + 2 * reach };
+          const style = getComputedStyle(el);
+          const lineHeight = Number.parseFloat(style.lineHeight);
+          return {
+            kind: s.kind,
+            height,
+            reach,
+            effective: height + 2 * reach,
+            lineHeight,
+            extraLines:
+              Number.isFinite(lineHeight) && lineHeight > 0
+                ? (height - 34) / lineHeight
+                : Number.NaN,
+            singleLine:
+              style.whiteSpace === "nowrap" ||
+              el.tagName === "INPUT" ||
+              el.tagName === "SELECT",
+          };
         }),
     { list: [...surfaces], phone: width < 640 }
   );
@@ -156,10 +182,28 @@ test.describe("the control box: one height, every kind, every viewport (#3938)",
         expect(measured.length, `${route} @${width} corpus`).toBeGreaterThan(0);
 
         for (const m of measured) {
+          // THE BOX PLUS A WHOLE NUMBER OF ITS OWN LINE BOXES, and `lines: 0`
+          // wherever the control cannot wrap. A flat equality is wrong for a
+          // control that legitimately wraps — the derived padding makes the line
+          // box the QUANTUM a control grows by, so a second line reads 54, not a
+          // defect — and an inequality is wrong for everything, because `< 44`
+          // passes on 34, on 26 and on 12 alike. This is the form that reds on a
+          // stray `py-*`, a rogue `min-h-11` or any ad-hoc padding, and stays
+          // silent on a wrap.
+          const lines = Math.round(m.extraLines);
+          const reading = `${m.kind} on ${route} renders ${m.height}px at ${width}px with a ${m.lineHeight}px line box`;
           expect(
-            Math.abs(m.height - CONTROL_BOX_PX),
-            `${m.kind} on ${route} renders ${m.height}px at ${width}px, not the ${CONTROL_BOX_PX}px control box`
-          ).toBeLessThanOrEqual(TAP_FLOOR_FLOAT_EPSILON_PX);
+            Math.abs(m.extraLines - lines) <= 0.02 && lines >= 0,
+            `${reading}: ${CONTROL_BOX_PX} + ${m.extraLines.toFixed(3)} line boxes. A control is ` +
+              "the control box plus a WHOLE number of them; a fraction is padding " +
+              "or a height a call site set itself."
+          ).toBe(true);
+          if (m.singleLine)
+            expect(
+              lines,
+              `${reading}, so it is on ${lines + 1} lines — and this control cannot wrap ` +
+                "(`white-space: nowrap`, or a replaced element), so the extra height is the defect."
+            ).toBe(0);
 
           if (m.reach > 0) {
             expect(m.reach, `${m.kind} reach at ${width}px`).toBe(
@@ -179,11 +223,21 @@ test.describe("the control box: one height, every kind, every viewport (#3938)",
           }
         }
 
-        // The relationship, not just the absolute: every kind on this page agrees.
+        // The relationship, not just the absolute: every kind on this page agrees
+        // — compared with their wraps taken off, so a control on two lines still
+        // has to be the same BOX as its single-line neighbours.
         expect(
-          [...new Set(measured.map((m) => Math.round(m.height)))],
-          `${route} @${width} renders more than one height: ${measured
-            .map((m) => `${m.kind}=${m.height}`)
+          [
+            ...new Set(
+              measured.map((m) =>
+                Math.round(m.height - Math.round(m.extraLines) * m.lineHeight)
+              )
+            ),
+          ],
+          `${route} @${width} renders more than one box: ${measured
+            .map(
+              (m) => `${m.kind}=${m.height}(+${Math.round(m.extraLines)} lines)`
+            )
             .join(", ")}`
         ).toEqual([CONTROL_BOX_PX]);
       }

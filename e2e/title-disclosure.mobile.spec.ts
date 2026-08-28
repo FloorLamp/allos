@@ -1,12 +1,12 @@
 import { expect, test } from "./fixtures";
 import {
+  expectControlBoxHeight,
   expectNoClippedContent,
   expectPhoneTapTargets,
   hydratedClick,
   settledBoxes,
   settledFill,
 } from "./helpers";
-import { CONTROL_BOX_PX } from "@/lib/tap-floor-tokens";
 import { loginAs } from "./nav";
 import { E2E_LOGIN_DAILY, E2E_MEMBER_PASSWORD } from "./fixture-logins";
 
@@ -169,10 +169,11 @@ test("standing history fits a touch tablet and discloses by touch and keyboard",
 
     const [summaryBox, detailsBox] = await settledBoxes([summary, details]);
     // 768px is above `sm`, and #3938 retired the step: `button-control` is the
-    // same control box here as at 390. An inequality would pass on 34, on 26 and
-    // on 12, so this is an equality — the first test in this file holds the
-    // effective floor at 390.
-    expect(summaryBox.height).toBe(CONTROL_BOX_PX);
+    // same control box here as at 390. `< 44` would pass on 34, on 26 and on 12,
+    // so it is not that — but this summary is `whitespace-normal` and WRAPS at
+    // this width, so it is not a flat equality either: it is the box plus whole
+    // line boxes. (Measured: 54 here, which is 34 + one 20px line.)
+    await expectControlBoxHeight(summary, "standing history summary at 768");
     expect(detailsBox.x).toBeGreaterThanOrEqual(0);
     expect(detailsBox.x + detailsBox.width).toBeLessThanOrEqual(768);
     await page.touchscreen.tap(

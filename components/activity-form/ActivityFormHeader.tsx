@@ -154,7 +154,9 @@ export default function ActivityFormHeader({
               onClick={() => void onClose()}
               aria-label="Minimize workout"
             >
-              <IconMinus className="h-5 w-5" />
+              {/* `h-4`, the control's own line box: a 20px glyph in a 16px line
+                  rendered this button 38 against a 34px box (#3938). */}
+              <IconMinus className="h-4 w-4" />
               Minimize
             </Button>
           </span>
