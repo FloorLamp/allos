@@ -883,7 +883,8 @@ describe("a tap sweeps the profile's other live messages (#3933)", () => {
 
   // Every edit addressed to ONE message, whichever primitive carried it. Counting is
   // the point: an edit is what a reader SEES, so "the sibling was fixed" and "the
-  // tapped message did not flicker" are both statements about this number.
+  // handler and the sweep between them edited the tapped message once" are both
+  // statements about this number.
   function editsTo(messageId: number): number {
     return [...editTextMock.mock.calls, ...editMarkupMock.mock.calls].filter(
       (c) => c[1] === messageId

@@ -3168,7 +3168,10 @@ because by then the write has landed and the person has been answered. The tappe
 message is swept with the rest: a handler that re-rendered it leaves its pointer in
 sync, so the sweep computes the same render and edits nothing, while a handler that
 edited only the KEYBOARD (the digest's ⚙️ Tune and its time-suggestion exits, whose
-claims are PROSE) leaves sentences only the sweep can correct.
+claims are PROSE) leaves sentences only the sweep can correct. ⚙️ Tune reports a write
+for that reason and no other: the toggle stores LOGIN display state, never the
+subject's records, but `digestDemotionsForProfile` feeds the digest gather, so on a
+profile one login manages it changes what the report SAYS.
 
 **How late a keyboard may still be tapped is the FAMILY's answer (#2018).** That
 fourth arm shipped as one global comparison — `pointer.date < today` ⇒ close — which
