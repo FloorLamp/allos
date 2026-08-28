@@ -1,8 +1,7 @@
-import type { CSSProperties, ReactNode } from "react";
+import type { ReactNode } from "react";
 import { goalBarClass } from "@/lib/outcome-goals";
 import { PendingTextLink } from "@/components/PendingLink";
 import type { AppRoute } from "@/lib/hrefs";
-import InfoTooltipIcon from "@/components/InfoTooltipIcon";
 
 // A labelled stat box: an uppercase label over a bold value, with optional
 // sub-text, link, label badge, and a goal-style progress bar.
@@ -19,10 +18,7 @@ import InfoTooltipIcon from "@/components/InfoTooltipIcon";
 export function StatBox({
   label,
   value,
-  valueStyle,
-  valueTitle,
   sub,
-  subClass,
   href,
   badge,
   progress,
@@ -32,10 +28,7 @@ export function StatBox({
 }: {
   label: string;
   value: string;
-  valueStyle?: CSSProperties;
-  valueTitle?: string;
   sub?: ReactNode;
-  subClass?: string;
   // When set, the value links to it (e.g. the training log entry of the last session).
   // An INTERNAL app route, so it is `AppRoute` (issue #285): a consolidated-away
   // training log route becomes a build error here rather than a shipped dead link.
@@ -61,10 +54,7 @@ export function StatBox({
         {label}
         {badge}
       </dt>
-      <dd
-        className="mt-0.5 flex items-center font-semibold text-slate-800 dark:text-slate-100"
-        style={valueStyle}
-      >
+      <dd className="mt-0.5 flex items-center font-semibold text-slate-800 dark:text-slate-100">
         {href ? (
           // A raw <a> to an INTERNAL route was a full document load out of the
           // app shell (#2983) — the same defect as the training overview's
@@ -84,14 +74,9 @@ export function StatBox({
         ) : (
           value
         )}
-        {valueTitle ? <InfoTooltipIcon label={valueTitle} /> : null}
       </dd>
       {sub && (
-        <dd
-          className={`text-xs ${subClass ?? "text-slate-500 dark:text-slate-400"}`}
-        >
-          {sub}
-        </dd>
+        <dd className="text-xs text-slate-500 dark:text-slate-400">{sub}</dd>
       )}
       {typeof progress === "number" && (
         <div className="mt-1.5 h-1.5 w-full rounded-full bg-slate-200 dark:bg-ink-800">
