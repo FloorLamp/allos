@@ -219,8 +219,12 @@ test.describe("from md up the anchored popover is what opens", () => {
       ).toBeGreaterThanOrEqual(COARSE_POINTER_FLOOR);
     }
 
-    // Escape closes the popover and the trigger — which never lost focus — keeps
-    // it.
+    // FOCUS GOES IN AND COMES BACK (#3905). It used to stay on the trigger for
+    // the whole episode, so the rows above were reachable only by tabbing past
+    // the rest of the page; the sheet presentation has moved focus in since
+    // #1416 and the popover now matches it. Escape closes and hands the trigger
+    // back — the #3374 invariant, unchanged, by the other of its two routes.
+    await expect(items.first()).toBeFocused();
     await page.keyboard.press("Escape");
     await expect(page.getByRole("menu")).toHaveCount(0);
     await expect(trigger).toBeFocused();
