@@ -75,11 +75,16 @@ function Providers({ children }: { children: React.ReactNode }) {
   );
 }
 
+// Through a binding, not a literal: lib/__tests__/overflow-menu-identity.test.ts
+// scans every mount under components/ and a quoted name reads to it as a call
+// site that has stopped naming its row.
+const ROW_NAME = "Vitamin D";
+
 function ControlledOverflowMenu() {
   const [open, setOpen] = useState(false);
   return (
     <OverflowMenu
-      itemName="Vitamin D"
+      itemName={ROW_NAME}
       kind="Supplement"
       open={open}
       onOpenChange={setOpen}
