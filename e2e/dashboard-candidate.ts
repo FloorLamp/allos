@@ -24,7 +24,12 @@ export function dashboardCandidateWithText(
  * asserting a band it does not care about.
  */
 export async function openStandingTail(page: Page): Promise<void> {
-  const summary = page.getByTestId("dashboard-standing-tail-summary");
-  if ((await summary.count()) === 0) return;
-  await summary.click();
+  // IDEMPOTENT ON PURPOSE. A <details> toggles, so a second call would SHUT the fold
+  // — and the rows would go hidden again with nothing in the failure to say why. Two
+  // callers already reach for this twice on one page (a spec that opens the tail for
+  // one row and again for another), so the state is checked rather than assumed.
+  const tail = page.getByTestId("dashboard-standing-tail");
+  if ((await tail.count()) === 0) return;
+  if (await tail.evaluate((node) => (node as HTMLDetailsElement).open)) return;
+  await page.getByTestId("dashboard-standing-tail-summary").click();
 }

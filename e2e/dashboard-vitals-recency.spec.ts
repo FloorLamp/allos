@@ -9,7 +9,10 @@ import { pinnedTimezone } from "./pinned-timezone";
 import { shiftDateStr } from "@/lib/date";
 import { DEFAULT_FORMAT_PREFS, formatLongDate } from "@/lib/format-date";
 import { setFixtureTimezone } from "./fixture-timezones";
-import { dashboardCandidatePrefix } from "./dashboard-candidate";
+import {
+  dashboardCandidatePrefix,
+  openStandingTail,
+} from "./dashboard-candidate";
 import { openDashboardAll, settledClick } from "./helpers";
 import { dormantRecordSince } from "@/lib/domain-dormancy";
 
@@ -284,6 +287,9 @@ test("a months-old blood pressure is age-labeled and loses its arrow, while yest
     // same way. Its column is narrow, so the age is compact rather than spelled out —
     // that is the one thing the surface declares — but the amber, the data-stale hook
     // and the hover SENTENCE are the shared decision, naming this card's own floor.
+    // A quiet clinical result folds into Standing's tail (#3548); the row, its age
+    // token and its hover sentence are unchanged inside it.
+    await openStandingTail(page);
     const labs = dashboardCandidatePrefix(page, "labs.latest:").filter({
       hasText: "LDL Cholesterol",
     });
@@ -320,6 +326,12 @@ test("a blood pressure past the year floor states its gap instead of a number, t
   try {
     await page.goto("/");
     await openDashboardAll(page);
+    // #3548 narrowed #3226 exactly this far: the dormant row keeps its existence, its
+    // copy and its affordance and loses the always-visible slot, so it sits in
+    // Standing's quiet tail. Everything below is asserted with the tail open — and
+    // after the reading is logged the row is `current` again and back in the stable
+    // rest, which is why the post-reload half does not reopen it.
+    await openStandingTail(page);
     const bpCandidate = dashboardCandidatePrefix(
       page,
       "vitals.blood-pressure:"
