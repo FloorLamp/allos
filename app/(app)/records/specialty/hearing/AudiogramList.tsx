@@ -2,6 +2,7 @@
 
 import { useState } from "react";
 import NotesText from "@/components/NotesText";
+import { Notice } from "@/components/Notice";
 import { useConfirm } from "@/components/ConfirmDialog";
 import { useToast } from "@/components/Toast";
 import {
@@ -90,25 +91,29 @@ export default function AudiogramList({
 
   return (
     <div className="space-y-4">
+      {/* A NOTICE, BECAUSE ITS WHOLE SIGNAL WAS A BORDER COLOUR (#3897). This was a
+          neutral `.card` distinguished from an ordinary audiogram row by
+          `border-amber-300` alone; below `sm` no card draws a border, so the two
+          measured identical apart from a border colour that painted nothing. A
+          colour needs a fill to carry it, and the tinted Notice is the shape the
+          app already registers for that. */}
       {baseline && baseline.shifts.length > 0 && (
-        <div
-          className="card border-amber-300 text-sm dark:border-amber-700"
-          data-testid="audiogram-shift"
+        <Notice
+          tone="amber"
+          testid="audiogram-shift"
+          title={`Threshold shift since ${baseline.baselineDate}`}
         >
-          <p className="font-medium">
-            Threshold shift since {baseline.baselineDate}
-          </p>
-          <ul className="mt-1 list-disc pl-5 text-slate-600 dark:text-slate-300">
+          <ul className="list-disc pl-5">
             {baseline.shifts.map((s) => (
               <li key={`${s.ear}-${s.criterion}`}>{thresholdShiftLabel(s)}</li>
             ))}
           </ul>
-          <p className="mt-2 text-xs text-slate-500 dark:text-slate-400">
+          <p className="mt-2 text-xs">
             Measured against the ASHA ototoxicity-monitoring criteria (20 dB at
             one frequency, or 10 dB at two adjacent frequencies). It compares
             recorded numbers — bring it to your audiologist or prescriber.
           </p>
-        </div>
+        </Notice>
       )}
 
       {audiograms.map((a) => {

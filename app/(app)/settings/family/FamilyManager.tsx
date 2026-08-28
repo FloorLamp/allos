@@ -334,8 +334,16 @@ function ProfileRow({
         </div>
 
         {confirmOpen && (
+          // NOT A SUB-PANEL — A MESSAGE BLOCK (#3897). `subpanel-inset-sm` is the
+          // second-gutter tier, and below `sm` its de-card rule zeroes
+          // padding-inline; measured at 390px this box's rose fill started at
+          // exactly the x of its own first character, so the tint had no gutter
+          // to sit in. A notice-family tint is not a nested panel sharing a
+          // card's inset, it is the Notice shape, and the Notice shape keeps its
+          // `px-3` at every width. Desktop is untouched: the tier emits only
+          // inside `max-sm:`.
           <div
-            className={`subpanel-inset-sm space-y-3 rounded-lg border p-3 ${NOTICE_TONE.rose}`}
+            className={`space-y-3 rounded-lg border p-3 ${NOTICE_TONE.rose}`}
           >
             <p className="text-sm font-semibold text-rose-700 dark:text-rose-300">
               Permanently delete “{profile.name}” and all of their data?

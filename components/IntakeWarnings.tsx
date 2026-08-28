@@ -107,8 +107,14 @@ export default function IntakeWarnings({
     .filter(Boolean)
     .join(" · ");
 
+  // Grouping by hairline is what a SHARED surface buys, and below `sm` there is no
+  // shared surface: each finding draws its own tinted frame in its own tone
+  // (#3897). A divider between two tinted boxes reads as a seam welding them into
+  // one blob, so at that width the seams become gaps and the hairlines come back
+  // where the card does. Spelled `sm:` rather than `max-sm:` so nothing has to win
+  // an override tie against `divide-y`'s own child selector.
   const sectionClass = (divided: boolean) =>
-    `${divided ? "mt-3 border-t border-black/5 pt-3 dark:border-white/5 " : ""}divide-y divide-black/5 dark:divide-white/5`;
+    `${divided ? "mt-2 sm:mt-3 sm:border-t sm:border-black/5 sm:pt-3 sm:dark:border-white/5 " : ""}max-sm:space-y-2 sm:divide-y sm:divide-black/5 sm:dark:divide-white/5`;
 
   return (
     <details

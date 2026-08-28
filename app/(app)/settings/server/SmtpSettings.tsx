@@ -95,9 +95,15 @@ export default function SmtpSettings({
       </p>
 
       {!publicUrl && (
+        // NOT A SUB-PANEL — A MESSAGE BLOCK (#3897). Same measurement as the
+        // permanent-delete confirmation in FamilyManager: `subpanel-inset-sm`'s
+        // de-card rule zeroes padding-inline below `sm`, and this box's amber fill
+        // then began at exactly the x of its own first character. A tint needs the
+        // gutter it paints; the tier is for an untinted panel nested in a card's
+        // inset, which this is not. Desktop is untouched (the tier is `max-sm:`).
         <p
           data-testid="smtp-needs-public-url"
-          className="subpanel-inset-sm rounded-lg border border-amber-400/40 bg-amber-50 p-3 text-xs text-amber-900 dark:border-amber-400/20 dark:bg-amber-950/40 dark:text-amber-200"
+          className="rounded-lg border border-amber-400/40 bg-amber-50 p-3 text-xs text-amber-900 dark:border-amber-400/20 dark:bg-amber-950/40 dark:text-amber-200"
         >
           Set the public app URL in the card above — invite and reset links are
           built from it, so email can&apos;t be sent without it.

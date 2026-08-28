@@ -323,13 +323,29 @@
    16, so the left rag stepped 16px every time the page alternated. The reclaimed
    line (358px instead of 326 on a 390px viewport) is the dividend.
 
-   THE ONE EXCEPTION IS NOT WRITTEN HERE, and that is the mechanism rather than an
+   THE MAIN EXCEPTION IS NOT WRITTEN HERE, and that is the mechanism rather than an
    omission. The tinted Notice family (components/Notice.tsx) is a DIFFERENT
    primitive — `rounded-lg border` plus a NOTICE_TONE tint, never `.card` — so it
    keeps its frame because this rule cannot reach it, not because a list of paths
-   spares it. Nothing to allowlist and nothing to keep in sync: a surface joins the
-   exception by BEING a Notice. It matters because a Notice is now the loudest
-   shape the app has, and a refused write has nothing else to reach for.
+   spares it. It matters because a tinted Notice is now the loudest shape the app
+   has, and a refused write has nothing else to reach for.
+
+   WHAT THE CODE ENFORCES IS "RENDERED THROUGH THOSE TWO COMPONENTS", NOT "IS A
+   NOTICE", and the difference is not pedantry. `data-notice` — the marker the
+   phone sweep reads — is emitted by components/Notice.tsx and components/
+   FindingCard.tsx and by nothing else, while SIX other files import NOTICE_TONE
+   and hand-roll the same markup without going through either (IntakeInteractionNotices
+   ×3, ProfilePassport, CuratedSupplementSuggestions, FoodSuggestions,
+   ServerTelegramSettings, FamilyManager). That divergence is known and deliberate
+   — lib/__tests__/notice-block.test.ts is where it is recorded — but a hand-rolled
+   tint is NOT part of the exception, and this comment used to promise it was.
+
+   AND THERE IS A SECOND FRAMED, TINTED SHAPE BELOW `sm`: `[data-matrix-head]` on
+   /settings/notifications (further down this file). #3550's review created it on
+   purpose — the notification matrix's sweep row is a panel of controls, and left
+   flat it read as a fifth kind's line of chips — so it re-frames and re-tints
+   itself with `max-sm:*!` overrides this rule cannot reach. It is an exception
+   because a review ruled it one, not because a mechanism recognises it.
 
    PADDING-INLINE ONLY. Block padding is the card's vertical rhythm, not a gutter,
    and it keeps a band's fill off its own first line.
@@ -397,6 +413,55 @@
     td[data-card="actions"]
     [data-testid="overflow-menu-trigger"]::after {
     inset-inline: -12px 0;
+  }
+}
+
+/* ────────────────────────────────────────────────────────────────────────────
+   AN EMBEDDED FINDING IS EMBEDDED ONLY WHERE ITS CONTAINER DRAWS THE FRAME
+   (issue #3897).
+
+   FindingCard's `embedded` fork exists so a grouped parent can supply one tinted
+   surface and dividers instead of nesting a card inside a card. The rule above
+   took that parent's surface away: on a phone the "Safety notices" strip and each
+   of its findings measured identical — border 0, radius 0, no tint — to the
+   ordinary medication list beside them, so a MAJOR Warfarin + Ibuprofen bleeding
+   interaction rendered as three rose sentences flush to the page gutter. The
+   frame ban could not see it, because a surface that LOSES a frame produces an
+   empty result and an empty result is a pass.
+
+   So the fork INVERTS. FindingCard always renders the tinted Notice shape, and
+   THIS rule takes it back off at `sm` and up, where the container really does
+   house it. Four stacked tinted boxes when four findings fire is the accepted
+   cost; it is the only shape that cannot misstate a severity by rendering it as
+   body copy.
+
+   WRITTEN AS A REMOVAL, NOT AN ADDITION, and that is forced rather than chosen: a
+   tone is ONE string of utilities in NOTICE_TONE, so adding the tint below `sm`
+   would mean spelling a `max-sm:` variant of every tone by hand — six copies of
+   the one map the whole Notice family exists to keep single. Removing it is one
+   rule for every tone at once.
+
+   Unlayered and outside `@utility`, for the cascade reasons the block above
+   states: the finding's own `rounded-lg border px-3 py-2.5` and its tone's
+   `bg-*`/`border-*` are normal declarations in the `utilities` layer, and an
+   unlayered normal declaration beats every layer.
+   ──────────────────────────────────────────────────────────────────────────── */
+@media (width >= 40rem) {
+  .finding-embedded {
+    padding-block: 0.75rem;
+    padding-inline: 0;
+    border-width: 0;
+    border-radius: 0;
+    background-color: transparent;
+    /* The tone's own text colour goes back to the parent's, so the detail and
+       evidence lines keep the colours FindingCard already gives them. */
+    color: inherit;
+  }
+  .finding-embedded:first-child {
+    padding-top: 0;
+  }
+  .finding-embedded:last-child {
+    padding-bottom: 0;
   }
 }
 

@@ -224,7 +224,13 @@ const CONTENT_PX = VIEWPORT_PX - 2 * PAGE_GUTTER_PX;
 //     exported primitive and its FindingCard sibling (built on the same closed
 //     NOTICE_TONE map) emit. That is MODULE IDENTITY: there is no path list, no
 //     testid list and no source match anywhere in this rule, and a surface joins
-//     the exception by BEING a Notice rather than by being written down here.
+//     the exception by being RENDERED THROUGH one of those two components rather
+//     than by being written down here. Not by "being a Notice" in the looser
+//     sense: six other files import NOTICE_TONE and hand-roll the same markup
+//     without going through either, and none of them emits the marker or is
+//     forgiven by this rule (lib/__tests__/notice-block.test.ts carries that
+//     list). Below `sm` an `embedded` FindingCard emits it too, because at that
+//     width it draws the tinted frame its container no longer does (#3897).
 async function cardFrames(page: import("@playwright/test").Page) {
   return page.evaluate((contentPx) => {
     const found: string[] = [];
@@ -425,44 +431,65 @@ test("#3673 the ledger's rows reclaim the same line", async ({ page }) => {
 // Nobody has to remember, and the runtime check below catches the other direction
 // (a tone REMOVED from the export while an entry here still names it).
 type ToneSurface =
-  { route: string; testid: string; what: string } | { unreachable: string };
+  | { route: string; locator: string; what: string; expand?: string }
+  | { unreachable: string };
 
 const TONE_SURFACES: Record<NoticeTone, ToneSurface> = {
   // SAFETY — a nutrient over its upper limit.
   amber: {
     route: "/nutrition?tab=supplements",
-    testid: "ul-warning-magnesium",
+    locator: '[data-testid="ul-warning-magnesium"]',
     what: "a safety warning",
   },
   // REFUSAL — the case this invariant exists for: a connection the app can no
   // longer use, which has nothing else to reach for now that frames are gone.
   rose: {
     route: "/integrations/withings",
-    testid: "withings-needs-reauth",
+    locator: '[data-testid="withings-needs-reauth"]',
     what: "a refused connection",
   },
   // INFORMATIONAL — the quiet end of the family, included because "the Notice is
   // louder" must hold for the whole family or the family is not the exception.
   slate: {
     route: "/nutrition?tab=supplements",
-    testid: "rda-adequacy-calcium",
+    locator: '[data-testid="rda-adequacy-calcium"]',
     what: "an adequacy note",
   },
-  // I CHECKED, AND THERE IS NONE reachable here — not "I did not check". Every
-  // emerald Notice in the tree is a TRANSIENT SUCCESS produced by a write: a
-  // completed fitness-check outcome, a freshly created share link, a reprocess
-  // diff. This file is read-only over the shared seed (#868), so reaching one
-  // would mean writing. The frame it draws is `NOTICE_TONE.emerald` through the
-  // same primitive, so the tones below cover its shape.
+  // PHARMACOGENOMIC — the CPIC note inside the medication safety strip, which is
+  // a FindingCard on the same closed NOTICE_TONE map. This entry used to read
+  // "exported by NOTICE_TONE; no call site renders it", and that was FALSE:
+  // components/IntakeWarnings.tsx has rendered a violet finding since #710, and
+  // components/intake/IntakeInteractionNotices.tsx hand-rolls a second violet
+  // block on the medication add form. A negative that is wrong is worse than a
+  // gap, because it is the form this census reports a negative IN.
+  //
+  // The strip is a <details> that auto-opens only at ≤2 findings and the shared
+  // seed carries more, so this row opens it — the one row that needs a step, and
+  // it is a client disclosure toggle, not a write.
+  violet: {
+    route: "/medications",
+    expand: "intake-warnings",
+    locator: '[data-testid^="pgx-warning-"]',
+    what: "a pharmacogenomic note",
+  },
+  // I CHECKED, AND THERE IS NONE reachable here — not "I did not check". Emerald
+  // has two kinds of call site and NEITHER is reachable read-only. Most are a
+  // TRANSIENT SUCCESS produced by a write (a completed fitness check, a freshly
+  // created share link, a reprocess diff) and this file is read-only over the
+  // shared seed (#868). The other two — CuratedSupplementSuggestions.tsx and
+  // FoodSuggestions.tsx — are server-rendered on READ paths, so the "only after a
+  // write" reason this entry used to give was wrong; they are unreachable because
+  // the shared seed produces no suggestion for either. That half is a fact about
+  // the SEED, stated here so a seed change cannot falsify this row silently.
   emerald: {
     unreachable:
-      "only rendered as a transient success after a write; this file is read-only over the shared seed (#868)",
+      "every call site is either a transient success after a write (this file is read-only, #868) or a suggestion block — CuratedSupplementSuggestions / FoodSuggestions, both server-rendered on read paths — that the shared seed produces none of",
   },
-  // I CHECKED, AND NOTHING RENDERS THESE. Both are exported by NOTICE_TONE and no
-  // call site in app/ or components/ passes them. Nothing to reach, rather than
-  // something reachable that was skipped.
+  // I CHECKED, AND NOTHING RENDERS THIS. Exported by NOTICE_TONE and no call site
+  // in app/ or components/ passes it: `git grep 'NOTICE_TONE.sky'` and
+  // `git grep 'tone="sky"'` are both empty against the Notice/FindingCard tone
+  // type. Nothing to reach, rather than something reachable that was skipped.
   sky: { unreachable: "exported by NOTICE_TONE; no call site renders it" },
-  violet: { unreachable: "exported by NOTICE_TONE; no call site renders it" },
 };
 
 const REACHABLE_TONES = (
@@ -470,6 +497,21 @@ const REACHABLE_TONES = (
 ).flatMap(([tone, surface]) =>
   "route" in surface ? [[tone, surface] as const] : []
 );
+
+// Open a native <details> disclosure if it is not already open. A pure client
+// toggle — no Server-Action POST to await — and a no-op when the surface behind it
+// is already showing, so a seed that changes the finding count cannot turn this
+// into a click that CLOSES the thing the test is about.
+async function openDisclosure(
+  page: import("@playwright/test").Page,
+  testid: string
+) {
+  const details = page.getByTestId(testid);
+  await expect(details).toBeVisible();
+  if (!(await details.evaluate((node) => (node as HTMLDetailsElement).open))) {
+    await details.locator("summary").click();
+  }
+}
 
 test("#3673 the tone table describes exactly the tones the primitive exports", () => {
   // The other direction of the compile-time census: a tone DELETED from
@@ -490,7 +532,8 @@ for (const [tone, surface] of REACHABLE_TONES) {
   }) => {
     test.slow();
     await page.goto(surface.route);
-    const notice = page.getByTestId(surface.testid);
+    if (surface.expand) await openDisclosure(page, surface.expand);
+    const notice = page.locator(surface.locator).first(); // first-ok: every Notice of a tone is the same primitive; the assertion is about the shape
     await expect(notice).toBeVisible();
     await expect(notice).toHaveAttribute("data-notice", tone);
 
@@ -527,6 +570,105 @@ for (const [tone, surface] of REACHABLE_TONES) {
     expect(loud.fill).not.toBe(quiet.fill);
     expect(loud.fill).not.toBe(canvas);
     expect(loud.fill).not.toBe("rgba(0, 0, 0, 0)");
+  });
+}
+
+// ── THE OTHER DIRECTION: A SAFETY SURFACE STILL READS LOUDER ────────────────
+//
+// `cardFrames()` above fails when a surface KEEPS a frame. A surface that LOSES
+// one produces an empty result, and an empty result is a pass — so the flat ban
+// is structurally incapable of failing on a warning that went flat. That is not a
+// coverage gap; it is the assertion running in one direction. It is also exactly
+// what happened (#3897): under a green sweep, the drug-interaction strip, the ASHA
+// threshold-shift warning and the active-illness cockpit each measured identical
+// to an ordinary neutral surface on their own page, and a MAJOR Warfarin +
+// Ibuprofen bleeding interaction rendered as body copy.
+//
+// So this is the converse, measured the same way the tone tests are: two REAL
+// elements on the SAME page at 390px, one of which the app can do harm by
+// flattening. The property asserted is a FILL, because that is what is left once
+// the frame ban has run — with `border-width: 0` a border colour paints nothing,
+// which is precisely how surfaces 2 and 3 were erased while still "being amber"
+// and "being rose" in the class list.
+//
+// NAMED, NOT EXHAUSTIVE, and that is deliberate. A table that tried to cover every
+// safety surface in the app would be the hand-maintained registry the standing
+// ruling forbids, and a scanner that tried to find them would be worse. These are
+// the three the adversarial pass measured flat; a fourth joins by being written
+// here, with its own route and its own ordinary neighbour.
+const LOUD_SURFACES = [
+  {
+    what: "the drug-interaction finding",
+    route: "/medications",
+    // The strip auto-opens only at ≤2 findings and the shared seed carries more.
+    expand: "intake-warnings",
+    loud: '[data-testid^="interaction-warning-"]',
+    quiet: '[data-testid="medication-list"]',
+    ordinary: "the medication list",
+  },
+  {
+    what: "the ASHA threshold-shift warning",
+    route: "/records/specialty/hearing",
+    loud: '[data-testid="audiogram-shift"]',
+    // Any recorded hearing test on the same pane. Matched by prefix rather than by
+    // date: the seed's audiogram dates are relative to the run's frozen instant.
+    quiet: '[data-testid^="audiogram-"]:not([data-testid="audiogram-shift"])',
+    ordinary: "a recorded hearing test",
+  },
+  {
+    what: "the active-illness cockpit",
+    route: "/",
+    loud: "[data-testid^='illness-cockpit-']",
+    // The Standing band — the ordinary neutral surface on this scroll. Every
+    // `main .card` on the dashboard IS an illness cockpit, so a `.card` neighbour
+    // would be comparing the surface to itself.
+    quiet: '[data-testid="dashboard-standing"]',
+    ordinary: "the Standing band",
+  },
+] as const;
+
+for (const surface of LOUD_SURFACES) {
+  test(`#3897 emphasis survives the ban: ${surface.what} outreads ${surface.ordinary} at 390px`, async ({
+    page,
+  }) => {
+    test.slow();
+    await page.goto(surface.route);
+    if ("expand" in surface) await openDisclosure(page, surface.expand);
+
+    const loud = page.locator(surface.loud).first(); // first-ok: every finding of this kind is the same component; the assertion is about the shape
+    const quiet = page.locator(surface.quiet).first(); // first-ok: any ordinary neutral surface on this page is the comparison
+    await expect(loud).toBeVisible();
+    await expect(quiet).toBeVisible();
+
+    const read = (locator: Locator) =>
+      locator.evaluate((node) => {
+        const style = getComputedStyle(node);
+        return {
+          border: Number.parseFloat(style.borderTopWidth),
+          radius: Number.parseFloat(style.borderTopLeftRadius),
+          fill: style.backgroundColor,
+        };
+      });
+    const [hot, cold] = await Promise.all([read(loud), read(quiet)]);
+    const canvas = await page.evaluate(
+      () => getComputedStyle(document.body).backgroundColor
+    );
+
+    // THE COMPARISON IS AT THE PHONE SHAPE. The ordinary neighbour draws no card
+    // frame — `cardFrames()`'s own predicate, so this cannot quietly become a
+    // desktop measurement wearing a mobile test's name, and it is what makes the
+    // difference below attributable to the tint rather than to a border.
+    expect(cold.border >= 1 && cold.radius > 0).toBe(false);
+
+    // …AND THE SAFETY SURFACE IS STILL SEPARABLE FROM IT, BY A PROPERTY THAT
+    // PAINTS. Not "it has a rose class": with the border gone a colour on it
+    // covers no pixels, which is the exact erasure this test exists for. A fill
+    // that matched the neighbour's, matched the page ground, or was transparent
+    // would each be that erasure wearing a different disguise, so all three are
+    // rejected rather than only the first.
+    expect(hot.fill).not.toBe(cold.fill);
+    expect(hot.fill).not.toBe(canvas);
+    expect(hot.fill).not.toBe("rgba(0, 0, 0, 0)");
   });
 }
 
