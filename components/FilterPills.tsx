@@ -115,10 +115,7 @@ export default function FilterPills<T extends FilterPillValue>(
   };
   if (props.layout === "wrap") {
     return (
-      <div
-        {...groupProps}
-        className="flex flex-wrap items-center gap-3"
-      >
+      <div {...groupProps} className="flex flex-wrap items-center gap-3">
         {options}
       </div>
     );

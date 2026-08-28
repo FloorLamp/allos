@@ -114,7 +114,9 @@ describe("DoseStatusControl", () => {
     const control = screen.getByTestId("dose-status");
     // The circles render the control box and the container reserves the reach, the
     // same geometry the pill variant already shipped (#3938).
-    expect(control.className).toBe("flex shrink-0 items-center -m-1.5 gap-3 p-1.5");
+    expect(control.className).toBe(
+      "flex shrink-0 items-center -m-1.5 gap-3 p-1.5"
+    );
     for (const button of screen.getAllByRole("button")) {
       expect(button.className.split(/\s+/)).toEqual(
         expect.arrayContaining(["h-(--control-box)", "w-(--control-box)"])

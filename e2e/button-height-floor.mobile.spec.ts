@@ -58,7 +58,11 @@ const BOX_ROUTES: { route: string; ready: string; surfaces: BoxSurface[] }[] = [
       { kind: "btn-ghost", testId: "dose-ledger-add", repairable: true },
       // A native <select> renders no pseudo-element, so its target IS its box —
       // the `chip-sm` lesson, and the reason #3938 states the floor as effective.
-      { kind: "native select", testId: "dose-ledger-item-filter", repairable: false },
+      {
+        kind: "native select",
+        testId: "dose-ledger-item-filter",
+        repairable: false,
+      },
       {
         kind: "btn-ghost disclosure",
         testId: "custom-range-toggle",
@@ -72,10 +76,18 @@ const BOX_ROUTES: { route: string; ready: string; surfaces: BoxSurface[] }[] = [
     ready: "dashboard-canvas",
     surfaces: [
       { kind: "btn", testId: "vitals-log-reading", repairable: true },
-      { kind: "button-control", testId: "cockpit-end-episode", repairable: true },
+      {
+        kind: "button-control",
+        testId: "cockpit-end-episode",
+        repairable: true,
+      },
       // A typed <input> cannot grow a pseudo-element either; it wears the box with
       // a >=16px line so iOS does not zoom the page on focus.
-      { kind: "typed field", testId: "weight-quick-add-input", repairable: false },
+      {
+        kind: "typed field",
+        testId: "weight-quick-add-input",
+        repairable: false,
+      },
     ],
   },
   {
@@ -84,7 +96,11 @@ const BOX_ROUTES: { route: string; ready: string; surfaces: BoxSurface[] }[] = [
     surfaces: [
       // The #3486 shape: below `sm` its label is hidden and a 16px icon is the whole
       // content, which the derived padding alone renders 30px tall.
-      { kind: "icon-only btn", testId: "supplement-add-toggle", repairable: true },
+      {
+        kind: "icon-only btn",
+        testId: "supplement-add-toggle",
+        repairable: true,
+      },
     ],
   },
 ];
@@ -112,7 +128,9 @@ async function measure(
           if (!el) throw new Error(`${s.kind} (${s.testId}) is not in the DOM`);
           const after = getComputedStyle(el, "::after");
           const reach =
-            after.content === "none" ? 0 : Math.abs(Number.parseFloat(after.top));
+            after.content === "none"
+              ? 0
+              : Math.abs(Number.parseFloat(after.top));
           const height = el.getBoundingClientRect().height;
           return { kind: s.kind, height, reach, effective: height + 2 * reach };
         }),
@@ -220,9 +238,10 @@ test.describe("one control box, every kind, every viewport (#3938)", () => {
       return { boxes, overlaps, smallestGap };
     }, TAP_FLOOR_FLOAT_EPSILON_PX);
 
-    expect(geometry.boxes.length, "the row must mix adjacent kinds").toBeGreaterThan(
-      2
-    );
+    expect(
+      geometry.boxes.length,
+      "the row must mix adjacent kinds"
+    ).toBeGreaterThan(2);
     expect(
       [...new Set(geometry.boxes.map((b) => Math.round(b.height)))],
       `the ledger row renders more than one height: ${geometry.boxes
