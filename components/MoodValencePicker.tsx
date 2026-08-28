@@ -18,7 +18,9 @@ export default function MoodValencePicker({
   testIdPrefix?: string;
 }) {
   return (
-    <div className="flex items-center gap-1" role="group" aria-label="Mood">
+    // `gap-3`, the reach floor (#3938): the five choices are icon-only control
+    // boxes, each reaching 6px toward its neighbour on a coarse pointer.
+    <div className="flex items-center gap-3" role="group" aria-label="Mood">
       {MOOD_FACES.map((face, index) => {
         const score = index + 1;
         const selected = value === score;

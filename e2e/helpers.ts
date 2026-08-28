@@ -8,6 +8,7 @@ import {
 } from "@playwright/test";
 import { AUTO_RELOAD_KEY } from "@/lib/sw-update";
 import {
+  CONTROL_BOX_PX,
   TAP_FLOOR_FLOAT_EPSILON_PX,
   TAP_FLOOR_PX,
 } from "@/lib/tap-floor-tokens";
@@ -1278,6 +1279,14 @@ async function renderedReach(targets: Locator[]): Promise<number[]> {
 // page edge, a visible control may not — and DISJOINTNESS moves to the effective
 // box, because two hit regions owning the same point is the defect the gap floor
 // (twice the reach) exists to prevent.
+//
+// AND THE FLOOR IT DEMANDS DEPENDS ON THE POINTER, WHICH IS READ FROM THE PAGE
+// RATHER THAN ASSUMED. 44 is a THUMB's floor; the reach that supplies it lives in
+// `@media (pointer: coarse)`. Most callers here set a phone viewport in the
+// desktop project, where Chromium reports a FINE pointer and no reach exists — so
+// demanding 44 there would fail every correct control in the app for a reason
+// that has nothing to do with the control. On a fine pointer the claim is the one
+// the ruling actually makes: the control renders the box.
 export async function expectPhoneTapTargets(
   page: Page,
   name: string,
@@ -1294,6 +1303,10 @@ export async function expectPhoneTapTargets(
   }
   const boxes = await settledBoxes(targets);
   const reach = await renderedReach(targets);
+  const coarse = await page.evaluate(
+    () => window.matchMedia("(pointer: coarse)").matches
+  );
+  const floor = coarse ? TAP_FLOOR_PX : CONTROL_BOX_PX;
   const effective = boxes.map((box, index) => {
     const r = reach[index] ?? 0;
     return {
@@ -1309,12 +1322,12 @@ export async function expectPhoneTapTargets(
   for (const [index, box] of boxes.entries()) {
     expect(
       effective[index]!.width + TAP_FLOOR_FLOAT_EPSILON_PX,
-      `${name} target ${index} effective width (${box.width} rendered + 2x${reach[index]} reach)`
-    ).toBeGreaterThanOrEqual(TAP_FLOOR_PX);
+      `${name} target ${index} width: ${box.width} rendered + 2x${reach[index]} reach, against the ${coarse ? "coarse-pointer" : "fine-pointer"} floor`
+    ).toBeGreaterThanOrEqual(floor);
     expect(
       effective[index]!.height + TAP_FLOOR_FLOAT_EPSILON_PX,
-      `${name} target ${index} effective height (${box.height} rendered + 2x${reach[index]} reach)`
-    ).toBeGreaterThanOrEqual(TAP_FLOOR_PX);
+      `${name} target ${index} height: ${box.height} rendered + 2x${reach[index]} reach, against the ${coarse ? "coarse-pointer" : "fine-pointer"} floor`
+    ).toBeGreaterThanOrEqual(floor);
     expect(box.x, `${name} target ${index} left edge`).toBeGreaterThanOrEqual(
       0
     );
