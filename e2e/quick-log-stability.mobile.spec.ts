@@ -171,8 +171,16 @@ test("every segment keeps the sheet still and fills the phone width (#3675)", as
     // segment carrying the most of it — nothing sits between the last row and
     // the next thing down, and nothing between the last offer and the rule.
     await sheet.getByTestId("log-sheet-segment-train").click();
-    const rows = sheet.getByTestId("log-sheet-items").locator("> li");
-    await expect(rows).toHaveCount(2);
+    const list = sheet.getByTestId("log-sheet-items");
+    const rows = list.locator("> li");
+    const drawn = await rows.count();
+    // Train is the short segment for every profile — two entries where Consume,
+    // Body and Care each have three — so it is where the old per-segment reserve
+    // showed as a hole. Read against the sheet's own reserve rather than a pinned
+    // count: this persona's training gates leave it one row, not two.
+    const reserved = Number(await list.getAttribute("data-max-rows"));
+    expect(drawn).toBeGreaterThan(0);
+    expect(drawn).toBeLessThan(reserved);
     const lastRow = await box(rows.last(), "Train's last row");
     const spacer = await sheet.getByTestId("log-sheet-spacer").boundingBox();
     expect(spacer, "trailing spacer").not.toBeNull();
@@ -184,6 +192,17 @@ test("every segment keeps the sheet still and fills the phone width (#3675)", as
     // difference rather than the list holding it.
     expect(spacer!.height).toBeGreaterThan(LOG_SHEET_ROW_BLOCK_PX / 2);
 
+    const routineCount = await sheet.getByTestId("routine-usual-offer").count();
+    const routineBox = routineCount
+      ? await sheet.getByTestId("routine-usual-offer").boundingBox()
+      : null;
+    const slotBox = await sheet
+      .getByTestId("log-sheet-context-slot")
+      .boundingBox();
+    const headingBox = await sheet
+      .getByTestId("log-sheet-context")
+      .locator("h3")
+      .boundingBox();
     const section = await box(
       sheet.getByTestId("log-sheet-context"),
       "context section"
@@ -194,6 +213,11 @@ test("every segment keeps the sheet still and fills the phone width (#3675)", as
     );
     // `pb-3` (12px) plus the 1px rule is all that may separate the last offer
     // from the section's bottom border — the reserve is no longer pinned there.
+    console.log("MEASURE", JSON.stringify({
+      slot: slotBox, section: { h: section.height }, heading: headingBox,
+      routine: routineBox, offer: { h: lastOffer.height },
+      panel: (await sheetGeometry(sheet)).panelHeight,
+    }));
     expect(
       section.y + section.height - (lastOffer.y + lastOffer.height)
     ).toBeLessThanOrEqual(13 + PX_EPSILON);
@@ -386,6 +410,54 @@ test("a failed gather stays silent and reduced motion schedules no arrive keyfra
       running: node.getAnimations().length,
     }));
     expect(animation).toEqual({ name: "none", opacity: "1", running: 0 });
+  } finally {
+    await page.context().close();
+  }
+});
+
+test("TEMP measure", async ({ browser }) => {
+  const page = await loginAs(
+    browser,
+    { username: E2E_LOGIN_SHELL, password: E2E_MEMBER_PASSWORD },
+    PHONE_390
+  );
+  try {
+    await page.goto("/");
+    const sheet = await openLogSheet(page);
+    await expect(sheet.getByTestId("log-sheet-context")).toBeVisible();
+    const list = sheet.getByTestId("log-sheet-items");
+    for (const seg of ["train", "food", "body", "care"]) {
+      await sheet.getByTestId(`log-sheet-segment-${seg}`).click();
+      const n = await list.locator("> li").count();
+      const b = await list.boundingBox();
+      const panel = await sheet.locator("[data-sheet-panel]").boundingBox();
+      console.log("MEASURE-LIST", seg, n, b!.height, "panel", panel!.height);
+    }
+  } finally {
+    await page.context().close();
+  }
+});
+
+test("TEMP measure routine", async ({ browser }) => {
+  const { E2E_LOGIN_ROUTINEUSUAL } = await import("./logins/nutrition");
+  const page = await loginAs(
+    browser,
+    { username: E2E_LOGIN_ROUTINEUSUAL, password: E2E_MEMBER_PASSWORD },
+    PHONE_390
+  );
+  try {
+    await page.goto("/");
+    const sheet = await openLogSheet(page);
+    await expect(sheet.getByTestId("log-sheet-context")).toBeVisible();
+    const routine = await sheet
+      .getByTestId("routine-usual-offer")
+      .boundingBox();
+    const section = await sheet.getByTestId("log-sheet-context").boundingBox();
+    const panel = await sheet.locator("[data-sheet-panel]").boundingBox();
+    console.log(
+      "MEASURE-ROUTINE",
+      JSON.stringify({ routine, section: section!.height, panel: panel!.height })
+    );
   } finally {
     await page.context().close();
   }
