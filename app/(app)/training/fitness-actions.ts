@@ -19,7 +19,7 @@ import { fitnessTest, computeVo2, type Vo2Method } from "@/lib/fitness-battery";
 import { heartRateRecovery, sittingRisingResult } from "@/lib/vo2-field-tests";
 import { estimate1RM } from "@/lib/strength";
 import { liftInfo } from "@/lib/lifts";
-import { toKg, kgTo } from "@/lib/units";
+import { toKg, kgTo, submittedWeightUnit } from "@/lib/units";
 import {
   getProfileAge,
   getProfileSex,
@@ -89,7 +89,6 @@ export async function saveFitnessTest(
 
   const sex = getProfileSex(profile.id);
   const age = getProfileAgeOn(profile.id, date);
-  const weightUnit = getUnitPrefs(login.id).weightUnit;
 
   let value: number | null = null;
   let rawInput: unknown = undefined;
@@ -139,7 +138,18 @@ export async function saveFitnessTest(
       const r = num(fd, "reps");
       if (weight == null || r == null || weight <= 0 || r <= 0)
         return { ok: false, error: "enter the weight and reps" };
-      const setKg = toKg(weight, weightUnit);
+      // Honor the unit the field was CAPTURED in (#630, #3942): the modal posts the
+      // unit it labelled the input with, and we trust it over the login's current
+      // stored pref — the pref is per-LOGIN, so another tab or device can flip it
+      // between the render that said "Weight (lb)" and this save. Falls back to the
+      // stored pref when the field is absent (older client).
+      const setKg = toKg(
+        weight,
+        submittedWeightUnit(
+          fd.get("weight_unit"),
+          getUnitPrefs(login.id).weightUnit
+        )
+      );
       value = estimate1RM(setKg, r);
       liftName = lift;
       weightKg = setKg;

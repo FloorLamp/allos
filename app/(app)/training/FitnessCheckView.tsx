@@ -476,6 +476,9 @@ function EntryModal({
     } else if (def.inputKind === "e1rm") {
       fd.set("lift", lift);
       fd.set("weight", fields.weight ?? "");
+      // The unit this field was LABELLED with, carried with the value (#630, #3942)
+      // so a pref flip in another tab between render and Save can't re-interpret it.
+      fd.set("weight_unit", weightUnit);
       fd.set("reps", fields.reps ?? "");
     } else {
       fd.set("value", value);
