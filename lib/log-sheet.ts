@@ -115,6 +115,58 @@ export function maxLogSheetRows(
   );
 }
 
+// ── ONE RESERVE, AT THE PANEL (issue #3736) ──────────────────────────────────
+//
+// #3675 stopped the sheet resizing under the reader, and #3718 shipped that as
+// TWO worst-case reserves: a 208px context slot whose bottom rule was pinned to
+// the bottom of it, and a list drawn at the TALLEST segment's height on every
+// segment. Train has two entries where Consume has three, so Train drew two rows
+// inside a three-row box under a chip-row of emptiness above a horizontal rule.
+// Slack bounded below by a rule or a control reads as a rendering fault; slack
+// that simply collects after the last row reads as padding.
+//
+// So the PANEL's height is what is held constant. Every region sizes to its own
+// content, and ONE spacer, last in the panel, takes the whole difference — which
+// is also why the arithmetic lives here, in the pure module, rather than as three
+// literals inside the renderer.
+
+/**
+ * One row is 60px (36px icon + 24px vertical padding), followed by the list's 4px
+ * gap. The list's `pb-1` spends that final 4px after the last row, so
+ * N × 64px is the exact rendered list block rather than an approximate
+ * minimum (#3675).
+ */
+export const LOG_SHEET_ROW_BLOCK_PX = 64;
+
+/**
+ * The context region at its tallest, at 390px: the heading (16 + `mb-2` 8), the
+ * routine control (54 + `mb-3` 12), TWO offer rows in the sheet's own row shape
+ * (2 × 62 + one 4px gap), and the section's `pb-3` 12 + its 1px rule + `mb-4` 16.
+ *
+ * Two is the most this region can ever hold — `dueDoses.count > 0` and the
+ * `resume` arm of `workoutOffer` — and the common case is one, which is exactly
+ * why this number may no longer be spent as a fixed height on the region itself.
+ */
+export const LOG_SHEET_CONTEXT_RESERVE_PX = 240;
+
+/** The segmented track: a 44px target inside the control's `p-1`, plus `mb-3`. */
+export const LOG_SHEET_TRACK_BLOCK_PX = 64;
+
+/**
+ * The height the sheet's panel holds whatever it is showing — the floor the
+ * trailing spacer fills out to. A one-segment profile has no track to reserve
+ * for, and holds no rows it cannot reach (`maxLogSheetRows`).
+ */
+export function logSheetReservePx(
+  segments: readonly Pick<LogSegment, "items">[]
+): number {
+  return (
+    LOG_SHEET_CONTEXT_RESERVE_PX +
+    (segments.length > 1 ? LOG_SHEET_TRACK_BLOCK_PX : 0) +
+    maxLogSheetRows(segments) * LOG_SHEET_ROW_BLOCK_PX
+  );
+}
+
 /**
  * Which segment the track opens on: the one holding the CURRENT ROUTE's promoted
  * log (`primaryQuickLog`), so opening the puck on Nutrition lands on Consume. Falls

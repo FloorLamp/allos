@@ -29,6 +29,7 @@ import {
 } from "@/app/(app)/log-sheet-actions";
 import {
   dueDoseChipLabel,
+  logSheetReservePx,
   logSheetSegments,
   maxLogSheetRows,
   openingLogSegment,
@@ -126,10 +127,11 @@ const ICONS: Record<QuickLogIcon, typeof IconBarbell> = {
 // mechanism exists to make false.
 const LOG_SURFACE: WebLoggedVia = "quick-log";
 
-// One row is 60px (36px icon + 24px vertical padding), followed by the list's
-// 4px gap. Its `pb-1` spends that final 4px after the last row, so N×64px is the
-// exact rendered list block rather than an approximate minimum (#3675).
-const LOG_SHEET_ROW_BLOCK_PX = 64;
+// The sheet's own full-width row — ONE shape for the context offers and the
+// long-tail entries, so the panel reads as one list top to bottom rather than a
+// bordered card above a half-width pill (#3736). `min-h-11` is the #644 floor.
+const SHEET_ROW_CLASS =
+  "press flex min-h-11 w-full items-center gap-3 rounded-xl border border-(--border) bg-surface px-3 py-3 text-left transition hover:bg-(--ghost-hover)";
 
 export default function QuickLogMenu({
   open,
@@ -222,167 +224,190 @@ export default function QuickLogMenu({
   // renders, posting the SAME action, so the server can only tell this menu from
   // the dashboard atom if the menu says so. Declared at the region root rather
   // than on the control, which is mounted in both places.
+  // The panel's whole reserve, spent by the trailing spacer at the very bottom.
+  const reservePx = logSheetReservePx(segments);
+
   return (
     <LoggedViaSurface value={LOG_SURFACE}>
-      {/* The 208px context slot exists from the first frame and survives an
-          empty or failed gather. It is tall enough for the heading, composed
-          routine control, and two wrapping chips at 390px. Each host keeps the
-          one scroll owner; this reserve adds no nested scroller. */}
       <div
-        data-testid="log-sheet-context-slot"
-        data-context-state={contextState}
-        className="mb-4 h-52"
+        data-testid="log-sheet-menu"
+        className="flex flex-col"
+        style={{ minHeight: `${reservePx}px` }}
       >
-        <p
-          role="status"
-          aria-live="polite"
-          data-testid="log-sheet-context-status"
-          className="sr-only"
+        {/* The slot survives an empty or failed gather, and now carries no height
+          of its own: with nothing gathered it contributes nothing, and with
+          offers it sizes to them so its rule sits directly under the last one.
+          Each host keeps the one scroll owner; nothing here adds a nested one. */}
+        <div
+          data-testid="log-sheet-context-slot"
+          data-context-state={contextState}
         >
-          {hasGatheredOffers ? "Due and usual options are ready." : ""}
-        </p>
-        {hasGatheredOffers && context && (
-          <section
-            data-testid="log-sheet-context"
-            className={`${arrivePlan.className} h-full border-b border-black/5 pb-3 dark:border-white/5`}
+          <p
+            role="status"
+            aria-live="polite"
+            data-testid="log-sheet-context-status"
+            className="sr-only"
           >
-            <h3 className="mb-2 text-xs font-semibold tracking-wide text-slate-500 uppercase dark:text-slate-400">
-              Due &amp; usual now
-            </h3>
-            {/* The dashboard's own control, unchanged: it names every serving and
-        every dose the tap will write, and answers from the typed outcome. */}
-            {context.routine && (
-              <UsualRoutineControl
-                window={context.routine.window}
-                food={context.routine.food}
-                doses={context.routine.doses}
-                subjectName={context.routine.subjectName}
-              />
-            )}
-            <div className="flex flex-wrap gap-2">
-              {context.dueDoses.count > 0 && (
-                <ContextChip
-                  testId="log-sheet-chip-doses"
-                  icon={<IconPill className="h-4 w-4" stroke={1.75} />}
-                  // Names come from the SAME due items the count used to summarize;
-                  // the chip still opens the list and confirms nothing itself.
-                  label={dueDoseChipLabel(context.dueDoses)!}
-                  onClick={() => {
-                    onRun?.();
-                    openQuickEntry("dose");
-                  }}
+            {hasGatheredOffers ? "Due and usual options are ready." : ""}
+          </p>
+          {hasGatheredOffers && context && (
+            <section
+              data-testid="log-sheet-context"
+              className={`${arrivePlan.className} mb-4 border-b border-black/5 pb-3 dark:border-white/5`}
+            >
+              <h3 className="mb-2 text-xs font-semibold tracking-wide text-slate-500 uppercase dark:text-slate-400">
+                Due &amp; usual now
+              </h3>
+              {/* The dashboard's own control, unchanged: it names every serving and
+                  every dose the tap will write, and answers from the typed outcome.
+                  It is why the offers below took ITS full-width shape rather than the
+                  other way round — a control that names doses cannot compress into a
+                  pill (#3736). */}
+              {context.routine && (
+                <UsualRoutineControl
+                  window={context.routine.window}
+                  food={context.routine.food}
+                  doses={context.routine.doses}
+                  subjectName={context.routine.subjectName}
                 />
               )}
-              {/* ONLY the `resume` arm. A `start` offer stands on every route at
-          every hour, and a permanently-present chip in a section headed "Due &
-          usual now" would claim that starting a workout is DUE — which is
-          exactly the campaigning this chrome refuses. A live or just-abandoned
-          session genuinely is now, and "Log activity" stays one segment away
-          regardless (#2419: dueness gates nudging, never logging). */}
-              {workoutOffer.kind === "resume" && (
-                <ContextChip
-                  testId="log-sheet-chip-session"
-                  workoutOffer={workoutOffer.kind}
-                  icon={<IconBolt className="h-4 w-4" stroke={1.75} />}
-                  // The LABEL is the offer (#1893) — "Resume workout" with a
-                  // session already live, so the tap can never silently reset a
-                  // running clock.
-                  label={workoutOffer.label}
-                  onClick={() => {
-                    onRun?.();
-                    openLive();
-                  }}
-                />
-              )}
-            </div>
-          </section>
+              <div className="flex flex-col gap-1">
+                {context.dueDoses.count > 0 && (
+                  <SheetRow
+                    testId="log-sheet-chip-doses"
+                    icon="pill"
+                    // Names come from the SAME due items the count used to summarize;
+                    // the row still opens the list and confirms nothing itself.
+                    label={dueDoseChipLabel(context.dueDoses)!}
+                    onClick={() => {
+                      onRun?.();
+                      openQuickEntry("dose");
+                    }}
+                  />
+                )}
+                {/* ONLY the `resume` arm. A `start` offer stands on every route at
+                    every hour, and a permanently-present offer in a section headed
+                    "Due & usual now" would claim that starting a workout is DUE —
+                    which is exactly the campaigning this chrome refuses. A live or
+                    just-abandoned session genuinely is now, and "Log activity" stays
+                    one segment away regardless (#2419: dueness gates nudging, never
+                    logging). */}
+                {workoutOffer.kind === "resume" && (
+                  <SheetRow
+                    testId="log-sheet-chip-session"
+                    workoutOffer={workoutOffer.kind}
+                    icon="bolt"
+                    // The LABEL is the offer (#1893) — "Resume workout" with a
+                    // session already live, so the tap can never silently reset a
+                    // running clock.
+                    label={workoutOffer.label}
+                    onClick={() => {
+                      onRun?.();
+                      openLive();
+                    }}
+                  />
+                )}
+              </div>
+            </section>
+          )}
+        </div>
+
+        {segments.length > 1 && (
+          <SegmentedControl<LogSegmentId>
+            options={segments.map((s) => ({
+              value: s.id,
+              label: s.label,
+              testId: `log-sheet-segment-${s.id}`,
+            }))}
+            value={shown?.id ?? segments[0]!.id}
+            onChange={setSegment}
+            ariaLabel="What are you logging?"
+            testId="log-sheet-segments"
+            fill
+            className="mb-3"
+          />
         )}
-      </div>
 
-      {segments.length > 1 && (
-        <SegmentedControl<LogSegmentId>
-          options={segments.map((s) => ({
-            value: s.id,
-            label: s.label,
-            testId: `log-sheet-segment-${s.id}`,
-          }))}
-          value={shown?.id ?? segments[0]!.id}
-          onChange={setSegment}
-          ariaLabel="What are you logging?"
-          testId="log-sheet-segments"
-          fill
-          className="mb-3"
-        />
-      )}
-
-      <ul
-        className="flex flex-col gap-1 pb-1"
-        data-testid="log-sheet-items"
-        data-max-rows={maxRows}
-        style={{ height: `${maxRows * LOG_SHEET_ROW_BLOCK_PX}px` }}
-      >
-        {(shown?.items ?? []).map((item) => {
-          const Icon = ICONS[item.icon];
-          const label =
-            item.target.kind === "live" ? workoutOffer.label : item.label;
-          return (
+        <ul
+          className="flex flex-col gap-1 pb-1"
+          data-testid="log-sheet-items"
+          data-max-rows={maxRows}
+        >
+          {(shown?.items ?? []).map((item) => (
             <li key={item.id}>
-              <button
-                type="button"
-                data-testid={`quick-log-${item.id}`}
-                data-workout-offer={
+              <SheetRow
+                testId={`quick-log-${item.id}`}
+                workoutOffer={
                   item.target.kind === "live" ? workoutOffer.kind : undefined
                 }
+                icon={item.icon}
+                label={
+                  item.target.kind === "live" ? workoutOffer.label : item.label
+                }
+                hint={item.hint}
                 onClick={() => run(item)}
-                className="press flex min-h-11 w-full items-center gap-3 rounded-xl border border-(--border) bg-surface px-3 py-3 text-left transition hover:bg-(--ghost-hover)"
-              >
-                <span className="flex h-9 w-9 shrink-0 items-center justify-center rounded-lg bg-brand-50 text-brand-600 dark:bg-brand-500/15 dark:text-brand-300">
-                  <Icon className="h-5 w-5" stroke={1.75} />
-                </span>
-                <span className="min-w-0 flex-1">
-                  <span className="block text-sm font-medium text-slate-800 dark:text-slate-100">
-                    {label}
-                  </span>
-                  <span className="block truncate text-xs text-slate-500 dark:text-slate-400">
-                    {item.hint}
-                  </span>
-                </span>
-                <IconChevronRight
-                  className="h-4 w-4 shrink-0 text-slate-400"
-                  stroke={1.75}
-                />
-              </button>
+              />
             </li>
-          );
-        })}
-      </ul>
+          ))}
+        </ul>
+
+        {/* THE ONE SPACER, LAST (#3736). It takes whatever the regions above did
+            not, so the panel is the same height on every segment and across the
+            gather — and every pixel of slack collects after the final row, where
+            it reads as padding, instead of between the reader's content and a
+            rule. */}
+        <div data-testid="log-sheet-spacer" className="grow" aria-hidden />
+      </div>
     </LoggedViaSurface>
   );
 }
 
-function ContextChip({
+// ONE ROW, BOTH SECTIONS (#3736). The context offers and the long-tail entries
+// are the same class of thing — something the reader can act on right now, whose
+// tap opens an existing form — so they are drawn by one component instead of a
+// full-width bordered card above a half-width pill. Only the long tail carries a
+// `hint`; an offer's label is the whole promise.
+function SheetRow({
   testId,
   icon,
   label,
+  hint,
   onClick,
   workoutOffer,
 }: {
   testId: string;
-  icon: React.ReactNode;
+  icon: QuickLogIcon;
   label: string;
+  hint?: string;
   onClick: () => void;
   workoutOffer?: string;
 }) {
+  const Icon = ICONS[icon];
   return (
     <button
       type="button"
       data-testid={testId}
       data-workout-offer={workoutOffer}
       onClick={onClick}
-      className="press inline-flex min-h-11 items-center gap-1.5 rounded-full border border-brand-200 bg-brand-50/60 px-3 py-2 text-sm font-medium text-brand-800 transition hover:bg-brand-50 dark:border-brand-900 dark:bg-brand-950/40 dark:text-brand-200 dark:hover:bg-brand-950/60"
+      className={SHEET_ROW_CLASS}
     >
-      {icon}
-      {label}
+      <span className="flex h-9 w-9 shrink-0 items-center justify-center rounded-lg bg-brand-50 text-brand-600 dark:bg-brand-500/15 dark:text-brand-300">
+        <Icon className="h-5 w-5" stroke={1.75} />
+      </span>
+      <span className="min-w-0 flex-1">
+        <span className="block text-sm font-medium text-slate-800 dark:text-slate-100">
+          {label}
+        </span>
+        {hint && (
+          <span className="block truncate text-xs text-slate-500 dark:text-slate-400">
+            {hint}
+          </span>
+        )}
+      </span>
+      <IconChevronRight
+        className="h-4 w-4 shrink-0 text-slate-400"
+        stroke={1.75}
+      />
     </button>
   );
 }

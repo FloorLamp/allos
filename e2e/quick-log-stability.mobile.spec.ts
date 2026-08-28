@@ -11,6 +11,7 @@ import { E2E_MEMBER_PASSWORD } from "./logins/shared";
 import { settledAfterAnimation, settledBoxes } from "./helpers";
 import { loginAs } from "./nav";
 import { frozenNow, workerDbPath } from "./worker-env";
+import { LOG_SHEET_ROW_BLOCK_PX } from "@/lib/log-sheet";
 import { TAP_FLOOR_PX } from "@/lib/tap-floor-tokens";
 
 const PHONE_430 = { viewport: { width: 430, height: 932 }, hasTouch: true };
@@ -41,13 +42,28 @@ async function sheetGeometry(sheet: Locator) {
   return { panelHeight: panel.height, segmentTop: segments.y };
 }
 
-function expectSameGeometry(
+// THE PANEL IS WHAT MUST BE CONSTANT (#3736). Since the sheet holds ONE reserve
+// at the panel instead of one per region, the regions inside it move: a gather
+// that resolves grows the context region and shrinks the trailing spacer by the
+// same amount, so the segment track legitimately sits lower afterwards. The
+// panel's height is the invariant, and it is asserted on its own wherever the
+// straddled event changes what the regions hold.
+function expectSamePanelHeight(
   actual: Awaited<ReturnType<typeof sheetGeometry>>,
   expected: Awaited<ReturnType<typeof sheetGeometry>>
 ) {
   expect(
     Math.abs(actual.panelHeight - expected.panelHeight)
   ).toBeLessThanOrEqual(PX_EPSILON);
+}
+
+// Switching segments changes only the row count, which the spacer absorbs, so
+// the track cannot move either.
+function expectSameGeometry(
+  actual: Awaited<ReturnType<typeof sheetGeometry>>,
+  expected: Awaited<ReturnType<typeof sheetGeometry>>
+) {
+  expectSamePanelHeight(actual, expected);
   expect(Math.abs(actual.segmentTop - expected.segmentTop)).toBeLessThanOrEqual(
     PX_EPSILON
   );
@@ -137,12 +153,50 @@ test("every segment keeps the sheet still and fills the phone width (#3675)", as
     }
 
     await page.setViewportSize(PHONE_390.viewport);
+    const baseline390 = await sheetGeometry(sheet);
     for (let index = 0; index < 4; index += 1) {
+      const option = options.nth(index);
+      await option.click();
+      await expect(option).toHaveAttribute("aria-pressed", "true");
       const optionBox = await box(options.nth(index), `390px segment ${index}`);
       expect(optionBox.height + PX_EPSILON).toBeGreaterThanOrEqual(
         TAP_FLOOR_PX
       );
+      // The AC's own measurement: byte-identical panel height on all four
+      // segments at 390px, Train (two rows) included (#3736).
+      expectSameGeometry(await sheetGeometry(sheet), baseline390);
     }
+
+    // ...and the slack is all in ONE place. On Train — the fewest rows, so the
+    // segment carrying the most of it — nothing sits between the last row and
+    // the next thing down, and nothing between the last offer and the rule.
+    await sheet.getByTestId("log-sheet-segment-train").click();
+    const rows = sheet.getByTestId("log-sheet-items").locator("> li");
+    await expect(rows).toHaveCount(2);
+    const lastRow = await box(rows.last(), "Train's last row");
+    const spacer = await sheet.getByTestId("log-sheet-spacer").boundingBox();
+    expect(spacer, "trailing spacer").not.toBeNull();
+    // The list's own `pb-1` is the 4px the row block already counts.
+    expect(spacer!.y - (lastRow.y + lastRow.height)).toBeLessThanOrEqual(
+      4 + PX_EPSILON
+    );
+    // Train reserves three rows' worth and draws two, so the spacer holds that
+    // difference rather than the list holding it.
+    expect(spacer!.height).toBeGreaterThan(LOG_SHEET_ROW_BLOCK_PX / 2);
+
+    const section = await box(
+      sheet.getByTestId("log-sheet-context"),
+      "context section"
+    );
+    const lastOffer = await box(
+      sheet.getByTestId("log-sheet-chip-doses"),
+      "due-dose offer"
+    );
+    // `pb-3` (12px) plus the 1px rule is all that may separate the last offer
+    // from the section's bottom border — the reserve is no longer pinned there.
+    expect(
+      section.y + section.height - (lastOffer.y + lastOffer.height)
+    ).toBeLessThanOrEqual(13 + PX_EPSILON);
   } finally {
     await page.context().close();
   }
@@ -188,21 +242,25 @@ test("a delayed gather paints into the reserved slot without moving the sheet (#
     await ready;
     await expect(sheet.getByTestId("log-sheet-context")).toHaveCount(0);
     const before = await sheetGeometry(sheet);
-    const reservedBefore = await box(
-      sheet.getByTestId("log-sheet-context-slot"),
-      "reserved context slot"
-    );
+    // Not `box`: with nothing gathered the slot is content-sized to nothing, and
+    // a zero-height element is not "visible" (#3736).
+    const reservedBefore = await sheet
+      .getByTestId("log-sheet-context-slot")
+      .boundingBox();
+    expect(reservedBefore, "empty context slot").not.toBeNull();
 
     release();
     await expect(sheet.getByTestId("log-sheet-context")).toBeVisible();
-    expectSameGeometry(await sheetGeometry(sheet), before);
+    // THE #3736 MEASUREMENT, straddling the resolve: the panel does not move a
+    // pixel, and the reason is no longer that the slot was padded to a worst
+    // case. The slot itself GROWS into the offers it just received, and the
+    // trailing spacer gives up exactly that much.
+    expectSamePanelHeight(await sheetGeometry(sheet), before);
     const reservedAfter = await box(
       sheet.getByTestId("log-sheet-context-slot"),
       "filled context slot"
     );
-    expect(
-      Math.abs(reservedAfter.height - reservedBefore.height)
-    ).toBeLessThanOrEqual(PX_EPSILON);
+    expect(reservedAfter.height).toBeGreaterThan(reservedBefore!.height);
     await expect(sheet.getByTestId("log-sheet-context-status")).toHaveText(
       "Due and usual options are ready."
     );
@@ -252,16 +310,13 @@ test("an empty gathered answer keeps the same reserved geometry and stays silent
     await ready;
     const before = await sheetGeometry(sheet);
     const reserve = sheet.getByTestId("log-sheet-context-slot");
-    const reservedBefore = await box(reserve, "empty context reserve");
     await expect(reserve).toHaveAttribute("data-context-state", "loading");
 
     release();
     await expect(reserve).toHaveAttribute("data-context-state", "ready");
+    // Nothing to paint, so nothing moves at all — the panel-level reserve makes
+    // the empty answer and the offered one the same height (#3736).
     expectSameGeometry(await sheetGeometry(sheet), before);
-    const reservedAfter = await box(reserve, "empty resolved context reserve");
-    expect(
-      Math.abs(reservedAfter.height - reservedBefore.height)
-    ).toBeLessThanOrEqual(PX_EPSILON);
     await expect(sheet.getByTestId("log-sheet-context")).toHaveCount(0);
     await expect(sheet.getByTestId("log-sheet-context-status")).toHaveText("");
   } finally {
@@ -309,19 +364,11 @@ test("a failed gather stays silent and reduced motion schedules no arrive keyfra
     const reserve = sheet.getByTestId("log-sheet-context-slot");
     await expect(reserve).toHaveAttribute("data-context-state", "loading");
     const before = await sheetGeometry(sheet);
-    const reservedBefore = await box(reserve, "failed context reserve");
     release();
     await response;
     await expect(reserve).toHaveAttribute("data-context-state", "failed");
 
     expectSameGeometry(await sheetGeometry(sheet), before);
-    const reservedAfter = await box(
-      reserve,
-      "failed context reserve after response"
-    );
-    expect(
-      Math.abs(reservedAfter.height - reservedBefore.height)
-    ).toBeLessThanOrEqual(PX_EPSILON);
     await expect(sheet.getByTestId("log-sheet-context")).toHaveCount(0);
     await expect(sheet.getByTestId("log-sheet-context-status")).toHaveText("");
 

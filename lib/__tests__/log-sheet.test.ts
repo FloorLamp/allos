@@ -5,7 +5,9 @@ import {
   habitualLogSegment,
   logSheetSegments,
   maxLogSheetRows,
+  logSheetReservePx,
   openingLogSegment,
+  LOG_SHEET_ROW_BLOCK_PX,
   LOG_HABIT_MIN_DAYS,
   LOG_HABIT_WINDOW_DAYS,
   type SegmentLogDays,
@@ -101,6 +103,29 @@ describe("logSheetSegments", () => {
     expect(maxLogSheetRows(all)).toBe(3);
     expect(maxLogSheetRows([{ items: all[0]!.items.slice(0, 1) }])).toBe(1);
     expect(maxLogSheetRows([])).toBe(0);
+  });
+});
+
+// ONE reserve, at the panel (#3736): the context worst case, the track when there
+// is one, and the tallest segment's rows — and nothing per-region.
+describe("logSheetReservePx", () => {
+  const all = logSheetSegments(true, true);
+  it.each([
+    ["the full track, tallest segment three rows", all, 240 + 64 + 3 * 64],
+    // A profile down to one segment has no track to reserve for, and holds no
+    // rows for entries it cannot reach.
+    ["one segment, one row", [{ items: all[0]!.items.slice(0, 1) }], 240 + 64],
+    ["no segments at all", [], 240],
+  ])("%s", (_name, segments, expected) => {
+    expect(logSheetReservePx(segments)).toBe(expected);
+  });
+
+  it("grows by exactly one row block per row the tallest segment gains", () => {
+    const two = [{ items: all[1]!.items.slice(0, 2) }, { items: [] }];
+    const three = [{ items: all[1]!.items.slice(0, 3) }, { items: [] }];
+    expect(logSheetReservePx(three) - logSheetReservePx(two)).toBe(
+      LOG_SHEET_ROW_BLOCK_PX
+    );
   });
 });
 
