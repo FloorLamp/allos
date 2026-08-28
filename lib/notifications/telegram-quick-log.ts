@@ -1815,11 +1815,17 @@ export async function handleTuneTap(
   // The write, then the re-render — so the keyboard below is drawn from what was
   // actually stored, never from what the tap intended.
   let answer: string | undefined;
-  // THE TOGGLE IS LOGIN DISPLAY STATE, not the data subject's records (see the header):
-  // no live keyboard of this profile's claims anything about it, so it earns no sweep.
+  // THE TOGGLE EARNS A SWEEP, THOUGH IT WRITES NO RECORD OF THE SUBJECT'S. It is login
+  // display state (see the header) and no live KEYBOARD claims anything about it — but
+  // `digestDemotionsForProfile` feeds `gatherDigestInput`, so on a profile one login
+  // manages, demoting a category changes what the digest SAYS. The digest's claims are
+  // its prose, and prose is exactly what its reconciler owns; without this the sentence
+  // would keep contradicting the icon it sits under until the next tick.
+  let wrote: TapWrote;
   if (token.action === "toggle" && token.category) {
     const outcome = toggleLoginDigestDemotion(loginId, token.category);
     answer = tuneToggleAnswer(token.category, outcome.demoted);
+    wrote = profileId;
   }
 
   const offering = tunableCategoriesFor(
@@ -1831,7 +1837,7 @@ export async function handleTuneTap(
       cq.id,
       answer ?? "Nothing in today's digest to tune."
     );
-    return;
+    return wrote;
   }
   // The WRITE happened above, so the outcome text is real: ack with it, THEN redraw
   // (#2418). The ordering rule's writing half — the toast rides the ack and must stay
@@ -1852,6 +1858,7 @@ export async function handleTuneTap(
       ),
     })
   );
+  return wrote;
 }
 
 // The digest time suggestion's three exits (#2217), tapped from the digest itself.

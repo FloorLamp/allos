@@ -3165,8 +3165,10 @@ the hook sits at the dispatcher (a new button cannot forget it); it runs AFTER
 it runs only when a handler reports a write, which each returns as `TapWrote` — a
 refusal or a keyboard navigation pays for nothing; and a throw is logged and swallowed,
 because by then the write has landed and the person has been answered. The tapped
-message's own pointer is EXCLUDED: its handler has just rebuilt it from the same state
-the sweep would read, so a second edit is a flicker and a wasted call.
+message is swept with the rest: a handler that re-rendered it leaves its pointer in
+sync, so the sweep computes the same render and edits nothing, while a handler that
+edited only the KEYBOARD (the digest's ⚙️ Tune and its time-suggestion exits, whose
+claims are PROSE) leaves sentences only the sweep can correct.
 
 **How late a keyboard may still be tapped is the FAMILY's answer (#2018).** That
 fourth arm shipped as one global comparison — `pointer.date < today` ⇒ close — which

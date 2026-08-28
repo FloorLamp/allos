@@ -137,6 +137,7 @@ import {
 } from "@/lib/notifications/reconcile-core";
 import { getProfileSetting, setProfileSetting } from "@/lib/settings";
 import { handleCallbackQuery } from "@/lib/notifications/telegram-callbacks";
+import { tuneToggleToken } from "@/lib/notifications/digest-tune";
 import { instantNow } from "@/lib/clock";
 import { seedLoginTelegram } from "./fixtures";
 
@@ -1708,6 +1709,42 @@ describe("the morning digest's prose reconciles (#1913 item 4)", () => {
     const edited = String(editText.mock.calls[0][2]);
     expect(edited).toContain("1/1 taken");
     expect(edited).not.toContain("0/1 taken");
+  });
+
+  // ── THE DIGEST'S OWN TAP CORRECTS ITS OWN SENTENCES (#3933) ─────────────
+  //
+  // Both halves of the hole this closes live here, and one assertion sees both. The ⚙️
+  // Tune toggle writes login display state, so it looked like a tap that owed no sweep —
+  // but `digestDemotionsForProfile` feeds `gatherDigestInput`, so on a profile one login
+  // manages it changes what the digest SAYS. And the sweep used to exclude the tapped
+  // message on the grounds that its handler had just rebuilt it, which is false for this
+  // whole class: `handleTuneTap` edits the KEYBOARD, and `syncMessagePointerKeyboard`
+  // never touches `body_hash`. Either half alone leaves the digest asserting a Check-in
+  // line under a 🔕 icon until the next tick — the hour the tap-time sweep exists to
+  // remove.
+  it("a ⚙️ Tune toggle rewrites the digest it was tapped on", async () => {
+    const p = newProfile("Tune Tori");
+    const chat = "9105";
+    seedLoginTelegram(p, chat);
+    const yd = shiftDateStr(today(p), -1);
+    db.prepare(
+      `INSERT INTO mood_logs (profile_id, date, valence, energy) VALUES (?, ?, 3, 3)`
+    ).run(p, yd);
+    await sendDigest(p, "Tune Tori");
+    const [pointer] = liveMessagePointers(p);
+    expect(String(pointer.kind)).toBe("digest");
+    editText.mockClear();
+
+    await handleCallbackQuery(
+      tapCq(chat, pointer.messageId, tuneToggleToken(p, today(p), "mood"), [])
+    );
+
+    // The routine Check-in line the digest was still asserting is gone from the text
+    // the reader now sees, in the same cycle as the tap.
+    expect(editText).toHaveBeenCalledTimes(1);
+    expect(String(editText.mock.calls[0][2])).not.toContain("Check-in");
+    // …and the sweep settles: a second pass has nothing left to correct.
+    expect((await reconcileProfileMessages(p)).edited).toBe(0);
   });
 
   it("makes NO Telegram call when nothing changed — the idempotence pin", async () => {

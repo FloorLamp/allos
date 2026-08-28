@@ -903,8 +903,10 @@ describe("a tap sweeps the profile's other live messages (#3933)", () => {
       editTextMock.mock.calls.find((c) => c[1] === FOOD_MSG)?.[2] ?? ""
     );
     expect(nudgeText).toContain("<b>Fermented</b> ×1");
-    // …and the tapped message was rebuilt ONCE, by its own handler. Remove the
-    // pointer exclusion in `sweepAfterTap` and this reads 2.
+    // …and the tapped message was edited ONCE in total, though BOTH its handler and
+    // the sweep re-rendered it: they run the same builder over the same post-write
+    // state, and the handler syncs the pointer before the sweep reads it. This count
+    // is the idempotence guard — a rebuild that stopped being idempotent reads 2.
     expect(editsTo(DOSE_MSG)).toBe(1);
   });
 
@@ -946,31 +948,5 @@ describe("a tap sweeps the profile's other live messages (#3933)", () => {
     expect(
       (await reconcileProfileMessages(sp.profileId)).edited
     ).toBeGreaterThan(0);
-  });
-
-  // THE EXCLUSION ITSELF, asserted where it can fail. The end-to-end counts above stay
-  // at one whether or not the tapped pointer is skipped, because the handler and the
-  // sweep re-render through the SAME builders and the handler syncs the pointer before
-  // the sweep reads it — measured by running the whole notification tier with the skip
-  // removed. That idempotence is a property of today's handlers, not a guarantee, so
-  // the skip stays and gets the guard the counts cannot give it.
-  it("the sweep leaves the pointer it is told to skip alone, and only that one", async () => {
-    const { sp, date, itemA, doseA } = setupHosts("TG3933D", "food");
-    // BOTH messages go stale, by writes neither of them made: the reminder still offers
-    // a dose confirmed in the app, the nudge still counts a serving short.
-    markDoseTaken(sp.profileId, doseA, itemA, date, "dashboard-hero");
-    tap(sp.profileId, "fermented", date, "08:00:00");
-    editTextMock.mockClear();
-    editMarkupMock.mockClear();
-    const dosePtr = messagePointerAt(sp.profileId, SWEEP_CHAT, DOSE_MSG)!;
-    const out = await reconcileProfileMessages(sp.profileId, dosePtr.id);
-    expect(out.examined).toBe(1);
-    expect(editsTo(DOSE_MSG)).toBe(0);
-    expect(editsTo(FOOD_MSG)).toBe(1);
-    // …and the reminder really was stale: the unrestricted sweep the tick runs fixes it.
-    editTextMock.mockClear();
-    editMarkupMock.mockClear();
-    await reconcileProfileMessages(sp.profileId);
-    expect(editsTo(DOSE_MSG)).toBe(1);
   });
 });

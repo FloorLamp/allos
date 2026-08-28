@@ -239,29 +239,27 @@ export async function handleCallbackQuery(
   cq: TelegramCallbackQuery
 ): Promise<void> {
   const wrote = await dispatchTap(cq);
-  if (wrote != null) await sweepAfterTap(wrote, cq);
+  if (wrote != null) await sweepAfterTap(wrote);
 }
 
-// The profile's other live messages, reconciled against the ledger this tap just
-// moved. Wrapped exactly as the tick wraps it (tick.ts): a reconcile error is logged
-// and swallowed, because the write has landed and the person has been answered — the
-// same failure isolation, without the hour's wait.
-async function sweepAfterTap(
-  profileId: number,
-  cq: TelegramCallbackQuery
-): Promise<void> {
-  const chatId = cq.message?.chat?.id;
-  const messageId = cq.message?.message_id;
-  // NOT THE TAPPED MESSAGE. Its handler has just rebuilt it from the same post-write
-  // state this sweep would read, so a second edit is a visible flicker and a wasted
-  // API call. Null — an unrecorded, pruned or cross-profile pointer — excludes
-  // nothing, which is correct: there is no rebuilt message of this profile's to skip.
-  const tapped =
-    chatId != null && messageId != null
-      ? messagePointerIdAt(profileId, chatId, messageId)
-      : null;
+// The profile's live messages, reconciled against the ledger this tap just moved.
+// Wrapped exactly as the tick wraps it (tick.ts): a reconcile error is logged and
+// swallowed, because the write has landed and the person has been answered — the same
+// failure isolation, without the hour's wait.
+//
+// THE TAPPED MESSAGE IS SWEPT TOO. An earlier revision excluded it, reasoning that its
+// handler had just rebuilt it from the same post-write state. That holds only for
+// handlers that re-render through a domain builder, and is false for the whole PROSE
+// class: `handleDigestTimeTap` and `handleTuneTap` edit the KEYBOARD only, and
+// `syncMessagePointerKeyboard` never touches `body_hash` — so the digest's own
+// sentences were the one thing no path could correct until the next tick, which is the
+// hour this hook exists to remove. Nothing is spent on the messages that WERE rebuilt:
+// their pointer is already in sync, so the sweep computes the same render and edits
+// zero times. Idempotence is what makes that true, and the exactly-once edit counts in
+// usual-routine-telegram.test.ts are the guard that keeps it true.
+async function sweepAfterTap(profileId: number): Promise<void> {
   try {
-    const rc = await reconcileProfileMessages(profileId, tapped);
+    const rc = await reconcileProfileMessages(profileId);
     if (
       rc.edited > 0 ||
       rc.closed > 0 ||
