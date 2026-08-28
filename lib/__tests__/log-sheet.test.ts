@@ -110,12 +110,15 @@ describe("logSheetSegments", () => {
 // is one, and the tallest segment's rows — and nothing per-region.
 describe("logSheetReservePx", () => {
   const all = logSheetSegments(true, true);
+  // Literal totals on purpose: written as `CONTEXT + TRACK + n * ROW` the table
+  // would only restate the implementation. 255 / 64 / 66 are the measured blocks,
+  // so a constant that drifts fails here naming the pixel it moved to.
   it.each([
-    ["the full track, tallest segment three rows", all, 240 + 64 + 3 * 64],
+    ["the full track, tallest segment three rows", all, 517],
     // A profile down to one segment has no track to reserve for, and holds no
     // rows for entries it cannot reach.
-    ["one segment, one row", [{ items: all[0]!.items.slice(0, 1) }], 240 + 64],
-    ["no segments at all", [], 240],
+    ["one segment, one row", [{ items: all[0]!.items.slice(0, 1) }], 321],
+    ["no segments at all", [], 255],
   ])("%s", (_name, segments, expected) => {
     expect(logSheetReservePx(segments)).toBe(expected);
   });

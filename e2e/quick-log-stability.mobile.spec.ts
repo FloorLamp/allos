@@ -401,4 +401,3 @@ test("a failed gather stays silent and reduced motion schedules no arrive keyfra
     await page.context().close();
   }
 });
-

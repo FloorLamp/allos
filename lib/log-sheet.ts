@@ -131,23 +131,36 @@ export function maxLogSheetRows(
 // literals inside the renderer.
 
 /**
- * One row is 60px (36px icon + 24px vertical padding), followed by the list's 4px
- * gap. The list's `pb-1` spends that final 4px after the last row, so
- * N × 64px is the exact rendered list block rather than an approximate
- * minimum (#3675).
+ * A row measures 62px — 36px icon + 24px vertical padding + the 1px border on
+ * each side — followed by the list's 4px gap. The list's `pb-1` spends that final
+ * gap after the last row, so N × 66px is the exact rendered list block rather
+ * than an approximate minimum (#3675).
+ *
+ * MEASURED, not derived: 1/2/3 rows render 66/132/198px at 390px (2026-08-28).
+ * #3718's 64 omitted the border and under-reserved every list by 2px a row.
  */
-export const LOG_SHEET_ROW_BLOCK_PX = 64;
+export const LOG_SHEET_ROW_BLOCK_PX = 66;
 
 /**
- * The context region at its tallest, at 390px: the heading (16 + `mb-2` 8), the
- * routine control (54 + `mb-3` 12), TWO offer rows in the sheet's own row shape
- * (2 × 62 + one 4px gap), and the section's `pb-3` 12 + its 1px rule + `mb-4` 16.
+ * The context region at its tallest, at 390px. Two offers is the most it can ever
+ * hold — `dueDoses.count > 0` and the `resume` arm of `workoutOffer` — and the
+ * common case is one with no routine control, which is exactly why this number may
+ * no longer be spent as a fixed height on the region itself.
  *
- * Two is the most this region can ever hold — `dueDoses.count > 0` and the
- * `resume` arm of `workoutOffer` — and the common case is one, which is exactly
- * why this number may no longer be spent as a fixed height on the region itself.
+ * Every term below was measured in the rendered sheet at 390px (2026-08-28); only
+ * the wrap allowance is a judgement, and it is the one term user data can move: a
+ * due-dose label is item names, and `Due: <two names> +N` wraps on a phone.
  */
-export const LOG_SHEET_CONTEXT_RESERVE_PX = 240;
+export const LOG_SHEET_CONTEXT_RESERVE_PX =
+  16 + // the "Due & usual now" heading
+  8 + // its `mb-2`
+  54 + // UsualRoutineControl, absent unless the window has a usual set
+  12 + // its `mb-3`
+  2 * 66 + // two offer rows, each allowed ONE wrapped label line (62 unwrapped)
+  4 + // the offers' single `gap-1`
+  12 + // the section's `pb-3`
+  1 + // its rule
+  16; // its `mb-4`
 
 /** The segmented track: a 44px target inside the control's `p-1`, plus `mb-3`. */
 export const LOG_SHEET_TRACK_BLOCK_PX = 64;
