@@ -31,10 +31,18 @@ import {
   switchProfileTimezone,
 } from "@/lib/settings";
 
-const TOKYO = "Asia/Tokyo";
+// THE PAIR MUST NAME ONE DAY, AND SINCE #3901 THAT IS A CONSTRAINT ON THE ZONES.
+// A day bucket is now filed under the day its OWN anchor names, so two anchorings
+// collapse into one row only when both name the same calendar day. This file used to
+// fly Tokyo -> Honolulu, which crosses the date line: those two anchorings name
+// 05-02 and 05-01, so they are two days' readings and cover-the-day never matched
+// them. New York -> Honolulu is the same westward switch WITHOUT the date-line
+// crossing (04:00Z and 10:00Z both name 2026-05-01), which is the shape #3424's prod
+// incident actually had.
+const NEW_YORK = "America/New_York";
 const HONOLULU = "Pacific/Honolulu";
 
-// 2026-05-01T23:00:00Z = Tokyo 2026-05-02 08:00 (the traveller's morning) and
+// 2026-05-01T23:00:00Z = New York 2026-05-01 19:00 (the traveller's evening) and
 // Honolulu 2026-05-01 13:00 (the same instant after the westward switch).
 const SWITCH_INSTANT = "2026-05-01T23:00:00Z";
 
@@ -53,7 +61,7 @@ beforeAll(() => {
     db.prepare("INSERT INTO profiles (name) VALUES (?)").run("HC Traveller")
       .lastInsertRowid
   );
-  setTimezone(profileId, TOKYO);
+  setTimezone(profileId, NEW_YORK);
 });
 
 // THE ORIGIN IS UNDER `metadata`, and that is not cosmetic. `dataOrigin` reads only
@@ -65,9 +73,9 @@ describe("HC daily steps across a westward travel switch", () => {
   it("counts the switch day once, not twice — by the push after the switch", () => {
     freeze(SWITCH_INSTANT);
 
-    // Push 1, before the switch (device on Tokyo time). The exporter's `daily`
-    // steps record for Tokyo 2026-05-02: window = Tokyo midnight → now,
-    // 3000 steps walked that Tokyo morning.
+    // Push 1, before the switch (device on New York time). The exporter's `daily`
+    // steps record for New York 2026-05-01: window = NY midnight → now,
+    // 3000 steps walked that New York day.
     const push1 = parseHealthConnectPayload(
       {
         // Every real exporter push states this, and the supersede requires it: freshness
@@ -75,8 +83,8 @@ describe("HC daily steps across a westward travel switch", () => {
         timestamp: "2026-05-01T23:00:05Z",
         steps: [
           {
-            start_time: "2026-05-01T15:00:00Z", // Tokyo 2026-05-02 00:00
-            end_time: "2026-05-01T23:00:00Z", // Tokyo 2026-05-02 08:00
+            start_time: "2026-05-01T04:00:00Z", // New York 2026-05-01 00:00
+            end_time: "2026-05-01T23:00:00Z", // New York 2026-05-01 19:00
             count: 3000,
             metadata: { data_origin: "com.fitbit.FitbitMobile" },
           },
@@ -89,23 +97,23 @@ describe("HC daily steps across a westward travel switch", () => {
     // The one-tap travel switch — the accept action's whole path, which DELETES NOTHING.
     // #3551 removed the trailing-window sweep this used to call; it only ever touched
     // `body_metrics`, never `metric_samples`, so what this test measures is unchanged.
-    switchProfileTimezone(profileId, HONOLULU, TOKYO);
+    switchProfileTimezone(profileId, HONOLULU, NEW_YORK);
     expect(today(profileId)).toBe("2026-05-01");
 
     // Push 2, after the switch (device now on Honolulu time). Health Connect
     // re-buckets "today" from Honolulu midnight: window = 2026-05-01T10:00Z → now.
-    // The 3000 Tokyo-morning steps happened INSIDE that window (15:00Z–23:00Z),
-    // so the new daily record carries them again, plus 500 walked after landing.
+    // The Honolulu day re-contains the NY day from 10:00Z on and reports 3500 for it;
+    // 04:00Z–10:00Z is the leading sliver the rule documents as its accepted trade.
     freeze("2026-05-02T01:00:00Z"); // Honolulu 2026-05-01 15:00
     const push2 = parseHealthConnectPayload(
       {
         timestamp: "2026-05-02T01:00:05Z",
         steps: [
           // The rolling ~48h window re-sends the pre-switch record too. Same
-          // started_at → same natural key → its `date` is recomputed under the
-          // NEW profile zone (ON CONFLICT SET date = excluded.date).
+          // started_at → same natural key → and since #3901 the day it is filed
+          // under is a function of that key, so the re-send cannot move it.
           {
-            start_time: "2026-05-01T15:00:00Z",
+            start_time: "2026-05-01T04:00:00Z",
             end_time: "2026-05-01T23:00:00Z",
             count: 3000,
             metadata: { data_origin: "com.fitbit.FitbitMobile" },
@@ -155,7 +163,7 @@ describe("HC daily steps across a westward travel switch", () => {
     // Review — and converges below. Reading high is repairable; the alternative on offer
     // was a reading that vanished. WHETHER THAT MEETS THE AC IS THE OWNER'S CALL, and
     // this comment exists so the question is not silently answered by a fixture.
-    expect(rows.map((r) => r.value)).toEqual([3500, 3000]);
+    expect(rows.map((r) => r.value)).toEqual([3000, 3500]);
     const afterSwitchPush = getMetricDailyTotals(profileId, "steps").find(
       (t) => t.date === "2026-05-01"
     );
