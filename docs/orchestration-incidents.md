@@ -1109,3 +1109,96 @@ recurred once per site, each with a seven-hour daily window and a plausible flak
 story attached.
 
 Filed as #3878; fixed in #3866.
+
+## The census that counted filenames (2026-08-28)
+
+#3673 removed the frame from every card below `40rem` — border, radius, shadow, and
+horizontal padding, in one unlayered media block. A change like that does not break
+code; it breaks the specs that pinned the old rendering. Finding those specs _is_ the
+work, and the lane did it twice.
+
+The first pass counted the phone-rendering population as 64 files, on the strength of
+the `*.mobile.spec.ts` suffix. That suffix is a naming convention, not a viewport
+census: any spec can call `setViewportSize`, and many do. Told so, the lane rebuilt
+the population at 126 files, ran 15 signature-hit files (149 tests) and 85 more on a
+wider net, and reported:
+
+> `trends-metric-pages.spec.ts` was the only spec pinning the pre-#3673 arrangement.
+
+The next CI run went red on `e2e/cycle.spec.ts:137`, at 390px, on
+`expect(box.border).toBeGreaterThan(0)`.
+
+The rebuilt population was right; the signature was wrong. Three things hid that spec
+from a search that had the correct file list in hand:
+
+1. **The property and the matcher are on different lines.** The spec reads
+   `borderTopWidth` inside a `page.evaluate` and asserts on the returned local. Grep
+   for `borderTopWidth.*toBeGreaterThan` and it does not exist anywhere in the file.
+2. **The viewport literal is loop-bound.** `for (const width of [390, 1280])` never
+   writes `setViewportSize({ width: 390`. A search for the call form misses it.
+3. **The filename is `cycle.spec.ts`.** Desktop-named, phone-asserting. This is the
+   first failure repeating in a second form: the corrected population was carried
+   forward, the correction's _reason_ was not.
+
+What generalises is not "search harder". It is that a census has two halves — the
+population and the signature — and a lane that gets one wrong tends to report the
+whole thing as clean, because a search that returns nothing looks identical whether
+the hole is in the file list or in the pattern. Both halves are now named in the
+dispatch brief, along with the instruction to report a census as a per-file table
+with the search that produced it, so a reviewer can see which half was tested.
+
+The failure was cheap here: one red shard on an unmerged PR, caught before merge, on
+a change whose whole purpose was to move the value the spec asserted. It is cheap in
+exactly the cases where the change is obvious. The expensive version is a census run
+against a subtle change, reported clean, believed.
+
+## The guard that could only fail one way (2026-08-28)
+
+#3673 removed the frame from every card below `40rem`. The guard written for it walks
+`main`, collects every element that still draws a border and a radius, and asserts the
+list is empty. It was empty. The change was correct, the sweep was green, and the
+adversarial pass found this on `/medications` at 390px:
+
+| element                                                              | border | radius | background         | padding-left |
+| -------------------------------------------------------------------- | ------ | ------ | ------------------ | ------------ |
+| the drug-interaction / allergy / pharmacogenomic / ototoxicity strip | `0px`  | `0px`  | `rgb(244,248,240)` | `0px`        |
+| `medications-today`, an ordinary card                                | `0px`  | `0px`  | `rgb(244,248,240)` | `0px`        |
+| `medication-list`, an ordinary card                                  | `0px`  | `0px`  | `rgb(244,248,240)` | `0px`        |
+
+Identical in every measured property. The content of the first row was _"Major ·
+Warfarin + Ibuprofen — … sharply raising the risk of serious (especially GI)
+bleeding."_ Three rose sentences flush to the page gutter, in a band indistinguishable
+from the list of medications above it.
+
+The ruling had anticipated this. #3673 registered the tinted Notice family as its one
+exception precisely so that a warning would have something to reach for once the
+neutral frames were gone. The implementation honoured that faithfully — `data-notice`
+emitted by the primitive, module identity rather than a path list, a compile-time tone
+census, a forged-frame positive control. What nobody checked was whether the app's
+safety copy actually goes through the primitive. It mostly does: 21 `Notice` call
+sites, integration re-auth, UL hazards, RDA findings. The medication safety strip is a
+plain `.card` whose findings are `embedded`, and `embedded` draws nothing.
+
+Two more of the same shape: the ASHA ototoxicity threshold-shift warning was
+`card border-amber-300` — a _border colour_ as its entire signal, erased completely
+when the border width went to zero — and the dashboard's active-illness rail was
+`border-l-4 border-l-rose-500`, on a route the sweep actually visits.
+
+The generalisable part is not "audit your safety surfaces". It is this:
+
+**A guard that proves a removal cannot also prove the property survived where it was
+load-bearing.** "Nothing still has it" returns an empty list on the tree you wanted and
+on the tree where the thing vanished from somewhere that needed it. One assertion, two
+very different worlds, one green. The direction is baked into the shape of the check,
+so no amount of extending its route list fixes it — the sweep could have visited every
+page in the app and still passed.
+
+The fix is to write the converse in the same commit: the named surfaces that must
+_still_ carry the property, asserted as a comparison between two real elements on the
+same page rather than against a constant. Short and hand-written — an exhaustive
+scanner is the shape the owner's line-budget ruling forbids, and it would be the wrong
+instrument anyway, because the question is which surfaces are _meant_ to be loud, and
+that is a judgment no scan can make.
+
+Both halves are now in the dispatch brief. The PR was parked at green rather than
+merged; the cost was one review round.
