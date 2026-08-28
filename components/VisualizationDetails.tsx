@@ -15,7 +15,10 @@ export default function VisualizationDetails({
       className="pointer-events-none relative z-10 mt-2 text-xs text-slate-500 dark:text-slate-400"
       data-testid={testId}
     >
-      <summary className="button-control pointer-events-auto min-h-11! min-w-11! w-fit max-w-full cursor-pointer list-none whitespace-normal text-left text-link marker:hidden">
+      {/* No `!` on the tap floor: `button-control` already renders at 44px and sheds it
+          from sm upward, and an important declaration outranks that reset at EVERY
+          width — which pinned all 18 consumers at the phone floor on desktop (#3896). */}
+      <summary className="button-control pointer-events-auto w-fit max-w-full cursor-pointer list-none whitespace-normal text-left text-link marker:hidden">
         {label}
       </summary>
       <ul className="pointer-events-auto mt-1 space-y-0.5 pl-3">
