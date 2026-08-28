@@ -210,13 +210,10 @@ export default function ActivityPartsList({
           // toolbar is a whole second row, so the set-schema row underneath has
           // to stick that much further down — `--set-schema-top` carries the
           // offset to StrengthSets, which is where the sticky row lives.
-          //
-          // THE PHONE OFFSETS ARE DERIVED FROM THE FIELD, and they moved with
-          // #3708: the header is `py-1` (8px) around an exercise picker that now
-          // renders at the ruled 44px field box, plus `gap-1` (4px) and a 44px
-          // toolbar row when there is one. 8+44 = 3.25rem, 8+44+4+44 = 6.25rem.
-          // The `sm`-and-up base stays 2.75rem — above `sm` the field keeps its
-          // desktop height and nothing here changed.
+          // THE PHONE OFFSETS ARE DERIVED FROM THE FIELD and moved with #3708:
+          // `py-1` (8px) around a picker that now renders the ruled 44px box, plus
+          // `gap-1` (4px) and a 44px toolbar row when there is one. The `sm`-and-up
+          // base is unchanged because the field's desktop height is.
           const hasActions = !!guide || parts.length > 1;
           return (
             <div

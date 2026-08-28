@@ -588,48 +588,88 @@ test.describe("typed fields render the ruled 44px box on a phone (#3708)", () =>
     }
   });
 
-  // THE SWEEP, IN BOTH DIRECTIONS, over the densest field surface in the app. On
-  // its own the empty-list assertion is the shape the #3673 review called
-  // structurally wrong — it is satisfied by a tree where every field is 44px at
-  // every width — so the second half asserts the same page has SHORT fields at
-  // 1280. Neither half is worth anything without the other.
-  test("no `.input` is short at 390, and the same page is dense at 1280", async ({
-    page,
-  }) => {
-    test.setTimeout(120_000);
-    // Opened wide for the same reason as the test above — Add activity is
-    // `hidden md:inline-flex`.
-    await page.setViewportSize(DESKTOP);
-    await page.goto("/training?tab=log");
-    await hydratedClick(page, page.getByTestId("training-log-add-activity"));
-    await expect(page.getByTestId("date-time-fields")).toBeVisible();
+  // THE SWEEP, IN BOTH DIRECTIONS, over two field surfaces on different routes and
+  // under different logins. On its own the empty-list assertion is the shape the
+  // #3673 review called structurally wrong — it is satisfied by a tree where every
+  // field is 44px at every width — so each surface is also asserted to hold SHORT
+  // fields at 1280. Neither half is worth anything without the other.
+  //
+  // Family settings is here because it carries two of the reconciliation's own 15
+  // named sites and neither one was edited: the whole migration for them is the
+  // `.input` rule, so a second route is what shows the rule travelling.
+  const FIELD_SURFACES = [
+    {
+      name: "activity editor",
+      login: undefined,
+      // Opened wide for the same reason as the tests above — Add activity is
+      // `hidden md:inline-flex` and has no phone twin on this route.
+      open: async (page: Page) => {
+        await page.goto("/training?tab=log");
+        await hydratedClick(
+          page,
+          page.getByTestId("training-log-add-activity")
+        );
+        await expect(page.getByTestId("date-time-fields")).toBeVisible();
+      },
+    },
+    {
+      name: "family settings",
+      login: E2E_LOGIN_MULTI,
+      open: async (page: Page) => {
+        await page.goto("/settings/family");
+        await expect(page.locator(".input").first()).toBeVisible(); // first-ok: the sweep measures every field on the page; this only waits for the form to mount
+      },
+    },
+  ] as const;
 
-    const measure = async () =>
-      page.locator(".input:visible").evaluateAll((els) =>
-        els.map((el) => ({
-          what:
-            el.getAttribute("data-testid") ??
-            el.getAttribute("id") ??
-            el.getAttribute("aria-label") ??
-            el.tagName,
-          height: el.getBoundingClientRect().height,
-        }))
+  for (const surface of FIELD_SURFACES)
+    test(`no \`.input\` is short at 390 on ${surface.name}, and it is dense at 1280`, async ({
+      browser,
+    }) => {
+      test.setTimeout(120_000);
+      const page = await loginAs(
+        browser,
+        {
+          username: surface.login ?? E2E_LOGIN_SHELL,
+          password: E2E_MEMBER_PASSWORD,
+        },
+        { viewport: DESKTOP }
       );
+      try {
+        await surface.open(page);
 
-    const wide = await measure();
-    expect(wide.length, "the sweep must find fields").toBeGreaterThan(2);
-    expect(
-      wide.filter((f) => f.height < TAP_FLOOR_PX).length,
-      "Every `.input` on this page is already at the phone floor at 1280px, so the " +
-        "contract is not confined below `sm` — the exact shape #3896 shipped."
-    ).toBeGreaterThan(0);
+        const measure = async () =>
+          page.locator(".input:visible").evaluateAll((els) =>
+            els.map((el) => ({
+              what:
+                el.getAttribute("data-testid") ??
+                el.getAttribute("id") ??
+                el.getAttribute("aria-label") ??
+                el.tagName,
+              height: el.getBoundingClientRect().height,
+            }))
+          );
 
-    await page.setViewportSize(PHONE);
-    const phone = await measure();
-    expect(phone.length, "the sweep must find fields").toBeGreaterThan(2);
-    expect(
-      phone.filter((f) => f.height + TAP_FLOOR_FLOAT_EPSILON_PX < TAP_FLOOR_PX),
-      `A \`.input\` renders under the ${TAP_FLOOR_PX}px floor at ${PHONE.width}px.`
-    ).toEqual([]);
-  });
+        const wide = await measure();
+        expect(wide.length, "the sweep must find fields").toBeGreaterThan(1);
+        expect(
+          wide.filter((f) => f.height < TAP_FLOOR_PX).length,
+          `Every \`.input\` on ${surface.name} is already at the phone floor at ` +
+            "1280px, so the contract is not confined below `sm` — the exact shape " +
+            "#3896 shipped."
+        ).toBeGreaterThan(0);
+
+        await page.setViewportSize(PHONE);
+        const phone = await measure();
+        expect(phone.length, "the sweep must find fields").toBeGreaterThan(1);
+        expect(
+          phone.filter(
+            (f) => f.height + TAP_FLOOR_FLOAT_EPSILON_PX < TAP_FLOOR_PX
+          ),
+          `A \`.input\` on ${surface.name} renders under the ${TAP_FLOOR_PX}px floor at ${PHONE.width}px.`
+        ).toEqual([]);
+      } finally {
+        await page.context().close();
+      }
+    });
 });

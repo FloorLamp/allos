@@ -440,13 +440,11 @@ export default function Combobox({
           {badge}
         </span>
       )}
-      {/* THE PICKER'S OWN THREE PHONE TARGETS (#3706). The clear command, the option
-          rows and the free-text command are the picker's, not a call site's, so their
-          floor is repaired here rather than through a prop. The clear button takes the
-          field's ruled height from `inset-y-0` and only its WIDTH needs saying; the
-          input's right padding and the badge's offset move with it so the caret never
-          slides under the glyph. Below `sm` only — desktop keeps its 40px column and
-          its compact rows. */}
+      {/* THE PICKER'S OWN THREE PHONE TARGETS (#3706) — clear, option rows, free-text
+          command — repaired here rather than through a call-site prop. Clear takes the
+          field's ruled height from `inset-y-0`, so only its WIDTH needs saying, and the
+          input's right padding and the badge offset move with it so the caret never
+          slides under the glyph. Below `sm` only; desktop keeps its 40px column. */}
       {value && !disabled && !titleAppearance && (
         <button
           type="button"

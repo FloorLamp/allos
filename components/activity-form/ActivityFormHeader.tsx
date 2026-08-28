@@ -78,13 +78,10 @@ export default function ActivityFormHeader({
               one visible title directly editable — no second Name field below. */}
           <h2 className="sr-only">{effectiveTitle}</h2>
           <div className="group/title relative -mx-1 min-w-0 flex-1">
-            {/* The ruled 44px field box (#3708/#3709) on a phone, desktop density
-                unchanged. `min-h-11` rather than a taller `h-*`: min-height beats
-                height whatever the utilities layer decides about class order, so the
-                32px desktop title and the 44px phone box cannot swap places. This
-                title is a HEADING that happens to be editable, so it wears none of
-                `.input`'s paint and cannot take the family's floor with it; see the
-                open question on the issue. */}
+            {/* The ruled 44px field box (#3708/#3709), desktop density unchanged.
+                This title is a HEADING that happens to be editable, so it wears none
+                of `.input`'s paint and cannot take the family's floor with it —
+                `min-h-11` clamps the `h-8` without disturbing it. */}
             <input
               aria-label="Activity name"
               value={title}
