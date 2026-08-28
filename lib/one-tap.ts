@@ -149,6 +149,12 @@ export const ONE_TAP_AFFORDANCES = {
     feedback: "outcome-toast",
     why: "Idempotent per (dose, date); the typed outcome already answers 'already taken' and can refuse (#2039).",
   },
+  "dose-backfill": {
+    repeat: "idempotent",
+    expectedInterval: "none",
+    feedback: "outcome-toast",
+    why: "The missed-day offer (#3674): the row names one (dose, past day) and the backfill core is idempotent on exactly that pair — a scheduled dose already resolved answers `already-taken` or `already-skipped` rather than writing a second administration. A separate id from `dose-status`, which resolves TODAY's dose from the row it stands on; this one asserts a day that has already closed, and folding the two would hide the dated write from every census that reads this registry.",
+  },
   "practice-session": {
     repeat: "cadenced",
     expectedInterval: "day",

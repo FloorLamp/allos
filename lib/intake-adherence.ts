@@ -395,6 +395,26 @@ export function trailingPendingIndex(strip: readonly AdherenceDot[]): number {
   return n > 0 && strip[n - 1].state === "missed" ? n - 1 : -1;
 }
 
+/**
+ * The days a backfill may be OFFERED for, newest first (#3674) — read straight off
+ * the strip the card already renders, never derived again (#3369's query budget,
+ * #221's one-computation rule).
+ *
+ * ONLY `missed`. A `skipped` day is a decision and an `excused` day is an
+ * impossibility (#232/#3263); offering either would ask someone to correct a record
+ * that is already right. A trailing `missed` today is not a lapse either — it is a
+ * day still in progress, which is why `adherenceSummary` drops it from the
+ * denominator — so the same `trailingPendingIndex` keeps it out of the offer.
+ */
+export function missedDoseDays(strip: readonly AdherenceDot[]): string[] {
+  const pending = trailingPendingIndex(strip);
+  const days: string[] = [];
+  for (let i = strip.length - 1; i >= 0; i -= 1) {
+    if (i !== pending && strip[i].state === "missed") days.push(strip[i].date);
+  }
+  return days;
+}
+
 export function adherenceSummary(strip: AdherenceDot[]): AdherenceSummary {
   // A trailing "missed" today means today is still pending — nothing logged
   // yet. Drop it so a day still in progress does not penalize the percentage
