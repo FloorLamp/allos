@@ -170,6 +170,17 @@ expression per side — `--page-gutter-left` / `--page-gutter-right` in
 `app/globals.css`, which `app-content-container` also reads — because the two
 sides are independent and a symmetric `-mx-4` under-cancels a notched one.
 
+**Two quantities, not one (#3931).** The **gutter** is what a filled surface
+spends inside itself; the **bleed** is what it cancels outside itself. They are
+equal wherever the page container is the box above — and a negative margin cannot
+tell that box from a grid cell, so a container that places its children itself
+says so with `bleed-none`, which zeroes `--page-bleed-*` and leaves
+`--page-gutter-*` standing. Zeroing the gutter instead would take the card's own
+padding with it and put its first character back on its fill boundary. Two
+containers carry the marker today: the Body census grid and the overdue-visits
+disclosure with its amber rail. A container that forgets shows up in the sweep as
+a box that is **neither the viewport nor the cell it was placed in**.
+
 - **Grouping is a label plus dividers.** The band shape: a `--surface` fill, a
   section label above it, `--divider` hairlines between rows —
   `DashboardStandingCluster`'s existing idiom, and the `band` utility is how a
@@ -202,12 +213,13 @@ back. The one thing it cannot beat is an `!important` declaration inside a layer
 which is why the sub-panel tiers step `max-sm:py-*!` and their horizontal half is
 zeroed by the flat rule instead.
 
-| rule                                                                              | source | guard                                                                                                                             |
-| --------------------------------------------------------------------------------- | ------ | --------------------------------------------------------------------------------------------------------------------------------- |
-| No card frame below `sm` outside the Notice primitive; a band in a band is banned | #3673  | `mobile-density-sweep.mobile.spec.ts` (rendered sweep over ledger / Records / dashboard, a forged offender, the Notice's silence) |
-| One left edge: every band, row and zone label starts at the page gutter           | #3673  | same file — the content edges on a dashboard scroll are the gutter and the full-bleed frame that delegates it, and nothing else   |
-| A run on a band's fill has at least a page gutter of fill to its left             | #3920  | same file — plus the named surfaces, a one-sided safe-area inset, and no sideways scroll at 390px                                 |
-| A band stays separable from the canvas in both themes                             | #3673  | `lib/__tests__/band-separation-tokens.test.ts` (recorded fill/divider floors) + a dark-mode e2e                                   |
+| rule                                                                                  | source | guard                                                                                                                                           |
+| ------------------------------------------------------------------------------------- | ------ | ----------------------------------------------------------------------------------------------------------------------------------------------- |
+| No card frame below `sm` outside the Notice primitive; a band in a band is banned     | #3673  | `mobile-density-sweep.mobile.spec.ts` (rendered sweep over ledger / Records / dashboard / Body census, a forged offender, the Notice's silence) |
+| One left edge: every band, row and zone label starts at the page gutter               | #3673  | same file — the content edges on a dashboard scroll are the gutter and the full-bleed frame that delegates it, and nothing else                 |
+| A run on a band's fill has at least a page gutter of fill to its left                 | #3920  | same file — plus the named surfaces, a one-sided safe-area inset, and no sideways scroll at 390px                                               |
+| A fill is full-bleed against the page, or placed exactly in its cell — no third state | #3931  | same file — the law runs on every swept route, and names any container that should carry `bleed-none` and does not                              |
+| A band stays separable from the canvas in both themes                                 | #3673  | `lib/__tests__/band-separation-tokens.test.ts` (recorded fill/divider floors) + a dark-mode e2e                                                 |
 
 ### The two phone-density conventions, in one place (#3466)
 

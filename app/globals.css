@@ -307,16 +307,39 @@
 /* THE PAGE GUTTER, WRITTEN ONCE (#3920). `app-content-container`
    (`app/(app)/layout.tsx`) spends it and the phone rules below CANCEL it, so the
    two must be the SAME expression and not two copies: a cancel that assumed `1rem`
-   under-cancels a notched side, and the sides are independent. */
+   under-cancels a notched side, and the sides are independent.
+
+   TWO QUANTITIES, NOT ONE (#3931), and conflating them is what shipped a card 32px
+   wider than the grid cell it was placed in. The GUTTER is what a filled surface
+   spends inside itself; the BLEED is what it cancels outside itself. They are equal
+   wherever the page container is the box above — and a container that places its
+   children itself (a census grid track, a railed disclosure) says so with
+   `bleed-none`, which zeroes the BLEED and leaves the gutter standing. Zeroing the
+   gutter instead would take the card's padding with it and put its first character
+   back on its own fill boundary, which is the defect this whole rule exists for. */
 :root {
   --page-gutter-left: max(1rem, env(safe-area-inset-left));
   --page-gutter-right: max(1rem, env(safe-area-inset-right));
+  --page-bleed-left: var(--page-gutter-left);
+  --page-bleed-right: var(--page-gutter-right);
 }
 @media (width >= 48rem) {
   :root {
     --page-gutter-left: max(1.25rem, env(safe-area-inset-left));
     --page-gutter-right: max(1.25rem, env(safe-area-inset-right));
   }
+}
+
+/* A CONTAINER THAT PLACES ITS CHILDREN ITSELF (#3931). A negative margin does not
+   know what it is escaping — it pulls the same 16px whether the box above is the
+   page container or a two-column census track — so the container that is NOT the
+   page has to say so. One declaration pair, no selector list and no testid: the
+   marker goes on the container, and everything filled inside it stops bleeding.
+   e2e/mobile-density-sweep.mobile.spec.ts is where a container that forgot shows
+   up, as a box that is neither the viewport nor the cell it was placed in. */
+@utility bleed-none {
+  --page-bleed-left: 0px;
+  --page-bleed-right: 0px;
 }
 
 @utility band {
@@ -335,8 +358,8 @@
      `rounded-xl border` cannot win the tie back. */
   @apply max-sm:rounded-none! max-sm:border-x-0!;
   @media (width < 40rem) {
-    margin-inline: calc(-1 * var(--page-gutter-left))
-      calc(-1 * var(--page-gutter-right)) !important;
+    margin-inline: calc(-1 * var(--page-bleed-left))
+      calc(-1 * var(--page-bleed-right)) !important;
     & & {
       margin-inline: 0 !important;
     }
@@ -397,12 +420,13 @@
 @media (width < 40rem) {
   .card,
   .card-quiet {
-    margin-inline: calc(-1 * var(--page-gutter-left))
-      calc(-1 * var(--page-gutter-right));
+    margin-inline: calc(-1 * var(--page-bleed-left))
+      calc(-1 * var(--page-bleed-right));
     /* `max-w-full` resolves against the CONTAINER, so on its own it clips the
        widened box straight back to the container's width and turns the pull into a
-       32px overhang on one side instead of a full-bleed fill. */
-    max-width: calc(100% + var(--page-gutter-left) + var(--page-gutter-right));
+       32px overhang on one side instead of a full-bleed fill. Inside `bleed-none`
+       both terms are zero and this is `max-w-full` again, unchanged. */
+    max-width: calc(100% + var(--page-bleed-left) + var(--page-bleed-right));
     padding-inline: var(--page-gutter-left) var(--page-gutter-right);
     border-width: 0;
     border-radius: 0;
@@ -420,7 +444,9 @@
   }
   /* The footnote is a strip across the bottom of its card's fill, so it cancels the
      card's gutter and re-spends it — the same shape as the card itself, one level
-     in. Only the radius goes, because the card below `sm` has no corners to meet. */
+     in. Only the radius goes, because the card below `sm` has no corners to meet.
+     THE GUTTER AND NOT THE BLEED: what this escapes is its own card's padding,
+     which a `bleed-none` container does not change. */
   .card-footnote {
     margin-inline: calc(-1 * var(--page-gutter-left))
       calc(-1 * var(--page-gutter-right));

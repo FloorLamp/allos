@@ -347,6 +347,57 @@ async function contentEdges(page: import("@playwright/test").Page) {
 // card resolves to the card, which is the surface a reader actually sees under it.
 const FILL_SELECTOR = "main .card, main .card-quiet, main .band";
 
+// ── #3920 scope: FULL-BLEED IS AGAINST THE PAGE, OR IT IS NOT A BLEED ────────
+//
+// The cancel is a negative margin, and a negative margin does not know what it is
+// escaping: it pulls the same 16px whether the box above is the page container or
+// a grid cell that owns its own width. So a filled surface has exactly TWO legal
+// shapes below `sm` and there is no third — it either spans the viewport, or it
+// sits exactly inside the box that placed it. A card 32px wider than the cell it
+// was placed in is the third state, and #3931 is what it looks like from outside:
+// a census tile and its non-card picker peer stopped being the same size.
+//
+// STATED AS A LAW RATHER THAN A LIST, because the container that must opt out is
+// not knowable from a selector — `main .card` inside a two-column census grid and
+// `main .card` inside a page section are the same query. What separates them is
+// where the box lands, which is the thing this reads.
+async function misplacedBleeds(
+  page: import("@playwright/test").Page,
+  viewport: number
+) {
+  return page.evaluate(
+    ([selector, width]: [string, number]) => {
+      const offenders: string[] = [];
+      const round = (value: number) => Math.round(value * 10) / 10;
+      for (const el of document.querySelectorAll<HTMLElement>(selector)) {
+        const box = el.getBoundingClientRect();
+        const parent = el.parentElement;
+        if (!box.width || !box.height || !parent) continue;
+        const style = getComputedStyle(parent);
+        const placed = parent.getBoundingClientRect();
+        const left =
+          placed.left +
+          Number.parseFloat(style.borderLeftWidth) +
+          Number.parseFloat(style.paddingLeft);
+        const right =
+          placed.right -
+          Number.parseFloat(style.borderRightWidth) -
+          Number.parseFloat(style.paddingRight);
+        const bleeds =
+          Math.abs(box.left) < 0.5 && Math.abs(box.right - width) < 0.5;
+        const placedExactly =
+          Math.abs(box.left - left) < 0.5 && Math.abs(box.right - right) < 0.5;
+        if (bleeds || placedExactly) continue;
+        offenders.push(
+          `${el.tagName}${el.dataset.testid ? `[${el.dataset.testid}]` : ""} box ${round(box.left)}→${round(box.right)} is neither the viewport nor its parent's content box ${round(left)}→${round(right)} — class="${el.className}"`
+        );
+      }
+      return offenders;
+    },
+    [FILL_SELECTOR, viewport] as [string, number]
+  );
+}
+
 async function runsFlushWithTheirFill(
   page: import("@playwright/test").Page,
   gutter: number
@@ -405,6 +456,9 @@ const SWEPT = [
   ["the ledger", "/nutrition/dose-history", "dose-ledger"],
   ["a Records pane", "/records", "records-visits"],
   ["the dashboard", "/", "dashboard-standing"],
+  // The census grid is the one surface on this list whose cards are placed into
+  // TRACKS rather than stacked down the page, and it is where #3931 was found.
+  ["the Body census", "/trends", "body-metric-tiles"],
 ] as const;
 
 for (const [what, route, marker] of SWEPT) {
@@ -441,6 +495,15 @@ for (const [what, route, marker] of SWEPT) {
         window.innerWidth,
       ])
     ).toEqual([VIEWPORT_PX, VIEWPORT_PX]);
+
+    // #3931: and every fill is bleeding against the PAGE or not bleeding at all.
+    expect(await misplacedBleeds(page, VIEWPORT_PX)).toEqual([]);
+
+    // #3920 on every swept route, not only the dashboard: a container that opts
+    // out of the bleed must not take the card's own gutter with it, and this is
+    // the assertion that says so — the tile inside a `bleed-none` grid still owes
+    // its first character a gutter's width of its own fill.
+    expect(await runsFlushWithTheirFill(page, PAGE_GUTTER_PX)).toEqual([]);
   });
 }
 

@@ -276,6 +276,10 @@ describe("compiled phone-only CSS proof (#3518/#3727)", () => {
     [".card", "padding", false, "utilities", false],
     [".card", "max-width", false, "utilities", false],
     [".card-delegated", "padding", false, "utilities", true],
+    // #3931: the opt-out is a plain token on the container. It never competes with
+    // the `:root` default — a declaration on the element beats an inherited value
+    // whatever the layer — so it needs no `!important` and gets none.
+    [".bleed-none", "--page-bleed-left", false, "utilities", false],
     [
       ".card-gutter-standard, .card-gutter-compact, .card-gutter-action",
       "padding-inline",
@@ -289,6 +293,7 @@ describe("compiled phone-only CSS proof (#3518/#3727)", () => {
       const found = declarationRanking(
         await compile(source, [
           "band",
+          "bleed-none",
           "card",
           "card-quiet",
           "card-delegated",
