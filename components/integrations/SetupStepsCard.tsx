@@ -2,9 +2,13 @@ import type { ReactNode } from "react";
 import { TokenRow } from "@/components/TokenRow";
 
 // The ONE integration setup-instructions card (#3777). Calendar feed, weather,
-// Oura, Strava, Withings and Health Connect each hand-built the same `card` +
-// heading + `list-decimal` ordered list, so the heading scale, the step spacing
-// and the phone wrapping were six independent decisions about one anatomy.
+// Oura, Strava, Withings, Health Connect and the Fitbit takeout page each
+// hand-built the same `card` + heading + `list-decimal` ordered list, so the
+// heading scale, the step spacing and the phone wrapping were seven independent
+// decisions about one anatomy. #3777's census named six; the tree held seven,
+// and the seventh had already drifted — it hung the typography on the `<ol>`
+// and sized its heading a step larger than the other six. That drift is what a
+// holdout costs, so it folds in here rather than waiting for the next census.
 //
 // Callers supply CONTENT and nothing else. Steps really do carry links,
 // `<strong>` and `<code>`, so a step is a node — but the `<li>` around it, and

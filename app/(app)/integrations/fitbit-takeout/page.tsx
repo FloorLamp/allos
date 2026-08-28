@@ -1,4 +1,5 @@
 import { PageHeader } from "@/components/ui";
+import SetupStepsCard from "@/components/integrations/SetupStepsCard";
 import LeadFold from "@/components/LeadFold";
 import { requireSession } from "@/lib/auth";
 import { getIntegration } from "@/lib/integrations/registry";
@@ -57,12 +58,10 @@ export default async function FitbitTakeoutPage() {
         />
       </div>
 
-      <div className="card">
-        <h2 className="font-semibold text-slate-800 dark:text-slate-100">
-          Get your export
-        </h2>
-        <ol className="mt-3 list-decimal space-y-2 pl-5 text-sm text-slate-600 dark:text-slate-300">
-          <li>
+      <SetupStepsCard
+        title="Get your export"
+        steps={[
+          <>
             Go to{" "}
             <a
               href="https://takeout.google.com/"
@@ -73,23 +72,25 @@ export default async function FitbitTakeoutPage() {
               Google Takeout
             </a>{" "}
             signed in as the account your Fitbit is linked to.
-          </li>
-          <li>
+          </>,
+          <>
             Deselect everything, then select only <strong>Fitbit</strong> (it
             may be listed as <strong>Google Health</strong>).
-          </li>
-          <li>
+          </>,
+          <>
             Export as a <strong>.zip</strong>. Google emails a download link
             when it is ready — that can take minutes or hours.
-          </li>
-          <li>Download the zip and upload it below.</li>
-        </ol>
-        <p className="mt-3 text-xs text-slate-500 dark:text-slate-400">
-          If Google split your export into several parts, upload each one — they
-          import independently and overlapping data is recognized, not
-          duplicated.
-        </p>
-      </div>
+          </>,
+          <>Download the zip and upload it below.</>,
+        ]}
+        note={
+          <>
+            If Google split your export into several parts, upload each one —
+            they import independently and overlapping data is recognized, not
+            duplicated.
+          </>
+        }
+      />
 
       <div className="card">
         <h2 className="font-semibold text-slate-800 dark:text-slate-100">
