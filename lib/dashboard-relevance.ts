@@ -8,6 +8,7 @@ import {
   resolveStandingMembers,
   standingFamilyForCandidate,
   STANDING_READING_ORDER,
+  type StandingBandKey,
   type StandingFamilyKey,
   type StandingSectionKey,
 } from "./dashboard-standing";
@@ -148,6 +149,7 @@ export type DashboardPlacement =
       lane: "standing";
       standingFamilyKey: StandingFamilyKey;
       standingSection: StandingSectionKey;
+      standingBand: StandingBandKey;
     })
   | (DashboardPlacementBase & {
       lane: "ahead";
@@ -729,13 +731,14 @@ export function rankDashboardCandidates(
       timingDisposition,
       nowLayer,
     })),
-    ...standing.members.map(({ candidate, family }, laneOrder) => ({
+    ...standing.members.map(({ candidate, family, band }, laneOrder) => ({
       candidate,
       lane: "standing" as const,
       laneOrder,
       timingDisposition: dispositionByCandidateId.get(candidate.candidateId)!,
       standingFamilyKey: family.key,
       standingSection: family.section,
+      standingBand: band,
     })),
     ...laterToday.map(({ candidate, timingDisposition }, memberOrder) => ({
       candidate,

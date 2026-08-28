@@ -9,6 +9,7 @@ import {
 } from "./fixture-logins";
 import { workerDbPath } from "./worker-env";
 import { openDashboardAll, settledBoxes, settledClick } from "./helpers";
+import { openStandingTail } from "./dashboard-candidate";
 
 function resetDashboardAllOffer(): void {
   const db = new Database(workerDbPath());
@@ -86,6 +87,17 @@ test("the dashboard renders the fixed four-zone instrument cluster", async ({
   await expect(main.getByTestId("now-strip")).toBeVisible();
   await expect(main.getByTestId("dashboard-standing")).toBeVisible();
   const standing = main.getByTestId("dashboard-standing");
+  // #3548: the fixed sections survive INSIDE the stable-rest band. Their order is
+  // still the registry's, and the bands render in one order around them.
+  expect(
+    await standing
+      .locator("[data-standing-band]")
+      .evaluateAll((nodes) => [
+        ...new Set(
+          nodes.map((node) => node.getAttribute("data-standing-band"))
+        ),
+      ])
+  ).toEqual(["attention", "rest", "tail"]);
   expect(
     await standing
       .locator("[data-standing-section]")
@@ -125,6 +137,9 @@ test("attention facts use write-capable atoms outside read-only Ahead", async ({
 
 test("clinical results render as dense individual facts", async ({ page }) => {
   await page.goto("/");
+  // A months-old result with nothing claiming attention is what the quiet tail
+  // collapses (#3548); the rows and their density are unchanged inside it.
+  await openStandingTail(page);
   const main = page.getByRole("main");
   const family = main.locator('[data-standing-family="clinical-results"]');
   const rows = family.locator(

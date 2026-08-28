@@ -151,6 +151,17 @@ export default function DashboardPlacementCanvas({
         ];
   });
   const standing = placementsInLane(placements, "standing");
+  // Owner ruling (#3548, cold start): "Nothing needs you." can never render on a
+  // profile whose attention tier is the getting-started list. A never-recorded
+  // family's CTA in the tier IS that claim, and it is the only one that suppresses
+  // the sentence — #3245's accepted cost stands, so a behind target out of its
+  // moment still leaves a genuinely settled day settled.
+  const bootstrapClaim = standing.some(
+    (placement) =>
+      placement.standingBand === "attention" &&
+      placement.candidate.relevance.kind === "profile-data" &&
+      placement.candidate.relevance.presence === "never"
+  );
   const ahead = placementsInLane(placements, "ahead");
   const everything = placementsInLane(placements, "everything");
   const aheadBuckets = groupsInPlacementOrder(
@@ -199,7 +210,11 @@ export default function DashboardPlacementCanvas({
           subtitle={`Today is ${dateLabel} — here's your health at a glance.`}
         />
       </div>
-      <NowStrip cards={now} dateLabel={dateLabel} />
+      <NowStrip
+        cards={now}
+        dateLabel={dateLabel}
+        bootstrapClaim={bootstrapClaim}
+      />
 
       {standing.length > 0 && (
         <DashboardStandingCluster

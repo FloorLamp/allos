@@ -160,6 +160,17 @@ export const DISCLOSURE_EXPANSIONS = [
       '[data-testid="clinical-result-panel-toggle"][aria-expanded="false"]',
     loadMore: '[data-testid="clinical-result-panel-load-all"]',
   },
+  {
+    // Standing's quiet tail (#3548): dormant lines, months-old results, quiet
+    // pillars and out-ranked connect-a-source CTAs all live behind one disclosure
+    // now, so the resting dashboard shot no longer photographs them at all. The
+    // fold is a native <details>, which publishes its state as the element's own
+    // `open` rather than as an aria attribute — hence the structural selector.
+    route: "/",
+    label: "the dashboard's quiet Standing tail",
+    closedToggle:
+      'details:not([open]) > [data-testid="dashboard-standing-tail-summary"]',
+  },
 ];
 
 // Hover-capture registry (#3489 deliverable 4). The census photographs the

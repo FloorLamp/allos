@@ -47,8 +47,16 @@ export interface NowStripCard {
 // row, which IS the folded-in form.
 export default function NowCards({
   cards,
+  bootstrapClaim = false,
 }: {
   cards: readonly NowStripCard[];
+  /**
+   * Standing's attention tier is holding a cold-start claim — a family that has
+   * never recorded, asking to be connected or logged for the first time (#3548).
+   * Then an empty Now is not a settled day, and "Nothing needs you." would be
+   * false: the getting-started list on the same page is what needs them.
+   */
+  bootstrapClaim?: boolean;
 }) {
   const reduceMotion = usePrefersReducedMotion();
   const plan = microMotionPlan("promote", reduceMotion);
@@ -95,7 +103,7 @@ export default function NowCards({
   }, [idsKey, reduceMotion]);
 
   if (cards.length === 0)
-    return (
+    return bootstrapClaim ? null : (
       <p
         data-testid="now-strip-empty"
         data-motion={motion.emptyArrived ? "promote" : undefined}
