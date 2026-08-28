@@ -573,9 +573,9 @@ test.describe("typed fields render the ruled 44px box on a phone (#3708)", () =>
     await name.fill("Vitamin");
     const clear = dialog.getByRole("button", { name: "Clear" });
     const clearBox = await boxOf("picker clear", clear);
-    expect(clearBox.height + TAP_FLOOR_FLOAT_EPSILON_PX).toBeGreaterThanOrEqual(
-      TAP_FLOOR_PX
-    );
+    // It takes the field's own box from `inset-y-0`, so the floor it meets is the
+    // effective one — the reach around it, exactly like the field's neighbours.
+    await expectEffectiveFloor("picker clear", clear);
     expect(clearBox.width + TAP_FLOOR_FLOAT_EPSILON_PX).toBeGreaterThanOrEqual(
       TAP_FLOOR_PX
     );

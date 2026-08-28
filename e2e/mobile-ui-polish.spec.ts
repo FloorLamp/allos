@@ -4,11 +4,12 @@ import { expandTrendsContext } from "./trends-chrome";
 import type { Locator } from "@playwright/test";
 import {
   expectNoClippedContent,
+  expectPhoneTapTargets,
   hydratedClick,
   openMobileDrawer,
   settledBoxes,
 } from "./helpers";
-import { TAP_FLOOR_PX } from "@/lib/tap-floor-tokens";
+import { CONTROL_BOX_PX, TAP_FLOOR_PX } from "@/lib/tap-floor-tokens";
 import { WHATS_NEW_PAGE_ENTRIES, loadReleaseNotes } from "../lib/release-notes";
 
 // Mobile / touch-target polish (#640, #641, #644). Driven at a phone viewport so
@@ -84,7 +85,12 @@ test.describe("family login-row actions stay in the viewport (#641)", () => {
 });
 
 test.describe("touch targets clear the 40px minimum (#644)", () => {
-  test.use({ viewport: PHONE });
+  // `hasTouch`, because the thing being measured is a TOUCH target. #3938 made the
+  // floor effective — the control renders the 34px box and a coarse pointer gets
+  // the rest back as reach — so a fine-pointer run measures the box and calls it a
+  // regression. (It was already a hole: `.tap-target`'s overlay never applied here
+  // either, so a control relying on it read as a bare 32.)
+  test.use({ viewport: PHONE, hasTouch: true });
 
   test("the row kebab and dose circles have a >=40px hit box", async ({
     page,
@@ -94,11 +100,7 @@ test.describe("touch targets clear the 40px minimum (#644)", () => {
     // The overflow kebab is the sole per-row action affordance; every supplement
     // row renders one.
     const kebab = page.getByTestId("overflow-menu-trigger").first(); // first-ok: every supplement row renders one kebab (see comment) — order-agnostic
-    await expect(kebab).toBeVisible();
-    const kBox = await kebab.boundingBox();
-    expect(kBox).not.toBeNull();
-    expect(kBox!.width).toBeGreaterThanOrEqual(40);
-    expect(kBox!.height).toBeGreaterThanOrEqual(40);
+    await expectPhoneTapTargets(page, "supplement row kebab", [kebab]);
 
     // Dose take/skip circles render on any due, active dose. When present, both
     // clear 40px and don't overlap (a mis-tap between taken and skipped on a
@@ -112,13 +114,18 @@ test.describe("touch targets clear the 40px minimum (#644)", () => {
       .locator('[data-testid="dose-status"][data-variant="circle"]')
       .first(); // first-ok: one dose-status control; BOTH its circles are read from this SAME control (see comment) — order-agnostic
     if ((await control.count()) > 0) {
-      const tBox = await control.getByTestId("dose-take").boundingBox();
-      const sBox = await control.getByTestId("dose-skip").boundingBox();
+      const take = control.getByTestId("dose-take");
+      const skip = control.getByTestId("dose-skip");
+      // Effective, and DISJOINT: the circles render the control box now, and the
+      // control's own padding plus its `gap-3` are what keep the two hit regions
+      // from meeting over the same point (#3938).
+      await expectPhoneTapTargets(page, "dose circles", [take, skip], {
+        disjoint: true,
+      });
+      const tBox = await take.boundingBox();
+      const sBox = await skip.boundingBox();
       expect(tBox).not.toBeNull();
       expect(sBox).not.toBeNull();
-      expect(tBox!.width).toBeGreaterThanOrEqual(40);
-      expect(tBox!.height).toBeGreaterThanOrEqual(40);
-      expect(sBox!.width).toBeGreaterThanOrEqual(40);
       // Within one control (a no-wrap flex row) the skip circle sits fully to
       // the right of the take circle, with the widened gap between them.
       expect(sBox!.x).toBeGreaterThanOrEqual(tBox!.x + tBox!.width);
@@ -276,7 +283,9 @@ test.describe("the phone drawer's month calendar clears the floor too (#3377/#35
 });
 
 test.describe("nutrition food-log controls stay in the viewport on mobile", () => {
-  test.use({ viewport: PHONE });
+  // `hasTouch` for the same reason as the touch-target block above: the add
+  // affordance's floor is effective (#3938), so the reach has to exist to measure.
+  test.use({ viewport: PHONE, hasTouch: true });
 
   test("Food and supplement controls scroll with their tab context", async ({
     page,
@@ -327,10 +336,7 @@ test.describe("nutrition food-log controls stay in the viewport on mobile", () =
     const addIntakeItem = page.getByTestId("supplement-add-toggle");
     await expect(addIntakeItem.locator("svg")).toBeVisible();
     await expect(addIntakeItem.getByText("Add supplement")).toBeHidden();
-    const addSupplementBox = await addIntakeItem.boundingBox();
-    expect(addSupplementBox).not.toBeNull();
-    expect(addSupplementBox!.width).toBeGreaterThanOrEqual(40);
-    expect(addSupplementBox!.height).toBeGreaterThanOrEqual(40);
+    await expectPhoneTapTargets(page, "add supplement", [addIntakeItem]);
 
     const slots = page.getByTestId("supplement-slot-selector");
     const [all, morning, midday, evening] = await settledBoxes([
@@ -620,7 +626,11 @@ test.describe("long unbreakable names wrap instead of clipping (#646)", () => {
 // asserted where it is cheap, in lib/__tests__/pager-idiom.test.ts, rather than by
 // booting five more routes here.
 test.describe("the pager offers thumb-sized steps at 390px (#3378)", () => {
-  test.use({ viewport: PHONE });
+  // `hasTouch`, because the claim is about a THUMB. #3938 made the 44 effective:
+  // the step renders the control box and a coarse pointer gets the rest back as
+  // reach, so a fine-pointer phone viewport would measure a real 34px control and
+  // read it as a regression. The step's own `min-w-16` is still rendered width.
+  test.use({ viewport: PHONE, hasTouch: true });
 
   // The app's own touch floor (app/globals.css, `tap-target`; #644).
 
@@ -641,9 +651,15 @@ test.describe("the pager offers thumb-sized steps at 390px (#3378)", () => {
         labels: steps.map((el) => (el.textContent ?? "").trim()),
         boxes: steps.map((el) => {
           const r = el.getBoundingClientRect();
+          const after = getComputedStyle(el, "::after");
+          const reach =
+            after.content === "none"
+              ? 0
+              : Math.abs(Number.parseFloat(after.top)) || 0;
           return {
             width: r.width,
             height: r.height,
+            reach,
             left: r.left,
             right: r.right,
           };
@@ -666,7 +682,9 @@ test.describe("the pager offers thumb-sized steps at 390px (#3378)", () => {
   function expectThumbShape(m: Awaited<ReturnType<typeof pagerMetrics>>) {
     expect(m.labels).toEqual(["Prev", "Next"]);
     for (const box of m.boxes) {
-      expect(box.height).toBeGreaterThanOrEqual(TAP_FLOOR_PX);
+      // The box is the box, and the thumb reaches the floor around it (#3938).
+      expect(box.height).toBe(CONTROL_BOX_PX);
+      expect(box.height + 2 * box.reach).toBeGreaterThanOrEqual(TAP_FLOOR_PX);
       expect(box.width).toBeGreaterThanOrEqual(TAP_FLOOR_PX);
     }
     // At the row's EDGES, with the extent between them — the thumb shape, not the

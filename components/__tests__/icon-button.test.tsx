@@ -27,10 +27,12 @@ describe("IconButton", () => {
     expect(button.getAttribute("data-tone")).toBe("amber");
     expect(button.getAttribute("aria-pressed")).toBe("true");
     expect(button.getAttribute("tabindex")).toBe("-1");
-    expect(button.className).toContain("min-h-11");
-    expect(button.className).toContain("min-w-11");
+    // The control box, not a self-rendered 44 (#3938): an icon-only round target
+    // renders the box and takes the rest of the floor as contained reach.
+    expect(button.className).toContain("min-h-(--control-box)");
+    expect(button.className).toContain("min-w-(--control-box)");
     expect(button.className).toContain("aria-pressed:bg-brand-50");
-    expect(button.className).not.toContain("tap-target");
+    expect(button.className).toContain("tap-target");
     expect(
       screen.getByTestId("glyph").closest("[aria-hidden='true']")
     ).not.toBeNull();

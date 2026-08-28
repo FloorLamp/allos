@@ -453,7 +453,7 @@ export default function Combobox({
           // the clear button a SECOND match for getByLabel(field) / screen-reader field
           // lookups now that the input carries an aria-label (#1177).
           aria-label="Clear"
-          className="absolute inset-y-0 right-0 z-10 flex w-11 items-center justify-center rounded-r-lg text-slate-500 transition sm:w-10 hover:bg-slate-100 hover:text-slate-600 focus:outline-hidden focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-brand-500 dark:text-slate-400 dark:hover:bg-ink-800 dark:hover:text-slate-300"
+          className="tap-target absolute inset-y-0 right-0 z-10 flex w-11 items-center justify-center rounded-r-lg text-slate-500 transition sm:w-10 hover:bg-slate-100 hover:text-slate-600 focus:outline-hidden focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-brand-500 dark:text-slate-400 dark:hover:bg-ink-800 dark:hover:text-slate-300"
           onMouseDown={(event) => event.preventDefault()}
           onClick={() => {
             onChange("");

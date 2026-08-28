@@ -78,16 +78,16 @@ export default function ActivityFormHeader({
               one visible title directly editable — no second Name field below. */}
           <h2 className="sr-only">{effectiveTitle}</h2>
           <div className="group/title relative -mx-1 min-w-0 flex-1">
-            {/* The ruled 44px field box (#3708/#3709), desktop density unchanged.
-                This title is a HEADING that happens to be editable, so it wears none
-                of `.input`'s paint and cannot take the family's floor with it —
-                `min-h-11` clamps the `h-8` without disturbing it. */}
+            {/* The control box (#3708/#3709, restated by #3938). This title is a
+                HEADING that happens to be editable, so it wears none of `.input`'s
+                paint and cannot take the box with it — it carries `--control-box`
+                itself, at every width, rather than stepping at `sm`. */}
             <input
               aria-label="Activity name"
               value={title}
               onChange={(event) => onTitleChange(event.target.value)}
               placeholder={effectiveTitle}
-              className="h-8 w-full min-w-0 rounded-md border-0 bg-transparent py-0 pl-1 pr-8 text-xl leading-8 font-bold text-slate-900 min-h-11 outline-hidden sm:min-h-0 placeholder:text-slate-400 hover:bg-white/45 focus:bg-white/65 focus:ring-2 focus:ring-brand-500/40 dark:text-slate-100 dark:placeholder:text-slate-600 dark:hover:bg-white/5 dark:focus:bg-white/5"
+              className="h-(--control-box) w-full min-w-0 rounded-md border-0 bg-transparent py-0 pl-1 pr-8 text-xl leading-8 font-bold text-slate-900 outline-hidden placeholder:text-slate-400 hover:bg-white/45 focus:bg-white/65 focus:ring-2 focus:ring-brand-500/40 dark:text-slate-100 dark:placeholder:text-slate-600 dark:hover:bg-white/5 dark:focus:bg-white/5"
             />
             <IconPencil
               aria-hidden

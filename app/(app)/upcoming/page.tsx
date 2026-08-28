@@ -1375,9 +1375,11 @@ function Row({
           <RowActionChips actions={actions} fold={hasMenu} />
           {/* The primary CTA and the row's ONE overflow trigger, glued into a single
               nowrap group so a wrap can never strand the "⋯" alone on its own line
-              (#1446). */}
+              (#1446). `gap-3` at every width is the reach floor (#3938): both are
+              control boxes, each reaching 6px toward the other on a coarse pointer,
+              so anything tighter hands one tap to two targets. */}
           <div
-            className="flex min-w-0 items-center gap-2 sm:gap-1"
+            className="flex min-w-0 items-center gap-3"
             data-testid="upcoming-primary-actions"
           >
             {cta}

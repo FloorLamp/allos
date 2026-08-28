@@ -1,10 +1,11 @@
 import { test, expect } from "./fixtures";
 import { loginAs } from "./nav";
 import { expandTrendsContext } from "./trends-chrome";
-import { TAP_FLOOR_PX } from "@/lib/tap-floor-tokens";
+import { CONTROL_BOX_PX } from "@/lib/tap-floor-tokens";
 import {
   expectAtomicCardPairs,
   expectNoClippedContent,
+  expectPhoneTapTargets,
   followLink,
   hydratedClick,
   settledBoxes,
@@ -166,11 +167,16 @@ test.describe("Trends → Overview → body census metric pages (#1067 Phase 2)"
   test("source controls live on the metric detail page on mobile", async ({
     browser,
   }) => {
-    const page = await loginAs(browser, {
-      username: E2E_LOGIN_TRENDS_BODY,
-      password: E2E_MEMBER_PASSWORD,
-    });
-    await page.setViewportSize(PHONE);
+    // `hasTouch`, because the star/log pair's floor is EFFECTIVE (#3938): both
+    // render the control box and a coarse pointer supplies the rest.
+    const page = await loginAs(
+      browser,
+      {
+        username: E2E_LOGIN_TRENDS_BODY,
+        password: E2E_MEMBER_PASSWORD,
+      },
+      { viewport: PHONE, hasTouch: true }
+    );
     await page.goto("/trends?view=all");
 
     // Old all-chart URLs still resolve to the compact tile overview on phones,
@@ -373,13 +379,18 @@ test.describe("Trends → Overview → body census metric pages (#1067 Phase 2)"
     // row, #3486's own defect shape, on a surface #3486's fix had shipped to. The
     // ceiling passed the entire time, because it never asked the two to AGREE.
     //
-    // So each meets the floor, the two are equal to each other, and the
-    // compactness the old ceiling was really guarding is kept as a separate,
-    // looser bound: the labeled variant from `sm` up is far wider, so 48
-    // distinguishes icon-only from labeled without pinning anyone's padding.
+    // #3938 turned the 44 into an EFFECTIVE floor and both controls onto the one
+    // 34px box, so the pair is asserted through the shared helper (rendered box +
+    // its measured reach) and the AGREEMENT below is still the load-bearing half.
+    // The compactness the old ceiling guarded stays as a separate, looser bound:
+    // the labeled variant from `sm` up is far wider, so 48 distinguishes icon-only
+    // from labeled without pinning anyone's padding.
+    await expectPhoneTapTargets(page, "metric star/log pair", [
+      mobileStar,
+      mobileLog,
+    ]);
     for (const box of [mobileStarBox, mobileLogBox]) {
-      expect(box.width).toBeGreaterThanOrEqual(TAP_FLOOR_PX);
-      expect(box.height).toBeGreaterThanOrEqual(TAP_FLOOR_PX);
+      expect(box.height).toBe(CONTROL_BOX_PX);
       expect(box.width).toBeLessThanOrEqual(48);
     }
     expect(mobileStarBox.height).toBe(mobileLogBox.height);

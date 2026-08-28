@@ -2454,16 +2454,30 @@ input[type="time"]::-webkit-datetime-edit-ampm-field:focus {
 }
 
 /* The reach. `.tap-target` is the same mechanism under its own name, kept for the
-   hand-rolled controls outside the box (a 32px icon button, the dose pills). */
-@media (pointer: coarse) {
-  .chip-base,
-  .btn,
-  .btn-ghost,
-  .btn-danger,
-  .button-control,
-  .tap-target {
-    position: relative;
+   hand-rolled controls outside the box (a 32px icon button, the dose pills).
+
+   THE CONTAINING BLOCK IS IN `@layer components`, AND THAT IS NOT A DETAIL. The
+   overlay needs SOME positioned ancestor, and `relative` is the right default —
+   but an unlayered `position: relative` outranks a call site's own `absolute`,
+   which silently rips a control out of the corner it was pinned to. (Measured
+   here: the picker's Clear command is `absolute inset-y-0`, and an unlayered
+   `relative` collapsed it from the field's full height to 16px.) In `components`
+   it loses to any positioning a call site asks for, and the overlay is then
+   measured against that instead — which is the same box either way. */
+@layer components {
+  @media (pointer: coarse) {
+    .chip-base,
+    .btn,
+    .btn-ghost,
+    .btn-danger,
+    .button-control,
+    .tap-target {
+      position: relative;
+    }
   }
+}
+
+@media (pointer: coarse) {
   .chip-base::after,
   .btn::after,
   .btn-ghost::after,

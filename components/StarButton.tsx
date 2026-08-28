@@ -107,21 +107,20 @@ export default function StarButton({
           : undefined
       }
       data-testid="star-toggle"
-      className={`inline-flex min-h-11 items-center justify-center rounded-lg border font-medium transition sm:min-h-0 ${
+      className={`tap-target inline-flex min-h-(--control-box) items-center justify-center rounded-lg border font-medium transition ${
         compact
-          ? "gap-1 px-2 py-1 text-xs"
+          ? "gap-1 px-2 text-xs"
           : iconOnlyBelowSm
-            ? // 44px RENDERED below `sm`, not 36 (#3486's reach, decided by #3514's
-              // ruling). This is a hand-rolled control outside the `.btn` family, so
-              // the family's floor in app/globals.css cannot see it — which is how a
-              // 36px star toggle came to sit beside a 40px `.btn` measurement toggle
-              // on /trends/metric/weight, two heights in one row, and be found by
-              // #3529's geometry probe. Of #3514's two mechanisms this takes the
-              // RENDERED one rather than `.tap-target`, because the neighbour it
-              // shares a row with is a rendered 44: a hit-area overlay would have
-              // met the floor and left the row still looking uneven.
-              "h-11 w-11 gap-1.5 p-0 text-sm sm:h-auto sm:w-auto sm:px-3 sm:py-1.5"
-            : "gap-1.5 px-3 py-1.5 text-sm"
+            ? // THE CONTROL BOX, RENDERED, and the reach around it (#3938). This is
+              // a hand-rolled control outside `.btn`, so the box declared for that
+              // family in app/globals.css cannot see it — which is how a 36px star
+              // toggle came to sit beside a 40px `.btn` measurement toggle on
+              // /trends/metric/weight, two heights in one row, found by #3529's
+              // geometry probe. It takes the RENDERED box because the neighbour it
+              // shares a row with renders the same one; the missing reach to 44
+              // comes from `.tap-target`, which that neighbour also gets.
+              "h-(--control-box) w-(--control-box) gap-1.5 p-0 text-sm sm:h-auto sm:w-auto sm:px-3"
+            : "gap-1.5 px-3 text-sm"
       } ${
         shown
           ? "border-amber-200 bg-amber-50 text-amber-700 hover:bg-amber-100 dark:border-amber-800 dark:bg-amber-950 dark:text-amber-300 dark:hover:bg-amber-900"
