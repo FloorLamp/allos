@@ -1023,8 +1023,10 @@
 @utility metric-readings-list {
   /* A metric detail page already gives its readings one containing card. `table-cards`
      already renders every phone row as a flat divider-separated record (#1616), so
-     what is left here is the INSET: a row inside an existing card does not also pay
-     the card’s own `p-3` gutter. Nothing else about the flattening is restated —
+     what was left here was the INSET — a row inside a card did not also pay the
+     card's own `p-3` gutter — and #3673 took that too: no card spends an inline
+     gutter below `sm`, so the row's 8px was the only thing left holding this page's
+     readings off the page gutter. Nothing else about the flattening is restated —
      `mb-0`, `rounded-none`, `border-x-0`, `border-t-0`, `bg-transparent` and the
      last-child divider were byte-identical restatements of the base and came off in
      #3499, where an override kept without a reason is the drift the registry exists
@@ -1033,7 +1035,7 @@
      that are genuinely intentional carry `!` and beat the generic `table-cards` rules
      regardless of that generated order. */
   & tr {
-    @apply max-sm:items-center! max-sm:gap-x-2! max-sm:gap-y-0.5! max-sm:pr-0! max-sm:pl-2! max-sm:pt-0! max-sm:pb-2!;
+    @apply max-sm:items-center! max-sm:gap-x-2! max-sm:gap-y-0.5! max-sm:pt-0! max-sm:pb-2!;
   }
   /* This list keeps its VALUE on the head line (below), so the title must NOT
      reserve the whole line the way the generic #2588 rule does — it goes back to a
