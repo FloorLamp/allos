@@ -512,8 +512,18 @@ ${landingLines}
   a rebuilt census over 126 files and 234 executed tests, the lane reported
   trends-metric-pages.spec.ts as \"the only spec pinning the pre-sweep arrangement\";
   cycle.spec.ts — desktop-named, loop-bound 390, split assertion — went red in CI on
-  the next push. Report a census as a TABLE of files with a per-file verdict, and
-  state the search that produced it, so the hole is visible when it is there.
+  the next push. (4) THE SELECTOR MAY BE BUILT BY A HELPER. A spec that calls
+  \`dashboardCandidatePrefix(page, "labs.latest:")\` never writes
+  \`data-candidate-id\` at all, so a grep for the ATTRIBUTE cannot see it however
+  carefully you spell the attribute. Put the helper's NAME in the token set beside
+  the markup it builds, and search for both. Measured on #3548: a census over the
+  band's markers found 4 of the 6 specs addressing a row that changed band; the two
+  it missed were the two that went red, and one of them was invisible to every
+  attribute search because a function assembled the selector. Report a census as a
+  TABLE of files with a per-file verdict, and state the search that produced it, so
+  the hole is visible when it is there. Then INTERSECT the census with the rows that
+  actually moved — the count that matters is not how many files mention the surface,
+  it is how many address the thing you changed.
 - A GUARD THAT REMOVES A PROPERTY CANNOT ALSO PROVE THE PROPERTY SURVIVED. When your
   change takes something away — a frame, a gutter, a label, a permission, a field —
   the natural guard asserts ABSENCE: nothing still has it. That assertion passes on
@@ -530,6 +540,37 @@ ${landingLines}
   it was structurally the wrong direction. Name the surfaces that must stay loud, keep
   the list SHORT and hand-written (an exhaustive scanner is the forbidden shape), and
   prove the converse assertion can fail before you trust it passing.
+- MEASURE YOUR DIFF WITH THREE DOTS. \`git diff origin/main HEAD\` is UNSAFE in this
+  container: every worktree shares one \`.git\`, so a SIBLING LANE's fetch moves
+  \`refs/remotes/origin/main\` under you with no action of your own, and a two-dot diff
+  silently starts reporting their merged work as yours. Use \`git diff origin/main...HEAD\`
+  (three dots — the merge base), and the same for \`--stat\` and for any line-count you
+  report. Measured 2026-08-28 on #3777: a lane's first production-line delta included a
+  release-notes change it had never made, and it only caught it because the file was
+  obviously not its own. A line count is exactly the kind of number that gets shrugged
+  at, so it is exactly the kind that has to be measured right.
+- A SUBSTRING ASSERTION IS SATISFIABLE BY A NEIGHBOUR. \`toContainText("watch")\` on a card
+  that also renders the user's note "Even brown, watch it." passes whether or not the
+  thing you meant to assert is there — and keeps passing after the badge changes, because
+  the note never does. When you assert on rendered text, ask what ELSE on that surface
+  contains your string: prefer an exact match with a count
+  (\`getByText("Watch", { exact: true })).toHaveCount(2)\`) over a substring, and scope to
+  the element that owns the claim rather than to the page. Found 2026-08-28 in
+  e2e/skin.spec.ts, where the assertion had already stopped testing the badge.
+- AN ABSOLUTE CANNOT SEE A RELATIONSHIP. Before you write a geometric assertion, say
+  out loud what the number is measured FROM — and check that it is the same thing a
+  person looking at the screen perceives. Measured 2026-08-28 on #3673/#3920: the
+  ruling's criterion was "every text run's left offset equals the page gutter", the
+  guard measured text-to-VIEWPORT, and the defect was text-to-ITS-OWN-FILL. The broken
+  dashboard satisfied the criterion exactly — the text really was at 16px — while every
+  band's first character sat flush against the edge of the fill it was printed on,
+  because the padding came off and the fill stayed inset. Both distances are honestly
+  called "left offset"; only one is the thing that looked broken. The same trap waits in
+  every height, gap and inset assertion: a control 44px tall inside a row that clips it,
+  a gutter correct against the page and wrong against its container. Assert the
+  RELATIONSHIP the ruling is about — element against the box it sits in — and keep the
+  absolute too when both matter. A criterion that survives the defect it was written for
+  is not a criterion.
 - SHUT DOWN ANY DEV SERVER BEFORE YOU REPORT. If you ran \`npm run dev\` (or
   anything that leaves \`next-server\` alive), stop it and confirm it is gone
   before your final message. A clean \`git status\` does NOT mean the tree is

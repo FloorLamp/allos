@@ -62,6 +62,7 @@ import {
   resolveTapProfile,
   OUTDATED_MESSAGE_TEXT,
   type InlineKeyboard,
+  type TapWrote,
 } from "./callback-data";
 import {
   correctionActions,
@@ -293,6 +294,18 @@ async function rebuildFood(
     await rebuildMessage(r.profileId, r.chatId, r.messageId, rebuilt);
 }
 
+// DID THE RESTAMP WRITE (#3933)? All three domains answer the same shape: every refusal
+// — no burst, out of range, not bound to this message, a practice hour that crosses the
+// day — leaves the ledger exactly as it was, so only `restamped` earns the tap-time
+// sweep. One predicate rather than three, because the six handlers below differ in
+// nothing but their domain.
+function restamped(
+  outcome: FoodRestampOutcome | DoseRestampOutcome | PracticeRestampOutcome,
+  profileId: number
+): TapWrote {
+  return outcome.kind === "restamped" ? profileId : undefined;
+}
+
 // A chip on a food burst. Re-stamps every row of the burst from the instant it CURRENTLY
 // stands at (#2206 — so a second tap goes further rather than landing where the first one
 // did), keeping the burst's internal spread, and moves the serving's day + counter with it
@@ -300,7 +313,7 @@ async function rebuildFood(
 export async function handleFoodTimeChip(
   cq: TelegramCallbackQuery,
   token: CorrectionChipToken
-): Promise<void> {
+): Promise<TapWrote> {
   const r = await resolve(cq, token, consentedFoodTaps, FOOD_TIME_PREFIXES);
   if (!r) return;
   const outcome = restampFoodEventsCore(
@@ -311,6 +324,7 @@ export async function handleFoodTimeChip(
   );
   await answerCallbackQuery(cq.id, foodRestampOutcomeText(outcome));
   await rebuildFood(r);
+  return restamped(outcome, r.profileId);
 }
 
 // The toast for a chip or picker write, from what the write ACTUALLY did — never an
@@ -330,7 +344,7 @@ function foodRestampOutcomeText(
 export async function handleFoodTimeAt(
   cq: TelegramCallbackQuery,
   token: CorrectionAtToken
-): Promise<void> {
+): Promise<TapWrote> {
   const r = await resolve(cq, token, consentedFoodTaps, FOOD_TIME_PREFIXES);
   if (!r) return;
   // `open` and `back` WRITE NOTHING — they swap the picker in and out — so the ack
@@ -382,6 +396,7 @@ export async function handleFoodTimeAt(
   );
   await answerCallbackQuery(cq.id, foodRestampOutcomeText(outcome, hhmm));
   await rebuildFood(r);
+  return restamped(outcome, r.profileId);
 }
 
 // The toast, from what the write ACTUALLY did. Names the re-dating explicitly: a serving
@@ -537,7 +552,7 @@ function doseCorrectionParts(
 export async function handleDoseTimeChip(
   cq: TelegramCallbackQuery,
   token: CorrectionChipToken
-): Promise<void> {
+): Promise<TapWrote> {
   const r = await resolve(
     cq,
     token,
@@ -556,12 +571,13 @@ export async function handleDoseTimeChip(
     alert: doseRestampRefused(outcome),
   });
   await rebuildDose(r, anchorOf(outcome));
+  return restamped(outcome, r.profileId);
 }
 
 export async function handleDoseTimeAt(
   cq: TelegramCallbackQuery,
   token: CorrectionAtToken
-): Promise<void> {
+): Promise<TapWrote> {
   const r = await resolve(
     cq,
     token,
@@ -623,6 +639,7 @@ export async function handleDoseTimeAt(
     alert: doseRestampRefused(outcome),
   });
   await rebuildDose(r, anchorOf(outcome));
+  return restamped(outcome, r.profileId);
 }
 
 function anchorOf(outcome: DoseRestampOutcome) {
@@ -722,7 +739,7 @@ function practiceRestampOutcomeText(
 export async function handlePracticeTimeChip(
   cq: TelegramCallbackQuery,
   token: CorrectionChipToken
-): Promise<void> {
+): Promise<TapWrote> {
   const r = await resolve(
     cq,
     token,
@@ -738,6 +755,7 @@ export async function handlePracticeTimeChip(
   );
   await answerCallbackQuery(cq.id, practiceRestampOutcomeText(outcome));
   await rebuildPractice(r);
+  return restamped(outcome, r.profileId);
 }
 
 // The 🕐 drill-down on a practice burst: open the absolute-hour picker, apply a chosen
@@ -745,7 +763,7 @@ export async function handlePracticeTimeChip(
 export async function handlePracticeTimeAt(
   cq: TelegramCallbackQuery,
   token: CorrectionAtToken
-): Promise<void> {
+): Promise<TapWrote> {
   const r = await resolve(
     cq,
     token,
@@ -802,4 +820,5 @@ export async function handlePracticeTimeAt(
   );
   await answerCallbackQuery(cq.id, practiceRestampOutcomeText(outcome, hhmm));
   await rebuildPractice(r);
+  return restamped(outcome, r.profileId);
 }

@@ -3137,7 +3137,7 @@ on the DELIVERY PATH of every `/dose`, `/symptom` and `/mood` and until then mat
 only the profile prefix and filtered the rest in memory — the full read its own
 comment claimed it avoided.
 
-**The sweep** (`reconcileProfileMessages`, one pass per profile per tick) applies
+**The sweep** (`reconcileProfileMessages`, one pass per profile) applies
 one pure decision (`lib/notifications/reconcile-core.ts`):
 
 - nothing resolved → **no edit at all** (pinned by an edit-call count in the DB
@@ -3153,6 +3153,25 @@ one pure decision (`lib/notifications/reconcile-core.ts`):
   declaration below);
 - a dead pointer (message deleted, chat gone, past the edit horizon) → the
   best-effort edit fails, the pointer is dropped, nothing is retried forever.
+
+**Two triggers, one sweep (#3933).** The hourly tick runs it for everything no tap
+reached — an app write, an expired claim — and `handleCallbackQuery` runs it again at
+the end of every tap that WROTE. The tap is where the wait was visible: the composed
+one-tap is host-inherited, so tapping it on the dose reminder used to leave the same
+window's food nudge offering the half just logged until the next hour. Four rules make
+the second trigger safe, and they are the tick's own posture rather than a new one:
+the hook sits at the dispatcher (a new button cannot forget it); it runs AFTER
+`answerCallbackQuery`, so the acknowledgement never waits on another message's edits;
+it runs only when a handler reports a write, which each returns as `TapWrote` — a
+refusal or a keyboard navigation pays for nothing; and a throw is logged and swallowed,
+because by then the write has landed and the person has been answered. The tapped
+message is swept with the rest: a handler that re-rendered it leaves its pointer in
+sync, so the sweep computes the same render and edits nothing, while a handler that
+edited only the KEYBOARD (the digest's ⚙️ Tune and its time-suggestion exits, whose
+claims are PROSE) leaves sentences only the sweep can correct. ⚙️ Tune reports a write
+for that reason and no other: the toggle stores LOGIN display state, never the
+subject's records, but `digestDemotionsForProfile` feeds the digest gather, so on a
+profile one login manages it changes what the report SAYS.
 
 **How late a keyboard may still be tapped is the FAMILY's answer (#2018).** That
 fourth arm shipped as one global comparison — `pointer.date < today` ⇒ close — which

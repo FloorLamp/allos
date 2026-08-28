@@ -42,6 +42,8 @@ import { revisionSummary } from "@/lib/lab-result-lifecycle";
 import { getObservationRevisions } from "@/lib/queries/medical";
 import { getSyncRowProvenance } from "@/lib/queries/integrations";
 import { searchAll } from "@/lib/queries/search";
+import { getEpisodeInRangeEvents } from "@/lib/illness-episode-events";
+import { groupIllnessTimelineEvents } from "@/lib/illness-timeline-view";
 import { getProfileSummary } from "@/lib/profile-summary-load";
 import {
   recordSyncEvent,
@@ -147,9 +149,11 @@ describe("a portal patient's 'Last synced' day is the bound profile's (#3573)", 
 //     The first two are declared DAY columns (lib/time-columns.ts), so the slice is a
 //     no-op and there is nothing to convert. The third is already ten characters wide
 //     too — but `date(uploaded_at)` is a SQL UTC truncation, and it is the range FILTER
-//     in getEpisodeInRangeEvents as well as the rendered value, so correcting it means
-//     moving episode-window containment out of SQL. That is a read-model change, not
-//     this sweep's formatting fix.
+//     in getEpisodeInRangeEvents as well as the rendered value, so correcting it meant
+//     moving episode-window containment out of SQL. THAT IS NOW DONE, as #3884, and it
+//     is the last describe() in this file — a read-model change rather than this
+//     sweep's formatting fix, which is why it was filed separately and not widened
+//     into #3836.
 
 describe("the read models #3836 converted", () => {
   it.each(STRADDLING)("%s reads %s as %s", (tz, at, day) => {
@@ -290,5 +294,72 @@ describe("a delivery-only login row states one calendar's days", () => {
     expect(line.text).toBe(
       `Delivered 1 document ${day} · portal last checked ${checkedDay}`
     );
+  });
+});
+
+// ── #3884: the site this file deferred — where the wrong day also decides MEMBERSHIP ──
+//
+// `getEpisodeInRangeEvents` compared `COALESCE(document_date, date(uploaded_at))`
+// against the assembled episode's profile-LOCAL `firstDay`/`lastActiveDay`. The same
+// expression appears three times: the two in the `WHERE` decide what the episode
+// CONTAINS, the one in the `SELECT` is what `groupIllnessTimelineEvents` groups on and
+// EpisodeTimeline prints. So an un-dated upload near local midnight both showed the
+// wrong day and sat on the wrong side of the window — a lab result appearing in or
+// vanishing from a clinical record by the reader's UTC offset.
+//
+// BOTH DIRECTIONS ARE ASSERTED, because a membership bug has two of them and each zone
+// only shows one under a single window. The episode on the document's LOCAL day must
+// contain it (it did not, on main); the episode on the UTC day must not (it did).
+// Only `document_date IS NULL` is affected — an imported clinical date wins the
+// COALESCE — so that is the row every case seeds.
+describe("an un-dated document joins the episode of its own local day (#3884)", () => {
+  it.each(STRADDLING)("%s files %s under %s", (tz, at, day) => {
+    const { profile } = seedActor();
+    setTimezone(profile.id, tz);
+    const docId = Number(
+      db
+        .prepare(
+          `INSERT INTO medical_documents
+             (filename, stored_path, mime_type, size_bytes, extraction_status,
+              uploaded_at, profile_id)
+           VALUES (?, '', 'application/pdf', 20, 'done', ?, ?)`
+        )
+        .run(`episode-labs-${day}.pdf`, at, profile.id).lastInsertRowid
+    );
+
+    // IN: the one-day episode on the document's own local day.
+    const inRange = getEpisodeInRangeEvents(profile.id, day, day);
+    expect(inRange.documents).toEqual([
+      {
+        id: docId,
+        filename: `episode-labs-${day}.pdf`,
+        docType: null,
+        date: day,
+      },
+    ]);
+    // …and the day the timeline groups and prints it under is that local day.
+    expect(groupIllnessTimelineEvents([], inRange).map((g) => g.date)).toEqual([
+      day,
+    ]);
+
+    // OUT: the one-day episode on the UTC day, which is a day the document was not
+    // uploaded on anywhere this profile lives.
+    expect(
+      getEpisodeInRangeEvents(profile.id, UTC_DAY, UTC_DAY).documents
+    ).toEqual([]);
+
+    // A document that DOES carry a clinical date is unmoved by the zone: it is a
+    // declared day column and wins the COALESCE, so it stays the control.
+    db.prepare(
+      `INSERT INTO medical_documents
+         (filename, stored_path, mime_type, size_bytes, extraction_status,
+          document_date, uploaded_at, profile_id)
+       VALUES (?, '', 'application/pdf', 20, 'done', ?, ?, ?)`
+    ).run(`episode-dated-${day}.pdf`, UTC_DAY, at, profile.id);
+    expect(
+      getEpisodeInRangeEvents(profile.id, UTC_DAY, UTC_DAY).documents.map(
+        (d) => d.date
+      )
+    ).toEqual([UTC_DAY]);
   });
 });

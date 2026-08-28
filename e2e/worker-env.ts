@@ -43,8 +43,39 @@ import { syncInstantBefore } from "./sync-instants";
 // there and the suite's file fixtures have always been cwd-relative).
 const REPO_ROOT = process.cwd();
 
-/** Root for every throwaway e2e artifact — gitignored. */
-export const E2E_DATA_DIR = path.join(REPO_ROOT, "e2e", ".data");
+/**
+ * Base port for the per-worker servers; worker N listens on BASE + N. Overridable
+ * (E2E_PORT) so a sandboxed environment can move the whole range at once.
+ */
+export const PORT_BASE = Number(process.env.E2E_PORT ?? 3100);
+
+/** Where every run's root lives — gitignored. */
+export const E2E_DATA_ROOTS = path.join(REPO_ROOT, "e2e", ".data");
+
+/**
+ * ONE RUN'S root, keyed on its PORT RANGE (#3921).
+ *
+ * The worker directory used to be keyed on the worker index alone, so two
+ * Playwright runs in ONE checkout both claimed `e2e/.data/worker-0/` and the
+ * second `rmSync`'d the first's seeded database and auth state mid-run. The reds
+ * that produced were not the cost — the GREENS were: a spec that finished before
+ * its data was swapped reports a pass that means nothing.
+ *
+ * The port range is what the two runs are keyed apart by, and it is the right key
+ * rather than a convenient one: runs that share a range want the same listeners,
+ * so they can never coexist whatever their data does. It is also the one value
+ * every process in the chain already agrees on without being told — the runner,
+ * each forked worker, and the `tsx` seed children all read the same `E2E_PORT`
+ * out of an inherited environment — which no run id minted at setup time can
+ * claim. Runs that DO share a range are refused by name in e2e/global-setup.ts
+ * rather than allowed to half-swap each other's fixtures.
+ */
+export function dataRootFor(repoRoot: string, portBase: number): string {
+  return path.join(repoRoot, "e2e", ".data", `port-${portBase}`);
+}
+
+/** This run's root for every throwaway e2e artifact — gitignored. */
+export const E2E_DATA_DIR = dataRootFor(REPO_ROOT, PORT_BASE);
 
 /**
  * The seeded TEMPLATE directories, built once per run by global-setup.ts and then
@@ -127,12 +158,6 @@ export function frozenLocalHHMM(zone: string): string {
     hour12: false,
   }).format(frozenNow());
 }
-
-/**
- * Base port for the per-worker servers; worker N listens on BASE + N. Overridable
- * (E2E_PORT) so a sandboxed environment can move the whole range at once.
- */
-export const PORT_BASE = Number(process.env.E2E_PORT ?? 3100);
 
 /** Admin credentials the seed bootstraps, and that each worker logs in with. */
 export const ADMIN_USERNAME = "admin";

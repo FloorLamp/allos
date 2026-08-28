@@ -114,7 +114,7 @@ export async function handleDoseCommand(
 export async function handlePrnLogTap(
   cq: TelegramCallbackQuery,
   token: PrnLogCallback
-): Promise<void> {
+): Promise<TapWrote> {
   const chatId = cq.message?.chat?.id;
   const profileId =
     chatId != null
@@ -196,6 +196,9 @@ export async function handlePrnLogTap(
   if (logged && chatId != null && messageId != null) {
     await rebuildOfferListWithChips(profileId, chatId, messageId, cq);
   }
+  // `duplicate` is an idempotent match on a row that already stood — nothing new was
+  // recorded, so nothing downstream of it can have gone stale on this tap.
+  return outcome.kind === "logged" ? profileId : undefined;
 }
 
 // IS THIS KEYBOARD THE DIGEST'S EXPANDED OFFER LIST, rather than the `/dose` command's?
@@ -291,7 +294,7 @@ async function rebuildOfferListWithChips(
 export async function handleRedoseLogTap(
   cq: TelegramCallbackQuery,
   token: RedoseLogCallback
-): Promise<void> {
+): Promise<TapWrote> {
   const chatId = cq.message?.chat?.id;
   const messageId = cq.message?.message_id;
   const profileId =
@@ -363,6 +366,7 @@ export async function handleRedoseLogTap(
       )
     );
   }
+  return outcome.kind === "logged" ? profileId : undefined;
 }
 
 // A practice "Done ✅" tap (#1259): log one session NOW for the tapped target's practice,
@@ -373,7 +377,7 @@ export async function handleRedoseLogTap(
 export async function handlePracticeDoneTap(
   cq: TelegramCallbackQuery,
   token: PracticeDoneCallback
-): Promise<void> {
+): Promise<TapWrote> {
   const chatId = cq.message?.chat?.id;
   const profileId =
     chatId != null
@@ -403,8 +407,10 @@ export async function handlePracticeDoneTap(
   );
   await answerCallbackQuery(cq.id, practiceLogOutcomeText(outcome));
 
+  const wrote = outcome.kind === "logged" ? profileId : undefined;
+
   const rows = cq.message?.reply_markup?.inline_keyboard ?? [];
-  if (chatId == null || messageId == null || rows.length === 0) return;
+  if (chatId == null || messageId == null || rows.length === 0) return wrote;
   const remaining = removeButton(rows, cq.data as string);
 
   // THE PACE NUDGE REBUILDS RATHER THAN CLOSING (#2875), and the rebuild is handed
@@ -440,7 +446,7 @@ export async function handlePracticeDoneTap(
     });
     if (rebuilt) {
       await rebuildMessage(profileId, chatId, messageId, rebuilt);
-      return;
+      return wrote;
     }
   }
 
@@ -459,6 +465,7 @@ export async function handlePracticeDoneTap(
   } else {
     await updateMessageKeyboard(profileId, chatId, messageId, remaining);
   }
+  return wrote;
 }
 
 // Did this tap come from the pace NUDGE (`pdone`) rather than the on-demand `/practice`
@@ -531,7 +538,7 @@ export async function handleSymptomCommand(
 export async function handleSymptomPick(
   cq: TelegramCallbackQuery,
   token: SymptomPickCallback
-): Promise<void> {
+): Promise<TapWrote> {
   const chatId = cq.message?.chat?.id;
   const messageId = cq.message?.message_id;
   const profileId =
@@ -570,7 +577,7 @@ export async function handleSymptomPick(
 export async function handleMoodTap(
   cq: TelegramCallbackQuery,
   token: MoodCheckinCallback
-): Promise<void> {
+): Promise<TapWrote> {
   const chatId = cq.message?.chat?.id;
   const messageId = cq.message?.message_id;
   const profileId =
@@ -601,6 +608,7 @@ export async function handleMoodTap(
     messageId,
     `${moodFace(token.valence)} Logged — ${label}. Thanks for checking in.`
   );
+  return profileId;
 }
 
 // The "Keep daily check-ins" tap (#1668). Resets the ignored streak — the SAME write a
@@ -611,7 +619,7 @@ export async function handleMoodTap(
 export async function handleMoodKeepTap(
   cq: TelegramCallbackQuery,
   token: MoodKeepCallback
-): Promise<void> {
+): Promise<TapWrote> {
   const chatId = cq.message?.chat?.id;
   const messageId = cq.message?.message_id;
   const profileId =
@@ -634,12 +642,13 @@ export async function handleMoodKeepTap(
     messageId,
     replacementWithTitle(cq.message?.text, moodKeepCloseText(outcome))
   );
+  return outcome === "kept" ? profileId : undefined;
 }
 
 export async function handleSymptomSeverity(
   cq: TelegramCallbackQuery,
   token: SymptomSeverityCallback
-): Promise<void> {
+): Promise<TapWrote> {
   const chatId = cq.message?.chat?.id;
   const messageId = cq.message?.message_id;
   const profileId =
@@ -675,6 +684,7 @@ export async function handleSymptomSeverity(
     messageId,
     `${GLYPH.done} Logged ${label} — ${sevLabel}.`
   );
+  return profileId;
 }
 
 // `/temp` command (#859 item 5): prompt the chat to REPLY with a reading. The prompt
@@ -1333,6 +1343,7 @@ import type {
   DemoteCallback,
   MedStopCallback,
   OfferTailCallback,
+  TapWrote,
   TuneCallback,
 } from "./callback-data";
 import { demoteIntakeObligation } from "../intake-obligation-write";
@@ -1490,7 +1501,7 @@ import { GLYPH } from "./glyphs";
 export async function handleOfferTailTap(
   cq: TelegramCallbackQuery,
   token: OfferTailCallback
-): Promise<void> {
+): Promise<TapWrote> {
   const chatId = cq.message?.chat?.id;
   const messageId = cq.message?.message_id;
   const profileId =
@@ -1578,7 +1589,7 @@ export async function handleOfferTailTap(
 export async function handleDemoteTap(
   cq: TelegramCallbackQuery,
   token: DemoteCallback
-): Promise<void> {
+): Promise<TapWrote> {
   const chatId = cq.message?.chat?.id;
   const messageId = cq.message?.message_id;
   const profileId =
@@ -1591,15 +1602,18 @@ export async function handleDemoteTap(
   }
   const outcome = demoteIntakeObligation(profileId, token.itemId);
   await answerCallbackQuery(cq.id, DEMOTION_OUTCOME_TEXT[outcome]);
-  if (outcome !== "demoted" || chatId == null || messageId == null) return;
+  if (outcome !== "demoted") return undefined;
+  if (chatId == null || messageId == null) return profileId;
   const rows = cq.message?.reply_markup?.inline_keyboard ?? [];
-  if (rows.length === 0) return;
-  await updateMessageKeyboard(
-    profileId,
-    chatId,
-    messageId,
-    removeButton(rows, cq.data as string)
-  );
+  if (rows.length > 0) {
+    await updateMessageKeyboard(
+      profileId,
+      chatId,
+      messageId,
+      removeButton(rows, cq.data as string)
+    );
+  }
+  return profileId;
 }
 
 // A Stop tap on an unconfirmed imported medication's dose reminder (#2574).
@@ -1636,7 +1650,7 @@ export async function handleDemoteTap(
 export async function handleMedStopTap(
   cq: TelegramCallbackQuery,
   token: MedStopCallback
-): Promise<void> {
+): Promise<TapWrote> {
   const chatId = cq.message?.chat?.id;
   const messageId = cq.message?.message_id;
   const profileId =
@@ -1660,20 +1674,18 @@ export async function handleMedStopTap(
       })
     : "withdrawn";
   await answerCallbackQuery(cq.id, UNCONFIRMED_STOP_TEXT[outcome]);
-  if (
-    (outcome !== "stopped" && outcome !== "synced") ||
-    chatId == null ||
-    messageId == null
-  )
-    return;
+  if (outcome !== "stopped" && outcome !== "synced") return undefined;
+  if (chatId == null || messageId == null) return profileId;
   const rows = cq.message?.reply_markup?.inline_keyboard ?? [];
-  if (rows.length === 0) return;
-  await updateMessageKeyboard(
-    profileId,
-    chatId,
-    messageId,
-    removeRowContaining(rows, cq.data as string)
-  );
+  if (rows.length > 0) {
+    await updateMessageKeyboard(
+      profileId,
+      chatId,
+      messageId,
+      removeRowContaining(rows, cq.data as string)
+    );
+  }
+  return profileId;
 }
 
 // A ⤓ right-size tap on the practice nudge (#1670): lower the tapped practice's weekly
@@ -1692,7 +1704,7 @@ export async function handleMedStopTap(
 export async function handleRightSizeLowerTap(
   cq: TelegramCallbackQuery,
   token: RightSizeLowerCallback
-): Promise<void> {
+): Promise<TapWrote> {
   const chatId = cq.message?.chat?.id;
   const messageId = cq.message?.message_id;
   const profileId =
@@ -1717,15 +1729,18 @@ export async function handleRightSizeLowerTap(
     candidate.suggestedFloor
   );
   await answerCallbackQuery(cq.id, RIGHTSIZE_OUTCOME_TEXT[outcome]);
-  if (outcome !== "lowered" || chatId == null || messageId == null) return;
+  if (outcome !== "lowered") return undefined;
+  if (chatId == null || messageId == null) return profileId;
   const rows = cq.message?.reply_markup?.inline_keyboard ?? [];
-  if (rows.length === 0) return;
-  await updateMessageKeyboard(
-    profileId,
-    chatId,
-    messageId,
-    removeButton(rows, cq.data as string)
-  );
+  if (rows.length > 0) {
+    await updateMessageKeyboard(
+      profileId,
+      chatId,
+      messageId,
+      removeButton(rows, cq.data as string)
+    );
+  }
+  return profileId;
 }
 
 // The ⚙️ Tune tap (#1714): per-category digest demotion, driven from the message that
@@ -1751,7 +1766,7 @@ export async function handleRightSizeLowerTap(
 export async function handleTuneTap(
   cq: TelegramCallbackQuery,
   token: TuneCallback
-): Promise<void> {
+): Promise<TapWrote> {
   const chatId = cq.message?.chat?.id;
   const messageId = cq.message?.message_id;
   const profileId =
@@ -1800,9 +1815,17 @@ export async function handleTuneTap(
   // The write, then the re-render — so the keyboard below is drawn from what was
   // actually stored, never from what the tap intended.
   let answer: string | undefined;
+  // THE TOGGLE EARNS A SWEEP, THOUGH IT WRITES NO RECORD OF THE SUBJECT'S. It is login
+  // display state (see the header) and no live KEYBOARD claims anything about it — but
+  // `digestDemotionsForProfile` feeds `gatherDigestInput`, so on a profile one login
+  // manages, demoting a category changes what the digest SAYS. The digest's claims are
+  // its prose, and prose is exactly what its reconciler owns; without this the sentence
+  // would keep contradicting the icon it sits under until the next tick.
+  let wrote: TapWrote;
   if (token.action === "toggle" && token.category) {
     const outcome = toggleLoginDigestDemotion(loginId, token.category);
     answer = tuneToggleAnswer(token.category, outcome.demoted);
+    wrote = profileId;
   }
 
   const offering = tunableCategoriesFor(
@@ -1814,7 +1837,7 @@ export async function handleTuneTap(
       cq.id,
       answer ?? "Nothing in today's digest to tune."
     );
-    return;
+    return wrote;
   }
   // The WRITE happened above, so the outcome text is real: ack with it, THEN redraw
   // (#2418). The ordering rule's writing half — the toast rides the ack and must stay
@@ -1835,6 +1858,7 @@ export async function handleTuneTap(
       ),
     })
   );
+  return wrote;
 }
 
 // The digest time suggestion's three exits (#2217), tapped from the digest itself.
@@ -1861,7 +1885,7 @@ export async function handleTuneTap(
 export async function handleDigestTimeTap(
   cq: TelegramCallbackQuery,
   token: DigestTimeCallback
-): Promise<void> {
+): Promise<TapWrote> {
   const chatId = cq.message?.chat?.id;
   const messageId = cq.message?.message_id;
   const profileId =
@@ -1897,13 +1921,15 @@ export async function handleDigestTimeTap(
   }
   await answerCallbackQuery(cq.id, answer);
 
-  if (chatId == null || messageId == null) return;
+  if (chatId == null || messageId == null) return profileId;
   const rows = cq.message?.reply_markup?.inline_keyboard ?? [];
-  if (rows.length === 0) return;
-  const consumed = [
-    digestTimeUseToken(profileId, token.date),
-    digestTimeDynamicToken(profileId, token.date),
-    digestTimeDismissToken(profileId, token.date),
-  ].reduce(removeButton, rows);
-  await updateMessageKeyboard(profileId, chatId, messageId, consumed);
+  if (rows.length > 0) {
+    const consumed = [
+      digestTimeUseToken(profileId, token.date),
+      digestTimeDynamicToken(profileId, token.date),
+      digestTimeDismissToken(profileId, token.date),
+    ].reduce(removeButton, rows);
+    await updateMessageKeyboard(profileId, chatId, messageId, consumed);
+  }
+  return profileId;
 }

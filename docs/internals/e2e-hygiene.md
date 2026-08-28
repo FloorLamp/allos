@@ -1453,7 +1453,7 @@ seam, **`lib/clock.ts`**:
   every hour; the residual is only a run that STARTS within its own duration of
   real midnight) — and hands it to `e2e/global-setup.ts` via `config.metadata`,
   which seeds the template under it and persists it to
-  `e2e/.data/run-context.json`. Every worker's server reads that file and boots
+  `<run root>/run-context.json`. Every worker's server reads that file and boots
   with the same `ALLOS_TEST_NOW`, so `scripts/seed.ts`, `e2e/seed-events.ts` and
   every `next start` in the run share one instant (workers are separate
   processes — a module-level `new Date()` would give each of them a different
@@ -1663,6 +1663,20 @@ shard count) — greedy longest-processing-time, ties broken on filename — so 
 twelve runners compute the SAME twelve buckets and each takes its own. No planning
 job, nothing serialized ahead of the matrix, no artifact passed between runners.
 Measured on the real 391-file suite: buckets of 126–127s, max/mean 1.00.
+
+**`$TOTAL` IS PART OF A SHARD'S NAME, AND TWO WORKFLOWS DISAGREE ON IT.** The PR
+matrix (`ci.yml`) is **12-way**; the post-merge matrix (`e2e-main.yml`) is
+**4-way** — deliberately, so the per-shard setup floor is paid four times instead
+of twelve. The plan is a function of the shard COUNT, so the same `(N)` names two
+different file sets: `e2e-main (3)` is `e2e-shard-plan.ts 3 4`, never `3 12`.
+
+Reach for the wrong denominator and you do not get an error — you get a plausible
+file set that does not contain the failing spec, run it, watch it pass, and
+conclude the red is unreproducible. Measured 2026-08-28 on #3930: `e2e-main (3)`'s
+116-file 4-way bucket holds `ride-detail.spec.ts` **and** the spec that was
+polluting it; the 12-way shard 3 is 38 files holding neither, and `ride-detail`
+lives in 12-way shard 8. So read `$TOTAL` off the workflow that produced the red
+before you reproduce it.
 
 **The safety property is the partition, not the balance.** An unbalanced suite is
 merely slow; a lossy one is green while running nothing. `planShards`
@@ -1914,7 +1928,7 @@ PW_WORKERS=1 npx playwright test "${BUCKET[@]}"
 Both collisions above passed at two workers and failed at one, and the second was
 nearly filed as unreproducible on the strength of a green two-worker run. Bisect
 the bucket against the victim to name the neighbour, then diff the worker
-database against `e2e/.data/template/app.db` to see what it actually left behind
+database against the run's `template/app.db` to see what it actually left behind
 — that is what turned "some spec breaks this" into "`saved_items` went 9 → 7, and
 the two missing rows are ApoB and hs-CRP".
 
@@ -2259,18 +2273,29 @@ worker (~0.2 s boot, ~190 MB RSS) against ONE shared production build.
 **The shape.**
 
 - `e2e/global-setup.ts` runs ONCE: it makes sure the production build is current
-  (see below), then seeds the two TEMPLATE directories — `e2e/.data/template/`
-  (`scripts/seed.ts` → `e2e/seed-events.ts`, in that load-bearing order) and
-  `e2e/.data/template-demo/` (the same seed under `ALLOS_DEMO_MODE=1`) — and
-  writes the run's frozen instant to `e2e/.data/run-context.json`. There is no
-  `webServer` block any more.
+  (see below), then CLAIMS this run's root and seeds the two TEMPLATE directories
+  inside it — `template/` (`scripts/seed.ts` → `e2e/seed-events.ts`, in that
+  load-bearing order) and `template-demo/` (the same seed under
+  `ALLOS_DEMO_MODE=1`) — and writes the run's frozen instant to
+  `run-context.json`. There is no `webServer` block any more.
+- **The run root is `e2e/.data/port-<PORT_BASE>/`, one per port range** (#3921).
+  It used to be `e2e/.data/` flat, so two runs in ONE checkout both claimed
+  `worker-0/` and the second `rmSync`'d the first's seeded database and auth state
+  mid-run — voiding both runs' results INCLUDING their passes, which is the silent
+  half and the reason this is keyed rather than overridden. The port range is the
+  key because runs that share one can never coexist anyway (they want the same
+  listeners) and because it is the one value the runner, every forked worker and
+  the `tsx` seed children already agree on through an inherited `E2E_PORT`. A run
+  on a range another LIVE runner holds is refused by name (`<root>/run.lock` names
+  the runner pid; a dead pid is not a claim), and a finished run's root is
+  reclaimed by the next run on any range, servers first.
 - A template is a DIRECTORY, not a bare `.db`: the seed also writes cwd-relative
   artifacts the app later reads (`data/logs/errors.jsonl` — the Settings →
   Errors fixture — plus uploads and integration payloads), so the seed runs with
   the template dir as its CWD and everything travels with the copy.
 - `e2e/fixtures.ts` exports the `test` every spec imports. Its **worker-scoped**
   `workerApp` fixture copies the template into
-  `e2e/.data/worker-<workerIndex>/`, boots
+  `<run root>/worker-<workerIndex>/`, boots
   `next start <repoRoot> -p <PORT_BASE + parallelIndex>` **with that directory
   as CWD**, signs in as admin against that server, and overrides the `baseURL`
   and `storageState` options. Because Playwright fills in missing context
@@ -2339,7 +2364,7 @@ down. So the DIRECTORY (database, uploads, logs, storage state) is keyed on
 directory another process is still serving from. Only the PORT is keyed on the
 slot (`TEST_PARALLEL_INDEX`) — ports must stay a small bounded range — and it is
 handed over explicitly: the replacement kills the pid recorded in
-`e2e/.data/slot-<n>.pid` and waits for the listener to go. On a red run that
+`<run root>/slot-<n>.pid` and waits for the listener to go. On a red run that
 hand-off happens once per failure, which is why it is a reclaim rather than an
 error.
 
