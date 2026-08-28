@@ -385,6 +385,26 @@ while read -r d; do
     printf '%s\n' "$live_branches" | grep -qx -- "$b" && live=1
   fi
 
+  # A TREE BEING WRITTEN RIGHT NOW HAS SOMETHING ALIVE IN IT, whatever the flag
+  # says. AGENTS_DEAD is inferred from boot-id and session-id, and snapshot-style
+  # resume changes both while RESTORING the process tree — so the recorder reports
+  # a restart over agents that never stopped. The note above already stated the
+  # rule ("a proxy may raise the alarm, it may not authorise the destructive
+  # response") and it was followed the first time and not the second: on
+  # 2026-08-28 four lanes were relaunched onto four live agents, putting two
+  # writers on every one of them for half an hour. Prose did not stop it.
+  #
+  # So ask the filesystem instead of the flag. A file modified in the last two
+  # minutes means a process is working here — an editor, a build, a test run.
+  # This cannot prove a tree is idle (an agent thinking writes nothing), so it
+  # only ever CONTRADICTS a dead verdict; it never authorises one.
+  writing=0
+  if [ -n "$(find "$d" -xdev -newermt '-120 seconds' \
+        -not -path '*/node_modules/*' -not -path '*/.git/*' \
+        -not -path '*/.next/*' -print -quit 2>/dev/null)" ]; then
+    writing=1
+  fi
+
   # THE READ-ONLY LANE IS NOT A RESCUE TARGET. The adversarial reviewer (#2626)
   # works in a throwaway worktree checked out at a PR's MERGE ref — detached, on
   # no branch, never pushed, deliberately disposable, and holding whatever scratch
@@ -477,7 +497,13 @@ while read -r d; do
   git -C "$REPO" merge-base --is-ancestor "$h" origin/main 2>/dev/null && pushed=1
 
   state="LIVE"; flag=""
-  if [ "$live" = "0" ]; then
+  if [ "$live" = "0" ] && [ "$writing" = "1" ]; then
+    state="WRITING"
+    flag="$flag  <<< FLAG SAYS DEAD, THIS TREE SAYS OTHERWISE: written in the last 120s."
+    flag="$flag CONFIRM WITH ListAgents BEFORE RELAUNCHING — a relaunch here is a SECOND WRITER."
+    alarms=1
+  fi
+  if [ "$live" = "0" ] && [ "$writing" = "0" ]; then
     if [ "$dirty" = "0" ] && [ "$pushed" = "1" ]; then
       state="banked"
     else
