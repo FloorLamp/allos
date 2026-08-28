@@ -375,6 +375,105 @@ export function isSupersedingWindow(
   );
 }
 
+// ---- THE DAY A BUCKET NAMES, READ OFF ITS OWN ANCHOR (#3901) ----
+//
+// A day bucket's window is cut by the DEVICE: `started_at` IS a device-local midnight.
+// `metric_samples.date` used to be an attribution of that instant under the PROFILE's
+// zone at push time, and the two disagree for hours around every travel switch — the
+// phone re-anchors on landing, the profile flips when the person taps the travel banner.
+// Measured on prod (#3901): an NY-anchored bucket (`start_time 2026-08-27T04:00:00Z`)
+// arriving while the profile still held America/Los_Angeles was filed under 08-26, met
+// cover-the-day against the real, completed 08-26 bucket and superseded it — and then
+// the re-send re-derived its own `date` to 08-27 and walked off the day it had emptied.
+// Two days of steps, distance and kcal, unrecoverable from the exporter's 48 h window.
+//
+// So the day is derived from the WINDOW instead: the implied offset is the one that
+// makes `started_at` a midnight, and the bucket's day is the calendar date there. That
+// makes `date` a pure function of `started_at`, which is in the natural key — a re-send
+// cannot move it, and the "a date always keeps a reading" invariant becomes true ACROSS
+// pushes rather than only within one.
+const DAY_MS = 24 * 60 * 60 * 1000;
+// A real zone offset runs [-12:00, +14:00] and lands on a quarter hour (+05:30, +05:45,
+// +12:45). Nothing here needs to know WHICH zone — only whether the offset an anchor
+// implies is one a zone could have. An anchor off the quarter-hour grid is not a
+// midnight any zone keeps, so it implies nothing and the caller keeps today's answer.
+const MIN_ZONE_OFFSET_MS = -12 * 60 * 60 * 1000;
+const MAX_ZONE_OFFSET_MS = 14 * 60 * 60 * 1000;
+const ZONE_OFFSET_STEP_MS = 15 * 60 * 1000;
+
+// The offsets `o` for which `started_at + o` is a midnight: `o = -(started_at mod 24h)`,
+// normalized into the real-offset range. There are two representatives a day apart and
+// at least one is always in range — `west` breaks the -12 h floor above 12:00Z, `east`
+// breaks the +14 h ceiling below 10:00Z. 10:00Z-12:00Z is the band where BOTH hold
+// (UTC-10…-12 against UTC+12…+14) and is the only genuine ambiguity a bucket can carry.
+function anchorOffsets(ms: number): number[] {
+  const anchor = ((ms % DAY_MS) + DAY_MS) % DAY_MS;
+  if (anchor % ZONE_OFFSET_STEP_MS !== 0) return [];
+  const west = -anchor;
+  const east = DAY_MS - anchor;
+  const offsets: number[] = [];
+  if (west >= MIN_ZONE_OFFSET_MS) offsets.push(west);
+  if (east <= MAX_ZONE_OFFSET_MS) offsets.push(east);
+  return offsets;
+}
+
+function dayAt(ms: number, offsetMs: number): string {
+  return new Date(ms + offsetMs).toISOString().slice(0, 10);
+}
+
+/**
+ * The day a Health Connect day bucket names, or `null` when this window is not one.
+ *
+ * GATED ON `isSupersedingWindow`, AND THE GATE IS THE SAFETY. The same four metrics
+ * arrive as MINUTE buckets at a `1m`/`15m` exporter setting, and a 15-minute window
+ * starting 14:00Z would "imply" UTC+10 and file a New York afternoon on tomorrow. Only
+ * a window the rule already reads as a device-cut day bucket states an anchor.
+ *
+ * `profileOffsetMs` BREAKS THE ONE AMBIGUITY and nothing else. In the 10:00Z-12:00Z
+ * band the anchor is equally a UTC-10…-12 midnight and a UTC+12…+14 one; leaning toward
+ * the offset the profile's own zone holds is hours wrong at worst, never half the globe.
+ * Outside that band the argument is unused, so a wrong or stale zone cannot move a day.
+ */
+export function anchorImpliedDay(
+  metric: string,
+  startedAt: string,
+  endedAt: string,
+  profileOffsetMs: number
+): string | null {
+  const ms = instantMs(startedAt);
+  if (ms === null || !isSupersedingWindow(metric, startedAt, endedAt)) {
+    return null;
+  }
+  const offsets = anchorOffsets(ms);
+  if (offsets.length === 0) return null;
+  const offset = offsets.reduce((best, o) =>
+    Math.abs(o - profileOffsetMs) < Math.abs(best - profileOffsetMs) ? o : best
+  );
+  return dayAt(ms, offset);
+}
+
+/**
+ * Does this bucket's own anchor CONTRADICT the day the store filed it under (#3901)?
+ *
+ * The defence in depth behind the derivation above, and the reason it is worth having a
+ * second reader: with the derivation correct this can never be true, so if it ever is,
+ * something has mislabeled a bucket — and the incoming row then WRITES (a double count,
+ * visible in every total and counted in `overlapsLeft`) while deleting nothing. The next
+ * attribution bug is a day reading high, not a day with a hole in it.
+ *
+ * IT TAKES NO ZONE, deliberately. In the ambiguous band a bucket has two admissible
+ * days, and a guard that picked between them from the profile's CURRENT zone would fire
+ * on a legitimate Honolulu bucket the moment the person's profile reached Tokyo. Either
+ * admissible day is consistent with the anchor, so either one is accepted, and an anchor
+ * that implies nothing at all refuses nothing.
+ */
+export function anchorRefusesDay(startedAt: string, date: string): boolean {
+  const ms = instantMs(startedAt);
+  if (ms === null) return false;
+  const offsets = anchorOffsets(ms);
+  return offsets.length > 0 && !offsets.some((o) => dayAt(ms, o) === date);
+}
+
 /**
  * WHEN THE COLUMN STARTED BEING WRITTEN, AND WHAT WAS ALREADY IN THE TABLE.
  *
@@ -564,6 +663,14 @@ export function planSupersede(
     incoming.started_at,
     incoming.ended_at
   );
+  // THE ANCHOR GUARD (#3901), and it is a fact about the INCOMING ROW, so it is asked
+  // once. A day bucket states its own day in `started_at`; if the store filed it
+  // somewhere else, the row is mislabeled and may not delete a neighbour on the strength
+  // of a label that is wrong. It still WRITES — the day reads high, `overlapsLeft` says
+  // so, and the next correctly-filed push collapses it. That is the direction this whole
+  // file resolves in: a visible double count over a hole nobody can refill.
+  const anchorContradictsDate =
+    incomingIsBucket && anchorRefusesDay(incoming.started_at, incoming.date);
   for (const row of stored) {
     // COVER THE DAY, AND IT IS THE FIRST THING ASKED because everything below is about
     // rows that are already on one date. A stored row may only be collapsed by a row
@@ -603,6 +710,13 @@ export function planSupersede(
     // as UNKNOWN. A replay, or a second chunk of the SAME push, does not outrank, so it
     // takes nothing. It is still WRITTEN — see the note above about never withholding.
     if (!pushOutranks(incoming.pushedAt, row, era)) {
+      left.push(row);
+      continue;
+    }
+    // The incoming row's own anchor says it does not belong to this date, so its claim
+    // to outrank a row that does is worth nothing. Counted in `left`: two rows are still
+    // summing into one day, which is exactly what that number reports.
+    if (anchorContradictsDate) {
       left.push(row);
       continue;
     }

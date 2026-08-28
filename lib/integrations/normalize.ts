@@ -1059,28 +1059,22 @@ export function supersedeMetricSampleOverlaps(
  * simply a stored `date` is not recomputed by a re-send" — and the resolver replaces it
  * when the history it needs is real.
  *
- * THE ONE EXCEPTION, AND WHY IT IS NOT OPTIONAL: A RE-ANCHORABLE DAY BUCKET.
+ * THERE IS NO LONGER AN EXCEPTION, AND ITS REMOVAL IS #3901's THIRD HALF.
  *
- * `isSupersedingWindow` names the rows whose `date` is not an attribution of an instant
- * at all — a `daily` steps / distance / calories record, whose window IS "the device's
- * local day so far". When the device changes zone it re-cuts "today", and #3424's
- * overlap-supersede collapses the stale anchoring — but only over candidates filed under
- * THE BUCKET'S OWN `date` (`AND date = ?` in `supersedeMetricSampleOverlaps`, the term
- * #3424 round 10 added after a version without it emptied a day). Freeze a stale day
- * bucket's `date` and it is stranded on a day no later bucket ever shares, so it can
- * never be collapsed, and its double count is not even REPORTED by `overlapsLeft`, which
- * is scoped to the victim's own date too. MEASURED on this branch by deleting the two
- * lines below: `travel-hc-double-count` reds `expected 3500 to be 6500`, and probing the
- * store after its third push returns
- *     [{"date":"2026-05-01","value":3500},{"date":"2026-05-02","value":3000}]
- * — 6500 recorded for 3500 walked, split across two days instead of one, permanent (no
- * later push can reach 05-02) and silent. A bug made quieter is worse than the bug
- * (`lib/metric-window-overlap.ts`), so day buckets keep re-deriving.
+ * This function used to carve out the re-anchorable day buckets — `isSupersedingWindow`
+ * rows, whose `date` was not an attribution of an instant at all but the profile's zone
+ * read over a window the DEVICE had cut. Freezing them stranded a stale bucket on a day
+ * no later bucket shared (`travel-hc-double-count` red at `expected 3500 to be 6500`,
+ * the store split `[{"2026-05-01":3500},{"2026-05-02":3000}]`); re-deriving them let the
+ * row that had just justified a supersede change its mind about which day it was on and
+ * walk off the day it emptied — two prod days of steps, distance and kcal (#3901).
  *
- * The predicate is the SAME one the supersede filters its own stamped rows with, over the
- * INCOMING window — which is exactly the window the updated row will carry when
- * `supersedeMetricSampleOverlaps` reads it back, since `ended_at = excluded.ended_at`.
- * One predicate, so the freeze and the collapse cannot disagree about which rows tile.
+ * BOTH HORNS CAME FROM DERIVING THE DAY FROM THE ZONE. `anchorImpliedDay` derives it
+ * from `started_at`, which IS the natural key, so a re-send computes the same day it
+ * computed last time: freeze and re-derive now agree, there is nothing left to choose,
+ * and the freeze below is what makes that structural. A justifying row's `date` can no
+ * longer move after the delete it justified, so "a date always keeps a reading" holds
+ * ACROSS pushes and not only within one.
  *
  * NOT GATED ON THE SOURCE, unlike `OVERLAP_SUPERSEDE_SOURCE`. That gate exists because
  * the supersede DELETES readings, so it must never reach a source whose windows it has
@@ -1096,10 +1090,6 @@ function resendDay(
   twin: MetricSampleTwin | undefined
 ): string {
   if (!twin) return incoming.date;
-  if (
-    isSupersedingWindow(incoming.metric, incoming.started_at, incoming.ended_at)
-  )
-    return incoming.date;
   return twin.date;
 }
 
@@ -1124,8 +1114,8 @@ export function upsertMetricSamples(
      ON CONFLICT DO UPDATE SET
        value = excluded.value,
        -- excluded.date IS NOT THE PAYLOAD'S DATE ON A RE-SEND (#3428). The bound
-       -- parameter is resendDay()'s answer, which for everything but a re-anchorable
-       -- day bucket is the STORED day. See its header: a re-send must not re-attribute
+       -- parameter is resendDay()'s answer, which whenever the store already holds this
+       -- natural key is the STORED day. See its header: a re-send must not re-attribute
        -- a row to a day it was not lived in.
        date = excluded.date,
        ended_at = excluded.ended_at,
