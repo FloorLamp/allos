@@ -11,6 +11,9 @@
 // there is no second range engine. profileId-first, auth-blind, every statement scoped.
 
 import { db } from "./db";
+import { shiftDateStr } from "./date";
+import { getTimezone } from "./settings";
+import { dateFromCreatedAt } from "./timeline-format";
 import type { AppointmentStatus } from "./types";
 
 export interface EpisodeEncounterRef {
@@ -111,18 +114,52 @@ export function getEpisodeInRangeEvents(
     )
     .all(profileId, from, to) as EpisodeCourseRef[];
 
-  // Documents/labs: use the clinical document_date when present, else the uploaded date.
-  const documents = db
+  // Documents/labs: the clinical document_date when present, else the day the upload
+  // INSTANT falls on for this profile (#3884).
+  //
+  // `date(uploaded_at)` was SQLite's UTC truncation compared against profile-LOCAL
+  // episode days, so an un-dated upload near local midnight both printed the wrong day
+  // and sat on the wrong side of the window — membership, not just formatting.
+  //
+  // THE RANGE FILTER MOVES TO JS, AND THE SQL ONE STAYS AS A BOUND. This is #3880's
+  // shape with the one difference #3884 names: here the expression is also the window.
+  // Dropping the SQL filter outright would make an episode page's cost grow with the
+  // profile's whole document archive; widening it by a day on each side keeps the work
+  // O(window). The widening is EXACT, not slack: a real zone offset runs
+  // [-12:00, +14:00], so an instant's local day is the UTC day, the one before or the
+  // one after — never further. What it lets through, the local-day comparison below
+  // drops, and that comparison is the only membership test.
+  const timeZone = getTimezone(profileId);
+  const nearby = db
     .prepare(
       `SELECT id, filename, doc_type AS docType,
-              COALESCE(document_date, date(uploaded_at)) AS date
+              document_date AS documentDate, uploaded_at AS uploadedAt
          FROM medical_documents
         WHERE profile_id = ?
           AND COALESCE(document_date, date(uploaded_at)) >= ?
-          AND COALESCE(document_date, date(uploaded_at)) <= ?
-        ORDER BY date ASC, id ASC`
+          AND COALESCE(document_date, date(uploaded_at)) <= ?`
     )
-    .all(profileId, from, to) as EpisodeDocumentRef[];
+    .all(profileId, shiftDateStr(from, -1), shiftDateStr(to, 1)) as {
+    id: number;
+    filename: string;
+    docType: string | null;
+    documentDate: string | null;
+    uploadedAt: string;
+  }[];
+  const documents = nearby
+    .map((r) => ({
+      id: r.id,
+      filename: r.filename,
+      docType: r.docType,
+      // An unparseable stamp keeps its stored prefix rather than dropping the document
+      // out of the episode entirely (#3880's rule for the same fallback).
+      date:
+        r.documentDate ??
+        dateFromCreatedAt(r.uploadedAt, timeZone) ??
+        r.uploadedAt.slice(0, 10),
+    }))
+    .filter((d) => d.date >= from && d.date <= to)
+    .sort((a, b) => a.date.localeCompare(b.date) || a.id - b.id);
 
   return {
     encounters,
