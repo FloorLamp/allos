@@ -21,9 +21,7 @@ export default function IntensityPicker({
           (option) => `${option.label}: ${option.hint}`
         ).join(" · ")}
       />
-      {/* `gap-3` is the reach floor (#3938): each toggle reaches 6px toward its
-          neighbour on a coarse pointer, so 12px is what keeps the hit regions
-          disjoint. */}
+      {/* `gap-3` is the reach floor (#3938). */}
       <div className="grid grid-cols-3 gap-3">
         {INTENSITIES.map((opt) => {
           const active = intensity === opt.value;

@@ -11,10 +11,8 @@ import type { AppRoute } from "@/lib/hrefs";
 // phone-scroll/`sm`-wrap response. It declares no client boundary, so link groups
 // remain server-renderable and button groups inherit their caller's.
 //
-// ONE GAP, AND IT IS THE REACH FLOOR (#3938). Every layout spends `gap-3` = 12px,
-// which is 2x the per-side reach a coarse pointer gets around the 34px control
-// box — so a filter group's hit regions meet without ever owning the same point.
-// The dense density used to tighten this to 6px, which would overlap them.
+// ONE GAP, AND IT IS THE REACH FLOOR (#3938, app/globals.css): every layout spends
+// `gap-3`. Dense used to tighten it to 6px, which would overlap the hit regions.
 
 type FilterPillValue = string | number | null;
 

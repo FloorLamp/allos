@@ -163,10 +163,9 @@ export default function DateRangeControl({
             data-testid={`${idPrefix}-chip-row`}
             className="flex min-w-0 flex-1 items-center gap-3 pb-1 sm:flex-wrap sm:justify-between sm:overflow-visible sm:pb-0"
           >
-            {/* `gap-3`, the reach floor (#3938): the quick-range chips and the
-                "Custom…" toggle are one 34px control box each, and 12px is twice
-                the reach a coarse pointer gets around one, so their hit regions
-                meet without overlapping. */}
+            {/* `gap-3` is the reach floor (#3938): the chips and the "Custom…"
+                toggle are one control box each, and their hit regions must not
+                overlap. */}
             <div className="flex w-max min-w-full shrink-0 items-center justify-between gap-3 sm:w-auto sm:min-w-0 sm:justify-start sm:flex-wrap">
               <FilterPills
                 mode="link"

@@ -999,9 +999,7 @@ export default function SymptomLogBar({
                     {r.icon && <span aria-hidden>{r.icon}</span>}
                     <span className="truncate">{r.label}</span>
                   </span>
-                  {/* `gap-3`, the reach floor (#3938): the note and clear icon
-                      buttons each reach 6px toward their neighbour on a coarse
-                      pointer, so anything tighter hands one tap to two targets. */}
+                  {/* `gap-3` is the reach floor (#3938). */}
                   <div className="flex flex-wrap items-center gap-3">
                     <SymptomSeverityControl
                       symptomLabel={r.label}

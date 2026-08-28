@@ -2387,42 +2387,38 @@ input[type="time"]::-webkit-datetime-edit-ampm-field:focus {
 
    THE CHIP'S CONSTRUCTION (#3475) IS THE BOX, because it was MEASURED rather than
    reasoned: content over a reserved 1px border, so a bordered control and a
-   borderless one occupy the same box instead of differing by 2px. This rule spends
-   `--control-box` on exactly that, for every kind at once.
+   borderless one occupy the same box instead of differing by 2px.
 
-   THE PADDING IS DERIVED, WHICH IS WHY THE 34 IS ONE CONSTANT AND NOT FIVE.
-   `1lh` is the element's OWN line box, so the same expression answers every type
-   size the app puts in a control: `text-sm` leaves the chip's `py-1.5`, and the
-   `text-base` a typed field needs (under 16px iOS zooms the page on focus) leaves
-   `py-1`. Both are 34. #3475's own comment records what happened the last time a
-   height was left to call sites to agree on, so no call site restates one.
+   THE PADDING IS DERIVED, WHICH IS WHY THE 34 IS ONE CONSTANT AND NOT FIVE. `1lh`
+   is the element's OWN line box, so one expression answers every type size a
+   control carries: `text-sm` leaves the chip's `py-1.5`, and the `text-base` a
+   typed field needs (under 16px iOS zooms the page on focus) leaves `py-1`. Both
+   are 34, so no call site restates a height — #3475 records what happened the last
+   time one was left to call sites to agree on.
 
-   UNLAYERED, DELIBERATELY, and this is the half that makes it THE box rather than
-   a default. `@utility` bodies land in Tailwind's `utilities` layer, and so does a
-   call site's own `py-1`/`text-xs`; an unlayered NORMAL declaration outranks every
-   layer, so the box holds wherever a control is composed. (For `!important` the
-   layer order REVERSES and unlayered ranks LAST — so a `py-*!` at a call site
-   would still win. There are none on these selectors, and the answer to a new one
-   is to delete it, not to add a `!` here: #3896 pinned 18 disclosures at the phone
-   floor on DESKTOP doing that.) A call site that needs a TALLER box still says so
-   with `min-h-*`, which `min-block-size` clamps on top of this whatever the layer
-   — that is how the `min-h-16`/`min-h-20` textareas keep their height.
+   UNLAYERED, DELIBERATELY, and that is what makes it THE box rather than a
+   default: `@utility` bodies and a call site's own `py-1`/`text-xs` both land in
+   `utilities`, and an unlayered NORMAL declaration outranks every layer. (For
+   `!important` the order REVERSES and unlayered ranks LAST, so a `py-*!` would
+   still win. There are none on these selectors, and the answer to a new one is to
+   delete it, not to add a `!` here — #3896 pinned 18 disclosures at the phone
+   floor on DESKTOP that way.) A call site needing a TALLER box still says `min-h-*`
+   and wins, which is how the `min-h-16`/`min-h-20` textareas keep their height.
 
    THE 44px FLOOR IS NOW EFFECTIVE-ONLY (#3514, narrowed by #3938). A coarse
-   pointer gets the missing reach back around the box, invisibly, with the geometry
+   pointer gets the missing reach back around the box with the geometry
    `DoseStatusControl` already ships: `--control-reach` per side, so 34 + 2x6 = 46
    clears 44, and adjacent targets keep a gap floor of TWICE the reach so their hit
    regions stay disjoint (`FilterPills` and the ledger's chip row spend `gap-3` on
-   exactly that). Where reach repair is physically impossible the box IS the
-   target: a native `<select>` and a typed `<input>` render no pseudo-element,
-   which is the `chip-sm` lesson and the reason this floor is stated as effective
-   rather than rendered.
+   exactly that). Where reach repair is impossible the box IS the target: a native
+   `<select>` and a typed `<input>` render no pseudo-element, which is the
+   `chip-sm` lesson and why this floor is effective rather than rendered.
 
-   The guards measure RENDERED boxes at 390 / 639 / 640 / 1280, never a class
-   string: `e2e/button-height-floor.mobile.spec.ts` (named for the floor it used to
-   hold; it is the box's home now) for the one height and the disjoint reach, and
-   `lib/__tests__/phone-only-compiled-css.test.ts` for where these declarations
-   actually land in a real Tailwind compile. */
+   Guards, on RENDERED boxes at 390/639/640/1280 and never a class string:
+   `e2e/button-height-floor.mobile.spec.ts` (named for the floor it used to hold)
+   for the one height and the disjoint reach, and
+   `lib/__tests__/phone-only-compiled-css.test.ts` for the layer each half
+   compiles into. */
 .chip-base,
 .btn,
 .btn-ghost,
