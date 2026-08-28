@@ -2350,6 +2350,47 @@ input[type="time"]::-webkit-datetime-edit-ampm-field:focus {
   }
 }
 
+/* THE TYPED FIELD'S PHONE HEIGHT, DECLARED ONCE FOR THE WHOLE FAMILY (#3708).
+
+   OWNER RULING 2026-08-28: the field BOX is the target. A labeled row beside it
+   may not stand in for it, and there is no per-site exception — the box is what
+   receives the tap, the focus ring and the editing state, and one geometry
+   contract is what keeps adjacent fields provably disjoint.
+
+   THIS REACHES EVERY `.input`, NOT ONLY THE 15 THE RECONCILIATION NAMED. `.input`
+   sets `py-2` and `text-sm`, so a field that asks for nothing already rendered 38px
+   — under the floor by construction. The named sites (`h-8`, `h-9`, the three
+   `h-[38px]` activity fields) are the shorter tail of the same defect, not a
+   separate one, so they need no call-site edit: `min-block-size` outranks a
+   `height`, which is why they keep their desktop density and gain the phone floor
+   from here. Dense editors getting taller is the ruled cost.
+
+   `@layer components`, for the same reason the button family's floor is one:
+   `min-block-size` REPLACES rather than composes, so a copy of this in the
+   utilities layer would pull the `min-h-16` / `min-h-20` textareas DOWN to 44. A
+   floor that can lower a taller field is not a floor.
+
+   AND NO `!`. In Tailwind 4 an `!important` declaration inverts layer order —
+   unlayered ranks LAST, and an `@apply …!` inside a utility outranks a layered
+   rule — which is how #3896 pinned 18 consumers at the phone floor on DESKTOP. The
+   reset above `sm` here is the media query's own absence: there is nothing to shed,
+   and at 40rem exactly this rule does not apply.
+
+   HEIGHT ONLY. The ruling is about how tall a field renders. `min-inline-size`
+   would fight the two-column field grids, and a select narrow enough to matter is
+   already wider than 44px.
+
+   The guard is the routed rendered geometry in e2e/tap-target-census.mobile.spec.ts
+   — both directions, because "nothing is under 44 at 390" also passes on a tree
+   that is 44 at every width. */
+@layer components {
+  @media (max-width: 639.98px) {
+    .input {
+      min-block-size: 2.75rem;
+    }
+  }
+}
+
 /* Compact native controls keep their paint inside a 44px interaction box. */
 .checkbox-control {
   display: inline-flex;
