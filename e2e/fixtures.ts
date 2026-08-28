@@ -43,7 +43,9 @@ import {
 // shared production build; the payoff is that `--workers=N` stops fabricating
 // failures, because no two workers can see each other's writes.
 //
-// WHAT EACH WORKER GETS (all under e2e/.data/worker-<workerIndex>/):
+// WHAT EACH WORKER GETS (all under this RUN's root, which is
+// e2e/.data/port-<PORT_BASE>/ — see e2e/worker-env.ts for why the port range and
+// not the worktree keys it — as worker-<workerIndex>/):
 //   • app.db      — a COPY of the template seeded once by e2e/global-setup.ts
 //   • data/**     — the server runs with this dir as its CWD, so uploads, the AI
 //                   log, the error log and integration payloads are per-worker too
@@ -470,7 +472,8 @@ export const test = base.extend<TestFixtures, WorkerFixtures>({
       // still points at OUR server. A retiring worker's teardown can land after
       // its replacement has already claimed the slot, and deleting the record then
       // would strand the replacement's pid. The worker dir (DB + server.log) is
-      // left on disk for postmortem; global-setup wipes e2e/.data per run.
+      // left on disk for postmortem; global-setup wipes THIS RUN'S ROOT per run,
+      // and a concurrent run on another port range has a root of its own (#3921).
       await stopServer(server);
       try {
         if (fs.readFileSync(pidFile, "utf8").trim() === String(ownPid))
