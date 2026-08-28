@@ -1,6 +1,7 @@
 import { test, expect } from "./fixtures";
 import { settledBoxes } from "./helpers";
 import { TAP_FLOOR_PX } from "@/lib/tap-floor-tokens";
+import { NOTICE_TONE, type NoticeTone } from "@/components/Notice";
 import type { Locator } from "@playwright/test";
 
 // The phone density sweep (#3466), measured at 390×844 rather than read off a
@@ -410,45 +411,124 @@ test("#3673 the ledger's rows reclaim the same line", async ({ page }) => {
   expect(box?.height ?? 0).toBeGreaterThanOrEqual(TAP_FLOOR_PX);
 });
 
-test("#3673 emphasis does not flatten: a tinted Notice still outranks an ordinary row", async ({
-  page,
-}) => {
-  test.slow();
-  // The invariant that made the Notice the one exception: with every neutral frame
-  // gone it is the loudest shape the app still has, and a safety or refusal surface
-  // that reads no louder than an ordinary row is a failed sweep. Loudness here is
-  // the two things the row gave up — a drawn frame and a tint of its own.
-  await page.goto("/nutrition?tab=supplements");
-  const notice = page.locator("[data-notice='amber']").first(); // first-ok: the primitive, not this occurrence
-  await expect(notice).toBeVisible();
+// ── EMPHASIS DOES NOT FLATTEN, ACROSS THE FAMILY ────────────────────────────
+//
+// The invariant that made the Notice the one exception: with every neutral frame
+// gone it is the loudest shape the app still has, and a safety or refusal surface
+// that reads no louder than an ordinary row is a failed sweep. Proving that for
+// ONE tone proves it for one tone — and the tone the invariant is really about is
+// a refusal, not a warning.
+//
+// So the table is keyed by `NoticeTone` and the tones come from the primitive's own
+// export. That is a COMPILE-TIME census: add a tone to `NOTICE_TONE` and this file
+// stops typechecking until somebody says where it is reachable or why it is not.
+// Nobody has to remember, and the runtime check below catches the other direction
+// (a tone REMOVED from the export while an entry here still names it).
+type ToneSurface =
+  { route: string; testid: string; what: string } | { unreachable: string };
 
-  const read = (locator: Locator) =>
-    locator.evaluate((node) => {
-      const style = getComputedStyle(node);
-      return {
-        border: Number.parseFloat(style.borderTopWidth),
-        radius: Number.parseFloat(style.borderTopLeftRadius),
-        fill: style.backgroundColor,
-      };
-    });
+const TONE_SURFACES: Record<NoticeTone, ToneSurface> = {
+  // SAFETY — a nutrient over its upper limit.
+  amber: {
+    route: "/nutrition?tab=supplements",
+    testid: "ul-warning-magnesium",
+    what: "a safety warning",
+  },
+  // REFUSAL — the case this invariant exists for: a connection the app can no
+  // longer use, which has nothing else to reach for now that frames are gone.
+  rose: {
+    route: "/integrations/withings",
+    testid: "withings-needs-reauth",
+    what: "a refused connection",
+  },
+  // INFORMATIONAL — the quiet end of the family, included because "the Notice is
+  // louder" must hold for the whole family or the family is not the exception.
+  slate: {
+    route: "/nutrition?tab=supplements",
+    testid: "rda-adequacy-calcium",
+    what: "an adequacy note",
+  },
+  // I CHECKED, AND THERE IS NONE reachable here — not "I did not check". Every
+  // emerald Notice in the tree is a TRANSIENT SUCCESS produced by a write: a
+  // completed fitness-check outcome, a freshly created share link, a reprocess
+  // diff. This file is read-only over the shared seed (#868), so reaching one
+  // would mean writing. The frame it draws is `NOTICE_TONE.emerald` through the
+  // same primitive, so the tones below cover its shape.
+  emerald: {
+    unreachable:
+      "only rendered as a transient success after a write; this file is read-only over the shared seed (#868)",
+  },
+  // I CHECKED, AND NOTHING RENDERS THESE. Both are exported by NOTICE_TONE and no
+  // call site in app/ or components/ passes them. Nothing to reach, rather than
+  // something reachable that was skipped.
+  sky: { unreachable: "exported by NOTICE_TONE; no call site renders it" },
+  violet: { unreachable: "exported by NOTICE_TONE; no call site renders it" },
+};
 
-  const loud = await read(notice);
-  expect(loud.border).toBeGreaterThanOrEqual(1);
-  expect(loud.radius).toBeGreaterThan(0);
+const REACHABLE_TONES = (
+  Object.entries(TONE_SURFACES) as [NoticeTone, ToneSurface][]
+).flatMap(([tone, surface]) =>
+  "route" in surface ? [[tone, surface] as const] : []
+);
 
-  // The ordinary row it has to out-shout: a neutral surface on the same page,
-  // which after this sweep is exactly what an ordinary row looks like.
-  const row = page.locator("main .card").first(); // first-ok: any neutral surface is the comparison
-  await expect(row).toBeVisible();
-  const quiet = await read(row);
-  expect(quiet.border).toBe(0);
-  expect(quiet.radius).toBe(0);
-  expect(loud.fill).not.toBe(quiet.fill);
-  const canvas = await page.evaluate(
-    () => getComputedStyle(document.body).backgroundColor
+test("#3673 the tone table describes exactly the tones the primitive exports", () => {
+  // The other direction of the compile-time census: a tone DELETED from
+  // NOTICE_TONE leaves an entry here pointing at a shape that no longer exists,
+  // and a table describing a tone the primitive does not have is a table nobody
+  // can trust about the ones it does.
+  expect(Object.keys(TONE_SURFACES).toSorted()).toEqual(
+    Object.keys(NOTICE_TONE).toSorted()
   );
-  expect(loud.fill).not.toBe(canvas);
+  // …and the reachable half is not empty, which is what stops the loop below from
+  // passing by iterating nothing.
+  expect(REACHABLE_TONES.length).toBeGreaterThan(0);
 });
+
+for (const [tone, surface] of REACHABLE_TONES) {
+  test(`#3673 emphasis does not flatten: a ${tone} Notice (${surface.what}) still outranks an ordinary row`, async ({
+    page,
+  }) => {
+    test.slow();
+    await page.goto(surface.route);
+    const notice = page.getByTestId(surface.testid);
+    await expect(notice).toBeVisible();
+    await expect(notice).toHaveAttribute("data-notice", tone);
+
+    const read = (locator: Locator) =>
+      locator.evaluate((node) => {
+        const style = getComputedStyle(node);
+        return {
+          border: Number.parseFloat(style.borderTopWidth),
+          radius: Number.parseFloat(style.borderTopLeftRadius),
+          fill: style.backgroundColor,
+        };
+      });
+
+    // LOUD: it still draws the frame every neutral surface gave up, and it is
+    // tinted rather than sitting on the page's own surface colour.
+    const loud = await read(notice);
+    expect(loud.border).toBeGreaterThanOrEqual(1);
+    expect(loud.radius).toBeGreaterThan(0);
+
+    // QUIET: an ordinary neutral surface on the SAME page — a different element,
+    // so this is a comparison rather than a claim about one box read twice.
+    const row = page.locator("main .card").first(); // first-ok: any neutral surface is the comparison; the claim is about the shape
+    await expect(row).toBeVisible();
+    const quiet = await read(row);
+    expect(quiet.border).toBe(0);
+    expect(quiet.radius).toBe(0);
+
+    // …and the Notice is not merely framed, it is a different colour from both the
+    // ordinary surface and the page ground. The tinted separation is widest on the
+    // safety and refusal tones, which is the half the invariant is about.
+    const canvas = await page.evaluate(
+      () => getComputedStyle(document.body).backgroundColor
+    );
+    expect(loud.fill).not.toBe(quiet.fill);
+    expect(loud.fill).not.toBe(canvas);
+    expect(loud.fill).not.toBe("rgba(0, 0, 0, 0)");
+  });
+}
 
 test("#3673 object-ness is the affordance: two rows in one band differ only by their control", async ({
   page,
