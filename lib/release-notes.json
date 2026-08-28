@@ -1,6 +1,23 @@
 {
   "days": [
     {
+      "date": "2026-08-28",
+      "entries": [
+        {
+          "pr": 3908,
+          "title": "Substance names stay out of your weekly and monthly recap unless you turn that on",
+          "kind": "security",
+          "issues": [3900]
+        },
+        {
+          "pr": 3910,
+          "title": "Chart detail toggles go back to their normal size on a desktop screen",
+          "kind": "fix",
+          "issues": [3896]
+        }
+      ]
+    },
+    {
       "date": "2026-08-27",
       "entries": [
         {
