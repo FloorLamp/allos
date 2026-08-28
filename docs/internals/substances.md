@@ -232,7 +232,8 @@ read thirty lines downstream, and the recap named the cap from a third module ou
   profile's own string. The dashboard recap card, the AI narrative and the year
   retrospective gather the same facts unfiltered: they are surfaces the profile is
   standing on, not sends. A stored AI narrative (#421) is written over that in-app recap
-  and pasted into the send in place of the bullets, so it is not covered by this gate.
+  and pasted into the send in place of the bullets, so it is not covered by this gate
+  (#3909).
 
   **This gate can suppress a whole recap, and that is the intended outcome.**
   `renderRecapMessage` returns null on `recap.isEmpty || recap.lines.length === 0`, and
