@@ -1312,7 +1312,12 @@ export interface ReconcileResult {
 // edit horizon) drops its pointer, while a transient one (rate limit, 5xx, network,
 // timeout) releases the claim and leaves the pointer for the next tick.
 export async function reconcileProfileMessages(
-  profileId: number
+  profileId: number,
+  // ONE POINTER THIS PASS MUST NOT TOUCH (#3933). A tap sweeps the profile's other
+  // live messages as it returns, and its OWN message was just rebuilt by the handler
+  // from the same post-write state this sweep would read: a second edit of it is a
+  // visible flicker and a wasted API call. The tick passes none.
+  skipPointerId: number | null = null
 ): Promise<ReconcileResult> {
   const result: ReconcileResult = {
     examined: 0,
@@ -1333,6 +1338,7 @@ export async function reconcileProfileMessages(
   const td = today(profileId);
 
   for (const pointer of liveMessagePointers(profileId)) {
+    if (pointer.id === skipPointerId) continue;
     result.examined++;
     // ── ONE POINTER'S FAILURE IS ONE POINTER'S FAILURE (#2070) ─────────────
     //

@@ -61,6 +61,7 @@ import {
   type RefillTapOutcome,
   type HouseholdDoseCallback,
   type TakeCallback,
+  type TapWrote,
   OUTDATED_MESSAGE_TEXT,
   householdStaleDateAnswerText,
   householdTapAnswerText,
@@ -161,6 +162,8 @@ import { keyboardChatOrigin, withChatOrigin } from "./chat-origin";
 import { countVisibleFoodButtons } from "./food-format";
 import { FOOD_QUICK_COUNT } from "../food-rank";
 import { messagePointerIdAt } from "./message-pointers";
+import { reconcileProfileMessages } from "./reconcile";
+import { createLogger } from "../log";
 import {
   answerCallbackQuery,
   closeMessage,
@@ -201,6 +204,7 @@ import { GLYPH } from "./glyphs";
 // and stamp `telegram-command` instead; a free-text intake stamps `telegram-text`.
 // Named once here so the three chat surfaces stay legibly distinct at every call site.
 const NUDGE: LoggedVia = "telegram-nudge";
+const log = createLogger("notify");
 // The cadence phrase for an OFF-DAY confirm, or null on every other outcome (#1602).
 // Gated on the outcome so the ordinary confirm path never pays for the lookup, and
 // centralized here so both tap sites answer an off-cadence log identically.
@@ -220,29 +224,79 @@ function offDayCadence(
 const PREVENTIVE_SNOOZE_DAYS = 7;
 const REFILL_SNOOZE_DAYS = 3;
 
+// ── ONE TAP, ONE SWEEP (#3933) ───────────────────────────────────────────────
+//
+// Every button in the app arrives here, so this is where the profile's OTHER live
+// keyboards are brought up to date — not in each handler, where a new button could
+// forget it. The hourly tick still runs the same sweep for everything no tap reaches
+// (an app write, an expired claim); this adds a trigger, it does not replace one.
+//
+// THE ORDER IS THE POINT. `dispatchTap` has already answered the callback by the time
+// it returns — Telegram wants that ack promptly and it must not wait on another
+// message's edits — and it reports WHETHER it wrote, so a tap that only navigated or
+// refused a stale token costs nothing.
 export async function handleCallbackQuery(
   cq: TelegramCallbackQuery
 ): Promise<void> {
+  const wrote = await dispatchTap(cq);
+  if (wrote != null) await sweepAfterTap(wrote, cq);
+}
+
+// The profile's other live messages, reconciled against the ledger this tap just
+// moved. Wrapped exactly as the tick wraps it (tick.ts): a reconcile error is logged
+// and swallowed, because the write has landed and the person has been answered — the
+// same failure isolation, without the hour's wait.
+async function sweepAfterTap(
+  profileId: number,
+  cq: TelegramCallbackQuery
+): Promise<void> {
+  const chatId = cq.message?.chat?.id;
+  const messageId = cq.message?.message_id;
+  // NOT THE TAPPED MESSAGE. Its handler has just rebuilt it from the same post-write
+  // state this sweep would read, so a second edit is a visible flicker and a wasted
+  // API call. Null — an unrecorded, pruned or cross-profile pointer — excludes
+  // nothing, which is correct: there is no rebuilt message of this profile's to skip.
+  const tapped =
+    chatId != null && messageId != null
+      ? messagePointerIdAt(profileId, chatId, messageId)
+      : null;
+  try {
+    const rc = await reconcileProfileMessages(profileId, tapped);
+    if (
+      rc.edited > 0 ||
+      rc.closed > 0 ||
+      rc.dropped > 0 ||
+      rc.deferred > 0 ||
+      rc.failed > 0
+    ) {
+      log.info("messages reconciled after tap", { profile: profileId, ...rc });
+    }
+  } catch (e) {
+    log.info("tap reconcile failed (ignored)", {
+      profile: profileId,
+      err: e instanceof Error ? e.message : String(e),
+    });
+  }
+}
+
+async function dispatchTap(cq: TelegramCallbackQuery): Promise<TapWrote> {
   // "✅ All (N)" — mark every pending dose in the session's window taken.
   const all = parseAllCallback(cq.data);
   if (all) {
-    await handleAllTaken(cq, all);
-    return;
+    return handleAllTaken(cq, all);
   }
 
   // "✅ <Stack> (n)" — mark one stack's still-pending doses taken (#3098).
   const stackTake = parseOfferCallback(cq.data, "stacktake");
   if (stackTake) {
-    await handleStackTaken(cq, stackTake);
-    return;
+    return handleStackTaken(cq, stackTake);
   }
 
   // "✅ Your usual <window> (n)" — the composed one-tap (#2460). The token names a
   // STORED offer; the handler re-derives what stands and writes only the intersection.
   const usual = parseOfferCallback(cq.data, "usual");
   if (usual) {
-    await handleUsualRoutineTap(cq, usual);
-    return;
+    return handleUsualRoutineTap(cq, usual);
   }
 
   // A dose tap is either ✅ take or ⏭️ skip (#232); both carry the same token
@@ -250,35 +304,30 @@ export async function handleCallbackQuery(
   // and how they answer.
   const take = parseTakeCallback(cq.data);
   if (take) {
-    await handleDoseTap(cq, take, "take");
-    return;
+    return handleDoseTap(cq, take, "take");
   }
   const skip = parseSkipCallback(cq.data);
   if (skip) {
-    await handleDoseTap(cq, skip, "skip");
-    return;
+    return handleDoseTap(cq, skip, "skip");
   }
 
   // Phase 1 (#233): preventive-nudge buttons (✅ Done / 🚫 Not applicable /
   // ⏰ Remind later).
   const preventive = parsePreventiveCallback(cq.data);
   if (preventive) {
-    await handlePreventiveTap(cq, preventive);
-    return;
+    return handlePreventiveTap(cq, preventive);
   }
 
   // Phase 3 (#233): refill-nudge "📦 Ordered — remind me in 3 days".
   const refill = parseRefillCallback(cq.data);
   if (refill) {
-    await handleRefillTap(cq, refill);
-    return;
+    return handleRefillTap(cq, refill);
   }
 
   // Phase 2 (#233): missed-dose escalation (✅ Confirmed taken / 👍 I'm on it).
   const escalation = parseEscalationCallback(cq.data);
   if (escalation) {
-    await handleEscalationTap(cq, escalation);
-    return;
+    return handleEscalationTap(cq, escalation);
   }
 
   // Household dose round (#1459): a caregiver's cross-profile confirm. Parsed BEFORE
@@ -287,51 +336,44 @@ export async function handleCallbackQuery(
   // chat→profile resolution a single-subject tap uses.
   const household = parseHouseholdDoseCallback(cq.data);
   if (household) {
-    await handleHouseholdDoseTap(cq, household);
-    return;
+    return handleHouseholdDoseTap(cq, household);
   }
 
   // Stale-workout nudge (#1205): 🏁 Finish workout / 🗑️ Discard — resolve a quiet
   // live draft in place through the shared finish/discard cores.
   const workoutFinish = parseWorkoutFinishCallback(cq.data);
   if (workoutFinish) {
-    await handleWorkoutFinishTap(cq, workoutFinish);
-    return;
+    return handleWorkoutFinishTap(cq, workoutFinish);
   }
 
   // The post-workout TYPE ask (#2272): the source recorded a workout but declined to
   // say what kind, so the recap that was already going out asked. The tap is the write.
   const typeAsk = parseActivityTypeAskCallback(cq.data);
   if (typeAsk) {
-    await handleActivityTypeAskTap(cq, typeAsk);
-    return;
+    return handleActivityTypeAskTap(cq, typeAsk);
   }
 
   // Food logging (#682): a quick-log button logs one serving of a group; the
   // first-connection opt-in prompt flips the per-profile food-logging flag.
   const foodLog = parseFoodLogCallback(cq.data);
   if (foodLog) {
-    await handleFoodLog(cq, foodLog);
-    return;
+    return handleFoodLog(cq, foodLog);
   }
   // Protein "+Xg" quick-log (#1073): the reserved pseudo-group button logs grams via
   // addProteinGramsCore (writing the __protein__ ranking event too), then rebuilds the nudge.
   const foodProtein = parseFoodProteinCallback(cq.data);
   if (foodProtein) {
-    await handleFoodProtein(cq, foodProtein);
-    return;
+    return handleFoodProtein(cq, foodProtein);
   }
   // "➕ Show more" (#1075) / "➖ Show less" (#1807): page the ranked buttons up or down in
   // place — a stateless view change, answered quietly.
   const foodExpand = parseFoodExpandCallback(cq.data);
   if (foodExpand) {
-    await handleFoodExpand(cq, foodExpand);
-    return;
+    return handleFoodExpand(cq, foodExpand);
   }
   const foodOptIn = parseFoodOptInCallback(cq.data);
   if (foodOptIn) {
-    await handleFoodOptIn(cq, foodOptIn);
-    return;
+    return handleFoodOptIn(cq, foodOptIn);
   }
   // Eating-time correction (#2019): a −Nh chip, or the 🕐 absolute-hour drill-down.
   // Both ride the food nudge's own keyboard and re-stamp `occurred_at` for a whole burst.
@@ -340,13 +382,11 @@ export async function handleCallbackQuery(
     FOOD_TIME_PREFIXES.chip
   );
   if (foodTimeChip) {
-    await handleFoodTimeChip(cq, foodTimeChip);
-    return;
+    return handleFoodTimeChip(cq, foodTimeChip);
   }
   const foodTimeAt = parseCorrectionAtToken(cq.data, FOOD_TIME_PREFIXES.at);
   if (foodTimeAt) {
-    await handleFoodTimeAt(cq, foodTimeAt);
-    return;
+    return handleFoodTimeAt(cq, foodTimeAt);
   }
   // The dose twin (#2020), over `recorded_at` — the safety-relevant one, because the PRN
   // redose window arms off exactly the instant these buttons correct.
@@ -355,13 +395,11 @@ export async function handleCallbackQuery(
     DOSE_TIME_PREFIXES.chip
   );
   if (doseTimeChip) {
-    await handleDoseTimeChip(cq, doseTimeChip);
-    return;
+    return handleDoseTimeChip(cq, doseTimeChip);
   }
   const doseTimeAt = parseCorrectionAtToken(cq.data, DOSE_TIME_PREFIXES.at);
   if (doseTimeAt) {
-    await handleDoseTimeAt(cq, doseTimeAt);
-    return;
+    return handleDoseTimeAt(cq, doseTimeAt);
   }
   // The practice twin (#2875), over `practice_logs.time` — the one whose column feeds
   // the scheduler that produced the tap: `modalHour()` reads it to pick each practice's
@@ -372,16 +410,14 @@ export async function handleCallbackQuery(
     PRACTICE_TIME_PREFIXES.chip
   );
   if (practiceTimeChip) {
-    await handlePracticeTimeChip(cq, practiceTimeChip);
-    return;
+    return handlePracticeTimeChip(cq, practiceTimeChip);
   }
   const practiceTimeAt = parseCorrectionAtToken(
     cq.data,
     PRACTICE_TIME_PREFIXES.at
   );
   if (practiceTimeAt) {
-    await handlePracticeTimeAt(cq, practiceTimeAt);
-    return;
+    return handlePracticeTimeAt(cq, practiceTimeAt);
   }
 
   // ⤓ May (#1505 part 2): accept the demotion suggestion riding this reminder. The
@@ -389,8 +425,7 @@ export async function handleCallbackQuery(
   // and through the same compare-and-swap core the in-app card uses.
   const demote = parseDemoteCallback(cq.data);
   if (demote) {
-    await handleDemoteTap(cq, demote);
-    return;
+    return handleDemoteTap(cq, demote);
   }
 
   // Stop (#2574): end an unconfirmed imported medication from the reminder that is
@@ -399,8 +434,7 @@ export async function handleCallbackQuery(
   // and never mistakable for one another.
   const medStop = parseMedStopCallback(cq.data);
   if (medStop) {
-    await handleMedStopTap(cq, medStop);
-    return;
+    return handleMedStopTap(cq, medStop);
   }
 
   // The digest's offer tail (#1505): expand/collapse the "➕ Doses" button in
@@ -408,8 +442,7 @@ export async function handleCallbackQuery(
   // of those, and a tail tap must never be mistaken for a log.
   const offerTail = parseOfferTailCallback(cq.data);
   if (offerTail) {
-    await handleOfferTailTap(cq, offerTail);
-    return;
+    return handleOfferTailTap(cq, offerTail);
   }
 
   // The digest's ⚙️ Tune control (#1714): expand/collapse the per-category toggles in
@@ -419,8 +452,7 @@ export async function handleCallbackQuery(
   // to the profile's records.
   const tune = parseTuneCallback(cq.data);
   if (tune) {
-    await handleTuneTap(cq, tune);
-    return;
+    return handleTuneTap(cq, tune);
   }
 
   // The digest time suggestion's exits (#2217): Use HH:MM / As soon as it's ready /
@@ -429,32 +461,28 @@ export async function handleCallbackQuery(
   // one must never be mistaken for anything that writes to the profile's records.
   const digestTime = parseDigestTimeCallback(cq.data);
   if (digestTime) {
-    await handleDigestTimeTap(cq, digestTime);
-    return;
+    return handleDigestTimeTap(cq, digestTime);
   }
 
   // One administration-armed redose window. Parsed before the reusable `/dose` token:
   // this button is consumed and refuses after an app log supersedes its window.
   const redose = parseRedoseLogCallback(cq.data);
   if (redose) {
-    await handleRedoseLogTap(cq, redose);
-    return;
+    return handleRedoseLogTap(cq, redose);
   }
 
   // PRN administration logging (#797): a "💊 <med>" button from the /dose command
   // logs one as-needed administration NOW.
   const prn = parsePrnLogCallback(cq.data);
   if (prn) {
-    await handlePrnLogTap(cq, prn);
-    return;
+    return handlePrnLogTap(cq, prn);
   }
 
   // Wellness-practice "Done ✅" (#1259): a button from the pace-aware practice nudge
   // logs one session NOW for the target's practice, and is consumed on tap.
   const practiceDone = parsePracticeDoneCallback(cq.data);
   if (practiceDone) {
-    await handlePracticeDoneTap(cq, practiceDone);
-    return;
+    return handlePracticeDoneTap(cq, practiceDone);
   }
 
   // The same tap from the on-demand `/practice` list (#1895). A different PREFIX,
@@ -463,8 +491,7 @@ export async function handleCallbackQuery(
   // button is how two answers to "did that log?" come about.
   const practiceLog = parsePracticeLogCallback(cq.data);
   if (practiceLog) {
-    await handlePracticeDoneTap(cq, practiceLog);
-    return;
+    return handlePracticeDoneTap(cq, practiceLog);
   }
 
   // Right-sizing ride-along (#1670): the same practice nudge's ⤓ button lowers the
@@ -472,37 +499,32 @@ export async function handleCallbackQuery(
   // detector on tap, never read off the button.
   const rightSize = parseRightSizeLowerCallback(cq.data);
   if (rightSize) {
-    await handleRightSizeLowerTap(cq, rightSize);
-    return;
+    return handleRightSizeLowerTap(cq, rightSize);
   }
 
   // Daily mood check-in (#992): a face button logs the day's mood — the same
   // idempotent per-day upsert the dashboard card and offline replay run.
   const moodTap = parseMoodCheckinCallback(cq.data);
   if (moodTap) {
-    await handleMoodTap(cq, moodTap);
-    return;
+    return handleMoodTap(cq, moodTap);
   }
 
   // "Keep daily check-ins" (#1668): the confirm-to-KEEP affordance the final reminder
   // carries before the auto-pause takes effect.
   const moodKeep = parseMoodKeepCallback(cq.data);
   if (moodKeep) {
-    await handleMoodKeepTap(cq, moodKeep);
-    return;
+    return handleMoodKeepTap(cq, moodKeep);
   }
 
   // Symptom quick-log (#859 item 5): a "<symptom>" button opens a severity picker;
   // a severity button logs the symptom-day.
   const symPick = parseSymptomPickCallback(cq.data);
   if (symPick) {
-    await handleSymptomPick(cq, symPick);
-    return;
+    return handleSymptomPick(cq, symPick);
   }
   const symSev = parseSymptomSeverityCallback(cq.data);
   if (symSev) {
-    await handleSymptomSeverity(cq, symSev);
-    return;
+    return handleSymptomSeverity(cq, symSev);
   }
 
   // Unknown/malformed token — a button from a message whose token shape has since
@@ -595,7 +617,7 @@ function applyPreventiveTap(
 async function handlePreventiveTap(
   cq: TelegramCallbackQuery,
   pv: PreventiveCallback
-): Promise<void> {
+): Promise<TapWrote> {
   const chatId = cq.message?.chat?.id;
   const profileId =
     chatId != null
@@ -611,6 +633,9 @@ async function handlePreventiveTap(
   // snoozed-until-when) — toast and body come from the same outcome, so they
   // can't disagree.
   await consumeRow(profileId, cq, preventiveCloseText(outcome));
+  // A rule the catalog no longer knows wrote nothing; the other three arms each
+  // recorded one (a done, an override, a snooze).
+  return outcome.kind === "unknown-rule" ? undefined : profileId;
 }
 
 // Apply a refill tap: verify the item is still the profile's (a forged id →
@@ -634,7 +659,7 @@ function applyRefillTap(
 async function handleRefillTap(
   cq: TelegramCallbackQuery,
   rf: RefillCallback
-): Promise<void> {
+): Promise<TapWrote> {
   const chatId = cq.message?.chat?.id;
   const profileId =
     chatId != null
@@ -653,6 +678,7 @@ async function handleRefillTap(
       ? `Refill reminder snoozed ${GLYPH.ordered}`
       : OUTDATED_MESSAGE_TEXT
   );
+  return outcome === "snoozed" ? profileId : undefined;
 }
 
 // Handle a missed-dose escalation button (#233's caregiver two-way). AUTHORIZE by
@@ -665,7 +691,7 @@ async function handleRefillTap(
 async function handleEscalationTap(
   cq: TelegramCallbackQuery,
   esc: EscalationCallback
-): Promise<void> {
+): Promise<TapWrote> {
   const chatId = cq.message?.chat?.id;
   if (chatId == null) {
     await answerCallbackQuery(cq.id, OUTDATED_MESSAGE_TEXT, {
@@ -709,7 +735,7 @@ async function handleEscalationTap(
       alert: tapAnswerNeedsDismissal(outcome, "skip"),
     });
     await replaceMessage(profileId, cq, escalationSkipCloseText(outcome));
-    return;
+    return outcome === "skipped" ? profileId : undefined;
   }
 
   if (esc.action === "take") {
@@ -737,7 +763,7 @@ async function handleEscalationTap(
       { alert: tapAnswerNeedsDismissal(outcome, "take") }
     );
     await replaceMessage(profileId, cq, escalationTakeCloseText(outcome));
-    return;
+    return usualRoutineDoseLogged(outcome) ? profileId : undefined;
   }
 
   // 👍 I'm on it → acknowledge WITHOUT logging the dose. On a real ack, write the
@@ -758,6 +784,9 @@ async function handleEscalationTap(
     alert: ack === "stale-dose" || ack === "inactive",
   });
   await replaceMessage(profileId, cq, escalationAckCloseText(ack));
+  // Only a real ack wrote the per-episode marker; every other state answered honestly
+  // and recorded nothing.
+  return ack === "acknowledged" ? profileId : undefined;
 }
 
 // Handle a stale-workout nudge "🏁 Finish workout" / "🗑️ Discard" tap (#1205). Resolve
@@ -775,7 +804,7 @@ async function handleEscalationTap(
 async function handleWorkoutFinishTap(
   cq: TelegramCallbackQuery,
   token: WorkoutFinishCallback
-): Promise<void> {
+): Promise<TapWrote> {
   const chatId = cq.message?.chat?.id;
   const profileId =
     chatId != null
@@ -803,7 +832,7 @@ async function handleWorkoutFinishTap(
         )
       );
     }
-    return;
+    return outcome.kind === "discarded" ? profileId : undefined;
   }
 
   const outcome = finishWorkoutSession(profileId, token.activityId);
@@ -812,7 +841,7 @@ async function handleWorkoutFinishTap(
   // already-finished re-tap is a no-op (no re-edit surprise); an empty draft keeps its
   // Finish/Discard buttons so the user can Discard; a not-found is left as-is.
   if (outcome.kind !== "finished") return;
-  if (chatId == null || messageId == null) return;
+  if (chatId == null || messageId == null) return profileId;
 
   const date = today(profileId);
   // Mark the #924 finish nudge as already delivered (via THIS edit) so the hourly
@@ -838,6 +867,7 @@ async function handleWorkoutFinishTap(
       replacementWithTitle(cq.message?.text, `Workout finished ${GLYPH.done}`)
     );
   }
+  return profileId;
 }
 
 // The post-workout TYPE ask (#2272). The source recorded a session and declined to say
@@ -853,7 +883,7 @@ async function handleWorkoutFinishTap(
 async function handleActivityTypeAskTap(
   cq: TelegramCallbackQuery,
   token: ActivityTypeAskCallback
-): Promise<void> {
+): Promise<TapWrote> {
   const chatId = cq.message?.chat?.id;
   const profileId =
     chatId != null
@@ -866,6 +896,7 @@ async function handleActivityTypeAskTap(
   const outcome = classifyActivityType(profileId, token.activityId, token.type);
   await answerCallbackQuery(cq.id, activityTypeAskAnswerText(outcome));
   await consumeRow(profileId, cq, activityTypeAskAnswerText(outcome));
+  return outcome.kind === "classified" ? profileId : undefined;
 }
 
 // Apply a single ✅ take or ⏭️ skip tap: resolve the acting profile from the chat,
@@ -896,7 +927,7 @@ async function handleDoseTap(
   cq: TelegramCallbackQuery,
   tap: TakeCallback,
   kind: "take" | "skip"
-): Promise<void> {
+): Promise<TapWrote> {
   // Resolve WHO tapped from the chat id. A chat can be shared by several profiles
   // (a family group), so pull every profile mapped to it and let the button
   // token disambiguate — the token's profile id is trusted only when it's one of
@@ -944,6 +975,12 @@ async function handleDoseTap(
             : null
         )
       : markDoseSkipped(profileId, tap.doseId, tap.itemId, tap.date, NUDGE);
+  // A dose ALREADY resolved (#280) moved nothing, and neither did a stale or inactive
+  // one — only these three outcomes wrote a row.
+  const wrote =
+    usualRoutineDoseLogged(outcome) || outcome === "skipped"
+      ? profileId
+      : undefined;
   await answerCallbackQuery(
     cq.id,
     kind === "take"
@@ -955,7 +992,7 @@ async function handleDoseTap(
   const rows = cq.message?.reply_markup?.inline_keyboard ?? [];
   // Only act when the message actually had buttons — otherwise an absent
   // keyboard would look "empty" and wrongly overwrite the message text.
-  if (chatId == null || messageId == null || rows.length === 0) return;
+  if (chatId == null || messageId == null || rows.length === 0) return wrote;
 
   // Rebuild the whole message from current state so it reflects what's now been
   // taken/skipped this session; the final tap yields a completion summary (no
@@ -971,7 +1008,7 @@ async function handleDoseTap(
   );
   if (parts.length > 0) {
     await rebuildDoseSession(profileId, chatId, messageId, parts, tap.date);
-    return;
+    return wrote;
   }
 
   // Fallback: the tapped dose is gone (deleted/retired) or no longer due
@@ -996,6 +1033,7 @@ async function handleDoseTap(
   } else {
     await updateMessageKeyboard(profileId, chatId, messageId, remaining);
   }
+  return wrote;
 }
 
 // A household-round confirm (#1459): a caregiver taps "✅ Ada · Vitamin D3" in their
@@ -1011,7 +1049,7 @@ async function handleDoseTap(
 async function handleHouseholdDoseTap(
   cq: TelegramCallbackQuery,
   tap: HouseholdDoseCallback
-): Promise<void> {
+): Promise<TapWrote> {
   const chatId = cq.message?.chat?.id;
   if (chatId == null) {
     await answerCallbackQuery(cq.id, OUTDATED_MESSAGE_TEXT, {
@@ -1072,9 +1110,16 @@ async function handleHouseholdDoseTap(
     )
   );
 
+  // THE MEMBER'S LEDGER MOVED, not the receiver's, so the member is who the sweep is
+  // for: their own chat is where a sibling nudge is now offering a dose that stands
+  // logged. This message belongs to the receiver and is left to its own rebuild below.
+  const wrote = usualRoutineDoseLogged(outcome)
+    ? tap.memberProfileId
+    : undefined;
+
   const rows = cq.message?.reply_markup?.inline_keyboard ?? [];
   const messageId = cq.message?.message_id;
-  if (messageId == null || rows.length === 0) return;
+  if (messageId == null || rows.length === 0) return wrote;
   // Consume ONLY the tapped button — a row here is one MEMBER, so dropping the row
   // would take that member's other doses down with it. When the last one goes, close
   // the message with text that matches the truth: "All done" only if this tap actually
@@ -1099,6 +1144,7 @@ async function handleHouseholdDoseTap(
   } else {
     await updateMessageKeyboard(owner, chatId, messageId, remaining);
   }
+  return wrote;
 }
 
 // Mark every pending dose in the tapped session's window taken in one tap. The
@@ -1109,7 +1155,7 @@ async function handleHouseholdDoseTap(
 async function handleAllTaken(
   cq: TelegramCallbackQuery,
   all: AllCallback
-): Promise<void> {
+): Promise<TapWrote> {
   const chatId = cq.message?.chat?.id;
   const profileId =
     chatId != null
@@ -1181,8 +1227,9 @@ async function handleAllTaken(
     { alert: entries.length === 0 || allSkipped }
   );
 
+  const wrote = logged > 0 ? profileId : undefined;
   const messageId = cq.message?.message_id;
-  if (chatId == null || messageId == null) return;
+  if (chatId == null || messageId == null) return wrote;
 
   // Rebuild from current state — everything's now taken, so this renders the
   // completion summary (no buttons). A coalesced reminder (#1154) can span
@@ -1205,9 +1252,10 @@ async function handleAllTaken(
       messageId,
       replacementWithTitle(cq.message?.text, OUTDATED_MESSAGE_TEXT)
     );
-    return;
+    return wrote;
   }
   await rebuildDoseSession(profileId, chatId, messageId, parts, all.date);
+  return wrote;
 }
 
 // Mark one STACK's still-pending doses taken in one tap (#3098). The token names a
@@ -1226,7 +1274,7 @@ async function handleAllTaken(
 async function handleStackTaken(
   cq: TelegramCallbackQuery,
   token: OfferCallback
-): Promise<void> {
+): Promise<TapWrote> {
   const chatId = cq.message?.chat?.id;
   const profileId =
     chatId != null
@@ -1303,7 +1351,8 @@ async function handleStackTaken(
     { alert: (logged === 0 && alreadyResolved === 0) || allSkipped }
   );
 
-  if (chatId == null || messageId == null) return;
+  const wrote = logged > 0 ? profileId : undefined;
+  if (chatId == null || messageId == null) return wrote;
 
   // Rebuild from current state through the same path every dose tap uses, so the
   // stack's rows show as taken (and the message collapses to the completion
@@ -1317,16 +1366,17 @@ async function handleStackTaken(
     date
   );
   if (parts.length === 0) {
-    if (rows.length === 0) return;
+    if (rows.length === 0) return wrote;
     await closeMessage(
       profileId,
       chatId,
       messageId,
       replacementWithTitle(cq.message?.text, OUTDATED_MESSAGE_TEXT)
     );
-    return;
+    return wrote;
   }
   await rebuildDoseSession(profileId, chatId, messageId, parts, date);
+  return wrote;
 }
 
 // THE COMPOSED ONE-TAP (#2460): one button, the whole morning — the habitual food
@@ -1361,7 +1411,7 @@ async function handleStackTaken(
 async function handleUsualRoutineTap(
   cq: TelegramCallbackQuery,
   token: OfferCallback
-): Promise<void> {
+): Promise<TapWrote> {
   const chatId = cq.message?.chat?.id;
   const profileId =
     chatId != null
@@ -1411,9 +1461,14 @@ async function handleUsualRoutineTap(
     { alert: !wrote }
   );
 
-  if (chatId == null || messageId == null) return;
+  // THE CASE THIS ISSUE WAS FILED FROM (#3933). `usual:` is host-inherited: one offer
+  // rendered into the window's dose reminder AND its food nudge. The rebuild below
+  // fixes whichever host was tapped; the sweep the dispatcher runs on this answer is
+  // what fixes the other one, in the same request cycle.
+  const swept = wrote ? profileId : undefined;
+  if (chatId == null || messageId == null) return swept;
   const rows = cq.message?.reply_markup?.inline_keyboard ?? [];
-  if (rows.length === 0) return;
+  if (rows.length === 0) return swept;
   // WHICH MESSAGE THIS IS, asked of the keyboard rather than of the token — the whole
   // point of the host-inherited classification (#2460). `usual:` elects no family, so
   // `owningFamily` answers with the HOST's, and the rebuild runs the host's own path.
@@ -1435,10 +1490,10 @@ async function handleUsualRoutineTap(
         messageId,
         replacementWithTitle(cq.message?.text, OUTDATED_MESSAGE_TEXT)
       );
-      return;
+      return swept;
     }
     await rebuildDoseSession(profileId, chatId, messageId, parts, date);
-    return;
+    return swept;
   }
   if (family === "food") {
     // EVERY REBUILD PRESERVES THE ORIGIN (#3087) — read off the live keyboard, which
@@ -1455,6 +1510,7 @@ async function handleUsualRoutineTap(
     );
     if (rebuilt) await rebuildMessage(profileId, chatId, messageId, rebuilt);
   }
+  return swept;
 }
 
 // Handle a food quick-log button (#682): resolve the acting profile from the chat,
@@ -1466,7 +1522,7 @@ async function handleUsualRoutineTap(
 async function handleFoodLog(
   cq: TelegramCallbackQuery,
   food: FoodLogCallback
-): Promise<void> {
+): Promise<TapWrote> {
   const chatId = cq.message?.chat?.id;
   const profileId =
     chatId != null
@@ -1521,11 +1577,12 @@ async function handleFoodLog(
     origin
   );
   await answerCallbackQuery(cq.id, foodLogAnswerText(outcome, food.group));
+  const wrote = outcome.kind === "logged" ? profileId : undefined;
 
   const rows = cq.message?.reply_markup?.inline_keyboard ?? [];
   // Only rebuild when the message actually had buttons — an absent keyboard would
   // otherwise wrongly overwrite the message text.
-  if (chatId == null || messageId == null || rows.length === 0) return;
+  if (chatId == null || messageId == null || rows.length === 0) return wrote;
   // Re-render the whole nudge from current state (same builder as the send, so the
   // ranking + tally stay one computation) and edit in place through the chokepoint,
   // which re-applies the "[Name] " prefix for a shared chat. Preserve the current
@@ -1541,6 +1598,7 @@ async function handleFoodLog(
     food.origin
   );
   if (rebuilt) await rebuildMessage(profileId, chatId, messageId, rebuilt);
+  return wrote;
 }
 
 // Handle a protein "+Xg" quick-log button (#1073): resolve the acting profile from the
@@ -1552,7 +1610,7 @@ async function handleFoodLog(
 async function handleFoodProtein(
   cq: TelegramCallbackQuery,
   token: FoodProteinCallback
-): Promise<void> {
+): Promise<TapWrote> {
   const chatId = cq.message?.chat?.id;
   const profileId =
     chatId != null
@@ -1590,9 +1648,10 @@ async function handleFoodProtein(
     origin
   );
   await answerCallbackQuery(cq.id, foodProteinAnswerText(outcome, token.grams));
+  const wrote = outcome.kind === "logged" ? profileId : undefined;
 
   const rows = cq.message?.reply_markup?.inline_keyboard ?? [];
-  if (chatId == null || messageId == null || rows.length === 0) return;
+  if (chatId == null || messageId == null || rows.length === 0) return wrote;
   const visibleCount = countVisibleFoodButtons(rows) || undefined;
   // The re-render carries the origin forward, exactly as the food-group tap sixty
   // lines above does (#3087). Without it ONE "+30 g" tap rewrites all seven buttons
@@ -1607,6 +1666,7 @@ async function handleFoodProtein(
     token.origin
   );
   if (rebuilt) await rebuildMessage(profileId, chatId, messageId, rebuilt);
+  return wrote;
 }
 
 // Handle a "➕ Show more" (#1075) / "➖ Show less" (#1807) tap: page the ranked buttons one
@@ -1622,7 +1682,7 @@ async function handleFoodProtein(
 async function handleFoodExpand(
   cq: TelegramCallbackQuery,
   token: FoodExpandCallback
-): Promise<void> {
+): Promise<TapWrote> {
   const chatId = cq.message?.chat?.id;
   const profileId =
     chatId != null
@@ -1667,7 +1727,7 @@ async function handleFoodExpand(
 async function handleFoodOptIn(
   cq: TelegramCallbackQuery,
   opt: FoodOptInCallback
-): Promise<void> {
+): Promise<TapWrote> {
   const chatId = cq.message?.chat?.id;
   const profileId =
     chatId != null
@@ -1681,4 +1741,6 @@ async function handleFoodOptIn(
   setFoodTelegramPrompted(profileId);
   await answerCallbackQuery(cq.id, foodOptInAnswerText(opt.enable));
   await replaceMessage(profileId, cq, foodOptInCloseText(opt.enable));
+  // The flag flip changes what a live food nudge may claim, so it earns a sweep.
+  return profileId;
 }
