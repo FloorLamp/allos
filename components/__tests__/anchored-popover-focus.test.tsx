@@ -78,7 +78,12 @@ function Providers({ children }: { children: React.ReactNode }) {
 function ControlledOverflowMenu() {
   const [open, setOpen] = useState(false);
   return (
-    <OverflowMenu itemName="Vitamin D" kind="Supplement" open={open} onOpenChange={setOpen}>
+    <OverflowMenu
+      itemName="Vitamin D"
+      kind="Supplement"
+      open={open}
+      onOpenChange={setOpen}
+    >
       {() => (
         <button type="button" role="menuitem" className={MENU_ITEM}>
           Edit
@@ -134,7 +139,9 @@ describe("an anchored popover that declares a role (#3905)", () => {
       fireEvent.click(button);
       const mounted = panel
         ? screen.getByTestId(panel)
-        : document.body.querySelector<HTMLElement>('[data-anchored-panel="popover"]')!;
+        : document.body.querySelector<HTMLElement>(
+            '[data-anchored-panel="popover"]'
+          )!;
       expect(mounted).toBeTruthy();
       expect(mounted.parentElement).toBe(document.body);
       expect(mounted.getAttribute("role")).toBe(role);
@@ -144,7 +151,9 @@ describe("an anchored popover that declares a role (#3905)", () => {
       expect(document.activeElement).toBe(mounted.querySelector(firstControl));
 
       fireEvent.keyDown(window, { key: "Escape" });
-      expect(document.body.querySelector('[data-anchored-panel="popover"]')).toBe(null);
+      expect(
+        document.body.querySelector('[data-anchored-panel="popover"]')
+      ).toBe(null);
       expect(document.activeElement).toBe(button);
     }
   );

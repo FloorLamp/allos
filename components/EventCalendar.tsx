@@ -310,18 +310,16 @@ export default function EventCalendar({
         anchorRef={anchorRef}
         title="Calendar"
         // What the trigger's `aria-haspopup="dialog"` above already promises, made
-        // true: the panel takes the role and the name, and the primitive moves
-        // focus into it (#3905). Not `aria-modal` — the page behind it is still in
-        // play and nothing here locks it.
+        // true: the role, the name, and focus moving in (#3905). Not `aria-modal`
+        // — nothing here locks the page behind it.
         role="dialog"
         panelId="sidebar-calendar-panel"
         testId="sidebar-calendar-panel"
         fallbackWidth={PANEL_WIDTH_PX}
         panelClassName="w-72"
       >
-        {/* THE POPOVER ENDS WITH THE NAVIGATION IT EXISTS TO PERFORM (#3905).
-            `open` lives in a layout App Router does not remount, so without this
-            the month grid stays floating over the Timeline day it just opened.
+        {/* `open` lives in a layout App Router does not remount, so without this
+            the grid stays floating over the Timeline day it just opened (#3905).
             The primitive cannot know a Link inside it ends the interaction. */}
         {() => (
           <MonthGrid
