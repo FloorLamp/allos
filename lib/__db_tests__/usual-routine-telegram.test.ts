@@ -35,10 +35,12 @@ import { plainBody } from "@/lib/notifications/rich-text";
 import { handleCallbackQuery } from "@/lib/notifications/telegram-callbacks";
 import {
   answerCallbackQuery,
+  editMessageReplyMarkupRaw,
   editMessageTextRaw,
 } from "@/lib/notifications/telegram-api";
 import { reconcileProfileMessages } from "@/lib/notifications/reconcile";
 import { buildFoodNudge } from "@/lib/notifications/food";
+import { buildIntakeReminderForSlots } from "@/lib/notifications/intake";
 import { deliveredKeyboard } from "@/lib/notifications/delivered-keyboard";
 import { attachUsualRoutine } from "@/lib/notifications/usual-routine-attach";
 import {
@@ -57,16 +59,19 @@ import {
 } from "@/lib/notifications/usual-routine-plan";
 import {
   offerCallback,
+  OUTDATED_MESSAGE_TEXT,
   parseOfferCallback,
 } from "@/lib/notifications/callback-data";
 import { mintOffer, readOffer } from "@/lib/notifications/offer-store";
 import { getUsualRoutineOffer } from "@/lib/queries/usual-routine";
+import { markDoseTaken } from "@/lib/queries";
 import type { NotificationMessage } from "@/lib/notifications/types";
 
 beforeAll(() => stubTelegramSends());
 
 const answerMock = vi.mocked(answerCallbackQuery);
 const editTextMock = vi.mocked(editMessageTextRaw);
+const editMarkupMock = vi.mocked(editMessageReplyMarkupRaw);
 const sendMock = vi.mocked(sendMessageRaw);
 
 // What the chat is showing NOW, read back off the pointer the chokepoint syncs — the
@@ -806,5 +811,165 @@ describe("the composed one-tap rides exactly one of the window's sends (#2460)",
     // carries no bundle, because the bundle always contains food writes.
     expect(msgs.map((m) => m.kind)).toEqual(["dose"]);
     expect(usualCount(msgs)).toHaveLength(0);
+  });
+});
+
+// ── THE TAP SWEEPS THE PROFILE'S OTHER LIVE MESSAGES (#3933) ─────────────────
+//
+// The composed one-tap is the case the ruling was filed from, because ONE offer is
+// rendered into TWO hosts and only one of them is the message the tap arrived on. The
+// placement rule claims per SEND, so both arrangements really occur across two ticks:
+// the 07:00 dose reminder takes the bundle and the 08:00 food nudge does not, and then
+// the reverse the following morning. Whichever host was tapped, the other message is
+// left claiming a half that now stands logged — for an hour, until this change.
+//
+// Driven THROUGH `handleCallbackQuery`, never by calling the sweep: what has to be
+// proved is that the tap triggers it, not that it works (which #2460's describe above
+// already pins). The messages are built by the real builders and decorated by the real
+// attachment, so the pointers hold what a genuine send would have left behind.
+describe("a tap sweeps the profile's other live messages (#3933)", () => {
+  const SWEEP_CHAT = "5552490";
+  const DOSE_MSG = 3301;
+  const FOOD_MSG = 3302;
+
+  // One profile, both hosts live, the bundle on whichever `carrier` names.
+  function setupHosts(tag: string, carrier: "dose" | "food") {
+    const sp = makeProfile(tag);
+    seedLoginTelegram(sp.profileId, SWEEP_CHAT);
+    setProfileSetting(sp.profileId, "food_telegram_enabled", "1");
+    seedHabitualMornings(sp.profileId, ["fermented", "berries", "eggs"]);
+    const itemA = mkItem(sp.profileId, `${tag} Creatine`);
+    const doseA = mkDose(itemA);
+    const date = today(sp.profileId);
+    const a = mintUsualRoutineAttachment(sp.profileId, "Morning", date)!;
+    const reminder = buildIntakeReminderForSlots(sp.profileId, ["Morning"])!
+      .message;
+    const nudge = buildFoodNudge(sp.profileId, "Morning", date)!;
+    const hosted = carrier === "dose" ? reminder : nudge;
+    const decorated = attachUsualRoutine(hosted, a)!;
+    for (const [messageId, msg] of [
+      [DOSE_MSG, carrier === "dose" ? decorated : reminder],
+      [FOOD_MSG, carrier === "food" ? decorated : nudge],
+    ] as const) {
+      recordMessagePointer({
+        profileId: sp.profileId,
+        chatId: SWEEP_CHAT,
+        messageId,
+        kind: msg.kind ?? "dose",
+        date,
+        title: msg.title,
+        keyboard: deliveredKeyboard(msg),
+      });
+    }
+    editTextMock.mockClear();
+    editMarkupMock.mockClear();
+    return { sp, date, a, itemA, doseA, decorated };
+  }
+
+  // A tap as Telegram delivers it, on the keyboard the chat is really showing.
+  function tapOn(messageId: number, data: string, msg: NotificationMessage) {
+    return {
+      id: `cb-3933-${messageId}`,
+      data,
+      message: {
+        message_id: messageId,
+        chat: { id: SWEEP_CHAT },
+        text: msg.title,
+        reply_markup: { inline_keyboard: deliveredKeyboard(msg) },
+      },
+    };
+  }
+
+  // Every edit addressed to ONE message, whichever primitive carried it. Counting is
+  // the point: an edit is what a reader SEES, so "the sibling was fixed" and "the
+  // tapped message did not flicker" are both statements about this number.
+  function editsTo(messageId: number): number {
+    return [...editTextMock.mock.calls, ...editMarkupMock.mock.calls].filter(
+      (c) => c[1] === messageId
+    ).length;
+  }
+
+  it("tapped on the DOSE reminder, the same window's food nudge is edited in the same cycle", async () => {
+    const { sp, date, a, doseA, decorated } = setupHosts("TG3933A", "dose");
+    await handleCallbackQuery(tapOn(DOSE_MSG, a.token, decorated));
+    // The write landed — both halves, which is what makes the food nudge stale.
+    expect(doseLogs(doseA, date).map((r) => r.status)).toEqual(["taken"]);
+    expect(servingsToday(sp.profileId, "fermented")).toBe(1);
+    // The sibling: the nudge's own tally now counts the serving the tap wrote, which
+    // is the sentence a reader sees change.
+    expect(editsTo(FOOD_MSG)).toBe(1);
+    const nudgeText = String(
+      editTextMock.mock.calls.find((c) => c[1] === FOOD_MSG)?.[2] ?? ""
+    );
+    expect(nudgeText).toContain("<b>Fermented</b> ×1");
+    // …and the tapped message was rebuilt ONCE, by its own handler. Remove the
+    // pointer exclusion in `sweepAfterTap` and this reads 2.
+    expect(editsTo(DOSE_MSG)).toBe(1);
+  });
+
+  it("tapped on the FOOD nudge, the window's dose reminder is reconciled the same way", async () => {
+    const { sp, date, a, doseA, decorated } = setupHosts("TG3933B", "food");
+    await handleCallbackQuery(tapOn(FOOD_MSG, a.token, decorated));
+    expect(doseLogs(doseA, date).map((r) => r.status)).toEqual(["taken"]);
+    // The reminder no longer offers a dose that stands taken.
+    expect(editsTo(DOSE_MSG)).toBe(1);
+    const live = messagePointerAt(sp.profileId, SWEEP_CHAT, DOSE_MSG);
+    expect(
+      (live?.keyboard ?? [])
+        .flat()
+        .some((b) => b.callback_data?.startsWith("take:"))
+    ).toBe(false);
+    expect(editsTo(FOOD_MSG)).toBe(1);
+  });
+
+  it("a tap that writes nothing performs no sweep, on a profile that needed one", async () => {
+    const { sp, date, itemA, doseA } = setupHosts("TG3933C", "food");
+    // The dose is confirmed in the APP, so the live reminder is genuinely stale and the
+    // sweep has real work waiting — without this the assertion below would pass on an
+    // empty profile and prove nothing.
+    markDoseTaken(sp.profileId, doseA, itemA, date, "web");
+    editTextMock.mockClear();
+    editMarkupMock.mockClear();
+    // A forged offer id: unreadable, so the handler answers OUTDATED and writes nothing.
+    await handleCallbackQuery(
+      tapOn(
+        FOOD_MSG,
+        offerCallback("usual", sp.profileId, 987654),
+        buildFoodNudge(sp.profileId, "Morning", date)!
+      )
+    );
+    expect(lastAnswerText()).toBe(OUTDATED_MESSAGE_TEXT);
+    expect(editsTo(DOSE_MSG) + editsTo(FOOD_MSG)).toBe(0);
+    // The hourly sweep still reaches it, which is what makes the zero above a DECLINED
+    // sweep rather than an empty one.
+    expect(
+      (await reconcileProfileMessages(sp.profileId)).edited
+    ).toBeGreaterThan(0);
+  });
+
+  // THE EXCLUSION ITSELF, asserted where it can fail. The end-to-end counts above stay
+  // at one whether or not the tapped pointer is skipped, because the handler and the
+  // sweep re-render through the SAME builders and the handler syncs the pointer before
+  // the sweep reads it — measured by running the whole notification tier with the skip
+  // removed. That idempotence is a property of today's handlers, not a guarantee, so
+  // the skip stays and gets the guard the counts cannot give it.
+  it("the sweep leaves the pointer it is told to skip alone, and only that one", async () => {
+    const { sp, date, itemA, doseA } = setupHosts("TG3933D", "food");
+    // BOTH messages go stale, by writes neither of them made: the reminder still offers
+    // a dose confirmed in the app, the nudge still counts a serving short.
+    markDoseTaken(sp.profileId, doseA, itemA, date, "web");
+    tap(sp.profileId, "fermented", date, "08:00:00");
+    editTextMock.mockClear();
+    editMarkupMock.mockClear();
+    const dosePtr = messagePointerAt(sp.profileId, SWEEP_CHAT, DOSE_MSG)!;
+    const out = await reconcileProfileMessages(sp.profileId, dosePtr.id);
+    expect(out.examined).toBe(1);
+    expect(editsTo(DOSE_MSG)).toBe(0);
+    expect(editsTo(FOOD_MSG)).toBe(1);
+    // …and the reminder really was stale: the unrestricted sweep the tick runs fixes it.
+    editTextMock.mockClear();
+    editMarkupMock.mockClear();
+    await reconcileProfileMessages(sp.profileId);
+    expect(editsTo(DOSE_MSG)).toBe(1);
   });
 });

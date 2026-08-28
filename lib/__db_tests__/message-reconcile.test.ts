@@ -36,6 +36,26 @@ vi.mock("@/lib/notifications/digest-data", async (importActual) => {
   };
 });
 
+// THE TAP-TIME SWEEP MUST NOT BE ABLE TO FAIL THE TAP (#3933). The one thing a spec
+// cannot arrange with real data is the sweep itself blowing up — every per-pointer
+// failure is already isolated inside it (#2070) — so it is forced here, for one profile.
+const tapSweepState = vi.hoisted(() => ({ throwFor: null as number | null }));
+
+vi.mock("@/lib/notifications/reconcile", async (importActual) => {
+  const actual =
+    await importActual<typeof import("@/lib/notifications/reconcile")>();
+  return {
+    ...actual,
+    reconcileProfileMessages: (
+      ...args: Parameters<typeof actual.reconcileProfileMessages>
+    ) => {
+      if (tapSweepState.throwFor === args[0])
+        throw new Error("tap sweep blew up");
+      return actual.reconcileProfileMessages(...args);
+    },
+  };
+});
+
 vi.mock("@/lib/notifications/telegram-api", async (importActual) => {
   const actual =
     await importActual<typeof import("@/lib/notifications/telegram-api")>();
@@ -2691,5 +2711,57 @@ describe("intake refusals are answered as an alert, successes are not", () => {
       tapCq("5552295", 1, token, messageKeyboard(nudge))
     );
     expect(answerOpts()?.alert).toBeFalsy();
+  });
+});
+
+// ── THE TAP'S OWN SWEEP (#3933) ──────────────────────────────────────────────
+//
+// The tick's rule — "a message that keeps a stale button for another hour is bad, but a
+// reconcile error that stops a medication reminder is worse" — is about failure
+// isolation, and the tap inherits it verbatim: by the time the sweep runs the write has
+// landed and the person has been answered, so a throw may cost the OTHER messages their
+// correction and nothing else.
+describe("a reconcile error never fails the tap (#3933)", () => {
+  const CHAT = "5552293";
+
+  afterEach(() => {
+    tapSweepState.throwFor = null;
+  });
+
+  it("the write persists and the callback is still answered", async () => {
+    const pid = newProfile("Isolated Ines");
+    const { itemId, doseId } = seedDose(pid, "Isolated D3");
+    seedLoginTelegram(pid, CHAT);
+    const date = today(pid);
+    const built = buildIntakeReminderForSlots(pid, ["Morning"])!;
+    await dispatch(pid, built.message);
+    const ptr = liveMessagePointers(pid)[0];
+    vi.mocked(answerCallbackQuery).mockClear();
+    tapSweepState.throwFor = pid;
+
+    await expect(
+      handleCallbackQuery(
+        tapCq(
+          CHAT,
+          ptr.messageId,
+          `take:${pid}:${doseId}:${itemId}:${date}`,
+          messageKeyboard(built.message)
+        )
+      )
+    ).resolves.toBeUndefined();
+
+    expect(
+      (
+        db
+          .prepare(
+            `SELECT status FROM intake_item_logs WHERE dose_id = ? AND date = ?`
+          )
+          .get(doseId, date) as { status: string } | undefined
+      )?.status
+    ).toBe("taken");
+    expect(vi.mocked(answerCallbackQuery)).toHaveBeenCalledTimes(1);
+    // …and the tapped message itself was still rebuilt: the sweep is the LAST thing the
+    // tap does, so nothing ahead of it is lost.
+    expect(liveTokens(pid).some((t) => t.startsWith("take:"))).toBe(false);
   });
 });
