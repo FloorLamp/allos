@@ -512,8 +512,18 @@ ${landingLines}
   a rebuilt census over 126 files and 234 executed tests, the lane reported
   trends-metric-pages.spec.ts as \"the only spec pinning the pre-sweep arrangement\";
   cycle.spec.ts — desktop-named, loop-bound 390, split assertion — went red in CI on
-  the next push. Report a census as a TABLE of files with a per-file verdict, and
-  state the search that produced it, so the hole is visible when it is there.
+  the next push. (4) THE SELECTOR MAY BE BUILT BY A HELPER. A spec that calls
+  \`dashboardCandidatePrefix(page, "labs.latest:")\` never writes
+  \`data-candidate-id\` at all, so a grep for the ATTRIBUTE cannot see it however
+  carefully you spell the attribute. Put the helper's NAME in the token set beside
+  the markup it builds, and search for both. Measured on #3548: a census over the
+  band's markers found 4 of the 6 specs addressing a row that changed band; the two
+  it missed were the two that went red, and one of them was invisible to every
+  attribute search because a function assembled the selector. Report a census as a
+  TABLE of files with a per-file verdict, and state the search that produced it, so
+  the hole is visible when it is there. Then INTERSECT the census with the rows that
+  actually moved — the count that matters is not how many files mention the surface,
+  it is how many address the thing you changed.
 - A GUARD THAT REMOVES A PROPERTY CANNOT ALSO PROVE THE PROPERTY SURVIVED. When your
   change takes something away — a frame, a gutter, a label, a permission, a field —
   the natural guard asserts ABSENCE: nothing still has it. That assertion passes on

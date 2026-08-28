@@ -1253,3 +1253,64 @@ frame and keeps it on its content, per side, mirroring the shell's own
 `max(1rem, env(safe-area-inset-*))` rather than assuming `1rem` — because the two sides
 differ on a notched device in landscape, and a symmetric cancel would pass the default
 case and leave a visible step in the one that matters.
+
+## The selector a function built (2026-08-28)
+
+#3548 moved a set of dashboard rows into a collapsed tail. The lane building it did the
+right thing and ran a census: which specs address a row that changed band? It searched
+the band's markers — `data-standing-*`, `dashboard-standing`, `standing-door`,
+`now-strip-empty` — found thirteen files, checked them, and shipped. Two shards went red.
+
+The two misses are worth separating, because only one of them is the old lesson.
+
+`machine-date-census.spec.ts` addresses its row as
+`[data-candidate-id="labs.latest:Selenium"]` and never uses the word "standing" — the
+familiar signature problem, and a wider token set finds it.
+
+`dashboard-vitals-recency.spec.ts` calls
+`dashboardCandidatePrefix(page, "labs.latest:")`. **There is no selector in that file at
+all.** A function assembles it. No search for `data-candidate-id`, however carefully
+spelled, can see this spec, because the attribute is not there to be found. The token set
+had to include the helper's NAME, as a symbol, beside the markup it builds.
+
+The lane found this itself on the second round, and the number it produced is the part
+worth keeping: it widened the census from 13 files to 25, then **intersected** with the
+rows that actually moved band, which cut 25 back to 6. Six files addressed the thing that
+changed; the original census had seen four. Neither the 13 nor the 25 was the number that
+mattered — the intersection was, and it is the only one of the three that can be checked
+against reality.
+
+Fourth clause now in the census rule. The family they belong to is unchanged: a search is
+a claim about a spelling, and the code is under no obligation to spell it.
+
+## The invariant that lived in a React key (2026-08-28)
+
+PR #3919 appended six lines to the day's release notes, two each from three PRs that had
+done two separable things. `lib/__tests__/release-notes.test.ts` passed, 34 tests. Shard
+11 went red on a locator:
+
+```
+strict mode violation: getByRole('link', { name: '#3897', exact: true })
+  resolved to 2 elements
+```
+
+A release-notes day can only carry one bullet per PR. Two places assume it and neither
+says so: `app/(app)/whats-new/page.tsx:130` keys the entry `<li>` by `entry.pr`, and the
+spec locates each entry's link by an exact `#<pr>` name. Thirty-three prior days happen to
+satisfy the rule, so it had never been tested. The validator refuses a duplicate _date_
+and says nothing about a duplicate _pr_, and the model's own doctrine says the unit is a
+**change**, not a PR — so the data was arguably right and the code arguably wrong.
+
+Two things to keep from it.
+
+The first is that the failing assertion was not the defect. The locator was the messenger;
+the duplicate React keys were the bug, and they would have shipped silently — a `key`
+collision does not fail a test, it just makes reconciliation wrong in ways nobody looks
+for. The spec caught the data, and the data caught the page.
+
+The second is about who fixes it. The unblocking move was data-only — collapse the three
+pairs, land the notes, one bullet per PR — because the model change is production code
+with tests and the orchestrator does not write production code to unblock itself. It is
+the same discipline as sending an E2E red back to its author: the cheap local fix is
+available and taking it is how a workaround becomes the permanent state. Filed as #3940
+with both options written out and the decision left to whoever takes it.
