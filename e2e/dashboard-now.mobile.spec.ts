@@ -406,7 +406,6 @@ test("a cold-start profile's tier is the getting-started list", async ({
   }
 });
 
-
 // The other half of the cold-start ruling: a CTA's claim is SPENT by recording.
 // One weigh-in and the getting-started list retires into the fold on the next
 // render, with the new reading standing where the instrument panel keeps it. One

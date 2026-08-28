@@ -1582,7 +1582,8 @@ async function renderDashboard(
         // The crossing is still told; `owed` is where it is told from. What the
         // promotion keeps is the transitions that remain Now facts: reaching met,
         // and coming back onto pace.
-        weeklyTargetStateChanged(progress, progress.previous ?? null) && !behind,
+        weeklyTargetStateChanged(progress, progress.previous ?? null) &&
+          !behind,
         behind
       ),
       <HabitProgressAtom progress={progress} />,

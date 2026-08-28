@@ -209,7 +209,9 @@ for (const [label, viewport] of [
     const dormantWeight = dashboardCandidatePrefix(page, "weight.dormant");
     await expect(dormantWeight).toHaveCount(1);
     await expect(dormantWeight).not.toBeVisible();
-    await expect(dormantWeight).toContainText("No weigh-in recorded in 150 days");
+    await expect(dormantWeight).toContainText(
+      "No weigh-in recorded in 150 days"
+    );
 
     if (viewport.width === 390)
       await expectPhoneTapTargets(page, "the Standing fold control", [summary]);
