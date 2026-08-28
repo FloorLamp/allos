@@ -383,6 +383,21 @@
   .table-cards tr {
     padding-inline: 0;
   }
+  /* AN INVISIBLE HIT AREA MUST NOT BECOME A REAL SWIPE. A trailing overflow
+     control extends its clickable box 6px past its visible one (`.tap-target`'s
+     `inset: -6px`, and `logged-event-rows`' own copy of the same arithmetic —
+     #3514), and that extension used to land inside the row's own `p-3`. With the
+     gutter gone it reached past the row's right edge and made every stacked row
+     carrying a ⋯ scrollable sideways by 6px, which e2e/mobile-clipping caught on
+     /sleep. The extension is SHIFTED, never shrunk: the whole 12px goes to the
+     leading side, where the row has space, so the hit area keeps the exact size
+     #3514 ruled and the cell keeps the exact width its flex line packed with. */
+  .table-cards td[data-card="actions"] .tap-target::after,
+  .table-cards
+    td[data-card="actions"]
+    [data-testid="overflow-menu-trigger"]::after {
+    inset-inline: -12px 0;
+  }
 }
 
 /* ────────────────────────────────────────────────────────────────────────────
@@ -1460,6 +1475,13 @@
 @media (max-width: 39.999rem) {
   .standing-primary::after {
     top: -1.5rem;
+  }
+  /* The stretch reaches into the row's inline gutter so the WHOLE row is tappable.
+     #3673 removed that gutter below `sm`, so the reach now lands outside the row
+     and makes the band scrollable sideways by 32px. The row IS the full line now,
+     so reaching for a gutter is not just harmful, it is redundant. */
+  .standing-stretch::after {
+    inset-inline: 0;
   }
   .standing-door {
     display: none;
