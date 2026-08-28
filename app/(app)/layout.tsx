@@ -395,11 +395,10 @@ export default async function AppLayout({
               this used to carry went with the view banner (#1801): the chrome no
               longer grows a second row, so the padding is unconditional again.
               THE HORIZONTAL PAIR IS A TOKEN, not the expression spelled here
-              (#3920): below `sm` a band CANCELS this gutter to put its fill on the
-              viewport edge, and a cancel written from a copy of the expression is
-              one edit away from under-cancelling a notched side. Both halves read
-              `--page-gutter-left` / `--page-gutter-right` from app/globals.css,
-              which is also where the `md` step to 1.25rem lives now. */}
+              (#3920): below `sm` a band CANCELS this gutter, and a cancel written
+              from a COPY of the expression is one edit away from under-cancelling a
+              notched side. `--page-gutter-left` / `--page-gutter-right` live in
+              app/globals.css, with the `md` step to 1.25rem. */}
                             <div
                               data-testid="app-content-container"
                               className="mx-auto pt-4 pb-[calc(5rem+env(safe-area-inset-bottom))] pl-(--page-gutter-left) pr-(--page-gutter-right) md:pt-8 md:pb-[max(2rem,env(safe-area-inset-bottom))] 3xl:max-w-[110rem]"

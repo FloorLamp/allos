@@ -306,11 +306,8 @@
 
 /* THE PAGE GUTTER, WRITTEN ONCE (#3920). `app-content-container`
    (`app/(app)/layout.tsx`) spends it and the phone rules below CANCEL it, so the
-   two have to be the SAME expression rather than two copies of it: a cancel that
-   assumed `1rem` would under-cancel a notched side and leave a step exactly where
-   the fill was meant to reach the edge. The sides are independent for that reason
-   — `env(safe-area-inset-left)` and `-right` differ on a notched device — and the
-   `md` step raises the floor only, never the inset. */
+   two must be the SAME expression and not two copies: a cancel that assumed `1rem`
+   under-cancels a notched side, and the sides are independent. */
 :root {
   --page-gutter-left: max(1rem, env(safe-area-inset-left));
   --page-gutter-right: max(1rem, env(safe-area-inset-right));
@@ -329,18 +326,13 @@
      the frame's gutter (labels, rows) — `card-delegated`'s shape, for a surface
      whose desktop values are its own.
 
-     BELOW `sm` THE FRAME IS FULL-BLEED AND THE CONTENT IS NOT (#3920). It cancels
-     the page gutter per side and the labels and rows inside keep spending their own
-     `px-4`, so a band's first character has a gutter's width of fill to its left.
-     Zeroing that padding instead — which is what shipped — left the fill inset by
-     the page gutter with the text on top of its own edge.
-
-     THE FRAME IS THE OUTERMOST MARKED ELEMENT, and this class marks the rows too,
-     so the pull is taken back off a band inside a band: cancelling one gutter twice
-     would hang the row 16px past the viewport. `!important` in the `utilities`
-     layer, like the two above it, so a call site's own `rounded-xl border` cannot
-     win the tie back; the nested reset is important for the same reason, and beats
-     the pull on specificity. */
+     BELOW `sm` THE FRAME IS FULL-BLEED AND THE CONTENT IS NOT (#3920): it cancels
+     the page gutter per side and the labels and rows keep spending their own
+     `px-4`. THE FRAME IS THE OUTERMOST MARKED ELEMENT — this class marks the rows
+     too, and cancelling one gutter twice would hang a row 16px past the viewport,
+     so the nested reset takes the pull back off. Both are `!important` in the
+     `utilities` layer, like the two above them, so a call site's own
+     `rounded-xl border` cannot win the tie back. */
   @apply max-sm:rounded-none! max-sm:border-x-0!;
   @media (width < 40rem) {
     margin-inline: calc(-1 * var(--page-gutter-left))
