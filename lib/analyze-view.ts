@@ -422,7 +422,6 @@ export interface BenchmarkRow {
 }
 
 export interface BenchmarkState {
-  currentLevel: { level: StrengthLevel; label: string; color: string };
   currentE1rmKg: number;
   bodyweightKg: number;
   // The label to bold on the ladder — null when untrained (below the beginner
@@ -474,11 +473,6 @@ export function benchmarkState(
   ].sort((a, b) => b.valueKg - a.valueKg);
 
   return {
-    currentLevel: {
-      level,
-      label: strengthLevelLabel(level),
-      color: strengthLevelColor(level),
-    },
     currentE1rmKg: standing.e1rmKg,
     bodyweightKg: standing.bodyweightKg,
     rankedLevelLabel: isUntrained ? null : strengthLevelLabel(level),
