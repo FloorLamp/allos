@@ -5,6 +5,7 @@ import {
   E2E_MEMBER_PASSWORD,
   E2E_LOGIN_EMPTY_TRAINING,
 } from "./fixture-logins";
+import { openStandingTail } from "./dashboard-candidate";
 
 // The Longevity page (#1042 phase 4): the expanded formatter over the SAME
 // healthspan-pillar model the dashboard Standing cluster compact-renders.
@@ -115,6 +116,9 @@ test("the Standing strength fact lands on the panel for the lift it names", asyn
   page,
 }) => {
   await page.goto("/");
+  // A quiet pillar folds into Standing's tail (#3548) — present, reachable, off the
+  // open page. Its own claim, and its link, are unchanged inside it.
+  await openStandingTail(page);
   const fact = page
     .getByRole("main")
     .locator('[data-standing-family="healthspan-pillars"]')

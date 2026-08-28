@@ -67,15 +67,12 @@ function StandingFamilyRow({
   // "Latest" row carries it, its "Trend" row is a link.
   const series = members
     .map(
-      (placement) =>
-        presentations.get(placement.candidate.candidateId)
-          ?.series
+      (placement) => presentations.get(placement.candidate.candidateId)?.series
     )
     .find((entry) => entry != null);
   const stacked = family.composition === "members";
   const surfaceId = members.find(
-    (placement) =>
-      presentations.get(placement.candidate.candidateId)?.href
+    (placement) => presentations.get(placement.candidate.candidateId)?.href
   )?.candidate.candidateId;
   return (
     // THE BREAKPOINT IS IN rem AND MUST STAY IN rem (#3459).
@@ -120,9 +117,7 @@ function StandingFamilyRow({
         >
           {members.map((placement) => {
             const { candidate } = placement;
-            const presentation = presentations.get(
-              candidate.candidateId
-            );
+            const presentation = presentations.get(candidate.candidateId);
             if (!presentation) return null;
             const engagement =
               candidate.relevance.kind === "profile-data"
@@ -200,13 +195,7 @@ function StandingFamilyRow({
             return (
               <li
                 key={candidate.candidateId}
-                className={
-                  stacked
-                    ? "relative"
-                    : primary
-                      ? undefined
-                      : "z-10"
-                }
+                className={stacked ? "relative" : primary ? undefined : "z-10"}
                 data-testid="dashboard-candidate"
                 data-candidate-id={candidate.candidateId}
                 data-fact-key={candidate.factKey}
@@ -241,7 +230,6 @@ function StandingFamilyRow({
       {series && <StandingSparkline series={series} />}
     </div>
   );
-
 }
 
 // Families in the order the RANKER handed them over. For the tier that is claim
@@ -371,7 +359,10 @@ export default function DashboardStandingCluster({
           without an aria attribute of our own. Nothing is remembered: the fold is
           computed from claims, never configured. */}
         {tail.length > 0 && (
-          <details data-standing-band="tail" data-testid="dashboard-standing-tail">
+          <details
+            data-standing-band="tail"
+            data-testid="dashboard-standing-tail"
+          >
             <summary
               data-testid="dashboard-standing-tail-summary"
               className="band flex min-h-11 cursor-pointer list-none items-center bg-(--ghost) px-4 py-2 text-xs font-semibold tracking-wide text-slate-500 uppercase marker:content-none dark:text-slate-400"

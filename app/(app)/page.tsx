@@ -1574,7 +1574,15 @@ async function renderDashboard(
         { subject: profileSubject, sourceOrder: sourceOrder + index * 2 },
         id,
         !progress.met,
-        weeklyTargetStateChanged(progress, progress.previous ?? null),
+        // Owner ruling #3548: a behind target is a HIGHLIGHTED READING in Standing's
+        // attention tier, "not a Now card". A calendar week compares against its own
+        // zero-evidence opening, so crossing into behind on day 4 stays a live
+        // transition for the rest of the week — which, before this, kept both
+        // readings parked in Now exactly as #3245 described the log offers doing.
+        // The crossing is still told; `owed` is where it is told from. What the
+        // promotion keeps is the transitions that remain Now facts: reaching met,
+        // and coming back onto pace.
+        weeklyTargetStateChanged(progress, progress.previous ?? null) && !behind,
         behind
       ),
       <HabitProgressAtom progress={progress} />,
@@ -1592,7 +1600,7 @@ async function renderDashboard(
             this week ·{" "}
             <span
               data-testid="standing-pace"
-              className={`rounded px-1.5 py-0.5 text-xs font-semibold ${PACE_BADGE_CLASS.behind}`}
+              className={`badge ${PACE_BADGE_CLASS.behind}`}
             >
               {frequencyPaceLabel("behind")}
             </span>

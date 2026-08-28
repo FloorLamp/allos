@@ -1,11 +1,15 @@
 import { test, expect } from "./fixtures";
 import { loginAs } from "./nav";
+import { expectPhoneTapTargets } from "./helpers";
 import {
   DORMANT_DOMAINS_PROFILE,
   E2E_LOGIN_DORMANT,
   E2E_MEMBER_PASSWORD,
 } from "./fixture-logins";
-import { dashboardCandidatePrefix } from "./dashboard-candidate";
+import {
+  dashboardCandidatePrefix,
+  openStandingTail,
+} from "./dashboard-candidate";
 
 // Issue #2652 behavior 2 — "dormancy collapses, loudly".
 //
@@ -55,6 +59,13 @@ test("a quiet domain collapses to one line that states how long, and offers the 
   await expect(sleep).toContainText("No sleep recorded in 150 days");
   await expect(sleep).toHaveAttribute("data-presence", "dormant");
 
+  // #3548 NARROWED #3226 EXACTLY THIS FAR: a dormant line keeps its existence, its
+  // copy and its affordance, and loses the always-visible slot. So it is inside the
+  // quiet tail, and everything below is asserted with the tail open.
+  await expect(
+    page.locator('[data-standing-band="tail"] [data-standing-family="weight"]')
+  ).toHaveCount(1);
+  await openStandingTail(page);
   await expect(page.locator('[data-standing-family="weight"]')).toBeVisible();
 
   // REACH IS UNCHANGED: each collapsed line carries the link that would end the
@@ -113,6 +124,7 @@ test("a card still showing a stale value is NOT collapsed (#2652)", async ({
   // year at which #3226 retires it: the exact span where the row is stale AND still a
   // number. A dormancy rule that fired on staleness rather than on the year floor would
   // turn this row dormant and redden this test.
+  await openStandingTail(page);
   const labs = dashboardCandidatePrefix(page, "labs.latest:").filter({
     hasText: "Glucose",
   });
@@ -140,7 +152,9 @@ test("a profile whose domains are current collapses nothing (#2652)", async ({
     page.locator('[data-testid="dashboard-candidate"][data-presence="dormant"]')
   ).toHaveCount(0);
   // Sanity that we are looking at a populated dashboard rather than an empty one, so
-  // the zero above is an absence of dormancy and not an absence of cards.
+  // the zero above is an absence of dormancy and not an absence of cards. A quiet
+  // clinical result sits in the tail now (#3548), so the fold is opened to see it.
+  await openStandingTail(page);
   await expect(
     dashboardCandidatePrefix(page, "labs.latest:").filter({
       hasText: "LDL Cholesterol",
@@ -162,3 +176,61 @@ test("the fixture profile is the one being read (#2652)", async ({
   await expect(page.getByRole("main")).toContainText(DORMANT_DOMAINS_PROFILE);
   await page.close();
 });
+
+// ── The quiet tail itself (#3548) ────────────────────────────────────────────
+//
+// This fixture is the one that can show all three bands at once: three domains that
+// recorded and went quiet, one that never recorded, and live rows beside them. The
+// fold is asserted at BOTH viewports because the band is structural, not a phone
+// affordance.
+for (const [label, viewport] of [
+  ["a phone", { width: 390, height: 844 }],
+  ["a desktop", { width: 1280, height: 900 }],
+] as const) {
+  test(`Standing's quiet tail folds on ${label} and keeps its rows reachable`, async ({
+    browser,
+  }) => {
+    test.slow();
+    const page = await loginAs(browser, {
+      username: E2E_LOGIN_DORMANT,
+      password: E2E_MEMBER_PASSWORD,
+    });
+    await page.setViewportSize(viewport);
+    await page.goto("/");
+
+    const tail = page.getByTestId("dashboard-standing-tail");
+    await expect(tail).toBeVisible();
+    await expect(tail).toHaveJSProperty("open", false);
+    const summary = page.getByTestId("dashboard-standing-tail-summary");
+    await expect(summary).toHaveText(/^Quiet \(\d+\)$/);
+
+    // Hidden, not unmounted — the dormant weight line is in the document while the
+    // fold is shut, and its own copy is intact.
+    const dormantWeight = dashboardCandidatePrefix(page, "weight.dormant");
+    await expect(dormantWeight).toHaveCount(1);
+    await expect(dormantWeight).not.toBeVisible();
+    await expect(dormantWeight).toContainText("No weigh-in recorded in 150 days");
+
+    if (viewport.width === 390)
+      await expectPhoneTapTargets(page, "the Standing fold control", [summary]);
+
+    await summary.click();
+    await expect(tail).toHaveJSProperty("open", true);
+    await expect(dormantWeight).toBeVisible();
+    await expect(
+      dormantWeight.getByRole("link", { name: /Body metrics/ })
+    ).toBeVisible();
+
+    // THE CONVERSE, in the same test and for the reason the brief gives: "the
+    // dormant line left the open page" is equally true of a page whose Standing
+    // collapsed entirely. These are the rows that must STILL stand above the fold.
+    for (const family of ["blood-pressure", "resting-heart-rate"])
+      await expect(
+        page.locator(
+          `[data-standing-band="rest"] [data-standing-family="${family}"]`
+        )
+      ).toBeVisible();
+
+    await page.close();
+  });
+}

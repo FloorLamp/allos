@@ -254,7 +254,9 @@ function reasonClaim(candidate: DashboardCandidate): number | null {
   return reasons.safety ? 3 : reasons.owed ? 2 : reasons.changed ? 1 : null;
 }
 
-function presenceOf(candidate: DashboardCandidate): "never" | "current" | "dormant" {
+function presenceOf(
+  candidate: DashboardCandidate
+): "never" | "current" | "dormant" {
   return candidate.relevance.kind === "profile-data"
     ? candidate.relevance.presence
     : "current";
@@ -319,7 +321,16 @@ export function resolveStandingMembers(
   const members: StandingMember[] = [];
   const memberIds = new Set<string>();
   // Cold-start CTAs are ranked across the whole surface, not per family, because
-  // the cap the owner set is a cap on the getting-started LIST.
+  // the cap the owner set is a cap on the getting-started LIST — and the list only
+  // exists while there is nothing else. The two owner texts meet here: on an empty
+  // profile "the attention tier IS the getting-started list", and on a profile that
+  // records anything "a wearable-less profile's open dashboard carries no permanent
+  // connect-a-source furniture". So the CTA's claim is spent by the profile having
+  // live data at all, not only by its own family recording.
+  const coldStart = !candidates.some(
+    (candidate) =>
+      candidate.kind === "reading" && presenceOf(candidate) === "current"
+  );
   let ctaRank = 0;
   const claimedFacts = new Set<string>();
   // Owner ruling (#3186): a capped family renders its capped members and nothing
@@ -355,7 +366,7 @@ export function resolveStandingMembers(
         claim != null
           ? "attention"
           : presence === "never"
-            ? ctaRank++ < STANDING_CTA_CLAIM_CAP
+            ? coldStart && ctaRank++ < STANDING_CTA_CLAIM_CAP
               ? "attention"
               : "tail"
             : presence === "dormant"

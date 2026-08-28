@@ -371,7 +371,11 @@ export function seedNowStrip(): void {
         `INSERT INTO frequency_targets
            (profile_id, scope_kind, scope_value, per_week, created_at)
          VALUES (?, 'group', ?, 2, ?)`
-      ).run(paceBehindId, scopeValue, `${shiftDateStr(behindDay, -60)} 00:00:00`);
+      ).run(
+        paceBehindId,
+        scopeValue,
+        `${shiftDateStr(behindDay, -60)} 00:00:00`
+      );
     }
   }
   seedMemberLogin(E2E_LOGIN_PACEBEHIND, paceBehindId);

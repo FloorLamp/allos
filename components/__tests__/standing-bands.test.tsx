@@ -32,7 +32,11 @@ function placement(
       groupKey: null,
       subject: { scope: "profile", profileId: 7 },
       applicable: true,
-      relevance: { kind: "profile-data", presence: "current", engagement: "manual" },
+      relevance: {
+        kind: "profile-data",
+        presence: "current",
+        engagement: "manual",
+      },
       timing: { kind: "always" },
       rankReasons: {
         safety: false,
@@ -112,9 +116,7 @@ const cluster = (placements: readonly StandingPlacement[]) => (
 
 describe("Standing's rendered bands", () => {
   it("leads with the tier, keeps the rest in place, and folds the tail", () => {
-    const { container } = render(
-      cluster([BEHIND, STEPS, DORMANT_BP, PILLAR])
-    );
+    const { container } = render(cluster([BEHIND, STEPS, DORMANT_BP, PILLAR]));
     expect(
       [...container.querySelectorAll("[data-standing-band]")].map((node) =>
         node.getAttribute("data-standing-band")
@@ -125,7 +127,9 @@ describe("Standing's rendered bands", () => {
     // is inside the tier rather than anywhere else on the surface.
     const tier = container.querySelector('[data-standing-band="attention"]')!;
     expect(screen.getAllByTestId("standing-pace")).toHaveLength(1);
-    expect(tier.querySelector('[data-standing-family="weekly-targets"]')).not.toBeNull();
+    expect(
+      tier.querySelector('[data-standing-family="weekly-targets"]')
+    ).not.toBeNull();
     expect(screen.getByTestId("standing-pace").textContent).toBe("Behind");
 
     // The tail is a labelled disclosure that HIDES rather than unmounts: the
@@ -133,10 +137,14 @@ describe("Standing's rendered bands", () => {
     const tail = screen.getByTestId("dashboard-standing-tail");
     expect(tail.tagName).toBe("DETAILS");
     expect((tail as HTMLDetailsElement).open).toBe(false);
-    expect(screen.getByTestId("dashboard-standing-tail-summary").textContent).toBe(
-      "Quiet (2)"
-    );
-    expect(tail.querySelector('[data-candidate-id="vitals.blood-pressure:2019-01-01"]')).not.toBeNull();
+    expect(
+      screen.getByTestId("dashboard-standing-tail-summary").textContent
+    ).toBe("Quiet (2)");
+    expect(
+      tail.querySelector(
+        '[data-candidate-id="vitals.blood-pressure:2019-01-01"]'
+      )
+    ).not.toBeNull();
     expect(tail.textContent).toContain("Log one");
   });
 
@@ -149,18 +157,23 @@ describe("Standing's rendered bands", () => {
     const open = container.querySelectorAll(
       '[data-standing-band="attention"] [data-candidate-id], [data-standing-band="rest"] [data-candidate-id]'
     );
-    expect([...open].map((node) => node.getAttribute("data-candidate-id"))).toEqual([
-      "target.weekly-progress:9",
-      "activity.steps:d",
-    ]);
-    expect(tail.contains(container.querySelector('[data-candidate-id="activity.steps:d"]'))).toBe(false);
+    expect(
+      [...open].map((node) => node.getAttribute("data-candidate-id"))
+    ).toEqual(["target.weekly-progress:9", "activity.steps:d"]);
+    expect(
+      tail.contains(
+        container.querySelector('[data-candidate-id="activity.steps:d"]')
+      )
+    ).toBe(false);
   });
 
   // No empty-band chrome: a surface with only a stable rest renders neither a tier
   // header nor a fold control (#3548's sparse-profile reading).
   it("renders no chrome for an empty tier or an empty tail", () => {
     const { container } = render(cluster([STEPS]));
-    expect(container.querySelector('[data-standing-band="attention"]')).toBeNull();
+    expect(
+      container.querySelector('[data-standing-band="attention"]')
+    ).toBeNull();
     expect(screen.queryByTestId("dashboard-standing-tail")).toBeNull();
     expect(
       [...container.querySelectorAll("[data-standing-band]")].map((node) =>

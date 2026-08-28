@@ -154,8 +154,12 @@ test("desktop keeps the page header", async ({ browser }) => {
 test("an empty Now keeps its quiet state and mobile date", async ({
   browser,
 }) => {
+  // NOW_QUIET, not WHATS_NEW: since #3548 a profile that has recorded NOTHING is a
+  // cold start, and its tier is a getting-started list that the settled sentence may
+  // not sit over. This fixture's day is genuinely handled, which is the state the
+  // sentence is for.
   const page = await openDashboard(browser, {
-    username: E2E_LOGIN_WHATSNEW,
+    username: E2E_LOGIN_NOWQUIET,
   });
   try {
     const strip = page.getByTestId("now-strip");
@@ -289,12 +293,13 @@ test("a behind target tells its pace in Standing and takes no Now slot", async (
       PACE_BEHIND_TARGETS.length
     );
 
-    // #3548 cold start: this profile has never recorded, so the tier is also the
-    // getting-started list — and "Nothing needs you." may not render over it.
-    await expect(
-      tier.locator('[data-testid="dashboard-candidate"][data-presence="never"]')
-    ).not.toHaveCount(0);
-    await expect(page.getByTestId("now-strip-empty")).toHaveCount(0);
+    // And the point of the whole ruling: with the pace told where it belongs, day 4
+    // of the week is a settled day again.
+    const strip = page.getByTestId("now-strip");
+    await expect(strip).toHaveAttribute("data-count", "0");
+    await expect(strip.getByTestId("now-strip-empty")).toHaveText(
+      "Nothing needs you."
+    );
   } finally {
     await page.context().close();
   }
@@ -327,55 +332,39 @@ test("an on-pace target states no pace and stays out of the tier", async ({
   }
 });
 
-// #3548's third band, on a phone and on a desktop: the tail is PRESENT and closed,
-// its control is a real disclosure at the tap floor, and opening it reveals the rows
-// rather than fetching them.
-for (const [label, options] of [
-  ["a phone", PHONE],
-  ["a desktop", DESKTOP],
-] as const) {
-  test(`Standing's quiet tail folds on ${label}`, async ({ browser }) => {
-    const page = await openDashboard(browser, { username: E2E_LOGIN_DAILY }, options);
-    try {
-      const tail = page.getByTestId("dashboard-standing-tail");
-      await expect(tail).toBeVisible();
-      const summary = page.getByTestId("dashboard-standing-tail-summary");
-      // A native <details>: the expanded state is the element's own, published to
-      // assistive tech by the platform rather than by an attribute we maintain, and
-      // the summary's text is its accessible name.
-      await expect(tail).toHaveJSProperty("open", false);
-      await expect(summary).toHaveText(/^Quiet \(\d+\)$/);
-      const folded = tail.locator('[data-testid="dashboard-candidate"]');
-      const foldedCount = await folded.count();
-      expect(foldedCount).toBeGreaterThan(0);
-      // Hidden, not unmounted: the rows are in the document while the fold is shut.
-      await expect(folded.first()).toBeAttached(); // first-ok: any folded row proves the rows survive the fold
-      await expect(folded.first()).not.toBeVisible(); // first-ok: same row, same claim
-      if (options === PHONE)
-        await expectPhoneTapTargets(page, "the Standing fold control", [
-          summary,
-        ]);
-
-      await summary.click();
-      await expect(tail).toHaveJSProperty("open", true);
-      await expect(folded.first()).toBeVisible(); // first-ok: the fold opened, so its first row is on screen
-      await expect(folded).toHaveCount(foldedCount);
-
-      // THE CONVERSE OF THE FOLD, and the reason it is written next to it: an
-      // assertion that the tail swallowed the quiet rows passes just as happily on
-      // a page where Standing collapsed entirely. These named surfaces are the ones
-      // that must still stand on the OPEN page, above the fold.
-      for (const family of ["steps-today", "protein-today", "weight"])
-        await expect(
-          page.locator(
-            `[data-standing-band="rest"] [data-standing-family="${family}"]`
-          )
-        ).toBeVisible();
-    } finally {
-      await page.context().close();
-    }
-  });
-}
+// #3548's cold start, and the one profile that can show it: WHATS_NEW carries no
+// health data at all, so every family is never-recorded and the attention tier IS
+// the getting-started list. "Nothing needs you." may not render over it.
+test("a cold-start profile's tier is the getting-started list", async ({
+  browser,
+}) => {
+  const page = await openDashboard(browser, { username: E2E_LOGIN_WHATSNEW });
+  try {
+    const ctas = page.locator(
+      '[data-standing-band="attention"] [data-testid="dashboard-candidate"][data-presence="never"]'
+    );
+    const shown = await ctas.count();
+    expect(shown).toBeGreaterThanOrEqual(2);
+    expect(shown).toBeLessThanOrEqual(3);
+    await expect(page.getByTestId("now-strip-empty")).toHaveCount(0);
+    // The strip's own heading and the day's orientation are untouched — this is one
+    // page growing from onboarding, not a separate onboarding layout.
+    await expect(
+      page
+        .getByTestId("now-strip")
+        .getByRole("heading", { level: 2, name: "Right now", exact: true })
+    ).toBeVisible();
+    await expect(page.getByTestId("now-strip-date")).toBeVisible();
+    // Past the cap the remaining CTAs are folded, not dropped.
+    await expect(
+      page.locator(
+        '[data-standing-band="tail"] [data-testid="dashboard-candidate"][data-presence="never"]'
+      )
+    ).not.toHaveCount(0);
+  } finally {
+    await page.context().close();
+  }
+});
 
 // ── The visual layer on a phone (#3252 / #3238) ─────────────────────────────────────
 
@@ -412,7 +401,8 @@ test("the Standing sparkline column is absent below 720px", async ({
 test("Now's header is visible on a phone too, above the empty sentence", async ({
   browser,
 }) => {
-  const page = await openDashboard(browser, { username: E2E_LOGIN_WHATSNEW });
+  // See the fixture note above: the settled sentence needs a settled profile now.
+  const page = await openDashboard(browser, { username: E2E_LOGIN_NOWQUIET });
   try {
     const strip = page.getByTestId("now-strip");
     await expect(
