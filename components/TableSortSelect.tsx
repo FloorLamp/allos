@@ -58,7 +58,7 @@ export default function TableSortSelect({
       <span className="text-slate-500 dark:text-slate-400">{label}</span>
       <select
         data-testid="table-sort-select"
-        className="input h-9 w-auto flex-1 py-1 text-sm"
+        className="input w-auto flex-1 text-sm"
         value={sortChoiceValue(active.column, active.dir)}
         onChange={(e) => {
           const next = parseSortChoiceValue(e.target.value, choices, active);

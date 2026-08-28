@@ -294,7 +294,7 @@ export default function VideoClipGrid({
                       <input
                         id={`clip-caption-${c.id}`}
                         data-testid={`video-clip-caption-input-${c.id}`}
-                        className="input h-8 w-full px-2 text-xs"
+                        className="input w-full px-2 text-xs"
                         value={captionDraft}
                         onChange={(e) => setCaptionDraft(e.target.value)}
                         onKeyDown={(e) => {
@@ -359,7 +359,7 @@ export default function VideoClipGrid({
               value={caption}
               onChange={(e) => setCaption(e.target.value)}
               placeholder="What does this show?"
-              className="input mt-1 h-9 w-48 text-sm"
+              className="input mt-1 w-48 text-sm"
             />
           </div>
           <button

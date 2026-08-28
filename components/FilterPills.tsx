@@ -10,6 +10,11 @@ import type { AppRoute } from "@/lib/hrefs";
 // and one of three bounded layouts: scrolling, wrapping, or Timeline's
 // phone-scroll/`sm`-wrap response. It declares no client boundary, so link groups
 // remain server-renderable and button groups inherit their caller's.
+//
+// ONE GAP, AND IT IS THE REACH FLOOR (#3938). Every layout spends `gap-3` = 12px,
+// which is 2x the per-side reach a coarse pointer gets around the 34px control
+// box — so a filter group's hit regions meet without ever owning the same point.
+// The dense density used to tighten this to 6px, which would overlap them.
 
 type FilterPillValue = string | number | null;
 
@@ -112,7 +117,7 @@ export default function FilterPills<T extends FilterPillValue>(
     return (
       <div
         {...groupProps}
-        className={`flex flex-wrap items-center ${props.density === "dense" ? "gap-1.5" : "gap-2"}`}
+        className="flex flex-wrap items-center gap-3"
       >
         {options}
       </div>
@@ -123,8 +128,8 @@ export default function FilterPills<T extends FilterPillValue>(
       {...groupProps}
       className={
         props.layout === "responsive"
-          ? "-mx-2 flex gap-2 px-2 pb-1 sm:mx-0 sm:flex-wrap sm:overflow-visible sm:px-0 sm:pb-0"
-          : "flex gap-2"
+          ? "-mx-2 flex gap-3 px-2 pb-1 sm:mx-0 sm:flex-wrap sm:overflow-visible sm:px-0 sm:pb-0"
+          : "flex gap-3"
       }
     >
       {options}

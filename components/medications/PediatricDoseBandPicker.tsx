@@ -78,7 +78,7 @@ export default function PediatricDoseBandPicker({
             data-testid="pediatric-formulation"
             value={formulationSlug}
             onChange={(event) => onFormulationChange(event.target.value)}
-            className="input h-8 w-auto max-w-full py-0 text-xs"
+            className="input w-auto max-w-full text-xs"
           >
             <option value="">mg only (measure per package)</option>
             {formulations.map((item) => (

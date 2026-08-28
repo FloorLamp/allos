@@ -184,6 +184,14 @@
   --empty-cell: #e6eedd;
   --radius-card: 14px;
   --radius-control: 0.5rem;
+  /* THE CONTROL BOX (#3938). One height for every control kind at every
+     viewport; the arithmetic that spends it lives in SECTION: Touch tap
+     targets. `--control-reach` is the per-side hit-area repair a coarse
+     pointer gets around that box, and the gap floor between adjacent targets
+     is 2x it. Geometry, so the dark twin below does not restate them. */
+  --control-box: 2.125rem;
+  --control-border: 1px;
+  --control-reach: 0.375rem;
   /* Select chevron, drawn in the muted tone. A data-URI cannot read
      currentColor, so each mode supplies its own token. */
   --chevron: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='none' stroke='%234e6354' stroke-width='2' stroke-linecap='round' stroke-linejoin='round'%3E%3Cpath d='M6 9l6 6 6-6'/%3E%3C/svg%3E");
@@ -668,7 +676,10 @@
      atmospheric card border may not double as an input edge. The
      field fill token replaces the old per-call-site `bg-white dark:bg-ink-900`
      overrides, so a field reads as a field on any tinted card. */
-  @apply w-full px-3 py-2 text-sm outline-hidden focus:border-brand-500 focus:ring-1 focus:ring-brand-500 dark:text-slate-100 dark:placeholder:text-slate-500;
+  /* `text-base`, not `text-sm`: a focused control under 16px makes iOS Safari
+     zoom the page. The box absorbs the taller line box as less padding (the
+     ruling's `py-1`), so a field is the same 34px as every other control. */
+  @apply w-full px-3 text-base outline-hidden focus:border-brand-500 focus:ring-1 focus:ring-brand-500 dark:text-slate-100 dark:placeholder:text-slate-500;
   border: 1px solid var(--field-bd);
   border-radius: var(--radius-control);
   background-color: var(--field);
@@ -757,8 +768,11 @@
      keyboard-focused button the same affordance — the app otherwise relied on
      the browser default outline (issue #794 cluster 8c). The dark offset is
      ink-950, matching the near-black page surface the buttons sit against. */
-  @apply inline-flex items-center justify-center gap-2 px-4 py-2 text-sm font-medium shadow-xs transition focus:outline-hidden focus-visible:ring-2 focus-visible:ring-brand-500 focus-visible:ring-offset-2 dark:focus-visible:ring-offset-ink-950;
+  @apply inline-flex items-center justify-center gap-2 px-4 text-sm font-medium shadow-xs transition focus:outline-hidden focus-visible:ring-2 focus-visible:ring-brand-500 focus-visible:ring-offset-2 dark:focus-visible:ring-offset-ink-950;
   border-radius: var(--radius-control);
+  /* The box reserves a border on every control so a filled one and an outlined
+     one occupy the same 34px; a solid button spends it on nothing. */
+  border-color: transparent;
   background-color: var(--btn);
   color: var(--btn-fg);
   &:hover {
@@ -786,8 +800,8 @@
 }
 
 @utility btn-ghost {
-  @apply inline-flex items-center justify-center gap-2 px-3 py-2 text-sm font-medium text-slate-700 transition focus:outline-hidden focus-visible:ring-2 focus-visible:ring-brand-500 focus-visible:ring-offset-2 dark:text-slate-200 dark:focus-visible:ring-offset-ink-950;
-  border: 1px solid var(--border);
+  @apply inline-flex items-center justify-center gap-2 px-3 text-sm font-medium text-slate-700 transition focus:outline-hidden focus-visible:ring-2 focus-visible:ring-brand-500 focus-visible:ring-offset-2 dark:text-slate-200 dark:focus-visible:ring-offset-ink-950;
+  border-color: var(--border);
   border-radius: var(--radius-control);
   background-color: var(--ghost);
   &:hover {
@@ -802,8 +816,9 @@
 }
 
 @utility btn-danger {
-  @apply inline-flex items-center justify-center gap-2 px-4 py-2 text-sm font-medium shadow-xs transition focus:outline-hidden focus-visible:ring-2 focus-visible:ring-brand-500 focus-visible:ring-offset-2 dark:focus-visible:ring-offset-ink-950;
+  @apply inline-flex items-center justify-center gap-2 px-4 text-sm font-medium shadow-xs transition focus:outline-hidden focus-visible:ring-2 focus-visible:ring-brand-500 focus-visible:ring-offset-2 dark:focus-visible:ring-offset-ink-950;
   border-radius: var(--radius-control);
+  border-color: transparent;
   background-color: var(--danger-btn);
   color: var(--danger-btn-fg);
   &:hover {
@@ -818,23 +833,20 @@
 }
 
 @utility btn-sm {
-  /* Compact size modifier for the .btn family — tighter padding for dense
-     contexts (table rows, card headers, inline controls). Defined AFTER the base
-     classes so its padding/text-size win when composed as `btn btn-sm`. */
-  @apply px-3 py-1.5 text-sm;
+  /* HORIZONTAL density only. It used to carry a vertical padding and a type size
+     too, which is how the family grew a second height; the control box owns both
+     now, so a dense row is narrower and exactly as tall as everything else. */
+  @apply px-3;
 }
 
 @utility button-control {
   /* The typed Button / DestinationActionLink treatment (#3720). One ordinary
      secondary action, not a menu of caller-selected variants: callers provide
      behavior and content while the primitives own paint, focus, and geometry.
-     It renders at the 44px phone floor, then returns to its compact 26px row
-     height from sm upward so touch repair does not spend desktop density. */
-  @apply inline-flex min-h-11 min-w-11 shrink-0 items-center justify-center gap-1 whitespace-nowrap rounded-lg border border-black/10 px-2.5 py-1 text-xs font-medium text-slate-600 transition hover:bg-slate-100 focus:outline-hidden focus-visible:ring-2 focus-visible:ring-brand-500 disabled:cursor-not-allowed disabled:bg-slate-100 disabled:text-slate-500 dark:border-white/10 dark:text-slate-300 dark:hover:bg-ink-750 dark:disabled:bg-ink-750 dark:disabled:text-slate-400;
-  @media (min-width: 40rem) {
-    min-block-size: 0;
-    min-inline-size: 0;
-  }
+     It renders THE CONTROL BOX at every viewport (#3938): the 44px phone height
+     and the compact 26px desktop height it used to carry both retire, and a
+     coarse pointer gets its reach back around the box instead. */
+  @apply inline-flex shrink-0 items-center justify-center gap-1 whitespace-nowrap rounded-lg border-black/10 px-2.5 text-xs font-medium text-slate-600 transition hover:bg-slate-100 focus:outline-hidden focus-visible:ring-2 focus-visible:ring-brand-500 disabled:cursor-not-allowed disabled:bg-slate-100 disabled:text-slate-500 dark:border-white/10 dark:text-slate-300 dark:hover:bg-ink-750 dark:disabled:bg-ink-750 dark:disabled:text-slate-400;
 }
 
 @utility duplicate-resolution-primary {
@@ -847,7 +859,7 @@
 @utility destructive-submit {
   @apply contents;
   & > .button-control {
-    @apply gap-2 border-0 bg-(--danger-btn) px-4 py-2 text-sm text-(--danger-btn-fg) shadow-xs hover:bg-(--danger-btn-hover) disabled:bg-slate-100 disabled:text-slate-500 disabled:hover:bg-slate-100 dark:disabled:bg-ink-750 dark:disabled:text-slate-400 dark:disabled:hover:bg-ink-750;
+    @apply gap-2 border-transparent bg-(--danger-btn) px-4 text-sm text-(--danger-btn-fg) shadow-xs hover:bg-(--danger-btn-hover) disabled:bg-slate-100 disabled:text-slate-500 disabled:hover:bg-slate-100 dark:disabled:bg-ink-750 dark:disabled:text-slate-400 dark:disabled:hover:bg-ink-750;
     border-radius: var(--radius-control);
   }
 }
@@ -855,7 +867,7 @@
 @utility inline-submit-action {
   @apply inline-flex;
   & > .button-control {
-    @apply border-0 bg-transparent px-0 text-sm text-link hover:bg-transparent disabled:bg-transparent disabled:text-brand-600 disabled:opacity-60 dark:disabled:bg-transparent dark:disabled:text-brand-400;
+    @apply border-transparent bg-transparent px-0 text-sm text-link hover:bg-transparent disabled:bg-transparent disabled:text-brand-600 disabled:opacity-60 dark:disabled:bg-transparent dark:disabled:text-brand-400;
   }
 }
 
@@ -894,17 +906,20 @@
    A NEW chip strip picks the role by what it DOES and inherits both states; it
    does not pick colours.
 
-   ONE PADDING, BOTH ROLES — AND THE BORDER IS PART OF THE SIZE. `px-3 py-1.5`
-   over `text-sm` is 32px of content box; the nav role's 1px border makes it 34
-   and the borderless filter role 32, so "one padding scale" does NOT give one
-   height on its own. That was measured, not reasoned: the first cut of this
-   primitive asserted 32 for both and the rendered box came back 34 for the nav
-   chip. So the BASE reserves the border — `1px solid transparent` — and a role
-   only ever changes its COLOUR. Both roles render 34px, by construction rather
-   than by two call sites agreeing.
+   ONE PADDING, BOTH ROLES — AND THE BORDER IS PART OF THE SIZE. That was
+   measured, not reasoned: the first cut of this primitive asserted 32 for both
+   and the rendered box came back 34 for the nav chip, because the nav role's
+   border is part of its size and the borderless filter role's is not. So the
+   box reserves the border and a role only ever changes its COLOUR.
    (Before this: the nav role was `py-1` + border = 30px, one Analyze strip was
    `py-1.5` + border = 34 and the second `py-1` + border = 30, and FilterPills
    was 32. Four heights for one idea is the drift this closes.)
+
+   #3938 PROMOTED THAT CONSTRUCTION TO THE WHOLE APP. The padding and the
+   reserved border now come from the control box in SECTION: Touch tap targets,
+   which the `.btn` family, `button-control`, typed fields and native selects
+   wear too — so this comment describes where the box came from rather than a
+   size only chips have.
 
    THE SELECTED STATE IS PAINTED FROM THE ARIA, NOT FROM A TERNARY. Both roles
    key their lit state on `[aria-current]` (excluding the literal "false") or
@@ -915,26 +930,20 @@
    call site cannot spell the selected shade differently because it no longer
    spells it at all.
 
-   REGULAR chips have NO RENDERED HEIGHT FLOOR, DELIBERATELY; their established
-   34px box remains the navigation/filter default. THE DENSE SIZE OWNS ITS
-   RENDERED FLOOR. #3514 ruled 44px effective everywhere.
-   An 11px pseudo-element around a 22px chip appeared to reach it, but adjacent
-   chips overlap those invisible regions and native selects cannot reliably grow
-   through `::after`. `chip-sm` therefore renders at least 44px itself. Call sites
-   do not add their own `min-h-*` or coarse-pointer shell variants. */
+   NO CHIP DECLARES A HEIGHT, either role and either density: the box does, and
+   a coarse pointer repairs the reach around it. */
 @utility chip-base {
-  @apply inline-flex shrink-0 items-center gap-1.5 whitespace-nowrap px-3 py-1.5 text-sm font-medium transition disabled:cursor-not-allowed disabled:opacity-40 focus:outline-hidden focus-visible:ring-2 focus-visible:ring-brand-500 focus-visible:ring-offset-2 dark:focus-visible:ring-offset-ink-950;
-  /* Reserved so a bordered role and a borderless one occupy the same box. The
-     fill paints under it (`background-clip` is `border-box` by default), so a
-     transparent border is invisible rather than a 1px light seam. */
-  border: 1px solid transparent;
+  @apply inline-flex shrink-0 items-center gap-1.5 whitespace-nowrap px-3 text-sm font-medium transition disabled:cursor-not-allowed disabled:opacity-40 focus:outline-hidden focus-visible:ring-2 focus-visible:ring-brand-500 focus-visible:ring-offset-2 dark:focus-visible:ring-offset-ink-950;
+  /* The fill paints under the reserved border (`background-clip` is `border-box`
+     by default), so a borderless role is invisible rather than a 1px light seam. */
+  border-color: transparent;
 }
 
-/* The dense in-row size records the tree-wide horizontal/type consensus from
-   #3525 and renders the 44px target itself. This works for native selects and
-   leaves every neighboring hit region disjoint. */
+/* The dense in-row size is HORIZONTAL and TYPE density now (#3525's consensus,
+   #3938's box): it is the same 34px control as everything else, packed tighter
+   across. Its self-rendered 44px target retired with the rest of them. */
 @utility chip-sm {
-  @apply min-h-11 px-2.5 py-0.5 text-xs;
+  @apply px-2.5 text-xs;
 }
 
 @utility chip-nav {
@@ -2370,92 +2379,82 @@ input[type="time"]::-webkit-datetime-edit-ampm-field:focus {
 }
 
 /* ── SECTION: Touch tap targets ── */
-/* THE BUTTON FAMILY'S HEIGHT FLOOR (#3486), declared ONCE for the whole family.
-   `btn` / `btn-ghost` / `btn-danger` set padding and nothing else, so a button's
-   height was whatever its CONTENT happened to be: a 20px text line gives 36px,
-   and the same button with its label hidden below `sm` (`hidden sm:inline`) has
-   only a 16px icon left, so it renders 32px — measurably shorter than the labeled
-   sibling beside it. That is the "shorter wellness +" the 2026-08-21 phone review
-   spotted, and two call sites had already hand-fixed their own copy of it with a
-   local `min-h-10 min-w-10 … sm:min-h-0 sm:min-w-0`. Those hand fixes are the
-   evidence, not the fix: the ninth icon-only composition added next month would
-   have inherited nothing.
+/* THE CONTROL BOX: 34px, EVERY CONTROL KIND, BOTH VIEWPORTS (owner ruling, #3938).
+   One idea used to draw four heights on a phone — 34 (chips), 36-38 (the raw
+   `.btn` family), 44 (`button-control` and typed fields) and 26 (`button-control`
+   from `sm` up) — and a mixed row showed it: the dose ledger's quick-range chip
+   strip put 34px chips beside a 44px `btn-ghost` "Custom..." toggle.
 
-   So the floor lives with the family, and only below `sm` — desktop density keeps
-   its compact `btn-sm` rows, where a mouse is doing the pointing. `btn-sm`
-   composes as `btn btn-sm`, so it inherits this from `.btn` rather than needing
-   its own rule. Width too, not just height: an icon-only button is the one shape
-   that can be narrower than the floor, and a labeled button is already wider than
-   it, so the width half is a no-op everywhere it is not needed.
+   THE CHIP'S CONSTRUCTION (#3475) IS THE BOX, because it was MEASURED rather than
+   reasoned: content over a reserved 1px border, so a bordered control and a
+   borderless one occupy the same box instead of differing by 2px. This rule spends
+   `--control-box` on exactly that, for every kind at once.
 
-   THE NUMBER IS 44, AND WHAT IT MEASURES IS A RENDERED BOX (owner ruling on
-   #3514, 2026-08-21). It shipped at 40, because #3486's text said 40. #3514 then
-   found the registry holding TWO numbers under one name, and that the mechanism
-   §5 cited for the smaller one — #644's `.tap-target`, `inset: -6px` around a
-   32px icon — never produced 40 at all; it produces 44. The ruling is one number
-   and two mechanisms: the tap floor is 44px EFFECTIVE everywhere, met either by
-   RENDERED size (this rule, or a call site's own `min-h-11`) or by extending a
-   deliberately smaller rendered control to >=44 effective with `.tap-target`.
-   Rendered height and hit area are different guarantees, so a rule states which
-   one it means — this one means rendered — and no bare "tap floor" number is
-   citable without saying. A control that uses NEITHER mechanism is the defect.
+   THE PADDING IS DERIVED, WHICH IS WHY THE 34 IS ONE CONSTANT AND NOT FIVE.
+   `1lh` is the element's OWN line box, so the same expression answers every type
+   size the app puts in a control: `text-sm` leaves the chip's `py-1.5`, and the
+   `text-base` a typed field needs (under 16px iOS zooms the page on focus) leaves
+   `py-1`. Both are 34. #3475's own comment records what happened the last time a
+   height was left to call sites to agree on, so no call site restates one.
 
-   IN `@layer components`, WHICH IS THE HALF THAT MAKES IT A FLOOR RATHER THAN A
-   CEILING. The first cut of this rule was unlayered, on the reasoning that
-   outranking a call site's own `min-h-*` is what stops one drifting below the
-   number. It does the opposite: `min-block-size` does not compose, it REPLACES, so
-   the winning declaration is simply the last word — and an unlayered 40px beat the
-   pager's deliberate `min-h-11`, shrinking a 44px thumb step to 40 and taking
-   e2e/mobile-ui-polish.spec.ts red. A floor that can lower a taller value is not a
-   floor. Tailwind orders `components` before `utilities`, so this loses to any
-   call-site `min-h-*` and the two numbers resolve the way a reader expects them
-   to: the family sets the floor for everything that asks for nothing, and a
-   surface that needs MORE says so and gets it. A surface that
-   wants LESS is not asking for a smaller floor; it is telling us it is not a
-   member of this family.
+   UNLAYERED, DELIBERATELY, and this is the half that makes it THE box rather than
+   a default. `@utility` bodies land in Tailwind's `utilities` layer, and so does a
+   call site's own `py-1`/`text-xs`; an unlayered NORMAL declaration outranks every
+   layer, so the box holds wherever a control is composed. (For `!important` the
+   layer order REVERSES and unlayered ranks LAST — so a `py-*!` at a call site
+   would still win. There are none on these selectors, and the answer to a new one
+   is to delete it, not to add a `!` here: #3896 pinned 18 disclosures at the phone
+   floor on DESKTOP doing that.) A call site that needs a TALLER box still says so
+   with `min-h-*`, which `min-block-size` clamps on top of this whatever the layer
+   — that is how the `min-h-16`/`min-h-20` textareas keep their height.
 
-   The guard is e2e/button-height-floor.mobile.spec.ts, which measures RENDERED
-   bounding boxes at 390px — a class-string assertion would have passed against
-   the very tree this defect shipped in. The other direction, that this rule never
-   pulls a taller target DOWN, is the pager's own rendered-box measurement in
-   e2e/mobile-ui-polish.spec.ts, which is the test that caught it. */
-@layer components {
-  @media (max-width: 639.98px) {
-    .btn,
-    .btn-ghost,
-    .btn-danger {
-      min-block-size: 2.75rem;
-      min-inline-size: 2.75rem;
-    }
-  }
+   THE 44px FLOOR IS NOW EFFECTIVE-ONLY (#3514, narrowed by #3938). A coarse
+   pointer gets the missing reach back around the box, invisibly, with the geometry
+   `DoseStatusControl` already ships: `--control-reach` per side, so 34 + 2x6 = 46
+   clears 44, and adjacent targets keep a gap floor of TWICE the reach so their hit
+   regions stay disjoint (`FilterPills` and the ledger's chip row spend `gap-3` on
+   exactly that). Where reach repair is physically impossible the box IS the
+   target: a native `<select>` and a typed `<input>` render no pseudo-element,
+   which is the `chip-sm` lesson and the reason this floor is stated as effective
+   rather than rendered.
+
+   The guards measure RENDERED boxes at 390 / 639 / 640 / 1280, never a class
+   string: `e2e/control-box.spec.ts` for the one height and the disjoint reach, and
+   `lib/__tests__/phone-only-compiled-css.test.ts` for where these declarations
+   actually land in a real Tailwind compile. */
+.chip-base,
+.btn,
+.btn-ghost,
+.btn-danger,
+.button-control,
+.input {
+  border-width: var(--control-border);
+  border-style: solid;
+  padding-block: calc(
+    (var(--control-box) - 1lh - 2 * var(--control-border)) / 2
+  );
 }
 
-/* THE TYPED FIELD'S PHONE HEIGHT, DECLARED ONCE FOR THE WHOLE FAMILY (#3708).
-   The owner ruled the BOX, not a labeled row beside it, and allowed no per-site
-   exception; the rule and its guard are the typed-field row in
-   docs/internals/design-system.md §3.
-
-   IT REACHES EVERY `.input`, NOT ONLY THE 15 THE RECONCILIATION NAMED, because
-   `py-2` + `text-sm` is 38px — a field that asks for nothing was already under the
-   floor. The named `h-8` / `h-9` / `h-[38px]` sites therefore need no call-site
-   edit: `min-block-size` clamps a `height` whatever the cascade decides, so they
-   keep their desktop density and take the phone floor from here.
-
-   `@layer components`, exactly as the button floor above: `min-block-size`
-   REPLACES rather than composes, so this rule must LOSE to a call site asking for
-   more, or it would pull the `min-h-16`/`min-h-20` textareas down to 44. A floor
-   that can lower a taller field is not a floor.
-
-   AND NO `!`. Tailwind 4 inverts layer order for `!important` — unlayered ranks
-   LAST — which is how #3896 pinned 18 consumers at the phone floor on DESKTOP.
-   Here the reset above `sm` is the media query's own absence, and at 40rem exactly
-   the rule already does not apply. Height only: a select narrow enough to matter
-   is wider than 44px, and `min-inline-size` would fight the field grids. */
-@layer components {
-  @media (max-width: 639.98px) {
-    .input {
-      min-block-size: 2.75rem;
-    }
+/* The reach. `.tap-target` is the same mechanism under its own name, kept for the
+   hand-rolled controls outside the box (a 32px icon button, the dose pills). */
+@media (pointer: coarse) {
+  .chip-base,
+  .btn,
+  .btn-ghost,
+  .btn-danger,
+  .button-control,
+  .tap-target {
+    position: relative;
+  }
+  .chip-base::after,
+  .btn::after,
+  .btn-ghost::after,
+  .btn-danger::after,
+  .button-control::after,
+  .tap-target::after {
+    content: "";
+    position: absolute;
+    inset: calc(-1 * var(--control-reach));
   }
 }
 
@@ -2471,22 +2470,6 @@ input[type="time"]::-webkit-datetime-edit-ampm-field:focus {
   input[type="range"] {
     min-block-size: 2.75rem;
     min-inline-size: 2.75rem;
-  }
-}
-
-/* Icon-only action buttons render compact (e.g. h-8 w-8 = 32px) for desktop
-   density, which is below the ~44px touch-target guideline. On coarse-pointer
-   (touch) devices only, extend the clickable area with an invisible pseudo
-   element so the tap target reaches 44px without changing the visual size or
-   affecting mouse layouts. */
-@media (pointer: coarse) {
-  .tap-target {
-    position: relative;
-  }
-  .tap-target::after {
-    content: "";
-    position: absolute;
-    inset: -6px;
   }
 }
 

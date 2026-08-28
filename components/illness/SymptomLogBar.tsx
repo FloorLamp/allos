@@ -684,7 +684,7 @@ export default function SymptomLogBar({
                   }}
                   placeholder="Describe it: “fever since lunch, croupy cough”…"
                   maxLength={500}
-                  className="input h-8 flex-1 text-sm"
+                  className="input flex-1 text-sm"
                 />
                 <Button
                   type="submit"
@@ -1057,7 +1057,7 @@ export default function SymptomLogBar({
                       }}
                       placeholder="Note (e.g. worse at night)…"
                       maxLength={500}
-                      className="input h-8 flex-1 text-sm"
+                      className="input flex-1 text-sm"
                     />
                     <Button
                       type="submit"

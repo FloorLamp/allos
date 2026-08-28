@@ -1177,7 +1177,7 @@ function OwnProfileRow({
           setValue(e.target.value);
           save(e.target.value);
         }}
-        className="input h-8 w-44 py-0 text-sm disabled:opacity-40"
+        className="input w-44 text-sm disabled:opacity-40"
       >
         <option value="none">None</option>
         {profileChoiceLabels(profiles).map((c) => (
@@ -1267,7 +1267,7 @@ function GrantsRow({
                 value={level}
                 disabled={!isGranted}
                 onChange={(e) => setLevel(pid, e.target.value as Access)}
-                className="input h-8 w-32 py-0 text-sm disabled:opacity-40"
+                className="input w-32 text-sm disabled:opacity-40"
               >
                 <option value="write">Read &amp; write</option>
                 <option value="read">Read-only</option>

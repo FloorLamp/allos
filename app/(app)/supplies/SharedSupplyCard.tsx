@@ -258,7 +258,7 @@ export default function SharedSupplyCard({
               <select
                 id={`pool-add-for-${pool.id}`}
                 name="profileId"
-                className="input h-9 max-w-xs"
+                className="input max-w-xs"
                 data-testid="shared-supply-add-for-select"
                 defaultValue={String(pool.addTargets[0].id)}
               >

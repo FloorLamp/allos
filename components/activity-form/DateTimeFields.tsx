@@ -166,7 +166,7 @@ export default function DateTimeFields({
               type="time"
               value={startTime}
               onChange={(e) => onStartTime(e.target.value)}
-              className="input mt-1 h-[38px]"
+              className="input mt-1"
             />
           </div>
           <div>

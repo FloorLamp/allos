@@ -181,7 +181,7 @@ export default function WhenControl({
           onChange={(e) => setHhmm(e.target.value)}
           required={mode === "state" && timeRequired}
           disabled={disabled}
-          className="input h-8 w-28 text-sm"
+          className="input w-28 text-sm"
           id={`${testId}-time`}
           aria-label={timeLabel}
           data-testid={`${testId}-time`}
@@ -195,7 +195,7 @@ export default function WhenControl({
           }}
           required={mode === "state" && timeRequired}
           disabled={disabled}
-          className="input h-8 w-32 text-sm"
+          className="input w-32 text-sm"
           id={`${testId}-time`}
           aria-label={timeLabel}
           data-testid={`${testId}-time`}

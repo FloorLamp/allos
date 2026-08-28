@@ -61,7 +61,7 @@ export default function SaveTrendKeyPicker({
           id="star-trend"
           name="key"
           defaultValue={options[0]?.key}
-          className="input h-9 min-w-0 w-full max-w-none py-1 sm:max-w-[16rem]"
+          className="input min-w-0 w-full max-w-none sm:max-w-[16rem]"
         >
           {SERIES_PICKER_GROUP_ORDER.map((group) => {
             const rowsInGroup = options.filter((o) => o.group === group);

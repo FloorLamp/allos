@@ -819,7 +819,7 @@ export default function StrengthSets({
             onChange={(e) =>
               selectEquipment(e.target.value ? Number(e.target.value) : null)
             }
-            className="input min-h-11 w-auto px-2.5 py-0.5 text-xs"
+            className="input w-auto px-2.5 text-xs"
           >
             <option value="">Equipment</option>
             {equipmentList.map((eq) => (
@@ -838,7 +838,7 @@ export default function StrengthSets({
             type="button"
             onClick={() => setAddingEquipment(true)}
             data-testid="strength-equipment-add"
-            className="btn-ghost min-h-11 px-2.5 py-0.5 text-xs"
+            className="btn-ghost px-2.5 text-xs"
           >
             + Equipment
           </button>
