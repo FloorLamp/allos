@@ -454,7 +454,10 @@ test("the backfill offers the missed days the strip already computed (#3674)", a
     .filter({ has: page.getByRole("heading", { name: "Morning" }) })
     .locator("div.card")
     .filter({ hasText: name });
-  await row.getByRole("button", { name: "Supplement actions" }).click();
+  await hydratedClick(
+    page,
+    row.getByRole("button", { name: "Supplement actions" })
+  );
   await page.getByRole("menuitem", { name: "Dose history" }).click();
   const panel = row.getByTestId("supplement-dose-history-panel");
   const control = panel.getByRole("button", { name: "Log past dose" });
@@ -465,15 +468,17 @@ test("the backfill offers the missed days the strip already computed (#3674)", a
   // Today is still in progress, so it is not among them: four elapsed lapses.
   await expect(offers).toHaveCount(MISSED_DAYS);
   await expect(panel.getByTestId("historical-dose-form")).toHaveCount(0);
-  // Each row names what the tap will write — the day, and the dose it records.
-  await expect(offers.first()).toContainText("250 mg");
-  await expect(offers.first()).toContainText("Morning");
+  // Newest first, and each row names what the tap will write — the day, and the
+  // dose it records.
+  const newest = offers.first(); // first-ok: the offer list of a supplement this spec created and backdated itself; newest-first by construction, so this is yesterday
+  await expect(newest).toContainText("250 mg");
+  await expect(newest).toContainText("Morning");
   // ONE identity: the control does not become "Cancel" because it is open.
   await expect(control).toHaveText("Log past dose");
   await expect(control).toHaveAttribute("aria-expanded", "true");
 
   // ── The tap IS the write, through the form's own action ────────────────────
-  await settledClick(page, offers.first());
+  await settledClick(page, newest);
   await expect(page.getByText(`Logged past dose of ${name}.`)).toBeVisible();
   const history = panel.getByTestId("dose-history-row");
   await expect(history).toHaveCount(1);
