@@ -571,6 +571,25 @@ ${landingLines}
   RELATIONSHIP the ruling is about — element against the box it sits in — and keep the
   absolute too when both matter. A criterion that survives the defect it was written for
   is not a criterion.
+- A SKIP IS A CLAIM ABOUT WHAT SOME OTHER CODE PATH ALREADY DID. Whenever you
+  exclude something from a sweep, a rebuild or a retry because "that one was already
+  handled", you are asserting that an earlier handler did the work this pass would
+  have done. That assertion is about a DIFFERENT function than the one you are
+  writing, so it is true of the handlers you had in mind and silently false of the
+  ones you did not — and the failure is invisible, because a skip produces no output
+  to be wrong. Before you write the skip, enumerate the handler CLASSES that reach it
+  and say what each one actually did. Measured 2026-08-28 on #3933: a tap sweep
+  excluded the tapped message because "its handler has just rebuilt it from the same
+  state the sweep would read". True of handlers that re-render through a domain
+  builder; false of every handler that ends in \`updateMessageKeyboard\`, which syncs
+  the keyboard and never the body hash; and structurally false of the PROSE message
+  class, where the handler and the sweep compute different things. The exclusion
+  therefore skipped exactly the message whose staleness the feature existed to fix.
+  Two measurements — the lane's own and an adversarial probe's — then agreed the
+  exclusion saved nothing at all, so the fix was to DELETE it. That is the usual
+  ending: an optimization defended by an assumption about a neighbour is usually
+  buying less than the assumption costs, and the cheapest way to find out is to
+  remove it and measure both sides before you write the justification.
 - SHUT DOWN ANY DEV SERVER BEFORE YOU REPORT. If you ran \`npm run dev\` (or
   anything that leaves \`next-server\` alive), stop it and confirm it is gone
   before your final message. A clean \`git status\` does NOT mean the tree is

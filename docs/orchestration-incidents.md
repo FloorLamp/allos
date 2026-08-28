@@ -1314,3 +1314,51 @@ with tests and the orchestrator does not write production code to unblock itself
 the same discipline as sending an E2E red back to its author: the cheap local fix is
 available and taking it is how a workaround becomes the permanent state. Filed as #3940
 with both options written out and the decision left to whoever takes it.
+
+## The skip that was defended by a neighbour (2026-08-28)
+
+#3933's sweep corrects a profile's other live Telegram messages the moment a tap moves
+the ledger, instead of leaving them wrong for up to an hour. The lane built it and, on
+a constraint I wrote, excluded the message that was actually tapped:
+
+> its handler has just rebuilt it from the same state the sweep would read, so a second
+> edit is a flicker and a wasted call.
+
+The lane deserves credit for how it handled that constraint. I had written _"either
+exclude the tapped pointer, or prove the rebuild is idempotent and assert it — do not
+assume it"_, and predicted the failure would look fine in a unit test. The lane ran the
+experiment: it made the sweep INCLUDE the tapped pointer, and every "edited exactly
+once" count stayed green across 147 tests. It kept the exclusion anyway, added a guard
+that could fail, and reported its end-to-end assertion as _"true but non-discriminating"_
+rather than as proof. That is exactly right, and it is the reason the adversarial pass
+had something honest to work with.
+
+The pass still found it. The justification is true of handlers that re-render through a
+domain builder and **false of every handler that ends in `updateMessageKeyboard`** —
+which syncs the keyboard column and never `body_hash` — and structurally false of the
+_prose_ message class, where the handler and the sweep compute different things. The
+digest declares a prose reconciler. So tapping "🔕 No thanks" on the digest's own
+time-suggestion writes, strips the buttons, and then the sweep skips the digest: the one
+thing in the system that can correct that sentence never runs, and the message keeps
+asserting _"your sleep data usually lands by 07:40"_ for the rest of the hour.
+
+The measurement is the part worth keeping. With the exclusion: zero text edits at tap,
+one at the next tick. Without it: one text edit at tap, zero at the tick. **One edit
+either way.** There was no flicker to prevent and no call to save — the exclusion bought
+nothing and cost the feature its whole purpose on the one message kind that needed it.
+
+So the fix is a deletion, and the general lesson is about a shape rather than about
+Telegram. A skip is a claim about what some _other_ function already did. It is written
+in one file about behaviour that lives in another, so it is true of the handlers the
+author had in mind and quietly false of the ones they did not — and unlike a wrong
+assertion, a wrong skip emits nothing to be caught. The corollary is cheap: before
+writing the justification, remove the skip and measure both sides. If the numbers match,
+the skip was never load-bearing.
+
+Two smaller things fell out of the same pass, both worth recording because they are the
+same defect wearing different clothes. The guard that was supposed to prove the exclusion
+worked could not fail at the call site: neutering the pointer lookup — profile scoping
+and all — failed nothing across 113 tests, so it was live code no assertion observed. And
+the test comment claiming _"remove the exclusion and this reads 2"_ was false; it read 1,
+and it contradicted the lane's own correct note sixty lines below. Deleting the mechanism
+deletes all three.
