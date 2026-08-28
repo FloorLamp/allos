@@ -93,9 +93,13 @@ test.describe("Skin lesions — add → view → track recheck → photo → fil
     await expect(page.getByText("Lesion saved")).toBeVisible();
 
     // It appears as its own identity card with a watch badge + the ABCDE letters.
+    // The badge is the shared clinical pill since #3776 — title-cased, and mounted
+    // TWICE per card (the group heading and the observation row). Matching exactly
+    // is what keeps this off the lower-cased "watch" in this lesion's own note,
+    // which a substring assertion would have been satisfied by.
     const card = page.getByTestId("lesion-card").filter({ hasText: LABEL });
     await expect(card).toBeVisible();
-    await expect(card).toContainText("watch");
+    await expect(card.getByText("Watch", { exact: true })).toHaveCount(2);
     await expect(card).toContainText("ABCDE observations: E");
     await dismissToast(page, "Lesion saved");
     await page.reload();

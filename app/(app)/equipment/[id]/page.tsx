@@ -25,37 +25,9 @@ import PageContainer from "@/components/PageContainer";
 import EquipmentTrend from "@/components/EquipmentTrend";
 import EquipmentDetailActions from "@/components/EquipmentDetailActions";
 import BackLink from "@/components/BackLink";
+import { StatBox } from "@/components/StatBox";
 
 export const dynamic = "force-dynamic";
-
-function Stat({
-  label,
-  value,
-  sub,
-  testId,
-}: {
-  label: string;
-  value: string;
-  sub?: string | null;
-  // Stable e2e hook for a stat whose label text also appears elsewhere on the
-  // page ("Sessions" vs the "Recent sessions" heading — Playwright strict mode).
-  testId?: string;
-}) {
-  return (
-    <div
-      data-testid={testId}
-      className="rounded-lg border border-(--border) bg-surface px-4 py-3"
-    >
-      <div className="section-label">{label}</div>
-      <div className="mt-1 text-lg font-semibold tabular-nums text-slate-800 dark:text-slate-100">
-        {value}
-      </div>
-      {sub ? (
-        <div className="text-xs text-slate-500 dark:text-slate-400">{sub}</div>
-      ) : null}
-    </div>
-  );
-}
 
 // Equipment detail (issue #343): a single piece of gear's identity + the usage
 // payoff (sessions, last used, Σ volume lifted, Σ distance for shoes/bikes) with a
@@ -115,35 +87,35 @@ export default async function EquipmentDetailPage(props: {
         }
       />
 
-      <div className="grid gap-3 sm:grid-cols-3">
-        <Stat
+      <dl className="grid gap-3 sm:grid-cols-3">
+        <StatBox
           label="Sessions"
           value={String(sessionCount)}
-          testId="equipment-stat-sessions"
+          data-testid="equipment-stat-sessions"
         />
-        <Stat
+        <StatBox
           label="Last used"
           value={formatLastUsed(lastUsed, today(profile.id))}
           sub={lastUsed ? formatRecordDate(lastUsed, "", fmt) : null}
-          testId="equipment-stat-last-used"
+          data-testid="equipment-stat-last-used"
         />
         {showsDistance ? (
-          <Stat
+          <StatBox
             label="Total distance"
             value={`${round(kmTo(totalDistanceKm, units.distanceUnit), 1)} ${units.distanceUnit}`}
-            testId="equipment-stat-distance"
+            data-testid="equipment-stat-distance"
           />
         ) : (
-          <Stat
+          <StatBox
             label="Total volume"
             value={`${round(kgTo(totalVolumeKg, units.weightUnit), 0)} ${units.weightUnit}`}
-            testId="equipment-stat-volume"
+            data-testid="equipment-stat-volume"
           />
         )}
-      </div>
+      </dl>
 
-      <div className="mt-4 grid gap-3 sm:grid-cols-2">
-        <Stat
+      <dl className="mt-4 grid gap-3 sm:grid-cols-2">
+        <StatBox
           label="Own weight"
           value={
             equipment.weight_kg != null
@@ -152,20 +124,20 @@ export default async function EquipmentDetailPage(props: {
           }
           sub="reference only — logged loads are always the total"
         />
-        <Stat
+        <StatBox
           label="Added"
           // WHICH day, then how it reads (#3573). `equipment.created_at` is an
           // instant; this printed its first ten characters, which is the UTC day.
           // A bike added at 17:00 in UTC−08:00 read as Added tomorrow. The fallback
           // is `null`, which formatRecordDate renders as "—": a stamp that will not
-          // parse has no day, and "—" is what this Stat already says for absent.
+          // parse has no day, and "—" is what this tile already says for absent.
           value={formatRecordDate(
             dateFromCreatedAt(equipment.created_at, getTimezone(profile.id)),
             "—",
             fmt
           )}
         />
-      </div>
+      </dl>
 
       {trendPoints.length > 0 ? (
         <div className="mt-6 rounded-xl border border-(--border) bg-surface p-4">
@@ -181,7 +153,7 @@ export default async function EquipmentDetailPage(props: {
         <div className="mt-6">
           <EmptyState
             compact
-            testId="equipment-no-usage"
+            data-testid="equipment-no-usage"
             message={
               trainingRelevant
                 ? "No sessions have used this equipment yet. Tag a workout with it to start building usage history."

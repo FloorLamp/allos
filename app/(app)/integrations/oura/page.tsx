@@ -15,6 +15,7 @@ import { connectOura, disconnectOuraAction } from "./actions";
 import { getProfileAge } from "@/lib/settings";
 import { isTrainingRelevant } from "@/lib/life-stage";
 import BackLink from "@/components/BackLink";
+import SetupStepsCard from "@/components/integrations/SetupStepsCard";
 
 export const dynamic = "force-dynamic";
 
@@ -163,12 +164,10 @@ export default async function OuraPage(props: {
 
 function SetupCard({ trainingRelevant }: { trainingRelevant: boolean }) {
   return (
-    <div className="card space-y-3 text-sm text-slate-600 dark:text-slate-300">
-      <h2 className="font-semibold text-slate-800 dark:text-slate-100">
-        Setup
-      </h2>
-      <ol className="list-decimal space-y-2 pl-5">
-        <li>
+    <SetupStepsCard
+      title="Setup"
+      steps={[
+        <>
           Sign in at{" "}
           <a
             href="https://cloud.ouraring.com/personal-access-tokens"
@@ -180,13 +179,13 @@ function SetupCard({ trainingRelevant }: { trainingRelevant: boolean }) {
           </a>{" "}
           and <strong>create a personal access token</strong>. No OAuth app or
           callback URL is needed.
-        </li>
-        <li>Paste the token here and click Connect Oura.</li>
-        <li>
+        </>,
+        <>Paste the token here and click Connect Oura.</>,
+        <>
           Sleep, HRV, and workouts then sync automatically every hour, and you
           can press <strong>Sync now</strong> any time.
-        </li>
-        <li>
+        </>,
+        <>
           Imported workouts appear under{" "}
           <Link
             href={trainingRelevant ? "/training?tab=log" : "/timeline"}
@@ -202,8 +201,8 @@ function SetupCard({ trainingRelevant }: { trainingRelevant: boolean }) {
             Body metrics
           </Link>{" "}
           charts.
-        </li>
-      </ol>
-    </div>
+        </>,
+      ]}
+    />
   );
 }

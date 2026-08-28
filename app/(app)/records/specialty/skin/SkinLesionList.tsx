@@ -5,6 +5,7 @@ import SkinLesionForm from "./SkinLesionForm";
 import TrackSkinFollowUpControl from "./TrackSkinFollowUpControl";
 import LesionPhotoStrip from "./LesionPhotoStrip";
 import NotesText from "@/components/NotesText";
+import StatusBadge from "@/components/StatusBadge";
 import FilterPills from "@/components/FilterPills";
 import RecordProvenance from "@/components/RecordProvenance";
 import ProviderName from "@/components/ProviderName";
@@ -33,23 +34,6 @@ import type {
 } from "@/lib/queries";
 import type { SkinLesion } from "@/lib/types";
 import type { LesionPhotoRow } from "@/lib/skin-photo-write";
-
-const STATUS_BADGE: Record<string, string> = {
-  watch: "bg-amber-100 text-amber-700 dark:bg-amber-950 dark:text-amber-300",
-  removed: "bg-slate-100 text-slate-500 dark:bg-slate-800 dark:text-slate-400",
-  active:
-    "bg-brand-100 text-brand-700 dark:bg-brand-500/20 dark:text-brand-300",
-};
-
-function StatusBadge({ status }: { status: string }) {
-  return (
-    <span
-      className={`rounded-sm px-1.5 py-0.5 text-xs font-medium ${STATUS_BADGE[status] ?? STATUS_BADGE.active}`}
-    >
-      {skinLesionStatusLabel(status).toLowerCase()}
-    </span>
-  );
-}
 
 // One observation record row (date, status, ABCDE letters, size, finding) with inline
 // edit/delete and the Track-recheck control. Edit toggles the shared form in place.
@@ -104,7 +88,7 @@ function LesionRecordRow({
         <span className="whitespace-nowrap font-medium text-slate-800 dark:text-slate-100">
           {formatRecordDate(record.observed_date, "—", fmt)}
         </span>
-        <StatusBadge status={record.status} />
+        <StatusBadge status={skinLesionStatusLabel(record.status)} />
         {letters && (
           <span className="rounded-sm bg-slate-100 px-1.5 py-0.5 text-xs text-slate-600 dark:bg-slate-800 dark:text-slate-300">
             ABCDE observations: {letters}
@@ -290,7 +274,7 @@ export default function SkinLesionList({
                     {map}
                   </span>
                 )}
-                <StatusBadge status={head.status} />
+                <StatusBadge status={skinLesionStatusLabel(head.status)} />
               </div>
 
               <LesionPhotoStrip lesionId={head.id} photos={groupPhotos} />
