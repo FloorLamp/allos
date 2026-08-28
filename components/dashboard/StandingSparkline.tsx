@@ -169,84 +169,93 @@ export default function StandingSparkline({
     dense.length > 1 ? (WIDTH - PAD * 2) / (dense.length - 1) : WIDTH;
 
   return (
-    <>
-      <div
-        className={`hidden min-[45rem]:col-start-3 min-[45rem]:row-start-1 min-[45rem]:block min-[45rem]:justify-self-end ${tone}`}
-        style={{ width: WIDTH }}
+    // ONE GRID ITEM, THE TREND CELL (#3896). The disclosure used to be a SECOND grid
+    // item at `col-start-2 col-span-2`, so it landed on a grid line of its own beneath
+    // the row and indented to the FACTS column: a plotted family stood a full line
+    // taller than an unplotted one, at an x nothing else in the card uses. It belongs
+    // under the plot it describes — where every other consumer of the shared
+    // disclosure already puts it — rather than under the facts it does not.
+    <div
+      className={`hidden min-[45rem]:col-start-3 min-[45rem]:row-start-1 min-[45rem]:block min-[45rem]:justify-self-end ${tone}`}
+      style={{ width: WIDTH }}
+    >
+      <svg
+        data-testid="standing-sparkline"
+        data-sparkline-state="series"
+        data-sparkline-points={values.length}
+        viewBox={`0 0 ${WIDTH} ${HEIGHT}`}
+        width={WIDTH}
+        height={HEIGHT}
+        className="hidden min-[45rem]:block"
+        role="img"
+        aria-label={series.name}
+        preserveAspectRatio="xMidYMid meet"
       >
-        <svg
-          data-testid="standing-sparkline"
-          data-sparkline-state="series"
-          data-sparkline-points={values.length}
-          viewBox={`0 0 ${WIDTH} ${HEIGHT}`}
-          width={WIDTH}
-          height={HEIGHT}
-          className="hidden min-[45rem]:block"
-          role="img"
-          aria-label={series.name}
-          preserveAspectRatio="xMidYMid meet"
-        >
-          {strokes.map((run) => {
-            const key = `${run[0].date}-${run.at(-1)!.date}`;
-            const line = run.map((p) => `${p.x},${p.y}`).join(" ");
-            return (
-              <g key={key}>
-                {run.length > 1 && (
-                  // The area, at ~12% of the line's own colour. `currentColor` carries the
-                  // glance tone down from the wrapper, so the fill can never drift from
-                  // the stroke it sits under.
-                  <polygon
-                    points={`${run[0].x},${HEIGHT} ${line} ${run.at(-1)!.x},${HEIGHT}`}
-                    fill="currentColor"
-                    fillOpacity={0.12}
-                  />
-                )}
-                <polyline
-                  points={line}
-                  fill="none"
-                  stroke="currentColor"
-                  strokeWidth={2}
-                  strokeLinecap="round"
-                  strokeLinejoin="round"
+        {strokes.map((run) => {
+          const key = `${run[0].date}-${run.at(-1)!.date}`;
+          const line = run.map((p) => `${p.x},${p.y}`).join(" ");
+          return (
+            <g key={key}>
+              {run.length > 1 && (
+                // The area, at ~12% of the line's own colour. `currentColor` carries the
+                // glance tone down from the wrapper, so the fill can never drift from
+                // the stroke it sits under.
+                <polygon
+                  points={`${run[0].x},${HEIGHT} ${line} ${run.at(-1)!.x},${HEIGHT}`}
+                  fill="currentColor"
+                  fillOpacity={0.12}
                 />
-              </g>
-            );
-          })}
-          {last && (
-            // The endpoint is ALWAYS drawn: on a row whose whole point is the latest
-            // reading, the newest mark is the one the eye is looking for.
-            <circle
-              data-testid="standing-sparkline-endpoint"
-              cx={last.x}
-              cy={last.y}
-              r={2.5}
-              fill="currentColor"
-            />
-          )}
-          {strokes.flat().map((point) => (
-            // One transparent band per reading carries semantic SVG naming; the
-            // disclosure below carries the same values for sighted touch and keyboard.
-            <rect
-              key={point.date}
-              data-testid="standing-sparkline-point"
-              x={Math.max(0, point.x - band / 2)}
-              y={0}
-              width={band}
-              height={HEIGHT}
-              fill="transparent"
-            >
-              <title>{series.pointLabel(point)}</title>
-            </rect>
-          ))}
-        </svg>
-      </div>
-      <div className="relative z-10 hidden min-[45rem]:col-span-2 min-[45rem]:col-start-2 min-[45rem]:block">
+              )}
+              <polyline
+                points={line}
+                fill="none"
+                stroke="currentColor"
+                strokeWidth={2}
+                strokeLinecap="round"
+                strokeLinejoin="round"
+              />
+            </g>
+          );
+        })}
+        {last && (
+          // The endpoint is ALWAYS drawn: on a row whose whole point is the latest
+          // reading, the newest mark is the one the eye is looking for.
+          <circle
+            data-testid="standing-sparkline-endpoint"
+            cx={last.x}
+            cy={last.y}
+            r={2.5}
+            fill="currentColor"
+          />
+        )}
+        {strokes.flat().map((point) => (
+          // One transparent band per reading carries semantic SVG naming; the
+          // disclosure below carries the same values for sighted touch and keyboard.
+          <rect
+            key={point.date}
+            data-testid="standing-sparkline-point"
+            x={Math.max(0, point.x - band / 2)}
+            y={0}
+            width={band}
+            height={HEIGHT}
+            fill="transparent"
+          >
+            <title>{series.pointLabel(point)}</title>
+          </rect>
+        ))}
+      </svg>
+      {/* `z-10` clears the row link's stretched hit surface, which reaches across this
+          column; the shared disclosure keeps the link clickable through everything but
+          its own summary and list. The visible word is for the eye — the series name is
+          written for a reader who never sees the plot, so it is the accessible name. */}
+      <div className="relative z-10 flex justify-end">
         <VisualizationDetails
-          label={`${series.name} history details`}
+          label="History"
+          aria-label={`${series.name} history details`}
           items={strokes.flat().map((point) => series.pointLabel(point))}
           data-testid="standing-sparkline-details"
         />
       </div>
-    </>
+    </div>
   );
 }
