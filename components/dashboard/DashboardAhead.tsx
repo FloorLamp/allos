@@ -77,7 +77,7 @@ function Bucket({ bucket }: { bucket: DashboardAheadBucket }) {
   if (!first) return null;
   return (
     <section
-      className="rounded-xl border border-(--border) bg-surface px-4 py-3"
+      className="band rounded-xl border border-(--border) bg-surface px-4 py-3"
       data-ahead-bucket={bucket.key}
       aria-labelledby={`${contentsId}-label`}
     >

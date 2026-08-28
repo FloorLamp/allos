@@ -78,6 +78,15 @@ export function Notice({
   return (
     <div
       data-testid={testid}
+      // THE ONE EXCEPTION, DECLARED BY THE PRIMITIVE THAT IS IT (#3673). Below `sm`
+      // every neutral frame is gone, which makes this tinted box the loudest shape
+      // the app still has — so a refused write or a safety flag has something to
+      // reach for. `data-notice` is how the phone sweep in
+      // e2e/mobile-density-sweep.mobile.spec.ts recognises it: the exception is
+      // MODULE IDENTITY (this file's exported primitive, and FindingCard, which is
+      // built on the same closed NOTICE_TONE map), never a path list, a testid list
+      // or a source match. A surface joins the exception by BEING a Notice.
+      data-notice={tone}
       className={`rounded-lg border px-3 py-2.5 text-sm ${NOTICE_TONE[tone]}${
         className ? ` ${className}` : ""
       }`}

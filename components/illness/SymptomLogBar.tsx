@@ -661,7 +661,7 @@ export default function SymptomLogBar({
         <div
           id="symptom-add-picker"
           data-testid="symptom-add-picker"
-          className="mb-3 rounded-lg border border-black/5 p-3 dark:border-white/5"
+          className="subpanel-inset-sm mb-3 rounded-lg border border-black/5 p-3 dark:border-white/5"
         >
           {textIntakeEnabled && (
             <div
@@ -878,7 +878,7 @@ export default function SymptomLogBar({
         <div
           id="temp-quick-entry"
           data-testid="temp-quick-entry"
-          className="mb-3 rounded-lg border border-black/5 p-3 dark:border-white/5"
+          className="subpanel-inset-sm mb-3 rounded-lg border border-black/5 p-3 dark:border-white/5"
         >
           <label className="label mb-1 block" htmlFor="temp-quick-input">
             Temperature
@@ -992,7 +992,7 @@ export default function SymptomLogBar({
               <li
                 key={key}
                 data-testid={`symptom-${key}`}
-                className="rounded-lg border border-black/5 p-3 dark:border-white/5"
+                className="subpanel-inset-sm rounded-lg border border-black/5 p-3 dark:border-white/5"
               >
                 <div className="flex flex-wrap items-center gap-2">
                   <span className="flex min-w-0 flex-1 items-center gap-1.5 text-sm font-medium text-slate-800 dark:text-slate-100">

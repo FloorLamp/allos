@@ -223,9 +223,13 @@ function readClassText(expression: string, needle: string): string {
 const TIERS = new Map<string, string>([
   // Class A — a padded box INSIDE a padded card. Keyed by the inset the box
   // carries today, because that is what a call site looks at to pick one.
-  ["subpanel-inset", "p-3"], // from p-4 (16) / p-4 sm:p-5
-  ["subpanel-inset-sm", "p-2.5"], // from p-3 (12)
-  ["subpanel-inset-xs", "p-2"], // from p-2.5 (10)
+  // VERTICAL ONLY since #3673. The horizontal half of these tiers was a gutter
+  // inside the card's gutter; the card spends none below `sm` now, so a sub-panel
+  // that still stepped its own `px` would be the only thing left holding the page's
+  // text off the page gutter. The step that remains is the one #3466 measured.
+  ["subpanel-inset", "py-3"], // from p-4 (16) / p-4 sm:p-5
+  ["subpanel-inset-sm", "py-2.5"], // from p-3 (12)
+  ["subpanel-inset-xs", "py-2"], // from p-2.5 (10)
   // Class C — the vertical seam BETWEEN page sections.
   ["section-seam", "mb-4"], // from mb-6 (24)
   ["section-seam-lg", "mb-6"], // from mb-8 (32)
@@ -246,6 +250,9 @@ const SITES: ReadonlyArray<readonly [string, string, string]> = [
   ["app/(app)/settings/family/FamilyManager.tsx", "subpanel-inset-sm", "p-3"],
   ["app/(app)/training/TrainingWatchCard.tsx", "subpanel-inset-sm", "p-3"],
   ["components/FindingRow.tsx", "subpanel-inset-sm", "p-3"],
+  // The illness cockpit's three hand-rolled `p-3` panels, registered by #3673:
+  // a sub-panel that never carried a tier still drew a frame on a phone.
+  ["components/illness/SymptomLogBar.tsx", "subpanel-inset-sm", "p-3"],
   ["app/(app)/training/EndurancePlanBar.tsx", "subpanel-inset-sm", "py-3"],
   ["app/(app)/training/MuscleCoverageCard.tsx", "subpanel-inset-xs", "p-2.5"],
   ["app/(app)/encounters/AppointmentList.tsx", "subpanel-inset-sm", "p-3"],

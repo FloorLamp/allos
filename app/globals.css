@@ -304,6 +304,17 @@
   border-end-end-radius: calc(var(--card-radius, 0.75rem) - 1px);
 }
 
+@utility band {
+  /* A HAND-ROLLED FRAME THAT IS REALLY A BAND (#3673). `.card` gives up its frame
+     below `sm` in the flat rule below; a surface that draws the same box out of raw
+     `rounded-xl border bg-surface` cannot be reached by a class it does not carry,
+     so it says so with this one instead. Put it on the frame AND on each element
+     that spends the frame's gutter — the section labels and the rows — which is the
+     `card-delegated` shape written for a surface whose desktop values are its own.
+     Desktop is untouched by construction: every declaration is `max-sm:`. */
+  @apply max-sm:rounded-none! max-sm:border-x-0! max-sm:px-0!;
+}
+
 /* ────────────────────────────────────────────────────────────────────────────
    BELOW `sm`, NO CARD DRAWS A FRAME (issue #3673).
 
@@ -372,12 +383,16 @@
      tiers are untouched — each still declares its own `max-sm:p-*!` and each call
      site still carries it, which is what keeps the vertical rhythm and the review
      moment #3466 bought. What goes is the horizontal half and the frame. */
-  /* `!important` because the tiers themselves are `@apply max-sm:p-*!` — an
-     important declaration is never beaten by a normal one, whatever the layer. */
+  /* The horizontal half is gone from the TIERS themselves (`max-sm:py-*!`), not
+     from here, and that is forced rather than chosen: an `!important` declaration
+     in Tailwind's `utilities` layer is never beaten by an unlayered one — for
+     important declarations the layer order reverses and unlayered ranks LAST — so
+     a `padding-inline: 0 !important` written in this block would lose to
+     `@apply max-sm:p-3!` and this rule would ship silently doing nothing. The
+     frame is a normal declaration at the call site, so it comes off here. */
   .subpanel-inset,
   .subpanel-inset-sm,
   .subpanel-inset-xs {
-    padding-inline: 0 !important;
     border-inline-width: 0;
     border-radius: 0;
   }
@@ -438,15 +453,15 @@
    gutters, so the guard would have to carry a ~100-entry allow-list and would be
    deleted within a week — taking the real convention with it. */
 @utility subpanel-inset {
-  @apply max-sm:p-3!;
+  @apply max-sm:py-3!;
 }
 
 @utility subpanel-inset-sm {
-  @apply max-sm:p-2.5!;
+  @apply max-sm:py-2.5!;
 }
 
 @utility subpanel-inset-xs {
-  @apply max-sm:p-2!;
+  @apply max-sm:py-2!;
 }
 
 /* ────────────────────────────────────────────────────────────────────────────

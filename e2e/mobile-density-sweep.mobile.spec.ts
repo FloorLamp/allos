@@ -60,20 +60,26 @@ test("class A: a sub-panel inside a card pads less than the card does (#3466)", 
     pillar.getByTestId("longevity-pillar-vo2max-value")
   ).toBeVisible();
 
-  // The pillar box is `p-2.5` (10px) on desktop and steps to 8 here.
+  // The pillar box is `p-2.5` (10px) on desktop and steps to 8 here — VERTICALLY.
+  // #3673 took the horizontal half off every tier: the card below it spends no
+  // inline gutter any more, so a sub-panel that still stepped its own `px` would
+  // be the only thing left holding the page's text off the page gutter.
   const inset = await padding(pillar);
-  expect(inset).toEqual([8, 8, 8, 8]);
+  expect(inset).toEqual([8, 0, 8, 0]);
 
-  // …inside a card that is still at its #1416 floor of 16. The card is a
-  // DIFFERENT element, which is what makes this a comparison rather than a
-  // tautology: the sweep's whole finding is that the two layers were both
-  // spending a full gutter.
+  // …inside a card that keeps its #1416 vertical floor of 16 and no longer spends
+  // a horizontal one. The card is a DIFFERENT element, which is what makes this a
+  // comparison rather than a tautology: the sweep's finding was that the two
+  // layers were both spending a full gutter, and #3673's is that the outer one
+  // should not have been spending a horizontal gutter at all.
   const card = main
     .getByTestId("longevity-fitness")
     .locator("xpath=ancestor-or-self::*[contains(@class,'card')][1]");
   const cardInset = await padding(card);
-  expect(cardInset).toEqual([16, 16, 16, 16]);
-  expect(Math.max(...inset)).toBeLessThan(Math.min(...cardInset));
+  expect(cardInset).toEqual([16, 0, 16, 0]);
+  // The vertical step is still a step; the horizontal one is gone on both.
+  expect(inset[0]).toBeLessThan(cardInset[0]);
+  expect(inset[3]).toBe(cardInset[3]);
 
   // The box did not become a worse target for being tighter.
   const box = await pillar.boundingBox();
@@ -162,11 +168,342 @@ test("class B: /data draws one border around each integration, not two (#3466)",
   const card = grid.getByTestId("integration-card-garmin");
   await expect(card).toBeVisible();
 
-  // The card keeps its border; the wrapper that used to draw a SECOND one around
-  // the whole grid no longer does. Both readings, from both elements, in one test —
-  // "the wrapper has no border" alone would also pass if the cards lost theirs.
-  expect(await px(card, "border-top-width")).toBeGreaterThan(0);
+  // NEITHER draws one at 390px since #3673, and that is the whole ruling rather
+  // than this test going quiet: the wrapper never should have (the #3466 nest),
+  // and the card gives its frame up on a phone. What still separates one source
+  // from the next is the card's own `--surface` fill against the page canvas —
+  // asserted here, because "no border anywhere" alone is also what a card that
+  // vanished into the background would report.
+  expect(await px(card, "border-top-width")).toBe(0);
   expect(await px(wrapper, "border-top-width")).toBe(0);
-  // …and it spends no gutter of its own either, which is the phone half of it.
+  expect(await px(card, "border-top-left-radius")).toBe(0);
+  const cardFill = await card.evaluate(
+    (node) => getComputedStyle(node).backgroundColor
+  );
+  const canvas = await page.evaluate(
+    () => getComputedStyle(document.body).backgroundColor
+  );
+  expect(cardFill).not.toBe(canvas);
+  expect(cardFill).not.toBe("rgba(0, 0, 0, 0)");
+  // …and neither spends a gutter of its own, which is the phone half of it.
   expect(await padding(wrapper)).toEqual([0, 0, 0, 0]);
+  expect(await px(card, "padding-left")).toBe(0);
+});
+
+// ── #3673: below `sm`, no card draws a frame ─────────────────────────────────
+//
+// The page gutter, once, and nothing else. `PAGE_GUTTER_PX` is the shell's own
+// `pl-[max(1rem,env(safe-area-inset-left))]` on `app-content-container`, read here
+// as the number every band, row and zone label must start at; `CONTENT_PX` is what
+// a text line then gets on this viewport. Both are stated as what they measure
+// rather than left as literals: 390 − 2×16 = 358, which is 91.8% of the viewport,
+// against the 326px (83.6%) a framed card left it at (390 − 16 page − 16 card, both
+// sides). That +32 is the reclaimed inset the issue's arithmetic names.
+const PAGE_GUTTER_PX = 16;
+const VIEWPORT_PX = 390;
+const CONTENT_PX = VIEWPORT_PX - 2 * PAGE_GUTTER_PX;
+
+// A CARD FRAME, as a browser draws one rather than as a class list spells it: a
+// block box carrying BOTH a border and a corner radius. Three silences are part of
+// the definition and each one is a shape that ships today and is correct:
+//
+//   * a CONTROL, and a box whose every child is a control (a segmented toggle).
+//     Object-ness moved to the affordance; a button that stopped looking like a
+//     button would be the sweep eating its own ruling.
+//   * a PILL — radius at or past half the height. A badge or a chip is not a card.
+//   * a NOTICE. Recognised by `data-notice`, which only `components/Notice.tsx`'s
+//     exported primitive and its FindingCard sibling (built on the same closed
+//     NOTICE_TONE map) emit. That is MODULE IDENTITY: there is no path list, no
+//     testid list and no source match anywhere in this rule, and a surface joins
+//     the exception by BEING a Notice rather than by being written down here.
+async function cardFrames(page: import("@playwright/test").Page) {
+  return page.evaluate(() => {
+    const found: string[] = [];
+    const main = document.querySelector("main");
+    if (!main) throw new Error("no <main> to sweep");
+    for (const el of main.querySelectorAll<HTMLElement>("*")) {
+      const style = getComputedStyle(el);
+      const border = Number.parseFloat(style.borderTopWidth);
+      const radius = Number.parseFloat(style.borderTopLeftRadius);
+      if (!(border >= 1 && radius > 0)) continue;
+      const box = el.getBoundingClientRect();
+      if (!box.height || !box.width) continue;
+      if (radius * 2 >= box.height) continue;
+      if (style.display.startsWith("inline")) continue;
+      if (
+        el.closest(
+          "button,a,input,select,textarea,summary,label,[role='button'],[role='tab'],[role='switch'],[contenteditable]"
+        )
+      )
+        continue;
+      const children = [...el.children];
+      if (
+        children.length > 0 &&
+        children.every((child) =>
+          child.matches("button,a,input,select,label,[role='button']")
+        )
+      )
+        continue;
+      if (el.closest("[data-notice]")) continue;
+      found.push(
+        `${el.tagName}${el.dataset.testid ? `[${el.dataset.testid}]` : ""} border=${border} radius=${radius} class="${el.className}"`
+      );
+    }
+    return found;
+  });
+}
+
+// Every element that draws a band or a row: the card primitives, the bands, and
+// the stacked rows. Their CONTENT left edge is the page's left rag, and the set of
+// distinct values it takes is the "one left edge" property, measured.
+const BAND_SELECTOR =
+  "main .card, main .card-quiet, main .band, main .table-cards tr";
+
+async function contentEdges(page: import("@playwright/test").Page) {
+  return page.evaluate((selector) => {
+    const edges = new Map<string, number>();
+    for (const el of document.querySelectorAll<HTMLElement>(selector)) {
+      const style = getComputedStyle(el);
+      const box = el.getBoundingClientRect();
+      if (!box.width) continue;
+      const left = Math.round(box.left + Number.parseFloat(style.paddingLeft));
+      const width = Math.round(
+        box.width -
+          Number.parseFloat(style.paddingLeft) -
+          Number.parseFloat(style.paddingRight)
+      );
+      const key = `${left}/${width}`;
+      edges.set(key, (edges.get(key) ?? 0) + 1);
+    }
+    return [...edges].map(([key, count]) => ({ key, count }));
+  }, BAND_SELECTOR);
+}
+
+// The three surfaces the ruling names, with the content marker each one must be
+// waited for. A region measured before its rows arrive is a measurement of a
+// placeholder, and empty is the state that flatters every assertion below.
+const SWEPT = [
+  ["the ledger", "/nutrition/dose-history", "dose-ledger"],
+  ["a Records pane", "/records", "records-visits"],
+  ["the dashboard", "/", "dashboard-standing"],
+] as const;
+
+for (const [what, route, marker] of SWEPT) {
+  test(`#3673 flat ban: no card frame renders on ${what} at 390px`, async ({
+    page,
+  }) => {
+    test.slow();
+    await page.goto(route);
+    await expect(page.getByTestId(marker)).toBeVisible();
+
+    expect(await cardFrames(page)).toEqual([]);
+
+    // Nesting stays banned, and below `sm` a band is what a card became — so the
+    // card-in-card rule is asked of the band shape too, on the rendered tree.
+    const nested = await page.evaluate(
+      () =>
+        document.querySelectorAll(
+          "main .card .card, main .card .card-quiet, main .card .band, main .band .band, main .band .card"
+        ).length
+    );
+    expect(nested).toBe(0);
+  });
+}
+
+test("#3673 the sweep can SEE a frame, and stays quiet on the Notice that keeps one", async ({
+  page,
+}) => {
+  test.slow();
+  // A green sweep over a COMPLYING tree says nothing about what the sweep can see.
+  // This route is the one that renders a real tinted Notice, so both halves are
+  // asked of the same DOM: the forged offender must be caught, and the shipped
+  // safety notice beside it must not be.
+  await page.goto("/nutrition?tab=supplements");
+  const notice = page.locator("[data-notice='amber']").first(); // first-ok: every Notice is the same primitive; the assertion is about the shape
+  await expect(notice).toBeVisible();
+  expect(await cardFrames(page)).toEqual([]);
+
+  const forged = await page.evaluate(() => {
+    const el = document.createElement("div");
+    el.dataset.testid = "forged-card-frame";
+    el.style.cssText =
+      "border:1.5px solid #888;border-radius:14px;padding:16px;height:80px";
+    el.textContent = "FORGED BY A SPEC on purpose — not a shipped card";
+    document.querySelector("main")?.append(el);
+    return el.dataset.testid;
+  });
+  const caught = await cardFrames(page);
+  expect(caught.join(" ")).toContain(forged);
+  // …and exactly one thing was caught: the Notice on the same page is still silent.
+  expect(caught).toHaveLength(1);
+});
+
+test("#3673 one left edge, and the line it reclaims", async ({ page }) => {
+  test.slow();
+  // The dashboard is the scroll that mixes zones, bands, reporting rows and
+  // action-bearing rows — the surface the left-edge ruling was decided on.
+  await page.goto("/");
+  await expect(page.getByTestId("dashboard-standing")).toBeVisible();
+  await expect(page.getByTestId("now-strip")).toBeVisible();
+
+  // ONE value, not "no value greater than". A set with two entries is the 16px
+  // step the prototype's ochre guide made visible, whichever way it steps.
+  expect(await contentEdges(page)).toEqual([
+    { key: `${PAGE_GUTTER_PX}/${CONTENT_PX}`, count: expect.any(Number) },
+  ]);
+
+  // Zone labels sit on the same rag as the bands they head.
+  const labels = await page.evaluate(() =>
+    [
+      ...new Set(
+        [...document.querySelectorAll<HTMLElement>("main h2")].map((el) =>
+          Math.round(el.getBoundingClientRect().left)
+        )
+      ),
+    ].sort((a, b) => a - b)
+  );
+  expect(labels).toEqual([PAGE_GUTTER_PX]);
+
+  // The dividend, asserted rather than screenshotted: ≥92% of the viewport, up
+  // from the 83.6% a framed card left.
+  expect(CONTENT_PX / VIEWPORT_PX).toBeGreaterThanOrEqual(0.92);
+  const widest = await page.evaluate(
+    (selector) =>
+      Math.max(
+        ...[...document.querySelectorAll<HTMLElement>(selector)].map((el) => {
+          const style = getComputedStyle(el);
+          return (
+            el.getBoundingClientRect().width -
+            Number.parseFloat(style.paddingLeft) -
+            Number.parseFloat(style.paddingRight)
+          );
+        })
+      ),
+    BAND_SELECTOR
+  );
+  expect(widest).toBe(CONTENT_PX);
+});
+
+test("#3673 the ledger's rows reclaim the same line", async ({ page }) => {
+  test.slow();
+  await page.goto("/nutrition/dose-history");
+  const row = page.locator("table.logged-event-rows tr").first(); // first-ok: every row is the same primitive
+  await expect(row).toBeVisible();
+  const box = await row.boundingBox();
+  expect(Math.round(box?.x ?? 0)).toBe(PAGE_GUTTER_PX);
+  expect(Math.round(box?.width ?? 0)).toBe(CONTENT_PX);
+  // The row still meets the tap floor it met when a card was drawing its gutter.
+  expect(box?.height ?? 0).toBeGreaterThanOrEqual(TAP_FLOOR_PX);
+});
+
+test("#3673 emphasis does not flatten: a tinted Notice still outranks an ordinary row", async ({
+  page,
+}) => {
+  test.slow();
+  // The invariant that made the Notice the one exception: with every neutral frame
+  // gone it is the loudest shape the app still has, and a safety or refusal surface
+  // that reads no louder than an ordinary row is a failed sweep. Loudness here is
+  // the two things the row gave up — a drawn frame and a tint of its own.
+  await page.goto("/nutrition?tab=supplements");
+  const notice = page.locator("[data-notice='amber']").first(); // first-ok: the primitive, not this occurrence
+  await expect(notice).toBeVisible();
+
+  const read = (locator: Locator) =>
+    locator.evaluate((node) => {
+      const style = getComputedStyle(node);
+      return {
+        border: Number.parseFloat(style.borderTopWidth),
+        radius: Number.parseFloat(style.borderTopLeftRadius),
+        fill: style.backgroundColor,
+      };
+    });
+
+  const loud = await read(notice);
+  expect(loud.border).toBeGreaterThanOrEqual(1);
+  expect(loud.radius).toBeGreaterThan(0);
+
+  // The ordinary row it has to out-shout: a stacked row on the same page.
+  const row = page.locator("main .table-cards tr").first(); // first-ok: any row is the comparison
+  await expect(row).toBeVisible();
+  const quiet = await read(row);
+  expect(quiet.border).toBe(0);
+  expect(quiet.radius).toBe(0);
+  expect(loud.fill).not.toBe(quiet.fill);
+  const canvas = await page.evaluate(
+    () => getComputedStyle(document.body).backgroundColor
+  );
+  expect(loud.fill).not.toBe(canvas);
+});
+
+test("#3673 object-ness is the affordance: two rows in one band differ only by their control", async ({
+  page,
+}) => {
+  test.slow();
+  // The Now zone renders only action-bearing cards under the shared seed, so the
+  // reporting half of this comparison comes from the Standing band on the same
+  // scroll — which is better for the claim anyway: both rows sit inside ONE band,
+  // so they share a fill and a frame by construction and the control is the only
+  // thing left that can distinguish them.
+  await page.goto("/");
+  await expect(page.getByTestId("dashboard-standing")).toBeVisible();
+  const rows = page.locator("[data-standing-family]");
+  const split = await rows.evaluateAll((nodes) => {
+    const shape = (node: Element) => {
+      const style = getComputedStyle(node);
+      return `${style.borderTopWidth}|${style.borderTopLeftRadius}|${style.backgroundColor}|${style.paddingLeft}`;
+    };
+    const acting: string[] = [];
+    const reporting: string[] = [];
+    for (const node of nodes)
+      (node.querySelector("a,button") ? acting : reporting).push(shape(node));
+    return { acting, reporting };
+  });
+  // Presence first: a vacuous split would satisfy every assertion below it.
+  expect(split.acting.length).toBeGreaterThan(0);
+  expect(split.reporting.length).toBeGreaterThan(0);
+  // …and the two kinds are visually indistinguishable. No frame, no fill step.
+  expect([...new Set([...split.acting, ...split.reporting])]).toHaveLength(1);
+
+  // The Now zone's own cards draw no frame either, which is the other half of the
+  // same ruling on the zone the acceptance criterion names.
+  const nowShapes = await page
+    .locator("[data-testid^='now-strip-card-']")
+    .evaluateAll((nodes) =>
+      nodes.map((node) => {
+        const style = getComputedStyle(node);
+        return `${style.borderTopWidth}|${style.borderTopLeftRadius}`;
+      })
+    );
+  expect(nowShapes.length).toBeGreaterThan(0);
+  expect([...new Set(nowShapes)]).toEqual(["0px|0px"]);
+});
+
+test.describe("dark", () => {
+  test.use({ colorScheme: "dark" });
+
+  test("#3673 a band is still separable from the canvas in dark mode", async ({
+    page,
+  }) => {
+    test.slow();
+    // The failure mode the invariant names: a band that becomes invisible against
+    // the canvas is a failed de-card, not a shipped one. With the border gone the
+    // fill is what is left carrying it, so the fill is what is read — from the
+    // band and from the body, two different elements.
+    await page.goto("/");
+    const band = page.getByTestId("dashboard-standing");
+    await expect(band).toBeVisible();
+    const fill = await band.evaluate(
+      (node) => getComputedStyle(node).backgroundColor
+    );
+    const canvas = await page.evaluate(
+      () => getComputedStyle(document.body).backgroundColor
+    );
+    expect(fill).not.toBe("rgba(0, 0, 0, 0)");
+    expect(fill).not.toBe(canvas);
+    // …and the theme really is the dark one, or the reading above is the light
+    // theme's answer wearing this test's name.
+    await expect(page.locator("html")).toHaveClass(/dark/);
+    // The band keeps its dividers too, which is the other half of "fill OR divider".
+    expect(await px(band, "border-top-width")).toBeGreaterThan(0);
+  });
 });
