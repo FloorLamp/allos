@@ -183,17 +183,20 @@ describe("THE ANCHOR GUARD, behaviourally (#3901)", () => {
     ]);
   });
 
-  it("still supersedes when the incoming bucket agrees with its own anchor", () => {
-    // The converse, so the guard cannot pass by refusing everything: the same push, the
-    // same window, filed under the day the anchor names — and the collapse happens.
+  it("still supersedes the SAME-DAY re-anchor pair, which is #3424's own shape", () => {
+    // THE CONVERSE, so the guard cannot pass by refusing everything. A same-day re-cut —
+    // the LA bucket at 07:00Z and the NY bucket at 04:00Z, BOTH naming 2026-08-26 — is a
+    // different natural key, overlaps, and is filed under the day its anchor names, so
+    // it collapses as #3424 designed. That is the shape the prod incident had, and it is
+    // untouched by the derivation.
     const out = pushMetricSamples(
       p,
       [
         {
           metric: "steps",
           date: "2026-08-26",
-          started_at: "2026-08-26T07:00:00Z",
-          ended_at: "2026-08-27T07:30:00Z",
+          started_at: "2026-08-26T04:00:00Z",
+          ended_at: "2026-08-26T20:00:00Z",
           value: 6700,
           origin: ORIGIN,
         },
@@ -202,6 +205,7 @@ describe("THE ANCHOR GUARD, behaviourally (#3901)", () => {
       undefined,
       { pushedAt: "2026-08-27T07:30:05Z" }
     );
+    expect(out.superseded).toBe(1);
     expect(stepRows(p)).toEqual([{ date: "2026-08-26", value: 6700 }]);
     expect(out.overlapsLeft).toBe(0);
   });
