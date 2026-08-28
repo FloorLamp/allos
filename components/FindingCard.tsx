@@ -114,11 +114,10 @@ export function FindingCard({
   return (
     <div
       data-testid={testid}
-      // The same declaration Notice makes, for the same reason and off the same
-      // closed NOTICE_TONE export (#3673) — but only when this card actually draws
-      // the tinted frame. `embedded` renders no frame at all, so it claims no
-      // exception: a marker on a frameless box would teach the phone sweep to
-      // forgive a shape it never needs to.
+      // Notice's declaration, off the same closed NOTICE_TONE export (#3673) — but
+      // only when this card actually draws the tinted frame. `embedded` draws none,
+      // so it claims no exception: a marker on a frameless box would teach the
+      // phone sweep to forgive a shape it never needs to.
       data-notice={embedded ? undefined : tone}
       className={
         embedded

@@ -305,13 +305,11 @@
 }
 
 @utility band {
-  /* A HAND-ROLLED FRAME THAT IS REALLY A BAND (#3673). `.card` gives up its frame
-     below `sm` in the flat rule below; a surface that draws the same box out of raw
-     `rounded-xl border bg-surface` cannot be reached by a class it does not carry,
-     so it says so with this one instead. Put it on the frame AND on each element
-     that spends the frame's gutter — the section labels and the rows — which is the
-     `card-delegated` shape written for a surface whose desktop values are its own.
-     Desktop is untouched by construction: every declaration is `max-sm:`. */
+  /* A HAND-ROLLED FRAME THAT IS REALLY A BAND (#3673). A surface built out of raw
+     `rounded-xl border bg-surface` cannot be reached by the `.card` rule below, so
+     it says so with this instead. Goes on the frame AND on each element that spends
+     the frame's gutter (labels, rows) — `card-delegated`'s shape, for a surface
+     whose desktop values are its own. */
   @apply max-sm:rounded-none! max-sm:border-x-0! max-sm:px-0!;
 }
 
@@ -319,43 +317,28 @@
    BELOW `sm`, NO CARD DRAWS A FRAME (issue #3673).
 
    #3466 ruled the page gutter and the card gutter both at the platform floor and
-   stepped down only the SECOND inset inside each. That reasoning was about
-   TIGHTENING a gutter. This removes the LAYER: on a phone a `.card` keeps its
-   `--surface` fill and its vertical rhythm and gives up everything that makes it
-   a frame — border, radius, shadow, and the horizontal gutter that pushed its
-   first character to 32px while an unframed neighbour's sat at 16.
-
-   WHY THE LEFT EDGE AND NOT THE PIXELS. The prototype that settled this put an
-   ochre 16px guide down three dashboard columns: a framed card's text starts at
-   32px, a band's at 16, so the left rag STEPS every time the page alternates
-   between them. One left edge is the property; the ~32px it also reclaims
-   (~83% -> ~92% of a 390px line) is the dividend.
-
-   Grouping is then carried by a label plus `--divider` hairlines over the band's
-   fill, and object-ness by the AFFORDANCE — a row with a control is a thing you
-   act on, a row without one reports. The button was already saying what the
-   border spent 16px repeating.
+   stepped down only the SECOND inset inside each. That was about TIGHTENING a
+   gutter; this removes the LAYER. What decided it was not the pixels but the LEFT
+   EDGE: a framed card's first character sat at 32px and an unframed neighbour's at
+   16, so the left rag stepped 16px every time the page alternated. The reclaimed
+   line (358px instead of 326 on a 390px viewport) is the dividend.
 
    THE ONE EXCEPTION IS NOT WRITTEN HERE, and that is the mechanism rather than an
    omission. The tinted Notice family (components/Notice.tsx) is a DIFFERENT
    primitive — `rounded-lg border` plus a NOTICE_TONE tint, never `.card` — so it
-   keeps its frame below `sm` because this rule cannot reach it, not because a
-   list of paths spares it. There is nothing to allowlist and nothing to keep in
-   sync: the exception is module identity, and a surface joins it by being a
-   Notice. That matters because a Notice is now the app's loudest available
-   shape, and a refused write or a safety flag has nothing else to reach for.
+   keeps its frame because this rule cannot reach it, not because a list of paths
+   spares it. Nothing to allowlist and nothing to keep in sync: a surface joins the
+   exception by BEING a Notice. It matters because a Notice is now the loudest
+   shape the app has, and a refused write has nothing else to reach for.
 
-   PADDING-INLINE ONLY. The block padding is the card's vertical rhythm, not a
-   gutter, and it is what keeps a band's fill off its own first line; the issue's
-   whole arithmetic is horizontal. `card-delegated` sets `p-0!` and cells carry
-   their own `card-gutter-*`, which this steps to zero for the same reason: a
-   gutter delegated one level in is still the layer being removed.
+   PADDING-INLINE ONLY. Block padding is the card's vertical rhythm, not a gutter,
+   and it keeps a band's fill off its own first line.
 
-   Unlayered on purpose. `@utility` bodies land in Tailwind's `utilities` layer;
-   an unlayered rule beats every layer, so a call site's own `p-6` cannot win the
-   tie back. It also sits OUTSIDE any `@utility` block so
-   lib/__tests__/phone-only-compiled-css.test.ts still reads `.card` as the
-   desktop primitive it is.
+   Unlayered on purpose: `@utility` bodies land in Tailwind's `utilities` layer and
+   an unlayered normal declaration beats every layer, so a call site's own `p-6`
+   cannot win the tie back. It also sits OUTSIDE any `@utility` block so
+   lib/__tests__/phone-only-compiled-css.test.ts still reads `.card` as the desktop
+   primitive it is.
    ──────────────────────────────────────────────────────────────────────────── */
 @media (width < 40rem) {
   .card,
@@ -370,28 +353,22 @@
   .card-gutter-action {
     padding-inline: 0;
   }
-  /* The footnote's negative pull was cancelling a gutter that is no longer spent. */
+  /* Its negative pull was cancelling a gutter that is no longer spent. */
   .card-footnote {
     margin-inline: 0;
     padding-inline: 0;
     border-end-start-radius: 0;
     border-end-end-radius: 0;
   }
-  /* THE SAME LAYER, ONE LEVEL IN. #3466 stepped these DOWN because they were a
-     second gutter inside a card's first; with the first gone they became the only
-     one, and a `rounded-lg border` box is the very frame this rule removes. Their
-     tiers are untouched — each still declares its own `max-sm:p-*!` and each call
-     site still carries it, which is what keeps the vertical rhythm and the review
-     moment #3466 bought. What goes is the horizontal half and the frame. */
-  /* THE TIER AND THIS RULE SPLIT THE JOB, and the split is forced rather than
-     chosen. The tiers step VERTICALLY only now (`max-sm:py-*!`); the horizontal
-     half is zeroed here. It cannot be done the other way round: an `!important`
-     declaration in Tailwind's `utilities` layer is never beaten by an unlayered
-     one — for important declarations the layer order REVERSES and unlayered ranks
-     last — so a `padding-inline: 0 !important` written in this block would lose to
-     `@apply max-sm:p-2.5!` and would ship silently doing nothing. The call site's
-     own `p-2.5` and `rounded-lg border`, being normal declarations, do lose to
-     this block, which is what takes the frame off. */
+  /* THE SAME LAYER, ONE LEVEL IN: #3466 stepped these DOWN as a second gutter
+     inside the card's first, and with the first gone they became the only one.
+     The tiers step VERTICALLY only now (`max-sm:py-*!`) and the horizontal half is
+     zeroed here — that split is forced, not chosen. An `!important` declaration in
+     the `utilities` layer is never beaten by an unlayered one (for important
+     declarations the layer order REVERSES and unlayered ranks last), so a
+     `padding-inline: 0 !important` here would lose to `@apply max-sm:p-2.5!` and
+     ship silently doing nothing. A call site's own normal `rounded-lg border` does
+     lose to this block, which is what takes the frame off. */
   .subpanel-inset,
   .subpanel-inset-sm,
   .subpanel-inset-xs {
@@ -400,9 +377,9 @@
     border-radius: 0;
   }
   /* A stacked row's own `p-3` (#1616) is that layer again. `logged-event-rows`
-     already zeroed it by hand for the five ledger consumers, on the reasoning that
-     their host card had drawn the gutter; no card draws one now, so the rule
-     belongs to every stacked row and that override is deleted. */
+     had zeroed it by hand for its five consumers because their host card drew the
+     gutter; no card draws one now, so the rule belongs to every stacked row and
+     that override is deleted. */
   .table-cards tr {
     padding-inline: 0;
   }
