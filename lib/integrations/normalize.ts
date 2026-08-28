@@ -1082,7 +1082,18 @@ export function supersedeMetricSampleOverlaps(
  * body. A bucket's first push can be narrower than `SUB_DAILY_WINDOW_MAX_MIN`, and the
  * profile-zone day it is provisionally given must not be frozen in forever.
  *
- * NOT GATED ON THE SOURCE, unlike `OVERLAP_SUPERSEDE_SOURCE`. That gate exists because
+ * THAT ONE EXCEPTION *IS* SOURCE-GATED, unlike the freeze around it, and the asymmetry is
+ * the point. The freeze declines to overwrite a day the store already chose, which is
+ * conservative for every source. The repair OVERWRITES, and it is only sound where
+ * `incoming.date` is itself read off the anchor — which is a property of the Health
+ * Connect parser, not of this function. Ungated it re-dates other sources on a travel
+ * switch: Strava and Oura file `active_kcal` on a workout's REAL window, so a ride over
+ * an hour clears `isSupersedingWindow`, and a 02:00Z start stored under Honolulu as 08-24
+ * has an anchor-implied day of 08-25 — so the "repair" would hand it whatever the CURRENT
+ * profile zone computes. That is #3428's defect exactly, which is what this file exists
+ * to prevent.
+ *
+ * THE FREEZE IS NOT GATED ON THE SOURCE, unlike `OVERLAP_SUPERSEDE_SOURCE`. That gate exists because
  * the supersede DELETES readings, so it must never reach a source whose windows it has
  * not been argued about. This one only DECLINES TO OVERWRITE a day the store already
  * chose, which is the conservative direction for every source: Health Connect, the Fitbit
@@ -1093,7 +1104,8 @@ export function supersedeMetricSampleOverlaps(
  */
 function resendDay(
   incoming: NormMetricSample,
-  twin: MetricSampleTwin | undefined
+  twin: MetricSampleTwin | undefined,
+  source: string
 ): string {
   if (!twin) return incoming.date;
   // THE ONE DAY THE FREEZE MAY NOT KEEP: one the row's OWN ANCHOR REFUSES.
@@ -1109,13 +1121,21 @@ function resendDay(
   //
   // IT IS A REPAIR, NOT A RE-DERIVE, and three things keep it from being the mutable
   // date that emptied a prod day. It moves a row only OFF a day its own anchor says it
-  // was never lived in, and only ONTO the day that anchor names. `anchorRefusesDay` takes
-  // no zone, so in the ambiguous 10:00Z-12:00Z band BOTH days are admissible and a row
-  // there is never moved when the profile travels. And a row that has JUSTIFIED a
+  // was never lived in, and — because the source gate holds `incoming.date` to
+  // `anchorImpliedDay`'s answer — only ONTO the day that anchor names. `anchorRefusesDay`
+  // takes no zone, so in the ambiguous 10:00Z-12:00Z band BOTH days are admissible and a
+  // row there is never moved when the profile travels. And a row that has JUSTIFIED a
   // supersede is anchor-admissible by construction — `planSupersede` refuses a victim to
   // any bucket whose anchor contradicts its `date` — so the justifier can still never
   // walk off the day it emptied.
+  //
+  // IT ALSO RELABELS HISTORY, once, and that is worth knowing rather than discovering.
+  // Every stored bucket whose pre-#3901 `date` is anchor-inadmissible moves the first
+  // time the exporter's ~48 h window re-sends it, so for two days the store holds both
+  // conventions and older buckets keep theirs for good. That is a correction where it
+  // fires; #3927 owns the historical set.
   if (
+    source === OVERLAP_SUPERSEDE_SOURCE &&
     isSupersedingWindow(
       incoming.metric,
       incoming.started_at,
@@ -1227,7 +1247,7 @@ export function upsertMetricSamples(
     }
     // #3428: the day this row is FILED under, which on a re-send is the day the store
     // already chose. `resendDay`'s header carries the whole argument.
-    const date = resendDay(r, found);
+    const date = resendDay(r, found, source);
     const info = stmt.run(
       profileId,
       source,

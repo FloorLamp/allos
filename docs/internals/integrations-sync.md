@@ -800,6 +800,26 @@ band is never moved when the profile travels; and a row that has justified a sup
 anchor-admissible by construction (the guard below refuses a victim to any bucket whose
 anchor contradicts its `date`), so a justifier still cannot walk off the day it emptied.
 
+THE AMBIGUOUS BAND DEFERS TO THE PROFILE'S DAY, NOT TO THE NEAREST OFFSET, and the
+difference is a whole day rather than a rounding. Both candidate days are equally
+consistent with a 10:00Z-12:00Z anchor, so the window carries nothing the profile does
+not; the derivation therefore takes whichever candidate equals `parts(start, tz).date`
+when one of them does, and only falls back to the nearer offset when neither does (a
+profile further west than the anchor's own west representative). Choosing by offset
+distance instead reintroduced this issue's own loss (#3924): a completed Honolulu 08-25
+bucket arriving against a profile already on Tokyo time is 5 h from +14 and 19 h from
+-10, so it filed on 08-26, where the genuine JST bucket superseded it and 08-25 kept
+nothing — and the guard below is structurally blind to it, because 08-26 *is* one of the
+two admissible days. Break-even was `profileOffset > 12h - anchor`: any profile east of
+UTC+2 for a UTC-10 device, permanent for a profile left east of +2 while the device sits
+in HST.
+
+A ONE-OFF RELABEL OF HISTORY follows from all of this, and it is not a migration. Every
+stored bucket whose pre-#3901 `date` is anchor-inadmissible moves the first time the
+exporter's ~48 h window re-sends it, so for about two days the store holds both
+conventions and buckets older than the window keep theirs indefinitely. Where it fires it
+is a correction. #3927 owns the historical set.
+
 AND A SECOND READER, because this path deletes health data: the supersede additionally
 **refuses a victim when the incoming bucket's own anchor contradicts the `date` it is
 filed under** (`anchorRefusesDay`). With the derivation correct it can never fire; it

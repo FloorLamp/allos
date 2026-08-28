@@ -2,9 +2,19 @@
 //
 // This file began as the runnable repro pushed with the travel/tz review
 // (claude/travel-tz-adjustment-review-7qj8t4, `travel-hc-double-count.repro.ts`). It
-// FAILED on main reading 6500 steps for 3500 walked; it is kept verbatim in its setup
-// and promoted to a real test here, so the exact scenario that was measured is the one
-// that stays guarded.
+// FAILED on main reading 6500 steps for 3500 walked, and was promoted to a real test
+// here so the measured scenario stays guarded.
+//
+// ITS SETUP IS NO LONGER VERBATIM, and the change is named rather than quiet: #3901
+// re-pointed BOTH zones and BOTH `start_time`s. The original flew Asia/Tokyo ->
+// Pacific/Honolulu, which crosses the date line, so under the anchor-implied day the two
+// anchorings name 05-02 and 05-01 and are two days' readings rather than one day read
+// twice — the pair simply stops being the shape this file is about. America/New_York ->
+// Pacific/Honolulu (04:00Z and 10:00Z, both naming 2026-05-01) is the same westward
+// switch without the crossing, and is the shape #3424's prod incident actually had.
+// Every assertion, every count and the three-push structure are unchanged; the stored
+// rows now sort old-anchoring-first, because a real westward re-anchor starts LATER in
+// UTC — which this module's own rule states and which Tokyo -> Honolulu contradicted.
 //
 // The mechanism, in one paragraph. The exporter's recommended `daily` setting for steps
 // sends one record per DEVICE-LOCAL day: window = local midnight → now. When the device

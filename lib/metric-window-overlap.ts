@@ -430,9 +430,10 @@ function dayAt(ms: number, offsetMs: number): string {
  * a window the rule already reads as a device-cut day bucket states an anchor.
  *
  * `profileOffsetMs` BREAKS THE ONE AMBIGUITY and nothing else. In the 10:00Z-12:00Z
- * band the anchor is equally a UTC-10…-12 midnight and a UTC+12…+14 one; leaning toward
- * the offset the profile's own zone holds is hours wrong at worst, never half the globe.
- * Outside that band the argument is unused, so a wrong or stale zone cannot move a day.
+ * band the anchor is equally a UTC-10…-12 midnight and a UTC+12…+14 one, so the window
+ * states nothing and the profile decides — by its own DAY, not by offset distance; see
+ * the body. Outside that band the argument is unused, so a wrong or stale zone cannot
+ * move a day.
  */
 export function anchorImpliedDay(
   metric: string,
@@ -446,6 +447,27 @@ export function anchorImpliedDay(
   }
   const offsets = anchorOffsets(ms);
   if (offsets.length === 0) return null;
+  if (offsets.length === 1) return dayAt(ms, offsets[0]);
+  // THE AMBIGUOUS BAND, WHERE THE ANCHOR IS SILENT AND THE PROFILE IS THE ONLY EVIDENCE.
+  // Both candidate days are equally consistent with a 10:00Z-12:00Z anchor, so the window
+  // carries nothing the profile does not — and deferring to the profile's own DAY is
+  // therefore never worse than the derivation this replaced, and sometimes a whole day
+  // better.
+  //
+  // NEAREST OFFSET IS THE WRONG METRIC, and reaching for it cost a review round (#3924).
+  // Five hours of offset difference can be a one-day date difference: a completed
+  // Honolulu 08-25 bucket (10:00Z) arriving against a profile already on Tokyo time sits
+  // 5h from +14 and 19h from -10, so nearest-offset filed it on 08-26 — where the genuine
+  // JST bucket superseded it and 08-25 kept nothing. That is this issue's own loss,
+  // reintroduced by its own fix, and `anchorRefusesDay` is structurally blind to it
+  // because 08-26 IS one of the two admissible days.
+  const profileDay = dayAt(ms, profileOffsetMs);
+  const days = offsets.map((o) => dayAt(ms, o));
+  if (days.includes(profileDay)) return profileDay;
+  // Neither candidate is the profile's day: the profile lies further west than the
+  // anchor's own west representative (only reachable at a 10:00Z or 11:00Z anchor).
+  // Nothing points at a day, so fall back to the nearer offset, which points west with
+  // the profile — the direction the device is likeliest to be.
   const offset = offsets.reduce((best, o) =>
     Math.abs(o - profileOffsetMs) < Math.abs(best - profileOffsetMs) ? o : best
   );

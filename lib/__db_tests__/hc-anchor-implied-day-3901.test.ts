@@ -160,6 +160,37 @@ describe("the prod sequence of #3901, through the profile's late flip", () => {
   });
 });
 
+describe("an AMBIGUOUS anchor against a profile in the device's other hemisphere", () => {
+  it("keeps the Honolulu day when the profile has already reached Tokyo", () => {
+    // #3924's REFUTATION, AS THE DELETION IT CAUSES. The first cut of this derivation
+    // broke the 10:00Z-12:00Z tie by nearest OFFSET, and a profile on Tokyo time sits 5h
+    // from +14 against 19h from -10 — so a completed HONOLULU 08-25 bucket was filed on
+    // 2026-08-26, where the genuine JST bucket for that day overlapped it, outranked it
+    // and deleted 8672 steps with 2026-08-25 left holding nothing. `main` files 08-25 and
+    // keeps both days, so the fix was strictly worse than the bug in this band.
+    //
+    // THE SHAPE IS ORDINARY: the phone is offline on the transpacific leg, so the last
+    // Honolulu bucket arrives after the banner has already been tapped. Break-even is
+    // `profileOffset > 12h - anchor`, i.e. any profile east of UTC+2 for a UTC-10 device
+    // — transient on an eastbound flight, PERMANENT for a profile left east of +2 while
+    // the device stays in HST.
+    //
+    // MUTATION: break the tie by `Math.abs(o - profileOffsetMs)` instead of by the
+    // profile's own day and this reds, with 2026-08-25 gone.
+    const p = freshProfile("HC Ambiguous Anchor");
+    setTimezone(p, "Asia/Tokyo");
+    // The completed Honolulu 08-25 day, delivered late.
+    pushSteps(p, "2026-08-26T12:00:05Z", "2026-08-25T10:00:00Z", "2026-08-26T09:58:00Z", 8672);
+    // The genuine Tokyo 08-26 bucket: JST midnight is 2026-08-25T15:00Z, so it overlaps
+    // the Honolulu window by nearly nineteen hours and its push is newer.
+    pushSteps(p, "2026-08-26T13:00:05Z", "2026-08-25T15:00:00Z", "2026-08-26T13:00:00Z", 5000);
+    expect(stepRows(p)).toEqual([
+      { date: "2026-08-25", value: 8672 },
+      { date: "2026-08-26", value: 5000 },
+    ]);
+  });
+});
+
 describe("a bucket whose FIRST push is narrower than the granularity gate", () => {
   it("is repaired onto its anchor's day rather than frozen on the neighbour's", () => {
     // THE HOLE THE CARVE-OUT'S REMOVAL RE-OPENS, and the narrow exception that closes it.

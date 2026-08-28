@@ -770,7 +770,7 @@ describe("what the rule must NEVER delete", () => {
         sample(
           "steps",
           "2026-05-01",
-          "2026-04-30T04:00:00Z",
+          "2026-04-30T15:00:00Z",
           "2026-05-01T09:00:00Z",
           9000
         ),
@@ -786,7 +786,7 @@ describe("what the rule must NEVER delete", () => {
         sample(
           "steps",
           "2026-05-01",
-          "2026-04-30T04:00:00Z",
+          "2026-04-30T15:00:00Z",
           "2026-05-01T13:00:00Z",
           9000
         ),

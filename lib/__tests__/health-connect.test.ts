@@ -1112,51 +1112,53 @@ describe("day-bucket date derivation (#3901)", () => {
   });
 
   // THE COMPARISON IS THE POINT, so every row below shares ONE instant chosen to make
-  // the two derivations DISAGREE: under Asia/Tokyo 2026-08-25T10:00Z is 19:00 local, so
-  // the profile attribution is 08-25 — while as an ANCHOR, with a +9 profile breaking
-  // the 10:00Z-12:00Z ambiguity eastward, it names 08-26. A test where the two agree
+  // the two derivations DISAGREE: under America/Los_Angeles (UTC-7 in August)
+  // 2026-08-25T04:00Z is 08-24 21:00 local, so the profile attribution is 08-24 — while
+  // as an ANCHOR it is a UTC-4 midnight and names 08-25. A test where the two agree
   // cannot tell which one answered.
-  const SPLIT = "2026-08-25T10:00:00Z";
+  //
+  // IT IS DELIBERATELY OUTSIDE THE 10:00Z-12:00Z BAND. In that band the derivation defers
+  // to the profile's own day by design (#3924), so the two CANNOT disagree there and an
+  // ambiguous instant would make this contrast untestable — which is how an earlier
+  // version of this case, built on 10:00Z under Asia/Tokyo, came to assert the very
+  // mis-derivation the tie-break fix removed.
+  const SPLIT = "2026-08-25T04:00:00Z";
 
   it("files a day-bucket-width steps row under the ANCHOR day", () => {
-    const out = parse(bucket(SPLIT, "2026-08-25T21:00:00Z"), "Asia/Tokyo");
-    expect(out.samples.map((s) => s.date)).toEqual(["2026-08-26"]);
+    const out = parse(bucket(SPLIT, "2026-08-25T15:00:00Z"), "America/Los_Angeles");
+    expect(out.samples.map((s) => s.date)).toEqual(["2026-08-25"]);
   });
 
   it("keeps the PROFILE attribution for everything that is not a day bucket", () => {
     // A `15m` exporter setting sends the SAME metrics as minute buckets whose start is
     // no midnight at all; hydration, nutrition and sleep sit on their records' real
-    // windows and nest legitimately. None of them states an anchor, so all four keep the
-    // day the profile's zone gives them — 08-25, against the day-bucket row's 08-26.
+    // windows and nest legitimately. None of them states an anchor, so all of them keep
+    // the day the profile's zone gives them — 08-24, against the day-bucket row's 08-25.
     const out = parse(
       {
         steps: [
-          { start_time: SPLIT, end_time: "2026-08-25T10:15:00Z", count: 300 },
+          { start_time: SPLIT, end_time: "2026-08-25T04:15:00Z", count: 300 },
         ],
         hydration: [
-          { start_time: SPLIT, end_time: "2026-08-25T21:00:00Z", liters: 1.5 },
+          { start_time: SPLIT, end_time: "2026-08-25T06:00:00Z", liters: 1.5 },
         ],
         nutrition: [
-          {
-            start_time: SPLIT,
-            end_time: "2026-08-25T21:00:00Z",
-            calories: 700,
-          },
+          { start_time: SPLIT, end_time: "2026-08-25T06:00:00Z", calories: 700 },
         ],
-        sleep: [{ start_time: SPLIT, end_time: "2026-08-25T18:00:00Z" }],
+        sleep: [{ start_time: SPLIT, end_time: "2026-08-25T06:00:00Z" }],
         // A POINT reading, which has no window to read an anchor off at all.
         heart_rate_variability: [{ time: SPLIT, milliseconds: 40 }],
       },
-      "Asia/Tokyo"
+      "America/Los_Angeles"
     );
     expect(out.samples.map((s) => [s.metric, s.date])).toEqual([
-      ["steps", "2026-08-25"],
-      ["hydration_l", "2026-08-25"],
-      ["nutrition_kcal", "2026-08-25"],
-      ["hrv_ms", "2026-08-25"],
-      // Sleep is filed on the profile-local WAKE day and always has been: 18:00Z is
-      // 08-26 03:00 in Tokyo. Unchanged by #3901, and it is the profile's zone deciding.
-      ["sleep_min", "2026-08-26"],
+      ["steps", "2026-08-24"],
+      ["hydration_l", "2026-08-24"],
+      ["nutrition_kcal", "2026-08-24"],
+      ["hrv_ms", "2026-08-24"],
+      // Sleep is filed on the profile-local WAKE day and always has been: 06:00Z is
+      // 08-24 23:00 in Los Angeles. Unchanged by #3901, and the profile's zone decides.
+      ["sleep_min", "2026-08-24"],
     ]);
   });
 });

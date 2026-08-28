@@ -937,6 +937,43 @@ describe("anchorImpliedDay — the day a bucket names, read off its own anchor (
       KIRITIMATI,
       "2026-08-26",
     ],
+    // AND SKEWED, WHICH IS THE ONLY WAY THIS BAND CAN BE TESTED AT ALL. Everywhere else
+    // the anchor decides and the profile argument is inert; HERE the profile is the sole
+    // decider, so a table of matched pairs (each profile agreeing with its own device)
+    // cannot fail in the one dimension the whole issue is about. Every row below is a
+    // device and a profile in DIFFERENT zones, which is what a travel switch is.
+    //
+    // The first is #3924's refutation, and it is the prod loss again: a completed
+    // Honolulu 08-25 bucket arriving late — phone offline on the transpacific leg,
+    // banner already tapped — against a profile already on Tokyo time. Choosing the
+    // NEAREST OFFSET picks +14 (5h from +9, against 19h for -10) and files it on
+    // 2026-08-26, where the genuine JST bucket then supersedes it and 08-25 holds
+    // nothing. Nearest offset is the wrong metric: five hours of offset can be a whole
+    // day of date.
+    [
+      "10:00Z HST bucket, profile already Tokyo",
+      "2026-08-25T10:00:00Z",
+      9 * HOUR,
+      "2026-08-25",
+    ],
+    ["10:00Z HST bucket, profile at +3", "2026-08-25T10:00:00Z", 3 * HOUR, "2026-08-25"],
+    // The same failure from the +12 side: break-even is `profileOffset > 12h - anchor`,
+    // so at a 12:00Z anchor ANY profile east of UTC used to flip the day.
+    [
+      "12:00Z bucket, profile just east of UTC",
+      "2026-08-25T12:00:00Z",
+      1 * HOUR,
+      "2026-08-25",
+    ],
+    // Neither candidate day is the profile's: the profile is further west than the
+    // anchor's own west representative, so its day is 08-24 and the nearest-offset
+    // fallback decides — pointing west with it, which is where the device likely is.
+    [
+      "10:00Z bucket, profile west of BOTH candidate days",
+      "2026-08-25T10:00:00Z",
+      -11 * HOUR,
+      "2026-08-25",
+    ],
     ["12:00Z, -12 profile", "2026-08-25T12:00:00Z", -12 * HOUR, "2026-08-25"],
     ["12:00Z, +12 profile", "2026-08-25T12:00:00Z", 12 * HOUR, "2026-08-26"],
   ])("%s", (_name, start, offset, expected) => {

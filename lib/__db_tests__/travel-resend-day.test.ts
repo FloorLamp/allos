@@ -25,6 +25,7 @@ import { db } from "@/lib/db";
 import { parseHealthConnectPayload } from "@/lib/integrations/health-connect";
 import { ingestHealthConnectPayload } from "@/lib/integrations/health-connect-ingest";
 import { getMetricDailyTotals } from "@/lib/queries";
+import { upsertMetricSamples } from "@/lib/integrations/normalize";
 import {
   getTimezone,
   setTimezone,
@@ -366,5 +367,43 @@ describe("a re-sent row keeps the day it was attributed to (#3428, write side)",
           .all(profileId) as { date: string }[]
       ).map((r) => r.date)
     ).toEqual(["2026-05-02"]);
+  });
+});
+
+describe("the #3901 anchor repair is HEALTH CONNECT's, and reaches no other source", () => {
+  it("does not re-date a Strava workout row when the profile travels", () => {
+    // THE REPAIR OVERWRITES A STORED DAY, so it is sound only where `incoming.date` is
+    // itself read off the anchor — which is the Health Connect parser's doing, not this
+    // function's. Strava and Oura file `active_kcal` on a workout's REAL window, so a
+    // ride over an hour clears `isSupersedingWindow` and its start lands on the
+    // quarter-hour grid as often as people set off on the hour. Here the anchor-implied
+    // day (02:00Z, UTC-2 => 05-02) differs from the stored Honolulu day (05-01), so an
+    // UNGATED repair would hand the row whatever the new profile zone computes — #3428's
+    // defect, on a source that never re-anchors anything.
+    //
+    // MUTATION: drop `source === OVERLAP_SUPERSEDE_SOURCE` from `resendDay` and this
+    // reds, the ride moving to 2026-05-02 under Tokyo.
+    const profileId = newProfile("Resend Strava", HONOLULU);
+    const ride = {
+      metric: "active_kcal",
+      date: "2026-05-01",
+      started_at: "2026-05-02T02:00:00Z",
+      ended_at: "2026-05-02T04:00:00Z",
+      value: 900,
+      activity_external_id: "strava:9001",
+    };
+    upsertMetricSamples(profileId, [ride], "strava");
+    switchProfileTimezone(profileId, TOKYO, HONOLULU);
+    // The trailing re-scan re-sends the same activity, now dated under Tokyo.
+    upsertMetricSamples(profileId, [{ ...ride, date: "2026-05-02" }], "strava");
+    expect(
+      (
+        db
+          .prepare(
+            "SELECT date FROM metric_samples WHERE profile_id = ? AND metric = 'active_kcal'"
+          )
+          .all(profileId) as { date: string }[]
+      ).map((r) => r.date)
+    ).toEqual(["2026-05-01"]);
   });
 });
