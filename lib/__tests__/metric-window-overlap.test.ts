@@ -19,6 +19,8 @@ import { describe, expect, it } from "vitest";
 import {
   DAY_BUCKET_METRICS,
   MAX_PUSH_CLOCK_SKEW_MS,
+  anchorImpliedDay,
+  anchorRefusesDay,
   compareWindowStarts,
   isDayBucketMetric,
   isDayBucketWindow,
@@ -462,7 +464,7 @@ describe("a stamp in the PAST is believed, and reported instead", () => {
     expect(
       planSupersede(
         incoming(
-          "2026-05-01T15:00:00Z",
+          "2026-05-01T04:00:00Z",
           "2026-05-01T23:00:00Z",
           "2026-05-01T23:00:00Z"
         ),
@@ -472,7 +474,7 @@ describe("a stamp in the PAST is believed, and reported instead", () => {
     // No stamp at all: same.
     expect(
       planSupersede(
-        incoming("2026-05-01T15:00:00Z", "2026-05-01T23:00:00Z", null),
+        incoming("2026-05-01T04:00:00Z", "2026-05-01T23:00:00Z", null),
         stored
       ).left.map((r) => r.id)
     ).toEqual([1]);
@@ -480,7 +482,7 @@ describe("a stamp in the PAST is believed, and reported instead", () => {
     const locked = [{ ...stored[0], edited: 1 }];
     const plan = planSupersede(
       incoming(
-        "2026-05-01T15:00:00Z",
+        "2026-05-01T04:00:00Z",
         "2026-05-01T23:00:00Z",
         "2026-05-03T00:00:00Z"
       ),
@@ -492,7 +494,7 @@ describe("a stamp in the PAST is believed, and reported instead", () => {
     expect(
       planSupersede(
         incoming(
-          "2026-05-01T15:00:00Z",
+          "2026-05-01T04:00:00Z",
           "2026-05-01T23:00:00Z",
           "2026-05-03T00:00:00Z"
         ),
@@ -673,7 +675,7 @@ describe("planSupersede — what an incoming window does to the store", () => {
       ),
     ];
     const replay = incoming(
-      "2026-05-01T15:00:00Z",
+      "2026-05-01T04:00:00Z",
       "2026-05-01T23:00:00Z",
       "2026-05-01T23:00:00Z"
     );
@@ -695,7 +697,7 @@ describe("planSupersede — what an incoming window does to the store", () => {
       ),
     ];
     const replay = incoming(
-      "2026-05-01T15:00:00Z",
+      "2026-05-01T04:00:00Z",
       "2026-05-01T23:00:00Z",
       "2026-05-01T23:00:00Z"
     );
@@ -706,7 +708,7 @@ describe("planSupersede — what an incoming window does to the store", () => {
     ]);
     // And a genuinely newer push still supersedes — otherwise nothing converges.
     const newer = incoming(
-      "2026-05-01T15:00:00Z",
+      "2026-05-01T04:00:00Z",
       "2026-05-01T23:00:00Z",
       "2026-05-03T00:00:00Z"
     );
@@ -876,5 +878,233 @@ describe("compareWindowStarts", () => {
     expect(
       compareWindowStarts("2026-05-01T10:00:00Z", "2026-05-01T10:00:00Z")
     ).toBe(0);
+  });
+});
+
+const HOUR = 60 * 60 * 1000;
+// The four offsets the ambiguity cases lean on, as milliseconds — a profile's own zone
+// is the ONLY argument the derivation takes beyond the window.
+const HONOLULU = -10 * HOUR;
+const KIRITIMATI = 14 * HOUR;
+const CHATHAM = 12.75 * HOUR;
+const KOLKATA = 5.5 * HOUR;
+
+// A window wide enough to clear the day-bucket granularity gate, from any start.
+const wide = (start: string) =>
+  new Date(Date.parse(start) + 11 * HOUR).toISOString();
+
+describe("anchorImpliedDay — the day a bucket names, read off its own anchor (#3901)", () => {
+  // A day bucket's `started_at` IS a device-local midnight, so the implied offset is the
+  // one that makes it midnight: o = -(started_at mod 24h), normalized into [-12h, +14h]
+  // at quarter-hour granularity. `profileOffsetMs` is consulted ONLY inside the
+  // 10:00Z-12:00Z band, where UTC-10…-12 and UTC+12…+14 are both admissible.
+  it.each([
+    // The prod sequence of #3901, each bucket naming its own day whatever the profile
+    // held at push time — the profile argument below is deliberately the WRONG zone for
+    // two of the three, exactly as prod's lagging banner made it.
+    ["HST anchor", "2026-08-25T10:00:00Z", HONOLULU, "2026-08-25"],
+    [
+      "LA anchor, profile still Honolulu",
+      "2026-08-26T07:00:00Z",
+      HONOLULU,
+      "2026-08-26",
+    ],
+    [
+      "NY anchor, profile still LA",
+      "2026-08-27T04:00:00Z",
+      -7 * HOUR,
+      "2026-08-27",
+    ],
+    // Quarter-hour offsets, which is why the grid is 15 minutes and not an hour.
+    ["+05:30 (Kolkata)", "2026-08-25T18:30:00Z", KOLKATA, "2026-08-26"],
+    ["+05:45 (Kathmandu)", "2026-08-25T18:15:00Z", KOLKATA, "2026-08-26"],
+    ["+12:45 (Chatham)", "2026-08-25T11:15:00Z", CHATHAM, "2026-08-26"],
+    // UTC itself, and the far edges of the real-offset range.
+    ["UTC", "2026-08-25T00:00:00Z", 0, "2026-08-25"],
+    ["-11 (Niue)", "2026-08-25T11:00:00Z", -11 * HOUR, "2026-08-25"],
+    ["+13 (Apia)", "2026-08-25T11:00:00Z", 13 * HOUR, "2026-08-26"],
+    // THE ONLY AMBIGUOUS BAND, PINNED FROM BOTH SIDES. The same anchor, two profiles,
+    // two answers — and each is the one that profile's own calendar keeps.
+    [
+      "10:00Z, Honolulu profile keeps -10",
+      "2026-08-25T10:00:00Z",
+      HONOLULU,
+      "2026-08-25",
+    ],
+    [
+      "10:00Z, +14 profile keeps +14",
+      "2026-08-25T10:00:00Z",
+      KIRITIMATI,
+      "2026-08-26",
+    ],
+    // AND SKEWED, WHICH IS THE ONLY WAY THIS BAND CAN BE TESTED AT ALL. Everywhere else
+    // the anchor decides and the profile argument is inert; HERE the profile is the sole
+    // decider, so a table of matched pairs (each profile agreeing with its own device)
+    // cannot fail in the one dimension the whole issue is about. Every row below is a
+    // device and a profile in DIFFERENT zones, which is what a travel switch is.
+    //
+    // The first is #3924's refutation, and it is the prod loss again: a completed
+    // Honolulu 08-25 bucket arriving late — phone offline on the transpacific leg,
+    // banner already tapped — against a profile already on Tokyo time. Choosing the
+    // NEAREST OFFSET picks +14 (5h from +9, against 19h for -10) and files it on
+    // 2026-08-26, where the genuine JST bucket then supersedes it and 08-25 holds
+    // nothing. Nearest offset is the wrong metric: five hours of offset can be a whole
+    // day of date.
+    [
+      "10:00Z HST bucket, profile already Tokyo",
+      "2026-08-25T10:00:00Z",
+      9 * HOUR,
+      "2026-08-25",
+    ],
+    [
+      "10:00Z HST bucket, profile at +3",
+      "2026-08-25T10:00:00Z",
+      3 * HOUR,
+      "2026-08-25",
+    ],
+    // The same failure from the +12 side: break-even is `profileOffset > 12h - anchor`,
+    // so at a 12:00Z anchor ANY profile east of UTC used to flip the day.
+    [
+      "12:00Z bucket, profile just east of UTC",
+      "2026-08-25T12:00:00Z",
+      1 * HOUR,
+      "2026-08-25",
+    ],
+    // Neither candidate day is the profile's: the profile is further west than the
+    // anchor's own west representative, so its day is 08-24 and the nearest-offset
+    // fallback decides — pointing west with it, which is where the device likely is.
+    [
+      "10:00Z bucket, profile west of BOTH candidate days",
+      "2026-08-25T10:00:00Z",
+      -11 * HOUR,
+      "2026-08-25",
+    ],
+    ["12:00Z, -12 profile", "2026-08-25T12:00:00Z", -12 * HOUR, "2026-08-25"],
+    ["12:00Z, +12 profile", "2026-08-25T12:00:00Z", 12 * HOUR, "2026-08-26"],
+  ])("%s", (_name, start, offset, expected) => {
+    expect(anchorImpliedDay("steps", start, wide(start), offset)).toBe(
+      expected
+    );
+  });
+
+  // WHAT IT DECLINES, AND EVERY ONE OF THESE IS A ROW THAT MUST KEEP THE PROFILE-ZONE
+  // ATTRIBUTION. A null here is what routes the caller back to today's derivation.
+  it.each([
+    // Not a tiling metric — nutrition and sleep sit on their records' REAL windows.
+    [
+      "nutrition",
+      "nutrition_kcal",
+      "2026-08-25T10:00:00Z",
+      "2026-08-25T21:00:00Z",
+    ],
+    ["sleep", "sleep_min", "2026-08-25T04:00:00Z", "2026-08-25T12:00:00Z"],
+    [
+      "hydration",
+      "hydration_l",
+      "2026-08-25T10:00:00Z",
+      "2026-08-25T21:00:00Z",
+    ],
+    // A `15m` exporter setting sends the SAME metrics as minute buckets, and a 15-minute
+    // window starting 14:00Z would otherwise "imply" UTC+10 and file a New York
+    // afternoon on tomorrow. The granularity gate is what makes that unreachable.
+    [
+      "a 15-minute bucket",
+      "steps",
+      "2026-08-25T14:00:00Z",
+      "2026-08-25T14:15:00Z",
+    ],
+    [
+      "a point reading",
+      "steps",
+      "2026-08-25T10:00:00Z",
+      "2026-08-25T10:00:00Z",
+    ],
+    // An instant with no UTC designator is refused by `instantMs` and never compared.
+    [
+      "a bare local string",
+      "steps",
+      "2026-08-25T10:00:00",
+      "2026-08-25T21:00:00",
+    ],
+    // Off the quarter-hour grid: no real zone keeps a midnight here, so the window
+    // states no anchor and the profile attribution stands.
+    [
+      "an anchor at 04:07Z",
+      "steps",
+      "2026-08-25T04:07:00Z",
+      "2026-08-25T21:00:00Z",
+    ],
+  ])("declines %s", (_name, metric, start, end) => {
+    expect(anchorImpliedDay(metric, start, end, 0)).toBeNull();
+  });
+});
+
+describe("anchorRefusesDay — the supersede guard's own reader (#3901)", () => {
+  // It takes NO zone: in the ambiguous band a bucket has two admissible days and either
+  // one is consistent with the anchor, so a profile that has since moved cannot make a
+  // correctly-filed bucket look mislabeled.
+  it.each([
+    ["the day its anchor names", "2026-08-27T04:00:00Z", "2026-08-27", false],
+    [
+      "the neighbour prod filed it under",
+      "2026-08-27T04:00:00Z",
+      "2026-08-26",
+      true,
+    ],
+    [
+      "the westward admissible day",
+      "2026-08-25T10:00:00Z",
+      "2026-08-25",
+      false,
+    ],
+    [
+      "the eastward admissible day",
+      "2026-08-25T10:00:00Z",
+      "2026-08-26",
+      false,
+    ],
+    ["neither admissible day", "2026-08-25T10:00:00Z", "2026-08-24", true],
+    // No anchor to contradict: an unreadable instant and an off-grid start both refuse
+    // nothing, so the guard cannot make the rule inert on a store it cannot read.
+    ["an unreadable instant", "2026-08-25T10:00:00", "2026-08-25", false],
+    ["an off-grid anchor", "2026-08-25T04:07:00Z", "2026-08-25", false],
+  ])("%s", (_name, start, date, expected) => {
+    expect(anchorRefusesDay(start, date)).toBe(expected);
+  });
+});
+
+describe("THE ANCHOR GUARD inside planSupersede (#3901)", () => {
+  const stored: MetricWindow = {
+    id: 1,
+    date: "2026-08-26",
+    started_at: "2026-08-26T07:00:00Z",
+    ended_at: "2026-08-27T07:00:00Z",
+    edited: null,
+    pushed_at: "2026-08-26T23:00:00Z",
+  };
+  // The prod row, exactly: an NY-anchored bucket filed under the LA-local day because
+  // the profile's zone had not flipped yet. It outranks, it overlaps, it covers the
+  // date — and every one of those is true of a row whose own anchor says 08-27.
+  const mislabeled = {
+    metric: "steps",
+    date: "2026-08-26",
+    started_at: "2026-08-27T04:00:00Z",
+    ended_at: "2026-08-27T21:51:56Z",
+    pushedAt: "2026-08-27T21:51:56Z",
+  };
+
+  it("deletes nothing, and reports the day still reading high", () => {
+    const plan = planSupersede(mislabeled, [stored]);
+    expect(plan.supersede).toEqual([]);
+    expect(plan.left.map((r) => r.id)).toEqual([1]);
+  });
+
+  // MUTATION: delete the `anchorContradictsDate` branch in `planSupersede` and this row
+  // is superseded — which is the prod deletion, reproduced.
+  it("still supersedes when the bucket IS filed under the day its anchor names", () => {
+    const consistent = { ...mislabeled, date: "2026-08-27" };
+    const neighbour = { ...stored, id: 2, date: "2026-08-27" };
+    const plan = planSupersede(consistent, [neighbour]);
+    expect(plan.supersede.map((r) => r.id)).toEqual([2]);
   });
 });
