@@ -852,6 +852,21 @@ test("Standing draws its aligned sparkline column on the desktop", async ({
     expect(column.plotTop).toBeLessThan(column.factsBottom);
     expect(column.plotBottom).toBeGreaterThan(column.factsTop);
 
+    // DESKTOP DENSITY, NOT THE PHONE FLOOR (#3896). `button-control` renders at the
+    // 44px tap floor and sheds it from sm upward, but the summary carried
+    // `min-h-11! min-w-11!` — important declarations outrank that reset at EVERY
+    // width, so all 18 consumers stayed pinned at 44px on the desktop. 1280px is well
+    // above sm, so the compact row height is what must render here.
+    const summary = weight
+      .getByTestId("standing-sparkline-details")
+      .locator("summary");
+    await expect(summary).toBeVisible();
+    const summaryHeight = await summary.evaluate(
+      (node) => node.getBoundingClientRect().height
+    );
+    expect(summaryHeight).toBeLessThan(44);
+    expect(summaryHeight).toBeGreaterThanOrEqual(20);
+
     // A family whose domain has no trend read draws nothing — that is the rule, and
     // the column still holds its place for the families that do.
     expect(

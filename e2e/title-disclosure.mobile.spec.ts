@@ -165,7 +165,10 @@ test("standing history fits a touch tablet and discloses by touch and keyboard",
     await expect(summary).toHaveAccessibleName(/.+ history details$/);
 
     const [summaryBox, detailsBox] = await settledBoxes([summary, details]);
-    expect(summaryBox.height).toBeGreaterThanOrEqual(44);
+    // 768px is above `sm`, where `button-control` sheds the phone floor. The floor
+    // itself is asserted at 390px by the first test in this file.
+    expect(summaryBox.height).toBeLessThan(44);
+    expect(summaryBox.height).toBeGreaterThanOrEqual(20);
     expect(detailsBox.x).toBeGreaterThanOrEqual(0);
     expect(detailsBox.x + detailsBox.width).toBeLessThanOrEqual(768);
     await page.touchscreen.tap(
