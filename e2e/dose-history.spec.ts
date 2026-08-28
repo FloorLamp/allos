@@ -468,11 +468,13 @@ test("the backfill offers the missed days the strip already computed (#3674)", a
   // Today is still in progress, so it is not among them: four elapsed lapses.
   await expect(offers).toHaveCount(MISSED_DAYS);
   await expect(panel.getByTestId("historical-dose-form")).toHaveCount(0);
-  // Newest first, and each row names what the tap will write — the day, and the
-  // dose it records.
+  // Newest first, and each row names EXACTLY what the tap will write. This dose's
+  // slot is the bucket word "Morning", which is not a clock and so cannot be
+  // written: the row therefore names the day and the amount and says nothing about
+  // a time, rather than printing "morning" over a write that records the default.
   const newest = offers.first(); // first-ok: the offer list of a supplement this spec created and backdated itself; newest-first by construction, so this is yesterday
   await expect(newest).toContainText("250 mg");
-  await expect(newest).toContainText("Morning");
+  await expect(newest).not.toContainText("Morning");
   // ONE identity: the control does not become "Cancel" because it is open.
   await expect(control).toHaveText("Log past dose");
   await expect(control).toHaveAttribute("aria-expanded", "true");
@@ -494,4 +496,46 @@ test("the backfill offers the missed days the strip already computed (#3674)", a
   await panel.getByTestId("dose-backfill-other").click();
   await expect(panel.getByTestId("historical-dose-form")).toBeVisible();
   await expect(control).toHaveText("Log past dose");
+
+  // ── ...and when the slot IS a clock, the row names it and writes it ────────
+  // The other arm of the same rule. Written straight to the dose row because the
+  // schedule editor offers the bucket words; what is under test is the OFFER's
+  // reading of stored slot text, not how the text got there.
+  const flip = new Database(workerDbPath());
+  try {
+    flip.pragma("busy_timeout = 5000");
+    flip
+      .prepare(
+        `UPDATE intake_item_doses SET time_of_day = '08:00'
+          WHERE item_id = (SELECT id FROM intake_items WHERE name = ?)`
+      )
+      .run(name);
+  } finally {
+    flip.close();
+  }
+  await page.goto("/nutrition?tab=supplements");
+  // The row LEFT the Morning section — a clock slot groups under its own window — so
+  // it is re-found by the name this spec owns rather than by where it used to sit.
+  const clockRow = page.locator("div.card").filter({ hasText: name });
+  await expect(clockRow).toHaveCount(1);
+  await hydratedClick(
+    page,
+    clockRow.getByRole("button", { name: "Supplement actions" })
+  );
+  await page.getByRole("menuitem", { name: "Dose history" }).click();
+  const clockPanel = clockRow.getByTestId("supplement-dose-history-panel");
+  await hydratedClick(
+    page,
+    clockPanel.getByRole("button", { name: "Log past dose" })
+  );
+  const clockOffer = clockPanel.getByTestId("dose-backfill-offer").first(); // first-ok: same spec-owned offer list, newest first
+  await expect(clockOffer).toContainText(/(?:8:00am|08:00)/);
+  await settledClick(page, clockOffer);
+  await expect(page.getByText(`Logged past dose of ${name}.`)).toBeVisible();
+  // The row the label promised: the dose's own slot clock, not the panel's default.
+  await expect(
+    clockPanel
+      .getByTestId("dose-history-row")
+      .filter({ hasText: /(?:8:00am|08:00)/ })
+  ).toHaveCount(1);
 });

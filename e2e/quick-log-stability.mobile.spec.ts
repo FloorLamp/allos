@@ -7,11 +7,15 @@ import {
   SHELL_DOSE_ITEM,
   SHELL_PROFILE,
 } from "./logins/metrics";
+import { E2E_LOGIN_LOGSHEET_RESERVE } from "./logins/nutrition";
 import { E2E_MEMBER_PASSWORD } from "./logins/shared";
 import { settledAfterAnimation, settledBoxes } from "./helpers";
 import { loginAs } from "./nav";
 import { frozenNow, workerDbPath } from "./worker-env";
-import { LOG_SHEET_ROW_BLOCK_PX } from "@/lib/log-sheet";
+import {
+  LOG_SHEET_CONTEXT_RESERVE_PX,
+  LOG_SHEET_ROW_BLOCK_PX,
+} from "@/lib/log-sheet";
 import { TAP_FLOOR_PX } from "@/lib/tap-floor-tokens";
 
 const PHONE_430 = { viewport: { width: 430, height: 932 }, hasTouch: true };
@@ -397,6 +401,59 @@ test("a failed gather stays silent and reduced motion schedules no arrive keyfra
       running: node.getAnimations().length,
     }));
     expect(animation).toEqual({ name: "none", opacity: "1", running: 0 });
+  } finally {
+    await page.context().close();
+  }
+});
+
+// THE SUM, MEASURED (#3736). Every other test here runs on a persona whose context
+// region holds ONE offer and no routine control, so the region's WORST case — the case
+// LOG_SHEET_CONTEXT_RESERVE_PX is a bound on — was asserted only by its own arithmetic.
+// Two constants shipped wrong that way. This persona renders all three parts at once:
+// the composed routine control, the due-dose offer, and the resume-workout offer.
+test("the context region at its tallest still fits the panel's one reserve (#3736)", async ({
+  browser,
+}) => {
+  const page = await loginAs(
+    browser,
+    { username: E2E_LOGIN_LOGSHEET_RESERVE, password: E2E_MEMBER_PASSWORD },
+    PHONE_390
+  );
+  try {
+    await page.goto("/");
+    const sheet = await openLogSheet(page);
+    // Wait for the CONTENT, not the container: the region loads asynchronously and an
+    // empty one fits any reserve, which is the reading that flatters us.
+    await expect(sheet.getByTestId("log-sheet-context")).toBeVisible();
+    await expect(sheet.getByTestId("routine-usual-offer")).toBeVisible();
+    await expect(sheet.getByTestId("log-sheet-chip-doses")).toBeVisible();
+    await expect(sheet.getByTestId("log-sheet-chip-session")).toBeVisible();
+
+    // The region fits INSIDE the number that stands for it. Under, not equal: the
+    // reserve allows each offer row one wrapped label line and this persona's labels
+    // do not wrap, so the slack it measures is the wrap allowance.
+    const slot = await box(
+      sheet.getByTestId("log-sheet-context-slot"),
+      "context slot at its tallest"
+    );
+    expect(slot.height).toBeLessThanOrEqual(LOG_SHEET_CONTEXT_RESERVE_PX);
+
+    // ...and with the region at its tallest the PANEL is still the same height on
+    // every segment, which is the invariant the reserve exists for. If the sum were
+    // short, the spacer would be gone and this is where the panel would start
+    // tracking the row count again.
+    const options = sheet
+      .getByTestId("log-sheet-segments")
+      .locator("[data-segmented-option]");
+    const count = await options.count();
+    expect(count).toBeGreaterThan(1);
+    const baseline = await sheetGeometry(sheet);
+    for (let index = 0; index < count; index += 1) {
+      const option = options.nth(index);
+      await option.click();
+      await expect(option).toHaveAttribute("aria-pressed", "true");
+      expectSameGeometry(await sheetGeometry(sheet), baseline);
+    }
   } finally {
     await page.context().close();
   }

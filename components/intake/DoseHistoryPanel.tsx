@@ -12,7 +12,11 @@ import {
 import { useFormatPrefs } from "@/components/FormatPrefsProvider";
 import { useToast } from "@/components/Toast";
 import { useOptimisticLedger } from "@/components/useOptimisticLedger";
-import { formatLongDate } from "@/lib/format-date";
+import {
+  formatClockValue,
+  formatLongDate,
+  parseClockHhmm,
+} from "@/lib/format-date";
 import { missedDoseDays, type AdherenceDot } from "@/lib/intake-adherence";
 import {
   formatMedicationDoseLine,
@@ -149,8 +153,26 @@ export default function DoseHistoryPanel({
   );
   // A day with ONE live dose has a single answer to "which dose"; a day with more has
   // none the app can pick, so that row routes into the form seeded with the date
-  // instead of guessing (#3674).
-  const soleDose = doseOptions.length === 1 ? doseOptions[0]! : null;
+  // instead of guessing (#3674). The condition is per ITEM and not per day on
+  // purpose: the strip carries one state per DAY, so "two doses due on THAT day" is
+  // not a question it can answer, and asking it would mean deriving dueness a second
+  // time — the one thing this offer exists not to do.
+  const soleDose = doses.length === 1 ? doses[0]! : null;
+
+  // WHAT AN OFFER MAY PROMISE ABOUT THE TIME. A dose's `time_of_day` is free text and
+  // is as often a bucket ("Morning") as a clock ("08:00"), and only a clock can be
+  // written. When it is one, the offer both POSTS it and NAMES it. When it is not,
+  // the offer falls back to the form's own default and DROPS the slot word from its
+  // label — a row reading "morning" that records 13:04 promises what the tap does not
+  // do (#1505), and the label is the whole promise here because there is no visible
+  // field to correct it in.
+  const offerHhmm = parseClockHhmm(soleDose?.time_of_day);
+  const offerPromise = [
+    soleDose ? formatMedicationDoseProduct(soleDose.amount, product) : null,
+    offerHhmm ? formatClockValue(offerHhmm, formatPrefs.timeFormat) : null,
+  ]
+    .filter(Boolean)
+    .join(" · ");
 
   function logMissedDay(date: string) {
     if (!soleDose) {
@@ -166,10 +188,11 @@ export default function DoseHistoryPanel({
         fd.set("id", String(itemId));
         fd.set("dose_id", String(soleDose.id));
         fd.set("date", date);
-        // The same values the form would post for this day: its time field prefills
-        // from `defaultTime` and its amount from the dose's own, so the offer and the
-        // form produce the identical row rather than two spellings of one write.
-        fd.set("time", defaultTime);
+        // The same field names and the same amount the form posts, so the offer and
+        // the form produce one row rather than two spellings of one write. The TIME
+        // is the one value derived better than the form derives it — see
+        // `offerHhmm` — because this row's words are the only thing standing for it.
+        fd.set("time", offerHhmm ?? defaultTime);
         if (soleDose.amount) fd.set("amount", soleDose.amount);
         return logHistoricalDose(fd);
       },
@@ -275,7 +298,7 @@ export default function DoseHistoryPanel({
               className={OFFER_ROW_CLASS}
             >
               {`${formatLongDate(date, formatPrefs)} · ${
-                soleDose ? soleDose.label : "choose a dose"
+                soleDose ? offerPromise : "choose a dose"
               }`}
             </button>
           ))}
