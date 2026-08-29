@@ -78,11 +78,12 @@ export default function MedicationsTodayPanel({
   // PRN log rows (a pure write affordance) are omitted. Default true (acting board /
   // single-view) keeps the panel byte-identical.
   canWrite?: boolean;
-  // Whether this panel carries the door onto the cross-item dose ledger (#3479). The
-  // door left the page header and joined this card, because this card is what the
-  // ledger is the record OF. ACTING-ONLY, like every other affordance with no
-  // cross-profile seam (`doseLedgerHref` resolves to the acting profile's ledger, so
-  // a copy on each member's board in multi-view would be N doors to one place).
+  // Whether this panel carries the door onto the cross-item dose record (#3479,
+  // re-homed to `/history` by #3958). The door left the page header and joined this
+  // card, because this card is what the record is OF. ACTING-ONLY, like every other
+  // affordance with no cross-profile seam (`historyHref` resolves to the acting
+  // profile's record, so a copy on each member's board in multi-view would be N doors
+  // to one place).
   // Default false so a non-acting board renders exactly what it rendered before.
   ledgerDoor?: boolean;
 }) {
