@@ -347,9 +347,13 @@ assertions. Two recorders, three artifacts next to the contact sheet:
   findings-flood heuristic (≥4 sibling cards sharing a 24-char text prefix).
   Plus the **geometry probes** (#3489): `clipped` — every element inside
   `<main>` whose RENDERED box exits the viewport horizontally with no designed
-  scroller that reaches it — and `heightRows` — every rendered row whose
-  interactive controls differ in height by more than 2px. Both carry the count
-  they were truncated from, so a capped list is never silent.
+  scroller that reaches it — `heightRows` — every rendered row whose
+  interactive controls differ in height by more than 2px — and `overlaps`
+  (#3814) — every pair of text boxes ONE container laid out that are painted on
+  top of each other, reported as two rects. A heading above a paragraph reads as
+  one string through `textContent` and is NOT a collision; if you are about to
+  file one, the evidence is the boxes. All three carry the count they were
+  truncated from, so a capped list is never silent.
 - **`taps.json`** (written by `workflows`, `dose`, `dismiss`, `profiles`): tap
   costs per action. A tap = one pointer gesture; typing one field = one
   "input", counted separately. Reach costs (dashboard → each hub, driven
@@ -368,6 +372,10 @@ cover BOTH viewports — a control can run off a 1280px desktop too. They exist
 because a contact sheet cannot show a 4px height difference or a chevron one
 pixel off-screen: the 2026-08-21 phone review found three such defects by eye
 (#3478, #3481, #3486) that every prior census run had photographed and missed.
+They also exist because a sweep that reports text instead of boxes files
+findings nobody can falsify: #3716 read `"Recently deletedDeleted rows…"` off
+Data → Trash and filed a collision that was two correctly stacked blocks
+(#3814).
 Read them as leads, not verdicts — a `clipped` span may be a truncation the
 design intends. The rule is `scripts/ux-geometry-census.mjs`; that it can SEE a
 planted offender and stays QUIET on a designed horizontal scroller and on a 1px

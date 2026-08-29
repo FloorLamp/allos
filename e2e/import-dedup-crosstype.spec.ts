@@ -1,5 +1,6 @@
 import { test, expect } from "./fixtures";
 import Database from "better-sqlite3";
+import { deleteActivitiesTitled } from "./shared-profile-guard";
 import { workerDbPath } from "./worker-env";
 
 // Data → Review shows a cross-TYPE overlapping duplicate (#2271).
@@ -38,10 +39,9 @@ function withDb<T>(fn: (db: Database.Database) => T): T {
 }
 
 function seedCrossTypePair() {
+  // Idempotent over a re-run: clear this spec's own pair before planting it again.
+  deleteActivitiesTitled(HC_TITLE, STRAVA_TITLE);
   withDb((db) => {
-    db.prepare(
-      `DELETE FROM activities WHERE profile_id = 1 AND title IN (?, ?)`
-    ).run(HC_TITLE, STRAVA_TITLE);
     const ins = db.prepare(
       `INSERT INTO activities
          (profile_id, date, type, title, duration_min, distance_km,
@@ -81,13 +81,7 @@ test.beforeEach(() => {
   seedCrossTypePair();
 });
 
-test.afterAll(() => {
-  withDb((db) => {
-    db.prepare(
-      `DELETE FROM activities WHERE profile_id = 1 AND title IN (?, ?)`
-    ).run(HC_TITLE, STRAVA_TITLE);
-  });
-});
+test.afterAll(() => deleteActivitiesTitled(HC_TITLE, STRAVA_TITLE));
 
 test("Review offers the cross-type overlapping pair at high confidence (#2271)", async ({
   page,

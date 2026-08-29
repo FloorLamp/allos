@@ -1,5 +1,6 @@
 import { test, expect } from "./fixtures";
 import Database from "better-sqlite3";
+import { deleteActivitiesTitled } from "./shared-profile-guard";
 import { workerDbPath, frozenNow } from "./worker-env";
 import { settledClick } from "./helpers";
 
@@ -242,9 +243,7 @@ test("a chronically under-floor training routine is offered its own cadence, and
     ).toHaveCount(0);
     expect(floorOf(db, targetId)).toBe(4);
   } finally {
-    db.prepare(
-      "DELETE FROM activities WHERE profile_id = 1 AND title = 'Rightsize session (e2e)'"
-    ).run();
+    deleteActivitiesTitled("Rightsize session (e2e)");
     dropTarget(db, targetId);
     db.close();
   }

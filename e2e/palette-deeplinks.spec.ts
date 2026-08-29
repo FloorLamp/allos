@@ -2,6 +2,7 @@ import { test, expect } from "./fixtures";
 import Database from "better-sqlite3";
 import { openCommandPalette } from "./nav";
 import { followLink } from "./helpers";
+import { deleteActivitiesTitled } from "./shared-profile-guard";
 import { workerDbPath } from "./worker-env";
 
 // Command-palette hits land on their TARGET, not a hub (#1568).
@@ -50,8 +51,8 @@ function withDb<T>(fn: (db: Database.Database) => T): T {
 }
 
 function cleanup() {
+  deleteActivitiesTitled(ACTIVITY_MARKER);
   withDb((db) => {
-    db.prepare("DELETE FROM activities WHERE title = ?").run(ACTIVITY_MARKER);
     db.prepare("DELETE FROM intake_items WHERE name = ?").run(MED_MARKER);
     // Children that reference the planted provider go FIRST, then the provider
     // itself — the registry row is global, so leaving it behind would leak into

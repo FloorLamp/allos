@@ -54,25 +54,31 @@
 //   OVER-BLANK — code blanked away. A guard cannot see real source: a false PASS, and
 //   it is SILENT. This is the direction that hid 1,244 lines of ActivityForm.tsx.
 //
-// TWO INPUTS ARE STILL WRONG, both over-blanking, both authored in the test file:
+// ONE INPUT IS STILL WRONG, over-blanking, authored in the test file:
 //
-//   1. A REGEX LITERAL OPENING AFTER `}` OR `)`, whose body carries `//` or `/*`
-//      inside a character class — `function f() {}` then `/[//]/.test(s)`, or
-//      `if (x) /[/*]/.test(s)`. Neither `}` nor `)` may join REGEX_PRECEDERS: `}`
-//      because `<Foo a={1} />` puts a `/` right after one (the JSX rule below), and
-//      `)` because `(a + b) / c; // note` is ordinary division whose trailing comment
-//      would then be walked into. So this one is a genuine trade, and the resolution
-//      is that the shape does not occur: a statement-initial regex and a braceless
-//      `if` body carrying a regex are both absent from this tree, and the oracle test
-//      holds that at zero.
+//   A REGEX LITERAL OPENING AFTER `}` OR `)`, whose body carries `//` or `/*`
+//   inside a character class — `function f() {}` then `/[//]/.test(s)`, or
+//   `if (x) /[/*]/.test(s)`. Neither `}` nor `)` may join REGEX_PRECEDERS: `}`
+//   because `<Foo a={1} />` puts a `/` right after one (the JSX rule below), and
+//   `)` because `(a + b) / c; // note` is ordinary division whose trailing comment
+//   would then be walked into. So this one is a genuine trade, and the resolution
+//   is that the shape does not occur: a statement-initial regex and a braceless
+//   `if` body carrying a regex are both absent from this tree, and the oracle test
+//   holds that at zero.
 //
-//   2. JSX TEXT. Not the regex heuristic at all — this scanner has no JSX-children
-//      state, so `<p>otpauth:// URI</p>` reads as a line comment and the rest of the
-//      line is blanked. ONE live instance in the tree
-//      (app/(app)/settings/TwoFactorSettings.tsx), frozen by name in the oracle test
-//      so a second one goes red. Closing it means teaching this scanner where JSX
-//      text begins and ends, which is the one ambiguity a non-parser cannot take on
-//      cheaply, so it is recorded rather than guessed at.
+// JSX TEXT USED TO BE A THIRD, AND IT WAS THE ONE THAT MATTERED (#3641). With no
+// JSX-children state, `<p>otpauth:// URI</p>` read as a line comment and 37
+// characters of rendered copy vanished from every guard's reading of
+// app/(app)/settings/TwoFactorSettings.tsx. That is the over-blank direction — the
+// silent one — and it falsified the argument (#3581) that this scanner's only failure
+// mode produces noise. The scanner now tracks JSX: opening tags, children text,
+// closing tags, and `{…}` expression containers, which are the same thing to a
+// scanner as a template's `${…}`. Text is text; only a container's contents are code.
+// Measured over the same 5,102 tracked files, in both directions: the tree went from
+// 1 over-blanking file and 0 under-blanking to ZERO of each, so the fix cost nothing
+// in the noisy direction either. What it cannot decide without a parser is a JSX
+// element whose children begin with `(` — see `isTypeParameterList`, which resolves
+// that one toward the behaviour this replaced rather than toward a new failure.
 //
 // TWO INPUTS WERE FIXED rather than recorded, because neither needed a guess:
 // `i++ / 2` and `obj.in / 2` are division by the grammar, not by preference. Both
@@ -168,6 +174,62 @@ function endOfRegex(src: string, i: number): number {
 }
 
 /**
+ * Is the `<` at `i` a TYPE PARAMETER LIST rather than a JSX element? Both sit in the
+ * same expression position and this tree writes both — `const asArray = <T>(x) => …`
+ * and `const byDate = <T extends { date: string }>(a, b) => …` in .ts, `= <p>…</p>` in
+ * .tsx. What separates them is content and what follows: a type parameter list holds
+ * only identifiers, commas and constraints, and is always applied to a parameter list,
+ * so the character after its `>` is `(`. Anything a type parameter list cannot contain
+ * — an `=`, a quote, a `/` — settles it as JSX before the scan gets that far.
+ *
+ * It answers "no" for a JSX element whose children begin with `(` (`<p>(optional)</p>`),
+ * which is genuinely ambiguous without a parser. That direction leaves the old
+ * behaviour in place rather than introducing a new one, so it fails toward the
+ * scanner this replaced.
+ */
+function isTypeParameterList(src: string, i: number): boolean {
+  const limit = Math.min(src.length, i + 200);
+  let j = i + 1;
+  let depth = 0;
+  while (j < limit) {
+    const c = src[j];
+    if (c === "<" || c === "{" || c === "[" || c === "(") depth++;
+    else if (c === "}" || c === "]" || c === ")") depth--;
+    else if (c === ">") {
+      if (depth === 0) break;
+      depth--;
+    } else if (depth === 0 && !/[A-Za-z0-9_$,.|&\s]/.test(c)) return false;
+    j++;
+  }
+  if (src[j] !== ">") return false;
+  let k = j + 1;
+  while (k < src.length && /\s/.test(src[k])) k++;
+  return src[k] === "(";
+}
+
+/** Is the `<` at `i` opening a JSX element? */
+function opensJsx(out: string[], src: string, i: number): boolean {
+  // A tag name or a fragment. `a < b` and `Foo<Bar>` both fail the position test
+  // below, because a value or an identifier precedes them.
+  if (!/[A-Za-z_$>]/.test(src[i + 1] ?? "")) return false;
+  return opensRegex(out, i) && !isTypeParameterList(src, i);
+}
+
+/**
+ * What the scanner is currently inside, innermost last; empty means ordinary code.
+ *
+ * `code` is any `{…}` that returns to whatever encloses it, because a `${…}`
+ * interpolation in a template and a `{…}` expression container in JSX are the same
+ * thing to a scanner — the frame beneath records which one it returns to, so neither
+ * needs its own kind.
+ */
+type Frame =
+  | { kind: "template" }
+  | { kind: "code"; braces: number }
+  | { kind: "tag"; angle: number }
+  | { kind: "children" };
+
+/**
  * The source with every comment blanked, byte-for-byte otherwise.
  *
  * Line and block comments become runs of spaces (newlines preserved); strings,
@@ -180,34 +242,80 @@ export function stripComments(src: string): string {
       if (out[k] !== "\n") out[k] = " ";
   };
 
-  // Depth of `${…}` interpolations we are inside, so a `}` knows whether it returns
-  // to a template or is ordinary code. Each entry counts the plain `{` braces opened
-  // within that interpolation.
-  const interp: number[] = [];
+  const stack: Frame[] = [];
   let i = 0;
-  let inTemplate = false;
 
   while (i < src.length) {
     const c = src[i];
+    const frame = stack[stack.length - 1];
 
-    if (inTemplate) {
+    if (frame?.kind === "template") {
       if (c === "\\") {
         i += 2;
         continue;
       }
       if (c === "`") {
-        inTemplate = false;
+        stack.pop();
         i++;
         continue;
       }
       if (c === "$" && src[i + 1] === "{") {
-        interp.push(0);
-        inTemplate = false;
+        stack.push({ kind: "code", braces: 0 });
         i += 2;
         continue;
       }
       i++;
       continue;
+    }
+
+    // JSX CHILDREN ARE TEXT, NOT CODE. Nothing here opens a comment, a string or a
+    // regex — `otpauth:// URI` is rendered copy, and reading it as a line comment
+    // blanked it out from under sixteen guards (#3641). Only a nested element, a
+    // closing tag and a `{…}` container mean anything.
+    if (frame?.kind === "children") {
+      if (c === "<" && src[i + 1] === "/") {
+        while (i < src.length && src[i] !== ">") i++;
+        stack.pop();
+        i++;
+        continue;
+      }
+      if (c === "<" && /[A-Za-z_$>]/.test(src[i + 1] ?? "")) {
+        stack.push({ kind: "tag", angle: 0 });
+        i++;
+        continue;
+      }
+      if (c === "{") {
+        stack.push({ kind: "code", braces: 0 });
+        i++;
+        continue;
+      }
+      i++;
+      continue;
+    }
+
+    // Inside `<tag …>`: only the ways a tag ends are special. Attribute strings,
+    // `{…}` values and the comments TypeScript allows between attributes all fall
+    // through to the ordinary code handling below. `angle` counts the TYPE ARGUMENTS
+    // a generic component carries — `<SegmentedControl<ViewMode> …>` writes a `>` that
+    // does not end the tag, and reading it as one hands the whole rest of the file to
+    // the children state.
+    if (frame?.kind === "tag") {
+      if (c === "<") {
+        frame.angle++;
+        i++;
+        continue;
+      }
+      if (c === ">") {
+        if (frame.angle > 0) frame.angle--;
+        else stack[stack.length - 1] = { kind: "children" };
+        i++;
+        continue;
+      }
+      if (c === "/" && src[i + 1] === ">" && frame.angle === 0) {
+        stack.pop();
+        i += 2;
+        continue;
+      }
     }
 
     // Comments first: neither `//` nor `/*` can ever open a regex literal, so this
@@ -251,23 +359,26 @@ export function stripComments(src: string): string {
     }
 
     if (c === "`") {
-      inTemplate = true;
+      stack.push({ kind: "template" });
       i++;
       continue;
     }
 
-    if (c === "{" && interp.length) {
-      interp[interp.length - 1]++;
+    if (c === "{") {
+      if (frame?.kind === "code") frame.braces++;
+      else if (frame?.kind === "tag") stack.push({ kind: "code", braces: 0 });
       i++;
       continue;
     }
-    if (c === "}" && interp.length) {
-      if (interp[interp.length - 1] === 0) {
-        interp.pop();
-        inTemplate = true;
-      } else {
-        interp[interp.length - 1]--;
-      }
+    if (c === "}" && frame?.kind === "code") {
+      if (frame.braces === 0) stack.pop();
+      else frame.braces--;
+      i++;
+      continue;
+    }
+
+    if (c === "<" && opensJsx(out, src, i)) {
+      stack.push({ kind: "tag", angle: 0 });
       i++;
       continue;
     }
