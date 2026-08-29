@@ -38,7 +38,12 @@
 //
 // NO DB, NO AMBIENT CLOCK — every function takes its `now`.
 
-import { dateStrInTz, zonedDateParts, zonedWallTimeToUtc } from "./date";
+import {
+  dateStrInTz,
+  parseUtcSql,
+  zonedDateParts,
+  zonedWallTimeToUtc,
+} from "./date";
 
 // The pair the shared control renders and emits. One value, both grains.
 export interface WhenValue {
@@ -212,8 +217,8 @@ export function reanchorStatedAt(
   now: Date
 ): string | null {
   if (statedAt === null) return null;
-  const from = new Date(statedAt);
-  if (Number.isNaN(from.getTime())) return null;
+  const from = parseUtcSql(statedAt);
+  if (!from) return null;
   const inst = statedInstantOnDate(newDate, zonedDateParts(tz, from).hhmm, tz);
   const verdict = judgeStatedAt(inst, tz, newDate, now);
   return verdict.kind === "accepted" ? verdict.at.toISOString() : null;
@@ -222,7 +227,6 @@ export function reanchorStatedAt(
 // The display half of a stated instant: its profile-local wall clock, or "" for
 // "not stated" — what a time input renders as its value.
 export function statedHhmm(statedAt: string | null, tz: string): string {
-  if (statedAt === null) return "";
-  const d = new Date(statedAt);
-  return Number.isNaN(d.getTime()) ? "" : zonedDateParts(tz, d).hhmm;
+  const d = parseUtcSql(statedAt);
+  return d ? zonedDateParts(tz, d).hhmm : "";
 }
