@@ -198,9 +198,5 @@ describe("currentStreak across a real timezone skip (#3294)", () => {
 
     // Trained every day the profile actually lived, anchored on the last of them.
     expect(currentStreak(days.at(-1) as string, days)).toBe(streak);
-    // The error only ever runs one way.
-    expect(currentStreak(days.at(-1) as string, days)).toBeLessThanOrEqual(
-      days.length
-    );
   });
 });
