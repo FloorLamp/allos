@@ -1057,9 +1057,13 @@ export const TIME_COLUMNS = {
       // convention per table is worth more here than matching a precedent set on a table
       // whose instants are all canonical.
       //
-      // Safe as bare because it is never compared against a canonical column: the only
-      // reads are `IS NULL` (the claim's guard) and `substr(…, 1, 10)` (the delivery
-      // day), and both are convention-blind. Its one writer is claimDeliveredDocuments,
+      // Safe as bare because it is never compared against a canonical column: the
+      // reads are `IS NULL` (the claim's guard), `MAX()` with a `date(…, '-1 day')`
+      // bound, and the instant itself resolved to a profile-local day in JS — all
+      // convention-blind. The `substr(…, 1, 10)` this sentence used to name was the
+      // UTC truncation #3880 removed and #3944 declined to bring back; the delivery
+      // day is no longer computed in SQL at all. Its one writer is
+      // claimDeliveredDocuments,
       // bound to sqlNow() beside the guard it feeds. No column DEFAULT, so SQLite's SQL
       // clock can never write it behind that writer's back.
       column: "delivered_at",

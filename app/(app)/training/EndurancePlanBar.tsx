@@ -166,6 +166,10 @@ export default function EndurancePlanBar({
           className="subpanel-inset-sm mt-4 space-y-3 rounded-lg border border-black/5 p-3 dark:border-white/10"
           data-testid="endurance-form"
         >
+          {/* The unit the distance field is LABELLED with, carried with the value
+              (#630, #3942) — the pref is per-login, so another tab can flip it
+              between this render and Save. */}
+          <input type="hidden" name="distance_unit" value={distanceUnit} />
           <div className="grid gap-3 sm:grid-cols-2">
             <div>
               <label className="section-label" htmlFor="endurance-discipline">

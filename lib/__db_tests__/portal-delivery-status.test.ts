@@ -449,3 +449,58 @@ describe("the sentence a delivery-only login row renders (#2914)", () => {
     ).toBe("Delivered 9 documents 2026-08-15 · portal never checked");
   });
 });
+
+// THE READ IS BOUNDED, AND THE LOCAL DAY IS STILL THE ONLY TEST (#3944).
+//
+// #3880 moved the day out of SQL and left the read unbounded — one row per delivered
+// archive ever, each paying an `Intl` conversion before JS bucketed it. The SQL side is
+// now a BOUND (the account's own MAX, widened by exactly one day) and nothing else; the
+// local-day comparison still decides everything. The widening is load-bearing rather
+// than slack: in Auckland the two archives below share ONE local day across TWO UTC
+// days, so a bound taken at `date(MAX)` with no widening would drop the earlier one and
+// this table would read `count: 1`.
+describe("the bounded delivery read keeps the profile-local day (#3944)", () => {
+  // Both instants are the SAME two deliveries seen from three zones. The year-old
+  // archive seeded beside them is what the bound exists to skip, and it must never be
+  // the day named either.
+  const EARLIER = "2026-03-04 22:30:00";
+  const LATER = "2026-03-05 01:00:00";
+  const STALE = "2025-03-04 22:30:00";
+
+  it.each([
+    ["east", "Pacific/Auckland", "2026-03-05", 2],
+    ["west", "America/Los_Angeles", "2026-03-04", 2],
+    ["utc", "UTC", "2026-03-05", 1],
+  ] as const)(
+    "%s (%s) reads the latest local day as %s over %i",
+    (slug, tz, day, count) => {
+      const profile = newProfile(`DELIVERY-BOUND-${slug}`);
+      const portal = createPortal(`Bound Portal ${slug}`);
+      expect(portal.ok).toBe(true);
+      const account = accountsForPortal(portal.ok ? portal.id : 0)[0];
+      const label = "Bound Patient";
+      expect(bindPortalIdentity(account.id, label, profile).ok).toBe(true);
+      const identityId = (
+        db
+          .prepare(
+            "SELECT id FROM portal_identities WHERE account_id = ? AND patient_label = ?"
+          )
+          .get(account.id, label) as { id: number }
+      ).id;
+      const ins = db.prepare(
+        `INSERT INTO medical_documents
+         (filename, stored_path, mime_type, size_bytes, extraction_status,
+          uploaded_at, delivered_at, profile_id, acquired_identity_id)
+       VALUES (?, '', 'application/xml', 20, 'done', ?, ?, ?, ?)`
+      );
+      for (const at of [STALE, EARLIER, LATER])
+        ins.run(`bound-${at}.xml`, at, at, profile, identityId);
+
+      expect(
+        deliveredDocumentCountsByAccount(authorized([profile]), false, tz).get(
+          account.id
+        )
+      ).toEqual({ count, day });
+    }
+  );
+});
