@@ -25,7 +25,8 @@ const DESKTOP = { width: 1366, height: 768 };
 // measures, so the bound carries 108px of headroom. WHAT THAT HEADROOM IS FOR,
 // stated because a bound nobody can name the units of is a guess: everything
 // ABOVE the nav, which is the identity bar (~42px), the search trigger (40px),
-// the "+ Log" button (26px) and the column's own padding and gaps. One more row
+// the "+ Log" button (34px — the control box, #3938/#4003, not the 26px this line
+// used to say) and the column's own padding and gaps. One more row
 // of chrome up there is ~50px, so this fails before a second one lands. It is a
 // CEILING on a PRESENCE-shaped quantity — a nav row that renders too low still
 // fails it — so the generous bound cannot flatter a broken layout the way it
@@ -138,15 +139,65 @@ test.describe("the desktop sidebar refit (#3154)", () => {
   // sidebar and the whole page. This is the browser half of
   // components/__tests__/anchored-popover-focus.test.tsx, which pins the same
   // contract in jsdom but cannot speak for a real browser's focus rules.
+  //
+  // THE SUBJECT OF THESE ASSERTIONS IS FIXED HERE, NOT CHOSEN BY THE PANEL (#4015).
+  //
+  // Both used to read `document.activeElement` through a bare `evaluate` after a
+  // key press, and the second one meant "Shift+Tab off the panel's FIRST control
+  // leaves". Which control that is, is decided by the app: `AnchoredPanel` focuses
+  // `focusablesIn(panel)[0]` in an effect, and the Log menu's context offers arrive
+  // from an ASYNC gather on every open (`useLogSheetContext`) that mounts rows
+  // ABOVE the segment track. So focus routinely ends up mid-panel, one Shift+Tab
+  // lands on an earlier row still INSIDE it, and the assertion silently measured
+  // the gather's timing. Measured: 1 red in 6 parallel repeats, then 1 on the first
+  // CI run, then 4 in 10 once a naive wait stopped hiding it.
+  //
+  // So the escape is stated as the PROPERTY instead of as one keystroke: a popover
+  // lets focus walk out, a modal wraps for ever. Shift+Tab is pressed until focus
+  // leaves, bounded by the panel's own focusable count — every extra control the
+  // gather adds is one more press, and a trap exhausts the bound however many
+  // there are. That means the same thing on every run.
+  //
+  // FOCUSABLE mirrors `focusablesIn` in components/useFocusTrap.ts — the app's
+  // single answer to "what is reachable in here", visibility filter included.
+  // Duplicated rather than imported because that module is a React hook file; if
+  // the two ever disagree, these assertions are what reds.
+  const FOCUSABLE =
+    'a[href], button:not([disabled]), textarea:not([disabled]), input:not([disabled]), select:not([disabled]), [tabindex]:not([tabindex="-1"])';
+
+  /** Where focus is relative to the panel, as a word rather than a boolean. */
+  async function focusPlace(
+    panel: Locator
+  ): Promise<"inside" | "outside" | "lost"> {
+    return panel.evaluate((el) => {
+      const active = document.activeElement;
+      if (!active || active === document.body) return "lost";
+      return el.contains(active) ? "inside" : "outside";
+    });
+  }
+
+  /** Reachable controls in the panel right now — the walk's bound, re-read each press. */
+  async function focusableCount(panel: Locator, sel: string): Promise<number> {
+    return panel.evaluate(
+      (el, s) =>
+        Array.from(el.querySelectorAll<HTMLElement>(s)).filter(
+          (n) => n.offsetParent !== null
+        ).length,
+      sel
+    );
+  }
+
   const KEYBOARD_PANELS = [
     {
       what: "Calendar",
       trigger: "sidebar-calendar",
       panel: "sidebar-calendar-panel",
-      // The panel's first control, named because the browser's answer to "what
-      // is focusable in here" is the part jsdom cannot give. The log panel's own
-      // first row depends on which segment `openingLogSegment` picks, so that
-      // case asserts the containment and lets the segment stay the app's choice.
+      // The panel's first control BY NAME, because the browser's answer to "what
+      // is focusable in here" is the part jsdom cannot give. Both cases now pin
+      // the first focusable structurally (see FOCUSABLE above); this adds WHICH
+      // control that is, where the panel's content is fixed. The log panel's
+      // first row follows the segment `openingLogSegment` picks, so it is left
+      // unnamed and the structural assertion carries it.
       firstControl: "Previous month",
     },
     {
@@ -177,9 +228,13 @@ test.describe("the desktop sidebar refit (#3154)", () => {
       ).toHaveCount(1);
       // A popover, not a drawer: no `aria-modal`, and nothing is scroll-locked.
       expect(await opened.getAttribute("aria-modal")).toBeNull();
-      expect(
-        await opened.evaluate((el) => el.contains(document.activeElement))
-      ).toBe(true);
+      // Focus goes INTO the panel (#3905's invariant), polled rather than read
+      // once: it arrives from an effect keyed on the positioner having measured,
+      // and `toBeVisible` resolves off the same paint — 15-28ms apart on this box,
+      // measured, which is a race a single `evaluate` loses about one run in six.
+      // WHICH control it lands on is deliberately not asserted here: the Log
+      // panel's is whatever the async offer gather has mounted by then.
+      await expect.poll(() => focusPlace(opened)).toBe("inside");
       if (firstControl) {
         await expect(opened.getByLabel(firstControl)).toBeFocused();
       }
@@ -193,10 +248,29 @@ test.describe("the desktop sidebar refit (#3154)", () => {
       // panel's last control instead.
       await page.keyboard.press("Enter");
       await expect(opened).toBeVisible();
-      await page.keyboard.press("Shift+Tab");
+      // Start from focus actually being in the panel, so the walk below is
+      // measuring the escape and not the effect that has not run yet.
+      await expect.poll(() => focusPlace(opened)).toBe("inside");
+
+      // The bound, and what it bounds: one press per reachable control in the
+      // panel, plus one to leave it. Read AFTER focus has landed so the offer
+      // gather is counted, and +2 for a control that mounts during the walk. A
+      // trap cannot satisfy it at any size — it never leaves — so a generous
+      // bound cannot flatter one.
+      const presses = (await focusableCount(opened, FOCUSABLE)) + 2;
+      let place = await focusPlace(opened);
+      for (let i = 0; i < presses && place === "inside"; i += 1) {
+        await page.keyboard.press("Shift+Tab");
+        place = await focusPlace(opened);
+      }
+      // A PRESENCE: focus is somewhere, and that somewhere is out of the panel.
+      // "not contained" alone is also satisfied by focus falling to nothing,
+      // which is a different bug wearing the same green.
       expect(
-        await opened.evaluate((el) => el.contains(document.activeElement))
-      ).toBe(false);
+        place,
+        `Shift+Tab ${presses} times from inside the ${what} panel never left it — ` +
+          "a popover lets focus walk out; a modal wraps round for ever."
+      ).toBe("outside");
     });
   }
 
