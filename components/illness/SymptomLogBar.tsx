@@ -7,6 +7,7 @@ import {
   IconPlus,
   IconNote,
   IconChevronDown,
+  IconChartBar,
 } from "@tabler/icons-react";
 import {
   type Symptom,
@@ -41,6 +42,8 @@ import {
   suggestSymptomsFromText,
 } from "../../app/(app)/symptom-actions";
 import type { SymptomTextMapping } from "@/lib/symptom-text-map";
+import type { AppRoute } from "@/lib/hrefs";
+import Link from "next/link";
 import SymptomSeverityControl from "@/components/illness/SymptomSeverityControl";
 import Button from "@/components/Button";
 import IconButton from "@/components/IconButton";
@@ -87,6 +90,7 @@ export default function SymptomLogBar({
   episodeId,
   showTitle = true,
   textIntakeEnabled = false,
+  analysisHref,
 }: {
   // Primary date (YYYY-MM-DD). On the dashboard this is today; on the Timeline it's the
   // selected day.
@@ -135,6 +139,11 @@ export default function SymptomLogBar({
   // AI tier is configured. Absent/false hides it entirely (taps stay the whole story;
   // offline-first, unchanged).
   textIntakeEnabled?: boolean;
+  // Where "is it getting worse" is answered for this bar's subject (#1852). PASSED, not
+  // hardcoded, because /trends/symptoms reads the SESSION's active profile: on a
+  // household member's cockpit — every mount that sets `profileId` — the link would
+  // name their symptoms and show the viewer's own, so those mounts omit it.
+  analysisHref?: AppRoute;
 }) {
   const hasToggle = !!altDate;
   const [mode, setMode] = useState<"primary" | "alt">("primary");
@@ -654,6 +663,16 @@ export default function SymptomLogBar({
             />
             <span>Log temperature</span>
           </button>
+        )}
+        {analysisHref && (
+          <Link
+            href={analysisHref}
+            data-testid="symptom-analysis-link"
+            className="btn-ghost btn-sm"
+          >
+            <IconChartBar className="h-3.5 w-3.5" />
+            Symptom trends
+          </Link>
         )}
       </div>
 
