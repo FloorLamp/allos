@@ -17,7 +17,7 @@ import { lastNDates, shiftDateStr } from "./date";
 import {
   getIntakeItems,
   getIntakeDoses,
-  getIntakeLogsInRange,
+  getIntakeAdherenceEvidence,
   getActivityDates,
   getEverLoggedItemIds,
 } from "./queries";
@@ -88,7 +88,9 @@ export function getIntakeHistory(
     getActiveSituations(profileId),
     getSituationEvents(profileId)
   );
-  const takenByDose = indexTakenByDose(getIntakeLogsInRange(profileId, days));
+  const takenByDose = indexTakenByDose(
+    getIntakeAdherenceEvidence(profileId, days)
+  );
   // Travel (#3263): a dose whose slot a timezone switch jumped over is out of the
   // window's denominator, so a trip cannot manufacture the low adherence that a
   // demotion suggestion would then be built on.

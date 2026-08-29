@@ -4,7 +4,7 @@ import {
   getRetiredDoses,
   getTakenDoseIds,
   getSkippedDoseIds,
-  getIntakeLogsInRange,
+  getIntakeAdherenceEvidence,
   getIntakePairs,
   getIntakeIngredientsByItem,
   getIntakePurposesByItem,
@@ -279,7 +279,7 @@ export default async function SupplementsTab({
             : formatWeekdayDate(date, formatPrefs),
     }));
   const takenByDose = indexTakenByDose(
-    getIntakeLogsInRange(profile.id, STRIP_DAYS)
+    getIntakeAdherenceEvidence(profile.id, STRIP_DAYS)
   );
   // Per-supplement adherence strip, aggregated across the supplement's doses:
   // a day is "taken" when all its due doses were logged, "partial" when some

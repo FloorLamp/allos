@@ -24,7 +24,7 @@ import {
   getMedications,
   getIntakeDoses,
   getActivityDates,
-  getIntakeLogsInRange,
+  getIntakeAdherenceEvidence,
   getMedicationCourses,
 } from "@/lib/queries";
 import {
@@ -146,8 +146,20 @@ function seedDetailFixture(name: string): {
 }
 
 // The calendar exactly as it was gathered before #2114 — six independent reads, no
-// board data. Kept verbatim in the test so the consolidation is pinned against the
-// behaviour it replaced rather than against itself.
+// board data. Kept in the test so the consolidation is pinned against the behaviour it
+// replaced rather than against itself.
+//
+// ONE of those six reads has moved since, and it had to move here too (#3988): the
+// strip's evidence now comes from `getIntakeAdherenceEvidence`, because the LIFETIME
+// half of the question it answers is not a windowed one. Leaving the old
+// `getIntakeLogsInRange` here would not have pinned the consolidation — it would have
+// asserted that the strip disagrees with itself, and the fixture below is a live
+// example of the divergence rather than a hypothetical: it logs an administration 18
+// days back while the item row is created today, so at a 14-day window the four days
+// before the earliest visible log used to score `na` — the app saying the medication
+// owed nothing on days a course started 20 days ago and a taken row 18 days ago both
+// prove it existed. That is asserted outright in the case below rather than left to
+// ride inside an equality between two things that moved together.
 function calendarTheOldWay(
   profileId: number,
   itemId: number,
@@ -164,7 +176,9 @@ function calendarTheOldWay(
     new Set(getActiveSituations(profileId)),
     getSituationEvents(profileId)
   );
-  const takenByDose = indexTakenByDose(getIntakeLogsInRange(profileId, days));
+  const takenByDose = indexTakenByDose(
+    getIntakeAdherenceEvidence(profileId, days)
+  );
   const strip = intakeAdherenceStrip(
     med,
     medDoses,
@@ -200,9 +214,18 @@ describe("getMedicationAdherenceCalendar reads the board gather (#2114)", () => 
   it("honours a non-default window the same way", () => {
     const { profileId, itemId } = seedDetailFixture("Detail Gather Riley");
     const data = loadMedicationsData(profileId);
-    expect(getMedicationAdherenceCalendar(profileId, data, itemId, 14)).toEqual(
-      calendarTheOldWay(profileId, itemId, 14)
-    );
+    const narrow = getMedicationAdherenceCalendar(profileId, data, itemId, 14);
+    expect(narrow).toEqual(calendarTheOldWay(profileId, itemId, 14));
+    // AND WHAT THE NARROW WINDOW SAYS ABOUT DAYS IT CANNOT SEE THE PROOF FOR (#3988).
+    // The equality above is between two expressions that moved together, so on its own
+    // it would have gone on passing whichever answer they agreed on. The day-13 dot is
+    // the one the fixture's day-18 administration is the only evidence for: `na` there
+    // is the app asserting the day owed nothing, on a course that started day-20.
+    expect(
+      narrow.weeks
+        .flat()
+        .find((d) => d?.date === shiftDateStr(today(profileId), -13))
+    ).toEqual({ date: shiftDateStr(today(profileId), -13), state: "missed" });
   });
 
   it("returns an empty grid for an unknown or foreign medication id", () => {
