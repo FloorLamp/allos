@@ -291,6 +291,14 @@ test("the strength picker creates and selects a travel machine without losing th
       page.getByRole("button", { name: "Delete", exact: true })
     ).toBeVisible({ timeout: AUTOSAVE_ROW_MS });
 
+    // The part states its implement and nothing else (#3349) — the picker, the
+    // quick-add and the registry door are all behind this one chip.
+    const chip = page.getByTestId("strength-equipment-chip");
+    await expect(chip).toHaveText("Barbell");
+    await expect(page.getByTestId("strength-equipment-link")).toHaveCount(0);
+    await expect(page.getByTestId("strength-equipment-add")).toHaveCount(0);
+    await chip.click();
+
     // The full-registry door is ordinary same-app navigation. The activity is
     // already autosaved, so it does not need a surprise second tab.
     const door = page.getByTestId("strength-equipment-link");
@@ -407,6 +415,12 @@ test("the strength form shows an equipment door with no gear on file (#1611)", a
       .filter({ hasText: "Barbell Bench Press" })
       .first() // first-ok: transient combobox list this spec just opened by typing the name
       .click();
+
+    // No gear on file and a lift with a normal implement: the row STATES that
+    // implement, and one tap opens the picker behind it (#3349).
+    const chip = page.getByTestId("strength-equipment-chip");
+    await expect(chip).toHaveText("Barbell");
+    await chip.click();
 
     // No gear on file: no <select>, but BOTH doors render (the bug was that neither
     // did, leaving this profile with no path to the registry from the strength form).

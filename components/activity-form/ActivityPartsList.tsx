@@ -1,6 +1,6 @@
 "use client";
 
-import { useState } from "react";
+import { useRef, useState } from "react";
 import {
   IconX,
   IconChevronUp,
@@ -33,6 +33,7 @@ import ExerciseGuideSection from "@/components/ExerciseGuideSection";
 import CustomTypeChips from "./CustomTypeChips";
 import CardioFields from "./CardioFields";
 import StrengthSets from "./StrengthSets";
+import { useFactEditor } from "@/components/facts/FactEditorHost";
 import type { PlateTarget } from "./useActivityParts";
 
 // The activity form's exercise/leg list (#1207 extraction): one `activity-part` row
@@ -170,6 +171,19 @@ export default function ActivityPartsList({
   // toolbar without duplicating either. Holds the index of the part whose guide
   // is open, so at most one overlay exists no matter how many parts are entered.
   const [guideFor, setGuideFor] = useState<number | null>(null);
+  // WHICH PART'S EQUIPMENT EDITOR IS OPEN (#3349), for the same reason `guideFor`
+  // holds an index: at most one is open no matter how many parts are entered. That is
+  // what keeps the registry door — which lives inside the panel — to ONE PER FORM
+  // instead of the one-per-exercise the row used to repeat. The shared facts hook
+  // rather than a plain `useState` because opening a panel unmounts the chip that was
+  // activated, and this is what puts focus back on it afterwards (#3311).
+  const partsRef = useRef<HTMLElement>(null);
+  const {
+    openEditor: openEquipment,
+    open: openEquipmentEditor,
+    close: closeEquipmentEditor,
+    onKeyDown: onEquipmentKeyDown,
+  } = useFactEditor<string>({ scopeRef: partsRef });
   const guidePart =
     guideFor != null &&
     parts[guideFor] &&
@@ -177,7 +191,11 @@ export default function ActivityPartsList({
       ? parts[guideFor]
       : null;
   return (
-    <section aria-labelledby="workout-content-title">
+    <section
+      ref={partsRef}
+      aria-labelledby="workout-content-title"
+      onKeyDown={onEquipmentKeyDown}
+    >
       <h3 id="workout-content-title" className="sr-only">
         Workout
       </h3>
@@ -367,6 +385,10 @@ export default function ActivityPartsList({
                   editedDate={editedDate}
                   equipmentList={equipmentList}
                   onEquipmentCreated={onEquipmentCreated}
+                  equipmentFocusKey={`equipment:${pi}`}
+                  equipmentOpen={openEquipment === `equipment:${pi}`}
+                  onOpenEquipment={() => openEquipmentEditor(`equipment:${pi}`)}
+                  onCloseEquipment={closeEquipmentEditor}
                   showBodyweightPrompt={!bwKnown && pi === firstBwPart}
                   bwInput={bwInput}
                   bwSaving={bwSaving}
