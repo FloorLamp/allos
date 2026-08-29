@@ -224,7 +224,12 @@ import { hasActiveIllnessSituation } from "@/lib/settings/profile-attrs";
 import OnboardingChecklist from "@/components/dashboard/OnboardingChecklist";
 import HouseholdHistoryPromoLink from "@/components/dashboard/HouseholdHistoryPromoLink";
 import { dismissRecentlyResolved, saveIllnessNowState } from "./actions";
-import { episodeHref, encounterHref, type AppRoute } from "@/lib/hrefs";
+import {
+  episodeHref,
+  encounterHref,
+  EPISODES_HREF,
+  type AppRoute,
+} from "@/lib/hrefs";
 import { formatRecordDateTime } from "@/lib/record-format";
 import { isHouseholdRecentlySickFromStates } from "@/lib/household-history";
 import { visibleRecentlyResolved } from "@/lib/recently-resolved";
@@ -1062,6 +1067,16 @@ async function renderDashboard(
     DashboardStandingPresentation
   >();
   const aheadPresentations = new Map<string, DashboardAheadPresentation>();
+  // The page a fact belongs to. Show everything renders that page as a door when the
+  // tail does not admit the fact itself (#3366), so nothing it drops becomes
+  // unreachable. Recorded here, beside the node, by whoever already knows which
+  // surface owns the question — and only where a fact CAN be dropped: Setup,
+  // statements and active states are admitted whole.
+  const candidatePages = new Map<string, AppRoute>();
+  const ownedBy = (href: AppRoute, candidate: DashboardCandidate) => {
+    candidatePages.set(candidate.candidateId, href);
+    return candidate;
+  };
   const add = (
     candidate: DashboardCandidate,
     node: ReactNode,
@@ -1098,7 +1113,9 @@ async function renderDashboard(
       href: item.href,
     });
     add(
-      candidate,
+      // The attention item's own destination is the page that owns the question
+      // (#3366); `TRACKED_PAGES` folds a deep link back to its page for the door.
+      ownedBy(item.href, candidate),
       <DashboardAttentionAtom
         item={item}
         today={on}
@@ -1118,7 +1135,10 @@ async function renderDashboard(
   for (const item of attentionItems) {
     for (const offer of item.preventiveReview ?? []) {
       add(
-        preventiveReviewCandidate(profileSubject, offer, sourceOrder++),
+        ownedBy(
+          item.href,
+          preventiveReviewCandidate(profileSubject, offer, sourceOrder++)
+        ),
         <PreventiveReviewAtom
           title={item.title}
           recordId={offer.recordId}
@@ -1182,15 +1202,18 @@ async function renderDashboard(
     );
     if (cockpit.status.temperature) {
       add(
-        careCandidates.illnessReading(
-          {
-            subject: { scope: "profile", profileId: cockpit.profileId },
-            sourceOrder: sourceOrder++,
-          },
-          "temperature",
-          key,
-          cockpit.status.temperature.id,
-          { ...episodeGroup, memberRole: "reading", memberOrder: 0 }
+        ownedBy(
+          EPISODES_HREF,
+          careCandidates.illnessReading(
+            {
+              subject: { scope: "profile", profileId: cockpit.profileId },
+              sourceOrder: sourceOrder++,
+            },
+            "temperature",
+            key,
+            cockpit.status.temperature.id,
+            { ...episodeGroup, memberRole: "reading", memberOrder: 0 }
+          )
         ),
         <DashboardAtomCard
           title={`${cockpit.displayName}'s latest temperature`}
@@ -1203,15 +1226,18 @@ async function renderDashboard(
     if (cockpit.status.lastMeds) {
       const medication = cockpit.status.lastMeds;
       add(
-        careCandidates.illnessReading(
-          {
-            subject: { scope: "profile", profileId: cockpit.profileId },
-            sourceOrder: sourceOrder++,
-          },
-          "medication",
-          key,
-          medication.id,
-          { ...episodeGroup, memberRole: "reading", memberOrder: 1 }
+        ownedBy(
+          EPISODES_HREF,
+          careCandidates.illnessReading(
+            {
+              subject: { scope: "profile", profileId: cockpit.profileId },
+              sourceOrder: sourceOrder++,
+            },
+            "medication",
+            key,
+            medication.id,
+            { ...episodeGroup, memberRole: "reading", memberOrder: 1 }
+          )
         ),
         <DashboardAtomCard
           title={`${cockpit.displayName}'s latest illness medicine`}
@@ -1226,13 +1252,16 @@ async function renderDashboard(
   for (const item of recentlyResolved) {
     const key = `${item.profileId}:${item.episodeId}`;
     add(
-      careCandidates.illnessReopen(
-        {
-          subject: { scope: "profile", profileId: item.profileId },
-          applicable: canWrite,
-          sourceOrder: sourceOrder++,
-        },
-        key
+      ownedBy(
+        EPISODES_HREF,
+        careCandidates.illnessReopen(
+          {
+            subject: { scope: "profile", profileId: item.profileId },
+            applicable: canWrite,
+            sourceOrder: sourceOrder++,
+          },
+          key
+        )
       ),
       <RecentlyResolvedReopen
         items={[item]}
@@ -1242,10 +1271,13 @@ async function renderDashboard(
   }
   if (promoteHouseholdHistory) {
     add(
-      careCandidates.householdHistory({
-        subject: { scope: "login" },
-        sourceOrder: sourceOrder++,
-      }),
+      ownedBy(
+        EPISODES_HREF,
+        careCandidates.householdHistory({
+          subject: { scope: "login" },
+          sourceOrder: sourceOrder++,
+        })
+      ),
       <div className="card">
         <HouseholdHistoryPromoLink />
       </div>
@@ -1301,11 +1333,14 @@ async function renderDashboard(
       record.kind
     );
     add(
-      progressCandidates.trainingResult(
-        { subject: profileSubject, sourceOrder: sourceOrder++ },
-        key,
-        on,
-        0
+      ownedBy(
+        "/training",
+        progressCandidates.trainingResult(
+          { subject: profileSubject, sourceOrder: sourceOrder++ },
+          key,
+          on,
+          0
+        )
       ),
       <DashboardAtomCard
         title={loadContextLabel(record.exercise, record.equipment)}
@@ -1330,11 +1365,14 @@ async function renderDashboard(
           ? fmtKmh(record.speedKmh, units.distanceUnit)
           : formatMinutes(record.durationMin);
     add(
-      progressCandidates.trainingResult(
-        { subject: profileSubject, sourceOrder: sourceOrder++ },
-        key,
-        on,
-        0
+      ownedBy(
+        "/training",
+        progressCandidates.trainingResult(
+          { subject: profileSubject, sourceOrder: sourceOrder++ },
+          key,
+          on,
+          0
+        )
       ),
       <DashboardAtomCard
         title={record.activity}
@@ -1414,7 +1452,7 @@ async function renderDashboard(
     todayMood == null
   );
   add(
-    moodCheckinCandidate,
+    ownedBy("/wellness", moodCheckinCandidate),
     <DashboardQuickEntryAction
       title={todayMood ? "Update today's mood" : "Log today's mood"}
       detail={
@@ -1457,10 +1495,13 @@ async function renderDashboard(
     moodReadings.forEach(([key, title, value], index) => {
       if (value == null) return;
       add(
-        dailyCandidates.moodReading(
-          { subject: profileSubject, sourceOrder: sourceOrder + index },
-          key,
-          on
+        ownedBy(
+          "/wellness",
+          dailyCandidates.moodReading(
+            { subject: profileSubject, sourceOrder: sourceOrder + index },
+            key,
+            on
+          )
         ),
         <DashboardAtomCard title={title} value={value} href="/trends#body" />
       );
@@ -1470,13 +1511,16 @@ async function renderDashboard(
 
   checkinPrnMeds.forEach((med, index) =>
     add(
-      dailyCandidates.prn(
-        {
-          subject: profileSubject,
-          applicable: canWrite && !activeSick,
-          sourceOrder: sourceOrder + index,
-        },
-        med.id
+      ownedBy(
+        "/medications",
+        dailyCandidates.prn(
+          {
+            subject: profileSubject,
+            applicable: canWrite && !activeSick,
+            sourceOrder: sourceOrder + index,
+          },
+          med.id
+        )
       ),
       <div className="card">
         <QuickLogPrnContent
@@ -1494,13 +1538,16 @@ async function renderDashboard(
 
   if (showWellSymptoms) {
     add(
-      dailyCandidates.symptomLog(
-        {
-          subject: profileSubject,
-          applicable: canWrite,
-          sourceOrder: sourceOrder++,
-        },
-        on
+      ownedBy(
+        "/wellness",
+        dailyCandidates.symptomLog(
+          {
+            subject: profileSubject,
+            applicable: canWrite,
+            sourceOrder: sourceOrder++,
+          },
+          on
+        )
       ),
       <div className="card">
         <SymptomLogBar
@@ -1538,10 +1585,13 @@ async function renderDashboard(
   goals.forEach((goal, index) => {
     const pct = goalPct(goal, goalProgress.get(goal.id));
     add(
-      progressCandidates.goal(
-        { subject: profileSubject, sourceOrder: sourceOrder + index },
-        goal.id,
-        outcomeGoalProgressChanged(goal, goalProgress.get(goal.id), on)
+      ownedBy(
+        "/training",
+        progressCandidates.goal(
+          { subject: profileSubject, sourceOrder: sourceOrder + index },
+          goal.id,
+          outcomeGoalProgressChanged(goal, goalProgress.get(goal.id), on)
+        )
       ),
       <GoalProgressAtom
         goal={goal}
@@ -1570,21 +1620,24 @@ async function renderDashboard(
     );
     const behind = progress.pace === "behind";
     add(
-      progressCandidates.targetProgress(
-        { subject: profileSubject, sourceOrder: sourceOrder + index * 2 },
-        id,
-        !progress.met,
-        // Owner ruling #3548: a behind target is a HIGHLIGHTED READING in Standing's
-        // attention tier, "not a Now card". A calendar week compares against its own
-        // zero-evidence opening, so crossing into behind on day 4 stays a live
-        // transition for the rest of the week — which, before this, kept both
-        // readings parked in Now exactly as #3245 described the log offers doing.
-        // The crossing is still told; `owed` is where it is told from. What the
-        // promotion keeps is the transitions that remain Now facts: reaching met,
-        // and coming back onto pace.
-        weeklyTargetStateChanged(progress, progress.previous ?? null) &&
-          !behind,
-        behind
+      ownedBy(
+        "/training",
+        progressCandidates.targetProgress(
+          { subject: profileSubject, sourceOrder: sourceOrder + index * 2 },
+          id,
+          !progress.met,
+          // Owner ruling #3548: a behind target is a HIGHLIGHTED READING in Standing's
+          // attention tier, "not a Now card". A calendar week compares against its own
+          // zero-evidence opening, so crossing into behind on day 4 stays a live
+          // transition for the rest of the week — which, before this, kept both
+          // readings parked in Now exactly as #3245 described the log offers doing.
+          // The crossing is still told; `owed` is where it is told from. What the
+          // promotion keeps is the transitions that remain Now facts: reaching met,
+          // and coming back onto pace.
+          weeklyTargetStateChanged(progress, progress.previous ?? null) &&
+            !behind,
+          behind
+        )
       ),
       <HabitProgressAtom progress={progress} />,
       {
@@ -1619,21 +1672,24 @@ async function renderDashboard(
       }
     );
     add(
-      progressCandidates.targetLog(
-        {
-          subject: profileSubject,
-          applicable: canWrite && !progress.met,
-          sourceOrder: sourceOrder + index * 2 + 1,
-        },
-        id,
-        on,
-        // Owner ruling #3245: `owed` COMPOSES WITH THE MOMENT. Behind pace alone
-        // put a never-touched 2x/week target back in Now from day 4 of every
-        // week, filling the cap with cards nobody could act on. The standing fact
-        // is told by the pace word on the reading above; the card earns a Now slot
-        // only while this is a moment the person would normally do it.
-        behind && momentOpen,
-        momentOpen
+      ownedBy(
+        "/training",
+        progressCandidates.targetLog(
+          {
+            subject: profileSubject,
+            applicable: canWrite && !progress.met,
+            sourceOrder: sourceOrder + index * 2 + 1,
+          },
+          id,
+          on,
+          // Owner ruling #3245: `owed` COMPOSES WITH THE MOMENT. Behind pace alone
+          // put a never-touched 2x/week target back in Now from day 4 of every
+          // week, filling the cap with cards nobody could act on. The standing fact
+          // is told by the pace word on the reading above; the card earns a Now slot
+          // only while this is a moment the person would normally do it.
+          behind && momentOpen,
+          momentOpen
+        )
       ),
       <DashboardAtomCard
         title={`Log ${progress.target.scope_value}`}
@@ -1651,14 +1707,17 @@ async function renderDashboard(
 
   activeProtocols.forEach((protocol, index) => {
     add(
-      progressCandidates.protocol(
-        {
-          subject: profileSubject,
-          applicable: adultContentApplicable,
-          sourceOrder: sourceOrder + index * 4,
-        },
-        "state",
-        protocol.id
+      ownedBy(
+        "/longevity",
+        progressCandidates.protocol(
+          {
+            subject: profileSubject,
+            applicable: adultContentApplicable,
+            sourceOrder: sourceOrder + index * 4,
+          },
+          "state",
+          protocol.id
+        )
       ),
       <DashboardAtomCard
         title={protocol.name}
@@ -1668,13 +1727,16 @@ async function renderDashboard(
     );
     if (protocol.adherence)
       add(
-        progressCandidates.protocol(
-          {
-            subject: profileSubject,
-            sourceOrder: sourceOrder + index * 4 + 1,
-          },
-          "adherence",
-          protocol.id
+        ownedBy(
+          "/longevity",
+          progressCandidates.protocol(
+            {
+              subject: profileSubject,
+              sourceOrder: sourceOrder + index * 4 + 1,
+            },
+            "adherence",
+            protocol.id
+          )
         ),
         <DashboardAtomCard
           title={`${protocol.name} adherence`}
@@ -1684,13 +1746,16 @@ async function renderDashboard(
       );
     if (protocol.primaryOutcome)
       add(
-        progressCandidates.protocol(
-          {
-            subject: profileSubject,
-            sourceOrder: sourceOrder + index * 4 + 2,
-          },
-          "outcome",
-          protocol.id
+        ownedBy(
+          "/longevity",
+          progressCandidates.protocol(
+            {
+              subject: profileSubject,
+              sourceOrder: sourceOrder + index * 4 + 2,
+            },
+            "outcome",
+            protocol.id
+          )
         ),
         <DashboardAtomCard
           title={protocol.primaryOutcome.label}
@@ -1700,15 +1765,18 @@ async function renderDashboard(
       );
     if (protocol.practiceName && protocol.practiceUsuallyToday && canWrite)
       add(
-        progressCandidates.protocol(
-          {
-            subject: profileSubject,
-            sourceOrder: sourceOrder + index * 4 + 3,
-          },
-          "practice",
-          protocol.id,
-          on,
-          protocol.practiceUsuallyToday
+        ownedBy(
+          "/longevity",
+          progressCandidates.protocol(
+            {
+              subject: profileSubject,
+              sourceOrder: sourceOrder + index * 4 + 3,
+            },
+            "practice",
+            protocol.id,
+            on,
+            protocol.practiceUsuallyToday
+          )
         ),
         <DashboardAtomCard
           title={`Log ${protocol.practiceName}`}
@@ -1739,15 +1807,18 @@ async function renderDashboard(
     // carries the floor in one character; the rest moved to the row's hover.
     const proteinLine = proteinTodayLineParts(proteinToday);
     add(
-      dailyCandidates.protein(
-        {
-          subject: profileSubject,
-          applicable: foodLoggingApplicable,
-          sourceOrder: sourceOrder++,
-        },
-        on,
-        proteinToday.todayIntake?.basis === "tracked" ? "external" : "manual",
-        mealTimeWindows(nowMealAnchors)
+      ownedBy(
+        "/nutrition",
+        dailyCandidates.protein(
+          {
+            subject: profileSubject,
+            applicable: foodLoggingApplicable,
+            sourceOrder: sourceOrder++,
+          },
+          on,
+          proteinToday.todayIntake?.basis === "tracked" ? "external" : "manual",
+          mealTimeWindows(nowMealAnchors)
+        )
       ),
       <ProteinTodayAtom today={proteinToday} />,
       {
@@ -1781,15 +1852,18 @@ async function renderDashboard(
     );
   if (routineControl)
     add(
-      dailyCandidates.usualRoutine(
-        {
-          subject: profileSubject,
-          applicable: foodLoggingApplicable,
-          sourceOrder: sourceOrder++,
-        },
-        routineControl.window,
-        on,
-        mealTimeWindows(nowMealAnchors)
+      ownedBy(
+        "/nutrition",
+        dailyCandidates.usualRoutine(
+          {
+            subject: profileSubject,
+            applicable: foodLoggingApplicable,
+            sourceOrder: sourceOrder++,
+          },
+          routineControl.window,
+          on,
+          mealTimeWindows(nowMealAnchors)
+        )
       ),
       <UsualRoutineAtom {...routineControl} />
     );
@@ -2003,14 +2077,17 @@ async function renderDashboard(
       }
     );
   add(
-    dailyCandidates.vitalLog(
-      {
-        subject: profileSubject,
-        applicable: canWrite,
-        sourceOrder: sourceOrder++,
-      },
-      on,
-      Boolean(vitalsModel)
+    ownedBy(
+      "/trends",
+      dailyCandidates.vitalLog(
+        {
+          subject: profileSubject,
+          applicable: canWrite,
+          sourceOrder: sourceOrder++,
+        },
+        on,
+        Boolean(vitalsModel)
+      )
     ),
     <div className="card">
       <LogReadingButton label="Log a vital" />
@@ -2036,26 +2113,32 @@ async function renderDashboard(
     );
   if (cycleControl)
     add(
-      dailyCandidates.cycleControl(
-        {
-          subject: profileSubject,
-          applicable: cycleApplicable && canWrite,
-          sourceOrder: sourceOrder++,
-        },
-        on
+      ownedBy(
+        "/medical/cycles",
+        dailyCandidates.cycleControl(
+          {
+            subject: profileSubject,
+            applicable: cycleApplicable && canWrite,
+            sourceOrder: sourceOrder++,
+          },
+          on
+        )
       ),
       <CycleControlAtom control={cycleControl} />
     );
 
   if (nextAppt)
     add(
-      careCandidates.appointment(
-        {
-          subject: profileSubject,
-          applicable: hasScheduledAppt,
-          sourceOrder: sourceOrder++,
-        },
-        nextAppt.href
+      ownedBy(
+        "/records",
+        careCandidates.appointment(
+          {
+            subject: profileSubject,
+            applicable: hasScheduledAppt,
+            sourceOrder: sourceOrder++,
+          },
+          nextAppt.href
+        )
       ),
       <NextAppointmentAtom appointment={nextAppt} />
     );
@@ -2069,10 +2152,13 @@ async function renderDashboard(
       floorLabel: RECENT_LAB_STALE_LABEL,
     });
     add(
-      careCandidates.lab(
-        { subject: profileSubject, sourceOrder: sourceOrder + index },
-        row.name,
-        labPromotions.get(row.name)
+      ownedBy(
+        "/results",
+        careCandidates.lab(
+          { subject: profileSubject, sourceOrder: sourceOrder + index },
+          row.name,
+          labPromotions.get(row.name)
+        )
       ),
       <RecentLabReadout row={row} today={on} />,
       {
@@ -2216,13 +2302,16 @@ async function renderDashboard(
       }
     );
     add(
-      progressCandidates.weightQuickAdd(
-        {
-          subject: profileSubject,
-          applicable: canWrite,
-          sourceOrder: sourceOrder++,
-        },
-        on
+      ownedBy(
+        "/trends",
+        progressCandidates.weightQuickAdd(
+          {
+            subject: profileSubject,
+            applicable: canWrite,
+            sourceOrder: sourceOrder++,
+          },
+          on
+        )
       ),
       <WeightQuickAddAtom
         latest={latestWeight ?? null}
@@ -2288,13 +2377,16 @@ async function renderDashboard(
     );
   } else if (sleepPresentation?.freshness === "stale") {
     add(
-      sleepCandidates.refresh(
-        {
-          subject: profileSubject,
-          applicable: canWrite,
-          sourceOrder: sourceOrder++,
-        },
-        on
+      ownedBy(
+        "/sleep",
+        sleepCandidates.refresh(
+          {
+            subject: profileSubject,
+            applicable: canWrite,
+            sourceOrder: sourceOrder++,
+          },
+          on
+        )
       ),
       <DashboardSetupAtom
         title="Sleep"
@@ -2334,19 +2426,22 @@ async function renderDashboard(
     ] as const;
     values.forEach(([key, title, value], index) =>
       add(
-        sleepCandidates.reading(
-          { subject: profileSubject, sourceOrder: sourceOrder + index },
-          key,
-          sleepSummary.wakeDay,
-          engagementFromSource(sleepSummary.source),
-          sleepTiming,
-          key === "duration" &&
-            sleepArrivedInWakeWindow(
-              sleepPresentation?.freshness ?? "stale",
-              wakeDayAge,
-              wakeMinutes,
-              nowMinutes
-            )
+        ownedBy(
+          "/sleep",
+          sleepCandidates.reading(
+            { subject: profileSubject, sourceOrder: sourceOrder + index },
+            key,
+            sleepSummary.wakeDay,
+            engagementFromSource(sleepSummary.source),
+            sleepTiming,
+            key === "duration" &&
+              sleepArrivedInWakeWindow(
+                sleepPresentation?.freshness ?? "stale",
+                wakeDayAge,
+                wakeMinutes,
+                nowMinutes
+              )
+          )
         ),
         <DashboardAtomCard title={title} value={value} href="/sleep" />,
         {
@@ -2365,12 +2460,15 @@ async function renderDashboard(
 
   todayNaps.forEach((nap, index) =>
     add(
-      sleepCandidates.nap(
-        { subject: profileSubject, sourceOrder: sourceOrder + index },
-        nap.date,
-        nap.startMinutes,
-        engagementFromSource(nap.source),
-        nowMinutes - nap.endMinutes
+      ownedBy(
+        "/sleep",
+        sleepCandidates.nap(
+          { subject: profileSubject, sourceOrder: sourceOrder + index },
+          nap.date,
+          nap.startMinutes,
+          engagementFromSource(nap.source),
+          nowMinutes - nap.endMinutes
+        )
       ),
       <NapAtom nap={nap} timeFormat={formatPrefs.timeFormat} />
     )
@@ -2552,6 +2650,7 @@ async function renderDashboard(
           dateLabel={formatLongDate(on, formatPrefs)}
           placements={dashboardPlacements}
           candidateNodes={candidateNodes}
+          candidatePages={candidatePages}
           standingPresentations={standingPresentations}
           aheadPresentations={aheadPresentations}
           attentionBadgeCount={attentionBadgeCount}

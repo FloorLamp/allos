@@ -14,6 +14,7 @@ import {
 } from "./dashboard-standing";
 import { groupUpcoming, type UpcomingItem } from "./upcoming";
 import { dashboardAttentionCandidateId } from "./dashboard-attention-identity";
+import type { AppRoute } from "./hrefs";
 
 export type DashboardSubject =
   | { scope: "profile"; profileId: number }
@@ -168,6 +169,13 @@ export type DashboardPlacement =
       lane: "everything";
       everythingGroup: DashboardEverythingGroup;
       memberOrder: number;
+      /**
+       * Whether the tail RENDERS this placement (#3366). The lane itself stays the
+       * complete exact-once remainder — this mark is what the canvas consumes, so
+       * "the ranker can never silently hide a candidate" is a property the test
+       * tier can state instead of one the reader has to scroll past.
+       */
+      admitted: boolean;
     });
 
 export const NOW_CANDIDATE_CAP = 2;
@@ -416,6 +424,36 @@ const EVERYTHING_GROUP_ORDER: readonly DashboardEverythingGroup[] = [
   "setup",
   "active-states",
 ];
+
+// A live reason to be in the RENDERED tail (owner ruling #3366, generalizing
+// #3186's capped-overflow carve-out to the whole remainder). Three groups are
+// admitted whole and unchanged: Setup is bounded, is the useful surface for a
+// fresh profile and self-retires as items complete; a statement already passed
+// its own relevance threshold and decay before it was ever minted; an active
+// state is live by definition.
+//
+// Act and Read are asked the question, and asked it in the vocabulary Now
+// already speaks. `nowScore` IS this app's existing definition of "has a live
+// reason right now" — owed, a window open, a promotion that just fired, safety —
+// so reusing it is what keeps safety unrankable-away here too, and what stops
+// this becoming a second relevance model (the #3077 invariant).
+function everythingAdmitted(
+  candidate: DashboardCandidate,
+  timingDisposition: DashboardTimingDisposition,
+  group: DashboardEverythingGroup
+): boolean {
+  if (group !== "act" && group !== "read") return true;
+  if (nowScore(candidate) !== null) return true;
+  // "…or a `may` action whose window is open now." An always-available action has
+  // no window that could be open, which is the whole of the owner's complaint: it
+  // is on the dashboard to be available, not because now is its moment.
+  return (
+    candidate.kind === "action" &&
+    candidate.obligation === "may" &&
+    candidate.timing.kind !== "always" &&
+    timingDisposition.kind === "active"
+  );
+}
 
 function compareEverything(
   a: DashboardCandidate,
@@ -774,6 +812,7 @@ export function rankDashboardCandidates(
         timingDisposition,
         everythingGroup: group,
         memberOrder,
+        admitted: everythingAdmitted(candidate, timingDisposition, group),
       })
     ),
   ];
@@ -805,4 +844,39 @@ export function placementsInLane<Lane extends DashboardLane>(
         placement.lane === lane
     )
     .sort((a, b) => a.laneOrder - b.laneOrder);
+}
+
+// What Show everything RENDERS, and where the rest lives (#3366).
+//
+// The lane itself stays the complete exact-once remainder; this splits it into the
+// members the tail draws and ONE door per owning page for the members it does not.
+// Deduplicated by page, in placement order, because someone looking for a dropped
+// fact is looking for a page, not for the fact's rank.
+//
+// A dropped placement whose page the caller cannot name is RENDERED rather than
+// dropped. Completeness is the contract, so the only safe direction to fail is
+// toward showing — but the fallback is NOT the guard: the pure tier and the
+// manifest tier both assert it carries nothing, and that is the assertion that goes
+// red the day a candidate loses its door.
+export function everythingTail(
+  placements: readonly DashboardPlacement[],
+  doorFor: (candidate: DashboardCandidate) => AppRoute | null
+): {
+  members: Extract<DashboardPlacement, { lane: "everything" }>[];
+  doors: AppRoute[];
+} {
+  const members: Extract<DashboardPlacement, { lane: "everything" }>[] = [];
+  const doors: AppRoute[] = [];
+  const seen = new Set<AppRoute>();
+  for (const placement of placementsInLane(placements, "everything")) {
+    const door = placement.admitted ? null : doorFor(placement.candidate);
+    if (door == null) {
+      members.push(placement);
+      continue;
+    }
+    if (seen.has(door)) continue;
+    seen.add(door);
+    doors.push(door);
+  }
+  return { members, doors };
 }

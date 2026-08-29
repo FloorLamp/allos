@@ -1,11 +1,14 @@
 import { Fragment, type ReactNode } from "react";
 import { PageHeader } from "@/components/ui";
 import {
+  everythingTail,
   placementsInLane,
   type DashboardEverythingGroup,
   type DashboardPlacement,
 } from "@/lib/dashboard-relevance";
 import type { AppRoute } from "@/lib/hrefs";
+import DestinationLink from "@/components/DestinationLink";
+import { trackedPageFor } from "@/lib/recent-pages";
 import NowStrip, { type NowStripCard } from "./NowStrip";
 import AppBadge from "@/components/AppBadge";
 import RememberedDetails from "@/components/RememberedDetails";
@@ -18,6 +21,12 @@ export interface DashboardPlacementCanvasProps {
   dateLabel: string;
   placements: readonly DashboardPlacement[];
   candidateNodes: ReadonlyMap<string, ReactNode>;
+  /**
+   * The page each candidate belongs to, for the tail's doors (#3366). A candidate
+   * whose page is missing here — or is one `lib/recent-pages` has no name for —
+   * keeps rendering in the tail instead, so nothing can go unreachable by omission.
+   */
+  candidatePages: ReadonlyMap<string, AppRoute>;
   standingPresentations: ReadonlyMap<string, DashboardStandingPresentation>;
   aheadPresentations: ReadonlyMap<string, DashboardAheadPresentation>;
   attentionBadgeCount: number;
@@ -61,6 +70,7 @@ export default function DashboardPlacementCanvas({
   dateLabel,
   placements,
   candidateNodes,
+  candidatePages,
   standingPresentations,
   aheadPresentations,
   attentionBadgeCount,
@@ -163,7 +173,22 @@ export default function DashboardPlacementCanvas({
       placement.candidate.relevance.presence === "never"
   );
   const ahead = placementsInLane(placements, "ahead");
-  const everything = placementsInLane(placements, "everything");
+  // The tail admits what is live and offers a door to the rest (#3366). The door's
+  // label is the destination's own name from `TRACKED_PAGES` — the same one list
+  // Standing's doors read — so an untracked page yields no door and the candidate
+  // renders, which is the honest answer when the app has no name for where it goes.
+  const { members: everything, doors: everythingDoors } = everythingTail(
+    placements,
+    (candidate) => {
+      const href = candidatePages.get(candidate.candidateId);
+      // The DOOR is the page, not the deep link the fact happens to carry: two
+      // dropped facts that both live on Trends owe the reader one row, and a
+      // fragment is a position on a page rather than a different page. Untracked
+      // (or unrecorded) means the app has no name for where this goes, so no door
+      // is offered and the fact keeps rendering.
+      return href == null ? null : (trackedPageFor(href)?.href ?? null);
+    }
+  );
   const aheadBuckets = groupsInPlacementOrder(
     ahead,
     (placement) => placement.aheadBucket
@@ -225,7 +250,7 @@ export default function DashboardPlacementCanvas({
 
       <DashboardAhead buckets={aheadBuckets} />
 
-      {everything.length > 0 && (
+      {(everything.length > 0 || everythingDoors.length > 0) && (
         <RememberedDetails
           id="dashboard-all"
           className="group"
@@ -259,6 +284,27 @@ export default function DashboardPlacementCanvas({
                 </section>
               );
             })}
+            {everythingDoors.length > 0 && (
+              <section aria-label="Elsewhere" data-testid="dashboard-all-doors">
+                <h3 className="mb-2 text-xs font-semibold tracking-wide text-slate-500 uppercase dark:text-slate-400">
+                  Elsewhere
+                </h3>
+                <ul className="grid grid-cols-1 gap-1">
+                  {everythingDoors.map((href) => (
+                    <li key={href}>
+                      <DestinationLink
+                        href={href}
+                        data-testid="dashboard-all-door"
+                        data-door-href={href}
+                        className="inline-flex items-center gap-2 text-sm font-medium text-sky-700 hover:underline dark:text-sky-300"
+                      >
+                        {trackedPageFor(href)!.label}
+                      </DestinationLink>
+                    </li>
+                  ))}
+                </ul>
+              </section>
+            )}
           </div>
         </RememberedDetails>
       )}
