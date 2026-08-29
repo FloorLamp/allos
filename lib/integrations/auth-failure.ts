@@ -14,31 +14,42 @@
 //     refresh_token grant) or 401 (Unauthorized).
 //   • Withings rides an error in its `{ status, body }` envelope (HTTP 200), so the
 //     caller passes the ENVELOPE status here, where 401 means the token was rejected.
-//   • Oura's personal access token has no refresh; a revoked token surfaces as a 401
-//     on the data pull, passed through here the same way.
+//   • Oura's personal access token has no refresh, so it never reaches this door:
+//     since #3618 the DATA-PULL rule is 401 and nothing else, spelled inline in
+//     `pull-sync.ts`. The two rules are deliberately different and are pinned where
+//     they disagree in lib/__tests__/auth-failure.test.ts.
 
-// True when a token-refresh (or Oura data-pull) HTTP/envelope status is a definitive
-// auth failure requiring re-connection. `body`, when supplied, guards a 400 so a
-// one-off malformed-request 400 isn't mistaken for a dead grant — a 400 whose body
-// carries an invalid_grant/invalid_token marker (or no body at all) is treated as the
-// grant being rejected. A 401 is always an auth failure. Everything else — 429, 5xx,
-// and the status-0 sentinel a network error/timeout maps to — is transient.
+// True when a token-refresh (or Withings envelope) status is a definitive auth
+// failure requiring re-connection. A 401 is always one. A 400 is one ONLY when its
+// body names the rejected grant; everything else — 429, 5xx, and the status-0
+// sentinel a network error/timeout maps to — is transient.
+//
+// `body` IS REQUIRED, AND A BODYLESS 400 IS TRANSIENT (#3798). This predicate used
+// to default `body == null || body === "" ⇒ dead grant`, so an HTTP 400 carrying no
+// body — what a CDN or gateway artifact in front of a token endpoint looks like —
+// read as a revoked grant. That matters most for Withings, which answers 200 with a
+// status envelope, so an *HTTP* 400 there is almost always infrastructure. Since
+// #3618 the verdict is a sentence telling the person their connection expired and to
+// reconnect, and `pull-tick.ts` then stops syncing a non-`connected` source at all —
+// so guessing wrong now issues a false instruction and halts a healthy sync. The
+// evidence for "revoked" has to BE evidence, not the absence of any. Required rather
+// than defaulted because the defect was a call site that inherited the default while
+// holding a body it never passed: there is no default left to inherit, and the
+// caller with no body in its space (Withings' vendor envelope) says `null` out loud.
 export function isAuthRefreshFailure(
   status: number,
-  body?: string | null
+  body: string | null
 ): boolean {
   if (status === 401) return true;
-  if (status === 400) {
-    if (body == null || body === "") return true;
-    // Strava's dead-refresh-token 400 body references the refresh_token by name
-    // (…"resource":"RefreshToken","field":"refresh_token","code":"invalid"…) rather
-    // than the bare OAuth `invalid_grant`, so match either form. `invalid_scope` and
-    // other malformed-request 400s carry none of these markers and stay transient.
-    return /invalid[_ ]?grant|invalid[_ ]?token|invalid[_ ]?refresh|refresh[_ ]?token|unauthor/i.test(
-      body
-    );
-  }
-  return false;
+  if (status !== 400) return false;
+  if (body == null || body === "") return false;
+  // Strava's dead-refresh-token 400 body references the refresh_token by name
+  // (…"resource":"RefreshToken","field":"refresh_token","code":"invalid"…) rather
+  // than the bare OAuth `invalid_grant`, so match either form. `invalid_scope` and
+  // other malformed-request 400s carry none of these markers and stay transient.
+  return /invalid[_ ]?grant|invalid[_ ]?token|invalid[_ ]?refresh|refresh[_ ]?token|unauthor/i.test(
+    body
+  );
 }
 
 // ---- What the person reads when a sync fails (#3618) ------------------------

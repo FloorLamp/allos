@@ -1052,7 +1052,13 @@ export async function getWithingsAccessToken(
     signal: AbortSignal.timeout(TOKEN_REFRESH_TIMEOUT_MS),
   });
   if (!res.ok) {
-    if (isAuthRefreshFailure(res.status)) {
+    // READ THE BODY AND PASS IT (#3798). Withings answers 200-with-envelope when it
+    // is answering at all, so an HTTP 400 here is almost always a gateway artifact —
+    // and until this call passed the body it had, that bodyless 400 flipped a healthy
+    // connection to needs_reauth and stopped its sync. The body stays out of the
+    // throw: `runPullSync` turns this into house copy and an operator log (#3592).
+    const body = await res.text();
+    if (isAuthRefreshFailure(res.status, body)) {
       markConnectionNeedsReauth(profileId, WITHINGS_ID);
     }
     throw new Error(`Withings token refresh failed (${res.status})`);
@@ -1070,7 +1076,9 @@ export async function getWithingsAccessToken(
       typeof (json as { status?: unknown }).status === "number"
         ? (json as { status: number }).status
         : -1;
-    if (isAuthRefreshFailure(envStatus)) {
+    // `null` body, said out loud: a vendor envelope status has no OAuth error body to
+    // read, so 401 is the only revocation evidence this space can carry (#3798).
+    if (isAuthRefreshFailure(envStatus, null)) {
       markConnectionNeedsReauth(profileId, WITHINGS_ID);
     }
     throw new Error("Withings token refresh returned an unexpected shape");

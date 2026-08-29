@@ -179,12 +179,12 @@ const CASES: Case[] = [
     expected: "Couldn't sync Withings.",
     reauth: false,
   },
-  // A body-less 400 on a DATA endpoint is a bad parameter, not a dead grant.
-  // `isAuthRefreshFailure` reads it as one — right for a token refresh, where the
-  // grant is the request — and flipping needs_reauth on it makes pull-tick skip the
-  // source for good, so a malformed request would stop syncing permanently while the
-  // copy told the person to reconnect. #3007 measured exactly this status against a
-  // data endpoint.
+  // A body-less 400 on a DATA endpoint is a bad parameter, not a dead grant, and
+  // flipping needs_reauth on it makes pull-tick skip the source for good — so a
+  // malformed request would stop syncing permanently while the copy told the person
+  // to reconnect. #3007 measured exactly this status against a data endpoint. The
+  // refresh door read a bodyless 400 the same wrong way until #3798; both doors now
+  // need the grant NAMED before they call it dead.
   {
     source: "oura",
     arrival: "http",

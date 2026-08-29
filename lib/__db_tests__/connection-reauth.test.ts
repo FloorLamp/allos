@@ -19,6 +19,7 @@ import {
   setOuraToken,
 } from "@/lib/integrations/connections";
 import { runOuraSync } from "@/lib/integrations/oura-sync";
+import { syncIntegrations } from "@/lib/integrations/pull-tick";
 
 let profileId: number;
 let fetchMock: ReturnType<typeof vi.fn>;
@@ -154,4 +155,78 @@ describe("Oura revoked PAT → needs_reauth", () => {
     expect(res).toHaveProperty("error");
     expect(statusOf("oura")).toBe("connected");
   });
+});
+
+// ---- #3798: at the refresh door, "revoked" needs evidence, not its absence -------
+//
+// A bodyless or non-JSON HTTP 400 is what a CDN/gateway artifact in front of a token
+// endpoint looks like — and it used to reach `needs_reauth`, which since #3618 tells
+// the person their connection expired and, via pull-tick's `status !== "connected"`
+// skip, stops syncing that source until they act on an instruction that was false.
+// Both directions are pinned here: absence of evidence leaves the connection alone,
+// and a body that DOES name the rejected grant still flips it.
+const GATEWAY_HTML =
+  "<html><head><title>400 Bad Request</title></head><body><center><h1>400 Bad Request</h1></center><hr><center>cloudfront</center></body></html>";
+// Strava spells a dead refresh token as a field reference, not the bare OAuth code.
+const STRAVA_DEAD_GRANT =
+  '{"message":"Bad Request","errors":[{"resource":"RefreshToken","field":"refresh_token","code":"invalid"}]}';
+
+async function refreshWith(
+  provider: "strava" | "withings",
+  body: string,
+  status: number
+) {
+  fetchMock.mockResolvedValue(new Response(body, { status }));
+  const call =
+    provider === "strava"
+      ? getStravaAccessToken(profileId)
+      : getWithingsAccessToken(profileId);
+  await expect(call).rejects.toThrow();
+}
+
+describe("refresh door — a 400 is a dead grant only on evidence (#3798)", () => {
+  beforeEach(() => {
+    setStravaCredentials(profileId, "client-id", "client-secret");
+    setStravaTokens(profileId, {
+      accessToken: "dead-access",
+      refreshToken: "dead-refresh",
+      expiresAt: EXPIRED,
+    });
+    setWithingsCredentials(profileId, "w-client", "w-secret");
+    setWithingsTokens(profileId, {
+      accessToken: "dead-access",
+      refreshToken: "dead-refresh",
+      expiresAt: EXPIRED,
+    });
+  });
+
+  it.each([
+    // No evidence at all — the gateway artifact this issue is about.
+    ["strava", "", "connected"],
+    ["strava", GATEWAY_HTML, "connected"],
+    ["withings", "", "connected"],
+    ["withings", GATEWAY_HTML, "connected"],
+    // THE CONVERSE: a real revocation still reaches needs_reauth on each provider.
+    ["strava", STRAVA_DEAD_GRANT, "needs_reauth"],
+    ["withings", '{"error":"invalid_grant"}', "needs_reauth"],
+  ] as const)("%s HTTP 400 + %j → %s", async (provider, body, expected) => {
+    await refreshWith(provider, body, 400);
+    expect(statusOf(provider)).toBe(expected);
+  });
+
+  // THE CONSEQUENCE, not just the column: pull-tick auto-syncs `connected` rows only,
+  // so the gateway 400 must leave the source in the next tick's poll set and a real
+  // revocation must take it out. This is the difference the person actually feels.
+  it.each([
+    ["", true],
+    [STRAVA_DEAD_GRANT, false],
+  ] as const)(
+    "after a 400 %j the next tick polls strava: %s",
+    async (body, stillPolled) => {
+      await refreshWith("strava", body, 400);
+      fetchMock.mockResolvedValue(new Response("upstream error", { status: 500 }));
+      const tick = await syncIntegrations(profileId);
+      expect(tick.polled.includes("strava")).toBe(stillPolled);
+    }
+  );
 });
