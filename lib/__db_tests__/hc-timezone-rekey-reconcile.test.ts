@@ -337,11 +337,11 @@ describe("what the reconcile refuses to touch", () => {
     expect(rows(p)[0].weight_kg).toBe(80.4);
   });
 
-  // THE DESTINATION SIDE, and it is the rule doing the work rather than two more
-  // clauses. The null at the old day happens only if the measure ACTUALLY LANDED at the
-  // new one; an edit-locked destination makes `upsertBodyMetrics` skip, so the re-key is
-  // refused with it. Under the previous draft this sequence deleted the stale row and
-  // wrote nothing — the reading was simply gone.
+  // THE EDIT-LOCKED DESTINATION SIDE. The row at the new day still exists and still
+  // holds the person's correction, so absence cannot reveal that `upsertBodyMetrics`
+  // refused the source's value. The reconcile's explicit edit-lock clause refuses the
+  // re-key with it. Under the previous draft this sequence deleted the stale row and
+  // left only the correction — the source reading was gone.
   it("an EDIT-LOCKED DESTINATION leaves the old day untouched", () => {
     freeze("2026-05-02T05:00:00Z");
     const p = newProfile("Locked destination", LA);
@@ -367,9 +367,10 @@ describe("what the reconcile refuses to touch", () => {
     ]);
   });
 
-  // The other destination-side route, closed by the same one condition. A day the person
-  // previously deleted carries a re-import tombstone, so the upsert SUPPRESSES the write;
-  // the previous draft deleted the stale row anyway and left the profile with nothing.
+  // THE TOMBSTONED DESTINATION SIDE. A day the person previously deleted carries a
+  // re-import tombstone, so the upsert SUPPRESSES the write and no live destination row
+  // exists. The reconcile's `!dest` clause refuses the re-key; the previous draft
+  // deleted the stale row anyway and left the profile with nothing.
   it("a TOMBSTONED DESTINATION leaves the old day untouched", () => {
     freeze("2026-05-02T05:00:00Z");
     const p = newProfile("Tombstoned destination", LA);
