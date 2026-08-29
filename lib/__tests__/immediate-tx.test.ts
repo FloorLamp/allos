@@ -53,8 +53,8 @@ const ALLOWLIST = new Set<string>([
   "lib/cycling-stream-summary-db.ts",
   // The AI tier store (#875) takes the Database handle for the same reason (#2958):
   // lib/db imports it to register the tier-config provider, so importing lib/db back
-  // is a runtime cycle. Its one write transaction is opened `.immediate()` by hand —
-  // this entry exempts the whole file, so nothing here checks that it stays that way.
+  // is a runtime cycle. Its one write transaction is opened `.immediate()` by hand.
+  // The guarded subset below verifies that it stays that way.
   "lib/settings/ai-tiers.ts",
   "lib/offline/queue-db.ts",
   // Same story as queue-db: the browser IndexedDB `db.transaction(store, mode)`,
@@ -68,6 +68,15 @@ const ALLOWLIST = new Set<string>([
   // — and here the transaction is the POINT: the gate is read and the data written in
   // one atomic IndexedDB transaction, so no wipe can interleave between them.
   "lib/offline/write-gate.ts",
+]);
+
+const GUARDED_ALLOWLIST = new Set([
+  "lib/photo/metadata-backfill.ts",
+  "lib/canonical-alias-merge-db.ts",
+  "lib/cycling-stream-summary-db.ts",
+  "lib/settings/ai-tiers.ts",
+  "lib/migrations/runner.ts",
+  "lib/migrations/boot-tasks.ts",
 ]);
 
 function isAllowlisted(rel: string): boolean {
@@ -120,11 +129,32 @@ function stripComments(text: string): string {
     .replace(/(^|[^:])\/\/.*$/gm, "$1");
 }
 
+function unguardedTransactions(text: string): number {
+  const source = stripComments(text);
+  const transactions = [...source.matchAll(/\bdb\.transaction\s*\(/g)];
+  return transactions.filter((match, i) => {
+    const start = match.index ?? 0;
+    const prefix = source.slice(Math.max(0, start - 80), start);
+    if (/\brunBootTx\s*\(\s*$/.test(prefix)) return false;
+
+    // A named transaction's `.immediate()` / runBootTx call follows its creation.
+    // Stop at the next transaction so one wrapper cannot cover two raw calls.
+    const end = transactions[i + 1]?.index ?? source.length;
+    const suffix = source.slice(start + match[0].length, end);
+    return !/\.immediate\s*\(|\brunBootTx\s*\(/.test(suffix);
+  }).length;
+}
+
 describe("write-transaction lock mode boundary (issue #468)", () => {
   it("no production module opens a raw db.transaction() — writes use writeTx, reads use readTx", () => {
     const offenders: string[] = [];
     for (const { rel, text } of sourceFiles()) {
-      if (isAllowlisted(rel)) continue;
+      if (isAllowlisted(rel)) {
+        if (GUARDED_ALLOWLIST.has(rel) && unguardedTransactions(text) > 0) {
+          offenders.push(rel);
+        }
+        continue;
+      }
       if (/\bdb\.transaction\s*\(/.test(stripComments(text))) {
         offenders.push(rel);
       }
@@ -135,6 +165,18 @@ describe("write-transaction lock mode boundary (issue #468)", () => {
         `(read-only snapshot) from @/lib/db instead of a raw, DEFERRED ` +
         `db.transaction():\n${offenders.join("\n")}`
     ).toEqual([]);
+  });
+
+  it("rejects a handle-owned transaction when its IMMEDIATE wrapper is removed", () => {
+    expect(
+      unguardedTransactions(`db.transaction(() => write()).immediate()`)
+    ).toBe(0);
+    expect(
+      unguardedTransactions(
+        `const tx = db.transaction(() => write()); runBootTx(tx);`
+      )
+    ).toBe(0);
+    expect(unguardedTransactions(`db.transaction(() => write())`)).toBe(1);
   });
 
   it("the writeTx / readTx helpers exist in lib/db.ts", () => {
