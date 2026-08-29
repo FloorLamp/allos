@@ -228,7 +228,9 @@ function gatherWindowDoses(
   const workoutDays = new Set(getActivityDates(profileId));
   // TODAY ONLY — the raw read's one caller here is `postWorkoutReady`, which needs the
   // session END TIMES and is a question about the current minute.
-  const activitiesToday = isForToday ? getActivitiesByDate(profileId, date) : [];
+  const activitiesToday = isForToday
+    ? getActivitiesByDate(profileId, date)
+    : [];
   // #558: a pre_workout reminder fires on a PREDICTED training day (so it can land
   // before the session), not only after a workout is logged; post_workout stays
   // gated on a logged session and held until it has ended. Only workout-
