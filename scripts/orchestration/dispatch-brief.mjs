@@ -1069,6 +1069,18 @@ ${MIGRATION_LINES}
   If you need a clean tree: COMMIT (your work must be pushed anyway — see the hard
   gate above), or copy files to $SCRATCH with branch-unique names, or use a second
   worktree. All three are safe; the stash is the only one that reaches across lanes.
+- AND \`git checkout -- <file>\` IS THE SAME TRAP THROUGH A DIFFERENT DOOR. It does not
+  mean "undo my last edit" — it means "restore this file to HEAD", and when you are
+  reverting a MUTATION, HEAD is your own last commit, not the state you mutated from.
+  Measured 2026-08-29 on #3349/#3699: a lane used it to revert a mutation while HEAD was
+  its first commit, and two files silently rolled back past a whole issue's worth of
+  uncommitted work. It was caught inside one test run only because the "restored" tree
+  failed the same way the mutation had — a quieter mutation would have been reverted to
+  a tree that no longer contained the fix, and the resulting green would have meant
+  nothing. Before EVERY mutation, copy the file to \$SCRATCH with a branch-unique name
+  (\$SCRATCH/mut-<branch>-<file>.bak) and restore from that copy. Reverting a mutation is
+  a routine step in every lane that proves its guards properly, so this is a step you
+  will take many times, each one an opportunity to lose work you have not committed.
 - NEVER \`pkill -f <pattern>\` — not vitest, not next, not playwright, not your own
   harness name. Sibling clusters run the same binaries in this container, so a pattern
   kill takes their runs down with yours and they have no way to tell that from a real
