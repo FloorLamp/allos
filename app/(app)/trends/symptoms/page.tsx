@@ -11,6 +11,7 @@ import { severityLabelFor } from "@/lib/symptoms";
 import PageContainer from "@/components/PageContainer";
 import BackLink from "@/components/BackLink";
 import { EmptyState, PageHeader } from "@/components/ui";
+import VisualizationDetails from "@/components/VisualizationDetails";
 
 export const dynamic = "force-dynamic";
 
@@ -28,6 +29,14 @@ export const dynamic = "force-dynamic";
 
 function monthTitle(monthStart: string): string {
   return `${MONTHS_LONG[Number(monthStart.slice(5, 7)) - 1]} ${monthStart.slice(0, 4)}`;
+}
+
+function daySummary(
+  symptom: string,
+  date: string,
+  severityByDate: Map<string, number>
+): string {
+  return `${date} — ${severityLabelFor(symptom, severityByDate.get(date) ?? 1)}`;
 }
 
 function SymptomTile({ entry }: { entry: SymptomAnalysisEntry }) {
@@ -64,26 +73,36 @@ function SymptomTile({ entry }: { entry: SymptomAnalysisEntry }) {
               {(datesByMonth.get(month.month) ?? []).map((date) => (
                 <span
                   key={date}
-                  title={`${date} — ${severityLabelFor(entry.symptom, severityByDate.get(date) ?? 1)}`}
+                  aria-label={daySummary(entry.symptom, date, severityByDate)}
                   className={`h-1.5 rounded-xs ${chartObservationRamp.stepClasses[(severityByDate.get(date) ?? 1) - 1]}`}
                 />
               ))}
               {month.days === 0 && (
-                <span className={`h-1.5 rounded-xs ${chartObservationRamp.emptyClass}`} />
+                <span
+                  className={`h-1.5 rounded-xs ${chartObservationRamp.emptyClass}`}
+                />
               )}
             </span>
-            <span
-              className="text-xs tabular-nums text-slate-500 dark:text-slate-400"
-              title={`${monthTitle(month.month)} — ${month.days} ${month.days === 1 ? "day" : "days"}`}
-            >
+            <span className="text-xs tabular-nums text-slate-500 dark:text-slate-400">
               {month.days}
             </span>
-            <span className="text-[10px] text-slate-400 dark:text-slate-500">
+            <span className="text-xs text-slate-500 dark:text-slate-400">
               {month.label}
             </span>
           </li>
         ))}
       </ol>
+      {/* The figure in words — the shared disclosure every chart in the app carries,
+          so the counts are readable without hovering a 6px cell (#794's rule, and
+          the reason none of these cells owns a `title`). */}
+      <VisualizationDetails
+        label="Monthly details"
+        items={entry.months.map(
+          (month) =>
+            `${monthTitle(month.month)} — ${month.days} ${month.days === 1 ? "day" : "days"}`
+        )}
+        data-testid={`symptom-months-${entry.symptom}`}
+      />
     </section>
   );
 }
