@@ -1,8 +1,10 @@
 import { test, expect } from "./fixtures";
 import { type Locator, type Page } from "@playwright/test";
 import {
+  closePartOptions,
   comboboxRows,
   hydratedClick,
+  openPartOptions,
   setRpeColumn,
   settledClick,
   settledFill,
@@ -172,12 +174,19 @@ test("RPE selector round-trips through the activity form (#743)", async ({
   await setRpeColumn(page, true);
 
   // RPE's expansion is information, not mouse chrome: the shared info affordance
-  // exposes it by click/tap before a person decides whether to record the field.
+  // exposes it by click/tap before a person decides whether to record the field. It
+  // rides beside the opt-in, so since #3349 it is behind the part's fact chips too.
+  await openPartOptions(page, 0);
   await page.getByTestId("rpe-help").click();
   await expect(page.getByRole("tooltip")).toContainText(
     "RPE means rate of perceived exertion"
   );
+  // ESCAPE COMPOSES, which is the contract three nested layers share (#3222/#3409):
+  // the first one belongs to the tooltip, and the editor it is inside stays open. If
+  // it ever closed the panel instead, this next line is where that would surface.
   await page.keyboard.press("Escape");
+  await expect(page.getByTestId("part-options-editor")).toBeVisible();
+  await closePartOptions(page);
 
   // The RPE selector is BLANK by default (logging RPE is never required).
   const rpe = page.getByTestId("set1-rpe");

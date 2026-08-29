@@ -1,9 +1,11 @@
 import { test, expect } from "./fixtures";
 import { type Locator, type Page } from "@playwright/test";
 import {
+  closePartOptions,
   comboboxRows,
   deleteActivityFromForm,
   expectNoClippedContent,
+  openPartOptions,
   setRpeColumn,
   settledFill,
 } from "./helpers";
@@ -256,8 +258,10 @@ test("a per-side set keeps the same two-row grouping at 390px (#1612)", async ({
   // controls wide — still green, and no longer the widest case it exists to hold.
   await setRpeColumn(page, true);
 
+  await openPartOptions(page, 0); // the sides control is behind the part's fact chips (#3349)
   await page.getByText("Track sides separately", { exact: true }).click();
   await expect(page.getByTestId("per-side-checkbox")).toBeChecked();
+  await closePartOptions(page);
   // Both sides render, each with its own reps stepper.
   await expect(page.getByLabel("Add a rep")).toHaveCount(2);
 
@@ -278,5 +282,65 @@ test("a per-side set keeps the same two-row grouping at 390px (#1612)", async ({
 
   await expectNoClippedContent(page);
   await setRpeColumn(page, false);
+  await page.goto("/training?tab=log");
+});
+
+// THE OPTIONS PANEL AT 390px, WITH IT OPEN (#3349/#4046).
+//
+// The four options controls used to be a row that was always on screen, so this file's
+// clipping sweeps measured them without anyone deciding to. Putting them behind a
+// disclosure removed that coverage silently: the sweeps still run, and they now run
+// against a panel that is shut. A guard's existence is not its coverage.
+//
+// `Hammer Curl` is the widest case the panel has — unilateral AND rep-based, so it
+// draws all five controls: the sides toggle, the rep-target number input, the AMRAP
+// toggle, the effort opt-in and its info trigger.
+//
+// EACH CONTROL IS MEASURED AGAINST THE PANEL IT SITS IN, not against the viewport.
+// Both distances are honestly called "does it fit", and only one is the thing that
+// would look broken: a panel correctly inset by 16px with a number input hanging over
+// its right edge satisfies "inside the viewport" exactly. The viewport check is kept
+// too, because a panel wider than the screen is its own defect.
+test("the per-part options panel fits its own box at 390px (#3349)", async ({
+  page,
+}) => {
+  await openEditor(page);
+  await pickActivity(page, "Hammer Curl");
+  await openPartOptions(page, 0);
+
+  const panelEl = page.getByTestId("part-options-editor");
+  const panel = await box(panelEl);
+  const viewport = page.viewportSize()!;
+  expect(panel.x).toBeGreaterThanOrEqual(0);
+  expect(panel.x + panel.width).toBeLessThanOrEqual(viewport.width);
+
+  for (const [name, locator] of [
+    ["sides", panelEl.getByTestId("per-side-control")],
+    // The one control with no testid of its own, scoped to the panel so the set grid's
+    // own number inputs cannot answer for it.
+    ["target reps", panelEl.getByRole("spinbutton")],
+    ["to failure", panelEl.getByTestId("to-failure-control")],
+    ["effort", panelEl.getByTestId("rpe-tracking-control")],
+    ["effort help", panelEl.getByTestId("rpe-help")],
+  ] as const) {
+    const b = await box(locator);
+    expect(
+      b.x,
+      `${name} sits left of the panel it is in`
+    ).toBeGreaterThanOrEqual(panel.x - 1);
+    expect(
+      b.x + b.width,
+      `${name} overflows the panel it is in`
+    ).toBeLessThanOrEqual(panel.x + panel.width + 1);
+    expect(
+      b.y + b.height,
+      `${name} overflows the panel it is in`
+    ).toBeLessThanOrEqual(panel.y + panel.height + 1);
+  }
+
+  await expectNoClippedContent(page);
+  await closePartOptions(page);
+  // Nothing was entered, so no draft was ever auto-saved — the same teardown the
+  // per-side test above uses for the same reason.
   await page.goto("/training?tab=log");
 });

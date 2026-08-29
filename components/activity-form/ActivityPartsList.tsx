@@ -3,6 +3,7 @@
 import { useRef, useState } from "react";
 import {
   IconX,
+  IconCheck,
   IconChevronUp,
   IconChevronDown,
   IconInfoCircle,
@@ -24,9 +25,15 @@ import {
   composeVariant,
   defaultEquipment,
 } from "@/lib/lifts";
-import { needsEquipment } from "@/lib/activity-form-validate";
+import {
+  moreFactsLabel,
+  partFactSummary,
+  partOptionsOffered,
+} from "@/lib/activity-part-facts";
+import InfoTooltipIcon from "@/components/InfoTooltipIcon";
+import { setRpeTrackingAction } from "@/app/(app)/training/activity-actions";
 import { getExerciseGuide } from "@/lib/exercise-guides";
-import { round } from "@/lib/units";
+import { round, stripNonPositive } from "@/lib/units";
 import { type NextSet } from "@/lib/coaching";
 import {
   blockedRing,
@@ -45,6 +52,7 @@ import Chip from "@/components/Chip";
 import FactChipRow, {
   FactAddChip,
   FactChip,
+  FactMoreChip,
 } from "@/components/facts/FactChipRow";
 import FactEditorHost, {
   useFactEditor,
@@ -52,6 +60,49 @@ import FactEditorHost, {
 import EquipmentRegistryLink from "./EquipmentRegistryLink";
 import EquipmentQuickAdd, { categoryForVariant } from "./EquipmentQuickAdd";
 import type { PlateTarget } from "./useActivityParts";
+
+// The brand-filled checkbox the options facts are edited with. It moved here from
+// StrengthSets with the row it belongs to (#3349) and has no other caller.
+//
+// NOT `components/CheckboxControl`, the bare-checkbox primitive: that one is an
+// icon-only native box named by `aria-label`, and these three are boxes with visible
+// text beside them whose painted span is what `to-failure-control` and its siblings
+// assert a fill colour on. Converging the two is a real question — it is an
+// accessible-naming change as much as a visual one — and it is not this conversion's.
+function BrandedCheckbox({
+  checked,
+  onChange,
+  inputTestId,
+  controlTestId,
+}: {
+  checked: boolean;
+  onChange: () => void;
+  inputTestId?: string;
+  controlTestId?: string;
+}) {
+  return (
+    <span className="relative inline-flex">
+      <input
+        type="checkbox"
+        checked={checked}
+        onChange={onChange}
+        data-testid={inputTestId}
+        className="peer sr-only"
+      />
+      <span
+        data-testid={controlTestId}
+        aria-hidden
+        className={`flex h-4 w-4 shrink-0 items-center justify-center rounded border transition peer-focus-visible:ring-2 peer-focus-visible:ring-brand-500 peer-focus-visible:ring-offset-1 dark:peer-focus-visible:ring-offset-ink-900 ${
+          checked
+            ? "border-brand-600 bg-brand-600 text-white dark:border-brand-500 dark:bg-brand-500"
+            : "border-black/20 bg-field text-transparent dark:border-white/20"
+        }`}
+      >
+        <IconCheck className="h-3 w-3" stroke={3} />
+      </span>
+    </span>
+  );
+}
 
 // The activity form's exercise/leg list (#1207 extraction): one `activity-part` row
 // per entered part — the name combobox with its muscle badge + reorder/remove
@@ -204,10 +255,28 @@ export default function ActivityPartsList({
   // The in-form quick-add (#1611) rides the open panel, so ONE flag is right for the
   // whole list — there is only ever one panel to be inside.
   const [addingEquipment, setAddingEquipment] = useState(false);
-  const closeEquipment = () => {
+  const closePartFact = () => {
     setAddingEquipment(false);
     closeEquipmentEditor();
   };
+  // One RPE opt-in round-trip at a time (#3335). ONE flag for the list rather than one
+  // per part, which is what the fact actually is: the effort column is PROFILE-wide,
+  // and two parts cannot be mid-toggle on different answers.
+  const [rpeToggling, setRpeToggling] = useState(false);
+  // Opting the effort column in or out from the editor itself (#3335) — no settings
+  // trip. It does NOT hide optimistically: the scale the column renders over is minted
+  // server-side and nowhere else (lib/rpe-tracking.ts), so the tap waits for the
+  // action's answer rather than manufacturing one locally.
+  async function toggleRpeTracking() {
+    if (rpeToggling) return;
+    setRpeToggling(true);
+    try {
+      const { tracking } = await setRpeTrackingAction(!rpeTracking);
+      onRpeTrackingChange(tracking);
+    } finally {
+      setRpeToggling(false);
+    }
+  }
   // THE PART'S EQUIPMENT, STATED (#3349) rather than rendered as its machinery.
   //
   // This row used to live inside StrengthSets and draw six-plus controls on EVERY
@@ -229,9 +298,11 @@ export default function ActivityPartsList({
   // strength gear, and a traveller registering the hotel machine mid-workout. Both
   // still reach the registry in one tap, through the "+ equipment" prompt this renders
   // when there is nothing to state.
-  function partEquipmentFact(p: PartEntry, pi: number, fault: PartFault) {
-    const key = `equipment:${pi}`;
-    const open = openEquipment === key;
+  function partFactRow(p: PartEntry, pi: number, fault: PartFault) {
+    const gearKey = `equipment:${pi}`;
+    const optionsKey = `options:${pi}`;
+    const gearOpen = openEquipment === gearKey;
+    const optionsOpen = openEquipment === optionsKey;
     const variant = variantOf(p.name);
     // For lifts with no selectable equipment variant, show their normal implement.
     const defaultEq = variant ? null : defaultEquipment(p.name);
@@ -240,16 +311,21 @@ export default function ActivityPartsList({
     // a user-defined row wins, then the equipment composed into the lift's own name
     // ("Dumbbell Curl" → Dumbbell), then the lift's normal implement.
     const label = selectedEq?.name ?? variant?.equipment ?? defaultEq ?? null;
-    // With nothing to state, WHICH absence is it? A bare variant base ("Curl") cannot
-    // be saved until this is answered, so it is a MISSING ESSENTIAL; anything else is
-    // an ABSENT OPTIONAL, because a lift with a normal implement and no gear on file is
-    // complete. The primitive draws exactly that distinction, so this picks the shape
-    // and adds nothing.
-    //
-    // Asked of the LIFT (`needsEquipment`, the predicate the save gate itself uses)
-    // rather than of `fault`, which only says whether a save is stuck on it RIGHT NOW —
-    // a fact is essential before anybody tries to save.
-    const essential = label == null && needsEquipment(p.name);
+    // WHAT THE WHOLE ROW STATES. The chip shapes, the three-state equipment
+    // distinction and which offered facts have nothing to say all live in
+    // `lib/activity-part-facts` — this function renders them and owns no vocabulary of
+    // its own. `effortOn` is the profile's opt-in, the one fact here that is not the
+    // part's.
+    const summary = partFactSummary({
+      part: p,
+      gearName: label,
+      effortOn: !!rpeTracking,
+    });
+    const moreLabel = moreFactsLabel(summary.absent);
+    // WHICH CONTROLS THE OPTIONS PANEL DRAWS — the same three questions, asked
+    // separately, which is what carries #3367's reachability clause through the
+    // conversion. See the module.
+    const offered = partOptionsOffered(p);
     // Select a custom implement on this part, matching the lift NAME (and therefore its
     // strength grouping) to the implement's type: a Barbell/Machine implement composes
     // that variant, "Other" falls back to the base lift. `created` carries a row that
@@ -279,33 +355,162 @@ export default function ActivityPartsList({
       }
       onUpdatePart(pi, { equipmentId: id });
     };
-    const chip = {
-      testId: "strength-equipment-chip",
-      expanded: open,
-      onOpen: () => openEquipmentEditor(key),
-    };
+    // WHICH PANEL A CHIP OPENS, and it is not one panel per chip. Equipment has its
+    // own; sides, target and effort share ONE options panel, and so does the trailing
+    // affordance — the primitive's documented shape for a row whose chips and panels do
+    // not correspond one to one ("several chips can open one editor"). Three panels
+    // holding one control each would have been three disclosures to shut. `focusKey`
+    // stays per-chip, so closing still returns focus to the chip that was activated
+    // rather than to the first of the three (#3311).
+    const focusKeyFor = (fk: string) => `${fk}:${pi}`;
+    const chipProps = (fk: string, panel: string, testId: string) => ({
+      testId,
+      expanded: false,
+      onOpen: () => openEquipmentEditor(panel, focusKeyFor(fk)),
+    });
 
-    if (!open)
+    if (!gearOpen && !optionsOpen)
       return (
         <FactChipRow
-          testId="strength-equipment-row"
+          testId="part-fact-row"
           className={`mt-2 ${
             fault === "equipment"
               ? `-mx-1.5 -my-1 px-1.5 py-1 ${blockedRing}`
               : ""
           }`}
         >
-          {label != null || essential ? (
-            <FactChip
-              {...chip}
-              focusKey={key}
-              label={label ?? "pick equipment"}
-              state={label != null ? "stated" : "missing"}
+          {summary.chips.map((c) => {
+            const props = chipProps(
+              c.key,
+              c.key === "equipment" ? gearKey : optionsKey,
+              c.key === "equipment"
+                ? "strength-equipment-chip"
+                : `part-fact-${c.key}`
+            );
+            return c.state === "add" ? (
+              <FactAddChip
+                key={c.key}
+                {...props}
+                focusKey={focusKeyFor(c.key)}
+                label={c.label}
+              />
+            ) : (
+              <FactChip
+                key={c.key}
+                {...props}
+                focusKey={focusKeyFor(c.key)}
+                label={c.label}
+                state={c.state}
+              />
+            );
+          })}
+          {/* THE ONE TRAILING AFFORDANCE, holding the offered facts with nothing to
+              state and NAMING them, so "more" never means "somewhere in here". This is
+              what makes the conversion a density win rather than a relabelling: three
+              standing "+ thing" prompts would have replaced four controls with four.
+
+              EQUIPMENT IS NOT AMONG THEM, and that asymmetry is #3349 AC 1 rather than
+              an oversight: the picker and its door are ONE TAP behind the row, and the
+              empty case is the one where that matters most. Folding the `+ equipment`
+              prompt in here would make the part with no implement the only part paying
+              a second tap — affordance, then menu item — to reach the picker, because
+              equipment's editor is a different panel from this one's. The asymmetry is
+              recorded in lib/activity-part-facts.ts, which is also where the case for
+              revisiting it is written down. */}
+          {moreLabel && (
+            <FactMoreChip
+              {...chipProps("more", optionsKey, "part-fact-more")}
+              focusKey={focusKeyFor("more")}
+              label={moreLabel}
             />
-          ) : (
-            <FactAddChip {...chip} focusKey={key} label="equipment" />
           )}
         </FactChipRow>
+      );
+
+    if (optionsOpen)
+      return (
+        <FactEditorHost
+          testId="part-options-editor"
+          doneTestId="part-options-done"
+          panel="options"
+          className="mt-2 rounded-lg border border-(--border) bg-surface p-3"
+          onDone={closePartFact}
+        >
+          {/* The row #3335 and #1612 built, verbatim, now one tap behind its own
+              conclusions. Each control keeps the testid other specs address it by —
+              nothing here is renamed, only relocated.
+
+              THE THREE CONDITIONS ARE ASKED SEPARATELY, which is #3367's clause and the
+              thing a conversion loses by folding them into one. See
+              `partOptionsOffered`. */}
+          <div className="flex flex-wrap items-center gap-x-4 gap-y-2 text-xs font-medium text-slate-500 dark:text-slate-400">
+            {offered.sides && (
+              <label className="flex cursor-pointer items-center gap-2">
+                <BrandedCheckbox
+                  checked={p.perSide}
+                  onChange={() => onUpdatePart(pi, { perSide: !p.perSide })}
+                  inputTestId="per-side-checkbox"
+                  controlTestId="per-side-control"
+                />
+                Track sides separately
+              </label>
+            )}
+            {offered.intent && (
+              <>
+                <label className="flex items-center gap-1.5">
+                  Target reps
+                  <input
+                    type="number"
+                    min="1"
+                    value={p.targetReps}
+                    disabled={p.toFailure}
+                    onChange={(e) =>
+                      onUpdatePart(pi, {
+                        targetReps: stripNonPositive(e.target.value),
+                      })
+                    }
+                    placeholder="—"
+                    className="input w-16 px-2 py-1 disabled:opacity-40"
+                  />
+                </label>
+                <label className="flex cursor-pointer items-center gap-1.5">
+                  <BrandedCheckbox
+                    checked={p.toFailure}
+                    onChange={() =>
+                      onUpdatePart(pi, { toFailure: !p.toFailure })
+                    }
+                    inputTestId="to-failure-checkbox"
+                    controlTestId="to-failure-control"
+                  />
+                  To failure
+                </label>
+              </>
+            )}
+            {offered.effort && (
+              <span className="inline-flex items-center gap-1">
+                <label
+                  className={`flex items-center gap-2 ${
+                    rpeToggling
+                      ? "cursor-progress opacity-60"
+                      : "cursor-pointer"
+                  }`}
+                >
+                  <BrandedCheckbox
+                    checked={!!rpeTracking}
+                    onChange={() => void toggleRpeTracking()}
+                    inputTestId="rpe-tracking-checkbox"
+                    controlTestId="rpe-tracking-control"
+                  />
+                  Rate effort (RPE)
+                </label>
+                <InfoTooltipIcon
+                  label="RPE means rate of perceived exertion (5–10, optional). It adds an effort rating to every set row, now and in future sessions."
+                  data-testid="rpe-help"
+                />
+              </span>
+            )}
+          </div>
+        </FactEditorHost>
       );
 
     return (
@@ -314,7 +519,7 @@ export default function ActivityPartsList({
         doneTestId="strength-equipment-done"
         panel="equipment"
         className="mt-2 rounded-lg border border-(--border) bg-surface p-3"
-        onDone={closeEquipment}
+        onDone={closePartFact}
       >
         <div className="flex flex-wrap items-center gap-1.5">
           {variant &&
@@ -597,7 +802,7 @@ export default function ActivityPartsList({
                   }
                 />
               )}
-              {valid && t === "strength" && partEquipmentFact(p, pi, issue)}
+              {valid && t === "strength" && partFactRow(p, pi, issue)}
               {valid && t === "strength" && (
                 <StrengthSets
                   part={p}
@@ -610,7 +815,6 @@ export default function ActivityPartsList({
                   recoveringContext={recoveringContext}
                   plateauHints={plateauHints}
                   rpeTracking={rpeTracking}
-                  onRpeTrackingChange={onRpeTrackingChange}
                   currentActivityId={currentActivityId}
                   editedDate={editedDate}
                   equipmentList={equipmentList}

@@ -11,9 +11,9 @@
 // exercised). So the claim is asserted rather than restated.
 //
 // The entries at risk are the ones naming a directory of IMPORTABLE CODE. Prose
-// cannot grow an importer. But `lib/__tests__/`, `lib/__db_tests__/` and
-// `lib/__action_tests__/` sit UNDER `lib/`, beside modules the app imports
-// constantly, and they legitimately contain non-test modules —
+// cannot grow an importer. But `lib/__tests__/`, `lib/__db_tests__/`,
+// `lib/__action_tests__/` and `components/__tests__/` sit beside modules the app
+// imports constantly, and they legitimately contain non-test modules —
 // `lib/__db_tests__/migration-link-scan.ts` is the scanner #2721's two guards
 // share. The day a non-test consumer reaches into one, the entry has to go, and
 // this test is what says so.
@@ -100,6 +100,7 @@ const DETECTOR_WORKFLOWS = [
  * reachable imports this" is an import-graph question with an answer.
  */
 const VERIFIED_DIRS = [
+  "components/__tests__/",
   "lib/__action_tests__/",
   "lib/__db_tests__/",
   "lib/__tests__/",

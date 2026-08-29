@@ -3,11 +3,13 @@ import { CONTROL_BOX_PX } from "@/lib/tap-floor-tokens";
 import { type Page } from "@playwright/test";
 import { openCommandPalette } from "./nav";
 import {
+  closePartOptions,
   comboboxRows,
   deleteActivityFromForm,
   followLink,
   hydratedClick,
   openCombobox,
+  openPartOptions,
   expectPhoneTapTargets,
   settledBoxes,
   settledFill,
@@ -710,7 +712,12 @@ test("the activity form keeps workout entry primary and context visible across b
   await expect(page.locator('label[for="activity-end-time"]')).toHaveText(
     "End"
   );
-  await expect(page.getByTestId("per-side-control").first()).toBeVisible(); // first-ok: asserts a per-side control renders — order-agnostic presence
+  // The strength editor states this part's facts (#3349). This used to reach straight
+  // for `per-side-control`; the options controls are one tap behind the row now, and
+  // what belongs in this breakpoint sweep is that the ROW rendered — the behaviour of
+  // the controls inside it is pinned by the two dedicated tests below and by the
+  // `lib/__tests__/activity-part-facts.test.ts` table.
+  await expect(page.getByTestId("part-fact-row").first()).toBeVisible(); // first-ok: asserts a part fact row renders — order-agnostic presence
   const sessionDetails = page.getByTestId("session-details");
   await expect(sessionDetails).toBeVisible();
   await expect(sessionDetails).toHaveCSS("border-top-width", "0px");
@@ -965,14 +972,37 @@ test("weight steppers bump a set's load by the lift-appropriate increment (#337)
   // metric login.
   await pickActivity(page, "Barbell Bench Press");
 
+  // The intent controls moved behind the part's fact chips (#3349) — same testids,
+  // one tap away. The chip that opens them here is the trailing affordance, because a
+  // fresh part has declared no target.
+  await openPartOptions(page, 0);
   const toFailure = page.getByTestId("to-failure-checkbox");
   await page.getByText("To failure", { exact: true }).click();
   await expect(toFailure).toBeChecked();
   await expect(page.getByTestId("to-failure-control")).toHaveClass(
     /bg-brand-600/
   );
+  // …and the row now STATES it. The chip is the conversion's whole point: the
+  // conclusion is on screen without the control that produced it.
+  await closePartOptions(page);
+  await expect(page.getByTestId("part-fact-intent")).toHaveText("to failure");
+
+  await openPartOptions(page, 0);
   await page.getByText("To failure", { exact: true }).click();
   await expect(toFailure).not.toBeChecked();
+  await closePartOptions(page);
+
+  // AND THE ROW STATES WHAT THE FORM INHERITED. Clearing AMRAP does not empty this
+  // fact: the coached suggestion carries this lift's declared scheme from last session
+  // and a fresh part adopts it (#335), so the target is 8 and nobody typed it. That
+  // number lived in a `w-16` number input on every exercise and was easy never to
+  // read; the chip says it. The fact leaving the row entirely is the case with no such
+  // history, and it is pinned on an exact fixture in
+  // components/__tests__/part-fact-row.test.tsx rather than against the seed's
+  // training history.
+  await expect(page.getByTestId("part-fact-intent")).toHaveText(
+    /^target \d+ reps$/
+  );
 
   const weightStepper = page.getByTestId("set1-weight-stepper");
   const weightInput = page.getByTestId("set1-weight");
@@ -1101,8 +1131,10 @@ test("the bilateral (per-side) reps stepper steps down too (#1524)", async ({
   // L/R variant and renders a reps stepper PER SIDE — the second home of the
   // missing decrement.
   await pickActivity(page, "Hammer Curl");
+  await openPartOptions(page, 0); // the sides control is behind the part's fact chips (#3349)
   await page.getByText("Track sides separately", { exact: true }).click();
   await expect(page.getByTestId("per-side-checkbox")).toBeChecked();
+  await closePartOptions(page);
   const downs = page.getByLabel("Decrease reps");
   await expect(downs).toHaveCount(2);
   const ups = page.getByLabel("Add a rep");
