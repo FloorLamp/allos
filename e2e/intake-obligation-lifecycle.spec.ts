@@ -2,6 +2,8 @@ import { test, expect } from "./fixtures";
 import { closeEditor, openFact } from "./intake-form-helpers";
 import Database from "better-sqlite3";
 import { workerDbPath, frozenNow } from "./worker-env";
+import { pinnedTimezone } from "./pinned-timezone";
+import { utcSqlString, zonedWallTimeToUtc } from "@/lib/date";
 import { expandUpcomingAggregates, settledClick } from "./helpers";
 
 // Issue #1505, the rendered halves of the obligation model:
@@ -35,6 +37,14 @@ function dayBack(back: number): string {
   return d.toISOString().slice(0, 10);
 }
 
+// `intake_items.created_at` is an instant whose local day bounds adherence.
+// Build the named 08:00 fixture in the run's pinned profile zone, then store UTC
+// SQL — a naive day + time string crosses the local day in rotating zones.
+function createdAt(back: number): string {
+  const zone = pinnedTimezone(frozenNow().toISOString()).zone;
+  return utcSqlString(zonedWallTimeToUtc(zone, dayBack(back), "08:00")!);
+}
+
 // One daily item with a single morning dose on profile 1, created `createdDaysAgo`
 // days before the frozen clock so the adherence window's lifetime clamp sees a
 // genuinely long-lived item.
@@ -44,7 +54,7 @@ function seedItem(
   obligation: "may" | "should",
   createdDaysAgo: number
 ): { itemId: number; doseId: number } {
-  const createdAt = `${dayBack(createdDaysAgo)} 08:00:00`;
+  const created = createdAt(createdDaysAgo);
   const itemId = Number(
     db
       .prepare(
@@ -52,7 +62,7 @@ function seedItem(
            (profile_id, name, active, kind, obligation, condition, source, created_at)
          VALUES (1, ?, 1, 'supplement', ?, 'daily', 'manual', ?)`
       )
-      .run(name, obligation, createdAt).lastInsertRowid
+      .run(name, obligation, created).lastInsertRowid
   );
   const doseId = Number(
     db
@@ -61,7 +71,7 @@ function seedItem(
            (item_id, amount, time_of_day, food_timing, sort, created_at)
          VALUES (?, '1 cap', 'Morning', 'any', 0, ?)`
       )
-      .run(itemId, createdAt).lastInsertRowid
+      .run(itemId, created).lastInsertRowid
   );
   return { itemId, doseId };
 }
@@ -217,6 +227,7 @@ test("a medication's obligation control defaults to Must and states each level's
   let itemId: number | null = null;
   try {
     // A `must` medication with a live schedule — the state the guardrail protects.
+    const created = createdAt(30);
     const med = Number(
       db
         .prepare(
@@ -224,14 +235,14 @@ test("a medication's obligation control defaults to Must and states each level's
              (profile_id, name, active, kind, obligation, condition, source, created_at)
            VALUES (1, ?, 1, 'medication', 'must', 'daily', 'manual', ?)`
         )
-        .run(GUARDED_MED_NAME, `${dayBack(30)} 08:00:00`).lastInsertRowid
+        .run(GUARDED_MED_NAME, created).lastInsertRowid
     );
     itemId = med;
     db.prepare(
       `INSERT INTO intake_item_doses
          (item_id, amount, time_of_day, food_timing, sort, created_at)
        VALUES (?, '1 tablet', 'Morning', 'any', 0, ?)`
-    ).run(med, `${dayBack(30)} 08:00:00`);
+    ).run(med, created);
 
     await page.goto(`/medications/${med}?action=edit`);
     const importance = await openFact(page, "importance");

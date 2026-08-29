@@ -25,6 +25,7 @@ export * from "./logins/household";
 export * from "./logins/illness";
 export * from "./logins/intake";
 export * from "./logins/medical";
+export * from "./logins/merge";
 export * from "./logins/metrics";
 export * from "./logins/notifications";
 export * from "./logins/nutrition";

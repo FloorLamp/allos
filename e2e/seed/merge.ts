@@ -8,9 +8,18 @@ import "../../scripts/load-env";
 import { db, today } from "../../lib/db";
 import { shiftDateStr } from "../../lib/date";
 import { seedDupReviewPair } from "../dup-review-fixture";
-import { PROFILE_ID, fixtureProfileId, seedMemberLogin } from "./common";
 import {
+  PROFILE_ID,
+  adultFixtureProfileId,
+  fixtureProfileId,
+  seedMemberLogin,
+} from "./common";
+import {
+  E2E_LOGIN_MERGE_CONFLICT,
+  E2E_LOGIN_MERGE_SETS,
   E2E_LOGIN_OVERLAP,
+  MERGE_CONFLICT_PROFILE,
+  MERGE_SETS_PROFILE,
   OVERLAP_PROFILE,
   OVERLAP_KEEPER_TITLE,
   OVERLAP_TWIN_TITLE,
@@ -71,12 +80,14 @@ export function seedMergeFixtures(): void {
   // merge must therefore raise the per-field conflict preview; the e2e overrides
   // duration to the discarded row's value and asserts the merged keeper carries it.
   // Distinct date + titles so it never collides with the fixtures above. Synthetic.
-  const CONFLICT_DATE = shiftDateStr(today(PROFILE_ID), -9); // relative — see MERGE_DATE (distinct recent day, on page 1)
+  const conflictId = adultFixtureProfileId(MERGE_CONFLICT_PROFILE);
+  seedMemberLogin(E2E_LOGIN_MERGE_CONFLICT, conflictId);
+  const CONFLICT_DATE = shiftDateStr(today(conflictId), -9); // relative — see MERGE_DATE (recent day, on page 1)
   db.prepare(
     `DELETE FROM activities WHERE profile_id = ? AND date = ? AND title IN ('Conflict merge keeper', 'Conflict merge dupe')`
-  ).run(PROFILE_ID, CONFLICT_DATE);
+  ).run(conflictId, CONFLICT_DATE);
   insMerge.run(
-    PROFILE_ID,
+    conflictId,
     CONFLICT_DATE,
     "Conflict merge keeper",
     42,
@@ -85,7 +96,7 @@ export function seedMergeFixtures(): void {
     null
   );
   insMerge.run(
-    PROFILE_ID,
+    conflictId,
     CONFLICT_DATE,
     "Conflict merge dupe",
     51,
@@ -149,21 +160,22 @@ export function seedMergeFixtures(): void {
   // shows how many logged sets will move (#199). The DROP carries two typed-in sets
   // that a merge must RE-PARENT onto the keeper (never destroy). Distinct date + titles
   // so it never collides with the fixtures above. Synthetic only.
-  const SETS_DATE = shiftDateStr(today(PROFILE_ID), -3); // relative — see MERGE_DATE (distinct recent day, on page 1)
+  const setsId = adultFixtureProfileId(MERGE_SETS_PROFILE);
+  seedMemberLogin(E2E_LOGIN_MERGE_SETS, setsId);
+  const SETS_DATE = shiftDateStr(today(setsId), -3); // relative — see MERGE_DATE (recent day, on page 1)
   db.prepare(
     `DELETE FROM activities WHERE profile_id = ? AND date = ? AND title IN ('Set merge keeper', 'Set merge dupe')`
-  ).run(PROFILE_ID, SETS_DATE);
+  ).run(setsId, SETS_DATE);
   const insStrength = db.prepare(
     `INSERT INTO activities
      (profile_id, date, type, title, duration_min, source, external_id, edited)
    VALUES (?, ?, 'strength', ?, ?, NULL, NULL, 0)`
   );
   const setsKeeperId = Number(
-    insStrength.run(PROFILE_ID, SETS_DATE, "Set merge keeper", 30)
-      .lastInsertRowid
+    insStrength.run(setsId, SETS_DATE, "Set merge keeper", 30).lastInsertRowid
   );
   const setsDupeId = Number(
-    insStrength.run(PROFILE_ID, SETS_DATE, "Set merge dupe", 45).lastInsertRowid
+    insStrength.run(setsId, SETS_DATE, "Set merge dupe", 45).lastInsertRowid
   );
   const insSeedSet = db.prepare(
     `INSERT INTO exercise_sets (activity_id, exercise, set_number, weight_kg, reps)
