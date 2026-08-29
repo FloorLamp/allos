@@ -87,7 +87,9 @@ const doseLogCount = (logId: number) =>
 // just the log — so the table resolves them from the one id `seed` hands back.
 const doseIdsOf = (logId: number) =>
   db
-    .prepare("SELECT item_id AS itemId, dose_id AS doseId FROM intake_item_logs WHERE id = ?")
+    .prepare(
+      "SELECT item_id AS itemId, dose_id AS doseId FROM intake_item_logs WHERE id = ?"
+    )
     .get(logId) as { itemId: number; doseId: number };
 
 const doseAmountOf = (logId: number) =>
