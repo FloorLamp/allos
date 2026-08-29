@@ -693,16 +693,25 @@ export function seedIntradayPanel(): void {
         .prepare("SELECT 1 FROM intake_items WHERE profile_id = ? AND name = ?")
         .get(shellId, SHELL_DOSE_ITEM)
     ) {
+      // `created_at` is STATED, not defaulted, because the dose lifetime clamp
+      // (#430/#1442) judges a day only against the doses that already existed on it.
+      // A row defaulting to `datetime('now')` is created the moment the template DB is
+      // built, so every day before that build is correctly "na" — which would make the
+      // recent-past catch-up sheet (#3936) untestable on this fixture for a reason that
+      // is an artefact of seeding rather than anything about the profile. Backdated
+      // well past the sheet's window so the item plainly existed on the days the spec
+      // logs, the way a real supplement someone has been taking does.
+      const bornAt = "2026-01-01 08:00:00";
       const item = db
         .prepare(
-          `INSERT INTO intake_items (profile_id, name, condition, obligation, active, source)
-         VALUES (?, ?, 'daily', 'should', 1, 'manual')`
+          `INSERT INTO intake_items (profile_id, name, condition, obligation, active, source, created_at)
+         VALUES (?, ?, 'daily', 'should', 1, 'manual', ?)`
         )
-        .run(shellId, SHELL_DOSE_ITEM);
+        .run(shellId, SHELL_DOSE_ITEM, bornAt);
       db.prepare(
-        `INSERT INTO intake_item_doses (item_id, amount, time_of_day, food_timing, sort)
-       VALUES (?, ?, '08:00', 'any', 0)`
-      ).run(Number(item.lastInsertRowid), SHELL_DOSE_AMOUNT);
+        `INSERT INTO intake_item_doses (item_id, amount, time_of_day, food_timing, sort, created_at)
+       VALUES (?, ?, '08:00', 'any', 0, ?)`
+      ).run(Number(item.lastInsertRowid), SHELL_DOSE_AMOUNT, bornAt);
     }
     // One tracked practice, no sessions (#1633): the quick-log sheet's practice row
     // lists what the profile TRACKS, so a frequency target alone is the whole

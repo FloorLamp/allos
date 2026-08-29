@@ -311,7 +311,14 @@ function QuickEntryBody({
         </FoodSelectedDateProvider>
       );
     case "dose":
-      return <QuickDoseList doses={data.doses} onDone={onDone} />;
+      return (
+        <QuickDoseList
+          today={data.today}
+          doses={data.doses}
+          pastDays={data.pastDays}
+          onDone={onDone}
+        />
+      );
     case "cycle":
       // The SAME <PeriodOfferButton> the Cycle page control and the dashboard phase
       // widget render, over the SAME server-resolved cycleControlState — a third
