@@ -67,6 +67,23 @@ const HANDROLLED_ALLOW = new Map<
     },
   ],
   [
+    "app/(app)/trends/MeasurementsQuickAdd.tsx",
+    {
+      count: 2,
+      kind: "event",
+      reason:
+        "the #1851 bed\u2192wake pair — two CLOCKS bounding one night on the " +
+        "noon-anchored sleep day, the same range shape as the activity " +
+        "start/end pair below and equally unmodelled by the control: neither " +
+        "clock states a date (the wake day is the sitting's own, the bed day " +
+        "is derived from the clock), and the pair is resolved to instants in " +
+        "the PROFILE's zone at the write boundary rather than the browser's. " +
+        "Migrates with DateTimeFields when the control grows a range form. " +
+        "The form's own sitting Time is still WhenControl's and is not counted " +
+        "here.",
+    },
+  ],
+  [
     "components/activity-form/DateTimeFields.tsx",
     {
       count: 2,
