@@ -4,6 +4,7 @@ import { useState, useTransition } from "react";
 import { useToast } from "@/components/Toast";
 import DateField from "@/components/DateField";
 import { setTtcStartAction } from "./ttc-actions";
+import InlineError from "@/components/InlineError";
 
 // The DECLARATION control for trying to conceive (issue #1680) — the only thing that turns
 // the TTC surfaces on, and the only thing that turns them off.
@@ -63,11 +64,7 @@ export default function TtcDeclareControl({
           Stopping hides these surfaces. The observations you&rsquo;ve recorded
           stay exactly where they are.
         </p>
-        {error && (
-          <p role="alert" className="text-sm text-rose-600 dark:text-rose-400">
-            {error}
-          </p>
-        )}
+        <InlineError>{error}</InlineError>
       </div>
     );
   }
@@ -95,11 +92,7 @@ export default function TtcDeclareControl({
           {pending ? "Saving…" : "Start tracking"}
         </button>
       </div>
-      {error && (
-        <p role="alert" className="text-sm text-rose-600 dark:text-rose-400">
-          {error}
-        </p>
-      )}
+      <InlineError>{error}</InlineError>
     </div>
   );
 }

@@ -18,7 +18,7 @@ import {
   episodeForProfileSituationDate,
 } from "@/lib/illness-episode";
 import EpisodeSummary from "@/components/illness/EpisodeSummary";
-import PrintButton from "@/components/illness/PrintButton";
+import PrintButton from "@/components/PrintButton";
 import { ConfirmProvider } from "@/components/ConfirmDialog";
 import MedicationListView from "@/components/medications/MedicationListView";
 import { getCurrentMedicationList } from "@/app/(app)/medications/med-data";

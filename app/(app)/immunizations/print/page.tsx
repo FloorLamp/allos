@@ -1,7 +1,7 @@
 import { requireSession } from "@/lib/auth";
 import { getDisplayFormatPrefs } from "@/lib/settings";
 import type { AppRoute } from "@/lib/hrefs";
-import PrintButton from "@/components/illness/PrintButton";
+import PrintButton from "@/components/PrintButton";
 import ImmunizationRecordView from "@/components/immunizations/ImmunizationRecordView";
 import { getImmunizationRecord } from "../record-data";
 import BackLink from "@/components/BackLink";

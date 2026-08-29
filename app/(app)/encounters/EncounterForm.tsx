@@ -15,6 +15,7 @@ import VisitFactRow from "@/components/encounters/VisitFactRow";
 import { visitFactSummary, type VisitFactKey } from "@/lib/visit-facts";
 import { ENCOUNTER_TYPE_OPTIONS } from "@/lib/encounter-kind";
 import type { Encounter, FormResult } from "@/lib/types";
+import InlineError from "@/components/InlineError";
 
 // Shared add/edit visit form, in the facts-with-editors grammar (#3218, #3223). Add
 // mode: no `encounter` (blank fields, date seeded to defaultDate). Edit mode: pass the
@@ -379,11 +380,7 @@ export default function EncounterForm({
         </FactEditorHost>
       </div>
 
-      {error && (
-        <p role="alert" className="text-sm text-rose-600 dark:text-rose-400">
-          {error}
-        </p>
-      )}
+      <InlineError>{error}</InlineError>
       <div className="flex gap-2" data-testid="encounter-form-actions">
         <div
           className="grid w-full sm:w-auto"

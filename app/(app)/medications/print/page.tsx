@@ -1,7 +1,7 @@
 import { requireSession } from "@/lib/auth";
 import { getDisplayFormatPrefs } from "@/lib/settings";
 import { MEDICATIONS_HREF } from "@/lib/hrefs";
-import PrintButton from "@/components/illness/PrintButton";
+import PrintButton from "@/components/PrintButton";
 import MedicationListView from "@/components/medications/MedicationListView";
 import { getCurrentMedicationList } from "../med-data";
 import BackLink from "@/components/BackLink";

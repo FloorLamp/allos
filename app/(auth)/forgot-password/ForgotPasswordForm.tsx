@@ -1,25 +1,13 @@
 "use client";
 
 import { useActionState } from "react";
-import { useFormStatus } from "react-dom";
+import SubmitButton from "@/components/SubmitButton";
 import { requestPasswordReset, type ResetRequestState } from "./actions";
-
-function SubmitButton() {
-  const { pending } = useFormStatus();
-  return (
-    <button
-      type="submit"
-      disabled={pending}
-      className="w-full rounded-lg bg-(--btn) px-4 py-2.5 text-sm font-semibold text-(--btn-fg) shadow-xs transition hover:bg-(--btn-hover) disabled:opacity-60"
-    >
-      {pending ? "Sending…" : "Send reset link"}
-    </button>
-  );
-}
 
 // The reset-request form. On submit it always shows the same enumeration-safe
 // message (whether or not the address is registered), then hides the form so the
-// user isn't nudged to probe further.
+// user isn't nudged to probe further. Submit and field are the shared owners
+// (#3752); nothing about the enumeration answer depends on how they render.
 export default function ForgotPasswordForm() {
   const [state, formAction] = useActionState<ResetRequestState, FormData>(
     requestPasswordReset,
@@ -46,10 +34,12 @@ export default function ForgotPasswordForm() {
           autoFocus
           required
           data-testid="reset-email"
-          className="rounded-lg border border-(--field-bd) bg-field px-3 py-2 text-slate-900 outline-hidden focus:border-brand-500 dark:text-slate-100"
+          className="input"
         />
       </label>
-      <SubmitButton />
+      <SubmitButton pendingLabel="Sending…" variant="primary">
+        Send reset link
+      </SubmitButton>
     </form>
   );
 }
