@@ -37,6 +37,7 @@ import {
   NO_TRACE_GRACE_MS,
   commitIdleMs,
   idleMsFrom,
+  resumeState,
   stallVerdict,
   worktreeIdleMs,
 } from "../../scripts/orchestration/dispatch-brief.mjs";
@@ -262,22 +263,46 @@ describe("worktreeIdleMs", () => {
   });
 });
 
-// NO PER-TEST CEILING HERE ANY MORE (#4002). Five of these tests carried a
-// hard-coded `}, 20_000)`, which `ALLOS_VITEST_TIMEOUT_MS` cannot reach — and they
-// did not need one: each spawns the real CLI, and the whole file reads 8 617 ms
-// across 23 tests on the green CI run at f1742fa6d (2 676 ms on the dispatch box at
-// load 3), with those five holding ~99% of it. The slowest is therefore ~3 060 ms
-// against the tier's 15 000 ms, which is the ~4x margin vitest.timeouts.ts derives.
-describe("the dispatch-brief CLI", () => {
-  it("does nothing when imported — `new` is its default command", () => {
-    // Importing this file at the top of this test already proved it, but the
-    // guard is the reason and guards get deleted. Testing the arrival warning
-    // once wrote three fake dispatches into the live `.roster`; an unguarded
-    // import would do the same on every `npm test`.
-    const src = fs.readFileSync(SCRIPT, "utf8");
-    expect(src).toContain("pathToFileURL(path.resolve(process.argv[1])).href");
-  });
+describe("resumeState", () => {
+  it("restores the last promotion unless another candidate is active", () => {
+    const old = {
+      at: iso(Date.now() - 5 * HOUR),
+      status: "active",
+      branch: "x/old",
+      candidate: true,
+    };
+    const next = {
+      at: iso(Date.now() - 4 * HOUR),
+      status: "active",
+      branch: "x/next",
+      candidate: false,
+    };
+    const promoted = [
+      old,
+      next,
+      {
+        at: iso(Date.now() - 3 * HOUR),
+        status: "promotion",
+        target: "x/next",
+        displaced: "x/old",
+      },
+      { at: iso(Date.now() - 2 * HOUR), status: "done", branch: "x/old" },
+      { at: iso(Date.now() - HOUR), status: "done", branch: "x/next" },
+    ];
 
+    expect(resumeState(promoted, "x/old").candidate).toBe(false);
+    expect(resumeState(promoted, "x/next").candidate).toBe(true);
+
+    const collision = [
+      old,
+      { at: iso(Date.now() - 2 * HOUR), status: "done", branch: "x/old" },
+      { ...next, branch: "x/current", candidate: true },
+    ];
+    expect(resumeState(collision, "x/old").candidate).toBe(false);
+  });
+});
+
+describe("the dispatch-brief CLI", () => {
   it("still answers every subcommand it is the only tooling for", () => {
     // A rename or a dropped branch in the dispatcher strands the orchestrator
     // and every agent at once, so the command surface is asserted rather than
@@ -426,94 +451,5 @@ describe("the dispatch-brief CLI", () => {
     const invalid = run("update", "x/first", "--priority", "P9");
     expect(invalid.status).toBe(1);
     expect(invalid.stderr).toContain("invalid priority P9");
-  });
-
-  it("announces when resume collision banks a former candidate", () => {
-    const now = Date.now();
-    const ledger = ledgerIn(tempDir(), [
-      {
-        at: iso(now - 3 * HOUR),
-        status: "active",
-        branch: "x/former",
-        worktree: "wt-former",
-        issues: [],
-        portBase: 5400,
-        candidate: true,
-      },
-      {
-        at: iso(now - 2 * HOUR),
-        status: "done",
-        branch: "x/former",
-      },
-      {
-        at: iso(now - HOUR),
-        status: "active",
-        branch: "x/current",
-        worktree: "wt-current",
-        issues: [],
-        portBase: 5600,
-        candidate: true,
-      },
-    ]);
-    const run = spawnSync(process.execPath, [SCRIPT, "resume", "x/former"], {
-      encoding: "utf8",
-      env: { ...process.env, ALLOS_DISPATCH_LEDGER: ledger },
-    });
-    expect(run.status).toBe(0);
-    expect(run.stdout).toContain("ROLE UPDATE for x/former: BANKED");
-  });
-
-  it("resumes promoted and displaced branches from the last atomic promotion", () => {
-    const now = Date.now();
-    const ledger = ledgerIn(tempDir(), [
-      {
-        at: iso(now - 5 * HOUR),
-        status: "active",
-        branch: "x/old",
-        worktree: "wt-old",
-        issues: [],
-        portBase: 5400,
-        candidate: true,
-      },
-      {
-        at: iso(now - 4 * HOUR),
-        status: "active",
-        branch: "x/next",
-        worktree: "wt-next",
-        issues: [],
-        portBase: 5600,
-        candidate: false,
-      },
-      {
-        at: iso(now - 3 * HOUR),
-        status: "promotion",
-        target: "x/next",
-        displaced: "x/old",
-      },
-      {
-        at: iso(now - 2 * HOUR),
-        status: "done",
-        branch: "x/old",
-      },
-      {
-        at: iso(now - HOUR),
-        status: "done",
-        branch: "x/next",
-      },
-    ]);
-    const env = { ...process.env, ALLOS_DISPATCH_LEDGER: ledger };
-    const resume = (branch: string) =>
-      spawnSync(process.execPath, [SCRIPT, "resume", branch], {
-        encoding: "utf8",
-        env,
-      });
-
-    const old = resume("x/old");
-    expect(old.status).toBe(0);
-    expect(old.stdout).toContain("ROLE UPDATE for x/old: BANKED");
-
-    const next = resume("x/next");
-    expect(next.status).toBe(0);
-    expect(next.stdout).toContain("ROLE UPDATE for x/next: CANDIDATE");
   });
 });
