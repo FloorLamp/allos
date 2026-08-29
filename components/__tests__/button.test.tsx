@@ -44,6 +44,33 @@ describe("Button", () => {
     expect(onClick).toHaveBeenCalledOnce();
   });
 
+  // THE ONE PRIMARY VARIANT (#3982). The claim is not "the classes differ" — a
+  // swap to `.btn` would satisfy that while quietly taking `whitespace-nowrap`,
+  // the reserved border and the box away with it. The claim is that primary is
+  // secondary PLUS one paint utility, so every geometry and focus declaration is
+  // literally the same declaration in both. Read as a set comparison, which is
+  // what makes the "and nothing was removed" half assertable at all.
+  it("adds paint for the one primary variant and removes nothing", () => {
+    render(
+      <>
+        <Button data-testid="secondary">Add entry</Button>
+        <Button variant="primary" data-testid="primary">
+          + Log
+        </Button>
+      </>
+    );
+
+    const secondary = screen.getByTestId("secondary").className.split(" ");
+    const primary = screen.getByTestId("primary").className.split(" ");
+    expect(secondary).toEqual(["button-control"]);
+    expect(primary).toEqual(["button-control", "button-control-primary"]);
+    // Both are the typed primitive, so every spec that locates one by this
+    // attribute keeps working across the rank.
+    expect(
+      screen.getByTestId("primary").getAttribute("data-button-control")
+    ).toBe("");
+  });
+
   it("keeps a destination a link under the same closed treatment", () => {
     render(
       <DestinationActionLink href="/upcoming" data-testid="destination">

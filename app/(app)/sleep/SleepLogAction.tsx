@@ -13,6 +13,7 @@ export default function SleepLogAction({
   label = "Add entry",
   testId,
   formatPrefs,
+  variant,
 }: {
   history: SleepMoodHistoryRow[];
   today: string;
@@ -21,12 +22,21 @@ export default function SleepLogAction({
   testId?: string;
   // So the night chip reads a date the way the rest of the page does.
   formatPrefs?: DisplayFormatPrefs;
+  // Forwarded, never chosen here: this component renders at three mounts of three
+  // different ranks (#3982). The page header's is the page's own action and was
+  // filled (`btn btn-sm`) until #3759; the stale-card and empty-state mounts were
+  // LINK-styled, so promoting them would invent a rank neither ever had.
+  variant?: "primary";
 }) {
   const [open, setOpen] = useState(false);
 
   return (
     <>
-      <Button onClick={() => setOpen(true)} data-testid={testId}>
+      <Button
+        variant={variant}
+        onClick={() => setOpen(true)}
+        data-testid={testId}
+      >
         {label}
       </Button>
       {open && (

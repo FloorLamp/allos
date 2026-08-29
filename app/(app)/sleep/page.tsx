@@ -125,6 +125,7 @@ export default async function SleepPage() {
             today={todayStr}
             minDate={sleepMoodMinDate}
             testId="sleep-add-entry-header"
+            variant="primary"
           />
         }
       />

@@ -40,4 +40,28 @@ describe("SleepLogAction", () => {
       screen.queryByRole("dialog", { name: "Sleep and mood entry" })
     ).toBeNull();
   });
+
+  // RANK IS THE PAGE'S DECISION, NOT THIS COMPONENT'S (#3982). The same component
+  // renders the page header's action — filled `btn btn-sm` until #3759 converged
+  // it — and two mounts that were LINK-styled, inside the stale card and mid
+  // sentence in the empty state. It forwards the variant and picks nothing.
+  it.each([
+    { mount: "the page header", variant: "primary", filled: true },
+    { mount: "the stale and empty states", variant: undefined, filled: false },
+  ] as const)("carries $mount's rank", ({ variant, filled }) => {
+    render(
+      <SleepLogAction
+        history={[]}
+        today="2026-08-25"
+        minDate="2026-05-28"
+        testId="sleep-add-entry"
+        variant={variant}
+      />
+    );
+    expect(
+      screen
+        .getByTestId("sleep-add-entry")
+        .classList.contains("button-control-primary")
+    ).toBe(filled);
+  });
 });
