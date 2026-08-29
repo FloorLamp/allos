@@ -22,6 +22,11 @@ export interface EntryHistoryColumn<T> {
   // `title` is the row's identity, `trailing` the one attribute beside it on the
   // phone's head line, and `value`/`meta` the labelled detail the compact row
   // discloses on tap (#3671). The vocabulary is lib/card-row.ts's.
+  //
+  // THE HEAD LINE CARRIES THE ROW'S IDENTITY AND ONE ATTRIBUTE, and the collapse may
+  // take neither. Slotting identity as detail is the consumer's to get right (#3937:
+  // a stack day read as six identical dates); collapsing a row that has no attribute
+  // to keep is the table's, enforced at `collapses` below (#3904).
   slot: "title" | "trailing" | "value" | "meta";
   label?: string;
   cellClassName?: string;
@@ -166,6 +171,22 @@ export default function EntryHistoryTable<T extends { id: number }>({
     );
   }
 
+  // WHAT LICENSES THE COLLAPSE (#3904). The compact row trades its labelled detail
+  // for a head line that still carries a fact, and `trailing` IS that fact. A row
+  // with none has nothing to trade: it spends its only content to buy back a line it
+  // already occupied. So such a row renders as one already open, which is what
+  // `data-expanded` means to `logged-event-rows`, and gets no toggle.
+  //
+  // PER ROW, NOT PER COLUMN SET. `trailing` is droppable per row — three consumers
+  // declare `empty:` on theirs, and `cardCellAttrs` takes an empty one off the card
+  // — so a column-set check would call those rows collapsible and be wrong exactly
+  // where the defect is. Declaring no `trailing` at all is a legitimate shape (the
+  // practice history's second column is the person's own prose); it reaches the
+  // verdict through the same question.
+  function collapses(item: T): boolean {
+    return columns.some((col) => col.slot === "trailing" && !col.empty?.(item));
+  }
+
   const visible =
     expanded || !expandToggle ? items : items.slice(0, collapsedCount);
   const colSpan = columns.length + (readOnly ? 0 : 1);
@@ -198,7 +219,9 @@ export default function EntryHistoryTable<T extends { id: number }>({
             <tr
               key={item.id}
               data-testid={rowTestId?.(item)}
-              data-expanded={detailId === item.id ? "" : undefined}
+              data-expanded={
+                !collapses(item) || detailId === item.id ? "" : undefined
+              }
               className="border-b border-black/5 align-top last:border-0 dark:border-white/5"
             >
               {editingId === item.id ? (
@@ -222,7 +245,7 @@ export default function EntryHistoryTable<T extends { id: number }>({
                       )}
                     </Td>
                   ))}
-                  {hasDetail(item) ? (
+                  {collapses(item) && hasDetail(item) ? (
                     <Td slot="toggle" className={`px-2 py-2 ${CARD_MODE_ONLY}`}>
                       <button
                         type="button"

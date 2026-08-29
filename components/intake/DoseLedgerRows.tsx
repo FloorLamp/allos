@@ -12,7 +12,7 @@ import {
   type DoseLedgerEntry,
   type DoseLedgerItem,
 } from "@/components/intake/dose-ledger-entry";
-import { formatLongDate } from "@/lib/format-date";
+import { formatWeekdayDate } from "@/lib/format-date";
 import { medicationHref, intakeHref } from "@/lib/hrefs";
 
 // THE DOSE MOUNT'S ROWS (#2417, remounted on the shared frame by #3484 part 2).
@@ -49,24 +49,22 @@ export default function DoseLedgerRows({
   const formatPrefs = useFormatPrefs();
   const itemById = new Map(items.map((item) => [item.id, item]));
 
+  // WHEN A DOSE WAS TAKEN, AS ONE CELL, because `trailing` is one cell by
+  // construction (lib/card-row.ts) and a clock without its day is unreadable on a
+  // list that spans days. `formatWeekdayDate` is the dense-row formatter; the long
+  // shape wrapped this column to two lines on every desktop row.
+  const whenCell = (row: DoseLedgerEntry): string => {
+    const date = formatWeekdayDate(row.date, formatPrefs);
+    return row.time ? `${date} · ${row.time}` : date;
+  };
+
   const columns: EntryHistoryColumn<DoseLedgerEntry>[] = [
     {
-      header: "Date",
-      slot: "title",
-      cellClassName: "font-medium text-slate-700 dark:text-slate-200",
-      cell: (row) => formatLongDate(row.date, formatPrefs),
-    },
-    {
-      header: "Time",
-      slot: "trailing",
-      empty: (row) => !row.time,
-      cellClassName: "text-xs text-slate-500 dark:text-slate-400",
-      cell: (row) => row.time || "—",
-    },
-    {
+      // IDENTITY IS THE ITEM AT THIS SCOPE (#3937). The per-item panel's rows differ
+      // by day, so date-as-title is right there; six doses of one morning stack share
+      // a minute and differ only by item. The link comes with the identity.
       header: "Item",
-      slot: "value",
-      label: "Item",
+      slot: "title",
       cellClassName: "text-slate-600 dark:text-slate-300",
       cell: (row) => (
         <Link
@@ -80,6 +78,15 @@ export default function DoseLedgerRows({
           {row.itemName}
         </Link>
       ),
+    },
+    {
+      header: "When",
+      slot: "trailing",
+      // The weekday survives the shortening — scanning for weekday patterns is half
+      // of what a ledger is read for — and `nowrap` keeps it on its own date's line.
+      cellClassName:
+        "whitespace-nowrap text-xs text-slate-500 dark:text-slate-400",
+      cell: whenCell,
     },
     {
       header: "Amount",
@@ -105,7 +112,11 @@ export default function DoseLedgerRows({
       columns={columns}
       readOnly={!canWrite}
       menuKind="Dose"
-      menuItemName={(row) => formatLongDate(row.date, formatPrefs)}
+      // NO TWO ROWS' CONTROLS ANNOUNCE THE SAME WORDS (#2615): the date alone named
+      // every row of a stack day identically. The whole when-cell, not just its
+      // date — two doses of ONE item on one day are told apart only by the clock,
+      // and #3937's "item — date" spelling would have left that pair colliding.
+      menuItemName={(row) => `${row.itemName} — ${whenCell(row)}`}
       rowTestId={() => "dose-ledger-row"}
       renderEditForm={(row, done) => {
         const item = itemById.get(row.itemId);
@@ -131,7 +142,7 @@ export default function DoseLedgerRows({
       }}
       confirmDelete={(row) => ({
         title: "Delete dose?",
-        message: `Remove the ${formatLongDate(
+        message: `Remove the ${formatWeekdayDate(
           row.date,
           formatPrefs
         )} dose of ${row.itemName} from the record. You can undo this.`,
