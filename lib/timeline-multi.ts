@@ -45,7 +45,9 @@ export interface MergeableRow {
 // against its OWN today, never a shared one. Each event's `date` is likewise already
 // the member's local calendar date (the per-profile gather resolved created-at
 // fallbacks in the member's timezone).
-export interface MemberTimeline<E extends MergeableRow = ProfiledTimelineEvent> {
+export interface MemberTimeline<
+  E extends MergeableRow = ProfiledTimelineEvent,
+> {
   profileId: number;
   today: string;
   events: E[];
@@ -68,7 +70,9 @@ export interface DayMark {
 // across members — per-member relative marks (the honest divergent-day header). `marks`
 // is empty for an ordinary day and ALWAYS empty in single view, so the page adds no
 // divergence chrome unless it's genuinely earned.
-export interface MergedTimelineDay<E extends MergeableRow = ProfiledTimelineEvent> {
+export interface MergedTimelineDay<
+  E extends MergeableRow = ProfiledTimelineEvent,
+> {
   date: string;
   events: E[];
   marks: DayMark[];
@@ -109,7 +113,9 @@ function compareMerged<E extends MergeableRow>(a: E, b: E): number {
 // [] — no false divergence chrome for aligned timezones or old history.
 export function dayMarksFor(
   date: string,
-  members: readonly MemberTimeline[]
+  // Only the two fields the divergence question needs, so the merge's row type never
+  // reaches this decision at all.
+  members: readonly { profileId: number; today: string }[]
 ): DayMark[] {
   const rels = members.map((m) => relativeDay(date, m.today));
   const distinct = new Set(rels.map((r) => r ?? "far"));

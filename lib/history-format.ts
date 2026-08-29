@@ -82,7 +82,7 @@ export type HistoryRowEdit =
       kind: "dose";
       logId: number;
       itemId: number;
-      doseId: number | null;
+      doseId: number;
       statedAt: string | null;
       amount: string | null;
       itemKind: "supplement" | "medication";

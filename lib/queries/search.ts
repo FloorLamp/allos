@@ -1025,6 +1025,40 @@ const PAGES: {
   keywords?: string;
 }[] = [
   { title: "Dashboard", href: "/", keywords: "home overview" },
+  // THE RECORD, AND ITS PER-KIND DOORS (#3958). The palette registers the page and
+  // each Logs kind, because "where are my doses" is the question people actually
+  // type — a single "History" entry would make the page findable and the thing they
+  // came for one filter tap further away.
+  {
+    title: "History",
+    href: "/history",
+    keywords: "record log ledger what happened edit history chronological",
+  },
+  {
+    title: "Dose history",
+    href: "/history?kind=dose",
+    keywords: "doses supplements medications taken ledger",
+  },
+  {
+    title: "Food history",
+    href: "/history?kind=food",
+    keywords: "servings food log ledger eaten",
+  },
+  {
+    title: "Practice history",
+    href: "/history?kind=practice",
+    keywords: "practices sessions wellness ledger",
+  },
+  {
+    title: "Substance history",
+    href: "/history?kind=substance",
+    keywords: "alcohol nicotine cannabis drinks ledger",
+  },
+  {
+    title: "Body history",
+    href: "/history?kind=body",
+    keywords: "weight body fat resting heart rate readings ledger",
+  },
   {
     title: "Timeline",
     href: "/timeline",
