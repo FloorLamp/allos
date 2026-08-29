@@ -106,10 +106,15 @@ export interface PendingDayDose extends UsualRoutineDose {
 //                             today-dot is declared-only — pre-existing, and the reason
 //                             the agreement below is asserted over PAST days.
 //   dose lifetime             date-resolved — doseWindowSince (#430/#1442). Its
-//                             backwards widening reads ALL history, and since #3988 so
-//                             does the evidence every strip caller supplies, so the two
-//                             agree on the rule AND on the facts (pinned in the action
-//                             tier).
+//                             backwards widening reads ALL history, and so does the
+//                             evidence supplied at every site that computes this bound
+//                             — #3988 converted five, #4020 found and converted the
+//                             sixth (lib/rule-findings.ts) — so they agree on the rule
+//                             AND on the facts (pinned in the action tier). The census
+//                             that settles "how many sites" is the one in
+//                             lib/__db_tests__/adherence-bound-evidence.test.ts; two
+//                             earlier ones each missed a caller by counting a narrower
+//                             set.
 //   travel excusal            DATE resolved, SLOT is not — isExcused reads the current
 //                             `time_of_day` and today's notify schedule, so a re-timed
 //                             dose is excused by a slot it may not have occupied. The
