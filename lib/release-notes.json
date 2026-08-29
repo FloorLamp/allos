@@ -110,6 +110,12 @@
           "title": "A lab result that has just become notable shows its value on the dashboard, not only that it is flagged",
           "kind": "fix",
           "issues": [3201]
+        },
+        {
+          "pr": 4055,
+          "title": "Folds open and close smoothly instead of snapping, and still open instantly under reduced motion",
+          "kind": "feature",
+          "issues": [3676, 3677]
         }
       ]
     },
