@@ -52,6 +52,7 @@ export default defineConfig({
           setupFiles: [TIMEOUT_REPORT],
           pool: "threads",
           isolate: false,
+          sequence: { groupOrder: 0 },
         },
       },
       {
@@ -64,6 +65,7 @@ export default defineConfig({
           exclude: NOT_PURE,
           setupFiles: [TIMEOUT_REPORT],
           pool: "forks",
+          sequence: { groupOrder: 1 },
         },
       },
       // ── THE COMPONENT TIER (#3446) ────────────────────────────────────────
@@ -115,6 +117,7 @@ export default defineConfig({
           environment: "jsdom",
           setupFiles: [TIMEOUT_REPORT, "components/__tests__/setup.ts"],
           pool: "threads",
+          sequence: { groupOrder: 0 },
         },
       },
     ],

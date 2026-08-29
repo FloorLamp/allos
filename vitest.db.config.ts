@@ -61,6 +61,7 @@ export default defineConfig({
           exclude: ISOLATED,
           pool: "threads",
           isolate: false,
+          sequence: { groupOrder: 0 },
           globalSetup: ["lib/__db_tests__/global-setup.ts"],
           setupFiles: [
             TIMEOUT_REPORT,
@@ -81,6 +82,7 @@ export default defineConfig({
             "lib/__db_tests__/setup.ts",
             ACTION_SETUP,
           ],
+          sequence: { groupOrder: 1 },
         },
       },
     ],
