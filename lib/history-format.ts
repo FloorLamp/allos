@@ -526,7 +526,8 @@ export function layoutHistoryDay(
   for (const profileId of [...byMember.keys()].sort((a, b) => a - b)) {
     const group = byMember.get(profileId)!;
     const counts = new Map<HistoryKind, number>();
-    for (const row of group) counts.set(row.kind, (counts.get(row.kind) ?? 0) + 1);
+    for (const row of group)
+      counts.set(row.kind, (counts.get(row.kind) ?? 0) + 1);
     rollups.push({
       key: `${group[0].date}:${profileId}`,
       profileId,

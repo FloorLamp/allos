@@ -77,14 +77,12 @@ import type { AppRoute } from "@/lib/hrefs";
 import TimelineFilterLink from "@/components/TimelineFilterLink";
 import DestinationLink from "@/components/DestinationLink";
 import { editSymptom, removeSymptom } from "@/app/(app)/symptom-actions";
+import { LoggedViaField } from "@/components/LoggedViaSurface";
 import {
   deleteCycleAction,
   saveCycleAction,
 } from "@/app/(app)/medical/cycles/actions";
-import {
-  SYMPTOM_SEVERITY_LEVELS,
-  severityLabelFor,
-} from "@/lib/symptoms";
+import { SYMPTOM_SEVERITY_LEVELS, severityLabelFor } from "@/lib/symptoms";
 import { FLOW_LABELS, FLOW_LEVELS } from "@/lib/cycle";
 
 // THE RECORD'S ROWS (#3958 phase 1) — one line, at every viewport.
@@ -610,6 +608,11 @@ export default function HistoryRows({
               })
             }
           >
+            {/* `setSymptomSeverityCore` reads `logged_via` off the post (#3087), so
+                this form has to say which surface it is — without it every correction
+                made here would be stamped with the `page` fallback and the provenance
+                ledger would show the dashboard bar's word for a record-page edit. */}
+            <LoggedViaField />
             {/* NO DATE FIELD, and that is the store's shape rather than an omission:
                 `symptom_logs` is UNIQUE(profile_id, date, symptom), so moving a
                 symptom-day to another date is a delete plus a re-log, not an edit —
@@ -739,143 +742,143 @@ export default function HistoryRows({
   }
 
   const renderRow = (row: HistoryRow) => {
-      const Glyph = KIND_GLYPH[row.kind];
-      const subject = subjectNames[row.profileId];
-      if (editingId === row.id) {
-        return (
-          <li
-            key={row.id}
-            data-testid="history-row-editing"
-            className={`band card-gutter-action border-t border-(--divider) py-2 first:border-t-0 ${rowClassName}`}
-          >
-            {editForm(row, () => setEditingId(null))}
-          </li>
-        );
-      }
+    const Glyph = KIND_GLYPH[row.kind];
+    const subject = subjectNames[row.profileId];
+    if (editingId === row.id) {
       return (
         <li
           key={row.id}
-          data-testid="history-row"
-          data-history-kind={row.kind}
-          data-history-row-id={row.id}
-          className={`${LOGGED_EVENT_ROW} band card-gutter-action`}
+          data-testid="history-row-editing"
+          className={`band card-gutter-action border-t border-(--divider) py-2 first:border-t-0 ${rowClassName}`}
         >
-          {/* THE RAIL'S LANE IS SPENT HERE, on an inner wrapper rather than as
+          {editForm(row, () => setEditingId(null))}
+        </li>
+      );
+    }
+    return (
+      <li
+        key={row.id}
+        data-testid="history-row"
+        data-history-kind={row.kind}
+        data-history-row-id={row.id}
+        className={`${LOGGED_EVENT_ROW} band card-gutter-action`}
+      >
+        {/* THE RAIL'S LANE IS SPENT HERE, on an inner wrapper rather than as
               padding on the row. The row's own `px-4` is a `max-sm:` variant, so a
               base `pr-7` on the same element loses the cascade below `sm` — which is
               exactly the width the rail exists for, and where the ⋯ then sat under
               the strip. A wrapper has no padding of its own to lose to. */}
-          <div
-            className={`flex min-w-0 flex-1 items-center gap-2 ${rowClassName}`}
+        <div
+          className={`flex min-w-0 flex-1 items-center gap-2 ${rowClassName}`}
+        >
+          <LoggedEventRow
+            icon={
+              showGlyphs ? (
+                <Glyph
+                  aria-hidden
+                  className="h-4 w-4 shrink-0 text-slate-500 dark:text-slate-400"
+                  stroke={1.75}
+                />
+              ) : undefined
+            }
           >
-            <LoggedEventRow
-              icon={
-                showGlyphs ? (
-                  <Glyph
-                    aria-hidden
-                    className="h-4 w-4 shrink-0 text-slate-500 dark:text-slate-400"
-                    stroke={1.75}
-                  />
-                ) : undefined
-              }
-            >
-              {/* ONE LINE, EVERY VIEWPORT: the cluster truncates unconditionally,
+            {/* ONE LINE, EVERY VIEWPORT: the cluster truncates unconditionally,
                 which is what the row grammar buys with its disclosure. */}
-              <span className="flex min-w-0 items-baseline gap-1.5 truncate">
-                {row.href && !canEdit(row) && row.edit == null ? (
-                  /* THE › HALF OF THE EXCLUSIVE AFFORDANCE (#3958). A row a richer
+            <span className="flex min-w-0 items-baseline gap-1.5 truncate">
+              {row.href && !canEdit(row) && row.edit == null ? (
+                /* THE › HALF OF THE EXCLUSIVE AFFORDANCE (#3958). A row a richer
                      surface owns carries no ⋯, and its pointer is the ONE rightward
                      destination cue the primitive owns — `DestinationLink` draws the
                      chevron and lib/__tests__/destination-link-primitive.test.ts
                      refuses a hand-rolled one inside a link. So the row has exactly one
                      control and one cue, and a row can never show both verbs. */
-                  <DestinationLink
-                    href={row.href}
-                    className="inline-flex shrink-0 items-center text-link"
-                    data-testid="history-row-title"
+                <DestinationLink
+                  href={row.href}
+                  className="inline-flex shrink-0 items-center text-link"
+                  data-testid="history-row-title"
+                >
+                  {row.title}
+                </DestinationLink>
+              ) : row.href ? (
+                <Link
+                  href={row.href}
+                  className="shrink-0 text-link"
+                  data-testid="history-row-title"
+                >
+                  {row.title}
+                </Link>
+              ) : (
+                <span className="shrink-0" data-testid="history-row-title">
+                  {row.title}
+                </span>
+              )}
+              {subject ? (
+                <span
+                  className="shrink-0 text-xs font-normal text-slate-500 dark:text-slate-400"
+                  data-testid="history-row-subject"
+                >
+                  {subject}
+                </span>
+              ) : null}
+              {row.detail ? (
+                <span
+                  className="min-w-0 truncate text-xs font-normal text-slate-500 dark:text-slate-400"
+                  data-testid="history-row-detail"
+                >
+                  {row.detail}
+                </span>
+              ) : null}
+            </span>
+          </LoggedEventRow>
+          {row.clock ? (
+            <span
+              className={`${LOGGED_EVENT_TRAILING} whitespace-nowrap`}
+              data-testid="history-row-clock"
+            >
+              {row.clock}
+            </span>
+          ) : null}
+          {canEdit(row) ? (
+            <OverflowMenu
+              kind={HISTORY_KIND_LABELS[row.kind].replace(/s$/, "")}
+              itemName={menuName(row)}
+              open={menuOpenId === row.id}
+              onOpenChange={(open) => setMenuOpenId(open ? row.id : null)}
+            >
+              {({ close }) => (
+                <>
+                  <button
+                    type="button"
+                    role="menuitem"
+                    data-testid="history-row-edit"
+                    onClick={() => {
+                      close();
+                      setEditingId(row.id);
+                    }}
+                    className={MENU_ITEM}
                   >
-                    {row.title}
-                  </DestinationLink>
-                ) : row.href ? (
-                  <Link
-                    href={row.href}
-                    className="shrink-0 text-link"
-                    data-testid="history-row-title"
+                    Edit
+                  </button>
+                  <button
+                    type="button"
+                    role="menuitem"
+                    data-testid="history-row-delete"
+                    disabled={pendingId === row.id}
+                    onClick={() => {
+                      close();
+                      void remove(row);
+                    }}
+                    className={MENU_ITEM_DANGER}
                   >
-                    {row.title}
-                  </Link>
-                ) : (
-                  <span className="shrink-0" data-testid="history-row-title">
-                    {row.title}
-                  </span>
-                )}
-                {subject ? (
-                  <span
-                    className="shrink-0 text-xs font-normal text-slate-500 dark:text-slate-400"
-                    data-testid="history-row-subject"
-                  >
-                    {subject}
-                  </span>
-                ) : null}
-                {row.detail ? (
-                  <span
-                    className="min-w-0 truncate text-xs font-normal text-slate-500 dark:text-slate-400"
-                    data-testid="history-row-detail"
-                  >
-                    {row.detail}
-                  </span>
-                ) : null}
-              </span>
-            </LoggedEventRow>
-            {row.clock ? (
-              <span
-                className={`${LOGGED_EVENT_TRAILING} whitespace-nowrap`}
-                data-testid="history-row-clock"
-              >
-                {row.clock}
-              </span>
-            ) : null}
-            {canEdit(row) ? (
-              <OverflowMenu
-                kind={HISTORY_KIND_LABELS[row.kind].replace(/s$/, "")}
-                itemName={menuName(row)}
-                open={menuOpenId === row.id}
-                onOpenChange={(open) => setMenuOpenId(open ? row.id : null)}
-              >
-                {({ close }) => (
-                  <>
-                    <button
-                      type="button"
-                      role="menuitem"
-                      data-testid="history-row-edit"
-                      onClick={() => {
-                        close();
-                        setEditingId(row.id);
-                      }}
-                      className={MENU_ITEM}
-                    >
-                      Edit
-                    </button>
-                    <button
-                      type="button"
-                      role="menuitem"
-                      data-testid="history-row-delete"
-                      disabled={pendingId === row.id}
-                      onClick={() => {
-                        close();
-                        void remove(row);
-                      }}
-                      className={MENU_ITEM_DANGER}
-                    >
-                      Delete
-                    </button>
-                  </>
-                )}
-              </OverflowMenu>
-            ) : null}
-          </div>
-        </li>
-      );
+                    Delete
+                  </button>
+                </>
+              )}
+            </OverflowMenu>
+          ) : null}
+        </div>
+      </li>
+    );
   };
 
   return (

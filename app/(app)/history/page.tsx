@@ -308,7 +308,8 @@ export default async function HistoryPage(props: {
     // set would produce a URL that contradicts itself (a kind implies its family), and
     // `historyHref` resolves that by dropping the family — so the Clinical chip would
     // have navigated back to Doses.
-    const nextFamily = "family" in next ? next.family : "kind" in next ? undefined : family;
+    const nextFamily =
+      "family" in next ? next.family : "kind" in next ? undefined : family;
     return historyHref({
       family: nextKind ? undefined : nextFamily,
       kind: nextKind,
@@ -561,7 +562,9 @@ export default async function HistoryPage(props: {
         </DestinationLink>
       </h2>
       <HistoryRows
-        rows={layoutHistoryDay(group.events as HistoryRow[], { rollup }).visible}
+        rows={
+          layoutHistoryDay(group.events as HistoryRow[], { rollup }).visible
+        }
         rollups={layoutHistoryDay(group.events as HistoryRow[], {
           rollup,
         }).rollups.map((line) => ({
@@ -731,18 +734,16 @@ export default async function HistoryPage(props: {
                   candidate !== "symptom" &&
                   (presentKinds.length === 0 ||
                     presentKinds.includes(candidate))
-              ).map(
-                (candidate) => (
-                  <Link
-                    key={candidate}
-                    className="btn-ghost btn-sm shrink-0"
-                    href={chipHref({ kind: candidate })}
-                    data-testid={`history-add-${candidate}`}
-                  >
-                    {HISTORY_KIND_LABELS[candidate]}
-                  </Link>
-                )
-              )}
+              ).map((candidate) => (
+                <Link
+                  key={candidate}
+                  className="btn-ghost btn-sm shrink-0"
+                  href={chipHref({ kind: candidate })}
+                  data-testid={`history-add-${candidate}`}
+                >
+                  {HISTORY_KIND_LABELS[candidate]}
+                </Link>
+              ))}
             </div>
           ) : kind === "dose" ? (
             <DoseBackfillLauncher

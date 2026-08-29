@@ -677,7 +677,11 @@ export function gatherHistoryLog(
     for (const session of sessions) {
       const startMs = new Date(session.start).getTime();
       const endMs = new Date(session.end).getTime();
-      if (!Number.isFinite(startMs) || !Number.isFinite(endMs) || endMs <= startMs)
+      if (
+        !Number.isFinite(startMs) ||
+        !Number.isFinite(endMs) ||
+        endMs <= startMs
+      )
         continue;
       const wakeDay = zonedDateParts(tz, new Date(session.end)).date;
       const group = byWakeDay.get(wakeDay);
@@ -712,7 +716,9 @@ export function gatherHistoryLog(
         // quantity → context → source: the window, the duration it held, the
         // integration that recorded it as the muted tail.
         detail: detailSegment([
-          bed.hhmm && wake.hhmm ? `${clock(bed.hhmm)} – ${clock(wake.hhmm)}` : null,
+          bed.hhmm && wake.hhmm
+            ? `${clock(bed.hhmm)} – ${clock(wake.hhmm)}`
+            : null,
           formatMinutes(period.durationMin),
           source
             ? (getIntegration(source as IntegrationId)?.name ?? source)
@@ -813,8 +819,11 @@ export function gatherHistoryLog(
   // A predicted next period is not something that happened.
   if (wants(opts, "cycle")) {
     const periods = listCyclePeriods(profileId);
-    const markers: { row: (typeof periods)[number]; date: string; end: boolean }[] =
-      [];
+    const markers: {
+      row: (typeof periods)[number];
+      date: string;
+      end: boolean;
+    }[] = [];
     for (const period of periods) {
       markers.push({ row: period, date: period.period_start, end: false });
       if (period.period_end)
