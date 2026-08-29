@@ -345,6 +345,16 @@ export default async function HistoryPage(props: {
   }));
   const loggable = doseItems.filter((item) => item.doses.length > 0);
   const canWrite = scope.access.get(actingProfileId) === "write";
+  // WHICH PROFILES IN VIEW THIS LOGIN MAY WRITE (#4009 item 1 / #2106). Resolved once
+  // from the scope's already-computed access map — no second `accessForProfile` pass —
+  // and handed to the rows as a SET, because in `?view=everyone` the answer differs per
+  // member: a caregiver can hold write on one and read-only on another. This decides
+  // whether the ⋯ is DRAWN. It is not the gate: the gate is `gateItemProfile` inside
+  // each correction action, which re-checks at apply time, so a forged submit naming a
+  // profile this login cannot write is refused whatever this list said.
+  const writableProfileIds = memberIds.filter(
+    (id) => scope.access.get(id) === "write"
+  );
   // THE OTHER FOUR DOORS' VOCABULARY, read once and only for the kind that is showing
   // one. Each list is a shared reader the kind's own surface already uses — no fifth
   // derivation of "what can this profile log".
@@ -447,8 +457,7 @@ export default async function HistoryPage(props: {
       </h2>
       <HistoryRows
         rows={group.events as HistoryRow[]}
-        actingProfileId={actingProfileId}
-        canWrite={canWrite}
+        writableProfileIds={writableProfileIds}
         doseItems={doseItems}
         maxDate={todayStr}
         defaultTime={defaultTime}

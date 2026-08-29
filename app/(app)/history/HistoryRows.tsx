@@ -67,12 +67,17 @@ import { HISTORY_KIND_LABELS, type HistoryRow } from "@/lib/history-format";
 // re-checks write access server-side, so the menu below is an affordance and never the
 // gate.
 //
-// AND IT IS ACTING-PROFILE ONLY. In `?view=everyone` the merged feed carries other
-// members' rows, and every one of these actions resolves ITS profile from the session's
-// acting profile — so a ⋯ on somebody else's row would either write to the wrong
-// subject or refuse. The row renders read-only instead (`canEdit` below), which is the
-// honest form of #2106's "⋯ additionally requires write access on the row's profile"
-// until those cores take a subject.
+// AND IT GATES PER ROW, NOT PER PAGE (#4009 item 1 / #2106). In `?view=everyone` the
+// merged feed carries other members' rows, and #3958 rules that "⋯ additionally
+// requires write access on the row's profile, re-checked server-side". Phase 1 met the
+// safety half only — every row that was not the acting profile's rendered read-only,
+// because every action above resolved its subject from the session and would have
+// written to the wrong one. Now each form posts the ROW's `profile_id` and each action
+// gates it through the shared `gateItemProfile` (requireProfileWriteAccess: reachable
+// AND write, redirect otherwise). So `writableProfileIds` below decides whether the ⋯
+// is DRAWN, and the server decides whether the write LANDS — a forged submit naming a
+// profile this login cannot write is refused at the action, which is the half a
+// missing button could never prove.
 
 const KIND_GLYPH = {
   dose: IconPill,
@@ -100,8 +105,7 @@ async function removeSubstanceDay(fd: FormData) {
 
 export default function HistoryRows({
   rows,
-  actingProfileId,
-  canWrite,
+  writableProfileIds,
   doseItems,
   maxDate,
   defaultTime,
@@ -110,8 +114,16 @@ export default function HistoryRows({
   showGlyphs = true,
 }: {
   rows: HistoryRow[];
-  actingProfileId: number;
-  canWrite: boolean;
+  /**
+   * The profiles this login may WRITE, out of the ones in view (#4009 item 1).
+   *
+   * A SET RATHER THAN A BOOLEAN, because the question is per row: in
+   * `?view=everyone` a caregiver may hold write on one member and read-only on
+   * another, and #2106's rule is about the ROW's profile. Resolved once from
+   * `scope.access` at the page boundary — the server-side re-check at apply time is
+   * the action's `gateItemProfile`, never this.
+   */
+  writableProfileIds: readonly number[];
   /** Every intake item this profile owns — the dose form's picker and dose options. */
   doseItems: DoseLedgerItem[];
   maxDate: string;
@@ -140,8 +152,21 @@ export default function HistoryRows({
   const [pendingId, setPendingId] = useState<string | null>(null);
   const itemById = new Map(doseItems.map((item) => [item.id, item]));
 
+  // WRITE ACCESS ON THE ROW'S OWN PROFILE (#2106), not on the acting one.
+  const writable = new Set(writableProfileIds);
   const canEdit = (row: HistoryRow) =>
-    canWrite && row.edit != null && row.profileId === actingProfileId;
+    row.edit != null && writable.has(row.profileId);
+
+  // EVERY CORRECTION AND EVERY DELETE NAMES ITS SUBJECT (#4009 item 1). The field is
+  // `profile_id` because that is how this repo already spells a per-item write's
+  // subject — Upcoming's rows, the Tier-1 record rows, the training log all post it,
+  // and `gateItemProfile` is the shared reader. Set on EVERY row, including the acting
+  // profile's, so there is no branch here that could be wrong on one side: an
+  // acting-profile row posts its own id and gates identically.
+  const withSubject = (fd: FormData, row: HistoryRow) => {
+    fd.set("profile_id", String(row.profileId));
+    return fd;
+  };
 
   // The ⋯'s accessible name, and no two rows alike (#2615/#3937): the identity plus
   // the whole when-cell, because two doses of one item on one day are told apart only
@@ -161,7 +186,7 @@ export default function HistoryRows({
     if (!ok) return;
     setPendingId(row.id);
     if (editingId === row.id) setEditingId(null);
-    const fd = new FormData();
+    const fd = withSubject(new FormData(), row);
     try {
       switch (edit.kind) {
         case "dose":
@@ -218,7 +243,7 @@ export default function HistoryRows({
       run: (fd: FormData) => Promise<{ ok: boolean; error?: string }>
     ) {
       event.preventDefault();
-      const fd = new FormData(event.currentTarget);
+      const fd = withSubject(new FormData(event.currentTarget), row);
       setPendingId(row.id);
       const outcome = await run(fd);
       setPendingId(null);
@@ -260,6 +285,13 @@ export default function HistoryRows({
               statedAt: edit.statedAt,
               amount: edit.amount,
             }}
+            // The SUBJECT's id and zone (#4009 item 1). This is the one correction
+            // form that is not posted through `post()` above — it owns its own
+            // `action` — so it stamps `profile_id` itself, and it is also the only one
+            // that collects a wall clock, so it must collect it on the subject's
+            // calendar rather than the caregiver's.
+            subjectProfileId={row.profileId}
+            tz={row.tz}
             onDone={done}
           />
         );

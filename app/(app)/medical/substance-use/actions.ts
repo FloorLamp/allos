@@ -7,6 +7,7 @@ import {
   type WebLoggedVia,
 } from "@/lib/logged-via";
 import { requireWriteAccess } from "@/lib/auth";
+import { gateItemProfile } from "../../gate-item";
 import { db, today, writeTx } from "@/lib/db";
 import { isRealIsoDate } from "@/lib/date";
 import {
@@ -367,14 +368,27 @@ export async function addSubstanceDailyTotalAction(
 export async function updateSubstanceDailyTotalAction(
   formData: FormData
 ): Promise<SubstanceHistoryMutationOutcome> {
-  const { profile } = await requireWriteAccess();
-  if (isMinor(getProfileAge(profile.id))) return { kind: "not-found" };
-  const parsed = historyInput(formData, today(profile.id));
+  // THE ROW'S PROFILE, NOT THE ACTING ONE (#4009 item 1 / #2106): `/history`'s
+  // `?view=everyone` posts the row's own `profile_id`, and `gateItemProfile` gates it
+  // through requireProfileWriteAccess — reachable AND write, redirect otherwise —
+  // falling back to the acting-profile gate when no subject is posted. The ⋯ menu is
+  // the affordance; this is the gate.
+  //
+  // THE AGE GATE AND THE DAY BOUND MOVE WITH THE SUBJECT (#1174/#1279). Both were
+  // asked of the acting profile, which is the wrong question the moment the row is
+  // somebody else's: a caregiver acting as an adult could otherwise correct a MINOR
+  // member's substance row, and `today()` in the caregiver's zone could refuse (or
+  // admit) a date the subject's own calendar reads differently. The read this
+  // corrects is gated on the SUBJECT's age in lib/history.ts; the write must ask the
+  // same question of the same profile or the two disagree.
+  const profileId = await gateItemProfile(formData);
+  if (isMinor(getProfileAge(profileId))) return { kind: "not-found" };
+  const parsed = historyInput(formData, today(profileId));
   if (!parsed.ok) return parsed.outcome;
   const id = Number(formData.get("id"));
   if (!Number.isInteger(id) || id <= 0) return { kind: "not-found" };
   const outcome = updateSubstanceDailyTotalCore(
-    profile.id,
+    profileId,
     parsed.substance,
     id,
     parsed,
@@ -387,8 +401,21 @@ export async function updateSubstanceDailyTotalAction(
 export async function deleteSubstanceDailyTotalAction(
   formData: FormData
 ): Promise<SubstanceHistoryDeleteResult> {
-  const { profile } = await requireWriteAccess();
-  if (isMinor(getProfileAge(profile.id))) {
+  // THE ROW'S PROFILE, NOT THE ACTING ONE (#4009 item 1 / #2106): `/history`'s
+  // `?view=everyone` posts the row's own `profile_id`, and `gateItemProfile` gates it
+  // through requireProfileWriteAccess — reachable AND write, redirect otherwise —
+  // falling back to the acting-profile gate when no subject is posted. The ⋯ menu is
+  // the affordance; this is the gate.
+  //
+  // THE AGE GATE AND THE DAY BOUND MOVE WITH THE SUBJECT (#1174/#1279). Both were
+  // asked of the acting profile, which is the wrong question the moment the row is
+  // somebody else's: a caregiver acting as an adult could otherwise correct a MINOR
+  // member's substance row, and `today()` in the caregiver's zone could refuse (or
+  // admit) a date the subject's own calendar reads differently. The read this
+  // corrects is gated on the SUBJECT's age in lib/history.ts; the write must ask the
+  // same question of the same profile or the two disagree.
+  const profileId = await gateItemProfile(formData);
+  if (isMinor(getProfileAge(profileId))) {
     return {
       kind: "not-found",
       undoId: null,
@@ -406,7 +433,7 @@ export async function deleteSubstanceDailyTotalAction(
       error: "Couldn't find that entry.",
     };
   }
-  const outcome = deleteSubstanceDailyTotalCore(profile.id, substance, id);
+  const outcome = deleteSubstanceDailyTotalCore(profileId, substance, id);
   if (outcome.kind !== "deleted") {
     return {
       kind: "not-found",

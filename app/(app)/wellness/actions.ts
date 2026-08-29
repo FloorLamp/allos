@@ -3,6 +3,7 @@
 import { revalidateRoute } from "@/lib/revalidate";
 import { LOGGED_VIA_FIELD, parseWebOrigin } from "@/lib/logged-via";
 import { requireWriteAccess } from "@/lib/auth";
+import { gateItemProfile } from "../gate-item";
 import { today } from "@/lib/db";
 import {
   deletePracticeSession,
@@ -80,10 +81,15 @@ export async function logPractice(
 export async function editPracticeSession(
   formData: FormData
 ): Promise<PracticeSessionMutationOutcome> {
-  const { profile } = await requireWriteAccess();
+  // THE ROW'S PROFILE, NOT THE ACTING ONE (#4009 item 1 / #2106): `/history`'s
+  // `?view=everyone` posts the row's own `profile_id`, and `gateItemProfile` gates it
+  // through requireProfileWriteAccess — reachable AND write, redirect otherwise —
+  // falling back to the acting-profile gate when no subject is posted. The ⋯ menu is
+  // the affordance; this is the gate.
+  const profileId = await gateItemProfile(formData);
   const id = Number(formData.get("id"));
   if (!id) return { kind: "not-found" };
-  const outcome = updatePracticeSession(profile.id, id, {
+  const outcome = updatePracticeSession(profileId, id, {
     date: String(formData.get("date") ?? "").trim(),
     time: String(formData.get("time") ?? "").trim() || null,
     durationMin: optionalNumber(formData, "duration_min"),
@@ -99,11 +105,16 @@ export async function editPracticeSession(
 export async function removePracticeSession(
   formData: FormData
 ): Promise<{ undoId: number | null; error?: string }> {
-  const { profile } = await requireWriteAccess();
+  // THE ROW'S PROFILE, NOT THE ACTING ONE (#4009 item 1 / #2106): `/history`'s
+  // `?view=everyone` posts the row's own `profile_id`, and `gateItemProfile` gates it
+  // through requireProfileWriteAccess — reachable AND write, redirect otherwise —
+  // falling back to the acting-profile gate when no subject is posted. The ⋯ menu is
+  // the affordance; this is the gate.
+  const profileId = await gateItemProfile(formData);
   const id = Number(formData.get("id"));
   const notFound = { undoId: null, error: "Couldn't find that session." };
   if (!id) return notFound;
-  const outcome = deletePracticeSession(profile.id, id);
+  const outcome = deletePracticeSession(profileId, id);
   if (outcome.kind !== "deleted") return notFound;
   revalidatePracticeSurfaces();
   return { undoId: outcome.undoId };

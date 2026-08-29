@@ -50,6 +50,8 @@ export default function HistoricalDoseForm({
   asNeeded,
   courseBound = true,
   editing,
+  subjectProfileId,
+  tz: tzProp,
   onDone,
 }: {
   itemId: number;
@@ -72,9 +74,26 @@ export default function HistoricalDoseForm({
     statedAt: string | null;
     amount: string | null;
   };
+  /**
+   * The ROW's profile, when this form is correcting a record that is not the acting
+   * profile's (#4009 item 1). Posted as `profile_id`, which is how this repo spells a
+   * per-item write's subject, and gated server-side by `gateItemProfile`. Absent on
+   * every single-subject mount — including the backfill ADD, which is acting-profile
+   * only by owner ruling.
+   */
+  subjectProfileId?: number;
+  /**
+   * The SUBJECT's timezone. A stated dose time is a wall clock on the subject's own
+   * day, and `updateHistoricalDose` re-anchors it in the subject's zone — so a form
+   * that collected it in the CAREGIVER's zone would shift the instant on save with
+   * nothing edited. Defaults to the app-wide provider (the acting profile), which is
+   * the same value for every single-subject mount.
+   */
+  tz?: string;
   onDone: () => void;
 }) {
-  const tz = useTimezone();
+  const contextTz = useTimezone();
+  const tz = tzProp ?? contextTz;
   const first = doses[0];
   const initialDose = editing
     ? (doses.find((dose) => dose.id === editing.doseId) ?? {
@@ -127,6 +146,9 @@ export default function HistoricalDoseForm({
       data-testid="historical-dose-form"
     >
       <input type="hidden" name="id" value={itemId} />
+      {subjectProfileId != null ? (
+        <input type="hidden" name="profile_id" value={subjectProfileId} />
+      ) : null}
       {editing ? (
         <input type="hidden" name="log_id" value={editing.logId} />
       ) : null}
@@ -181,6 +203,7 @@ export default function HistoricalDoseForm({
             grain="minute"
             value={when}
             onChange={setWhen}
+            tz={tz}
             timeRequired={!editing}
             minDate={minDate}
             maxDate={maxDate}

@@ -180,8 +180,7 @@ function openRow(rows: HistoryRow[]): void {
   render(
     <HistoryRows
       rows={rows}
-      actingProfileId={ACTING}
-      canWrite
+      writableProfileIds={[ACTING]}
       doseItems={[
         {
           id: 42,
@@ -786,8 +785,7 @@ describe("the record's ⋯ posts to the domain's own action", () => {
             },
           }),
         ]}
-        actingProfileId={ACTING}
-        canWrite
+        writableProfileIds={[ACTING]}
         doseItems={[]}
         maxDate="2026-08-28"
         defaultTime="09:00"
