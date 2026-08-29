@@ -81,7 +81,7 @@ import { isTrainingRelevant } from "@/lib/life-stage";
 import { formatWeekdayDate } from "@/lib/format-date";
 import { weekWindow } from "@/lib/week-window";
 import type { SupplementAdherenceDayInput } from "@/lib/supplement-weekly-adherence";
-import { travelExcusalResolver } from "@/lib/travel-excusal";
+import { profileDayZone, travelExcusalResolver } from "@/lib/travel-excusal";
 import { situationHistoryResolver } from "@/lib/trend-annotations";
 import {
   suggestedSituationsFromConditions,
@@ -288,6 +288,9 @@ export default async function SupplementsTab({
   // Policy lives in the shared intakeAdherenceStrip (issue #313).
   // Travel (#3263): the per-day excusal, resolved once for the page.
   const isExcused = travelExcusalResolver(profile.id);
+  // The lifetime bound resolves historical creation stamps, so it reads the zone in
+  // force at each one rather than the profile's current one (#4025).
+  const dayZone = profileDayZone(profile.id);
   const stripBySupp = new Map<number, AdherenceDot[]>();
   for (const s of intakeItems) {
     stripBySupp.set(
@@ -299,7 +302,7 @@ export default async function SupplementsTab({
         workoutDays,
         situationsOn,
         takenByDose,
-        tz,
+        dayZone,
         isExcused
       )
     );
@@ -363,7 +366,7 @@ export default async function SupplementsTab({
       item.supplement.created_at,
       item.dose.created_at,
       takenByDose.get(item.dose.id),
-      tz
+      dayZone
     );
     return since == null || date >= since;
   };

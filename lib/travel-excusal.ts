@@ -26,6 +26,8 @@ import { getTravelSwitches } from "./settings/travel";
 import {
   connectedTimezoneSwitchHistory,
   isExcusedSlot,
+  zoneAtInstant,
+  type ProfileDayZone,
   type TimezoneSwitch,
 } from "./travel-timezone";
 
@@ -75,6 +77,17 @@ export function travelExcusalResolver(profileId: number): DoseExcusalResolver {
   const slotMinutes = getNotifySchedule(profileId).supplementMinutes;
   return (timeOfDay, date) =>
     isDoseSlotExcused(switches, slotMinutes, timeBucket(timeOfDay), date);
+}
+
+// The profile's day zone for DATED reads (#4025) — the sibling of the excusal
+// resolver above, built from the same recorded history and with the same fail-open
+// posture. A profile that has never switched gets its plain zone string back, so the
+// common path stays a bare `dateStrInTz` with nothing extra to go wrong.
+export function profileDayZone(profileId: number): ProfileDayZone {
+  const tz = getTimezone(profileId);
+  const switches = getTravelSwitches(profileId);
+  if (connectedTimezoneSwitchHistory(switches, tz).length === 0) return tz;
+  return (at) => zoneAtInstant(switches, tz, at);
 }
 
 // The SLOT-level twin, for the notify tick: was this window's own send excused on

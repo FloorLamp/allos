@@ -15,6 +15,7 @@ import type { IntakeItem } from "./types";
 import { isDueOn } from "./intake-schedule";
 import { doseOnDay, type DoseCadence } from "./intake-cadence";
 import { dateStrInTz, parseUtcSql } from "./date";
+import { zoneOf, type ProfileDayZone } from "./travel-timezone";
 
 // How many days the per-item adherence strip spans (the intake surfaces and
 // any windowed-history consumer share the window length).
@@ -210,19 +211,28 @@ export function doseStrip(
 // did this dose exist at all — and must keep showing the days it really was taken in
 // its old slot. Two questions, two bounds, both pinned.
 //
-// The timestamps are UTC SQL ("YYYY-MM-DD HH:MM:SS"); `tz` converts them to the
+// The timestamps are UTC SQL ("YYYY-MM-DD HH:MM:SS"); `zone` converts them to the
 // profile's calendar day so the bound lines up with the `dates` window (which is
 // profile-local). Without that conversion the boundary is off by a day for every
 // profile whose offset crosses midnight — an item added at 08:00 in UTC+9 would land
 // on "yesterday" and reintroduce exactly the phantom miss this bound removes.
+//
+// AND THE ZONE IS THE ONE THE PROFILE'S DAY RAN ON AT THAT INSTANT (#4025), not the
+// one it is standing in now — which is why this takes a `ProfileDayZone` rather than
+// a bare name. A stamp near local midnight resolved through a zone the profile moved
+// to LATER lands on a different day, and eastward that day is a LATER one: the bound
+// walks forward past a day the dose demonstrably existed on, the strip flips it
+// `missed` → `na`, and the reminder gather (which now gates a write on the same
+// bound) drops the dose the day owed. `profileDayZone` hands profiles that have never
+// switched their plain zone string, so nothing about the common path changes.
 export function doseExistsSince(
   itemCreatedAt: string | null | undefined,
   doseCreatedAt: string | null | undefined,
-  tz: string
+  zone: ProfileDayZone
 ): string | null {
   const dayOf = (t: string | null | undefined): string | null => {
     const d = parseUtcSql(t);
-    return d ? dateStrInTz(tz, d) : null;
+    return d ? dateStrInTz(zoneOf(zone, d), d) : null;
   };
   const candidates = [dayOf(itemCreatedAt), dayOf(doseCreatedAt)].filter(
     (d): d is string => d != null
@@ -248,9 +258,9 @@ export function doseWindowSince(
   itemCreatedAt: string | null | undefined,
   doseCreatedAt: string | null | undefined,
   status: DoseDateStatus | undefined,
-  tz: string
+  zone: ProfileDayZone
 ): string | null {
-  const exists = doseExistsSince(itemCreatedAt, doseCreatedAt, tz);
+  const exists = doseExistsSince(itemCreatedAt, doseCreatedAt, zone);
   if (exists == null) return null; // no bound at all — the whole window is in scope
   let earliest = exists;
   for (const set of [status?.taken, status?.skipped]) {
@@ -295,8 +305,9 @@ export interface AdherenceStripDose extends DoseCadence {
 // which states the bound where it is supplied (#3988) — a plain windowed read scores
 // `na` on days a dose demonstrably existed. Nothing existed to take, so there is no follow-through to measure, and the
 // percentage summarizing the strip reads "no history yet" (pct null) instead of the
-// maximally-wrong 0%. `tz` resolves the UTC creation timestamps onto the same
-// profile-local calendar the `dates` window is built from.
+// maximally-wrong 0%. `zone` resolves the UTC creation timestamps onto the same
+// profile-local calendar the `dates` window is built from — through the zone in force
+// at each stamp, not today's (#4025).
 export function intakeAdherenceStrip(
   item: IntakeItem,
   doses: readonly AdherenceStripDose[],
@@ -304,7 +315,7 @@ export function intakeAdherenceStrip(
   workoutDays: ReadonlySet<string>,
   situationsOn: (date: string) => Set<string>,
   takenByDose: Map<number, DoseDateStatus>,
-  tz: string,
+  zone: ProfileDayZone,
   // Travel (#3263): which of this item's doses had their slot jumped over on a
   // given profile-local day. Defaults to "none were", which is every profile that
   // has never switched zones — the pre-#3263 behaviour, unchanged.
@@ -317,7 +328,7 @@ export function intakeAdherenceStrip(
       item.created_at,
       d.created_at,
       takenByDose.get(d.id),
-      tz
+      zone
     ),
   }));
   return dates.map((date) => {

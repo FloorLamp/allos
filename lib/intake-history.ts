@@ -22,7 +22,6 @@ import {
   getEverLoggedItemIds,
 } from "./queries";
 import { getActiveSituations, getSituationEvents } from "./settings";
-import { getTimezone } from "./settings";
 import { situationHistoryResolver } from "./trend-annotations";
 import {
   doseWindowSince,
@@ -32,7 +31,7 @@ import {
   type AdherenceDot,
 } from "./intake-adherence";
 import { isPushedIntake } from "./intake-schedule";
-import { travelExcusalResolver } from "./travel-excusal";
+import { profileDayZone, travelExcusalResolver } from "./travel-excusal";
 import {
   classifyIntakeDeltas,
   intakeDeltaLine,
@@ -78,7 +77,9 @@ export function getIntakeHistory(
 
   const dates = lastNDates(today, days);
   const windowStart = dates[0] ?? today;
-  const tz = getTimezone(profileId);
+  // The lifetime bound resolves historical creation stamps, so it takes the zone in
+  // force at each one (#4025) — a plain string for every profile that never moved.
+  const dayZone = profileDayZone(profileId);
   const workoutDays = new Set(getActivityDates(profileId));
   // Per-day situation resolver (#654): a past day is scored against the situations
   // active THAT day, never today's toggle applied retroactively — otherwise turning
@@ -107,7 +108,7 @@ export function getIntakeHistory(
         workoutDays,
         situationsOn,
         takenByDose,
-        tz,
+        dayZone,
         isExcused
       )
     );
@@ -117,7 +118,12 @@ export function getIntakeHistory(
     // null bound means "no known lower bound" (no stored timestamps), the pre-#1442
     // behavior, and counts as covering the window.
     const sinces = itemDoses.map((d) =>
-      doseWindowSince(item.created_at, d.created_at, takenByDose.get(d.id), tz)
+      doseWindowSince(
+        item.created_at,
+        d.created_at,
+        takenByDose.get(d.id),
+        dayZone
+      )
     );
     const covered =
       itemDoses.length > 0 &&

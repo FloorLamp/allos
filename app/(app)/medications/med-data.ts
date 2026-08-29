@@ -56,7 +56,7 @@ import {
   type MedicationWithHistory,
 } from "@/lib/medication-history";
 import { medicationStartDate } from "@/lib/profile-summary";
-import { travelExcusalResolver } from "@/lib/travel-excusal";
+import { profileDayZone, travelExcusalResolver } from "@/lib/travel-excusal";
 import { monitoringSummaryForMed } from "@/lib/medication-monitoring";
 import {
   buildMedicationList,
@@ -245,6 +245,9 @@ export function loadMedicationsData(
 
   const todayStr = today(profileId);
   const tz = getTimezone(profileId);
+  // The strip's lifetime bound resolves historical creation stamps, so it reads the
+  // zone in force at each one rather than the profile's current one (#4025).
+  const dayZone = profileDayZone(profileId);
   const takenTimes = getTakenDoseTimes(profileId, todayStr);
   const taken = new Set(takenTimes.keys());
   const skipped = getSkippedDoseIds(profileId, todayStr);
@@ -435,7 +438,7 @@ export function loadMedicationsData(
         workoutDays,
         situationsOn,
         takenByDose,
-        tz,
+        dayZone,
         isExcused
       ),
       refillRate: refillRates.get(med.id) ?? null,
@@ -690,7 +693,7 @@ export function getMedicationAdherenceCalendar(
     data.adherenceInputs.workoutDays,
     data.adherenceInputs.situationsOn,
     takenByDose,
-    data.tz,
+    profileDayZone(profileId),
     travelExcusalResolver(profileId)
   );
   const startedOn = medicationStartDate(

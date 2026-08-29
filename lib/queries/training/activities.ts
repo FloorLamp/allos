@@ -762,15 +762,23 @@ export type InferredWorkoutSchedule = WeeklyRhythm;
 // (#2188) — the thresholds live in lib/weekly-rhythm.ts, not here.
 // Hoisted for the same reason as ACTIVITIES_BY_DATE_STMT above.
 const WORKOUT_RHYTHM_STMT = hoistedStatement(
-  `SELECT date, start_time FROM activities WHERE profile_id = ? AND date >= ?`
+  `SELECT date, start_time FROM activities
+    WHERE profile_id = ? AND date >= ? AND date <= ?`
 );
 export function inferWorkoutSchedule(
   profileId: number,
-  weeks = RHYTHM_WINDOW_WEEKS
+  weeks = RHYTHM_WINDOW_WEEKS,
+  // The day the trailing window ENDS on — today for every live consumer, and a PAST
+  // day for the one that asks what was inferable back then (#4026). The practice
+  // sibling `inferPracticeRhythm` has always taken this; the workout gather assumed
+  // "now" instead, which is how a cadence that first becomes inferable today reached
+  // back and moved a closed day's dose into a different send slot.
+  asOf: string = today(profileId)
 ): InferredWorkoutSchedule {
   const rows = WORKOUT_RHYTHM_STMT.all(
     profileId,
-    shiftDateStr(today(profileId), -weeks * 7)
+    shiftDateStr(asOf, -weeks * 7),
+    asOf
   ) as {
     date: string;
     start_time: string | null;

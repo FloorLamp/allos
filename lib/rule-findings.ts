@@ -13,7 +13,7 @@
 // No owned SQL is added here, so the profile-scoping guard is unaffected.
 
 import { joinNamesForSentence } from "./summarize-names";
-import { travelExcusalResolver } from "./travel-excusal";
+import { profileDayZone, travelExcusalResolver } from "./travel-excusal";
 import {
   getStrengthByExercise,
   getExerciseSetCountsSince,
@@ -1534,6 +1534,9 @@ export function buildAdherencePatternFindings(
   // The profile's timezone resolves the UTC creation stamps onto the same profile-local
   // calendar the `dates` window is built from (#1442).
   const tz = getTimezone(profileId);
+  // …and the LIFETIME bound resolves each stamp through the zone in force at it (#4025),
+  // which is the same plain string for every profile that has never moved.
+  const dayZone = profileDayZone(profileId);
   // THE EVIDENCE, NOT THE WINDOW (#3988/#4020). This index answers two questions, and
   // only one of them is windowed: "was this dose taken on this drawn day" is, "when did
   // this dose first exist" is not. `getIntakeAdherenceEvidence` unions the window with
@@ -1575,7 +1578,12 @@ export function buildAdherencePatternFindings(
     // computed from the same evidence, so a pattern and the strip it summarizes cannot
     // disagree about a day (#221). Both halves are needed: one caller of this bound fed
     // it a windowed read for a year, and the rule agreeing was never the part at risk.
-    const exists = doseWindowSince(item.created_at, d.created_at, status, tz);
+    const exists = doseWindowSince(
+      item.created_at,
+      d.created_at,
+      status,
+      dayZone
+    );
     // …plus the ONE case effective-dating cannot reach: a dose re-timed BEFORE #1973
     // shipped, whose old slot no version records. `updated_at` says a change happened
     // but not what it replaced, so those days cannot be judged — and judging them by

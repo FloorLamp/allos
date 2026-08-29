@@ -70,7 +70,7 @@ import {
   type CorrectionMessageRef,
 } from "./message-pointers";
 import { plainBody } from "./rich-text";
-import { travelExcusalResolver } from "../travel-excusal";
+import { profileDayZone, travelExcusalResolver } from "../travel-excusal";
 
 export type { ReminderWindow, IntakeSendSlot };
 
@@ -161,8 +161,17 @@ function currentMinutesOfDay(profileId: number): number {
 // (issue #1154 Fix A): true when a training cadence (and hence an hour) can be
 // inferred. Kept as the ONE gate both the slot membership (doseSendSlot) and the
 // tick's pseudo-slot hour derive from, so a dose can never fall between slots.
-function preWorkoutTimed(profileId: number): boolean {
-  return inferWorkoutSchedule(profileId).hasPattern;
+//
+// AS OF `date`, NOT AS OF NOW (#4026), which is the same split #4019 made one layer
+// down for `predictedWorkoutDay`. The inference is a trailing window ending at its
+// `asOf` day, so asking it today about a CLOSED day let a cadence that first became
+// inferable this morning move yesterday's dose out of the slot yesterday's message
+// named. `✅ All` is slot-scoped, so that stale token rebuilt EMPTY and wrote nothing
+// while the message still listed the dose — and reconcile's death check needs
+// `entries.length > 0`, so an empty rebuild is indistinguishable from "nothing to do"
+// and the button never retires.
+function preWorkoutTimed(profileId: number, date: string): boolean {
+  return inferWorkoutSchedule(profileId, undefined, date).hasPattern;
 }
 
 // The profile-local minute of day the PreWorkout pseudo-slot fires (one hour
@@ -275,8 +284,8 @@ function gatherWindowDoses(
     ),
   };
   // #1154 Fix A: whether `anytime` pre_workout doses ride the PreWorkout
-  // pseudo-slot instead of folding into Morning.
-  const workoutTimed = preWorkoutTimed(profileId);
+  // pseudo-slot instead of folding into Morning — as of the day being gathered.
+  const workoutTimed = preWorkoutTimed(profileId, date);
 
   // Inputs for the per-dose adherence percentage. Anchored on the real
   // today (not `date`, which may be a prior day's reminder tapped late) so the
@@ -285,7 +294,9 @@ function gatherWindowDoses(
   // pending" rule. The evidence set is deliberately WIDER than the columns: the
   // lifetime bound inside the strip is not a windowed question (#3988).
   const windowDates = lastNDates(today(profileId), ADHERENCE_DAYS);
-  const tz = getTimezone(profileId);
+  // The lifetime bound reads HISTORICAL creation stamps, so it needs the zone each of
+  // them was lived in rather than the one the profile is standing in now (#4025).
+  const dayZone = profileDayZone(profileId);
   const takenByDose = indexTakenByDose(
     getIntakeAdherenceEvidence(profileId, ADHERENCE_DAYS)
   );
@@ -372,19 +383,22 @@ function gatherWindowDoses(
     // Clamp the window to the dose's lifetime (#430/#1442) before summarizing it:
     // a fixed lookback over a med added this morning is all pre-existence days,
     // and scoring them would make the very first reminder announce "0% adherence".
-    const since = doseWindowSince(item.created_at, dose.created_at, dd, tz);
+    const since = doseWindowSince(item.created_at, dose.created_at, dd, dayZone);
     // …and the same bound gates the DAY (#4011), as `pendingDayDoses` already does:
     // `doseOnDay` reads only the declared start/end dates, so a stale keyboard rebuilt
     // for day−2 offered a dose for an item created this morning, and `✅ All` would
     // write `taken` and decrement real stock for it. A PAST-DAY rule by construction:
     // a dose row being read at all is proof it exists today.
     //
-    // THE SAFETY PROPERTY IS NARROW. A dose ALREADY ANSWERED on `date` cannot be
-    // dropped — that log is inside `dd`, and `doseWindowSince` widens the bound to it.
-    // An UNANSWERED one has no such protection: a zone change can walk the bound
-    // forward across a creation stamp sitting near local midnight and drop a dose the
-    // day did own. The bound shift predates this line (the strip already flips such a
-    // day `missed` → `na`); what this adds is that it now gates a WRITE. See #4025.
+    // AND THE BOUND IS A FACT ABOUT THE ROW, NOT ABOUT WHERE THE PERSON IS STANDING
+    // (#4025). A dose ALREADY ANSWERED on `date` was always safe — that log is inside
+    // `dd`, and `doseWindowSince` widens the bound to it — but an UNANSWERED one used
+    // to have no protection at all: resolving a historical `created_at` through the
+    // profile's CURRENT zone let an eastward move walk the bound forward across a
+    // stamp sitting near local midnight and drop a dose the day did own. `dayZone`
+    // resolves each stamp through the zone in force at it, so this gate and the
+    // adherence strip (which clamps on the same bound) give one answer for one day.
+    // A zone move the app never recorded still leaves no evidence to read.
     if (!isForToday && since != null && date < since) continue;
     const strip = doseStrip(
       since ? windowDates.filter((d) => d >= since) : windowDates,

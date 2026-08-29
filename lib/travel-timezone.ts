@@ -207,6 +207,47 @@ export function isRepeatedSlot(
   return positionOccurrences(switches, p) > 1;
 }
 
+// ---- The zone a past instant was lived in (#4025) --------------------------
+
+// A profile's day zone as the DATED readers take it: a plain IANA name when the
+// profile's zone has never moved — the overwhelming case, and byte-identical to the
+// pre-#4025 behaviour — or a resolver over its recorded switch history when it has.
+export type ProfileDayZone = string | ((at: Date) => string);
+
+export function zoneOf(zone: ProfileDayZone, at: Date): string {
+  return typeof zone === "string" ? zone : zone(at);
+}
+
+// Which zone this profile's day was running on at `at`.
+//
+// Turning a stored UTC stamp into a profile-local DAY is the whole subject of this
+// module, and the answer depends on where the profile's day was running THEN, not on
+// where it is standing now. Resolve a historical stamp through the CURRENT zone and an
+// eastward move walks its day forward — far enough, for a stamp sitting within the
+// offset delta of local midnight, to walk a dose's lifetime bound past a day the dose
+// demonstrably existed on, which drops it from a rebuilt reminder and from what
+// `✅ All` writes (#4025).
+//
+// The recorded switch history is the evidence, read through the SAME fail-open gate
+// every other consumer uses: an unusable or absent history yields the current zone,
+// which is exactly the pre-#4025 answer. A zone move that was never recorded — an
+// ordinary Settings correction outside a trip — leaves no evidence at all, so no
+// read-time rule can see it.
+export function zoneAtInstant(
+  switches: readonly TimezoneSwitch[],
+  currentZone: string,
+  at: Date
+): string {
+  const t = at.getTime();
+  // The chain is chronological and ends at `currentZone`, so the FIRST switch that
+  // happened after `at` is the one this instant preceded: the zone in force then is
+  // the one that switch moved away from.
+  for (const sw of connectedTimezoneSwitchHistory(switches, currentZone)) {
+    if (Date.parse(sw.at) > t) return sw.from;
+  }
+  return currentZone;
+}
+
 // ---- Stored switch history ----
 
 // How many switches are kept per profile. A trip is a handful of switches; the
