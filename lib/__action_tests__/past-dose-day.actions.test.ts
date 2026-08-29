@@ -140,6 +140,25 @@ function seedProfile(label: string, tz: string) {
   };
 }
 
+// A REAL training session: ended, so `isDraftActivityRow` cannot call it a husk.
+function seedSession(profileId: number, date: string): void {
+  db.prepare(
+    `INSERT INTO activities (profile_id, date, title, type, start_time, end_time)
+     VALUES (?, ?, 'Session', 'cardio', '09:00', '10:00')`
+  ).run(profileId, date);
+}
+
+// A DRAFT HUSK (#3189): create-at-start wrote the row at the session's first second
+// and nothing was ever logged into it — no end, no duration, no sets, no note, no
+// distance, and no import source. It carries a `date` like any other row, which is
+// precisely why the two activity readers are not interchangeable.
+function seedDraftHusk(profileId: number, date: string): void {
+  db.prepare(
+    `INSERT INTO activities (profile_id, date, title, type, start_time)
+     VALUES (?, ?, 'Abandoned', 'cardio', '09:00')`
+  ).run(profileId, date);
+}
+
 function logsOn(profileId: number, date: string) {
   return db
     .prepare(
@@ -471,27 +490,48 @@ describe("the submitted day is bounded by the days the sheet offers", () => {
 //   strip "na"      → the day asks nothing of this dose  → the sheet must NOT offer it
 //   strip "excused" → the clock made the slot impossible → the sheet must NOT offer it
 //   strip "missed"  → the day owes it and nothing is logged → the sheet MUST offer it
-describe("the sheet's offer agrees with the adherence strip, day for day", () => {
-  // The strip exactly as SupplementsTab builds it, over the switcher's own window.
-  function stripFor(profileId: number, itemId: number): AdherenceDot[] {
-    const item = getIntakeItems(profileId).find((i) => i.id === itemId)!;
-    const doses = getIntakeDoses(profileId).filter((d) => d.item_id === itemId);
-    const dates = [...doseLogDays(today(profileId))].reverse();
-    return intakeAdherenceStrip(
-      item,
-      doses,
-      dates,
-      new Set(getActivityDates(profileId)),
-      situationHistoryResolver(
-        getActiveSituations(profileId),
-        getSituationEvents(profileId)
-      ),
-      indexTakenByDose(getIntakeLogsInRange(profileId, 30)),
-      getTimezone(profileId),
-      travelExcusalResolver(profileId)
-    );
-  }
+// EVERY INPUT PAIRED WITH THE ONE THE SUBJECT READS. Two readers six lines apart —
+// one here, one in `pendingDayDoses` — is how the draft-husk instances stayed hidden
+// through two review rounds, so the pairing is written down rather than assumed:
+//
+//   dates            doseLogDays(today)      ← the switcher's own three days
+//   workoutDays      getActivityDates        ← husk-free list, both sides (#3189)
+//   situationsOn     situationHistoryResolver ← situationsActiveOn, both sides (#654)
+//   takenByDose      full history            ← see EVIDENCE below
+//   tz               getTimezone             ← both sides
+//   isExcused        travelExcusalResolver   ← both sides (#3263)
+//
+// EVIDENCE. `intakeAdherenceStrip` does not own its lifetime evidence — its CALLER
+// hands it `takenByDose`, and SupplementsTab hands it `STRIP_DAYS` (14) because that
+// is the span it draws. `pendingDayDoses` reads the earliest log over ALL history,
+// so the two agree on one rule and can differ only on how much evidence each was
+// given. This builder gives the strip what the subject has, so the comparison below
+// is about the RULE; the divergence the window can cause is pinned separately.
+const ALL_HISTORY_DAYS = 3650;
+function stripFor(
+  profileId: number,
+  itemId: number,
+  evidenceDays = ALL_HISTORY_DAYS
+): AdherenceDot[] {
+  const item = getIntakeItems(profileId).find((i) => i.id === itemId)!;
+  const doses = getIntakeDoses(profileId).filter((d) => d.item_id === itemId);
+  const dates = [...doseLogDays(today(profileId))].reverse();
+  return intakeAdherenceStrip(
+    item,
+    doses,
+    dates,
+    new Set(getActivityDates(profileId)),
+    situationHistoryResolver(
+      getActiveSituations(profileId),
+      getSituationEvents(profileId)
+    ),
+    indexTakenByDose(getIntakeLogsInRange(profileId, evidenceDays)),
+    getTimezone(profileId),
+    travelExcusalResolver(profileId)
+  );
+}
 
+describe("the sheet's offer agrees with the adherence strip, day for day", () => {
   async function offeredByDay(): Promise<Map<string, number[]>> {
     const data = await loadQuickEntry("dose");
     const out = new Map<string, number[]>();
@@ -605,11 +645,12 @@ describe("a closed day's training is what the record says, not what a pattern pr
     // deliberately NOT on `day` itself. `rhythmMinDates(8)` is 4, so this clears the
     // gate and `isPredictedWorkoutDay(day)` returns TRUE while the record for that day
     // is empty. Without the fix the two disagree and the guard below cannot pass.
+    // REAL sessions, not husks. The first version of this seeded start-time-only rows,
+    // which `isDraftActivityRow` calls drafts — it worked only because the rhythm
+    // inference reads raw rows, and it would have gone on "passing" while describing a
+    // history of abandoned sessions.
     for (let week = 1; week <= 6; week += 1) {
-      db.prepare(
-        `INSERT INTO activities (profile_id, date, title, type, start_time)
-         VALUES (?, ?, 'Weekly session', 'cardio', '09:00')`
-      ).run(profile.id, shiftDateStr(day, -7 * week));
+      seedSession(profile.id, shiftDateStr(day, -7 * week));
     }
     // The precondition, asserted rather than assumed — if the rhythm did not infer,
     // both branches would fall back to `isWorkoutDay` and this test would pass for the
@@ -625,6 +666,136 @@ describe("a closed day's training is what the record says, not what a pattern pr
     // It WAS a rest day — nothing was logged — so the rest-day dose was owed and the
     // sheet must offer it. Reading the prediction withholds it, and the adherence
     // strip (which passes no prediction) would call the day missed either way.
+    expect(offered).toContain(doseId);
+  });
+});
+
+// ── The draft-husk split: two activity readers, and only one is right here ────
+//
+// `getActivitiesByDate` is the raw row read (today's reader everywhere in the repo);
+// `getActivityDates` drops draft husks (#3189) and is what every windowed consumer
+// uses, the adherence strip included. Taking the today reader to a closed day produced
+// BOTH harms this PR exists to fix, from one abandoned session.
+describe("an abandoned draft is not a training day on a closed day (#3189)", () => {
+  function seedFor(condition: string, label: string) {
+    const login = createLogin();
+    const profile = createProfile(label, login.id);
+    actAs(login, profile);
+    setTimezone(profile.id, "UTC");
+    const doseId = seedDose(profile.id, `${label} dose`, { condition });
+    const day = shiftDateStr(today(profile.id), -1);
+    seedDraftHusk(profile.id, day);
+    return { profile, doseId, day };
+  }
+
+  async function offeredOn(date: string): Promise<number[]> {
+    const data = await loadQuickEntry("dose");
+    if (data.form !== "dose") return [];
+    const day = data.pastDays.find((d) => d.date === date);
+    return (day?.slots ?? []).flatMap((slot) =>
+      slot.doses.map((d) => d.doseId)
+    );
+  }
+
+  it("does not CONCEAL a rest-day dose the day owed", async () => {
+    const { profile, doseId, day } = seedFor("rest_day", "husk-rest");
+    // The husk made the day look like training, so the rest-day dose read as not due
+    // and the sheet said the day had nothing to log.
+    expect(getActivitiesByDate(profile.id, day)).toHaveLength(1);
+    expect(getActivityDates(profile.id)).not.toContain(day);
+    expect(await offeredOn(day)).toContain(doseId);
+  });
+
+  it("does not OFFER a pre-workout dose the day never owed", async () => {
+    const { doseId, day } = seedFor("pre_workout", "husk-pre");
+    // The other direction, and the worse one: a tap here writes `taken` and decrements
+    // real stock for a day that asked nothing.
+    expect(await offeredOn(day)).not.toContain(doseId);
+  });
+});
+
+// ── The lifetime bound's WIDENING, which nothing was guarding ────────────────
+//
+// `doseWindowSince` extends the bound backwards past `created_at` when the dose's own
+// logs prove it existed earlier — a med reconciled off a document, a course re-entered
+// after a move, a backfilled history all land as a same-day `created_at` carrying real
+// adherence. Deleting that half left every test green, which made it the one new
+// mechanism in this change nothing could see.
+describe("a logged dose proves it existed, and the clamp gives way to it", () => {
+  function seedReconciled(label: string) {
+    const login = createLogin();
+    const profile = createProfile(label, login.id);
+    actAs(login, profile);
+    setTimezone(profile.id, "UTC");
+    // Created TODAY — the cold-start shape the clamp exists for…
+    const doseId = seedDose(profile.id, `${label} dose`, { createdDaysAgo: 0 });
+    const itemId = (
+      db
+        .prepare("SELECT item_id AS id FROM intake_item_doses WHERE id = ?")
+        .get(doseId) as { id: number }
+    ).id;
+    return { profile, doseId, itemId };
+  }
+
+  it("offers a day the clamp alone would hide, when a log proves the dose was there", async () => {
+    const { profile, doseId, itemId } = seedReconciled("widen");
+    const day = shiftDateStr(today(profile.id), -1);
+    // …with a backfilled administration two days before that. The row is proof the
+    // dose existed then, so yesterday is inside its life after all.
+    db.prepare(
+      `INSERT INTO intake_item_logs (dose_id, item_id, date, status, recorded_at, logged_via)
+       VALUES (?, ?, ?, 'taken', ?, 'page')`
+    ).run(
+      doseId,
+      itemId,
+      shiftDateStr(today(profile.id), -2),
+      `${shiftDateStr(today(profile.id), -2)} 09:00:00`
+    );
+
+    const data = await loadQuickEntry("dose");
+    if (data.form !== "dose") throw new Error("expected the dose form");
+    const offered = (
+      data.pastDays.find((d) => d.date === day)?.slots ?? []
+    ).flatMap((slot) => slot.doses.map((d) => d.doseId));
+    expect(offered).toContain(doseId);
+    // And the strip, given the same evidence, calls that day missed — one rule.
+    expect(
+      stripFor(profile.id, itemId).find((d) => d.date === day)!.state
+    ).toBe("missed");
+  });
+
+  it("differs from the strip only by the EVIDENCE its caller was handed, not by the rule", async () => {
+    const { profile, doseId, itemId } = seedReconciled("evidence-window");
+    const day = shiftDateStr(today(profile.id), -1);
+    // The proof is 60 days old — outside the 14-day span SupplementsTab draws.
+    db.prepare(
+      `INSERT INTO intake_item_logs (dose_id, item_id, date, status, recorded_at, logged_via)
+       VALUES (?, ?, ?, 'taken', ?, 'page')`
+    ).run(
+      doseId,
+      itemId,
+      shiftDateStr(today(profile.id), -60),
+      `${shiftDateStr(today(profile.id), -60)} 09:00:00`
+    );
+
+    // Same rule, two evidence sets, two answers — and the narrower one is narrower
+    // because of what its caller passed, not because it decides differently.
+    expect(
+      stripFor(profile.id, itemId, 14).find((d) => d.date === day)!.state
+    ).toBe("na");
+    expect(
+      stripFor(profile.id, itemId).find((d) => d.date === day)!.state
+    ).toBe("missed");
+
+    // The sheet takes the full-evidence answer, deliberately: a log IS proof the dose
+    // existed, and clamping the day away would CONCEAL a dose that was genuinely owed
+    // — the failure direction this whole feature exists to remove. Recorded here so
+    // the divergence is a decision on the record rather than a surprise.
+    const data = await loadQuickEntry("dose");
+    if (data.form !== "dose") throw new Error("expected the dose form");
+    const offered = (
+      data.pastDays.find((d) => d.date === day)?.slots ?? []
+    ).flatMap((slot) => slot.doses.map((d) => d.doseId));
     expect(offered).toContain(doseId);
   });
 });

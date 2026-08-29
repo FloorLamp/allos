@@ -16,7 +16,11 @@
 // Profile-scoped: every read below takes `profileId` and the dose rows are scoped
 // through their parent item's `profile_id` (getIntakeDoses).
 
-import { getActivitiesByDate, isPredictedWorkoutDay } from "./training";
+import {
+  getActivitiesByDate,
+  getActivityDates,
+  isPredictedWorkoutDay,
+} from "./training";
 import { getIntakeItems } from "./intake";
 import { getIntakeDoses } from "./intake/schedule";
 import { getSkippedDoseIds, getTakenDoseIds } from "./intake/adherence";
@@ -87,6 +91,58 @@ export interface PendingDayDose extends UsualRoutineDose {
   bucket: TimeBucket;
 }
 
+// ── WHAT THIS FUNCTION CONSULTS, AND HOW EACH INPUT TREATS `date` ────────────
+//
+// `date` may be a PAST day here, which no other caller of most of these readers
+// passes. Three separate defects came from an input written for today being handed a
+// closed day, so the audit is recorded beside the code rather than in a review
+// thread. "Date-resolved" means the input answers for `date` itself; "current-state"
+// means it answers for now and there is no dated source to ask instead.
+//
+//   INPUT                     TREATMENT
+//   situations (declared)     date-resolved — situationsActiveOn past / effective today
+//   situations (derived)      today only; excluded on a past day (#654). NOTE: on TODAY
+//                             this sheet unions derived names while the strip's own
+//                             today-dot is declared-only — pre-existing, and the reason
+//                             the agreement below is asserted over PAST days.
+//   dose lifetime             date-resolved — doseWindowSince (#430/#1442). Its
+//                             backwards widening reads ALL history; the strip reads
+//                             whatever window its caller passed, so the two can differ
+//                             by EVIDENCE, never by rule (pinned in the action tier).
+//   travel excusal            DATE resolved, SLOT is not — isExcused reads the current
+//                             `time_of_day` and today's notify schedule, so a re-timed
+//                             dose is excused by a slot it may not have occupied. The
+//                             strip does exactly the same, so they agree; neither is
+//                             version-resolved (#3263).
+//   workout logged            date-resolved — getActivityDates on a past day, which
+//                             drops draft husks (#3189); the raw per-date read is for
+//                             TODAY only, as everywhere else in the repo.
+//   workout predicted         today only (#558); a past day falls back to what was
+//                             logged, as the strip does.
+//   cadence — dose half       date-resolved — doseOnDay over the schedule versions.
+//   cadence — item half       CURRENT-STATE — cadenceOn reads the item's live
+//                             cadence_kind/weekdays/interval/anchor; no version table
+//                             exists for them. Same for the strip.
+//   time bucket               date-resolved — doseBucketOn (#1973).
+//   resolution state          date-resolved — taken/skipped ids for `date`.
+//   item.active               CURRENT-STATE, no dated source. Deactivating an item
+//                             today therefore hides yesterday's owed dose from this
+//                             sheet. The strip has the same gap; a fix needs a schema
+//                             decision, not a second opinion here.
+//   condition / situation /   CURRENT-STATE, no dated source. Same for the strip.
+//   pause_situation
+//   dose.retired              CURRENT-STATE — a bare flag, no `retired_at`.
+//   amount / product          CURRENT-STATE — the version table carries time_of_day,
+//                             weekdays and the validity dates, NOT the amount, so a
+//                             catch-up records today's. The audited backfill core has
+//                             the same property.
+//   timezone                  CURRENT zone, applied to stored UTC created_at stamps.
+//   suppression               ABSENT — deliberate: this rides the offer contract, which
+//                             does not filter it. `collectDueDosesNow` (today's list in
+//                             the same sheet) DOES, so the sheet answers that question
+//                             two ways across its own day boundary. Stated, not fixed.
+//   supply                    not read here; markDoseTaken moves it in the write core.
+//
 // EVERY dose `date` still owes, across all five buckets (#3936) — the whole-day set
 // the window-scoped offer above is a filter over, so the recent-past catch-up view
 // and the composed one-tap can never disagree about what a day still owes.
@@ -124,9 +180,26 @@ export function pendingDayDoses(
   // strip that #3917's own missed-day offer is computed from — two catch-up surfaces,
   // one question, two answers (#221).
   const isToday = date === today(profileId);
+  // Only a PAST day needs the husk-free list, so today's path — the one the composed
+  // one-tap offer rides — pays for no extra read at all.
+  const trainedOn = isToday
+    ? new Set<string>()
+    : new Set(getActivityDates(profileId));
   const ctx = {
     date,
-    isWorkoutDay: getActivitiesByDate(profileId, date).length > 0,
+    // WHICH READER, and the two are not interchangeable. `getActivitiesByDate` is the
+    // raw row read; `getActivityDates` is the same rows with DRAFT HUSKS DROPPED
+    // (#3189 — create-at-start writes the row at the session's first second, so a
+    // session opened and abandoned carries a date like any other). Every other pairing
+    // in the repo splits them exactly this way — today from the raw read, a past day
+    // from the husk-free list — and taking the today reader to a closed day let one
+    // abandoned draft both CONCEAL a rest-day dose the day owed and OFFER a
+    // pre-workout dose it did not, the two harms this sheet exists to prevent. The
+    // strip reads `getActivityDates` too, which is what makes the agreement real
+    // rather than a restatement.
+    isWorkoutDay: isToday
+      ? getActivitiesByDate(profileId, date).length > 0
+      : trainedOn.has(date),
     activeSituations: isToday
       ? getEffectiveActiveSituations(profileId, date)
       : situationsActiveOn(
