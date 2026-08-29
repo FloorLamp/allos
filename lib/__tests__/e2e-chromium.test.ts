@@ -40,9 +40,9 @@ describe("the pre-installed Chromium the e2e suite launches", () => {
 
   it("uses the newest full Chromium for tools that cannot use the shell", () => {
     const base = makeTmpDir("pw-browsers");
-    build(base, "chromium-1194", FULL);
-    const newest = build(base, "chromium-1201", FULL);
-    build(base, "chromium_headless_shell-1201", SHELL);
+    build(base, "chromium-999", FULL);
+    const newest = build(base, "chromium-1000", FULL);
+    build(base, "chromium_headless_shell-1000", SHELL);
     expect(
       resolveChromiumExecutable({
         browsersPath: base,
