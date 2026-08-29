@@ -289,6 +289,7 @@ export default async function CyclePage() {
           suggestActivateIllness={false}
           temperatureUnit={temperatureUnit}
           showTitle={false}
+          analysisHref="/trends/symptoms"
         />
       </section>
 

@@ -483,6 +483,11 @@ describe("the four spans the old stripper deleted", () => {
 // only), so a trailing `// …` survived it entirely; their numbers above are measured
 // against that spelling, not the common one.
 //
+// OVERLAY-MOTION CAME OFF NEXT. Its more elaborate local scanner differed from the
+// shared projection in 28 of 2,528 app/components/lib files (mostly JSX text and regex
+// literals it did not model); all 21 overlay rules stayed green after conversion. Its
+// six repeated corpus projections are now one memoized pass as well.
+//
 // THE INSTRUMENT IS COMMITTED, because the rule is only worth having if the next
 // conversion can re-run it: `npx tsx lib/__tests__/strip-comments-equivalence.ts <pathspec>`, with
 // `--narrow` for the other spelling. Reading a number out of a lane's transcript is
@@ -628,7 +633,6 @@ describe("the hand-rolled comment strippers still in the tree (#3595)", () => {
     "lib/__tests__/notes-text.test.ts",
     "lib/__tests__/observation-substrate.test.ts",
     "lib/__tests__/offline-queue.test.ts",
-    "lib/__tests__/overlay-motion-chokepoint.test.ts",
     "lib/__tests__/protocol-offer-renderers.test.ts",
     "lib/__tests__/reconcile-registry.test.ts",
     "lib/__tests__/settings-groups.test.ts",
