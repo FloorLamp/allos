@@ -1,7 +1,7 @@
 import { test, expect } from "./fixtures";
 import { type Page } from "@playwright/test";
 import { loginAs } from "./nav";
-import { openMobileDrawer } from "./helpers";
+import { openMobileDrawer, settledBoxes } from "./helpers";
 import {
   E2E_MEMBER_PASSWORD,
   E2E_LOGIN_NAV_FEMALE,
@@ -67,6 +67,15 @@ test("desktop sidebar renders the frequency-ordered top level (#1042)", async ({
   await expect(entries).toHaveText(TOP_LEVEL_ORDER);
 });
 
+// The same list, read on the surface where the groups are NOT folded (#3343 Q4).
+// A group entry's text content is its header followed by its inline children, so
+// the two group rows are prefix-anchored here and every leaf stays exact — same
+// entries, same positions, still one row per top-level entry.
+const GROUP_LABELS = ["Plan & review", "Medical"];
+const DRAWER_TOP_LEVEL_ORDER: (string | RegExp)[] = TOP_LEVEL_ORDER.map((e) =>
+  typeof e === "string" && GROUP_LABELS.includes(e) ? new RegExp(`^${e}`) : e
+);
+
 test("mobile drawer renders the same order through the shared content (#1042)", async ({
   page,
 }) => {
@@ -74,7 +83,7 @@ test("mobile drawer renders the same order through the shared content (#1042)", 
   await page.goto("/");
   const drawer = await openMobileDrawer(page);
   const drawerNav = drawer.locator("nav");
-  await expect(drawerNav.locator("> *")).toHaveText(TOP_LEVEL_ORDER);
+  await expect(drawerNav.locator("> *")).toHaveText(DRAWER_TOP_LEVEL_ORDER);
 });
 
 // Open the Medical group WITHOUT clicking: navigating to an always-visible child
@@ -244,6 +253,71 @@ test("the episodic group holds exactly its children, and none of them is a top-l
   const panelId = await header.getAttribute("aria-controls");
   const panel = nav.locator(`[id="${panelId}"]`);
   await expect(panel.getByRole("link")).toHaveText(PLAN_REVIEW_CHILDREN);
+});
+
+// ── The drawer expands the group, the sidebar keeps the fold (#3343 Q4) ──────
+//
+// ONE test carrying BOTH halves, deliberately: either half alone still passes on a
+// tree where the two surfaces behave identically, and identical is the state this
+// ruling changes away from. The phone half is the ruling — on a phone scrolling is
+// cheap and taps are expensive, the reverse of the desktop trade the fold was
+// designed for. The desktop half is what the ruling must not take with it.
+//
+// #2651 fixed the DOCK at four slots; this is the drawer's own pin.
+test("the phone drawer renders the group inline while the desktop sidebar still folds (#3343)", async ({
+  page,
+}) => {
+  // DESKTOP first, so the drawer is opened last and no assertion can resolve to
+  // the wrong <aside>.
+  await page.goto("/");
+  const sidebarNav = page.locator("aside nav");
+  const header = sidebarNav.getByRole("button", { name: "Plan & review" });
+  await expect(header).toHaveAttribute("aria-expanded", "false");
+  for (const child of PLAN_REVIEW_CHILDREN) {
+    await expect(sidebarNav.getByRole("link", { name: child })).toHaveCount(0);
+  }
+
+  // PHONE. Nothing here taps the group: openMobileDrawer taps the dock's More
+  // slot and stops, so every row below is on screen at zero cost.
+  await page.setViewportSize({ width: 390, height: 844 });
+  await page.goto("/");
+  const drawer = await openMobileDrawer(page);
+  const group = drawer.locator('[data-nav-group="Plan & review"]');
+  await expect(group.getByRole("link")).toHaveText(PLAN_REVIEW_CHILDREN);
+  // And nothing to tap: the header is a label here, not a disclosure control.
+  await expect(
+    drawer.getByRole("button", { name: "Plan & review" })
+  ).toHaveCount(0);
+
+  // GROUPED FOR SOMEONE WHO CANNOT SEE THE INDENT. Dropping the disclosure button
+  // dropped its aria-controls with it, so the association is restated on the
+  // container — and the assertion has to be the COMPUTED NAME, not the presence of
+  // an `aria-labelledby`: a container labelled by nothing, or by the wrong
+  // element, still HAS the attribute. This resolves the reference and reads what a
+  // screen reader would announce, and the rows above are read from the very same
+  // container, so "named" and "contains the rows" are one element's two facts.
+  await expect(group).toHaveRole("group");
+  await expect(group).toHaveAccessibleName("Plan & review");
+
+  // STILL GROUPED UNDER ITS HEADER, which is the half of the ruling that a
+  // flattening change would quietly satisfy. Two readings, because "inline" could
+  // honestly mean either one:
+  //   · the rows and the header share the group's OWN container (the locator
+  //     above), and the nav's direct children are still one per top-level entry —
+  //     so the group did not dissolve its rows into its neighbours;
+  //   · and a child's label starts to the RIGHT of its header's label. Measured
+  //     between two real elements inside this group rather than against a gutter
+  //     constant: indentation is a relationship, and it is the thing a person
+  //     looking at the drawer actually sees.
+  await expect(drawer.locator("nav > *")).toHaveCount(TOP_LEVEL_ORDER.length);
+  const [headerLabel, childLabel] = await settledBoxes([
+    group.getByText("Plan & review", { exact: true }),
+    group.getByText("Timeline", { exact: true }),
+  ]);
+  expect(
+    childLabel.x,
+    "a group child's label is indented past its own header's"
+  ).toBeGreaterThan(headerLabel.x);
 });
 
 test("navigating to any grouped child auto-expands its group and lights exactly one row (#3079)", async ({

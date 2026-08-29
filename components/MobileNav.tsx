@@ -304,10 +304,11 @@ export default function MobileNav({
                 profiles={profiles}
                 viewIds={viewIds}
                 readOnlyIds={readOnlyIds}
-                // The drawer does NOT carry the identity bar: on a phone the bar
-                // lives in the top bar, where it is readable without opening
-                // anything (#1801). Same component, placed once per viewport.
-                showIdentityBar={false}
+                // THE HOST, named once (#3343 Q4). It carries both of the
+                // drawer's departures from the sidebar: no identity bar (on a
+                // phone that bar lives in the top bar, readable without opening
+                // anything — #1801), and nav groups inline rather than folded.
+                inDrawer
                 adultContentAvailable={adultContentAvailable}
                 trainingRelevant={trainingRelevant}
                 isAdmin={isAdmin}
