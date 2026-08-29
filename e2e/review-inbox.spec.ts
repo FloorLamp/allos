@@ -1,5 +1,7 @@
 import { test, expect } from "./fixtures";
 import { followLink, hydratedClick, openAllSyncDays } from "./helpers";
+import { loginAs } from "./nav";
+import { E2E_LOGIN_STRAVA, E2E_MEMBER_PASSWORD } from "./fixture-logins";
 
 // Dogfoods the Data → Review import inbox (the feature that motivated this tier).
 // After issue #208 the surface is split into sections; since #1880 the inbox order
@@ -111,6 +113,46 @@ test.describe("Data → Review import inbox", () => {
       downloadBtn.click(),
     ]);
     expect(saved.suggestedFilename()).toMatch(/^sync-payload-\d+\.json$/);
+  });
+
+  test("a Strava dead-token fixture matches the reconnect copy and affordance (#3837)", async ({
+    browser,
+  }) => {
+    const member = await loginAs(browser, {
+      username: E2E_LOGIN_STRAVA,
+      password: E2E_MEMBER_PASSWORD,
+    });
+    try {
+      await member.goto("/data?section=review");
+      const review = member.getByTestId("review-inbox");
+      const strava = review
+        .getByTestId("needs-attention-sources")
+        .getByTestId("source-strava");
+
+      await expect(strava.getByTestId("sync-status-strava")).toContainText(
+        "Needs reconnect"
+      );
+      await expect(
+        strava.getByText("Reconnect Strava to resume syncing.", {
+          exact: true,
+        })
+      ).toBeVisible();
+      await expect(
+        review.getByText("Reconnect Strava to resume syncing.", { exact: true })
+      ).toHaveCount(1);
+
+      const reconnect = strava.getByRole("link", {
+        name: "Reconnect Strava",
+        exact: true,
+      });
+      await expect(reconnect).toBeVisible();
+      await expect(reconnect).toHaveAttribute("href", "/integrations/strava");
+      await expect(
+        strava.getByRole("button", { name: "Sync now" })
+      ).toHaveCount(0);
+    } finally {
+      await member.context().close();
+    }
   });
 
   test("the sync provenance drill-in lists written records with working deep links (#1333)", async ({
