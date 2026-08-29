@@ -76,8 +76,10 @@ import {
   E2E_LOGIN_HXEVERY,
   HXEVERY_SELF_PROFILE,
   HXEVERY_RO_PROFILE,
+  HXEVERY_MEMBER_PROFILE,
   HXEVERY_SELF_DOSE,
   HXEVERY_RO_DOSE,
+  HXEVERY_MEMBER_DOSE,
   HXEVERY_DAY,
 } from "../fixture-logins";
 import {
@@ -504,13 +506,17 @@ export function seedMultiProfile(): void {
   }
 
   // ── The record's merged household view (#4009 item 3 / #3958) ─────────────────
-  // E2E_LOGIN_HXEVERY: a self profile (WRITE, acting) + a second READ-ONLY, each with
-  // ONE taken dose log on a fixed past day. The asymmetric grant is the point — it is
-  // what lets the spec see the per-row write gate as a DIFFERENCE between two rows in
-  // one render rather than as an absence it cannot attribute.
+  // E2E_LOGIN_HXEVERY: a self profile (WRITE, acting), a second READ-ONLY, and a third
+  // WRITE that is not the acting one — each with ONE taken dose log on a fixed past
+  // day. The read-only grant is what lets the render test see the per-row write gate as
+  // a DIFFERENCE between two rows in one render; the third, writable, non-acting
+  // profile is what makes the CORRECTION reachable at all, since a correction on the
+  // acting profile's own row cannot tell "the write followed the row" from "the write
+  // followed the session". The two live in separate renders so neither costs the other.
   {
     const hxSelfId = adultFixtureProfileId(HXEVERY_SELF_PROFILE);
     const hxRoId = adultFixtureProfileId(HXEVERY_RO_PROFILE);
+    const hxMemberId = adultFixtureProfileId(HXEVERY_MEMBER_PROFILE);
     // A dated `taken` log, which is what `/history`'s dose composer reads. No
     // `occurred_at`: with none stated the row's clock falls back to the record chain
     // and renders "logged …", and the DATE — the only thing the day grouping and the
@@ -547,10 +553,12 @@ export function seedMultiProfile(): void {
     };
     seedRecordDose(hxSelfId, HXEVERY_SELF_DOSE);
     seedRecordDose(hxRoId, HXEVERY_RO_DOSE);
+    seedRecordDose(hxMemberId, HXEVERY_MEMBER_DOSE);
     const hxLoginId = seedMemberLogin(E2E_LOGIN_HXEVERY, hxSelfId, "write");
     grantProfile(hxLoginId, hxRoId, "read");
+    grantProfile(hxLoginId, hxMemberId, "write");
     console.log(
-      `e2e: seeded record everyone-view fixture — ${E2E_LOGIN_HXEVERY} granted ${HXEVERY_SELF_PROFILE} (${hxSelfId}, write) + ${HXEVERY_RO_PROFILE} (${hxRoId}, read)`
+      `e2e: seeded record everyone-view fixture — ${E2E_LOGIN_HXEVERY} granted ${HXEVERY_SELF_PROFILE} (${hxSelfId}, write) + ${HXEVERY_RO_PROFILE} (${hxRoId}, read) + ${HXEVERY_MEMBER_PROFILE} (${hxMemberId}, write)`
     );
   }
 

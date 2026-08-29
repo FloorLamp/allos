@@ -8,8 +8,10 @@ import {
   E2E_LOGIN_HXEVERY,
   HXEVERY_SELF_PROFILE,
   HXEVERY_RO_PROFILE,
+  HXEVERY_MEMBER_PROFILE,
   HXEVERY_SELF_DOSE,
   HXEVERY_RO_DOSE,
+  HXEVERY_MEMBER_DOSE,
   HXEVERY_DAY,
 } from "./fixture-logins";
 
@@ -29,17 +31,24 @@ import {
 //      may write and not on the one it may not, asserted as the DIFFERENCE between two
 //      rows in ONE render. An absence assertion alone cannot tell "the gate works"
 //      from "the menu stopped rendering", which is why the fixture's two grants differ.
-//   3. The mode is DEEP-LINKED, not chipped — reached from the household page (#1463),
+//   3. The CAPABILITY — a correction driven on ANOTHER member's row, which is the whole
+//      point of item 1 and what a correction on the acting profile's own row cannot
+//      show. It ran on the acting profile's dose until the #4067 review: the row was
+//      the caller's, so a page that had ignored the row's profile entirely would have
+//      passed. It is MEMBER's row now.
+//   4. The mode is DEEP-LINKED, not chipped — reached from the household page (#1463),
 //      with nothing on /history's own filter row advertising it. #3958 rules that out
 //      explicitly: the sidebar is the app's one profile switcher, and a second
 //      selection vocabulary is the parallel concept CLAUDE.md forbids.
 //
-// FIXTURE (#868 hygiene): spec-owned. E2E_LOGIN_HXEVERY holds one WRITE grant and one
-// READ-ONLY grant, each member carrying one taken dose on a fixed past day. The
-// correction below is a persistent write, so the log is reset before each test rather
-// than assumed fresh — a retry must find the same tree the first run did.
+// FIXTURE (#868 hygiene): spec-owned. E2E_LOGIN_HXEVERY holds SELF (write, acting), RO
+// (read) and MEMBER (write) — see e2e/logins/household.ts for why the render test and
+// the correction test want different pairs, and why MEMBER is never in the render
+// test's view. Each carries one taken dose on a fixed past day. The correction is a
+// persistent write, so the logs are reset before each test rather than assumed fresh —
+// a retry must find the same tree the first run did.
 
-function resetFixture(): { selfId: number; roId: number } {
+function resetFixture(): { selfId: number; roId: number; memberId: number } {
   const db = new Database(workerDbPath());
   db.pragma("busy_timeout = 5000");
   try {
@@ -51,11 +60,13 @@ function resetFixture(): { selfId: number; roId: number } {
       ).id;
     const selfId = idOf(HXEVERY_SELF_PROFILE);
     const roId = idOf(HXEVERY_RO_PROFILE);
-    // Put both members' logs back to exactly one `taken` row on the fixture day: the
+    const memberId = idOf(HXEVERY_MEMBER_PROFILE);
+    // Put every member's log back to exactly one `taken` row on the fixture day: the
     // correction test deletes one, and a re-run has to start where the first did.
     for (const [pid, item] of [
       [selfId, HXEVERY_SELF_DOSE],
       [roId, HXEVERY_RO_DOSE],
+      [memberId, HXEVERY_MEMBER_DOSE],
     ] as const) {
       const row = db
         .prepare(
@@ -73,7 +84,7 @@ function resetFixture(): { selfId: number; roId: number } {
          VALUES (?, ?, ?, 'taken')`
       ).run(row.itemId, row.doseId, HXEVERY_DAY);
     }
-    return { selfId, roId };
+    return { selfId, roId, memberId };
   } finally {
     db.close();
   }
@@ -181,22 +192,26 @@ test.describe("the record's merged household view (#4009 item 3)", () => {
     browser,
   }) => {
     test.slow();
-    const { selfId, roId } = resetFixture();
+    const { selfId, roId, memberId } = resetFixture();
     const page = await loginAs(browser, {
       username: E2E_LOGIN_HXEVERY,
       password: E2E_MEMBER_PASSWORD,
     });
-    await addToView(page, roId);
+    // MEMBER alone goes into the view — the acting profile is always in it, and RO
+    // stays OUT deliberately: its row is not needed on screen for the delete, and its
+    // stored count below is then a negative control on a profile the page never even
+    // rendered.
+    await addToView(page, memberId);
     await page.goto("/history?view=everyone");
 
-    // Delete the ACTING member's dose from the merged feed. The row is the acting
-    // profile's, so this is the plain case — and it is the one that proves the
-    // subject stamp did not break the ordinary path while adding the cross-profile
-    // one: every form now posts `profile_id`, including on rows that never needed it.
-    const selfRow = page
+    // Delete MEMBER's dose — a writable profile that is NOT the acting one, which is
+    // the capability #4009 item 1 grants and the one thing no other tier can reach:
+    // the DB tier cannot render a page and the action tier posts its own FormData.
+    // Everything from the ⋯ down here is a real browser deciding what to send.
+    const memberRow = page
       .getByTestId("history-row")
-      .filter({ hasText: HXEVERY_SELF_DOSE });
-    await hydratedClick(page, selfRow.getByTestId("overflow-menu-trigger"));
+      .filter({ hasText: HXEVERY_MEMBER_DOSE });
+    await hydratedClick(page, memberRow.getByTestId("overflow-menu-trigger"));
     // The menu item opens the shared confirm dialog — a client toggle, no POST — and
     // the dialog's own Delete is what dispatches the Server Action.
     await page.getByTestId("history-row-delete").click();
@@ -205,11 +220,11 @@ test.describe("the record's merged household view (#4009 item 3)", () => {
       page.getByTestId("confirm-dialog").getByRole("button", { name: "Delete" })
     );
 
-    await expect(page.getByText(HXEVERY_SELF_DOSE)).toHaveCount(0);
-    // The OTHER member's row is untouched — a delete that reached across subjects
-    // would be the worst defect this page could have, and "the row I clicked went
-    // away" cannot see it.
-    await expect(page.getByText(HXEVERY_RO_DOSE)).toBeVisible();
+    await expect(page.getByText(HXEVERY_MEMBER_DOSE)).toHaveCount(0);
+    // The ACTING profile's row survives, and it is the one that has to be named: a
+    // correction that fell back to the session — the exact defect the gate exists to
+    // prevent — lands there, and "the row I clicked went away" cannot see it.
+    await expect(page.getByText(HXEVERY_SELF_DOSE)).toBeVisible();
 
     // And in the store, per profile rather than per row count.
     const db = new Database(workerDbPath());
@@ -225,7 +240,9 @@ test.describe("the record's merged household view (#4009 item 3)", () => {
             )
             .get(pid) as { n: number }
         ).n;
-      expect(takenFor(selfId)).toBe(0);
+      expect(takenFor(memberId)).toBe(0);
+      expect(takenFor(selfId)).toBe(1);
+      // Never in view, never rendered, and still there.
       expect(takenFor(roId)).toBe(1);
     } finally {
       db.close();
