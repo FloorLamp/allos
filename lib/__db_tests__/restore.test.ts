@@ -20,6 +20,10 @@ import {
 } from "@/lib/backup";
 import { verificationSidecarName } from "@/lib/backup-verify";
 import {
+  migrationSnapshotDir,
+  migrationSnapshotName,
+} from "@/lib/migrations/snapshot-policy";
+import {
   confineSnapshotPath,
   restoreCore,
   RestoreRefusedError,
@@ -208,6 +212,25 @@ describe("restoreCore (restore drill)", () => {
       fs.rmSync(path.join(backupsDir(), verificationSidecarName(name)), {
         force: true,
       });
+    }
+  });
+
+  it("performBackup prunes an aged pre-migration snapshot", () => {
+    const dir = migrationSnapshotDir(dbFilePath());
+    const aged = migrationSnapshotName(new Date("2025-01-01T00:00:00Z"));
+    const agedPath = path.join(dir, aged);
+    fs.mkdirSync(dir, { recursive: true });
+    fs.writeFileSync(agedPath, "aged snapshot fixture");
+
+    const { name } = performBackup();
+    try {
+      expect(fs.existsSync(agedPath)).toBe(false);
+    } finally {
+      fs.rmSync(path.join(backupsDir(), name), { force: true });
+      fs.rmSync(path.join(backupsDir(), verificationSidecarName(name)), {
+        force: true,
+      });
+      fs.rmSync(dir, { recursive: true, force: true });
     }
   });
 });
