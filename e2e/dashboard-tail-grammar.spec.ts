@@ -13,22 +13,52 @@ import { E2E_LOGIN_ROUTINEUSUAL, E2E_MEMBER_PASSWORD } from "./fixture-logins";
 // selector that cannot find the group would satisfy "no cards in here" on a tree
 // where the tail vanished entirely, which is the failure this file exists to catch.
 test.describe("the Show-everything tail's grammar (#3365)", () => {
-  test("Read and Setup report as rows, and the recap folds into one block", async ({
+  test("the reporting groups report as rows, and every card left in them acts", async ({
     page,
   }) => {
     await page.goto("/");
     await openDashboardAll(page);
 
-    for (const group of ["read", "setup"] as const) {
+    for (const group of ["read", "understand", "setup"] as const) {
       const section = page.getByTestId(`dashboard-everything-${group}`);
       await expect(section).toHaveCount(1);
-      // The control: the group is populated, so the card sweep below is looking at
-      // something.
+      // THE POSITIVE CONTROL. Every claim below is an absence, and an absence goes
+      // green the moment the selector stops finding anything — so the group must
+      // first be shown to exist and to hold entries.
       const rows = section.getByTestId("dashboard-candidate");
       expect(await rows.count(), `${group} renders entries`).toBeGreaterThan(0);
-      // …and every one of them is a row, not a card.
-      await expect(section.locator(".card")).toHaveCount(0);
+
+      // CARDS ACT, LINES REPORT (#3077), asserted as the doctrine rather than as a
+      // list of exceptions. A reporting group may still hold a card — an attention
+      // fact carries its own snooze/dismiss, a coaching recommendation is the only
+      // mount of its two writes — but every such card must HOST A WRITE. A card here
+      // with no control is a readout wearing card chrome, which is exactly the defect
+      // this grammar replaced, and it fails here whatever surface introduces it.
+      // Counting controls rather than naming components is what keeps this from
+      // becoming an allowlist that has to be maintained.
+      const cards = await section
+        .locator(".card")
+        .evaluateAll((nodes) =>
+          nodes.map((node) => ({
+            testId: node.getAttribute("data-testid"),
+            controls: node.querySelectorAll(
+              "button, form, input, select, textarea"
+            ).length,
+          }))
+        );
+      expect(
+        cards.filter((card) => card.controls === 0),
+        `${group}: a card that reports instead of acting`
+      ).toEqual([]);
     }
+
+    // Read is the strict case, and it is strict BY CONSTRUCTION: every reading the
+    // page registers declares a row presentation, so nothing in this group can reach
+    // the card branch at all. Stated separately from the doctrine check above because
+    // it is a stronger claim and only true here.
+    await expect(
+      page.getByTestId("dashboard-everything-read").locator(".card")
+    ).toHaveCount(0);
 
     // The six shipped recap atoms are ONE block under ONE header.
     const recap = page.locator('[data-moment-key^="recap:"]');

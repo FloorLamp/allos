@@ -1097,14 +1097,19 @@ async function renderDashboard(
       (entry) =>
         dashboardAttentionCandidateId(entry.key) === candidate.candidateId
     )!;
-    // ONE row shape serves Ahead and the tail (#3365): where this item is going
-    // and when it is due is the same sentence in both lanes.
-    const attentionRow = {
+    aheadPresentations.set(candidate.candidateId, {
       label: item.title,
       detail: upcomingDueText(item, on, formatPrefs),
       href: item.href,
-    };
-    aheadPresentations.set(candidate.candidateId, attentionRow);
+    });
+    // NO ROW, and the reason is the same one that keeps the coaching card a card
+    // (#3365): this atom is WRITE-CAPABLE. A non-actionable attention fact is still
+    // suppressible (isItemSuppressibleFlag), and this is where its snooze/dismiss
+    // lives — #3215 pins "attention facts use write-capable atoms outside read-only
+    // Ahead" as an invariant, and an invariant outranks a presentation rule.
+    // A row would also silently DROP `item.detail`: Ahead's presentation states when
+    // a thing is due, which is the right sentence for a schedule and the wrong one
+    // for the tail, where the item's own detail is the content.
     add(
       candidate,
       <DashboardAttentionAtom
@@ -1112,8 +1117,7 @@ async function renderDashboard(
         today={on}
         formatPrefs={formatPrefs}
         canWrite={canWrite}
-      />,
-      attentionRow
+      />
     );
   }
   sourceOrder += attentionItems.length;
