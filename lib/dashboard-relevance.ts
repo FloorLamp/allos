@@ -565,21 +565,20 @@ export function rankDashboardCandidates(
       (a, b) => b.score - a.score || compareSource(a.candidate, b.candidate)
     );
   const ordinaryFacts = new Set(episodeFacts);
-  // Which of a fact's tied candidates renders (#3201). Exact-once-by-factKey is
-  // unchanged and the seat the fact earned is unchanged; only the occupant is
-  // decided here, and it is decided by usefulness rather than by gather order.
-  // A marker that has just become notable mints both a reading and the attention
-  // finding that flagged it, on one shared factKey; "Ferritin 18 ng/mL" is
-  // strictly more informative than "Ferritin flagged", and the flag is legible in
-  // the reading anyway. sourceOrder used to settle it, and sourceOrder is an
+  // Which of a fact's tied candidates renders (#3201). Exact-once-by-factKey and
+  // the seat the fact earned are both unchanged; only the OCCUPANT is decided
+  // here, by usefulness rather than by gather order. A marker that has just
+  // become notable mints a reading and the attention finding that flagged it on
+  // one factKey, and "Ferritin 18 ng/mL" says everything "Ferritin flagged" does
+  // plus the value; sourceOrder used to settle it, and sourceOrder is an
   // implementation detail of gather sequence carrying no claim about usefulness.
-  // Scoring still leads: only candidates already tied on score are reordered, so
-  // a fact whose finding outranks its reading keeps the finding.
+  // Score still leads, so a finding that outranks its reading keeps the seat, and
+  // a fact with no reading keeps whatever candidate it had.
   const factOccupant = new Map<string, (typeof rankedOrdinary)[number]>();
   for (const entry of rankedOrdinary) {
     const held = factOccupant.get(entry.candidate.factKey);
-    // In this lane a reading scores only through its promotion, so "reading"
-    // already means a value that earned its way here.
+    // A reading only reaches this lane through the promotion registry, so
+    // "reading" here already means a value that earned Now on its own.
     if (
       held === undefined ||
       (held.score === entry.score &&
@@ -594,7 +593,7 @@ export function rankDashboardCandidates(
       ordinaryFacts.add(candidate.factKey);
       return true;
     })
-    .map((entry) => factOccupant.get(entry.candidate.factKey) ?? entry);
+    .map(({ candidate }) => factOccupant.get(candidate.factKey)!);
   const selectedNow = [
     ...selectedSafety.map((entry) => ({
       ...entry,
