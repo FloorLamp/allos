@@ -139,6 +139,21 @@ function destroyFixture(f: Fixture): void {
   }
 }
 
+/** How many session rows this login has right now — the sweep, observed rather than assumed. */
+function liveSessionCount(loginId: number): number {
+  const handle = new Database(workerDbPath());
+  handle.pragma("busy_timeout = 5000");
+  try {
+    return (
+      handle
+        .prepare("SELECT COUNT(*) AS c FROM sessions WHERE login_id = ?")
+        .get(loginId) as { c: number }
+    ).c;
+  } finally {
+    handle.close();
+  }
+}
+
 /** Run `sql` against this worker's database — the server action's own statement, no more. */
 function onServer(sql: string, ...params: unknown[]): void {
   const handle = new Database(workerDbPath());
@@ -320,23 +335,37 @@ test("R2 — an EXPIRED session wipes NOTHING (#2994 pass-4, untouched)", async 
 
 test("R2b — an expired session SWEPT AWAY by the purge still wipes nothing (#2994 pass-4)", async ({
   page,
+  browser,
 }, testInfo) => {
   test.slow();
   const f = createFixture(testInfo, "r2b");
   try {
     await warm(page, f);
 
-    // The same lapse, after `purgeExpiredSessions` has run: the row is GONE, exactly as
-    // it is after a revoke. Absence alone therefore cannot mean "revoked", and this is
-    // the test that says so.
+    // The same lapse, but this time the row is GONE — swept — so from the wire it looks
+    // exactly like a revoke. Absence alone can never mean "revoked", and this is the test
+    // that says so.
+    //
+    // THE SWEEP IS THE APP'S OWN, not a DELETE this spec writes, and that distinction is
+    // the whole value of the case: a hand-written delete leaves no tombstone whatever the
+    // production purge does, so the test would pass against a build where expiry DID wipe
+    // — which is the one mutation this guard exists to catch. `purgeExpiredSessions` runs
+    // inside the login action (app/(auth)/login/actions.ts), so a second device signing in
+    // is how a real instance reaps this row.
     onServer(
       "UPDATE sessions SET expires_at = datetime('now', '-1 day') WHERE login_id = ?",
       f.loginId
     );
-    onServer(
-      "DELETE FROM sessions WHERE login_id = ? AND expires_at <= datetime('now')",
-      f.loginId
-    );
+    const other = await browser.newContext();
+    try {
+      await login(await other.newPage(), f);
+    } finally {
+      await other.close();
+    }
+    expect(
+      liveSessionCount(f.loginId),
+      "the login action did not sweep the expired row — this case tested nothing"
+    ).toBe(1);
 
     await nextVisitBouncesToLogin(page);
 

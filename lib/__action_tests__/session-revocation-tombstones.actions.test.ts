@@ -129,7 +129,7 @@ const PATHS: [name: string, run: () => Promise<string>][] = [
       const login = createLogin({ role: "member" });
       const token = deviceSession(login.id);
       const link = createAuthToken(login.id, "reset");
-      const res = await completeSetPassword(null, fd({ token: link, password: NEW_PASSWORD }));
+      const res = await completeSetPassword({}, fd({ token: link, password: NEW_PASSWORD }));
       expect(res.ok, "the set-password itself was refused").toBe(true);
       return token;
     },
