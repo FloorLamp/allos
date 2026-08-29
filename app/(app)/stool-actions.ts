@@ -32,7 +32,13 @@ export async function logStoolForm(
   if (type === null) return { ok: false, error: "Pick a type from 1 to 7." };
 
   const date = today(profile.id);
-  if (!logBristolStool(profile.id, date, type)) {
+  // The optional STATED wall time (#3273's "Happened earlier?"), profile-local
+  // "HH:MM". Absent — the one-tap path, and the overwhelming majority — is `null`,
+  // which the write core reads as "the moment IS now" exactly as it did when the
+  // form had no time affordance at all. The shape is re-asked in the core
+  // (`normalizeClockTime`), so a crafted post cannot smuggle a stamp past it.
+  const at = String(formData.get("at") ?? "").trim() || null;
+  if (!logBristolStool(profile.id, date, type, at)) {
     return { ok: false, error: "Couldn't log that. Try again." };
   }
 

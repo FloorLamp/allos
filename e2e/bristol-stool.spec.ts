@@ -1,9 +1,10 @@
 import { test, expect } from "./fixtures";
+import { type Request } from "@playwright/test";
 import Database from "better-sqlite3";
-import { settledClick } from "./helpers";
+import { hydratedClick, settledClick, settledFill } from "./helpers";
 import { frozenNow, workerDbPath } from "./worker-env";
 import { pinnedTimezone } from "./pinned-timezone";
-import { zonedWallIsoToUtc } from "@/lib/date";
+import { dateStrInTz, zonedWallIsoToUtc, zonedWallTimeToUtc } from "@/lib/date";
 
 // Bristol stool form, end to end (issue #2785).
 //
@@ -95,7 +96,12 @@ test("the picker offers exactly the seven types and logs the tapped one", async 
   }
   await expect(picker.getByTestId("stool-type-0")).toHaveCount(0);
   await expect(picker.getByTestId("stool-type-8")).toHaveCount(0);
-  await expect(picker.locator("input")).toHaveCount(0);
+  // No field to type a TYPE into — that absence IS the guard, so it is asserted
+  // rather than assumed. Scoped to the type row: since #3273 the picker also carries
+  // a collapsed "Happened earlier?" whose time input is a different question, and an
+  // unscoped `locator("input")` would start passing for the wrong reason the day that
+  // control changed.
+  await expect(picker.locator(".grid input")).toHaveCount(0);
 
   // The accessible name is the SCALE's own description, not the two-word caption
   // the button has room for — that is what makes a self-reported type comparable.
@@ -177,6 +183,125 @@ test("the picker offers exactly the seven types and logs the tapped one", async 
     "data-motion-runs",
     String(rollingRuns + 1)
   );
+});
+
+// #3273 — the picker states WHEN, and an unstated tap is unchanged.
+//
+// A bowel movement is exactly the event people log later, and until this the picker
+// had no time affordance at all: a two-hours-late tap was wrong forever, because the
+// Trends panel is read-only. The property with two halves, both asserted here: a
+// stated minute is the instant the reading carries, and a tap that says nothing writes
+// the row it wrote before the affordance existed — same second-grain key and all.
+test('a stated "Happened earlier?" time is the instant the reading carries (#3273)', async ({
+  page,
+}) => {
+  clearBristol();
+  await page.goto("/?quick=log-stool");
+  const picker = page.getByTestId("quick-entry-stool");
+  await expect(picker).toBeVisible();
+
+  const date = dateStrInTz(TZ, frozenNow());
+  // The stored `started_at` is a profile-LOCAL WALL CLOCK, so every expectation below
+  // is stated as the INSTANT that wall clock means — decoded with the same
+  // `zonedWallIsoToUtc` the test above uses, against instants built by the safe
+  // builder. Comparing the strings directly would mean assembling `${date}THH:MM:SS`
+  // by hand, which is what e2e-fixture-time.test.ts's ledger exists to keep out of
+  // spec files.
+  const at = (hhmm: string) => zonedWallTimeToUtc(TZ, date, hhmm)!.getTime();
+  const storedInstant = (started_at: string) =>
+    zonedWallIsoToUtc(TZ, started_at)!.getTime();
+  // What the clock-seam path writes, to the second: the write core reads the frozen
+  // instant for the wall minute and takes the SECONDS off it in UTC, which is the
+  // second-grain key itself. Whole seconds, so the frozen instant floors to its own.
+  const tapInstant = Math.floor(frozenNow().getTime() / 1000) * 1000;
+
+  // COLLAPSED: the fast path is untouched and the control is not even in the DOM.
+  const toggle = picker.getByTestId("stool-when-toggle");
+  await expect(toggle).toHaveAttribute("aria-expanded", "false");
+  await expect(picker.getByTestId("stool-when-time")).toHaveCount(0);
+
+  // Leg 1 — the unstated tap writes the tap instant, seconds and all.
+  //
+  // ITS WRITE IS HELD OPEN while the statement is made, which is what makes the
+  // ORDERING here a fact rather than a sample. The tap's settle resets the field, and
+  // it runs when the write ANSWERS — arbitrarily later than the tap. Unheld, whether
+  // the fill below lands before or after that reset is a race the box's load decides:
+  // it failed 1 run in 3 under load, and the surviving shape was a silent one — the
+  // second tap posting no time, colliding with the first row on the same second, and
+  // one reading standing where two should be. Holding the POST puts the fill
+  // deterministically INSIDE the flight window.
+  let release = (): void => {};
+  const held = new Promise<void>((resolve) => {
+    release = resolve;
+  });
+  const onThisPage = (url: URL): boolean => url.pathname === "/";
+  await page.route(onThisPage, async (route) => {
+    if (route.request().method() !== "POST") return route.continue();
+    await held;
+    await route.continue();
+  });
+  const isWrite = (request: Request): boolean =>
+    request.method() === "POST" && new URL(request.url()).pathname === "/";
+  // Armed BEFORE the click so it cannot miss its event.
+  const answered = page.waitForResponse((r) => isWrite(r.request()), {
+    timeout: 30_000,
+  });
+  await hydratedClick(page, picker.getByTestId("stool-type-4"));
+  // IN FLIGHT, PROVED BY THE PAGE RATHER THAN BY THE WIRE. The ledger paints its
+  // optimistic count the moment `write()` is invoked and adopts the server's only in
+  // `settle`, so this text is the tap having STARTED — which is the whole ordering
+  // this leg needs, since the settle cannot run before the response this route is
+  // holding. It replaces a `waitForRequest` ceiling that went red once on CI without
+  // the write being broken: a network-timing bound on a loaded shard is a worse
+  // question than the state it was standing in for.
+  await expect(page.getByTestId("quick-entry-stool-count")).toHaveText(
+    "1 logged today."
+  );
+
+  // The statement, made while that first write is still out. The day half is FIXED to
+  // today, so a statement can only move the minute.
+  await hydratedClick(page, toggle);
+  await expect(picker.getByTestId("stool-when-date")).toHaveText("Today");
+  await settledFill(page, picker.getByTestId("stool-when-time"), "07:05");
+
+  release();
+  await answered;
+  // The tap posted NO time — it consumed the silence that was in force when it fired,
+  // not the statement that arrived while it was in flight.
+  const tapped = bristolRows();
+  expect(tapped).toHaveLength(1);
+  expect(tapped[0]).toMatchObject({ date, value: 4 });
+  expect(storedInstant(tapped[0].started_at)).toBe(tapInstant);
+  // …AND THE SETTLE LEFT THE NEW STATEMENT ALONE. A reset scoped to the tap rather
+  // than to the field is the difference between the next tap adding a reading and
+  // overwriting this one.
+  await expect(picker.getByTestId("stool-when-time")).toHaveValue("07:05");
+
+  // Leg 2 — the statement lands. The stated time carries :00 seconds, which is what
+  // makes restating the same minute a correction rather than a phantom second movement.
+  await page.unrouteAll({ behavior: "ignoreErrors" });
+  await settledClick(page, picker.getByTestId("stool-type-3"));
+  await expect(page.getByTestId("quick-entry-stool-count")).toHaveText(
+    "2 logged today."
+  );
+  // Both rows survive — the statement moved the minute, it did not overwrite the tap.
+  const both = bristolRows();
+  expect(both.map((r) => [r.date, r.value])).toEqual([
+    [date, 3],
+    [date, 4],
+  ]);
+  // The stated wall minute, on the second: a stated time carries no seconds, which is
+  // what makes restating the same minute a correction rather than a second movement.
+  expect(both.map((r) => storedInstant(r.started_at))).toEqual([
+    at("07:05"),
+    tapInstant,
+  ]);
+  expect(both[0].started_at.endsWith(":00")).toBe(true);
+
+  // THE STATEMENT IS SPENT BY THE TAP IT ANSWERS: the key is the instant, so a second
+  // tap under a surviving 07:05 would silently overwrite the row the first one wrote.
+  await expect(picker.getByTestId("stool-when-time")).toHaveValue("");
+  clearBristol();
 });
 
 test("the Body panel shows a day's types as marks, never as one average", async ({
