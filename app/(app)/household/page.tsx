@@ -300,7 +300,7 @@ export default async function HouseholdPage() {
               className="inline-flex shrink-0 items-center gap-1 whitespace-nowrap text-sm text-link"
               data-testid="household-record-link"
             >
-              Everyone's record
+              Everyone&rsquo;s record
             </DestinationLink>
             <DestinationLink
               href={EPISODES_HREF}

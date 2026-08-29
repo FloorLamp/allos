@@ -110,9 +110,9 @@ function seedPractice(profileId: number, date: string): number {
 
 const practiceDurationOf = (id: number) =>
   (
-    db.prepare("SELECT duration_min FROM practice_logs WHERE id = ?").get(id) as
-      | { duration_min: number | null }
-      | undefined
+    db
+      .prepare("SELECT duration_min FROM practice_logs WHERE id = ?")
+      .get(id) as { duration_min: number | null } | undefined
   )?.duration_min ?? null;
 
 function seedSubstanceDay(profileId: number, date: string): number {
@@ -247,7 +247,10 @@ const KINDS: Kind[] = [
       value: 80,
     }),
     correctFn: (form) => updateMetricReading(form),
-    remove: (id) => ({ kind: "weight", target: `body_metrics:${id}:weight_kg` }),
+    remove: (id) => ({
+      kind: "weight",
+      target: `body_metrics:${id}:weight_kg`,
+    }),
     removeFn: (form) => deleteMetricReading(form),
     present: (_id, profileId, date) => bodyWeightOf(profileId, date) != null,
   },
@@ -278,9 +281,7 @@ describe("the record's corrections gate the ROW's profile (#4009 item 1)", () =>
         ).rejects.toThrow();
       }
       await expect(
-        kind.removeFn(
-          fd({ ...kind.remove(id), profile_id: stranger.id })
-        )
+        kind.removeFn(fd({ ...kind.remove(id), profile_id: stranger.id }))
       ).rejects.toThrow();
 
       // NOT MERELY THAT IT THREW: the subject's row is byte-identical and still there.
@@ -334,9 +335,7 @@ describe("the record's corrections gate the ROW's profile (#4009 item 1)", () =>
         expect(kind.read(id, target.id, DATE)).toEqual(kind.corrected);
       }
 
-      await kind.removeFn(
-        fd({ ...kind.remove(id), profile_id: target.id })
-      );
+      await kind.removeFn(fd({ ...kind.remove(id), profile_id: target.id }));
       expect(kind.present(id, target.id, DATE)).toBe(false);
     });
   });
@@ -372,7 +371,13 @@ describe("the record's corrections gate the ROW's profile (#4009 item 1)", () =>
     const id = seedSubstanceDay(minor.id, DATE);
 
     const outcome = await updateSubstanceDailyTotalAction(
-      fd({ id, substance: "caffeine", date: DATE, amount: 9, profile_id: minor.id })
+      fd({
+        id,
+        substance: "caffeine",
+        date: DATE,
+        amount: 9,
+        profile_id: minor.id,
+      })
     );
     expect(outcome).toEqual({ kind: "not-found" });
     expect(substanceAmountOf(id)).toBe(2);

@@ -519,7 +519,9 @@ export function seedMultiProfile(): void {
     const seedRecordDose = (profileId: number, name: string): void => {
       if (
         db
-          .prepare("SELECT 1 FROM intake_items WHERE profile_id = ? AND name = ?")
+          .prepare(
+            "SELECT 1 FROM intake_items WHERE profile_id = ? AND name = ?"
+          )
           .get(profileId, name)
       ) {
         return;

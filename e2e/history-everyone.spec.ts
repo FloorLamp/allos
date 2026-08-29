@@ -155,9 +155,9 @@ test.describe("the record's merged household view (#4009 item 3)", () => {
     await expect(page.getByText(HXEVERY_SELF_DOSE)).toBeVisible();
     await expect(page.getByText(HXEVERY_RO_DOSE)).toBeVisible();
     const subjects = page.getByTestId("history-row-subject");
-    await expect(subjects.filter({ hasText: HXEVERY_SELF_PROFILE })).toHaveCount(
-      1
-    );
+    await expect(
+      subjects.filter({ hasText: HXEVERY_SELF_PROFILE })
+    ).toHaveCount(1);
     await expect(subjects.filter({ hasText: HXEVERY_RO_PROFILE })).toHaveCount(
       1
     );
@@ -173,9 +173,7 @@ test.describe("the record's merged household view (#4009 item 3)", () => {
     const roRow = page
       .getByTestId("history-row")
       .filter({ hasText: HXEVERY_RO_DOSE });
-    await expect(
-      selfRow.getByTestId("overflow-menu-trigger")
-    ).toHaveCount(1);
+    await expect(selfRow.getByTestId("overflow-menu-trigger")).toHaveCount(1);
     await expect(roRow.getByTestId("overflow-menu-trigger")).toHaveCount(0);
   });
 

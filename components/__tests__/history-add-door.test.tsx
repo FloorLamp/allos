@@ -276,9 +276,7 @@ describe("the record's Add door posts to the domain's own create action", () => 
     "%s offers no time field, because its row has no instant to state",
     (kind) => {
       open(kind);
-      expect(
-        screen.queryByTestId(`history-add-when-${kind}-time`)
-      ).toBeNull();
+      expect(screen.queryByTestId(`history-add-when-${kind}-time`)).toBeNull();
       // The converse in the same test: the door still exists and still takes a day.
       expect(screen.getByTestId(`history-add-panel-${kind}`)).toBeTruthy();
     }
