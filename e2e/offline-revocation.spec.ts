@@ -404,6 +404,27 @@ test("R3 — offline reads turned off elsewhere reaches a device holding a COMPL
   try {
     await warm(page, f);
 
+    // FIRST, THE CASE THAT IS NOT THE BUG, and it is the one this change could break far
+    // more expensively than the one it fixes. The device now ASKS on every in-app visit
+    // even when it needs nothing, and the answer for a live ENABLED profile is
+    // `enabled: true` with an empty payload list. Read as a wipe, that would empty the
+    // offline copy of every healthy device on its next navigation — and the assertions
+    // below could not tell such a wipe from the switch's, because both end in an empty
+    // store. So: prove the ask happens, then prove it changed nothing.
+    let probes = 0;
+    await page.route("**/api/offline-snapshots*", async (route) => {
+      if (route.request().url().includes("probe")) probes += 1;
+      await route.continue();
+    });
+    await page.goto("/medications");
+    await expect.poll(() => probes, { timeout: 30_000 }).toBeGreaterThan(0);
+    expect(await storedKinds(page)).toEqual([...SNAPSHOT_KINDS].sort());
+    expect(
+      await medOnDevice(page),
+      "a probe on an ENABLED profile wiped the device"
+    ).toBe(true);
+    await page.unroute("**/api/offline-snapshots*");
+
     // Nothing on this device is missing or stale, so the old refresher returned before
     // the fetch and the server was never asked. The switch moved on another device.
     onServer(
