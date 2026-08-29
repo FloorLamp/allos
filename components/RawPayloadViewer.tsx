@@ -5,7 +5,7 @@ import RawDataViewer from "@/components/RawDataViewer";
 import Disclosure from "@/components/Disclosure";
 
 // Admin-only lazy viewer for a sync event's captured raw source payload (issue
-// #9). Rendered behind a disclosure so nothing is fetched until the admin expands
+// #9). Rendered behind a <details> so nothing is fetched until the admin expands
 // it; on first open it GETs the profile-scoped, admin-gated raw route and hands the
 // loaded body to the shared RawDataViewer (#1318) — a collapsible JSON/XML tree with
 // copy — instead of a flat <pre>. Only mounted when `isAdmin && ev.raw_ref` (see
@@ -33,7 +33,7 @@ export default function RawPayloadViewer({ id }: { id: number }) {
 
   // Hydration catch-up: a click can land BEFORE React attaches onToggle (a fast
   // test runner, or a real user on a slow connection while the page is still
-  // hydrating). The disclosure opens without React ever seeing the toggle,
+  // hydrating). The native <details> opens without React ever seeing the toggle,
   // so the fetch never fires and the panel sits open and empty forever. If the
   // element is already open when this component mounts, run the load it missed.
   useEffect(() => {
@@ -49,9 +49,8 @@ export default function RawPayloadViewer({ id }: { id: number }) {
       onToggle={(e) => {
         if ((e.currentTarget as HTMLDetailsElement).open) void load();
       }}
-      summaryClassName="text-xs text-link"
-      summary="View raw"
     >
+      <summary className="text-xs text-link">View raw</summary>
       {state === "loading" && (
         <p className="mt-1 text-xs text-slate-500 dark:text-slate-400">
           Loading…

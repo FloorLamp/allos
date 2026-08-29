@@ -265,11 +265,10 @@ export default function EpisodeSummary({
             </ul>
             {collapseSymptoms ? (
               <>
-                <Disclosure
-                  className="mt-2 print:hidden"
-                  summaryClassName="text-xs text-link"
-                  summary={<>Show {remainingSymptoms.length} more</>}
-                >
+                <Disclosure className="mt-2 print:hidden">
+                  <summary className="text-xs text-link">
+                    Show {remainingSymptoms.length} more
+                  </summary>
                   <ul className="mt-2 flex flex-wrap gap-2">
                     {remainingSymptoms.map((symptom) => (
                       <SymptomPill key={symptom.symptom} symptom={symptom} />

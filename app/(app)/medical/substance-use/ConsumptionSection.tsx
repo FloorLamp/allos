@@ -402,11 +402,10 @@ export default function ConsumptionSection({
         )}
       </div>
 
-      <Disclosure
-        className="text-sm"
-        summaryClassName="text-slate-500 dark:text-slate-400"
-        summary="8-week trend"
-      >
+      <Disclosure className="text-sm">
+        <summary className="text-slate-500 dark:text-slate-400">
+          8-week trend
+        </summary>
         <div
           className="mt-3 space-y-1"
           data-testid={`substance-trend-${substance}`}

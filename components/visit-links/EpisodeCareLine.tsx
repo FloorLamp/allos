@@ -161,11 +161,10 @@ export default function EpisodeCareLine({
           ) : null}
 
           {canWrite && manualOptions.length > 0 ? (
-            <Disclosure
-              className="text-sm"
-              summaryClassName="text-xs font-medium text-slate-500 hover:text-brand-600 dark:text-slate-400 dark:hover:text-brand-400"
-              summary="Link a visit…"
-            >
+            <Disclosure className="text-sm">
+              <summary className="text-xs font-medium text-slate-500 hover:text-brand-600 dark:text-slate-400 dark:hover:text-brand-400">
+                Link a visit…
+              </summary>
               <ul className="mt-2 space-y-1" data-testid="episode-care-manual">
                 {manualOptions.map((o) => (
                   <li key={o.id} className="flex items-center gap-2">

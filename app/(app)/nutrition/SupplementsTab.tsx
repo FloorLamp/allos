@@ -820,16 +820,11 @@ export default async function SupplementsTab({
       )}
 
       {notScheduled.length > 0 && (
-        <Disclosure
-          data-testid="not-scheduled-section"
-          summaryClassName="flex items-center justify-between gap-3 rounded-lg border border-(--border) bg-surface px-3 py-2.5 text-sm font-medium text-slate-700 transition hover:bg-(--ghost-hover) dark:text-slate-200"
-          summary={
-            <>
-              <span>More supplements ({notScheduled.length})</span>
-              <IconChevronDown className="h-4 w-4 transition-transform group-open:rotate-180" />
-            </>
-          }
-        >
+        <Disclosure data-testid="not-scheduled-section">
+          <summary className="flex items-center justify-between gap-3 rounded-lg border border-(--border) bg-surface px-3 py-2.5 text-sm font-medium text-slate-700 transition hover:bg-(--ghost-hover) dark:text-slate-200">
+            <span>More supplements ({notScheduled.length})</span>
+            <IconChevronDown className="h-4 w-4 transition-transform group-open:rotate-180" />
+          </summary>
           <div className="mt-2 space-y-3">
             {notScheduled.map((item) => renderRow(item))}
           </div>
@@ -837,10 +832,8 @@ export default async function SupplementsTab({
       )}
 
       {paused.length > 0 && (
-        <Disclosure
-          summaryClassName="section-label"
-          summary={<>Paused ({paused.length})</>}
-        >
+        <Disclosure>
+          <summary className="section-label">Paused ({paused.length})</summary>
           <div className="mt-2 space-y-3">
             {paused.map((item) => renderRow(item))}
           </div>

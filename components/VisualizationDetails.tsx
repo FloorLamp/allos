@@ -16,12 +16,13 @@ export default function VisualizationDetails({
     <Disclosure
       className="pointer-events-none relative z-10 mt-2 text-xs text-slate-500 dark:text-slate-400"
       data-testid={testId}
-      // No `!` on the tap floor: `button-control` already renders at 44px and sheds it
-      // from sm upward, and an important declaration outranks that reset at EVERY
-      // width — which pinned all 18 consumers at the phone floor on desktop (#3896).
-      summaryClassName="button-control pointer-events-auto w-fit max-w-full whitespace-normal text-left text-link"
-      summary={label}
     >
+      {/* No `!` on the tap floor: `button-control` already renders at 44px and sheds it
+          from sm upward, and an important declaration outranks that reset at EVERY
+          width — which pinned all 18 consumers at the phone floor on desktop (#3896). */}
+      <summary className="button-control pointer-events-auto w-fit max-w-full whitespace-normal text-left text-link">
+        {label}
+      </summary>
       <ul className="pointer-events-auto mt-1 space-y-0.5 pl-3">
         {details.map((detail, index) => (
           <li key={`${index}:${detail}`}>{detail}</li>

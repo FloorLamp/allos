@@ -106,48 +106,47 @@ export default function MuscleCoverageCard(props: MuscleCoverageCardProps) {
                     data-coverage-row-target={`coverage-${row.muscle}`}
                     className="subpanel-inset-xs rounded-lg border border-black/5 bg-slate-50/50 p-2.5 transition-colors data-[highlighted=true]:border-brand-400 data-[highlighted=true]:bg-brand-50/70 dark:border-white/10 dark:bg-white/3 dark:data-[highlighted=true]:border-brand-500 dark:data-[highlighted=true]:bg-brand-950/20"
                     data-testid="muscle-coverage-row"
-                    summaryLabel={`Show or hide what counts for ${row.label}`}
-                    summaryClassName="flex items-center gap-2 text-sm"
-                    summary={
-                      <>
-                        <span
-                          className={`h-2.5 w-2.5 shrink-0 rounded-full ${
-                            activityScoped ? "bg-emerald-500" : ""
-                          }`}
-                          style={
-                            presentation
-                              ? { backgroundColor: presentation.color }
-                              : undefined
-                          }
-                          aria-hidden="true"
-                        />
-                        <span className="min-w-0 flex-1 font-medium text-slate-700 dark:text-slate-200">
-                          {row.label}
-                        </span>
-                        {presentation && (
-                          <span
-                            className={`shrink-0 rounded-full px-2 py-0.5 text-xs font-medium ${presentation.badgeClass}`}
-                            data-testid="muscle-coverage-verdict"
-                            data-verdict={presentation.verdict}
-                          >
-                            {presentation.label}
-                          </span>
-                        )}
-                        <span
-                          className="shrink-0 tabular-nums text-slate-500 dark:text-slate-400"
-                          data-testid="muscle-coverage-count"
-                        >
-                          {fmtSets(row.sets)} {row.sets === 1 ? "set" : "sets"}
-                        </span>
-                        <span className="shrink-0 text-slate-500 group-open:[&_svg]:rotate-180 dark:text-slate-400">
-                          <IconChevronDown
-                            className="h-4 w-4 transition-transform"
-                            aria-hidden
-                          />
-                        </span>
-                      </>
-                    }
                   >
+                    <summary
+                      aria-label={`Show or hide what counts for ${row.label}`}
+                      className="flex items-center gap-2 text-sm"
+                    >
+                      <span
+                        className={`h-2.5 w-2.5 shrink-0 rounded-full ${
+                          activityScoped ? "bg-emerald-500" : ""
+                        }`}
+                        style={
+                          presentation
+                            ? { backgroundColor: presentation.color }
+                            : undefined
+                        }
+                        aria-hidden="true"
+                      />
+                      <span className="min-w-0 flex-1 font-medium text-slate-700 dark:text-slate-200">
+                        {row.label}
+                      </span>
+                      {presentation && (
+                        <span
+                          className={`shrink-0 rounded-full px-2 py-0.5 text-xs font-medium ${presentation.badgeClass}`}
+                          data-testid="muscle-coverage-verdict"
+                          data-verdict={presentation.verdict}
+                        >
+                          {presentation.label}
+                        </span>
+                      )}
+                      <span
+                        className="shrink-0 tabular-nums text-slate-500 dark:text-slate-400"
+                        data-testid="muscle-coverage-count"
+                      >
+                        {fmtSets(row.sets)} {row.sets === 1 ? "set" : "sets"}
+                      </span>
+                      <span className="shrink-0 text-slate-500 group-open:[&_svg]:rotate-180 dark:text-slate-400">
+                        <IconChevronDown
+                          className="h-4 w-4 transition-transform"
+                          aria-hidden
+                        />
+                      </span>
+                    </summary>
                     <ul className="mt-2 space-y-1.5 border-t border-black/5 pt-2 dark:border-white/10">
                       {evidence.map((entry) => (
                         <li

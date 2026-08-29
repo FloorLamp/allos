@@ -39,15 +39,14 @@ export function IntakeSafetyScope({
     <Disclosure
       className={`group px-1 text-xs text-slate-500 dark:text-slate-400 ${className}`}
       data-testid="safety-scope-footer"
-      summaryClassName="flex w-fit items-center gap-1.5 rounded-sm outline-hidden transition hover:text-slate-700 focus-visible:ring-2 focus-visible:ring-brand-500/40 dark:hover:text-slate-200"
-      summaryTestId="safety-scope-summary"
-      summary={
-        <>
-          <span>Curated safety screen · no flags found</span>
-          <IconChevronDown className="h-3.5 w-3.5 transition-transform group-open:rotate-180" />
-        </>
-      }
     >
+      <summary
+        className="flex w-fit items-center gap-1.5 rounded-sm outline-hidden transition hover:text-slate-700 focus-visible:ring-2 focus-visible:ring-brand-500/40 dark:hover:text-slate-200"
+        data-testid="safety-scope-summary"
+      >
+        <span>Curated safety screen · no flags found</span>
+        <IconChevronDown className="h-3.5 w-3.5 transition-transform group-open:rotate-180" />
+      </summary>
       <p
         className="mt-1 max-w-prose leading-relaxed"
         data-testid="safety-scope-line"
@@ -127,24 +126,22 @@ export default function IntakeWarnings({
       className="card"
       data-testid="intake-warnings"
       open={total <= 2}
-      summaryClassName="flex items-center justify-between gap-3 rounded-lg outline-hidden transition hover:text-slate-700 focus-visible:ring-2 focus-visible:ring-brand-500/40 dark:hover:text-slate-200"
-      summary={
-        <>
-          <span className="min-w-0">
-            <span className="flex items-center gap-2">
-              <IconAlertTriangle className="h-4 w-4 shrink-0 text-rose-600 dark:text-rose-400" />
-              <span className="text-base font-semibold text-slate-800 dark:text-slate-100">
-                Safety notices
-              </span>
-            </span>
-            <span className="mt-0.5 block pl-6 text-sm text-slate-500 dark:text-slate-400">
-              {summary}
+    >
+      <summary className="flex items-center justify-between gap-3 rounded-lg outline-hidden transition hover:text-slate-700 focus-visible:ring-2 focus-visible:ring-brand-500/40 dark:hover:text-slate-200">
+        <span className="min-w-0">
+          <span className="flex items-center gap-2">
+            <IconAlertTriangle className="h-4 w-4 shrink-0 text-rose-600 dark:text-rose-400" />
+            <span className="text-base font-semibold text-slate-800 dark:text-slate-100">
+              Safety notices
             </span>
           </span>
-          <IconChevronDown className="h-4 w-4 shrink-0 text-slate-500 transition-transform group-open:rotate-180 dark:text-slate-400" />
-        </>
-      }
-    >
+          <span className="mt-0.5 block pl-6 text-sm text-slate-500 dark:text-slate-400">
+            {summary}
+          </span>
+        </span>
+        <IconChevronDown className="h-4 w-4 shrink-0 text-slate-500 transition-transform group-open:rotate-180 dark:text-slate-400" />
+      </summary>
+
       <div className="mt-4 border-t border-black/5 pt-4 dark:border-white/5">
         {allergyWarnings.length > 0 ? (
           <div

@@ -26,11 +26,10 @@ export default function NutrientsCard({
     <div data-testid="nutrients-card" className={embedded ? undefined : "card"}>
       <Heading className="mb-4 section-label">{title}</Heading>
       <div className="space-y-5">{children}</div>
-      <Disclosure
-        className="mt-5 border-t border-black/5 pt-3 text-xs text-slate-500 dark:border-white/5 dark:text-slate-400"
-        summaryClassName="font-medium text-slate-600 dark:text-slate-300"
-        summary="How estimates work"
-      >
+      <Disclosure className="mt-5 border-t border-black/5 pt-3 text-xs text-slate-500 dark:border-white/5 dark:text-slate-400">
+        <summary className="font-medium text-slate-600 dark:text-slate-300">
+          How estimates work
+        </summary>
         <p className="mt-2 leading-relaxed">
           Estimates combine logged food-group servings, directly logged protein,
           and confirmed supplements. Incomplete tracking produces a minimum, not

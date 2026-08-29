@@ -8,7 +8,7 @@ import Disclosure from "@/components/Disclosure";
 //
 //   • EXPANDED — the slot this moment is about, or one that owes something now. A
 //     heading and the full rows, controls and all.
-//   • COMPRESSED — a disclosure whose summary IS the slot's one-line truth
+//   • COMPRESSED — a native `<details>` whose `<summary>` IS the slot's one-line truth
 //     ("✓ Morning · 3 of 3 taken · 08:12"). One tap opens the same rows, with the same
 //     controls: compression changes HEIGHT, never reach (#1504).
 //
@@ -18,9 +18,9 @@ import Disclosure from "@/components/Disclosure";
 // hedge: the sentence above the fold already accounts for every row below it.
 //
 // REDUCED MOTION (#2654) is the designed state. Both shapes carry a heading and a
-// sentence, and neither depends on the shared disclosure's height transition to be
-// understood — under the preference it is simply the end layout. A reader who never
-// sees motion sees two complete, legible states.
+// sentence, and neither depends on a transition to be understood: `<details>` toggles
+// instantly, and nothing here animates height. A reader who never sees motion sees two
+// complete, legible states.
 //
 // The slot heading stays an `<h3>` in BOTH shapes — inside the `<summary>` when
 // compressed — so a reader navigating by heading still finds every slot of their day.
@@ -73,38 +73,37 @@ export default function MomentSlot({
       data-slot={section.bucket}
       data-slot-state={section.state}
       data-expanded="false"
-      summaryLabel={section.line}
-      summaryClassName="flex flex-wrap items-baseline gap-x-2 rounded-lg px-1 py-2 text-sm hover:bg-black/[0.03] dark:hover:bg-white/[0.04]"
-      summary={
-        <>
+    >
+      <summary
+        aria-label={section.line}
+        className="flex flex-wrap items-baseline gap-x-2 rounded-lg px-1 py-2 text-sm hover:bg-black/[0.03] dark:hover:bg-white/[0.04]"
+      >
+        <span
+          aria-hidden
+          className="text-slate-500 group-open:rotate-90 dark:text-slate-400"
+        >
+          ›
+        </span>
+        {section.checked && (
           <span
+            className="font-medium text-emerald-700 dark:text-emerald-400"
             aria-hidden
-            className="text-slate-500 group-open:rotate-90 dark:text-slate-400"
           >
-            ›
+            ✓
           </span>
-          {section.checked && (
-            <span
-              className="font-medium text-emerald-700 dark:text-emerald-400"
-              aria-hidden
-            >
-              ✓
-            </span>
-          )}
-          {heading}
-          {/* The heading carries the slot name, so the visible detail drops it — but the
+        )}
+        {heading}
+        {/* The heading carries the slot name, so the visible detail drops it — but the
             `aria-label` on the summary carries the WHOLE sentence, so a screen reader
             following the disclosure hears the slot's complete truth in one utterance
             rather than two fragments. */}
-          <span
-            data-testid="moment-slot-line"
-            className="text-slate-500 dark:text-slate-400"
-          >
-            {section.lineDetail}
-          </span>
-        </>
-      }
-    >
+        <span
+          data-testid="moment-slot-line"
+          className="text-slate-500 dark:text-slate-400"
+        >
+          {section.lineDetail}
+        </span>
+      </summary>
       <div className="divide-y divide-black/5 dark:divide-white/5">
         {children}
       </div>

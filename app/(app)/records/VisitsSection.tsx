@@ -233,18 +233,13 @@ export default function VisitsSection({
               // `bleed-none`: the amber rail is 14px of inset this disclosure
               // supplies itself, so a card inside it stays inside it instead of
               // cancelling the PAGE's gutter and crossing its own rail (#3931).
-              <Disclosure
-                className="bleed-none border-l-2 border-amber-300 pl-3 dark:border-amber-800"
-                summaryClassName="py-1 font-semibold text-amber-800 dark:text-amber-200"
-                summary={
-                  <>
-                    Past date—update status{" "}
-                    <span className="text-sm font-normal">
-                      ({overdueScheduled.length})
-                    </span>
-                  </>
-                }
-              >
+              <Disclosure className="bleed-none border-l-2 border-amber-300 pl-3 dark:border-amber-800">
+                <summary className="py-1 font-semibold text-amber-800 dark:text-amber-200">
+                  Past date—update status{" "}
+                  <span className="text-sm font-normal">
+                    ({overdueScheduled.length})
+                  </span>
+                </summary>
                 <div className="mt-3">
                   <AppointmentList
                     items={overdueScheduled}
@@ -257,18 +252,13 @@ export default function VisitsSection({
             )}
 
             {settled.length > 0 && (
-              <Disclosure
-                className="border-t border-black/5 pt-3 dark:border-white/5"
-                summaryClassName="font-semibold text-slate-800 dark:text-slate-100"
-                summary={
-                  <>
-                    Completed &amp; cancelled{" "}
-                    <span className="text-sm font-normal text-slate-400">
-                      ({settled.length})
-                    </span>
-                  </>
-                }
-              >
+              <Disclosure className="border-t border-black/5 pt-3 dark:border-white/5">
+                <summary className="font-semibold text-slate-800 dark:text-slate-100">
+                  Completed &amp; cancelled{" "}
+                  <span className="text-sm font-normal text-slate-400">
+                    ({settled.length})
+                  </span>
+                </summary>
                 <div className="mt-3">
                   <AppointmentList
                     items={settled}

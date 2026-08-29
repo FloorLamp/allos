@@ -498,10 +498,11 @@ function GroupSection({
 
 // One folded class inside a band (issue #1504) — the ALWAYS-PRESENT compaction.
 //
-// It holds NO persisted state: collapsed on every visit by design (two visits, two
-// people, and the digest all see the same page). The summary carries the count
-// unconditionally, so the cost of not expanding is always priced; there is no dismiss
-// and no path that hides presence.
+// A plain <details>, so it works pre-hydration and holds NO persisted state: it is
+// collapsed on every visit by design (stateless — two visits, two people, and the
+// digest all see the same page). The summary carries the count unconditionally, so
+// the cost of not expanding is always priced; there is no dismiss and no path that
+// hides presence.
 //
 // The children are the ordinary rows, unchanged — confirm buttons, per-item
 // snooze/dismiss and their `dedupeKey`s, and each row's own WriteTarget all survive
@@ -527,27 +528,26 @@ function AggregateDisclosure({
       data-testid={`upcoming-aggregate-${kind}`}
       data-band={band}
       className="rounded-lg"
-      summaryTestId={`upcoming-aggregate-summary-${kind}`}
-      summaryClassName="flex items-center gap-3 rounded-lg px-2 py-2 transition hover:bg-slate-50 dark:hover:bg-ink-850"
-      summary={
-        <>
-          <Icon
-            className="h-5 w-5 shrink-0 text-slate-500 dark:text-slate-400"
-            stroke={1.75}
-            aria-hidden="true"
-          />
-          <span className="min-w-0 flex-1 truncate font-medium text-slate-800 dark:text-slate-100">
-            {aggregateLabel(kind, count, facts)}
-          </span>
-          <span
-            className={`shrink-0 whitespace-nowrap text-xs font-medium ${tone}`}
-          >
-            <span className="group-open:hidden">Show</span>
-            <span className="hidden group-open:inline">Hide</span>
-          </span>
-        </>
-      }
     >
+      <summary
+        data-testid={`upcoming-aggregate-summary-${kind}`}
+        className="flex items-center gap-3 rounded-lg px-2 py-2 transition hover:bg-slate-50 dark:hover:bg-ink-850"
+      >
+        <Icon
+          className="h-5 w-5 shrink-0 text-slate-500 dark:text-slate-400"
+          stroke={1.75}
+          aria-hidden="true"
+        />
+        <span className="min-w-0 flex-1 truncate font-medium text-slate-800 dark:text-slate-100">
+          {aggregateLabel(kind, count, facts)}
+        </span>
+        <span
+          className={`shrink-0 whitespace-nowrap text-xs font-medium ${tone}`}
+        >
+          <span className="group-open:hidden">Show</span>
+          <span className="hidden group-open:inline">Hide</span>
+        </span>
+      </summary>
       <div className="mt-1 space-y-1 border-l-2 border-black/5 pl-2 dark:border-white/10">
         {children}
       </div>
@@ -846,19 +846,13 @@ function AvailableSection({
   subjectByProfile: Map<number, SubjectInfo>;
 }) {
   return (
-    <Disclosure
-      className="mt-8"
-      data-testid="available-section"
-      summaryClassName="section-label"
-      summary={
-        <>
-          Available to log{" "}
-          <span className="text-slate-500 dark:text-slate-400">
-            ({items.length})
-          </span>
-        </>
-      }
-    >
+    <Disclosure className="mt-8" data-testid="available-section">
+      <summary className="section-label">
+        Available to log{" "}
+        <span className="text-slate-500 dark:text-slate-400">
+          ({items.length})
+        </span>
+      </summary>
       <div
         data-testid="available-chips"
         className="card mt-2 flex flex-wrap items-center gap-1.5 p-2"
@@ -955,18 +949,12 @@ function SuppressedSection({
     entries: items.filter((e) => e.domain === domain),
   })).filter((g) => g.entries.length > 0);
   return (
-    // The fold that catches a dismissal. `FoldSummary` is the only part of this
-    // section that is a client component: it pulses ONCE when its count goes up
-    // (#2654, motion 2), which is the other half of the dismissed row's travel toward
-    // it. The count itself is server truth on every paint; the pulse only decorates a
-    // change.
-    <Disclosure
-      className="mt-8"
-      data-testid="suppressed-section"
-      summaryTestId="suppressed-summary"
-      summaryClassName="min-h-11 py-3.5 section-label sm:min-h-0 sm:py-0"
-      summary={<FoldSummary count={items.length} />}
-    >
+    <Disclosure className="mt-8" data-testid="suppressed-section">
+      {/* The fold that catches a dismissal, and the only part of this section that is
+          a client component: it pulses ONCE when its count goes up (#2654, motion 2),
+          which is the other half of the dismissed row's travel toward it. The count
+          itself is server truth on every paint; the pulse only decorates a change. */}
+      <FoldSummary count={items.length} />
       <div className="card mt-2 space-y-3 p-2">
         {groups.map((g) => (
           <div key={g.domain}>

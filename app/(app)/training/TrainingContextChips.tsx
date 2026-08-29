@@ -72,16 +72,11 @@ export default function TrainingContextChips({
             {consideration.conditionLabel}
           </Link>
         ))}
-        <Disclosure
-          className="text-xs"
-          summaryClassName="font-medium text-slate-500 hover:text-brand-600 hover:underline dark:text-slate-400 dark:hover:text-brand-400"
-          summary={
-            <>
-              <span className="group-open:hidden">Why?</span>
-              <span className="hidden group-open:inline">Hide context</span>
-            </>
-          }
-        >
+        <Disclosure className="text-xs">
+          <summary className="font-medium text-slate-500 hover:text-brand-600 hover:underline dark:text-slate-400 dark:hover:text-brand-400">
+            <span className="group-open:hidden">Why?</span>
+            <span className="hidden group-open:inline">Hide context</span>
+          </summary>
           <div
             className="mt-2 space-y-1 text-sm text-slate-600 dark:text-slate-300"
             data-testid="training-context-notes"

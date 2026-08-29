@@ -8,7 +8,7 @@ import type { SyncRowLink } from "@/lib/queries";
 import Disclosure from "@/components/Disclosure";
 
 // "What this sync wrote" drill-in (issue #1333, deferred part 2 of #1212). Behind a
-// a disclosure, so nothing is queried until the user expands it; on first open it calls
+// <details> so nothing is queried until the user expands it; on first open it calls
 // the profile-scoped loadSyncRows action and lists the records the sync inserted/
 // updated, each a typed deep link (#285) to the surface that owns it (a timeline day,
 // or Results for a lab). Mirrors RawPayloadViewer's lazy on-open fetch + hydration
@@ -64,7 +64,7 @@ export default function SyncRowsDrilldown({
   }
 
   // Hydration catch-up: a click can land before React attaches onToggle, opening the
-  // disclosure without the fetch firing. If it's already open at mount, load.
+  // native <details> without the fetch firing. If it's already open at mount, load.
   useEffect(() => {
     if (detailsRef.current?.open) void load();
     // eslint-disable-next-line react-hooks/exhaustive-deps
@@ -78,13 +78,10 @@ export default function SyncRowsDrilldown({
       onToggle={(e) => {
         if ((e.currentTarget as HTMLDetailsElement).open) void load();
       }}
-      summaryClassName="text-xs text-link"
-      summary={
-        <>
-          What this wrote — {shown} {shown === 1 ? noun : `${noun}s`}
-        </>
-      }
     >
+      <summary className="text-xs text-link">
+        What this wrote — {shown} {shown === 1 ? noun : `${noun}s`}
+      </summary>
       {state === "loading" && (
         <p className="mt-1 text-xs text-slate-500 dark:text-slate-400">
           Loading…

@@ -1138,12 +1138,10 @@ export default async function ImportDetailPage(props: {
             when it has nothing to say (#1340): no card at all unless there's an
             extraction error or a stored raw extraction to show. */}
             {(hasExtractionError || raw) && (
-              <Disclosure
-                className="card"
-                data-testid="debug-disclosure"
-                summaryClassName="font-semibold text-slate-800 dark:text-slate-100"
-                summary="Debug"
-              >
+              <Disclosure className="card" data-testid="debug-disclosure">
+                <summary className="font-semibold text-slate-800 dark:text-slate-100">
+                  Debug
+                </summary>
                 <div className="mt-3 space-y-3">
                   {hasExtractionError && (
                     <div
@@ -1157,11 +1155,10 @@ export default async function ImportDetailPage(props: {
                     </div>
                   )}
                   {raw && (
-                    <Disclosure
-                      className="group/raw"
-                      summaryClassName="text-sm font-medium text-brand-700 hover:underline dark:text-brand-400"
-                      summary="Raw extraction"
-                    >
+                    <Disclosure className="group/raw">
+                      <summary className="text-sm font-medium text-brand-700 hover:underline dark:text-brand-400">
+                        Raw extraction
+                      </summary>
                       {/* The shared collapsible JSON/XML tree + copy (#1318) — a CCD/XDM
                       raw renders as a foldable element tree, an AI extraction as a
                       JSON tree, anything else as plain text. */}

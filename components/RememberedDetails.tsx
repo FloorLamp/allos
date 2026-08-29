@@ -1,7 +1,6 @@
 "use client";
 
 import { useCallback, useSyncExternalStore, type ReactNode } from "react";
-import Disclosure from "@/components/Disclosure";
 import {
   DISCLOSURES,
   DISCLOSURE_KEY_ATTR,
@@ -14,16 +13,16 @@ import {
   type DisclosureId,
   type DisclosureMemory,
 } from "@/lib/disclosure-memory";
+import Disclosure from "@/components/Disclosure";
 
 // The I/O half of disclosure memory (#2652 behavior 3). Everything that DECIDES anything
 // is in lib/disclosure-memory.ts — including WHY this state is per-device localStorage
 // and not a `login_settings` row. This file only reads, writes and subscribes.
 //
-// The element rendered is the app's ONE disclosure (#3677), which is a native
-// `<details>`: it opens with JS disabled, browser in-page find still auto-expands it,
-// and the keyboard behavior is the platform's. The server renders the DECLARED DEFAULT,
-// so the markup is the same one the stateless folds shipped; memory takes over after
-// hydration.
+// The element rendered is the app's one `<Disclosure>` (#3677), which is a native
+// `<details>`: it opens with JS disabled, browser in-page find still auto-expands it, and
+// the keyboard behavior is the platform's. The server renders the DECLARED DEFAULT, so the
+// markup is the same one the stateless folds shipped; memory takes over after hydration.
 //
 // STORE-BACKED, NOT IMPERATIVE, and that is a bug fix rather than a style choice. An
 // earlier version set `open` on the element from an effect. A `<details>` fires `toggle`
@@ -34,10 +33,10 @@ import {
 // components/TrendAnnotationToggles.tsx.)
 //
 // REDUCED MOTION (#2654): RESTORING is a state, not a transition, and it stays one under
-// the continuity motion the shared disclosure now carries. That animation interpolates
+// the continuity motion the shared disclosure carries (#3676). That motion interpolates
 // `::details-content` between two heights, so a fold the pre-paint boot script opened
 // before its first frame has no earlier height to travel from and simply renders open —
-// an entrance replay on load is precisely the ambient motion #3676 refuses.
+// an entrance replay on load is precisely the ambient motion the doctrine refuses.
 
 const MEMORY_CHANGED = "allos:disclosure-memory-changed";
 const EMPTY = "{}";
@@ -93,7 +92,6 @@ export default function RememberedDetails({
   className,
   testId,
   summary,
-  summaryClassName,
   children,
 }: {
   id: DisclosureId;
@@ -107,9 +105,8 @@ export default function RememberedDetails({
   defaultOpen?: boolean;
   className?: string;
   testId?: string;
-  /** What the summary says. Always rendered, so the effective state stays visible. */
+  /** The `<summary>` element. Always rendered, so the effective state stays visible. */
   summary: ReactNode;
-  summaryClassName?: string;
   children: ReactNode;
 }) {
   const remembering = defaultOpen === undefined;
@@ -146,9 +143,8 @@ export default function RememberedDetails({
         : {})}
       open={open ?? DISCLOSURES[id].defaultOpen}
       onToggle={onToggle}
-      summary={summary}
-      summaryClassName={summaryClassName}
     >
+      {summary}
       {children}
     </Disclosure>
   );

@@ -221,14 +221,6 @@ describe("ux census disclosure-expansion registry", () => {
 //   3. THE MATCH IS ON WHAT CONSTITUTES MEMBERSHIP. A testid marker must appear as
 //      the ATTRIBUTE (`data-testid="marker"`), not as a bare token; a class marker
 //      must appear as a whole token with no `[\w-]` either side.
-//      ONE PROP ALSO CONSTITUTES MEMBERSHIP, and pretending otherwise made this
-//      guard cry a rename that never happened. Since #3677 the app has exactly one
-//      disclosure (`components/Disclosure.tsx`), it owns the `<summary>` element, and
-//      a caller names that summary with `summaryTestId="x"` — which the owner writes
-//      out as `data-testid="x"` in the one place any of them does. So the marker IS
-//      rendered; only the spelling moved. A guard whose pattern comes from how the
-//      issue described the construct rather than from how the tree writes it is
-//      exactly the #3325 shape.
 //
 // A testid built by interpolation (`data-testid={`symptom-${key}`}`) cannot satisfy
 // rule 3 and would red this guard. That is deliberate and it fails CLOSED: a hover
@@ -312,17 +304,15 @@ describe("ux census hover-capture registry", () => {
    * How a marker must be written to count as RENDERED.
    *
    * A testid is matched as the attribute itself, in the two spellings this tree
-   * uses for a static value (`data-testid="x"` and `data-testid={"x"}`), plus
-   * `summaryTestId="x"` — the shared disclosure's prop, which becomes that same
-   * attribute on the `<summary>` it owns. A class is matched as a whole token, which
-   * is what kills the superstring rename: `standing-doorway` no longer answers for
-   * `standing-door`, and neither spelling of the attribute loosens that.
+   * uses for a static value (`data-testid="x"` — 2,213 occurrences — and
+   * `data-testid={"x"}`). A class is matched as a whole token, which is what kills
+   * the superstring rename: `standing-doorway` no longer answers for
+   * `standing-door`.
    */
-  const TESTID_ATTRS = "data-testid|summaryTestId";
   const renderedPattern = (marker: Marker): RegExp =>
     marker.kind === "testid"
       ? new RegExp(
-          `(?:${TESTID_ATTRS})=(?:"${escape(marker.name)}"|\\{\\s*["']${escape(marker.name)}["']\\s*\\})`
+          `data-testid=(?:"${escape(marker.name)}"|\\{\\s*["']${escape(marker.name)}["']\\s*\\})`
         )
       : new RegExp(`(?<![\\w-])${escape(marker.name)}(?![\\w-])`);
 
@@ -475,16 +465,6 @@ describe("the hover-marker reader over a corpus authored to break it", () => {
     "components/Superstring.tsx",
     'export const T = () => <b data-testid="schedule-grid-tips" className="standing-doorway" />;\n'
   );
-  // The shared disclosure's spelling of a summary's testid, and its superstring in a
-  // SEPARATE file — same file and the superstring reading could never disagree.
-  write(
-    "components/Folded.tsx",
-    'export const V = () => (\n  <Disclosure summaryTestId="folded-door" summary="x">\n    <i />\n  </Disclosure>\n);\n'
-  );
-  write(
-    "components/FoldedSuperstring.tsx",
-    'export const W = () => <Disclosure summaryTestId="folded-doorway" summary="y" />;\n'
-  );
   write(
     "components/Prose.tsx",
     "export const U = () => (\n  <div>\n    {/* The comment-only-marker convention is the chevron. */}\n    <span />\n  </div>\n);\n"
@@ -530,7 +510,7 @@ describe("the hover-marker reader over a corpus authored to break it", () => {
             const src = stripComments(fs.readFileSync(f, "utf8"));
             return kind === "testid"
               ? new RegExp(
-                  `(?:data-testid|summaryTestId)=(?:"${esc(name)}"|\\{\\s*["']${esc(name)}["']\\s*\\})`
+                  `data-testid=(?:"${esc(name)}"|\\{\\s*["']${esc(name)}["']\\s*\\})`
                 ).test(src)
               : token(name).test(src);
           })
@@ -545,7 +525,7 @@ describe("the hover-marker reader over a corpus authored to break it", () => {
   it("reads back the corpus it wrote, in both roots and into a subdirectory", () => {
     // Every reading below would be empty if the walk had stopped walking, and they
     // would all agree — which is the shape of a broken walk, not of a passing test.
-    expect(corpus().markupCount).toBe(6);
+    expect(corpus().markupCount).toBe(4);
     expect(corpus().rendered("testid", "schedule-grid-tip")).toEqual([
       "app/(app)/seed/page.tsx",
     ]);
@@ -593,18 +573,6 @@ describe("the hover-marker reader over a corpus authored to break it", () => {
     ]);
     expect(corpus().rendered("testid", "schedule-grid-tip")).toEqual([
       "app/(app)/seed/page.tsx",
-    ]);
-  });
-
-  it("accepts the shared disclosure's summaryTestId, superstring and all", () => {
-    // #3677 moved every summary's testid behind the one disclosure owner, which is
-    // the only place `summaryTestId` becomes `data-testid`. The widening buys that
-    // spelling and nothing else: the superstring still cannot answer for the marker.
-    expect(corpus().rendered("testid", "folded-door")).toEqual([
-      "components/Folded.tsx",
-    ]);
-    expect(corpus().rendered("testid", "folded-doorway")).toEqual([
-      "components/FoldedSuperstring.tsx",
     ]);
   });
 

@@ -136,16 +136,11 @@ export default async function BiomarkersSection({
       )}
 
       {optimal.length > 0 && (
-        <Disclosure
-          className="mt-4"
-          summaryClassName="text-sm text-slate-600 dark:text-slate-300"
-          summary={
-            <>
-              {optimal.length} marker{optimal.length === 1 ? "" : "s"} in the
-              optimal band
-            </>
-          }
-        >
+        <Disclosure className="mt-4">
+          <summary className="text-sm text-slate-600 dark:text-slate-300">
+            {optimal.length} marker{optimal.length === 1 ? "" : "s"} in the
+            optimal band
+          </summary>
           <ul className="mt-2 grid grid-cols-1 gap-x-6 gap-y-1.5 sm:grid-cols-2">
             {optimal.map((r, i) => (
               <BiomarkerRow key={`${r.name}-${i}`} row={r} />

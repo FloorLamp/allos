@@ -104,16 +104,13 @@ export default function GroupedProvidersIndex({
             <Disclosure
               className="border-t border-black/5 pt-3 dark:border-white/10"
               data-testid="provider-other-disclosure"
-              summaryClassName="flex items-center gap-2 py-1 text-sm font-medium text-slate-600 dark:text-slate-300"
-              summary={
-                <>
-                  <span className="flex-1">
-                    Other directory entries ({otherCount})
-                  </span>
-                  <IconChevronDown className="h-4 w-4 text-slate-400 transition-transform group-open:rotate-180" />
-                </>
-              }
             >
+              <summary className="flex items-center gap-2 py-1 text-sm font-medium text-slate-600 dark:text-slate-300">
+                <span className="flex-1">
+                  Other directory entries ({otherCount})
+                </span>
+                <IconChevronDown className="h-4 w-4 text-slate-400 transition-transform group-open:rotate-180" />
+              </summary>
               <div className="mt-3 space-y-4">
                 {otherOrgs.map((group) => (
                   <OrganizationGroup key={group.org.id} group={group} />
@@ -139,14 +136,11 @@ export default function GroupedProvidersIndex({
         <Disclosure
           className="mt-6 rounded-xl border border-black/5 dark:border-white/10"
           data-testid="provider-archived-disclosure"
-          summaryClassName="flex items-center gap-2 px-4 py-3 text-sm font-medium text-slate-600 dark:text-slate-300"
-          summary={
-            <>
-              <IconArchive className="h-4 w-4 text-slate-400" stroke={1.75} />
-              Archived ({directory.archivedCount})
-            </>
-          }
         >
+          <summary className="flex items-center gap-2 px-4 py-3 text-sm font-medium text-slate-600 dark:text-slate-300">
+            <IconArchive className="h-4 w-4 text-slate-400" stroke={1.75} />
+            Archived ({directory.archivedCount})
+          </summary>
           <ul className="divide-y divide-black/5 border-t border-black/5 dark:divide-white/10 dark:border-white/10">
             {directory.archived.map((p) => (
               <li key={p.id}>

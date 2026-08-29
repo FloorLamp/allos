@@ -47,30 +47,26 @@ export default function TrainingWatchCard({
         data-testid="training-findings-rollup"
         className="subpanel-inset-sm rounded-xl border border-slate-200 bg-slate-50/60 p-3 dark:border-ink-750 dark:bg-ink-850/40"
       >
-        <Disclosure
-          summaryClassName="flex items-start gap-2"
-          summary={
-            <>
-              <div className="min-w-0 flex-1">
-                <p
-                  className="font-medium text-slate-800 dark:text-slate-100"
-                  data-testid="training-findings-rollup-title"
-                >
-                  {g.title}
+        <Disclosure>
+          <summary className="flex items-start gap-2">
+            <div className="min-w-0 flex-1">
+              <p
+                className="font-medium text-slate-800 dark:text-slate-100"
+                data-testid="training-findings-rollup-title"
+              >
+                {g.title}
+              </p>
+              {g.detail && (
+                <p className="mt-0.5 text-sm text-slate-600 dark:text-slate-300">
+                  {g.detail}
                 </p>
-                {g.detail && (
-                  <p className="mt-0.5 text-sm text-slate-600 dark:text-slate-300">
-                    {g.detail}
-                  </p>
-                )}
-              </div>
-              <span className="shrink-0 text-xs font-medium text-brand-700 dark:text-brand-400">
-                <span className="group-open:hidden">Show</span>
-                <span className="hidden group-open:inline">Hide</span>
-              </span>
-            </>
-          }
-        >
+              )}
+            </div>
+            <span className="shrink-0 text-xs font-medium text-brand-700 dark:text-brand-400">
+              <span className="group-open:hidden">Show</span>
+              <span className="hidden group-open:inline">Hide</span>
+            </span>
+          </summary>
           {/* The folded findings, unchanged — each keeps its own dedupeKey and its
               own dismiss form, so the bus behavior is identical to the flat cards. */}
           <ul className="mt-3 space-y-3">
@@ -103,19 +99,13 @@ export default function TrainingWatchCard({
         {rollup.shown.map((row) => renderRow(row, false))}
       </ul>
       {rollup.overflow.length > 0 && (
-        <Disclosure
-          className="mt-3"
-          data-testid="training-findings-more"
-          summaryClassName="text-xs font-medium text-slate-500 hover:text-brand-600 hover:underline dark:text-slate-400 dark:hover:text-brand-400"
-          summary={
-            <>
-              <span className="group-open:hidden">
-                Show all {rollup.rows.length} →
-              </span>
-              <span className="hidden group-open:inline">Show fewer</span>
-            </>
-          }
-        >
+        <Disclosure className="mt-3" data-testid="training-findings-more">
+          <summary className="text-xs font-medium text-slate-500 hover:text-brand-600 hover:underline dark:text-slate-400 dark:hover:text-brand-400">
+            <span className="group-open:hidden">
+              Show all {rollup.rows.length} →
+            </span>
+            <span className="hidden group-open:inline">Show fewer</span>
+          </summary>
           <ul className="mt-3 space-y-3">
             {rollup.overflow.map((row) => renderRow(row, true))}
           </ul>

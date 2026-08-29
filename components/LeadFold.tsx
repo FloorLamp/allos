@@ -11,12 +11,16 @@ import Disclosure from "@/components/Disclosure";
 // next one queued) inherits it by rendering this with its own `summary` label;
 // there is nothing else to decide, and nothing to re-derive.
 //
-// The fold is the app's shared `<Disclosure>` (#3677), so it animates open on the one
-// continuity token and stays server-renderable — this file's earlier note that an
-// animated collapse would cost nine pages a `"use client"` boundary described
-// `<Collapse>`, which is a different primitive and is not what this reaches for. It
-// holds NO persisted state, which is the honest default for an intro: it is closed on
-// every visit, for everyone, and the summary always says what is inside.
+// ── WHY `<Disclosure>` AND NOT `<Collapse>` ─────────────────────────────────────
+//
+// The fold is the app's shared `<Disclosure>` (#3677): a native `<details>`, so it stays
+// server-renderable, works before hydration, and arrives with the keyboard and AT
+// semantics already correct — while animating open on the one continuity token. This
+// file's earlier note that an animated collapse would cost nine integration pages a
+// `"use client"` boundary was about `components/Collapse.tsx`, a different primitive that
+// reads `usePrefersReducedMotion`; that reasoning is unchanged and is why this is not it.
+// The fold holds NO persisted state, which is the honest default for an intro: it is
+// closed on every visit, for everyone, and the summary always says what is inside.
 //
 // ── WHAT THE CALLER DECIDES, AND WHAT IT DOES NOT ───────────────────────────────
 //
@@ -61,21 +65,18 @@ export default function LeadFold({
         {lead}
       </p>
       {detail ? (
-        <Disclosure
-          data-testid={`${testId}-fold`}
-          summaryTestId={`${testId}-fold-summary`}
-          summaryClassName="flex w-fit items-center gap-1 text-sm font-medium text-link"
-          summary={
-            <>
-              <IconChevronRight
-                className="h-4 w-4 shrink-0 transition-transform group-open:rotate-90"
-                stroke={1.75}
-                aria-hidden
-              />
-              {summary}
-            </>
-          }
-        >
+        <Disclosure data-testid={`${testId}-fold`}>
+          <summary
+            data-testid={`${testId}-fold-summary`}
+            className="flex w-fit items-center gap-1 text-sm font-medium text-link"
+          >
+            <IconChevronRight
+              className="h-4 w-4 shrink-0 transition-transform group-open:rotate-90"
+              stroke={1.75}
+              aria-hidden
+            />
+            {summary}
+          </summary>
           <div
             data-testid={`${testId}-detail`}
             className="mt-2 text-sm text-slate-500 dark:text-slate-400"

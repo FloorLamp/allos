@@ -2411,17 +2411,14 @@ export default function FoodLogBar({
                 rows(quickGroups.slice(proteinSplit))}
             </div>
             {moreGroups.length > 0 && (
-              <Disclosure
-                data-testid="food-more-groups"
-                summaryTestId="food-more-groups-summary"
-                summaryClassName="flex min-h-14 items-center justify-between gap-3 rounded-lg border border-(--border) bg-surface px-3 py-2 text-sm font-medium text-slate-700 transition hover:bg-(--ghost-hover) dark:text-slate-200"
-                summary={
-                  <>
-                    <span>More food groups ({moreGroups.length})</span>
-                    <IconChevronDown className="h-4 w-4 transition-transform group-open:rotate-180" />
-                  </>
-                }
-              >
+              <Disclosure data-testid="food-more-groups">
+                <summary
+                  data-testid="food-more-groups-summary"
+                  className="flex min-h-14 items-center justify-between gap-3 rounded-lg border border-(--border) bg-surface px-3 py-2 text-sm font-medium text-slate-700 transition hover:bg-(--ghost-hover) dark:text-slate-200"
+                >
+                  <span>More food groups ({moreGroups.length})</span>
+                  <IconChevronDown className="h-4 w-4 transition-transform group-open:rotate-180" />
+                </summary>
                 {/* The expanded tier sections keep their own layout — this
                     change is about the collapsed control's size and rhythm. */}
                 <div className="mt-4 space-y-5">

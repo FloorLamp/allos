@@ -6,11 +6,11 @@ import { stripComments } from "./strip-comments";
 
 // ONE DISCLOSURE (#3677), in the repo's source-scan idiom.
 //
-// Before this, ~50 files each wrote their own `<details>` and every one of them
-// snapped open. They now all render `components/Disclosure.tsx`, which carries the
-// continuity motion (#3676), the marker suppression and the `group` its adopters'
-// chevrons read. A raw `<details>` anywhere else is a fold that silently opts out of
-// all three, and it is the only way that can happen — so the boundary is here.
+// Before this, 47 files each wrote their own `<details>` and every one of them snapped
+// open. They now all render `components/Disclosure.tsx`, which carries the continuity
+// motion (#3676), the marker suppression and the `group` its adopters' chevrons read. A
+// raw `<details>` anywhere else is a fold that silently opts out of all three, and it is
+// the only way that can happen — so the boundary is here.
 //
 // IT IS A MODULE IDENTITY, NOT AN ALLOWLIST. The expectation is set EQUALITY against
 // one name: the module that IS the disclosure. There is no path exception, no
@@ -19,10 +19,11 @@ import { stripComments } from "./strip-comments";
 // rather than leaving a boundary guarding nothing.
 //
 // AND IT IS SHALLOW ON PURPOSE. It reads text, it does not reconstruct flow: a file
-// that builds a `<details>` through `React.createElement` or a string of HTML is not
-// something this can see, and pretending otherwise by growing a parser is how a guard
-// becomes the thing that needs maintaining. What it does catch is the way this repo
-// actually writes the construct, which is JSX, in all ~50 places it was written.
+// that builds a `<details>` through `React.createElement` is not something this can see,
+// and pretending otherwise by growing a parser is how a guard becomes the thing that
+// needs maintaining. What it does catch is the way this repo actually writes the
+// construct, which is JSX — the spelling all 47 of them used, and the only one the
+// census over `origin/main` found.
 
 const REPO = path.resolve(fileURLToPath(new URL("../..", import.meta.url)));
 const SCAN_DIRS = ["app", "components"];
@@ -76,11 +77,7 @@ describe("the app has one disclosure", () => {
       true,
       "a string literal — the shared stripper keeps strings, and a fold emitted as raw HTML is still a fold outside the owner",
     ],
-    [
-      '<Disclosure summary="x">y</Disclosure>',
-      false,
-      "the owner's own element",
-    ],
+    ["<Disclosure>y</Disclosure>", false, "the owner's own element"],
     [
       "<detailsPanel />",
       false,

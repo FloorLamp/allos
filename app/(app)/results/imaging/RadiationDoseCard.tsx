@@ -31,7 +31,8 @@ import Disclosure from "@/components/Disclosure";
 // app already uses on child surfaces (#150, #489).
 //
 // The headline is ALL RECORDS and never ages downward; the trailing-3-year figure is a
-// secondary recent-intensity lens beside it.
+// secondary recent-intensity lens beside it. The disclosure is a native <details>, so
+// it opens with JS off and in-page find still reaches the rows.
 //
 // THE ADDITION HAS TO WORK. Every scope figure here — the headline, the recorded and
 // estimated split, the lens — goes through formatScopeMsv, which prints the sum of the
@@ -176,22 +177,19 @@ export default function RadiationDoseCard({
         </p>
       )}
 
-      <Disclosure
-        className="mt-3"
-        data-testid="radiation-dose-breakdown"
-        summaryTestId="radiation-dose-breakdown-toggle"
-        summaryClassName="flex items-center gap-1 text-xs font-medium text-brand-700 dark:text-brand-400"
-        summary={
-          <>
-            <span className="group-open:hidden">
-              {contributions.length > 0
-                ? "What this adds up to"
-                : "Why nothing counted"}
-            </span>
-            <span className="hidden group-open:inline">Hide the studies</span>
-          </>
-        }
-      >
+      <Disclosure className="mt-3" data-testid="radiation-dose-breakdown">
+        <summary
+          data-testid="radiation-dose-breakdown-toggle"
+          className="flex items-center gap-1 text-xs font-medium text-brand-700 dark:text-brand-400"
+        >
+          <span className="group-open:hidden">
+            {contributions.length > 0
+              ? "What this adds up to"
+              : "Why nothing counted"}
+          </span>
+          <span className="hidden group-open:inline">Hide the studies</span>
+        </summary>
+
         <ul className="mt-2 space-y-1.5">
           {contributions.map((c) => {
             const chip = doseChipLabel(c.dose);

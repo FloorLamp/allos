@@ -325,8 +325,9 @@ export default function ExerciseDetailPanel({
 
       {/* Static how-to guide for catalog lifts (#734). Renders nothing for a
           custom (non-catalog) lift — hasExerciseGuide gates the disclosure so an
-          empty fold never renders. The aggregate panel spans every implement, so
-          no single equipment is passed (all per-implement notes are shown).
+          empty <details> never renders. The aggregate panel spans every
+          implement, so no single equipment is passed (all per-implement notes
+          are shown).
 
           Collapsed once the lift is familiar (#2895) — the same isNewLift gate
           the Telegram nudge's "How to" button uses, so "familiar" is one
@@ -337,12 +338,10 @@ export default function ExerciseDetailPanel({
         (isNewLift(stat.sessions) ? (
           <ExerciseGuideSection name={stat.exercise} />
         ) : (
-          <Disclosure
-            className="mt-5"
-            data-testid="exercise-guide-disclosure"
-            summaryClassName="text-sm font-semibold text-slate-700 select-none dark:text-slate-200"
-            summary="How to"
-          >
+          <Disclosure className="mt-5" data-testid="exercise-guide-disclosure">
+            <summary className="text-sm font-semibold text-slate-700 select-none dark:text-slate-200">
+              How to
+            </summary>
             <ExerciseGuideSection name={stat.exercise} heading={false} />
           </Disclosure>
         ))}

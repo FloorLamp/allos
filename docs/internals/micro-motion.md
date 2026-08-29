@@ -276,6 +276,26 @@ that the options are ready. Under reduced motion they are simply present at full
 opacity; no class or keyframe is scheduled. An empty or failed gather stays silent and
 the reserved slot remains, so silence never reintroduces the shove.
 
+**`disclose` (continuity) — `components/Disclosure.tsx`, every fold in the app
+(#3677).** 47 files each hand-rolled a raw `<details>` and every one snapped: the panel
+arrived at full height with the reader's finger still on the summary, which on a phone
+is a full-screen jump. They now all render one owner, and the panel grows from the
+summary downward over 200 ms on the shared curve.
+
+- **`preserves`** — the summary you tapped stays exactly where it is while the panel
+  grows below it, so the line you were reading never moves out from under you.
+- **`causedBy`** — the reader's own tap, click or Enter on the summary. Nothing else
+  opens a disclosure.
+
+It is CSS on `::details-content`, not JS, and that is what makes the class safe here:
+the browser owns the interpolation, the summary is interactive on the first frame, and
+a fold that `lib/disclosure-memory.ts`'s pre-paint script opened before the first paint
+has no earlier height to travel from — so a remembered-open panel is simply open, with
+no entrance replay. That replay is exactly the ambient motion this doctrine refuses,
+and it is refused structurally rather than by a guard. `components/Collapse.tsx`, the
+app's button-and-panel disclosure, spends the same token on the same curve, so there is
+one duration and one feel for every region that expands in place.
+
 ## How the suite proves it
 
 `lib/__tests__/micro-motion.test.ts` owns the animation contract directly: registry ↔

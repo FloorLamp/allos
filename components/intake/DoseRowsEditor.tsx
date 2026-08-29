@@ -196,16 +196,17 @@ export default function DoseRowsEditor({
             <Disclosure
               className="sm:col-span-full"
               open={d.weekdays.length > 0 || !!d.start_date || !!d.end_date}
-              summaryClassName="text-xs text-slate-500 dark:text-slate-400"
-              summaryTestId={`dose-advanced-${i}`}
-              summary={
-                doseCadenceLabel({
+            >
+              <summary
+                className="text-xs text-slate-500 dark:text-slate-400"
+                data-testid={`dose-advanced-${i}`}
+              >
+                {doseCadenceLabel({
                   weekdays: normalizeWeekdays(d.weekdays),
                   start_date: d.start_date || null,
                   end_date: d.end_date || null,
-                }) ?? "Only on certain days or dates"
-              }
-            >
+                }) ?? "Only on certain days or dates"}
+              </summary>
               <div className="mt-2 space-y-2 border-l-2 border-black/10 pl-3 dark:border-white/10">
                 <WeekdayChips
                   value={d.weekdays}

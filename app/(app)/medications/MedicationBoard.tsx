@@ -179,24 +179,18 @@ export default function MedicationBoard({
       </CardGroup>
 
       {data.past.length > 0 && !filter ? (
-        <Disclosure
-          className="card"
-          data-testid="past-medications"
-          summaryClassName="-m-2 flex w-[calc(100%+1rem)] items-center justify-between gap-4 rounded-lg p-2 outline-hidden transition hover:bg-slate-50 focus-visible:ring-2 focus-visible:ring-brand-500/40 dark:hover:bg-ink-850"
-          summary={
-            <>
-              <span className="min-w-0">
-                <span className="block text-base font-semibold text-slate-700 dark:text-slate-200">
-                  Past medications
-                </span>
-                <span className="mt-1 block text-sm text-slate-500 dark:text-slate-400">
-                  {data.past.length} completed or stopped
-                </span>
+        <Disclosure className="card" data-testid="past-medications">
+          <summary className="-m-2 flex w-[calc(100%+1rem)] items-center justify-between gap-4 rounded-lg p-2 outline-hidden transition hover:bg-slate-50 focus-visible:ring-2 focus-visible:ring-brand-500/40 dark:hover:bg-ink-850">
+            <span className="min-w-0">
+              <span className="block text-base font-semibold text-slate-700 dark:text-slate-200">
+                Past medications
               </span>
-              <IconChevronDown className="h-4 w-4 shrink-0 text-slate-500 transition-transform group-open:rotate-180 dark:text-slate-400" />
-            </>
-          }
-        >
+              <span className="mt-1 block text-sm text-slate-500 dark:text-slate-400">
+                {data.past.length} completed or stopped
+              </span>
+            </span>
+            <IconChevronDown className="h-4 w-4 shrink-0 text-slate-500 transition-transform group-open:rotate-180 dark:text-slate-400" />
+          </summary>
           <div className="mt-5 divide-y divide-black/5 border-t border-black/5 pt-1 dark:divide-white/5 dark:border-white/5">
             {data.past.map((m) => (
               <MedicationRow

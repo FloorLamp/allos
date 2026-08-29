@@ -16,6 +16,7 @@ import Disclosure from "@/components/Disclosure";
 // as its sibling viewers — card, ScrollFade, `.th`/`.td`, dashed empty panel,
 // formatTimestamp + useFormatPrefs, the admin-gated Clear action — over a different
 // row model: one row per (run, profile), expandable to its lines.
+// Expansion stays a plain <details>, so it works with JS off.
 
 const KIND_BADGE: Record<NotifyLineKind, string> = {
   decline: "bg-amber-100 text-amber-700 dark:bg-amber-950 dark:text-amber-300",
@@ -142,10 +143,10 @@ export default function NotifyRunTable({
                       )}
                     </td>
                     <td className="td">
-                      <Disclosure
-                        summaryClassName="text-slate-500 dark:text-slate-400"
-                        summary={run.counts.total}
-                      >
+                      <Disclosure>
+                        <summary className="text-slate-500 dark:text-slate-400">
+                          {run.counts.total}
+                        </summary>
                         <ul className="mt-2 space-y-2">
                           {run.events.map((e) => {
                             const kind = classifyNotifyLine(e);

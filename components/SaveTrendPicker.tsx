@@ -29,18 +29,17 @@ export default function SaveTrendPicker({
     <Disclosure
       className="w-full max-w-full sm:w-fit"
       data-testid="save-trend-picker-disclosure"
-      summaryClassName="w-fit text-xs font-medium text-brand-700 hover:underline dark:text-brand-300"
-      summaryTestId="save-trend-picker-toggle"
-      summary={
-        <>
-          <span className="group-open:hidden">＋ Add tile</span>
-          <span className="hidden group-open:inline sm:group-open:hidden">
-            Close
-          </span>
-          <span className="hidden sm:group-open:inline">Close add tile</span>
-        </>
-      }
     >
+      <summary
+        className="w-fit text-xs font-medium text-brand-700 hover:underline dark:text-brand-300"
+        data-testid="save-trend-picker-toggle"
+      >
+        <span className="group-open:hidden">＋ Add tile</span>
+        <span className="hidden group-open:inline sm:group-open:hidden">
+          Close
+        </span>
+        <span className="hidden sm:group-open:inline">Close add tile</span>
+      </summary>
       <form
         action={async (fd) => {
           "use server";

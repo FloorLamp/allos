@@ -148,12 +148,10 @@ export default function DormantPrnSweep({
       )}
 
       {dismissed.length > 0 && (
-        <Disclosure
-          className="mt-2"
-          data-testid="dormant-prn-dismissed"
-          summaryClassName="section-label hover:underline"
-          summary={<>Dismissed ({dismissed.length})</>}
-        >
+        <Disclosure className="mt-2" data-testid="dormant-prn-dismissed">
+          <summary className="section-label hover:underline">
+            Dismissed ({dismissed.length})
+          </summary>
           <div className="mt-2 space-y-2">
             {dismissed.map((s) => (
               <div

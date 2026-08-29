@@ -13,9 +13,9 @@ import Disclosure from "@/components/Disclosure";
 // when there are no findings.
 //
 // A caller with a deliberate local fold may pass its overflow as
-// `moreFindings`: the rows beyond the cap render inside a disclosure ("Show N
-// more"), so a "N of M" subtitle always comes with a path to the hidden M−N —
-// same rows, same links, same dismiss affordance. Overflow rows
+// `moreFindings`: the rows beyond the cap render inside a native <details>
+// disclosure ("Show N more"), so a "N of M" subtitle always comes with a path to
+// the hidden M−N — same rows, same links, same dismiss affordance. Overflow rows
 // carry their own `${testid}-more-item` testid so cap assertions on the visible
 // slice stay exact.
 export default function FindingsList({
@@ -64,19 +64,13 @@ export default function FindingsList({
         {findings.map((f) => row(f, `${testid}-item`, `${testid}-dismiss`))}
       </ul>
       {moreFindings.length > 0 && (
-        <Disclosure
-          className="mt-3"
-          data-testid={`${testid}-more`}
-          summaryClassName="text-xs font-medium text-slate-500 hover:text-brand-600 hover:underline dark:text-slate-400 dark:hover:text-brand-400"
-          summary={
-            <>
-              <span className="group-open:hidden">
-                Show {moreFindings.length} more →
-              </span>
-              <span className="hidden group-open:inline">Show fewer</span>
-            </>
-          }
-        >
+        <Disclosure className="mt-3" data-testid={`${testid}-more`}>
+          <summary className="text-xs font-medium text-slate-500 hover:text-brand-600 hover:underline dark:text-slate-400 dark:hover:text-brand-400">
+            <span className="group-open:hidden">
+              Show {moreFindings.length} more →
+            </span>
+            <span className="hidden group-open:inline">Show fewer</span>
+          </summary>
           <ul className="mt-3 space-y-3">
             {moreFindings.map((f) =>
               row(f, `${testid}-more-item`, `${testid}-more-dismiss`)
@@ -89,38 +83,34 @@ export default function FindingsList({
 
   if (collapsible) {
     return (
-      <Disclosure
-        className="card"
-        data-testid={testid}
-        summaryClassName="flex items-center justify-between gap-4"
-        summaryTestId={`${testid}-toggle`}
-        summary={
-          <>
-            <span className="flex min-w-0 items-start gap-2">
-              <span className="mt-0.5">{icon}</span>
-              <span className="min-w-0">
-                <span className="block font-semibold text-slate-800 dark:text-slate-100">
-                  {heading}
-                </span>
-                <span className="mt-0.5 block text-sm text-slate-500 dark:text-slate-400">
-                  {subtitle}
-                </span>
+      <Disclosure className="card" data-testid={testid}>
+        <summary
+          className="flex items-center justify-between gap-4"
+          data-testid={`${testid}-toggle`}
+        >
+          <span className="flex min-w-0 items-start gap-2">
+            <span className="mt-0.5">{icon}</span>
+            <span className="min-w-0">
+              <span className="block font-semibold text-slate-800 dark:text-slate-100">
+                {heading}
+              </span>
+              <span className="mt-0.5 block text-sm text-slate-500 dark:text-slate-400">
+                {subtitle}
               </span>
             </span>
-            <span className="flex shrink-0 items-center gap-2">
-              <span className="rounded-full bg-amber-50 px-2.5 py-1 text-xs font-semibold text-amber-700 dark:bg-amber-950/60 dark:text-amber-300">
-                {findings.length + moreFindings.length}
-              </span>
-              <span
-                className="text-sm text-slate-500 transition-transform group-open:rotate-180 dark:text-slate-400"
-                aria-hidden
-              >
-                ▾
-              </span>
+          </span>
+          <span className="flex shrink-0 items-center gap-2">
+            <span className="rounded-full bg-amber-50 px-2.5 py-1 text-xs font-semibold text-amber-700 dark:bg-amber-950/60 dark:text-amber-300">
+              {findings.length + moreFindings.length}
             </span>
-          </>
-        }
-      >
+            <span
+              className="text-sm text-slate-500 transition-transform group-open:rotate-180 dark:text-slate-400"
+              aria-hidden
+            >
+              ▾
+            </span>
+          </span>
+        </summary>
         <div className="mt-4 border-t border-black/10 pt-4 dark:border-white/10">
           {rows}
         </div>

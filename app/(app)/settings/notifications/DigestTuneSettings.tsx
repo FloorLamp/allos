@@ -65,11 +65,13 @@ export default function DigestTuneSettings({
         {digestTuneSummary(current)} The same toggles ride the digest itself as{" "}
         <span className="whitespace-nowrap">⚙️ Tune</span>.
       </p>
-      <Disclosure
-        summaryClassName="text-xs text-slate-500 hover:text-slate-700 dark:text-slate-400 dark:hover:text-slate-200"
-        summaryTestId="digest-tune-disclosure"
-        summary="Change which categories"
-      >
+      <Disclosure>
+        <summary
+          className="text-xs text-slate-500 hover:text-slate-700 dark:text-slate-400 dark:hover:text-slate-200"
+          data-testid="digest-tune-disclosure"
+        >
+          Change which categories
+        </summary>
         <p className="mt-2 text-xs text-slate-500 dark:text-slate-400">
           Turn a category down to <strong>notable only</strong>: routine lines
           stop, and anything the category itself calls notable still comes

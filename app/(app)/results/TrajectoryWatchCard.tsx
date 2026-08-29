@@ -52,31 +52,28 @@ export default function TrajectoryWatchCard({
         className="rounded-xl border border-amber-200 bg-amber-50/60 p-3 dark:border-amber-900/60 dark:bg-amber-950/30"
       >
         <div className="flex items-start gap-3">
-          <Disclosure
-            className="min-w-0 flex-1"
-            summaryTestId={
-              overflow
-                ? "trajectory-rollup-more-toggle"
-                : "trajectory-rollup-toggle"
-            }
-            summaryClassName="flex items-start gap-2"
-            summary={
-              <>
-                <div className="min-w-0 flex-1">
-                  <p className="font-medium text-slate-800 dark:text-slate-100">
-                    {g.label}
-                  </p>
-                  <p className="mt-0.5 text-sm text-slate-600 dark:text-slate-300">
-                    {n} trend{n === 1 ? "" : "s"} worth a look
-                  </p>
-                </div>
-                <span className="shrink-0 text-xs font-medium text-brand-700 dark:text-brand-400">
-                  <span className="group-open:hidden">Show</span>
-                  <span className="hidden group-open:inline">Hide</span>
-                </span>
-              </>
-            }
-          >
+          <Disclosure className="min-w-0 flex-1">
+            <summary
+              data-testid={
+                overflow
+                  ? "trajectory-rollup-more-toggle"
+                  : "trajectory-rollup-toggle"
+              }
+              className="flex items-start gap-2"
+            >
+              <div className="min-w-0 flex-1">
+                <p className="font-medium text-slate-800 dark:text-slate-100">
+                  {g.label}
+                </p>
+                <p className="mt-0.5 text-sm text-slate-600 dark:text-slate-300">
+                  {n} trend{n === 1 ? "" : "s"} worth a look
+                </p>
+              </div>
+              <span className="shrink-0 text-xs font-medium text-brand-700 dark:text-brand-400">
+                <span className="group-open:hidden">Show</span>
+                <span className="hidden group-open:inline">Hide</span>
+              </span>
+            </summary>
             {/* The folded findings, unchanged — each keeps its own dedupeKey and its
                 own dismiss form, so the bus behavior is identical to the flat cards.
                 The POSTED key is the analyte acknowledgment (#564), as it was
@@ -146,16 +143,13 @@ export default function TrajectoryWatchCard({
               <Disclosure
                 className="mt-3"
                 data-testid="trajectory-findings-more"
-                summaryClassName="text-xs font-medium text-slate-500 hover:text-brand-600 hover:underline dark:text-slate-400 dark:hover:text-brand-400"
-                summary={
-                  <>
-                    <span className="group-open:hidden">
-                      Show all {rollup.groups.length} →
-                    </span>
-                    <span className="hidden group-open:inline">Show fewer</span>
-                  </>
-                }
               >
+                <summary className="text-xs font-medium text-slate-500 hover:text-brand-600 hover:underline dark:text-slate-400 dark:hover:text-brand-400">
+                  <span className="group-open:hidden">
+                    Show all {rollup.groups.length} →
+                  </span>
+                  <span className="hidden group-open:inline">Show fewer</span>
+                </summary>
                 <ul className="mt-3 space-y-3">
                   {rollup.overflow.map((g) => renderGroup(g, true))}
                 </ul>

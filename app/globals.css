@@ -1951,24 +1951,19 @@
 }
 
 /* CONTINUITY (#3676, #3677) — every disclosure in the app, growing under the summary
-   the reader tapped instead of snapping open with their finger still on it. The ONE
-   rule here that animates a LAYOUT property, deliberately: for an information motion
-   a moved neighbour is a defect; for a continuity motion the moved neighbour IS what
-   is being made continuous.
+   the reader tapped. The ONE rule here that animates a LAYOUT property, deliberately:
+   for an information motion a moved neighbour is a defect; for a continuity motion the
+   moved neighbour IS what is being made continuous.
 
-   On `::details-content`, which is the box the browser already owns for a
-   disclosure's contents. A wrapper element INSIDE the details cannot do this — its
-   contents are not rendered while the details is closed, so opening resolves its
-   first style already at full height and no transition ever runs (measured, Chromium
-   141). That is also why this needs no JS, and why it is safe: a fold that
-   lib/disclosure-memory.ts's pre-paint script opens before the first frame has no
-   earlier height to travel from, so a remembered-open panel is simply open. An
-   entrance replay on load is the ambient motion the doctrine refuses.
-
-   `interpolate-size` is on the class, not `:root`, so nothing else gains keyword
-   interpolation it did not ask for. The marker is suppressed because every adopter
-   that wants one draws its own chevron off `group-open:`; `cursor` is already every
-   summary's, in the interactive-cursor rule at the top of this file. */
+   On `::details-content`, the box the browser already owns for a disclosure's
+   contents. A wrapper INSIDE the details cannot do this — a closed details does not
+   render its contents, so opening resolves the wrapper's first style already at full
+   height and no transition runs (measured, Chromium 141). That is also why it needs no
+   JS and why the memory contract is safe: a fold opened by disclosure-memory's
+   pre-paint script has no earlier height to travel from, so it is simply open, with no
+   entrance replay. `interpolate-size` is on the class, not `:root`, so nothing else
+   gains keyword interpolation it did not ask for, and the marker is suppressed here
+   because every adopter that wants one draws its own chevron off `group-open:`. */
 .motion-disclose {
   interpolate-size: allow-keywords;
 }

@@ -18,7 +18,8 @@ function mediaQuery(reduced: boolean): MediaQueryList {
 
 function fold(count: number) {
   return (
-    <Disclosure summary={<FoldSummary count={count} />}>
+    <Disclosure>
+      <FoldSummary count={count} />
       <div>Suppressed rows</div>
     </Disclosure>
   );
@@ -36,17 +37,14 @@ describe("FoldSummary", () => {
 
   it("keeps authoritative text and pulses only when the fold gains a row", () => {
     const view = render(fold(2));
-    const summary = screen.getByTestId("suppressed-pulse");
+    const summary = screen.getByTestId("suppressed-summary");
 
-    // The pulse rides the summary's visible LINE, inside the `<summary>` the shared
-    // disclosure owns (#3677) — so the line the count sits on is the thing that rings,
-    // and the summary's own box, which the phone tap floor is measured against, never
-    // changes size.
-    expect(summary.tagName).toBe("SPAN");
-    expect(summary.closest("summary")).not.toBeNull();
+    expect(summary.tagName).toBe("SUMMARY");
     expect(summary.textContent).toBe("Snoozed & dismissed (2)");
     expect(summary.getAttribute("data-pulsing")).toBe("false");
-    expect(summary.className).toBe("inline-block rounded-lg");
+    expect(summary.className).toBe(
+      "min-h-11 cursor-pointer py-3.5 section-label sm:min-h-0 sm:py-0"
+    );
 
     view.rerender(fold(1));
     expect(summary.textContent).toBe("Snoozed & dismissed (1)");
@@ -55,22 +53,22 @@ describe("FoldSummary", () => {
     view.rerender(fold(3));
     expect(summary.textContent).toBe("Snoozed & dismissed (3)");
     expect(summary.getAttribute("data-pulsing")).toBe("true");
-    expect(summary.className).toContain("motion-fold");
+    expect(summary.querySelector(".motion-fold")).not.toBeNull();
 
     act(() => vi.advanceTimersByTime(500));
     expect(summary.getAttribute("data-pulsing")).toBe("false");
-    expect(summary.className).not.toContain("motion-fold");
+    expect(summary.querySelector(".motion-fold")).toBeNull();
   });
 
   it("publishes the new count without a pulse under reduced motion", () => {
     window.matchMedia = () => mediaQuery(true);
     const view = render(fold(2));
-    const summary = screen.getByTestId("suppressed-pulse");
+    const summary = screen.getByTestId("suppressed-summary");
 
     view.rerender(fold(3));
     expect(summary.textContent).toBe("Snoozed & dismissed (3)");
     expect(summary.getAttribute("data-reduced-motion")).toBe("true");
     expect(summary.getAttribute("data-pulsing")).toBe("false");
-    expect(summary.className).not.toContain("motion-fold");
+    expect(summary.querySelector(".motion-fold")).toBeNull();
   });
 });

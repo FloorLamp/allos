@@ -304,30 +304,30 @@ function Attention({ data }: { data: HouseholdCardData }) {
                 subjectName={subjectName}
               />
             ) : (
-              // No persisted state, collapsed on every visit, and the count is
-              // never hidden — the ALWAYS-PRESENT contract, not an always-full one.
+              // A plain <details>: no persisted state, collapsed on every visit, and
+              // the count is never hidden — the ALWAYS-PRESENT contract, not an
+              // always-full one.
               <Disclosure
                 key={`aggregate:${node.kind}`}
                 data-testid="household-dose-aggregate"
-                summaryTestId="household-dose-aggregate-summary"
-                summaryClassName="flex items-center gap-2 rounded-md py-0.5 transition hover:bg-slate-50 dark:hover:bg-ink-850"
-                summary={
-                  <>
-                    <IconPill
-                      className="h-4 w-4 shrink-0 text-slate-500 dark:text-slate-400"
-                      stroke={1.75}
-                      aria-hidden="true"
-                    />
-                    <span className="min-w-0 flex-1 truncate text-sm font-medium text-slate-700 dark:text-slate-200">
-                      {aggregateLabel(node.kind, node.items.length)} due
-                    </span>
-                    <span className="shrink-0 whitespace-nowrap text-xs font-medium text-brand-700 dark:text-brand-400">
-                      <span className="group-open:hidden">Show</span>
-                      <span className="hidden group-open:inline">Hide</span>
-                    </span>
-                  </>
-                }
               >
+                <summary
+                  data-testid="household-dose-aggregate-summary"
+                  className="flex items-center gap-2 rounded-md py-0.5 transition hover:bg-slate-50 dark:hover:bg-ink-850"
+                >
+                  <IconPill
+                    className="h-4 w-4 shrink-0 text-slate-500 dark:text-slate-400"
+                    stroke={1.75}
+                    aria-hidden="true"
+                  />
+                  <span className="min-w-0 flex-1 truncate text-sm font-medium text-slate-700 dark:text-slate-200">
+                    {aggregateLabel(node.kind, node.items.length)} due
+                  </span>
+                  <span className="shrink-0 whitespace-nowrap text-xs font-medium text-brand-700 dark:text-brand-400">
+                    <span className="group-open:hidden">Show</span>
+                    <span className="hidden group-open:inline">Hide</span>
+                  </span>
+                </summary>
                 <div className="mt-2 space-y-2 border-l-2 border-black/5 pl-2 dark:border-white/10">
                   {node.items.map((item) => (
                     <DueDoseRow

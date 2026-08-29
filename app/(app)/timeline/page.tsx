@@ -363,11 +363,8 @@ function EventCard({
   }
 
   return (
-    <Disclosure
-      className={`group block ${shellClass}`}
-      open={defaultOpen}
-      summary={collapsed}
-    >
+    <Disclosure className={`group block ${shellClass}`} open={defaultOpen}>
+      <summary>{collapsed}</summary>
       <div className="mt-3 border-t border-black/5 pt-3 text-sm sm:ml-11 dark:border-white/10">
         <dl className="space-y-1.5">
           {detailItems.map((item, index) => (
