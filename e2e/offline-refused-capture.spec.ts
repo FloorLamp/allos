@@ -551,6 +551,17 @@ test("a refused workout capture at close says so and claims no sync", async ({
   // first refusal ends that close's attempts — and this test now pins it on BOTH
   // sides of the reconnect.
   //
+  // THE GREEN AND THE RED ARE NOT SYMMETRIC, and a reviewer re-deriving this from
+  // one run needs to know which is which. The green is TIMING-INDEPENDENT: with the
+  // fix in place no attempt is MADE after the refusal, so there is no race left to
+  // lose and this cannot rot into a flake. The RED is racy — reverting the fix and
+  // running this five times gave 4 failed / 1 passed, the green one being the run
+  // where the ~80ms burst had already died before the reconnect landed. That is a
+  // property of the DEFECT, not a weakness of the guard, and it is why a single
+  // pre-fix run is not evidence the guard is broken. Widening the burst with
+  // delayed route aborts would buy 5-of-5 by replacing real offline emulation with
+  // a parallel harness; the one-in-five was judged the better trade (#3170).
+  //
   // FIXTURE OWNERSHIP, still (#3163/#3173). Profile 1 is shared with every other
   // spec on this worker, and a started-but-unended row there is what workout
   // presence reads as an ACTIVE workout — the app-wide dock then haunts every later

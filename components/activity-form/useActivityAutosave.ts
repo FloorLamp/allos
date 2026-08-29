@@ -59,7 +59,8 @@ export interface ActivityAutosave {
   savableId: () => number | null;
   hasRow: boolean;
   dirty: boolean;
-  // Durably commit the latest edit before the form closes (bounded, ~0.5s cap).
+  // Durably commit the latest edit before the form closes. Bounded in ITERATIONS
+  // (20), not in time — see the loop for what that is and is not worth.
   flushBeforeClose: () => Promise<void>;
   // Mark the row deleted: freeze the saved signature at the current form so the
   // unmount flush can't re-create it, and drop the created id.
@@ -517,9 +518,17 @@ export function useActivityAutosave({
   // full-suite e2e census: an RPE half-point nudged just before close+navigate was
   // lost because the flush never landed.)
   async function flushBeforeClose() {
-    // Bounded: await an in-flight save to settle, then persist the latest, until
-    // the saved signature matches the current form (or we give up after ~0.5s so
-    // a wedged save never blocks the close).
+    // Await an in-flight save to settle, then persist the latest, until the saved
+    // signature matches the current form — or until 20 iterations have gone by.
+    //
+    // THE BOUND IS 20 ITERATIONS, NOT A CLOCK, and this comment used to claim a
+    // "~0.5s cap" that nothing enforces. Only the in-flight branch sleeps (25ms);
+    // the persist branch AWAITS A ROUND TRIP of whatever length the server takes,
+    // so the real elapsed time is 20 × that. Offline it is fast — ~80ms measured
+    // for the whole loop, since every attempt fails at once — and against a slow
+    // or wedged server it is unbounded, which is the opposite of what the old
+    // number promised. Anyone reasoning about how long a close can block should
+    // read it as "20 attempts", and anyone adding a time cap should add one.
     for (let i = 0; i < 20 && canSave && formSig !== savedSigRef.current; i++) {
       // The capture was refused (#3170): the signature will never advance, so the
       // remaining iterations are attempts that can only contradict the sentence the
