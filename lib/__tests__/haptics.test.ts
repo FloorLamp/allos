@@ -75,15 +75,12 @@ describe("toastHaptic", () => {
     ["an explicit success confirms", { tone: "success" as const }, "commit"],
     ["an error is refused out loud", { tone: "error" as const }, "reject"],
     ["a headless poster is silent", { silent: true }, null],
-    [
-      "silence beats the tone",
-      { tone: "error" as const, silent: true },
-      null,
-    ],
-  ] as [string, { tone?: "success" | "error"; silent?: boolean }, HapticEvent | null][])(
-    "%s",
-    (_name, options, expected) => {
-      expect(toastHaptic(options)).toBe(expected);
-    }
-  );
+    ["silence beats the tone", { tone: "error" as const, silent: true }, null],
+  ] as [
+    string,
+    { tone?: "success" | "error"; silent?: boolean },
+    HapticEvent | null,
+  ][])("%s", (_name, options, expected) => {
+    expect(toastHaptic(options)).toBe(expected);
+  });
 });

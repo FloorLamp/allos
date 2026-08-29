@@ -46,7 +46,9 @@ import FactChipRow, {
   FactAddChip,
   FactChip,
 } from "@/components/facts/FactChipRow";
-import FactEditorHost, { useFactEditor } from "@/components/facts/FactEditorHost";
+import FactEditorHost, {
+  useFactEditor,
+} from "@/components/facts/FactEditorHost";
 import EquipmentRegistryLink from "./EquipmentRegistryLink";
 import EquipmentQuickAdd, { categoryForVariant } from "./EquipmentQuickAdd";
 import type { PlateTarget } from "./useActivityParts";
@@ -263,7 +265,11 @@ export default function ActivityPartsList({
               : equipmentList.find((x) => x.id === id);
           const cat = (row?.category ?? "").trim().toLowerCase();
           const wantEquip =
-            cat === "barbell" ? "Barbell" : cat === "machine" ? "Machine" : null;
+            cat === "barbell"
+              ? "Barbell"
+              : cat === "machine"
+                ? "Machine"
+                : null;
           const name =
             wantEquip !== null && v.group.equipment.includes(wantEquip)
               ? composeVariant(v.group, wantEquip)
@@ -378,7 +384,9 @@ export default function ActivityPartsList({
               ActivityEquipmentPicker renders for non-strength activities (#592). ONE
               PER FORM, not one per exercise: only one of these panels is ever open. */}
           <EquipmentRegistryLink testId="strength-equipment-link">
-            {equipmentList.length === 0 ? "Add equipment →" : "Manage equipment"}
+            {equipmentList.length === 0
+              ? "Add equipment →"
+              : "Manage equipment"}
           </EquipmentRegistryLink>
         </div>
         {addingEquipment && (
@@ -386,7 +394,9 @@ export default function ActivityPartsList({
             // Default the category from the lift's built-in variant when it's
             // unambiguous ("Machine Chest Press" → Machine); otherwise the field is
             // empty and required rather than guessed.
-            defaultCategory={categoryForVariant(variant?.equipment ?? defaultEq)}
+            defaultCategory={categoryForVariant(
+              variant?.equipment ?? defaultEq
+            )}
             unit={units.weightUnit}
             onCreated={(eq) => {
               // Editor-local state gains the row (so every OTHER part of this same open
@@ -587,8 +597,7 @@ export default function ActivityPartsList({
                   }
                 />
               )}
-              {valid && t === "strength" &&
-                partEquipmentFact(p, pi, issue)}
+              {valid && t === "strength" && partEquipmentFact(p, pi, issue)}
               {valid && t === "strength" && (
                 <StrengthSets
                   part={p}

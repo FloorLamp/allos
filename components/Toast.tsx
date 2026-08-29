@@ -236,44 +236,47 @@ export function ToastProvider({ children }: { children: React.ReactNode }) {
   // surface — which is the whole reason haptics mount on substrates rather than on
   // hand-placed calls. It fires only for a toast that actually posts: a scope-refused
   // or unowned keyed post has announced nothing, so it must not buzz either.
-  const toast = useCallback<ToastFn>((message, options = {}) => {
-    if (!acceptsProfileToast(profileScopeRef.current, options)) return;
-    if (options.key != null) {
-      if (options.onlyIfOwner) {
-        if (
-          options.owner == null ||
-          keyedOwnersRef.current.get(options.key) !== options.owner
-        )
-          return;
-      } else if (options.owner != null) {
-        keyedOwnersRef.current.set(options.key, options.owner);
-      } else {
-        // A legacy/global keyed post is itself a newer claim.
-        keyedOwnersRef.current.delete(options.key);
+  const toast = useCallback<ToastFn>(
+    (message, options = {}) => {
+      if (!acceptsProfileToast(profileScopeRef.current, options)) return;
+      if (options.key != null) {
+        if (options.onlyIfOwner) {
+          if (
+            options.owner == null ||
+            keyedOwnersRef.current.get(options.key) !== options.owner
+          )
+            return;
+        } else if (options.owner != null) {
+          keyedOwnersRef.current.set(options.key, options.owner);
+        } else {
+          // A legacy/global keyed post is itself a newer claim.
+          keyedOwnersRef.current.delete(options.key);
+        }
       }
-    }
-    const tone = options.tone ?? "success";
-    const cue = toastHaptic({ tone, silent: options.silent });
-    if (cue) haptic(cue);
-    const duration =
-      options.duration === undefined
-        ? DEFAULT_DURATION[tone]
-        : options.duration;
-    setToasts((list) =>
-      upsertToast(list, {
-        id: ++seq,
-        key: options.key,
-        revision: 0,
-        tone,
-        message,
-        duration,
-        action: options.action,
-        profileId: options.profileId,
-        profileToken: options.profileToken,
-        owner: options.owner,
-      })
-    );
-  }, [haptic]);
+      const tone = options.tone ?? "success";
+      const cue = toastHaptic({ tone, silent: options.silent });
+      if (cue) haptic(cue);
+      const duration =
+        options.duration === undefined
+          ? DEFAULT_DURATION[tone]
+          : options.duration;
+      setToasts((list) =>
+        upsertToast(list, {
+          id: ++seq,
+          key: options.key,
+          revision: 0,
+          tone,
+          message,
+          duration,
+          action: options.action,
+          profileId: options.profileId,
+          profileToken: options.profileToken,
+          owner: options.owner,
+        })
+      );
+    },
+    [haptic]
+  );
 
   const api = useMemo<ToastApi>(
     () => ({

@@ -69,29 +69,34 @@ describe("the toast provider carries commit and reject (#3699)", () => {
 
   it.each([
     ["the default tone", undefined, [[...HAPTIC_PATTERNS.commit]]],
-    ["an explicit success", { tone: "success" as const }, [[...HAPTIC_PATTERNS.commit]]],
+    [
+      "an explicit success",
+      { tone: "success" as const },
+      [[...HAPTIC_PATTERNS.commit]],
+    ],
     ["an error", { tone: "error" as const }, [[...HAPTIC_PATTERNS.reject]]],
     ["a headless poster", { silent: true }, []],
-  ] as [string, { tone?: "success" | "error"; silent?: boolean } | undefined, number[][]][])(
-    "%s",
-    (_name, options, expected) => {
-      const calls = stubVibrate();
-      render(
-        <ToastProvider>
-          <Poster options={options} />
-        </ToastProvider>
-      );
+  ] as [
+    string,
+    { tone?: "success" | "error"; silent?: boolean } | undefined,
+    number[][],
+  ][])("%s", (_name, options, expected) => {
+    const calls = stubVibrate();
+    render(
+      <ToastProvider>
+        <Poster options={options} />
+      </ToastProvider>
+    );
 
-      act(() => {
-        fireEvent.click(screen.getByRole("button", { name: "Post" }));
-      });
+    act(() => {
+      fireEvent.click(screen.getByRole("button", { name: "Post" }));
+    });
 
-      // The toast itself is posted either way — `silent` is about the hand, never
-      // about what is on screen.
-      expect(screen.getByText("Saved.")).toBeTruthy();
-      expect(calls).toEqual(expected);
-    }
-  );
+    // The toast itself is posted either way — `silent` is about the hand, never
+    // about what is on screen.
+    expect(screen.getByText("Saved.")).toBeTruthy();
+    expect(calls).toEqual(expected);
+  });
 
   it("stays silent under prefers-reduced-motion (#1307)", () => {
     stubReducedMotion(true);
@@ -121,7 +126,11 @@ describe("SegmentedControl answers the finger with select (#3699)", () => {
   ];
 
   it.each([
-    ["a segment that changes the value", "Bravo", [[...HAPTIC_PATTERNS.select]]],
+    [
+      "a segment that changes the value",
+      "Bravo",
+      [[...HAPTIC_PATTERNS.select]],
+    ],
     ["the segment already selected", "Alpha", []],
   ] as [string, string, number[][]][])("%s", (_name, label, expected) => {
     const calls = stubVibrate();
