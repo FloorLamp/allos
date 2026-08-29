@@ -16,7 +16,7 @@ import {
   LOG_SHEET_CONTEXT_RESERVE_PX,
   LOG_SHEET_ROW_BLOCK_PX,
 } from "@/lib/log-sheet";
-import { TAP_FLOOR_PX } from "@/lib/tap-floor-tokens";
+import { CONTROL_BOX_PX, TAP_FLOOR_PX } from "@/lib/tap-floor-tokens";
 
 const PHONE_430 = { viewport: { width: 430, height: 932 }, hasTouch: true };
 const PHONE_390 = { viewport: { width: 390, height: 844 }, hasTouch: true };
@@ -158,18 +158,61 @@ test("every segment keeps the sheet still and fills the phone width (#3675)", as
 
     await page.setViewportSize(PHONE_390.viewport);
     const baseline390 = await sheetGeometry(sheet);
+    // THE BOX, THEN THE FLOOR IT MEETS EFFECTIVELY (#3938, extended to segments
+    // by #3954). This asserted a RENDERED 44 and went red when the segments
+    // joined the control box — correctly, because 44 is the number that moved.
+    // What replaces it is stronger rather than weaker: the rendered height is
+    // `--control-box` as an EQUALITY, so a segment that grows one reds too, and
+    // the 44 is met by the reach a coarse pointer gets around that box.
+    //
+    // ONLY THE BLOCK INSET COUNTS, AND THAT IS PART OF THE CLAIM. A segmented
+    // track's options tile their line with no gap, so they take no INLINE reach —
+    // one taken from the neighbour would move the boundary between two segments
+    // rather than enlarge either. Adding `top`'s inset on both axes would credit
+    // this track with 12px of inline target it does not have, so the inset is
+    // read per axis and the inline one is asserted to be zero.
+    const heights390: number[] = [];
     for (let index = 0; index < 4; index += 1) {
       const option = options.nth(index);
       await option.click();
       await expect(option).toHaveAttribute("aria-pressed", "true");
-      const optionBox = await box(options.nth(index), `390px segment ${index}`);
-      expect(optionBox.height + PX_EPSILON).toBeGreaterThanOrEqual(
-        TAP_FLOOR_PX
-      );
+      // Read back from the render, not from a class list: `@media (pointer:
+      // coarse)` is a real condition and this project's history is a floor that
+      // read correctly in the stylesheet and never reached the element (#3514).
+      const measured = await option.evaluate((el) => {
+        const after = getComputedStyle(el, "::after");
+        const side = (raw: string) => {
+          const inset = Math.abs(Number.parseFloat(raw));
+          return after.content === "none" || !Number.isFinite(inset)
+            ? 0
+            : inset;
+        };
+        return {
+          height: el.getBoundingClientRect().height,
+          block: side(after.top),
+          inline: side(after.left),
+        };
+      });
+      heights390.push(measured.height);
+      expect(
+        measured.inline,
+        `390px segment ${index} reaches sideways into the segment beside it; a tiled track has no gap to spend`
+      ).toBe(0);
+      expect(
+        measured.height + 2 * measured.block + PX_EPSILON,
+        `390px segment ${index}: ${measured.height}px rendered + 2x${measured.block}px block reach`
+      ).toBeGreaterThanOrEqual(TAP_FLOOR_PX);
       // The AC's own measurement: byte-identical panel height on all four
       // segments at 390px, Train (two rows) included (#3736).
       expectSameGeometry(await sheetGeometry(sheet), baseline390);
     }
+    // One box across the strip, not four that each happen to clear a floor. The
+    // four labels are a fixed vocabulary (`SEGMENT_LABELS` in lib/log-sheet.ts),
+    // so none of them wraps at a quarter of 390 and the equality is exact.
+    expect(
+      [...new Set(heights390.map((height) => Math.round(height)))],
+      `the 390px track renders more than one segment height: ${heights390.join(", ")}`
+    ).toEqual([CONTROL_BOX_PX]);
 
     // ...and the slack is all in ONE place. On Train — the fewest rows, so the
     // segment carrying the most of it — nothing sits between the last row and
