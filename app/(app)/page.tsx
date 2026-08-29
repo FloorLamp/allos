@@ -149,6 +149,7 @@ import {
   nextOnboardingStep,
   ONBOARDING_STEP_COUNT,
   onboardingNeedsSetup,
+  remainingOnboardingChecklistSuggestions,
 } from "@/lib/onboarding";
 import { getOnboardingDataPresence } from "@/lib/onboarding-data";
 import DashboardAttentionAtom from "@/components/dashboard/DashboardAttentionAtom";
@@ -1096,11 +1097,14 @@ async function renderDashboard(
       (entry) =>
         dashboardAttentionCandidateId(entry.key) === candidate.candidateId
     )!;
-    aheadPresentations.set(candidate.candidateId, {
+    // ONE row shape serves Ahead and the tail (#3365): where this item is going
+    // and when it is due is the same sentence in both lanes.
+    const attentionRow = {
       label: item.title,
       detail: upcomingDueText(item, on, formatPrefs),
       href: item.href,
-    });
+    };
+    aheadPresentations.set(candidate.candidateId, attentionRow);
     add(
       candidate,
       <DashboardAttentionAtom
@@ -1108,7 +1112,8 @@ async function renderDashboard(
         today={on}
         formatPrefs={formatPrefs}
         canWrite={canWrite}
-      />
+      />,
+      attentionRow
     );
   }
   sourceOrder += attentionItems.length;
@@ -1201,7 +1206,13 @@ async function renderDashboard(
           value={cockpit.status.temperature.value}
           detail={cockpit.status.temperature.when}
           href={href}
-        />
+        />,
+        {
+          label: `${cockpit.displayName}'s latest temperature`,
+          value: cockpit.status.temperature.value,
+          detail: cockpit.status.temperature.when,
+          href,
+        }
       );
     }
     if (cockpit.status.lastMeds) {
@@ -1222,7 +1233,13 @@ async function renderDashboard(
           value={[medication.name, medication.dose].filter(Boolean).join(" · ")}
           detail={medication.when}
           href={href}
-        />
+        />,
+        {
+          label: `${cockpit.displayName}'s latest illness medicine`,
+          value: [medication.name, medication.dose].filter(Boolean).join(" · "),
+          detail: medication.when,
+          href,
+        }
       );
     }
   }
@@ -1250,9 +1267,9 @@ async function renderDashboard(
         subject: { scope: "login" },
         sourceOrder: sourceOrder++,
       }),
-      <div className="card">
+      <DashboardAtomCard title="Household illness history">
         <HouseholdHistoryPromoLink />
-      </div>
+      </DashboardAtomCard>
     );
   }
 
@@ -1292,7 +1309,12 @@ async function renderDashboard(
           title="Session complete"
           value={value}
           href="/training"
-        />
+        />,
+        {
+          value,
+          href: "/training",
+          moment: { title: "Session complete", href: "/training" },
+        }
       )
     );
     sourceOrder += recapFacts.length;
@@ -1304,6 +1326,12 @@ async function renderDashboard(
       record.equipmentId,
       record.kind
     );
+    const strengthValue =
+      record.kind === "1rm"
+        ? record.bodyweight
+          ? `BW × ${record.reps}`
+          : `${fmtWeight(record.weightKg, units.weightUnit)} × ${record.reps}`
+        : `${fmtWeight(record.weightKg, units.weightUnit)} top`;
     add(
       progressCandidates.trainingResult(
         { subject: profileSubject, sourceOrder: sourceOrder++ },
@@ -1313,16 +1341,16 @@ async function renderDashboard(
       ),
       <DashboardAtomCard
         title={loadContextLabel(record.exercise, record.equipment)}
-        value={
-          record.kind === "1rm"
-            ? record.bodyweight
-              ? `BW × ${record.reps}`
-              : `${fmtWeight(record.weightKg, units.weightUnit)} × ${record.reps}`
-            : `${fmtWeight(record.weightKg, units.weightUnit)} top`
-        }
+        value={strengthValue}
         detail="New personal record"
         href="/training?tab=analyze"
-      />
+      />,
+      {
+        label: loadContextLabel(record.exercise, record.equipment),
+        value: strengthValue,
+        detail: "New personal record",
+        href: "/training?tab=analyze",
+      }
     );
   });
   todayCardioRecords.forEach((record) => {
@@ -1345,7 +1373,13 @@ async function renderDashboard(
         value={value}
         detail="New personal record"
         href="/training?tab=analyze"
-      />
+      />,
+      {
+        label: record.activity,
+        value,
+        detail: "New personal record",
+        href: "/training?tab=analyze",
+      }
     );
   });
 
@@ -1377,7 +1411,13 @@ async function renderDashboard(
           detail={`Setup step ${step} of ${ONBOARDING_STEP_COUNT}`}
           href={`/onboarding?step=${step}` as AppRoute}
           actionLabel="Continue"
-        />
+        />,
+        {
+          label: stepLabels[step - 1],
+          detail: `Setup step ${step} of ${ONBOARDING_STEP_COUNT}`,
+          href: `/onboarding?step=${step}` as AppRoute,
+          actionLabel: "Continue",
+        }
       );
     }
     add(
@@ -1389,7 +1429,12 @@ async function renderDashboard(
         title="Profile setup progress"
         value={`${firstRemainingStep - 1} of ${ONBOARDING_STEP_COUNT} steps complete`}
         href="/onboarding"
-      />
+      />,
+      {
+        label: "Profile setup progress",
+        value: `${firstRemainingStep - 1} of ${ONBOARDING_STEP_COUNT} steps complete`,
+        href: "/onboarding",
+      }
     );
   }
   if (onboardingChecklist && onboardingChecklistCompletion) {
@@ -1401,7 +1446,15 @@ async function renderDashboard(
       <OnboardingChecklist
         focuses={onboardingChecklist.focuses}
         completion={onboardingChecklistCompletion}
-      />
+      />,
+      {
+        label: "Getting started",
+        value: `${remainingOnboardingChecklistSuggestions(
+          onboardingChecklist.focuses,
+          onboardingChecklistCompletion
+        ).length} suggestions left`,
+        href: "/onboarding",
+      }
     );
   }
 
@@ -1466,7 +1519,13 @@ async function renderDashboard(
           key,
           on
         ),
-        <DashboardAtomCard title={title} value={value} href="/trends#body" />
+        <DashboardAtomCard title={title} value={value} href="/trends#body" />,
+        {
+          label: title,
+          value,
+          href: "/trends#body",
+          moment: { title: "Today's check-in", href: "/trends#body" },
+        }
       );
     });
     sourceOrder += moodReadings.length;
@@ -1482,16 +1541,15 @@ async function renderDashboard(
         },
         med.id
       ),
-      <div className="card">
+      <DashboardAtomCard title={`Log ${med.name}`} testId="prn-atom">
         <QuickLogPrnContent
           meds={[med]}
           tz={timezone}
           timeFormat={formatPrefs.timeFormat}
-          title="Log a dose"
           compact
           showPageLink={false}
         />
-      </div>
+      </DashboardAtomCard>
     )
   );
   sourceOrder += checkinPrnMeds.length;
@@ -1506,8 +1564,9 @@ async function renderDashboard(
         },
         on
       ),
-      <div className="card">
+      <DashboardAtomCard title="Daily symptoms" testId="symptom-log-atom">
         <SymptomLogBar
+          showTitle={false}
           date={on}
           initial={getSymptomSeveritiesOnDate(profile.id, on)}
           initialNotes={getSymptomNotesOnDate(profile.id, on)}
@@ -1518,7 +1577,7 @@ async function renderDashboard(
           temperatureUnit={units.temperatureUnit}
           textIntakeEnabled={isTaskConfigured("symptom-map")}
         />
-      </div>
+      </DashboardAtomCard>
     );
   }
 
@@ -1534,7 +1593,13 @@ async function renderDashboard(
         rec.id,
         `coaching.${coachingDedupeKey(rec.id)}`
       ),
-      <CoachingRecommendationAtom recommendation={rec} />
+      <CoachingRecommendationAtom recommendation={rec} />,
+      {
+        label: rec.title,
+        detail: rec.detail,
+        href: "/training",
+        moment: { title: "Coaching", href: "/training" },
+      }
     )
   );
   sourceOrder += coachingRecs.length;

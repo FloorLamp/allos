@@ -106,6 +106,24 @@ function momentBlocks(
   }));
 }
 
+// Consecutive row blocks share ONE bordered container, so the group reads as a single
+// index rather than a stack of framed strips; a block that renders its members' nodes
+// (a Show-everything entry that hosts a control, and therefore declares no row) breaks
+// the run and sits between them in the ranker's order, unmoved.
+function tailRuns(
+  blocks: readonly MomentBlockModel[],
+  rendersAsRow: (placement: EverythingPlacement) => boolean
+): { rows: boolean; blocks: MomentBlockModel[] }[] {
+  const runs: { rows: boolean; blocks: MomentBlockModel[] }[] = [];
+  for (const block of blocks) {
+    const rows = block.members.every(rendersAsRow);
+    const last = runs.at(-1);
+    if (last && last.rows === rows && rows) last.blocks.push(block);
+    else runs.push({ rows, blocks: [block] });
+  }
+  return runs;
+}
+
 function MomentBlock({
   block,
   presentations,
@@ -162,13 +180,17 @@ export default function DashboardPlacementCanvas({
   attentionBadgeCount,
   illnessGroupNode,
 }: DashboardPlacementCanvasProps) {
-  // A tail row is rendered from its presentation and a card from its node, so each
-  // lane names the one it cannot render without. Both are hard failures rather than a
-  // skipped entry: the exact-once completeness the tail exists for is a claim about
-  // what is ON SCREEN, and a candidate quietly dropped for want of a presentation
-  // would keep the manifest honest while breaking the guarantee it stands for.
+  // A REPORTING tail entry renders as a row and needs a row presentation; every other
+  // placement renders its node. Read / Understand / Setup declare a row, so the fact
+  // that a Show-everything entry HOSTS A CONTROL is the one thing that keeps it in a
+  // card there — and that is a claim the page makes by declaring no row, not a
+  // per-source branch here. Either way the entry must render: exact-once completeness
+  // is a claim about what is ON SCREEN, so a candidate that has neither is a hard
+  // failure rather than a silent omission.
   const rendersAsRow = (placement: DashboardPlacement) =>
-    placement.lane === "everything" && ROW_GROUPS.has(placement.everythingGroup);
+    placement.lane === "everything" &&
+    ROW_GROUPS.has(placement.everythingGroup) &&
+    standingPresentations.get(placement.candidate.candidateId) != null;
   const missingNode = placements.find(
     (placement) =>
       placement.lane !== "standing" &&
@@ -184,16 +206,6 @@ export default function DashboardPlacementCanvas({
   if (missingNode) {
     throw new Error(
       `Missing dashboard candidate node for ${missingNode.candidate.candidateId} in ${missingNode.lane}`
-    );
-  }
-  const missingRow = placements.find(
-    (placement) =>
-      rendersAsRow(placement) &&
-      standingPresentations.get(placement.candidate.candidateId) == null
-  );
-  if (missingRow) {
-    throw new Error(
-      `Missing dashboard row presentation for ${missingRow.candidate.candidateId} in ${(missingRow as Extract<DashboardPlacement, { lane: "everything" }>).everythingGroup}`
     );
   }
   const missingAhead = placements.find(
@@ -363,31 +375,46 @@ export default function DashboardPlacementCanvas({
                   <h3 className="mb-2 text-xs font-semibold tracking-wide text-slate-500 uppercase dark:text-slate-400">
                     {EVERYTHING_LABELS[group]}
                   </h3>
-                  {ROW_GROUPS.has(group) ? (
-                    <div
-                      className="band overflow-hidden rounded-xl border border-(--border) bg-surface"
-                      data-testid={`dashboard-everything-${group}`}
-                    >
-                      {momentBlocks(members).map((block) => (
-                        <MomentBlock
-                          key={block.key}
-                          block={block}
-                          presentations={standingPresentations}
-                        />
-                      ))}
-                    </div>
-                  ) : (
-                    <div
-                      className="grid grid-cols-1 gap-3"
-                      data-testid={`dashboard-everything-${group}`}
-                    >
-                      {members.map((placement) => (
-                        <Fragment key={placement.candidate.candidateId}>
-                          {nodeFor(placement)}
-                        </Fragment>
-                      ))}
-                    </div>
-                  )}
+                  <div
+                    className="grid grid-cols-1 gap-3"
+                    data-testid={`dashboard-everything-${group}`}
+                  >
+                    {ROW_GROUPS.has(group)
+                      ? tailRuns(momentBlocks(members), rendersAsRow).map(
+                          (run) =>
+                            run.rows ? (
+                              <div
+                                key={run.blocks[0].key}
+                                className="band overflow-hidden rounded-xl border border-(--border) bg-surface"
+                              >
+                                {run.blocks.map((block) => (
+                                  <MomentBlock
+                                    key={block.key}
+                                    block={block}
+                                    presentations={standingPresentations}
+                                  />
+                                ))}
+                              </div>
+                            ) : (
+                              <Fragment key={run.blocks[0].key}>
+                                {run.blocks.flatMap((block) =>
+                                  block.members.map((placement) => (
+                                    <Fragment
+                                      key={placement.candidate.candidateId}
+                                    >
+                                      {nodeFor(placement)}
+                                    </Fragment>
+                                  ))
+                                )}
+                              </Fragment>
+                            )
+                        )
+                      : members.map((placement) => (
+                          <Fragment key={placement.candidate.candidateId}>
+                            {nodeFor(placement)}
+                          </Fragment>
+                        ))}
+                  </div>
                 </section>
               );
             })}
