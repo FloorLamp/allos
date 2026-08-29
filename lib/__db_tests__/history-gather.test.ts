@@ -693,6 +693,60 @@ describe("every kind's edit payload carries the stored row", () => {
   });
 });
 
+// ── THE TITLE LINK IS A PER-ITEM QUESTION ────────────────────────────────────
+//
+// #3958's rule: a title answers "does this thing have a home" — a dose item's intake
+// surface, a body measure's metric page — and "food groups have no page, those titles
+// stay plain". Substance shipped with `/records/specialty/substance-use` on EVERY row
+// (#4045 §5): one page-level destination repeated down the column, which is an ad
+// wearing a home's clothes and inconsistent with the plain food titles beside it. The
+// substance page renders per-substance cards but exposes no anchor to one, so a
+// substance is in the food-groups class until it does.
+//
+// ASKED AS A COMPARISON BETWEEN TWO ROWS OF THE SAME KIND, not against a constant: a
+// title is a page ad exactly when two different items of one kind resolve to the same
+// destination, which an assertion on one row's href could never see.
+describe("a row title links only to a home of its own (#3958/#4045)", () => {
+  it("gives two substances of one profile no destination at all", () => {
+    const p = profile("history substance titles", 1990);
+    const loginId = login();
+    for (const [substance, n] of [
+      ["nicotine", 3],
+      ["cannabis", 1],
+    ] as const) {
+      db.prepare(
+        `INSERT INTO substance_daily_totals (profile_id, substance, date, units)
+         VALUES (?, ?, ?, ?)`
+      ).run(p, substance, YESTERDAY, n);
+    }
+    const rows = gatherHistoryLog(p, {
+      loginId,
+      limit: 200,
+      kind: "substance",
+    }).rows;
+    expect(rows).toHaveLength(2);
+    expect(rows.map((row) => row.href)).toEqual([null, null]);
+  });
+
+  it("still gives two body measures their own metric pages", () => {
+    // THE CONVERSE, in the same commit: "no substance title links" passes just as well
+    // on a tree where every title everywhere went plain, and body is the kind whose
+    // titles must stay live. Two measures, two distinct destinations — a comparison, so
+    // a regression to one shared metric page fails here rather than reading as green.
+    const p = profile("history body titles");
+    const loginId = login();
+    db.prepare(
+      `INSERT INTO body_metrics (profile_id, date, weight_kg, resting_hr)
+       VALUES (?, ?, 70, 54)`
+    ).run(p, YESTERDAY);
+    const hrefs = gatherHistoryLog(p, { loginId, limit: 200, kind: "body" })
+      .rows.map((row) => row.href)
+      .filter((href): href is string => href != null);
+    expect(hrefs).toHaveLength(2);
+    expect(new Set(hrefs).size).toBe(2);
+  });
+});
+
 // ── FILTERS THAT NOTHING CAN SATISFY DEGRADE, AND SOURCES PRINT THEIR LABEL ──
 describe("the media filter degrades, and body rows name their source", () => {
   it("does not assert emptiness over a record no kind can filter", () => {
