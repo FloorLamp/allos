@@ -745,7 +745,7 @@ test.describe("Sleep page (#1066)", () => {
       const hero = main.getByTestId("sleep-hero");
       await expect(hero).toContainText("23:00");
       await expect(hero).toContainText("04:00");
-      const usualTimes = main.getByTestId("sleep-usual-times");
+      const usualTimes = hero.getByTestId("sleep-usual-times");
       await expect(usualTimes).toHaveText("Usually ~23:00 – 07:00.");
       const strip = main.getByTestId("sleep-consistency");
       await expect(strip).toBeVisible();
@@ -778,9 +778,9 @@ test.describe("Sleep page (#1066)", () => {
       const hero12 = page.getByRole("main").getByTestId("sleep-hero");
       await expect(hero12).toContainText("11:00 PM");
       await expect(hero12).toContainText("4:00 AM");
-      await expect(
-        page.getByRole("main").getByTestId("sleep-usual-times")
-      ).toHaveText("Usually ~11:00 PM – 7:00 AM.");
+      await expect(hero12.getByTestId("sleep-usual-times")).toHaveText(
+        "Usually ~11:00 PM – 7:00 AM."
+      );
       await expect(
         page.getByRole("main").getByTestId("sleep-consistency")
       ).toContainText("PM");
