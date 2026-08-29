@@ -22,7 +22,11 @@
 import { describe, it, expect } from "vitest";
 import { db } from "@/lib/db";
 import { setStoredAge } from "@/lib/settings/profile-attrs";
-import { deleteAdministration } from "@/app/(app)/nutrition/intake-actions";
+import { setTimezone } from "@/lib/settings";
+import {
+  deleteAdministration,
+  updateHistoricalDose,
+} from "@/app/(app)/nutrition/intake-actions";
 import {
   deleteFoodLogEvent,
   updateFoodLogEvent,
@@ -78,6 +82,20 @@ const doseLogCount = (logId: number) =>
       .prepare("SELECT COUNT(*) AS n FROM intake_item_logs WHERE id = ?")
       .get(logId) as { n: number }
   ).n;
+
+// The amend posts the ids `HistoricalDoseForm` renders — the ITEM and the DOSE, not
+// just the log — so the table resolves them from the one id `seed` hands back.
+const doseIdsOf = (logId: number) =>
+  db
+    .prepare("SELECT item_id AS itemId, dose_id AS doseId FROM intake_item_logs WHERE id = ?")
+    .get(logId) as { itemId: number; doseId: number };
+
+const doseAmountOf = (logId: number) =>
+  (
+    db
+      .prepare("SELECT amount FROM intake_item_logs WHERE id = ?")
+      .get(logId) as { amount: string | null } | undefined
+  )?.amount ?? null;
 
 function seedFoodEvent(profileId: number, date: string): number {
   return Number(
@@ -185,13 +203,24 @@ const KINDS: Kind[] = [
   {
     name: "dose",
     seed: seedDoseLog,
-    // The dose row's ⋯ offers Edit (HistoricalDoseForm, its own action) and Delete.
-    // The delete is the one this table drives; the amend is covered below, because it
-    // posts through a different component and carries the subject's timezone with it.
-    read: (id) => doseLogCount(id),
-    corrected: 1,
-    correct: (id) => ({ log_id: id }),
-    correctFn: async () => undefined,
+    // The dose row's ⋯ offers Edit (updateHistoricalDose, through the medication
+    // domain's own HistoricalDoseForm) and Delete (deleteAdministration). BOTH are
+    // driven here. They were not: the amend sat out behind a `correctFn` stub and a
+    // comment claiming it was "covered below", and there was no below — so the tenth
+    // of these ten actions had no action-tier coverage at all while the file said it
+    // did. The amend posts the row's `date` with no `time`, which is the amendment
+    // that states nothing about the intake instant and moves the AMOUNT alone.
+    read: (id) => doseAmountOf(id),
+    corrected: "250 mg",
+    correct: (id, date) => ({
+      log_id: id,
+      id: doseIdsOf(id).itemId,
+      dose_id: doseIdsOf(id).doseId,
+      date,
+      time: "",
+      amount: "250 mg",
+    }),
+    correctFn: (form) => updateHistoricalDose(form),
     remove: (id) => ({ log_id: id }),
     removeFn: (form) => deleteAdministration(form),
     present: (id) => doseLogCount(id) === 1,
@@ -273,13 +302,11 @@ describe("the record's corrections gate the ROW's profile (#4009 item 1)", () =>
       const id = kind.seed(stranger.id, DATE);
       const before = kind.read(id, stranger.id, DATE);
 
-      if (kind.correctFn !== KINDS[0].correctFn) {
-        await expect(
-          kind.correctFn(
-            fd({ ...kind.correct(id, DATE), profile_id: stranger.id })
-          )
-        ).rejects.toThrow();
-      }
+      await expect(
+        kind.correctFn(
+          fd({ ...kind.correct(id, DATE), profile_id: stranger.id })
+        )
+      ).rejects.toThrow();
       await expect(
         kind.removeFn(fd({ ...kind.remove(id), profile_id: stranger.id }))
       ).rejects.toThrow();
@@ -304,11 +331,9 @@ describe("the record's corrections gate the ROW's profile (#4009 item 1)", () =>
       // half of one kind's gate left this case green while the ungranted one went
       // red — the read-only arm was driving the delete alone, so it could not see
       // half of what it claims to cover.
-      if (kind.correctFn !== KINDS[0].correctFn) {
-        await expect(
-          kind.correctFn(fd({ ...kind.correct(id, DATE), profile_id: ro.id }))
-        ).rejects.toThrow();
-      }
+      await expect(
+        kind.correctFn(fd({ ...kind.correct(id, DATE), profile_id: ro.id }))
+      ).rejects.toThrow();
       await expect(
         kind.removeFn(fd({ ...kind.remove(id), profile_id: ro.id }))
       ).rejects.toThrow();
@@ -328,12 +353,10 @@ describe("the record's corrections gate the ROW's profile (#4009 item 1)", () =>
       actAs(login, acting);
       const id = kind.seed(target.id, DATE);
 
-      if (kind.correctFn !== KINDS[0].correctFn) {
-        await kind.correctFn(
-          fd({ ...kind.correct(id, DATE), profile_id: target.id })
-        );
-        expect(kind.read(id, target.id, DATE)).toEqual(kind.corrected);
-      }
+      await kind.correctFn(
+        fd({ ...kind.correct(id, DATE), profile_id: target.id })
+      );
+      expect(kind.read(id, target.id, DATE)).toEqual(kind.corrected);
 
       await kind.removeFn(fd({ ...kind.remove(id), profile_id: target.id }));
       expect(kind.present(id, target.id, DATE)).toBe(false);
@@ -358,6 +381,89 @@ describe("the record's corrections gate the ROW's profile (#4009 item 1)", () =>
   // the ACTING profile — so a caregiver acting as an adult could have corrected a minor
   // member's substance row through a surface that never showed it to them. The two
   // questions have to be asked of the same profile or the page and the write disagree.
+  // A STATED TIME IS A WALL CLOCK ON THE SUBJECT'S CALENDAR (#4009 item 1). Both
+  // correction actions that collect one re-anchor it with `getTimezone(profileId)` —
+  // the GATED profile — and until this test nothing in the repo noticed when they
+  // stopped: reverting both sites to the acting profile left the whole suite green.
+  //
+  // The zones are chosen to make the two answers land on DIFFERENT DAYS, because a
+  // pair an hour apart is satisfied by a rounding accident: Pacific/Kiritimati is
+  // UTC+14 and Pacific/Niue is UTC−11, 25 hours apart, so 09:30 on the subject's
+  // 2026-08-20 is 20:30Z that day while the caregiver's zone makes it 19:30Z the day
+  // BEFORE. Measured against the reverted tree: at THAT gap the day-pair rule catches
+  // it and the correction refuses outright ("That time isn't on the selected day"), so
+  // the stored instant stays null. The assertion is on the STORED VALUE rather than on
+  // the outcome anyway, because a caregiver only a few hours off would resolve to a
+  // wrong instant that is still on the right day, and that one saves silently.
+  it.each([
+    [
+      "food",
+      (subjectId: number) => {
+        const eventId = seedFoodEvent(subjectId, DATE);
+        return {
+          form: fd({
+            event_id: eventId,
+            group_key: "berries",
+            meal_slot: "Morning",
+            date: DATE,
+            occurred_at: "09:30",
+            profile_id: subjectId,
+          }),
+          run: updateFoodLogEvent,
+          stored: () =>
+            (
+              db
+                .prepare("SELECT occurred_at FROM food_log_events WHERE id = ?")
+                .get(eventId) as { occurred_at: string | null }
+            ).occurred_at,
+        };
+      },
+    ],
+    [
+      "dose",
+      (subjectId: number) => {
+        const logId = seedDoseLog(subjectId, DATE);
+        const { itemId, doseId } = doseIdsOf(logId);
+        return {
+          form: fd({
+            log_id: logId,
+            id: itemId,
+            dose_id: doseId,
+            date: DATE,
+            time: "09:30",
+            profile_id: subjectId,
+          }),
+          run: updateHistoricalDose,
+          stored: () =>
+            (
+              db
+                .prepare(
+                  "SELECT occurred_at FROM intake_item_logs WHERE id = ?"
+                )
+                .get(logId) as { occurred_at: string | null }
+            ).occurred_at,
+        };
+      },
+    ],
+  ])(
+    "%s states the corrected time on the SUBJECT's calendar, not the caregiver's",
+    async (_name, build) => {
+      const login = createLogin({ role: "member" });
+      const acting = createProfile("carer ahead", login.id);
+      const subject = createProfile("member behind", login.id);
+      setTimezone(acting.id, "Pacific/Kiritimati"); // UTC+14
+      setTimezone(subject.id, "Pacific/Niue"); // UTC−11
+      actAs(login, acting);
+
+      const { form, run, stored } = build(subject.id);
+      await run(form);
+
+      // The subject's 09:30 on DATE. The acting zone would have written
+      // "2026-08-19T19:30:00Z" — a real instant, on the wrong day, saved silently.
+      expect(stored()).toBe("2026-08-20T20:30:00Z");
+    }
+  );
+
   it("refuses a substance correction on a MINOR member, even with write access", async () => {
     const login = createLogin({ role: "member" });
     const acting = createProfile("adult carer", login.id);
