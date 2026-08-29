@@ -79,8 +79,7 @@ const ARROW_HIT =
 // and used to derive the same number a second time in its own width class. The
 // full-bleed band below claims that minimum and spends its gutter so every column is
 // at least 44px WIDE; the phone drawer reserves the width for it (#3536).
-const DAY_HIT =
-  "flex h-(--control-box) w-full items-center justify-center";
+const DAY_HIT = "flex h-(--control-box) w-full items-center justify-center";
 // `w-72`, told to the positioner so the panel's first paint is already clamped
 // inside the viewport rather than measured into place afterwards.
 const PANEL_WIDTH_PX = 288;
