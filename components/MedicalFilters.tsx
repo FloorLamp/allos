@@ -6,11 +6,14 @@ import { IconChevronDown } from "@tabler/icons-react";
 import type { AppRoute } from "@/lib/hrefs";
 import ObservationSearch from "./ObservationSearch";
 import RangeFilterSelect from "./RangeFilterSelect";
-import CategoryFilterSelect from "./CategoryFilterSelect";
-import PanelFilterSelect from "./PanelFilterSelect";
+import QueryParamSelect from "./QueryParamSelect";
 import { RESULTS_CATALOG_CATEGORIES } from "@/lib/medical-categories";
 import { activeFacetCount, filterTriggerLabel } from "@/lib/record-facets";
-import type { PanelId } from "@/lib/biomarker-panels";
+import {
+  OTHER_PANEL,
+  PANEL_LABELS,
+  type PanelId,
+} from "@/lib/biomarker-panels";
 
 // Filter bar for the Clinical results table: a category dropdown, the clinical
 // PANEL dropdown (#1502), and the All/Non-optimal/Out-of-range "show" filter.
@@ -137,13 +140,44 @@ export default function MedicalFilters({
           } sm:contents`}
         >
           {/* Clinical results catalog: never offer 'prescription' — meds aren't listed
-            here (see getClinicalObservations excludeCategories on the page). */}
-          <CategoryFilterSelect
+            here (see getClinicalObservations excludeCategories on the page). The
+            offered set is this fixed list rather than the categories present in the
+            current view, which keeps the control consistent while filters change.
+            Categories are stored lowercase and used to be shown through a
+            `capitalize` class; the casing is the label now, because `capitalize` on
+            the shared select would retitle the panel names next door. */}
+          <QueryParamSelect
+            param="category"
+            label="Category"
             value={category}
-            categories={RESULTS_CATALOG_CATEGORIES}
+            options={RESULTS_CATALOG_CATEGORIES.map((c) => ({
+              value: c,
+              label: c[0].toUpperCase() + c.slice(1),
+            }))}
           />
 
-          <PanelFilterSelect value={panel} panels={panels} />
+          {/* The clinical PANEL facet (#1502). Before the taxonomy existed `?panel=`
+            held the document's free-text section heading — in practice the lab
+            VENDOR, so the only facet on offer was "everything drawn at Quest
+            Diagnostics". This offers the normalized taxonomy ("Lipids", "Complete
+            blood count", "Thyroid") and writes a stable SLUG, so a reword never
+            breaks a bookmark. `panels` is a STATIC derivation over the controlled
+            vocabulary (lib/biomarker-panel-reach), resolved server-side because
+            doing it here would drag the canonical dataset into the client bundle:
+            the taxonomy minus the panels whose analytes all carry a category this
+            surface does not list, so the facet cannot offer an option that returns
+            nothing for anyone (#1581 section D). The reserved "Other" slug is
+            offered LAST — a real, useful view (the readings the taxonomy can't
+            place) but not a clinical panel. */}
+          <QueryParamSelect
+            param="panel"
+            label="Panel"
+            value={panel}
+            options={[
+              ...panels.filter((id) => id !== OTHER_PANEL),
+              ...panels.filter((id) => id === OTHER_PANEL),
+            ].map((id) => ({ value: id, label: PANEL_LABELS[id].label }))}
+          />
 
           <RangeFilterSelect value={range} />
 

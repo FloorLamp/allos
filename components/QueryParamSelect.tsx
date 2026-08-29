@@ -1,58 +1,72 @@
 "use client";
 
+import { useEffect } from "react";
 import { usePathname, useRouter, useSearchParams } from "next/navigation";
 import { currentPathHref } from "@/lib/hrefs";
 
-// THE query-backed filter select (#3748). It owns the whole contract that
-// Category, Panel and Show each used to restate: clone the CURRENT query string
-// so unrelated params (a search term, the table's sort/dir, a tab) survive, set
-// or DELETE this one param, and push the same pathname back — so the surface is
-// path-agnostic and a server component re-reads the choice.
+// THE query-backed filter select (#3748). Category, Panel and Show each restated
+// the same clone / set-or-delete / push and the same labelled shell; this owns all
+// of it. Unrelated params (a search term, sort/dir, a tab) and the pathname
+// survive, the unset option DELETES the param, `param` is also the test id
+// (`<param>-filter`) and `label` is both caption and accessible name, so no marker
+// can drift from what it addresses.
 //
-// CLOSED ON PURPOSE. There is no `className`, no caller-supplied URL builder and
-// no per-caller option markup: those are exactly the seams the three copies drifted
-// through, and reopening one puts the next divergence back. A call site that needs
-// something this does not offer is a finding, not a prop. The one seam that IS here
-// is `onSelect`, and it exists because #3748 rules that PERSISTENCE POLICY stays
-// outside the primitive — the range filter's session memory is its own business.
+// CLOSED: no className, no caller URL builder, no caller option markup — the seams
+// the three copies drifted through, and a call site needing more is a finding
+// rather than a prop. The two callbacks invert that: #3748 keeps PERSISTENCE
+// POLICY outside the primitive, so a call site says WHICH value it remembers while
+// every URL write stays in here.
 //
-// THE BOX, AND WHY THIS IS WHERE THE FLOOR COMES BACK (#3938). The field renders
-// `.input`, i.e. the one 34px control box, and because a native `<select>` cannot
-// grow a pseudo-element its target IS that box — it forfeits the 44px effective
-// floor every repairable control keeps. #3938 names converging onto an OWNED picker
-// as the recovery path, and this is now that owner: whatever restores contained
-// reach for these three filters is one edit here, not three, and no call site can
-// opt out of it.
+// AND THIS IS WHERE THE 44px FLOOR COMES BACK (#3938). The field renders `.input`,
+// the one 34px box, and a native <select> cannot grow a pseudo-element, so its
+// target IS the box — it forfeits the effective floor every repairable control
+// keeps. #3938 names an owned picker as the recovery path: that is now one edit
+// here rather than three, and no call site can opt out of it.
 export default function QueryParamSelect({
   param,
   label,
   value,
   options,
   onSelect,
+  restoreWhenUnset,
 }: {
-  // The query key this control owns. Also its test id (`<param>-filter`), so the
-  // marker cannot drift from the param it addresses.
   param: string;
-  // The visible caption AND the select's accessible name — one string, because a
-  // wrapping <label> gives both and they can therefore never disagree.
   label: string;
   value?: string;
   options: readonly { value: string; label: string }[];
   // The call site's own policy on the chosen value, run before navigating.
   onSelect?: (next: string) => void;
+  // Its remembered value, adopted only when the URL names none — read in an effect
+  // so a server render never reaches for browser storage.
+  restoreWhenUnset?: () => string | null;
 }) {
   const router = useRouter();
   const pathname = usePathname();
   const searchParams = useSearchParams();
 
+  function href(next: string) {
+    const sp = new URLSearchParams(searchParams.toString());
+    if (next) sp.set(param, next);
+    else sp.delete(param);
+    const s = sp.toString();
+    return currentPathHref(s ? `${pathname}?${s}` : pathname);
+  }
+
+  useEffect(() => {
+    if (searchParams.has(param)) return;
+    const saved = restoreWhenUnset?.();
+    if (saved) router.replace(href(saved));
+    // Mount-only: restore once, not on every param change.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
+
   return (
     <label className="flex max-w-full items-center gap-2 text-sm text-slate-600 dark:text-slate-300">
       <span className="font-medium">{label}</span>
-      {/* A `w-auto` select sizes itself to its WIDEST option, and the longest panel
-          label ("Immunoglobulins & autoantibodies") pushes it past a 390px phone —
-          the clipped-content guard catches exactly this. Cap it below `sm` (the
-          browser ellipsizes the selected label; the open list is unaffected) and
-          leave desktop unconstrained. */}
+      {/* A `w-auto` select sizes to its WIDEST option, and the longest panel label
+          ("Immunoglobulins & autoantibodies") pushes it past a 390px phone — what
+          the clipped-content guard catches. Cap it below `sm`; the browser
+          ellipsizes the selected label and the open list is unaffected. */}
       <select
         className="input w-auto max-w-40 min-w-0 sm:max-w-none"
         data-testid={`${param}-filter`}
@@ -60,15 +74,9 @@ export default function QueryParamSelect({
         onChange={(e) => {
           const next = e.target.value;
           onSelect?.(next);
-          const sp = new URLSearchParams(searchParams.toString());
-          if (next) sp.set(param, next);
-          else sp.delete(param);
-          const s = sp.toString();
-          router.push(currentPathHref(s ? `${pathname}?${s}` : pathname));
+          router.push(href(next));
         }}
       >
-        {/* The unset option is the owner's, not a caller's: it is what DELETES the
-            param, so "no filter" cannot be spelled two ways. */}
         <option value="">All</option>
         {options.map((o) => (
           <option key={o.value} value={o.value}>

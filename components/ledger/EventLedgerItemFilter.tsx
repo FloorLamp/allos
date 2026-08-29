@@ -66,7 +66,7 @@ export default function EventLedgerItemFilter({
           text mid-character ("… (CALCIUM 50"). The OPEN list is unaffected — it is
           the browser's popup and sizes itself — so nothing about the choice is lost.
 
-          Deliberately width-agnostic rather than PanelFilterSelect's
+          Deliberately width-agnostic rather than QueryParamSelect's
           `max-w-40 sm:max-w-none`: that control offers a CLOSED vocabulary whose
           longest label is known, and these names are unbounded at every width. This
           is a FRAME property and not one domain's: every ledger's item axis is the

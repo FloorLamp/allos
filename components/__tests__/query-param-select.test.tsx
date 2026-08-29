@@ -1,14 +1,15 @@
 import { fireEvent, render, screen } from "@testing-library/react";
 import { beforeEach, describe, expect, it, vi } from "vitest";
-import CategoryFilterSelect from "@/components/CategoryFilterSelect";
-import PanelFilterSelect from "@/components/PanelFilterSelect";
+import MedicalFilters from "@/components/MedicalFilters";
 import RangeFilterSelect from "@/components/RangeFilterSelect";
+import type { PanelId } from "@/lib/biomarker-panels";
 
-// The three query-backed filter selects (#3748) share one owner, so their URL
-// contract is proved once as a table rather than three times as prose. The write
-// path is the whole claim: a filter change must move ITS OWN param and nothing
-// else, because the surfaces these sit on carry a search term and a sort in the
-// same query string and a filter that rebuilt the URL would silently clear them.
+// The query-backed filter selects share one owner (#3748), so their URL contract is
+// proved once as a table rather than three times as prose — and it is driven through
+// MedicalFilters, the surface that actually mounts them, because the whole claim is
+// about what happens to the params SITTING BESIDE the one being changed. This page
+// carries a search term and the table's sort in the same query string, and a filter
+// that rebuilt the URL instead of cloning it would silently clear them.
 const nav = vi.hoisted(() => ({
   path: "/results/clinical-results",
   search: "",
@@ -22,6 +23,9 @@ vi.mock("next/navigation", () => ({
   useSearchParams: () => new URLSearchParams(nav.search),
 }));
 
+const OTHERS = "q=chol&sort=name&dir=asc";
+const PANELS = ["lipids", "thyroid", "other"] as const;
+
 beforeEach(() => {
   nav.push.mockClear();
   nav.replace.mockClear();
@@ -29,92 +33,92 @@ beforeEach(() => {
   nav.search = "";
 });
 
-// `path` differs per row on purpose: these controls are path-agnostic and the
-// range filter really does render on a document subpage as well as the catalog,
-// so a row that pinned one pathname would not be testing that.
+// The page resolves these params on the SERVER and hands them down, so the fixture
+// derives the props from the same query string the router is reporting — anything
+// else would be testing a state the route cannot produce.
+function mountFilters(search: string) {
+  nav.search = search;
+  const sp = new URLSearchParams(search);
+  render(
+    <MedicalFilters
+      panels={PANELS}
+      category={sp.get("category") ?? undefined}
+      panel={(sp.get("panel") as PanelId | null) ?? undefined}
+      range={sp.get("range") ?? undefined}
+      q={sp.get("q") ?? undefined}
+    />
+  );
+}
+
 const CASES = [
-  {
-    name: "Category",
-    param: "category",
-    path: "/results/clinical-results",
-    others: "q=chol&sort=name",
-    current: "vitals",
-    pick: "lab",
-    node: () => (
-      <CategoryFilterSelect value="vitals" categories={["lab", "vitals"]} />
-    ),
-  },
-  {
-    name: "Panel",
-    param: "panel",
-    path: "/results/clinical-results",
-    others: "q=chol&sort=name",
-    current: "lipids",
-    pick: "thyroid",
-    node: () => (
-      <PanelFilterSelect value="lipids" panels={["lipids", "thyroid"]} />
-    ),
-  },
-  {
-    name: "Show",
-    param: "range",
-    path: "/import/12",
-    others: "tab=results&q=chol",
-    current: "oor",
-    pick: "nonoptimal",
-    node: () => <RangeFilterSelect value="oor" />,
-  },
+  { name: "Category", param: "category", current: "vitals", pick: "lab" },
+  { name: "Panel", param: "panel", current: "lipids", pick: "thyroid" },
+  { name: "Show", param: "range", current: "oor", pick: "nonoptimal" },
 ] as const;
 
 describe.each(CASES)(
-  "$name query filter writes the URL (#3748)",
-  ({ name, param, path, others, current, pick, node }) => {
-    function mount(search: string) {
-      nav.path = path;
-      nav.search = search;
-      render(node());
+  "the $name filter writes the URL (#3748)",
+  ({ name, param, current, pick }) => {
+    function select(search: string) {
+      mountFilters(search);
       return screen.getByRole("combobox", { name });
     }
 
-    it("associates its label with the select and shows the active value", () => {
-      const select = mount(`${others}&${param}=${current}`);
-      expect((select as HTMLSelectElement).value).toBe(current);
+    it("labels the select and shows the value the URL names", () => {
+      const el = select(`${OTHERS}&${param}=${current}`) as HTMLSelectElement;
+      expect(el.value).toBe(current);
     });
 
     it("preserves the pathname and every unrelated param", () => {
-      fireEvent.change(mount(`${others}&${param}=${current}`), {
+      fireEvent.change(select(`${OTHERS}&${param}=${current}`), {
         target: { value: pick },
       });
       expect(nav.push).toHaveBeenCalledWith(
-        `${path}?${others}&${param}=${pick}`
+        `/results/clinical-results?${OTHERS}&${param}=${pick}`
       );
     });
 
     it("deletes its own param on the default value, keeping the others", () => {
-      fireEvent.change(mount(`${others}&${param}=${current}`), {
+      fireEvent.change(select(`${OTHERS}&${param}=${current}`), {
         target: { value: "" },
       });
-      expect(nav.push).toHaveBeenCalledWith(`${path}?${others}`);
+      expect(nav.push).toHaveBeenCalledWith(
+        `/results/clinical-results?${OTHERS}`
+      );
     });
 
     it("drops the whole query string when its param was the only one", () => {
-      fireEvent.change(mount(`${param}=${current}`), {
+      fireEvent.change(select(`${param}=${current}`), {
         target: { value: "" },
       });
-      expect(nav.push).toHaveBeenCalledWith(path);
+      expect(nav.push).toHaveBeenCalledWith("/results/clinical-results");
+    });
+
+    it("moves its own param and no other", () => {
+      mountFilters(`${OTHERS}&category=vitals&panel=lipids&range=oor`);
+      fireEvent.change(screen.getByRole("combobox", { name }), {
+        target: { value: pick },
+      });
+      const url = new URL(String(nav.push.mock.calls[0][0]), "https://x");
+      for (const [k, v] of Object.entries({
+        category: "vitals",
+        panel: "lipids",
+        range: "oor",
+      })) {
+        expect(url.searchParams.get(k)).toBe(k === param ? pick : v);
+      }
     });
   }
 );
 
-// The range filter's sessionStorage memory is the CALL SITE's policy, not the
-// shared owner's (#3748 is explicit). These pin it where it lives, so a later
-// change to the owner cannot quietly take it away or hand it to the other two.
+// The range filter's sessionStorage memory is the CALL SITE's policy, not the shared
+// owner's (#3748 is explicit). These pin it where it lives, so a later change to the
+// owner cannot quietly take it away or hand it to the other two.
 describe("the range filter's session memory stays outside the owner (#3748)", () => {
   const KEY = "medical:range";
 
   it("remembers a chosen value and forgets it on All", () => {
-    nav.search = "range=oor";
-    render(<RangeFilterSelect value="oor" />);
+    mountFilters("range=oor");
     const select = screen.getByRole("combobox", { name: "Show" });
 
     fireEvent.change(select, { target: { value: "nonoptimal" } });
@@ -124,12 +128,15 @@ describe("the range filter's session memory stays outside the owner (#3748)", ()
     expect(sessionStorage.getItem(KEY)).toBeNull();
   });
 
-  it("restores the remembered value on mount, preserving other params", () => {
+  // Mounted on a document subpage, not the catalog: the control is path-agnostic and
+  // this call site (ExtractedObservations) is the reason it has to be.
+  it("restores the remembered value on mount, preserving path and params", () => {
     sessionStorage.setItem(KEY, "nonoptimal");
+    nav.path = "/import/12";
     nav.search = "tab=results&q=chol";
     render(<RangeFilterSelect />);
     expect(nav.replace).toHaveBeenCalledWith(
-      "/results/clinical-results?tab=results&q=chol&range=nonoptimal"
+      "/import/12?tab=results&q=chol&range=nonoptimal"
     );
   });
 
@@ -140,12 +147,16 @@ describe("the range filter's session memory stays outside the owner (#3748)", ()
     expect(nav.replace).not.toHaveBeenCalled();
   });
 
-  it("leaves the other two filters with no session memory of their own", () => {
-    nav.search = "category=vitals";
-    render(<CategoryFilterSelect value="vitals" categories={["lab", "vitals"]} />);
-    fireEvent.change(screen.getByRole("combobox", { name: "Category" }), {
-      target: { value: "lab" },
-    });
+  it("leaves the category and panel filters with no memory of their own", () => {
+    mountFilters("category=vitals&panel=lipids");
+    for (const [name, value] of [
+      ["Category", "lab"],
+      ["Panel", "thyroid"],
+    ]) {
+      fireEvent.change(screen.getByRole("combobox", { name }), {
+        target: { value },
+      });
+    }
     expect(sessionStorage.length).toBe(0);
   });
 });
