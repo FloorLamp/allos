@@ -88,6 +88,35 @@ the reader did not act on; decorative entrances on page load; motion that delays
 reader's next action — a control is interactive on the first frame of any continuity
 motion, never after it.
 
+**A continuity motion may not gate CONTENT on a rendering opportunity.** This is the
+class's own rule and it is the expensive one, because breaking it is invisible from
+the outside: the surface reports itself open and its contents are not there. It cost
+#3677 a CI red and, underneath that red, an accessibility defect — a fold whose
+`open` was true while its panel was still out of the accessibility tree, 472 nodes
+missing on the frame the reader tapped.
+
+The trap is that motion runs on a different clock from state. A discrete CSS property
+(`content-visibility`, `display`) handed to a transition is applied by the animation
+machinery at the browser's next _rendering opportunity_, while the state that says the
+surface is open — a `<details>`'s `open`, a button's `aria-expanded` — flips
+immediately. Two clocks, and content that only the slower one reveals. So: animate
+what the eye follows (a height, a position, an opacity) and never what decides whether
+the content EXISTS for a reader. A continuity motion has no information to carry, which
+means it has nothing to gain by withholding any.
+
+Both of today's expanding primitives satisfy this, and for different reasons worth
+knowing. `components/Disclosure.tsx` keeps `content-visibility` out of its OPENING
+transition entirely (the asymmetry is written down in `app/globals.css`), so the
+contents are there on the frame `open` flips. `components/Collapse.tsx` is safe
+structurally: its `visibility: hidden` DOES remove the panel from the accessibility
+tree, but that flag and the control's `aria-expanded` are one React state committed in
+one render, so they cannot disagree — measured over 26 frames of an opening, with zero
+frames where the control claimed expanded and the panel was not in the tree.
+
+Test the rule synchronously, in the same task as the gesture, the way
+`e2e/disclosure-motion.spec.ts` does. A test that waits first cannot see the window,
+and neither can the next reviewer.
+
 ## The band's one exemption
 
 Rule 1 is mechanical, which is what turned "nothing lingers" from a promise into a
