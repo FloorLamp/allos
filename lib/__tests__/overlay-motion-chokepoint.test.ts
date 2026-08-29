@@ -2,6 +2,7 @@ import fs from "node:fs";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
 import { describe, expect, it } from "vitest";
+import { stripComments } from "./strip-comments";
 
 // The overlay motion/gesture chokepoint (issue #1469).
 //
@@ -383,70 +384,23 @@ function hostsRawForm(text: string): boolean {
   return /<form[\s>]/.test(withoutComments(text));
 }
 
-// The file with every comment blanked out but its LINE NUMBERS intact, so a
-// scan reports the offending line and never the prose describing the rule. The
-// per-line `//` strip the older rules do is not enough on its own: two of these
-// scans first reported a `/* … */` block that merely NAMED `overflow-y-auto`
-// and a doc comment that spelled `<form>`, which is the "checks a rendering of
-// the property rather than the property" failure in its cheapest form.
+// The file with every comment blanked out but its LINE NUMBERS intact, so a scan
+// reports the offending line and never the prose describing the rule. This used to
+// carry another hand-written TypeScript scanner and run it over the same 2,528-file
+// corpus in six guards. The shared scanner is the verified language projection
+// (#3621); memoizing it here keeps these rules about overlays rather than comments.
+//
+// Measured at conversion: the shared scanner read 28 of 2,528 files differently
+// (mostly JSX text and regex-literal shapes the local scanner did not model), and all
+// 21 overlay rules stayed green. The cache is file-local because its inputs are the
+// immutable source snapshots above; planted strings still exercise the same scanner.
+const withoutCommentsCache = new Map<string, string>();
 function withoutComments(text: string): string {
-  const out: string[] = [];
-  let inBlock = false;
-  for (let i = 0; i < text.length; i += 1) {
-    const ch = text[i];
-    if (ch === "\n") {
-      out.push(ch);
-      continue;
-    }
-    if (inBlock) {
-      if (ch === "*" && text[i + 1] === "/") {
-        inBlock = false;
-        out.push("  ");
-        i += 1;
-      } else out.push(" ");
-      continue;
-    }
-    // A QUOTED STRING is copied through verbatim, comment openers and all. This
-    // is not fussiness: `accept="image/*"` in components/photo/PhotoCapture.tsx
-    // opened a phantom block comment that blanked the next 150 lines, and the
-    // register scan below then reported the file as no longer opting out of the
-    // sheet idiom — a scan reading a green it never checked, from source it had
-    // silently thrown away.
-    if (ch === '"' || ch === "'" || ch === "`") {
-      out.push(ch);
-      i += 1;
-      while (i < text.length && text[i] !== ch) {
-        if (text[i] === "\\") {
-          out.push(text[i], text[i + 1] ?? "");
-          i += 2;
-          continue;
-        }
-        out.push(text[i]);
-        i += 1;
-      }
-      out.push(text[i] ?? "");
-      continue;
-    }
-    if (ch === "/" && text[i + 1] === "*") {
-      inBlock = true;
-      out.push("  ");
-      i += 1;
-      continue;
-    }
-    // A `//` comment runs to the end of the line, and anything inside it —
-    // including a `/*` — is prose. Scanning left to right rather than running
-    // two regexes over the whole file is what keeps that true.
-    if (ch === "/" && text[i + 1] === "/") {
-      while (i < text.length && text[i] !== "\n") {
-        out.push(" ");
-        i += 1;
-      }
-      i -= 1;
-      continue;
-    }
-    out.push(ch);
-  }
-  return out.join("");
+  const cached = withoutCommentsCache.get(text);
+  if (cached !== undefined) return cached;
+  const code = stripComments(text);
+  withoutCommentsCache.set(text, code);
+  return code;
 }
 
 // A hand-rolled slide: moving a panel with a transform/transition/keyframe the
@@ -546,13 +500,13 @@ describe("overlay motion chokepoint", () => {
     const offenders: string[] = [];
     for (const rel of OVERLAY_SURFACES.keys()) {
       const text = byPath.get(rel) ?? "";
-      text.split("\n").forEach((line, i) => {
-        // Prose describing the rule is not a violation of it.
-        const code = line.replace(/\/\/.*$/, "").replace(/\/\*.*?\*\//g, "");
-        for (const { pattern, what } of HAND_ROLLED_SLIDE) {
-          if (pattern.test(code)) offenders.push(`${rel}:${i + 1} — ${what}`);
-        }
-      });
+      withoutComments(text)
+        .split("\n")
+        .forEach((code, i) => {
+          for (const { pattern, what } of HAND_ROLLED_SLIDE) {
+            if (pattern.test(code)) offenders.push(`${rel}:${i + 1} — ${what}`);
+          }
+        });
     }
     expect(
       offenders,
@@ -568,13 +522,14 @@ describe("overlay motion chokepoint", () => {
     const offenders: string[] = [];
     for (const { rel, text } of FILES) {
       if (rel === MOTION_HOME) continue;
-      text.split("\n").forEach((line, i) => {
-        const code = line.replace(/\/\/.*$/, "");
-        // The mapper builds these names; everything else asks it for one.
-        if (/["'`]overlay-(?:enter|exit)-/.test(code)) {
-          offenders.push(`${rel}:${i + 1}`);
-        }
-      });
+      withoutComments(text)
+        .split("\n")
+        .forEach((code, i) => {
+          // The mapper builds these names; everything else asks it for one.
+          if (/["'`]overlay-(?:enter|exit)-/.test(code)) {
+            offenders.push(`${rel}:${i + 1}`);
+          }
+        });
     }
     expect(
       offenders,
@@ -601,12 +556,13 @@ describe("overlay motion chokepoint", () => {
     const offenders: string[] = [];
     for (const { rel, text } of FILES) {
       if (RAW_DRAG_LISTENER_ALLOW.has(rel)) continue;
-      text.split("\n").forEach((line, i) => {
-        const code = line.replace(/\/\/.*$/, "");
-        if (RAW_DRAG_PATTERNS.some((pattern) => pattern.test(code))) {
-          offenders.push(`${rel}:${i + 1}`);
-        }
-      });
+      withoutComments(text)
+        .split("\n")
+        .forEach((code, i) => {
+          if (RAW_DRAG_PATTERNS.some((pattern) => pattern.test(code))) {
+            offenders.push(`${rel}:${i + 1}`);
+          }
+        });
     }
     expect(
       offenders,
