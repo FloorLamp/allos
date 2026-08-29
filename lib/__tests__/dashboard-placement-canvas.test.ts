@@ -171,6 +171,50 @@ describe("dashboard placement canvas", () => {
     expect(weekHtml).toContain('href="/upcoming#week"');
   });
 
+  // The tail draws what the ranker admitted and one named door for the rest (#3366).
+  it("draws admitted members and one labelled door per dropped page", () => {
+    const admitted = statement("admitted");
+    const droppedA = statement("dropped-a");
+    const droppedB = statement("dropped-b");
+    const placements: DashboardPlacement[] = [admitted, droppedA, droppedB].map(
+      (candidate, laneOrder) => ({
+        candidate,
+        lane: "everything",
+        laneOrder,
+        timingDisposition: { kind: "active" },
+        everythingGroup: "act",
+        memberOrder: laneOrder,
+        admitted: candidate === admitted,
+      })
+    );
+    const html = renderToStaticMarkup(
+      createElement(DashboardPlacementCanvas, {
+        dateLabel: "August 19, 2026",
+        placements,
+        candidateNodes: new Map<string, ReactNode>([
+          [admitted.candidateId, createElement("p", null, "Admitted node")],
+          [droppedA.candidateId, createElement("p", null, "Dropped A node")],
+          [droppedB.candidateId, createElement("p", null, "Dropped B node")],
+        ]),
+        // Both dropped facts live on Trends; a fragment is a position on a page, so
+        // the two owe the reader one row between them.
+        candidatePages: new Map([
+          [droppedA.candidateId, "/trends" as const],
+          [droppedB.candidateId, "/trends#body" as const],
+        ]),
+        standingPresentations: new Map(),
+        aheadPresentations: new Map(),
+        attentionBadgeCount: 0,
+      })
+    );
+    expect(html).toContain("Admitted node");
+    expect(html).not.toContain("Dropped A node");
+    expect(html).not.toContain("Dropped B node");
+    expect(html.split('data-testid="dashboard-all-door"')).toHaveLength(2);
+    expect(html).toContain('data-door-href="/trends"');
+    expect(html).toContain("Trends");
+  });
+
   it("renders the supplied five-group order and omits empty groups", () => {
     const groupNames = [
       "act",
