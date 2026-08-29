@@ -81,6 +81,11 @@ export const RECONCILE_PREFIXES: readonly ReconcilePrefixEntry[] = [
   // ⤓ May rides the dose reminder (#1505 part 2) and dies with the same message —
   // and separately once the item is already `may`, when the suggestion is moot.
   { prefix: "demote", family: "intake-dose" },
+  // 🏁 Stop rides that same reminder (#2574), but is NOT inert: its presence claims
+  // the imported medication is still unconfirmed and stoppable. The intake-dose
+  // rebuild re-runs the shared detector and renderer, so any log or app-side stop
+  // removes this token without a second eligibility model.
+  { prefix: "medstop", family: "intake-dose" },
   // ⤓ The dose-time correction chips + picker (#2020) ride the dose reminder and inherit
   // its family, the same ride-along shape `demote` has. They die on their OWN clock — a
   // burst older than an hour — rather than on the doses': a confirmed session keeps its
