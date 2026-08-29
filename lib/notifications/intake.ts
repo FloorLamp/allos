@@ -216,17 +216,30 @@ function gatherWindowDoses(
     getActiveSituations(profileId),
     getSituationEvents(profileId)
   );
-  const activitiesToday = getActivitiesByDate(profileId, date);
+  const isForToday = date === today(profileId);
+  // WHICH ACTIVITY READER, and the two are not interchangeable (#4019). Every dated
+  // pairing in this repo splits them the same way, and `pendingDayDoses` — the
+  // quick-log sheet answering this identical question — says so at length:
+  // `getActivitiesByDate` is the RAW row read, `getActivityDates` is the same rows with
+  // #3189's draft husks dropped. This function already built the husk-free list for the
+  // strip below; taking the raw one to a closed day let a single abandoned draft both
+  // CONCEAL the rest-day dose the day owed and OFFER a pre-workout dose it did not —
+  // and `✅ All` writes what this gather returns.
+  const workoutDays = new Set(getActivityDates(profileId));
+  // TODAY ONLY — the raw read's one caller here is `postWorkoutReady`, which needs the
+  // session END TIMES and is a question about the current minute.
+  const activitiesToday = isForToday ? getActivitiesByDate(profileId, date) : [];
   // #558: a pre_workout reminder fires on a PREDICTED training day (so it can land
   // before the session), not only after a workout is logged; post_workout stays
   // gated on a logged session and held until it has ended. Only workout-
   // conditioned items are affected — a daily med reminder (safety tier) is
   // unconditional, so it never becomes workout-dependent.
-  const isForToday = date === today(profileId);
   const nowMinutes = isForToday ? currentMinutesOfDay(profileId) : null;
   const ctx = {
     date,
-    isWorkoutDay: activitiesToday.length > 0,
+    isWorkoutDay: isForToday
+      ? activitiesToday.length > 0
+      : workoutDays.has(date),
     // The situations active ON `date` — the history resolver owns retroactive
     // membership on BOTH halves (#3973). The declared set is a statement about now, so
     // scoring a past day against it moved yesterday's reminder whenever a situation was
@@ -240,7 +253,16 @@ function gatherWindowDoses(
     activeSituations: isForToday
       ? getEffectiveActiveSituations(profileId, date)
       : situationsOn(date),
-    predictedWorkoutDay: isPredictedWorkoutDay(profileId, date),
+    // TODAY ONLY, the same split (#4019). `conditionAppliesOn` reads
+    // `predictedWorkoutDay ?? isWorkoutDay`, and the prediction is a rhythm inferred
+    // from a trailing window ending NOW — so on a closed day it lets a guess made
+    // today override the training already on the record. #558 wants it for today (a
+    // pre-workout reminder has to be able to land BEFORE the session is logged); a
+    // past day has no such need, and undefined falls back to `isWorkoutDay`, which is
+    // what the strip and `pendingDayDoses` both answer.
+    predictedWorkoutDay: isForToday
+      ? isPredictedWorkoutDay(profileId, date)
+      : undefined,
     postWorkoutReady: isPostWorkoutReady(
       activitiesToday.map((a) => a.end_time ?? a.start_time),
       nowMinutes
@@ -258,7 +280,6 @@ function gatherWindowDoses(
   // lifetime bound inside the strip is not a windowed question (#3988).
   const windowDates = lastNDates(today(profileId), ADHERENCE_DAYS);
   const tz = getTimezone(profileId);
-  const workoutDays = new Set(getActivityDates(profileId));
   const takenByDose = indexTakenByDose(
     getIntakeAdherenceEvidence(profileId, ADHERENCE_DAYS)
   );
@@ -327,6 +348,15 @@ function gatherWindowDoses(
     // profile-local day, so there is nothing to remind about. A dose ALREADY
     // answered on that date stays in the gather — the person logged it, so the
     // message must still show it as done, and the log outranks the clock.
+    //
+    // THE CARVE-OUT COVERS THIS GATE ONLY, and that is a decision rather than an
+    // oversight (#3997). Excusal is a claim about the CLOCK — "this hour never
+    // happened here" — which a log on that date directly falsifies, so the log wins.
+    // The dueness gate above is a claim about the SCHEDULE, which a log does not
+    // falsify: logging a dose the day never owed is an extra, not evidence the day
+    // owed it, and re-admitting it would put a `may` row (never scheduled-due) into
+    // the unfiltered set the missed-dose escalation reads. So the two gates answer
+    // genuinely different questions and only this one is overruled by the ledger.
     if (
       isExcused(dose.time_of_day, date) &&
       !taken.has(dose.id) &&
@@ -340,6 +370,19 @@ function gatherWindowDoses(
     // a fixed lookback over a med added this morning is all pre-existence days,
     // and scoring them would make the very first reminder announce "0% adherence".
     const since = doseWindowSince(item.created_at, dose.created_at, dd, tz);
+    // …and the same bound gates the DAY (#4011), exactly as `pendingDayDoses` does:
+    // `doseOnDay` reads only the declared start/end dates, so without this a stale
+    // keyboard rebuilt for day−2 offers a dose for an item created this morning — and
+    // `✅ All` would write `taken` and decrement real stock for a day the dose did not
+    // exist on.
+    //
+    // A PAST-DAY RULE, stated rather than incidental: a dose row being read at all is
+    // proof it exists today, so today can never fall outside its own lifetime and the
+    // bound has nothing to say about it. And it can never drop a dose the person
+    // already answered on `date` — a log on that date is inside `dd`, and
+    // `doseWindowSince` widens the bound back to the earliest logged date, so the
+    // ordering below the travel gate carries no hidden second rule.
+    if (!isForToday && since != null && date < since) continue;
     const strip = doseStrip(
       since ? windowDates.filter((d) => d >= since) : windowDates,
       (d) =>

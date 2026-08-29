@@ -726,6 +726,19 @@ describe("stacktake writes only the listed-and-still-pending intersection (#3098
     retiredDose = mkDose(retiredItem, 1);
     foreignItem = mkItem(other.profileId, "TG3098 Foreign E", "should", null);
     foreignDose = mkDose(foreignItem);
+    // AGED PAST THE DAY WINDOW (#4011). The day-routing case below taps day−1 and
+    // day−2, and the reminder gather now clamps a past day to the dose's lifetime the
+    // way the quick-log sheet always has — an item created this morning was owed
+    // nothing yesterday. Without this the block would go green for the lifetime reason
+    // while claiming to pin which DAY the offer writes to.
+    const born = `${shiftDateStr(today(sp.profileId), -30)} 09:00:00`;
+    db.prepare(
+      `UPDATE intake_items SET created_at = ? WHERE profile_id IN (?, ?)`
+    ).run(born, sp.profileId, other.profileId);
+    db.prepare(
+      `UPDATE intake_item_doses SET created_at = ?
+        WHERE item_id IN (SELECT id FROM intake_items WHERE profile_id IN (?, ?))`
+    ).run(born, sp.profileId, other.profileId);
   });
 
   // The reminder keyboard's own mint: a notify_offers row for these members, and the
