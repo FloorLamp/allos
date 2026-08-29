@@ -140,7 +140,11 @@ function unguardedTransactions(text: string): number {
     // A named transaction's `.immediate()` / runBootTx call follows its creation.
     // Stop at the next transaction so one wrapper cannot cover two raw calls.
     const end = transactions[i + 1]?.index ?? source.length;
-    const suffix = source.slice(start + match[0].length, end);
+    const suffix = source
+      .slice(start + match[0].length, end)
+      // A direct wrapper immediately before the next transaction belongs to that
+      // next call; it must not make this transaction look guarded.
+      .replace(/\brunBootTx\s*\(\s*$/, "");
     return !/\.immediate\s*\(|\brunBootTx\s*\(/.test(suffix);
   }).length;
 }
@@ -177,6 +181,11 @@ describe("write-transaction lock mode boundary (issue #468)", () => {
       )
     ).toBe(0);
     expect(unguardedTransactions(`db.transaction(() => write())`)).toBe(1);
+    expect(
+      unguardedTransactions(
+        `db.transaction(() => first()); runBootTx(db.transaction(() => second()))`
+      )
+    ).toBe(1);
   });
 
   it("the writeTx / readTx helpers exist in lib/db.ts", () => {
