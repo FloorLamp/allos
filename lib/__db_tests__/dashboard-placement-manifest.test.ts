@@ -30,6 +30,8 @@ import DashboardPlacementCanvas, {
   type DashboardPlacementCanvasProps,
 } from "@/components/dashboard/DashboardPlacementCanvas";
 import { STANDING_READING_ORDER } from "@/lib/dashboard-standing";
+import { everythingTail } from "@/lib/dashboard-relevance";
+import { trackedPageFor } from "@/lib/recent-pages";
 
 const session = vi.hoisted(() => ({
   loginId: 0,
@@ -284,6 +286,10 @@ const aheadPresentations = new Map<
   string,
   DashboardPlacementCanvasProps["aheadPresentations"]
 >();
+const candidatePages = new Map<
+  string,
+  DashboardPlacementCanvasProps["candidatePages"]
+>();
 const queryCounts = new Map<string, number>();
 const personaProfileIds = new Map<string, number>();
 let switchedHouseholdManifest: DashboardPlacementCanvasProps["placements"] = [];
@@ -351,6 +357,7 @@ describe("actual atomic dashboard manifests", () => {
         element.props.standingPresentations
       );
       aheadPresentations.set(persona.name, element.props.aheadPresentations);
+      candidatePages.set(persona.name, element.props.candidatePages);
       queryCounts.set(persona.name, trace.count());
       personaProfileIds.set(persona.name, profileId);
       if (persona.name === "household") {
@@ -548,6 +555,38 @@ describe("actual atomic dashboard manifests", () => {
       expect(groups, persona).toEqual(groups.toSorted((a, b) => a - b));
     }
     expect(seen).toEqual(new Set(order));
+  });
+
+  // THE #3077 COMPLETENESS CONTRACT, NOW A MANIFEST ASSERTION (#3366).
+  //
+  // Show everything stopped rendering literally everything, so "nothing the ranker
+  // gathers can go missing" is no longer something a reader can verify by scrolling.
+  // It is verified here instead, against the REAL manifests: every everything
+  // placement the tail does not admit resolves to a named page, so `everythingTail`
+  // never has to fall back to rendering it. A candidate builder that arrives without
+  // a page in `app/(app)/page.tsx` fails this — which is the day the guarantee would
+  // otherwise have quietly stopped holding.
+  it("keeps every dropped Show everything fact one named door away", () => {
+    let dropped = 0;
+    for (const [persona, placements] of manifests) {
+      const pages = candidatePages.get(persona)!;
+      const tail = everythingTail(placements, (candidate) => {
+        const href = pages.get(candidate.candidateId);
+        return href == null ? null : (trackedPageFor(href)?.href ?? null);
+      });
+      const rendered = tail.members.filter((placement) => !placement.admitted);
+      expect(
+        rendered.map((placement) => placement.candidate.candidateId),
+        persona
+      ).toEqual([]);
+      expect(new Set(tail.doors).size, persona).toBe(tail.doors.length);
+      dropped += placements.filter(
+        (placement) => placement.lane === "everything" && !placement.admitted
+      ).length;
+    }
+    // The assertion above is satisfiable by admitting everything, which is the state
+    // this issue removed. Seeded profiles must actually exercise the drop.
+    expect(dropped).toBeGreaterThan(0);
   });
 
   it("keeps sleep regularity only in its healthspan family", () => {

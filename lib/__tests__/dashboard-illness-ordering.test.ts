@@ -254,6 +254,7 @@ describe("dashboard illness ordering", () => {
         dateLabel: "August 19, 2026",
         placements,
         candidateNodes: nodes,
+        candidatePages: new Map(),
         standingPresentations: new Map(),
         aheadPresentations: new Map(),
         attentionBadgeCount: 0,

@@ -1,5 +1,6 @@
 import { describe, expect, it } from "vitest";
 import {
+  everythingTail,
   resolveDashboardTiming,
   localTimeWindow,
   mealTimeWindows,
@@ -7,6 +8,7 @@ import {
   type DashboardCandidate,
   type DashboardTiming,
 } from "../dashboard-relevance";
+import type { AppRoute } from "../hrefs";
 import {
   actionCandidate,
   attentionCandidates,
@@ -698,6 +700,166 @@ describe("atomic dashboard placement", () => {
         candidate: { candidateId: "activity.steps:shared" },
       },
     ]);
+  });
+
+  // ── Show everything admits what is live, and offers a door to the rest (#3366) ──
+  //
+  // The lane is UNCHANGED — every candidate below is still a member of the exact-once
+  // remainder, and the tests above still prove that. What is new is the mark the tail
+  // renders by. `nothingLive` fills Now's two ordinary slots so a candidate that DOES
+  // hold a live reason still lands here rather than being promoted out of the lane,
+  // which is what lets one table cover both answers.
+  //
+  // Safety is absent from the table on purpose: `selectedSafety` is uncapped, so a
+  // safety candidate is never in this lane to be asked. `nowScore` returns 5_000 for
+  // it, which is why admission cannot rank it away wherever it does appear.
+  const fillNow = () => [
+    action("fill-a", "must", { owed: true }),
+    action("fill-b", "must", { owed: true }),
+  ];
+  const admissionOf = (candidate: DashboardCandidate) =>
+    rank([...fillNow(), candidate]).find(
+      (placement) => placement.candidate.candidateId === candidate.candidateId
+    );
+  const window = localTimeWindow(11 * 60, 13 * 60);
+  const shutWindow = localTimeWindow(15 * 60, 16 * 60);
+  const timed = (
+    id: string,
+    obligation: "must" | "should" | "may",
+    timing: DashboardTiming
+  ): DashboardCandidate => ({ ...action(id, obligation), timing });
+  const promoted = (id: string): DashboardCandidate => ({
+    ...reading(id),
+    rankReasons: {
+      safety: false,
+      owed: false,
+      windowOpen: false,
+      changed: true,
+    },
+    readingPromotion: "clinical-non-notable-to-notable",
+  });
+
+  it.each([
+    // group, id, candidate, admitted
+    ["act", "always-available may", action("vitals.manual-log", "may"), false],
+    [
+      "act",
+      "may inside its window",
+      timed("routine.open", "may", window),
+      true,
+    ],
+    [
+      "act",
+      "may past its window",
+      timed("routine.shut", "may", shutWindow),
+      false,
+    ],
+    ["act", "should on pace", action("target.log:on-pace", "should"), false],
+    ["act", "should owed", action("dose.owed", "should", { owed: true }), true],
+    [
+      "act",
+      "should whose moment is open",
+      action("dose.moment", "should", { windowOpen: true }),
+      true,
+    ],
+    ["read", "merely current", reading("unregistered.current"), false],
+    [
+      "read",
+      "dormant",
+      {
+        ...reading("unregistered.dormant"),
+        relevance: profileDataRelevance("dormant", "manual"),
+      },
+      false,
+    ],
+    ["read", "promoted", promoted("unregistered.promoted"), true],
+    [
+      "understand",
+      "statement",
+      statementCandidate({
+        candidateId: "understand.calm",
+        factKey: "fact.understand.calm",
+        groupKey: null,
+        subject,
+        applicable: true,
+        relevance: { kind: "event" },
+        sourceOrder: order++,
+      }),
+      true,
+    ],
+    [
+      "setup",
+      "setup step",
+      actionCandidate({
+        ...action("setup.step", "may"),
+        relevance: { kind: "setup" },
+        obligation: "may",
+      }),
+      true,
+    ],
+    [
+      "active-states",
+      "running state",
+      stateCandidate({
+        candidateId: "state.running",
+        factKey: "fact.state.running",
+        groupKey: null,
+        subject,
+        applicable: true,
+        relevance: { kind: "state" },
+        sourceOrder: order++,
+      }),
+      true,
+    ],
+  ] as const)(
+    "%s: %s",
+    (group, _label, candidate, admitted) => {
+      expect(admissionOf(candidate)).toMatchObject({
+        lane: "everything",
+        everythingGroup: group,
+        admitted,
+      });
+    }
+  );
+
+  it("puts every fact the tail drops behind exactly one door for its page", () => {
+    const quiet = [
+      action("vitals.manual-log", "may"),
+      action("weight.quick-add", "may"),
+      action("symptom.well-day-log", "may"),
+    ];
+    const pages = new Map<string, AppRoute>([
+      ["vitals.manual-log", "/trends"],
+      ["weight.quick-add", "/trends"],
+      ["symptom.well-day-log", "/wellness"],
+    ]);
+    const placements = rank([...fillNow(), ...quiet]);
+    const tail = everythingTail(
+      placements,
+      (candidate) => pages.get(candidate.candidateId) ?? null
+    );
+    // THE GUARANTEE: the tail renders nothing it did not admit, which is only true
+    // because every dropped fact was answered by a door. Two facts on Trends owe one
+    // row, not two.
+    expect(tail.members.map((placement) => placement.admitted)).not.toContain(
+      false
+    );
+    expect(tail.doors).toEqual(["/trends", "/wellness"]);
+
+    // THE CONVERSE, so the assertion above is known to be able to fail: take one
+    // page away and that fact is back in the rendered tail — visible, not silently
+    // gone. This is the direction a new candidate arriving without a page trips.
+    const undoored = everythingTail(placements, (candidate) =>
+      candidate.candidateId === "symptom.well-day-log"
+        ? null
+        : (pages.get(candidate.candidateId) ?? null)
+    );
+    expect(
+      undoored.members
+        .filter((placement) => !placement.admitted)
+        .map((placement) => placement.candidate.candidateId)
+    ).toEqual(["symptom.well-day-log"]);
+    expect(undoored.doors).toEqual(["/trends"]);
   });
 
   it("groups the unplaced remainder without relevance scoring", () => {

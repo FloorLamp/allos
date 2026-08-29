@@ -104,6 +104,7 @@ describe("dashboard placement canvas", () => {
         timingDisposition: { kind: "active" },
         everythingGroup: "active-states",
         memberOrder: 0,
+        admitted: true,
       },
       {
         candidate: act,
@@ -112,6 +113,7 @@ describe("dashboard placement canvas", () => {
         timingDisposition: { kind: "active" },
         everythingGroup: "act",
         memberOrder: 0,
+        admitted: true,
       },
     ];
     const nodes = new Map<string, ReactNode>([
@@ -123,6 +125,7 @@ describe("dashboard placement canvas", () => {
         dateLabel: "August 19, 2026",
         placements,
         candidateNodes: nodes,
+        candidatePages: new Map(),
         standingPresentations: new Map(),
         aheadPresentations: new Map([
           [horizon.candidateId, { label: "Horizon row" }],
@@ -155,6 +158,7 @@ describe("dashboard placement canvas", () => {
             : placement
         ),
         candidateNodes: nodes,
+        candidatePages: new Map(),
         standingPresentations: new Map(),
         aheadPresentations: new Map([
           [horizon.candidateId, { label: "Horizon row" }],
@@ -184,6 +188,7 @@ describe("dashboard placement canvas", () => {
         timingDisposition: { kind: "active" },
         everythingGroup: groupNames[laneOrder],
         memberOrder: 0,
+        admitted: true,
       })
     );
     const nodes = new Map<string, ReactNode>(
@@ -198,6 +203,7 @@ describe("dashboard placement canvas", () => {
           dateLabel: "August 19, 2026",
           placements: members,
           candidateNodes: nodes,
+          candidatePages: new Map(),
           standingPresentations: new Map(),
           aheadPresentations: new Map(),
           attentionBadgeCount: 0,
