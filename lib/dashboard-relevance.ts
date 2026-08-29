@@ -565,11 +565,36 @@ export function rankDashboardCandidates(
       (a, b) => b.score - a.score || compareSource(a.candidate, b.candidate)
     );
   const ordinaryFacts = new Set(episodeFacts);
-  const uniqueOrdinary = rankedOrdinary.filter(({ candidate }) => {
-    if (ordinaryFacts.has(candidate.factKey)) return false;
-    ordinaryFacts.add(candidate.factKey);
-    return true;
-  });
+  // Which of a fact's tied candidates renders (#3201). Exact-once-by-factKey is
+  // unchanged and the seat the fact earned is unchanged; only the occupant is
+  // decided here, and it is decided by usefulness rather than by gather order.
+  // A marker that has just become notable mints both a reading and the attention
+  // finding that flagged it, on one shared factKey; "Ferritin 18 ng/mL" is
+  // strictly more informative than "Ferritin flagged", and the flag is legible in
+  // the reading anyway. sourceOrder used to settle it, and sourceOrder is an
+  // implementation detail of gather sequence carrying no claim about usefulness.
+  // Scoring still leads: only candidates already tied on score are reordered, so
+  // a fact whose finding outranks its reading keeps the finding.
+  const factOccupant = new Map<string, (typeof rankedOrdinary)[number]>();
+  for (const entry of rankedOrdinary) {
+    const held = factOccupant.get(entry.candidate.factKey);
+    // In this lane a reading scores only through its promotion, so "reading"
+    // already means a value that earned its way here.
+    if (
+      held === undefined ||
+      (held.score === entry.score &&
+        entry.candidate.kind === "reading" &&
+        held.candidate.kind !== "reading")
+    )
+      factOccupant.set(entry.candidate.factKey, entry);
+  }
+  const uniqueOrdinary = rankedOrdinary
+    .filter(({ candidate }) => {
+      if (ordinaryFacts.has(candidate.factKey)) return false;
+      ordinaryFacts.add(candidate.factKey);
+      return true;
+    })
+    .map((entry) => factOccupant.get(entry.candidate.factKey) ?? entry);
   const selectedNow = [
     ...selectedSafety.map((entry) => ({
       ...entry,
