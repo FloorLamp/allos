@@ -737,16 +737,26 @@ export function getProtocolHeatmaps(
   weekStart = 0
 ): Record<number, ProtocolHeatmap> {
   const usage = getProtocolUsageByDayMap(profileId, protocols, today);
+  const targets = protocolTargetsById(profileId, protocols);
   return Object.fromEntries(
-    protocols.map((protocol) => [
-      protocol.id,
-      buildProtocolHeatmap(
-        usage.get(protocol.id) ?? [],
-        protocol.start_date,
-        protocol.end_date ?? today,
-        weekStart
-      ),
-    ])
+    protocols.map((protocol) => {
+      const target =
+        protocol.frequency_target_id != null
+          ? (targets.get(protocol.frequency_target_id) ?? null)
+          : null;
+      const unit =
+        usageScopeFor(protocol, target).kind === "intake" ? "dose" : "session";
+      return [
+        protocol.id,
+        buildProtocolHeatmap(
+          usage.get(protocol.id) ?? [],
+          protocol.start_date,
+          protocol.end_date ?? today,
+          weekStart,
+          unit
+        ),
+      ];
+    })
   );
 }
 

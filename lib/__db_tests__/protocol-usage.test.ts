@@ -424,6 +424,8 @@ describe("getProtocolUsage / getProtocolPractice / getProtocolAdherence", () => 
     );
     expect(heatmaps[creatineId].totalSessions).toBe(1);
     expect(heatmaps[nmnId].totalSessions).toBe(1);
+    expect(heatmaps[creatineId].unit).toBe("dose");
+    expect(heatmaps[nmnId].unit).toBe("dose");
   });
 
   it("getProtocolPractice resolves the type + per-week; adherence reuses the weekly count", () => {
