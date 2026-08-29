@@ -11,6 +11,12 @@
 // The TODAY branch keeps the derived widening (#1292/#1298) and is pinned here too: it is
 // a statement about now with no dated form, so it must reach today and only today.
 //
+// AND THE SIBLING SEAM REACHED WITH THE SAME `p.date` (#3994), at the bottom of this
+// file: `standingUsualOffer` -> `getUsualRoutineOffer` -> `getPendingRoutineDoses`. Two
+// surfaces of one reconcile pass answered "which situations were active on that day"
+// two ways, so they are asserted against each other here rather than each against a
+// literal — a literal can be wrong twice and still agree with itself.
+//
 // Runs via `npm run test:db` (vitest.db.config.ts).
 
 import { describe, it, expect } from "vitest";
@@ -31,6 +37,7 @@ import {
   type NormMetricSample,
 } from "@/lib/integrations/normalize";
 import { collectWindowDoses } from "@/lib/notifications/intake";
+import { getPendingRoutineDoses } from "@/lib/queries/usual-routine";
 
 let seq = 0;
 function newProfile(): number {
@@ -51,7 +58,14 @@ function seedItem(
   profileId: number,
   name: string,
   situation: string,
-  how: "due-on" | "paused-by"
+  how: "due-on" | "paused-by",
+  // How long ago the item came into existence. The reminder gather judges a past day's
+  // dueness with NO lifetime clamp, so 0 is invisible to every case above; the routine
+  // seam applies #430/#1442's `doseWindowSince` and would drop a day-old fixture for
+  // that reason instead of the situation one. The #3994 block below therefore ages its
+  // item past the window it reads, so what the two seams disagree about can only be the
+  // situation set.
+  ageDays = 0
 ): void {
   const sid = resolveSituationId(profileId, situation)!;
   const on = how === "due-on";
@@ -72,10 +86,25 @@ function seedItem(
         on ? null : sid
       ).lastInsertRowid
   );
-  db.prepare(
-    `INSERT INTO intake_item_doses (item_id, amount, time_of_day, food_timing, sort)
+  const doseId = Number(
+    db
+      .prepare(
+        `INSERT INTO intake_item_doses (item_id, amount, time_of_day, food_timing, sort)
      VALUES (?, '1 tab', 'Morning', 'any', 0)`
-  ).run(itemId);
+      )
+      .run(itemId).lastInsertRowid
+  );
+  if (ageDays > 0) {
+    const born = `${shiftDateStr(today(profileId), -ageDays)}T00:00:00Z`;
+    db.prepare("UPDATE intake_items SET created_at = ? WHERE id = ?").run(
+      born,
+      itemId
+    );
+    db.prepare("UPDATE intake_item_doses SET created_at = ? WHERE id = ?").run(
+      born,
+      doseId
+    );
+  }
 }
 
 // The item names the Morning reminder would carry for `date`.
@@ -259,5 +288,70 @@ describe("WHICH past day the reminder is scored against (#3973)", () => {
       "day-3": false, // the stop day itself is OUTSIDE the span
       "day-2": false,
     });
+  });
+});
+
+// ── THE SIBLING SEAM, AND WHY THIS IS AN AGREEMENT TEST (#3994) ──────────────
+//
+// `reconcile.ts` hands the SAME `p.date` to `collectWindowDoses` and, for a `usual:`
+// token, to `standingUsualOffer` → `getUsualRoutineOffer` → `getPendingRoutineDoses`.
+// That date is genuinely past: the token rides family `intake-dose`, whose reconcile
+// guard is `isDoseDateAccepted` over `DOSE_LOG_DATE_WINDOW_DAYS` = 2. Until #3964 the
+// routine half resolved situations through `getEffectiveActiveSituations`, whose
+// declared component is an undated "active = 1" read, so one pass told a person two
+// different things about one day: the reminder correctly dropped a dose that was never
+// owed while the offer still claimed it, and the reminder correctly restored a day's
+// owed dose while the offer had already forgotten it.
+//
+// Asserted as EQUALITY BETWEEN THE TWO SEAMS, not as two literals: before #3989 both
+// halves were wrong in the same direction and agreed, so a pair of literals would have
+// passed on that tree for the wrong reason. The expected value is carried alongside so
+// a fixture that renders both seams empty cannot pass as "agreement".
+describe("the routine offer answers a past day exactly as the reminder does (#3994)", () => {
+  // Both seams, one day, as a triple: [reminder, routine offer, what the day owed].
+  function bothOn(profileId: number, date: string): [boolean, boolean] {
+    return [
+      morningNames(profileId, date).includes(ITEM),
+      getPendingRoutineDoses(profileId, "Morning", date)
+        .map((d) => d.name)
+        .includes(ITEM),
+    ];
+  }
+
+  // WHICH past day, not merely "a past day". The two shapes below put the transition
+  // INSIDE the span each reads, and the asymmetry is `situationsActiveOn`'s own: a start
+  // dated day-3 is already ON on day-3, a stop dated day-3 is already OFF on day-3. A
+  // resolver reading day-2's situations for day-3 (or the reverse) lands on the wrong
+  // side of exactly one of these rows.
+  it.each([
+    {
+      what: "declared TODAY reaches neither seam's past day",
+      seed: (p: number) => setActiveSituations(p, ["Travel"]),
+      owed: { "day-3": false, "day-2": false, "day-1": false },
+    },
+    {
+      what: "STARTED on day-3: off the day before it, on from it",
+      seed: (p: number) => activeSince(p, "Travel", 3),
+      owed: { "day-4": false, "day-3": true, "day-2": true },
+    },
+    {
+      what: "STOPPED on day-3, un-declared now: on before it, off from it",
+      seed: (p: number) => activeBetween(p, "Travel", 7, 3),
+      owed: { "day-5": true, "day-4": true, "day-3": false, "day-2": false },
+    },
+  ])("$what", ({ seed, owed }) => {
+    const p = newProfile();
+    // Aged past every day read below, so the routine seam's lifetime clamp is a no-op
+    // and the only rule left to disagree about is the situation set (see seedItem).
+    seedItem(p, ITEM, "Travel", "due-on", 30);
+    seed(p);
+    for (const [label, expected] of Object.entries(owed)) {
+      const date = shiftDateStr(today(p), -Number(label.slice(4)));
+      // One assertion carrying both halves of the claim: the two seams agree, AND they
+      // agree on the day's real answer rather than on a shared blank.
+      expect({ [label]: bothOn(p, date) }).toEqual({
+        [label]: [expected, expected],
+      });
+    }
   });
 });
