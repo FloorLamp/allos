@@ -129,16 +129,18 @@ export default async function SleepPage() {
       <PageHeader
         title="Sleep"
         subtitle={
-          <>
-            <span className="block">
-              Duration, timing, stages, and how sleep relates to mood.
-            </span>
-            {usualSleepBand != null && (
+          usualSleepBand == null ? (
+            "Duration, timing, stages, and how sleep relates to mood."
+          ) : (
+            <>
+              <span className="block">
+                Duration, timing, stages, and how sleep relates to mood.
+              </span>
               <span className="mt-0.5 block" data-testid="sleep-usual-times">
                 Usually ~{usualSleepBand}.
               </span>
-            )}
-          </>
+            </>
+          )
         }
         action={
           <SleepLogAction
