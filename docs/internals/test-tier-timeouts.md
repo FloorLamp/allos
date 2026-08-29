@@ -111,10 +111,13 @@ the literal is what makes the lever reach them:
 | `delegated-card-css`       | 120 000        | 1 801 ms / 1 test                 | ~8x              |
 | `tick-cadence`             | 45 000         | 333 ms / 2 tests                  | ~45x             |
 
-**One was too THIN, not too generous.** `native-dialogs` walks app/** and
-components/** with the TypeScript AST under coverage: 12 427 ms for the file on CI,
-which the dispatch box splits 62/38 — about 7 700 ms for the larger scan against a
-15 000 ms ceiling. That is 1.9x, not ~4x. It is now `perTestCeiling(2)`.
+**One was too THIN, not too generous, and was later retired.** `native-dialogs`
+walked app/** and components/** with the TypeScript AST under coverage: 12 427 ms for
+the file on CI, which the dispatch box split 62/38 — about 7 700 ms for the larger
+scan against a 15 000 ms ceiling. That was 1.9x, not ~4x, so it first moved to
+`perTestCeiling(2)`. The scanner is now gone: ESLint's existing AST pass owns both
+the native `alert`/`confirm`/`prompt` prohibition and the Playwright dialog-handler
+prohibition, so the pure tier no longer reparses the same trees to answer them.
 
 **`migration-reentry` was derived from the wrong reading.** #3999 took the 3 505 ms
 green run and recorded, in the same comment, that the test had crossed 15 000 ms on

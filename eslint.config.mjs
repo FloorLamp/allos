@@ -102,7 +102,24 @@ const config = [
           message:
             "Use revalidateRoute from lib/revalidate.ts so the target remains compile-checked (#1636/#2149).",
         },
+        {
+          selector:
+            "CallExpression[callee.type='MemberExpression'][callee.object.name='page'][callee.property.name=/^(?:on|once)$/][arguments.0.value='dialog']",
+          message:
+            "Do not install a Playwright dialog handler: native browser dialogs are prohibited, and accepting one would hide a regression.",
+        },
       ],
+    },
+  },
+  // Native alert/confirm/prompt calls bypass the app's accessible dialog primitives.
+  // This used to be a three-test Vitest scanner that reparsed every app/component
+  // file with the TypeScript compiler API under coverage. ESLint already owns the AST
+  // pass, and its core rule resolves scope, so the app's shadowed async `confirm()`
+  // service remains valid while `window.confirm()` and an unshadowed bare call fail.
+  {
+    files: ["app/**/*.{ts,tsx}", "components/**/*.{ts,tsx}"],
+    rules: {
+      "no-alert": "error",
     },
   },
   // eslint-config-next 16 bundles eslint-plugin-react-hooks v6, whose
