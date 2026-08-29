@@ -33,6 +33,9 @@ const SECURITY_HEADERS = [
     key: "Strict-Transport-Security",
     value: "max-age=15552000; includeSubDomains",
   },
+  // DENY everywhere except the one route the app frames itself: middleware.ts
+  // downgrades this to SAMEORIGIN on /medical/file/* and pairs it with
+  // frame-ancestors 'self' there (#3975). Its set() overrides this default.
   { key: "X-Frame-Options", value: "DENY" },
   { key: "X-Content-Type-Options", value: "nosniff" },
   { key: "Referrer-Policy", value: "strict-origin-when-cross-origin" },

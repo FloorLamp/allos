@@ -73,6 +73,13 @@ db_tier_paths=(
   # builder, which lives beside the specs that also use it. Named as a single file,
   # not as `e2e/`, so a diff confined to the browser suite still spares this gate.
   e2e/video-fixture.ts
+  # …and the seed's session mint plus the two modules it reaches, imported by
+  # lib/__db_tests__/seed-auth-state.test.ts (#3948). Named as files for the same
+  # reason as the line above: a diff confined to the browser suite still spares
+  # this gate.
+  e2e/seed/session.ts
+  e2e/worker-env.ts
+  e2e/sync-instants.ts
   vitest.db.config.ts
   vitest.isolation.ts
   vitest.timeouts.ts

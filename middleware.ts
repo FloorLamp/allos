@@ -8,7 +8,7 @@ import {
   sessionCookieOptions,
   shouldSlideSessionCookie,
 } from "./lib/session-cookie";
-import { buildCsp, generateNonce } from "./lib/csp";
+import { buildCsp, generateNonce, isSelfFramedPath } from "./lib/csp";
 import { isPublicPath } from "./lib/public-paths";
 
 // Coarse, non-authoritative auth gate. The Edge runtime can't open SQLite, so
@@ -94,8 +94,17 @@ export function middleware(req: NextRequest) {
 
   // Build the per-request nonce + CSP once, then stamp it onto EVERY response we
   // return below (share, redirect, 401, normal) so no route escapes the policy.
+  //
+  // ONE ROUTE GETS frame-ancestors 'self' (#3975): the stored-file route the
+  // import page frames its own PDF preview from. The narrowing is decided HERE,
+  // from the path, rather than by the route handler setting its own CSP — two
+  // Content-Security-Policy headers on one response are INTERSECTED by the
+  // browser, so a handler-set `'self'` beside this middleware's `'none'` still
+  // refuses the frame. Deciding it here also keeps lib/csp.ts the single copy of
+  // the policy string (#595's invariant).
   const nonce = generateNonce();
-  const csp = buildCsp(nonce, IS_DEV);
+  const selfFramed = isSelfFramedPath(pathname);
+  const csp = buildCsp(nonce, IS_DEV, selfFramed);
 
   // Thread the nonce into the REQUEST headers for the document routes: `x-nonce`
   // is read by app/layout.tsx (theme-boot <script nonce>), and the request-header
@@ -107,8 +116,13 @@ export function middleware(req: NextRequest) {
   const passNonce = { request: { headers: requestHeaders } };
 
   // Apply the response-header CSP to any response before it leaves middleware.
+  // On the self-framed route the legacy X-Frame-Options mirror moves with it:
+  // next.config.js stamps DENY on every path, and middleware's set() overrides
+  // that config default for this route — the same layering /share/* already
+  // relies on for its stricter Referrer-Policy.
   const withCsp = (res: NextResponse): NextResponse => {
     res.headers.set("content-security-policy", csp);
+    if (selfFramed) res.headers.set("X-Frame-Options", "SAMEORIGIN");
     return res;
   };
 
