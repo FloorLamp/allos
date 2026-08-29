@@ -579,6 +579,15 @@ ${landingLines}
   release-notes change it had never made, and it only caught it because the file was
   obviously not its own. A line count is exactly the kind of number that gets shrugged
   at, so it is exactly the kind that has to be measured right.
+  AND IT IS THE QUICK CHECK THAT CATCHES YOU, NOT THE REPORTED NUMBER. You will be careful
+  when you write the delta into your report. You will not be careful the four times you
+  run one mid-task just to see where you stand — and those are two-dot by muscle memory.
+  Measured 2026-08-29 on #3677: a lane reported +117 when the truth was +145, twice, from
+  quick checks taken while origin/main moved under it. Both errors were in the FLATTERING
+  direction, which is the half that matters: a number that says you are under budget is a
+  number nobody goes back and re-derives. Use three dots every single time, including the
+  ones you are not going to tell anyone about, or compute the base once
+  (\`BASE=\$(git merge-base origin/main HEAD)\`) and diff against that.
 - A SUBSTRING ASSERTION IS SATISFIABLE BY A NEIGHBOUR. \`toContainText("watch")\` on a card
   that also renders the user's note "Even brown, watch it." passes whether or not the
   thing you meant to assert is there — and keeps passing after the badge changes, because
