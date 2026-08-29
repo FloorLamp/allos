@@ -294,7 +294,31 @@ test.describe("the control box: one height, every kind, every viewport (#3938)",
         let seen = 0;
         for (const node of Array.from(document.querySelectorAll("*"))) {
           if (!(node instanceof HTMLElement)) continue;
-          if (getComputedStyle(node).overflowX !== "hidden") continue;
+          const cs = getComputedStyle(node);
+          if (cs.overflowX !== "hidden") continue;
+          // A REGION THAT SIGNALS ITS CLIPPING IS A LABEL ENDING ITS OWN TEXT, not
+          // a container refusing to scroll (#3607). Inside `truncate` an inline run
+          // keeps its FULL natural width in the box model while the ancestor paints
+          // the ellipsis at its own edge: measured on /medications/dose-history at
+          // 390px, the span is 97 wide with scrollWidth 167 and its right edge flush
+          // inside its parent, while the `<a>` in it reports 70px further right.
+          // Nothing is off screen; one rect is.
+          //
+          // THE REGION-FRAME RULE, AND NOT A COPY OF THE CENSUS'S.
+          // `insideEllipsisTruncation` (scripts/ux-geometry-census.mjs) asks whether
+          // a box sits inside an ellipsis ANCESTOR that is itself inside the
+          // VIEWPORT; this asks whether the region being examined is itself such a
+          // label. Different question, and the viewport half has no meaning when the
+          // frame is a region's own edge. #3814 owns converging the two.
+          //
+          // BEFORE the `seen` count, deliberately: a truncated label is not a region
+          // of the kind this sweep is about, so it must not satisfy the "this route
+          // renders at least one sideways-clipped region" converse below either.
+          //
+          // Stated HERE because `if (!culprit) continue` further down only ever
+          // covered a truncated TEXT NODE, and the dose ledger's item-name link is
+          // the first `title` cell in the tree to wrap that text in an element.
+          if (cs.textOverflow === "ellipsis") continue;
           const box = node.getBoundingClientRect();
           // A region narrower or shorter than the extension itself cannot be a
           // container holding a control with room for its reach. This is what

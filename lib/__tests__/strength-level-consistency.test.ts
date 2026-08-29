@@ -54,15 +54,20 @@ describe("strength level is one computation across every surface", () => {
       expect(badge.level).toBe(level);
       expect(badge.label).toBe(label);
 
-      // Analyze benchmark card.
+      // Analyze benchmark card. Asserted on `rankedLevelLabel` — the field the card
+      // BOLDS a ladder row by — rather than on a level the card no longer reads, so
+      // this arm keeps testing the rendered surface (#3945). Untrained is the one
+      // state with no ranked row: the card injects a "Current" marker instead.
       const bench = benchmarkState(
         f.exercise,
         f.sex,
         f.e1rmKg,
         f.bodyweightKg
       )!;
-      expect(bench.currentLevel.level).toBe(level);
-      expect(bench.currentLevel.label).toBe(label);
+      expect(bench.rankedLevelLabel).toBe(bench.isUntrained ? null : label);
+      expect(bench.rows.some((r) => r.label === bench.rankedLevelLabel)).toBe(
+        !bench.isUntrained
+      );
 
       // Healthspan strength pillar headline.
       const [pillar] = buildPillars({
