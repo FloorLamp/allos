@@ -6,6 +6,7 @@ import {
   TAP_TARGET_INSET_PX,
   TAP_TARGET_MIN_RENDERED_PX,
 } from "@/lib/tap-floor-tokens";
+import { roundControlBoxExtraLines } from "./control-box-lines";
 
 // THE CONTROL BOX (`--control-box` in app/globals.css, SECTION: Touch tap
 // targets), MEASURED — owner ruling #3938; the family floor it replaces was
@@ -245,7 +246,7 @@ test.describe("the control box: one height, every kind, every viewport (#3938)",
           // passes on 34, on 26 and on 12 alike. This is the form that reds on a
           // stray `py-*`, a rogue `min-h-11` or any ad-hoc padding, and stays
           // silent on a wrap.
-          const lines = Math.round(m.extraLines);
+          const lines = roundControlBoxExtraLines(m.extraLines);
           const reading = `${m.kind} on ${route} renders ${m.height}px at ${width}px with a ${m.lineHeight}px line box`;
           expect(
             Math.abs(m.extraLines - lines) <= 0.02 && lines >= 0,

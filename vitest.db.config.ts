@@ -1,6 +1,7 @@
 import { defineConfig } from "vitest/config";
 import { fileURLToPath } from "node:url";
 import { specsNeedingIsolation } from "./vitest.isolation";
+import { dbWorkerCount } from "./lib/__db_tests__/worker-count";
 // Both ceilings, with their derivation and their unit, live in ONE place.
 import { testTimeout, hookTimeout } from "./vitest.timeouts";
 
@@ -35,6 +36,7 @@ const ACTION_SETUP = "lib/__action_tests__/setup.ts";
 export default defineConfig({
   resolve: { alias },
   test: {
+    maxWorkers: dbWorkerCount(),
     // TWO PROJECTS, ONE RUN — so `test:db:coverage` still measures the WHOLE tier
     // in a single pass and the floors below need no cross-report merging.
     //

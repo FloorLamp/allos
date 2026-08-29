@@ -5,6 +5,7 @@ import { boundedOrNull, inTimeWindow } from "@/lib/ingest-bounds";
 import { toKg, toKm, type Kg } from "@/lib/units";
 import { metricAggregation } from "@/lib/metric-buckets";
 import { SKIN_TEMP_DELTA_METRIC } from "@/lib/vitals-input";
+import { SUB_DAILY_WINDOW_MAX_MIN } from "./health-connect-metrics";
 import type {
   NormActivity,
   NormHrMinute,
@@ -12,6 +13,11 @@ import type {
   NormVital,
   NormBodyMetric,
 } from "./normalize";
+
+export {
+  DAY_BUCKET_METRICS,
+  SUB_DAILY_WINDOW_MAX_MIN,
+} from "./health-connect-metrics";
 
 // Parser for the native payload sent by the Health Connect Webhook app
 // (https://github.com/mcnaveen/health-connect-webhook): one JSON object with a
@@ -195,35 +201,8 @@ export const FINE_GRAINED_ROWS_PER_DAY = 8;
 //
 // So the shape of a SINGLE record is the second, push-size-independent signal: a
 // `daily` record's window spans midnight→now, whereas a `15m`/`1m` bucket is minutes
-// wide. A daily-stored additive metric arriving in windows an hour or narrower is
-// therefore a fine-grained setting regardless of how few rows the push carried.
-export const SUB_DAILY_WINDOW_MAX_MIN = 60;
-
-// THE METRICS WHOSE WINDOWS TILE BY CONSTRUCTION — the only ones #3424's overlap
-// supersede may delete a row of. Exactly the FINE_GRAINED_CHECK data types above,
-// expressed as the METRIC names the parser emits, and exactly the four #3424's prod
-// table caught double counting.
-//
-// It lives here rather than beside the rule because it is a fact about the EXPORTER's
-// data types, which is this file's subject; lib/metric-window-overlap.ts re-exports it
-// for the rule's readers. Nutrition, hydration and sleep are absent on purpose — the
-// parser emits those on each record's own real window, so they nest legitimately.
-//
-// HYDRATION WAS RE-EXAMINED AND STAYS OUT (#3448). The hope was that the SECOND gate,
-// `isDayBucketWindow`, already separates a `full`-setting drink from a day bucket, so
-// the metric list would be redundant here. It is not: that gate is SIXTY MINUTES, and a
-// drink logged over a longer window clears it in both roles. AndroidX states the
-// non-overlap contract on StepsRecord and DistanceRecord and states none on
-// HydrationRecord ("a single drink", validated only as `startTime < endTime`), so the
-// nested pair is a shape the platform permits. Both halves are driven through the real
-// ingest in lib/__db_tests__/hydration-day-bucket-3448.test.ts: adding `hydration_l`
-// here fixes a visible travel double count and erases a 1.5 L drink a person logged.
-export const DAY_BUCKET_METRICS: ReadonlySet<string> = new Set([
-  "steps",
-  "distance_km",
-  "active_kcal",
-  "total_kcal",
-]);
+// wide. `SUB_DAILY_WINDOW_MAX_MIN` is shared with the overlap rule through the
+// dependency-free policy module above, so ingest and repair cannot drift.
 
 // A DOUBLE COUNT THIS PUSH COULD NOT COLLAPSE, said out loud.
 //
