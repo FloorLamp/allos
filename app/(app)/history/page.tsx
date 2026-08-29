@@ -82,12 +82,15 @@ export const dynamic = "force-dynamic";
 function FoldCard({
   fold,
   href,
+  gutter,
   nested = false,
 }: {
   fold: TimelineFold<{ date: string; events: unknown[] }> & {
     monthCount?: number;
   };
   href: AppRoute;
+  /** The rail's lane, when the rail renders — see the feed container's note. */
+  gutter: string;
   nested?: boolean;
 }) {
   return (
@@ -96,7 +99,7 @@ function FoldCard({
       data-testid={`history-fold-${fold.key}`}
       data-fold-key={fold.key}
       data-fold-open={fold.open ? "true" : "false"}
-      className={`py-1.5 ${nested ? "pl-4" : ""}`}
+      className={`py-1.5 ${nested ? "pl-4" : ""} ${gutter}`}
     >
       <Link
         href={href}
@@ -434,7 +437,13 @@ export default async function HistoryPage(props: {
         />
       ) : null}
 
-      <div className={railGutter} data-testid="history-feed">
+      {/* THE FEED CONTAINER TAKES NO RAIL GUTTER, and that is the #3920 shape rather
+          than an oversight: below `sm` the row band is FULL-BLEED, so a gutter on its
+          container would stop the fill reaching the edge and leave a 28px strip of
+          page beside it. The rail's lane is spent by the row CONTENT and by the day
+          headers instead — "the band fill stays full-bleed while row content ends
+          short of the edge". */}
+      <div data-testid="history-feed">
         {renderedDays.map((group) => (
           <section
             key={group.date}
@@ -467,6 +476,7 @@ export default async function HistoryPage(props: {
               maxDate={todayStr}
               defaultTime={defaultTime}
               subjectNames={subjectNames}
+              rowClassName={railGutter}
             />
           </section>
         ))}
@@ -476,12 +486,18 @@ export default async function HistoryPage(props: {
             defect #2657 exists to prevent — and it would spend the chrome budget on
             content nobody asked to see. */}
         {windowed?.months.map((fold) => (
-          <FoldCard key={fold.key} fold={fold} href={foldHref(fold.key)} />
+          <FoldCard
+            key={fold.key}
+            fold={fold}
+            gutter={railGutter}
+            href={foldHref(fold.key)}
+          />
         ))}
         {windowed?.years.map((year) => (
           <div key={year.key}>
             <FoldCard
               fold={year}
+              gutter={railGutter}
               href={foldHref(year.key, {
                 open: year.open,
                 descendants: year.months.map((month) => month.key),
@@ -492,6 +508,7 @@ export default async function HistoryPage(props: {
                   <FoldCard
                     key={month.key}
                     fold={month}
+                    gutter={railGutter}
                     href={foldHref(month.key)}
                     nested
                   />

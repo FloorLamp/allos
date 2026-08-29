@@ -1,12 +1,7 @@
 import { test, expect } from "./fixtures";
 import { closeEditor, openFact } from "./intake-form-helpers";
 import Database from "better-sqlite3";
-import {
-  followLink,
-  hydratedClick,
-  settledClick,
-  settledSelect,
-} from "./helpers";
+import { followLink, hydratedClick, settledClick } from "./helpers";
 import { shiftDateStr, zonedWallTimeToUtc } from "@/lib/date";
 import { pinnedTimezone } from "./pinned-timezone";
 import { frozenNow, workerDbPath } from "./worker-env";
@@ -217,7 +212,7 @@ test("a supplement's dose history offers the medication row actions, and an edit
 // filterable by item, kind and date window, with the same row actions and a top-level
 // "Log past dose". This drives that door for real: confirm a dose on the supplements
 // tab, walk to the ledger, narrow it to the item, and backfill from the table itself.
-test("the supplements tab reaches a cross-item dose ledger and logs a past dose from it", async ({
+test("the supplements tab reaches the cross-item record and logs a past dose from it", async ({
   page,
 }, testInfo) => {
   const name = `Ledger Guard ${testInfo.repeatEachIndex}-${testInfo.retry}`;
@@ -243,38 +238,28 @@ test("the supplements tab reaches a cross-item dose ledger and logs a past dose 
     row.getByRole("button", { name: "Mark not taken" })
   ).toBeVisible();
 
-  // ── ONE click from the supplements tab to the whole ledger ─────────────────
+  // ── ONE click from the supplements tab to the whole record ────────────────
+  // The door used to open a route of its own; #3958 folded the four ledgers into
+  // `/history`, and the door now carries the kind AND the surface's own pre-filter
+  // as params on one page.
   await followLink(
     page,
     page.getByTestId("dose-ledger-link"),
-    /\/nutrition\/dose-history/
+    /\/history\?kind=dose&class=supplement/
   );
-  const ledger = page.getByTestId("dose-ledger");
-  const ownRow = ledger
-    .getByTestId("dose-ledger-row")
-    .filter({ hasText: name });
+  const ownRow = page.getByTestId("history-row").filter({ hasText: name });
   await expect(ownRow).toHaveCount(1);
   await expect(ownRow).toContainText("125 mg");
 
-  // ── Narrowing to the item leaves that item's rows and nothing else ─────────
-  const itemFilter = page.getByTestId("dose-ledger-item-filter");
-  const itemValue = await itemFilter
+  // ── "Log past dose" without opening any item's menu ────────────────────────
+  // The record's Add door IS this kind's backfill when the page is filtered to it.
+  await hydratedClick(page, page.getByTestId("dose-ledger-add"));
+  const picker = page.getByTestId("dose-ledger-item-picker");
+  const itemValue = await picker
     .locator("option")
     .filter({ hasText: name })
     .getAttribute("value");
-  await settledSelect(page, itemFilter, itemValue ?? "", {
-    destination: /item=/,
-  });
-  await expect(ledger.getByTestId("dose-ledger-row")).toHaveCount(1);
-  await expect(ledger.getByTestId("dose-ledger-row")).toContainText(name);
-
-  // ── "Log past dose" without opening any item's menu ────────────────────────
-  await hydratedClick(page, page.getByTestId("dose-ledger-add"));
-  // The picker opens on the item the ledger is FILTERED to — a reader who narrowed
-  // the table and then tapped "Log past dose" means that item.
-  await expect(page.getByTestId("dose-ledger-item-picker")).toHaveValue(
-    itemValue ?? ""
-  );
+  await picker.selectOption(itemValue ?? "");
   const form = page.getByTestId("historical-dose-form");
   const maxDate = await form
     .locator('input[type="hidden"][name="date"]')
@@ -287,12 +272,17 @@ test("the supplements tab reaches a cross-item dose ledger and logs a past dose 
   await form.getByLabel("Amount").fill("175 mg");
   await settledClick(page, form.getByRole("button", { name: "Save dose" }));
   await expect(page.getByText(`Logged past dose of ${name}.`)).toBeVisible();
-  await expect(ledger.getByTestId("dose-ledger-row")).toHaveCount(2);
   await expect(
-    ledger.getByTestId("dose-ledger-row").filter({ hasText: "175 mg" })
+    page.getByTestId("history-row").filter({ hasText: name })
+  ).toHaveCount(2);
+  await expect(
+    page
+      .getByTestId("history-row")
+      .filter({ hasText: name })
+      .filter({ hasText: "175 mg" })
   ).toContainText(/(?:6:45am|06:45)/);
 
-  // ── The item-filtered ledger says exactly what the item's own panel says ───
+  // ── The record says exactly what the item's own panel says ────────────────
   await page.goto("/nutrition?tab=supplements");
   await row.getByRole("button", { name: "Supplement actions" }).click();
   await page.getByRole("menuitem", { name: "Dose history" }).click();

@@ -42,8 +42,10 @@ test.describe("the dose record at phone width (#3478)", () => {
     // the one this fixture can prove is the real thing rather than a race.
     await page.goto("/history?kind=dose");
 
-    const empty = page.getByTestId("history-feed");
-    await expect(empty).toBeVisible();
+    // The feed CONTAINER is asserted by count, not by visibility: an empty record
+    // renders an empty box with no height, and "hidden" is what a zero-height element
+    // reports. The claim is what the page SAYS, which is the next two lines.
+    await expect(page.getByTestId("history-feed")).toHaveCount(1);
     await expect(page.getByTestId("history-row")).toHaveCount(0);
     const message = page.locator("main");
     await expect(message).toContainText("Nothing recorded here yet.");

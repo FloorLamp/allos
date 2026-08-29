@@ -150,7 +150,7 @@ test("a dose day panel links into the record for that day", async ({
   // successor, and a tapped calendar cell was always asking about one day.
   await expect(link).toHaveAttribute("href", /\/history\?kind=dose&day=/);
   await followLink(page, link, /\/history\?kind=dose&day=/);
-  await expect(page.getByTestId("history-feed")).toBeVisible();
+  await expect(page.getByTestId("history-filters")).toBeVisible();
   // The food section's panel has no such link — the declaration is per domain.
   await page.goto("/trends?tab=nutrition");
   const history = page.getByTestId("intake-history");

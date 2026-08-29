@@ -228,7 +228,7 @@ test.describe("the record (#3958)", () => {
     await page.goto("/nutrition");
     await hydratedClick(page, page.getByTestId("food-ledger-link"));
     await expect(page).toHaveURL(/\/history\?kind=food/);
-    await expect(page.getByTestId("history-feed")).toBeVisible();
+    await expect(page.getByTestId("history-filters")).toBeVisible();
 
     await page.goto("/wellness");
     await hydratedClick(page, page.getByTestId("practice-ledger-link"));

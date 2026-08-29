@@ -344,11 +344,16 @@ test.describe("the compact logged-event row at 430px (#3671)", () => {
         listRadius: list.borderTopLeftRadius,
       };
     });
-    // DIVIDERS, NOT PER-ROW CARDS — the same frame contract the food log above has.
+    // DIVIDERS, NOT PER-ROW CARDS — the same row contract the food log above has.
     expect(rowChrome.radius).toBe("0px");
     expect(rowChrome.background).toBe("rgba(0, 0, 0, 0)");
-    expect(rowChrome.listBorder).toBe("1px");
-    expect(rowChrome.listRadius).not.toBe("0px");
+    // THE FRAME AROUND THEM IS A BAND, NOT A CARD, and that is where the record and
+    // the food log's list legitimately differ: below `sm` the record's fill is
+    // full-bleed and flat (#3673/#3920 — it is one of the four swept surfaces), so it
+    // has no corners to meet the viewport with. The food log's list is not swept and
+    // keeps its rounded frame; asserting one shape for both would have made this test
+    // a claim about which surfaces #3673 named.
+    expect(rowChrome.listRadius).toBe("0px");
 
     // ── AND IT IS A CROSS-ITEM RECORD, SO IDENTITY IS THE FOOD (#3937) ─────────
     const greens = page
@@ -406,11 +411,16 @@ test.describe("the compact logged-event row at 430px (#3671)", () => {
     // the cross-item LEDGER here until #3958 deleted that route; the panel is the
     // same component at item scope, which is what makes it the honest stand-in.
     await page.goto("/nutrition?tab=supplements");
-    await page.getByTestId("supplement-more-toggle").click();
+    // The fixture item carries no scheduled time of day, so the tab files it under
+    // "More supplements" — a closed <details>, exactly as the panel test above.
+    await hydratedClick(
+      page,
+      page.locator('[data-testid="not-scheduled-section"] summary')
+    );
     const card = page
-      .getByTestId("supplement-row")
-      .filter({ hasText: ITEM })
-      .first(); // first-ok: this spec owns the only item with this name
+      .locator('[data-testid="supplement-row"]')
+      .filter({ hasText: ITEM });
+    await expect(card).toHaveCount(1);
     await hydratedClick(
       page,
       card.getByRole("button", { name: `Supplement actions for ${ITEM}` })
@@ -421,9 +431,12 @@ test.describe("the compact logged-event row at 430px (#3671)", () => {
     );
     const panelRow = card.getByTestId("dose-history-row");
     await expect(panelRow).toHaveCount(1);
-    await expect(
-      page.locator("table.logged-event-rows").filter({ has: panelRow })
-    ).toHaveCount(1);
+    // The row's OWN table, reached from the row rather than by filtering the page's
+    // tables: `has:` takes a locator relative to the outer element, and a chained
+    // page-level one resolves to nothing inside it.
+    await expect(panelRow.locator("xpath=ancestor::table[1]")).toHaveClass(
+      /logged-event-rows/
+    );
     await expect(visibleDetail(panelRow)).toHaveCount(0);
 
     // ONE OF THE OTHERS: a metric's readings are a record with a multi-field body,
@@ -532,10 +545,18 @@ test.describe("the compact logged-event row at 430px (#3671)", () => {
     // claim about that component's collapse, not about a route.
     await page.goto("/wellness");
 
-    const row = page
-      .getByTestId("practice-session-history")
-      .locator("table.logged-event-rows tbody tr")
+    // SCOPED TO THIS SPEC'S OWN CARD, because the ROW does not name its practice
+    // here and must not: the card header already does, so `showPracticeName` is
+    // false and a row-level `hasText` filter would match nothing. That difference
+    // between the card and the deleted ledger is exactly why this had to move rather
+    // than be retargeted.
+    const card = page
+      .getByTestId("wellness-practice-card")
       .filter({ hasText: PRACTICE });
+    await expect(card).toHaveCount(1);
+    const row = card
+      .getByTestId("practice-session-history")
+      .locator("table.logged-event-rows tbody tr");
     await expect(row).toHaveCount(1);
 
     // THE NOTE IS ON SCREEN WITH NO TAP. Two columns and the second is the person's

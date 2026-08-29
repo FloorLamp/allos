@@ -691,15 +691,31 @@ test("#3920 a one-sided safe-area inset leaves no gap and no overhang", async ({
   expect([...new Set(edges)]).toEqual([`0→${VIEWPORT_PX}`]);
 });
 
-test("#3673 the record's rows reclaim the same line", async ({ page }) => {
+test("#3673 the record's band bleeds and its rows keep the gutter", async ({
+  page,
+}) => {
   test.slow();
   await page.goto("/history");
-  const row = page.locator('[data-testid="history-row"]').first(); // first-ok: every row is the same primitive
-  await expect(row).toBeVisible();
-  const box = await row.boundingBox();
-  expect(Math.round(box?.x ?? 0)).toBe(PAGE_GUTTER_PX);
-  expect(Math.round(box?.width ?? 0)).toBe(CONTENT_PX);
+  const list = page.locator('[data-testid="history-rows"]').first(); // first-ok: every day's list is the same primitive
+  await expect(list).toBeVisible();
+  const row = list.locator('[data-testid="history-row"]').first(); // first-ok: every row is the same primitive
+
+  // THE TWO HALVES ARE DIFFERENT BOXES, and that is the whole #3920 shape: the FILL
+  // reaches the viewport edge while the CONTENT starts at the page gutter. Asserting
+  // one alone passes on both of the broken trees — a framed band that never bled, and
+  // a bled band whose first character sat flush against the screen.
+  const fill = await list.boundingBox();
+  expect(Math.round(fill?.x ?? -1)).toBe(0);
+  expect(Math.round(fill?.width ?? 0)).toBe(VIEWPORT_PX);
+
+  const content = await row.evaluate((el) => {
+    const range = document.createRange();
+    range.selectNodeContents(el);
+    return Math.round(range.getBoundingClientRect().left);
+  });
+  expect(content).toBe(PAGE_GUTTER_PX);
   // The row still meets the tap floor it met when a card was drawing its gutter.
+  const box = await row.boundingBox();
   expect(box?.height ?? 0).toBeGreaterThanOrEqual(TAP_FLOOR_PX);
 });
 
