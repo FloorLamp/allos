@@ -386,6 +386,11 @@ export default async function HistoryPage(props: {
   const writableProfileIds = memberIds.filter(
     (id) => scope.access.get(id) === "write"
   );
+  // AND EACH MEMBER'S OWN TODAY (#4009 item 1). A correction's date field may reach
+  // that member's current day and no further — which is not the caregiver's, for a
+  // member in a zone ahead of theirs. The server already bounds on the gated profile;
+  // this is the client half saying the same thing.
+  const maxDates = Object.fromEntries(memberIds.map((id) => [id, today(id)]));
   // THE OTHER FOUR DOORS' VOCABULARY, read once and only for the kind that is showing
   // one. Each list is a shared reader the kind's own surface already uses — no fifth
   // derivation of "what can this profile log".
@@ -490,7 +495,7 @@ export default async function HistoryPage(props: {
         rows={group.events as HistoryRow[]}
         writableProfileIds={writableProfileIds}
         doseItems={doseItems}
-        maxDate={todayStr}
+        maxDates={maxDates}
         defaultTime={defaultTime}
         subjectNames={subjectNames}
         rowClassName={rowGutter}

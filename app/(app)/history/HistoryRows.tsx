@@ -107,7 +107,7 @@ export default function HistoryRows({
   rows,
   writableProfileIds,
   doseItems,
-  maxDate,
+  maxDates,
   defaultTime,
   subjectNames,
   rowClassName = "",
@@ -126,7 +126,16 @@ export default function HistoryRows({
   writableProfileIds: readonly number[];
   /** Every intake item this profile owns — the dose form's picker and dose options. */
   doseItems: DoseLedgerItem[];
-  maxDate: string;
+  /**
+   * THE LATEST DAY EACH SUBJECT MAY BE CORRECTED TO, keyed by profile — the row's own
+   * profile-local today, not the caregiver's (#4009 item 1). One acting-profile
+   * `maxDate` bounded a member in a zone AHEAD of the caregiver's out of their own
+   * current day: the server accepts it (every bound below is asked of the gated
+   * profile) and only the client's `max` attribute refuses. Same shape as
+   * `subjectNames` beside it, and total over the rows in view — the page builds it
+   * from the same member list the feeds came from.
+   */
+  maxDates: Record<number, string>;
   defaultTime: string;
   /** Whose row it is, in `?view=everyone`. Empty in single view (#534). */
   subjectNames: Record<number, string>;
@@ -156,6 +165,10 @@ export default function HistoryRows({
   const writable = new Set(writableProfileIds);
   const canEdit = (row: HistoryRow) =>
     row.edit != null && writable.has(row.profileId);
+
+  // AND SO IS "TODAY" — the row's subject decides how far forward its date field
+  // reaches, for the same reason its zone decides what a wall clock means.
+  const maxDateFor = (row: HistoryRow) => maxDates[row.profileId];
 
   // EVERY CORRECTION AND EVERY DELETE NAMES ITS SUBJECT (#4009 item 1). The field is
   // `profile_id` because that is how this repo already spells a per-item write's
@@ -274,7 +287,7 @@ export default function HistoryRows({
             itemId={edit.itemId}
             itemName={row.title}
             doses={item ? doseOptionsFor(item, prefs) : []}
-            maxDate={maxDate}
+            maxDate={maxDateFor(row)}
             defaultTime={defaultTime}
             asNeeded={item?.asNeeded ?? false}
             courseBound={edit.itemKind === "medication"}
@@ -325,7 +338,7 @@ export default function HistoryRows({
               <DateField
                 name="date"
                 defaultValue={row.date}
-                max={maxDate}
+                max={maxDateFor(row)}
                 required
                 inputClassName="mt-1 w-full"
               />
@@ -437,7 +450,7 @@ export default function HistoryRows({
               <DateField
                 name="date"
                 defaultValue={row.date}
-                max={maxDate}
+                max={maxDateFor(row)}
                 required
                 inputClassName="mt-1 w-full"
               />

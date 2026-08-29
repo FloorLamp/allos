@@ -158,10 +158,22 @@ beforeEach(() => {
 });
 
 const ACTING = 7;
+// A WRITABLE MEMBER WHO IS NOT THE ACTING PROFILE, and their zone and their today.
+// Everything above this line renders acting-profile rows, so `profile_id` could only
+// ever be compared against ACTING and `row.tz` was never set at all (the fixture cast
+// past a required field) — which is why stamping `writableProfileIds[0]` instead of
+// the row's own id, and dropping the subject's zone, both passed. Pacific/Niue is
+// UTC−11 while the mocked provider says UTC, and their days differ too: a caregiver in
+// UTC on 2026-08-28 is a member in Niue still on 2026-08-27.
+const MEMBER = 11;
+const MEMBER_TZ = "Pacific/Niue";
+const ACTING_TODAY = "2026-08-28";
+const MEMBER_TODAY = "2026-08-27";
 
 function row(over: Partial<HistoryRow> & Pick<HistoryRow, "id" | "kind">) {
   return {
     profileId: ACTING,
+    tz: "UTC",
     date: "2026-08-18",
     sortTime: null,
     clock: null,
@@ -175,12 +187,15 @@ function row(over: Partial<HistoryRow> & Pick<HistoryRow, "id" | "kind">) {
   } as HistoryRow;
 }
 
-function openRow(rows: HistoryRow[]): void {
+function openRow(
+  rows: HistoryRow[],
+  writableProfileIds: number[] = [ACTING]
+): void {
   cleanup();
   render(
     <HistoryRows
       rows={rows}
-      writableProfileIds={[ACTING]}
+      writableProfileIds={writableProfileIds}
       doseItems={[
         {
           id: 42,
@@ -191,15 +206,18 @@ function openRow(rows: HistoryRow[]): void {
           doses: [{ id: 9, amount: "3 g", time_of_day: "Morning" }],
         },
       ]}
-      maxDate="2026-08-28"
+      maxDates={{ [ACTING]: ACTING_TODAY, [MEMBER]: MEMBER_TODAY }}
       defaultTime="09:00"
       subjectNames={{}}
     />
   );
 }
 
-async function openEdit(rows: HistoryRow[]): Promise<void> {
-  openRow(rows);
+async function openEdit(
+  rows: HistoryRow[],
+  writableProfileIds?: number[]
+): Promise<void> {
+  openRow(rows, writableProfileIds);
   fireEvent.click(screen.getByTestId("overflow-menu-trigger"));
   await act(async () =>
     fireEvent.click(screen.getByTestId("history-row-edit"))
@@ -781,6 +799,87 @@ describe("the record's ⋯ posts to the domain's own action", () => {
     }
   );
 
+  // ── A WRITABLE MEMBER'S ROW ─────────────────────────────────────────────────
+  //
+  // THE GAP THE TABLES ABOVE CANNOT SEE, and the reason it stayed open: every row
+  // they render belongs to ACTING and every payload is compared against ACTING, so
+  // the three things this page reads OFF THE ROW were only ever checked against the
+  // acting profile's own values. All three then survived a mutation.
+  //
+  //   • `profile_id`  — stamping `writableProfileIds[0] ?? row.profileId` (the first
+  //     profile this login may write, instead of the row's) passed every tier.
+  //   • the subject's ZONE — `tz` was never set on the fixture rows at all, so
+  //     dropping `tz={row.tz}` fell back to the provider and matched.
+  //   • the subject's TODAY — one acting-profile `maxDate` bounded a member in a
+  //     zone ahead out of their own current day.
+  //
+  // One writable member, one row of theirs, all three read back. MEMBER is deliberately
+  // NOT first in `writableProfileIds`, so "the row's profile" and "a profile this login
+  // may write" are different answers.
+  const memberDoseRow = () =>
+    row({
+      id: "dose:77",
+      kind: "dose",
+      profileId: MEMBER,
+      tz: MEMBER_TZ,
+      date: "2026-08-18",
+      title: "Magnesium",
+      edit: {
+        kind: "dose",
+        logId: 77,
+        itemId: 42,
+        doseId: 9,
+        // 20:30Z on the 18th is 09:30 on the SUBJECT's 18th, and 20:30 on the
+        // caregiver's. Both are that day, so only the CLOCK tells the two apart.
+        statedAt: "2026-08-18 20:30:00",
+        amount: "250 mg",
+        itemKind: "supplement",
+      },
+    });
+
+  it("corrects a writable member's row on THAT member and THEIR clock", async () => {
+    await openEdit([memberDoseRow()], [ACTING, MEMBER]);
+    // Read BEFORE saving: the form unmounts on success. `DateField` is a text input
+    // that enforces its window through the Constraint Validation API, so the bound is
+    // observable only by TYPING across it — and asserted as the difference between two
+    // real days rather than against a constant, because a field with no bound at all
+    // accepts both. The member's own today is accepted; the caregiver's, one day
+    // later, is not.
+    const dateInput = screen.getByTestId("historical-dose-date");
+    fireEvent.change(dateInput, { target: { value: MEMBER_TODAY } });
+    expect((dateInput as HTMLInputElement).validationMessage).toBe("");
+    fireEvent.change(dateInput, { target: { value: ACTING_TODAY } });
+    expect((dateInput as HTMLInputElement).validationMessage).toBe(
+      "Date is outside the allowed range."
+    );
+    fireEvent.change(dateInput, { target: { value: "2026-08-18" } });
+
+    await act(async () =>
+      fireEvent.click(screen.getByRole("button", { name: "Save changes" }))
+    );
+    expect(only("updateHistoricalDose")).toEqual({
+      log_id: "77",
+      id: "42",
+      dose_id: "9",
+      date: "2026-08-18",
+      time: "09:30",
+      amount: "250 mg",
+      profile_id: String(MEMBER),
+    });
+  });
+
+  it("deletes a writable member's row on THAT member", async () => {
+    openRow([memberDoseRow()], [ACTING, MEMBER]);
+    fireEvent.click(screen.getByTestId("overflow-menu-trigger"));
+    await act(async () =>
+      fireEvent.click(screen.getByTestId("history-row-delete"))
+    );
+    expect(only("deleteAdministration")).toEqual({
+      log_id: "77",
+      profile_id: String(MEMBER),
+    });
+  });
+
   // THE ⋯ FOLLOWS WRITE ACCESS ON THE ROW'S OWN PROFILE (#4009 item 1 / #2106), which
   // is the rule #3958 states and phase 1 approximated with "is it the acting profile".
   // Two rows, one render, differing only in whose they are: the affordance appears on
@@ -829,7 +928,7 @@ describe("the record's ⋯ posts to the domain's own action", () => {
         ]}
         writableProfileIds={[ACTING, WRITABLE]}
         doseItems={[]}
-        maxDate="2026-08-28"
+        maxDates={{ [ACTING]: ACTING_TODAY }}
         defaultTime="09:00"
         subjectNames={{ [WRITABLE]: "Mia", [READ_ONLY]: "Sam" }}
       />
