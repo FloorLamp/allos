@@ -228,16 +228,15 @@ function gatherWindowDoses(
     date,
     isWorkoutDay: activitiesToday.length > 0,
     // The situations active ON `date` — the history resolver owns retroactive
-    // membership on BOTH halves (#3973): the declared set is a statement about now and
-    // said nothing about a past day, so scoring one against it made yesterday's
-    // reminder move when a situation was toggled today.
+    // membership on BOTH halves (#3973). The declared set is a statement about now, so
+    // scoring a past day against it moved yesterday's reminder whenever a situation was
+    // toggled today.
     //
-    // TODAY additionally takes the derived widening (#1292/#1298), and that branch is
-    // deliberate rather than inherited: resolveDerivedSituations judges "a rough night"
-    // and "a logged period day" against the CURRENT local day and has no dated form, so
-    // it may only ever speak for today. On today the two agree — situationsOn(today)
-    // returns the declared set, because an event logged today is not strictly after it
-    // — so the union adds exactly the derived names and nothing else.
+    // The TODAY branch is deliberate, not inherited: the derived widening (#1292/#1298)
+    // judges "a rough night" and "a logged period day" against the CURRENT local day and
+    // has no dated form, so it may only ever speak for today. The two agree on today —
+    // an event logged today is not strictly after it — so the union adds exactly the
+    // derived names.
     activeSituations: isForToday
       ? getEffectiveActiveSituations(profileId, date)
       : situationsOn(date),
