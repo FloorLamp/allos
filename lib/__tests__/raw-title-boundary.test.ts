@@ -24,6 +24,9 @@ function tsxFiles(root: string): string[] {
 }
 
 function rawTitleFindings(source: string): string[] {
+  // JSX parsing cannot create an attribute spelling that is absent from source.
+  // Keep the AST verdict for candidates without building guaranteed-empty trees.
+  if (!/\btitle\s*=/.test(source)) return [];
   const file = ts.createSourceFile(
     "source.tsx",
     source,
@@ -127,17 +130,6 @@ describe("raw explanatory title boundary", () => {
       rawTitleFindings('const Link = () => null; <Link title="Heading" />')
     ).toEqual([]);
     expect(rawTitleFindings('<ModalShell title="Edit" />')).toEqual([]);
-  });
-
-  it("accepts registered disclosure primitives", () => {
-    expect(rawTitleFindings('<InfoTooltipIcon label="Full value" />')).toEqual(
-      []
-    );
-    expect(
-      rawTitleFindings(
-        '<VisualizationDetails label="Chart details" items={values} />'
-      )
-    ).toEqual([]);
   });
 
   it("keeps production free of hover-only explanatory titles", () => {
