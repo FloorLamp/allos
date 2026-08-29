@@ -1,6 +1,6 @@
 import { test, expect } from "./fixtures";
 import Database from "better-sqlite3";
-import { settledClick, settledFill } from "./helpers";
+import { hydratedClick, settledClick, settledFill } from "./helpers";
 import { frozenNow, workerDbPath } from "./worker-env";
 import { pinnedTimezone } from "./pinned-timezone";
 import {
@@ -227,7 +227,7 @@ test('a stated "Happened earlier?" time is the instant the reading carries (#327
   // Leg 2 — the statement. The day half is FIXED to today, so a statement can only
   // move the minute; the stated time lands on :00 seconds, which is what makes
   // restating the same minute a correction rather than a phantom second movement.
-  await settledClick(page, toggle);
+  await hydratedClick(page, toggle);
   await expect(picker.getByTestId("stool-when-date")).toHaveText("Today");
   await settledFill(page, picker.getByTestId("stool-when-time"), "07:05");
   await settledClick(page, picker.getByTestId("stool-type-3"));

@@ -1,5 +1,5 @@
 import { test, expect } from "./fixtures";
-import { type Page } from "@playwright/test";
+import { type Locator, type Page } from "@playwright/test";
 import Database from "better-sqlite3";
 import {
   expectPhoneTapTargets,
@@ -816,6 +816,18 @@ test("switching profiles clears the originating food receipt and cannot target i
   }
 });
 
+// Tap "Log another" through the same-day re-log confirm the sheet asks on every tap
+// after the first (#2007 layer 3 / #798: informational, never permissive).
+async function logAnother(page: Page, row: Locator): Promise<void> {
+  await hydratedClick(page, row.getByTestId("practice-log-button"));
+  const dialog = page.getByTestId("confirm-dialog");
+  await expect(dialog).toBeVisible();
+  await settledClick(
+    page,
+    dialog.getByRole("button", { name: "Log session" })
+  );
+}
+
 // #3273 — the sheet can now STATE when a session happened.
 //
 // The gap this closes: the sheet mounts LogPracticeButton without `showDetails` (a
@@ -860,7 +872,9 @@ test("the sheet states an earlier session time, and an untouched tap still write
     await expect(toggle).toHaveAttribute("aria-expanded", "true");
     await expect(row.getByTestId("practice-when-date")).toHaveText("Today");
     await settledFill(page, row.getByTestId("practice-when-time"), "07:05");
-    await settledClick(page, row.getByTestId("practice-log-button"));
+    // A second same-day tap ASKS (#2007 layer 3) — a genuine second session is
+    // legitimate, so the dialog's default is to proceed.
+    await logAnother(page, row);
     await expect(row.getByTestId("practice-today-count")).toContainText(
       "2 sessions logged"
     );
@@ -870,7 +884,7 @@ test("the sheet states an earlier session time, and an untouched tap still write
     // of this surface, so a surviving 07:05 would stamp the evening's session with the
     // morning's time — the field empties in front of the user.
     await expect(row.getByTestId("practice-when-time")).toHaveValue("");
-    await settledClick(page, row.getByTestId("practice-log-button"));
+    await logAnother(page, row);
     await expect(row.getByTestId("practice-today-count")).toContainText(
       "3 sessions logged"
     );

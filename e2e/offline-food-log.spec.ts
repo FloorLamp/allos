@@ -255,15 +255,20 @@ test("a fast device clock keeps the serving and the sync SAYS the time wasn't re
   await page.goto("/nutrition");
   await expect(page.getByTestId("food-log-bar")).toBeVisible();
 
+  // The broken clock, then a RELOAD: the control reads the browser's clock at render
+  // to decide which of the day's hours are already past, and setting the time under a
+  // mounted React tree changes nothing it has already rendered. The reload is what
+  // makes this a device that has believed the wrong time all along.
+  await context.clock.setSystemTime(
+    new Date(frozenNow().getTime() + FAST_CLOCK_MS)
+  );
+  await page.reload();
+  await expect(page.getByTestId("food-log-bar")).toBeVisible();
+
   await revealFoodGroup(page, "berries");
   const count = page.getByTestId("count-berries");
   const before = Number((await count.textContent())?.trim() || "0");
   const baselineEventId = maxFoodEventId();
-
-  // The broken clock. Nothing else about the tap changes.
-  await context.clock.setSystemTime(
-    new Date(frozenNow().getTime() + FAST_CLOCK_MS)
-  );
 
   // The user states a time, exactly as in the passing #2053 case above — except the
   // device's own clock is what decided this hour was already behind them.
