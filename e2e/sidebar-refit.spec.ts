@@ -302,4 +302,40 @@ test.describe("the desktop sidebar refit (#3154)", () => {
     // The commit hash left the footer for What's new, which already rendered it.
     await expect(aside.locator('a[href*="/commit/"]')).toHaveCount(0);
   });
+
+  // THE CTA COLOUR, BACK, AND MEASURED (#3982). #3759 converged this control on the
+  // typed Button, which rendered one secondary paint, so the sidebar's ONE log
+  // affordance (#3154) became an ordinary bordered box — the owner's report.
+  //
+  // ASSERTED AS A COMPARISON, not against a colour literal. "+ Log has background
+  // X" passes on a tree where every control in the column turned X, and it has to
+  // be rewritten the day the brand token moves. The claim a person makes looking at
+  // the sidebar is that ONE control is filled and the rows around it are not, so
+  // that is the assertion: the trigger paints an opaque fill, the Calendar row
+  // beside it paints none.
+  test("the sidebar's + Log is its one filled action", async ({ page }) => {
+    await page.goto("/");
+    const aside = page.locator("aside");
+    const log = aside.getByTestId("sidebar-log");
+    await expect(log).toBeVisible();
+    await expect(aside.getByTestId("sidebar-calendar")).toBeVisible();
+
+    const fills = await aside.evaluate((el) => {
+      const read = (testId: string) =>
+        getComputedStyle(
+          el.querySelector<HTMLElement>(`[data-testid="${testId}"]`)!
+        ).backgroundColor;
+      return { log: read("sidebar-log"), calendar: read("sidebar-calendar") };
+    });
+    // rgba(…, 0) / "transparent" is what an unpainted control reports.
+    expect(fills.calendar, "the Calendar row is unfilled").toMatch(
+      /^(transparent|rgba\(.*,\s*0\))$/
+    );
+    expect(fills.log, "+ Log paints a fill").not.toBe(fills.calendar);
+    expect(fills.log).not.toMatch(/^(transparent|rgba\(.*,\s*0\))$/);
+
+    // THE ADMISSION RULE, on the surface the owner named: primary marks the action
+    // a surface exists for, so the sidebar may carry exactly one.
+    await expect(aside.locator(".button-control-primary")).toHaveCount(1);
+  });
 });

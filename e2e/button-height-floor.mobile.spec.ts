@@ -128,8 +128,13 @@ const BOX_ROUTES: { route: string; ready: string; surfaces: BoxSurface[] }[] = [
         testId: "sleep-trend-range-14",
         repairable: true,
       },
+      // The typed Button's PRIMARY variant (#3982). Its rank changed and its box
+      // must not have: the variant adds paint on top of `button-control` rather
+      // than swapping to `.btn`, so this row is where that is measured rather
+      // than asserted — same box as the segmented option beside it at all four
+      // widths, and the same coarse-pointer reach.
       {
-        kind: "button-control",
+        kind: "button-control, primary variant",
         testId: "sleep-add-entry-header",
         repairable: true,
       },

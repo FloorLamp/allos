@@ -849,6 +849,33 @@
   @apply inline-flex shrink-0 items-center justify-center gap-1 whitespace-nowrap rounded-lg border-black/10 px-2.5 text-xs font-medium text-slate-600 transition hover:bg-slate-100 focus:outline-hidden focus-visible:ring-2 focus-visible:ring-brand-500 disabled:cursor-not-allowed disabled:bg-slate-100 disabled:text-slate-500 dark:border-white/10 dark:text-slate-300 dark:hover:bg-ink-750 dark:disabled:bg-ink-750 dark:disabled:text-slate-400;
 }
 
+@utility button-control-primary {
+  /* THE TYPED BUTTON'S ONE PRIMARY VARIANT (owner decision, #3982). #3759 moved
+     four hand-rolled actions onto `Button` for their behavior, and two of them —
+     the sidebar's "+ Log" and Sleep's "Add entry" — had been FILLED before the
+     move; the primitive rendered one paint, so their rank was demoted as a side
+     effect nothing examined. The doctrine is now exactly TWO treatments, both
+     owned by the primitive: default secondary, explicit primary.
+     ADMISSION: it marks the action a surface exists for — at most one per surface.
+
+     PAINT ONLY, ADDED TO `button-control` RATHER THAN REPLACING IT — the
+     `duplicate-resolution-primary` construction above, applied to the primitive's
+     own class. The box, the reserved border, `whitespace-nowrap`, the focus ring
+     and the pending spinner are therefore the SAME declarations in both variants
+     rather than two lists that have to be kept equal. Scoped away from the
+     disabled states so the family's ONE disabled treatment (#1450 cluster B)
+     still wins: a primary that is not yet actionable renders the muted surface,
+     never a faded fill. */
+  &:not(:disabled):not([aria-disabled="true"]) {
+    border-color: transparent;
+    background-color: var(--btn);
+    color: var(--btn-fg);
+  }
+  &:not(:disabled):not([aria-disabled="true"]):hover {
+    background-color: var(--btn-hover);
+  }
+}
+
 @utility duplicate-resolution-primary {
   @apply contents;
   & > .button-control:not(:disabled) {
