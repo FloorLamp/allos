@@ -255,12 +255,19 @@ describe("logFoodServing — eating-time statement (#2053)", () => {
     //
     // Stated as an OFFSET FROM THE FROZEN CLOCK rather than as a literal, because a
     // literal only exercises the skew in the zones where it happens to land ahead.
+    // The third column is the REASON the answer carries. Past the tolerance the day
+    // rule re-dates to yesterday and the statement is refused — correctly — but the
+    // sentence the person reads has to name the device's clock rather than accuse
+    // them of picking a day they are not on. "future" is what the queued path already
+    // reports for this, and `STATED_TIME_REFUSAL_NOTE` renders it as "your device's
+    // clock is ahead".
     it.each([
-      [3, true, "inside the tolerance the gate already grants"],
-      [6, false, "past it — a genuinely broken clock, refused as before"],
+      // minutes ahead | statement kept | the refusal reason reported
+      [3, true, undefined],
+      [6, false, "future" as const],
     ])(
       "a device %i minutes ahead keeps its statement: %s",
-      async (minutesAhead, kept) => {
+      async (minutesAhead, kept, refusal) => {
         const login = createLogin();
         const profile = createProfile(`skew-${minutesAhead}`, login.id);
         actAs(login, profile);
@@ -280,6 +287,7 @@ describe("logFoodServing — eating-time statement (#2053)", () => {
         expect(event.occurred_at).toBe(
           kept ? utcInstant(zonedWallTimeToUtc(tz, date, ahead)!) : null
         );
+        expect(res.ok && res.statedTimeRefused).toBe(refusal);
       }
     );
   });
@@ -325,6 +333,11 @@ describe("logFoodServing — eating-time statement (#2053)", () => {
       occurred_at: null,
       time_source: null,
     });
+    // AND IT IS STILL CALLED WHAT IT IS. The fast-clock relabel above must not reach
+    // here: this serving really is being backfilled to another day, so "it isn't on
+    // that day" is the true sentence, and blaming the device's clock would be the
+    // same untruth pointing the other way.
+    expect(res.ok && res.statedTimeRefused).toBe("other-day");
   });
 });
 

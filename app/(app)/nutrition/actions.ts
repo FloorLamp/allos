@@ -20,7 +20,7 @@ import { statedHourInstant } from "@/lib/correction-time";
 import { normalizeClockTime } from "@/lib/vitals-input";
 import type { StatedTimeRefusal, StatedTimeVerdict } from "@/lib/stated-time";
 import { now as clockNow } from "@/lib/clock";
-import { utcInstant, zonedWallTimeToUtc } from "@/lib/date";
+import { dateStrInTz, utcInstant, zonedWallTimeToUtc } from "@/lib/date";
 import { getTimezone } from "@/lib/settings";
 import { deleteFrequencyTargetRow } from "@/lib/frequency-target-delete";
 import {
@@ -207,11 +207,37 @@ export async function logFoodServing(
         tz
       )
     : null;
-  const verdict: StatedTimeVerdict = !stated
+  const judged: StatedTimeVerdict = !stated
     ? { kind: "unstated" }
     : resolved === null
       ? { kind: "refused", reason: "malformed" }
       : judgeEatenAt(resolved, tz, fields.date, at);
+  // THE REFUSAL IS RIGHT; ITS REASON WAS NOT. Past the tolerance above, a wall time
+  // ahead of this server's clock is re-dated to YESTERDAY by the day rule, and
+  // `judgeEatenAt` then refuses it for not being on the row's day. Not filing on the
+  // wrong day is correct and stays — re-anchoring on the row's date instead would
+  // make the backfill-versus-now guard below vacuous, which is a real cost. But "it
+  // isn't on that day" is UNTRUE when the day is the one the person is standing in,
+  // and it diagnoses the wrong machine: the cause is the device's clock, which is
+  // exactly what the queued path already says out loud. So the OUTCOME is untouched
+  // and only the sentence changes, into one this app already speaks.
+  //
+  // Both conditions are load-bearing. `aheadOfServer` is what distinguishes a fast
+  // clock from an hour genuinely meant as yesterday's, and the row's date being
+  // today is what makes "that day" the day they are standing in — a serving
+  // backfilled to another day and refused for landing off it is told the truth.
+  const localToday = dateStrInTz(tz, at);
+  const onToday = stated ? zonedWallTimeToUtc(tz, localToday, stated) : null;
+  const aheadOfServer =
+    onToday !== null &&
+    onToday.getTime() > at.getTime() + EATEN_AT_FUTURE_SKEW_MS;
+  const verdict: StatedTimeVerdict =
+    judged.kind === "refused" &&
+    judged.reason === "other-day" &&
+    aheadOfServer &&
+    fields.date === localToday
+      ? { kind: "refused", reason: "future" }
+      : judged;
   const outcome = logFoodServingCore(
     profileId,
     fields.group,
