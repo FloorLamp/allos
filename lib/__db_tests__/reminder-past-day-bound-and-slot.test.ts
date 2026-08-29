@@ -25,7 +25,10 @@ import { describe, it, expect, beforeEach, afterEach } from "vitest";
 import { db, today } from "@/lib/db";
 import { shiftDateStr } from "@/lib/date";
 import { setTimezone, switchProfileTimezone } from "@/lib/settings";
-import { collectWindowDoses } from "@/lib/notifications/intake";
+import {
+  collectWindowDoses,
+  slotSessionForKeyboard,
+} from "@/lib/notifications/intake";
 import { getIntakeHistory } from "@/lib/intake-history";
 
 const NY = "America/New_York";
@@ -67,7 +70,7 @@ function seedDose(
   timeOfDay: string,
   condition: string,
   createdAt: string
-): void {
+): number {
   const itemId = Number(
     db
       .prepare(
@@ -77,20 +80,32 @@ function seedDose(
       )
       .run(profileId, name, condition, createdAt).lastInsertRowid
   );
-  db.prepare(
-    `INSERT INTO intake_item_doses
-       (item_id, amount, time_of_day, food_timing, sort, created_at)
-     VALUES (?, '1 tab', ?, 'any', 0, ?)`
-  ).run(itemId, timeOfDay, createdAt);
+  return Number(
+    db
+      .prepare(
+        `INSERT INTO intake_item_doses
+           (item_id, amount, time_of_day, food_timing, sort, created_at)
+         VALUES (?, '1 tab', ?, 'any', 0, ?)`
+      )
+      .run(itemId, timeOfDay, createdAt).lastInsertRowid
+  );
 }
 
-function names(profileId: number, slot: "Morning" | "Evening" | "PreWorkout", date: string) {
+function names(
+  profileId: number,
+  slot: "Morning" | "Evening" | "PreWorkout",
+  date: string
+) {
   return collectWindowDoses(profileId, slot, date).map((e) => e.item.name);
 }
 
 // The adherence strip's own answer for `date`, through the production reader every
 // history surface uses. "na" is the strip spelling of "this dose did not exist then".
-function stripState(profileId: number, name: string, date: string): string | undefined {
+function stripState(
+  profileId: number,
+  name: string,
+  date: string
+): string | undefined {
   const entry = getIntakeHistory(profileId, today(profileId), 14).find(
     (e) => e.item.name === name
   );
@@ -154,37 +169,50 @@ describe("#4026 — a cadence inferable today must not move a closed day's send 
   it.each([
     { name: "no cadence yet", offsets: [7, 14, 21], expected: "Morning" },
     { name: "cadence lapsing", offsets: [8, 15, 57], expected: "PreWorkout" },
-  ])("$name: yesterday keeps the slot it was sent in", ({ offsets, expected }) => {
-    const profileId = newProfile("UTC");
-    const todayStr = today(profileId);
-    const yesterday = shiftDateStr(todayStr, -1);
-    seedDose(
-      profileId,
-      "Pre workout anytime",
-      "Anytime",
-      "pre_workout",
-      `${shiftDateStr(todayStr, -90)} 00:00:00`
-    );
-    const logActivity = (date: string) =>
-      db
-        .prepare(
-          `INSERT INTO activities (profile_id, date, type, title, duration_min, start_time)
+  ])(
+    "$name: yesterday keeps the slot it was sent in",
+    ({ offsets, expected }) => {
+      const profileId = newProfile("UTC");
+      const todayStr = today(profileId);
+      const yesterday = shiftDateStr(todayStr, -1);
+      const doseId = seedDose(
+        profileId,
+        "Pre workout anytime",
+        "Anytime",
+        "pre_workout",
+        `${shiftDateStr(todayStr, -90)} 00:00:00`
+      );
+      const logActivity = (date: string) =>
+        db
+          .prepare(
+            `INSERT INTO activities (profile_id, date, type, title, duration_min, start_time)
            VALUES (?, ?, 'strength', 'Session', 45, '17:00')`
+          )
+          .run(profileId, date);
+
+      logActivity(yesterday);
+      for (const back of offsets) logActivity(shiftDateStr(todayStr, -back));
+
+      const before = slotOfYesterdayDose(profileId, yesterday);
+      // TODAY's session — the event that made the cadence inferable now, long after the
+      // day below closed.
+      logActivity(todayStr);
+      const after = slotOfYesterdayDose(profileId, yesterday);
+
+      // The slot a closed day's dose sits in is a fact about that day: it must not move
+      // when today's cadence does, and it must be the slot that day's own record implies.
+      expect(after).toBe(before);
+      expect(after).toBe(expected);
+      // THE TAP REBUILD IS THE SAME QUESTION on a second seam: `slotSessionForKeyboard`
+      // re-derives the slots of a message that may be a day or two old from its surviving
+      // buttons. Asserted against the gather's answer, not against a literal — two
+      // resolvers disagreeing about one day's filing is what leaves a live button
+      // rebuilding an empty slot.
+      expect(
+        slotSessionForKeyboard(profileId, [doseId], [], yesterday).map(
+          (s) => s.slot
         )
-        .run(profileId, date);
-
-    logActivity(yesterday);
-    for (const back of offsets) logActivity(shiftDateStr(todayStr, -back));
-
-    const before = slotOfYesterdayDose(profileId, yesterday);
-    // TODAY's session — the event that made the cadence inferable now, long after the
-    // day below closed.
-    logActivity(todayStr);
-    const after = slotOfYesterdayDose(profileId, yesterday);
-
-    // The slot a closed day's dose sits in is a fact about that day: it must not move
-    // when today's cadence does, and it must be the slot that day's own record implies.
-    expect(after).toBe(before);
-    expect(after).toBe(expected);
-  });
+      ).toEqual([after]);
+    }
+  );
 });

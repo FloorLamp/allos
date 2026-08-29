@@ -383,7 +383,12 @@ function gatherWindowDoses(
     // Clamp the window to the dose's lifetime (#430/#1442) before summarizing it:
     // a fixed lookback over a med added this morning is all pre-existence days,
     // and scoring them would make the very first reminder announce "0% adherence".
-    const since = doseWindowSince(item.created_at, dose.created_at, dd, dayZone);
+    const since = doseWindowSince(
+      item.created_at,
+      dose.created_at,
+      dd,
+      dayZone
+    );
     // …and the same bound gates the DAY (#4011), as `pendingDayDoses` already does:
     // `doseOnDay` reads only the declared start/end dates, so a stale keyboard rebuilt
     // for day−2 offered a dose for an item created this morning, and `✅ All` would
@@ -591,7 +596,10 @@ export function slotSessionForKeyboard(
   const items = new Map<number, IntakeItem>(
     getIntakeItems(profileId).map((s) => [s.id, s])
   );
-  const workoutTimed = preWorkoutTimed(profileId);
+  // As of the message's OWN day (#4026), the same question `gatherWindowDoses` asks:
+  // this rebuild derives the slots from the surviving buttons of a message that may be
+  // a day or two old, so today's cadence must not re-file its doses.
+  const workoutTimed = preWorkoutTimed(profileId, date);
   const wanted = new Set<IntakeSendSlot>(slots);
   const doseById = new Map(doses.map((d) => [d.id, d]));
   for (const id of doseIds) {

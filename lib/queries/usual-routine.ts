@@ -25,10 +25,7 @@ import { getIntakeItems } from "./intake";
 import { getIntakeDoses } from "./intake/schedule";
 import { getSkippedDoseIds, getTakenDoseIds } from "./intake/adherence";
 import { getEffectiveActiveSituations } from "./derived-situations";
-import {
-  getActiveSituations,
-  getSituationEvents,
-} from "../settings";
+import { getActiveSituations, getSituationEvents } from "../settings";
 
 import { doseWindowSince } from "../intake-adherence";
 import { profileDayZone, travelExcusalResolver } from "../travel-excusal";

@@ -337,9 +337,9 @@ describe("zoneAtInstant — which zone a past instant was lived in (#4025)", () 
     { name: "no history at all", switches: [] as TimezoneSwitch[] },
     { name: "a chain that does not reach the current zone", switches: trip },
   ])("$name → the current zone", ({ switches }) => {
-    expect(zoneAtInstant(switches, HONOLULU, new Date("2026-04-30T00:00:00Z"))).toBe(
-      HONOLULU
-    );
+    expect(
+      zoneAtInstant(switches, HONOLULU, new Date("2026-04-30T00:00:00Z"))
+    ).toBe(HONOLULU);
   });
 });
 
