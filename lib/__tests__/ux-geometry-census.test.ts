@@ -37,6 +37,10 @@ describe("geometry census thresholds", () => {
     expect(GEOMETRY_THRESHOLDS.controlHeightTolerancePx).toBe(2);
     expect(GEOMETRY_THRESHOLDS.clipEpsilonPx).toBe(1);
     expect(GEOMETRY_THRESHOLDS.controlHeightTolerancePx).toBeLessThan(4);
+    // #3814: the collision tolerance absorbs sub-pixel rounding and a shared
+    // border, and nothing more. Data -> Trash's correctly stacked pair clears it by
+    // a 4px GAP rather than by the tolerance, so the number is not what decides it.
+    expect(GEOMETRY_THRESHOLDS.overlapEpsilonPx).toBe(1);
   });
 });
 
@@ -60,6 +64,9 @@ describe("geometryAuditSections", () => {
       controlRowsExamined: 12,
       heightRowsTotal: 0,
       heightRows: [],
+      textBoxesExamined: 40,
+      overlapsTotal: 0,
+      overlaps: [],
     },
     // FABRICATED INPUT, not a recording. These rows exist to exercise the RENDERER
     // — the thresholds, the ranking, the truncation notice — so they stay exactly as
@@ -79,6 +86,22 @@ describe("geometryAuditSections", () => {
           row: 'form[data-testid="shared-supply-add-for"]',
           spread: 8,
           controls: ["select 40px", 'button "Add this bottle" 32px'],
+        },
+      ],
+      textBoxesExamined: 60,
+      // FABRICATED like the row above it, and for the same reason: the renderer has
+      // to be testable on a tree where nothing is broken. This is the shape #3716
+      // would have had to produce to be believable — two rects, not one string.
+      overlapsTotal: 1,
+      overlaps: [
+        {
+          container: 'div[data-testid="data-trash"]',
+          a: 'h2 "Recently deleted"',
+          b: 'p "Deleted rows are kept here for 30 days"',
+          overlapX: 358,
+          overlapY: 18,
+          aRect: [16, 128, 374, 152],
+          bRect: [16, 134, 374, 276],
         },
       ],
     },
@@ -101,6 +124,11 @@ describe("geometryAuditSections", () => {
     expect(md).toContain("84 (right)");
     expect(md).toContain("## Mixed control heights in one rendered row (>2px)");
     expect(md).toContain("shared-supply-add-for");
+    // #3814: the collision table's evidence is the two RECTS. A row that named only
+    // the concatenated text would be the finding this class was filed against.
+    expect(md).toContain("## Colliding text");
+    expect(md).toContain("16, 128, 374, 152");
+    expect(md).toContain("358/18");
     // Both viewports reach the tables: a control can run off a 1280px desktop too,
     // and the pre-existing audit.md rankings are mobile-only.
     expect(geometryAuditSections([...rows, ...rows]).join("\n")).toContain(
@@ -143,8 +171,25 @@ describe("geometryAuditSections", () => {
     );
   });
 
-  it("emits nothing at all when a run found neither class", () => {
+  it("emits nothing at all when a run found none of the three classes", () => {
     expect(geometryAuditSections([rows[2]])).toEqual([]);
+  });
+
+  it("never emits a collision row from concatenated text alone (#3814)", () => {
+    // THE CONVERSE OF THE TABLE ABOVE, and the one that matters: a visit whose
+    // probe found the two boxes stacked reports NOTHING, however the strings read
+    // when `textContent` runs them together. This is the exact input #3716 was
+    // filed from, minus the geometry it never had.
+    const stacked = [
+      {
+        ...rows[2],
+        route: "/data?section=trash",
+        textBoxesExamined: 10,
+        overlapsTotal: 0,
+        overlaps: [],
+      },
+    ];
+    expect(geometryAuditSections(stacked)).toEqual([]);
   });
 });
 
@@ -157,10 +202,12 @@ describe("the harness reads the shared rule rather than a second copy of it", ()
   // COMMENTS ARE BLANKED FIRST. A source scan reads prose as code — an e2e-hygiene
   // census once counted a `.first()` written in an English sentence — and this file
   // is one where the numbers appear in prose on purpose.
-  const harness = fs
-    .readFileSync(path.join(REPO, "scripts", "ux-walkthrough.mjs"), "utf8")
-    .replace(/\/\*[\s\S]*?\*\//g, "")
-    .replace(/^\s*\/\/.*$/gm, "");
+  const codeOf = (...rel: string[]) =>
+    fs
+      .readFileSync(path.join(REPO, ...rel), "utf8")
+      .replace(/\/\*[\s\S]*?\*\//g, "")
+      .replace(/^\s*\/\/.*$/gm, "");
+  const harness = codeOf("scripts", "ux-walkthrough.mjs");
 
   it("imports the probe and its thresholds", () => {
     expect(harness).toMatch(/from "\.\/ux-geometry-census\.mjs"/);
@@ -172,5 +219,23 @@ describe("the harness reads the shared rule rather than a second copy of it", ()
   it("writes no threshold of its own", () => {
     expect(harness).not.toMatch(/controlHeightTolerancePx\s*[:=]\s*\d/);
     expect(harness).not.toMatch(/clipEpsilonPx\s*[:=]\s*\d/);
+    expect(harness).not.toMatch(/overlapEpsilonPx\s*[:=]\s*\d/);
+  });
+
+  it("the e2e guard runs the probe rather than re-spelling its rules (#3814)", () => {
+    // #3814 asks whether the sweep and the e2e probe SHARE the `.truncate`
+    // exemption (`insideEllipsisTruncation`) or each carry their own reach — two
+    // instruments answering one question is how they drift apart. They share it,
+    // and this is the checkable form of that: the guard imports `geometryProbe` and
+    // hands it to `page.evaluate`, so the exemption it exercises is the one the
+    // census runs, character for character. What would break that is the guard
+    // growing a computed-style read of the mechanism or a threshold of its own.
+    const guard = codeOf("e2e", "ux-geometry-probe.mobile.spec.ts");
+    expect(guard).toMatch(/from "\.\.\/scripts\/ux-geometry-census\.mjs"/);
+    expect(guard).toContain("geometryProbe");
+    expect(guard).not.toContain("textOverflow");
+    expect(guard).not.toMatch(/clipEpsilonPx\s*[:=]\s*\d/);
+    expect(guard).not.toMatch(/overlapEpsilonPx\s*[:=]\s*\d/);
+    expect(guard).not.toMatch(/controlHeightTolerancePx\s*[:=]\s*\d/);
   });
 });

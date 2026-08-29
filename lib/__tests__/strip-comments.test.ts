@@ -223,14 +223,59 @@ describe("the regex-vs-division heuristic, and what it gets wrong", () => {
       expect(lineOf(out, 2)).toBe("               ");
       expect(lineOf(out, 4)).toBe("const tail = 2;");
     });
+  });
 
-    it("reads a `//` in JSX TEXT as a line comment", () => {
-      // NOT the regex heuristic — this scanner has no JSX-children state, so ordinary
-      // rendered copy that contains a scheme reads as a comment. One live instance in
-      // the tree, frozen by name below.
-      const src = "const a = (\n  <p>otpauth:// URI (paste it)</p>\n);\n";
+  // JSX TEXT IS TEXT (#3641). This scanner used to have no JSX-children state, so
+  // `otpauth://` in rendered copy read as a line comment and 37 characters of the
+  // settings page vanished from every guard that reads source through here — the
+  // OVER-blank direction, the silent one. Each row names what must survive AND what
+  // must still be blanked, because a JSX state that stops blanking real comments has
+  // only traded the silent failure for a noisy one.
+  describe("JSX children, and the shapes that are not JSX at all", () => {
+    it.each([
+      [
+        "rendered copy containing a scheme",
+        "const a = (\n  <p>otpauth:// URI (paste it)</p>\n);\n// blanked\n",
+        "otpauth:// URI (paste it)",
+      ],
+      [
+        "a JSX comment container inside children",
+        "const a = <p>survives{/* blanked */}</p>;\n",
+        "survives",
+      ],
+      [
+        "a comment inside an attribute expression",
+        "const a = <p title={x /* blanked */}>survives://here</p>;\n",
+        "survives://here",
+      ],
+      [
+        "a generic component, whose type argument writes a `>` that does not end the tag",
+        "const a = <Seg<Mode> v={1}>survives://here</Seg>;\n// blanked\n",
+        "survives://here",
+      ],
+      [
+        "a generic arrow, whose `<T>` sits where a JSX element would",
+        "const f = <T>(x: T) => x; // blanked\nconst survives = 1;\n",
+        "const survives = 1;",
+      ],
+      [
+        "an ordinary comparison",
+        "const ok = a < b; // blanked\nconst survives = 1;\n",
+        "const survives = 1;",
+      ],
+    ])("%s", (_case, src, kept) => {
       const out = stripComments(src);
-      expect(lineOf(out, 2)).toBe("  <p>otpauth:                     ");
+      expect(out).toContain(kept);
+      expect(out).not.toContain("blanked");
+    });
+
+    it("reads the live instance in the tree as rendered copy", () => {
+      // The 37 characters #3641 was filed for, asserted against the real file rather
+      // than a fixture — the oracle sweep below says the tree agrees with a compiler
+      // everywhere, and this says which line that promise was bought for.
+      expect(stripComments(read(OTPAUTH_JSX_TEXT))).toContain(
+        "otpauth:// URI (paste into your app if it supports it)"
+      );
     });
   });
 
@@ -239,7 +284,7 @@ describe("the regex-vs-division heuristic, and what it gets wrong", () => {
     // can report a second. Both directions authored, because the census below
     // asserts on both.
     expect(
-      disagreements("x.tsx", "const a = <p>otpauth:// URI</p>;\n").overBlanked
+      disagreements("x.ts", "function f() {}\n/[//]/.test(s);\n").overBlanked
         .length
     ).toBeGreaterThan(0);
     expect(
@@ -299,11 +344,11 @@ describe("the regex-vs-division heuristic, and what it gets wrong", () => {
         over,
         "This scanner blanked real CODE. That is the silent direction: a guard reading " +
           "through it cannot see the source and reports a pass it never took (#3087 " +
-          "hid 1,244 lines of ActivityForm.tsx that way). The one entry below is JSX " +
-          "text containing `otpauth://`, which this scanner reads as a line comment — " +
-          "recorded in strip-comments.ts. If your file is new here, it is a defect, " +
-          "not a line to add."
-      ).toEqual([OTPAUTH_JSX_TEXT]);
+          "hid 1,244 lines of ActivityForm.tsx that way). This list was ONE entry long " +
+          "until #3641 gave the scanner a JSX-children state, and it is empty now — so " +
+          "a file here is a defect, never a line to add. Run " +
+          "`npx tsx lib/__tests__/strip-comments-oracle.ts lib app components e2e scripts`."
+      ).toEqual([]);
     },
     ORACLE_SWEEP_MS
   );
