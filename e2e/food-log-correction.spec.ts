@@ -430,16 +430,18 @@ test("the correction sheet names the time it shows: eating time when stated, log
   const idsWithFirst = await loggedIds(page);
 
   // 2. A serving logged UNDER a statement, through the bar's own control (#2053):
-  //    "Eaten now" is a human answer and writes occurred_at via the real action path.
-  //    A DIFFERENT group on purpose: a second tap of the same row inside the tap
-  //    ledger's cooldown is absorbed as an accidental double.
+  //    the shared when-control's "Now" fills an absolute local time, a human answer
+  //    that writes occurred_at via the real action path. A DIFFERENT group on purpose:
+  //    a second tap of the same row inside the tap ledger's cooldown is absorbed as an
+  //    accidental double.
   await revealFoodGroup(page, "berries");
-  await page.getByTestId("food-eating-now").click();
+  await page.getByTestId("food-when-now").click();
+  await expect(page.getByTestId("food-when-time")).not.toHaveValue("");
   await page.getByTestId("log-berries").click();
   await expect(loggedRows(page)).toHaveCount(idsBefore.length + 2);
   const statedId = await newRowId(page, idsWithFirst);
   // The statement is sticky across taps by design — release it before anything else.
-  await page.getByTestId("food-eating-now").click();
+  await page.getByTestId("food-when-time").selectOption("");
 
   // THE PIN, unstated half: the ⋯ menu's accessible name claims the LOGGED time and
   // the sheet opens with the "No eating time recorded" line — never a bare clock

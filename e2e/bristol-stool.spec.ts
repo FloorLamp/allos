@@ -1,9 +1,13 @@
 import { test, expect } from "./fixtures";
 import Database from "better-sqlite3";
-import { settledClick } from "./helpers";
+import { settledClick, settledFill } from "./helpers";
 import { frozenNow, workerDbPath } from "./worker-env";
 import { pinnedTimezone } from "./pinned-timezone";
-import { zonedWallIsoToUtc } from "@/lib/date";
+import {
+  dateStrInTz,
+  zonedDateParts,
+  zonedWallIsoToUtc,
+} from "@/lib/date";
 
 // Bristol stool form, end to end (issue #2785).
 //
@@ -95,7 +99,12 @@ test("the picker offers exactly the seven types and logs the tapped one", async 
   }
   await expect(picker.getByTestId("stool-type-0")).toHaveCount(0);
   await expect(picker.getByTestId("stool-type-8")).toHaveCount(0);
-  await expect(picker.locator("input")).toHaveCount(0);
+  // No field to type a TYPE into — that absence IS the guard, so it is asserted
+  // rather than assumed. Scoped to the type row: since #3273 the picker also carries
+  // a collapsed "Happened earlier?" whose time input is a different question, and an
+  // unscoped `locator("input")` would start passing for the wrong reason the day that
+  // control changed.
+  await expect(picker.locator(".grid input")).toHaveCount(0);
 
   // The accessible name is the SCALE's own description, not the two-word caption
   // the button has room for — that is what makes a self-reported type comparable.
@@ -177,6 +186,63 @@ test("the picker offers exactly the seven types and logs the tapped one", async 
     "data-motion-runs",
     String(rollingRuns + 1)
   );
+});
+
+// #3273 — the picker states WHEN, and an unstated tap is unchanged.
+//
+// A bowel movement is exactly the event people log later, and until this the picker
+// had no time affordance at all: a two-hours-late tap was wrong forever, because the
+// Trends panel is read-only. The property with two halves, both asserted here: a
+// stated minute is the instant the reading carries, and a tap that says nothing writes
+// the row it wrote before the affordance existed — same second-grain key and all.
+test('a stated "Happened earlier?" time is the instant the reading carries (#3273)', async ({
+  page,
+}) => {
+  clearBristol();
+  await page.goto("/?quick=log-stool");
+  const picker = page.getByTestId("quick-entry-stool");
+  await expect(picker).toBeVisible();
+
+  const date = dateStrInTz(TZ, frozenNow());
+  // What the clock-seam path writes, to the second: the write core reads the frozen
+  // instant for the wall minute and takes the SECONDS off it in UTC, which is the
+  // second-grain key itself (every IANA zone is a whole-minute offset, so the seconds
+  // are the same number on any wall clock).
+  const tapStamp = `${date}T${zonedDateParts(TZ, frozenNow()).hhmm}:${String(
+    frozenNow().getUTCSeconds()
+  ).padStart(2, "0")}`;
+
+  // COLLAPSED: the fast path is untouched and the control is not even in the DOM.
+  const toggle = picker.getByTestId("stool-when-toggle");
+  await expect(toggle).toHaveAttribute("aria-expanded", "false");
+  await expect(picker.getByTestId("stool-when-time")).toHaveCount(0);
+
+  // Leg 1 — the unstated tap writes the tap instant, seconds and all.
+  await settledClick(page, picker.getByTestId("stool-type-4"));
+  await expect(page.getByTestId("quick-entry-stool-count")).toHaveText(
+    "1 logged today."
+  );
+  expect(bristolRows()).toEqual([{ date, started_at: tapStamp, value: 4 }]);
+
+  // Leg 2 — the statement. The day half is FIXED to today, so a statement can only
+  // move the minute; the stated time lands on :00 seconds, which is what makes
+  // restating the same minute a correction rather than a phantom second movement.
+  await settledClick(page, toggle);
+  await expect(picker.getByTestId("stool-when-date")).toHaveText("Today");
+  await settledFill(page, picker.getByTestId("stool-when-time"), "07:05");
+  await settledClick(page, picker.getByTestId("stool-type-3"));
+  await expect(page.getByTestId("quick-entry-stool-count")).toHaveText(
+    "2 logged today."
+  );
+  expect(bristolRows()).toEqual([
+    { date, started_at: `${date}T07:05:00`, value: 3 },
+    { date, started_at: tapStamp, value: 4 },
+  ]);
+
+  // THE STATEMENT IS SPENT BY THE TAP IT ANSWERS: the key is the instant, so a second
+  // tap under a surviving 07:05 would silently overwrite the row the first one wrote.
+  await expect(picker.getByTestId("stool-when-time")).toHaveValue("");
+  clearBristol();
 });
 
 test("the Body panel shows a day's types as marks, never as one average", async ({
