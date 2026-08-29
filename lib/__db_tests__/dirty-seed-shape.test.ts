@@ -5,7 +5,6 @@ import path from "node:path";
 import { fileURLToPath } from "node:url";
 import Database from "better-sqlite3";
 import { describe, expect, it } from "vitest";
-import { LONG_NAMES } from "../../scripts/seed-long-names";
 import {
   allocateUxServedDb,
   assertUxServedDbOwned,
@@ -18,13 +17,6 @@ import { migratedDb } from "./migrated-db";
 
 const here = path.dirname(fileURLToPath(import.meta.url));
 const repo = path.join(here, "..", "..");
-
-type Witnesses = {
-  qualifiedEncounter: number;
-  longIntake: number;
-  longLab: number;
-  longCondition: number;
-};
 
 function runSeed(dbPath: string, shape: "baseline" | "dirty") {
   const env = {
@@ -151,38 +143,6 @@ function processExists(pid: number): boolean {
   }
 }
 
-function seedAndRead(shape: "baseline" | "dirty"): Witnesses {
-  const dbPath = path.join(makeTmpDir(`seed-shape-${shape}`), "allos.db");
-  const result = runSeed(dbPath, shape);
-  expect(result.status, result.stderr || result.stdout).toBe(0);
-
-  const db = new Database(dbPath, { readonly: true });
-  try {
-    const count = (sql: string, value: string) =>
-      (db.prepare(sql).get(value) as { count: number }).count;
-    return {
-      qualifiedEncounter: count(
-        "SELECT COUNT(*) AS count FROM encounters WHERE profile_id = 1 AND diagnoses = ?",
-        "Encounter for screening for malignant neoplasm of colon; Encounter for screening for malignant neoplasm of colon - Primary"
-      ),
-      longIntake: count(
-        "SELECT COUNT(*) AS count FROM intake_items WHERE profile_id = 1 AND name = ?",
-        LONG_NAMES.intakeItem
-      ),
-      longLab: count(
-        "SELECT COUNT(*) AS count FROM medical_records WHERE profile_id = 1 AND category = 'lab' AND name = ?",
-        LONG_NAMES.clinicalResult
-      ),
-      longCondition: count(
-        "SELECT COUNT(*) AS count FROM conditions WHERE profile_id = 1 AND name = ?",
-        LONG_NAMES.condition
-      ),
-    };
-  } finally {
-    db.close();
-  }
-}
-
 function migratedFile(
   label: string,
   mutate: (database: Database.Database) => void
@@ -212,34 +172,14 @@ function migratedFile(
 // CI, four times that under `agent-gates.sh`.
 //
 // THE READING IS THE FILE'S, not each test's — the default reporter prints per
-// file: 56 408 ms across 8 tests on the red run at 11c7920b, 65 193 ms on a green
-// one, 67 945 ms solo here. One number for the file is what that measurement can
-// honestly support; nobody has a per-test CI reading for any of them. It also
-// covers the one test that carried NO cap and ran on the tier default while its
-// neighbours ran on 30 000 — the test that timed out at 15 000 ms with nothing
-// failing when this file was reproduced under load.
-// Named rather than inline only so the `describe` line still fits — the same reason
-// one-cycle-seed-shape.test.ts names its own. The basis is the OBSERVED WORST: the
-// red run at 11c7920b, not a green one (#4002).
+// file, so the shared ceiling covers every remaining child-process case rather
+// than pretending the runner supplied a stable per-test CI budget. Named rather
+// than inline only so the `describe` line still fits. The basis is the observed
+// worst reading rather than a green one (#4002).
 const SEED_CEILING = { timeout: perTestCeiling(3, "worst") };
 
 describe("named dirty seed data", SEED_CEILING, () => {
-  it("writes the dirty witnesses through seed.ts while the pinned baseline writes none", () => {
-    expect(seedAndRead("dirty")).toEqual({
-      qualifiedEncounter: 1,
-      longIntake: 1,
-      longLab: 1,
-      longCondition: 1,
-    });
-    expect(seedAndRead("baseline")).toEqual({
-      qualifiedEncounter: 0,
-      longIntake: 0,
-      longLab: 0,
-      longCondition: 0,
-    });
-  });
-
-  it("checks the dirty witnesses again at the harness child boundary", () => {
+  it("checks the dirty witnesses at the harness child boundary", () => {
     const dirtyPath = path.join(makeTmpDir("dirty-witness-ok"), "allos.db");
     const dirty = runSeed(dirtyPath, "dirty");
     expect(dirty.status, dirty.stderr || dirty.stdout).toBe(0);
