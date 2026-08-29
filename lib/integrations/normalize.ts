@@ -22,7 +22,7 @@ import {
   tallyUpsert,
 } from "./sync-log";
 import type { UpsertCounts, SyncRowSink } from "./sync-log";
-import { loadImportTombstones, writeImportTombstone } from "./tombstones";
+import { loadImportTombstones } from "./tombstones";
 import {
   bodyMetricTombstoneKey,
   metricSampleTombstoneKey,
@@ -33,14 +33,8 @@ import {
   compareWindowStarts,
   isSupersedingWindow,
   planSupersede,
-  isDuplicatedSleepNight,
-  sleepSessionCollapse,
-  sleepStageOwners,
   windowsOverlap,
-  SLEEP_SESSION_METRIC,
-  SLEEP_STAGE_METRICS,
   type MetricWindow,
-  type SleepSessionRow,
   type UnstampedEra,
 } from "@/lib/metric-window-overlap";
 import { readUnstampedEra } from "./unstamped-era";
@@ -1029,198 +1023,6 @@ export function supersedeMetricSampleOverlaps(
   let removed = 0;
   for (const id of victims) removed += dropOverlap.run(id, profileId).changes;
   return { removed, overlapsLeft: left.size + inPushDoubleCounts };
-}
-
-/**
- * THE ID WATERMARK THIS PUSH STARTS FROM — the first `metric_samples.id` it could
- * possibly have written. Read BEFORE the sample upserts, so a row at or above it was
- * inserted by this push and a row below it predates it. That is the only stable
- * spelling of "which write arrived later": `pushed_at` cannot say it, because the
- * exporter re-sends a corrected night's predecessor for 48 h and a re-send updates the
- * stored row's stamp to this push's (#3628).
- */
-export function firstMetricSampleIdOfPush(profileId: number): number {
-  const row = db
-    .prepare("SELECT MAX(id) AS maxId FROM metric_samples WHERE profile_id = ?")
-    .get(profileId) as { maxId: number | null };
-  return (row.maxId ?? 0) + 1;
-}
-
-/**
- * COLLAPSE A MIS-ZONED SLEEP SESSION INTO THE WRITE THAT CORRECTED IT (#3628).
- *
- * Runs beside `supersedeMetricSampleOverlaps`, in the same last-chunk transaction and
- * after this push's upserts, and answers a different question. What it collapses, what
- * it refuses and why the premise is NOT "same origin means same sleeper" are all in
- * lib/metric-window-overlap.ts, beside the predicates. Here is the store half only:
- * SQL NARROWS, the predicates DECIDE, in the two-encodings discipline this file keeps.
- *
- * THE CANDIDATE QUERIES CARRY NO `date` AND NO ID BOUND, and both omissions are the
- * ruling rather than an oversight. `sleep_min.date` is frozen at first write by
- * `resendDay`, while a stage row arriving for the FIRST time in a later push takes its
- * wake-day from the profile's zone at THAT moment — so for a traveller mid-switch, the
- * exact population this rule exists for, a session and its own stages sit on different
- * dates, and a `date`-keyed sweep cannot see them. An id bound is wrong for the same
- * shape one step over: an exporter that delivers a session unscored and scores it in a
- * later push writes those stage rows in the very push that collapses the session, so
- * excluding this push's own rows orphans the whole breakdown. Ownership is decided by
- * `sleepStageOwners` instead, and a stage no single session owns REFUSES THE COLLAPSE.
- *
- * The cost is that the stage lookup reads the `(profile_id, metric)` prefix of
- * `idx_metric_samples_md` rather than a pinned `date`. It runs only when a collapse is
- * already pending — never on an ordinary push — which is what makes that affordable.
- *
- * WHY A TOMBSTONE, when the day-bucket supersede writes none. That one deletes a span
- * the source keeps re-sending under its CURRENT anchoring, so the re-send is the repair.
- * This one deletes a record the source never withdraws, so without the tombstone the
- * next push resurrects the phantom under the same natural key.
- *
- * SCOPED TO `source = health-connect`, like #3424's supersede. Oura and Withings label
- * their sessions themselves and never re-time one; a manual entry is the user's own row.
- */
-export function collapseRewrittenSleepSessions(
-  profileId: number,
-  source: string,
-  firstIdOfPush: number
-): SupersedeOutcome {
-  if (source !== OVERLAP_SUPERSEDE_SOURCE)
-    return { removed: 0, overlapsLeft: 0 };
-
-  // The sessions THIS PUSH inserted — asked of the store, not remembered from the
-  // payload, so a row a veto refused is simply not here.
-  const winners = db
-    .prepare(
-      `SELECT id, date, origin, started_at, ended_at, edited, pushed_at
-         FROM metric_samples
-        WHERE profile_id = ? AND source = ? AND metric = ? AND id >= ?
-          AND origin IS NOT NULL
-        ORDER BY id`
-    )
-    .all(
-      profileId,
-      source,
-      SLEEP_SESSION_METRIC,
-      firstIdOfPush
-    ) as SleepSessionRow[];
-  if (winners.length === 0) return { removed: 0, overlapsLeft: 0 };
-
-  // Every stored session of one origin — the supersede candidates AND the set
-  // `sleepStageOwners` needs to tell whose a stage row is. The overlap test is NOT in
-  // this SQL: `started_at` is a documented `mixed`-shape column, so a string comparison
-  // would answer a different question than instants do.
-  const findSessions = db.prepare(
-    `SELECT id, date, origin, started_at, ended_at, edited, pushed_at
-       FROM metric_samples
-      WHERE profile_id = ? AND source = ? AND metric = ? AND origin IS ?
-      ORDER BY id`
-  );
-  const findStages = db.prepare(
-    `SELECT id, date, origin, started_at, ended_at, edited, pushed_at, metric
-       FROM metric_samples
-      WHERE profile_id = ? AND source = ? AND metric = ? AND origin IS ?`
-  );
-  const drop = db.prepare(
-    "DELETE FROM metric_samples WHERE id = ? AND profile_id = ?"
-  );
-
-  const sessionsByOrigin = new Map<string, SleepSessionRow[]>();
-  const readSessions = (origin: string): SleepSessionRow[] => {
-    const cached = sessionsByOrigin.get(origin);
-    if (cached) return cached;
-    const rows = findSessions.all(
-      profileId,
-      source,
-      SLEEP_SESSION_METRIC,
-      origin
-    ) as SleepSessionRow[];
-    sessionsByOrigin.set(origin, rows);
-    return rows;
-  };
-
-  const losers = new Map<number, SleepSessionRow>();
-  // Nights this push leaves stored twice, whatever the reason — the lock, an unrankable
-  // pair, a displacement that is not a re-anchoring, or a stage nobody owns. DISTINCT
-  // stored rows, so two winners declining over one row count it once.
-  const left = new Set<number>();
-  for (const winner of winners) {
-    for (const row of readSessions(winner.origin as string)) {
-      if (row.id === winner.id) continue;
-      const verdict = sleepSessionCollapse(winner, row, firstIdOfPush);
-      if (verdict === "collapse") losers.set(row.id, row);
-      // A STORED row this push declined to replace. A row at or above the watermark is
-      // this push's own, and a within-push pair declines in BOTH directions — counting
-      // it here would report two nights where one is stored twice. The loop below
-      // counts that pair once, as the day-bucket rule counts its own.
-      else if (verdict === "declined" && row.id < firstIdOfPush)
-        left.add(row.id);
-    }
-  }
-  // The pair this push carries against ITSELF. Two rows of one push cannot rank each
-  // other, so neither is collapsed — and before this was counted, that sequence left the
-  // phantom in the store permanently with `warnings: []` and nothing to notice. ONE row
-  // per pair: `winners` is ordered by id, so this names the later-inserted of the two,
-  // the same "exactly one row has the later start" convention the day-bucket rule uses.
-  for (let i = 1; i < winners.length; i++) {
-    for (let j = 0; j < i; j++) {
-      if (isDuplicatedSleepNight(winners[i], winners[j]))
-        left.add(winners[i].id);
-    }
-  }
-
-  let removed = 0;
-  for (const loser of losers.values()) {
-    const origin = loser.origin as string;
-    const siblings = readSessions(origin);
-    // Claim the loser's stage rows BEFORE deleting anything, so an ambiguous one can
-    // still call the whole collapse off with the store untouched.
-    const claimed: { id: number; metric: string; started_at: string }[] = [];
-    let ambiguous = false;
-    for (const metric of SLEEP_STAGE_METRICS) {
-      const stages = findStages.all(
-        profileId,
-        source,
-        metric,
-        origin
-      ) as (SleepSessionRow & { metric: string })[];
-      for (const stage of stages) {
-        const owners = sleepStageOwners(stage, siblings);
-        if (!owners.includes(loser.id)) continue;
-        if (owners.length > 1) {
-          ambiguous = true;
-          break;
-        }
-        claimed.push(stage);
-      }
-      if (ambiguous) break;
-    }
-    if (ambiguous) {
-      left.add(loser.id);
-      continue;
-    }
-    for (const stage of claimed) {
-      removed += drop.run(stage.id, profileId).changes;
-      writeImportTombstone(
-        profileId,
-        "metric_samples",
-        metricSampleTombstoneKey(stage.metric, source, origin, stage.started_at)
-      );
-    }
-    removed += drop.run(loser.id, profileId).changes;
-    writeImportTombstone(
-      profileId,
-      "metric_samples",
-      metricSampleTombstoneKey(
-        SLEEP_SESSION_METRIC,
-        source,
-        origin,
-        loser.started_at
-      )
-    );
-    // The store moved, so the cached session set is stale for any later loser of this
-    // origin — and a stale set would let a deleted row still "own" a stage.
-    sessionsByOrigin.delete(origin);
-  }
-  return { removed, overlapsLeft: left.size };
 }
 
 /**

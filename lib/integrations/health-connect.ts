@@ -271,32 +271,6 @@ export function overlapsLeftWarning(count: number): string {
     "next push that carries a later timestamp."
   );
 }
-
-// THE SLEEP RESIDUE, WHICH IS THE SAME COUNT AND A DIFFERENT SYMPTOM (#3628).
-//
-// It is folded into `overlapsLeft` above — one number, because a person does not care
-// which mechanism left a duplicate — but it gets its own sentence, because the sentence
-// above is about DAY TOTALS reading high and a duplicated night does nothing of the
-// kind: it puts a second "night" on the Sleep page, in SRI and in the stage totals.
-//
-// IT NAMES NO CAUSE, and an earlier version of this comment argued the opposite — that
-// the #133 edit lock was the only thing reported here, so naming it was a fact rather
-// than a guess. That was wrong, and wrong in the direction that matters: an adversarial
-// pass found the second class, a pair the SAME push carries against itself, which no
-// later push ever collapses. There are four classes now (the lock, an unrankable pair,
-// a displacement that is not a re-anchoring, and a stage row no single session owns), so
-// this says the SYMPTOM, as `overlapsLeftWarning` does and for the same reason.
-//
-// NO RETRY PROMISE, for the same corrected reason. One of the four does clear on a later
-// push that carries only the corrective write; three never do. "Most clear" would be a
-// guess about which one a person is looking at.
-export function sleepOverlapsLeftWarning(count: number): string {
-  const symptom =
-    count === 1
-      ? "A sleep session overlaps another reading of the same night and was not replaced by this push, so that night is stored twice."
-      : `${count} sleep sessions overlap other readings of the same night and were not replaced by this push, so those nights are each stored twice.`;
-  return `${symptom} Delete whichever is wrong in Data → Manage.`;
-}
 // Require two such records before hinting: a genuine `daily` push made within an hour
 // of local midnight is itself a short window, and one origin doing that shouldn't trip
 // the hint. Two independent short windows in one batch is the fine-grained shape. (The

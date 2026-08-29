@@ -1120,9 +1120,7 @@ carry it explicitly:
 - **`metric_samples.pushed_at`** — see below.
 
 **FRESHNESS COMES FROM THE PAYLOAD, NEVER FROM ARRIVAL ORDER AND NEVER FROM A
-WINDOW** — for the day-bucket rule. The sleep collapse below is the one exception, and
-it is an exception because it cannot use the stamp at all; read both before adding a
-third rule. Deciding "incoming wins" from position was refuted twice. A push over
+WINDOW.** Deciding "incoming wins" from position was refuted twice. A push over
 `INGEST_CHUNK_SIZE` rows splits a mixed-anchoring pair across two chunks, and the
 chunk that met the stale row alone resolved it by arrival — the STALE bucket deleting
 the CURRENT one. And a byte-identical REPLAY of a pre-switch payload (an exporter
@@ -1133,118 +1131,6 @@ EXPORTER stamped on the push (`payload.timestamp`), canonicalised, and **nothing
 else**. A row may supersede a stored row only when its stamp is STRICTLY older. A
 replay carries the same stamp as the push it replays; two rows of one push share a
 stamp, so no chunk can out-rank another.
-
-### A RE-TIMED SLEEP SESSION COLLAPSES TO THE LATER WRITE (#3628)
-
-A SECOND, SEPARATE RULE, and the separation is the design. After a device zone change
-Health Connect can hold the same Fitbit night twice: a first write whose instants came
-from the wall clock under the old zone, and a corrected write a day later under the new
-one. Health Connect never withdraws the first. `sleep_min` keys on `started_at`, so the
-re-timed session is a NEW natural key rather than a correction, and `mainSleepSession`
-picks the longest per wake-day — so on prod the phantom became the only "night" of its
-own wake-day. Measured: two rows exactly 6 h apart (New York against Honolulu),
-overlapping by 17 minutes, same 377-minute duration, re-scored stages.
-
-The day-bucket rule could never see it. That one decides WITHIN one `date` (cover the
-day) over a span the device RE-CUT; this pair lands on two different dates, and a sleep
-session is a point event the source RE-TIMED. So `collapseRewrittenSleepSessions`
-(`lib/integrations/normalize.ts`) runs beside `supersedeMetricSampleOverlaps`, in the
-same last-chunk transaction, and `sleepSessionCollapse`
-(`lib/metric-window-overlap.ts`) decides.
-
-**THE PREMISE IS "ONE SESSION", NOT "ONE ORIGIN", and the first version got that wrong.**
-It reasoned that one person of one origin cannot be asleep in two overlapping sessions,
-so an overlap within an origin is always a re-write. `dataOrigin` returns Health
-Connect's `metadata.data_origin` — the writing APP's package name, not a device — and
-one package writes main sleep, naps, and for an aggregator several devices' sessions. An
-adversarial pass drove an 8-hour night and a genuine 60-minute early session overlapping
-by one minute through that rule and lost the night, its whole breakdown and its natural
-key: the wake-day fell from 480 minutes to 60 and `mainSleepSession` elected the short
-one, which is #2603's failure mode reached by deletion instead of election.
-
-So the evidence required is that the two rows are ONE SESSION. A wall-clock re-anchoring
-moves a session without changing it, so the pair must have the **same duration** and be
-displaced by a **whole zone-offset step** (`ZONE_OFFSET_STEP_MS`, the quarter-hour grid
-`anchorOffsets` already reads a device midnight on). That is what separates one reading
-wearing two keys from two readings — and it is why #3424's bullet 1 at the head of
-`lib/metric-window-overlap.ts` stands **unamended**: "two overlapping sessions are two
-readings rather than one anomaly" is still the ruling, and this rule never acts on two
-overlapping sessions at all.
-
-**A ZERO DISPLACEMENT IS NOT A RE-TIMING, and that term closes the worst door the rule
-ever had.** `metricSampleTombstoneKey` keys on the raw `started_at` STRING, and the
-parser emits two spellings of one instant: given `end_time` + `duration_seconds` and no
-`start_time` it derives the start through `toISOString()`, spelling `…:00.000Z` where
-the vendor field spells `…:00Z`. That re-send misses the tombstone veto and arrives as a
-NEW row — and on an overlap-only rule it became the winner and deleted the CORRECTED
-night, tombstoning its key so no re-sync, re-pair or re-import could restore it. The fix
-produced the exact prod symptom #3628 was opened to cure, and made it permanent. Two
-spellings of one instant are displaced by zero, so the pair is refused and reported.
-
-**WHY THIS ONE READS ARRIVAL ORDER, against the rule above.** The exporter re-sends the
-mis-zoned first write for 48 h, and a re-send is an ON CONFLICT UPDATE that moves the
-stored row's `pushed_at` to the current push's — so after the corrective push BOTH rows
-carry the same stamp and nothing ranks them. Arrival order is read instead off the
-`metric_samples.id` watermark taken before the push writes anything
-(`firstMetricSampleIdOfPush`): at or above it is a row this push INSERTED, below it a
-row that predates the push. Both refutations that closed arrival order for the
-day-bucket rule are closed here by construction rather than by the stamp — a chunk split
-cannot produce a loser, because every row of this push is above the watermark and so
-none is a candidate; and a byte-identical REPLAY re-sends the same natural key, which is
-an update and puts no new row above the watermark at all.
-
-**THE STAGE ROWS HAVE NO PARENTAGE IN THE SCHEMA**, so ownership is geometric — and the
-two obvious geometries are both wrong. The first version claimed them by CONTAINMENT in
-the loser's window, filtered by the loser's `date`; three separate defects followed, and
-the prose describing it was false in the code's own file. `sleep_min.date` is frozen at
-first write by `resendDay`, while a stage row arriving for the FIRST time in a later
-push takes its wake-day from the profile's zone at THAT moment — so for a traveller
-mid-switch, the population this rule exists for, a session and its own stages sit on
-different dates and a `date`-keyed sweep cannot see them; four phantom stage rows
-survived and the real night's awake time read 150 minutes instead of 75. An id bound
-failed the same way one step over: an exporter that delivers a session unscored and
-scores it in a LATER push writes those stage rows in the very push that collapses the
-session. And nothing clamps a stage to its session, so containment closed on both ends
-disowned exactly the first and last stage of a jittered night, leaving a two-stage
-fragment that reads like a real short night's breakdown.
-
-`sleepStageOwners` decides it by the instant at the stage's MIDDLE, which is jitter-proof
-at both ends and needs no tolerance constant, against every stored session of that
-origin. A midpoint can still fall inside two sessions — a nap slept inside the night, or
-a stage lying in the band where a re-timed pair overlaps — and there the rule **refuses
-the whole collapse** and reports it: deleting the stage robs a real reading, keeping it
-leaves an orphan that sums into a night it never belonged to
-(`getSleepStageDailyTotals` reads by date and knows nothing of sessions), and neither is
-acceptable.
-
-**WHAT IT REFUSES**, and each refusal is a night in someone's record: a pair of different
-durations, a displacement of zero or off the zone grid, a different origin, a NULL origin
-in either role (unknown is not shared — two unattributed exporters share that value),
-non-overlapping sessions as instants (a nap, and #1191's post-gap fragment, are
-non-overlapping by construction), any source but `health-connect` (Oura and Withings
-label their sessions themselves and never re-time one; a manual entry is the user's own
-row), an `edited` row (#133), two sessions first written by the SAME push (#3424 ruling
-item 3 — nothing ranks two rows of one push, and choosing by window start would be a
-guess), a stage row no single session owns, and any window whose instants it cannot read.
-
-**WHY A TOMBSTONE, when the day-bucket supersede writes none.** That one deletes a span
-the source keeps re-sending under its CURRENT anchoring, so the re-send is the repair.
-This one deletes a record the source never withdraws, so without the tombstone the next
-push resurrects the phantom under the same natural key and the collapse undoes itself
-once an hour.
-
-**THE RESIDUE NAMES NO CAUSE**, and an earlier version of this section argued it could,
-because the #133 lock was thought to be the only class reported. It is not: a pair the
-SAME push carries against itself is never collapsed by any later push either, and before
-it was counted that sequence left the phantom stored forever with `warnings: []`. Four
-classes reach the count now — the lock, an unrankable pair, a displacement that is not a
-re-anchoring, and a stage no single session owns — so `sleepOverlapsLeftWarning` states
-the symptom and makes no retry promise, exactly as `overlapsLeftWarning` does.
-
-Proofs: `lib/__db_tests__/hc-sleep-rezoned-collapse-3628.test.ts` (the prod pair through
-the real parser and ingest, every refusal, and each of the five reproductions above) and
-the `sleepSessionCollapse` / `sleepStageOwners` tables in
-`lib/__tests__/metric-window-overlap.test.ts`.
 
 **The stamp must be a PUSH TIME, and this is the mistake worth not repeating.** The
 first version fell back, for a push stating no `timestamp`, to the furthest-forward

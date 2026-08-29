@@ -9,8 +9,6 @@ import {
   type ProvenanceEntry,
 } from "./sync-log";
 import {
-  collapseRewrittenSleepSessions,
-  firstMetricSampleIdOfPush,
   supersedeMetricSampleOverlaps,
   upsertActivities,
   upsertBodyMetrics,
@@ -22,7 +20,6 @@ import {
 import {
   HEALTH_CONNECT_ID,
   overlapsLeftWarning,
-  sleepOverlapsLeftWarning,
   type ParsedPayload,
 } from "./health-connect";
 import {
@@ -101,9 +98,6 @@ export function ingestHealthConnectPayload(
   // in the last chunk's transaction, by the same query that decides the deletes, so it
   // reports what HAPPENED rather than a forecast. See where it is set below.
   let overlapsLeft = 0;
-  // The sleep half of that same number, kept only to decide whether its own sentence is
-  // owed (#3628). ONE counter reaches Review; the two symptoms read differently.
-  let sleepOverlapsLeft = 0;
   const vitalIds: number[] = [];
   // Per-row provenance (#1333) accumulated across every chunk. The upserts append the
   // inserted/updated rows they persist; the id captured is committed by the chunk's
@@ -180,11 +174,6 @@ export function ingestHealthConnectPayload(
     // device clock that claims the future. Null when the push states nothing readable,
     // and then this push supersedes nothing at all.
     const pushedAt = pushStampFor(parsed.pushedAt);
-    // THE ID WATERMARK, READ BEFORE THE FIRST SAMPLE LANDS (#3628). A row at or above it
-    // is one this push inserted; a row below it predates the push. It is what tells a
-    // corrected sleep session from the mis-zoned first write it corrects, because the
-    // exporter re-sends that first write for 48 h and the re-send moves its `pushed_at`.
-    const firstSampleId = firstMetricSampleIdOfPush(profileId);
     // ── THE SUPERSEDE (#3424) ── DERIVED FROM THE STORE, IN THE LAST CHUNK.
     //
     // There is no plan over the payload any more, and its absence is the fix (the owner's
@@ -240,23 +229,12 @@ export function ingestHealthConnectPayload(
             pushedAt
           );
           part.superseded += outcome.removed;
-          // The re-timed sleep session (#3628), in this same transaction and after the
-          // same upserts. A different question from the day-bucket supersede above — a
-          // point event the source RE-TIMED rather than a span it re-cut — so it is a
-          // separate rule, and it needs no stamp: arrival order is the id watermark.
-          const sleep = collapseRewrittenSleepSessions(
-            profileId,
-            source,
-            firstSampleId
-          );
-          part.superseded += sleep.removed;
           // WHAT THIS PUSH LEFT DOUBLE COUNTING, from the same query that did the
           // deleting: the candidates the predicate declined (locked, not outranked,
           // cut at sub-daily granularity) plus the excess the push carries against
           // ITSELF. Read inside the transaction that acted, so it describes what
           // happened rather than what was forecast.
-          overlapsLeft = outcome.overlapsLeft + sleep.overlapsLeft;
-          sleepOverlapsLeft = sleep.overlapsLeft;
+          overlapsLeft = outcome.overlapsLeft;
         }
         return part;
       },
@@ -354,25 +332,12 @@ export function ingestHealthConnectPayload(
     );
   }
 
-  // The Review lines, appended to the details this push already carries. Both counts are
-  // read above from the store, inside the transaction that did the deleting, so they name
-  // what is still duplicated once this push is on disk.
-  //
-  // TWO SENTENCES, ONE NUMBER (#3628). The day-bucket residue and the sleep residue are
-  // the same kind of fact — something this push could not collapse — so they are counted
-  // together and reported as one Review number. They are not the same SYMPTOM: a day
-  // bucket left standing makes a day's total read HIGH, and a sleep session left standing
-  // puts a second night on the Sleep page, in SRI and in the stage totals. Each sentence
-  // therefore names only the rows it is actually about, which is also why the day-bucket
-  // count is net of the sleep half rather than the sum — the older wording claimed those
-  // rows made a day "count some activity twice", which is not true of a night.
-  if (overlapsLeft > sleepOverlapsLeft) {
-    parsed.details.warnings.push(
-      overlapsLeftWarning(overlapsLeft - sleepOverlapsLeft)
-    );
-  }
-  if (sleepOverlapsLeft > 0) {
-    parsed.details.warnings.push(sleepOverlapsLeftWarning(sleepOverlapsLeft));
+  // The Review line, appended to the details this push already carries. Read above from
+  // the store, inside the transaction that did the deleting, so it names the days that
+  // are still reading high once this push is on disk — whatever the reason, and with no
+  // reason enumerated anywhere.
+  if (overlapsLeft > 0) {
+    parsed.details.warnings.push(overlapsLeftWarning(overlapsLeft));
   }
   return {
     counts: {
