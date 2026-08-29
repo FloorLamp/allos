@@ -18,9 +18,27 @@ import { setActiveSituations, setTimezone } from "@/lib/settings";
 import { doseLogDays, isDoseDateAccepted } from "@/lib/dose-log-window";
 import { markDoseTaken } from "@/lib/queries";
 import { loadQuickEntry } from "@/app/(app)/quick-entry-actions";
-import { getActiveSituations, getSituationEvents } from "@/lib/settings";
-import { situationsActiveOn } from "@/lib/trend-annotations";
-import { isDueOn } from "@/lib/intake-schedule";
+import {
+  getActiveSituations,
+  getSituationEvents,
+  getTimezone,
+} from "@/lib/settings";
+import { setProfileSetting } from "@/lib/settings";
+import { situationHistoryResolver } from "@/lib/trend-annotations";
+import {
+  intakeAdherenceStrip,
+  indexTakenByDose,
+  type AdherenceDot,
+} from "@/lib/intake-adherence";
+import { travelExcusalResolver } from "@/lib/travel-excusal";
+import {
+  getIntakeItems,
+  getIntakeLogsInRange,
+  getActivityDates,
+  getActivitiesByDate,
+  isPredictedWorkoutDay,
+} from "@/lib/queries";
+import { getIntakeDoses } from "@/lib/queries/intake/schedule";
 import { resolveDayDoses } from "@/app/(app)/nutrition/intake-actions";
 import { createLogin, createProfile, actAs, fd } from "./harness";
 
@@ -53,6 +71,7 @@ function seedDose(
     stack?: string | null;
     condition?: string;
     situation?: string | null;
+    createdDaysAgo?: number;
   } = {}
 ): number {
   const itemId = Number(
@@ -70,7 +89,7 @@ function seedDose(
         opts.situation ?? null
       ).lastInsertRowid
   );
-  return Number(
+  const doseId = Number(
     db
       .prepare(
         `INSERT INTO intake_item_doses (item_id, amount, time_of_day, food_timing, sort)
@@ -78,6 +97,23 @@ function seedDose(
       )
       .run(itemId, opts.timeOfDay ?? "morning").lastInsertRowid
   );
+  // THE LIFETIME BOUND HAS A DEFAULT, and every fixture has a position relative to it.
+  // A row inserted here defaults to `created_at = now`, i.e. TODAY — so before the
+  // #430/#1442 clamp landed in `pendingDayDoses` these fixtures were all describing an
+  // item that did not exist on the days they then asserted about, and they only passed
+  // because nothing was checking. Fixtures that are not ABOUT the boundary are aged
+  // well behind it so they test what they claim; the two that ARE about it set their
+  // own timestamp explicitly.
+  const born = `${shiftDateStr(today(profileId), -(opts.createdDaysAgo ?? 30))} 09:00:00`;
+  db.prepare(`UPDATE intake_items SET created_at = ? WHERE id = ?`).run(
+    born,
+    itemId
+  );
+  db.prepare(`UPDATE intake_item_doses SET created_at = ? WHERE id = ?`).run(
+    born,
+    doseId
+  );
+  return doseId;
 }
 
 // A profile in `tz` with a morning stack of two and one bedtime dose, nothing logged.
@@ -355,27 +391,6 @@ describe("a past day is scored against the situations active THAT day (#654)", (
       { dose_id: doseId, status: "taken" },
     ]);
   });
-
-  it("agrees with the adherence strip's own historical answer, which #3917 offers from", async () => {
-    const { profile, doseId, yesterday } = seedTravelItem("agree");
-    setActiveSituations(profile.id, ["Travel"]);
-    // Two catch-up surfaces, one question (#221): whichever way this profile's history
-    // reads, the sheet and the strip's dueness must read it the SAME way.
-    const stripSaysDue = isDueOn(
-      { condition: "situational", situation: "Travel" },
-      {
-        date: yesterday,
-        isWorkoutDay: false,
-        activeSituations: situationsActiveOn(
-          yesterday,
-          getActiveSituations(profile.id),
-          getSituationEvents(profile.id)
-        ),
-      }
-    );
-    const sheetOffers = (await offeredOn(yesterday)).includes(doseId);
-    expect(sheetOffers).toBe(stripSaysDue);
-  });
 });
 
 // ── F2: the bucket is the one the dose sat in ON that day ────────────────────
@@ -438,5 +453,178 @@ describe("the submitted day is bounded by the days the sheet offers", () => {
     expect(
       logsOn(profile.id, shiftDateStr(today(profile.id), -2))
     ).toHaveLength(2);
+  });
+});
+
+// ── THE AGREEMENT TEST, against the strip ITSELF ─────────────────────────────
+//
+// The first version of this compared `isDueOn` against `situationsActiveOn` — the same
+// resolver the code under test calls — so it was agreement with itself, and it passed
+// over three separate defects (today's situations on a past day, no lifetime clamp, no
+// travel excusal). Structural agreement by construction is a restatement, not a check.
+//
+// This one runs `intakeAdherenceStrip` — the app's canonical historical dueness answer,
+// the one #3674's missed-day offer reads through `missedDoseDays` — and compares its
+// VERDICT per day against what the sheet offers. The contract is the #221 one: two
+// catch-up surfaces, one question, one answer.
+//
+//   strip "na"      → the day asks nothing of this dose  → the sheet must NOT offer it
+//   strip "excused" → the clock made the slot impossible → the sheet must NOT offer it
+//   strip "missed"  → the day owes it and nothing is logged → the sheet MUST offer it
+describe("the sheet's offer agrees with the adherence strip, day for day", () => {
+  // The strip exactly as SupplementsTab builds it, over the switcher's own window.
+  function stripFor(profileId: number, itemId: number): AdherenceDot[] {
+    const item = getIntakeItems(profileId).find((i) => i.id === itemId)!;
+    const doses = getIntakeDoses(profileId).filter((d) => d.item_id === itemId);
+    const dates = [...doseLogDays(today(profileId))].reverse();
+    return intakeAdherenceStrip(
+      item,
+      doses,
+      dates,
+      new Set(getActivityDates(profileId)),
+      situationHistoryResolver(
+        getActiveSituations(profileId),
+        getSituationEvents(profileId)
+      ),
+      indexTakenByDose(getIntakeLogsInRange(profileId, 30)),
+      getTimezone(profileId),
+      travelExcusalResolver(profileId)
+    );
+  }
+
+  async function offeredByDay(): Promise<Map<string, number[]>> {
+    const data = await loadQuickEntry("dose");
+    const out = new Map<string, number[]>();
+    if (data.form !== "dose") return out;
+    out.set(
+      data.today,
+      data.doses.map((d) => d.doseId)
+    );
+    for (const past of data.pastDays) {
+      out.set(
+        past.date,
+        past.slots.flatMap((slot) => slot.doses.map((d) => d.doseId))
+      );
+    }
+    return out;
+  }
+
+  // Each case shapes ONE profile so a past day lands on a different strip verdict, then
+  // asserts the sheet reads that same day the same way. Table-driven: the cases differ
+  // only in how the day is shaped and what the strip should then say.
+  it.each([
+    {
+      name: "a day BEFORE the item existed is 'na' and is not offered",
+      // Created TODAY, so it did not exist on `day` — the phantom obligation every
+      // newly added item used to grow.
+      createdDaysAgo: 0,
+      expected: "na" as const,
+    },
+    {
+      name: "a day the item existed for and owes is 'missed' and IS offered",
+      createdDaysAgo: 30,
+      expected: "missed" as const,
+    },
+  ])("$name", async ({ createdDaysAgo, expected }) => {
+    const login = createLogin();
+    const profile = createProfile(`agree-${expected}`, login.id);
+    actAs(login, profile);
+    setTimezone(profile.id, "UTC");
+    const doseId = seedDose(profile.id, `Magnesium ${expected}`, {
+      createdDaysAgo,
+    });
+    const itemId = (
+      db
+        .prepare("SELECT item_id AS id FROM intake_item_doses WHERE id = ?")
+        .get(doseId) as { id: number }
+    ).id;
+    const day = shiftDateStr(today(profile.id), -1);
+
+    const dot = stripFor(profile.id, itemId).find((d) => d.date === day)!;
+    expect(dot.state).toBe(expected);
+
+    const offered = (await offeredByDay()).get(day) ?? [];
+    // THE contract, stated as the relationship rather than as two literals: the sheet
+    // offers a dose on a day exactly when the strip says that day still owes it.
+    expect(offered.includes(doseId)).toBe(expected === "missed");
+  });
+
+  it("a day the clock made impossible is 'excused' and is not offered (#3263)", async () => {
+    const login = createLogin();
+    const profile = createProfile("agree-excused", login.id);
+    actAs(login, profile);
+    // The profile has FLOWN: it is on Tokyo now, and the switch below is the seam it
+    // left in its own wall clock. The zone must be the post-switch one or the history
+    // does not connect (connectedTimezoneSwitchHistory).
+    setTimezone(profile.id, "Asia/Tokyo");
+    const doseId = seedDose(profile.id, "Magnesium excused", {
+      timeOfDay: "midday",
+    });
+    const itemId = (
+      db
+        .prepare("SELECT item_id AS id FROM intake_item_doses WHERE id = ?")
+        .get(doseId) as { id: number }
+    ).id;
+    const day = shiftDateStr(today(profile.id), -1);
+    // An EASTWARD jump on `day`: 10:00 UTC becomes 19:00 Tokyo, so the wall clock
+    // between them never occurred — and the midday slot (13:00, the shipped default)
+    // sits inside the span that vanished. The person could not have taken it.
+    setProfileSetting(
+      profile.id,
+      "timezone_switches",
+      JSON.stringify([
+        { at: `${day}T10:00:00Z`, from: "UTC", to: "Asia/Tokyo" },
+      ])
+    );
+
+    const dot = stripFor(profile.id, itemId).find((d) => d.date === day)!;
+    // Guard the guard: if this profile does not actually reach `excused`, the assertion
+    // below would pass for the wrong reason (a day nothing was offered on anyway).
+    expect(dot.state).toBe("excused");
+    expect((await offeredByDay()).get(day) ?? []).not.toContain(doseId);
+  });
+});
+
+// Found by the seam audit, not by a review round: `conditionAppliesOn` reads
+// `predictedWorkoutDay ?? isWorkoutDay`, and the prediction is a weekday rhythm
+// inferred from a trailing window ending TODAY. On a closed day that lets a guess made
+// now overrule the training already on the record — the same "a past date reached an
+// input written for today" shape as the situations bug, in a third input.
+describe("a closed day's training is what the record says, not what a pattern predicts", () => {
+  it("offers a rest_day dose for a predicted training day the person did NOT train on", async () => {
+    const login = createLogin();
+    const profile = createProfile("rest-day-past", login.id);
+    actAs(login, profile);
+    setTimezone(profile.id, "UTC");
+    const doseId = seedDose(profile.id, "Recovery blend", {
+      condition: "rest_day",
+    });
+    const day = shiftDateStr(today(profile.id), -1);
+
+    // A HABITUAL weekday: six sessions on the same weekday as `day`, one a week, and
+    // deliberately NOT on `day` itself. `rhythmMinDates(8)` is 4, so this clears the
+    // gate and `isPredictedWorkoutDay(day)` returns TRUE while the record for that day
+    // is empty. Without the fix the two disagree and the guard below cannot pass.
+    for (let week = 1; week <= 6; week += 1) {
+      db.prepare(
+        `INSERT INTO activities (profile_id, date, title, type, start_time)
+         VALUES (?, ?, 'Weekly session', 'cardio', '09:00')`
+      ).run(profile.id, shiftDateStr(day, -7 * week));
+    }
+    // The precondition, asserted rather than assumed — if the rhythm did not infer,
+    // both branches would fall back to `isWorkoutDay` and this test would pass for the
+    // wrong reason.
+    expect(isPredictedWorkoutDay(profile.id, day)).toBe(true);
+    expect(getActivitiesByDate(profile.id, day)).toEqual([]);
+
+    const data = await loadQuickEntry("dose");
+    if (data.form !== "dose") throw new Error("expected the dose form");
+    const offered = (
+      data.pastDays.find((d) => d.date === day)?.slots ?? []
+    ).flatMap((slot) => slot.doses.map((d) => d.doseId));
+    // It WAS a rest day — nothing was logged — so the rest-day dose was owed and the
+    // sheet must offer it. Reading the prediction withholds it, and the adherence
+    // strip (which passes no prediction) would call the day missed either way.
+    expect(offered).toContain(doseId);
   });
 });

@@ -59,6 +59,13 @@ import type {
 // than a second policy: nothing is filtered by arrived slot (every bucket of a closed
 // day has arrived), and the row carries BOTH verbs, because on a day that has already
 // ended "I skipped it" is as ordinary an answer as "I took it".
+// The identity of one dose OCCURRENCE: the profile-local day it belongs to plus the
+// schedule row that asks for it. Minted in exactly one place so no reader can key on
+// half of it.
+function occurrenceKey(date: string, doseId: number): string {
+  return `${date}:${doseId}`;
+}
+
 export default function QuickDoseList({
   today,
   doses,
@@ -77,17 +84,28 @@ export default function QuickDoseList({
   const toast = useToast();
   // Doses resolved during THIS overlay session, dropped from their day's list. Local
   // rather than re-fetched: the sheet is a transactional surface, and re-running the
-  // gather mid-list would reorder rows under the user's finger. ONE set across every
-  // day, because a dose belongs to exactly one of them.
-  const [resolved, setResolved] = useState<Set<number>>(() => new Set());
-  // The last outcome per dose that did NOT resolve it — shown inline so the reason
-  // the row is still there is legible without hunting for the toast.
-  const [notes, setNotes] = useState<Record<number, string>>({});
+  // gather mid-list would reorder rows under the user's finger.
+  //
+  // KEYED BY (DAY, DOSE), AND THAT IS THE WHOLE POINT. `doseId` is an
+  // `intake_item_doses` row id — a SCHEDULE row, not an occurrence — so a daily
+  // supplement unlogged for three days is the same id on all three tabs. Keying this
+  // by dose id alone meant logging yesterday's forgotten dose ALSO struck today's row
+  // off the list and, with nothing left to show, closed the sheet with a success
+  // toast — the #280 false-confirmation this file's header says it never commits,
+  // reached by the most ordinary use of the control. It reversed too, and `notes`
+  // carried the same collision: a refusal earned on yesterday rendered under today's
+  // row. One occurrence is one (day, dose) pair; nothing here may key on less.
+  const [resolved, setResolved] = useState<Set<string>>(() => new Set());
+  // The last outcome per (day, dose) that did NOT resolve it — shown inline so the
+  // reason the row is still there is legible without hunting for the toast.
+  const [notes, setNotes] = useState<Record<string, string>>({});
   // The surface this list is rendered in (#3087).
   const stampLoggedVia = useLoggedViaStamp();
   const [day, setDay] = useState(today);
 
-  const remaining = doses.filter((d) => !resolved.has(d.doseId));
+  const remaining = doses.filter(
+    (d) => !resolved.has(occurrenceKey(today, d.doseId))
+  );
   const pastSlots = useMemo(
     () =>
       new Map(
@@ -96,7 +114,9 @@ export default function QuickDoseList({
           past.slots
             .map((slot) => ({
               ...slot,
-              doses: slot.doses.filter((d) => !resolved.has(d.doseId)),
+              doses: slot.doses.filter(
+                (d) => !resolved.has(occurrenceKey(past.date, d.doseId))
+              ),
             }))
             .filter((slot) => slot.doses.length > 0),
         ])
@@ -110,10 +130,10 @@ export default function QuickDoseList({
   // second overwrite the first from a stale closure: the first row reappears, and
   // tapping it again earns "Nothing left to log for that day." in error tone for a dose
   // that is correctly logged. `setNotes` beside it was already written this way.
-  function markResolved(doseIds: readonly number[]): void {
+  function markResolved(date: string, doseIds: readonly number[]): void {
     setResolved((prev) => {
       const next = new Set(prev);
-      for (const id of doseIds) next.add(id);
+      for (const id of doseIds) next.add(occurrenceKey(date, id));
       return next;
     });
   }
@@ -127,14 +147,16 @@ export default function QuickDoseList({
   useEffect(() => {
     if (resolved.size === 0) return;
     const left =
-      doses.some((d) => !resolved.has(d.doseId)) ||
+      doses.some((d) => !resolved.has(occurrenceKey(today, d.doseId))) ||
       pastDays.some((past) =>
         past.slots.some((slot) =>
-          slot.doses.some((d) => !resolved.has(d.doseId))
+          slot.doses.some(
+            (d) => !resolved.has(occurrenceKey(past.date, d.doseId))
+          )
         )
       );
     if (!left) onDone();
-  }, [resolved, doses, pastDays, onDone]);
+  }, [resolved, doses, pastDays, today, onDone]);
 
   async function confirm(dose: QuickEntryDose) {
     // The quick-log sheet, not the Upcoming page — the two mountings post the SAME
@@ -156,9 +178,12 @@ export default function QuickDoseList({
     const { text, tone } = doseConfirmMessage(result.outcome);
     toast(text, { tone });
     if (doseResolved(result.outcome)) {
-      markResolved([dose.doseId]);
+      markResolved(today, [dose.doseId]);
     } else {
-      setNotes((prev) => ({ ...prev, [dose.doseId]: text }));
+      setNotes((prev) => ({
+        ...prev,
+        [occurrenceKey(today, dose.doseId)]: text,
+      }));
     }
     // Keep the page behind the overlay honest — the user stays put, so what they
     // are looking at has to reflect the write.
@@ -189,9 +214,12 @@ export default function QuickDoseList({
           slots={pastSlots.get(day) ?? []}
           notes={notes}
           onNote={(doseId, text) =>
-            setNotes((prev) => ({ ...prev, [doseId]: text }))
+            setNotes((prev) => ({
+              ...prev,
+              [occurrenceKey(day, doseId)]: text,
+            }))
           }
-          onResolved={markResolved}
+          onResolved={(doseIds) => markResolved(day, doseIds)}
         />
       ) : remaining.length === 0 ? (
         <p
@@ -220,12 +248,12 @@ export default function QuickDoseList({
                     {dose.detail}
                   </span>
                 )}
-                {notes[dose.doseId] && (
+                {notes[occurrenceKey(today, dose.doseId)] && (
                   <span
                     data-testid={`quick-entry-dose-note-${dose.doseId}`}
                     className="block text-xs font-medium text-rose-600 dark:text-rose-400"
                   >
-                    {notes[dose.doseId]}
+                    {notes[occurrenceKey(today, dose.doseId)]}
                   </span>
                 )}
               </span>
@@ -260,7 +288,9 @@ function PastDayDoses({
 }: {
   date: string;
   slots: { bucket: TimeBucket; doses: QuickEntryPastDose[] }[];
-  notes: Record<number, string>;
+  // Keyed by `occurrenceKey`, not by dose id — see the host's note on why a schedule
+  // row id is not an occurrence.
+  notes: Record<string, string>;
   onNote: (doseId: number, text: string) => void;
   onResolved: (doseIds: readonly number[]) => void;
 }) {
@@ -471,12 +501,12 @@ function PastDayDoses({
                         {dose.detail}
                       </span>
                     )}
-                    {notes[dose.doseId] && (
+                    {notes[occurrenceKey(date, dose.doseId)] && (
                       <span
                         data-testid={`quick-entry-dose-note-${dose.doseId}`}
                         className="block text-xs font-medium text-rose-600 dark:text-rose-400"
                       >
-                        {notes[dose.doseId]}
+                        {notes[occurrenceKey(date, dose.doseId)]}
                       </span>
                     )}
                   </span>

@@ -1,5 +1,5 @@
 import { act, fireEvent, render, screen, within } from "@testing-library/react";
-import { describe, expect, it, vi } from "vitest";
+import { beforeEach, describe, expect, it, vi } from "vitest";
 import QuickDoseList from "@/components/quick-entry/QuickDoseList";
 
 // #3936. The switcher's job is to say what the accepted window IS, so the guards below
@@ -42,6 +42,12 @@ function dose(doseId: number, name: string, stack: string | null = null) {
   return { doseId, name, detail: "1 scoop", stack };
 }
 
+// A DAILY dose is the SAME `intake_item_doses` row on every day it is unlogged, so
+// dose 11 appears on today AND on yesterday. The earlier fixture gave today `1` and the
+// past days `11,12,13` — disjoint ids that real data can never be, which made the
+// (day, dose) collision unreachable by construction and let the defect ship green.
+const DAILY_DOSE = 11;
+
 const PAST_DAYS = [
   {
     date: "2026-08-27",
@@ -50,7 +56,7 @@ const PAST_DAYS = [
       {
         bucket: "Morning" as const,
         doses: [
-          dose(11, "Creatine", "Morning stack"),
+          dose(DAILY_DOSE, "Creatine", "Morning stack"),
           dose(12, "Collagen", "Morning stack"),
         ],
       },
@@ -67,7 +73,12 @@ function renderSheet() {
     <QuickDoseList
       today={TODAY}
       doses={[
-        { doseId: 1, title: "Vitamin D", detail: null, dueText: "8:00am" },
+        {
+          doseId: DAILY_DOSE,
+          title: "Creatine",
+          detail: null,
+          dueText: "8:00am",
+        },
       ]}
       pastDays={PAST_DAYS}
       onDone={vi.fn()}
@@ -181,5 +192,102 @@ describe("resolving several doses in quick succession (#3936)", () => {
     expect(screen.queryByTestId("quick-entry-dose-11")).toBeNull();
     expect(screen.queryByTestId("quick-entry-dose-12")).toBeNull();
     expect(screen.getByTestId("quick-entry-dose-13")).toBeTruthy();
+  });
+});
+
+// #3936 BLOCKING 1. `doseId` is an `intake_item_doses` row id — a SCHEDULE row that
+// recurs — so a daily supplement unlogged for three days is one id on three tabs.
+// Resolving it on one day must not resolve it on the others.
+describe("one schedule row on several days is several occurrences", () => {
+  beforeEach(() => {
+    resolveDayDosesMock.mockImplementation(async (fd: FormData) => ({
+      ok: true as const,
+      date: String(fd.get("date")),
+      doses: String(fd.get("dose_ids"))
+        .split(",")
+        .map(Number)
+        .filter(Boolean)
+        .map((doseId) => ({
+          doseId,
+          name: `dose ${doseId}`,
+          outcome: "logged" as const,
+        })),
+    }));
+  });
+
+  it("logging yesterday's dose leaves TODAY's identical dose still due", async () => {
+    const onDone = vi.fn();
+    render(
+      <QuickDoseList
+        today={TODAY}
+        doses={[
+          {
+            doseId: DAILY_DOSE,
+            title: "Creatine",
+            detail: null,
+            dueText: "8:00am",
+          },
+        ]}
+        pastDays={PAST_DAYS}
+        onDone={onDone}
+      />
+    );
+
+    fireEvent.click(screen.getByRole("button", { name: "Yesterday" }));
+    const day = screen.getByTestId("quick-entry-dose-day");
+    await act(async () => {
+      fireEvent.click(within(day).getAllByTestId("dose-take")[0]!);
+    });
+
+    // Yesterday's occurrence is gone…
+    expect(
+      within(screen.getByTestId("quick-entry-dose-day")).queryByTestId(
+        `quick-entry-dose-${DAILY_DOSE}`
+      )
+    ).toBeNull();
+
+    // …and TODAY's is not. The defect rendered "Nothing left to confirm." here and
+    // fired onDone(), closing the sheet over an unwritten medication — a false
+    // confirmation of exactly the #280 class.
+    fireEvent.click(screen.getByRole("button", { name: "Today" }));
+    expect(screen.queryByTestId("quick-entry-dose-empty")).toBeNull();
+    expect(
+      within(screen.getByTestId("quick-entry-dose-list")).getByTestId(
+        `quick-entry-dose-${DAILY_DOSE}`
+      )
+    ).toBeTruthy();
+    expect(onDone).not.toHaveBeenCalled();
+  });
+
+  it("a refusal earned on one day does not render under another day's row", async () => {
+    resolveDayDosesMock.mockImplementation(async (fd: FormData) => ({
+      ok: true as const,
+      date: String(fd.get("date")),
+      doses: [
+        {
+          doseId: DAILY_DOSE,
+          name: "Creatine",
+          outcome: "already-skipped" as const,
+        },
+      ],
+    }));
+    renderSheet();
+    fireEvent.click(screen.getByRole("button", { name: "Yesterday" }));
+    await act(async () => {
+      fireEvent.click(
+        within(screen.getByTestId("quick-entry-dose-day")).getAllByTestId(
+          "dose-take"
+        )[0]!
+      );
+    });
+    // The note belongs to yesterday's occurrence…
+    expect(
+      screen.getByTestId(`quick-entry-dose-note-${DAILY_DOSE}`)
+    ).toBeTruthy();
+    // …and must not follow the id onto today.
+    fireEvent.click(screen.getByRole("button", { name: "Today" }));
+    expect(
+      screen.queryByTestId(`quick-entry-dose-note-${DAILY_DOSE}`)
+    ).toBeNull();
   });
 });

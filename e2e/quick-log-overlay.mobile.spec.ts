@@ -274,7 +274,9 @@ function setDoseRetired(doseId: number, retired: boolean): void {
 }
 
 // A SECOND dose row on the seeded item, so one time-of-day bucket holds two and the
-// #3936 whole-stack row has something to promise. Added and removed inside the test
+// #3936 whole-stack row has something to promise. Backdated like its sibling in the
+// seed: the lifetime clamp scores a day only against the doses that existed on it, so
+// a row created now would be correctly absent from every past day. Added and removed inside the test
 // that needs it — the shared seed keeps its one-dose shape for every other test here.
 function addShellDose(timeOfDay: string): number {
   const db = openDb();
@@ -287,8 +289,8 @@ function addShellDose(timeOfDay: string): number {
     return Number(
       db
         .prepare(
-          `INSERT INTO intake_item_doses (item_id, amount, time_of_day, food_timing, sort)
-           VALUES (?, '1 tablet', ?, 'any', 1)`
+          `INSERT INTO intake_item_doses (item_id, amount, time_of_day, food_timing, sort, created_at)
+           VALUES (?, '1 tablet', ?, 'any', 1, '2026-01-01 08:00:00')`
         )
         .run(itemId, timeOfDay).lastInsertRowid
     );
@@ -508,9 +510,8 @@ test("the dose overlay answers from the outcome — it never just confirms", asy
     ).toBeVisible();
     expect(page.url()).toBe(dashboardUrl);
 
-    // Restore the schedule and confirm for real. This time a log IS written, so
-    // the row resolves, and with nothing left to confirm the overlay closes
-    // itself instead of sitting there empty.
+    // Restore the schedule and confirm for real. This time a log IS written, so the
+    // row resolves and today's list empties.
     setDoseRetired(doseId, false);
     await page.reload();
     const fresh = await openQuickEntry(page, "log-dose");
@@ -521,14 +522,22 @@ test("the dose overlay answers from the outcome — it never just confirms", asy
         .getByRole("button", { name: "Mark taken" })
     );
     await expect(page.getByText("Dose logged")).toBeVisible();
-    await expect(page.getByTestId("quick-entry-sheet")).toHaveCount(0);
+    // AND THE SHEET STAYS OPEN (#3936). It used to close here, and that was only ever
+    // right while the window behind today was empty: this is a DAILY dose, so the two
+    // days before today owe it too. Closing on today's emptiness would take the missed
+    // days away with it — which is the whole thing the switcher exists to reach.
+    await expect(page.getByTestId("quick-entry-sheet")).toBeVisible();
+    await expect(fresh.getByTestId("quick-entry-dose-empty")).toBeVisible();
+    await expect(
+      fresh.getByTestId("quick-entry-dose-day-toggle").getByRole("button")
+    ).toHaveCount(3);
+    // No navigation, which is the #1468 rule this test is named for.
     expect(page.url()).toBe(dashboardUrl);
+    await page.keyboard.press("Escape");
+    await expect(page.getByTestId("quick-entry-sheet")).toHaveCount(0);
 
-    // Durable, from SERVER-gathered state: reopening asks the due-dose
-    // computation again, and TODAY no longer offers a dose that is taken. The sheet
-    // itself stays open on the day switcher (#3936) — the same daily dose is still
-    // unresolved on yesterday, and closing on today's emptiness would take the
-    // missed day away with it.
+    // Durable, from SERVER-gathered state: reopening asks the due-dose computation
+    // again, and TODAY no longer offers a dose that is taken.
     const reopened = await openQuickEntry(page, "log-dose");
     await expect(reopened.getByTestId("quick-entry-dose-empty")).toBeVisible();
     await expect(reopened.getByTestId("quick-entry-dose-list")).toHaveCount(0);

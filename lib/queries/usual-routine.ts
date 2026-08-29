@@ -21,9 +21,16 @@ import { getIntakeItems } from "./intake";
 import { getIntakeDoses } from "./intake/schedule";
 import { getSkippedDoseIds, getTakenDoseIds } from "./intake/adherence";
 import { getEffectiveActiveSituations } from "./derived-situations";
-import { getActiveSituations, getSituationEvents } from "../settings";
+import {
+  getActiveSituations,
+  getSituationEvents,
+  getTimezone,
+} from "../settings";
+
+import { doseWindowSince } from "../intake-adherence";
+import { travelExcusalResolver } from "../travel-excusal";
 import { situationsActiveOn } from "../trend-annotations";
-import { today } from "../db";
+import { db, today } from "../db";
 import { doseBucketOn, doseDueOn, type TimeBucket } from "../intake-schedule";
 import { formatMedicationDoseProduct } from "../medication-dose-format";
 import type { FoodSlot } from "../food-slot";
@@ -127,14 +134,74 @@ export function pendingDayDoses(
           getActiveSituations(profileId),
           getSituationEvents(profileId)
         ),
-    predictedWorkoutDay: isPredictedWorkoutDay(profileId, date),
+    // THE SAME TODAY/PAST SPLIT, and found by auditing the rest of this seam rather
+    // than by a third review round. `conditionAppliesOn` reads
+    // `predictedWorkoutDay ?? isWorkoutDay`, and the prediction is a pattern inferred
+    // from a TRAILING window ending today — so on a past day it lets a guess made now
+    // override the training that is already on the record. #558 wants it for TODAY (a
+    // pre-workout reminder has to be able to land BEFORE the session is logged); a
+    // closed day has no such need, and `intakeAdherenceStrip` passes no prediction at
+    // all. Undefined falls back to `isWorkoutDay`, which is exactly the strip's answer.
+    predictedWorkoutDay: isToday
+      ? isPredictedWorkoutDay(profileId, date)
+      : undefined,
   };
+  // THE LIFETIME CLAMP (#430/#1442), the same bound `intakeAdherenceStrip` treats as
+  // load-bearing. Without it every item a person adds grows two phantom past-day
+  // obligations: `doseOnDay` reads only the DECLARED start/end dates and never
+  // `created_at`, so a supplement created this morning was "due" the two days before
+  // it existed — and a tap would write a taken row and decrement real stock for a day
+  // the dose was not there. No-op for today by construction (the bound is a creation
+  // DAY, and today is never before it), so the composed one-tap offer is untouched.
+  //
+  // `doseWindowSince` widens the bound backwards by the dose's own logged history,
+  // because a log row is PROOF the dose existed on its date and can legitimately
+  // predate `created_at` (a reconciled med, a backfilled course). It reduces those
+  // dates to a MINIMUM, so the earliest logged date alone carries the same answer as
+  // the full set — which is what this one grouped read fetches instead of every row.
+  const tz = getTimezone(profileId);
+  const firstLog = new Map(
+    (
+      db
+        .prepare(
+          `SELECT l.dose_id AS doseId, MIN(l.date) AS firstDate
+             FROM intake_item_logs l
+             JOIN intake_item_doses d ON d.id = l.dose_id
+             JOIN intake_items s ON s.id = d.item_id
+            WHERE s.profile_id = ?
+            GROUP BY l.dose_id`
+        )
+        .all(profileId) as { doseId: number; firstDate: string }[]
+    ).map((r) => [r.doseId, r.firstDate])
+  );
+  // TRAVEL (#3263). "If the app decides a slot was impossible, it must neither count
+  // it nor chase it" — the strip drops an excused unanswered dose from the day's
+  // denominator and the reminder tick stays silent, so a catch-up sheet that still
+  // asked for it would be the third reading of one fact. Resolved once; the resolver
+  // short-circuits to a constant `false` for the overwhelming majority of profiles,
+  // which have never travelled. `dose.time_of_day` is the CURRENT row's slot, which is
+  // what the strip passes too — one shared reading, not a second one.
+  const isExcused = travelExcusalResolver(profileId);
   const out: PendingDayDose[] = [];
   for (const dose of getIntakeDoses(profileId)) {
     const item = byId.get(dose.item_id);
     if (!item) continue;
     if (taken.has(dose.id) || skipped.has(dose.id)) continue;
     if (!doseDueOn(item, dose, ctx)) continue;
+    const since = doseWindowSince(
+      item.created_at,
+      dose.created_at,
+      {
+        taken: new Set([firstLog.get(dose.id)!].filter(Boolean)),
+        skipped: new Set(),
+      },
+      tz
+    );
+    if (since != null && date < since) continue;
+    // Only an UNANSWERED dose can be excused — every dose reaching here is unresolved
+    // by definition, so the strip's "a log overrules the clock" carve-out is already
+    // satisfied above.
+    if (isExcused(dose.time_of_day ?? null, date)) continue;
     out.push({
       bucket: doseBucketOn(dose, date),
       doseId: dose.id,
