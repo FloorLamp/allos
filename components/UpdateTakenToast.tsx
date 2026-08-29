@@ -51,7 +51,7 @@ export default function UpdateTakenToast() {
     }
     const taken = parseUpdateTaken(raw);
     if (!taken) return;
-    toast(updateTakenMessage(taken), { key: "update-taken" });
+    toast(updateTakenMessage(taken), { key: "update-taken", silent: true });
   }, [toast]);
 
   return null;
