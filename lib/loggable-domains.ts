@@ -42,6 +42,12 @@ export const LOGGABLE_DOMAINS = [
   // button vocabulary, and no overlap with anything the measurements sitting asks.
   "stool",
   "mood",
+  // `symptom` covers the WELL-DAY capture too (#1300/#4064): a well day is the same
+  // bar over the same store with no episode attached, not a second thing to log, so
+  // splitting it would give one form two domains and every census two rows to keep in
+  // step. Marking an illness is not on this axis at all — it flips a `situations` row,
+  // a lifecycle transition rather than a dated fact somebody logs — so it rides the
+  // symptom surfaces as the offer beside them (docs/internals/stateful-affordances.md).
   "symptom",
   "substance",
   "document",

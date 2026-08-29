@@ -48,6 +48,11 @@ import {
 //   metric_samples — `source = 'manual'`. The column is NOT NULL, so there is no
 //     null half to admit and `OR source IS NULL` here would be dead SQL. Its one
 //     manual writer, `upsertManualSample`, always stamps 'manual'.
+//   symptom_logs — no filter at all (#4064). The table has no `source` column because
+//     it has no ingest path: every row is a person tapping a severity chip, through
+//     the Telegram verb or the AI intake's confirm step. `food_daily_totals`, `cycles`
+//     and `intake_item_logs` are the same shape, and adding a predicate that matches
+//     nothing would read like a filter while counting the whole table anyway.
 //   substance_daily_totals — `source = 'manual'` (#3327). NOT NULL with a 'manual'
 //     default, exactly like metric_samples, so there is no null half to admit. Only
 //     the NON-food substances are here: alcohol's taps land on food_daily_totals and
@@ -130,6 +135,9 @@ const HABIT_DAYS = hoistedStatement(
      UNION ALL
      SELECT 'care' AS segment, date AS d FROM practice_logs
        WHERE profile_id = @profileId AND source IS NULL AND date >= @from
+     UNION ALL
+     SELECT 'care' AS segment, date AS d FROM symptom_logs
+       WHERE profile_id = @profileId AND date >= @from
      UNION ALL
      SELECT 'food' AS segment, date AS d FROM substance_daily_totals
        WHERE profile_id = @profileId AND source = 'manual' AND date >= @from
