@@ -122,6 +122,7 @@ export default function EpisodeLogPanel({
         timeZone={timeZone}
         profileId={profileId}
         showTitle={false}
+        analysisHref={profileId == null ? "/trends/symptoms" : undefined}
       />
     </div>
   );

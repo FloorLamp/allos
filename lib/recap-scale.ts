@@ -279,8 +279,9 @@ export function quarterStartOf(dateStr: string): string {
 }
 
 /** Shift a MONTH START by `n` months. Leap years and month lengths are irrelevant to
- *  a first-of-month, which is why every window below is anchored on one. */
-function shiftMonthStart(monthStart: string, n: number): string {
+ *  a first-of-month, which is why every window below is anchored on one. Exported for
+ *  the symptom analysis window (#1852), which walks the same trailing-months axis. */
+export function shiftMonthStart(monthStart: string, n: number): string {
   const { y, m } = partsOf(monthStart);
   const total = y * 12 + (m - 1) + n;
   return isoDate(Math.floor(total / 12), total % 12, 1);
