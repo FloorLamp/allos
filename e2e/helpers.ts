@@ -12,6 +12,7 @@ import {
   TAP_FLOOR_FLOAT_EPSILON_PX,
   TAP_FLOOR_PX,
 } from "@/lib/tap-floor-tokens";
+import { roundControlBoxExtraLines } from "./control-box-lines";
 
 // The blessed e2e interaction module (issue #868, fix b2).
 //
@@ -1313,7 +1314,7 @@ export async function expectControlBoxHeight(
     `${name} has no resolvable line box, so the control box cannot be derived`
   ).toBe(true);
   const extra = (measured.height - CONTROL_BOX_PX) / measured.lineHeight;
-  const lines = Math.round(extra);
+  const lines = roundControlBoxExtraLines(extra);
   const detail =
     `${name} renders ${measured.height}px with a ${measured.lineHeight}px line box: ` +
     `${CONTROL_BOX_PX} + ${extra.toFixed(3)} line boxes`;
