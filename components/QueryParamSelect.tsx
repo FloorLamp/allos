@@ -33,6 +33,8 @@ export default function QueryParamSelect({
   param: string;
   label: string;
   value?: string;
+  // Rendered as given: the owner applies no text transform, because one shared
+  // `capitalize` would retitle another caller's labels.
   options: readonly { value: string; label: string }[];
   // The call site's own policy on the chosen value, run before navigating.
   onSelect?: (next: string) => void;
@@ -63,12 +65,26 @@ export default function QueryParamSelect({
   return (
     <label className="flex max-w-full items-center gap-2 text-sm text-slate-600 dark:text-slate-300">
       <span className="font-medium">{label}</span>
-      {/* A `w-auto` select sizes to its WIDEST option, and the longest panel label
-          ("Immunoglobulins & autoantibodies") pushes it past a 390px phone — what
-          the clipped-content guard catches. Cap it below `sm`; the browser
-          ellipsizes the selected label and the open list is unaffected. */}
+      {/* NO WIDTH NUMBER, and that is a measurement rather than a preference. A
+          `w-auto` select sizes to its WIDEST option, and the panel facet's longest
+          ("Immunoglobulins & autoantibodies") wants 295px, so the shipped treatment
+          capped it at `max-w-40`. Converging put that cap on all three, and at
+          390x844 in Chromium it made "Out of range only" the 1 of 3 range options
+          that no longer fit its 110px content box — a control truncating a label it
+          had always shown. So this takes the shape `IntakeRulesEditor`'s "Other
+          item" select uses for the same problem: `min-w-0` releases the flex
+          content-minimum so a wrapping row can shrink the control, the wrapper's
+          `max-w-full` clamps it to that row, and `truncate` ellipsizes only if
+          something actually overruns — no constant to be right for one vocabulary
+          and wrong for the next. Measured on this page with it: at 390 the three
+          boxes are 123 / 295 / 173 px with 0 of 5, 0 of 37 and 0 of 3 options
+          clipped, every row ending by 354.8px, and `documentElement.scrollWidth
+          === clientWidth === 390`; the same at 1280; and 173px / 0 of 3 / row end
+          252px for the range filter on `/import/908`, the route the
+          clipped-content guard walks. It also frees the 14 of 37 panel labels the
+          fixed cap had been ellipsizing. */}
       <select
-        className="input w-auto max-w-40 min-w-0 sm:max-w-none"
+        className="input w-auto min-w-0 truncate"
         data-testid={`${param}-filter`}
         value={value ?? ""}
         onChange={(e) => {
