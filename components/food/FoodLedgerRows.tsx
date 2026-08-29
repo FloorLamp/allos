@@ -13,7 +13,7 @@ import {
 } from "@/app/(app)/nutrition/actions";
 import { FOOD_GROUPS } from "@/lib/food-groups";
 import { FOOD_SLOTS, type FoodSlot } from "@/lib/food-slot";
-import { formatClockValue, formatLongDate } from "@/lib/format-date";
+import { formatClockValue, formatWeekdayDate } from "@/lib/format-date";
 import { foodLedgerOccurredAtPatch } from "@/lib/event-ledger";
 
 export interface FoodLedgerEntry {
@@ -70,36 +70,38 @@ export default function FoodLedgerRows({
     done();
   }
 
+  // WHEN A SERVING WAS EATEN OR LOGGED, AS ONE CELL — the dose ledger's grammar
+  // (#3937), because this is the same defect: a clock on its own leaves every row's
+  // day unnamed on a list that spans days, and `trailing` is one cell by
+  // construction (lib/card-row.ts). The clock keeps its "Ate"/"Logged" word, which
+  // is the distinction #2228 made this column carry.
+  const whenCell = (row: FoodLedgerEntry): string => {
+    const date = formatWeekdayDate(row.date, prefs);
+    if (!row.clock) return date;
+    const verb = row.clockKind === "eaten" ? "Ate" : "Logged";
+    return `${date} · ${verb} ${formatClockValue(row.clock, prefs.timeFormat)}`;
+  };
+
   const columns: EntryHistoryColumn<FoodLedgerEntry>[] = [
     {
-      header: "Date",
+      // IDENTITY IS THE FOOD AT THIS SCOPE (#3937). A day of servings differs by
+      // what was eaten, not by the date every one of them shares.
+      header: "Food",
       slot: "title",
       cellClassName: "font-medium text-slate-700 dark:text-slate-200",
-      cell: (row) => formatLongDate(row.date, prefs),
+      cell: (row) => row.groupName,
     },
     {
-      header: "Food",
-      slot: "value",
-      label: "Food",
-      cell: (row) => row.groupName,
+      header: "When",
+      slot: "trailing",
+      cellClassName: "whitespace-nowrap",
+      cell: whenCell,
     },
     {
       header: "Meal",
       slot: "meta",
       label: "Meal",
       cell: (row) => row.mealSlot,
-    },
-    {
-      // THE HEAD LINE'S RIGHT-HAND FACT (#3671): when a serving was eaten or logged
-      // is the one attribute worth a phone row's trailing edge; the food group and
-      // the meal are the labelled detail behind the tap.
-      header: "Time",
-      slot: "trailing",
-      empty: (row) => !row.clock,
-      cell: (row) =>
-        row.clock
-          ? `${row.clockKind === "eaten" ? "Ate" : "Logged"} ${formatClockValue(row.clock, prefs.timeFormat)}`
-          : "—",
     },
   ];
 
@@ -109,9 +111,10 @@ export default function FoodLedgerRows({
       columns={columns}
       readOnly={!canWrite}
       menuKind="Serving"
-      menuItemName={(row) =>
-        `${row.groupName}, ${formatLongDate(row.date, prefs)}`
-      }
+      // THE ⋯ NAMES THE ROW IT ACTS ON, AND NO TWO ROWS ALIKE (#2615): two servings
+      // of one food on one day are told apart only by the clock, so the name carries
+      // the whole when-cell rather than the date alone.
+      menuItemName={(row) => `${row.groupName} — ${whenCell(row)}`}
       rowTestId={() => "food-ledger-row"}
       editTestId={() => "food-ledger-edit"}
       deleteTestId={() => "food-ledger-delete"}
@@ -172,7 +175,7 @@ export default function FoodLedgerRows({
       )}
       confirmDelete={(row) => ({
         title: "Delete serving?",
-        message: `Remove ${row.groupName} from ${formatLongDate(row.date, prefs)}. You can undo this.`,
+        message: `Remove ${row.groupName} from ${formatWeekdayDate(row.date, prefs)}. You can undo this.`,
         confirmLabel: "Delete serving",
       })}
       deleteFormData={(row) => {
