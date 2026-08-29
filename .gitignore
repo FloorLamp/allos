@@ -47,6 +47,11 @@ next-env.d.ts
 /e2e/.data
 # The per-worker signed-in storage state (#1538) — session cookies, never committable.
 /e2e/.auth
+# …and the same file WHEREVER it lands (#3948). The seed writes it beside the
+# database it minted the session in, which is inside /data or /e2e/.data above —
+# this line is the second lock, so a writer that gets the directory wrong cannot
+# also make a live session cookie committable.
+auth.json
 /test-results
 /playwright-report
 /blob-report
