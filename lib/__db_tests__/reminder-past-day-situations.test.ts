@@ -59,13 +59,13 @@ function seedItem(
   name: string,
   situation: string,
   how: "due-on" | "paused-by",
-  // How long ago the item came into existence. The reminder gather judges a past day's
-  // dueness with NO lifetime clamp, so 0 is invisible to every case above; the routine
-  // seam applies #430/#1442's `doseWindowSince` and would drop a day-old fixture for
-  // that reason instead of the situation one. The #3994 block below therefore ages its
-  // item past the window it reads, so what the two seams disagree about can only be the
-  // situation set.
-  ageDays = 0
+  // How long ago the item came into existence. BOTH seams now apply #430/#1442's
+  // `doseWindowSince` on a past day — the routine one always did, the reminder gather
+  // since #4011 — so an item born today is dropped from every past day for the LIFETIME
+  // reason, which would make each case below green for a rule it is not testing. Every
+  // fixture here is therefore aged past the days it reads, leaving the situation set as
+  // the only rule left to disagree about.
+  ageDays = 30
 ): void {
   const sid = resolveSituationId(profileId, situation)!;
   const on = how === "due-on";
@@ -307,7 +307,14 @@ describe("WHICH past day the reminder is scored against (#3973)", () => {
 // halves were wrong in the same direction and agreed, so a pair of literals would have
 // passed on that tree for the wrong reason. The expected value is carried alongside so
 // a fixture that renders both seams empty cannot pass as "agreement".
-describe("the routine offer answers a past day exactly as the reminder does (#3994)", () => {
+//
+// SCOPED TO THE SITUATION SET, and the name now says so (#4019). Every fixture here is
+// a situational or paused item with NO ACTIVITY ROWS AT ALL, so the workout axis of the
+// same two functions is untouched by it — and the earlier name ("answers a past day
+// exactly as the reminder does") read as a claim about the whole seam, which is how a
+// draft husk and a missing lifetime clamp survived underneath it. The activity-carrying
+// half lives in reminder-past-day-agreement.test.ts.
+describe("the routine offer answers a past day's SITUATIONS as the reminder does (#3994)", () => {
   // Both seams, one day, as a triple: [reminder, routine offer, what the day owed].
   function bothOn(profileId: number, date: string): [boolean, boolean] {
     return [
@@ -341,8 +348,8 @@ describe("the routine offer answers a past day exactly as the reminder does (#39
     },
   ])("$what", ({ seed, owed }) => {
     const p = newProfile();
-    // Aged past every day read below, so the routine seam's lifetime clamp is a no-op
-    // and the only rule left to disagree about is the situation set (see seedItem).
+    // Aged past every day read below, so BOTH seams' lifetime clamp is a no-op and the
+    // only rule left to disagree about is the situation set (see seedItem).
     seedItem(p, ITEM, "Travel", "due-on", 30);
     seed(p);
     for (const [label, expected] of Object.entries(owed)) {

@@ -23,7 +23,7 @@ import {
   getOutcomeGoals,
   getIntakeItems,
   getIntakeDoses,
-  getIntakeLogsInRange,
+  getIntakeAdherenceEvidence,
   getActivityDates,
   getRecentDatedExercises,
   getFoodSuggestions,
@@ -1534,8 +1534,15 @@ export function buildAdherencePatternFindings(
   // The profile's timezone resolves the UTC creation stamps onto the same profile-local
   // calendar the `dates` window is built from (#1442).
   const tz = getTimezone(profileId);
+  // THE EVIDENCE, NOT THE WINDOW (#3988/#4020). This index answers two questions, and
+  // only one of them is windowed: "was this dose taken on this drawn day" is, "when did
+  // this dose first exist" is not. `getIntakeAdherenceEvidence` unions the window with
+  // each dose's earliest log ever, so a reconciled med whose only proof of existence is
+  // a backfilled administration older than 56 days is bounded at that proof rather than
+  // at `created_at` — the sixth and last caller of that bound to join the other five.
+  // The extra rows are all older than the window, so no drawn day's verdict moves.
   const takenByDose = indexTakenByDose(
-    getIntakeLogsInRange(profileId, ADHERENCE_PATTERN_DAYS)
+    getIntakeAdherenceEvidence(profileId, ADHERENCE_PATTERN_DAYS)
   );
   const dates = lastNDates(today, ADHERENCE_PATTERN_DAYS);
   const workoutDays = new Set(getActivityDates(profileId));
@@ -1564,8 +1571,10 @@ export function buildAdherencePatternFindings(
     // being dropped. What remains is the genuinely different question of when the dose
     // existed at all, and `doseWindowSince` is its better answer: timezone-aware, and
     // WIDENED by logged history, because a log is proof the dose existed on its date
-    // (#1442). It is the same bound the adherence strip clamps to, so a pattern and the
-    // strip it summarizes still cannot disagree about a day (#221).
+    // (#1442). It is the same bound the adherence strip clamps to, AND — since #4020 —
+    // computed from the same evidence, so a pattern and the strip it summarizes cannot
+    // disagree about a day (#221). Both halves are needed: one caller of this bound fed
+    // it a windowed read for a year, and the rule agreeing was never the part at risk.
     const exists = doseWindowSince(item.created_at, d.created_at, status, tz);
     // …plus the ONE case effective-dating cannot reach: a dose re-timed BEFORE #1973
     // shipped, whose old slot no version records. `updated_at` says a change happened
