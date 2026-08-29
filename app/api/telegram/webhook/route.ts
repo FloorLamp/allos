@@ -1,8 +1,20 @@
 // Inbound Telegram webhook — receives inline-button taps when the app is
 // publicly reachable (Settings → Notifications, "webhook" mode; the polling
 // mode handles the same updates via getUpdates instead). Authenticated by the
-// secret token Telegram echoes on every call. Always returns 200 quickly so
-// Telegram doesn't retry.
+// secret token Telegram echoes on every call.
+//
+// WHAT THE 200 PATH PROMISES, stated as what it can actually deliver (#3951). A tap is
+// answered before this responds, and since #3933 it also sweeps the profile's other
+// live keyboards — work whose size is the number of live pointers, not a constant. The
+// bound is therefore a BUDGET, not a guarantee of promptness: `handleCallbackQuery`
+// stops starting new edits after TAP_SWEEP_BUDGET_MS, so the response is bounded by
+// that plus the one edit already in flight (TELEGRAM_CALL_TIMEOUT_MS), instead of by
+// pointers x one call. Steady state remains zero API calls and a near-immediate 200.
+//
+// WHY IT MATTERS THAT THIS IS BOUNDED AT ALL: exceeding Telegram's webhook timeout
+// makes it re-deliver the update, and the whole tap re-runs INCLUDING ITS WRITE. Dose
+// taps are idempotent; food, practice and administration writes are guarded only by
+// their own short-window rules, so a duplicate can reach a person's health record.
 
 import crypto from "node:crypto";
 import { getTelegramBotConfig } from "@/lib/settings";

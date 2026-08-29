@@ -92,6 +92,12 @@ export {
   renderMessageHtml,
   setMyCommands,
   setWebhook,
+  // The per-call transport cap, re-exported because a caller holding a request open
+  // while this module edits messages has to be able to reason about how long one edit
+  // may take — the tap sweep's budget is derived from it (#3951). A constant, not a
+  // primitive: it reaches no wire, and routing it through here keeps the #454 boundary
+  // exactly where it is instead of giving a callback module a transport import.
+  TELEGRAM_CALL_TIMEOUT_MS,
   type InlineKeyboard,
   type TelegramCallbackQuery,
   type TelegramUpdate,

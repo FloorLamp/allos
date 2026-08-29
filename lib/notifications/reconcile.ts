@@ -1304,6 +1304,12 @@ export interface ReconcileResult {
   // is what the tick logs so a persistent per-profile build bug is visible rather than
   // silently starving that profile's stale-keyboard cleanup.
   failed: number;
+  // Pointers never LOOKED at, because the caller's budget ran out first (#3951). Always
+  // 0 for the tick, which passes none. Non-zero means a chat was degraded enough that
+  // the tap path stopped early — the pointers are untouched and the next tick takes
+  // them, so this is a latency bound being enforced, not work being dropped. Counted
+  // rather than silent: a skip that produces no output is a claim nobody can check.
+  unswept: number;
 }
 
 // Reconcile every live message for one profile. Best-effort throughout: a failed edit
@@ -1311,8 +1317,20 @@ export interface ReconcileResult {
 // not assumed (#1885) — a permanently dead message (deleted, chat gone, past Telegram's
 // edit horizon) drops its pointer, while a transient one (rate limit, 5xx, network,
 // timeout) releases the claim and leaves the pointer for the next tick.
+//
+// `budgetMs` BOUNDS THE TAIL, and only a caller that has one to spend passes it
+// (#3951). The tick does not: it owns the hour and would rather finish. The webhook's
+// tap path does, because it holds Telegram's own connection open while this runs — see
+// TAP_SWEEP_BUDGET_MS in ./telegram-callbacks. The bound is "stop STARTING pointers
+// once it is spent", which is a partial bound and is named as one: an edit already in
+// flight still gets its own TELEGRAM_CALL_TIMEOUT_MS, so the worst case is budget + one
+// call rather than pointers x one call. Actually bounding it would need this deadline
+// composed into each edit's AbortSignal, which ./dispatch-deadline considered and
+// declined for the same reason. Turning an unbounded tail into a bounded one is the
+// whole win; the residual 30s is one call's timeout rather than a queue's.
 export async function reconcileProfileMessages(
-  profileId: number
+  profileId: number,
+  budgetMs?: number
 ): Promise<ReconcileResult> {
   const result: ReconcileResult = {
     examined: 0,
@@ -1323,7 +1341,11 @@ export async function reconcileProfileMessages(
     pruned: 0,
     skipped: 0,
     failed: 0,
+    unswept: 0,
   };
+  // Real time, deliberately: this is a DURATION, and lib/clock's seam is for
+  // date-derivation only (its own header says so).
+  const until = budgetMs == null ? null : Date.now() + budgetMs;
   result.pruned = pruneMessagePointers(profileId);
   // The stored offers (#2460) age out on the same pass and the same horizon: an offer
   // is only ever redeemed from a live message, so it can never usefully outlive one.
@@ -1332,7 +1354,15 @@ export async function reconcileProfileMessages(
   pruneNotifyOffers(profileId);
   const td = today(profileId);
 
-  for (const pointer of liveMessagePointers(profileId)) {
+  const pointers = liveMessagePointers(profileId);
+  for (const [i, pointer] of pointers.entries()) {
+    // Checked BEFORE the pointer, never mid-flight: nothing here can cancel an edit
+    // already sent, so the only thing a deadline can decide is whether to start
+    // another one.
+    if (until != null && Date.now() >= until) {
+      result.unswept = pointers.length - i;
+      break;
+    }
     result.examined++;
     // ── ONE POINTER'S FAILURE IS ONE POINTER'S FAILURE (#2070) ─────────────
     //
