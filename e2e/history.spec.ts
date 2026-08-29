@@ -427,7 +427,10 @@ test.describe("the record (#3958)", () => {
     const fold = page.getByTestId(`history-fold-${foldKey}`);
     await fold.evaluate((el) => el.scrollIntoView(true));
     const before = await page.evaluate(() => Math.round(window.scrollY));
-    expect(before, "the fold spine has to be below the first screen").toBeGreaterThan(0);
+    expect(
+      before,
+      "the fold spine has to be below the first screen"
+    ).toBeGreaterThan(0);
 
     await hydratedClick(page, fold.locator("a"));
     await expect(fold).toHaveAttribute("data-fold-open", "true");
@@ -525,12 +528,9 @@ test.describe("the record (#3958)", () => {
       // assertion: same route, same filter, same found context.
       await expect(page).toHaveURL(new RegExp(`/history\\?kind=${kind}$`));
     }
-    expect(exercised, `doors opened in place: ${exercised.join(", ")}`).toEqual([
-      "food",
-      "practice",
-      "substance",
-      "body",
-    ]);
+    expect(exercised, `doors opened in place: ${exercised.join(", ")}`).toEqual(
+      ["food", "practice", "substance", "body"]
+    );
     // The body door covers body metrics generally rather than weight alone — the
     // hardcoded `/trends/metric/weight` redirect was the loudest half of this defect.
     await page.goto("/history?kind=body");

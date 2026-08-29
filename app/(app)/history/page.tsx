@@ -1,7 +1,8 @@
 import { Fragment } from "react";
 import Link from "next/link";
-import { IconChevronDown, IconChevronRight } from "@tabler/icons-react";
+import { IconChevronDown } from "@tabler/icons-react";
 import PageContainer from "@/components/PageContainer";
+import DestinationLink from "@/components/DestinationLink";
 import { PageHeader, EmptyState } from "@/components/ui";
 import Chip from "@/components/Chip";
 import FilterPills from "@/components/FilterPills";
@@ -405,7 +406,12 @@ export default async function HistoryPage(props: {
           chevron sits IN the cluster — nothing is right-floated, per the spec's own
           words. (Phase 2 renders the day view; the link is already the real one.) */}
       <h2 className="sticky top-0 z-10 -mx-1 mb-1 bg-(--page) px-1 py-1 text-sm font-semibold text-slate-800 dark:text-slate-100">
-        <Link
+        {/* THE ONE RIGHTWARD DESTINATION CUE, not a hand-rolled chevron: the glyph and
+            its geometry belong to the primitive (lib/__tests__/destination-link-primitive
+            .test.ts refuses a raw one inside a link). Its `ml-auto` costs nothing here
+            because the link is `inline-flex` and sized to its own content — the cue
+            sits IN the text cluster, and nothing is right-floated. */}
+        <DestinationLink
           // THE READER'S OWN BOUND RIDES ACROSS. Without `show` a day opened at
           // `HISTORY_DEFAULT_SHOW`, so a busy day truncated on first open even though
           // the page it was opened from had already been widened.
@@ -422,12 +428,7 @@ export default async function HistoryPage(props: {
             {group.events.length} record
             {group.events.length === 1 ? "" : "s"}
           </span>
-          <IconChevronRight
-            aria-hidden
-            className="h-3.5 w-3.5 shrink-0 self-center text-slate-400 dark:text-slate-500"
-            stroke={2}
-          />
-        </Link>
+        </DestinationLink>
       </h2>
       <HistoryRows
         rows={group.events as HistoryRow[]}

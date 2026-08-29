@@ -70,6 +70,8 @@ const USER_CALL_SITES: Record<string, string> = {
     "follows the user's own Discard tap when the server KEPT the row (a save raced the tap) — the page must repaint into its real record state right now",
   "app/(app)/training/activity/[id]/NiggleConfirmChip.tsx":
     "follows the user's own 'Track it' tap (#2948) — the tap IS the write, and the chip must repaint away the moment the niggle it offered exists, or the page keeps asking about something already tracked",
+  "app/(app)/history/HistoryAddDoor.tsx":
+    "follows the user's own submit in the record's Add door (#4045) — the door writes a row into the very feed they are reading, and without the repaint it closes over a record that still shows the gap they opened it to fill",
   "components/import/ImportedNameOffer.tsx":
     "follows the user's own 'Use this name' tap (#3480) — the tap IS the rename, and the row must repaint into the name they just chose rather than keep offering it",
   // The registry itself: the drain it owes, and the no-provider fallback.

@@ -169,7 +169,8 @@ describe("the record's Add door posts to the domain's own create action", () => 
       open(kind);
       const panel = screen.getByTestId(`history-add-panel-${kind}`);
       const form = panel.querySelector("form")!;
-      const typed = panel.querySelector<HTMLInputElement>('input[type="text"]')!;
+      const typed =
+        panel.querySelector<HTMLInputElement>('input[type="text"]')!;
       // The converse in the same assertion: the found day itself must pass, or
       // "refuses 2099" would also be satisfied by a field that refuses everything.
       expect(form.checkValidity(), `${kind} refuses the found day`).toBe(true);

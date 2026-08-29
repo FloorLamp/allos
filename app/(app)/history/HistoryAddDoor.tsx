@@ -4,6 +4,7 @@ import { useState, type FormEvent, type ReactNode } from "react";
 import { useRouter } from "next/navigation";
 import DateField from "@/components/DateField";
 import InlineError from "@/components/InlineError";
+import { useLoggedViaStamp } from "@/components/LoggedViaSurface";
 import { useToast } from "@/components/Toast";
 import { logFoodServing } from "@/app/(app)/nutrition/actions";
 import { logPractice } from "@/app/(app)/wellness/actions";
@@ -69,6 +70,11 @@ export default function HistoryAddDoor({
 }) {
   const router = useRouter();
   const toast = useToast();
+  // WHICH SURFACE THIS WRITE CAME FROM (#3087). The record is a page and `page` is what
+  // this resolves to, but it is declared rather than left to the action's fallback:
+  // three of these four actions read the surface off the post, and an undeclared
+  // mounting answers `page` whether or not it is one.
+  const stampLoggedVia = useLoggedViaStamp();
   const [open, setOpen] = useState(false);
   const [pending, setPending] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -90,7 +96,7 @@ export default function HistoryAddDoor({
     run: (fd: FormData) => Promise<string | null>
   ): Promise<void> {
     event.preventDefault();
-    const fd = new FormData(event.currentTarget);
+    const fd = stampLoggedVia(new FormData(event.currentTarget));
     setError(null);
     setPending(true);
     let failure: string | null;
