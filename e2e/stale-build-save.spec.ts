@@ -4,9 +4,9 @@ import Database from "better-sqlite3";
 import { comboboxRows, settledFill, spendAutoReloadRation } from "./helpers";
 import { workerDbPath } from "./worker-env";
 import {
+  assertNoStrandedDrafts,
   deleteActivitiesTitled,
-  SHARED_PROFILE_ID,
-  takeStrandedDrafts,
+  SHARED_PROFILE_DRAFT_SCOPE,
 } from "./shared-profile-guard";
 import { UPDATE_TAKEN_MESSAGE } from "@/lib/sw-update";
 
@@ -293,17 +293,11 @@ test("a live workout edited through a deploy reloads itself and comes back with 
     await expect(page.getByTestId("update-ready-bar")).toHaveCount(0);
   } finally {
     deleteActivitiesTitled(LIVE_TITLE);
-    // …and the same row keyed on something true from its FIRST instant: the four
-    // columns `computeWorkoutPresence` calls an active workout. Both deletes stay,
-    // deliberately — the title-keyed one is what removes a session that got its title
-    // and was then FINISHED or given a duration, which this signature no longer
-    // matches. Neither one subsumes the other.
-    //
-    // Sweeping profile 1 unconditionally cannot swallow a NEIGHBOUR's leak: tests are
-    // serial within a worker and the standing guard takes any stranded draft in the
-    // teardown of the test that made it, so there is never a pre-existing one here to
-    // take.
-    takeStrandedDrafts(DB_PATH, SHARED_PROFILE_ID);
+    // …and the same row keyed on something true from its FIRST instant: the shared
+    // assertion owns the live-draft signature, repair, and profile-1 precondition.
+    // The title delete still covers a finished or duration-bearing row, which that
+    // signature deliberately does not match.
+    assertNoStrandedDrafts(DB_PATH, SHARED_PROFILE_DRAFT_SCOPE);
   }
 });
 

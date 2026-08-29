@@ -10,11 +10,7 @@ import {
   OWN_OTHER_PROFILE,
 } from "./fixture-logins";
 import { workerDbPath } from "./worker-env";
-import {
-  strandedDraftMessage,
-  takeStrandedDrafts,
-  type StrandedDraft,
-} from "./shared-profile-guard";
+import { assertNoStrandedDrafts } from "./shared-profile-guard";
 
 // Own-profile link + not-self write affordances + login identity (issue #1013).
 // Spec-OWNED fixtures (E2E_LOGIN_OWN granted two adult profiles, own_profile_id →
@@ -86,7 +82,6 @@ test.describe("Own-profile + not-self write affordances (issue #1013)", () => {
     // THE SESSION IS A ROW FROM THE MOMENT IT STARTS, so everything below it is in a
     // try/finally: the discard has to run on the failure path too, which is the exit
     // path a leak actually takes.
-    let stranded: StrandedDraft[] = [];
     try {
       await page.goto("/training?tab=log");
       await hydratedClick(
@@ -104,17 +99,15 @@ test.describe("Own-profile + not-self write affordances (issue #1013)", () => {
       await deleteActivityFromForm(page);
     } finally {
       await page.context().close();
-      // Repair-and-report, on the fixture profile, with the guard's own live-draft
-      // signature — after the context is gone, so an in-flight delete that never left
-      // the browser has NOT happened. Taking the rows here keeps one failure from
-      // cascading into the rest of the worker's run, exactly as the standing guard
-      // does for profile 1.
-      stranded = takeStrandedDrafts(workerDbPath(), otherId);
+      // This spec owns the named fixture profile outright, so the shared assertion
+      // may safely repair it after the context stops moving the database. The helper
+      // verifies that ownership precondition before deleting anything.
+      assertNoStrandedDrafts(workerDbPath(), {
+        kind: "spec-owned",
+        profileId: otherId,
+        profileName: OWN_OTHER_PROFILE,
+      });
     }
-    // Deliberately AFTER the finally, not inside it: a failure in the body must
-    // surface as its own error rather than being replaced by this one, and the
-    // repair above has already run either way.
-    expect(stranded, strandedDraftMessage(stranded, otherId)).toEqual([]);
   });
 
   test("mobile drawer carries the same 'Signed in as' identity", async ({
