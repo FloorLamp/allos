@@ -726,6 +726,19 @@ describe("stacktake writes only the listed-and-still-pending intersection (#3098
     retiredDose = mkDose(retiredItem, 1);
     foreignItem = mkItem(other.profileId, "TG3098 Foreign E", "should", null);
     foreignDose = mkDose(foreignItem);
+    // AGED PAST THE DAY WINDOW (#4011). The day-routing case below taps day−1 and
+    // day−2, and the reminder gather now clamps a past day to the dose's lifetime the
+    // way the quick-log sheet always has — an item created this morning was owed
+    // nothing yesterday. Without this the block would go green for the lifetime reason
+    // while claiming to pin which DAY the offer writes to.
+    const born = `${shiftDateStr(today(sp.profileId), -30)} 09:00:00`;
+    db.prepare(
+      `UPDATE intake_items SET created_at = ? WHERE profile_id IN (?, ?)`
+    ).run(born, sp.profileId, other.profileId);
+    db.prepare(
+      `UPDATE intake_item_doses SET created_at = ?
+        WHERE item_id IN (SELECT id FROM intake_items WHERE profile_id IN (?, ?))`
+    ).run(born, sp.profileId, other.profileId);
   });
 
   // The reminder keyboard's own mint: a notify_offers row for these members, and the
@@ -1022,5 +1035,99 @@ describe("bulk dose-tap hardening (#3120)", () => {
       cq(`all:${bp.profileId}:Morning:${date}`, HARD_CHAT)
     );
     expect(lastAnswerText()).toBe("Already logged ✅");
+  });
+});
+
+// ---- The PAST-DAY bulk write (#4019/#4011) ---------------------------------
+//
+// Every `all:` case above taps `today(...)`, which is the day these gates cannot
+// change. The harm those two issues describe is a WRITE: "✅ All" on a message a day
+// or two old feeds `collectWindowDoses(profileId, window, all.date)` straight into
+// `markDoseTaken`, so a dose the day never owed becomes a `taken` row and a stock
+// decrement. Asserting the rendered names is not enough — these drive the real
+// handler and read the ledger back.
+describe("✅ All on a past day writes what the day owed, and nothing else", () => {
+  const PAST_CHAT = "5554019";
+  let pp: SeededProfile;
+  let restDose: number;
+  let preDose: number;
+  let bornTodayDose: number;
+  let yesterday: string;
+
+  const mkItem = (name: string, condition: string, ageDays: number) => {
+    const itemId = Number(
+      db
+        .prepare(
+          `INSERT INTO intake_items
+             (profile_id, name, active, kind, condition, obligation)
+           VALUES (?, ?, 1, 'medication', ?, 'must')`
+        )
+        .run(pp.profileId, name, condition).lastInsertRowid
+    );
+    const doseId = Number(
+      db
+        .prepare(
+          `INSERT INTO intake_item_doses (item_id, amount, time_of_day, food_timing, sort)
+           VALUES (?, '1 tab', 'Morning', 'any', 0)`
+        )
+        .run(itemId).lastInsertRowid
+    );
+    const born = `${shiftDateStr(today(pp.profileId), -ageDays)} 09:00:00`;
+    db.prepare(`UPDATE intake_items SET created_at = ? WHERE id = ?`).run(
+      born,
+      itemId
+    );
+    db.prepare(`UPDATE intake_item_doses SET created_at = ? WHERE id = ?`).run(
+      born,
+      doseId
+    );
+    return doseId;
+  };
+
+  beforeAll(() => {
+    pp = seedProfile("TG4019");
+    seedLoginTelegram(pp.profileId, PAST_CHAT);
+    yesterday = shiftDateStr(today(pp.profileId), -1);
+    restDose = mkItem("TG4019 Rest day med", "rest_day", 30);
+    preDose = mkItem("TG4019 Pre workout med", "pre_workout", 30);
+    // Created THIS MORNING: it owed nothing yesterday (#4011).
+    bornTodayDose = mkItem("TG4019 Added today", "daily", 0);
+    // A DRAFT HUSK on yesterday (#3189): no duration, nothing logged against it. The
+    // raw dated read counts it as training; the husk-free list does not.
+    db.prepare(
+      `INSERT INTO activities (profile_id, date, type, title, start_time)
+       VALUES (?, ?, 'strength', 'Session', ?)`
+    ).run(pp.profileId, yesterday, `${yesterday}T09:00:00Z`);
+    // The seeded profile brings its own morning doses; this block is about these three.
+    db.prepare(
+      `UPDATE intake_items SET active = 0
+        WHERE profile_id = ? AND id NOT IN
+          (SELECT item_id FROM intake_item_doses WHERE id IN (?, ?, ?))`
+    ).run(pp.profileId, restDose, preDose, bornTodayDose);
+  });
+
+  it("logs the rest-day dose, and neither the husk's pre-workout nor today's newcomer", async () => {
+    db.prepare(`DELETE FROM intake_item_logs WHERE dose_id IN (?, ?, ?)`).run(
+      restDose,
+      preDose,
+      bornTodayDose
+    );
+
+    await handleCallbackQuery(
+      cq(`all:${pp.profileId}:Morning:${yesterday}`, PAST_CHAT)
+    );
+
+    // The ledger, read back BY NAME so a red says which dose was written rather than
+    // printing two opaque ids — the inversion is the whole point of this case.
+    const rows = db
+      .prepare(
+        `SELECT s.name, l.status FROM intake_item_logs l
+           JOIN intake_item_doses d ON d.id = l.dose_id
+           JOIN intake_items s ON s.id = d.item_id
+          WHERE l.dose_id IN (?, ?, ?) AND l.date = ? ORDER BY s.name`
+      )
+      .all(restDose, preDose, bornTodayDose, yesterday);
+    expect(rows).toEqual([{ name: "TG4019 Rest day med", status: "taken" }]);
+    expect(lastAnswerText()).toBe("All logged ✅");
   });
 });
