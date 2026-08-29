@@ -1,7 +1,7 @@
 import fs from "node:fs";
 import path from "node:path";
 import { describe, expect, it } from "vitest";
-import { preinstalledChromium } from "../e2e-chromium";
+import { resolveChromiumExecutable } from "../e2e-chromium.mjs";
 import { makeTmpDir } from "./tmp-dir";
 
 /** Lay down `<base>/<dir>/<exe>` the way `playwright install` does; bytes irrelevant. */
@@ -20,11 +20,35 @@ const FULL = "chrome-linux/chrome";
 // environment carries both, and preferring the full one there made every
 // browser-component assertion non-parity while reporting none of it (#4008).
 describe("the pre-installed Chromium the e2e suite launches", () => {
+  it("uses an explicit executable override before inspecting installed builds", () => {
+    const base = makeTmpDir("pw-browsers");
+    build(base, "chromium-1194", FULL);
+    expect(
+      resolveChromiumExecutable({
+        executableOverride: "/explicit/chromium",
+        browsersPath: base,
+      })
+    ).toBe("/explicit/chromium");
+  });
+
   it("prefers the headless shell when a browsers path carries both builds", () => {
     const base = makeTmpDir("pw-browsers");
     build(base, "chromium-1194", FULL);
     const shell = build(base, "chromium_headless_shell-1194", SHELL);
-    expect(preinstalledChromium(base)).toBe(shell);
+    expect(resolveChromiumExecutable({ browsersPath: base })).toBe(shell);
+  });
+
+  it("uses the newest full Chromium for tools that cannot use the shell", () => {
+    const base = makeTmpDir("pw-browsers");
+    build(base, "chromium-999", FULL);
+    const newest = build(base, "chromium-1000", FULL);
+    build(base, "chromium_headless_shell-1000", SHELL);
+    expect(
+      resolveChromiumExecutable({
+        browsersPath: base,
+        allowHeadlessShell: false,
+      })
+    ).toBe(newest);
   });
 
   // Falling back is what keeps a shell-less environment working at all: Playwright
@@ -36,15 +60,19 @@ describe("the pre-installed Chromium the e2e suite launches", () => {
   ])("uses what is there when %s", (_case, dir, exe) => {
     const base = makeTmpDir("pw-browsers");
     const installed = build(base, dir, exe);
-    expect(preinstalledChromium(base)).toBe(installed);
+    expect(resolveChromiumExecutable({ browsersPath: base })).toBe(installed);
   });
 
   it("ignores a build directory with no executable, and a path that is not there", () => {
     const base = makeTmpDir("pw-browsers");
     fs.mkdirSync(path.join(base, "chromium_headless_shell-1194"));
     const full = build(base, "chromium-1194", FULL);
-    expect(preinstalledChromium(base)).toBe(full);
-    expect(preinstalledChromium(path.join(base, "absent"))).toBeUndefined();
-    expect(preinstalledChromium("")).toBeUndefined();
+    expect(resolveChromiumExecutable({ browsersPath: base })).toBe(full);
+    expect(
+      resolveChromiumExecutable({
+        browsersPath: path.join(base, "absent"),
+      })
+    ).toBeUndefined();
+    expect(resolveChromiumExecutable({ browsersPath: "" })).toBeUndefined();
   });
 });

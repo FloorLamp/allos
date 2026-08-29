@@ -108,6 +108,27 @@ describe("summarizeTrends — direction, magnitude, labels", () => {
       "Volume ↑ 1500 kg — larger than its recent variation"
     );
   });
+
+  it("states percentage-unit changes in points", () => {
+    const [item] = summarizeTrends([
+      shiftedSeries("body_fat", 20, 22, { label: "Body fat", unit: "%" }),
+    ]);
+    expect(item.text).toBe(
+      "Body fat ↑ 2 pts — larger than its recent variation"
+    );
+  });
+
+  it("keeps an admitted sub-point percentage-unit change nonzero", () => {
+    const [item] = summarizeTrends([
+      shiftedSeries("eosinophils_relative", 0.5, 0.54, {
+        label: "Eosinophils Relative",
+        unit: "%",
+      }),
+    ]);
+    expect(item.text).toBe(
+      "Eosinophils Relative ↑ 0.04 pts — larger than its recent variation"
+    );
+  });
 });
 
 describe("summarizeTrends — reference-range crossings", () => {
@@ -140,6 +161,29 @@ describe("summarizeTrends — reference-range crossings", () => {
     ]);
     expect(item.rangeShift).toBe("into-range");
     expect(item.text).toContain("— back into range");
+  });
+
+  it("never prints a rounded 0% magnitude across crossing and ordinary branches", () => {
+    const items = summarizeTrends([
+      series("result:spo2", 97.4, 97.8, {
+        label: "Oxygen Saturation",
+        unit: "%",
+        range: { low: 97.5, high: null },
+      }),
+      shiftedSeries("ordinary", 100, 100.4, { label: "Ordinary" }),
+    ]);
+
+    expect(items.map((item) => item.text)).toEqual([
+      "Oxygen Saturation ↑ — back into range",
+    ]);
+    expect(items.every((item) => !item.text.includes("0%"))).toBe(true);
+    expect(() =>
+      summarizeTrends([
+        shiftedSeries("invalid-ordinary", 100, 100.4, {
+          minPctChange: 0,
+        }),
+      ])
+    ).toThrow("A non-crossing trend cannot have a rounded 0% magnitude");
   });
 
   it("does not flag a move that stays in range", () => {

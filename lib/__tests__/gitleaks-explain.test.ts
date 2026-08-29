@@ -24,8 +24,8 @@ import { makeTmpDir } from "./tmp-dir";
 // the check is back to being unreadable, which is exactly the state nothing else
 // would notice.
 //
-// #2969 then narrowed the PR scan to the PR range and kept `--all` on push, so
-// the SCAN RANGE is now a policy with two halves — and the second describe below
+// #2969 narrowed PRs to their range; #3046 applies the same ownership rule to
+// pushes and moves `--all` to scheduled/manual audits. The second describe below
 // executes the workflow's own range logic rather than reading its comments.
 
 const here = path.dirname(fileURLToPath(import.meta.url));
@@ -205,12 +205,9 @@ describe("the gitleaks workflow wires the explainer in", () => {
 
 // The scan RANGE, executed rather than read (#2969, ruled 2026-08-16).
 //
-// The ruling has two halves and each is load-bearing on its own: the PR check
-// scans this branch's commits, so one branch's credential-shaped fixture cannot
-// red every open PR; and `push` keeps `--all`, which is the only thing still
-// auditing a branch's whole history. A change that quietly dropped either half
-// would leave a green check that scans less than the workflow says it does —
-// the failure mode nothing else here can see.
+// Every branch-scoped event scans only that branch's commits, so one branch's
+// credential-shaped fixture cannot red another branch's push or PR. Scheduled
+// and manual runs retain the repository-wide `--all` audit (#3046).
 //
 // So the workflow's own shell is lifted out and run against a throwaway git
 // repo. A restatement of the logic could not catch it drifting; this can.
@@ -258,6 +255,7 @@ describe("the gitleaks scan range (#2969)", () => {
           GITLEAKS_EVENT: "",
           GITLEAKS_BASE_SHA: "",
           GITLEAKS_BASE_REF: "",
+          GITLEAKS_PUSH_BEFORE: "",
           ...env,
         },
       }
@@ -291,14 +289,33 @@ describe("the gitleaks scan range (#2969)", () => {
     expect(range).toBe(`${baseSha}..HEAD`);
   });
 
-  it("KEEPS --all on push, which is what still audits a branch's own history", () => {
+  it("scans only the commits added by a push", () => {
     const { range } = rangeFor({
       GITLEAKS_EVENT: "push",
-      GITLEAKS_BASE_SHA: baseSha,
+      GITLEAKS_PUSH_BEFORE: baseSha,
       GITLEAKS_BASE_REF: "origin/main",
     });
-    expect(range).toBe("--all");
+    expect(range).toBe(`${baseSha}..HEAD`);
   });
+
+  it("uses the base branch when a new branch push has no previous tip", () => {
+    const { range, out } = rangeFor({
+      GITLEAKS_EVENT: "push",
+      GITLEAKS_PUSH_BEFORE: "0000000000000000000000000000000000000000",
+      GITLEAKS_BASE_REF: baseSha,
+    });
+    expect(range).toBe(`${baseSha}..HEAD`);
+    expect(out).toContain("::warning");
+    expect(out).toContain("not the previous tip");
+  });
+
+  it.each(["schedule", "workflow_dispatch"])(
+    "scans every ref for an explicit %s repository-wide audit",
+    (event) => {
+      const { range } = rangeFor({ GITLEAKS_EVENT: event });
+      expect(range).toBe("--all");
+    }
+  );
 
   it("falls back to the base REF when the base sha is missing", () => {
     const { range } = rangeFor({
@@ -370,7 +387,7 @@ describe("the gitleaks scan range (#2969)", () => {
   it("stays silent on the normal path, so a warning still means something", () => {
     const { out } = rangeFor({
       GITLEAKS_EVENT: "push",
-      GITLEAKS_BASE_SHA: baseSha,
+      GITLEAKS_PUSH_BEFORE: baseSha,
       GITLEAKS_BASE_REF: "origin/main",
     });
     expect(out).not.toContain("::warning");

@@ -19,23 +19,42 @@ import { quickLogMenu } from "@/lib/quick-log";
 // nothing is dropped, and the cycle-relevance gate still decides.
 
 describe("dueDoseChipLabel", () => {
-  it("names the due doses and compacts overflow", () => {
-    expect(dueDoseChipLabel({ count: 1, names: ["Creatine"] })).toBe(
+  it("names distinct due items and compacts overflow", () => {
+    expect(dueDoseChipLabel({ items: [{ itemId: 1, name: "Creatine" }] })).toBe(
       "Due: Creatine"
     );
     expect(
       dueDoseChipLabel({
-        count: 3,
-        names: ["Creatine", "Vitamin D", "Magnesium"],
+        items: [
+          { itemId: 1, name: "Creatine" },
+          { itemId: 2, name: "Vitamin D" },
+          { itemId: 3, name: "Magnesium" },
+        ],
       })
     ).toBe("Due: Creatine, Vitamin D +1");
   });
 
+  it("names an item once when two of its dose slots are due", () => {
+    expect(
+      dueDoseChipLabel({
+        items: [
+          { itemId: 7, name: "Calcium" },
+          { itemId: 7, name: "Calcium" },
+        ],
+      })
+    ).toBe("Due: Calcium");
+  });
+
   it("keeps the count label as the missing-title fallback", () => {
-    expect(dueDoseChipLabel({ count: 0, names: [] })).toBeNull();
-    expect(dueDoseChipLabel({ count: 2, names: ["", " "] })).toBe(
-      "2 doses due"
-    );
+    expect(dueDoseChipLabel({ items: [] })).toBeNull();
+    expect(
+      dueDoseChipLabel({
+        items: [
+          { itemId: 1, name: "" },
+          { itemId: 2, name: " " },
+        ],
+      })
+    ).toBe("2 items due");
   });
 });
 

@@ -323,6 +323,14 @@ function newsVerdict(
     : null;
 }
 
+function pointMagnitude(change: number): string {
+  const magnitude = Math.abs(change);
+  // Match protocol outcome deltas: sub-point changes earn two decimals, while
+  // larger changes stay at one. Extremely small changes remain honest too.
+  const rounded = round(magnitude, magnitude < 1 ? 2 : 1);
+  return rounded === 0 ? "<0.01 pts" : `${rounded} pts`;
+}
+
 function buildText(
   item: Omit<TrendItem, "text">,
   unitSuffix: string,
@@ -331,11 +339,25 @@ function buildText(
 ): string {
   const arrow =
     item.direction === "up" ? "↑" : item.direction === "down" ? "↓" : null;
+  const roundedPct =
+    item.pctChange == null ? null : Math.round(Math.abs(item.pctChange) * 100);
+  // Crossings qualify independently of magnitude; ordinary moves must clear their
+  // materiality threshold before this formatter. Keep that admission invariant
+  // executable so no future threshold change can reintroduce a directional 0% chip.
+  if (roundedPct === 0 && item.rangeShift == null) {
+    throw new Error("A non-crossing trend cannot have a rounded 0% magnitude");
+  }
   const mag =
-    item.pctChange != null
-      ? `${Math.round(Math.abs(item.pctChange) * 100)}%`
-      : `${round(Math.abs(item.absChange), 1)}${unitSuffix}`;
-  const base = arrow ? `${item.label} ${arrow} ${mag}` : item.label;
+    roundedPct === 0
+      ? null
+      : unitSuffix.trim().startsWith("%")
+        ? pointMagnitude(item.absChange)
+        : roundedPct != null
+          ? `${roundedPct}%`
+          : `${round(Math.abs(item.absChange), 1)}${unitSuffix}`;
+  const base = arrow
+    ? `${item.label} ${arrow}${mag ? ` ${mag}` : ""}`
+    : item.label;
   if (item.rangeShift === "out-of-range") {
     if (storedFlag !== undefined) {
       return `${base} — ${flagLabel(storedFlag).toLowerCase()}`;
