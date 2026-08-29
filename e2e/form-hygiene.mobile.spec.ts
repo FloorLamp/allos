@@ -1,9 +1,11 @@
 import { test, expect } from "./fixtures";
 import { type Locator, type Page } from "@playwright/test";
 import {
+  closePartOptions,
   comboboxRows,
   deleteActivityFromForm,
   expectNoClippedContent,
+  openPartOptions,
   setRpeColumn,
   settledFill,
 } from "./helpers";
@@ -256,8 +258,10 @@ test("a per-side set keeps the same two-row grouping at 390px (#1612)", async ({
   // controls wide — still green, and no longer the widest case it exists to hold.
   await setRpeColumn(page, true);
 
+  await openPartOptions(page); // the sides control is behind the part's fact chips (#3349)
   await page.getByText("Track sides separately", { exact: true }).click();
   await expect(page.getByTestId("per-side-checkbox")).toBeChecked();
+  await closePartOptions(page);
   // Both sides render, each with its own reps stepper.
   await expect(page.getByLabel("Add a rep")).toHaveCount(2);
 
