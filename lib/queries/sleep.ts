@@ -40,6 +40,7 @@ import {
   getFreeDays,
 } from "../settings";
 import { doseExistsSince, indexTakenByDose } from "../intake-adherence";
+import { profileDayZone } from "../travel-excusal";
 import { doseBucketOn, doseDueOn } from "../intake-schedule";
 import { situationHistoryResolver } from "../trend-annotations";
 import {
@@ -397,6 +398,7 @@ function bedtimeSupplementsByWakeDay(
   if (wanted.size === 0) return new Map();
 
   const timezone = getTimezone(profileId);
+  const dayZone = profileDayZone(profileId);
   const earliestWakeDay = [...wanted].sort()[0];
   const sleepDateByWakeDay = new Map(
     mainSleepNights(
@@ -466,7 +468,7 @@ function bedtimeSupplementsByWakeDay(
         adherenceSince: doseExistsSince(
           item.created_at,
           dose.created_at,
-          timezone
+          dayZone
         ),
       });
       if (disposition === "excluded") return [];

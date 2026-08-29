@@ -31,8 +31,8 @@ import type { NormBodyMetric } from "./normalize";
 //
 //   for each zone Z the profile has left with `switchedAt > t`, let `D' = day(t, Z)`;
 //   if `D' ≠ D`, and the Health Connect row at `D'` HOLDS `m`, and it is not
-//   edit-locked, and `m` ACTUALLY LANDED at `D` → null `m` at `D'`, and drop that row
-//   if nulling it left no measure behind.
+//   edit-locked, and the upsert accepted `D` → null `m` at `D'`, and drop that row if
+//   nulling it left no measure behind.
 //
 // THE UPSERT AT `D` MERGES, so a measure this push does not carry is never blanked, at
 // `D` or at `D'`. The seeded `{ weight 70.2, rhr 60 }` on 08-20 becomes
@@ -41,20 +41,17 @@ import type { NormBodyMetric } from "./normalize";
 // AN UNATTENDED WRITE TO HEALTH ROWS, and it inherits that status from the module it
 // replaces. Every narrowing is load-bearing, so each is stated with what it refuses:
 //
-//   • THE NULL AT `D'` HAPPENS ONLY IF THE MEASURE LANDED AT `D` (owner ruling, #3524,
-//     2026-08-23). The justification for withdrawing an old key is the row that landed
-//     under the new one — the same construction as #3424's "cover the day": what LANDED,
-//     not what was carried. This is one condition rather than a list of the ways a write
-//     can be refused, and it closes them all: an EDIT-LOCKED destination day makes
-//     `upsertBodyMetrics` skip, and a TOMBSTONED one (a day the person deleted) makes it
-//     suppress — in both cases nothing is at `D`, so nothing is withdrawn at `D'` and the
-//     stale row survives as a duplicate. Before this rule those two sequences deleted the
-//     victim and wrote nothing, which is the loss this whole change exists to refuse.
-//     It is observed AFTER the upsert, by reading `D` back: a rule about what landed can
-//     only be answered by the database, never by re-deriving what the upsert would do.
-//     The question it asks is "does `D` hold this measure now", not "is the stored value
-//     the one this push sent" — #606's partial-day rule can legitimately keep a fuller
-//     stored average there, and the day still holds the measure either way.
+//   • THE NULL AT `D'` HAPPENS ONLY AFTER THE UPSERT ACCEPTS `D` (owner ruling, #3524,
+//     2026-08-23). Its two refusal shapes need separate observations. A TOMBSTONED
+//     destination (a day the person deleted) suppresses the insert, so there is no live
+//     row at `D`; `!dest` closes that route. An EDIT-LOCKED destination still exists and
+//     can hold the person's hand-corrected measure, so its own `isEditLocked` clause
+//     closes that route. Once those two shapes are excluded, `upsertBodyMetrics` proves
+//     the incoming non-null measure is present: an insert stores it, a merge fills or
+//     overwrites it, and an unchanged result means the pre-image already held the
+//     resolved post-image. There is no third destination-value refusal to check. The
+//     value at `D` need not equal this push's value — #606's partial-day rule can keep a
+//     fuller stored average there, and the day still holds the measure either way.
 //
 //   • EDIT-LOCKED VICTIM ROWS ARE KEPT (#133). A row the user hand-corrected through the
 //     Review resolver is not the source's to withdraw: the re-push would re-insert it
@@ -176,12 +173,12 @@ export function reconcileRekeyedBodyMetrics(
         (v) => !pushed.has(pairKey(v.date, m.column))
       );
       if (victims.length === 0) continue;
-      // DID IT LAND? Read `D` back rather than predicting the upsert: an edit-locked or
-      // tombstoned destination refuses the write, and a re-key with nowhere to land is
-      // not a re-key.
+      // Read `D` back after the upsert. A tombstone leaves no live row; an edit lock
+      // leaves a live row that must be refused explicitly. Otherwise the upsert's
+      // insert/merge/unchanged postconditions already prove this non-null measure is
+      // present, so a destination-value check would only repeat prior control flow.
       const dest = stored(row.date);
-      if (!dest || isEditLocked(dest.edited) || dest[m.column] == null)
-        continue;
+      if (!dest || isEditLocked(dest.edited)) continue;
       for (const victim of victims) {
         const was = stored(victim.date);
         if (!was || isEditLocked(was.edited) || was[m.column] == null) continue;
