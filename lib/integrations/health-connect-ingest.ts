@@ -22,6 +22,7 @@ import {
 import {
   HEALTH_CONNECT_ID,
   overlapsLeftWarning,
+  sleepOverlapsLeftWarning,
   type ParsedPayload,
 } from "./health-connect";
 import {
@@ -100,6 +101,9 @@ export function ingestHealthConnectPayload(
   // in the last chunk's transaction, by the same query that decides the deletes, so it
   // reports what HAPPENED rather than a forecast. See where it is set below.
   let overlapsLeft = 0;
+  // The sleep half of that same number, kept only to decide whether its own sentence is
+  // owed (#3628). ONE counter reaches Review; the two symptoms read differently.
+  let sleepOverlapsLeft = 0;
   const vitalIds: number[] = [];
   // Per-row provenance (#1333) accumulated across every chunk. The upserts append the
   // inserted/updated rows they persist; the id captured is committed by the chunk's
@@ -252,6 +256,7 @@ export function ingestHealthConnectPayload(
           // ITSELF. Read inside the transaction that acted, so it describes what
           // happened rather than what was forecast.
           overlapsLeft = outcome.overlapsLeft + sleep.overlapsLeft;
+          sleepOverlapsLeft = sleep.overlapsLeft;
         }
         return part;
       },
@@ -349,12 +354,25 @@ export function ingestHealthConnectPayload(
     );
   }
 
-  // The Review line, appended to the details this push already carries. Read above from
-  // the store, inside the transaction that did the deleting, so it names the days that
-  // are still reading high once this push is on disk — whatever the reason, and with no
-  // reason enumerated anywhere.
-  if (overlapsLeft > 0) {
-    parsed.details.warnings.push(overlapsLeftWarning(overlapsLeft));
+  // The Review lines, appended to the details this push already carries. Both counts are
+  // read above from the store, inside the transaction that did the deleting, so they name
+  // what is still duplicated once this push is on disk.
+  //
+  // TWO SENTENCES, ONE NUMBER (#3628). The day-bucket residue and the sleep residue are
+  // the same kind of fact — something this push could not collapse — so they are counted
+  // together and reported as one Review number. They are not the same SYMPTOM: a day
+  // bucket left standing makes a day's total read HIGH, and a sleep session left standing
+  // puts a second night on the Sleep page, in SRI and in the stage totals. Each sentence
+  // therefore names only the rows it is actually about, which is also why the day-bucket
+  // count is net of the sleep half rather than the sum — the older wording claimed those
+  // rows made a day "count some activity twice", which is not true of a night.
+  if (overlapsLeft > sleepOverlapsLeft) {
+    parsed.details.warnings.push(
+      overlapsLeftWarning(overlapsLeft - sleepOverlapsLeft)
+    );
+  }
+  if (sleepOverlapsLeft > 0) {
+    parsed.details.warnings.push(sleepOverlapsLeftWarning(sleepOverlapsLeft));
   }
   return {
     counts: {

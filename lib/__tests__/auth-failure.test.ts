@@ -1,5 +1,6 @@
 import { describe, it, expect } from "vitest";
 import {
+  isAuthPullFailure,
   isAuthRefreshFailure,
   syncFailureCopy,
   syncFailureKind,
@@ -48,14 +49,17 @@ describe("isAuthRefreshFailure", () => {
   });
 
   // WHERE THE TWO DOORS DISAGREE, PINNED SO A FUTURE MERGE OF THEM GOES RED (the
-  // 2026-08-21 ruling; #3633 established the shape). The DATA-PULL rule is
-  // `outcome.status === 401` inline in pull-sync.ts — a data endpoint's 400 is a bad
-  // parameter, not a dead grant (#3007). The REFRESH rule adds exactly one case on
-  // top of it: a 400 whose body names the grant, because at the token endpoint the
-  // grant IS the request. That single case is the entire delta, and both bugs this
-  // pair guards against are a merge of the two rules in one direction or the other.
+  // 2026-08-21 ruling; #3633 established the shape). It reads BOTH REAL RULES — a
+  // data endpoint's 400 is a bad parameter, not a dead grant (#3007), and the refresh
+  // rule adds exactly one case on top of that: a 400 whose body names the grant,
+  // because at the token endpoint the grant IS the request. That single case is the
+  // entire delta, and both bugs this pair guards against are a merge of the two rules
+  // in one direction or the other.
+  //
+  // IT USED TO SPELL THE PULL RULE ITSELF, as a local `status === 401`, which pinned
+  // one rule against a COPY of the other and so could not notice the pull door
+  // changing underneath it. `isAuthPullFailure` is exported for this.
   it("differs from the data-pull rule on exactly the marker-bearing 400", () => {
-    const pullDoorIsAuth = (status: number) => status === 401;
     const cases: [number, string | null][] = [
       [400, '{"error":"invalid_grant"}'],
       [400, null],
@@ -68,7 +72,7 @@ describe("isAuthRefreshFailure", () => {
     ];
     const disagree = cases.filter(
       ([status, body]) =>
-        isAuthRefreshFailure(status, body) !== pullDoorIsAuth(status)
+        isAuthRefreshFailure(status, body) !== isAuthPullFailure(status)
     );
     expect(disagree).toEqual([[400, '{"error":"invalid_grant"}']]);
   });

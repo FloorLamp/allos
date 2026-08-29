@@ -14,10 +14,11 @@
 //     refresh_token grant) or 401 (Unauthorized).
 //   • Withings rides an error in its `{ status, body }` envelope (HTTP 200), so the
 //     caller passes the ENVELOPE status here, where 401 means the token was rejected.
-//   • Oura's personal access token has no refresh, so it never reaches this door:
-//     since #3618 the DATA-PULL rule is 401 and nothing else, spelled inline in
-//     `pull-sync.ts`. The two rules are deliberately different and are pinned where
-//     they disagree in lib/__tests__/auth-failure.test.ts.
+//   • Oura's personal access token has no refresh, so it never reaches this door: the
+//     DATA-PULL rule is `isAuthPullFailure` below. The two are deliberately different
+//     and live side by side here so a reader meets both at once — and so the guard that
+//     pins where they disagree (lib/__tests__/auth-failure.test.ts) can read the real
+//     rule rather than a copy of it.
 
 // True when a token-refresh (or Withings envelope) status is a definitive auth
 // failure requiring re-connection. A 401 is always one. A 400 is one ONLY when its
@@ -50,6 +51,26 @@ export function isAuthRefreshFailure(
   return /invalid[_ ]?grant|invalid[_ ]?token|invalid[_ ]?refresh|refresh[_ ]?token|unauthor/i.test(
     body
   );
+}
+
+// THE OTHER DOOR: 401 AND NOTHING ELSE on a data pull (#3618).
+//
+// It used to ask `isAuthRefreshFailure`, and the difference between the two rules is the
+// whole reason this one exists separately. At a TOKEN endpoint the grant IS the request,
+// so a 400 naming the grant is a revocation; at a DATA endpoint a 400 is a bad
+// parameter, and #3007 is this repo's own measurement of one answering 400 for an
+// out-of-range window. Flipping needs_reauth on that was not a copy defect: `pull-tick`
+// auto-syncs `connected` rows only, so one malformed request stopped the source
+// permanently.
+//
+// IT LIVES HERE RATHER THAN INLINE IN `pull-sync.ts`, and that is the point of the
+// export. The rule was a bare `outcome.status === 401` at its call site, so the guard
+// asserting the two doors disagree on exactly one input had to SPELL the pull rule
+// itself — pinning one rule against a copy of the other, which cannot notice this door
+// changing. `pull-sync.ts` imports the db; this module deliberately does not, which is
+// also what keeps the guard in the pure tier.
+export function isAuthPullFailure(status: number | undefined): boolean {
+  return status === 401;
 }
 
 // ---- What the person reads when a sync fails (#3618) ------------------------

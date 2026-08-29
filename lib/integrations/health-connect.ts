@@ -271,6 +271,29 @@ export function overlapsLeftWarning(count: number): string {
     "next push that carries a later timestamp."
   );
 }
+
+// THE SLEEP RESIDUE, WHICH IS THE SAME COUNT AND A DIFFERENT SYMPTOM (#3628).
+//
+// It is folded into `overlapsLeft` above — one number, because a person does not care
+// which mechanism left a duplicate — but it gets its own sentence, because the sentence
+// above is about DAY TOTALS reading high and a duplicated night does nothing of the
+// kind: it puts a second "night" on the Sleep page, in SRI and in the stage totals.
+//
+// AND IT NAMES ITS CAUSE, where `overlapsLeftWarning` deliberately refuses to. That one
+// has six possible causes and guessed wrong when it tried; this residue has exactly ONE
+// — the #133 edit lock is the only thing `collapseRewrittenSleepSessions` reports — so
+// naming it is a fact rather than a guess, and it is the half the person can act on.
+//
+// NO RETRY PROMISE, and here that is not caution but accuracy: the collapse fires only
+// on the push that INSERTS the corrective write, which has already happened and was
+// declined. No later push reaches this pair.
+export function sleepOverlapsLeftWarning(count: number): string {
+  const symptom =
+    count === 1
+      ? "A sleep session you edited overlaps a newer one from the same device, so that night is stored twice."
+      : `${count} sleep sessions you edited overlap newer ones from the same device, so those nights are each stored twice.`;
+  return `${symptom} Nothing later removes the older reading — delete whichever is wrong in Data → Manage.`;
+}
 // Require two such records before hinting: a genuine `daily` push made within an hour
 // of local midnight is itself a short window, and one origin doing that shouldn't trip
 // the hint. Two independent short windows in one batch is the fine-grained shape. (The

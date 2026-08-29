@@ -248,6 +248,26 @@ describe("what the collapse refuses to touch", () => {
     expect(tombstones(profileId).size).toBe(0);
   });
 
+  it("says the night is stored twice, in its own sentence and not the day-total one", () => {
+    // The residue reaches Review as ONE count with the day-bucket rule's, but a
+    // duplicated night does not make a day's TOTAL read high — so it gets a sentence
+    // about the night, and the day-total sentence is not emitted for it at all.
+    push(profileId, "2026-08-22T13:40:00Z", [session(MIS_ZONED)]);
+    db.prepare(
+      `UPDATE metric_samples SET edited = 1
+        WHERE profile_id = ? AND metric = 'sleep_min' AND started_at = ?`
+    ).run(profileId, MIS_ZONED.start);
+
+    const parsed = parseHealthConnectPayload(
+      { timestamp: "2026-08-23T14:42:00Z", sleep: [session(CORRECTED)] },
+      getTimezone(profileId)
+    );
+    ingestHealthConnectPayload(profileId, parsed);
+    expect(parsed.details.warnings).toEqual([
+      "A sleep session you edited overlaps a newer one from the same device, so that night is stored twice. Nothing later removes the older reading — delete whichever is wrong in Data → Manage.",
+    ]);
+  });
+
   it("never touches another source's overlapping session", () => {
     push(profileId, "2026-08-22T13:40:00Z", [session(MIS_ZONED)]);
     db.prepare(
