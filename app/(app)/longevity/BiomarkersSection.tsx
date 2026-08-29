@@ -9,6 +9,7 @@ import {
 import type { LongevitySection } from "@/lib/longevity";
 import { MedicalValue } from "@/components/ui";
 import PillarStat from "./PillarStat";
+import Disclosure from "@/components/Disclosure";
 
 // Longevity §4 — Optimal-share biomarkers (#1042 phase 4): the expanded
 // breakdown behind the "N of M optimal" pillar. The rows come from the SAME
@@ -135,7 +136,7 @@ export default async function BiomarkersSection({
       )}
 
       {optimal.length > 0 && (
-        <details className="mt-4">
+        <Disclosure className="mt-4">
           <summary className="cursor-pointer text-sm text-slate-600 dark:text-slate-300">
             {optimal.length} marker{optimal.length === 1 ? "" : "s"} in the
             optimal band
@@ -145,7 +146,7 @@ export default async function BiomarkersSection({
               <BiomarkerRow key={`${r.name}-${i}`} row={r} />
             ))}
           </ul>
-        </details>
+        </Disclosure>
       )}
     </section>
   );

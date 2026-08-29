@@ -11,6 +11,7 @@ import { bandPresentation, bandVerdict } from "@/lib/muscle-volume-bands";
 import type { MuscleId } from "@/lib/lifts";
 import { strengthAnalyzeHref, trainingActivityPageHref } from "@/lib/hrefs";
 import MuscleCoverageDisclosure from "./MuscleCoverageDisclosure";
+import Disclosure from "@/components/Disclosure";
 
 function fmtSets(value: number): string {
   return Number.isInteger(value) ? String(value) : value.toFixed(1);
@@ -101,9 +102,9 @@ export default function MuscleCoverageCard(props: MuscleCoverageCardProps) {
               const evidence = contributions.get(row.muscle) ?? [];
               return (
                 <li key={row.muscle} id={`coverage-${row.muscle}`}>
-                  <details
+                  <Disclosure
                     data-coverage-row-target={`coverage-${row.muscle}`}
-                    className="subpanel-inset-xs group rounded-lg border border-black/5 bg-slate-50/50 p-2.5 transition-colors data-[highlighted=true]:border-brand-400 data-[highlighted=true]:bg-brand-50/70 dark:border-white/10 dark:bg-white/3 dark:data-[highlighted=true]:border-brand-500 dark:data-[highlighted=true]:bg-brand-950/20"
+                    className="subpanel-inset-xs rounded-lg border border-black/5 bg-slate-50/50 p-2.5 transition-colors data-[highlighted=true]:border-brand-400 data-[highlighted=true]:bg-brand-50/70 dark:border-white/10 dark:bg-white/3 dark:data-[highlighted=true]:border-brand-500 dark:data-[highlighted=true]:bg-brand-950/20"
                     data-testid="muscle-coverage-row"
                   >
                     <summary
@@ -182,7 +183,7 @@ export default function MuscleCoverageCard(props: MuscleCoverageCardProps) {
                         </li>
                       ))}
                     </ul>
-                  </details>
+                  </Disclosure>
                 </li>
               );
             })}

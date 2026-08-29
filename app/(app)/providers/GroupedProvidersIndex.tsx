@@ -13,6 +13,7 @@ import {
 import type { DirectoryProvider, GroupedDirectory } from "@/lib/queries";
 import { providersEmptyMessage } from "@/lib/providers";
 import { EmptyState } from "@/components/ui";
+import Disclosure from "@/components/Disclosure";
 
 // The grouped, activity-aware provider directory (issue #1055): organizations as
 // cards with their affiliated individuals nested, unaffiliated individuals in their
@@ -100,8 +101,8 @@ export default function GroupedProvidersIndex({
           ) : null}
 
           {otherCount > 0 ? (
-            <details
-              className="group border-t border-black/5 pt-3 dark:border-white/10"
+            <Disclosure
+              className="border-t border-black/5 pt-3 dark:border-white/10"
               data-testid="provider-other-disclosure"
             >
               <summary className="flex cursor-pointer list-none items-center gap-2 py-1 text-sm font-medium text-slate-600 [&::-webkit-details-marker]:hidden dark:text-slate-300">
@@ -124,7 +125,7 @@ export default function GroupedProvidersIndex({
                   </ul>
                 ) : null}
               </div>
-            </details>
+            </Disclosure>
           ) : null}
         </div>
       ) : (
@@ -132,7 +133,7 @@ export default function GroupedProvidersIndex({
       )}
 
       {directory.archivedCount > 0 ? (
-        <details
+        <Disclosure
           className="mt-6 rounded-xl border border-black/5 dark:border-white/10"
           data-testid="provider-archived-disclosure"
         >
@@ -147,7 +148,7 @@ export default function GroupedProvidersIndex({
               </li>
             ))}
           </ul>
-        </details>
+        </Disclosure>
       ) : null}
 
       <p className="mt-4 px-1 text-xs text-slate-500 dark:text-slate-400">

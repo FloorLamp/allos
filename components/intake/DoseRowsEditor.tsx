@@ -12,6 +12,7 @@ import {
 import type { FoodTiming } from "@/lib/types";
 import { WeekdayChips } from "@/components/intake/CadenceEditor";
 import { doseCadenceLabel, normalizeWeekdays } from "@/lib/intake-cadence";
+import Disclosure from "@/components/Disclosure";
 
 // One editable dose row's client state (shared by both intake forms, #846).
 export interface DoseState {
@@ -192,7 +193,7 @@ export default function DoseRowsEditor({
                 ordinary two-slot schedule look like a scheduling system. The summary
                 stays OPEN once the row has a rule, so a constraint that changes when
                 the dose lands is never hidden behind a closed disclosure. */}
-            <details
+            <Disclosure
               className="sm:col-span-full"
               open={d.weekdays.length > 0 || !!d.start_date || !!d.end_date}
             >
@@ -237,7 +238,7 @@ export default function DoseRowsEditor({
                   Ending a dose here stops it being due — its history is kept.
                 </p>
               </div>
-            </details>
+            </Disclosure>
           </div>
         ))}
       </div>

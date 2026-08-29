@@ -1,7 +1,7 @@
 "use client";
 
 import { usePrefersReducedMotion } from "./usePrefersReducedMotion";
-import { MOTION_MS } from "@/lib/motion";
+import { CONTINUITY_MOTIONS, MICRO_MOTION_EASE } from "@/lib/micro-motion";
 
 // Height-animated open/close for an inline region (issue #1416, section F) — the
 // shared collapse the app's expanding panels can use instead of snapping.
@@ -17,8 +17,12 @@ import { MOTION_MS } from "@/lib/motion";
 // the accessibility tree and the tab order — a collapsed panel whose buttons are
 // still tabbable is a keyboard trap you cannot see.
 //
-// #1413's attention-strip collapse is the first intended tenant; anything else
-// that expands in place should reach for this rather than a second copy.
+// This is the app's BUTTON disclosure — a control with `aria-expanded` over a panel.
+// A `<details>` reaches for components/Disclosure.tsx instead, because this grid
+// technique cannot animate one (its contents are not rendered while it is closed, so
+// opening has no earlier height to travel from). Both spend the SAME continuity token
+// (#3676's `disclose`) on the same ease, so there is one duration and one feel for
+// every region in the app that expands in place.
 
 export default function Collapse({
   open,
@@ -41,7 +45,7 @@ export default function Collapse({
         gridTemplateRows: open ? "1fr" : "0fr",
         transition: reduceMotion
           ? undefined
-          : `grid-template-rows ${MOTION_MS.collapse}ms ease-out`,
+          : `grid-template-rows ${CONTINUITY_MOTIONS.disclose.ms}ms ${MICRO_MOTION_EASE}`,
       }}
     >
       <div

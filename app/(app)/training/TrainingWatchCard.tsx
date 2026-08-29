@@ -5,6 +5,7 @@ import {
   rollupTrainingFindings,
   type TrainingFindingRow,
 } from "@/lib/training-findings-rollup";
+import Disclosure from "@/components/Disclosure";
 
 // The Training → Overview "Training watch" card (#1496) — ONE card, capped.
 //
@@ -46,7 +47,7 @@ export default function TrainingWatchCard({
         data-testid="training-findings-rollup"
         className="subpanel-inset-sm rounded-xl border border-slate-200 bg-slate-50/60 p-3 dark:border-ink-750 dark:bg-ink-850/40"
       >
-        <details className="group">
+        <Disclosure>
           <summary className="flex cursor-pointer list-none items-start gap-2 [&::-webkit-details-marker]:hidden">
             <div className="min-w-0 flex-1">
               <p
@@ -79,7 +80,7 @@ export default function TrainingWatchCard({
               />
             ))}
           </ul>
-        </details>
+        </Disclosure>
       </li>
     );
   };
@@ -98,7 +99,7 @@ export default function TrainingWatchCard({
         {rollup.shown.map((row) => renderRow(row, false))}
       </ul>
       {rollup.overflow.length > 0 && (
-        <details className="group mt-3" data-testid="training-findings-more">
+        <Disclosure className="mt-3" data-testid="training-findings-more">
           <summary className="cursor-pointer list-none text-xs font-medium text-slate-500 hover:text-brand-600 hover:underline dark:text-slate-400 dark:hover:text-brand-400 [&::-webkit-details-marker]:hidden">
             <span className="group-open:hidden">
               Show all {rollup.rows.length} →
@@ -108,7 +109,7 @@ export default function TrainingWatchCard({
           <ul className="mt-3 space-y-3">
             {rollup.overflow.map((row) => renderRow(row, true))}
           </ul>
-        </details>
+        </Disclosure>
       )}
     </div>
   );

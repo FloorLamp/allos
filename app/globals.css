@@ -1792,6 +1792,9 @@
   --motion-tick: 180ms;
   --motion-promote: 300ms;
   --motion-arrive: 200ms;
+  /* The continuity class's first and only tenant (#3676). In-band, on the same
+     curve — one feel for both classes was the condition the second class got. */
+  --motion-disclose: 200ms;
   /* Band-exempt, see the note above. */
   --motion-fold: 500ms;
   /* ONE curve for the whole vocabulary. Decelerating: the move arrives and
@@ -1947,6 +1950,47 @@
   animation: micro-arrive var(--motion-arrive) var(--motion-ease);
 }
 
+/* CONTINUITY (#3676, #3677) — every disclosure in the app, growing under the summary
+   the reader tapped. The ONE rule here that animates a LAYOUT property, deliberately:
+   for an information motion a moved neighbour is a defect; for a continuity motion the
+   moved neighbour IS what is being made continuous.
+
+   On `::details-content`, the box the browser already owns for a disclosure's
+   contents. A wrapper INSIDE the details cannot do this — a closed details does not
+   render its contents, so opening resolves the wrapper's first style already at full
+   height and no transition runs (measured, Chromium 141). That is also why it needs no
+   JS and why the memory contract is safe: a fold opened by disclosure-memory's
+   pre-paint script has no earlier height to travel from, so it is simply open, with no
+   entrance replay. `interpolate-size` is on the class, not `:root`, so nothing else
+   gains keyword interpolation it did not ask for. Nothing here touches the SUMMARY:
+   about half the folds draw their own chevron and hide the native marker, half keep the
+   marker, and which one a fold wants is the caller's decision, not the motion's. */
+.motion-disclose {
+  interpolate-size: allow-keywords;
+}
+.motion-disclose::details-content {
+  block-size: 0;
+  overflow: hidden;
+  /* CLOSING — a transition reads the properties of the state it moves TO, so this rule
+     times the close and the one below times the open. `allow-discrete` keeps the panel
+     rendered for the whole 200 ms; without it the contents vanish on frame one and
+     there is nothing left to shrink. */
+  transition:
+    block-size var(--motion-disclose) var(--motion-ease),
+    content-visibility var(--motion-disclose) allow-discrete;
+}
+.motion-disclose[open]::details-content {
+  block-size: auto;
+  /* OPENING, and `content-visibility` is DELIBERATELY ABSENT — do not fold this back
+     into the rule above. A discrete transition's value is applied at the next RENDERING
+     OPPORTUNITY, not when the property changes, so listing it here left `details.open`
+     true while the contents were still `content-visibility: hidden`: `innerText` empty,
+     and 472 nodes missing from the accessibility tree (855 against 1,327, measured).
+     A reader tapping a fold and a spec reading one are the same case. Guarded in
+     e2e/disclosure-motion.spec.ts, synchronously in the click's own task. */
+  transition: block-size var(--motion-disclose) var(--motion-ease);
+}
+
 @media (prefers-reduced-motion: reduce) {
   /* Belt and braces. `microMotionPlan()` already returns no class under the
      preference, so these are not applied at all — but a stylesheet that only works
@@ -1962,6 +2006,15 @@
   .motion-arrive,
   .motion-fold {
     animation: none;
+  }
+  /* The continuity class's reduced state is the END LAYOUT, INSTANTLY — the panel is
+     simply at full height on the frame it opens. Not "nothing happens": the
+     disclosure still opens and still closes, it just does not travel. BOTH selectors:
+     `[open]` carries its own `transition` above and outranks the bare class in here
+     too, so neutralizing one left reduced motion animating every fold open. */
+  .motion-disclose::details-content,
+  .motion-disclose[open]::details-content {
+    transition: none;
   }
 }
 
