@@ -1,5 +1,6 @@
 import { describe, expect, it } from "vitest";
 import { pinnedTimezone } from "../../e2e/pinned-timezone";
+import { sriSleepWindow } from "../../e2e/seed/profile-time-fixtures";
 import { isValidTimezone } from "../timezone";
 import {
   hhmmToMinutes,
@@ -118,6 +119,54 @@ describe("pinned zone × fixture sleep instants (#2159 band)", () => {
         `utc hour ${h} (offset ${offsetHours}) → ${zone}`
       ).toBe(expectLastNight);
     }
+  });
+});
+
+// The #3644 corpus is keyed by stored wake-day. Its 28 windows must end on that
+// same profile-local day in every rotating e2e zone; otherwise adjacent rows collide
+// and the main-sleep election turns the losing 8h night into a nap.
+describe("pinned zone × the 28-night SRI fixture (#3644)", () => {
+  const today = "2026-08-28";
+
+  it("computes the stored wake-day for every night in all 24 pinned zones", () => {
+    for (let h = 0; h < 24; h++) {
+      const frozen = `${today}T${String(h).padStart(2, "0")}:37:00.000Z`;
+      const { zone } = pinnedTimezone(frozen);
+      for (let i = 1; i <= 28; i++) {
+        const wakeDay = shiftDateStr(today, -i);
+        const dow = new Date(`${wakeDay}T00:00:00Z`).getUTCDay();
+        const window = sriSleepWindow(zone, wakeDay, dow === 0 || dow === 6);
+        const nights = mainSleepNights([{ ...window, date: wakeDay }], zone);
+        expect(nights, `${zone} / stored ${wakeDay}`).toHaveLength(1);
+        expect(nights[0].wakeDay, `${zone} / stored ${wakeDay}`).toBe(wakeDay);
+      }
+    }
+  });
+
+  it("would red on the old raw-UTC constructor", () => {
+    const mismatches: string[] = [];
+    for (let h = 0; h < 24; h++) {
+      const frozen = `${today}T${String(h).padStart(2, "0")}:37:00.000Z`;
+      const { zone } = pinnedTimezone(frozen);
+      for (let i = 1; i <= 28; i++) {
+        const wakeDay = shiftDateStr(today, -i);
+        const bedDay = shiftDateStr(wakeDay, -1);
+        const dow = new Date(`${wakeDay}T00:00:00Z`).getUTCDay();
+        const weekend = dow === 0 || dow === 6;
+        const rawUtc = {
+          start: weekend ? `${wakeDay}T00:30:00Z` : `${bedDay}T23:00:00Z`,
+          end: weekend ? `${wakeDay}T08:30:00Z` : `${wakeDay}T07:00:00Z`,
+          date: wakeDay,
+        };
+        const computed = mainSleepNights([rawUtc], zone)[0]?.wakeDay;
+        if (computed !== wakeDay)
+          mismatches.push(`${zone}:${wakeDay}->${computed}`);
+      }
+    }
+    expect(mismatches.length).toBeGreaterThan(0);
+    expect(mismatches.some((entry) => entry.startsWith("Etc/GMT+10:"))).toBe(
+      true
+    );
   });
 });
 
