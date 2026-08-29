@@ -302,6 +302,31 @@ const RAW_PROFILE_INSERT_ALLOW: Record<string, number> = {};
 const RAW_PROFILE_DELETE_RE = /DELETE\s+FROM\s+profiles\b/g;
 const RAW_PROFILE_DELETE_ALLOW: Record<string, number> = {};
 
+// A SHARED-PROFILE activity cleanup, spelled inline (#3946). The freeze is ZERO and
+// there is no allowlist: `deleteActivitiesTitled` in e2e/shared-profile-guard.ts is
+// the one definition, and it existed verbatim in three specs before this.
+//
+// THE PATTERN COMES FROM HOW THE SPECS ACTUALLY SPELL IT, not from how #3946
+// described it. A census of `DELETE FROM activities` across e2e/ found FIVE
+// spellings — `WHERE title = ?`, `WHERE profile_id = 1 AND title = '…'`,
+// `WHERE profile_id = 1 AND title IN (?, ?)`, `WHERE profile_id = ? AND title = ?`,
+// and `WHERE title LIKE ?` — so a rule written for the first alone would have shipped
+// green and blind to the other four.
+//
+// IT DELIBERATELY STOPS SHORT OF `profile_id = ?`, AND THAT IS AN HONEST LIMIT, not
+// an oversight. A regex cannot resolve a constant, so `profile_id = ?` may be the
+// shared profile (annual-retrospective's SEED_PROFILE is 1) or a spec-owned fixture
+// profile (multi-view deletes on its OWNER profile, which the shared helper must
+// never touch). Matching it would fire on both and the second is correct code.
+// So the rule covers what it can decide: an UNSCOPED delete, and one scoped to the
+// literal shared profile.
+//
+// `LIKE` is out of scope too — a prefix sweep is a different contract from the
+// helper's exact-title delete, and training-log-search-depth and
+// unclassified-activity both use one legitimately.
+const SHARED_ACTIVITY_DELETE_RE =
+  /DELETE\s+FROM\s+activities\s+WHERE\s+(?:profile_id\s*=\s*1\s+AND\s+)?title\s*(?:=|IN\s*\()/gis;
+
 // Frozen offenders as of #868 (per-file counts). Migrate an entry to
 // e2e/helpers.ts and LOWER its number here in the same PR; a fully-migrated file
 // drops out entirely. New files must not appear.
@@ -1305,6 +1330,87 @@ describe("e2e suite hygiene guard (issue #868)", () => {
           `see docs/internals/e2e-hygiene.md.`,
       }
     );
+  });
+
+  it("no NEW inline shared-profile activity delete in an e2e/*.spec.ts (use deleteActivitiesTitled)", () => {
+    const violations: string[] = [];
+    for (const { name, text } of specFiles()) {
+      // SPECS ONLY. A seed and a fixture module delete-then-insert to stay idempotent
+      // over an existing database, which is their job and not a spec's cleanup —
+      // e2e/seed/merge.ts alone does it four times, correctly.
+      if (!name.endsWith(".spec.ts")) continue;
+      const count = countMatches(
+        hygieneScanText(text),
+        SHARED_ACTIVITY_DELETE_RE
+      );
+      if (count > 0)
+        violations.push(
+          `${name}: ${count} inline shared-profile activity delete(s). Seven specs ` +
+            `kept this cleanup by hand and the eighth did not, which is how ` +
+            `ride-detail's Cycling quick link became a ~50% flake (#3930/#3946). ` +
+            `Call deleteActivitiesTitled(...) from e2e/shared-profile-guard.ts — the ` +
+            `one definition, profile-scoped, with the cascade turned on.`
+        );
+    }
+    expect(violations, violations.join("\n")).toEqual([]);
+  });
+
+  // A GREEN SWEEP OVER A COMPLYING TREE SAYS NOTHING ABOUT WHAT THE SWEEP CAN SEE.
+  // Both halves matter: the spellings it must catch, and the neighbours it must stay
+  // quiet on — a rule that fired on a spec-owned fixture delete or a seed's
+  // re-seed would be deleted within a week, taking the real rule with it.
+  it.each([
+    ['db.prepare("DELETE FROM activities WHERE title = ?").run(t);', 1],
+    [
+      "db.prepare(`DELETE FROM activities WHERE profile_id = 1 AND title = 'X'`);",
+      1,
+    ],
+    [
+      "db.prepare(`DELETE FROM activities WHERE profile_id = 1 AND title IN (?, ?)`);",
+      1,
+    ],
+    ["db.prepare(\n  `DELETE FROM activities\n     WHERE title = ?`\n);", 1],
+    // Benign neighbours, every one of them shipped in the tree today:
+    [
+      'db.prepare("DELETE FROM activities WHERE profile_id = ? AND title = ?");',
+      0,
+    ],
+    [
+      'db.prepare("DELETE FROM activities WHERE title LIKE ?").run(`${M}%`);',
+      0,
+    ],
+    ['db.prepare("DELETE FROM activities WHERE profile_id = ?").run(id);', 0],
+    [
+      'db.prepare("DELETE FROM activities WHERE profile_id = 1 AND id > ?");',
+      0,
+    ],
+    ['db.prepare("DELETE FROM activities WHERE id = ?").run(createdId);', 0],
+    [
+      "db.prepare(\"DELETE FROM activities WHERE profile_id = ? AND external_id = 'e2e:x'\");",
+      0,
+    ],
+    // Prose explaining the rule is not an offender (#3621).
+    ["// never write DELETE FROM activities WHERE title = ? inline\n", 0],
+  ])(
+    "the shared-activity-delete pattern reads %j as %i",
+    (source, expected) => {
+      expect(
+        countMatches(hygieneScanText(source), SHARED_ACTIVITY_DELETE_RE)
+      ).toBe(expected);
+    }
+  );
+
+  it("the blessed shared-profile cleanup exists and is profile-scoped", () => {
+    const mod = fs.readFileSync(
+      path.join(E2E_DIR, "shared-profile-guard.ts"),
+      "utf8"
+    );
+    expect(mod).toMatch(/export function deleteActivitiesTitled\b/);
+    // Profile-scoped and cascading, or it is not a replacement for what it replaced.
+    expect(mod).toMatch(
+      /DELETE FROM activities WHERE profile_id = \? AND title = \?/
+    );
+    expect(mod).toMatch(/foreign_keys = ON/);
   });
 
   it("the blessed fixture-profile constructor exists and seeds the standard metric saves", () => {

@@ -58,6 +58,7 @@ describe("the shared-profile activity diff sees what a later test would see", ()
     const drift = diffRecentActivities(before, after);
     expect(drift.added.map((r) => r.title)).toEqual(expected.added);
     expect(drift.missing).toHaveLength(expected.missing);
+    expect(drift.staleDeclarations).toEqual([]);
   });
 
   // A declaration covers the TITLES it names and nothing else — the property that
@@ -72,6 +73,32 @@ describe("the shared-profile activity diff sees what a later test would see", ()
     const drift = diffRecentActivities(before, after, declared);
     expect(drift.missing).toEqual([]);
     expect(drift.added.map((r) => r.title)).toEqual(["Running"]);
+    expect(drift.staleDeclarations).toEqual([]);
+  });
+
+  // A DECLARATION THAT COVERS NOTHING IS AN EXEMPTION NOBODY CAN SEE THE EDGE OF.
+  // This does NOT check that a live `why` is true — nothing does (#3260) — only that
+  // the declaration is still NEEDED, which is the half that rots first.
+  it.each([
+    [
+      "the declared row is no longer left — a cleanup was added",
+      { why: "consumed by the merge", titles: ["Set merge dupe"] },
+      snap(...SEEDED, [12, "2026-08-26|strength|Set merge dupe"]),
+      ["Set merge dupe"],
+    ],
+    [
+      "one declared title still applies and the other does not",
+      {
+        why: "consumed by the merge",
+        titles: ["Set merge dupe", "Gone fixture"],
+      },
+      snap(SEEDED[1]),
+      ["Gone fixture"],
+    ],
+  ])("%s", (_name, declared, after, expectedStale) => {
+    const before = snap(...SEEDED, [12, "2026-08-26|strength|Set merge dupe"]);
+    const drift = diffRecentActivities(before, after, declared);
+    expect(drift.staleDeclarations).toEqual(expectedStale);
   });
 
   // The horizon is a pure function of the instant it is handed, so a run at any hour

@@ -191,9 +191,20 @@ export function strandedDraftMessage(
 //    are meant to outlive their test. An allowlist keyed on spec name is the
 //    forbidden shape: it rots silently and it exempts the whole file including the
 //    leak nobody meant. Instead a spec says, in its own source, which titles it
-//    leaves and why — `test.use({ sharedProfileLeftovers: { why, titles } })`. The
-//    `why` is required and non-empty, carrying #3260's caveat unchanged: nothing
-//    checks that a `why` is still TRUE.
+//    leaves and why — `test.use({ sharedProfileLeftovers: { why, titles } })`.
+//
+//    THE `why` IS REQUIRED AND ITS TRUTH IS STILL UNCHECKED — #3260's caveat stands
+//    and this does not answer it. What IS checked is whether the declaration is still
+//    NEEDED: a title declared that the test does not actually leave is reported as
+//    STALE. That is the half that rots first — a cleanup gets added, or a fixture
+//    moves, and the exemption goes on silently covering nothing — and it costs one
+//    comparison over a set the diff already computed. It does not, and must not be
+//    claimed to, tell you whether a live declaration's stated reason is true.
+//
+//    WHAT THE DIFF DOES *NOT* WATCH, and why: `duration_min` and the other numeric
+//    columns. The subject is what a LATER TEST can see, and the surfaces rank on
+//    `lastDate` and key on kind + item — a duration edit re-ranks nothing. Watching
+//    numbers would red every in-place edit in the suite to buy a defect nobody has.
 
 /**
  * How far back a later spec can still be moved by profile 1's activities, IN DAYS.
@@ -237,6 +248,8 @@ export interface SharedActivityDrift {
   added: { id: number; title: string; date: string }[];
   /** `date|type|title` combinations this test removed, and how many of each. */
   missing: { signature: string; count: number }[];
+  /** Declared titles this test did not actually leave — the declaration is stale. */
+  staleDeclarations: string[];
 }
 
 const RECENT_ACTIVITY_SQL = `SELECT id, date, type, title
@@ -293,18 +306,19 @@ export function diffRecentActivities(
   after: SharedActivitySnapshot,
   declared: SharedProfileLeftovers = NO_LEFTOVERS
 ): SharedActivityDrift {
-  const allowed = new Set(declared.titles);
   const tally = (snapshot: SharedActivitySnapshot) => {
     const counts = new Map<string, number>();
     for (const row of snapshot)
-      if (!allowed.has(titleOf(row.signature)))
-        counts.set(row.signature, (counts.get(row.signature) ?? 0) + 1);
+      counts.set(row.signature, (counts.get(row.signature) ?? 0) + 1);
     return counts;
   };
   const beforeCounts = tally(before);
   const afterCounts = tally(after);
 
-  const drift: SharedActivityDrift = { added: [], missing: [] };
+  // The FULL movement first, then the declaration is applied as a partition — which
+  // is what makes a declaration that covers nothing visible instead of free.
+  const added: { id: number; title: string; date: string }[] = [];
+  const missing: { signature: string; count: number }[] = [];
   // Surplus copies are attributed NEWEST FIRST, so the row the repair removes is
   // the one this test just wrote rather than a seeded twin of it.
   const newestFirst = [...after].sort((a, b) => b.id - a.id);
@@ -315,15 +329,27 @@ export function diffRecentActivities(
     for (const row of newestFirst) {
       if (surplus === 0) break;
       if (row.signature !== signature) continue;
-      drift.added.push({ id: row.id, title: titleOf(signature), date });
+      added.push({ id: row.id, title: titleOf(signature), date });
       surplus -= 1;
     }
   }
   for (const [signature, count] of beforeCounts) {
     const deficit = count - (afterCounts.get(signature) ?? 0);
-    if (deficit > 0) drift.missing.push({ signature, count: deficit });
+    if (deficit > 0) missing.push({ signature, count: deficit });
   }
-  return drift;
+
+  const declaredTitles = new Set(declared.titles);
+  const covered = new Set<string>();
+  const cover = (title: string) => {
+    if (!declaredTitles.has(title)) return false;
+    covered.add(title);
+    return true;
+  };
+  return {
+    added: added.filter((row) => !cover(row.title)),
+    missing: missing.filter((row) => !cover(titleOf(row.signature))),
+    staleDeclarations: declared.titles.filter((t) => !covered.has(t)),
+  };
 }
 
 /**
@@ -382,6 +408,19 @@ export function sharedActivityDriftMessage(
   now: Date
 ): string {
   const lines: string[] = [];
+  if (drift.staleDeclarations.length > 0)
+    return (
+      `This test declares sharedProfileLeftovers it did not leave (#3946):\n` +
+      drift.staleDeclarations.map((t) => `  • "${t}"`).join("\n") +
+      `\n\nA declaration that covers nothing is an exemption nobody can see the ` +
+      `edge of — the cleanup was added, or the fixture moved, and the title stayed. ` +
+      `Drop it from the \`titles\` list.\n\n` +
+      `IF THIS FILE HAS SEVERAL TESTS and only some leave the row, \`test.use\` at ` +
+      `file scope is too wide: move it into a \`test.describe\` around the tests ` +
+      `that do.\n\n` +
+      `This says nothing about whether a live declaration's \`why\` is still TRUE — ` +
+      `nothing checks that (#3260).`
+    );
   for (const row of drift.added)
     lines.push(`  • ADDED activity ${row.id} "${row.title}" (${row.date})`);
   for (const row of drift.missing)

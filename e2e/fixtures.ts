@@ -338,7 +338,13 @@ export const test = base.extend<TestFixtures, WorkerFixtures>({
         snapshotRecentActivities(at, workerApp.dbPath),
         sharedProfileLeftovers
       );
-      if (drift.added.length + drift.missing.length === 0) return;
+      if (
+        drift.added.length +
+          drift.missing.length +
+          drift.staleDeclarations.length ===
+        0
+      )
+        return;
       repairAddedActivities(drift, workerApp.dbPath);
       throw new Error(sharedActivityDriftMessage(drift, at));
     },
