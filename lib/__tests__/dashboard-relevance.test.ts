@@ -811,16 +811,13 @@ describe("atomic dashboard placement", () => {
       }),
       true,
     ],
-  ] as const)(
-    "%s: %s",
-    (group, _label, candidate, admitted) => {
-      expect(admissionOf(candidate)).toMatchObject({
-        lane: "everything",
-        everythingGroup: group,
-        admitted,
-      });
-    }
-  );
+  ] as const)("%s: %s", (group, _label, candidate, admitted) => {
+    expect(admissionOf(candidate)).toMatchObject({
+      lane: "everything",
+      everythingGroup: group,
+      admitted,
+    });
+  });
 
   it("puts every fact the tail drops behind exactly one door for its page", () => {
     const quiet = [

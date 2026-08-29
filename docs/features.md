@@ -46,9 +46,12 @@ capped-family tail exclusion but still compete for the ordinary Now seats.
 **Standing** holds ongoing context. **Ahead** is read-only: later-today work and
 the same week/later items gathered for Upcoming, with compact inline expansion.
 **Show everything** is a remembered disclosure for the active profile's remaining
-Act, Read, Understand, Setup, and Active states facts. Ordinary facts from other
-profiles stay off the dashboard; explicit household illness context remains
-available. Upcoming and dashboard placement reuse one gather and one fact identity,
+Act, Read, Understand, Setup, and Active states facts. It renders the ones with a
+live reason right now — work that is owed, an action whose window is open, a
+reading that just changed, plus Setup, statements and active states whole — and
+links to the owning page of everything else, one row per page, so a fact it does
+not draw is two taps away instead of one. Ordinary facts from other profiles stay
+off the dashboard; explicit household illness context remains available. Upcoming and dashboard placement reuse one gather and one fact identity,
 so the same item cannot appear twice or acquire different meaning between surfaces.
 
 Each member whose episode is still inside its seven-day reopen window gets a calm
@@ -68,8 +71,9 @@ goals, naps, and authorized household illness context. No card can hide an unrel
 Placement is derived on every request. **Now** contains every safety item plus at
 most two ordinary items whose obligation, window, or changed state makes them
 current. **Standing** contains ongoing context, **Ahead** previews later work without
-write controls, and **Show everything** holds the exact grouped remainder. Expanding
-it never performs another query.
+write controls, and **Show everything** holds the exact grouped remainder — drawing
+what is live and linking to the pages that own the rest. Expanding it never
+performs another query.
 
 There is no dashboard editor, saved order, or hidden set. Old saved layouts are
 removed during upgrade, and onboarding no longer asks anyone to arrange a dashboard.
