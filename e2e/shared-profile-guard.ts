@@ -171,6 +171,14 @@ export function strandedDraftMessage(
 //    It looks in BOTH directions on purpose: a spec that deletes or re-dates a
 //    SEEDED row breaks the same neighbour just as thoroughly as one that adds a row.
 //
+//    AND IT IS KEYED ON WHAT A LATER TEST CAN SEE, NOT ON ROW IDENTITY — measured,
+//    not assumed. The first version keyed the diff on `activities.id` and reported
+//    `training-log-merge` for merging two rows and then UNDOING it: the undo
+//    re-creates the discarded row with a NEW id, which an id-keyed diff calls one
+//    deletion plus one insertion while a reader of the Log sees exactly what it saw
+//    before. So a snapshot is a MULTISET of the fields the surfaces actually consume,
+//    and a row that comes back identical is correctly silent.
+//
 // 2. IT IS DATE-SCOPED, AND THE SCOPE IS MEASURED FROM THE FROZEN INSTANT. What
 //    broke ride-detail was a row dated TODAY on a surface ranked by recency;
 //    `palette-deeplinks`' 2019-dated insert is inert and always was. Scoping to the
@@ -216,14 +224,19 @@ export interface SharedProfileLeftovers {
 
 export const NO_LEFTOVERS: SharedProfileLeftovers = { why: "", titles: [] };
 
-/** id → the fields a later test can observe, joined. */
-export type SharedActivitySnapshot = Map<number, string>;
+/**
+ * The rows a later test can see, as `{ id, "date|type|title" }`.
+ *
+ * Ids ride along only so the repair below can address the rows it removes; the DIFF
+ * never looks at them.
+ */
+export type SharedActivitySnapshot = { id: number; signature: string }[];
 
 export interface SharedActivityDrift {
-  /** Rows that were not there before this test and are now. */
+  /** Rows this test added, newest id first. */
   added: { id: number; title: string; date: string }[];
-  /** Rows whose observable fields this test changed, or that it deleted. */
-  disturbed: { id: number; title: string; before: string; after: string }[];
+  /** `date|type|title` combinations this test removed, and how many of each. */
+  missing: { signature: string; count: number }[];
 }
 
 const RECENT_ACTIVITY_SQL = `SELECT id, date, type, title
@@ -245,7 +258,7 @@ export function snapshotRecentActivities(
   dbPath: string = workerDbPath(),
   profileId: number = SHARED_PROFILE_ID
 ): SharedActivitySnapshot {
-  if (!fs.existsSync(dbPath)) return new Map();
+  if (!fs.existsSync(dbPath)) return [];
   const db = new Database(dbPath);
   try {
     db.pragma("busy_timeout = 5000");
@@ -257,9 +270,10 @@ export function snapshotRecentActivities(
       type: string;
       title: string;
     }[];
-    return new Map(
-      rows.map((r) => [r.id, `${r.date}|${r.type}|${r.title}`] as const)
-    );
+    return rows.map((r) => ({
+      id: r.id,
+      signature: `${r.date}|${r.type}|${r.title}`,
+    }));
   } finally {
     db.close();
   }
@@ -280,24 +294,34 @@ export function diffRecentActivities(
   declared: SharedProfileLeftovers = NO_LEFTOVERS
 ): SharedActivityDrift {
   const allowed = new Set(declared.titles);
-  const drift: SharedActivityDrift = { added: [], disturbed: [] };
-  for (const [id, signature] of after) {
-    if (before.has(id)) continue;
-    if (allowed.has(titleOf(signature))) continue;
-    const [date, , ...rest] = signature.split("|");
-    drift.added.push({ id, title: rest.join("|"), date });
+  const tally = (snapshot: SharedActivitySnapshot) => {
+    const counts = new Map<string, number>();
+    for (const row of snapshot)
+      if (!allowed.has(titleOf(row.signature)))
+        counts.set(row.signature, (counts.get(row.signature) ?? 0) + 1);
+    return counts;
+  };
+  const beforeCounts = tally(before);
+  const afterCounts = tally(after);
+
+  const drift: SharedActivityDrift = { added: [], missing: [] };
+  // Surplus copies are attributed NEWEST FIRST, so the row the repair removes is
+  // the one this test just wrote rather than a seeded twin of it.
+  const newestFirst = [...after].sort((a, b) => b.id - a.id);
+  for (const [signature, count] of afterCounts) {
+    let surplus = count - (beforeCounts.get(signature) ?? 0);
+    if (surplus <= 0) continue;
+    const [date] = signature.split("|");
+    for (const row of newestFirst) {
+      if (surplus === 0) break;
+      if (row.signature !== signature) continue;
+      drift.added.push({ id: row.id, title: titleOf(signature), date });
+      surplus -= 1;
+    }
   }
-  for (const [id, was] of before) {
-    const now = after.get(id);
-    if (now === was) continue;
-    if (allowed.has(titleOf(was))) continue;
-    if (now !== undefined && allowed.has(titleOf(now))) continue;
-    drift.disturbed.push({
-      id,
-      title: titleOf(was),
-      before: was,
-      after: now ?? "<deleted, or moved out of the horizon>",
-    });
+  for (const [signature, count] of beforeCounts) {
+    const deficit = count - (afterCounts.get(signature) ?? 0);
+    if (deficit > 0) drift.missing.push({ signature, count: deficit });
   }
   return drift;
 }
@@ -329,9 +353,9 @@ export function deleteActivitiesTitled(...titles: string[]): void {
  * Remove the rows this test ADDED, so exactly one test fails instead of every test
  * after it — the same repairing-detector argument `takeStrandedDrafts` makes.
  *
- * A disturbance CANNOT be repaired: the guard knows the row moved but not what the
- * seed meant it to be, and inventing a restore would be a second producer of the
- * seed's truth. The message says so rather than pretending otherwise.
+ * A REMOVAL cannot be repaired: the guard knows the row went but not what the seed
+ * meant it to be, and inventing a restore would be a second producer of the seed's
+ * truth. The message says so rather than pretending otherwise.
  */
 export function repairAddedActivities(
   drift: SharedActivityDrift,
@@ -360,10 +384,10 @@ export function sharedActivityDriftMessage(
   const lines: string[] = [];
   for (const row of drift.added)
     lines.push(`  • ADDED activity ${row.id} "${row.title}" (${row.date})`);
-  for (const row of drift.disturbed)
+  for (const row of drift.missing)
     lines.push(
-      `  • DISTURBED activity ${row.id} "${row.title}": ` +
-        `${row.before} → ${row.after}`
+      `  • REMOVED ${row.count === 1 ? "" : `${row.count}× `}${row.signature} ` +
+        `(deleted, or re-dated / renamed away)`
     );
   return (
     `This test moved ${lines.length} activity row(s) on the SHARED profile ` +
@@ -383,9 +407,9 @@ export function sharedActivityDriftMessage(
       ? `The ADDED rows above have been removed so the rest of this worker's run is ` +
         `unaffected. `
       : ``) +
-    (drift.disturbed.length > 0
-      ? `The DISTURBED rows have NOT been restored — this guard knows they moved, ` +
-        `not what the seed meant them to be.`
+    (drift.missing.length > 0
+      ? `The REMOVED rows have NOT been put back — this guard knows they went, not ` +
+        `what the seed meant them to be.`
       : ``)
   );
 }

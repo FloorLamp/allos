@@ -317,7 +317,7 @@ export const test = base.extend<TestFixtures, WorkerFixtures>({
       // down in `afterAll` is in both readings and is correctly invisible here.
       const at = frozenNow();
       const before = workerApp.demo
-        ? new Map<number, string>()
+        ? []
         : snapshotRecentActivities(at, workerApp.dbPath);
       // eslint-disable-next-line react-hooks/rules-of-hooks
       await use();
@@ -335,7 +335,7 @@ export const test = base.extend<TestFixtures, WorkerFixtures>({
         snapshotRecentActivities(at, workerApp.dbPath),
         sharedProfileLeftovers
       );
-      if (drift.added.length + drift.disturbed.length === 0) return;
+      if (drift.added.length + drift.missing.length === 0) return;
       repairAddedActivities(drift, workerApp.dbPath);
       throw new Error(sharedActivityDriftMessage(drift, at));
     },
