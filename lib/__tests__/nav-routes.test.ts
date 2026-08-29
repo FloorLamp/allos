@@ -3,6 +3,7 @@ import fs from "node:fs";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
 import { stripComments } from "./strip-comments";
+import { perTestCeiling } from "../../vitest.timeouts";
 
 // Static consistency guard for the sidebar ↔ App-Router routes, in the same
 // "pure" spirit as profile-scoping.test.ts: it reads the repo's own source as
@@ -329,22 +330,35 @@ describe("nav ↔ route consistency", () => {
     ).toEqual([]);
   });
 
-  it("nothing outside lib/revalidate.ts imports Next's raw revalidatePath (issues #1636/#2149)", () => {
-    const offenders: string[] = [];
-    let seen = 0;
-    for (const root of SOURCE_ROOTS) {
-      for (const file of sourceFiles(path.join(REPO, root))) {
-        seen++;
-        const rel = path.relative(REPO, file);
-        if (mayImportRaw(rel)) continue;
-        if (importsRawRevalidate(file)) offenders.push(rel);
+  // A CEILING DERIVED FROM CI, WHERE IT IS ENFORCED (#3986). This walks and
+  // comment-strips every .ts/.tsx under five source roots — 2 687 ms solo on a
+  // 4-core box, but 12 746 ms on the GREEN CI run at 43bdc712 and 16 919 ms on the
+  // red one five minutes later, against the tier's 15 000 ms default. It was
+  // running at 1.18x headroom, so it was a coin flip rather than a hang detector,
+  // and it lost one. 4x testTimeout is 60 000 ms on CI — ~4.7x the green reading —
+  // and scales with the orchestration override, which a literal would not.
+  it(
+    "nothing outside lib/revalidate.ts imports Next's raw revalidatePath (issues #1636/#2149)",
+    { timeout: perTestCeiling(4) },
+    () => {
+      const offenders: string[] = [];
+      let seen = 0;
+      for (const root of SOURCE_ROOTS) {
+        for (const file of sourceFiles(path.join(REPO, root))) {
+          seen++;
+          const rel = path.relative(REPO, file);
+          if (mayImportRaw(rel)) continue;
+          if (importsRawRevalidate(file)) offenders.push(rel);
+        }
       }
+      // Sanity anchor: the walker must not go quietly empty.
+      expect(seen, "no source files found — walker broken?").toBeGreaterThan(
+        500
+      );
+      expect(
+        offenders,
+        `these import revalidatePath directly instead of the revalidateRoute wrapper, which is what makes the target compile-checked:\n${offenders.join("\n")}`
+      ).toEqual([]);
     }
-    // Sanity anchor: the walker must not go quietly empty.
-    expect(seen, "no source files found — walker broken?").toBeGreaterThan(500);
-    expect(
-      offenders,
-      `these import revalidatePath directly instead of the revalidateRoute wrapper, which is what makes the target compile-checked:\n${offenders.join("\n")}`
-    ).toEqual([]);
-  });
+  );
 });
