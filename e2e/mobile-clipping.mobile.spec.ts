@@ -75,11 +75,9 @@ const NAP_FIXTURE_WAKE_DAY = shiftDateStr(
 // is the inverse of `mainSleepPeriod`, so without the night the same three rows are
 // co-equal fragments of one merged night and the nap count is zero.
 //
-// AT LEAST three, not exactly three: the #160 SRI block writes its nights as raw-UTC
-// windows, and at run hours where that lands one on this wake-day it is an extra,
-// unasked-for session which the elected night then classifies as a fourth nap. That
-// mis-attribution is its own defect and nothing here asserts about it; this bound is
-// the part that is true in every zone the suite pins.
+// Exactly three: the #160 SRI block now resolves its 28 windows through the profile
+// timezone (#3644), so its stored wake-day and computed wake-day agree and no
+// neighbouring night can be misclassified as a fourth nap on this row.
 async function expectSeededNapFixture(history: Locator): Promise<void> {
   const row = history.locator(
     `[data-testid="sleep-mood-history-row"][data-date="${NAP_FIXTURE_WAKE_DAY}"]`
@@ -114,7 +112,7 @@ async function expectSeededNapFixture(history: Locator): Promise<void> {
     `wake-day ${NAP_FIXTURE_WAKE_DAY} renders ${seeded.naps ?? 0} nap line(s). ` +
       `e2e/seed/sleep.ts seeds three afternoon naps there; a lower count means ` +
       `the seed drifted, not that the layout regressed`
-  ).toBeGreaterThanOrEqual(MIN_NAPS_TO_EXPRESS_THE_DEFECT);
+  ).toBe(MIN_NAPS_TO_EXPRESS_THE_DEFECT);
 }
 
 test.describe("mobile clipping batch (#2614)", () => {
