@@ -197,17 +197,28 @@ test("a chronically under-floor food habit can be untracked without touching the
     ).toHaveCount(0);
     expect(floorOf(db, targetId)).toBeNull();
     // …and the record of what was actually eaten is exactly as it was.
+    // SCOPED TO THE DAYS THIS TEST SEEDED. "berries" is shared app vocabulary, not a
+    // spec-owned name, so counting every berries row on profile 1 counted a NEIGHBOUR's
+    // serving too — offline-food-log.spec taps `log-berries` on this same profile and
+    // (correctly, by delta) leaves the row behind. The claim here is that untracking
+    // deletes nothing that was eaten, and these six days are what this test put there.
     expect(
       db
         .prepare(
-          "SELECT COUNT(*) AS n FROM food_daily_totals WHERE profile_id = 1 AND group_key = ?"
+          `SELECT COUNT(*) AS n FROM food_daily_totals
+            WHERE profile_id = 1 AND group_key = ?
+              AND date IN (${ONE_PER_WEEK.map(() => "?").join(", ")})`
         )
-        .get(FOOD_GROUP)
+        .get(FOOD_GROUP, ...ONE_PER_WEEK)
     ).toEqual({ n: ONE_PER_WEEK.length });
   } finally {
+    // The same scope on the way out: an unscoped delete took the neighbour's serving
+    // with it on every run — a spec destroying another spec's data, not merely
+    // asserting on it.
     db.prepare(
-      "DELETE FROM food_daily_totals WHERE profile_id = 1 AND group_key = ?"
-    ).run(FOOD_GROUP);
+      `DELETE FROM food_daily_totals WHERE profile_id = 1 AND group_key = ?
+        AND date IN (${ONE_PER_WEEK.map(() => "?").join(", ")})`
+    ).run(FOOD_GROUP, ...ONE_PER_WEEK);
     dropTarget(db, targetId);
     db.close();
   }

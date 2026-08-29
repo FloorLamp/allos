@@ -110,6 +110,7 @@ export default function IllnessCockpitBody({
             profileId={target}
             episodeId={episode.id ?? undefined}
             showTitle={false}
+            analysisHref={crossProfile ? undefined : "/trends/symptoms"}
           />
         </section>
       ) : null}

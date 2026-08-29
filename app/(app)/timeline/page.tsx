@@ -1150,6 +1150,9 @@ export default async function TimelinePage(props: {
             suggestActivateIllness={!dayIllnessActive}
             temperatureUnit={units.temperatureUnit}
             textIntakeEnabled={isTaskConfigured("symptom-map")}
+            // Unconditional here: the card above already renders only for the
+            // acting profile's own day, so the link can never name someone else's.
+            analysisHref="/trends/symptoms"
           />
         </SymptomEntryCard>
       )}
