@@ -878,33 +878,48 @@ describe("session denial: revoked vs merely unauthorized (#3053)", () => {
   // would present. Expiry arms leave the row for `purgeExpiredSessions` to find, or sweep
   // it — after the sweep an expired row and a revoked one are equally ABSENT, which is
   // precisely why absence could never carry this distinction.
-  const ARMS: [name: string, run: (loginId: number, token: string) => void, denial: SessionDenial][] =
+  const ARMS: [
+    name: string,
+    run: (loginId: number, token: string) => void,
+    denial: SessionDenial,
+  ][] = [
     [
-      ["a lapsed cookie, not yet swept", (_l, t) => ageSession(sha256hex(t), "-1 days", "-1 hours", "-1 hours"), "unauthorized"],
-      [
-        "a lapsed cookie the purge has swept",
-        (_l, t) => {
-          ageSession(sha256hex(t), "-1 days", "-1 hours", "-1 hours");
-          purgeExpiredSessions();
-        },
-        "unauthorized",
-      ],
-      [
-        "a session past the absolute 90-day ceiling, swept",
-        (_l, t) => {
-          ageSession(sha256hex(t), "-91 days", "+30 days", "-1 minutes");
-          purgeExpiredSessions();
-        },
-        "unauthorized",
-      ],
-      ["destroyLoginSessions — every device", (l) => void destroyLoginSessions(l), "revoked"],
-      [
-        "destroyLoginSessions — every device but this one",
-        (l, t) => void destroyLoginSessions(l, sha256hex(`other-${t}`)),
-        "revoked",
-      ],
-      ["revokeSession — one device", (l, t) => void revokeSession(l, sha256hex(t), null), "revoked"],
-    ];
+      "a lapsed cookie, not yet swept",
+      (_l, t) => ageSession(sha256hex(t), "-1 days", "-1 hours", "-1 hours"),
+      "unauthorized",
+    ],
+    [
+      "a lapsed cookie the purge has swept",
+      (_l, t) => {
+        ageSession(sha256hex(t), "-1 days", "-1 hours", "-1 hours");
+        purgeExpiredSessions();
+      },
+      "unauthorized",
+    ],
+    [
+      "a session past the absolute 90-day ceiling, swept",
+      (_l, t) => {
+        ageSession(sha256hex(t), "-91 days", "+30 days", "-1 minutes");
+        purgeExpiredSessions();
+      },
+      "unauthorized",
+    ],
+    [
+      "destroyLoginSessions — every device",
+      (l) => void destroyLoginSessions(l),
+      "revoked",
+    ],
+    [
+      "destroyLoginSessions — every device but this one",
+      (l, t) => void destroyLoginSessions(l, sha256hex(`other-${t}`)),
+      "revoked",
+    ],
+    [
+      "revokeSession — one device",
+      (l, t) => void revokeSession(l, sha256hex(t), null),
+      "revoked",
+    ],
+  ];
 
   it.each(ARMS)("%s", (_name, run, denial) => {
     const { id } = mkLogin();

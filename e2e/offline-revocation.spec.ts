@@ -239,9 +239,10 @@ async function warm(page: Page, f: Fixture) {
   await expect
     .poll(() => storedKinds(page), { timeout: 30_000 })
     .toEqual([...SNAPSHOT_KINDS].sort());
-  expect(await medOnDevice(page), "the fixture med never reached the device").toBe(
-    true
-  );
+  expect(
+    await medOnDevice(page),
+    "the fixture med never reached the device"
+  ).toBe(true);
 }
 
 /**

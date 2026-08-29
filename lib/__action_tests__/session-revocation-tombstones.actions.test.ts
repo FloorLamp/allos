@@ -81,7 +81,10 @@ const PATHS: [name: string, run: () => Promise<string>][] = [
       actAs(me, createProfile("revoke-pwchange", me.id));
       const token = deviceSession(me.id);
       const res = await changeOwnPassword(
-        fd({ current_password: ACTION_TEST_PASSWORD, new_password: NEW_PASSWORD })
+        fd({
+          current_password: ACTION_TEST_PASSWORD,
+          new_password: NEW_PASSWORD,
+        })
       );
       expect(res.ok, "the password change itself was refused").toBe(true);
       return token;
@@ -94,7 +97,9 @@ const PATHS: [name: string, run: () => Promise<string>][] = [
       actAs(admin, createProfile("revoke-reset", admin.id));
       const victim = createLogin({ role: "member" });
       const token = deviceSession(victim.id);
-      const res = await resetPassword(fd({ id: victim.id, password: NEW_PASSWORD }));
+      const res = await resetPassword(
+        fd({ id: victim.id, password: NEW_PASSWORD })
+      );
       expect(res.ok, "the reset itself was refused").toBe(true);
       return token;
     },
@@ -129,7 +134,10 @@ const PATHS: [name: string, run: () => Promise<string>][] = [
       const login = createLogin({ role: "member" });
       const token = deviceSession(login.id);
       const link = createAuthToken(login.id, "reset");
-      const res = await completeSetPassword({}, fd({ token: link, password: NEW_PASSWORD }));
+      const res = await completeSetPassword(
+        {},
+        fd({ token: link, password: NEW_PASSWORD })
+      );
       expect(res.ok, "the set-password itself was refused").toBe(true);
       return token;
     },
@@ -154,7 +162,11 @@ describe("every deliberate session end answers REVOKED on the wire (#3053)", () 
 
     expect(sessionDenial(revoked)).toBe<SessionDenial>("revoked");
     // A guess, an empty cookie, and a live-shaped token nobody revoked all read the same.
-    for (const guess of ["", "device token 999 999", `${untouched} but wrong`]) {
+    for (const guess of [
+      "",
+      "device token 999 999",
+      `${untouched} but wrong`,
+    ]) {
       expect(sessionDenial(guess)).toBe<SessionDenial>("unauthorized");
     }
   });

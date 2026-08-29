@@ -13,7 +13,9 @@ import { describe, expect, it, vi, beforeEach } from "vitest";
 // a wipe that fires one row too narrow leaves the health record on a phone somebody
 // revoked on suspicion of compromise. Both failures are silent on the device.
 
-vi.mock("@/lib/offline/queue-db", () => ({ clearQueue: vi.fn(async () => {}) }));
+vi.mock("@/lib/offline/queue-db", () => ({
+  clearQueue: vi.fn(async () => {}),
+}));
 vi.mock("@/lib/offline/write-gate", () => ({
   reopenForFailedLogout: vi.fn(async () => {}),
 }));
@@ -40,8 +42,18 @@ beforeEach(() => wipes.mockClear());
 describe("wipeIfRevoked (#3053)", () => {
   it.each([
     ["the server named it revoked", 401, { ok: false, error: "revoked" }, true],
-    ["an ordinary lapsed cookie", 401, { ok: false, error: "unauthorized" }, false],
-    ["an older server that still says auth", 401, { ok: false, error: "auth" }, false],
+    [
+      "an ordinary lapsed cookie",
+      401,
+      { ok: false, error: "unauthorized" },
+      false,
+    ],
+    [
+      "an older server that still says auth",
+      401,
+      { ok: false, error: "auth" },
+      false,
+    ],
     ["a 401 with no error at all", 401, { ok: false }, false],
     ["a 401 whose body will not parse", 401, undefined, false],
     ["a 403 — not this route's answer", 403, { error: "revoked" }, false],

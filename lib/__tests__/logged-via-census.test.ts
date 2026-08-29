@@ -188,6 +188,8 @@ const NOT_A_USER_WRITE_LEDGER: Record<string, string> = {
   profile_settings: "settings",
   profile_share_links: "sharing machinery",
   replayed_keys: "offline-replay idempotency bookkeeping",
+  revoked_sessions:
+    "auth machinery — token hashes of deliberately ended sessions (#3053)",
   sessions: "auth machinery",
   settings: "settings",
 

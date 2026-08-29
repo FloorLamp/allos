@@ -263,9 +263,9 @@ export function purgeExpiredSessions(): number {
   // older than the absolute max can never resolve to a session again, so its tombstone
   // can never change an answer. Counted separately — the return value is sessions, which
   // is what the #1843 audit line means by it.
-  db.prepare("DELETE FROM revoked_sessions WHERE revoked_at <= datetime('now', ?)").run(
-    SESSION_ABSOLUTE_MAX_MODIFIER
-  );
+  db.prepare(
+    "DELETE FROM revoked_sessions WHERE revoked_at <= datetime('now', ?)"
+  ).run(SESSION_ABSOLUTE_MAX_MODIFIER);
   // Drop both sliding-expired rows AND any past the absolute created_at ceiling,
   // so the ceiling can't be defeated by a session that keeps sliding expires_at.
   return db
