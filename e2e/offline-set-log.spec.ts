@@ -2,6 +2,7 @@ import { test, expect } from "./fixtures";
 import { type Page } from "@playwright/test";
 import Database from "better-sqlite3";
 import { comboboxRows, hydratedClick } from "./helpers";
+import { deleteActivitiesTitled } from "./shared-profile-guard";
 import { workerDbPath } from "./worker-env";
 
 // #1596 (landing #28's original "add set" ask): a workout logged entirely offline —
@@ -49,11 +50,19 @@ async function pickActivity(page: Page, name: string) {
     .click();
 }
 
+// The replayed row is the POINT of this test, so it cannot be avoided — but it is a
+// today-dated STRENGTH session on the shared profile, and Analyze's quick links give
+// strength exactly one slot, filled by its most recent item. Left behind it displaces
+// the seeded lift for every later test on this worker: #3930 in the other lane, found
+// by the #3946 guard. Swept from an afterEach so a mid-test failure strands nothing.
+let marker = "";
+test.afterEach(() => deleteActivitiesTitled(marker));
+
 test("a workout logged offline queues at close, then syncs exactly once (#1596)", async ({
   page,
   context,
 }) => {
-  const marker = `Offline session ${Date.now()}`; // clock-ok: unique-name suffix for this spec's own session title, never a stored timestamp
+  marker = `Offline session ${Date.now()}`; // clock-ok: unique-name suffix for this spec's own session title, never a stored timestamp
 
   await page.goto("/training?tab=log");
   await hydratedClick(
