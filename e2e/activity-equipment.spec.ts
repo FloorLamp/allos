@@ -291,6 +291,14 @@ test("the strength picker creates and selects a travel machine without losing th
       page.getByRole("button", { name: "Delete", exact: true })
     ).toBeVisible({ timeout: AUTOSAVE_ROW_MS });
 
+    // The part states its implement and nothing else (#3349) — the picker, the
+    // quick-add and the registry door are all behind this one chip.
+    const chip = page.getByTestId("strength-equipment-chip");
+    await expect(chip).toHaveText("Barbell");
+    await expect(page.getByTestId("strength-equipment-link")).toHaveCount(0);
+    await expect(page.getByTestId("strength-equipment-add")).toHaveCount(0);
+    await chip.click();
+
     // The full-registry door is ordinary same-app navigation. The activity is
     // already autosaved, so it does not need a surprise second tab.
     const door = page.getByTestId("strength-equipment-link");
@@ -407,6 +415,12 @@ test("the strength form shows an equipment door with no gear on file (#1611)", a
       .filter({ hasText: "Barbell Bench Press" })
       .first() // first-ok: transient combobox list this spec just opened by typing the name
       .click();
+
+    // No gear on file and a lift with a normal implement: the row STATES that
+    // implement, and one tap opens the picker behind it (#3349).
+    const chip = page.getByTestId("strength-equipment-chip");
+    await expect(chip).toHaveText("Barbell");
+    await chip.click();
 
     // No gear on file: no <select>, but BOTH doors render (the bug was that neither
     // did, leaving this profile with no path to the registry from the strength form).
@@ -650,6 +664,125 @@ test("gear chosen behind a closed panel still saves, and still counts as a chang
     // The guard's own live-draft signature, taken on the shared profile — the probe is
     // a draft on profile 1 from its first auto-save, so a failure above must not leave
     // it behind (same reasoning as the #1611 test above).
+    takeStrandedDrafts(workerDbPath(), SHARED_PROFILE_ID);
+  }
+});
+
+// ---- #3349: the PER-PART equipment row states its conclusion ---------------
+//
+// The session-level chip above is one fact on one form. This one repeats per exercise,
+// which is what made the old row expensive: six-plus controls and a "Manage equipment"
+// link on every part of a five-lift session. What needs a browser rather than a code
+// read is the ONE-PER-FORM claim — it is a property of two parts rendered together, and
+// of the editor state living above both of them, not of either component alone.
+//
+// Fixture ownership (docs/internals/e2e-hygiene.md): the probe carries a unique per-run
+// suffix and is deleted at the end. It is a live draft on the shared profile from its
+// first auto-save, so its disposal cannot sit only on the happy path.
+const PART_GEAR_PREFIX = "Part gear probe";
+
+test("a strength part states its implement, and the registry door is one per form (#3349)", async ({
+  page,
+}) => {
+  test.slow(); // local next dev compiles /training on first hit
+  const stamp = `${Date.now()}`; // clock-ok: unique-name suffix for this run's probe activity, never a stored timestamp
+  const title = `${PART_GEAR_PREFIX} ${stamp}`;
+  // The form's own dirty marker (#3351) — readable at any moment, so nothing here waits
+  // on the `Saved ✓` check to fade. See the #3334 test above for the measured budget.
+  const form = page.getByTestId("activity-form");
+  const chips = page.getByTestId("strength-equipment-chip");
+  const doors = page.getByTestId("strength-equipment-link");
+
+  try {
+    await page.goto("/training?tab=log"); // default "Log" tab renders the Training Log feed
+    await hydratedClick(page, page.getByTestId("training-log-add-activity"));
+    await page.getByRole("textbox", { name: "Activity name" }).fill(title);
+
+    // A BARE VARIANT BASE. "Curl" cannot be saved until an implement is picked
+    // (needsEquipment), so the row says so with the primitive's dashed MISSING chip —
+    // and says it NOW, not once a save has already been refused.
+    //
+    // TYPED AND NOT PICKED, on purpose. `selectPartName` never leaves a picked base
+    // bare — it resolves to the last-used variant, or to the group's first equipment
+    // — so a pick cannot reach this state at all. Typing does, and so does a stored
+    // row that arrived any other way, which is the case the save gate exists for.
+    const firstName = page.getByPlaceholder(/What did you do/);
+    await firstName.fill("Curl");
+    // The dropdown is open over the row below; Escape dismisses it without committing
+    // a pick, which is exactly what this state needs.
+    await firstName.press("Escape");
+    await expect(firstName).toHaveValue("Curl");
+    await expect(chips).toHaveCount(1);
+    await expect(chips).toHaveText("pick equipment");
+    await expect(chips).toHaveAttribute("data-fact-state", "missing");
+    // NOTHING ELSE IS ON SCREEN. This is the row's whole complaint: these three were
+    // drawn on every exercise, unasked.
+    await expect(doors).toHaveCount(0);
+    await expect(page.getByTestId("strength-equipment-select")).toHaveCount(0);
+    await expect(page.getByTestId("strength-equipment-add")).toHaveCount(0);
+
+    // One tap behind: the picker AND its door.
+    await chips.click();
+    await expect(page.getByTestId("strength-equipment-editor")).toHaveAttribute(
+      "data-panel",
+      "equipment"
+    );
+    await expect(doors).toHaveCount(1);
+    await page.getByRole("button", { name: "Barbell", exact: true }).click();
+    await expect(firstName).toHaveValue("Barbell Curl");
+    // The dirty half, asserted FIRST — `dirty` is transient, and reading it after the
+    // panel closes would be reading it after the state it names has passed.
+    await expect(form).toHaveAttribute("data-unsaved", "true");
+    await page.getByTestId("strength-equipment-done").click();
+
+    // The conclusion, stated; the door gone with the panel; focus back on the chip that
+    // opened it (#3311) rather than on <body>.
+    await expect(chips).toHaveText("Barbell");
+    await expect(chips).toHaveAttribute("data-fact-state", "stated");
+    await expect(chips).toBeFocused();
+    await expect(doors).toHaveCount(0);
+
+    // Complete the part so the form auto-saves and a second one can be added.
+    await settledFill(page, page.getByTestId("set1-weight"), "20");
+    await settledFill(page, page.getByTestId("set1-reps"), "10");
+    await expect(
+      page.getByRole("button", { name: "Delete", exact: true })
+    ).toBeVisible({ timeout: AUTOSAVE_ROW_MS });
+    await expect(form).toHaveAttribute("data-unsaved", "false");
+
+    await page.getByRole("button", { name: "+ Add another activity" }).click();
+    const secondName = page.getByPlaceholder(/Add another activity/);
+    await secondName.fill("Barbell Bench Press");
+    // The composed variant is a catalog name but not a picker OPTION (the options list
+    // bases; the concrete variants are reached through the equipment chips), so this is
+    // the free-text "Use …" row — which `pickPartName` still resolves as a known lift.
+    await comboboxRows(page)
+      .filter({ hasText: "Barbell Bench Press" })
+      .first() // first-ok: transient combobox list this spec just opened by typing the name
+      .click();
+    await expect(secondName).toHaveValue("Barbell Bench Press");
+
+    // TWO PARTS, TWO CONCLUSIONS, AND STILL NO DOOR. The second part's implement comes
+    // from the lift's own name rather than from a pick, and it is stated the same way.
+    await expect(chips).toHaveCount(2);
+    await expect(chips.nth(1)).toHaveText("Barbell"); // nth-ok: the part this spec just added
+    await expect(chips.nth(0)).toHaveText("Barbell"); // nth-ok: the Curl part, still stating its own
+    await expect(doors).toHaveCount(0);
+
+    // THE ONE-PER-FORM CLAIM. Opening the second part's picker closes the first's, so
+    // the door the old row repeated once per exercise exists exactly once whichever
+    // part is being edited.
+    await chips.nth(0).click(); // nth-ok: the Curl part this spec entered first
+    await expect(doors).toHaveCount(1);
+    await expect(chips).toHaveCount(1);
+    await chips.nth(0).click(); // nth-ok: with the Curl chip replaced by its panel, the one remaining chip is the Bench Press part
+    await expect(doors).toHaveCount(1);
+    await expect(page.getByTestId("strength-equipment-editor")).toHaveCount(1);
+
+    await deleteActivityFromForm(page);
+  } finally {
+    // The guard's own live-draft signature on the shared profile — the probe is a draft
+    // from its first auto-save, so a failure above must not leave it behind.
     takeStrandedDrafts(workerDbPath(), SHARED_PROFILE_ID);
   }
 });

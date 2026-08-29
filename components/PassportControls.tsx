@@ -3,11 +3,11 @@
 import { useState } from "react";
 import { formatDateShape, type DisplayFormatPrefs } from "@/lib/format-date";
 import { useFormatPrefs } from "@/components/FormatPrefsProvider";
-import { IconPrinter, IconShare } from "@tabler/icons-react";
+import { IconShare } from "@tabler/icons-react";
 import CreatedShareLink from "@/components/CreatedShareLink";
 import ModalShell from "@/components/ModalShell";
 import SubmitButton, { DestructiveSubmit } from "@/components/SubmitButton";
-import { printRegion } from "@/components/print-scope";
+import PrintButton from "@/components/PrintButton";
 import {
   SHARE_FIELDS,
   SHARE_TTL_OPTIONS,
@@ -112,14 +112,7 @@ export default function PassportControls({
 
   return (
     <div className="flex items-center gap-2 print:hidden">
-      <button
-        type="button"
-        className="btn-ghost"
-        onClick={() => printRegion("passport")}
-      >
-        <IconPrinter className="h-4 w-4" stroke={1.75} />
-        Print
-      </button>
+      <PrintButton region="passport" />
       <button type="button" className="btn" onClick={() => setOpen(true)}>
         <IconShare className="h-4 w-4" stroke={1.75} />
         Share

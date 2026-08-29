@@ -129,14 +129,20 @@ export default function ExtractionToaster({
           if (d.status === "done") {
             toast(
               `${d.filename}: imported ${d.count} record${d.count === 1 ? "" : "s"}.`,
-              { key: `doc-${d.id}`, duration: null, action }
+              { key: `doc-${d.id}`, duration: null, action, silent: true }
             );
           } else {
             toast(
               d.error
                 ? `Couldn’t extract results from ${d.filename}: ${d.error}`
                 : `Couldn’t extract results from ${d.filename}.`,
-              { key: `doc-${d.id}`, tone: "error", duration: null, action }
+              {
+                key: `doc-${d.id}`,
+                tone: "error",
+                duration: null,
+                action,
+                silent: true,
+              }
             );
           }
         }

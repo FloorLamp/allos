@@ -28,6 +28,7 @@ export default function ChartJumpMenu({ items }: { items: ChartChip[] }) {
   const menuId = useId();
   const triggerRef = useRef<HTMLButtonElement>(null);
   const optionRefs = useRef<Array<HTMLAnchorElement | null>>([]);
+  const focusOnOpenIndexRef = useRef(0);
   const activeIndex = Math.max(
     0,
     items.findIndex((item) => item.id === active)
@@ -58,18 +59,22 @@ export default function ChartJumpMenu({ items }: { items: ChartChip[] }) {
     return () => observer.disconnect();
   }, [items]);
 
-  // The ACTIVE option takes focus when the menu opens, in either presentation.
+  // The option that was ACTIVE when the person opened the menu takes focus, in
+  // either presentation. Snapshotting that index at open is deliberate: the
+  // observer keeps changing `active` as charts cross the viewport, but a scroll
+  // must not move keyboard focus inside an already-open menu.
   // The desktop host first mounts the portal hidden while it measures. Move
   // focus on the next frame, after those option refs attach and the panel has
   // its anchored position. The sheet follows the same path after its trap has
   // chosen an initial target.
   useEffect(() => {
     if (!open) return;
+    const index = focusOnOpenIndexRef.current;
     const frame = requestAnimationFrame(() => {
-      optionRefs.current[activeIndex]?.focus();
+      optionRefs.current[index]?.focus();
     });
     return () => cancelAnimationFrame(frame);
-  }, [activeIndex, open]);
+  }, [open]);
 
   if (items.length === 0) return null;
 
@@ -79,6 +84,11 @@ export default function ChartJumpMenu({ items }: { items: ChartChip[] }) {
   const close = () => {
     setOpen(false);
     triggerRef.current?.focus();
+  };
+
+  const openMenu = () => {
+    focusOnOpenIndexRef.current = activeIndex;
+    setOpen(true);
   };
 
   const moveFocus = (direction: 1 | -1) => {
@@ -105,12 +115,15 @@ export default function ChartJumpMenu({ items }: { items: ChartChip[] }) {
           aria-haspopup="menu"
           aria-expanded={open}
           aria-controls={open ? menuId : undefined}
-          onClick={() => setOpen((value) => !value)}
+          onClick={() => {
+            if (open) setOpen(false);
+            else openMenu();
+          }}
           onKeyDown={(event) => {
             if (event.key !== "ArrowDown" && event.key !== "ArrowUp") return;
             event.preventDefault();
             if (!open) {
-              setOpen(true);
+              openMenu();
               return;
             }
             moveFocus(event.key === "ArrowDown" ? 1 : -1);

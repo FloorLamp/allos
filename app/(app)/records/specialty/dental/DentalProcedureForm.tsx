@@ -12,6 +12,7 @@ import {
   dentalStatusLabel,
 } from "@/lib/dental";
 import type { DentalProcedure, ToothSystem, FormResult } from "@/lib/types";
+import InlineError from "@/components/InlineError";
 
 const TOOTH_SYSTEM_LABEL: Record<ToothSystem, string> = {
   universal: "Universal (1–32)",
@@ -239,11 +240,7 @@ export default function DentalProcedureForm({
           defaultValue={record?.notes ?? ""}
         />
       </div>
-      {error && (
-        <p role="alert" className="text-sm text-rose-600 dark:text-rose-400">
-          {error}
-        </p>
-      )}
+      <InlineError>{error}</InlineError>
       <div className="flex gap-2" data-testid="dental-procedure-actions">
         <div
           className="grid w-full sm:w-auto"
