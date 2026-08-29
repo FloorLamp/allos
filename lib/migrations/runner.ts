@@ -37,7 +37,12 @@ const log = createLogger("migrate");
 // user_version is a tripwire.
 
 export interface Migration {
-  /** Unique; matches the file slug ("001-baseline", "20260812-foo"). */
+  /**
+   * Unique; recorded in `schema_migrations` and usually matches the file slug.
+   * The shipped `044-episode-share-links.ts` (`043-episode-share-links`) and
+   * `148-retire-run-milestones.ts` (`retire-run-milestones`) predate that
+   * convention, so code must not derive a file path from this name or vice versa.
+   */
   name: string;
   /**
    * The closed numbered era only (1..185, contiguous, === position). New
