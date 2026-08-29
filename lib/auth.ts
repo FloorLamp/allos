@@ -162,16 +162,10 @@ export function accessForProfile(
 
 // ── REVOKED, NOT MERELY UNAUTHORIZED (#3053) ─────────────────────────────────
 //
-// Every deliberate way to end a session deletes its row, and so does the expiry purge.
-// So a device that comes back afterwards presents a cookie whose row is simply ABSENT,
-// and absence cannot tell "an admin signed this phone out on suspicion of compromise"
-// from "you were away for a month". That is why a bare 401 could never be the wipe
-// signal: #2994's pass-4 ruling is that it must NOT wipe reads, because coming back
-// tomorrow is the common case and the offline record is the whole feature.
-//
-// A revocation therefore leaves a TOMBSTONE and an expiry does not. `purgeExpiredSessions`
-// below writes none — that asymmetry IS the distinction, and it is the one property of
-// this file that a change here must not lose.
+// A revocation leaves a TOMBSTONE and an expiry does not. That asymmetry IS the
+// distinction — absence cannot carry it, because every path here ends in the same DELETE
+// — and it is the one property of this file a change must not lose. Why the table exists
+// and how long its rows live: lib/migrations/versions/20260829-revoked-session-tombstones.
 const TOMBSTONE_TOKEN_STMT = hoistedStatement(
   `INSERT OR REPLACE INTO revoked_sessions (token_hash, revoked_at)
    VALUES (?, datetime('now'))`
@@ -227,13 +221,8 @@ const REVOKED_LOOKUP_STMT = hoistedStatement(
 export type SessionDenial = "revoked" | "unauthorized";
 
 /**
- * What to tell a caller whose token did not resolve to a session. Never called for a
- * caller that HAS one — resolve the session first, and ask this only when that answers
- * null.
- *
- * A live token answers "unauthorized" too, in the one case where it can be both: a
- * session revoked and then re-minted onto the same hash is impossible (32 random bytes),
- * so there is no ambiguity to resolve here.
+ * What to tell a caller whose token did not resolve to a session. Resolve the session
+ * first; ask this only when that answered null.
  */
 export function sessionDenial(token: string | null | undefined): SessionDenial {
   if (!token) return "unauthorized";
@@ -254,15 +243,13 @@ export async function currentSessionDenial(): Promise<SessionDenial> {
 // `sessions.created_at` are declared `convention: "bare"` in lib/time-columns.ts,
 // so this compares like against like.
 export function purgeExpiredSessions(): number {
-  // NO TOMBSTONE HERE, and that is the load-bearing line of #3053: expiry is the case a
-  // device must survive. A session that simply lapsed leaves no record, so the next
-  // request gets a plain "unauthorized" and the device keeps its offline copy — which is
-  // #2994's pass-4 ruling, untouched.
+  // NO TOMBSTONE HERE, and that is the load-bearing line of #3053: a session that simply
+  // lapsed leaves no record, so the next request gets a plain "unauthorized" and the
+  // device keeps its offline copy — #2994's pass-4 ruling, untouched.
   //
-  // The sweep DOES retire tombstones, on the same tick and by the same ceiling: a token
-  // older than the absolute max can never resolve to a session again, so its tombstone
-  // can never change an answer. Counted separately — the return value is sessions, which
-  // is what the #1843 audit line means by it.
+  // It does RETIRE tombstones, on the same tick and by the same ceiling: past the
+  // absolute max a token can never resolve again, so its tombstone can never change an
+  // answer. Counted separately — the return value is sessions, per the #1843 audit line.
   db.prepare(
     "DELETE FROM revoked_sessions WHERE revoked_at <= datetime('now', ?)"
   ).run(SESSION_ABSOLUTE_MAX_MODIFIER);
@@ -310,9 +297,8 @@ export async function destroySession(): Promise<void> {
   if (token) {
     const hash = hashToken(token);
     // Tombstoned like every other deliberate end (#3053). This device wipes itself
-    // through components/device-wipe, so the tombstone is for the OTHER documents of the
-    // same session — a second tab, a phone left signed in on the same login — which
-    // learn it at their next contact rather than never.
+    // through components/device-wipe; the tombstone is for the OTHER documents of the
+    // same session — a second tab — which otherwise learn it never.
     TOMBSTONE_TOKEN_STMT.run(hash);
     db.prepare("DELETE FROM sessions WHERE token_hash = ?").run(hash);
   }
@@ -377,10 +363,9 @@ export function resolveSessionToken(token: string): CurrentSession | null {
     // bounces to /login. The sign-in actions refuse to mint one in the first
     // place; this is the same decision applied to a session that OUTLIVED its
     // grants. Deleting by token hash only ever touches this caller's own session.
-    // AND IT IS A REVOCATION, not an expiry (#3053). The session is being torn down
-    // because the login lost every grant it had — somebody took this person's access
-    // away — so the device holding that profile's offline copy must lose it too. This is
-    // the eighth session-ending path; #3053's body lists seven and predates it.
+    // AND IT IS A REVOCATION, not an expiry (#3053): the login lost every grant it had,
+    // so somebody took this person's access away and the device must lose its copy too.
+    // The eighth session-ending path — #3053's body lists seven and predates it.
     TOMBSTONE_TOKEN_STMT.run(tokenHash);
     SESSION_DELETE_STMT.run(tokenHash);
     return null;
