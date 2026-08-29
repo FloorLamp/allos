@@ -9,6 +9,7 @@ import { db } from "../../lib/db";
 import { now as clockNow } from "../../lib/clock";
 import { utcSqlString } from "../../lib/date";
 import { upsertConnection } from "../../lib/integrations/connections";
+import { syncFailureCopy } from "../../lib/integrations/auth-failure";
 import { hashShareToken } from "../../lib/share-token";
 import {
   E2E_LOGIN_CHILD,
@@ -19,7 +20,7 @@ import {
   HEALTH_CONNECT_PROFILE,
   STRAVA_REAUTH_PROFILE,
 } from "../fixture-logins";
-import { seedMemberLogin, fixtureProfileId } from "./common";
+import { seedMemberLogin, fixtureProfileId, ins } from "./common";
 
 // ── E2E coverage-gap fixtures (life stage + integration-state profiles) ──
 export function seedCoverageGaps(): void {
@@ -50,6 +51,26 @@ export function seedCoverageGaps(): void {
       clientSecret: "e2e-reauth-secret",
     },
   });
+  db.prepare(
+    `DELETE FROM integration_sync_events
+      WHERE profile_id = ? AND source_id = 'strava'`
+  ).run(stravaReauthId);
+  ins.run(
+    stravaReauthId,
+    "strava",
+    "2026-07-09T09:00:00Z",
+    0,
+    null,
+    null,
+    null,
+    null,
+    null,
+    null,
+    null,
+    null,
+    null,
+    syncFailureCopy("Strava", "reconnect")
+  );
   seedMemberLogin(E2E_LOGIN_STRAVA, stravaReauthId);
 
   // A dedicated, connection-less profile for the Health Connect generate→rotate flow.
