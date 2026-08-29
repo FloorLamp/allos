@@ -43,19 +43,34 @@ function newProfile(): number {
   return id;
 }
 
-// A situational MEDICATION keyed to `situation`, with one Morning dose. A medication so
-// the #1156 obligation floor can never be what decides membership, and `must` so nothing
-// short-circuits out of dueness ahead of the condition gate.
-function keyedItem(profileId: number, name: string, situation: string): void {
+// A MEDICATION with one Morning dose, either due ON `situation` (`situational`) or a
+// plain daily one HELD BY it (#1296's pause hold — the other consumer of the same
+// active-situation set). A medication so the #1156 obligation floor can never be what
+// decides membership, and `must` so nothing short-circuits ahead of the condition gate.
+function seedItem(
+  profileId: number,
+  name: string,
+  situation: string,
+  how: "due-on" | "paused-by"
+): void {
   const sid = resolveSituationId(profileId, situation)!;
+  const on = how === "due-on";
   const itemId = Number(
     db
       .prepare(
         `INSERT INTO intake_items
-           (profile_id, name, kind, condition, obligation, situation, situation_id, active)
-         VALUES (?, ?, 'medication', 'situational', 'must', ?, ?, 1)`
+           (profile_id, name, kind, condition, obligation, active,
+            situation, situation_id, pause_situation_id)
+         VALUES (?, ?, 'medication', ?, 'must', 1, ?, ?, ?)`
       )
-      .run(profileId, name, situation, sid).lastInsertRowid
+      .run(
+        profileId,
+        name,
+        on ? "situational" : "daily",
+        on ? situation : null,
+        on ? sid : null,
+        on ? null : sid
+      ).lastInsertRowid
   );
   db.prepare(
     `INSERT INTO intake_item_doses (item_id, amount, time_of_day, food_timing, sort)
@@ -91,21 +106,33 @@ describe("a past-day reminder scores against that day's situations (#3973)", () 
   it.each([
     {
       what: "declared TODAY does not reach back",
-      seed: (p: number) => {},
+      how: "due-on" as const,
+      seed: (_p: number) => {},
       toggle: (p: number) => setActiveSituations(p, ["Travel"]),
       before: [false, false],
       after: [false, true],
     },
     {
       what: "un-declared TODAY does not erase a day it was on",
+      how: "due-on" as const,
       seed: (p: number) => activeSince(p, "Travel", 5),
       toggle: (p: number) => setActiveSituations(p, []),
       before: [true, true],
       after: [true, false],
     },
-  ])("$what", ({ seed, toggle, before, after }) => {
+    {
+      // The PAUSE hold (#1296) reads the same set, so it dates with it: declaring the
+      // pausing situation today must not retroactively silence a day it was owed.
+      what: "a pause situation declared TODAY does not silence a past day",
+      how: "paused-by" as const,
+      seed: (_p: number) => {},
+      toggle: (p: number) => setActiveSituations(p, ["Travel"]),
+      before: [true, true],
+      after: [true, false],
+    },
+  ])("$what", ({ how, seed, toggle, before, after }) => {
     const p = newProfile();
-    keyedItem(p, ITEM, "Travel");
+    seedItem(p, ITEM, "Travel", how);
     const past = shiftDateStr(today(p), -2);
     seed(p);
 
@@ -141,7 +168,7 @@ function night(wakeDay: string, minutes: number): NormMetricSample {
 describe("the TODAY branch keeps the derived widening (#1292/#1298)", () => {
   it("a rough night makes a sleep-keyed item due today and on no past day", () => {
     const p = newProfile();
-    keyedItem(p, "Magnesium Glycinate", "Poor sleep");
+    seedItem(p, "Magnesium Glycinate", "Poor sleep", "due-on");
     const anchor = today(p);
     // Six ~8h nights, then 5h last night → a MEASURED rough night, derived-on today.
     const nights = [1, 2, 3, 4, 5, 6].map((i) =>
