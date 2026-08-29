@@ -756,7 +756,7 @@ export async function getStravaAccessToken(
     // dead — mark the connection needs_reauth so the tick stops retrying it forever
     // (issue #326). A transient failure (429/5xx/network) leaves it `connected` to
     // retry next tick. Either way we throw so the sync records an ok:0 event.
-    if (isAuthRefreshFailure(res.status, body)) {
+    if (isAuthRefreshFailure("strava", res.status, body)) {
       markConnectionNeedsReauth(profileId, STRAVA_ID);
     }
     // The body still travels into the operator log when there IS one — unlike Withings,
@@ -1070,7 +1070,7 @@ export async function getWithingsAccessToken(
     // failed read is no evidence, and no evidence must not be able to swallow the one
     // status that needs none.
     const body = await res.text().catch(() => null);
-    if (isAuthRefreshFailure(res.status, body)) {
+    if (isAuthRefreshFailure("withings", res.status, body)) {
       markConnectionNeedsReauth(profileId, WITHINGS_ID);
     }
     throw new Error(`Withings token refresh failed (${res.status})`);
@@ -1090,7 +1090,12 @@ export async function getWithingsAccessToken(
         : -1;
     // `null` body, said out loud: a vendor envelope status has no OAuth error body to
     // read, so 401 is the only revocation evidence this space can carry (#3798).
-    if (isAuthRefreshFailure(envStatus, null)) {
+    // Withings documents token responses in its `{ status, body }` envelope and
+    // status 401 as authentication failure. Unlike Strava, it does not document an
+    // HTTP-400 revoked-grant body, so only this envelope status supplies evidence:
+    // https://developer.withings.com/api-reference/
+    // https://developer.withings.com/developer-guide/v3/integration-guide/public-health-data-api/get-access/access-and-refresh-tokens-no-recover/
+    if (isAuthRefreshFailure("withings", envStatus, null)) {
       markConnectionNeedsReauth(profileId, WITHINGS_ID);
     }
     throw new Error("Withings token refresh returned an unexpected shape");
