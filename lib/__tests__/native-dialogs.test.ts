@@ -2,6 +2,7 @@ import fs from "node:fs";
 import path from "node:path";
 import { describe, expect, it } from "vitest";
 import ts from "typescript-api";
+import { perTestCeiling } from "../../vitest.timeouts";
 
 const REPO = path.resolve(import.meta.dirname, "../..");
 const NATIVE_DIALOGS = new Set(["alert", "confirm", "prompt"]);
@@ -87,7 +88,22 @@ function playwrightDialogHandlerLines(source: string): number[] {
   return lines;
 }
 
-describe("native browser dialogs", () => {
+// ONE CEILING FOR THE FILE, AND IT IS A MULTIPLE (#4002). Both scans below walk a
+// whole source tree with the TypeScript AST, and each carried a hard-coded
+// `}, 15_000)` that `ALLOS_VITEST_TIMEOUT_MS` could not reach — and that turned out
+// to be THIN, not generous. This file reads 12 427 ms across its 3 tests on the
+// green CI run at f1742fa6d; the dispatch box splits that 62% / 38% / ~0 under
+// coverage (4 119 / 2 504 / 2 ms), which puts the app+components scan at ~7 700 ms
+// on CI. Against the tier's 15 000 ms that is 1.9x, not the ~4x vitest.timeouts.ts
+// derives — the same shape of finding as strip-comments' 98.9%. 2x testTimeout is
+// 30 000 ms on CI, ~3.9x that reading, and it scales with the orchestration
+// override the literal did not.
+//
+// The reading is the FILE's because that is what the reporter prints; the per-test
+// split is the dispatch box's and is stated as such rather than implied.
+const SCAN_CEILING = { timeout: perTestCeiling(2, "green") };
+
+describe("native browser dialogs", SCAN_CEILING, () => {
   it("detects prohibited window and literal bare calls", () => {
     const source = [
       `window.confirm("Delete?");`,
@@ -100,9 +116,9 @@ describe("native browser dialogs", () => {
     expect(nativeDialogLines(source)).toEqual([1, 2, 3, 4]);
   });
 
-  // This parses every app/component source file. It normally takes under a second,
-  // but coverage plus the other CI checks can starve the CPU-bound TypeScript AST
-  // walk past Vitest's 5 s default without weakening or failing the assertion.
+  // This parses every app/component source file, and it is the 62% above: coverage
+  // plus the other CI checks starve the CPU-bound TypeScript AST walk without
+  // weakening or failing the assertion.
   it("keeps app and component code on the shared dialog primitives", () => {
     const offenses = ["app", "components"].flatMap((root) =>
       sourceFiles(path.join(REPO, root)).flatMap((absolute) =>
@@ -113,11 +129,11 @@ describe("native browser dialogs", () => {
     );
 
     expect(offenses).toEqual([]);
-  }, 15_000);
+  });
 
   // Same CPU-bound AST walk as the scan above, over the e2e suite instead — and it
-  // grows with every spec the repo adds, so it gets the same explicit budget rather
-  // than Vitest's 5 s default (measured past it under `test:coverage`, where the
+  // grows with every spec the repo adds, so it runs under the same file ceiling
+  // (measured past vitest's old 5 s default under `test:coverage`, where the
   // instrumentation is what makes the parse slow).
   it("does not allow Playwright to silently accept native dialogs", () => {
     expect(
@@ -131,5 +147,5 @@ describe("native browser dialogs", () => {
     );
 
     expect(offenses).toEqual([]);
-  }, 15_000);
+  });
 });
