@@ -17,6 +17,7 @@ import {
   type DoseCadence,
   type ItemCadence,
 } from "./intake-cadence";
+import type { ProfileDayZone } from "./travel-timezone";
 
 export type TimeBucket =
   "Morning" | "Midday" | "Evening" | "Before sleep" | "Anytime";
@@ -259,17 +260,18 @@ export function doseBucketOn(dose: DoseCadence, dateISO: string): TimeBucket {
 // window, so the history no longer needs throwing away — but the ADVICE still has to
 // notice, or the finding says "try moving it earlier" about a dose moved last Tuesday.
 // Bucket-level, so an 08:00 → 07:30 nudge inside Morning is not a slot change.
-// `sinceDate` is a profile-local day, so `tz` is what puts the legacy `updated_at`
-// stamp on the same calendar before the comparison (#3902).
+// `sinceDate` is a profile-local day, so `zone` is what puts the legacy `updated_at`
+// stamp on the same calendar before the comparison (#3902) — through the zone in force
+// at that stamp, the same one the lifetime bound reads (#4025/#4030).
 export function doseSlotChangedSince(
   dose: DoseCadence & { updated_at?: string | null },
   sinceDate: string,
-  tz: string
+  zone: ProfileDayZone
 ): boolean {
   // A legacy re-time we hold no version for still MOVED the slot — `updated_at` is
   // bumped only when it does — so it withholds the suggestion exactly as a recorded
   // change would, even though its old bucket is unknowable.
-  const unrecorded = unrecordedScheduleChangeOn(dose, tz);
+  const unrecorded = unrecordedScheduleChangeOn(dose, zone);
   if (unrecorded != null && unrecorded >= sinceDate) return true;
   const versions = dose.versions;
   if (!versions || versions.length < 2) return false;
