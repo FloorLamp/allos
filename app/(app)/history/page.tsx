@@ -293,7 +293,7 @@ export default async function HistoryPage(props: {
     <PageContainer width="reading" className="mx-auto">
       <PageHeader
         title="History"
-        subtitle="Everything you recorded, newest first."
+        subtitle="Everything recorded, newest first."
         compactBelowSm
         className={railGutter}
       />
@@ -411,7 +411,7 @@ export default async function HistoryPage(props: {
           message={
             kind || media || day
               ? "Nothing recorded here yet."
-              : "Nothing recorded yet. Anything you log shows up here."
+              : "Nothing recorded yet. Anything logged shows up here."
           }
         />
       ) : null}

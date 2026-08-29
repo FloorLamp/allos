@@ -1279,7 +1279,10 @@ export default async function SupplementsTab({
                               this page is short. The populated branch — the long
                               one the owner scrolled — is the one that moved. */}
                           <LedgerDoorLink
-                            href={historyHref({ kind: "dose", class: "supplement" })}
+                            href={historyHref({
+                              kind: "dose",
+                              class: "supplement",
+                            })}
                             label="Dose history"
                             testId="dose-ledger-link"
                           />

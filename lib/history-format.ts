@@ -95,7 +95,12 @@ export type HistoryRowEdit =
       clock: string | null;
       clockKind: HistoryClockKind;
     }
-  | { kind: "practice"; sessionId: number }
+  | {
+      kind: "practice";
+      sessionId: number;
+      durationMin: number | null;
+      notes: string | null;
+    }
   | {
       kind: "substance";
       rowId: number;

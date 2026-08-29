@@ -257,6 +257,19 @@ export default function HistoryRows({
             onSubmit={(event) =>
               void post(event, async (fd) => {
                 fd.set("event_id", String(edit.eventId));
+                // MOVING A SERVING MOVES THE (DAY, WALL-TIME) PAIR, rather than
+                // stranding a stated eating instant on a different profile-local
+                // day. An unchanged row omits the patch so its stored precision
+                // stays byte-identical, and a logged-at-only row has no eating-time
+                // statement to invent.
+                const nextDate = String(fd.get("date") ?? "");
+                if (
+                  nextDate !== row.date &&
+                  edit.clockKind === "stated" &&
+                  edit.clock
+                ) {
+                  fd.set("occurred_at", edit.clock);
+                }
                 return updateFoodLogEvent(fd);
               })
             }
@@ -323,21 +336,30 @@ export default function HistoryRows({
                 inputClassName="mt-1 w-full"
               />
             </label>
-            <label className="text-xs text-slate-500 dark:text-slate-400">
-              Time
-              <input
-                type="time"
-                name="time"
-                defaultValue={row.sortTime ?? ""}
-                className="input mt-1 w-full"
-              />
-            </label>
+            {/* THE SESSION'S TIME RIDES ALONG UNCHANGED. `editPracticeSession`
+                REWRITES every field it reads, so omitting one erases it — and a raw
+                <input type="time"> here would be an eleventh hand-rolled "when did
+                this happen" (#2236), which the ratchet in
+                lib/__tests__/time-input-scan.test.ts exists to refuse. Correcting a
+                session's clock stays on the practice card, where the full editor is;
+                what the record offers is the correction people actually come for. */}
+            <input type="hidden" name="time" value={row.sortTime ?? ""} />
             <label className="text-xs text-slate-500 dark:text-slate-400">
               Duration (minutes)
               <input
                 type="number"
                 name="duration_min"
                 min={1}
+                defaultValue={edit.durationMin ?? ""}
+                className="input mt-1 w-full"
+              />
+            </label>
+            <label className="text-xs text-slate-500 dark:text-slate-400 sm:col-span-2">
+              Notes
+              <input
+                type="text"
+                name="notes"
+                defaultValue={edit.notes ?? ""}
                 className="input mt-1 w-full"
               />
             </label>
@@ -376,6 +398,18 @@ export default function HistoryRows({
                 name="amount"
                 min={1}
                 defaultValue={edit.amount}
+                className="input mt-1 w-full"
+              />
+            </label>
+            {/* Same rewrite-everything contract as the practice edit above: the
+                action reads `notes` and stores what it finds, so a form without the
+                field would silently clear it. */}
+            <label className="text-xs text-slate-500 dark:text-slate-400 sm:col-span-2">
+              Notes
+              <input
+                type="text"
+                name="notes"
+                defaultValue={edit.notes ?? ""}
                 className="input mt-1 w-full"
               />
             </label>
@@ -440,7 +474,7 @@ export default function HistoryRows({
               icon={
                 <Glyph
                   aria-hidden
-                  className="h-4 w-4 shrink-0 text-slate-400 dark:text-slate-500"
+                  className="h-4 w-4 shrink-0 text-slate-500 dark:text-slate-400"
                   stroke={1.75}
                 />
               }

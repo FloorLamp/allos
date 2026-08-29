@@ -275,7 +275,14 @@ export function gatherHistoryLog(
           row.source,
         ]),
         media: 0,
-        edit: { kind: "practice", sessionId: row.id },
+        edit: {
+          kind: "practice",
+          sessionId: row.id,
+          // The correction form REWRITES every field the action reads, so the row
+          // carries what it must post back unchanged.
+          durationMin: row.duration_min,
+          notes: row.notes,
+        },
       });
     }
   }
