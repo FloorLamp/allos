@@ -180,32 +180,38 @@ function maxActivityId(): number {
   }
 }
 
-// Delete every profile-1 activity created after `since`, once the reconnect flush
-// has had its chance to land one (#3163).
+// Every profile-1 activity created after `since` — "whatever this test caused".
 //
-// WHY A WATERMARK AND NOT THE TITLE. The row this test leaves behind is written by
-// the RECONNECT, after the test's own "no row landed" assertion has already run and
-// passed — so at deletion time the title may not be the marker yet, and matching on
-// it deletes nothing. The id watermark names "whatever this test caused", which is
-// the thing that must not outlive it. Playwright runs a worker's tests serially
-// against that worker's own database, so nothing else can be writing profile-1
-// activities in this window.
-//
-// The poll is what makes the cleanup deterministic rather than a race: it waits for
-// the write to appear before removing it, so the test cannot delete first and have
-// the row land afterwards. A window that stays empty is fine — nothing was created,
-// nothing to drop.
-async function dropActivitiesCreatedAfter(since: number): Promise<void> {
+// WHY A WATERMARK AND NOT THE TITLE. The row this is watching for is written by a
+// flush the test never asked for, so at read time it may not carry the marker yet
+// and matching on the title would see nothing. Playwright runs a worker's tests
+// serially against that worker's own database, so nothing else can be writing
+// profile-1 activities in this window.
+function activitiesCreatedAfter(
+  since: number
+): { id: number; title: string; start_time: string | null }[] {
+  const db = new Database(workerDbPath(), { readonly: true });
+  try {
+    db.pragma("busy_timeout = 5000");
+    return db
+      .prepare(
+        "SELECT id, title, start_time FROM activities WHERE profile_id = 1 AND id > ?"
+      )
+      .all(since) as { id: number; title: string; start_time: string | null }[];
+  } finally {
+    db.close();
+  }
+}
+
+// The BACKSTOP, called from a `finally` so a RED still leaves the shared profile
+// clean for the rest of the worker (#3163/#3173). It no longer polls: the
+// assertion in the test body owns the wait now, so by the time this runs the
+// window has already closed and there is nothing left to wait for.
+function dropActivitiesCreatedAfter(since: number): void {
   const db = new Database(workerDbPath());
   try {
     db.pragma("busy_timeout = 5000");
-    const created = db.prepare(
-      "SELECT id FROM activities WHERE profile_id = 1 AND id > ?"
-    );
-    for (let attempt = 0; attempt < 40; attempt++) {
-      if (created.all(since).length > 0) break;
-      await new Promise((resolve) => setTimeout(resolve, 250));
-    }
+    db.pragma("foreign_keys = ON");
     db.prepare("DELETE FROM activities WHERE profile_id = 1 AND id > ?").run(
       since
     );
@@ -213,6 +219,20 @@ async function dropActivitiesCreatedAfter(since: number): Promise<void> {
     db.close();
   }
 }
+
+// HOW LONG A LANDED ROW GETS TO SHOW UP after the reconnect, and the number is a
+// measurement: on the pre-fix tree the close-path flush fires ~20 attempts in ~80ms
+// and the row appeared within 250ms of `setOffline(false)` — the first tick of the
+// 250ms poll #3169 used for its disposal caught it every time. 3s is that with an
+// order of magnitude of headroom for a loaded box.
+//
+// THE WAIT IS ON THE FAR SIDE OF THE RECONNECT, and that is the whole design. A
+// dwell BEFORE reconnecting makes this assertion pass on the broken tree: the burst
+// dies while the link is still down and there is nothing left in flight to catch it
+// coming back (measured on the pre-fix tree — 5s dwell, then 10s of polling, no
+// row). So the patience that would look like care here is the one thing that would
+// blind the guard. Waiting longer AFTER the reconnect only makes it stricter.
+const REFUSED_FLUSH_SETTLE_MS = 3_000;
 
 async function expectRefusedOnly(page: Page): Promise<void> {
   await expect(page.getByText(OFFLINE_CAPTURE_REFUSED_MESSAGE)).toBeVisible({
@@ -514,22 +534,31 @@ test("a refused workout capture at close says so and claims no sync", async ({
   context,
 }) => {
   const marker = `Refused session ${Date.now()}`; // clock-ok: unique-name suffix for this spec's own session title, never a stored timestamp
-  // FIXTURE OWNERSHIP (#3163). Closing the editor here leaves a STARTED, UNENDED
-  // session on profile 1 — which is the app working as designed (an abandoned live
-  // draft is kept, not discarded, so the dock can offer "finish or discard"), but
-  // profile 1 is shared with every other spec on this worker. Left behind, workout
-  // presence reads that draft as an ACTIVE workout and the app-wide dock haunts
-  // every later page, which is exactly how offline-set-log's dock assertion started
-  // failing whenever the shard plan put it after this test. The draft is this
-  // test's, so this test disposes of it.
+  // THE SENTENCE HAS TO SURVIVE THE RECONNECT (#3170), which is the half this test
+  // used to leave open. It asserted "no row landed" WHILE OFFLINE — true, and true
+  // of the broken tree too: the close path fires ~20 attempts in ~80ms and the
+  // unmount flush fires one more, so a link that came back inside that burst let one
+  // of them CREATE the session. The person was told the entry wasn't saved and a
+  // started, unended row turned up on their profile seconds later (#3163 found that
+  // row and read it as the editor's deliberate live-draft retention; it is not —
+  // this editor is opened by `openCreate`, which clears `liveCleanupPendingRef`, so
+  // ActivityEditorProvider's empty-only discard never runs here).
   //
-  // FROM A `finally`, not from the end of the body (#3173). The watermark is taken
-  // before the first interaction and the disposal is the block's only exit, so a
-  // failure ANYWHERE after the editor opens still reconnects and still drops what
-  // this test caused. The end-of-body version shipped in #3169 skipped both on an
-  // early failure, which is precisely the run where a draft is most likely to be
-  // sitting there — the standing guard in e2e/shared-profile-guard.ts is the
-  // backstop, and this is the disposal it should never have to be.
+  // Nothing catches the person if it goes the other way, either: the refusal's own
+  // cause is that IndexedDB is unavailable, and the #1699 local draft lives in that
+  // same IndexedDB (lib/offline/draft-db.ts), so no draft was ever written and no
+  // dock has anything to offer. The fix is therefore the flush, not the copy — the
+  // first refusal ends that close's attempts — and this test now pins it on BOTH
+  // sides of the reconnect.
+  //
+  // FIXTURE OWNERSHIP, still (#3163/#3173). Profile 1 is shared with every other
+  // spec on this worker, and a started-but-unended row there is what workout
+  // presence reads as an ACTIVE workout — the app-wide dock then haunts every later
+  // page, which is how offline-set-log's dock assertion started failing whenever the
+  // shard plan seated it after this test. The watermark is taken before the first
+  // interaction and the disposal runs from a `finally`, so a failure ANYWHERE after
+  // the editor opens — including this test's own new assertion going red — still
+  // drops what it caused.
   const activityWatermark = maxActivityId();
   try {
     await breakIndexedDB(page);
@@ -558,8 +587,7 @@ test("a refused workout capture at close says so and claims no sync", async ({
     await page.keyboard.press("Escape");
 
     await expectRefusedOnly(page);
-    // And the durable truth agrees with the sentence: no row landed WHILE OFFLINE.
-    // (The reconnect below is a different moment — see the teardown note.)
+    // MOMENT ONE — the sentence as it is read: no row landed while offline.
     const db = new Database(workerDbPath());
     try {
       db.pragma("busy_timeout = 5000");
@@ -570,11 +598,26 @@ test("a refused workout capture at close says so and claims no sync", async ({
     } finally {
       db.close();
     }
-  } finally {
-    // Reconnect FIRST: the close-path flush the editor queued only lands once the
-    // page is back online, and the drop below waits for exactly that write.
+
+    // MOMENT TWO — the same sentence, after the link comes back. Reconnecting
+    // IMMEDIATELY is what makes this able to fail (see REFUSED_FLUSH_SETTLE_MS):
+    // it is the timing under which the broken tree lands the row.
     await context.setOffline(false);
-    await dropActivitiesCreatedAfter(activityWatermark);
+    await page.waitForTimeout(REFUSED_FLUSH_SETTLE_MS); // waitfortimeout-ok: the assertion IS an absence — no attempt from a close that was already refused may write in the window one would have written in
+    expect(
+      activitiesCreatedAfter(activityWatermark),
+      "a refused close wrote a session after the reconnect, contradicting the sentence the person was shown"
+    ).toEqual([]);
+    // NOT VACUOUS: the refused sentence above can only come from the surface's own
+    // `!kept` branch, so reaching this line at all proves the close path ran and was
+    // refused. An empty result here is the absence of a write, not the absence of a
+    // close.
+  } finally {
+    // Reconnect (a no-op on the happy path — the body already did) so an earlier
+    // failure cannot leave the context offline for the next test, then drop
+    // whatever this test caused.
+    await context.setOffline(false);
+    dropActivitiesCreatedAfter(activityWatermark);
   }
 });
 

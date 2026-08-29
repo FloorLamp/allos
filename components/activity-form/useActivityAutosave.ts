@@ -181,6 +181,23 @@ export function useActivityAutosave({
   // Same for the offline-capture callback (#1596) — it closes over the parent's
   // queue context + draft handle.
   const onQueueOfflineRef = useLatestRef(onQueueOffline);
+  // THIS CLOSE'S CAPTURE WAS REFUSED (#3170). `onQueueOffline` answering false means
+  // the device kept nothing and the surface has ALREADY told the person so, in the
+  // shared refused-capture sentence. Every further attempt from this same close is
+  // then a write that would contradict a sentence on screen: the close path fires
+  // ~20 attempts in ~80ms and the unmount flush fires one more, and if the link
+  // comes back inside that burst one of them CREATES the session — a started,
+  // unended row that turns up on the profile seconds after the person was told
+  // nothing was saved (measured on this spec's own reconnect, and the row #3163
+  // found). There is nothing to fall back to either: the refusal's own cause is
+  // that IndexedDB is unavailable, and the #1699 local draft lives in that same
+  // IndexedDB, so no draft was written and no dock can offer one.
+  //
+  // ONE WAY, AND NEVER RESET, because a refusal only ever happens on a close that
+  // is proceeding: `requestClose` runs its confirm BEFORE `flushBeforeClose`, so
+  // the flush is only reached once the close is settled, and the unmount that
+  // follows takes this ref with it. A minimize does not flush at all.
+  const closeCaptureRefusedRef = useRef(false);
 
   useEffect(() => {
     mountedRef.current = true;
@@ -241,6 +258,11 @@ export function useActivityAutosave({
         return; // nothing changed
       }
       if (inFlightRef.current) return; // a save is running; its trailing re-check catches new edits
+      // The refusal is already on screen (#3170). This bail is the half that covers
+      // the UNMOUNT flush, which is a separate call `flushBeforeClose`'s own break
+      // below cannot reach. Scoped to `queueOnOffline` so it can only ever silence a
+      // CLOSE-path attempt: nothing about the debounced mid-session save changes.
+      if (opts?.queueOnOffline && closeCaptureRefusedRef.current) return;
       // ONE LIVE SESSION IS ONE ROW (#3441). The create-at-start POST is in flight,
       // and this form has no row yet — so a save dispatched now would build its
       // FormData with a null id and INSERT A SECOND ROW for the same session. That
@@ -357,6 +379,10 @@ export function useActivityAutosave({
               }
               return;
             }
+            // Refused (#3170): no more attempts from this close. A THROW is
+            // deliberately not latched — it means no sentence was rendered, so
+            // there is no claim on screen for a later attempt to contradict.
+            closeCaptureRefusedRef.current = true;
           } catch {
             /* IndexedDB unavailable — fall through to the honest failure below */
           }
@@ -495,6 +521,10 @@ export function useActivityAutosave({
     // the saved signature matches the current form (or we give up after ~0.5s so
     // a wedged save never blocks the close).
     for (let i = 0; i < 20 && canSave && formSig !== savedSigRef.current; i++) {
+      // The capture was refused (#3170): the signature will never advance, so the
+      // remaining iterations are attempts that can only contradict the sentence the
+      // person is already reading.
+      if (closeCaptureRefusedRef.current) break;
       if (inFlightRef.current) {
         await new Promise((r) => setTimeout(r, 25));
         continue;
