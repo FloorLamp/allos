@@ -1473,3 +1473,113 @@ that do not exist in the shape it claims — because most doors are built by hel
 spec-census rule arriving from the production side.
 
 Encoded as clause (6) of the spec-census rule in `dispatch-brief.mjs`.
+
+## The mutation that never ran, and the one that hit a comment (2026-08-29)
+
+Two false greens from the same lane on #3744/#3750, an hour apart, caught by the lane
+itself. Both are the same failure: a mutation that does not execute is not evidence, and
+neither is one that does not change the render.
+
+The first. A `MonthCalendar` guard drove the month clamp by proving the Previous arrow
+was `disabled` and then clicking it. jsdom delivers nothing to a disabled button, so the
+clamp never ran — the mutation that removed it came back **green**, and the guard had
+never once exercised the code it was written for. The user-reachable clamp turned out to
+be a different path entirely: a value sitting outside its own field's min/max, which is
+what a bound tightened around an already-saved date produces. Two cases now drive it and
+the mutation is red.
+
+The second. An `InlineError` mutation was applied with a `perl` substitution on
+`role="alert"` — which matched the prose in the comment above the JSX, not the rendered
+attribute. Green, for a tree whose output was byte-identical to the unmutated one.
+
+The rule both give: **after applying a mutation, confirm the mutated line executes and
+the render changes.** A mutation is a claim about behaviour, so its evidence has to be
+behavioural — an assertion that fails, not a file that differs. If a mutation comes back
+green, that is a finding about the test before it is a finding about the code.
+
+A third from the same lane is the reverting half of the same problem, and is now a brief
+clause: `git checkout -- <file>` means "restore this file to HEAD", not "undo my last
+edit". The lane used it to revert a mutation while HEAD was its own first commit, and two
+files silently rolled back past a whole issue's worth of uncommitted work. It was caught
+inside one test run only because the restored tree failed the same way the mutation had —
+a quieter mutation would have been reverted to a tree that no longer contained the fix,
+and the green that followed would have meant nothing. Under the brief's own gate to
+commit and push every ~45 minutes, HEAD is almost never where the lane started editing.
+Copy the file to `$SCRATCH` with a branch-unique name before each mutation and restore
+from that.
+
+Encoded in `dispatch-brief.mjs` beside the `git stash` clause.
+
+## The convergence that diverged, and the census that was never run (2026-08-29)
+
+PR #4030 (#4025/#4026) reached green CI and an adversarial pass with no blocking
+findings. Three of that pass's eight findings were **factual errors in the PR body, which
+the orchestrator wrote**.
+
+The load-bearing one: the body said the new `AND date <= ?` bound was inert because
+"production activity dates are validated non-future." They are not. `saveActivity`
+validates shape and calendar validity only, the form passes no `max` to `DateField`, and
+the AI import path has the same gap. The reviewer stored a `today+3` activity in one
+action-tier call and showed the bound flipping `hasPattern` true→false on a profile with
+three past sessions and one planned — so a person who logs a planned session loses their
+inferred cadence and the PreWorkout pseudo-slot with it. The lane had swept every
+_fixture_ for a positive day shift and found none, correctly, and then generalised from
+fixtures to production without running the production half. A census of the seeds is not
+a census of the writers.
+
+The second is worse in kind, because the false claim was the justification. The body said
+the change "converges on the sibling's shape — `inferPracticeRhythm` has always taken
+this parameter." The sibling takes an `asOf`, but uses it only for the window's _start_;
+there is no upper bound, and its fallback-hour ladder reads the whole history. So after
+the change the two shared-substrate siblings answer "what was inferable as of D"
+**differently** — a divergence introduced under a banner that said convergence, and one
+that a reader checking the claim's shape rather than its content would wave through.
+
+The third: a partial conversion inside the function whose own comment says the pattern and
+the strip "cannot disagree about a day". One line resolved its bound through the historical
+zone; the next still resolved through today's, and `max` picked the later — putting back
+exactly the walk the PR removed.
+
+The generalisations. **A claim that a bound is inert is a claim about every writer, not
+about the fixtures** — grep the writers and exercise one. **"It converges on X" is a
+claim about X**, and has to be read in X's source, not inferred from a shared parameter
+name. And a type that admits both the old and new shape — here
+`ProfileDayZone = string | ((at: Date) => string)` — means the compiler cannot catch a
+missed call site, so the conversion's safety rests entirely on a census; say so where the
+type is defined, as this one now does.
+
+## The issues the orchestrator filed instead of doing the work (2026-08-29)
+
+Over one morning the orchestrator filed four issues off the back of its own lanes'
+findings, labelled two of them P2, and dispatched a lane against one — while the owner's
+backlog held P2s filed weeks earlier with rulings already recorded in their bodies. The
+owner's words: _"why are you opening stuff like 4037 as p2 when my pre-existing p2s are
+clearly more important"_, and then _"most of the issues you file are bullshit"_.
+
+Both were right, and the second is the sharper one. Two of the four were closed
+`not_planned` within the hour by the orchestrator itself on re-reading: a design question
+about focus ownership across thirty components, invented from one instance, and a link on
+an auth page duplicating a button's paint. Neither described anything wrong for anyone
+using the app.
+
+The dispatched one made the cost concrete. #4037 was a genuine defect — a ~40ms window in
+which a keystroke is undone — but the **Direction** section the orchestrator wrote into
+it was wrong in a way that would have deleted the feature: "no-op when focus is already
+inside the panel" can never fire, because the host has synchronously put focus inside the
+panel before the deferred frame runs. The lane found that in eleven minutes by reading the
+code. The orchestrator had written the section with enough confidence to hand it to
+someone as a specification, without doing so.
+
+Three rules, in order of how much they cost to learn:
+
+1. **A finding is not an issue.** Lanes surface things constantly; most are observations,
+   and an observation written up with four questions attached is tracker noise that
+   displaces real work. File when something would otherwise be lost — a stale premise
+   found, or a defect a merge just introduced — and close your own noise when you see it.
+2. **Self-filed work does not get the same priority slot as the owner's.** Capacity spent
+   on it is capacity taken from issues the owner has already ruled on. Source lanes from
+   the open backlog, oldest first, checking each for a recorded ruling.
+3. **A Direction section is a specification.** Writing one without reading the code
+   produces a confident instruction to do the wrong thing, and the lane that follows it
+   pays for the confidence. If the direction has not been checked against the source, say
+   that in the issue.
