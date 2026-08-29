@@ -68,9 +68,9 @@ describe("the toast provider carries commit and reject (#3699)", () => {
   afterEach(() => vi.unstubAllGlobals());
 
   it.each([
-    ["the default tone", undefined, [HAPTIC_PATTERNS.commit]],
-    ["an explicit success", { tone: "success" as const }, [HAPTIC_PATTERNS.commit]],
-    ["an error", { tone: "error" as const }, [HAPTIC_PATTERNS.reject]],
+    ["the default tone", undefined, [[...HAPTIC_PATTERNS.commit]]],
+    ["an explicit success", { tone: "success" as const }, [[...HAPTIC_PATTERNS.commit]]],
+    ["an error", { tone: "error" as const }, [[...HAPTIC_PATTERNS.reject]]],
     ["a headless poster", { silent: true }, []],
   ] as [string, { tone?: "success" | "error"; silent?: boolean } | undefined, number[][]][])(
     "%s",
@@ -121,7 +121,7 @@ describe("SegmentedControl answers the finger with select (#3699)", () => {
   ];
 
   it.each([
-    ["a segment that changes the value", "Bravo", [HAPTIC_PATTERNS.select]],
+    ["a segment that changes the value", "Bravo", [[...HAPTIC_PATTERNS.select]]],
     ["the segment already selected", "Alpha", []],
   ] as [string, string, number[][]][])("%s", (_name, label, expected) => {
     const calls = stubVibrate();

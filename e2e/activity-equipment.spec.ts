@@ -700,15 +700,17 @@ test("a strength part states its implement, and the registry door is one per for
 
     // A BARE VARIANT BASE. "Curl" cannot be saved until an implement is picked
     // (needsEquipment), so the row says so with the primitive's dashed MISSING chip —
-    // and says it now, not once a save has already been refused.
+    // and says it NOW, not once a save has already been refused.
+    //
+    // TYPED AND NOT PICKED, on purpose. `selectPartName` never leaves a picked base
+    // bare — it resolves to the last-used variant, or to the group's first equipment
+    // — so a pick cannot reach this state at all. Typing does, and so does a stored
+    // row that arrived any other way, which is the case the save gate exists for.
     const firstName = page.getByPlaceholder(/What did you do/);
     await firstName.fill("Curl");
-    // By EXACT accessible name: "Curl" narrows the list to every curl the catalog
-    // knows, and this spec means the bare variant base and no other.
-    await page
-      .getByRole("listbox")
-      .getByRole("option", { name: "Curl", exact: true })
-      .click();
+    // The dropdown is open over the row below; Escape dismisses it without committing
+    // a pick, which is exactly what this state needs.
+    await firstName.press("Escape");
     await expect(firstName).toHaveValue("Curl");
     await expect(chips).toHaveCount(1);
     await expect(chips).toHaveText("pick equipment");
@@ -726,7 +728,8 @@ test("a strength part states its implement, and the registry door is one per for
       "equipment"
     );
     await expect(doors).toHaveCount(1);
-    await page.getByRole("button", { name: "Dumbbell", exact: true }).click();
+    await page.getByRole("button", { name: "Barbell", exact: true }).click();
+    await expect(firstName).toHaveValue("Barbell Curl");
     // The dirty half, asserted FIRST — `dirty` is transient, and reading it after the
     // panel closes would be reading it after the state it names has passed.
     await expect(form).toHaveAttribute("data-unsaved", "true");
@@ -734,7 +737,7 @@ test("a strength part states its implement, and the registry door is one per for
 
     // The conclusion, stated; the door gone with the panel; focus back on the chip that
     // opened it (#3311) rather than on <body>.
-    await expect(chips).toHaveText("Dumbbell");
+    await expect(chips).toHaveText("Barbell");
     await expect(chips).toHaveAttribute("data-fact-state", "stated");
     await expect(chips).toBeFocused();
     await expect(doors).toHaveCount(0);
@@ -750,9 +753,12 @@ test("a strength part states its implement, and the registry door is one per for
     await page.getByRole("button", { name: "+ Add another activity" }).click();
     const secondName = page.getByPlaceholder(/Add another activity/);
     await secondName.fill("Barbell Bench Press");
-    await page
-      .getByRole("listbox")
-      .getByRole("option", { name: "Barbell Bench Press", exact: true })
+    // The composed variant is a catalog name but not a picker OPTION (the options list
+    // bases; the concrete variants are reached through the equipment chips), so this is
+    // the free-text "Use …" row — which `pickPartName` still resolves as a known lift.
+    await comboboxRows(page)
+      .filter({ hasText: "Barbell Bench Press" })
+      .first() // first-ok: transient combobox list this spec just opened by typing the name
       .click();
     await expect(secondName).toHaveValue("Barbell Bench Press");
 
@@ -760,6 +766,7 @@ test("a strength part states its implement, and the registry door is one per for
     // from the lift's own name rather than from a pick, and it is stated the same way.
     await expect(chips).toHaveCount(2);
     await expect(chips.nth(1)).toHaveText("Barbell"); // nth-ok: the part this spec just added
+    await expect(chips.nth(0)).toHaveText("Barbell"); // nth-ok: the Curl part, still stating its own
     await expect(doors).toHaveCount(0);
 
     // THE ONE-PER-FORM CLAIM. Opening the second part's picker closes the first's, so
@@ -767,7 +774,8 @@ test("a strength part states its implement, and the registry door is one per for
     // part is being edited.
     await chips.nth(0).click(); // nth-ok: the Curl part this spec entered first
     await expect(doors).toHaveCount(1);
-    await chips.nth(0).click(); // nth-ok: the Bench Press part — the Curl chip is now the panel, so the remaining chip is index 0
+    await expect(chips).toHaveCount(1);
+    await chips.nth(0).click(); // nth-ok: with the Curl chip replaced by its panel, the one remaining chip is the Bench Press part
     await expect(doors).toHaveCount(1);
     await expect(page.getByTestId("strength-equipment-editor")).toHaveCount(1);
 
