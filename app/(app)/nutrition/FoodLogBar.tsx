@@ -293,6 +293,13 @@ export default function FoodLogBar({
     countsByDate,
     slotCountsByDate,
   });
+  // LIVE FROM RENDER, DELIBERATELY. The async settle paths below read this the moment
+  // a tap lands, which can be after commit but before passive effects, so an effect
+  // would hand them the PREVIOUS render's value. `react-hooks/refs` only began
+  // reporting these two writes when #3273 simplified the eating-time block enough for
+  // the compiler to analyse this component at all — the writes themselves are
+  // unchanged and pre-date it.
+  // eslint-disable-next-line react-hooks/refs
   projectionRef.current = { countsByDate, slotCountsByDate };
   const [activeSlot, setActiveSlot] = useState<FoodSlot>(slot);
   // The eating-time statement in force for the next taps (#2053), through the app's ONE
@@ -465,6 +472,7 @@ export default function FoodLogBar({
   // profile coordinate joins the burst epoch guard so it cannot reconcile one
   // subject's counts into the next subject's mounted bar.
   const activeProfileRef = useRef<number | null | undefined>(activeProfileId);
+  // eslint-disable-next-line react-hooks/refs -- same reason as projectionRef above.
   activeProfileRef.current = activeProfileId;
   // A hydration-replayed/discrete interaction may run after commit but before
   // passive effects. The bar is live from render; cleanup is the only transition

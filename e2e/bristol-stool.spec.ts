@@ -5,8 +5,8 @@ import { frozenNow, workerDbPath } from "./worker-env";
 import { pinnedTimezone } from "./pinned-timezone";
 import {
   dateStrInTz,
-  zonedDateParts,
   zonedWallIsoToUtc,
+  zonedWallTimeToUtc,
 } from "@/lib/date";
 
 // Bristol stool form, end to end (issue #2785).
@@ -204,13 +204,19 @@ test('a stated "Happened earlier?" time is the instant the reading carries (#327
   await expect(picker).toBeVisible();
 
   const date = dateStrInTz(TZ, frozenNow());
+  // The stored `started_at` is a profile-LOCAL WALL CLOCK, so every expectation below
+  // is stated as the INSTANT that wall clock means — decoded with the same
+  // `zonedWallIsoToUtc` the test above uses, against instants built by the safe
+  // builder. Comparing the strings directly would mean assembling `${date}THH:MM:SS`
+  // by hand, which is what e2e-fixture-time.test.ts's ledger exists to keep out of
+  // spec files.
+  const at = (hhmm: string) => zonedWallTimeToUtc(TZ, date, hhmm)!.getTime();
+  const storedInstant = (started_at: string) =>
+    zonedWallIsoToUtc(TZ, started_at)!.getTime();
   // What the clock-seam path writes, to the second: the write core reads the frozen
   // instant for the wall minute and takes the SECONDS off it in UTC, which is the
-  // second-grain key itself (every IANA zone is a whole-minute offset, so the seconds
-  // are the same number on any wall clock).
-  const tapStamp = `${date}T${zonedDateParts(TZ, frozenNow()).hhmm}:${String(
-    frozenNow().getUTCSeconds()
-  ).padStart(2, "0")}`;
+  // second-grain key itself. Whole seconds, so the frozen instant floors to its own.
+  const tapInstant = Math.floor(frozenNow().getTime() / 1000) * 1000;
 
   // COLLAPSED: the fast path is untouched and the control is not even in the DOM.
   const toggle = picker.getByTestId("stool-when-toggle");
@@ -222,7 +228,10 @@ test('a stated "Happened earlier?" time is the instant the reading carries (#327
   await expect(page.getByTestId("quick-entry-stool-count")).toHaveText(
     "1 logged today."
   );
-  expect(bristolRows()).toEqual([{ date, started_at: tapStamp, value: 4 }]);
+  const tapped = bristolRows();
+  expect(tapped).toHaveLength(1);
+  expect(tapped[0]).toMatchObject({ date, value: 4 });
+  expect(storedInstant(tapped[0].started_at)).toBe(tapInstant);
 
   // Leg 2 — the statement. The day half is FIXED to today, so a statement can only
   // move the minute; the stated time lands on :00 seconds, which is what makes
@@ -234,10 +243,19 @@ test('a stated "Happened earlier?" time is the instant the reading carries (#327
   await expect(page.getByTestId("quick-entry-stool-count")).toHaveText(
     "2 logged today."
   );
-  expect(bristolRows()).toEqual([
-    { date, started_at: `${date}T07:05:00`, value: 3 },
-    { date, started_at: tapStamp, value: 4 },
+  // Both rows survive — the statement moved the minute, it did not overwrite the tap.
+  const both = bristolRows();
+  expect(both.map((r) => [r.date, r.value])).toEqual([
+    [date, 3],
+    [date, 4],
   ]);
+  // The stated wall minute, on the second: a stated time carries no seconds, which is
+  // what makes restating the same minute a correction rather than a second movement.
+  expect(both.map((r) => storedInstant(r.started_at))).toEqual([
+    at("07:05"),
+    tapInstant,
+  ]);
+  expect(both[0].started_at.endsWith(":00")).toBe(true);
 
   // THE STATEMENT IS SPENT BY THE TAP IT ANSWERS: the key is the instant, so a second
   // tap under a surviving 07:05 would silently overwrite the row the first one wrote.
