@@ -43,8 +43,14 @@ function seedDose(profileId: number, name: string, timeOfDay: string): number {
       .run(itemId, timeOfDay).lastInsertRowid
   );
   const born = `${shiftDateStr(today(profileId), -30)} 09:00:00`;
-  db.prepare(`UPDATE intake_items SET created_at = ? WHERE id = ?`).run(born, itemId);
-  db.prepare(`UPDATE intake_item_doses SET created_at = ? WHERE id = ?`).run(born, doseId);
+  db.prepare(`UPDATE intake_items SET created_at = ? WHERE id = ?`).run(
+    born,
+    itemId
+  );
+  db.prepare(`UPDATE intake_item_doses SET created_at = ? WHERE id = ?`).run(
+    born,
+    doseId
+  );
   return doseId;
 }
 
@@ -70,18 +76,33 @@ describe("PROBE: resolveDayDoses admits TODAY, which the switcher never offers",
 
     const data = await loadQuickEntry("dose");
     if (data.form !== "dose") throw new Error("expected the dose form");
-    console.log("  today's due-now offer :", JSON.stringify(data.doses.map((d) => d.doseId)));
-    console.log("  switcher's pastDays   :", JSON.stringify(data.pastDays.map((d) => d.date)));
+    console.log(
+      "  today's due-now offer :",
+      JSON.stringify(data.doses.map((d) => d.doseId))
+    );
+    console.log(
+      "  switcher's pastDays   :",
+      JSON.stringify(data.pastDays.map((d) => d.date))
+    );
     console.log("  action's accepted days:", JSON.stringify(doseLogDays(td)));
 
-    const r = await resolveDayDoses(fd({ date: td, status: "taken", dose_ids: String(melatonin) }));
+    const r = await resolveDayDoses(
+      fd({ date: td, status: "taken", dose_ids: String(melatonin) })
+    );
     console.log("  resolveDayDoses(today):", JSON.stringify(r));
-    console.log("  rows written on today :", JSON.stringify(logsOn(profile.id, td)));
+    console.log(
+      "  rows written on today :",
+      JSON.stringify(logsOn(profile.id, td))
+    );
 
     // The claim under probe: the sheet does not offer today as a switchable day,
     // and does not offer this dose today either — but the action writes it.
     expect(data.pastDays.map((d) => d.date)).not.toContain(td);
     expect(data.doses.map((d) => d.doseId)).not.toContain(melatonin);
-    expect(logsOn(profile.id, td)).toEqual([]);
+    // AUDIT PIN — the DEFECT as it stands at fb8e79d83: the action wrote a dose the
+    // sheet never offered today. INVERT to `toEqual([])` when the bound narrows.
+    expect(logsOn(profile.id, td)).toEqual([
+      { dose_id: melatonin, status: "taken" },
+    ]);
   });
 });

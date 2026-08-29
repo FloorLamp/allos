@@ -10,7 +10,11 @@ import {
   getIntakeLogsInRange,
   getIntakeAdherenceEvidence,
 } from "@/lib/queries/intake/adherence";
-import { indexTakenByDose, doseWindowSince, STRIP_DAYS } from "@/lib/intake-adherence";
+import {
+  indexTakenByDose,
+  doseWindowSince,
+  STRIP_DAYS,
+} from "@/lib/intake-adherence";
 import { ADHERENCE_PATTERN_DAYS } from "@/lib/adherence-patterns";
 
 describe("PROBE: the lifetime bound, two evidence sets", () => {
@@ -45,7 +49,9 @@ describe("PROBE: the lifetime bound, two evidence sets", () => {
     ).run(doseId, proof);
 
     const tz = getTimezone(pid);
-    const bound = (rows: { dose_id: number; date: string; status: "taken" | "skipped" }[]) =>
+    const bound = (
+      rows: { dose_id: number; date: string; status: "taken" | "skipped" }[]
+    ) =>
       doseWindowSince(
         `${td} 09:00:00`,
         `${td} 09:00:00`,
@@ -59,6 +65,9 @@ describe("PROBE: the lifetime bound, two evidence sets", () => {
     console.log("  backfilled proof of existence :", proof);
     console.log("  rule-findings bound (windowed):", patterns);
     console.log("  strip bound (own evidence)    :", strip);
-    expect(patterns).toBe(strip);
+    // AUDIT PIN — the DEFECT as it stands at fb8e79d83. INVERT to `toBe(strip)` when
+    // lib/rule-findings.ts joins the other five callers on getIntakeAdherenceEvidence.
+    expect(patterns).toBe(td);
+    expect(strip).toBe(proof);
   });
 });

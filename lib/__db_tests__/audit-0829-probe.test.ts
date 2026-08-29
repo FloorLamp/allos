@@ -36,8 +36,14 @@ function seedItem(profileId: number, name: string, condition: string): void {
       .run(itemId).lastInsertRowid
   );
   const born = `${shiftDateStr(today(profileId), -30)}T00:00:00Z`;
-  db.prepare("UPDATE intake_items SET created_at = ? WHERE id = ?").run(born, itemId);
-  db.prepare("UPDATE intake_item_doses SET created_at = ? WHERE id = ?").run(born, doseId);
+  db.prepare("UPDATE intake_items SET created_at = ? WHERE id = ?").run(
+    born,
+    itemId
+  );
+  db.prepare("UPDATE intake_item_doses SET created_at = ? WHERE id = ?").run(
+    born,
+    doseId
+  );
 }
 
 // A DRAFT HUSK (#3189): create-at-start row, never ended, nothing logged on it.
@@ -56,11 +62,25 @@ describe("PROBE: past-day workout context, reminder gather vs quick-log sheet", 
     seedItem(p, "Pre workout med", "pre_workout");
     seedHusk(p, yesterday);
 
-    const reminder = collectWindowDoses(p, "Morning", yesterday).map((e) => e.item.name).sort();
-    const sheet = pendingDayDoses(p, yesterday).map((d) => d.name).sort();
-    console.log("  reminder gather (collectWindowDoses):", JSON.stringify(reminder));
-    console.log("  quick-log sheet  (pendingDayDoses)  :", JSON.stringify(sheet));
-    expect(reminder).toEqual(sheet);
+    const reminder = collectWindowDoses(p, "Morning", yesterday)
+      .map((e) => e.item.name)
+      .sort();
+    const sheet = pendingDayDoses(p, yesterday)
+      .map((d) => d.name)
+      .sort();
+    console.log(
+      "  reminder gather (collectWindowDoses):",
+      JSON.stringify(reminder)
+    );
+    console.log(
+      "  quick-log sheet  (pendingDayDoses)  :",
+      JSON.stringify(sheet)
+    );
+    // AUDIT PIN — asserts the DEFECT as it stands at fb8e79d83, so this branch is
+    // green and re-runnable. INVERT to `toEqual(sheet)` when gatherWindowDoses takes
+    // the husk-free reader on a past day.
+    expect(reminder).toEqual(["Pre workout med"]);
+    expect(sheet).toEqual(["Rest day med"]);
   });
 });
 
@@ -85,10 +105,23 @@ describe("PROBE: past-day workout PREDICTION overriding the record", () => {
     // ...and yesterday they actually trained. On the record, not a guess.
     seedSession(p, yesterday);
 
-    const reminder = collectWindowDoses(p, "Morning", yesterday).map((e) => e.item.name).sort();
-    const sheet = pendingDayDoses(p, yesterday).map((d) => d.name).sort();
-    console.log("  reminder gather (collectWindowDoses):", JSON.stringify(reminder));
-    console.log("  quick-log sheet  (pendingDayDoses)  :", JSON.stringify(sheet));
-    expect(reminder).toEqual(sheet);
+    const reminder = collectWindowDoses(p, "Morning", yesterday)
+      .map((e) => e.item.name)
+      .sort();
+    const sheet = pendingDayDoses(p, yesterday)
+      .map((d) => d.name)
+      .sort();
+    console.log(
+      "  reminder gather (collectWindowDoses):",
+      JSON.stringify(reminder)
+    );
+    console.log(
+      "  quick-log sheet  (pendingDayDoses)  :",
+      JSON.stringify(sheet)
+    );
+    // AUDIT PIN — the DEFECT as it stands at fb8e79d83. INVERT when gatherWindowDoses
+    // stops applying today's rhythm prediction to a closed day.
+    expect(reminder).toEqual(["Rest day med"]);
+    expect(sheet).toEqual(["Pre workout med"]);
   });
 });
