@@ -7,9 +7,9 @@ describe("DB test worker count", () => {
     expect(dbWorkerCount(64)).toBe(12);
   });
 
-  it("uses mild oversubscription on constrained hosts", () => {
-    expect(dbWorkerCount(4)).toBe(6);
-    expect(dbWorkerCount(2)).toBe(3);
-    expect(dbWorkerCount(1)).toBe(2);
+  it("preserves Vitest's default on constrained hosts", () => {
+    expect(dbWorkerCount(4)).toBe(3);
+    expect(dbWorkerCount(2)).toBe(1);
+    expect(dbWorkerCount(1)).toBe(1);
   });
 });

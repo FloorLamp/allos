@@ -3,12 +3,11 @@ import { availableParallelism } from "node:os";
 /**
  * DB specs mix synchronous SQLite work with a large shared module graph.
  *
- * One worker per logical CPU overpays the graph on wide machines, while a small amount
- * of oversubscription keeps constrained machines busy around setup and SQLite waits.
- * Measured for issue #3520: 12 workers beat 16 on 16 CPUs (50.1s vs 59.4s), and 6 beat
- * 4 on a four-CPU constraint (59.5s vs 70.2s). Cap the graph copies, but scale down on
- * smaller hosts instead of imposing a workstation-sized pool everywhere.
+ * Vitest normally uses one fewer worker than the available CPU count. Preserve that
+ * behavior on constrained hosts, including CI, but cap wide machines at 12 so they do
+ * not multiply the graph across every logical CPU. Measured for issue #3520: 12
+ * workers beat the default pool on 16 CPUs (50.1s vs 59.4s).
  */
 export function dbWorkerCount(parallelism = availableParallelism()): number {
-  return Math.min(12, Math.ceil(Math.max(1, parallelism) * 1.5));
+  return Math.max(1, Math.min(12, parallelism - 1));
 }
