@@ -102,3 +102,27 @@ jobs:
           name: e2e-results-shard-${{ matrix.shard }}
           path: test-results/e2e-results.json
           retention-days: 7
+
+  # The strip-comments compiler oracle is a DRIFT CENSUS for the same reason this
+  # workflow's browser repeat is one: its fast authored grammar fixtures still run
+  # on every PR, while the exhaustive comparison parses 4,000+ tracked source files
+  # and used to consume 119 s — half of the pure unit tier — even when none changed.
+  # Run it here weekly, in parallel, so it keeps detecting corpus drift without
+  # extending PR feedback. Reusing this workflow also reuses ci-main.yml's
+  # census-freshness canary; a second schedule would need a second bootstrap and
+  # watchdog merely to answer whether GitHub was still firing it.
+  #
+  # Manual path without the browser census:
+  #   ALLOS_RUN_STRIP_COMMENTS_ORACLE=1 \
+  #     npx vitest run lib/__tests__/strip-comments.test.ts
+  source-oracle:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v7
+
+      - uses: ./.github/actions/node-setup
+
+      - name: Compare stripComments with the TypeScript parser over the source tree
+        env:
+          ALLOS_RUN_STRIP_COMMENTS_ORACLE: "1"
+        run: npx vitest run lib/__tests__/strip-comments.test.ts

@@ -300,7 +300,21 @@ describe("the regex-vs-division heuristic, and what it gets wrong", () => {
    * generous safely: this is a presence assertion about a list, and a longer wait
    * cannot invent a disagreement.
    *
-   * RE-DERIVED FROM CI, WHICH IS WHERE IT IS ENFORCED (#3986). 120 000 ms was set
+   * WEEKLY/MANUAL, NOT A PER-CHANGE GATE. This sweep was 119 s against the pure
+   * tier's 231 s median: half of every unit run spent re-proving that thousands of
+   * unchanged files still agreed with the compiler. The authored grammar cases and
+   * the oracle's own disagreement/agreement fixtures above stay in every PR. This
+   * whole-tree drift census runs from e2e-full.yml, whose weekly schedule is already
+   * watched by ci-main.yml (#2968), or explicitly with:
+   *
+   *   ALLOS_RUN_STRIP_COMMENTS_ORACLE=1 \
+   *     npx vitest run lib/__tests__/strip-comments.test.ts
+   *
+   * This scheduling change deliberately does NOT choose #4001's unresolved shared
+   * cache-versus-smaller-corpora substrate. It removes the poor-value frequency while
+   * leaving that owner decision and the seven other whole-tree scanners untouched.
+   *
+   * RE-DERIVED FROM CI, WHICH IS WHERE IT WAS ENFORCED (#3986). 120 000 ms was set
    * against "12s of wall clock for 4,954 files" measured on the dispatch box. The
    * number CI reads is nothing like it: 118 700 ms on the green run at 43bdc712 and
    * 118 279 ms on the red one — 98.9% of the old ceiling, on EVERY run, silently.
@@ -309,9 +323,8 @@ describe("the regex-vs-division heuristic, and what it gets wrong", () => {
    * this one is 4x the CI reading, the margin vitest.timeouts.ts derives for the
    * 3-4x per-test dispersion measured there.
    *
-   * The 119 s is itself the thing worth fixing — it is half of `test-unit`'s whole
-   * 231 s median — but that is a different change from making the ceiling honest,
-   * and #4001 owns it. Note the consequence of the multiple below until it lands:
+   * #4001 still owns making the scan itself faster. Note the consequence of the
+   * multiple below until that lands:
    * 32x is 480 000 ms on CI and 1 920 000 ms under `agent-gates.sh`, which is a very
    * weak hang detector on the dispatch box. Capping the multiple is the wrong fix —
    * it would make the gate stricter than the tier ceiling it derives from, which is
@@ -327,7 +340,7 @@ describe("the regex-vs-division heuristic, and what it gets wrong", () => {
    */
   const ORACLE_SWEEP_MS = perTestCeiling(32, "worst");
 
-  it(
+  it.skipIf(process.env.ALLOS_RUN_STRIP_COMMENTS_ORACLE !== "1")(
     "disagrees with a real TypeScript parse on exactly the files named here",
     () => {
       // THE MEASUREMENT, not an argument. Every character this scanner blanks is
