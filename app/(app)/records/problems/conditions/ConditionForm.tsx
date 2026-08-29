@@ -6,6 +6,7 @@ import SubmitButton from "@/components/SubmitButton";
 import { useToast } from "@/components/Toast";
 import Combobox from "@/components/Combobox";
 import { useAddEntryModalClose } from "@/components/AddEntryPanel";
+import InlineError from "@/components/InlineError";
 import {
   bestIcd10Suggestion,
   icd10CodeForName,
@@ -314,11 +315,7 @@ export default function ConditionForm({
           defaultValue={condition?.notes ?? ""}
         />
       </div>
-      {error && (
-        <p role="alert" className="text-sm text-rose-600 dark:text-rose-400">
-          {error}
-        </p>
-      )}
+      <InlineError>{error}</InlineError>
       <div className="flex gap-2" data-testid="condition-form-actions">
         <div
           className="grid w-full sm:w-auto"
