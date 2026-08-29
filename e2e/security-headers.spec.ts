@@ -1,4 +1,8 @@
+import fs from "node:fs";
+import path from "node:path";
+import Database from "better-sqlite3";
 import { test, expect } from "./fixtures";
+import { workerDbPath, workerDir } from "./worker-env";
 // Global security headers (issue #21). The non-CSP header set is configured in
 // next.config.js `headers()`; the Content-Security-Policy is emitted per-request
 // by middleware.ts (issue #595, step 3 — nonce'd script-src) and /share/* layers
@@ -148,5 +152,95 @@ test("share route keeps its stricter middleware headers", async ({
   expect(headers["x-frame-options"]).toBe("DENY");
   expect(headers["content-security-policy"]).toContain(
     "frame-ancestors 'none'"
+  );
+});
+
+// ── The one route the app frames itself (#3975) ──────────────────────────────
+//
+// /import/[id] previews a stored PDF with <iframe src="/medical/file/<id>">, and
+// the blanket frame-ancestors 'none' above forbade it: a spec-compliant browser
+// refused, and the Document pane rendered the browser's own refusal page. The
+// refusal raises NO error event, so #1340's "Preview unavailable" fallback could
+// not fire either — nothing in the app could see it, which is why it survived
+// from #624 until it was found on prod.
+//
+// So the guard is the WIRE and the RENDERED FRAME, never the config that intends
+// them. The header half would pass on a page that still refuses; the frame half
+// is what fails when the refusal comes back.
+
+const PDF_DOC = "e2e-3975-framed.pdf";
+
+/** A stored PDF for THIS spec, on disk under the worker server's own cwd. */
+function seedFramedPdf(): number {
+  const rel = path.join("data", "uploads", "medical", "1", PDF_DOC);
+  const abs = path.join(workerDir(), rel);
+  fs.mkdirSync(path.dirname(abs), { recursive: true });
+  fs.writeFileSync(abs, `%PDF-1.4\n% allos e2e document 3975\n%%EOF\n`);
+  const handle = new Database(workerDbPath());
+  try {
+    handle
+      .prepare(`DELETE FROM medical_documents WHERE filename = ?`)
+      .run(PDF_DOC);
+    return Number(
+      handle
+        .prepare(
+          `INSERT INTO medical_documents
+             (profile_id, filename, stored_path, mime_type, size_bytes, doc_type,
+              extraction_status, extracted_count, uploaded_at)
+           VALUES (1, ?, ?, 'application/pdf', 42, 'Lab report', 'done', 0,
+                   '2026-07-10 09:00:00')`
+        )
+        .run(PDF_DOC, rel).lastInsertRowid
+    );
+  } finally {
+    handle.close();
+  }
+}
+
+test("the stored-file route carries frame-ancestors 'self', and nothing else does", async ({
+  request,
+}) => {
+  const id = seedFramedPdf();
+  const resp = await request.get(`/medical/file/${id}`);
+  expect(resp.status()).toBe(200);
+  const headers = resp.headers();
+  const csp = headers["content-security-policy"];
+  // The narrowing, on the wire.
+  expect(csp).toContain("frame-ancestors 'self'");
+  expect(csp).not.toContain("frame-ancestors 'none'");
+  // The legacy mirror moves with it: a DENY left beside a 'self' is ignored by
+  // browsers but is a trap for the next reader.
+  expect(headers["x-frame-options"]).toBe("SAMEORIGIN");
+  // …and NOTHING else about the policy moved.
+  expect(csp).toContain("default-src 'self'");
+  expect(csp).toContain("object-src 'none'");
+  expect(csp).toContain("form-action 'self'");
+  expect(csp).toContain("img-src 'self' data: blob:");
+  expect(scriptSrcDirective(csp)).toMatch(NONCE_TOKEN);
+  // The CONVERSE, in the same test: an ordinary page is still 'none'/DENY, so a
+  // widening that fixed this route by loosening every page cannot pass here.
+  const page = (await request.get("/login")).headers();
+  expect(page["content-security-policy"]).toContain("frame-ancestors 'none'");
+  expect(page["x-frame-options"]).toBe("DENY");
+});
+
+test("the import page's PDF pane really frames the document", async ({
+  page,
+}) => {
+  const id = seedFramedPdf();
+  await page.goto(`/import/${id}`);
+  await expect(page.getByTestId("document-preview-frame")).toBeVisible();
+  // A frame REFUSAL leaves the <iframe> ELEMENT in place and swaps the document
+  // inside it for the browser's own (chrome-error://chromewebdata/) — so
+  // asserting the element, or its caption, is exactly the assertion that missed
+  // this from #624 until prod. Assert what the frame COMMITTED instead.
+  await expect
+    .poll(() => page.mainFrame().childFrames()[0]?.url() ?? "")
+    .toContain(`/medical/file/${id}`);
+  // …and that it really is our PDF document in there, not an error document that
+  // happens to sit at the same URL.
+  const framed = page.mainFrame().childFrames()[0];
+  expect(await framed.evaluate(() => document.contentType)).toBe(
+    "application/pdf"
   );
 });

@@ -1,5 +1,5 @@
 import { describe, it, expect } from "vitest";
-import { buildCsp, generateNonce } from "@/lib/csp";
+import { buildCsp, generateNonce, isSelfFramedPath } from "@/lib/csp";
 
 // Pure coverage for the Content-Security-Policy builder (issue #595, step 3).
 // The end-to-end header wiring is covered by e2e/security-headers.spec.ts; this
@@ -15,7 +15,6 @@ describe("buildCsp", () => {
       expect(csp).toContain("base-uri 'self'");
       expect(csp).toContain("object-src 'none'");
       expect(csp).toContain("form-action 'self'");
-      expect(csp).toContain("frame-ancestors 'none'");
       expect(csp).toContain("img-src 'self' data: blob:");
       expect(csp).toContain("connect-src 'self'");
       // style-src keeps 'unsafe-inline' by design (Tailwind + Next inline styles).
@@ -41,6 +40,49 @@ describe("buildCsp", () => {
     // A nonce token would make browsers IGNORE 'unsafe-inline' and break HMR, so
     // the dev policy must NOT carry one.
     expect(scriptSrc).not.toContain("nonce-");
+  });
+});
+
+// frame-ancestors is the ONE directive that varies by path (#3975): the route the
+// import page frames its own stored PDF from gets 'self', everything else keeps
+// 'none'. Both halves are asserted — a narrowing that also widened the pages would
+// be the actual security regression, and only the 'none' case can see it.
+describe("buildCsp frame-ancestors (#3975)", () => {
+  it.each([
+    [false, "frame-ancestors 'none'", "frame-ancestors 'self'"],
+    [true, "frame-ancestors 'self'", "frame-ancestors 'none'"],
+  ])("selfFramed=%s emits %s", (selfFramed, present, absent) => {
+    for (const dev of [true, false]) {
+      const csp = buildCsp(NONCE, dev, selfFramed);
+      expect(csp.split("; ")).toContain(present);
+      expect(csp).not.toContain(absent);
+      // Nothing ELSE moves with it — the narrowing is one directive wide.
+      expect(csp).toContain("default-src 'self'");
+      expect(csp).toContain("object-src 'none'");
+      expect(csp).toContain("form-action 'self'");
+    }
+  });
+
+  it("defaults to 'none' when the flag is omitted", () => {
+    expect(buildCsp(NONCE, false)).toContain("frame-ancestors 'none'");
+  });
+});
+
+describe("isSelfFramedPath", () => {
+  // The trailing slash in the prefix is what keeps this from being a substring
+  // match: /medical/files/1 is a different (hypothetical) route and must not
+  // inherit the narrowing.
+  it.each([
+    ["/medical/file/1", true],
+    ["/medical/file/908", true],
+    ["/medical/file", false],
+    ["/medical/files/1", false],
+    ["/medical", false],
+    ["/import/44", false],
+    ["/share/token", false],
+    ["/", false],
+  ])("%s -> %s", (pathname, expected) => {
+    expect(isSelfFramedPath(pathname)).toBe(expected);
   });
 });
 
