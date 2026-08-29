@@ -900,6 +900,84 @@ describe("atomic dashboard placement", () => {
       },
     ]);
   });
+
+  // Which of a shared fact's two candidates renders (#3201). A marker that has
+  // just become notable mints BOTH the reading and the attention finding that
+  // flagged it, on one factKey. The reading carries the value and the finding
+  // only announces it, so the reading wins — but only that; the dedup is still
+  // exact-once, score still leads, and the seat belongs to the fact, not to
+  // whichever candidate occupies it.
+  describe("a shared fact renders its most useful candidate (#3201)", () => {
+    const FLAG_FACT = "upcoming.biomarker-flag:ferritin";
+    // Production gather order: attention first, labs some hundreds of
+    // candidates later. That gap is exactly what used to decide this.
+    const finding = (
+      reasons: Partial<DashboardCandidate["rankReasons"]> = {}
+    ): DashboardCandidate => ({
+      ...action("attention.fact:biomarker-flag:ferritin", "should", {
+        changed: true,
+        ...reasons,
+      }),
+      factKey: FLAG_FACT,
+      sourceOrder: 0,
+    });
+    const labReading: DashboardCandidate = {
+      ...reading("labs.latest:ferritin"),
+      factKey: FLAG_FACT,
+      rankReasons: {
+        safety: false,
+        owed: false,
+        windowOpen: false,
+        changed: true,
+      },
+      readingPromotion: "clinical-non-notable-to-notable" as const,
+      sourceOrder: 400,
+    };
+    // A second fact gathered between the two, tied on score. Now seats
+    // NOW_CANDIDATE_CAP candidates, so a fact that slid to the reading's own
+    // gather position would be pushed off the lane entirely.
+    const neighbour: DashboardCandidate = {
+      ...action("attention.fact:review:1", "should", { changed: true }),
+      sourceOrder: 1,
+    };
+
+    it.each([
+      {
+        name: "the reading takes the seat the flag finding used to hold",
+        candidates: [finding(), labReading, neighbour],
+        now: ["labs.latest:ferritin", "attention.fact:review:1"],
+      },
+      {
+        name: "a flagged marker with no reading still surfaces its finding",
+        candidates: [finding(), neighbour],
+        now: [
+          "attention.fact:biomarker-flag:ferritin",
+          "attention.fact:review:1",
+        ],
+      },
+      {
+        name: "a finding that outranks its reading on score keeps the seat",
+        candidates: [finding({ owed: true }), labReading, neighbour],
+        now: [
+          "attention.fact:biomarker-flag:ferritin",
+          "attention.fact:review:1",
+        ],
+      },
+    ])("$name", ({ candidates, now }) => {
+      const placements = rank(candidates);
+      expect(
+        placements
+          .filter((placement) => placement.lane === "now")
+          .map((placement) => placement.candidate.candidateId)
+      ).toEqual(now);
+      // Exact-once is untouched: the loser of a shared fact renders nowhere.
+      expect(
+        placements.filter(
+          (placement) => placement.candidate.factKey === FLAG_FACT
+        )
+      ).toHaveLength(1);
+    });
+  });
 });
 
 // ---------------------------------------------------------------------------

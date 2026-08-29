@@ -97,7 +97,7 @@ jobs:
           if [ -z "$before" ] || ! git cat-file -e "${before}^{commit}" 2>/dev/null; then
             echo "code=true" >> "$GITHUB_OUTPUT"
             echo "Cannot resolve the pushed range - running the matrix rather than guessing."
-          elif git diff --name-only "$before" HEAD | grep -qvE '^(README\.md|SECURITY\.md|LICENSE|AGENTS\.md|CLAUDE\.md|docs/|\.claude/skills/|lib/__tests__/|lib/__db_tests__/|lib/__action_tests__/|scripts/orchestration/|scripts/orchestrator-checkin\.sh$)'; then
+          elif git diff --name-only "$before" HEAD | grep -qvE '^(README\.md|SECURITY\.md|LICENSE|AGENTS\.md|CLAUDE\.md|docs/|\.claude/skills/|lib/__tests__/|lib/__db_tests__/|lib/__action_tests__/|components/__tests__/|scripts/orchestration/|scripts/orchestrator-checkin\.sh$)'; then
             echo "code=true" >> "$GITHUB_OUTPUT"
           else
             echo "code=false" >> "$GITHUB_OUTPUT"
