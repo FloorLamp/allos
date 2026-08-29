@@ -56,6 +56,60 @@
           "title": "A bulk correction won't apply under different units than you previewed it in",
           "kind": "fix",
           "issues": [3962, 3982]
+        },
+        {
+          "pr": 4032,
+          "title": "The Trends chart menu keeps the keyboard focus where you put it while the page scrolls behind it",
+          "kind": "fix",
+          "issues": [4028]
+        },
+        {
+          "pr": 4031,
+          "title": "The date picker and the sidebar calendar show the same months, weekdays and bounds",
+          "kind": "fix",
+          "issues": [3744, 3750, 3752]
+        },
+        {
+          "pr": 4034,
+          "title": "An exercise states its equipment in one line, with the picker a tap away instead of six controls",
+          "kind": "feature",
+          "issues": [3349]
+        },
+        {
+          "pr": 4034,
+          "title": "Confirmations, failures and pull-to-refresh answer with a short buzz on a phone",
+          "kind": "feature",
+          "issues": [3699]
+        },
+        {
+          "pr": 4016,
+          "title": "Doses, food, practices, substances and body readings are one record you can scroll and correct in place",
+          "kind": "feature",
+          "issues": [3958]
+        },
+        {
+          "pr": 4030,
+          "title": "A reminder for a past day keeps the doses you owed that day, even after you have travelled",
+          "kind": "fix",
+          "issues": [4025, 4026]
+        },
+        {
+          "pr": 4042,
+          "title": "Filter menus stop cutting off long options like “Complete blood count”",
+          "kind": "fix",
+          "issues": [3748]
+        },
+        {
+          "pr": 4046,
+          "title": "An exercise’s target, sides and effort options sit behind one control that names them",
+          "kind": "feature",
+          "issues": [3349]
+        },
+        {
+          "pr": 4052,
+          "title": "A lab result that has just become notable shows its value on the dashboard, not only that it is flagged",
+          "kind": "fix",
+          "issues": [3201]
         }
       ]
     },
