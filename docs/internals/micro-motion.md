@@ -296,6 +296,23 @@ and it is refused structurally rather than by a guard. `components/Collapse.tsx`
 app's button-and-panel disclosure, spends the same token on the same curve, so there is
 one duration and one feel for every region that expands in place.
 
+**The rule is asymmetric, and it has to be.** Closing transitions `content-visibility`
+with `allow-discrete`, so the panel is still rendered while it shrinks. Opening does
+**not**, and that is the load-bearing half: a discrete transition's value is applied at
+the browser's next _rendering opportunity_ rather than when the property changes, so
+listing it on the open left `details.open` true while the contents were still
+`content-visibility: hidden` — `innerText` empty, and the subtree out of the
+accessibility tree. Measured: 855 accessibility nodes on the click frame against 1,327
+once settled. A reader who taps a fold and a test that reads one are the same case, and
+neither may be told a panel is open while its contents are not there. The property has
+its own guard in `e2e/disclosure-motion.spec.ts`, asserted synchronously in the same
+task as the click.
+
+**Chromium only, today.** `::details-content` and `interpolate-size` are Chromium-only
+at the time of writing. Firefox and Safari drop both rules, which leaves them exactly
+the instant open the app shipped before — the same end state reduced motion gets. No
+browser is worse off than it was; one is better.
+
 ## How the suite proves it
 
 `lib/__tests__/micro-motion.test.ts` owns the animation contract directly: registry ↔

@@ -1971,12 +1971,30 @@
 .motion-disclose::details-content {
   block-size: 0;
   overflow: hidden;
+  /* CLOSING. A transition reads the transition properties of the state it is moving
+     TO, so this rule times the close and the one below times the open — which is what
+     lets the discrete half be asymmetric, and it has to be. `allow-discrete` holds
+     `content-visibility: visible` for the whole 200 ms so the panel is still rendered
+     while it shrinks; without it the contents vanish on frame one and the close has
+     nothing to animate. */
   transition:
     block-size var(--motion-disclose) var(--motion-ease),
     content-visibility var(--motion-disclose) allow-discrete;
 }
 .motion-disclose[open]::details-content {
   block-size: auto;
+  /* OPENING, and `content-visibility` is DELIBERATELY ABSENT (#3677 CI red on
+     e2e/imaging.spec.ts). A discrete transition's value is applied by the animation
+     machinery at the next RENDERING OPPORTUNITY, not when the property changes — so
+     with it listed here, `details.open` was true while `::details-content` was still
+     `content-visibility: hidden`. Measured on this tree: a raw `<details>` reports the
+     contents visible SYNCHRONOUSLY on the click, and this rule reported them hidden a
+     whole frame later, with `innerText` empty and 472 nodes missing from the
+     accessibility tree. A reader who taps a fold and a spec that reads it are the same
+     case, and neither may be told the panel is open while its contents are not there.
+     Off the list, the contents are visible on the frame `open` flips, and only the
+     height travels. */
+  transition: block-size var(--motion-disclose) var(--motion-ease);
 }
 
 @media (prefers-reduced-motion: reduce) {
@@ -1997,8 +2015,12 @@
   }
   /* The continuity class's reduced state is the END LAYOUT, INSTANTLY — the panel is
      simply at full height on the frame it opens. Not "nothing happens": the
-     disclosure still opens and still closes, it just does not travel. */
-  .motion-disclose::details-content {
+     disclosure still opens and still closes, it just does not travel.
+     BOTH selectors, because the open state carries its own `transition` (see the
+     asymmetry above) and `[open]` outranks the bare class in here too — neutralizing
+     only the closed one left reduced motion animating every fold open. */
+  .motion-disclose::details-content,
+  .motion-disclose[open]::details-content {
     transition: none;
   }
 }
