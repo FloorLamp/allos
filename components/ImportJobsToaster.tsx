@@ -112,6 +112,7 @@ export default function ImportJobsToaster({
               `Extracted ${j.summary ?? "your import"}. Review, then save.`,
               {
                 duration: null,
+                silent: true,
                 action: {
                   label: "Review",
                   onClick: () =>
@@ -123,6 +124,7 @@ export default function ImportJobsToaster({
             toast(j.error ?? "Extraction didn’t produce any rows.", {
               tone: "error",
               duration: null,
+              silent: true,
             });
           }
         }

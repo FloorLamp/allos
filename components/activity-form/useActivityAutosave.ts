@@ -98,7 +98,10 @@ export function useActivityAutosave({
   // (an empty sentinel) so the seeded, already-complete activity auto-saves on open.
   isPrefillCreate: boolean;
   buildFormData: (savedId: number | null) => FormData;
-  toast: (msg: string) => void;
+  // Both posts from here are headless — the form has already unmounted — so they
+  // pass `silent` (#3699): a cue for something the person is no longer looking at is
+  // a phone buzzing on a table.
+  toast: (msg: string, opts?: { silent?: boolean }) => void;
   // Offline capture for a NEVER-CREATED session (#1596): called from the CLOSE-path
   // flushes only, when the final save dies on a dead connection and the form has no
   // server row — the one moment the whole session is a pure capture (see the
@@ -307,7 +310,7 @@ export function useActivityAutosave({
           // error rendering stands instead of the "retrying" line.
           endRetryEpisode();
           if (mountedRef.current) setStatus("error");
-          else toast(saveOutcomeMessage(res.reason));
+          else toast(saveOutcomeMessage(res.reason), { silent: true });
           return;
         }
         if (res.id != null && savableId() == null) {
@@ -418,7 +421,8 @@ export function useActivityAutosave({
           toast(
             stale
               ? "Couldn’t save your last change — the app has updated. Reload the page; your entry is kept on this device."
-              : "Couldn’t save your last change — reopen the activity."
+              : "Couldn’t save your last change — reopen the activity.",
+            { silent: true }
           );
         }
       } finally {

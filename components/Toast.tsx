@@ -29,6 +29,8 @@ import {
 import { motionClass, motionMs, overlayMotionClass } from "@/lib/motion";
 import { useCompactViewport } from "@/components/useCompactViewport";
 import { usePrefersReducedMotion } from "@/components/usePrefersReducedMotion";
+import { useHaptics } from "@/components/useHaptics";
+import { toastHaptic } from "@/lib/haptics";
 import {
   BOTTOM_EDGE_GUTTER_LEFT,
   BOTTOM_EDGE_GUTTER_RIGHT,
@@ -90,6 +92,12 @@ interface ToastOptions {
   // A continuation may publish only while its interaction-start reservation
   // still owns the key. Initial/legacy keyed posts omit this and claim normally.
   onlyIfOwner?: boolean;
+  // NOT THE PERSON'S DOING (#3699). A headless poster — extraction finishing, an
+  // import job, autosave on a timer, the offline queue replaying — announces
+  // something nobody just did, so it carries no haptic: a phone that buzzes while it
+  // sits on a table is worse than one that never buzzes at all. Visually identical;
+  // this says only "do not tap the shoulder".
+  silent?: boolean;
 }
 
 interface ToastItem {
@@ -156,6 +164,7 @@ export function ToastProvider({ children }: { children: React.ReactNode }) {
   const profileTokenRef = useRef(0);
   const keyedOwnersRef = useRef(new Map<string, symbol>());
   const reduceMotion = usePrefersReducedMotion();
+  const haptic = useHaptics();
   const snackbar = useCompactViewport();
   const exitMs = motionMs("notice", reduceMotion);
 
@@ -221,6 +230,12 @@ export function ToastProvider({ children }: { children: React.ReactNode }) {
     []
   );
 
+  // WHERE EVERY WRITE IN THE APP GAINS A CONFIRMATION YOUR HAND CAN FEEL (#3699).
+  // This provider is mounted once and is the ONE toast system (#1315), so a cue fired
+  // here reaches all ~105 `useToast()` callers with no call site changed and no new API
+  // surface — which is the whole reason haptics mount on substrates rather than on
+  // hand-placed calls. It fires only for a toast that actually posts: a scope-refused
+  // or unowned keyed post has announced nothing, so it must not buzz either.
   const toast = useCallback<ToastFn>((message, options = {}) => {
     if (!acceptsProfileToast(profileScopeRef.current, options)) return;
     if (options.key != null) {
@@ -238,6 +253,8 @@ export function ToastProvider({ children }: { children: React.ReactNode }) {
       }
     }
     const tone = options.tone ?? "success";
+    const cue = toastHaptic({ tone, silent: options.silent });
+    if (cue) haptic(cue);
     const duration =
       options.duration === undefined
         ? DEFAULT_DURATION[tone]
@@ -256,7 +273,7 @@ export function ToastProvider({ children }: { children: React.ReactNode }) {
         owner: options.owner,
       })
     );
-  }, []);
+  }, [haptic]);
 
   const api = useMemo<ToastApi>(
     () => ({

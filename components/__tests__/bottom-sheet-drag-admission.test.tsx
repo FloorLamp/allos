@@ -1,6 +1,7 @@
 import { act, fireEvent, render, screen } from "@testing-library/react";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import BottomSheet from "../BottomSheet";
+import { HAPTIC_PATTERNS } from "@/lib/haptics";
 
 type TouchPoint = Pick<Touch, "identifier" | "clientX" | "clientY">;
 
@@ -35,9 +36,12 @@ function visibleHandle(): void {
   ).mockReturnValue({ length: 1 } as DOMRectList);
 }
 
-function renderSheet() {
+// `dismiss: false` is the REFUSAL — a dirty form routed through a confirm, which is
+// what this hook's #2774 contract exists for. It is the default here because every
+// admission case below only needs the outcome to have been ASKED.
+function renderSheet(dismiss = false) {
   const onClose = vi.fn<() => void>();
-  const onGestureDismiss = vi.fn<() => boolean>(() => false);
+  const onGestureDismiss = vi.fn<() => boolean>(() => dismiss);
   render(
     <BottomSheet
       open
@@ -123,6 +127,37 @@ describe("BottomSheet drag admission (#3721)", () => {
     dragDown(screen.getByRole("button", { name: "Body control" }));
 
     expect(onGestureDismiss).not.toHaveBeenCalled();
+  });
+
+  // THE `select` CUE ON THE OUTCOME (#3699). It rides the drag's ANSWER, not its
+  // release, which is the whole reason it can be mounted on the substrate at all: a
+  // panel that refused to leave has not left, and a cue that said it had would be
+  // lying about the one gesture whose contract is that it may say no.
+  it.each([
+    ["a committed dismissal buzzes", true, 1],
+    ["a refused dismissal is silent", false, 0],
+  ])("%s", (_name, dismiss, expected) => {
+    const vibrations: number[][] = [];
+    vi.stubGlobal("navigator", {
+      ...navigator,
+      vibrate: (pattern: number | number[]) => {
+        vibrations.push(Array.isArray(pattern) ? [...pattern] : [pattern]);
+        return true;
+      },
+    });
+    try {
+      const { onGestureDismiss } = renderSheet(dismiss);
+      visibleHandle();
+
+      dragDown(screen.getByRole("heading", { name: "Gesture contract" }));
+
+      expect(onGestureDismiss).toHaveBeenCalledTimes(1);
+      expect(vibrations).toEqual(
+        expected === 0 ? [] : [[...HAPTIC_PATTERNS.select]]
+      );
+    } finally {
+      vi.unstubAllGlobals();
+    }
   });
 
   it("uses the handle's rendered box as a separate whole-sheet gate", () => {

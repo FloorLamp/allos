@@ -667,3 +667,114 @@ test("gear chosen behind a closed panel still saves, and still counts as a chang
     takeStrandedDrafts(workerDbPath(), SHARED_PROFILE_ID);
   }
 });
+
+// ---- #3349: the PER-PART equipment row states its conclusion ---------------
+//
+// The session-level chip above is one fact on one form. This one repeats per exercise,
+// which is what made the old row expensive: six-plus controls and a "Manage equipment"
+// link on every part of a five-lift session. What needs a browser rather than a code
+// read is the ONE-PER-FORM claim — it is a property of two parts rendered together, and
+// of the editor state living above both of them, not of either component alone.
+//
+// Fixture ownership (docs/internals/e2e-hygiene.md): the probe carries a unique per-run
+// suffix and is deleted at the end. It is a live draft on the shared profile from its
+// first auto-save, so its disposal cannot sit only on the happy path.
+const PART_GEAR_PREFIX = "Part gear probe";
+
+test("a strength part states its implement, and the registry door is one per form (#3349)", async ({
+  page,
+}) => {
+  test.slow(); // local next dev compiles /training on first hit
+  const stamp = `${Date.now()}`; // clock-ok: unique-name suffix for this run's probe activity, never a stored timestamp
+  const title = `${PART_GEAR_PREFIX} ${stamp}`;
+  // The form's own dirty marker (#3351) — readable at any moment, so nothing here waits
+  // on the `Saved ✓` check to fade. See the #3334 test above for the measured budget.
+  const form = page.getByTestId("activity-form");
+  const chips = page.getByTestId("strength-equipment-chip");
+  const doors = page.getByTestId("strength-equipment-link");
+
+  try {
+    await page.goto("/training?tab=log"); // default "Log" tab renders the Training Log feed
+    await hydratedClick(page, page.getByTestId("training-log-add-activity"));
+    await page.getByRole("textbox", { name: "Activity name" }).fill(title);
+
+    // A BARE VARIANT BASE. "Curl" cannot be saved until an implement is picked
+    // (needsEquipment), so the row says so with the primitive's dashed MISSING chip —
+    // and says it now, not once a save has already been refused.
+    const firstName = page.getByPlaceholder(/What did you do/);
+    await firstName.fill("Curl");
+    // By EXACT accessible name: "Curl" narrows the list to every curl the catalog
+    // knows, and this spec means the bare variant base and no other.
+    await page
+      .getByRole("listbox")
+      .getByRole("option", { name: "Curl", exact: true })
+      .click();
+    await expect(firstName).toHaveValue("Curl");
+    await expect(chips).toHaveCount(1);
+    await expect(chips).toHaveText("pick equipment");
+    await expect(chips).toHaveAttribute("data-fact-state", "missing");
+    // NOTHING ELSE IS ON SCREEN. This is the row's whole complaint: these three were
+    // drawn on every exercise, unasked.
+    await expect(doors).toHaveCount(0);
+    await expect(page.getByTestId("strength-equipment-select")).toHaveCount(0);
+    await expect(page.getByTestId("strength-equipment-add")).toHaveCount(0);
+
+    // One tap behind: the picker AND its door.
+    await chips.click();
+    await expect(page.getByTestId("strength-equipment-editor")).toHaveAttribute(
+      "data-panel",
+      "equipment"
+    );
+    await expect(doors).toHaveCount(1);
+    await page.getByRole("button", { name: "Dumbbell", exact: true }).click();
+    // The dirty half, asserted FIRST — `dirty` is transient, and reading it after the
+    // panel closes would be reading it after the state it names has passed.
+    await expect(form).toHaveAttribute("data-unsaved", "true");
+    await page.getByTestId("strength-equipment-done").click();
+
+    // The conclusion, stated; the door gone with the panel; focus back on the chip that
+    // opened it (#3311) rather than on <body>.
+    await expect(chips).toHaveText("Dumbbell");
+    await expect(chips).toHaveAttribute("data-fact-state", "stated");
+    await expect(chips).toBeFocused();
+    await expect(doors).toHaveCount(0);
+
+    // Complete the part so the form auto-saves and a second one can be added.
+    await settledFill(page, page.getByTestId("set1-weight"), "20");
+    await settledFill(page, page.getByTestId("set1-reps"), "10");
+    await expect(
+      page.getByRole("button", { name: "Delete", exact: true })
+    ).toBeVisible({ timeout: AUTOSAVE_ROW_MS });
+    await expect(form).toHaveAttribute("data-unsaved", "false");
+
+    await page.getByRole("button", { name: "+ Add another activity" }).click();
+    const secondName = page.getByPlaceholder(/Add another activity/);
+    await secondName.fill("Barbell Bench Press");
+    await page
+      .getByRole("listbox")
+      .getByRole("option", { name: "Barbell Bench Press", exact: true })
+      .click();
+    await expect(secondName).toHaveValue("Barbell Bench Press");
+
+    // TWO PARTS, TWO CONCLUSIONS, AND STILL NO DOOR. The second part's implement comes
+    // from the lift's own name rather than from a pick, and it is stated the same way.
+    await expect(chips).toHaveCount(2);
+    await expect(chips.nth(1)).toHaveText("Barbell"); // nth-ok: the part this spec just added
+    await expect(doors).toHaveCount(0);
+
+    // THE ONE-PER-FORM CLAIM. Opening the second part's picker closes the first's, so
+    // the door the old row repeated once per exercise exists exactly once whichever
+    // part is being edited.
+    await chips.nth(0).click(); // nth-ok: the Curl part this spec entered first
+    await expect(doors).toHaveCount(1);
+    await chips.nth(0).click(); // nth-ok: the Bench Press part — the Curl chip is now the panel, so the remaining chip is index 0
+    await expect(doors).toHaveCount(1);
+    await expect(page.getByTestId("strength-equipment-editor")).toHaveCount(1);
+
+    await deleteActivityFromForm(page);
+  } finally {
+    // The guard's own live-draft signature on the shared profile — the probe is a draft
+    // from its first auto-save, so a failure above must not leave it behind.
+    takeStrandedDrafts(workerDbPath(), SHARED_PROFILE_ID);
+  }
+});
