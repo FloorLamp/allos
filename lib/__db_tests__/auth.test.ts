@@ -40,6 +40,8 @@ import {
   accessibleProfilesForLogin,
   adminLoginCount,
   canAccessProfile,
+  sessionDenial,
+  type SessionDenial,
 } from "@/lib/auth";
 import {
   beginTotpEnrollment,
@@ -146,6 +148,9 @@ beforeEach(() => {
   // mints fresh, uniquely-named ones, so leftover rows never collide with the ids
   // under assertion (and the few instance-wide reads assert relative to a baseline).
   db.prepare("DELETE FROM sessions").run();
+  // The #3053 revocation tombstones outlive their sessions on purpose, so they need
+  // clearing here too or one test's revoked token answers for the next one's.
+  db.prepare("DELETE FROM revoked_sessions").run();
   db.prepare("DELETE FROM login_totp_challenges").run();
   db.prepare("DELETE FROM login_recovery_codes").run();
   db.prepare("DELETE FROM login_profiles").run();
@@ -857,5 +862,113 @@ describe("instance-wide guard rails", () => {
     expect(adminLoginCount()).toBe(before);
     mkLogin("admin");
     expect(adminLoginCount()).toBe(before + 1);
+  });
+});
+
+// ── REVOKED, NOT MERELY UNAUTHORIZED (#3053) ─────────────────────────────────
+//
+// The action tier (lib/__action_tests__/session-revocation-tombstones.actions.test.ts)
+// drives all seven Server Actions and shows each one answering "revoked". This is the
+// half that says what the word does NOT cover, which is the half a fix here is most
+// likely to break: EXPIRY, in all three of its shapes, must still answer "unauthorized",
+// because #2994's pass-4 ruling is that a bare 401 leaves the device's offline record
+// alone and someone back from a fortnight's holiday is the common case.
+describe("session denial: revoked vs merely unauthorized (#3053)", () => {
+  // Each arm ends (or fails to end) one session and answers the raw token the device
+  // would present. Expiry arms leave the row for `purgeExpiredSessions` to find, or sweep
+  // it — after the sweep an expired row and a revoked one are equally ABSENT, which is
+  // precisely why absence could never carry this distinction.
+  const ARMS: [name: string, run: (loginId: number, token: string) => void, denial: SessionDenial][] =
+    [
+      ["a lapsed cookie, not yet swept", (_l, t) => ageSession(sha256hex(t), "-1 days", "-1 hours", "-1 hours"), "unauthorized"],
+      [
+        "a lapsed cookie the purge has swept",
+        (_l, t) => {
+          ageSession(sha256hex(t), "-1 days", "-1 hours", "-1 hours");
+          purgeExpiredSessions();
+        },
+        "unauthorized",
+      ],
+      [
+        "a session past the absolute 90-day ceiling, swept",
+        (_l, t) => {
+          ageSession(sha256hex(t), "-91 days", "+30 days", "-1 minutes");
+          purgeExpiredSessions();
+        },
+        "unauthorized",
+      ],
+      ["destroyLoginSessions — every device", (l) => void destroyLoginSessions(l), "revoked"],
+      [
+        "destroyLoginSessions — every device but this one",
+        (l, t) => void destroyLoginSessions(l, sha256hex(`other-${t}`)),
+        "revoked",
+      ],
+      ["revokeSession — one device", (l, t) => void revokeSession(l, sha256hex(t), null), "revoked"],
+    ];
+
+  it.each(ARMS)("%s", (_name, run, denial) => {
+    const { id } = mkLogin();
+    const profileId = mkProfile("Denial subject");
+    grant(id, profileId);
+    const { token } = createSession(id);
+    run(id, token);
+    expect(resolveSessionToken(token)).toBeNull();
+    expect(sessionDenial(token)).toBe(denial);
+  });
+
+  it("keeps the spared session alive AND unrevoked", () => {
+    const { id } = mkLogin();
+    const profileId = mkProfile("Spared");
+    grant(id, profileId);
+    const mine = createSession(id);
+    const theirs = createSession(id);
+    destroyLoginSessions(id, sha256hex(mine.token));
+    expect(resolveSessionToken(mine.token)).not.toBeNull();
+    expect(sessionDenial(theirs.token)).toBe<SessionDenial>("revoked");
+  });
+
+  // A forged POST reaches revokeSession with an id this login never owned. It deletes
+  // nothing, and it must not leave a tombstone either — otherwise the table is writable
+  // by anyone with a session and a guess.
+  it("plants no tombstone for a revoke that ended nothing", () => {
+    const { id } = mkLogin();
+    const other = mkLogin();
+    const profileId = mkProfile("Forger");
+    grant(id, profileId);
+    grant(other.id, profileId);
+    const victim = createSession(other.id);
+    expect(revokeSession(id, sha256hex(victim.token), null)).toBe("nothing");
+    expect(sessionDenial(victim.token)).toBe<SessionDenial>("unauthorized");
+    expect(resolveSessionToken(victim.token)).not.toBeNull();
+  });
+
+  // The login lost every grant it had — the eighth session-ending path, inside
+  // resolveSessionToken itself, and one #3053's body predates. Somebody took this
+  // person's access away, so the device holding that profile's copy must lose it.
+  it("a session torn down for losing its last grant is a revocation", () => {
+    const { id } = mkLogin();
+    const profileId = mkProfile("Last grant");
+    grant(id, profileId);
+    const { token } = createSession(id);
+    db.prepare("DELETE FROM login_profiles WHERE login_id = ?").run(id);
+    expect(resolveSessionToken(token)).toBeNull();
+    expect(sessionDenial(token)).toBe<SessionDenial>("revoked");
+  });
+
+  // Tombstones are retained exactly as long as a token could still be presented as live,
+  // and no longer: past the absolute ceiling the answer reverts to "unauthorized", which
+  // is the same keep-the-record direction every other unknown takes.
+  it("retires a tombstone once no token could still be live", () => {
+    const { id } = mkLogin();
+    const profileId = mkProfile("Retired");
+    grant(id, profileId);
+    const { token } = createSession(id);
+    destroyLoginSessions(id);
+    expect(sessionDenial(token)).toBe<SessionDenial>("revoked");
+    db.prepare(
+      "UPDATE revoked_sessions SET revoked_at = datetime('now', '-91 days')"
+    ).run();
+    purgeExpiredSessions();
+    expect(sessionDenial(token)).toBe<SessionDenial>("unauthorized");
   });
 });
