@@ -4,8 +4,9 @@
 
 - The sharded CI E2E matrix is the full-suite authority. Local runs diagnose;
   they do not replace the merge gate.
-- Agents run every spec they change at CI parity: `--repeat-each=3 --retries=0`
-  using their assigned port range.
+- Run every changed spec with `--repeat-each=3 --retries=0`. When tests share a
+  profile or worker state, also run the whole file with `--workers=1
+--repeat-each=1 --retries=0` for leaks (#3653). Use the assigned port.
 - Only the orchestrator runs a full local suite. Keep at most two agents in the
   E2E lane.
 - A new navigation item requires updating `TOP_LEVEL_ORDER` in
