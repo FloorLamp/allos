@@ -1,9 +1,9 @@
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
 import Database from "better-sqlite3";
 import fs from "node:fs";
-import os from "node:os";
 import path from "node:path";
 import { assertNoStrandedDrafts } from "../../e2e/shared-profile-guard";
+import { makeTmpDir } from "../__tests__/tmp-dir";
 
 describe("profile-scoped stranded-draft assertion", () => {
   let dir: string;
@@ -11,7 +11,7 @@ describe("profile-scoped stranded-draft assertion", () => {
   let db: Database.Database;
 
   beforeEach(() => {
-    dir = fs.mkdtempSync(path.join(os.tmpdir(), "allos-draft-assertion-"));
+    dir = makeTmpDir("draft-assertion");
     dbPath = path.join(dir, "fixture.db");
     db = new Database(dbPath);
     db.exec(`
