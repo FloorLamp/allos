@@ -14,7 +14,9 @@ import {
   isHistoricalDoseTimeAccepted,
   resolveQueuedTakenAt,
   DOSE_LOG_DATE_WINDOW_DAYS,
+  doseLogDays,
 } from "@/lib/dose-log-window";
+import { shiftDateStr } from "@/lib/date";
 import type { AdministrationOutcome } from "@/lib/types";
 
 describe("formatGivenAtClock", () => {
@@ -251,6 +253,40 @@ describe("isDoseDateAccepted (the ONE dose-log date window, #1427)", () => {
 
   it("agrees with the window constant it is derived from", () => {
     expect(DOSE_LOG_DATE_WINDOW_DAYS).toBe(2);
+  });
+});
+
+// #3936. A day switcher is only honest while the days it OFFERS are exactly the days
+// the write core ACCEPTS, so these two are asserted as one relationship rather than as
+// a list of three date literals: a list would keep passing if the constant moved, and
+// an inequality ("at most three") is satisfied by two and by four alike.
+describe("doseLogDays (the offer half of the same window, #3936)", () => {
+  const T = "2026-07-15";
+
+  it("offers today first and exactly the window's past days", () => {
+    expect(doseLogDays(T)).toEqual(["2026-07-15", "2026-07-14", "2026-07-13"]);
+    expect(doseLogDays(T)).toHaveLength(DOSE_LOG_DATE_WINDOW_DAYS + 1);
+  });
+
+  it("offers every day the write core accepts and stops exactly where it refuses", () => {
+    for (const day of doseLogDays(T)) {
+      expect(isDoseDateAccepted(T, day)).toBe(true);
+    }
+    // The FIRST day not offered must be the first day refused — the pair that fails
+    // whether the offer is one day short or one day long.
+    const oldest = doseLogDays(T).at(-1)!;
+    expect(isDoseDateAccepted(T, shiftDateStr(oldest, -1))).toBe(false);
+  });
+
+  it("is calendar arithmetic on a profile-local day, not an instant", () => {
+    // Across a DST spring-forward (America/New_York, 2026-03-08) the offered days are
+    // still three consecutive calendar dates: a 23-hour day would shift a
+    // millisecond-subtracting implementation onto the wrong date.
+    expect(doseLogDays("2026-03-09")).toEqual([
+      "2026-03-09",
+      "2026-03-08",
+      "2026-03-07",
+    ]);
   });
 });
 
