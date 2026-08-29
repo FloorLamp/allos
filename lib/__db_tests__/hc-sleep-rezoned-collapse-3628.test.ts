@@ -67,20 +67,51 @@ function at(window: { start: string; end: string }, fraction: number): string {
   ).toISOString();
 }
 
+// THE FIXTURE HAS TO BE ABLE TO REACH THE FAILING STATES, which is what the first
+// version of this file could not do: it emitted stages that tiled exactly, on one date,
+// in one instant spelling, from one package. Each option below exists because a defect
+// lived where the fixture could not go.
+interface SessionOpts {
+  origin?: string | null;
+  /** Omit the stage rows entirely — a session scored by a LATER push. */
+  stages?: boolean;
+  /** Push the stage edges out past the session by this many seconds (scorer jitter). */
+  jitterSec?: number;
+  /** State only `end_time` + `duration_seconds`, so the PARSER derives `start_time`
+   *  through `toISOString()` and spells the same instant `…:00.000Z`. */
+  deriveStart?: boolean;
+}
+
 function session(
   window: { start: string; end: string },
-  origin: string | null = FITBIT
+  opts: SessionOpts = {}
 ) {
+  const {
+    origin = FITBIT,
+    stages = true,
+    jitterSec = 0,
+    deriveStart = false,
+  } = opts;
+  const shift = (iso: string, sec: number) =>
+    new Date(new Date(iso).getTime() + sec * 1000).toISOString();
   return {
-    start_time: window.start,
+    ...(deriveStart ? {} : { start_time: window.start }),
     end_time: window.end,
     duration_seconds: minutes(window) * 60,
     ...(origin ? { metadata: { data_origin: origin } } : {}),
-    stages: STAGE_PLAN.map(([stage, from, to]) => ({
-      stage,
-      start_time: at(window, from),
-      end_time: at(window, to),
-    })),
+    ...(stages
+      ? {
+          stages: STAGE_PLAN.map(([stage, from, to], i) => ({
+            stage,
+            start_time:
+              i === 0 ? shift(at(window, from), -jitterSec) : at(window, from),
+            end_time:
+              i === STAGE_PLAN.length - 1
+                ? shift(at(window, to), jitterSec)
+                : at(window, to),
+          })),
+        }
+      : {}),
   };
 }
 
@@ -221,11 +252,12 @@ describe("what the collapse refuses to touch", () => {
     ["an overlapping session from the same origin", CORRECTED, FITBIT, 1],
   ] as const)("keeps both for %s", (_label, window, origin, survives) => {
     push(profileId, "2026-08-22T13:40:00Z", [session(MIS_ZONED)]);
-    push(profileId, "2026-08-23T14:42:00Z", [session(window, origin)]);
+    push(profileId, "2026-08-23T14:42:00Z", [session(window, { origin })]);
     expect(sessions(profileId)).toHaveLength(survives);
   });
 
   it("keeps both when one push carries the pair — nothing ranks two rows of one push", () => {
+    // The REPORTING half of this sequence is asserted in the warnings block below.
     push(profileId, "2026-08-23T14:42:00Z", [
       session(MIS_ZONED),
       session(CORRECTED),
@@ -264,7 +296,26 @@ describe("what the collapse refuses to touch", () => {
     );
     ingestHealthConnectPayload(profileId, parsed);
     expect(parsed.details.warnings).toEqual([
-      "A sleep session you edited overlaps a newer one from the same device, so that night is stored twice. Nothing later removes the older reading — delete whichever is wrong in Data → Manage.",
+      "A sleep session overlaps another reading of the same night and was not replaced by this push, so that night is stored twice. Delete whichever is wrong in Data \u2192 Manage.",
+    ]);
+  });
+
+  it("says so for a pair ONE push carries against itself, which nothing later collapses", () => {
+    // Two rows of one push cannot rank each other, so neither is collapsed — and until
+    // this was counted, that sequence left the phantom stored forever with `warnings:
+    // []` and nothing anywhere to notice it. It is also why the sentence names no
+    // cause: this class and the edit lock are different reasons for one symptom.
+    const parsed = parseHealthConnectPayload(
+      {
+        timestamp: "2026-08-23T14:42:00Z",
+        sleep: [session(MIS_ZONED), session(CORRECTED)],
+      },
+      getTimezone(profileId)
+    );
+    ingestHealthConnectPayload(profileId, parsed);
+    expect(sessions(profileId)).toHaveLength(2);
+    expect(parsed.details.warnings).toEqual([
+      "A sleep session overlaps another reading of the same night and was not replaced by this push, so that night is stored twice. Delete whichever is wrong in Data \u2192 Manage.",
     ]);
   });
 
@@ -304,5 +355,203 @@ describe("what the collapse refuses to touch", () => {
       NAP_SAME_DAY.start,
       CORRECTED.start,
     ]);
+  });
+});
+
+// ─────────────────────────────────────────────────────────────────────────────
+// THE FALSIFIER'S FIVE. Every one of these was invisible to the first version of
+// this file — not because the assertions were weak, but because the FIXTURE could
+// not reach the state: stages that tiled exactly, on one date, in one instant
+// spelling, from one package. A mutation table proves a rule does what it says; it
+// cannot prove the rule is the right rule. These are the shapes that decide that.
+// ─────────────────────────────────────────────────────────────────────────────
+
+const NEW_YORK = "America/New_York";
+
+function stageRows(
+  profileId: number
+): { metric: string; date: string; started_at: string }[] {
+  const placeholders = STAGE_METRICS.map(() => "?").join(",");
+  return db
+    .prepare(
+      `SELECT metric, date, started_at FROM metric_samples
+        WHERE profile_id = ? AND metric IN (${placeholders})
+        ORDER BY started_at`
+    )
+    .all(profileId, ...STAGE_METRICS) as {
+    metric: string;
+    date: string;
+    started_at: string;
+  }[];
+}
+
+describe("a stage row may not outlive the session it belongs to", () => {
+  it("collapses stages filed under a DIFFERENT date from their session", () => {
+    // `sleep_min.date` is frozen at first write by `resendDay`, but a stage row
+    // arriving for the FIRST time in a later push takes its wake-day from the
+    // profile's zone AT THAT MOMENT. For a traveller mid-switch — the population this
+    // rule exists for — the two dates diverge, and a stage sweep keyed on the
+    // session's `date` cannot see its own session's stages.
+    push(profileId, "2026-08-22T13:40:00Z", [
+      session(MIS_ZONED, { stages: false }),
+    ]);
+    expect(sessions(profileId)).toEqual([
+      { started_at: MIS_ZONED.start, date: "2026-08-21" },
+    ]);
+
+    setTimezone(profileId, NEW_YORK);
+    push(profileId, "2026-08-22T15:40:00Z", [session(MIS_ZONED)]);
+    // The session keeps its frozen day; its stages land on the New York one.
+    expect(new Set(stageRows(profileId).map((r) => r.date))).toEqual(
+      new Set(["2026-08-22"])
+    );
+
+    push(profileId, "2026-08-23T14:42:00Z", [session(CORRECTED)]);
+    // The phantom is gone, and so is every stage row that belonged to it — the
+    // surviving night's breakdown is its own and nothing else's.
+    expect(sessions(profileId).map((r) => r.started_at)).toEqual([
+      CORRECTED.start,
+    ]);
+    expect(stageRows(profileId).map((r) => r.started_at)).toEqual(
+      STAGE_PLAN.map(([, from]) => at(CORRECTED, from))
+    );
+  });
+
+  it("collapses stages that arrive in the SAME push as the write that collapses them", () => {
+    // Ordinary exporter behaviour: push 1 delivers the session unscored, push 2
+    // delivers it scored alongside the corrected write. Those stage rows are NEW, so
+    // an id watermark that excludes this push's own rows cannot see them — and the
+    // wake-day is left holding a full stage breakdown and no session at all.
+    push(profileId, "2026-08-22T13:40:00Z", [
+      session(MIS_ZONED, { stages: false }),
+    ]);
+    push(profileId, "2026-08-23T14:42:00Z", [
+      session(MIS_ZONED),
+      session(CORRECTED),
+    ]);
+    expect(sessions(profileId).map((r) => r.started_at)).toEqual([
+      CORRECTED.start,
+    ]);
+    expect(stageCount(profileId, "2026-08-21")).toBe(0);
+  });
+
+  it("collapses every stage of a session whose scorer overran its edges", () => {
+    // Nothing clamps a stage to its session — the parser copies the payload's
+    // instants. One minute of jitter at each end and a containment test closed on
+    // both ends keeps the first and last stage, leaving a two-stage fragment of a
+    // night that no longer exists, which reads like a real short night's breakdown.
+    push(profileId, "2026-08-22T13:40:00Z", [
+      session(MIS_ZONED, { jitterSec: 60 }),
+    ]);
+    expect(stageCount(profileId, "2026-08-21")).toBe(4);
+
+    push(profileId, "2026-08-23T14:42:00Z", [session(CORRECTED)]);
+    expect(sessions(profileId).map((r) => r.started_at)).toEqual([
+      CORRECTED.start,
+    ]);
+    expect(stageCount(profileId, "2026-08-21")).toBe(0);
+  });
+
+  it("refuses the collapse rather than claim a nested nap's stages", () => {
+    // A nap slept inside the phantom's window has its own breakdown, and geometry
+    // alone cannot tell whose a stage row is. Deleting them robs a real nap; leaving
+    // them inflates the night that survives. Neither is acceptable, so the collapse
+    // declines and says so.
+    const NAP_INSIDE = {
+      start: "2026-08-22T01:00:00Z",
+      end: "2026-08-22T02:00:00Z",
+    };
+    push(profileId, "2026-08-22T13:40:00Z", [
+      session(MIS_ZONED),
+      session(NAP_INSIDE),
+    ]);
+    const second = push(profileId, "2026-08-23T14:42:00Z", [
+      session(CORRECTED),
+    ]);
+    expect(sessions(profileId)).toHaveLength(3);
+    expect(second.split.superseded).toBe(0);
+    expect(tombstones(profileId).size).toBe(0);
+  });
+});
+
+describe("the rule may never delete the night it exists to protect", () => {
+  it("refuses a re-send whose start the PARSER spells differently", () => {
+    // `metricSampleTombstoneKey` keys on the raw `started_at` STRING, and the parser
+    // itself emits two spellings of one instant: given `end_time` + `duration_seconds`
+    // and no `start_time` it derives the start through `toISOString()`, spelling
+    // `…:00.000Z` where the vendor field spells `…:00Z`. That re-send misses the
+    // tombstone veto and enters as a NEW row above the watermark — and a rule keyed on
+    // overlap alone would let it delete and tombstone the corrected night, producing
+    // the exact symptom #3628 was opened to cure and making it permanent.
+    push(profileId, "2026-08-22T13:40:00Z", [session(MIS_ZONED)]);
+    push(profileId, "2026-08-23T14:42:00Z", [session(CORRECTED)]);
+    expect(sessions(profileId).map((r) => r.started_at)).toEqual([
+      CORRECTED.start,
+    ]);
+
+    push(profileId, "2026-08-24T14:40:00Z", [
+      session(CORRECTED, { deriveStart: true }),
+    ]);
+    // The two spellings are one instant, so the displacement is ZERO — that is not a
+    // re-timing, and the corrected night is still here.
+    const after = sessions(profileId).map((r) => r.started_at);
+    expect(after).toContain(CORRECTED.start);
+    expect(
+      tombstones(profileId).has(
+        metricSampleTombstoneKey("sleep_min", HC, FITBIT, CORRECTED.start)
+      )
+    ).toBe(false);
+  });
+
+  it("refuses the re-spelled re-send even with no stage row to make it ambiguous", () => {
+    // The case above is held by TWO barriers — the zero displacement, and the stage
+    // rows of two identical windows owning each other ambiguously. Unscored sessions
+    // remove the second, so this isolates the first: nothing but "zero is not a
+    // re-timing" stands between the re-spelled row and the corrected night.
+    push(profileId, "2026-08-22T13:40:00Z", [
+      session(MIS_ZONED, { stages: false }),
+    ]);
+    push(profileId, "2026-08-23T14:42:00Z", [
+      session(CORRECTED, { stages: false }),
+    ]);
+    expect(sessions(profileId).map((r) => r.started_at)).toEqual([
+      CORRECTED.start,
+    ]);
+
+    push(profileId, "2026-08-24T14:40:00Z", [
+      session(CORRECTED, { stages: false, deriveStart: true }),
+    ]);
+    expect(sessions(profileId).map((r) => r.started_at)).toContain(
+      CORRECTED.start
+    );
+    expect(
+      tombstones(profileId).has(
+        metricSampleTombstoneKey("sleep_min", HC, FITBIT, CORRECTED.start)
+      )
+    ).toBe(false);
+  });
+
+  it("keeps a genuine short session overlapping a night from the same PACKAGE", () => {
+    // `data_origin` is the writing APP's package name, not a device. One package
+    // writes main sleep, naps, and — for an aggregator — several devices' sessions.
+    // "Same origin" therefore does not mean "same sleeper", and an overlap inside one
+    // package is not by itself a re-write. Deleting the night here would drop the
+    // wake-day from 480 minutes to 60 and hand `mainSleepSession` the short one, which
+    // is #2603's failure mode reached by deletion rather than election.
+    const NIGHT = {
+      start: "2026-08-21T20:00:00Z",
+      end: "2026-08-22T04:00:00Z",
+    };
+    const EARLY = {
+      start: "2026-08-21T19:00:00Z",
+      end: "2026-08-21T20:01:00Z",
+    };
+    push(profileId, "2026-08-22T13:40:00Z", [session(NIGHT)]);
+    const second = push(profileId, "2026-08-23T14:42:00Z", [session(EARLY)]);
+    expect(sessions(profileId).map((r) => r.started_at)).toEqual([
+      EARLY.start,
+      NIGHT.start,
+    ]);
+    expect(second.split.superseded).toBe(0);
   });
 });

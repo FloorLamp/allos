@@ -28,7 +28,14 @@ import {
 //      end, so a snack logged inside a meal window is two legitimately nested
 //      `nutrition_kcal` rows and the rule would delete the meal. `sleep_min` is one row
 //      per session on the session's real window, and two overlapping sessions are two
-//      readings rather than one anomaly. Neither tiles, so neither may be superseded.
+//      readings rather than one anomaly. Neither tiles, so neither may be superseded
+//      BY THIS RULE — and that sentence stands unamended (#3628). The sleep rule at the
+//      foot of this file does not contradict it: it never acts on "two overlapping
+//      sessions" at all. It acts on ONE session written twice at two wall-clock
+//      anchorings, which is a single reading wearing two keys, and it establishes that
+//      by evidence this rule has no use for — equal duration and a whole zone-offset
+//      displacement. An overlap it cannot show to be that is two readings, exactly as
+//      this bullet says, and it is left alone.
 //   2. ONLY AT DAY-BUCKET GRANULARITY (`isDayBucketWindow`). The metric list alone is
 //      not enough: the same four metrics arrive as MINUTE buckets at a `1m`/`15m`
 //      exporter setting, and two devices that set no `metadata.data_origin` both parse
@@ -753,47 +760,48 @@ export function planSupersede(
 
 // ---- A RE-TIMED SLEEP SESSION AND ITS MIS-ZONED FIRST WRITE (#3628) -------------
 //
-// A DIFFERENT QUESTION FROM THE ONE ABOVE, and it is kept separate on purpose. The day
-// bucket rule collapses a span the device RE-CUT under a new anchoring, so it decides
-// within one `date` and reads a device-cut window. A sleep session is a POINT EVENT the
-// source RE-TIMED: after a zone change Health Connect can hold the same Fitbit night
-// twice — a first write whose instants came from the wall clock under the old zone, and
-// a corrected write a day later under the new one. Measured on prod: two rows exactly
-// 6 h apart (New York ↔ Honolulu), overlapping by 17 minutes, same 377-minute duration.
-// `sleep_min` keys on `started_at`, so the re-timed session is a NEW natural key rather
-// than a correction, the first write is never withdrawn, and `mainSleepSession` picks
-// the longest per wake-day — so the phantom became the only "night" of its wake-day.
+// A DIFFERENT QUESTION FROM THE ONE ABOVE. The day-bucket rule collapses a span the
+// device RE-CUT, so it decides within one `date` and reads a device-cut window. A sleep
+// session is a POINT EVENT the source RE-TIMED: after a zone change Health Connect can
+// hold the same Fitbit night twice — a first write whose instants came from the wall
+// clock under the old zone, and a corrected write a day later under the new one.
+// Measured on prod: two rows exactly 6 h apart (New York against Honolulu), overlapping
+// by 17 minutes, the SAME 377-minute duration, re-scored stages.
 //
-// THE PREDICATE, AND WHAT IT REFUSES. One person, of one origin, cannot be asleep in two
-// overlapping sessions, so an overlap WITHIN an origin is always a re-write. It collapses
-// only when every one of these holds, and each refusal below is a case a real person's
-// record depends on:
+// THE PREMISE IS NOT "SAME ORIGIN MEANS SAME SLEEPER", AND THAT MATTERS MORE THAN
+// ANYTHING ELSE HERE. `dataOrigin` returns Health Connect's `metadata.data_origin` —
+// the writing APP's package name, not a device. One package writes main sleep, naps,
+// and, for an aggregator, several devices' sessions. So an overlap inside one package
+// is NOT by itself a re-write, and a rule resting on that premise deletes real nights:
+// an adversarial pass drove an 8-hour night and a genuine 60-minute early session
+// overlapping by one minute through it and lost the night, its whole breakdown and its
+// natural key, dropping the wake-day from 480 minutes to 60 and handing
+// `mainSleepSession` the short one — #2603's failure mode reached by deletion instead
+// of election, with the real reading gone rather than merely unelected.
 //
-//   • SAME ORIGIN, AND THE ORIGIN IS NAMED. Two different devices reporting overlapping
-//     sleep is a different question and not this rule's to answer. A NULL origin is not
-//     "the same origin", it is an unknown one — two unattributed exporters share that
-//     value — so it is refused in both roles rather than treated as a group.
-//   • THE WINDOWS OVERLAP AS INSTANTS. `windowsOverlap` refuses a degenerate or
-//     unreadable window, so a naive `${date}T00:00:00` decides nothing. Non-overlapping
-//     sessions are untouched, which is what leaves a night + an afternoon nap, and
-//     #1191's fragmented night (separated by an awake gap, by construction), alone.
-//   • THE WINNER WAS INSERTED LATER, BY INSERTION AND NOT BY WINDOW START. The corrected
-//     write ARRIVES afterwards and that is the whole signal; its window may start six
-//     hours either side of the one it corrects. `pushed_at` cannot carry this — the
-//     exporter re-sends the old record for 48 h, and a re-send updates the stored row's
-//     stamp — so arrival order is read off `metric_samples.id`, which an update never
-//     moves.
-//   • THEY WERE NOT FIRST WRITTEN BY THE SAME PUSH. Two sessions of one push have no
-//     arrival order between them, and choosing by window start would be a guess. This is
-//     #3424's own ruling (item 3) in its own words: rows of one push cannot rank each
-//     other. `firstIdOfPush` is the store's id watermark taken before this push wrote
-//     anything, so a loser must predate it.
-//   • THE #133 EDIT LOCK IS NOT SET. A hand-corrected night is the user's row.
+// SO THE EVIDENCE IS THAT IT IS ONE SESSION, NOT THAT IT IS ONE ORIGIN. A wall-clock
+// re-anchoring moves a session without changing it, so the two writes have the SAME
+// DURATION and are displaced by a whole ZONE-OFFSET STEP. Both are checked, and
+// together they are what separates "one reading wearing two keys" from "two readings"
+// — which is the distinction #3424's bullet 1 draws at the head of this file, kept
+// rather than overturned.
+//
+// AND A ZERO DISPLACEMENT IS NOT A RE-TIMING, which is the term that closes the worst
+// door this rule ever had. `metricSampleTombstoneKey` keys on the raw `started_at`
+// STRING, and the parser emits two spellings of one instant: given `end_time` +
+// `duration_seconds` and no `start_time` it derives the start through `toISOString()`,
+// spelling `…:00.000Z` where the vendor field spells `…:00Z`. That re-send misses the
+// tombstone veto and arrives as a NEW row — and on an overlap-only rule it became the
+// winner and deleted the CORRECTED night, tombstoning its key so no re-sync could ever
+// restore it: the exact symptom this issue was opened to cure, made permanent. Two
+// spellings of one instant are displaced by zero, so they are refused here and reported
+// as a duplicate instead.
+
 export const SLEEP_SESSION_METRIC = "sleep_min";
 
-// The per-stage breakdown `parseHealthConnectPayload` emits beside each session, pinned
-// to the session's own wake day. They are deleted WITH the session they belong to: a
-// stage set without its total is a night that shows stages summing to no sleep.
+// The per-stage breakdown `parseHealthConnectPayload` emits beside each session. They go
+// WITH the session they belong to: a stage set without its total is a night whose stages
+// sum into a night that is not theirs.
 export const SLEEP_STAGE_METRICS: readonly string[] = [
   "sleep_deep_min",
   "sleep_rem_min",
@@ -801,58 +809,123 @@ export const SLEEP_STAGE_METRICS: readonly string[] = [
   "sleep_awake_min",
 ];
 
-/**
- * Does `[innerStart, innerEnd]` lie wholly inside `[outerStart, outerEnd]`, as INSTANTS?
- *
- * Closed on both ends, because a stage tiles its session exactly: the first stage starts
- * at the session's start and the last one ends at its end. Any instant this rule cannot
- * read answers FALSE, which leaves the row alone — the safe direction for a predicate
- * whose true answer deletes a health record.
- */
-export function windowsContain(
-  outerStart: string,
-  outerEnd: string,
-  innerStart: string,
-  innerEnd: string
-): boolean {
-  const os = instantMs(outerStart);
-  const oe = instantMs(outerEnd);
-  const is = instantMs(innerStart);
-  const ie = instantMs(innerEnd);
-  if (os === null || oe === null || is === null || ie === null) return false;
-  return is >= os && ie <= oe;
-}
-
 /** One stored `sleep_min` row, in the columns this rule reads. */
 export interface SleepSessionRow extends MetricWindow {
   origin: string | null;
 }
 
+type Window = Pick<SleepSessionRow, "origin" | "started_at" | "ended_at">;
+
+function spanMs(w: Window): number | null {
+  const s = instantMs(w.started_at);
+  const e = instantMs(w.ended_at);
+  return s === null || e === null ? null : e - s;
+}
+
+/**
+ * Do these two rows look like ONE night stored twice — same NAMED origin, the same
+ * duration, and overlapping as instants?
+ *
+ * It says nothing about which is current, and nothing about WHY there are two. A pair
+ * that satisfies it and is not collapsed is the residue this rule reports: whatever the
+ * reason, that night is in the store twice and a person reading their sleep sees both.
+ *
+ * A NULL origin is refused in BOTH roles. It is an UNKNOWN origin, not a shared one —
+ * two unattributed exporters both parse to it — so it groups rows that have nothing to
+ * do with each other.
+ */
+export function isDuplicatedSleepNight(a: Window, b: Window): boolean {
+  if (a.origin == null || b.origin !== a.origin) return false;
+  const spanA = spanMs(a);
+  const spanB = spanMs(b);
+  if (spanA === null || spanB === null || spanA !== spanB) return false;
+  return windowsOverlap(a.started_at, a.ended_at, b.started_at, b.ended_at);
+}
+
+/**
+ * …and is the displacement between them a wall-clock RE-ANCHORING?
+ *
+ * Non-zero — two spellings of one instant are not a re-timing — and a whole zone-offset
+ * step, because that is what a zone change moves a wall clock by. `ZONE_OFFSET_STEP_MS`
+ * is the same quarter-hour grid `anchorOffsets` already reads a device midnight on; it
+ * is a fact about real zones, not a tolerance tuned to a fixture.
+ *
+ * It does NOT bound the displacement's magnitude, because the overlap term already
+ * does, and more tightly than any zone range: two windows of equal length overlap only
+ * while the displacement is smaller than the session itself.
+ */
+export function isReanchoredSleepSession(a: Window, b: Window): boolean {
+  const sa = instantMs(a.started_at);
+  const sb = instantMs(b.started_at);
+  if (sa === null || sb === null) return false;
+  const shift = Math.abs(sa - sb);
+  return shift !== 0 && shift % ZONE_OFFSET_STEP_MS === 0;
+}
+
 /**
  * What the just-inserted session `winner` does to one stored session `stored`.
  *
- * `collapse` — supersede it (delete + re-import tombstone). `locked` — it would have,
- * and the #133 lock held it out. `keep` — anything else, and that is the answer the
- * rule gives whenever it cannot establish all of the terms above.
+ * `collapse` — supersede it (delete, with its stage rows, and tombstone every key).
+ * `declined` — the pair IS one night stored twice, and this rule did not collapse it:
+ * the lock held it, or the displacement is not a re-anchoring, or neither row can rank
+ * the other. Counted and said out loud, never acted on. `keep` — not a duplicated night
+ * at all, so there is nothing to report and nothing to do.
+ *
+ * ARRIVAL ORDER IS `firstIdOfPush`, THE STORE'S ID WATERMARK taken before this push
+ * wrote anything: at or above it is a row this push INSERTED, below it a row that
+ * predates the push. `pushed_at` cannot carry this — the exporter re-sends the mis-timed
+ * write for 48 h and a re-send is an ON CONFLICT UPDATE that moves the stored row's
+ * stamp to the current push's, so after the corrective push both rows carry the same
+ * stamp and nothing ranks them. Two sessions FIRST written by one push have no arrival
+ * order between them either, so they are `declined` rather than guessed at by window
+ * start (#3424's ruling, item 3).
  */
 export function sleepSessionCollapse(
   winner: Pick<SleepSessionRow, "id" | "origin" | "started_at" | "ended_at">,
   stored: SleepSessionRow,
   firstIdOfPush: number
-): "collapse" | "locked" | "keep" {
-  if (winner.origin == null || stored.origin !== winner.origin) return "keep";
-  // Later by INSERTION: the loser predates this push, and this push wrote the winner.
-  // Together these also make the two rows distinct, so nothing asks that separately.
-  if (stored.id >= firstIdOfPush || winner.id < firstIdOfPush) return "keep";
-  if (
-    !windowsOverlap(
-      winner.started_at,
-      winner.ended_at,
-      stored.started_at,
-      stored.ended_at
-    )
-  ) {
-    return "keep";
+): "collapse" | "declined" | "keep" {
+  if (!isDuplicatedSleepNight(winner, stored)) return "keep";
+  if (stored.id >= firstIdOfPush || winner.id < firstIdOfPush)
+    return "declined";
+  if (!isReanchoredSleepSession(winner, stored)) return "declined";
+  // The #133 lock. A hand-corrected night is the user's row.
+  return stored.edited ? "declined" : "collapse";
+}
+
+/**
+ * Which stored sessions a stage row belongs to, by the instant at its MIDDLE.
+ *
+ * THERE IS NO PARENTAGE IN THE SCHEMA — a stage row carries no reference to its session,
+ * only a window the parser copied from the payload — so ownership has to be established
+ * geometrically, and the two obvious ways are both wrong. Containment fails because
+ * NOTHING CLAMPS A STAGE TO ITS SESSION: with a minute of scorer jitter at each end, a
+ * containment test closed on both ends keeps the first and last stage and deletes the
+ * middle, leaving a two-stage fragment of a night that no longer exists. Overlap fails
+ * in the other direction, sweeping every stage of a neighbouring session.
+ *
+ * A midpoint is jitter-proof at both ends and needs no tolerance constant. It can still
+ * fall inside TWO sessions — a nap slept inside the night, or a stage lying in the
+ * band where a re-timed pair overlaps — and that is why this returns every owner rather
+ * than a best guess. The caller REFUSES THE WHOLE COLLAPSE when a stage is ambiguous:
+ * deleting it robs a real nap of its breakdown, and keeping it leaves an orphan that
+ * sums into a night it never belonged to (`getSleepStageDailyTotals` reads by date and
+ * knows nothing of sessions). Neither is acceptable, so the rule declines and reports.
+ */
+export function sleepStageOwners(
+  stage: Pick<SleepSessionRow, "started_at" | "ended_at">,
+  sessions: readonly Pick<SleepSessionRow, "id" | "started_at" | "ended_at">[]
+): number[] {
+  const s = instantMs(stage.started_at);
+  const e = instantMs(stage.ended_at);
+  if (s === null || e === null) return [];
+  const mid = s + (e - s) / 2;
+  const owners: number[] = [];
+  for (const session of sessions) {
+    const ws = instantMs(session.started_at);
+    const we = instantMs(session.ended_at);
+    if (ws === null || we === null) continue;
+    if (mid >= ws && mid <= we) owners.push(session.id);
   }
-  return stored.edited ? "locked" : "collapse";
+  return owners;
 }

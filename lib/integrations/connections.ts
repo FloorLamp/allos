@@ -1057,7 +1057,10 @@ export async function getWithingsAccessToken(
     // and until this call passed the body it had, that bodyless 400 flipped a healthy
     // connection to needs_reauth and stopped its sync. The body stays out of the
     // throw: `runPullSync` turns this into house copy and an operator log (#3592).
-    const body = await res.text();
+    // `.catch` because a 401 MUST still transition even if the body read throws — a
+    // failed read is no evidence, and no evidence must not be able to swallow the one
+    // status that needs none.
+    const body = await res.text().catch(() => null);
     if (isAuthRefreshFailure(res.status, body)) {
       markConnectionNeedsReauth(profileId, WITHINGS_ID);
     }

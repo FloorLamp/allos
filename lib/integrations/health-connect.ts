@@ -279,20 +279,23 @@ export function overlapsLeftWarning(count: number): string {
 // above is about DAY TOTALS reading high and a duplicated night does nothing of the
 // kind: it puts a second "night" on the Sleep page, in SRI and in the stage totals.
 //
-// AND IT NAMES ITS CAUSE, where `overlapsLeftWarning` deliberately refuses to. That one
-// has six possible causes and guessed wrong when it tried; this residue has exactly ONE
-// — the #133 edit lock is the only thing `collapseRewrittenSleepSessions` reports — so
-// naming it is a fact rather than a guess, and it is the half the person can act on.
+// IT NAMES NO CAUSE, and an earlier version of this comment argued the opposite — that
+// the #133 edit lock was the only thing reported here, so naming it was a fact rather
+// than a guess. That was wrong, and wrong in the direction that matters: an adversarial
+// pass found the second class, a pair the SAME push carries against itself, which no
+// later push ever collapses. There are four classes now (the lock, an unrankable pair,
+// a displacement that is not a re-anchoring, and a stage row no single session owns), so
+// this says the SYMPTOM, as `overlapsLeftWarning` does and for the same reason.
 //
-// NO RETRY PROMISE, and here that is not caution but accuracy: the collapse fires only
-// on the push that INSERTS the corrective write, which has already happened and was
-// declined. No later push reaches this pair.
+// NO RETRY PROMISE, for the same corrected reason. One of the four does clear on a later
+// push that carries only the corrective write; three never do. "Most clear" would be a
+// guess about which one a person is looking at.
 export function sleepOverlapsLeftWarning(count: number): string {
   const symptom =
     count === 1
-      ? "A sleep session you edited overlaps a newer one from the same device, so that night is stored twice."
-      : `${count} sleep sessions you edited overlap newer ones from the same device, so those nights are each stored twice.`;
-  return `${symptom} Nothing later removes the older reading — delete whichever is wrong in Data → Manage.`;
+      ? "A sleep session overlaps another reading of the same night and was not replaced by this push, so that night is stored twice."
+      : `${count} sleep sessions overlap other readings of the same night and were not replaced by this push, so those nights are each stored twice.`;
+  return `${symptom} Delete whichever is wrong in Data → Manage.`;
 }
 // Require two such records before hinting: a genuine `daily` push made within an hour
 // of local midnight is itself a short window, and one origin doing that shouldn't trip
