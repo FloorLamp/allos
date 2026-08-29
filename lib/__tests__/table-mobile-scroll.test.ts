@@ -130,6 +130,10 @@ export function unwrappedTables(
   const offenders: string[] = [];
   for (const { rel, text } of files) {
     if (allowlist.has(rel)) continue;
+    // A raw `<table` is necessary but not sufficient: comments may contain one.
+    // Use it only to reject the 1,000+ files that cannot possibly render a table;
+    // every candidate still runs through the comment-aware scanner below.
+    if (!text.includes("<table")) continue;
     const code = stripComments(text);
     const re = /<table\b/g;
     let m: RegExpExecArray | null;
@@ -159,7 +163,7 @@ function sourceFiles(): { rel: string; text: string }[] {
 describe("wide-table mobile scroll boundary (issue #794 cluster 6)", () => {
   const files = sourceFiles();
 
-  it("reads the corpus it is about to pronounce clean", () => {
+  it("every rendered <table> has a narrow-viewport strategy", () => {
     expect(
       files.length,
       `The scan read ${files.length} source files under ${SCAN_DIRS.join(", ")}, ` +
@@ -180,14 +184,17 @@ describe("wide-table mobile scroll boundary (issue #794 cluster 6)", () => {
 
     // And the corpus really contains the construct this scan is about. A corpus
     // with no `<table` in it agrees that every table is wrapped.
+    const renderedTableFiles = files.filter(
+      (file) =>
+        file.text.includes("<table") &&
+        /<table\b/.test(stripComments(file.text))
+    );
     expect(
-      files.filter((f) => /<table\b/.test(stripComments(f.text))).length,
+      renderedTableFiles.length,
       "No rendered `<table` anywhere in the corpus. The verdict below is then an " +
         "absence over a corpus that could not have produced a finding."
     ).toBeGreaterThan(3);
-  });
 
-  it("every rendered <table> sits inside a nearby horizontal-scroll container (or a deliberate column-hider)", () => {
     const offenders = unwrappedTables(files);
     expect(
       offenders,
@@ -198,15 +205,11 @@ describe("wide-table mobile scroll boundary (issue #794 cluster 6)", () => {
         `— for a deliberate different strategy — allowlist the file here:\n` +
         offenders.join("\n")
     ).toEqual([]);
-  });
 
-  it("every allowlisted file still exists and renders a table", () => {
     for (const rel of ALLOWLIST) {
-      const abs = path.join(REPO, rel);
-      expect(fs.existsSync(abs), `${rel} is allowlisted but missing`).toBe(
-        true
-      );
-      expect(/<table\b/.test(fs.readFileSync(abs, "utf8"))).toBe(true);
+      const file = files.find((candidate) => candidate.rel === rel);
+      expect(file, `${rel} is allowlisted but missing`).toBeDefined();
+      expect(/<table\b/.test(stripComments(file?.text ?? ""))).toBe(true);
     }
   });
 });
