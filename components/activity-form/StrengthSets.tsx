@@ -1,7 +1,6 @@
 "use client";
 
 import FactChipRow, { FactChip } from "@/components/facts/FactChipRow";
-import InfoTooltipIcon from "@/components/InfoTooltipIcon";
 import IconButton from "@/components/IconButton";
 import { useEffect, useRef, useState } from "react";
 import type { Equipment } from "@/lib/types";
@@ -9,7 +8,6 @@ import { isBarbell } from "@/lib/types";
 import type { UnitPrefs } from "@/lib/settings";
 import type { ExerciseHistoryMap } from "@/lib/queries";
 import {
-  isUnilateral,
   isTimed,
   isBodyweight,
   isBarbellLift,
@@ -39,7 +37,6 @@ import type { FormDeloadContext } from "@/lib/routines";
 import type { FormRecoveringContext } from "@/lib/injuries";
 import type { PlateauFormHint } from "@/lib/rule-findings";
 import { dismissTrainingObservation } from "@/app/(app)/training/actions";
-import { setRpeTrackingAction } from "@/app/(app)/training/activity-actions";
 import { pickSeedSessions } from "@/lib/exercise-window";
 import { stepRpe, fmtRpe, rpeSummaryText, type RpeTracking } from "@/lib/rpe";
 import {
@@ -70,40 +67,6 @@ import {
   type PartFault,
 } from "./model";
 
-function BrandedCheckbox({
-  checked,
-  onChange,
-  inputTestId,
-  controlTestId,
-}: {
-  checked: boolean;
-  onChange: () => void;
-  inputTestId?: string;
-  controlTestId?: string;
-}) {
-  return (
-    <span className="relative inline-flex">
-      <input
-        type="checkbox"
-        checked={checked}
-        onChange={onChange}
-        data-testid={inputTestId}
-        className="peer sr-only"
-      />
-      <span
-        data-testid={controlTestId}
-        aria-hidden
-        className={`flex h-4 w-4 shrink-0 items-center justify-center rounded border transition peer-focus-visible:ring-2 peer-focus-visible:ring-brand-500 peer-focus-visible:ring-offset-1 dark:peer-focus-visible:ring-offset-ink-900 ${
-          checked
-            ? "border-brand-600 bg-brand-600 text-white dark:border-brand-500 dark:bg-brand-500"
-            : "border-black/20 bg-field text-transparent dark:border-white/20"
-        }`}
-      >
-        <IconCheck className="h-3 w-3" stroke={3} />
-      </span>
-    </span>
-  );
-}
 
 // Weight and reps share one symmetric control; stepReps keeps #1524's zero clamp.
 function StepperButton({
@@ -211,7 +174,6 @@ export default function StrengthSets({
   recoveringContext,
   plateauHints,
   rpeTracking,
-  onRpeTrackingChange,
   currentActivityId,
   editedDate,
   equipmentList,
@@ -253,7 +215,6 @@ export default function StrengthSets({
   // Null is the whole opt-in: there is no scale, so there is no column — not a flag
   // this file remembers to consult (lib/rpe-tracking.ts holds the seam).
   rpeTracking: RpeTracking | null;
-  onRpeTrackingChange: (tracking: RpeTracking | null) => void;
   // The session the form is saving (edit row id, or the auto-saved create row
   // once it exists, else null) — always excluded from its own "Recent" list.
   currentActivityId: number | null;
@@ -291,8 +252,6 @@ export default function StrengthSets({
   const [dismissedPlateaus, setDismissedPlateaus] = useState<Set<string>>(
     () => new Set()
   );
-  // One RPE opt-in round-trip at a time (#3335) — see toggleRpeTracking.
-  const [rpeToggling, setRpeToggling] = useState(false);
   // THE COMPACT SET NOTATION (#3336, #3228 item 4): a uniform run of completed sets
   // states itself — "60 kg × 8 × 3" — and the grid is one tap behind it.
   //
@@ -476,21 +435,6 @@ export default function StrengthSets({
     fd.set("dedupe_key", dedupeKey);
     void dismissTrainingObservation(fd);
   }
-  // Opting the effort column in or out from the editor itself (#3335) — no settings
-  // trip. Unlike the plateau dismissal above this does NOT hide optimistically: the
-  // scale the column renders over is minted server-side and nowhere else
-  // (lib/rpe-tracking.ts), so the tap waits for the action's answer rather than
-  // manufacturing one locally. One in-flight toggle at a time.
-  async function toggleRpeTracking() {
-    if (rpeToggling) return;
-    setRpeToggling(true);
-    try {
-      const { tracking } = await setRpeTrackingAction(!rpeTracking);
-      onRpeTrackingChange(tracking);
-    } finally {
-      setRpeToggling(false);
-    }
-  }
   const timed = isTimed(p.name);
   // A "content" fault means no set counts yet: flag the effort input (reps or
   // hold), and the weight too where a set needs one (not bodyweight/timed).
@@ -543,7 +487,6 @@ export default function StrengthSets({
   // Live version of the training log card's missed-target marker, judged by the
   // same shared rule the saved data will be (completed sets only).
   const intent = partIntent(p);
-  const showPerSide = isUnilateral(p.name);
   const targetStatus = judgeTargets(
     p.sets
       .filter((s) => setComplete(p.name, s, false))
@@ -898,92 +841,6 @@ export default function StrengthSets({
           >
             <IconX className="h-3.5 w-3.5" stroke={2} />
           </IconButton>
-        </div>
-      )}
-      {/* One options row: the per-side toggle (unilateral lifts), the declared
-          intent — planned reps, or an AMRAP ("to failure") plan — and the RPE
-          opt-in. Intent is optional; without it, no hit/missed-target judgment is
-          made. Checking per-side hides the intent controls (per-side parts
-          carry no status), but the row itself stays.
-
-          The RPE opt-in rides here rather than in Settings (#3335): this row is
-          already "what this part records", so the column is discoverable at the
-          moment someone wants it. It is the one control here that is PROFILE-wide
-          — per-side and intent belong to the part — which its label says.
-
-          `!timed` is what guarantees the opt-in is REACHABLE on every rep-based
-          part. For almost all of them it changes nothing — a rep-based part is
-          normally either unilateral (showPerSide) or bilateral (intent.applies,
-          which is `!isTimed && !perSide`). The gap it closes is the part whose
-          NAME is not unilateral but whose loaded sets carry right-side values, so
-          groupEditSets marked it perSide: showPerSide is false (name-based) and
-          applies is false (perSide-based), and before this the row — and with it
-          the opt-in — had nowhere to appear. */}
-      {(showPerSide || intent.applies || !timed) && (
-        <div className="mt-2 flex flex-wrap items-center gap-x-4 gap-y-1 text-xs font-medium text-slate-500 dark:text-slate-400">
-          {showPerSide && (
-            <label className="flex cursor-pointer items-center gap-2">
-              <BrandedCheckbox
-                checked={p.perSide}
-                onChange={() => onUpdatePart({ perSide: !p.perSide })}
-                inputTestId="per-side-checkbox"
-                controlTestId="per-side-control"
-              />
-              Track sides separately
-            </label>
-          )}
-          {intent.applies && (
-            <>
-              <label className="flex items-center gap-1.5">
-                Target reps
-                <input
-                  type="number"
-                  min="1"
-                  value={p.targetReps}
-                  disabled={p.toFailure}
-                  onChange={(e) =>
-                    onUpdatePart({
-                      targetReps: stripNonPositive(e.target.value),
-                    })
-                  }
-                  placeholder="—"
-                  className="input w-16 px-2 py-1 disabled:opacity-40"
-                />
-              </label>
-              <label className="flex cursor-pointer items-center gap-1.5">
-                <BrandedCheckbox
-                  checked={p.toFailure}
-                  onChange={() => onUpdatePart({ toFailure: !p.toFailure })}
-                  inputTestId="to-failure-checkbox"
-                  controlTestId="to-failure-control"
-                />
-                To failure
-              </label>
-            </>
-          )}
-          {/* Rep-based sets only — a timed hold's effort IS its duration, so there
-              is nothing for a rating to add. */}
-          {!timed && (
-            <span className="inline-flex items-center gap-1">
-              <label
-                className={`flex items-center gap-2 ${
-                  rpeToggling ? "cursor-progress opacity-60" : "cursor-pointer"
-                }`}
-              >
-                <BrandedCheckbox
-                  checked={!!rpeTracking}
-                  onChange={() => void toggleRpeTracking()}
-                  inputTestId="rpe-tracking-checkbox"
-                  controlTestId="rpe-tracking-control"
-                />
-                Rate effort (RPE)
-              </label>
-              <InfoTooltipIcon
-                label="RPE means rate of perceived exertion (5–10, optional). It adds an effort rating to every set row, now and in future sessions."
-                data-testid="rpe-help"
-              />
-            </span>
-          )}
         </div>
       )}
       {/* THE COMPACT SET NOTATION (#3336). A uniform run of completed sets reads as the
