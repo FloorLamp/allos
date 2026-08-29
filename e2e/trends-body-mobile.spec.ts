@@ -1,5 +1,5 @@
 import { test, expect } from "./fixtures";
-import { type Page } from "@playwright/test";
+import { type Locator, type Page } from "@playwright/test";
 import { shiftDateStr } from "@/lib/date";
 import { loginAs } from "./nav";
 import {
@@ -35,6 +35,18 @@ import {
 
 const PHONE = { width: 360, height: 800 };
 const DESKTOP = { width: 1024, height: 800 };
+
+type MenuFocus = `item:${string}` | "elsewhere" | "lost";
+
+async function menuFocus(menu: Locator): Promise<MenuFocus> {
+  return (await menu.evaluate((element) => {
+    const active = document.activeElement;
+    if (!active || active === document.body) return "lost";
+    const item = active.closest<HTMLElement>('[role="menuitemradio"]');
+    if (!item || !element.contains(item)) return "elsewhere";
+    return `item:${item.dataset.testid ?? "missing-testid"}`;
+  })) as MenuFocus;
+}
 
 async function openBodyTab(
   page: Page,
@@ -367,11 +379,45 @@ test.describe("Trends → Overview → body census responsive views (#1067)", ()
     await expect(trigger).toHaveAttribute("aria-expanded", "true");
     const focusedMenuItem = menuOptions.locator('[role="menuitemradio"]:focus');
     await expect(focusedMenuItem).toHaveCount(1);
-    const initiallyFocused = await focusedMenuItem.getAttribute("data-testid");
-    await page.keyboard.press("ArrowDown");
-    await expect
-      .poll(() => focusedMenuItem.getAttribute("data-testid"))
-      .not.toBe(initiallyFocused);
+    const initiallyFocused =
+      (await focusedMenuItem.getAttribute("data-testid"))!;
+
+    // The observer may update which chart is current while the menu is open, but
+    // scrolling is not a keyboard command and must not take focus. Wait for the
+    // selected state to prove the observer callback ran before checking focus.
+    const observerTarget =
+      initiallyFocused === "chart-jump-steps"
+        ? "chart-jump-sleep"
+        : "chart-jump-steps";
+    await page
+      .locator(`#${observerTarget.replace("chart-jump-", "")}`)
+      .evaluate((element) => element.scrollIntoView({ block: "start" }));
+    await expect(page.getByTestId(observerTarget)).toHaveAttribute(
+      "aria-checked",
+      "true"
+    );
+    expect(await menuFocus(menuOptions)).toBe(`item:${initiallyFocused}`);
+
+    // A keystroke owns this subject (#4015's three-valued walk): press until it
+    // moves, bounded by the menu's own settled item count. "Elsewhere" and
+    // "lost" stay distinct so focus disappearing cannot satisfy "it changed".
+    const itemCount = await menuOptions
+      .locator('[role="menuitemradio"]')
+      .count();
+    let focus = await menuFocus(menuOptions);
+    for (
+      let press = 0;
+      press < itemCount && focus === `item:${initiallyFocused}`;
+      press += 1
+    ) {
+      await page.keyboard.press("ArrowDown");
+      focus = await menuFocus(menuOptions);
+    }
+    expect(
+      focus,
+      `ArrowDown ${itemCount} times did not move focus from ${initiallyFocused}`
+    ).toMatch(/^item:/);
+    expect(focus).not.toBe(`item:${initiallyFocused}`);
     await page.keyboard.press("Escape");
     await expect(menuOptions).toHaveCount(0);
     await expect(trigger).toHaveAttribute("aria-expanded", "false");
