@@ -139,7 +139,7 @@ export const UNBOUNDED_NAME_FIELDS: readonly UnboundedNameField[] = [
     controls: [
       "components/ClinicalResultsTable.tsx — the analyte cell",
       "components/ObservationSearch.tsx — the observation picker's options",
-      "components/PanelFilterSelect.tsx — panel labels beside it (closed vocabulary itself, but it shares the row)",
+      "components/MedicalFilters.tsx — panel labels beside it (closed vocabulary itself, but it shares the row)",
     ],
     planted: true,
   },
