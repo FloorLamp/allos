@@ -62,8 +62,8 @@
 //     the script does that itself on Settings → Server.
 //   - The first request after `next dev` compiles middleware + page and can take
 //     minutes on a slow filesystem; the script waits, but don't kill it early.
-//   - If Playwright can't find its own browser build, point UX_CHROMIUM at one
-//     (e.g. /opt/pw-browsers/chromium in Claude Code's remote environment).
+//   - Full Chromium is auto-detected under PLAYWRIGHT_BROWSERS_PATH. UX_CHROMIUM
+//     remains the explicit override when a different executable is required.
 //
 // Env knobs: UX_BASE (default http://localhost:3111), UX_SHOTS (default
 // data/ux-shots — under gitignored /data), UX_ADMIN_USER / UX_ADMIN_PASS
@@ -74,6 +74,7 @@ import path from "node:path";
 import crypto from "node:crypto";
 import { spawn, spawnSync } from "node:child_process";
 import { chromium } from "@playwright/test";
+import { resolveChromiumExecutable } from "../lib/e2e-chromium.mjs";
 import {
   DISCLOSURE_EXPANSIONS,
   DYNAMIC_ROUTES,
@@ -2205,7 +2206,10 @@ try {
   }
 
   browser = await chromium.launch({
-    executablePath: process.env.UX_CHROMIUM || undefined,
+    executablePath: resolveChromiumExecutable({
+      executableOverride: process.env.UX_CHROMIUM,
+      allowHeadlessShell: false,
+    }),
   });
   for (const name of picked) {
     log(`— journey: ${name} —`);
