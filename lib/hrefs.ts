@@ -51,6 +51,7 @@ import type { PanelId } from "./biomarker-panels";
 import type { GrowthMetric } from "./growth";
 import type { IntegrationId } from "./types/integrations";
 import type { IntakeItemKind } from "./types/intake";
+import type { HistoryFamily, HistoryLogKind } from "./history-format";
 
 export type AppRoute = Route;
 
@@ -125,82 +126,57 @@ export function intakeHref(kind: IntakeItemKind): AppRoute {
     : nutritionTabHref("supplements");
 }
 
-// The cross-item DOSE LEDGER (#2417) — every confirmed dose across items, filterable
-// by item, kind and date range. Same kind→surface rule as `intakeHref` one level down:
-// the supplements tab's ledger lives under /nutrition, the medications one under
-// /medications, and each opens pre-filtered to its own surface's kind (the kind filter
-// on the page is what widens it). One helper, so the Trends → Nutrition dose-history
-// chart and both intake surfaces name the same destination.
+// THE HISTORY PAGE'S URL GRAMMAR (#3958) — ONE helper, one place the params are
+// spelled, a #285 rule-carrying link.
 //
-// `surface` picks the route; `params` carries the ledger's own filter state — the kind
-// filter (`kind=all` widens past the surface's own), the item filter, and the shared
-// from/to date window. A single-day window is what the Trends day panel's "what did I
-// take that day" means as a table.
-export const DOSE_LEDGER_ALL_KINDS = "all";
-
-export function doseLedgerHref(
-  surface: IntakeItemKind,
+// It replaces `doseLedgerHref` / `foodLedgerHref` / `practiceLedgerHref`, which named
+// four routes that no longer exist. Their `from`/`to`/`range`/`page` params are NOT
+// carried forward and have no successor: the record is navigated, not windowed, so the
+// range row and the pager died with the routes (#2657's folds plus `?show` bound the
+// read instead). A caller that used to hand this a date window hands it `day` — the
+// day view is the honest form of "what did I take that day".
+//
+// `kind` implies its family, so a kind-scoped link never has to spell both. `class`
+// preserves the old two-door dose pre-filter — one route opened on supplements and the
+// other on medications — as a param on one page.
+//
+// `?subject=` IS NOT HERE, DELIBERATELY. The issue's grammar names it and phase 2
+// will, but nothing on the page reads it yet — and a helper that WRITES a param no
+// reader honours is worse than one that cannot: the URL looks scoped to a member and
+// silently is not, and it fails in the reassuring direction (it shows the acting
+// profile, so nothing looks wrong). It comes back with its reader.
+//
+// Param ORDER is fixed by this function, never by the caller's object literal, so the
+// same state always produces the same URL — which is what makes a link cacheable and
+// "did this href change?" a question a test can ask.
+export function historyHref(
   params: {
-    from?: string;
-    to?: string;
-    kind?: IntakeItemKind | typeof DOSE_LEDGER_ALL_KINDS;
-    item?: number;
-    // The explicit all-time sentinel. Needed for the same reason Trends needs it: an
-    // empty query string means this surface's DEFAULT window, so the "All time" pill
-    // has to be able to say itself.
-    allTime?: boolean;
-    // The 1-based page of the ledger (#2445). The range control is a FILTER, not a
-    // bound — "All time" is a legitimate window here — so the page is what bounds
-    // the read, and it has to survive in the URL for the pager's links to work.
-    page?: number;
+    family?: HistoryFamily;
+    kind?: HistoryLogKind;
+    class?: "supplement" | "medication";
+    item?: string;
+    media?: boolean;
+    day?: string;
+    everyone?: boolean;
+    open?: readonly string[];
+    show?: number;
   } = {}
 ): AppRoute {
   const sp = new URLSearchParams();
-  if (params.allTime) sp.set("range", "all");
-  if (params.from) sp.set("from", params.from);
-  if (params.to) sp.set("to", params.to);
+  // A kind implies its family; spelling both would be a URL that can contradict itself.
+  if (params.family && !params.kind) sp.set("family", params.family);
   if (params.kind) sp.set("kind", params.kind);
-  if (params.item) sp.set("item", String(params.item));
-  if (params.page && params.page > 1) sp.set("page", String(params.page));
-  const qs = sp.toString();
-  if (surface === "medication") {
-    return qs ? `/medications/dose-history?${qs}` : "/medications/dose-history";
-  }
-  return qs ? `/nutrition/dose-history?${qs}` : "/nutrition/dose-history";
-}
-
-interface EventLedgerHrefParams {
-  from?: string;
-  to?: string;
-  item?: string;
-  allTime?: boolean;
-  page?: number;
-}
-
-function eventLedgerHref(
-  path: string,
-  params: EventLedgerHrefParams
-): AppRoute {
-  const sp = new URLSearchParams();
-  if (params.allTime) sp.set("range", "all");
-  if (params.from) sp.set("from", params.from);
-  if (params.to) sp.set("to", params.to);
+  if (params.class) sp.set("class", params.class);
   if (params.item) sp.set("item", params.item);
-  if (params.page && params.page > 1) sp.set("page", String(params.page));
+  if (params.media) sp.set("media", "1");
+  if (params.day) sp.set("day", params.day);
+  if (params.everyone) sp.set("view", "everyone");
+  for (const key of params.open ?? []) sp.append("open", key);
+  if (params.show != null) sp.set("show", String(params.show));
   const qs = sp.toString();
-  return (qs ? `${path}?${qs}` : path) as AppRoute;
-}
-
-/** The Nutrition door into the serving-row ledger (#3484). */
-export function foodLedgerHref(params: EventLedgerHrefParams = {}): AppRoute {
-  return eventLedgerHref("/nutrition/food-history", params);
-}
-
-/** The Wellness door into the cross-practice session ledger (#3484/#2151). */
-export function practiceLedgerHref(
-  params: EventLedgerHrefParams = {}
-): AppRoute {
-  return eventLedgerHref("/wellness/practice-history", params);
+  // Spelled as literals rather than through a `${base}` variable so Next's typedRoutes
+  // can still infer the route from the literal prefix.
+  return qs ? `/history?${qs}` : "/history";
 }
 
 // "Add this bottle for another person" (#1705) — the cabinet's second entry point into

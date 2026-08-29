@@ -128,12 +128,15 @@ describe("the planted values can express the class (#3631)", () => {
     // The NAMED SUBJECT (#3522's pattern). A roster that averaged out to the right
     // size while losing the control this issue exists for would still pass every
     // assertion above.
-    // The file moved with #3484 part 2 — the bespoke dose shell became a mount of
-    // the shared event-ledger frame, and its Item select became the frame's — but it
-    // is the same control, still the one #3478 was measured on.
+    // The control has moved TWICE and the corpus is the point, not the file. #3484
+    // part 2 turned the bespoke dose shell into a mount of the shared event-ledger
+    // frame, and its Item select became the frame's; #3958 deleted the frame with the
+    // four ledger routes, and the longest intake name now lands on the record's ROW
+    // TITLE — one line at every viewport, which is the same "does an unbounded name
+    // fit" question #3478 was measured on, one control further along.
     const intake = UNBOUNDED_NAME_FIELDS.find((f) => f.key === "intakeItem");
     expect(intake?.controls.join("\n")).toContain(
-      "components/ledger/EventLedgerItemFilter.tsx"
+      "app/(app)/history/HistoryRows.tsx"
     );
   });
 });

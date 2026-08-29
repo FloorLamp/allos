@@ -617,40 +617,32 @@ renderer:
   same window — asserted row-for-row in
   `lib/__db_tests__/supplement-dose-history.test.ts`, which is what makes the
   ledger and the panel two views of one record rather than two answers.
-- `components/intake/DoseLedgerMount.tsx` (server) mounts the shared
-  event-ledger frame (`docs/internals/event-ledger.md`, #3484 part 2) and brings
-  the dose-specific halves with it: `DoseLedgerRows.tsx` renders the rows on
-  `EntryHistoryTable` with the SAME ⋯ Edit / Delete-with-undo over the same
-  unchanged cores (columns: date · time · item · amount · product, newest
-  first), and `DoseBackfillLauncher.tsx` fills the frame's backfill slot. The
-  frame contributes the box — range control, chips, item filter, note, empty
-  state, pager — and knows nothing about doses.
-- Two routes, one component: `/nutrition/dose-history` and
-  `/medications/dose-history`, each opening **pre-filtered to its own surface's
-  kind** — the same kind→surface seam `intakeHref` encodes one level up, spelled
-  by `doseLedgerHref` (`lib/hrefs.ts`). Both surfaces carry the one-click door
-  (`components/intake/DoseLedgerLink.tsx`).
-- Filters ride the URL, so a filtered ledger is a deep link and every filter
-  narrows the QUERY: kind (the `all` state widens), item (every item the profile
-  owns, active or not), and the shared `DateRange` vocabulary with
-  `DOSE_HISTORY_DAYS` as the default window and `?range=all` as the explicit
-  all-time sentinel. The pure half is `lib/dose-ledger.ts`.
-- **A range is a filter; the PAGE is the bound (#2445).** "All time" is a
-  legitimate answer here — history outlives retirement — so it cannot be what
-  limits the read, and a `must` medication logged twice daily for years is
-  thousands of rows. The surface therefore reads
-  `getIntakeDoseLedgerPage(profileId, since, filters, page, HISTORY_PAGE_SIZE)`,
-  a real `LIMIT`/`OFFSET` over the same statement plus the `COUNT(*)` the pager
-  needs, with `?page=` riding the URL and every other control dropping it (a
-  narrowed ledger re-pages from its first row). `HISTORY_PAGE_SIZE` and the page
-  arithmetic are `lib/pagination.ts`, shared with the other record-history
-  tables. `getIntakeDoseHistoryAll` stays for callers that genuinely want the
-  whole window in one array, and as the row-for-row cross-check against the
-  per-item panel — but nothing that RENDERS the ledger uses it.
-- **"Log past dose" is a top-level entry** on the ledger — the same
-  `HistoricalDoseForm` with an item picker in front, which opens on the item the
-  ledger is filtered to. The per-item panel keeps its own entry: an item-scoped
-  question stays answerable on the item.
+- **The cross-item scope is `/history` now (#3958).** The dose ledger's own route
+  — two of them, one per surface — folded into the app's one record along with the
+  food and practice ledgers, and the shared event-ledger frame they mounted went
+  with them. `lib/history.ts` reads the same `getIntakeDoseLedgerPage`, composes
+  the same amount/product detail, and renders the ⋯ Edit / Delete-with-undo over
+  the SAME unchanged cores; `DoseBackfillLauncher.tsx` is still the backfill, now
+  in the record's kind-resolved Add door. See `docs/internals/history.md`.
+- One door, two pre-filters: `historyHref({ kind: "dose", class })` — the same
+  kind→surface seam `intakeHref` encodes one level up, now a param on one page
+  rather than two routes. Both intake surfaces carry the one-click door
+  (`components/LedgerDoorLink.tsx`).
+- Filters ride the URL, so a filtered record is a deep link and every filter
+  narrows the QUERY: kind, class and item. What did NOT survive is the range row
+  and the pager — the record is navigated rather than windowed, so `?show` plus
+  the month folds are the bound, and `from`/`to`/`range`/`page` have no successor.
+- **The read is still bounded at the SQL level (#2445).** "All time" was always a
+  legitimate answer here — history outlives retirement — so it was never what
+  limited the read, and a `must` medication logged twice daily for years is
+  thousands of rows. `getIntakeDoseLedgerPage(profileId, since, filters, 1, show)`
+  is a real `LIMIT`/`OFFSET` over the same statement plus the `COUNT(*)` the
+  load-more control reads. `getIntakeDoseHistoryAll` stays for callers that
+  genuinely want the whole window in one array, and as the row-for-row cross-check
+  against the per-item panel — but nothing that RENDERS the record uses it.
+- **"Log past dose" is a top-level entry** on the record's Add door — the same
+  `HistoricalDoseForm` with an item picker in front. The per-item panel keeps its
+  own entry: an item-scoped question stays answerable on the item.
 - **The recent past is NOT the ledger's job** (#3936). The quick-log sheet's dose
   form carries a day switcher offering exactly `doseLogDays(today)` — today,
   yesterday, the day before, read off `DOSE_LOG_DATE_WINDOW_DAYS` so the offer and

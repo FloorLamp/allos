@@ -1,5 +1,5 @@
 import { defineConfig } from "@playwright/test";
-import fs from "node:fs";
+import { preinstalledChromium } from "./lib/e2e-chromium";
 import { resolveFreezeInstant } from "./lib/e2e-freeze-instant";
 
 // Browser end-to-end tier (issue: always browser-test UI features). Separate
@@ -7,22 +7,10 @@ import { resolveFreezeInstant } from "./lib/e2e-freeze-instant";
 // (`npm run test:db`): this boots the real Next app against an isolated, seeded
 // SQLite DB and drives it in Chromium. Run with `npm run test:e2e`.
 
-// In managed dev environments Chromium is pre-installed and PLAYWRIGHT_BROWSERS_PATH
-// points at it (e.g. /opt/pw-browsers); use that binary directly so we don't
-// re-download. In CI we run `npx playwright install chromium`, so this returns
-// undefined and Playwright falls back to its own managed browser.
-function preinstalledChromium(): string | undefined {
-  const base = process.env.PLAYWRIGHT_BROWSERS_PATH;
-  if (!base || !fs.existsSync(base)) return undefined;
-  const dir = fs
-    .readdirSync(base)
-    .filter((d) => d.startsWith("chromium-"))
-    .sort()
-    .at(-1);
-  if (!dir) return undefined;
-  const exe = `${base}/${dir}/chrome-linux/chrome`;
-  return fs.existsSync(exe) ? exe : undefined;
-}
+// WHICH CHROMIUM THIS RUN LAUNCHES, and why it must be CI's (#4008). The resolver
+// lives in lib/e2e-chromium.ts, with the measurement, so it can be unit-tested;
+// e2e/global-setup.ts prints the binary it picked at run start, so a lane cannot
+// report "at CI parity" without seeing which build produced its green.
 
 // Per-worker server ports: worker N listens on PORT_BASE + N (see
 // e2e/worker-env.ts, the ONE place that maps a worker index to its port, DB and

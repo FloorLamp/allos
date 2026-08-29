@@ -2,7 +2,7 @@ import { utcInstant } from "./date";
 import {
   DAY_BUCKET_METRICS,
   SUB_DAILY_WINDOW_MAX_MIN,
-} from "./integrations/health-connect";
+} from "./integrations/health-connect-metrics";
 
 // THE OVERLAP-SUPERSEDE RULE for `metric_samples` interval rows (issue #3424).
 //

@@ -18,7 +18,7 @@ import PassportControls, {
 } from "@/components/PassportControls";
 import EmergencyCardView from "@/components/EmergencyCardView";
 import EmergencyCardCacher from "@/components/EmergencyCardCacher";
-import EmergencyPrintButton from "@/components/EmergencyPrintButton";
+import PrintButton from "@/components/PrintButton";
 import EmergencyCardSettings from "@/app/(app)/medical/background/EmergencyCardSettings";
 import AdvanceDirectivesSettings from "@/app/(app)/medical/background/AdvanceDirectivesSettings";
 
@@ -120,7 +120,7 @@ export default async function ProfilePage() {
               offline when it matters most.
             </div>
           </div>
-          {emergencyEnabled && card ? <EmergencyPrintButton /> : null}
+          {emergencyEnabled && card ? <PrintButton region="emergency" /> : null}
         </div>
 
         {/* When ON, the assembled card renders. When OFF, a brief prompt — the

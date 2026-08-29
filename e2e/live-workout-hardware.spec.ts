@@ -11,7 +11,7 @@ import { comboboxRows, deleteActivityFromForm } from "./helpers";
 //   1. Opening the live editor requests a screen wake lock.
 //   2. Minimizing to the dock releases it (the editor stays MOUNTED there — the whole
 //      reason an unmount-tied lock was wrong); restoring re-acquires.
-//   3. Checking off a set fires the short set-logged tick.
+//   3. Checking off a set fires the short `commit` tick.
 //   4. prefers-reduced-motion suppresses the tick (the #1307 posture).
 //   5. With BOTH APIs absent, the live flow still opens and the timer still runs.
 

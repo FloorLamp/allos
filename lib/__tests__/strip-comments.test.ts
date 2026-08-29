@@ -3,6 +3,7 @@ import fs from "node:fs";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
 import { describe, expect, it } from "vitest";
+import { perTestCeiling } from "../../vitest.timeouts";
 import { stripComments } from "./strip-comments";
 import { disagreements } from "./strip-comments-oracle";
 import { stringLiterals } from "./source-literals";
@@ -309,9 +310,22 @@ describe("the regex-vs-division heuristic, and what it gets wrong", () => {
    * 3-4x per-test dispersion measured there.
    *
    * The 119 s is itself the thing worth fixing — it is half of `test-unit`'s whole
-   * 231 s median — but that is a different change from making the ceiling honest.
+   * 231 s median — but that is a different change from making the ceiling honest,
+   * and #4001 owns it. Note the consequence of the multiple below until it lands:
+   * 32x is 480 000 ms on CI and 1 920 000 ms under `agent-gates.sh`, which is a very
+   * weak hang detector on the dispatch box. Capping the multiple is the wrong fix —
+   * it would make the gate stricter than the tier ceiling it derives from, which is
+   * the split's whole design. Shrinking the 119 s brings this number down with it.
+   *
+   * AND IT IS A MULTIPLE NOW, NOT A LITERAL (#4002). 480 000 was still immune to
+   * `ALLOS_VITEST_TIMEOUT_MS`, which is the one lever the harness offers and the
+   * one this test — the slowest in either tier — is likeliest to need. 32x
+   * testTimeout is the same 480 000 ms on CI, and it moves with the override on the
+   * dispatch box. The basis is the observed WORST: the red run's 118 279 ms and the
+   * green run's 118 700 ms are the same number, and this file still reads
+   * 114 969 ms across its 36 tests on the green run at f1742fa6d.
    */
-  const ORACLE_SWEEP_MS = 480_000;
+  const ORACLE_SWEEP_MS = perTestCeiling(32, "worst");
 
   it(
     "disagrees with a real TypeScript parse on exactly the files named here",

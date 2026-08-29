@@ -88,6 +88,11 @@ function stubMatchMedia(): void {
 // per-test ceiling, 30 000 ms in CI). Measured mounting a chart through its public
 // wrapper: 2 157 ms cold / 56 ms warm idle, 5 682-7 793 ms cold / 121-466 ms warm
 // with four extra CPU burners on the box.
+//
+// NOT A PER-TEST CEILING, so #4002's sweep left it a literal deliberately: it bounds
+// a `findByText` INSIDE the hook, and the hook's own budget (hookTimeout, which does
+// scale with `ALLOS_VITEST_TIMEOUT_MS`) is what actually fails the run. A wait nested
+// inside a scaling budget must stay below it, so it must NOT scale with it.
 const CHART_CHUNK_WARMUP_MS = 20_000;
 
 describe("chart empty states", () => {

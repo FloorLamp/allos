@@ -6,6 +6,7 @@ import SubmitButton from "@/components/SubmitButton";
 import { useToast } from "@/components/Toast";
 import { useAddEntryModalClose } from "@/components/AddEntryPanel";
 import type { CareGoal, FormResult } from "@/lib/types";
+import InlineError from "@/components/InlineError";
 
 // Shared add/edit care-goal form. Add mode: no `goal`. Edit mode: pass the row + an
 // `onDone` callback (renders a hidden id + a Cancel button).
@@ -134,11 +135,7 @@ export default function CareGoalForm({
           defaultValue={goal?.notes ?? ""}
         />
       </div>
-      {error && (
-        <p role="alert" className="text-sm text-rose-600 dark:text-rose-400">
-          {error}
-        </p>
-      )}
+      <InlineError>{error}</InlineError>
       <div className="flex gap-2" data-testid="care-goal-form-actions">
         <div
           className="grid w-full sm:w-auto"
