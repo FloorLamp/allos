@@ -79,9 +79,28 @@ test.describe("in-app release notes (#1421)", () => {
       // entries page 1 actually carries for it.
       for (const entry of first.days[0].entries) {
         await expect(days.nth(0)).toContainText(entry.title);
-        await expect(
-          days.nth(0).getByRole("link", { name: `#${entry.pr}`, exact: true })
-        ).toHaveAttribute("href", pullRequestUrl(entry.pr));
+      }
+      // ONE PR CAN CARRY TWO BULLETS. A PR that closes two unrelated issues gets one
+      // bullet each — #4034 shipped the equipment picker and haptics together — so
+      // `#4034` resolves to two links and a per-entry locator is a strict-mode
+      // violation, not a failure. Nothing forbids the repeat: no doc states one
+      // bullet per PR, and the pure tier does not assert it; it simply had not
+      // happened in the first 35 days. Assert over the DISTINCT PRs and check EVERY
+      // link each one drew, which is stronger than the per-entry form it replaces —
+      // that one only ever looked at a PR's first link.
+      const prs = [...new Set(first.days[0].entries.map((e) => e.pr))];
+      for (const pr of prs) {
+        const links = days
+          .nth(0)
+          .getByRole("link", { name: `#${pr}`, exact: true });
+        const drawn = await links.count();
+        expect(drawn).toBeGreaterThan(0);
+        for (let i = 0; i < drawn; i++) {
+          await expect(links.nth(i)).toHaveAttribute(
+            "href",
+            pullRequestUrl(pr)
+          );
+        }
       }
 
       // Older notes stay reachable rather than dropped: the pager says how much

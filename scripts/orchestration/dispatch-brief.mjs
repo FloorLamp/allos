@@ -554,6 +554,27 @@ ${landingLines}
   a spec that walked the door, the kind filter, the rows and the footer link. Sweep the
   deleted TESTIDS and SYMBOLS as well as the path; a surviving marker is the same bug
   wearing a different name.
+
+  (7) "DOES MY CHANGE ADD SOMETHING BAD" AND "DOES MY CHANGE BREAK HOW THIS SPEC FINDS
+  ITS SUBJECT" ARE TWO CENSUSES, AND THE SECOND IS THE ONE LANES SKIP. The first is an
+  ABSENCE question and your change passes it honestly while silently changing what a
+  LOCATOR resolves to. Measured 2026-08-29 on #4045: a lane censused the specs its
+  change touched, correctly judged that a new record-count span "adds no machine date",
+  and shipped a CI red — because the count now concatenated onto the date inside one
+  element, so \`textContent\` read "August 1715 records", the census's \`\d{1,2}\b\`
+  had no word boundary, and the positive control that proves the route is not VACUOUSLY
+  silent could no longer find a date at all. \`innerText\` matched fine and the header
+  looked correct throughout.
+  So run the second census as its own grep over the specs that address your surface:
+  concatenation-sensitive matchers (\`toHaveText\`, \`toContainText\`, \`hasText\`,
+  \`textContent\`, \`allTextContents\`) and structural selectors (\`nth\`, \`first()\`,
+  \`>\`, \`~\`, \`childElementCount\`, range/offset reads). Adding a sibling span, moving
+  a testid up or down a level, collapsing a column, reordering two children — none of
+  those "add something bad", and all of them move what those matchers resolve to.
+  AND WHEN A CENSUS SPEC GOES RED, ITS POSITIVE CONTROL FAILING IS THE INSTRUMENT
+  WORKING. Fix the surface so the control can see it again; widening the census's own
+  pattern to admit your new markup loosens the one thing watching for that class
+  repo-wide, to make one branch green.
 - A GUARD THAT REMOVES A PROPERTY CANNOT ALSO PROVE THE PROPERTY SURVIVED. When your
   change takes something away — a frame, a gutter, a label, a permission, a field —
   the natural guard asserts ABSENCE: nothing still has it. That assertion passes on
@@ -579,6 +600,15 @@ ${landingLines}
   release-notes change it had never made, and it only caught it because the file was
   obviously not its own. A line count is exactly the kind of number that gets shrugged
   at, so it is exactly the kind that has to be measured right.
+  AND IT IS THE QUICK CHECK THAT CATCHES YOU, NOT THE REPORTED NUMBER. You will be careful
+  when you write the delta into your report. You will not be careful the four times you
+  run one mid-task just to see where you stand — and those are two-dot by muscle memory.
+  Measured 2026-08-29 on #3677: a lane reported +117 when the truth was +145, twice, from
+  quick checks taken while origin/main moved under it. Both errors were in the FLATTERING
+  direction, which is the half that matters: a number that says you are under budget is a
+  number nobody goes back and re-derives. Use three dots every single time, including the
+  ones you are not going to tell anyone about, or compute the base once
+  (\`BASE=\$(git merge-base origin/main HEAD)\`) and diff against that.
 - A SUBSTRING ASSERTION IS SATISFIABLE BY A NEIGHBOUR. \`toContainText("watch")\` on a card
   that also renders the user's note "Even brown, watch it." passes whether or not the
   thing you meant to assert is there — and keeps passing after the badge changes, because
@@ -1009,6 +1039,18 @@ ${MIGRATION_LINES}
   your branch and a control to see whose neighbours you changed, and say so.
   DO NOT respond by refusing to add spec files. The partition's fragility is the bug;
   a suite that cannot grow without hiding failures is measuring less every time.
+  AND IT BITES FROM THE OTHER DIRECTION TOO: BEING A MERGE BEHIND RE-PARTITIONS THE
+  SHARDS JUST AS ADDING A FILE DOES. If main has gained a spec file since your merge
+  base, your branch has one FEWER spec than main and every shard's file set differs
+  from main's — so a spec you never touched runs beside neighbours it never sees on
+  main, and a latent co-residency bug fires on your branch and nowhere else. Measured
+  2026-08-29 on #3273: two mobile-geometry specs the lane did not author went red on
+  CI, reproduced in NONE of four local configurations including a base-tree control,
+  and both went green after merging main — 467 spec files against main's 468 was the
+  whole story, confirmed with \`e2e-shard-plan.ts\` against a control checkout showing
+  all twelve shards byte-identical afterwards. So when a red lands in a spec your diff
+  does not touch, count the spec files on both sides BEFORE diagnosing the failure;
+  and merge main before your final CI run, not only before your gates.
 - DO NOT OPT A FIXTURE OUT OF THE E2E TIMEZONE PIN without reading
   e2e/fixture-timezones.ts, and if you do, your \`why\` must still be TRUE.
   e2e/pinned-timezone.ts pins local time to 13:mm ON PURPOSE — that is also
@@ -1073,6 +1115,18 @@ ${MIGRATION_LINES}
   If you need a clean tree: COMMIT (your work must be pushed anyway — see the hard
   gate above), or copy files to $SCRATCH with branch-unique names, or use a second
   worktree. All three are safe; the stash is the only one that reaches across lanes.
+- AND \`git checkout -- <file>\` IS THE SAME TRAP THROUGH A DIFFERENT DOOR. It does not
+  mean "undo my last edit" — it means "restore this file to HEAD", and when you are
+  reverting a MUTATION, HEAD is your own last commit, not the state you mutated from.
+  Measured 2026-08-29 on #3349/#3699: a lane used it to revert a mutation while HEAD was
+  its first commit, and two files silently rolled back past a whole issue's worth of
+  uncommitted work. It was caught inside one test run only because the "restored" tree
+  failed the same way the mutation had — a quieter mutation would have been reverted to
+  a tree that no longer contained the fix, and the resulting green would have meant
+  nothing. Before EVERY mutation, copy the file to \$SCRATCH with a branch-unique name
+  (\$SCRATCH/mut-<branch>-<file>.bak) and restore from that copy. Reverting a mutation is
+  a routine step in every lane that proves its guards properly, so this is a step you
+  will take many times, each one an opportunity to lose work you have not committed.
 - NEVER \`pkill -f <pattern>\` — not vitest, not next, not playwright, not your own
   harness name. Sibling clusters run the same binaries in this container, so a pattern
   kill takes their runs down with yours and they have no way to tell that from a real
