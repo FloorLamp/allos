@@ -1,4 +1,4 @@
-import CardSectionHeader from "@/components/CardSectionHeader";
+import DashboardAtomCard from "./DashboardAtomCard";
 import PeriodOfferButton from "@/components/cycle/PeriodOfferButton";
 import type { CycleControlState } from "@/lib/cycle-plausibility";
 
@@ -18,11 +18,12 @@ export default function CycleControlAtom({
   control: CycleControlState;
 }) {
   return (
-    <div className="card" data-testid="cycle-control-atom">
-      <CardSectionHeader title="Cycle" href="/medical/cycles" />
-      <div className="mt-3">
-        <PeriodOfferButton state={control} surface="atom" variant="compact" />
-      </div>
-    </div>
+    <DashboardAtomCard
+      title="Cycle"
+      href="/medical/cycles"
+      testId="cycle-control-atom"
+    >
+      <PeriodOfferButton state={control} surface="atom" variant="compact" />
+    </DashboardAtomCard>
   );
 }

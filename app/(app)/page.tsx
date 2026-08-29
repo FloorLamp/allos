@@ -1,6 +1,5 @@
 import { cloneElement, type ReactElement, type ReactNode } from "react";
 import { redirect } from "next/navigation";
-import { IconFlask, IconMoon } from "@tabler/icons-react";
 import { now as clockNow } from "@/lib/clock";
 import { today } from "@/lib/db";
 import {
@@ -111,7 +110,12 @@ import { freshnessAgeDays } from "@/lib/freshness";
 import { glanceAgeToken } from "@/lib/glance-age";
 import { VITAL_PRESENTATION_FLOORS } from "@/lib/vitals-latest";
 import { getRecapCard } from "@/lib/notifications/recap-data";
-import { recapLineId } from "@/lib/recap";
+import {
+  recapLineAnnotation,
+  recapLineId,
+  recapRangeLabel,
+} from "@/lib/recap";
+import { recapScaleEntry } from "@/lib/recap-scale";
 import {
   coachingObservationFindings,
   dashboardHabitDomain,
@@ -185,7 +189,6 @@ import {
 } from "@/lib/dashboard-illness-cockpit";
 import { disambiguateProfileNames } from "@/lib/profile-disambiguation";
 import { householdFanoutWithActing } from "@/lib/household-fanout";
-import DashboardSetupAtom from "@/components/dashboard/DashboardSetupAtom";
 import LogReadingButton from "@/components/dashboard/LogReadingButton";
 import WeightQuickAddAtom from "@/components/dashboard/WeightQuickAddAtom";
 import {
@@ -195,7 +198,6 @@ import {
 import CoachingRecommendationAtom from "@/components/dashboard/CoachingRecommendationAtom";
 import CoachingObservations from "@/components/dashboard/CoachingObservations";
 import DataQualityAtom from "@/components/dashboard/DataQualityAtom";
-import RecapLineAtom from "@/components/dashboard/RecapLineAtom";
 import RecentLabReadout, {
   type RecentLabRow,
 } from "@/components/dashboard/RecentLabReadout";
@@ -210,6 +212,7 @@ import SleepWaitingAtom from "@/components/dashboard/SleepWaitingAtom";
 import NapAtom from "@/components/dashboard/NapAtom";
 import {
   formatHm,
+  formatSleepWindow,
   formatUsualSleepBand,
   sleepRecordPresentation,
 } from "@/lib/sleep-summary";
@@ -1067,13 +1070,18 @@ async function renderDashboard(
     DashboardStandingPresentation
   >();
   const aheadPresentations = new Map<string, DashboardAheadPresentation>();
+  // A candidate declares a card node, a row presentation, or both. Which one the
+  // canvas draws is the LANE's business (#3365): Standing and the tail's Read /
+  // Understand / Setup groups render the row, everywhere else renders the node. A
+  // fact that only ever reports declares only a row, and the canvas fails loudly for
+  // a candidate that placed with neither.
   const add = (
     candidate: DashboardCandidate,
-    node: ReactNode,
+    node: ReactNode | undefined,
     standingPresentation?: DashboardStandingPresentation
   ) => {
     candidates.push(candidate);
-    candidateNodes.set(candidate.candidateId, node);
+    if (node !== undefined) candidateNodes.set(candidate.candidateId, node);
     if (standingPresentation)
       standingPresentations.set(candidate.candidateId, standingPresentation);
   };
@@ -1749,7 +1757,13 @@ async function renderDashboard(
           title={`${protocol.name} adherence`}
           value={protocol.adherence.label}
           href={protocol.href}
-        />
+        />,
+        {
+          label: "Adherence",
+          value: protocol.adherence.label,
+          href: protocol.href,
+          moment: { title: protocol.name, href: protocol.href },
+        }
       );
     if (protocol.primaryOutcome)
       add(
@@ -1765,7 +1779,13 @@ async function renderDashboard(
           title={protocol.primaryOutcome.label}
           value={protocol.primaryOutcome.framing}
           href={protocol.href}
-        />
+        />,
+        {
+          label: protocol.primaryOutcome.label,
+          value: protocol.primaryOutcome.framing,
+          href: protocol.href,
+          moment: { title: protocol.name, href: protocol.href },
+        }
       );
     if (protocol.practiceName && protocol.practiceUsuallyToday && canWrite)
       add(
@@ -2081,9 +2101,17 @@ async function renderDashboard(
       on,
       Boolean(vitalsModel)
     ),
-    <div className="card">
+    <DashboardAtomCard title="Vitals" testId="vitals-log-atom">
       <LogReadingButton label="Log a vital" />
-    </div>
+    </DashboardAtomCard>,
+    // With no readings yet this fact is a SETUP row rather than an offer, and the
+    // row states the same door the button opens.
+    {
+      label: "Vitals",
+      href: "/trends#body",
+      actionLabel: "Log a vital",
+      presence: vitalsModel ? "current" : "never",
+    }
   );
 
   if (cycleModel)
@@ -2126,7 +2154,14 @@ async function renderDashboard(
         },
         nextAppt.href
       ),
-      <NextAppointmentAtom appointment={nextAppt} />
+      <NextAppointmentAtom appointment={nextAppt} />,
+      {
+        label: nextAppt.title,
+        value: nextAppt.whenLabel,
+        detail: nextAppt.dueText,
+        href: nextAppt.href,
+        moment: { title: "Next appointment", href: "/records/history/visits" },
+      }
     );
 
   labRows.forEach((row, index) => {
@@ -2177,15 +2212,9 @@ async function renderDashboard(
         applicable: canWrite,
         sourceOrder: sourceOrder++,
       }),
-      <DashboardSetupAtom
-        title="Clinical results"
-        icon={IconFlask}
-        message="No clinical results yet."
-        ctaLabel="Import results"
-        ctaHref="/data"
-      />,
+      undefined,
       {
-        detail: "No clinical results yet.",
+        label: "Clinical results",
         href: "/data",
         actionLabel: "Import results",
         presence: "never",
@@ -2365,12 +2394,10 @@ async function renderDashboard(
         },
         on
       ),
-      <DashboardSetupAtom
+      <DashboardAtomCard
         title="Sleep"
-        icon={IconMoon}
-        message="No sleep recorded last night."
-        ctaLabel="Sync a source"
-        ctaHref="/data"
+        href="/data"
+        actionLabel="Sync a source"
       />
     );
   } else if (sleepSummary) {
@@ -2441,7 +2468,17 @@ async function renderDashboard(
         engagementFromSource(nap.source),
         nowMinutes - nap.endMinutes
       ),
-      <NapAtom nap={nap} timeFormat={formatPrefs.timeFormat} />
+      <NapAtom nap={nap} timeFormat={formatPrefs.timeFormat} />,
+      {
+        label: formatSleepWindow(
+          formatPrefs.timeFormat,
+          nap.startMinutes,
+          nap.endMinutes
+        ),
+        value: formatHm(nap.durationMin),
+        href: "/sleep#naps",
+        moment: { title: "Today's naps", href: "/sleep#naps" },
+      }
     )
   );
   if (todayNaps.length > 0)
@@ -2508,6 +2545,13 @@ async function renderDashboard(
   );
   sourceOrder += coachingObservations.length;
 
+  const recapMomentTitle = weeklyRecap
+    ? `${recapScaleEntry(weeklyRecap.scale).label} · ${recapRangeLabel(
+        weeklyRecap.start,
+        weeklyRecap.end,
+        formatPrefs
+      )}`
+    : "";
   weeklyRecap?.lines.forEach((line, index) =>
     add(
       progressCandidates.recap(
@@ -2522,11 +2566,19 @@ async function renderDashboard(
         weeklyRecap.start,
         weeklyRecap.end
       ),
-      <RecapLineAtom
-        recap={weeklyRecap}
-        line={line}
-        formatPrefs={formatPrefs}
-      />
+      undefined,
+      {
+        // A bare line is already self-labelled (#1935); printing the label
+        // beside it would name the row twice.
+        ...(line.bare ? {} : { label: line.label }),
+        value: line.value,
+        detail: recapLineAnnotation(line),
+        href: "/timeline",
+        // THE MOMENT (#3365). Six recap facts used to be six identical cards, one
+        // line each; the scale and the window they all share is stated once, at the
+        // head of the block they fold into.
+        moment: { title: recapMomentTitle, href: "/timeline" },
+      }
     )
   );
 

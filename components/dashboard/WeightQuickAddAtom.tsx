@@ -1,6 +1,6 @@
 import type { WeightUnit } from "@/lib/settings";
 import WeightQuickAdd from "./WeightQuickAdd";
-import CardSectionHeader from "@/components/CardSectionHeader";
+import DashboardAtomCard from "./DashboardAtomCard";
 
 // The dashboard's shipped quick-add, kept as an independent action candidate.
 // Its hidden marker comes from the same server-resolved series as the Standing
@@ -17,8 +17,11 @@ export default function WeightQuickAddAtom({
   subjectName: string | null;
 }) {
   return (
-    <div className="card" data-testid="weight-quick-add-atom">
-      <CardSectionHeader title="Log weight" href="/trends#body" />
+    <DashboardAtomCard
+      title="Log weight"
+      href="/trends#body"
+      testId="weight-quick-add-atom"
+    >
       <WeightQuickAdd
         weightUnit={weightUnit}
         today={today}
@@ -32,6 +35,6 @@ export default function WeightQuickAddAtom({
           data-value={String(latest.value)}
         />
       ) : null}
-    </div>
+    </DashboardAtomCard>
   );
 }
