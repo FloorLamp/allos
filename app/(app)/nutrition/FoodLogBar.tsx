@@ -29,7 +29,6 @@ import FoodGroupIcon, {
 } from "@/components/FoodGroupIcon";
 import ModalShell from "@/components/ModalShell";
 import IntakeContextBar from "@/components/IntakeContextBar";
-import FilterPills from "@/components/FilterPills";
 import {
   useClaimToastKey,
   useDismissToast,
@@ -69,12 +68,7 @@ import { useActiveProfileId } from "@/components/ActiveProfileProvider";
 import { UNDO_TOAST_MS } from "@/components/useUndoableDelete";
 import { undoDelete } from "@/app/(app)/undo-actions";
 import { useOfflineQueue } from "@/components/OfflineQueueProvider";
-import {
-  eatingHoursOnDate,
-  eatingTimeChoiceValue,
-  type EatingTimeChoice,
-  type EatingTimeOption,
-} from "@/lib/food-eating-time";
+import { eatingHoursOnDate } from "@/lib/food-eating-time";
 import {
   OFFLINE_CAPTURE_REFUSED_MESSAGE,
   shouldQueueOffline,
@@ -233,7 +227,6 @@ export default function FoodLogBar({
   usualBySlot,
   slot,
   slotBoundaries,
-  eatingTimeOptions = [],
   initialFoodGroup,
   nutrientSummaryByDate = [],
   proteinQuickAdd,
@@ -269,12 +262,6 @@ export default function FoodLogBar({
   // can follow the chosen hour. The SAME boundaries the server's tallies use
   // (profileFoodSlotBoundaries), passed down so the sheet and the tally cannot disagree.
   slotBoundaries: FoodSlotBoundaries;
-  // The "earlier…" hours an eating-time statement may name (#2053), each with the local
-  // wall time to show and the instant it means. Resolved server-side from the profile's
-  // timezone and already filtered to hours that land on `today`, so this island never
-  // converts a profile-local hour with its own locale and never offers a chip the write
-  // would refuse. Empty disables the earlier half; "now" stands on its own.
-  eatingTimeOptions?: EatingTimeOption[];
   // Optional protocol-owned group (#1584). It is promoted into the quick rows
   // for this mount so opening "Log servings" lands on the intended existing
   // write control without inventing another food-log path.
@@ -308,15 +295,18 @@ export default function FoodLogBar({
   });
   projectionRef.current = { countsByDate, slotCountsByDate };
   const [activeSlot, setActiveSlot] = useState<FoodSlot>(slot);
-  // The eating-time statement in force for the next taps (#2053), or null for the default
-  // and honest silence: nobody said, so nothing is written. STICKY across taps on purpose
-  // — a meal is several servings and re-answering "when" for each one would be the kind of
-  // friction a one-tap bar exists to avoid — and reset whenever the selected DAY changes,
-  // because a statement made about today cannot survive onto a backfill.
-  const [eatingTime, setEatingTime] = useState<EatingTimeChoice | null>(null);
-  // Whether the "earlier…" hours are revealed. The offer stays one tap deep: "now" is the
-  // common answer and a dozen hours permanently on screen would bury it.
-  const [earlierOpen, setEarlierOpen] = useState(false);
+  // The eating-time statement in force for the next taps (#2053), through the app's ONE
+  // "when did this happen?" control (#2236/#3273) — the hand-rolled Now/Earlier… chip
+  // group that used to sit here was this file's SECOND time vocabulary, three hundred
+  // lines from the correction modal's WhenControl. `statedAt: null` is the default and
+  // honest silence: nobody said, so nothing is written. STICKY across taps on purpose —
+  // a meal is several servings and re-answering "when" for each one would be the kind of
+  // friction a one-tap bar exists to avoid — and out of force whenever the selected DAY
+  // is not today, because a statement made about today cannot survive onto a backfill.
+  const [eatingWhen, setEatingWhen] = useState<WhenValue>({
+    date: today,
+    statedAt: null,
+  });
   // WHICH SURFACE THIS BAR IS ON (#3087). The same component renders on the Food
   // tab, on the dashboard and inside the quick-log sheet; the server cannot tell
   // them apart, so the mounting declares itself and this stamps every post with it.
@@ -1212,37 +1202,21 @@ export default function FoodLogBar({
   // while an older day is selected; it is still visible (and still pressed) on returning
   // to today, so nothing is silently in force.
   const statingTime = activeDate === today;
-  const statedChoice = statingTime ? eatingTime : null;
-
-  // The instant an OFFLINE capture carries for the statement in force, or null. Resolved
-  // here rather than at replay because a replay has no server to ask: "now" is this
-  // device's clock at the tap, and an "earlier…" hour is the instant the server already
-  // computed for that option. Both are validated server-side before they land.
-  function statedInstant(): string | null {
-    if (!statedChoice) return null;
-    if (statedChoice.kind === "now") return new Date().toISOString();
-    return (
-      eatingTimeOptions.find((o) => o.hhmm === statedChoice.hhmm)?.iso ?? null
-    );
-  }
+  // The statement in force, as the two things every consumer of it needs: the INSTANT an
+  // offline capture carries (resolved here because a replay has no server to ask, and
+  // validated server-side before it lands), and the profile-local wall time the online
+  // post states. One value behind both, so the queued instant and the posted wall time
+  // cannot describe different minutes.
+  const statedAt = statingTime ? eatingWhen.statedAt : null;
+  const statedTime = statedAt ? statedHhmm(statedAt, tz) : "";
 
   // The meal window the statement in force FILES under (#2269) — the section a "+" will
-  // land the serving in, since a stated time wins over the tab at log time. An "earlier…"
-  // hour carries its server-derived slot on the option; "now" derives from the current
-  // wall clock through the same boundaries the server's tallies use. Null when no
-  // statement is in force — the tab's declaration is then the only fact and the serving
-  // files under it.
+  // land the serving in, since a stated time wins over the tab at log time — derived
+  // through the same boundaries the server's tallies use, exactly as the correction
+  // sheet's follow-the-hour Meal default is. Null when no statement is in force: the
+  // tab's declaration is then the only fact and the serving files under it.
   function statedFilingSlot(): FoodSlot | null {
-    if (!statedChoice) return null;
-    if (statedChoice.kind === "at")
-      return (
-        eatingTimeOptions.find((o) => o.hhmm === statedChoice.hhmm)?.slot ??
-        null
-      );
-    return foodSlotForHhmm(
-      statedHhmm(new Date().toISOString(), tz),
-      slotBoundaries
-    );
+    return statedTime ? foodSlotForHhmm(statedTime, slotBoundaries) : null;
   }
 
   // The pair of counts one tap moves: the day's total for the group, and the group's
@@ -1322,12 +1296,11 @@ export default function FoodLogBar({
           // stays in the active window the person actually tapped.
           mealSlot: activeSlot,
           grams: null,
-          // The statement travels as a RESOLVED instant, because a replay has no server to
-          // resolve a choice against: "now" is this device's clock at the tap, and an
-          // "earlier…" hour is the instant the server computed when it rendered that
-          // option. The replay validates both (judgeEatenAt) rather than trusting them,
-          // and an unusable one costs the statement, never the serving.
-          eatenAt: statedInstant(),
+          // The statement travels as a RESOLVED instant, because a replay has no server
+          // to resolve a wall time against. The replay validates it (judgeEatenAt)
+          // rather than trusting it, and an unusable one costs the statement, never the
+          // serving.
+          eatenAt: statedAt,
         })) === "kept";
       // The device can refuse the capture (#3038) — say so in the shared sentence
       // and report it, so the caller rolls the optimistic counts back.
@@ -1439,12 +1412,13 @@ export default function FoodLogBar({
           fd.set("event_id", String(expectedEventId));
         if (activeProfileId != null)
           fd.set("profileId", String(activeProfileId));
-        // The CHOICE, not an instant: online the server resolves it against its own clock
-        // and the profile's timezone, so a tab open since breakfast cannot stamp a stale
-        // "now". Only an add states a time — an undo removes a serving and asserts
-        // nothing about when anything was eaten.
-        if (statedChoice && delta === 1)
-          fd.set("occurred_at", eatingTimeChoiceValue(statedChoice));
+        // The absolute local WALL TIME, not an instant: the server resolves it against
+        // its own clock and the profile's timezone, so this island never converts a
+        // profile-local hour with its own locale. It is also what a page open since
+        // breakfast can still say honestly — "13:00" means the same minute however
+        // stale the render is (WhenControl invariant 4). Only an add states a time; an
+        // undo removes a serving and asserts nothing about when anything was eaten.
+        if (statedTime && delta === 1) fd.set("occurred_at", statedTime);
         stampLoggedVia(fd);
         return {
           kind: "wrote",
@@ -2294,72 +2268,30 @@ export default function FoodLogBar({
               <span className="text-xs text-slate-500 dark:text-slate-400">
                 Eaten
               </span>
-              <FilterPills
-                mode="button"
-                layout="wrap"
-                label="When the servings you add were eaten"
-                value={
-                  statedChoice?.kind === "now" ? "__now" : statedChoice?.hhmm
-                }
-                onSelect={(choice) => {
-                  if (choice === "__now") {
-                    setEarlierOpen(false);
-                    setEatingTime((prev) =>
-                      prev?.kind === "now" ? null : { kind: "now" }
-                    );
-                    return;
-                  }
-                  setEarlierOpen(false);
-                  setEatingTime((prev) =>
-                    prev?.kind === "at" && prev.hhmm === choice
-                      ? null
-                      : { kind: "at", hhmm: choice }
-                  );
-                }}
-                options={[
-                  {
-                    value: "__now",
-                    label: "Now",
-                    testId: "food-eating-now",
-                  },
-                  ...(earlierOpen
-                    ? eatingTimeOptions.map((option) => ({
-                        value: option.hhmm,
-                        label: `${option.hhmm} \u00b7 ${option.slot}`,
-                        testId: `food-eating-at-${option.hhmm}`,
-                        data: { "data-slot": option.slot },
-                      }))
-                    : []),
-                ]}
+              {/* ONE VOCABULARY PER SURFACE (#3273). This was a hand-rolled
+                  Now / Earlier… chip group; the correction modal three hundred lines
+                  below already asked the same question through WhenControl. The day is
+                  FIXED to today — the statement is a today-only affordance, since "now"
+                  is meaningless on a backfill and a seven-day-old serving has nothing
+                  honest to state — so the control renders the day as text and offers
+                  the day's hours, plus its own one-tap "Now" that fills an ABSOLUTE
+                  local time you can see and adjust. */}
+              <WhenControl
+                mode="state"
+                grain="hour"
+                value={eatingWhen}
+                onChange={setEatingWhen}
+                minDate={today}
+                maxDate={today}
+                timeLabel="When the servings you add were eaten"
+                testId="food-when"
               />
-              {eatingTimeOptions.length > 0 && (
-                <button
-                  type="button"
-                  data-testid="food-eating-earlier"
-                  aria-expanded={earlierOpen}
-                  onClick={() => setEarlierOpen((open) => !open)}
-                  className="btn-ghost"
-                >
-                  {/* A disclosure for the time choices, not a selected option. */}
-                  {statedChoice?.kind === "at"
-                    ? `${statedChoice.hhmm} \u00b7 ${
-                        eatingTimeOptions.find(
-                          (o) => o.hhmm === statedChoice.hhmm
-                        )?.slot ?? activeSlot
-                      }`
-                    : "Earlier\u2026"}
-                </button>
-              )}
               <span
                 data-testid="food-eating-time-note"
                 className="w-full text-xs text-slate-500 dark:text-slate-400"
               >
-                {statedChoice
-                  ? `Servings you add are recorded as eaten ${
-                      statedChoice.kind === "now"
-                        ? "now"
-                        : `at ${statedChoice.hhmm}`
-                    }${
+                {statedTime
+                  ? `Servings you add are recorded as eaten at ${statedTime}${
                       // The filing named OUT LOUD when it leaves the active tab
                       // (#2269): a serving stating 19:00 from the Morning tab lands
                       // in Evening, and the answer text says so before the tap does.

@@ -15,11 +15,9 @@ import {
   type FoodEventPlacement,
 } from "@/lib/food-log-write";
 import { logUsualFoodCore } from "@/lib/food-usual-write";
-import {
-  judgeEatenAt,
-  parseEatingTimeChoice,
-  resolveEatingTimeChoice,
-} from "@/lib/food-eating-time";
+import { judgeEatenAt } from "@/lib/food-eating-time";
+import { statedHourInstant } from "@/lib/correction-time";
+import { normalizeClockTime } from "@/lib/vitals-input";
 import type { StatedTimeRefusal, StatedTimeVerdict } from "@/lib/stated-time";
 import { now as clockNow } from "@/lib/clock";
 import { utcInstant, zonedWallTimeToUtc } from "@/lib/date";
@@ -173,24 +171,26 @@ export async function logFoodServing(
   }
   const fields = parseFields(formData, profileId);
   if (!fields) return formError("Unknown food group.");
-  // The eating-time statement (#2053), when the user made one. The form carries the
-  // CHOICE ("now" or an absolute local hour), never a client instant: the server resolves
-  // it against its own clock and the profile's timezone, so a page that has been open for
-  // an hour cannot stamp a stale "now" and no browser has to convert a profile-local hour
-  // with its own locale. An absent or unusable choice records NO eating time — the
-  // validate-never-drop rule: the serving always lands, the statement is what is lost,
-  // and since #2296 the answer SAYS SO rather than dropping it in silence.
+  // The eating-time statement (#2053), when the user made one. The form carries an
+  // ABSOLUTE profile-local wall time ("HH:MM") and never a client instant: the server
+  // resolves it against its own clock and the profile's timezone, so no browser has to
+  // convert a profile-local hour with its own locale. Since #3273 that is the ONE shape
+  // this field takes — the bar's hand-rolled "now" word went with its chip group, and
+  // the shared control's Now button fills a wall time the person can see instead. An
+  // absent or unusable statement records NO eating time — the validate-never-drop rule:
+  // the serving always lands, the statement is what is lost, and since #2296 the answer
+  // SAYS SO rather than dropping it in silence.
   //
   // ONE clock read for the whole decision, and one VERDICT rather than a nullable
   // instant (#2296): "nobody stated a time" and "a time was stated and refused" are
-  // different answers, and only the second is something to tell the user about. A
-  // choice that won't resolve at all (a wall time inside a DST gap) is a refusal too,
-  // not an absence — it was stated.
+  // different answers, and only the second is something to tell the user about. A time
+  // that won't resolve at all (a wall time inside a DST gap) is a refusal too, not an
+  // absence — it was stated.
   const at = clockNow();
   const tz = getTimezone(profileId);
-  const choice = parseEatingTimeChoice(formData.get("occurred_at"));
-  const resolved = choice ? resolveEatingTimeChoice(choice, at, tz) : null;
-  const verdict: StatedTimeVerdict = !choice
+  const stated = normalizeClockTime(String(formData.get("occurred_at") ?? ""));
+  const resolved = stated ? statedHourInstant(stated, at, tz) : null;
+  const verdict: StatedTimeVerdict = !stated
     ? { kind: "unstated" }
     : resolved === null
       ? { kind: "refused", reason: "malformed" }

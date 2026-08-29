@@ -11,10 +11,6 @@ import {
 import { getTimezone, getUnitPrefs } from "@/lib/settings";
 import { now as clockNow } from "@/lib/clock";
 import {
-  eatingTimeOptions,
-  type EatingTimeOption,
-} from "@/lib/food-eating-time";
-import {
   getExcludedFoodGroups,
   getProfileAge,
   getProfileBirthdate,
@@ -179,10 +175,6 @@ export type QuickEntryData =
       // follow-the-hour Meal default derives from (#2227 d4), the same numbers the
       // server's tallies use.
       slotBoundaries: FoodSlotBoundaries;
-      // The "earlier…" hours the eating-time statement may name (#2053) — the SAME
-      // server-resolved offer the Food tab passes, so the sheet cannot present a
-      // narrower affordance than the page it opened over.
-      eatingTimeOptions: EatingTimeOption[];
     }
   | {
       form: "dose";
@@ -350,12 +342,6 @@ export async function loadQuickEntry(
       excludedGroups: getExcludedFoodGroups(profile.id),
       slot,
       slotBoundaries: profileFoodSlotBoundaries(profile.id),
-      eatingTimeOptions: eatingTimeOptions(
-        clockNow(),
-        getTimezone(profile.id),
-        date,
-        profileFoodSlotBoundaries(profile.id)
-      ),
     };
   }
 
