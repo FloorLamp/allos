@@ -33,6 +33,7 @@ import DashboardPlacementCanvas, {
 import { STANDING_READING_ORDER } from "@/lib/dashboard-standing";
 import { everythingTail } from "@/lib/dashboard-relevance";
 import { trackedPageFor } from "@/lib/recent-pages";
+import { logSheetSegments } from "@/lib/log-sheet";
 
 const session = vi.hoisted(() => ({
   loginId: 0,
@@ -598,6 +599,35 @@ describe("actual atomic dashboard manifests", () => {
     expect(dropped.length).toBeGreaterThan(0);
   });
 
+  // THE TAIL'S GENERIC WRITE CARDS ARE GONE, AND THE SHEET HAS THEM (#3366/#4064).
+  //
+  // Owner ruling: the quick logger is the app's one quick-write surface, so an
+  // always-available write control does not also sit in the dashboard tail. An
+  // absence assertion alone would pass on a tree where the writes vanished
+  // altogether, so each retired candidate is checked against the quick-log row that
+  // now carries it — the sheet gained first, the tail dropped second.
+  it.each([
+    { candidateId: "weight.quick-add", row: "log-measurements" },
+    { candidateId: "vitals.manual-log", row: "log-measurements" },
+    { candidateId: "symptom.well-day-log", row: "log-symptom" },
+    { candidateId: "cycle.control", row: "log-period" },
+  ] as const)(
+    "$candidateId left the dashboard for the quick logger's $row",
+    ({ candidateId, row }) => {
+      for (const [persona, placements] of manifests) {
+        expect(
+          placements.map((placement) => placement.candidate.candidateId),
+          persona
+        ).not.toContain(candidateId);
+      }
+      expect(
+        logSheetSegments(true, true).flatMap((segment) =>
+          segment.items.map((item) => item.id)
+        )
+      ).toContain(row);
+    }
+  );
+
   it("keeps sleep regularity only in its healthspan family", () => {
     for (const placements of manifests.values()) {
       expect(
@@ -687,13 +717,17 @@ describe("actual atomic dashboard manifests", () => {
   // regression, which is exactly how the old single cap stopped meaning anything.
   // #3723 batches additive metric totals, recovering two statements for the
   // bodybuilder and four for the biohacker while preserving source election.
+  // #3366 retires the tail's four generic write cards. Only the SYMPTOM bar gathered
+  // anything of its own — severities, notes, custom names and log order, 13 statements
+  // — so every persona that renders it recovers exactly those. `household` is flat
+  // because its acting profile is sick, and the well-day bar never rendered there.
   const QUERY_BASELINE: Record<string, number> = {
-    bodybuilder: 241,
-    "marathon-runner": 240,
+    bodybuilder: 228,
+    "marathon-runner": 227,
     household: 270,
-    pregnant: 237,
-    "diabetic-cgm": 248,
-    biohacker: 254,
+    pregnant: 224,
+    "diabetic-cgm": 235,
+    biohacker: 241,
   };
 
   // A BACKSTOP, NOT THE METER. The baseline above is the meter; this is the bound

@@ -467,11 +467,11 @@ describe("Show everything doors (#3366)", () => {
       subject,
       applicable: true,
       relevance: { kind: "event" },
-      navDuplicateOf: "/goals",
+      navDuplicateOf: "/appointments",
       sourceOrder: 0,
     });
     expect(() => canvas([tailPlacement(unnamed, 0)], [])).toThrow(
-      "Unnamed Show everything door: /goals"
+      "Unnamed Show everything door: /appointments"
     );
   });
 });
