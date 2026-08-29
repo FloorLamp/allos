@@ -46,7 +46,10 @@ import { specsNeedingIsolation } from "@/vitest.isolation";
 // dashboard-placement-manifest imports the real async page and needs private
 // request-session/auth substitutions plus a no-op scheduled-AI boundary. Making
 // those substitutions shared would change the behavior exercised by every DB spec.
-const DB_ISOLATED = 30;
+// 31 since #3948: seed-auth-state drives the e2e seed's real session mint, which
+// is the one thing in the tier that needs the GENUINE lib/auth — the case this
+// file's own message calls out, a spec testing the module everything else stubs.
+const DB_ISOLATED = 31;
 // 7 since #3065: Longevity's server-component FitnessSection is tested directly with
 // controlled session, age, and assembler boundaries. It must prove that minor and unknown
 // profiles return null before assembling adult population data; sharing those module stubs
