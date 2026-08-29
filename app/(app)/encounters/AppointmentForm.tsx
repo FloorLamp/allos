@@ -22,6 +22,7 @@ import {
   APPOINTMENT_KIND_LABELS,
 } from "@/lib/preventive-appointment";
 import type { Appointment, FormResult } from "@/lib/types";
+import InlineError from "@/components/InlineError";
 
 // Shared add/edit form for a scheduled visit, in the facts-with-editors grammar (#3218,
 // #3223). Add mode: no `appointment`. Edit mode: pass the row + `onDone` (renders a
@@ -428,11 +429,7 @@ export default function AppointmentForm({
         </FactEditorHost>
       </div>
 
-      {error && (
-        <p role="alert" className="text-sm text-rose-600 dark:text-rose-400">
-          {error}
-        </p>
-      )}
+      <InlineError>{error}</InlineError>
       <div className="flex gap-2" data-testid="appointment-form-actions">
         <div
           className="grid w-full sm:w-auto"

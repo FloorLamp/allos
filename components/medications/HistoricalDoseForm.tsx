@@ -6,6 +6,7 @@ import { useToast } from "@/components/Toast";
 import WhenControl, { type WhenValue } from "@/components/WhenControl";
 import { useTimezone } from "@/components/TimezoneProvider";
 import { statedHhmm, statedInstantOnDate } from "@/lib/stated-time";
+import InlineError from "@/components/InlineError";
 import {
   logHistoricalDose,
   updateHistoricalDose,
@@ -223,11 +224,7 @@ export default function HistoricalDoseForm({
               ? "Choose any past date. If it is before the current start date, the start date will move back to match. This records a separate administration in dose history."
               : "The date must fall within a medication course and cannot be in the future. This updates adherence history for that date."}
       </p>
-      {error ? (
-        <p role="alert" className="text-sm text-rose-600 dark:text-rose-400">
-          {error}
-        </p>
-      ) : null}
+      <InlineError>{error}</InlineError>
       <div className="flex items-center gap-2">
         <SubmitButton pendingLabel="Saving…">
           {editing ? "Save changes" : "Save dose"}
