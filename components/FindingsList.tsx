@@ -13,9 +13,9 @@ import Disclosure from "@/components/Disclosure";
 // when there are no findings.
 //
 // A caller with a deliberate local fold may pass its overflow as
-// `moreFindings`: the rows beyond the cap render inside a native <details>
-// disclosure ("Show N more"), so a "N of M" subtitle always comes with a path to
-// the hidden M−N — same rows, same links, same dismiss affordance. Overflow rows
+// `moreFindings`: the rows beyond the cap render inside a disclosure ("Show N
+// more"), so a "N of M" subtitle always comes with a path to the hidden M−N —
+// same rows, same links, same dismiss affordance. Overflow rows
 // carry their own `${testid}-more-item` testid so cap assertions on the visible
 // slice stay exact.
 export default function FindingsList({

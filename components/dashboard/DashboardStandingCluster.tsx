@@ -355,10 +355,10 @@ export default function DashboardStandingCluster({
         {/* THE QUIET TAIL (#3548). Everything static — a source that went dormant,
           a months-old result, a quiet pillar, a connect-a-source CTA past the
           cold-start cap — stays PRESENT and reachable, and stops occupying the
-          open page. Native <details>, so the rows are hidden and not unmounted,
-          in-page find still opens it, and the summary carries the expanded state
-          without an aria attribute of our own. Nothing is remembered: the fold is
-          computed from claims, never configured. */}
+          open page. The rows are hidden and not unmounted, in-page find still
+          opens it, and the summary carries the expanded state without an aria
+          attribute of our own. Nothing is remembered: the fold is computed from
+          claims, never configured. */}
         {tail.length > 0 && (
           <Disclosure
             data-standing-band="tail"

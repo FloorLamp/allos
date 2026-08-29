@@ -1377,7 +1377,7 @@ export default function IntakeItemForm({
                   )}
                 </div>
                 {/* One-line explainer (#851 item 5); the fuller confirm-discipline
-                    text lives behind the disclosure. A <details> can't nest in a <p>. */}
+                    text lives behind the disclosure, which can't nest in a <p>. */}
                 <p className="mt-1 text-xs text-slate-500 dark:text-slate-400">
                   Reminds you when the minimum interval has passed — set from
                   the label.

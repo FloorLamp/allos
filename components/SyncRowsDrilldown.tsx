@@ -8,7 +8,7 @@ import type { SyncRowLink } from "@/lib/queries";
 import Disclosure from "@/components/Disclosure";
 
 // "What this sync wrote" drill-in (issue #1333, deferred part 2 of #1212). Behind a
-// <details> so nothing is queried until the user expands it; on first open it calls
+// a disclosure, so nothing is queried until the user expands it; on first open it calls
 // the profile-scoped loadSyncRows action and lists the records the sync inserted/
 // updated, each a typed deep link (#285) to the surface that owns it (a timeline day,
 // or Results for a lab). Mirrors RawPayloadViewer's lazy on-open fetch + hydration
@@ -64,7 +64,7 @@ export default function SyncRowsDrilldown({
   }
 
   // Hydration catch-up: a click can land before React attaches onToggle, opening the
-  // native <details> without the fetch firing. If it's already open at mount, load.
+  // disclosure without the fetch firing. If it's already open at mount, load.
   useEffect(() => {
     if (detailsRef.current?.open) void load();
     // eslint-disable-next-line react-hooks/exhaustive-deps

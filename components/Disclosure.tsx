@@ -12,18 +12,16 @@ import type { ComponentPropsWithRef, ReactNode } from "react";
 // opens with JavaScript disabled, in-page find still auto-expands it, and the
 // keyboard and accessibility semantics are the platform's, unchanged.
 //
-// NOT <Collapse>, which is the app's BUTTON disclosure (`aria-expanded` + a panel).
-// Its grid `0fr → 1fr` cannot animate a `<details>`: while a details is closed its
-// contents are not rendered, so opening resolves the wrapper's first style already at
-// full height and no transition runs — measured in Chromium 141, not assumed. Both
-// now spend the same continuity token, so there is one duration and one feel for
-// every region in the app that expands in place.
+// NOT <Collapse>, which is the app's BUTTON disclosure. Its grid `0fr → 1fr` cannot
+// animate a `<details>`: while a details is closed its contents are not rendered, so
+// opening resolves the wrapper's first style already at full height and no transition
+// runs — measured in Chromium 141, not assumed. Both spend the same continuity token.
 //
 // THE MEMORY CONTRACT IS UNTOUCHED, structurally: lib/disclosure-memory.ts's pre-paint
-// boot script sets `open` before the first frame, and an element opened before it has
-// ever been painted has no earlier height to travel from. A remembered-open fold is
-// simply open, with no entrance replay — the ambient motion #3676 refuses — and
-// nothing here has to remember to suppress it.
+// script sets `open` before the first frame, and an element opened before it has ever
+// been painted has no earlier height to travel from. A remembered-open fold is simply
+// open, with no entrance replay — the ambient motion #3676 refuses — and nothing here
+// has to remember to suppress it.
 //
 // The caller brings what the summary SAYS and the classes that are about its own type
 // and colour. It does not bring the marker or the `group` its `group-open:` chevron

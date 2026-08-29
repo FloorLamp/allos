@@ -31,8 +31,7 @@ import Disclosure from "@/components/Disclosure";
 // app already uses on child surfaces (#150, #489).
 //
 // The headline is ALL RECORDS and never ages downward; the trailing-3-year figure is a
-// secondary recent-intensity lens beside it. The disclosure is a native <details>, so
-// it opens with JS off and in-page find still reaches the rows.
+// secondary recent-intensity lens beside it.
 //
 // THE ADDITION HAS TO WORK. Every scope figure here — the headline, the recorded and
 // estimated split, the lens — goes through formatScopeMsv, which prints the sum of the

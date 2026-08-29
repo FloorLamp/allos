@@ -8,7 +8,7 @@ import Disclosure from "@/components/Disclosure";
 //
 //   • EXPANDED — the slot this moment is about, or one that owes something now. A
 //     heading and the full rows, controls and all.
-//   • COMPRESSED — a native `<details>` whose `<summary>` IS the slot's one-line truth
+//   • COMPRESSED — a disclosure whose summary IS the slot's one-line truth
 //     ("✓ Morning · 3 of 3 taken · 08:12"). One tap opens the same rows, with the same
 //     controls: compression changes HEIGHT, never reach (#1504).
 //
@@ -18,9 +18,9 @@ import Disclosure from "@/components/Disclosure";
 // hedge: the sentence above the fold already accounts for every row below it.
 //
 // REDUCED MOTION (#2654) is the designed state. Both shapes carry a heading and a
-// sentence, and neither depends on a transition to be understood: `<details>` toggles
-// instantly, and nothing here animates height. A reader who never sees motion sees two
-// complete, legible states.
+// sentence, and neither depends on the shared disclosure's height transition to be
+// understood — under the preference it is simply the end layout. A reader who never
+// sees motion sees two complete, legible states.
 //
 // The slot heading stays an `<h3>` in BOTH shapes — inside the `<summary>` when
 // compressed — so a reader navigating by heading still finds every slot of their day.

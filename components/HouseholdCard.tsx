@@ -304,9 +304,8 @@ function Attention({ data }: { data: HouseholdCardData }) {
                 subjectName={subjectName}
               />
             ) : (
-              // A plain <details>: no persisted state, collapsed on every visit, and
-              // the count is never hidden — the ALWAYS-PRESENT contract, not an
-              // always-full one.
+              // No persisted state, collapsed on every visit, and the count is
+              // never hidden — the ALWAYS-PRESENT contract, not an always-full one.
               <Disclosure
                 key={`aggregate:${node.kind}`}
                 data-testid="household-dose-aggregate"

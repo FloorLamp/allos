@@ -7,12 +7,11 @@ import RememberedDetails from "@/components/RememberedDetails";
 // most of what made the old Profile page a scroll wall. They now live behind this
 // collapsed-by-default disclosure at the END of their group page.
 //
-// Still a native <details> (it opens with JS disabled, and browser in-page find still
-// auto-expands it), but no longer stateless: since #2652 behavior 3 it REMEMBERS its
-// open state PER DEVICE, and per group. Somebody who is working in one group's Advanced
-// settings is working in it across several visits; re-opening the same fold each time is
-// friction with no information in it. The state is localStorage, never a settings row —
-// lib/disclosure-memory.ts carries the full reasoning for that tier choice.
+// Not stateless: since #2652 behavior 3 it REMEMBERS its open state PER DEVICE, and per
+// group. Somebody working in one group's Advanced settings is working in it across
+// several visits; re-opening the same fold each time is friction with no information in
+// it. The state is localStorage, never a settings row — lib/disclosure-memory.ts carries
+// the full reasoning for that tier choice.
 //
 // Instanced by `testId`, so the Notifications group's Advanced fold and the Units
 // group's are remembered apart.

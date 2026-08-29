@@ -50,8 +50,6 @@ export const MOTION_MS = {
   // with no motion at all. It rides the same token: a notice that arrives over live
   // content is exactly the case the shared easing pair was chosen for.
   notice: OVERLAY_MOTION_MS,
-  // Height-animated open/close of an inline region (components/Collapse).
-  collapse: 200,
   // The shell chrome's hide/reveal slide (MobileNav's sticky bar + view strip).
   chrome: 180,
 } as const;

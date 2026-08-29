@@ -177,7 +177,7 @@ export default function BulkCorrectionCard({
   return (
     // A power tool used a few times a year, so it collapses to ONE summary line at
     // the bottom of Review (#1880 item 6). A ?fix= deep-link (initialField) opens it
-    // pre-selected — a native <details>, so the toggle needs no hydration.
+    // pre-selected, before hydration.
     <Disclosure id="bulk-correction" className="card scroll-mt-4" data-testid="bulk-correction-card" open={initialField != null} summaryClassName="flex items-center gap-2" summaryTestId="bulk-correction-toggle" summary={<>
         <IconAdjustments className="h-5 w-5 text-brand-600 dark:text-brand-400" stroke={1.75} />
         <span className="font-semibold text-slate-800 dark:text-slate-100">

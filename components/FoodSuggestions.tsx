@@ -154,8 +154,8 @@ export default function FoodSuggestions({
                     citation, folded (#3497 item 4). Both cards carried them open,
                     and on a lab page that is two screens of prose between the
                     reader and the next reading. The provenance is trust-building
-                    and stays FINDABLE — a native <details>, so in-page find still
-                    reaches it and it opens with JS off — but it stops leading.
+                    and stays FINDABLE — in-page find still reaches it and it
+                    opens with JS off — but it stops leading.
                     What stays visible is everything that is about the reader:
                     the headline, the foods, every safety note, and the advisory. */}
                 <Disclosure

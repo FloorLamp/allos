@@ -498,11 +498,10 @@ function GroupSection({
 
 // One folded class inside a band (issue #1504) — the ALWAYS-PRESENT compaction.
 //
-// A plain <details>, so it works pre-hydration and holds NO persisted state: it is
-// collapsed on every visit by design (stateless — two visits, two people, and the
-// digest all see the same page). The summary carries the count unconditionally, so
-// the cost of not expanding is always priced; there is no dismiss and no path that
-// hides presence.
+// It holds NO persisted state: collapsed on every visit by design (two visits, two
+// people, and the digest all see the same page). The summary carries the count
+// unconditionally, so the cost of not expanding is always priced; there is no dismiss
+// and no path that hides presence.
 //
 // The children are the ordinary rows, unchanged — confirm buttons, per-item
 // snooze/dismiss and their `dedupeKey`s, and each row's own WriteTarget all survive

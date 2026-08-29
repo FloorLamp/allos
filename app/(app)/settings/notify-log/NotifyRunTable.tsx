@@ -16,7 +16,6 @@ import Disclosure from "@/components/Disclosure";
 // as its sibling viewers — card, ScrollFade, `.th`/`.td`, dashed empty panel,
 // formatTimestamp + useFormatPrefs, the admin-gated Clear action — over a different
 // row model: one row per (run, profile), expandable to its lines.
-// Expansion stays a plain <details>, so it works with JS off.
 
 const KIND_BADGE: Record<NotifyLineKind, string> = {
   decline: "bg-amber-100 text-amber-700 dark:bg-amber-950 dark:text-amber-300",
