@@ -466,28 +466,51 @@ describe("the record's corrections gate the ROW's profile (#4009 item 1)", () =>
     }
   );
 
-  it("refuses a substance correction on a MINOR member, even with write access", async () => {
-    const login = createLogin({ role: "member" });
-    const acting = createProfile("adult carer", login.id);
-    const minor = createProfile("young member");
-    // Age is a profile SETTING (`getStoredAge`), not a profiles column.
-    setStoredAge(minor.id, 9);
-    db.prepare(
-      "INSERT INTO login_profiles (login_id, profile_id, access) VALUES (?, ?, 'write')"
-    ).run(login.id, minor.id);
-    actAs(login, acting);
-    const id = seedSubstanceDay(minor.id, DATE);
+  // BOTH VERBS, for the same reason the read-only arm above drives both: the delete
+  // carries the identical `isMinor(getProfileAge(profileId))` gate and nothing tested
+  // it, and a delete is the half where a miss is unrecoverable. Its `{ kind:
+  // "not-found" }` is ALSO what deleting a row that was never there answers, so the
+  // shape is the weaker assertion — the row still holding its 2 units is the one that
+  // can tell a refusal from a write that went somewhere else.
+  it.each([
+    [
+      "correction",
+      (id: number, minorId: number) =>
+        updateSubstanceDailyTotalAction(
+          fd({
+            id,
+            substance: "caffeine",
+            date: DATE,
+            amount: 9,
+            profile_id: minorId,
+          })
+        ),
+      { kind: "not-found" },
+    ],
+    [
+      "delete",
+      (id: number, minorId: number) =>
+        deleteSubstanceDailyTotalAction(
+          fd({ id, substance: "caffeine", profile_id: minorId })
+        ),
+      { kind: "not-found", undoId: null, error: "Couldn't find that entry." },
+    ],
+  ])(
+    "refuses a substance %s on a MINOR member, even with write access",
+    async (_verb, run, refusal) => {
+      const login = createLogin({ role: "member" });
+      const acting = createProfile(`adult carer ${_verb}`, login.id);
+      const minor = createProfile(`young member ${_verb}`);
+      // Age is a profile SETTING (`getStoredAge`), not a profiles column.
+      setStoredAge(minor.id, 9);
+      db.prepare(
+        "INSERT INTO login_profiles (login_id, profile_id, access) VALUES (?, ?, 'write')"
+      ).run(login.id, minor.id);
+      actAs(login, acting);
+      const id = seedSubstanceDay(minor.id, DATE);
 
-    const outcome = await updateSubstanceDailyTotalAction(
-      fd({
-        id,
-        substance: "caffeine",
-        date: DATE,
-        amount: 9,
-        profile_id: minor.id,
-      })
-    );
-    expect(outcome).toEqual({ kind: "not-found" });
-    expect(substanceAmountOf(id)).toBe(2);
-  });
+      expect(await run(id, minor.id)).toEqual(refusal);
+      expect(substanceAmountOf(id)).toBe(2);
+    }
+  );
 });

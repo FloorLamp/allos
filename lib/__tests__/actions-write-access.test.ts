@@ -38,12 +38,15 @@ const MODULE_ALLOW = [
 // / requireAdmin(), keyed by the file they live in (so an unrelated file can't
 // ride the exemption) and the function name. Keep this list SHORT and justified.
 //
-// `gate` (issue #278): a login-scoped action that mutates the caller's LOGIN auth
-// state (password, 2FA, sessions) must still refuse in demo mode — the shared
-// public demo login would otherwise let one visitor lock everyone else out. Such
-// an entry names the guard its body MUST call (requireLoginWriteAccess); the scan
-// fails if the call disappears, so the demo gate can't silently regress back to a
-// bare requireSession().
+// `gate` (issue #278): an entry may NAME the guard its body must call, and the scan
+// fails if that call disappears — so an exemption cannot silently decay into a body
+// that gates nothing. Two populations use it, for two reasons. #278's: a login-scoped
+// action that mutates the caller's LOGIN auth state (password, 2FA, sessions) must
+// still refuse in demo mode, or the shared public demo login lets one visitor lock
+// everyone else out (requireLoginWriteAccess). And the cross-profile per-item writes:
+// they gate the ROW's subject through gateItemProfile rather than the acting profile,
+// so without `gate` the only thing asserted about them is that they do NOT call
+// requireWriteAccess — which a body that gates nothing at all also satisfies.
 const ALLOW: { file: string; fn: string; why: string; gate?: string }[] = [
   // --- Read-only actions (return data, mutate nothing) ---
   {
@@ -1210,11 +1213,17 @@ describe("write-access enforcement: every mutating Server Action is gated", () =
         const allow = ALLOW.find((a) => a.file === rel && a.fn === name);
         if (allow) {
           matchedAllow.add(`${allow.file}#${allow.fn}`);
-          // A demo-gated login-scoped mutation (#278) must actually call its
-          // declared guard — the allowlist exemption alone is not enough.
+          // An entry that DECLARES a gate must actually call it — the allowlist
+          // exemption alone is not enough. The message names the declared gate
+          // rather than a reason, because the fourteen entries that carry one do
+          // not share one: #278's are demo-mode guards on login auth state, and
+          // the twelve gateItemProfile ones are cross-profile subject gates. It
+          // said "the demo-mode guard regressed" for all of them until #4067,
+          // which sends a reader hitting it on a record correction looking for a
+          // demo regression that is not there.
           if (allow.gate && !new RegExp(`\\b${allow.gate}\\s*\\(`).test(body)) {
             violations.push(
-              `${rel}#${name}: allowlisted with gate "${allow.gate}" but the body never calls it — the demo-mode guard regressed`
+              `${rel}#${name}: allowlisted with gate "${allow.gate}" but the body never calls it — the declared ${allow.gate}() gate regressed`
             );
           }
           continue;
