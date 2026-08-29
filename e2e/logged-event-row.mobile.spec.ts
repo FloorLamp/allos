@@ -36,6 +36,15 @@ const PROFILE = 1;
 const DAY = "2026-08-18";
 const ITEM = "E2e Row Magnesium";
 const ITEM_AMOUNT = "3 g";
+// THE STACK DAY (#3937). Two items dosed in the SAME MINUTE is the shape the ledger
+// was unreadable in — under the old slotting both rows read "Tuesday, August 18 ·
+// 8:46am" and both ⋯ announced those same words.
+const ITEM_TWO = "E2e Row Zinc";
+const ITEM_TWO_AMOUNT = "15 mg";
+// The trailing-less consumer (#3904): two columns, and the second is the person's
+// own prose.
+const PRACTICE = "E2e Row Breathwork";
+const PRACTICE_NOTE = "Felt steadier by the end";
 // The serving's group key and the name the app renders for it.
 const FOOD_GROUP = "berries";
 const FOOD_NAME = "Berries";
@@ -91,32 +100,70 @@ function deleteFixtureRows(db: Database.Database): void {
   db.prepare(
     `DELETE FROM food_log_events WHERE profile_id = ? AND date = ? AND group_key = ?`
   ).run(PROFILE, DAY, FOOD_GROUP);
+  db.prepare(
+    `DELETE FROM practice_logs WHERE profile_id = ? AND practice = ?`
+  ).run(PROFILE, PRACTICE);
+}
+
+/** One supplement with one dose logged at `hhmm` on DAY, and the item's id. */
+function seedItem(
+  db: Database.Database,
+  name: string,
+  amount: string,
+  hhmm: string
+): void {
+  const itemId = Number(
+    db
+      .prepare(
+        `INSERT INTO intake_items (profile_id, name, active, kind, condition, obligation)
+           VALUES (?, ?, 1, 'supplement', 'daily', 'may')`
+      )
+      .run(PROFILE, name).lastInsertRowid
+  );
+  const doseId = Number(
+    db
+      .prepare(
+        `INSERT INTO intake_item_doses (item_id, amount, time_of_day, food_timing, sort)
+           VALUES (?, ?, 'anytime', 'any', 0)`
+      )
+      .run(itemId, amount).lastInsertRowid
+  );
+  db.prepare(
+    `INSERT INTO intake_item_logs (dose_id, item_id, date, occurred_at, status, amount)
+       VALUES (?, ?, ?, ?, 'taken', ?)`
+  ).run(doseId, itemId, DAY, localInstant(db, hhmm), amount);
 }
 
 function seedDose(): void {
   const db = openDb();
   try {
     deleteFixtureRows(db);
-    const itemId = Number(
-      db
-        .prepare(
-          `INSERT INTO intake_items (profile_id, name, active, kind, condition, obligation)
-           VALUES (?, ?, 1, 'supplement', 'daily', 'may')`
-        )
-        .run(PROFILE, ITEM).lastInsertRowid
-    );
-    const doseId = Number(
-      db
-        .prepare(
-          `INSERT INTO intake_item_doses (item_id, amount, time_of_day, food_timing, sort)
-           VALUES (?, ?, 'anytime', 'any', 0)`
-        )
-        .run(itemId, ITEM_AMOUNT).lastInsertRowid
-    );
+    seedItem(db, ITEM, ITEM_AMOUNT, "08:46");
+  } finally {
+    db.close();
+  }
+}
+
+/** The stack day: two different items, one minute, one profile-local date. */
+function seedStackDay(): void {
+  const db = openDb();
+  try {
+    deleteFixtureRows(db);
+    seedItem(db, ITEM, ITEM_AMOUNT, "08:46");
+    seedItem(db, ITEM_TWO, ITEM_TWO_AMOUNT, "08:46");
+  } finally {
+    db.close();
+  }
+}
+
+function seedPracticeSession(): void {
+  const db = openDb();
+  try {
+    deleteFixtureRows(db);
     db.prepare(
-      `INSERT INTO intake_item_logs (dose_id, item_id, date, occurred_at, status, amount)
-       VALUES (?, ?, ?, ?, 'taken', ?)`
-    ).run(doseId, itemId, DAY, localInstant(db, "08:46"), ITEM_AMOUNT);
+      `INSERT INTO practice_logs (profile_id, practice, date, time, duration_min, notes)
+       VALUES (?, ?, ?, '07:15', 20, ?)`
+    ).run(PROFILE, PRACTICE, DAY, PRACTICE_NOTE);
   } finally {
     db.close();
   }
@@ -181,10 +228,25 @@ test.describe("the compact logged-event row at 430px (#3671)", () => {
     ).toBeGreaterThanOrEqual(TAP_FLOOR_PX);
     expect(collapsed).toBeLessThanOrEqual(COMPACT_ROW_CEILING_PX);
 
-    // Collapsed, the labelled detail is not on screen — but the trailing clock is,
-    // which is what makes the row scannable rather than merely short.
+    // Collapsed, the labelled detail is not on screen — but the row's IDENTITY is,
+    // and identity at ledger scope is the ITEM (#3937). Asserted as the title cell's
+    // whole text, not as a substring of the row: the item name is also inside the ⋯
+    // trigger's accessible name and inside the disclosed amount cell's neighbourhood,
+    // so `row.toContainText(ITEM)` would pass on the very tree this replaced.
     await expect(visibleDetail(row)).toHaveCount(0);
-    await expect(row.locator('[data-card="trailing"]')).toBeVisible();
+    const title = row.locator('[data-card="title"]');
+    await expect(title).toBeVisible();
+    await expect(title).toHaveText(ITEM);
+
+    // Beside it, WHEN — one cell, short date and clock, because a multi-day list that
+    // shows only a clock leaves every row's day unnamed.
+    const when = row.locator('[data-card="trailing"]');
+    await expect(when).toBeVisible();
+    const whenText = (await when.textContent())?.trim() ?? "";
+    // `^Tue,` and not `Tuesday,`: the dense-row formatter, which is also what stops
+    // the desktop column wrapping (asserted at 1280px below).
+    expect(whenText, "the head line's when-cell").toMatch(/^Tue,/);
+    expect(whenText).toMatch(/·\s*\d{1,2}:\d{2}/);
 
     // THE DISCLOSURE IS A CONTROL, not a row-wide click handler: it says what it
     // does and it says whether it is open.
@@ -192,12 +254,11 @@ test.describe("the compact logged-event row at 430px (#3671)", () => {
     await expect(toggle).toHaveAttribute("aria-expanded", "false");
     await hydratedClick(page, toggle);
 
-    // Expanded: exactly what the card carried — the item and the amount, each with
-    // the label the hidden column header would have given it.
+    // Expanded: the labelled detail, which is now the amount alone. The item left
+    // the disclosure when it became the head line — a fact the row states once.
     const detail = visibleDetail(row);
-    await expect(detail).toHaveCount(2);
-    await expect(detail.filter({ hasText: ITEM })).toHaveCount(1);
-    await expect(detail.filter({ hasText: ITEM_AMOUNT })).toHaveCount(1);
+    await expect(detail).toHaveCount(1);
+    await expect(detail).toContainText(ITEM_AMOUNT);
     const opened = row.getByRole("button", { name: "Hide details" });
     await expect(opened).toHaveAttribute("aria-expanded", "true");
     expect(await height(row)).toBeGreaterThan(collapsed);
@@ -354,6 +415,96 @@ test.describe("the compact logged-event row at 430px (#3671)", () => {
     ).toBeGreaterThan(0);
   });
 
+  test("a stack day's rows are told apart without a tap, and no two ⋯ say the same words", async ({
+    page,
+  }) => {
+    seedStackDay();
+    await phone(page);
+    await page.goto(`/nutrition/dose-history?from=${DAY}&to=${DAY}&kind=all`);
+
+    // SCOPED TO THIS SPEC'S OWN TWO ROWS. The shared seed logs its own doses on this
+    // day, and a claim about "every row" would be a claim about a fixture nothing
+    // here controls.
+    const magnesium = page
+      .getByTestId("dose-ledger-row")
+      .filter({ hasText: ITEM });
+    const zinc = page
+      .getByTestId("dose-ledger-row")
+      .filter({ hasText: ITEM_TWO });
+    await expect(magnesium).toHaveCount(1);
+    await expect(zinc).toHaveCount(1);
+
+    const whenOf = (row: Locator) =>
+      row
+        .locator('[data-card="trailing"]')
+        .textContent()
+        .then((t) => (t ?? "").trim());
+    const nameOf = (row: Locator) =>
+      row
+        .getByRole("button", { name: /Dose actions/ })
+        .getAttribute("aria-label")
+        .then((n) => n ?? "");
+
+    // THE PREMISE, BEFORE THE VERDICT. Both doses were written in the same minute of
+    // the same day — honest, one usual-routine bundle write — so the when-cell cannot
+    // be what tells these rows apart. If a future fixture drifts these to different
+    // clocks, this spec stops measuring the defect and says so here.
+    expect(
+      await whenOf(magnesium),
+      "the two fixture doses no longer share a minute, so nothing below is a test"
+    ).toBe(await whenOf(zinc));
+
+    // THE HEAD LINE TELLS THEM APART, with no tap.
+    await expect(magnesium.locator('[data-card="title"]')).toHaveText(ITEM);
+    await expect(zinc.locator('[data-card="title"]')).toHaveText(ITEM_TWO);
+
+    // AND SO DO THEIR CONTROLS (#2615). A sheet detaches from the row it came from,
+    // so two identical names are two rows a reader cannot tell apart once it opens.
+    const [nameOne, nameTwo] = [await nameOf(magnesium), await nameOf(zinc)];
+    expect(nameOne).toContain(ITEM);
+    expect(nameTwo).toContain(ITEM_TWO);
+    expect(nameOne, `both ⋯ announced "${nameOne}"`).not.toBe(nameTwo);
+  });
+
+  test("the practice history has no trailing fact, so its note is never collapsed away", async ({
+    page,
+  }) => {
+    seedPracticeSession();
+    await phone(page);
+    await page.goto(`/wellness/practice-history?from=${DAY}&to=${DAY}`);
+
+    const row = page
+      .locator("table.logged-event-rows tbody tr")
+      .filter({ hasText: PRACTICE });
+    await expect(row).toHaveCount(1);
+
+    // THE NOTE IS ON SCREEN WITH NO TAP. Two columns and the second is the person's
+    // own prose: the collapse had nothing to leave on the head line and spent the
+    // only content the row carried (#3904). Asserted as a COUNT of visible detail
+    // cells plus the note's exact text — `toContainText` on the row would pass while
+    // the cell is `display:none`, because textContent does not care.
+    const note = row.locator('[data-card="meta"]:visible');
+    await expect(note).toHaveCount(1);
+    await expect(note).toHaveText(PRACTICE_NOTE);
+
+    // AND NO CONTROL OPENS ONTO IT, because there is nothing behind the line.
+    await expect(row.getByRole("button", { name: /details$/ })).toHaveCount(0);
+
+    // THE NOTE KEEPS ITS OWN DENSITY, the one `practice-session-list` declared before
+    // it was absorbed: one step above the shared meta's `text-xs`. In CSS pixels at
+    // the app's 16px root, `text-sm` is 14 and `text-xs` is 12, so the equality is
+    // what distinguishes the restored density from the inherited one.
+    expect(
+      await note.evaluate((el) => parseFloat(getComputedStyle(el).fontSize))
+    ).toBe(14);
+
+    // The row still meets the tap floor and still fits inside the phone.
+    const box = await row.boundingBox();
+    expect(box).not.toBeNull();
+    expect(box!.height).toBeGreaterThanOrEqual(TAP_FLOOR_PX);
+    expect(Math.round(box!.x + box!.width)).toBeLessThanOrEqual(430);
+  });
+
   // ── THE OTHER SIDE OF THE BOUNDARY ────────────────────────────────────────────
   //
   // "Desktop tables are unchanged" is the invariant a compact-row change is most
@@ -373,8 +524,35 @@ test.describe("the compact logged-event row at 430px (#3671)", () => {
     const row = page.getByTestId("dose-ledger-row").filter({ hasText: ITEM });
     await expect(row).toHaveCount(1);
     // Every cell is a column again: nothing is behind a toggle, and no toggle is
-    // rendered to be behind.
-    await expect(row.locator('[data-card="value"]:visible')).toHaveCount(2);
+    // rendered to be behind. ONE value, since the item became the identity column.
+    await expect(row.locator('[data-card="value"]:visible')).toHaveCount(1);
+
+    // THE WHEN COLUMN DOES NOT WRAP (#3937 rider). The long shape ("Tuesday, August
+    // 18") drew into a column narrow enough that every row read "Tuesday, August /
+    // 18" — ten identical two-line dates in the report that prompted this.
+    //
+    // THREE READINGS, BECAUSE ONE OF THEM IS FIXTURE-DEPENDENT AND SAYS SO. The
+    // rendered line count is the thing a reader sees, but it is only decisive at a
+    // column width, and this spec runs on the SHARED profile, where the 55-character
+    // imported name that squeezes the column may not be seeded (that name is the
+    // dedicated fixture's, e2e/dose-ledger-phone.mobile.spec.ts, deliberately kept
+    // off profile 1 so it does not widen every neighbour's controls). What holds at
+    // ANY column width is the other two: the dense short shape, and `nowrap`. All
+    // three fail on the pre-fix cell — measured, this file's own mutation round.
+    const desktopWhen = await row
+      .locator('[data-card="trailing"]')
+      .evaluate((cell) => {
+        const range = document.createRange();
+        range.selectNodeContents(cell);
+        return {
+          text: (cell.textContent ?? "").trim(),
+          lines: range.getClientRects().length,
+          whiteSpace: getComputedStyle(cell).whiteSpace,
+        };
+      });
+    expect(desktopWhen.text, "the desktop When cell").toMatch(/^Tue,/);
+    expect(desktopWhen.whiteSpace).toBe("nowrap");
+    expect(desktopWhen.lines, `"${desktopWhen.text}" wrapped`).toBe(1);
     await expect(row.getByRole("button", { name: /details$/ })).toHaveCount(0);
     await expect(row.locator("thead")).toHaveCount(0);
     // The card-mode column labels stay card-mode-only.
