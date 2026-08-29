@@ -64,11 +64,11 @@ import type { PlateTarget } from "./useActivityParts";
 // The brand-filled checkbox the options facts are edited with. It moved here from
 // StrengthSets with the row it belongs to (#3349) and has no other caller.
 //
-// NOT `components/CheckboxControl`, which calls itself the one bare-checkbox
-// primitive: that one is an icon-only native box named by `aria-label`, and these
-// three are boxes with visible text beside them whose painted span is what
-// `to-failure-control` and its siblings assert a fill colour on. Converging the two is
-// a real question and a visual change; it is not this conversion's.
+// NOT `components/CheckboxControl`, the bare-checkbox primitive: that one is an
+// icon-only native box named by `aria-label`, and these three are boxes with visible
+// text beside them whose painted span is what `to-failure-control` and its siblings
+// assert a fill colour on. Converging the two is a real question — it is an
+// accessible-naming change as much as a visual one — and it is not this conversion's.
 function BrandedCheckbox({
   checked,
   onChange,

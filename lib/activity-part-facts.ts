@@ -53,7 +53,7 @@ export type PartFactState = "stated" | "missing";
 
 export interface PartFactChip {
   key: PartFactKey;
-  /** The sentence this chip states, or the noun the prompt offers to add. */
+  /** The sentence this chip states, or the noun it is still waiting for. */
   label: string;
   state: PartFactState;
 }
