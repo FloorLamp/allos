@@ -689,7 +689,7 @@ export default function TrainingLogView({
               in SQL by provenance key, so it reaches every window — not just the
               loaded ones. Hidden when there is nothing to choose between. */}
             {sourceOptions.length > 1 && (
-              // The captioned-label treatment (#2897, the PanelFilterSelect
+              // The captioned-label treatment (#2897, the QueryParamSelect
               // pattern): the select says what it filters without being opened.
               <label className="flex items-center gap-2 text-sm text-slate-600 dark:text-slate-300">
                 <span className="font-medium">Source</span>

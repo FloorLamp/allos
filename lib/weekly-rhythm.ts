@@ -103,8 +103,15 @@ export function inferWeeklyRhythm(
   return { weekdays, hour, hasPattern: true };
 }
 
-// The practice adapter (#2188): the shared core over a practice's FULL log history,
-// windowed to the trailing `weeks` before `asOf` for the weekday gate.
+// The practice adapter (#2188): the shared core over a practice's log history up to
+// `asOf`, windowed to the trailing `weeks` before it for the weekday gate.
+//
+// AS OF `asOf` AT BOTH ENDS (#4030). `asOf` set the window's START only, so a session
+// logged for NEXT Monday counted toward this Monday's habit and the answer to "what
+// was inferable as of D" included days that had not happened: as of 2026-05-12 with
+// two Mondays elapsed and two logged ahead, this returned a Monday pattern off four.
+// The workout sibling bounds its gather the same way (#4026), so the two siblings
+// answer the one question with the one computation.
 //
 // THE ONE DELIBERATE DIVERGENCE from the workout module — the fallback-hour
 // ladder. A workout row nearly always carries a start time, so the workout
@@ -120,9 +127,13 @@ export function inferPracticeRhythm(
   weeks = RHYTHM_WINDOW_WEEKS
 ): WeeklyRhythm {
   const start = shiftDateStr(asOf, -weeks * 7);
-  const windowRows = rows.filter((r) => r.date >= start);
+  // The hour ladder reads the practice's own history rather than the window (see
+  // above) — but history, not the future: a time logged ahead is no more evidence of
+  // a habitual hour than a session logged ahead is of a habitual day.
+  const history = rows.filter((r) => r.date <= asOf);
+  const windowRows = history.filter((r) => r.date >= start);
   const fallbackHour =
-    modalHour(rows.map((r) => r.time)) ?? RHYTHM_EVENING_FALLBACK_HOUR;
+    modalHour(history.map((r) => r.time)) ?? RHYTHM_EVENING_FALLBACK_HOUR;
   return inferWeeklyRhythm(windowRows, { weeks, fallbackHour });
 }
 

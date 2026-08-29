@@ -19,11 +19,13 @@
 
 import {
   WEEKDAYS_SHORT,
+  dateStrInTz,
   daysBetweenDateStr,
   isRealIsoDate,
   weekdayOfDateStr,
 } from "./date";
-import { dateFromCreatedAt } from "./timeline-format";
+import { parseUtcStamp } from "./timeline-format";
+import { zoneOf, type ProfileDayZone } from "./travel-timezone";
 
 // The item-level calendar rule.
 //   daily     every day the condition allows (the default; pre-#1602 behaviour)
@@ -220,13 +222,20 @@ export function doseScheduleAsOf(
 // comparisons and nothing else, which is the shape that creates the defect. The
 // `effective_from` comparison below is against a stored day in the same local calendar,
 // so it wants the local day too.
+//
+// AND ONE ZONE (#4030). `doseWindowSince`, the value this one is maxed against, resolves
+// its stamps through the zone in force AT each stamp (#4025) — so this half takes the
+// same `ProfileDayZone`, or an eastward move puts the day-forward walk #4025 removed
+// straight back through the `max`. A plain zone name is still a ProfileDayZone, so a
+// caller with no switch history passes exactly what it always passed.
 export function unrecordedScheduleChangeOn(
   dose: DoseCadence & { updated_at?: string | null },
-  tz: string
+  zone: ProfileDayZone
 ): string | null {
-  const changedOn = dose.updated_at
-    ? (dateFromCreatedAt(dose.updated_at, tz) ?? dose.updated_at.slice(0, 10))
-    : null;
+  const stamp = parseUtcStamp(dose.updated_at);
+  const changedOn = stamp
+    ? dateStrInTz(zoneOf(zone, stamp), stamp)
+    : (dose.updated_at?.slice(0, 10) ?? null);
   if (!changedOn) return null;
   const versions = dose.versions;
   if (!versions || versions.length === 0) return changedOn;
