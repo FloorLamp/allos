@@ -289,6 +289,16 @@ test("the phone drawer renders the group inline while the desktop sidebar still 
     drawer.getByRole("button", { name: "Plan & review" })
   ).toHaveCount(0);
 
+  // GROUPED FOR SOMEONE WHO CANNOT SEE THE INDENT. Dropping the disclosure button
+  // dropped its aria-controls with it, so the association is restated on the
+  // container — and the assertion has to be the COMPUTED NAME, not the presence of
+  // an `aria-labelledby`: a container labelled by nothing, or by the wrong
+  // element, still HAS the attribute. This resolves the reference and reads what a
+  // screen reader would announce, and the rows above are read from the very same
+  // container, so "named" and "contains the rows" are one element's two facts.
+  await expect(group).toHaveRole("group");
+  await expect(group).toHaveAccessibleName("Plan & review");
+
   // STILL GROUPED UNDER ITS HEADER, which is the half of the ruling that a
   // flattening change would quietly satisfy. Two readings, because "inline" could
   // honestly mean either one:

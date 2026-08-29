@@ -478,6 +478,7 @@ function NavGroup({
     .toLowerCase()
     .replace(/[^a-z0-9]+/g, "-")
     .replace(/^-|-$/g, "")}`;
+  const headerId = `${panelId}-label`;
   const headerTone = active
     ? "text-slate-900 dark:text-white"
     : "text-slate-600 dark:text-slate-300";
@@ -491,12 +492,27 @@ function NavGroup({
     // `data-nav-group` is what makes "grouped" observable: the header and the
     // children share ONE container, so the rows are never siblings of the
     // top-level entries however the group is styled or which surface renders it.
-    <div data-nav-group={group.group} className="flex flex-col gap-0.5">
+    //
+    // AND GROUPED FOR SOMEONE WHO CANNOT SEE THE INDENT. The sidebar's binding is
+    // the disclosure button's own `aria-controls`; the drawer has no button, so
+    // without this the header would be a bare label followed by loose links.
+    // Restated the way this repo already names a container from its own visible
+    // header — `aria-labelledby` at the heading's id (TrendsSectionShell,
+    // DashboardAhead's Bucket), never a second copy of the label string — over
+    // the `role="group"` this repo uses for a set of related controls. Drawer
+    // only: adding it on the sidebar would name the group twice.
+    <div
+      data-nav-group={group.group}
+      role={inDrawer ? "group" : undefined}
+      aria-labelledby={inDrawer ? headerId : undefined}
+      className="flex flex-col gap-0.5"
+    >
       {inDrawer ? (
         // No disclosure to operate, so no control: a button that toggles nothing
         // is the tap this ruling exists to stop spending, and the chevron would
         // announce a fold that isn't there.
         <p
+          id={headerId}
           className={`flex items-center gap-3 px-3 py-2 text-sm font-medium ${headerTone}`}
         >
           {headerLabel}
