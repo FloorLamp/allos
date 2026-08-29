@@ -21,7 +21,10 @@ import { getIntakeItems } from "./intake";
 import { getIntakeDoses } from "./intake/schedule";
 import { getSkippedDoseIds, getTakenDoseIds } from "./intake/adherence";
 import { getEffectiveActiveSituations } from "./derived-situations";
-import { doseDueOn, timeBucket, type TimeBucket } from "../intake-schedule";
+import { getActiveSituations, getSituationEvents } from "../settings";
+import { situationsActiveOn } from "../trend-annotations";
+import { today } from "../db";
+import { doseBucketOn, doseDueOn, type TimeBucket } from "../intake-schedule";
 import { formatMedicationDoseProduct } from "../medication-dose-format";
 import type { FoodSlot } from "../food-slot";
 import {
@@ -39,10 +42,11 @@ import { now as clockNow } from "../clock";
 //
 // The four memberships, and the predicate each rides:
 //
-//   • declared in this window — `timeBucket(dose.time_of_day)`, the profile's own
-//     stated intent. A `FoodSlot` is spelled exactly like the `TimeBucket` it names,
-//     so the comparison is direct; a "Before sleep" or "Anytime" dose is never in a
-//     food window's bundle;
+//   • declared in this window — the bucket the dose occupied ON `date`
+//     (`doseBucketOn`, see PendingDayDose below), the profile's own stated intent as
+//     it stood that day. A `FoodSlot` is spelled exactly like the `TimeBucket` it
+//     names, so the comparison is direct; a "Before sleep" or "Anytime" dose is never
+//     in a food window's bundle;
 //   • due today — `doseDueOn`, the ONE dueness question (#1602/#221). It carries the
 //     `may` short-circuit, the calendar gate, the workout/rest condition and the
 //     situational hold, so this function declares none of those itself;
@@ -63,10 +67,15 @@ export function getPendingRoutineDoses(
   return pendingDayDoses(profileId, date).filter((d) => d.bucket === window);
 }
 
-// One unresolved dose plus the bucket it was DECLARED in. The bucket is carried
-// rather than re-derived by the reader: `timeBucket` reads free text, and a surface
-// that grouped by its own second reading of `time_of_day` could file a dose under a
-// heading the offer above never used.
+// One unresolved dose plus the bucket it occupied ON `date` — `doseBucketOn`, the
+// schedule version in force that day, NOT the current row (#1973). A dose moved
+// evening → morning last week was an evening dose the week before, and the day's
+// dueness is already judged that way two lines down (`doseDueOn` → `doseOnDay` is
+// effective-dated), so reading the live `time_of_day` for the heading would file a row
+// under a slot that never held it while judging it by the rule that did. The bulk row
+// makes that worse than cosmetic: two moved doses would render "Morning stack (2)", a
+// group label naming a slot none of them sat in, which is the label-is-a-promise rule
+// (#3098) broken by the surface that quotes it.
 export interface PendingDayDose extends UsualRoutineDose {
   bucket: TimeBucket;
 }
@@ -86,13 +95,38 @@ export function pendingDayDoses(
   const byId = new Map(items.map((s) => [s.id, s]));
   const taken = getTakenDoseIds(profileId, date);
   const skipped = getSkippedDoseIds(profileId, date);
-  // The day context, resolved ONCE — the same effective situation set (declared ∪
-  // derived) every other dueness surface reads, so the offer cannot disagree with the
-  // page about whether a situational item applies today.
+  // The day context, resolved ONCE. THE SITUATION SET IS ASKED PER DAY (#654), and the
+  // today/past split below is the one `intakeAdherenceStrip` and the reminder gather
+  // already make — it is not a new policy, it is this function joining the existing one:
+  //
+  //   • TODAY  — `getEffectiveActiveSituations`: declared-now ∪ derived. Correct for a
+  //     SURFACING path, and byte-identical to what this function did before, so the
+  //     composed one-tap offer riding `getPendingRoutineDoses` is untouched.
+  //   • A PAST DAY — `situationsActiveOn`: the DECLARED set reconstructed as of that day
+  //     from the dated change log, and deliberately WITHOUT the derived half, exactly as
+  //     lib/notifications/intake.ts says ("the history resolver owns retroactive
+  //     membership, so it must NOT see derived names") and as `intakeAdherenceStrip`
+  //     scores its dots.
+  //
+  // Both directions of the bug this closes were silent. Declaring Travel today used to
+  // make the switcher claim two days of travel doses you never owed — and a tap would
+  // have written `taken` and decremented on-hand supply for a dose that was not due.
+  // Turning a situation OFF hid the days you were actually ill, which is the feature
+  // defeating its own purpose: the doses most likely to be missed are the ones tied to a
+  // situation that has since ended. It also made this sheet disagree with the adherence
+  // strip that #3917's own missed-day offer is computed from — two catch-up surfaces,
+  // one question, two answers (#221).
+  const isToday = date === today(profileId);
   const ctx = {
     date,
     isWorkoutDay: getActivitiesByDate(profileId, date).length > 0,
-    activeSituations: getEffectiveActiveSituations(profileId, date),
+    activeSituations: isToday
+      ? getEffectiveActiveSituations(profileId, date)
+      : situationsActiveOn(
+          date,
+          getActiveSituations(profileId),
+          getSituationEvents(profileId)
+        ),
     predictedWorkoutDay: isPredictedWorkoutDay(profileId, date),
   };
   const out: PendingDayDose[] = [];
@@ -102,7 +136,7 @@ export function pendingDayDoses(
     if (taken.has(dose.id) || skipped.has(dose.id)) continue;
     if (!doseDueOn(item, dose, ctx)) continue;
     out.push({
-      bucket: timeBucket(dose.time_of_day),
+      bucket: doseBucketOn(dose, date),
       doseId: dose.id,
       itemId: item.id,
       name: item.name,

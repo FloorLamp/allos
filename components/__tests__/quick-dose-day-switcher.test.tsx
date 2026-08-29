@@ -1,4 +1,4 @@
-import { fireEvent, render, screen, within } from "@testing-library/react";
+import { act, fireEvent, render, screen, within } from "@testing-library/react";
 import { describe, expect, it, vi } from "vitest";
 import QuickDoseList from "@/components/quick-entry/QuickDoseList";
 
@@ -15,17 +15,26 @@ vi.mock("@/components/Toast", () => ({ useToast: () => vi.fn() }));
 vi.mock("@/components/OfflineQueueProvider", () => ({
   useOfflineQueue: () => ({ enqueue: vi.fn() }),
 }));
+// The ledger stands in for the real one, but its `tap` RUNS the write and settles it —
+// a `tap: vi.fn()` stub would make every click a no-op and quietly pass any assertion
+// about what a click does.
 vi.mock("@/components/useOptimisticLedger", () => ({
   useOptimisticLedger: () => ({
     pending: () => false,
     blocked: () => false,
-    tap: vi.fn(),
+    tap: async <T,>(op: {
+      write: () => Promise<T>;
+      settle: (outcome: T) => unknown;
+    }) => op.settle(await op.write()),
   }),
 }));
 vi.mock("@/app/(app)/upcoming/actions", () => ({ markTaken: vi.fn() }));
 vi.mock("@/app/(app)/nutrition/intake-actions", () => ({
   resolveDayDoses: vi.fn(),
 }));
+
+import { resolveDayDoses } from "@/app/(app)/nutrition/intake-actions";
+const resolveDayDosesMock = vi.mocked(resolveDayDoses);
 
 const TODAY = "2026-08-28";
 
@@ -128,5 +137,49 @@ describe("the quick-log dose sheet's day switcher (#3936)", () => {
     renderSheet();
     fireEvent.click(screen.getByRole("button", { name: "Wed, Aug 26" }));
     expect(screen.getByTestId("quick-entry-dose-day-empty")).toBeTruthy();
+  });
+});
+
+// #3936 F6. Two rows resolved in quick succession must BOTH stay resolved. The
+// past-day view is the first surface here built for clearing several doses in a row,
+// and the bulk row hands `markResolved` many ids at once — so a `new Set(resolved)`
+// built from a stale closure loses the earlier tap, the row reappears, and tapping it
+// again earns an error-toned "Nothing left to log for that day." about a dose that is
+// correctly logged.
+describe("resolving several doses in quick succession (#3936)", () => {
+  it("keeps every resolved row gone, not just the last one", async () => {
+    resolveDayDosesMock.mockImplementation(async (fd: FormData) => {
+      const ids = String(fd.get("dose_ids"))
+        .split(",")
+        .map(Number)
+        .filter(Boolean);
+      return {
+        ok: true as const,
+        date: "2026-08-27",
+        doses: ids.map((doseId) => ({
+          doseId,
+          name: `dose ${doseId}`,
+          outcome: "logged" as const,
+        })),
+      };
+    });
+
+    renderSheet();
+    fireEvent.click(screen.getByRole("button", { name: "Yesterday" }));
+    const day = () => screen.getByTestId("quick-entry-dose-day");
+    expect(within(day()).getAllByTestId("dose-take")).toHaveLength(3);
+
+    // Both taps fired before React commits either state update — the real two-quick-
+    // taps case, and the one a sequential await would hide.
+    const takes = within(day()).getAllByTestId("dose-take");
+    await act(async () => {
+      fireEvent.click(takes[0]!);
+      fireEvent.click(takes[1]!);
+    });
+
+    // BOTH gone. A stale-closure write leaves the first row on screen.
+    expect(screen.queryByTestId("quick-entry-dose-11")).toBeNull();
+    expect(screen.queryByTestId("quick-entry-dose-12")).toBeNull();
+    expect(screen.getByTestId("quick-entry-dose-13")).toBeTruthy();
   });
 });

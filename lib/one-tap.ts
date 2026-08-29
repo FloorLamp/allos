@@ -165,7 +165,7 @@ export const ONE_TAP_AFFORDANCES = {
     repeat: "idempotent",
     expectedInterval: "none",
     feedback: "outcome-toast",
-    why: "The same sheet's per-bucket bulk row (#3936): the label names every dose it will write and the action re-derives that bucket's still-unresolved set from fresh state, writing only the intersection — so a second or stale tap finds an empty set and answers `nothing-to-log` rather than double-logging a stack. A separate id from `dose-day` because its tap moves on-hand supply for N items at once, which is the property `routine-usual` was split out to keep visible to a census.",
+    why: "The same sheet's per-bucket bulk row (#3936): the label names every dose it will write and the action re-derives that bucket's still-unresolved set from fresh state, writing only the intersection — so a second or stale tap finds an EMPTY intersection and reports no dose at all, because none was written, rather than double-logging a stack. Deliberately NOT the `nothing-to-log` kind the two `usual` rows above name: that is `UsualRoutineOutcome`'s own typed refusal, this action returns the per-dose outcomes it actually got, and borrowing a vocabulary word this path cannot produce would send the next reader looking for a branch that does not exist. A separate id from `dose-day` because its tap moves on-hand supply for N items at once, which is the property `routine-usual` was split out to keep visible to a census.",
   },
   "practice-session": {
     repeat: "cadenced",

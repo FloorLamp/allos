@@ -1,7 +1,7 @@
 "use client";
 import { useLoggedViaStamp } from "@/components/LoggedViaSurface";
 
-import { useMemo, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import { IconCheck, IconPlayerTrackNext, IconPlus } from "@tabler/icons-react";
 import Button from "@/components/Button";
 import SegmentedControl from "@/components/SegmentedControl";
@@ -104,18 +104,37 @@ export default function QuickDoseList({
     [pastDays, resolved]
   );
 
+  // FUNCTIONAL, not `new Set(resolved)`. The past-day view is the first surface here
+  // built for resolving SEVERAL doses in quick succession — and the bulk row calls this
+  // with many ids at once — so two taps landing inside one render batch would have the
+  // second overwrite the first from a stale closure: the first row reappears, and
+  // tapping it again earns "Nothing left to log for that day." in error tone for a dose
+  // that is correctly logged. `setNotes` beside it was already written this way.
   function markResolved(doseIds: readonly number[]): void {
-    const next = new Set(resolved);
-    for (const id of doseIds) next.add(id);
-    setResolved(next);
-    // Nothing left ANYWHERE in the window is the only state that may close the sheet.
+    setResolved((prev) => {
+      const next = new Set(prev);
+      for (const id of doseIds) next.add(id);
+      return next;
+    });
+  }
+
+  // Nothing left ANYWHERE in the window is the only state that may close the sheet, and
+  // it is asked from the COMMITTED `resolved` rather than inside the updater above —
+  // an updater must stay pure (React may invoke it twice), and closing the sheet is the
+  // least pure thing this component does. `resolved.size > 0` keeps it to days this
+  // session actually cleared: a sheet that opened with something to show never closes
+  // itself on mount.
+  useEffect(() => {
+    if (resolved.size === 0) return;
     const left =
-      doses.some((d) => !next.has(d.doseId)) ||
+      doses.some((d) => !resolved.has(d.doseId)) ||
       pastDays.some((past) =>
-        past.slots.some((slot) => slot.doses.some((d) => !next.has(d.doseId)))
+        past.slots.some((slot) =>
+          slot.doses.some((d) => !resolved.has(d.doseId))
+        )
       );
     if (!left) onDone();
-  }
+  }, [resolved, doses, pastDays, onDone]);
 
   async function confirm(dose: QuickEntryDose) {
     // The quick-log sheet, not the Upcoming page — the two mountings post the SAME
@@ -297,10 +316,20 @@ function PastDayDoses({
 
   // A single dated tap may be CAPTURED offline: the queued intent already carries its
   // own day and the replay re-checks the window with the same predicate the core does
-  // (lib/offline/writes.ts), so the only thing offline changes is which day the
-  // capture names. No `clientTakenAt` — the tap instant belongs to TODAY, and
-  // `resolveQueuedTakenAt` refuses a stamp whose local date is not the row's own day,
-  // so sending it would only buy a discarded value.
+  // (lib/offline/writes.ts).
+  //
+  // WHAT OFFLINE ALSO CHANGES, and an earlier version of this comment wrongly said it
+  // did not: the SLACK. `isDoseDateAccepted` is evaluated at REPLAY time, so a capture
+  // for today tolerates two days offline, yesterday one, and the oldest offered day
+  // NONE — reconnect the next morning and the replay refuses it. The refusal is
+  // reported rather than swallowed (the replay tells an out-of-window entry apart from
+  // a deleted dose precisely so it can explain itself), so this is a tolerance the user
+  // can be told about, not a silent loss — but it is a real difference from the
+  // same-day tap, and it is written here rather than left for someone to rediscover.
+  //
+  // No `clientTakenAt` — the tap instant belongs to TODAY, and `resolveQueuedTakenAt`
+  // refuses a stamp whose local date is not the row's own day, so sending it would only
+  // buy a discarded value.
   async function queue(
     doseId: number,
     status: "taken" | "skipped"
@@ -356,9 +385,20 @@ function PastDayDoses({
       settle: (outcome) =>
         outcome === "wrote" ? { kind: "keep" } : { kind: "rollback" },
       onError: () => {
-        // Online-only by declaration (OFFLINE_QUEUE_COVERAGE): the shortcut needs a
-        // connection, the single taps beneath it do not.
-        toast("Couldn't log that stack. Try again.", { tone: "error" });
+        // A THROW HERE IS NOT "NOTHING HAPPENED". The action resolves each dose in its
+        // OWN transaction, so a failure on the third of five leaves the first two
+        // committed WITH their supply decrements — and "Couldn't log that stack" would
+        // then be the one thing this file is otherwise careful never to do: report a
+        // write wrongly. We do not know what landed, so we say that and point at the
+        // record, rather than claiming either outcome. (Online-only by declaration in
+        // OFFLINE_QUEUE_COVERAGE: the shortcut needs a connection; the single taps
+        // beneath it queue.)
+        toast(
+          "Something went wrong — reopen this sheet to see what was logged.",
+          {
+            tone: "error",
+          }
+        );
         return { kind: "rollback" };
       },
     });

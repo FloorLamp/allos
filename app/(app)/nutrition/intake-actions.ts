@@ -107,6 +107,7 @@ import {
 } from "@/lib/types";
 import type { DoseTakenOutcome, HistoricalDoseOutcome } from "@/lib/types";
 import { pendingDayDoses } from "@/lib/queries/usual-routine";
+import { doseLogDays } from "@/lib/dose-log-window";
 import { historicalDoseErrorMessage } from "@/lib/historical-dose-error";
 import type {
   FoodTiming,
@@ -1330,11 +1331,18 @@ export async function setDoseStatus(formData: FormData): Promise<FormResult> {
 // ── Recent-past dose catch-up (#3936) ───────────────────────────────────────────
 //
 // One dated resolution for a set of scheduled doses, behind the quick-log sheet's day
-// switcher. The switcher offers exactly `doseLogDays(today)` — the past half of
-// DOSE_LOG_DATE_WINDOW_DAYS — and this action adds NO second opinion about that
-// window: the day travels to `markDoseTaken` / `markDoseSkipped`, which already gate
-// it (`isDoseDateAccepted`), so an out-of-window day comes back as `stale-dose` from
-// the one predicate the Telegram tap and the offline replay also ride.
+// switcher.
+//
+// THE DAY IS BOUNDED BY THE OFFER, not by a second opinion about the window. The cores
+// gate every write on `isDoseDateAccepted`, which is SYMMETRIC (|diff| <= 2) because a
+// late Telegram tap may legitimately land a day either side of the reminder's own day.
+// This surface only ever offers the PAST half — `doseLogDays(today)` — so the two
+// differ by exactly the two future days, and a forged POST could otherwise log
+// TOMORROW through a sheet that never offered it. So the day is checked against
+// `doseLogDays` itself: not a re-implementation of the window (that stays the cores'
+// one predicate, and an out-of-window day still comes back as their `stale-dose`), but
+// the same "the form is an UPPER BOUND, never an instruction" rule the dose ids already
+// obey, applied to the one field that was still an unbounded instruction.
 //
 // ONE ACTION FOR THE ROW AND THE STACK, because a single-dose tap IS a stack of one:
 // both name a list of dose ids that is an UPPER BOUND on the write, never an
@@ -1361,7 +1369,11 @@ export async function resolveDayDoses(
   const { profile } = await requireWriteAccess();
   const date = String(formData.get("date") ?? "");
   const status = String(formData.get("status") ?? "");
-  if (!isRealIsoDate(date) || (status !== "taken" && status !== "skipped")) {
+  if (
+    !isRealIsoDate(date) ||
+    !doseLogDays(today(profile.id)).includes(date) ||
+    (status !== "taken" && status !== "skipped")
+  ) {
     return { ok: false, error: "Couldn't log those doses." };
   }
   const named = new Set(

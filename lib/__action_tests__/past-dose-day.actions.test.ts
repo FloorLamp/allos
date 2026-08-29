@@ -14,9 +14,13 @@
 import { describe, it, expect, beforeAll, afterAll } from "vitest";
 import { db, today } from "@/lib/db";
 import { shiftDateStr } from "@/lib/date";
-import { setTimezone } from "@/lib/settings";
+import { setActiveSituations, setTimezone } from "@/lib/settings";
 import { doseLogDays, isDoseDateAccepted } from "@/lib/dose-log-window";
+import { markDoseTaken } from "@/lib/queries";
 import { loadQuickEntry } from "@/app/(app)/quick-entry-actions";
+import { getActiveSituations, getSituationEvents } from "@/lib/settings";
+import { situationsActiveOn } from "@/lib/trend-annotations";
+import { isDueOn } from "@/lib/intake-schedule";
 import { resolveDayDoses } from "@/app/(app)/nutrition/intake-actions";
 import { createLogin, createProfile, actAs, fd } from "./harness";
 
@@ -43,16 +47,28 @@ afterAll(() => {
 function seedDose(
   profileId: number,
   name: string,
-  opts: { timeOfDay?: string; active?: number; stack?: string | null } = {}
+  opts: {
+    timeOfDay?: string;
+    active?: number;
+    stack?: string | null;
+    condition?: string;
+    situation?: string | null;
+  } = {}
 ): number {
   const itemId = Number(
     db
       .prepare(
-        `INSERT INTO intake_items (profile_id, name, kind, active, obligation, condition, stack)
-         VALUES (?, ?, 'supplement', ?, 'should', 'daily', ?)`
+        `INSERT INTO intake_items (profile_id, name, kind, active, obligation, condition, stack, situation)
+         VALUES (?, ?, 'supplement', ?, 'should', ?, ?, ?)`
       )
-      .run(profileId, name, opts.active ?? 1, opts.stack ?? null)
-      .lastInsertRowid
+      .run(
+        profileId,
+        name,
+        opts.active ?? 1,
+        opts.condition ?? "daily",
+        opts.stack ?? null,
+        opts.situation ?? null
+      ).lastInsertRowid
   );
   return Number(
     db
@@ -187,15 +203,23 @@ describe.each(ZONES)("in $tz", ({ tz, localToday }) => {
     ]);
   });
 
-  it("refuses a day past the window through the cores' own gate, writing nothing", async () => {
+  it("refuses a day past the window, and the CORE would refuse it too", async () => {
     const { profile, doses } = seedProfile(`window-${tz}`, tz);
     const tooFar = shiftDateStr(localToday, -3);
     expect(isDoseDateAccepted(localToday, tooFar)).toBe(false);
+
+    // Since F4 the action refuses it at the OFFER bound, before a core is reached —
+    // the day is an upper bound like the ids. Nothing is written either way.
     const result = await resolve(tooFar, "taken", [doses.creatine]);
-    expect(result.ok).toBe(true);
-    if (!result.ok) return;
-    // The refusal is the CORE's typed answer, not a second validation in the action.
-    expect(result.doses.map((d) => d.outcome)).toEqual(["stale-dose"]);
+    expect(result).toEqual({ ok: false, error: "Couldn't log those doses." });
+    expect(logsOn(profile.id, tooFar)).toEqual([]);
+
+    // AND THE BOUND DID NOT REPLACE THE GATE, which is the thing worth pinning: the
+    // core still refuses the same day on its own terms, so the window is still enforced
+    // in ONE place and the action's bound is only about what this surface offers.
+    expect(
+      markDoseTaken(profile.id, doses.creatine, null, tooFar, "quick-log")
+    ).toBe("stale-dose");
     expect(logsOn(profile.id, tooFar)).toEqual([]);
   });
 });
@@ -255,5 +279,164 @@ describe("the named ids are an upper bound, never an instruction", () => {
         fd({ date: "2026-08-27", status: "clear", dose_ids: "1" })
       )
     ).toEqual({ ok: false, error: "Couldn't log those doses." });
+  });
+});
+
+// ── F1: a past day is judged by the situations active THAT day ───────────────
+//
+// Found by an adversarial pass, and it was the first past-date caller of
+// `getEffectiveActiveSituations` that made the gap reachable: that function
+// date-resolves only its DERIVED half, and its declared half is a bare
+// "WHERE active = 1" read of current state. Both directions were silent, and the
+// second one defeats the feature's whole purpose, so both are pinned here.
+describe("a past day is scored against the situations active THAT day (#654)", () => {
+  function seedTravelItem(label: string) {
+    const login = createLogin();
+    const profile = createProfile(label, login.id);
+    actAs(login, profile);
+    setTimezone(profile.id, "UTC");
+    const doseId = seedDose(profile.id, `Electrolytes ${label}`, {
+      condition: "situational",
+      situation: "Travel",
+    });
+    return { profile, doseId, yesterday: shiftDateStr(today(profile.id), -1) };
+  }
+
+  async function offeredOn(date: string): Promise<number[]> {
+    const data = await loadQuickEntry("dose");
+    if (data.form !== "dose") return [];
+    const day = data.pastDays.find((d) => d.date === date);
+    return (day?.slots ?? []).flatMap((slot) =>
+      slot.doses.map((d) => d.doseId)
+    );
+  }
+
+  it("does NOT fabricate: a situation declared TODAY leaves the past days as they were", async () => {
+    const { profile, doseId, yesterday } = seedTravelItem("fabricate");
+    expect(await offeredOn(yesterday)).toEqual([]);
+
+    // Turn Travel on today. Yesterday you were not travelling, so yesterday still
+    // owes nothing — and a tap must not write `taken` (and decrement on-hand supply)
+    // for a dose that was never due.
+    setActiveSituations(profile.id, ["Travel"]);
+    expect(await offeredOn(yesterday)).toEqual([]);
+    const result = await resolve(yesterday, "taken", [doseId]);
+    expect(result.ok).toBe(true);
+    if (!result.ok) return;
+    expect(result.doses).toEqual([]);
+    expect(logsOn(profile.id, yesterday)).toEqual([]);
+
+    // TODAY, on the other hand, genuinely does owe it — the same call, one day over,
+    // proving the guard above is about the DAY and not about the item being invisible.
+    const data = await loadQuickEntry("dose");
+    if (data.form !== "dose") throw new Error("expected the dose form");
+    expect(data.doses.map((d) => d.doseId)).toContain(doseId);
+  });
+
+  it("does NOT conceal: a situation that has ENDED still owes the days it was on", async () => {
+    const { profile, doseId, yesterday } = seedTravelItem("conceal");
+    // Ill/travelling yesterday…
+    setActiveSituations(profile.id, ["Travel"]);
+    const events = [{ date: yesterday, situation: "Travel", change: "start" }];
+    db.prepare(
+      `INSERT INTO profile_settings (profile_id, key, value) VALUES (?, 'situation_events', ?)
+         ON CONFLICT(profile_id, key) DO UPDATE SET value = excluded.value`
+    ).run(profile.id, JSON.stringify(events));
+    // …and recovered today.
+    setActiveSituations(profile.id, []);
+
+    // THE POINT OF THE FEATURE. The doses most likely to be missed are exactly the
+    // ones tied to a situation that has since ended; a switcher that hides them is
+    // worse than no switcher, because it answers "nothing to log" for a day that owes.
+    expect(await offeredOn(yesterday)).toEqual([doseId]);
+    const result = await resolve(yesterday, "taken", [doseId]);
+    expect(result.ok).toBe(true);
+    expect(logsOn(profile.id, yesterday)).toEqual([
+      { dose_id: doseId, status: "taken" },
+    ]);
+  });
+
+  it("agrees with the adherence strip's own historical answer, which #3917 offers from", async () => {
+    const { profile, doseId, yesterday } = seedTravelItem("agree");
+    setActiveSituations(profile.id, ["Travel"]);
+    // Two catch-up surfaces, one question (#221): whichever way this profile's history
+    // reads, the sheet and the strip's dueness must read it the SAME way.
+    const stripSaysDue = isDueOn(
+      { condition: "situational", situation: "Travel" },
+      {
+        date: yesterday,
+        isWorkoutDay: false,
+        activeSituations: situationsActiveOn(
+          yesterday,
+          getActiveSituations(profile.id),
+          getSituationEvents(profile.id)
+        ),
+      }
+    );
+    const sheetOffers = (await offeredOn(yesterday)).includes(doseId);
+    expect(sheetOffers).toBe(stripSaysDue);
+  });
+});
+
+// ── F2: the bucket is the one the dose sat in ON that day ────────────────────
+describe("a moved dose is filed under the slot it occupied that day (#1973)", () => {
+  it("groups by the schedule version in force then, not the current row", async () => {
+    const login = createLogin();
+    const profile = createProfile("moved-dose", login.id);
+    actAs(login, profile);
+    setTimezone(profile.id, "UTC");
+    const doseId = seedDose(profile.id, "Magnesium moved", {
+      timeOfDay: "evening",
+    });
+    const todayStr = today(profile.id);
+    const yesterday = shiftDateStr(todayStr, -1);
+
+    // The dose moved evening -> morning TODAY. Yesterday it was an evening dose, and
+    // the day's dueness is already judged by that same effective-dated history — so
+    // the heading has to agree with the rule, or the bulk row's label names a slot
+    // that never held it.
+    db.prepare(
+      `INSERT INTO intake_dose_schedule_versions (dose_id, effective_from, time_of_day)
+       VALUES (?, ?, 'evening'), (?, ?, 'morning')`
+    ).run(doseId, shiftDateStr(todayStr, -30), doseId, todayStr);
+    db.prepare(
+      `UPDATE intake_item_doses SET time_of_day = 'morning' WHERE id = ?`
+    ).run(doseId);
+
+    const data = await loadQuickEntry("dose");
+    if (data.form !== "dose") throw new Error("expected the dose form");
+    const day = data.pastDays.find((d) => d.date === yesterday)!;
+    expect(day.slots.map((slot) => slot.bucket)).toEqual(["Evening"]);
+    expect(day.slots[0]!.doses.map((d) => d.doseId)).toEqual([doseId]);
+  });
+});
+
+// ── F4: the DAY is an upper bound too, not just the ids ──────────────────────
+describe("the submitted day is bounded by the days the sheet offers", () => {
+  it("refuses TOMORROW, which the symmetric core window would otherwise accept", async () => {
+    const { profile, doses } = seedProfile("forward", "UTC");
+    const tomorrow = shiftDateStr(today(profile.id), 1);
+    // The cores' own window is symmetric — a late Telegram tap may land either side of
+    // its reminder's day — so `isDoseDateAccepted` says YES here. The offer is the past
+    // half only, and a forged POST must not reach a day no surface ever offered.
+    expect(isDoseDateAccepted(today(profile.id), tomorrow)).toBe(true);
+    expect(doseLogDays(today(profile.id))).not.toContain(tomorrow);
+
+    expect(await resolve(tomorrow, "taken", [doses.creatine])).toEqual({
+      ok: false,
+      error: "Couldn't log those doses.",
+    });
+    expect(logsOn(profile.id, tomorrow)).toEqual([]);
+  });
+
+  it("still accepts every day the sheet DOES offer", async () => {
+    const { profile, doses } = seedProfile("forward-ok", "UTC");
+    for (const day of doseLogDays(today(profile.id))) {
+      const r = await resolve(day, "taken", [doses.creatine, doses.collagen]);
+      expect(r.ok).toBe(true);
+    }
+    expect(
+      logsOn(profile.id, shiftDateStr(today(profile.id), -2))
+    ).toHaveLength(2);
   });
 });
