@@ -8,7 +8,6 @@ import {
   expectNoClippedContent,
   openDashboardAll,
   settledClick,
-  settledClickApplied,
   settledFill,
 } from "./helpers";
 import { addFromPicker, openTempEntry, settledTap } from "./symptom-helpers";
@@ -460,13 +459,35 @@ test.describe("fresh-profile illness front door", () => {
   }) => {
     test.slow();
     await createProfileViaFamily(page, "phase5-front-door");
+    // THE FRONT DOOR MOVED, THE JOURNEY DID NOT (#3366). The first tap used to be on
+    // the dashboard tail's well-day card; the 2026-08-29 ruling retired the tail's
+    // generic write cards because the quick logger is the app's one quick-write
+    // surface. The `?quick=` deep link opens the SAME sheet row from any viewport
+    // (lib/pwa-shortcuts.ts), so this reaches the same `SymptomLogBar` mount the
+    // puck reaches without moving the rest of the test off desktop width.
+    //
+    // Both halves are asserted: the tail no longer offers the bridge, and the sheet
+    // does — an absence alone would pass on a tree where activation vanished.
     await page.goto("/");
     await openDashboardAll(page);
-    await settledClickApplied(
+    await expect(
+      page.getByTestId("dashboard-all-contents").getByTestId("symptom-log-bar")
+    ).toHaveCount(0);
+
+    await page.goto("/?quick=log-symptom");
+    const panel = page.getByTestId("quick-symptom-panel");
+    await expect(panel).toBeVisible({ timeout: 20_000 });
+    await settledClick(
       page,
-      page.getByTestId("symptom-illness-bridge-activate"),
-      page.getByTestId("illness-now-group")
+      panel.getByTestId("symptom-illness-bridge-activate")
     );
+    // Read the activation back from a fresh server render rather than from the
+    // overlay it was made in: a resolved action is not a committed episode, and the
+    // cockpit is where the rest of this journey happens.
+    await page.goto("/");
+    await expect(page.getByTestId("illness-now-group")).toBeVisible({
+      timeout: 20_000,
+    });
     const bar = page
       .getByTestId("illness-now-group")
       .getByTestId("symptom-log-bar");
