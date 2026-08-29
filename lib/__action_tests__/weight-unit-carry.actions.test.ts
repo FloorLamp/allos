@@ -7,6 +7,11 @@
 // re-reading the pref would then mis-convert a correctly-entered number. Here the
 // login's STORED pref is deliberately the OPPOSITE of the submitted unit, so a
 // pref-reading write would corrupt the value; the submitted unit must win.
+//
+// ONE case in this file ends differently, and it is the last describe: a bulk
+// correction is a preview → apply PAIR of Server Actions, not a form post, so there
+// is no captured unit to post. There the flip is REFUSED rather than honored
+// (#3962) — same class, same 2.2046× corruption, a different product.
 
 import { describe, it, expect, beforeEach, vi } from "vitest";
 import { revalidatePath } from "next/cache";
@@ -25,6 +30,11 @@ import { readingTargetToken } from "@/lib/reading-placement";
 import { LB_PER_KG, MI_PER_KM } from "@/lib/units";
 import { getUnitPrefs, setStoredAge, setUnitPrefs } from "@/lib/settings";
 import { getEndurancePlans } from "@/lib/endurance-plans";
+import {
+  applyBulkCorrectionAction,
+  previewBulkCorrection,
+  type BulkCorrectionRequest,
+} from "@/app/(app)/data/bulk-correction-actions";
 import { createLogin, createProfile, actAs, fd } from "./harness";
 
 const revalidate = vi.mocked(revalidatePath);
@@ -501,4 +511,105 @@ describe("createEndurancePlan honors the unit the distance field rendered (issue
       );
     }
   );
+});
+
+// THE PREVIEW → APPLY PAIR (#3962) — the shape none of the carries above can reach.
+// `previewBulkCorrection` resolves the typed amount under the login's unit and hands
+// back a compare-and-set token; `applyBulkCorrectionAction` re-resolves it FRESH. The
+// unit is per-login, so a flip in another tab between the two applies a correction
+// 2.2046× off the one displayed — and the person is already looking at that number
+// because they believe it is wrong, so it is the one they are likeliest to accept.
+//
+// The fix widens the token to sign the previewed plan's RESULTS as well as its rows,
+// so the drift gate that already exists sees op drift. There is no second check: the
+// same comparison that catches a sync landing mid-preview catches this. The third row
+// is the converse — an op the unit cannot touch must still apply after a flip, or the
+// guard is merely refusing everything.
+describe("applyBulkCorrectionAction refuses an op re-resolved under a flipped unit (issues #630, #3962)", () => {
+  function seedRun(profileId: number): void {
+    for (const [date, kg] of [
+      ["2026-03-01", 80],
+      ["2026-03-02", 81.5],
+    ] as const) {
+      db.prepare(
+        `INSERT INTO body_metrics (profile_id, date, weight_kg, source)
+         VALUES (?, ?, ?, 'withings')`
+      ).run(profileId, date, kg);
+    }
+  }
+
+  function storedKg(profileId: number): number[] {
+    return (
+      db
+        .prepare(
+          "SELECT weight_kg FROM body_metrics WHERE profile_id = ? ORDER BY date"
+        )
+        .all(profileId) as { weight_kg: number }[]
+    ).map((r) => r.weight_kg);
+  }
+
+  it.each([
+    // −2 typed under a (kg) label, re-resolved as −2 lb (−0.907 kg) at apply.
+    {
+      what: "an offset after a kg to lb flip",
+      op: { kind: "add", value: -2 },
+      flippedTo: "lb",
+      applies: false,
+      expectKg: [80, 81.5],
+    },
+    // Same op, same code path, no flip: the correction the preview showed lands.
+    {
+      what: "an offset with the unit unchanged",
+      op: { kind: "add", value: -2 },
+      flippedTo: "kg",
+      applies: true,
+      expectKg: [78, 79.5],
+    },
+    // A factor is unitless, so the flip changes nothing and refusing would be noise.
+    {
+      what: "a unitless factor after a kg to lb flip",
+      op: { kind: "multiply", value: 0.5 },
+      flippedTo: "lb",
+      applies: true,
+      expectKg: [40, 40.75],
+    },
+  ] as const)("$what", async ({ what, op, flippedTo, applies, expectKg }) => {
+    const login = createLogin({ weightUnit: "kg" });
+    const profile = createProfile(`bulkfix-${flippedTo}-${op.kind}`, login.id);
+    actAs(login, profile);
+    seedRun(profile.id);
+
+    const request: BulkCorrectionRequest = {
+      field: "weight",
+      from: "2026-03-01",
+      to: "2026-03-31",
+      source: "withings",
+      op,
+    };
+    // Preview: the amount is resolved under the unit the card labelled it with.
+    expect(getUnitPrefs(login.id).weightUnit).toBe("kg");
+    const preview = await previewBulkCorrection(request);
+    if (!preview.ok) throw new Error(`preview refused: ${what}`);
+
+    // …then the login flips its unit in another tab, before Apply is pressed.
+    setUnitPrefs(login.id, {
+      weightUnit: flippedTo,
+      distanceUnit: "km",
+      temperatureUnit: "F",
+    });
+
+    const res = await applyBulkCorrectionAction({
+      ...request,
+      signature: preview.signature,
+    });
+    expect(res.ok).toBe(applies);
+    if (!res.ok) {
+      // One gate, and it is the signature — the flip surfaces as drift, and the
+      // sentence has to name the units setting or it sends the person hunting for
+      // a sync that never landed.
+      expect(res.error).toBe("drift");
+      expect(res.message).toContain("units setting");
+    }
+    expect(storedKg(profile.id)).toEqual(expectKg);
+  });
 });

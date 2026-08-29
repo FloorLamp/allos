@@ -542,6 +542,18 @@ ${landingLines}
   second real case — a genuine SegmentedControl in ride-detail addressed only by
   \`getByRole(\"group\", { name })\`, invisible to every marker search because the
   accessible name comes from an \`ariaLabel\` prop.
+  (6) A PATH IS NOT ALWAYS SPELLED AS A PATH. A route written as a REGEX LITERAL —
+  \`/\\/medications\\/dose-history/\` — contains backslashes between every segment, so a
+  grep for \`/medications/dose-history\` cannot match it however exactly you spell the
+  path. Same for a path split across a template literal or assembled from a base plus a
+  suffix. When you DELETE a route, census it twice: once for the literal path, and once
+  with a pattern tolerant of separators, e.g.
+  \`(medications|nutrition|wellness)[\\\\/]+(dose|food|practice)-history\`. Measured
+  2026-08-29 on #3958: the literal grep came back clean and the tolerant one found
+  e2e/medications-followups.spec.ts driving the deleted route through a regex literal —
+  a spec that walked the door, the kind filter, the rows and the footer link. Sweep the
+  deleted TESTIDS and SYMBOLS as well as the path; a surviving marker is the same bug
+  wearing a different name.
 - A GUARD THAT REMOVES A PROPERTY CANNOT ALSO PROVE THE PROPERTY SURVIVED. When your
   change takes something away — a frame, a gutter, a label, a permission, a field —
   the natural guard asserts ABSENCE: nothing still has it. That assertion passes on

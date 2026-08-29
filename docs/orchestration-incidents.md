@@ -1434,3 +1434,42 @@ the 34 tree once the reach existed, while the box equality reds on the first and
 per-axis reach read reds on the second.
 
 Encoded as clause (5) of the spec-census rule in `dispatch-brief.mjs`.
+
+## The route that was spelled as a regex (2026-08-29)
+
+#3958 phase 1 deletes four ledger routes, and one of its acceptance criteria is that
+`git grep` finds no reference to any of them afterwards. The lane ran the obvious census
+— the four literal paths — retargeted twenty-odd doors, and reported the grep clean.
+
+It then ran a second pattern tolerant of separators,
+`(medications|nutrition|wellness)[\/]+(dose|food|practice)-history`, and found a site the
+first could never have matched: `e2e/medications-followups.spec.ts:470` drove the deleted
+route through a **regex literal**, `/\/medications\/dose-history/`. Backslashes between
+every segment, so a grep for `/medications/dose-history` misses it however exactly the
+path is spelled. That spec walked the medications door into the ledger and asserted its
+kind filter, its rows and its Trends footer link — it would have gone red in CI, and the
+acceptance criterion would have been reported met.
+
+The generalisation is not about regexes. A path can be a regex literal, a template
+literal split across lines, or a base plus a suffix assembled at the call site, and none
+of those contain the string being searched for. So a route deletion needs two censuses:
+the literal path, and a pattern tolerant of what sits between the segments. Sweep the
+deleted testids and symbols too — a surviving marker is the same bug wearing a different
+name, and that sweep is what confirmed the rest of the tree was clean here.
+
+Two smaller things from the same lane are worth keeping for their shape rather than their
+subject. It raised two control rows from `gap-2` to `gap-3` and wrote into two comments
+that its re-homed guard had **caught** an 8px-against-10px shortfall — then re-ran the
+guard with `gap-2` restored, found it passing (the hairline divider sits between the
+clusters and is gapped on both sides, so the distance is two gaps plus the rule), and
+rewrote both comments to say the change is agreement with the shared row rather than a
+catch. A comment claiming a find it did not make is worse than no comment, and it is the
+kind of claim nobody re-checks once it is in the tree.
+
+And the census that mattered most was the one it did not trust: the issue's own inbound-
+door list, written a day earlier, missed two revalidation sites and described two doors
+that do not exist in the shape it claims — because most doors are built by helpers
+(`doseLedgerHref` and friends) rather than written as paths, which is clause (4) of the
+spec-census rule arriving from the production side.
+
+Encoded as clause (6) of the spec-census rule in `dispatch-brief.mjs`.

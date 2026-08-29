@@ -40,6 +40,12 @@ const PANEL_WIDTH_PX = 384;
 //     exactly one, and routing here is what stops the drawer carrying an
 //     activity-only oddity beside a puck that offers everything.
 //
+// PRIMARY IN BOTH HOSTS (#3982). This is the sidebar's ONE log affordance, so it
+// is the action the surface exists for. Its ancestor `LogActivityButton` rendered
+// `btn w-full` here until #3759 converged it on the typed Button, which had a
+// single secondary paint — the owner reported the lost CTA colour, and the variant
+// is what gives it back.
+//
 // Both hosts render components/QuickLogMenu.tsx, so there is one membership list
 // (`QUICK_LOG_ITEMS`) and one grouping (`LOG_SEGMENT_CENSUS`) behind every
 // surface — the drift #2184 recorded is what a second copy here would restart.
@@ -64,6 +70,7 @@ export default function SidebarLogButton({
   if (compact) {
     return (
       <Button
+        variant="primary"
         data-testid="sidebar-log"
         aria-haspopup="dialog"
         aria-expanded={logSheetOpen}
@@ -80,6 +87,7 @@ export default function SidebarLogButton({
   return (
     <>
       <Button
+        variant="primary"
         ref={anchorRef}
         data-testid="sidebar-log"
         aria-haspopup="dialog"

@@ -158,7 +158,13 @@ export async function applyBulkCorrectionAction(
 ): Promise<BulkCorrectionApplyResult> {
   const { login, profile } = await requireWriteAccess();
   const parsed = parseRequest(input);
-  const op = parsed && resolveCorrectionOp(parsed.field, input.op, getUnitPrefs(login.id));
+  // Re-resolved from the pref AS IT IS NOW, deliberately: the unit is per-login,
+  // so it may have flipped in another tab since the preview. That re-resolution is
+  // safe only because the signature signs the previewed plan's `after` values too
+  // (#3962) — a flip changes them, and the compare-and-set below refuses. Nothing
+  // here re-checks the unit; there is one gate, and it is the signature.
+  const op =
+    parsed && resolveCorrectionOp(parsed.field, input.op, getUnitPrefs(login.id));
   const signature = String(input.signature ?? "");
   if (!parsed || !op || signature === "") {
     return {
@@ -181,7 +187,7 @@ export async function applyBulkCorrectionAction(
       error: outcome.error,
       message:
         outcome.error === "drift"
-          ? "This data changed while you were previewing (a sync may have landed). Nothing was applied — preview again to see the current rows."
+          ? "Something changed while you were previewing — the rows, or your units setting. Nothing was applied — preview again to see the current numbers."
           : outcome.error === "empty"
             ? "Nothing matched — nothing was applied."
             : "That change would push rows outside the valid range, so nothing was applied.",
