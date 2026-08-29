@@ -517,23 +517,67 @@ test.describe("the control box: one height, every kind, every viewport (#3938)",
     await expect(page.getByTestId("history-chip-media")).toBeVisible();
 
     const geometry = await row.evaluate((el, epsilon) => {
-      const targets = Array.from(
-        el.querySelectorAll<HTMLElement>("a, button, select")
-      ).filter((t) => t.getBoundingClientRect().height > 0);
-      const boxes = targets.map((t) => {
-        const r = t.getBoundingClientRect();
-        const after = getComputedStyle(t, "::after");
-        const reach =
-          after.content === "none" ? 0 : Math.abs(Number.parseFloat(after.top));
+      // A TARGET'S LIVE HIT REGION ENDS AT ITS SCROLLPORT (#3607's rule, one row
+      // over). The kind pills live in an `overflow-x-auto` group: a chip scrolled
+      // past its edge keeps its FULL rect in the box model while being clipped on
+      // screen, so comparing that rect with the pinned Photos chip beside the strip
+      // reports two things owning one point that a finger can never touch at once.
+      // The sibling reach-containment guard in this file states the same thing: a
+      // region that scrolls sideways ON PURPOSE has extent by construction and that
+      // is not the defect.
+      //
+      // CLIPPED, NOT SKIPPED, and the difference is the case that matters. Dropping
+      // fully-outside targets still compares a PARTLY visible chip by its whole
+      // width, which is how "Practices/Photos" survived the first attempt — the chip
+      // straddles the strip's edge and only its hidden half reaches the neighbour.
+      // Intersecting each rect with its port measures the region that is actually
+      // touchable; a fully scrolled-out chip falls out of the set on width alone.
+      const clipToPort = (t: HTMLElement, r: DOMRect) => {
+        for (
+          let p: HTMLElement | null = t.parentElement;
+          p && p !== el.parentElement;
+          p = p.parentElement
+        ) {
+          const overflowX = getComputedStyle(p).overflowX;
+          if (overflowX !== "auto" && overflowX !== "scroll") continue;
+          const port = p.getBoundingClientRect();
+          return {
+            left: Math.max(r.left, port.left),
+            right: Math.min(r.right, port.right),
+            top: r.top,
+            bottom: r.bottom,
+            height: r.height,
+          };
+        }
         return {
-          what: (t.textContent ?? "").trim().slice(0, 18) || t.tagName,
+          left: r.left,
+          right: r.right,
+          top: r.top,
+          bottom: r.bottom,
           height: r.height,
-          left: r.left - reach,
-          right: r.right + reach,
-          top: r.top - reach,
-          bottom: r.bottom + reach,
         };
-      });
+      };
+      const boxes = Array.from(
+        el.querySelectorAll<HTMLElement>("a, button, select")
+      )
+        .map((t) => {
+          const visible = clipToPort(t, t.getBoundingClientRect());
+          const after = getComputedStyle(t, "::after");
+          const reach =
+            after.content === "none"
+              ? 0
+              : Math.abs(Number.parseFloat(after.top));
+          return {
+            what: (t.textContent ?? "").trim().slice(0, 18) || t.tagName,
+            height: visible.height,
+            width: visible.right - visible.left,
+            left: visible.left - reach,
+            right: visible.right + reach,
+            top: visible.top - reach,
+            bottom: visible.bottom + reach,
+          };
+        })
+        .filter((b) => b.height > 0 && b.width > 0);
       const overlaps: string[] = [];
       let smallestGap = Number.POSITIVE_INFINITY;
       for (let i = 0; i < boxes.length; i += 1)
