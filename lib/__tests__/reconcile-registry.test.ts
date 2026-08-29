@@ -64,14 +64,17 @@ function stripComments(text: string): string {
   return text.replace(/\/\*[\s\S]*?\*\//g, "").replace(/^[^\n]*?\/\/.*$/gm, "");
 }
 
-// The prefixes the app can actually put on a button, harvested three ways because the
-// codebase mints tokens three ways:
+// The prefixes the app can actually put on a button, harvested by targeted rules for
+// each token-minting shape in the notification modules:
 //
 //   1. a literal in an action's `data:` field           — data: `pvdone:${id}:${key}`
 //   2. a literal in a parser's prefix test              — data.startsWith("hh:")
 //   3. a shared token BUILDER's return                  — return `food:${profileId}:…`
 //   4. a regex-literal prefix test                      — /^foodprotein:(\d+):/
 //   5. a template whose head is a local PREFIX constant — `${OFFER_EXPAND_PREFIX}:${…}`
+//   6. a shared correction-prefix declaration           — { chip: "foodtime", at: … }
+//   7. the shared offer-builder prefix union             — type OfferPrefix = "usual" | …
+//   8. the imported medication-stop prefix declaration  — MED_STOP_PREFIX = "medstop"
 //
 // (5) is resolved against `const NAME = "value"` in the SAME file, which is where the
 // offer-tail and ⚙️ Tune namespaces live.
@@ -132,6 +135,14 @@ function mintedPrefixes(): Map<string, string[]> {
     for (const m of src.matchAll(/type OfferPrefix\s*=\s*([^;]+);/g)) {
       for (const lit of m[1].matchAll(/"([a-z][a-z0-9]*)"/g)) note(lit[1], rel);
     }
+    // 8. `MED_STOP_PREFIX` is declared in callback-data and imported by the dose-row
+    // renderer, so rule (5)'s deliberately same-file lookup cannot resolve it. Read
+    // this one declaration rather than broadening the source scanner.
+    for (const m of src.matchAll(
+      /const MED_STOP_PREFIX\s*=\s*"([a-z][a-z0-9]*)"\s*;/g
+    )) {
+      note(m[1], rel);
+    }
   }
   return found;
 }
@@ -140,7 +151,7 @@ describe("the callback-vocabulary completeness guard (#1779)", () => {
   const minted = mintedPrefixes();
 
   it("the scan actually finds the vocabulary (it would pass vacuously otherwise)", () => {
-    // A sample from three different modules and all three mint styles, so a regex that
+    // Representative modules plus every shared/declaration-based rule, so a regex that
     // silently stops matching fails here rather than turning the guard into a no-op.
     for (const known of [
       "take",
@@ -156,6 +167,7 @@ describe("the callback-vocabulary completeness guard (#1779)", () => {
       // turn the shared-builder families into a blind spot.
       "usual",
       "stacktake",
+      "medstop",
     ]) {
       expect(minted.has(known), `scan missed the "${known}:" prefix`).toBe(
         true

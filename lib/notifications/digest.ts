@@ -29,7 +29,7 @@ import {
   type IntakeDeltas,
 } from "../intake-deltas";
 import { isTrainingSignalKey } from "../workout-nudge";
-import { importHref } from "../hrefs";
+import { CLINICAL_RESULTS_LIST_HREF, importHref } from "../hrefs";
 import { DIGEST_TIME_SECTION_HEADING } from "../digest-time-suggestion";
 import { monthNames } from "../date";
 import {
@@ -806,7 +806,7 @@ export function buildDigest(input: DigestInput): DigestModel | null {
       formatEmphasizedLine({
         glyph: GLYPH.caution,
         head: `+${moreFlagged} more flagged result${moreFlagged === 1 ? "" : "s"}`,
-        link: base || null,
+        link: base ? `${base}${CLINICAL_RESULTS_LIST_HREF}` : null,
       })
     );
   }
