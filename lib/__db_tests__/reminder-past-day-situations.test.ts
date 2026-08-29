@@ -184,3 +184,80 @@ describe("the TODAY branch keeps the derived widening (#1292/#1298)", () => {
       expect(morningNames(p, shiftDateStr(anchor, -d))).toEqual([]);
   });
 });
+
+// WHICH past day. The cases above pin "a past day is not today"; on their own they are
+// equally satisfied by a gather that scores day-2 against day-3's situations, because
+// none of their fixtures carries a transition INSIDE the span they look at. These two
+// put the transition in the middle of the span and read every day either side of it, so
+// the date the resolver is asked about is pinned and not merely its distance from today.
+//
+// The two directions are ASYMMETRIC, and that is the point of having both:
+// `situationsActiveOn` decides a day by its earliest transition STRICTLY after it
+// (`e.date > date`), so a start dated day-3 is already ON on day-3, while a stop dated
+// day-3 is already OFF on day-3. A fixture that got the boundary backwards would still
+// satisfy a symmetric assertion.
+
+// Backdate a completed span: declared on day-`from`, un-declared on day-`to`, leaving
+// the situation NOT declared now — the state the real writer reaches by two toggles.
+function activeBetween(
+  profileId: number,
+  situation: string,
+  from: number,
+  to: number
+): void {
+  setActiveSituations(profileId, []);
+  const anchor = today(profileId);
+  setProfileSetting(
+    profileId,
+    "situation_events",
+    serializeSituationEvents(
+      [],
+      [
+        ...diffSituations([], [situation], shiftDateStr(anchor, -from)),
+        ...diffSituations([situation], [], shiftDateStr(anchor, -to)),
+      ]
+    )
+  );
+}
+
+// Is the situational item on the Morning reminder for each of these past days?
+function dueByDay(
+  profileId: number,
+  offsets: number[]
+): Record<string, boolean> {
+  return Object.fromEntries(
+    offsets.map((d) => [
+      `day-${d}`,
+      morningNames(profileId, shiftDateStr(today(profileId), -d)).includes(
+        ITEM
+      ),
+    ])
+  );
+}
+
+describe("WHICH past day the reminder is scored against (#3973)", () => {
+  it("a situation that STARTED on day-3 is off before it and on from it", () => {
+    const p = newProfile();
+    seedItem(p, ITEM, "Travel", "due-on");
+    activeSince(p, "Travel", 3);
+
+    expect(dueByDay(p, [4, 3, 2])).toEqual({
+      "day-4": false, // the day before the start
+      "day-3": true, // the start day itself is INSIDE the span
+      "day-2": true,
+    });
+  });
+
+  it("a situation that STOPPED on day-3 is on before it and off from it", () => {
+    const p = newProfile();
+    seedItem(p, ITEM, "Travel", "due-on");
+    activeBetween(p, "Travel", 7, 3);
+
+    expect(dueByDay(p, [5, 4, 3, 2])).toEqual({
+      "day-5": true,
+      "day-4": true, // the day before the stop
+      "day-3": false, // the stop day itself is OUTSIDE the span
+      "day-2": false,
+    });
+  });
+});
