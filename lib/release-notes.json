@@ -1,6 +1,35 @@
 {
   "days": [
     {
+      "date": "2026-08-29",
+      "entries": [
+        {
+          "pr": 3964,
+          "title": "Log a supplement you took yesterday from the quick-log sheet, or a whole morning stack in one tap",
+          "kind": "feature",
+          "issues": [3936]
+        },
+        {
+          "pr": 3967,
+          "title": "History rows keep naming what they are on a phone, instead of collapsing to a bare date",
+          "kind": "fix",
+          "issues": [3937, 3904]
+        },
+        {
+          "pr": 3968,
+          "title": "A strength-test weight entered in pounds is no longer recorded as kilograms",
+          "kind": "fix",
+          "issues": [3942, 3944, 3945]
+        },
+        {
+          "pr": 3983,
+          "title": "A connected app stops asking you to reconnect when the problem was a passing network fault",
+          "kind": "fix",
+          "issues": [3798]
+        }
+      ]
+    },
+    {
       "date": "2026-08-28",
       "entries": [
         {

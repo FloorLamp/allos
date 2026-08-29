@@ -1053,11 +1053,18 @@ ${MIGRATION_LINES}
   never "search the environment for credentials"
 - Use curl REST for GitHub reads, not the MCP tools (MCP rides the owner's rate limit)
 - PR body: closing keywords each ON THEIR OWN LINE (Fixes #N — GitHub parses one per line)
-- Commit trailers EXACTLY (copy the Co-Authored-By line from your own environment's
-  commit instructions — the model name varies by session; do not hardcode one here):
-    Co-Authored-By: Claude <model> <noreply@anthropic.com>
+- Commit trailers EXACTLY THESE TWO LINES — note the Co-Authored-By carries NO model
+  name, which is deliberate and is the resolution of a contradiction this brief used to
+  contain. It told you to copy the trailer from your environment's commit instructions,
+  whose template embeds the session's model name, AND to put no model identifier in
+  anything pushed. Three lanes hit that on 2026-08-28 and each resolved it differently.
+  The no-identifier rule is the specific prohibition and wins; the template's SHAPE is
+  what it was pointing at, never the name inside it. \`main\` already carries both
+  spellings — use this one:
+    Co-Authored-By: Claude <noreply@anthropic.com>
     Claude-Session: <session URL>
-- No model identifiers in commits/PR/code
+- No model identifiers anywhere pushed: commit messages, PR title or body, code
+  comments, test names, docs. Chat replies only.
 ${
   opts.candidate
     ? "- Open or refresh the PR READY (not draft) via REST, base main, before exact-head review"
