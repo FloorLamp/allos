@@ -23,6 +23,7 @@ import AppointmentList from "@/app/(app)/encounters/AppointmentList";
 import EncounterList from "@/app/(app)/encounters/EncounterList";
 import { createAppointment } from "@/app/(app)/encounters/appointment-actions";
 import { addEncounter } from "@/app/(app)/encounters/actions";
+import Disclosure from "@/components/Disclosure";
 
 // A single value from the (string | string[]) searchParams shape.
 function one(v: string | string[] | undefined): string | null {
@@ -232,7 +233,7 @@ export default function VisitsSection({
               // `bleed-none`: the amber rail is 14px of inset this disclosure
               // supplies itself, so a card inside it stays inside it instead of
               // cancelling the PAGE's gutter and crossing its own rail (#3931).
-              <details className="bleed-none border-l-2 border-amber-300 pl-3 dark:border-amber-800">
+              <Disclosure className="bleed-none border-l-2 border-amber-300 pl-3 dark:border-amber-800">
                 <summary className="cursor-pointer py-1 font-semibold text-amber-800 dark:text-amber-200">
                   Past date—update status{" "}
                   <span className="text-sm font-normal">
@@ -247,11 +248,11 @@ export default function VisitsSection({
                     episodes={appointmentEpisodes}
                   />
                 </div>
-              </details>
+              </Disclosure>
             )}
 
             {settled.length > 0 && (
-              <details className="border-t border-black/5 pt-3 dark:border-white/5">
+              <Disclosure className="border-t border-black/5 pt-3 dark:border-white/5">
                 <summary className="cursor-pointer font-semibold text-slate-800 dark:text-slate-100">
                   Completed &amp; cancelled{" "}
                   <span className="text-sm font-normal text-slate-400">
@@ -266,7 +267,7 @@ export default function VisitsSection({
                     episodes={appointmentEpisodes}
                   />
                 </div>
-              </details>
+              </Disclosure>
             )}
           </div>
         </section>

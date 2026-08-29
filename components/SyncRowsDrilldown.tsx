@@ -5,6 +5,7 @@ import DestinationLink from "@/components/DestinationLink";
 import { loadSyncRows } from "@/app/(app)/data/review-actions";
 import { drilldownRemainderLabel } from "@/lib/integrations/sync-history-days";
 import type { SyncRowLink } from "@/lib/queries";
+import Disclosure from "@/components/Disclosure";
 
 // "What this sync wrote" drill-in (issue #1333, deferred part 2 of #1212). Behind a
 // <details> so nothing is queried until the user expands it; on first open it calls
@@ -70,7 +71,7 @@ export default function SyncRowsDrilldown({
   }, []);
 
   return (
-    <details
+    <Disclosure
       ref={detailsRef}
       className="mt-1"
       data-testid={`sync-rows-${eventId}`}
@@ -135,6 +136,6 @@ export default function SyncRowsDrilldown({
           ))}
         </ul>
       )}
-    </details>
+    </Disclosure>
   );
 }

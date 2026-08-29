@@ -14,6 +14,7 @@ import {
 } from "@/lib/dashboard-standing";
 import type { DashboardPlacement } from "@/lib/dashboard-relevance";
 import InfoTooltipIcon from "@/components/InfoTooltipIcon";
+import Disclosure from "@/components/Disclosure";
 
 export interface DashboardStandingPresentation {
   label?: string;
@@ -359,7 +360,7 @@ export default function DashboardStandingCluster({
           without an aria attribute of our own. Nothing is remembered: the fold is
           computed from claims, never configured. */}
         {tail.length > 0 && (
-          <details
+          <Disclosure
             data-standing-band="tail"
             data-testid="dashboard-standing-tail"
           >
@@ -370,7 +371,7 @@ export default function DashboardStandingCluster({
               Quiet ({tail.length})
             </summary>
             <BandRows placements={tail} presentations={presentations} />
-          </details>
+          </Disclosure>
         )}
       </div>
     </section>

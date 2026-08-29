@@ -2,6 +2,7 @@
 
 import { useEffect, useRef, useState } from "react";
 import RawDataViewer from "@/components/RawDataViewer";
+import Disclosure from "@/components/Disclosure";
 
 // Admin-only lazy viewer for a sync event's captured raw source payload (issue
 // #9). Rendered behind a <details> so nothing is fetched until the admin expands
@@ -42,7 +43,7 @@ export default function RawPayloadViewer({ id }: { id: number }) {
   }, []);
 
   return (
-    <details
+    <Disclosure
       ref={detailsRef}
       className="mt-1 w-full"
       onToggle={(e) => {
@@ -63,6 +64,6 @@ export default function RawPayloadViewer({ id }: { id: number }) {
       {state === "loaded" && (
         <RawDataViewer text={text} downloadName={`sync-payload-${id}`} />
       )}
-    </details>
+    </Disclosure>
   );
 }

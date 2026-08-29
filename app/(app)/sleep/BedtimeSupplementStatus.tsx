@@ -3,6 +3,7 @@ import {
   type BedtimeSupplementState,
   type BedtimeSupplementSummary,
 } from "@/lib/sleep-bedtime-supplements";
+import Disclosure from "@/components/Disclosure";
 
 const TONE: Record<BedtimeSupplementState, string> = {
   taken: "text-emerald-700 dark:text-emerald-300",
@@ -58,8 +59,8 @@ export default function BedtimeSupplementStatus({
   }
 
   return (
-    <details
-      className="group text-xs"
+    <Disclosure
+      className="text-xs"
       data-testid="bedtime-supplement-status"
       data-state={summary.state}
     >
@@ -81,6 +82,6 @@ export default function BedtimeSupplementStatus({
           </span>
         ))}
       </span>
-    </details>
+    </Disclosure>
   );
 }

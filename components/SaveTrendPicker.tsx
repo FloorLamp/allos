@@ -1,6 +1,7 @@
 import { toggleSavedItem } from "@/app/(app)/saved-actions";
 import SaveTrendKeyPicker from "./SaveTrendKeyPicker";
 import type { SeriesPickerInput } from "@/lib/series-picker-options";
+import Disclosure from "@/components/Disclosure";
 
 // Add a metric pin from the final cell of the Body census (#3387). Clinical-result
 // saves keep their Results/passport meanings but no longer render a second copy on
@@ -25,8 +26,8 @@ export default function SaveTrendPicker({
   const rows = metrics;
   if (rows.length === 0) return null;
   return (
-    <details
-      className="group w-full max-w-full sm:w-fit"
+    <Disclosure
+      className="w-full max-w-full sm:w-fit"
       data-testid="save-trend-picker-disclosure"
     >
       <summary
@@ -49,6 +50,6 @@ export default function SaveTrendPicker({
       >
         <SaveTrendKeyPicker rows={rows} />
       </form>
-    </details>
+    </Disclosure>
   );
 }
