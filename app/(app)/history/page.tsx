@@ -32,16 +32,24 @@ import { historyHref, type AppRoute } from "@/lib/hrefs";
 import { historyMemberFeed } from "@/lib/history";
 import {
   HISTORY_DEFAULT_SHOW,
+  HISTORY_FAMILIES,
+  HISTORY_FAMILY_KINDS,
+  HISTORY_FAMILY_LABELS,
   HISTORY_KIND_LABELS,
+  HISTORY_KINDS,
   HISTORY_LOG_KINDS,
   HISTORY_MAX_SHOW,
   HISTORY_SHOW_STEP,
   clampHistoryDay,
+  historyKindFamily,
+  layoutHistoryDay,
+  parseHistoryExpand,
   parseHistoryShow,
   resolveHistoryDoseClass,
   resolveHistoryFamily,
   resolveHistoryKind,
-  type HistoryLogKind,
+  type HistoryFamily,
+  type HistoryKind,
   type HistoryRow,
 } from "@/lib/history-format";
 import { mergeMemberTimelines } from "@/lib/timeline-multi";
@@ -193,6 +201,7 @@ export default async function HistoryPage(props: {
     day?: string | string[];
     view?: string | string[];
     open?: string | string[];
+    expand?: string | string[];
     show?: string | string[];
   }>;
 }) {
@@ -219,6 +228,11 @@ export default async function HistoryPage(props: {
   const day = clampHistoryDay(searchParams.day, todayStr);
   const show = parseHistoryShow(searchParams.show);
   const openFolds = parseTimelineOpen(searchParams.open);
+  // THE ROLLUP LINES THE READER HAS OPENED (#3958 phase 2). A second param beside
+  // `?open=` because they are different questions with different key vocabularies —
+  // `parseTimelineOpen` validates a year, a month or the ahead key, and a rollup key is
+  // a (day, member) pair. Same toggle helper, so the URL stays sorted and stable.
+  const expanded = parseHistoryExpand(searchParams.expand);
 
   // THE HOUSEHOLD VIEW IS A DEEP-LINKED MODE, NOT A SWITCHER (#1463): the sidebar is
   // the one profile switcher on every page, so this costs the chrome budget nothing.
@@ -235,6 +249,7 @@ export default async function HistoryPage(props: {
     historyMemberFeed(id, {
       loginId,
       kind,
+      family,
       doseClass,
       item: rawItem,
       media,
@@ -242,9 +257,20 @@ export default async function HistoryPage(props: {
       limit: show,
     })
   );
-  const presentKinds = HISTORY_LOG_KINDS.filter((candidate) =>
+  const presentKinds = HISTORY_KINDS.filter((candidate) =>
     feeds.some((feed) => feed.gather.presentKinds.includes(candidate))
   );
+  // A FAMILY CHIP IS EARNED BY ITS KINDS, so an empty family never advertises itself —
+  // the substance quiet-access posture applied uniformly, as #3958 asks. Derived from
+  // the same presence answer the refinement row uses, so the two rows cannot disagree.
+  const presentFamilies = HISTORY_FAMILIES.filter((candidate) =>
+    HISTORY_FAMILY_KINDS[candidate].some((k) => presentKinds.includes(k))
+  );
+  // WHICH FAMILY THE PAGE IS IN. A kind implies its family, so a refinement row is
+  // showing whenever either is set — and never in All, which is the issue's own rule.
+  const activeFamily: HistoryFamily | null = kind
+    ? historyKindFamily(kind)
+    : (family ?? null);
   // WHETHER THE PHOTOS FILTER IS ON, as the gather answers it rather than as the URL
   // asks: `?media=1` degrades when no row can satisfy it, so the chip must not paint
   // itself pressed over a page that is showing everything.
@@ -273,21 +299,43 @@ export default async function HistoryPage(props: {
   // not carry it: a row of chips whose "All" still says `class=medication` is a
   // control that does not do what it is called.
   const chipHref = (next: {
-    kind?: HistoryLogKind;
+    kind?: HistoryKind;
+    family?: HistoryFamily;
     media?: boolean;
   }): AppRoute => {
     const nextKind = "kind" in next ? next.kind : kind;
+    // A FAMILY CHIP DROPS THE KIND INSIDE IT. Moving to Clinical while `?kind=dose` was
+    // set would produce a URL that contradicts itself (a kind implies its family), and
+    // `historyHref` resolves that by dropping the family — so the Clinical chip would
+    // have navigated back to Doses.
+    const nextFamily = "family" in next ? next.family : "kind" in next ? undefined : family;
     return historyHref({
-      family: nextKind ? undefined : family,
+      family: nextKind ? undefined : nextFamily,
       kind: nextKind,
       class: nextKind === "dose" ? doseClass : undefined,
-      item: "kind" in next ? undefined : rawItem,
+      item: "kind" in next || "family" in next ? undefined : rawItem,
       media: next.media ?? mediaApplied,
       day,
       everyone,
       show: show === HISTORY_DEFAULT_SHOW ? undefined : show,
     });
   };
+
+  // THE ROLLUP LINE'S OWN LINK — the same toggle helper the folds use, so the `?expand`
+  // set is sorted and the href for a given open set is byte-identical across renders.
+  const expandHref = (key: string): AppRoute =>
+    historyHref({
+      family: kind ? undefined : family,
+      kind,
+      class: doseClass,
+      item: rawItem,
+      media: mediaApplied,
+      day,
+      everyone,
+      open: [...openFolds].sort(),
+      expand: toggledTimelineOpen(expanded, key),
+      show: show === HISTORY_DEFAULT_SHOW ? undefined : show,
+    });
 
   const foldHref = (
     key: string,
@@ -303,6 +351,7 @@ export default async function HistoryPage(props: {
       day,
       everyone,
       open: toggledTimelineOpen(openFolds, key, fold),
+      expand: [...expanded].sort(),
       show: show === HISTORY_DEFAULT_SHOW ? undefined : show,
     });
     return anchor ? (`${base}#${anchor}` as AppRoute) : base;
@@ -394,15 +443,26 @@ export default async function HistoryPage(props: {
   // THE OTHER FOUR DOORS' VOCABULARY, read once and only for the kind that is showing
   // one. Each list is a shared reader the kind's own surface already uses — no fifth
   // derivation of "what can this profile log".
+  // WHICH KINDS THE ADD DOOR CAN BE (#3958: "Log kinds only"). Clinical, training and
+  // life records are created on their domain surfaces, and the two remaining Logs kinds
+  // are not declared either: sleep arrives from an integration and is corrected at its
+  // source, and a symptom is quick-logged — the day view mounts the bar that does it.
+  const addKind =
+    kind === "food" ||
+    kind === "practice" ||
+    kind === "substance" ||
+    kind === "body"
+      ? kind
+      : null;
   const addVocabulary =
-    canWrite && kind && kind !== "dose"
+    canWrite && addKind
       ? {
           practices:
-            kind === "practice"
+            addKind === "practice"
               ? getTrackedPractices(actingProfileId).map((p) => p.name)
               : [],
           substances:
-            kind === "substance"
+            addKind === "substance"
               ? getProfileSubstanceKeys(actingProfileId).map((key) => ({
                   key,
                   label: substanceDef(key).label,
@@ -416,9 +476,9 @@ export default async function HistoryPage(props: {
   // that cannot offer one falls back to the kind chooser rather than to an empty row,
   // which is what the dose branch already did.
   const hasAddDoor = addVocabulary
-    ? kind === "practice"
+    ? addKind === "practice"
       ? addVocabulary.practices.length > 0
-      : kind === "substance"
+      : addKind === "substance"
         ? addVocabulary.substances.length > 0
         : true
     : kind === "dose" && loggable.length > 0;
@@ -432,6 +492,15 @@ export default async function HistoryPage(props: {
       if (viewIds.includes(profile.id)) subjectNames[profile.id] = profile.name;
     }
   }
+
+  // WHETHER THE DAY'S LOG ROWS COLLAPSE (#3958 phase 2).
+  //
+  // EVERYTHING ONLY, and the two exclusions are the issue's own words. "Filtered to a
+  // family, the page behaves as the plain record": a reader who asked for Logs is
+  // asking for the rows, and a rollup would answer by hiding them. "Day-view rows are
+  // flat — no rollups; a day view lists everything": the day view is the surface you
+  // open to see the whole day, so collapsing it there would defeat the visit.
+  const rollup = day == null && kind == null && family == null;
 
   // ONE DAY GROUP, wherever it lands: in the recent band, or nested under the fold that
   // was holding it. Written once because the fold arrangement renders it from three
@@ -492,7 +561,15 @@ export default async function HistoryPage(props: {
         </DestinationLink>
       </h2>
       <HistoryRows
-        rows={group.events as HistoryRow[]}
+        rows={layoutHistoryDay(group.events as HistoryRow[], { rollup }).visible}
+        rollups={layoutHistoryDay(group.events as HistoryRow[], {
+          rollup,
+        }).rollups.map((line) => ({
+          ...line,
+          href: expandHref(line.key),
+          open: expanded.has(line.key),
+        }))}
+        actingProfileId={actingProfileId}
         writableProfileIds={writableProfileIds}
         doseItems={doseItems}
         maxDates={maxDates}
@@ -547,25 +624,32 @@ export default async function HistoryPage(props: {
         data-testid="history-filters"
       >
         <div className="min-w-0 flex-1">
+          {/* THE FAMILY ROW (#3958 phase 2): All · Logs · Training · Clinical · Life.
+              Phase 1 rendered the Logs KIND row here because Logs was the only family
+              that existed; with four, the top row is families and the kinds move to
+              the refinement row below. Still ONE row in the header stack — the
+              refinement row renders only inside a family, never in All, so the chrome
+              budget above the first record is unchanged in the view that has to meet
+              it. */}
           <FilterPills
             mode="link"
             layout="responsive"
             linkBehavior="timeline"
-            label="Filter the record by kind"
-            value={kind ?? null}
-            testId="history-kind-pills"
+            label="Filter the record by family"
+            value={activeFamily}
+            testId="history-family-pills"
             options={[
               {
                 value: null,
                 label: "All",
-                href: chipHref({ kind: undefined }),
+                href: chipHref({ kind: undefined, family: undefined }),
                 testId: "history-chip-all",
               },
-              ...presentKinds.map((candidate) => ({
-                value: candidate as HistoryLogKind | null,
-                label: HISTORY_KIND_LABELS[candidate],
-                href: chipHref({ kind: candidate }),
-                testId: `history-chip-${candidate}`,
+              ...presentFamilies.map((candidate) => ({
+                value: candidate as HistoryFamily | null,
+                label: HISTORY_FAMILY_LABELS[candidate],
+                href: chipHref({ kind: undefined, family: candidate }),
+                testId: `history-chip-family-${candidate}`,
               })),
             ]}
           />
@@ -591,6 +675,40 @@ export default async function HistoryPage(props: {
         ) : null}
       </div>
 
+      {/* THE KIND-SCOPED REFINEMENT ROW, PER FAMILY — "never in All" (#3958). It is a
+          SECOND row and it only exists once the reader has already chosen a family, so
+          the ≤140px chrome budget is measured where it is stated: on the page as it
+          first loads, which is All. Every chip is presence-earned from the same answer
+          the family row used, so a family cannot offer a kind it has no rows for. */}
+      {activeFamily ? (
+        <div className={`mb-3 ${railGutter}`} data-testid="history-kind-row">
+          <FilterPills
+            mode="link"
+            layout="responsive"
+            linkBehavior="timeline"
+            label={`Filter ${HISTORY_FAMILY_LABELS[activeFamily]} by kind`}
+            value={kind ?? null}
+            testId="history-kind-pills"
+            options={[
+              {
+                value: null,
+                label: HISTORY_FAMILY_LABELS[activeFamily],
+                href: chipHref({ kind: undefined, family: activeFamily }),
+                testId: `history-chip-${activeFamily}-all`,
+              },
+              ...HISTORY_FAMILY_KINDS[activeFamily]
+                .filter((candidate) => presentKinds.includes(candidate))
+                .map((candidate) => ({
+                  value: candidate as HistoryKind | null,
+                  label: HISTORY_KIND_LABELS[candidate],
+                  href: chipHref({ kind: candidate }),
+                  testId: `history-chip-${candidate}`,
+                })),
+            ]}
+          />
+        </div>
+      ) : null}
+
       {/* THE ADD DOOR, KIND-RESOLVED. Filtered to a kind it IS that kind's backfill,
           MOUNTED IN PLACE — the form opens here rather than sending the reader to the
           domain surface, which is what #3958 asked for and what only the dose kind
@@ -607,7 +725,13 @@ export default async function HistoryPage(props: {
               <span className="shrink-0 text-slate-500 dark:text-slate-400">
                 Add past
               </span>
-              {(presentKinds.length > 0 ? presentKinds : HISTORY_LOG_KINDS).map(
+              {HISTORY_LOG_KINDS.filter(
+                (candidate) =>
+                  candidate !== "sleep" &&
+                  candidate !== "symptom" &&
+                  (presentKinds.length === 0 ||
+                    presentKinds.includes(candidate))
+              ).map(
                 (candidate) => (
                   <Link
                     key={candidate}
@@ -626,9 +750,9 @@ export default async function HistoryPage(props: {
               maxDate={todayStr}
               defaultTime={defaultTime}
             />
-          ) : addVocabulary && kind ? (
+          ) : addVocabulary && addKind ? (
             <HistoryAddDoor
-              kind={kind}
+              kind={addKind}
               // THE DAY THE READER WAS LOOKING AT. Finding a gap is the reason to open
               // this door at all, so the form opens on that day rather than on today —
               // the context the redirect used to throw away.
@@ -744,6 +868,7 @@ export default async function HistoryPage(props: {
                 day,
                 everyone,
                 open: [...openFolds],
+                expand: [...expanded].sort(),
                 show: Math.min(show + HISTORY_SHOW_STEP, HISTORY_MAX_SHOW),
               })}
             >
