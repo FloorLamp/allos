@@ -765,7 +765,11 @@ describe("a row title links only to a home of its own (#3958/#4045)", () => {
          VALUES (?, ?, ?, ?, 'taken')`
       ).run(id, dose, YESTERDAY, `${YESTERDAY} 08:00:00`);
     }
-    const rows = gatherHistoryLog(p, { loginId, limit: 200, kind: "dose" }).rows;
+    const rows = gatherHistoryLog(p, {
+      loginId,
+      limit: 200,
+      kind: "dose",
+    }).rows;
     const hrefOf = (title: string) =>
       rows.find((row) => row.title === title)?.href ?? null;
 
