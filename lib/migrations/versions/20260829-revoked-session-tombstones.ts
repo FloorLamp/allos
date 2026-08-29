@@ -17,10 +17,13 @@ import type { Migration } from "../runner";
 // cookie, and the only question ever asked of this table is "was this exact token
 // deliberately ended" — which needs no other column to answer.
 //
-// RETENTION is bounded by the session lifetime it describes: a token past
-// SESSION_ABSOLUTE_MAX_MODIFIER (90 days from creation) can never resolve to a session
-// again, so a tombstone older than that can never change an answer. lib/auth's
-// purgeExpiredSessions sweeps them on the same tick it sweeps dead sessions.
+// RETENTION IS A TRADE, and lib/auth's purgeExpiredSessions — which sweeps these on the
+// same tick it sweeps dead sessions — carries the whole of it. In short: retiring a
+// tombstone DOES change an answer, because `sessionDenial` is consulted only after
+// resolution has already failed, so the row is the difference between "revoked" and
+// "unauthorized". A phone revoked on suspicion of compromise and left in a drawer past
+// the window is told "unauthorized" and keeps its offline record. 90 days is the session
+// ceiling, and shortening it is not free.
 export const migration: Migration = {
   name: "20260829-revoked-session-tombstones",
   up(db: Database.Database) {

@@ -266,12 +266,11 @@ export function purgeExpiredSessions(): number {
   // It does RETIRE tombstones, on the same tick and by the same 90-day ceiling. Counted
   // separately — the return value is sessions, per the #1843 audit line.
   //
-  // AND RETIRING ONE DOES CHANGE AN ANSWER, which corrects the reason the migration's
-  // header gives for this line (it argues that a token past the ceiling can never resolve,
-  // so its tombstone cannot matter; the premise is true and the conclusion does not
-  // follow). `sessionDenial` is consulted ONLY AFTER resolution has already failed —
-  // answering the denial WORD is its whole job — so a retired tombstone turns "revoked"
-  // into "unauthorized" every time.
+  // AND RETIRING ONE DOES CHANGE AN ANSWER. It is tempting to argue that a token past the
+  // ceiling can never resolve to a session, so its tombstone cannot matter — the premise
+  // is true and the conclusion does not follow. `sessionDenial` is consulted ONLY AFTER
+  // resolution has already failed; answering the denial WORD is its whole job. So a
+  // retired tombstone turns "revoked" into "unauthorized", every time.
   //
   // So this is a TRADE, not a tidy-up. A phone revoked on suspicion of compromise and left
   // in a drawer for 91 days comes back, is told "unauthorized", and KEEPS its offline
