@@ -9,9 +9,8 @@
 // definitive auth failure may flip a connection out of `connected`; a transient one
 // must NOT, or a passing cloud hiccup would tear down a healthy connection.
 //
-// The signal is the same across sources even though they wrap it differently:
-//   • Strava returns the OAuth error over the HTTP status — 400 (invalid_grant on a
-//     refresh_token grant) or 401 (Unauthorized).
+// The signal differs across sources even though both end in the same transition:
+//   • Strava returns a structured Fault over HTTP 400, or an HTTP 401.
 //   • Withings rides an error in its `{ status, body }` envelope (HTTP 200), so the
 //     caller passes the ENVELOPE status here, where 401 means the token was rejected.
 //   • Oura's personal access token has no refresh, so it never reaches this door: the
@@ -21,9 +20,9 @@
 //     rule rather than a copy of it.
 
 // True when a token-refresh (or Withings envelope) status is a definitive auth
-// failure requiring re-connection. A 401 is always one. A 400 is one ONLY when its
-// body names the rejected grant; everything else — 429, 5xx, and the status-0
-// sentinel a network error/timeout maps to — is transient.
+// failure requiring re-connection. A 401 is always one. A Strava 400 is one ONLY
+// when its structured Fault names the rejected refresh token; every Withings HTTP
+// 400 and everything else — 429, 5xx, and status 0 — is transient.
 //
 // `body` IS REQUIRED, AND A BODYLESS 400 IS TRANSIENT (#3798). This predicate used
 // to default `body == null || body === "" ⇒ dead grant`, so an HTTP 400 carrying no
@@ -37,19 +36,38 @@
 // than defaulted because the defect was a call site that inherited the default while
 // holding a body it never passed: there is no default left to inherit, and the
 // caller with no body in its space (Withings' vendor envelope) says `null` out loud.
+type AuthRefreshProvider = "strava" | "withings";
+
 export function isAuthRefreshFailure(
+  provider: AuthRefreshProvider,
   status: number,
   body: string | null
 ): boolean {
   if (status === 401) return true;
-  if (status !== 400) return false;
+  if (status !== 400 || provider !== "strava") return false;
   if (body == null || body === "") return false;
-  // Strava's dead-refresh-token 400 body references the refresh_token by name
-  // (…"resource":"RefreshToken","field":"refresh_token","code":"invalid"…) rather
-  // than the bare OAuth `invalid_grant`, so match either form. `invalid_scope` and
-  // other malformed-request 400s carry none of these markers and stay transient.
-  return /invalid[_ ]?grant|invalid[_ ]?token|invalid[_ ]?refresh|refresh[_ ]?token|unauthor/i.test(
-    body
+
+  // Strava documents revoked tokens and its structured Fault/Error response model:
+  // https://developers.strava.com/docs/authentication/
+  // https://developers.strava.com/docs/reference/#api-models-Fault
+  // A captured dead-refresh-token response uses this exact Error triple. Parsing the
+  // Fault keeps arbitrary HTML/prose (including "Unauthorized") out of the verdict.
+  let fault: unknown;
+  try {
+    fault = JSON.parse(body);
+  } catch {
+    return false;
+  }
+  if (!fault || typeof fault !== "object") return false;
+  const errors = (fault as { errors?: unknown }).errors;
+  if (!Array.isArray(errors)) return false;
+  return errors.some(
+    (error) =>
+      error !== null &&
+      typeof error === "object" &&
+      (error as { resource?: unknown }).resource === "RefreshToken" &&
+      (error as { field?: unknown }).field === "refresh_token" &&
+      (error as { code?: unknown }).code === "invalid"
   );
 }
 
