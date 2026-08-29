@@ -6,6 +6,7 @@ import SubmitButton from "@/components/SubmitButton";
 import { useToast } from "@/components/Toast";
 import { FLOW_LEVELS, FLOW_LABELS, type CyclePeriod } from "@/lib/cycle";
 import type { CycleCreateResult } from "./actions";
+import InlineError from "@/components/InlineError";
 
 // Add / edit a recorded period (issue #714). Explicit submit (records are NOT
 // autosave-on-blur — #794). Add mode: no `period`. Edit mode: pass the row + `onDone`.
@@ -115,11 +116,7 @@ export default function CycleForm({
           placeholder="e.g. cramps day 1"
         />
       </div>
-      {error && (
-        <p role="alert" className="text-sm text-rose-600 dark:text-rose-400">
-          {error}
-        </p>
-      )}
+      <InlineError>{error}</InlineError>
       <div className="flex gap-2" data-testid="cycle-form-actions">
         <div
           className="grid w-full sm:w-auto"

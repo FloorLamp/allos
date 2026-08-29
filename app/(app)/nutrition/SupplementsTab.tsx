@@ -61,7 +61,7 @@ import { requireSession } from "@/lib/auth";
 import { requireScope } from "@/lib/scope";
 import SharedSuppliesLink from "@/components/intake/SharedSuppliesLink";
 import LedgerDoorLink from "@/components/LedgerDoorLink";
-import { doseLedgerHref } from "@/lib/hrefs";
+import { historyHref } from "@/lib/hrefs";
 import { lastNDates, shiftDateStr, zonedDateParts } from "@/lib/date";
 import { bestKnownInstant } from "@/lib/row-instants";
 import { formatGivenAtClock } from "@/lib/administration-format";
@@ -81,7 +81,7 @@ import { isTrainingRelevant } from "@/lib/life-stage";
 import { formatWeekdayDate } from "@/lib/format-date";
 import { weekWindow } from "@/lib/week-window";
 import type { SupplementAdherenceDayInput } from "@/lib/supplement-weekly-adherence";
-import { travelExcusalResolver } from "@/lib/travel-excusal";
+import { profileDayZone, travelExcusalResolver } from "@/lib/travel-excusal";
 import { situationHistoryResolver } from "@/lib/trend-annotations";
 import {
   suggestedSituationsFromConditions,
@@ -288,6 +288,7 @@ export default async function SupplementsTab({
   // Policy lives in the shared intakeAdherenceStrip (issue #313).
   // Travel (#3263): the per-day excusal, resolved once for the page.
   const isExcused = travelExcusalResolver(profile.id);
+  const dayZone = profileDayZone(profile.id);
   const stripBySupp = new Map<number, AdherenceDot[]>();
   for (const s of intakeItems) {
     stripBySupp.set(
@@ -299,7 +300,7 @@ export default async function SupplementsTab({
         workoutDays,
         situationsOn,
         takenByDose,
-        tz,
+        dayZone,
         isExcused
       )
     );
@@ -363,7 +364,7 @@ export default async function SupplementsTab({
       item.supplement.created_at,
       item.dose.created_at,
       takenByDose.get(item.dose.id),
-      tz
+      dayZone
     );
     return since == null || date >= since;
   };
@@ -1279,7 +1280,10 @@ export default async function SupplementsTab({
                               this page is short. The populated branch — the long
                               one the owner scrolled — is the one that moved. */}
                           <LedgerDoorLink
-                            href={doseLedgerHref("supplement")}
+                            href={historyHref({
+                              kind: "dose",
+                              class: "supplement",
+                            })}
                             label="Dose history"
                             testId="dose-ledger-link"
                           />
@@ -1318,7 +1322,7 @@ export default async function SupplementsTab({
                     // below `lg` — present in the DOM, functionally absent on a
                     // phone, which is what the owner reported as a missing link.
                     <LedgerDoorLink
-                      href={doseLedgerHref("supplement")}
+                      href={historyHref({ kind: "dose", class: "supplement" })}
                       label="Dose history"
                       testId="dose-ledger-link"
                     />

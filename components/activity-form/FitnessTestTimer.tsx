@@ -104,7 +104,7 @@ export default function FitnessTestTimer({
     }
     // Same shared double-pulse the rest timer ends on (#1422) — one pattern table, one
     // reduced-motion gate, not a second hand-copied literal.
-    haptic("timer-complete");
+    haptic("alert");
   }, [haptic]);
 
   const finish = useCallback(() => {

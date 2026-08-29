@@ -9,6 +9,7 @@ import { reconcileFlags } from "@/lib/queries";
 import { saveFitnessEntry } from "@/lib/fitness-assessment";
 import { recordGlucoseTrace } from "@/lib/glucose-trace-db";
 import { getTimezone } from "@/lib/settings";
+import { perTestCeiling } from "../../vitest.timeouts";
 import { seedStandardMetricSaves } from "@/lib/standard-metric-seeds";
 import { episodesForSituation } from "@/lib/symptom-episode";
 import {
@@ -290,6 +291,21 @@ let switchedHouseholdManifest: DashboardPlacementCanvasProps["placements"] = [];
 let switchedHouseholdProfileId = 0;
 const previousTestNow = process.env.ALLOS_TEST_NOW;
 
+// A HOOK CEILING AS A MULTIPLE (#4002). The hook below builds every persona and
+// renders the dashboard once per persona; it carried a hard-coded `}, 120_000)` that
+// `ALLOS_VITEST_TIMEOUT_MS` could not reach. Measured on the dispatch box: this file
+// runs 3 644 ms under coverage and 4 411 ms without, of which the 15 tests themselves
+// are 22-39 ms — so the hook IS the file. 4x testTimeout is 60 000 ms on CI, ~14x
+// that reading and still twice the default hook budget. Named rather than inline so
+// prettier keeps hugging the hook instead of reflowing 160 lines of its body.
+//
+// THE BASIS IS A GREEN READING AND THERE IS NO CI ONE. This file runs in the
+// `db-isolated` pool, whose lines sit outside the window `test-db`'s job log will
+// return, so nobody has measured this hook on the runner that enforces the ceiling.
+// The DB tier moves 3-4x per file between two GREEN runs (#3999), so read the margin
+// as ~14x of a good day, not of a bad one.
+const MANIFEST_HOOK_MS = perTestCeiling(4, "green");
+
 describe("actual atomic dashboard manifests", () => {
   beforeAll(async () => {
     process.env.ALLOS_TEST_NOW = "2026-08-18T13:00:00.000Z";
@@ -366,7 +382,7 @@ describe("actual atomic dashboard manifests", () => {
         )!;
       }
     }
-  }, 120_000);
+  }, MANIFEST_HOOK_MS);
 
   afterAll(() => {
     if (previousTestNow === undefined) delete process.env.ALLOS_TEST_NOW;

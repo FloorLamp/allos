@@ -47,7 +47,7 @@ import type { FiberAdequacy } from "@/lib/fiber";
 import { EmptyState } from "@/components/ui";
 import FoodLogBar, { type FoodLogDay } from "./FoodLogBar";
 import LedgerDoorLink from "@/components/LedgerDoorLink";
-import { foodLedgerHref } from "@/lib/hrefs";
+import { historyHref } from "@/lib/hrefs";
 import ProteinQuickAdd from "./ProteinQuickAdd";
 import WeeklyHabits from "./WeeklyHabits";
 import { trackFoodHabit } from "./actions";
@@ -476,7 +476,7 @@ export default async function FoodTab({
               nutrientSummaryByDate={mobileNutrients}
               ledgerDoor={
                 <LedgerDoorLink
-                  href={foodLedgerHref()}
+                  href={historyHref({ kind: "food" })}
                   label="Food history"
                   testId="food-ledger-link"
                 />

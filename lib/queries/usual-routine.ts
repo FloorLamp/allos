@@ -25,14 +25,10 @@ import { getIntakeItems } from "./intake";
 import { getIntakeDoses } from "./intake/schedule";
 import { getSkippedDoseIds, getTakenDoseIds } from "./intake/adherence";
 import { getEffectiveActiveSituations } from "./derived-situations";
-import {
-  getActiveSituations,
-  getSituationEvents,
-  getTimezone,
-} from "../settings";
+import { getActiveSituations, getSituationEvents } from "../settings";
 
 import { doseWindowSince } from "../intake-adherence";
-import { travelExcusalResolver } from "../travel-excusal";
+import { profileDayZone, travelExcusalResolver } from "../travel-excusal";
 import { situationsActiveOn } from "../trend-annotations";
 import { db, today } from "../db";
 import { doseBucketOn, doseDueOn, type TimeBucket } from "../intake-schedule";
@@ -241,7 +237,7 @@ export function pendingDayDoses(
   // The adherence strip's callers now widen the SAME bound with the same aggregate,
   // as the second arm of `getIntakeAdherenceEvidence` (#3988); this seam keeps its own
   // read because it draws no window to union that half against.
-  const tz = getTimezone(profileId);
+  const dayZone = profileDayZone(profileId);
   const firstLog = new Map(
     (
       db
@@ -277,7 +273,7 @@ export function pendingDayDoses(
         taken: new Set([firstLog.get(dose.id)!].filter(Boolean)),
         skipped: new Set(),
       },
-      tz
+      dayZone
     );
     if (since != null && date < since) continue;
     // Only an UNANSWERED dose can be excused — every dose reaching here is unresolved

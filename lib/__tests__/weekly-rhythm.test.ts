@@ -138,6 +138,40 @@ describe("inferPracticeRhythm — the window (#2188)", () => {
   });
 });
 
+// The window is closed at BOTH ends (#4030). The workout sibling's gather bounds its
+// SQL at `asOf` (#4026); this one filtered on the window's start alone, so a session
+// logged for a day that had not happened counted toward the habit — and the two
+// siblings answered "what was inferable as of D" differently.
+describe("inferPracticeRhythm — the window is closed at both ends (#4030)", () => {
+  // Mondays. Two of them have happened as of ASOF (a Tuesday); two are logged ahead.
+  const MONDAYS = ["2026-06-08", "2026-06-15", "2026-06-22", "2026-06-29"];
+  const rows = MONDAYS.map((date) => ({ date, time: null }));
+
+  it("a session logged for a day that has not happened does not build the habit", () => {
+    expect(inferPracticeRhythm(rows, ASOF).hasPattern).toBe(false);
+    // The converse, so the assertion above cannot pass on rows that were never a
+    // habit: once all four days HAVE happened, the same rows infer the Monday.
+    expect(inferPracticeRhythm(rows, "2026-06-29")).toMatchObject({
+      hasPattern: true,
+      weekdays: [1],
+    });
+  });
+
+  it("nor does a time logged ahead set the habitual hour", () => {
+    // The fallback ladder reads the practice's own history, and a not-yet day is not
+    // history: 07:00 is logged only on days after ASOF.
+    const timed = [
+      { date: "2026-06-02", time: null },
+      { date: "2026-06-09", time: null },
+      { date: "2026-06-23", time: "07:00" },
+    ];
+    expect(inferPracticeRhythm(timed, ASOF).hour).toBe(
+      RHYTHM_EVENING_FALLBACK_HOUR
+    );
+    expect(inferPracticeRhythm(timed, "2026-06-30").hour).toBe(7);
+  });
+});
+
 describe("predictedOnDay — the #558 honesty rule", () => {
   it("answers null (UNKNOWN) when no pattern exists — never 'yes, every day'", () => {
     const young = inferWeeklyRhythm(weeklyRows(1, 2));

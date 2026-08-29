@@ -23,6 +23,8 @@ import type { DisplayFormatPrefs } from "@/lib/format-date";
 import { resolveSmoking, smokingStatusLabel } from "@/lib/smoking";
 import SubstanceInstrumentsForm from "@/app/(app)/medical/substance-use/SubstanceInstrumentsForm";
 import ConsumptionSection from "@/app/(app)/medical/substance-use/ConsumptionSection";
+import LedgerDoorLink from "@/components/LedgerDoorLink";
+import { historyHref } from "@/lib/hrefs";
 import TrackSubstanceControl from "@/app/(app)/medical/substance-use/TrackSubstanceControl";
 import InstrumentHistoryList from "@/app/(app)/medical/instruments/InstrumentHistoryList";
 import AddEntryPanel from "@/components/AddEntryPanel";
@@ -135,6 +137,18 @@ export default function SubstanceUseSection({
           />
         );
       })}
+
+      {/* THE SUBSTANCE RECORD'S FIRST DOOR (#3958). Every other logged-event surface
+          in the app owed the reader "what did I actually record, across days"; this
+          one never had one, because there was no cross-substance ledger to open. There
+          is now, and it is the same door shape every other surface uses. */}
+      <div className="flex justify-end">
+        <LedgerDoorLink
+          href={historyHref({ kind: "substance" })}
+          label="Substance history"
+          testId="substance-ledger-link"
+        />
+      </div>
 
       {/* Name your own (#3326). The curated three are the app's offered defaults;
           anything else a profile tracks starts here, and starts by being LOGGED —

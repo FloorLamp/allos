@@ -222,70 +222,12 @@ test.beforeEach(() => {
 });
 
 test.describe("the compact logged-event row at 430px (#3671)", () => {
-  test("a logged dose is one row, and tapping it discloses exactly the detail the card showed", async ({
-    page,
-  }) => {
-    seedDose();
-    await phone(page);
-    await page.goto(`/nutrition/dose-history?from=${DAY}&to=${DAY}&kind=all`);
-
-    const row = page.getByTestId("dose-ledger-row").filter({ hasText: ITEM });
-    await expect(row).toHaveCount(1);
-
-    // ONE ROW, at the tap floor and not under it (#644).
-    const collapsed = await height(row);
-    expect(
-      collapsed,
-      `the collapsed dose row is ${collapsed}px tall at 430px`
-    ).toBeGreaterThanOrEqual(TAP_FLOOR_PX);
-    expect(collapsed).toBeLessThanOrEqual(COMPACT_ROW_CEILING_PX);
-
-    // Collapsed, the labelled detail is not on screen — but the row's IDENTITY is,
-    // and identity at ledger scope is the ITEM (#3937). Asserted as the title cell's
-    // whole text, not as a substring of the row: the item name is also inside the ⋯
-    // trigger's accessible name and inside the disclosed amount cell's neighbourhood,
-    // so `row.toContainText(ITEM)` would pass on the very tree this replaced.
-    await expect(visibleDetail(row)).toHaveCount(0);
-    const title = row.locator('[data-card="title"]');
-    await expect(title).toBeVisible();
-    await expect(title).toHaveText(ITEM);
-
-    // Beside it, WHEN — one cell, short date and clock, because a multi-day list that
-    // shows only a clock leaves every row's day unnamed.
-    const when = row.locator('[data-card="trailing"]');
-    await expect(when).toBeVisible();
-    const whenText = (await when.textContent())?.trim() ?? "";
-    // `^Tue,` and not `Tuesday,`: the dense-row formatter, which is also what stops
-    // the desktop column wrapping (asserted at 1280px below).
-    expect(whenText, "the head line's when-cell").toMatch(/^Tue,/);
-    expect(whenText).toMatch(/·\s*\d{1,2}:\d{2}/);
-
-    // THE DISCLOSURE IS A CONTROL, not a row-wide click handler: it says what it
-    // does and it says whether it is open.
-    const toggle = row.getByRole("button", { name: "Show details" });
-    await expect(toggle).toHaveAttribute("aria-expanded", "false");
-    await hydratedClick(page, toggle);
-
-    // Expanded: the labelled detail, which is now the amount alone. The item left
-    // the disclosure when it became the head line — a fact the row states once.
-    const detail = visibleDetail(row);
-    await expect(detail).toHaveCount(1);
-    await expect(detail).toContainText(ITEM_AMOUNT);
-    const opened = row.getByRole("button", { name: "Hide details" });
-    await expect(opened).toHaveAttribute("aria-expanded", "true");
-    expect(await height(row)).toBeGreaterThan(collapsed);
-
-    // The row keeps its ⋯ throughout: disclosure is not a detour on the way to an
-    // edit.
-    await expect(
-      row.getByRole("button", { name: /Dose actions/ })
-    ).toBeVisible();
-
-    // COLLAPSING RESTORES THE ROW, to the same box it started in.
-    await hydratedClick(page, opened);
-    await expect(visibleDetail(row)).toHaveCount(0);
-    expect(await height(row)).toBe(collapsed);
-  });
+  // THE CROSS-ITEM DOSE LEDGER'S DISCLOSURE CASE LEFT WITH ITS SURFACE (#3958). That
+  // ledger folded into `/history`, whose rows are ONE LINE AT EVERY VIEWPORT by owner
+  // ruling — a deliberate exception to the compact-card default, argued from what a
+  // record is for — so there is no collapse there to assert. The identical claim on a
+  // SURVIVING EntryHistoryTable consumer is the next test: the in-card dose panel,
+  // which is the same component at item scope and still discloses on tap.
 
   test("the in-card dose history panel collapses and discloses the same way", async ({
     page,
@@ -339,7 +281,7 @@ test.describe("the compact logged-event row at 430px (#3671)", () => {
     expect(await height(row)).toBe(collapsed);
   });
 
-  test("the food log and the food ledger render the same row primitive, divider-separated", async ({
+  test("the food log and the record render the same row primitive, divider-separated", async ({
     page,
   }) => {
     seedServing();
@@ -372,71 +314,84 @@ test.describe("the compact logged-event row at 430px (#3671)", () => {
     expect(listChrome.listBorder).toBe("1px");
     expect(listChrome.listRadius).not.toBe("0px");
 
-    // ── The same fact on the ledger, through the same component ────────────────
-    await page.goto(`/nutrition/food-history?from=${DAY}&to=${DAY}`);
-    const ledgerRow = page
-      .getByTestId("food-ledger-row")
+    // ── THE SAME FACT ON THE RECORD, THROUGH THE SAME PRIMITIVE (#3958) ───────
+    //
+    // The food ledger route is gone; its rows are `/history`'s now. What has to
+    // survive the move is the anatomy — the identity half is still
+    // `LoggedEventRow` — and #3937's identity rule at cross-item scope, which is
+    // what this half of the test was always for.
+    await page.goto(`/history?kind=food&day=${DAY}`);
+    const berries = page
+      .getByTestId("history-row")
       .filter({ hasText: FOOD_NAME });
-    await expect(ledgerRow).toHaveCount(1);
-    await expect(ledgerRow.locator("[data-logged-event-row]")).toHaveCount(1);
+    await expect(berries).toHaveCount(1);
+    await expect(berries.locator("[data-logged-event-row]")).toHaveCount(1);
 
-    const rowChrome = await ledgerRow.evaluate((el) => {
+    // ONE LINE, AT THIS VIEWPORT AND NOT ONLY ABOVE `sm`. The record's row does not
+    // collapse, so there is nothing to open and nothing behind it: a control here
+    // would be the disclosure the ruling took away.
+    await expect(berries.getByRole("button", { name: /details$/ })).toHaveCount(
+      0
+    );
+    const rowChrome = await berries.evaluate((el) => {
       const cs = getComputedStyle(el);
+      const list = getComputedStyle(el.parentElement!);
       return {
         radius: cs.borderTopLeftRadius,
         background: cs.backgroundColor,
-        divider: cs.borderBottomWidth,
+        divider: cs.borderTopWidth,
+        listBorder: list.borderTopWidth,
+        listRadius: list.borderTopLeftRadius,
       };
     });
+    // DIVIDERS, NOT PER-ROW CARDS — the same row contract the food log above has.
     expect(rowChrome.radius).toBe("0px");
     expect(rowChrome.background).toBe("rgba(0, 0, 0, 0)");
-    expect(rowChrome.divider).toBe("1px");
+    // THE FRAME AROUND THEM IS A BAND, NOT A CARD, and that is where the record and
+    // the food log's list legitimately differ: below `sm` the record's fill is
+    // full-bleed and flat (#3673/#3920 — it is one of the four swept surfaces), so it
+    // has no corners to meet the viewport with. The food log's list is not swept and
+    // keeps its rounded frame; asserting one shape for both would have made this test
+    // a claim about which surfaces #3673 named.
+    expect(rowChrome.listRadius).toBe("0px");
 
-    const collapsed = await height(ledgerRow);
-    expect(collapsed).toBeGreaterThanOrEqual(TAP_FLOOR_PX);
-    expect(collapsed).toBeLessThanOrEqual(COMPACT_ROW_CEILING_PX);
-    await expect(visibleDetail(ledgerRow)).toHaveCount(0);
-
-    // ── AND IT IS A CROSS-ITEM LEDGER, SO IDENTITY IS THE FOOD (#3937) ─────────
-    //
-    // The third consumer with the same defect, re-slotted in the same change so the
-    // three ledgers #3958 inherits speak one grammar rather than two.
+    // ── AND IT IS A CROSS-ITEM RECORD, SO IDENTITY IS THE FOOD (#3937) ─────────
     const greens = page
-      .getByTestId("food-ledger-row")
+      .getByTestId("history-row")
       .filter({ hasText: FOOD_NAME_TWO });
     await expect(greens).toHaveCount(1);
 
-    const whenOf = (row: Locator) =>
+    const titleOf = (row: Locator) =>
       row
-        .locator('[data-card="trailing"]')
+        .getByTestId("history-row-title")
+        .textContent()
+        .then((t) => (t ?? "").trim());
+    const clockOf = (row: Locator) =>
+      row
+        .getByTestId("history-row-clock")
         .textContent()
         .then((t) => (t ?? "").trim());
 
     // THE PREMISE. Both servings were logged in the same minute of the same day, so
-    // the when-cell cannot be what tells these two rows apart.
+    // the clock cannot be what tells these two rows apart.
     expect(
-      await whenOf(ledgerRow),
+      await clockOf(berries),
       "the two seeded servings no longer share a minute"
-    ).toBe(await whenOf(greens));
+    ).toBe(await clockOf(greens));
 
-    // THE HEAD LINE TELLS THEM APART, with no tap, and carries the day beside the
-    // clock rather than a clock on an unnamed day.
-    await expect(ledgerRow.locator('[data-card="title"]')).toHaveText(
-      FOOD_NAME
-    );
-    await expect(greens.locator('[data-card="title"]')).toHaveText(
-      FOOD_NAME_TWO
-    );
-    expect(await whenOf(ledgerRow)).toMatch(/^Tue,.*·/);
+    // THE HEAD LINE TELLS THEM APART, with no tap.
+    expect(await titleOf(berries)).toBe(FOOD_NAME);
+    expect(await titleOf(greens)).toBe(FOOD_NAME_TWO);
 
-    // AND SO DO THEIR CONTROLS.
+    // AND SO DO THEIR CONTROLS (#2615): a sheet detaches from the row it came from,
+    // so two identical names are two rows a reader cannot tell apart once it opens.
     const nameOf = (row: Locator) =>
       row
-        .getByRole("button", { name: /Serving actions/ })
+        .getByRole("button", { name: /Food actions/ })
         .getAttribute("aria-label")
         .then((n) => n ?? "");
     const [berriesName, greensName] = [
-      await nameOf(ledgerRow),
+      await nameOf(berries),
       await nameOf(greens),
     ];
     expect(berriesName).toContain(FOOD_NAME);
@@ -444,34 +399,49 @@ test.describe("the compact logged-event row at 430px (#3671)", () => {
     expect(berriesName, `both ⋯ announced "${berriesName}"`).not.toBe(
       greensName
     );
-    // AND THE NAME CARRIES THE WHOLE WHEN-CELL, not just its date — two servings of
-    // one food on one day are told apart only by the clock. That pair lives in the
-    // dose ledger's fixture above, where this same spelling is proven able to fail;
-    // here the claim is made against the cell the reader is looking at, so the two
-    // ledgers cannot drift to two spellings.
-    expect(berriesName).toContain(await whenOf(ledgerRow));
   });
 
-  test("the compact row is the five EntryHistoryTable surfaces' and nobody else's", async ({
+  test("the compact row is the EntryHistoryTable surfaces' and nobody else's", async ({
     page,
   }) => {
     seedDose();
     await phone(page);
 
-    // ONE OF THE FIVE: the ledger's rows carry the compact contract.
-    await page.goto(`/nutrition/dose-history?from=${DAY}&to=${DAY}&kind=all`);
-    const ledgerRow = page
-      .getByTestId("dose-ledger-row")
+    // ONE OF THEM: the in-card dose panel's rows carry the compact contract. It was
+    // the cross-item LEDGER here until #3958 deleted that route; the panel is the
+    // same component at item scope, which is what makes it the honest stand-in.
+    await page.goto("/nutrition?tab=supplements");
+    // The fixture item carries no scheduled time of day, so the tab files it under
+    // "More supplements" — a closed <details>, exactly as the panel test above.
+    await hydratedClick(
+      page,
+      page.locator('[data-testid="not-scheduled-section"] summary')
+    );
+    const card = page
+      .locator('[data-testid="supplement-row"]')
       .filter({ hasText: ITEM });
-    await expect(ledgerRow).toHaveCount(1);
-    await expect(
-      page.locator("table.logged-event-rows").filter({ has: ledgerRow })
-    ).toHaveCount(1);
-    await expect(visibleDetail(ledgerRow)).toHaveCount(0);
+    await expect(card).toHaveCount(1);
+    await hydratedClick(
+      page,
+      card.getByRole("button", { name: `Supplement actions for ${ITEM}` })
+    );
+    await hydratedClick(
+      page,
+      page.getByRole("menuitem", { name: "Dose history" })
+    );
+    const panelRow = card.getByTestId("dose-history-row");
+    await expect(panelRow).toHaveCount(1);
+    // The row's OWN table, reached from the row rather than by filtering the page's
+    // tables: `has:` takes a locator relative to the outer element, and a chained
+    // page-level one resolves to nothing inside it.
+    await expect(panelRow.locator("xpath=ancestor::table[1]")).toHaveClass(
+      /logged-event-rows/
+    );
+    await expect(visibleDetail(panelRow)).toHaveCount(0);
 
-    // ONE OF THE OTHER TEN: a metric's readings are a record with a multi-field
-    // body, and #3671 deliberately left them alone — same `.table-cards` card mode
-    // as before, meta cells on screen with no disclosure to open first.
+    // ONE OF THE OTHERS: a metric's readings are a record with a multi-field body,
+    // and #3671 deliberately left them alone — same `.table-cards` card mode as
+    // before, meta cells on screen with no disclosure to open first.
     await page.goto("/trends/metric/weight");
     const readings = page.locator("table.table-cards").first(); // first-ok: the readings list is this route's only card-mode table
     await expect(readings).toBeVisible();
@@ -479,6 +449,14 @@ test.describe("the compact logged-event row at 430px (#3671)", () => {
     expect(
       await readings.locator('[data-card="meta"]:visible').count()
     ).toBeGreaterThan(0);
+
+    // AND THE RECORD IS NEITHER: `/history` renders the same IDENTITY primitive and
+    // no table at all, which is what "one line at every viewport" means structurally.
+    await page.goto(`/history?kind=dose&day=${DAY}`);
+    const record = page.getByTestId("history-row").filter({ hasText: ITEM });
+    await expect(record).toHaveCount(1);
+    await expect(record.locator("[data-logged-event-row]")).toHaveCount(1);
+    await expect(page.locator("table.logged-event-rows")).toHaveCount(0);
   });
 
   test("a stack day's rows are told apart without a tap, and no two ⋯ say the same words", async ({
@@ -486,57 +464,64 @@ test.describe("the compact logged-event row at 430px (#3671)", () => {
   }) => {
     seedStackDay();
     await phone(page);
-    await page.goto(`/nutrition/dose-history?from=${DAY}&to=${DAY}&kind=all`);
+    // THE RECORD IS WHERE THIS DEFECT LIVES NOW (#3958). #3937 found it on the
+    // cross-item dose ledger — six rows of one morning stack reading "Friday,
+    // August 28 · 10:07am" — and that ledger is this page. The rule travelled with
+    // the rows: identity is the ITEM, the clock is beside it, and no two ⋯ announce
+    // the same words.
+    await page.goto(`/history?kind=dose&day=${DAY}`);
 
     // SCOPED TO THIS SPEC'S OWN ROWS. The shared seed logs its own doses on this day,
     // and a claim about "every row" would be a claim about a fixture nothing here
     // controls.
-    const magnesium = page
-      .getByTestId("dose-ledger-row")
-      .filter({ hasText: ITEM });
-    const zinc = page
-      .getByTestId("dose-ledger-row")
-      .filter({ hasText: ITEM_TWO });
+    const magnesium = page.getByTestId("history-row").filter({ hasText: ITEM });
+    const zinc = page.getByTestId("history-row").filter({ hasText: ITEM_TWO });
     await expect(magnesium).toHaveCount(2);
     await expect(zinc).toHaveCount(1);
 
-    const whens = await magnesium
-      .locator('[data-card="trailing"]')
+    const clocks = await magnesium
+      .getByTestId("history-row-clock")
       .allTextContents()
       .then((all) => all.map((t) => t.trim()));
-    const zincWhen = (
-      (await zinc.locator('[data-card="trailing"]').textContent()) ?? ""
+    const zincClock = (
+      (await zinc.getByTestId("history-row-clock").textContent()) ?? ""
     ).trim();
 
     // THE PREMISES, BOTH OF THEM, BEFORE THE VERDICT — because there are two ways a
-    // pair of rows can collide and the fix has to answer both.
+    // pair of rows can collide and the page has to answer both.
     //
     // ONE: a dose of each item written in the same minute, which only the ITEM tells
     // apart. Under the old slotting these two head lines were the same string.
     expect(
-      whens,
+      clocks,
       "no seeded dose shares a minute with the second item any more"
-    ).toContain(zincWhen);
+    ).toContain(zincClock);
     // TWO: the same item twice on one day, which only the CLOCK tells apart. This is
     // the pair #3937's literal "item — date" spelling would have left colliding.
-    const dayOf = (when: string) => when.split("·")[0].trim();
-    expect(dayOf(whens[0])).toBe(dayOf(whens[1]));
-    expect(whens[0], "the two doses of one item share a clock").not.toBe(
-      whens[1]
+    expect(clocks[0], "the two doses of one item share a clock").not.toBe(
+      clocks[1]
     );
 
+    // ONE CLOCK GRAMMAR, PAGE-WIDE (#3958): a stated time renders bare, in one
+    // meridiem style, and never as the "Ate 2:03 PM" / "recorded 12:02pm" pair the
+    // four ledgers shipped between them.
+    for (const clock of [...clocks, zincClock]) {
+      expect(clock, "the record's clock grammar").toMatch(
+        /^(logged )?\d{1,2}:\d{2}(am|pm)?$/
+      );
+    }
+
     // THE HEAD LINE TELLS THE ITEMS APART, with no tap.
-    await expect(zinc.locator('[data-card="title"]')).toHaveText(ITEM_TWO);
+    await expect(zinc.getByTestId("history-row-title")).toHaveText(ITEM_TWO);
     expect(
-      await magnesium.locator('[data-card="title"]').allTextContents()
+      await magnesium.getByTestId("history-row-title").allTextContents()
     ).toEqual([ITEM, ITEM]);
 
-    // AND EVERY ⋯ ANNOUNCES A DIFFERENT ROW (#2615). A sheet detaches from the row it
-    // came from, so two identical names are two rows a reader cannot tell apart once
-    // it opens. Three rows, three names — the count is the assertion, because a pair
-    // that collided would still satisfy "each name contains its item".
+    // AND EVERY ⋯ ANNOUNCES A DIFFERENT ROW (#2615). Three rows, three names — the
+    // COUNT is the assertion, because a pair that collided would still satisfy
+    // "each name contains its item".
     const names = await page
-      .getByTestId("dose-ledger-row")
+      .getByTestId("history-row")
       .filter({ hasText: /E2e Row (Magnesium|Zinc)/ })
       .getByRole("button", { name: /Dose actions/ })
       .evaluateAll((els) =>
@@ -554,11 +539,24 @@ test.describe("the compact logged-event row at 430px (#3671)", () => {
   }) => {
     seedPracticeSession();
     await phone(page);
-    await page.goto(`/wellness/practice-history?from=${DAY}&to=${DAY}`);
+    // THE SURVIVING CONSUMER (#3958). This was the practice LEDGER route, which
+    // folded into `/history`; `PracticeSessionHistory` itself is untouched and still
+    // ships on the practice card, which is where #3904's claim belongs — it is a
+    // claim about that component's collapse, not about a route.
+    await page.goto("/wellness");
 
-    const row = page
-      .locator("table.logged-event-rows tbody tr")
+    // SCOPED TO THIS SPEC'S OWN CARD, because the ROW does not name its practice
+    // here and must not: the card header already does, so `showPracticeName` is
+    // false and a row-level `hasText` filter would match nothing. That difference
+    // between the card and the deleted ledger is exactly why this had to move rather
+    // than be retargeted.
+    const card = page
+      .getByTestId("wellness-practice-card")
       .filter({ hasText: PRACTICE });
+    await expect(card).toHaveCount(1);
+    const row = card
+      .getByTestId("practice-session-history")
+      .locator("table.logged-event-rows tbody tr");
     await expect(row).toHaveCount(1);
 
     // THE NOTE IS ON SCREEN WITH NO TAP. Two columns and the second is the person's
@@ -599,75 +597,14 @@ test.describe("the compact logged-event row at 430px (#3671)", () => {
 
   // ── THE OTHER SIDE OF THE BOUNDARY ────────────────────────────────────────────
   //
-  // "Desktop tables are unchanged" is the invariant a compact-row change is most
-  // likely to break WITHOUT any spec noticing, because every desktop spec here
-  // addresses text and the change is presentational. It nearly did: the shared
-  // primitive's identity span carried `font-medium`, and two of the five ledgers
-  // set no weight on their desktop title column, so those two would have rendered
-  // bold at every width with nothing red. So this asserts the two properties the
-  // phone work could leak upward — the disclosure and the weight — above `sm`.
-  test("above the boundary the ledger is still a table: no disclosure, no borrowed weight", async ({
-    page,
-  }) => {
-    seedDose();
-    await page.setViewportSize({ width: 1280, height: 900 });
-    await page.goto(`/nutrition/dose-history?from=${DAY}&to=${DAY}&kind=all`);
-
-    const row = page.getByTestId("dose-ledger-row").filter({ hasText: ITEM });
-    await expect(row).toHaveCount(1);
-    // Every cell is a column again: nothing is behind a toggle, and no toggle is
-    // rendered to be behind. ONE value, since the item became the identity column.
-    await expect(row.locator('[data-card="value"]:visible')).toHaveCount(1);
-
-    // THE WHEN COLUMN DOES NOT WRAP (#3937 rider). The long shape ("Tuesday, August
-    // 18") drew into a column narrow enough that every row read "Tuesday, August /
-    // 18" — ten identical two-line dates in the report that prompted this.
-    //
-    // THREE READINGS, BECAUSE ONE OF THEM IS FIXTURE-DEPENDENT AND SAYS SO. The
-    // rendered line count is the thing a reader sees, but it is only decisive at a
-    // column width, and this spec runs on the SHARED profile, where the 55-character
-    // imported name that squeezes the column may not be seeded (that name is the
-    // dedicated fixture's, e2e/dose-ledger-phone.mobile.spec.ts, deliberately kept
-    // off profile 1 so it does not widen every neighbour's controls). What holds at
-    // ANY column width is the other two: the dense short shape, and `nowrap`. All
-    // three fail on the pre-fix cell — measured, this file's own mutation round.
-    const desktopWhen = await row
-      .locator('[data-card="trailing"]')
-      .evaluate((cell) => {
-        const range = document.createRange();
-        range.selectNodeContents(cell);
-        return {
-          text: (cell.textContent ?? "").trim(),
-          lines: range.getClientRects().length,
-          whiteSpace: getComputedStyle(cell).whiteSpace,
-        };
-      });
-    expect(desktopWhen.text, "the desktop When cell").toMatch(/^Tue,/);
-    expect(desktopWhen.whiteSpace).toBe("nowrap");
-    expect(desktopWhen.lines, `"${desktopWhen.text}" wrapped`).toBe(1);
-    await expect(row.getByRole("button", { name: /details$/ })).toHaveCount(0);
-    await expect(row.locator("thead")).toHaveCount(0);
-    // The card-mode column labels stay card-mode-only.
-    await expect(row.locator(".card-cell-label:visible")).toHaveCount(0);
-
-    // THE WEIGHT IS THE COLUMN'S, not the primitive's. A substance day's Date
-    // column declares none, so it must still resolve to the document default.
-    await page.goto("/records/specialty/substance-use");
-    const title = page
-      .locator('table.logged-event-rows td[data-card="title"]')
-      .first(); // first-ok: every row of every substance card takes the same column classes
-    await expect(title).toBeVisible();
-    expect(await title.evaluate((el) => getComputedStyle(el).fontWeight)).toBe(
-      "400"
-    );
-    expect(
-      await title.evaluate(
-        (el) =>
-          getComputedStyle(el.querySelector("[data-logged-event-row] span")!)
-            .fontWeight
-      )
-    ).toBe("400");
-  });
+  // "Desktop tables are unchanged" had a dedicated case here, asserted on the
+  // cross-item dose ledger at 1280px: no disclosure above `sm`, and no weight
+  // borrowed from the shared primitive. BOTH of the surfaces it addressed —
+  // the dose ledger and the food ledger — were deleted with their routes (#3958),
+  // and the record that replaced them is not a table at any width, which the
+  // consumer-census test above asserts directly. The remaining EntryHistoryTable
+  // consumers keep their desktop columns and their own specs; nothing here is left
+  // to make the claim about.
 
   test("both intake surfaces open their ledger from the day header, in one shape", async ({
     page,

@@ -7,6 +7,7 @@ import ProviderCombobox from "@/components/ProviderCombobox";
 import { useToast } from "@/components/Toast";
 import { useAddEntryModalClose } from "@/components/AddEntryPanel";
 import type { Procedure, FormResult } from "@/lib/types";
+import InlineError from "@/components/InlineError";
 
 // Shared add/edit procedure form. Add mode: no `procedure`. Edit mode: pass the row
 // + an `onDone` callback (renders a hidden id + a Cancel button). The performer is a
@@ -157,11 +158,7 @@ export default function ProcedureForm({
           defaultValue={procedure?.notes ?? ""}
         />
       </div>
-      {error && (
-        <p role="alert" className="text-sm text-rose-600 dark:text-rose-400">
-          {error}
-        </p>
-      )}
+      <InlineError>{error}</InlineError>
       <div className="flex gap-2" data-testid="procedure-form-actions">
         <div
           className="grid w-full sm:w-auto"

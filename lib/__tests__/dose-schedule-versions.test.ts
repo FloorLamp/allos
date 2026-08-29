@@ -27,6 +27,7 @@ import {
   doseSlotChangedSince,
 } from "@/lib/intake-schedule";
 import { doseWindowSince } from "@/lib/intake-adherence";
+import { zoneAtInstant } from "@/lib/travel-timezone";
 import { lastNDates } from "@/lib/date";
 import { ADHERENCE_PATTERN_DAYS } from "@/lib/adherence-patterns";
 
@@ -430,5 +431,56 @@ describe("a cosmetic edit moves no boundary at all", () => {
       expect(doseBucketOn(dose, date)).toBe("Morning");
     }
     expect(doseSlotChangedSince(dose, "2026-06-01", TZ)).toBe(false);
+  });
+});
+
+// ---- One day zone for BOTH halves of the pattern bound (#4030) --------------
+//
+// `buildAdherencePatternFindings` reduces `doseWindowSince` and
+// `unrecordedScheduleChangeOn` through a `max`. #4025 converted the first to the zone
+// the profile's day was actually running in at each stamp; the second stayed on
+// today's zone, and the later day wins a max — so an eastward move put the day-forward
+// walk #4025 removed straight back, inside the function whose own comment says the
+// pattern and the strip cannot disagree about a day.
+describe("the pattern bound's two halves resolve one day (#4030)", () => {
+  const NY = "America/New_York";
+  const TOKYO = "Asia/Tokyo";
+  // This profile's day ran in New York until 2026-05-01; it is standing in Tokyo now.
+  const dayZone = (at: Date) =>
+    zoneAtInstant(
+      [{ at: "2026-05-01T00:00:00Z", from: NY, to: TOKYO }],
+      TOKYO,
+      at
+    );
+  // 02:00 UTC is 2026-04-25 22:00 in New York and 2026-04-26 11:00 in Tokyo — one
+  // instant, two profile-local days, which is the whole of the defect.
+  const STAMP = "2026-04-26 02:00:00";
+  const dose = { updated_at: STAMP, versions: [] };
+
+  it("the fixture really does straddle the day boundary", () => {
+    // Read through today's zone, BOTH halves say the 26th — so an assertion that they
+    // agree could pass on a fixture where the zones never disagreed at all.
+    expect(unrecordedScheduleChangeOn(dose, TOKYO)).toBe("2026-04-26");
+    expect(doseWindowSince(STAMP, STAMP, undefined, TOKYO)).toBe("2026-04-26");
+  });
+
+  it("answers the day the profile was living, on both halves and in the max", () => {
+    const exists = doseWindowSince(STAMP, STAMP, undefined, dayZone);
+    const unrecorded = unrecordedScheduleChangeOn(dose, dayZone);
+    expect(exists).toBe("2026-04-25");
+    expect(unrecorded).toBe(exists);
+    // The reduction the finding builder performs, over the two converted halves.
+    const since = [exists, unrecorded]
+      .filter((v): v is string => v != null)
+      .reduce<string | null>((a, b) => (a == null || b > a ? b : a), null);
+    expect(since).toBe("2026-04-25");
+  });
+
+  it("and withholds the move suggestion on that day, not a day later", () => {
+    // A legacy re-time dated the 25th is BEFORE a window opening on the 26th, so the
+    // suggestion stands; read through today's zone it lands on the 26th and is
+    // withheld from a window it never belonged to.
+    expect(doseSlotChangedSince(dose, "2026-04-26", dayZone)).toBe(false);
+    expect(doseSlotChangedSince(dose, "2026-04-26", TOKYO)).toBe(true);
   });
 });

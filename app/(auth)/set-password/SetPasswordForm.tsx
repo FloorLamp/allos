@@ -1,25 +1,15 @@
 "use client";
 
 import { useActionState, useState } from "react";
-import { useFormStatus } from "react-dom";
+import SubmitButton from "@/components/SubmitButton";
 import { completeSetPassword, type SetPasswordState } from "./actions";
-
-function SubmitButton({ label }: { label: string }) {
-  const { pending } = useFormStatus();
-  return (
-    <button
-      type="submit"
-      disabled={pending}
-      className="w-full rounded-lg bg-(--btn) px-4 py-2.5 text-sm font-semibold text-(--btn-fg) shadow-xs transition hover:bg-(--btn-hover) disabled:opacity-60"
-    >
-      {pending ? "Saving…" : label}
-    </button>
-  );
-}
 
 // The set-password form for both the invite and reset flows (the token carries its
 // kind; the label just reads nicer). On success it swaps to a sign-in prompt. A
 // client-side confirm-match guard keeps typos out before the round trip.
+//
+// The submit and both fields are the shared owners (#3752). The controlled
+// value/onChange pair stays here, because the match guard is what reads it.
 export default function SetPasswordForm({
   token,
   label,
@@ -76,7 +66,7 @@ export default function SetPasswordForm({
           value={password}
           onChange={(e) => setPassword(e.target.value)}
           data-testid="new-password"
-          className="rounded-lg border border-(--field-bd) bg-field px-3 py-2 text-slate-900 outline-hidden focus:border-brand-500 dark:text-slate-100"
+          className="input"
         />
       </label>
       <label className="flex flex-col gap-1.5 text-sm font-medium text-slate-600 dark:text-slate-300">
@@ -88,7 +78,7 @@ export default function SetPasswordForm({
           value={confirm}
           onChange={(e) => setConfirm(e.target.value)}
           data-testid="confirm-password"
-          className="rounded-lg border border-(--field-bd) bg-field px-3 py-2 text-slate-900 outline-hidden focus:border-brand-500 dark:text-slate-100"
+          className="input"
         />
       </label>
       {mismatch && (
@@ -104,7 +94,9 @@ export default function SetPasswordForm({
           {state.error}
         </p>
       )}
-      <SubmitButton label={label} />
+      <SubmitButton pendingLabel="Saving…" variant="primary">
+        {label}
+      </SubmitButton>
     </form>
   );
 }
