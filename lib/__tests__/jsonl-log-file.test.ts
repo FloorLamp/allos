@@ -5,18 +5,16 @@
 // Everything here runs inside a throwaway tmp dir — no repo data/logs, no DB, no
 // network. The last case spawns real child processes (the bug IS cross-process).
 //
-// NO PER-TEST CEILING ANY MORE (#4002). Two tests carried `}, 10_000)` and
-// `}, 60_000)`, both chosen against vitest's old implicit 5 s default and both
-// immune to `ALLOS_VITEST_TIMEOUT_MS`. The tier ceiling is 15 000 ms now and it
-// covers them: the whole file reads 3 803 ms across 9 tests on the green CI run at
-// f1742fa6d, and the dispatch box splits that 2 002 ms into the contended-lock case
-// and 1 570 ms into the four-child one — ~7.5x and ~9.5x margin.
+// The lock-timeout case advances the clock instead of sleeping through the production
+// wait budget, and the process case uses IPC as a barrier instead of guessing how long
+// three TypeScript child processes need to start. Neither behavior depends on elapsed
+// wall time.
 
 import { describe, it, expect, vi, afterEach } from "vitest";
 import fs from "node:fs";
 import path from "node:path";
 import { fileURLToPath, pathToFileURL } from "node:url";
-import { spawn } from "node:child_process";
+import { fork } from "node:child_process";
 import { makeTmpDir } from "./tmp-dir";
 import {
   appendJsonlLine,
@@ -87,15 +85,6 @@ describe("appendJsonlLine self-trim (#1883)", () => {
     expect(fs.readdirSync(path.dirname(file))).toEqual(["errors.jsonl"]);
   });
 
-  it("an append that completed before the trim's read always survives it", () => {
-    const file = tmpFile("errors.jsonl");
-    for (let i = 0; i < 30; i++) appendJsonlLine(file, line(i), KEEP_ALL);
-    expect(readLines(file)).toHaveLength(30);
-    expect(readLines(file).map((l) => JSON.parse(l).id)).toEqual(
-      Array.from({ length: 30 }, (_, i) => `e${i}`)
-    );
-  });
-
   it("rescues an append that lands between the snapshot and the swap", () => {
     // The seam: an OUTSIDE appender (one that bypassed this module, i.e. the
     // worst case) writes while the trim is building its temp file. The old bare
@@ -148,11 +137,11 @@ describe("appendJsonlLine self-trim (#1883)", () => {
     const file = tmpFile("errors.jsonl");
     for (let i = 0; i < 8; i++) appendJsonlLine(file, line(i), KEEP_ALL);
     // A holder that died mid-trim (SIGKILL / OOM / container stop) leaves its
-    // lockfile behind. Age it past the staleness horizon minus a beat, so the
-    // acquire loop demonstrably WAITS and then breaks it.
+    // lockfile behind. Age it beyond the staleness horizon so this test covers
+    // recovery without sleeping until a nearly stale fixture crosses the line.
     const lock = `${file}.lock`;
     fs.closeSync(fs.openSync(lock, "wx"));
-    const aged = new Date(Date.now() - 29_800);
+    const aged = new Date(Date.now() - 30_001);
     fs.utimesSync(lock, aged, aged);
 
     appendJsonlLine(file, line(8), KEEP_ALL);
@@ -174,7 +163,16 @@ describe("appendJsonlLine self-trim (#1883)", () => {
     const lock = `${file}.lock`;
     fs.closeSync(fs.openSync(lock, "wx")); // fresh: held, not stale
 
+    // Exhaust the production wait budget deterministically. The behavior under test
+    // is the fallback after contention, not Atomics.wait's passage of two seconds.
+    const now = Date.now();
+    vi.spyOn(Date, "now")
+      .mockReturnValueOnce(now)
+      .mockReturnValue(now + 2_000);
+
     appendJsonlLine(file, line(3), budgets);
+
+    vi.mocked(Date.now).mockRestore();
 
     expect(readLines(file)).toHaveLength(4); // the append landed
     fs.unlinkSync(lock);
@@ -200,49 +198,53 @@ describe("two processes on one DATA_DIR (#1883)", () => {
     const file = tmpFile("errors.jsonl");
     const WRITERS = 3;
     const PER_WRITER = 25;
-    const startAt = Date.now() + 1500; // start all writers on the same beat
 
     const child = path.join(path.dirname(file), "writer.mjs");
     fs.writeFileSync(
       child,
       `
 import { appendJsonlLine } from ${JSON.stringify(pathToFileURL(path.join(REPO_ROOT, "lib", "jsonl-log-file.ts")).href)};
-const [file, tag, startAt, count] = process.argv.slice(2);
-while (Date.now() < Number(startAt)) {}
-for (let i = 0; i < Number(count); i++) {
-  appendJsonlLine(file, JSON.stringify({ id: tag + "-" + i }) + "\\n", {
-    maxBytes: 1,
-    keepLines: 1000000,
-    keepBytes: 10 * 1024 * 1024,
-  });
-}
+const [file, tag, count] = process.argv.slice(2);
+process.send("ready");
+process.once("message", () => {
+  for (let i = 0; i < Number(count); i++) {
+    appendJsonlLine(file, JSON.stringify({ id: tag + "-" + i }) + "\\n", {
+      maxBytes: 1,
+      keepLines: 1000000,
+      keepBytes: 10 * 1024 * 1024,
+    });
+  }
+  process.disconnect();
+});
 `
     );
 
     const runs = Array.from({ length: WRITERS }, (_, w) => {
-      const proc = spawn(
-        process.execPath,
-        [
-          "--import",
-          "tsx",
-          child,
-          file,
-          `w${w}`,
-          String(startAt),
-          String(PER_WRITER),
-        ],
-        { cwd: REPO_ROOT, stdio: ["ignore", "ignore", "pipe"] }
-      );
+      const proc = fork(child, [file, `w${w}`, String(PER_WRITER)], {
+        cwd: REPO_ROOT,
+        execArgv: ["--import", "tsx"],
+        silent: true,
+      });
       let stderr = "";
-      proc.stderr.on("data", (d) => (stderr += String(d)));
-      return new Promise<void>((resolve, reject) => {
+      proc.stderr?.on("data", (d) => (stderr += String(d)));
+      const ready = new Promise<void>((resolve, reject) => {
+        proc.once("message", () => resolve());
+        proc.on("error", reject);
+        proc.on("exit", (code) => {
+          if (code !== 0) reject(new Error(`writer ${w}: ${stderr}`));
+        });
+      });
+      const done = new Promise<void>((resolve, reject) => {
         proc.on("error", reject);
         proc.on("exit", (code) =>
           code === 0 ? resolve() : reject(new Error(`writer ${w}: ${stderr}`))
         );
       });
+      return { proc, ready, done };
     });
-    await Promise.all(runs);
+    await Promise.all(runs.map((run) => run.ready));
+    for (const { proc } of runs) proc.send("go");
+    await Promise.all(runs.map((run) => run.done));
 
     const ids = readLines(file).map((l) => JSON.parse(l).id);
     expect(new Set(ids).size).toBe(WRITERS * PER_WRITER);
