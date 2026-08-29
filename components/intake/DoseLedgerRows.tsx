@@ -49,12 +49,10 @@ export default function DoseLedgerRows({
   const formatPrefs = useFormatPrefs();
   const itemById = new Map(items.map((item) => [item.id, item]));
 
-  // WHEN A DOSE WAS TAKEN, AS ONE CELL. The head line's second fact has to answer
-  // "which day AND what time" on a list that spans days — splitting the date off
-  // would leave every row's clock floating on an unnamed day — and `trailing` is one
-  // cell by construction (lib/card-row.ts). `formatWeekdayDate` is the dense-row
-  // formatter: "Fri, Aug 28", pref-aware, the year only when it is not this one. The
-  // long shape wrapped its own desktop column to two lines on every row.
+  // WHEN A DOSE WAS TAKEN, AS ONE CELL, because `trailing` is one cell by
+  // construction (lib/card-row.ts) and a clock without its day is unreadable on a
+  // list that spans days. `formatWeekdayDate` is the dense-row formatter; the long
+  // shape wrapped this column to two lines on every desktop row.
   const whenCell = (row: DoseLedgerEntry): string => {
     const date = formatWeekdayDate(row.date, formatPrefs);
     return row.time ? `${date} · ${row.time}` : date;
@@ -63,10 +61,8 @@ export default function DoseLedgerRows({
   const columns: EntryHistoryColumn<DoseLedgerEntry>[] = [
     {
       // IDENTITY IS THE ITEM AT THIS SCOPE (#3937). The per-item panel's rows differ
-      // by day, so its date-as-title is right; here six doses of a morning stack
-      // share a minute and differ only by which item they were, so the item is what
-      // the row is. The link comes with it — the identity is where a reader reaches
-      // for the item.
+      // by day, so date-as-title is right there; six doses of one morning stack share
+      // a minute and differ only by item. The link comes with the identity.
       header: "Item",
       slot: "title",
       cellClassName: "text-slate-600 dark:text-slate-300",
@@ -86,9 +82,8 @@ export default function DoseLedgerRows({
     {
       header: "When",
       slot: "trailing",
-      // The weekday survives the shortening because scanning for weekday patterns is
-      // half of what a dose ledger is read for; `whitespace-nowrap` is what stops the
-      // column wrapping the day off its own date.
+      // The weekday survives the shortening — scanning for weekday patterns is half
+      // of what a ledger is read for — and `nowrap` keeps it on its own date's line.
       cellClassName:
         "whitespace-nowrap text-xs text-slate-500 dark:text-slate-400",
       cell: whenCell,
@@ -117,8 +112,8 @@ export default function DoseLedgerRows({
       columns={columns}
       readOnly={!canWrite}
       menuKind="Dose"
-      // NO TWO ROWS' CONTROLS MAY ANNOUNCE THE SAME WORDS (#2615). The date alone
-      // named every row of a stack day identically.
+      // NO TWO ROWS' CONTROLS ANNOUNCE THE SAME WORDS (#2615): the date alone named
+      // every row of a stack day identically.
       menuItemName={(row) =>
         `${row.itemName} — ${formatWeekdayDate(row.date, formatPrefs)}`
       }
