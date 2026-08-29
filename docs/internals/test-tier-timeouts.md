@@ -37,8 +37,18 @@ projects, `forks` for the isolated ones (vitest's default pool, which
 `pure-isolated` and `db-isolated` never override). Vitest runs pools concurrently
 and sizes each independently to `availableParallelism()`. On a 4-vCPU
 `ubuntu-latest` runner that is up to **8 workers plus the vitest main process**,
-and neither config caps it (verified: `maxWorkers` and `poolOptions` resolve
-`undefined` on all five projects). The DB tier adds the `node --import tsx`
+and neither config caps it. To re-take that reading, from the repo root:
+
+```
+npx tsx -e 'import { createVitest } from "vitest/node";
+const v = await createVitest("test", { config: "vitest.db.config.ts", watch: false });
+for (const p of v.projects) { const c = p.config as any;
+  console.log(c.name, c.pool, "maxWorkers=" + c.maxWorkers, "poolOptions=" + JSON.stringify(c.poolOptions)); }
+await v.close(); process.exit(0);'
+```
+
+It printed `pool=threads`/`pool=forks` with `maxWorkers=undefined` and
+`poolOptions=undefined` on all five projects across both configs. The DB tier adds the `node --import tsx`
 children `dirty-seed-shape` and `one-cycle-seed-shape` spawn — 56-65 s of that
 tier's wall clock is one file blocking in `spawnSync`.
 
