@@ -30,6 +30,10 @@ function statusOf(provider: string): string | undefined {
 
 // A past expiry so getStrava/WithingsAccessToken always take the refresh branch.
 const EXPIRED = Math.floor(Date.now() / 1000) - 3600;
+const GATEWAY_HTML =
+  "<html><head><title>400 Bad Request</title></head><body><center><h1>Unauthorized by upstream gateway</h1></center><hr><center>cloudfront</center></body></html>";
+const STRAVA_DEAD_GRANT =
+  '{"message":"Bad Request","errors":[{"resource":"RefreshToken","field":"refresh_token","code":"invalid"}]}';
 
 beforeEach(() => {
   profileId = Number(
@@ -55,9 +59,9 @@ describe("Strava refresh failure → needs_reauth", () => {
     expect(statusOf("strava")).toBe("connected");
   });
 
-  it("flips to needs_reauth on a 400 invalid_grant", async () => {
+  it("flips to needs_reauth on Strava's structured dead-token Fault", async () => {
     fetchMock.mockResolvedValue(
-      new Response('{"error":"invalid_grant"}', { status: 400 })
+      new Response(STRAVA_DEAD_GRANT, { status: 400 })
     );
     await expect(getStravaAccessToken(profileId)).rejects.toThrow();
     expect(statusOf("strava")).toBe("needs_reauth");
@@ -157,20 +161,15 @@ describe("Oura revoked PAT → needs_reauth", () => {
   });
 });
 
-// ---- #3798: at the refresh door, "revoked" needs evidence, not its absence -------
+// ---- #3980: revocation evidence is provider-specific ----------------------------
 //
 // A bodyless or non-JSON HTTP 400 is what a CDN/gateway artifact in front of a token
 // endpoint looks like — and it used to reach `needs_reauth`, which since #3618 tells
 // the person their connection expired and, via pull-tick's `status !== "connected"`
 // skip, stops syncing that source until they act on an instruction that was false.
-// Both directions are pinned here: absence of evidence leaves the connection alone,
-// and a body that DOES name the rejected grant still flips it.
-const GATEWAY_HTML =
-  "<html><head><title>400 Bad Request</title></head><body><center><h1>400 Bad Request</h1></center><hr><center>cloudfront</center></body></html>";
-// Strava spells a dead refresh token as a field reference, not the bare OAuth code.
-const STRAVA_DEAD_GRANT =
-  '{"message":"Bad Request","errors":[{"resource":"RefreshToken","field":"refresh_token","code":"invalid"}]}';
-
+// Both directions are pinned here: arbitrary prose leaves the connection alone, and
+// Strava's structured Fault still flips it. Withings' real envelope-401 converse is
+// pinned in its provider block above.
 // A body that cannot be read at all: the stream errors on first pull, so `res.text()`
 // REJECTS rather than returning "". Distinct from an empty body, which reads fine and
 // says nothing — this one is the read itself failing.
@@ -195,7 +194,7 @@ async function refreshWith(
   await expect(call).rejects.toThrow();
 }
 
-describe("refresh door — a 400 is a dead grant only on evidence (#3798)", () => {
+describe("refresh door — provider evidence decides a 400 (#3980)", () => {
   beforeEach(() => {
     setStravaCredentials(profileId, "client-id", "client-secret");
     setStravaTokens(profileId, {
@@ -217,9 +216,11 @@ describe("refresh door — a 400 is a dead grant only on evidence (#3798)", () =
     ["strava", GATEWAY_HTML, "connected"],
     ["withings", "", "connected"],
     ["withings", GATEWAY_HTML, "connected"],
-    // THE CONVERSE: a real revocation still reaches needs_reauth on each provider.
+    // Strava's captured Fault is evidence only at Strava's refresh door. Withings'
+    // real rejection is its separately-proven HTTP-200 envelope status 401 above.
     ["strava", STRAVA_DEAD_GRANT, "needs_reauth"],
-    ["withings", '{"error":"invalid_grant"}', "needs_reauth"],
+    ["withings", STRAVA_DEAD_GRANT, "connected"],
+    ["withings", '{"error":"invalid_grant"}', "connected"],
   ] as const)("%s HTTP 400 + %j → %s", async (provider, body, expected) => {
     await refreshWith(provider, body, 400);
     expect(statusOf(provider)).toBe(expected);

@@ -2252,13 +2252,13 @@ answer the first, and that is the load-bearing part.**
   and the only route to the connect flow was Disconnect. The invariant is asserted
   in both directions on every row of the proof below: the sentence starts with
   "Reconnect" if and only if the row says `needs_reauth`.
-- **On a data pull, `401` is the only definitive auth status.**
-  `isAuthRefreshFailure` reads a body-less `400` as a rejected grant, which is
-  right for a token refresh — the grant IS the request — and wrong for a data
-  endpoint, where a `400` is a bad parameter (#3007 measured exactly that against
-  Open-Meteo). It is not merely wrong copy: `pull-tick` auto-syncs `connected`
-  rows only, so flipping `needs_reauth` on a malformed request stopped the source
-  for good.
+- **On a data pull, `401` is the only definitive auth status.** At a refresh door,
+  Strava also supplies a structured `400` Fault naming an invalid refresh token;
+  Withings instead supplies envelope status `401` over HTTP 200. Generic or
+  bodyless `400`s are not revocation evidence. A data endpoint's `400` is a bad
+  parameter (#3007 measured exactly that against Open-Meteo), and flipping
+  `needs_reauth` on one stops the source for good because `pull-tick` auto-syncs
+  `connected` rows only.
 - **A transient failure promises nothing.** No `Try again.` (copy.md rule 1 allows
   it only where retrying can plausibly succeed) and — since #3618 — no "the next
   sync will pick it up" either. This line reaches the card and the digest only
