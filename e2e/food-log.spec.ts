@@ -857,7 +857,9 @@ test("a stated time wins over the tab: the serving lands, visibly, in its derive
   // e2e clock is pinned to 13:mm local (Midday under the default 11:00/15:00
   // boundaries), so 08:00 is offered and files under Morning at every UTC start hour.
   const filingSlot = EARLIER_HOUR_SLOT;
-  await page.getByTestId("food-when-time").selectOption({ label: EARLIER_HOUR });
+  await page
+    .getByTestId("food-when-time")
+    .selectOption({ label: EARLIER_HOUR });
 
   // Stand in a DIFFERENT tab than the one the hour files under. The tab is
   // navigation; the statement stated the consequence.

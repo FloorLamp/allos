@@ -498,7 +498,11 @@ describe("logPractice — the stated session time (#3273)", () => {
 
   it.each([
     // field on the post          expected `time`   what the sheet is doing
-    [undefined, "tap", "an untouched one-tap — the affordance was never opened"],
+    [
+      undefined,
+      "tap",
+      "an untouched one-tap — the affordance was never opened",
+    ],
     ["07:05", "07:05", 'a stated "Happened earlier?" minute'],
     ["", null, "the field present and empty — nobody said, honestly stored"],
   ])("time=%s writes %s", async (field, expected, _why) => {

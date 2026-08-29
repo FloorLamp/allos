@@ -110,7 +110,11 @@ export default function QuickStoolForm({
           return { kind: "rollback" };
         }
         settle(type);
-        toast(stated ? `Logged type ${res.type} at ${stated}` : `Logged type ${res.type}`);
+        toast(
+          stated
+            ? `Logged type ${res.type} at ${stated}`
+            : `Logged type ${res.type}`
+        );
         // A STATEMENT IS SPENT BY THE TAP IT ANSWERS. The key is the instant, so a
         // second tap under a surviving statement would restate the same minute — and
         // restating a minute CORRECTS that reading rather than adding one (the write

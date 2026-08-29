@@ -214,12 +214,12 @@ describe("logFoodServing — eating-time statement (#2053)", () => {
     });
 
     it.each([
-    ["07:05", "07:05"],
-    ["21:30", "21:30"],
-    ["now", null],
-    ["", null],
-    ["  ", null],
-    ["25:00", null],
+      ["07:05", "07:05"],
+      ["21:30", "21:30"],
+      ["now", null],
+      ["", null],
+      ["  ", null],
+      ["25:00", null],
     ])("occurred_at=%o states %o", async (posted, stated) => {
       const login = createLogin();
       const profile = createProfile(

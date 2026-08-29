@@ -822,10 +822,7 @@ async function logAnother(page: Page, row: Locator): Promise<void> {
   await hydratedClick(page, row.getByTestId("practice-log-button"));
   const dialog = page.getByTestId("confirm-dialog");
   await expect(dialog).toBeVisible();
-  await settledClick(
-    page,
-    dialog.getByRole("button", { name: "Log session" })
-  );
+  await settledClick(page, dialog.getByRole("button", { name: "Log session" }));
 }
 
 // #3273 — the sheet can now STATE when a session happened.

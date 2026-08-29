@@ -285,7 +285,10 @@ describe('raw <input type="time"> ratchet (issue #2236)', () => {
 const SHEET_INSTANT_FORMS = new Map<string, { mounts: boolean; why: string }>([
   [
     "app/(app)/nutrition/FoodLogBar.tsx",
-    { mounts: true, why: "eating-time statement + the correction sheet (#2227)" },
+    {
+      mounts: true,
+      why: "eating-time statement + the correction sheet (#2227)",
+    },
   ],
   [
     "app/(app)/trends/MeasurementsQuickAdd.tsx",
@@ -293,7 +296,10 @@ const SHEET_INSTANT_FORMS = new Map<string, { mounts: boolean; why: string }>([
   ],
   [
     "components/quick-entry/QuickStoolForm.tsx",
-    { mounts: true, why: '"Happened earlier?" over the second-grain key (#2785)' },
+    {
+      mounts: true,
+      why: '"Happened earlier?" over the second-grain key (#2785)',
+    },
   ],
   [
     "components/practices/LogPracticeButton.tsx",

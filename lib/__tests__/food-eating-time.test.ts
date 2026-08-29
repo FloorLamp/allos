@@ -204,5 +204,4 @@ describe("the web and Telegram offers use one vocabulary (#2206)", () => {
       );
     }
   });
-
 });
