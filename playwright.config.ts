@@ -206,10 +206,11 @@ export default defineConfig({
     // instead of being exercised only by the handful of specs that hand-set a
     // phone viewport via `test.use`.
     //
-    // OPT-IN, NOT A DUPLICATE OF THE SUITE. `testMatch` admits exactly two
-    // things: `smoke.spec.ts` (the broad "every primary surface renders" sweep,
-    // which is worth having at both viewports) and any spec named
-    // `*.mobile.spec.ts`. The naming convention was chosen over a `@mobile` tag
+    // OPT-IN, NOT A DUPLICATE OF THE SUITE. `testMatch` admits specs named
+    // `*.mobile.spec.ts`; primary-routes.mobile.spec.ts owns the broad "every
+    // primary surface renders" sweep at the viewport where it adds coverage.
+    // Desktop feature smoke stays in smoke.spec.ts and already overlaps the broad
+    // desktop suite. The naming convention was chosen over a `@mobile` tag
     // because it needs no per-test annotation, it is visible in `ls e2e/`, and
     // the CI `e2e-changed` lane's `^e2e/.*\.spec\.ts$` glob picks a changed
     // mobile spec up automatically (it runs `npx playwright test <specs>` with no
@@ -231,7 +232,7 @@ export default defineConfig({
     // unmarked `.first()`, retries: 0. See docs/internals/e2e-hygiene.md.
     {
       name: "mobile",
-      testMatch: /\/(smoke|[^/]+\.mobile)\.spec\.ts$/,
+      testMatch: /\.mobile\.spec\.ts$/,
       use: {
         browserName: "chromium",
         viewport: { width: 390, height: 844 },

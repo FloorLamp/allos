@@ -212,7 +212,7 @@ jobs:
   #     `npx playwright test <specs>` with no `--project` filter, so a changed
   #     `*.mobile.spec.ts` is matched by the same `^e2e/.*\.spec\.ts$` glob and
   #     lands in the mobile project by its NAME (playwright.config.ts testMatch).
-  #     A changed `smoke.spec.ts` correspondingly runs in both projects.
+  #     Other changed specs, including `smoke.spec.ts`, stay in chromium.
   #
   # This lane's ONLY additive job is that repeat-each=3 scrutiny on the CHANGED
   # SPECS — the sharded `e2e` matrix below already runs the WHOLE suite at
@@ -298,10 +298,8 @@ jobs:
   #
   # This runs `npm run test:e2e` unfiltered, so the phone-viewport `mobile`
   # project (#1420) rides along and its tests distribute across the shards.
-  # That is deliberately cheap: the project is OPT-IN (smoke.spec.ts +
-  # `*.mobile.spec.ts` only — see playwright.config.ts), so it adds ~23 tests
-  # (~1.5 min total, well under a minute per shard) rather than a mobile clone
-  # of the suite. It
+  # That is deliberately cheap: the project is OPT-IN (`*.mobile.spec.ts` only
+  # — see playwright.config.ts), rather than a mobile clone of the suite. It
   # needs no job of its own — a separate job would pay a whole extra runner's
   # checkout + npm ci + `next build` (~4 min) to run ~25 s of tests.
   e2e:

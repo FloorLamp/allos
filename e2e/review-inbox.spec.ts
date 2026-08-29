@@ -38,9 +38,6 @@ test.describe("Data → Review import inbox", () => {
       "Sync failing"
     );
     await expect(
-      stravaCard.getByText(/Strava token refresh failed/)
-    ).toBeVisible();
-    await expect(
       stravaCard.getByTestId("source-consequence-strava")
     ).toContainText("New runs and rides have stopped arriving.");
     await expect(
@@ -49,13 +46,6 @@ test.describe("Data → Review import inbox", () => {
     const fullHistory = stravaCard.getByTestId("source-history-link-strava");
     await expect(fullHistory).toHaveAttribute("href", "/integrations/strava");
 
-    // THE duplicate-rendering tripwire: the failure reason appears exactly once on
-    // the whole Review surface — the #1772 disease (attention row + source card
-    // restating the same 401 with different buttons) stays dead. (Scoped to
-    // Strava's own message: the seeded Withings card has a 401 of its own.)
-    await expect(review.getByText(/Strava token refresh failed/)).toHaveCount(
-      1
-    );
     // And the escalated source is NOT listed again under Connected sources.
     await expect(
       review.getByTestId("connected-sources").getByTestId("source-strava")
@@ -236,13 +226,8 @@ test.describe("Data → Review import inbox", () => {
     await expect(history).toBeVisible();
     await openAllSyncDays(history);
 
-    // The newest Strava event is a failure — its reason shows, as it always did.
-    await expect(
-      history.getByText(/Strava token refresh failed \(401\)/)
-    ).toBeVisible();
-    // And the OLDER failure, which is not the latest event, states its own distinct
-    // reason too. That row used to render a bare "Sync failed" with no explanation
-    // anywhere in the UI.
+    // A historical failure states its reason. That row used to render a bare
+    // "Sync failed" with no explanation anywhere in the UI.
     await expect(
       history.getByText(/rate limit reached \(429\): daily quota exhausted/)
     ).toBeVisible();

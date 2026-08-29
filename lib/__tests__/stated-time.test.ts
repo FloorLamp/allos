@@ -261,6 +261,19 @@ describe("reanchorStatedAt (a date change moves the pair together)", () => {
     });
   });
 
+  it("reads a bare stored UTC instant before re-anchoring in a non-UTC process", () => {
+    const previousTz = process.env.TZ;
+    try {
+      process.env.TZ = NY;
+      expect(
+        reanchorStatedAt("2026-08-05 09:30:00", "2026-08-06", UTC, now)
+      ).toBe("2026-08-06T09:30:00.000Z");
+    } finally {
+      if (previousTz === undefined) delete process.env.TZ;
+      else process.env.TZ = previousTz;
+    }
+  });
+
   it("clears — never guesses — when the wall time would land in the future", () => {
     // 21:00 stated on yesterday, re-anchored onto a today whose local clock
     // reads 16:00: keeping the hour would state the future.
@@ -289,5 +302,17 @@ describe("statedHhmm (the display half)", () => {
     const iso = "2026-08-08T03:00:00.000Z";
     expect(statedHhmm(iso, NY)).toBe("23:00");
     expect(dateStrInTz(NY, new Date(iso))).toBe("2026-08-07");
+  });
+
+  it("reads bare stored UTC and explicit-Z instants alike in a non-UTC process", () => {
+    const previousTz = process.env.TZ;
+    try {
+      process.env.TZ = NY;
+      expect(statedHhmm("2026-08-18 10:07:00", UTC)).toBe("10:07");
+      expect(statedHhmm("2026-08-18T10:07:00Z", UTC)).toBe("10:07");
+    } finally {
+      if (previousTz === undefined) delete process.env.TZ;
+      else process.env.TZ = previousTz;
+    }
   });
 });
