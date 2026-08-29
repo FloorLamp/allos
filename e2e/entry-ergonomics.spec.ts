@@ -975,7 +975,7 @@ test("weight steppers bump a set's load by the lift-appropriate increment (#337)
   // The intent controls moved behind the part's fact chips (#3349) — same testids,
   // one tap away. The chip that opens them here is the trailing affordance, because a
   // fresh part has declared no target.
-  await openPartOptions(page);
+  await openPartOptions(page, 0);
   const toFailure = page.getByTestId("to-failure-checkbox");
   await page.getByText("To failure", { exact: true }).click();
   await expect(toFailure).toBeChecked();
@@ -987,7 +987,7 @@ test("weight steppers bump a set's load by the lift-appropriate increment (#337)
   await closePartOptions(page);
   await expect(page.getByTestId("part-fact-intent")).toHaveText("to failure");
 
-  await openPartOptions(page);
+  await openPartOptions(page, 0);
   await page.getByText("To failure", { exact: true }).click();
   await expect(toFailure).not.toBeChecked();
   await closePartOptions(page);
@@ -1131,7 +1131,7 @@ test("the bilateral (per-side) reps stepper steps down too (#1524)", async ({
   // L/R variant and renders a reps stepper PER SIDE — the second home of the
   // missing decrement.
   await pickActivity(page, "Hammer Curl");
-  await openPartOptions(page); // the sides control is behind the part's fact chips (#3349)
+  await openPartOptions(page, 0); // the sides control is behind the part's fact chips (#3349)
   await page.getByText("Track sides separately", { exact: true }).click();
   await expect(page.getByTestId("per-side-checkbox")).toBeChecked();
   await closePartOptions(page);

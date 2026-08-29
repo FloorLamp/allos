@@ -147,6 +147,25 @@ describe("the per-part fact row states what the exercise records (#3349)", () =>
     }
   );
 
+  // #4046: ONE SHAPE OF EMPTY. A lift with no implement of any kind used to draw a
+  // standing "+ equipment" prompt beside an affordance holding the other three, which
+  // made a reader learn which kind of absence got which treatment. `Sit Up` has no
+  // variant group and no normal implement, so it is the case that reaches it.
+  it("puts an absent implement behind the same affordance as the rest", () => {
+    renderList([part({ name: "Sit Up" })]);
+
+    expect(screen.queryByTestId("strength-equipment-chip")).toBeNull();
+    expect(screen.getByTestId("part-fact-more").textContent).toBe(
+      "Add equipment, a target or effort"
+    );
+    // …and the panel behind it is still the EQUIPMENT one for that fact: the
+    // affordance opens options, and the implement is reached from its own chip when
+    // there is one. With nothing to state, the picker is one tap further away than a
+    // stated implement's — which is the trade the single affordance buys.
+    fireEvent.click(screen.getByTestId("part-fact-more"));
+    expect(screen.getByTestId("part-options-editor")).toBeTruthy();
+  });
+
   it("draws the panel's controls from what the part OFFERS, not from one condition", () => {
     renderList([part()]);
     fireEvent.click(screen.getByTestId("part-fact-more"));
