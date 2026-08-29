@@ -27,7 +27,7 @@ import { useFormatPrefs } from "@/components/FormatPrefsProvider";
 //
 // THE GRID INSIDE THE PANEL IS NOT THIS FILE'S (#3744). components/MonthCalendar.tsx
 // owns the cursor, the bounds, the month/year selectors, the arrows, the weekday row
-// and the 42 cells for both this picker and the Timeline's event calendar; this file
+// and the day grid for both this picker and the Timeline's event calendar; this file
 // owns the field, where the panel opens, and what Clear and Today mean.
 //
 // Works both uncontrolled (pass `name` + optional `defaultValue` — submits the

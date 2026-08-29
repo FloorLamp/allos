@@ -19,9 +19,15 @@ import { useWeekStart } from "@/components/WeekStartProvider";
 
 // THE APP'S ONE MONTH GRID (#3744). DateField's picker and the Timeline's event
 // calendar had each grown a complete month calendar — cursor, month/year selectors,
-// arrows, weekday row, 42 cells, today/outside paint — and the two had drifted apart
-// in month labels, bounds, arrow geometry and day semantics while claiming to be the
-// same control.
+// arrows, weekday row, a grid of WHOLE WEEKS, today/outside paint — and the two had
+// drifted apart in month labels, bounds, arrow geometry and day semantics while
+// claiming to be the same control.
+//
+// WHOLE WEEKS, NOT A FIXED 42 (`monthGridCells`, lib/date.ts). The grid pads to a
+// complete first and last week and stops: March 2026 opens on a Sunday, so a
+// Sunday-start profile gets 35 cells and a Monday-start one 42, and February in a
+// non-leap year starting on its week-start day gets 28. Every count is a multiple of
+// seven and nothing here may assume the largest one.
 //
 // A CLOSED BINDING, NOT A SLOT. A caller states what a DAY MEANS and nothing else:
 // pick one (`selectable`) or open one (`linked`). Everything a person can see — cell
@@ -239,7 +245,7 @@ export default function MonthCalendar({
           } ${!selected && isToday ? "ring-1 ring-brand-400" : ""}`;
 
           // The whole date, not the bare numeral: a screen reader arriving in the
-          // middle of a 42-cell grid hears which day "17" is.
+          // middle of the grid hears which day "17" is.
           const shared = {
             "data-calendar-day": "",
             className: DAY_HIT,

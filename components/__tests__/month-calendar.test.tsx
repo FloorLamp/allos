@@ -10,8 +10,8 @@ import { WeekStartProvider } from "@/components/WeekStartProvider";
 // ONE MONTH GRID, TWO BINDINGS (#3744). DateField's picker and the sidebar's event
 // calendar had each carried a complete implementation; what is tested here is the
 // core they now share, at the level a caller cannot reach — the week's ordering, the
-// 42 cells, which of them are outside the month, which day is today, which days a
-// binding refuses, and what a day actually IS in each binding.
+// whole-week cell count, which cells are outside the month, which day is today, which
+// days a binding refuses, and what a day actually IS in each binding.
 //
 // The clock is frozen because "today" is a rendered state here, not an input.
 const TODAY = "2026-03-15";
