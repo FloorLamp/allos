@@ -139,7 +139,7 @@ export function aggregateDoseDay(
 
 // A per-dose lookup of which dates were taken vs deliberately skipped (#232),
 // keyed by dose id. Both intake surfaces and the notifier build these from
-// getIntakeLogsInRange and feed them into doseStrip.
+// getIntakeAdherenceEvidence and feed them into doseStrip.
 export interface DoseDateStatus {
   taken: Set<string>;
   skipped: Set<string>;
@@ -289,7 +289,11 @@ export interface AdherenceStripDose extends DoseCadence {
 // The window is clamped to each dose's LIFETIME (#430/#1442): a day is scored only
 // against the doses that already existed on it (doseExistsSince), and a day where
 // NONE did — including an item carrying no live dose row at all — is "na", not a
-// miss. Nothing existed to take, so there is no follow-through to measure, and the
+// miss. THE CLAMP IS ONLY AS GOOD AS `takenByDose`, which the CALLER supplies: the
+// bound reads that index for proof a dose existed earlier than `created_at`, and that
+// question has no window. Callers build the index from `getIntakeAdherenceEvidence`,
+// which states the bound where it is supplied (#3988) — a plain windowed read scores
+// `na` on days a dose demonstrably existed. Nothing existed to take, so there is no follow-through to measure, and the
 // percentage summarizing the strip reads "no history yet" (pct null) instead of the
 // maximally-wrong 0%. `tz` resolves the UTC creation timestamps onto the same
 // profile-local calendar the `dates` window is built from.

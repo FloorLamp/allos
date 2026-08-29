@@ -33,7 +33,7 @@ import {
 import { travelExcusalResolver } from "@/lib/travel-excusal";
 import {
   getIntakeItems,
-  getIntakeLogsInRange,
+  getIntakeAdherenceEvidence,
   getActivityDates,
   getActivitiesByDate,
   isPredictedWorkoutDay,
@@ -501,12 +501,13 @@ describe("the submitted day is bounded by the days the sheet offers", () => {
 //   tz               getTimezone             ← both sides
 //   isExcused        travelExcusalResolver   ← both sides (#3263)
 //
-// EVIDENCE. `intakeAdherenceStrip` does not own its lifetime evidence — its CALLER
-// hands it `takenByDose`, and SupplementsTab hands it `STRIP_DAYS` (14) because that
-// is the span it draws. `pendingDayDoses` reads the earliest log over ALL history,
-// so the two agree on one rule and can differ only on how much evidence each was
-// given. This builder gives the strip what the subject has, so the comparison below
-// is about the RULE; the divergence the window can cause is pinned separately.
+// EVIDENCE, AND IT IS NO LONGER A DIVERGENCE (#3988). `intakeAdherenceStrip` does not
+// own its lifetime evidence — its CALLER hands it `takenByDose`. Every production
+// caller used to hand it the span it DRAWS, so a dose whose only proof of existence
+// was an older log scored `na` on days it existed, and this file recorded the sheet
+// and the strip disagreeing for that reason. They now share one evidence builder,
+// `getIntakeAdherenceEvidence`, which is what this helper uses too — so the comparison
+// below is about the RULE and the two sides are given the same facts to apply it to.
 const ALL_HISTORY_DAYS = 3650;
 function stripFor(
   profileId: number,
@@ -525,7 +526,7 @@ function stripFor(
       getActiveSituations(profileId),
       getSituationEvents(profileId)
     ),
-    indexTakenByDose(getIntakeLogsInRange(profileId, evidenceDays)),
+    indexTakenByDose(getIntakeAdherenceEvidence(profileId, evidenceDays)),
     getTimezone(profileId),
     travelExcusalResolver(profileId)
   );
@@ -764,10 +765,14 @@ describe("a logged dose proves it existed, and the clamp gives way to it", () =>
     ).toBe("missed");
   });
 
-  it("differs from the strip only by the EVIDENCE its caller was handed, not by the rule", async () => {
+  it("agrees with the strip even when the proof predates the drawn window (#3988)", async () => {
     const { profile, doseId, itemId } = seedReconciled("evidence-window");
     const day = shiftDateStr(today(profile.id), -1);
-    // The proof is 60 days old — outside the 14-day span SupplementsTab draws.
+    // The proof is 60 days old — outside the 14-day span the strip DRAWS. That used to
+    // decide the answer: the same rule over two evidence sets gave `na` here and
+    // `missed` on full history, and the sheet's deliberate choice of the second was
+    // recorded as a divergence. The lifetime bound now has its own evidence, so the
+    // window a surface draws no longer narrows what it is allowed to know.
     db.prepare(
       `INSERT INTO intake_item_logs (dose_id, item_id, date, status, recorded_at, logged_via)
        VALUES (?, ?, ?, 'taken', ?, 'page')`
@@ -778,19 +783,14 @@ describe("a logged dose proves it existed, and the clamp gives way to it", () =>
       `${shiftDateStr(today(profile.id), -60)} 09:00:00`
     );
 
-    // Same rule, two evidence sets, two answers — and the narrower one is narrower
-    // because of what its caller passed, not because it decides differently.
-    expect(
-      stripFor(profile.id, itemId, 14).find((d) => d.date === day)!.state
-    ).toBe("na");
-    expect(
-      stripFor(profile.id, itemId).find((d) => d.date === day)!.state
-    ).toBe("missed");
+    // One rule, one answer, at BOTH drawn spans — 14 is what the shipped surfaces use.
+    expect([
+      stripFor(profile.id, itemId, 14).find((d) => d.date === day)!.state,
+      stripFor(profile.id, itemId).find((d) => d.date === day)!.state,
+    ]).toEqual(["missed", "missed"]);
 
-    // The sheet takes the full-evidence answer, deliberately: a log IS proof the dose
-    // existed, and clamping the day away would CONCEAL a dose that was genuinely owed
-    // — the failure direction this whole feature exists to remove. Recorded here so
-    // the divergence is a decision on the record rather than a surprise.
+    // And the sheet offers it, as it always did: a log IS proof the dose existed, and
+    // clamping the day away would CONCEAL a dose that was genuinely owed.
     const data = await loadQuickEntry("dose");
     if (data.form !== "dose") throw new Error("expected the dose form");
     const offered = (

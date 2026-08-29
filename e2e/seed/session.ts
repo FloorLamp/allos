@@ -40,7 +40,7 @@ import path from "node:path";
 import { recordAudit } from "../../lib/audit";
 import { AUDIT_ACTIONS } from "../../lib/audit-actions";
 import { createSession } from "../../lib/auth";
-import { db } from "../../lib/db";
+import { db, dbFilePath } from "../../lib/db";
 import {
   SESSION_SLIDE_MARK_TTL_SEC,
   SESSION_SLIDE_MARK_VALUE,
@@ -126,8 +126,29 @@ function cookie(
 
 /**
  * Mint the admin session the workers will start with, and write it as a
- * storageState into the template directory (cwd), where the per-worker copy puts
- * it at `workerAuthPath(idx)` with no further work.
+ * storageState BESIDE THE DATABASE it minted the session in, where the
+ * per-worker copy puts it at `workerAuthPath(idx)` with no further work.
+ *
+ * BESIDE THE DATABASE, not in `process.cwd()` (#3948). Under `global-setup` the
+ * two are the same directory and always were — the seed child runs with the
+ * template dir as its cwd. Run the composed seed BY HAND from the repository
+ * root, which is what you do to answer a fixture question, and cwd is the repo
+ * root: the old write left an untracked `auth.json` holding a LIVE
+ * `__Host-ht_session` cookie there, outside every ignore rule and one `git add
+ * -A` from being committed.
+ *
+ * The database is the right anchor rather than a convenient one. This file is a
+ * storage state FOR the session row this run just wrote; beside a different
+ * database it is not merely misplaced, it is meaningless. So it follows
+ * `ALLOS_DB_PATH` wherever the caller pointed it — the template under
+ * global-setup, `data/` (gitignored) for a hand-run — and `.gitignore` covers a
+ * bare `auth.json` regardless, because a defence that depends on the writer
+ * being correct is not a defence.
+ *
+ * NOT `TEMPLATE_DIR` from e2e/worker-env, which the issue proposed and which
+ * would break the suite: that constant is itself derived from `process.cwd()`,
+ * so inside the seed child — whose cwd is already the template — it resolves to
+ * `<template>/e2e/.data/port-<n>/template`.
  */
 export function seedWorkerSession(): void {
   const login = db
@@ -159,7 +180,7 @@ export function seedWorkerSession(): void {
     origins: [],
   };
   fs.writeFileSync(
-    path.join(process.cwd(), AUTH_BASENAME),
+    path.join(path.dirname(dbFilePath()), AUTH_BASENAME),
     JSON.stringify(state, null, 2) + "\n"
   );
 }

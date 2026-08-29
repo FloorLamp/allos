@@ -11,9 +11,9 @@
 //
 // This lives in the action/DB tier on purpose. The pure tier takes a pre-built strip
 // and structurally cannot see the builder's INPUT layer — which is exactly where
-// every confirmed adherence-window defect has lived (#430, #448). Both halves of the
-// boundary are asserted: no elapsed slot → no history; an elapsed, untaken slot →
-// an honest 0%. Every value is synthetic.
+// every confirmed adherence-window defect has lived (#430, #448, and #3988 at the
+// bottom of this file). Both halves of the boundary are asserted: no elapsed slot →
+// no history; an elapsed, untaken slot → an honest 0%. Every value is synthetic.
 
 import { describe, it, expect } from "vitest";
 import { db, today } from "@/lib/db";
@@ -45,7 +45,7 @@ function oneDose(amount: string) {
   ];
 }
 import { loadMedicationsData } from "@/app/(app)/medications/med-data";
-import { adherenceSummary } from "@/lib/intake-adherence";
+import { adherenceSummary, STRIP_DAYS } from "@/lib/intake-adherence";
 import { shiftDateStr } from "@/lib/date";
 import { seedActor } from "./harness";
 
@@ -59,13 +59,18 @@ function medIdNamed(profileId: number, name: string): number {
   return row.id;
 }
 
-// Summarize the card's strip the way components/AdherenceRefill renders it.
-function cardAdherence(profileId: number, name: string) {
+// The card's own strip, straight off the page's gather.
+function cardStrip(profileId: number, name: string) {
   const card = loadMedicationsData(profileId).current.find(
     (c) => c.med.name === name
   );
   expect(card, `no current-medications card for ${name}`).toBeTruthy();
-  return adherenceSummary(card!.strip);
+  return card!.strip;
+}
+
+// Summarize the card's strip the way components/AdherenceRefill renders it.
+function cardAdherence(profileId: number, name: string) {
+  return adherenceSummary(cardStrip(profileId, name));
 }
 
 // Backdate an item + its doses so a scheduled slot has genuinely elapsed. Written
@@ -188,5 +193,67 @@ describe("medication cold-start adherence (#1442)", () => {
     expect(a.applicableDays).toBe(5);
     expect(a.takenDays).toBe(5);
     expect(a.pct).toBe(100);
+  });
+
+  // THE SAME WIDENING, WITH THE PROOF OUTSIDE THE DRAWN WINDOW (#3988).
+  //
+  // The case above works because its logs land inside the 14 days the strip draws, so
+  // the caller's windowed read happened to contain them. `doseWindowSince` asks an
+  // UNBOUNDED question — when did this dose first exist — of whatever evidence the
+  // caller passed, and a window cannot answer it. With the proof 60 days back the
+  // strip scored `na`, which is not a quieter `missed`: it asserts nothing was owed
+  // and drops the day out of adherence entirely, so a backfilled or long-dormant
+  // course read as days that never asked anything. Every surface reusing these
+  // verdicts inherited the ceiling.
+  //
+  // Driven through `loadMedicationsData` rather than through the strip directly,
+  // because the bug was never in the strip — it was in what the CALLER handed it, and
+  // a guard built on its own evidence set could not have seen it.
+  it("judges a day by evidence older than the window it draws (#3988)", async () => {
+    const { profile } = seedActor();
+    await addIntakeItem(
+      twoTap({
+        name: "Sertraline (test)",
+        obligation: "must",
+        doses: oneDose("50 mg"),
+      })
+    );
+    const itemId = medIdNamed(profile.id, "Sertraline (test)");
+    const doseId = (
+      db
+        .prepare("SELECT id FROM intake_item_doses WHERE item_id = ?")
+        .get(itemId) as { id: number }
+    ).id;
+    // Created TODAY, one backfilled administration well outside the drawn span.
+    const proof = shiftDateStr(today(profile.id), -(STRIP_DAYS * 4));
+    db.prepare(
+      `INSERT INTO intake_item_logs (dose_id, item_id, date, recorded_at, status)
+       VALUES (?, ?, ?, ?, 'taken')`
+    ).run(doseId, itemId, proof, `${proof} 07:30:00`);
+
+    const yesterday = shiftDateStr(today(profile.id), -1);
+    const strip = cardStrip(profile.id, "Sertraline (test)");
+    // The dose existed yesterday — the row above proves it — and nothing was logged,
+    // so the day is a miss. `na` here is the app asserting the day owed nothing.
+    expect(strip.find((d) => d.date === yesterday)).toEqual({
+      date: yesterday,
+      state: "missed",
+    });
+    // AND THE CONVERSE, IN THE SAME PROFILE AND THE SAME PASS, so this cannot pass by
+    // turning every unknown day into a miss: a second medication created today with no
+    // log anywhere still owed nothing yesterday. The widening is driven by evidence,
+    // and an absent history is still an absent history.
+    await addIntakeItem(
+      twoTap({
+        name: "Amlodipine (test)",
+        obligation: "must",
+        doses: oneDose("5 mg"),
+      })
+    );
+    expect(
+      cardStrip(profile.id, "Amlodipine (test)").find(
+        (d) => d.date === yesterday
+      )
+    ).toEqual({ date: yesterday, state: "na" });
   });
 });

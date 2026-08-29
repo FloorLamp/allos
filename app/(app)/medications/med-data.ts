@@ -12,7 +12,7 @@ import {
   getRetiredDoses,
   getTakenDoseTimes,
   getSkippedDoseIds,
-  getIntakeLogsInRange,
+  getIntakeAdherenceEvidence,
   getIntakePairs,
   getIntakeIngredientsByItem,
   getRefillRates,
@@ -284,7 +284,7 @@ export function loadMedicationsData(
   const isExcused = travelExcusalResolver(profileId);
   const dates = lastNDates(todayStr, STRIP_DAYS);
   const takenByDose = indexTakenByDose(
-    getIntakeLogsInRange(profileId, STRIP_DAYS)
+    getIntakeAdherenceEvidence(profileId, STRIP_DAYS)
   );
 
   const allCourses = getMedicationCourses(profileId);
@@ -680,7 +680,9 @@ export function getMedicationAdherenceCalendar(
   const card = data.byId.get(itemId);
   if (!card) return buildAdherenceCalendar([]);
   const dates = lastNDates(data.todayStr, days);
-  const takenByDose = indexTakenByDose(getIntakeLogsInRange(profileId, days));
+  const takenByDose = indexTakenByDose(
+    getIntakeAdherenceEvidence(profileId, days)
+  );
   const strip = intakeAdherenceStrip(
     card.med,
     card.doses,

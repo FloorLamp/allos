@@ -168,6 +168,7 @@ import {
   answerCallbackQuery,
   closeMessage,
   rebuildMessage,
+  TELEGRAM_CALL_TIMEOUT_MS,
   updateMessageKeyboard,
   type TelegramCallbackQuery,
 } from "./telegram";
@@ -235,11 +236,65 @@ const REFILL_SNOOZE_DAYS = 3;
 // it returns — Telegram wants that ack promptly and it must not wait on another
 // message's edits — and it reports WHETHER it wrote, so a tap that only navigated or
 // refused a stale token costs nothing.
+//
+// HOW LONG THE SWEEP MAY TAKE (#3951 F5). This runs on the webhook's synchronous 200
+// path, which the route's own contract says returns quickly, and #3933 made it
+// O(live pointers) — pointers live MESSAGE_POINTER_RETENTION_DAYS and each edit is
+// capped at TELEGRAM_CALL_TIMEOUT_MS, with nothing bounding the sweep as a whole.
+// `NOTIFICATION_DISPATCH_TIMEOUT_MS` does not apply: it bounds a dispatch fan-out, and
+// reconcile never reads it. Two hung edits therefore exceed Telegram's webhook timeout,
+// Telegram re-delivers the update, and the WHOLE TAP re-runs including its write. Dose
+// taps are idempotent; `handleFoodLog`, `handlePracticeDoneTap` and `logAdministration`
+// are guarded only by their own short-window rules, so a re-delivery can put a second
+// serving or a second administration into a person's health record. That is the harm
+// this budget exists to prevent, and it is worse than an hour of stale keyboards.
+//
+// THE CONSTANT IS ONE CALL'S WORTH, and it is derived rather than guessed: a figure for
+// Telegram's retry window would be a claim about someone else's infrastructure wearing
+// a comment, while TELEGRAM_CALL_TIMEOUT_MS is a number this repo owns and can change
+// in one place. One call's budget gives a worst case of two — one started just before
+// the deadline plus the one already in flight. Steady state is genuinely zero calls
+// (the idempotence pin in ReconcileResult.edited), so this only ever binds when the
+// chat is already degraded, which is exactly the case that threatens the timeout.
+export const TAP_SWEEP_BUDGET_MS = TELEGRAM_CALL_TIMEOUT_MS;
+
 export async function handleCallbackQuery(
   cq: TelegramCallbackQuery
 ): Promise<void> {
-  const wrote = await dispatchTap(cq);
-  if (wrote != null) await sweepAfterTap(wrote);
+  let wrote: TapWrote;
+  try {
+    wrote = await dispatchTap(cq);
+  } catch (e) {
+    // ── A WRITE THAT LANDS WITH A FAILED REBUILD KEEPS ITS SWEEP (#3951 F4) ───
+    //
+    // Writing handlers run write -> answer -> `rebuildMessage`, and `rebuildMessage`
+    // ends in `editMessageTextRaw`, which throws on ANY Bot API failure. That throw
+    // used to exit `dispatchTap` before the sweep ran, and the webhook swallowed it —
+    // leaving precisely the state the sweep exists for: the ledger moved, the person
+    // was told it moved, and now EVERY live message is stale rather than one. A gap in
+    // new coverage rather than a regression; before #3933 a rebuild throw lost nothing
+    // because there was no sweep to lose.
+    //
+    // The thrown value cannot name the profile — the handler that computed it is gone —
+    // so the target is resolved the way an inbound tap resolves one whose token does
+    // not name a profile: the profiles this chat can act as. That is a SUPERSET for a
+    // single-subject write and costs nothing (a swept profile with nothing stale edits
+    // zero times), and it is INCOMPLETE for the household round, which writes under a
+    // member whose own chat this may not be. Sweeping the wrong-but-adjacent set beats
+    // sweeping none, and the tick still reaches the member within the hour.
+    //
+    // F5's budget had to land first: this adds a sweep on exactly the degraded path
+    // that already threatened the webhook's timeout.
+    log.info("tap threw after answering; sweeping anyway", {
+      err: e instanceof Error ? e.message : String(e),
+    });
+    const chatId = cq.message?.chat?.id;
+    await sweepAfterTap(
+      chatId == null ? [] : getProfilesByTelegramChatId(String(chatId))
+    );
+    throw e;
+  }
+  if (wrote != null) await sweepAfterTap([wrote]);
 }
 
 // The profile's live messages, reconciled against the ledger this tap just moved.
@@ -255,23 +310,37 @@ export async function handleCallbackQuery(
 // this hook exists to remove. A message that WAS rebuilt costs nothing here: its
 // pointer is in sync, so the sweep computes the same render and edits zero times. The
 // exactly-once counts in usual-routine-telegram.test.ts are that idempotence's guard.
-async function sweepAfterTap(profileId: number): Promise<void> {
-  try {
-    const rc = await reconcileProfileMessages(profileId);
-    if (
-      rc.edited > 0 ||
-      rc.closed > 0 ||
-      rc.dropped > 0 ||
-      rc.deferred > 0 ||
-      rc.failed > 0
-    ) {
-      log.info("messages reconciled after tap", { profile: profileId, ...rc });
+async function sweepAfterTap(profileIds: readonly number[]): Promise<void> {
+  // ONE budget for the whole call, not one per profile: the caller is holding the
+  // webhook's connection open, and the error path above can hand this several
+  // profiles. Sharing the deadline is what keeps the bound a property of the RESPONSE
+  // rather than of each profile.
+  const until = Date.now() + TAP_SWEEP_BUDGET_MS;
+  for (const profileId of profileIds) {
+    try {
+      const rc = await reconcileProfileMessages(
+        profileId,
+        Math.max(0, until - Date.now())
+      );
+      if (
+        rc.edited > 0 ||
+        rc.closed > 0 ||
+        rc.dropped > 0 ||
+        rc.deferred > 0 ||
+        rc.failed > 0 ||
+        rc.unswept > 0
+      ) {
+        log.info("messages reconciled after tap", {
+          profile: profileId,
+          ...rc,
+        });
+      }
+    } catch (e) {
+      log.info("tap reconcile failed (ignored)", {
+        profile: profileId,
+        err: e instanceof Error ? e.message : String(e),
+      });
     }
-  } catch (e) {
-    log.info("tap reconcile failed (ignored)", {
-      profile: profileId,
-      err: e instanceof Error ? e.message : String(e),
-    });
   }
 }
 

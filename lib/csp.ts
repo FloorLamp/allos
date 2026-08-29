@@ -46,8 +46,6 @@ const STATIC_DIRECTIVES = [
   "base-uri 'self'",
   "object-src 'none'",
   "form-action 'self'",
-  // Clickjacking defense, mirrors X-Frame-Options: DENY.
-  "frame-ancestors 'none'",
   // Same-origin avatars/profile photos + data: icons + blob: crop previews.
   "img-src 'self' data: blob:",
   // Same-origin SSE (AI-log stream) etc.
@@ -56,19 +54,64 @@ const STATIC_DIRECTIVES = [
   "style-src 'self' 'unsafe-inline'",
 ];
 
+// THE ONE PATH THE APP FRAMES ITSELF (#3975).
+//
+// `/import/[id]` previews a stored PDF with `<iframe src="/medical/file/<id>">`
+// (components/DocumentPreview.tsx). The blanket `frame-ancestors 'none'` this
+// module shipped in #624 forbade that too — a spec-compliant browser must refuse
+// — so the Document pane rendered the browser's own refusal page instead of the
+// document, on every browser, everywhere, from #624 until now. Only PDFs were
+// affected: images preview through `<img>`, which `img-src 'self'` admits.
+//
+// SCOPED TO THIS PREFIX, NOT RELAXED APP-WIDE, and the reason is the trade rather
+// than the blast radius. App-wide `'self'` is what most apps run and would be
+// defensible here; the owner ruled against it (2026-08-28, #3975) because this
+// app serves PHI on every page and giving up clickjacking protection on all of
+// them to fix one route is the wrong direction for the one that matters.
+//
+// WHAT A THIRD PARTY CAN DO AFTERWARDS: nothing it could not do before. `'self'`
+// admits same-origin ancestors ONLY, so no other origin may frame this route —
+// or any other route, which all keep `'none'`. What changes is that allos may
+// frame its own stored file, which is the thing it was already trying to do.
+const SELF_FRAMED_PREFIX = "/medical/file/";
+
+/**
+ * Does this path serve a document the app frames inside its own pages?
+ *
+ * The trailing slash is load-bearing: it matches the `[id]` route's children and
+ * nothing that merely starts with the same letters (`/medical/files/1`).
+ */
+export function isSelfFramedPath(pathname: string): boolean {
+  return pathname.startsWith(SELF_FRAMED_PREFIX);
+}
+
 /**
  * Build the full Content-Security-Policy header value.
  *
- * @param nonce   Per-request nonce (from `generateNonce()`), used only in the
- *                production script-src.
- * @param isDev   True under `next dev` — relaxes script-src to allow HMR's
- *                eval + un-nonced inline scripts, and omits the nonce token.
+ * @param nonce       Per-request nonce (from `generateNonce()`), used only in the
+ *                    production script-src.
+ * @param isDev       True under `next dev` — relaxes script-src to allow HMR's
+ *                    eval + un-nonced inline scripts, and omits the nonce token.
+ * @param selfFramed  True for the one route the app frames itself
+ *                    (`isSelfFramedPath`) — the ONLY thing it changes is
+ *                    frame-ancestors, from `'none'` to `'self'`.
  */
-export function buildCsp(nonce: string, isDev: boolean): string {
+export function buildCsp(
+  nonce: string,
+  isDev: boolean,
+  selfFramed = false
+): string {
   const scriptSrc = isDev
     ? "script-src 'self' 'unsafe-inline' 'unsafe-eval'"
     : `script-src 'self' 'nonce-${nonce}'`;
-  return [...STATIC_DIRECTIVES, scriptSrc].join("; ");
+  // Clickjacking defense. middleware.ts stamps the matching X-Frame-Options
+  // (DENY / SAMEORIGIN) from the same boolean: where both headers are present a
+  // browser enforces frame-ancestors and ignores XFO, but a DENY left standing
+  // beside a `'self'` is a trap for the next reader, so the mirror moves with it.
+  const frameAncestors = selfFramed
+    ? "frame-ancestors 'self'"
+    : "frame-ancestors 'none'";
+  return [...STATIC_DIRECTIVES, frameAncestors, scriptSrc].join("; ");
 }
 
 /**

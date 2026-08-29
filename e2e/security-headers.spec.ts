@@ -1,4 +1,8 @@
+import fs from "node:fs";
+import path from "node:path";
+import Database from "better-sqlite3";
 import { test, expect } from "./fixtures";
+import { workerDbPath, workerDir } from "./worker-env";
 // Global security headers (issue #21). The non-CSP header set is configured in
 // next.config.js `headers()`; the Content-Security-Policy is emitted per-request
 // by middleware.ts (issue #595, step 3 — nonce'd script-src) and /share/* layers
@@ -149,4 +153,173 @@ test("share route keeps its stricter middleware headers", async ({
   expect(headers["content-security-policy"]).toContain(
     "frame-ancestors 'none'"
   );
+});
+
+// ── The one route the app frames itself (#3975) ──────────────────────────────
+//
+// /import/[id] previews a stored PDF with <iframe src="/medical/file/<id>">, and
+// the blanket frame-ancestors 'none' above forbade it: a spec-compliant browser
+// refused, and the Document pane rendered the browser's own refusal page. The
+// refusal raises NO error event, so #1340's "Preview unavailable" fallback could
+// not fire either — nothing in the app could see it, which is why it survived
+// from #624 until it was found on prod.
+//
+// So the guard is the WIRE and the BROWSER, never the config that intends them,
+// and it is three assertions because no single one of them is honest alone: the
+// headers on the response, the pane really requesting that response as a frame,
+// and a real browser committing the frame rather than refusing it. The header
+// assertion would pass on a page that still refuses; the permission assertion
+// would pass on a page that stopped framing anything at all.
+
+const PDF_DOC = "e2e-3975-framed.pdf";
+
+/** A stored PDF for THIS spec, on disk under the worker server's own cwd. */
+function seedFramedPdf(): number {
+  const rel = path.join("data", "uploads", "medical", "1", PDF_DOC);
+  const abs = path.join(workerDir(), rel);
+  fs.mkdirSync(path.dirname(abs), { recursive: true });
+  fs.writeFileSync(abs, `%PDF-1.4\n% allos e2e document 3975\n%%EOF\n`);
+  const handle = new Database(workerDbPath());
+  try {
+    handle
+      .prepare(`DELETE FROM medical_documents WHERE filename = ?`)
+      .run(PDF_DOC);
+    return Number(
+      handle
+        .prepare(
+          `INSERT INTO medical_documents
+             (profile_id, filename, stored_path, mime_type, size_bytes, doc_type,
+              extraction_status, extracted_count, uploaded_at)
+           VALUES (1, ?, ?, 'application/pdf', 42, 'Lab report', 'done', 0,
+                   '2026-07-10 09:00:00')`
+        )
+        .run(PDF_DOC, rel).lastInsertRowid
+    );
+  } finally {
+    handle.close();
+  }
+}
+
+/**
+ * A stored IMAGE for this spec. The bytes are not a decodable PNG on purpose and
+ * do not need to be: what the permission test reads is whether the frame COMMITS
+ * at this URL, and Chromium commits an image document for an `image/*` response
+ * whichever way the pixels decode. (Verified under the headless shell.)
+ */
+const IMG_DOC = "e2e-3975-framed.png";
+
+function seedFramedImage(): number {
+  const rel = path.join("data", "uploads", "medical", "1", IMG_DOC);
+  const abs = path.join(workerDir(), rel);
+  fs.mkdirSync(path.dirname(abs), { recursive: true });
+  fs.writeFileSync(abs, "e2e 3975 stored image bytes\n");
+  const handle = new Database(workerDbPath());
+  try {
+    handle
+      .prepare(`DELETE FROM medical_documents WHERE filename = ?`)
+      .run(IMG_DOC);
+    return Number(
+      handle
+        .prepare(
+          `INSERT INTO medical_documents
+             (profile_id, filename, stored_path, mime_type, size_bytes, doc_type,
+              extraction_status, extracted_count, uploaded_at)
+           VALUES (1, ?, ?, 'image/png', 27, 'Lab report', 'done', 0,
+                   '2026-07-10 09:00:00')`
+        )
+        .run(IMG_DOC, rel).lastInsertRowid
+    );
+  } finally {
+    handle.close();
+  }
+}
+
+test("the stored-file route carries frame-ancestors 'self', and nothing else does", async ({
+  request,
+}) => {
+  const id = seedFramedPdf();
+  const resp = await request.get(`/medical/file/${id}`);
+  expect(resp.status()).toBe(200);
+  const headers = resp.headers();
+  const csp = headers["content-security-policy"];
+  // The narrowing, on the wire.
+  expect(csp).toContain("frame-ancestors 'self'");
+  expect(csp).not.toContain("frame-ancestors 'none'");
+  // The legacy mirror moves with it: a DENY left beside a 'self' is ignored by
+  // browsers but is a trap for the next reader.
+  expect(headers["x-frame-options"]).toBe("SAMEORIGIN");
+  // …and NOTHING else about the policy moved.
+  expect(csp).toContain("default-src 'self'");
+  expect(csp).toContain("object-src 'none'");
+  expect(csp).toContain("form-action 'self'");
+  expect(csp).toContain("img-src 'self' data: blob:");
+  expect(scriptSrcDirective(csp)).toMatch(NONCE_TOKEN);
+  // The CONVERSE, in the same test: an ordinary page is still 'none'/DENY, so a
+  // widening that fixed this route by loosening every page cannot pass here.
+  const page = (await request.get("/login")).headers();
+  expect(page["content-security-policy"]).toContain("frame-ancestors 'none'");
+  expect(page["x-frame-options"]).toBe("DENY");
+});
+
+test("the import page's PDF pane requests its document as a frame", async ({
+  page,
+}) => {
+  const id = seedFramedPdf();
+  // The pane half: DocumentPreview really navigates a SUBFRAME at the stored-file
+  // route. Armed before the goto, because the frame's document request is part of
+  // the page load. Portable across Chromium builds — the request is made and
+  // answered whether or not this build can render what comes back (see the next
+  // test's header for why that distinction decides the shape of both).
+  const framedDoc = page.waitForResponse(
+    (r) =>
+      r.url().includes(`/medical/file/${id}`) &&
+      r.request().resourceType() === "document" &&
+      r.frame() !== page.mainFrame()
+  );
+  await page.goto(`/import/${id}`);
+  await expect(page.getByTestId("document-preview-frame")).toBeVisible();
+  const resp = await framedDoc;
+  expect(resp.status()).toBe(200);
+  expect(resp.headers()["content-type"]).toBe("application/pdf");
+});
+
+// THE PERMISSION HALF, AND WHY IT IS NOT ASSERTED ON THE PDF PANE ABOVE.
+//
+// The obvious guard — load /import/<id> and check the PDF pane's frame committed
+// at the file route — passes locally and is DEAD ON CI, in the direction that
+// matters: it cannot fail. CI installs `--only-shell chromium`
+// (.github/actions/e2e-setup), and the headless shell has no PDF viewer, so it
+// never commits a PDF frame at all: it diverts the response to the DOWNLOAD path
+// before the frame commits, and `frame-ancestors` is evaluated AT COMMIT.
+// Measured on both trees under that binary — permitted and refused produce the
+// same subframe 200, the same net::ERR_ABORTED, the same download, and the same
+// empty child-frame URL. An assertion there is an assertion about a browser
+// COMPONENT, not about this app's headers.
+//
+// So the permission claim is made with a body every Chromium build commits: an
+// image. `frame-ancestors` is scoped to the ancestor's ORIGIN, not its path or
+// the framed document's type, so a same-origin app page framing the same route is
+// the same question the PDF pane asks — and this one has an answer on CI.
+// Measured under the shell: permitted commits at /medical/file/<id>; refused
+// commits chrome-error://chromewebdata/ and logs "Refused to frame … because an
+// ancestor violates … frame-ancestors 'none'".
+test("a same-origin page may actually frame the stored-file route", async ({
+  page,
+}) => {
+  const id = seedFramedImage();
+  await page.goto("/");
+  const committed = page.waitForEvent(
+    "framenavigated",
+    (f) => f !== page.mainFrame() && f.url() !== ""
+  );
+  await page.evaluate((src) => {
+    const el = document.createElement("iframe");
+    el.src = src;
+    document.body.appendChild(el);
+  }, `/medical/file/${id}`);
+  const framed = await committed;
+  // A refusal is not an empty frame — it is a COMMITTED one at the browser's own
+  // error document, which is what the pane showed users from #624 until now.
+  expect(framed.url()).not.toContain("chrome-error");
+  expect(framed.url()).toContain(`/medical/file/${id}`);
 });
