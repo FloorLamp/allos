@@ -20,9 +20,11 @@ import { addBodyMetric } from "@/app/(app)/trends/body-actions";
 import { updateMetricReading } from "@/app/(app)/trends/reading-actions";
 import { paletteQuickLog } from "@/app/(app)/palette-actions";
 import { saveFitnessTest } from "@/app/(app)/training/fitness-actions";
+import { createEndurancePlan } from "@/app/(app)/training/endurance-actions";
 import { readingTargetToken } from "@/lib/reading-placement";
-import { LB_PER_KG } from "@/lib/units";
+import { LB_PER_KG, MI_PER_KM } from "@/lib/units";
 import { getUnitPrefs, setStoredAge, setUnitPrefs } from "@/lib/settings";
+import { getEndurancePlans } from "@/lib/endurance-plans";
 import { createLogin, createProfile, actAs, fd } from "./harness";
 
 const revalidate = vi.mocked(revalidatePath);
@@ -436,6 +438,67 @@ describe("saveFitnessTest honors the unit the e1RM field rendered (issues #630, 
         )
         .get(profile.id) as { weight_kg: number };
       expect(row.weight_kg).toBeCloseTo(expectKg, 6);
+    }
+  );
+});
+
+// THE DISTANCE TWIN (#3942, folded in on the coordinator's ruling). The plan bar labels
+// "Target distance (mi)" from a server prop and posted no unit, while both endurance
+// actions re-read `distanceUnit` at write time — structurally identical to the e1RM field
+// above, in the other unit family. Same genuine flip: the render-time read, the pref
+// rewritten as another tab would, then the action.
+describe("createEndurancePlan honors the unit the distance field rendered (issues #630, #3942)", () => {
+  it.each([
+    {
+      rendered: "mi",
+      flippedTo: "km",
+      typed: 13.1,
+      expectKm: 13.1 / MI_PER_KM,
+    },
+    { rendered: "km", flippedTo: "mi", typed: 21.1, expectKm: 21.1 },
+    // No field at all (older client): the pref AT WRITE TIME stays the fallback.
+    {
+      rendered: null,
+      flippedTo: "mi",
+      typed: 13.1,
+      expectKm: 13.1 / MI_PER_KM,
+    },
+  ] as const)(
+    "stores $typed typed under a ($rendered) label after the pref flips to $flippedTo",
+    async ({ rendered, flippedTo, typed, expectKm }) => {
+      const login = createLogin({ distanceUnit: rendered ?? flippedTo });
+      const profile = createProfile(
+        `plan-${rendered ?? "none"}-${flippedTo}`,
+        login.id
+      );
+      actAs(login, profile);
+      setStoredAge(profile.id, 30);
+
+      // Render: the plan bar reads the pref and labels the field with it.
+      const labelUnit = getUnitPrefs(login.id).distanceUnit;
+      if (rendered) expect(labelUnit).toBe(rendered);
+
+      // …then the login flips its unit in another tab, before Add plan is pressed.
+      setUnitPrefs(login.id, {
+        weightUnit: "kg",
+        distanceUnit: flippedTo,
+        temperatureUnit: "F",
+      });
+
+      const res = await createEndurancePlan(
+        fd({
+          discipline: "run",
+          event_name: "City Half",
+          event_date: "2026-10-05",
+          target_distance: typed,
+          distance_unit: rendered,
+        })
+      );
+      expect(res.ok).toBe(true);
+      expect(getEndurancePlans(profile.id)[0].targetDistanceKm).toBeCloseTo(
+        expectKm,
+        6
+      );
     }
   );
 });
