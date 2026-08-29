@@ -51,17 +51,21 @@ const subscribeToEmergencyCard = () => () => {};
 //     of the pass-5 fix) the family screen's three self-aimed actions: delete your own
 //     login, sign your own login out of every device, reset your own password. All of
 //     them run here, in a document, and call components/device-wipe.
-//   • NOT CLEARED — every session destroyed from SOMEWHERE ELSE. An admin revoking this
-//     phone, "Sign out everywhere else" pressed on a laptop, a password reset completed
-//     from another device. This device is not running any code at that moment, so the
-//     five snapshot payloads, the emergency card copy, the queue and its drafts all stay,
-//     and the write gate stays open — and this page keeps rendering them, session-free,
-//     for whoever is holding the phone.
+//   • CLEARED AT THIS DEVICE'S NEXT CONTACT WITH THE SERVER — every session destroyed
+//     from SOMEWHERE ELSE. An admin revoking this phone, "Sign out everywhere else"
+//     pressed on a laptop, a password reset completed from another device. This device is
+//     running no code at that moment, so everything here stays until it next reaches the
+//     server; then it is told the session was REVOKED rather than merely unauthorized
+//     (#3053) and wipes through the same door Log out uses, gate included.
+//   • NOT CLEARED — a session that simply EXPIRED. That answer is "unauthorized", it is
+//     the common case, and wiping on it would evaporate the record for someone who came
+//     back tomorrow. #2994's pass-4 ruling, and the reason the server had to be made to
+//     say the word rather than the device to guess from a bare 401.
 //
-// The residue lasts until this device next reaches the server, and a 401 alone is
-// deliberately NOT taken as the signal to wipe: an expired session and a revoked one are
-// identical from here, and wiping on expiry would evaporate the record for someone who
-// simply came back tomorrow. Closing that gap needs a mechanism, not a call — issue #3053.
+// SO THE RESIDUE IS BOUNDED BY CONTACT, NOT BY TIME, and this page is the one surface
+// that can outlive it: a device that only ever opens /offline makes no request, so
+// nothing tells it. Opening the app at all is a request — it bounces to /login, which is
+// where the revoked device is told (components/RevokedDeviceWipe).
 export default function OfflinePage() {
   const emergencyRaw = useSyncExternalStore(
     subscribeToEmergencyCard,

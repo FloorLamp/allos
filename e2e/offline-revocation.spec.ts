@@ -272,7 +272,8 @@ test("R1 — a REVOKED session wipes the offline record and closes the write gat
     // session row and nothing else, and until #3053 the phone kept the record anyway. A
     // raw DELETE against the fixture database would have proven only that the browser acts
     // on a state the spec itself invented; the seven server paths that must PRODUCE that
-    // state are pinned per-path in lib/__db_tests__/session-revocation.test.ts.
+    // state are pinned per-path in
+    // lib/__action_tests__/session-revocation-tombstones.actions.test.ts.
     const other = await browser.newContext();
     try {
       const laptop = await other.newPage();

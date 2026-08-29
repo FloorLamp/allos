@@ -72,8 +72,12 @@ const INITIAL_REFRESH_DELAY_MS = 1_200;
 // it all day got exactly ONE refresh. The triggers are therefore the pathname (every
 // in-app navigation, which is what a "visit" actually looks like here), the tab becoming
 // visible again, reconnecting, and a dirty mark from a tap this page just made — the
-// same belt-and-braces set OfflineQueueProvider uses for replay, and cheap for the same
-// reason: a run with nothing to fetch is one IndexedDB read and no request.
+// same belt-and-braces set OfflineQueueProvider uses for replay. A run with nothing to
+// fetch is one IndexedDB read and ONE PROBE — no payloads, no PHI, no builders (#3041).
+// It used to be no request at all, and that is exactly what let an off switch flipped
+// elsewhere sit unseen for up to a day. A run on a device whose gate is CLOSED still
+// costs nothing: `snapshotWritesClosed()` returns above the probe, which is what keeps
+// every "asked nothing after logout" guard in e2e/offline-write-gate.spec.ts true.
 export default function OfflineSnapshotRefresher({
   activeProfileId,
 }: {
