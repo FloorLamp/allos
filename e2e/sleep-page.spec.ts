@@ -640,6 +640,9 @@ test.describe("Sleep page (#1066)", () => {
       await expect(
         page.getByRole("main").getByTestId("oura-scores")
       ).toHaveCount(0);
+      await expect(
+        page.getByRole("main").getByTestId("sleep-usual-times")
+      ).toHaveCount(0);
     } finally {
       await page.context().close();
     }
@@ -742,6 +745,8 @@ test.describe("Sleep page (#1066)", () => {
       const hero = main.getByTestId("sleep-hero");
       await expect(hero).toContainText("23:00");
       await expect(hero).toContainText("04:00");
+      const usualTimes = main.getByTestId("sleep-usual-times");
+      await expect(usualTimes).toHaveText("Usually ~23:00 – 07:00.");
       const strip = main.getByTestId("sleep-consistency");
       await expect(strip).toBeVisible();
       await expect(strip).not.toContainText("PM");
@@ -751,6 +756,16 @@ test.describe("Sleep page (#1066)", () => {
           nodes.every((node) => node.textContent?.includes(" → "))
         )
       ).toBe(true);
+
+      // The Morning notification's Auto option reads the SAME wake classifier
+      // wrapper. Compare the rendered minute so this page cannot drift into a
+      // second sleep-time derivation.
+      await page.goto("/settings/notifications");
+      await expect(
+        page
+          .getByTestId("intake-morning-hour")
+          .getByRole("option", { name: "Auto (~07:00)", exact: true })
+      ).toHaveCount(1);
 
       // Flip the login's clock to 12h on Settings → Preferences (autosave on change).
       await page.goto("/settings/display");
@@ -763,6 +778,9 @@ test.describe("Sleep page (#1066)", () => {
       const hero12 = page.getByRole("main").getByTestId("sleep-hero");
       await expect(hero12).toContainText("11:00 PM");
       await expect(hero12).toContainText("4:00 AM");
+      await expect(
+        page.getByRole("main").getByTestId("sleep-usual-times")
+      ).toHaveText("Usually ~11:00 PM – 7:00 AM.");
       await expect(
         page.getByRole("main").getByTestId("sleep-consistency")
       ).toContainText("PM");
