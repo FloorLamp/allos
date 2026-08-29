@@ -242,13 +242,21 @@ test('a stated "Happened earlier?" time is the instant the reading carries (#327
   });
   const isWrite = (request: Request): boolean =>
     request.method() === "POST" && new URL(request.url()).pathname === "/";
-  // Armed BEFORE the click so neither can miss its event.
-  const dispatched = page.waitForRequest(isWrite, { timeout: 20_000 });
+  // Armed BEFORE the click so it cannot miss its event.
   const answered = page.waitForResponse((r) => isWrite(r.request()), {
     timeout: 30_000,
   });
   await hydratedClick(page, picker.getByTestId("stool-type-4"));
-  await dispatched;
+  // IN FLIGHT, PROVED BY THE PAGE RATHER THAN BY THE WIRE. The ledger paints its
+  // optimistic count the moment `write()` is invoked and adopts the server's only in
+  // `settle`, so this text is the tap having STARTED — which is the whole ordering
+  // this leg needs, since the settle cannot run before the response this route is
+  // holding. It replaces a `waitForRequest` ceiling that went red once on CI without
+  // the write being broken: a network-timing bound on a loaded shard is a worse
+  // question than the state it was standing in for.
+  await expect(page.getByTestId("quick-entry-stool-count")).toHaveText(
+    "1 logged today."
+  );
 
   // The statement, made while that first write is still out. The day half is FIXED to
   // today, so a statement can only move the minute.
@@ -258,9 +266,6 @@ test('a stated "Happened earlier?" time is the instant the reading carries (#327
 
   release();
   await answered;
-  await expect(page.getByTestId("quick-entry-stool-count")).toHaveText(
-    "1 logged today."
-  );
   // The tap posted NO time — it consumed the silence that was in force when it fired,
   // not the statement that arrived while it was in flight.
   const tapped = bristolRows();
