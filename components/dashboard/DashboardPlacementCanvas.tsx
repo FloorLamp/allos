@@ -132,7 +132,9 @@ function MomentBlock({
   presentations: ReadonlyMap<string, DashboardStandingPresentation>;
 }) {
   const moment = block.members
-    .map((placement) => presentations.get(placement.candidate.candidateId)?.moment)
+    .map(
+      (placement) => presentations.get(placement.candidate.candidateId)?.moment
+    )
     .find((entry) => entry != null);
   const door = moment?.href;
   return (
@@ -160,9 +162,7 @@ function MomentBlock({
           <DashboardFactRow
             key={placement.candidate.candidateId}
             candidate={placement.candidate}
-            presentation={
-              presentations.get(placement.candidate.candidateId)!
-            }
+            presentation={presentations.get(placement.candidate.candidateId)!}
             lane="everything"
           />
         ))}

@@ -258,9 +258,7 @@ function StandingFamilyRow({
                     : ""
                 }
                 linkClass="sm:pr-32"
-                className={
-                  stacked ? "relative" : primary ? undefined : "z-10"
-                }
+                className={stacked ? "relative" : primary ? undefined : "z-10"}
               />
             );
           })}

@@ -39,9 +39,7 @@ test.describe("the Show-everything tail's grammar (#3365)", () => {
     ).toBeGreaterThan(1);
   });
 
-  test("no two tail blocks share a moment header", async ({
-    page,
-  }) => {
+  test("no two tail blocks share a moment header", async ({ page }) => {
     await page.goto("/");
     await openDashboardAll(page);
     const lane = page.getByTestId("dashboard-all-contents");
@@ -53,7 +51,6 @@ test.describe("the Show-everything tail's grammar (#3365)", () => {
     // populated set and not an empty one.
     expect(headers.length).toBeGreaterThan(0);
     expect([...new Set(headers)].length).toBe(headers.length);
-
   });
 
   // READ-ONLY on the composed-morning fixture: it looks at the offer and never taps

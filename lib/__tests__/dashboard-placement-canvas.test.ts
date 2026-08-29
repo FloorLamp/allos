@@ -324,7 +324,9 @@ describe("the Show-everything tail (#3365)", () => {
     );
     expect(promoted.split("Weekly recap · Aug 23–29").length - 1).toBe(1);
     expect(promoted.split('data-lane="everything"').length - 1).toBe(5);
-    expect(promoted).not.toContain(`data-candidate-id="${lines[0].candidateId}"`);
+    expect(promoted).not.toContain(
+      `data-candidate-id="${lines[0].candidateId}"`
+    );
   });
 
   it.each([
@@ -338,15 +340,24 @@ describe("the Show-everything tail (#3365)", () => {
     const html = renderTail(
       [everything(candidate, group, 0)],
       [[candidate.candidateId, { label: "Latest", value: "12" }]],
-      [[candidate.candidateId, createElement("article", { className: "card" }, "Card node")]]
+      [
+        [
+          candidate.candidateId,
+          createElement("article", { className: "card" }, "Card node"),
+        ],
+      ]
     );
     const groupMarkup = html.slice(
       html.indexOf(`data-testid="dashboard-everything-${group}"`)
     );
     // The group exists and holds exactly this one entry — the positive control that
     // stops "no card in here" passing on a group that was never rendered at all.
-    expect(groupMarkup).toContain(`data-candidate-id="${candidate.candidateId}"`);
-    expect(groupMarkup.split('data-testid="dashboard-candidate"').length - 1).toBe(1);
+    expect(groupMarkup).toContain(
+      `data-candidate-id="${candidate.candidateId}"`
+    );
+    expect(
+      groupMarkup.split('data-testid="dashboard-candidate"').length - 1
+    ).toBe(1);
     expect(groupMarkup.includes('class="card"')).toBe(!asRows);
     expect(groupMarkup.includes("Card node")).toBe(!asRows);
     expect(groupMarkup.includes("Latest")).toBe(asRows);
@@ -362,7 +373,12 @@ describe("the Show-everything tail (#3365)", () => {
         everything(rows[1], "setup", 2),
       ],
       rows.map((r) => [r.candidateId, { label: r.candidateId, value: "1" }]),
-      [[card.candidateId, createElement("article", { className: "card" }, "Hosted control")]]
+      [
+        [
+          card.candidateId,
+          createElement("article", { className: "card" }, "Hosted control"),
+        ],
+      ]
     );
     for (const candidate of [...rows, card])
       expect(

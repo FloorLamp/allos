@@ -110,11 +110,7 @@ import { freshnessAgeDays } from "@/lib/freshness";
 import { glanceAgeToken } from "@/lib/glance-age";
 import { VITAL_PRESENTATION_FLOORS } from "@/lib/vitals-latest";
 import { getRecapCard } from "@/lib/notifications/recap-data";
-import {
-  recapLineAnnotation,
-  recapLineId,
-  recapRangeLabel,
-} from "@/lib/recap";
+import { recapLineAnnotation, recapLineId, recapRangeLabel } from "@/lib/recap";
 import { recapScaleEntry } from "@/lib/recap-scale";
 import {
   coachingObservationFindings,
