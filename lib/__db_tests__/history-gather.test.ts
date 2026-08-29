@@ -728,6 +728,54 @@ describe("a row title links only to a home of its own (#3958/#4045)", () => {
     expect(rows.map((row) => row.href)).toEqual([null, null]);
   });
 
+  it("splits the dose kind on whether the ITEM has a page, not on the kind", () => {
+    // THE SAME CRITERION, ON THE KIND THE ISSUE DID NOT ENUMERATE. Every supplement
+    // dose row linked to `intakeHref("supplement")` — one page-level destination down
+    // the whole column, the shape §5 removed from substances. Medications are the
+    // genuine counter-case, so both arms are asserted here TOGETHER: a tree that made
+    // every dose title plain satisfies the first half alone, and a tree that restored
+    // the shared supplements link satisfies the second.
+    const p = profile("history dose titles");
+    const loginId = login();
+    const items = new Map<string, number>();
+    for (const [name, kind] of [
+      ["History Mag", "supplement"],
+      ["History Zinc", "supplement"],
+      ["History Statin", "medication"],
+      ["History Beta", "medication"],
+    ] as const) {
+      const id = Number(
+        db
+          .prepare(
+            "INSERT INTO intake_items (profile_id, name, kind) VALUES (?, ?, ?)"
+          )
+          .run(p, name, kind).lastInsertRowid
+      );
+      items.set(name, id);
+      const dose = Number(
+        db
+          .prepare(
+            "INSERT INTO intake_item_doses (item_id, amount, time_of_day) VALUES (?, '1', 'Morning')"
+          )
+          .run(id).lastInsertRowid
+      );
+      db.prepare(
+        `INSERT INTO intake_item_logs
+           (item_id, dose_id, date, recorded_at, status)
+         VALUES (?, ?, ?, ?, 'taken')`
+      ).run(id, dose, YESTERDAY, `${YESTERDAY} 08:00:00`);
+    }
+    const rows = gatherHistoryLog(p, { loginId, limit: 200, kind: "dose" }).rows;
+    const hrefOf = (title: string) =>
+      rows.find((row) => row.title === title)?.href ?? null;
+
+    expect(hrefOf("History Mag")).toBeNull();
+    expect(hrefOf("History Zinc")).toBeNull();
+    const medications = [hrefOf("History Statin"), hrefOf("History Beta")];
+    expect(medications.filter((href) => href != null)).toHaveLength(2);
+    expect(new Set(medications).size).toBe(2);
+  });
+
   it("still gives two body measures their own metric pages", () => {
     // THE CONVERSE, in the same commit: "no substance title links" passes just as well
     // on a tree where every title everywhere went plain, and body is the kind whose
