@@ -5,7 +5,6 @@ import { fileURLToPath } from "node:url";
 import { describe, expect, it } from "vitest";
 import { perTestCeiling } from "../../vitest.timeouts";
 import { stripComments } from "./strip-comments";
-import { disagreements } from "./strip-comments-oracle";
 import { stringLiterals } from "./source-literals";
 
 // THE SCANNER THE REPOSITORY CENSUSES READ SOURCE THROUGH (#3087).
@@ -280,19 +279,6 @@ describe("the regex-vs-division heuristic, and what it gets wrong", () => {
     });
   });
 
-  it("the oracle SEES a disagreement, and stays quiet on agreement", () => {
-    // A frozen list of one is only worth having if the instrument that produced it
-    // can report a second. Both directions authored, because the census below
-    // asserts on both.
-    expect(
-      disagreements("x.ts", "function f() {}\n/[//]/.test(s);\n").overBlanked
-        .length
-    ).toBeGreaterThan(0);
-    expect(
-      disagreements("x.ts", "const r = /\\/\\//; // note\nconst kept = 1;\n")
-    ).toEqual({ underBlanked: [], overBlanked: [] });
-  });
-
   /**
    * A full TypeScript PARSE of every tracked source file, which is the point — the
    * oracle is only an oracle because it is the real thing. The ceiling is bounding
@@ -302,10 +288,11 @@ describe("the regex-vs-division heuristic, and what it gets wrong", () => {
    *
    * WEEKLY/MANUAL, NOT A PER-CHANGE GATE. This sweep was 119 s against the pure
    * tier's 231 s median: half of every unit run spent re-proving that thousands of
-   * unchanged files still agreed with the compiler. The authored grammar cases and
-   * the oracle's own disagreement/agreement fixtures above stay in every PR. This
-   * whole-tree drift census runs from e2e-full.yml, whose weekly schedule is already
-   * watched by ci-main.yml (#2968), or explicitly with:
+   * unchanged files still agreed with the compiler. The authored scanner cases stay
+   * in every PR; the oracle's disagreement/agreement fixtures run beside this sweep
+   * so the TypeScript parser is not loaded merely to test the weekly instrument.
+   * This whole-tree drift census runs from e2e-full.yml, whose weekly schedule is
+   * already watched by ci-main.yml (#2968), or explicitly with:
    *
    *   ALLOS_RUN_STRIP_COMMENTS_ORACLE=1 \
    *     npx vitest run lib/__tests__/strip-comments.test.ts
@@ -342,7 +329,20 @@ describe("the regex-vs-division heuristic, and what it gets wrong", () => {
 
   it.skipIf(process.env.ALLOS_RUN_STRIP_COMMENTS_ORACLE !== "1")(
     "disagrees with a real TypeScript parse on exactly the files named here",
-    () => {
+    async () => {
+      const { disagreements } = await import("./strip-comments-oracle");
+
+      // Prove both directions before trusting a clean whole-tree result. Keeping
+      // this beside the weekly sweep avoids loading the TypeScript parser on every
+      // PR merely to test the oracle rather than the scanner.
+      expect(
+        disagreements("x.ts", "function f() {}\n/[//]/.test(s);\n").overBlanked
+          .length
+      ).toBeGreaterThan(0);
+      expect(
+        disagreements("x.ts", "const r = /\\/\\//; // note\nconst kept = 1;\n")
+      ).toEqual({ underBlanked: [], overBlanked: [] });
+
       // THE MEASUREMENT, not an argument. Every character this scanner blanks is
       // compared with every character the compiler calls comment trivia, over the whole
       // tracked corpus. `underBlanked` is a false finding; `overBlanked` is a false
@@ -662,13 +662,15 @@ describe("the hand-rolled comment strippers still in the tree (#3595)", () => {
     "lib/__tests__/strip-comments-equivalence.ts",
   ]);
 
-  // Both assertions below ask different questions of one immutable checkout. This
-  // used to list, read and strip the whole corpus twice; retain one snapshot for the
-  // file instead. The planted-corpus test still exercises the matcher independently.
-  let sourcesCache: { rel: string; code: string }[] | undefined;
-  const sources = (): { rel: string; code: string }[] => {
-    if (sourcesCache) return sourcesCache;
-    sourcesCache = execFileSync(
+  // The corpus floor and ratchet ask different questions of one immutable checkout.
+  // Keep one tracked-file snapshot, then raw-prefilter before invoking the scanner:
+  // stripping cannot create a banned regex literal, so a raw non-match cannot become
+  // a match after comments are blanked. This keeps the exact verdict while running
+  // the state machine only over the small candidate set.
+  let trackedSourcesCache: string[] | undefined;
+  const trackedSources = (): string[] => {
+    if (trackedSourcesCache) return trackedSourcesCache;
+    trackedSourcesCache = execFileSync(
       "git",
       ["ls-files", "-z", "--", ...CENSUS_ROOTS],
       {
@@ -678,11 +680,19 @@ describe("the hand-rolled comment strippers still in the tree (#3595)", () => {
     )
       .toString("utf8")
       .split("\0")
-      .filter((f) => /\.(ts|tsx|mts|cts|js|jsx|mjs|cjs)$/.test(f))
-      .map((rel) => ({
-        rel,
-        code: stripComments(fs.readFileSync(path.join(REPO, rel), "utf8")),
-      }));
+      .filter((f) => /\.(ts|tsx|mts|cts|js|jsx|mjs|cjs)$/.test(f));
+    return trackedSourcesCache;
+  };
+
+  let sourcesCache: { rel: string; code: string }[] | undefined;
+  const sources = (): { rel: string; code: string }[] => {
+    if (sourcesCache) return sourcesCache;
+    sourcesCache = trackedSources().flatMap((rel) => {
+      const raw = fs.readFileSync(path.join(REPO, rel), "utf8");
+      return HAND_ROLLED.some(([re]) => re.test(raw))
+        ? [{ rel, code: stripComments(raw) }]
+        : [];
+    });
     return sourcesCache;
   };
 
@@ -699,7 +709,7 @@ describe("the hand-rolled comment strippers still in the tree (#3595)", () => {
       .sort();
 
   it("reads the corpus it is about to pronounce on", () => {
-    const files = sources();
+    const files = trackedSources();
     expect(
       files.length,
       `The census read ${files.length} source files under ${CENSUS_ROOTS.join(", ")}. ` +
@@ -708,7 +718,7 @@ describe("the hand-rolled comment strippers still in the tree (#3595)", () => {
     ).toBeGreaterThanOrEqual(2000);
     for (const root of CENSUS_ROOTS)
       expect(
-        files.filter((f) => f.rel.startsWith(`${root}/`)).length,
+        files.filter((rel) => rel.startsWith(`${root}/`)).length,
         `No file at all under \`${root}/\`.`
       ).toBeGreaterThan(0);
   });
