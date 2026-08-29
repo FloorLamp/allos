@@ -2,6 +2,7 @@ import fs from "node:fs";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
 import { describe, expect, it } from "vitest";
+import { stripComments } from "./strip-comments";
 
 // ONE DISCLOSURE (#3677), in the repo's source-scan idiom.
 //
@@ -29,45 +30,14 @@ const SCAN_DIRS = ["app", "components"];
 /** The module that IS the disclosure. */
 const DISCLOSURE_OWNER = "components/Disclosure.tsx";
 
-/**
- * Blank out comments and string/template literals, preserving offsets, so a
- * `<details>` MENTIONED in prose — and several files explain why the element was
- * chosen — is never read as one being rendered. A guard that cried wolf on those
- * would be deleted inside a week, taking the real guard with it.
- */
-function withoutProse(src: string): string {
-  const out = src.split("");
-  let i = 0;
-  const blank = (from: number, to: number) => {
-    for (let k = from; k < to; k++) if (out[k] !== "\n") out[k] = " ";
-  };
-  while (i < src.length) {
-    const two = src.slice(i, i + 2);
-    if (two === "//") {
-      const end = src.indexOf("\n", i);
-      blank(i, end === -1 ? src.length : end);
-      i = end === -1 ? src.length : end;
-    } else if (two === "/*") {
-      const end = src.indexOf("*/", i + 2);
-      const stop = end === -1 ? src.length : end + 2;
-      blank(i, stop);
-      i = stop;
-    } else if (src[i] === '"' || src[i] === "'" || src[i] === "`") {
-      const quote = src[i];
-      let j = i + 1;
-      while (j < src.length && src[j] !== quote) j += src[j] === "\\" ? 2 : 1;
-      blank(i, Math.min(j + 1, src.length));
-      i = j + 1;
-    } else {
-      i++;
-    }
-  }
-  return out.join("");
-}
-
 /** Whether this source RENDERS a raw `<details>`, as opposed to talking about one. */
 export function rendersRawDetails(src: string): boolean {
-  return /<details[\s>/]/.test(withoutProse(src));
+  // Through the SHARED stripper, not a hand-rolled pair of regexes — several of these
+  // files explain in prose why the element was chosen, and a guard that reads its own
+  // documentation as evidence cries wolf until somebody deletes it. `stripComments`
+  // already knows about JSX children, template literals and regex literals, which is
+  // more than a boundary this shallow would ever get right on its own (#3595).
+  return /<details[\s>/]/.test(stripComments(src));
 }
 
 function sources(): string[] {
@@ -101,7 +71,11 @@ describe("the app has one disclosure", () => {
     ["// a native <details>, so it works with JS off", false, "a line comment"],
     ["/* the old <details> version */", false, "a block comment"],
     ["{/* an empty <details> never renders */}", false, "a JSX comment"],
-    ['const html = "<details>";', false, "a string literal"],
+    [
+      'const html = "<details>";',
+      true,
+      "a string literal — the shared stripper keeps strings, and a fold emitted as raw HTML is still a fold outside the owner",
+    ],
     [
       '<Disclosure summary="x">y</Disclosure>',
       false,
