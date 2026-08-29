@@ -28,7 +28,7 @@ import {
 //      control an already-merged spec proves is visible at this exact viewport
 //      (e2e/button-height-floor.mobile.spec.ts), so a red here is the probe's
 //      reach failing, not the surface being missing.
-//   3. SYNTHETIC OFFENDERS of both classes, planted in a live DOM and required
+//   3. SYNTHETIC OFFENDERS of all three classes, planted in a live DOM and required
 //      back — AND their benign neighbours, planted the same way and required to
 //      stay silent. Both halves are the guard. A probe that flags the wide table
 //      inside every designed horizontal scroller, or every row where a 40px button
@@ -150,7 +150,11 @@ test.describe("the census geometry probe measures what it claims to (#3489)", ()
       console.log(
         `[#3489 geometry probe] ${surface.path} @${PHONE.width}px: ` +
           `${r.clipCandidates} boxes, ${r.controlRowsExamined} multi-control rows, ` +
-          `${r.clippedTotal} clipped, ${r.heightRowsTotal} mixed-height rows`
+          `${r.textBoxesExamined} text boxes, ${r.clippedTotal} clipped, ` +
+          `${r.heightRowsTotal} mixed-height rows, ${r.overlapsTotal} colliding pairs` +
+          (r.overlaps.length
+            ? `\n  ${r.overlaps.map((o) => `${o.a} × ${o.b} ${o.overlapX}/${o.overlapY}`).join("\n  ")}`
+            : "")
       );
 
       expect(
@@ -235,6 +239,140 @@ test.describe("the census geometry probe measures what it claims to (#3489)", ()
         "stopped exempting an inline run that a `.truncate` ancestor clips inside " +
         "the viewport (#3607 item 1)."
     ).toEqual([]);
+  });
+
+  // ── PROBE (c): A COLLISION CLAIM COMES FROM BOXES (#3814) ─────────────────────
+  //
+  // #3716 reported Data -> Trash as `"Recently deletedDeleted rows are kept here
+  // for 30 days…"` and read that concatenation as a collision. It was not one:
+  // measured at 390x844 the `<h2>` sits at [128, 152] and the `<p>` at [156, 276],
+  // both `display: block`, correctly stacked with 4px of gap. The string is what
+  // `textContent` returns for two block elements, which is the same string it
+  // returns for EVERY heading above a paragraph — so the claim was unfalsifiable as
+  // filed. This is the surface that produced it, at the viewport that produced it.
+  //
+  // The verdict alone would be worthless: a probe that reports nothing is silent on
+  // a clean page and on a broken one alike, which is the shape #3716's own guard was
+  // written against. So the same page carries the converse, in the file's existing
+  // order — the benign twin alone first, then the offender beside it.
+  const TRASH_ROUTE = "/data?section=trash";
+  const TRASH_HEADING = '[data-testid="data-trash"] h2';
+
+  // #3716's exact shape: a heading above a paragraph, two block boxes, one string
+  // through `textContent`. It must produce NO finding.
+  const STACKED_BENIGN =
+    '<div data-testid="forged-stacked" style="width:200px">' +
+    '<h3 data-testid="forged-stacked-heading" style="margin:0">Recently deleted</h3>' +
+    '<p data-testid="forged-stacked-body" style="margin:4px 0 0 0">' +
+    "Deleted rows are kept here for 30 days</p></div>";
+
+  // A REAL collision, in normal flow: the body pulled up onto the heading by a
+  // negative margin, so the two boxes are painted on top of each other. Given in
+  // pixels rather than class names, like every other forgery in this file.
+  const COLLISION_OFFENDER =
+    '<div data-testid="forged-collision" style="width:200px">' +
+    '<h3 data-testid="forged-collision-heading" style="margin:0;height:20px">Recently deleted</h3>' +
+    '<p data-testid="forged-collision-body" style="margin:-18px 0 0 0">' +
+    "Deleted rows are kept here for 30 days</p></div>";
+
+  test("reports Data -> Trash clean, and still catches a collision forged on it", async ({
+    page,
+  }) => {
+    test.slow();
+    await page.goto(TRASH_ROUTE);
+    await expect(page.locator(TRASH_HEADING)).toBeVisible();
+
+    // THE GROUND TRUTH FIRST, from the same two boxes #3716 named — so a green
+    // verdict below cannot be the probe agreeing with a page that stopped
+    // rendering. Asserted as the RELATIONSHIP (the heading ends above the body
+    // starts), not against the issue's literal 152 and 156, which are a reading of
+    // one seed at one moment.
+    const stacked = await page.evaluate(() => {
+      const card = document.querySelector('[data-testid="data-trash"] .card');
+      const h = card?.querySelector("h2")?.getBoundingClientRect();
+      const p = card?.querySelector("p")?.getBoundingClientRect();
+      return h && p
+        ? {
+            headingBottom: h.bottom,
+            bodyTop: p.top,
+            overlapX: Math.min(h.right, p.right) - Math.max(h.left, p.left),
+          }
+        : null;
+    });
+    expect(
+      stacked,
+      "Data -> Trash rendered no heading/body pair to measure"
+    ).not.toBeNull();
+    // They DO share the card's column — horizontal overlap is the whole width — and
+    // that is why the vertical reading is the one that decides.
+    expect(stacked!.overlapX).toBeGreaterThan(0);
+    expect(stacked!.headingBottom).toBeLessThanOrEqual(stacked!.bodyTop);
+
+    const clean = await runProbe(page, {
+      ...UNCAPPED,
+      subjectSelector: TRASH_HEADING,
+    });
+    // KEEP THIS, reviewer — it is how the floor below was derived, and it makes a
+    // red here say WHICH number moved rather than only that one did.
+    console.log(
+      `[#3814] ${TRASH_ROUTE} @${PHONE.width}px: ${clean.textBoxesExamined} text boxes, ` +
+        `${clean.overlapsTotal} colliding pairs`
+    );
+    // Measured 10 on an empty trash, which is this surface's FLOOR case — rows only
+    // add text boxes. Cut to 6: the floor separates "this page rendered" from "this
+    // page did not", and is not a layout pin.
+    expect(
+      clean.textBoxesExamined,
+      `the probe measured only ${clean.textBoxesExamined} text boxes inside <main> — ` +
+        "it is not looking at this page, so the clean verdict below is about nothing"
+    ).toBeGreaterThanOrEqual(6);
+    expect(
+      clean.subjectExamined,
+      "the trash card's heading is on screen but was not among the boxes the probe " +
+        "measured — it is one of the two boxes #3716's finding was about"
+    ).toBe(true);
+    expect(
+      clean.overlaps,
+      "the probe reports colliding text on Data -> Trash. Either this page really " +
+        "does paint one box on another now, or the collision rule has gone back to " +
+        "reading concatenated `textContent` (#3814)."
+    ).toEqual([]);
+
+    // ── THE BENIGN NEIGHBOUR, ON ITS OWN FIRST ─────────────────────────────────
+    const benign = await runProbe(page, {
+      ...UNCAPPED,
+      forgeries: [STACKED_BENIGN],
+    });
+    expect(
+      benign.overlaps.filter((o) => `${o.a} ${o.b}`.includes("forged-stacked")),
+      "the probe flagged a heading stacked above a paragraph — that is every card " +
+        "in the app, and it is exactly the false positive #3814 was filed for"
+    ).toEqual([]);
+    expect(benign.overlapsTotal).toBe(clean.overlapsTotal);
+    // …and it was genuinely measured rather than skipped for some other reason.
+    expect(benign.textBoxesExamined).toBeGreaterThan(clean.textBoxesExamined);
+
+    // ── THE OFFENDER, BESIDE IT ────────────────────────────────────────────────
+    const dirty = await runProbe(page, {
+      ...UNCAPPED,
+      forgeries: [STACKED_BENIGN, COLLISION_OFFENDER],
+    });
+    const caught = dirty.overlaps.filter((o) =>
+      `${o.a} ${o.b}`.includes("forged-collision")
+    );
+    expect(
+      caught,
+      "the probe did not see a paragraph pulled 18px up onto its own heading. An " +
+        "instrument that stops producing false positives by producing nothing is " +
+        "worse than the one it replaced."
+    ).toHaveLength(1);
+    // The two boxes really do overlap on BOTH axes, which is the rule — and the
+    // vertical figure is the negative margin, so a red here names the arithmetic.
+    expect(caught[0].overlapY).toBe(18);
+    expect(caught[0].overlapX).toBeGreaterThan(0);
+    expect(`${caught[0].a} ${caught[0].b}`).toContain("Recently deleted");
+    // Exactly one new finding: the offender, and not the stacked pair beside it.
+    expect(dirty.overlapsTotal).toBe(clean.overlapsTotal + 1);
   });
 
   // ── THE FORGERIES ─────────────────────────────────────────────────────────────
