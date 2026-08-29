@@ -11,7 +11,7 @@ import {
   type EndurancePlanPatch,
 } from "@/lib/endurance-plans";
 import { isEnduranceDiscipline } from "@/lib/endurance-plan";
-import { toKm } from "@/lib/units";
+import { toKm, submittedDistanceUnit } from "@/lib/units";
 import type { DistanceUnit } from "@/lib/settings";
 import { getUnitPrefs } from "@/lib/settings";
 import { formError, formOk, type FormResult } from "@/lib/types";
@@ -54,6 +54,22 @@ function parseTargetTimeSec(raw: string): number | null {
   return sec > 0 ? Math.round(sec) : null;
 }
 
+// The unit the target distance was CAPTURED in (#630, #3942's distance twin): the plan
+// bar labels the field "Target distance (mi)" from a server prop and the write can fire
+// long after, so the form posts that unit and this trusts it over the login's current
+// stored pref — which another tab or device can flip in between, since the pref is per
+// LOGIN. Falls back to the stored pref when the field is absent (older client, or the
+// PATCH action's callers, which carry no surface of their own yet).
+function capturedDistanceUnit(
+  formData: FormData,
+  loginId: number
+): DistanceUnit {
+  return submittedDistanceUnit(
+    formData.get("distance_unit"),
+    getUnitPrefs(loginId).distanceUnit
+  );
+}
+
 // The target distance is entered in the login's display unit (km/mi) → canonical km.
 function parseDistanceKm(raw: string, unit: DistanceUnit): number {
   const n = Number(String(raw).trim());
@@ -71,7 +87,7 @@ export async function createEndurancePlan(
   const discipline = String(formData.get("discipline") ?? "").trim();
   if (!isEnduranceDiscipline(discipline))
     return formError("Pick a discipline (run, ride, or swim).");
-  const unit = getUnitPrefs(login.id).distanceUnit;
+  const unit = capturedDistanceUnit(formData, login.id);
   const out = createEndurancePlanCore(profile.id, {
     eventName: String(formData.get("event_name") ?? ""),
     discipline,
@@ -113,7 +129,7 @@ export async function updateEndurancePlan(
   const discipline = String(formData.get("discipline") ?? "").trim();
   if (!isEnduranceDiscipline(discipline))
     return formError("Pick a discipline (run, ride, or swim).");
-  const unit = getUnitPrefs(login.id).distanceUnit;
+  const unit = capturedDistanceUnit(formData, login.id);
   // Discipline is validated above and always named — it is what the duplicate check reads.
   const patch: EndurancePlanPatch = { discipline };
   if (formData.has("event_name"))

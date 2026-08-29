@@ -7,6 +7,22 @@ import { followLink } from "./helpers";
 // Bench Press) and "Set merge dupe" (two sets: Back Squat, Deadlift). This drives the
 // flow: open the merge, confirm the dialog shows the "2 logged sets" line, merge, and
 // prove all three sets end up on the keeper (nothing lost to the FK cascade).
+// THE MERGE IS THE POINT, so this row cannot be restored (#3946). "Set merge dupe" is
+// seeded on the SHARED profile for this test alone (e2e/seed/merge.ts) and
+// merging consumes it; putting it back by hand would be a second producer of a
+// row the seed owns. Its sets are re-parented onto the keeper, which is what the test proves.
+// Declared here rather than exempted by name: nothing anywhere holds a list of
+// specs this guard skips, and #3260's caveat stands — nothing checks that this
+// `why` is still true.
+test.use({
+  sharedProfileLeftovers: {
+    why:
+      "The merge under test consumes this seeded row; restoring it would " +
+      "re-seed rather than clean up, and no other spec addresses it.",
+    titles: ["Set merge dupe"],
+  },
+});
+
 test("merging re-parents the discarded row's sets onto the keeper, shown in the preview (#199)", async ({
   page,
 }) => {

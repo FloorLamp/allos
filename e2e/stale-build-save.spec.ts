@@ -3,7 +3,11 @@ import { type Page } from "@playwright/test";
 import Database from "better-sqlite3";
 import { comboboxRows, settledFill, spendAutoReloadRation } from "./helpers";
 import { workerDbPath } from "./worker-env";
-import { SHARED_PROFILE_ID, takeStrandedDrafts } from "./shared-profile-guard";
+import {
+  deleteActivitiesTitled,
+  SHARED_PROFILE_ID,
+  takeStrandedDrafts,
+} from "./shared-profile-guard";
 import { UPDATE_TAKEN_MESSAGE } from "@/lib/sw-update";
 
 // Deployment skew, the Server Action half, and the tab that fixes it by itself
@@ -196,17 +200,6 @@ async function activityDraftCount(page: Page): Promise<number> {
         };
       })
   );
-}
-
-function deleteActivitiesTitled(...titles: string[]) {
-  const h = new Database(DB_PATH);
-  try {
-    for (const title of titles) {
-      h.prepare("DELETE FROM activities WHERE title = ?").run(title);
-    }
-  } finally {
-    h.close();
-  }
 }
 
 function activityCount(title: string): number {

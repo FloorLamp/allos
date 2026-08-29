@@ -1,7 +1,6 @@
 import { test, expect } from "./fixtures";
 import type { Page } from "@playwright/test";
-import Database from "better-sqlite3";
-import { workerDbPath } from "./worker-env";
+import { deleteActivitiesTitled } from "./shared-profile-guard";
 
 // The swap window's save failures recover BY THEMSELVES (#2866). A mid-deploy
 // action POST doesn't reach a live Next server: behind a proxy the tab gets a
@@ -56,16 +55,7 @@ async function armSwapWindow(page: Page) {
 // didn't. Swept in afterEach so a mid-test failure strands nothing either.
 const SURVIVOR_TITLE = "Swap window survivor";
 
-test.afterEach(() => {
-  const db = new Database(workerDbPath());
-  try {
-    // Child rows (components, routes, videos) cascade off the activity — the same
-    // one-statement cleanup the other activity-owning specs use.
-    db.prepare("DELETE FROM activities WHERE title = ?").run(SURVIVOR_TITLE);
-  } finally {
-    db.close();
-  }
-});
+test.afterEach(() => deleteActivitiesTitled(SURVIVOR_TITLE));
 
 test("a save that dies in the swap window retries itself to success — zero taps (#2866)", async ({
   page,
