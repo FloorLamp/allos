@@ -747,7 +747,11 @@ export async function getStravaAccessToken(
     signal: AbortSignal.timeout(TOKEN_REFRESH_TIMEOUT_MS),
   });
   if (!res.ok) {
-    const body = await res.text();
+    // `.catch` because a 401 MUST still transition even if the body read throws — a
+    // failed read is no evidence, and no evidence must not be able to swallow the one
+    // status that needs none (#3798). Uncaught, the throw skipped the transition below
+    // and left a revoked grant `connected`, which pull-tick then retries every hour.
+    const body = await res.text().catch(() => null);
     // A definitive auth failure (invalid_grant / 401) means the refresh token is
     // dead — mark the connection needs_reauth so the tick stops retrying it forever
     // (issue #326). A transient failure (429/5xx/network) leaves it `connected` to
@@ -755,7 +759,12 @@ export async function getStravaAccessToken(
     if (isAuthRefreshFailure(res.status, body)) {
       markConnectionNeedsReauth(profileId, STRAVA_ID);
     }
-    throw new Error(`Strava token refresh failed (${res.status}): ${body}`);
+    // The body still travels into the operator log when there IS one — unlike Withings,
+    // whose vendor envelope has nothing worth carrying — but an unread body appends
+    // nothing rather than the word "null", which would read as text the vendor sent.
+    throw new Error(
+      `Strava token refresh failed (${res.status})${body === null ? "" : `: ${body}`}`
+    );
   }
   const json = (await res.json()) as {
     access_token: string;

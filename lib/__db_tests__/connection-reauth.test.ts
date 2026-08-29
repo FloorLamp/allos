@@ -171,9 +171,20 @@ const GATEWAY_HTML =
 const STRAVA_DEAD_GRANT =
   '{"message":"Bad Request","errors":[{"resource":"RefreshToken","field":"refresh_token","code":"invalid"}]}';
 
+// A body that cannot be read at all: the stream errors on first pull, so `res.text()`
+// REJECTS rather than returning "". Distinct from an empty body, which reads fine and
+// says nothing — this one is the read itself failing.
+function unreadableBody(): ReadableStream<Uint8Array> {
+  return new ReadableStream({
+    start(controller) {
+      controller.error(new Error("body stream cut"));
+    },
+  });
+}
+
 async function refreshWith(
   provider: "strava" | "withings",
-  body: string,
+  body: BodyInit,
   status: number
 ) {
   fetchMock.mockResolvedValue(new Response(body, { status }));
@@ -229,6 +240,20 @@ describe("refresh door — a 400 is a dead grant only on evidence (#3798)", () =
       );
       const tick = await syncIntegrations(profileId);
       expect(tick.polled.includes("strava")).toBe(stillPolled);
+    }
+  );
+
+  // A 401 IS THE ONE STATUS THAT NEEDS NO EVIDENCE, so no evidence must not be able to
+  // swallow it. Both doors read the body before they branch, and a body that arrives as
+  // a broken stream throws out of that read — which, uncaught, skips
+  // `markConnectionNeedsReauth` and leaves a revoked grant `connected` for pull-tick to
+  // retry every hour forever. Both providers, because the invariant is the door's and
+  // not one call site's.
+  it.each(["strava", "withings"] as const)(
+    "%s HTTP 401 flips to needs_reauth even when the body read throws",
+    async (provider) => {
+      await refreshWith(provider, unreadableBody(), 401);
+      expect(statusOf(provider)).toBe("needs_reauth");
     }
   );
 });
