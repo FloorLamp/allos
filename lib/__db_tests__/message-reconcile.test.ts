@@ -126,6 +126,7 @@ import {
   answerCallbackQuery,
   editMessageReplyMarkupRaw,
   editMessageTextRaw,
+  TELEGRAM_CALL_TIMEOUT_MS,
 } from "@/lib/notifications/telegram-api";
 import { TelegramApiError } from "@/lib/notifications/telegram-error";
 import { buildFoodNudge } from "@/lib/notifications/food";
@@ -150,7 +151,6 @@ import {
   handleCallbackQuery,
   TAP_SWEEP_BUDGET_MS,
 } from "@/lib/notifications/telegram-callbacks";
-import { TELEGRAM_CALL_TIMEOUT_MS } from "@/lib/notifications/telegram-api";
 import { tuneToggleToken } from "@/lib/notifications/digest-tune";
 import { instantNow } from "@/lib/clock";
 import { seedLoginTelegram } from "./fixtures";

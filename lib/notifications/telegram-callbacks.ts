@@ -163,12 +163,12 @@ import { countVisibleFoodButtons } from "./food-format";
 import { FOOD_QUICK_COUNT } from "../food-rank";
 import { messagePointerIdAt } from "./message-pointers";
 import { reconcileProfileMessages } from "./reconcile";
-import { TELEGRAM_CALL_TIMEOUT_MS } from "./telegram-api";
 import { createLogger } from "../log";
 import {
   answerCallbackQuery,
   closeMessage,
   rebuildMessage,
+  TELEGRAM_CALL_TIMEOUT_MS,
   updateMessageKeyboard,
   type TelegramCallbackQuery,
 } from "./telegram";
