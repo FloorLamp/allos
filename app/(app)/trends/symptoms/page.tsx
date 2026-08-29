@@ -24,8 +24,9 @@ export const dynamic = "force-dynamic";
 // number of days) and IS the severity strip (each stacked cell is one of those days,
 // shaded by that day's severity). Two figures over the same twelve columns would have
 // made the reader align them by eye; one cannot disagree with itself. Color is never
-// the only encoding — every column prints its own count, and every cell carries a
-// dated `title` naming its severity in words.
+// the only encoding — every column prints its own count, every cell carries a dated
+// `aria-label` naming its severity in words, and the whole figure is restated as text
+// in a `VisualizationDetails` disclosure (no `title`: hover is not a reading, #794).
 
 function monthTitle(monthStart: string): string {
   return `${MONTHS_LONG[Number(monthStart.slice(5, 7)) - 1]} ${monthStart.slice(0, 4)}`;
