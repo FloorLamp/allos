@@ -160,8 +160,16 @@ describe("buildDigest", () => {
   // and carries the deep link that is its "see the rest" affordance.
   const flaggedCap: [total: number, named: number, tail: string | null][] = [
     [8, 8, null],
-    [9, 8, "⚠️ +1 more flagged result https://allos.example"],
-    [12, 8, "⚠️ +4 more flagged results https://allos.example"],
+    [
+      9,
+      8,
+      "⚠️ +1 more flagged result https://allos.example/results/clinical-results",
+    ],
+    [
+      12,
+      8,
+      "⚠️ +4 more flagged results https://allos.example/results/clinical-results",
+    ],
   ];
   it.each(flaggedCap)(
     "names %i flagged results as %i lines and counts the rest",
