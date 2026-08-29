@@ -278,6 +278,10 @@ describe('raw <input type="time"> ratchet (issue #2236)', () => {
 // blind to them). #3273's acceptance is the UNION — every quick-log sheet form that
 // writes an instant either mounts the shared control or says here why it does not.
 //
+// The sheet dispatches NINE forms (QuickEntryProvider's switch); eight are below.
+// The ninth is `document`, a file upload — it writes no instant of its own, so "when
+// did this happen?" is not a question it has to answer and it is not debt.
+//
 // The list is HAND-WRITTEN and stays short. It is the sheet's own census, not a
 // discovered set: enumerating "forms that write an instant" from source is the
 // scanner shape this repo does not build, and a wrong entry here is a claim about a

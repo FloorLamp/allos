@@ -15,7 +15,7 @@ import {
   type FoodEventPlacement,
 } from "@/lib/food-log-write";
 import { logUsualFoodCore } from "@/lib/food-usual-write";
-import { judgeEatenAt } from "@/lib/food-eating-time";
+import { EATEN_AT_FUTURE_SKEW_MS, judgeEatenAt } from "@/lib/food-eating-time";
 import { statedHourInstant } from "@/lib/correction-time";
 import { normalizeClockTime } from "@/lib/vitals-input";
 import type { StatedTimeRefusal, StatedTimeVerdict } from "@/lib/stated-time";
@@ -189,7 +189,24 @@ export async function logFoodServing(
   const at = clockNow();
   const tz = getTimezone(profileId);
   const stated = normalizeClockTime(String(formData.get("occurred_at") ?? ""));
-  const resolved = stated ? statedHourInstant(stated, at, tz) : null;
+  // THE DAY RULE GETS THE SAME CLOCK TOLERANCE THE ACCEPTANCE GATE DOES, and it has
+  // to since #3273 moved the offer client-side. `statedHourInstant` reads a wall time
+  // later than `now` as YESTERDAY's — right for a picker whose hours the server
+  // enumerated, wrong for a field the browser filled: the control's "Now" writes the
+  // browser's current MINUTE, so a device seconds ahead of this server posts a wall
+  // time this server has not reached, the statement re-dates to yesterday, and
+  // `judgeEatenAt` throws it away as "it isn't on that day" — a sentence that is both
+  // untrue and unactionable. Measured: a 90-second skew loses it. The five minutes
+  // `judgeEatenAt` already tolerates for exactly this reason decide the DAY too, so
+  // the two halves of one decision stop disagreeing about whose clock is authoritative.
+  // Beyond the tolerance the re-date stands and the refusal is a real one.
+  const resolved = stated
+    ? statedHourInstant(
+        stated,
+        new Date(at.getTime() + EATEN_AT_FUTURE_SKEW_MS),
+        tz
+      )
+    : null;
   const verdict: StatedTimeVerdict = !stated
     ? { kind: "unstated" }
     : resolved === null

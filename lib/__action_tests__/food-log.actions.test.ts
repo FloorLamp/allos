@@ -244,6 +244,44 @@ describe("logFoodServing — eating-time statement (#2053)", () => {
       );
       expect(event.time_source).toBe(stated === null ? null : "stated");
     });
+
+    // A DEVICE AHEAD OF THIS SERVER STILL LANDS ITS MINUTE (#3273). The offer moved
+    // client-side with the control, so the browser now fills a wall time off its OWN
+    // clock — and the day rule reads anything later than the server's now as
+    // YESTERDAY's, which `judgeEatenAt` then discards as "it isn't on that day". A
+    // 90-second skew was enough. The day rule and the acceptance gate now tolerate the
+    // same five minutes, so the two halves of one decision agree about whose clock is
+    // authoritative; past it, the re-date and the refusal are real.
+    //
+    // Stated as an OFFSET FROM THE FROZEN CLOCK rather than as a literal, because a
+    // literal only exercises the skew in the zones where it happens to land ahead.
+    it.each([
+      [3, true, "inside the tolerance the gate already grants"],
+      [6, false, "past it — a genuinely broken clock, refused as before"],
+    ])(
+      "a device %i minutes ahead keeps its statement: %s",
+      async (minutesAhead, kept) => {
+        const login = createLogin();
+        const profile = createProfile(`skew-${minutesAhead}`, login.id);
+        actAs(login, profile);
+        const tz = getTimezone(profile.id);
+        const date = today(profile.id);
+        const ahead = zonedDateParts(
+          tz,
+          new Date(clockNow().getTime() + minutesAhead * 60_000)
+        ).hhmm;
+
+        const res = await logFoodServing(
+          fd({ group_key: "fatty_fish", date, occurred_at: ahead })
+        );
+
+        expect(res.ok).toBe(true);
+        const [event] = events(profile.id);
+        expect(event.occurred_at).toBe(
+          kept ? utcInstant(zonedWallTimeToUtc(tz, date, ahead)!) : null
+        );
+      }
+    );
   });
 
   it("an unparseable statement costs the statement, never the serving", async () => {
