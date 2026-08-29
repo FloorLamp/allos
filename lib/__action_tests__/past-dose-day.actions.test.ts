@@ -104,9 +104,7 @@ function resolve(
   status: "taken" | "skipped",
   doseIds: readonly number[]
 ) {
-  return resolveDayDoses(
-    fd({ date, status, dose_ids: doseIds.join(",") })
-  );
+  return resolveDayDoses(fd({ date, status, dose_ids: doseIds.join(",") }));
 }
 
 describe.each(ZONES)("in $tz", ({ tz, localToday }) => {
@@ -131,9 +129,9 @@ describe.each(ZONES)("in $tz", ({ tz, localToday }) => {
     }
     // One day further back is refused — the assertion an "at most three" inequality
     // could not make, and the one a four-day offer would fail.
-    expect(isDoseDateAccepted(localToday, shiftDateStr(offered.at(-1)!, -1))).toBe(
-      false
-    );
+    expect(
+      isDoseDateAccepted(localToday, shiftDateStr(offered.at(-1)!, -1))
+    ).toBe(false);
   });
 
   it("groups a past day by declared bucket and labels the first one Yesterday", async () => {

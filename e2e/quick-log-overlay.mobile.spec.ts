@@ -531,9 +531,7 @@ test("the dose overlay answers from the outcome — it never just confirms", asy
     // missed day away with it.
     const reopened = await openQuickEntry(page, "log-dose");
     await expect(reopened.getByTestId("quick-entry-dose-empty")).toBeVisible();
-    await expect(
-      reopened.getByTestId("quick-entry-dose-list")
-    ).toHaveCount(0);
+    await expect(reopened.getByTestId("quick-entry-dose-list")).toHaveCount(0);
   } finally {
     clearDoseLogs(doseId);
     setDoseRetired(doseId, false);
@@ -565,12 +563,12 @@ test("the dose sheet logs a missed day, on the day it names", async ({
     // a wider window than the write cores accept, and two would hide a day they do.
     const toggle = overlay.getByTestId("quick-entry-dose-day-toggle");
     await expect(toggle.getByRole("button")).toHaveCount(3);
-    await expect(
-      overlay.getByTestId("quick-entry-dose-day-0")
-    ).toHaveText("Today");
-    await expect(
-      overlay.getByTestId("quick-entry-dose-day-1")
-    ).toHaveText("Yesterday");
+    await expect(overlay.getByTestId("quick-entry-dose-day-0")).toHaveText(
+      "Today"
+    );
+    await expect(overlay.getByTestId("quick-entry-dose-day-1")).toHaveText(
+      "Yesterday"
+    );
 
     await overlay.getByTestId("quick-entry-dose-day-1").click();
     const day = overlay.getByTestId("quick-entry-dose-day");
@@ -593,7 +591,9 @@ test("the dose sheet logs a missed day, on the day it names", async ({
     // THE assertion, from the ledger: both rows landed on the day the sheet named, and
     // nothing at all was written for today.
     expect(doseLogRows(doseId)).toEqual([{ date: named, status: "taken" }]);
-    expect(doseLogRows(secondDoseId)).toEqual([{ date: named, status: "taken" }]);
+    expect(doseLogRows(secondDoseId)).toEqual([
+      { date: named, status: "taken" },
+    ]);
     const todayStr = frozenNow().toISOString().slice(0, 10);
     expect(named).not.toBe(todayStr);
 
@@ -602,9 +602,7 @@ test("the dose sheet logs a missed day, on the day it names", async ({
     await page.reload();
     const again = await openQuickEntry(page, "log-dose");
     await again.getByTestId("quick-entry-dose-day-1").click();
-    await expect(
-      again.getByTestId("quick-entry-dose-day-empty")
-    ).toBeVisible();
+    await expect(again.getByTestId("quick-entry-dose-day-empty")).toBeVisible();
   } finally {
     clearDoseLogs(doseId);
     clearDoseLogs(secondDoseId);

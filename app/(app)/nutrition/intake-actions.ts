@@ -1380,13 +1380,7 @@ export async function resolveDayDoses(
       name: dose.name,
       outcome:
         status === "taken"
-          ? markDoseTaken(
-              profile.id,
-              dose.doseId,
-              dose.itemId,
-              date,
-              loggedVia
-            )
+          ? markDoseTaken(profile.id, dose.doseId, dose.itemId, date, loggedVia)
           : markDoseSkipped(
               profile.id,
               dose.doseId,

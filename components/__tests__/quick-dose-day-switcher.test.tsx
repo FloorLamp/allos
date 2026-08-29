@@ -69,9 +69,7 @@ function renderSheet() {
 describe("the quick-log dose sheet's day switcher (#3936)", () => {
   it("offers exactly the days the server sent, today first", () => {
     renderSheet();
-    const labels = within(
-      screen.getByTestId("quick-entry-dose-day-toggle")
-    )
+    const labels = within(screen.getByTestId("quick-entry-dose-day-toggle"))
       .getAllByRole("button")
       .map((b) => b.textContent);
     // Exact list, not a count and not a lower bound: a fourth day and a missing
