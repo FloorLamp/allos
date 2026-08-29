@@ -63,13 +63,23 @@ export default function ChartJumpMenu({ items }: { items: ChartChip[] }) {
   // focus on the next frame, after those option refs attach and the panel has
   // its anchored position. The sheet follows the same path after its trap has
   // chosen an initial target.
+  //
+  // KEYED ON `open` ALONE (#4028). It used to depend on `activeIndex` too, and
+  // `activeIndex` is written by the IntersectionObserver above — so every scroll
+  // of the page BEHIND an open menu, and every late layout settle, re-ran this
+  // and dragged the keyboard user's focus onto whichever chart had just become
+  // current. Measured: open on `chart-jump-resting_hr`, scroll, focus is on
+  // `chart-jump-steps`. Focus follows a keystroke or the act of opening; never a
+  // scroll position. `activeIndex` is still READ here, at the value it had when
+  // the menu opened, which is the option this is supposed to land on.
   useEffect(() => {
     if (!open) return;
     const frame = requestAnimationFrame(() => {
       optionRefs.current[activeIndex]?.focus();
     });
     return () => cancelAnimationFrame(frame);
-  }, [activeIndex, open]);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [open]);
 
   if (items.length === 0) return null;
 

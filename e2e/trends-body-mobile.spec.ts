@@ -1,5 +1,5 @@
 import { test, expect } from "./fixtures";
-import { type Page } from "@playwright/test";
+import { type Locator, type Page } from "@playwright/test";
 import { shiftDateStr } from "@/lib/date";
 import { loginAs } from "./nav";
 import {
@@ -35,6 +35,49 @@ import {
 
 const PHONE = { width: 360, height: 800 };
 const DESKTOP = { width: 1024, height: 800 };
+
+// WHERE THE MENU'S ROVING FOCUS IS, as a word rather than a testid (#4028, and
+// the shape #4013 landed for #4015). "focus is not on the option it started on"
+// is ALSO true of focus having fallen to nothing, so the two are named apart —
+// otherwise the worse bug passes as the better one, and the failure message
+// names neither.
+type RovingFocus =
+  { at: "item"; testId: string } | { at: "elsewhere" } | { at: "lost" };
+
+function rovingFocus(menuOptions: Locator): Promise<RovingFocus> {
+  return menuOptions.evaluate((panel): RovingFocus => {
+    const active = document.activeElement;
+    if (!active || active === document.body) return { at: "lost" };
+    if (!panel.contains(active)) return { at: "elsewhere" };
+    const item = active.closest('[role="menuitemradio"]');
+    if (!item) return { at: "elsewhere" };
+    return { at: "item", testId: item.getAttribute("data-testid") ?? "" };
+  });
+}
+
+/** Has the roving focus left the option it started on, and landed on another? */
+function movedOff(place: RovingFocus, from: string): boolean {
+  return place.at === "item" && place.testId !== from;
+}
+
+// Open the desktop menu from the keyboard and wait for its opening focus move to
+// land, so what follows measures a KEYSTROKE rather than racing the app's own
+// first focus. Which option it lands on is the app's choice (the chart in view)
+// and is deliberately not asserted.
+async function openChartMenuByKeyboard(page: Page): Promise<Locator> {
+  const trigger = page.getByTestId("chart-jump-menu-trigger");
+  await trigger.focus();
+  await page.keyboard.press("ArrowDown");
+  const menuOptions = page.getByTestId("chart-jump-menu-options");
+  await expect(menuOptions).toBeVisible();
+  await expect(trigger).toHaveAttribute("aria-expanded", "true");
+  await expect
+    .poll(async () => (await rovingFocus(menuOptions)).at, {
+      message: "the chart menu opened without putting focus on an option",
+    })
+    .toBe("item");
+  return menuOptions;
+}
 
 async function openBodyTab(
   page: Page,
@@ -360,18 +403,42 @@ test.describe("Trends → Overview → body census responsive views (#1067)", ()
     // The all-charts row is desktop-only. Drive the trigger's keyboard contract
     // here before its existing pointer path: arrows open and enter the menu,
     // Escape restores the trigger, and expanded state follows.
-    await trigger.focus();
-    await page.keyboard.press("ArrowDown");
-    const menuOptions = page.getByTestId("chart-jump-menu-options");
-    await expect(menuOptions).toBeVisible();
-    await expect(trigger).toHaveAttribute("aria-expanded", "true");
-    const focusedMenuItem = menuOptions.locator('[role="menuitemradio"]:focus');
-    await expect(focusedMenuItem).toHaveCount(1);
-    const initiallyFocused = await focusedMenuItem.getAttribute("data-testid");
-    await page.keyboard.press("ArrowDown");
-    await expect
-      .poll(() => focusedMenuItem.getAttribute("data-testid"))
-      .not.toBe(initiallyFocused);
+    //
+    // THE SUBJECT OF THIS ASSERTION IS NOT CHOSEN BY THE MENU (#4028, porting the
+    // instrument #4013 landed for #4015). It used to read the focused item's
+    // testid, press ArrowDown once, and poll for a DIFFERENT testid — which the
+    // app could satisfy, or defeat, without any keystroke at all, and which timed
+    // out naming nothing when focus was momentarily on no option. The question is
+    // what the KEYSTROKE does, so ArrowDown is pressed until the roving focus is
+    // somewhere other than where it started, bounded by the option count: a menu
+    // whose arrow key does nothing exhausts that bound however many options it
+    // has, while the app's own opening focus move — which can still land a frame
+    // late — costs at most one extra press.
+    const menuOptions = await openChartMenuByKeyboard(page);
+    const optionCount = await menuOptions
+      .locator('[role="menuitemradio"]')
+      .count();
+    expect(optionCount).toBeGreaterThan(1);
+    const opened = await rovingFocus(menuOptions);
+    const from = opened.at === "item" ? opened.testId : "";
+    let landed = opened;
+    for (let i = 0; i < optionCount && !movedOff(landed, from); i++) {
+      await page.keyboard.press("ArrowDown");
+      landed = await rovingFocus(menuOptions);
+    }
+    // A PRESENCE, then the movement. Split, because focus falling off the menu
+    // entirely and focus never leaving its first option are different defects.
+    expect(
+      landed,
+      `ArrowDown ${optionCount} times from ${from} left the roving focus at ` +
+        `${JSON.stringify(landed)} — it must stay ON one of the menu's options.`
+    ).toMatchObject({ at: "item" });
+    expect(
+      landed,
+      `the roving focus never left ${from} in ${optionCount} presses of ` +
+        "ArrowDown — the arrow keys move it between the menu's options, and a " +
+        "menu whose roving focus is stuck exhausts this bound however many it has."
+    ).not.toMatchObject({ at: "item", testId: from });
     await page.keyboard.press("Escape");
     await expect(menuOptions).toHaveCount(0);
     await expect(trigger).toHaveAttribute("aria-expanded", "false");
@@ -450,6 +517,61 @@ test.describe("Trends → Overview → body census responsive views (#1067)", ()
     await page.getByTestId("chart-jump-sleep").click();
     await expect(sleepTile).toBeInViewport();
     await expect(page.getByTestId("chart-jump-menu-options")).toHaveCount(0);
+  });
+
+  // #4028: the menu's focus effect was keyed on `activeIndex`, and `activeIndex`
+  // is written by an IntersectionObserver over the charts — so scrolling the page
+  // behind an OPEN menu re-focused whichever chart had just become current, and
+  // took a keyboard user off the option they had arrowed to. Focus follows a
+  // keystroke, or the act of opening; a scroll position is neither.
+  test("scrolling behind an open chart menu leaves the keyboard focus alone", async ({
+    browser,
+  }) => {
+    const page = await loginAs(browser, {
+      username: E2E_LOGIN_TRENDS_BODY,
+      password: E2E_MEMBER_PASSWORD,
+    });
+    await page.setViewportSize(DESKTOP);
+    await openBodyTab(page);
+
+    const trigger = page.getByTestId("chart-jump-menu-trigger");
+    const menuOptions = await openChartMenuByKeyboard(page);
+    // Arrow off the option the menu opened on, so this is about where the PERSON
+    // put the focus and not where the app would have left it anyway.
+    await page.keyboard.press("ArrowDown");
+    const parked = await rovingFocus(menuOptions);
+    expect(
+      parked,
+      "ArrowDown did not park the focus on an option"
+    ).toMatchObject({ at: "item" });
+
+    // THE OBSERVER MUST ACTUALLY FIRE, or this guard is green over a page that
+    // never scrolled. The menu's own trigger names the current chart, so a
+    // changed accessible name is the observer reporting a new one — the same
+    // state change that used to drag the focus with it. Scrolling inside the
+    // poll walks down the stack until the current chart changes.
+    const nameBefore = await trigger.getAttribute("aria-label");
+    await expect
+      .poll(
+        async () => {
+          await page.mouse.wheel(0, 400);
+          return trigger.getAttribute("aria-label");
+        },
+        {
+          message:
+            "scrolling never moved the menu's current chart, so this guard " +
+            "could not observe the state change it exists to police",
+        }
+      )
+      .not.toBe(nameBefore);
+
+    expect(
+      await rovingFocus(menuOptions),
+      "a background scroll moved the keyboard focus inside the open menu"
+    ).toEqual(parked);
+    await expect(menuOptions).toBeVisible();
+
+    await page.context().close();
   });
 
   test("a per-chart #id anchor lands on the chart on load", async ({
