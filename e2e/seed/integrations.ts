@@ -9,6 +9,7 @@ import { db, today } from "../../lib/db";
 import { now as clockNow } from "../../lib/clock";
 import { writeRawPayload } from "../../lib/integrations/raw-log";
 import { upsertConnection } from "../../lib/integrations/connections";
+import { syncFailureCopy } from "../../lib/integrations/auth-failure";
 import { observeStreamFrontiers } from "../../lib/stream-frontier-db";
 import { truncatedSyncDetails } from "../../lib/integrations/sync-details";
 import { generateHealthConnectToken } from "../../lib/integrations/connections";
@@ -300,7 +301,9 @@ export function seedIntegrationSyncEvents(): void {
     null,
     null,
     null, // raw_ref
-    "Strava token refresh failed (401): unauthorized"
+    // This profile stays connected, so production records the non-reauth sentence.
+    // The dedicated dead-token profile below owns the reconnect state and copy.
+    syncFailureCopy("Strava", "unknown")
   );
 
   // Issue #294: a source that was CONNECTED and later removed keeps showing its
