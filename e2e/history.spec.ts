@@ -39,6 +39,21 @@ const FOOD_NAME = "Berries";
 // addition has to displace something rather than push the record down.
 const CHROME_BUDGET_PX = 140;
 
+// A MONTH FOLD CARD, whichever one the record's own windowing drew. `windowTimelineDays`
+// keys a month fold on `YYYY-MM` and a year fold on `YYYY` (lib/timeline-window.ts), so
+// the dash is what tells the two apart — and the two cases below need a MONTH,
+// because opening a year reveals more fold cards while opening a month reveals days.
+// Named by key rather than pinned to `OLD_DAY`'s month: how far back the record's own
+// `?show` bound reaches is the shared seed's business, not this spec's.
+const MONTH_FOLD = '[data-testid^="history-fold-"][data-fold-key*="-"]';
+
+// The two desktop widths the rail's lane is asked about. WIDE is past the point where
+// the page margin beside the reading column is wider than the rail's 44px hit strip, so
+// the rail sits in the margin and no card gives anything up; NARROW is inside it, where
+// the carve-out exists and must be spent at ONE depth so the two cards still line up.
+const WIDE_PX = 1440;
+const NARROW_DESKTOP_PX = 1024;
+
 function openDb(): Database.Database {
   const db = new Database(workerDbPath());
   db.pragma("busy_timeout = 5000");
@@ -318,5 +333,210 @@ test.describe("the record (#3958)", () => {
         }));
     });
     expect(overlap, JSON.stringify(overlap)).toEqual([]);
+  });
+
+  // ── THE RAIL'S LANE, ON RENDERED GEOMETRY (#4045 §2) ──────────────────────
+  //
+  // NEVER ON CLASS STRINGS. The defect was that ONE token was applied at two
+  // structural depths, so every class assertion the page could make was already true
+  // while the edges disagreed by 28px. Only the boxes can see it.
+  //
+  // TWO WIDTHS, because the ruling has two halves and each is satisfiable by a tree
+  // that breaks the other: a page that never reserves the lane passes the wide case and
+  // puts the rail over its own cards at 1024, and the shipped page passed nothing.
+  test("day cards and fold cards share one right edge, and the rail keeps out of the margin when there is one", async ({
+    page,
+  }) => {
+    seedDay();
+    for (const width of [WIDE_PX, NARROW_DESKTOP_PX]) {
+      await page.setViewportSize({ width, height: 900 });
+      await page.goto("/history");
+      // THE PREMISE BEFORE THE VERDICT, as the phone case does: no rail, no lane, and
+      // an alignment assertion over a page with nothing to align is the empty result
+      // that flatters every one of these.
+      const rail = page.getByTestId("timeline-scrubber");
+      await expect(rail).toHaveCount(1);
+      await expect(rail).toHaveAttribute("data-scrubber-ready", "true");
+      await expect(page.locator(MONTH_FOLD).first()).toBeVisible(); // first-ok: the edge claim is about any fold card
+      await expect(page.getByTestId("history-rows").first()).toBeVisible(); // first-ok: the edge claim is about any day card
+
+      const edges = await page.evaluate((foldSelector) => {
+        const right = (el: Element | null) =>
+          el ? Math.round(el.getBoundingClientRect().right) : null;
+        return {
+          day: right(document.querySelector('[data-testid="history-rows"]')),
+          fold: right(document.querySelector(`${foldSelector} a`)),
+          feed: right(document.querySelector('[data-testid="history-feed"]')),
+          strip: Math.round(
+            document
+              .querySelector('[data-testid="timeline-scrubber"]')!
+              .getBoundingClientRect().left
+          ),
+        };
+      }, MONTH_FOLD);
+
+      // THE RELATIONSHIP THE OWNER SAW: one card's border against the other's, not
+      // either against the viewport. Both were "correct" distances from the page edge.
+      expect(
+        edges.day,
+        `at ${width}px the day card ends at ${edges.day} and the fold card at ${edges.fold}`
+      ).toBe(edges.fold);
+
+      if (width === WIDE_PX) {
+        // The lane does not exist here: every card runs the full width of the feed…
+        expect(edges.day, `at ${width}px the feed ends at ${edges.feed}`).toBe(
+          edges.feed
+        );
+        // …and the rail is beside the card rather than over it, which is the fact that
+        // makes spending nothing safe. Asserted against the STRIP, so a future width
+        // change cannot make "no gutter" quietly mean "the rail is on the cards".
+        expect(
+          edges.strip,
+          `the rail starts at ${edges.strip}, the feed ends at ${edges.feed}`
+        ).toBeGreaterThanOrEqual(edges.feed!);
+      } else {
+        // The carve-out exists here — asserted as a real reservation rather than as a
+        // number, so it cannot silently become zero and pass as "aligned".
+        expect(edges.feed! - edges.day!).toBeGreaterThan(0);
+      }
+    }
+  });
+
+  // ── A FOLD TAP HOLDS ITS PLACE (#4045 §4) ─────────────────────────────────
+  //
+  // ON SCROLL POSITION, never on markup: the shipped card was a plain `<Link>`, which
+  // is indistinguishable from the fixed one in the DOM and different in the only way
+  // that mattered — every tap landed the reader at the top of the page.
+  test("opening a fold lands on the revealed days and closing returns to the card, never the page top", async ({
+    page,
+  }) => {
+    seedDay();
+    // A viewport short enough that the fold spine is genuinely below the fold of the
+    // page: at full height the premise below ("we were not at the top") can be true by
+    // accident on a sparse profile, and a scroll-reset assertion over a page that never
+    // scrolled is the empty result that passes on the bug.
+    await page.setViewportSize({ width: NARROW_DESKTOP_PX, height: 600 });
+    await page.goto("/history");
+
+    // PINNED TO ONE CARD BY KEY, not left as "the first shut month": that locator
+    // re-resolves after the tap and quietly moves to the NEXT shut card, so every
+    // assertion after the click would be about a fold nobody touched.
+    const shut = page.locator(`${MONTH_FOLD}[data-fold-open="false"]`).first(); // first-ok: the claim is about whichever shut month the spine opens with
+    await expect(shut).toBeVisible();
+    const foldKey = await shut.getAttribute("data-fold-key");
+    const fold = page.getByTestId(`history-fold-${foldKey}`);
+    await fold.evaluate((el) => el.scrollIntoView(true));
+    const before = await page.evaluate(() => Math.round(window.scrollY));
+    expect(before, "the fold spine has to be below the first screen").toBeGreaterThan(0);
+
+    await hydratedClick(page, fold.locator("a"));
+    await expect(fold).toHaveAttribute("data-fold-open", "true");
+    // THE REVEALED DAYS ARE AT THE TAP. They render as the fold card's next siblings
+    // now, so this is the month's own first day and not some day elsewhere in the feed.
+    const revealed = page
+      .locator(
+        `[data-testid="history-fold-${foldKey}"] ~ [data-testid="history-day"]`
+      )
+      .first(); // first-ok: the claim is about the day the tap revealed, which is the next one
+    await expect(revealed).toBeInViewport();
+    await expect(fold).toBeInViewport();
+    expect(
+      await page.evaluate(() => Math.round(window.scrollY)),
+      "opening a fold scrolled the reader to the top of the page"
+    ).toBeGreaterThan(0);
+
+    await hydratedClick(page, fold.locator("a"));
+    await expect(fold).toHaveAttribute("data-fold-open", "false");
+    await expect(fold).toBeInViewport();
+    expect(
+      await page.evaluate(() => Math.round(window.scrollY)),
+      "closing a fold scrolled the reader to the top of the page"
+    ).toBeGreaterThan(0);
+  });
+
+  // ── ONE KIND, NO GLYPH COLUMN (#4045 §3) ──────────────────────────────────
+  test("drops the glyph column in a single-kind view and keeps it in All", async ({
+    page,
+  }) => {
+    seedDay();
+    // The glyph is the row's LEADING child inside the shared logged-event anatomy —
+    // named that way rather than as "an svg in the row", which the ⋯ also satisfies.
+    const glyphs = page.locator(
+      '[data-testid="history-row"] [data-logged-event-row] > svg'
+    );
+
+    await page.goto("/history");
+    await expect(page.getByTestId("history-row").first()).toBeVisible(); // first-ok: readiness, no per-row claim
+    const all = await glyphs.count();
+    expect(all, "All draws one glyph per row").toBeGreaterThan(0);
+
+    await page.goto("/history?kind=food");
+    await expect(page.getByTestId("history-row").first()).toBeVisible(); // first-ok: readiness, no per-row claim
+    await expect(glyphs).toHaveCount(0);
+  });
+
+  // ── THE DAY HEADER IS A DOOR AND SAYS SO (#4045 §7) ───────────────────────
+  test("makes the whole day header the day link, chevron included", async ({
+    page,
+  }) => {
+    seedDay();
+    await page.goto(`/history?day=${DAY}`);
+    const link = page.getByTestId("history-day-link");
+    // THE COUNT IS INSIDE THE TAP TARGET. Asserted on the link's own text — shipped,
+    // the count was a sibling of the link, which every "the h2 states a count" check
+    // was satisfied by.
+    await expect(link).toContainText(/\d+ records?/);
+    // And the chevron that says the header is a door at all, in the text cluster: the
+    // link's box ends where its content ends rather than spanning the header.
+    await expect(link.locator("svg")).toHaveCount(1);
+    const spans = await page.evaluate(() => {
+      const h2 = document.querySelector('[data-testid="history-day"] h2')!;
+      const a = h2.querySelector("a")!;
+      return {
+        header: Math.round(h2.getBoundingClientRect().width),
+        link: Math.round(a.getBoundingClientRect().width),
+        // NOTHING RIGHT-FLOATED, per the spec's own words: the header has one child
+        // and it is the link, so no sibling can drift to the far edge.
+        children: h2.childElementCount,
+      };
+    });
+    expect(spans.children).toBe(1);
+    expect(spans.link).toBeLessThan(spans.header);
+  });
+
+  // ── THE ADD DOOR RESOLVES IN PLACE (#4045 §1) ─────────────────────────────
+  test("opens each kind's backfill form in place instead of navigating away", async ({
+    page,
+  }) => {
+    seedDay();
+    const exercised: string[] = [];
+    for (const kind of ["food", "practice", "substance", "body"] as const) {
+      await page.goto(`/history?kind=${kind}`);
+      const opener = page.getByTestId(`history-add-open-${kind}`);
+      // A kind whose vocabulary is empty renders no door — the dose door's own rule.
+      // A BARE SKIP WOULD PASS OVER A PAGE WITH NO DOORS AT ALL, which is exactly the
+      // tree this test exists to fail on, so the kinds actually exercised are counted
+      // and named below.
+      if ((await opener.count()) === 0) continue;
+      exercised.push(kind);
+      await hydratedClick(page, opener);
+      await expect(page.getByTestId(`history-add-panel-${kind}`)).toBeVisible();
+      // THE PAGE THE READER WAS ON. The defect was a redirect, so the URL is the
+      // assertion: same route, same filter, same found context.
+      await expect(page).toHaveURL(new RegExp(`/history\\?kind=${kind}$`));
+    }
+    expect(exercised, `doors opened in place: ${exercised.join(", ")}`).toEqual([
+      "food",
+      "practice",
+      "substance",
+      "body",
+    ]);
+    // The body door covers body metrics generally rather than weight alone — the
+    // hardcoded `/trends/metric/weight` redirect was the loudest half of this defect.
+    await page.goto("/history?kind=body");
+    await hydratedClick(page, page.getByTestId("history-add-open-body"));
+    const bodyPanel = page.getByTestId("history-add-panel-body");
+    await expect(bodyPanel.locator('input[name="body_fat_pct"]')).toBeVisible();
+    await expect(bodyPanel.locator('input[name="resting_hr"]')).toBeVisible();
   });
 });

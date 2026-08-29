@@ -741,7 +741,7 @@ describe("a row title links only to a home of its own (#3958/#4045)", () => {
     ).run(p, YESTERDAY);
     const hrefs = gatherHistoryLog(p, { loginId, limit: 200, kind: "body" })
       .rows.map((row) => row.href)
-      .filter((href): href is string => href != null);
+      .filter((href) => href != null);
     expect(hrefs).toHaveLength(2);
     expect(new Set(hrefs).size).toBe(2);
   });
