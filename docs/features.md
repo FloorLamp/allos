@@ -951,7 +951,10 @@ the Sleep Regularity Index, the consistency strip and the bed/wake line read —
 they were previously reachable only with a wearable. A night is one entry
 whichever way you give it: adding the clocks to a night already logged as hours
 corrects that night rather than adding a second one, and correcting the hours
-later keeps the clocks.
+later keeps the clocks. **A tracker still owns those statistics if you have one**
+— typing a night does not replace your wearable's sleep history, and the Sleep
+page's source picker is where you say otherwise. The typed night is in your Sleep
+log either way.
 
 **Waist circumference** (#2322) is a body metric here, not a biomarker. It is
 self-measured with a tape, arrives at the metric cadence, and sits beside weight

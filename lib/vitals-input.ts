@@ -76,11 +76,25 @@ export interface StatedSleepWindow {
   durationStated: boolean;
 }
 
-// Longest bed-to-wake window a sitting may state. NOT 24 h: the stored value is
-// recomputed from the two resolved INSTANTS, which on a zone-transition night run
-// up to an hour longer than the wall clock says, and `sleep_min`'s ingest envelope
-// tops out at 1440. 23 h leaves exactly that headroom.
+// The window a sitting may state, as NOMINAL wall-clock minutes.
+//
+// THE CEILING IS NOT A BOUNDS PROOF, and an earlier version of this comment
+// claimed it was: it said 23 h "leaves exactly the headroom" a zone transition
+// needs under `sleep_min`'s 0–1440 ingest envelope, which silently assumed every
+// shift is at most an hour. Antarctica/Troll shifts TWO, so 12:00→11:00 validated
+// clean here and stored 1500. The quantities are simply different — this bounds
+// the CLOCK DIFFERENCE, while the stored value is derived afterwards from two
+// resolved instants — so the stored value is bounded where it is produced
+// (`resolveSleepWindow` in lib/offline/writes.ts, against the same
+// `inMetricBounds` every other writer of this metric goes through). What the
+// ceiling is for is refusing a pair that cannot be one night.
+//
+// The FLOOR exists because nothing else refuses a mistyped clock: 07:00→07:01 is
+// a one-minute "night" that SRI would reconstruct epochs from. 30 minutes is well
+// under the 180 the nap/overnight classifier uses (lib/queries/metrics.ts), so it
+// refuses typos without judging anything the app elsewhere calls a sleep session.
 export const MAX_SLEEP_WINDOW_MINUTES = 1380;
+export const MIN_SLEEP_WINDOW_MINUTES = 30;
 
 // Fold two stated clocks into the noon-anchored window they denote, or null when
 // either is not a wall clock. `minutes` may be non-positive or longer than a day —
@@ -472,8 +486,17 @@ export function validateVitalsInput(input: VitalsRawInput): string | null {
     const window = sleepWindowFromClocks(input.bedTime, input.wakeTime);
     if (!window) return "Enter valid bed and wake times.";
     if (window.minutes <= 0) return "Wake time must be after bed time.";
+    if (window.minutes < MIN_SLEEP_WINDOW_MINUTES) {
+      return "Bed and wake times must be at least 30 minutes apart.";
+    }
     if (window.minutes > MAX_SLEEP_WINDOW_MINUTES) {
-      return "Bed and wake times must be less than 23 hours apart.";
+      // An AFTERNOON bed clock is read as the evening before the wake date (the
+      // noon anchor), so someone typing a 2 pm nap gets here with a 25-hour
+      // window. "More than 23 hours apart" is true and tells them nothing; what
+      // they need to know is that this pair states a night.
+      return window.bedOnPreviousDay
+        ? "Bed and wake times record one night — bed time is read as the evening before the date above."
+        : "Bed and wake times must be less than 23 hours apart.";
     }
     // Hours ASLEEP can be shorter than the window (awake in bed) but never longer;
     // a night that claims more sleep than time in bed is a typo, not a reading.

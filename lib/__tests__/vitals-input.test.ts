@@ -297,6 +297,7 @@ describe("the bed/wake window (#1851)", () => {
     ["a bedtime after midnight", "01:20", "09:00", false, 460],
     ["bed exactly at noon", "12:00", "11:59", true, 1439],
     ["a short small-hours window", "02:00", "06:30", false, 270],
+    ["the floor itself", "07:00", "07:30", false, 30],
   ])("%s", (_label, bed, wake, bedOnPreviousDay, minutes) => {
     expect(sleepWindowFromClocks(bed, wake)).toEqual({
       bed,
@@ -327,15 +328,25 @@ describe("the bed/wake window (#1851)", () => {
       { bedTime: "08:00", wakeTime: "06:00" },
       /after bed time/i,
     ],
+    // Bed BEFORE noon sits on the wake day itself, so this one really is just a
+    // pair too far apart and keeps the plain sentence.
     [
       "more than 23 hours",
-      { bedTime: "21:00", wakeTime: "22:00" },
-      /23 hours apart/i,
+      { bedTime: "00:00", wakeTime: "23:59" },
+      /less than 23 hours apart/i,
     ],
+    // The nap gets the sentence about the NOON ANCHOR, not the 23-hour one: it
+    // is the anchoring that turned 13:30 into last afternoon, and "more than 23
+    // hours apart" is true and useless to someone who typed 90 minutes.
     [
       "an afternoon nap pair",
       { bedTime: "13:30", wakeTime: "15:00" },
-      /23 hours apart/i,
+      /evening before the date above/i,
+    ],
+    [
+      "a mistyped one-minute night",
+      { bedTime: "07:00", wakeTime: "07:01" },
+      /at least 30 minutes apart/i,
     ],
     // Hours ASLEEP can be shorter than the window; longer is a typo.
     [
@@ -382,5 +393,17 @@ describe("the bed/wake window (#1851)", () => {
     const out = normalizeVitalsInput({ sleepHours: "7.5" });
     if ("error" in out) throw new Error(out.error);
     expect(out.samples).toEqual([{ metric: SLEEP_METRIC, value: 450 }]);
+  });
+});
+
+// The floor and the ceiling are ends of the same admitted band, so pin both edges
+// rather than only the refusals: an off-by-one either way silently narrows what a
+// person may state.
+describe("the stated window's admitted band (#1851)", () => {
+  it.each([
+    ["the 30-minute floor", "07:00", "07:30"],
+    ["the 23-hour ceiling", "00:00", "23:00"],
+  ])("accepts %s", (_label, bedTime, wakeTime) => {
+    expect(validateVitalsInput({ bedTime, wakeTime })).toBeNull();
   });
 });

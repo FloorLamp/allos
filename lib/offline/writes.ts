@@ -22,6 +22,7 @@ import {
   zonedWallTimeToUtc,
 } from "@/lib/date";
 import { isDoseDateAccepted } from "@/lib/dose-log-window";
+import { inMetricBounds } from "@/lib/ingest-bounds";
 import { toKg } from "@/lib/units";
 import type { WeightUnit } from "@/lib/settings";
 import {
@@ -353,7 +354,28 @@ function upsertManualSleep(
 }
 
 // The two absolute instants a stated bed/wake pair denotes in the profile's zone,
-// or null when the zone cannot place them. The bed clock sits on the previous
+// or null when the zone cannot place them, or when the elapsed minutes between
+// them fall outside `sleep_min`'s ingest envelope.
+//
+// THE STORED VALUE IS BOUNDED HERE, not by the validator's ceiling. Those are two
+// different quantities: `MAX_SLEEP_WINDOW_MINUTES` bounds the NOMINAL clock
+// difference, while this bounds the ELAPSED minutes the row actually carries, and
+// a zone transition separates them by however much the zone shifts — two hours in
+// Antarctica/Troll, which let a validated 12:00→11:00 pair store 1500 against a
+// 0–1440 envelope. Every other writer of this metric goes through the same
+// `inMetricBounds`; this is that check, on the one path that lacked it. A refusal
+// costs the WINDOW, never the reading: the caller falls back to a duration-only
+// row carrying the nominal minutes the validator already bounded.
+//
+// WHICH ZONE INTERPRETS THE CLOCKS: the profile's zone AT WRITE TIME, which for a
+// replayed intent is the zone at RECONNECT, not the one the person was in when
+// they typed. The intent carries clocks, not instants, deliberately — an offline
+// device has no server to ask — so the rule follows from that: the stated wall
+// clock is resolved by whatever zone the profile holds when the write lands. A
+// sitting queued abroad and flushed at home therefore moves with the profile.
+// (lib/travel.ts makes that routine, which is why it is written down; the
+// alternative — pinning a zone into the payload at capture — is a payload change,
+// not a silent one, and nobody has asked for it.) The bed clock sits on the previous
 // calendar day whenever it is at or after noon — the noon anchoring
 // lib/sleep-regularity.ts indexes by — and the wake clock is on the row's own
 // wake day, which is how every sleep session in metric_samples is dated.
@@ -370,7 +392,7 @@ function resolveSleepWindow(
   const wakeAt = zonedWallTimeToUtc(tz, date, window.wake);
   if (!bedAt || !wakeAt) return null;
   const minutes = Math.round((wakeAt.getTime() - bedAt.getTime()) / 60000);
-  if (minutes <= 0) return null;
+  if (minutes <= 0 || !inMetricBounds(SLEEP_METRIC, minutes)) return null;
   return {
     startedAt: utcInstant(bedAt),
     endedAt: utcInstant(wakeAt),

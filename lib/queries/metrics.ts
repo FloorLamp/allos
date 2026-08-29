@@ -779,6 +779,31 @@ function readSleepSessions(
         : null;
     if (picked != null) applyFilter(picked);
     else {
+      // A HAND-TYPED NIGHT IS NOT A STREAM (#1851). Manual rows only became
+      // eligible for this probe when the measurements form learned to state a
+      // bed/wake window: before that they carried `ended_at = started_at`, and the
+      // validWindow filter above excluded them outright. Left in, ONE typed night
+      // re-elected the whole profile — measured at 30 Oura overnights plus one
+      // replayed window returning 1 session and an SRI of `null` — and the ring's
+      // own sync for that SAME night did not win it back, because a person types
+      // when they got up while a ring records sleep offset.
+      //
+      // So the probe asks the DEVICE sources first. That is not a new precedence
+      // policy, it is the election every existing profile already had, kept. Two
+      // cases are deliberately untouched: a manual-only profile never reaches here
+      // (one source is no election), which is the case this feature exists for;
+      // and a profile that has genuinely moved to typing says so through the
+      // primary-source picker the Sleep page already renders whenever there is
+      // more than one source, which `chosen` above honours ahead of this probe —
+      // strictly, if they asked for strict.
+      //
+      // WHAT THIS DOES NOT DO: give a device-owning profile's typed night back to
+      // the SRI on a night the device missed. That is a per-night question this
+      // single-stream read deliberately does not ask (see the memo above), and
+      // answering it here would be stitching two sources into one timeline.
+      const preferDevice = sources.some((s) => sourceKey(s) !== "manual")
+        ? " AND source IS NOT NULL AND source <> 'manual'"
+        : "";
       // The newest OVERNIGHT, falling back to the newest session of any length —
       // both in ONE statement, so this stays the three-statement read the memo above
       // getSleepSessions describes. `value >= ?` sorts overnights ahead of naps and
@@ -788,7 +813,7 @@ function readSleepSessions(
         .prepare(
           `SELECT source FROM metric_samples
             WHERE profile_id = ? AND metric = 'sleep_min'
-              ${validWindow}
+              ${validWindow}${preferDevice}
             ORDER BY (value >= ?) DESC, ended_at DESC LIMIT 1`
         )
         .get(profileId, SLEEP_OVERNIGHT_MIN_MINUTES) as
