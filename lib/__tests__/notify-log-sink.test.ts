@@ -6,7 +6,12 @@
 // Runs entirely inside a throwaway tmp dir. The sink resolves its path from
 // process.cwd() (the same mechanism the e2e harness uses to give each worker its own
 // logs), so the suite chdirs into the tmp dir and restores afterwards. No DB, no
-// network. The last case spawns real child processes, so it gets its own timeout.
+// network. The last case spawns real child processes.
+//
+// NO PER-TEST CEILING ANY MORE (#4002). That last case carried `}, 60_000)`, which
+// `ALLOS_VITEST_TIMEOUT_MS` cannot reach, and the tier's 15 000 ms covers it: the
+// whole file reads 1 785 ms across 16 tests on the green CI run at f1742fa6d, of
+// which the dispatch box puts 1 542 ms in that one test — ~9.7x margin.
 
 import {
   describe,
@@ -318,5 +323,5 @@ for (let i = 0; i < Number(count); i++) {
     for (let w = 0; w < WRITERS; w++) {
       for (let i = 0; i < PER_WRITER; i++) expect(ids).toContain(`w${w}-${i}`);
     }
-  }, 60_000);
+  });
 });

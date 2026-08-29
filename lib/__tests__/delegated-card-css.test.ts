@@ -30,7 +30,11 @@ function responsiveDeclaration(rule: Rule): Declaration {
   return found;
 }
 
-describe("DelegatedCard compiled gutters", { timeout: 120_000 }, () => {
+// NO CEILING ON THIS DESCRIBE ANY MORE (#4002). It carried `{ timeout: 120_000 }`,
+// which `ALLOS_VITEST_TIMEOUT_MS` cannot reach. Its one test compiles globals.css
+// through PostCSS + Tailwind and reads 1 801 ms on the green CI run at f1742fa6d
+// (968 ms on the dispatch box under coverage), so the tier's 15 000 ms is ~8x.
+describe("DelegatedCard compiled gutters", () => {
   it("compiles the root premise and the three closed horizontal roles", async () => {
     const css = fs.readFileSync(GLOBALS, "utf8");
     const result = await postcss([tailwindcss()]).process(css, {
