@@ -1,6 +1,7 @@
 "use server";
 
 import { requireProfileWriteAccess, requireWriteAccess } from "@/lib/auth";
+import { gateItemProfile } from "../gate-item";
 import { LOGGED_VIA_FIELD, parseWebOrigin } from "@/lib/logged-via";
 import { revalidateRoute } from "@/lib/revalidate";
 import { db, today, writeTx } from "@/lib/db";
@@ -452,7 +453,12 @@ export type FoodEventEditResult =
 export async function updateFoodLogEvent(
   formData: FormData
 ): Promise<FoodEventEditResult> {
-  const { profile } = await requireWriteAccess();
+  // THE ROW'S PROFILE, NOT THE ACTING ONE (#4009 item 1 / #2106): `/history`'s
+  // `?view=everyone` posts the row's own `profile_id`, and `gateItemProfile` gates it
+  // through requireProfileWriteAccess — reachable AND write, redirect otherwise —
+  // falling back to the acting-profile gate when no subject is posted. The ⋯ menu is
+  // the affordance; this is the gate.
+  const profileId = await gateItemProfile(formData);
   const eventId = Number(formData.get("event_id"));
   if (!Number.isInteger(eventId) || eventId <= 0)
     return formError("That serving is no longer available.");
@@ -490,7 +496,11 @@ export async function updateFoodLogEvent(
     // gated — the same judgeEatenAt every occurred_at write passes, with the inverted
     // consequence described above (the core re-checks against the final date too).
     if (!patch.date) return formError("Enter a valid date.");
-    const tz = getTimezone(profile.id);
+    // THE SUBJECT'S ZONE, not the acting profile's (#4009 item 1). A corrected
+    // eating time is a wall clock ON the subject's day, so resolving it in the
+    // caregiver's timezone would land the instant on a different profile-local day
+    // than the row the correction was opened from.
+    const tz = getTimezone(profileId);
     const instant = zonedWallTimeToUtc(tz, patch.date, rawEatenAt);
     const verdict = instant
       ? judgeEatenAt(instant, tz, patch.date, clockNow())
@@ -500,7 +510,7 @@ export async function updateFoodLogEvent(
     patch.eatenAt = verdict.at;
   }
 
-  const outcome = updateFoodLogEventCore(profile.id, eventId, patch);
+  const outcome = updateFoodLogEventCore(profileId, eventId, patch);
   if (outcome.kind === "not-found")
     return formError("That serving is no longer available.");
   if (outcome.kind === "unknown-group") return formError("Unknown food group.");
@@ -538,12 +548,17 @@ export type FoodEventDeleteResult =
 export async function deleteFoodLogEvent(
   formData: FormData
 ): Promise<FoodEventDeleteResult> {
-  const { profile } = await requireWriteAccess();
+  // THE ROW'S PROFILE, NOT THE ACTING ONE (#4009 item 1 / #2106): `/history`'s
+  // `?view=everyone` posts the row's own `profile_id`, and `gateItemProfile` gates it
+  // through requireProfileWriteAccess — reachable AND write, redirect otherwise —
+  // falling back to the acting-profile gate when no subject is posted. The ⋯ menu is
+  // the affordance; this is the gate.
+  const profileId = await gateItemProfile(formData);
   const eventId = Number(formData.get("event_id"));
   if (!Number.isInteger(eventId) || eventId <= 0)
     return formError("That serving is no longer available.");
 
-  const outcome = deleteFoodLogEventCore(profile.id, eventId);
+  const outcome = deleteFoodLogEventCore(profileId, eventId);
   if (outcome.kind === "not-found")
     return formError("That serving is no longer available.");
   if (outcome.kind === "not-deletable")

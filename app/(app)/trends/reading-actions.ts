@@ -1,7 +1,8 @@
 "use server";
 
 import { revalidateRoute } from "@/lib/revalidate";
-import { requireWriteAccess } from "@/lib/auth";
+import { requireSession } from "@/lib/auth";
+import { gateItemProfile } from "../gate-item";
 import { getUnitPrefs } from "@/lib/settings";
 import { anxietyStoredValue } from "@/lib/mood";
 import { submittedWeightUnit, toKg } from "@/lib/units";
@@ -61,7 +62,13 @@ function parseTarget(
 export async function updateMetricReading(
   formData: FormData
 ): Promise<ReadingActionResult> {
-  const { login, profile } = await requireWriteAccess();
+  // THE ROW'S PROFILE, NOT THE ACTING ONE (#4009 item 1 / #2106): `/history`'s
+  // `?view=everyone` posts the row's own `profile_id`, and `gateItemProfile` gates it
+  // through requireProfileWriteAccess — reachable AND write, redirect otherwise —
+  // falling back to the acting-profile gate when no subject is posted. The ⋯ menu is
+  // the affordance; this is the gate.
+  const profileId = await gateItemProfile(formData);
+  const { login } = await requireSession();
   const target = parseTarget(formData);
   if (!target) return { ok: false, error: "Couldn't find that reading." };
 
@@ -90,7 +97,7 @@ export async function updateMetricReading(
   if (value == null || !Number.isFinite(value))
     return { ok: false, error: "Enter a number." };
 
-  const outcome = updateReadingCore(profile.id, target.target, value);
+  const outcome = updateReadingCore(profileId, target.target, value);
   if (!outcome.ok) {
     return {
       ok: false,
@@ -112,10 +119,15 @@ export async function updateMetricReading(
 export async function deleteMetricReading(
   formData: FormData
 ): Promise<{ undoId: number | null }> {
-  const { profile } = await requireWriteAccess();
+  // THE ROW'S PROFILE, NOT THE ACTING ONE (#4009 item 1 / #2106): `/history`'s
+  // `?view=everyone` posts the row's own `profile_id`, and `gateItemProfile` gates it
+  // through requireProfileWriteAccess — reachable AND write, redirect otherwise —
+  // falling back to the acting-profile gate when no subject is posted. The ⋯ menu is
+  // the affordance; this is the gate.
+  const profileId = await gateItemProfile(formData);
   const target = parseTarget(formData);
   if (!target) return { undoId: null };
-  const outcome = deleteReadingCore(profile.id, target.target);
+  const outcome = deleteReadingCore(profileId, target.target);
   if (!outcome.ok) return { undoId: null };
   revalidateReading(target.slug);
   return { undoId: outcome.undoId };

@@ -199,3 +199,38 @@ export const SETUP_HEALTH_OK_PROFILE = "Setup OK (e2e)";
 export const SETUP_HEALTH_GAP_PROFILE = "Setup Gap (e2e)";
 export const SETUP_HEALTH_QUIET_PROFILE = "Setup Quiet (e2e)";
 export const SETUP_HEALTH_GAP_MED = "Setup Gap Undosed Med (e2e)";
+
+// ── The record's merged household view (#4009 item 3 / #3958, #2106) ─────────
+// `/history?view=everyone` had no e2e coverage: the DB tier proves the composition
+// and the per-member age gate — the security-relevant half — and nothing exercised
+// the rendered surface. What needs a browser is the per-row SUBJECT attribution and
+// the per-row WRITE GATE.
+//
+// THREE PROFILES, BECAUSE THE TWO CLAIMS WANT DIFFERENT FIXTURES. The RENDER claim
+// ("the ⋯ follows write access on the row's profile") is a DIFFERENCE, so it needs a
+// pair that differ in the grant — SELF (write, acting) beside RO (read) — and a second
+// write grant in that render would leave it unable to tell "follows write access" from
+// "always drawn". The CORRECTION claim is the opposite: a write that lands on the
+// acting profile's own row proves nothing about whose row it read, so it needs a
+// writable profile that is NOT the acting one. MEMBER is that third profile, in its own
+// render, and the render test never puts it in view.
+//
+// SELF is created first so it holds the lowest id and is the acting profile on sign-in
+// (createSession picks accessibleProfiles[0], ordered by id). Each member carries ONE
+// taken dose log on a FIXED PAST day — not "today at seed time", which would rot the
+// moment a run crossed midnight, and not an occurred_at instant, which would have to be
+// built per profile zone (the seed pins a rotating per-run timezone, #1417). A stored
+// calendar date is zone-independent and comfortably inside the record's "ends at now"
+// bound.
+//
+// Dedicated rather than borrowed: the spec drives a cross-profile CORRECTION, which
+// is a persistent write, so running it against a shared profile would race whatever
+// else pins that profile's dose state.
+export const E2E_LOGIN_HXEVERY = "e2e_hxevery";
+export const HXEVERY_SELF_PROFILE = "Record Self (e2e)";
+export const HXEVERY_RO_PROFILE = "Record RO (e2e)";
+export const HXEVERY_MEMBER_PROFILE = "Record Member (e2e)";
+export const HXEVERY_SELF_DOSE = "Record Self Vitamin";
+export const HXEVERY_RO_DOSE = "Record RO Vitamin";
+export const HXEVERY_MEMBER_DOSE = "Record Member Vitamin";
+export const HXEVERY_DAY = "2026-06-11";

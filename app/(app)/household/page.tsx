@@ -8,7 +8,7 @@ import {
 } from "@/lib/auth";
 import { disambiguateProfileNames } from "@/lib/profile-disambiguation";
 import { writeSubjectName } from "@/lib/own-profile";
-import { EPISODES_HREF } from "@/lib/hrefs";
+import { EPISODES_HREF, historyHref } from "@/lib/hrefs";
 import { today } from "@/lib/db";
 import {
   getActivities,
@@ -286,6 +286,22 @@ export default async function HouseholdPage() {
             {/* The owner-approved Household pair (#3487): both destinations keep
                 stable positions in this action row, and the shared primitive owns
                 their one matched indicator treatment. */}
+            {/* THE ONLY DOOR TO THE MERGED RECORD (#1463, #3958). `?view=everyone` is
+                a deep-linked MODE, not a switcher: #3958 rules out a view chip on
+                /history because the sidebar is the app's one profile switcher and a
+                second selection vocabulary is the parallel concept CLAUDE.md forbids.
+                Phase 1 shipped the mode with NO door at all, so the capability existed
+                only for someone willing to hand-type a query string — a demotion past
+                the demote-never-retire rule it was demoted under. It belongs here
+                because this page is already the household's cross-profile parent, and
+                it costs /history's chrome budget nothing. */}
+            <DestinationLink
+              href={historyHref({ everyone: true })}
+              className="inline-flex shrink-0 items-center gap-1 whitespace-nowrap text-sm text-link"
+              data-testid="household-record-link"
+            >
+              Everyone&rsquo;s record
+            </DestinationLink>
             <DestinationLink
               href={EPISODES_HREF}
               className="inline-flex shrink-0 items-center gap-1 whitespace-nowrap text-sm text-link"

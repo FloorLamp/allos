@@ -86,6 +86,37 @@ export const dynamic = "force-dynamic";
 // A BAD DEEP LINK DEGRADES TO THE PAGE. Every parser here answers "or All": an unknown
 // kind, a retired family, a future day. A record surface that 404s on a hand-edited
 // URL is a record you cannot get back to.
+//
+// ── THE #2657 SCROLL RESTORER IS DELIBERATELY NOT MOUNTED HERE ───────────────
+//
+// Written down because the next reader WILL find `TimelineScrollRestorer` exported
+// beside the `TimelineFilterLink` this page uses on every chip and every fold card,
+// see it mounted on `/timeline` and not here, and read that as a re-housing that got
+// dropped. It is a decision.
+//
+// WHAT IT DOES: on a chip tap it records the day sitting under the filter controls,
+// and after the navigation scrolls that day back under them. On `/timeline` that is
+// right — the filter row and the date-range control re-query the whole feed, so
+// without it the reader is left at an offset that no longer means anything.
+//
+// WHY NOT HERE: #4062 re-nested the folds so an open month's days render UNDER their
+// own card, and paired that with `scroll={false}` so opening one leaves the reader
+// looking at the card they tapped. The restorer's capture target is the DAY under the
+// controls, which after a fold tap is not the fold card — so mounting it as-is would
+// scroll the reader AWAY from the card they just opened, undoing the fix. The two
+// answers to "where should the reader be afterwards" disagree, and the fold arrangement
+// already gives the better one for the taps that dominate this page.
+//
+// The chips are the case that would still benefit, and separating them would mean a
+// per-link flag on the shared control — a second shape of one component selected by a
+// prop, which is the variant the line-budget ruling names outright. Not worth it for
+// the chip case alone, so this is raised rather than built.
+//
+// NOTHING IS LEAKING IN THE MEANTIME: the capture in `TimelineFilterLink`'s onClick
+// looks up `#timeline-controls`, which exists only on `/timeline`, so on this page it
+// finds nothing and returns without writing. It is inert here, not half-wired — and
+// when `/timeline` retires, the capture and the restorer retire with it unless this
+// decision is revisited first.
 
 // One collapsed period — a month of the current year, or an earlier year (#2657).
 // Deliberately the same shape and the same `timeline-fold-` anchor id the timeline
@@ -345,6 +376,21 @@ export default async function HistoryPage(props: {
   }));
   const loggable = doseItems.filter((item) => item.doses.length > 0);
   const canWrite = scope.access.get(actingProfileId) === "write";
+  // WHICH PROFILES IN VIEW THIS LOGIN MAY WRITE (#4009 item 1 / #2106). Resolved once
+  // from the scope's already-computed access map — no second `accessForProfile` pass —
+  // and handed to the rows as a SET, because in `?view=everyone` the answer differs per
+  // member: a caregiver can hold write on one and read-only on another. This decides
+  // whether the ⋯ is DRAWN. It is not the gate: the gate is `gateItemProfile` inside
+  // each correction action, which re-checks at apply time, so a forged submit naming a
+  // profile this login cannot write is refused whatever this list said.
+  const writableProfileIds = memberIds.filter(
+    (id) => scope.access.get(id) === "write"
+  );
+  // AND EACH MEMBER'S OWN TODAY (#4009 item 1). A correction's date field may reach
+  // that member's current day and no further — which is not the caregiver's, for a
+  // member in a zone ahead of theirs. The server already bounds on the gated profile;
+  // this is the client half saying the same thing.
+  const maxDates = Object.fromEntries(memberIds.map((id) => [id, today(id)]));
   // THE OTHER FOUR DOORS' VOCABULARY, read once and only for the kind that is showing
   // one. Each list is a shared reader the kind's own surface already uses — no fifth
   // derivation of "what can this profile log".
@@ -447,10 +493,9 @@ export default async function HistoryPage(props: {
       </h2>
       <HistoryRows
         rows={group.events as HistoryRow[]}
-        actingProfileId={actingProfileId}
-        canWrite={canWrite}
+        writableProfileIds={writableProfileIds}
         doseItems={doseItems}
-        maxDate={todayStr}
+        maxDates={maxDates}
         defaultTime={defaultTime}
         subjectNames={subjectNames}
         rowClassName={rowGutter}
