@@ -15,7 +15,7 @@ describe("SymptomSeverityControl", () => {
 
     const group = screen.getByRole("group", { name: "Headache severity" });
     const options = screen.getAllByRole("button");
-    expect(group.className).toBe("inline-flex items-center gap-1");
+    expect(group.className).toBe("inline-flex items-center gap-3");
     expect(options).toHaveLength(4);
     expect(options.map((option) => option.textContent)).toEqual([
       "1",
@@ -30,8 +30,12 @@ describe("SymptomSeverityControl", () => {
         })
         .getAttribute("aria-pressed")
     ).toBe("true");
-    expect(options[0]?.className).toContain("h-11");
-    expect(options[0]?.className).toContain("w-11");
+    // The control box on both axes plus the reach mechanism (#3954); the
+    // RENDERED proof is e2e/button-height-floor.mobile.spec.ts, since a class
+    // string is not evidence a rule reached the element.
+    expect(options[0]?.className).toContain("h-(--control-box)");
+    expect(options[0]?.className).toContain("w-(--control-box)");
+    expect(options[0]?.className).toContain("tap-target");
     expect(options[0]?.className).toContain("bg-brand-600");
     expect(options[2]?.className).toContain("bg-slate-100");
     expect(options[3]?.getAttribute("data-testid")).toBe(

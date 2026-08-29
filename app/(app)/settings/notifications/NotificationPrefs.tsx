@@ -955,10 +955,12 @@ export default function NotificationPrefs({
                         of every toggleable kind's. On a desktop grid, under a
                         header row, that reads as a column; on a phone, where each
                         kind is its own block, it reads as ragged. The spacer is
-                        `hidden` at `sm`+, so the desktop rows are untouched. */}
+                        `hidden` at `sm`+, so the desktop rows are untouched. It
+                        reads `--control-box` rather than a literal so it cannot
+                        drift from the checkbox it stands in for (#3954). */}
                     {e.control.type !== "toggle" && (
                       <span
-                        className="hidden h-11 w-11 shrink-0"
+                        className="hidden h-(--control-box) w-(--control-box) shrink-0"
                         aria-hidden="true"
                         data-matrix-toggle-slot
                       />
