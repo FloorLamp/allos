@@ -2422,7 +2422,8 @@ input[type="time"]::-webkit-datetime-edit-ampm-field:focus {
 .btn-ghost,
 .btn-danger,
 .button-control,
-.input {
+.input,
+[data-segmented-option] {
   border-width: var(--control-border);
   border-style: solid;
   padding-block: calc(
@@ -2442,7 +2443,8 @@ input[type="time"]::-webkit-datetime-edit-ampm-field:focus {
   .btn-ghost,
   .btn-danger,
   .button-control,
-  .input {
+  .input,
+  [data-segmented-option] {
     min-block-size: var(--control-box);
   }
 }
@@ -2465,7 +2467,10 @@ input[type="time"]::-webkit-datetime-edit-ampm-field:focus {
     .btn-ghost,
     .btn-danger,
     .button-control,
-    .tap-target {
+    .checkbox-control,
+    .tap-target,
+    [data-segmented-option],
+    [data-calendar-day] {
       position: relative;
     }
   }
@@ -2477,22 +2482,60 @@ input[type="time"]::-webkit-datetime-edit-ampm-field:focus {
   .btn-ghost::after,
   .btn-danger::after,
   .button-control::after,
+  .checkbox-control::after,
   .tap-target::after {
     content: "";
     position: absolute;
     inset: calc(-1 * var(--control-reach));
   }
+
+  /* A TILED CONTROL REACHES ON ONE AXIS ONLY (#3954). A segmented track's
+     options and a calendar's day cells sit SHOULDER TO SHOULDER: they tile
+     their line with no gap, by construction, because a tap that lands between
+     two days reads as broken exactly like one that lands on the wrong day
+     (components/EventCalendar.tsx has said so since #3377). There is therefore
+     no inline gap to spend on the 2x floor, and an inline reach could only be
+     taken from the neighbour — moving the boundary between two targets 6px
+     instead of enlarging either. So the inline target is the tiling itself and
+     the reach is spent on the block axis, where the control IS isolated and the
+     row gap can pay the floor (`pointer-coarse:gap-y-3` on the calendar grids).
+     Same 34 box, same 46 effective height; only the axis differs, and it differs
+     because the arrangement does. */
+  [data-segmented-option]::after,
+  [data-calendar-day]::after {
+    content: "";
+    position: absolute;
+    inset-block: calc(-1 * var(--control-reach));
+    inset-inline: 0;
+  }
 }
 
-/* Compact native controls keep their paint inside a 44px interaction box. */
+/* Compact native controls keep their paint inside their interaction box. */
 .checkbox-control {
   display: inline-flex;
   align-items: center;
   justify-content: center;
 }
 
+/* THE BOX, AS A FLOOR ON BOTH AXES (#3954). A checkbox label wraps a 16px native
+   box and no text, so it has no line to spend the derived padding on — the same
+   reason the icon-only compositions above take a floor rather than the padding.
+   It is square, so it takes the floor on both axes; and unlike a native
+   `<select>` a `<label>` CAN grow a pseudo-element, so its 44 is effective like
+   everything else's rather than rendered. `@layer components`, with the rest of
+   the floor, so a call site asking for a bigger box still wins. */
+@layer components {
+  .checkbox-control {
+    min-block-size: var(--control-box);
+    min-inline-size: var(--control-box);
+  }
+}
+
+/* A RANGE IS A TRACK, NOT A BOX, and #3856 gave it this deliberate rendered
+   target days before the box landed — a thumb dragged along a 34px-tall track is
+   a different question from a control you tap once. #3938 did not supersede it
+   and neither does #3954. */
 @media (max-width: 639.98px), (pointer: coarse) {
-  .checkbox-control,
   input[type="range"] {
     min-block-size: 2.75rem;
     min-inline-size: 2.75rem;

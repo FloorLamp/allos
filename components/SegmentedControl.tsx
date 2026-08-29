@@ -101,10 +101,14 @@ export default function SegmentedControl<T extends string | number>({
       {options.map((option) => {
         const active = value === option.value;
         // The selected segment fills with the shared seg-active pair (the
-        // Botanical census's accent-filled pill). Each option renders its own
-        // 44px target; the track's padding is visual inset, not a substitute
-        // non-clickable target and no pseudo-area can overlap a sibling.
-        const segmentClass = `inline-flex min-h-11 items-center justify-center rounded-md px-3 py-1 text-xs font-medium whitespace-nowrap transition ${
+        // Botanical census's accent-filled pill). Each option wears THE CONTROL
+        // BOX (#3938, extended to segments by #3954) — no height here, and no
+        // `py-*`: the unlayered rule in app/globals.css derives both from
+        // `--control-box` and the segment's own line box, so a track is exactly
+        // as tall as the chips and buttons it sits beside. `border-transparent`
+        // because the box reserves a 1px border inside the height for every
+        // control kind; a segment's role is painted by its fill, not a frame.
+        const segmentClass = `inline-flex items-center justify-center rounded-md border-transparent px-3 text-xs font-medium whitespace-nowrap transition ${
           fill ? "min-w-0 flex-1 " : "shrink-0 "
         }${option.icon ? "gap-1.5 " : ""}${
           active

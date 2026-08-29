@@ -524,6 +524,24 @@ ${landingLines}
   the hole is visible when it is there. Then INTERSECT the census with the rows that
   actually moved — the count that matters is not how many files mention the surface,
   it is how many address the thing you changed.
+  (5) BUILD THE PIN SET FIRST AND UNSCOPED, AND NEVER SCOPE IT TO THE MARKER SWEEP'S
+  HITS. An intersection narrowed to the files a marker sweep already matched can only
+  ever CONFIRM that sweep's verdicts; it is structurally unable to contradict them, so
+  it feels like corroboration while proving nothing. Build the geometry-pin (or
+  whatever-you-moved) set independently — \`TAP_FLOOR_PX\`, the bare literal,
+  \`boundingBox|getBoundingClientRect|toBeInViewport|elementFromPoint\` — over ALL of
+  e2e/, THEN intersect with the moved subjects, and let the intersection overrule any
+  per-file impression. AND A PER-FILE VERDICT ASSERTED WITHOUT OPENING THE FILE IS NOT
+  A CENSUS RESULT — it is the guess the census existed to replace. Measured on #3954
+  (2026-08-29): the lane's marker sweep listed quick-log-stability.mobile.spec.ts among
+  its 15 hits, the lane wrote the verdict \"only button-height-floor asserts segment
+  geometry; rest drive clicks\" without opening any of them, and \`TAP_FLOOR_PX\` was
+  sitting on line 167 of that very file, which then went red in CI. The broad grep had
+  been run FIRST, judged \"too broad\" at 40 files, and discarded in favour of the
+  narrow one. Re-run properly it was 45 files and 15 after intersection, and it found a
+  second real case — a genuine SegmentedControl in ride-detail addressed only by
+  \`getByRole(\"group\", { name })\`, invisible to every marker search because the
+  accessible name comes from an \`ariaLabel\` prop.
 - A GUARD THAT REMOVES A PROPERTY CANNOT ALSO PROVE THE PROPERTY SURVIVED. When your
   change takes something away — a frame, a gutter, a label, a permission, a field —
   the natural guard asserts ABSENCE: nothing still has it. That assertion passes on
