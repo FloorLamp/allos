@@ -474,33 +474,33 @@ describe("the bounded delivery read keeps the profile-local day (#3944)", () => 
   ] as const)(
     "%s (%s) reads the latest local day as %s over %i",
     (slug, tz, day, count) => {
-    const profile = newProfile(`DELIVERY-BOUND-${slug}`);
-    const portal = createPortal(`Bound Portal ${slug}`);
-    expect(portal.ok).toBe(true);
-    const account = accountsForPortal(portal.ok ? portal.id : 0)[0];
-    const label = "Bound Patient";
-    expect(bindPortalIdentity(account.id, label, profile).ok).toBe(true);
-    const identityId = (
-      db
-        .prepare(
-          "SELECT id FROM portal_identities WHERE account_id = ? AND patient_label = ?"
-        )
-        .get(account.id, label) as { id: number }
-    ).id;
-    const ins = db.prepare(
-      `INSERT INTO medical_documents
+      const profile = newProfile(`DELIVERY-BOUND-${slug}`);
+      const portal = createPortal(`Bound Portal ${slug}`);
+      expect(portal.ok).toBe(true);
+      const account = accountsForPortal(portal.ok ? portal.id : 0)[0];
+      const label = "Bound Patient";
+      expect(bindPortalIdentity(account.id, label, profile).ok).toBe(true);
+      const identityId = (
+        db
+          .prepare(
+            "SELECT id FROM portal_identities WHERE account_id = ? AND patient_label = ?"
+          )
+          .get(account.id, label) as { id: number }
+      ).id;
+      const ins = db.prepare(
+        `INSERT INTO medical_documents
          (filename, stored_path, mime_type, size_bytes, extraction_status,
           uploaded_at, delivered_at, profile_id, acquired_identity_id)
        VALUES (?, '', 'application/xml', 20, 'done', ?, ?, ?, ?)`
-    );
-    for (const at of [STALE, EARLIER, LATER])
-      ins.run(`bound-${at}.xml`, at, at, profile, identityId);
+      );
+      for (const at of [STALE, EARLIER, LATER])
+        ins.run(`bound-${at}.xml`, at, at, profile, identityId);
 
-    expect(
-      deliveredDocumentCountsByAccount(authorized([profile]), false, tz).get(
-        account.id
-      )
-    ).toEqual({ count, day });
+      expect(
+        deliveredDocumentCountsByAccount(authorized([profile]), false, tz).get(
+          account.id
+        )
+      ).toEqual({ count, day });
     }
   );
 });
