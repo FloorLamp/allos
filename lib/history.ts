@@ -50,6 +50,7 @@ import { intakeHref, medicationHref, metricDetailHref } from "./hrefs";
 import {
   detailSegment,
   historyClock,
+  resolveHistoryItem,
   type HistoryLogKind,
   type HistoryRow,
 } from "./history-format";
@@ -173,6 +174,16 @@ export function gatherHistoryLog(
   const until = opts.day ?? todayStr;
   const since = opts.day ?? ISO_FLOOR;
   const limit = Math.max(1, Math.trunc(opts.limit));
+  // AN ITEM THAT CANNOT MATCH DEGRADES TO THE KIND, the way an invalid `?kind` or
+  // `?family` degrades to All: "a bad deep link degrades to the page, never a 404",
+  // and an empty page asserting there is nothing is the same failure wearing a 200.
+  // The two axes with a CLOSED vocabulary are checked here — a food group that is not
+  // a food group (`?item=alcohol` became one the moment the record ruled a drink a
+  // substance) and a body measure that is not one of the three. Dose items and
+  // practices have OPEN vocabularies whose membership is a per-profile question, so
+  // they are left to their readers, which return nothing for an unknown one; that is
+  // the same empty page and it is recorded in the report rather than papered over.
+  const item = resolveHistoryItem(opts.kind, opts.item);
   const rows: HistoryRow[] = [];
   let truncated = false;
 
@@ -181,7 +192,7 @@ export function gatherHistoryLog(
   // the page's bound. `class` is the pre-filter the two deleted routes encoded as two
   // paths; here it is a param on one page, exactly as `?kind=dose&class=medication`.
   if (wants(opts, "dose")) {
-    const itemId = Number(opts.item);
+    const itemId = Number(item);
     const ledger = getIntakeDoseLedgerPage(
       profileId,
       since,
@@ -270,7 +281,7 @@ export function gatherHistoryLog(
       since,
       {
         untilDate: until,
-        groupKey: opts.item,
+        groupKey: item,
         excludeSubstanceGroups: true,
       },
       1,
@@ -328,7 +339,7 @@ export function gatherHistoryLog(
     const ledger = getPracticeLedgerPage(
       profileId,
       since,
-      { untilDate: until, practice: opts.item },
+      { untilDate: until, practice: item },
       1,
       limit
     );
@@ -382,7 +393,7 @@ export function gatherHistoryLog(
       (row) =>
         row.date <= until &&
         row.date >= since &&
-        (!opts.item || opts.item === row.substance)
+        (!item || item === row.substance)
     );
     if (totals.length > limit) truncated = true;
     for (const row of totals.slice(0, limit)) {
@@ -439,16 +450,34 @@ export function gatherHistoryLog(
   if (wants(opts, "body")) {
     // The shared readers, not a fourth SELECT on this table: the day view asks the
     // day question and the record asks for a page. Both are profile-scoped in SQL.
+    // THE DATE BOUND IS IN SQL, like every other kind's. It used to be a predicate on
+    // a raw SELECT here; moving to the shared reader dropped it, so "the record ends
+    // at now" ran AFTER rows had been counted against the bound and a future-dated
+    // row consumed a slot. lib/ingest-bounds.ts admits instants up to 24h ahead for
+    // device clock skew, so tomorrow-dated body rows are an ordinary sync outcome
+    // rather than a hypothetical.
     const bodyRows = opts.day
       ? getBodyMetricsOnDate(profileId, opts.day)
-      : getBodyMetricsPage(profileId, 1, limit + 1).rows;
-    // THE BOUND COUNTS RENDERED ROWS, NOT STORED ONES. A `body_metrics` row fans out
-    // to up to three measures, so bounding the READ alone let `limit` render three
-    // times what every other kind renders — and "Load more" then had to reveal rows
-    // the bound had never actually withheld. The read stays bounded (it is what keeps
-    // the query small); this is the second half, counted where the rows are made.
+      : getBodyMetricsPage(profileId, 1, limit + 1, until).rows;
+
+    // TRUNCATION IS ASKED IN BOTH UNITS, BECAUSE THE READ AND THE RENDER ARE BOUNDED
+    // IN DIFFERENT ONES AND EITHER CAN BE THE ONE THAT CUT.
+    //
+    // The read is bounded in STORED rows; the page is bounded in RENDERED rows; and a
+    // `body_metrics` row fans out to up to three measures while `?item=` narrows back
+    // to one — in memory, because the measure lives in a column rather than a row.
+    // Counting only the render was a withholding bug of exactly the family it
+    // replaced: `?kind=body&item=resting-hr` over a store whose newest `limit` rows
+    // carry no resting HR emitted nothing, reported `hasMore: false`, and asserted
+    // completeness over readings a single "Load more" used to reach.
+    //
+    // So both questions are asked and the answers are OR'd. The read was cut when it
+    // returned more rows than the bound; the render was cut when it stopped with rows
+    // still to emit. Neither alone is "is there more"; together they cannot answer
+    // "no" while there is.
+    if (bodyRows.length > limit) truncated = true;
     let bodyEmitted = 0;
-    for (const row of bodyRows) {
+    for (const row of bodyRows.slice(0, limit)) {
       if (bodyEmitted >= limit) {
         truncated = true;
         break;
@@ -456,7 +485,7 @@ export function gatherHistoryLog(
       const when = bestKnownInstant("body_metrics", { ...row });
       const hhmm = when.known ? localClock(tz, when.at) : null;
       for (const measure of bodyMetricMeasures(row, units.weightUnit)) {
-        if (opts.item && opts.item !== measure.slug) continue;
+        if (item && item !== measure.slug) continue;
         if (bodyEmitted >= limit) {
           truncated = true;
           break;

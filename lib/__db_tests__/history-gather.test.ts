@@ -423,3 +423,272 @@ describe("alcohol is a substance on the record, not a food", () => {
     ).toEqual(["Berries"]);
   });
 });
+
+// ── THE BOUND AND THE FLAG ARE ASKED IN DIFFERENT UNITS, SO BOTH ARE ASKED ───
+//
+// The body read is bounded in STORED rows, the page in RENDERED ones, and `?item=`
+// narrows a row's three measures to one in memory. Counting only one of the two let a
+// cut read report completeness — the withholding bug the rendered-row counter itself
+// introduced while fixing the opposite one.
+describe("the body kind never reports completeness over a cut read", () => {
+  function weighInRow(
+    profileId: number,
+    date: string,
+    over: { weight?: number; fat?: number; hr?: number } = {}
+  ): void {
+    db.prepare(
+      `INSERT INTO body_metrics (profile_id, date, weight_kg, body_fat_pct, resting_hr)
+       VALUES (?, ?, ?, ?, ?)`
+    ).run(
+      profileId,
+      date,
+      over.weight ?? null,
+      over.fat ?? null,
+      over.hr ?? null
+    );
+  }
+
+  it("says there is more when the READ was cut and the filter emitted nothing", () => {
+    const p = profile("history body item bound");
+    const loginId = login();
+    // The newest rows carry weight only; the resting-HR readings sit behind them.
+    for (let i = 1; i <= 6; i += 1) {
+      weighInRow(p, `2026-06-0${i}`, { weight: 70 + i });
+    }
+    for (let i = 1; i <= 3; i += 1) {
+      weighInRow(p, `2026-05-0${i}`, { hr: 50 + i });
+    }
+
+    const narrow = gatherHistoryLog(p, {
+      loginId,
+      limit: 4,
+      kind: "body",
+      item: "resting-hr",
+    });
+    // NOTHING RENDERED, AND THE PAGE MUST NOT CALL THAT THE END. A rendered-row
+    // counter alone answered `false` here and the page then drew no control at all,
+    // asserting completeness over three recorded readings.
+    expect(narrow.rows).toEqual([]);
+    expect(narrow.hasMore).toBe(true);
+
+    // Widened past the cut, the readings arrive and the claim flips honestly.
+    const wide = gatherHistoryLog(p, {
+      loginId,
+      limit: 200,
+      kind: "body",
+      item: "resting-hr",
+    });
+    expect(wide.rows).toHaveLength(3);
+    expect(wide.hasMore).toBe(false);
+  });
+
+  it("says there is more when the RENDER was cut mid fan-out", () => {
+    const p = profile("history body fanout bound");
+    const loginId = login();
+    // Two stored rows, six measures: the render is what cuts, not the read.
+    weighInRow(p, "2026-06-01", { weight: 70, fat: 20, hr: 50 });
+    weighInRow(p, "2026-06-02", { weight: 71, fat: 21, hr: 51 });
+    const gather = gatherHistoryLog(p, { loginId, limit: 4, kind: "body" });
+    expect(gather.rows).toHaveLength(4);
+    expect(gather.hasMore).toBe(true);
+  });
+
+  it("does not spend the bound on rows the record will not show", () => {
+    const p = profile("history body future");
+    const loginId = login();
+    // THE RECORD ENDS AT NOW, and lib/ingest-bounds.ts deliberately admits instants up
+    // to 24h ahead for device clock skew — so a tomorrow-dated body row is an ordinary
+    // sync outcome. Filtered after the read it consumed a slot the bound had already
+    // counted; filtered in SQL it never reaches the page.
+    weighInRow(p, TOMORROW, { weight: 99 });
+    weighInRow(p, YESTERDAY, { weight: 70 });
+    const gather = gatherHistoryLog(p, { loginId, limit: 1, kind: "body" });
+    expect(gather.rows.map((r) => r.date)).toEqual([YESTERDAY]);
+    expect(gather.hasMore).toBe(false);
+  });
+});
+
+// ── THE GATHER'S `edit` PAYLOAD, FOR EVERY KIND ─────────────────────────────
+//
+// The two blocking write defects were both a wrong value in this object, and both were
+// caught only because their kind was the one being looked at: transplanting the body
+// defect onto the DOSE kind, or nulling the substance editor's notes here, shipped
+// green. What the form does with the payload is asserted in
+// components/__tests__/history-row-writes.test.tsx; what the GATHER puts in it is
+// asserted here, and now for all five kinds rather than the two that had bugs.
+//
+// EVERY FIELD, AND THE RULE IS THE SAME EVERY TIME: a field the correction action
+// REWRITES must arrive carrying the stored value, and a field that names an INSTANT
+// must be the stored column rather than the row's resolved clock.
+describe("every kind's edit payload carries the stored row", () => {
+  it("dose: the stated instant, and never the record chain", () => {
+    const p = profile("history edit dose");
+    const loginId = login();
+    const item = Number(
+      db
+        .prepare(
+          "INSERT INTO intake_items (profile_id, name, kind) VALUES (?, 'History Mag', 'supplement')"
+        )
+        .run(p).lastInsertRowid
+    );
+    const dose = Number(
+      db
+        .prepare(
+          "INSERT INTO intake_item_doses (item_id, amount, time_of_day) VALUES (?, '3 g', 'Morning')"
+        )
+        .run(item).lastInsertRowid
+    );
+    // STATED: an administration instant somebody named.
+    db.prepare(
+      `INSERT INTO intake_item_logs
+         (item_id, dose_id, date, occurred_at, recorded_at, status, amount, product)
+       VALUES (?, ?, ?, ?, ?, 'taken', '3 g', 'Brand X')`
+    ).run(
+      item,
+      dose,
+      YESTERDAY,
+      `${YESTERDAY} 10:07:00`,
+      `${YESTERDAY} 23:59:00`
+    );
+    const stated = gatherHistoryLog(p, { loginId, limit: 200, kind: "dose" })
+      .rows[0];
+    expect(stated.edit).toMatchObject({
+      kind: "dose",
+      itemId: item,
+      doseId: dose,
+      statedAt: `${YESTERDAY} 10:07:00`,
+      amount: "3 g",
+      itemKind: "supplement",
+    });
+
+    // UNSTATED: the row's clock is the record chain's and the editor must seed NOTHING
+    // from it — the same substitution the practice fix made unrepresentable, asserted
+    // on the kind that already got it right so it cannot quietly stop being right.
+    db.prepare(
+      `INSERT INTO intake_item_logs
+         (item_id, dose_id, date, recorded_at, status)
+       VALUES (?, ?, ?, ?, 'taken')`
+    ).run(item, dose, TODAY, `${TODAY} 07:02:00`);
+    const unstated = gatherHistoryLog(p, { loginId, limit: 200, kind: "dose" })
+      .rows[0];
+    expect(unstated.clockKind).toBe("logged");
+    expect(unstated.sortTime).not.toBeNull();
+    expect(unstated.edit).toMatchObject({ statedAt: null });
+  });
+
+  it("food: the group, the meal and the eating-time provenance", () => {
+    const p = profile("history edit food");
+    const loginId = login();
+    const at = `${YESTERDAY}T08:46:00.000Z`;
+    db.prepare(
+      `INSERT INTO food_log_events
+         (profile_id, group_key, date, meal_slot, recorded_at, occurred_at)
+       VALUES (?, 'berries', ?, 'Morning', ?, ?)`
+    ).run(p, YESTERDAY, at, at);
+    const stated = gatherHistoryLog(p, { loginId, limit: 200, kind: "food" })
+      .rows[0];
+    expect(stated.edit).toMatchObject({
+      kind: "food",
+      groupKey: "berries",
+      clockKind: "stated",
+    });
+    expect((stated.edit as { clock: string | null }).clock).not.toBeNull();
+
+    // A row nobody stated an eating time for carries `logged`, which is what stops the
+    // correction form re-anchoring a filing clock onto a new day.
+    db.prepare(
+      `INSERT INTO food_log_events (profile_id, group_key, date, recorded_at)
+       VALUES (?, 'leafy_greens', ?, ?)`
+    ).run(p, TODAY, `${TODAY}T12:01:00.000Z`);
+    const logged = gatherHistoryLog(p, {
+      loginId,
+      limit: 200,
+      kind: "food",
+      item: "leafy_greens",
+    }).rows[0];
+    expect(logged.edit).toMatchObject({ clockKind: "logged" });
+  });
+
+  it("practice: the duration and the note the action rewrites", () => {
+    const p = profile("history edit practice");
+    const loginId = login();
+    db.prepare(
+      `INSERT INTO practice_logs
+         (profile_id, practice, date, time, duration_min, notes)
+       VALUES (?, 'history edit sauna', ?, '07:15', 20, 'felt steadier')`
+    ).run(p, YESTERDAY);
+    const [row] = gatherHistoryLog(p, {
+      loginId,
+      limit: 200,
+      kind: "practice",
+    }).rows;
+    expect(row.edit).toMatchObject({
+      kind: "practice",
+      statedTime: "07:15",
+      durationMin: 20,
+      notes: "felt steadier",
+    });
+  });
+
+  it("substance: the key, the amount and the note the action rewrites", () => {
+    const p = profile("history edit substance", 1990);
+    const loginId = login();
+    db.prepare(
+      `INSERT INTO substance_daily_totals (profile_id, substance, date, units, notes)
+       VALUES (?, 'nicotine', ?, 3, 'after lunch')`
+    ).run(p, YESTERDAY);
+    const [row] = gatherHistoryLog(p, {
+      loginId,
+      limit: 200,
+      kind: "substance",
+    }).rows;
+    expect(row.edit).toMatchObject({
+      kind: "substance",
+      substance: "nicotine",
+      amount: 3,
+      notes: "after lunch",
+    });
+  });
+
+  it("body: every measure names its own cell, in the unit its row printed", () => {
+    const p = profile("history edit body");
+    const loginId = login();
+    setLoginSetting(loginId, "weight_unit", "lb");
+    const id = Number(
+      db
+        .prepare(
+          `INSERT INTO body_metrics (profile_id, date, weight_kg, body_fat_pct, resting_hr)
+           VALUES (?, ?, 70, 21, 54)`
+        )
+        .run(p, YESTERDAY).lastInsertRowid
+    );
+    const rows = gatherHistoryLog(p, {
+      loginId,
+      limit: 200,
+      kind: "body",
+    }).rows;
+    expect(rows).toHaveLength(3);
+    for (const row of rows) {
+      const edit = row.edit as {
+        kind: string;
+        target: string;
+        slug: string;
+        value: number;
+      };
+      expect(edit.kind).toBe("body");
+      // The target names the ROW and the MEASURE; the slug names the PAGE whose unit
+      // the action converts back from (#2032's two fields, two questions).
+      expect(edit.target.startsWith(`body_metrics:${id}:`)).toBe(true);
+      // The number in the field is the number in the detail, always — the whole of
+      // the kilograms-posted-as-pounds defect in one comparison, asked per measure so
+      // it cannot be right for weight and wrong for the two beside it.
+      expect(row.detail.startsWith(`${edit.value}`)).toBe(true);
+    }
+    const weight = rows.find((r) => r.title === "Weight")!;
+    expect((weight.edit as { unit: string }).unit).toBe("lb");
+    expect((weight.edit as { value: number }).value).toBeGreaterThan(150);
+    // A non-weight measure has no unit to carry: there is nothing to convert back.
+    const hr = rows.find((r) => r.title === "Resting Heart Rate")!;
+    expect(hr.edit).toMatchObject({ unit: "", value: 54 });
+  });
+});

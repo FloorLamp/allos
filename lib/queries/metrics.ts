@@ -237,16 +237,30 @@ export interface BodyMetricsPage {
 // page (#2530). A daily weigh-in over two years is ~700 rows, each carrying notes, a
 // possible edit-lock badge and a client delete button, and before this the whole
 // ledger was read and serialized into every render of the Body census.
+// The inclusive upper day bound when a caller has none — later than any real
+// `body_metrics.date`, so the predicate is a no-op rather than a second statement.
+// ONE statement either way is deliberate: the scoping scanner reads the literal SQL
+// text, and a pair of near-identical SELECTs is one more place for `profile_id` to go
+// missing from only one of them.
+const NO_DAY_BOUND = "9999-12-31";
+
 export function getBodyMetricsPage(
   profileId: number,
   page: number,
-  pageSize: number
+  pageSize: number,
+  // The newest day to include (inclusive). `/history` passes the subject's today:
+  // the record ENDS AT NOW, and a bound applied after the read let future-dated rows
+  // — which lib/ingest-bounds.ts deliberately admits up to 24h ahead for device clock
+  // skew — consume slots the page had already counted against its limit (#3958).
+  untilDate: string = NO_DAY_BOUND
 ): BodyMetricsPage {
   const size = Math.max(1, Math.trunc(pageSize));
   const total = (
     db
-      .prepare("SELECT COUNT(*) AS n FROM body_metrics WHERE profile_id = ?")
-      .get(profileId) as { n: number }
+      .prepare(
+        "SELECT COUNT(*) AS n FROM body_metrics WHERE profile_id = ? AND date <= ?"
+      )
+      .get(profileId, untilDate) as { n: number }
   ).n;
   const clamped = Math.min(clampPage(page), pageCount(total, size));
   const rows = db
@@ -257,11 +271,16 @@ export function getBodyMetricsPage(
          LEFT JOIN medical_documents d
            ON w.source = '${DOCUMENT_SOURCE_PREFIX}' || d.id
           AND d.profile_id = w.profile_id
-        WHERE w.profile_id = ?
+        WHERE w.profile_id = ? AND w.date <= ?
         ${BODY_METRICS_ORDER}
         LIMIT ? OFFSET ?`
     )
-    .all(profileId, size, pageOffset(clamped, size)) as BodyMetricSourceRow[];
+    .all(
+      profileId,
+      untilDate,
+      size,
+      pageOffset(clamped, size)
+    ) as BodyMetricSourceRow[];
   return {
     rows: rows.map(withSourceLabel),
     total,

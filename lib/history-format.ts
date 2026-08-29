@@ -33,6 +33,9 @@
 // parameter, not a fork.
 
 import { formatClockValue, type DisplayFormatPrefs } from "./format-date";
+import { FOOD_GROUPS } from "./food-groups";
+import { ALCOHOL_FOOD_GROUP } from "./substance-use";
+import { BODY_METRIC_MEASURE_SLUG } from "./body-metric-measures";
 import type { AppRoute } from "./hrefs";
 import type { MergeableRow } from "./timeline-multi";
 
@@ -222,6 +225,47 @@ export function resolveHistoryFamily(
     ? (raw as HistoryFamily)
     : undefined;
 }
+
+/**
+ * `?item=` → an item this kind can actually be narrowed to, or undefined.
+ *
+ * The page's degrade rule reaches the ITEM axis too: an unmatchable item renders an
+ * empty page that ASSERTS there is nothing, which is the same defect a 404 would be
+ * with a friendlier status. Only the closed vocabularies can be answered purely —
+ * food groups and the three body measures — and `alcohol` is deliberately not among
+ * the food groups here, because the record files a drink under substances.
+ *
+ * Dose items and practice names are OPEN per-profile vocabularies: membership is a DB
+ * question, so their readers answer it by returning nothing, and this cannot.
+ */
+export function resolveHistoryItem(
+  kind: HistoryLogKind | undefined,
+  raw: string | undefined
+): string | undefined {
+  const value = raw?.trim();
+  if (!value) return undefined;
+  if (kind === "food") {
+    return value !== ALCOHOL_FOOD_GROUP &&
+      FOOD_GROUPS.some((group) => group.slug === value)
+      ? value
+      : undefined;
+  }
+  if (kind === "body") {
+    return BODY_METRIC_SLUGS.includes(value) ? value : undefined;
+  }
+  return value;
+}
+
+/**
+ * The measure slugs a `body_metrics` row can be narrowed to — DERIVED from the one
+ * column→slug map, never restated. A hand-written trio here would be a second
+ * registry free to drift from `bodyMetricMeasures`, which is the fan-out this filter
+ * is filtering, and a fourth measure column would then be filterable by the gather
+ * and unfilterable by the URL.
+ */
+export const BODY_METRIC_SLUGS: readonly string[] = Object.values(
+  BODY_METRIC_MEASURE_SLUG
+);
 
 /** `?class=` → the old two-door dose pre-filter, preserved as a param. */
 export function resolveHistoryDoseClass(

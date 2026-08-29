@@ -33,9 +33,17 @@ import type { HistoryRow } from "@/lib/history-format";
 // something is rendered. Every assertion below is on the payload the domain's own
 // Server Action was HANDED, never on what the form meant to send.
 //
-// NO NEW WRITE PATHS is asserted structurally: the mocks below are the five actions
-// that already existed. A sixth write reaching this component would post to something
-// unmocked and fail here rather than quietly ship.
+// NO NEW WRITE PATHS is asserted structurally: the mocks below are the ten actions
+// that already existed — five corrections and five deletes. A sixth domain reaching
+// this component would post to something unmocked and fail here rather than quietly
+// ship.
+//
+// THAT SENTENCE WAS FALSE FOR THE DELETE HALF UNTIL THE SECOND PASS, and it is worth
+// keeping the correction visible: `useUndoableDelete` was mocked to a no-op, so the
+// four `undoable(action, fd, …)` call sites were never invoked and all five delete
+// payloads were uncovered — corrupting every one of them to junk left this file green.
+// A mock that stands in for a hook has to DO what the hook does with its arguments, or
+// the coverage it appears to give is coverage of the mock.
 
 /** Every payload each domain action was handed, by action name. */
 const posted: Record<string, FormData[]> = {};
@@ -60,31 +68,40 @@ vi.mock("@/app/(app)/nutrition/actions", () => ({
     record("updateFoodLogEvent")(fd);
     return { ok: true };
   },
-  deleteFoodLogEvent: async () => ({ ok: true, undoId: 1 }),
+  deleteFoodLogEvent: async (fd: FormData) => {
+    record("deleteFoodLogEvent")(fd);
+    return { ok: true, undoId: 1 };
+  },
 }));
 vi.mock("@/app/(app)/wellness/actions", () => ({
   editPracticeSession: async (fd: FormData) => {
     record("editPracticeSession")(fd);
     return { kind: "updated" };
   },
-  removePracticeSession: async () => ({ undoId: 1 }),
+  removePracticeSession: async (fd: FormData) => {
+    record("removePracticeSession")(fd);
+    return { undoId: 1 };
+  },
 }));
 vi.mock("@/app/(app)/medical/substance-use/actions", () => ({
   updateSubstanceDailyTotalAction: async (fd: FormData) => {
     record("updateSubstanceDailyTotalAction")(fd);
     return { kind: "updated" };
   },
-  deleteSubstanceDailyTotalAction: async () => ({
-    kind: "deleted",
-    undoId: 1,
-  }),
+  deleteSubstanceDailyTotalAction: async (fd: FormData) => {
+    record("deleteSubstanceDailyTotalAction")(fd);
+    return { kind: "deleted", undoId: 1 };
+  },
 }));
 vi.mock("@/app/(app)/trends/reading-actions", () => ({
   updateMetricReading: async (fd: FormData) => {
     record("updateMetricReading")(fd);
     return { ok: true };
   },
-  deleteMetricReading: async () => ({ undoId: 1 }),
+  deleteMetricReading: async (fd: FormData) => {
+    record("deleteMetricReading")(fd);
+    return { undoId: 1 };
+  },
 }));
 
 // The row's neighbours: none of them decides what a correction means.
@@ -94,8 +111,20 @@ vi.mock("@/components/ConfirmDialog", () => ({
   useConfirmOpen: () => false,
   useOptionalConfirm: () => null,
 }));
+// THE DELETE HALF HAS TO GO THROUGH, NOT AROUND. This mocked to a no-op, so the four
+// `undoable(action, fd, …)` call sites were never invoked and ALL FIVE delete payloads
+// were uncovered — corrupting every one of them to junk left the file green. The real
+// hook takes the action and the FormData and calls it; so does this, which is the only
+// version of it that can see a wrong id.
 vi.mock("@/components/useUndoableDelete", () => ({
-  useUndoableDelete: () => async () => {},
+  useUndoableDelete:
+    () =>
+    async (
+      action: (fd: FormData) => Promise<unknown>,
+      fd: FormData
+    ): Promise<void> => {
+      await action(fd);
+    },
 }));
 vi.mock("@/components/FormatPrefsProvider", () => ({
   useFormatPrefs: () => ({ timeFormat: "24h", dateFormat: "iso" }),
@@ -146,7 +175,7 @@ function row(over: Partial<HistoryRow> & Pick<HistoryRow, "id" | "kind">) {
   } as HistoryRow;
 }
 
-async function openEdit(rows: HistoryRow[]): Promise<void> {
+function openRow(rows: HistoryRow[]): void {
   cleanup();
   render(
     <HistoryRows
@@ -168,6 +197,10 @@ async function openEdit(rows: HistoryRow[]): Promise<void> {
       subjectNames={{}}
     />
   );
+}
+
+async function openEdit(rows: HistoryRow[]): Promise<void> {
+  openRow(rows);
   fireEvent.click(screen.getByTestId("overflow-menu-trigger"));
   await act(async () =>
     fireEvent.click(screen.getByTestId("history-row-edit"))
@@ -467,6 +500,226 @@ describe("the record's ⋯ posts to the domain's own action", () => {
     // case makes, on the kind that already got it right.
     expect(only("updateHistoricalDose").time).toBe("");
   });
+
+  // ── EVERY PREFILL, NOT JUST THE FIELD THE CASE CHANGES ──────────────────────
+  //
+  // The erasure class this PR already fixed twice: these actions REWRITE every field
+  // they read, so a form that omits one — or drops its `defaultValue` — clears it, and
+  // correcting a note wipes a duration. Cases that change one field and assert that
+  // one field cannot see it: deleting `defaultValue={edit.durationMin ?? ""}` passed
+  // all three tiers.
+  //
+  // SO THE ASSERTION IS THE WHOLE PAYLOAD OF AN UNTOUCHED SUBMIT. Open the editor,
+  // change nothing, save: every value the action receives must be the value the row
+  // already held. A dropped prefill moves one of them and there is nowhere to hide.
+  it.each([
+    [
+      "practice",
+      row({
+        id: "practice:5",
+        kind: "practice",
+        date: "2026-08-18",
+        title: "Breathwork",
+        edit: {
+          kind: "practice",
+          sessionId: 5,
+          statedTime: "07:15",
+          durationMin: 25,
+          notes: "evening wind-down",
+        },
+      }),
+      "editPracticeSession",
+      {
+        id: "5",
+        date: "2026-08-18",
+        time: "07:15",
+        duration_min: "25",
+        notes: "evening wind-down",
+      },
+    ],
+    [
+      "substance",
+      row({
+        id: "substance:nicotine:4",
+        kind: "substance",
+        date: "2026-08-18",
+        title: "Nicotine",
+        edit: {
+          kind: "substance",
+          rowId: 4,
+          substance: "nicotine",
+          amount: 3,
+          notes: "after lunch",
+        },
+      }),
+      "updateSubstanceDailyTotalAction",
+      {
+        id: "4",
+        substance: "nicotine",
+        date: "2026-08-18",
+        amount: "3",
+        notes: "after lunch",
+      },
+    ],
+    [
+      "food",
+      row({
+        id: "food:11",
+        kind: "food",
+        date: "2026-08-18",
+        title: "Leafy greens",
+        edit: {
+          kind: "food",
+          eventId: 11,
+          groupKey: "leafy_greens",
+          mealSlot: "Midday",
+          clock: "12:30",
+          clockKind: "stated",
+        },
+      }),
+      "updateFoodLogEvent",
+      {
+        event_id: "11",
+        date: "2026-08-18",
+        group_key: "leafy_greens",
+        meal_slot: "Midday",
+      },
+    ],
+    [
+      "body",
+      row({
+        id: "body:resting_hr:3",
+        kind: "body",
+        title: "Resting Heart Rate",
+        edit: {
+          kind: "body",
+          target: "body_metrics:3:resting_hr",
+          slug: "resting-hr",
+          value: 54,
+          unit: "",
+        },
+      }),
+      "updateMetricReading",
+      { kind: "resting-hr", target: "body_metrics:3:resting_hr", value: "54" },
+    ],
+  ] as const)(
+    "%s posts every field back unchanged when nothing was edited",
+    async (_kind, item, action, expected) => {
+      await openEdit([item]);
+      await act(async () =>
+        fireEvent.click(screen.getByRole("button", { name: "Save" }))
+      );
+      expect(only(action)).toEqual(expected);
+    }
+  );
+
+  // ── THE DELETE HALF ─────────────────────────────────────────────────────────
+  //
+  // Five paths, five payloads, and each names the row by the ids ITS action parses.
+  // A delete that reached the wrong row would be the worst of the write defects and
+  // was the least covered: the undoable-delete hook was mocked to a no-op, so none of
+  // these was ever posted. The `undoId` each action answers with is the shared
+  // undoable contract (owner ruling 2026-08-05); what is asserted here is the request.
+  it.each([
+    [
+      "dose",
+      row({
+        id: "dose:21",
+        kind: "dose",
+        title: "Magnesium",
+        edit: {
+          kind: "dose",
+          logId: 21,
+          itemId: 42,
+          doseId: 9,
+          statedAt: null,
+          amount: "3 g",
+          itemKind: "supplement",
+        },
+      }),
+      "deleteAdministration",
+      { log_id: "21" },
+    ],
+    [
+      "food",
+      row({
+        id: "food:11",
+        kind: "food",
+        title: "Berries",
+        edit: {
+          kind: "food",
+          eventId: 11,
+          groupKey: "berries",
+          mealSlot: "Morning",
+          clock: null,
+          clockKind: "logged",
+        },
+      }),
+      "deleteFoodLogEvent",
+      { event_id: "11" },
+    ],
+    [
+      "practice",
+      row({
+        id: "practice:5",
+        kind: "practice",
+        title: "Breathwork",
+        edit: {
+          kind: "practice",
+          sessionId: 5,
+          statedTime: null,
+          durationMin: null,
+          notes: null,
+        },
+      }),
+      "removePracticeSession",
+      { id: "5" },
+    ],
+    [
+      "substance",
+      row({
+        id: "substance:nicotine:4",
+        kind: "substance",
+        title: "Nicotine",
+        edit: {
+          kind: "substance",
+          rowId: 4,
+          substance: "nicotine",
+          amount: 3,
+          notes: null,
+        },
+      }),
+      "deleteSubstanceDailyTotalAction",
+      { id: "4", substance: "nicotine" },
+    ],
+    [
+      "body",
+      row({
+        id: "body:weight_kg:3",
+        kind: "body",
+        title: "Weight",
+        edit: {
+          kind: "body",
+          target: "body_metrics:3:weight_kg",
+          slug: "weight",
+          value: 70,
+          unit: "kg",
+        },
+      }),
+      "deleteMetricReading",
+      { kind: "weight", target: "body_metrics:3:weight_kg" },
+    ],
+  ] as const)(
+    "%s deletes by the ids its own action parses",
+    async (_kind, item, action, expected) => {
+      await openRow([item]);
+      fireEvent.click(screen.getByTestId("overflow-menu-trigger"));
+      await act(async () =>
+        fireEvent.click(screen.getByTestId("history-row-delete"))
+      );
+      expect(only(action)).toMatchObject(expected);
+    }
+  );
 
   // THE AFFORDANCE IS NOT THE GATE, but it must not render where it cannot act: every
   // action above resolves its subject from the session, so a ⋯ on another member's

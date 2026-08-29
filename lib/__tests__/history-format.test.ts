@@ -8,10 +8,13 @@ import {
   parseHistoryShow,
   resolveHistoryDoseClass,
   resolveHistoryFamily,
+  resolveHistoryItem,
   resolveHistoryKind,
+  BODY_METRIC_SLUGS,
   type HistoryRow,
 } from "@/lib/history-format";
 import { historyHref } from "@/lib/hrefs";
+import { BODY_METRIC_MEASURE_SLUG } from "@/lib/body-metric-measures";
 import { mergeMemberTimelines, type MergeableRow } from "@/lib/timeline-multi";
 import type { DisplayFormatPrefs } from "@/lib/format-date";
 
@@ -116,6 +119,34 @@ describe("the URL grammar", () => {
     ["nonsense", undefined],
   ])("resolves ?family=%s to %s", (raw, expected) => {
     expect(resolveHistoryFamily(raw)).toBe(expected);
+  });
+
+  // AN UNMATCHABLE ITEM DEGRADES TO THE KIND, the way an invalid kind degrades to All.
+  // `alcohol` is the case the alcohol ruling created: it is a real food group in the
+  // nutrition store and is deliberately not one here, so `?kind=food&item=alcohol`
+  // used to render an empty page that ASSERTED there was nothing.
+  it.each([
+    ["food", "berries", "berries"],
+    ["food", "alcohol", undefined],
+    ["food", "not-a-group", undefined],
+    ["body", "weight", "weight"],
+    ["body", "resting-hr", "resting-hr"],
+    ["body", "steps", undefined],
+    // OPEN vocabularies: membership is a per-profile DB question, so the pure layer
+    // passes them through and the reader answers by returning nothing.
+    ["dose", "41", "41"],
+    ["practice", "Sauna", "Sauna"],
+    [undefined, "berries", "berries"],
+  ] as const)("resolves ?kind=%s&item=%s to %s", (kind, raw, expected) => {
+    expect(resolveHistoryItem(kind, raw)).toBe(expected);
+  });
+
+  it("derives the body measure axis from the shared column map", () => {
+    // Not a restatement: a fourth measure column must become filterable by the URL
+    // without anybody remembering this list exists.
+    expect([...BODY_METRIC_SLUGS].sort()).toEqual(
+      Object.values(BODY_METRIC_MEASURE_SLUG).sort()
+    );
   });
 
   it.each([

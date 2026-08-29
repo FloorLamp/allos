@@ -23,6 +23,7 @@ import {
   HISTORY_DEFAULT_SHOW,
   HISTORY_KIND_LABELS,
   HISTORY_LOG_KINDS,
+  HISTORY_MAX_SHOW,
   HISTORY_SHOW_STEP,
   clampHistoryDay,
   parseHistoryShow,
@@ -534,25 +535,46 @@ export default async function HistoryPage(props: {
         ))}
       </div>
 
+      {/* LOAD MORE, OR THE SENTENCE THAT SAYS WHY THERE ISN'T ONE.
+          `?show` is clamped at `HISTORY_MAX_SHOW`, so at the ceiling the control was a
+          button whose URL changed and whose page did not: it rendered, it navigated,
+          and the reader got back a byte-identical page. A control that does nothing is
+          worse than no control, because it answers "is there more" with a promise
+          instead of a fact. The ceiling stays — it is what keeps one kind's read off
+          the whole store — and the page says what it is and where the rest is instead.
+          Both routes named below are REAL and bounded per kind or per day, so neither
+          is the same wall one step along. */}
       {hasMore ? (
         <div className={`mt-4 ${railGutter}`}>
-          <Link
-            className="btn-ghost btn-sm"
-            data-testid="history-load-more"
-            href={historyHref({
-              family: kind ? undefined : family,
-              kind,
-              class: doseClass,
-              item: rawItem,
-              media,
-              day,
-              everyone,
-              open: [...openFolds],
-              show: show + HISTORY_SHOW_STEP,
-            })}
-          >
-            Load more
-          </Link>
+          {show < HISTORY_MAX_SHOW ? (
+            <Link
+              className="btn-ghost btn-sm"
+              data-testid="history-load-more"
+              href={historyHref({
+                family: kind ? undefined : family,
+                kind,
+                class: doseClass,
+                item: rawItem,
+                media,
+                day,
+                everyone,
+                open: [...openFolds],
+                show: Math.min(show + HISTORY_SHOW_STEP, HISTORY_MAX_SHOW),
+              })}
+            >
+              Load more
+            </Link>
+          ) : (
+            <p
+              className="text-sm text-slate-500 dark:text-slate-400"
+              data-testid="history-show-ceiling"
+            >
+              {`Showing the most recent ${HISTORY_MAX_SHOW} records. `}
+              {kind
+                ? "Open a day to read further back."
+                : "Narrow to one kind, or open a day, to read further back."}
+            </p>
+          )}
         </div>
       ) : null}
 

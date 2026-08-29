@@ -74,6 +74,13 @@ decides it:
    one thing.
 3. The substance row describes the act in the person's own terms.
 
+**Two consequences follow from the ruling and are decided, not accidents.** A drink
+renders **date-only** and sinks to the bottom of its day, because `food_daily_totals`
+carries no instant while the food event did — the row used to show a clock. And a day's
+drinks are one editable **day count**, so a single mistyped drink can no longer be
+corrected or deleted on its own from the record; that correction lives on the substance
+surface, which owns the counter.
+
 **The drink does not disappear, and the totals do not move.** The food door writes
 the `food_daily_totals` counter as well as the event, and the substance read is over
 that counter — so a serving logged from Nutrition still reaches the record, once,
@@ -115,7 +122,10 @@ their subject from the session.
 
 No 7D/30D chips, no From/To card, no window note, no numbered pages. #2657's
 month/year **folds** with URL-carried open state, plus **load-more** (`?show`),
-bound the read; the **jump rail** (`components/JumpRailScrubber.tsx`) scrubs the
+bound the read. `?show` is clamped at `HISTORY_MAX_SHOW`, and AT that ceiling the
+control stops rendering and the page says so: a button whose URL changes and whose page
+does not is worse than no button. Reading further back is narrowing to one kind — each
+gets its own bound — or opening a day. The the **jump rail** (`components/JumpRailScrubber.tsx`) scrubs the
 fold spine and owns a lane via `SCRUBBER_GUTTER_CLASS` rather than overlaying a
 row's action column. The rail is shared with `/timeline` until phase 2 retires
 that route — which is what closed #2816: the overlay chokepoint's rule 5 could
@@ -128,7 +138,13 @@ implies its family), `?class` (the old two-door dose pre-filter), `?item`,
 `?media`, `?day`, `?view=everyone`, `?open` (repeatable), `?show`. There is **no**
 `from`/`to`/`range`/`page` — those concepts died with the range row and the pager.
 
-An invalid `?kind`, `?family` or `?day` **falls back to All**. A record surface
+An invalid `?kind`, `?family`, `?day` or `?item` **falls back to All**. The item axis
+degrades only where the vocabulary is CLOSED — food groups and the three body measures
+— because that is where a pure layer can answer; `?kind=food&item=alcohol` is the case
+the alcohol ruling created, and it degrades rather than rendering an empty page that
+asserts there is nothing. Dose items and practice names are open per-profile
+vocabularies whose membership is a DB question, so their readers answer it by returning
+nothing. A record surface
 that 404s on a hand-edited URL is a record you cannot get back to.
 
 ## Chrome budget
