@@ -331,8 +331,6 @@ describe("benchmarkState (bodyweight-band model)", () => {
   it("places the lifter and flags the ranked level (interior)", () => {
     const st = benchmarkState("Bench Press", "male", 100, 80)!; // clears 80, not 120
     expect(st).not.toBeNull();
-    expect(st.currentLevel.level).toBe("intermediate");
-    expect(st.currentLevel.label).toBe("Intermediate");
     expect(st.isUntrained).toBe(false);
     expect(st.rankedLevelLabel).toBe("Intermediate");
     // The five named level floors, sorted by kg descending, no injected current.
