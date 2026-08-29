@@ -257,6 +257,15 @@ function gatherWindowDoses(
     // `predictedWorkoutDay ?? isWorkoutDay` — so on a closed day a guess made today
     // overrides the training already on the record. Undefined falls back to
     // `isWorkoutDay`, which is what the strip and `pendingDayDoses` both answer.
+    //
+    // THE WRITE MOVES BOTH WAYS, and the second way is the one to say out loud: a
+    // PREDICTED training day with no session logged loses its pre-workout dose from
+    // the rebuild, so `✅ All` on that message now writes nothing where it used to
+    // write `taken`. #558 gives the prediction its job — landing a reminder BEFORE the
+    // session — and that job is over once the day is closed; what the day actually
+    // owed is then a question for the record, not the rhythm. Whether a rebuild should
+    // reproduce the message AS SENT (which named the dose) or as the day now reads is
+    // #3996, still open.
     predictedWorkoutDay: isForToday
       ? isPredictedWorkoutDay(profileId, date)
       : undefined,
@@ -367,10 +376,15 @@ function gatherWindowDoses(
     // …and the same bound gates the DAY (#4011), as `pendingDayDoses` already does:
     // `doseOnDay` reads only the declared start/end dates, so a stale keyboard rebuilt
     // for day−2 offered a dose for an item created this morning, and `✅ All` would
-    // write `taken` and decrement real stock for it. A PAST-DAY rule by construction —
-    // a dose row being read at all is proof it exists today — and it can never drop a
-    // dose already answered on `date`, since that log is inside `dd` and widens the
-    // bound to itself.
+    // write `taken` and decrement real stock for it. A PAST-DAY rule by construction:
+    // a dose row being read at all is proof it exists today.
+    //
+    // THE SAFETY PROPERTY IS NARROW. A dose ALREADY ANSWERED on `date` cannot be
+    // dropped — that log is inside `dd`, and `doseWindowSince` widens the bound to it.
+    // An UNANSWERED one has no such protection: a zone change can walk the bound
+    // forward across a creation stamp sitting near local midnight and drop a dose the
+    // day did own. The bound shift predates this line (the strip already flips such a
+    // day `missed` → `na`); what this adds is that it now gates a WRITE. See #4025.
     if (!isForToday && since != null && date < since) continue;
     const strip = doseStrip(
       since ? windowDates.filter((d) => d >= since) : windowDates,

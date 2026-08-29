@@ -10,24 +10,39 @@
 // a backfilled administration older than the window then had two bounds a hundred days
 // apart, in a pair of comments that each said it could not.
 //
-// ── THE CENSUS, and it is the artifact here ──────────────────────────────────
-// Two earlier sweeps of this question each missed one caller, both times by counting a
-// narrower set than "sites that compute the bound". The membership test is not "imports
-// doseWindowSince" (that misses every site reaching it THROUGH `intakeAdherenceStrip`,
-// and matches comments that merely name it) — it is "builds the status index the bound
-// reads". So the search is over `indexTakenByDose`, which is the only way to build one:
+// ── THE CENSUS, and it is the artifact here ──────────────────────────
+// THE MEMBERSHIP TEST IS "COMPUTES THE BOUND", and every wrong answer to this question
+// has come from keying on something adjacent to that instead. Keying on the IMPORT of
+// `doseWindowSince` misses every site that reaches it through `intakeAdherenceStrip`
+// and matches comments that merely name it. Keying on `indexTakenByDose` — the index
+// the bound reads — looks tighter and is worse: `pendingDayDoses` builds that index BY
+// HAND from its own `MIN(l.date)` query (lib/queries/usual-routine.ts) and calls the
+// bound directly, so an `indexTakenByDose` sweep cannot see the one seam this very
+// change converges the reminder gather onto. Three spellings compute a dose lifetime,
+// so all three are the key:
 //
-//   git grep -n 'indexTakenByDose' -- '*.ts' '*.tsx' | grep -v __tests__
+//   git grep -n 'doseWindowSince(\|doseExistsSince(\|intakeAdherenceStrip(' \
+//     -- '*.ts' '*.tsx' ':!*__tests__*' ':!*__db_tests__*' ':!*__action_tests__*'
 //
-// and then, per hit, which read feeds it. On 2026-08-29 that was eight production
-// sites: six on `getIntakeAdherenceEvidence` (med-data ×2, SupplementsTab,
-// intake-history, notifications/intake, and rule-findings as of this change), one on
-// `pendingDayDoses`'s own unbounded MIN query, and `lib/queries/sleep.ts:423` — which
-// feeds `getIntakeLogsInRange` to an index used ONLY for window-local taken/skipped
-// facts, and takes its own bound from `doseExistsSince` (the un-widened one) by the
-// deliberate #1972/#1973 rule that a logged night renders on the strength of its log.
-// It is the seventh site and not a seventh instance of this defect; whether its bound
-// should widen too is a separate question about bedtime history, not about this one.
+// The pathspec exclusions are not decoration: `| grep -v __tests__` does NOT exclude
+// `__db_tests__` or `__action_tests__` (no double underscore before `tests`), so the
+// pipe spelling silently leaves the test tiers in the result it reports on.
+//
+// It returns 16 lines; five are the bound's own module (lib/intake-adherence.ts — the
+// two definitions, doseWindowSince's inner call, and the strip's) and one is a comment
+// in lib/sleep-bedtime-supplements.ts. The other TEN are the bound call sites, over
+// EIGHT evidence sources, and the verdict per site is which read fed its index:
+//
+//   getIntakeAdherenceEvidence — med-data.ts:286→:431, :683→:686;
+//     SupplementsTab.tsx:281→:295,:362; intake-history.ts:91→:103,:120;
+//     notifications/intake.ts:280→:366; rule-findings.ts:1544→:1578 (this change).
+//   own unbounded MIN(l.date), hand-built — usual-routine.ts:249→:273. Correct: it
+//     draws no window, so it has nothing to union the lifetime half against.
+//   getIntakeLogsInRange — sleep.ts:423→:466, and NOT an instance of this defect: its
+//     index answers only window-local taken/skipped questions and its bound is
+//     `doseExistsSince`, the UN-widened one, by the deliberate #1972/#1973 rule that a
+//     logged night renders on the strength of its log alone. Whether that bound should
+//     widen too is a question about bedtime history, filed rather than settled here.
 //
 // Runs via `npm run test:db` (vitest.db.config.ts).
 
@@ -117,6 +132,13 @@ describe("the adherence-pattern window is bounded by the same evidence as the st
     const finding = buildAdherencePatternFindings(profileId, td).find((f) =>
       f.title.includes("Backfilled med")
     );
+    // WHAT THIS CANNOT SEE, measured rather than guessed: the assertion reads the
+    // bound through a Friday COUNT, and every bound older than the 56-day drawn window
+    // yields the same count. Shifting the production bound forward +30, +44 and +50
+    // days all pass; +51 fails, because that is where it crosses into the window. So
+    // the guard is blind by up to ~50 days — which is exactly the region #4020 is
+    // about. It catches #4020's own regression (the bound collapsing to `created_at`)
+    // and does not defend the property in general.
     expect(finding?.detail).toContain(
       `${fridaysInStripWindow} of the last ${fridaysInStripWindow}`
     );
