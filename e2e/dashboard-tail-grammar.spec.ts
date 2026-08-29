@@ -1,7 +1,11 @@
 import { test, expect } from "./fixtures";
 import { loginAs } from "./nav";
 import { openDashboardAll } from "./helpers";
-import { E2E_LOGIN_ROUTINEUSUAL, E2E_MEMBER_PASSWORD } from "./fixture-logins";
+import {
+  E2E_LOGIN_ROUTINEUSUAL,
+  E2E_LOGIN_WELLSYM,
+  E2E_MEMBER_PASSWORD,
+} from "./fixture-logins";
 
 // THE SHOW-EVERYTHING TAIL HAS ONE GRAMMAR (#3365).
 //
@@ -74,17 +78,33 @@ test.describe("the Show-everything tail's grammar (#3365)", () => {
   // is where that is checked rather than assumed. The bar itself is unchanged — it
   // still says this in the illness cockpit and on the Cycles page, where a day with
   // no symptoms logged is the reader's actual question.
-  test("no empty-state sentence renders inside the tail", async ({ page }) => {
-    await page.goto("/");
-    await openDashboardAll(page);
-    const lane = page.getByTestId("dashboard-all-contents");
-    // The control: the lane rendered and holds entries, so the absence below is
-    // about a populated tail and not a selector that found nothing.
-    expect(
-      await lane.getByTestId("dashboard-candidate").count()
-    ).toBeGreaterThan(0);
-    await expect(lane.getByTestId("symptom-none-logged")).toHaveCount(0);
-    await expect(lane.getByTestId("symptom-log-bar")).toHaveCount(0);
+  //
+  // ON THE WELL-DAY LOGIN, WHICH IS THE ONLY PLACE THE CLAIM MEANS ANYTHING. The card
+  // was gated on a WELL day, so on the shared fixture — which carries an open illness
+  // — it never rendered and this test would have passed on the unfixed tree too.
+  // Measured: with the mount restored, the shared fixture stayed green and this login
+  // went red.
+  test("no empty-state sentence renders inside the tail", async ({
+    browser,
+  }) => {
+    const page = await loginAs(browser, {
+      username: E2E_LOGIN_WELLSYM,
+      password: E2E_MEMBER_PASSWORD,
+    });
+    try {
+      await page.goto("/");
+      await openDashboardAll(page);
+      const lane = page.getByTestId("dashboard-all-contents");
+      // The control: the lane rendered and holds entries, so the absence below is
+      // about a populated tail and not a selector that found nothing.
+      expect(
+        await lane.getByTestId("dashboard-candidate").count()
+      ).toBeGreaterThan(0);
+      await expect(lane.getByTestId("symptom-log-bar")).toHaveCount(0);
+      await expect(lane.getByTestId("symptom-none-logged")).toHaveCount(0);
+    } finally {
+      await page.context().close();
+    }
   });
 
   test("no two tail blocks share a moment header", async ({ page }) => {
