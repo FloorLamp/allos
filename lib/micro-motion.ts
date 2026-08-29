@@ -98,7 +98,7 @@ export const MICRO_MOTIONS = {
   // the next. It belongs in this vocabulary rather than the overlay family because it
   // is a beat IN PLACE rather than a panel arriving, and it is held to all four rules
   // including the band. It is also the rule-4 case at its starkest: the platform half
-  // of the same feedback (one 8 ms haptic, `HAPTIC_PATTERNS["scrubber-tick"]`) does not
+  // of the same feedback (one 8 ms haptic, `HAPTIC_PATTERNS.select`) does not
   // exist on iOS at all, which is exactly why the #2657 ruling makes the VISUAL pulse
   // the universal carrier — and why this row is not optional.
   tick: {

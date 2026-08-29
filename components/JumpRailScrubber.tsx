@@ -212,7 +212,7 @@ export default function JumpRailScrubber({ stops }: { stops: ScrubberStop[] }) {
       setActive(index);
       if (!opts.feedback) return;
       setBeat((n) => n + 1);
-      fire("scrubber-tick");
+      fire("select");
     },
     [fire]
   );

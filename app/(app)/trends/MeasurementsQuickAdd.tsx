@@ -36,6 +36,7 @@ import {
 } from "@/lib/offline/queue";
 import type { TemperatureUnit, WeightUnit } from "@/lib/settings";
 import { TREND_METRIC_META } from "@/lib/trend-metrics";
+import InlineError from "@/components/InlineError";
 import {
   addMeasurements,
   type MeasurementsSaveResult,
@@ -991,11 +992,7 @@ export default function MeasurementsQuickAdd({
         </div>
       )}
 
-      {error && (
-        <p role="alert" className="text-sm text-rose-600 dark:text-rose-400">
-          {error}
-        </p>
-      )}
+      <InlineError>{error}</InlineError>
       <SubmitButton pendingLabel="Saving…">
         {metric ? `Save ${metric.label.toLowerCase()}` : "Save measurements"}
       </SubmitButton>

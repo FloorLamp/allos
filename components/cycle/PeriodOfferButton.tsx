@@ -3,6 +3,7 @@
 import { useState } from "react";
 import { useToast } from "@/components/Toast";
 import { useOptimisticLedger } from "@/components/useOptimisticLedger";
+import InlineError from "@/components/InlineError";
 import {
   cycleOffer,
   type CycleControlState,
@@ -141,11 +142,7 @@ export default function PeriodOfferButton({
       >
         {ledger.pending() ? "Saving…" : offer.label}
       </button>
-      {error && (
-        <p role="alert" className="text-sm text-rose-600 dark:text-rose-400">
-          {error}
-        </p>
-      )}
+      <InlineError>{error}</InlineError>
     </div>
   );
 }

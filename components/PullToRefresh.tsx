@@ -4,6 +4,7 @@ import { useEffect, useRef, useState, useTransition } from "react";
 import { useRouter } from "next/navigation";
 import { IconRefresh } from "@tabler/icons-react";
 import { usePrefersReducedMotion } from "./usePrefersReducedMotion";
+import { useHaptics } from "./useHaptics";
 import { useStandaloneDisplayMode } from "./useStandaloneDisplayMode";
 import {
   classifyPull,
@@ -63,6 +64,7 @@ function bodyScrollLocked(): boolean {
 export default function PullToRefresh() {
   const router = useRouter();
   const reduceMotion = usePrefersReducedMotion();
+  const haptic = useHaptics();
   const enabled = useStandaloneDisplayMode();
   const [state, setState] = useState<PullState>({ kind: "idle" });
   const [refreshes, setRefreshes] = useState(0);
@@ -75,6 +77,13 @@ export default function PullToRefresh() {
     scrollY: number;
     overlayOpen: boolean;
   } | null>(null);
+  // Was the gesture ARMED at the last sample? Only the CROSSING gets a cue (#3699):
+  // touchmove fires at frame rate, and a pull held just past the threshold would
+  // otherwise buzz continuously. A ref rather than reading `state`, because the
+  // listeners below are installed once and would close over a stale value — and a
+  // check inside the `setState` updater would fire twice under React's development
+  // double-invoke, which is a side effect an updater is not allowed to have.
+  const armed = useRef(false);
 
   useEffect(() => {
     if (!enabled) return;
@@ -103,18 +112,22 @@ export default function PullToRefresh() {
       const origin = start.current;
       const t = e.touches[0];
       if (!origin || !t) return;
-      setState(
-        classifyPull({
-          overlayOpen: origin.overlayOpen,
-          startScrollY: origin.scrollY,
-          scrollY: window.scrollY,
-          deltaY: t.clientY - origin.y,
-          deltaX: t.clientX - origin.x,
-        })
-      );
+      const next = classifyPull({
+        overlayOpen: origin.overlayOpen,
+        startScrollY: origin.scrollY,
+        scrollY: window.scrollY,
+        deltaY: t.clientY - origin.y,
+        deltaX: t.clientX - origin.x,
+      });
+      // Past the threshold: letting go now refreshes. Today that is a purely visual
+      // claim, and it is made while the finger is covering the indicator.
+      if (next.kind === "armed" && !armed.current) haptic("select");
+      armed.current = next.kind === "armed";
+      setState(next);
     };
     const onEnd = () => {
       start.current = null;
+      armed.current = false;
       setState((current) => {
         if (shouldRefresh(current)) {
           setRefreshes((n) => n + 1);
@@ -137,7 +150,7 @@ export default function PullToRefresh() {
       window.removeEventListener("touchcancel", onEnd);
       root.style.overscrollBehaviorY = prev;
     };
-  }, [enabled, router]);
+  }, [enabled, router, haptic]);
 
   if (!enabled) return null;
 
