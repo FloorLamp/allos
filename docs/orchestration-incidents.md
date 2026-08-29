@@ -1362,3 +1362,31 @@ and all — failed nothing across 113 tests, so it was live code no assertion ob
 the test comment claiming _"remove the exclusion and this reads 2"_ was false; it read 1,
 and it contradicted the lane's own correct note sixty lines below. Deleting the mechanism
 deletes all three.
+
+## The alarm that could not tell a lapse from an unrecorded arm (2026-08-29)
+
+The check-in's wake block reported `WAKE IS IN THE PAST (2026-08-28T01:17:00Z)` at three
+consecutive check-ins while two durable wakes were in fact armed. Nothing was wrong with
+the alarm's logic: `/home/user/scratch/.wake` genuinely held a stale timestamp, because
+arming a wake and recording it are two separate acts and only the first has a tool behind
+it. The orchestrator armed at 04:23 and again at 05:20 and wrote neither down.
+
+What made it worth fixing rather than remembering is the shape of the two messages. The
+**absent-file** branch already printed the exact command to record a wake. The **past**
+branch printed only "Re-arm send_later NOW". So an orchestrator in the state that
+actually occurs — wake armed, file stale — did the thing the alarm asked, saw the identical
+alarm at the next check-in, and had no way to distinguish "my wake lapsed" from "I never
+wrote the file". That is the ignorable-alarm failure this script exists to avoid, and it
+is the second time this file has recorded it about this same block: the 2026-08-16 entry
+is an orchestrator copying the check-in's own `next:` output back into the file and
+getting a correctly-armed wake reported as lapsed at every check-in.
+
+The fix is two lines — the past branch now prints the record command too — and the reason
+it belongs in the script rather than in anyone's habits is the sentence #3948 was filed
+under the same day: _a defence that depends on the writer being correct is not a defence._
+The step that gets skipped is the write, so the reminder has to appear in every branch
+that notices the write is missing, not only in the branch where the file does not exist
+at all.
+
+Both branches were exercised before the change was trusted: a scratch `SCRATCH` with a
+stale `.wake` for the past branch, and the live state file for the healthy one.

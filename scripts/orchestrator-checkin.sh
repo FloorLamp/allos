@@ -707,6 +707,13 @@ else
       printf "  next: %s (in %dm) %s\n" "$wake_at" $(((wake_s - now_s) / 60)) "$wake_id"
     else
       echo "  *** WAKE IS IN THE PAST ($wake_at) — nothing future is armed. Re-arm send_later NOW. ***"
+      # AND RECORD IT — arming without recording is why this alarm fired three
+      # check-ins running on 2026-08-29 while two wakes were in fact armed. The
+      # absent-file branch above prints this command; this branch used to say only
+      # "re-arm", so an orchestrator that re-armed correctly still saw the same
+      # alarm next time and had no way to tell a lapse from an unrecorded arm.
+      # Both branches say it now, because the step that gets skipped is the write.
+      echo "      echo '<fire_at ISO> <trigger_id>' > $WAKE_FILE"
       alarms=1
     fi
   else

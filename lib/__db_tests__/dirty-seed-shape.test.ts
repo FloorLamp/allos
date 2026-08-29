@@ -13,6 +13,7 @@ import {
   cleanupUxServedDb,
 } from "../../scripts/ux-served-db.mjs";
 import { makeTmpDir } from "../__tests__/tmp-dir";
+import { perTestCeiling } from "../../vitest.timeouts";
 import { migratedDb } from "./migrated-db";
 
 const here = path.dirname(fileURLToPath(import.meta.url));
@@ -200,7 +201,24 @@ function migratedFile(
   return dbPath;
 }
 
-describe("named dirty seed data", () => {
+// ONE CEILING FOR THE FILE, AND IT IS A MULTIPLE (#3986). Every test here blocks
+// in `spawnSync` on real `node --import tsx` children — the seed script, the
+// witness, the whole ux-walkthrough harness — so its wall time is a reading of how
+// much CPU the box had left, and this file was the dispatch box's most frequent
+// local red. The hard-coded `}, 30_000)` / `}, 40_000)` they carried was the one
+// thing `ALLOS_VITEST_TIMEOUT_MS` could not reach, so the lever the harness offers
+// for exactly this situation stopped at the file that needed it most. As a
+// multiple it scales with whichever half of the design is in force: 45 000 ms on
+// CI, four times that under `agent-gates.sh`.
+//
+// THE READING IS THE FILE'S, not each test's — the default reporter prints per
+// file: 56 408 ms across 8 tests on the red run at 11c7920b, 65 193 ms on a green
+// one, 67 945 ms solo here. One number for the file is what that measurement can
+// honestly support; nobody has a per-test CI reading for any of them. It also
+// covers the one test that carried NO cap and ran on the tier default while its
+// neighbours ran on 30 000 — the test that timed out at 15 000 ms with nothing
+// failing when this file was reproduced under load.
+describe("named dirty seed data", { timeout: perTestCeiling(3) }, () => {
   it("writes the dirty witnesses through seed.ts while the pinned baseline writes none", () => {
     expect(seedAndRead("dirty")).toEqual({
       qualifiedEncounter: 1,
@@ -214,7 +232,7 @@ describe("named dirty seed data", () => {
       longLab: 0,
       longCondition: 0,
     });
-  }, 30_000);
+  });
 
   it("checks the dirty witnesses again at the harness child boundary", () => {
     const dirtyPath = path.join(makeTmpDir("dirty-witness-ok"), "allos.db");
@@ -233,7 +251,7 @@ describe("named dirty seed data", () => {
     const mislabeled = runWitness(baselinePath);
     expect(mislabeled.status).not.toBe(0);
     expect(mislabeled.stderr).toContain("Dirty seed witnesses do not match");
-  }, 30_000);
+  });
 
   it("keeps a stale caller DB outside every served census shape", () => {
     const dir = makeTmpDir("seed-shape-stale");
@@ -265,7 +283,7 @@ describe("named dirty seed data", () => {
     } finally {
       for (const allocation of allocations) cleanupUxServedDb(allocation);
     }
-  }, 30_000);
+  });
 
   it("does not classify arbitrary rows, schema, or bootstrap metadata as fresh", () => {
     const dbPath = migratedFile("arbitrary-stale-data", (database) => {
@@ -331,7 +349,7 @@ describe("named dirty seed data", () => {
     expect(claimed).toBeTruthy();
     expect(fs.existsSync(path.dirname(claimed!))).toBe(false);
     expect(result.stdout).toContain("scratch DB and sidecars removed");
-  }, 30_000);
+  });
 
   it("stops the served child and removes its DB after a later browser failure", async () => {
     const dir = makeTmpDir("seed-shape-browser-failure");
@@ -373,7 +391,7 @@ describe("named dirty seed data", () => {
     expect(fs.existsSync(path.dirname(servedPath))).toBe(false);
     expect(result.stdout).toContain("ignoring caller ALLOS_DB_PATH");
     expect(result.stdout).toContain("scratch DB and sidecars removed");
-  }, 40_000);
+  });
 
   it("does not accept an unrelated prebound 200 server as its spawned instance", async () => {
     const dir = makeTmpDir("seed-shape-prebound-sentinel");
@@ -438,7 +456,7 @@ process.on("SIGTERM", () => { server.close(() => process.exit(0)); server.closeA
         sentinel.once("exit", () => resolve())
       );
     }
-  }, 40_000);
+  });
 
   it("routes SIGTERM through descendant and exact scratch-directory cleanup", async () => {
     const dir = makeTmpDir("seed-shape-signal-cleanup");
@@ -496,5 +514,5 @@ process.on("SIGTERM", () => { server.close(() => process.exit(0)); server.closeA
     expect(fs.existsSync(`${servedPath}-shm`)).toBe(false);
     expect(stdout).toContain("SIGTERM received; cleaning up");
     expect(stdout).toContain("scratch DB and sidecars removed");
-  }, 40_000);
+  });
 });
