@@ -1,4 +1,5 @@
 import { test, expect } from "./fixtures";
+import { type Request } from "@playwright/test";
 import Database from "better-sqlite3";
 import { hydratedClick, settledClick, settledFill } from "./helpers";
 import { frozenNow, workerDbPath } from "./worker-env";
@@ -220,21 +221,60 @@ test('a stated "Happened earlier?" time is the instant the reading carries (#327
   await expect(picker.getByTestId("stool-when-time")).toHaveCount(0);
 
   // Leg 1 — the unstated tap writes the tap instant, seconds and all.
-  await settledClick(page, picker.getByTestId("stool-type-4"));
+  //
+  // ITS WRITE IS HELD OPEN while the statement is made, which is what makes the
+  // ORDERING here a fact rather than a sample. The tap's settle resets the field, and
+  // it runs when the write ANSWERS — arbitrarily later than the tap. Unheld, whether
+  // the fill below lands before or after that reset is a race the box's load decides:
+  // it failed 1 run in 3 under load, and the surviving shape was a silent one — the
+  // second tap posting no time, colliding with the first row on the same second, and
+  // one reading standing where two should be. Holding the POST puts the fill
+  // deterministically INSIDE the flight window.
+  let release = (): void => {};
+  const held = new Promise<void>((resolve) => {
+    release = resolve;
+  });
+  const onThisPage = (url: URL): boolean => url.pathname === "/";
+  await page.route(onThisPage, async (route) => {
+    if (route.request().method() !== "POST") return route.continue();
+    await held;
+    await route.continue();
+  });
+  const isWrite = (request: Request): boolean =>
+    request.method() === "POST" && new URL(request.url()).pathname === "/";
+  // Armed BEFORE the click so neither can miss its event.
+  const dispatched = page.waitForRequest(isWrite, { timeout: 20_000 });
+  const answered = page.waitForResponse((r) => isWrite(r.request()), {
+    timeout: 30_000,
+  });
+  await hydratedClick(page, picker.getByTestId("stool-type-4"));
+  await dispatched;
+
+  // The statement, made while that first write is still out. The day half is FIXED to
+  // today, so a statement can only move the minute.
+  await hydratedClick(page, toggle);
+  await expect(picker.getByTestId("stool-when-date")).toHaveText("Today");
+  await settledFill(page, picker.getByTestId("stool-when-time"), "07:05");
+
+  release();
+  await answered;
   await expect(page.getByTestId("quick-entry-stool-count")).toHaveText(
     "1 logged today."
   );
+  // The tap posted NO time — it consumed the silence that was in force when it fired,
+  // not the statement that arrived while it was in flight.
   const tapped = bristolRows();
   expect(tapped).toHaveLength(1);
   expect(tapped[0]).toMatchObject({ date, value: 4 });
   expect(storedInstant(tapped[0].started_at)).toBe(tapInstant);
+  // …AND THE SETTLE LEFT THE NEW STATEMENT ALONE. A reset scoped to the tap rather
+  // than to the field is the difference between the next tap adding a reading and
+  // overwriting this one.
+  await expect(picker.getByTestId("stool-when-time")).toHaveValue("07:05");
 
-  // Leg 2 — the statement. The day half is FIXED to today, so a statement can only
-  // move the minute; the stated time lands on :00 seconds, which is what makes
-  // restating the same minute a correction rather than a phantom second movement.
-  await hydratedClick(page, toggle);
-  await expect(picker.getByTestId("stool-when-date")).toHaveText("Today");
-  await settledFill(page, picker.getByTestId("stool-when-time"), "07:05");
+  // Leg 2 — the statement lands. The stated time carries :00 seconds, which is what
+  // makes restating the same minute a correction rather than a phantom second movement.
+  await page.unrouteAll({ behavior: "ignoreErrors" });
   await settledClick(page, picker.getByTestId("stool-type-3"));
   await expect(page.getByTestId("quick-entry-stool-count")).toHaveText(
     "2 logged today."

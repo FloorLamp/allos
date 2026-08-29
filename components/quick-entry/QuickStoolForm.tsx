@@ -89,7 +89,10 @@ export default function QuickStoolForm({
   }
 
   async function tap(type: number) {
-    const stated = statedHhmm(when.statedAt, tz) || null;
+    // The statement THIS tap consumes, read once — both as the wall time it posts and
+    // as the instant the settle below compares against.
+    const consumed = when.statedAt;
+    const stated = statedHhmm(consumed, tz) || null;
     await ledger.tap({
       key: String(type),
       from: count,
@@ -121,7 +124,17 @@ export default function QuickStoolForm({
         // core's own rule). The sheet stays open for a genuine second movement, and a
         // second movement is a different time; leaving the field armed would silently
         // overwrite the row the first tap just wrote.
-        setWhen({ date: today, statedAt: null });
+        //
+        // ONLY THE STATEMENT THIS TAP SPENT, and the guard is not defensive. This runs
+        // when the WRITE ANSWERS, which is arbitrarily later than the tap: a person who
+        // taps, then opens the affordance and states 07:05 while the request is still
+        // in flight, would have had that statement wiped by a settle belonging to the
+        // previous tap — and the next tap would then collide with the row that one
+        // wrote instead of adding a reading. A functional update comparing against what
+        // was consumed leaves anything newer alone.
+        setWhen((prev) =>
+          prev.statedAt === consumed ? { date: today, statedAt: null } : prev
+        );
         return { kind: "adopt", value: res.todayCount };
       },
     });

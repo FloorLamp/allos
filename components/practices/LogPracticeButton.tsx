@@ -276,6 +276,10 @@ export default function LogPracticeButton({
       }))
     )
       return;
+    // The statement THIS tap consumes, read once. The settle below clears it, and it
+    // must clear THIS one rather than whatever is in the field by the time the write
+    // answers — see the note there.
+    const consumed = whenShown ? when.statedAt : null;
     await ledger.tap({
       write: () => {
         const fd = new FormData();
@@ -299,7 +303,17 @@ export default function LogPracticeButton({
         // A STATEMENT IS SPENT BY THE TAP IT ANSWERS: multi-session days are the
         // point here, and a surviving 07:00 would quietly stamp the evening's sauna
         // with the morning's time.
-        if (outcome.kind === "logged") setWhen({ date: today, statedAt: null });
+        //
+        // ONLY THE STATEMENT THIS TAP SPENT, and the guard is not defensive. This
+        // runs when the WRITE ANSWERS, which is arbitrarily later than the tap: a
+        // person who taps, then opens the affordance and states 07:00 while the
+        // request is still in flight, would have had that statement wiped by a
+        // settle that belongs to the previous tap. A functional update comparing
+        // against what was consumed leaves anything newer alone.
+        if (outcome.kind === "logged")
+          setWhen((prev) =>
+            prev.statedAt === consumed ? { date: today, statedAt: null } : prev
+          );
         // A refused log (a forged date, a stale target) wrote nothing, so the tap
         // stays immediately retryable instead of cooling down.
         return outcome.kind === "logged"
