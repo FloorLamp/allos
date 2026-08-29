@@ -11,6 +11,7 @@ import {
   type MucusQuality,
 } from "@/lib/ttc";
 import { logBbtAction, logLhTestAction, logMucusAction } from "./ttc-actions";
+import InlineError from "@/components/InlineError";
 
 // The TTC log bar (issue #1680) — the daily-habit entry point for the three observations,
 // in the mould of SymptomLogBar / MobilityLogBar: one tap per observation, today, active
@@ -152,11 +153,7 @@ export default function TtcLogBar({
         </p>
       </div>
 
-      {error && (
-        <p role="alert" className="text-sm text-rose-600 dark:text-rose-400">
-          {error}
-        </p>
-      )}
+      <InlineError>{error}</InlineError>
     </div>
   );
 }

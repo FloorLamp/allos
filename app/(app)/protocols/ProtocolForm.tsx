@@ -38,6 +38,7 @@ import ProtocolFactRow, {
   type ProtocolOpenPanel,
 } from "@/components/protocols/ProtocolFactRow";
 import { PROTOCOL_FACT_NOUNS, protocolFactSummary } from "@/lib/protocol-facts";
+import InlineError from "@/components/InlineError";
 
 export type ProtocolFormResult =
   | { ok: true; redirectTo?: `/protocols/${number}` }
@@ -787,11 +788,7 @@ export default function ProtocolForm({
           />
         </ProtocolFormSection>
 
-        {error && (
-          <p role="alert" className="text-sm text-rose-600 dark:text-rose-400">
-            {error}
-          </p>
-        )}
+        <InlineError>{error}</InlineError>
       </div>
       <div
         className="flex shrink-0 flex-col-reverse gap-2 border-t border-(--border) bg-surface px-4 py-3 sm:flex-row sm:justify-end md:px-6"

@@ -5,6 +5,7 @@ import SubmitButton from "@/components/SubmitButton";
 import Combobox from "@/components/Combobox";
 import { useToast } from "@/components/Toast";
 import { useAddEntryModalClose } from "@/components/AddEntryPanel";
+import InlineError from "@/components/InlineError";
 import {
   icd10CodeForName,
   icd10SearchTerms,
@@ -309,11 +310,7 @@ export default function FamilyHistoryForm({
           defaultValue={entry?.notes ?? ""}
         />
       </div>
-      {error && (
-        <p role="alert" className="text-sm text-rose-600 dark:text-rose-400">
-          {error}
-        </p>
-      )}
+      <InlineError>{error}</InlineError>
       <div className="flex gap-2" data-testid="family-history-form-actions">
         <div
           className="grid w-full sm:w-auto"
