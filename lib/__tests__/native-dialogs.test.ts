@@ -101,6 +101,15 @@ function playwrightDialogHandlerLines(source: string): number[] {
 //
 // The reading is the FILE's because that is what the reporter prints; the per-test
 // split is the dispatch box's and is stated as such rather than implied.
+//
+// THIS IS A RE-DERIVATION, NOT THE THING #3986 PROHIBITS, and the difference is
+// worth stating because the two look alike from a distance. That ruling — "do not
+// raise the ceilings alone; a larger number makes the symptom rarer without saying
+// what stalls" — is aimed at raising a number IN RESPONSE TO A FAILURE, WITHOUT A
+// DIAGNOSIS. Nothing here is failing. The number moved because the margin was
+// measured against the environment that enforces it, coverage included, and came
+// back at 1.9x where the rule asks ~4x — the same class of finding as
+// migration-reentry's, and the same thing #3999 did for four other ceilings.
 const SCAN_CEILING = { timeout: perTestCeiling(2, "green") };
 
 describe("native browser dialogs", SCAN_CEILING, () => {
