@@ -481,7 +481,9 @@ export default function ActivityPartsList({
               <span className="inline-flex items-center gap-1">
                 <label
                   className={`flex items-center gap-2 ${
-                    rpeToggling ? "cursor-progress opacity-60" : "cursor-pointer"
+                    rpeToggling
+                      ? "cursor-progress opacity-60"
+                      : "cursor-pointer"
                   }`}
                 >
                   <BrandedCheckbox

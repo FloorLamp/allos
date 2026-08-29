@@ -67,7 +67,6 @@ import {
   type PartFault,
 } from "./model";
 
-
 // Weight and reps share one symmetric control; stepReps keeps #1524's zero clamp.
 function StepperButton({
   direction,

@@ -30,10 +30,25 @@ describe("partOptionsOffered", () => {
   // `sides` is name-based and false, `intent` is perSide-based and false — and the
   // effort opt-in must STILL be offered, because it is `!timed` and nothing else.
   it.each([
-    ["a plain bilateral lift", "Barbell Bench Press", false, [false, true, true]],
-    ["#3367: bilateral NAME, perSide STATE", "Barbell Bench Press", true, [false, false, true]],
+    [
+      "a plain bilateral lift",
+      "Barbell Bench Press",
+      false,
+      [false, true, true],
+    ],
+    [
+      "#3367: bilateral NAME, perSide STATE",
+      "Barbell Bench Press",
+      true,
+      [false, false, true],
+    ],
     ["a unilateral lift", "Hammer Curl", false, [true, true, true]],
-    ["a unilateral lift tracking sides", "Hammer Curl", true, [true, false, true]],
+    [
+      "a unilateral lift tracking sides",
+      "Hammer Curl",
+      true,
+      [true, false, true],
+    ],
     ["a timed hold", "Plank", false, [false, false, false]],
     ["a unilateral timed hold", "Side Plank", false, [true, false, false]],
   ] as [string, string, boolean, [boolean, boolean, boolean]][])(
@@ -51,7 +66,12 @@ describe("partOptionsOffered", () => {
     // The converse of row 2, asserted as the property rather than as a third example:
     // there is no rep-based part where the effort opt-in is unreachable. This is what
     // a conversion could quietly break while every row above still passed.
-    for (const name of ["Barbell Bench Press", "Hammer Curl", "Curl", "Back Squat"])
+    for (const name of [
+      "Barbell Bench Press",
+      "Hammer Curl",
+      "Curl",
+      "Back Squat",
+    ])
       for (const perSide of [false, true])
         for (const toFailure of [false, true])
           expect(
