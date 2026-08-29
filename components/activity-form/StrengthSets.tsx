@@ -1,14 +1,8 @@
 "use client";
 
-import EquipmentRegistryLink from "./EquipmentRegistryLink";
+import FactChipRow, { FactChip } from "@/components/facts/FactChipRow";
 import InfoTooltipIcon from "@/components/InfoTooltipIcon";
 import IconButton from "@/components/IconButton";
-import Chip from "@/components/Chip";
-import FactChipRow, {
-  FactAddChip,
-  FactChip,
-} from "@/components/facts/FactChipRow";
-import FactEditorHost from "@/components/facts/FactEditorHost";
 import { useEffect, useRef, useState } from "react";
 import type { Equipment } from "@/lib/types";
 import { isBarbell } from "@/lib/types";
@@ -19,9 +13,6 @@ import {
   isTimed,
   isBodyweight,
   isBarbellLift,
-  variantOf,
-  composeVariant,
-  defaultEquipment,
   exerciseHistoryKey,
   loadKindOf,
 } from "@/lib/lifts";
@@ -29,7 +20,6 @@ import {
   exerciseInjuryVerdict,
   RECOVERING_LOAD_FACTOR,
 } from "@/lib/injury-model";
-import { needsEquipment } from "@/lib/activity-form-validate";
 import { isValidDuration } from "@/lib/duration";
 import { formatLongDate } from "@/lib/format-date";
 import { useFormatPrefs } from "@/components/FormatPrefsProvider";
@@ -51,7 +41,6 @@ import type { PlateauFormHint } from "@/lib/rule-findings";
 import { dismissTrainingObservation } from "@/app/(app)/training/actions";
 import { setRpeTrackingAction } from "@/app/(app)/training/activity-actions";
 import { pickSeedSessions } from "@/lib/exercise-window";
-import EquipmentQuickAdd, { categoryForVariant } from "./EquipmentQuickAdd";
 import { stepRpe, fmtRpe, rpeSummaryText, type RpeTracking } from "@/lib/rpe";
 import {
   dispWeight,
@@ -74,7 +63,6 @@ import {
   setPartial,
   sidePartial,
   blockedField,
-  blockedRing,
   partSetsSummary,
   type PartEntry,
   type SetEntry,
@@ -227,11 +215,6 @@ export default function StrengthSets({
   currentActivityId,
   editedDate,
   equipmentList,
-  onEquipmentCreated,
-  equipmentFocusKey,
-  equipmentOpen,
-  onOpenEquipment,
-  onCloseEquipment,
   showBodyweightPrompt,
   bwInput,
   bwSaving,
@@ -277,19 +260,6 @@ export default function StrengthSets({
   // The edited session's date in edit mode (else null): drops later sessions.
   editedDate: string | null;
   equipmentList: Equipment[];
-  // Append a just-created implement to the editor's local equipment state (#1611),
-  // so the row is pickable on every part of this open activity without a reload.
-  onEquipmentCreated: (equipment: Equipment) => void;
-  // Is THIS part's equipment editor the one open? The state lives in the parts list
-  // so at most one is open across the whole form (#3349) — which is what keeps the
-  // registry door, rendered inside the panel, to one per form rather than one per
-  // exercise.
-  // This part's chip identity within the parts list, so focus comes back to THIS
-  // exercise's chip and not the first one on the form (#3311).
-  equipmentFocusKey: string;
-  equipmentOpen: boolean;
-  onOpenEquipment: () => void;
-  onCloseEquipment: () => void;
   showBodyweightPrompt: boolean;
   bwInput: string;
   bwSaving: boolean;
@@ -323,8 +293,6 @@ export default function StrengthSets({
   );
   // One RPE opt-in round-trip at a time (#3335) — see toggleRpeTracking.
   const [rpeToggling, setRpeToggling] = useState(false);
-  // Whether the in-form equipment quick-add is open (#1611).
-  const [addingEquipment, setAddingEquipment] = useState(false);
   // THE COMPACT SET NOTATION (#3336, #3228 item 4): a uniform run of completed sets
   // states itself — "60 kg × 8 × 3" — and the grid is one tap behind it.
   //
@@ -608,50 +576,10 @@ export default function StrengthSets({
     // Re-run only when the exercise changes; the ref prevents mid-session re-seeds.
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [p.name]);
-  const variant = variantOf(p.name);
-  // For lifts with no selectable equipment variant, show their normal implement.
-  const defaultEq = variant ? null : defaultEquipment(p.name);
   // Plate builder applies to barbells: a user-defined barbell implement, or any
   // barbell lift (the "Barbell" variant chip, or plain lifts like Back Squat).
   const selectedEq = equipmentList.find((e) => e.id === p.equipmentId);
   const showPlate = isBarbell(selectedEq?.category) || isBarbellLift(p.name);
-  // WHAT THE ROW NOW STATES (#3349). The implement this part is using, in the order
-  // the editor itself resolves it: a user-defined row wins, then the equipment
-  // composed into the lift's own name ("Dumbbell Curl" → Dumbbell), then the lift's
-  // normal implement. `null` is "no implement stated", which is two different facts —
-  // see the chip below.
-  const equipmentLabel =
-    selectedEq?.name ?? variant?.equipment ?? defaultEq ?? null;
-  // With nothing to state, WHICH absence is it? A bare variant base ("Curl") cannot be
-  // saved until this is answered, so it is a MISSING ESSENTIAL; anything else is an
-  // ABSENT OPTIONAL, because a lift with a normal implement and no gear on file is
-  // complete. Asked of the LIFT (`needsEquipment`, the same predicate the save gate
-  // uses) rather than of `fault`, which only says whether a save is stuck on it RIGHT
-  // NOW — a fact is essential before anybody tries to save.
-  const equipmentEssential = equipmentLabel == null && needsEquipment(p.name);
-  // Select a custom implement on this part, matching the lift NAME (and therefore
-  // its strength grouping) to the implement's type: a Barbell/Machine implement
-  // composes that variant, "Other" falls back to the base lift. `created` carries a
-  // row that isn't in `equipmentList` yet — the just-created one (#1611), since the
-  // parent's state update hasn't reached this render.
-  const selectEquipment = (id: number | null, created?: Equipment) => {
-    if (id != null) {
-      const v = variantOf(p.name);
-      if (v) {
-        const row =
-          created?.id === id ? created : equipmentList.find((x) => x.id === id);
-        const cat = (row?.category ?? "").trim().toLowerCase();
-        const wantEquip =
-          cat === "barbell" ? "Barbell" : cat === "machine" ? "Machine" : null;
-        const name =
-          wantEquip !== null && v.group.equipment.includes(wantEquip)
-            ? composeVariant(v.group, wantEquip)
-            : v.group.name;
-        if (name !== p.name) onUpdatePartName(name);
-      }
-    }
-    onUpdatePart({ equipmentId: id });
-  };
   // Small button that opens the plate builder for a specific weight field.
   const plateButton = (si: number, field: "weight" | "weightRight") => (
     // Keep the set grid's established 28px plate COLUMN while IconButton owns a
@@ -797,156 +725,6 @@ export default function StrengthSets({
             </button>
           </div>
         </div>
-      )}
-      {/* THE PART'S EQUIPMENT, STATED (#3349) rather than rendered as its machinery.
-          This row used to draw six-plus controls on EVERY exercise — the variant
-          chips, the implement <select>, "+ Equipment", and a "Manage equipment" link
-          repeated once per part — whether or not anyone disagreed with the implement
-          the editor had already resolved. It states that conclusion now; the picker,
-          the quick-add and the registry door are one tap behind it, in the same
-          facts-with-editors grammar the session-level gear chip uses (#3334/#3218) and
-          the compact set notation above already speaks (#3336).
-
-          THE ROW IS STILL UNGATED (#1611). It used to render only when the lift had a
-          variant/default implement or the profile already owned equipment, which hid
-          the only door to the registry from exactly the users who needed it — a
-          profile with no strength gear, and a traveller registering the hotel machine
-          mid-workout. Both still reach the registry in one tap, through the "+
-          equipment" prompt this renders when there is nothing to state.
-
-          THREE CHIP SHAPES, TWO FACTS — see `equipmentEssential` above for which
-          absence is which. The primitive draws that distinction already, so this
-          surface picks the shape and adds nothing. */}
-      {!equipmentOpen && (
-        <FactChipRow
-          testId="strength-equipment-row"
-          className={`mt-2 ${
-            fault === "equipment" ? `-mx-1.5 -my-1 px-1.5 py-1 ${blockedRing}` : ""
-          }`}
-        >
-          {equipmentLabel != null || equipmentEssential ? (
-            <FactChip
-              testId="strength-equipment-chip"
-              focusKey={equipmentFocusKey}
-              label={equipmentLabel ?? "pick equipment"}
-              state={equipmentLabel != null ? "stated" : "missing"}
-              expanded={equipmentOpen}
-              onOpen={onOpenEquipment}
-            />
-          ) : (
-            <FactAddChip
-              testId="strength-equipment-chip"
-              focusKey={equipmentFocusKey}
-              label="equipment"
-              expanded={equipmentOpen}
-              onOpen={onOpenEquipment}
-            />
-          )}
-        </FactChipRow>
-      )}
-      {equipmentOpen && (
-        <FactEditorHost
-          testId="strength-equipment-editor"
-          doneTestId="strength-equipment-done"
-          panel="equipment"
-          className="mt-2 rounded-lg border border-(--border) bg-surface p-3"
-          onDone={() => {
-            setAddingEquipment(false);
-            onCloseEquipment();
-          }}
-        >
-          <div className="flex flex-wrap items-center gap-1.5">
-            {variant &&
-              variant.group.equipment.map((eq) => {
-                // A variant equipment and a custom implement are mutually
-                // exclusive, so a variant chip is active only when no custom
-                // implement is chosen.
-                const active = variant.equipment === eq && p.equipmentId == null;
-                return (
-                  <Chip
-                    key={eq}
-                    role="filter"
-                    onClick={() => {
-                      onUpdatePartName(composeVariant(variant.group, eq));
-                      onUpdatePart({ equipmentId: null });
-                    }}
-                    pressed={active}
-                  >
-                    {eq}
-                  </Chip>
-                );
-              })}
-            {/* This lift's default implement — click to clear any custom
-                implement and use the default; highlighted while it's active. */}
-            {defaultEq && (
-              <Chip
-                role="filter"
-                onClick={() => onUpdatePart({ equipmentId: null })}
-                pressed={p.equipmentId == null}
-              >
-                {defaultEq}
-              </Chip>
-            )}
-            {/* User-defined implement: a compact dropdown sharing the chip row.
-                Selecting one drops any variant equipment (resets to the base). */}
-            {equipmentList.length > 0 && (
-              <select
-                value={p.equipmentId ?? ""}
-                data-testid="strength-equipment-select"
-                onChange={(e) =>
-                  selectEquipment(e.target.value ? Number(e.target.value) : null)
-                }
-                className="input w-auto px-2.5 text-xs"
-              >
-                <option value="">Equipment</option>
-                {equipmentList.map((eq) => (
-                  <option key={eq.id} value={eq.id}>
-                    {eq.name}
-                  </option>
-                ))}
-              </select>
-            )}
-            {/* Compact in-form creation (#1611) — the travel-workout path. Registering
-                the hotel machine here keeps the in-progress sets intact AND gives it a
-                distinct equipment id, which is what makes its history/seed separate from
-                the home machine's (#1610). */}
-            {!addingEquipment && (
-              <button
-                type="button"
-                onClick={() => setAddingEquipment(true)}
-                data-testid="strength-equipment-add"
-                className="btn-ghost px-2.5 text-xs"
-              >
-                + Equipment
-              </button>
-            )}
-            {/* Full management stays on /equipment — the same same-app door
-                ActivityEquipmentPicker renders for non-strength activities (#592).
-                ONE PER FORM, not one per exercise: the parts list holds the open-editor
-                state, so only one of these panels is ever mounted (#3349). */}
-            <EquipmentRegistryLink testId="strength-equipment-link">
-              {equipmentList.length === 0 ? "Add equipment →" : "Manage equipment"}
-            </EquipmentRegistryLink>
-          </div>
-          {addingEquipment && (
-            <EquipmentQuickAdd
-              // Default the category from the lift's built-in variant when it's
-              // unambiguous ("Machine Chest Press" → Machine); otherwise the field is
-              // empty and required rather than guessed.
-              defaultCategory={categoryForVariant(variant?.equipment ?? defaultEq)}
-              unit={units.weightUnit}
-              onCreated={(eq) => {
-                // Editor-local state gains the row (so every OTHER part of this same
-                // open activity can pick it too) and the current part selects it
-                // immediately — no reopen, no re-entered sets.
-                onEquipmentCreated(eq);
-                selectEquipment(eq.id, eq);
-                setAddingEquipment(false);
-              }}
-              onCancel={() => setAddingEquipment(false)}
-            />
-          )}
-        </FactEditorHost>
       )}
       {recent.length > 0 && (
         <div
