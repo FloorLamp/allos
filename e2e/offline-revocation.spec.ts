@@ -302,6 +302,23 @@ test("R1 — a REVOKED session wipes the offline record and closes the write gat
     const gate = await gateRow(page);
     expect(gate, "the gate row is missing entirely").not.toBeNull();
     expect(gate?.sessionClosed).toBe(true);
+
+    // AND THE DEVICE IS NOT BRICKED BY THE CLOSE, which the two assertions above cannot
+    // see: they are satisfied by an empty store and a shut gate, and so is the failure.
+    // `openSessionAs` refuses to re-open for the session that CLOSED the gate, so a close
+    // recorded under a key a later session could match would leave this device with the
+    // queue not capturing, drafts not saving and snapshots not refreshing — for every
+    // login after this one, silently, which is the #2908 R-A shape. Signing back in is the
+    // only thing that distinguishes the two worlds.
+    await login(page, f);
+    await page.goto("/");
+    await expect
+      .poll(() => storedKinds(page), { timeout: 30_000 })
+      .toEqual([...SNAPSHOT_KINDS].sort());
+    expect(
+      (await gateRow(page))?.sessionClosed,
+      "the gate stayed shut for the NEXT session — the device is bricked"
+    ).toBe(false);
   } finally {
     destroyFixture(f);
   }
