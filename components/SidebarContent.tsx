@@ -91,10 +91,16 @@ function raiseLogoutFailure(err: unknown): void {
 //     (e.g. "log activity" opens a modal); navigations already close it via the
 //     drawer's pathname effect.
 //   - onClose: when set, renders the drawer's close (✕) button beside the wordmark.
-//   - showIdentityBar: the desktop sidebar carries the #1801 identity bar at its
-//     TOP; the drawer does NOT, because on a phone the bar lives in the top bar
-//     itself (that is the whole point — the acting profile must be answerable
-//     without opening anything). Same component either way, placed once.
+//   - inDrawer: ONE boolean naming the HOST, not a per-difference style knob, and
+//     the only one this component gets. Two behaviors read it, both of them the
+//     same shape of decision — "a phone is not a small desktop":
+//       · the #1801 identity bar rides the sidebar's TOP but not the drawer's,
+//         because on a phone the bar lives in the top bar itself (the acting
+//         profile must be answerable without opening anything);
+//       · nav groups fold on the sidebar and render inline in the drawer
+//         (#3343 Q4 — see components/Nav.tsx).
+//     Anything else that differs by surface belongs behind this same boolean; a
+//     second one would be the parallel contract this repo keeps refusing.
 //
 // The profile MENU that used to sit at the bottom of this file is gone (#1801):
 // the identity bar + its switcher panel are the one switcher now. What stayed at
@@ -108,7 +114,7 @@ export default function SidebarContent({
   profiles,
   viewIds = [],
   readOnlyIds = [],
-  showIdentityBar = true,
+  inDrawer = false,
   adultContentAvailable = true,
   trainingRelevant = true,
   isAdmin = false,
@@ -141,9 +147,9 @@ export default function SidebarContent({
   // Accessible profiles this login holds READ-only (issue #33); each carries the
   // hint on its switcher row.
   readOnlyIds?: number[];
-  // See the note above: true for the desktop sidebar, false for the mobile
-  // drawer (whose identity bar lives in the phone top bar).
-  showIdentityBar?: boolean;
+  // See the note above: false for the desktop sidebar, true for the mobile
+  // drawer. The one fact about the HOST this shared content is allowed to know.
+  inDrawer?: boolean;
   // Known-adult predicate for the Longevity nav entry. Logging stays available.
   adultContentAvailable?: boolean;
   // Workout product relevance for the active profile (false below age 5).
@@ -445,7 +451,7 @@ export default function SidebarContent({
   // back above it. A single-profile instance grows no identity bar, so it keeps
   // the wordmark exactly as before, and so does the phone drawer, whose bar lives
   // in the top bar and whose close ✕ rides this row.
-  const brandChrome = !(showIdentityBar && multiProfile);
+  const brandChrome = inDrawer || !multiProfile;
   return (
     <>
       {brandChrome && (
@@ -514,6 +520,7 @@ export default function SidebarContent({
         trainingRelevant={trainingRelevant}
       />
       <Nav
+        inDrawer={inDrawer}
         adultContentAvailable={adultContentAvailable}
         trainingRelevant={trainingRelevant}
         isAdmin={isAdmin}
