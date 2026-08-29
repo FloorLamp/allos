@@ -353,6 +353,11 @@ const ALLOW: { file: string; fn: string; why: string; gate?: string }[] = [
     why: "record correction (#4009): deletes the ROW's dose log via gateItemProfile() → requireProfileWriteAccess(rowProfileId); the audit entry is stamped with the same gated profile",
   },
   {
+    file: "app/(app)/nutrition/intake-actions.ts",
+    fn: "updateHistoricalDose",
+    why: "record correction (#4009): amends the ROW's dose log via gateItemProfile() → requireProfileWriteAccess(rowProfileId); the stated wall time re-anchors in the GATED profile's zone, which is the zone HistoricalDoseForm collected it in",
+  },
+  {
     file: "app/(app)/nutrition/actions.ts",
     fn: "updateFoodLogEvent",
     why: "record correction (#4009): corrects the ROW's serving via gateItemProfile() → requireProfileWriteAccess(rowProfileId); the eaten-at wall time resolves in the SUBJECT's timezone",

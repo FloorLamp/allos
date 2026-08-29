@@ -650,7 +650,20 @@ describe("the record's ⋯ posts to the domain's own action", () => {
       await act(async () =>
         fireEvent.click(screen.getByRole("button", { name: saveLabel }))
       );
-      expect(only(action)).toEqual(expected);
+      // EVERY CORRECTION NAMES ITS SUBJECT (#4009 item 1), asserted here as ONE
+      // invariant over the table rather than as a `profile_id` line repeated into
+      // five literal payloads — the fields above stay a statement about what each
+      // DOMAIN parses, and this stays a statement about what the page adds. Both
+      // halves matter: `gateItemProfile` reads `profile_id` and falls back to the
+      // acting-profile gate when it is absent, so a form that forgot to post it
+      // would keep working on every single-view page and silently write to the
+      // wrong subject on `?view=everyone` — green here, wrong in the one mode the
+      // field exists for. Stamped on the acting profile's rows too, so there is no
+      // branch that could be right on one side and wrong on the other.
+      expect(only(action)).toEqual({
+        ...expected,
+        profile_id: String(ACTING),
+      });
     }
   );
 
@@ -758,22 +771,51 @@ describe("the record's ⋯ posts to the domain's own action", () => {
       await act(async () =>
         fireEvent.click(screen.getByTestId("history-row-delete"))
       );
-      expect(only(action)).toMatchObject(expected);
+      // The same subject invariant as the correction half, and `toEqual` rather
+      // than `toMatchObject` so a payload that stopped naming its subject is
+      // visible here — a partial match cannot see a missing field.
+      expect(only(action)).toEqual({
+        ...expected,
+        profile_id: String(ACTING),
+      });
     }
   );
 
-  // THE AFFORDANCE IS NOT THE GATE, but it must not render where it cannot act: every
-  // action above resolves its subject from the session, so a ⋯ on another member's
-  // row in `?view=everyone` would write to the wrong subject (#2106).
-  it("renders no ⋯ on a row belonging to another member", () => {
+  // THE ⋯ FOLLOWS WRITE ACCESS ON THE ROW'S OWN PROFILE (#4009 item 1 / #2106), which
+  // is the rule #3958 states and phase 1 approximated with "is it the acting profile".
+  // Two rows, one render, differing only in whose they are: the affordance appears on
+  // the member this login may write and not on the one it may not. Asserted as a
+  // COMPARISON between two real rows rather than against a constant, because a page
+  // that had simply stopped drawing the menu would satisfy an absence assertion alone.
+  //
+  // This is the render half only. The gate is `gateItemProfile` inside each action —
+  // see lib/__action_tests__/history-cross-profile-correction.actions.test.ts, which
+  // posts what a forged submit would post and proves the write is refused.
+  it("draws the ⋯ on a writable member's row and not on a read-only one", () => {
+    const WRITABLE = ACTING + 1;
+    const READ_ONLY = ACTING + 2;
     cleanup();
     render(
       <HistoryRows
         rows={[
           row({
+            id: "food:98",
+            kind: "food",
+            profileId: WRITABLE,
+            title: "Berries",
+            edit: {
+              kind: "food",
+              eventId: 98,
+              groupKey: "berries",
+              mealSlot: "Morning",
+              clock: null,
+              clockKind: "logged",
+            },
+          }),
+          row({
             id: "food:99",
             kind: "food",
-            profileId: ACTING + 1,
+            profileId: READ_ONLY,
             title: "Berries",
             edit: {
               kind: "food",
@@ -785,14 +827,25 @@ describe("the record's ⋯ posts to the domain's own action", () => {
             },
           }),
         ]}
-        writableProfileIds={[ACTING]}
+        writableProfileIds={[ACTING, WRITABLE]}
         doseItems={[]}
         maxDate="2026-08-28"
         defaultTime="09:00"
-        subjectNames={{ [ACTING + 1]: "Mia" }}
+        subjectNames={{ [WRITABLE]: "Mia", [READ_ONLY]: "Sam" }}
       />
     );
-    expect(screen.queryByTestId("overflow-menu-trigger")).toBeNull();
-    expect(screen.getByTestId("history-row-subject").textContent).toBe("Mia");
+    // One menu across two rows, and it is on Mia's.
+    expect(screen.getAllByTestId("overflow-menu-trigger")).toHaveLength(1);
+    const rows = screen.getAllByTestId("history-row");
+    expect(
+      rows[0].querySelector('[data-testid="overflow-menu-trigger"]')
+    ).not.toBeNull();
+    expect(
+      rows[1].querySelector('[data-testid="overflow-menu-trigger"]')
+    ).toBeNull();
+    // And both still say whose they are (#534) — read-only is not anonymous.
+    expect(
+      screen.getAllByTestId("history-row-subject").map((n) => n.textContent)
+    ).toEqual(["Mia", "Sam"]);
   });
 });
