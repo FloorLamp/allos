@@ -55,6 +55,12 @@ const QuickStoolForm = dynamic(() => import("./quick-entry/QuickStoolForm"));
 const QuickSubstanceList = dynamic(
   () => import("./quick-entry/QuickSubstanceList")
 );
+// Same rule, seventh body (#4064), and the heaviest of them: the symptom bar drags in
+// the shared combobox, the optimistic ledger, the undo toast lifecycle and five symptom
+// actions' client references. Loaded on open, after the gather it needs anyway.
+const QuickSymptomPanel = dynamic(
+  () => import("./quick-entry/QuickSymptomPanel")
+);
 
 // The shared quick-entry overlay host (issue #1468).
 //
@@ -68,8 +74,8 @@ const QuickSubstanceList = dynamic(
 // ── What this is NOT ─────────────────────────────────────────────────────────
 //
 // It is not a second write path, and not a second set of forms. It mounts the
-// EXISTING components — MeasurementsQuickAdd and FoodLogBar, the very same
-// instances the Trends and Nutrition pages render — and they keep calling the very
+// EXISTING components — MeasurementsQuickAdd, FoodLogBar and SymptomLogBar, the very
+// same instances the Trends, Nutrition and dashboard surfaces render — and they keep calling the very
 // same Server Actions (addMeasurements / logFoodServing) with their own
 // validation, offline queueing and write gates. Dose is the one row
 // this file assembles (QuickDoseList), and it too only posts the existing
@@ -141,6 +147,10 @@ const SHEET: Record<QuickEntryForm, { title: string; ownsHeading: boolean }> = {
   // #3327: the sheet's substance row. The panel owns no heading — the rows ARE the
   // question, and each carries its own verb.
   substance: { title: "Log substance", ownsHeading: false },
+  // #4064: the sheet's symptom row. The panel owns no heading — the bar's own
+  // "Daily symptoms" label is suppressed the way the illness cockpit suppresses it,
+  // so the sheet prints the one heading.
+  symptom: { title: "Log symptom", ownsHeading: false },
   document: { title: "Add document", ownsHeading: false },
 };
 
@@ -357,6 +367,24 @@ function QuickEntryBody({
       // no single "saved" moment — several uses in an evening is ordinary. The tap
       // revalidates behind the sheet, so "stay where you were" still holds.
       return <QuickSubstanceList substances={data.substances} />;
+    case "symptom":
+      // The SAME SymptomLogBar the dashboard's well-day card mounts, over the SAME
+      // symptom actions — a fifth mounting context, never a fifth write path. No
+      // `onSaved`: a symptom day is a working SET (add one, raise it later, note it,
+      // then the illness bridge), so there is no single saved moment to close on. The
+      // taps revalidate behind the sheet, so "stay where you were" still holds.
+      return (
+        <QuickSymptomPanel
+          today={data.today}
+          severities={data.severities}
+          notes={data.notes}
+          customNames={data.customNames}
+          rankedKeys={data.rankedKeys}
+          temperatureUnit={data.temperatureUnit}
+          textIntakeEnabled={data.textIntakeEnabled}
+          trackingIllness={data.trackingIllness}
+        />
+      );
     case "document":
       // The SAME UploadForm Data → File upload renders — same ingest engine, same
       // gates, same per-profile storage and dedup, and the #1423 camera input rides

@@ -1,0 +1,76 @@
+"use client";
+
+import SymptomLogBar from "@/components/illness/SymptomLogBar";
+import { PICKER_SYMPTOMS } from "@/lib/symptoms";
+import type { TemperatureUnit } from "@/lib/settings";
+
+// The quick-log sheet's symptom panel (issue #4064) — a FIFTH mounting of
+// `SymptomLogBar`, after the dashboard's well-day card, the Timeline day view, the
+// illness cockpit and the Cycles page.
+//
+// It holds no logic and no write. Every prop below was gathered on the server on open
+// (`loadQuickEntry("symptom")`) from the same reads the dashboard's own mount makes, and
+// the bar posts the same `logSymptom` / `lowerSymptom` / `setSymptomNote` /
+// `removeSymptom` / `activateIllnessForSymptoms` actions it always has — so a tap here
+// and a tap on the dashboard are one write path with one validation, differing only in
+// the surface each mounting declares (#3087). That equality is asserted rather than
+// promised: components/__tests__/quick-symptom-parity.test.tsx builds both mounts and
+// compares the FormData they post.
+//
+// WHY THE CATALOG IS IMPORTED AND NOT SENT. `PICKER_SYMPTOMS` is a pure constant every
+// other mount passes the same way, so shipping it over the action boundary would put a
+// second copy of one list on the wire without making it any fresher.
+//
+// ── THE ILLNESS VERB RENDERS FROM STATE ──────────────────────────────────────
+//
+// Marking an illness is a LIFECYCLE write (docs/internals/stateful-affordances.md): the
+// same tap means different things depending on what is already active, so the affordance
+// has to say which. The bar's own bridge is the "nothing tracked" arm and is unchanged;
+// this panel supplies the other arm, naming what IS tracked, because the bar renders
+// nothing at all in that case and a sheet that simply omitted the offer would read as
+// "you cannot mark an illness from here". It lives HERE rather than in the bar for the
+// #4064 scope reason: the cockpit and Cycles mounts must render exactly as they did.
+export default function QuickSymptomPanel({
+  today,
+  severities,
+  notes,
+  customNames,
+  rankedKeys,
+  temperatureUnit,
+  textIntakeEnabled,
+  trackingIllness,
+}: {
+  today: string;
+  severities: Record<string, number>;
+  notes: Record<string, string>;
+  customNames: string[];
+  rankedKeys: string[];
+  temperatureUnit: TemperatureUnit;
+  textIntakeEnabled: boolean;
+  trackingIllness: string[];
+}) {
+  return (
+    <div className="space-y-3 py-1" data-testid="quick-symptom-panel">
+      {trackingIllness.length > 0 && (
+        <p
+          data-testid="quick-symptom-tracking"
+          className="text-xs text-slate-500 dark:text-slate-400"
+        >
+          Tracking: {trackingIllness.join(", ")}
+        </p>
+      )}
+      <SymptomLogBar
+        date={today}
+        initial={severities}
+        initialNotes={notes}
+        symptoms={PICKER_SYMPTOMS}
+        customNames={customNames}
+        rankedKeys={rankedKeys}
+        suggestActivateIllness={trackingIllness.length === 0}
+        temperatureUnit={temperatureUnit}
+        textIntakeEnabled={textIntakeEnabled}
+        showTitle={false}
+      />
+    </div>
+  );
+}

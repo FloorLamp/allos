@@ -182,19 +182,24 @@ describe("the domain census (#2130)", () => {
     }
   });
 
-  it("food, dose and mood open the SAME overlay forms as their sheet rows (#2184)", () => {
-    const byId = new Map(PALETTE_ACTIONS.map((a) => [a.id, a]));
-    expect(byId.get("log-food")!.target).toEqual({
-      kind: "overlay",
-      form: "food",
-    });
-    expect(byId.get("log-dose")!.target).toEqual({
-      kind: "overlay",
-      form: "dose",
-    });
-    expect(byId.get("log-mood")!.target).toEqual({
-      kind: "overlay",
-      form: "mood",
-    });
-  });
+  // #2184's rule as a table: browse and search are two surfaces over ONE form set, so
+  // a palette action and its sheet row must resolve to the same target object. Read the
+  // expectation off `quickLogItem` rather than restating the form key, which is what
+  // makes this a comparison instead of two copies of one literal.
+  it.each([
+    ["log-food", "log-food"],
+    ["log-dose", "log-dose"],
+    ["log-mood", "log-mood"],
+    // #4064 — the symptom row's palette twin, and the overturn of an exclusion that
+    // had cited the sheet census's own (now overturned) argument rather than any
+    // palette-specific ground.
+    ["log-symptom", "log-symptom"],
+  ] as const)(
+    "%s opens the SAME overlay form as its sheet row (#2184)",
+    (paletteId, sheetId) => {
+      const action = PALETTE_ACTIONS.find((a) => a.id === paletteId);
+      expect(action?.target).toEqual(quickLogItem(sheetId).target);
+      expect(action?.target).toMatchObject({ kind: "overlay" });
+    }
+  );
 });

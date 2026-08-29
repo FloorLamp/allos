@@ -198,6 +198,24 @@ describe("getSegmentLogDays", () => {
     });
   });
 
+  // #4064 added the symptom arm to Care. `symptom_logs` has no `source` column
+  // because it has no ingest path, so the arm carries no manual filter — the check
+  // that matters is the PAIRING: a symptom day is Care evidence, and it dedupes with
+  // the practice arm on a day that has both, exactly as the Body stores do.
+  it("counts a symptom day toward Care, deduped against the practice arm", () => {
+    const { profileId, anchor } = makeProfile("Habit Symptom");
+    const shared = shiftDateStr(anchor, -1);
+    db.prepare(
+      "INSERT INTO practice_logs (profile_id, practice, date) VALUES (?, 'sauna', ?)"
+    ).run(profileId, shared);
+    for (const date of [shared, anchor]) {
+      db.prepare(
+        "INSERT INTO symptom_logs (profile_id, date, symptom, severity) VALUES (?, ?, 'headache', 2)"
+      ).run(profileId, date);
+    }
+    expect(getSegmentLogDays(profileId, anchor)).toMatchObject({ care: 2 });
+  });
+
   // #3327 added the substance arm. The store has no ingest path, so the only
   // question its filter answers is the one every other arm answers: are these rows
   // hand-entered?

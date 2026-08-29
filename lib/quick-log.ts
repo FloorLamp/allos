@@ -31,11 +31,7 @@
 
 import type { AppRoute } from "./hrefs";
 import { MEDICATIONS_HREF } from "./hrefs";
-import {
-  arguedExclusion,
-  type ArguedExclusion,
-  type LoggableDomain,
-} from "./loggable-domains";
+import { type ArguedExclusion, type LoggableDomain } from "./loggable-domains";
 import type { MeasurementGroup } from "./measurements-deeplink";
 import {
   DEFAULT_TRENDS_TAB,
@@ -92,6 +88,12 @@ export type QuickEntryForm =
   // like every other body here, which is what lets the row offer a substance named
   // through #3326 minutes earlier.
   | "substance"
+  // #4064: the SAME SymptomLogBar the dashboard's well-day card and the Timeline day
+  // view mount, gathered on open. It carries all three of the affordances the #3366
+  // ruling moves off the dashboard tail — a symptom tap, the well-day capture (the
+  // bar with no episode is the #1300 "no illness required" entry), and the illness
+  // bridge — so one row keeps the coverage one card had.
+  | "symptom"
   | "document";
 
 // What the CALLER's context implies about the form it opens (#2014): the vitals
@@ -135,6 +137,7 @@ export const QUICK_LOG_IDS = [
   "log-measurements",
   "log-practice",
   "log-mood",
+  "log-symptom",
   "log-period",
   "log-stool",
   "log-substance",
@@ -244,6 +247,27 @@ export const QUICK_LOG_ITEMS: QuickLogItem[] = [
     // SAME `logMood` action the dashboard card runs — one write core, a second
     // mounting context — with the #2128 backfill chips choosing the day.
     target: { kind: "overlay", form: "mood" },
+  },
+  {
+    id: "log-symptom",
+    label: "Log symptom",
+    hint: "How you feel today, illness or not",
+    icon: "heartbeat",
+    // #4064, and the overturn of this domain's argued exclusion (see the census at the
+    // foot of this file). The owner ruling on #3366 (2026-08-29) moved the always-
+    // available write controls off the dashboard tail on the grounds that the quick
+    // logger is the app's ONE quick-write surface — so this row has to arrive BEFORE
+    // that card leaves, or the three affordances it carries have no door at all.
+    //
+    // ONE row, not three, and that is #1506's rule rather than a compression: symptom
+    // capture and the well-day capture are the same bar over the same store (a well day
+    // is simply the bar with no episode — #1300's "no illness required" entry), and a
+    // second row would be a second door onto one form. The illness bridge is a LIFECYCLE
+    // write (docs/internals/stateful-affordances.md), so it renders from state one tap
+    // in — "Mark as illness" when nothing is tracked, the situation named when something
+    // is — which is exactly #1892's period precedent: the row names the domain, the verb
+    // is resolved on open where it cannot be stale.
+    target: { kind: "overlay", form: "symptom" },
   },
   {
     id: "log-period",
@@ -400,9 +424,20 @@ export const QUICK_LOG_DOMAIN_CENSUS = {
   period: "log-period",
   mood: "log-mood",
   stool: "log-stool",
-  symptom: arguedExclusion(
-    "Symptom logging is a state-routed PAIR, not one form: on a well day it is the #1300 quick bar behind the check-in card's reveal, and during an illness episode the illness Now cockpit owns it (#858 — one lifecycle, one door). A context-free sheet row would need the episode gather just to pick a form, and #1860 is actively reshaping that capture; membership waits on it rather than freezing one of the two halves here."
-  ),
+  // OVERTURNED (#4064). The exclusion read: symptom logging is a state-routed PAIR, so
+  // a context-free sheet row would need the episode gather just to pick a form, and
+  // #1860 was said to be reshaping that capture. Both halves failed. #1860 is the
+  // OFFLINE queue's symptom flow and reshapes no capture surface, so the row was
+  // waiting on work that was never going to arrive; and the "pair" is one component —
+  // `SymptomLogBar`, which the well-day card, the Timeline day view, the cockpit and
+  // the Cycles page all already mount, differing only in the props gathered for them.
+  // The overlay gathers those props on OPEN like every other body here, which is what
+  // lets one row serve both states honestly.
+  //
+  // What ADMITS it is the #3366 owner ruling (2026-08-29): the tail's always-available
+  // write controls leave because the quick logger is the app's one quick-write surface,
+  // and they may only leave once the sheet covers them. This row is that coverage.
+  symptom: "log-symptom",
   // OVERTURNED (#3327), and the argument it replaces is worth keeping in view. The
   // exclusion read: substance logging lives under Medical → Substance use with its
   // #998 cap verdict rendered beside the tap, and a sheet row would detach the tap

@@ -79,6 +79,10 @@ export const LOG_SEGMENT_CENSUS = {
   // mood check-in, or a document. Things taken into the body live in Consume.
   "log-practice": "care",
   "log-mood": "care",
+  // #4064: how you FEEL is the other thing you check in about, so the symptom row
+  // sits beside the mood row rather than under Body — Body is what the body reports
+  // as a measurement, and a symptom is a report about the person.
+  "log-symptom": "care",
   "add-document": "care",
 } as const satisfies Record<QuickLogId, LogSegmentId>;
 
@@ -301,6 +305,10 @@ export const LOG_DAY_SOURCES = {
   "log-stool": ["metric_samples"],
   "log-dose": ["intake_item_logs"],
   "log-practice": ["practice_logs"],
+  // Every `symptom_logs` row is hand-entered — the store has no source column because
+  // it has no ingest path — so the arm needs no manual filter, like `food_daily_totals`
+  // and `cycles` (#4064).
+  "log-symptom": ["symptom_logs"],
   // A substance tap is one hand-entered `substance_daily_totals` row (#3327), counted
   // on `source = 'manual'` — NOT NULL with a 'manual' default, the metric_samples
   // spelling, so there is no null half to admit.
