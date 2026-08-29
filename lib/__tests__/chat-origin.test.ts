@@ -231,7 +231,13 @@ function code(src: string): string {
   return stripComments(src);
 }
 
+let repoSourcesCache: { rel: string; src: string }[] | undefined;
+
 function sources(root: string): { rel: string; src: string }[] {
+  // The production census has several independent assertions over one immutable
+  // checkout. Read and strip it once for this file; synthetic temp corpora remain
+  // uncached because those tests author their files immediately before scanning.
+  if (root === REPO && repoSourcesCache) return repoSourcesCache;
   const out: { rel: string; src: string }[] = [];
   const rec = (dir: string): void => {
     let entries: fsMod.Dirent[] = [];
@@ -255,7 +261,9 @@ function sources(root: string): { rel: string; src: string }[] {
     }
   };
   for (const sub of ["lib", "app", "components"]) rec(path.join(root, sub));
-  return out.sort((a, b) => a.rel.localeCompare(b.rel));
+  const sorted = out.sort((a, b) => a.rel.localeCompare(b.rel));
+  if (root === REPO) repoSourcesCache = sorted;
+  return sorted;
 }
 
 /** The builder's own name. */

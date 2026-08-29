@@ -1,5 +1,11 @@
 import nextCoreWebVitals from "eslint-config-next/core-web-vitals";
 
+const TYPESCRIPT_API_PATTERN = {
+  group: ["typescript", "typescript/*"],
+  message:
+    'Import the compiler API from "typescript-api" (the pinned 5.x alias), not from "typescript" — see #3559.',
+};
+
 // ESLint 9 flat config. `next lint` is deprecated in Next 15 and removed in 16,
 // so `npm run lint` drives the ESLint CLI directly (see package.json). The lint
 // surface is `eslint-config-next`'s `next/core-web-vitals` rule set, applied to
@@ -53,13 +59,48 @@ const config = [
       "no-restricted-imports": [
         "error",
         {
-          patterns: [
+          patterns: [TYPESCRIPT_API_PATTERN],
+        },
+      ],
+    },
+  },
+  // Production code revalidates through lib/revalidate.ts, whose generated-route
+  // parameter makes stale paths a compile error (#1636/#2149). This restriction
+  // used to be a Vitest source scanner that reread every file after ESLint had
+  // already parsed it. Put the import boundary on that existing parse instead.
+  // Action tests mock next/cache directly to observe the wrapper and are not app
+  // callers; lib/revalidate.ts is the one module allowed to expose the raw API.
+  {
+    files: [
+      "app/**/*.{ts,tsx}",
+      "components/**/*.{ts,tsx}",
+      "lib/**/*.{ts,tsx}",
+      "scripts/**/*.{ts,tsx}",
+      "e2e/**/*.{ts,tsx}",
+    ],
+    ignores: ["lib/revalidate.ts", "lib/__action_tests__/**"],
+    rules: {
+      "no-restricted-imports": [
+        "error",
+        {
+          patterns: [TYPESCRIPT_API_PATTERN],
+          paths: [
             {
-              group: ["typescript", "typescript/*"],
+              name: "next/cache",
+              importNames: ["revalidatePath"],
               message:
-                'Import the compiler API from "typescript-api" (the pinned 5.x alias), not from "typescript" — see #3559.',
+                "Use revalidateRoute from lib/revalidate.ts so the target remains compile-checked (#1636/#2149).",
             },
           ],
+        },
+      ],
+      "no-restricted-syntax": [
+        "error",
+        {
+          selector:
+            "VariableDeclarator[id.type='ObjectPattern']:has(Property[key.name='revalidatePath']) ImportExpression[source.value='next/cache']",
+          message:
+            "Use revalidateRoute from lib/revalidate.ts so the target remains compile-checked (#1636/#2149).",
         },
       ],
     },

@@ -3,7 +3,6 @@ import fs from "node:fs";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
 import { stripComments } from "./strip-comments";
-import { perTestCeiling } from "../../vitest.timeouts";
 
 // Static consistency guard for the sidebar ↔ App-Router routes, in the same
 // "pure" spirit as profile-scoping.test.ts: it reads the repo's own source as
@@ -125,70 +124,6 @@ function dueSignalPaths(file: string): string[] {
     if (staticPath) out.add(staticPath);
   }
   return [...out];
-}
-
-// ── the one remaining revalidate assertion (issues #1636 → #2149) ──────────────
-//
-// This section USED to re-derive the whole route tree and regex every
-// `revalidatePath` literal out of app/ sources, because "`revalidatePath` takes a
-// plain string, so `typedRoutes` cannot check it" — after the #1042/#1079 route
-// merges, several Server Actions kept revalidating URLs that no longer served
-// anything (`/encounters`, a retired training path, `/body`), so the refresh was a silent no-op
-// and the moved surface stayed stale.
-//
-// #2149 replaced that text sweep with a TYPE: every target now goes through
-// `revalidateRoute` (lib/revalidate.ts), whose parameter is Next's generated route
-// union, so a dead target — single, interpolated, or inside an array fan-out — is a
-// compile error at the call site (under `npm run build`, which is where the route
-// types exist). The registry's `pull.revalidates` list (#2040) is compile-checked
-// the same way, by its `RevalidateTarget[]` element type.
-//
-// What a text sweep can still see, and a type cannot, is a module going AROUND the
-// wrapper. That is the single assertion left here; the wrapper's own narrowing is
-// pinned by lib/__tests__/revalidate-route.test.ts.
-
-// Every `.ts`/`.tsx` in the repo's own source roots, so the check can never miss a
-// file by being enumerated by hand.
-const SOURCE_ROOTS = ["app", "components", "lib", "scripts", "e2e"];
-
-function sourceFiles(dir: string): string[] {
-  const out: string[] = [];
-  for (const entry of fs.readdirSync(dir, { withFileTypes: true })) {
-    const full = path.join(dir, entry.name);
-    if (entry.isDirectory()) out.push(...sourceFiles(full));
-    else if (/\.tsx?$/.test(entry.name)) out.push(full);
-  }
-  return out;
-}
-
-// The files allowed to name Next's raw API:
-//   - lib/revalidate.ts IS the wrapper.
-//   - lib/__action_tests__/** mocks `next/cache` and asserts on that mock, which is
-//     how the action tier observes what a wrapped call did. Mocking the module the
-//     wrapper calls is not going around it.
-function mayImportRaw(rel: string): boolean {
-  return (
-    rel === path.join("lib", "revalidate.ts") ||
-    rel.startsWith(path.join("lib", "__action_tests__") + path.sep)
-  );
-}
-
-// Whether a file pulls `revalidatePath` in from `next/cache` — static import or
-// dynamic `await import(...)`. A call is impossible without one of these, and
-// keying on the IMPORT rather than on the bare identifier keeps prose that merely
-// mentions the old API from tripping the check.
-const RAW_IMPORT =
-  /(?:import|const|let|var)\s*\{([^}]*)\}\s*(?:from\s*|=\s*await\s+import\s*\(\s*)["']next\/cache["']/g;
-
-function importsRawRevalidate(file: string): boolean {
-  const src = stripComments(fs.readFileSync(file, "utf8"));
-  if (!src.includes("revalidatePath")) return false;
-  RAW_IMPORT.lastIndex = 0;
-  let m: RegExpExecArray | null;
-  while ((m = RAW_IMPORT.exec(src)) !== null) {
-    if (/\brevalidatePath\b/.test(m[1])) return true;
-  }
-  return false;
 }
 
 // Extract internal redirect destinations from next.config.js. Source-scanned
@@ -329,36 +264,4 @@ describe("nav ↔ route consistency", () => {
       `these are top-level rows again — #3079 demoted them to "Plan & review" children, and a promotion needs its own reasoning: ${promoted.join(", ")}`
     ).toEqual([]);
   });
-
-  // A CEILING DERIVED FROM CI, WHERE IT IS ENFORCED (#3986). This walks and
-  // comment-strips every .ts/.tsx under five source roots — 2 687 ms solo on a
-  // 4-core box, but 12 746 ms on the GREEN CI run at 43bdc712 and 16 919 ms on the
-  // red one five minutes later, against the tier's 15 000 ms default. It was
-  // running at 1.18x headroom, so it was a coin flip rather than a hang detector,
-  // and it lost one. 4x testTimeout is 60 000 ms on CI — ~4.7x the green reading —
-  // and scales with the orchestration override, which a literal would not.
-  it(
-    "nothing outside lib/revalidate.ts imports Next's raw revalidatePath (issues #1636/#2149)",
-    { timeout: perTestCeiling(4, "worst") },
-    () => {
-      const offenders: string[] = [];
-      let seen = 0;
-      for (const root of SOURCE_ROOTS) {
-        for (const file of sourceFiles(path.join(REPO, root))) {
-          seen++;
-          const rel = path.relative(REPO, file);
-          if (mayImportRaw(rel)) continue;
-          if (importsRawRevalidate(file)) offenders.push(rel);
-        }
-      }
-      // Sanity anchor: the walker must not go quietly empty.
-      expect(seen, "no source files found — walker broken?").toBeGreaterThan(
-        500
-      );
-      expect(
-        offenders,
-        `these import revalidatePath directly instead of the revalidateRoute wrapper, which is what makes the target compile-checked:\n${offenders.join("\n")}`
-      ).toEqual([]);
-    }
-  );
 });
