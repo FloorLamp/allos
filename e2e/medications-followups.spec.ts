@@ -443,9 +443,11 @@ test("logs, edits, and deletes a historical medication dose", async ({
 });
 
 // #2417: the medications surface carries the same one-click door onto the cross-item
-// dose ledger the supplements tab does — one component, two doors — and it opens
-// PRE-FILTERED to medications, with the kind filter as the thing that widens it.
-test("the medications page reaches the dose ledger, pre-filtered to medications", async ({
+// dose record the supplements tab does — one component, two doors — and it opens
+// PRE-FILTERED to medications. #3958 folded the two ledger routes into `/history`, so
+// the pre-filter that used to be the route IS the URL's `class` param now, and the
+// thing that widens it is dropping that param rather than a kind filter on the page.
+test("the medications page reaches the dose record, pre-filtered to medications", async ({
   page,
 }) => {
   await page.goto("/medications");
@@ -467,27 +469,22 @@ test("the medications page reaches the dose ledger, pre-filtered to medications"
       )
     )
   ).toBe(true);
-  await followLink(page, ledgerDoor, /\/medications\/dose-history/);
+  await followLink(page, ledgerDoor, /\/history\?kind=dose&class=medication/);
 
-  // The kind filter opens on this surface's own kind.
-  const kinds = page.getByTestId("dose-ledger-kind-filter");
+  // The seeded PRN medication's own confirmed doses are in the record, named by item.
   await expect(
-    kinds.getByRole("link", { name: "Medications" })
-  ).toHaveAttribute("aria-current", "true");
-
-  // The seeded PRN medication's own confirmed doses are in the ledger, named by item.
-  const ledger = page.getByTestId("dose-ledger");
-  await expect(
-    ledger.getByTestId("dose-ledger-row").filter({ hasText: PRN_MED })
+    page.getByTestId("history-row").filter({ hasText: PRN_MED })
   ).not.toHaveCount(0);
 
-  // Widening to All keeps the same table and reaches the other kind's items.
-  await followLink(page, kinds.getByRole("link", { name: "All" }), /kind=all/);
-  await expect(page.getByTestId("dose-ledger")).toBeVisible();
+  // Widening is dropping the pre-filter, not a second control: the kind chip row is
+  // the record's own axis and "All" is the state with no `class` in the URL.
+  // The destination pattern must be one the CURRENT url does not already satisfy —
+  // `followLink` only re-clicks an idempotent navigation, and a pattern matching
+  // where the page already is would report a click it never needed to make.
+  await followLink(page, page.getByTestId("history-chip-all"), /\/history$/);
+  await expect(page.getByTestId("history-feed")).toBeVisible();
 
-  // The chart half of the same question is one link away.
-  await expect(page.getByTestId("dose-ledger-trends-link")).toHaveAttribute(
-    "href",
-    "/trends?tab=nutrition#dose-history"
-  );
+  // THE CHART HALF OF THE SAME QUESTION went with the ledger's footer (#3958): the
+  // record has no per-page chart door, and the door in the other direction — Trends →
+  // the record — is asserted in e2e/trends-nutrition.spec.ts.
 });

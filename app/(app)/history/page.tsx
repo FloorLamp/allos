@@ -206,20 +206,28 @@ export default async function HistoryPage(props: {
   const windowed = day ? null : windowTimelineDays(days, todayStr, openFolds);
   const renderedDays = windowed ? renderedTimelineDays(windowed) : days;
 
+  // SWITCHING KIND DROPS WHAT BELONGED TO THE OLD ONE — the deleted ledger's rule
+  // ("an item belongs to one kind, so carrying it across would leave a filter naming
+  // nothing"), applied to both kind-scoped params. `class` is the DOSE two-door
+  // pre-filter and means nothing on any other kind, so a chip that leaves doses must
+  // not carry it: a row of chips whose "All" still says `class=medication` is a
+  // control that does not do what it is called.
   const chipHref = (next: {
     kind?: HistoryLogKind;
     media?: boolean;
-  }): AppRoute =>
-    historyHref({
-      family: next.kind ? undefined : family,
-      kind: "kind" in next ? next.kind : kind,
-      class: doseClass,
+  }): AppRoute => {
+    const nextKind = "kind" in next ? next.kind : kind;
+    return historyHref({
+      family: nextKind ? undefined : family,
+      kind: nextKind,
+      class: nextKind === "dose" ? doseClass : undefined,
       item: "kind" in next ? undefined : rawItem,
       media: next.media ?? media,
       day,
       everyone,
       show: show === HISTORY_DEFAULT_SHOW ? undefined : show,
     });
+  };
 
   const foldHref = (
     key: string,
@@ -319,9 +327,17 @@ export default async function HistoryPage(props: {
           toggle is pinned outside the scroller rather than wrapping under it.
 
           Phase 1 renders the Logs family's KIND row directly rather than a family row
-          that would hold one entry; `?family=` still resolves. */}
+          that would hold one entry; `?family=` still resolves.
+
+          `gap-3` on both control rows, which is the gap `FilterPills` already spends
+          between its own pills: the reach a coarse pointer gets around a 34px box is
+          (44 - 34) / 2 per side, so two adjacent extended targets need TWICE that
+          between them, and #3938 made `gap-3` the one gap every pill layout uses.
+          MEASURED HONESTLY: `gap-2` here also cleared the floor, because the hairline
+          divider sits between the two clusters and is itself gapped on both sides —
+          so this is agreement with the shared row, not a defect that was found. */}
       <div
-        className={`mb-3 flex items-center gap-2 ${railGutter}`}
+        className={`mb-3 flex items-center gap-3 ${railGutter}`}
         data-testid="history-filters"
       >
         <div className="min-w-0 flex-1">
@@ -377,7 +393,7 @@ export default async function HistoryPage(props: {
           same reason the filter row does. */}
       {canWrite ? (
         <div
-          className={`-mx-2 mb-2 flex items-center gap-2 overflow-x-auto px-2 pb-1 text-sm sm:mx-0 sm:flex-wrap sm:overflow-visible sm:px-0 sm:pb-0 ${railGutter}`}
+          className={`-mx-2 mb-2 flex items-center gap-3 overflow-x-auto px-2 pb-1 text-sm sm:mx-0 sm:flex-wrap sm:overflow-visible sm:px-0 sm:pb-0 ${railGutter}`}
           data-testid="history-add"
         >
           {kind === "dose" && loggable.length > 0 ? (

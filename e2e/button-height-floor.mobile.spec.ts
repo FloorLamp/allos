@@ -50,32 +50,49 @@ type BoxSurface = {
   ancestor?: string;
   /** Whether a coarse pointer can repair this control's reach at all. */
   repairable: boolean;
-  /** Below `sm` only — the mobile disclosure that replaces a desktop panel. */
+  /**
+   * Below `sm` only — the mobile disclosure that replaces a desktop panel. NO
+   * SURFACE DECLARES IT SINCE #3958: its one tenant was the dose ledger's range
+   * disclosure, and that route folded into `/history`, which has no range chrome to
+   * disclose. Kept because the next phone-only disclosure to be bound needs exactly
+   * this, and because deleting it would also delete the `phone` argument the
+   * measurement threads for it.
+   */
   phoneOnly?: boolean;
 };
 
 // One representative per control kind the ruling binds, grouped by the route that
 // renders it so the sweep costs one navigation per route rather than one per case.
 const BOX_ROUTES: { route: string; ready: string; surfaces: BoxSurface[] }[] = [
+  // THE OWNER'S EXAMPLE, RE-HOMED (#3958). This entry read the dose ledger, whose
+  // route is deleted: the four ledgers folded into `/history`, and the record is the
+  // surface that now renders the two controls this row still binds. `dose-ledger-add`
+  // is LITERALLY the same control — `DoseBackfillLauncher`, same testid — mounted by
+  // the record's kind-resolved Add door, and the chip is the record's own filter row.
+  //
+  // TWO SURFACES LEFT WITH THE RANGE ROW RATHER THAN MOVING, and neither was replaced
+  // by a nearby element to keep this list the same length:
+  //   • `dose-ledger-item-filter` (native select) — the ledger's Item filter. The
+  //     record narrows by URL, not by a select. The KIND is still bound, on
+  //     /settings/notifications' `waking-start-hour`, so nothing stopped being
+  //     measured.
+  //   • `custom-range-toggle` (btn-ghost disclosure, phone-only) — the range card's
+  //     mobile disclosure. `/history` HAS NO RANGE CHROME AT ALL (a record is
+  //     navigated, not windowed), so this table has no route left that renders it on
+  //     arrival. The COMPONENT still ships (components/CustomRangeDisclosure.tsx, on
+  //     /trends), and the kind keeps its box coverage there:
+  //     e2e/trends-fold.mobile.spec.ts measures this exact control through the shared
+  //     `expectPhoneTapTargets`, which is the same effective-floor assertion this
+  //     table makes. It is not re-homed HERE because reaching it costs an
+  //     interaction — the phone's context bar is collapsed — and every entry in this
+  //     table is a plain `goto` plus a readiness marker. Nothing stopped being
+  //     measured; one route stopped being able to measure it on arrival.
   {
-    route: "/medications/dose-history",
-    ready: "dose-ledger-chip-row",
+    route: "/history?kind=dose",
+    ready: "history-filters",
     surfaces: [
-      { kind: "chip", testId: "dose-ledger-pill-7D", repairable: true },
+      { kind: "chip", testId: "history-chip-all", repairable: true },
       { kind: "btn-ghost", testId: "dose-ledger-add", repairable: true },
-      // A native <select> renders no pseudo-element, so its target IS its box —
-      // the `chip-sm` lesson, and the reason #3938 states the floor as effective.
-      {
-        kind: "native select",
-        testId: "dose-ledger-item-filter",
-        repairable: false,
-      },
-      {
-        kind: "btn-ghost disclosure",
-        testId: "custom-range-toggle",
-        repairable: true,
-        phoneOnly: true,
-      },
     ],
   },
   {
@@ -324,7 +341,7 @@ test.describe("the control box: one height, every kind, every viewport (#3938)",
   // container in the tree, and no assertion here implies one.
   const REACH_CONTAINMENT_ROUTES = [
     { route: "/", ready: "dashboard-canvas" },
-    { route: "/medications/dose-history", ready: "dose-ledger-chip-row" },
+    { route: "/history?kind=dose", ready: "history-filters" },
     { route: "/nutrition?tab=supplements", ready: "supplement-add-toggle" },
     // An OPEN SHEET, deliberately: a page absorbs the reach in `<main>`'s clip and
     // a sheet body does not, so a page-only list would be green on the very tree
@@ -349,9 +366,10 @@ test.describe("the control box: one height, every kind, every viewport (#3938)",
           // A REGION THAT SIGNALS ITS CLIPPING IS A LABEL ENDING ITS OWN TEXT, not
           // a container refusing to scroll (#3607). Inside `truncate` an inline run
           // keeps its FULL natural width in the box model while the ancestor paints
-          // the ellipsis at its own edge: measured on /medications/dose-history at
-          // 390px, the span is 97 wide with scrollWidth 167 and its right edge flush
-          // inside its parent, while the `<a>` in it reports 70px further right.
+          // the ellipsis at its own edge: measured on the cross-item dose ledger at
+          // 390px (the route folded into `/history` in #3958), the span is 97 wide
+          // with scrollWidth 167 and its right edge flush inside its parent, while
+          // the `<a>` in it reports 70px further right.
           // Nothing is off screen; one rect is.
           //
           // THE REGION-FRAME RULE, AND NOT A COPY OF THE CENSUS'S.
@@ -454,18 +472,44 @@ test.describe("the control box: one height, every kind, every viewport (#3938)",
     });
   }
 
-  // THE OWNER'S EXAMPLE, MEASURED AS A ROW. The dose ledger's quick-range strip
-  // mixes chips with a `btn-ghost` disclosure and a native select; at 390 it used
-  // to render 34 beside 44 beside 44. One height is half the claim — the other half
-  // is that the reach the box now gets does not make two neighbours fight over the
-  // same pixel, which is what the `gap-3` floor (2x the reach) buys.
-  test("the ledger's mixed chip row is one height with disjoint hit regions", async ({
+  // THE OWNER'S EXAMPLE, MEASURED AS A ROW — re-homed to the surface that replaced
+  // the one it was written on (#3958). The dose ledger's quick-range strip mixed
+  // chips with a `btn-ghost` disclosure and a native select, and at 390 it rendered
+  // 34 beside 44 beside 44. That strip is gone: `/history` has no range chrome, so
+  // the MIXED-KIND half of the claim has no row left to make it on and is carried
+  // kind-by-kind by BOX_ROUTES above instead.
+  //
+  // WHAT SURVIVES IS THE HALF THAT ONLY A ROW CAN ASSERT, and it is the half the
+  // owner's example was really about: one height across a row, and a reach that does
+  // not make two neighbours fight over the same pixel — the `gap-3` floor being
+  // exactly 2x the reach. The record's filter row is where that is now hardest,
+  // because it holds TWO independently placed clusters: the kind pills in their own
+  // group, and the Photos toggle outside it behind a hairline. Nothing else in the
+  // app puts two control clusters that close together.
+  //
+  // `?media=1` IS WHAT MAKES THE SECOND CLUSTER DETERMINISTIC. The Photos chip is
+  // data-presence-earned, and no phase-1 log kind carries row media yet, so on a
+  // bare URL it correctly does not render — and a row with one cluster in it cannot
+  // fail the way this test exists to catch. The param is a legitimate deep link, and
+  // asking for it is how the fixture expresses the arrangement rather than hoping the
+  // seed supplies it.
+  //
+  // WHAT IT DID NOT FIND, said because a comment claiming a catch it did not make is
+  // worse than no comment: the row was already clear at `gap-2`. The hairline divider
+  // between the clusters is itself gapped on both sides, so the distance between the
+  // last pill and the Photos chip is two gaps plus the rule, not one gap. The page
+  // spends `gap-3` because that is the gap the pill group already spends, and this
+  // test is what would notice if either of them stopped.
+  test("the record's filter row is one height with disjoint hit regions", async ({
     page,
   }) => {
-    await page.goto("/medications/dose-history");
-    const row = page.getByTestId("dose-ledger-chip-row");
+    await page.goto("/history?kind=dose&media=1");
+    const row = page.getByTestId("history-filters");
     await expect(row).toBeVisible();
-    await expect(page.getByTestId("custom-range-toggle")).toBeVisible();
+    // THE SECOND CLUSTER, PROVEN PRESENT BEFORE ANYTHING IS MEASURED. Without it the
+    // row is one group of chips at one gap and every assertion below is true of a
+    // page that could not have been wrong.
+    await expect(page.getByTestId("history-chip-media")).toBeVisible();
 
     const geometry = await row.evaluate((el, epsilon) => {
       const targets = Array.from(
@@ -504,24 +548,24 @@ test.describe("the control box: one height, every kind, every viewport (#3938)",
 
     expect(
       geometry.boxes.length,
-      "the row must mix adjacent kinds"
+      "the row must hold more than one pair of adjacent targets"
     ).toBeGreaterThan(2);
     expect(
       [...new Set(geometry.boxes.map((b) => Math.round(b.height)))],
-      `the ledger row renders more than one height: ${geometry.boxes
+      `the record's filter row renders more than one height: ${geometry.boxes
         .map((b) => `${b.what}=${b.height}`)
         .join(", ")}`
     ).toEqual([CONTROL_BOX_PX]);
     expect(
       geometry.overlaps,
-      "two extended targets in the ledger row own the same point; the row's gap must be at least twice the reach"
+      "two extended targets in the record's filter row own the same point; the row's gap must be at least twice the reach"
     ).toEqual([]);
     // The gap floor, stated as the quantity it actually bounds: a non-negative gap
     // between EXTENDED boxes is exactly "the rendered gap is at least twice the
     // reach", so this is the floor measured rather than the constant restated.
     expect(
       geometry.smallestGap + TAP_FLOOR_FLOAT_EPSILON_PX,
-      `the ledger row's tightest gap between extended targets is ${geometry.smallestGap}px`
+      `the record filter row's tightest gap between extended targets is ${geometry.smallestGap}px`
     ).toBeGreaterThanOrEqual(0);
   });
 });
