@@ -128,20 +128,7 @@ export default async function SleepPage() {
     >
       <PageHeader
         title="Sleep"
-        subtitle={
-          usualSleepBand == null ? (
-            "Duration, timing, stages, and how sleep relates to mood."
-          ) : (
-            <>
-              <span className="block">
-                Duration, timing, stages, and how sleep relates to mood.
-              </span>
-              <span className="mt-0.5 block" data-testid="sleep-usual-times">
-                Usually ~{usualSleepBand}.
-              </span>
-            </>
-          )
-        }
+        subtitle="Duration, timing, stages, and how sleep relates to mood."
         action={
           <SleepLogAction
             formatPrefs={formatPrefs}
@@ -168,6 +155,14 @@ export default async function SleepPage() {
               {waitingDetail}
             </p>
           )}
+          {usualSleepBand && (
+            <p
+              className="mt-2 text-sm tabular-nums text-slate-600 dark:text-slate-300"
+              data-testid="sleep-usual-times"
+            >
+              Usually ~{usualSleepBand}.
+            </p>
+          )}
           {waitingPreviousNight && (
             <p className="mt-2 text-xs text-slate-500 dark:text-slate-400">
               Most recent recorded night · {waitingPreviousNight}
@@ -185,6 +180,7 @@ export default async function SleepPage() {
             timeFormat={formatPrefs.timeFormat}
             presentation={summaryPresentation}
             bedtimeSupplements={lastNightBedtimeSupplements}
+            usualSleepBand={usualSleepBand}
           />
         )}
 
@@ -197,6 +193,14 @@ export default async function SleepPage() {
             Your latest sleep record is too old to present as current. Sync a
             connected source or log the duration manually.
           </p>
+          {usualSleepBand && (
+            <p
+              className="mt-2 text-sm tabular-nums text-slate-600 dark:text-slate-300"
+              data-testid="sleep-usual-times"
+            >
+              Usually ~{usualSleepBand}.
+            </p>
+          )}
           <div className="mt-3 flex flex-wrap gap-3">
             <Link href="/data" className="btn btn-sm">
               Sync a source
