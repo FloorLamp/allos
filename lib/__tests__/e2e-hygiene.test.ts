@@ -620,6 +620,7 @@ const CONFIRM_DELETE_CLICK_ALLOW: Record<string, number> = {};
 // wrapper may need an allowlist line — that's the point: adding a login stays a
 // deliberate, justified act rather than a reflex.
 const LOGIN_CONST_RE = /export const (E2E_LOGIN_[A-Z0-9_]+) = "([^"]+)"/g;
+const LOGIN_CONST_NAME_RE = /\bE2E_LOGIN_[A-Z0-9_]+\b/g;
 // The budget is measured over the COMPOSED population, not one file: #1511 split the
 // constants into per-domain modules under e2e/logins/ that e2e/fixture-logins.ts
 // re-exports. Every one of them declares logins, so all of them are the source of
@@ -653,10 +654,25 @@ const LOGIN_NO_SIGNIN_ALLOW: Record<string, string> = {
 // nothing but wall clock, and under the shared-registry tier's parallel load that
 // clock is charged against a 5 s per-test timeout: the #1392 login-budget check
 // (the heaviest reader here) started timing out when this file grew a 21st caller.
-let specFilesCache: { name: string; text: string }[] | undefined;
-function specFiles(): { name: string; text: string }[] {
+interface SpecFile {
+  name: string;
+  text: string;
+  code: string;
+}
+
+const strippedTextCache = new Map<string, string>();
+function cachedStripComments(text: string): string {
+  const cached = strippedTextCache.get(text);
+  if (cached !== undefined) return cached;
+  const code = stripComments(text);
+  strippedTextCache.set(text, code);
+  return code;
+}
+
+let specFilesCache: SpecFile[] | undefined;
+function specFiles(): SpecFile[] {
   if (specFilesCache) return specFilesCache;
-  const out: { name: string; text: string }[] = [];
+  const out: SpecFile[] = [];
   const walk = (dir: string) => {
     for (const entry of fs.readdirSync(dir, { withFileTypes: true })) {
       const full = path.join(dir, entry.name);
@@ -666,7 +682,8 @@ function specFiles(): { name: string; text: string }[] {
       else if (entry.name.endsWith(".ts")) {
         const name = path.relative(E2E_DIR, full).split(path.sep).join("/");
         if (!SCAN_EXCLUDE.has(name)) {
-          out.push({ name, text: fs.readFileSync(full, "utf8") });
+          const text = fs.readFileSync(full, "utf8");
+          out.push({ name, text, code: cachedStripComments(text) });
         }
       }
     }
@@ -681,12 +698,14 @@ function countMatches(text: string, re: RegExp): number {
 }
 
 /**
- * The text a frequency count is taken over: escape-marked lines dropped, then
- * comments BLANKED (#3621).
+ * The text a frequency count is taken over: comments blanked once per source, with
+ * escape-marked lines then dropped by consulting the original text (#3621).
  *
- * MARKER FIRST, COMMENTS SECOND, AND THE ORDER IS THE WHOLE POINT. The
- * `first-ok:`/`topass-ok:` escape lives IN a comment, so blanking before filtering
- * would delete the escape and re-flag every reviewed line.
+ * TWO PROJECTIONS, AND THE DISTINCTION IS THE WHOLE POINT. The
+ * `first-ok:`/`topass-ok:` escape lives IN a comment, so marker detection reads the
+ * raw line; matching reads the cached comment-blanked line. This used to express the
+ * same distinction by stripping a newly filtered copy for every guard — twenty
+ * full-corpus scanner passes over bytes that cannot change during the run.
  *
  * WHY BLANK AT ALL. These are counts over raw text, so a sentence EXPLAINING a
  * banned call counted as one: a spec that documents why it reaches for `.first()`
@@ -699,17 +718,28 @@ function countMatches(text: string, re: RegExp): number {
  * STRING LITERALS SURVIVE, deliberately. A locator built from a string is a call
  * site, not prose.
  */
+function hygieneScanTextFrom(
+  text: string,
+  stripped: string,
+  excludeLineMarker?: string
+): string {
+  if (!excludeLineMarker) return stripped;
+  const rawLines = text.split("\n");
+  return stripped
+    .split("\n")
+    .filter((_, index) => !rawLines[index]?.includes(excludeLineMarker))
+    .join("\n");
+}
+
 export function hygieneScanText(
   text: string,
   excludeLineMarker?: string
 ): string {
-  const kept = excludeLineMarker
-    ? text
-        .split("\n")
-        .filter((line) => !line.includes(excludeLineMarker))
-        .join("\n")
-    : text;
-  return stripComments(kept);
+  return hygieneScanTextFrom(
+    text,
+    cachedStripComments(text),
+    excludeLineMarker
+  );
 }
 
 /**
@@ -729,7 +759,7 @@ export function hygieneScanText(
  */
 export function unmarkedCiBranchLines(text: string): number[] {
   const lines = text.split("\n");
-  const code = stripComments(text).split("\n");
+  const code = cachedStripComments(text).split("\n");
   const out: number[] = [];
   lines.forEach((line, i) => {
     if (!CI_ENV_RE.test(code[i] ?? "")) return;
@@ -761,9 +791,9 @@ function checkPattern(
     `New occurrences are banned — use e2e/helpers.ts (settledClick/followLink); ` +
       `see docs/internals/e2e-hygiene.md.`;
 
-  for (const { name, text } of files) {
+  for (const { name, text, code } of files) {
     const count = countMatches(
-      hygieneScanText(text, opts?.excludeLineMarker),
+      hygieneScanTextFrom(text, code, opts?.excludeLineMarker),
       re
     );
     const allowed = allow[name] ?? 0;
@@ -1257,14 +1287,31 @@ describe("e2e suite hygiene guard (issue #868)", () => {
     const files = specFiles().filter((f) => !isFixtureLoginsModule(f.name));
     const violations: string[] = [];
 
+    // Index the population in one corpus pass. The old loop scanned every file once
+    // per fixture login for references, then every sign-in window once per login —
+    // quadratic work whose wall-clock budget was the #3385 flake. This preserves the
+    // same textual definition of a reference/sign-in while making the login count a
+    // lookup rather than another tree walk.
+    const population = new Set(constants);
+    const referencedBy = new Map<string, string[]>(
+      constants.map((name) => [name, []])
+    );
+    const signsIn = new Set<string>();
+    for (const file of files) {
+      const names = new Set(file.text.match(LOGIN_CONST_NAME_RE) ?? []);
+      for (const name of names) {
+        if (population.has(name)) referencedBy.get(name)!.push(file.name);
+      }
+      for (const window of file.text.match(SIGNIN_WINDOW_RE) ?? []) {
+        for (const name of window.match(LOGIN_CONST_NAME_RE) ?? []) {
+          if (population.has(name)) signsIn.add(name);
+        }
+      }
+    }
+
     for (const name of constants) {
-      const use = new RegExp(`\\b${name}\\b`);
-      const referencedBy = files.filter((f) => use.test(f.text));
-      const signsIn = files.some((f) =>
-        (f.text.match(SIGNIN_WINDOW_RE) ?? []).some((w) => use.test(w))
-      );
       const why = LOGIN_NO_SIGNIN_ALLOW[name];
-      if (signsIn) {
+      if (signsIn.has(name)) {
         if (why)
           violations.push(
             `${name}: allowlisted as never-signed-in, but a spec now signs in as it — ` +
@@ -1273,14 +1320,13 @@ describe("e2e suite hygiene guard (issue #868)", () => {
         continue;
       }
       if (why) continue;
+      const references = referencedBy.get(name)!;
       violations.push(
-        referencedBy.length === 0
+        references.length === 0
           ? `${name}: seeded in e2e/logins/ but NO e2e spec references it — ` +
               `delete the login (and its seedMemberLogin call); a dead login is a permanent ` +
               `Settings → Family row (#1392).`
-          : `${name}: referenced by ${referencedBy
-              .map((f) => f.name)
-              .join(", ")} but never signed in as (loginAs/creds/username:). ` +
+          : `${name}: referenced by ${references.join(", ")} but never signed in as (loginAs/creds/username:). ` +
               `A fixture that only needs an isolated PROFILE takes fixtureProfileId(name) ` +
               `and NO login — the login population is monotonic and grows the family ` +
               `grant matrix forever (#1392). If this login IS the subject (access control) ` +
