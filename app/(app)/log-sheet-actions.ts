@@ -60,11 +60,10 @@ export interface LogSheetContext {
    */
   routine: UsualRoutineControlProps | null;
   /**
-   * Doses whose scheduled slots have arrived and which remain unresolved. Zero
-   * count means no chip; names come from these same items, never from a second
-   * dueness derivation (#2744).
+   * Doses whose scheduled slots have arrived and which remain unresolved. An
+   * empty list means no chip; item ids let the label name each item once (#3914).
    */
-  dueDoses: { count: number; names: string[] };
+  dueDoses: { items: { itemId: number; name: string }[] };
 }
 
 export async function loadLogSheetContext(): Promise<LogSheetContext> {
@@ -112,9 +111,11 @@ export async function loadLogSheetContext(): Promise<LogSheetContext> {
   return {
     routine,
     dueDoses: {
-      count: dueDoses.length,
       // #2853's curated CONTROL labels; full titles remain in the overlay rows.
-      names: dueDoses.map((dose) => dose.shortLabel),
+      items: dueDoses.map((dose) => ({
+        itemId: dose.itemId,
+        name: dose.shortLabel,
+      })),
     },
   };
 }

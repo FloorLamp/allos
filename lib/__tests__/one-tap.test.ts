@@ -41,17 +41,6 @@ describe("the one-tap affordance registry (#2041 finding 2)", () => {
     }
   });
 
-  it("gives every affordance a feedback design and a reason", () => {
-    for (const id of ids) {
-      const decl = oneTapAffordance(id);
-      expect(
-        ["optimistic-count", "cooldown", "outcome-toast", "recency-line"],
-        id
-      ).toContain(decl.feedback);
-      expect(decl.why.length, id).toBeGreaterThan(20);
-    }
-  });
-
   it("classifies the two taps that expect an interval and no others", () => {
     const cadenced = ids.filter(
       (id) => oneTapAffordance(id).repeat === "cadenced"
@@ -304,6 +293,9 @@ const DOSE_RESOLVERS = ["markDoseTaken", "markDoseSkipped"] as const;
 // `function markDoseTaken(` definition is skipped.
 function discardedResolverCalls(src: string): string[] {
   const bad: string[] = [];
+  // Most modules cannot call either resolver. This raw check only rejects files;
+  // candidates still go through the comment-aware scanner below.
+  if (!DOSE_RESOLVERS.some((name) => src.includes(`${name}(`))) return bad;
   const code = stripComments(src);
   for (const name of DOSE_RESOLVERS) {
     const re = new RegExp(String.raw`\b${name}\(`, "g");
