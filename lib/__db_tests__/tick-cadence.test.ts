@@ -110,7 +110,10 @@ describe("a stored 07:35 across an observed-cadence change 5 → 15 → 5 (#2216
   it("gets exactly two due attempts per day at every offered cadence — the band math is tick-rate invariant", () => {
     // #2121's retry budget, pinned across the whole offered set in one sweep:
     // attempts per slot per day never change with the cadence. This performs
-    // thousands of real settings writes, so allow for slower shared CI disks.
+    // thousands of real settings writes, and the `}, 45_000)` that allowed for slow
+    // shared CI disks was immune to `ALLOS_VITEST_TIMEOUT_MS` (#4002). It also never
+    // needed it: the whole file reads 333 ms across 2 tests on the green CI run at
+    // f1742fa6d — 45x inside the tier's 15 000 ms.
     for (const cadence of [1, 2, 3, 4, 5, 6, 10, 12, 15, 20, 30, 60]) {
       deleteSetting("notify_tick_last_run_at");
       const day = runDay(DAY_ONE_MS, cadence);
@@ -120,5 +123,5 @@ describe("a stored 07:35 across an observed-cadence change 5 → 15 → 5 (#2216
         `cadence ${cadence}`
       ).toEqual(["first", "retry"]);
     }
-  }, 45_000);
+  });
 });

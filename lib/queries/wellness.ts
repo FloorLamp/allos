@@ -161,7 +161,17 @@ export function getPracticeSessions(
     .all(...args) as PracticeLog[];
 }
 
-/** Cross-practice, server-paged session rows for the shared event-ledger mount. */
+// Cross-practice session rows for the record's gather (#3958; it served the deleted
+// practice ledger before that).
+//
+// THE CALLER'S BOUND IS THE BOUND (#3958). This clamped to 100 while the deleted
+// ledger routes drove it with `?page=`, where 100 was a page-size sanity cap. Its
+// one caller now is the record's gather, which asks for `?show` rows and offers
+// "Load more" when the read was cut — so a silent 100 made the control INERT from
+// the first click and put a year of logging permanently out of reach. The dose
+// reader beside it never had a clamp, which is why the defect was invisible on the
+// kind everyone tested. Bounded only against zero and a fraction now, exactly as
+// `getIntakeDoseLedgerPage` is; `HISTORY_MAX_SHOW` is where the real ceiling lives.
 export function getPracticeLedgerPage(
   profileId: number,
   from: string,
@@ -170,7 +180,7 @@ export function getPracticeLedgerPage(
   pageSize: number
 ): { rows: PracticeLog[]; total: number; page: number } {
   const requestedPage = Math.max(1, Math.floor(page));
-  const boundedSize = Math.max(1, Math.min(Math.floor(pageSize), 100));
+  const boundedSize = Math.max(1, Math.floor(pageSize));
   const where = ["date >= ?"];
   const args: Array<string | number> = [profileId, from];
   if (options.untilDate) {
