@@ -131,7 +131,9 @@ one kind, or open a day", and the first half was false: `limit` is applied PER K
 inside the gather, so the All view already reads every kind to `show` and the chip
 carries `show` across — the narrowed view returns the identical rows. A sentence that
 sends the reader back to where they are spends their trust as well as their tap. Phase
-2's day view is where "further back" gets a real answer. The the **jump rail** (`components/JumpRailScrubber.tsx`) scrubs the
+2's day view is where "further back" gets a real answer.
+
+The **jump rail** (`components/JumpRailScrubber.tsx`) scrubs the
 fold spine and owns a lane via `SCRUBBER_GUTTER_CLASS` rather than overlaying a
 row's action column. The rail is shared with `/timeline` until phase 2 retires
 that route — which is what closed #2816: the overlay chokepoint's rule 5 could
