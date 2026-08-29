@@ -245,8 +245,6 @@ export function loadMedicationsData(
 
   const todayStr = today(profileId);
   const tz = getTimezone(profileId);
-  // The strip's lifetime bound resolves historical creation stamps, so it reads the
-  // zone in force at each one rather than the profile's current one (#4025).
   const dayZone = profileDayZone(profileId);
   const takenTimes = getTakenDoseTimes(profileId, todayStr);
   const taken = new Set(takenTimes.keys());

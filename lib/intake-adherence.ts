@@ -217,14 +217,9 @@ export function doseStrip(
 // profile whose offset crosses midnight — an item added at 08:00 in UTC+9 would land
 // on "yesterday" and reintroduce exactly the phantom miss this bound removes.
 //
-// AND THE ZONE IS THE ONE THE PROFILE'S DAY RAN ON AT THAT INSTANT (#4025), not the
-// one it is standing in now — which is why this takes a `ProfileDayZone` rather than
-// a bare name. A stamp near local midnight resolved through a zone the profile moved
-// to LATER lands on a different day, and eastward that day is a LATER one: the bound
-// walks forward past a day the dose demonstrably existed on, the strip flips it
-// `missed` → `na`, and the reminder gather (which now gates a write on the same
-// bound) drops the dose the day owed. `profileDayZone` hands profiles that have never
-// switched their plain zone string, so nothing about the common path changes.
+// AND IT IS THE ZONE THE PROFILE'S DAY RAN ON AT THAT INSTANT (#4025), not the one it
+// is standing in now — hence `ProfileDayZone` rather than a bare name. See
+// `zoneAtInstant` for the walk an eastward move otherwise puts in this bound.
 export function doseExistsSince(
   itemCreatedAt: string | null | undefined,
   doseCreatedAt: string | null | undefined,

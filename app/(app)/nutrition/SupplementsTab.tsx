@@ -288,8 +288,6 @@ export default async function SupplementsTab({
   // Policy lives in the shared intakeAdherenceStrip (issue #313).
   // Travel (#3263): the per-day excusal, resolved once for the page.
   const isExcused = travelExcusalResolver(profile.id);
-  // The lifetime bound resolves historical creation stamps, so it reads the zone in
-  // force at each one rather than the profile's current one (#4025).
   const dayZone = profileDayZone(profile.id);
   const stripBySupp = new Map<number, AdherenceDot[]>();
   for (const s of intakeItems) {

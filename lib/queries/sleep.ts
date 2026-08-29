@@ -398,8 +398,6 @@ function bedtimeSupplementsByWakeDay(
   if (wanted.size === 0) return new Map();
 
   const timezone = getTimezone(profileId);
-  // The dose EXISTENCE bound reads a historical creation stamp, so it resolves through
-  // the zone in force at that stamp rather than the current one (#4025).
   const dayZone = profileDayZone(profileId);
   const earliestWakeDay = [...wanted].sort()[0];
   const sleepDateByWakeDay = new Map(

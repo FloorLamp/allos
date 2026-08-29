@@ -294,8 +294,6 @@ function gatherWindowDoses(
   // pending" rule. The evidence set is deliberately WIDER than the columns: the
   // lifetime bound inside the strip is not a windowed question (#3988).
   const windowDates = lastNDates(today(profileId), ADHERENCE_DAYS);
-  // The lifetime bound reads HISTORICAL creation stamps, so it needs the zone each of
-  // them was lived in rather than the one the profile is standing in now (#4025).
   const dayZone = profileDayZone(profileId);
   const takenByDose = indexTakenByDose(
     getIntakeAdherenceEvidence(profileId, ADHERENCE_DAYS)

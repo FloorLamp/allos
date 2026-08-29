@@ -237,8 +237,6 @@ export function pendingDayDoses(
   // The adherence strip's callers now widen the SAME bound with the same aggregate,
   // as the second arm of `getIntakeAdherenceEvidence` (#3988); this seam keeps its own
   // read because it draws no window to union that half against.
-  // The lifetime bound reads historical creation stamps through the zone in force at
-  // each one (#4025), not the profile's current zone.
   const dayZone = profileDayZone(profileId);
   const firstLog = new Map(
     (

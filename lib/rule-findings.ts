@@ -1534,8 +1534,6 @@ export function buildAdherencePatternFindings(
   // The profile's timezone resolves the UTC creation stamps onto the same profile-local
   // calendar the `dates` window is built from (#1442).
   const tz = getTimezone(profileId);
-  // …and the LIFETIME bound resolves each stamp through the zone in force at it (#4025),
-  // which is the same plain string for every profile that has never moved.
   const dayZone = profileDayZone(profileId);
   // THE EVIDENCE, NOT THE WINDOW (#3988/#4020). This index answers two questions, and
   // only one of them is windowed: "was this dose taken on this drawn day" is, "when did

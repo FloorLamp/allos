@@ -77,8 +77,6 @@ export function getIntakeHistory(
 
   const dates = lastNDates(today, days);
   const windowStart = dates[0] ?? today;
-  // The lifetime bound resolves historical creation stamps, so it takes the zone in
-  // force at each one (#4025) — a plain string for every profile that never moved.
   const dayZone = profileDayZone(profileId);
   const workoutDays = new Set(getActivityDates(profileId));
   // Per-day situation resolver (#654): a past day is scored against the situations
