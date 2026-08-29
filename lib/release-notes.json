@@ -116,6 +116,24 @@
           "title": "Folds open and close smoothly instead of snapping, and still open instantly under reduced motion",
           "kind": "feature",
           "issues": [3676, 3677]
+        },
+        {
+          "pr": 4056,
+          "title": "Signing out a device now reaches it: the health record it kept offline is cleared when it next connects",
+          "kind": "security",
+          "issues": [3053, 3041]
+        },
+        {
+          "pr": 4060,
+          "title": "Say when it happened when you log a bowel movement, a practice or food you ate earlier",
+          "kind": "feature",
+          "issues": [3273]
+        },
+        {
+          "pr": 4062,
+          "title": "Add a past entry without leaving the record, and opening a month keeps you where you tapped",
+          "kind": "fix",
+          "issues": [4045]
         }
       ]
     },
