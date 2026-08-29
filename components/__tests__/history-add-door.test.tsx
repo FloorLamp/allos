@@ -216,4 +216,71 @@ describe("the record's Add door posts to the domain's own create action", () => 
     expect(screen.getByRole("alert").textContent).toBeTruthy();
     expect(refreshed).toHaveLength(0);
   });
+
+  // THE BACKFILL CAN NAME ITS OWN MINUTE (#3958's "WhenControl absolutes only",
+  // #2236 invariant 4). Phase 1's doors carried a bare date and posted the time as a
+  // hardcoded empty string, so a session backfilled from here could never say when it
+  // happened — the record showed the filing clock for every one of them.
+  //
+  // Two kinds, because they are the two whose schema HAS an event instant and whose
+  // create action already reads an absolute wall clock from the form: food's
+  // `occurred_at` and practice's `time`. Substance is a day total with no event column
+  // and body's action deliberately states none, so neither gets a time field, and the
+  // absence assertion below is what stops this drifting into "all four eventually".
+  it.each([
+    ["food", "logFoodServing", "occurred_at"],
+    ["practice", "logPractice", "time"],
+  ] as [HistoryAddKind, string, string][])(
+    "%s carries a stated time through to %s as %s",
+    async (kind, action, field) => {
+      open(kind);
+      await act(async () => {
+        fireEvent.change(screen.getByTestId(`history-add-when-${kind}-time`), {
+          target: { value: "07:15" },
+        });
+      });
+      await submit(kind);
+      const sent = only(action);
+      // The WALL CLOCK, not an instant: both actions resolve it server-side against
+      // the profile's timezone (#2053), so a browser-computed instant would be the
+      // thing this control exists to stop being posted.
+      expect(sent[field]).toBe("07:15");
+      // And the day did not move under it — the pair is one value (#2236 invariant 1).
+      expect(sent.date).toBe(FOUND_DAY);
+    }
+  );
+
+  // AND IT STILL STATES NOTHING WHEN NOTHING WAS STATED — invariant 3. An untouched
+  // time emits null, not now, so a backfill that names no minute keeps saying so.
+  // This is the converse of the case above and it is the half phase 1 got right: a
+  // control that defaulted to the current clock would make every backfilled row claim
+  // a session time nobody gave it.
+  it.each([
+    ["food", "logFoodServing", "occurred_at"],
+    ["practice", "logPractice", "time"],
+  ] as [HistoryAddKind, string, string][])(
+    "%s posts an empty %s when the reader states no time",
+    async (kind, action, field) => {
+      open(kind);
+      await submit(kind);
+      expect(only(action)[field]).toBe("");
+    }
+  );
+
+  // THE DATE-ONLY KINDS HAVE NO TIME FIELD AT ALL, and this is the assertion that
+  // keeps that a decision rather than an accident. Both are date-only in the SCHEMA:
+  // `substance_daily_totals` is a day total with no event instant, and
+  // `addBodyMetric` states none. A time input on either would collect a statement
+  // with nowhere to be stored.
+  it.each(["substance", "body"] as HistoryAddKind[])(
+    "%s offers no time field, because its row has no instant to state",
+    (kind) => {
+      open(kind);
+      expect(
+        screen.queryByTestId(`history-add-when-${kind}-time`)
+      ).toBeNull();
+      // The converse in the same test: the door still exists and still takes a day.
+      expect(screen.getByTestId(`history-add-panel-${kind}`)).toBeTruthy();
+    }
+  );
 });
