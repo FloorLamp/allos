@@ -193,6 +193,7 @@ function row(id: string, sortTime: string | null): HistoryRow {
     id,
     kind: "dose",
     profileId: 1,
+    tz: "UTC",
     date: DAY,
     sortTime,
     clock: sortTime,

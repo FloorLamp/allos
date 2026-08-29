@@ -66,6 +66,14 @@ import {
 } from "@/lib/queries/substance";
 import { capProgressLine, substanceDef } from "@/lib/substance-use";
 import { isMinor } from "@/lib/life-stage";
+import { isTaskConfigured } from "@/lib/ai-resolve";
+import { getIllnessSituations } from "@/lib/settings/profile-attrs";
+import {
+  getCustomSymptomNames,
+  getSymptomLogOrder,
+  getSymptomNotesOnDate,
+  getSymptomSeveritiesOnDate,
+} from "@/lib/queries/symptoms";
 
 // The quick-entry overlay's DATA half (issue #1468).
 //
@@ -88,7 +96,7 @@ import { isMinor } from "@/lib/life-stage";
 //
 // READ-ONLY. It gathers props; every write still goes through the form's own
 // existing Server Action (addMeasurements / logFoodServing / markTaken /
-// logPractice / uploadMedicalDocument), which
+// logPractice / logSymptom / activateIllnessForSymptoms / uploadMedicalDocument), which
 // carries its own write gate. `requireSession()` is therefore
 // the right gate — the same posture as loadSyncRows / runGlobalSearch — and it
 // is allowlisted as such in lib/__tests__/actions-write-access.test.ts.
@@ -227,6 +235,29 @@ export type QuickEntryData =
           notes: string | null;
         } | null;
       }[];
+    }
+  | {
+      // The well-day symptom bar (#4064) — the SAME props the dashboard's own mount
+      // passes, gathered on OPEN. Narrow on purpose: the curated catalog is a pure
+      // constant the panel imports (`PICKER_SYMPTOMS`), so only the per-profile,
+      // per-day half crosses the action boundary.
+      form: "symptom";
+      // The acting profile's today — the day every tap files under.
+      today: string;
+      // symptom key -> severity / note already logged today, so the bar opens showing
+      // the day's working set rather than an empty one.
+      severities: Record<string, number>;
+      notes: Record<string, string>;
+      customNames: string[];
+      rankedKeys: string[];
+      temperatureUnit: TemperatureUnit;
+      textIntakeEnabled: boolean;
+      // The illness verb, RESOLVED (docs/internals/stateful-affordances.md): the
+      // situations currently flagged illness-type and active, or an empty list when
+      // there are none. Empty means the bar offers its bridge; non-empty means the
+      // panel names what is already tracked instead, so the sheet never offers to
+      // start something that is already running.
+      trackingIllness: string[];
     }
   | {
       // Nothing to gather for the upload form beyond the demo gate the Data page
@@ -451,6 +482,26 @@ export async function loadQuickEntry(
       }
     );
     return { form: "mood", days };
+  }
+
+  if (form === "symptom") {
+    // The dashboard's well-day card reads exactly these (app/(app)/page.tsx), and the
+    // panel passes them to the same component — so the sheet mount and the dashboard
+    // mount post byte-identical payloads apart from the surface each declares
+    // (components/__tests__/quick-symptom-parity.test.tsx holds the two together).
+    return {
+      form: "symptom",
+      today: date,
+      severities: getSymptomSeveritiesOnDate(profile.id, date),
+      notes: getSymptomNotesOnDate(profile.id, date),
+      customNames: getCustomSymptomNames(profile.id),
+      rankedKeys: getSymptomLogOrder(profile.id),
+      temperatureUnit: getUnitPrefs(login.id).temperatureUnit,
+      textIntakeEnabled: isTaskConfigured("symptom-map"),
+      trackingIllness: getIllnessSituations(profile.id)
+        .filter((s) => s.active)
+        .map((s) => s.name),
+    };
   }
 
   if (form === "document") {

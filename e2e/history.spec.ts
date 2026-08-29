@@ -553,4 +553,53 @@ test.describe("the record (#3958)", () => {
     await expect(bodyPanel.locator('input[name="body_fat_pct"]')).toBeVisible();
     await expect(bodyPanel.locator('input[name="resting_hr"]')).toBeVisible();
   });
+
+  // CORRECTING IN PLACE MEANS THE ROW SAYS THE NEW THING, and nothing asserted that.
+  //
+  // This page's whole claim is "correctable in place", so a correction that leaves the
+  // old text on screen until the next navigation is the same defect as the Add door's
+  // silent write that #4062 fixed with `router.refresh()`. The five ⋯ forms make no
+  // such call, which reads exactly like the same bug waiting to be found.
+  //
+  // IT IS NOT ONE — measured rather than reasoned about, and the first explanation was
+  // wrong, which is why the mechanism is not asserted here. The guess was that the
+  // repaint rides each action's revalidation list, every one of which names `/history`.
+  // Dropping `/history` from the practice list and re-running this test left it GREEN,
+  // so whatever carries the repaint, it is not that. A `router.refresh()` added on the
+  // strength of the original guess would have been a second mechanism for something
+  // already working, which is the shape the line-budget ruling refuses.
+  //
+  // SO THIS ASSERTS THE BEHAVIOUR AND CLAIMS NOTHING ABOUT ITS CAUSE. That is the
+  // honest scope: the property is real, it is the page's central promise, nothing else
+  // pins it, and it is INHERITED from framework behaviour rather than stated anywhere
+  // in this repo — which is precisely the kind of property that disappears without a
+  // line of anyone's diff to blame. Shown to fail: removing the `done()` on the
+  // correction's success path reddens it.
+  //
+  // Practice is the kind driven because its detail segment prints a value the form
+  // edits directly, so the assertion reads the written value rather than a proxy.
+  test("a correction repaints the row it corrected", async ({ page }) => {
+    seedDay();
+    await page.goto("/history?kind=practice");
+    const row = () =>
+      page.getByTestId("history-row").filter({ hasText: PRACTICE });
+    await expect(row().getByTestId("history-row-detail")).toContainText(
+      "20 min"
+    );
+
+    await hydratedClick(page, row().getByTestId("overflow-menu-trigger"));
+    await page.getByTestId("history-row-edit").click();
+    const form = page.getByTestId("history-row-editing");
+    await form.locator('input[name="duration_min"]').fill("45");
+    await form.getByRole("button", { name: "Save" }).click();
+
+    // The SAME row, re-read after the write — not a fresh navigation, which would
+    // pass over the defect this exists to catch.
+    await expect(row().getByTestId("history-row-detail")).toContainText(
+      "45 min"
+    );
+    await expect(row().getByTestId("history-row-detail")).not.toContainText(
+      "20 min"
+    );
+  });
 });

@@ -38,12 +38,15 @@ const MODULE_ALLOW = [
 // / requireAdmin(), keyed by the file they live in (so an unrelated file can't
 // ride the exemption) and the function name. Keep this list SHORT and justified.
 //
-// `gate` (issue #278): a login-scoped action that mutates the caller's LOGIN auth
-// state (password, 2FA, sessions) must still refuse in demo mode — the shared
-// public demo login would otherwise let one visitor lock everyone else out. Such
-// an entry names the guard its body MUST call (requireLoginWriteAccess); the scan
-// fails if the call disappears, so the demo gate can't silently regress back to a
-// bare requireSession().
+// `gate` (issue #278): an entry may NAME the guard its body must call, and the scan
+// fails if that call disappears — so an exemption cannot silently decay into a body
+// that gates nothing. Two populations use it, for two reasons. #278's: a login-scoped
+// action that mutates the caller's LOGIN auth state (password, 2FA, sessions) must
+// still refuse in demo mode, or the shared public demo login lets one visitor lock
+// everyone else out (requireLoginWriteAccess). And the cross-profile per-item writes:
+// they gate the ROW's subject through gateItemProfile rather than the acting profile,
+// so without `gate` the only thing asserted about them is that they do NOT call
+// requireWriteAccess — which a body that gates nothing at all also satisfies.
 const ALLOW: { file: string; fn: string; why: string; gate?: string }[] = [
   // --- Read-only actions (return data, mutate nothing) ---
   {
@@ -334,6 +337,82 @@ const ALLOW: { file: string; fn: string; why: string; gate?: string }[] = [
     file: "app/(app)/supplies/actions.ts",
     fn: "unlinkItemAction",
     why: "#1374: unlinks the ITEM's row from its pool; same requireItemWriteAccess(itemId) → requireProfileWriteAccess(itemProfileId) gate as linkItemAction",
+  },
+  // --- The record's cross-profile CORRECTIONS (#4009 item 1 / #2106, #3958) ---
+  // `/history?view=everyone` merges every in-view member's rows, and #3958 rules that
+  // "⋯ additionally requires write access on the row's profile, re-checked
+  // server-side". Phase 1 satisfied only the safety half by rendering other members'
+  // rows read-only; these TEN are the capability half — five corrections and five
+  // deletes, across the record's five kinds. Each posts the ROW's `profile_id` and
+  // gates it through the SAME shared gateItemProfile() the Upcoming and Tier-1
+  // per-item writes use — requireProfileWriteAccess(rowProfileId), which redirects a
+  // read-only-granted or ungranted member before any core runs, and falls back to
+  // requireWriteAccess() when no subject is posted (every single-view form). The
+  // button's absence is an affordance; THIS is the gate, and
+  // lib/__action_tests__/history-cross-profile-correction.actions.test.ts proves a
+  // forged post for an unwritable profile is refused rather than merely unrendered.
+  // Every entry names `gate` so the scan asserts the call is still THERE: without it
+  // the only claim made about these ten is that they do NOT call requireWriteAccess,
+  // which a body that gates nothing at all also satisfies.
+  {
+    file: "app/(app)/nutrition/intake-actions.ts",
+    fn: "deleteAdministration",
+    why: "record correction (#4009): deletes the ROW's dose log via gateItemProfile() → requireProfileWriteAccess(rowProfileId); the audit entry is stamped with the same gated profile",
+    gate: "gateItemProfile",
+  },
+  {
+    file: "app/(app)/nutrition/intake-actions.ts",
+    fn: "updateHistoricalDose",
+    why: "record correction (#4009): amends the ROW's dose log via gateItemProfile() → requireProfileWriteAccess(rowProfileId); the stated wall time re-anchors in the GATED profile's zone, which is the zone HistoricalDoseForm collected it in",
+    gate: "gateItemProfile",
+  },
+  {
+    file: "app/(app)/nutrition/actions.ts",
+    fn: "updateFoodLogEvent",
+    why: "record correction (#4009): corrects the ROW's serving via gateItemProfile() → requireProfileWriteAccess(rowProfileId); the eaten-at wall time resolves in the SUBJECT's timezone",
+    gate: "gateItemProfile",
+  },
+  {
+    file: "app/(app)/nutrition/actions.ts",
+    fn: "deleteFoodLogEvent",
+    why: "record correction (#4009): removes the ROW's serving via gateItemProfile() → requireProfileWriteAccess(rowProfileId)",
+    gate: "gateItemProfile",
+  },
+  {
+    file: "app/(app)/wellness/actions.ts",
+    fn: "editPracticeSession",
+    why: "record correction (#4009): corrects the ROW's practice session via gateItemProfile() → requireProfileWriteAccess(rowProfileId)",
+    gate: "gateItemProfile",
+  },
+  {
+    file: "app/(app)/wellness/actions.ts",
+    fn: "removePracticeSession",
+    why: "record correction (#4009): removes the ROW's practice session via gateItemProfile() → requireProfileWriteAccess(rowProfileId)",
+    gate: "gateItemProfile",
+  },
+  {
+    file: "app/(app)/medical/substance-use/actions.ts",
+    fn: "updateSubstanceDailyTotalAction",
+    why: "record correction (#4009): corrects the ROW's substance day via gateItemProfile() → requireProfileWriteAccess(rowProfileId); the isMinor age gate and the today() bound are asked of the SUBJECT, matching the gate lib/history.ts applies to the read",
+    gate: "gateItemProfile",
+  },
+  {
+    file: "app/(app)/medical/substance-use/actions.ts",
+    fn: "deleteSubstanceDailyTotalAction",
+    why: "record correction (#4009): removes the ROW's substance day via gateItemProfile() → requireProfileWriteAccess(rowProfileId); same subject-keyed isMinor gate as the update",
+    gate: "gateItemProfile",
+  },
+  {
+    file: "app/(app)/trends/reading-actions.ts",
+    fn: "updateMetricReading",
+    why: "record correction (#4009): corrects the ROW's body reading via gateItemProfile() → requireProfileWriteAccess(rowProfileId); the display-unit conversion still reads the LOGIN's prefs, which is a formatting question and not a subject one",
+    gate: "gateItemProfile",
+  },
+  {
+    file: "app/(app)/trends/reading-actions.ts",
+    fn: "deleteMetricReading",
+    why: "record correction (#4009): removes the ROW's body reading via gateItemProfile() → requireProfileWriteAccess(rowProfileId)",
+    gate: "gateItemProfile",
   },
   // --- Multi-view Upcoming per-item writes (issue #1096) — each row carries its
   // OWN profileId, so the write must target the ITEM's profile, not the acting one.
@@ -1134,11 +1213,17 @@ describe("write-access enforcement: every mutating Server Action is gated", () =
         const allow = ALLOW.find((a) => a.file === rel && a.fn === name);
         if (allow) {
           matchedAllow.add(`${allow.file}#${allow.fn}`);
-          // A demo-gated login-scoped mutation (#278) must actually call its
-          // declared guard — the allowlist exemption alone is not enough.
+          // An entry that DECLARES a gate must actually call it — the allowlist
+          // exemption alone is not enough. The message names the declared gate
+          // rather than a reason, because the fourteen entries that carry one do
+          // not share one: #278's are demo-mode guards on login auth state, and
+          // the twelve gateItemProfile ones are cross-profile subject gates. It
+          // said "the demo-mode guard regressed" for all of them until #4067,
+          // which sends a reader hitting it on a record correction looking for a
+          // demo regression that is not there.
           if (allow.gate && !new RegExp(`\\b${allow.gate}\\s*\\(`).test(body)) {
             violations.push(
-              `${rel}#${name}: allowlisted with gate "${allow.gate}" but the body never calls it — the demo-mode guard regressed`
+              `${rel}#${name}: allowlisted with gate "${allow.gate}" but the body never calls it — the declared ${allow.gate}() gate regressed`
             );
           }
           continue;

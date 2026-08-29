@@ -222,6 +222,7 @@ export function gatherHistoryLog(
         id: `dose:${row.id}`,
         kind: "dose",
         profileId,
+        tz,
         date: row.date,
         sortTime: hhmm,
         clock: historyClock(
@@ -309,6 +310,7 @@ export function gatherHistoryLog(
         id: `food:${row.id}`,
         kind: "food",
         profileId,
+        tz,
         date: row.date,
         sortTime: hhmm,
         clock: historyClock(hhmm, stated ? "stated" : "logged", prefs),
@@ -368,6 +370,7 @@ export function gatherHistoryLog(
         id: `practice:${row.id}`,
         kind: "practice",
         profileId,
+        tz,
         date: row.date,
         sortTime: hhmm,
         clock: historyClock(hhmm, stated ? "stated" : "logged", prefs),
@@ -415,6 +418,7 @@ export function gatherHistoryLog(
         id: `substance:${row.substance}:${row.id}`,
         kind: "substance",
         profileId,
+        tz,
         date: row.date,
         // A DAY TOTAL HAS NO INSTANT and the schema says so — `substance_daily_totals`
         // records when a use was LOGGED and nothing about when it happened. So the row
@@ -515,6 +519,7 @@ export function gatherHistoryLog(
           id: `body:${measure.column}:${row.id}`,
           kind: "body",
           profileId,
+          tz,
           date: row.date,
           sortTime: hhmm,
           // `body_metrics` has no record stamp at all, so an unstated reading is

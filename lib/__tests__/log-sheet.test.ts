@@ -70,11 +70,14 @@ describe("logSheetSegments", () => {
     expect(without?.items.length).toBe(2);
   });
 
-  it("keeps practices, mood, and documents in Care", () => {
+  it("keeps practices, mood, symptoms, and documents in Care", () => {
     const care = logSheetSegments(true, true).find((s) => s.id === "care");
     expect(care?.items.map((i) => i.id)).toEqual([
       "log-practice",
       "log-mood",
+      // #4064: how you FEEL is checked in about, not measured, so the symptom row
+      // sits beside mood rather than under Body.
+      "log-symptom",
       "add-document",
     ]);
   });
@@ -100,7 +103,8 @@ describe("logSheetSegments", () => {
 
   it("derives the fixed list reserve from only the surviving segment rows", () => {
     const all = logSheetSegments(true, true);
-    expect(maxLogSheetRows(all)).toBe(3);
+    // Care is the tallest segment since #4064 added the symptom row to it.
+    expect(maxLogSheetRows(all)).toBe(4);
     expect(maxLogSheetRows([{ items: all[0]!.items.slice(0, 1) }])).toBe(1);
     expect(maxLogSheetRows([])).toBe(0);
   });
@@ -114,7 +118,7 @@ describe("logSheetReservePx", () => {
   // would only restate the implementation. 255 / 64 / 66 are the measured blocks,
   // so a constant that drifts fails here naming the pixel it moved to.
   it.each([
-    ["the full track, tallest segment three rows", all, 517],
+    ["the full track, tallest segment four rows", all, 583],
     // A profile down to one segment has no track to reserve for, and holds no
     // rows for entries it cannot reach.
     ["one segment, one row", [{ items: all[0]!.items.slice(0, 1) }], 321],

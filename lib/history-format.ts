@@ -141,6 +141,14 @@ export interface HistoryRow extends MergeableRow {
   id: string;
   kind: HistoryLogKind;
   profileId: number;
+  /**
+   * The SUBJECT's timezone (#4009 item 1). Carried on the row because a correction
+   * form for a row in `?view=everyone` collects a wall clock on the SUBJECT's day, and
+   * the action re-anchors it in the subject's zone — so a form that used the acting
+   * profile's zone would shift the instant on a save that changed nothing. One value
+   * per member gather, already resolved there; nothing re-derives it.
+   */
+  tz: string;
   /** The profile-local day this row counts for (`rowLocalDay`, never re-derived). */
   date: string;
   sortTime: string | null;

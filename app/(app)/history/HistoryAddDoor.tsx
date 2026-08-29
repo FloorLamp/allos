@@ -3,6 +3,9 @@
 import { useState, type FormEvent, type ReactNode } from "react";
 import { useRouter } from "next/navigation";
 import DateField from "@/components/DateField";
+import WhenControl from "@/components/WhenControl";
+import { statedHhmm, type WhenValue } from "@/lib/stated-time";
+import { useTimezone } from "@/components/TimezoneProvider";
 import InlineError from "@/components/InlineError";
 import { useLoggedViaStamp } from "@/components/LoggedViaSurface";
 import { useToast } from "@/components/Toast";
@@ -36,6 +39,30 @@ import type { WeightUnit } from "@/lib/settings";
 // THE DATE OPENS ON THE DAY THE READER WAS LOOKING AT, not on today: the whole reason
 // to add from here is a gap you just found. Bounded by today at every kind, which is
 // the record's own never-the-future rule.
+//
+// AND THE WHEN IS `WhenControl`, WHICH #3958 NAMES — "WhenControl absolutes only,
+// #2236 invariant 4". Phase 1's doors carried a bare date and posted the time EMPTY on
+// purpose, because the alternative on offer was an eleventh hand-rolled
+// <input type="time"> and the #2236 ratchet refuses those, correctly. The shared
+// control is the answer that was missing, and #4060 converged the quick logger's
+// vocabulary onto it, so there is no longer a second spelling to collide with.
+//
+// It buys the thing the empty field could not: a reader backfilling yesterday's 7am
+// session can SAY 7am. What it does not do is invent one — invariant 3, an untouched
+// time field stays empty and emits null, so a backfill that states nothing still
+// states nothing, which is the behaviour phase 1 was protecting.
+//
+// TWO KINDS KEEP A BARE DATE, and neither is an oversight:
+//   • SUBSTANCE — `substance_daily_totals` is a DAY TOTAL. It has a `recorded_at`
+//     (when the use was logged) and no event instant at all, which is why the record
+//     renders these rows date-only and sinks them below the day's timed ones. A time
+//     field here would collect a statement with nowhere to be stored.
+//   • BODY — `body_metrics.occurred_at` exists (migration 165, #2235) and the write
+//     core takes it, but `addBodyMetric` deliberately states no time, and its
+//     find-then-write CLEARS the column on an empty submission while leaving it alone
+//     for a time-blind one. Choosing between those is a decision about the body
+//     domain's write contract, not about this door, so it is raised rather than
+//     guessed at here.
 
 const KIND_LABEL = {
   food: "Log food",
@@ -69,6 +96,10 @@ export default function HistoryAddDoor({
   vocabulary: HistoryAddVocabulary;
 }) {
   const router = useRouter();
+  const tz = useTimezone();
+  // THE PAIR, held as one value (#2236 invariant 1). `date` opens on the day the
+  // reader was looking at and `statedAt` opens EMPTY — never defaulted to now.
+  const [when, setWhen] = useState<WhenValue>({ date, statedAt: null });
   const toast = useToast();
   // WHICH SURFACE THIS WRITE CAME FROM (#3087). The record is a page and `page` is what
   // this resolves to, but it is declared rather than left to the action's fallback:
@@ -115,6 +146,9 @@ export default function HistoryAddDoor({
     router.refresh();
   }
 
+  // The DATE-ONLY kinds' field. Still `DateField` rather than a `WhenControl` with the
+  // time hidden: a control rendered without half of itself is a variant, and these two
+  // kinds are date-only in the SCHEMA rather than by presentation choice.
   const dateField = (
     <label className="text-xs text-slate-500 dark:text-slate-400">
       Date
@@ -126,6 +160,32 @@ export default function HistoryAddDoor({
         inputClassName="mt-1 w-full"
       />
     </label>
+  );
+
+  // The TIMED kinds' field, and the day and the minute come out of it together.
+  // `mode="state"` because a backfill is an assertion rather than an amendment, and
+  // `timeRequired` is false because stating a time is optional here — the record's own
+  // clock grammar already has an honest rendering for a row that names none.
+  const whenField = (
+    <div className="sm:col-span-2">
+      <WhenControl
+        mode="state"
+        grain="minute"
+        value={when}
+        onChange={setWhen}
+        maxDate={maxDate}
+        dateLabel="Date"
+        timeLabel="Time"
+        testId={`history-add-when-${kind}`}
+      />
+      {/* THE WIRE SHAPE IS THE DOMAIN'S, and both of these actions read an ABSOLUTE
+          profile-local wall clock rather than a client instant — the server resolves
+          it against its own clock and the profile's timezone (#2053), so no browser
+          has to be trusted with the answer. `statedHhmm` is the one conversion, and
+          it returns "" for an unstated instant, which is exactly the empty string
+          both actions read as "no time was stated". */}
+      <input type="hidden" name="date" value={when.date} />
+    </div>
   );
 
   const buttons = (
@@ -147,12 +207,16 @@ export default function HistoryAddDoor({
             className="grid gap-2 sm:grid-cols-2"
             onSubmit={(event) =>
               void post(event, async (fd) => {
+                // The eating-time statement (#2053), as the wall clock the action
+                // reads. Empty when nothing was stated, which `logFoodServing`
+                // already treats as "no eating time" rather than as a refusal.
+                fd.set("occurred_at", statedHhmm(when.statedAt, tz));
                 const outcome = await logFoodServing(fd);
                 return outcome.ok ? null : outcome.error;
               })
             }
           >
-            {dateField}
+            {whenField}
             <label className="text-xs text-slate-500 dark:text-slate-400">
               Food group
               <select name="group_key" className="input mt-1 w-full">
@@ -187,7 +251,7 @@ export default function HistoryAddDoor({
               })
             }
           >
-            {dateField}
+            {whenField}
             <label className="text-xs text-slate-500 dark:text-slate-400">
               Practice
               <select name="practice" className="input mt-1 w-full">
@@ -196,13 +260,19 @@ export default function HistoryAddDoor({
                 ))}
               </select>
             </label>
-            {/* A BACKFILLED SESSION STATES NO CLOCK, and the field is posted EMPTY
-                rather than omitted: `logPractice` reads presence, not value (#2204),
-                so an absent field means "you have the clock" and would stamp the
-                filing instant onto a day that is not today. Empty is the honest
-                statement — this session has no minute. Correcting one stays on the
-                practice card, where the full editor is. */}
-            <input type="hidden" name="time" value="" />
+            {/* THE FIELD IS ALWAYS POSTED, AND ITS VALUE IS NOW THE READER'S.
+                `logPractice` reads PRESENCE, not value (#2204): an absent `time`
+                means "you have the clock" and would stamp the filing instant onto a
+                day that is not today, so this stays present unconditionally. What
+                changed is that its value is the wall clock WhenControl collected
+                instead of a hardcoded empty string — and an unstated time still
+                resolves to "", which is the same honest "this session has no
+                minute" the door has always been able to say. */}
+            <input
+              type="hidden"
+              name="time"
+              value={statedHhmm(when.statedAt, tz)}
+            />
             <label className="text-xs text-slate-500 dark:text-slate-400">
               Duration (minutes)
               <input

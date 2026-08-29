@@ -51,6 +51,7 @@ export const PALETTE_ACTION_IDS = [
   "log-food",
   "log-dose",
   "log-mood",
+  "log-symptom",
   "add-appointment",
   "add-progress-photo",
   "wellness-practices",
@@ -179,6 +180,18 @@ export const PALETTE_ACTIONS: PaletteAction[] = [
     target: { kind: "overlay", form: "mood" },
   },
   {
+    id: "log-symptom",
+    label: "Log symptom",
+    keywords: ["headache", "pain", "sick", "ill", "unwell", "fever", "nausea"],
+    icon: "heart",
+    // #4064. The SAME overlay the sheet's Care row opens — browse and search are two
+    // surfaces over one set of forms (#2184), so this is the palette reaching the door
+    // the sheet reaches, never a second one. The keywords are the words people type
+    // when something hurts; the catalog itself stays in the picker, where the profile's
+    // own history ranks it.
+    target: { kind: "overlay", form: "symptom" },
+  },
+  {
     id: "add-appointment",
     label: "Add appointment",
     keywords: ["visit", "doctor", "schedule", "clinic", "booking"],
@@ -294,9 +307,14 @@ export const PALETTE_DOMAIN_CENSUS = {
   stool: arguedExclusion(
     "The palette is a keyboard surface for a desk; a stool log is a phone-in-hand moment and its whole affordance is the seven icons, which a text-matched command row cannot carry (#2785). The sheet row + overlay are the door, and nothing in the palette would be faster than them."
   ),
-  symptom: arguedExclusion(
-    "Same argument as the sheet census (lib/quick-log.ts): symptom capture is a state-routed pair (well-day bar vs illness cockpit), and #1860 owns reshaping it; a context-free palette entry would freeze one half."
-  ),
+  // OVERTURNED (#4064) with the sheet census it borrowed its reason from. It had no
+  // argument of its own — it cited lib/quick-log.ts verbatim — so when that one fell
+  // there was nothing left standing here, and no palette-specific ground was ever
+  // available: symptom carries no relevance bit (the `period` ground) and its
+  // affordance is a picker the overlay renders (the `stool` ground is that a text row
+  // could not carry the seven icons; this row carries none of the catalog either way).
+  // #2184's rule then decides it: one form set, two surfaces.
+  symptom: "log-symptom",
   substance: arguedExclusion(
     "Same argument as the sheet census (lib/quick-log.ts): a deliberate-access medical surface whose tap renders beside its #998 cap verdict; off general-purpose quick surfaces by reach policy."
   ),

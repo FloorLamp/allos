@@ -78,6 +78,11 @@ describe("quickLogMenu", () => {
       // log with its own Telegram command, reminder and offline flow, and #1892's
       // membership argument reached it. The #2128 day chips ride along.
       "log-mood",
+      // #4064 — the last daily-loop capture without a row, and the #3366 ruling's
+      // precondition: the dashboard tail's write cards may only retire once the sheet
+      // covers them. ONE row, because the symptom tap, the well-day capture and the
+      // illness bridge are three affordances of one bar, not three forms.
+      "log-symptom",
       // #1892 — the missing logging path. Period day 1 is the app's most
       // time-sensitive log (both the phase derivation and the regularity data
       // depend on catching it), and the sheet had no entry for it at all.
@@ -106,6 +111,7 @@ describe("quickLogMenu", () => {
       "log-measurements",
       "log-practice",
       "log-mood",
+      "log-symptom",
       "log-stool",
       "add-document",
     ]);
@@ -145,6 +151,7 @@ describe("quickLogMenu", () => {
       "log-measurements",
       "log-practice",
       "log-mood",
+      "log-symptom",
       "log-period",
       "log-stool",
       "log-substance",
@@ -209,6 +216,9 @@ describe("the registry itself", () => {
       "measurements",
       "practice",
       "mood",
+      // #4064 — the SAME SymptomLogBar the dashboard's well-day card mounts, so the
+      // sheet gains the three affordances that card carries without gaining a write.
+      "symptom",
       "cycle",
       "stool",
       // #3327 — the profile's OWN substances, one tap each. Gathered on open like

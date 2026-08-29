@@ -221,9 +221,10 @@ test("every segment keeps the sheet still and fills the phone width (#3675)", as
     const list = sheet.getByTestId("log-sheet-items");
     const rows = list.locator("> li");
     const drawn = await rows.count();
-    // Train is the short segment for every profile — two entries where Consume,
-    // Body and Care each have three — so it is where the old per-segment reserve
-    // showed as a hole. Read against the sheet's own reserve rather than a pinned
+    // Train is the short segment for every profile — two entries where Consume and
+    // Body have three and Care, since #4064's symptom row, has four — so it is where
+    // the old per-segment reserve showed as a hole, and by the widest margin the
+    // sheet has held. Read against the sheet's own reserve rather than a pinned
     // count: this persona's training gates leave it one row, not two.
     const reserved = Number(await list.getAttribute("data-max-rows"));
     expect(drawn).toBeGreaterThan(0);

@@ -73,6 +73,14 @@ import {
   SETUP_HEALTH_GAP_PROFILE,
   SETUP_HEALTH_QUIET_PROFILE,
   SETUP_HEALTH_GAP_MED,
+  E2E_LOGIN_HXEVERY,
+  HXEVERY_SELF_PROFILE,
+  HXEVERY_RO_PROFILE,
+  HXEVERY_MEMBER_PROFILE,
+  HXEVERY_SELF_DOSE,
+  HXEVERY_RO_DOSE,
+  HXEVERY_MEMBER_DOSE,
+  HXEVERY_DAY,
 } from "../fixture-logins";
 import {
   seedMemberLogin,
@@ -494,6 +502,63 @@ export function seedMultiProfile(): void {
     grantProfile(mvLoginId, mvRoId, "read");
     console.log(
       `e2e: seeded medications-board fixture — ${E2E_LOGIN_MVMEDS} granted ${MVMEDS_SELF_PROFILE} (${mvSelfId}, write) + ${MVMEDS_RO_PROFILE} (${mvRoId}, read)`
+    );
+  }
+
+  // ── The record's merged household view (#4009 item 3 / #3958) ─────────────────
+  // E2E_LOGIN_HXEVERY: a self profile (WRITE, acting), a second READ-ONLY, and a third
+  // WRITE that is not the acting one — each with ONE taken dose log on a fixed past
+  // day. The read-only grant is what lets the render test see the per-row write gate as
+  // a DIFFERENCE between two rows in one render; the third, writable, non-acting
+  // profile is what makes the CORRECTION reachable at all, since a correction on the
+  // acting profile's own row cannot tell "the write followed the row" from "the write
+  // followed the session". The two live in separate renders so neither costs the other.
+  {
+    const hxSelfId = adultFixtureProfileId(HXEVERY_SELF_PROFILE);
+    const hxRoId = adultFixtureProfileId(HXEVERY_RO_PROFILE);
+    const hxMemberId = adultFixtureProfileId(HXEVERY_MEMBER_PROFILE);
+    // A dated `taken` log, which is what `/history`'s dose composer reads. No
+    // `occurred_at`: with none stated the row's clock falls back to the record chain
+    // and renders "logged …", and the DATE — the only thing the day grouping and the
+    // record's "ends at now" bound care about — is a stored calendar column, so it is
+    // the same day in every one of the run's rotating profile timezones (#1417).
+    const seedRecordDose = (profileId: number, name: string): void => {
+      if (
+        db
+          .prepare(
+            "SELECT 1 FROM intake_items WHERE profile_id = ? AND name = ?"
+          )
+          .get(profileId, name)
+      ) {
+        return;
+      }
+      const item = db
+        .prepare(
+          `INSERT INTO intake_items
+             (profile_id, name, kind, condition, obligation, active, source)
+           VALUES (?, ?, 'supplement', 'daily', 'should', 1, 'manual')`
+        )
+        .run(profileId, name);
+      const itemId = Number(item.lastInsertRowid);
+      const dose = db
+        .prepare(
+          `INSERT INTO intake_item_doses (item_id, amount, time_of_day, food_timing, sort)
+           VALUES (?, '1 capsule', '08:00', 'any', 0)`
+        )
+        .run(itemId);
+      db.prepare(
+        `INSERT INTO intake_item_logs (item_id, dose_id, date, status)
+         VALUES (?, ?, ?, 'taken')`
+      ).run(itemId, Number(dose.lastInsertRowid), HXEVERY_DAY);
+    };
+    seedRecordDose(hxSelfId, HXEVERY_SELF_DOSE);
+    seedRecordDose(hxRoId, HXEVERY_RO_DOSE);
+    seedRecordDose(hxMemberId, HXEVERY_MEMBER_DOSE);
+    const hxLoginId = seedMemberLogin(E2E_LOGIN_HXEVERY, hxSelfId, "write");
+    grantProfile(hxLoginId, hxRoId, "read");
+    grantProfile(hxLoginId, hxMemberId, "write");
+    console.log(
+      `e2e: seeded record everyone-view fixture — ${E2E_LOGIN_HXEVERY} granted ${HXEVERY_SELF_PROFILE} (${hxSelfId}, write) + ${HXEVERY_RO_PROFILE} (${hxRoId}, read) + ${HXEVERY_MEMBER_PROFILE} (${hxMemberId}, write)`
     );
   }
 

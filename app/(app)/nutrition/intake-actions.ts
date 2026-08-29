@@ -1,5 +1,10 @@
 "use server";
-import { requireWriteAccess, requireProfileWriteAccess } from "@/lib/auth";
+import {
+  requireWriteAccess,
+  requireProfileWriteAccess,
+  requireSession,
+} from "@/lib/auth";
+import { gateItemProfile } from "../gate-item";
 import { LOGGED_VIA_FIELD, parseWebOrigin } from "@/lib/logged-via";
 import { requireScope } from "@/lib/scope";
 
@@ -1479,7 +1484,12 @@ export async function logHistoricalDose(
 export async function updateHistoricalDose(
   formData: FormData
 ): Promise<FormResult> {
-  const { login, profile } = await requireWriteAccess();
+  // THE ROW'S PROFILE, NOT THE ACTING ONE (#4009 item 1 / #2106) — see
+  // deleteAdministration. The wall time below re-anchors in the GATED profile's zone,
+  // which is the same zone `HistoricalDoseForm` collected it in (the row carries it),
+  // so a correction saved unchanged is byte-identical rather than shifted.
+  const profileId = await gateItemProfile(formData);
+  const { login } = await requireSession();
   const itemId = Number(formData.get("id"));
   const logId = Number(formData.get("log_id"));
   const date = String(formData.get("date") ?? "");
@@ -1495,12 +1505,12 @@ export async function updateHistoricalDose(
 
   let occurredAt: Date | null = null;
   if (time !== "") {
-    occurredAt = zonedWallTimeToUtc(getTimezone(profile.id), date, time);
+    occurredAt = zonedWallTimeToUtc(getTimezone(profileId), date, time);
     if (!occurredAt) return formError("Enter a valid dose date and time.");
   }
 
   const outcome = updateHistoricalDoseCore(
-    profile.id,
+    profileId,
     itemId,
     logId,
     date,
@@ -1510,7 +1520,7 @@ export async function updateHistoricalDose(
   if (outcome.kind === "logged") {
     recordAudit({
       loginId: login.id,
-      profileId: profile.id,
+      profileId,
       action: AUDIT_ACTIONS.doseLogAmend,
       target: String(itemId),
       detail: outcome.date,
@@ -1539,14 +1549,23 @@ function historicalDoseError(
 export async function deleteAdministration(
   formData: FormData
 ): Promise<{ undoId: number | null }> {
-  const { login, profile } = await requireWriteAccess();
+  // THE ROW'S PROFILE, NOT THE ACTING ONE (#4009 item 1 / #2106). On `/history`'s
+  // `?view=everyone` the feed carries other members' rows, and a correction acts on
+  // the row you found. `gateItemProfile` is the app's one answer to "which profile is
+  // this per-item write for": it gates the posted `profile_id` through
+  // requireProfileWriteAccess (reachable AND write, redirect otherwise) and falls back
+  // to the acting-profile gate when no subject is posted. So the menu is an
+  // affordance and this is the gate — a forged post naming a profile this login
+  // cannot write aborts here, before deleteAdministrationLog runs.
+  const profileId = await gateItemProfile(formData);
+  const { login } = await requireSession();
   const logId = Number(formData.get("log_id"));
   if (!logId) return { undoId: null };
-  const removed = deleteAdministrationLog(profile.id, logId);
+  const removed = deleteAdministrationLog(profileId, logId);
   if (removed) {
     recordAudit({
       loginId: login.id,
-      profileId: profile.id,
+      profileId,
       action: AUDIT_ACTIONS.doseLogDelete,
       target: String(removed.itemId),
       detail: removed.date,
