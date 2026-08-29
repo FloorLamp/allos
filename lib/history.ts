@@ -46,7 +46,7 @@ import { profileFoodSlotBoundaries } from "./profile-food-slot";
 import { normalizePracticeName } from "./practice";
 import { formatMinutes } from "./duration";
 import { ALCOHOL_FOOD_GROUP, substanceDef } from "./substance-use";
-import { intakeHref, medicationHref, metricDetailHref } from "./hrefs";
+import { medicationHref, metricDetailHref } from "./hrefs";
 import {
   detailSegment,
   historyClock,
@@ -232,10 +232,17 @@ export function gatherHistoryLog(
         clockKind:
           when.known && when.semantic === "event" ? "stated" : "logged",
         title: row.item_name,
+        // A MEDICATION HAS A HOME AND A SUPPLEMENT DOES NOT (#4045 §5, extended).
+        // The title link is a PER-ITEM question — "does this thing have a home" — and
+        // `medicationHref` answers it with that item's own page. The supplement arm
+        // answered `intakeHref("supplement")` for EVERY supplement row: one page-level
+        // destination repeated down the column, which is the same shape the substance
+        // rows lost below and fails the issue's own criterion ("no row title links to a
+        // destination shared by every row of its kind") for a kind it did not happen to
+        // enumerate. Plain until the supplements surface exposes a per-item anchor; a
+        // page-level link is not a fallback for a missing home.
         href:
-          row.item_kind === "medication"
-            ? medicationHref(row.item_id)
-            : intakeHref("supplement"),
+          row.item_kind === "medication" ? medicationHref(row.item_id) : null,
         // quantity → context: the amount taken, then the product it came out of.
         detail: detailSegment([row.amount, row.product]),
         media: 0,
@@ -417,7 +424,14 @@ export function gatherHistoryLog(
         clock: null,
         clockKind: "logged",
         title: def.label,
-        href: "/records/specialty/substance-use",
+        // PLAIN, LIKE THE FOOD GROUPS BESIDE IT (#4045 §5). The title link is a
+        // PER-ITEM question — "does this thing have a home" — and a substance has
+        // none: the substance-use page renders per-substance cards but exposes no
+        // anchor to one, so every row here would have linked to the same page-level
+        // destination. That is an ad wearing a home's clothes. If a substance card
+        // ever gains a stable per-item anchor the title may link THERE; the
+        // page-level link is not a fallback for a missing one.
+        href: null,
         detail: detailSegment([
           `${row.amount} ${row.amount === 1 ? def.countSingular : def.countPlural}`,
           row.notes,

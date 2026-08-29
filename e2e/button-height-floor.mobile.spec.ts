@@ -122,6 +122,34 @@ const BOX_ROUTES: { route: string; ready: string; surfaces: BoxSurface[] }[] = [
       },
     ],
   },
+  // THE QUICK-LOG SHEET'S TWO "Happened earlier?" DISCLOSURES (#3273). They are
+  // `btn-ghost btn-sm` and carry no `.tap-target`, so the `/nutrition` sweep further
+  // down is structurally unable to see them and no other entry here names them — two
+  // new phone controls outside the standing census is the gap #3938 exists to close.
+  // One route per sheet, because the two forms are different overlays; both are a
+  // plain `goto` plus a readiness marker like every entry above.
+  {
+    route: "/?quick=log-stool",
+    ready: "quick-entry-stool",
+    surfaces: [
+      {
+        kind: "btn-ghost disclosure",
+        testId: "stool-when-toggle",
+        repairable: true,
+      },
+    ],
+  },
+  {
+    route: "/?quick=log-practice",
+    ready: "quick-entry-practice-list",
+    surfaces: [
+      {
+        kind: "btn-ghost disclosure",
+        testId: "practice-when-toggle",
+        repairable: true,
+      },
+    ],
+  },
   {
     route: "/nutrition?tab=supplements",
     ready: "supplement-add-toggle",

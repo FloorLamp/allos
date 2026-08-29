@@ -1,6 +1,8 @@
+import { Fragment } from "react";
 import Link from "next/link";
 import { IconChevronDown } from "@tabler/icons-react";
 import PageContainer from "@/components/PageContainer";
+import DestinationLink from "@/components/DestinationLink";
 import { PageHeader, EmptyState } from "@/components/ui";
 import Chip from "@/components/Chip";
 import FilterPills from "@/components/FilterPills";
@@ -8,13 +10,22 @@ import JumpRailScrubber, {
   type ScrubberStop,
 } from "@/components/JumpRailScrubber";
 import DoseBackfillLauncher from "@/components/intake/DoseBackfillLauncher";
+import TimelineFilterLink from "@/components/TimelineFilterLink";
 import type { DoseLedgerItem } from "@/components/intake/dose-ledger-entry";
 import HistoryRows from "./HistoryRows";
+import HistoryAddDoor from "./HistoryAddDoor";
 import { requireScope } from "@/lib/scope";
 import { today } from "@/lib/db";
 import { zonedDateParts } from "@/lib/date";
-import { getDisplayFormatPrefs, getTimezone } from "@/lib/settings";
+import {
+  getDisplayFormatPrefs,
+  getTimezone,
+  getUnitPrefs,
+} from "@/lib/settings";
 import { getIntakeDoses, getIntakeItems } from "@/lib/queries";
+import { getTrackedPractices } from "@/lib/queries/wellness";
+import { getProfileSubstanceKeys } from "@/lib/queries/substance";
+import { substanceDef } from "@/lib/substance-use";
 import { isOnDemand } from "@/lib/intake-schedule";
 import { formatLongDate } from "@/lib/format-date";
 import { historyHref, type AppRoute } from "@/lib/hrefs";
@@ -100,11 +111,24 @@ function FoldCard({
       data-testid={`history-fold-${fold.key}`}
       data-fold-key={fold.key}
       data-fold-open={fold.open ? "true" : "false"}
-      className={`py-1.5 ${nested ? "pl-4" : ""} ${gutter}`}
+      className={`scroll-mt-24 py-1.5 ${nested ? "pl-4" : ""} ${gutter}`}
     >
-      <Link
+      {/* THE POSITION-PRESERVING LINK, NOT A PLAIN ONE (#4045 §4). This shipped as a
+          `next/link` with default scroll, so every fold tap navigated to `?open=…` and
+          jumped to the top of the page: the reader tapped a card, landed above their
+          own recent history, saw nothing new, and read the card as dead. `/timeline`'s
+          fold cards never did that because they go through this component, which
+          carries `scroll={false}` and the #2657 scroll-target capture — the re-housing
+          simply dropped it. Reused rather than re-spelled: a second copy of a
+          scroll-preserving link is the duplication #2816 was filed about.
+
+          `scroll={false}` ALONE IS NOT THE FIX; the other half is where the revealed
+          days render, below. */}
+      <TimelineFilterLink
         href={href}
-        aria-expanded={fold.open}
+        testId={`history-fold-${fold.key}-toggle`}
+        label={fold.label}
+        ariaExpanded={fold.open}
         className="flex items-center gap-3 rounded-lg border border-(--border) bg-surface px-3 py-2 transition hover:bg-(--ghost-hover)"
       >
         <span
@@ -123,7 +147,7 @@ function FoldCard({
             {timelineFoldCounts(fold)}
           </span>
         </span>
-      </Link>
+      </TimelineFilterLink>
     </section>
   );
 }
@@ -267,7 +291,32 @@ export default async function HistoryPage(props: {
           : null,
       }))
     : [];
-  const railGutter = stops.length > 0 ? SCRUBBER_GUTTER_CLASS : "";
+  // SPENDING THE RAIL'S LANE, AND AT WHAT DEPTH (#4045 §2, owner ruling 2026-08-29).
+  //
+  // THE LANE DOES NOT EXIST ON A WIDE VIEWPORT, which is #3958's own spec — "on wide
+  // viewports it sits in the margin beside the card; on narrow desktops the page
+  // reserves a right gutter". The strip is fixed to the VIEWPORT's right edge, and from
+  // `xl` the margin between the reading column and that edge is already wider than the
+  // strip, so nothing is reserved and every card runs the full width of the feed.
+  //
+  // BELOW `xl` THE CARVE-OUT IS SPENT AT ONE DEPTH FOR EVERY CARD — the day SECTION and
+  // the fold SECTION, siblings inside `#history-feed`. The shipped page spent it at TWO
+  // depths (the fold's outer section, the day's inner row wrapper) at every width, so
+  // the day band's border ran 28px past every fold card's.
+  //
+  // BELOW `sm` IS THE ONE EXCEPTION and it is #3920's shape, not a drift: the band goes
+  // full-bleed there, so a gutter on its section would stop the fill reaching the edge
+  // and strand a strip of page beside it. The ROW content spends the lane instead, and
+  // the band has no side border at that width for anything to align with.
+  //
+  // The responsive halves are spelled as literals rather than composed from
+  // `SCRUBBER_GUTTER_CLASS`, because Tailwind scans source text for whole class names
+  // and an interpolated `sm:${TOKEN}` generates no CSS at all. What holds them to the
+  // token is not a second literal but the geometry guard in e2e/history.spec.ts, which
+  // measures the two card edges at two widths and reads no class string.
+  const railGutter = stops.length > 0 ? `${SCRUBBER_GUTTER_CLASS} xl:pr-0` : "";
+  const dayGutter = stops.length > 0 ? "sm:pr-7 xl:pr-0" : "";
+  const rowGutter = stops.length > 0 ? `${SCRUBBER_GUTTER_CLASS} sm:pr-0` : "";
 
   // The dose form's vocabulary, read once for the whole page: which items exist (an
   // item retired since the dose was taken still took it, so history keeps listing it)
@@ -296,6 +345,37 @@ export default async function HistoryPage(props: {
   }));
   const loggable = doseItems.filter((item) => item.doses.length > 0);
   const canWrite = scope.access.get(actingProfileId) === "write";
+  // THE OTHER FOUR DOORS' VOCABULARY, read once and only for the kind that is showing
+  // one. Each list is a shared reader the kind's own surface already uses — no fifth
+  // derivation of "what can this profile log".
+  const addVocabulary =
+    canWrite && kind && kind !== "dose"
+      ? {
+          practices:
+            kind === "practice"
+              ? getTrackedPractices(actingProfileId).map((p) => p.name)
+              : [],
+          substances:
+            kind === "substance"
+              ? getProfileSubstanceKeys(actingProfileId).map((key) => ({
+                  key,
+                  label: substanceDef(key).label,
+                }))
+              : [],
+          weightUnit: getUnitPrefs(loginId).weightUnit,
+        }
+      : null;
+  // WHETHER THIS KIND HAS A DOOR AT ALL — the dose door's own presence rule, which the
+  // other kinds inherit: a picker with nothing in it is worse than no control. A kind
+  // that cannot offer one falls back to the kind chooser rather than to an empty row,
+  // which is what the dose branch already did.
+  const hasAddDoor = addVocabulary
+    ? kind === "practice"
+      ? addVocabulary.practices.length > 0
+      : kind === "substance"
+        ? addVocabulary.substances.length > 0
+        : true
+    : kind === "dose" && loggable.length > 0;
   const defaultTime = zonedDateParts(
     getTimezone(actingProfileId),
     new Date()
@@ -306,6 +386,82 @@ export default async function HistoryPage(props: {
       if (viewIds.includes(profile.id)) subjectNames[profile.id] = profile.name;
     }
   }
+
+  // ONE DAY GROUP, wherever it lands: in the recent band, or nested under the fold that
+  // was holding it. Written once because the fold arrangement renders it from three
+  // places (recent, an open month, an open month inside an open year), and three copies
+  // of a sticky header is how two of them drift.
+  const daySection = (group: (typeof days)[number]) => (
+    <section
+      key={group.date}
+      id={`timeline-day-${group.date}`}
+      data-testid="history-day"
+      className={`scroll-mt-24 pb-2 pt-1 ${dayGutter}`}
+    >
+      {/* THE DAY HEADER STICKS, and it is the whole "which day am I in" affordance —
+          there is no per-row date cell, which is most of what the one-line row buys.
+          THE WHOLE TEXT CLUSTER IS THE DOOR and it carries a chevron (#4045 §7): the
+          header shipped with only its date text linked and no chevron at all, so the
+          count sat outside the tap target and nothing said the header was a door. The
+          chevron sits IN the cluster — nothing is right-floated, per the spec's own
+          words. (Phase 2 renders the day view; the link is already the real one.) */}
+      <h2 className="sticky top-0 z-10 -mx-1 mb-1 bg-(--page) px-1 py-1 text-sm font-semibold text-slate-800 dark:text-slate-100">
+        {/* THE ONE RIGHTWARD DESTINATION CUE, not a hand-rolled chevron: the glyph and
+            its geometry belong to the primitive (lib/__tests__/destination-link-primitive
+            .test.ts refuses a raw one inside a link). Its `ml-auto` costs nothing here
+            because the link is `inline-flex` and sized to its own content — the cue
+            sits IN the text cluster, and nothing is right-floated. */}
+        <DestinationLink
+          // THE READER'S OWN BOUND RIDES ACROSS. Without `show` a day opened at
+          // `HISTORY_DEFAULT_SHOW`, so a busy day truncated on first open even though
+          // the page it was opened from had already been widened.
+          href={historyHref({
+            day: group.date,
+            everyone,
+            show: show === HISTORY_DEFAULT_SHOW ? undefined : show,
+          })}
+          className="inline-flex items-baseline gap-2 hover:underline"
+          data-testid="history-day-link"
+        >
+          <span>{formatLongDate(group.date, prefs)}</span>
+          {/* THE SEPARATOR IS LOAD-BEARING, not decoration. #3958 writes this header
+              as "FRI, AUG 28 — 15 records" and the implementation dropped the dash;
+              with the count promoted INSIDE the link (above), the two spans then sat
+              adjacent with nothing between them, so the cluster's `textContent` read
+              "…August 295 records" — the date's last digit running into the count's
+              first. `gap-2` separates them for an eye and for nothing else: anything
+              reading the cluster linearly sees one run. That is not hypothetical —
+              e2e/machine-date-census.spec.ts finds this header by matching a display
+              date with `\d{1,2}\b`, and "29" followed by "5" has no word boundary
+              after it, so its positive control stopped being able to see a date here
+              at all. Restoring the dash puts the rendered shape back to the spec's
+              own and makes the text content honest in the same stroke. */}
+          <span aria-hidden className="text-slate-500 dark:text-slate-400">
+            —
+          </span>
+          <span className="text-xs font-normal text-slate-500 dark:text-slate-400">
+            {group.events.length} record
+            {group.events.length === 1 ? "" : "s"}
+          </span>
+        </DestinationLink>
+      </h2>
+      <HistoryRows
+        rows={group.events as HistoryRow[]}
+        actingProfileId={actingProfileId}
+        canWrite={canWrite}
+        doseItems={doseItems}
+        maxDate={todayStr}
+        defaultTime={defaultTime}
+        subjectNames={subjectNames}
+        rowClassName={rowGutter}
+        // A VIEW NARROWED TO ONE KIND DRAWS NO GLYPH COLUMN (#4045 §3), extending
+        // #3958's rule that the column collapses in views that render no glyphs. Asked
+        // of the VIEW and not of the rows: All is still All when a profile happens to
+        // have logged only food this week, and its next row could be any kind.
+        showGlyphs={kind == null}
+      />
+    </section>
+  );
 
   const rowCount = renderedDays.reduce((n, d) => n + d.events.length, 0);
   const hasMore = feeds.some((feed) => feed.gather.hasMore);
@@ -390,44 +546,19 @@ export default async function HistoryPage(props: {
         ) : null}
       </div>
 
-      {/* THE ADD DOOR, KIND-RESOLVED, ON ONE LINE. Filtered to a kind it IS that
-          kind's backfill; in All it asks the kind first, which on a record page is
-          the same act as narrowing to it. Log kinds only — clinical, training and
-          life records are created on their own surfaces — and never the future:
-          every door here is bounded by today. It scrolls rather than wraps for the
-          same reason the filter row does. */}
+      {/* THE ADD DOOR, KIND-RESOLVED. Filtered to a kind it IS that kind's backfill,
+          MOUNTED IN PLACE — the form opens here rather than sending the reader to the
+          domain surface, which is what #3958 asked for and what only the dose kind
+          shipped (#4045 §1). Log kinds only — clinical, training and life records are
+          created on their own surfaces — and never the future: every door here is
+          bounded by today. */}
       {canWrite ? (
-        <div
-          className={`-mx-2 mb-2 flex items-center gap-3 overflow-x-auto px-2 pb-1 text-sm sm:mx-0 sm:flex-wrap sm:overflow-visible sm:px-0 sm:pb-0 ${railGutter}`}
-          data-testid="history-add"
-        >
-          {kind === "dose" && loggable.length > 0 ? (
-            <DoseBackfillLauncher
-              loggable={loggable}
-              maxDate={todayStr}
-              defaultTime={defaultTime}
-            />
-          ) : kind === "food" ? (
-            <Link className="btn btn-sm" href={`/nutrition?date=${todayStr}`}>
-              Log food
-            </Link>
-          ) : kind === "practice" ? (
-            <Link className="btn btn-sm" href={`/wellness?log=${todayStr}`}>
-              Log a practice
-            </Link>
-          ) : kind === "substance" ? (
-            <Link
-              className="btn btn-sm"
-              href="/records/specialty/substance-use"
-            >
-              Log a use
-            </Link>
-          ) : kind === "body" ? (
-            <Link className="btn btn-sm" href="/trends/metric/weight">
-              Log a reading
-            </Link>
-          ) : (
-            <>
+        <div className={`mb-2 text-sm ${railGutter}`} data-testid="history-add">
+          {!hasAddDoor ? (
+            /* IN ALL — AND IN A KIND WITH NOTHING TO OFFER — THE DOOR ASKS THE KIND
+               FIRST, which on a record page is the same act as narrowing to it. It
+               scrolls rather than wraps for the same reason the filter row does. */
+            <div className="-mx-2 flex items-center gap-3 overflow-x-auto px-2 pb-1 sm:mx-0 sm:flex-wrap sm:overflow-visible sm:px-0 sm:pb-0">
               <span className="shrink-0 text-slate-500 dark:text-slate-400">
                 Add past
               </span>
@@ -443,8 +574,24 @@ export default async function HistoryPage(props: {
                   </Link>
                 )
               )}
-            </>
-          )}
+            </div>
+          ) : kind === "dose" ? (
+            <DoseBackfillLauncher
+              loggable={loggable}
+              maxDate={todayStr}
+              defaultTime={defaultTime}
+            />
+          ) : addVocabulary && kind ? (
+            <HistoryAddDoor
+              kind={kind}
+              // THE DAY THE READER WAS LOOKING AT. Finding a gap is the reason to open
+              // this door at all, so the form opens on that day rather than on today —
+              // the context the redirect used to throw away.
+              date={day ?? todayStr}
+              maxDate={todayStr}
+              vocabulary={addVocabulary}
+            />
+          ) : null}
         </div>
       ) : null}
 
@@ -465,64 +612,35 @@ export default async function HistoryPage(props: {
           headers instead — "the band fill stays full-bleed while row content ends
           short of the edge". */}
       <div data-testid="history-feed">
-        {renderedDays.map((group) => (
-          <section
-            key={group.date}
-            id={`timeline-day-${group.date}`}
-            data-testid="history-day"
-            className="scroll-mt-24 pb-2 pt-1"
-          >
-            {/* THE DAY HEADER STICKS, and it is the whole "which day am I in"
-                affordance — there is no per-row date cell, which is most of what the
-                one-line row buys. It taps into the day view (phase 2 renders that
-                presentation; the link is already the real one). */}
-            <h2 className="sticky top-0 z-10 -mx-1 mb-1 flex items-baseline gap-2 bg-(--page) px-1 py-1 text-sm font-semibold text-slate-800 dark:text-slate-100">
-              <Link
-                // THE READER'S OWN BOUND RIDES ACROSS. Without `show` a day opened at
-                // `HISTORY_DEFAULT_SHOW`, so a busy day truncated on first open even
-                // though the page it was opened from had already been widened.
-                href={historyHref({
-                  day: group.date,
-                  everyone,
-                  show: show === HISTORY_DEFAULT_SHOW ? undefined : show,
-                })}
-                className="hover:underline"
-                data-testid="history-day-link"
-              >
-                {formatLongDate(group.date, prefs)}
-              </Link>
-              <span className="text-xs font-normal text-slate-500 dark:text-slate-400">
-                {group.events.length} record
-                {group.events.length === 1 ? "" : "s"}
-              </span>
-            </h2>
-            <HistoryRows
-              rows={group.events as HistoryRow[]}
-              actingProfileId={actingProfileId}
-              canWrite={canWrite}
-              doseItems={doseItems}
-              maxDate={todayStr}
-              defaultTime={defaultTime}
-              subjectNames={subjectNames}
-              rowClassName={railGutter}
-            />
-          </section>
-        ))}
+        {(windowed ? windowed.recent : days).map(daySection)}
         {/* READING ORDER: the recent band first, then this year's older months, then
             one card per earlier year. A fold card above the days would put a stack of
             shut doors between the reader and their own recent history, which is the
             defect #2657 exists to prevent — and it would spend the chrome budget on
-            content nobody asked to see. */}
+            content nobody asked to see.
+
+            AN OPEN MONTH'S DAYS RENDER RIGHT HERE, UNDER ITS OWN CARD (#4045 §4), which
+            is the arrangement `/timeline` has always had. Shipped, this page appended
+            every open month's days to the day feed ABOVE the whole fold stack, so a tap
+            revealed content nowhere near the card that revealed it: with the scroll
+            preserved, the reader was left looking at a card that had visibly done
+            nothing but rotate a chevron. Chronological order is unchanged — the fold
+            stack is newest-first and so are each fold's days, so this is a re-nesting
+            and not a re-ordering — and with the fold card holding its place, opening
+            lands the revealed days directly beneath the tap and closing leaves the
+            reader on the card they tapped. */}
         {windowed?.months.map((fold) => (
-          <FoldCard
-            key={fold.key}
-            fold={fold}
-            gutter={railGutter}
-            href={foldHref(fold.key)}
-          />
+          <Fragment key={fold.key}>
+            <FoldCard
+              fold={fold}
+              gutter={railGutter}
+              href={foldHref(fold.key)}
+            />
+            {fold.open ? fold.days.map(daySection) : null}
+          </Fragment>
         ))}
         {windowed?.years.map((year) => (
-          <div key={year.key}>
+          <Fragment key={year.key}>
             <FoldCard
               fold={year}
               gutter={railGutter}
@@ -533,16 +651,18 @@ export default async function HistoryPage(props: {
             />
             {year.open
               ? year.months.map((month) => (
-                  <FoldCard
-                    key={month.key}
-                    fold={month}
-                    gutter={railGutter}
-                    href={foldHref(month.key)}
-                    nested
-                  />
+                  <Fragment key={month.key}>
+                    <FoldCard
+                      fold={month}
+                      gutter={railGutter}
+                      href={foldHref(month.key)}
+                      nested
+                    />
+                    {month.open ? month.days.map(daySection) : null}
+                  </Fragment>
                 ))
               : null}
-          </div>
+          </Fragment>
         ))}
       </div>
 

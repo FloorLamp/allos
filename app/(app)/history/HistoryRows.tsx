@@ -107,6 +107,7 @@ export default function HistoryRows({
   defaultTime,
   subjectNames,
   rowClassName = "",
+  showGlyphs = true,
 }: {
   rows: HistoryRow[];
   actingProfileId: number;
@@ -119,6 +120,16 @@ export default function HistoryRows({
   subjectNames: Record<number, string>;
   /** The jump rail's lane, spent by the ROW rather than by the band around it. */
   rowClassName?: string;
+  /**
+   * Whether the leading kind glyph is drawn at all (#4045 §3), extending #3958's own
+   * rule that "the glyph column collapses entirely in views that render no glyphs".
+   * A glyph differentiates rows; filtered to ONE kind every row wears the same apple,
+   * which carries no information and spends the row's leading column to say nothing.
+   * The caller decides, because the question is about the VIEW and not about the rows
+   * this list happens to hold: a single-kind All view is still All, and its next row
+   * could be any kind.
+   */
+  showGlyphs?: boolean;
 }) {
   const prefs = useFormatPrefs();
   const confirm = useConfirm();
@@ -497,11 +508,13 @@ export default function HistoryRows({
             >
               <LoggedEventRow
                 icon={
-                  <Glyph
-                    aria-hidden
-                    className="h-4 w-4 shrink-0 text-slate-500 dark:text-slate-400"
-                    stroke={1.75}
-                  />
+                  showGlyphs ? (
+                    <Glyph
+                      aria-hidden
+                      className="h-4 w-4 shrink-0 text-slate-500 dark:text-slate-400"
+                      stroke={1.75}
+                    />
+                  ) : undefined
                 }
               >
                 {/* ONE LINE, EVERY VIEWPORT: the cluster truncates unconditionally,

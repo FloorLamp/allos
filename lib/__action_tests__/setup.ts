@@ -230,6 +230,11 @@ vi.mock("@/lib/auth", async () => {
     // are observable here.
     revokeSession: authActual.revokeSession,
     destroyLoginSessions: authActual.destroyLoginSessions,
+    // The wire's answer for a token that did not resolve (#3053). Plain SQL against the
+    // temp DB like the two above, and passed through for the same reason: the revocation
+    // tombstones those two write are only worth anything if a test can ask what the
+    // server would now SAY about that token.
+    sessionDenial: authActual.sessionDenial,
     // WHICH SESSION IS ASKING — what revokeSessionAction hands revokeSession so it
     // can refuse the caller's own. Prod resolves the live cookie to its token_hash;
     // this tier has no cookie, so session-state mints a per-session stand-in SHAPED

@@ -160,6 +160,96 @@ export function accessForProfile(
   return row?.access === "read" ? "read" : "write";
 }
 
+// ── REVOKED, NOT MERELY UNAUTHORIZED (#3053) ─────────────────────────────────
+//
+// A revocation leaves a TOMBSTONE and an expiry does not. That asymmetry IS the
+// distinction — absence cannot carry it, because every path here ends in the same DELETE
+// — and it is the one property of this file a change must not lose. Why the table exists
+// and how long its rows live: lib/migrations/versions/20260829-revoked-session-tombstones.
+const TOMBSTONE_TOKEN_STMT = hoistedStatement(
+  `INSERT OR REPLACE INTO revoked_sessions (token_hash, revoked_at)
+   VALUES (?, datetime('now'))`
+);
+// The two set-shaped revocations cannot say afterwards which rows they took, so they copy
+// the hashes they are ABOUT to delete — but NARROWER than the delete by exactly one
+// clause, and that clause is not optional.
+//
+// The delete is `WHERE login_id = ?` with no expiry filter, so it also takes rows that
+// were ALREADY DEAD. Mirroring it tombstoned them, and a device whose cookie had merely
+// lapsed then wiped its health record at its next /login — the person the ruling protects,
+// the one who came back tomorrow. And it depended on whether `purgeExpiredSessions` had
+// run: swept, the row was gone and nothing was recorded; unswept, the record was
+// destroyed. Same household, same actions, outcome decided by a background sweep.
+//
+// So these select the LIVE set — the liveness `SESSION_LOOKUP_STMT` and
+// `listLoginSessions` already use, because "a session this revocation ended" and "a
+// session a device could still have presented" must be the same set. A dead row is not
+// something anyone revoked.
+const SESSION_IS_LIVE = `expires_at > datetime('now')
+        AND created_at > datetime('now', '${SESSION_ABSOLUTE_MAX_MODIFIER}')`;
+const TOMBSTONE_LOGIN_STMT = hoistedStatement(
+  `INSERT OR REPLACE INTO revoked_sessions (token_hash, revoked_at)
+     SELECT token_hash, datetime('now') FROM sessions
+      WHERE login_id = ? AND ${SESSION_IS_LIVE}`
+);
+const TOMBSTONE_LOGIN_EXCEPT_STMT = hoistedStatement(
+  `INSERT OR REPLACE INTO revoked_sessions (token_hash, revoked_at)
+     SELECT token_hash, datetime('now') FROM sessions
+      WHERE login_id = ? AND token_hash != ? AND ${SESSION_IS_LIVE}`
+);
+const REVOKED_LOOKUP_STMT = hoistedStatement(
+  "SELECT 1 AS found FROM revoked_sessions WHERE token_hash = ?"
+);
+
+/**
+ * WHY THE SERVER SAYS THE WORD, AND WHAT IT COSTS TO SAY IT.
+ *
+ * This is the response shape an unauthenticated caller gets from the app's
+ * cookie-authoritative data routes, and the owner's 2026-08-20 ruling on #3053 deferred
+ * one decision to whoever wrote it: does telling a caller "this session was revoked",
+ * rather than plain "unauthorized", leak anything worth withholding from an attacker
+ * holding the device?
+ *
+ * THE ANSWER IS NO, and the reasoning is four steps, in the order that matters:
+ *
+ *   1. `"revoked"` is reachable ONLY by presenting the exact 32-byte session token whose
+ *      hash we recorded. Anyone who can do that held a live session until the moment it
+ *      was revoked, so they could already read everything the word could protect. The
+ *      distinction tells them nothing they could not have learned one request earlier.
+ *   2. It is NOT an oracle. A caller with no cookie, a forged cookie, a guessed token or
+ *      an expired one gets `"unauthorized"` — indistinguishable from every other invalid
+ *      token — so nobody can learn from this answer whether some token ever existed. The
+ *      tombstone is keyed by the token's SHA-256, so matching one means already holding
+ *      it.
+ *   3. It carries NOTHING ELSE. No username, no login id, no profile, no timestamp, no
+ *      count of other devices. "This one is over" is the entire payload; who ended it and
+ *      when stay on the server, in the audit trail (#1843).
+ *   4. Withholding it buys nothing anyway. The attacker holding the device watches the
+ *      offline record disappear and the app refuse to sign in — the fact is delivered by
+ *      the consequence whether or not the word is. What withholding it DOES cost is the
+ *      health record: silence is precisely the state #3053 records, where "Sign out all
+ *      devices" left the med list sitting on the compromised phone.
+ *
+ * The one thing it genuinely reveals is that the revocation was DELIBERATE rather than a
+ * lapse. That is the point. It is also the thing an honest product owes the person whose
+ * device it is.
+ */
+export type SessionDenial = "revoked" | "unauthorized";
+
+/**
+ * What to tell a caller whose token did not resolve to a session. Resolve the session
+ * first; ask this only when that answered null.
+ */
+export function sessionDenial(token: string | null | undefined): SessionDenial {
+  if (!token) return "unauthorized";
+  return REVOKED_LOOKUP_STMT.get(hashToken(token)) ? "revoked" : "unauthorized";
+}
+
+/** `sessionDenial` for the caller's own cookie. */
+export async function currentSessionDenial(): Promise<SessionDenial> {
+  return sessionDenial((await cookies()).get(SESSION_COOKIE)?.value);
+}
+
 // Delete every expired session, returning how many rows went. Called
 // opportunistically at login AND from the hourly notify tick's sweep block
 // (#1843) — an instance nobody signs into for months used to accumulate dead
@@ -169,6 +259,29 @@ export function accessForProfile(
 // `sessions.created_at` are declared `convention: "bare"` in lib/time-columns.ts,
 // so this compares like against like.
 export function purgeExpiredSessions(): number {
+  // NO TOMBSTONE HERE, and that is the load-bearing line of #3053: a session that simply
+  // lapsed leaves no record, so the next request gets a plain "unauthorized" and the
+  // device keeps its offline copy — #2994's pass-4 ruling, untouched.
+  //
+  // It does RETIRE tombstones, on the same tick and by the same 90-day ceiling. Counted
+  // separately — the return value is sessions, per the #1843 audit line.
+  //
+  // AND RETIRING ONE DOES CHANGE AN ANSWER. It is tempting to argue that a token past the
+  // ceiling can never resolve to a session, so its tombstone cannot matter — the premise
+  // is true and the conclusion does not follow. `sessionDenial` is consulted ONLY AFTER
+  // resolution has already failed; answering the denial WORD is its whole job. So a
+  // retired tombstone turns "revoked" into "unauthorized", every time.
+  //
+  // So this is a TRADE, not a tidy-up. A phone revoked on suspicion of compromise and left
+  // in a drawer for 91 days comes back, is told "unauthorized", and KEEPS its offline
+  // health record — #3053's own exposure, reopened here. Against that: an unbounded table
+  // of hashes for every session this instance has ever deliberately ended. 90 days is
+  // chosen because it is the session ceiling, and therefore the longest window in which
+  // the device could still have believed it had a session at all. SHORTENING IT IS NOT
+  // FREE — every day removed is a day of devices that come back and are not told.
+  db.prepare(
+    "DELETE FROM revoked_sessions WHERE revoked_at <= datetime('now', ?)"
+  ).run(SESSION_ABSOLUTE_MAX_MODIFIER);
   // Drop both sliding-expired rows AND any past the absolute created_at ceiling,
   // so the ceiling can't be defeated by a session that keeps sliding expires_at.
   return db
@@ -211,9 +324,12 @@ export async function destroySession(): Promise<void> {
   const store = await cookies();
   const token = store.get(SESSION_COOKIE)?.value;
   if (token) {
-    db.prepare("DELETE FROM sessions WHERE token_hash = ?").run(
-      hashToken(token)
-    );
+    const hash = hashToken(token);
+    // Tombstoned like every other deliberate end (#3053). This device wipes itself
+    // through components/device-wipe; the tombstone is for the OTHER documents of the
+    // same session — a second tab — which otherwise learn it never.
+    TOMBSTONE_TOKEN_STMT.run(hash);
+    db.prepare("DELETE FROM sessions WHERE token_hash = ?").run(hash);
   }
   store.delete(SESSION_COOKIE);
   // The slide mark (#2058) dates the session cookie, so it dies with it. Leaving
@@ -276,6 +392,10 @@ export function resolveSessionToken(token: string): CurrentSession | null {
     // bounces to /login. The sign-in actions refuse to mint one in the first
     // place; this is the same decision applied to a session that OUTLIVED its
     // grants. Deleting by token hash only ever touches this caller's own session.
+    // AND IT IS A REVOCATION, not an expiry (#3053): the login lost every grant it had,
+    // so somebody took this person's access away and the device must lose its copy too.
+    // The eighth session-ending path — #3053's body lists seven and predates it.
+    TOMBSTONE_TOKEN_STMT.run(tokenHash);
     SESSION_DELETE_STMT.run(tokenHash);
     return null;
   }
@@ -572,11 +692,16 @@ export function destroyLoginSessions(
   loginId: number,
   keepTokenHash?: string
 ): number {
+  // Tombstone BEFORE the delete — after it there is nothing left to name (#3053). The
+  // predicates are the same on both halves so a tombstone cannot describe a session that
+  // survived, nor miss one that did not.
   if (keepTokenHash) {
+    TOMBSTONE_LOGIN_EXCEPT_STMT.run(loginId, keepTokenHash);
     return db
       .prepare("DELETE FROM sessions WHERE login_id = ? AND token_hash != ?")
       .run(loginId, keepTokenHash).changes;
   }
+  TOMBSTONE_LOGIN_STMT.run(loginId);
   return db.prepare("DELETE FROM sessions WHERE login_id = ?").run(loginId)
     .changes;
 }
@@ -671,6 +796,19 @@ export function revokeSession(
     db
       .prepare("DELETE FROM sessions WHERE token_hash = ? AND login_id = ?")
       .run(sessionId, loginId).changes > 0;
+  // Only for a row that actually went (#3053). Tombstoning the caller-supplied id
+  // unconditionally would let a forged POST plant rows for hashes this login never
+  // owned — harmless to read, but unbounded to write, and the "nothing" outcome exists
+  // precisely to say no session was there.
+  //
+  // AND NO LIVENESS CLAUSE HERE, unlike the two set-shaped statements above, which is a
+  // decision rather than an omission. Those end a set nobody enumerated, so a lapsed
+  // device in a drawer is swept in by accident; this one NAMES a device, which is what a
+  // per-device revoke is for. A row that lapsed between the list being rendered and the
+  // button being pressed is still the device the person meant to end, and ending it is
+  // the answer they asked for. (The list itself only ever shows live rows, so reaching a
+  // dead one takes a stale page or a forged id.)
+  if (ended) TOMBSTONE_TOKEN_STMT.run(sessionId);
   return ended ? "revoked" : "nothing";
 }
 

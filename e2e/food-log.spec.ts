@@ -1,7 +1,12 @@
 import { test, expect } from "./fixtures";
 import type { Locator, Page } from "@playwright/test";
 import Database from "better-sqlite3";
-import { awaitHydrated, hydratedClick, settledClick } from "./helpers";
+import {
+  awaitHydrated,
+  hydratedClick,
+  settledClick,
+  settledSelect,
+} from "./helpers";
 import { loginAs } from "./nav";
 import {
   E2E_LOGIN_FOODPIN,
@@ -715,6 +720,32 @@ function eatingTimeOf(eventId: string): {
   }
 }
 
+// AN HOUR THAT IS OFFERED AND FILES DETERMINISTICALLY, at every UTC start hour.
+// e2e/pinned-timezone.ts puts the frozen clock at 13:mm LOCAL, so the control offers
+// today's hours 00:00…13:00 and the active tab is Midday under the default
+// 11:00/15:00 boundaries. 08:00 is therefore always on offer and always Morning —
+// the two facts every eating-time test below leans on.
+const EARLIER_HOUR = "08:00";
+const EARLIER_HOUR_SLOT = "Morning";
+
+// State an eating time by the wall clock it READS, through the settled path.
+//
+// Two reasons it is a helper and not a `selectOption`. The control's option VALUES
+// are ISO instants — the day's hours resolved in the profile's rotating zone — which
+// a spec has no business spelling; the LABEL is the absolute local time, which is the
+// thing the user picks and the thing #2236's invariant 4 is about. And a bare
+// `selectOption` on a CONTROLLED select can land before hydration, set the DOM value,
+// fire no `onChange`, and be reverted — the swallow `settledSelect` exists for. It is
+// not hypothetical here: measured 2 runs in 3 on this file the first time the box was
+// loaded enough to widen the window.
+async function stateEatingTime(page: Page, hhmm: string): Promise<void> {
+  const field = page.getByTestId("food-when-time");
+  const value = await field
+    .getByRole("option", { name: hhmm, exact: true })
+    .getAttribute("value");
+  await settledSelect(page, field, value ?? "");
+}
+
 async function removeLoggedServing(page: Page, eventId: string): Promise<void> {
   const row = page.getByTestId(`food-logged-${eventId}`);
   await hydratedClick(
@@ -731,11 +762,9 @@ test("a serving logged with no stated time records no eating time (#2053)", asyn
   await page.goto("/nutrition");
   await expect(page.getByTestId("food-log-bar")).toBeVisible();
 
-  // The affordance is offered, and untouched it asserts nothing.
-  await expect(page.getByTestId("food-eating-now")).toHaveAttribute(
-    "aria-pressed",
-    "false"
-  );
+  // The affordance is offered, and untouched it asserts nothing. The shared control
+  // NEVER defaults to now (#2236 invariant 3): the field is empty on arrival.
+  await expect(page.getByTestId("food-when-time")).toHaveValue("");
   await expect(page.getByTestId("food-eating-time-note")).toContainText(
     "recorded with no eating time"
   );
@@ -756,19 +785,21 @@ test("a serving logged with no stated time records no eating time (#2053)", asyn
   await removeLoggedServing(page, eventId);
 });
 
-test("the Now chip stamps servings as eaten now, stated (#2053)", async ({
+test("the control's Now fills an absolute local time, and it is what lands (#2053/#3273)", async ({
   page,
 }) => {
   await page.goto("/nutrition");
   await expect(page.getByTestId("food-log-bar")).toBeVisible();
 
-  await hydratedClick(page, page.getByTestId("food-eating-now"));
-  await expect(page.getByTestId("food-eating-now")).toHaveAttribute(
-    "aria-pressed",
-    "true"
-  );
+  // Not a "now" MODE — the button FILLS the field with the absolute local time it
+  // means, so what will be written is on screen and adjustable before the tap.
+  await hydratedClick(page, page.getByTestId("food-when-now"));
+  const field = page.getByTestId("food-when-time");
+  await expect(field).not.toHaveValue("");
+  const filled = (await field.locator("option:checked").textContent())!.trim();
+  expect(filled).toMatch(/^([01]\d|2[0-3]):[0-5]\d$/);
   await expect(page.getByTestId("food-eating-time-note")).toContainText(
-    "recorded as eaten now"
+    `recorded as eaten at ${filled}`
   );
 
   await revealFoodGroup(page, "nuts_seeds");
@@ -786,44 +817,31 @@ test("the Now chip stamps servings as eaten now, stated (#2053)", async ({
     Math.abs(new Date(stamped.occurred_at!).getTime() - frozenNow().getTime())
   ).toBeLessThan(10 * 60_000);
 
-  // Pressing it again withdraws the statement — the chips are toggles, so there is no
-  // separate "clear" and no way to be stuck in a mode.
-  await hydratedClick(page, page.getByTestId("food-eating-now"));
-  await expect(page.getByTestId("food-eating-now")).toHaveAttribute(
-    "aria-pressed",
-    "false"
+  // The statement is withdrawable — the empty option is a real answer, so there is no
+  // way to be stuck having said something.
+  await settledSelect(page, page.getByTestId("food-when-time"), "");
+  await expect(page.getByTestId("food-eating-time-note")).toContainText(
+    "recorded with no eating time"
   );
 
   await removeLoggedServing(page, eventId);
 });
 
-test("Earlier… states an absolute hour, and it is what lands (#2053)", async ({
+test("an earlier hour states an absolute time, and it is what lands (#2053)", async ({
   page,
 }) => {
   await page.goto("/nutrition");
   await expect(page.getByTestId("food-log-bar")).toBeVisible();
 
-  // The hours stay one tap deep: "now" is the common answer, and a dozen hours
-  // permanently on screen would bury it.
-  const earlier = page.getByTestId("food-eating-earlier");
-  await expect(earlier).toHaveAttribute("aria-expanded", "false");
-  await hydratedClick(page, earlier);
-  await expect(earlier).toHaveAttribute("aria-expanded", "true");
+  // The day half is FIXED — the statement is a today-only affordance — so the control
+  // renders it as text rather than as a picker that could disagree with the tab.
+  await expect(page.getByTestId("food-when-date")).toHaveText("Today");
 
-  // Every offered hour is one the write will accept — the server filtered them to hours
-  // that land on the day being logged to, so nothing on screen can be refused.
-  const hourChips = page.locator('[data-testid^="food-eating-at-"]');
-  const newestHour = hourChips.first(); // first-ok: the newest offered hour is the one this test states, and the chips are this page's own eating-time group
-  await expect(newestHour).toBeVisible();
-  // The chip announces the FILING, not just the hour (#2269): `19:00 · Evening` —
-  // the #2268 correction-sheet enrichment worn at log time.
-  const chipText = (await newestHour.textContent())!.trim();
-  expect(chipText).toMatch(
-    /^([01]\d|2[0-3]):[0-5]\d · (Morning|Midday|Evening)$/
-  );
-  const hhmm = chipText.split("·")[0].trim();
-  await hydratedClick(page, newestHour);
-  await expect(earlier).toHaveText(chipText);
+  // Every offered hour is one the write will accept: the control truncates today's
+  // hours at the current local hour, so nothing on screen can be refused. The e2e
+  // clock is pinned to 13:mm local, so 08:00 is always among them.
+  const hhmm = EARLIER_HOUR;
+  await stateEatingTime(page, hhmm);
   await expect(page.getByTestId("food-eating-time-note")).toContainText(
     `recorded as eaten at ${hhmm}`
   );
@@ -846,7 +864,7 @@ test("Earlier… states an absolute hour, and it is what lands (#2053)", async (
   // AND THE ROW STATES IT (#2206). The web half of "a surface must not go on showing the
   // time a statement replaced": the logged list names this serving by the hour that was
   // chosen, not by the moment the "+" was pressed. Both surfaces are absolute, so the
-  // chip's own label is what the row ends up reading.
+  // control's own option label is what the row ends up reading.
   await expect(page.getByTestId(`food-logged-${eventId}`)).toContainText(hhmm);
 
   await removeLoggedServing(page, eventId);
@@ -858,16 +876,14 @@ test("a stated time wins over the tab: the serving lands, visibly, in its derive
   await page.goto("/nutrition");
   await expect(page.getByTestId("food-log-bar")).toBeVisible();
 
-  // State the newest offered hour and read the filing its chip announces.
-  await hydratedClick(page, page.getByTestId("food-eating-earlier"));
-  const newestHour = page.locator('[data-testid^="food-eating-at-"]').first(); // first-ok: the newest offered hour is the one this test states, and the chips are this page's own eating-time group
-  await expect(newestHour).toBeVisible();
-  const filingSlot = (await newestHour.getAttribute("data-slot"))!;
-  expect(["Morning", "Midday", "Evening"]).toContain(filingSlot);
-  await hydratedClick(page, newestHour);
+  // State an hour whose window is DETERMINED rather than read off the control: the
+  // e2e clock is pinned to 13:mm local (Midday under the default 11:00/15:00
+  // boundaries), so 08:00 is offered and files under Morning at every UTC start hour.
+  const filingSlot = EARLIER_HOUR_SLOT;
+  await stateEatingTime(page, EARLIER_HOUR);
 
   // Stand in a DIFFERENT tab than the one the hour files under. The tab is
-  // navigation; the chip stated the consequence.
+  // navigation; the statement stated the consequence.
   const otherTab = ["Morning", "Midday", "Evening"].find(
     (slot) => slot !== filingSlot
   )!;
@@ -912,7 +928,7 @@ test("a stated time wins over the tab: the serving lands, visibly, in its derive
   await removeLoggedServing(page, eventId);
 });
 
-test("the eating-time chips are a today-only affordance (#2053)", async ({
+test("the eating-time statement is a today-only affordance (#2053)", async ({
   page,
 }) => {
   await page.goto("/nutrition");
