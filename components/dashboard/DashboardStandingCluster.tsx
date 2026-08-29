@@ -30,6 +30,15 @@ export interface DashboardStandingPresentation {
   series?: StandingSparklineSeries;
   /** Touch- and keyboard-accessible explanatory detail. */
   disclosure?: string;
+  /**
+   * THE MOMENT THIS FACT CAME FROM (#3365), printed ONCE as the header of the tail
+   * block its same-`groupKey` siblings fold into — "Weekly recap · Aug 23–29" over
+   * six lines instead of six identical card headers. It is a label on the fold, never
+   * a placement: the block exists only because its atoms placed, and an atom promoted
+   * to another lane simply leaves the block with one row fewer. Every member of one
+   * group declares the same moment; the canvas reads the first that has one.
+   */
+  moment?: { title: string; href?: AppRoute };
 }
 
 // The door's label: the DESTINATION's own name, taken from the one list that already
@@ -39,6 +48,118 @@ export interface DashboardStandingPresentation {
 // answer when the app has no name for where the row goes.
 function doorLabel(href: AppRoute): string | null {
   return trackedPageFor(href)?.label ?? null;
+}
+
+// THE ROW. One renderer for every label/value fact the dashboard reports, in Standing
+// and in the Show-everything tail alike (#3365) — the tail is an index of the same
+// grammar, not a second spelling of it. The caller supplies only what its lane owns:
+// Standing's door rail and stacking classes, the tail's nothing.
+export function DashboardFactRow({
+  candidate,
+  presentation,
+  lane,
+  surfaceClass = "",
+  linkClass = "",
+  className,
+}: {
+  candidate: DashboardPlacement["candidate"];
+  presentation: DashboardStandingPresentation;
+  lane: "standing" | "everything";
+  surfaceClass?: string;
+  linkClass?: string;
+  className?: string;
+}) {
+  const engagement =
+    candidate.relevance.kind === "profile-data"
+      ? candidate.relevance.engagement
+      : undefined;
+  const content = (
+    <>
+      {presentation.label && (
+        // The row's IDENTITY — what the reading is, as opposed to what it
+        // says. Named so a layout guard can assert a long value never costs a
+        // Standing reading its name (#2614), which is a claim about this span
+        // rather than about any one family.
+        <span
+          data-testid="standing-label"
+          className="text-xs text-slate-500 dark:text-slate-400"
+        >
+          {presentation.label}
+        </span>
+      )}
+      {presentation.value != null && (
+        <span
+          data-testid="standing-value"
+          className="font-semibold tabular-nums text-slate-900 dark:text-slate-100"
+        >
+          {presentation.value}
+        </span>
+      )}
+      {presentation.detail != null && (
+        <span className="text-xs text-slate-500 dark:text-slate-400">
+          {presentation.detail}
+        </span>
+      )}
+      {presentation.actionLabel && (
+        <span className="text-xs font-medium text-brand-700 dark:text-brand-400">
+          {presentation.actionLabel}
+        </span>
+      )}
+    </>
+  );
+  const rowClass =
+    "flex min-w-0 flex-wrap items-baseline gap-x-2 gap-y-0.5 text-sm";
+  // The door: where this row goes, revealed on hover and on keyboard focus alike.
+  // No door on a row that is not a link, and no door where the app has no name for
+  // the destination — an untracked href is the honest silence.
+  const door = presentation.href ? doorLabel(presentation.href) : null;
+  const linked = presentation.href ? (
+    door ? (
+      <StandingDestinationLink
+        href={presentation.href}
+        className={`${surfaceClass}standing-row ${rowClass} ${linkClass} hover:text-brand-700 dark:hover:text-brand-400`}
+        destinationLabel={door}
+      >
+        {content}
+      </StandingDestinationLink>
+    ) : (
+      <Link
+        href={presentation.href}
+        className={`${surfaceClass}standing-row ${rowClass} hover:text-brand-700 dark:hover:text-brand-400`}
+      >
+        {content}
+      </Link>
+    )
+  ) : null;
+  const rowDisclosure = presentation.disclosure;
+  return (
+    <li
+      className={className}
+      data-testid="dashboard-candidate"
+      data-candidate-id={candidate.candidateId}
+      data-fact-key={candidate.factKey}
+      data-lane={lane}
+      data-kind={candidate.kind}
+      data-engagement={engagement}
+      data-presence={presentation.presence}
+    >
+      {linked ? (
+        rowDisclosure ? (
+          <div className="flex min-w-0 items-center">
+            {linked}
+            <InfoTooltipIcon label={rowDisclosure} />
+          </div>
+        ) : (
+          linked
+        )
+      ) : (
+        <div className={rowClass}>
+          {content}
+          {rowDisclosure ? <InfoTooltipIcon label={rowDisclosure} /> : null}
+        </div>
+      )}
+    </li>
+  );
 }
 
 const SECTIONS: readonly {
@@ -120,109 +241,27 @@ function StandingFamilyRow({
             const { candidate } = placement;
             const presentation = presentations.get(candidate.candidateId);
             if (!presentation) return null;
-            const engagement =
-              candidate.relevance.kind === "profile-data"
-                ? candidate.relevance.engagement
-                : undefined;
-            const content = (
-              <>
-                {presentation.label && (
-                  // The row's IDENTITY — what the reading is, as
-                  // opposed to what it says. Named so a layout guard
-                  // can assert a long value never costs a Standing
-                  // reading its name (#2614), which is a claim about
-                  // this span rather than about any one family.
-                  <span
-                    data-testid="standing-label"
-                    className="text-xs text-slate-500 dark:text-slate-400"
-                  >
-                    {presentation.label}
-                  </span>
-                )}
-                {presentation.value != null && (
-                  <span className="font-semibold tabular-nums text-slate-900 dark:text-slate-100">
-                    {presentation.value}
-                  </span>
-                )}
-                {presentation.detail != null && (
-                  <span className="text-xs text-slate-500 dark:text-slate-400">
-                    {presentation.detail}
-                  </span>
-                )}
-                {presentation.actionLabel && (
-                  <span className="text-xs font-medium text-brand-700 dark:text-brand-400">
-                    {presentation.actionLabel}
-                  </span>
-                )}
-              </>
-            );
-            const className =
-              "flex min-w-0 flex-wrap items-baseline gap-x-2 gap-y-0.5 text-sm";
-            // The door: where this row goes, revealed on hover and on
-            // keyboard focus alike. It is PINNED to the right edge of
-            // the family's facts cell (#3459 item 2) and only fades and
-            // slides without moving the row or hiding its age.
-            // `pointer-events-none` because every member's door box
-            // occupies the SAME rail: a door that could take the
-            // pointer would let the rail reveal a neighbour's door
-            // instead of its own. No door on a row that is not a link.
-            const door = presentation.href
-              ? doorLabel(presentation.href)
-              : null;
-            const rowDisclosure = presentation.disclosure;
             const primary = candidate.candidateId === surfaceId;
-            const surface =
-              presentation.href && (stacked || primary)
-                ? `standing-stretch ${primary ? "standing-primary " : ""}`
-                : "";
-            const linked = presentation.href ? (
-              door ? (
-                <StandingDestinationLink
-                  href={presentation.href}
-                  className={`${surface}standing-row ${className} sm:pr-32 hover:text-brand-700 dark:hover:text-brand-400`}
-                  destinationLabel={door}
-                >
-                  {content}
-                </StandingDestinationLink>
-              ) : (
-                <Link
-                  href={presentation.href}
-                  className={`${surface}standing-row ${className} hover:text-brand-700 dark:hover:text-brand-400`}
-                >
-                  {content}
-                </Link>
-              )
-            ) : null;
             return (
-              <li
+              <DashboardFactRow
                 key={candidate.candidateId}
-                className={stacked ? "relative" : primary ? undefined : "z-10"}
-                data-testid="dashboard-candidate"
-                data-candidate-id={candidate.candidateId}
-                data-fact-key={candidate.factKey}
-                data-lane="standing"
-                data-kind={candidate.kind}
-                data-engagement={engagement}
-                data-presence={presentation.presence}
-              >
-                {linked ? (
-                  rowDisclosure ? (
-                    <div className="flex min-w-0 items-center">
-                      {linked}
-                      <InfoTooltipIcon label={rowDisclosure} />
-                    </div>
-                  ) : (
-                    linked
-                  )
-                ) : (
-                  <div className={className}>
-                    {content}
-                    {rowDisclosure ? (
-                      <InfoTooltipIcon label={rowDisclosure} />
-                    ) : null}
-                  </div>
-                )}
-              </li>
+                candidate={candidate}
+                presentation={presentation}
+                lane="standing"
+                // The door is PINNED to the right edge of the family's facts cell
+                // (#3459 item 2): `standing-stretch` is what gives every member's door
+                // the same rail, and `pointer-events-none` on the door itself is why a
+                // neighbour's rail never takes the pointer.
+                surfaceClass={
+                  presentation.href && (stacked || primary)
+                    ? `standing-stretch ${primary ? "standing-primary " : ""}`
+                    : ""
+                }
+                linkClass="sm:pr-32"
+                className={
+                  stacked ? "relative" : primary ? undefined : "z-10"
+                }
+              />
             );
           })}
         </ul>

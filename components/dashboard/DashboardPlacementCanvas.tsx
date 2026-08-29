@@ -1,3 +1,4 @@
+import Link from "next/link";
 import { Fragment, type ReactNode } from "react";
 import { PageHeader } from "@/components/ui";
 import {
@@ -11,6 +12,7 @@ import AppBadge from "@/components/AppBadge";
 import RememberedDetails from "@/components/RememberedDetails";
 import DashboardAhead, { type DashboardAheadBucket } from "./DashboardAhead";
 import DashboardStandingCluster, {
+  DashboardFactRow,
   type DashboardStandingPresentation,
 } from "./DashboardStandingCluster";
 
@@ -18,6 +20,11 @@ export interface DashboardPlacementCanvasProps {
   dateLabel: string;
   placements: readonly DashboardPlacement[];
   candidateNodes: ReadonlyMap<string, ReactNode>;
+  /**
+   * The row presentation for every fact that reports: Standing's members and, since
+   * #3365, the Show-everything tail's Read / Understand / Setup entries, which render
+   * through the SAME row renderer rather than a card of their own.
+   */
   standingPresentations: ReadonlyMap<string, DashboardStandingPresentation>;
   aheadPresentations: ReadonlyMap<string, DashboardAheadPresentation>;
   attentionBadgeCount: number;
@@ -29,6 +36,15 @@ export interface DashboardAheadPresentation {
   detail?: string;
   href?: AppRoute;
 }
+
+// WHICH TAIL GROUPS REPORT (#3365). Read, Understand and Setup are indexes of facts,
+// so they render as rows; Act is an offer to write and Active states is a situation
+// that is running, and both keep a card. Cards act, lines report (#3077).
+const ROW_GROUPS: ReadonlySet<DashboardEverythingGroup> = new Set([
+  "read",
+  "understand",
+  "setup",
+]);
 
 const EVERYTHING_LABELS: Record<DashboardEverythingGroup, string> = {
   act: "Act",
@@ -57,6 +73,86 @@ function groupsInPlacementOrder<Item, Key>(
   return groups;
 }
 
+type EverythingPlacement = Extract<DashboardPlacement, { lane: "everything" }>;
+
+interface MomentBlockModel {
+  key: string;
+  groupKey: string | null;
+  members: readonly EverythingPlacement[];
+}
+
+// THE FOLD (#3365). Same-origin atoms — the ones the candidate model already keys
+// together with `groupKey`, which is where "atoms group by moment, not domain" is
+// already written down — print ONE header and one door over their facts instead of
+// one identical card each. Six "Weekly recap" cards carrying one line apiece become
+// six lines under "Weekly recap · Aug 23–29".
+//
+// It is a FOLD AND NEVER AN OWNER OF PLACEMENT: the members are whatever the ranker
+// put in this group, in the ranker's order, and the block's key is the group's own.
+// A sibling promoted to Now simply leaves one row fewer behind; nothing here can
+// admit, drop, reorder or cap anything. An ungrouped atom is a block of one.
+function momentBlocks(
+  members: readonly EverythingPlacement[]
+): MomentBlockModel[] {
+  // An ungrouped atom keys on its own PLACEMENT OBJECT, so it can never collide with
+  // a real groupKey however either is spelled.
+  return groupsInPlacementOrder(
+    members,
+    (placement) => placement.candidate.groupKey ?? placement
+  ).map(({ members: block }) => ({
+    key: block[0].candidate.candidateId,
+    groupKey: block[0].candidate.groupKey,
+    members: block,
+  }));
+}
+
+function MomentBlock({
+  block,
+  presentations,
+}: {
+  block: MomentBlockModel;
+  presentations: ReadonlyMap<string, DashboardStandingPresentation>;
+}) {
+  const moment = block.members
+    .map((placement) => presentations.get(placement.candidate.candidateId)?.moment)
+    .find((entry) => entry != null);
+  const door = moment?.href;
+  return (
+    <div
+      className="border-t border-(--divider) px-4 py-3 first:border-t-0"
+      data-moment-key={block.groupKey ?? undefined}
+    >
+      {moment && (
+        <div className="mb-1.5 flex items-baseline justify-between gap-3">
+          <h4 className="text-xs font-semibold tracking-wide text-slate-500 uppercase dark:text-slate-400">
+            {moment.title}
+          </h4>
+          {door && (
+            <Link
+              href={door}
+              className="shrink-0 text-xs font-medium text-brand-700 hover:underline dark:text-brand-400"
+            >
+              View
+            </Link>
+          )}
+        </div>
+      )}
+      <ul className="flex min-w-0 flex-col gap-1.5">
+        {block.members.map((placement) => (
+          <DashboardFactRow
+            key={placement.candidate.candidateId}
+            candidate={placement.candidate}
+            presentation={
+              presentations.get(placement.candidate.candidateId)!
+            }
+            lane="everything"
+          />
+        ))}
+      </ul>
+    </div>
+  );
+}
+
 export default function DashboardPlacementCanvas({
   dateLabel,
   placements,
@@ -66,10 +162,18 @@ export default function DashboardPlacementCanvas({
   attentionBadgeCount,
   illnessGroupNode,
 }: DashboardPlacementCanvasProps) {
+  // A tail row is rendered from its presentation and a card from its node, so each
+  // lane names the one it cannot render without. Both are hard failures rather than a
+  // skipped entry: the exact-once completeness the tail exists for is a claim about
+  // what is ON SCREEN, and a candidate quietly dropped for want of a presentation
+  // would keep the manifest honest while breaking the guarantee it stands for.
+  const rendersAsRow = (placement: DashboardPlacement) =>
+    placement.lane === "everything" && ROW_GROUPS.has(placement.everythingGroup);
   const missingNode = placements.find(
     (placement) =>
       placement.lane !== "standing" &&
       placement.lane !== "ahead" &&
+      !rendersAsRow(placement) &&
       !(
         placement.lane === "now" &&
         placement.nowLayer === "illness" &&
@@ -80,6 +184,16 @@ export default function DashboardPlacementCanvas({
   if (missingNode) {
     throw new Error(
       `Missing dashboard candidate node for ${missingNode.candidate.candidateId} in ${missingNode.lane}`
+    );
+  }
+  const missingRow = placements.find(
+    (placement) =>
+      rendersAsRow(placement) &&
+      standingPresentations.get(placement.candidate.candidateId) == null
+  );
+  if (missingRow) {
+    throw new Error(
+      `Missing dashboard row presentation for ${missingRow.candidate.candidateId} in ${(missingRow as Extract<DashboardPlacement, { lane: "everything" }>).everythingGroup}`
     );
   }
   const missingAhead = placements.find(
@@ -249,13 +363,31 @@ export default function DashboardPlacementCanvas({
                   <h3 className="mb-2 text-xs font-semibold tracking-wide text-slate-500 uppercase dark:text-slate-400">
                     {EVERYTHING_LABELS[group]}
                   </h3>
-                  <div className="grid grid-cols-1 gap-3">
-                    {members.map((placement) => (
-                      <Fragment key={placement.candidate.candidateId}>
-                        {nodeFor(placement)}
-                      </Fragment>
-                    ))}
-                  </div>
+                  {ROW_GROUPS.has(group) ? (
+                    <div
+                      className="band overflow-hidden rounded-xl border border-(--border) bg-surface"
+                      data-testid={`dashboard-everything-${group}`}
+                    >
+                      {momentBlocks(members).map((block) => (
+                        <MomentBlock
+                          key={block.key}
+                          block={block}
+                          presentations={standingPresentations}
+                        />
+                      ))}
+                    </div>
+                  ) : (
+                    <div
+                      className="grid grid-cols-1 gap-3"
+                      data-testid={`dashboard-everything-${group}`}
+                    >
+                      {members.map((placement) => (
+                        <Fragment key={placement.candidate.candidateId}>
+                          {nodeFor(placement)}
+                        </Fragment>
+                      ))}
+                    </div>
+                  )}
                 </section>
               );
             })}
