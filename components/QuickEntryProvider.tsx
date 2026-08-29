@@ -352,7 +352,9 @@ function QuickEntryBody({
       // single "saved" moment — several movements a day is ordinary and a mis-tap is
       // corrected by tapping again. The tap revalidates behind the sheet, so "stay
       // where you were" still holds.
-      return <QuickStoolForm todayCount={data.todayCount} />;
+      return (
+        <QuickStoolForm todayCount={data.todayCount} today={data.today} />
+      );
     case "substance":
       // No `onSaved`: like the food bar and the practice list, substance logging has
       // no single "saved" moment — several uses in an evening is ordinary. The tap

@@ -101,6 +101,7 @@ export default function QuickPracticeList({
               today={today}
               defaultDurationMin={practice.previousDurationMin}
               inlineDuration
+              inlineWhen
             />
           </div>
         </li>

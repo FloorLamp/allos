@@ -252,6 +252,9 @@ export type QuickEntryData =
       // running count — the seven types are a committed vocabulary, not server state.
       form: "stool";
       todayCount: number;
+      // The acting profile's today — the day a tap files under, and the day the
+      // sheet's "Happened earlier?" statement is anchored on (#3273).
+      today: string;
     }
   | {
       // The profile's OWN substances (#3327), one tap each. Every field is resolved
@@ -360,6 +363,7 @@ export async function loadQuickEntry(
     return {
       form: "stool",
       todayCount: getBristolReadings(profile.id, date, date).length,
+      today: date,
     };
   }
 

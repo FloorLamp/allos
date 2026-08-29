@@ -3,8 +3,11 @@
 import { useEffect, useRef, useState } from "react";
 import BristolStoolIcon from "@/components/BristolStoolIcon";
 import { useToast } from "@/components/Toast";
+import { useTimezone } from "@/components/TimezoneProvider";
 import { useOptimisticLedger } from "@/components/useOptimisticLedger";
+import WhenControl, { type WhenValue } from "@/components/WhenControl";
 import { BRISTOL_STOOL_TYPES } from "@/lib/bristol-stool";
+import { statedHhmm } from "@/lib/stated-time";
 import { logStoolForm } from "@/app/(app)/stool-actions";
 import RollingNumber from "@/components/RollingNumber";
 import { usePrefersReducedMotion } from "@/components/usePrefersReducedMotion";
@@ -37,11 +40,17 @@ import { microMotionPlan } from "@/lib/micro-motion";
 // findings doctrine).
 export default function QuickStoolForm({
   todayCount,
+  today,
 }: {
   // How many Bristol readings this profile already has for today, from the server.
   todayCount: number;
+  // The acting profile's today (YYYY-MM-DD) — the day the count counts and the day
+  // the action files a tap under, so the "happened earlier" statement is anchored on
+  // the SERVER's day rather than on a browser that may have crossed midnight.
+  today: string;
 }) {
   const toast = useToast();
+  const tz = useTimezone();
   const ledger = useOptimisticLedger<number>("stool-form");
   const [count, setCount] = useState(todayCount);
   const reducedMotion = usePrefersReducedMotion();
@@ -49,6 +58,12 @@ export default function QuickStoolForm({
   const [settlingType, setSettlingType] = useState<number | null>(null);
   const [settleRuns, setSettleRuns] = useState<Record<number, number>>({});
   const settleTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
+  // "Happened earlier?" (#3273): the collapsed statement of WHEN, the one the sheet's
+  // instant-event forms share. Closed and empty by default, so the fast path is
+  // untouched — no statement means no `at` field, and the write core reads the clock
+  // seam exactly as it did before this control existed.
+  const [whenOpen, setWhenOpen] = useState(false);
+  const [when, setWhen] = useState<WhenValue>({ date: today, statedAt: null });
   useEffect(
     () => () => {
       if (settleTimer.current) clearTimeout(settleTimer.current);
@@ -74,6 +89,7 @@ export default function QuickStoolForm({
   }
 
   async function tap(type: number) {
+    const stated = statedHhmm(when.statedAt, tz) || null;
     await ledger.tap({
       key: String(type),
       from: count,
@@ -82,6 +98,10 @@ export default function QuickStoolForm({
       write: () => {
         const fd = new FormData();
         fd.set("type", String(type));
+        // ONLY when a time was actually stated. The field's ABSENCE is what tells
+        // the action to leave the instant to the clock seam, so an untouched sheet
+        // posts precisely the body it posted before (#3273's byte-identity rule).
+        if (stated) fd.set("at", stated);
         return logStoolForm(fd);
       },
       settle: (res) => {
@@ -90,7 +110,14 @@ export default function QuickStoolForm({
           return { kind: "rollback" };
         }
         settle(type);
-        toast(`Logged type ${res.type}`);
+        toast(stated ? `Logged type ${res.type} at ${stated}` : `Logged type ${res.type}`);
+        // A STATEMENT IS SPENT BY THE TAP IT ANSWERS. The key is the instant, so a
+        // second tap under a surviving statement would restate the same minute — and
+        // restating a minute CORRECTS that reading rather than adding one (the write
+        // core's own rule). The sheet stays open for a genuine second movement, and a
+        // second movement is a different time; leaving the field armed would silently
+        // overwrite the row the first tap just wrote.
+        setWhen({ date: today, statedAt: null });
         return { kind: "adopt", value: res.todayCount };
       },
     });
@@ -134,6 +161,36 @@ export default function QuickStoolForm({
             </span>
           </button>
         ))}
+      </div>
+      {/* The collapsed WHEN (#3273). A tap still writes the tap instant — the one-tap
+          ledger is the point — and this is the escape hatch for the log that arrives
+          late, which for a bowel movement is the ordinary case (#2785's grain
+          argument). Absolute local times only, via the shared control: no "-2h" chip
+          that means something different every minute the sheet sits open. */}
+      <div className="mt-3">
+        <button
+          type="button"
+          data-testid="stool-when-toggle"
+          aria-expanded={whenOpen}
+          onClick={() => setWhenOpen((open) => !open)}
+          className="btn-ghost btn-sm"
+        >
+          Happened earlier?
+        </button>
+        {whenOpen ? (
+          <div className="mt-2">
+            <WhenControl
+              mode="state"
+              grain="minute"
+              value={when}
+              onChange={setWhen}
+              minDate={today}
+              maxDate={today}
+              timeLabel="Time it happened"
+              testId="stool-when"
+            />
+          </div>
+        ) : null}
       </div>
       <p
         data-testid="quick-entry-stool-count"
