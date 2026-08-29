@@ -294,13 +294,24 @@ describe("the regex-vs-division heuristic, and what it gets wrong", () => {
 
   /**
    * A full TypeScript PARSE of every tracked source file, which is the point — the
-   * oracle is only an oracle because it is the real thing. Measured on this box:
-   * 12s of wall clock for 4,954 files, against vitest's 15s default. The ceiling is
-   * bounding PARSE TIME UNDER CONTENTION (up to five agents share four cores here),
-   * not waiting for anything to appear, so it is generous safely: this is a presence
-   * assertion about a list, and a longer wait cannot invent a disagreement.
+   * oracle is only an oracle because it is the real thing. The ceiling is bounding
+   * PARSE TIME UNDER CONTENTION, not waiting for anything to appear, so it is
+   * generous safely: this is a presence assertion about a list, and a longer wait
+   * cannot invent a disagreement.
+   *
+   * RE-DERIVED FROM CI, WHICH IS WHERE IT IS ENFORCED (#3986). 120 000 ms was set
+   * against "12s of wall clock for 4,954 files" measured on the dispatch box. The
+   * number CI reads is nothing like it: 118 700 ms on the green run at 43bdc712 and
+   * 118 279 ms on the red one — 98.9% of the old ceiling, on EVERY run, silently.
+   * (Solo on the dispatch box today, at load 7: 18 142 ms. CI is ~6.5x that for a
+   * CPU-bound whole-tree scan.) A ceiling a test uses 98.9% of is not a ceiling;
+   * this one is 4x the CI reading, the margin vitest.timeouts.ts derives for the
+   * 3-4x per-test dispersion measured there.
+   *
+   * The 119 s is itself the thing worth fixing — it is half of `test-unit`'s whole
+   * 231 s median — but that is a different change from making the ceiling honest.
    */
-  const ORACLE_SWEEP_MS = 120_000;
+  const ORACLE_SWEEP_MS = 480_000;
 
   it(
     "disagrees with a real TypeScript parse on exactly the files named here",

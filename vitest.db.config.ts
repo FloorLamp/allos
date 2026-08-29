@@ -4,6 +4,10 @@ import { specsNeedingIsolation } from "./vitest.isolation";
 // Both ceilings, with their derivation and their unit, live in ONE place.
 import { testTimeout, hookTimeout } from "./vitest.timeouts";
 
+// Loaded by EVERY project in both tiers: it turns a timeout into a sentence that
+// says whether the worker was waiting or running (#3986). See the module header.
+const TIMEOUT_REPORT = "./vitest.timeout-report.ts";
+
 // DB integration tests (a SEPARATE tier from the pure unit suite in
 // lib/__tests__). These open real better-sqlite3 handles to exercise code that
 // needs a live schema: the migration/upgrade path in lib/db.ts (fresh-boot vs.
@@ -56,7 +60,11 @@ export default defineConfig({
           pool: "threads",
           isolate: false,
           globalSetup: ["lib/__db_tests__/global-setup.ts"],
-          setupFiles: ["lib/__db_tests__/setup-shared.ts", ACTION_SETUP],
+          setupFiles: [
+            TIMEOUT_REPORT,
+            "lib/__db_tests__/setup-shared.ts",
+            ACTION_SETUP,
+          ],
         },
       },
       {
@@ -66,7 +74,11 @@ export default defineConfig({
           testTimeout,
           hookTimeout,
           include: ISOLATED,
-          setupFiles: ["lib/__db_tests__/setup.ts", ACTION_SETUP],
+          setupFiles: [
+            TIMEOUT_REPORT,
+            "lib/__db_tests__/setup.ts",
+            ACTION_SETUP,
+          ],
         },
       },
     ],
