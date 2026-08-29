@@ -16,20 +16,32 @@
 //
 // The fixtures are deliberately built in an order that is NOT the expected
 // survival order wherever the ordering is a real sort, so the identity half can
-// fail on its own. Proven able to fail — each verified red against a mutant of the
+// fail on its own. Proven able to fail, each measured against a mutant of the
 // production line it guards:
-//   • `.slice(-1)` on buildCycleBleedingFindings keeps the OLDEST bleed
-//   • reversing prolongedBleedingObservations' sort keeps the OLDEST bleed
-//   • reversing detectWeightAnomalies' sort keeps the three OLDEST suspects
+//   • every `.slice(0, N)` here rewritten `.slice(-N)`: 9 of 11 red. The two that
+//     survive are the two that cannot see it — goalPacing bounds with a `break`
+//     rather than a slice, and endurancePlan's bound is unreachable (below).
+//   • prolongedBleedingObservations sorted oldest-first: both bleeding cases red.
+//   • detectWeightAnomalies sorted oldest-first: bodyHygiene red.
+//   • getOutcomeGoals ordered `created_at ASC`: goalPacing red — the one row the
+//     slice mutant could not reach.
+//   • the food–drug variance slice rewritten `.slice(-N)`: that case red.
 //
 // prolongedBleeding is the one of the ten with a medically-relevant signal behind
 // it, and the only one capped to a single row, so it also gets the "which one"
-// question asked directly below the table.
+// question asked directly below the table. It is the case where the count
+// assertion is furthest from sufficient: under `.slice(-1)` the app surfaces a
+// three-month-old bleed and withholds the current one, and every count in sight
+// still reads 1.
 
 import { describe, it, expect } from "vitest";
 import { db, today } from "@/lib/db";
 import { shiftDateStr } from "@/lib/date";
-import { setWeekMode } from "@/lib/settings";
+import { setWeekMode, setProfileBirthdate } from "@/lib/settings";
+import {
+  buildFoodDrugVarianceFindings,
+  FOOD_DRUG_VARIANCE_FINDING_LIMIT,
+} from "@/lib/food-drug-ledger-findings";
 import {
   COACHING_ENTITY_FINDING_LIMITS,
   buildMedicationDuplicationFindings,
@@ -88,7 +100,10 @@ function seedWeightJumps(profileId: number, anchor: string): string[] {
   for (const daysAgo of [34, 24, 14, 4]) {
     insert.run(profileId, shiftDateStr(anchor, -(daysAgo + 1)), 80);
     suspectIds.push(
-      Number(insert.run(profileId, shiftDateStr(anchor, -daysAgo), 92).lastInsertRowid)
+      Number(
+        insert.run(profileId, shiftDateStr(anchor, -daysAgo), 92)
+          .lastInsertRowid
+      )
     );
   }
   // "Newest suspect first" (lib/weight-anomaly).
@@ -122,7 +137,11 @@ function seedOffPaceGoals(profileId: number, anchor: string): string[] {
     `INSERT INTO body_metrics (profile_id, date, weight_kg) VALUES (?, ?, ?)`
   );
   for (let week = 12; week >= 0; week--) {
-    insertWeight.run(profileId, shiftDateStr(anchor, -week * 7), 90 + (12 - week) * 0.2);
+    insertWeight.run(
+      profileId,
+      shiftDateStr(anchor, -week * 7),
+      90 + (12 - week) * 0.2
+    );
   }
   const insertGoal = db.prepare(
     `INSERT INTO goals
@@ -177,7 +196,8 @@ function seedDailyItem(
 // so the survivors are the three alphabetically first — seeded in reverse.
 function seedDemotionCandidates(profileId: number, anchor: string): string[] {
   const names = ["Ashwagandha", "Berberine", "Creatine", "Dandelion"];
-  for (const name of [...names].reverse()) seedDailyItem(profileId, anchor, name);
+  for (const name of [...names].reverse())
+    seedDailyItem(profileId, anchor, name);
   return names.map((name) => `${name}: move it to May?`);
 }
 
@@ -235,7 +255,12 @@ function seedPlateaus(profileId: number, anchor: string): string[] {
     `INSERT INTO exercise_sets (activity_id, exercise, set_number, weight_kg, reps)
      VALUES (?, ?, 1, 60, 5)`
   );
-  const lifts = ["Front Squat", "Landmine Press", "Pendlay Row", "Zercher Squat"];
+  const lifts = [
+    "Front Squat",
+    "Landmine Press",
+    "Pendlay Row",
+    "Zercher Squat",
+  ];
   for (const lift of [...lifts].reverse()) {
     for (const daysAgo of [35, 24, 13, 2]) {
       const activityId = Number(
@@ -261,7 +286,8 @@ const CASES: CapCase[] = [
   {
     family: "prolongedBleeding",
     seed: seedProlongedPeriods,
-    built: (p, anchor) => buildCycleBleedingFindings(p, anchor).map((f) => f.dedupeKey),
+    built: (p, anchor) =>
+      buildCycleBleedingFindings(p, anchor).map((f) => f.dedupeKey),
   },
   {
     family: "medicationDuplication",
@@ -280,7 +306,8 @@ const CASES: CapCase[] = [
   {
     family: "goalPacing",
     seed: seedOffPaceGoals,
-    built: (p, anchor) => buildGoalPacingFindings(p, anchor).map((f) => f.title),
+    built: (p, anchor) =>
+      buildGoalPacingFindings(p, anchor).map((f) => f.title),
   },
   {
     family: "adherencePattern",
@@ -389,13 +416,63 @@ describe("#3126 — every per-family generation bound is asserted", () => {
        VALUES (?, ?, ?, ?, 21, 'active')`
     );
     for (const discipline of ["run", "ride", "swim"]) {
-      insert.run(profileId, `${discipline} event`, discipline, shiftDateStr(anchor, 30));
+      insert.run(
+        profileId,
+        `${discipline} event`,
+        discipline,
+        shiftDateStr(anchor, 30)
+      );
     }
     expect(() =>
       insert.run(profileId, "second run", "run", shiftDateStr(anchor, 40))
     ).toThrow();
-    expect(buildEndurancePlanFindings(profileId, anchor).length).toBeLessThanOrEqual(
-      COACHING_ENTITY_FINDING_LIMITS.endurancePlan
+    expect(
+      buildEndurancePlanFindings(profileId, anchor).length
+    ).toBeLessThanOrEqual(COACHING_ENTITY_FINDING_LIMITS.endurancePlan);
+  });
+});
+
+// The eleventh bound, declared next to its own family rather than in the shared
+// record: FOOD_DRUG_VARIANCE_FINDING_LIMIT. Its comment names the case exactly —
+// "one profile may track arbitrarily many matching medications" — and the catalog
+// carries a single variance rule (vitamin K / warfarin), so over-supplying it
+// means four warfarin items rather than four rules. detectFoodDrugVariance sorts
+// by item id then rule id, so the survivors are the three recorded first.
+describe("#3126 — the food–drug variance bound", () => {
+  it("four matching medications on one swing week truncate to the bound, oldest items first", () => {
+    const { profileId, anchor } = makeProfile("cap-foodDrugVariance");
+    setProfileBirthdate(profileId, "1986-04-02");
+    const brands = ["Coumadin", "Jantoven", "Marevan", "Warfant"];
+    expect(brands.length).toBeGreaterThan(FOOD_DRUG_VARIANCE_FINDING_LIMIT);
+    for (const brand of brands) {
+      const itemId = Number(
+        db
+          .prepare(
+            `INSERT INTO intake_items (profile_id, name, kind, active, obligation)
+             VALUES (?, ?, 'medication', 1, 'must')`
+          )
+          .run(profileId, `${brand} (warfarin)`).lastInsertRowid
+      );
+      db.prepare(
+        `INSERT INTO intake_item_doses (item_id, amount, time_of_day, start_date)
+         VALUES (?, '1 tab', 'morning', ?)`
+      ).run(itemId, shiftDateStr(anchor, -60));
+    }
+    const logServing = db.prepare(
+      `INSERT INTO food_daily_totals (profile_id, date, group_key, servings)
+       VALUES (?, ?, 'leafy_greens', ?)`
+    );
+    for (let ago = 13; ago >= 7; ago--)
+      logServing.run(profileId, shiftDateStr(anchor, -ago), 0.5);
+    for (let ago = 6; ago >= 0; ago--)
+      logServing.run(profileId, shiftDateStr(anchor, -ago), 2);
+
+    expect(
+      buildFoodDrugVarianceFindings(profileId, anchor).map((f) => f.title)
+    ).toEqual(
+      brands
+        .slice(0, FOOD_DRUG_VARIANCE_FINDING_LIMIT)
+        .map((brand) => `Leafy greens up this week — ${brand} (warfarin)`)
     );
   });
 });
