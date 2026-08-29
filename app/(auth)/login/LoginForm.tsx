@@ -1,27 +1,8 @@
 "use client";
 
 import { useActionState } from "react";
-import { useFormStatus } from "react-dom";
+import SubmitButton from "@/components/SubmitButton";
 import { login, verifyLoginTotp, type LoginState } from "./actions";
-
-function SubmitButton({
-  idleLabel,
-  busyLabel,
-}: {
-  idleLabel: string;
-  busyLabel: string;
-}) {
-  const { pending } = useFormStatus();
-  return (
-    <button
-      type="submit"
-      disabled={pending}
-      className="w-full rounded-lg bg-(--btn) px-4 py-2.5 text-sm font-semibold text-(--btn-fg) shadow-xs transition hover:bg-(--btn-hover) disabled:opacity-60"
-    >
-      {pending ? busyLabel : idleLabel}
-    </button>
-  );
-}
 
 function ErrorAlert({ message }: { message?: string }) {
   if (!message) return null;
@@ -61,11 +42,13 @@ function TotpStep() {
           autoFocus
           required
           data-testid="totp-code"
-          className="rounded-lg border border-(--field-bd) bg-field px-3 py-2 tracking-widest text-slate-900 outline-hidden focus:border-brand-500 dark:text-slate-100"
+          className="input tracking-widest"
         />
       </label>
       <ErrorAlert message={state.error} />
-      <SubmitButton idleLabel="Verify" busyLabel="Verifying…" />
+      <SubmitButton pendingLabel="Verifying…" variant="primary">
+        Verify
+      </SubmitButton>
       <a
         href="/login"
         className="text-center text-xs text-slate-400 hover:text-slate-600 dark:hover:text-slate-200"
@@ -80,6 +63,13 @@ function TotpStep() {
 // useActionState. The `next` target is carried through as a hidden field and
 // re-validated server-side. When the password succeeds but 2FA is required, the
 // action returns needsTotp and we swap to the second-factor step.
+//
+// THE CONTROLS ARE THE APP'S, NOT THIS PAGE'S (#3752). The submit was a fourth
+// hand-rolled `useFormStatus` button and the fields were hand-styled copies of
+// `.input`; both now come from the shared owners, so the pending spinner, the
+// disabled treatment, the field boundary and the phone control box are whatever
+// the rest of the app renders. The form's `flex flex-col` already stretches the
+// submit across the card, which is what the old `w-full` was buying.
 export default function LoginForm({
   next,
   username = "",
@@ -104,7 +94,7 @@ export default function LoginForm({
           defaultValue={username}
           autoFocus
           required
-          className="rounded-lg border border-(--field-bd) bg-field px-3 py-2 text-slate-900 outline-hidden focus:border-brand-500 dark:text-slate-100"
+          className="input"
         />
       </label>
       <label className="flex flex-col gap-1.5 text-sm font-medium text-slate-600 dark:text-slate-300">
@@ -114,11 +104,13 @@ export default function LoginForm({
           type="password"
           autoComplete="current-password"
           required
-          className="rounded-lg border border-(--field-bd) bg-field px-3 py-2 text-slate-900 outline-hidden focus:border-brand-500 dark:text-slate-100"
+          className="input"
         />
       </label>
       <ErrorAlert message={state.error} />
-      <SubmitButton idleLabel="Sign in" busyLabel="Signing in…" />
+      <SubmitButton pendingLabel="Signing in…" variant="primary">
+        Sign in
+      </SubmitButton>
     </form>
   );
 }

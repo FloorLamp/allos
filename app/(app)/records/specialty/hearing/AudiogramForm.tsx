@@ -14,6 +14,7 @@ import {
   NORMAL_THRESHOLD_DB_HL,
 } from "@/lib/audiogram";
 import type { FormResult } from "@/lib/types";
+import InlineError from "@/components/InlineError";
 
 // Manual audiogram entry (issue #1600) — the entry surface hearing was missing. One
 // dated hearing test: a pure-tone air-conduction threshold in dB HL per ear per test
@@ -138,11 +139,7 @@ export default function AudiogramForm({
         />
       </div>
 
-      {error && (
-        <p role="alert" className="text-sm text-rose-600 dark:text-rose-400">
-          {error}
-        </p>
-      )}
+      <InlineError>{error}</InlineError>
       <div
         className="grid w-full sm:w-fit"
         data-testid="audiogram-primary-action"

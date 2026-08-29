@@ -7,6 +7,7 @@ import { IconUpload } from "@tabler/icons-react";
 import { uploadMedicalDocument } from "@/app/(app)/medical/document-actions";
 import { useToast } from "@/components/Toast";
 import SubmitButton from "@/components/SubmitButton";
+import InlineError from "@/components/InlineError";
 import LeadFold from "@/components/LeadFold";
 import PhotoCapture from "@/components/photo/PhotoCapture";
 import {
@@ -326,15 +327,7 @@ export default function UploadForm({
           File upload is disabled in demo — this is a read-only demo instance.
         </p>
       )}
-      {error && (
-        <p
-          role="alert"
-          data-testid="medical-upload-error"
-          className="text-sm text-rose-600 dark:text-rose-400"
-        >
-          {error}
-        </p>
-      )}
+      <InlineError data-testid="medical-upload-error">{error}</InlineError>
       {/* THE SUBMIT ROW APPEARS WITH THE FIRST FILE (#3488). It used to render
           always: a permanently disabled "Upload" under a button also called
           "Upload", plus a sentence promising to read "it" in the background when

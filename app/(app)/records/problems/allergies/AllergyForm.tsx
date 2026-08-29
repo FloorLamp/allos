@@ -8,6 +8,7 @@ import Combobox from "@/components/Combobox";
 import EncounterField from "@/components/EncounterField";
 import { useToast } from "@/components/Toast";
 import { useAddEntryModalClose } from "@/components/AddEntryPanel";
+import InlineError from "@/components/InlineError";
 import {
   ALLERGY_CRITICALITIES,
   ALLERGY_VERIFICATION_STATUSES,
@@ -340,11 +341,7 @@ export default function AllergyForm({
           defaultValue={allergy?.notes ?? ""}
         />
       </div>
-      {error && (
-        <p role="alert" className="text-sm text-rose-600 dark:text-rose-400">
-          {error}
-        </p>
-      )}
+      <InlineError>{error}</InlineError>
       <div className="flex gap-2" data-testid="allergy-form-actions">
         <div
           className="grid w-full sm:w-auto"

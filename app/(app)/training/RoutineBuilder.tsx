@@ -13,6 +13,7 @@ import Chip from "@/components/Chip";
 import { createRoutineAction, updateRoutineAction } from "./actions";
 import DraftRestoreBanner from "@/components/DraftRestoreBanner";
 import { useFormDraft } from "@/components/useFormDraft";
+import InlineError from "@/components/InlineError";
 
 // A single slot being authored. Sets/reps are kept as strings for the controlled
 // number inputs; they're parsed + validated on submit. `draft` is the in-progress
@@ -234,11 +235,7 @@ export default function RoutineBuilder({
       data-testid="routine-builder"
     >
       <DraftRestoreBanner draft={draft} noun="routine" />
-      {error && (
-        <p role="alert" className="text-sm text-rose-600 dark:text-rose-400">
-          {error}
-        </p>
-      )}
+      <InlineError>{error}</InlineError>
 
       <div>
         <label className="label" htmlFor="routine-name">

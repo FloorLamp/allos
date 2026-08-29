@@ -87,6 +87,52 @@ main-red, not a survivor.
   CPU. Measured on a probe: an unresolved promise leaves utilization at 0.006, a
   spin at 1.0. Nothing prints on a green run.
 
+## Every remaining literal, and what each one was derived from (#4002)
+
+`ALLOS_VITEST_TIMEOUT_MS` is the harness's one lever, and a hard-coded `}, 30_000)`
+is immune to it — so the tests likeliest to need slack on a loaded box were exactly
+the ones it could not reach. Twenty sites remained after the sweep above. They are
+now either a `perTestCeiling(n, basis)` or gone, and the readings are CI's own,
+taken from the `test-unit` / `test-db` job logs of the green run at `f1742fa6d`.
+
+**Eleven were vestigial.** They were sized against vitest's implicit **5 s** default,
+which no longer exists — the tier ceiling is 15 000 ms — and every one of them had
+4x or more of margin against its CI reading without any declaration at all. Deleting
+the literal is what makes the lever reach them:
+
+| file                       | was            | CI reading (green, f1742fa6d)     | margin at 15 000 |
+| -------------------------- | -------------- | --------------------------------- | ---------------- |
+| `dispatch-stall` (5 sites) | 20 000         | 8 617 ms / 23 tests, those 5 ~99% | ~4.9x            |
+| `jsonl-log-file` (2 sites) | 10 000, 60 000 | 3 803 ms / 9 tests                | ~7.5x            |
+| `notify-log-sink`          | 60 000         | 1 785 ms / 16 tests               | ~9.7x            |
+| `page-header-coverage`     | 30 000         | 1 443 ms / 9 tests                | ~10x             |
+| `stateful-writes`          | 30 000         | 2 359 ms / 13 tests               | ~7x              |
+| `zip`                      | 30 000         | 2 016 ms / 7 tests                | ~9x              |
+| `delegated-card-css`       | 120 000        | 1 801 ms / 1 test                 | ~8x              |
+| `tick-cadence`             | 45 000         | 333 ms / 2 tests                  | ~45x             |
+
+**One was too THIN, not too generous.** `native-dialogs` walks app/** and
+components/** with the TypeScript AST under coverage: 12 427 ms for the file on CI,
+which the dispatch box splits 62/38 — about 7 700 ms for the larger scan against a
+15 000 ms ceiling. That is 1.9x, not ~4x. It is now `perTestCeiling(2)`.
+
+**`migration-reentry` was derived from the wrong reading.** #3999 took the 3 505 ms
+green run and recorded, in the same comment, that the test had crossed 15 000 ms on
+`main` at `11c7920b`. Against the observed worst that ceiling was 2x, on the one test
+whose work grows with every merge. It is now `perTestCeiling(4)`.
+
+**So `perTestCeiling` takes the basis as an argument.** A multiple derived from a
+green reading and one derived from an observed worst case are different claims and
+used to look identical in the source; `basis` is `"worst"` or `"green"`, it does no
+arithmetic, and `vitest-timeouts.test.ts` holds it mandatory with a
+`@ts-expect-error`. Where only a green reading exists, the source now says so.
+
+Two sites are deliberate exceptions. `chart-empty-states`' `CHART_CHUNK_WARMUP_MS`
+bounds a `findByText` INSIDE a hook, so it must stay BELOW the hook budget rather
+than scale with it. `dashboard-placement-manifest`'s hook has no CI reading at all —
+it runs in the `db-isolated` pool, whose lines fall outside the window `test-db`'s
+job log returns — so its multiple is stated as green-basis and unmeasured on CI.
+
 ## What is still open
 
 - The 8-workers-on-4-cores overlap is unfixed. `sequence.groupOrder` would

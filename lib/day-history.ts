@@ -29,7 +29,7 @@ import {
   weekSpan,
 } from "./day-grid";
 import { intensityLevel } from "./workout-heatmap";
-import { doseLedgerHref, DOSE_LEDGER_ALL_KINDS, type AppRoute } from "./hrefs";
+import { historyHref, type AppRoute } from "./hrefs";
 
 export type DayHistoryLevel = 0 | 1 | 2 | 3 | 4;
 
@@ -312,16 +312,12 @@ export const DAY_HISTORY_DOMAINS: Record<
       "Calendar: days you confirmed doses. Matrix: each day by item. Filter items or select a day or row for details. Shows what was taken, not what was due or missed.",
     levelLabels: ["0", "1", "2", "3", "4+"],
     weekLevelLabels: ["0", "≤7", "≤14", "≤21", "22+"],
-    // The chart combines both intake kinds, so its row-level destination does
-    // too even though the route lives under the supplement entry surface.
+    // The chart combines both intake kinds, so its row-level destination does too.
+    // A tapped day is ONE day, and `/history?day=` is the honest form of that — the
+    // from/to window the deleted ledger took has no successor (#3958).
     dayLink: {
-      label: "Dose ledger",
-      href: (from, to) =>
-        doseLedgerHref("supplement", {
-          from,
-          to,
-          kind: DOSE_LEDGER_ALL_KINDS,
-        }),
+      label: "Dose history",
+      href: (from) => historyHref({ kind: "dose", day: from }),
     },
     // As with food, a larger day-total is descriptive rather than desirable.
     calendarLevel: (total) => (total > 0 ? 1 : 0),
