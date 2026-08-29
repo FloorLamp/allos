@@ -8,6 +8,7 @@ import {
   baselineDeltaPhrase,
   formatHm,
   formatSleepWindow,
+  formatUsualSleepBand,
   consistencyNights,
   consistencyPlot,
   markOffSchedule,
@@ -57,6 +58,22 @@ describe("formatSleepWindow", () => {
     expect(formatSleepWindow("12h", 13 * 60, 13 * 60 + 45)).toBe(
       "1:00 PM → 1:45 PM"
     );
+  });
+});
+
+describe("formatUsualSleepBand", () => {
+  it("formats the classifier pair through the chosen clock preference", () => {
+    expect(formatUsualSleepBand("24h", 22 * 60 + 40, 5 * 60 + 45)).toBe(
+      "22:40 – 05:45"
+    );
+    expect(formatUsualSleepBand("12h", 22 * 60 + 40, 5 * 60 + 45)).toBe(
+      "10:40 PM – 5:45 AM"
+    );
+  });
+
+  it("stays silent when either classifier value is unavailable", () => {
+    expect(formatUsualSleepBand("24h", null, 5 * 60 + 45)).toBeNull();
+    expect(formatUsualSleepBand("24h", 22 * 60 + 40, null)).toBeNull();
   });
 });
 
