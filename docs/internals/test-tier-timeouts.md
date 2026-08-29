@@ -135,12 +135,29 @@ job log returns — so its multiple is stated as green-basis and unmeasured on C
 
 ## What is still open
 
-- The 8-workers-on-4-cores overlap is unfixed. `sequence.groupOrder` would
-  serialise the two pools; it could not be A/B'd on the dispatch box, where
-  ambient load from sibling lanes swamps the effect.
-- `strip-comments`' oracle sweep is 119 s — half of `test-unit`'s 231 s median —
-  and the pure tier has a family of whole-tree scanners that each independently
-  re-read and re-strip the entire source tree.
-- #3952's `EnvironmentTeardownError` is a **different** event: its run reported
-  `6898 passed` with `Errors 1 error` and no failing test at all. The signal above
-  does not reach it, because no test timed out.
+- `sequence.groupOrder` now runs the shared threads pool before the isolated
+  forks pool (#4000), so one Vitest process no longer sizes two simultaneous
+  pools against all four runner CPUs. The CI A/B used three grouped samples and
+  three exact-tree ungrouped `test-unit` samples (plus two exact-tree ungrouped
+  `test-db` samples):
+
+  | reading                   | ungrouped | grouped  | verdict    |
+  | ------------------------- | --------- | -------- | ---------- |
+  | `test-unit` job median    | 234 s     | 186 s    | 21% faster |
+  | `test-unit` Vitest median | 218.07 s  | 169.85 s | 22% faster |
+  | `strip-comments` median   | 32.741 s  | 25.545 s | 22% faster |
+  | `nav-routes` median       | 12.002 s  | 8.777 s  | 27% faster |
+  | `test-db` job median      | 195 s     | 184 s    | 6% faster  |
+  | `test-db` Vitest median   | 176.89 s  | 170.04 s | 4% faster  |
+
+  The per-file ranges did **not** tighten uniformly: the unit scanners still
+  moved with their neighbours inside the threads pool, and `migration-reentry`
+  was 3.367-8.042 s across grouped runs. Snapshot/restore tightened relative to
+  #3986's 3-4x sightings, but that is not enough to claim the general dispersion
+  mechanism is gone. The whole-job improvement decided the verdict: grouping
+  removed cross-pool oversubscription without charging either tier more wall
+  time. Dynamic co-residency within one pool remains.
+
+- `strip-comments`' whole-file time is now 24-35 s in the #4000 samples, no
+  longer the 119 s recorded above, but the pure tier still has a family of
+  whole-tree scanners that independently re-read and re-strip the source tree.

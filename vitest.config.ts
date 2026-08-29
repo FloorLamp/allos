@@ -8,6 +8,14 @@ import { testTimeout, hookTimeout } from "./vitest.timeouts";
 // says whether the worker was waiting or running (#3986). See the module header.
 const TIMEOUT_REPORT = "./vitest.timeout-report.ts";
 
+// Do not let the threads and forks pools each size themselves to the whole runner.
+// CI A/B (#4000, 2026-08-29): three ungrouped/grouped test-unit samples moved
+// median job time 234s -> 186s and Vitest time 218.07s -> 169.85s. The two named
+// scanner medians fell 22-27%; within-pool variance remains, so this removes
+// cross-pool competition rather than claiming every file now has a stable clock.
+const SHARED_POOL_GROUP = 0;
+const ISOLATED_POOL_GROUP = 1;
+
 const root = fileURLToPath(new URL(".", import.meta.url));
 const alias = { "@": root };
 
@@ -52,6 +60,7 @@ export default defineConfig({
           setupFiles: [TIMEOUT_REPORT],
           pool: "threads",
           isolate: false,
+          sequence: { groupOrder: SHARED_POOL_GROUP },
         },
       },
       {
@@ -64,6 +73,7 @@ export default defineConfig({
           exclude: NOT_PURE,
           setupFiles: [TIMEOUT_REPORT],
           pool: "forks",
+          sequence: { groupOrder: ISOLATED_POOL_GROUP },
         },
       },
       // ── THE COMPONENT TIER (#3446) ────────────────────────────────────────
@@ -115,6 +125,7 @@ export default defineConfig({
           environment: "jsdom",
           setupFiles: [TIMEOUT_REPORT, "components/__tests__/setup.ts"],
           pool: "threads",
+          sequence: { groupOrder: SHARED_POOL_GROUP },
         },
       },
     ],

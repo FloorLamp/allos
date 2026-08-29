@@ -76,11 +76,13 @@ export default function SleepHero({
   timeFormat,
   presentation,
   bedtimeSupplements,
+  usualSleepBand,
 }: {
   summary: LastNightSummary;
   timeFormat: TimeFormat;
   presentation: SleepRecordPresentation;
   bedtimeSupplements: BedtimeSupplementSummary | null;
+  usualSleepBand: string | null;
 }) {
   const delta = baselineDeltaPhrase(summary);
   const source = activityProvenanceLabel(summary.source);
@@ -136,6 +138,14 @@ export default function SleepHero({
               </span>
             )}
           </p>
+          {usualSleepBand && (
+            <p
+              className="mt-1 text-sm tabular-nums text-slate-500 dark:text-slate-400"
+              data-testid="sleep-usual-times"
+            >
+              Usually ~{usualSleepBand}.
+            </p>
+          )}
         </div>
 
         <div>
