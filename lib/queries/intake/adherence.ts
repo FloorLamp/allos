@@ -2059,6 +2059,62 @@ export function getIntakeLogsInRange(
   }[];
 }
 
+// THE EVIDENCE AN ADHERENCE STRIP IS JUDGED OVER, which is not the same set as the
+// rows it DRAWS (#3988).
+//
+// `intakeAdherenceStrip` asks its `takenByDose` index two different questions. "Was
+// this dose taken on this drawn day" is bounded by the window, correctly. "When did
+// this dose first exist" is NOT bounded by anything — `doseWindowSince` widens the
+// lifetime clamp backwards by the dose's own logged history, and a window cannot
+// answer an unbounded question. Given only the 14 days it draws, a dose whose sole
+// proof of existence was a 60-day-old backfilled log scored `na` on days it
+// demonstrably existed — and `na` is not a quieter `missed`: it asserts NOTHING WAS
+// OWED and drops the day out of adherence entirely, setting a silent ceiling on every
+// surface that reuses these verdicts.
+//
+// So the BOUND gets its own evidence rather than the window being widened. Widening is
+// both dearer and still wrong — drawing 14 dots would pay for 60 days of rows, and a
+// proof five years old escapes any finite window anyway.
+//
+// ONE STATEMENT, NOT TWO, and that is the reason for the UNION rather than two calls
+// the caller concatenates: five surfaces read this and two of them render on the
+// dashboard, whose per-render statement budget is measured
+// (lib/__db_tests__/dashboard-placement-manifest.test.ts). The second arm is bounded
+// by the dose count, reduces each dose's older history to its MINIMUM — which carries
+// the same answer as the whole of it — and reads down idx_intake_log_dose_date rather
+// than fanning out per dose. SQLite gives the bare `status` column the value from the
+// row `MIN(l.date)` picked, so every row here is a real log row. Rows are never
+// duplicated between the arms (the date predicates partition), and a duplicate would
+// cost nothing anyway: `indexTakenByDose` collects dates into sets.
+//
+// The same bound is read one more place, from its own query: `pendingDayDoses`
+// (lib/queries/usual-routine.ts) takes the earliest log per dose directly, because it
+// wants the lifetime half and draws no window at all.
+export function getIntakeAdherenceEvidence(
+  profileId: number,
+  days = 14
+): { dose_id: number; date: string; status: DoseStatus }[] {
+  const since = shiftDateStr(today(profileId), -(days - 1));
+  return db
+    .prepare(
+      `SELECT l.dose_id, l.date, l.status FROM intake_item_logs l
+         JOIN intake_item_doses d ON d.id = l.dose_id
+         JOIN intake_items s ON s.id = d.item_id
+        WHERE s.profile_id = ? AND l.date >= ?
+       UNION ALL
+       SELECT l.dose_id, MIN(l.date) AS date, l.status FROM intake_item_logs l
+         JOIN intake_item_doses d ON d.id = l.dose_id
+         JOIN intake_items s ON s.id = d.item_id
+        WHERE s.profile_id = ? AND l.date < ?
+        GROUP BY l.dose_id`
+    )
+    .all(profileId, since, profileId, since) as {
+    dose_id: number;
+    date: string;
+    status: DoseStatus;
+  }[];
+}
+
 // ---- The offer tail's gather (issue #1505) --------------------------------
 
 // The `may` items this profile may be OFFERED right now, scoped by their slot hint

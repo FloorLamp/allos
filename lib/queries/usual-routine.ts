@@ -106,9 +106,10 @@ export interface PendingDayDose extends UsualRoutineDose {
 //                             today-dot is declared-only — pre-existing, and the reason
 //                             the agreement below is asserted over PAST days.
 //   dose lifetime             date-resolved — doseWindowSince (#430/#1442). Its
-//                             backwards widening reads ALL history; the strip reads
-//                             whatever window its caller passed, so the two can differ
-//                             by EVIDENCE, never by rule (pinned in the action tier).
+//                             backwards widening reads ALL history, and since #3988 so
+//                             does the evidence every strip caller supplies, so the two
+//                             agree on the rule AND on the facts (pinned in the action
+//                             tier).
 //   travel excusal            DATE resolved, SLOT is not — isExcused reads the current
 //                             `time_of_day` and today's notify schedule, so a re-timed
 //                             dose is excused by a slot it may not have occupied. The
@@ -232,6 +233,9 @@ export function pendingDayDoses(
   // predate `created_at` (a reconciled med, a backfilled course). It reduces those
   // dates to a MINIMUM, so the earliest logged date alone carries the same answer as
   // the full set — which is what this one grouped read fetches instead of every row.
+  // The adherence strip's callers now widen the SAME bound with the same aggregate,
+  // as the second arm of `getIntakeAdherenceEvidence` (#3988); this seam keeps its own
+  // read because it draws no window to union that half against.
   const tz = getTimezone(profileId);
   const firstLog = new Map(
     (

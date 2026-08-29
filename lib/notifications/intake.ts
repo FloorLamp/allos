@@ -15,7 +15,7 @@ import {
   getActivityDates,
   isPredictedWorkoutDay,
   inferWorkoutSchedule,
-  getIntakeLogsInRange,
+  getIntakeAdherenceEvidence,
   getEffectiveActiveSituations,
   getMinutesSinceLastFoodLog,
 } from "../queries";
@@ -252,13 +252,15 @@ function gatherWindowDoses(
 
   // Inputs for the per-dose adherence percentage. Anchored on the real
   // today (not `date`, which may be a prior day's reminder tapped late) so the
-  // column window lines up with getIntakeLogsInRange's own today-anchored
-  // range and with adherenceSummary's "last column is today, still pending" rule.
+  // column window lines up with the drawn half of getIntakeAdherenceEvidence's
+  // today-anchored range and with adherenceSummary's "last column is today, still
+  // pending" rule. The evidence set is deliberately WIDER than the columns: the
+  // lifetime bound inside the strip is not a windowed question (#3988).
   const windowDates = lastNDates(today(profileId), ADHERENCE_DAYS);
   const tz = getTimezone(profileId);
   const workoutDays = new Set(getActivityDates(profileId));
   const takenByDose = indexTakenByDose(
-    getIntakeLogsInRange(profileId, ADHERENCE_DAYS)
+    getIntakeAdherenceEvidence(profileId, ADHERENCE_DAYS)
   );
 
   // The demotion candidates for THIS profile, resolved once per gather rather than
