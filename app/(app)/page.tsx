@@ -212,10 +212,7 @@ import {
   sleepRecordPresentation,
 } from "@/lib/sleep-summary";
 import QuickLogPrnContent from "@/components/medications/QuickLogPrnContent";
-import {
-  ProteinTodayAtom,
-  UsualRoutineAtom,
-} from "@/components/dashboard/NutritionAtoms";
+import { UsualRoutineAtom } from "@/components/dashboard/NutritionAtoms";
 import CycleControlAtom from "@/components/dashboard/CycleControlAtom";
 import DashboardQuickEntryAction from "@/components/dashboard/DashboardQuickEntryAction";
 import IllnessCockpitBody from "../../components/illness/IllnessCockpitBody";
@@ -1825,7 +1822,11 @@ async function renderDashboard(
         proteinToday.todayIntake?.basis === "tracked" ? "external" : "manual",
         mealTimeWindows(nowMealAnchors)
       ),
-      <ProteinTodayAtom today={proteinToday} />,
+      // ROW ONLY (#3365). This reading can reach no card lane — it carries no rank
+      // reason, so `nowScore` is null — and the row below renders every part of
+      // #3257's copy: the figure with its floor "+", the band, the trailing average
+      // in "g", and the derivation behind the disclosure control.
+      undefined,
       {
         value: proteinLine.amount,
         detail: [
