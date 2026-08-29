@@ -309,7 +309,20 @@ test.describe("the control box: one height, every kind, every viewport (#3938)",
           // a box sits inside an ellipsis ANCESTOR that is itself inside the
           // VIEWPORT; this asks whether the region being examined is itself such a
           // label. Different question, and the viewport half has no meaning when the
-          // frame is a region's own edge. #3814 owns converging the two.
+          // frame is a region's own edge.
+          //
+          // THEY STAY SEPARATE — #3814 ruled it (2026-08-29), against its own AC's
+          // wording. Four sites read this family and they ask THREE questions: the
+          // census's ancestor-inside-viewport, `overflowStory`'s is-this-a-culprit,
+          // and this one's is-the-region-itself-a-label. One predicate answering all
+          // three needs a mode parameter, which is the variant axis this repo
+          // forbids; and neither way of crossing the `page.evaluate` boundary is
+          // better than the split — threading a predicate's source through
+          // `geometryProbe`'s options changes its signature and both callers to unify
+          // questions that differ, and folding this sweep into `geometryProbe` breaks
+          // its deliberate `<main>` scope, which this spec must escape to reach a
+          // portalled sheet. So each rule is stated ONCE, in its own frame, with
+          // cross-references. This line is one of those references, not a deferral.
           //
           // BEFORE the `seen` count, deliberately: a truncated label is not a region
           // of the kind this sweep is about, so it must not satisfy the "this route
