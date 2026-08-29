@@ -489,6 +489,20 @@ test.describe("the record (#3958)", () => {
     // the count was a sibling of the link, which every "the h2 states a count" check
     // was satisfied by.
     await expect(link).toContainText(/\d+ records?/);
+    // AND THE CLUSTER STILL READS AS A DATE WHEN IT IS READ LINEARLY. `gap-2`
+    // separates the date from the count for an EYE and for nothing else: `textContent`
+    // has no gaps, so two adjacent spans concatenate to "…August 295 records" and the
+    // date's last digit runs into the count's first. That is not a style nit — it is
+    // what stopped e2e/machine-date-census.spec.ts finding a display-shaped date on
+    // this route at all, turning its positive control into an absence assertion over
+    // nothing. #3958 writes the header WITH a separator ("FRI, AUG 28 — 15 records");
+    // this asserts the separator survives, on the concatenation rather than on the
+    // rendered line, because the rendered line looked right the whole time.
+    const concatenated = await link.evaluate((el) => el.textContent ?? "");
+    expect(
+      concatenated,
+      `the day header concatenates to "${concatenated}"`
+    ).toMatch(/\d\s*—\s*\d+ records?/);
     // And the chevron that says the header is a door at all, in the text cluster: the
     // link's box ends where its content ends rather than spanning the header.
     await expect(link.locator("svg")).toHaveCount(1);

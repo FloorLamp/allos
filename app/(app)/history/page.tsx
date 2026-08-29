@@ -424,6 +424,21 @@ export default async function HistoryPage(props: {
           data-testid="history-day-link"
         >
           <span>{formatLongDate(group.date, prefs)}</span>
+          {/* THE SEPARATOR IS LOAD-BEARING, not decoration. #3958 writes this header
+              as "FRI, AUG 28 — 15 records" and the implementation dropped the dash;
+              with the count promoted INSIDE the link (above), the two spans then sat
+              adjacent with nothing between them, so the cluster's `textContent` read
+              "…August 295 records" — the date's last digit running into the count's
+              first. `gap-2` separates them for an eye and for nothing else: anything
+              reading the cluster linearly sees one run. That is not hypothetical —
+              e2e/machine-date-census.spec.ts finds this header by matching a display
+              date with `\d{1,2}\b`, and "29" followed by "5" has no word boundary
+              after it, so its positive control stopped being able to see a date here
+              at all. Restoring the dash puts the rendered shape back to the spec's
+              own and makes the text content honest in the same stroke. */}
+          <span aria-hidden className="text-slate-500 dark:text-slate-400">
+            —
+          </span>
           <span className="text-xs font-normal text-slate-500 dark:text-slate-400">
             {group.events.length} record
             {group.events.length === 1 ? "" : "s"}
