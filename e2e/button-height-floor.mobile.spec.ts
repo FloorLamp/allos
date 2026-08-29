@@ -51,32 +51,49 @@ type BoxSurface = {
   ancestor?: string;
   /** Whether a coarse pointer can repair this control's reach at all. */
   repairable: boolean;
-  /** Below `sm` only — the mobile disclosure that replaces a desktop panel. */
+  /**
+   * Below `sm` only — the mobile disclosure that replaces a desktop panel. NO
+   * SURFACE DECLARES IT SINCE #3958: its one tenant was the dose ledger's range
+   * disclosure, and that route folded into `/history`, which has no range chrome to
+   * disclose. Kept because the next phone-only disclosure to be bound needs exactly
+   * this, and because deleting it would also delete the `phone` argument the
+   * measurement threads for it.
+   */
   phoneOnly?: boolean;
 };
 
 // One representative per control kind the ruling binds, grouped by the route that
 // renders it so the sweep costs one navigation per route rather than one per case.
 const BOX_ROUTES: { route: string; ready: string; surfaces: BoxSurface[] }[] = [
+  // THE OWNER'S EXAMPLE, RE-HOMED (#3958). This entry read the dose ledger, whose
+  // route is deleted: the four ledgers folded into `/history`, and the record is the
+  // surface that now renders the two controls this row still binds. `dose-ledger-add`
+  // is LITERALLY the same control — `DoseBackfillLauncher`, same testid — mounted by
+  // the record's kind-resolved Add door, and the chip is the record's own filter row.
+  //
+  // TWO SURFACES LEFT WITH THE RANGE ROW RATHER THAN MOVING, and neither was replaced
+  // by a nearby element to keep this list the same length:
+  //   • `dose-ledger-item-filter` (native select) — the ledger's Item filter. The
+  //     record narrows by URL, not by a select. The KIND is still bound, on
+  //     /settings/notifications' `waking-start-hour`, so nothing stopped being
+  //     measured.
+  //   • `custom-range-toggle` (btn-ghost disclosure, phone-only) — the range card's
+  //     mobile disclosure. `/history` HAS NO RANGE CHROME AT ALL (a record is
+  //     navigated, not windowed), so this table has no route left that renders it on
+  //     arrival. The COMPONENT still ships (components/CustomRangeDisclosure.tsx, on
+  //     /trends), and the kind keeps its box coverage there:
+  //     e2e/trends-fold.mobile.spec.ts measures this exact control through the shared
+  //     `expectPhoneTapTargets`, which is the same effective-floor assertion this
+  //     table makes. It is not re-homed HERE because reaching it costs an
+  //     interaction — the phone's context bar is collapsed — and every entry in this
+  //     table is a plain `goto` plus a readiness marker. Nothing stopped being
+  //     measured; one route stopped being able to measure it on arrival.
   {
-    route: "/medications/dose-history",
-    ready: "dose-ledger-chip-row",
+    route: "/history?kind=dose",
+    ready: "history-filters",
     surfaces: [
-      { kind: "chip", testId: "dose-ledger-pill-7D", repairable: true },
+      { kind: "chip", testId: "history-chip-all", repairable: true },
       { kind: "btn-ghost", testId: "dose-ledger-add", repairable: true },
-      // A native <select> renders no pseudo-element, so its target IS its box —
-      // the `chip-sm` lesson, and the reason #3938 states the floor as effective.
-      {
-        kind: "native select",
-        testId: "dose-ledger-item-filter",
-        repairable: false,
-      },
-      {
-        kind: "btn-ghost disclosure",
-        testId: "custom-range-toggle",
-        repairable: true,
-        phoneOnly: true,
-      },
     ],
   },
   {
@@ -330,7 +347,7 @@ test.describe("the control box: one height, every kind, every viewport (#3938)",
   // container in the tree, and no assertion here implies one.
   const REACH_CONTAINMENT_ROUTES = [
     { route: "/", ready: "dashboard-canvas" },
-    { route: "/medications/dose-history", ready: "dose-ledger-chip-row" },
+    { route: "/history?kind=dose", ready: "history-filters" },
     { route: "/nutrition?tab=supplements", ready: "supplement-add-toggle" },
     // An OPEN SHEET, deliberately: a page absorbs the reach in `<main>`'s clip and
     // a sheet body does not, so a page-only list would be green on the very tree
@@ -355,9 +372,10 @@ test.describe("the control box: one height, every kind, every viewport (#3938)",
           // A REGION THAT SIGNALS ITS CLIPPING IS A LABEL ENDING ITS OWN TEXT, not
           // a container refusing to scroll (#3607). Inside `truncate` an inline run
           // keeps its FULL natural width in the box model while the ancestor paints
-          // the ellipsis at its own edge: measured on /medications/dose-history at
-          // 390px, the span is 97 wide with scrollWidth 167 and its right edge flush
-          // inside its parent, while the `<a>` in it reports 70px further right.
+          // the ellipsis at its own edge: measured on the cross-item dose ledger at
+          // 390px (the route folded into `/history` in #3958), the span is 97 wide
+          // with scrollWidth 167 and its right edge flush inside its parent, while
+          // the `<a>` in it reports 70px further right.
           // Nothing is off screen; one rect is.
           //
           // THE REGION-FRAME RULE, AND NOT A COPY OF THE CENSUS'S.
@@ -460,37 +478,114 @@ test.describe("the control box: one height, every kind, every viewport (#3938)",
     });
   }
 
-  // THE OWNER'S EXAMPLE, MEASURED AS A ROW. The dose ledger's quick-range strip
-  // mixes chips with a `btn-ghost` disclosure and a native select; at 390 it used
-  // to render 34 beside 44 beside 44. One height is half the claim — the other half
-  // is that the reach the box now gets does not make two neighbours fight over the
-  // same pixel, which is what the `gap-3` floor (2x the reach) buys.
-  test("the ledger's mixed chip row is one height with disjoint hit regions", async ({
+  // THE OWNER'S EXAMPLE, MEASURED AS A ROW — re-homed to the surface that replaced
+  // the one it was written on (#3958). The dose ledger's quick-range strip mixed
+  // chips with a `btn-ghost` disclosure and a native select, and at 390 it rendered
+  // 34 beside 44 beside 44. That strip is gone: `/history` has no range chrome, so
+  // the MIXED-KIND half of the claim has no row left to make it on and is carried
+  // kind-by-kind by BOX_ROUTES above instead.
+  //
+  // WHAT SURVIVES IS THE HALF THAT ONLY A ROW CAN ASSERT, and it is the half the
+  // owner's example was really about: one height across a row, and a reach that does
+  // not make two neighbours fight over the same pixel — the `gap-3` floor being
+  // exactly 2x the reach. The record's filter row is where that is now hardest,
+  // because it holds TWO independently placed clusters: the kind pills in their own
+  // group, and the Photos toggle outside it behind a hairline. Nothing else in the
+  // app puts two control clusters that close together.
+  //
+  // WHAT IS AND IS NOT MEASURED HERE, because the honest scope shrank once. This
+  // briefly opened `/history?kind=dose&media=1` to force the Photos chip into the row
+  // and measure TWO independently placed clusters across the hairline. That URL no
+  // longer produces it: `?media=1` degrades when no row can satisfy it (owner ruling
+  // 2026-08-29), and no phase-1 kind carries row media — so the chip is unreachable
+  // until symptoms land, and forcing it back would mean asserting over a state the
+  // app deliberately refuses to enter.
+  //
+  // So this measures the kind-chip row: every chip one height, every extended target
+  // disjoint from its neighbour. WHICH GAP THAT IS, stated because it is no longer the
+  // one it used to be: with a single cluster the separation is `FilterPills`' own
+  // `gap-3`, not the page row's — verified by mutating each, the pill group's turns
+  // this red and the row's no longer can. The cluster-against-cluster case comes back
+  // with the Photos chip; it is recorded here rather than silently dropped.
+  //
+  // AND `gap-2` WAS NEVER SHORT, said because a comment claiming a catch it did not
+  // make is worse than no comment: the hairline divider is itself gapped on both
+  // sides, so the distance across it was two gaps plus the rule. The page spends
+  // `gap-3` because that is the gap the pill group already spends, and this test is
+  // what would notice if either stopped.
+  test("the record's filter row is one height with disjoint hit regions", async ({
     page,
   }) => {
-    await page.goto("/medications/dose-history");
-    const row = page.getByTestId("dose-ledger-chip-row");
+    await page.goto("/history");
+    const row = page.getByTestId("history-filters");
     await expect(row).toBeVisible();
-    await expect(page.getByTestId("custom-range-toggle")).toBeVisible();
+    // THE CONTENT, BEFORE THE GEOMETRY. A chip row that rendered only "All" cannot
+    // fail the way this test exists to catch, and the kind chips are data-presence
+    // earned — so their presence is asserted rather than assumed.
+    await expect(row.getByTestId("history-chip-all")).toBeVisible();
 
     const geometry = await row.evaluate((el, epsilon) => {
-      const targets = Array.from(
-        el.querySelectorAll<HTMLElement>("a, button, select")
-      ).filter((t) => t.getBoundingClientRect().height > 0);
-      const boxes = targets.map((t) => {
-        const r = t.getBoundingClientRect();
-        const after = getComputedStyle(t, "::after");
-        const reach =
-          after.content === "none" ? 0 : Math.abs(Number.parseFloat(after.top));
+      // A TARGET'S LIVE HIT REGION ENDS AT ITS SCROLLPORT (#3607's rule, one row
+      // over). The kind pills live in an `overflow-x-auto` group: a chip scrolled
+      // past its edge keeps its FULL rect in the box model while being clipped on
+      // screen, so comparing that rect with the pinned Photos chip beside the strip
+      // reports two things owning one point that a finger can never touch at once.
+      // The sibling reach-containment guard in this file states the same thing: a
+      // region that scrolls sideways ON PURPOSE has extent by construction and that
+      // is not the defect.
+      //
+      // CLIPPED, NOT SKIPPED, and the difference is the case that matters. Dropping
+      // fully-outside targets still compares a PARTLY visible chip by its whole
+      // width, which is how "Practices/Photos" survived the first attempt — the chip
+      // straddles the strip's edge and only its hidden half reaches the neighbour.
+      // Intersecting each rect with its port measures the region that is actually
+      // touchable; a fully scrolled-out chip falls out of the set on width alone.
+      const clipToPort = (t: HTMLElement, r: DOMRect) => {
+        for (
+          let p: HTMLElement | null = t.parentElement;
+          p && p !== el.parentElement;
+          p = p.parentElement
+        ) {
+          const overflowX = getComputedStyle(p).overflowX;
+          if (overflowX !== "auto" && overflowX !== "scroll") continue;
+          const port = p.getBoundingClientRect();
+          return {
+            left: Math.max(r.left, port.left),
+            right: Math.min(r.right, port.right),
+            top: r.top,
+            bottom: r.bottom,
+            height: r.height,
+          };
+        }
         return {
-          what: (t.textContent ?? "").trim().slice(0, 18) || t.tagName,
+          left: r.left,
+          right: r.right,
+          top: r.top,
+          bottom: r.bottom,
           height: r.height,
-          left: r.left - reach,
-          right: r.right + reach,
-          top: r.top - reach,
-          bottom: r.bottom + reach,
         };
-      });
+      };
+      const boxes = Array.from(
+        el.querySelectorAll<HTMLElement>("a, button, select")
+      )
+        .map((t) => {
+          const visible = clipToPort(t, t.getBoundingClientRect());
+          const after = getComputedStyle(t, "::after");
+          const reach =
+            after.content === "none"
+              ? 0
+              : Math.abs(Number.parseFloat(after.top));
+          return {
+            what: (t.textContent ?? "").trim().slice(0, 18) || t.tagName,
+            height: visible.height,
+            width: visible.right - visible.left,
+            left: visible.left - reach,
+            right: visible.right + reach,
+            top: visible.top - reach,
+            bottom: visible.bottom + reach,
+          };
+        })
+        .filter((b) => b.height > 0 && b.width > 0);
       const overlaps: string[] = [];
       let smallestGap = Number.POSITIVE_INFINITY;
       for (let i = 0; i < boxes.length; i += 1)
@@ -510,24 +605,24 @@ test.describe("the control box: one height, every kind, every viewport (#3938)",
 
     expect(
       geometry.boxes.length,
-      "the row must mix adjacent kinds"
+      "the row must hold more than one pair of adjacent targets"
     ).toBeGreaterThan(2);
     expect(
       [...new Set(geometry.boxes.map((b) => Math.round(b.height)))],
-      `the ledger row renders more than one height: ${geometry.boxes
+      `the record's filter row renders more than one height: ${geometry.boxes
         .map((b) => `${b.what}=${b.height}`)
         .join(", ")}`
     ).toEqual([CONTROL_BOX_PX]);
     expect(
       geometry.overlaps,
-      "two extended targets in the ledger row own the same point; the row's gap must be at least twice the reach"
+      "two extended targets in the record's filter row own the same point; the row's gap must be at least twice the reach"
     ).toEqual([]);
     // The gap floor, stated as the quantity it actually bounds: a non-negative gap
     // between EXTENDED boxes is exactly "the rendered gap is at least twice the
     // reach", so this is the floor measured rather than the constant restated.
     expect(
       geometry.smallestGap + TAP_FLOOR_FLOAT_EPSILON_PX,
-      `the ledger row's tightest gap between extended targets is ${geometry.smallestGap}px`
+      `the record filter row's tightest gap between extended targets is ${geometry.smallestGap}px`
     ).toBeGreaterThanOrEqual(0);
   });
 });

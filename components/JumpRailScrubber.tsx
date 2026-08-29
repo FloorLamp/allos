@@ -21,6 +21,18 @@ import {
 // imported from lib/timeline-scrubber.ts; what lives here is measurement, pointer
 // plumbing and paint.
 //
+// IT LIVES IN components/ SINCE #3958, and the move is what closed #2816. Two pages
+// scrub the same fold spine now — /history (the record) and /timeline until phase 2
+// retires it — and a second copy of a pointer recognizer is precisely the thing the
+// #1469 chokepoint exists to prevent. It is a RECORDED exception rather than a
+// converged consumer: `useDragGesture` models an overlay's own dismissal, and this
+// positions a document scroll offset, which is the same reasoning PullToRefresh's
+// exception carries. #2816's actual defect was that the guard could not SEE it — rule
+// 5 matched `addEventListener("pointermove")` and this component attaches JSX props —
+// so the fix is BOTH halves: the entry in RAW_DRAG_LISTENER_ALLOW below and the
+// widened pattern that would have demanded it. Inheriting the blind spot into a second
+// page was the one outcome the re-housing had to avoid.
+//
 // The idiom is the photo app's, by owner ruling: a slim strip down the right edge —
 // month dots, heavier year marks, and the YEAR'S DIGITS beside each mark — plus a
 // floating bubble that names the period under the finger only while a drag is live.
@@ -101,7 +113,7 @@ function scrollRangeNow(): number {
   );
 }
 
-export default function TimelineScrubber({ stops }: { stops: ScrubberStop[] }) {
+export default function JumpRailScrubber({ stops }: { stops: ScrubberStop[] }) {
   const router = useRouter();
   const fire = useHaptics();
   const reduceMotion = usePrefersReducedMotion();

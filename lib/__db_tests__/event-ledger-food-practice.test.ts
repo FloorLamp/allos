@@ -57,6 +57,14 @@ describe("food and practice event-ledger completion (#3484)", () => {
     expect(foodEvent).toMatchObject({
       category: "food",
       title: "3 servings logged",
+      // THE DAY ROLLUP'S DESTINATION (#3958). This href moved when the four ledger
+      // routes folded into `/history` — from a `from`/`to` WINDOW onto the day the
+      // rollup is actually about — and the only thing asserting it was
+      // `e2e/event-ledger-completion.spec.ts`, which the same change deleted. A
+      // destination whose one guard leaves in the commit that changes it is a dead
+      // link waiting to happen, so the claim lands here, beside the rollup itself,
+      // where it does not depend on a browser.
+      href: "/history?kind=food&day=2026-08-20",
     });
     expect(foodEvent?.detailItems).toEqual([
       { label: "Berries", value: "2 servings" },
