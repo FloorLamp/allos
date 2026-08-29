@@ -31,10 +31,7 @@
 
 import type { AppRoute } from "./hrefs";
 import { MEDICATIONS_HREF } from "./hrefs";
-import {
-  type ArguedExclusion,
-  type LoggableDomain,
-} from "./loggable-domains";
+import { type ArguedExclusion, type LoggableDomain } from "./loggable-domains";
 import type { MeasurementGroup } from "./measurements-deeplink";
 import {
   DEFAULT_TRENDS_TAB,

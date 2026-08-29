@@ -1173,12 +1173,10 @@ test("the symptom row logs a well day in place, and its illness verb resolves on
     await page.keyboard.press("Escape");
     await expect(page.getByTestId("quick-entry-sheet")).toHaveCount(0);
     const reopened = await openQuickEntry(page, "log-symptom");
-    await expect(
-      reopened.getByTestId("quick-symptom-tracking")
-    ).toHaveText("Tracking: Illness");
-    await expect(
-      reopened.getByTestId("symptom-illness-bridge")
-    ).toHaveCount(0);
+    await expect(reopened.getByTestId("quick-symptom-tracking")).toHaveText(
+      "Tracking: Illness"
+    );
+    await expect(reopened.getByTestId("symptom-illness-bridge")).toHaveCount(0);
   } finally {
     clearShellSymptomState();
     await page.context().close();
