@@ -392,7 +392,7 @@ const ROUTES: CensusRoute[] = [
     path: "/history?kind=dose",
     why: "The record's sticky day headers — the one date shape a day group prints (#3958).",
     assertReady: async (page) => {
-      await expect(page.getByTestId("history-day").first()).toBeVisible();
+      await expect(page.getByTestId("history-day").first()).toBeVisible(); // first-ok: the readiness proof is that ANY day group rendered; no per-day claim is made
     },
     subject: '[data-testid="history-day-link"]',
   },
