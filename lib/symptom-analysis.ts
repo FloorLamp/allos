@@ -110,7 +110,11 @@ export function buildSymptomAnalysis(
 
   const byKey = new Map<
     string,
-    { days: Set<string>; months: Map<string, number>; severity: SymptomSeverityPoint[] }
+    {
+      days: Set<string>;
+      months: Map<string, number>;
+      severity: SymptomSeverityPoint[];
+    }
   >();
   for (const day of days) {
     const month = monthStartOf(day.date);

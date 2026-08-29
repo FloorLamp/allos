@@ -200,11 +200,13 @@ describe("which symptoms are recurring", () => {
         const entry = analysis.entries.find((e) => e.symptom === symptom)!;
         return [symptom, entry.days, entry.recurring];
       })
-    ).toEqual(cases.map(([symptom, dates, recurring]) => [
-      symptom,
-      dates.length,
-      recurring,
-    ]));
+    ).toEqual(
+      cases.map(([symptom, dates, recurring]) => [
+        symptom,
+        dates.length,
+        recurring,
+      ])
+    );
     expect(analysis.recurring.map((e) => e.symptom).sort()).toEqual([
       "cough",
       "migraine",
