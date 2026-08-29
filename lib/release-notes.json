@@ -158,6 +158,30 @@
           "title": "Add a past entry without leaving the record, and opening a month keeps you where you tapped",
           "kind": "fix",
           "issues": [4045]
+        },
+        {
+          "pr": 4067,
+          "title": "Correct a family member's entry from the shared record, when you have write access to them",
+          "kind": "feature",
+          "issues": [4009]
+        },
+        {
+          "pr": 4071,
+          "title": "A workout the device could not save offline no longer turns up later anyway",
+          "kind": "fix",
+          "issues": [3170]
+        },
+        {
+          "pr": 4074,
+          "title": "The phone menu shows each section's pages without opening the section first",
+          "kind": "feature",
+          "issues": [3343]
+        },
+        {
+          "pr": 4075,
+          "title": "Log a symptom, a well day, or mark an illness from the quick logger",
+          "kind": "feature",
+          "issues": [4064]
         }
       ]
     },
