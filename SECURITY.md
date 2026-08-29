@@ -108,7 +108,8 @@ handlers alike):
   browsers get the same guarantee from the enforced CSP's
   `frame-ancestors 'none'` directive (see the next section — the CSP itself is
   emitted per-request by `middleware.ts`, not by `next.config.js`, so the policy
-  has exactly one source).
+  has exactly one source). One route is `SAMEORIGIN` instead — see
+  `frame-ancestors` below.
 - `X-Content-Type-Options: nosniff`
 - `Referrer-Policy: strict-origin-when-cross-origin`
 - `Permissions-Policy: camera=(), microphone=(), geolocation=(), payment=(), usb=()`
@@ -137,7 +138,11 @@ Enforced directives in production:
 - `default-src 'self'`, `base-uri 'self'`, `object-src 'none'`,
   `form-action 'self'`
 - `frame-ancestors 'none'` — clickjacking defense, mirroring
-  `X-Frame-Options: DENY`
+  `X-Frame-Options: DENY`. **One exception:** `/medical/file/*` gets
+  `frame-ancestors 'self'` (and `X-Frame-Options: SAMEORIGIN`), because the
+  import review page previews a stored PDF by framing that route from the same
+  origin. `'self'` admits same-origin ancestors only, so no other site can frame
+  any route of this app, this one included.
 - `img-src 'self' data: blob:` — same-origin images plus data-URI icons and
   blob: crop previews
 - `connect-src 'self'` — same-origin fetch/SSE only
