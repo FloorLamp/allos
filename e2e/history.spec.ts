@@ -175,22 +175,44 @@ test.describe("the record (#3958)", () => {
     const first = page.getByTestId("history-row").first(); // first-ok: the budget is about whatever record leads
     await expect(first).toBeVisible();
     const chrome = await page.evaluate(() => {
-      const main = document.querySelector("main")!;
+      const container = document.querySelector('[data-testid="history-page"]')!;
       const row = document.querySelector('[data-testid="history-row"]')!;
-      const style = getComputedStyle(main);
-      // MEASURED AGAINST THE CONTENT BOX IT SITS IN, not against the viewport: the
-      // shell's own header is not this page's chrome, and a viewport-relative number
-      // would move with it and say nothing about what this page spends.
-      const top =
-        main.getBoundingClientRect().top + parseFloat(style.paddingTop);
+      // MEASURED AGAINST THIS PAGE'S OWN CONTENT BOX, not against the viewport and
+      // not against `<main>`. The criterion is about what the PAGE spends — "a
+      // proposed addition to the header stack has to name what it displaces" — and
+      // the app shell's sticky top bar is on every page and displaceable by none of
+      // them (the census in scripts/census-chrome-baseline.json is what records the
+      // shell's own inset). Anchored on `<main>` this read 206px, of which 73 was
+      // shell: a number that moves when the SHELL changes says nothing about this
+      // page.
+      const top = container.getBoundingClientRect().top;
+      // THE BREAKDOWN IS PART OF THE FAILURE, not scaffolding to delete. A bare
+      // "206px, expected 140" says nothing about WHICH band grew, and the answer has
+      // been a different one every time this was measured — the fold cards rendering
+      // above the recent band, then a wrapping filter row, then the anchor itself.
+      // Keeping it is what makes the next red name its own cause (#2774).
+      const band = (sel: string) => {
+        const el = document.querySelector(sel);
+        if (!el) return null;
+        const r = el.getBoundingClientRect();
+        return { top: Math.round(r.top - top), height: Math.round(r.height) };
+      };
       return {
         chrome: row.getBoundingClientRect().top - top,
         h1: document.querySelectorAll("main h1:not(.sr-only)").length,
+        bands: {
+          header: band('[data-testid="history-page"] > div:first-child'),
+          filters: band('[data-testid="history-filters"]'),
+          add: band('[data-testid="history-add"]'),
+          feed: band('[data-testid="history-feed"]'),
+          day: band('[data-testid="history-day"] h2'),
+        },
       };
     });
     expect(
       Math.round(chrome.chrome),
-      `the record spends ${Math.round(chrome.chrome)}px above its first row`
+      `the record spends ${Math.round(chrome.chrome)}px above its first row — ` +
+        JSON.stringify(chrome.bands)
     ).toBeLessThanOrEqual(CHROME_BUDGET_PX);
     // What buys it, asserted so a regression names its cause: no visible page title
     // below `sm` (the nav names the page), and exactly one filter row.

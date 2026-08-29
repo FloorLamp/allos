@@ -3,6 +3,7 @@ import { IconChevronDown } from "@tabler/icons-react";
 import PageContainer from "@/components/PageContainer";
 import { PageHeader, EmptyState } from "@/components/ui";
 import Chip from "@/components/Chip";
+import FilterPills from "@/components/FilterPills";
 import JumpRailScrubber, {
   type ScrubberStop,
 } from "@/components/JumpRailScrubber";
@@ -279,6 +280,10 @@ export default async function HistoryPage(props: {
   }));
   const loggable = doseItems.filter((item) => item.doses.length > 0);
   const canWrite = scope.access.get(actingProfileId) === "write";
+  const defaultTime = zonedDateParts(
+    getTimezone(actingProfileId),
+    new Date()
+  ).hhmm;
   const subjectNames: Record<number, string> = {};
   if (everyone) {
     for (const profile of scope.profiles) {
@@ -290,7 +295,11 @@ export default async function HistoryPage(props: {
   const hasMore = feeds.some((feed) => feed.gather.hasMore);
 
   return (
-    <PageContainer width="reading" className="mx-auto">
+    <PageContainer
+      width="reading"
+      className="mx-auto"
+      data-testid="history-page"
+    >
       <PageHeader
         title="History"
         subtitle="Everything recorded, newest first."
@@ -298,72 +307,81 @@ export default async function HistoryPage(props: {
         className={railGutter}
       />
 
-      {/* ONE FILTER ROW. Kind chips, data-presence-earned so an empty category never
-          advertises itself, plus the Photos toggle behind a hairline — a cross-cutting
-          filter, never a renderer switch. No counts on chips: the day headers count.
-          Phase 1 renders the Logs family's kind row directly rather than a family row
-          that would hold one entry; the `?family=` param still resolves. */}
+      {/* ONE FILTER ROW, AND IT IS ONE LINE. Kind chips on the shared responsive
+          pill group (#3938's control box, phone-scroll / `sm`-wrap), data-presence
+          earned so an empty category never advertises itself, plus the Photos toggle
+          behind a hairline — a cross-cutting filter, never a renderer switch. No
+          counts on chips: the day headers count. A WRAPPING row was the first thing
+          that blew the chrome budget here, which is why the kinds scroll and the
+          toggle is pinned outside the scroller rather than wrapping under it.
+
+          Phase 1 renders the Logs family's KIND row directly rather than a family row
+          that would hold one entry; `?family=` still resolves. */}
       <div
-        className={`mb-3 flex flex-wrap items-center gap-1.5 ${railGutter}`}
+        className={`mb-3 flex items-center gap-2 ${railGutter}`}
         data-testid="history-filters"
       >
-        <Chip
-          role="filter"
-          href={chipHref({ kind: undefined })}
-          current={kind == null}
-          linkBehavior="timeline"
-          testId="history-chip-all"
-        >
-          All
-        </Chip>
-        {presentKinds.map((candidate) => (
-          <Chip
-            key={candidate}
-            role="filter"
-            href={chipHref({ kind: candidate })}
-            current={kind === candidate}
+        <div className="min-w-0 flex-1">
+          <FilterPills
+            mode="link"
+            layout="responsive"
             linkBehavior="timeline"
-            testId={`history-chip-${candidate}`}
-          >
-            {HISTORY_KIND_LABELS[candidate]}
-          </Chip>
-        ))}
+            label="Filter the record by kind"
+            value={kind ?? null}
+            testId="history-kind-pills"
+            options={[
+              {
+                value: null,
+                label: "All",
+                href: chipHref({ kind: undefined }),
+                testId: "history-chip-all",
+              },
+              ...presentKinds.map((candidate) => ({
+                value: candidate as HistoryLogKind | null,
+                label: HISTORY_KIND_LABELS[candidate],
+                href: chipHref({ kind: candidate }),
+                testId: `history-chip-${candidate}`,
+              })),
+            ]}
+          />
+        </div>
         {hasMedia || media ? (
           <>
             <span
               aria-hidden
-              className="mx-1 h-5 w-px bg-black/10 dark:bg-white/10"
+              className="h-5 w-px shrink-0 bg-black/10 dark:bg-white/10"
             />
-            <Chip
-              role="filter"
-              href={chipHref({ media: !media })}
-              current={media}
-              linkBehavior="timeline"
-              testId="history-chip-media"
-            >
-              Photos
-            </Chip>
+            <span className="shrink-0">
+              <Chip
+                role="filter"
+                href={chipHref({ media: !media })}
+                current={media}
+                linkBehavior="timeline"
+                testId="history-chip-media"
+              >
+                Photos
+              </Chip>
+            </span>
           </>
         ) : null}
       </div>
 
-      {/* THE ADD DOOR, KIND-RESOLVED. Filtered to a kind it IS that kind's backfill;
-          in All it asks the kind first, which on a record page is the same act as
-          narrowing to it. Log kinds only — clinical, training and life records are
-          created on their own surfaces — and never the future: every door below is
-          bounded by today. */}
+      {/* THE ADD DOOR, KIND-RESOLVED, ON ONE LINE. Filtered to a kind it IS that
+          kind's backfill; in All it asks the kind first, which on a record page is
+          the same act as narrowing to it. Log kinds only — clinical, training and
+          life records are created on their own surfaces — and never the future:
+          every door here is bounded by today. It scrolls rather than wraps for the
+          same reason the filter row does. */}
       {canWrite ? (
         <div
-          className={`mb-4 flex flex-wrap items-center gap-2 text-sm ${railGutter}`}
+          className={`-mx-2 mb-2 flex items-center gap-2 overflow-x-auto px-2 pb-1 text-sm sm:mx-0 sm:flex-wrap sm:overflow-visible sm:px-0 sm:pb-0 ${railGutter}`}
           data-testid="history-add"
         >
           {kind === "dose" && loggable.length > 0 ? (
             <DoseBackfillLauncher
               loggable={loggable}
               maxDate={todayStr}
-              defaultTime={
-                zonedDateParts(getTimezone(actingProfileId), new Date()).hhmm
-              }
+              defaultTime={defaultTime}
             />
           ) : kind === "food" ? (
             <Link className="btn btn-sm" href={`/nutrition?date=${todayStr}`}>
@@ -386,14 +404,14 @@ export default async function HistoryPage(props: {
             </Link>
           ) : (
             <>
-              <span className="text-slate-500 dark:text-slate-400">
-                Add past entry
+              <span className="shrink-0 text-slate-500 dark:text-slate-400">
+                Add past
               </span>
               {(presentKinds.length > 0 ? presentKinds : HISTORY_LOG_KINDS).map(
                 (candidate) => (
                   <Link
                     key={candidate}
-                    className="btn-ghost btn-sm"
+                    className="btn-ghost btn-sm shrink-0"
                     href={chipHref({ kind: candidate })}
                     data-testid={`history-add-${candidate}`}
                   >
@@ -417,15 +435,12 @@ export default async function HistoryPage(props: {
       ) : null}
 
       <div className={railGutter} data-testid="history-feed">
-        {windowed?.months.map((fold) => (
-          <FoldCard key={fold.key} fold={fold} href={foldHref(fold.key)} />
-        ))}
         {renderedDays.map((group) => (
           <section
             key={group.date}
             id={`timeline-day-${group.date}`}
             data-testid="history-day"
-            className="scroll-mt-24 py-2"
+            className="scroll-mt-24 pb-2 pt-1"
           >
             {/* THE DAY HEADER STICKS, and it is the whole "which day am I in"
                 affordance — there is no per-row date cell, which is most of what the
@@ -450,12 +465,18 @@ export default async function HistoryPage(props: {
               canWrite={canWrite}
               doseItems={doseItems}
               maxDate={todayStr}
-              defaultTime={
-                zonedDateParts(getTimezone(actingProfileId), new Date()).hhmm
-              }
+              defaultTime={defaultTime}
               subjectNames={subjectNames}
             />
           </section>
+        ))}
+        {/* READING ORDER: the recent band first, then this year's older months, then
+            one card per earlier year. A fold card above the days would put a stack of
+            shut doors between the reader and their own recent history, which is the
+            defect #2657 exists to prevent — and it would spend the chrome budget on
+            content nobody asked to see. */}
+        {windowed?.months.map((fold) => (
+          <FoldCard key={fold.key} fold={fold} href={foldHref(fold.key)} />
         ))}
         {windowed?.years.map((year) => (
           <div key={year.key}>
