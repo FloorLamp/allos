@@ -58,7 +58,7 @@ export function seedCoverageGaps(): void {
   ins.run(
     stravaReauthId,
     "strava",
-    "2026-07-09T09:00:00Z",
+    utcSqlString(new Date(clockNow().getTime() - 60 * 60 * 1000)),
     0,
     null,
     null,
