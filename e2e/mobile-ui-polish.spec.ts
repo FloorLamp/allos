@@ -3,6 +3,7 @@ import { closeEditor, openFact } from "./intake-form-helpers";
 import { expandTrendsContext } from "./trends-chrome";
 import type { Locator } from "@playwright/test";
 import {
+  expectControlBoxHeight,
   expectNoClippedContent,
   expectPhoneTapTargets,
   hydratedClick,
@@ -272,6 +273,10 @@ test.describe("the phone drawer's month calendar clears the floor too (#3377/#35
         expect(day.w + 2 * day.reachInline).toBeGreaterThanOrEqual(
           TAP_FLOOR_PX
         );
+        // The BOX as an equality, THEN the floor. `>= 44` alone was green on the
+        // `h-11 md:h-7` step this issue retired, which is how this very file's
+        // 40px bound survived #3514 (see the header).
+        expect(day.h, `day ${index} rendered height`).toBe(CONTROL_BOX_PX);
         expect(
           day.h + 2 * day.reachBlock,
           `day ${index}: ${day.h}px rendered + 2x${day.reachBlock}px block reach`
@@ -299,6 +304,13 @@ test.describe("the phone drawer's month calendar clears the floor too (#3377/#35
 
       // The arrows are `.tap-target`, so they reach on BOTH axes and are asserted
       // through the shared helper, which reads the same pointer this page reports.
+      await expectControlBoxHeight(
+        prevMonth,
+        "the drawer calendar's back arrow",
+        {
+          lines: 0,
+        }
+      );
       await expectPhoneTapTargets(page, "the drawer calendar's month arrows", [
         prevMonth,
         nextMonth,

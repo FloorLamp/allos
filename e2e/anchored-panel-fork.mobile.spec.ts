@@ -1,5 +1,6 @@
 import { test, expect } from "./fixtures";
 import {
+  expectControlBoxHeight,
   expectPhoneTapTargets,
   hydratedClick,
   settledBoxes,
@@ -183,6 +184,13 @@ test.describe("below md the date picker is a bottom sheet", () => {
     const day = calendar.getByRole("button", { name: "17", exact: true });
     const dayBelow = calendar.getByRole("button", { name: "24", exact: true });
     await expect(day).toBeVisible();
+    // The BOX, as an equality. `expectPhoneTapTargets` only bounds the effective
+    // target from below, so it is green on the `h-11 md:h-9` step this issue
+    // retired — 44 is not less than 44 — and a guard that survives the change it
+    // was written for is not a guard.
+    await expectControlBoxHeight(day, "the date sheet's day cell", {
+      lines: 0,
+    });
     await expectPhoneTapTargets(
       page,
       "the date sheet's day cells",
