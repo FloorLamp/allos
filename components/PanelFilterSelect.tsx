@@ -1,7 +1,6 @@
 "use client";
 
-import { usePathname, useRouter, useSearchParams } from "next/navigation";
-import { currentPathHref } from "@/lib/hrefs";
+import QueryParamSelect from "./QueryParamSelect";
 import {
   OTHER_PANEL,
   PANEL_LABELS,
@@ -23,8 +22,8 @@ import {
 // list, so the facet can no longer offer an option that returns nothing for anyone
 // (#1581 section D). Resolving that here would drag the canonical dataset into the
 // client bundle, so the server hands it down. The reserved "Other" slug is offered
-// LAST and separated, because it is a real, useful view (the readings the taxonomy
-// can't place, i.e. analytes no canonical entry covers) but not a clinical panel.
+// LAST, because it is a real, useful view (the readings the taxonomy can't place,
+// i.e. analytes no canonical entry covers) but not a clinical panel.
 export default function PanelFilterSelect({
   value,
   panels,
@@ -32,45 +31,20 @@ export default function PanelFilterSelect({
   value?: PanelId;
   panels: readonly PanelId[];
 }) {
-  const router = useRouter();
-  const pathname = usePathname();
-  const searchParams = useSearchParams();
-
-  function setPanel(next: string) {
-    const sp = new URLSearchParams(searchParams.toString());
-    if (next) sp.set("panel", next);
-    else sp.delete("panel");
-    const s = sp.toString();
-    router.push(currentPathHref(s ? `${pathname}?${s}` : pathname));
-  }
-
   const clinical = panels.filter((id) => id !== OTHER_PANEL);
-  const hasOther = panels.includes(OTHER_PANEL);
+  const ordered = panels.includes(OTHER_PANEL)
+    ? [...clinical, OTHER_PANEL]
+    : clinical;
 
   return (
-    <label className="flex max-w-full items-center gap-2 text-sm text-slate-600 dark:text-slate-300">
-      <span className="font-medium">Panel</span>
-      {/* A `w-auto` select sizes itself to its WIDEST option, and the longest panel
-          label ("Immunoglobulins & autoantibodies") pushes it past a 390px phone —
-          the clipped-content guard catches exactly this. Cap it below `sm` (the
-          browser ellipsizes the selected label; the open list is unaffected) and
-          leave desktop unconstrained. */}
-      <select
-        className="input w-auto max-w-40 min-w-0 sm:max-w-none"
-        data-testid="panel-filter"
-        value={value ?? ""}
-        onChange={(e) => setPanel(e.target.value)}
-      >
-        <option value="">All</option>
-        {clinical.map((id) => (
-          <option key={id} value={id}>
-            {PANEL_LABELS[id].label}
-          </option>
-        ))}
-        {hasOther && (
-          <option value={OTHER_PANEL}>{PANEL_LABELS[OTHER_PANEL].label}</option>
-        )}
-      </select>
-    </label>
+    <QueryParamSelect
+      param="panel"
+      label="Panel"
+      value={value}
+      options={ordered.map((id) => ({
+        value: id,
+        label: PANEL_LABELS[id].label,
+      }))}
+    />
   );
 }

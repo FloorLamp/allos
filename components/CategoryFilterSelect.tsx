@@ -1,54 +1,36 @@
 "use client";
 
-import { usePathname, useRouter, useSearchParams } from "next/navigation";
-import { currentPathHref } from "@/lib/hrefs";
-import { ASSIGNABLE_MEDICAL_CATEGORIES } from "@/lib/medical-categories";
+import QueryParamSelect from "./QueryParamSelect";
+import type { MedicalCategory } from "@/lib/types";
 
-// The standard clinical-observation categories, matching the readings filter and the
-// per-row category editor. Offering the fixed set (rather than only categories
-// present in the current view) keeps the control consistent with the readings
-// table wherever it's used. This is the DEFAULT option set; the readings
-// browser passes its own prescription-less list. (The import-detail document
-// view no longer uses this control — its category filter collapsed into the
-// results-browser tab strip, #271.)
-// Category dropdown for a clinical observations table. Writes the choice into the
-// `category` query param on the current path (preserving other params), so
-// server components read it back. Path-agnostic. `categories` overrides the
-// offered set (defaults to the full list).
+// Category dropdown for a clinical observations table, over the standard clinical-
+// observation categories. Offering the caller's fixed set (rather than only the
+// categories present in the current view) keeps the control consistent with the
+// readings table wherever it's used. (The import-detail document view no longer
+// uses this control — its category filter collapsed into the results-browser tab
+// strip, #271, which is also why the offered set is now required rather than
+// defaulted: one caller passes it, and the default had no reader left.)
 export default function CategoryFilterSelect({
   value,
-  categories = ASSIGNABLE_MEDICAL_CATEGORIES,
+  categories,
 }: {
   value?: string;
-  categories?: readonly string[];
+  categories: readonly MedicalCategory[];
 }) {
-  const router = useRouter();
-  const pathname = usePathname();
-  const searchParams = useSearchParams();
-
-  function setCategory(next: string) {
-    const sp = new URLSearchParams(searchParams.toString());
-    if (next) sp.set("category", next);
-    else sp.delete("category");
-    const s = sp.toString();
-    router.push(currentPathHref(s ? `${pathname}?${s}` : pathname));
-  }
-
   return (
-    <label className="flex items-center gap-2 text-sm text-slate-600 dark:text-slate-300">
-      <span className="font-medium">Category</span>
-      <select
-        className="input w-auto capitalize"
-        value={value ?? ""}
-        onChange={(e) => setCategory(e.target.value)}
-      >
-        <option value="">All</option>
-        {categories.map((c) => (
-          <option key={c} value={c} className="capitalize">
-            {c}
-          </option>
-        ))}
-      </select>
-    </label>
+    <QueryParamSelect
+      param="category"
+      label="Category"
+      value={value}
+      // Categories are stored lowercase and were displayed through a `capitalize`
+      // class. The owner renders one option label for every caller, so the casing
+      // becomes the label itself — a class here would be the styling seam #3748
+      // closes, and `capitalize` on the shared select would retitle the panel
+      // names next door.
+      options={categories.map((c) => ({
+        value: c,
+        label: c[0].toUpperCase() + c.slice(1),
+      }))}
+    />
   );
 }

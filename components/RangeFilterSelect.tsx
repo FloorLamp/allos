@@ -3,29 +3,34 @@
 import { useEffect } from "react";
 import { usePathname, useRouter, useSearchParams } from "next/navigation";
 import { currentPathHref } from "@/lib/hrefs";
+import QueryParamSelect from "./QueryParamSelect";
 
 // Session-storage key remembering the last-chosen range filter, so it carries
 // across the results browser and the per-document subpages within a session.
 const STORAGE_KEY = "medical:range";
 
-type RangeValue = "" | "nonoptimal" | "oor";
+const OPTIONS = [
+  { value: "nonoptimal", label: "Non-optimal" },
+  { value: "oor", label: "Out of range only" },
+] as const;
 
-function normalize(v: string | undefined | null): RangeValue {
-  return v === "oor" ? "oor" : v === "nonoptimal" ? "nonoptimal" : "";
+function normalize(v: string | undefined | null): string {
+  return v === "oor" || v === "nonoptimal" ? v : "";
 }
 
 // Three-way "show" filter for a clinical readings table: All / Non-optimal / Out
-// of range only. Writes the choice into the `range` query param on the current
-// path (preserving other params), so server components read it back. Path-
-// agnostic, and persists to sessionStorage like the old checkbox did.
+// of range only. The URL write is QueryParamSelect's; what stays HERE is the
+// PERSISTENCE POLICY (#3748 keeps it out of the primitive) — this filter, alone
+// among the three, remembers its choice for the session like the old checkbox did.
 export default function RangeFilterSelect({ value }: { value?: string }) {
   const router = useRouter();
   const pathname = usePathname();
   const searchParams = useSearchParams();
-  const current = normalize(value);
 
   // On first mount, if the URL doesn't specify `range` but a previous choice in
   // this session is remembered, restore it. An explicit param in the URL wins.
+  // (e2e/helpers.ts leans on this: it is why the click helper arms its
+  // "did my click move the page" baseline lazily.)
   useEffect(() => {
     if (searchParams.has("range")) return;
     const saved = sessionStorage.getItem(STORAGE_KEY);
@@ -38,31 +43,16 @@ export default function RangeFilterSelect({ value }: { value?: string }) {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
-  function setRange(next: RangeValue) {
-    const sp = new URLSearchParams(searchParams.toString());
-    if (next) {
-      sp.set("range", next);
-      sessionStorage.setItem(STORAGE_KEY, next);
-    } else {
-      sp.delete("range");
-      sessionStorage.removeItem(STORAGE_KEY);
-    }
-    const s = sp.toString();
-    router.push(currentPathHref(s ? `${pathname}?${s}` : pathname));
-  }
-
   return (
-    <label className="flex items-center gap-2 text-sm text-slate-600 dark:text-slate-300">
-      <span className="font-medium">Show</span>
-      <select
-        className="input w-auto"
-        value={current}
-        onChange={(e) => setRange(e.target.value as RangeValue)}
-      >
-        <option value="">All</option>
-        <option value="nonoptimal">Non-optimal</option>
-        <option value="oor">Out of range only</option>
-      </select>
-    </label>
+    <QueryParamSelect
+      param="range"
+      label="Show"
+      value={normalize(value)}
+      options={OPTIONS}
+      onSelect={(next) => {
+        if (next) sessionStorage.setItem(STORAGE_KEY, next);
+        else sessionStorage.removeItem(STORAGE_KEY);
+      }}
+    />
   );
 }
