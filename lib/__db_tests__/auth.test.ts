@@ -970,9 +970,10 @@ describe("session denial: revoked vs merely unauthorized (#3053)", () => {
     expect(sessionDenial(token)).toBe<SessionDenial>("revoked");
   });
 
-  // Tombstones are retained exactly as long as a token could still be presented as live,
-  // and no longer: past the absolute ceiling the answer reverts to "unauthorized", which
-  // is the same keep-the-record direction every other unknown takes.
+  // Retention is 90 days — the session ceiling — and past it the answer reverts to
+  // "unauthorized". This is the EXPOSURE side of that trade pinned deliberately, not a
+  // tidy-up: a device that comes back later is not told, and keeps its record. The
+  // migration header says which way the trade runs and why shortening it is not free.
   it("retires a tombstone once no token could still be live", () => {
     const { id } = mkLogin();
     const profileId = mkProfile("Retired");
@@ -985,5 +986,70 @@ describe("session denial: revoked vs merely unauthorized (#3053)", () => {
     ).run();
     purgeExpiredSessions();
     expect(sessionDenial(token)).toBe<SessionDenial>("unauthorized");
+  });
+
+  // ── A LAPSE AND A LATER REVOCATION, IN THE SAME TEST ────────────────────────────
+  //
+  // The arms above cover expiry and revocation SEPARATELY, and that is exactly why the
+  // whole tier was green over the defect this pins: the set-shaped tombstone statements
+  // mirrored their delete, the delete has no expiry filter, and so a session that had
+  // ALREADY LAPSED was recorded as one somebody revoked. Its device — a phone in a
+  // drawer whose owner did nothing but stay away — then wiped its offline health record
+  // at its next /login. Neither a pure-lapse arm nor a pure-revocation arm can see it;
+  // only a lapse followed by a revocation of the SAME login can.
+  //
+  // The third case is the sharp one. It is the same household twice, and the only
+  // difference is whether the background sweep happened to run first — so before the fix
+  // the two rows disagreed, and whether a healthy device kept its record was decided by
+  // `purgeExpiredSessions`'s timing. On a self-hosted instance without the notify cron
+  // that sweep fires only when somebody signs in.
+  //
+  // ALL SIX `destroyLoginSessions` CALL SITES REACH THIS, including the two whose subject
+  // performed no deliberate act at all: an admin's password reset, and an invite or reset
+  // link completed at /set-password.
+  it.each([
+    [
+      "lapsed, unswept, then every device signed out",
+      false,
+      (l: number) => void destroyLoginSessions(l),
+    ],
+    [
+      "lapsed, unswept, then everything-but-this-one signed out",
+      false,
+      (l: number) =>
+        void destroyLoginSessions(l, sha256hex("some other device")),
+    ],
+    [
+      "lapsed and SWEPT, then every device signed out",
+      true,
+      (l: number) => void destroyLoginSessions(l),
+    ],
+    [
+      "past the 90-day ceiling, unswept, then every device signed out",
+      false,
+      (l: number) => void destroyLoginSessions(l),
+    ],
+  ])("%s → still unauthorized", (name, sweepFirst, revoke) => {
+    const { id } = mkLogin();
+    const profileId = mkProfile("Drawer phone");
+    grant(id, profileId);
+    const { token } = createSession(id);
+    // A live session on ANOTHER device of the same login, so the revocation has real
+    // work to do. Without it "nothing was tombstoned" is also what a no-op looks like.
+    const live = createSession(id);
+
+    if (name.startsWith("past the")) {
+      ageSession(sha256hex(token), "-91 days", "+30 days", "-1 minutes");
+    } else {
+      ageSession(sha256hex(token), "-40 days", "-1 hours", "-1 hours");
+    }
+    if (sweepFirst) purgeExpiredSessions();
+    revoke(id);
+
+    expect(sessionDenial(token)).toBe<SessionDenial>("unauthorized");
+    // NON-VACUITY: the revocation really ran, and really said the word for a device
+    // that really was live. Otherwise the assertion above passes against a build that
+    // tombstones nothing at all — which is the tree #3053 was filed against.
+    expect(sessionDenial(live.token)).toBe<SessionDenial>("revoked");
   });
 });

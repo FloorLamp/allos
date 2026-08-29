@@ -46,13 +46,11 @@ function parseKinds(param: string | null): SnapshotKind[] {
 export async function GET(req: Request) {
   const session = await getCurrentSession();
   if (!session) {
-    // REVOKED, OR MERELY UNAUTHORIZED (#3053). The device wipes on the first and keeps
-    // its offline copy on the second, so this one word is the whole channel by which a
-    // "Sign out all devices" pressed somewhere else reaches the phone that holds the
-    // health record. lib/auth's `SessionDenial` carries the answer to the owner's
-    // deferred question — whether saying "revoked" leaks anything worth withholding from
-    // an attacker holding the device — and the reasoning for it. Nothing else is
-    // returned: no username, no profile, no timestamp.
+    // REVOKED, OR MERELY UNAUTHORIZED (#3053). The device wipes on the first and keeps its
+    // offline copy on the second, so this one word is the whole channel by which a "Sign
+    // out all devices" pressed somewhere else reaches the phone that holds the health
+    // record. Nothing else is returned. lib/auth's `SessionDenial` holds the owner's
+    // deferred question and its answer.
     return Response.json(
       { ok: false, error: await currentSessionDenial() },
       { status: 401 }
@@ -67,23 +65,16 @@ export async function GET(req: Request) {
   // builders so a probe costs one session lookup plus one settings read and returns no
   // PHI at all.
   //
-  // IT NOW CARRIES `enabled` TOO (#3041), which is the second thing a device can only
-  // learn by asking. The refresher used to return before the fetch when nothing it held
-  // was missing or stale — so a device with a COMPLETE fresh set never asked again, and
-  // an off switch flipped on another device reached it only when a payload aged, up to a
-  // day later. It asks this instead, and finds out at its next visit.
+  // IT NOW CARRIES `enabled` TOO, which is what makes it answerable for #3041 — see the
+  // refresher's call site for why a device that needs no payload still has to ask.
   const { profile, login } = session;
   const enabled = getOfflineSnapshotsEnabled(profile.id);
   if (new URL(req.url).searchParams.has("probe") || !enabled) {
-    // The off switch is HONEST (the acceptance criterion): the server hands back
-    // nothing AND says so, and the client wipes on reading it — so a profile toggled
-    // off on another device stops having payloads on this one at its next visit, not
-    // just at the moment of the toggle.
-    //
-    // Shared with the probe above, which is why `enabled` is a variable rather than the
-    // literal `false` it used to be: a probe on an ENABLED profile answers the same
-    // shape with `enabled: true` and an empty list, which the client reads as "nothing
-    // to store", not as "wipe".
+    // The off switch is HONEST (the acceptance criterion): the server hands back nothing
+    // AND says so, and the client wipes on reading it — so a profile toggled off on
+    // another device stops having payloads on this one at its next visit, not just at the
+    // moment of the toggle. `enabled` is a variable rather than the literal `false` it
+    // used to be because the probe shares this exit.
     return Response.json({
       ok: true,
       enabled,

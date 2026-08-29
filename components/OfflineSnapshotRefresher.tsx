@@ -60,11 +60,8 @@ const INITIAL_REFRESH_DELAY_MS = 1_200;
 //     a snapshot refresh is background work nobody is waiting on, and holding it would
 //     be the polling-miss case #2982 deliberately excluded.
 //
-// It asks the server only for the PAYLOADS it does not have — `snapshotsToRefresh` answers
-// from the stored envelopes' own clocks, in the PROFILE'S timezone. It still ASKS on every
-// run, because two things can only be learned by asking and neither is a payload: that the
-// offline-reads switch moved on another device (#3041), and that this session was REVOKED
-// rather than merely expired (#3053).
+// It asks for only the PAYLOADS it does not have — `snapshotsToRefresh` answers from the
+// stored envelopes' own clocks, in the PROFILE'S timezone — but it ASKS on every run.
 //
 // WHEN IT RUNS. "An authenticated visit" is not the same thing as a hard page load, and
 // keying the effect on `[activeProfileId]` alone quietly made it one: this is an App
@@ -72,12 +69,10 @@ const INITIAL_REFRESH_DELAY_MS = 1_200;
 // it all day got exactly ONE refresh. The triggers are therefore the pathname (every
 // in-app navigation, which is what a "visit" actually looks like here), the tab becoming
 // visible again, reconnecting, and a dirty mark from a tap this page just made — the
-// same belt-and-braces set OfflineQueueProvider uses for replay. A run with nothing to
-// fetch is one IndexedDB read and ONE PROBE — no payloads, no PHI, no builders (#3041).
-// It used to be no request at all, and that is exactly what let an off switch flipped
-// elsewhere sit unseen for up to a day. A run on a device whose gate is CLOSED still
-// costs nothing: `snapshotWritesClosed()` returns above the probe, which is what keeps
-// every "asked nothing after logout" guard in e2e/offline-write-gate.spec.ts true.
+// same belt-and-braces set OfflineQueueProvider uses for replay. A run on a device whose
+// gate is CLOSED still costs nothing — `snapshotWritesClosed()` returns above the probe,
+// which is what keeps every "asked nothing after logout" guard in
+// e2e/offline-write-gate.spec.ts true.
 export default function OfflineSnapshotRefresher({
   activeProfileId,
 }: {
@@ -158,13 +153,12 @@ export default function OfflineSnapshotRefresher({
             ...dirtySnapshotKinds(),
           ]),
         ];
-        // IT ASKS EVEN WHEN IT NEEDS NOTHING (#3041). Returning here was the defect: a
-        // device holding a complete, fresh set stopped asking, so an off switch flipped
-        // on another device reached it only when a payload happened to age — up to a day,
-        // for a control whose surface says the data is gone from this account's devices.
-        // The probe is the same route answered above its builders: one session lookup and
-        // one settings read, no payloads, no PHI. That is the extra request this costs on
-        // visits that previously made none.
+        // IT ASKS EVEN WHEN IT NEEDS NOTHING. Returning here was the #3041 defect: a device
+        // holding a complete, fresh set stopped asking, so an off switch flipped on
+        // another device reached it only when a payload aged — up to a day, for a control
+        // whose surface says the data is gone from this account's devices. Two answers can
+        // only be had by asking and neither is a payload: that the switch moved (#3041),
+        // and that this session was REVOKED rather than expired (#3053).
         const res = await fetch(
           wanted.length === 0
             ? "/api/offline-snapshots?probe=1"
@@ -185,9 +179,7 @@ export default function OfflineSnapshotRefresher({
         };
         // The off switch, honored from the SERVER's answer as well as from the toggle
         // itself: a profile turned off on another device stops having payloads here at
-        // its next authenticated visit — which is now true of a device that needed
-        // nothing, too, because the probe above asked (#3041). Nothing re-materializes
-        // until it is turned back on.
+        // its next authenticated visit. Nothing re-materializes until it is turned back on.
         if (body.enabled === false) {
           // WIPE, AND DO NOT LATCH. The server is authoritative and it is asked again on
           // every refresh, so it needs no help from this device to keep saying no —

@@ -17,10 +17,24 @@ import type { Migration } from "../runner";
 // cookie, and the only question ever asked of this table is "was this exact token
 // deliberately ended" — which needs no other column to answer.
 //
-// RETENTION is bounded by the session lifetime it describes: a token past
+// RETENTION IS A TRADE, NOT A TIDY-UP, and the reason first written here was a
+// non-sequitur worth correcting rather than deleting. It argued that a token past
 // SESSION_ABSOLUTE_MAX_MODIFIER (90 days from creation) can never resolve to a session
-// again, so a tombstone older than that can never change an answer. lib/auth's
-// purgeExpiredSessions sweeps them on the same tick it sweeps dead sessions.
+// again, so an old tombstone cannot change an answer. The premise is true; the conclusion
+// does not follow. `sessionDenial` is consulted ONLY AFTER resolution has already failed
+// — answering the denial WORD is its entire job — so retiring a tombstone changes that
+// answer from "revoked" to "unauthorized", every time.
+//
+// What is actually being traded: a phone revoked on suspicion of compromise and then left
+// in a drawer for 91 days comes back, is told "unauthorized", and KEEPS its offline health
+// record — #3053's own exposure, reopened by the sweep. Against that, an unbounded table
+// of hashes for every session this instance has ever deliberately ended.
+//
+// 90 days is chosen because it is the session ceiling and therefore the longest window in
+// which the device could still have believed it had a session at all. SHORTENING IT IS NOT
+// FREE: every day removed is a day of devices that come back and are not told. Anyone
+// reaching for a smaller number is trading exposure for rows, and should say which way.
+// lib/auth's purgeExpiredSessions sweeps them on the same tick it sweeps dead sessions.
 export const migration: Migration = {
   name: "20260829-revoked-session-tombstones",
   up(db: Database.Database) {

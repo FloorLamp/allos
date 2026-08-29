@@ -170,16 +170,32 @@ const TOMBSTONE_TOKEN_STMT = hoistedStatement(
   `INSERT OR REPLACE INTO revoked_sessions (token_hash, revoked_at)
    VALUES (?, datetime('now'))`
 );
-// The two set-shaped revocations cannot say afterwards which rows they took, so they
-// copy the hashes they are ABOUT to delete. Each mirrors its delete's predicate exactly.
+// The two set-shaped revocations cannot say afterwards which rows they took, so they copy
+// the hashes they are ABOUT to delete — but NARROWER than the delete by exactly one
+// clause, and that clause is not optional.
+//
+// The delete is `WHERE login_id = ?` with no expiry filter, so it also takes rows that
+// were ALREADY DEAD. Mirroring it tombstoned them, and a device whose cookie had merely
+// lapsed then wiped its health record at its next /login — the person the ruling protects,
+// the one who came back tomorrow. And it depended on whether `purgeExpiredSessions` had
+// run: swept, the row was gone and nothing was recorded; unswept, the record was
+// destroyed. Same household, same actions, outcome decided by a background sweep.
+//
+// So these select the LIVE set — the liveness `SESSION_LOOKUP_STMT` and
+// `listLoginSessions` already use, because "a session this revocation ended" and "a
+// session a device could still have presented" must be the same set. A dead row is not
+// something anyone revoked.
+const SESSION_IS_LIVE = `expires_at > datetime('now')
+        AND created_at > datetime('now', '${SESSION_ABSOLUTE_MAX_MODIFIER}')`;
 const TOMBSTONE_LOGIN_STMT = hoistedStatement(
   `INSERT OR REPLACE INTO revoked_sessions (token_hash, revoked_at)
-     SELECT token_hash, datetime('now') FROM sessions WHERE login_id = ?`
+     SELECT token_hash, datetime('now') FROM sessions
+      WHERE login_id = ? AND ${SESSION_IS_LIVE}`
 );
 const TOMBSTONE_LOGIN_EXCEPT_STMT = hoistedStatement(
   `INSERT OR REPLACE INTO revoked_sessions (token_hash, revoked_at)
      SELECT token_hash, datetime('now') FROM sessions
-      WHERE login_id = ? AND token_hash != ?`
+      WHERE login_id = ? AND token_hash != ? AND ${SESSION_IS_LIVE}`
 );
 const REVOKED_LOOKUP_STMT = hoistedStatement(
   "SELECT 1 AS found FROM revoked_sessions WHERE token_hash = ?"
@@ -771,6 +787,14 @@ export function revokeSession(
   // unconditionally would let a forged POST plant rows for hashes this login never
   // owned — harmless to read, but unbounded to write, and the "nothing" outcome exists
   // precisely to say no session was there.
+  //
+  // AND NO LIVENESS CLAUSE HERE, unlike the two set-shaped statements above, which is a
+  // decision rather than an omission. Those end a set nobody enumerated, so a lapsed
+  // device in a drawer is swept in by accident; this one NAMES a device, which is what a
+  // per-device revoke is for. A row that lapsed between the list being rendered and the
+  // button being pressed is still the device the person meant to end, and ending it is
+  // the answer they asked for. (The list itself only ever shows live rows, so reaching a
+  // dead one takes a stale page or a forged id.)
   if (ended) TOMBSTONE_TOKEN_STMT.run(sessionId);
   return ended ? "revoked" : "nothing";
 }

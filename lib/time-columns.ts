@@ -1515,7 +1515,7 @@ export const TIME_COLUMNS = {
       semantic: "lifecycle",
       grain: "instant",
       convention: "bare",
-      note: "When a session was deliberately ended (#3053) — the tombstone that lets the server answer REVOKED rather than merely unauthorized. Written only by lib/auth's revocation paths, never by purgeExpiredSessions, and swept by that purge once past the session absolute-max ceiling.",
+      note: "When a LIVE session was deliberately ended (#3053) — the tombstone that lets the server answer REVOKED rather than merely unauthorized. Written by lib/auth's revocation paths and only for a session that had not already lapsed, so a device whose cookie merely expired is never told it was revoked; never written by purgeExpiredSessions, which sweeps these once past the session absolute-max ceiling.",
     },
   ],
   routines: [

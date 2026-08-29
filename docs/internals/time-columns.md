@@ -357,7 +357,7 @@ is what makes a caller immune both to phase 2's renames and to a later conventio
 | `push_subscriptions` | `created_at` | bookkeeping | instant | bare |  |
 | `push_subscriptions` | `last_used_at` | lifecycle | instant | bare |  |
 | `replayed_keys` | `created_at` | record | instant | bare |  |
-| `revoked_sessions` | `revoked_at` | lifecycle | instant | bare | When a session was deliberately ended (#3053) — the tombstone that lets the server answer REVOKED rather than merely unauthorized. Written only by lib/auth's revocation paths, never by purgeExpiredSessions, and swept by that purge once past the session absolute-max ceiling. |
+| `revoked_sessions` | `revoked_at` | lifecycle | instant | bare | When a LIVE session was deliberately ended (#3053) — the tombstone that lets the server answer REVOKED rather than merely unauthorized. Written by lib/auth's revocation paths and only for a session that had not already lapsed, so a device whose cookie merely expired is never told it was revoked; never written by purgeExpiredSessions, which sweeps these once past the session absolute-max ceiling. |
 | `routines` | `started_date` | window-start | day | n/a |  |
 | `routines` | `created_at` | bookkeeping | instant | bare |  |
 | `saved_items` | `created_at` | record | instant | bare |  |

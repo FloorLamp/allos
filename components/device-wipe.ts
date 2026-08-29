@@ -7,17 +7,9 @@
 // (Log out) and app/(app)/settings/family/FamilyManager (delete your own login, sign your
 // own login out of every device, reset your own password).
 //
-// A SESSION THAT ENDED SOMEWHERE ELSE reaches this module too, and that is #3053's
-// resolution. An admin revoking a phone that is in a drawer, "Sign out everywhere else"
-// aimed at a laptop across town — those devices are not running the affordance's code and
-// learn nothing until they next reach the server. What they used to get then was a 401
-// that looked exactly like ordinary expiry, and wiping on THAT would evaporate the
-// offline record for someone who simply came back tomorrow, which is the case this whole
-// feature exists for (#2994's pass-4 ruling, untouched).
-//
-// So the server now says which 401 it is, and `wipeIfRevoked` below is the only new door:
-// same wipe, same perimeter, opened by the server's own word rather than by a timer or by
-// a bare status code.
+// A SESSION THAT ENDED SOMEWHERE ELSE reaches this module too, through `wipeIfRevoked` —
+// #3053's resolution, and the only new door: same wipe, same perimeter, opened by the
+// server's own word rather than by a timer or by a bare status code.
 
 import { clearEmergencyPayload } from "@/components/emergency-offline";
 import { clearQueue } from "@/lib/offline/queue-db";
@@ -128,18 +120,16 @@ export async function reopenAfterRefusedSignOut(): Promise<void> {
 }
 
 /**
- * The DEVICE-SIDE half of "the server says revoked" (#3053).
+ * The DEVICE-SIDE half of "the server says revoked" (#3053). Handed the 401 an
+ * authenticated data route just answered; wipes the whole perimeter, gate included, and
+ * answers whether it did.
  *
- * Handed the 401 an authenticated data route just answered. Wipes — the whole perimeter,
- * gate included — only when the server named the session REVOKED, and does nothing at all
- * on the plain `unauthorized` that an expired cookie gets. Answers whether it wiped.
- *
- * ONLY `"revoked"` COUNTS, and everything else is deliberately the keep-it case: a body
- * that will not parse, a 401 from something that is not this app's route, an older server
- * that still answers `"auth"`. Each of those is "I could not tell", and #2994's ruling is
- * that not being able to tell means the record stays. The failure direction is the whole
- * design: a wipe we did not make is a health record someone still has, and a wipe we made
- * wrongly is a health record nobody has.
+ * EVERYTHING THAT IS NOT `"revoked"` IS THE KEEP-IT CASE — an unparseable body, a 401 from
+ * somewhere else, an older server still saying `"auth"` — because each is "I could not
+ * tell", and #2994's ruling is that not being able to tell means the record stays. The
+ * asymmetry is the design: a wipe we did not make is a health record someone still has; a
+ * wipe we made wrongly is a health record nobody has. The cases are enumerated as a table
+ * in components/__tests__/wipe-if-revoked.test.ts.
  */
 export async function wipeIfRevoked(res: Response): Promise<boolean> {
   if (res.status !== 401) return false;
