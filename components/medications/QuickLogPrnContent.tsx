@@ -12,6 +12,7 @@ import { prnQuickLogRedoseStatus } from "@/lib/prn-redose";
 import { now as clockNow } from "@/lib/clock";
 import { redoseActionIsPrimary, redoseCardLabel } from "@/lib/redose-format";
 import type { TimeFormat } from "@/lib/format-date";
+import Disclosure from "@/components/Disclosure";
 
 // PRN (as-needed) medication quick-log content (#797). The one-tap
 // retro-entry home: each active PRN med gets a "Taken now" button plus an "Earlier
@@ -137,14 +138,15 @@ export default function QuickLogPrnContent({
              exclusion in lib/disclosure-memory.ts. Per-device state is invisible to the
              server, so a remembered-open fold necessarily opens AFTER hydration, and
              this one sits directly above a Log button. */
-          <details data-testid="quick-log-prn-more">
-            <summary className="cursor-pointer py-1 text-sm font-medium text-slate-600 hover:text-slate-800 dark:text-slate-300 dark:hover:text-slate-100">
-              More medications ({remainingMeds.length})
-            </summary>
+          <Disclosure
+            data-testid="quick-log-prn-more"
+            summaryClassName="py-1 text-sm font-medium text-slate-600 hover:text-slate-800 dark:text-slate-300 dark:hover:text-slate-100"
+            summary={<>More medications ({remainingMeds.length})</>}
+          >
             <div className="mt-2 flex flex-col gap-2">
               {remainingMeds.map(medControl)}
             </div>
-          </details>
+          </Disclosure>
         )}
       </div>
     </div>

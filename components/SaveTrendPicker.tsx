@@ -1,6 +1,7 @@
 import { toggleSavedItem } from "@/app/(app)/saved-actions";
 import SaveTrendKeyPicker from "./SaveTrendKeyPicker";
 import type { SeriesPickerInput } from "@/lib/series-picker-options";
+import Disclosure from "@/components/Disclosure";
 
 // Add a metric pin from the final cell of the Body census (#3387). Clinical-result
 // saves keep their Results/passport meanings but no longer render a second copy on
@@ -25,20 +26,21 @@ export default function SaveTrendPicker({
   const rows = metrics;
   if (rows.length === 0) return null;
   return (
-    <details
-      className="group w-full max-w-full sm:w-fit"
+    <Disclosure
+      className="w-full max-w-full sm:w-fit"
       data-testid="save-trend-picker-disclosure"
+      summaryClassName="w-fit text-xs font-medium text-brand-700 hover:underline dark:text-brand-300"
+      summaryTestId="save-trend-picker-toggle"
+      summary={
+        <>
+          <span className="group-open:hidden">＋ Add tile</span>
+          <span className="hidden group-open:inline sm:group-open:hidden">
+            Close
+          </span>
+          <span className="hidden sm:group-open:inline">Close add tile</span>
+        </>
+      }
     >
-      <summary
-        className="w-fit cursor-pointer list-none text-xs font-medium text-brand-700 hover:underline dark:text-brand-300 [&::-webkit-details-marker]:hidden"
-        data-testid="save-trend-picker-toggle"
-      >
-        <span className="group-open:hidden">＋ Add tile</span>
-        <span className="hidden group-open:inline sm:group-open:hidden">
-          Close
-        </span>
-        <span className="hidden sm:group-open:inline">Close add tile</span>
-      </summary>
       <form
         action={async (fd) => {
           "use server";
@@ -49,6 +51,6 @@ export default function SaveTrendPicker({
       >
         <SaveTrendKeyPicker rows={rows} />
       </form>
-    </details>
+    </Disclosure>
   );
 }

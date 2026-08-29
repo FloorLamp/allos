@@ -71,28 +71,26 @@ export default function FoldSummary({
     []
   );
 
+  // The SUMMARY'S CONTENT, not the summary: the `<summary>` element itself belongs to
+  // the shared disclosure (#3677), which is the one place the app writes one. The
+  // motion sits on this visible line either way, so the summary keeps one readable,
+  // fixed treatment. `rounded-lg` makes the box-shadow ring follow that line; it
+  // changes no geometry, which is the rule the whole vocabulary keeps.
   return (
-    <summary
-      data-testid="suppressed-summary"
+    <span
+      data-testid="suppressed-pulse"
       data-motion="fold"
       data-reduced-motion={reduced ? "true" : "false"}
       data-pulsing={pulsing ? "true" : "false"}
-      className="min-h-11 cursor-pointer py-3.5 section-label sm:min-h-0 sm:py-0"
+      className={`inline-block rounded-lg${pulsing ? ` ${plan.className}` : ""}`}
     >
-      {/* The motion sits on the visible line so the summary keeps one readable,
-          fixed treatment. `rounded-lg` makes the box-shadow ring follow that line;
-          it changes no geometry, which is the rule the whole vocabulary keeps. */}
+      Snoozed &amp; dismissed{" "}
       <span
-        className={`inline-block rounded-lg${pulsing ? ` ${plan.className}` : ""}`}
+        data-testid="suppressed-count"
+        className="tabular-nums text-slate-500 dark:text-slate-400"
       >
-        Snoozed &amp; dismissed{" "}
-        <span
-          data-testid="suppressed-count"
-          className="tabular-nums text-slate-500 dark:text-slate-400"
-        >
-          ({count})
-        </span>
+        ({count})
       </span>
-    </summary>
+    </span>
   );
 }

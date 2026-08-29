@@ -7,6 +7,7 @@ import {
   rollupTrajectoryFindings,
   type TrajectoryAnalyteGroup,
 } from "@/lib/trajectory-rollup";
+import Disclosure from "@/components/Disclosure";
 
 // The Results › Clinical results "Trajectory watch" card (#1499 section B) — ONE card,
 // capped, the #1496 Training-watch pattern applied to the hub that shipped the same
@@ -51,28 +52,31 @@ export default function TrajectoryWatchCard({
         className="rounded-xl border border-amber-200 bg-amber-50/60 p-3 dark:border-amber-900/60 dark:bg-amber-950/30"
       >
         <div className="flex items-start gap-3">
-          <details className="group min-w-0 flex-1">
-            <summary
-              data-testid={
-                overflow
-                  ? "trajectory-rollup-more-toggle"
-                  : "trajectory-rollup-toggle"
-              }
-              className="flex cursor-pointer list-none items-start gap-2 [&::-webkit-details-marker]:hidden"
-            >
-              <div className="min-w-0 flex-1">
-                <p className="font-medium text-slate-800 dark:text-slate-100">
-                  {g.label}
-                </p>
-                <p className="mt-0.5 text-sm text-slate-600 dark:text-slate-300">
-                  {n} trend{n === 1 ? "" : "s"} worth a look
-                </p>
-              </div>
-              <span className="shrink-0 text-xs font-medium text-brand-700 dark:text-brand-400">
-                <span className="group-open:hidden">Show</span>
-                <span className="hidden group-open:inline">Hide</span>
-              </span>
-            </summary>
+          <Disclosure
+            className="min-w-0 flex-1"
+            summaryTestId={
+              overflow
+                ? "trajectory-rollup-more-toggle"
+                : "trajectory-rollup-toggle"
+            }
+            summaryClassName="flex items-start gap-2"
+            summary={
+              <>
+                <div className="min-w-0 flex-1">
+                  <p className="font-medium text-slate-800 dark:text-slate-100">
+                    {g.label}
+                  </p>
+                  <p className="mt-0.5 text-sm text-slate-600 dark:text-slate-300">
+                    {n} trend{n === 1 ? "" : "s"} worth a look
+                  </p>
+                </div>
+                <span className="shrink-0 text-xs font-medium text-brand-700 dark:text-brand-400">
+                  <span className="group-open:hidden">Show</span>
+                  <span className="hidden group-open:inline">Hide</span>
+                </span>
+              </>
+            }
+          >
             {/* The folded findings, unchanged — each keeps its own dedupeKey and its
                 own dismiss form, so the bus behavior is identical to the flat cards.
                 The POSTED key is the analyte acknowledgment (#564), as it was
@@ -89,7 +93,7 @@ export default function TrajectoryWatchCard({
                 />
               ))}
             </ul>
-          </details>
+          </Disclosure>
           {/* Dismiss the analyte without expanding — the SAME acknowledgment key
               every item inside posts, so this is a shortcut, not a bulk action. */}
           <form action={dismissAction}>
@@ -139,20 +143,23 @@ export default function TrajectoryWatchCard({
               {rollup.shown.map((g) => renderGroup(g, false))}
             </ul>
             {rollup.overflow.length > 0 && (
-              <details
-                className="group mt-3"
+              <Disclosure
+                className="mt-3"
                 data-testid="trajectory-findings-more"
+                summaryClassName="text-xs font-medium text-slate-500 hover:text-brand-600 hover:underline dark:text-slate-400 dark:hover:text-brand-400"
+                summary={
+                  <>
+                    <span className="group-open:hidden">
+                      Show all {rollup.groups.length} →
+                    </span>
+                    <span className="hidden group-open:inline">Show fewer</span>
+                  </>
+                }
               >
-                <summary className="cursor-pointer list-none text-xs font-medium text-slate-500 hover:text-brand-600 hover:underline dark:text-slate-400 dark:hover:text-brand-400 [&::-webkit-details-marker]:hidden">
-                  <span className="group-open:hidden">
-                    Show all {rollup.groups.length} →
-                  </span>
-                  <span className="hidden group-open:inline">Show fewer</span>
-                </summary>
                 <ul className="mt-3 space-y-3">
                   {rollup.overflow.map((g) => renderGroup(g, true))}
                 </ul>
-              </details>
+              </Disclosure>
             )}
           </>
         }

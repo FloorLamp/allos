@@ -13,6 +13,7 @@ import {
   toggleDigestDemotion,
   type DigestCategory,
 } from "@/lib/notifications/digest-tune";
+import Disclosure from "@/components/Disclosure";
 
 // The Settings MIRROR of the digest's ⚙️ Tune control (#1714). One storage, two
 // surfaces (#221): the message carries the escape hatch where the annoyance is, and
@@ -64,13 +65,11 @@ export default function DigestTuneSettings({
         {digestTuneSummary(current)} The same toggles ride the digest itself as{" "}
         <span className="whitespace-nowrap">⚙️ Tune</span>.
       </p>
-      <details>
-        <summary
-          className="cursor-pointer text-xs text-slate-500 hover:text-slate-700 dark:text-slate-400 dark:hover:text-slate-200"
-          data-testid="digest-tune-disclosure"
-        >
-          Change which categories
-        </summary>
+      <Disclosure
+        summaryClassName="text-xs text-slate-500 hover:text-slate-700 dark:text-slate-400 dark:hover:text-slate-200"
+        summaryTestId="digest-tune-disclosure"
+        summary="Change which categories"
+      >
         <p className="mt-2 text-xs text-slate-500 dark:text-slate-400">
           Turn a category down to <strong>notable only</strong>: routine lines
           stop, and anything the category itself calls notable still comes
@@ -102,7 +101,7 @@ export default function DigestTuneSettings({
             );
           })}
         </ul>
-      </details>
+      </Disclosure>
     </div>
   );
 }

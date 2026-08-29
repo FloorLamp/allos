@@ -242,10 +242,25 @@ export function continuityMotion(
 // property and a `.motion-<name>` rule in the stylesheet's Micro-motion section;
 // the completeness test fails either half on its own, exactly as it does for the
 // information table.
-export const CONTINUITY_MOTIONS = {} as const satisfies Record<
-  string,
-  ContinuityMotionDecl
->;
+export const CONTINUITY_MOTIONS = {
+  // The first tenant (#3677). Every disclosure in the app used to snap: the panel
+  // appeared at full height with the reader's finger still on the summary, which on
+  // a phone is a full-screen jump. The panel now grows from the summary downward.
+  //
+  // Written in CSS on `::details-content` rather than driven from JS, and that is
+  // the reason this class can exist without a scheduler: the browser owns the
+  // interpolation, the element is interactive on the first frame, and a disclosure
+  // that was restored open before first paint (lib/disclosure-memory.ts's boot
+  // script) is simply open — there is no prior height to transition FROM, so no
+  // entrance replays on load. That replay is exactly the ambient motion #3676
+  // refuses, and it is refused here structurally rather than by a guard.
+  disclose: continuityMotion(
+    200,
+    "the summary you tapped stays exactly where it is while the panel grows below it, so the line you were reading never moves out from under you.",
+    "the reader's own tap, click or Enter on the summary. Nothing else opens a disclosure: a fold restored from memory on page load is already open and does not animate.",
+    "the panel is simply at its full height on the frame the disclosure opens, and simply gone on the frame it closes; no transition is scheduled."
+  ),
+} as const satisfies Record<string, ContinuityMotionDecl>;
 
 export type ContinuityMotion = keyof typeof CONTINUITY_MOTIONS;
 

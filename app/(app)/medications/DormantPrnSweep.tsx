@@ -11,6 +11,7 @@ import {
   dismissDormantPrn,
   restoreDormantPrn,
 } from "./actions";
+import Disclosure from "@/components/Disclosure";
 
 // Dormant-PRN sweep card (issue #880 item 3), a suggest-only maintenance surface over
 // the existing backlog: active PRN meds with no dose in 90+ days — the 2am ibuprofen
@@ -147,10 +148,12 @@ export default function DormantPrnSweep({
       )}
 
       {dismissed.length > 0 && (
-        <details className="mt-2" data-testid="dormant-prn-dismissed">
-          <summary className="cursor-pointer section-label hover:underline">
-            Dismissed ({dismissed.length})
-          </summary>
+        <Disclosure
+          className="mt-2"
+          data-testid="dormant-prn-dismissed"
+          summaryClassName="section-label hover:underline"
+          summary={<>Dismissed ({dismissed.length})</>}
+        >
           <div className="mt-2 space-y-2">
             {dismissed.map((s) => (
               <div
@@ -179,7 +182,7 @@ export default function DormantPrnSweep({
               </div>
             ))}
           </div>
-        </details>
+        </Disclosure>
       )}
     </section>
   );

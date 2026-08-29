@@ -9,6 +9,7 @@ import {
   type PracticeWeekVerdict,
 } from "@/lib/trends-practices";
 import VisualizationDetails from "@/components/VisualizationDetails";
+import Disclosure from "@/components/Disclosure";
 
 // One practice, one complete story (#2151): the fixed 26-week lens lives beside
 // the practice's affordances and history on /wellness. The card has no competing
@@ -86,10 +87,11 @@ export default function PracticeTrends({
 
   return (
     <div className="border-t border-black/5 pt-3 dark:border-white/10">
-      <details data-testid="wellness-practice-trends">
-        <summary className="cursor-pointer text-sm font-medium text-brand-700 dark:text-brand-300">
-          26-week trend
-        </summary>
+      <Disclosure
+        data-testid="wellness-practice-trends"
+        summaryClassName="text-sm font-medium text-brand-700 dark:text-brand-300"
+        summary="26-week trend"
+      >
         <p className="mt-2 text-xs text-slate-500 dark:text-slate-400">
           Completed weeks through today, using a fixed window of up to 26 weeks.
         </p>
@@ -153,7 +155,7 @@ export default function PracticeTrends({
             </ChartCard>
           )}
         </div>
-      </details>
+      </Disclosure>
       <VisualizationDetails
         label={`${practice.name} weekly details`}
         items={practice.weeks.map((week) => weekCellTitle(week, weekly))}

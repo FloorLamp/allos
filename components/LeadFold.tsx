@@ -1,4 +1,5 @@
 import { IconChevronRight } from "@tabler/icons-react";
+import Disclosure from "@/components/Disclosure";
 
 // THE LEAD + FOLD PRIMITIVE (copy.md rule 10; #3488, #3490).
 //
@@ -10,18 +11,12 @@ import { IconChevronRight } from "@tabler/icons-react";
 // next one queued) inherits it by rendering this with its own `summary` label;
 // there is nothing else to decide, and nothing to re-derive.
 //
-// ── WHY A NATIVE `<details>` AND NOT `<Collapse>` ───────────────────────────────
-//
-// `components/Collapse.tsx` is the height-ANIMATED collapse and it is a client
-// component: it reads `usePrefersReducedMotion`. Every integration page is a
-// server component, so adopting it would force a `"use client"` boundary onto nine
-// pages to buy an animation nobody asked for on a read-once paragraph. A
-// `<details>` is server-renderable, works before hydration, and arrives with the
-// keyboard and AT semantics already correct — the same reasoning
-// `app/(app)/upcoming/page.tsx`'s AggregateDisclosure wrote down, and the same
-// element the import page's Debug card uses. It also holds NO persisted state,
-// which is the honest default for an intro: it is closed on every visit, for
-// everyone, and the summary always says what is inside.
+// The fold is the app's shared `<Disclosure>` (#3677), so it animates open on the one
+// continuity token and stays server-renderable — this file's earlier note that an
+// animated collapse would cost nine pages a `"use client"` boundary described
+// `<Collapse>`, which is a different primitive and is not what this reaches for. It
+// holds NO persisted state, which is the honest default for an intro: it is closed on
+// every visit, for everyone, and the summary always says what is inside.
 //
 // ── WHAT THE CALLER DECIDES, AND WHAT IT DOES NOT ───────────────────────────────
 //
@@ -66,25 +61,28 @@ export default function LeadFold({
         {lead}
       </p>
       {detail ? (
-        <details className="group" data-testid={`${testId}-fold`}>
-          <summary
-            data-testid={`${testId}-fold-summary`}
-            className="flex w-fit cursor-pointer list-none items-center gap-1 text-sm font-medium text-link"
-          >
-            <IconChevronRight
-              className="h-4 w-4 shrink-0 transition-transform group-open:rotate-90"
-              stroke={1.75}
-              aria-hidden
-            />
-            {summary}
-          </summary>
+        <Disclosure
+          data-testid={`${testId}-fold`}
+          summaryTestId={`${testId}-fold-summary`}
+          summaryClassName="flex w-fit items-center gap-1 text-sm font-medium text-link"
+          summary={
+            <>
+              <IconChevronRight
+                className="h-4 w-4 shrink-0 transition-transform group-open:rotate-90"
+                stroke={1.75}
+                aria-hidden
+              />
+              {summary}
+            </>
+          }
+        >
           <div
             data-testid={`${testId}-detail`}
             className="mt-2 text-sm text-slate-500 dark:text-slate-400"
           >
             {detail}
           </div>
-        </details>
+        </Disclosure>
       ) : null}
     </div>
   );

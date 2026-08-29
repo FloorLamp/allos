@@ -6,6 +6,7 @@ import {
   temperedExerciseLabel,
 } from "@/lib/injury-model";
 import { RECORDS_CONDITIONS_HREF } from "@/lib/hrefs";
+import Disclosure from "@/components/Disclosure";
 
 export default function TrainingContextChips({
   context,
@@ -71,11 +72,16 @@ export default function TrainingContextChips({
             {consideration.conditionLabel}
           </Link>
         ))}
-        <details className="group text-xs">
-          <summary className="cursor-pointer list-none font-medium text-slate-500 hover:text-brand-600 hover:underline dark:text-slate-400 dark:hover:text-brand-400 [&::-webkit-details-marker]:hidden">
-            <span className="group-open:hidden">Why?</span>
-            <span className="hidden group-open:inline">Hide context</span>
-          </summary>
+        <Disclosure
+          className="text-xs"
+          summaryClassName="font-medium text-slate-500 hover:text-brand-600 hover:underline dark:text-slate-400 dark:hover:text-brand-400"
+          summary={
+            <>
+              <span className="group-open:hidden">Why?</span>
+              <span className="hidden group-open:inline">Hide context</span>
+            </>
+          }
+        >
           <div
             className="mt-2 space-y-1 text-sm text-slate-600 dark:text-slate-300"
             data-testid="training-context-notes"
@@ -134,7 +140,7 @@ export default function TrainingContextChips({
               </p>
             ))}
           </div>
-        </details>
+        </Disclosure>
       </div>
     </div>
   );

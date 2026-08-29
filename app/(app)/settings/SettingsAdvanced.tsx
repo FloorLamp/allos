@@ -31,10 +31,11 @@ export default function SettingsAdvanced({
     <RememberedDetails
       id="settings-group"
       instance={testId}
-      className="mt-6 group"
+      className="mt-6"
       testId={testId}
+      summaryClassName="rounded-lg px-1 py-2 text-sm font-medium text-slate-600 hover:text-slate-800 dark:text-slate-300 dark:hover:text-slate-100"
       summary={
-        <summary className="cursor-pointer list-none rounded-lg px-1 py-2 text-sm font-medium text-slate-600 marker:content-none hover:text-slate-800 dark:text-slate-300 dark:hover:text-slate-100">
+        <>
           <span
             aria-hidden
             className="mr-1 inline-block transition-transform group-open:rotate-90"
@@ -47,7 +48,7 @@ export default function SettingsAdvanced({
               {hint}
             </span>
           )}
-        </summary>
+        </>
       }
     >
       <div className="mt-2 space-y-6">{children}</div>

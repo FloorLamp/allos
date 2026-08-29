@@ -2,6 +2,7 @@
 
 import { useEffect, useRef, type ReactNode } from "react";
 import { IconChevronDown } from "@tabler/icons-react";
+import Disclosure from "@/components/Disclosure";
 
 export default function CareOverviewDisclosure({
   id,
@@ -37,24 +38,27 @@ export default function CareOverviewDisclosure({
   }, [hashAliases, id]);
 
   return (
-    <details
+    <Disclosure
       ref={detailsRef}
       id={id}
-      className="group scroll-mt-36 border-b border-black/5 dark:border-white/5"
+      className="scroll-mt-36 border-b border-black/5 dark:border-white/5"
       data-testid={testId}
-    >
-      <summary className="flex cursor-pointer list-none items-center gap-4 px-1 py-4 outline-hidden focus-visible:ring-2 focus-visible:ring-brand-500/40 [&::-webkit-details-marker]:hidden">
-        <span className="min-w-0 flex-1">
-          <h3 className="font-semibold text-slate-900 dark:text-slate-100">
-            {title}
-          </h3>
-          <span className="mt-0.5 block text-sm text-slate-500 dark:text-slate-400">
-            {description}
+      summaryClassName="flex items-center gap-4 px-1 py-4 outline-hidden focus-visible:ring-2 focus-visible:ring-brand-500/40"
+      summary={
+        <>
+          <span className="min-w-0 flex-1">
+            <h3 className="font-semibold text-slate-900 dark:text-slate-100">
+              {title}
+            </h3>
+            <span className="mt-0.5 block text-sm text-slate-500 dark:text-slate-400">
+              {description}
+            </span>
           </span>
-        </span>
-        <IconChevronDown className="h-5 w-5 shrink-0 text-slate-400 transition-transform group-open:rotate-180" />
-      </summary>
+          <IconChevronDown className="h-5 w-5 shrink-0 text-slate-400 transition-transform group-open:rotate-180" />
+        </>
+      }
+    >
       <div className="pb-6 pt-2">{children}</div>
-    </details>
+    </Disclosure>
   );
 }

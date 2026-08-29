@@ -228,10 +228,10 @@ export default function DashboardPlacementCanvas({
       {everything.length > 0 && (
         <RememberedDetails
           id="dashboard-all"
-          className="group"
           testId="dashboard-all"
+          summaryClassName="mb-3 text-lg font-semibold text-slate-900 dark:text-slate-100"
           summary={
-            <summary className="mb-3 cursor-pointer list-none text-lg font-semibold text-slate-900 marker:content-none dark:text-slate-100">
+            <>
               <span
                 aria-hidden
                 className="mr-2 inline-block transition-transform group-open:rotate-90 motion-reduce:transition-none"
@@ -239,7 +239,7 @@ export default function DashboardPlacementCanvas({
                 ›
               </span>
               Show everything
-            </summary>
+            </>
           }
         >
           <div className="space-y-6" data-testid="dashboard-all-contents">

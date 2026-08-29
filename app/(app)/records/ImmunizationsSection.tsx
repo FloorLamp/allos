@@ -46,6 +46,7 @@ import ImmunizationRecordActions from "@/app/(app)/immunizations/ImmunizationRec
 import { addImmunization } from "@/app/(app)/immunizations/actions";
 import SourceDocumentLink from "@/components/SourceDocumentLink";
 import { displayUnit } from "@/lib/display-unit";
+import Disclosure from "@/components/Disclosure";
 
 const TITER_BADGE = {
   immune:
@@ -522,13 +523,18 @@ export default function ImmunizationsSection({
               )}
             </div>
 
-            <details className="border-t border-black/5 pt-4 dark:border-white/5">
-              <summary className="cursor-pointer font-semibold text-slate-800 dark:text-slate-100">
-                All recorded doses{" "}
-                <span className="text-sm font-normal text-slate-400">
-                  ({recordedDoses.length})
-                </span>
-              </summary>
+            <Disclosure
+              className="border-t border-black/5 pt-4 dark:border-white/5"
+              summaryClassName="font-semibold text-slate-800 dark:text-slate-100"
+              summary={
+                <>
+                  All recorded doses{" "}
+                  <span className="text-sm font-normal text-slate-400">
+                    ({recordedDoses.length})
+                  </span>
+                </>
+              }
+            >
               <div className="mt-3">
                 {recordedDoses.length === 0 ? (
                   <EmptyState
@@ -551,17 +557,20 @@ export default function ImmunizationsSection({
                   />
                 )}
               </div>
-            </details>
+            </Disclosure>
 
-            <details className="border-t border-black/5 pt-4 dark:border-white/5">
-              <summary
-                data-testid="immunization-schedule-disclosure"
-                className="cursor-pointer text-slate-800 dark:text-slate-100"
-              >
-                <h3 className="inline font-semibold">
-                  CDC recommended schedule
-                </h3>
-              </summary>
+            <Disclosure
+              className="border-t border-black/5 pt-4 dark:border-white/5"
+              summaryTestId="immunization-schedule-disclosure"
+              summaryClassName="text-slate-800 dark:text-slate-100"
+              summary={
+                <>
+                  <h3 className="inline font-semibold">
+                    CDC recommended schedule
+                  </h3>
+                </>
+              }
+            >
               <div className="mt-3">
                 <ScheduleGrid
                   records={records.map((r) => ({
@@ -576,7 +585,7 @@ export default function ImmunizationsSection({
                   assessments={summary.assessments}
                 />
               </div>
-            </details>
+            </Disclosure>
           </div>
 
           <p className="px-1 text-xs text-slate-500 dark:text-slate-400">

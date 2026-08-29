@@ -14,6 +14,7 @@ import {
 } from "@/lib/dashboard-standing";
 import type { DashboardPlacement } from "@/lib/dashboard-relevance";
 import InfoTooltipIcon from "@/components/InfoTooltipIcon";
+import Disclosure from "@/components/Disclosure";
 
 export interface DashboardStandingPresentation {
   label?: string;
@@ -359,18 +360,15 @@ export default function DashboardStandingCluster({
           without an aria attribute of our own. Nothing is remembered: the fold is
           computed from claims, never configured. */}
         {tail.length > 0 && (
-          <details
+          <Disclosure
             data-standing-band="tail"
             data-testid="dashboard-standing-tail"
+            summaryTestId="dashboard-standing-tail-summary"
+            summaryClassName="band flex min-h-11 items-center bg-(--ghost) px-4 py-2 text-xs font-semibold tracking-wide text-slate-500 uppercase dark:text-slate-400"
+            summary={<>Quiet ({tail.length})</>}
           >
-            <summary
-              data-testid="dashboard-standing-tail-summary"
-              className="band flex min-h-11 cursor-pointer list-none items-center bg-(--ghost) px-4 py-2 text-xs font-semibold tracking-wide text-slate-500 uppercase marker:content-none dark:text-slate-400"
-            >
-              Quiet ({tail.length})
-            </summary>
             <BandRows placements={tail} presentations={presentations} />
-          </details>
+          </Disclosure>
         )}
       </div>
     </section>

@@ -97,7 +97,12 @@ const SORTED_ALL_KINDS = [...ALL_KINDS].sort();
 const CSS_NAME = /^[a-z][a-z0-9-]*$/;
 
 const MOTION_VAR = /--motion-([^\s:;{}()]+)\s*:/g;
-const MOTION_CLASS = /\.motion-([^\s{,:;.)]+)/g;
+// `[` ends the name too, because a class selector cannot contain an unescaped one:
+// it opens an ATTRIBUTE selector, and `.motion-disclose[open]` is the continuity
+// class's open state, not a second motion. This is not the #2770 narrowing — the
+// pattern still catches every name the convention forbids (asserted below); it just
+// stops reading a selector's next combinator as part of its name.
+const MOTION_CLASS = /\.motion-([^\s{,:;.)[]+)/g;
 const MOTION_FRAME = /@keyframes\s+micro-([^\s{]+)/g;
 
 function namesIn(pattern: RegExp, source: string): string[] {
@@ -167,6 +172,9 @@ describe("micro-motion tokens", () => {
     // census is loose and the convention is pinned separately. A pattern that has
     // to keep chasing the next legal identifier is the defect, not the width.
     expect(namesIn(MOTION_CLASS, ".motion-Slide_2 {\n}")).toEqual(["Slide_2"]);
+    expect(
+      namesIn(MOTION_CLASS, ".motion-x[open]::details-content {\n}")
+    ).toEqual(["x"]);
     expect(namesIn(MOTION_FRAME, "@keyframes micro-fade.in {\n}")).toEqual([
       "fade.in",
     ]);

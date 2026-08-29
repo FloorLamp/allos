@@ -2,6 +2,7 @@ import {
   ingredientLine,
   type IntakeItemIngredient,
 } from "@/lib/intake-ingredients";
+import Disclosure from "@/components/Disclosure";
 
 // "What's in this" (#2856): an item's label composition, closed by default.
 //
@@ -26,15 +27,17 @@ export default function IngredientsDisclosure({
 }) {
   if (rows.length === 0) return null;
   return (
-    <details className={className} data-testid={testId}>
-      <summary className="cursor-pointer text-xs text-slate-500 dark:text-slate-400">
-        What&apos;s in this ({rows.length})
-      </summary>
+    <Disclosure
+      className={className}
+      data-testid={testId}
+      summaryClassName="text-xs text-slate-500 dark:text-slate-400"
+      summary={<>What&apos;s in this ({rows.length})</>}
+    >
       <ul className="mt-1 space-y-0.5 border-l-2 border-black/10 pl-3 text-xs text-slate-500 dark:border-white/10 dark:text-slate-400">
         {rows.map((g) => (
           <li key={g.id}>{ingredientLine(g)}</li>
         ))}
       </ul>
-    </details>
+    </Disclosure>
   );
 }

@@ -20,6 +20,7 @@ import StatusBadge, { STATUS_TEXT_TONE, STATUS_TONE } from "./StatusBadge";
 import SyncTimestamp from "./SyncTimestamp";
 import SyncRowsDrilldown from "@/components/SyncRowsDrilldown";
 import RawPayloadDialog from "@/components/RawPayloadDialog";
+import Disclosure from "@/components/Disclosure";
 
 // The day-grouped sync history (#1991), rendered from PLAIN serializable views the
 // server projected — no better-sqlite3 row ever crosses into the client.
@@ -400,38 +401,38 @@ export default function SyncHistoryDays({
             key={day.day}
             className="border-t border-black/5 first:border-t-0 dark:border-white/5"
           >
-            <details
+            <Disclosure
               open={openDays.has(day.day)}
               onToggle={(event) =>
                 rememberDayOpen(day.day, event.currentTarget.open)
               }
-              className="group"
               data-testid={`sync-day-${day.day}`}
-            >
-              <summary
-                className="grid cursor-pointer list-none grid-cols-[auto_minmax(0,1fr)_auto] items-start gap-2.5 px-1 py-3"
-                data-testid="sync-day-summary"
-              >
-                <IconChevronRight
-                  className="mt-1 h-4 w-4 shrink-0 text-slate-500 transition-transform group-open:rotate-90 dark:text-slate-400"
-                  stroke={2}
-                />
-                <div className="min-w-0">
-                  <div className="flex flex-wrap items-baseline gap-x-2 gap-y-0.5">
-                    <DayTitle day={day.day} today={today} />
-                  </div>
-                  <p className="mt-0.5 text-sm text-slate-600 dark:text-slate-300">
-                    {day.label}
-                  </p>
-                </div>
-                {day.attention && (
-                  <StatusBadge
-                    label={day.attention.label}
-                    tone={day.attention.tone}
-                    testid={`sync-day-attention-${day.day}`}
+              summaryClassName="grid grid-cols-[auto_minmax(0,1fr)_auto] items-start gap-2.5 px-1 py-3"
+              summaryTestId="sync-day-summary"
+              summary={
+                <>
+                  <IconChevronRight
+                    className="mt-1 h-4 w-4 shrink-0 text-slate-500 transition-transform group-open:rotate-90 dark:text-slate-400"
+                    stroke={2}
                   />
-                )}
-              </summary>
+                  <div className="min-w-0">
+                    <div className="flex flex-wrap items-baseline gap-x-2 gap-y-0.5">
+                      <DayTitle day={day.day} today={today} />
+                    </div>
+                    <p className="mt-0.5 text-sm text-slate-600 dark:text-slate-300">
+                      {day.label}
+                    </p>
+                  </div>
+                  {day.attention && (
+                    <StatusBadge
+                      label={day.attention.label}
+                      tone={day.attention.tone}
+                      testid={`sync-day-attention-${day.day}`}
+                    />
+                  )}
+                </>
+              }
+            >
               <ul className="mb-3 ml-6 border-t border-black/5 divide-y divide-black/5 dark:border-white/10 dark:divide-white/5">
                 <li
                   aria-hidden="true"
@@ -484,7 +485,7 @@ export default function SyncHistoryDays({
                   );
                 })}
               </ul>
-            </details>
+            </Disclosure>
           </li>
         ))}
       </ul>

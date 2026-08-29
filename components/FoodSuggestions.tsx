@@ -12,6 +12,7 @@ import {
   type FoodSuggestion,
   type FoodSafetyNoteKind,
 } from "@/lib/food-suggest";
+import Disclosure from "@/components/Disclosure";
 
 // Presentational renderer for the DETERMINISTIC food suggestions (issues #577/#775). A
 // pure formatter over the FoodSuggestion[] the ONE computation (getFoodSuggestions)
@@ -157,30 +158,31 @@ export default function FoodSuggestions({
                     reaches it and it opens with JS off — but it stops leading.
                     What stays visible is everything that is about the reader:
                     the headline, the foods, every safety note, and the advisory. */}
-                <details
-                  className="group mt-1.5"
+                <Disclosure
+                  className="mt-1.5"
                   data-testid={`food-suggestion-why-${s.key}`}
+                  summaryTestId={`food-suggestion-why-toggle-${s.key}`}
+                  summaryClassName={`flex cursor-pointer list-none items-center gap-1 text-sm font-medium [&::-webkit-details-marker]:hidden ${
+                    reduce
+                      ? "text-amber-800 dark:text-amber-300"
+                      : "text-emerald-800 dark:text-emerald-300"
+                  }`}
+                  summary={
+                    <>
+                      <span className="group-open:hidden">Why this works</span>
+                      <span className="hidden group-open:inline">Hide</span>
+                      <IconChevronDown
+                        className="h-3.5 w-3.5 shrink-0 transition-transform group-open:rotate-180"
+                        stroke={2}
+                        aria-hidden="true"
+                      />
+                    </>
+                  }
                 >
-                  <summary
-                    data-testid={`food-suggestion-why-toggle-${s.key}`}
-                    className={`flex cursor-pointer list-none items-center gap-1 text-sm font-medium [&::-webkit-details-marker]:hidden ${
-                      reduce
-                        ? "text-amber-800 dark:text-amber-300"
-                        : "text-emerald-800 dark:text-emerald-300"
-                    }`}
-                  >
-                    <span className="group-open:hidden">Why this works</span>
-                    <span className="hidden group-open:inline">Hide</span>
-                    <IconChevronDown
-                      className="h-3.5 w-3.5 shrink-0 transition-transform group-open:rotate-180"
-                      stroke={2}
-                      aria-hidden="true"
-                    />
-                  </summary>
                   <p className="mt-1 text-sm text-slate-500 dark:text-slate-400">
                     {s.evidence} Source: {s.source}.
                   </p>
-                </details>
+                </Disclosure>
               </div>
             </div>
           </div>

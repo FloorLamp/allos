@@ -1,5 +1,6 @@
 import type { ReactNode } from "react";
 import type { MomentSection } from "@/lib/moment-sections";
+import Disclosure from "@/components/Disclosure";
 
 // One dose slot, rendered at the height this moment gives it (#2652 behavior 1). The
 // DECISION is entirely `buildMomentSections` (pure, no DOM); this component only spends
@@ -67,46 +68,46 @@ export default function MomentSlot({
   }
 
   return (
-    <details
+    <Disclosure
       data-testid="moment-slot"
       data-slot={section.bucket}
       data-slot-state={section.state}
       data-expanded="false"
-      className="group"
-    >
-      <summary
-        aria-label={section.line}
-        className="flex cursor-pointer list-none flex-wrap items-baseline gap-x-2 rounded-lg px-1 py-2 text-sm marker:content-none hover:bg-black/[0.03] dark:hover:bg-white/[0.04]"
-      >
-        <span
-          aria-hidden
-          className="text-slate-500 group-open:rotate-90 dark:text-slate-400"
-        >
-          ›
-        </span>
-        {section.checked && (
+      summaryLabel={section.line}
+      summaryClassName="flex flex-wrap items-baseline gap-x-2 rounded-lg px-1 py-2 text-sm hover:bg-black/[0.03] dark:hover:bg-white/[0.04]"
+      summary={
+        <>
           <span
-            className="font-medium text-emerald-700 dark:text-emerald-400"
             aria-hidden
+            className="text-slate-500 group-open:rotate-90 dark:text-slate-400"
           >
-            ✓
+            ›
           </span>
-        )}
-        {heading}
-        {/* The heading carries the slot name, so the visible detail drops it — but the
+          {section.checked && (
+            <span
+              className="font-medium text-emerald-700 dark:text-emerald-400"
+              aria-hidden
+            >
+              ✓
+            </span>
+          )}
+          {heading}
+          {/* The heading carries the slot name, so the visible detail drops it — but the
             `aria-label` on the summary carries the WHOLE sentence, so a screen reader
             following the disclosure hears the slot's complete truth in one utterance
             rather than two fragments. */}
-        <span
-          data-testid="moment-slot-line"
-          className="text-slate-500 dark:text-slate-400"
-        >
-          {section.lineDetail}
-        </span>
-      </summary>
+          <span
+            data-testid="moment-slot-line"
+            className="text-slate-500 dark:text-slate-400"
+          >
+            {section.lineDetail}
+          </span>
+        </>
+      }
+    >
       <div className="divide-y divide-black/5 dark:divide-white/5">
         {children}
       </div>
-    </details>
+    </Disclosure>
   );
 }

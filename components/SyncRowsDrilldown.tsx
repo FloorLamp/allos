@@ -5,6 +5,7 @@ import DestinationLink from "@/components/DestinationLink";
 import { loadSyncRows } from "@/app/(app)/data/review-actions";
 import { drilldownRemainderLabel } from "@/lib/integrations/sync-history-days";
 import type { SyncRowLink } from "@/lib/queries";
+import Disclosure from "@/components/Disclosure";
 
 // "What this sync wrote" drill-in (issue #1333, deferred part 2 of #1212). Behind a
 // <details> so nothing is queried until the user expands it; on first open it calls
@@ -70,17 +71,20 @@ export default function SyncRowsDrilldown({
   }, []);
 
   return (
-    <details
+    <Disclosure
       ref={detailsRef}
       className="mt-1"
       data-testid={`sync-rows-${eventId}`}
       onToggle={(e) => {
         if ((e.currentTarget as HTMLDetailsElement).open) void load();
       }}
+      summaryClassName="text-xs text-link"
+      summary={
+        <>
+          What this wrote — {shown} {shown === 1 ? noun : `${noun}s`}
+        </>
+      }
     >
-      <summary className="cursor-pointer text-xs text-link">
-        What this wrote — {shown} {shown === 1 ? noun : `${noun}s`}
-      </summary>
       {state === "loading" && (
         <p className="mt-1 text-xs text-slate-500 dark:text-slate-400">
           Loading…
@@ -135,6 +139,6 @@ export default function SyncRowsDrilldown({
           ))}
         </ul>
       )}
-    </details>
+    </Disclosure>
   );
 }

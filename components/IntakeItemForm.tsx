@@ -126,6 +126,7 @@ import type {
   MedicationCourse,
 } from "@/lib/types";
 import { requireIntakeFormKind } from "@/lib/intake-form-kind";
+import Disclosure from "@/components/Disclosure";
 
 const CATALOG_BY_NAME = new Map(
   SUPPLEMENT_CATALOG.map((c) => [c.name.toLowerCase(), c])
@@ -1381,10 +1382,11 @@ export default function IntakeItemForm({
                   Reminds you when the minimum interval has passed — set from
                   the label.
                 </p>
-                <details className="mt-1 text-xs text-slate-500 dark:text-slate-400">
-                  <summary className="cursor-pointer text-brand-700 hover:underline dark:text-brand-400">
-                    How it works
-                  </summary>
+                <Disclosure
+                  className="mt-1 text-xs text-slate-500 dark:text-slate-400"
+                  summaryClassName="text-brand-700 hover:underline dark:text-brand-400"
+                  summary="How it works"
+                >
                   <p className="mt-1">
                     After a dose is logged you get a one-time reminder when the
                     minimum interval passes (e.g. {`"`}6h since Ibuprofen — 2 of
@@ -1393,7 +1395,7 @@ export default function IntakeItemForm({
                     leave them blank for no reminder.
                     {prnDefaults && ` Label source: ${prnDefaults.source}.`}
                   </p>
-                </details>
+                </Disclosure>
                 <div className="mt-3 grid grid-cols-1 gap-3 sm:grid-cols-2">
                   <div>
                     <label className="label" htmlFor={`redose-interval-${fid}`}>

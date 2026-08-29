@@ -119,6 +119,7 @@ import {
   unmappedCodeIssueUrl,
   unresolvedNameIssueUrl,
 } from "@/lib/import-report";
+import Disclosure from "@/components/Disclosure";
 
 export const dynamic = "force-dynamic";
 
@@ -1137,10 +1138,12 @@ export default async function ImportDetailPage(props: {
             when it has nothing to say (#1340): no card at all unless there's an
             extraction error or a stored raw extraction to show. */}
             {(hasExtractionError || raw) && (
-              <details className="card group" data-testid="debug-disclosure">
-                <summary className="cursor-pointer font-semibold text-slate-800 dark:text-slate-100">
-                  Debug
-                </summary>
+              <Disclosure
+                className="card"
+                data-testid="debug-disclosure"
+                summaryClassName="font-semibold text-slate-800 dark:text-slate-100"
+                summary="Debug"
+              >
                 <div className="mt-3 space-y-3">
                   {hasExtractionError && (
                     <div
@@ -1154,10 +1157,11 @@ export default async function ImportDetailPage(props: {
                     </div>
                   )}
                   {raw && (
-                    <details className="group/raw">
-                      <summary className="cursor-pointer text-sm font-medium text-brand-700 hover:underline dark:text-brand-400">
-                        Raw extraction
-                      </summary>
+                    <Disclosure
+                      className="group/raw"
+                      summaryClassName="text-sm font-medium text-brand-700 hover:underline dark:text-brand-400"
+                      summary="Raw extraction"
+                    >
                       {/* The shared collapsible JSON/XML tree + copy (#1318) — a CCD/XDM
                       raw renders as a foldable element tree, an AI extraction as a
                       JSON tree, anything else as plain text. */}
@@ -1165,10 +1169,10 @@ export default async function ImportDetailPage(props: {
                         text={doc.raw_extraction ?? raw}
                         downloadName={`extraction-${doc.id}`}
                       />
-                    </details>
+                    </Disclosure>
                   )}
                 </div>
-              </details>
+              </Disclosure>
             )}
 
             {/* Actions */}

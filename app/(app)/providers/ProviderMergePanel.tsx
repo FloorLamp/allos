@@ -5,6 +5,7 @@ import { IconChevronDown, IconGitMerge } from "@tabler/icons-react";
 import { useConfirm } from "@/components/ConfirmDialog";
 import { useToast } from "@/components/Toast";
 import { mergeProviderAction } from "./actions";
+import Disclosure from "@/components/Disclosure";
 
 interface Candidate {
   id: number;
@@ -69,20 +70,23 @@ export default function ProviderMergePanel({
   }
 
   return (
-    <details
-      className="group mt-8 border-t border-black/5 pt-4 dark:border-white/5"
+    <Disclosure
+      className="mt-8 border-t border-black/5 pt-4 dark:border-white/5"
       data-testid="provider-merge"
-    >
-      <summary className="flex cursor-pointer list-none items-center gap-3 rounded-lg px-3 py-2 text-sm text-slate-600 outline-hidden transition hover:bg-slate-100 focus-visible:ring-2 focus-visible:ring-brand-500/40 [&::-webkit-details-marker]:hidden dark:text-slate-300 dark:hover:bg-ink-800">
-        <IconGitMerge className="h-4 w-4 shrink-0" stroke={1.75} />
-        <span className="min-w-0 flex-1">
-          <span className="block font-medium">Merge a duplicate</span>
-          <span className="block text-xs font-normal text-slate-400">
-            Admin tool
+      summaryClassName="flex items-center gap-3 rounded-lg px-3 py-2 text-sm text-slate-600 outline-hidden transition hover:bg-slate-100 focus-visible:ring-2 focus-visible:ring-brand-500/40 dark:text-slate-300 dark:hover:bg-ink-800"
+      summary={
+        <>
+          <IconGitMerge className="h-4 w-4 shrink-0" stroke={1.75} />
+          <span className="min-w-0 flex-1">
+            <span className="block font-medium">Merge a duplicate</span>
+            <span className="block text-xs font-normal text-slate-400">
+              Admin tool
+            </span>
           </span>
-        </span>
-        <IconChevronDown className="h-4 w-4 shrink-0 transition-transform group-open:rotate-180" />
-      </summary>
+          <IconChevronDown className="h-4 w-4 shrink-0 transition-transform group-open:rotate-180" />
+        </>
+      }
+    >
       <div className="mt-3 px-3">
         <p className="mb-3 text-sm text-slate-500 dark:text-slate-400">
           Pick a duplicate of {survivor.name} to absorb. Every linked record,
@@ -122,6 +126,6 @@ export default function ProviderMergePanel({
           </p>
         ) : null}
       </div>
-    </details>
+    </Disclosure>
   );
 }

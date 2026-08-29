@@ -18,6 +18,7 @@ import {
   type BulkCorrectionPreviewResult,
   type BulkCorrectionRequest,
 } from "@/app/(app)/data/bulk-correction-actions";
+import Disclosure from "@/components/Disclosure";
 
 // Bulk corrections (issue #1603): fix a bad RUN of data — a miscalibrated scale,
 // an import that landed pounds as kilograms — in one plan → preview → apply →
@@ -177,16 +178,7 @@ export default function BulkCorrectionCard({
     // A power tool used a few times a year, so it collapses to ONE summary line at
     // the bottom of Review (#1880 item 6). A ?fix= deep-link (initialField) opens it
     // pre-selected — a native <details>, so the toggle needs no hydration.
-    <details
-      id="bulk-correction"
-      className="card scroll-mt-4"
-      data-testid="bulk-correction-card"
-      open={initialField != null}
-    >
-      <summary
-        className="flex cursor-pointer list-none items-center gap-2"
-        data-testid="bulk-correction-toggle"
-      >
+    <Disclosure id="bulk-correction" className="card scroll-mt-4" data-testid="bulk-correction-card" open={initialField != null} summaryClassName="flex items-center gap-2" summaryTestId="bulk-correction-toggle" summary={<>
         <IconAdjustments className="h-5 w-5 text-brand-600 dark:text-brand-400" stroke={1.75} />
         <span className="font-semibold text-slate-800 dark:text-slate-100">
           Fix a run of data
@@ -195,7 +187,8 @@ export default function BulkCorrectionCard({
           — correct a whole stretch at once (miscalibrated scale, lb-as-kg
           import)
         </span>
-      </summary>
+      </>}>
+      
       <p className="mt-2 text-sm text-slate-500 dark:text-slate-400">
         Correct a whole stretch at once — a miscalibrated scale, an import that
         landed pounds as kilograms. Pick the rows, preview every change, then
@@ -432,6 +425,6 @@ export default function BulkCorrectionCard({
             {preview.message}
           </p>
         ))}
-    </details>
+    </Disclosure>
   );
 }

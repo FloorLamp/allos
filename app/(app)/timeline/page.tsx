@@ -125,6 +125,7 @@ import DateRangeControl from "@/components/DateRangeControl";
 import TimelineFilterLink, {
   TimelineScrollRestorer,
 } from "@/components/TimelineFilterLink";
+import Disclosure from "@/components/Disclosure";
 
 export const dynamic = "force-dynamic";
 
@@ -360,10 +361,11 @@ function EventCard({
   }
 
   return (
-    <details className={`group block ${shellClass}`} open={defaultOpen}>
-      <summary className="list-none cursor-pointer [&::-webkit-details-marker]:hidden">
-        {collapsed}
-      </summary>
+    <Disclosure
+      className={`group block ${shellClass}`}
+      open={defaultOpen}
+      summary={collapsed}
+    >
       <div className="mt-3 border-t border-black/5 pt-3 text-sm sm:ml-11 dark:border-white/10">
         <dl className="space-y-1.5">
           {detailItems.map((item, index) => (
@@ -397,7 +399,7 @@ function EventCard({
           </Link>
         )}
       </div>
-    </details>
+    </Disclosure>
   );
 }
 

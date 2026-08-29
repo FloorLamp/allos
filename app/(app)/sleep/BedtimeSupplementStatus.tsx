@@ -3,6 +3,7 @@ import {
   type BedtimeSupplementState,
   type BedtimeSupplementSummary,
 } from "@/lib/sleep-bedtime-supplements";
+import Disclosure from "@/components/Disclosure";
 
 const TONE: Record<BedtimeSupplementState, string> = {
   taken: "text-emerald-700 dark:text-emerald-300",
@@ -58,22 +59,23 @@ export default function BedtimeSupplementStatus({
   }
 
   return (
-    <details
-      className="group text-xs"
+    <Disclosure
+      className="text-xs"
       data-testid="bedtime-supplement-status"
       data-state={summary.state}
+      summaryClassName={`inline-flex cursor-pointer list-none items-center gap-1 font-medium ${TONE[summary.state]}`}
+      summaryLabel={`${prefix ? `${prefix}: ` : ""}${label}. ${details}`}
+      summaryTestId="bedtime-supplement-status-summary"
+      summary={
+        <>
+          <span
+            className="h-1.5 w-1.5 shrink-0 rounded-full bg-current"
+            aria-hidden
+          />
+          {prefix ? `${prefix} · ${label}` : label}
+        </>
+      }
     >
-      <summary
-        className={`inline-flex cursor-pointer list-none items-center gap-1 font-medium ${TONE[summary.state]}`}
-        aria-label={`${prefix ? `${prefix}: ` : ""}${label}. ${details}`}
-        data-testid="bedtime-supplement-status-summary"
-      >
-        <span
-          className="h-1.5 w-1.5 shrink-0 rounded-full bg-current"
-          aria-hidden
-        />
-        {prefix ? `${prefix} · ${label}` : label}
-      </summary>
       <span className="mt-1 block max-w-72 whitespace-normal font-normal leading-relaxed text-slate-500 dark:text-slate-400">
         {itemLabels.map((item) => (
           <span key={item} className="block">
@@ -81,6 +83,6 @@ export default function BedtimeSupplementStatus({
           </span>
         ))}
       </span>
-    </details>
+    </Disclosure>
   );
 }

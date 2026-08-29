@@ -19,6 +19,7 @@ import {
   type DisplayFormatPrefs,
 } from "@/lib/format-date";
 import { RECORDS_CONDITIONS_HREF } from "@/lib/hrefs";
+import Disclosure from "@/components/Disclosure";
 
 // The printable / shareable illness-episode summary (issue #801). A pure
 // presentational server component over the ONE assembled model — reused by the
@@ -264,16 +265,17 @@ export default function EpisodeSummary({
             </ul>
             {collapseSymptoms ? (
               <>
-                <details className="mt-2 print:hidden">
-                  <summary className="cursor-pointer text-xs text-link">
-                    Show {remainingSymptoms.length} more
-                  </summary>
+                <Disclosure
+                  className="mt-2 print:hidden"
+                  summaryClassName="text-xs text-link"
+                  summary={<>Show {remainingSymptoms.length} more</>}
+                >
                   <ul className="mt-2 flex flex-wrap gap-2">
                     {remainingSymptoms.map((symptom) => (
                       <SymptomPill key={symptom.symptom} symptom={symptom} />
                     ))}
                   </ul>
-                </details>
+                </Disclosure>
                 <ul
                   className="hidden flex-wrap gap-2 print:flex"
                   data-testid="episode-print-symptoms"

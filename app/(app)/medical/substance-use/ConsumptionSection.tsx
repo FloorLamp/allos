@@ -37,6 +37,7 @@ import {
   undoSubstanceUnitAction,
   updateSubstanceDailyTotalAction,
 } from "./actions";
+import Disclosure from "@/components/Disclosure";
 
 function mutationError(kind: string): string {
   if (kind === "invalid-date") return "Enter a valid date.";
@@ -401,10 +402,11 @@ export default function ConsumptionSection({
         )}
       </div>
 
-      <details className="text-sm">
-        <summary className="cursor-pointer text-slate-500 dark:text-slate-400">
-          8-week trend
-        </summary>
+      <Disclosure
+        className="text-sm"
+        summaryClassName="text-slate-500 dark:text-slate-400"
+        summary="8-week trend"
+      >
         <div
           className="mt-3 space-y-1"
           data-testid={`substance-trend-${substance}`}
@@ -425,7 +427,7 @@ export default function ConsumptionSection({
             </div>
           ))}
         </div>
-      </details>
+      </Disclosure>
 
       {addOpen ? (
         <ModalShell
