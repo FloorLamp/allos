@@ -332,7 +332,11 @@ describe("the bed/wake window (#1851)", () => {
       { bedTime: "21:00", wakeTime: "22:00" },
       /23 hours apart/i,
     ],
-    ["an afternoon nap pair", { bedTime: "13:30", wakeTime: "15:00" }, /23 hours apart/i],
+    [
+      "an afternoon nap pair",
+      { bedTime: "13:30", wakeTime: "15:00" },
+      /23 hours apart/i,
+    ],
     // Hours ASLEEP can be shorter than the window; longer is a typo.
     [
       "more sleep than time in bed",

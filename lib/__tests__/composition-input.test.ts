@@ -61,7 +61,11 @@ describe("normalizeCompositionInput", () => {
     ["an unparseable water", { hydration: "two litres" }, /valid water/i],
     // The ingest envelopes: lean_mass_kg 1–300, bone_mass_kg 0.05–20,
     // hydration_l 0–40. A value outside them is a hard error, never a silent skip.
-    ["a 900 kg lean mass", { leanMass: "900" }, /lean mass looks out of range/i],
+    [
+      "a 900 kg lean mass",
+      { leanMass: "900" },
+      /lean mass looks out of range/i,
+    ],
     ["a 40 kg bone mass", { boneMass: "40" }, /bone mass looks out of range/i],
     ["a 60 L day", { hydration: "60" }, /water intake looks out of range/i],
   ])("refuses %s", (_label, raw, pattern) => {

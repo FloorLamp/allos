@@ -39,15 +39,12 @@ export interface CompositionInputRaw {
 // One canonical metric_samples sample to upsert.
 export interface CompositionSample {
   metric:
-    | typeof LEAN_MASS_METRIC
-    | typeof BONE_MASS_METRIC
-    | typeof HYDRATION_METRIC;
+    typeof LEAN_MASS_METRIC | typeof BONE_MASS_METRIC | typeof HYDRATION_METRIC;
   value: number;
 }
 
 export type CompositionInputResult =
-  | { samples: CompositionSample[] }
-  | { error: string };
+  { samples: CompositionSample[] } | { error: string };
 
 // A blank/whitespace field is "not measured" (skipped); a present-but-unparseable
 // number is a hard error so the form can't show a false "saved".

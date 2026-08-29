@@ -557,8 +557,7 @@ export default function MeasurementsQuickAdd({
   // one tap fewer and the uncommon one is still there. Storage is canonical kg
   // either way; the CHART stays in kilograms, exactly as height charts in
   // centimetres however the tape was read.
-  const massUnitOptions =
-    weightUnit === "lb" ? ["lb", "kg"] : ["kg", "lb"];
+  const massUnitOptions = weightUnit === "lb" ? ["lb", "kg"] : ["kg", "lb"];
 
   const field = {
     weight: (
@@ -1007,11 +1006,7 @@ export default function MeasurementsQuickAdd({
       field.boneMass,
       field.hydration,
     ],
-    sleep: [
-      field.sleepWindow,
-      field.sleep,
-      ...(showHrv ? [field.hrv] : []),
-    ],
+    sleep: [field.sleepWindow, field.sleep, ...(showHrv ? [field.hrv] : [])],
   };
 
   return (

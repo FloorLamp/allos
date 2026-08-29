@@ -332,8 +332,7 @@ function upsertManualSleep(
               ORDER BY id LIMIT 1`
           )
           .get(profileId, SLEEP_METRIC, date) as
-          | { startedAt: string; endedAt: string }
-          | undefined);
+          { startedAt: string; endedAt: string } | undefined);
     const target = window ?? existing ?? null;
     const startedAt = target?.startedAt ?? dayMidnightAnchor(date);
     db.prepare(
@@ -346,7 +345,9 @@ function upsertManualSleep(
       SLEEP_METRIC,
       date,
       value,
-      target ? { startedAt: target.startedAt, endedAt: target.endedAt } : undefined
+      target
+        ? { startedAt: target.startedAt, endedAt: target.endedAt }
+        : undefined
     );
   });
 }

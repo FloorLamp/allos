@@ -126,9 +126,9 @@ test("the measurements form takes water, lean/bone mass, respiratory rate and a 
   // group's collapsed-header summary is built from the posted field names, so a
   // renamed input reads as an empty summary here rather than as a silent no-op
   // three surfaces later.
-  await expect(
-    form.getByTestId("measurements-group-sleep-summary")
-  ).toHaveText("23:15–07:05");
+  await expect(form.getByTestId("measurements-group-sleep-summary")).toHaveText(
+    "23:15–07:05"
+  );
 
   await form.getByRole("button", { name: "Save measurements" }).click();
   await expect(page.getByText("Measurements saved")).toBeVisible();
