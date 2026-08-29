@@ -26,7 +26,7 @@ import { getTravelSwitches } from "./settings/travel";
 import {
   connectedTimezoneSwitchHistory,
   isExcusedSlot,
-  zoneAtInstant,
+  zoneInChainAt,
   type ProfileDayZone,
   type TimezoneSwitch,
 } from "./travel-timezone";
@@ -85,9 +85,15 @@ export function travelExcusalResolver(profileId: number): DoseExcusalResolver {
 // common path stays a bare `dateStrInTz` with nothing extra to go wrong.
 export function profileDayZone(profileId: number): ProfileDayZone {
   const tz = getTimezone(profileId);
-  const switches = getTravelSwitches(profileId);
-  if (connectedTimezoneSwitchHistory(switches, tz).length === 0) return tz;
-  return (at) => zoneAtInstant(switches, tz, at);
+  // The chain is built ONCE and closed over, not rebuilt per stamp: validating a full
+  // 24-switch history costs 48 uncached Intl.DateTimeFormat constructions, and a strip
+  // resolves one per creation stamp of every dose it draws (#4030).
+  const chain = connectedTimezoneSwitchHistory(
+    getTravelSwitches(profileId),
+    tz
+  );
+  if (chain.length === 0) return tz;
+  return (at) => zoneInChainAt(chain, tz, at);
 }
 
 // The SLOT-level twin, for the notify tick: was this window's own send excused on

@@ -761,6 +761,25 @@ export type InferredWorkoutSchedule = WeeklyRhythm;
 // there's no clear pattern. A thin SQL gather over the shared inference core
 // (#2188) — the thresholds live in lib/weekly-rhythm.ts, not here.
 // Hoisted for the same reason as ACTIVITIES_BY_DATE_STMT above.
+//
+// THE UPPER BOUND EXCLUDES A FUTURE-DATED SESSION, AND THAT IS DELIBERATE (#4030).
+// Nothing stops one being written: `saveActivityCore` accepts any real ISO date
+// (shape and calendar validity, no ceiling), the activity form's `DateField` is
+// given no `max`, and the AI import path applies the same shape-only check — so
+// planned sessions are logged, and a profile that logs them has rows here dated
+// after `asOf`. Excluding them is the answer this bound wants: an inference of
+// "what you actually do" cannot count a session that has not happened.
+//
+// WHAT A PROFILE LOSES IF THAT FLIPS `hasPattern`. Measured on this branch, three
+// past sessions plus one planned on the same weekday: `{weekdays:[6],
+// hasPattern:true}` unbounded against `{weekdays:[0…6], hasPattern:false}` bounded
+// — the planned row was the fourth distinct date the habitual-weekday gate needed.
+// A profile in that state loses its inferred cadence, and with it the PreWorkout
+// pseudo-slot: its `anytime` pre_workout doses fold back into their bucket window
+// (`getPreWorkoutSlotMinute` returns null without a pattern) rather than riding an
+// hour before the inferred training time. Nothing is dropped or silenced — both the
+// slot-membership gate and the tick's hour read this same inference, so they move
+// together — but the reminder arrives on the bucket's schedule instead.
 const WORKOUT_RHYTHM_STMT = hoistedStatement(
   `SELECT date, start_time FROM activities
     WHERE profile_id = ? AND date >= ? AND date <= ?`

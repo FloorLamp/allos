@@ -238,11 +238,30 @@ export function zoneAtInstant(
   currentZone: string,
   at: Date
 ): string {
+  return zoneInChainAt(
+    connectedTimezoneSwitchHistory(switches, currentZone),
+    currentZone,
+    at
+  );
+}
+
+// The walk itself, over a history ALREADY through the gate above — for a caller that
+// resolves many instants against one profile's history and should not re-validate it
+// per instant. `connectedTimezoneSwitchHistory` calls `isValidTimezone` twice per
+// switch, and that constructs an Intl.DateTimeFormat uncached: at a full 24-switch
+// history, one strip's 60 creation stamps cost 2880 constructions when the chain is
+// rebuilt per stamp and 48 when it is built once (#4030). Same walk either way —
+// `zoneAtInstant` is this function plus the gate, so there is still one computation.
+export function zoneInChainAt(
+  chain: readonly TimezoneSwitch[],
+  currentZone: string,
+  at: Date
+): string {
   const t = at.getTime();
   // The chain is chronological and ends at `currentZone`, so the FIRST switch that
   // happened after `at` is the one this instant preceded: the zone in force then is
   // the one that switch moved away from.
-  for (const sw of connectedTimezoneSwitchHistory(switches, currentZone)) {
+  for (const sw of chain) {
     if (Date.parse(sw.at) > t) return sw.from;
   }
   return currentZone;

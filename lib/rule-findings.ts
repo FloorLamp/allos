@@ -50,7 +50,6 @@ import {
   getProfileReproductiveStatus,
   getSmokingHistory,
   getRiskAttributesReviewed,
-  getTimezone,
 } from "./settings";
 import { isAdultForClinical, isMinor } from "./life-stage";
 import {
@@ -1532,8 +1531,10 @@ export function buildAdherencePatternFindings(
   const itemById = new Map(items.map((item) => [item.id, item]));
   const doses = getIntakeDoses(profileId);
   // The profile's timezone resolves the UTC creation stamps onto the same profile-local
-  // calendar the `dates` window is built from (#1442).
-  const tz = getTimezone(profileId);
+  // calendar the `dates` window is built from (#1442) — through the zone in force at
+  // each stamp (#4025). BOTH halves of the bound below take it: the lifetime and the
+  // legacy re-time reduce through one `max`, so a zone converted on one side only lets
+  // the unconverted side win the comparison and walk the day forward again (#4030).
   const dayZone = profileDayZone(profileId);
   // THE EVIDENCE, NOT THE WINDOW (#3988/#4020). This index answers two questions, and
   // only one of them is windowed: "was this dose taken on this drawn day" is, "when did
@@ -1588,7 +1589,7 @@ export function buildAdherencePatternFindings(
     // today's rule would be the retroactive re-accusation #430 clamped to avoid. The
     // conservative bound stays for exactly those doses, and only until their next
     // schedule edit records a real version (see unrecordedScheduleChangeOn).
-    const unrecorded = unrecordedScheduleChangeOn(d, tz);
+    const unrecorded = unrecordedScheduleChangeOn(d, dayZone);
     const since = [exists, unrecorded]
       .filter((v): v is string => v != null)
       .reduce<string | null>((a, b) => (a == null || b > a ? b : a), null);
@@ -1629,7 +1630,8 @@ export function buildAdherencePatternFindings(
       suppressMoveSuggestion:
         timeBucket(d.time_of_day) === "Before sleep" ||
         item.kind === "medication" ||
-        (windowDates.length > 0 && doseSlotChangedSince(d, windowDates[0], tz)),
+        (windowDates.length > 0 &&
+          doseSlotChangedSince(d, windowDates[0], dayZone)),
     });
   }
 

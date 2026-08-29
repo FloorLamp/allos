@@ -159,8 +159,7 @@ function currentMinutesOfDay(profileId: number): number {
 
 // Whether this profile's `anytime` pre_workout doses are workout-relative
 // (issue #1154 Fix A): true when a training cadence (and hence an hour) can be
-// inferred. Kept as the ONE gate both the slot membership (doseSendSlot) and the
-// tick's pseudo-slot hour derive from, so a dose can never fall between slots.
+// inferred, so a dose can never fall between slots.
 //
 // AS OF `date`, NOT AS OF NOW (#4026), which is the same split #4019 made one layer
 // down for `predictedWorkoutDay`. The inference is a trailing window ending at its
@@ -170,6 +169,15 @@ function currentMinutesOfDay(profileId: number): number {
 // while the message still listed the dose — and reconcile's death check needs
 // `entries.length > 0`, so an empty rebuild is indistinguishable from "nothing to do"
 // and the button never retires.
+//
+// ON A LIVE SEND, SLOT MEMBERSHIP AND THE PSEUDO-SLOT HOUR REDUCE TO THE SAME CALL —
+// which is the whole of the invariant, and it is no longer one shared gate (#4030).
+// Since this function became as-of-`date`, `getPreWorkoutSlotMinute` (the tick's and
+// the escalation's hour) derives its own `inferWorkoutSchedule(profileId)` with no
+// `asOf`. Every send passes today, where `asOf` defaults to today, so the two are the
+// same inference over the same window; only a PAST-day rebuild asks this one about a
+// closed day, and that path reads no hour. The hour must not be as-of-`date` anyway:
+// it says when the pseudo-slot fires NOW.
 function preWorkoutTimed(profileId: number, date: string): boolean {
   return inferWorkoutSchedule(profileId, undefined, date).hasPattern;
 }
