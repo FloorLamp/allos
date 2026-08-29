@@ -991,10 +991,18 @@ test("weight steppers bump a set's load by the lift-appropriate increment (#337)
   await page.getByText("To failure", { exact: true }).click();
   await expect(toFailure).not.toBeChecked();
   await closePartOptions(page);
-  // Cleared, the fact has nothing to state and goes back behind the affordance, which
-  // NAMES it rather than saying "more".
-  await expect(page.getByTestId("part-fact-intent")).toHaveCount(0);
-  await expect(page.getByTestId("part-fact-more")).toContainText("a target");
+
+  // AND THE ROW STATES WHAT THE FORM INHERITED. Clearing AMRAP does not empty this
+  // fact: the coached suggestion carries this lift's declared scheme from last session
+  // and a fresh part adopts it (#335), so the target is 8 and nobody typed it. That
+  // number lived in a `w-16` number input on every exercise and was easy never to
+  // read; the chip says it. The fact leaving the row entirely is the case with no such
+  // history, and it is pinned on an exact fixture in
+  // components/__tests__/part-fact-row.test.tsx rather than against the seed's
+  // training history.
+  await expect(page.getByTestId("part-fact-intent")).toHaveText(
+    /^target \d+ reps$/
+  );
 
   const weightStepper = page.getByTestId("set1-weight-stepper");
   const weightInput = page.getByTestId("set1-weight");
