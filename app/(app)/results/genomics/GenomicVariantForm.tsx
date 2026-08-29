@@ -15,6 +15,7 @@ import {
   significanceLabel,
 } from "@/lib/genomic-variant";
 import type { GenomicVariant, FormResult } from "@/lib/types";
+import InlineError from "@/components/InlineError";
 
 // Shared add/edit genomic-variant form. Add mode: no `variant`. Edit mode: pass the
 // row + an `onDone` callback (renders a hidden id + a Cancel button). Enum fields
@@ -244,11 +245,7 @@ export default function GenomicVariantForm({
           defaultValue={variant?.notes ?? ""}
         />
       </div>
-      {error && (
-        <p role="alert" className="text-sm text-rose-600 dark:text-rose-400">
-          {error}
-        </p>
-      )}
+      <InlineError>{error}</InlineError>
       <div className="flex gap-2" data-testid="genomic-variant-actions">
         <div
           className="grid w-full sm:w-auto"

@@ -17,6 +17,7 @@ import {
   bodySideLabel,
 } from "@/lib/skin-lesion";
 import type { SkinLesion, FormResult } from "@/lib/types";
+import InlineError from "@/components/InlineError";
 
 // Shared add/edit skin-lesion form (issue #715). Add mode: no `record`. Edit mode: pass
 // the row + an `onDone` callback (renders a hidden id + a Cancel button). Enum fields
@@ -258,11 +259,7 @@ export default function SkinLesionForm({
           defaultValue={record?.notes ?? ""}
         />
       </div>
-      {error && (
-        <p role="alert" className="text-sm text-rose-600 dark:text-rose-400">
-          {error}
-        </p>
-      )}
+      <InlineError>{error}</InlineError>
       <div className="flex gap-2" data-testid="skin-lesion-actions">
         <div
           className="grid w-full sm:w-auto"

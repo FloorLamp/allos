@@ -92,6 +92,19 @@ const CONSUMERS = [
     host: "components/ActivityForm.tsx",
   },
   {
+    // THE FIRST CONSUMER THAT REPEATS (#3349) — one chip row per exercise, in a form
+    // that can hold five. Everything else here states a fact ONCE per surface.
+    //
+    // That is why the chips and the host are the same file, and why it is the LIST
+    // rather than the per-part editor: "at most one editor on screen" has to hold
+    // across the parts, not within one, and the registry door lives inside the open
+    // panel. Split across two files each exercise would own a panel, and the door the
+    // row used to repeat would repeat again wearing a disclosure.
+    name: "the activity editor's per-part equipment (#3349)",
+    chips: "components/activity-form/ActivityPartsList.tsx",
+    host: "components/activity-form/ActivityPartsList.tsx",
+  },
+  {
     // THE FIRST DOM-COLLECTED CONSUMER (#3219) — a different "first" from the one
     // above, and the two are worth reading together. The three consumers before this
     // all hand their action a FormData they built themselves; this one is

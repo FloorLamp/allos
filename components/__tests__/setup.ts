@@ -15,6 +15,29 @@
 import { afterEach } from "vitest";
 import { cleanup } from "@testing-library/react";
 
+// jsdom SHIPS NO `matchMedia`, and the app reads it wherever a preference is a media
+// query: `usePrefersReducedMotion` (#1307) and `useStandaloneDisplayMode` both call it
+// during render, so any component that consults one throws "not a function" before its
+// first assertion. The gap surfaced when haptics mounted on the shared substrates
+// (#3699) and SegmentedControl gained the hook — four unrelated files went red at once,
+// none of them about the thing they test.
+//
+// The stand-in answers NO to every query, which is the same default the app's own SSR
+// snapshot uses, so a test that says nothing about a preference gets the ordinary
+// branch. A test that means to drive the OTHER branch stubs `matchMedia` itself, and
+// its stub replaces this one.
+if (typeof window !== "undefined" && !window.matchMedia)
+  window.matchMedia = ((query: string) => ({
+    matches: false,
+    media: query,
+    onchange: null,
+    addEventListener: () => {},
+    removeEventListener: () => {},
+    addListener: () => {},
+    removeListener: () => {},
+    dispatchEvent: () => false,
+  })) as typeof window.matchMedia;
+
 afterEach(() => {
   // Unmount anything render()/renderHook() left mounted. This tier does NOT set
   // vitest's `globals`, so testing-library's own auto-cleanup never registers —

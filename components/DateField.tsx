@@ -1,21 +1,11 @@
 "use client";
 
-import { useEffect, useRef, useState, type SetStateAction } from "react";
+import { useEffect, useRef, useState } from "react";
 import AnchoredPanel from "@/components/overlay/AnchoredPanel";
+import MonthCalendar from "@/components/MonthCalendar";
 import { useCompactViewport } from "@/components/useCompactViewport";
-import { IconChevronLeft, IconChevronRight } from "@tabler/icons-react";
-import IconButton from "@/components/IconButton";
-import {
-  dateStrInTz,
-  isoDate,
-  isRealIsoDate,
-  monthGridCells,
-  monthNames,
-  weekdayOrder,
-  type CalendarCell,
-} from "@/lib/date";
+import { dateStrInTz, isRealIsoDate } from "@/lib/date";
 import { useTimezone } from "@/components/TimezoneProvider";
-import { useWeekStart } from "@/components/WeekStartProvider";
 import { formatDateWithYear, daysRemainingLabel } from "@/lib/format-date";
 import { useFormatPrefs } from "@/components/FormatPrefsProvider";
 
@@ -35,11 +25,14 @@ import { useFormatPrefs } from "@/components/FormatPrefsProvider";
 // popup cannot carry, and dropping to native below `md` would mean the phone
 // loses exactly the affordances the desktop keeps.
 //
+// THE GRID INSIDE THE PANEL IS NOT THIS FILE'S (#3744). components/MonthCalendar.tsx
+// owns the cursor, the bounds, the month/year selectors, the arrows, the weekday row
+// and the day grid for both this picker and the Timeline's event calendar; this file
+// owns the field, where the panel opens, and what Clear and Today mean.
+//
 // Works both uncontrolled (pass `name` + optional `defaultValue` — submits the
 // ISO yyyy-mm-dd value in a form, exactly like the native input) and controlled
 // (pass `value` + `onChange`). The text field accepts manual ISO entry too.
-const DOW = ["Su", "Mo", "Tu", "We", "Th", "Fr", "Sa"];
-const MONTHS = monthNames("long");
 const PANEL_WIDTH = 288; // matches w-72
 
 // True only for a real calendar date in ISO form (shared helper — see lib/date).
@@ -113,37 +106,6 @@ export default function DateField({
   }, [val, min, max]);
 
   const todayStr = dateStrInTz(useTimezone());
-  // The profile's first day of the week (0=Sun … 6=Sat); reorders the header and
-  // grid so each row starts on that day.
-  const weekStart = useWeekStart();
-  const dowOrder = weekdayOrder(weekStart);
-  const seed = validISO(val) ? val : todayStr;
-  const [sy, sm] = seed.split("-").map(Number);
-  type Cursor = { y: number; m: number };
-  const [cursorState, setCursorState] = useState<{
-    seenValue: string;
-    cursor: Cursor;
-  }>({ seenValue: val, cursor: { y: sy, m: sm - 1 } });
-
-  // Follow the typed/selected value to the right month — but only once it's a
-  // real date, so a well-formed-but-impossible entry ("2026-13-01") can't push
-  // cursor.m outside 0-11 and desync the month <select>.
-  if (cursorState.seenValue !== val) {
-    const nextCursor = validISO(val)
-      ? (() => {
-          const [y, m] = val.split("-").map(Number);
-          return { y, m: m - 1 };
-        })()
-      : cursorState.cursor;
-    setCursorState({ seenValue: val, cursor: nextCursor });
-  }
-  const cursor = cursorState.cursor;
-  function setCursor(next: SetStateAction<Cursor>) {
-    setCursorState((current) => ({
-      seenValue: val,
-      cursor: typeof next === "function" ? next(current.cursor) : next,
-    }));
-  }
 
   // Close on outside click — the POPOVER's dismissal, and only its. The panel is
   // portaled outside `ref`, so a click inside it must also count as "inside" or
@@ -163,29 +125,6 @@ export default function DateField({
     document.addEventListener("mousedown", onDown);
     return () => document.removeEventListener("mousedown", onDown);
   }, [open, compact, popRef]);
-
-  const cells = monthGridCells(cursor.y, cursor.m, weekStart);
-
-  // A generous year range for the selector: back far enough for birthdates,
-  // forward for future goal dates, clamped to any min/max bound, and always
-  // widened to include the cursor so the current month stays selectable.
-  const todayYear = Number(todayStr.slice(0, 4));
-  const loYear = min ? Number(min.slice(0, 4)) : todayYear - 120;
-  const hiYear = max ? Number(max.slice(0, 4)) : todayYear + 10;
-  const minY = Math.min(loYear, cursor.y);
-  const maxY = Math.max(hiYear, cursor.y);
-  const years = Array.from({ length: maxY - minY + 1 }, (_, i) => maxY - i);
-
-  function shift(delta: number) {
-    setCursor((c) => {
-      const t = c.y * 12 + c.m + delta;
-      return { y: Math.floor(t / 12), m: ((t % 12) + 12) % 12 };
-    });
-  }
-  function pick(cell: CalendarCell) {
-    setVal(isoDate(cell.y, cell.m, cell.d));
-    setOpen(false);
-  }
 
   return (
     <div
@@ -297,98 +236,18 @@ export default function DateField({
       >
         {() => (
           <>
-            <div className="mb-2 flex items-center justify-between gap-1">
-              <div className="flex items-center gap-1">
-                <select
-                  value={cursor.m}
-                  onChange={(e) =>
-                    setCursor((c) => ({ ...c, m: Number(e.target.value) }))
-                  }
-                  aria-label="Month"
-                  className="select-bare py-0.5 pl-1 text-sm"
-                >
-                  {MONTHS.map((label, m) => (
-                    <option key={m} value={m}>
-                      {label}
-                    </option>
-                  ))}
-                </select>
-                <select
-                  value={cursor.y}
-                  onChange={(e) =>
-                    setCursor((c) => ({ ...c, y: Number(e.target.value) }))
-                  }
-                  aria-label="Year"
-                  className="select-bare py-0.5 pl-1 text-sm"
-                >
-                  {years.map((y) => (
-                    <option key={y} value={y}>
-                      {y}
-                    </option>
-                  ))}
-                </select>
-              </div>
-              {/* `gap-3` is the reach floor (#3938): twice `--control-reach`. */}
-              <div className="flex gap-3">
-                <IconButton label="Previous month" onClick={() => shift(-1)}>
-                  <IconChevronLeft className="h-4 w-4" />
-                </IconButton>
-                <IconButton label="Next month" onClick={() => shift(1)}>
-                  <IconChevronRight className="h-4 w-4" />
-                </IconButton>
-              </div>
-            </div>
-
-            <div className="grid grid-cols-7 text-center text-xs font-medium text-slate-500 dark:text-slate-400">
-              {dowOrder.map((wd, i) => (
-                <div key={i}>{DOW[wd]}</div>
-              ))}
-            </div>
-
-            {/* THE HIT BOX TILES ITS COLUMN AND THE GLYPH IS THE PAINT — the
-                split components/EventCalendar.tsx has drawn since #3377, adopted
-                here by #3954 so the app has ONE calendar day. The cell is the
-                control box tall at every width (the `h-11`/`md:h-9` step was the
-                two-heights-for-one-idea pattern the box retired) and as wide as
-                its column, so seven of them tile the grid with no dead pixels: a
-                tap that lands between two days reads as broken exactly like one
-                that lands on the wrong day. The row gap pays the reach floor
-                where the reach exists — on a coarse pointer — and stays tight on
-                a mouse, which has no floor to meet. */}
-            <div className="mt-1 grid grid-cols-7 gap-y-0.5 pointer-coarse:gap-y-3">
-              {cells.map((cell, i) => {
-                const ds = isoDate(cell.y, cell.m, cell.d);
-                const selected = ds === val;
-                const isToday = ds === todayStr;
-                const disabled = outOfRange(ds);
-                return (
-                  <button
-                    key={i}
-                    type="button"
-                    disabled={disabled}
-                    onClick={() => pick(cell)}
-                    data-calendar-day=""
-                    className="flex h-(--control-box) w-full items-center justify-center"
-                  >
-                    <span
-                      className={`flex h-(--control-box) w-(--control-box) items-center justify-center rounded-full text-sm transition ${
-                        selected
-                          ? "bg-brand-600 font-semibold text-white hover:bg-brand-700"
-                          : disabled
-                            ? "cursor-not-allowed text-slate-300 dark:text-slate-700"
-                            : `hover:bg-slate-100 dark:hover:bg-ink-800 ${
-                                cell.outside
-                                  ? "text-slate-400 dark:text-slate-600"
-                                  : "text-slate-700 dark:text-slate-200"
-                              } ${isToday ? "ring-1 ring-brand-400" : ""}`
-                      }`}
-                    >
-                      {cell.d}
-                    </span>
-                  </button>
-                );
-              })}
-            </div>
+            <MonthCalendar
+              binding={{
+                kind: "selectable",
+                value: val,
+                min,
+                max,
+                onSelect: (ds) => {
+                  setVal(ds);
+                  setOpen(false);
+                },
+              }}
+            />
 
             <div className="mt-2 flex items-center justify-between border-t border-black/10 pt-2 text-sm dark:border-white/10">
               <button

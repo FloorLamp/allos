@@ -1,14 +1,8 @@
 import { test, expect } from "./fixtures";
 import { closeEditor, openFact } from "./intake-form-helpers";
 import Database from "better-sqlite3";
-import {
-  followLink,
-  hydratedClick,
-  settledClick,
-  settledSelect,
-} from "./helpers";
+import { followLink, hydratedClick, settledClick } from "./helpers";
 import { shiftDateStr, zonedWallTimeToUtc } from "@/lib/date";
-import { HISTORY_PAGE_SIZE } from "@/lib/pagination";
 import { pinnedTimezone } from "./pinned-timezone";
 import { frozenNow, workerDbPath } from "./worker-env";
 // A dosage/schedule edit must never destroy or rewrite adherence history.
@@ -218,7 +212,7 @@ test("a supplement's dose history offers the medication row actions, and an edit
 // filterable by item, kind and date window, with the same row actions and a top-level
 // "Log past dose". This drives that door for real: confirm a dose on the supplements
 // tab, walk to the ledger, narrow it to the item, and backfill from the table itself.
-test("the supplements tab reaches a cross-item dose ledger and logs a past dose from it", async ({
+test("the supplements tab reaches the cross-item record and logs a past dose from it", async ({
   page,
 }, testInfo) => {
   const name = `Ledger Guard ${testInfo.repeatEachIndex}-${testInfo.retry}`;
@@ -244,38 +238,28 @@ test("the supplements tab reaches a cross-item dose ledger and logs a past dose 
     row.getByRole("button", { name: "Mark not taken" })
   ).toBeVisible();
 
-  // ── ONE click from the supplements tab to the whole ledger ─────────────────
+  // ── ONE click from the supplements tab to the whole record ────────────────
+  // The door used to open a route of its own; #3958 folded the four ledgers into
+  // `/history`, and the door now carries the kind AND the surface's own pre-filter
+  // as params on one page.
   await followLink(
     page,
     page.getByTestId("dose-ledger-link"),
-    /\/nutrition\/dose-history/
+    /\/history\?kind=dose&class=supplement/
   );
-  const ledger = page.getByTestId("dose-ledger");
-  const ownRow = ledger
-    .getByTestId("dose-ledger-row")
-    .filter({ hasText: name });
+  const ownRow = page.getByTestId("history-row").filter({ hasText: name });
   await expect(ownRow).toHaveCount(1);
   await expect(ownRow).toContainText("125 mg");
 
-  // ── Narrowing to the item leaves that item's rows and nothing else ─────────
-  const itemFilter = page.getByTestId("dose-ledger-item-filter");
-  const itemValue = await itemFilter
+  // ── "Log past dose" without opening any item's menu ────────────────────────
+  // The record's Add door IS this kind's backfill when the page is filtered to it.
+  await hydratedClick(page, page.getByTestId("dose-ledger-add"));
+  const picker = page.getByTestId("dose-ledger-item-picker");
+  const itemValue = await picker
     .locator("option")
     .filter({ hasText: name })
     .getAttribute("value");
-  await settledSelect(page, itemFilter, itemValue ?? "", {
-    destination: /item=/,
-  });
-  await expect(ledger.getByTestId("dose-ledger-row")).toHaveCount(1);
-  await expect(ledger.getByTestId("dose-ledger-row")).toContainText(name);
-
-  // ── "Log past dose" without opening any item's menu ────────────────────────
-  await hydratedClick(page, page.getByTestId("dose-ledger-add"));
-  // The picker opens on the item the ledger is FILTERED to — a reader who narrowed
-  // the table and then tapped "Log past dose" means that item.
-  await expect(page.getByTestId("dose-ledger-item-picker")).toHaveValue(
-    itemValue ?? ""
-  );
+  await picker.selectOption(itemValue ?? "");
   const form = page.getByTestId("historical-dose-form");
   const maxDate = await form
     .locator('input[type="hidden"][name="date"]')
@@ -288,12 +272,17 @@ test("the supplements tab reaches a cross-item dose ledger and logs a past dose 
   await form.getByLabel("Amount").fill("175 mg");
   await settledClick(page, form.getByRole("button", { name: "Save dose" }));
   await expect(page.getByText(`Logged past dose of ${name}.`)).toBeVisible();
-  await expect(ledger.getByTestId("dose-ledger-row")).toHaveCount(2);
   await expect(
-    ledger.getByTestId("dose-ledger-row").filter({ hasText: "175 mg" })
+    page.getByTestId("history-row").filter({ hasText: name })
+  ).toHaveCount(2);
+  await expect(
+    page
+      .getByTestId("history-row")
+      .filter({ hasText: name })
+      .filter({ hasText: "175 mg" })
   ).toContainText(/(?:6:45am|06:45)/);
 
-  // ── The item-filtered ledger says exactly what the item's own panel says ───
+  // ── The record says exactly what the item's own panel says ────────────────
   await page.goto("/nutrition?tab=supplements");
   await row.getByRole("button", { name: "Supplement actions" }).click();
   await page.getByRole("menuitem", { name: "Dose history" }).click();
@@ -304,97 +293,10 @@ test("the supplements tab reaches a cross-item dose ledger and logs a past dose 
   ).toHaveCount(1);
 });
 
-// Issue #2445 — the ledger's "All time" range is a FILTER, not a bound.
-//
-// The range control offers an explicit "All time", which reads from the ISO floor;
-// with no LIMIT and no client truncation, a must-obligation medication logged twice
-// daily for years rendered its entire ledger on that tap. The bound is the page, and
-// the page has to reach the query. This seeds one item past the page size and proves
-// the widest possible window still renders exactly one page.
-test("the ledger pages its rows, even on All time", async ({
-  page,
-}, testInfo) => {
-  const name = `Ledger Page ${testInfo.repeatEachIndex}-${testInfo.retry}`;
-  const logged = HISTORY_PAGE_SIZE + 4;
-
-  await page.goto("/nutrition?tab=supplements");
-  await page.getByTestId("supplement-add-toggle").click();
-  const addDialog = page.getByRole("dialog", { name: "Add supplement" });
-  await addDialog.getByLabel("Name").fill(name);
-  const doseEditor7 = await openFact(page, "dose", addDialog);
-  await doseEditor7.getByLabel("Amount").first().fill("250 mg"); // first-ok: the first (only) dose's Amount field in the scoped add modal
-  await doseEditor7.getByLabel("Time of day").first().selectOption("Morning"); // first-ok: the first (only) dose's Time-of-day field in the scoped add modal
-  await closeEditor(page, addDialog);
-  await addDialog.getByRole("button", { name: "Add", exact: true }).click();
-  await expect(addDialog).toHaveCount(0);
-
-  // The history itself is planted directly: the claim is about VOLUME, and logging
-  // fourteen past doses through the form would test the form, not the bound. Days
-  // run into the deep past so nothing recent moves for a neighbouring spec, and the
-  // instants are built through the run's pinned zone (#1417) rather than bare `Z`.
-  const { zone } = pinnedTimezone(frozenNow().toISOString());
-  const anchor = frozenNow().toISOString().slice(0, 10);
-  const handle = new Database(workerDbPath());
-  try {
-    handle.pragma("busy_timeout = 5000");
-    const item = handle
-      .prepare("SELECT id FROM intake_items WHERE name = ?")
-      .get(name) as { id: number };
-    const dose = handle
-      .prepare("SELECT id FROM intake_item_doses WHERE item_id = ?")
-      .get(item.id) as { id: number };
-    const insert = handle.prepare(
-      `INSERT INTO intake_item_logs (item_id, dose_id, date, recorded_at, status)
-       VALUES (?, ?, ?, ?, 'taken')`
-    );
-    for (let i = 1; i <= logged; i++) {
-      const day = shiftDateStr(anchor, -(200 + i));
-      insert.run(
-        item.id,
-        dose.id,
-        day,
-        zonedWallTimeToUtc(zone, day, "08:00")!.toISOString()
-      );
-    }
-  } finally {
-    handle.close();
-  }
-
-  // Open the ledger narrowed to this item, on the WIDEST window there is.
-  await page.goto("/nutrition/dose-history?range=all");
-  const ledger = page.getByTestId("dose-ledger");
-  const itemFilter = page.getByTestId("dose-ledger-item-filter");
-  const itemValue = await itemFilter
-    .locator("option")
-    .filter({ hasText: name })
-    .getAttribute("value");
-  await settledSelect(page, itemFilter, itemValue ?? "", {
-    destination: /item=/,
-  });
-
-  // One page of rows for a ledger that holds more — the record count and the
-  // rendered count are no longer the same number.
-  await expect(ledger.getByTestId("dose-ledger-row")).toHaveCount(
-    HISTORY_PAGE_SIZE
-  );
-  const pager = page.getByTestId("dose-ledger-pagination");
-  await expect(pager).toContainText(
-    `Showing 1–${HISTORY_PAGE_SIZE} of ${logged}`
-  );
-
-  // The pager turns the READ: page 2 carries the remainder, and the filter it was
-  // narrowed to rides along.
-  // hydratedClick, not followLink: a pager's Next is a RELATIVE navigation, so a
-  // retried click would walk to page 3 instead of re-asserting page 2.
-  await hydratedClick(page, pager.getByRole("link", { name: "Next" }));
-  await page.waitForURL(/page=2/);
-  await expect(page.getByTestId("dose-ledger-row")).toHaveCount(
-    logged - HISTORY_PAGE_SIZE
-  );
-  await expect(page.getByTestId("dose-ledger-pagination")).toContainText(
-    `of ${logged}`
-  );
-});
+// Issue #2445's ledger-pager test LEFT WITH THE PAGER (#3958). The cross-item ledger
+// and its numbered pages are gone: the record is navigated, not paged, so the bound it
+// asserted is now `?show` plus the month folds, and e2e/history.spec.ts asserts it
+// there against the surface that actually has one.
 
 // Issue #3674 — "Log past dose" stops opening a blank form for a write the app has
 // already worked out. The adherence strip the card renders holds, dated, exactly the

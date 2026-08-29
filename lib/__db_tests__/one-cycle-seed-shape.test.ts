@@ -81,7 +81,7 @@ function readPeriods(dbPath: string): CyclePeriod[] {
 // (#3986). A hard-coded `}, 30_000)` is immune to `ALLOS_VITEST_TIMEOUT_MS`, so
 // the one lever the harness offers did not reach the specs that block on real
 // child processes. Named rather than inline only so the `describe` line still fits.
-const SPAWN_CEILING = { timeout: perTestCeiling(3) };
+const SPAWN_CEILING = { timeout: perTestCeiling(3, "worst") };
 
 describe("named one-cycle seed data (#3489 D5)", SPAWN_CEILING, () => {
   it("seeds two periods, verifies one interval, and reaches the honest UI state", () => {

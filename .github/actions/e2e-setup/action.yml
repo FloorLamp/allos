@@ -64,8 +64,20 @@ runs:
     # The key carries `-shell` so this does not silently restore the old two-binary
     # entry (the lockfile hash is unchanged by a flag change) and so a revert
     # re-keys rather than inheriting a shell-only cache. If a spec ever genuinely
-    # needs the headed browser it fails AT LAUNCH naming the missing executable,
+    # needs the HEADED browser it fails AT LAUNCH naming the missing executable,
     # which is the loud failure — drop the flag and the suffix together.
+    #
+    # THAT SAFEGUARD DOES NOT COVER A BROWSER COMPONENT, and this comment used to
+    # imply it did (#4008). A spec that depends on something only the full build
+    # carries — the PDF viewer, print preview, a media codec — does NOT fail at
+    # launch: the shell launches fine, runs the spec, and diverges as a wrong
+    # assertion or, worse, a green one. #3975 measured a security assertion about
+    # framing a stored PDF that was byte-identical whether the policy permitted or
+    # forbade the frame, because the shell diverts a PDF response to the download
+    # path before the frame commits and `frame-ancestors` is evaluated at commit.
+    # Nothing at launch could have said so. What closes that gap is the LOCAL run
+    # resolving this same binary and printing which one it used — see
+    # lib/e2e-chromium.ts and e2e/global-setup.ts.
     - name: Cache Playwright Chromium
       id: playwright
       uses: actions/cache@v6

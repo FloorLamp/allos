@@ -4,6 +4,7 @@ import { useCallback, useRef, useState } from "react";
 import { OVERLAY_MOTION_MS } from "@/lib/motion";
 import type { GestureDirection } from "@/lib/gesture";
 import { usePrefersReducedMotion } from "../usePrefersReducedMotion";
+import { useHaptics } from "../useHaptics";
 import { useDragGesture } from "./useDragGesture";
 
 // Drag-to-resolve for an overlay PANEL (issues #1425, #1469).
@@ -117,6 +118,7 @@ export function useOverlayDrag({
   enabled = true,
 }: OverlayDragOptions): { suppressMotion: boolean } {
   const reduceMotion = usePrefersReducedMotion();
+  const haptic = useHaptics();
   const [suppressMotion, setSuppressMotion] = useState(false);
   const settleTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
 
@@ -204,6 +206,11 @@ export function useOverlayDrag({
           write(px);
         },
     onCommit: () => {
+      // `select` — the panel is leaving under your finger (#3699). Fired on the
+      // OUTCOME rather than on the release, so a refusal is silent: a dirty form
+      // routed through a confirm has not dismissed, and a cue that said it had would
+      // be lying about the one gesture whose whole point is that it can be refused
+      // (#2774).
       if (commitSettle === "rest") {
         // Parked, not destroyed: drop the transform now and hand the panel back
         // to the stylesheet, because the consumer is about to hide (not unmount)
@@ -214,7 +221,7 @@ export function useOverlayDrag({
           el.style.transform = "";
         }
         setSuppressMotion(false);
-        onOutcome();
+        if (onOutcome() !== false) haptic("select");
         return;
       }
       // Ask first, then travel. `settle` starts a 240ms transition, so committing
@@ -223,6 +230,7 @@ export function useOverlayDrag({
         settle(0);
         return;
       }
+      haptic("select");
       settle(goneOffset());
     },
     onCancel: () => settle(0),

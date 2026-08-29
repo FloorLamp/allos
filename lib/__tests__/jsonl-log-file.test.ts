@@ -3,8 +3,14 @@
 // separate OS process appending to the same errors.jsonl the web app trims.
 //
 // Everything here runs inside a throwaway tmp dir — no repo data/logs, no DB, no
-// network. The last case spawns real child processes (the bug IS cross-process),
-// so it gets its own generous timeout.
+// network. The last case spawns real child processes (the bug IS cross-process).
+//
+// NO PER-TEST CEILING ANY MORE (#4002). Two tests carried `}, 10_000)` and
+// `}, 60_000)`, both chosen against vitest's old implicit 5 s default and both
+// immune to `ALLOS_VITEST_TIMEOUT_MS`. The tier ceiling is 15 000 ms now and it
+// covers them: the whole file reads 3 803 ms across 9 tests on the green CI run at
+// f1742fa6d, and the dispatch box splits that 2 002 ms into the contended-lock case
+// and 1 570 ms into the four-child one — ~7.5x and ~9.5x margin.
 
 import { describe, it, expect, vi, afterEach } from "vitest";
 import fs from "node:fs";
@@ -174,7 +180,7 @@ describe("appendJsonlLine self-trim (#1883)", () => {
     fs.unlinkSync(lock);
     appendJsonlLine(file, line(4), budgets); // …and the next one trims
     expect(readLines(file)).toHaveLength(1);
-  }, 10_000);
+  });
 
   it("clears under the same lock as appends", () => {
     const file = tmpFile("errors.jsonl");
@@ -243,5 +249,5 @@ for (let i = 0; i < Number(count); i++) {
     for (let w = 0; w < WRITERS; w++) {
       for (let i = 0; i < PER_WRITER; i++) expect(ids).toContain(`w${w}-${i}`);
     }
-  }, 60_000);
+  });
 });

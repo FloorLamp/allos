@@ -181,8 +181,11 @@ test.describe("below md the date picker is a bottom sheet", () => {
     // the 44 rather than the box. Two adjacent days are handed in together so the
     // disjointness is asserted on the EXTENDED boxes, which is the pair that can
     // now fight over a pixel.
-    const day = calendar.getByRole("button", { name: "17", exact: true });
-    const dayBelow = calendar.getByRole("button", { name: "24", exact: true });
+    // Named by the whole date, not the bare numeral: #3744 gave every cell in the
+    // shared month grid an accessible date name, so a reader arriving mid-grid
+    // hears which "17" this is.
+    const day = calendar.getByRole("button", { name: "March 17, 2026" });
+    const dayBelow = calendar.getByRole("button", { name: "March 24, 2026" });
     await expect(day).toBeVisible();
     // The BOX, as an equality. `expectPhoneTapTargets` only bounds the effective
     // target from below, so it is green on the `h-11 md:h-9` step this issue

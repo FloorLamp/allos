@@ -158,10 +158,12 @@ describe("every (app) page renders the shared PageHeader", () => {
       offenders.push(rel);
     }
     expect(offenders).toEqual([]);
-    // Reads every (app) page plus each one's ancestor layouts from disk. That fits
-    // the default 5s budget on Linux CI but not on a Windows filesystem, where the
-    // per-file stat/read overhead is enough to overrun it.
-  }, 30_000);
+    // Reads every (app) page plus each one's ancestor layouts from disk. The
+    // `}, 30_000)` this carried was sized against vitest's old implicit 5 s default
+    // and was immune to `ALLOS_VITEST_TIMEOUT_MS` (#4002); the tier's 15 000 ms
+    // covers it with ~10x to spare — the whole file reads 1 443 ms across 9 tests on
+    // the green CI run at f1742fa6d, and this test is ~97% of it.
+  });
 
   it("the redirect escape hatch excuses a forwarder, not a page that also renders", () => {
     // A green sweep over a complying tree says nothing about what the sweep can

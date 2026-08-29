@@ -393,7 +393,7 @@ export default function ActivityForm({
   // stale-save banner is that fallback, not the first answer any more.
   const manualFallback = useManualUpdateFallback();
   const [restStartKey, setRestStartKey] = useState(0);
-  // The shared haptic adapter (#1422) — the set-logged tick below goes through it.
+  // The shared haptic adapter (#1422) — the `commit` tick below goes through it.
   const haptic = useHaptics();
   // The live-mode "Session complete" step (#924): Finish opens the recap step
   // instead of collapsing straight to the plain form. It's the ONLY live-gated
@@ -431,7 +431,7 @@ export default function ActivityForm({
     onSetCheckedOff: () => {
       if (!liveMode) return;
       setRestStartKey((n) => n + 1);
-      haptic("set-logged");
+      haptic("commit");
     },
   });
   const {

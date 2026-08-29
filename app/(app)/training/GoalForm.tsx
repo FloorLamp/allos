@@ -45,6 +45,7 @@ import {
   goalStartingFrom,
 } from "@/lib/goal-facts";
 import { createGoal, updateGoal } from "./goal-actions";
+import InlineError from "@/components/InlineError";
 
 const METRICS: { value: OutcomeGoalMetric; label: string }[] = [
   { value: "weight", label: "Weight" },
@@ -591,11 +592,7 @@ export default function GoalForm({
       className="mt-4 space-y-4"
       data-testid="goal-form"
     >
-      {error && (
-        <p role="alert" className="text-sm text-rose-600 dark:text-rose-400">
-          {error}
-        </p>
-      )}
+      <InlineError>{error}</InlineError>
       <input type="hidden" name="kind" value={kind} />
       {/* Carry the unit the weight target was captured in (issue #630) so the
           action converts with the render-time unit, not the login's pref if it

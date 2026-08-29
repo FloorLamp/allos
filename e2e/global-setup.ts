@@ -354,6 +354,18 @@ export default async function globalSetup(config: FullConfig): Promise<void> {
       new Date().toISOString()
   );
 
+  // SAY WHICH CHROMIUM THIS RUN USED (#4008). A local run and a CI run resolved
+  // DIFFERENT binaries for months — the full build here, the headless shell there —
+  // and neither run said so, so "at CI parity" was true for timing and ordering and
+  // false for every browser component. One line, once per run, is what makes that
+  // checkable instead of assumed.
+  console.log(
+    `[e2e] chromium: ${
+      config.projects[0]?.use.launchOptions?.executablePath ??
+      "Playwright-managed default (no PLAYWRIGHT_BROWSERS_PATH — CI, where the install is --only-shell)"
+    }`
+  );
+
   // Take this run's root, then wipe every artifact of a previous run in it: stale
   // worker dirs (a crashed run can leave one behind), the templates, and the run
   // context. Servers first — an interrupted run's orphan still holds a worker port,

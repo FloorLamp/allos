@@ -8,6 +8,7 @@ import { useToast } from "@/components/Toast";
 import { useAddEntryModalClose } from "@/components/AddEntryPanel";
 import { OPTICAL_KINDS, kindLabel } from "@/lib/optical-prescription";
 import type { OpticalPrescription, OpticalKind, FormResult } from "@/lib/types";
+import InlineError from "@/components/InlineError";
 
 // Shared add/edit optical-prescription form. Add mode: no `rx`. Edit mode: pass the
 // row + an `onDone` callback (renders a hidden id + a Cancel button). `kind` is a
@@ -265,11 +266,7 @@ export default function OpticalPrescriptionForm({
           defaultValue={rx?.notes ?? ""}
         />
       </div>
-      {error && (
-        <p role="alert" className="text-sm text-rose-600 dark:text-rose-400">
-          {error}
-        </p>
-      )}
+      <InlineError>{error}</InlineError>
       <div className="flex gap-2" data-testid="optical-prescription-actions">
         <div
           className="grid w-full sm:w-auto"

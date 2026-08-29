@@ -189,7 +189,7 @@ export default function OfflineQueueProvider({
       // on the right day, and the row stays correctable from its own ⋯ sheet, so
       // "nobody was there" is an acceptable place for this to go unsaid. Claiming the
       // time WAS recorded would not be, and nothing does.
-      toast(syncedAnnouncement(n, timeNotices));
+      toast(syncedAnnouncement(n, timeNotices), { silent: true });
       // Survives the #1473 sweep: the queue replays through the /api/offline-replay
       // route handler (and the service worker), never a Server Action, so nothing
       // else brings the newly-landed rows into the current view.
@@ -261,7 +261,7 @@ export default function OfflineQueueProvider({
           // Session lapsed (maybe while offline). Never drop the queue — prompt login.
           toast(
             "You've been signed out. Log back in to sync your offline entries.",
-            { tone: "error", duration: null }
+            { tone: "error", duration: null, silent: true }
           );
           break;
         }
@@ -299,13 +299,13 @@ export default function OfflineQueueProvider({
         // auto-dismiss), and the review panel below lets the user re-enter it.
         toast(
           `${totalRejected} offline ${totalRejected === 1 ? "entry" : "entries"} couldn't be applied. Review below to re-enter.`,
-          { tone: "error", duration: null }
+          { tone: "error", duration: null, silent: true }
         );
       }
       if (batchTooLarge) {
         toast(
           "Some offline entries couldn't be synced (batch too large). They're still queued — reload to retry.",
-          { tone: "error", duration: null }
+          { tone: "error", duration: null, silent: true }
         );
       }
     } finally {
