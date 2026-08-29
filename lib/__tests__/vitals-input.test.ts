@@ -4,6 +4,8 @@ import {
   normalizeVitalsInput,
   celsiusToF,
   mmolToMgdl,
+  sleepWindowFromClocks,
+  SLEEP_METRIC,
   type VitalsRawInput,
 } from "@/lib/vitals-input";
 
@@ -250,5 +252,131 @@ describe("normalizeVitalsInput", () => {
     expect(validateVitalsInput({ balance: "-1" })).toMatch(/Balance/);
     // A lone valid functional marker satisfies the "at least one vital" gate.
     expect(validateVitalsInput({ chairStand: "14" })).toBeNull();
+  });
+});
+
+// ── #1851: respiratory rate and the bed/wake window ──────────────────────────
+
+describe("respiratory rate (#1851)", () => {
+  it("lands on the canonical name the Health Connect parser writes", () => {
+    const out = normalizeVitalsInput({ respiratoryRate: "16" });
+    if ("error" in out) throw new Error(out.error);
+    expect(out.medical).toEqual([
+      {
+        canonical: "Respiratory Rate",
+        category: "vitals",
+        unit: "breaths/min",
+        value_num: 16,
+      },
+    ]);
+  });
+
+  it.each([
+    ["2 breaths/min", "2"],
+    ["90 breaths/min", "90"],
+    ["a non-number", "sixteen"],
+  ])("refuses %s", (_label, value) => {
+    expect(validateVitalsInput({ respiratoryRate: value })).toMatch(
+      /Respiratory rate/
+    );
+  });
+
+  it("accepts the ingest envelope's own edges", () => {
+    expect(validateVitalsInput({ respiratoryRate: "3" })).toBeNull();
+    expect(validateVitalsInput({ respiratoryRate: "80" })).toBeNull();
+  });
+});
+
+describe("the bed/wake window (#1851)", () => {
+  // The noon anchor: a bed clock at or after 12:00 belongs to the evening BEFORE
+  // the wake day, which is what keeps one night inside one sleep-day. The
+  // consequence is deliberate — an AFTERNOON pair (13:30–15:00) reads as a
+  // 25½-hour window and is refused, because this field states a night, not a nap.
+  it.each([
+    ["an ordinary night", "23:15", "07:05", true, 470],
+    ["a bedtime after midnight", "01:20", "09:00", false, 460],
+    ["bed exactly at noon", "12:00", "11:59", true, 1439],
+    ["a short small-hours window", "02:00", "06:30", false, 270],
+  ])("%s", (_label, bed, wake, bedOnPreviousDay, minutes) => {
+    expect(sleepWindowFromClocks(bed, wake)).toEqual({
+      bed,
+      wake,
+      bedOnPreviousDay,
+      minutes,
+      durationStated: false,
+    });
+  });
+
+  it("is null when either half is not a clock", () => {
+    expect(sleepWindowFromClocks("23:15", null)).toBeNull();
+    expect(sleepWindowFromClocks("25:00", "07:00")).toBeNull();
+  });
+
+  it.each([
+    ["one half alone", { bedTime: "23:15" }, /both bed and wake/i],
+    ["the other half alone", { wakeTime: "07:00" }, /both bed and wake/i],
+    [
+      "a garbage clock",
+      { bedTime: "23:15", wakeTime: "9am" },
+      /valid bed and wake/i,
+    ],
+    // 08:00 is a pre-noon bedtime, so it sits on the wake day itself and 06:00
+    // is two hours earlier — not a window at all.
+    [
+      "a wake before the bed",
+      { bedTime: "08:00", wakeTime: "06:00" },
+      /after bed time/i,
+    ],
+    [
+      "more than 23 hours",
+      { bedTime: "21:00", wakeTime: "22:00" },
+      /23 hours apart/i,
+    ],
+    ["an afternoon nap pair", { bedTime: "13:30", wakeTime: "15:00" }, /23 hours apart/i],
+    // Hours ASLEEP can be shorter than the window; longer is a typo.
+    [
+      "more sleep than time in bed",
+      { bedTime: "23:00", wakeTime: "07:00", sleepHours: "9" },
+      /longer than the time between bed and wake/i,
+    ],
+  ])("refuses %s", (_label, raw: VitalsRawInput, pattern) => {
+    expect(validateVitalsInput(raw)).toMatch(pattern);
+  });
+
+  it("carries the window on ONE sleep sample, never a second row", () => {
+    const out = normalizeVitalsInput({ bedTime: "23:15", wakeTime: "07:05" });
+    if ("error" in out) throw new Error(out.error);
+    expect(out.samples).toEqual([
+      {
+        metric: SLEEP_METRIC,
+        value: 470,
+        window: {
+          bed: "23:15",
+          wake: "07:05",
+          bedOnPreviousDay: true,
+          minutes: 470,
+          durationStated: false,
+        },
+      },
+    ]);
+  });
+
+  it("lets stated hours own the value while the window stays the window", () => {
+    const out = normalizeVitalsInput({
+      bedTime: "23:15",
+      wakeTime: "07:05",
+      sleepHours: "7",
+    });
+    if ("error" in out) throw new Error(out.error);
+    expect(out.samples).toHaveLength(1);
+    expect(out.samples[0].value).toBe(420);
+    expect(out.samples[0].window?.durationStated).toBe(true);
+    expect(out.samples[0].window?.minutes).toBe(470);
+  });
+
+  it("still writes a plain duration row when no window is stated", () => {
+    const out = normalizeVitalsInput({ sleepHours: "7.5" });
+    if ("error" in out) throw new Error(out.error);
+    expect(out.samples).toEqual([{ metric: SLEEP_METRIC, value: 450 }]);
   });
 });
