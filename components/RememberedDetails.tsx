@@ -13,15 +13,16 @@ import {
   type DisclosureId,
   type DisclosureMemory,
 } from "@/lib/disclosure-memory";
+import Disclosure from "@/components/Disclosure";
 
 // The I/O half of disclosure memory (#2652 behavior 3). Everything that DECIDES anything
 // is in lib/disclosure-memory.ts — including WHY this state is per-device localStorage
 // and not a `login_settings` row. This file only reads, writes and subscribes.
 //
-// The element rendered is a plain native `<details>`: it opens with JS disabled, browser
-// in-page find still auto-expands it, and the keyboard behavior is the platform's. The
-// server renders the DECLARED DEFAULT, so the markup is the same one the stateless folds
-// shipped; memory takes over after hydration.
+// The element rendered is the app's one `<Disclosure>` (#3677), which is a native
+// `<details>`: it opens with JS disabled, browser in-page find still auto-expands it, and
+// the keyboard behavior is the platform's. The server renders the DECLARED DEFAULT, so the
+// markup is the same one the stateless folds shipped; memory takes over after hydration.
 //
 // STORE-BACKED, NOT IMPERATIVE, and that is a bug fix rather than a style choice. An
 // earlier version set `open` on the element from an effect. A `<details>` fires `toggle`
@@ -31,8 +32,11 @@ import {
 // React's idea of the state and the stored one cannot get out of order. (Same shape as
 // components/TrendAnnotationToggles.tsx.)
 //
-// REDUCED MOTION (#2654): restoring is a state, not a transition. Nothing here animates,
-// and both states are legible standing still.
+// REDUCED MOTION (#2654): RESTORING is a state, not a transition, and it stays one under
+// the continuity motion the shared disclosure carries (#3676). That motion interpolates
+// `::details-content` between two heights, so a fold the pre-paint boot script opened
+// before its first frame has no earlier height to travel from and simply renders open —
+// an entrance replay on load is precisely the ambient motion the doctrine refuses.
 
 const MEMORY_CHANGED = "allos:disclosure-memory-changed";
 const EMPTY = "{}";
@@ -127,7 +131,7 @@ export default function RememberedDetails({
   );
 
   return (
-    <details
+    <Disclosure
       className={className}
       data-testid={testId}
       data-disclosure={id}
@@ -142,6 +146,6 @@ export default function RememberedDetails({
     >
       {summary}
       {children}
-    </details>
+    </Disclosure>
   );
 }

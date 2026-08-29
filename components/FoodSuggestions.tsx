@@ -12,6 +12,7 @@ import {
   type FoodSuggestion,
   type FoodSafetyNoteKind,
 } from "@/lib/food-suggest";
+import Disclosure from "@/components/Disclosure";
 
 // Presentational renderer for the DETERMINISTIC food suggestions (issues #577/#775). A
 // pure formatter over the FoodSuggestion[] the ONE computation (getFoodSuggestions)
@@ -157,8 +158,8 @@ export default function FoodSuggestions({
                     reaches it and it opens with JS off — but it stops leading.
                     What stays visible is everything that is about the reader:
                     the headline, the foods, every safety note, and the advisory. */}
-                <details
-                  className="group mt-1.5"
+                <Disclosure
+                  className="mt-1.5"
                   data-testid={`food-suggestion-why-${s.key}`}
                 >
                   <summary
@@ -180,7 +181,7 @@ export default function FoodSuggestions({
                   <p className="mt-1 text-sm text-slate-500 dark:text-slate-400">
                     {s.evidence} Source: {s.source}.
                   </p>
-                </details>
+                </Disclosure>
               </div>
             </div>
           </div>

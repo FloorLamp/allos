@@ -1,13 +1,21 @@
-# Micro-motion: the small moves that carry information
+# Micro-motion: the small moves the app is allowed to make
 
 The app is almost entirely static, and that is the calm identity working — no
-garnish and nothing looping. Motion begins only from a gesture, a write, or a
-bounded async state transition the reader is already waiting for. It answers
-**"did that work?"** or **"what just arrived?"** inside the interface, faster and
-quieter than a toast. Motion here is information, and it is held to the same
-standard as copy.
+garnish, nothing looping, nothing moving without a gesture. Two classes of motion
+are allowed out of that stillness.
 
-Seven motions ship today (#2654, #2657, #3253, #3675). `slide` and `fold` are the two halves of one
+**INFORMATION motion** answers **"did that work?"** or **"what just arrived?"**
+inside the interface, faster and quieter than a toast. It carries a fact, and is
+held to the same standard as copy.
+
+**CONTINUITY motion** (#3676) answers nothing. Its job is that **the eye keeps its
+place through a change the reader caused** — a panel growing under the summary
+they tapped. Switch it off and no fact is lost, only the reader's grip on where
+they were. That is why rule 3's decoration sentence is scoped to the information
+class and why a continuity motion declares [two different
+things](#the-continuity-class) instead.
+
+Seven information motions ship today (#2654, #2657, #3253, #3675). `slide` and `fold` are the two halves of one
 gesture — a dismissal travelling, and the fold answering — and they are deliberately
 **two** tokens, because they are two durations with two different justifications.
 
@@ -35,17 +43,79 @@ settles, it never bounces back.
    making itself, and a health app must not campaign at anyone. The token test fails
    an iteration count, `infinite` or `alternate` anywhere in the stylesheet's
    Micro-motion section, including every declared keyframe body.
-3. **Reduced motion is the designed state, not a degradation.** Every motion
-   declares its `reducedEndState`: the same information, arriving instantly. A motion
-   whose meaning is lost when it is switched off was decoration and does not belong
-   in the table.
-4. **Motion is never the only carrier.** Every motion declares `carriedBy` — the
-   text, attribute or colour that states the same fact for a reader who sees no
-   motion at all, including a screen-reader user and a printed page.
+3. **Reduced motion is the designed state, not a degradation.** Every motion in
+   either class declares its `reducedEndState`: for an information motion, the same
+   information arriving instantly; for a continuity motion, the end layout,
+   instantly. **The second sentence is scoped to the information class**: a motion in
+   THAT table whose meaning is lost when it is switched off was decoration and does
+   not belong in it. A continuity motion is defined by having no meaning to lose, so
+   that sentence cannot judge it — `preserves` and `causedBy` do that job instead.
+   The rule is scoped, not weakened.
+4. **Motion is never the only carrier.** Every information motion declares
+   `carriedBy` — the text, attribute or colour that states the same fact for a reader
+   who sees no motion at all, including a screen-reader user and a printed page. A
+   continuity motion carries no fact, so it has none to declare.
 
-Rules 3 and 4 are why the declaration table exists. They are prose, so the test can
+Rules 3 and 4 are why the declaration tables exist. They are prose, so the test can
 only check that the prose is there; what it prevents is a motion being added without
 anyone having to answer either question.
+
+## The continuity class
+
+A continuity motion declares its own two required fields, and a row that leaves
+either blank **cannot be constructed** — `continuityMotion(ms, preserves, causedBy,
+reducedEndState)` throws, the same declare-or-argue shape `bandExemption()` and
+`arguedExclusion()` use.
+
+- **`preserves`** — the thing that stays continuous across the change, in the
+  reader's terms ("the summary you tapped stays under your finger while the panel
+  grows below it").
+- **`causedBy`** — the reader's own action that licenses it. This is the guard that
+  keeps "nothing moves without a gesture" true: a continuity motion with no gesture
+  behind it is ambient movement and is refused. A network answer arriving unprompted
+  is **not** a cause; the tap that requested it is.
+
+Everything else is inherited from the information class unchanged: the 150–300 ms
+band and its mechanical test (with the same `bandExemption()` shape if one is ever
+argued — the pinned exempt-key list still names `fold` alone), nothing loops, the
+single `--motion-ease` so the two classes cannot feel different, and
+`reducedEndState`. That last one is why the class is safe: **a reader who turns
+motion off gets exactly today's app.**
+
+**What is still refused**, in both classes, stated so the continuity class cannot be
+read as an opening: ambient or idle animation; anything looping; motion on a surface
+the reader did not act on; decorative entrances on page load; motion that delays a
+reader's next action — a control is interactive on the first frame of any continuity
+motion, never after it.
+
+**A continuity motion may not gate CONTENT on a rendering opportunity.** This is the
+class's own rule and it is the expensive one, because breaking it is invisible from
+the outside: the surface reports itself open and its contents are not there. It cost
+#3677 a CI red and, underneath that red, an accessibility defect — a fold whose
+`open` was true while its panel was still out of the accessibility tree, 472 nodes
+missing on the frame the reader tapped.
+
+The trap is that motion runs on a different clock from state. A discrete CSS property
+(`content-visibility`, `display`) handed to a transition is applied by the animation
+machinery at the browser's next _rendering opportunity_, while the state that says the
+surface is open — a `<details>`'s `open`, a button's `aria-expanded` — flips
+immediately. Two clocks, and content that only the slower one reveals. So: animate
+what the eye follows (a height, a position, an opacity) and never what decides whether
+the content EXISTS for a reader. A continuity motion has no information to carry, which
+means it has nothing to gain by withholding any.
+
+Both of today's expanding primitives satisfy this, and for different reasons worth
+knowing. `components/Disclosure.tsx` keeps `content-visibility` out of its OPENING
+transition entirely (the asymmetry is written down in `app/globals.css`), so the
+contents are there on the frame `open` flips. `components/Collapse.tsx` is safe
+structurally: its `visibility: hidden` DOES remove the panel from the accessibility
+tree, but that flag and the control's `aria-expanded` are one React state committed in
+one render, so they cannot disagree — measured over 26 frames of an opening, with zero
+frames where the control claimed expanded and the panel was not in the tree.
+
+Test the rule synchronously, in the same task as the gesture, the way
+`e2e/disclosure-motion.spec.ts` does. A test that waits first cannot see the window,
+and neither can the next reviewer.
 
 ## The band's one exemption
 
@@ -87,7 +157,7 @@ smuggle the row's travel out of the band too, and the test fails that.
 ## Where the halves live
 
 - `lib/micro-motion.ts` — the pure half. Durations, the ease curve, the `MICRO_MOTIONS`
-  declaration table, `microMotionPlan(kind, reduceMotion)` (which folds the preference
+  and `CONTINUITY_MOTIONS` declaration tables, `microMotionPlan(kind, reduceMotion)` (which folds the preference
   into a duration and a class name, returning `0` and `""` under the preference).
 - `app/globals.css`, `SECTION: Micro-motion` — the custom properties and the declared
   `.motion-*` classes, plus a `prefers-reduced-motion: reduce` block that neutralizes
@@ -234,6 +304,43 @@ already authoritative on that frame, and a persistent `aria-live` status announc
 that the options are ready. Under reduced motion they are simply present at full
 opacity; no class or keyframe is scheduled. An empty or failed gather stays silent and
 the reserved slot remains, so silence never reintroduces the shove.
+
+**`disclose` (continuity) — `components/Disclosure.tsx`, every fold in the app
+(#3677).** 47 files each hand-rolled a raw `<details>` and every one snapped: the panel
+arrived at full height with the reader's finger still on the summary, which on a phone
+is a full-screen jump. They now all render one owner, and the panel grows from the
+summary downward over 200 ms on the shared curve.
+
+- **`preserves`** — the summary you tapped stays exactly where it is while the panel
+  grows below it, so the line you were reading never moves out from under you.
+- **`causedBy`** — the reader's own tap, click or Enter on the summary. Nothing else
+  opens a disclosure.
+
+It is CSS on `::details-content`, not JS, and that is what makes the class safe here:
+the browser owns the interpolation, the summary is interactive on the first frame, and
+a fold that `lib/disclosure-memory.ts`'s pre-paint script opened before the first paint
+has no earlier height to travel from — so a remembered-open panel is simply open, with
+no entrance replay. That replay is exactly the ambient motion this doctrine refuses,
+and it is refused structurally rather than by a guard. `components/Collapse.tsx`, the
+app's button-and-panel disclosure, spends the same token on the same curve, so there is
+one duration and one feel for every region that expands in place.
+
+**The rule is asymmetric, and it has to be.** Closing transitions `content-visibility`
+with `allow-discrete`, so the panel is still rendered while it shrinks. Opening does
+**not**, and that is the load-bearing half: a discrete transition's value is applied at
+the browser's next _rendering opportunity_ rather than when the property changes, so
+listing it on the open left `details.open` true while the contents were still
+`content-visibility: hidden` — `innerText` empty, and the subtree out of the
+accessibility tree. Measured: 855 accessibility nodes on the click frame against 1,327
+once settled. A reader who taps a fold and a test that reads one are the same case, and
+neither may be told a panel is open while its contents are not there. The property has
+its own guard in `e2e/disclosure-motion.spec.ts`, asserted synchronously in the same
+task as the click.
+
+**Chromium only, today.** `::details-content` and `interpolate-size` are Chromium-only
+at the time of writing. Firefox and Safari drop both rules, which leaves them exactly
+the instant open the app shipped before — the same end state reduced motion gets. No
+browser is worse off than it was; one is better.
 
 ## How the suite proves it
 

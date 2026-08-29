@@ -46,6 +46,7 @@ import ImmunizationRecordActions from "@/app/(app)/immunizations/ImmunizationRec
 import { addImmunization } from "@/app/(app)/immunizations/actions";
 import SourceDocumentLink from "@/components/SourceDocumentLink";
 import { displayUnit } from "@/lib/display-unit";
+import Disclosure from "@/components/Disclosure";
 
 const TITER_BADGE = {
   immune:
@@ -522,7 +523,7 @@ export default function ImmunizationsSection({
               )}
             </div>
 
-            <details className="border-t border-black/5 pt-4 dark:border-white/5">
+            <Disclosure className="border-t border-black/5 pt-4 dark:border-white/5">
               <summary className="cursor-pointer font-semibold text-slate-800 dark:text-slate-100">
                 All recorded doses{" "}
                 <span className="text-sm font-normal text-slate-400">
@@ -551,9 +552,9 @@ export default function ImmunizationsSection({
                   />
                 )}
               </div>
-            </details>
+            </Disclosure>
 
-            <details className="border-t border-black/5 pt-4 dark:border-white/5">
+            <Disclosure className="border-t border-black/5 pt-4 dark:border-white/5">
               <summary
                 data-testid="immunization-schedule-disclosure"
                 className="cursor-pointer text-slate-800 dark:text-slate-100"
@@ -576,7 +577,7 @@ export default function ImmunizationsSection({
                   assessments={summary.assessments}
                 />
               </div>
-            </details>
+            </Disclosure>
           </div>
 
           <p className="px-1 text-xs text-slate-500 dark:text-slate-400">

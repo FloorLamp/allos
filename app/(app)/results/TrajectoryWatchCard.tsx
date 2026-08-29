@@ -7,6 +7,7 @@ import {
   rollupTrajectoryFindings,
   type TrajectoryAnalyteGroup,
 } from "@/lib/trajectory-rollup";
+import Disclosure from "@/components/Disclosure";
 
 // The Results › Clinical results "Trajectory watch" card (#1499 section B) — ONE card,
 // capped, the #1496 Training-watch pattern applied to the hub that shipped the same
@@ -51,7 +52,7 @@ export default function TrajectoryWatchCard({
         className="rounded-xl border border-amber-200 bg-amber-50/60 p-3 dark:border-amber-900/60 dark:bg-amber-950/30"
       >
         <div className="flex items-start gap-3">
-          <details className="group min-w-0 flex-1">
+          <Disclosure className="min-w-0 flex-1">
             <summary
               data-testid={
                 overflow
@@ -89,7 +90,7 @@ export default function TrajectoryWatchCard({
                 />
               ))}
             </ul>
-          </details>
+          </Disclosure>
           {/* Dismiss the analyte without expanding — the SAME acknowledgment key
               every item inside posts, so this is a shortcut, not a bulk action. */}
           <form action={dismissAction}>
@@ -139,8 +140,8 @@ export default function TrajectoryWatchCard({
               {rollup.shown.map((g) => renderGroup(g, false))}
             </ul>
             {rollup.overflow.length > 0 && (
-              <details
-                className="group mt-3"
+              <Disclosure
+                className="mt-3"
                 data-testid="trajectory-findings-more"
               >
                 <summary className="cursor-pointer list-none text-xs font-medium text-slate-500 hover:text-brand-600 hover:underline dark:text-slate-400 dark:hover:text-brand-400 [&::-webkit-details-marker]:hidden">
@@ -152,7 +153,7 @@ export default function TrajectoryWatchCard({
                 <ul className="mt-3 space-y-3">
                   {rollup.overflow.map((g) => renderGroup(g, true))}
                 </ul>
-              </details>
+              </Disclosure>
             )}
           </>
         }

@@ -5,6 +5,9 @@ import { describe, expect, it } from "vitest";
 import {
   bandExemption,
   bandExemptionFor,
+  CONTINUITY_MOTIONS,
+  continuityMotion,
+  continuityMotionDecl,
   MICRO_MOTIONS,
   MICRO_MOTION_BAND_EXEMPTIONS,
   MICRO_MOTION_EASE,
@@ -12,7 +15,10 @@ import {
   MICRO_MOTION_MIN_MS,
   microMotion,
   microMotionPlan,
+  motionMsOf,
   withinMicroMotionBand,
+  type AnyMotion,
+  type ContinuityMotion,
   type MicroMotion,
 } from "@/lib/micro-motion";
 
@@ -59,6 +65,21 @@ function sectionVar(name: string): string {
 const KINDS = Object.keys(MICRO_MOTIONS) as MicroMotion[];
 const SORTED_KINDS = [...KINDS].sort();
 
+// THE CONTINUITY CLASS (#3676). A second table, judged by the same band, the same
+// no-loop scan and the same ease — and by two fields of its own instead of
+// `conveys`/`carriedBy`, which it has nothing to put in.
+//
+// It is written in the stylesheet with a `--motion-<name>` property and a
+// `.motion-<name>` rule, exactly like an information motion, but with NO
+// `@keyframes micro-<name>`: a continuity motion is a TRANSITION between two
+// layouts the reader caused, not a one-shot pulse played at them. The keyframe
+// census below therefore stays scoped to the information kinds, and that is a
+// statement about the two classes rather than a hole — a `@keyframes micro-<name>`
+// for a continuity kind would fail it.
+const CONTINUITY_KINDS = Object.keys(CONTINUITY_MOTIONS) as ContinuityMotion[];
+const ALL_KINDS: AnyMotion[] = [...KINDS, ...CONTINUITY_KINDS];
+const SORTED_ALL_KINDS = [...ALL_KINDS].sort();
+
 // THE CSS HALF IS A CENSUS, AND A CENSUS MAY NOT SKIP WHAT IT CANNOT PARSE (#2770).
 // Both stylesheet checks below used to key on `[a-z]+` followed by a required
 // ` {`, so `.motion-slide2` and `.motion-count-roll` matched NOTHING — and an
@@ -76,7 +97,12 @@ const SORTED_KINDS = [...KINDS].sort();
 const CSS_NAME = /^[a-z][a-z0-9-]*$/;
 
 const MOTION_VAR = /--motion-([^\s:;{}()]+)\s*:/g;
-const MOTION_CLASS = /\.motion-([^\s{,:;.)]+)/g;
+// `[` ends the name too, because a class selector cannot contain an unescaped one:
+// it opens an ATTRIBUTE selector, and `.motion-disclose[open]` is the continuity
+// class's open state, not a second motion. This is not the #2770 narrowing — the
+// pattern still catches every name the convention forbids (asserted below); it just
+// stops reading a selector's next combinator as part of its name.
+const MOTION_CLASS = /\.motion-([^\s{,:;.)[]+)/g;
 const MOTION_FRAME = /@keyframes\s+micro-([^\s{]+)/g;
 
 function namesIn(pattern: RegExp, source: string): string[] {
@@ -89,9 +115,9 @@ function sectionNames(pattern: RegExp): string[] {
 
 describe("micro-motion tokens", () => {
   it("declares every duration once in CSS and matches the module", () => {
-    for (const kind of KINDS) {
-      expect(sectionVar(`--motion-${kind}`)).toBe(
-        `${MICRO_MOTIONS[kind].ms}ms`
+    for (const kind of ALL_KINDS) {
+      expect(sectionVar(`--motion-${kind}`), kind).toBe(
+        `${motionMsOf(kind)}ms`
       );
     }
   });
@@ -105,12 +131,12 @@ describe("micro-motion tokens", () => {
     // "gives every declared motion a class".
     expect(
       sectionNames(MOTION_VAR).filter((n) => n !== "ease"),
-      "a `--motion-…` custom property with no MICRO_MOTIONS row, or vice versa"
-    ).toEqual(SORTED_KINDS);
+      "a `--motion-…` custom property with no declaration row, or vice versa"
+    ).toEqual(SORTED_ALL_KINDS);
     expect(
       sectionNames(MOTION_CLASS),
-      "a `.motion-…` class with no MICRO_MOTIONS row, or vice versa"
-    ).toEqual(SORTED_KINDS);
+      "a `.motion-…` class with no declaration row, or vice versa"
+    ).toEqual(SORTED_ALL_KINDS);
     expect(
       sectionNames(MOTION_FRAME),
       "a `@keyframes micro-…` block with no MICRO_MOTIONS row, or vice versa"
@@ -146,6 +172,9 @@ describe("micro-motion tokens", () => {
     // census is loose and the convention is pinned separately. A pattern that has
     // to keep chasing the next legal identifier is the defect, not the width.
     expect(namesIn(MOTION_CLASS, ".motion-Slide_2 {\n}")).toEqual(["Slide_2"]);
+    expect(
+      namesIn(MOTION_CLASS, ".motion-x[open]::details-content {\n}")
+    ).toEqual(["x"]);
     expect(namesIn(MOTION_FRAME, "@keyframes micro-fade.in {\n}")).toEqual([
       "fade.in",
     ]);
@@ -157,22 +186,25 @@ describe("micro-motion tokens", () => {
     // motion named outside `[a-z][a-z0-9-]*` — an underscore, a capital, a leading
     // digit — would be a rule nobody reads. That is a FAILURE here, at the registry,
     // rather than a silent gap in the two censuses.
-    for (const kind of KINDS) expect(kind, kind).toMatch(CSS_NAME);
+    for (const kind of ALL_KINDS) expect(kind, kind).toMatch(CSS_NAME);
   });
 
   it("declares ONE ease curve, in both halves", () => {
     expect(sectionVar("--motion-ease")).toBe(MICRO_MOTION_EASE);
     // No rule may carry its own curve — that is the fourth-vocabulary drift the
     // token exists to stop.
+    // Every rule that TIMES something, in either class. Matched by the token it
+    // spends rather than by its selector shape, because a continuity motion is
+    // written on a pseudo-element (`.motion-disclose::details-content`) and an
+    // information motion on the element itself — and the rule that matters is that
+    // whichever one it is, it rides the ONE curve. The reduced-motion block and any
+    // rule that only sets a non-timed property carry no `var(--motion-…)` at all and
+    // are not timing rules; they are asserted separately below.
     const rules = (
-      SECTION.match(/\.motion-[a-z0-9-]+ \{[^}]*\}/g) ?? []
-    ).filter(
-      // The reduced-motion block neutralizes the same selectors; it is asserted
-      // separately below and has no duration or curve to carry.
-      (rule) => !/animation:\s*none/.test(rule)
-    );
-    expect(rules.length).toBe(KINDS.length);
-    const anyToken = new RegExp(`var\\(--motion-(${KINDS.join("|")})\\)`);
+      SECTION.match(/\.motion-[a-z0-9-]+(?:::[a-z-]+)? \{[^}]*\}/g) ?? []
+    ).filter((rule) => /var\(--motion-[a-z0-9-]+\)/.test(rule));
+    expect(rules.length).toBe(ALL_KINDS.length);
+    const anyToken = new RegExp(`var\\(--motion-(${ALL_KINDS.join("|")})\\)`);
     for (const rule of rules) {
       expect(rule, rule).toContain("var(--motion-ease)");
       expect(rule, rule).toMatch(anyToken);
@@ -180,8 +212,10 @@ describe("micro-motion tokens", () => {
   });
 
   it("keeps every duration inside the 150–300 ms band, or argues its way out", () => {
-    for (const kind of KINDS) {
-      const { ms } = MICRO_MOTIONS[kind];
+    // BOTH CLASSES. The band is the first thing #3676 says the continuity class
+    // inherits unchanged, so a continuity motion has no answer but the band either.
+    for (const kind of ALL_KINDS) {
+      const ms = motionMsOf(kind);
       // An exempt motion is judged by its exemption instead (asserted below). A
       // motion with none has no answer but the band.
       if (bandExemptionFor(kind)) continue;
@@ -194,6 +228,14 @@ describe("micro-motion tokens", () => {
     for (const kind of KINDS) {
       expect(SECTION, kind).toContain(`.motion-${kind} {`);
       expect(SECTION, kind).toContain(`@keyframes micro-${kind} {`);
+      expect(microMotionPlan(kind, false).className).toBe(`motion-${kind}`);
+    }
+    // A continuity motion gets the same class and the same planner answer; what it
+    // does NOT get is a keyframe, because it interpolates between two layouts the
+    // reader caused rather than playing a pulse at them.
+    for (const kind of CONTINUITY_KINDS) {
+      expect(SECTION, kind).toContain(`.motion-${kind}`);
+      expect(SECTION, kind).not.toContain(`@keyframes micro-${kind}`);
       expect(microMotionPlan(kind, false).className).toBe(`motion-${kind}`);
     }
   });
@@ -286,6 +328,75 @@ describe("the band's one argued exemption", () => {
   });
 });
 
+describe("the continuity class (#3676)", () => {
+  it("makes every continuity motion state what it preserves and what caused it", () => {
+    // The two fields that replace `conveys`/`carriedBy`, and the only thing standing
+    // between this class and garnish. Prose, so the check is that the prose exists
+    // and is a real sentence — the same bar rules 3 and 4 are held to below.
+    for (const kind of CONTINUITY_KINDS) {
+      const decl = continuityMotionDecl(kind);
+      expect(decl.preserves.length, kind).toBeGreaterThan(20);
+      expect(decl.causedBy.length, kind).toBeGreaterThan(20);
+      expect(decl.reducedEndState.length, kind).toBeGreaterThan(20);
+    }
+  });
+
+  it("refuses to construct a row with a blank field", () => {
+    // `causedBy` is the guard that keeps "nothing moves without a gesture" true, so a
+    // row that leaves it empty must not EXIST rather than fail an assertion later.
+    const ok = () =>
+      continuityMotion(
+        200,
+        "the summary you tapped stays where it is",
+        "the reader's tap or Enter on that summary",
+        "the end layout, instantly"
+      );
+    expect(ok).not.toThrow();
+    expect(() =>
+      continuityMotion(200, "", "a tap", "the end layout")
+    ).toThrow();
+    expect(() => continuityMotion(200, "a thing", "  ", "the end")).toThrow();
+    expect(() => continuityMotion(200, "a thing", "a tap", "")).toThrow();
+    expect(() => continuityMotion(0, "a thing", "a tap", "the end")).toThrow();
+  });
+
+  it("declares nothing the information class declares, and vice versa", () => {
+    // Two classes, not one table with optional fields. A continuity row carrying
+    // `conveys` would be an information motion filed in the wrong place, and an
+    // information row carrying `causedBy` would be dodging rule 4.
+    for (const kind of CONTINUITY_KINDS) {
+      const decl = continuityMotionDecl(kind) as unknown as Record<
+        string,
+        unknown
+      >;
+      expect(decl.conveys, kind).toBeUndefined();
+      expect(decl.carriedBy, kind).toBeUndefined();
+    }
+    for (const kind of KINDS) {
+      const decl = MICRO_MOTIONS[kind] as unknown as Record<string, unknown>;
+      expect(decl.preserves, kind).toBeUndefined();
+      expect(decl.causedBy, kind).toBeUndefined();
+    }
+  });
+
+  it("leaves the seven information motions untouched", () => {
+    // #3676's first invariant, made mechanical: the class was ADDED, so the shipped
+    // seven keep their names and their numbers exactly.
+    expect(KINDS).toEqual([
+      "settle",
+      "count",
+      "slide",
+      "tick",
+      "promote",
+      "arrive",
+      "fold",
+    ]);
+    expect(KINDS.map((k) => MICRO_MOTIONS[k].ms)).toEqual([
+      300, 250, 300, 180, 300, 200, 500,
+    ]);
+  });
+});
+
 describe("micro-motion declarations", () => {
   it("makes every motion state its independent carrier and its reduced design", () => {
     // Rules 3 and 4: a motion whose meaning is lost when it is switched off was
@@ -303,7 +414,7 @@ describe("micro-motion declarations", () => {
     // Two independent guarantees, because either alone is one refactor from failing:
     // the planner hands back no class at all, AND the stylesheet neutralizes the
     // classes for anything that applies them another way.
-    for (const kind of KINDS) {
+    for (const kind of ALL_KINDS) {
       const plan = microMotionPlan(kind, true);
       expect(plan.animate, kind).toBe(false);
       expect(plan.ms, kind).toBe(0);
@@ -313,7 +424,7 @@ describe("micro-motion declarations", () => {
       SECTION.indexOf("@media (prefers-reduced-motion: reduce)")
     );
     expect(reduced).not.toBe("");
-    for (const kind of KINDS) expect(reduced).toContain(`.motion-${kind}`);
+    for (const kind of ALL_KINDS) expect(reduced).toContain(`.motion-${kind}`);
     expect(reduced).toContain("animation: none");
   });
 
@@ -342,6 +453,7 @@ describe("micro-motion declarations", () => {
   it("keeps the overlay family out of this vocabulary", () => {
     // #1469's overlay tokens answer a different question at 240 ms. A micro-motion
     // name colliding with one would let a surface reach for the wrong feel.
-    for (const kind of KINDS) expect(kind).not.toMatch(/overlay|drawer|sheet/);
+    for (const kind of ALL_KINDS)
+      expect(kind).not.toMatch(/overlay|drawer|sheet/);
   });
 });

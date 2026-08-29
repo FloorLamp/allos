@@ -58,6 +58,7 @@ import {
   saveLoginTelegramNotifyKinds,
   saveLoginEmailNotifyKinds,
 } from "../actions";
+import Disclosure from "@/components/Disclosure";
 
 // The Schedule + Message kinds sections of the Notifications group page (#1462 §6).
 //
@@ -1147,14 +1148,14 @@ export default function NotificationPrefs({
                   {/* §7: the long explanation lives behind a compact disclosure
                       instead of a 2–4 line paragraph under the control. */}
                   {e.more && (
-                    <details className="mt-1">
+                    <Disclosure className="mt-1">
                       <summary className="cursor-pointer text-xs text-slate-500 hover:text-slate-700 dark:text-slate-400 dark:hover:text-slate-200">
                         More
                       </summary>
                       <p className="mt-1 text-xs text-slate-500 dark:text-slate-400">
                         {e.more}
                       </p>
-                    </details>
+                    </Disclosure>
                   )}
 
                   {uncovered && (
