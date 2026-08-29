@@ -23,7 +23,12 @@ import { LOGGED_VIA_FIELD } from "@/lib/logged-via";
 // Two calls into `withTarget` would prove nothing about any of them.
 
 const actions = vi.hoisted(() => ({
-  logSymptom: vi.fn(async () => ({ ok: true as const, severity: 3 })),
+  // Answers from the payload it was handed, the way the real action does, so the
+  // optimistic ledger reconciles to the severity that was actually posted.
+  logSymptom: vi.fn(async (formData: FormData) => ({
+    ok: true as const,
+    severity: Number(formData.get("severity")),
+  })),
   lowerSymptom: vi.fn(async () => ({ ok: true as const, severity: 1 })),
   setSymptomNote: vi.fn(async () => ({ ok: true as const })),
   removeSymptom: vi.fn(async () => ({ ok: true as const })),
@@ -135,7 +140,7 @@ async function tapHeadache(
   actions.logSymptom.mockClear();
   fireEvent.click(await screen.findByTestId("symptom-headache-sev-3"));
   await waitFor(() => expect(actions.logSymptom).toHaveBeenCalled());
-  const posted = actions.logSymptom.mock.calls.at(-1)![0] as unknown as FormData;
+  const posted = actions.logSymptom.mock.calls.at(-1)![0];
   view.unmount();
   return Object.fromEntries(
     [...posted.entries()].map(([k, v]) => [k, String(v)])
