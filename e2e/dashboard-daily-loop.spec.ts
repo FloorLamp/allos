@@ -4,6 +4,7 @@ import { loginAs } from "./nav";
 import { E2E_LOGIN_DAILY, E2E_MEMBER_PASSWORD } from "./fixture-logins";
 import { dashboardCandidatePrefix } from "./dashboard-candidate";
 import { openDashboardAll } from "./helpers";
+import { openLogSheet, showLogRow } from "./log-sheet-helpers";
 import { frozenLocalHHMM, frozenNow } from "./worker-env";
 import { pinnedTimezone } from "./pinned-timezone";
 import { STEPS_DELTA_COMPLETE_HOUR } from "@/lib/steps-today";
@@ -113,7 +114,6 @@ test.describe("dashboard daily loop (#1221)", () => {
       page,
       "vitals.resting-heart-rate:"
     );
-    const logCandidate = dashboardCandidatePrefix(page, "vitals.manual-log");
     await expect(bpCandidate).toBeVisible();
     await expect(hrCandidate).toBeVisible();
     // The most recent BP pair (118/76 in the seed) — a systolic/diastolic value.
@@ -132,17 +132,31 @@ test.describe("dashboard daily loop (#1221)", () => {
     await expect(
       hrCandidate.getByTestId("vitals-latest-resting-hr-age")
     ).not.toHaveAttribute("data-stale", "true");
-    // #1892: the log affordance is present WITH data, not only without it. It used to
-    // live in the empty state alone, so the person who logs BP weekly — the one who
-    // actually opens this card — had none. It opens the same shared measurements
-    // quick-entry the empty CTA opens.
-    const logReading = logCandidate.getByTestId("vitals-log-reading");
-    await expect(logReading).toHaveText("Log a vital");
-    await logReading.click();
-    await expect(page.getByTestId("quick-entry-body")).toHaveAttribute(
-      "data-form",
-      "measurements"
-    );
+    // #1892 SURVIVES ITS SURFACE (#3366). The claim was "the log affordance is present
+    // WITH data, not only without it" — it used to live in the vitals empty state
+    // alone, so the person who logs BP weekly had none. The 2026-08-29 ruling moved
+    // every always-available write off the tail because the quick logger is the app's
+    // one quick-write surface, which satisfies the claim unconditionally rather than
+    // per-card. Both halves are asserted here: gone from the card, offered by the
+    // sheet, on a profile that HAS vitals data — the case #1892 was filed about.
+    await expect(
+      dashboardCandidatePrefix(page, "vitals.manual-log")
+    ).toHaveCount(0);
+    await expect(page.getByTestId("vitals-log-reading")).toHaveCount(0);
+    // The puck is phone-only chrome, so the viewport moves for this one assertion
+    // and moves back — every other test in this file shares this page at 1280.
+    await page.setViewportSize({ width: 390, height: 844 });
+    try {
+      const sheet = await openLogSheet(page);
+      const row = await showLogRow(sheet, "log-measurements");
+      await row.click();
+      await expect(page.getByTestId("quick-entry-body")).toHaveAttribute(
+        "data-form",
+        "measurements"
+      );
+    } finally {
+      await page.setViewportSize({ width: 1280, height: 900 });
+    }
   });
 
   test("Cycle-phase card shows the derived cycle day and phase (informational)", async () => {

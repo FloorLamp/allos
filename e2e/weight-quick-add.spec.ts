@@ -7,25 +7,34 @@ import {
   WEIGHT_QUICKADD_PROFILE,
 } from "./fixture-logins";
 import { workerDbPath } from "./worker-env";
-import { openDashboardAll } from "./helpers";
+import {
+  openDashboardAll,
+  openMeasurementGroup,
+  settledClick,
+} from "./helpers";
+import { openLogSheet, showLogRow } from "./log-sheet-helpers";
 
-// Dashboard weight quick-add (#1042 phase 2): the independent Show-everything action
-// posts the SAME addBodyMetric write core as the Trends → Overview → body census quick-add,
-// so a weigh-in logged from the dashboard persists (survives a reload) and joins
-// the same deduped daily series the widget charts.
+// A weigh-in logged from the app's quick-write surface joins the SAME deduped daily
+// series the dashboard's weight family reads and the Trends chart stack draws — one
+// write core (`addBodyMetric`), asserted across all three surfaces.
 //
-// SETTLE DISCIPLINE: the dashboard carries steady background action-POST traffic,
-// so settledClick's any-POST wait can resolve on a bystander request (see
-// e2e/helpers.ts). The widget instead renders a SERVER-truth marker
-// (`weight-server-latest`, built from the server-resolved series) that updates
-// only once the write committed and the refresh round-tripped — every mutation
-// here settles on that marker (the wellbeing card's mood-server-logged
-// precedent).
+// #3366 MOVED THE GESTURE, NOT THE CLAIM. This used to drive the dashboard tail's
+// own weight quick-add card (#1042 phase 2). The owner ruling of 2026-08-29 retired
+// the tail's generic write cards because the quick logger is the app's one
+// quick-write surface, so the spec follows the capability into the sheet: Body →
+// "Log measurements". The removal is asserted in the same breath as the offer, so a
+// tree where weight logging vanished altogether cannot pass this.
+//
+// The sheet is reached from the dock puck, which is phone-only chrome — hence the
+// explicit phone context; a raw `loginAs` context does not inherit the mobile
+// project's viewport.
 //
 // Fixture hygiene (#868): the dedicated Weight Quickadd profile carries two
 // seeded weigh-ins (notes 'e2e:seed-weight'); this spec OWNS every other
 // body_metrics row on it and clears them at test start (the smoke.spec direct-DB
 // precedent), so --repeat-each starts from the same two-point series every run.
+
+const PHONE = { viewport: { width: 390, height: 844 }, hasTouch: true };
 
 function resetQuickAddRows(): void {
   const dbPath = workerDbPath();
@@ -42,64 +51,62 @@ function resetQuickAddRows(): void {
   }
 }
 
-test("dashboard weight quick-add logs a weigh-in that persists into the trend (#1042)", async ({
+test("a weigh-in logged from the quick logger persists into the trend (#1042/#3366)", async ({
   browser,
 }) => {
   resetQuickAddRows();
-  const page = await loginAs(browser, {
-    username: E2E_LOGIN_WEIGHT_QA,
-    password: E2E_MEMBER_PASSWORD,
-  });
+  const page = await loginAs(
+    browser,
+    { username: E2E_LOGIN_WEIGHT_QA, password: E2E_MEMBER_PASSWORD },
+    PHONE
+  );
   try {
     await page.goto("/");
+    const dashboardUrl = page.url();
+
+    // THE REMOVAL AND THE OFFER, TOGETHER. The tail no longer carries a weight write
+    // of its own; the sheet does. Asserting only the first would pass on a tree where
+    // the gesture disappeared instead of moving.
     await openDashboardAll(page);
-    const quickAdd = page.locator(
-      '[data-testid="dashboard-candidate"][data-candidate-id="weight.quick-add"]'
-    );
-    await expect(quickAdd).toHaveAttribute("data-lane", "everything");
     await expect(
-      page.locator('[data-standing-family="weight"]')
-    ).not.toContainText("Log today's weight");
-    // Two seeded points → the chart state, with the newest seed as the server
-    // latest (70.6 kg, the login's default display unit).
-    const marker = page.getByTestId("weight-server-latest");
-    await expect(marker).toHaveAttribute("data-value", "70.6");
-
-    // Log today's weight. toPass retries the submit through the hydration
-    // window — a pre-hydration click is swallowed, and no single expect can
-    // both re-click and await the server marker. A duplicate submit is
-    // value-idempotent here: same-day same-source rows AVERAGE in the daily
-    // series (getBodyMetricDailySeries), and averaging equal values changes
-    // nothing.
-    const input = page.getByTestId("weight-quick-add-input");
-    await expect(input).toBeVisible();
-    await expect(async () => {
-      await input.fill("71.4");
-      await page.getByTestId("weight-quick-add-save").click({ timeout: 2_000 });
-      await expect(marker).toHaveAttribute("data-value", "71.4", {
-        timeout: 4_000,
-      });
-    }).toPass({ timeout: 20_000, intervals: [300, 700, 1500] }); // topass-ok: re-fill+save until the trend marker reflects the value past the pre-hydration swallow — no single awaitable event
-
-    // Server truth survives a reload — the weigh-in persisted and is the trend's
-    // newest point, rendered by the chart-state widget.
-    await page.reload();
-    await expect(marker).toHaveAttribute("data-value", "71.4");
+      page.locator(
+        '[data-testid="dashboard-candidate"][data-candidate-id="weight.quick-add"]'
+      )
+    ).toHaveCount(0);
+    // Two seeded points, so the weight family reports the newest as server truth in
+    // the login's default display unit.
     const weightFamily = page.locator('[data-standing-family="weight"]');
-    await expect(weightFamily).toContainText("View trend");
+    await expect(weightFamily).toContainText("70.6");
+
+    const sheet = await openLogSheet(page);
+    const row = await showLogRow(sheet, "log-measurements");
+    await row.click();
+    const overlay = page.getByTestId("quick-entry-sheet");
+    const form = overlay.getByTestId("measurements-quick-add");
+    await expect(form).toBeVisible();
+    await openMeasurementGroup(page, form, "body");
+    await overlay.locator("#m-weight").fill("71.4");
+    await settledClick(
+      page,
+      overlay.getByRole("button", { name: "Save measurements" })
+    );
+
+    // Server truth, read after a reload rather than from the toast: a resolved
+    // promise is not a committed row. The dashboard's own weight family is the
+    // reader, so this is the deduped daily series and not a second computation.
+    await page.reload();
+    expect(page.url()).toBe(dashboardUrl);
+    await expect(weightFamily).toContainText("71.4");
     await expect(
       weightFamily.getByRole("link", { name: /View trend/ })
     ).toHaveAttribute("href", "/trends#body");
-    await expect(
-      weightFamily.getByTestId("weight-quick-add-input")
-    ).toHaveCount(0);
 
-    // And it appears in the same series on Trends → Overview → body census (the widget's link
-    // target) — the one-computation check across both surfaces.
+    // And the same value on Trends → Overview → body census: the one-computation
+    // check across both surfaces. Read at DESKTOP width — the #1067 tile grid and
+    // the classic chart stack are the same series at two breakpoints, and
+    // `body-charts-all` is the desktop one.
+    await page.setViewportSize({ width: 1280, height: 900 });
     await page.goto("/trends");
-    // Scope to the classic chart stack (the desktop-default layout): the #1067
-    // Phase 2 tile grid renders FIRST in the DOM but is md:hidden at this
-    // viewport, so an unscoped first-match would land on an invisible tile value.
     await expect(
       page
         .getByTestId("body-charts-all")
