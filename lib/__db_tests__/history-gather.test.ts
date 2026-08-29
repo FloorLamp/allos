@@ -3,6 +3,7 @@ import { db } from "@/lib/db";
 import { gatherHistoryLog } from "@/lib/history";
 import { mergeMemberTimelines } from "@/lib/timeline-multi";
 import { HISTORY_LOG_KINDS } from "@/lib/history-format";
+import { setLoginSetting } from "@/lib/settings";
 
 // THE RECORD'S GATHER (#3958 phase 1). What the pure tier cannot reach: whose rows
 // come back, which kinds a chip is earned by, and the two boundaries that decide what
@@ -177,5 +178,186 @@ describe("gatherHistoryLog", () => {
     for (let i = 1; i <= 6; i++) serving(p, YESTERDAY, i);
     expect(gatherHistoryLog(p, { loginId, limit: 3 }).hasMore).toBe(true);
     expect(gatherHistoryLog(p, { loginId, limit: 50 }).hasMore).toBe(false);
+  });
+});
+
+// ── THE TWO CONTRACTS THE ROW OWES ITS EDITOR ────────────────────────────────
+//
+// Both of these shipped wrong and CI was green, because the page's tests exercised
+// reading and never writing. They are asserted HERE, at the gather, because that is
+// where the wrong value is made: the form downstream posts faithfully whatever the
+// row hands it, so a component test alone would have agreed with the defect.
+
+describe("the row hands its editor the value the reader is looking at", () => {
+  it("prefills a weight in the DISPLAY unit it printed, not the stored kilograms", () => {
+    const p = profile("history weight unit");
+    const loginId = login();
+    setLoginSetting(loginId, "weight_unit", "lb");
+    weighIn(p, YESTERDAY, 70);
+
+    const [row] = gatherHistoryLog(p, {
+      loginId,
+      limit: 200,
+      kind: "body",
+      item: "weight",
+    }).rows;
+    expect(row.edit).toMatchObject({
+      kind: "body",
+      slug: "weight",
+      unit: "lb",
+    });
+
+    // THE WHOLE DEFECT IN ONE COMPARISON. The row printed "154.3 lb" while the editor
+    // opened on the stored 70, and `updateMetricReading` was told to read that 70 AS
+    // POUNDS — so saving an untouched form rewrote 70 kg to 31.75 kg. The number in
+    // the detail and the number in the field are now the same value, so they cannot
+    // disagree again.
+    const edit = row.edit as { kind: "body"; value: number };
+    expect(row.detail.startsWith(`${edit.value}`)).toBe(true);
+    expect(edit.value).toBeGreaterThan(150);
+    expect(edit.value).toBeLessThan(160);
+
+    // And in the login's own unit nothing converts at all.
+    const kgLogin = login();
+    setLoginSetting(kgLogin, "weight_unit", "kg");
+    const [kgRow] = gatherHistoryLog(p, {
+      loginId: kgLogin,
+      limit: 200,
+      kind: "body",
+      item: "weight",
+    }).rows;
+    expect((kgRow.edit as { value: number }).value).toBe(70);
+  });
+
+  it("hands a practice's STORED time, never the filing clock its row falls back to", () => {
+    const p = profile("history practice time");
+    const loginId = login();
+    // A quick-path tick: no session time was ever stated, so the row's clock is the
+    // record chain's and says so.
+    db.prepare(
+      `INSERT INTO practice_logs (profile_id, practice, date, notes, created_at)
+       VALUES (?, 'history quick tick', ?, 'evening wind-down', ?)`
+    ).run(p, YESTERDAY, `${YESTERDAY}T19:43:00.000Z`);
+
+    const [row] = gatherHistoryLog(p, {
+      loginId,
+      limit: 200,
+      kind: "practice",
+    }).rows;
+    expect(row.clockKind).toBe("logged");
+    expect(row.clock).toMatch(/^logged /);
+    // `sortTime` is the resolved instant and is deliberately non-null — it is what
+    // orders the row. What the EDITOR may post back is the column, and there is
+    // nothing in it: posting `sortTime` here is what stamped 19:43 into the event
+    // column while somebody corrected a duration.
+    expect(row.sortTime).not.toBeNull();
+    expect(row.edit).toMatchObject({ kind: "practice", statedTime: null });
+
+    // A stated session time reaches the editor unchanged.
+    practice(p, YESTERDAY, "history stated tick");
+    const stated = gatherHistoryLog(p, {
+      loginId,
+      limit: 200,
+      kind: "practice",
+      item: "history stated tick",
+    }).rows[0];
+    expect(stated.clockKind).toBe("stated");
+    expect(stated.edit).toMatchObject({ statedTime: "07:15" });
+  });
+});
+
+// ── THE BOUND IS A BOUND, NOT A CEILING ──────────────────────────────────────
+//
+// `getFoodLedgerPage` / `getPracticeLedgerPage` clamped their page size to 100 while
+// the deleted routes drove them with `?page=`. The record has no pager, so the clamp
+// silently capped two of five kinds at 100 rows and left "Load more" reporting more
+// forever — a year of food logging permanently unreachable on the record page.
+describe("the read is bounded by the caller, not by a hidden page-size cap", () => {
+  it.each([
+    ["food", (p: number, i: number) => serving(p, YESTERDAY, i % 60)],
+    [
+      "practice",
+      (p: number, i: number) => practice(p, YESTERDAY, `history bulk ${i}`),
+    ],
+  ] as const)(
+    "returns more than 100 %s rows when asked for them",
+    (kind, seed) => {
+      const p = profile(`history bound ${kind}`);
+      const loginId = login();
+      for (let i = 0; i < 130; i += 1) seed(p, i);
+
+      const bounded = gatherHistoryLog(p, { loginId, limit: 50, kind });
+      expect(bounded.rows).toHaveLength(50);
+      expect(bounded.hasMore).toBe(true);
+
+      // The number that used to be 100 whatever was asked for.
+      const widened = gatherHistoryLog(p, { loginId, limit: 200, kind });
+      expect(widened.rows).toHaveLength(130);
+      expect(widened.hasMore).toBe(false);
+    }
+  );
+
+  it("counts RENDERED rows for body, where one stored row is up to three", () => {
+    const p = profile("history body fanout");
+    const loginId = login();
+    for (let i = 1; i <= 4; i += 1) {
+      db.prepare(
+        `INSERT INTO body_metrics (profile_id, date, weight_kg, body_fat_pct, resting_hr)
+         VALUES (?, ?, ?, ?, ?)`
+      ).run(p, `2026-0${i}-0${i}`, 70 + i, 20 + i, 50 + i);
+    }
+    // Two STORED rows are six measures; a bound counted in stored rows would render
+    // three times what every other kind renders at the same `limit`.
+    const gather = gatherHistoryLog(p, { loginId, limit: 2, kind: "body" });
+    expect(gather.rows).toHaveLength(2);
+    expect(gather.hasMore).toBe(true);
+  });
+});
+
+// ── THE CHIP ROW IS ABOUT THE PROFILE, NOT ABOUT THE VIEW ────────────────────
+describe("presentKinds does not collapse when the page is filtered", () => {
+  it("names every kind the profile has, whatever kind is being shown", () => {
+    const p = profile("history presence");
+    const loginId = login();
+    serving(p, YESTERDAY, 1);
+    practice(p, YESTERDAY, "history presence yoga");
+    weighIn(p, YESTERDAY, 71);
+
+    const all = gatherHistoryLog(p, {
+      loginId,
+      limit: 200,
+    }).presentKinds.sort();
+    expect(all).toEqual(["body", "food", "practice"]);
+    // DERIVED FROM THE GATHER'S OWN READS this answered ["food"] here, so the chip
+    // row collapsed to "All · Food" and every kind→kind move cost two taps.
+    expect(
+      gatherHistoryLog(p, {
+        loginId,
+        limit: 200,
+        kind: "food",
+      }).presentKinds.sort()
+    ).toEqual(all);
+    // Nor does narrowing to ONE DAY hide the kinds recorded on other days.
+    expect(
+      gatherHistoryLog(p, {
+        loginId,
+        limit: 200,
+        day: TODAY,
+      }).presentKinds.sort()
+    ).toEqual(all);
+  });
+
+  it("does not offer a substance chip to a known minor", () => {
+    const minor = profile(
+      "history presence minor",
+      new Date().getFullYear() - 11
+    );
+    const loginId = login();
+    units(minor, YESTERDAY, 2);
+    serving(minor, YESTERDAY, 1);
+    const kinds = gatherHistoryLog(minor, { loginId, limit: 200 }).presentKinds;
+    // A chip is an OFFER, and the record must not advertise what its gather refuses.
+    expect(kinds).not.toContain("substance");
+    expect(kinds).toContain("food");
   });
 });

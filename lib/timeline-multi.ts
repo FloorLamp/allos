@@ -101,7 +101,16 @@ function compareMerged<E extends MergeableRow>(a: E, b: E): number {
   const bt = b.sortTime ?? "";
   if (at !== bt) return at < bt ? 1 : -1;
   if (a.profileId !== b.profileId) return a.profileId - b.profileId;
-  return a.id.localeCompare(b.id);
+  // CODE UNITS, NOT `localeCompare` (#3958, #4016 review). The tie-break has to be a
+  // TOTAL ORDER on distinct ids or "byte-stable across renders" is not a property the
+  // sort has: `localeCompare` may answer 0 for two different strings that differ only
+  // in characters its collation ignores, and V8's sort then falls back to whatever
+  // order the input happened to arrive in. Every id here was ASCII when this shipped,
+  // which is why nothing noticed — but a custom substance's id carries the name the
+  // person typed, so the ignorable-character case is reachable by ordinary use rather
+  // than only in theory. `<`/`>` compare code units and can only return 0 for equal
+  // strings, and ids are unique by construction.
+  return a.id < b.id ? -1 : a.id > b.id ? 1 : 0;
 }
 
 // Compute the per-member relative marks for a calendar date, or [] when the date is NOT

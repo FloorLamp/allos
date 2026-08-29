@@ -2,7 +2,7 @@ import { db } from "../db";
 import { SETTINGS_GROUPS, type SettingsGroupId } from "../settings-groups";
 import { getProfileAge, getTimezone } from "../settings";
 import { dateFromCreatedAt } from "../timeline-format";
-import { isTrainingRelevant } from "../life-stage";
+import { isMinor, isTrainingRelevant } from "../life-stage";
 import { vaccineDisplayName } from "../immunization-catalog";
 import { displayUnit } from "../display-unit";
 import {
@@ -1023,6 +1023,8 @@ const PAGES: {
   title: string;
   href: AppRoute;
   keywords?: string;
+  /** Life-stage gated content (#1174): hidden from a KNOWN minor. */
+  adultOnly?: boolean;
 }[] = [
   { title: "Dashboard", href: "/", keywords: "home overview" },
   // THE RECORD, AND ITS PER-KIND DOORS (#3958). The palette registers the page and
@@ -1053,6 +1055,7 @@ const PAGES: {
     title: "Substance history",
     href: "/history?kind=substance",
     keywords: "alcohol nicotine cannabis drinks ledger",
+    adultOnly: true,
   },
   {
     title: "Body history",
@@ -1184,7 +1187,23 @@ const PAGES: {
   },
 ];
 
-function pageHits(query: string, trainingRelevant = true): SearchHit[] {
+// THE PALETTE IS A DOOR, AND A GATED DOOR IS GATED HERE TOO (#1174/#1279, #3958).
+//
+// `adultOnly` is the substance line's second tenant. The specialty page redirects a
+// known minor, the nav pane hides, the quick-log hides, every substance action
+// refuses, and the record's gather excludes the rows — so a palette entry keyed on
+// "alcohol nicotine cannabis" that answered for an 11-year-old was the one surface
+// still advertising it. The destination was harmless (the gather refuses), which is
+// exactly why it is worth gating: quiet access is about what the app OFFERS, not only
+// about what it will hand over.
+//
+// `isMinor` and not `!isAdult`: hide on a positive under-age match only, never on
+// missing data — the same predicate the specialty route redirects on.
+function pageHits(
+  query: string,
+  trainingRelevant = true,
+  adultOnly = true
+): SearchHit[] {
   const q = query.trim().toLowerCase();
   return PAGES.filter((p) => {
     const trainingPage =
@@ -1193,6 +1212,7 @@ function pageHits(query: string, trainingRelevant = true): SearchHit[] {
       p.href === "/settings/training";
     return (
       (trainingRelevant || !trainingPage) &&
+      (adultOnly || !p.adultOnly) &&
       (matchTier(p.title, query) > 0 ||
         (p.keywords ? p.keywords.includes(q) : false))
     );
@@ -1242,7 +1262,7 @@ export function searchAll(profileId: number, rawQuery: string): SearchGroup[] {
     ...familyHistoryHits(profileId, like),
     ...carePlanHits(profileId, like),
     ...careGoalHits(profileId, like),
-    ...pageHits(query, trainingRelevant),
+    ...pageHits(query, trainingRelevant, !isMinor(age)),
     ...activityHits(profileId, like),
     ...(trainingRelevant ? goalHits(profileId, like) : []),
   ];

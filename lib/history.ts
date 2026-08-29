@@ -38,14 +38,14 @@ import { getIntakeDoseLedgerPage } from "./queries";
 import { getFoodLedgerPage } from "./queries/nutrition";
 import { getPracticeLedgerPage } from "./queries/wellness";
 import { getAllSubstanceDailyTotals } from "./queries/substance";
+import { getBodyMetricsOnDate, getBodyMetricsPage } from "./queries/metrics";
+import { bodyMetricMeasures } from "./body-metric-measures";
 import { foodGroupBySlug } from "./food-groups";
 import { foodEventWindow } from "./food-slot-count";
 import { profileFoodSlotBoundaries } from "./profile-food-slot";
 import { normalizePracticeName } from "./practice";
 import { formatMinutes } from "./duration";
 import { substanceDef } from "./substance-use";
-import { fmtWeight } from "./units";
-import { readingTargetToken } from "./reading-placement";
 import { intakeHref, medicationHref, metricDetailHref } from "./hrefs";
 import {
   detailSegment,
@@ -100,6 +100,58 @@ function localClock(tz: string, at: string): string | null {
 }
 
 /**
+ * WHICH KINDS THIS PROFILE HAS ANY ROW FOR — what earns a filter chip (#3958).
+ *
+ * ASKED INDEPENDENTLY OF THE FILTER, which is the whole point and was the defect:
+ * derived from the gather's own reads, a page filtered to Food reported only Food as
+ * present, so the chip row COLLAPSED to "All · Food" and every kind→kind move cost two
+ * taps through All. Presence is a fact about the profile, not about the view.
+ *
+ * Five indexed existence probes, not five gathers: this runs on every render of the
+ * page and must not cost a second pass over the rows. The substance probe carries the
+ * same life-stage gate the substance READ does — a chip is an offer, and the record
+ * must not advertise what its gather will refuse (#1174/#1279).
+ */
+export function historyPresentKinds(profileId: number): HistoryLogKind[] {
+  // ONE LITERAL STATEMENT PER KIND, and the repetition is the point — the scoping
+  // scanner verifies `profile_id` in the literal SQL text of every prepared statement
+  // over an owned table, and a helper taking the SQL as a parameter is one it cannot
+  // read. `bodyMetricSelect` in lib/metric-readings.ts makes the same trade in the
+  // same layer, for the same reason: a scannable statement beats a clever one where
+  // the question is whose rows you see.
+  const out: HistoryLogKind[] = [];
+  const dose = db
+    .prepare(
+      `SELECT 1 FROM intake_item_logs l JOIN intake_items s ON s.id = l.item_id
+        WHERE s.profile_id = ? AND l.status = 'taken' LIMIT 1`
+    )
+    .get(profileId);
+  if (dose != null) out.push("dose");
+  const food = db
+    .prepare(
+      `SELECT 1 FROM food_log_events
+        WHERE profile_id = ? AND substr(group_key, 1, 2) != '__' LIMIT 1`
+    )
+    .get(profileId);
+  if (food != null) out.push("food");
+  const practice = db
+    .prepare("SELECT 1 FROM practice_logs WHERE profile_id = ? LIMIT 1")
+    .get(profileId);
+  if (practice != null) out.push("practice");
+  if (
+    !isMinor(getProfileAge(profileId)) &&
+    getAllSubstanceDailyTotals(profileId).length > 0
+  ) {
+    out.push("substance");
+  }
+  const body = db
+    .prepare("SELECT 1 FROM body_metrics WHERE profile_id = ? LIMIT 1")
+    .get(profileId);
+  if (body != null) out.push("body");
+  return out;
+}
+
+/**
  * EVERY LOGS ROW ONE PROFILE RECORDED, newest first, bounded by `limit`.
  *
  * Each kind is read to the same bound and the five lists are merged by the caller's
@@ -118,7 +170,6 @@ export function gatherHistoryLog(
   const since = opts.day ?? ISO_FLOOR;
   const limit = Math.max(1, Math.trunc(opts.limit));
   const rows: HistoryRow[] = [];
-  const present = new Set<HistoryLogKind>();
   let truncated = false;
 
   // ── DOSES ────────────────────────────────────────────────────────────────
@@ -138,7 +189,6 @@ export function gatherHistoryLog(
       1,
       limit
     );
-    if (ledger.total > 0) present.add("dose");
     if (ledger.total > ledger.rows.length) truncated = true;
     for (const row of ledger.rows) {
       // The row-level time question, asked once (#2205 phase 3): the stated
@@ -192,7 +242,6 @@ export function gatherHistoryLog(
       1,
       limit
     );
-    if (ledger.total > 0) present.add("food");
     if (ledger.total > ledger.rows.length) truncated = true;
     for (const row of ledger.rows) {
       const when = bestKnownInstant("food_log_events", { ...row });
@@ -249,7 +298,6 @@ export function gatherHistoryLog(
       1,
       limit
     );
-    if (ledger.total > 0) present.add("practice");
     if (ledger.total > ledger.rows.length) truncated = true;
     for (const row of ledger.rows) {
       // A quick-path tick records no clock at all (#2205): the row has no event
@@ -279,7 +327,10 @@ export function gatherHistoryLog(
           kind: "practice",
           sessionId: row.id,
           // The correction form REWRITES every field the action reads, so the row
-          // carries what it must post back unchanged.
+          // carries what it must post back unchanged — and `time` is the STORED
+          // column, not the resolved instant above it. `hhmm` may be the record
+          // chain's minute; this never is.
+          statedTime: row.time,
           durationMin: row.duration_min,
           notes: row.notes,
         },
@@ -299,7 +350,6 @@ export function gatherHistoryLog(
         row.date >= since &&
         (!opts.item || opts.item === row.substance)
     );
-    if (totals.length > 0) present.add("substance");
     if (totals.length > limit) truncated = true;
     for (const row of totals.slice(0, limit)) {
       const def = substanceDef(row.substance);
@@ -338,60 +388,46 @@ export function gatherHistoryLog(
   // pages, re-housed (#3958 phase 1). The detail page KEEPS its bounded recent window
   // (#3505) — this is the cross-metric record, not a second copy of that panel.
   //
+  // `metric_samples` AND THE LAB-SHAPED VITALS ARE NOT HERE, and that is the issue's
+  // own ruling rather than an omission: "streams are not events" puts the sampled
+  // measures on charts, and `medical_records` vitals are Clinical, i.e. phase 2.
+  //
   // ONE ROW PER MEASURE, not per stored row: `body_metrics` is one row per day holding
   // up to three quantities, and a reader looking for "when did I last take my resting
-  // HR" is asking about a measure. That is also the granularity the correction contract
-  // needs — `readingTargetToken` names a store, a row AND a measure.
+  // HR" is asking about a measure. `bodyMetricMeasures` IS that fan-out, and this
+  // reads it rather than re-deriving one. It carries the piece a hand-rolled copy got
+  // wrong twice over: the value it hands back is already in the login's DISPLAY unit,
+  // which is what `updateMetricReading` converts back from (#630/#3853). A parallel
+  // array here printed `dispWeight` in the detail while seeding the edit field from
+  // the STORED kilograms and posting `weight_unit: lb` beside them, so a row reading
+  // "154.3 lb" opened its editor on 70 and saving it unchanged rewrote the record to
+  // 31.75 kg. One shape, one conversion, one place.
   if (wants(opts, "body")) {
-    const bodyRows = db
-      .prepare(
-        `SELECT id, date, occurred_at, weight_kg, body_fat_pct, resting_hr, source
-           FROM body_metrics
-          WHERE profile_id = ? AND date >= ? AND date <= ?
-          ORDER BY date DESC, id DESC
-          LIMIT ?`
-      )
-      .all(profileId, since, until, limit + 1) as {
-      id: number;
-      date: string;
-      occurred_at: string | null;
-      weight_kg: number | null;
-      body_fat_pct: number | null;
-      resting_hr: number | null;
-      source: string | null;
-    }[];
-    if (bodyRows.length > limit) truncated = true;
-    const measures = [
-      {
-        column: "weight_kg" as const,
-        slug: "weight",
-        label: "Weight",
-        value: (r: (typeof bodyRows)[number]) => r.weight_kg,
-        text: (v: number) => fmtWeight(v, units.weightUnit),
-      },
-      {
-        column: "body_fat_pct" as const,
-        slug: "body-fat",
-        label: "Body fat",
-        value: (r: (typeof bodyRows)[number]) => r.body_fat_pct,
-        text: (v: number) => `${v}%`,
-      },
-      {
-        column: "resting_hr" as const,
-        slug: "resting-hr",
-        label: "Resting HR",
-        value: (r: (typeof bodyRows)[number]) => r.resting_hr,
-        text: (v: number) => `${v} bpm`,
-      },
-    ];
-    for (const row of bodyRows.slice(0, limit)) {
+    // The shared readers, not a fourth SELECT on this table: the day view asks the
+    // day question and the record asks for a page. Both are profile-scoped in SQL.
+    const bodyRows = opts.day
+      ? getBodyMetricsOnDate(profileId, opts.day)
+      : getBodyMetricsPage(profileId, 1, limit + 1).rows;
+    // THE BOUND COUNTS RENDERED ROWS, NOT STORED ONES. A `body_metrics` row fans out
+    // to up to three measures, so bounding the READ alone let `limit` render three
+    // times what every other kind renders — and "Load more" then had to reveal rows
+    // the bound had never actually withheld. The read stays bounded (it is what keeps
+    // the query small); this is the second half, counted where the rows are made.
+    let bodyEmitted = 0;
+    for (const row of bodyRows) {
+      if (bodyEmitted >= limit) {
+        truncated = true;
+        break;
+      }
       const when = bestKnownInstant("body_metrics", { ...row });
       const hhmm = when.known ? localClock(tz, when.at) : null;
-      for (const measure of measures) {
-        const value = measure.value(row);
-        if (value == null) continue;
+      for (const measure of bodyMetricMeasures(row, units.weightUnit)) {
         if (opts.item && opts.item !== measure.slug) continue;
-        present.add("body");
+        if (bodyEmitted >= limit) {
+          truncated = true;
+          break;
+        }
+        bodyEmitted += 1;
         rows.push({
           id: `body:${measure.column}:${row.id}`,
           kind: "body",
@@ -404,18 +440,21 @@ export function gatherHistoryLog(
           clockKind: "stated",
           title: measure.label,
           href: metricDetailHref(measure.slug),
-          detail: detailSegment([measure.text(value), row.source]),
+          // The SAME number the editor opens on, formatted once — the detail and the
+          // edit field cannot disagree because there is only one value between them.
+          detail: detailSegment([
+            `${measure.value}${measure.unit}`,
+            row.source,
+          ]),
           media: 0,
           edit: {
             kind: "body",
-            target: readingTargetToken({
-              store: "body_metrics",
-              id: row.id,
-              column: measure.column,
-            }),
+            target: measure.target,
             slug: measure.slug,
-            value,
-            unit: measure.column === "weight_kg" ? units.weightUnit : "",
+            value: measure.value,
+            // The unit the row PRINTED, posted with the correction so the action
+            // converts by that rather than by the pref re-read at write time.
+            unit: measure.slug === "weight" ? units.weightUnit : "",
           },
         });
       }
@@ -432,7 +471,7 @@ export function gatherHistoryLog(
   return {
     rows: bounded,
     hasMore: truncated,
-    presentKinds: [...present],
+    presentKinds: historyPresentKinds(profileId),
     today: todayStr,
   };
 }

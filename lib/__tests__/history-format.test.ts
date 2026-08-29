@@ -253,6 +253,25 @@ describe("within-day order", () => {
     ).toBe(720);
   });
 
+  // THE FIXTURE ABOVE IS ALL ASCII, AND THAT IS THE GUARD'S ONE BLIND SPOT (#4016
+  // review). A custom substance's row id carries the name the person typed, so an id
+  // can hold characters a collation IGNORES — and `localeCompare` answers 0 for two
+  // distinct strings that differ only in those, which makes the sort fall back to
+  // input order and the 720-permutation claim above false for exactly those rows.
+  // The comparator uses code units now; this is the fixture that can tell.
+  it("is byte-stable for ids carrying user-typed text, not only ASCII ones", () => {
+    // U+00AD SOFT HYPHEN is default-ignorable: `"a\u00ADb".localeCompare("ab")` is 0
+    // under a full ICU collation, so these two ids are indistinguishable to the
+    // comparator this replaced while being different strings.
+    const custom = [
+      row("substance:her\u00ADbal:1", "08:46"),
+      row("substance:herbal:1", "08:46"),
+      row("substance:herbal\u200B:1", "08:46"),
+    ];
+    const orders = permutations(custom).map(order);
+    expect(new Set(orders.map((o) => JSON.stringify(o))).size).toBe(1);
+  });
+
   it("separates two members' rows that share an id and an instant", () => {
     const mine = { ...row("dose:1", "08:46"), profileId: 1 };
     const theirs = { ...row("dose:1", "08:46"), profileId: 2 };

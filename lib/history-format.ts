@@ -98,6 +98,18 @@ export type HistoryRowEdit =
   | {
       kind: "practice";
       sessionId: number;
+      /**
+       * The session's OWN `time` column, and never `sortTime`.
+       *
+       * They are different questions and the difference is the #2205 substitution:
+       * `sortTime` is `bestKnownInstant`, which falls back to the record chain when
+       * nobody stated a session time, so a quick-path tick carries the minute it was
+       * TYPED. `editPracticeSession` writes what it is handed, so posting that back
+       * while correcting a duration stamps the filing clock into the event column and
+       * the row stops saying "logged 19:43" and starts claiming 19:43 as the session.
+       * This field exists so the form physically cannot reach the other one.
+       */
+      statedTime: string | null;
       durationMin: number | null;
       notes: string | null;
     }

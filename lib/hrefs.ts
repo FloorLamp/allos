@@ -140,6 +140,12 @@ export function intakeHref(kind: IntakeItemKind): AppRoute {
 // preserves the old two-door dose pre-filter — one route opened on supplements and the
 // other on medications — as a param on one page.
 //
+// `?subject=` IS NOT HERE, DELIBERATELY. The issue's grammar names it and phase 2
+// will, but nothing on the page reads it yet — and a helper that WRITES a param no
+// reader honours is worse than one that cannot: the URL looks scoped to a member and
+// silently is not, and it fails in the reassuring direction (it shows the acting
+// profile, so nothing looks wrong). It comes back with its reader.
+//
 // Param ORDER is fixed by this function, never by the caller's object literal, so the
 // same state always produces the same URL — which is what makes a link cacheable and
 // "did this href change?" a question a test can ask.
@@ -151,7 +157,6 @@ export function historyHref(
     item?: string;
     media?: boolean;
     day?: string;
-    subject?: number;
     everyone?: boolean;
     open?: readonly string[];
     show?: number;
@@ -165,7 +170,6 @@ export function historyHref(
   if (params.item) sp.set("item", params.item);
   if (params.media) sp.set("media", "1");
   if (params.day) sp.set("day", params.day);
-  if (params.subject != null) sp.set("subject", String(params.subject));
   if (params.everyone) sp.set("view", "everyone");
   for (const key of params.open ?? []) sp.append("open", key);
   if (params.show != null) sp.set("show", String(params.show));

@@ -339,14 +339,19 @@ export default function HistoryRows({
                 inputClassName="mt-1 w-full"
               />
             </label>
-            {/* THE SESSION'S TIME RIDES ALONG UNCHANGED. `editPracticeSession`
-                REWRITES every field it reads, so omitting one erases it — and a raw
-                <input type="time"> here would be an eleventh hand-rolled "when did
-                this happen" (#2236), which the ratchet in
-                lib/__tests__/time-input-scan.test.ts exists to refuse. Correcting a
-                session's clock stays on the practice card, where the full editor is;
-                what the record offers is the correction people actually come for. */}
-            <input type="hidden" name="time" value={row.sortTime ?? ""} />
+            {/* THE SESSION'S TIME RIDES ALONG UNCHANGED, AND IT IS THE STORED
+                COLUMN. `editPracticeSession` REWRITES every field it reads, so
+                omitting one erases it — but posting `row.sortTime` back instead was
+                worse than erasing: that is `bestKnownInstant`, which falls back to
+                `created_at` for a quick-path tick with no stated time, so correcting
+                a DURATION laundered the filing clock into the event column and the
+                row stopped saying "logged 19:43". `edit.statedTime` is
+                `practice_logs.time` and nothing else — the same value
+                `PracticeSessionHistory` posts. (A raw <input type="time"> here would
+                be an eleventh hand-rolled "when did this happen" (#2236), which the
+                ratchet in lib/__tests__/time-input-scan.test.ts refuses; correcting a
+                session's clock stays on the practice card, where the full editor is.) */}
+            <input type="hidden" name="time" value={edit.statedTime ?? ""} />
             <label className="text-xs text-slate-500 dark:text-slate-400">
               Duration (minutes)
               <input
