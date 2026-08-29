@@ -4,6 +4,10 @@ import { specsNeedingIsolation } from "./vitest.isolation";
 // Both ceilings, with their derivation and their unit, live in ONE place.
 import { testTimeout, hookTimeout } from "./vitest.timeouts";
 
+// Loaded by EVERY project in both tiers: it turns a timeout into a sentence that
+// says whether the worker was waiting or running (#3986). See the module header.
+const TIMEOUT_REPORT = "./vitest.timeout-report.ts";
+
 const root = fileURLToPath(new URL(".", import.meta.url));
 const alias = { "@": root };
 
@@ -45,6 +49,7 @@ export default defineConfig({
           hookTimeout,
           include: ["lib/**/*.test.ts"],
           exclude: [...NOT_PURE, ...ISOLATED],
+          setupFiles: [TIMEOUT_REPORT],
           pool: "threads",
           isolate: false,
         },
@@ -57,6 +62,7 @@ export default defineConfig({
           hookTimeout,
           include: ISOLATED,
           exclude: NOT_PURE,
+          setupFiles: [TIMEOUT_REPORT],
           pool: "forks",
         },
       },
@@ -107,7 +113,7 @@ export default defineConfig({
           include: ["components/**/*.test.ts", "components/**/*.test.tsx"],
           exclude: ["node_modules/**"],
           environment: "jsdom",
-          setupFiles: ["components/__tests__/setup.ts"],
+          setupFiles: [TIMEOUT_REPORT, "components/__tests__/setup.ts"],
           pool: "threads",
         },
       },
