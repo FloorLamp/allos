@@ -130,6 +130,14 @@ export function main(
   const committed = readCommittedManifest();
   const plan = planManifest(committed ?? {}, current);
 
+  // "SHIPPED" HERE MEANS "HEAD CARRIES THIS MANIFEST ENTRY", which on a feature branch is
+  // your OWN commit — so this cannot tell a migration you committed an hour ago from one
+  // that ran on somebody's instance in April, and it refuses both. That is the right
+  // direction to be wrong in, but it costs an hour if you meet it without knowing.
+  // `git show origin/main:<file>` (empty ⇒ never merged, so nothing has ever run it) is
+  // what tells the two apart. For a migration that is genuinely still unmerged, the route
+  // is to commit the entry's REMOVAL and then regenerate — it is then `added`, not
+  // `changed`. Do that only with the origin/main check in hand and recorded.
   if (plan.changed.length > 0) {
     // eslint-disable-next-line no-console
     console.error(

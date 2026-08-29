@@ -1,12 +1,21 @@
 import { defineConfig } from "vitest/config";
 import { fileURLToPath } from "node:url";
 import { specsNeedingIsolation } from "./vitest.isolation";
+import { dbWorkerCount } from "./lib/__db_tests__/worker-count";
 // Both ceilings, with their derivation and their unit, live in ONE place.
 import { testTimeout, hookTimeout } from "./vitest.timeouts";
 
 // Loaded by EVERY project in both tiers: it turns a timeout into a sentence that
 // says whether the worker was waiting or running (#3986). See the module header.
 const TIMEOUT_REPORT = "./vitest.timeout-report.ts";
+
+// Do not let the threads and forks pools each size themselves to the whole runner.
+// CI A/B (#4000, 2026-08-29): exact-tree ungrouped samples had 193/197s jobs
+// (174.89/178.88s Vitest); three grouped samples had a 184s job median and
+// 170.04s Vitest median. Per-file dispersion was mixed, so the measured whole-job
+// improvement—not a claim that co-residency vanished—is what justifies this order.
+const SHARED_POOL_GROUP = 0;
+const ISOLATED_POOL_GROUP = 1;
 
 // DB integration tests (a SEPARATE tier from the pure unit suite in
 // lib/__tests__). These open real better-sqlite3 handles to exercise code that
@@ -35,6 +44,7 @@ const ACTION_SETUP = "lib/__action_tests__/setup.ts";
 export default defineConfig({
   resolve: { alias },
   test: {
+    maxWorkers: dbWorkerCount(),
     // TWO PROJECTS, ONE RUN — so `test:db:coverage` still measures the WHOLE tier
     // in a single pass and the floors below need no cross-report merging.
     //
@@ -59,6 +69,7 @@ export default defineConfig({
           exclude: ISOLATED,
           pool: "threads",
           isolate: false,
+          sequence: { groupOrder: SHARED_POOL_GROUP },
           globalSetup: ["lib/__db_tests__/global-setup.ts"],
           setupFiles: [
             TIMEOUT_REPORT,
@@ -79,6 +90,7 @@ export default defineConfig({
             "lib/__db_tests__/setup.ts",
             ACTION_SETUP,
           ],
+          sequence: { groupOrder: ISOLATED_POOL_GROUP },
         },
       },
     ],

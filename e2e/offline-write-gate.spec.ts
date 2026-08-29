@@ -1218,9 +1218,9 @@ test("R-5 — a practice card does not claim a session the device refused to kee
 // Three of those seven run IN A DOCUMENT ON THE DEVICE THAT NEEDS WIPING: the family
 // screen's Delete, Sign out devices and Reset password, aimed at your own row. Those are
 // closed here and pinned below. The other four end a session on a device this code is not
-// running in; an unreachable device cannot be revoked, and a bare 401 must not wipe reads
-// because expiry and revocation are indistinguishable from the device — that fork is #3053
-// and is deliberately not attempted here.
+// running in; a bare 401 still must not wipe reads, because expiry is the common case —
+// so the server was made to say REVOKED instead, and that far-device half is pinned in
+// e2e/offline-revocation.spec.ts (#3053), not here.
 //
 //   R-A6  Delete, on your own row — the device is wiped and the gate closes.
 //   R-A7  Sign out devices, on your own row — the same.

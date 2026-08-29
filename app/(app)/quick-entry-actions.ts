@@ -11,10 +11,6 @@ import {
 import { getTimezone, getUnitPrefs } from "@/lib/settings";
 import { now as clockNow } from "@/lib/clock";
 import {
-  eatingTimeOptions,
-  type EatingTimeOption,
-} from "@/lib/food-eating-time";
-import {
   getExcludedFoodGroups,
   getProfileAge,
   getProfileBirthdate,
@@ -179,10 +175,6 @@ export type QuickEntryData =
       // follow-the-hour Meal default derives from (#2227 d4), the same numbers the
       // server's tallies use.
       slotBoundaries: FoodSlotBoundaries;
-      // The "earlier…" hours the eating-time statement may name (#2053) — the SAME
-      // server-resolved offer the Food tab passes, so the sheet cannot present a
-      // narrower affordance than the page it opened over.
-      eatingTimeOptions: EatingTimeOption[];
     }
   | {
       form: "dose";
@@ -252,6 +244,9 @@ export type QuickEntryData =
       // running count — the seven types are a committed vocabulary, not server state.
       form: "stool";
       todayCount: number;
+      // The acting profile's today — the day a tap files under, and the day the
+      // sheet's "Happened earlier?" statement is anchored on (#3273).
+      today: string;
     }
   | {
       // The profile's OWN substances (#3327), one tap each. Every field is resolved
@@ -347,12 +342,6 @@ export async function loadQuickEntry(
       excludedGroups: getExcludedFoodGroups(profile.id),
       slot,
       slotBoundaries: profileFoodSlotBoundaries(profile.id),
-      eatingTimeOptions: eatingTimeOptions(
-        clockNow(),
-        getTimezone(profile.id),
-        date,
-        profileFoodSlotBoundaries(profile.id)
-      ),
     };
   }
 
@@ -360,6 +349,7 @@ export async function loadQuickEntry(
     return {
       form: "stool",
       todayCount: getBristolReadings(profile.id, date, date).length,
+      today: date,
     };
   }
 

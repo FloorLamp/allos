@@ -958,10 +958,14 @@ ${MIGRATION_LINES}
   to say out loud what a bound is bounding is the check. Demand the stated unit even
   when the constant looks obviously right.
 - E2E SPLITS IN TWO, AND ONLY ONE HALF RUNS ON THIS BOX.
-  * SPECS YOU AUTHORED OR EDITED: run locally, at CI parity, on your assigned port
+  * SPECS YOU AUTHORED OR EDITED: run locally, with repeat scrutiny, on your assigned port
     range: E2E_PORT=${portBase} ... --repeat-each=3 --retries=0. The variable is
     E2E_PORT, never PORT. This is usually one to three files and it is where you can
     actually introduce a flake, so the repeat is earned here.
+    If tests in one changed file share a profile or other worker-scoped mutable
+    state, ALSO run that whole file at E2E_PORT=${portBase} with
+    --workers=1 --repeat-each=1 --retries=0. Repeat scrutiny and shared-fixture
+    parity answer different questions (#3653); neither substitutes for the other.
   * EVERY OTHER SPEC — the blast radius, the geometry-asserting sweep, the specs that
     merely exercise code you changed: DO NOT RUN THEM LOCALLY. ${blastRadiusInstruction}
   Do NOT run the full suite locally — the orchestrator owns full-suite runs.

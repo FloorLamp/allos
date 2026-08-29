@@ -92,6 +92,24 @@ const CONSUMERS = [
     host: "components/ActivityForm.tsx",
   },
   {
+    // THE FIRST CONSUMER THAT REPEATS (#3349) — one chip row per exercise, in a form
+    // that can hold five. Everything else here states a fact ONCE per surface.
+    //
+    // That is why the chips and the host are the same file, and why it is the LIST
+    // rather than the per-part editor: "at most one editor on screen" has to hold
+    // across the parts, not within one, and the registry door lives inside the open
+    // panel. Split across two files each exercise would own a panel, and the door the
+    // row used to repeat would repeat again wearing a disclosure.
+    // BOTH HALVES OF #3349 NOW: the equipment picker (#4034) and the options row —
+    // sides, rep target, effort — behind ONE row per part with ONE trailing
+    // affordance. It is also the first consumer where a fact can LEAVE the row (clear
+    // a rep target and the intent chip is gone), which is the case useFactEditor's
+    // second focus tier exists for and the one no consumer had exercised.
+    name: "the activity editor's per-part facts (#3349)",
+    chips: "components/activity-form/ActivityPartsList.tsx",
+    host: "components/activity-form/ActivityPartsList.tsx",
+  },
+  {
     // THE FIRST DOM-COLLECTED CONSUMER (#3219) — a different "first" from the one
     // above, and the two are worth reading together. The three consumers before this
     // all hand their action a FormData they built themselves; this one is

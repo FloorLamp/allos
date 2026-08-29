@@ -15,9 +15,15 @@ import {
   getNapHistory,
   getSleepMoodData,
   getOuraScores,
+  typicalBedTime,
+  typicalWakeTime,
 } from "@/lib/queries";
 import { chartSeries } from "@/lib/chart-colors";
-import { formatHm, sleepRecordPresentation } from "@/lib/sleep-summary";
+import {
+  formatHm,
+  formatUsualSleepBand,
+  sleepRecordPresentation,
+} from "@/lib/sleep-summary";
 import { sleepWaitingDetail } from "@/lib/sleep-waiting";
 import { formatClockMinutes, formatRelativeTime } from "@/lib/format-date";
 import { sriPresentation } from "@/lib/sleep-regularity";
@@ -52,6 +58,11 @@ export default async function SleepPage() {
   const { login, profile } = await requireSession();
   const formatPrefs = getDisplayFormatPrefs(login.id);
   const todayStr = today(profile.id);
+  const usualSleepBand = formatUsualSleepBand(
+    formatPrefs.timeFormat,
+    typicalBedTime(profile.id),
+    typicalWakeTime(profile.id)
+  );
 
   const summary = getLastNightSummary(profile.id);
   const summaryPresentation = summary
@@ -117,7 +128,20 @@ export default async function SleepPage() {
     >
       <PageHeader
         title="Sleep"
-        subtitle="Duration, timing, stages, and how sleep relates to mood."
+        subtitle={
+          usualSleepBand == null ? (
+            "Duration, timing, stages, and how sleep relates to mood."
+          ) : (
+            <>
+              <span className="block">
+                Duration, timing, stages, and how sleep relates to mood.
+              </span>
+              <span className="mt-0.5 block" data-testid="sleep-usual-times">
+                Usually ~{usualSleepBand}.
+              </span>
+            </>
+          )
+        }
         action={
           <SleepLogAction
             formatPrefs={formatPrefs}

@@ -3,7 +3,6 @@ import { getDisplayFormatPrefs } from "@/lib/settings";
 import { today } from "@/lib/db";
 import { now as clockNow } from "@/lib/clock";
 import { getTimezone } from "@/lib/settings";
-import { eatingTimeOptions as eatingTimeOptionsFor } from "@/lib/food-eating-time";
 import { parseUtcSql, shiftDateStr, zonedMinuteStr } from "@/lib/date";
 import {
   getFoodMealDays,
@@ -48,7 +47,7 @@ import type { FiberAdequacy } from "@/lib/fiber";
 import { EmptyState } from "@/components/ui";
 import FoodLogBar, { type FoodLogDay } from "./FoodLogBar";
 import LedgerDoorLink from "@/components/LedgerDoorLink";
-import { foodLedgerHref } from "@/lib/hrefs";
+import { historyHref } from "@/lib/hrefs";
 import ProteinQuickAdd from "./ProteinQuickAdd";
 import WeeklyHabits from "./WeeklyHabits";
 import { trackFoodHabit } from "./actions";
@@ -322,21 +321,6 @@ export default async function FoodTab({
   // in its timezone. Drives the slot-aware ranking AND the bar's slot chip — the SAME
   // derivation, so the label and the order can never disagree.
   const slot = currentFoodSlot(profile.id);
-  // The "earlier…" hours the bar may state an eating time as (#2053), resolved SERVER-side
-  // from the profile's timezone: each option carries the local wall time the chip shows,
-  // the instant it means, and — #2269 — the meal window it files under, so the chip reads
-  // `19:00 · Evening` and the bar can land the serving in its derived section without a
-  // round-trip. The boundaries are the SAME ones the tallies use, so the chip's claim and
-  // the section cannot disagree. Filtered to hours that still land on today, so a chip the
-  // write would refuse is never on screen — and the bar only offers the affordance while
-  // today is the selected day, because "now" is meaningless on a backfill and an unstated
-  // log correctly records no eating time at all.
-  const eatingTimeOptions = eatingTimeOptionsFor(
-    clockNow(),
-    getTimezone(profile.id),
-    date,
-    profileFoodSlotBoundaries(profile.id)
-  );
   // One learned order per meal, from THE ranking both surfaces read (#1980). Switching
   // the selected slot on the client changes both the button counts and the ordering
   // without a round-trip. `proteinRank` is where the reserved protein pseudo-entry placed
@@ -489,11 +473,10 @@ export default async function FoodTab({
               // sheet's follow-the-hour Meal default (#2227 d4) can never disagree with
               // the window the server will count the corrected serving in.
               slotBoundaries={profileFoodSlotBoundaries(profile.id)}
-              eatingTimeOptions={eatingTimeOptions}
               nutrientSummaryByDate={mobileNutrients}
               ledgerDoor={
                 <LedgerDoorLink
-                  href={foodLedgerHref()}
+                  href={historyHref({ kind: "food" })}
                   label="Food history"
                   testId="food-ledger-link"
                 />

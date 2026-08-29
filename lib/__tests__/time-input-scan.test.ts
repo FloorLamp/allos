@@ -269,6 +269,95 @@ describe('raw <input type="time"> ratchet (issue #2236)', () => {
   });
 });
 
+// ── THE UNION (issue #3273) ─────────────────────────────────────────────────
+//
+// The ratchet above catches a NEW raw time input. It cannot catch the other half of
+// the same divergence: a form that writes an instant and offers no time affordance at
+// all, or hand-rolls one out of BUTTONS (the food bar's "Eaten: Now / Earlier…" chips
+// were exactly that, and chips are not inputs, so the scan above was structurally
+// blind to them). #3273's acceptance is the UNION — every quick-log sheet form that
+// writes an instant either mounts the shared control or says here why it does not.
+//
+// The sheet dispatches NINE forms (QuickEntryProvider's switch); eight are below.
+// The ninth is `document`, a file upload — it writes no instant of its own, so "when
+// did this happen?" is not a question it has to answer and it is not debt.
+//
+// The list is HAND-WRITTEN and stays short. It is the sheet's own census, not a
+// discovered set: enumerating "forms that write an instant" from source is the
+// scanner shape this repo does not build, and a wrong entry here is a claim about a
+// neighbour's write core that only a person can make.
+const SHEET_INSTANT_FORMS = new Map<string, { mounts: boolean; why: string }>([
+  [
+    "app/(app)/nutrition/FoodLogBar.tsx",
+    {
+      mounts: true,
+      why: "eating-time statement + the correction sheet (#2227)",
+    },
+  ],
+  [
+    "app/(app)/trends/MeasurementsQuickAdd.tsx",
+    { mounts: true, why: "the form's one shared Time control (#2154)" },
+  ],
+  [
+    "components/quick-entry/QuickStoolForm.tsx",
+    {
+      mounts: true,
+      why: '"Happened earlier?" over the second-grain key (#2785)',
+    },
+  ],
+  [
+    "components/practices/LogPracticeButton.tsx",
+    { mounts: true, why: "the sheet's collapsed session time (#3273)" },
+  ],
+  [
+    "components/quick-entry/QuickMoodCheckin.tsx",
+    {
+      mounts: false,
+      why:
+        "THE COUNTER-CASE, not debt: a check-in is a DAY's answer, upserted on " +
+        "UNIQUE(profile_id, date) and carrying no instant at all, so its day chips " +
+        'are correct and "when did this happen?" is not the question it asks',
+    },
+  ],
+  [
+    "components/quick-entry/QuickCyclePanel.tsx",
+    {
+      mounts: false,
+      why: "period start/end are DAYS; the panel states no time and stores none",
+    },
+  ],
+  [
+    "components/quick-entry/QuickDoseList.tsx",
+    {
+      mounts: false,
+      why:
+        "DEBT, named: a confirm writes intake_item_logs.recorded_at from the tap " +
+        "and the sheet cannot state a late one — the correction row (#2206) is the " +
+        "repair today; migrates on touch",
+    },
+  ],
+  [
+    "components/quick-entry/QuickSubstanceList.tsx",
+    {
+      mounts: false,
+      why: "DEBT, named: a unit tap writes its own instant with no way to state an earlier one; migrates on touch",
+    },
+  ],
+]);
+
+describe("the quick-log sheet's instant forms mount the control or argue (#3273)", () => {
+  const mounted = (rel: string) =>
+    fs.readFileSync(path.join(REPO, rel), "utf8").includes("<WhenControl");
+
+  it.each([...SHEET_INSTANT_FORMS])("%s", (rel, entry) => {
+    // Both directions, because only one of them is the one that rots. A `mounts`
+    // entry going false is the regression the union exists to catch; an argued entry
+    // going true means the surface migrated and its argument is now a stale claim
+    // about a file that no longer matches it.
+    expect(mounted(rel), entry.why).toBe(entry.mounts);
+  });
+});
+
 describe("the time-input reader itself", () => {
   it("finds a multi-line tag whose attributes contain braces and arrows", () => {
     expect(

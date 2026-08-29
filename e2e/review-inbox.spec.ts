@@ -1,5 +1,7 @@
 import { test, expect } from "./fixtures";
 import { followLink, hydratedClick, openAllSyncDays } from "./helpers";
+import { loginAs } from "./nav";
+import { E2E_LOGIN_STRAVA, E2E_MEMBER_PASSWORD } from "./fixture-logins";
 
 // Dogfoods the Data → Review import inbox (the feature that motivated this tier).
 // After issue #208 the surface is split into sections; since #1880 the inbox order
@@ -38,9 +40,6 @@ test.describe("Data → Review import inbox", () => {
       "Sync failing"
     );
     await expect(
-      stravaCard.getByText(/Strava token refresh failed/)
-    ).toBeVisible();
-    await expect(
       stravaCard.getByTestId("source-consequence-strava")
     ).toContainText("New runs and rides have stopped arriving.");
     await expect(
@@ -49,13 +48,6 @@ test.describe("Data → Review import inbox", () => {
     const fullHistory = stravaCard.getByTestId("source-history-link-strava");
     await expect(fullHistory).toHaveAttribute("href", "/integrations/strava");
 
-    // THE duplicate-rendering tripwire: the failure reason appears exactly once on
-    // the whole Review surface — the #1772 disease (attention row + source card
-    // restating the same 401 with different buttons) stays dead. (Scoped to
-    // Strava's own message: the seeded Withings card has a 401 of its own.)
-    await expect(review.getByText(/Strava token refresh failed/)).toHaveCount(
-      1
-    );
     // And the escalated source is NOT listed again under Connected sources.
     await expect(
       review.getByTestId("connected-sources").getByTestId("source-strava")
@@ -121,6 +113,46 @@ test.describe("Data → Review import inbox", () => {
       downloadBtn.click(),
     ]);
     expect(saved.suggestedFilename()).toMatch(/^sync-payload-\d+\.json$/);
+  });
+
+  test("a Strava dead-token fixture matches the reconnect copy and affordance (#3837)", async ({
+    browser,
+  }) => {
+    const member = await loginAs(browser, {
+      username: E2E_LOGIN_STRAVA,
+      password: E2E_MEMBER_PASSWORD,
+    });
+    try {
+      await member.goto("/data?section=review");
+      const review = member.getByTestId("review-inbox");
+      const strava = review
+        .getByTestId("needs-attention-sources")
+        .getByTestId("source-strava");
+
+      await expect(strava.getByTestId("sync-status-strava")).toContainText(
+        "Needs reconnect"
+      );
+      await expect(
+        strava.getByText("Reconnect Strava to resume syncing.", {
+          exact: true,
+        })
+      ).toBeVisible();
+      await expect(
+        review.getByText("Reconnect Strava to resume syncing.", { exact: true })
+      ).toHaveCount(1);
+
+      const reconnect = strava.getByRole("link", {
+        name: "Reconnect Strava",
+        exact: true,
+      });
+      await expect(reconnect).toBeVisible();
+      await expect(reconnect).toHaveAttribute("href", "/integrations/strava");
+      await expect(
+        strava.getByRole("button", { name: "Sync now" })
+      ).toHaveCount(0);
+    } finally {
+      await member.context().close();
+    }
   });
 
   test("the sync provenance drill-in lists written records with working deep links (#1333)", async ({
@@ -236,13 +268,8 @@ test.describe("Data → Review import inbox", () => {
     await expect(history).toBeVisible();
     await openAllSyncDays(history);
 
-    // The newest Strava event is a failure — its reason shows, as it always did.
-    await expect(
-      history.getByText(/Strava token refresh failed \(401\)/)
-    ).toBeVisible();
-    // And the OLDER failure, which is not the latest event, states its own distinct
-    // reason too. That row used to render a bare "Sync failed" with no explanation
-    // anywhere in the UI.
+    // A historical failure states its reason. That row used to render a bare
+    // "Sync failed" with no explanation anywhere in the UI.
     await expect(
       history.getByText(/rate limit reached \(429\): daily quota exhausted/)
     ).toBeVisible();

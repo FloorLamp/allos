@@ -14,6 +14,7 @@ import {
   isRecognizedCarePlanStatus,
 } from "@/lib/care-plan-upcoming";
 import type { CarePlanItem, FormResult } from "@/lib/types";
+import InlineError from "@/components/InlineError";
 
 // The sentinel the two pickers use for "none of the above, let me type it". It is
 // never stored — the paired text field owns the posted value.
@@ -292,11 +293,7 @@ export default function CarePlanForm({
           defaultValue={item?.notes ?? ""}
         />
       </div>
-      {error && (
-        <p role="alert" className="text-sm text-rose-600 dark:text-rose-400">
-          {error}
-        </p>
-      )}
+      <InlineError>{error}</InlineError>
       <div className="flex gap-2" data-testid="care-plan-form-actions">
         <div
           className="grid w-full sm:w-auto"

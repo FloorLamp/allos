@@ -1,5 +1,6 @@
 import type { ReactNode } from "react";
 import type { MomentSection } from "@/lib/moment-sections";
+import Disclosure from "@/components/Disclosure";
 
 // One dose slot, rendered at the height this moment gives it (#2652 behavior 1). The
 // DECISION is entirely `buildMomentSections` (pure, no DOM); this component only spends
@@ -67,12 +68,11 @@ export default function MomentSlot({
   }
 
   return (
-    <details
+    <Disclosure
       data-testid="moment-slot"
       data-slot={section.bucket}
       data-slot-state={section.state}
       data-expanded="false"
-      className="group"
     >
       <summary
         aria-label={section.line}
@@ -107,6 +107,6 @@ export default function MomentSlot({
       <div className="divide-y divide-black/5 dark:divide-white/5">
         {children}
       </div>
-    </details>
+    </Disclosure>
   );
 }

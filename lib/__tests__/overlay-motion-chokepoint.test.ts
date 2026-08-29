@@ -125,6 +125,14 @@ const RAW_DRAG_LISTENER_ALLOW = new Map<string, string>([
     "components/ImageCropper.tsx",
     "drags the crop box within a fixed frame — content manipulation, not an overlay gesture",
   ],
+  [
+    "components/IntradayChart.tsx",
+    "the day chart's horizontal ZOOM-BRUSH (#1068/#1515): the drag selects a minute RANGE on the chart's own axis — content manipulation, like ImageCropper's crop box — and it deliberately takes no pointer capture so the ticks and blocks underneath keep their clicks. `touch-pan-y` leaves the vertical scroll to the page, so there is no axis arbitration for the shared recognizer to do. FOUND BY THE WIDENED PATTERN BELOW when #3958 closed #2816's blind spot: it had been a third unlisted JSX recognizer the whole time",
+  ],
+  [
+    "components/JumpRailScrubber.tsx",
+    "the jump rail (#2657 item 4): its drag positions a DOCUMENT SCROLL OFFSET against a fold spine, not an overlay's own position, so there is no dismissal to classify and no axis to arbitrate (the strip carries `touch-none`). Same reasoning as the pull-to-refresh exception, with its own pure classifier in lib/timeline-scrubber.ts. Unlisted until #3958 only because rule 5 could not see a JSX-prop recognizer — that blind spot is closed below",
+  ],
 ]);
 
 // ── Rule 5b: portal dialogs allowed to host a form outside the converged host ─
@@ -577,15 +585,25 @@ describe("overlay motion chokepoint", () => {
     ).toEqual([]);
   });
 
+  // A RECOGNIZER IS A RECOGNIZER WHETHER IT IS ATTACHED IMPERATIVELY OR AS A PROP
+  // (#2816). This matched only `addEventListener("pointermove")` until #3958, and React
+  // components overwhelmingly attach `onPointerMove={…}` instead — so the one guard
+  // that forces "classify or justify" on a new drag recognizer was blind to the
+  // spelling this repo actually reaches for. TimelineScrubber landed a whole second
+  // recognizer through the hole with CI green; ImageCropper has the same JSX shape and
+  // was exempt only because somebody listed it by hand. Both spellings now count.
+  const RAW_DRAG_PATTERNS = [
+    /addEventListener\(\s*["'](?:pointermove|touchmove)["']/,
+    /\bon(?:PointerMove|TouchMove)\s*=/,
+  ];
+
   it("only the shared recognizer reads a raw drag pointer stream", () => {
     const offenders: string[] = [];
     for (const { rel, text } of FILES) {
       if (RAW_DRAG_LISTENER_ALLOW.has(rel)) continue;
       text.split("\n").forEach((line, i) => {
         const code = line.replace(/\/\/.*$/, "");
-        if (
-          /addEventListener\(\s*["'](?:pointermove|touchmove)["']/.test(code)
-        ) {
+        if (RAW_DRAG_PATTERNS.some((pattern) => pattern.test(code))) {
           offenders.push(`${rel}:${i + 1}`);
         }
       });
@@ -600,6 +618,25 @@ describe("overlay motion chokepoint", () => {
         "its reason, the way overscroll pull-to-refresh does. See " +
         "docs/internals/overlays.md."
     ).toEqual([]);
+  });
+
+  // PROVE THE PATTERN CAN SEE (#2816). A green sweep over a complying tree says nothing
+  // about what the sweep can see, and the JSX half was invisible for months while the
+  // imperative half passed. Both spellings are fed through here, and the benign
+  // neighbours that must stay quiet are fed through with them — a guard that fired on
+  // `onPointerDown` or on the word "pointermove" in prose would be deleted within a
+  // week, taking the real guard with it.
+  it("the raw-drag pattern sees both spellings and neither neighbour", () => {
+    const seen = (line: string) =>
+      RAW_DRAG_PATTERNS.some((pattern) => pattern.test(line));
+    expect(seen('el.addEventListener("pointermove", onMove);')).toBe(true);
+    expect(seen('window.addEventListener("touchmove", onMove);')).toBe(true);
+    expect(seen("onPointerMove={(event) => track(event.clientY)}")).toBe(true);
+    expect(seen("onTouchMove={handleMove}")).toBe(true);
+    // Neighbours: a down/up handler is not a stream, and a mention is not a call.
+    expect(seen("onPointerDown={(event) => start(event)}")).toBe(false);
+    expect(seen("onPointerUp={endDrag}")).toBe(false);
+    expect(seen('const name = "pointermove";')).toBe(false);
   });
 
   // THE #2774 DEFECT, stated where a new surface will meet it. ModalShell

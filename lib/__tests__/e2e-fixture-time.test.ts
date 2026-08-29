@@ -3,6 +3,7 @@ import path from "node:path";
 import { fileURLToPath } from "node:url";
 import ts from "typescript-api";
 import { describe, expect, it } from "vitest";
+import { perTestCeiling } from "../../vitest.timeouts";
 import { FIXTURE_TIMEZONE_OVERRIDES } from "../../e2e/fixture-timezones";
 
 // Fixture time is resolved against a clock AND a zone. A string built for one and
@@ -156,8 +157,8 @@ const INTERPOLATED_DATETIME_ALLOW: Record<
     why: "BBT samples state only a day, so both endpoints intentionally use metric_samples' documented zoneless day-midnight shape.",
   },
   "e2e/seed/sleep.ts": {
-    count: 5,
-    why: "Legacy SRI/import rows are explicit-Z synthetic provider instants; newer profile-local sleep fixtures below already use zonedWallTimeToUtc.",
+    count: 1,
+    why: "The remaining interpolation is an Oura daily score's provider-defined UTC-midnight natural key. The SRI corpus resolves profile-local windows through sriSleepWindow.",
   },
   "e2e/seed/trends.ts": {
     count: 26,
@@ -182,16 +183,33 @@ function isInsideSafeBuilder(node: ts.Node): boolean {
   return false;
 }
 
-// Both scans DECLARE their budget rather than inheriting vitest's 5 s default,
-// because a tree scan's cost is set by the tree and not by this file (#2511: the
-// timezone scan timed out at 5 s on a loaded `test-unit` runner while measuring
-// 1.17 s at rest). Measured after the pre-filters above, on an otherwise idle
-// 4-core container: 245–269 ms for the timezone scan, 27–36 ms for the date-time
-// scan, 3/3 runs each. At `retries: 0` a declared budget masks nothing — a broken
-// invariant still fails; only a busy runner stops doing so.
-const SCAN_TIMEOUT_MS = 30_000;
+// Both scans DECLARE their budget rather than inheriting it silently, because a
+// tree scan's cost is set by the tree and not by this file (#2511: the timezone scan
+// timed out at vitest's old implicit 5 s default on a loaded `test-unit` runner
+// while measuring 1.17 s at rest). At `retries: 0` a declared budget masks nothing —
+// a broken invariant still fails; only a busy runner stops doing so.
+//
+// IT WAS `30_000`, WHICH `ALLOS_VITEST_TIMEOUT_MS` COULD NOT REACH (#4002), and the
+// measurement says the tier ceiling is the right number rather than a smaller or a
+// larger one: the whole file reads 1 481 ms across these 2 tests on the green CI run
+// at f1742fa6d (557 ms and 62 ms on the dispatch box under coverage), so 15 000 ms
+// is ~10x the slower of them — the margin vitest.timeouts.ts derives. The
+// declaration stays in the options form rather than being deleted because deleting
+// it makes prettier hug both `it(...)` calls and reflow 206 lines of untouched test
+// body, which is the diff #3999 measured and avoided.
+const SCAN_TIMEOUT_MS = perTestCeiling(1, "green");
 
 describe("e2e fixture time declarations", () => {
+  it("routes the complete SRI and profile-1 undated-document corpora through their profile clocks", () => {
+    const sleepSeed = text(path.join(E2E, "seed", "sleep.ts"));
+    const importSeed = text(path.join(E2E, "seed", "imports.ts"));
+    expect(sleepSeed.match(/sriSleepWindow\(/g)).toHaveLength(1);
+    expect(
+      importSeed.match(/profileOneUndatedDocumentUploadedAt\(/g)
+    ).toHaveLength(1);
+    expect(importSeed.match(/profileOneDocumentUpload\("/g)).toHaveLength(10);
+  });
+
   it(
     "routes every per-profile timezone override through the declared registry",
     { timeout: SCAN_TIMEOUT_MS },

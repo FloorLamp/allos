@@ -10,7 +10,7 @@
 //     write core is profileId-first, so this is a named case, not new code),
 //   - deleteProfile's OWNED_TABLES sweep clears practice_logs.
 
-import { describe, it, expect } from "vitest";
+import { describe, it, expect, beforeEach } from "vitest";
 import { db, today } from "@/lib/db";
 import {
   deletePractice,
@@ -26,6 +26,9 @@ import { logUpcomingPractice } from "@/app/(app)/upcoming/actions";
 import { getWellnessPractices } from "@/lib/queries/wellness";
 import { practiceSignalKey } from "@/lib/practice";
 import { createLogin, createProfile, actAs, fd } from "./harness";
+import { now as clockNow } from "@/lib/clock";
+import { zonedDateParts } from "@/lib/date";
+import { getTimezone } from "@/lib/settings";
 
 function rows(profileId: number): { practice: string; date: string }[] {
   return db
@@ -454,5 +457,82 @@ describe("logPractice action (#1259)", () => {
       outcome: { kind: "logged", count: 1, date: today(profile.id) },
     });
     expect(rows(profile.id)).toHaveLength(1);
+  });
+});
+
+// ── #3273: the quick-log sheet states an earlier session ────────────────────────
+//
+// The sheet mounts LogPracticeButton without `showDetails`, so the only surface that
+// carried a time was a modal it deliberately does not open — a late-logged session
+// wore the tap instant and #4009's correction had to repair it afterwards. The button
+// now posts `time` from a collapsed WhenControl, and the whole contract is the THREE
+// states of that one field, because `logPractice` reads them differently: absent means
+// "stamp the tap instant", present-and-empty means "nobody said", present means the
+// statement. Only the first is the untouched one-tap path.
+describe("logPractice — the stated session time (#3273)", () => {
+  const NOW_ISO = "2026-07-08T21:30:00Z";
+  let priorNow: string | undefined;
+  beforeEach(() => {
+    priorNow = process.env.ALLOS_TEST_NOW;
+    process.env.ALLOS_TEST_NOW = NOW_ISO;
+    return () => {
+      if (priorNow == null) delete process.env.ALLOS_TEST_NOW;
+      else process.env.ALLOS_TEST_NOW = priorNow;
+    };
+  });
+
+  function logged(profileId: number) {
+    return db
+      .prepare(
+        `SELECT date, time, duration_min, notes, logged_via FROM practice_logs
+          WHERE profile_id = ? ORDER BY id`
+      )
+      .all(profileId) as {
+      date: string;
+      time: string | null;
+      duration_min: number | null;
+      notes: string | null;
+      logged_via: string;
+    }[];
+  }
+
+  it.each([
+    // field on the post          expected `time`   what the sheet is doing
+    [
+      undefined,
+      "tap",
+      "an untouched one-tap — the affordance was never opened",
+    ],
+    ["07:05", "07:05", 'a stated "Happened earlier?" minute'],
+    ["", null, "the field present and empty — nobody said, honestly stored"],
+  ])("time=%s writes %s", async (field, expected, _why) => {
+    const login = createLogin();
+    const profile = createProfile(`when-${expected}`, login.id);
+    actAs(login, profile);
+    const tapHhmm = zonedDateParts(getTimezone(profile.id), clockNow()).hhmm;
+
+    await logPractice(fd({ practice: "Sauna", time: field }));
+
+    const [row] = logged(profile.id);
+    expect(row.time).toBe(expected === "tap" ? tapHhmm : expected);
+    // Nothing ELSE moved. The one-tap row is the row it always was — the duration and
+    // notes a details submit would carry stay absent, and the day is still today's.
+    expect(row).toMatchObject({
+      date: today(profile.id),
+      duration_min: null,
+      notes: null,
+    });
+  });
+
+  it("keeps multi-session days additive across statements", async () => {
+    const login = createLogin();
+    const profile = createProfile("two-stated", login.id);
+    actAs(login, profile);
+
+    await logPractice(fd({ practice: "Sauna", time: "07:05" }));
+    const second = await logPractice(fd({ practice: "Sauna", time: "19:40" }));
+
+    expect(second).toMatchObject({ kind: "logged", count: 2 });
+    expect(logged(profile.id).map((r) => r.time)).toEqual(["07:05", "19:40"]);
   });
 });

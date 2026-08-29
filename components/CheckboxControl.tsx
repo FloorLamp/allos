@@ -12,9 +12,12 @@ export interface CheckboxControlProps {
   "data-testid"?: string;
 }
 
-// The one bare-checkbox primitive. The associated label owns the phone/coarse
-// target while the native box stays visibly 16px; callers cannot change either
-// geometry or the control's tone.
+// The bare-checkbox primitive: a native box named by `aria-label`, with no visible
+// text of its own. The associated label owns the phone/coarse target while the box
+// stays visibly 16px; callers cannot change either geometry or the control's tone.
+// `BrandedCheckbox` in `components/activity-form/ActivityPartsList` is the other
+// shape — a brand-filled box with text beside it — and the two are not converged
+// because the accessible name comes from a different place in each.
 export default function CheckboxControl({
   label,
   checked,

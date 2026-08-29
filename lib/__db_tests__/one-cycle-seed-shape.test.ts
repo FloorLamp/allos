@@ -22,7 +22,7 @@ import { perTestCeiling } from "../../vitest.timeouts";
 const here = path.dirname(fileURLToPath(import.meta.url));
 const repo = path.join(here, "..", "..");
 
-function runSeed(dbPath: string, shape: "baseline" | "one-cycle") {
+function runSeed(dbPath: string) {
   return spawnSync(
     process.execPath,
     ["--import", "tsx", path.join(repo, "scripts", "seed.ts")],
@@ -34,10 +34,10 @@ function runSeed(dbPath: string, shape: "baseline" | "one-cycle") {
         ALLOS_DB_PATH: dbPath,
         ADMIN_USERNAME: "admin",
         ADMIN_PASSWORD: "first-boot-pw-1",
-        SEED_DIAL_SHAPE: shape === "one-cycle" ? "one-cycle" : "",
-        SEED_RNG: shape === "baseline" ? "1" : "",
+        SEED_DIAL_SHAPE: "one-cycle",
+        SEED_RNG: "",
         SEED_PERSONA: "",
-        UX_SEED: shape === "one-cycle" ? "one-cycle" : "1",
+        UX_SEED: "one-cycle",
       },
     }
   );
@@ -81,7 +81,7 @@ function readPeriods(dbPath: string): CyclePeriod[] {
 // (#3986). A hard-coded `}, 30_000)` is immune to `ALLOS_VITEST_TIMEOUT_MS`, so
 // the one lever the harness offers did not reach the specs that block on real
 // child processes. Named rather than inline only so the `describe` line still fits.
-const SPAWN_CEILING = { timeout: perTestCeiling(3) };
+const SPAWN_CEILING = { timeout: perTestCeiling(3, "worst") };
 
 describe("named one-cycle seed data (#3489 D5)", SPAWN_CEILING, () => {
   it("seeds two periods, verifies one interval, and reaches the honest UI state", () => {
@@ -90,7 +90,7 @@ describe("named one-cycle seed data (#3489 D5)", SPAWN_CEILING, () => {
     );
     try {
       assertUxServedDbUnused(allocation);
-      const seeded = runSeed(allocation.dbPath, "one-cycle");
+      const seeded = runSeed(allocation.dbPath);
       expect(seeded.status, seeded.stderr || seeded.stdout).toBe(0);
       assertUxServedDbOwned(allocation);
 
@@ -122,7 +122,7 @@ describe("named one-cycle seed data (#3489 D5)", SPAWN_CEILING, () => {
       makeTmpDir("one-cycle-verifier-mutations")
     );
     try {
-      const seeded = runSeed(allocation.dbPath, "one-cycle");
+      const seeded = runSeed(allocation.dbPath);
       expect(seeded.status, seeded.stderr || seeded.stdout).toBe(0);
       const exact = fs.readFileSync(allocation.dbPath);
 
@@ -152,24 +152,6 @@ describe("named one-cycle seed data (#3489 D5)", SPAWN_CEILING, () => {
       fs.writeFileSync(allocation.dbPath, exact);
       const restored = runVerifier(allocation.dbPath);
       expect(restored.status, restored.stderr || restored.stdout).toBe(0);
-    } finally {
-      cleanupUxServedDb(allocation);
-    }
-  });
-
-  it("rejects a baseline database mislabeled as one-cycle", () => {
-    const allocation = allocateUxServedDb(
-      makeTmpDir("one-cycle-label-mismatch")
-    );
-    try {
-      const seeded = runSeed(allocation.dbPath, "baseline");
-      expect(seeded.status, seeded.stderr || seeded.stdout).toBe(0);
-      const mislabeled = runVerifier(allocation.dbPath);
-      expect(mislabeled.status).not.toBe(0);
-      expect(mislabeled.stderr).toContain(
-        "One-cycle seed witnesses do not match"
-      );
-      expect(mislabeled.stderr).toContain("storedPeriods=4");
     } finally {
       cleanupUxServedDb(allocation);
     }

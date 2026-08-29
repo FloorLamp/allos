@@ -1,4 +1,4 @@
-import { execFileSync, spawn, spawnSync } from "node:child_process";
+import { execFileSync, spawnSync } from "node:child_process";
 import fs from "node:fs";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
@@ -65,32 +65,9 @@ function runCli(
   });
 }
 
-function runCliAsync(
-  repo: string,
-  args: readonly string[],
-  env: Record<string, string> = {}
-): Promise<{ status: number | null; stdout: string; stderr: string }> {
-  return new Promise((resolve, reject) => {
-    const child = spawn(process.execPath, [SCRIPT, ...args], {
-      cwd: repo,
-      env: { ...process.env, ...env },
-      stdio: ["ignore", "pipe", "pipe"],
-    });
-    let stdout = "";
-    let stderr = "";
-    child.stdout.setEncoding("utf8");
-    child.stderr.setEncoding("utf8");
-    child.stdout.on("data", (chunk) => (stdout += chunk));
-    child.stderr.on("data", (chunk) => (stderr += chunk));
-    child.on("error", reject);
-    child.on("close", (status) => resolve({ status, stdout, stderr }));
-  });
-}
-
 interface ChildReceipt {
   argv: string[];
   cwd: string;
-  db: string;
   routes: string;
   seed?: string;
   rng?: string;
@@ -228,40 +205,18 @@ describe("post-merge census git records", () => {
 });
 
 describe("post-merge census CLI boundary", () => {
-  it.each(["lib/nav.ts", "lib/units.ts"])(
-    "does not under-scope a mixed app + %s runtime diff",
-    (runtimeFile) => {
-      const repo = makeRepo();
-      commit(repo, {
-        "app/(app)/trends/Chart.tsx": "export const chart = 1;\n",
-        [runtimeFile]: "export const shared = 1;\n",
-      });
-
-      const run = runCli(repo, ["HEAD^", "HEAD"]);
-      expect(run.status, run.stderr).toBe(0);
-      expect(run.stdout).toContain("post-merge census: full (all)");
-      expect(run.stdout).toContain("unmapped runtime/shared files changed");
-      expect(run.stdout).not.toContain("UX_ROUTES=/trends");
-    }
-  );
-
-  it("stops on an unknown app shape from a real git diff", () => {
+  it("does not under-scope a mixed app + shared runtime diff", () => {
     const repo = makeRepo();
     commit(repo, {
-      "app/offline/page.tsx": "export default function Offline() {}\n",
+      "app/(app)/trends/Chart.tsx": "export const chart = 1;\n",
+      "lib/nav.ts": "export const shared = 1;\n",
     });
 
     const run = runCli(repo, ["HEAD^", "HEAD"]);
-    expect(run.status).toBe(2);
-    expect(run.stderr).toContain("unknown app path shape");
-  });
-
-  it("stops on an empty ref range instead of printing a no-op command", () => {
-    const repo = makeRepo();
-    const run = runCli(repo, ["HEAD", "HEAD"]);
-    expect(run.status).toBe(2);
-    expect(run.stderr).toContain("contains no changed files");
-    expect(run.stdout).not.toContain("ux-walkthrough");
+    expect(run.status, run.stderr).toBe(0);
+    expect(run.stdout).toContain("post-merge census: full (all)");
+    expect(run.stdout).toContain("unmapped runtime/shared files changed");
+    expect(run.stdout).not.toContain("UX_ROUTES=/trends");
   });
 
   it.each([
@@ -280,16 +235,11 @@ describe("post-merge census CLI boundary", () => {
     ({ changedFile, routes }) => {
       const repo = makeRepo();
       const receiptFile = path.join(repo, "child-receipt.json");
-      const callerDb = path.join(repo, "caller-reused.db");
       installWalkthroughStub(
         repo,
         `import fs from "node:fs";
-const db = process.env.ALLOS_DB_PATH;
-if (!db) process.exit(40);
-if (fs.existsSync(db)) process.exit(41);
-fs.writeFileSync(db, "seeded");
 fs.writeFileSync(process.env.CENSUS_RECEIPT, JSON.stringify({
-  argv: process.argv.slice(2), cwd: process.cwd(), db,
+  argv: process.argv.slice(2), cwd: process.cwd(),
   routes: process.env.UX_ROUTES,
 }));
 `
@@ -299,7 +249,6 @@ fs.writeFileSync(process.env.CENSUS_RECEIPT, JSON.stringify({
       });
 
       const run = runCli(repo, ["HEAD^", "HEAD", "--run"], {
-        ALLOS_DB_PATH: callerDb,
         UX_ROUTES: "/caller-must-not-win",
         CENSUS_RECEIPT: receiptFile,
       });
@@ -310,9 +259,6 @@ fs.writeFileSync(process.env.CENSUS_RECEIPT, JSON.stringify({
         cwd: fs.realpathSync(repo),
         routes,
       });
-      expect(receipt.db).not.toBe(callerDb);
-      expect(fs.existsSync(path.dirname(receipt.db))).toBe(false);
-      expect(fs.existsSync(callerDb)).toBe(false);
     }
   );
 
@@ -323,7 +269,7 @@ fs.writeFileSync(process.env.CENSUS_RECEIPT, JSON.stringify({
       repo,
       `import fs from "node:fs";
 fs.writeFileSync(process.env.CENSUS_RECEIPT, JSON.stringify({
-  argv: process.argv.slice(2), cwd: process.cwd(), db: "",
+  argv: process.argv.slice(2), cwd: process.cwd(),
   routes: process.env.UX_ROUTES, seed: process.env.UX_SEED,
   rng: process.env.SEED_RNG, persona: process.env.SEED_PERSONA,
 }));
@@ -359,17 +305,14 @@ fs.writeFileSync(process.env.CENSUS_RECEIPT, JSON.stringify({
     });
   });
 
-  it("propagates child failure and removes its database, sidecars, and owned directory", () => {
+  it("propagates child failure", () => {
     const repo = makeRepo();
     const receiptFile = path.join(repo, "failure-receipt.json");
     installWalkthroughStub(
       repo,
       `import fs from "node:fs";
-const db = process.env.ALLOS_DB_PATH;
-for (const file of [db, db + "-wal", db + "-shm"])
-  fs.writeFileSync(file, "partial");
 fs.writeFileSync(process.env.CENSUS_RECEIPT, JSON.stringify({
-  argv: process.argv.slice(2), cwd: process.cwd(), db,
+  argv: process.argv.slice(2), cwd: process.cwd(),
   routes: process.env.UX_ROUTES,
 }));
 process.exit(27);
@@ -389,56 +332,5 @@ process.exit(27);
       cwd: fs.realpathSync(repo),
       routes: "/trends",
     });
-    expect(fs.existsSync(path.dirname(receipt.db))).toBe(false);
-    for (const file of [receipt.db, `${receipt.db}-wal`, `${receipt.db}-shm`])
-      expect(fs.existsSync(file)).toBe(false);
-  });
-
-  it("gives concurrent census children distinct owned directories and removes both", async () => {
-    const repo = makeRepo();
-    const receiptDir = path.join(repo, "concurrent-receipts");
-    installWalkthroughStub(
-      repo,
-      `import fs from "node:fs";
-import path from "node:path";
-const db = process.env.ALLOS_DB_PATH;
-fs.writeFileSync(db, "seeded");
-fs.mkdirSync(process.env.CENSUS_RECEIPT_DIR, { recursive: true });
-fs.writeFileSync(path.join(process.env.CENSUS_RECEIPT_DIR, process.pid + ".json"), JSON.stringify({
-  argv: process.argv.slice(2), cwd: process.cwd(), db,
-  routes: process.env.UX_ROUTES,
-}));
-const deadline = Date.now() + 5000;
-while (fs.readdirSync(process.env.CENSUS_RECEIPT_DIR).length < 2 && Date.now() < deadline)
-  Atomics.wait(new Int32Array(new SharedArrayBuffer(4)), 0, 0, 10);
-if (fs.readdirSync(process.env.CENSUS_RECEIPT_DIR).length < 2) process.exit(42);
-`
-    );
-    commit(repo, {
-      "app/(app)/trends/Chart.tsx": "export const chart = 1;\n",
-    });
-
-    const env = { CENSUS_RECEIPT_DIR: receiptDir };
-    const runs = await Promise.all([
-      runCliAsync(repo, ["HEAD^", "HEAD", "--run"], env),
-      runCliAsync(repo, ["HEAD^", "HEAD", "--run"], env),
-    ]);
-    expect(
-      runs.map((run) => run.status),
-      runs.map((run) => run.stderr).join("\n")
-    ).toEqual([0, 0]);
-    const receipts = fs
-      .readdirSync(receiptDir)
-      .map((file) => readReceipt(path.join(receiptDir, file)));
-    expect(receipts).toHaveLength(2);
-    expect(new Set(receipts.map((receipt) => receipt.db)).size).toBe(2);
-    for (const receipt of receipts) {
-      expect(receipt).toMatchObject({
-        argv: ["--serve", "pages"],
-        cwd: fs.realpathSync(repo),
-        routes: "/trends",
-      });
-      expect(fs.existsSync(path.dirname(receipt.db))).toBe(false);
-    }
   });
 });

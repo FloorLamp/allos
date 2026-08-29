@@ -15,14 +15,12 @@ import {
   type FoodEventPlacement,
 } from "@/lib/food-log-write";
 import { logUsualFoodCore } from "@/lib/food-usual-write";
-import {
-  judgeEatenAt,
-  parseEatingTimeChoice,
-  resolveEatingTimeChoice,
-} from "@/lib/food-eating-time";
+import { EATEN_AT_FUTURE_SKEW_MS, judgeEatenAt } from "@/lib/food-eating-time";
+import { statedHourInstant } from "@/lib/correction-time";
+import { normalizeClockTime } from "@/lib/vitals-input";
 import type { StatedTimeRefusal, StatedTimeVerdict } from "@/lib/stated-time";
 import { now as clockNow } from "@/lib/clock";
-import { utcInstant, zonedWallTimeToUtc } from "@/lib/date";
+import { dateStrInTz, utcInstant, zonedWallTimeToUtc } from "@/lib/date";
 import { getTimezone } from "@/lib/settings";
 import { deleteFrequencyTargetRow } from "@/lib/frequency-target-delete";
 import {
@@ -173,28 +171,63 @@ export async function logFoodServing(
   }
   const fields = parseFields(formData, profileId);
   if (!fields) return formError("Unknown food group.");
-  // The eating-time statement (#2053), when the user made one. The form carries the
-  // CHOICE ("now" or an absolute local hour), never a client instant: the server resolves
-  // it against its own clock and the profile's timezone, so a page that has been open for
-  // an hour cannot stamp a stale "now" and no browser has to convert a profile-local hour
-  // with its own locale. An absent or unusable choice records NO eating time — the
-  // validate-never-drop rule: the serving always lands, the statement is what is lost,
-  // and since #2296 the answer SAYS SO rather than dropping it in silence.
+  // The eating-time statement (#2053), when the user made one. The form carries an
+  // ABSOLUTE profile-local wall time ("HH:MM") and never a client instant: the server
+  // resolves it against its own clock and the profile's timezone, so no browser has to
+  // convert a profile-local hour with its own locale. Since #3273 that is the ONE shape
+  // this field takes — the bar's hand-rolled "now" word went with its chip group, and
+  // the shared control's Now button fills a wall time the person can see instead. An
+  // absent or unusable statement records NO eating time — the validate-never-drop rule:
+  // the serving always lands, the statement is what is lost, and since #2296 the answer
+  // SAYS SO rather than dropping it in silence.
   //
   // ONE clock read for the whole decision, and one VERDICT rather than a nullable
   // instant (#2296): "nobody stated a time" and "a time was stated and refused" are
-  // different answers, and only the second is something to tell the user about. A
-  // choice that won't resolve at all (a wall time inside a DST gap) is a refusal too,
-  // not an absence — it was stated.
+  // different answers, and only the second is something to tell the user about. A time
+  // that won't resolve at all (a wall time inside a DST gap) is a refusal too, not an
+  // absence — it was stated.
   const at = clockNow();
   const tz = getTimezone(profileId);
-  const choice = parseEatingTimeChoice(formData.get("occurred_at"));
-  const resolved = choice ? resolveEatingTimeChoice(choice, at, tz) : null;
-  const verdict: StatedTimeVerdict = !choice
+  const stated = normalizeClockTime(String(formData.get("occurred_at") ?? ""));
+  // THE DAY RULE GETS THE SAME CLOCK TOLERANCE THE ACCEPTANCE GATE DOES, and it has
+  // to since #3273 moved the offer client-side. `statedHourInstant` reads a wall time
+  // later than `now` as YESTERDAY's — right for a picker whose hours the server
+  // enumerated, wrong for a field the browser filled from its own clock. Measured: a
+  // 90-second skew re-dated the statement and lost it. One decision, one tolerance.
+  const resolved = stated
+    ? statedHourInstant(
+        stated,
+        new Date(at.getTime() + EATEN_AT_FUTURE_SKEW_MS),
+        tz
+      )
+    : null;
+  const judged: StatedTimeVerdict = !stated
     ? { kind: "unstated" }
     : resolved === null
       ? { kind: "refused", reason: "malformed" }
       : judgeEatenAt(resolved, tz, fields.date, at);
+  // THE REFUSAL IS RIGHT; ITS REASON WAS NOT. Past the tolerance a fast clock's wall
+  // time re-dates to yesterday and is refused for missing the row's day — correct to
+  // refuse, and re-anchoring on the row's date instead would make the backfill guard
+  // below vacuous. But "it isn't on that day" is untrue when the day is the one the
+  // person is standing in, and it blames the wrong machine. Same outcome, and the
+  // reason the queued path already reports for this.
+  //
+  // Both conditions carry weight: `aheadOfServer` separates a fast clock from an hour
+  // genuinely meant as yesterday's, and the row's date being today is what makes
+  // "that day" theirs — a real backfill off its day is still told so.
+  const localToday = dateStrInTz(tz, at);
+  const onToday = stated ? zonedWallTimeToUtc(tz, localToday, stated) : null;
+  const aheadOfServer =
+    onToday !== null &&
+    onToday.getTime() > at.getTime() + EATEN_AT_FUTURE_SKEW_MS;
+  const verdict: StatedTimeVerdict =
+    judged.kind === "refused" &&
+    judged.reason === "other-day" &&
+    aheadOfServer &&
+    fields.date === localToday
+      ? { kind: "refused", reason: "future" }
+      : judged;
   const outcome = logFoodServingCore(
     profileId,
     fields.group,
@@ -235,7 +268,7 @@ export async function logFoodServing(
     today(profileId)
   );
   revalidateRoute("/nutrition");
-  revalidateRoute("/nutrition/food-history");
+  revalidateRoute("/history");
   revalidateRoute("/trends");
   revalidateRoute("/timeline");
   revalidateRoute("/");
@@ -310,7 +343,7 @@ export async function undoFoodServing(
         : {}),
     };
   revalidateRoute("/nutrition");
-  revalidateRoute("/nutrition/food-history");
+  revalidateRoute("/history");
   revalidateRoute("/trends");
   revalidateRoute("/timeline");
   revalidateRoute("/");
@@ -379,7 +412,7 @@ export async function logUsualFood(
     day
   );
   revalidateRoute("/nutrition");
-  revalidateRoute("/nutrition/food-history");
+  revalidateRoute("/history");
   revalidateRoute("/trends");
   revalidateRoute("/timeline");
   revalidateRoute("/");
@@ -477,7 +510,7 @@ export async function updateFoodLogEvent(
   if (outcome.kind === "not-correctable")
     return formError("Protein logs are corrected from the protein total.");
   revalidateRoute("/nutrition");
-  revalidateRoute("/nutrition/food-history");
+  revalidateRoute("/history");
   revalidateRoute("/trends");
   revalidateRoute("/timeline");
   revalidateRoute("/");
@@ -516,7 +549,7 @@ export async function deleteFoodLogEvent(
   if (outcome.kind === "not-deletable")
     return formError("Protein logs are removed from the protein total.");
   revalidateRoute("/nutrition");
-  revalidateRoute("/nutrition/food-history");
+  revalidateRoute("/history");
   revalidateRoute("/trends");
   revalidateRoute("/timeline");
   revalidateRoute("/");

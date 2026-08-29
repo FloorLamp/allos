@@ -1,7 +1,7 @@
 import { test, expect } from "./fixtures";
 import type { Page } from "@playwright/test";
 import Database from "better-sqlite3";
-import { hydratedClick, settledClick } from "./helpers";
+import { hydratedClick, settledClick, settledSelect } from "./helpers";
 import { frozenNow, workerDbPath } from "./worker-env";
 
 // #1596: the food quick-adds — a one-tap food-group serving and the protein-grams
@@ -175,13 +175,10 @@ test("a stated eating time rides an offline serving through replay (#2053)", asy
   await page.goto("/nutrition");
   await expect(page.getByTestId("food-log-bar")).toBeVisible();
 
-  // State the time BEFORE going offline — the chips are local state, so the statement is
-  // made against a page that already rendered its server-resolved options.
-  await hydratedClick(page, page.getByTestId("food-eating-now"));
-  await expect(page.getByTestId("food-eating-now")).toHaveAttribute(
-    "aria-pressed",
-    "true"
-  );
+  // State the time BEFORE going offline — the control is local state, so the statement
+  // is made against a page that already rendered.
+  await hydratedClick(page, page.getByTestId("food-when-now"));
+  await expect(page.getByTestId("food-when-time")).not.toHaveValue("");
 
   await revealFoodGroup(page, "berries");
   const count = page.getByTestId("count-berries");
@@ -237,7 +234,19 @@ test("a stated eating time rides an offline serving through replay (#2053)", asy
 // measures a DEVICE divergence and never the suite's own real-vs-frozen gap. Twelve
 // hours is far past any run's own duration, so WHICH rule fires ("future", checked
 // first) is deterministic.
+//
+// SINCE #3273 THE CLOCK IS SET BEFORE THE STATEMENT, and that is the same defect one
+// step earlier. The bar now states through the shared when-control, which offers the
+// hours of a day and resolves them against the BROWSER's clock — so a device that
+// believes it is already tomorrow offers this day's late hours as though they were
+// past, and the capture carries an instant hours beyond the server's now. Setting the
+// clock after the fill would prove nothing now: the fill happens at fill time and the
+// user can see the absolute time it produced.
 const FAST_CLOCK_MS = 12 * 60 * 60_000;
+// An hour the fast-clocked browser believes is behind it and the server knows is
+// ahead: local time is pinned to 13:mm, so 23:00 today is ~10 hours in the server's
+// future while the +12h device reads the day as already over.
+const FAST_CLOCK_HOUR = "23:00";
 
 test("a fast device clock keeps the serving and the sync SAYS the time wasn't recorded (#2296)", async ({
   page,
@@ -246,22 +255,31 @@ test("a fast device clock keeps the serving and the sync SAYS the time wasn't re
   await page.goto("/nutrition");
   await expect(page.getByTestId("food-log-bar")).toBeVisible();
 
-  // The user states a time, exactly as in the passing #2053 case above.
-  await hydratedClick(page, page.getByTestId("food-eating-now"));
-  await expect(page.getByTestId("food-eating-now")).toHaveAttribute(
-    "aria-pressed",
-    "true"
+  // The broken clock, then a RELOAD: the control reads the browser's clock at render
+  // to decide which of the day's hours are already past, and setting the time under a
+  // mounted React tree changes nothing it has already rendered. The reload is what
+  // makes this a device that has believed the wrong time all along.
+  await context.clock.setSystemTime(
+    new Date(frozenNow().getTime() + FAST_CLOCK_MS)
   );
+  await page.reload();
+  await expect(page.getByTestId("food-log-bar")).toBeVisible();
 
   await revealFoodGroup(page, "berries");
   const count = page.getByTestId("count-berries");
   const before = Number((await count.textContent())?.trim() || "0");
   const baselineEventId = maxFoodEventId();
 
-  // The broken clock. Nothing else about the tap changes.
-  await context.clock.setSystemTime(
-    new Date(frozenNow().getTime() + FAST_CLOCK_MS)
-  );
+  // The user states a time, exactly as in the passing #2053 case above — except the
+  // device's own clock is what decided this hour was already behind them.
+  // Through the settled path: a bare selectOption on a controlled select can land
+  // before hydration and be reverted, and here that would silently withdraw the
+  // statement this test is entirely about.
+  const field = page.getByTestId("food-when-time");
+  const value = await field
+    .getByRole("option", { name: FAST_CLOCK_HOUR, exact: true })
+    .getAttribute("value");
+  await settledSelect(page, field, value ?? "");
 
   await context.setOffline(true);
   await hydratedClick(page, page.getByTestId("log-berries"));

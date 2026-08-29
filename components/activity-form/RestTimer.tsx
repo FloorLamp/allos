@@ -86,8 +86,8 @@ export default function RestTimer({
       // AudioContext unavailable/blocked — the visual "Rest done" cue stands in.
     }
     // The end-of-rest double-pulse — distinguishable through a pocket from the
-    // set-logged tick, and suppressed under prefers-reduced-motion (#1422).
-    haptic("timer-complete");
+    // `commit` tick, and suppressed under prefers-reduced-motion (#1422).
+    haptic("alert");
   }, [haptic]);
 
   const start = useCallback(

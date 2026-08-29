@@ -13,6 +13,7 @@ import {
 } from "@/lib/offline/queue";
 import { addBodyMetric } from "@/app/(app)/trends/body-actions";
 import { subjectActionLabel } from "@/lib/own-profile";
+import InlineError from "@/components/InlineError";
 
 // Inline weight quick-add for the dashboard weight presentation (#1042 phase 2).
 // Manual daily weighers had the app's highest-frequency action at its deepest
@@ -137,11 +138,7 @@ export default function WeightQuickAdd({
           {subjectActionLabel("Log", subjectName)}
         </SubmitButton>
       </div>
-      {error && (
-        <p role="alert" className="text-sm text-rose-600 dark:text-rose-400">
-          {error}
-        </p>
-      )}
+      <InlineError>{error}</InlineError>
     </form>
   );
 }

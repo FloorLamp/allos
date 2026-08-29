@@ -16,6 +16,7 @@ import {
   travelOfferText,
   travelPrompt,
   travelReturnOfferText,
+  zoneAtInstant,
   zonePlaceLabel,
   type TimezoneSwitch,
 } from "@/lib/travel-timezone";
@@ -306,6 +307,39 @@ describe("isExcusedSlot / isRepeatedSlot over a history", () => {
   it("excuses nothing when there is no history at all", () => {
     expect(isExcusedSlot([], "2026-05-01", EVENING)).toBe(false);
     expect(isRepeatedSlot([], "2026-05-01", EVENING)).toBe(false);
+  });
+});
+
+describe("zoneAtInstant — which zone a past instant was lived in (#4025)", () => {
+  // Out on the 1st, back on the 8th. The chain must end at the CURRENT zone or it is
+  // rejected whole, which is why every row below passes the zone the trip ends in.
+  const trip: TimezoneSwitch[] = [
+    { at: NOON_UTC, from: NY, to: TOKYO },
+    { at: "2026-05-08T14:00:00Z", from: TOKYO, to: NY },
+  ];
+
+  it.each([
+    // Before the outbound, during the trip, after the return — and the two boundary
+    // instants, which belong to the zone they LANDED in (the switch is instantaneous).
+    { at: "2026-04-30T00:00:00Z", expected: NY, why: "before the outbound" },
+    { at: NOON_UTC, expected: TOKYO, why: "at the outbound instant" },
+    { at: "2026-05-04T00:00:00Z", expected: TOKYO, why: "mid-trip" },
+    { at: "2026-05-08T14:00:00Z", expected: NY, why: "at the return instant" },
+    { at: "2026-06-01T00:00:00Z", expected: NY, why: "after the return" },
+  ])("$why → $expected", ({ at, expected }) => {
+    expect(zoneAtInstant(trip, NY, new Date(at))).toBe(expected);
+  });
+
+  // FAIL OPEN, exactly as every other consumer of this history does: a chain that does
+  // not lead to the current zone is rejected whole, and the answer is the current zone
+  // — which is the pre-#4025 behaviour rather than a guess built on a broken record.
+  it.each([
+    { name: "no history at all", switches: [] as TimezoneSwitch[] },
+    { name: "a chain that does not reach the current zone", switches: trip },
+  ])("$name → the current zone", ({ switches }) => {
+    expect(
+      zoneAtInstant(switches, HONOLULU, new Date("2026-04-30T00:00:00Z"))
+    ).toBe(HONOLULU);
   });
 });
 

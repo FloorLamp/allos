@@ -19,6 +19,7 @@ import DayHistory from "@/components/DayHistory";
 import PracticeBackfillLauncher from "@/components/practices/PracticeBackfillLauncher";
 import { daysBetweenDateStr, isRealIsoDate, shiftDateStr } from "@/lib/date";
 import { PRACTICE_LOG_DATE_WINDOW_DAYS } from "@/lib/practice-log";
+import { historyHref } from "@/lib/hrefs";
 
 export const dynamic = "force-dynamic";
 
@@ -146,7 +147,7 @@ export default async function WellnessPage(props: {
         <div className="mb-2 flex items-center justify-between gap-3">
           <h2 className="section-label">Your practices</h2>
           <Link
-            href="/wellness/practice-history"
+            href={historyHref({ kind: "practice" })}
             className="text-sm font-medium text-brand-700 hover:underline dark:text-brand-400"
             data-testid="practice-ledger-link"
           >

@@ -44,6 +44,7 @@ import { type DisplayFormatPrefs } from "@/lib/format-date";
 import type { HouseholdRollup } from "@/lib/queries";
 import type { WeightUnit } from "@/lib/settings";
 import type { Adherence, GoalHighlight, WeightTrend } from "@/lib/household";
+import Disclosure from "@/components/Disclosure";
 
 // One compact, at-a-glance card per profile on the household dashboard (issue
 // #31). The header is a submit button bound to openProfileAction — one click
@@ -306,9 +307,8 @@ function Attention({ data }: { data: HouseholdCardData }) {
               // A plain <details>: no persisted state, collapsed on every visit, and
               // the count is never hidden — the ALWAYS-PRESENT contract, not an
               // always-full one.
-              <details
+              <Disclosure
                 key={`aggregate:${node.kind}`}
-                className="group"
                 data-testid="household-dose-aggregate"
               >
                 <summary
@@ -339,7 +339,7 @@ function Attention({ data }: { data: HouseholdCardData }) {
                     />
                   ))}
                 </div>
-              </details>
+              </Disclosure>
             )
           )}
           {lowRefills.map((item) => (

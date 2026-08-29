@@ -20,6 +20,7 @@ import StatusBadge, { STATUS_TEXT_TONE, STATUS_TONE } from "./StatusBadge";
 import SyncTimestamp from "./SyncTimestamp";
 import SyncRowsDrilldown from "@/components/SyncRowsDrilldown";
 import RawPayloadDialog from "@/components/RawPayloadDialog";
+import Disclosure from "@/components/Disclosure";
 
 // The day-grouped sync history (#1991), rendered from PLAIN serializable views the
 // server projected — no better-sqlite3 row ever crosses into the client.
@@ -400,12 +401,11 @@ export default function SyncHistoryDays({
             key={day.day}
             className="border-t border-black/5 first:border-t-0 dark:border-white/5"
           >
-            <details
+            <Disclosure
               open={openDays.has(day.day)}
               onToggle={(event) =>
                 rememberDayOpen(day.day, event.currentTarget.open)
               }
-              className="group"
               data-testid={`sync-day-${day.day}`}
             >
               <summary
@@ -484,7 +484,7 @@ export default function SyncHistoryDays({
                   );
                 })}
               </ul>
-            </details>
+            </Disclosure>
           </li>
         ))}
       </ul>

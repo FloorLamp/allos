@@ -1,3 +1,5 @@
+import Disclosure from "@/components/Disclosure";
+
 export default function VisualizationDetails({
   label,
   items,
@@ -11,7 +13,7 @@ export default function VisualizationDetails({
   if (details.length === 0) return null;
 
   return (
-    <details
+    <Disclosure
       className="pointer-events-none relative z-10 mt-2 text-xs text-slate-500 dark:text-slate-400"
       data-testid={testId}
     >
@@ -26,6 +28,6 @@ export default function VisualizationDetails({
           <li key={`${index}:${detail}`}>{detail}</li>
         ))}
       </ul>
-    </details>
+    </Disclosure>
   );
 }

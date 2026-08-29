@@ -1,23 +1,16 @@
 "use client";
 
-import EquipmentRegistryLink from "./EquipmentRegistryLink";
-import InfoTooltipIcon from "@/components/InfoTooltipIcon";
-import IconButton from "@/components/IconButton";
-import Chip from "@/components/Chip";
 import FactChipRow, { FactChip } from "@/components/facts/FactChipRow";
+import IconButton from "@/components/IconButton";
 import { useEffect, useRef, useState } from "react";
 import type { Equipment } from "@/lib/types";
 import { isBarbell } from "@/lib/types";
 import type { UnitPrefs } from "@/lib/settings";
 import type { ExerciseHistoryMap } from "@/lib/queries";
 import {
-  isUnilateral,
   isTimed,
   isBodyweight,
   isBarbellLift,
-  variantOf,
-  composeVariant,
-  defaultEquipment,
   exerciseHistoryKey,
   loadKindOf,
 } from "@/lib/lifts";
@@ -44,9 +37,7 @@ import type { FormDeloadContext } from "@/lib/routines";
 import type { FormRecoveringContext } from "@/lib/injuries";
 import type { PlateauFormHint } from "@/lib/rule-findings";
 import { dismissTrainingObservation } from "@/app/(app)/training/actions";
-import { setRpeTrackingAction } from "@/app/(app)/training/activity-actions";
 import { pickSeedSessions } from "@/lib/exercise-window";
-import EquipmentQuickAdd, { categoryForVariant } from "./EquipmentQuickAdd";
 import { stepRpe, fmtRpe, rpeSummaryText, type RpeTracking } from "@/lib/rpe";
 import {
   dispWeight,
@@ -69,48 +60,12 @@ import {
   setPartial,
   sidePartial,
   blockedField,
-  blockedRing,
   partSetsSummary,
   type PartEntry,
   type SetEntry,
   type RepeatSourceSet,
   type PartFault,
 } from "./model";
-
-function BrandedCheckbox({
-  checked,
-  onChange,
-  inputTestId,
-  controlTestId,
-}: {
-  checked: boolean;
-  onChange: () => void;
-  inputTestId?: string;
-  controlTestId?: string;
-}) {
-  return (
-    <span className="relative inline-flex">
-      <input
-        type="checkbox"
-        checked={checked}
-        onChange={onChange}
-        data-testid={inputTestId}
-        className="peer sr-only"
-      />
-      <span
-        data-testid={controlTestId}
-        aria-hidden
-        className={`flex h-4 w-4 shrink-0 items-center justify-center rounded border transition peer-focus-visible:ring-2 peer-focus-visible:ring-brand-500 peer-focus-visible:ring-offset-1 dark:peer-focus-visible:ring-offset-ink-900 ${
-          checked
-            ? "border-brand-600 bg-brand-600 text-white dark:border-brand-500 dark:bg-brand-500"
-            : "border-black/20 bg-field text-transparent dark:border-white/20"
-        }`}
-      >
-        <IconCheck className="h-3 w-3" stroke={3} />
-      </span>
-    </span>
-  );
-}
 
 // Weight and reps share one symmetric control; stepReps keeps #1524's zero clamp.
 function StepperButton({
@@ -218,11 +173,9 @@ export default function StrengthSets({
   recoveringContext,
   plateauHints,
   rpeTracking,
-  onRpeTrackingChange,
   currentActivityId,
   editedDate,
   equipmentList,
-  onEquipmentCreated,
   showBodyweightPrompt,
   bwInput,
   bwSaving,
@@ -261,16 +214,12 @@ export default function StrengthSets({
   // Null is the whole opt-in: there is no scale, so there is no column — not a flag
   // this file remembers to consult (lib/rpe-tracking.ts holds the seam).
   rpeTracking: RpeTracking | null;
-  onRpeTrackingChange: (tracking: RpeTracking | null) => void;
   // The session the form is saving (edit row id, or the auto-saved create row
   // once it exists, else null) — always excluded from its own "Recent" list.
   currentActivityId: number | null;
   // The edited session's date in edit mode (else null): drops later sessions.
   editedDate: string | null;
   equipmentList: Equipment[];
-  // Append a just-created implement to the editor's local equipment state (#1611),
-  // so the row is pickable on every part of this open activity without a reload.
-  onEquipmentCreated: (equipment: Equipment) => void;
   showBodyweightPrompt: boolean;
   bwInput: string;
   bwSaving: boolean;
@@ -302,10 +251,6 @@ export default function StrengthSets({
   const [dismissedPlateaus, setDismissedPlateaus] = useState<Set<string>>(
     () => new Set()
   );
-  // One RPE opt-in round-trip at a time (#3335) — see toggleRpeTracking.
-  const [rpeToggling, setRpeToggling] = useState(false);
-  // Whether the in-form equipment quick-add is open (#1611).
-  const [addingEquipment, setAddingEquipment] = useState(false);
   // THE COMPACT SET NOTATION (#3336, #3228 item 4): a uniform run of completed sets
   // states itself — "60 kg × 8 × 3" — and the grid is one tap behind it.
   //
@@ -489,21 +434,6 @@ export default function StrengthSets({
     fd.set("dedupe_key", dedupeKey);
     void dismissTrainingObservation(fd);
   }
-  // Opting the effort column in or out from the editor itself (#3335) — no settings
-  // trip. Unlike the plateau dismissal above this does NOT hide optimistically: the
-  // scale the column renders over is minted server-side and nowhere else
-  // (lib/rpe-tracking.ts), so the tap waits for the action's answer rather than
-  // manufacturing one locally. One in-flight toggle at a time.
-  async function toggleRpeTracking() {
-    if (rpeToggling) return;
-    setRpeToggling(true);
-    try {
-      const { tracking } = await setRpeTrackingAction(!rpeTracking);
-      onRpeTrackingChange(tracking);
-    } finally {
-      setRpeToggling(false);
-    }
-  }
   const timed = isTimed(p.name);
   // A "content" fault means no set counts yet: flag the effort input (reps or
   // hold), and the weight too where a set needs one (not bodyweight/timed).
@@ -556,7 +486,6 @@ export default function StrengthSets({
   // Live version of the training log card's missed-target marker, judged by the
   // same shared rule the saved data will be (completed sets only).
   const intent = partIntent(p);
-  const showPerSide = isUnilateral(p.name);
   const targetStatus = judgeTargets(
     p.sets
       .filter((s) => setComplete(p.name, s, false))
@@ -589,36 +518,10 @@ export default function StrengthSets({
     // Re-run only when the exercise changes; the ref prevents mid-session re-seeds.
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [p.name]);
-  const variant = variantOf(p.name);
-  // For lifts with no selectable equipment variant, show their normal implement.
-  const defaultEq = variant ? null : defaultEquipment(p.name);
   // Plate builder applies to barbells: a user-defined barbell implement, or any
   // barbell lift (the "Barbell" variant chip, or plain lifts like Back Squat).
   const selectedEq = equipmentList.find((e) => e.id === p.equipmentId);
   const showPlate = isBarbell(selectedEq?.category) || isBarbellLift(p.name);
-  // Select a custom implement on this part, matching the lift NAME (and therefore
-  // its strength grouping) to the implement's type: a Barbell/Machine implement
-  // composes that variant, "Other" falls back to the base lift. `created` carries a
-  // row that isn't in `equipmentList` yet — the just-created one (#1611), since the
-  // parent's state update hasn't reached this render.
-  const selectEquipment = (id: number | null, created?: Equipment) => {
-    if (id != null) {
-      const v = variantOf(p.name);
-      if (v) {
-        const row =
-          created?.id === id ? created : equipmentList.find((x) => x.id === id);
-        const cat = (row?.category ?? "").trim().toLowerCase();
-        const wantEquip =
-          cat === "barbell" ? "Barbell" : cat === "machine" ? "Machine" : null;
-        const name =
-          wantEquip !== null && v.group.equipment.includes(wantEquip)
-            ? composeVariant(v.group, wantEquip)
-            : v.group.name;
-        if (name !== p.name) onUpdatePartName(name);
-      }
-    }
-    onUpdatePart({ equipmentId: id });
-  };
   // Small button that opens the plate builder for a specific weight field.
   const plateButton = (si: number, field: "weight" | "weightRight") => (
     // Keep the set grid's established 28px plate COLUMN while IconButton owns a
@@ -764,106 +667,6 @@ export default function StrengthSets({
             </button>
           </div>
         </div>
-      )}
-      {/* The equipment row is UNGATED (#1611): it used to render only when the lift
-          had a variant/default implement or the profile already owned equipment,
-          which hid the only door to the registry from exactly the users who needed
-          it — a profile with no strength gear, and a traveller who must register the
-          hotel machine mid-workout. */}
-      <div
-        className={`mt-2 flex flex-wrap items-center gap-1.5 ${
-          fault === "equipment"
-            ? `-mx-1.5 -my-1 rounded-lg px-1.5 py-1 ${blockedRing}`
-            : ""
-        }`}
-      >
-        {variant &&
-          variant.group.equipment.map((eq) => {
-            // A variant equipment and a custom implement are mutually
-            // exclusive, so a variant chip is active only when no custom
-            // implement is chosen.
-            const active = variant.equipment === eq && p.equipmentId == null;
-            return (
-              <Chip
-                key={eq}
-                role="filter"
-                onClick={() => {
-                  onUpdatePartName(composeVariant(variant.group, eq));
-                  onUpdatePart({ equipmentId: null });
-                }}
-                pressed={active}
-              >
-                {eq}
-              </Chip>
-            );
-          })}
-        {/* This lift's default implement — click to clear any custom
-              implement and use the default; highlighted while it's active. */}
-        {defaultEq && (
-          <Chip
-            role="filter"
-            onClick={() => onUpdatePart({ equipmentId: null })}
-            pressed={p.equipmentId == null}
-          >
-            {defaultEq}
-          </Chip>
-        )}
-        {/* User-defined implement: a compact dropdown sharing the chip row.
-              Selecting one drops any variant equipment (resets to the base). */}
-        {equipmentList.length > 0 && (
-          <select
-            value={p.equipmentId ?? ""}
-            data-testid="strength-equipment-select"
-            onChange={(e) =>
-              selectEquipment(e.target.value ? Number(e.target.value) : null)
-            }
-            className="input w-auto px-2.5 text-xs"
-          >
-            <option value="">Equipment</option>
-            {equipmentList.map((eq) => (
-              <option key={eq.id} value={eq.id}>
-                {eq.name}
-              </option>
-            ))}
-          </select>
-        )}
-        {/* Compact in-form creation (#1611) — the travel-workout path. Registering
-            the hotel machine here keeps the in-progress sets intact AND gives it a
-            distinct equipment id, which is what makes its history/seed separate from
-            the home machine's (#1610). */}
-        {!addingEquipment && (
-          <button
-            type="button"
-            onClick={() => setAddingEquipment(true)}
-            data-testid="strength-equipment-add"
-            className="btn-ghost px-2.5 text-xs"
-          >
-            + Equipment
-          </button>
-        )}
-        {/* Full management stays on /equipment — the same same-app door
-            ActivityEquipmentPicker renders for non-strength activities (#592). */}
-        <EquipmentRegistryLink testId="strength-equipment-link">
-          {equipmentList.length === 0 ? "Add equipment →" : "Manage equipment"}
-        </EquipmentRegistryLink>
-      </div>
-      {addingEquipment && (
-        <EquipmentQuickAdd
-          // Default the category from the lift's built-in variant when it's
-          // unambiguous ("Machine Chest Press" → Machine); otherwise the field is
-          // empty and required rather than guessed.
-          defaultCategory={categoryForVariant(variant?.equipment ?? defaultEq)}
-          unit={units.weightUnit}
-          onCreated={(eq) => {
-            // Editor-local state gains the row (so every OTHER part of this same
-            // open activity can pick it too) and the current part selects it
-            // immediately — no reopen, no re-entered sets.
-            onEquipmentCreated(eq);
-            selectEquipment(eq.id, eq);
-            setAddingEquipment(false);
-          }}
-          onCancel={() => setAddingEquipment(false)}
-        />
       )}
       {recent.length > 0 && (
         <div
@@ -1037,92 +840,6 @@ export default function StrengthSets({
           >
             <IconX className="h-3.5 w-3.5" stroke={2} />
           </IconButton>
-        </div>
-      )}
-      {/* One options row: the per-side toggle (unilateral lifts), the declared
-          intent — planned reps, or an AMRAP ("to failure") plan — and the RPE
-          opt-in. Intent is optional; without it, no hit/missed-target judgment is
-          made. Checking per-side hides the intent controls (per-side parts
-          carry no status), but the row itself stays.
-
-          The RPE opt-in rides here rather than in Settings (#3335): this row is
-          already "what this part records", so the column is discoverable at the
-          moment someone wants it. It is the one control here that is PROFILE-wide
-          — per-side and intent belong to the part — which its label says.
-
-          `!timed` is what guarantees the opt-in is REACHABLE on every rep-based
-          part. For almost all of them it changes nothing — a rep-based part is
-          normally either unilateral (showPerSide) or bilateral (intent.applies,
-          which is `!isTimed && !perSide`). The gap it closes is the part whose
-          NAME is not unilateral but whose loaded sets carry right-side values, so
-          groupEditSets marked it perSide: showPerSide is false (name-based) and
-          applies is false (perSide-based), and before this the row — and with it
-          the opt-in — had nowhere to appear. */}
-      {(showPerSide || intent.applies || !timed) && (
-        <div className="mt-2 flex flex-wrap items-center gap-x-4 gap-y-1 text-xs font-medium text-slate-500 dark:text-slate-400">
-          {showPerSide && (
-            <label className="flex cursor-pointer items-center gap-2">
-              <BrandedCheckbox
-                checked={p.perSide}
-                onChange={() => onUpdatePart({ perSide: !p.perSide })}
-                inputTestId="per-side-checkbox"
-                controlTestId="per-side-control"
-              />
-              Track sides separately
-            </label>
-          )}
-          {intent.applies && (
-            <>
-              <label className="flex items-center gap-1.5">
-                Target reps
-                <input
-                  type="number"
-                  min="1"
-                  value={p.targetReps}
-                  disabled={p.toFailure}
-                  onChange={(e) =>
-                    onUpdatePart({
-                      targetReps: stripNonPositive(e.target.value),
-                    })
-                  }
-                  placeholder="—"
-                  className="input w-16 px-2 py-1 disabled:opacity-40"
-                />
-              </label>
-              <label className="flex cursor-pointer items-center gap-1.5">
-                <BrandedCheckbox
-                  checked={p.toFailure}
-                  onChange={() => onUpdatePart({ toFailure: !p.toFailure })}
-                  inputTestId="to-failure-checkbox"
-                  controlTestId="to-failure-control"
-                />
-                To failure
-              </label>
-            </>
-          )}
-          {/* Rep-based sets only — a timed hold's effort IS its duration, so there
-              is nothing for a rating to add. */}
-          {!timed && (
-            <span className="inline-flex items-center gap-1">
-              <label
-                className={`flex items-center gap-2 ${
-                  rpeToggling ? "cursor-progress opacity-60" : "cursor-pointer"
-                }`}
-              >
-                <BrandedCheckbox
-                  checked={!!rpeTracking}
-                  onChange={() => void toggleRpeTracking()}
-                  inputTestId="rpe-tracking-checkbox"
-                  controlTestId="rpe-tracking-control"
-                />
-                Rate effort (RPE)
-              </label>
-              <InfoTooltipIcon
-                label="RPE means rate of perceived exertion (5–10, optional). It adds an effort rating to every set row, now and in future sessions."
-                data-testid="rpe-help"
-              />
-            </span>
-          )}
         </div>
       )}
       {/* THE COMPACT SET NOTATION (#3336). A uniform run of completed sets reads as the

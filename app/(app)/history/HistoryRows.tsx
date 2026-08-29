@@ -1,0 +1,606 @@
+"use client";
+
+import { useState, type FormEvent, type ReactNode } from "react";
+import Link from "next/link";
+import {
+  IconApple,
+  IconFlame,
+  IconPill,
+  IconRipple,
+  IconScaleOutline,
+} from "@tabler/icons-react";
+import DateField from "@/components/DateField";
+import HistoricalDoseForm from "@/components/medications/HistoricalDoseForm";
+import LoggedEventRow, {
+  LOGGED_EVENT_LIST,
+  LOGGED_EVENT_ROW,
+  LOGGED_EVENT_TRAILING,
+} from "@/components/LoggedEventRow";
+import OverflowMenu, {
+  MENU_ITEM,
+  MENU_ITEM_DANGER,
+} from "@/components/OverflowMenu";
+import { useConfirm } from "@/components/ConfirmDialog";
+import { useFormatPrefs } from "@/components/FormatPrefsProvider";
+import { useToast } from "@/components/Toast";
+import { useUndoableDelete } from "@/components/useUndoableDelete";
+import {
+  doseOptionsFor,
+  type DoseLedgerItem,
+} from "@/components/intake/dose-ledger-entry";
+import { deleteAdministration } from "@/app/(app)/nutrition/intake-actions";
+import {
+  deleteFoodLogEvent,
+  updateFoodLogEvent,
+} from "@/app/(app)/nutrition/actions";
+import {
+  editPracticeSession,
+  removePracticeSession,
+} from "@/app/(app)/wellness/actions";
+import {
+  deleteSubstanceDailyTotalAction,
+  updateSubstanceDailyTotalAction,
+} from "@/app/(app)/medical/substance-use/actions";
+import {
+  deleteMetricReading,
+  updateMetricReading,
+} from "@/app/(app)/trends/reading-actions";
+import { FOOD_GROUPS } from "@/lib/food-groups";
+import { FOOD_SLOTS } from "@/lib/food-slot";
+import { HISTORY_KIND_LABELS, type HistoryRow } from "@/lib/history-format";
+
+// THE RECORD'S ROWS (#3958 phase 1) — one line, at every viewport.
+//
+// THE ONE-LINE RULE IS A DELIBERATE EXCEPTION to the #3671 compact-card default, and
+// the owner argued it from what this surface is FOR: scanning many rows. So there is
+// no tap-to-disclose here — what truncates first is the detail segment, and a row's
+// long content lives on the record's own page behind the title link. That is also why
+// the rows are `<li>`s on `LoggedEventRow` (#3891's identity half) rather than a
+// `ResponsiveTable`: a table's card mode exists to STACK a row onto several lines,
+// which is the thing this surface may not do.
+//
+// WHAT THE ⋯ DOES, AND WHAT IT MAY NOT DO. Every branch below posts to the Server
+// Action that domain already had — `deleteAdministration`, `updateFoodLogEvent`,
+// `editPracticeSession`, `updateSubstanceDailyTotalAction`, `updateMetricReading` —
+// and renders that domain's own form where one exists. NO NEW WRITE PATH: the page is
+// a second door onto five write cores, not a sixth core. Each of those actions
+// re-checks write access server-side, so the menu below is an affordance and never the
+// gate.
+//
+// AND IT IS ACTING-PROFILE ONLY. In `?view=everyone` the merged feed carries other
+// members' rows, and every one of these actions resolves ITS profile from the session's
+// acting profile — so a ⋯ on somebody else's row would either write to the wrong
+// subject or refuse. The row renders read-only instead (`canEdit` below), which is the
+// honest form of #2106's "⋯ additionally requires write access on the row's profile"
+// until those cores take a subject.
+
+const KIND_GLYPH = {
+  dose: IconPill,
+  food: IconApple,
+  practice: IconRipple,
+  substance: IconFlame,
+  body: IconScaleOutline,
+} as const;
+
+// The domain's own delete, adapted to the ONE undoable-delete contract every "remove
+// a logged event" in the app answers to (owner ruling 2026-08-05).
+async function removeFoodServing(fd: FormData) {
+  const outcome = await deleteFoodLogEvent(fd);
+  return outcome.ok
+    ? { undoId: outcome.undoId }
+    : { undoId: null, error: outcome.error };
+}
+
+async function removeSubstanceDay(fd: FormData) {
+  const outcome = await deleteSubstanceDailyTotalAction(fd);
+  return outcome.kind === "deleted"
+    ? { undoId: outcome.undoId }
+    : { undoId: null, error: outcome.error };
+}
+
+export default function HistoryRows({
+  rows,
+  actingProfileId,
+  canWrite,
+  doseItems,
+  maxDate,
+  defaultTime,
+  subjectNames,
+  rowClassName = "",
+  showGlyphs = true,
+}: {
+  rows: HistoryRow[];
+  actingProfileId: number;
+  canWrite: boolean;
+  /** Every intake item this profile owns — the dose form's picker and dose options. */
+  doseItems: DoseLedgerItem[];
+  maxDate: string;
+  defaultTime: string;
+  /** Whose row it is, in `?view=everyone`. Empty in single view (#534). */
+  subjectNames: Record<number, string>;
+  /** The jump rail's lane, spent by the ROW rather than by the band around it. */
+  rowClassName?: string;
+  /**
+   * Whether the leading kind glyph is drawn at all (#4045 §3), extending #3958's own
+   * rule that "the glyph column collapses entirely in views that render no glyphs".
+   * A glyph differentiates rows; filtered to ONE kind every row wears the same apple,
+   * which carries no information and spends the row's leading column to say nothing.
+   * The caller decides, because the question is about the VIEW and not about the rows
+   * this list happens to hold: a single-kind All view is still All, and its next row
+   * could be any kind.
+   */
+  showGlyphs?: boolean;
+}) {
+  const prefs = useFormatPrefs();
+  const confirm = useConfirm();
+  const undoable = useUndoableDelete();
+  const toast = useToast();
+  const [editingId, setEditingId] = useState<string | null>(null);
+  const [menuOpenId, setMenuOpenId] = useState<string | null>(null);
+  const [pendingId, setPendingId] = useState<string | null>(null);
+  const itemById = new Map(doseItems.map((item) => [item.id, item]));
+
+  const canEdit = (row: HistoryRow) =>
+    canWrite && row.edit != null && row.profileId === actingProfileId;
+
+  // The ⋯'s accessible name, and no two rows alike (#2615/#3937): the identity plus
+  // the whole when-cell, because two doses of one item on one day are told apart only
+  // by the clock.
+  const menuName = (row: HistoryRow) =>
+    [row.title, row.clock ?? row.date].filter(Boolean).join(" — ");
+
+  async function remove(row: HistoryRow) {
+    const edit = row.edit;
+    if (!edit) return;
+    const ok = await confirm({
+      title: `Delete ${HISTORY_KIND_LABELS[row.kind].toLowerCase().replace(/s$/, "")}?`,
+      message: `Remove ${menuName(row)} from the record. You can undo this.`,
+      confirmLabel: "Delete",
+      danger: true,
+    });
+    if (!ok) return;
+    setPendingId(row.id);
+    if (editingId === row.id) setEditingId(null);
+    const fd = new FormData();
+    try {
+      switch (edit.kind) {
+        case "dose":
+          fd.set("log_id", String(edit.logId));
+          await undoable(deleteAdministration, fd, {
+            deletedMessage: "Dose deleted.",
+          });
+          break;
+        case "food":
+          fd.set("event_id", String(edit.eventId));
+          await undoable(removeFoodServing, fd, {
+            deletedMessage: "Serving removed",
+          });
+          break;
+        case "practice":
+          fd.set("id", String(edit.sessionId));
+          await undoable(removePracticeSession, fd, {
+            deletedMessage: "Session removed",
+          });
+          break;
+        case "substance":
+          fd.set("substance", edit.substance);
+          fd.set("id", String(edit.rowId));
+          await undoable(removeSubstanceDay, fd, {
+            deletedMessage: "Entry removed",
+          });
+          break;
+        case "body":
+          fd.set("kind", edit.slug);
+          fd.set("target", edit.target);
+          await undoable(deleteMetricReading, fd, {
+            deletedMessage: "Reading removed",
+          });
+          break;
+      }
+    } catch {
+      toast("Couldn't remove that entry.", { tone: "error" });
+    } finally {
+      setPendingId(null);
+    }
+  }
+
+  // The correction form, per kind, exactly as that domain already draws it. The dose
+  // one IS the domain's component (#2228's amend contract, seeded from the row's
+  // STATED instant and nothing else); the other four are the same small field sets
+  // their ledgers carried, posting the same actions.
+  function editForm(row: HistoryRow, done: () => void): ReactNode {
+    const edit = row.edit;
+    if (!edit) return null;
+    const submitting = pendingId === row.id;
+
+    async function post(
+      event: FormEvent<HTMLFormElement>,
+      run: (fd: FormData) => Promise<{ ok: boolean; error?: string }>
+    ) {
+      event.preventDefault();
+      const fd = new FormData(event.currentTarget);
+      setPendingId(row.id);
+      const outcome = await run(fd);
+      setPendingId(null);
+      if (!outcome.ok) {
+        toast(outcome.error ?? "Couldn't save that change.", { tone: "error" });
+        return;
+      }
+      toast("Corrected.");
+      done();
+    }
+
+    const buttons = (
+      <div className="flex items-end gap-2">
+        <button className="btn" type="submit" disabled={submitting}>
+          {submitting ? "Saving…" : "Save"}
+        </button>
+        <button className="btn-ghost" type="button" onClick={done}>
+          Cancel
+        </button>
+      </div>
+    );
+
+    switch (edit.kind) {
+      case "dose": {
+        const item = itemById.get(edit.itemId);
+        return (
+          <HistoricalDoseForm
+            itemId={edit.itemId}
+            itemName={row.title}
+            doses={item ? doseOptionsFor(item, prefs) : []}
+            maxDate={maxDate}
+            defaultTime={defaultTime}
+            asNeeded={item?.asNeeded ?? false}
+            courseBound={edit.itemKind === "medication"}
+            editing={{
+              logId: edit.logId,
+              doseId: edit.doseId,
+              date: row.date,
+              statedAt: edit.statedAt,
+              amount: edit.amount,
+            }}
+            onDone={done}
+          />
+        );
+      }
+      case "food":
+        return (
+          <form
+            className="grid gap-2 sm:grid-cols-2"
+            onSubmit={(event) =>
+              void post(event, async (fd) => {
+                fd.set("event_id", String(edit.eventId));
+                // MOVING A SERVING MOVES THE (DAY, WALL-TIME) PAIR, rather than
+                // stranding a stated eating instant on a different profile-local
+                // day. An unchanged row omits the patch so its stored precision
+                // stays byte-identical, and a logged-at-only row has no eating-time
+                // statement to invent.
+                const nextDate = String(fd.get("date") ?? "");
+                if (
+                  nextDate !== row.date &&
+                  edit.clockKind === "stated" &&
+                  edit.clock
+                ) {
+                  fd.set("occurred_at", edit.clock);
+                }
+                return updateFoodLogEvent(fd);
+              })
+            }
+          >
+            <label className="text-xs text-slate-500 dark:text-slate-400">
+              Date
+              <DateField
+                name="date"
+                defaultValue={row.date}
+                max={maxDate}
+                required
+                inputClassName="mt-1 w-full"
+              />
+            </label>
+            <label className="text-xs text-slate-500 dark:text-slate-400">
+              Food group
+              <select
+                name="group_key"
+                defaultValue={edit.groupKey}
+                className="input mt-1 w-full"
+              >
+                {FOOD_GROUPS.map((group) => (
+                  <option key={group.slug} value={group.slug}>
+                    {group.name}
+                  </option>
+                ))}
+              </select>
+            </label>
+            <label className="text-xs text-slate-500 dark:text-slate-400">
+              Meal
+              <select
+                name="meal_slot"
+                defaultValue={edit.mealSlot}
+                className="input mt-1 w-full"
+              >
+                {FOOD_SLOTS.map((slot) => (
+                  <option key={slot}>{slot}</option>
+                ))}
+              </select>
+            </label>
+            {buttons}
+          </form>
+        );
+      case "practice":
+        return (
+          <form
+            className="grid gap-2 sm:grid-cols-2"
+            onSubmit={(event) =>
+              void post(event, async (fd) => {
+                fd.set("id", String(edit.sessionId));
+                const outcome = await editPracticeSession(fd);
+                return outcome.kind === "updated"
+                  ? { ok: true }
+                  : { ok: false, error: "Couldn't save that session." };
+              })
+            }
+          >
+            <label className="text-xs text-slate-500 dark:text-slate-400">
+              Date
+              <DateField
+                name="date"
+                defaultValue={row.date}
+                required
+                inputClassName="mt-1 w-full"
+              />
+            </label>
+            {/* THE SESSION'S TIME RIDES ALONG UNCHANGED, AND IT IS THE STORED
+                COLUMN. `editPracticeSession` REWRITES every field it reads, so
+                omitting one erases it — but posting `row.sortTime` back instead was
+                worse than erasing: that is `bestKnownInstant`, which falls back to
+                `created_at` for a quick-path tick with no stated time, so correcting
+                a DURATION laundered the filing clock into the event column and the
+                row stopped saying "logged 19:43". `edit.statedTime` is
+                `practice_logs.time` and nothing else — the same value
+                `PracticeSessionHistory` posts. (A raw <input type="time"> here would
+                be an eleventh hand-rolled "when did this happen" (#2236), which the
+                ratchet in lib/__tests__/time-input-scan.test.ts refuses; correcting a
+                session's clock stays on the practice card, where the full editor is.) */}
+            <input type="hidden" name="time" value={edit.statedTime ?? ""} />
+            <label className="text-xs text-slate-500 dark:text-slate-400">
+              Duration (minutes)
+              <input
+                type="number"
+                name="duration_min"
+                min={1}
+                defaultValue={edit.durationMin ?? ""}
+                className="input mt-1 w-full"
+              />
+            </label>
+            <label className="text-xs text-slate-500 dark:text-slate-400 sm:col-span-2">
+              Notes
+              <input
+                type="text"
+                name="notes"
+                defaultValue={edit.notes ?? ""}
+                className="input mt-1 w-full"
+              />
+            </label>
+            {buttons}
+          </form>
+        );
+      case "substance":
+        return (
+          <form
+            className="grid gap-2 sm:grid-cols-2"
+            onSubmit={(event) =>
+              void post(event, async (fd) => {
+                fd.set("substance", edit.substance);
+                fd.set("id", String(edit.rowId));
+                const outcome = await updateSubstanceDailyTotalAction(fd);
+                return outcome.kind === "updated"
+                  ? { ok: true }
+                  : { ok: false, error: "Couldn't save that entry." };
+              })
+            }
+          >
+            <label className="text-xs text-slate-500 dark:text-slate-400">
+              Date
+              <DateField
+                name="date"
+                defaultValue={row.date}
+                max={maxDate}
+                required
+                inputClassName="mt-1 w-full"
+              />
+            </label>
+            <label className="text-xs text-slate-500 dark:text-slate-400">
+              Amount
+              <input
+                type="number"
+                name="amount"
+                min={1}
+                defaultValue={edit.amount}
+                className="input mt-1 w-full"
+              />
+            </label>
+            {/* Same rewrite-everything contract as the practice edit above: the
+                action reads `notes` and stores what it finds, so a form without the
+                field would silently clear it. */}
+            <label className="text-xs text-slate-500 dark:text-slate-400 sm:col-span-2">
+              Notes
+              <input
+                type="text"
+                name="notes"
+                defaultValue={edit.notes ?? ""}
+                className="input mt-1 w-full"
+              />
+            </label>
+            {buttons}
+          </form>
+        );
+      case "body":
+        return (
+          <form
+            className="grid gap-2 sm:grid-cols-2"
+            onSubmit={(event) =>
+              void post(event, async (fd) => {
+                fd.set("kind", edit.slug);
+                fd.set("target", edit.target);
+                if (edit.unit) fd.set("weight_unit", edit.unit);
+                return updateMetricReading(fd);
+              })
+            }
+          >
+            <label className="text-xs text-slate-500 dark:text-slate-400">
+              Value
+              <input
+                type="number"
+                step="any"
+                name="value"
+                defaultValue={edit.value}
+                className="input mt-1 w-full"
+                required
+              />
+            </label>
+            {buttons}
+          </form>
+        );
+    }
+  }
+
+  return (
+    // `band` (app/globals.css) is what a hand-rolled `rounded-xl border bg-surface`
+    // frame says when it is really a BAND: below `sm` it goes full-bleed and drops
+    // its side border and radius (#3673/#3920). The rows then re-spend the page
+    // gutter through `card-gutter-action`, which is the SHARED tier for that step —
+    // a per-file `max-sm:px-*` here would be the second density convention #3466
+    // exists to prevent, and its desktop half (`sm:px-3`) is the row primitive's own
+    // value, so nothing above `sm` moves. Without `band` this list would draw the
+    // per-surface card frame the flat ban removed, on the one page built to be
+    // scanned.
+    <ul className={`${LOGGED_EVENT_LIST} band`} data-testid="history-rows">
+      {rows.map((row) => {
+        const Glyph = KIND_GLYPH[row.kind];
+        const subject = subjectNames[row.profileId];
+        if (editingId === row.id) {
+          return (
+            <li
+              key={row.id}
+              data-testid="history-row-editing"
+              className={`band card-gutter-action border-t border-(--divider) py-2 first:border-t-0 ${rowClassName}`}
+            >
+              {editForm(row, () => setEditingId(null))}
+            </li>
+          );
+        }
+        return (
+          <li
+            key={row.id}
+            data-testid="history-row"
+            data-history-kind={row.kind}
+            data-history-row-id={row.id}
+            className={`${LOGGED_EVENT_ROW} band card-gutter-action`}
+          >
+            {/* THE RAIL'S LANE IS SPENT HERE, on an inner wrapper rather than as
+                padding on the row. The row's own `px-4` is a `max-sm:` variant, so a
+                base `pr-7` on the same element loses the cascade below `sm` — which is
+                exactly the width the rail exists for, and where the ⋯ then sat under
+                the strip. A wrapper has no padding of its own to lose to. */}
+            <div
+              className={`flex min-w-0 flex-1 items-center gap-2 ${rowClassName}`}
+            >
+              <LoggedEventRow
+                icon={
+                  showGlyphs ? (
+                    <Glyph
+                      aria-hidden
+                      className="h-4 w-4 shrink-0 text-slate-500 dark:text-slate-400"
+                      stroke={1.75}
+                    />
+                  ) : undefined
+                }
+              >
+                {/* ONE LINE, EVERY VIEWPORT: the cluster truncates unconditionally,
+                  which is what the row grammar buys with its disclosure. */}
+                <span className="flex min-w-0 items-baseline gap-1.5 truncate">
+                  {row.href ? (
+                    <Link
+                      href={row.href}
+                      className="shrink-0 text-link"
+                      data-testid="history-row-title"
+                    >
+                      {row.title}
+                    </Link>
+                  ) : (
+                    <span className="shrink-0" data-testid="history-row-title">
+                      {row.title}
+                    </span>
+                  )}
+                  {subject ? (
+                    <span
+                      className="shrink-0 text-xs font-normal text-slate-500 dark:text-slate-400"
+                      data-testid="history-row-subject"
+                    >
+                      {subject}
+                    </span>
+                  ) : null}
+                  {row.detail ? (
+                    <span
+                      className="min-w-0 truncate text-xs font-normal text-slate-500 dark:text-slate-400"
+                      data-testid="history-row-detail"
+                    >
+                      {row.detail}
+                    </span>
+                  ) : null}
+                </span>
+              </LoggedEventRow>
+              {row.clock ? (
+                <span
+                  className={`${LOGGED_EVENT_TRAILING} whitespace-nowrap`}
+                  data-testid="history-row-clock"
+                >
+                  {row.clock}
+                </span>
+              ) : null}
+              {canEdit(row) ? (
+                <OverflowMenu
+                  kind={HISTORY_KIND_LABELS[row.kind].replace(/s$/, "")}
+                  itemName={menuName(row)}
+                  open={menuOpenId === row.id}
+                  onOpenChange={(open) => setMenuOpenId(open ? row.id : null)}
+                >
+                  {({ close }) => (
+                    <>
+                      <button
+                        type="button"
+                        role="menuitem"
+                        data-testid="history-row-edit"
+                        onClick={() => {
+                          close();
+                          setEditingId(row.id);
+                        }}
+                        className={MENU_ITEM}
+                      >
+                        Edit
+                      </button>
+                      <button
+                        type="button"
+                        role="menuitem"
+                        data-testid="history-row-delete"
+                        disabled={pendingId === row.id}
+                        onClick={() => {
+                          close();
+                          void remove(row);
+                        }}
+                        className={MENU_ITEM_DANGER}
+                      >
+                        Delete
+                      </button>
+                    </>
+                  )}
+                </OverflowMenu>
+              ) : null}
+            </div>
+          </li>
+        );
+      })}
+    </ul>
+  );
+}

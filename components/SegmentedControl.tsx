@@ -3,6 +3,7 @@
 import Link from "next/link";
 import type { ReactNode } from "react";
 import type { AppRoute } from "@/lib/hrefs";
+import { useHaptics } from "@/components/useHaptics";
 
 // Shared compact selector used when several mutually-exclusive views fit on one
 // line. Extracted from the Sleep page's 14 / 30 / 90 day range control so dense
@@ -89,6 +90,7 @@ export default function SegmentedControl<T extends string | number>({
   fill?: boolean;
   className?: string;
 }) {
+  const haptic = useHaptics();
   return (
     <div
       role="group"
@@ -155,7 +157,14 @@ export default function SegmentedControl<T extends string | number>({
           <button
             key={option.value}
             type="button"
-            onClick={() => onChange?.(option.value)}
+            onClick={() => {
+              // `select` — a discrete choice changed under your finger (#3699).
+              // Only when it actually changes: re-tapping the segment you are
+              // already on is not a change, and a control that answers every touch
+              // teaches you to stop noticing it.
+              if (!active) haptic("select");
+              onChange?.(option.value);
+            }}
             aria-pressed={active}
             aria-label={option.accessibleLabel}
             data-segmented-option=""

@@ -8,6 +8,7 @@ import SubmitButton from "@/components/SubmitButton";
 import { useToast } from "@/components/Toast";
 import { useAddEntryModalClose } from "@/components/AddEntryPanel";
 import { PICKER_NAMES, vaccineDisplayName } from "@/lib/immunization-catalog";
+import InlineError from "@/components/InlineError";
 import {
   IMMUNIZATION_ROUTES,
   type FormResult,
@@ -249,11 +250,7 @@ export default function ImmunizationForm({
           </>
         )}
       </div>
-      {error && (
-        <p role="alert" className="text-sm text-rose-600 dark:text-rose-400">
-          {error}
-        </p>
-      )}
+      <InlineError>{error}</InlineError>
       <div className="flex gap-2" data-testid="immunization-form-actions">
         <div
           className="grid w-full sm:w-auto"

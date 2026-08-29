@@ -20,6 +20,7 @@ import {
   vi,
   beforeAll,
   afterAll,
+  afterEach,
   beforeEach,
 } from "vitest";
 import fs from "fs";
@@ -128,6 +129,17 @@ afterAll(() => {
 beforeEach(() => {
   extractMock.mockReset();
   _resetPreviewCache();
+});
+
+afterEach(async () => {
+  // Token fallbacks call the intentionally fire-and-forget reprocess path. Join
+  // that work before Vitest closes the worker RPC, then let its cleanup/logging
+  // continuation flush; otherwise it can write during teardown (issue #3952).
+  await vi.waitFor(() => {
+    expect(extractionSemaphore.inUse).toBe(0);
+    expect(extractionSemaphore.waiting).toBe(0);
+  });
+  await new Promise<void>((resolve) => setImmediate(resolve));
 });
 
 function importedRecordNames(profileId: number, docId: number): string[] {

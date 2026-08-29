@@ -87,14 +87,77 @@ main-red, not a survivor.
   CPU. Measured on a probe: an unresolved promise leaves utilization at 0.006, a
   spin at 1.0. Nothing prints on a green run.
 
+## Every remaining literal, and what each one was derived from (#4002)
+
+`ALLOS_VITEST_TIMEOUT_MS` is the harness's one lever, and a hard-coded `}, 30_000)`
+is immune to it — so the tests likeliest to need slack on a loaded box were exactly
+the ones it could not reach. Twenty sites remained after the sweep above. They are
+now either a `perTestCeiling(n, basis)` or gone, and the readings are CI's own,
+taken from the `test-unit` / `test-db` job logs of the green run at `f1742fa6d`.
+
+**Eleven were vestigial.** They were sized against vitest's implicit **5 s** default,
+which no longer exists — the tier ceiling is 15 000 ms — and every one of them had
+4x or more of margin against its CI reading without any declaration at all. Deleting
+the literal is what makes the lever reach them:
+
+| file                       | was            | CI reading (green, f1742fa6d)     | margin at 15 000 |
+| -------------------------- | -------------- | --------------------------------- | ---------------- |
+| `dispatch-stall` (5 sites) | 20 000         | 8 617 ms / 23 tests, those 5 ~99% | ~4.9x            |
+| `jsonl-log-file` (2 sites) | 10 000, 60 000 | 3 803 ms / 9 tests                | ~7.5x            |
+| `notify-log-sink`          | 60 000         | 1 785 ms / 16 tests               | ~9.7x            |
+| `page-header-coverage`     | 30 000         | 1 443 ms / 9 tests                | ~10x             |
+| `stateful-writes`          | 30 000         | 2 359 ms / 13 tests               | ~7x              |
+| `zip`                      | 30 000         | 2 016 ms / 7 tests                | ~9x              |
+| `delegated-card-css`       | 120 000        | 1 801 ms / 1 test                 | ~8x              |
+| `tick-cadence`             | 45 000         | 333 ms / 2 tests                  | ~45x             |
+
+**One was too THIN, not too generous.** `native-dialogs` walks app/** and
+components/** with the TypeScript AST under coverage: 12 427 ms for the file on CI,
+which the dispatch box splits 62/38 — about 7 700 ms for the larger scan against a
+15 000 ms ceiling. That is 1.9x, not ~4x. It is now `perTestCeiling(2)`.
+
+**`migration-reentry` was derived from the wrong reading.** #3999 took the 3 505 ms
+green run and recorded, in the same comment, that the test had crossed 15 000 ms on
+`main` at `11c7920b`. Against the observed worst that ceiling was 2x, on the one test
+whose work grows with every merge. It is now `perTestCeiling(4)`.
+
+**So `perTestCeiling` takes the basis as an argument.** A multiple derived from a
+green reading and one derived from an observed worst case are different claims and
+used to look identical in the source; `basis` is `"worst"` or `"green"`, it does no
+arithmetic, and `vitest-timeouts.test.ts` holds it mandatory with a
+`@ts-expect-error`. Where only a green reading exists, the source now says so.
+
+Two sites are deliberate exceptions. `chart-empty-states`' `CHART_CHUNK_WARMUP_MS`
+bounds a `findByText` INSIDE a hook, so it must stay BELOW the hook budget rather
+than scale with it. `dashboard-placement-manifest`'s hook has no CI reading at all —
+it runs in the `db-isolated` pool, whose lines fall outside the window `test-db`'s
+job log returns — so its multiple is stated as green-basis and unmeasured on CI.
+
 ## What is still open
 
-- The 8-workers-on-4-cores overlap is unfixed. `sequence.groupOrder` would
-  serialise the two pools; it could not be A/B'd on the dispatch box, where
-  ambient load from sibling lanes swamps the effect.
-- `strip-comments`' oracle sweep is 119 s — half of `test-unit`'s 231 s median —
-  and the pure tier has a family of whole-tree scanners that each independently
-  re-read and re-strip the entire source tree.
-- #3952's `EnvironmentTeardownError` is a **different** event: its run reported
-  `6898 passed` with `Errors 1 error` and no failing test at all. The signal above
-  does not reach it, because no test timed out.
+- `sequence.groupOrder` now runs the shared threads pool before the isolated
+  forks pool (#4000), so one Vitest process no longer sizes two simultaneous
+  pools against all four runner CPUs. The CI A/B used three grouped samples and
+  three exact-tree ungrouped `test-unit` samples (plus two exact-tree ungrouped
+  `test-db` samples):
+
+  | reading                   | ungrouped | grouped  | verdict    |
+  | ------------------------- | --------- | -------- | ---------- |
+  | `test-unit` job median    | 234 s     | 186 s    | 21% faster |
+  | `test-unit` Vitest median | 218.07 s  | 169.85 s | 22% faster |
+  | `strip-comments` median   | 32.741 s  | 25.545 s | 22% faster |
+  | `nav-routes` median       | 12.002 s  | 8.777 s  | 27% faster |
+  | `test-db` job median      | 195 s     | 184 s    | 6% faster  |
+  | `test-db` Vitest median   | 176.89 s  | 170.04 s | 4% faster  |
+
+  The per-file ranges did **not** tighten uniformly: the unit scanners still
+  moved with their neighbours inside the threads pool, and `migration-reentry`
+  was 3.367-8.042 s across grouped runs. Snapshot/restore tightened relative to
+  #3986's 3-4x sightings, but that is not enough to claim the general dispersion
+  mechanism is gone. The whole-job improvement decided the verdict: grouping
+  removed cross-pool oversubscription without charging either tier more wall
+  time. Dynamic co-residency within one pool remains.
+
+- `strip-comments`' whole-file time is now 24-35 s in the #4000 samples, no
+  longer the 119 s recorded above, but the pure tier still has a family of
+  whole-tree scanners that independently re-read and re-strip the source tree.

@@ -69,9 +69,9 @@ db_tier_paths=(
   middleware.ts
   scripts/
   ":(exclude)scripts/orchestration/"
-  # The ONE e2e file the DB+action tier imports: the synthetic video-container
-  # builder, which lives beside the specs that also use it. Named as a single file,
-  # not as `e2e/`, so a diff confined to the browser suite still spares this gate.
+  # The exact e2e fixture modules the DB+action tier imports. Named as individual
+  # files, not as `e2e/`, so a diff confined to the browser suite still spares
+  # this gate.
   e2e/video-fixture.ts
   # …and the seed's session mint plus the two modules it reaches, imported by
   # lib/__db_tests__/seed-auth-state.test.ts (#3948). Named as files for the same
@@ -80,6 +80,9 @@ db_tier_paths=(
   e2e/seed/session.ts
   e2e/worker-env.ts
   e2e/sync-instants.ts
+  # Profile-local fixture helpers imported by the date/zone invariant proofs.
+  e2e/pinned-timezone.ts
+  e2e/seed/profile-time-fixtures.ts
   vitest.db.config.ts
   vitest.isolation.ts
   vitest.timeouts.ts
@@ -218,8 +221,11 @@ echo
 echo "ALL GATES PASSED (format included). This script does not run Playwright."
 echo
 echo "E2E SPLITS IN TWO (policy changed 2026-08-21):"
-echo "  - specs you AUTHORED or EDITED: run locally at CI parity on your port range,"
+echo "  - specs you AUTHORED or EDITED: run locally with repeat scrutiny on your port range,"
 echo "    --repeat-each=3 --retries=0. That is where you can introduce a flake."
+echo "    If tests in one changed file share a profile or worker-scoped mutable state,"
+echo "    ALSO run that whole file with --workers=1 --repeat-each=1 --retries=0."
+echo "    Repeat scrutiny and shared-fixture parity answer different questions (#3653)."
 echo "  - the blast radius — specs you did not edit: DO NOT run them locally. Push"
 echo "    and read CI. It runs all 438 across 12 shards in 4-5 min; a local batch"
 echo "    sweep is ~30 min on four contended cores for less coverage."

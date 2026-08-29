@@ -2,12 +2,13 @@
 
 import { useActionState } from "react";
 import { generateSuggestions, type SuggestState } from "./intake-actions";
-import GenerateButton from "./GenerateButton";
+import SubmitButton from "@/components/SubmitButton";
 
 // AI-suggestions form. Uses useActionState so the server action's result (a
 // failure note, a no-key message, or "added N") is surfaced inline instead of
-// the request silently completing. GenerateButton (useFormStatus) drives the
-// pending spinner.
+// the request silently completing. The shared submit owner drives the pending
+// spinner: the suggestion call can take several seconds, and the copy says which
+// wait this is (#3752 deleted the one-use clone that said the same thing).
 export default function SuggestionsForm() {
   const [state, formAction] = useActionState<SuggestState | null, FormData>(
     generateSuggestions,
@@ -21,7 +22,7 @@ export default function SuggestionsForm() {
           className="input flex-1"
           placeholder="Optional: how you're feeling / training for… (leave blank to use recent labs)"
         />
-        <GenerateButton />
+        <SubmitButton pendingLabel="Generating…">Get suggestions</SubmitButton>
       </form>
       {state && (
         <p

@@ -689,7 +689,12 @@ export async function deleteLogin(formData: FormData): Promise<FamilyResult> {
     });
     if (!decision.ok) return { kind: "refused", reason: decision.reason };
 
-    db.prepare("DELETE FROM sessions WHERE login_id = ?").run(id);
+    // Through lib/auth rather than a raw DELETE, so this path leaves the same
+    // revocation tombstone every other one does (#3053) — a device holding this login's
+    // offline record learns at its next contact that the session was ENDED, not that it
+    // merely lapsed. The rows must go before the login does: the FK cascade would take
+    // them with no tombstone behind it.
+    destroyLoginSessions(id);
     db.prepare("DELETE FROM login_profiles WHERE login_id = ?").run(id);
     db.prepare("DELETE FROM login_settings WHERE login_id = ?").run(id);
     // Outstanding invite/reset tokens (issue #985) die with the login. They also

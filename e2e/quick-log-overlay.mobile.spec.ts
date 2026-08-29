@@ -1,11 +1,12 @@
 import { test, expect } from "./fixtures";
-import { type Page } from "@playwright/test";
+import { type Locator, type Page } from "@playwright/test";
 import Database from "better-sqlite3";
 import {
   expectPhoneTapTargets,
   hydratedClick,
   openMeasurementGroup,
   settledClick,
+  settledFill,
 } from "./helpers";
 import { openLogSheet, showLogRow } from "./log-sheet-helpers";
 import { loginAs, openCommandPalette } from "./nav";
@@ -22,6 +23,12 @@ import {
   MULTI_SHARED_PROFILE,
 } from "./fixture-logins";
 import { frozenNow, workerDbPath } from "./worker-env";
+import { pinnedTimezone } from "./pinned-timezone";
+import { zonedDateParts } from "@/lib/date";
+
+// The run's rotating instance timezone: `practice_logs.time` is a profile-LOCAL wall
+// clock, so the expected minute has to be read in the same zone the app writes it in.
+const PINNED_TZ = pinnedTimezone(frozenNow().toISOString()).zone;
 
 // Every quick-log item opens an IN-PLACE overlay (issues #1468, #1467).
 //
@@ -806,6 +813,84 @@ test("switching profiles clears the originating food receipt and cannot target i
     clearProfileFoodGroup(ownerId, group);
     clearProfileFoodGroup(sharedId, group);
     await page.context().close();
+  }
+});
+
+// Tap "Log another" through the same-day re-log confirm the sheet asks on every tap
+// after the first (#2007 layer 3 / #798: informational, never permissive).
+async function logAnother(page: Page, row: Locator): Promise<void> {
+  await hydratedClick(page, row.getByTestId("practice-log-button"));
+  const dialog = page.getByTestId("confirm-dialog");
+  await expect(dialog).toBeVisible();
+  await settledClick(page, dialog.getByRole("button", { name: "Log session" }));
+}
+
+// #3273 — the sheet can now STATE when a session happened.
+//
+// The gap this closes: the sheet mounts LogPracticeButton without `showDetails` (a
+// modal over a one-tap sheet is not what that surface is for), and the time lived only
+// in that modal — so a 07:00 sauna logged at 09:00 wore 09:00 forever and #4009's
+// correction had to repair it. The property that matters is the PAIR: a stated minute
+// is what the row carries, and an untouched sheet still writes the tap instant.
+test("the sheet states an earlier session time, and an untouched tap still writes the tap instant (#3273)", async ({
+  browser,
+}) => {
+  clearShellPracticeLogs();
+
+  const page = await signIn(browser);
+  try {
+    await page.goto("/");
+    const overlay = await openQuickEntry(page, "log-practice");
+    const row = overlay
+      .getByTestId("quick-entry-practice-list")
+      .getByRole("listitem")
+      .filter({ hasText: SHELL_PRACTICE });
+    await expect(row).toBeVisible();
+
+    // COLLAPSED and empty: the fast path is one tap and nothing is stated until the
+    // affordance is opened, so the control is not even in the DOM.
+    const toggle = row.getByTestId("practice-when-toggle");
+    await expect(toggle).toHaveAttribute("aria-expanded", "false");
+    await expect(row.getByTestId("practice-when-time")).toHaveCount(0);
+
+    // Leg 1 — the untouched tap. It must write what it wrote before this control
+    // existed: the tap instant's profile-local wall minute, off the app's clock seam.
+    await settledClick(page, row.getByTestId("practice-log-button"));
+    await expect(row.getByTestId("practice-today-count")).toContainText(
+      "1 session logged"
+    );
+    expect(readShellPracticeLog().time).toBe(
+      zonedDateParts(PINNED_TZ, frozenNow()).hhmm
+    );
+
+    // Leg 2 — the statement. Absolute local time, on the day the sheet is filing to;
+    // the day half is fixed, so a statement can only move the minute.
+    await hydratedClick(page, toggle);
+    await expect(toggle).toHaveAttribute("aria-expanded", "true");
+    await expect(row.getByTestId("practice-when-date")).toHaveText("Today");
+    await settledFill(page, row.getByTestId("practice-when-time"), "07:05");
+    // A second same-day tap ASKS (#2007 layer 3) — a genuine second session is
+    // legitimate, so the dialog's default is to proceed.
+    await logAnother(page, row);
+    await expect(row.getByTestId("practice-today-count")).toContainText(
+      "2 sessions logged"
+    );
+    expect(readShellPracticeLog().time).toBe("07:05");
+
+    // THE STATEMENT IS SPENT BY THE TAP IT ANSWERS. Multi-session days are the point
+    // of this surface, so a surviving 07:05 would stamp the evening's session with the
+    // morning's time — the field empties in front of the user.
+    await expect(row.getByTestId("practice-when-time")).toHaveValue("");
+    await logAnother(page, row);
+    await expect(row.getByTestId("practice-today-count")).toContainText(
+      "3 sessions logged"
+    );
+    expect(readShellPracticeLog().time).toBe(
+      zonedDateParts(PINNED_TZ, frozenNow()).hhmm
+    );
+  } finally {
+    clearShellPracticeLogs();
+    await page.close();
   }
 });
 

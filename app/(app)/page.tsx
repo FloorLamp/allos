@@ -207,7 +207,11 @@ import {
 } from "@/components/dashboard/HealthspanPillarPresentation";
 import SleepWaitingAtom from "@/components/dashboard/SleepWaitingAtom";
 import NapAtom from "@/components/dashboard/NapAtom";
-import { formatHm, sleepRecordPresentation } from "@/lib/sleep-summary";
+import {
+  formatHm,
+  formatUsualSleepBand,
+  sleepRecordPresentation,
+} from "@/lib/sleep-summary";
 import QuickLogPrnContent from "@/components/medications/QuickLogPrnContent";
 import {
   ProteinTodayAtom,
@@ -705,8 +709,8 @@ async function renderDashboard(
     if (!sleepSummary) return undefined;
     const bed = typicalBedTime(profile.id);
     const wake = typicalWakeTime(profile.id);
-    if (bed == null || wake == null) return undefined;
-    return `Usual ${formatClockMinutes(formatPrefs.timeFormat, bed)} – ${formatClockMinutes(formatPrefs.timeFormat, wake)}`;
+    const band = formatUsualSleepBand(formatPrefs.timeFormat, bed, wake);
+    return band == null ? undefined : `Usual ${band}`;
   })();
   const sleepPreviousNightLabel =
     sleepSummary && sleepPresentation?.freshness === "recent"

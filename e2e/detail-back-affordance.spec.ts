@@ -46,18 +46,9 @@ test("a settings group's way out is the shared back link, above its title", asyn
   await expectBackLinkAboveTitle(page, "All settings");
 });
 
-test("dose history has a way BACK, not just a way onward", async ({ page }) => {
-  await page.goto("/nutrition/dose-history");
-  await expectBackLinkAboveTitle(page, "Back to supplements");
-  // The header's old "Supplements →" pointed at the very destination the back
-  // link now names, so the page offered the same door twice and neither was a
-  // back. One link to the supplements surface, and it reads as a return.
-  await expect(
-    page
-      .getByTestId("dose-ledger-page")
-      .getByRole("link", { name: /Supplements/ })
-  ).toHaveCount(1);
-});
+// The dose ledger's back-link case left with the ledger (#3958): its four routes
+// folded into `/history`, which is a TOP-LEVEL destination rather than a sub-page, so
+// there is no parent surface for it to return to and nothing here to assert.
 
 test("an episode detail page has a way back to the care trail", async ({
   page,

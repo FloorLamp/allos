@@ -355,22 +355,50 @@ export interface FoodLedgerRow {
 }
 
 /**
- * One server-paged serving ledger. The event table, rather than its daily counter,
- * is the row identity because corrections and undo name a single serving. Reserved
+ * One page of serving rows. The event table, rather than its daily counter, is the
+ * row identity because corrections and undo name a single serving. Reserved
  * ranking/protein observations are excluded by joining the curated food vocabulary
  * in memory at the filter boundary and by the write store's reserved-key prefix.
  */
+// THE CALLER'S BOUND IS THE BOUND (#3958). This clamped to 100 while the deleted
+// ledger routes drove it with `?page=`, where 100 was a page-size sanity cap. Its
+// one caller now is the record's gather, which asks for `?show` rows and offers
+// "Load more" when the read was cut — so a silent 100 made the control INERT from
+// the first click and put a year of logging permanently out of reach. The dose
+// reader beside it never had a clamp, which is why the defect was invisible on the
+// kind everyone tested. Bounded only against zero and a fraction now, exactly as
+// `getIntakeDoseLedgerPage` is; `HISTORY_MAX_SHOW` is where the real ceiling lives.
 export function getFoodLedgerPage(
   profileId: number,
   from: string,
-  options: { untilDate?: string | null; groupKey?: string },
+  options: {
+    untilDate?: string | null;
+    groupKey?: string;
+    /**
+     * Drop the servings that are SUBSTANCES — today, alcohol (#860/#944 put a
+     * standard drink on this store because a drink IS one serving of the curated
+     * `alcohol` group, which is a STORAGE decision and not a claim that a drink is
+     * a meal). Off by default: this reader answers "what servings are on the food
+     * log", and a drink is one. `/history` turns it on because the record asks a
+     * different question — see the food composer in lib/history.ts.
+     *
+     * IN SQL AND NOT AT THE CALL SITE, because `total` is what "Load more" reads:
+     * filtering the returned rows in memory would leave the count claiming rows the
+     * bound had already dropped.
+     */
+    excludeSubstanceGroups?: boolean;
+  },
   page: number,
   pageSize: number
 ): { rows: FoodLedgerRow[]; total: number; page: number } {
   const requestedPage = Math.max(1, Math.floor(page));
-  const boundedSize = Math.max(1, Math.min(Math.floor(pageSize), 100));
+  const boundedSize = Math.max(1, Math.floor(pageSize));
   const where = ["date >= ?", "substr(group_key, 1, 2) != '__'"];
+  if (options.excludeSubstanceGroups) {
+    where.push("group_key != ?");
+  }
   const args: Array<string | number> = [profileId, from];
+  if (options.excludeSubstanceGroups) args.push(ALCOHOL_FOOD_GROUP);
   if (options.untilDate) {
     where.push("date <= ?");
     args.push(options.untilDate);

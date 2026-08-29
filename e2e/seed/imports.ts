@@ -12,11 +12,25 @@ import type { ExtractionResult } from "../../lib/medical-extract";
 import { getTimezone } from "../../lib/settings";
 import { PROFILE_ID } from "./common";
 import { PARITY_MED_NAME } from "./intake";
+import {
+  profileOneUndatedDocumentUploadedAt,
+  type ProfileOneUndatedDocumentFilename,
+} from "./profile-time-fixtures";
 
 // ── Unified import-feed fixtures ──
 // The tabbed records-browser document's fixed id. Module-scope + exported because
 // ./medical hangs one allergy row off the SAME document (the #384 allergy twins).
 export const BROWSER_DOC_ID = 908;
+
+function profileOneDocumentUpload(
+  filename: ProfileOneUndatedDocumentFilename
+): string {
+  return profileOneUndatedDocumentUploadedAt(
+    filename,
+    today(PROFILE_ID),
+    getTimezone(PROFILE_ID)
+  );
+}
 
 export function seedImportFeed(): void {
   // ── Unified import-feed fixtures ──────────────────────────
@@ -37,8 +51,8 @@ export function seedImportFeed(): void {
      (profile_id, filename, stored_path, mime_type, size_bytes, doc_type,
       extraction_status, extracted_count, uploaded_at)
    VALUES (?, 'e2e-labs.pdf', '', 'application/pdf', 4096, 'Lab report',
-           'done', 7, '2026-07-08 12:00:00')`
-  ).run(PROFILE_ID);
+           'done', 7, ?)`
+  ).run(PROFILE_ID, profileOneDocumentUpload("e2e-labs.pdf"));
   // A rejected upload (issue #58 magic-byte / unsupported): inserted straight into a
   // terminal 'failed' state, so the feed must still surface it.
   db.prepare(
@@ -46,8 +60,8 @@ export function seedImportFeed(): void {
      (profile_id, filename, stored_path, mime_type, size_bytes,
       extraction_status, extraction_error, uploaded_at)
    VALUES (?, 'e2e-broken.txt', '', 'text/plain', 12,
-           'failed', 'Unsupported file type.', '2026-07-08 11:30:00')`
-  ).run(PROFILE_ID);
+           'failed', 'Unsupported file type.', ?)`
+  ).run(PROFILE_ID, profileOneDocumentUpload("e2e-broken.txt"));
   // A pasted/CSV import job awaiting review.
   db.prepare(
     `INSERT INTO import_jobs
@@ -68,8 +82,8 @@ export function seedImportFeed(): void {
       extraction_status, extracted_count, uploaded_at)
    VALUES (?, 'e2e-mychart-export.xml', 'data/uploads/medical/1/e2e-nonexistent.xml',
            'application/xml', 8192, 'MyChart export (CCD/XDM)', 'ccda',
-           'done', 5, '2026-07-08 10:30:00')`
-  ).run(PROFILE_ID);
+           'done', 5, ?)`
+  ).run(PROFILE_ID, profileOneDocumentUpload("e2e-mychart-export.xml"));
 
   console.log(
     "e2e: seeded integration_sync_events (strava failing) + a cross-source duplicate activity pair + import-feed document/job fixtures"
@@ -160,8 +174,13 @@ export function seedDropReport(): void {
       source, extraction_status, extracted_count, import_report, uploaded_at)
    VALUES (?, ?, 'e2e-drop-report.xml', '', 'application/xml', 2048,
            'MyChart export (CCD/XDM)', 'ccda', 'done', 12, ?,
-           '2026-07-08 09:45:00')`
-  ).run(DROP_DOC_ID, PROFILE_ID, JSON.stringify(dropReport));
+           ?)`
+  ).run(
+    DROP_DOC_ID,
+    PROFILE_ID,
+    JSON.stringify(dropReport),
+    profileOneDocumentUpload("e2e-drop-report.xml")
+  );
 
   // A second document whose unresolved list is ENTIRELY declared names (#2313):
   // the "Unresolved analytes" card must not render at all here, because there is
@@ -177,7 +196,7 @@ export function seedDropReport(): void {
       source, extraction_status, extracted_count, import_report, uploaded_at)
    VALUES (?, ?, 'e2e-declined-only.pdf', '', 'application/pdf', 1024,
            'Lab report', 'upload', 'done', 3, ?,
-           '2026-07-08 09:50:00')`
+           ?)`
   ).run(
     DECLINED_ONLY_DOC_ID,
     PROFILE_ID,
@@ -193,7 +212,8 @@ export function seedDropReport(): void {
         { name: "eGFR, Thai", count: 1, unit: "mL/min/1.73" },
         { name: "Beta Adrenergic Blocker Screen", count: 1, unit: null },
       ],
-    })
+    }),
+    profileOneDocumentUpload("e2e-declined-only.pdf")
   );
 
   console.log(
@@ -278,12 +298,13 @@ export function seedDerivedResultDrops(): void {
       source, extraction_status, extracted_count, import_report, uploaded_at)
    VALUES (?, ?, 'e2e-growth-visit.pdf', '', 'application/pdf', 1536,
            'Visit summary', 'upload', 'done', ?, ?,
-           '2026-07-08 09:40:00')`
+           ?)`
   ).run(
     DERIVED_DOC_ID,
     PROFILE_ID,
     shaped.observations.length,
-    shaped.meta.importReport
+    shaped.meta.importReport,
+    profileOneDocumentUpload("e2e-growth-visit.pdf")
   );
   const insertRecord = db.prepare(
     `INSERT INTO medical_records
@@ -363,8 +384,13 @@ export function seedExtractionConfidence(): void {
      (id, profile_id, filename, stored_path, mime_type, size_bytes, doc_type,
       source, extraction_status, extracted_count, import_report, uploaded_at)
    VALUES (?, ?, 'e2e-confidence-labs.pdf', '', 'application/pdf', 3072,
-           'Lab report', 'upload', 'done', 6, ?, '2026-07-08 09:40:00')`
-  ).run(CONFIDENCE_DOC_ID, PROFILE_ID, JSON.stringify(confidenceReport));
+           'Lab report', 'upload', 'done', 6, ?, ?)`
+  ).run(
+    CONFIDENCE_DOC_ID,
+    PROFILE_ID,
+    JSON.stringify(confidenceReport),
+    profileOneDocumentUpload("e2e-confidence-labs.pdf")
+  );
 
   // The six rows the report describes, actually present — so the feed's produced
   // count ("6 items") agrees with the card's "3 of 6 rows" instead of reading as
@@ -458,8 +484,13 @@ export function seedRecordsBrowser(): void {
      (id, profile_id, filename, stored_path, mime_type, size_bytes, doc_type,
       source, extraction_status, extracted_count, uploaded_at, raw_extraction)
    VALUES (?, ?, 'e2e-records-browser.xml', '', 'application/xml', 4096,
-           'MyChart export (CCD/XDM)', 'ccda', 'done', 6, '2026-07-08 09:50:00', ?)`
-  ).run(BROWSER_DOC_ID, PROFILE_ID, BROWSER_DOC_RAW_XML);
+           'MyChart export (CCD/XDM)', 'ccda', 'done', 6, ?, ?)`
+  ).run(
+    BROWSER_DOC_ID,
+    PROFILE_ID,
+    profileOneDocumentUpload("e2e-records-browser.xml"),
+    BROWSER_DOC_RAW_XML
+  );
   // A provider referenced by one lab row → the Providers count chip shows 1.
   db.prepare(
     `DELETE FROM providers WHERE dedup_key = 'e2e-browser-clinic'`
@@ -583,8 +614,12 @@ export function seedRecordsBrowser(): void {
      (id, profile_id, filename, stored_path, mime_type, size_bytes, doc_type,
       source, extraction_status, extracted_count, uploaded_at)
    VALUES (?, ?, 'e2e-produced-panels.xml', '', 'application/xml', 4096,
-           'MyChart export (CCD/XDM)', 'ccda', 'done', 2, '2026-07-09 09:50:00')`
-  ).run(PANELS_DOC_ID, PROFILE_ID);
+           'MyChart export (CCD/XDM)', 'ccda', 'done', 2, ?)`
+  ).run(
+    PANELS_DOC_ID,
+    PROFILE_ID,
+    profileOneDocumentUpload("e2e-produced-panels.xml")
+  );
   db.prepare(`DELETE FROM providers WHERE dedup_key = 'e2e-panels-lab'`).run();
   const panelsProviderId = Number(
     db
@@ -794,8 +829,13 @@ export function seedTriageLinks(): void {
      (id, profile_id, filename, stored_path, mime_type, size_bytes, doc_type,
       source, extraction_status, extracted_count, import_report, uploaded_at)
    VALUES (?, ?, 'e2e-triage-labs.pdf', '', 'application/pdf', 3072,
-           'Lab report', 'upload', 'done', 6, ?, '2026-07-08 09:35:00')`
-  ).run(TRIAGE_DOC_ID, PROFILE_ID, JSON.stringify(triageReport));
+           'Lab report', 'upload', 'done', 6, ?, ?)`
+  ).run(
+    TRIAGE_DOC_ID,
+    PROFILE_ID,
+    JSON.stringify(triageReport),
+    profileOneDocumentUpload("e2e-triage-labs.pdf")
+  );
   const insTriageRecord = db.prepare(
     `INSERT INTO medical_records
      (profile_id, date, category, name, canonical_name, value, unit,

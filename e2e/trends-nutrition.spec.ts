@@ -128,7 +128,7 @@ test("a day tap opens the day panel; the Timeline stays one link away (#1166)", 
 // #2417: the dose calendar's "what did I take that day" is the cross-item dose
 // ledger filtered to that day, so the dose section's day panel carries a link the
 // food section's does not — declared per DOMAIN, not per caller.
-test("a dose day panel links into the dose ledger for that day", async ({
+test("a dose day panel links into the record for that day", async ({
   page,
 }) => {
   await page.goto("/trends?tab=nutrition");
@@ -138,7 +138,7 @@ test("a dose day panel links into the dose ledger for that day", async ({
   // The section's own header link reaches the ledger across both kinds.
   await expect(doses.getByTestId("dose-history-ledger-link")).toHaveAttribute(
     "href",
-    "/nutrition/dose-history?kind=all"
+    "/history?kind=dose"
   );
 
   const day = doses.getByTestId("day-history-day").first(); // first-ok: read-only, any populated dose day proves the interaction
@@ -146,13 +146,11 @@ test("a dose day panel links into the dose ledger for that day", async ({
   const panel = doses.getByTestId("day-history-daypanel");
   await expect(panel).toBeVisible();
   const link = panel.getByTestId("day-history-day-link");
-  await expect(link).toHaveAttribute(
-    "href",
-    /\/nutrition\/dose-history\?from=.*&to=.*&kind=all/
-  );
-  await followLink(page, link, /\/nutrition\/dose-history\?from=/);
-  const ledger = page.getByTestId("dose-ledger");
-  await expect(ledger).toBeVisible();
+  // ONE DAY, NOT A WINDOW (#3958): the from/to pair the deleted ledger took has no
+  // successor, and a tapped calendar cell was always asking about one day.
+  await expect(link).toHaveAttribute("href", /\/history\?kind=dose&day=/);
+  await followLink(page, link, /\/history\?kind=dose&day=/);
+  await expect(page.getByTestId("history-filters")).toBeVisible();
   // The food section's panel has no such link — the declaration is per domain.
   await page.goto("/trends?tab=nutrition");
   const history = page.getByTestId("intake-history");

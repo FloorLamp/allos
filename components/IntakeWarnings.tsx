@@ -23,6 +23,7 @@ import {
   coverageScopeLine,
   type SafetyCoverageModel,
 } from "@/lib/safety-coverage";
+import Disclosure from "@/components/Disclosure";
 
 export function IntakeSafetyScope({
   coverage,
@@ -35,7 +36,7 @@ export function IntakeSafetyScope({
   if (!scopeLine) return null;
 
   return (
-    <details
+    <Disclosure
       className={`group px-1 text-xs text-slate-500 dark:text-slate-400 ${className}`}
       data-testid="safety-scope-footer"
     >
@@ -52,7 +53,7 @@ export function IntakeSafetyScope({
       >
         {scopeLine}
       </p>
-    </details>
+    </Disclosure>
   );
 }
 
@@ -121,8 +122,8 @@ export default function IntakeWarnings({
       : "";
 
   return (
-    <details
-      className="card group"
+    <Disclosure
+      className="card"
       data-testid="intake-warnings"
       open={total <= 2}
     >
@@ -264,6 +265,6 @@ export default function IntakeWarnings({
           </CardFootnote>
         ) : null}
       </div>
-    </details>
+    </Disclosure>
   );
 }

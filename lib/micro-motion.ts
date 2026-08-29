@@ -1,9 +1,20 @@
-// MICRO-MOTION: the small moves that answer "did that work?" (#2654).
+// MICRO-MOTION: the small moves the app is allowed to make (#2654, #3676).
 //
-// The app is almost entirely static, and that is the calm identity working. The
-// exception this module governs is motion that carries INFORMATION — a tap-shaped
-// confirm visibly becoming its done state, a quantity visibly CHANGING rather than
-// being replaced. Held to the same standard as copy, and to four hard rules:
+// The app is almost entirely static, and that is the calm identity working. TWO
+// classes of motion are allowed out of that stillness, and they answer different
+// questions:
+//
+//   INFORMATION motion answers "did that work?" — a tap-shaped confirm visibly
+//   becoming its done state, a quantity visibly CHANGING rather than being
+//   replaced. It carries a fact, and is held to the same standard as copy.
+//
+//   CONTINUITY motion (#3676) answers nothing. Its job is that THE EYE KEEPS ITS
+//   PLACE through a change the reader caused: a panel growing under the summary
+//   they tapped. It carries no information, which is exactly why rule 3 below is
+//   scoped to the information class and why continuity motions declare
+//   `preserves` and `causedBy` instead.
+//
+// Both classes are held to the same four rules, with rule 3 read per class:
 //
 //   1. 150–300 ms. Long enough to be seen as a transition, short enough that a
 //      returning glance never waits on it. `MICRO_MOTION_MIN_MS`/`MAX_MS` are the
@@ -14,13 +25,24 @@
 //      making itself, and a health app must not campaign at anyone. Every class in
 //      the stylesheet's Micro-motion section runs once; the test fails an
 //      `infinite`/`alternate` iteration there.
-//   3. Reduced motion is a DESIGNED STATE, not a degradation. Every motion here
-//      declares `reducedEndState`: the same information, arriving instantly. If a
-//      motion's meaning is lost when it is switched off, it was decoration and does
-//      not belong in this table.
-//   4. Motion is never the ONLY carrier. Every motion declares `carriedBy` — the
-//      text, attribute or colour that states the same fact for a reader who sees no
-//      motion at all, including a screen-reader user and a printed page.
+//   3. Reduced motion is a DESIGNED STATE, not a degradation. Every motion in
+//      EITHER class declares `reducedEndState`: for an information motion, the same
+//      information arriving instantly; for a continuity motion, the end layout,
+//      instantly. The second sentence of this rule is scoped to the INFORMATION
+//      class: a motion in THAT table whose meaning is lost when it is switched off
+//      was decoration and does not belong in it. A continuity motion is defined by
+//      having no meaning to lose, so that sentence cannot judge it — `preserves`
+//      and `causedBy` are what stop it becoming garnish instead.
+//   4. Motion is never the ONLY carrier. Every INFORMATION motion declares
+//      `carriedBy` — the text, attribute or colour that states the same fact for a
+//      reader who sees no motion at all, including a screen-reader user and a
+//      printed page. A continuity motion carries no fact, so it has none to declare.
+//
+// WHAT IS REFUSED, in both classes, stated so the continuity class cannot be read
+// as an opening: ambient or idle animation; anything looping; motion on a surface
+// the reader did not act on; decorative entrances on page load; and motion that
+// delays a reader's next action — a control is interactive on the FIRST FRAME of
+// any continuity motion, never after it.
 //
 // This is TOKENS AND A DECLARATION, not a registry engine (#2654's own words): the
 // numbers, one ease curve, and the pure fold of the viewer's preference into a
@@ -98,7 +120,7 @@ export const MICRO_MOTIONS = {
   // the next. It belongs in this vocabulary rather than the overlay family because it
   // is a beat IN PLACE rather than a panel arriving, and it is held to all four rules
   // including the band. It is also the rule-4 case at its starkest: the platform half
-  // of the same feedback (one 8 ms haptic, `HAPTIC_PATTERNS["scrubber-tick"]`) does not
+  // of the same feedback (one 8 ms haptic, `HAPTIC_PATTERNS.select`) does not
   // exist on iOS at all, which is exactly why the #2657 ruling makes the VISUAL pulse
   // the universal carrier — and why this row is not optional.
   tick: {
@@ -163,6 +185,104 @@ export function microMotion(kind: MicroMotion): MicroMotionDecl {
   return MICRO_MOTIONS[kind];
 }
 
+// ── The CONTINUITY class (#3676) ─────────────────────────────────────────────
+//
+// A second class, for motion whose job is that THE EYE KEEPS ITS PLACE through a
+// change the reader caused. It conveys nothing — switch it off and no fact is
+// lost, only the reader's grip on where they were — so it cannot declare
+// `conveys` or `carriedBy` and it cannot be judged by rule 3's decoration
+// sentence. Two other questions do that work instead, and both are required:
+//
+//   `preserves` — what stays continuous across the change, in the reader's terms.
+//   `causedBy`  — the reader's OWN action that licenses it. This is the guard that
+//                 keeps "nothing moves without a gesture" true. A network answer
+//                 arriving unprompted is NOT a cause; the tap that requested it is.
+//
+// Everything else is inherited from the information class UNCHANGED: the
+// 150-300 ms band and its mechanical test, the same `bandExemption()` shape if one
+// is ever argued (the pinned exempt-key list still names `fold` alone), the
+// nothing-loops stylesheet scan, the single MICRO_MOTION_EASE so the two classes
+// cannot feel different, and `reducedEndState` — which for this class is simply
+// the end layout, instantly. That last one is why the class is safe: a reader who
+// turns motion off gets exactly today's app.
+export interface ContinuityMotionDecl {
+  // Milliseconds. Mirrored by a CSS custom property of the same name.
+  readonly ms: number;
+  // What stays continuous across the change, in the reader's terms.
+  readonly preserves: string;
+  // The reader's own action that licenses this motion. No gesture, no motion.
+  readonly causedBy: string;
+  // The reduced-motion design: the end layout, instantly.
+  readonly reducedEndState: string;
+}
+
+// A continuity declaration is a VALUE THAT CANNOT BE CONSTRUCTED BLANK — the same
+// declare-or-argue shape `bandExemption()` above and `arguedExclusion()` in
+// lib/loggable-domains.ts use. The two new fields are the only thing standing
+// between this class and garnish, so a row that leaves one empty must not exist
+// rather than merely fail a length assertion somewhere later.
+export function continuityMotion(
+  ms: number,
+  preserves: string,
+  causedBy: string,
+  reducedEndState: string
+): ContinuityMotionDecl {
+  if (!Number.isFinite(ms) || ms <= 0) {
+    throw new Error("A continuity motion names its duration.");
+  }
+  if (!preserves.trim() || !causedBy.trim() || !reducedEndState.trim()) {
+    throw new Error(
+      "A continuity motion states what it preserves, what caused it, and its reduced end state."
+    );
+  }
+  return { ms, preserves, causedBy, reducedEndState };
+}
+
+// The continuity motions. A new one is a row here plus a `--motion-<name>` custom
+// property and a `.motion-<name>` rule in the stylesheet's Micro-motion section;
+// the completeness test fails either half on its own, exactly as it does for the
+// information table.
+export const CONTINUITY_MOTIONS = {
+  // The first tenant (#3677). Every disclosure in the app used to snap: the panel
+  // appeared at full height with the reader's finger still on the summary, which on
+  // a phone is a full-screen jump. The panel now grows from the summary downward.
+  //
+  // Written in CSS on `::details-content` rather than driven from JS, and that is
+  // the reason this class can exist without a scheduler: the browser owns the
+  // interpolation, the element is interactive on the first frame, and a disclosure
+  // that was restored open before first paint (lib/disclosure-memory.ts's boot
+  // script) is simply open — there is no prior height to transition FROM, so no
+  // entrance replays on load. That replay is exactly the ambient motion #3676
+  // refuses, and it is refused here structurally rather than by a guard.
+  disclose: continuityMotion(
+    200,
+    "the summary you tapped stays exactly where it is while the panel grows below it, so the line you were reading never moves out from under you.",
+    "the reader's own tap, click or Enter on the summary. Nothing else opens a disclosure: a fold restored from memory on page load is already open and does not animate.",
+    "the panel is simply at its full height on the frame the disclosure opens, and simply gone on the frame it closes; no transition is scheduled."
+  ),
+} as const satisfies Record<string, ContinuityMotionDecl>;
+
+export type ContinuityMotion = keyof typeof CONTINUITY_MOTIONS;
+
+// Either class. Everything below this line — the band, the ease, the plan — reads
+// this union, because the two classes differ in what they DECLARE and in nothing
+// else about how they are timed or suppressed.
+export type AnyMotion = MicroMotion | ContinuityMotion;
+
+export function continuityMotionDecl(
+  kind: ContinuityMotion
+): ContinuityMotionDecl {
+  return CONTINUITY_MOTIONS[kind];
+}
+
+export function motionMsOf(kind: AnyMotion): number {
+  const decl: MicroMotionDecl | ContinuityMotionDecl =
+    kind in MICRO_MOTIONS
+      ? MICRO_MOTIONS[kind as MicroMotion]
+      : (CONTINUITY_MOTIONS as Record<string, ContinuityMotionDecl>)[kind];
+  return decl.ms;
+}
+
 // ── The band, and the one thing exempt from it ───────────────────────────────
 //
 // Rule 1 is 150–300 ms and #2705 made it mechanical, which is what turned "nothing
@@ -200,8 +320,9 @@ export function bandExemption(
   return { exemptMs, ruling, because } as BandExemption;
 }
 
-// The exemptions, keyed by the motion they name. `Partial<Record<MicroMotion, …>>`
-// so an exemption can only ever name a motion that exists, and the test fails a
+// The exemptions, keyed by the motion they name. `Partial<Record<AnyMotion, …>>`
+// so an exemption can only ever name a motion that exists — in EITHER class, since
+// the band is inherited unchanged and so is the price of leaving it — and the test fails a
 // STALE one — an entry whose motion has since come back inside the band is a
 // permission nobody needs, and leaving it there is how the list grows.
 //
@@ -218,17 +339,15 @@ export const MICRO_MOTION_BAND_EXEMPTIONS = {
       "`slide` stays inside the band, every other motion stays inside the band, and " +
       "`nothing loops` is untouched — one pulse, never a repeat."
   ),
-} as const satisfies Partial<Record<MicroMotion, BandExemption>>;
+} as const satisfies Partial<Record<AnyMotion, BandExemption>>;
 
 // The exemption naming this motion, or null. A caller that wants to know whether a
 // duration is legal asks this rather than re-deriving the band.
-export function bandExemptionFor(kind: MicroMotion): BandExemption | null {
+export function bandExemptionFor(kind: AnyMotion): BandExemption | null {
   return (
-    (
-      MICRO_MOTION_BAND_EXEMPTIONS as Partial<
-        Record<MicroMotion, BandExemption>
-      >
-    )[kind] ?? null
+    (MICRO_MOTION_BAND_EXEMPTIONS as Partial<Record<AnyMotion, BandExemption>>)[
+      kind
+    ] ?? null
   );
 }
 
@@ -249,12 +368,12 @@ export interface MicroMotionPlan {
 }
 
 export function microMotionPlan(
-  kind: MicroMotion,
+  kind: AnyMotion,
   reduceMotion: boolean
 ): MicroMotionPlan {
   if (reduceMotion) return { ms: 0, animate: false, className: "" };
   return {
-    ms: MICRO_MOTIONS[kind].ms,
+    ms: motionMsOf(kind),
     animate: true,
     className: `motion-${kind}`,
   };

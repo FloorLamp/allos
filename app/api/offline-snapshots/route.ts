@@ -1,4 +1,4 @@
-import { getCurrentSession } from "@/lib/auth";
+import { currentSessionDenial, getCurrentSession } from "@/lib/auth";
 import { getOfflineSnapshotsEnabled } from "@/lib/settings";
 import { now } from "@/lib/clock";
 import { buildSnapshots, snapshotContext } from "@/lib/offline/snapshot-build";
@@ -13,8 +13,8 @@ import { SNAPSHOT_KINDS, type SnapshotKind } from "@/lib/offline/snapshots";
 // /api/offline-replay is: cookie-authoritative getCurrentSession(), never the coarse
 // middleware cookie-presence check. No session → 401 and the device keeps whatever it
 // already holds; a lapsed cookie must not wipe a med list someone is standing in a
-// clinic reading. (The WIPE is an identity CHANGE — logout, a profile switch — not a
-// failed request.)
+// clinic reading. (The WIPE is an identity CHANGE — logout, a profile switch, or a
+// REVOCATION the 401 now names — not a failed request.)
 //
 // PROFILE SCOPING — the snapshots are built for the session's ACTIVE profile and for no
 // other. There is no profile parameter, deliberately: a caller-supplied id is a second
@@ -46,27 +46,38 @@ function parseKinds(param: string | null): SnapshotKind[] {
 export async function GET(req: Request) {
   const session = await getCurrentSession();
   if (!session) {
-    return Response.json({ ok: false, error: "auth" }, { status: 401 });
+    // REVOKED, OR MERELY UNAUTHORIZED (#3053). The device wipes on the first and keeps its
+    // offline copy on the second, so this one word is the whole channel by which a "Sign
+    // out all devices" pressed somewhere else reaches the phone that holds the health
+    // record. Nothing else is returned. lib/auth's `SessionDenial` holds the owner's
+    // deferred question and its answer.
+    return Response.json(
+      { ok: false, error: await currentSessionDenial() },
+      { status: 401 }
+    );
   }
-  // `?probe` — THE AUTH ANSWER, AND NOTHING ELSE. components/SidebarContent asks it after
-  // a logout attempt that did not obviously succeed, because "has this session ended" is
-  // the one question separating a logout that landed from one that did not, and the
-  // client cannot answer it for itself: a redirecting Server Action rejects its promise
-  // on BOTH outcomes. It lives here rather than in a route of its own because this is
-  // already the app's cookie-authoritative GET, and it is answered ABOVE the builders so
-  // a probe costs one session lookup and returns no PHI at all.
-  if (new URL(req.url).searchParams.has("probe")) {
-    return Response.json({ ok: true });
-  }
+  // `?probe` — THE AUTH AND SWITCH ANSWER, AND NOTHING ELSE. components/SidebarContent
+  // asks it after a logout attempt that did not obviously succeed, because "has this
+  // session ended" is the one question separating a logout that landed from one that did
+  // not, and the client cannot answer it for itself: a redirecting Server Action rejects
+  // its promise on BOTH outcomes. It lives here rather than in a route of its own because
+  // this is already the app's cookie-authoritative GET, and it is answered ABOVE the
+  // builders so a probe costs one session lookup plus one settings read and returns no
+  // PHI at all.
+  //
+  // IT NOW CARRIES `enabled` TOO, which is what makes it answerable for #3041 — see the
+  // refresher's call site for why a device that needs no payload still has to ask.
   const { profile, login } = session;
-  if (!getOfflineSnapshotsEnabled(profile.id)) {
-    // The off switch is HONEST (the acceptance criterion): the server hands back
-    // nothing AND says so, and the client wipes on reading it — so a profile toggled
-    // off on another device stops having payloads on this one at its next visit, not
-    // just at the moment of the toggle.
+  const enabled = getOfflineSnapshotsEnabled(profile.id);
+  if (new URL(req.url).searchParams.has("probe") || !enabled) {
+    // The off switch is HONEST (the acceptance criterion): the server hands back nothing
+    // AND says so, and the client wipes on reading it — so a profile toggled off on
+    // another device stops having payloads on this one at its next visit, not just at the
+    // moment of the toggle. `enabled` is a variable rather than the literal `false` it
+    // used to be because the probe shares this exit.
     return Response.json({
       ok: true,
-      enabled: false,
+      enabled,
       profileId: profile.id,
       snapshots: [],
     });

@@ -47,7 +47,7 @@ describe("geometry census thresholds", () => {
 describe("geometryAuditSections", () => {
   const rows = [
     {
-      route: "/medications/dose-history",
+      route: "/history?kind=dose",
       viewport: "mobile",
       clipCandidates: 210,
       clippedTotal: 1,
@@ -167,7 +167,7 @@ describe("geometryAuditSections", () => {
       { ...rows[0], clippedTotal: 40, clipped: rows[0].clipped },
     ];
     expect(geometryAuditSections(truncated).join("\n")).toContain(
-      "Truncated per-visit lists: /medications/dose-history (mobile) 40"
+      "Truncated per-visit lists: /history?kind=dose (mobile) 40"
     );
   });
 
