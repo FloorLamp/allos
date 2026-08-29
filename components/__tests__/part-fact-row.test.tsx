@@ -111,19 +111,6 @@ function renderList(parts: PartEntry[], over: Record<string, unknown> = {}) {
   return { onUpdatePart };
 }
 
-// THE AFFORDANCE DISCLOSES A MENU, not a panel (#4046). The facts behind it belong to
-// two different editors — equipment's picker and the options panel — so reaching one of
-// them is chip → that fact's own menu item, which is the two taps a person makes. Every
-// spec below names the fact it means rather than taking whatever the menu lists first,
-// so a menu that stops offering it fails here instead of quietly opening something else.
-function openFromMore(
-  key: "equipment" | "sides" | "intent" | "effort",
-  at = 0
-) {
-  fireEvent.click(screen.getAllByTestId("part-fact-more")[at]);
-  fireEvent.click(screen.getByTestId(`part-more-${key}`));
-}
-
 describe("the per-part fact row states what the exercise records (#3349)", () => {
   it.each([
     [
@@ -160,32 +147,27 @@ describe("the per-part fact row states what the exercise records (#3349)", () =>
     }
   );
 
-  // #4046: ONE SHAPE OF EMPTY. A lift with no implement of any kind used to draw a
-  // standing "+ equipment" prompt beside an affordance holding the other three, which
-  // made a reader learn which kind of absence got which treatment. `Sit Up` has no
-  // variant group and no normal implement, so it is the case that reaches it.
-  it("puts an absent implement behind the same affordance as the rest", () => {
+  // AC 1's EMPTY CASE, which is the one the criterion exists for: "the picker and its
+  // door are one tap behind". A lift with a stated implement reaches the picker from
+  // its own chip (asserted below); a lift with NO implement of any kind — no variant
+  // group, no normal implement, no gear on file — reaches it from the standing
+  // `+ equipment` prompt, and that has to be ONE tap too. #4046 briefly folded this
+  // prompt in behind the trailing affordance, which made the empty case the only case
+  // paying a second tap, because equipment's editor is not the panel the affordance
+  // opens. Nothing at this tier held that shut, so it is held shut here.
+  it("reaches the picker in ONE tap from a part with no implement at all", () => {
     renderList([part({ name: "Sit Up" })]);
 
-    expect(screen.queryByTestId("strength-equipment-chip")).toBeNull();
-    expect(screen.getByTestId("part-fact-more").textContent).toBe(
-      "Add equipment, a target or effort"
-    );
-    // …and the fact still reaches the EQUIPMENT editor rather than the options one.
-    // That is why the affordance discloses a menu: the facts it holds live in two
-    // different panels, and one that opened a single panel would leave a lift with no
-    // implement of any kind with no path to the picker at all — the #592/#1611 defect
-    // this row's ungating exists to prevent. With nothing to state, the picker is one
-    // tap further away than a stated implement's, which is the trade one shape of empty
-    // buys.
-    openFromMore("equipment");
+    const prompt = screen.getByTestId("strength-equipment-chip");
+    expect(prompt.textContent).toBe("equipment");
+
+    fireEvent.click(prompt);
     expect(screen.getByTestId("strength-equipment-editor")).toBeTruthy();
-    expect(screen.queryByTestId("part-options-editor")).toBeNull();
   });
 
   it("draws the panel's controls from what the part OFFERS, not from one condition", () => {
     renderList([part()]);
-    openFromMore("intent");
+    fireEvent.click(screen.getByTestId("part-fact-more"));
 
     // A plain bilateral rep-based lift: no sides choice, but a target and the effort
     // opt-in. The old row asked one question for all three.
@@ -202,7 +184,7 @@ describe("the per-part fact row states what the exercise records (#3349)", () =>
   // conditions back into one would put it back there, silently.
   it("keeps the effort opt-in reachable on a bilateral part marked perSide", () => {
     renderList([part({ perSide: true })]);
-    openFromMore("effort");
+    fireEvent.click(screen.getByTestId("part-fact-more"));
 
     expect(screen.queryByTestId("per-side-checkbox")).toBeNull();
     expect(screen.queryByTestId("to-failure-checkbox")).toBeNull();
@@ -215,13 +197,13 @@ describe("the per-part fact row states what the exercise records (#3349)", () =>
     expect(rows).toHaveLength(2);
 
     // Open the first part's options.
-    openFromMore("intent", 0);
+    fireEvent.click(screen.getAllByTestId("part-fact-more")[0]);
     expect(screen.getAllByTestId("part-options-editor")).toHaveLength(1);
     expect(screen.getAllByTestId("part-fact-row")).toHaveLength(1);
 
     // The SECOND part's affordance is the only one left; opening it must move the one
     // panel rather than add a second.
-    openFromMore("sides");
+    fireEvent.click(screen.getByTestId("part-fact-more"));
     expect(screen.getAllByTestId("part-options-editor")).toHaveLength(1);
     expect(screen.getAllByTestId("part-fact-row")).toHaveLength(1);
 
@@ -237,7 +219,7 @@ describe("the per-part fact row states what the exercise records (#3349)", () =>
     // The chip row is gone with it, so the options affordance is reached by closing
     // and reopening — which is the point: two panels are never on screen at once.
     fireEvent.click(screen.getByTestId("strength-equipment-done"));
-    openFromMore("intent");
+    fireEvent.click(screen.getByTestId("part-fact-more"));
     expect(screen.getByTestId("part-options-editor")).toBeTruthy();
     expect(screen.queryByTestId("strength-equipment-editor")).toBeNull();
   });

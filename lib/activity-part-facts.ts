@@ -18,19 +18,14 @@
 // NAMES them, which is the primitive's own rule for an optional fact with nothing to
 // state.
 //
-// EQUIPMENT GOES BEHIND THE AFFORDANCE TOO when it has nothing to state, and that is
-// `activity-session-facts`'s own prediction arriving: "the day a second and third
-// session fact land behind it, that prompt becomes the trailing affordance's
-// contents". #4034 shipped it as a standing `+ equipment` prompt, which was right
-// while it was the only optional fact in the row. It is not any more, and two shapes
-// of empty in one row — one standing prompt beside one affordance holding three facts
-// — makes a reader learn which kind of absence gets which treatment. One shape, one
-// affordance, and it NAMES what it holds either way.
-//
-// ITS MISSING STATE IS THE EXCEPTION AND STAYS IN THE ROW. A bare variant base cannot
-// be saved until an implement is picked, and a dashed essential the form is waiting for
-// is not an optional fact tucked away behind "more" — that is the primitive's
-// distinction, not this row's.
+// EQUIPMENT KEEPS ITS STANDING PROMPT and is deliberately NOT in `absent`. That is the
+// shipped, reviewed behaviour of #4034: a lift with no gear on file is complete, so it
+// gets a `+ equipment` prompt rather than being tucked away. `activity-session-facts`
+// predicts the opposite ending for its own row — "the day a second and third session
+// fact land behind it, that prompt becomes the trailing affordance's contents" — and
+// the same argument could be made here now that three more facts have arrived. It is a
+// judgement about one shipped prompt rather than something this conversion decides on
+// its own, so the prompt stands and the question is recorded.
 //
 // Pure: no React, no DB. The row is a renderer over `partFactSummary`.
 
@@ -45,15 +40,13 @@ export type PartFactKey = "equipment" | "sides" | "intent" | "effort";
  * `missing` — a fact the form already knows it wants and is waiting for (the
  *   primitive's dashed ESSENTIAL). Only equipment reaches it: a bare variant base
  *   ("Curl") cannot be saved until an implement is picked.
- *
- * There is deliberately no `add` here. An optional fact with nothing to state does not
- * get a chip at all — it goes in `absent`, behind the one trailing affordance.
+ * `add` — an optional fact with nothing to state, offered as a "+ thing" prompt.
  */
-export type PartFactState = "stated" | "missing";
+export type PartFactState = "stated" | "missing" | "add";
 
 export interface PartFactChip {
   key: PartFactKey;
-  /** The sentence this chip states, or the noun it is still waiting for. */
+  /** The sentence this chip states, or the noun the prompt offers to add. */
   label: string;
   state: PartFactState;
 }
@@ -118,13 +111,17 @@ export function partFactSummary(f: PartFactInput): PartFactSummary {
   const chips: PartFactChip[] = [];
   const absent: PartFactKey[] = [];
 
-  // Equipment leads the row in all three of its readings, `absent` included — the
-  // affordance names what it holds in row order, so the noun order follows from here.
-  if (f.gearName != null)
-    chips.push({ key: "equipment", label: f.gearName, state: "stated" });
-  else if (needsEquipment(p.name))
-    chips.push({ key: "equipment", label: "pick equipment", state: "missing" });
-  else absent.push("equipment");
+  chips.push(
+    f.gearName != null
+      ? { key: "equipment", label: f.gearName, state: "stated" }
+      : needsEquipment(p.name)
+        ? { key: "equipment", label: "pick equipment", state: "missing" }
+        : {
+            key: "equipment",
+            label: PART_FACT_NOUNS.equipment,
+            state: "add",
+          }
+  );
 
   if (offered.sides) {
     if (p.perSide)

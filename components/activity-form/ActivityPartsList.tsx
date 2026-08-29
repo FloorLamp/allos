@@ -29,7 +29,6 @@ import {
   moreFactsLabel,
   partFactSummary,
   partOptionsOffered,
-  PART_FACT_NOUNS,
 } from "@/lib/activity-part-facts";
 import InfoTooltipIcon from "@/components/InfoTooltipIcon";
 import { setRpeTrackingAction } from "@/app/(app)/training/activity-actions";
@@ -51,6 +50,7 @@ import CardioFields from "./CardioFields";
 import StrengthSets from "./StrengthSets";
 import Chip from "@/components/Chip";
 import FactChipRow, {
+  FactAddChip,
   FactChip,
   FactMoreChip,
 } from "@/components/facts/FactChipRow";
@@ -259,14 +259,6 @@ export default function ActivityPartsList({
     setAddingEquipment(false);
     closeEquipmentEditor();
   };
-  // WHICH PART'S TRAILING AFFORDANCE HAS ITS MENU OPEN, by index — the affordance is
-  // one control over SEVERAL facts, so it discloses a menu of them rather than an
-  // editor, exactly as the visit row's does. Opening any editor closes it.
-  const [moreFor, setMoreFor] = useState<number | null>(null);
-  const openPartEditor = (panel: string, focusKey: string) => {
-    setMoreFor(null);
-    openEquipmentEditor(panel, focusKey);
-  };
   // One RPE opt-in round-trip at a time (#3335). ONE flag for the list rather than one
   // per part, which is what the fact actually is: the effort column is PROFILE-wide,
   // and two parts cannot be mid-toggle on different answers.
@@ -374,7 +366,7 @@ export default function ActivityPartsList({
     const chipProps = (fk: string, panel: string, testId: string) => ({
       testId,
       expanded: false,
-      onOpen: () => openPartEditor(panel, focusKeyFor(fk)),
+      onOpen: () => openEquipmentEditor(panel, focusKeyFor(fk)),
     });
 
     if (!gearOpen && !optionsOpen)
@@ -395,7 +387,14 @@ export default function ActivityPartsList({
                 ? "strength-equipment-chip"
                 : `part-fact-${c.key}`
             );
-            return (
+            return c.state === "add" ? (
+              <FactAddChip
+                key={c.key}
+                {...props}
+                focusKey={focusKeyFor(c.key)}
+                label={c.label}
+              />
+            ) : (
               <FactChip
                 key={c.key}
                 {...props}
@@ -405,58 +404,25 @@ export default function ActivityPartsList({
               />
             );
           })}
-          {/* THE ONE TRAILING AFFORDANCE, holding every offered fact with nothing to
-              state — equipment included since #4046 — and NAMING them, so "more" never
-              means "somewhere in here". This is what makes the conversion a density win
-              rather than a relabelling: four standing "+ thing" prompts would have
-              replaced four controls with four.
+          {/* THE ONE TRAILING AFFORDANCE, holding the offered facts with nothing to
+              state and NAMING them, so "more" never means "somewhere in here". This is
+              what makes the conversion a density win rather than a relabelling: three
+              standing "+ thing" prompts would have replaced four controls with four.
 
-              IT DISCLOSES A MENU, NOT AN EDITOR, and that is not a flourish: the facts
-              behind it belong to two different panels. A single-panel affordance would
-              have left a lift with no implement of any kind — no variant group, no
-              normal implement, no gear on file — with no path to the picker at all,
-              which is the #592/#1611 defect this row's ungating exists to prevent. Same
-              shape as components/encounters/VisitFactRow, down to the roles. */}
+              EQUIPMENT IS NOT AMONG THEM, and that asymmetry is #3349 AC 1 rather than
+              an oversight: the picker and its door are ONE TAP behind the row, and the
+              empty case is the one where that matters most. Folding the `+ equipment`
+              prompt in here would make the part with no implement the only part paying
+              a second tap — affordance, then menu item — to reach the picker, because
+              equipment's editor is a different panel from this one's. The asymmetry is
+              recorded in lib/activity-part-facts.ts, which is also where the case for
+              revisiting it is written down. */}
           {moreLabel && (
-            <>
-              <FactMoreChip
-                testId="part-fact-more"
-                // The affordance's OWN identity, not any of the facts it holds (#3311).
-                focusKey={focusKeyFor("more")}
-                // `aria-expanded` states whether the MENU is open, which is what this
-                // control actually discloses. The editor it eventually opens is the
-                // menu item's business.
-                expanded={moreFor === pi}
-                onOpen={() => setMoreFor((v) => (v === pi ? null : pi))}
-                label={moreLabel}
-              />
-              {moreFor === pi && (
-                <span
-                  role="menu"
-                  aria-label="Add another detail"
-                  data-testid="part-fact-more-menu"
-                  className="inline-flex flex-wrap items-center gap-1.5"
-                >
-                  {summary.absent.map((k) => (
-                    <button
-                      key={k}
-                      type="button"
-                      role="menuitem"
-                      data-testid={`part-more-${k}`}
-                      onClick={() =>
-                        openPartEditor(
-                          k === "equipment" ? gearKey : optionsKey,
-                          focusKeyFor(k)
-                        )
-                      }
-                      className="min-h-11 rounded-full border border-dashed border-(--border) px-3 py-1.5 text-sm text-slate-600 transition hover:bg-(--ghost-hover) dark:text-slate-300"
-                    >
-                      {PART_FACT_NOUNS[k]}
-                    </button>
-                  ))}
-                </span>
-              )}
-            </>
+            <FactMoreChip
+              {...chipProps("more", optionsKey, "part-fact-more")}
+              focusKey={focusKeyFor("more")}
+              label={moreLabel}
+            />
           )}
         </FactChipRow>
       );

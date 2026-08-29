@@ -101,12 +101,12 @@ describe("partFactSummary", () => {
       ["intent", "effort"],
     ],
     [
-      "a lift with a normal implement and no gear on file states nothing and goes behind the affordance",
+      "a lift with a normal implement and no gear on file gets the standing prompt",
       part({ name: "Back Squat" }),
       null,
       false,
-      [],
-      ["equipment", "intent", "effort"],
+      [["equipment", "equipment", "add"]],
+      ["intent", "effort"],
     ],
     [
       "a declared rep target states itself",
@@ -154,12 +154,12 @@ describe("partFactSummary", () => {
       [],
     ],
     [
-      "a timed hold offers none of the three, and its gear is behind the affordance",
+      "a timed hold offers none of the three",
       part({ name: "Plank" }),
       null,
       true,
+      [["equipment", "equipment", "add"]],
       [],
-      ["equipment"],
     ],
     [
       "#3367: a perSide bilateral lift still offers effort and nothing else",
@@ -182,33 +182,14 @@ describe("partFactSummary", () => {
     expect(summary.absent).toEqual(absent);
   });
 
-  it("keeps a MISSING implement in the row and never behind the affordance", () => {
-    // The one asymmetry left in this module, asserted so it is a decision rather than a
-    // drift. An optional fact with nothing to state goes behind "more" — equipment
-    // included, since #4046. A fact the form is WAITING for does not: a bare variant
-    // base blocks the save, and a dashed essential tucked inside a trailing affordance
-    // would be the form asking for something without showing that it is asking.
-    const bare = partFactSummary({
-      part: part({ name: "Curl" }),
-      gearName: null,
-      effortOn: false,
-    });
-    expect(bare.absent).not.toContain("equipment");
-    expect(bare.chips[0]).toEqual({
-      key: "equipment",
-      label: "pick equipment",
-      state: "missing",
-    });
-
-    // And the converse, in the same test so neither direction can drift alone: the
-    // OPTIONAL absence really is behind the affordance now.
-    expect(
-      partFactSummary({
-        part: part({ name: "Back Squat" }),
-        gearName: null,
-        effortOn: false,
-      }).absent
-    ).toContain("equipment");
+  it("never puts equipment behind the trailing affordance", () => {
+    // The one asymmetry in this module, asserted so it is a decision rather than a
+    // drift: equipment always has a chip of its own, in all three of its states.
+    for (const p of [part(), part({ name: "Curl" }), part({ name: "Plank" })])
+      for (const gearName of [null, "Barbell"])
+        expect(
+          partFactSummary({ part: p, gearName, effortOn: false }).absent
+        ).not.toContain("equipment");
   });
 });
 
@@ -218,7 +199,6 @@ describe("moreFactsLabel", () => {
     [["effort"], "Add effort"],
     [["intent", "effort"], "Add a target or effort"],
     [["sides", "intent", "effort"], "Add sides, a target or effort"],
-    [["equipment", "intent", "effort"], "Add equipment, a target or effort"],
   ] as [PartFactKey[], string | null][])("%s", (absent, label) => {
     expect(moreFactsLabel(absent)).toBe(label);
   });

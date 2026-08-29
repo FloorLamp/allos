@@ -2636,11 +2636,12 @@ export async function setRpeColumn(page: Page, on: boolean): Promise<void> {
 // fact chips now — every testid unchanged, only relocated — so a spec that drives one
 // of them opens the panel first.
 //
-// WHICH CHIP OPENS IT depends on what the part currently states, and there are two
-// routes rather than one. A part that STATES an option — "sides tracked separately",
-// "target 8 reps", "rating effort" — opens the panel from that chip. A part that states
-// none of them has them behind the trailing affordance, which discloses a MENU (the
-// facts it holds live in two different panels), so the route is chip → menu item.
+// WHICH CHIP OPENS IT depends on what the part currently states: a part rating effort
+// has a `part-fact-effort` chip, one that is not has that fact behind the trailing
+// affordance instead. All of them open the SAME panel — equipment is the one fact that
+// does not, and it keeps its own chip in the row rather than going behind the
+// affordance (#3349 AC 1) — so this takes whichever is there rather than making every
+// caller work out which state it is in.
 //
 // `index` IS REQUIRED. It was defaulted to 0 while every caller drove a single-part
 // form, which is honest right up until it silently is not: a multi-part spec that
@@ -2651,23 +2652,13 @@ export async function openPartOptions(
   index: number
 ): Promise<void> {
   const part = page.getByTestId("activity-part").nth(index); // nth-ok: the caller names which part it means
-  const stated = part
-    .getByTestId("part-fact-sides")
+  await part
+    .getByTestId("part-fact-more")
+    .or(part.getByTestId("part-fact-sides"))
     .or(part.getByTestId("part-fact-intent"))
-    .or(part.getByTestId("part-fact-effort"));
-  if ((await stated.count()) > 0) {
-    await stated.first().click(); // first-ok: these chips all open the one options panel, and a part can state several at once
-  } else {
-    await part.getByTestId("part-fact-more").click();
-    // Any options fact reaches the options panel; equipment is deliberately excluded
-    // because it opens the OTHER one.
-    await part
-      .getByTestId("part-more-effort")
-      .or(part.getByTestId("part-more-intent"))
-      .or(part.getByTestId("part-more-sides"))
-      .first() // first-ok: whichever options facts this part offers, they open the same panel
-      .click();
-  }
+    .or(part.getByTestId("part-fact-effort"))
+    .first() // first-ok: these four chips all open the one options panel, and a part can render several at once
+    .click();
   await expect(page.getByTestId("part-options-editor")).toBeVisible();
 }
 
