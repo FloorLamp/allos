@@ -407,6 +407,7 @@ function NavLink({
 
 function NavGroup({
   group,
+  inDrawer,
   adultContentAvailable,
   isAdmin,
   multiProfile,
@@ -417,6 +418,8 @@ function NavGroup({
   badges,
 }: {
   group: Group;
+  // The phone drawer, not the desktop sidebar. See the fold note below.
+  inDrawer: boolean;
   adultContentAvailable: boolean;
   isAdmin: boolean;
   multiProfile: boolean;
@@ -453,7 +456,15 @@ function NavGroup({
     pathname
   );
   const [open, setOpen] = useState(false);
-  const expanded = open || active;
+  // THE FOLD IS A DESKTOP TRADE, AND THE PHONE MAKES THE OPPOSITE ONE (#3343 Q4).
+  // Collapsing spends a TAP to buy back VERTICAL ROOM, which is the right trade
+  // in a 1280x900 sidebar where the 2026-08-19 census found real destinations
+  // pushed below the fold. In the drawer the scale is reversed — the panel scrolls
+  // freely and a tap is the expensive thing — so the group's rows render inline,
+  // still under their header and still indented as children of it. #2651 ruled the
+  // dock's four slots; this is the drawer's own ruling, and the split is pinned in
+  // e2e/nav-consolidation.spec.ts.
+  const expanded = inDrawer || open || active;
   if (children.length === 0) return null;
   const Icon = group.icon;
   // Slugified on EVERY non-alphanumeric run, not just whitespace. Ids are only
@@ -467,29 +478,49 @@ function NavGroup({
     .toLowerCase()
     .replace(/[^a-z0-9]+/g, "-")
     .replace(/^-|-$/g, "")}`;
+  const headerTone = active
+    ? "text-slate-900 dark:text-white"
+    : "text-slate-600 dark:text-slate-300";
+  const headerLabel = (
+    <>
+      <Icon className="h-5 w-5 shrink-0" stroke={1.75} />
+      <span className="flex-1 text-left">{group.group}</span>
+    </>
+  );
   return (
-    <div className="flex flex-col gap-0.5">
-      <button
-        type="button"
-        onClick={() => setOpen((o) => !o)}
-        aria-expanded={expanded}
-        aria-controls={panelId}
-        className={`flex items-center gap-3 rounded-lg px-3 py-2 text-sm font-medium transition ${
-          active
-            ? "text-slate-900 dark:text-white"
-            : "text-slate-600 hover:bg-slate-100 dark:text-slate-300 dark:hover:bg-ink-750"
-        }`}
-      >
-        <Icon className="h-5 w-5 shrink-0" stroke={1.75} />
-        <span className="flex-1 text-left">{group.group}</span>
-        <IconChevronRight
-          aria-hidden
-          className={`h-4 w-4 shrink-0 transition-transform ${
-            expanded ? "rotate-90" : ""
+    // `data-nav-group` is what makes "grouped" observable: the header and the
+    // children share ONE container, so the rows are never siblings of the
+    // top-level entries however the group is styled or which surface renders it.
+    <div data-nav-group={group.group} className="flex flex-col gap-0.5">
+      {inDrawer ? (
+        // No disclosure to operate, so no control: a button that toggles nothing
+        // is the tap this ruling exists to stop spending, and the chevron would
+        // announce a fold that isn't there.
+        <p
+          className={`flex items-center gap-3 px-3 py-2 text-sm font-medium ${headerTone}`}
+        >
+          {headerLabel}
+        </p>
+      ) : (
+        <button
+          type="button"
+          onClick={() => setOpen((o) => !o)}
+          aria-expanded={expanded}
+          aria-controls={panelId}
+          className={`flex items-center gap-3 rounded-lg px-3 py-2 text-sm font-medium transition ${headerTone} ${
+            active ? "" : "hover:bg-slate-100 dark:hover:bg-ink-750"
           }`}
-          stroke={1.75}
-        />
-      </button>
+        >
+          {headerLabel}
+          <IconChevronRight
+            aria-hidden
+            className={`h-4 w-4 shrink-0 transition-transform ${
+              expanded ? "rotate-90" : ""
+            }`}
+            stroke={1.75}
+          />
+        </button>
+      )}
       {expanded && (
         <div id={panelId} className="flex flex-col gap-0.5">
           {children.map((c) => (
@@ -502,6 +533,7 @@ function NavGroup({
 }
 
 export default function Nav({
+  inDrawer = false,
   adultContentAvailable = true,
   isAdmin = false,
   multiProfile = false,
@@ -511,6 +543,10 @@ export default function Nav({
   relevance = DEFAULT_NAV_RELEVANCE,
   reviewCount = 0,
 }: {
+  // WHICH SURFACE IS RENDERING, not a style knob: true only for the phone
+  // drawer (components/MobileNav.tsx), false for the desktop sidebar. Groups
+  // fold on one and render inline on the other (#3343 Q4) — see NavGroup.
+  inDrawer?: boolean;
   adultContentAvailable?: boolean;
   isAdmin?: boolean;
   // True when the caller has more than one ACCESSIBLE profile; gates entries
@@ -559,6 +595,7 @@ export default function Nav({
           <NavGroup
             key={e.group}
             group={e}
+            inDrawer={inDrawer}
             adultContentAvailable={adultContentAvailable}
             isAdmin={isAdmin}
             multiProfile={multiProfile}
