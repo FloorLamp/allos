@@ -417,7 +417,14 @@ export function gatherHistoryLog(
         clock: null,
         clockKind: "logged",
         title: def.label,
-        href: "/records/specialty/substance-use",
+        // PLAIN, LIKE THE FOOD GROUPS BESIDE IT (#4045 §5). The title link is a
+        // PER-ITEM question — "does this thing have a home" — and a substance has
+        // none: the substance-use page renders per-substance cards but exposes no
+        // anchor to one, so every row here would have linked to the same page-level
+        // destination. That is an ad wearing a home's clothes. If a substance card
+        // ever gains a stable per-item anchor the title may link THERE; the
+        // page-level link is not a fallback for a missing one.
+        href: null,
         detail: detailSegment([
           `${row.amount} ${row.amount === 1 ? def.countSingular : def.countPlural}`,
           row.notes,
