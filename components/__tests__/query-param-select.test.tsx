@@ -10,6 +10,15 @@ import type { PanelId } from "@/lib/biomarker-panels";
 // about what happens to the params SITTING BESIDE the one being changed. This page
 // carries a search term and the table's sort in the same query string, and a filter
 // that rebuilt the URL instead of cloning it would silently clear them.
+//
+// THESE ARE NOT PHONE COVERAGE, and the distinction is load-bearing. Below `sm` the
+// facets sit behind the Filters disclosure as ONE authored group that CSS hides
+// (`class="hidden"`, never a second render) — and jsdom applies no stylesheet, so
+// every test here drives controls a real 390px phone keeps closed. If that group
+// ever became a conditional render, the phone would lose all three filters and this
+// file would stay green. The disclosure belongs to the e2e tier
+// (results-panel-groups.mobile, biomarker-panels); geometry does too, since jsdom
+// lays nothing out.
 const nav = vi.hoisted(() => ({
   path: "/results/clinical-results",
   search: "",

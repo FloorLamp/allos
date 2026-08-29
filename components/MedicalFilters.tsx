@@ -145,7 +145,10 @@ export default function MedicalFilters({
             current view, which keeps the control consistent while filters change.
             Categories are stored lowercase and used to be shown through a
             `capitalize` class; the casing is the label now, because `capitalize` on
-            the shared select would retitle the panel names next door. */}
+            the shared select would retitle the panel names next door. Every category
+            is one word, so the two agree — a multi-word one would render "Mental
+            health" where CSS gave "Mental Health", and nothing measures option
+            text, so it would arrive silently. */}
           <QueryParamSelect
             param="category"
             label="Category"
