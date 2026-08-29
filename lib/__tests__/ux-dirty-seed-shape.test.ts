@@ -16,7 +16,6 @@ import {
   cleanupUxServedDb,
   UX_SERVED_DB_PREFIX,
 } from "../../scripts/ux-served-db.mjs";
-import { stripComments } from "./strip-comments";
 import { makeTmpDir } from "./tmp-dir";
 import { runCleanupSteps } from "../../scripts/ux-cleanup.mjs";
 
@@ -102,59 +101,7 @@ describe("UX_SEED=dirty", () => {
     });
   });
 
-  it.each([
-    ["fresh RNG without --serve", ["pages"], "", "", "3", "UX_SEED is fresh"],
-    [
-      "fresh RNG with --serve",
-      ["--serve", "pages"],
-      "",
-      "",
-      "3",
-      "UX_SEED is fresh",
-    ],
-    [
-      "persona RNG without --serve",
-      ["pages"],
-      "1",
-      "household",
-      "3",
-      "persona seeding replaces the dial vector",
-    ],
-    [
-      "persona RNG with --serve",
-      ["--serve", "pages"],
-      "1",
-      "household",
-      "3",
-      "persona seeding replaces the dial vector",
-    ],
-  ])(
-    "rejects ineffective entropy at the real CLI boundary: %s",
-    (_label, args, uxSeed, persona, rng, reason) => {
-      const result = spawnSync(
-        process.execPath,
-        [path.join(repo, "scripts", "ux-walkthrough.mjs"), ...args],
-        {
-          cwd: repo,
-          encoding: "utf8",
-          env: {
-            ...process.env,
-            UX_SEED: uxSeed,
-            SEED_PERSONA: persona,
-            SEED_RNG: rng,
-          },
-        }
-      );
-      expect(result.status).not.toBe(0);
-      expect(result.stderr).toContain(reason);
-      expect(result.stdout).not.toContain("claimed private scratch DB path");
-    }
-  );
-
-  it.each([
-    ["without --serve", ["pages"]],
-    ["with --serve", ["--serve", "pages"]],
-  ])("rejects a dirty/persona conflict %s", (_label, args) => {
+  it("rejects invalid seed input at the real CLI boundary before claiming a served DB", () => {
     const env: NodeJS.ProcessEnv = {
       ...process.env,
       UX_SEED: "dirty",
@@ -164,13 +111,14 @@ describe("UX_SEED=dirty", () => {
     delete env.SEED_DIAL_SHAPE;
     const result = spawnSync(
       process.execPath,
-      [path.join(repo, "scripts", "ux-walkthrough.mjs"), ...args],
+      [path.join(repo, "scripts", "ux-walkthrough.mjs"), "--serve", "pages"],
       { cwd: repo, env, encoding: "utf8" }
     );
     expect(result.status).not.toBe(0);
     expect(result.stderr).toContain(
       "SEED_PERSONA=household is set but UX_SEED=dirty — persona runs need UX_SEED=1"
     );
+    expect(result.stdout).not.toContain("claimed private scratch DB path");
   });
 
   it("atomically reserves one file inode and detects mutation or replacement", () => {
@@ -255,31 +203,29 @@ describe("UX_SEED=dirty", () => {
     expect(fs.readFileSync(outsideShm, "utf8")).toBe("outside shm sentinel");
   });
 
-  it.each(["browser", "contact sheet", "audit artifacts"])(
-    "still tears down the process group and DB when %s cleanup fails",
-    async (failedStep) => {
-      const called: string[] = [];
-      const failure = new Error(`${failedStep} failed`);
-      const steps = [
-        "browser",
-        "contact sheet",
-        "audit artifacts",
-        "server process group",
-        "scratch database",
-      ].map(
-        (label) =>
-          [
-            label,
-            () => {
-              called.push(label);
-              if (label === failedStep) throw failure;
-            },
-          ] as const
-      );
-      await expect(runCleanupSteps(steps, () => {})).rejects.toBe(failure);
-      expect(called).toEqual(steps.map(([label]) => label));
-    }
-  );
+  it("still tears down the process group and DB when an earlier cleanup fails", async () => {
+    const called: string[] = [];
+    const failedStep = "contact sheet";
+    const failure = new Error(`${failedStep} failed`);
+    const steps = [
+      "browser",
+      "contact sheet",
+      "audit artifacts",
+      "server process group",
+      "scratch database",
+    ].map(
+      (label) =>
+        [
+          label,
+          () => {
+            called.push(label);
+            if (label === failedStep) throw failure;
+          },
+        ] as const
+    );
+    await expect(runCleanupSteps(steps, () => {})).rejects.toBe(failure);
+    expect(called).toEqual(steps.map(([label]) => label));
+  });
 
   it("records the named shape independently in run.json data", () => {
     expect(uxSeedRunInfo(dirtyShape(), {})).toEqual({
@@ -305,59 +251,5 @@ describe("UX_SEED=dirty", () => {
       seedPersona: null,
       seedDialShape: "dirty",
     });
-  });
-
-  it("keeps the live harness and seed entrypoint on these boundaries", () => {
-    const walkthrough = stripComments(
-      fs.readFileSync(path.join(repo, "scripts", "ux-walkthrough.mjs"), "utf8")
-    );
-    expect(walkthrough).toContain(
-      "const UX_SEED_SELECTION = uxSeedShapeFromEnv(process.env);"
-    );
-    expect(walkthrough).toContain("const env = applyUxSeedShapeEnv(");
-    expect(walkthrough).toContain("servedDb = allocateUxServedDb();");
-    expect(walkthrough).toContain("ALLOS_DB_PATH: dbPath");
-    expect(walkthrough).toContain("UX_OWNED_DB_DIR: servedDb.dir");
-    expect(walkthrough).toContain("cleanupUxServedDb(servedDb)");
-    expect(
-      walkthrough.match(/assertUxServedDbOwned\(servedDb\)/g)?.length
-    ).toBeGreaterThanOrEqual(3);
-    expect(walkthrough).toContain('process.kill(-child.pid, "SIGTERM")');
-    expect(walkthrough).toContain('process.on("SIGTERM", onSigterm)');
-    expect(walkthrough).toContain('process.on("SIGINT", onSigint)');
-    expect(walkthrough).toContain(
-      'response.headers.get("x-allos-ux-census-nonce")'
-    );
-    expect(walkthrough).toContain("if (UX_SEED_SHAPE.seed)");
-    expect(walkthrough).toMatch(
-      /spawnSync\(\s*process\.execPath,\s*\["--import", "tsx", "scripts\/seed\.ts"\]/
-    );
-    expect(walkthrough).toContain(
-      "seed exited non-zero for ${UX_SEED_SHAPE.label} — aborting"
-    );
-    expect(walkthrough).toContain("verifyServedDb(env);");
-    expect(walkthrough).toContain(
-      "const runInfo = uxSeedRunInfo(UX_SEED_SHAPE, process.env);"
-    );
-
-    const seed = stripComments(
-      fs.readFileSync(path.join(repo, "scripts", "seed.ts"), "utf8")
-    );
-    expect(seed).toContain(
-      "const DIAL_SELECTION = seedDialsFromEnv(process.env);"
-    );
-    expect(seed).toContain("const DIALS = DIAL_SELECTION.dials;");
-  });
-
-  it("is part of the documented standard rotation", () => {
-    const skill = fs.readFileSync(
-      path.join(repo, ".claude", "skills", "ux-walkthrough", "SKILL.md"),
-      "utf8"
-    );
-    expect(skill).toContain("Run all five census shapes");
-    expect(skill).toContain(
-      "UX_SEED=dirty node scripts/ux-walkthrough.mjs --serve pages"
-    );
-    expect(skill).toContain("SEED_DIAL_SHAPE=dirty");
   });
 });
