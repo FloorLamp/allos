@@ -4,6 +4,7 @@ import Database from "better-sqlite3";
 import { MIGRATIONS } from "@/lib/migrations/versions";
 import { runMigrations, type Migration } from "@/lib/migrations/runner";
 import { makeTmpDir } from "../__tests__/tmp-dir";
+import { perTestCeiling } from "../../vitest.timeouts";
 
 // RE-ENTERING A MIGRATION BODY AFTER IT HAS ALREADY WRITTEN (#3590).
 //
@@ -181,18 +182,31 @@ function applyWithForcedReentry(
 }
 
 describe("migration bodies re-entered by the SQLITE_BUSY retry (#3590)", () => {
-  it("leaves the same database when EVERY shipped up() is re-entered after a real busy at COMMIT", () => {
-    const clean = applyCleanly("migration-reentry-clean", MIGRATIONS);
-    const { dump, forced } = applyWithForcedReentry(
-      "migration-reentry-forced",
-      MIGRATIONS
-    );
+  // A CEILING DERIVED FROM THE DB TIER'S MEASURED DISPERSION (#3986). This replays
+  // all 219 shipped bodies twice and dumps both databases whole: 3 004 ms solo on a
+  // 4-core box, 3 505 ms on a green CI run — 4.3x headroom under the tier's
+  // 15 000 ms default, which read as comfortable. It is not. Between two GREEN
+  // test-db runs the same tier moved 3.11x on migration-snapshot and 3.59x on
+  // restore, PER FILE, while the tier total moved only 1.40x; this test then
+  // crossed 4.3x on main at 11c7920b with nothing failing. 2x testTimeout is
+  // 30 000 ms on CI — 8.6x the green reading — and scales with the orchestration
+  // override, which a hard-coded literal would not.
+  it(
+    "leaves the same database when EVERY shipped up() is re-entered after a real busy at COMMIT",
+    { timeout: perTestCeiling(2) },
+    () => {
+      const clean = applyCleanly("migration-reentry-clean", MIGRATIONS);
+      const { dump, forced } = applyWithForcedReentry(
+        "migration-reentry-forced",
+        MIGRATIONS
+      );
 
-    // The measurement is worthless if the forcing did not happen, and a harness
-    // that forced nothing produces an IDENTICAL dump — the reassuring direction.
-    expect(forced.size).toBe(MIGRATIONS.length);
-    expect(dump).toBe(clean);
-  });
+      // The measurement is worthless if the forcing did not happen, and a harness
+      // that forced nothing produces an IDENTICAL dump — the reassuring direction.
+      expect(forced.size).toBe(MIGRATIONS.length);
+      expect(dump).toBe(clean);
+    }
+  );
 
   // THE CONTROL, because the assertion above passes for 219 bodies at once and a
   // comparison that cannot see a difference would pass for 220. These two are the
