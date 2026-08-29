@@ -51,13 +51,13 @@ export const dynamic = "force-dynamic";
 // `/history` — THE APP'S RECORD (issue #3958, phase 1).
 //
 // Every discrete thing a profile logged, day-grouped, newest first, correctable in
-// place. It replaced four standalone ledger routes (`/nutrition/food-history`,
-// `/nutrition/dose-history`, `/medications/dose-history`,
-// `/wellness/practice-history`), which were four copies of one page differing only in
-// which table they read — and which each answered "when" and "how much" in their own
-// words. There are no redirects: those routes are gone and every door that pointed at
-// one now points here, because a shim is a compatibility layer standing where a fixed
-// call site should be.
+// place. It replaced the four standalone ledger routes — two dose doors, one for food
+// and one for practices — which were four copies of one page differing only in which
+// table they read, and which each answered "when" and "how much" in their own words.
+// There are no redirects: those routes are gone and every door that pointed at one now
+// points here, because a shim is a compatibility layer standing where a fixed call site
+// should be. Their paths are deliberately not spelled anywhere in the tree, so
+// `git grep` answering nothing IS the acceptance criterion.
 //
 // WHAT THIS FILE OWNS. The URL → read → render seam, and nothing about a domain: the
 // row grammar is lib/history-format.ts's, the composers are lib/history.ts's, the

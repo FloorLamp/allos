@@ -453,7 +453,7 @@ async function runsFlushWithTheirFill(
 // waited for. A region measured before its rows arrive is a measurement of a
 // placeholder, and empty is the state that flatters every assertion below.
 const SWEPT = [
-  ["the ledger", "/nutrition/dose-history", "dose-ledger"],
+  ["the record", "/history", "history-feed"],
   ["a Records pane", "/records", "records-visits"],
   ["the dashboard", "/", "dashboard-standing"],
   // The census grid is the one surface on this list whose cards are placed into
@@ -691,10 +691,10 @@ test("#3920 a one-sided safe-area inset leaves no gap and no overhang", async ({
   expect([...new Set(edges)]).toEqual([`0→${VIEWPORT_PX}`]);
 });
 
-test("#3673 the ledger's rows reclaim the same line", async ({ page }) => {
+test("#3673 the record's rows reclaim the same line", async ({ page }) => {
   test.slow();
-  await page.goto("/nutrition/dose-history");
-  const row = page.locator("table.logged-event-rows tbody tr").first(); // first-ok: every row is the same primitive
+  await page.goto("/history");
+  const row = page.locator('[data-testid="history-row"]').first(); // first-ok: every row is the same primitive
   await expect(row).toBeVisible();
   const box = await row.boundingBox();
   expect(Math.round(box?.x ?? 0)).toBe(PAGE_GUTTER_PX);

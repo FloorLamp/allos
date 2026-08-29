@@ -1,5 +1,5 @@
 {
-  "note": "Rendered chrome geometry, in CSS pixels, recorded by e2e/census-chrome-baseline.spec.ts. Regenerate with `npm run gen:census-baseline` and commit the diff — never hand-edit a number.",
+  "note": "Rendered chrome geometry, in CSS pixels, recorded by e2e/census-chrome-baseline.spec.ts. Regenerate with `npm run gen:census-baseline` and commit the diff \u2014 never hand-edit a number.",
   "viewports": {
     "desktop": {
       "width": 1280,
@@ -14,7 +14,7 @@
     {
       "route": "/",
       "viewport": "desktop",
-      "why": "The dashboard — the shell's most-visited surface and the one every nav change lands on.",
+      "why": "The dashboard \u2014 the shell's most-visited surface and the one every nav change lands on.",
       "landmarks": {
         "sidebarWidth": 240,
         "mainInsetLeft": 240,
@@ -29,7 +29,7 @@
     {
       "route": "/nutrition?tab=supplements",
       "viewport": "desktop",
-      "why": "A tabbed hub panel — the census's HUB_VARIANTS shape, where a tab strip sits between the title and the content.",
+      "why": "A tabbed hub panel \u2014 the census's HUB_VARIANTS shape, where a tab strip sits between the title and the content.",
       "landmarks": {
         "sidebarWidth": 240,
         "mainInsetLeft": 240,
@@ -42,9 +42,9 @@
       }
     },
     {
-      "route": "/nutrition/dose-history",
+      "route": "/history",
       "viewport": "desktop",
-      "why": "An event ledger — the #3647 shared frame, with a BackLink above the title and a full-width row list as its content.",
+      "why": "The record \u2014 a full-width day-grouped row list under one filter row, with a bounded chrome stack above the first row (#3958).",
       "landmarks": {
         "sidebarWidth": 240,
         "mainInsetLeft": 240,
@@ -59,7 +59,7 @@
     {
       "route": "/settings",
       "viewport": "desktop",
-      "why": "A settings index — a group list rather than a data page, and the densest column of controls in the app.",
+      "why": "A settings index \u2014 a group list rather than a data page, and the densest column of controls in the app.",
       "landmarks": {
         "sidebarWidth": 240,
         "mainInsetLeft": 240,
@@ -75,7 +75,7 @@
       "route": "/trends/metric/weight",
       "viewport": "desktop",
       "censusRoute": "/trends/metric/[kind]",
-      "why": "A dynamic detail route — the DYNAMIC_ROUTES shape (#1544), reached by id rather than by path.",
+      "why": "A dynamic detail route \u2014 the DYNAMIC_ROUTES shape (#1544), reached by id rather than by path.",
       "landmarks": {
         "sidebarWidth": 240,
         "mainInsetLeft": 240,
@@ -105,7 +105,7 @@
     {
       "route": "/",
       "viewport": "mobile",
-      "why": "The dashboard — the shell's most-visited surface and the one every nav change lands on.",
+      "why": "The dashboard \u2014 the shell's most-visited surface and the one every nav change lands on.",
       "landmarks": {
         "shellChromeHeight": 57,
         "dockHeight": 57,
@@ -120,7 +120,7 @@
     {
       "route": "/nutrition?tab=supplements",
       "viewport": "mobile",
-      "why": "A tabbed hub panel — the census's HUB_VARIANTS shape, where a tab strip sits between the title and the content.",
+      "why": "A tabbed hub panel \u2014 the census's HUB_VARIANTS shape, where a tab strip sits between the title and the content.",
       "landmarks": {
         "shellChromeHeight": 107,
         "dockHeight": 57,
@@ -133,9 +133,9 @@
       }
     },
     {
-      "route": "/nutrition/dose-history",
+      "route": "/history",
       "viewport": "mobile",
-      "why": "An event ledger — the #3647 shared frame, with a BackLink above the title and a full-width row list as its content.",
+      "why": "The record \u2014 a full-width day-grouped row list under one filter row, with a bounded chrome stack above the first row (#3958).",
       "landmarks": {
         "shellChromeHeight": 57,
         "dockHeight": 57,
@@ -151,7 +151,7 @@
     {
       "route": "/settings",
       "viewport": "mobile",
-      "why": "A settings index — a group list rather than a data page, and the densest column of controls in the app.",
+      "why": "A settings index \u2014 a group list rather than a data page, and the densest column of controls in the app.",
       "landmarks": {
         "shellChromeHeight": 57,
         "dockHeight": 57,
@@ -168,7 +168,7 @@
       "route": "/trends/metric/weight",
       "viewport": "mobile",
       "censusRoute": "/trends/metric/[kind]",
-      "why": "A dynamic detail route — the DYNAMIC_ROUTES shape (#1544), reached by id rather than by path.",
+      "why": "A dynamic detail route \u2014 the DYNAMIC_ROUTES shape (#1544), reached by id rather than by path.",
       "landmarks": {
         "shellChromeHeight": 57,
         "dockHeight": 57,

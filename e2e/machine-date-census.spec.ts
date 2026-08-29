@@ -377,31 +377,24 @@ const ROUTES: CensusRoute[] = [
     subject: "td[data-card='meta']",
   },
   {
-    // #3478 item 2: the dose ledger's window note read "Showing confirmed doses
-    // from 2026-05-24 to 2026-08-21" — `doseLedgerWindowNote` interpolated
-    // `range.from`/`range.to` verbatim, on a page whose every row date already
-    // crossed the display boundary. The route opens pre-filtered to medications and
-    // the shared seed's admin profile has confirmed medication doses inside the
-    // default 90-day window, so the POPULATED note is what renders here; the empty
-    // state's sentence (which carries the same bounds) is pinned by
-    // e2e/dose-ledger-phone.mobile.spec.ts on its own dedicated fixture.
+    // THE RECORD'S DAY HEADERS (#3958). This entry used to census the dose ledger's
+    // window note — "Showing confirmed doses from … to …", #3478 item 2 — and that
+    // note went with the range chrome when the four ledger routes folded into
+    // `/history`. What the route still owes the census is the same guarantee at a
+    // higher volume: the record prints ONE date per day group and nothing per row,
+    // so a boundary regression shows up on every header at once.
     //
-    // NOTE WHICH CHECK CATCHES A REGRESSION HERE, because it is not the obvious
-    // one: reverting the note to raw ISO fails the SUBJECT assertion, not the
-    // offender sweep — the note stops carrying a date in the display shape, so the
-    // route can no longer prove it rendered what it is censused for, and the error
-    // names this entry. Verified 2026-08-23 by doing exactly that. The offender
-    // sweep still backs it up for a surface that prints both shapes at once.
-    path: "/medications/dose-history",
-    why: "The dose ledger's window note — 'Showing confirmed doses from … to …' (#3478 item 2).",
-    // MEASURED 2026-08-23 under the shared seed: 88 rendered text nodes populated
-    // (the parity fixture's 14 daily taken-logs plus the PRN fixture's two, all
-    // inside the default 90-day window), and 20 for the same route pointed at a
-    // window with no doses in it — the EMPTY state, which is what this route's
-    // failure-to-render actually looks like rather than a blank page. 40 is above
-    // twice the empty state and under half the populated one.
-    minTextNodes: 40,
-    subject: '[data-testid="dose-ledger-window-note"]',
+    // `assertReady` RATHER THAN A TEXT-NODE FLOOR, deliberately: this page's density
+    // is whatever the shared seed logged that fortnight, so a floor here would be a
+    // number nobody could re-derive. The readiness proof is the route's own content
+    // — a rendered day group carrying a day link — which is a stronger claim than a
+    // node count anyway.
+    path: "/history?kind=dose",
+    why: "The record's sticky day headers — the one date shape a day group prints (#3958).",
+    assertReady: async (page) => {
+      await expect(page.getByTestId("history-day").first()).toBeVisible();
+    },
+    subject: '[data-testid="history-day-link"]',
   },
   {
     // #3491 item 3: the Trash row printed `entry.date` in its headline and

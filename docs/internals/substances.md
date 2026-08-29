@@ -5,7 +5,7 @@ substances as one per-day `substance` rollup. Alcohol is counted from its shared
 food serving events; the other substances are counted from their current daily
 totals. This is browse-only. #3295 owns the later event-row schema and writers,
 and its row ledger must mount `components/ledger/EventLedgerFrame.tsx` as
-recorded in `docs/internals/event-ledger.md` rather than creating a substance
+recorded in `docs/internals/history.md` rather than creating a substance
 shell beside it.
 
 Status: vocabulary shipped (#3279); the surfaces that consume it are in flight

@@ -137,8 +137,8 @@ export function intakeHref(kind: IntakeItemKind): AppRoute {
 // day view is the honest form of "what did I take that day".
 //
 // `kind` implies its family, so a kind-scoped link never has to spell both. `class`
-// preserves the old two-door dose pre-filter (`/nutrition/dose-history` opened on
-// supplements, `/medications/dose-history` on medications) as a param on one page.
+// preserves the old two-door dose pre-filter — one route opened on supplements and the
+// other on medications — as a param on one page.
 //
 // Param ORDER is fixed by this function, never by the caller's object literal, so the
 // same state always produces the same URL — which is what makes a link cacheable and
