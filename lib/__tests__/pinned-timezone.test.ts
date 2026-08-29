@@ -5,6 +5,7 @@ import { isValidTimezone } from "../timezone";
 import {
   hhmmToMinutes,
   shiftDateStr,
+  utcSqlString,
   zonedDateParts,
   zonedWallTimeToUtc,
 } from "../date";
@@ -69,6 +70,37 @@ describe("pinnedTimezone (e2e frozen-clock timezone pin)", () => {
       zone: "UTC",
       offsetHours: 0,
     });
+  });
+});
+
+describe("pinned zone × local intake fixture instants (#3886)", () => {
+  const day = "2026-08-29";
+
+  it("round-trips an 08:00 wall time through UTC SQL in all 24 pinned zones", () => {
+    for (let h = 0; h < 24; h++) {
+      const frozen = `${day}T${String(h).padStart(2, "0")}:37:00.000Z`;
+      const { zone } = pinnedTimezone(frozen);
+      const instant = zonedWallTimeToUtc(zone, day, "08:00")!;
+      const stored = utcSqlString(instant);
+      const read = zonedDateParts(
+        zone,
+        new Date(`${stored.replace(" ", "T")}Z`)
+      );
+      expect(read.date, `utc hour ${h} → ${zone}`).toBe(day);
+      expect(read.hhmm, `utc hour ${h} → ${zone}`).toBe("08:00");
+    }
+  });
+
+  it("documents the bug: a naive 08:00 UTC string crosses the local day in rotating zones", () => {
+    const wrong: string[] = [];
+    for (let h = 0; h < 24; h++) {
+      const frozen = `${day}T${String(h).padStart(2, "0")}:37:00.000Z`;
+      const { zone } = pinnedTimezone(frozen);
+      const read = zonedDateParts(zone, new Date(`${day}T08:00:00Z`));
+      if (read.date !== day) wrong.push(`${zone}:${read.date}`);
+    }
+    expect(wrong.length).toBeGreaterThan(0);
+    expect(wrong.some((entry) => entry.startsWith("Etc/GMT+10:"))).toBe(true);
   });
 });
 
