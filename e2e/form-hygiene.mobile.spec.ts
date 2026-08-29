@@ -324,9 +324,10 @@ test("the per-part options panel fits its own box at 390px (#3349)", async ({
     ["effort help", panelEl.getByTestId("rpe-help")],
   ] as const) {
     const b = await box(locator);
-    expect(b.x, `${name} sits left of the panel it is in`).toBeGreaterThanOrEqual(
-      panel.x - 1
-    );
+    expect(
+      b.x,
+      `${name} sits left of the panel it is in`
+    ).toBeGreaterThanOrEqual(panel.x - 1);
     expect(
       b.x + b.width,
       `${name} overflows the panel it is in`

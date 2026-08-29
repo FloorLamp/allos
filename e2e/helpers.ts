@@ -2646,7 +2646,10 @@ export async function setRpeColumn(page: Page, on: boolean): Promise<void> {
 // form, which is honest right up until it silently is not: a multi-part spec that
 // omits it drives part 1's panel while believing it drives part 3's, and the helper
 // has chosen the assertion's subject. Say which part.
-export async function openPartOptions(page: Page, index: number): Promise<void> {
+export async function openPartOptions(
+  page: Page,
+  index: number
+): Promise<void> {
   const part = page.getByTestId("activity-part").nth(index); // nth-ok: the caller names which part it means
   const stated = part
     .getByTestId("part-fact-sides")

@@ -218,10 +218,7 @@ describe("moreFactsLabel", () => {
     [["effort"], "Add effort"],
     [["intent", "effort"], "Add a target or effort"],
     [["sides", "intent", "effort"], "Add sides, a target or effort"],
-    [
-      ["equipment", "intent", "effort"],
-      "Add equipment, a target or effort",
-    ],
+    [["equipment", "intent", "effort"], "Add equipment, a target or effort"],
   ] as [PartFactKey[], string | null][])("%s", (absent, label) => {
     expect(moreFactsLabel(absent)).toBe(label);
   });
