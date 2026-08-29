@@ -42,7 +42,7 @@ const ALLOWLIST = new Map<string, string>([
     "avatar initials sized proportionally to the avatar diameter (0.65rem in the 28px sm circle)",
   ],
   [
-    "app/(app)/timeline/TimelineScrubber.tsx",
+    "components/JumpRailScrubber.tsx",
     "timeline jump-rail year labels (#2657 item 4) — the same tick-label density call " +
       "DayHistory makes, and here it is forced: the owner ruling of 2026-08-14 puts the " +
       "year's digits on the rail while the 44px hit area may not grow to fit them, and " +

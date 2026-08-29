@@ -61,7 +61,7 @@ import { requireSession } from "@/lib/auth";
 import { requireScope } from "@/lib/scope";
 import SharedSuppliesLink from "@/components/intake/SharedSuppliesLink";
 import LedgerDoorLink from "@/components/LedgerDoorLink";
-import { doseLedgerHref } from "@/lib/hrefs";
+import { historyHref } from "@/lib/hrefs";
 import { lastNDates, shiftDateStr, zonedDateParts } from "@/lib/date";
 import { bestKnownInstant } from "@/lib/row-instants";
 import { formatGivenAtClock } from "@/lib/administration-format";
@@ -1279,7 +1279,7 @@ export default async function SupplementsTab({
                               this page is short. The populated branch — the long
                               one the owner scrolled — is the one that moved. */}
                           <LedgerDoorLink
-                            href={doseLedgerHref("supplement")}
+                            href={historyHref({ kind: "dose", class: "supplement" })}
                             label="Dose history"
                             testId="dose-ledger-link"
                           />
@@ -1318,7 +1318,7 @@ export default async function SupplementsTab({
                     // below `lg` — present in the DOM, functionally absent on a
                     // phone, which is what the owner reported as a missing link.
                     <LedgerDoorLink
-                      href={doseLedgerHref("supplement")}
+                      href={historyHref({ kind: "dose", class: "supplement" })}
                       label="Dose history"
                       testId="dose-ledger-link"
                     />

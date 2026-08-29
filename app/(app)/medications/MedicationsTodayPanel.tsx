@@ -4,7 +4,7 @@ import QuickLogPrnControl from "@/components/medications/QuickLogPrnControl";
 import TodayMedRow from "@/components/medications/TodayMedRow";
 import ScheduledDoseAction from "@/components/medications/ScheduledDoseAction";
 import MomentSlot from "@/components/medications/MomentSlot";
-import { doseLedgerHref, medicationHref } from "@/lib/hrefs";
+import { historyHref, medicationHref } from "@/lib/hrefs";
 import { buildTodayPanelModel } from "@/lib/medication-today";
 import { buildMomentSections, type MomentDose } from "@/lib/moment-sections";
 import {
@@ -219,7 +219,7 @@ export default function MedicationsTodayPanel({
         </div>
         {ledgerDoor ? (
           <LedgerDoorLink
-            href={doseLedgerHref("medication")}
+            href={historyHref({ kind: "dose", class: "medication" })}
             label="Dose history"
             testId="dose-ledger-link"
           />
