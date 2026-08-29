@@ -59,7 +59,7 @@ export default function TrajectoryWatchCard({
                   ? "trajectory-rollup-more-toggle"
                   : "trajectory-rollup-toggle"
               }
-              className="flex items-start gap-2"
+              className="flex cursor-pointer list-none items-start gap-2 [&::-webkit-details-marker]:hidden"
             >
               <div className="min-w-0 flex-1">
                 <p className="font-medium text-slate-800 dark:text-slate-100">
@@ -144,7 +144,7 @@ export default function TrajectoryWatchCard({
                 className="mt-3"
                 data-testid="trajectory-findings-more"
               >
-                <summary className="text-xs font-medium text-slate-500 hover:text-brand-600 hover:underline dark:text-slate-400 dark:hover:text-brand-400">
+                <summary className="cursor-pointer list-none text-xs font-medium text-slate-500 hover:text-brand-600 hover:underline dark:text-slate-400 dark:hover:text-brand-400 [&::-webkit-details-marker]:hidden">
                   <span className="group-open:hidden">
                     Show all {rollup.groups.length} →
                   </span>

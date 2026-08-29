@@ -144,7 +144,7 @@ export default function NotifyRunTable({
                     </td>
                     <td className="td">
                       <Disclosure>
-                        <summary className="text-slate-500 dark:text-slate-400">
+                        <summary className="cursor-pointer text-slate-500 dark:text-slate-400">
                           {run.counts.total}
                         </summary>
                         <ul className="mt-2 space-y-2">

@@ -139,7 +139,7 @@ export default function QuickLogPrnContent({
              server, so a remembered-open fold necessarily opens AFTER hydration, and
              this one sits directly above a Log button. */
           <Disclosure data-testid="quick-log-prn-more">
-            <summary className="py-1 text-sm font-medium text-slate-600 hover:text-slate-800 dark:text-slate-300 dark:hover:text-slate-100">
+            <summary className="cursor-pointer py-1 text-sm font-medium text-slate-600 hover:text-slate-800 dark:text-slate-300 dark:hover:text-slate-100">
               More medications ({remainingMeds.length})
             </summary>
             <div className="mt-2 flex flex-col gap-2">

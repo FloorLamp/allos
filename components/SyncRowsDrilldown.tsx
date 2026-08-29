@@ -79,7 +79,7 @@ export default function SyncRowsDrilldown({
         if ((e.currentTarget as HTMLDetailsElement).open) void load();
       }}
     >
-      <summary className="text-xs text-link">
+      <summary className="cursor-pointer text-xs text-link">
         What this wrote — {shown} {shown === 1 ? noun : `${noun}s`}
       </summary>
       {state === "loading" && (

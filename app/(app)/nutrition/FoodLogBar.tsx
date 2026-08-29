@@ -2414,7 +2414,7 @@ export default function FoodLogBar({
               <Disclosure data-testid="food-more-groups">
                 <summary
                   data-testid="food-more-groups-summary"
-                  className="flex min-h-14 items-center justify-between gap-3 rounded-lg border border-(--border) bg-surface px-3 py-2 text-sm font-medium text-slate-700 transition hover:bg-(--ghost-hover) dark:text-slate-200"
+                  className="flex min-h-14 cursor-pointer list-none items-center justify-between gap-3 rounded-lg border border-(--border) bg-surface px-3 py-2 text-sm font-medium text-slate-700 transition hover:bg-(--ghost-hover) [&::-webkit-details-marker]:hidden dark:text-slate-200"
                 >
                   <span>More food groups ({moreGroups.length})</span>
                   <IconChevronDown className="h-4 w-4 transition-transform group-open:rotate-180" />

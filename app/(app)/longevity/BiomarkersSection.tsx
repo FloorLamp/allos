@@ -137,7 +137,7 @@ export default async function BiomarkersSection({
 
       {optimal.length > 0 && (
         <Disclosure className="mt-4">
-          <summary className="text-sm text-slate-600 dark:text-slate-300">
+          <summary className="cursor-pointer text-sm text-slate-600 dark:text-slate-300">
             {optimal.length} marker{optimal.length === 1 ? "" : "s"} in the
             optimal band
           </summary>

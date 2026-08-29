@@ -109,7 +109,7 @@ export default function MuscleCoverageCard(props: MuscleCoverageCardProps) {
                   >
                     <summary
                       aria-label={`Show or hide what counts for ${row.label}`}
-                      className="flex items-center gap-2 text-sm"
+                      className="flex cursor-pointer list-none items-center gap-2 text-sm [&::-webkit-details-marker]:hidden"
                     >
                       <span
                         className={`h-2.5 w-2.5 shrink-0 rounded-full ${

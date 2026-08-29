@@ -313,7 +313,7 @@ function Attention({ data }: { data: HouseholdCardData }) {
               >
                 <summary
                   data-testid="household-dose-aggregate-summary"
-                  className="flex items-center gap-2 rounded-md py-0.5 transition hover:bg-slate-50 dark:hover:bg-ink-850"
+                  className="flex cursor-pointer list-none items-center gap-2 rounded-md py-0.5 transition hover:bg-slate-50 dark:hover:bg-ink-850"
                 >
                   <IconPill
                     className="h-4 w-4 shrink-0 text-slate-500 dark:text-slate-400"

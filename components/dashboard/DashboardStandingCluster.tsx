@@ -366,7 +366,7 @@ export default function DashboardStandingCluster({
           >
             <summary
               data-testid="dashboard-standing-tail-summary"
-              className="band flex min-h-11 items-center bg-(--ghost) px-4 py-2 text-xs font-semibold tracking-wide text-slate-500 uppercase dark:text-slate-400"
+              className="band flex min-h-11 cursor-pointer list-none items-center bg-(--ghost) px-4 py-2 text-xs font-semibold tracking-wide text-slate-500 uppercase marker:content-none dark:text-slate-400"
             >
               Quiet ({tail.length})
             </summary>

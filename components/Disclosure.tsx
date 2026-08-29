@@ -9,8 +9,13 @@ import type { ComponentPropsWithRef } from "react";
 // app/globals.css. So there is no state, no effect, no timer and no `"use client"`:
 // this still renders on the server, the fold still opens with JavaScript disabled,
 // in-page find still auto-expands it, and the keyboard and AT semantics are the
-// platform's. The `<summary>` stays the CALLER'S element — that is where a fold says
-// what it holds, and 47 of them say it differently.
+// platform's.
+//
+// THE `<summary>` STAYS THE CALLER'S ELEMENT, classes and all. That is where a fold says
+// what it holds, and 47 of them say it differently — half draw a chevron and hide the
+// native marker, half keep the marker, and a couple carry a phone tap floor. Adopting
+// this owner is a tag rename and nothing else, which is why it could be done to all 47
+// without reading each one's summary as a design decision to re-make.
 //
 // NOT <Collapse>, the app's BUTTON disclosure: its grid `0fr → 1fr` cannot animate a
 // `<details>`, because a closed details does not render its contents, so opening

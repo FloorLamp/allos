@@ -1383,7 +1383,7 @@ export default function IntakeItemForm({
                   the label.
                 </p>
                 <Disclosure className="mt-1 text-xs text-slate-500 dark:text-slate-400">
-                  <summary className="text-brand-700 hover:underline dark:text-brand-400">
+                  <summary className="cursor-pointer text-brand-700 hover:underline dark:text-brand-400">
                     How it works
                   </summary>
                   <p className="mt-1">

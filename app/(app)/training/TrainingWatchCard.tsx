@@ -48,7 +48,7 @@ export default function TrainingWatchCard({
         className="subpanel-inset-sm rounded-xl border border-slate-200 bg-slate-50/60 p-3 dark:border-ink-750 dark:bg-ink-850/40"
       >
         <Disclosure>
-          <summary className="flex items-start gap-2">
+          <summary className="flex cursor-pointer list-none items-start gap-2 [&::-webkit-details-marker]:hidden">
             <div className="min-w-0 flex-1">
               <p
                 className="font-medium text-slate-800 dark:text-slate-100"
@@ -100,7 +100,7 @@ export default function TrainingWatchCard({
       </ul>
       {rollup.overflow.length > 0 && (
         <Disclosure className="mt-3" data-testid="training-findings-more">
-          <summary className="text-xs font-medium text-slate-500 hover:text-brand-600 hover:underline dark:text-slate-400 dark:hover:text-brand-400">
+          <summary className="cursor-pointer list-none text-xs font-medium text-slate-500 hover:text-brand-600 hover:underline dark:text-slate-400 dark:hover:text-brand-400 [&::-webkit-details-marker]:hidden">
             <span className="group-open:hidden">
               Show all {rollup.rows.length} →
             </span>

@@ -65,7 +65,7 @@ export default function FindingsList({
       </ul>
       {moreFindings.length > 0 && (
         <Disclosure className="mt-3" data-testid={`${testid}-more`}>
-          <summary className="text-xs font-medium text-slate-500 hover:text-brand-600 hover:underline dark:text-slate-400 dark:hover:text-brand-400">
+          <summary className="cursor-pointer list-none text-xs font-medium text-slate-500 hover:text-brand-600 hover:underline dark:text-slate-400 dark:hover:text-brand-400 [&::-webkit-details-marker]:hidden">
             <span className="group-open:hidden">
               Show {moreFindings.length} more →
             </span>
@@ -85,7 +85,7 @@ export default function FindingsList({
     return (
       <Disclosure className="card" data-testid={testid}>
         <summary
-          className="flex items-center justify-between gap-4"
+          className="flex cursor-pointer list-none items-center justify-between gap-4 [&::-webkit-details-marker]:hidden"
           data-testid={`${testid}-toggle`}
         >
           <span className="flex min-w-0 items-start gap-2">

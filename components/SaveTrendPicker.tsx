@@ -31,7 +31,7 @@ export default function SaveTrendPicker({
       data-testid="save-trend-picker-disclosure"
     >
       <summary
-        className="w-fit text-xs font-medium text-brand-700 hover:underline dark:text-brand-300"
+        className="w-fit cursor-pointer list-none text-xs font-medium text-brand-700 hover:underline dark:text-brand-300 [&::-webkit-details-marker]:hidden"
         data-testid="save-trend-picker-toggle"
       >
         <span className="group-open:hidden">＋ Add tile</span>

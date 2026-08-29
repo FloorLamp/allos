@@ -88,7 +88,7 @@ export default function PracticeTrends({
   return (
     <div className="border-t border-black/5 pt-3 dark:border-white/10">
       <Disclosure data-testid="wellness-practice-trends">
-        <summary className="text-sm font-medium text-brand-700 dark:text-brand-300">
+        <summary className="cursor-pointer text-sm font-medium text-brand-700 dark:text-brand-300">
           26-week trend
         </summary>
         <p className="mt-2 text-xs text-slate-500 dark:text-slate-400">

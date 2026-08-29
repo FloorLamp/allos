@@ -28,7 +28,7 @@ export default function IngredientsDisclosure({
   if (rows.length === 0) return null;
   return (
     <Disclosure className={className} data-testid={testId}>
-      <summary className="text-xs text-slate-500 dark:text-slate-400">
+      <summary className="cursor-pointer text-xs text-slate-500 dark:text-slate-400">
         What&apos;s in this ({rows.length})
       </summary>
       <ul className="mt-1 space-y-0.5 border-l-2 border-black/10 pl-3 text-xs text-slate-500 dark:border-white/10 dark:text-slate-400">

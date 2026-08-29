@@ -76,7 +76,7 @@ export default function MomentSlot({
     >
       <summary
         aria-label={section.line}
-        className="flex flex-wrap items-baseline gap-x-2 rounded-lg px-1 py-2 text-sm hover:bg-black/[0.03] dark:hover:bg-white/[0.04]"
+        className="flex cursor-pointer list-none flex-wrap items-baseline gap-x-2 rounded-lg px-1 py-2 text-sm marker:content-none hover:bg-black/[0.03] dark:hover:bg-white/[0.04]"
       >
         <span
           aria-hidden

@@ -409,7 +409,7 @@ export default function SyncHistoryDays({
               data-testid={`sync-day-${day.day}`}
             >
               <summary
-                className="grid grid-cols-[auto_minmax(0,1fr)_auto] items-start gap-2.5 px-1 py-3"
+                className="grid cursor-pointer list-none grid-cols-[auto_minmax(0,1fr)_auto] items-start gap-2.5 px-1 py-3"
                 data-testid="sync-day-summary"
               >
                 <IconChevronRight

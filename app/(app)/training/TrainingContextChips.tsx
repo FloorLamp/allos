@@ -73,7 +73,7 @@ export default function TrainingContextChips({
           </Link>
         ))}
         <Disclosure className="text-xs">
-          <summary className="font-medium text-slate-500 hover:text-brand-600 hover:underline dark:text-slate-400 dark:hover:text-brand-400">
+          <summary className="cursor-pointer list-none font-medium text-slate-500 hover:text-brand-600 hover:underline dark:text-slate-400 dark:hover:text-brand-400 [&::-webkit-details-marker]:hidden">
             <span className="group-open:hidden">Why?</span>
             <span className="hidden group-open:inline">Hide context</span>
           </summary>

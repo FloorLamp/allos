@@ -149,7 +149,7 @@ export default function DormantPrnSweep({
 
       {dismissed.length > 0 && (
         <Disclosure className="mt-2" data-testid="dormant-prn-dismissed">
-          <summary className="section-label hover:underline">
+          <summary className="cursor-pointer section-label hover:underline">
             Dismissed ({dismissed.length})
           </summary>
           <div className="mt-2 space-y-2">

@@ -1962,8 +1962,9 @@
    JS and why the memory contract is safe: a fold opened by disclosure-memory's
    pre-paint script has no earlier height to travel from, so it is simply open, with no
    entrance replay. `interpolate-size` is on the class, not `:root`, so nothing else
-   gains keyword interpolation it did not ask for, and the marker is suppressed here
-   because every adopter that wants one draws its own chevron off `group-open:`. */
+   gains keyword interpolation it did not ask for. Nothing here touches the SUMMARY:
+   about half the folds draw their own chevron and hide the native marker, half keep the
+   marker, and which one a fold wants is the caller's decision, not the motion's. */
 .motion-disclose {
   interpolate-size: allow-keywords;
 }
@@ -1976,12 +1977,6 @@
 }
 .motion-disclose[open]::details-content {
   block-size: auto;
-}
-.motion-disclose > summary {
-  list-style: none;
-}
-.motion-disclose > summary::-webkit-details-marker {
-  display: none;
 }
 
 @media (prefers-reduced-motion: reduce) {

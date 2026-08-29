@@ -1139,7 +1139,7 @@ export default async function ImportDetailPage(props: {
             extraction error or a stored raw extraction to show. */}
             {(hasExtractionError || raw) && (
               <Disclosure className="card" data-testid="debug-disclosure">
-                <summary className="font-semibold text-slate-800 dark:text-slate-100">
+                <summary className="cursor-pointer font-semibold text-slate-800 dark:text-slate-100">
                   Debug
                 </summary>
                 <div className="mt-3 space-y-3">
@@ -1156,7 +1156,7 @@ export default async function ImportDetailPage(props: {
                   )}
                   {raw && (
                     <Disclosure className="group/raw">
-                      <summary className="text-sm font-medium text-brand-700 hover:underline dark:text-brand-400">
+                      <summary className="cursor-pointer text-sm font-medium text-brand-700 hover:underline dark:text-brand-400">
                         Raw extraction
                       </summary>
                       {/* The shared collapsible JSON/XML tree + copy (#1318) — a CCD/XDM
