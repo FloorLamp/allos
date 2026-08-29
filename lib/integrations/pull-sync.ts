@@ -9,7 +9,7 @@ import {
   recordSyncEvent,
   recordSyncRows,
 } from "./connections";
-import { syncFailureCopy } from "./auth-failure";
+import { isAuthPullFailure, syncFailureCopy } from "./auth-failure";
 import {
   dateWindow,
   emptyCounts,
@@ -250,15 +250,12 @@ export async function runPullSync<
   const cursor = spec.cursor.read(profileId);
   const outcome = await spec.gather(profileId, token, cursor);
   if (isFailure(outcome)) {
-    // 401 AND NOTHING ELSE on a data pull (#3618). This used to ask
-    // `isAuthRefreshFailure`, which reads a body-LESS 400 as a rejected grant — right
-    // for a token refresh, where the grant IS the request, and wrong for a data
-    // endpoint, where a 400 is a bad parameter. #3007 is this repo's own measurement
-    // of a data endpoint answering 400 for an out-of-range window. Flipping
-    // needs_reauth on that is not a copy defect: pull-tick auto-syncs `connected`
-    // rows only, so one malformed request stopped the source permanently, and the
-    // number that would have explained it now reaches only the log.
-    if (outcome.status === 401) markConnectionNeedsReauth(profileId, spec.id);
+    // THE DATA-PULL DOOR (#3618) — 401 and nothing else. The rule and the argument for
+    // why it differs from the refresh door's live in `isAuthPullFailure`, beside the
+    // refresh rule it must stay different from.
+    if (isAuthPullFailure(outcome.status)) {
+      markConnectionNeedsReauth(profileId, spec.id);
+    }
     const message = failureSentence(profileId, spec.id, name, outcome.error);
     recordSyncEvent(profileId, spec.id, { ok: false, error: message });
     return { error: message };
