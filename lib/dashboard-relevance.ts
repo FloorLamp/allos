@@ -565,11 +565,35 @@ export function rankDashboardCandidates(
       (a, b) => b.score - a.score || compareSource(a.candidate, b.candidate)
     );
   const ordinaryFacts = new Set(episodeFacts);
-  const uniqueOrdinary = rankedOrdinary.filter(({ candidate }) => {
-    if (ordinaryFacts.has(candidate.factKey)) return false;
-    ordinaryFacts.add(candidate.factKey);
-    return true;
-  });
+  // Which of a fact's tied candidates renders (#3201). Exact-once-by-factKey and
+  // the seat the fact earned are both unchanged; only the OCCUPANT is decided
+  // here, by usefulness rather than by gather order. A marker that has just
+  // become notable mints a reading and the attention finding that flagged it on
+  // one factKey, and "Ferritin 18 ng/mL" says everything "Ferritin flagged" does
+  // plus the value; sourceOrder used to settle it, and sourceOrder is an
+  // implementation detail of gather sequence carrying no claim about usefulness.
+  // Score still leads, so a finding that outranks its reading keeps the seat, and
+  // a fact with no reading keeps whatever candidate it had.
+  const factOccupant = new Map<string, (typeof rankedOrdinary)[number]>();
+  for (const entry of rankedOrdinary) {
+    const held = factOccupant.get(entry.candidate.factKey);
+    // A reading only reaches this lane through the promotion registry, so
+    // "reading" here already means a value that earned Now on its own.
+    if (
+      held === undefined ||
+      (held.score === entry.score &&
+        entry.candidate.kind === "reading" &&
+        held.candidate.kind !== "reading")
+    )
+      factOccupant.set(entry.candidate.factKey, entry);
+  }
+  const uniqueOrdinary = rankedOrdinary
+    .filter(({ candidate }) => {
+      if (ordinaryFacts.has(candidate.factKey)) return false;
+      ordinaryFacts.add(candidate.factKey);
+      return true;
+    })
+    .map(({ candidate }) => factOccupant.get(candidate.factKey)!);
   const selectedNow = [
     ...selectedSafety.map((entry) => ({
       ...entry,

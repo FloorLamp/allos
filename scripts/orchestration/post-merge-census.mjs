@@ -9,7 +9,6 @@
 
 import { execFileSync, spawnSync } from "node:child_process";
 import fs from "node:fs";
-import os from "node:os";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
 
@@ -23,8 +22,6 @@ const SHARED_APP_FILES = new Set([
   "app/(app)/layout.tsx",
   "app/(app)/not-found.tsx",
 ]);
-const SCRATCH_PREFIX = "allos-post-merge-census-";
-
 function fail(message) {
   throw new Error(message);
 }
@@ -238,22 +235,6 @@ function plannedCommand(plan, scope, env) {
   return `${assignments.join(" ")} node scripts/ux-walkthrough.mjs --serve pages`;
 }
 
-function makeOwnedScratchDb() {
-  const dir = fs.mkdtempSync(path.join(os.tmpdir(), SCRATCH_PREFIX));
-  return { dir, dbPath: path.join(dir, "allos.db") };
-}
-
-function removeOwnedScratch(dir) {
-  const resolved = path.resolve(dir);
-  if (
-    path.dirname(resolved) !== path.resolve(os.tmpdir()) ||
-    !path.basename(resolved).startsWith(SCRATCH_PREFIX)
-  ) {
-    fail(`refusing to clean unowned scratch directory: ${dir}`);
-  }
-  fs.rmSync(resolved, { recursive: true, force: true });
-}
-
 function main(argv) {
   const run = argv.includes("--run");
   const refs = argv.filter((arg) => arg !== "--run");
@@ -276,33 +257,21 @@ function main(argv) {
     return 0;
   }
 
-  // This wrapper owns the database lifecycle. The harness's historical default
-  // is one fixed /tmp file; after one seeded run, every later seed can skip that
-  // populated DB while run.json still labels the run UX_SEED=1. A fresh directory
-  // per invocation also contains SQLite's sidecars and gives cleanup one exact,
-  // validated target.
-  const scratch = makeOwnedScratchDb();
-  try {
-    const env = {
-      ...process.env,
-      ALLOS_DB_PATH: scratch.dbPath,
-      UX_ROUTES: plan.mode === "scoped" ? scope : "",
-    };
-    const result = spawnSync(
-      process.execPath,
-      [
-        path.join(repoRoot, "scripts", "ux-walkthrough.mjs"),
-        "--serve",
-        "pages",
-      ],
-      { cwd: repoRoot, env, stdio: "inherit" }
-    );
-    if (result.error)
-      fail(`could not start the census: ${result.error.message}`);
-    return result.status ?? 1;
-  } finally {
-    removeOwnedScratch(scratch.dir);
-  }
+  // `ux-walkthrough --serve` is the sole server/database lifecycle owner: it
+  // claims a private scratch database, ignores a caller ALLOS_DB_PATH, and removes
+  // the database plus sidecars during its own teardown. This wrapper only decides
+  // which routes that harness should walk.
+  const env = {
+    ...process.env,
+    UX_ROUTES: plan.mode === "scoped" ? scope : "",
+  };
+  const result = spawnSync(
+    process.execPath,
+    [path.join(repoRoot, "scripts", "ux-walkthrough.mjs"), "--serve", "pages"],
+    { cwd: repoRoot, env, stdio: "inherit" }
+  );
+  if (result.error) fail(`could not start the census: ${result.error.message}`);
+  return result.status ?? 1;
 }
 
 const invoked = process.argv[1]

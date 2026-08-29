@@ -221,8 +221,11 @@ echo
 echo "ALL GATES PASSED (format included). This script does not run Playwright."
 echo
 echo "E2E SPLITS IN TWO (policy changed 2026-08-21):"
-echo "  - specs you AUTHORED or EDITED: run locally at CI parity on your port range,"
+echo "  - specs you AUTHORED or EDITED: run locally with repeat scrutiny on your port range,"
 echo "    --repeat-each=3 --retries=0. That is where you can introduce a flake."
+echo "    If tests in one changed file share a profile or worker-scoped mutable state,"
+echo "    ALSO run that whole file with --workers=1 --repeat-each=1 --retries=0."
+echo "    Repeat scrutiny and shared-fixture parity answer different questions (#3653)."
 echo "  - the blast radius — specs you did not edit: DO NOT run them locally. Push"
 echo "    and read CI. It runs all 438 across 12 shards in 4-5 min; a local batch"
 echo "    sweep is ~30 min on four contended cores for less coverage."

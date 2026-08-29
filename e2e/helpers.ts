@@ -2612,16 +2612,62 @@ export async function settledClickApplied(
 // exists to catch. So the off path settles on the Server Action POST and then reads
 // the checkbox, which is a PRESENT element either way.
 export async function setRpeColumn(page: Page, on: boolean): Promise<void> {
+  await openPartOptions(page, 0);
   const box = page.getByTestId("rpe-tracking-checkbox");
+  // Still exactly one, and now it means MORE than it did: at most one options panel is
+  // open across the whole form (#3349), so a second part cannot be showing its own.
   await expect(box).toHaveCount(1);
-  if ((await box.isChecked()) === on) return;
-  const label = page.getByText("Rate effort (RPE)", { exact: true });
-  if (on) {
-    await settledClickApplied(page, label, page.getByTestId("set1-rpe"));
-  } else {
-    await settledClick(page, label);
+  if ((await box.isChecked()) !== on) {
+    const label = page.getByText("Rate effort (RPE)", { exact: true });
+    if (on) {
+      await settledClickApplied(page, label, page.getByTestId("set1-rpe"));
+    } else {
+      await settledClick(page, label);
+    }
+    await expect(box).toBeChecked({ checked: on });
   }
-  await expect(box).toBeChecked({ checked: on });
+  await closePartOptions(page);
+}
+
+// ── The per-part options editor (#3349) ──────────────────────────────────────
+//
+// `Track sides separately`, `Target reps`, `To failure` and the RPE opt-in used to be
+// a row of four controls drawn on every exercise. They are one tap behind the part's
+// fact chips now — every testid unchanged, only relocated — so a spec that drives one
+// of them opens the panel first.
+//
+// WHICH CHIP OPENS IT depends on what the part currently states: a part rating effort
+// has a `part-fact-effort` chip, one that is not has that fact behind the trailing
+// affordance instead. All of them open the SAME panel — equipment is the one fact that
+// does not, and it keeps its own chip in the row rather than going behind the
+// affordance (#3349 AC 1) — so this takes whichever is there rather than making every
+// caller work out which state it is in.
+//
+// `index` IS REQUIRED. It was defaulted to 0 while every caller drove a single-part
+// form, which is honest right up until it silently is not: a multi-part spec that
+// omits it drives part 1's panel while believing it drives part 3's, and the helper
+// has chosen the assertion's subject. Say which part.
+export async function openPartOptions(
+  page: Page,
+  index: number
+): Promise<void> {
+  const part = page.getByTestId("activity-part").nth(index); // nth-ok: the caller names which part it means
+  await part
+    .getByTestId("part-fact-more")
+    .or(part.getByTestId("part-fact-sides"))
+    .or(part.getByTestId("part-fact-intent"))
+    .or(part.getByTestId("part-fact-effort"))
+    .first() // first-ok: these four chips all open the one options panel, and a part can render several at once
+    .click();
+  await expect(page.getByTestId("part-options-editor")).toBeVisible();
+}
+
+// Closes on a PRESENCE — the chip row coming back — rather than on the panel's
+// absence. A retrying wait for something to vanish is satisfied by a form that never
+// rendered, which is the one failure this settle exists to distinguish.
+export async function closePartOptions(page: Page): Promise<void> {
+  await page.getByTestId("part-options-done").click();
+  await expect(page.getByTestId("part-fact-row").first()).toBeVisible(); // first-ok: the row that just came back; a multi-part form has one per part and any of them proves the panel closed
 }
 
 export async function settledFill(
