@@ -93,7 +93,13 @@ function censusFiles(): string[] {
 }
 
 describe("no display surface casings a stored name, in the four mechanisms this rule can see", () => {
-  const files = censusFiles();
+  // Six assertions take different projections of the same immutable TSX corpus.
+  // Keep its bytes beside its path instead of reopening every file for each one.
+  const files = censusFiles().map((absolute) => ({
+    absolute,
+    relative: path.relative(REPO, absolute),
+    source: fs.readFileSync(absolute, "utf8"),
+  }));
 
   it("read enough of the tree for the sweep to mean anything", () => {
     expect(
@@ -107,7 +113,7 @@ describe("no display surface casings a stored name, in the four mechanisms this 
 
   it("found the name renders it is meant to be examining", () => {
     const total = files.reduce(
-      (n, f) => n + nameRenderSites(fs.readFileSync(f, "utf8")).length,
+      (n, file) => n + nameRenderSites(file.source).length,
       0
     );
     expect(
@@ -129,9 +135,9 @@ describe("no display surface casings a stored name, in the four mechanisms this 
   });
 
   it("finds no casing transform on a rendered name", () => {
-    const offenders = files.flatMap((f) =>
-      nameCasingHits(fs.readFileSync(f, "utf8")).map(
-        (h) => `${path.relative(REPO, f)}:${h.line}  {${h.text}}`
+    const offenders = files.flatMap((file) =>
+      nameCasingHits(file.source).map(
+        (h) => `${file.relative}:${h.line}  {${h.text}}`
       )
     );
     expect(
@@ -145,16 +151,16 @@ describe("no display surface casings a stored name, in the four mechanisms this 
 
   it("found the casing classes it is meant to be examining", () => {
     const total = files.reduce(
-      (n, f) => n + cssCasingClassSites(fs.readFileSync(f, "utf8")).length,
+      (n, file) => n + cssCasingClassSites(file.source).length,
       0
     );
     expect(total).toBeGreaterThanOrEqual(CSS_CASING_FLOOR);
   });
 
   it("finds no casing class over a rendered name", () => {
-    const offenders = files.flatMap((f) =>
-      cssCasingOverNameHits(fs.readFileSync(f, "utf8")).map(
-        (h) => `${path.relative(REPO, f)}:${h.line}  ${h.text}`
+    const offenders = files.flatMap((file) =>
+      cssCasingOverNameHits(file.source).map(
+        (h) => `${file.relative}:${h.line}  ${h.text}`
       )
     );
     expect(

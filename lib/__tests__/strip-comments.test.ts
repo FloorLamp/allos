@@ -421,46 +421,11 @@ describe("the four spans the old stripper deleted", () => {
     expect(lineOf(out, line)).toBe(lineOf(read(rel), line));
   });
 
-  it("finds NO phantom block comment anywhere in the tree", () => {
-    // The general form, so a fifth one cannot be written tomorrow: a `/*` that the
-    // scanner says is inside a line comment must never be treated as an opener. Read
-    // as an assertion about the SCANNER — every `/*` the naive regex would match is
-    // either real, or the scanner has already blanked the `//` that precedes it on
-    // its own line and blanks only to the end of that line.
-    const walk = (dir: string): string[] => {
-      const out: string[] = [];
-      for (const e of fs.readdirSync(dir, { withFileTypes: true })) {
-        const p = path.join(dir, e.name);
-        if (e.isDirectory()) {
-          if (e.name === "node_modules" || e.name === ".next") continue;
-          out.push(...walk(p));
-        } else if (p.endsWith(".ts") || p.endsWith(".tsx")) out.push(p);
-      }
-      return out;
-    };
-    const bad: string[] = [];
-    for (const sub of ["app", "components", "lib"]) {
-      for (const abs of walk(path.join(REPO, sub))) {
-        const src = fs.readFileSync(abs, "utf8");
-        const clean = stripComments(src);
-        for (const m of src.matchAll(/\/\*/g)) {
-          const at = m.index;
-          const ls = src.lastIndexOf("\n", at) + 1;
-          if (!src.slice(ls, at).includes("//")) continue;
-          if (clean.slice(ls, at).includes("//")) continue;
-          // A `/*` inside a line comment. The scanner must have blanked it, and
-          // must have stopped at the end of that line.
-          const eol = src.indexOf("\n", at);
-          const rel = path.relative(REPO, abs).split(path.sep).join("/");
-          if (clean.slice(at, at + 2).trim() !== "")
-            bad.push(`${rel}: not blanked at offset ${at}`);
-          else if (eol >= 0 && clean[eol] !== "\n")
-            bad.push(`${rel}: blanking ran past the end of its line`);
-        }
-      }
-    }
-    expect(bad).toEqual([]);
-  });
+  // There used to be a second whole-tree pass here looking only for this defect's
+  // general shape. The authored case at the top of the file proves the transition,
+  // the four live survivors above pin every instance that motivated it, and the
+  // weekly compiler oracle proves the stronger per-character claim over the whole
+  // tree. Re-running a weaker live-tree projection on every PR added no verdict.
 });
 
 // ── WHO ELSE STILL ROLLS THEIR OWN (#3595) ──────────────────────────────────────
@@ -693,11 +658,20 @@ describe("the hand-rolled comment strippers still in the tree (#3595)", () => {
     "lib/__tests__/strip-comments-equivalence.ts",
   ]);
 
-  const sources = (): { rel: string; code: string }[] =>
-    execFileSync("git", ["ls-files", "-z", "--", ...CENSUS_ROOTS], {
-      cwd: REPO,
-      maxBuffer: 64 * 1024 * 1024,
-    })
+  // Both assertions below ask different questions of one immutable checkout. This
+  // used to list, read and strip the whole corpus twice; retain one snapshot for the
+  // file instead. The planted-corpus test still exercises the matcher independently.
+  let sourcesCache: { rel: string; code: string }[] | undefined;
+  const sources = (): { rel: string; code: string }[] => {
+    if (sourcesCache) return sourcesCache;
+    sourcesCache = execFileSync(
+      "git",
+      ["ls-files", "-z", "--", ...CENSUS_ROOTS],
+      {
+        cwd: REPO,
+        maxBuffer: 64 * 1024 * 1024,
+      }
+    )
       .toString("utf8")
       .split("\0")
       .filter((f) => /\.(ts|tsx|mts|cts|js|jsx|mjs|cjs)$/.test(f))
@@ -705,6 +679,8 @@ describe("the hand-rolled comment strippers still in the tree (#3595)", () => {
         rel,
         code: stripComments(fs.readFileSync(path.join(REPO, rel), "utf8")),
       }));
+    return sourcesCache;
+  };
 
   const rollsOwn = (
     files: readonly { rel: string; code: string }[]
