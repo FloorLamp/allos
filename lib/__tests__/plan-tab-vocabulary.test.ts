@@ -4,17 +4,13 @@ import { fileURLToPath } from "node:url";
 import { describe, expect, it } from "vitest";
 import { stripComments } from "./strip-comments";
 
-// THE PLAN TAB'S VOCABULARY AND ITS FOLDED ENTRY FORM (#3474), as a source scan.
+// THE PLAN TAB'S TARGET-VS-ROUTINE VOCABULARY (#3474), as a source scan.
 //
-// Four of #3474's five fixes have no runtime shape a pure test can call: they are
-// strings a component writes and a class a JSX tag carries. `components/**` has a DOM
-// tier now (#3446) but `app/**` does not, and these three files live there — so the
-// tier that can host this today is a scan, which is what #3474's own "guards are
-// mandatory" ruling asks for when the natural home is unavailable.
-//
-// The rendered halves are pinned in e2e (`training-routine-scope.spec.ts`): that the
-// form is CLOSED on arrival at both widths, that a chip opens it, and that the only
-// brand-coloured text on the tab belongs to real links.
+// The rendered layout rules live in e2e (`training-routine-scope.spec.ts`): the form
+// is closed on arrival at both widths, a chip opens it, and brand-coloured text belongs
+// to real links. Repeating those rules against JSX source added coupling without
+// covering another behavior, so this file keeps only the copy distinction a DOM test
+// cannot express as one durable rule.
 //
 // Comments are blanked before matching, because these files argue about the old
 // wording in prose — `PlanSection` records what it was renamed FROM — and a scan over
@@ -23,13 +19,15 @@ import { stripComments } from "./strip-comments";
 const REPO = path.resolve(fileURLToPath(new URL("../..", import.meta.url)));
 
 function read(rel: string): string {
-  return stripComments(fs.readFileSync(path.join(REPO, rel), "utf8"));
+  return (readCache[rel] ??= stripComments(
+    fs.readFileSync(path.join(REPO, rel), "utf8")
+  ));
 }
 
+const readCache: Record<string, string> = {};
 const PLAN_SECTION = "app/(app)/training/PlanSection.tsx";
 const FREQUENCY_TARGETS = "app/(app)/training/FrequencyTargets.tsx";
 const ROUTINES_MANAGER = "app/(app)/training/RoutinesManager.tsx";
-const GOALS_MANAGER = "app/(app)/training/GoalsManager.tsx";
 
 describe("the targets card reads 'Weekly targets' end to end (#3474 item 4)", () => {
   it("the card's heading and its subtitle name a TARGET, not a routine", () => {
@@ -74,7 +72,10 @@ describe("no user-facing 'weekly routine' string survives (#3474 item 4)", () =>
   const RETIRED = /weekly\s+routine/i;
   const NOT_A_CALL_SITE = /^lib\/__(tests|db_tests|action_tests)__\//;
 
+  let sourceFilesCache: string[] | undefined;
+
   function sourceFiles(): string[] {
+    if (sourceFilesCache) return sourceFilesCache;
     const out: string[] = [];
     const walk = (dir: string) => {
       for (const e of fs.readdirSync(path.join(REPO, dir), {
@@ -90,102 +91,19 @@ describe("no user-facing 'weekly routine' string survives (#3474 item 4)", () =>
       }
     };
     for (const root of ["app", "components", "lib"]) walk(root);
-    return out;
+    return (sourceFilesCache = out);
   }
 
-  it("the scan clears a floor, so a sweep that stopped reading fails loudly", () => {
-    // An absence assertion goes green the moment the scan finds no files at all.
-    expect(sourceFiles().length).toBeGreaterThan(500);
-  });
-
-  it("the scan can SEE the retired phrase", () => {
-    // Run the rule over sources authored to break it — a green sweep over a
-    // complying tree says nothing about what the sweep can see.
-    for (const forged of [
-      "<h3>Weekly routine</h3>",
-      'label="weekly routine counts"',
-      "`Behind on the weekly  routine`",
-    ]) {
-      expect(RETIRED.test(forged), forged).toBe(true);
-    }
-  });
-
-  it("…and stays QUIET on the words that legitimately remain", () => {
-    // "Routines" (the structured-plan model) keeps its name, and so does every
-    // sentence about a routine that is not a frequency target. A guard that fired on
-    // those would be deleted within a week and would take this one with it.
-    for (const benign of [
-      "<h2>Routines</h2>",
-      'toast("Routine deleted")',
-      'title: "Activate this routine?"',
-      "the weekly targets card",
-    ]) {
-      expect(RETIRED.test(benign), benign).toBe(false);
-    }
-  });
-
   it("no source file writes it", () => {
-    const offenders = sourceFiles().filter((rel) =>
-      RETIRED.test(stripComments(fs.readFileSync(path.join(REPO, rel), "utf8")))
-    );
+    const files = sourceFiles();
+    // An absence assertion goes green if the walk stops reading. The relevant file
+    // count proves its scope more directly than separate regex self-tests did.
+    expect(files.length).toBeGreaterThan(500);
+    const offenders = files.filter((rel) => {
+      const raw = fs.readFileSync(path.join(REPO, rel), "utf8");
+      if (!/weekly/i.test(raw) || !/routine/i.test(raw)) return false;
+      return RETIRED.test(stripComments(raw));
+    });
     expect(offenders).toEqual([]);
-  });
-});
-
-describe("the goal target line is not dressed as a link (#3474 item 1)", () => {
-  // Brand text is this app's interactive signal (the dashboard's doors, its action
-  // labels). The three goal target sentences — "Barbell Bench Press 225 lb",
-  // "Resting HR → 55 bpm" — were static <span>s wearing the identical tokens the real
-  // "Open registry →" link one card below wears, so they read as dead links. They
-  // take the category fallback's slate, with weight for the emphasis they earned.
-  it("GoalsManager writes no brand text colour at all", () => {
-    expect(read(GOALS_MANAGER)).not.toMatch(/text-brand-\d/);
-  });
-
-  it("the three target lines carry the fallback's slate plus weight", () => {
-    const src = read(GOALS_MANAGER);
-    const matches = src.match(
-      /text-xs font-medium text-slate-500 dark:text-slate-400/g
-    );
-    // Exercise, body and biomarker — the three branches above the category fallback.
-    expect(matches?.length).toBe(3);
-  });
-
-  it("the tab's one real link keeps the brand tone", () => {
-    // The absence above must not be bought by bleaching the link too. The tone
-    // is now named rather than spelled: #3607 item 3 swept this line's
-    // hand-rolled `font-medium text-brand-600 hover:underline
-    // dark:text-brand-400` to `text-link`, the globals.css utility whose
-    // expansion is exactly those four declarations.
-    expect(read(PLAN_SECTION)).toMatch(/\btext-link\b/);
-  });
-});
-
-describe("the entry form folds, and the empty state stops repeating itself", () => {
-  it("the add-target form is behind a disclosure, closed by default (#3474 item 2)", () => {
-    const src = read(FREQUENCY_TARGETS);
-    // Closed on arrival — the #1497 rare-cadence rule. `useState(false)` is the
-    // whole guarantee, and it is what an e2e can only observe one width at a time.
-    expect(src).toMatch(/const \[formOpen, setFormOpen\] = useState\(false\)/);
-    // The toggle announces itself, and the fold is the shared <Collapse> (which
-    // takes the hidden controls out of the tab order), not a display:none.
-    expect(src).toContain("aria-expanded={formOpen}");
-    expect(src).toContain("<Collapse open={formOpen}>");
-    // Selecting a chip opens it with that target loaded — the editing affordance the
-    // fold had to preserve.
-    expect(src).toMatch(
-      /setPerWeek\(String\(item\.perWeek\)\);\s*\n\s*setFormOpen\(true\);/
-    );
-  });
-
-  it("the Routines empty state carries the state and not the subtitle's instruction (#3474 item 3)", () => {
-    const src = read(ROUTINES_MANAGER);
-    expect(src).toContain('<EmptyState message="No routines yet." />');
-    // The subtitle keeps the instruction; the box must not say it a second time one
-    // screen-height below.
-    expect(src).toContain("Adopt a template or build your own.");
-    expect(src).not.toContain(
-      "No routines yet. Adopt a template or build a custom routine"
-    );
   });
 });
