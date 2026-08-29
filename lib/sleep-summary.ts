@@ -41,6 +41,18 @@ export function formatSleepWindow(
   return `${formatClockMinutes(timeFormat, startMinutes)} → ${formatClockMinutes(timeFormat, endMinutes)}`;
 }
 
+// The shared presentation of the classifier's typical bed/wake pair. The
+// classifier owns both minute values; this helper only applies the login's clock
+// preference and keeps every surface silent when the pair is incomplete.
+export function formatUsualSleepBand(
+  timeFormat: TimeFormat,
+  bedMinutes: number | null,
+  wakeMinutes: number | null
+): string | null {
+  if (bedMinutes == null || wakeMinutes == null) return null;
+  return `${formatClockMinutes(timeFormat, bedMinutes)} – ${formatClockMinutes(timeFormat, wakeMinutes)}`;
+}
+
 // The "last night" model: the MAIN overnight session (#1118) reduced to the facts
 // the hero and dashboard sleep presentation render — never a score (the pillars-not-a-
 // composite stance). Naps are deliberately absent: the detailed nap model owns
