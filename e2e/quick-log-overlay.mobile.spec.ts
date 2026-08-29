@@ -251,6 +251,62 @@ function clearShellMoodLogs(): void {
   }
 }
 
+// The symptom day and the illness situation this spec's Care-row test writes. Cleared
+// before AND after, so --repeat-each and a re-run after a failure both start from
+// "nothing logged, nothing tracked" — which is also the Mobile Shell fixture's own
+// seeded state, so the reset restores it rather than inventing one.
+function clearShellSymptomState(): void {
+  const db = openDb();
+  try {
+    const id = shellProfileId();
+    const clear = db.transaction(() => {
+      db.prepare("DELETE FROM symptom_logs WHERE profile_id = ?").run(id);
+      db.prepare("DELETE FROM illness_episodes WHERE profile_id = ?").run(id);
+      db.prepare("DELETE FROM situations WHERE profile_id = ?").run(id);
+      db.prepare(
+        "DELETE FROM profile_settings WHERE profile_id = ? AND key = 'situation_events'"
+      ).run(id);
+    });
+    clear();
+  } finally {
+    db.close();
+  }
+}
+
+// Today's logged severity for one symptom, from the store every symptom surface reads.
+function shellSymptomSeverity(symptom: string): number | null {
+  const db = openDb();
+  try {
+    const row = db
+      .prepare(
+        "SELECT severity FROM symptom_logs WHERE profile_id = ? AND symptom = ?"
+      )
+      .get(shellProfileId(), symptom) as { severity: number } | undefined;
+    return row?.severity ?? null;
+  } finally {
+    db.close();
+  }
+}
+
+// The situations currently flagged illness-type AND active — what the panel's resolved
+// verb is read from.
+function shellActiveIllnessSituations(): string[] {
+  const db = openDb();
+  try {
+    return (
+      db
+        .prepare(
+          `SELECT name FROM situations
+            WHERE profile_id = ? AND active = 1 AND illness_type = 1
+            ORDER BY name`
+        )
+        .all(shellProfileId()) as { name: string }[]
+    ).map((r) => r.name);
+  } finally {
+    db.close();
+  }
+}
+
 // Clear the dose's logs so it is DUE again — the one mutable precondition.
 function clearDoseLogs(doseId: number): void {
   const db = openDb();
@@ -1055,6 +1111,74 @@ test("the mood row logs a check-in in place — and 'Yesterday' backfills the mi
     }
   } finally {
     clearShellMoodLogs();
+    await page.context().close();
+  }
+});
+
+test("the symptom row logs a well day in place, and its illness verb resolves on open (#4064)", async ({
+  browser,
+}) => {
+  // #4064, the precondition #3366 depends on: the dashboard tail's well-day card is
+  // today the ONLY door to three writes — a symptom tap, the well-day capture (that
+  // same tap with no illness required), and the mark-as-illness bridge. They may only
+  // leave the tail once the sheet reaches them, so this is the coverage assertion.
+  //
+  // The overlay mounts the SAME SymptomLogBar the card mounts, over the same actions;
+  // that the two POST identically is held at the action layer by
+  // components/__tests__/quick-symptom-parity.test.tsx. What only a browser can say is
+  // that the row is reachable from the puck, that the write is real, and that the
+  // illness verb is resolved from server state ON OPEN rather than baked into the row.
+  clearShellSymptomState();
+
+  const page = await signIn(browser);
+  try {
+    await page.goto("/");
+    const dashboardUrl = page.url();
+
+    const overlay = await openQuickEntry(page, "log-symptom");
+    const panel = overlay.getByTestId("quick-symptom-panel");
+    await expect(panel).toBeVisible();
+    // Nothing tracked, so the bar offers its bridge and the panel says nothing.
+    await expect(panel.getByTestId("symptom-illness-bridge")).toBeVisible();
+    await expect(panel.getByTestId("quick-symptom-tracking")).toHaveCount(0);
+
+    // The well-day capture: a symptom logged with NO illness required (#1300).
+    const bar = panel.getByTestId("symptom-log-bar");
+    await settledClick(page, bar.getByTestId("symptom-add-picker-toggle"));
+    await settledClick(page, bar.getByTestId("symptom-pick-headache"));
+    await settledClick(page, bar.getByTestId("symptom-headache-sev-3"));
+    await expect(bar.getByTestId("symptom-headache-sev-3")).toHaveAttribute(
+      "aria-pressed",
+      "true"
+    );
+    // Durable, by VALUE, from the store rather than from the pressed chip — and still
+    // no episode, which is what "well day" means.
+    await expect.poll(() => shellSymptomSeverity("headache")).toBe(3);
+    expect(shellActiveIllnessSituations()).toEqual([]);
+    // #1468: you are exactly where you started.
+    expect(page.url()).toBe(dashboardUrl);
+
+    // Mark as illness, the third write, through the bar's own bridge.
+    await settledClick(
+      page,
+      bar.getByTestId("symptom-illness-bridge-activate")
+    );
+    await expect.poll(shellActiveIllnessSituations).toEqual(["Illness"]);
+
+    // …and the verb has RESOLVED. Re-opening gathers again (#1892), so the sheet now
+    // names what is tracked instead of offering to start it a second time. A row whose
+    // label was decided at layout time could not do this.
+    await page.keyboard.press("Escape");
+    await expect(page.getByTestId("quick-entry-sheet")).toHaveCount(0);
+    const reopened = await openQuickEntry(page, "log-symptom");
+    await expect(
+      reopened.getByTestId("quick-symptom-tracking")
+    ).toHaveText("Tracking: Illness");
+    await expect(
+      reopened.getByTestId("symptom-illness-bridge")
+    ).toHaveCount(0);
+  } finally {
+    clearShellSymptomState();
     await page.context().close();
   }
 });
