@@ -498,11 +498,20 @@ test.describe("the compact logged-event row at 430px (#3671)", () => {
       await note.evaluate((el) => parseFloat(getComputedStyle(el).fontSize))
     ).toBe(14);
 
-    // The row still meets the tap floor and still fits inside the phone.
-    const box = await row.boundingBox();
-    expect(box).not.toBeNull();
-    expect(box!.height).toBeGreaterThanOrEqual(TAP_FLOOR_PX);
-    expect(Math.round(box!.x + box!.width)).toBeLessThanOrEqual(430);
+    // The row meets the tap floor and fits inside the phone — at THIS file's 430px
+    // and again at 390, the narrowest width the density work measures, because the
+    // note is now on screen at every width and a two-line row is where an overflow
+    // would first show.
+    for (const width of [430, 390]) {
+      await page.setViewportSize({ width, height: 844 });
+      await expect(note).toHaveCount(1);
+      const box = await row.boundingBox();
+      expect(box).not.toBeNull();
+      expect(box!.height, `the row at ${width}px`).toBeGreaterThanOrEqual(
+        TAP_FLOOR_PX
+      );
+      expect(Math.round(box!.x + box!.width)).toBeLessThanOrEqual(width);
+    }
   });
 
   // ── THE OTHER SIDE OF THE BOUNDARY ────────────────────────────────────────────
