@@ -39,7 +39,10 @@ export default function QuickLogPrnContent({
 }: {
   meds: PrnMedForQuickLog[];
   tz: string;
-  title?: string;
+  // The heading this content draws for itself. A HOST that already states what the
+  // card is passes `null` and the content renders body only — the dialog-body chrome
+  // rule (#3361), which the dashboard's one card shell applies too (#3365).
+  title?: string | null;
   profileId?: number;
   headingVariant?: "card" | "section";
   compact?: boolean;
@@ -110,14 +113,16 @@ export default function QuickLogPrnContent({
 
   return (
     <div data-testid="quick-log-prn">
-      <CardSectionHeader
-        title={title}
-        href="/medications"
-        variant={headingVariant}
-        action={headerAction}
-        titleHref={titleHref}
-        showPageLink={showPageLink}
-      />
+      {title != null && (
+        <CardSectionHeader
+          title={title}
+          href="/medications"
+          variant={headingVariant}
+          action={headerAction}
+          titleHref={titleHref}
+          showPageLink={showPageLink}
+        />
+      )}
       {intro}
       {meds.length === 0 && emptyMessage ? (
         <p

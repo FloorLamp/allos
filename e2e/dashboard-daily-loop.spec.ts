@@ -39,7 +39,23 @@ test.describe("dashboard daily loop (#1221)", () => {
     // Today's protein figure. A floor basis marks itself with a trailing "+" (#3257,
     // the #1822 marker) — never "≥ N g", and never a hedge about the estimator.
     await expect(card).toContainText(/\d+ g\+/);
-    await expect(card).toContainText(/Goal \d+–\d+ g/);
+    // "g", NEVER "g/day" — on the band and on the average alike. The row's label
+    // already names the window, so the unit must not name it again. Asserted with a
+    // lookahead BECAUSE a plain substring cannot see the regression: /Goal \d+–\d+ g/
+    // matches "Goal 95–130 g/day" perfectly well. The lookahead is exactly `(?!\/)`
+    // and no wider — the row's text concatenates its door label straight onto the
+    // last value ("…39 gNutrition"), so a `\w` boundary here would fail on the
+    // CORRECT rendering and pass on nothing. The "/" is the whole difference between
+    // the two spellings, so it is the whole test.
+    //
+    // This claim used to live in a component test over the Nutrition-today CARD. That
+    // card is deleted (#3365): once the tail reports as rows it was reachable from no
+    // lane, so the test observed markup no user could see. The claim did not move
+    // altitude to be cheaper — it moved to the row a person actually reads.
+    await expect(card).toContainText(/Goal \d+–\d+ g(?!\/)/);
+    // The trailing average, which is the OTHER half of #1917's fix: a real
+    // trailing-7 complete-day figure, labelled as one, in the same plain unit.
+    await expect(card).toContainText(/7-day average \d+ g(?!\/)/);
     // The band's derivation and the goal label live in the row's hover now, not in the
     // glance line, and no source list or floor hedging survives anywhere in the row.
     await expect(card).not.toContainText("≥");

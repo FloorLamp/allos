@@ -4,7 +4,7 @@ import { canAcknowledgeRest } from "@/lib/coaching";
 import { coachingDedupeKey } from "@/lib/findings";
 import Button from "@/components/Button";
 import { snoozeCoaching, acknowledgeRest } from "@/app/(app)/actions";
-import CardSectionHeader from "@/components/CardSectionHeader";
+import DashboardAtomCard from "./DashboardAtomCard";
 
 // Small accent dot color per tone, so the card reads at a glance: caution (ease
 // off) amber, action (go do it) brand, positive emerald, neutral slate.
@@ -22,11 +22,12 @@ export default function CoachingRecommendationAtom({
   recommendation: Recommendation;
 }) {
   return (
-    <div className="card">
-      <CardSectionHeader title="Coaching" href="/training" />
-      <p className="-mt-2 mb-3 text-xs text-slate-500 dark:text-slate-400">
-        Based on your routine &amp; recovery
-      </p>
+    <DashboardAtomCard
+      title="Coaching"
+      detail="Based on your routine & recovery"
+      href="/training"
+      testId="coaching-recommendation-atom"
+    >
       <div>
         <div className="flex items-start gap-2">
           <span
@@ -113,6 +114,6 @@ export default function CoachingRecommendationAtom({
           </form>
         </div>
       </div>
-    </div>
+    </DashboardAtomCard>
   );
 }

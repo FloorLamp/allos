@@ -1,6 +1,5 @@
 import { cloneElement, type ReactElement, type ReactNode } from "react";
 import { redirect } from "next/navigation";
-import { IconFlask, IconMoon } from "@tabler/icons-react";
 import { now as clockNow } from "@/lib/clock";
 import { today } from "@/lib/db";
 import {
@@ -111,7 +110,8 @@ import { freshnessAgeDays } from "@/lib/freshness";
 import { glanceAgeToken } from "@/lib/glance-age";
 import { VITAL_PRESENTATION_FLOORS } from "@/lib/vitals-latest";
 import { getRecapCard } from "@/lib/notifications/recap-data";
-import { recapLineId } from "@/lib/recap";
+import { recapLineAnnotation, recapLineId, recapRangeLabel } from "@/lib/recap";
+import { recapScaleEntry } from "@/lib/recap-scale";
 import {
   coachingObservationFindings,
   dashboardHabitDomain,
@@ -184,7 +184,6 @@ import {
 } from "@/lib/dashboard-illness-cockpit";
 import { disambiguateProfileNames } from "@/lib/profile-disambiguation";
 import { householdFanoutWithActing } from "@/lib/household-fanout";
-import DashboardSetupAtom from "@/components/dashboard/DashboardSetupAtom";
 import LogReadingButton from "@/components/dashboard/LogReadingButton";
 import WeightQuickAddAtom from "@/components/dashboard/WeightQuickAddAtom";
 import {
@@ -194,7 +193,6 @@ import {
 import CoachingRecommendationAtom from "@/components/dashboard/CoachingRecommendationAtom";
 import CoachingObservations from "@/components/dashboard/CoachingObservations";
 import DataQualityAtom from "@/components/dashboard/DataQualityAtom";
-import RecapLineAtom from "@/components/dashboard/RecapLineAtom";
 import RecentLabReadout, {
   type RecentLabRow,
 } from "@/components/dashboard/RecentLabReadout";
@@ -209,14 +207,12 @@ import SleepWaitingAtom from "@/components/dashboard/SleepWaitingAtom";
 import NapAtom from "@/components/dashboard/NapAtom";
 import {
   formatHm,
+  formatSleepWindow,
   formatUsualSleepBand,
   sleepRecordPresentation,
 } from "@/lib/sleep-summary";
 import QuickLogPrnContent from "@/components/medications/QuickLogPrnContent";
-import {
-  ProteinTodayAtom,
-  UsualRoutineAtom,
-} from "@/components/dashboard/NutritionAtoms";
+import { UsualRoutineAtom } from "@/components/dashboard/NutritionAtoms";
 import CycleControlAtom from "@/components/dashboard/CycleControlAtom";
 import DashboardQuickEntryAction from "@/components/dashboard/DashboardQuickEntryAction";
 import IllnessCockpitBody from "../../components/illness/IllnessCockpitBody";
@@ -1066,13 +1062,18 @@ async function renderDashboard(
     DashboardStandingPresentation
   >();
   const aheadPresentations = new Map<string, DashboardAheadPresentation>();
+  // A candidate declares a card node, a row presentation, or both. Which one the
+  // canvas draws is the LANE's business (#3365): Standing and the tail's Read /
+  // Understand / Setup groups render the row, everywhere else renders the node. A
+  // fact that only ever reports declares only a row, and the canvas fails loudly for
+  // a candidate that placed with neither.
   const add = (
     candidate: DashboardCandidate,
-    node: ReactNode,
+    node: ReactNode | undefined,
     standingPresentation?: DashboardStandingPresentation
   ) => {
     candidates.push(candidate);
-    candidateNodes.set(candidate.candidateId, node);
+    if (node !== undefined) candidateNodes.set(candidate.candidateId, node);
     if (standingPresentation)
       standingPresentations.set(candidate.candidateId, standingPresentation);
   };
@@ -1101,6 +1102,14 @@ async function renderDashboard(
       detail: upcomingDueText(item, on, formatPrefs),
       href: item.href,
     });
+    // NO ROW, and the reason is the same one that keeps the coaching card a card
+    // (#3365): this atom is WRITE-CAPABLE. A non-actionable attention fact is still
+    // suppressible (isItemSuppressibleFlag), and this is where its snooze/dismiss
+    // lives — #3215 pins "attention facts use write-capable atoms outside read-only
+    // Ahead" as an invariant, and an invariant outranks a presentation rule.
+    // A row would also silently DROP `item.detail`: Ahead's presentation states when
+    // a thing is due, which is the right sentence for a schedule and the wrong one
+    // for the tail, where the item's own detail is the content.
     add(
       candidate,
       <DashboardAttentionAtom
@@ -1201,7 +1210,13 @@ async function renderDashboard(
           value={cockpit.status.temperature.value}
           detail={cockpit.status.temperature.when}
           href={href}
-        />
+        />,
+        {
+          label: `${cockpit.displayName}'s latest temperature`,
+          value: cockpit.status.temperature.value,
+          detail: cockpit.status.temperature.when,
+          href,
+        }
       );
     }
     if (cockpit.status.lastMeds) {
@@ -1222,7 +1237,13 @@ async function renderDashboard(
           value={[medication.name, medication.dose].filter(Boolean).join(" · ")}
           detail={medication.when}
           href={href}
-        />
+        />,
+        {
+          label: `${cockpit.displayName}'s latest illness medicine`,
+          value: [medication.name, medication.dose].filter(Boolean).join(" · "),
+          detail: medication.when,
+          href,
+        }
       );
     }
   }
@@ -1250,9 +1271,9 @@ async function renderDashboard(
         subject: { scope: "login" },
         sourceOrder: sourceOrder++,
       }),
-      <div className="card">
+      <DashboardAtomCard title="Household illness history">
         <HouseholdHistoryPromoLink />
-      </div>
+      </DashboardAtomCard>
     );
   }
 
@@ -1292,7 +1313,12 @@ async function renderDashboard(
           title="Session complete"
           value={value}
           href="/training"
-        />
+        />,
+        {
+          value,
+          href: "/training",
+          moment: { title: "Session complete", href: "/training" },
+        }
       )
     );
     sourceOrder += recapFacts.length;
@@ -1304,6 +1330,12 @@ async function renderDashboard(
       record.equipmentId,
       record.kind
     );
+    const strengthValue =
+      record.kind === "1rm"
+        ? record.bodyweight
+          ? `BW × ${record.reps}`
+          : `${fmtWeight(record.weightKg, units.weightUnit)} × ${record.reps}`
+        : `${fmtWeight(record.weightKg, units.weightUnit)} top`;
     add(
       progressCandidates.trainingResult(
         { subject: profileSubject, sourceOrder: sourceOrder++ },
@@ -1313,16 +1345,16 @@ async function renderDashboard(
       ),
       <DashboardAtomCard
         title={loadContextLabel(record.exercise, record.equipment)}
-        value={
-          record.kind === "1rm"
-            ? record.bodyweight
-              ? `BW × ${record.reps}`
-              : `${fmtWeight(record.weightKg, units.weightUnit)} × ${record.reps}`
-            : `${fmtWeight(record.weightKg, units.weightUnit)} top`
-        }
+        value={strengthValue}
         detail="New personal record"
         href="/training?tab=analyze"
-      />
+      />,
+      {
+        label: loadContextLabel(record.exercise, record.equipment),
+        value: strengthValue,
+        detail: "New personal record",
+        href: "/training?tab=analyze",
+      }
     );
   });
   todayCardioRecords.forEach((record) => {
@@ -1345,7 +1377,13 @@ async function renderDashboard(
         value={value}
         detail="New personal record"
         href="/training?tab=analyze"
-      />
+      />,
+      {
+        label: record.activity,
+        value,
+        detail: "New personal record",
+        href: "/training?tab=analyze",
+      }
     );
   });
 
@@ -1377,7 +1415,13 @@ async function renderDashboard(
           detail={`Setup step ${step} of ${ONBOARDING_STEP_COUNT}`}
           href={`/onboarding?step=${step}` as AppRoute}
           actionLabel="Continue"
-        />
+        />,
+        {
+          label: stepLabels[step - 1],
+          detail: `Setup step ${step} of ${ONBOARDING_STEP_COUNT}`,
+          href: `/onboarding?step=${step}` as AppRoute,
+          actionLabel: "Continue",
+        }
       );
     }
     add(
@@ -1389,7 +1433,12 @@ async function renderDashboard(
         title="Profile setup progress"
         value={`${firstRemainingStep - 1} of ${ONBOARDING_STEP_COUNT} steps complete`}
         href="/onboarding"
-      />
+      />,
+      {
+        label: "Profile setup progress",
+        value: `${firstRemainingStep - 1} of ${ONBOARDING_STEP_COUNT} steps complete`,
+        href: "/onboarding",
+      }
     );
   }
   if (onboardingChecklist && onboardingChecklistCompletion) {
@@ -1398,6 +1447,8 @@ async function renderDashboard(
         { subject: profileSubject, sourceOrder: sourceOrder++ },
         "checklist"
       ),
+      // NO ROW: the checklist is N suggestions with their own doors and a dismiss,
+      // and one summary row would be a count where the list is the point.
       <OnboardingChecklist
         focuses={onboardingChecklist.focuses}
         completion={onboardingChecklistCompletion}
@@ -1466,7 +1517,13 @@ async function renderDashboard(
           key,
           on
         ),
-        <DashboardAtomCard title={title} value={value} href="/trends#body" />
+        <DashboardAtomCard title={title} value={value} href="/trends#body" />,
+        {
+          label: title,
+          value,
+          href: "/trends#body",
+          moment: { title: "Today's check-in", href: "/trends#body" },
+        }
       );
     });
     sourceOrder += moodReadings.length;
@@ -1482,16 +1539,16 @@ async function renderDashboard(
         },
         med.id
       ),
-      <div className="card">
+      <DashboardAtomCard title={`Log ${med.name}`} testId="prn-atom">
         <QuickLogPrnContent
           meds={[med]}
           tz={timezone}
           timeFormat={formatPrefs.timeFormat}
-          title="Log a dose"
+          title={null}
           compact
           showPageLink={false}
         />
-      </div>
+      </DashboardAtomCard>
     )
   );
   sourceOrder += checkinPrnMeds.length;
@@ -1506,8 +1563,9 @@ async function renderDashboard(
         },
         on
       ),
-      <div className="card">
+      <DashboardAtomCard title="Daily symptoms" testId="symptom-log-atom">
         <SymptomLogBar
+          showTitle={false}
           date={on}
           initial={getSymptomSeveritiesOnDate(profile.id, on)}
           initialNotes={getSymptomNotesOnDate(profile.id, on)}
@@ -1518,7 +1576,7 @@ async function renderDashboard(
           temperatureUnit={units.temperatureUnit}
           textIntakeEnabled={isTaskConfigured("symptom-map")}
         />
-      </div>
+      </DashboardAtomCard>
     );
   }
 
@@ -1534,6 +1592,9 @@ async function renderDashboard(
         rec.id,
         `coaching.${coachingDedupeKey(rec.id)}`
       ),
+      // NO ROW. This card is the ONLY mount of `snoozeCoaching` and
+      // `acknowledgeRest`, so an index row here would delete two writes rather
+      // than restate them; it stays a card until those live somewhere else.
       <CoachingRecommendationAtom recommendation={rec} />
     )
   );
@@ -1684,7 +1745,13 @@ async function renderDashboard(
           title={`${protocol.name} adherence`}
           value={protocol.adherence.label}
           href={protocol.href}
-        />
+        />,
+        {
+          label: "Adherence",
+          value: protocol.adherence.label,
+          href: protocol.href,
+          moment: { title: protocol.name, href: protocol.href },
+        }
       );
     if (protocol.primaryOutcome)
       add(
@@ -1700,7 +1767,13 @@ async function renderDashboard(
           title={protocol.primaryOutcome.label}
           value={protocol.primaryOutcome.framing}
           href={protocol.href}
-        />
+        />,
+        {
+          label: protocol.primaryOutcome.label,
+          value: protocol.primaryOutcome.framing,
+          href: protocol.href,
+          moment: { title: protocol.name, href: protocol.href },
+        }
       );
     if (protocol.practiceName && protocol.practiceUsuallyToday && canWrite)
       add(
@@ -1753,7 +1826,11 @@ async function renderDashboard(
         proteinToday.todayIntake?.basis === "tracked" ? "external" : "manual",
         mealTimeWindows(nowMealAnchors)
       ),
-      <ProteinTodayAtom today={proteinToday} />,
+      // ROW ONLY (#3365). This reading can reach no card lane — it carries no rank
+      // reason, so `nowScore` is null — and the row below renders every part of
+      // #3257's copy: the figure with its floor "+", the band, the trailing average
+      // in "g", and the derivation behind the disclosure control.
+      undefined,
       {
         value: proteinLine.amount,
         detail: [
@@ -2016,9 +2093,17 @@ async function renderDashboard(
       on,
       Boolean(vitalsModel)
     ),
-    <div className="card">
+    <DashboardAtomCard title="Vitals" testId="vitals-log-atom">
       <LogReadingButton label="Log a vital" />
-    </div>
+    </DashboardAtomCard>,
+    // With no readings yet this fact is a SETUP row rather than an offer, and the
+    // row states the same door the button opens.
+    {
+      label: "Vitals",
+      href: "/trends#body",
+      actionLabel: "Log a vital",
+      presence: vitalsModel ? "current" : "never",
+    }
   );
 
   if (cycleModel)
@@ -2061,7 +2146,14 @@ async function renderDashboard(
         },
         nextAppt.href
       ),
-      <NextAppointmentAtom appointment={nextAppt} />
+      <NextAppointmentAtom appointment={nextAppt} />,
+      {
+        label: nextAppt.title,
+        value: nextAppt.whenLabel,
+        detail: nextAppt.dueText,
+        href: nextAppt.href,
+        moment: { title: "Next appointment", href: "/records/history/visits" },
+      }
     );
 
   labRows.forEach((row, index) => {
@@ -2112,15 +2204,9 @@ async function renderDashboard(
         applicable: canWrite,
         sourceOrder: sourceOrder++,
       }),
-      <DashboardSetupAtom
-        title="Clinical results"
-        icon={IconFlask}
-        message="No clinical results yet."
-        ctaLabel="Import results"
-        ctaHref="/data"
-      />,
+      undefined,
       {
-        detail: "No clinical results yet.",
+        label: "Clinical results",
         href: "/data",
         actionLabel: "Import results",
         presence: "never",
@@ -2300,12 +2386,10 @@ async function renderDashboard(
         },
         on
       ),
-      <DashboardSetupAtom
+      <DashboardAtomCard
         title="Sleep"
-        icon={IconMoon}
-        message="No sleep recorded last night."
-        ctaLabel="Sync a source"
-        ctaHref="/data"
+        href="/data"
+        actionLabel="Sync a source"
       />
     );
   } else if (sleepSummary) {
@@ -2376,7 +2460,17 @@ async function renderDashboard(
         engagementFromSource(nap.source),
         nowMinutes - nap.endMinutes
       ),
-      <NapAtom nap={nap} timeFormat={formatPrefs.timeFormat} />
+      <NapAtom nap={nap} timeFormat={formatPrefs.timeFormat} />,
+      {
+        label: formatSleepWindow(
+          formatPrefs.timeFormat,
+          nap.startMinutes,
+          nap.endMinutes
+        ),
+        value: formatHm(nap.durationMin),
+        href: "/sleep#naps",
+        moment: { title: "Today's naps", href: "/sleep#naps" },
+      }
     )
   );
   if (todayNaps.length > 0)
@@ -2443,6 +2537,13 @@ async function renderDashboard(
   );
   sourceOrder += coachingObservations.length;
 
+  const recapMomentTitle = weeklyRecap
+    ? `${recapScaleEntry(weeklyRecap.scale).label} · ${recapRangeLabel(
+        weeklyRecap.start,
+        weeklyRecap.end,
+        formatPrefs
+      )}`
+    : "";
   weeklyRecap?.lines.forEach((line, index) =>
     add(
       progressCandidates.recap(
@@ -2457,11 +2558,19 @@ async function renderDashboard(
         weeklyRecap.start,
         weeklyRecap.end
       ),
-      <RecapLineAtom
-        recap={weeklyRecap}
-        line={line}
-        formatPrefs={formatPrefs}
-      />
+      undefined,
+      {
+        // A bare line is already self-labelled (#1935); printing the label
+        // beside it would name the row twice.
+        ...(line.bare ? {} : { label: line.label }),
+        value: line.value,
+        detail: recapLineAnnotation(line),
+        href: "/timeline",
+        // THE MOMENT (#3365). Six recap facts used to be six identical cards, one
+        // line each; the scale and the window they all share is stated once, at the
+        // head of the block they fold into.
+        moment: { title: recapMomentTitle, href: "/timeline" },
+      }
     )
   );
 

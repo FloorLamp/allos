@@ -1,5 +1,5 @@
 import { IconMoon } from "@tabler/icons-react";
-import CardSectionHeader from "@/components/CardSectionHeader";
+import DashboardAtomCard from "./DashboardAtomCard";
 import {
   sleepWaitingDetail,
   type SleepWaitingState,
@@ -28,8 +28,7 @@ export default function SleepWaitingAtom({
     when: (iso) => formatRelativeTime(iso),
   });
   return (
-    <div className="card h-full" data-testid="sleep-waiting-atom">
-      <CardSectionHeader title="Sleep" href="/sleep" />
+    <DashboardAtomCard title="Sleep" href="/sleep" testId="sleep-waiting-atom">
       <div className="flex items-start gap-3">
         <IconMoon
           className="mt-0.5 h-5 w-5 shrink-0 text-slate-500 dark:text-slate-400"
@@ -56,6 +55,6 @@ export default function SleepWaitingAtom({
           )}
         </div>
       </div>
-    </div>
+    </DashboardAtomCard>
   );
 }

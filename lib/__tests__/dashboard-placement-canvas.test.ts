@@ -7,6 +7,7 @@ import {
   stateCandidate,
   statementCandidate,
 } from "@/lib/dashboard-candidates";
+import type { DashboardStandingPresentation } from "@/components/dashboard/DashboardStandingCluster";
 import type {
   DashboardCandidate,
   DashboardPlacement,
@@ -228,5 +229,163 @@ describe("dashboard placement canvas", () => {
     );
     expect(withoutRead).not.toContain('aria-label="Read"');
     expect(render([])).not.toContain('data-testid="dashboard-all"');
+  });
+});
+
+// ── THE SHOW-EVERYTHING TAIL'S GRAMMAR (#3365) ─────────────────────────────────
+//
+// Read / Understand / Setup report, so they render as rows through the SAME renderer
+// Standing uses; Act and Active states offer or run, so they keep a card. What the
+// tail can never do is LOSE one: it is a fold over the ranker's placements, so every
+// placement handed in comes back out exactly once whatever the fold does with it.
+describe("the Show-everything tail (#3365)", () => {
+  const everything = (
+    candidate: DashboardCandidate,
+    everythingGroup: Extract<
+      DashboardPlacement,
+      { lane: "everything" }
+    >["everythingGroup"],
+    laneOrder: number
+  ): DashboardPlacement => ({
+    candidate,
+    lane: "everything",
+    laneOrder,
+    timingDisposition: { kind: "active" },
+    everythingGroup,
+    memberOrder: 0,
+  });
+
+  function recapLine(index: number): DashboardCandidate {
+    return statementCandidate({
+      candidateId: `recap.line-${index}:2026-08-23`,
+      factKey: `recap.line-${index}:2026-08-23:2026-08-29`,
+      groupKey: "recap:2026-08-23:2026-08-29",
+      subject,
+      applicable: true,
+      relevance: { kind: "event" },
+      sourceOrder: index,
+    });
+  }
+
+  const recapRow = (label: string, value: string) => ({
+    label,
+    value,
+    href: "/timeline" as const,
+    moment: { title: "Weekly recap · Aug 23–29", href: "/timeline" as const },
+  });
+
+  function renderTail(
+    placements: DashboardPlacement[],
+    presentations: [string, DashboardStandingPresentation][],
+    nodes: [string, ReactNode][] = []
+  ) {
+    return renderToStaticMarkup(
+      createElement(DashboardPlacementCanvas, {
+        dateLabel: "August 29, 2026",
+        placements,
+        candidateNodes: new Map(nodes),
+        standingPresentations: new Map(presentations),
+        aheadPresentations: new Map(),
+        attentionBadgeCount: 0,
+      })
+    );
+  }
+
+  it("folds six same-origin recap atoms into ONE block with ONE header", () => {
+    const lines = [0, 1, 2, 3, 4, 5].map(recapLine);
+    const html = renderTail(
+      lines.map((line, index) => everything(line, "understand", index)),
+      lines.map((line, index) => [
+        line.candidateId,
+        recapRow(`Line ${index}`, `${index}`),
+      ])
+    );
+    // ONE header for six facts — the count, not merely the presence, because six
+    // identical headers is exactly the defect this replaced.
+    expect(html.split("Weekly recap · Aug 23–29").length - 1).toBe(1);
+    expect(
+      html.split('data-moment-key="recap:2026-08-23:2026-08-29"').length - 1
+    ).toBe(1);
+    // POSITIVE CONTROL: the block is there and holds all six rows, so "one header"
+    // cannot be satisfied by a tail that rendered nothing.
+    for (const line of lines)
+      expect(html).toContain(`data-candidate-id="${line.candidateId}"`);
+    expect(html.split('data-lane="everything"').length - 1).toBe(6);
+    // A fold is not an owner of placement: promote one atom out and the block keeps
+    // its header over the five that remain.
+    const promoted = renderTail(
+      lines
+        .slice(1)
+        .map((line, index) => everything(line, "understand", index)),
+      lines.map((line, index) => [
+        line.candidateId,
+        recapRow(`Line ${index}`, `${index}`),
+      ])
+    );
+    expect(promoted.split("Weekly recap · Aug 23–29").length - 1).toBe(1);
+    expect(promoted.split('data-lane="everything"').length - 1).toBe(5);
+    expect(promoted).not.toContain(
+      `data-candidate-id="${lines[0].candidateId}"`
+    );
+  });
+
+  it.each([
+    ["read", true],
+    ["understand", true],
+    ["setup", true],
+    ["act", false],
+    ["active-states", false],
+  ] as const)("%s renders rows: %s", (group, asRows) => {
+    const candidate = statement(`${group}-entry`);
+    const html = renderTail(
+      [everything(candidate, group, 0)],
+      [[candidate.candidateId, { label: "Latest", value: "12" }]],
+      [
+        [
+          candidate.candidateId,
+          createElement("article", { className: "card" }, "Card node"),
+        ],
+      ]
+    );
+    const groupMarkup = html.slice(
+      html.indexOf(`data-testid="dashboard-everything-${group}"`)
+    );
+    // The group exists and holds exactly this one entry — the positive control that
+    // stops "no card in here" passing on a group that was never rendered at all.
+    expect(groupMarkup).toContain(
+      `data-candidate-id="${candidate.candidateId}"`
+    );
+    expect(
+      groupMarkup.split('data-testid="dashboard-candidate"').length - 1
+    ).toBe(1);
+    expect(groupMarkup.includes('class="card"')).toBe(!asRows);
+    expect(groupMarkup.includes("Card node")).toBe(!asRows);
+    expect(groupMarkup.includes("Latest")).toBe(asRows);
+  });
+
+  it("renders every everything placement exactly once, row or card", () => {
+    const rows = [statement("row-a"), statement("row-b")];
+    const card = statement("card-only");
+    const html = renderTail(
+      [
+        everything(rows[0], "read", 0),
+        everything(card, "understand", 1),
+        everything(rows[1], "setup", 2),
+      ],
+      rows.map((r) => [r.candidateId, { label: r.candidateId, value: "1" }]),
+      [
+        [
+          card.candidateId,
+          createElement("article", { className: "card" }, "Hosted control"),
+        ],
+      ]
+    );
+    for (const candidate of [...rows, card])
+      expect(
+        html.split(`data-candidate-id="${candidate.candidateId}"`).length - 1
+      ).toBe(1);
+    // A statement with no row declared keeps its card: the tail never drops an entry
+    // for want of a presentation.
+    expect(html).toContain("Hosted control");
   });
 });
