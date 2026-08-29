@@ -4,6 +4,8 @@ import { gatherHistoryLog } from "@/lib/history";
 import { mergeMemberTimelines } from "@/lib/timeline-multi";
 import { HISTORY_LOG_KINDS } from "@/lib/history-format";
 import { setLoginSetting } from "@/lib/settings";
+import { logFoodServingCore } from "@/lib/food-log-write";
+import { ALCOHOL_FOOD_GROUP } from "@/lib/substance-use";
 
 // THE RECORD'S GATHER (#3958 phase 1). What the pure tier cannot reach: whose rows
 // come back, which kinds a chip is earned by, and the two boundaries that decide what
@@ -359,5 +361,65 @@ describe("presentKinds does not collapse when the page is filtered", () => {
     // A chip is an OFFER, and the record must not advertise what its gather refuses.
     expect(kinds).not.toContain("substance");
     expect(kinds).toContain("food");
+  });
+});
+
+// ── ONE DRINK IS ONE RECORD, AND IT IS A SUBSTANCE ONE ───────────────────────
+//
+// Owner ruling 2026-08-29. #860/#944 put a standard drink on the FOOD store because
+// a drink IS one serving of the curated `alcohol` group — storage, not meaning — so
+// reading both stores put the same act on the record twice and the day header counted
+// "2 records" for one drink.
+describe("alcohol is a substance on the record, not a food", () => {
+  it("was reachable past the substance age gate through the food kind, and is not now", () => {
+    // THE MEASUREMENT THAT DECIDED THE RULING, kept as the guard. The substance kind
+    // is gated on `isMinor`; the food kind is not, and correctly is not. With alcohol
+    // on both, a known minor's `?kind=food` returned the drink as a row titled
+    // "Alcohol" while `?kind=substance` returned nothing — so the gate was decorative
+    // for exactly the rows it exists to cover.
+    const minor = profile(
+      "history alcohol minor",
+      new Date().getFullYear() - 11
+    );
+    const loginId = login();
+    db.prepare(
+      `INSERT INTO food_log_events (profile_id, group_key, date, recorded_at)
+       VALUES (?, 'alcohol', ?, ?)`
+    ).run(minor, YESTERDAY, `${YESTERDAY}T18:00:00.000Z`);
+
+    for (const kind of ["food", "substance"] as const) {
+      expect(
+        gatherHistoryLog(minor, { loginId, limit: 200, kind }).rows,
+        `a known minor's ${kind} rows`
+      ).toEqual([]);
+    }
+    // And the chip agrees with the read: a profile whose only servings are drinks is
+    // offered no Food chip, rather than one that opens onto nothing.
+    expect(
+      gatherHistoryLog(minor, { loginId, limit: 200 }).presentKinds
+    ).toEqual([]);
+  });
+
+  it("counts a drink logged through the FOOD door exactly once, as a substance", () => {
+    const adult = profile("history alcohol adult", 1990);
+    const loginId = login();
+    // The real food door, not a hand-written INSERT: the whole question is whether the
+    // record still SEES a serving logged from Nutrition once the food kind stops
+    // reading it. It does, because that door writes the `food_daily_totals` counter
+    // as well as the event (one fact in two shapes) and the substance read is over the
+    // counter. Verified before the exclusion shipped rather than reasoned about.
+    logFoodServingCore(adult, ALCOHOL_FOOD_GROUP, YESTERDAY, "page");
+    // An ordinary serving beside it, so "the food kind still works" is not assumed.
+    logFoodServingCore(adult, "berries", YESTERDAY, "page");
+
+    const rows = gatherHistoryLog(adult, { loginId, limit: 200 }).rows;
+    const alcohol = rows.filter((row) => row.title === "Alcohol");
+    expect(alcohol).toHaveLength(1);
+    expect(alcohol[0].kind).toBe("substance");
+    // The act in the person's own terms, not as a serving of a food group.
+    expect(alcohol[0].detail).toContain("standard drink");
+    expect(
+      rows.filter((row) => row.kind === "food").map((row) => row.title)
+    ).toEqual(["Berries"]);
   });
 });

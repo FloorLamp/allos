@@ -54,6 +54,32 @@ domain formatters that already exist (`fmtWeight`, `formatMinutes`,
 `formatClockValue`). One grammar, many composers — the `formatDateShape`
 architecture.
 
+## One act, one row
+
+A standard drink is stored as one serving of the curated `alcohol` food group
+(#860/#944) — a **storage** decision, and not a claim that a drink is a meal. The
+record reads both stores, so before the ruling of 2026-08-29 one drink appeared
+twice: a `food` row ("Alcohol · Evening") and a `substance` row ("Alcohol · 1
+standard drink"), and the day header counted **2 records** for one act.
+
+**Alcohol is a substance here, and the food kind excludes it**
+(`excludeSubstanceGroups` on `getFoodLedgerPage`). Three reasons, in the order that
+decides it:
+
+1. **The age gate.** The substance kind is gated on `isMinor`; the food kind is not,
+   and correctly is not. Measured before the change: a known minor's `?kind=food`
+   returned that drink as a row titled "Alcohol" while `?kind=substance` returned
+   nothing — so the gate was decorative for exactly the rows it exists to cover.
+2. The record's day count is a count of things that **happened**, and one drink is
+   one thing.
+3. The substance row describes the act in the person's own terms.
+
+**The drink does not disappear, and the totals do not move.** The food door writes
+the `food_daily_totals` counter as well as the event, and the substance read is over
+that counter — so a serving logged from Nutrition still reaches the record, once,
+under Substances. What changes for a reader is where they find it. Food _totals_ and
+the nutrition arithmetic are untouched: this is the record's row set.
+
 ## The read
 
 `lib/history.ts` composes the readers each ledger already used

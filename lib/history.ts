@@ -45,7 +45,7 @@ import { foodEventWindow } from "./food-slot-count";
 import { profileFoodSlotBoundaries } from "./profile-food-slot";
 import { normalizePracticeName } from "./practice";
 import { formatMinutes } from "./duration";
-import { substanceDef } from "./substance-use";
+import { ALCOHOL_FOOD_GROUP, substanceDef } from "./substance-use";
 import { intakeHref, medicationHref, metricDetailHref } from "./hrefs";
 import {
   detailSegment,
@@ -127,12 +127,16 @@ export function historyPresentKinds(profileId: number): HistoryLogKind[] {
     )
     .get(profileId);
   if (dose != null) out.push("dose");
+  // The SAME exclusion the food read applies (see the food composer): a profile whose
+  // only servings are drinks has no food rows on the record, and a chip that opened
+  // onto nothing would be the presence rule saying the opposite of what it means.
   const food = db
     .prepare(
       `SELECT 1 FROM food_log_events
-        WHERE profile_id = ? AND substr(group_key, 1, 2) != '__' LIMIT 1`
+        WHERE profile_id = ? AND substr(group_key, 1, 2) != '__'
+          AND group_key != ? LIMIT 1`
     )
-    .get(profileId);
+    .get(profileId, ALCOHOL_FOOD_GROUP);
   if (food != null) out.push("food");
   const practice = db
     .prepare("SELECT 1 FROM practice_logs WHERE profile_id = ? LIMIT 1")
@@ -233,12 +237,42 @@ export function gatherHistoryLog(
   }
 
   // ── FOOD ─────────────────────────────────────────────────────────────────
+  //
+  // A DRINK IS ONE RECORD, AND IT IS A SUBSTANCE ONE (owner ruling, 2026-08-29).
+  // #860/#944 put a standard drink on the food store because a drink IS one serving
+  // of the curated `alcohol` group — a STORAGE decision, documented as one in
+  // lib/queries/substance.ts, and not a claim that a drink is a meal. Reading both
+  // stores put the same drink on the record twice: a `food` row saying "Alcohol ·
+  // Evening" and a `substance` row saying "Alcohol · 1 standard drink", so the day
+  // header counted "2 records" for one act. Three reasons decide which one goes, in
+  // the order that decides it:
+  //
+  //   1. THE AGE GATE. The substance kind is gated on `isMinor` below; the food kind
+  //      is not, and correctly is not — food is gated nowhere. MEASURED, not assumed:
+  //      before this line, a known minor's `?kind=food` returned that drink as a row
+  //      titled "Alcohol" while `?kind=substance` correctly returned nothing. The
+  //      gate was decorative for exactly the rows it exists to cover.
+  //   2. The record's day count is a count of things that HAPPENED, and one drink is
+  //      one thing.
+  //   3. The substance row describes the act in the person's own terms ("1 standard
+  //      drink") rather than as a serving of a food group.
+  //
+  // THE DRINK DOES NOT DISAPPEAR, and that was checked rather than reasoned: the
+  // food door writes the `food_daily_totals` counter as well as the event
+  // (lib/food-log-write.ts keeps them as one fact in two shapes), and
+  // `getAllSubstanceDailyTotals` reads that counter — so a serving logged through
+  // Nutrition still reaches the record, once, as a substance. Food TOTALS are
+  // untouched: this is the record's row set, not the nutrition arithmetic.
   if (wants(opts, "food")) {
     const boundaries = profileFoodSlotBoundaries(profileId);
     const ledger = getFoodLedgerPage(
       profileId,
       since,
-      { untilDate: until, groupKey: opts.item },
+      {
+        untilDate: until,
+        groupKey: opts.item,
+        excludeSubstanceGroups: true,
+      },
       1,
       limit
     );

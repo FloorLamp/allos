@@ -371,14 +371,34 @@ export interface FoodLedgerRow {
 export function getFoodLedgerPage(
   profileId: number,
   from: string,
-  options: { untilDate?: string | null; groupKey?: string },
+  options: {
+    untilDate?: string | null;
+    groupKey?: string;
+    /**
+     * Drop the servings that are SUBSTANCES — today, alcohol (#860/#944 put a
+     * standard drink on this store because a drink IS one serving of the curated
+     * `alcohol` group, which is a STORAGE decision and not a claim that a drink is
+     * a meal). Off by default: this reader answers "what servings are on the food
+     * log", and a drink is one. `/history` turns it on because the record asks a
+     * different question — see the food composer in lib/history.ts.
+     *
+     * IN SQL AND NOT AT THE CALL SITE, because `total` is what "Load more" reads:
+     * filtering the returned rows in memory would leave the count claiming rows the
+     * bound had already dropped.
+     */
+    excludeSubstanceGroups?: boolean;
+  },
   page: number,
   pageSize: number
 ): { rows: FoodLedgerRow[]; total: number; page: number } {
   const requestedPage = Math.max(1, Math.floor(page));
   const boundedSize = Math.max(1, Math.floor(pageSize));
   const where = ["date >= ?", "substr(group_key, 1, 2) != '__'"];
+  if (options.excludeSubstanceGroups) {
+    where.push("group_key != ?");
+  }
   const args: Array<string | number> = [profileId, from];
+  if (options.excludeSubstanceGroups) args.push(ALCOHOL_FOOD_GROUP);
   if (options.untilDate) {
     where.push("date <= ?");
     args.push(options.untilDate);
