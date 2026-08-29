@@ -22,7 +22,7 @@ import {
   tallyUpsert,
 } from "./sync-log";
 import type { UpsertCounts, SyncRowSink } from "./sync-log";
-import { loadImportTombstones } from "./tombstones";
+import { loadImportTombstones, writeImportTombstone } from "./tombstones";
 import {
   bodyMetricTombstoneKey,
   metricSampleTombstoneKey,
@@ -33,8 +33,13 @@ import {
   compareWindowStarts,
   isSupersedingWindow,
   planSupersede,
+  sleepSessionCollapse,
+  windowsContain,
   windowsOverlap,
+  SLEEP_SESSION_METRIC,
+  SLEEP_STAGE_METRICS,
   type MetricWindow,
+  type SleepSessionRow,
   type UnstampedEra,
 } from "@/lib/metric-window-overlap";
 import { readUnstampedEra } from "./unstamped-era";
@@ -1023,6 +1028,161 @@ export function supersedeMetricSampleOverlaps(
   let removed = 0;
   for (const id of victims) removed += dropOverlap.run(id, profileId).changes;
   return { removed, overlapsLeft: left.size + inPushDoubleCounts };
+}
+
+/**
+ * THE ID WATERMARK THIS PUSH STARTS FROM — the first `metric_samples.id` it could
+ * possibly have written. Read BEFORE the sample upserts, so a row at or above it was
+ * inserted by this push and a row below it predates it. That is the only stable
+ * spelling of "which write arrived later": `pushed_at` cannot say it, because the
+ * exporter re-sends a corrected night's predecessor for 48 h and a re-send updates the
+ * stored row's stamp to this push's (#3628).
+ */
+export function firstMetricSampleIdOfPush(profileId: number): number {
+  const row = db
+    .prepare("SELECT MAX(id) AS maxId FROM metric_samples WHERE profile_id = ?")
+    .get(profileId) as { maxId: number | null };
+  return (row.maxId ?? 0) + 1;
+}
+
+/**
+ * COLLAPSE A MIS-ZONED SLEEP SESSION INTO THE WRITE THAT CORRECTED IT (#3628).
+ *
+ * Runs beside `supersedeMetricSampleOverlaps`, in the same last-chunk transaction and
+ * after this push's upserts, and answers a different question — see the predicate's own
+ * header in lib/metric-window-overlap.ts for what it collapses and everything it
+ * refuses. Here is only the store half: SQL NARROWS, `sleepSessionCollapse` DECIDES, in
+ * the two-encodings discipline this file already keeps.
+ *
+ * WHY A TOMBSTONE, WHEN THE DAY-BUCKET SUPERSEDE WRITES NONE. That one deletes a span
+ * the source is expected to keep sending under its CURRENT anchoring, so the re-send is
+ * the repair. This one deletes a record the source never withdraws: Health Connect keeps
+ * the first write, and the exporter re-sends it for 48 h. Without the tombstone the very
+ * next push resurrects the phantom under the same natural key, and the collapse would
+ * undo itself once an hour.
+ *
+ * SCOPED TO `source = health-connect`, like #3424's supersede. Oura and Withings label
+ * their sessions themselves and never re-time one; a manual entry is the user's own row.
+ */
+export function collapseRewrittenSleepSessions(
+  profileId: number,
+  source: string,
+  firstIdOfPush: number
+): SupersedeOutcome {
+  if (source !== OVERLAP_SUPERSEDE_SOURCE)
+    return { removed: 0, overlapsLeft: 0 };
+
+  // The sessions THIS PUSH inserted — asked of the store, not remembered from the
+  // payload, so a row a veto refused is simply not here.
+  const winners = db
+    .prepare(
+      `SELECT id, date, origin, started_at, ended_at, edited, pushed_at
+         FROM metric_samples
+        WHERE profile_id = ? AND source = ? AND metric = ? AND id >= ?
+          AND origin IS NOT NULL
+        ORDER BY id`
+    )
+    .all(
+      profileId,
+      source,
+      SLEEP_SESSION_METRIC,
+      firstIdOfPush
+    ) as SleepSessionRow[];
+  if (winners.length === 0) return { removed: 0, overlapsLeft: 0 };
+
+  // Candidates: the same profile's stored sessions of the same source and origin that
+  // predate this push. The overlap test is NOT in this SQL — `started_at` is a
+  // documented `mixed`-shape column, so a string comparison would answer a different
+  // question than instants do.
+  const findStored = db.prepare(
+    `SELECT id, date, origin, started_at, ended_at, edited, pushed_at
+       FROM metric_samples
+      WHERE profile_id = ? AND source = ? AND metric = ? AND origin IS ?
+        AND id < ?
+      ORDER BY id`
+  );
+  // A loser's stage rows, found by CONTAINMENT in its own window rather than by any
+  // stamp: they are pinned to the session's wake day by the parser, and the winner's
+  // stages are excluded by the same id watermark that chose the winner.
+  const findStages = db.prepare(
+    `SELECT id, started_at, ended_at, origin, metric
+       FROM metric_samples
+      WHERE profile_id = ? AND source = ? AND metric = ? AND origin IS ?
+        AND date = ? AND id < ?`
+  );
+  const drop = db.prepare(
+    "DELETE FROM metric_samples WHERE id = ? AND profile_id = ?"
+  );
+
+  const losers = new Map<number, SleepSessionRow>();
+  let locked = 0;
+  for (const winner of winners) {
+    const stored = findStored.all(
+      profileId,
+      source,
+      SLEEP_SESSION_METRIC,
+      winner.origin,
+      firstIdOfPush
+    ) as SleepSessionRow[];
+    for (const row of stored) {
+      const verdict = sleepSessionCollapse(winner, row, firstIdOfPush);
+      if (verdict === "collapse") losers.set(row.id, row);
+      else if (verdict === "locked") locked++;
+    }
+  }
+
+  let removed = 0;
+  for (const loser of losers.values()) {
+    // The session's stages go with it — see the header. Each deleted key gets its own
+    // tombstone, or the next re-send restores the breakdown of a night that is gone.
+    for (const metric of SLEEP_STAGE_METRICS) {
+      const stages = findStages.all(
+        profileId,
+        source,
+        metric,
+        loser.origin,
+        loser.date,
+        firstIdOfPush
+      ) as { id: number; started_at: string; ended_at: string }[];
+      for (const stage of stages) {
+        if (
+          !windowsContain(
+            loser.started_at,
+            loser.ended_at,
+            stage.started_at,
+            stage.ended_at
+          )
+        ) {
+          continue;
+        }
+        removed += drop.run(stage.id, profileId).changes;
+        writeImportTombstone(
+          profileId,
+          "metric_samples",
+          metricSampleTombstoneKey(
+            metric,
+            source,
+            loser.origin,
+            stage.started_at
+          )
+        );
+      }
+    }
+    removed += drop.run(loser.id, profileId).changes;
+    writeImportTombstone(
+      profileId,
+      "metric_samples",
+      metricSampleTombstoneKey(
+        SLEEP_SESSION_METRIC,
+        source,
+        loser.origin,
+        loser.started_at
+      )
+    );
+  }
+  // An overlap the #133 lock held out is still two nights in the store, and Review says
+  // so through the same number the day-bucket rule reports its residue with.
+  return { removed, overlapsLeft: locked };
 }
 
 /**

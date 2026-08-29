@@ -9,6 +9,8 @@ import {
   type ProvenanceEntry,
 } from "./sync-log";
 import {
+  collapseRewrittenSleepSessions,
+  firstMetricSampleIdOfPush,
   supersedeMetricSampleOverlaps,
   upsertActivities,
   upsertBodyMetrics,
@@ -174,6 +176,11 @@ export function ingestHealthConnectPayload(
     // device clock that claims the future. Null when the push states nothing readable,
     // and then this push supersedes nothing at all.
     const pushedAt = pushStampFor(parsed.pushedAt);
+    // THE ID WATERMARK, READ BEFORE THE FIRST SAMPLE LANDS (#3628). A row at or above it
+    // is one this push inserted; a row below it predates the push. It is what tells a
+    // corrected sleep session from the mis-zoned first write it corrects, because the
+    // exporter re-sends that first write for 48 h and the re-send moves its `pushed_at`.
+    const firstSampleId = firstMetricSampleIdOfPush(profileId);
     // ── THE SUPERSEDE (#3424) ── DERIVED FROM THE STORE, IN THE LAST CHUNK.
     //
     // There is no plan over the payload any more, and its absence is the fix (the owner's
@@ -229,12 +236,22 @@ export function ingestHealthConnectPayload(
             pushedAt
           );
           part.superseded += outcome.removed;
+          // The re-timed sleep session (#3628), in this same transaction and after the
+          // same upserts. A different question from the day-bucket supersede above — a
+          // point event the source RE-TIMED rather than a span it re-cut — so it is a
+          // separate rule, and it needs no stamp: arrival order is the id watermark.
+          const sleep = collapseRewrittenSleepSessions(
+            profileId,
+            source,
+            firstSampleId
+          );
+          part.superseded += sleep.removed;
           // WHAT THIS PUSH LEFT DOUBLE COUNTING, from the same query that did the
           // deleting: the candidates the predicate declined (locked, not outranked,
           // cut at sub-daily granularity) plus the excess the push carries against
           // ITSELF. Read inside the transaction that acted, so it describes what
           // happened rather than what was forecast.
-          overlapsLeft = outcome.overlapsLeft;
+          overlapsLeft = outcome.overlapsLeft + sleep.overlapsLeft;
         }
         return part;
       },

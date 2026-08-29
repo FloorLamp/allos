@@ -750,3 +750,109 @@ export function planSupersede(
   }
   return { supersede, locked, left };
 }
+
+// ---- A RE-TIMED SLEEP SESSION AND ITS MIS-ZONED FIRST WRITE (#3628) -------------
+//
+// A DIFFERENT QUESTION FROM THE ONE ABOVE, and it is kept separate on purpose. The day
+// bucket rule collapses a span the device RE-CUT under a new anchoring, so it decides
+// within one `date` and reads a device-cut window. A sleep session is a POINT EVENT the
+// source RE-TIMED: after a zone change Health Connect can hold the same Fitbit night
+// twice — a first write whose instants came from the wall clock under the old zone, and
+// a corrected write a day later under the new one. Measured on prod: two rows exactly
+// 6 h apart (New York ↔ Honolulu), overlapping by 17 minutes, same 377-minute duration.
+// `sleep_min` keys on `started_at`, so the re-timed session is a NEW natural key rather
+// than a correction, the first write is never withdrawn, and `mainSleepSession` picks
+// the longest per wake-day — so the phantom became the only "night" of its wake-day.
+//
+// THE PREDICATE, AND WHAT IT REFUSES. One person, of one origin, cannot be asleep in two
+// overlapping sessions, so an overlap WITHIN an origin is always a re-write. It collapses
+// only when every one of these holds, and each refusal below is a case a real person's
+// record depends on:
+//
+//   • SAME ORIGIN, AND THE ORIGIN IS NAMED. Two different devices reporting overlapping
+//     sleep is a different question and not this rule's to answer. A NULL origin is not
+//     "the same origin", it is an unknown one — two unattributed exporters share that
+//     value — so it is refused in both roles rather than treated as a group.
+//   • THE WINDOWS OVERLAP AS INSTANTS. `windowsOverlap` refuses a degenerate or
+//     unreadable window, so a naive `${date}T00:00:00` decides nothing. Non-overlapping
+//     sessions are untouched, which is what leaves a night + an afternoon nap, and
+//     #1191's fragmented night (separated by an awake gap, by construction), alone.
+//   • THE WINNER WAS INSERTED LATER, BY INSERTION AND NOT BY WINDOW START. The corrected
+//     write ARRIVES afterwards and that is the whole signal; its window may start six
+//     hours either side of the one it corrects. `pushed_at` cannot carry this — the
+//     exporter re-sends the old record for 48 h, and a re-send updates the stored row's
+//     stamp — so arrival order is read off `metric_samples.id`, which an update never
+//     moves.
+//   • THEY WERE NOT FIRST WRITTEN BY THE SAME PUSH. Two sessions of one push have no
+//     arrival order between them, and choosing by window start would be a guess. This is
+//     #3424's own ruling (item 3) in its own words: rows of one push cannot rank each
+//     other. `firstIdOfPush` is the store's id watermark taken before this push wrote
+//     anything, so a loser must predate it.
+//   • THE #133 EDIT LOCK IS NOT SET. A hand-corrected night is the user's row.
+export const SLEEP_SESSION_METRIC = "sleep_min";
+
+// The per-stage breakdown `parseHealthConnectPayload` emits beside each session, pinned
+// to the session's own wake day. They are deleted WITH the session they belong to: a
+// stage set without its total is a night that shows stages summing to no sleep.
+export const SLEEP_STAGE_METRICS: readonly string[] = [
+  "sleep_deep_min",
+  "sleep_rem_min",
+  "sleep_light_min",
+  "sleep_awake_min",
+];
+
+/**
+ * Does `[innerStart, innerEnd]` lie wholly inside `[outerStart, outerEnd]`, as INSTANTS?
+ *
+ * Closed on both ends, because a stage tiles its session exactly: the first stage starts
+ * at the session's start and the last one ends at its end. Any instant this rule cannot
+ * read answers FALSE, which leaves the row alone — the safe direction for a predicate
+ * whose true answer deletes a health record.
+ */
+export function windowsContain(
+  outerStart: string,
+  outerEnd: string,
+  innerStart: string,
+  innerEnd: string
+): boolean {
+  const os = instantMs(outerStart);
+  const oe = instantMs(outerEnd);
+  const is = instantMs(innerStart);
+  const ie = instantMs(innerEnd);
+  if (os === null || oe === null || is === null || ie === null) return false;
+  return is >= os && ie <= oe;
+}
+
+/** One stored `sleep_min` row, in the columns this rule reads. */
+export interface SleepSessionRow extends MetricWindow {
+  origin: string | null;
+}
+
+/**
+ * What the just-inserted session `winner` does to one stored session `stored`.
+ *
+ * `collapse` — supersede it (delete + re-import tombstone). `locked` — it would have,
+ * and the #133 lock held it out. `keep` — anything else, and that is the answer the
+ * rule gives whenever it cannot establish all of the terms above.
+ */
+export function sleepSessionCollapse(
+  winner: Pick<SleepSessionRow, "id" | "origin" | "started_at" | "ended_at">,
+  stored: SleepSessionRow,
+  firstIdOfPush: number
+): "collapse" | "locked" | "keep" {
+  if (winner.origin == null || stored.origin !== winner.origin) return "keep";
+  // Later by INSERTION: the loser predates this push, and this push wrote the winner.
+  // Together these also make the two rows distinct, so nothing asks that separately.
+  if (stored.id >= firstIdOfPush || winner.id < firstIdOfPush) return "keep";
+  if (
+    !windowsOverlap(
+      winner.started_at,
+      winner.ended_at,
+      stored.started_at,
+      stored.ended_at
+    )
+  ) {
+    return "keep";
+  }
+  return stored.edited ? "locked" : "collapse";
+}

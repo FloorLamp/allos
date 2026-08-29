@@ -28,6 +28,8 @@ import {
   planSupersede,
   pushOutranks,
   pushStampFor,
+  sleepSessionCollapse,
+  windowsContain,
   windowsOverlap,
   type MetricWindow,
 } from "@/lib/metric-window-overlap";
@@ -1106,5 +1108,146 @@ describe("THE ANCHOR GUARD inside planSupersede (#3901)", () => {
     const neighbour = { ...stored, id: 2, date: "2026-08-27" };
     const plan = planSupersede(consistent, [neighbour]);
     expect(plan.supersede.map((r) => r.id)).toEqual([2]);
+  });
+});
+
+// #3628 — the re-timed sleep session. Written in this file's mutation-audit style: each
+// term of `sleepSessionCollapse` has a row that goes red when that term alone is removed,
+// because a `collapse` verdict deletes a night out of a person's record.
+describe("sleepSessionCollapse", () => {
+  const FITBIT = "com.fitbit.FitbitMobile";
+  // The prod pair: 6 h apart, overlapping by 17 minutes, same 377-minute duration.
+  const MIS_ZONED = {
+    id: 10,
+    date: "2026-08-21",
+    origin: FITBIT,
+    started_at: "2026-08-21T23:58:00Z",
+    ended_at: "2026-08-22T06:15:00Z",
+    edited: null,
+    pushed_at: "2026-08-22T13:40:00Z",
+  };
+  const CORRECTED = {
+    id: 20,
+    origin: FITBIT,
+    started_at: "2026-08-22T05:58:00Z",
+    ended_at: "2026-08-22T12:15:00Z",
+  };
+  // The watermark: rows below it predate this push, rows at or above it are its own.
+  const PUSH = 20;
+
+  it.each([
+    // The defect, collapsed.
+    ["the prod pair", CORRECTED, MIS_ZONED, PUSH, "collapse"],
+    // SAME ORIGIN, AND NAMED. A second device's overlapping night is a different
+    // question; a NULL origin is an unknown one, not a shared one, in either role.
+    [
+      "a different origin",
+      CORRECTED,
+      { ...MIS_ZONED, origin: "com.oura.oura" },
+      PUSH,
+      "keep",
+    ],
+    [
+      "a stored row with no origin",
+      CORRECTED,
+      { ...MIS_ZONED, origin: null },
+      PUSH,
+      "keep",
+    ],
+    [
+      "an incoming row with no origin",
+      { ...CORRECTED, origin: null },
+      { ...MIS_ZONED, origin: null },
+      PUSH,
+      "keep",
+    ],
+    // OVERLAP, AS INSTANTS. A nap after the night, and #1191's post-gap fragment, are
+    // non-overlapping by construction. A naive `${date}T00:00:00` decides nothing.
+    [
+      "a session that ends before the winner starts",
+      CORRECTED,
+      {
+        ...MIS_ZONED,
+        started_at: "2026-08-21T18:00:00Z",
+        ended_at: "2026-08-21T19:00:00Z",
+      },
+      PUSH,
+      "keep",
+    ],
+    [
+      "a stored window with no offset",
+      CORRECTED,
+      { ...MIS_ZONED, started_at: "2026-08-21T23:58:00" },
+      PUSH,
+      "keep",
+    ],
+    // LATER BY INSERTION. The loser must predate this push and the winner must belong
+    // to it — never "the one whose window starts later", which is the whole trap: here
+    // the corrected write starts SIX HOURS after the row it corrects.
+    [
+      "a stored row this same push inserted",
+      CORRECTED,
+      { ...MIS_ZONED, id: 21 },
+      PUSH,
+      "keep",
+    ],
+    [
+      "a winner that predates this push",
+      { ...CORRECTED, id: 15 },
+      MIS_ZONED,
+      PUSH,
+      "keep",
+    ],
+    // THE #133 LOCK: reported, never deleted.
+    [
+      "a hand-edited night",
+      CORRECTED,
+      { ...MIS_ZONED, edited: 1 },
+      PUSH,
+      "locked",
+    ],
+  ] as const)("%s", (_label, winner, stored, firstId, expected) => {
+    expect(sleepSessionCollapse(winner, stored, firstId)).toBe(expected);
+  });
+});
+
+// The stage sweep's bound. A stage tiles its session exactly, so containment is CLOSED
+// on both ends — and an unreadable instant answers false, which leaves the row alone.
+describe("windowsContain", () => {
+  const OUTER = ["2026-08-21T23:58:00Z", "2026-08-22T06:15:00Z"] as const;
+  it.each([
+    [
+      "a stage flush to the session start",
+      "2026-08-21T23:58:00Z",
+      "2026-08-22T00:58:00Z",
+      true,
+    ],
+    [
+      "a stage flush to the session end",
+      "2026-08-22T05:00:00Z",
+      "2026-08-22T06:15:00Z",
+      true,
+    ],
+    ["the whole session", ...OUTER, true],
+    [
+      "a stage starting before it",
+      "2026-08-21T23:00:00Z",
+      "2026-08-22T00:58:00Z",
+      false,
+    ],
+    [
+      "a stage ending after it",
+      "2026-08-22T05:00:00Z",
+      "2026-08-22T07:00:00Z",
+      false,
+    ],
+    [
+      "an offsetless instant",
+      "2026-08-21T23:58:00",
+      "2026-08-22T00:58:00Z",
+      false,
+    ],
+  ] as const)("%s", (_label, start, end, expected) => {
+    expect(windowsContain(OUTER[0], OUTER[1], start, end)).toBe(expected);
   });
 });
