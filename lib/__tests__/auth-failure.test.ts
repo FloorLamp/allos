@@ -10,42 +10,31 @@ import {
 // (dead/revoked grant → needs re-auth) vs a TRANSIENT one (retry next tick). Only the
 // former may tear a connection out of `connected`.
 describe("isAuthRefreshFailure", () => {
-  // THE REFRESH DOOR'S WHOLE RULE, as (status, body) → verdict. A 401 is definitive
-  // whatever the body says; a 400 is definitive ONLY on a body naming the rejected
-  // grant; nothing else is. #3798: the bodyless/empty 400 rows used to answer `true`
-  // off a default, which is how a CDN artifact in front of a token endpoint told a
-  // person their connection had expired.
+  const stravaDeadGrant =
+    '{"message":"Bad Request","errors":[{"resource":"RefreshToken","field":"refresh_token","code":"invalid"}]}';
+
+  // A 401 is definitive for either provider regardless of body. Only Strava has a
+  // documented structured 400 marker; Withings reports rejection as envelope 401.
   it.each([
-    // A 401 — the body is irrelevant, including when there is none.
-    [401, null, true],
-    [401, "", true],
-    [401, "anything", true],
-    // A 400 whose body names the rejected grant. Strava spells its dead refresh
-    // token as a field reference rather than the bare OAuth `invalid_grant`.
-    [400, '{"error":"invalid_grant"}', true],
-    [400, "invalid grant", true],
-    [400, '{"error":"invalid_token"}', true],
-    [400, "The refresh_token is invalid", true],
-    [400, "Unauthorized", true],
-    // A 400 with NO evidence of revocation. The first two are the #3798 defect: a
-    // gateway or CDN artifact, which carries no body or an HTML one.
-    [400, null, false],
-    [400, "", false],
-    [400, "<html><head><title>400 Bad Request</title></head></html>", false],
-    [400, '{"error":"invalid_scope"}', false],
-    [400, "malformed request payload", false],
-    // Transient: it said slow down, it broke on its own side, or there was no HTTP
-    // response at all (the status-0 sentinel). 601 is Withings' over-quota envelope.
-    [429, null, false],
-    [500, null, false],
-    [503, null, false],
-    [0, null, false],
-    [601, null, false],
-    // Other 4xx are not auth-grant failures.
-    [403, null, false],
-    [404, null, false],
-  ] as const)("%i + %o → %s", (status, body, expected) => {
-    expect(isAuthRefreshFailure(status, body)).toBe(expected);
+    ["strava", 401, null, true],
+    ["strava", 401, "anything", true],
+    ["withings", 401, null, true],
+    ["withings", 401, "anything", true],
+    ["strava", 400, stravaDeadGrant, true],
+    ["strava", 400, null, false],
+    ["strava", 400, "", false],
+    ["strava", 400, "<html>Unauthorized by upstream gateway</html>", false],
+    ["strava", 400, '{"error":"invalid_grant"}', false],
+    ["strava", 400, '{"errors":[]}', false],
+    ["withings", 400, stravaDeadGrant, false],
+    ["withings", 400, '{"error":"invalid_grant"}', false],
+    ["withings", 400, "<html>Unauthorized by upstream gateway</html>", false],
+    ["strava", 429, null, false],
+    ["strava", 500, null, false],
+    ["withings", 601, null, false],
+    ["withings", 403, null, false],
+  ] as const)("%s %i + %o → %s", (provider, status, body, expected) => {
+    expect(isAuthRefreshFailure(provider, status, body)).toBe(expected);
   });
 
   // WHERE THE TWO DOORS DISAGREE, PINNED SO A FUTURE MERGE OF THEM GOES RED (the
@@ -59,22 +48,22 @@ describe("isAuthRefreshFailure", () => {
   // IT USED TO SPELL THE PULL RULE ITSELF, as a local `status === 401`, which pinned
   // one rule against a COPY of the other and so could not notice the pull door
   // changing underneath it. `isAuthPullFailure` is exported for this.
-  it("differs from the data-pull rule on exactly the marker-bearing 400", () => {
-    const cases: [number, string | null][] = [
-      [400, '{"error":"invalid_grant"}'],
-      [400, null],
-      [400, ""],
-      [400, "<html>400 Bad Request</html>"],
-      [401, null],
-      [403, null],
-      [429, null],
-      [500, null],
-    ];
+  it("differs from the data-pull rule only on Strava's structured 400", () => {
+    const cases = [
+      ["strava", 400, stravaDeadGrant],
+      ["withings", 400, stravaDeadGrant],
+      ["strava", 400, "<html>Unauthorized</html>"],
+      ["withings", 400, '{"error":"invalid_grant"}'],
+      ["strava", 401, null],
+      ["withings", 401, null],
+      ["strava", 500, null],
+    ] as const;
     const disagree = cases.filter(
-      ([status, body]) =>
-        isAuthRefreshFailure(status, body) !== isAuthPullFailure(status)
+      ([provider, status, body]) =>
+        isAuthRefreshFailure(provider, status, body) !==
+        isAuthPullFailure(status)
     );
-    expect(disagree).toEqual([[400, '{"error":"invalid_grant"}']]);
+    expect(disagree).toEqual([["strava", 400, stravaDeadGrant]]);
   });
 });
 
