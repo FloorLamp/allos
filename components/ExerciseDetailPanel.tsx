@@ -32,6 +32,7 @@ import type { AppRoute } from "@/lib/hrefs";
 import ExerciseGuideSection from "@/components/ExerciseGuideSection";
 import { hasExerciseGuide } from "@/lib/exercise-guides";
 import { isNewLift } from "@/lib/exercise-familiarity";
+import Disclosure from "@/components/Disclosure";
 
 const PR_CHIP = (
   <span className="badge bg-amber-100 text-amber-700 dark:bg-amber-950 dark:text-amber-300">
@@ -337,12 +338,12 @@ export default function ExerciseDetailPanel({
         (isNewLift(stat.sessions) ? (
           <ExerciseGuideSection name={stat.exercise} />
         ) : (
-          <details className="mt-5" data-testid="exercise-guide-disclosure">
+          <Disclosure className="mt-5" data-testid="exercise-guide-disclosure">
             <summary className="cursor-pointer text-sm font-semibold text-slate-700 select-none dark:text-slate-200">
               How to
             </summary>
             <ExerciseGuideSection name={stat.exercise} heading={false} />
-          </details>
+          </Disclosure>
         ))}
     </div>
   );

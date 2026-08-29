@@ -1,4 +1,5 @@
 import { IconChevronRight } from "@tabler/icons-react";
+import Disclosure from "@/components/Disclosure";
 
 // THE LEAD + FOLD PRIMITIVE (copy.md rule 10; #3488, #3490).
 //
@@ -10,18 +11,16 @@ import { IconChevronRight } from "@tabler/icons-react";
 // next one queued) inherits it by rendering this with its own `summary` label;
 // there is nothing else to decide, and nothing to re-derive.
 //
-// ── WHY A NATIVE `<details>` AND NOT `<Collapse>` ───────────────────────────────
+// ── WHY `<Disclosure>` AND NOT `<Collapse>` ─────────────────────────────────────
 //
-// `components/Collapse.tsx` is the height-ANIMATED collapse and it is a client
-// component: it reads `usePrefersReducedMotion`. Every integration page is a
-// server component, so adopting it would force a `"use client"` boundary onto nine
-// pages to buy an animation nobody asked for on a read-once paragraph. A
-// `<details>` is server-renderable, works before hydration, and arrives with the
-// keyboard and AT semantics already correct — the same reasoning
-// `app/(app)/upcoming/page.tsx`'s AggregateDisclosure wrote down, and the same
-// element the import page's Debug card uses. It also holds NO persisted state,
-// which is the honest default for an intro: it is closed on every visit, for
-// everyone, and the summary always says what is inside.
+// The fold is the app's shared `<Disclosure>` (#3677): a native `<details>`, so it stays
+// server-renderable, works before hydration, and arrives with the keyboard and AT
+// semantics already correct — while animating open on the one continuity token. This
+// file's earlier note that an animated collapse would cost nine integration pages a
+// `"use client"` boundary was about `components/Collapse.tsx`, a different primitive that
+// reads `usePrefersReducedMotion`; that reasoning is unchanged and is why this is not it.
+// The fold holds NO persisted state, which is the honest default for an intro: it is
+// closed on every visit, for everyone, and the summary always says what is inside.
 //
 // ── WHAT THE CALLER DECIDES, AND WHAT IT DOES NOT ───────────────────────────────
 //
@@ -66,7 +65,7 @@ export default function LeadFold({
         {lead}
       </p>
       {detail ? (
-        <details className="group" data-testid={`${testId}-fold`}>
+        <Disclosure data-testid={`${testId}-fold`}>
           <summary
             data-testid={`${testId}-fold-summary`}
             className="flex w-fit cursor-pointer list-none items-center gap-1 text-sm font-medium text-link"
@@ -84,7 +83,7 @@ export default function LeadFold({
           >
             {detail}
           </div>
-        </details>
+        </Disclosure>
       ) : null}
     </div>
   );

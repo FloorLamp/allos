@@ -15,6 +15,7 @@ import {
 import { studyDisplayLabel } from "@/lib/imaging-study";
 import { formatDateWithYear, type DisplayFormatPrefs } from "@/lib/format-date";
 import type { ImagingStudy } from "@/lib/types";
+import Disclosure from "@/components/Disclosure";
 
 // The calm, informational cumulative-radiation-dose card on the Imaging page (#703),
 // with the breakdown that answers "which studies is that?" in place (#2970).
@@ -176,7 +177,7 @@ export default function RadiationDoseCard({
         </p>
       )}
 
-      <details className="group mt-3" data-testid="radiation-dose-breakdown">
+      <Disclosure className="mt-3" data-testid="radiation-dose-breakdown">
         <summary
           data-testid="radiation-dose-breakdown-toggle"
           className="flex cursor-pointer list-none items-center gap-1 text-xs font-medium text-brand-700 [&::-webkit-details-marker]:hidden dark:text-brand-400"
@@ -248,7 +249,7 @@ export default function RadiationDoseCard({
             </ul>
           </>
         )}
-      </details>
+      </Disclosure>
 
       {hasTotal && (
         <p className="mt-2 text-xs text-slate-500 dark:text-slate-400">

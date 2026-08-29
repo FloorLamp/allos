@@ -7,6 +7,7 @@ import {
 import { encounterHref } from "@/lib/hrefs";
 import type { LinkedEncounterRef } from "@/lib/queries";
 import type { EpisodeVisitSuggestion } from "@/lib/visit-link-suggest";
+import Disclosure from "@/components/Disclosure";
 
 // The illness-episode cockpit's "Care" line (#1053; many-model #1198): the SET of visits
 // for this episode — each linked visit listed (date-ordered) with its own Unlink, plus
@@ -160,7 +161,7 @@ export default function EpisodeCareLine({
           ) : null}
 
           {canWrite && manualOptions.length > 0 ? (
-            <details className="text-sm">
+            <Disclosure className="text-sm">
               <summary className="cursor-pointer text-xs font-medium text-slate-500 hover:text-brand-600 dark:text-slate-400 dark:hover:text-brand-400">
                 Link a visit…
               </summary>
@@ -176,7 +177,7 @@ export default function EpisodeCareLine({
                   </li>
                 ))}
               </ul>
-            </details>
+            </Disclosure>
           ) : null}
         </div>
       ) : null}

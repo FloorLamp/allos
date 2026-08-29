@@ -1,6 +1,7 @@
 import { act, render, screen } from "@testing-library/react";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import FoldSummary from "@/app/(app)/upcoming/FoldSummary";
+import Disclosure from "@/components/Disclosure";
 
 function mediaQuery(reduced: boolean): MediaQueryList {
   return {
@@ -17,10 +18,10 @@ function mediaQuery(reduced: boolean): MediaQueryList {
 
 function fold(count: number) {
   return (
-    <details>
+    <Disclosure>
       <FoldSummary count={count} />
       <div>Suppressed rows</div>
-    </details>
+    </Disclosure>
   );
 }
 

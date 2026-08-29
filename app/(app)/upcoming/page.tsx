@@ -111,6 +111,7 @@ import {
 import { confirmConditionSuggestion } from "@/app/(app)/records/problems/conditions/actions";
 import { doseConfirmMessage } from "@/lib/dose-outcome-text";
 import PracticeLogButton from "./PracticeLogButton";
+import Disclosure from "@/components/Disclosure";
 
 export const dynamic = "force-dynamic";
 
@@ -523,10 +524,10 @@ function AggregateDisclosure({
 }) {
   const Icon = AGGREGATE_ICON[kind];
   return (
-    <details
+    <Disclosure
       data-testid={`upcoming-aggregate-${kind}`}
       data-band={band}
-      className="group rounded-lg"
+      className="rounded-lg"
     >
       <summary
         data-testid={`upcoming-aggregate-summary-${kind}`}
@@ -550,7 +551,7 @@ function AggregateDisclosure({
       <div className="mt-1 space-y-1 border-l-2 border-black/5 pl-2 dark:border-white/10">
         {children}
       </div>
-    </details>
+    </Disclosure>
   );
 }
 
@@ -845,7 +846,7 @@ function AvailableSection({
   subjectByProfile: Map<number, SubjectInfo>;
 }) {
   return (
-    <details className="mt-8" data-testid="available-section">
+    <Disclosure className="mt-8" data-testid="available-section">
       <summary className="cursor-pointer section-label">
         Available to log{" "}
         <span className="text-slate-500 dark:text-slate-400">
@@ -928,7 +929,7 @@ function AvailableSection({
           );
         })}
       </div>
-    </details>
+    </Disclosure>
   );
 }
 
@@ -948,7 +949,7 @@ function SuppressedSection({
     entries: items.filter((e) => e.domain === domain),
   })).filter((g) => g.entries.length > 0);
   return (
-    <details className="mt-8" data-testid="suppressed-section">
+    <Disclosure className="mt-8" data-testid="suppressed-section">
       {/* The fold that catches a dismissal, and the only part of this section that is
           a client component: it pulses ONCE when its count goes up (#2654, motion 2),
           which is the other half of the dismissed row's travel toward it. The count
@@ -1027,7 +1028,7 @@ function SuppressedSection({
           </div>
         ))}
       </div>
-    </details>
+    </Disclosure>
   );
 }
 

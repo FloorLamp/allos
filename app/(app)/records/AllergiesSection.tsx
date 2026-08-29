@@ -18,6 +18,7 @@ import AllergyList from "@/app/(app)/records/problems/allergies/AllergyList";
 import SourceDocumentLink from "@/components/SourceDocumentLink";
 import { clinicalResultDetailHref } from "@/lib/hrefs";
 import { addAllergy } from "@/app/(app)/records/problems/allergies/actions";
+import Disclosure from "@/components/Disclosure";
 
 // Allergies (former /allergies index, #1042 phase 6): documented allergies (CCD
 // Allergies section + manual) merged with lab-derived allergen-specific IgE
@@ -150,7 +151,7 @@ export default function AllergiesSection({ scope }: { scope: ProfileScope }) {
           ) : null}
 
           {crossReactivity.length > 0 ? (
-            <details className="card" data-testid="cross-reactivity">
+            <Disclosure className="card" data-testid="cross-reactivity">
               <summary className="cursor-pointer font-semibold text-slate-800 dark:text-slate-100">
                 Cross-reactivity information
               </summary>
@@ -177,7 +178,7 @@ export default function AllergiesSection({ scope }: { scope: ProfileScope }) {
                   </li>
                 ))}
               </ul>
-            </details>
+            </Disclosure>
           ) : null}
 
           <p className="px-1 text-xs text-slate-500 dark:text-slate-400">

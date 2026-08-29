@@ -1,4 +1,5 @@
 import type { ReactNode } from "react";
+import Disclosure from "@/components/Disclosure";
 
 // The "Today's nutrients" container (issue #980 item 2): ONE card holding a compact gauge
 // ROW per nutrient — Protein and Fiber — instead of a card each. Growth is a row, never
@@ -25,7 +26,7 @@ export default function NutrientsCard({
     <div data-testid="nutrients-card" className={embedded ? undefined : "card"}>
       <Heading className="mb-4 section-label">{title}</Heading>
       <div className="space-y-5">{children}</div>
-      <details className="group mt-5 border-t border-black/5 pt-3 text-xs text-slate-500 dark:border-white/5 dark:text-slate-400">
+      <Disclosure className="mt-5 border-t border-black/5 pt-3 text-xs text-slate-500 dark:border-white/5 dark:text-slate-400">
         <summary className="cursor-pointer font-medium text-slate-600 dark:text-slate-300">
           How estimates work
         </summary>
@@ -35,7 +36,7 @@ export default function NutrientsCard({
           a complete intake total.
         </p>
         {details && <div className="mt-3 space-y-3">{details}</div>}
-      </details>
+      </Disclosure>
     </div>
   );
 }
