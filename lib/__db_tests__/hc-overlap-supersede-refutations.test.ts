@@ -610,11 +610,18 @@ describe("R2 — nutrition at a `full` exporter setting", () => {
 });
 
 describe("R2 — sleep", () => {
-  // THE DEFECT. `sleep_min` is one row per session on the session's real window. Two
-  // overlapping sessions are two readings, not one anomaly — and `dataOrigin` reads only
+  // THE DEFECT. `sleep_min` is one row per session on the session's real window, so the
+  // DAY-BUCKET rule may never touch one — and `dataOrigin` reads only
   // `metadata.data_origin`, so two devices that set none both parse to `origin = null`
   // and land in ONE supersede group.
-  it("keeps two overlapping sessions from one origin", () => {
+  //
+  // AND THE CLAIM IS NARROWER SINCE #3628, which is why both cases below push their pair
+  // in ONE payload. Two overlapping same-origin sessions ARE now an anomaly the sleep
+  // collapse acts on — but only across pushes, because two rows of one push have no
+  // arrival order between them (#3424's ruling, item 3). These stay green for that
+  // reason rather than by accident; the cross-push direction is
+  // lib/__db_tests__/hc-sleep-rezoned-collapse-3628.test.ts.
+  it("keeps two overlapping sessions from one origin in ONE push", () => {
     const p = freshProfile("R2-SLEEP-ONE");
     push(p, {
       sleep: [

@@ -224,7 +224,9 @@ describe("refresh door — a 400 is a dead grant only on evidence (#3798)", () =
     "after a 400 %j the next tick polls strava: %s",
     async (body, stillPolled) => {
       await refreshWith("strava", body, 400);
-      fetchMock.mockResolvedValue(new Response("upstream error", { status: 500 }));
+      fetchMock.mockResolvedValue(
+        new Response("upstream error", { status: 500 })
+      );
       const tick = await syncIntegrations(profileId);
       expect(tick.polled.includes("strava")).toBe(stillPolled);
     }
