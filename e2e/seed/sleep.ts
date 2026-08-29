@@ -9,6 +9,7 @@ import { db, today } from "../../lib/db";
 import { shiftDateStr, utcSqlString, zonedWallTimeToUtc } from "../../lib/date";
 import { getTimezone } from "../../lib/settings";
 import { PROFILE_ID, fixtureProfileId, seedMemberLogin } from "./common";
+import { sriSleepWindow } from "./profile-time-fixtures";
 import {
   E2E_LOGIN_SLEEP_WAITING,
   SLEEP_WAITING_PROFILE,
@@ -22,29 +23,30 @@ export function seedSleep(): void {
   // both resolve from the profile's today(), so recomputing here is identical.
   const COACH_TODAY = today(PROFILE_ID);
   const COACH_YESTERDAY = shiftDateStr(COACH_TODAY, -1);
+  const sleepTz = getTimezone(PROFILE_ID);
+  const iso = (d: Date) => d.toISOString();
   // ── Sleep Regularity Index fixture (issue #160) ───────────────────────────────
   // 28 nightly sleep sessions (wake-days today-1 … today-28), each bed 23:00 → wake
-  // 07:00 in UTC (the e2e default profile timezone), so the rolling 28-night window
+  // 07:00 in the profile timezone, so the rolling 28-night window
   // clears the minimum-nights gate and the Trends → Overview → body census "Sleep regularity" card
   // (SRI) renders. Weekend nights (Sat/Sun wake) shift 90 min later so the companion
   // social-jetlag line is non-trivial. Relative dates → never stale; instants carry
-  // a Z so they're timezone-unambiguous. Idempotent: clear this range first (the
-  // coaching low-sleep row on wake-day `today` is outside it and untouched).
+  // a Z after their profile-local wall times are resolved. Idempotent: clear this
+  // range first (the coaching low-sleep row on wake-day `today` is outside it and
+  // untouched).
   const sriInsert = db.prepare(
     `INSERT OR IGNORE INTO metric_samples (profile_id, source, metric, date, started_at, ended_at, value)
    VALUES (?, 'manual', 'sleep_min', ?, ?, ?, ?)`
   );
   for (let i = 1; i <= 28; i++) {
     const wakeDay = shiftDateStr(COACH_TODAY, -i);
-    const bedDay = shiftDateStr(wakeDay, -1);
     db.prepare(
       `DELETE FROM metric_samples WHERE profile_id = ? AND metric = 'sleep_min' AND date = ?`
     ).run(PROFILE_ID, wakeDay);
     const dow = new Date(wakeDay + "T00:00:00Z").getUTCDay(); // 0=Sun … 6=Sat
     const weekend = dow === 0 || dow === 6;
     // Weekday 23:00→07:00 (480 min); weekend 00:30→08:30 (still 480 min, later).
-    const start = weekend ? `${wakeDay}T00:30:00Z` : `${bedDay}T23:00:00Z`;
-    const end = weekend ? `${wakeDay}T08:30:00Z` : `${wakeDay}T07:00:00Z`;
+    const { start, end } = sriSleepWindow(sleepTz, wakeDay, weekend);
     sriInsert.run(PROFILE_ID, wakeDay, start, end, 480);
   }
   console.log(
@@ -71,8 +73,6 @@ export function seedSleep(): void {
   // overnight is seeded here (not relied on from the naive-timestamp coaching block
   // above) precisely so its wake-day placement is tz-correct and deterministic.
   // Synthetic values only (no PHI). Idempotent: clears its own windows first.
-  const sleepTz = getTimezone(PROFILE_ID);
-  const iso = (d: Date) => d.toISOString();
   const sleepStageInsert = db.prepare(
     `INSERT OR IGNORE INTO metric_samples (profile_id, source, metric, date, started_at, ended_at, value)
    VALUES (?, 'manual', ?, ?, ?, ?, ?)`
@@ -163,13 +163,10 @@ export function seedSleep(): void {
   //   * The naps are AFTERNOON windows (14:00/16:00/18:00 local), and the block
   //     seeds THE NIGHT THEY BELONG TO as well (#3636). It cannot borrow one from
   //     the #160 SRI series above: wake-day is the profile-LOCAL calendar date of a
-  //     session's END, and those nights are written as RAW-UTC windows
-  //     (23:00Z → 07:00Z) keyed by the `date` column, so under a profile west of
-  //     UTC — the suite pins a fixed-offset zone chosen from the run's UTC start
-  //     hour (e2e/pinned-timezone.ts), e.g. UTC−8 for a run starting at 21:00Z —
-  //     07:00Z is still the PREVIOUS local day and the night is attributed a
-  //     wake-day one EARLIER than its `date`. Nothing here may assume an SRI night
-  //     lands on this wake-day.
+  //     session's END. The #160 corpus now resolves every window through the profile
+  //     zone (#3644), but this regression fixture still owns its night explicitly:
+  //     its nap classification must not depend on a neighbouring corpus continuing
+  //     to seed the same date or duration.
   //
   // AND THE NIGHT IS WHAT MAKES THEM NAPS AT ALL. Alone on their wake-day the three
   // naps are not three naps: `mainSleepSession` seeds on the longest (40 min), which

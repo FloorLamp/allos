@@ -156,8 +156,8 @@ const INTERPOLATED_DATETIME_ALLOW: Record<
     why: "BBT samples state only a day, so both endpoints intentionally use metric_samples' documented zoneless day-midnight shape.",
   },
   "e2e/seed/sleep.ts": {
-    count: 5,
-    why: "Legacy SRI/import rows are explicit-Z synthetic provider instants; newer profile-local sleep fixtures below already use zonedWallTimeToUtc.",
+    count: 1,
+    why: "The remaining interpolation is an Oura daily score's provider-defined UTC-midnight natural key. The SRI corpus resolves profile-local windows through sriSleepWindow.",
   },
   "e2e/seed/trends.ts": {
     count: 26,
@@ -192,6 +192,16 @@ function isInsideSafeBuilder(node: ts.Node): boolean {
 const SCAN_TIMEOUT_MS = 30_000;
 
 describe("e2e fixture time declarations", () => {
+  it("routes the complete SRI and profile-1 undated-document corpora through their profile clocks", () => {
+    const sleepSeed = text(path.join(E2E, "seed", "sleep.ts"));
+    const importSeed = text(path.join(E2E, "seed", "imports.ts"));
+    expect(sleepSeed.match(/sriSleepWindow\(/g)).toHaveLength(1);
+    expect(
+      importSeed.match(/profileOneUndatedDocumentUploadedAt\(/g)
+    ).toHaveLength(1);
+    expect(importSeed.match(/profileOneDocumentUpload\("/g)).toHaveLength(10);
+  });
+
   it(
     "routes every per-profile timezone override through the declared registry",
     { timeout: SCAN_TIMEOUT_MS },
