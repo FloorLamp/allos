@@ -100,7 +100,12 @@ const CONSUMERS = [
     // across the parts, not within one, and the registry door lives inside the open
     // panel. Split across two files each exercise would own a panel, and the door the
     // row used to repeat would repeat again wearing a disclosure.
-    name: "the activity editor's per-part equipment (#3349)",
+    // BOTH HALVES OF #3349 NOW: the equipment picker (#4034) and the options row —
+    // sides, rep target, effort — behind ONE row per part with ONE trailing
+    // affordance. It is also the first consumer where a fact can LEAVE the row (clear
+    // a rep target and the intent chip is gone), which is the case useFactEditor's
+    // second focus tier exists for and the one no consumer had exercised.
+    name: "the activity editor's per-part facts (#3349)",
     chips: "components/activity-form/ActivityPartsList.tsx",
     host: "components/activity-form/ActivityPartsList.tsx",
   },

@@ -1376,6 +1376,49 @@ cheap no-op. The full suite now runs at zero retries too (see the retries-drop
 note below), so this lane's strict verdict is the whole suite's standard, not a
 special case.
 
+### Repeat scrutiny and shared-fixture parity are different (#3653)
+
+`--repeat-each=3 --retries=0` asks whether each test survives three independent
+attempts under the configured worker count. It does **not** guarantee that a
+test which poisons a worker-scoped fixture runs before a sibling that reads it.
+With `fullyParallel: true`, Playwright is free to put those tests in different
+workers; the repeat index is part of the worker grouping, so a later repeat does
+not inherit the earlier repeat's worker fixture or database.
+
+`--workers=1` over the **whole file** asks the other question. All tests in that
+file run in declaration order against one worker fixture and one copied database,
+so a writer followed by a reader cannot be separated by the scheduler. Use both
+runs when a changed file's tests act on one shared profile or otherwise share
+mutable worker-scoped state:
+
+```bash
+# repeat scrutiny: independent attempts at the configured parallelism
+E2E_PORT=<assigned> npx playwright test e2e/<changed>.spec.ts \
+  --repeat-each=3 --retries=0
+
+# shared-fixture parity: deterministic inter-test leakage check
+E2E_PORT=<assigned> npx playwright test e2e/<changed>.spec.ts \
+  --workers=1 --repeat-each=1 --retries=0
+```
+
+Do not report the first command as evidence against inter-test leakage. It can
+catch a leak when the scheduler happens to co-locate writer and reader, but a
+green proves only that its actual allocation stayed clean. Files whose tests
+each own an isolated profile do not need the second run.
+
+The distinction is executable rather than prose-only:
+
+```bash
+node scripts/e2e-worker-leak-probe.mjs
+```
+
+The probe imports this checkout's Playwright config and deliberately poisons a
+worker-scoped counter. On Playwright 1.62.1, the two-test/two-worker repeat run
+allocated six clean worker processes for six test attempts and passed; the same
+file at one worker kept both tests in one process, the reader observed the
+poisoned value, and the expected control failed. The script verifies both traces
+and exits nonzero if they stop discriminating.
+
 ### CHANGED specs and AFFECTED specs are different sets (#3216)
 
 The lane above answers "did I break a spec I edited". That is not the same
