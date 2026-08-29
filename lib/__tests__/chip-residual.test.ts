@@ -68,7 +68,14 @@ describe("Chip residual", () => {
   it("keeps raw chip presentation inside the typed primitive", () => {
     const findings = ["app", "components"]
       .flatMap(sourceFiles)
-      .flatMap((file) => rawChipTokens(file));
+      .flatMap((file) => {
+        const text = fs.readFileSync(path.join(ROOT, file), "utf8");
+        // Parsing cannot create a watched token. Keep the AST verdict for raw
+        // candidates, but do not build thousands of guaranteed-empty source files.
+        return [...TOKENS].some((token) => text.includes(token))
+          ? rawChipTokens(file, text)
+          : [];
+      });
     expect(findings).toEqual([]);
   });
 
