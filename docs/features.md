@@ -938,6 +938,21 @@ self-reported wellbeing values appear as observations and are never
 range-flagged. The shared **Log measurements** action writes to the same stores
 used by integrations.
 
+**Four measures that could only arrive from a device can now be typed** (#1851).
+Water, lean mass, bone mass and respiratory rate join the same **Log measurements**
+form and land in the same stores an import writes, so a DEXA report's lean mass
+scales the protein target the way a smart scale's does and a counted breathing
+rate charts beside a pushed one. Masses are entered in your own weight unit and
+stored in kilograms; water is entered in litres.
+
+**Manual sleep can state the two clocks, not just the hours** (#1851). A
+**bed and wake** pair on the same form records the night's window, which is what
+the Sleep Regularity Index, the consistency strip and the bed/wake line read —
+they were previously reachable only with a wearable. A night is one entry
+whichever way you give it: adding the clocks to a night already logged as hours
+corrects that night rather than adding a second one, and correcting the hours
+later keeps the clocks.
+
 **Waist circumference** (#2322) is a body metric here, not a biomarker. It is
 self-measured with a tape, arrives at the metric cadence, and sits beside weight
 and body fat — the same argument peak expiratory flow used — so it is a
