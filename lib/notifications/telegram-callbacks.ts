@@ -1164,11 +1164,13 @@ async function handleAllTaken(
     return;
   }
 
-  // The slot's doses are re-collected from CURRENT state (active, non-retired,
-  // due today), so this tolerates schedule edits made after the message was
-  // sent. Floor-filtered (#1156): "✅ All" marks only the doses the reminder
-  // actually listed — a `may` supplement the send excluded is never
-  // silently logged by a bulk tap. Count only real inserts; when the whole slot
+  // The slot's doses are re-collected from CURRENT state (active, non-retired) for
+  // the message's OWN day — `all.date`, which on a late tap may be a day or two back,
+  // never assumed to be today (#3973). So this tolerates schedule edits made after the
+  // message was sent, and what this bulk tap WRITES matches what the message listed.
+  // Floor-filtered (#1156): "✅ All" marks only the doses the reminder actually
+  // listed — a `may` supplement the send excluded is never silently logged by a
+  // bulk tap. Count only real inserts; when the whole slot
   // has since emptied (schedule restructured / items paused), say so instead of
   // "Logged ✅".
   const entries = notifiableWindowDoses(

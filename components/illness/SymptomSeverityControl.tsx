@@ -12,6 +12,12 @@ export interface SymptomSeverityControlProps {
 // Symptom severity is one fixed 1–4 domain control. Both staged suggestions and
 // logged symptoms use this treatment; the component derives every option's name,
 // title, pressed state and cumulative fill from the shared severity vocabulary.
+//
+// THE OPTIONS ARE THE CONTROL BOX (#3938/#3954). They used to render 44 square,
+// which is the row the owner reported: four 44px digits beside the 34px icon
+// buttons that share their line. Square, so the box is spent on both axes; and
+// `.tap-target` — the same mechanism under its own name — gives a coarse pointer
+// the reach back, which is what the row's `gap-3` pays for.
 export default function SymptomSeverityControl({
   symptomLabel,
   value,
@@ -22,7 +28,10 @@ export default function SymptomSeverityControl({
     <div
       role="group"
       aria-label={`${symptomLabel} severity`}
-      className="inline-flex items-center gap-1"
+      // `gap-3` is the reach floor (#3938): the options wear the control box and
+      // a coarse pointer extends each one by `--control-reach` per side, so two
+      // neighbours need twice that between them or they own the same pixels.
+      className="inline-flex items-center gap-3"
     >
       {SYMPTOM_SEVERITY_LEVELS.map((level) => (
         <button
@@ -34,7 +43,7 @@ export default function SymptomSeverityControl({
           aria-pressed={value === level.value}
           aria-label={`${symptomLabel} — severity ${level.value} of ${SYMPTOM_SEVERITY_LEVELS.length} (${level.label})`}
           onClick={() => onChange(level.value)}
-          className={`inline-flex h-11 w-11 shrink-0 items-center justify-center rounded text-xs font-semibold ${
+          className={`tap-target inline-flex h-(--control-box) w-(--control-box) shrink-0 items-center justify-center rounded text-xs font-semibold ${
             value >= level.value
               ? "bg-brand-600 text-white"
               : "bg-slate-100 text-slate-500 hover:bg-slate-200 dark:bg-ink-800 dark:text-slate-400 dark:hover:bg-ink-700"

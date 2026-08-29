@@ -524,6 +524,24 @@ ${landingLines}
   the hole is visible when it is there. Then INTERSECT the census with the rows that
   actually moved — the count that matters is not how many files mention the surface,
   it is how many address the thing you changed.
+  (5) BUILD THE PIN SET FIRST AND UNSCOPED, AND NEVER SCOPE IT TO THE MARKER SWEEP'S
+  HITS. An intersection narrowed to the files a marker sweep already matched can only
+  ever CONFIRM that sweep's verdicts; it is structurally unable to contradict them, so
+  it feels like corroboration while proving nothing. Build the geometry-pin (or
+  whatever-you-moved) set independently — \`TAP_FLOOR_PX\`, the bare literal,
+  \`boundingBox|getBoundingClientRect|toBeInViewport|elementFromPoint\` — over ALL of
+  e2e/, THEN intersect with the moved subjects, and let the intersection overrule any
+  per-file impression. AND A PER-FILE VERDICT ASSERTED WITHOUT OPENING THE FILE IS NOT
+  A CENSUS RESULT — it is the guess the census existed to replace. Measured on #3954
+  (2026-08-29): the lane's marker sweep listed quick-log-stability.mobile.spec.ts among
+  its 15 hits, the lane wrote the verdict \"only button-height-floor asserts segment
+  geometry; rest drive clicks\" without opening any of them, and \`TAP_FLOOR_PX\` was
+  sitting on line 167 of that very file, which then went red in CI. The broad grep had
+  been run FIRST, judged \"too broad\" at 40 files, and discarded in favour of the
+  narrow one. Re-run properly it was 45 files and 15 after intersection, and it found a
+  second real case — a genuine SegmentedControl in ride-detail addressed only by
+  \`getByRole(\"group\", { name })\`, invisible to every marker search because the
+  accessible name comes from an \`ariaLabel\` prop.
 - A GUARD THAT REMOVES A PROPERTY CANNOT ALSO PROVE THE PROPERTY SURVIVED. When your
   change takes something away — a frame, a gutter, a label, a permission, a field —
   the natural guard asserts ABSENCE: nothing still has it. That assertion passes on
@@ -1053,11 +1071,18 @@ ${MIGRATION_LINES}
   never "search the environment for credentials"
 - Use curl REST for GitHub reads, not the MCP tools (MCP rides the owner's rate limit)
 - PR body: closing keywords each ON THEIR OWN LINE (Fixes #N — GitHub parses one per line)
-- Commit trailers EXACTLY (copy the Co-Authored-By line from your own environment's
-  commit instructions — the model name varies by session; do not hardcode one here):
-    Co-Authored-By: Claude <model> <noreply@anthropic.com>
+- Commit trailers EXACTLY THESE TWO LINES — note the Co-Authored-By carries NO model
+  name, which is deliberate and is the resolution of a contradiction this brief used to
+  contain. It told you to copy the trailer from your environment's commit instructions,
+  whose template embeds the session's model name, AND to put no model identifier in
+  anything pushed. Three lanes hit that on 2026-08-28 and each resolved it differently.
+  The no-identifier rule is the specific prohibition and wins; the template's SHAPE is
+  what it was pointing at, never the name inside it. \`main\` already carries both
+  spellings — use this one:
+    Co-Authored-By: Claude <noreply@anthropic.com>
     Claude-Session: <session URL>
-- No model identifiers in commits/PR/code
+- No model identifiers anywhere pushed: commit messages, PR title or body, code
+  comments, test names, docs. Chat replies only.
 ${
   opts.candidate
     ? "- Open or refresh the PR READY (not draft) via REST, base main, before exact-head review"

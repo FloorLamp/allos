@@ -209,11 +209,11 @@ function gatherWindowDoses(
   const itemById = new Map(items.map((item) => [item.id, item]));
   const taken = getTakenDoseIds(profileId, date);
   const skipped = getSkippedDoseIds(profileId, date);
-  const activeSituations = new Set(getActiveSituations(profileId));
-  // Per-day situation resolver for the adherence strip below: each past day is scored
-  // against the situations active THAT day (#654), not today's toggle retroactively.
+  // Per-day situation resolver for the WHOLE gather — the day being reminded about and
+  // every day of the adherence strip below: each is scored against the situations active
+  // THAT day (#654), not today's toggle retroactively. The declared set is only its seed.
   const situationsOn = situationHistoryResolver(
-    activeSituations,
+    getActiveSituations(profileId),
     getSituationEvents(profileId)
   );
   const activitiesToday = getActivitiesByDate(profileId, date);
@@ -227,12 +227,19 @@ function gatherWindowDoses(
   const ctx = {
     date,
     isWorkoutDay: activitiesToday.length > 0,
-    // Derived context (#1292/#1298) widens the active set for TODAY only (a surfacing
-    // path); a past-day reminder scores against the declared set (the history resolver
-    // above owns retroactive membership, so it must NOT see derived names).
+    // The situations active ON `date` — the history resolver owns retroactive
+    // membership on BOTH halves (#3973). The declared set is a statement about now, so
+    // scoring a past day against it moved yesterday's reminder whenever a situation was
+    // toggled today.
+    //
+    // The TODAY branch is deliberate, not inherited: the derived widening (#1292/#1298)
+    // judges "a rough night" and "a logged period day" against the CURRENT local day and
+    // has no dated form, so it may only ever speak for today. The two agree on today —
+    // an event logged today is not strictly after it — so the union adds exactly the
+    // derived names.
     activeSituations: isForToday
       ? getEffectiveActiveSituations(profileId, date)
-      : activeSituations,
+      : situationsOn(date),
     predictedWorkoutDay: isPredictedWorkoutDay(profileId, date),
     postWorkoutReady: isPostWorkoutReady(
       activitiesToday.map((a) => a.end_time ?? a.start_time),
@@ -324,8 +331,8 @@ function gatherWindowDoses(
       !skipped.has(dose.id)
     )
       continue;
-    // A dose is "due" on a past date when its item was due that day
-    // (workout/situational logic); situations are only known as of now.
+    // A dose is "due" on a past date when its item was due that day — workout and
+    // situational logic both resolved per-day (situationsOn, #654), never as of now.
     const dd = takenByDose.get(dose.id);
     // Clamp the window to the dose's lifetime (#430/#1442) before summarizing it:
     // a fixed lookback over a med added this morning is all pre-existence days,

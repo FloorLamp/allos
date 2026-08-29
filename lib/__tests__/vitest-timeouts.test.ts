@@ -15,7 +15,9 @@
 import { describe, expect, it } from "vitest";
 import {
   CI_TEST_TIMEOUT_MS,
+  describeTimeout,
   hookTimeout,
+  perTestCeiling,
   resolveTestTimeoutMs,
   testTimeout,
 } from "../../vitest.timeouts";
@@ -69,4 +71,49 @@ describe("the vitest per-test ceiling", () => {
     if (!process.env.CI) return;
     expect(testTimeout).toBe(CI_TEST_TIMEOUT_MS);
   });
+});
+
+// A PER-TEST CEILING MUST STILL BE A MULTIPLE (#3986). A hard-coded literal is
+// immune to the override above, which is how the seed-shape specs — the ones that
+// block on real child processes and needed the escape hatch most — ended up as the
+// only tests it could not reach.
+describe("a per-test ceiling stated as a multiple", () => {
+  it("scales with whichever ceiling this run resolved", () => {
+    expect(perTestCeiling(2)).toBe(testTimeout * 2);
+    expect(perTestCeiling(1)).toBe(testTimeout);
+  });
+});
+
+// WHAT A TIMEOUT WAS, said where the reporter cannot say it. The cases below drive
+// the formatter directly rather than forging a real timeout, so this file never
+// prints the sentence the log's one real occurrence uses.
+describe("describing a timeout", () => {
+  const base = { ceilingMs: 15_000, wallMs: 15_004, utilization: 1 };
+
+  it.each([
+    ["an assertion failure", "expected 1 to be 2", 1],
+    ["a hook failure", "Hook timed out in 30000ms.", 1],
+    ["a clean pass", undefined, 1],
+  ])("stays silent on %s", (_name, message, utilization) => {
+    expect(describeTimeout({ ...base, message, utilization })).toBeNull();
+  });
+
+  it.each([
+    // An idle loop is an await that never settled; a busy one is work, or a worker
+    // that lost the CPU. Both time out, and only one of them is anybody's bug.
+    [0.006, "WAITING", "RUNNING"],
+    [1, "RUNNING", "WAITING"],
+  ])(
+    "reads utilization %s as %s and not as %s",
+    (utilization, says, notSays) => {
+      const line = describeTimeout({
+        ...base,
+        utilization,
+        message: "Test timed out in 15000ms.",
+      });
+      expect(line).toContain("NO ASSERTION FAILED");
+      expect(line).toContain(says);
+      expect(line).not.toContain(notSays);
+    }
+  );
 });

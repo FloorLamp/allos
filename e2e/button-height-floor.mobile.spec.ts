@@ -41,6 +41,13 @@ const BOX_WIDTHS = [390, 639, 640, 1280];
 type BoxSurface = {
   kind: string;
   testId: string;
+  /**
+   * Measure this ancestor of the testid'd node instead. A checkbox primitive puts
+   * the testid on the 16px native `<input>` — the thing a spec clicks — while the
+   * control IS the `<label>` around it, so without the hop this table would
+   * measure the paint and call it the box.
+   */
+  ancestor?: string;
   /** Whether a coarse pointer can repair this control's reach at all. */
   repairable: boolean;
   /** Below `sm` only — the mobile disclosure that replaces a desktop panel. */
@@ -81,6 +88,13 @@ const BOX_ROUTES: { route: string; ready: string; surfaces: BoxSurface[] }[] = [
         testId: "cockpit-end-episode",
         repairable: true,
       },
+      // #3954: the owner's second row. These rendered 44 square beside the 34px
+      // icon buttons on their own line — the mixed row that opened this issue.
+      {
+        kind: "severity option",
+        testId: "symptom-cough-sev-1",
+        repairable: true,
+      },
       // A typed <input> cannot grow a pseudo-element either; it wears the box with
       // a >=16px line so iOS does not zoom the page on focus.
       {
@@ -101,6 +115,39 @@ const BOX_ROUTES: { route: string; ready: string; surfaces: BoxSurface[] }[] = [
         testId: "supplement-add-toggle",
         repairable: true,
       },
+    ],
+  },
+  // #3954's two kinds, each measured BESIDE an already-bound kind on its own page,
+  // because "34" alone also passes on a tree where one row shrank by itself.
+  {
+    route: "/sleep",
+    ready: "sleep-trends",
+    surfaces: [
+      {
+        kind: "segmented option",
+        testId: "sleep-trend-range-14",
+        repairable: true,
+      },
+      {
+        kind: "button-control",
+        testId: "sleep-add-entry-header",
+        repairable: true,
+      },
+    ],
+  },
+  {
+    route: "/settings/notifications",
+    ready: "notification-kinds",
+    surfaces: [
+      // A `<label>` CAN grow a pseudo-element, so unlike the native select beside
+      // it the checkbox's floor is effective rather than rendered.
+      {
+        kind: "checkbox-control",
+        testId: "matrix-column-all-push",
+        ancestor: "[data-checkbox-control]",
+        repairable: true,
+      },
+      { kind: "native select", testId: "waking-start-hour", repairable: false },
     ],
   },
 ];
@@ -132,9 +179,12 @@ async function measure(
       list
         .filter((s) => s.phoneOnly !== true || phone)
         .map((s) => {
-          const el = document.querySelector<HTMLElement>(
+          const found = document.querySelector<HTMLElement>(
             `[data-testid="${s.testId}"]`
           );
+          const el = s.ancestor
+            ? found?.closest<HTMLElement>(s.ancestor)
+            : found;
           if (!el) throw new Error(`${s.kind} (${s.testId}) is not in the DOM`);
           const after = getComputedStyle(el, "::after");
           const reach =
@@ -309,7 +359,20 @@ test.describe("the control box: one height, every kind, every viewport (#3938)",
           // a box sits inside an ellipsis ANCESTOR that is itself inside the
           // VIEWPORT; this asks whether the region being examined is itself such a
           // label. Different question, and the viewport half has no meaning when the
-          // frame is a region's own edge. #3814 owns converging the two.
+          // frame is a region's own edge.
+          //
+          // THEY STAY SEPARATE — #3814 ruled it (2026-08-29), against its own AC's
+          // wording. Four sites read this family and they ask THREE questions: the
+          // census's ancestor-inside-viewport, `overflowStory`'s is-this-a-culprit,
+          // and this one's is-the-region-itself-a-label. One predicate answering all
+          // three needs a mode parameter, which is the variant axis this repo
+          // forbids; and neither way of crossing the `page.evaluate` boundary is
+          // better than the split — threading a predicate's source through
+          // `geometryProbe`'s options changes its signature and both callers to unify
+          // questions that differ, and folding this sweep into `geometryProbe` breaks
+          // its deliberate `<main>` scope, which this spec must escape to reach a
+          // portalled sheet. So each rule is stated ONCE, in its own frame, with
+          // cross-references. This line is one of those references, not a deferral.
           //
           // BEFORE the `seen` count, deliberately: a truncated label is not a region
           // of the kind this sweep is about, so it must not satisfy the "this route
@@ -463,7 +526,22 @@ test.describe("the control box: one height, every kind, every viewport (#3938)",
   });
 });
 
-test.describe("segmented controls own disjoint rendered targets (#3514)", () => {
+// A TILED CONTROL'S TARGET, MEASURED PER AXIS (#3514, re-ruled by #3938/#3954).
+//
+// A segmented track's options sit shoulder to shoulder inside one inset track:
+// they tile their line with no gap, by construction. So the reach they get on a
+// coarse pointer is BLOCK-ONLY (app/globals.css) — there is no inline gap to spend
+// on the 2x floor, and an inline reach could only be taken from the option next
+// door, moving the boundary between two targets rather than enlarging either.
+//
+// THAT MAKES THE INLINE REACH PART OF THE CLAIM, NOT AN OMISSION. If a later
+// change puts segments back on the all-sides reach every other control gets, the
+// track is still 34 tall, still reaches 44 effective, and every disjointness sum
+// in a test that only added `top` still comes out clean — while real taps 6px
+// inside a boundary start landing on the wrong view. So the inline inset is
+// asserted to be zero, and the disjointness is computed from the EXTENDED boxes
+// rather than the rendered ones, which is the pair that can now collide.
+test.describe("segmented options wear the box and tile their track (#3954)", () => {
   test.use({ viewport: PHONE });
 
   const BINDING_SURFACES = [
@@ -482,7 +560,7 @@ test.describe("segmented controls own disjoint rendered targets (#3514)", () => 
   ];
 
   for (const surface of BINDING_SURFACES) {
-    test(`the ${surface.binding} binding is at least 44px tall and overlaps no sibling`, async ({
+    test(`the ${surface.binding} binding is one box, 44 effective, and overlaps no sibling at ${BOX_WIDTHS.join("/")}`, async ({
       page,
     }) => {
       await page.goto(surface.route);
@@ -495,57 +573,167 @@ test.describe("segmented controls own disjoint rendered targets (#3514)", () => 
         .locator("[data-segmented]:visible")
         .filter({ has: premise });
       expect(await tracks.count()).toBe(1);
-      const geometry = await tracks.evaluateAll((groups) =>
-        groups.map((group) => {
-          const targets = Array.from(
-            group.querySelectorAll<HTMLElement>("[data-segmented-option]")
-          ).map((target) => {
-            const rect = target.getBoundingClientRect();
-            return {
-              label: (target.textContent ?? "").trim(),
-              tagName: target.tagName,
-              left: rect.left,
-              right: rect.right,
-              top: rect.top,
-              bottom: rect.bottom,
-              height: rect.height,
-            };
-          });
-          const overlaps: string[] = [];
-          for (let i = 0; i < targets.length; i += 1) {
-            for (let j = i + 1; j < targets.length; j += 1) {
-              const horizontal =
-                Math.min(targets[i].right, targets[j].right) -
-                Math.max(targets[i].left, targets[j].left);
-              const vertical =
-                Math.min(targets[i].bottom, targets[j].bottom) -
-                Math.max(targets[i].top, targets[j].top);
-              if (horizontal > 0 && vertical > 0)
-                overlaps.push(`${targets[i].label}/${targets[j].label}`);
-            }
-          }
-          return { targets, overlaps };
-        })
-      );
 
-      for (const track of geometry) {
-        expect(track.targets.length).toBeGreaterThan(1);
-        expect(
-          [...new Set(track.targets.map((target) => target.tagName))],
-          `the ${surface.route} premise must exercise the ${surface.binding} binding`
-        ).toEqual([surface.tagName]);
-        for (const target of track.targets) {
-          expect(
-            target.height,
-            `${target.label} renders below the ${TAP_FLOOR_PX}px segmented target floor`
-          ).toBeGreaterThanOrEqual(TAP_FLOOR_PX);
-        }
-        expect(track.overlaps, "segment hit boxes must stay disjoint").toEqual(
-          []
+      for (const width of BOX_WIDTHS) {
+        await page.setViewportSize({ width, height: 900 });
+        const geometry = await tracks.evaluateAll((groups) =>
+          groups.map((group) => {
+            const targets = Array.from(
+              group.querySelectorAll<HTMLElement>("[data-segmented-option]")
+            ).map((target) => {
+              const rect = target.getBoundingClientRect();
+              const after = getComputedStyle(target, "::after");
+              const side = (raw: string) => {
+                const inset = Math.abs(Number.parseFloat(raw));
+                return after.content === "none" || !Number.isFinite(inset)
+                  ? 0
+                  : inset;
+              };
+              const block = side(after.top);
+              const inline = side(after.left);
+              return {
+                label: (target.textContent ?? "").trim(),
+                tagName: target.tagName,
+                block,
+                inline,
+                height: rect.height,
+                left: rect.left - inline,
+                right: rect.right + inline,
+                top: rect.top - block,
+                bottom: rect.bottom + block,
+              };
+            });
+            const overlaps: string[] = [];
+            for (let i = 0; i < targets.length; i += 1) {
+              for (let j = i + 1; j < targets.length; j += 1) {
+                const horizontal =
+                  Math.min(targets[i].right, targets[j].right) -
+                  Math.max(targets[i].left, targets[j].left);
+                const vertical =
+                  Math.min(targets[i].bottom, targets[j].bottom) -
+                  Math.max(targets[i].top, targets[j].top);
+                if (horizontal > 0 && vertical > 0)
+                  overlaps.push(`${targets[i].label}/${targets[j].label}`);
+              }
+            }
+            return { targets, overlaps };
+          })
         );
+
+        for (const track of geometry) {
+          expect(
+            track.targets.length,
+            `${surface.route} @${width} swept no segments`
+          ).toBeGreaterThan(1);
+          expect(
+            [...new Set(track.targets.map((target) => target.tagName))],
+            `the ${surface.route} premise must exercise the ${surface.binding} binding`
+          ).toEqual([surface.tagName]);
+          expect(
+            [...new Set(track.targets.map((t) => Math.round(t.height)))],
+            `${surface.route} @${width} renders more than one segment height: ${track.targets
+              .map((t) => `${t.label}=${t.height}`)
+              .join(", ")}`
+          ).toEqual([CONTROL_BOX_PX]);
+          for (const target of track.targets) {
+            expect(
+              target.block,
+              `${target.label} @${width} reach per side`
+            ).toBe(TAP_TARGET_INSET_PX);
+            expect(
+              target.inline,
+              `${target.label} @${width} reaches sideways into the segment beside it; a tiled track has no gap to spend`
+            ).toBe(0);
+            expect(
+              target.height + 2 * target.block + TAP_FLOOR_FLOAT_EPSILON_PX,
+              `${target.label} @${width} effective height`
+            ).toBeGreaterThanOrEqual(TAP_FLOOR_PX);
+          }
+          expect(
+            track.overlaps,
+            `@${width} two extended segment targets own the same point`
+          ).toEqual([]);
+        }
       }
     });
   }
+});
+
+// THE OWNER'S OTHER ROW (#3954). `SymptomSeverityControl`'s four options used to
+// render 44 square beside the 34px icon buttons that share their line — the
+// report that opened #3938 in the first place. One height is half the claim; the
+// other half is that four 34px squares 12px apart do not overlap once each one
+// carries its reach.
+test.describe("the illness cockpit's symptom row (#3954)", () => {
+  test.use({ viewport: PHONE });
+
+  test("renders exactly one height with disjoint hit regions", async ({
+    page,
+  }) => {
+    await page.goto("/");
+    const row = page.getByTestId("symptom-cough");
+    await expect(row).toBeVisible();
+    // Wait for the CONTENT this measures: the row's testid is on the card, and a
+    // card whose severity control has not mounted sweeps to an empty, green list.
+    await expect(page.getByTestId("symptom-cough-sev-1")).toBeVisible();
+
+    const geometry = await row.evaluate((el, epsilon) => {
+      const targets = Array.from(
+        el.querySelectorAll<HTMLElement>("button")
+      ).filter((t) => t.getBoundingClientRect().height > 0);
+      const boxes = targets.map((t) => {
+        const r = t.getBoundingClientRect();
+        const after = getComputedStyle(t, "::after");
+        const side = (raw: string) => {
+          const inset = Math.abs(Number.parseFloat(raw));
+          return after.content === "none" || !Number.isFinite(inset)
+            ? 0
+            : inset;
+        };
+        const block = side(after.top);
+        const inline = side(after.left);
+        return {
+          what: t.getAttribute("aria-label")?.slice(0, 28) ?? t.tagName,
+          height: r.height,
+          left: r.left - inline,
+          right: r.right + inline,
+          top: r.top - block,
+          bottom: r.bottom + block,
+        };
+      });
+      const overlaps: string[] = [];
+      for (let i = 0; i < boxes.length; i += 1)
+        for (let j = i + 1; j < boxes.length; j += 1) {
+          const x =
+            Math.min(boxes[i].right, boxes[j].right) -
+            Math.max(boxes[i].left, boxes[j].left);
+          const y =
+            Math.min(boxes[i].bottom, boxes[j].bottom) -
+            Math.max(boxes[i].top, boxes[j].top);
+          if (x > epsilon && y > epsilon)
+            overlaps.push(`${boxes[i].what}/${boxes[j].what}`);
+        }
+      return { boxes, overlaps };
+    }, TAP_FLOOR_FLOAT_EPSILON_PX);
+
+    // The four severity options AND the note/clear icon buttons beside them: a
+    // sweep that found only the severity control would be green on the very row
+    // the report was about.
+    expect(
+      geometry.boxes.length,
+      "the row must mix the severity options with the icon buttons"
+    ).toBeGreaterThan(4);
+    expect(
+      [...new Set(geometry.boxes.map((b) => Math.round(b.height)))],
+      `the symptom row renders more than one height: ${geometry.boxes
+        .map((b) => `${b.what}=${b.height}`)
+        .join(", ")}`
+    ).toEqual([CONTROL_BOX_PX]);
+    expect(
+      geometry.overlaps,
+      "two extended targets in the symptom row own the same point; the row's gap must be at least twice the reach"
+    ).toEqual([]);
+  });
 });
 
 // ── THE FLOOR'S REACH, OUTSIDE THE FAMILY (#3486 part 3) ────────────────────

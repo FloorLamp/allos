@@ -17,6 +17,7 @@ import {
   cleanupUxServedDb,
 } from "../../scripts/ux-served-db.mjs";
 import { makeTmpDir } from "../__tests__/tmp-dir";
+import { perTestCeiling } from "../../vitest.timeouts";
 
 const here = path.dirname(fileURLToPath(import.meta.url));
 const repo = path.join(here, "..", "..");
@@ -75,7 +76,14 @@ function readPeriods(dbPath: string): CyclePeriod[] {
   }
 }
 
-describe("named one-cycle seed data (#3489 D5)", () => {
+// ONE CEILING FOR THE FILE, AND IT IS A MULTIPLE — same reasoning as
+// dirty-seed-shape.test.ts, whose spawn-a-real-seed shape this file shares
+// (#3986). A hard-coded `}, 30_000)` is immune to `ALLOS_VITEST_TIMEOUT_MS`, so
+// the one lever the harness offers did not reach the specs that block on real
+// child processes. Named rather than inline only so the `describe` line still fits.
+const SPAWN_CEILING = { timeout: perTestCeiling(3) };
+
+describe("named one-cycle seed data (#3489 D5)", SPAWN_CEILING, () => {
   it("seeds two periods, verifies one interval, and reaches the honest UI state", () => {
     const allocation = allocateUxServedDb(
       makeTmpDir("one-cycle-owned-database")
@@ -107,7 +115,7 @@ describe("named one-cycle seed data (#3489 D5)", () => {
     } finally {
       cleanupUxServedDb(allocation);
     }
-  }, 30_000);
+  });
 
   it("makes both off-by-one mutations fail loudly at the real verifier boundary", () => {
     const allocation = allocateUxServedDb(
@@ -147,7 +155,7 @@ describe("named one-cycle seed data (#3489 D5)", () => {
     } finally {
       cleanupUxServedDb(allocation);
     }
-  }, 30_000);
+  });
 
   it("rejects a baseline database mislabeled as one-cycle", () => {
     const allocation = allocateUxServedDb(
@@ -165,5 +173,5 @@ describe("named one-cycle seed data (#3489 D5)", () => {
     } finally {
       cleanupUxServedDb(allocation);
     }
-  }, 30_000);
+  });
 });

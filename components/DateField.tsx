@@ -4,6 +4,7 @@ import { useEffect, useRef, useState, type SetStateAction } from "react";
 import AnchoredPanel from "@/components/overlay/AnchoredPanel";
 import { useCompactViewport } from "@/components/useCompactViewport";
 import { IconChevronLeft, IconChevronRight } from "@tabler/icons-react";
+import IconButton from "@/components/IconButton";
 import {
   dateStrInTz,
   isoDate,
@@ -327,23 +328,14 @@ export default function DateField({
                   ))}
                 </select>
               </div>
-              <div className="flex gap-1">
-                <button
-                  type="button"
-                  onClick={() => shift(-1)}
-                  aria-label="Previous month"
-                  className="flex h-11 w-11 items-center justify-center rounded-sm text-slate-500 hover:bg-slate-100 hover:text-slate-700 md:h-8 md:w-8 dark:text-slate-400 dark:hover:bg-ink-800 dark:hover:text-slate-200"
-                >
+              {/* `gap-3` is the reach floor (#3938): twice `--control-reach`. */}
+              <div className="flex gap-3">
+                <IconButton label="Previous month" onClick={() => shift(-1)}>
                   <IconChevronLeft className="h-4 w-4" />
-                </button>
-                <button
-                  type="button"
-                  onClick={() => shift(1)}
-                  aria-label="Next month"
-                  className="flex h-11 w-11 items-center justify-center rounded-sm text-slate-500 hover:bg-slate-100 hover:text-slate-700 md:h-8 md:w-8 dark:text-slate-400 dark:hover:bg-ink-800 dark:hover:text-slate-200"
-                >
+                </IconButton>
+                <IconButton label="Next month" onClick={() => shift(1)}>
                   <IconChevronRight className="h-4 w-4" />
-                </button>
+                </IconButton>
               </div>
             </div>
 
@@ -353,7 +345,17 @@ export default function DateField({
               ))}
             </div>
 
-            <div className="mt-1 grid grid-cols-7 gap-y-0.5">
+            {/* THE HIT BOX TILES ITS COLUMN AND THE GLYPH IS THE PAINT — the
+                split components/EventCalendar.tsx has drawn since #3377, adopted
+                here by #3954 so the app has ONE calendar day. The cell is the
+                control box tall at every width (the `h-11`/`md:h-9` step was the
+                two-heights-for-one-idea pattern the box retired) and as wide as
+                its column, so seven of them tile the grid with no dead pixels: a
+                tap that lands between two days reads as broken exactly like one
+                that lands on the wrong day. The row gap pays the reach floor
+                where the reach exists — on a coarse pointer — and stays tight on
+                a mouse, which has no floor to meet. */}
+            <div className="mt-1 grid grid-cols-7 gap-y-0.5 pointer-coarse:gap-y-3">
               {cells.map((cell, i) => {
                 const ds = isoDate(cell.y, cell.m, cell.d);
                 const selected = ds === val;
@@ -365,22 +367,24 @@ export default function DateField({
                     type="button"
                     disabled={disabled}
                     onClick={() => pick(cell)}
-                    // 44px below `md` (#644's floor, and #3376's acceptance
-                    // criterion); the desktop popover keeps its compact 36px
-                    // grid, which is what its 288px panel is measured for.
-                    className={`mx-auto flex h-11 w-11 items-center justify-center rounded-full text-sm transition md:h-9 md:w-9 ${
-                      selected
-                        ? "bg-brand-600 font-semibold text-white hover:bg-brand-700"
-                        : disabled
-                          ? "cursor-not-allowed text-slate-300 dark:text-slate-700"
-                          : `hover:bg-slate-100 dark:hover:bg-ink-800 ${
-                              cell.outside
-                                ? "text-slate-400 dark:text-slate-600"
-                                : "text-slate-700 dark:text-slate-200"
-                            } ${isToday ? "ring-1 ring-brand-400" : ""}`
-                    }`}
+                    data-calendar-day=""
+                    className="flex h-(--control-box) w-full items-center justify-center"
                   >
-                    {cell.d}
+                    <span
+                      className={`flex h-(--control-box) w-(--control-box) items-center justify-center rounded-full text-sm transition ${
+                        selected
+                          ? "bg-brand-600 font-semibold text-white hover:bg-brand-700"
+                          : disabled
+                            ? "cursor-not-allowed text-slate-300 dark:text-slate-700"
+                            : `hover:bg-slate-100 dark:hover:bg-ink-800 ${
+                                cell.outside
+                                  ? "text-slate-400 dark:text-slate-600"
+                                  : "text-slate-700 dark:text-slate-200"
+                              } ${isToday ? "ring-1 ring-brand-400" : ""}`
+                      }`}
+                    >
+                      {cell.d}
+                    </span>
                   </button>
                 );
               })}

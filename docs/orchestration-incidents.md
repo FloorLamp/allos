@@ -1362,3 +1362,75 @@ and all — failed nothing across 113 tests, so it was live code no assertion ob
 the test comment claiming _"remove the exclusion and this reads 2"_ was false; it read 1,
 and it contradicted the lane's own correct note sixty lines below. Deleting the mechanism
 deletes all three.
+
+## The alarm that could not tell a lapse from an unrecorded arm (2026-08-29)
+
+The check-in's wake block reported `WAKE IS IN THE PAST (2026-08-28T01:17:00Z)` at three
+consecutive check-ins while two durable wakes were in fact armed. Nothing was wrong with
+the alarm's logic: `/home/user/scratch/.wake` genuinely held a stale timestamp, because
+arming a wake and recording it are two separate acts and only the first has a tool behind
+it. The orchestrator armed at 04:23 and again at 05:20 and wrote neither down.
+
+What made it worth fixing rather than remembering is the shape of the two messages. The
+**absent-file** branch already printed the exact command to record a wake. The **past**
+branch printed only "Re-arm send_later NOW". So an orchestrator in the state that
+actually occurs — wake armed, file stale — did the thing the alarm asked, saw the identical
+alarm at the next check-in, and had no way to distinguish "my wake lapsed" from "I never
+wrote the file". That is the ignorable-alarm failure this script exists to avoid, and it
+is the second time this file has recorded it about this same block: the 2026-08-16 entry
+is an orchestrator copying the check-in's own `next:` output back into the file and
+getting a correctly-armed wake reported as lapsed at every check-in.
+
+The fix is two lines — the past branch now prints the record command too — and the reason
+it belongs in the script rather than in anyone's habits is the sentence #3948 was filed
+under the same day: _a defence that depends on the writer being correct is not a defence._
+The step that gets skipped is the write, so the reminder has to appear in every branch
+that notices the write is missing, not only in the branch where the file does not exist
+at all.
+
+Both branches were exercised before the change was trusted: a scratch `SCRATCH` with a
+stale `.wake` for the past branch, and the live state file for the healthy one.
+
+## The intersection that could only agree with itself (2026-08-29)
+
+`#3954` moved every segmented option, checkbox and calendar day from a rendered 44 onto
+the 34px control box. The lane ran a spec census, reported it as a table with a per-file
+verdict and the searches that produced it, converted the two specs that pinned the old
+value — and CI went red on a third, `quick-log-stability.mobile.spec.ts`, asserting
+`optionBox.height >= TAP_FLOOR_PX`.
+
+The orchestrator's first reconstruction was wrong in an instructive way. The failing
+line sat directly under `await expect(option).toHaveAttribute("aria-pressed", "true")`,
+so the obvious reading was that the locator had been built from a role and state rather
+than from the `data-segmented-option` marker — the "selector may be built by a helper"
+clause the brief already carries. That reading was checked against the file and it does
+not hold: line 129 is `track.locator("[data-segmented-option]")`, and the file **was in
+the marker sweep's own output**, one of the fifteen hits the lane listed.
+
+So the defect is one step earlier than any question about selector shape. The lane ran
+the broad geometry-pin grep FIRST, judged it "too broad" at 40 files, discarded it, and
+narrowed to the marker sweep's hits — then adjudicated those by reading filenames. An
+intersection scoped to what a sweep already matched **can only confirm that sweep's
+verdicts; it is structurally unable to contradict them.** It feels like corroboration
+and proves nothing. And a per-file verdict asserted without opening the file is not a
+census result at all; it is the guess the census existed to replace. `TAP_FLOOR_PX` was
+on line 167 of a file the sweep had already handed over.
+
+Re-run in the correct order — pin set built first and unscoped over all of `e2e/`, then
+intersected with the moved subjects — the population was 45 files, 15 after
+intersection, and it found a **second** real case the marker sweep could never have
+reached: a genuine `SegmentedControl` in `ride-detail.spec.ts` addressed purely by
+`getByRole("group", { name })`, where the accessible name comes from an `ariaLabel`
+prop. That one pins width rather than height, so it was green, and it was run rather
+than reasoned about.
+
+Two smaller things worth keeping. The CI line read `Received: 35` and there is no 35px
+surface anywhere — the assertion printed `optionBox.height + PX_EPSILON`, the
+expression's value rather than the box's, and the live render probes at exactly 34 with
+a block-only reach to 46. An error message that names a number the DOM does not contain
+costs a reader one wrong hypothesis before they start. And the replacement guard is
+strictly stronger than what it replaced: the old `>= 44` passed on the 44 tree AND on
+the 34 tree once the reach existed, while the box equality reds on the first and the
+per-axis reach read reds on the second.
+
+Encoded as clause (5) of the spec-census rule in `dispatch-brief.mjs`.
