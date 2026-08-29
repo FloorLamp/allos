@@ -83,6 +83,11 @@ Profile-entity fan-out is bounded before suppression, per family, in
 `COACHING_ENTITY_FINDING_LIMITS` (and the food–drug variance family's adjacent
 declaration). That ordering means dismissing the generated set cannot promote the
 next rows from the same family. Closed catalogs remain bounded by their registries.
+Every one of those bounds sits AFTER an ordering, so it decides which findings a
+profile sees as much as how many, and a bound asserted only on its count is green
+on a build that truncates from the wrong end.
+`lib/__db_tests__/coaching-finding-caps.test.ts` over-supplies each family and
+asserts the surviving rows by identity and order (#3126).
 Stale exercises collapse further into one episodic family finding: it names at most
 three newest-lapsed lifts and says “several” rather than exposing a hidden count when
 the tail is longer. Its key is anchored to the first day of the continuous interval
