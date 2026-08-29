@@ -13,20 +13,23 @@ test.describe("Weekly recap + milestones (#32)", () => {
   }) => {
     await page.goto("/");
     await openDashboardAll(page);
-    const row = page
-      .getByTestId("weekly-recap")
-      .locator("dl > div")
+    const block = page.locator('[data-moment-key^="recap:"]');
+    // ONE block for the whole recap, and one header on it (#3365) — the six atoms
+    // used to be six cards with six identical headers.
+    await expect(block).toHaveCount(1);
+    await expect(block.locator("h4")).toHaveCount(1);
+    const row = block
+      .getByTestId("dashboard-candidate")
       .filter({ hasText: "Workouts" });
     await expect(row).toHaveCount(1);
 
     // The value is the headline quantity and nothing else.
-    await expect(row.locator("dd > span").first()).toHaveText(/^\d+$/); // first-ok: the row is narrowed to one above, and its dd's first span IS the value — the annotation is the second
+    await expect(row.getByTestId("standing-value")).toHaveText(/^\d+$/);
     // The breakdown rides in the annotation, punctuated by the shared grammar.
-    const cell = row.locator("dd");
-    await expect(cell).toContainText(/strength \d/);
-    await expect(cell).toContainText("last week");
+    await expect(row).toContainText(/strength \d/);
+    await expect(row).toContainText("last week");
     // And nothing on the row is parenthesised any more.
-    await expect(cell).not.toContainText("(");
+    await expect(row).not.toContainText("(");
   });
 
   // A label may legitimately contain parentheses (an exercise variant names its
@@ -37,7 +40,12 @@ test.describe("Weekly recap + milestones (#32)", () => {
   }) => {
     await page.goto("/");
     await openDashboardAll(page);
-    const rows = page.getByTestId("weekly-recap").locator("dl > div");
+    const rows = page
+      .locator('[data-moment-key^="recap:"]')
+      .getByTestId("dashboard-candidate");
+    // The positive control: the block was found and it has rows, so the loop below
+    // is not an empty sweep reporting clean.
+    expect(await rows.count()).toBeGreaterThan(0);
     for (const text of await rows.allInnerTexts()) {
       expect(text, text).not.toMatch(/\(\(|\)\)|\)\s*\(/);
     }

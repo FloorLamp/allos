@@ -153,7 +153,6 @@ import {
   nextOnboardingStep,
   ONBOARDING_STEP_COUNT,
   onboardingNeedsSetup,
-  remainingOnboardingChecklistSuggestions,
 } from "@/lib/onboarding";
 import { getOnboardingDataPresence } from "@/lib/onboarding-data";
 import DashboardAttentionAtom from "@/components/dashboard/DashboardAttentionAtom";
@@ -1451,18 +1450,12 @@ async function renderDashboard(
         { subject: profileSubject, sourceOrder: sourceOrder++ },
         "checklist"
       ),
+      // NO ROW: the checklist is N suggestions with their own doors and a dismiss,
+      // and one summary row would be a count where the list is the point.
       <OnboardingChecklist
         focuses={onboardingChecklist.focuses}
         completion={onboardingChecklistCompletion}
-      />,
-      {
-        label: "Getting started",
-        value: `${remainingOnboardingChecklistSuggestions(
-          onboardingChecklist.focuses,
-          onboardingChecklistCompletion
-        ).length} suggestions left`,
-        href: "/onboarding",
-      }
+      />
     );
   }
 
@@ -1554,6 +1547,7 @@ async function renderDashboard(
           meds={[med]}
           tz={timezone}
           timeFormat={formatPrefs.timeFormat}
+          title={null}
           compact
           showPageLink={false}
         />
@@ -1601,13 +1595,10 @@ async function renderDashboard(
         rec.id,
         `coaching.${coachingDedupeKey(rec.id)}`
       ),
-      <CoachingRecommendationAtom recommendation={rec} />,
-      {
-        label: rec.title,
-        detail: rec.detail,
-        href: "/training",
-        moment: { title: "Coaching", href: "/training" },
-      }
+      // NO ROW. This card is the ONLY mount of `snoozeCoaching` and
+      // `acknowledgeRest`, so an index row here would delete two writes rather
+      // than restate them; it stays a card until those live somewhere else.
+      <CoachingRecommendationAtom recommendation={rec} />
     )
   );
   sourceOrder += coachingRecs.length;
