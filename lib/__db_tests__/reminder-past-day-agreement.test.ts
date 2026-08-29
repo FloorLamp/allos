@@ -15,6 +15,11 @@
 // reminder-past-day-situations.test.ts, whose fixtures carry no activity rows at all;
 // these carry them, which is how #4019 stayed hidden under a guard that looked total.
 //
+// THESE ASSERT NAMES, NOT WRITES. The ledger half — a past-day `✅ All` driven through
+// the real callback handler, with the rows read back — is in telegram-callbacks.test.ts
+// ("✅ All on a past day writes what the day owed"), beside the bulk-tap cases it
+// belongs with and reusing their harness.
+//
 // Runs via `npm run test:db` (vitest.db.config.ts).
 
 import { describe, it, expect, afterEach } from "vitest";
