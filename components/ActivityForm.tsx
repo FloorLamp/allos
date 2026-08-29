@@ -924,9 +924,17 @@ export default function ActivityForm({
       // The device refused the capture (#3038): the queue owns nothing, so say
       // so in the shared sentence, KEEP the draft (whatever it still holds is
       // strictly better than nothing), and report false — the autosave hook then
-      // treats the close as the failed save it is instead of a clean one. Keyed,
-      // because the close-path flush retries a handful of times before giving up
-      // and each attempt is the SAME refusal: one toast, replaced in place.
+      // treats the close as the failed save it is instead of a clean one.
+      //
+      // SHOWN ONCE BECAUSE THE CLOSE STOPS ATTEMPTING AFTER IT (#3170), not
+      // because the toast dedupes a repeat. This used to be the other way round:
+      // the close-path flush fired ~20 attempts and each answered with the same
+      // refusal, so the key was what collapsed them into one sentence. It now
+      // latches on the first refusal — any further attempt could only land the
+      // row this sentence has just denied — so there is one refusal to render.
+      // The key stays, and is still doing work: it holds the toast stable
+      // through the close and unmount teardown that follow, and it keeps any
+      // future repeating path from stacking copies of one event.
       if (!kept) {
         toast(OFFLINE_CAPTURE_REFUSED_MESSAGE, {
           tone: "error",

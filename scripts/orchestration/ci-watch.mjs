@@ -10,9 +10,13 @@
 //   - A fresh push registers `gitleaks` first and alone for a window — a
 //     sampled "all green" then is a false green. Wait for this head's CI
 //     workflow run to complete before evaluating settlement.
-//   - A conflict-dirty PR starts NO CI at all. "1-2 runs registered" for many
-//     polls means check `mergeable`, not wait longer — so mergeable_state is
-//     checked FIRST and dirty exits immediately.
+//   - A conflict-dirty PR starts NO CI at all, so "1-2 runs registered" for many
+//     polls means check `mergeable`, not wait longer. BUT `mergeable_state` is a
+//     CACHED field that goes stale as a settled `dirty` (not `null`, so it does
+//     not read as "computing"), and on 2026-08-29 a stale one made this script
+//     report "NO CI will ever start" two minutes after all 18 checks had passed
+//     on that exact head. So dirty is evaluated AFTER the checks and never
+//     overrides a settled green — it blocks only while they are unsettled.
 //   - An unauthenticated poll silently reports nothing (the curl 401s and the
 //     parse yields empty), which reads as "no failures" — a lie in the
 //     reassuring direction. The token is asserted before the first request.
@@ -26,7 +30,8 @@
 //
 // Exit codes: 0 settled green · 1 settled red (failures listed) ·
 //   2 unsettled at timeout or --once (re-invoke; NOT a verdict) ·
-//   3 blocked (no token, or conflict-dirty so no CI will ever arrive).
+//   3 blocked (no token, or conflict-dirty WITH unsettled checks, so no CI will
+//     arrive; a dirty flag over a settled green prints a NOTE and exits 0).
 //
 // Run it as one blocking Bash call; --max-minutes defaults to 9 to fit under
 // a 10-minute tool cap — exit 2 means "invoke me again", not "green".
@@ -141,15 +146,41 @@ let polls = 0;
 for (;;) {
   polls++;
   const pr = await gh(`repos/${repo}/pulls/${prNumber}`);
+  const s = snapshot(await checkRuns(pr.head.sha));
+
+  // DIRTY IS CHECKED AFTER THE CHECKS, NOT BEFORE THEM, AND NEVER OVERRIDES A SETTLED
+  // GREEN. `mergeable_state` is a CACHED field: GitHub serves a stale `dirty` — not
+  // `null`, so it does not read as "still computing" — and will keep serving it until
+  // something pokes the PR. Measured 2026-08-29 on #4016: all 18 checks had completed
+  // `success` on the exact head at 11:00Z, and this script still reported "NO CI will
+  // ever start" at 11:02Z, which sent a lane to reconcile a conflict that did not exist.
+  // The two commits changed 72 files each with an EMPTY intersection, and all six
+  // base/head pairings merged clean. So the instrument reported something other than
+  // what its own next call could see — the exact defect class this session keeps
+  // meeting, in the tool written to detect it.
+  //
+  // A settled green on the head is therefore the stronger evidence and wins. Dirty
+  // still blocks when the checks have NOT settled, because there the original reasoning
+  // holds: no merge ref means no run to wait for.
   if (pr.mergeable_state === "dirty") {
-    console.error(
-      `BLOCKED: PR #${prNumber} is conflict-dirty — GitHub cannot build the merge ref, so NO CI\n` +
-        "will ever start. Reconcile the conflict in a worktree; do not wait on checks."
-    );
-    process.exit(3);
+    if (s.total > 0 && s.pending === 0 && s.failed === 0) {
+      console.error(
+        `NOTE: PR #${prNumber} reads mergeable_state=dirty, but all ${s.total} checks on\n` +
+          `head ${pr.head.sha.slice(0, 8)} have settled and passed. The flag is stale —\n` +
+          "verify with `git merge-tree --write-tree origin/main <head>` before treating it\n" +
+          "as a conflict; a push to the branch clears a stale flag."
+      );
+    } else {
+      console.error(
+        `BLOCKED: PR #${prNumber} is conflict-dirty and its checks have not settled\n` +
+          `(${s.total} registered, ${s.pending} pending, ${s.failed} failed). GitHub cannot build\n` +
+          "the merge ref, so no new CI will start. Reconcile in a worktree — but confirm the\n" +
+          "conflict locally first, because this flag is cached and goes stale."
+      );
+      process.exit(3);
+    }
   }
 
-  const s = snapshot(await checkRuns(pr.head.sha));
   const { workflow_runs: ciRuns } = await gh(
     `repos/${repo}/actions/workflows/ci.yml/runs?event=pull_request&head_sha=${pr.head.sha}&per_page=100`
   );
