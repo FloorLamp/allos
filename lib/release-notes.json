@@ -58,16 +58,34 @@
           "issues": [3962, 3982]
         },
         {
-          "pr": 4032,
-          "title": "The Trends chart menu keeps the keyboard focus where you put it while the page scrolls behind it",
+          "pr": 4016,
+          "title": "Doses, food, practices, substances and body readings are one record you can scroll and correct in place",
+          "kind": "feature",
+          "issues": [3958]
+        },
+        {
+          "pr": 4022,
+          "title": "A past-day reminder counts the workout you logged that day",
           "kind": "fix",
-          "issues": [4028]
+          "issues": [4019, 4011, 3997, 4020]
+        },
+        {
+          "pr": 4030,
+          "title": "A reminder for a past day keeps the doses you owed that day, even after you have travelled",
+          "kind": "fix",
+          "issues": [4025, 4026]
         },
         {
           "pr": 4031,
           "title": "The date picker and the sidebar calendar show the same months, weekdays and bounds",
           "kind": "fix",
           "issues": [3744, 3750, 3752]
+        },
+        {
+          "pr": 4032,
+          "title": "The Trends chart menu keeps the keyboard focus where you put it while the page scrolls behind it",
+          "kind": "fix",
+          "issues": [4028]
         },
         {
           "pr": 4034,
@@ -82,18 +100,6 @@
           "issues": [3699]
         },
         {
-          "pr": 4016,
-          "title": "Doses, food, practices, substances and body readings are one record you can scroll and correct in place",
-          "kind": "feature",
-          "issues": [3958]
-        },
-        {
-          "pr": 4030,
-          "title": "A reminder for a past day keeps the doses you owed that day, even after you have travelled",
-          "kind": "fix",
-          "issues": [4025, 4026]
-        },
-        {
           "pr": 4042,
           "title": "Filter menus stop cutting off long options like “Complete blood count”",
           "kind": "fix",
@@ -104,6 +110,12 @@
           "title": "An exercise’s target, sides and effort options sit behind one control that names them",
           "kind": "feature",
           "issues": [3349]
+        },
+        {
+          "pr": 4048,
+          "title": "A dose's stated time reads the same whatever time zone the server runs in",
+          "kind": "fix",
+          "issues": [4047]
         },
         {
           "pr": 4052,
@@ -124,10 +136,22 @@
           "issues": [3053, 3041]
         },
         {
+          "pr": 4058,
+          "title": "The sleep page shows your usual sleep and wake times",
+          "kind": "feature",
+          "issues": [3266]
+        },
+        {
           "pr": 4060,
           "title": "Say when it happened when you log a bowel movement, a practice or food you ate earlier",
           "kind": "feature",
           "issues": [3273]
+        },
+        {
+          "pr": 4061,
+          "title": "A connected app is marked disconnected only when the provider actually says so",
+          "kind": "fix",
+          "issues": [3980]
         },
         {
           "pr": 4062,
