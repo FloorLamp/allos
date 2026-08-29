@@ -17,15 +17,45 @@
         },
         {
           "pr": 3968,
-          "title": "A strength-test weight entered in pounds is no longer recorded as kilograms",
+          "title": "A weight or distance you typed in pounds or miles is recorded in the units you typed",
           "kind": "fix",
           "issues": [3942, 3944, 3945]
         },
         {
           "pr": 3983,
-          "title": "A connected app stops asking you to reconnect when the problem was a passing network fault",
+          "title": "A connected app stops asking you to reconnect when its server answered with an empty error",
           "kind": "fix",
           "issues": [3798]
+        },
+        {
+          "pr": 3989,
+          "title": "A reminder for an earlier day counts the medicines you actually owed that day",
+          "kind": "fix",
+          "issues": [3973]
+        },
+        {
+          "pr": 4003,
+          "title": "Segmented controls, checkboxes and calendar days match the height of everything beside them",
+          "kind": "fix",
+          "issues": [3954]
+        },
+        {
+          "pr": 4005,
+          "title": "An imported PDF previews in the app instead of showing a browser error page",
+          "kind": "fix",
+          "issues": [3975]
+        },
+        {
+          "pr": 4010,
+          "title": "Adherence dots stop reading 'nothing was owed' on days a supplement existed",
+          "kind": "fix",
+          "issues": [3988, 3951]
+        },
+        {
+          "pr": 4013,
+          "title": "A bulk correction won't apply under different units than you previewed it in",
+          "kind": "fix",
+          "issues": [3962, 3982]
         }
       ]
     },
