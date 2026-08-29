@@ -65,6 +65,9 @@ function libSources(): { rel: string; text: string }[] {
 function plannerModules(): string[] {
   return libSources()
     .filter(({ text }) => {
+      // Comment stripping cannot create the imported identifier. Avoid running
+      // the source state machine over modules that cannot enter the verdict.
+      if (!text.includes("planNudgeCadence")) return false;
       const code = stripComments(text);
       return (
         /import[\s\S]*?planNudgeCadence[\s\S]*?from\s+"\.\/nudge-cadence"/.test(
@@ -157,22 +160,11 @@ describe("the reflection tooth: the declaration matches the real import graph", 
         `${rel} is declared as a cadence adapter but does not exist`
       ).toBe(true);
     }
-    expect(DECLARED_PLANNERS).toEqual(plannerModules());
-  });
-
-  it("a module that adopts the engine cannot ship unregistered", () => {
-    // The failing direction, stated as the message a future author will read: the
-    // equality above is what turns "someone wired planNudgeCadence into a fifth
-    // domain" into a red test instead of a silent second boundary.
-    const undeclared = plannerModules().filter(
-      (rel) => !DECLARED_PLANNERS.includes(rel)
-    );
     expect(
-      undeclared,
-      `these modules call planNudgeCadence but no KIND_CADENCE entry names them: ` +
-        `${undeclared.join(", ")} — declare the kind they send as "nudge-cadence" ` +
-        `with this module as its planner`
-    ).toEqual([]);
+      plannerModules(),
+      "modules that call planNudgeCadence must exactly match the adapters named " +
+        'by KIND_CADENCE; declare a new caller as "nudge-cadence" or remove a stale planner'
+    ).toEqual(DECLARED_PLANNERS);
   });
 
   it("each adapter is wired into a real dispatcher", () => {
