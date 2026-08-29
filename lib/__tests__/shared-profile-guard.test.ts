@@ -63,7 +63,10 @@ describe("the shared-profile activity diff sees what a later test would see", ()
   // A declaration covers the TITLES it names and nothing else — the property that
   // separates it from a list of exempt spec names.
   it("a declaration silences the rows it names, in both directions, and only those", () => {
-    const declared = { why: "the merge consumes it", titles: ["Set merge dupe"] };
+    const declared = {
+      why: "the merge consumes it",
+      titles: ["Set merge dupe"],
+    };
     const before = snap(...SEEDED, [12, "2026-08-26|strength|Set merge dupe"]);
     const after = snap(...SEEDED, [13, "2026-08-29|cardio|Running"]);
     const drift = diffRecentActivities(before, after, declared);

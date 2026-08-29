@@ -324,7 +324,10 @@ export const test = base.extend<TestFixtures, WorkerFixtures>({
       if (workerApp.demo) return;
       const stranded = takeStrandedDrafts(workerApp.dbPath);
       if (stranded.length > 0) throw new Error(strandedDraftMessage(stranded));
-      if (sharedProfileLeftovers.titles.length > 0 && !sharedProfileLeftovers.why.trim())
+      if (
+        sharedProfileLeftovers.titles.length > 0 &&
+        !sharedProfileLeftovers.why.trim()
+      )
         throw new Error(
           `sharedProfileLeftovers declares ${sharedProfileLeftovers.titles.length} ` +
             `title(s) with no \`why\` — say what makes these rows worth leaving on ` +
