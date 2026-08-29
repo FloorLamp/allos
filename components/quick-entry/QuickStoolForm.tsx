@@ -87,14 +87,13 @@ export default function QuickStoolForm({
     setServerCount(todayCount);
     setCount(todayCount);
   }
-  // Follow `today` for the same reason the count does, and it is the SAME follower
-  // LogPracticeButton spends on the same control — one answer, written the way this
-  // file already writes the one above it. Mounting the control is what created the
-  // need: the sheet's props are gathered when it opens, so a sheet left open across
-  // local midnight would go on offering yesterday as its fixed day while the action
-  // files the tap under the server's today — a stated 23:50 landing at today's 23:50,
-  // in the future. A day change drops the pending statement rather than re-anchoring
-  // it, because a statement made about yesterday is not a claim about today.
+  // Follow `today` for the same reason the count does — the same follower
+  // LogPracticeButton spends on this same control. Mounting it is what created the
+  // need: the sheet's props are gathered when it opens, so one left across local
+  // midnight would offer yesterday as its fixed day while the action files under the
+  // server's today, landing a stated 23:50 at TODAY's 23:50 — in the future. A day
+  // change DROPS the statement rather than re-anchoring it: 23:50 said about
+  // yesterday is not a claim about today.
   const [whenDay, setWhenDay] = useState(today);
   if (whenDay !== today) {
     setWhenDay(today);

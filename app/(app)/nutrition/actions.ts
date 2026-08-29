@@ -192,14 +192,8 @@ export async function logFoodServing(
   // THE DAY RULE GETS THE SAME CLOCK TOLERANCE THE ACCEPTANCE GATE DOES, and it has
   // to since #3273 moved the offer client-side. `statedHourInstant` reads a wall time
   // later than `now` as YESTERDAY's — right for a picker whose hours the server
-  // enumerated, wrong for a field the browser filled: the control's "Now" writes the
-  // browser's current MINUTE, so a device seconds ahead of this server posts a wall
-  // time this server has not reached, the statement re-dates to yesterday, and
-  // `judgeEatenAt` throws it away as "it isn't on that day" — a sentence that is both
-  // untrue and unactionable. Measured: a 90-second skew loses it. The five minutes
-  // `judgeEatenAt` already tolerates for exactly this reason decide the DAY too, so
-  // the two halves of one decision stop disagreeing about whose clock is authoritative.
-  // Beyond the tolerance the re-date stands and the refusal is a real one.
+  // enumerated, wrong for a field the browser filled from its own clock. Measured: a
+  // 90-second skew re-dated the statement and lost it. One decision, one tolerance.
   const resolved = stated
     ? statedHourInstant(
         stated,
@@ -212,20 +206,16 @@ export async function logFoodServing(
     : resolved === null
       ? { kind: "refused", reason: "malformed" }
       : judgeEatenAt(resolved, tz, fields.date, at);
-  // THE REFUSAL IS RIGHT; ITS REASON WAS NOT. Past the tolerance above, a wall time
-  // ahead of this server's clock is re-dated to YESTERDAY by the day rule, and
-  // `judgeEatenAt` then refuses it for not being on the row's day. Not filing on the
-  // wrong day is correct and stays — re-anchoring on the row's date instead would
-  // make the backfill-versus-now guard below vacuous, which is a real cost. But "it
-  // isn't on that day" is UNTRUE when the day is the one the person is standing in,
-  // and it diagnoses the wrong machine: the cause is the device's clock, which is
-  // exactly what the queued path already says out loud. So the OUTCOME is untouched
-  // and only the sentence changes, into one this app already speaks.
+  // THE REFUSAL IS RIGHT; ITS REASON WAS NOT. Past the tolerance a fast clock's wall
+  // time re-dates to yesterday and is refused for missing the row's day — correct to
+  // refuse, and re-anchoring on the row's date instead would make the backfill guard
+  // below vacuous. But "it isn't on that day" is untrue when the day is the one the
+  // person is standing in, and it blames the wrong machine. Same outcome, and the
+  // reason the queued path already reports for this.
   //
-  // Both conditions are load-bearing. `aheadOfServer` is what distinguishes a fast
-  // clock from an hour genuinely meant as yesterday's, and the row's date being
-  // today is what makes "that day" the day they are standing in — a serving
-  // backfilled to another day and refused for landing off it is told the truth.
+  // Both conditions carry weight: `aheadOfServer` separates a fast clock from an hour
+  // genuinely meant as yesterday's, and the row's date being today is what makes
+  // "that day" theirs — a real backfill off its day is still told so.
   const localToday = dateStrInTz(tz, at);
   const onToday = stated ? zonedWallTimeToUtc(tz, localToday, stated) : null;
   const aheadOfServer =
