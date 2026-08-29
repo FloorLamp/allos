@@ -59,7 +59,8 @@ export interface ActivityAutosave {
   savableId: () => number | null;
   hasRow: boolean;
   dirty: boolean;
-  // Durably commit the latest edit before the form closes (bounded, ~0.5s cap).
+  // Durably commit the latest edit before the form closes. Bounded in ITERATIONS
+  // (20), not in time — see the loop for what that is and is not worth.
   flushBeforeClose: () => Promise<void>;
   // Mark the row deleted: freeze the saved signature at the current form so the
   // unmount flush can't re-create it, and drop the created id.
@@ -181,6 +182,23 @@ export function useActivityAutosave({
   // Same for the offline-capture callback (#1596) — it closes over the parent's
   // queue context + draft handle.
   const onQueueOfflineRef = useLatestRef(onQueueOffline);
+  // THIS CLOSE'S CAPTURE WAS REFUSED (#3170). `onQueueOffline` answering false means
+  // the device kept nothing and the surface has ALREADY told the person so, in the
+  // shared refused-capture sentence. Every further attempt from this same close is
+  // then a write that would contradict a sentence on screen: the close path fires
+  // ~20 attempts in ~80ms and the unmount flush fires one more, and if the link
+  // comes back inside that burst one of them CREATES the session — a started,
+  // unended row that turns up on the profile seconds after the person was told
+  // nothing was saved (measured on this spec's own reconnect, and the row #3163
+  // found). There is nothing to fall back to either: the refusal's own cause is
+  // that IndexedDB is unavailable, and the #1699 local draft lives in that same
+  // IndexedDB, so no draft was written and no dock can offer one.
+  //
+  // ONE WAY, AND NEVER RESET, because a refusal only ever happens on a close that
+  // is proceeding: `requestClose` runs its confirm BEFORE `flushBeforeClose`, so
+  // the flush is only reached once the close is settled, and the unmount that
+  // follows takes this ref with it. A minimize does not flush at all.
+  const closeCaptureRefusedRef = useRef(false);
 
   useEffect(() => {
     mountedRef.current = true;
@@ -241,6 +259,11 @@ export function useActivityAutosave({
         return; // nothing changed
       }
       if (inFlightRef.current) return; // a save is running; its trailing re-check catches new edits
+      // The refusal is already on screen (#3170). This bail is the half that covers
+      // the UNMOUNT flush, which is a separate call `flushBeforeClose`'s own break
+      // below cannot reach. Scoped to `queueOnOffline` so it can only ever silence a
+      // CLOSE-path attempt: nothing about the debounced mid-session save changes.
+      if (opts?.queueOnOffline && closeCaptureRefusedRef.current) return;
       // ONE LIVE SESSION IS ONE ROW (#3441). The create-at-start POST is in flight,
       // and this form has no row yet — so a save dispatched now would build its
       // FormData with a null id and INSERT A SECOND ROW for the same session. That
@@ -357,6 +380,10 @@ export function useActivityAutosave({
               }
               return;
             }
+            // Refused (#3170): no more attempts from this close. A THROW is
+            // deliberately not latched — it means no sentence was rendered, so
+            // there is no claim on screen for a later attempt to contradict.
+            closeCaptureRefusedRef.current = true;
           } catch {
             /* IndexedDB unavailable — fall through to the honest failure below */
           }
@@ -491,10 +518,22 @@ export function useActivityAutosave({
   // full-suite e2e census: an RPE half-point nudged just before close+navigate was
   // lost because the flush never landed.)
   async function flushBeforeClose() {
-    // Bounded: await an in-flight save to settle, then persist the latest, until
-    // the saved signature matches the current form (or we give up after ~0.5s so
-    // a wedged save never blocks the close).
+    // Await an in-flight save to settle, then persist the latest, until the saved
+    // signature matches the current form — or until 20 iterations have gone by.
+    //
+    // THE BOUND IS 20 ITERATIONS, NOT A CLOCK, and this comment used to claim a
+    // "~0.5s cap" that nothing enforces. Only the in-flight branch sleeps (25ms);
+    // the persist branch AWAITS A ROUND TRIP of whatever length the server takes,
+    // so the real elapsed time is 20 × that. Offline it is fast — ~80ms measured
+    // for the whole loop, since every attempt fails at once — and against a slow
+    // or wedged server it is unbounded, which is the opposite of what the old
+    // number promised. Anyone reasoning about how long a close can block should
+    // read it as "20 attempts", and anyone adding a time cap should add one.
     for (let i = 0; i < 20 && canSave && formSig !== savedSigRef.current; i++) {
+      // The capture was refused (#3170): the signature will never advance, so the
+      // remaining iterations are attempts that can only contradict the sentence the
+      // person is already reading.
+      if (closeCaptureRefusedRef.current) break;
       if (inFlightRef.current) {
         await new Promise((r) => setTimeout(r, 25));
         continue;
