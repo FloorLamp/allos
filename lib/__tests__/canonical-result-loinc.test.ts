@@ -194,6 +194,22 @@ describe("canonicalResultNameForLoinc — CBC + CMP lab mappings", () => {
   });
 });
 
+describe("gut analyte LOINC mappings (#3168)", () => {
+  it("routes the verified stool observations to their canonical entries", () => {
+    expect(canonicalResultNameForLoinc("38445-3")).toBe("Fecal Calprotectin");
+    expect(canonicalResultNameForLoinc("25907-7")).toBe(
+      "Pancreatic Elastase-1, Stool"
+    );
+    expect(canonicalResultNameForLoinc("31843-6")).toBe(
+      "H. pylori Stool Antigen"
+    );
+  });
+
+  it("does not map the invalid H. pylori code reported in the issue", () => {
+    expect(canonicalResultNameForLoinc("32047-8")).toBeNull();
+  });
+});
+
 describe("CBC differential — the two report forms map to unit-matched entries", () => {
   // A differential analyte is reported as an absolute count (cells/uL) AND as a
   // percentage of leukocytes (%); the two are NOT interconvertible without the
