@@ -24,7 +24,13 @@ import {
 } from "@/lib/queries";
 import { createLogin, createProfile, actAs, fd } from "./harness";
 import { getTimezone } from "@/lib/settings";
-import { shiftDateStr, utcInstant, zonedWallTimeToUtc } from "@/lib/date";
+import { now as clockNow } from "@/lib/clock";
+import {
+  shiftDateStr,
+  utcInstant,
+  zonedDateParts,
+  zonedWallTimeToUtc,
+} from "@/lib/date";
 
 const revalidate = vi.mocked(revalidatePath);
 const DATE = "2026-07-08";
@@ -107,11 +113,12 @@ describe("logFoodServing", () => {
 
 // ── #2053: the web bar's eating-time statement ──────────────────────────────────
 //
-// The action takes the user's CHOICE ("now" / an absolute local hour) and resolves it
-// server-side, so a tab open for an hour cannot stamp a stale "now" and no browser has
-// to convert a profile-local hour. What is pinned here is the whole contract: a stated
-// choice writes `time_source = 'stated'`, silence writes NULL, and an unusable choice
-// costs the STATEMENT and never the serving.
+// The action takes an ABSOLUTE profile-local wall time and resolves it server-side, so
+// no browser has to convert a profile-local hour. Since #3273 that is the field's ONE
+// shape — the bar's "now" word left with the hand-rolled chip group that minted it, and
+// the shared control's Now button fills a wall time the person can see instead. What is
+// pinned here is the whole contract: a stated time writes `time_source = 'stated'`,
+// silence writes NULL, and an unusable statement costs the STATEMENT, never the serving.
 describe("logFoodServing — eating-time statement (#2053)", () => {
   function events(profileId: number) {
     return db
@@ -140,24 +147,28 @@ describe("logFoodServing — eating-time statement (#2053)", () => {
     });
   });
 
-  it("`now` stamps the server's own clock as a STATED instant", async () => {
+  it("the control's own `Now` fill lands as a STATED instant at that minute", async () => {
     const login = createLogin();
     const profile = createProfile("stated-now", login.id);
     actAs(login, profile);
     const date = today(profile.id);
+    // What WhenControl's "Now" button puts in the field: the current profile-local
+    // wall MINUTE, absolute, visible and adjustable before the tap (#2236 invariant
+    // 3). The server still resolves it, so the row's instant is the server's reading
+    // of that wall time and not a client timestamp.
+    const nowHhmm = zonedDateParts(getTimezone(profile.id), clockNow()).hhmm;
 
     await logFoodServing(
-      fd({ group_key: "fatty_fish", date, occurred_at: "now" })
+      fd({ group_key: "fatty_fish", date, occurred_at: nowHhmm })
     );
 
     const [event] = events(profile.id);
+    // 'stated', not 'tap': the web "+" declares no "I'm eating now" contract of its
+    // own, so the SOURCE of the instant is the person who said so.
     expect(event.time_source).toBe("stated");
-    // A real instant, close to now — the action resolved it rather than trusting a
-    // client timestamp. 'stated', not 'tap': the web "+" declares no "I'm eating now"
-    // contract of its own, so the SOURCE of the instant is the person who said so.
-    expect(
-      Math.abs(Date.now() - new Date(event.occurred_at!).getTime())
-    ).toBeLessThan(60_000);
+    expect(event.occurred_at).toBe(
+      utcInstant(zonedWallTimeToUtc(getTimezone(profile.id), date, nowHhmm)!)
+    );
   });
 
   it("an absolute local hour resolves in the PROFILE's timezone", async () => {
@@ -182,7 +193,60 @@ describe("logFoodServing — eating-time statement (#2053)", () => {
     );
   });
 
-  it("an unparseable choice costs the statement, never the serving", async () => {
+  // ONE WIRE SHAPE (#3273). The bar used to post the WORD "now" beside a hand-rolled
+  // hour-chip group; the chips are gone and so is the word. This is the table that
+  // says so — "now" is not a second spelling that still works, it is unparseable like
+  // any other prose, and the serving still lands.
+  //
+  // FROZEN, because the acceptable set depends on the hour: `statedHourInstant` reads
+  // a wall time later than now as YESTERDAY's, which `judgeEatenAt` then refuses as
+  // another day. Against the real clock this table would be green for most of the day
+  // and red for the hours after midnight — the shape of failure that looks like flake.
+  describe("the wire carries one shape and only one", () => {
+    let priorNow: string | undefined;
+    beforeEach(() => {
+      priorNow = process.env.ALLOS_TEST_NOW;
+      process.env.ALLOS_TEST_NOW = "2026-07-08T21:30:00Z";
+      return () => {
+        if (priorNow == null) delete process.env.ALLOS_TEST_NOW;
+        else process.env.ALLOS_TEST_NOW = priorNow;
+      };
+    });
+
+    it.each([
+    ["07:05", "07:05"],
+    ["21:30", "21:30"],
+    ["now", null],
+    ["", null],
+    ["  ", null],
+    ["25:00", null],
+    ])("occurred_at=%o states %o", async (posted, stated) => {
+      const login = createLogin();
+      const profile = createProfile(
+        `wire-${posted.trim() || "blank"}`,
+        login.id
+      );
+      actAs(login, profile);
+      const date = today(profile.id);
+
+      const res = await logFoodServing(
+        fd({ group_key: "fatty_fish", date, occurred_at: posted })
+      );
+
+      expect(res.ok).toBe(true);
+      const [event] = events(profile.id);
+      expect(event.occurred_at).toBe(
+        stated === null
+          ? null
+          : utcInstant(
+              zonedWallTimeToUtc(getTimezone(profile.id), date, stated)!
+            )
+      );
+      expect(event.time_source).toBe(stated === null ? null : "stated");
+    });
+  });
+
+  it("an unparseable statement costs the statement, never the serving", async () => {
     const login = createLogin();
     const profile = createProfile("garbage-choice", login.id);
     actAs(login, profile);
@@ -203,13 +267,18 @@ describe("logFoodServing — eating-time statement (#2053)", () => {
     const login = createLogin();
     const profile = createProfile("wrong-day", login.id);
     actAs(login, profile);
-    // Backfilling YESTERDAY while stating "now" — the instant's profile-local date isn't
-    // the day the serving lands on, and `occurred_at` is what the window derivation and the
-    // cross-midnight re-date read, so a row carrying it would contradict itself.
+    // Backfilling YESTERDAY while stating the current wall time — the instant's
+    // profile-local date isn't the day the serving lands on, and `occurred_at` is what
+    // the window derivation and the cross-midnight re-date read, so a row carrying it
+    // would contradict itself.
     const date = shiftDateStr(today(profile.id), -1);
 
     const res = await logFoodServing(
-      fd({ group_key: "fatty_fish", date, occurred_at: "now" })
+      fd({
+        group_key: "fatty_fish",
+        date,
+        occurred_at: zonedDateParts(getTimezone(profile.id), clockNow()).hhmm,
+      })
     );
 
     expect(res.ok).toBe(true);
@@ -328,19 +397,19 @@ describe("logFoodServing — a stated time wins over the tab (#2269)", () => {
     );
   });
 
-  it("an explicit `now` wins over a stale tab and files under now's window", async () => {
+  it("a `Now` fill wins over a stale tab and files under now's window", async () => {
     const login = createLogin();
     const profile = createProfile("now-wins", login.id);
     actAs(login, profile);
     const date = today(profile.id);
 
-    // The tab still says Morning; the user answered "now" (21:30 → Evening).
+    // The tab still says Morning; the control's Now button filled 21:30 → Evening.
     const res = await logFoodServing(
       fd({
         group_key: "berries",
         date,
         meal_slot: "Morning",
-        occurred_at: "now",
+        occurred_at: "21:30",
       })
     );
     expect(res.ok).toBe(true);
