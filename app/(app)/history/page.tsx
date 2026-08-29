@@ -364,6 +364,17 @@ export default async function HistoryPage(props: {
           weightUnit: getUnitPrefs(loginId).weightUnit,
         }
       : null;
+  // WHETHER THIS KIND HAS A DOOR AT ALL — the dose door's own presence rule, which the
+  // other kinds inherit: a picker with nothing in it is worse than no control. A kind
+  // that cannot offer one falls back to the kind chooser rather than to an empty row,
+  // which is what the dose branch already did.
+  const hasAddDoor = addVocabulary
+    ? kind === "practice"
+      ? addVocabulary.practices.length > 0
+      : kind === "substance"
+        ? addVocabulary.substances.length > 0
+        : true
+    : kind === "dose" && loggable.length > 0;
   const defaultTime = zonedDateParts(
     getTimezone(actingProfileId),
     new Date()
@@ -527,28 +538,10 @@ export default async function HistoryPage(props: {
           bounded by today. */}
       {canWrite ? (
         <div className={`mb-2 text-sm ${railGutter}`} data-testid="history-add">
-          {kind === "dose" ? (
-            loggable.length > 0 ? (
-              <DoseBackfillLauncher
-                loggable={loggable}
-                maxDate={todayStr}
-                defaultTime={defaultTime}
-              />
-            ) : null
-          ) : kind && addVocabulary ? (
-            <HistoryAddDoor
-              kind={kind}
-              // THE DAY THE READER WAS LOOKING AT. Finding a gap is the reason to open
-              // this door at all, so the form opens on that day rather than on today —
-              // the context the redirect used to throw away.
-              date={day ?? todayStr}
-              maxDate={todayStr}
-              vocabulary={addVocabulary}
-            />
-          ) : (
-            /* IN ALL, THE DOOR ASKS THE KIND FIRST, which on a record page is the same
-               act as narrowing to it. It scrolls rather than wraps for the same reason
-               the filter row does. */
+          {!hasAddDoor ? (
+            /* IN ALL — AND IN A KIND WITH NOTHING TO OFFER — THE DOOR ASKS THE KIND
+               FIRST, which on a record page is the same act as narrowing to it. It
+               scrolls rather than wraps for the same reason the filter row does. */
             <div className="-mx-2 flex items-center gap-3 overflow-x-auto px-2 pb-1 sm:mx-0 sm:flex-wrap sm:overflow-visible sm:px-0 sm:pb-0">
               <span className="shrink-0 text-slate-500 dark:text-slate-400">
                 Add past
@@ -566,7 +559,23 @@ export default async function HistoryPage(props: {
                 )
               )}
             </div>
-          )}
+          ) : kind === "dose" ? (
+            <DoseBackfillLauncher
+              loggable={loggable}
+              maxDate={todayStr}
+              defaultTime={defaultTime}
+            />
+          ) : addVocabulary && kind ? (
+            <HistoryAddDoor
+              kind={kind}
+              // THE DAY THE READER WAS LOOKING AT. Finding a gap is the reason to open
+              // this door at all, so the form opens on that day rather than on today —
+              // the context the redirect used to throw away.
+              date={day ?? todayStr}
+              maxDate={todayStr}
+              vocabulary={addVocabulary}
+            />
+          ) : null}
         </div>
       ) : null}
 
