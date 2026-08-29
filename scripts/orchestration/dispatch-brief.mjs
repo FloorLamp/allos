@@ -554,6 +554,27 @@ ${landingLines}
   a spec that walked the door, the kind filter, the rows and the footer link. Sweep the
   deleted TESTIDS and SYMBOLS as well as the path; a surviving marker is the same bug
   wearing a different name.
+
+  (7) "DOES MY CHANGE ADD SOMETHING BAD" AND "DOES MY CHANGE BREAK HOW THIS SPEC FINDS
+  ITS SUBJECT" ARE TWO CENSUSES, AND THE SECOND IS THE ONE LANES SKIP. The first is an
+  ABSENCE question and your change passes it honestly while silently changing what a
+  LOCATOR resolves to. Measured 2026-08-29 on #4045: a lane censused the specs its
+  change touched, correctly judged that a new record-count span "adds no machine date",
+  and shipped a CI red — because the count now concatenated onto the date inside one
+  element, so \`textContent\` read "August 1715 records", the census's \`\d{1,2}\b\`
+  had no word boundary, and the positive control that proves the route is not VACUOUSLY
+  silent could no longer find a date at all. \`innerText\` matched fine and the header
+  looked correct throughout.
+  So run the second census as its own grep over the specs that address your surface:
+  concatenation-sensitive matchers (\`toHaveText\`, \`toContainText\`, \`hasText\`,
+  \`textContent\`, \`allTextContents\`) and structural selectors (\`nth\`, \`first()\`,
+  \`>\`, \`~\`, \`childElementCount\`, range/offset reads). Adding a sibling span, moving
+  a testid up or down a level, collapsing a column, reordering two children — none of
+  those "add something bad", and all of them move what those matchers resolve to.
+  AND WHEN A CENSUS SPEC GOES RED, ITS POSITIVE CONTROL FAILING IS THE INSTRUMENT
+  WORKING. Fix the surface so the control can see it again; widening the census's own
+  pattern to admit your new markup loosens the one thing watching for that class
+  repo-wide, to make one branch green.
 - A GUARD THAT REMOVES A PROPERTY CANNOT ALSO PROVE THE PROPERTY SURVIVED. When your
   change takes something away — a frame, a gutter, a label, a permission, a field —
   the natural guard asserts ABSENCE: nothing still has it. That assertion passes on
