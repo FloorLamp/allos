@@ -114,6 +114,7 @@ import { decideUvOverexposure } from "../../uv-overexposure";
 // kind, decides: a medication is here because it is `must`/`should`, not because it
 // is a medication.
 export interface DueDoseNowItem extends UpcomingItem {
+  itemId: number;
   doseId: number;
   // Compact CONTROL label only. `title` remains the record's full display name.
   // Narrowed to REQUIRED here (every dose row carries one from doseRowToItem), so
@@ -143,7 +144,11 @@ export function doseItemsNow(
         !row.taken &&
         timeBucketHasArrived(timeBucket(row.dose.time_of_day), currentBucket)
     )
-    .map((row) => ({ ...doseRowToItem(row), doseId: row.dose.id }));
+    .map((row) => ({
+      ...doseRowToItem(row),
+      itemId: row.item.id,
+      doseId: row.dose.id,
+    }));
 }
 
 // One dose the day's schedule asks for, plus whether it is already logged taken.
