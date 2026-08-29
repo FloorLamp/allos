@@ -39,7 +39,16 @@ vi.mock("@/lib/notifications/digest-data", async (importActual) => {
 // THE TAP-TIME SWEEP MUST NOT BE ABLE TO FAIL THE TAP (#3933). The one thing a spec
 // cannot arrange with real data is the sweep itself blowing up — every per-pointer
 // failure is already isolated inside it (#2070) — so it is forced here, for one profile.
-const tapSweepState = vi.hoisted(() => ({ throwFor: null as number | null }));
+// `swept` records the sweep's ARGUMENTS as the tap path passed them — who, and with
+// what budget. Both halves are load-bearing: the profile is the only trace a tap whose
+// own rebuild threw still reached the sweep (#3951 F4), since the write and the answer
+// both already landed; and the budget is the only place the TAP PATH's bound is
+// visible, because the sweep's own guard calls it directly and would go on passing if
+// this caller quietly stopped handing one over (#3951 F5).
+const tapSweepState = vi.hoisted(() => ({
+  throwFor: null as number | null,
+  swept: [] as { profileId: number; budgetMs: number | undefined }[],
+}));
 
 vi.mock("@/lib/notifications/reconcile", async (importActual) => {
   const actual =
@@ -49,6 +58,7 @@ vi.mock("@/lib/notifications/reconcile", async (importActual) => {
     reconcileProfileMessages: (
       ...args: Parameters<typeof actual.reconcileProfileMessages>
     ) => {
+      tapSweepState.swept.push({ profileId: args[0], budgetMs: args[1] });
       if (tapSweepState.throwFor === args[0])
         throw new Error("tap sweep blew up");
       return actual.reconcileProfileMessages(...args);
@@ -136,7 +146,11 @@ import {
   parseProseGatherRecord,
 } from "@/lib/notifications/reconcile-core";
 import { getProfileSetting, setProfileSetting } from "@/lib/settings";
-import { handleCallbackQuery } from "@/lib/notifications/telegram-callbacks";
+import {
+  handleCallbackQuery,
+  TAP_SWEEP_BUDGET_MS,
+} from "@/lib/notifications/telegram-callbacks";
+import { TELEGRAM_CALL_TIMEOUT_MS } from "@/lib/notifications/telegram-api";
 import { tuneToggleToken } from "@/lib/notifications/digest-tune";
 import { instantNow } from "@/lib/clock";
 import { seedLoginTelegram } from "./fixtures";
@@ -174,6 +188,7 @@ beforeEach(() => {
   editText.mockClear();
   gatherState.calls = 0;
   gatherState.throwFor = null;
+  tapSweepState.swept = [];
 });
 
 function newProfile(name: string): number {
@@ -2800,5 +2815,194 @@ describe("a reconcile error never fails the tap (#3933)", () => {
     // …and the tapped message itself was still rebuilt: the sweep is the LAST thing the
     // tap does, so nothing ahead of it is lost.
     expect(liveTokens(pid).some((t) => t.startsWith("take:"))).toBe(false);
+  });
+});
+
+// ── THE SWEEP IS BOUNDED ON THE WEBHOOK'S 200 PATH (#3951) ───────────────────
+//
+// The webhook awaits `handleCallbackQuery` before responding, and its own contract says
+// it returns quickly so Telegram does not retry. #3933 made that call O(live pointers):
+// pointers live MESSAGE_POINTER_RETENTION_DAYS, each edit is capped at
+// TELEGRAM_CALL_TIMEOUT_MS, and nothing bounded the sweep as a whole
+// (NOTIFICATION_DISPATCH_TIMEOUT_MS is a dispatch fan-out's bound and reconcile never
+// reads it). Exceeding Telegram's webhook timeout makes it RE-DELIVER, and the whole
+// tap re-runs including its write — a duplicate serving or administration in a person's
+// health record, which is the worst thing on this path.
+//
+// TIME IS DRIVEN, NOT WAITED. `Date.now` is the only clock the budget reads (it is a
+// duration, so lib/clock's date-derivation seam deliberately does not cover it), and
+// each edit advances it by exactly the per-call cap the real transport enforces. So the
+// arithmetic under test is the production arithmetic, and the test is deterministic on
+// a box where four cores are shared — a wall-clock assertion here would be sampling
+// contention rather than the bound.
+describe("the tap sweep stops starting edits once its budget is spent (#3951)", () => {
+  // N chats for one profile is N live pointers from one send — the fan-out the
+  // pointer-recording block above already pins. Marking the dose taken in the app makes
+  // every one of them stale, so each needs its own edit.
+  async function staleInEveryChat(name: string, chats: string[]) {
+    const pid = newProfile(name);
+    const { itemId, doseId } = seedDose(pid, `${name} D3`);
+    for (const c of chats) seedLoginTelegram(pid, c);
+    await sendMorningReminder(pid);
+    expect(liveMessagePointers(pid)).toHaveLength(chats.length);
+    markDoseTaken(pid, doseId, itemId, today(pid), "page");
+    return pid;
+  }
+
+  // Each edit costs a full call timeout — the degraded chat the budget exists for.
+  function chargeEachEditOneCallTimeout(): () => void {
+    let clock = Date.now();
+    const nowSpy = vi.spyOn(Date, "now").mockImplementation(() => clock);
+    editText.mockImplementation(async () => {
+      clock += TELEGRAM_CALL_TIMEOUT_MS;
+    });
+    return () => {
+      nowSpy.mockRestore();
+      editText.mockImplementation(async () => {});
+    };
+  }
+
+  const CHATS = ["5553951", "5553952", "5553953", "5553954", "5553955"];
+
+  it.each([
+    // The bound, and its converse in the same table: WITHOUT a budget the identical
+    // fixture reconciles every pointer, so a green here cannot come from a sweep that
+    // was never going to reach them anyway.
+    {
+      what: "a budget stops after the edit that spends it",
+      budget: TAP_SWEEP_BUDGET_MS,
+      examined: 1,
+      unswept: CHATS.length - 1,
+    },
+    {
+      what: "no budget reconciles every pointer, as the tick does",
+      budget: undefined,
+      examined: CHATS.length,
+      unswept: 0,
+    },
+  ])("$what", async ({ what, budget, examined, unswept }) => {
+    const pid = await staleInEveryChat(`Budget ${what.slice(0, 6)}`, CHATS);
+    const restore = chargeEachEditOneCallTimeout();
+    try {
+      const out = await reconcileProfileMessages(pid, budget);
+      expect({ examined: out.examined, unswept: out.unswept }).toEqual({
+        examined,
+        unswept,
+      });
+      // The bound is on STARTING work, so the one in flight still runs to completion:
+      // the response is budget + one call, never pointers x one call.
+      expect(editText).toHaveBeenCalledTimes(examined);
+    } finally {
+      restore();
+    }
+    // Nothing was DROPPED — an unswept pointer is untouched and the next tick takes it.
+    expect(liveMessagePointers(pid)).toHaveLength(CHATS.length - examined);
+  });
+
+  it("derives the budget from one Bot API call, a constant this repo owns", () => {
+    // Not a figure about Telegram's retry window, which would be a claim about someone
+    // else's infrastructure wearing a comment. One call's budget admits at most two:
+    // one started just under the deadline, plus the one already in flight.
+    expect(TAP_SWEEP_BUDGET_MS).toBe(TELEGRAM_CALL_TIMEOUT_MS);
+  });
+
+  // WHAT THE TWO CASES ABOVE CANNOT SEE: they call the sweep themselves, so they stay
+  // green on a tree where `handleCallbackQuery` has quietly stopped passing a budget —
+  // which is the whole defect, since the tick is entitled to pass none. The bound has
+  // to be asserted where the webhook actually spends it.
+  it("is what the TAP path hands the sweep, not just what the sweep can accept", async () => {
+    const pid = newProfile("Passed Pia");
+    const { itemId, doseId } = seedDose(pid, "Pia D3");
+    seedLoginTelegram(pid, "5553956");
+    const date = today(pid);
+    const built = buildIntakeReminderForSlots(pid, ["Morning"])!;
+    await dispatch(pid, built.message);
+    const ptr = liveMessagePointers(pid)[0];
+
+    tapSweepState.swept = [];
+    await handleCallbackQuery(
+      tapCq(
+        "5553956",
+        ptr.messageId,
+        `take:${pid}:${doseId}:${itemId}:${date}`,
+        messageKeyboard(built.message)
+      )
+    );
+    expect(tapSweepState.swept).toEqual([
+      { profileId: pid, budgetMs: expect.any(Number) },
+    ]);
+    expect(tapSweepState.swept[0].budgetMs).toBeLessThanOrEqual(
+      TAP_SWEEP_BUDGET_MS
+    );
+  });
+});
+
+// ── A WRITE THAT LANDS WITH A FAILED REBUILD KEEPS ITS SWEEP (#3951 F4) ──────
+//
+// Writing handlers run write → answer → `rebuildMessage`, and `rebuildMessage` ends in
+// `editMessageTextRaw`, which throws on any Bot API failure. That throw exited
+// `dispatchTap` before the sweep ran and the webhook swallowed it, leaving exactly the
+// state the sweep exists for: the ledger moved, the person was told it moved, and now
+// every live message is stale rather than one. A gap in new coverage, not a regression
+// — before #3933 there was no sweep to lose.
+//
+// F5's budget lands first on purpose: `dispatchTap` throws almost only when the Bot API
+// is degraded, so this adds a sweep to the very case that already threatened the
+// webhook's timeout.
+describe("a tap whose rebuild throws still sweeps (#3951)", () => {
+  it("sweeps the chat's profile and lets the throw through", async () => {
+    const pid = newProfile("Rebuild Rhea");
+    const { itemId, doseId } = seedDose(pid, "Rhea D3");
+    seedLoginTelegram(pid, "5553960");
+    const date = today(pid);
+    const built = buildIntakeReminderForSlots(pid, ["Morning"])!;
+    await dispatch(pid, built.message);
+    const ptr = liveMessagePointers(pid)[0];
+
+    tapSweepState.swept = [];
+    // Every edit from here fails — the degraded-chat shape. The write and the answer
+    // both land first, so this is a rebuild throw and nothing else.
+    editText.mockImplementation(async () => {
+      throw new TelegramApiError({
+        method: "editMessageText",
+        status: 502,
+        description: null,
+        message: "Telegram editMessageText failed: HTTP 502",
+      });
+    });
+    try {
+      await expect(
+        handleCallbackQuery(
+          tapCq(
+            "5553960",
+            ptr.messageId,
+            `take:${pid}:${doseId}:${itemId}:${date}`,
+            messageKeyboard(built.message)
+          )
+        )
+      ).rejects.toThrow("HTTP 502");
+    } finally {
+      editText.mockImplementation(async () => {});
+    }
+
+    // The write really did land — otherwise "the sweep was lost" would be describing a
+    // tap that did nothing, and there would be nothing stale to reconcile.
+    expect(
+      (
+        db
+          .prepare(
+            `SELECT status FROM intake_item_logs WHERE dose_id = ? AND date = ?`
+          )
+          .get(doseId, date) as { status: string } | undefined
+      )?.status
+    ).toBe("taken");
+    // And the sweep ran for this chat's profile despite the throw — under a budget, so
+    // the recovery cannot be the thing that blows the webhook's timeout.
+    expect(tapSweepState.swept).toEqual([
+      { profileId: pid, budgetMs: expect.any(Number) },
+    ]);
+    expect(tapSweepState.swept[0].budgetMs).toBeLessThanOrEqual(
+      TAP_SWEEP_BUDGET_MS
+    );
   });
 });
