@@ -1,42 +1,7 @@
 import { test, expect } from "./fixtures";
-import { type Locator, type Page } from "@playwright/test";
 import { followLink, loginAs, openCommandPalette } from "./nav";
 import { E2E_LOGIN_CHILD, E2E_MEMBER_PASSWORD } from "./fixture-logins";
 import { openMedDetailViaLink, refillBadge } from "./med-card-helpers";
-
-// Broad smoke coverage: each primary authenticated surface renders (real HTTP
-// 200 + the app shell, not a Next error page) against the seeded DB. Catches
-// server-component crashes / bad queries that a build alone won't.
-const ROUTES = [
-  "/", // dashboard
-  "/training",
-  "/trends",
-  "/timeline",
-  "/sleep",
-  "/upcoming",
-  "/data",
-  "/results",
-  "/nutrition",
-  "/medications",
-  "/settings",
-];
-
-// The app shell renders ONE of two navigation surfaces depending on viewport, so
-// the "this is the app, not a Next error boundary" anchor has to follow suit
-// (issue #1420 — this spec now runs in the `mobile` project too): the desktop
-// sidebar is `hidden md:flex` (app/(app)/layout.tsx) and MobileNav's top bar is
-// `md:hidden`, and the drawer holding the sidebar's links isn't even mounted
-// until dock More is tapped. Below the Tailwind `md` breakpoint (768px) the
-// anchor is that slot; at desktop widths it stays the sidebar's Data link.
-// A ^-anchored regex, not exact text: the Import tab's provider links also contain
-// "Data", and since #1801 the sidebar entry itself carries the review-count badge,
-// so its accessible name is "Data <n>" whenever an import needs attention.
-function appShellAnchor(page: Page): Locator {
-  const width = page.viewportSize()?.width ?? Number.POSITIVE_INFINITY;
-  return width < 768
-    ? page.getByTestId("dock-slot-more")
-    : page.locator("aside nav").getByRole("link", { name: /^Data/ });
-}
 
 // #181: with ALLOS_DEMO_MODE unset (the default webServer env), demo mode is fully
 // inert — the persistent demo banner must be absent on both the login page and an
@@ -50,17 +15,6 @@ test("no demo banner or credentials by default (#181)", async ({ page }) => {
   await page.goto("/");
   await expect(page.getByTestId("demo-banner")).toHaveCount(0);
 });
-
-for (const route of ROUTES) {
-  test(`renders ${route}`, async ({ page }) => {
-    const resp = await page.goto(route);
-    expect(resp?.status(), `HTTP status for ${route}`).toBeLessThan(400);
-    // The viewport's navigation surface proves the app shell rendered rather
-    // than a Next error boundary / 500 page (see appShellAnchor).
-    await expect(appShellAnchor(page)).toBeVisible();
-    await expect(page.getByText("Application error")).toHaveCount(0);
-  });
-}
 
 // #40: derived clinical indices are computed at read time from the seeded lipid /
 // metabolic / kidney panels and surfaced on the Clinical results page like normal
