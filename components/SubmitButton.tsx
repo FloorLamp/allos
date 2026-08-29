@@ -16,7 +16,11 @@ type SubmitButtonProps = Omit<
 };
 
 // Button owns submission state. This wrapper adds only the onboarding gate that
-// waits for a named radio selection.
+// waits for a named radio selection. `variant` is forwarded rather than
+// destructured away: the type already admitted it (SubmitButtonProps omits only
+// the props a submit may not state), so a caller asking for the one primary rank
+// used to typecheck and then be silently dropped — the demotion #3982 was written
+// against, arriving through the wrapper instead of the call site.
 export default function SubmitButton({
   children,
   pendingLabel,
@@ -26,6 +30,7 @@ export default function SubmitButton({
   "data-testid": testId,
   name,
   value,
+  variant,
 }: SubmitButtonProps) {
   const buttonRef = useRef<HTMLButtonElement>(null);
   const selectionSnapshot = useCallback(() => {
@@ -66,6 +71,7 @@ export default function SubmitButton({
       data-testid={testId}
       name={name}
       value={value}
+      variant={variant}
     >
       {children}
     </Button>
