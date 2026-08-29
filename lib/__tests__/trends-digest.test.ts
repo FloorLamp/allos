@@ -117,6 +117,18 @@ describe("summarizeTrends — direction, magnitude, labels", () => {
       "Body fat ↑ 2 pts — larger than its recent variation"
     );
   });
+
+  it("keeps an admitted sub-point percentage-unit change nonzero", () => {
+    const [item] = summarizeTrends([
+      shiftedSeries("eosinophils_relative", 0.5, 0.54, {
+        label: "Eosinophils Relative",
+        unit: "%",
+      }),
+    ]);
+    expect(item.text).toBe(
+      "Eosinophils Relative ↑ 0.04 pts — larger than its recent variation"
+    );
+  });
 });
 
 describe("summarizeTrends — reference-range crossings", () => {

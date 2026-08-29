@@ -323,6 +323,14 @@ function newsVerdict(
     : null;
 }
 
+function pointMagnitude(change: number): string {
+  const magnitude = Math.abs(change);
+  // Match protocol outcome deltas: sub-point changes earn two decimals, while
+  // larger changes stay at one. Extremely small changes remain honest too.
+  const rounded = round(magnitude, magnitude < 1 ? 2 : 1);
+  return rounded === 0 ? "<0.01 pts" : `${rounded} pts`;
+}
+
 function buildText(
   item: Omit<TrendItem, "text">,
   unitSuffix: string,
@@ -343,7 +351,7 @@ function buildText(
     roundedPct === 0
       ? null
       : unitSuffix.trim().startsWith("%")
-        ? `${round(Math.abs(item.absChange), 1)} pts`
+        ? pointMagnitude(item.absChange)
         : roundedPct != null
           ? `${roundedPct}%`
           : `${round(Math.abs(item.absChange), 1)}${unitSuffix}`;
