@@ -3,7 +3,7 @@
 // (isDoseDateAccepted) and the PRN recorded_at guard (#614 extended to #797's
 // user-suppliable intake time).
 
-import { daysBetweenDateStr, dateStrInTz } from "./date";
+import { daysBetweenDateStr, dateStrInTz, shiftDateStr } from "./date";
 
 // A late/retro dose-log DATE is accepted only within a small window of the profile's
 // today (#614): a forged/far-off date can't land a misdated row, but a legitimate
@@ -25,6 +25,21 @@ export const DOSE_LOG_DATE_WINDOW_DAYS = 2;
 export function isDoseDateAccepted(todayStr: string, date: string): boolean {
   const diff = daysBetweenDateStr(todayStr, date);
   return diff != null && Math.abs(diff) <= DOSE_LOG_DATE_WINDOW_DAYS;
+}
+
+// The profile-local days a recent-past logging surface may OFFER, today first
+// (#3936). Exactly the PAST half of the window `isDoseDateAccepted` enforces, read
+// off the same constant — so a day switcher can never offer a day the write core
+// would refuse, and can never withhold one it would accept. Widening the offer means
+// widening the constant, which is coupled to Telegram pointer retention above.
+//
+// Pure, and profile-LOCAL by construction: `todayStr` is the caller's already-resolved
+// profile today and the shift is calendar-string arithmetic, so "yesterday" for a
+// profile in UTC+13 is that profile's yesterday and never `Date.now() - 86400000`.
+export function doseLogDays(todayStr: string): string[] {
+  return Array.from({ length: DOSE_LOG_DATE_WINDOW_DAYS + 1 }, (_, back) =>
+    back === 0 ? todayStr : shiftDateStr(todayStr, -back)
+  );
 }
 
 // A user-suppliable recorded_at (PRN retro entry, #797) additionally must not be

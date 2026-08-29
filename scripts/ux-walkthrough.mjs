@@ -1177,10 +1177,12 @@ async function pagesJourney(browser) {
                   .join(", ")
             );
         }
-        if (g.clippedTotal || g.heightRowsTotal)
+        if (g.clippedTotal || g.heightRowsTotal || g.overlapsTotal)
           log(
-            `geometry ${route} (${tag}): ${g.clippedTotal} clipped, ${g.heightRowsTotal} mixed-height rows` +
-              ` (of ${g.clipCandidates} boxes / ${g.controlRowsExamined} control rows examined)`
+            `geometry ${route} (${tag}): ${g.clippedTotal} clipped, ${g.heightRowsTotal} mixed-height rows,` +
+              ` ${g.overlapsTotal} colliding text pairs` +
+              ` (of ${g.clipCandidates} boxes / ${g.controlRowsExamined} control rows` +
+              ` / ${g.textBoxesExamined} text boxes examined)`
           );
         if (m.renderFault)
           log(
