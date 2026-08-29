@@ -689,11 +689,12 @@ function LoginRow({
   // and these three are running in one. `wipeDeviceForSignOut` is the same helper the
   // sidebar's Log out calls (components/device-wipe.ts).
   //
-  // The same-device half is all that is closed here. Aimed at ANOTHER login — or at your
-  // own login's OTHER devices — these actions still leave the record and the open write
-  // gate on a device this code is not running in. That is #3053, and it is a design fork
-  // rather than a missing call: the far device learns nothing until it next reaches the
-  // server, and what it gets then is a 401 indistinguishable from ordinary expiry.
+  // The same-device half is all that is closed HERE. Aimed at ANOTHER login — or at your
+  // own login's OTHER devices — the far device is reached instead by the server's own
+  // answer (#3053): each of these actions leaves a revocation tombstone, so that device's
+  // next request is told the session was REVOKED rather than merely unauthorized, and it
+  // wipes through this same helper. It learns nothing until it next reaches the server,
+  // which is the bound; a 401 that says only "unauthorized" still changes nothing.
   //
   // THE WIPE GOES FIRST, before the request that justifies it has been sent — Log out's
   // posture verbatim, and for Log out's reason. This document stays mounted and

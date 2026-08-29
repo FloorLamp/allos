@@ -106,8 +106,8 @@ const ALLOW: Record<string, { count: number; why: string }> = {
     why: "auth-token expiry/consume/cleanup — token lifetimes, durations.",
   },
   "lib/auth.ts": {
-    count: 12,
-    why: "session create/slide/expire/reap — session TTLs, which lib/clock.ts's header explicitly bars the seam from owning.",
+    count: 18,
+    why: "session create/slide/expire/reap — session TTLs, which lib/clock.ts's header explicitly bars the seam from owning. The six added by #3053 are the revocation tombstones: `revoked_sessions.revoked_at` is stamped when a session is deliberately ended and read back only as a duration against the same 90-day session ceiling, so its calendar day never meets a today()-derived value. Two of the six are the LIVENESS clause the set-shaped tombstones select on — the same `expires_at`/`created_at` comparison the session lookup makes, so that a session which had already lapsed is never recorded as one somebody revoked.",
   },
   "lib/extraction-claim.ts": {
     count: 1,
