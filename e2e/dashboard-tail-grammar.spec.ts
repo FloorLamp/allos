@@ -36,16 +36,14 @@ test.describe("the Show-everything tail's grammar (#3365)", () => {
       // this grammar replaced, and it fails here whatever surface introduces it.
       // Counting controls rather than naming components is what keeps this from
       // becoming an allowlist that has to be maintained.
-      const cards = await section
-        .locator(".card")
-        .evaluateAll((nodes) =>
-          nodes.map((node) => ({
-            testId: node.getAttribute("data-testid"),
-            controls: node.querySelectorAll(
-              "button, form, input, select, textarea"
-            ).length,
-          }))
-        );
+      const cards = await section.locator(".card").evaluateAll((nodes) =>
+        nodes.map((node) => ({
+          testId: node.getAttribute("data-testid"),
+          controls: node.querySelectorAll(
+            "button, form, input, select, textarea"
+          ).length,
+        }))
+      );
       expect(
         cards.filter((card) => card.controls === 0),
         `${group}: a card that reports instead of acting`
