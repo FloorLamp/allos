@@ -8,7 +8,7 @@ import DestinationIndicator from "@/components/DestinationIndicator";
 import { PendingTextLink } from "@/components/PendingLink";
 import { flagTone } from "@/lib/reference-range";
 import { medicalValueCaret, medicalValueFlagText } from "@/lib/medical-value";
-import { displayUnit } from "@/lib/display-unit";
+import { displayUnit, shouldDisplayMedicalValueUnit } from "@/lib/display-unit";
 import type { AppRoute } from "@/lib/hrefs";
 
 export function PageHeader({
@@ -305,9 +305,13 @@ export function MedicalValue({
   // never disagree about which flags carry a direction and which carry a word.
   const caret = medicalValueCaret(flag);
   const text = medicalValueFlagText(flag, showFlagLabel);
+  const shownUnit = shouldDisplayMedicalValueUnit(value)
+    ? displayUnit(unit)
+    : null;
   return (
     <span className={medicalValueClass(flag)}>
-      {value ?? "—"} {displayUnit(unit) ?? ""}
+      {value ?? "—"}
+      {shownUnit ? ` ${shownUnit}` : null}
       {/* The caret is decorative (aria-hidden) — `text` below is its equivalent. */}
       {caret === "up" ? (
         <IconCaretUpFilled

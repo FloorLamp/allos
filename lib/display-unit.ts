@@ -48,3 +48,10 @@ export function displayUnit(unit: string | null | undefined): string | null {
     return ASCII_MICRO_TOKENS[token as keyof typeof ASCII_MICRO_TOKENS];
   });
 }
+
+/** Whether a medical result's stored unit describes the displayed value. */
+export function shouldDisplayMedicalValueUnit(
+  value: string | null | undefined
+): boolean {
+  return /\d/.test(value ?? "");
+}
