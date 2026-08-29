@@ -99,9 +99,11 @@ describe("readZip aggregate caps", () => {
 
   // This case deflates/inflates ~288 MiB. In isolation it finishes in well under a
   // second, but under FULL parallel vitest load on a busy machine the CPU-bound zlib
-  // work can starve past the 5 s default and flake the local gate (#1349; CI's fresh
-  // runners never reproduce it). The generous per-test timeout (last arg to `it`)
-  // removes the starvation window without weakening the assertion.
+  // work can starve past vitest's old implicit 5 s default and flake the local gate
+  // (#1349; CI's fresh runners never reproduce it). The `}, 30_000)` that bought
+  // that headroom was immune to `ALLOS_VITEST_TIMEOUT_MS` (#4002), and the tier's
+  // 15 000 ms already covers it: the whole file reads 2 016 ms across 7 tests on the
+  // green CI run at f1742fa6d, and this test is ~82% of it — ~9x margin.
   it("refuses when the total decompressed size crosses the aggregate cap", () => {
     // MAX_TOTAL_BYTES is 256 MiB. Six highly-compressible 48 MiB members (each under
     // the 64 MiB per-entry cap) sum to 288 MiB — the aggregate tally trips before
@@ -113,7 +115,7 @@ describe("readZip aggregate caps", () => {
       data: chunk,
     }));
     expect(() => readZip(buildZip(members))).toThrow(/total size/i);
-  }, 30_000);
+  });
 
   it("still accepts a normal small multi-entry package", () => {
     const out = readZip(

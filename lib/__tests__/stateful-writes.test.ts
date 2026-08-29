@@ -252,10 +252,12 @@ describe("stateful-write registry (#1893)", () => {
         ).toBe(true);
       }
     }
-    // Re-reads and re-parses every source file once per registered table. That
-    // fits the default 5s budget on Linux CI but not on a Windows filesystem,
-    // where the per-file read overhead is enough to overrun it.
-  }, 30_000);
+    // Re-reads and re-parses every source file once per registered table. The
+    // `}, 30_000)` this carried was sized against vitest's old implicit 5 s default
+    // and was immune to `ALLOS_VITEST_TIMEOUT_MS` (#4002); the tier's 15 000 ms
+    // covers it with ~7x to spare — the whole file reads 2 359 ms across 13 tests on
+    // the green CI run at f1742fa6d, and this test is ~90% of it.
+  });
 
   it("the gate module holds no DML of its own — it reaches the table through the store", () => {
     // lib/cycle-write.ts is the guard layer: it owns the typed refusals and calls the

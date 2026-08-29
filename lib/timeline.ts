@@ -68,7 +68,7 @@ import { episodeHeadline } from "./illness-episode-format";
 import { episodeHref } from "./hrefs";
 import { foodGroupName } from "./food-groups";
 import { ALCOHOL_FOOD_GROUP, substanceDef } from "./substance-use";
-import { foodLedgerHref } from "./hrefs";
+import { historyHref } from "./hrefs";
 
 // The #1502 panel slug as SQL, built once (the finite-preimage CASE is a large
 // literal — building it per call would rebuild it on every timeline read).
@@ -724,7 +724,7 @@ function collectEvents(
           groups.map((group) => foodGroupName(group.key)),
           5
         ),
-        href: foodLedgerHref({ from: day.date, to: day.date }),
+        href: historyHref({ kind: "food", day: day.date }),
         detailItems: groups.map((group) => ({
           label: foodGroupName(group.key),
           value: `${group.count} serving${group.count === 1 ? "" : "s"}`,

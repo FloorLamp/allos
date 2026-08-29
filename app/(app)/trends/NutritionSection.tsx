@@ -15,7 +15,7 @@ import { dayFillWindow } from "@/lib/day-fill";
 import { lensWindow } from "@/lib/trends";
 import { MACROS_SERIES_KEY } from "@/lib/trend-sparkline";
 import { chartSeries } from "@/lib/chart-colors";
-import { doseLedgerHref, DOSE_LEDGER_ALL_KINDS } from "@/lib/hrefs";
+import { historyHref } from "@/lib/hrefs";
 import {
   aggregateFoodAdherenceByWeek,
   orderNutritionSections,
@@ -271,7 +271,7 @@ export default async function NutritionSection({
               pattern, the ledger shows the rows behind it — and a tapped day in the
               panel below links into that ledger filtered to the day. */}
           <DestinationLink
-            href={doseLedgerHref("supplement", { kind: DOSE_LEDGER_ALL_KINDS })}
+            href={historyHref({ kind: "dose" })}
             data-testid="dose-history-ledger-link"
             className="text-sm font-medium text-brand-700 hover:underline dark:text-brand-400"
           >

@@ -12,8 +12,8 @@ import type { AppRoute } from "@/lib/hrefs";
 //
 // This is that one shape. It is parameterized by the DESTINATION rather than by a
 // domain enum: a switch inside a shared door is how the shell that #3484 unpicked
-// came to know about doses, and the ledgers' hrefs already have their own helpers
-// (`doseLedgerHref`, `foodLedgerHref`) that own the routing question.
+// came to know about doses, and `historyHref` (lib/hrefs.ts) owns the routing question
+// for every one of them since #3958 folded the four ledger routes into `/history`.
 //
 // Never icon-only: the glyph is `aria-hidden` beside real text.
 export default function LedgerDoorLink({

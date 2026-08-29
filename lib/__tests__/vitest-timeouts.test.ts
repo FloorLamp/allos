@@ -79,8 +79,22 @@ describe("the vitest per-test ceiling", () => {
 // only tests it could not reach.
 describe("a per-test ceiling stated as a multiple", () => {
   it("scales with whichever ceiling this run resolved", () => {
+    expect(perTestCeiling(2, "worst")).toBe(testTimeout * 2);
+    expect(perTestCeiling(1, "green")).toBe(testTimeout);
+    // The basis is a claim about the reading, never about the arithmetic: two calls
+    // that differ only there must produce the same number, or a reader would start
+    // deriving margins from the word instead of from the measurement beside it.
+    expect(perTestCeiling(3, "green")).toBe(perTestCeiling(3, "worst"));
+  });
+
+  it("cannot be written without saying which reading it was derived from", () => {
+    // #3999 derived migration-reentry's ceiling from a 3 505 ms GREEN reading while
+    // recording, in the same comment, that the test had crossed 15 000 ms on main —
+    // 2x the observed worst where the rule asks ~4x. Both kinds of call looked
+    // identical in the source (#4002), so the basis is required rather than asked
+    // for, and this is what holds that shut.
+    // @ts-expect-error the basis argument is mandatory
     expect(perTestCeiling(2)).toBe(testTimeout * 2);
-    expect(perTestCeiling(1)).toBe(testTimeout);
   });
 });
 

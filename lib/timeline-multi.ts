@@ -25,16 +25,32 @@ import type { TimelineEvent } from "./timeline-format";
 // its subject chip (#534) and its day-deep-link can re-key to the item's own profile.
 export type ProfiledTimelineEvent = TimelineEvent & { profileId: number };
 
+// THE MINIMUM A MERGED ROW HAS TO BE (#3958). Everything below reads exactly these
+// four fields, so the merge engine is stated over them rather than over one feed's
+// row type — which is what lets `/history`'s HistoryRow use the SAME day bucketing,
+// the SAME divergent-day marks and the SAME within-day order instead of growing a
+// second answer to a question this module already settled. It is a type parameter,
+// not a fork: no branch, no flag, and every existing caller keeps ProfiledTimelineEvent
+// by default.
+export interface MergeableRow {
+  id: string;
+  date: string;
+  sortTime?: string | null;
+  profileId: number;
+}
+
 // One member's already-gathered timeline events, plus THAT member's own "today" (its
 // timezone-local date). The date is carried per member on purpose — it is the
 // per-profile-context trap (#1096): a member's relative-day labelling MUST be computed
 // against its OWN today, never a shared one. Each event's `date` is likewise already
 // the member's local calendar date (the per-profile gather resolved created-at
 // fallbacks in the member's timezone).
-export interface MemberTimeline {
+export interface MemberTimeline<
+  E extends MergeableRow = ProfiledTimelineEvent,
+> {
   profileId: number;
   today: string;
-  events: ProfiledTimelineEvent[];
+  events: E[];
 }
 
 // The near-today relative meaning of a calendar date for one member. Only these three
@@ -54,9 +70,11 @@ export interface DayMark {
 // across members — per-member relative marks (the honest divergent-day header). `marks`
 // is empty for an ordinary day and ALWAYS empty in single view, so the page adds no
 // divergence chrome unless it's genuinely earned.
-export interface MergedTimelineDay {
+export interface MergedTimelineDay<
+  E extends MergeableRow = ProfiledTimelineEvent,
+> {
   date: string;
-  events: ProfiledTimelineEvent[];
+  events: E[];
   marks: DayMark[];
 }
 
@@ -77,16 +95,22 @@ export function relativeDay(
 // sortTimelineEvents (date desc, then sortTime desc), with a profileId tiebreak BEFORE
 // the id compare so two members' rows that happen to share an event id (e.g. both have
 // activity id 5) still order deterministically and never collide as a React key.
-function compareMerged(
-  a: ProfiledTimelineEvent,
-  b: ProfiledTimelineEvent
-): number {
+function compareMerged<E extends MergeableRow>(a: E, b: E): number {
   if (a.date !== b.date) return a.date < b.date ? 1 : -1;
   const at = a.sortTime ?? "";
   const bt = b.sortTime ?? "";
   if (at !== bt) return at < bt ? 1 : -1;
   if (a.profileId !== b.profileId) return a.profileId - b.profileId;
-  return a.id.localeCompare(b.id);
+  // CODE UNITS, NOT `localeCompare` (#3958, #4016 review). The tie-break has to be a
+  // TOTAL ORDER on distinct ids or "byte-stable across renders" is not a property the
+  // sort has: `localeCompare` may answer 0 for two different strings that differ only
+  // in characters its collation ignores, and V8's sort then falls back to whatever
+  // order the input happened to arrive in. Every id here was ASCII when this shipped,
+  // which is why nothing noticed — but a custom substance's id carries the name the
+  // person typed, so the ignorable-character case is reachable by ordinary use rather
+  // than only in theory. `<`/`>` compare code units and can only return 0 for equal
+  // strings, and ids are unique by construction.
+  return a.id < b.id ? -1 : a.id > b.id ? 1 : 0;
 }
 
 // Compute the per-member relative marks for a calendar date, or [] when the date is NOT
@@ -98,7 +122,9 @@ function compareMerged(
 // [] — no false divergence chrome for aligned timezones or old history.
 export function dayMarksFor(
   date: string,
-  members: readonly MemberTimeline[]
+  // Only the two fields the divergence question needs, so the merge's row type never
+  // reaches this decision at all.
+  members: readonly { profileId: number; today: string }[]
 ): DayMark[] {
   const rels = members.map((m) => relativeDay(date, m.today));
   const distinct = new Set(rels.map((r) => r ?? "far"));
@@ -119,10 +145,10 @@ export function dayMarksFor(
 // each day with the honest divergent-day marks. The result is the multi-view analogue
 // of groupTimelineDays — one grouping engine whether one member or five (#221). Days
 // are newest-first; a day's events are sorted with the cross-profile comparator.
-export function mergeMemberTimelines(
-  members: readonly MemberTimeline[]
-): MergedTimelineDay[] {
-  const byDate = new Map<string, ProfiledTimelineEvent[]>();
+export function mergeMemberTimelines<E extends MergeableRow>(
+  members: readonly MemberTimeline<E>[]
+): MergedTimelineDay<E>[] {
+  const byDate = new Map<string, E[]>();
   for (const member of members) {
     for (const event of member.events) {
       const arr = byDate.get(event.date);
@@ -144,16 +170,18 @@ export function mergeMemberTimelines(
 // / #1329): the member's events grouped by their own local dates, newest-first. The
 // alternative presentation to mergeMemberTimelines over the SAME per-member gather — the
 // mode lives here so the shared merge layer owns both orderings, never a per-page fork.
-export interface MemberTimelineSection {
+export interface MemberTimelineSection<
+  E extends MergeableRow = ProfiledTimelineEvent,
+> {
   profileId: number;
   today: string;
-  days: MergedTimelineDay[];
+  days: MergedTimelineDay<E>[];
   empty: boolean;
 }
 
-export function byPersonTimelines(
-  members: readonly MemberTimeline[]
-): MemberTimelineSection[] {
+export function byPersonTimelines<E extends MergeableRow>(
+  members: readonly MemberTimeline<E>[]
+): MemberTimelineSection<E>[] {
   return members.map((m) => ({
     profileId: m.profileId,
     today: m.today,

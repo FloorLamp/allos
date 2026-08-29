@@ -218,7 +218,12 @@ function migratedFile(
 // covers the one test that carried NO cap and ran on the tier default while its
 // neighbours ran on 30 000 — the test that timed out at 15 000 ms with nothing
 // failing when this file was reproduced under load.
-describe("named dirty seed data", { timeout: perTestCeiling(3) }, () => {
+// Named rather than inline only so the `describe` line still fits — the same reason
+// one-cycle-seed-shape.test.ts names its own. The basis is the OBSERVED WORST: the
+// red run at 11c7920b, not a green one (#4002).
+const SEED_CEILING = { timeout: perTestCeiling(3, "worst") };
+
+describe("named dirty seed data", SEED_CEILING, () => {
   it("writes the dirty witnesses through seed.ts while the pinned baseline writes none", () => {
     expect(seedAndRead("dirty")).toEqual({
       qualifiedEncounter: 1,

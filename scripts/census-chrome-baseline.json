@@ -27,9 +27,9 @@
       }
     },
     {
-      "route": "/nutrition?tab=supplements",
+      "route": "/history",
       "viewport": "desktop",
-      "why": "A tabbed hub panel — the census's HUB_VARIANTS shape, where a tab strip sits between the title and the content.",
+      "why": "The record — a full-width day-grouped row list under one filter row, with a bounded chrome stack above the first row (#3958).",
       "landmarks": {
         "sidebarWidth": 240,
         "mainInsetLeft": 240,
@@ -42,9 +42,9 @@
       }
     },
     {
-      "route": "/nutrition/dose-history",
+      "route": "/nutrition?tab=supplements",
       "viewport": "desktop",
-      "why": "An event ledger — the #3647 shared frame, with a BackLink above the title and a full-width row list as its content.",
+      "why": "A tabbed hub panel — the census's HUB_VARIANTS shape, where a tab strip sits between the title and the content.",
       "landmarks": {
         "sidebarWidth": 240,
         "mainInsetLeft": 240,
@@ -118,6 +118,22 @@
       }
     },
     {
+      "route": "/history",
+      "viewport": "mobile",
+      "why": "The record — a full-width day-grouped row list under one filter row, with a bounded chrome stack above the first row (#3958).",
+      "landmarks": {
+        "shellChromeHeight": 57,
+        "dockHeight": 57,
+        "mainInsetLeft": 0,
+        "mainInsetRight": 0,
+        "contentGutterLeft": 16,
+        "contentGutterRight": 16,
+        "contentTopInset": 73,
+        "contentWidth": 358,
+        "pageTitleHeight": 1
+      }
+    },
+    {
       "route": "/nutrition?tab=supplements",
       "viewport": "mobile",
       "why": "A tabbed hub panel — the census's HUB_VARIANTS shape, where a tab strip sits between the title and the content.",
@@ -130,22 +146,6 @@
         "contentGutterRight": 16,
         "contentTopInset": 123,
         "contentWidth": 358
-      }
-    },
-    {
-      "route": "/nutrition/dose-history",
-      "viewport": "mobile",
-      "why": "An event ledger — the #3647 shared frame, with a BackLink above the title and a full-width row list as its content.",
-      "landmarks": {
-        "shellChromeHeight": 57,
-        "dockHeight": 57,
-        "mainInsetLeft": 0,
-        "mainInsetRight": 0,
-        "contentGutterLeft": 16,
-        "contentGutterRight": 16,
-        "contentTopInset": 73,
-        "contentWidth": 358,
-        "pageTitleHeight": 28
       }
     },
     {
