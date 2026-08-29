@@ -1,13 +1,21 @@
-# Micro-motion: the small moves that carry information
+# Micro-motion: the small moves the app is allowed to make
 
 The app is almost entirely static, and that is the calm identity working — no
-garnish and nothing looping. Motion begins only from a gesture, a write, or a
-bounded async state transition the reader is already waiting for. It answers
-**"did that work?"** or **"what just arrived?"** inside the interface, faster and
-quieter than a toast. Motion here is information, and it is held to the same
-standard as copy.
+garnish, nothing looping, nothing moving without a gesture. Two classes of motion
+are allowed out of that stillness.
 
-Seven motions ship today (#2654, #2657, #3253, #3675). `slide` and `fold` are the two halves of one
+**INFORMATION motion** answers **"did that work?"** or **"what just arrived?"**
+inside the interface, faster and quieter than a toast. It carries a fact, and is
+held to the same standard as copy.
+
+**CONTINUITY motion** (#3676) answers nothing. Its job is that **the eye keeps its
+place through a change the reader caused** — a panel growing under the summary
+they tapped. Switch it off and no fact is lost, only the reader's grip on where
+they were. That is why rule 3's decoration sentence is scoped to the information
+class and why a continuity motion declares [two different
+things](#the-continuity-class) instead.
+
+Seven information motions ship today (#2654, #2657, #3253, #3675). `slide` and `fold` are the two halves of one
 gesture — a dismissal travelling, and the fold answering — and they are deliberately
 **two** tokens, because they are two durations with two different justifications.
 
@@ -35,17 +43,50 @@ settles, it never bounces back.
    making itself, and a health app must not campaign at anyone. The token test fails
    an iteration count, `infinite` or `alternate` anywhere in the stylesheet's
    Micro-motion section, including every declared keyframe body.
-3. **Reduced motion is the designed state, not a degradation.** Every motion
-   declares its `reducedEndState`: the same information, arriving instantly. A motion
-   whose meaning is lost when it is switched off was decoration and does not belong
-   in the table.
-4. **Motion is never the only carrier.** Every motion declares `carriedBy` — the
-   text, attribute or colour that states the same fact for a reader who sees no
-   motion at all, including a screen-reader user and a printed page.
+3. **Reduced motion is the designed state, not a degradation.** Every motion in
+   either class declares its `reducedEndState`: for an information motion, the same
+   information arriving instantly; for a continuity motion, the end layout,
+   instantly. **The second sentence is scoped to the information class**: a motion in
+   THAT table whose meaning is lost when it is switched off was decoration and does
+   not belong in it. A continuity motion is defined by having no meaning to lose, so
+   that sentence cannot judge it — `preserves` and `causedBy` do that job instead.
+   The rule is scoped, not weakened.
+4. **Motion is never the only carrier.** Every information motion declares
+   `carriedBy` — the text, attribute or colour that states the same fact for a reader
+   who sees no motion at all, including a screen-reader user and a printed page. A
+   continuity motion carries no fact, so it has none to declare.
 
-Rules 3 and 4 are why the declaration table exists. They are prose, so the test can
+Rules 3 and 4 are why the declaration tables exist. They are prose, so the test can
 only check that the prose is there; what it prevents is a motion being added without
 anyone having to answer either question.
+
+## The continuity class
+
+A continuity motion declares its own two required fields, and a row that leaves
+either blank **cannot be constructed** — `continuityMotion(ms, preserves, causedBy,
+reducedEndState)` throws, the same declare-or-argue shape `bandExemption()` and
+`arguedExclusion()` use.
+
+- **`preserves`** — the thing that stays continuous across the change, in the
+  reader's terms ("the summary you tapped stays under your finger while the panel
+  grows below it").
+- **`causedBy`** — the reader's own action that licenses it. This is the guard that
+  keeps "nothing moves without a gesture" true: a continuity motion with no gesture
+  behind it is ambient movement and is refused. A network answer arriving unprompted
+  is **not** a cause; the tap that requested it is.
+
+Everything else is inherited from the information class unchanged: the 150–300 ms
+band and its mechanical test (with the same `bandExemption()` shape if one is ever
+argued — the pinned exempt-key list still names `fold` alone), nothing loops, the
+single `--motion-ease` so the two classes cannot feel different, and
+`reducedEndState`. That last one is why the class is safe: **a reader who turns
+motion off gets exactly today's app.**
+
+**What is still refused**, in both classes, stated so the continuity class cannot be
+read as an opening: ambient or idle animation; anything looping; motion on a surface
+the reader did not act on; decorative entrances on page load; motion that delays a
+reader's next action — a control is interactive on the first frame of any continuity
+motion, never after it.
 
 ## The band's one exemption
 
@@ -87,7 +128,7 @@ smuggle the row's travel out of the band too, and the test fails that.
 ## Where the halves live
 
 - `lib/micro-motion.ts` — the pure half. Durations, the ease curve, the `MICRO_MOTIONS`
-  declaration table, `microMotionPlan(kind, reduceMotion)` (which folds the preference
+  and `CONTINUITY_MOTIONS` declaration tables, `microMotionPlan(kind, reduceMotion)` (which folds the preference
   into a duration and a class name, returning `0` and `""` under the preference).
 - `app/globals.css`, `SECTION: Micro-motion` — the custom properties and the declared
   `.motion-*` classes, plus a `prefers-reduced-motion: reduce` block that neutralizes
