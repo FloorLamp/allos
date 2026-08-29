@@ -31,6 +31,8 @@ import DashboardPlacementCanvas, {
   type DashboardPlacementCanvasProps,
 } from "@/components/dashboard/DashboardPlacementCanvas";
 import { STANDING_READING_ORDER } from "@/lib/dashboard-standing";
+import { everythingTail } from "@/lib/dashboard-relevance";
+import { trackedPageFor } from "@/lib/recent-pages";
 
 const session = vi.hoisted(() => ({
   loginId: 0,
@@ -564,6 +566,36 @@ describe("actual atomic dashboard manifests", () => {
       expect(groups, persona).toEqual(groups.toSorted((a, b) => a - b));
     }
     expect(seen).toEqual(new Set(order));
+  });
+
+  // THE #3077 COMPLETENESS CONTRACT, NOW A MANIFEST ASSERTION (#3366).
+  //
+  // Show everything no longer renders every placement, so "nothing the ranker gathers
+  // can go missing" stopped being something a reader could verify by scrolling. It is
+  // verified here instead, against the REAL manifests and by ITERATING THE DROPS:
+  // each non-admitted placement names a page, that page is one of the doors the tail
+  // draws, and the app has a name for it — which is exactly what the canvas needs to
+  // draw the row (it throws otherwise). A candidate builder that starts dropping
+  // without a named page fails here, on the day the guarantee would have quietly
+  // stopped holding rather than the day someone noticed.
+  it("keeps every dropped Show everything fact one named door away", () => {
+    const dropped: string[] = [];
+    for (const [persona, placements] of manifests) {
+      const { doors } = everythingTail(placements);
+      for (const placement of placements) {
+        if (placement.lane !== "everything" || placement.admitted) continue;
+        const page = placement.candidate.navDuplicateOf;
+        dropped.push(`${persona}:${placement.candidate.candidateId}`);
+        expect(
+          page && doors.includes(page) && trackedPageFor(page)?.label,
+          `${persona}:${placement.candidate.candidateId} has no named door`
+        ).toBeTruthy();
+      }
+      expect(new Set(doors).size, persona).toBe(doors.length);
+    }
+    // The loop above is satisfiable by admitting everything, so the seeded profiles
+    // must actually exercise a drop for it to have asserted anything.
+    expect(dropped.length).toBeGreaterThan(0);
   });
 
   it("keeps sleep regularity only in its healthspan family", () => {

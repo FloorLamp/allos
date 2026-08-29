@@ -222,7 +222,6 @@ import { PICKER_SYMPTOMS } from "@/lib/symptoms";
 import { isTaskConfigured } from "@/lib/ai-resolve";
 import { hasActiveIllnessSituation } from "@/lib/settings/profile-attrs";
 import OnboardingChecklist from "@/components/dashboard/OnboardingChecklist";
-import HouseholdHistoryPromoLink from "@/components/dashboard/HouseholdHistoryPromoLink";
 import { dismissRecentlyResolved, saveIllnessNowState } from "./actions";
 import { episodeHref, encounterHref, type AppRoute } from "@/lib/hrefs";
 import { formatRecordDateTime } from "@/lib/record-format";
@@ -1266,14 +1265,15 @@ async function renderDashboard(
     );
   }
   if (promoteHouseholdHistory) {
+    // NO NODE AND NO ROW. This fact is a link to "Illness episodes" and nothing
+    // else, so Show everything draws the page as a door instead of a card that
+    // restates the sidebar (#3366). It still places, so completeness is unchanged.
     add(
       careCandidates.householdHistory({
         subject: { scope: "login" },
         sourceOrder: sourceOrder++,
       }),
-      <DashboardAtomCard title="Household illness history">
-        <HouseholdHistoryPromoLink />
-      </DashboardAtomCard>
+      undefined
     );
   }
 
