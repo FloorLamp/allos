@@ -236,6 +236,18 @@ function latestDispatchState(rows, branch) {
   return state;
 }
 
+export function resumeState(rows, branch) {
+  const active = activeDispatches(rows);
+  const prior = latestDispatchState(rows, branch);
+  return {
+    active,
+    prior,
+    candidate:
+      Boolean(prior?.candidate) &&
+      !active.some((dispatch) => dispatch.candidate),
+  };
+}
+
 function completedDurationsMs(rows) {
   const started = new Map();
   const durations = [];
@@ -1921,12 +1933,11 @@ function cmdResume(argv) {
     process.exit(2);
   }
   const rows = readLedger();
-  const active = activeDispatches(rows);
+  const { active, prior, candidate } = resumeState(rows, branch);
   if (active.some((d) => d.branch === branch)) {
     console.error(`${branch} is already active — nothing to resume.`);
     process.exit(1);
   }
-  const prior = latestDispatchState(rows, branch);
   if (!prior) {
     console.error(
       `no prior dispatch for ${branch} in the ledger — use \`new --branch ${branch}\`.`
@@ -1960,9 +1971,7 @@ function cmdResume(argv) {
     task: prior.task ?? null,
     portBase,
     e2e: Boolean(prior.e2e),
-    candidate:
-      Boolean(prior.candidate) &&
-      !active.some((dispatch) => dispatch.candidate),
+    candidate,
     priority: prior.priority ?? "unclassified",
     lane: prior.lane ?? "unclassified",
   };
