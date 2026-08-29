@@ -7,6 +7,22 @@ import { followLink } from "./helpers";
 // one-click fold); this drives the required flow: open the preview, override the one
 // conflicting field to the DISCARDED row's value, confirm, and prove the merged
 // keeper carries the override (51 min).
+// THE MERGE IS THE POINT, so this row cannot be restored (#3946). "Conflict merge dupe" is
+// seeded on the SHARED profile for this test alone (e2e/seed/merge.ts) and
+// merging consumes it; putting it back by hand would be a second producer of a
+// row the seed owns. The keeper survives with the overridden duration, so the Log keeps a row on that day.
+// Declared here rather than exempted by name: nothing anywhere holds a list of
+// specs this guard skips, and #3260's caveat stands — nothing checks that this
+// `why` is still true.
+test.use({
+  sharedProfileLeftovers: {
+    why:
+      "The merge under test consumes this seeded row; restoring it would " +
+      "re-seed rather than clean up, and no other spec addresses it.",
+    titles: ["Conflict merge dupe"],
+  },
+});
+
 test("merge preview lets you override a conflicting field to the discarded value (#100)", async ({
   page,
 }) => {

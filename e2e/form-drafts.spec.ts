@@ -2,6 +2,7 @@ import { test, expect } from "./fixtures";
 import { closeEditor, openFact } from "./intake-form-helpers";
 import { type Page } from "@playwright/test";
 import Database from "better-sqlite3";
+import { deleteActivitiesTitled } from "./shared-profile-guard";
 import { hydratedClick, settledFill } from "./helpers";
 import { workerDbPath } from "./worker-env";
 
@@ -71,19 +72,6 @@ async function draftRows(page: Page): Promise<DraftRow[]> {
 
 function activityDrafts(rows: DraftRow[]): DraftRow[] {
   return rows.filter((r) => r.key.includes(":activity:"));
-}
-
-function deleteActivitiesTitled(...titles: string[]) {
-  const h = new Database(DB_PATH);
-  try {
-    for (const title of titles) {
-      // Child rows (exercise components, routes, videos) cascade off the activity —
-      // the same one-statement cleanup the other activity-owning specs use.
-      h.prepare("DELETE FROM activities WHERE title = ?").run(title);
-    }
-  } finally {
-    h.close();
-  }
 }
 
 function deleteIntakeItem(name: string) {

@@ -2,12 +2,26 @@ import { test, expect } from "./fixtures";
 import { followLink } from "./helpers";
 import type { Page } from "@playwright/test";
 import Database from "better-sqlite3";
+import { deleteActivitiesTitled } from "./shared-profile-guard";
 import { workerDbPath } from "./worker-env";
 import {
   serializeCyclingStreamSummary,
   summarizeCyclingStreams,
 } from "@/lib/cycling-stream-summary";
 import { TAP_FLOOR_PX } from "@/lib/tap-floor-tokens";
+
+// Two tests below plant cycling-family rides on the SHARED profile, dated inside
+// Analyze's default range — the exact shape that made this file's own Cycling quick
+// link a coin flip when a neighbour left one behind (#3930). Nothing after them
+// reads these rows, so they are swept from an afterEach: deleting a title no test
+// planted is a no-op, and doing it here means a mid-test failure strands nothing.
+const PLANTED_RIDES = [
+  "Fictional studio intervals",
+  "Fictional studio endurance",
+  "Fictional trail loops",
+  "Fictional max-only ride",
+];
+test.afterEach(() => deleteActivitiesTitled(...PLANTED_RIDES));
 
 // The Log feed is a slim index. Selecting a ride navigates directly to its
 // canonical activity page at every viewport size.
