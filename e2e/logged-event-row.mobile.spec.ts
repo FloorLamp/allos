@@ -45,9 +45,13 @@ const ITEM_TWO_AMOUNT = "15 mg";
 // own prose.
 const PRACTICE = "E2e Row Breathwork";
 const PRACTICE_NOTE = "Felt steadier by the end";
-// The serving's group key and the name the app renders for it.
+// The serving's group key and the name the app renders for it. TWO of them, on one
+// day and one minute: the food ledger is a cross-ITEM ledger too, so it carries the
+// same identity question as the dose ledger (#3937).
 const FOOD_GROUP = "berries";
 const FOOD_NAME = "Berries";
+const FOOD_GROUP_TWO = "leafy_greens";
+const FOOD_NAME_TWO = "Leafy greens";
 
 // THE COMPACT ROW IS ONE LINE, and this bounds its HEIGHT IN CSS PIXELS at 430px.
 // Measured 2026-08-27: 56px on the dose ledger, 57px on the food ledger, on a
@@ -98,19 +102,19 @@ function deleteFixtureRows(db: Database.Database): void {
     ITEM
   );
   db.prepare(
-    `DELETE FROM food_log_events WHERE profile_id = ? AND date = ? AND group_key = ?`
-  ).run(PROFILE, DAY, FOOD_GROUP);
+    `DELETE FROM food_log_events WHERE profile_id = ? AND date = ? AND group_key IN (?, ?)`
+  ).run(PROFILE, DAY, FOOD_GROUP, FOOD_GROUP_TWO);
   db.prepare(
     `DELETE FROM practice_logs WHERE profile_id = ? AND practice = ?`
   ).run(PROFILE, PRACTICE);
 }
 
-/** One supplement with one dose logged at `hhmm` on DAY, and the item's id. */
+/** One supplement, with a dose logged at each of `hhmm` on DAY. */
 function seedItem(
   db: Database.Database,
   name: string,
   amount: string,
-  hhmm: string
+  ...hhmm: string[]
 ): void {
   const itemId = Number(
     db
@@ -128,10 +132,12 @@ function seedItem(
       )
       .run(itemId, amount).lastInsertRowid
   );
-  db.prepare(
+  const log = db.prepare(
     `INSERT INTO intake_item_logs (dose_id, item_id, date, occurred_at, status, amount)
        VALUES (?, ?, ?, ?, 'taken', ?)`
-  ).run(doseId, itemId, DAY, localInstant(db, hhmm), amount);
+  );
+  for (const at of hhmm)
+    log.run(doseId, itemId, DAY, localInstant(db, at), amount);
 }
 
 function seedDose(): void {
@@ -144,12 +150,16 @@ function seedDose(): void {
   }
 }
 
-/** The stack day: two different items, one minute, one profile-local date. */
+/**
+ * The stack day, built so BOTH ways two rows can collide are present at once: two
+ * different items in the same minute (which only the item tells apart), and the same
+ * item twice on one day (which only the clock tells apart).
+ */
 function seedStackDay(): void {
   const db = openDb();
   try {
     deleteFixtureRows(db);
-    seedItem(db, ITEM, ITEM_AMOUNT, "08:46");
+    seedItem(db, ITEM, ITEM_AMOUNT, "08:46", "12:10");
     seedItem(db, ITEM_TWO, ITEM_TWO_AMOUNT, "08:46");
   } finally {
     db.close();
@@ -174,11 +184,13 @@ function seedServing(): void {
   try {
     deleteFixtureRows(db);
     const at = localInstant(db, "08:46");
-    db.prepare(
+    const insert = db.prepare(
       `INSERT INTO food_log_events
          (profile_id, group_key, date, meal_slot, recorded_at, occurred_at)
        VALUES (?, ?, ?, 'Morning', ?, ?)`
-    ).run(PROFILE, FOOD_GROUP, DAY, at, at);
+    );
+    insert.run(PROFILE, FOOD_GROUP, DAY, at, at);
+    insert.run(PROFILE, FOOD_GROUP_TWO, DAY, at, at);
   } finally {
     db.close();
   }
@@ -384,6 +396,60 @@ test.describe("the compact logged-event row at 430px (#3671)", () => {
     expect(collapsed).toBeGreaterThanOrEqual(TAP_FLOOR_PX);
     expect(collapsed).toBeLessThanOrEqual(COMPACT_ROW_CEILING_PX);
     await expect(visibleDetail(ledgerRow)).toHaveCount(0);
+
+    // ── AND IT IS A CROSS-ITEM LEDGER, SO IDENTITY IS THE FOOD (#3937) ─────────
+    //
+    // The third consumer with the same defect, re-slotted in the same change so the
+    // three ledgers #3958 inherits speak one grammar rather than two.
+    const greens = page
+      .getByTestId("food-ledger-row")
+      .filter({ hasText: FOOD_NAME_TWO });
+    await expect(greens).toHaveCount(1);
+
+    const whenOf = (row: Locator) =>
+      row
+        .locator('[data-card="trailing"]')
+        .textContent()
+        .then((t) => (t ?? "").trim());
+
+    // THE PREMISE. Both servings were logged in the same minute of the same day, so
+    // the when-cell cannot be what tells these two rows apart.
+    expect(
+      await whenOf(ledgerRow),
+      "the two seeded servings no longer share a minute"
+    ).toBe(await whenOf(greens));
+
+    // THE HEAD LINE TELLS THEM APART, with no tap, and carries the day beside the
+    // clock rather than a clock on an unnamed day.
+    await expect(ledgerRow.locator('[data-card="title"]')).toHaveText(
+      FOOD_NAME
+    );
+    await expect(greens.locator('[data-card="title"]')).toHaveText(
+      FOOD_NAME_TWO
+    );
+    expect(await whenOf(ledgerRow)).toMatch(/^Tue,.*·/);
+
+    // AND SO DO THEIR CONTROLS.
+    const nameOf = (row: Locator) =>
+      row
+        .getByRole("button", { name: /Serving actions/ })
+        .getAttribute("aria-label")
+        .then((n) => n ?? "");
+    const [berriesName, greensName] = [
+      await nameOf(ledgerRow),
+      await nameOf(greens),
+    ];
+    expect(berriesName).toContain(FOOD_NAME);
+    expect(greensName).toContain(FOOD_NAME_TWO);
+    expect(berriesName, `both ⋯ announced "${berriesName}"`).not.toBe(
+      greensName
+    );
+    // AND THE NAME CARRIES THE WHOLE WHEN-CELL, not just its date — two servings of
+    // one food on one day are told apart only by the clock. That pair lives in the
+    // dose ledger's fixture above, where this same spelling is proven able to fail;
+    // here the claim is made against the cell the reader is looking at, so the two
+    // ledgers cannot drift to two spellings.
+    expect(berriesName).toContain(await whenOf(ledgerRow));
   });
 
   test("the compact row is the five EntryHistoryTable surfaces' and nobody else's", async ({
@@ -422,48 +488,65 @@ test.describe("the compact logged-event row at 430px (#3671)", () => {
     await phone(page);
     await page.goto(`/nutrition/dose-history?from=${DAY}&to=${DAY}&kind=all`);
 
-    // SCOPED TO THIS SPEC'S OWN TWO ROWS. The shared seed logs its own doses on this
-    // day, and a claim about "every row" would be a claim about a fixture nothing
-    // here controls.
+    // SCOPED TO THIS SPEC'S OWN ROWS. The shared seed logs its own doses on this day,
+    // and a claim about "every row" would be a claim about a fixture nothing here
+    // controls.
     const magnesium = page
       .getByTestId("dose-ledger-row")
       .filter({ hasText: ITEM });
     const zinc = page
       .getByTestId("dose-ledger-row")
       .filter({ hasText: ITEM_TWO });
-    await expect(magnesium).toHaveCount(1);
+    await expect(magnesium).toHaveCount(2);
     await expect(zinc).toHaveCount(1);
 
-    const whenOf = (row: Locator) =>
-      row
-        .locator('[data-card="trailing"]')
-        .textContent()
-        .then((t) => (t ?? "").trim());
-    const nameOf = (row: Locator) =>
-      row
-        .getByRole("button", { name: /Dose actions/ })
-        .getAttribute("aria-label")
-        .then((n) => n ?? "");
+    const whens = await magnesium
+      .locator('[data-card="trailing"]')
+      .allTextContents()
+      .then((all) => all.map((t) => t.trim()));
+    const zincWhen = (
+      (await zinc.locator('[data-card="trailing"]').textContent()) ?? ""
+    ).trim();
 
-    // THE PREMISE, BEFORE THE VERDICT. Both doses were written in the same minute of
-    // the same day — honest, one usual-routine bundle write — so the when-cell cannot
-    // be what tells these rows apart. If a future fixture drifts these to different
-    // clocks, this spec stops measuring the defect and says so here.
+    // THE PREMISES, BOTH OF THEM, BEFORE THE VERDICT — because there are two ways a
+    // pair of rows can collide and the fix has to answer both.
+    //
+    // ONE: a dose of each item written in the same minute, which only the ITEM tells
+    // apart. Under the old slotting these two head lines were the same string.
     expect(
-      await whenOf(magnesium),
-      "the two fixture doses no longer share a minute, so nothing below is a test"
-    ).toBe(await whenOf(zinc));
+      whens,
+      "no seeded dose shares a minute with the second item any more"
+    ).toContain(zincWhen);
+    // TWO: the same item twice on one day, which only the CLOCK tells apart. This is
+    // the pair #3937's literal "item — date" spelling would have left colliding.
+    const dayOf = (when: string) => when.split("·")[0].trim();
+    expect(dayOf(whens[0])).toBe(dayOf(whens[1]));
+    expect(whens[0], "the two doses of one item share a clock").not.toBe(
+      whens[1]
+    );
 
-    // THE HEAD LINE TELLS THEM APART, with no tap.
-    await expect(magnesium.locator('[data-card="title"]')).toHaveText(ITEM);
+    // THE HEAD LINE TELLS THE ITEMS APART, with no tap.
     await expect(zinc.locator('[data-card="title"]')).toHaveText(ITEM_TWO);
+    expect(
+      await magnesium.locator('[data-card="title"]').allTextContents()
+    ).toEqual([ITEM, ITEM]);
 
-    // AND SO DO THEIR CONTROLS (#2615). A sheet detaches from the row it came from,
-    // so two identical names are two rows a reader cannot tell apart once it opens.
-    const [nameOne, nameTwo] = [await nameOf(magnesium), await nameOf(zinc)];
-    expect(nameOne).toContain(ITEM);
-    expect(nameTwo).toContain(ITEM_TWO);
-    expect(nameOne, `both ⋯ announced "${nameOne}"`).not.toBe(nameTwo);
+    // AND EVERY ⋯ ANNOUNCES A DIFFERENT ROW (#2615). A sheet detaches from the row it
+    // came from, so two identical names are two rows a reader cannot tell apart once
+    // it opens. Three rows, three names — the count is the assertion, because a pair
+    // that collided would still satisfy "each name contains its item".
+    const names = await page
+      .getByTestId("dose-ledger-row")
+      .filter({ hasText: /E2e Row (Magnesium|Zinc)/ })
+      .getByRole("button", { name: /Dose actions/ })
+      .evaluateAll((els) =>
+        els.map((el) => el.getAttribute("aria-label") ?? "")
+      );
+    expect(names).toHaveLength(3);
+    expect(new Set(names).size, `the ⋯ names were ${names.join(" | ")}`).toBe(
+      3
+    );
+    expect(names.filter((n) => n.includes(ITEM_TWO))).toHaveLength(1);
   });
 
   test("the practice history has no trailing fact, so its note is never collapsed away", async ({

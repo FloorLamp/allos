@@ -113,10 +113,10 @@ export default function DoseLedgerRows({
       readOnly={!canWrite}
       menuKind="Dose"
       // NO TWO ROWS' CONTROLS ANNOUNCE THE SAME WORDS (#2615): the date alone named
-      // every row of a stack day identically.
-      menuItemName={(row) =>
-        `${row.itemName} — ${formatWeekdayDate(row.date, formatPrefs)}`
-      }
+      // every row of a stack day identically. The whole when-cell, not just its
+      // date — two doses of ONE item on one day are told apart only by the clock,
+      // and #3937's "item — date" spelling would have left that pair colliding.
+      menuItemName={(row) => `${row.itemName} — ${whenCell(row)}`}
       rowTestId={() => "dose-ledger-row"}
       renderEditForm={(row, done) => {
         const item = itemById.get(row.itemId);
