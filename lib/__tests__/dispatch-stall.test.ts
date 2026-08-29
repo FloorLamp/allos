@@ -262,6 +262,12 @@ describe("worktreeIdleMs", () => {
   });
 });
 
+// NO PER-TEST CEILING HERE ANY MORE (#4002). Five of these tests carried a
+// hard-coded `}, 20_000)`, which `ALLOS_VITEST_TIMEOUT_MS` cannot reach — and they
+// did not need one: each spawns the real CLI, and the whole file reads 8 617 ms
+// across 23 tests on the green CI run at f1742fa6d (2 676 ms on the dispatch box at
+// load 3), with those five holding ~99% of it. The slowest is therefore ~3 060 ms
+// against the tier's 15 000 ms, which is the ~4x margin vitest.timeouts.ts derives.
 describe("the dispatch-brief CLI", () => {
   it("does nothing when imported — `new` is its default command", () => {
     // Importing this file at the top of this test already proved it, but the
@@ -294,7 +300,7 @@ describe("the dispatch-brief CLI", () => {
     ]) {
       expect(run.stderr).toContain(cmd);
     }
-  }, 20_000);
+  });
 
   it("prints idle beside age, and flags only the dispatch with no trace", () => {
     // End to end over cmdList's real output. Neither branch exists in any
@@ -320,7 +326,7 @@ describe("the dispatch-brief CLI", () => {
 
     expect(never).toContain("age=13h00m");
     expect(never).toContain("NO WORKTREE AND NO BRANCH");
-  }, 20_000);
+  });
 
   it("persists candidate promotion and prints distinct candidate and banked briefs", () => {
     const dir = tempDir();
@@ -420,7 +426,7 @@ describe("the dispatch-brief CLI", () => {
     const invalid = run("update", "x/first", "--priority", "P9");
     expect(invalid.status).toBe(1);
     expect(invalid.stderr).toContain("invalid priority P9");
-  }, 20_000);
+  });
 
   it("announces when resume collision banks a former candidate", () => {
     const now = Date.now();
@@ -455,7 +461,7 @@ describe("the dispatch-brief CLI", () => {
     });
     expect(run.status).toBe(0);
     expect(run.stdout).toContain("ROLE UPDATE for x/former: BANKED");
-  }, 20_000);
+  });
 
   it("resumes promoted and displaced branches from the last atomic promotion", () => {
     const now = Date.now();
@@ -509,5 +515,5 @@ describe("the dispatch-brief CLI", () => {
     const next = resume("x/next");
     expect(next.status).toBe(0);
     expect(next.stdout).toContain("ROLE UPDATE for x/next: CANDIDATE");
-  }, 20_000);
+  });
 });

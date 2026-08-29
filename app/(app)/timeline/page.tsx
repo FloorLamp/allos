@@ -111,7 +111,9 @@ import {
   timelineScrubberTicks,
   SCRUBBER_GUTTER_CLASS,
 } from "@/lib/timeline-scrubber";
-import TimelineScrubber, { type ScrubberStop } from "./TimelineScrubber";
+import JumpRailScrubber, {
+  type ScrubberStop,
+} from "@/components/JumpRailScrubber";
 import { getIntradayDay } from "@/lib/queries/intraday";
 import IntradayPanel from "@/components/IntradayPanel";
 import { formatLongDate, formatMonthDay } from "@/lib/format-date";
@@ -1331,7 +1333,7 @@ export default async function TimelinePage(props: {
            already between this feed and the rail. */
         <div id="timeline-feed" className={`relative ${railGutter}`}>
           {scrubberStops.length > 0 && (
-            <TimelineScrubber stops={scrubberStops} />
+            <JumpRailScrubber stops={scrubberStops} />
           )}
           <div className="absolute bottom-0 left-0 top-0 hidden w-px bg-black/10 md:left-59 md:block dark:bg-white/10" />
           <div className="space-y-0">

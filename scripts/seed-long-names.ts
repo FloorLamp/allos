@@ -126,7 +126,7 @@ export const UNBOUNDED_NAME_FIELDS: readonly UnboundedNameField[] = [
     writtenBy:
       "a document/portal import (source='extracted') or the person typing a product name",
     controls: [
-      "components/ledger/EventLedgerItemFilter.tsx — the event ledger's Item select (#3478's own control, shared by every mount since #3484)",
+      "app/(app)/history/HistoryRows.tsx — the record's row title, which is the item's name on one line at every viewport (#3958; it inherited #3478's corpus when the ledger's Item select went with its routes)",
       "components/intake/IntakeRulesEditor.tsx — the keep-apart / take-together Other item select",
       "app/(app)/medications/MedicationCard.tsx — the card heading and its chip row",
     ],
@@ -139,7 +139,7 @@ export const UNBOUNDED_NAME_FIELDS: readonly UnboundedNameField[] = [
     controls: [
       "components/ClinicalResultsTable.tsx — the analyte cell",
       "components/ObservationSearch.tsx — the observation picker's options",
-      "components/PanelFilterSelect.tsx — panel labels beside it (closed vocabulary itself, but it shares the row)",
+      "components/MedicalFilters.tsx — panel labels beside it (closed vocabulary itself, but it shares the row)",
     ],
     planted: true,
   },

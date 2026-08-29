@@ -79,6 +79,7 @@ export type SubstanceHistoryDeleteResult =
 
 function revalidateSubstanceUse() {
   revalidateRoute("/records/specialty/substance-use");
+  revalidateRoute("/history");
   revalidateRoute("/nutrition");
   revalidateRoute("/timeline");
   revalidateRoute("/upcoming");

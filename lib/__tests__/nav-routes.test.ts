@@ -339,7 +339,7 @@ describe("nav ↔ route consistency", () => {
   // and scales with the orchestration override, which a literal would not.
   it(
     "nothing outside lib/revalidate.ts imports Next's raw revalidatePath (issues #1636/#2149)",
-    { timeout: perTestCeiling(4) },
+    { timeout: perTestCeiling(4, "worst") },
     () => {
       const offenders: string[] = [];
       let seen = 0;

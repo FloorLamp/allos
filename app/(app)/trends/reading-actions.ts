@@ -126,6 +126,7 @@ export async function deleteMetricReading(
 // same series, so they refresh too.
 function revalidateReading(slug: TrendMetricSlug): void {
   revalidateRoute(`/trends/metric/${slug}`);
+  revalidateRoute("/history");
   revalidateRoute("/trends");
   revalidateRoute("/");
 }

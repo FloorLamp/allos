@@ -136,8 +136,24 @@ export const CI_TEST_TIMEOUT_MS = DEFAULT_TEST_TIMEOUT_MS;
  * strict on CI, permissive under `agent-gates.sh`.
  *
  * State the multiple against a MEASUREMENT at the call site, never on its own.
+ *
+ * `basis` says WHICH measurement, and it is required because the two kinds of
+ * reading are different claims that used to look identical in the source (#4002).
+ * "worst" is the rule this file states — ~4x the slowest run anyone has seen, so
+ * the margin covers a bad day. "green" is weaker: the reading came from a run that
+ * passed, nobody has measured this test on a bad day, and #3999 shows the gap is
+ * the 3-4x per-test dispersion CI actually has. `migration-reentry` was derived
+ * from a 3 505 ms green reading while the same comment recorded the test crossing
+ * 15 000 ms on main, and nothing in the call said so.
  */
-export function perTestCeiling(multiple: number): number {
+export function perTestCeiling(
+  multiple: number,
+  basis: "worst" | "green"
+): number {
+  // `basis` is not arithmetic. It is the sentence the author has to write down,
+  // which is how #3999's thin margin was found at all: having to say what a bound
+  // is bounding is the check.
+  void basis;
   return Math.round(testTimeout * multiple);
 }
 

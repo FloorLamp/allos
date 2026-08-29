@@ -99,14 +99,15 @@ const SURFACES: Surface[] = [
     subject: '[data-testid="metric-measurement-toggle"]',
   },
   {
-    // #3671's own annotation (#1510). The event ledger is a whole shell shape the
-    // baseline had never recorded: a BackLink above the title, and page content that
-    // is one full-width list rather than a column of cards. The rows inside it just
-    // became a compact tap-to-expand row, which is exactly the class of change this
-    // file exists to make a reviewer meet as a diff of numbers.
-    route: "/nutrition/dose-history",
-    why: "An event ledger — the #3647 shared frame, with a BackLink above the title and a full-width row list as its content.",
-    subject: '[data-testid="dose-ledger-item-filter"]',
+    // THE RECORD (#3958), which took this slot from the event ledger. Same reason
+    // the ledger held it and more of it: page content that is one full-width row
+    // list rather than a column of cards, and now with the chrome above the first
+    // record as an acceptance criterion in its own right (≤ ~140px at 390px). This
+    // file is exactly where a header stack that grew back has to be met as a diff of
+    // numbers.
+    route: "/history",
+    why: "The record — a full-width day-grouped row list under one filter row, with a bounded chrome stack above the first row (#3958).",
+    subject: '[data-testid="history-filters"]',
   },
   {
     route: "/settings",

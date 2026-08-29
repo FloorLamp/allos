@@ -115,7 +115,7 @@ function ReadonlyObservationRow({
 }
 
 // The observations table for one medical_records category tab of the import-detail
-// results browser (#271): the old CategoryFilterSelect collapsed into the tab
+// results browser (#271): the old category filter collapsed into the tab
 // strip, so the host passes the tab's label as `title` and scopes the observations
 // itself. Re-extraction is NOT triggered here anymore (#1071): the immediate
 // fire-and-replace icon this table used to carry was the unsafe twin of the

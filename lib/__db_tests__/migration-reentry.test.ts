@@ -182,18 +182,23 @@ function applyWithForcedReentry(
 }
 
 describe("migration bodies re-entered by the SQLITE_BUSY retry (#3590)", () => {
-  // A CEILING DERIVED FROM THE DB TIER'S MEASURED DISPERSION (#3986). This replays
-  // all 219 shipped bodies twice and dumps both databases whole: 3 004 ms solo on a
-  // 4-core box, 3 505 ms on a green CI run — 4.3x headroom under the tier's
-  // 15 000 ms default, which read as comfortable. It is not. Between two GREEN
-  // test-db runs the same tier moved 3.11x on migration-snapshot and 3.59x on
-  // restore, PER FILE, while the tier total moved only 1.40x; this test then
-  // crossed 4.3x on main at 11c7920b with nothing failing. 2x testTimeout is
-  // 30 000 ms on CI — 8.6x the green reading — and scales with the orchestration
-  // override, which a hard-coded literal would not.
+  // A CEILING DERIVED FROM THE OBSERVED WORST, WHICH IS NOT THE GREEN READING
+  // (#4002; #3999 got this one wrong and the merge audit caught it). This replays
+  // all 219 shipped bodies twice and dumps both databases whole. The green readings
+  // are 3 004 ms solo on a 4-core box, 3 505 ms on a green CI run, 3 670 ms for the
+  // whole file on the green run at f1742fa6d, 2 998 ms on the dispatch box. The
+  // WORST is none of those: this test CROSSED 15 000 ms on main at 11c7920b with
+  // nothing failing, so the observed worst is ">= 15 000, cut off" — and 8 571 ms
+  // was measured on the dispatch box at load 4.59.
+  //
+  // #3999 set 2x testTimeout and derived it from the 3 505 ms green reading (8.6x),
+  // which against the observed worst is 2x — not the ~4x vitest.timeouts.ts states.
+  // 4x testTimeout is 60 000 ms on CI, ~4x the observed worst, and it scales with the
+  // orchestration override the way a literal would not. This is the one ceiling whose
+  // subject grows monotonically: the chain gains a body on every merge (#3436).
   it(
     "leaves the same database when EVERY shipped up() is re-entered after a real busy at COMMIT",
-    { timeout: perTestCeiling(2) },
+    { timeout: perTestCeiling(4, "worst") },
     () => {
       const clean = applyCleanly("migration-reentry-clean", MIGRATIONS);
       const { dump, forced } = applyWithForcedReentry(
