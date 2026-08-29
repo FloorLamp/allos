@@ -14,19 +14,31 @@
 import { db, today, writeTx } from "@/lib/db";
 import { OFFLINE_REPLAY, type LoggedVia } from "../logged-via";
 import { now as clockNow } from "@/lib/clock";
-import { isRealIsoDate, utcInstant, zonedDateParts } from "@/lib/date";
+import {
+  isRealIsoDate,
+  shiftDateStr,
+  utcInstant,
+  zonedDateParts,
+  zonedWallTimeToUtc,
+} from "@/lib/date";
 import { isDoseDateAccepted } from "@/lib/dose-log-window";
 import { toKg } from "@/lib/units";
 import type { WeightUnit } from "@/lib/settings";
 import {
   normalizeClockTime,
   normalizeVitalsInput,
+  SLEEP_METRIC,
   VITAL_CANONICAL,
+  type StatedSleepWindow,
   type VitalsRawInput,
 } from "@/lib/vitals-input";
 import { statedInstantOnDate } from "@/lib/stated-time";
 import { normalizeGrowthInput, type GrowthInputRaw } from "@/lib/growth-input";
 import { normalizeWaistInput, type WaistInputRaw } from "@/lib/waist-input";
+import {
+  normalizeCompositionInput,
+  type CompositionInputRaw,
+} from "@/lib/composition-input";
 import { WAIST_CIRC_METRIC } from "@/lib/waist-circ-extract";
 import { BRISTOL_STOOL_METRIC, parseBristolType } from "@/lib/bristol-stool";
 import { markDoseSkipped, markDoseTaken } from "@/lib/queries";
@@ -267,19 +279,102 @@ export function insertBodyMetric(
 // re-entry corrects rather than duplicates. source='manual', origin=NULL, and a
 // fixed midnight start make the natural key stable, while `source` keeps a Health
 // Connect push from ever touching it.
+// The day's midnight, the natural-key anchor a point measurement is filed at. ONE
+// spelling in this module (lib/__tests__/instant-writer-scan.test.ts freezes the
+// count): it is a DAY ATTRIBUTION, not an instant, which is why it is a template
+// here rather than a utcInstant() call.
+function dayMidnightAnchor(date: string): string {
+  return `${date}T00:00:00`;
+}
+
 function upsertManualSample(
   profileId: number,
   metric: string,
   date: string,
-  value: number
+  value: number,
+  window?: { startedAt: string; endedAt: string }
 ): void {
-  const ts = `${date}T00:00:00`;
+  const startedAt = window?.startedAt ?? dayMidnightAnchor(date);
+  const endedAt = window?.endedAt ?? startedAt;
   db.prepare(
     `INSERT INTO metric_samples (profile_id, source, metric, date, started_at, ended_at, value)
        VALUES (?, 'manual', ?, ?, ?, ?, ?)
      ON CONFLICT DO UPDATE SET
-       value = excluded.value, date = excluded.date`
-  ).run(profileId, metric, date, ts, ts, value);
+       value = excluded.value, date = excluded.date, ended_at = excluded.ended_at`
+  ).run(profileId, metric, date, startedAt, endedAt, value);
+}
+
+// ONE manual sleep row per profile-day, whichever shape the sitting used (#1851).
+//
+// The tall store's natural key is the START instant, so a duration-only night
+// (filed at the day's midnight) and a stated bed/wake window are two different keys
+// — and `sleep_min` is ADDITIVE, so leaving both would read one night as two. Every
+// other manual row for the day therefore goes before the upsert, which then
+// corrects in place and keeps the row id the Sleep log's delete addresses.
+//
+// A sitting that states NO window keeps whatever window the day's manual row
+// already has: correcting the hours on the Sleep page (a form that knows only a
+// duration) must not silently discard clocks entered on the measurements form.
+function upsertManualSleep(
+  profileId: number,
+  date: string,
+  value: number,
+  window: { startedAt: string; endedAt: string } | null
+): void {
+  writeTx(() => {
+    const existing = window
+      ? null
+      : (db
+          .prepare(
+            `SELECT started_at AS startedAt, ended_at AS endedAt FROM metric_samples
+              WHERE profile_id = ? AND metric = ? AND source = 'manual'
+                AND origin IS NULL AND date = ?
+              ORDER BY id LIMIT 1`
+          )
+          .get(profileId, SLEEP_METRIC, date) as
+          | { startedAt: string; endedAt: string }
+          | undefined);
+    const target = window ?? existing ?? null;
+    const startedAt = target?.startedAt ?? dayMidnightAnchor(date);
+    db.prepare(
+      `DELETE FROM metric_samples
+        WHERE profile_id = ? AND metric = ? AND source = 'manual'
+          AND origin IS NULL AND date = ? AND started_at <> ?`
+    ).run(profileId, SLEEP_METRIC, date, startedAt);
+    upsertManualSample(
+      profileId,
+      SLEEP_METRIC,
+      date,
+      value,
+      target ? { startedAt: target.startedAt, endedAt: target.endedAt } : undefined
+    );
+  });
+}
+
+// The two absolute instants a stated bed/wake pair denotes in the profile's zone,
+// or null when the zone cannot place them. The bed clock sits on the previous
+// calendar day whenever it is at or after noon — the noon anchoring
+// lib/sleep-regularity.ts indexes by — and the wake clock is on the row's own
+// wake day, which is how every sleep session in metric_samples is dated.
+function resolveSleepWindow(
+  tz: string,
+  date: string,
+  window: StatedSleepWindow
+): { startedAt: string; endedAt: string; minutes: number } | null {
+  const bedAt = zonedWallTimeToUtc(
+    tz,
+    window.bedOnPreviousDay ? shiftDateStr(date, -1) : date,
+    window.bed
+  );
+  const wakeAt = zonedWallTimeToUtc(tz, date, window.wake);
+  if (!bedAt || !wakeAt) return null;
+  const minutes = Math.round((wakeAt.getTime() - bedAt.getTime()) / 60000);
+  if (minutes <= 0) return null;
+  return {
+    startedAt: utcInstant(bedAt),
+    endedAt: utcInstant(wakeAt),
+    minutes,
+  };
 }
 
 // Persist a manual vitals entry. Runs the SAME pure normalizeVitalsInput guard the
@@ -410,7 +505,24 @@ export function insertVitals(
     });
   }
   for (const s of samples) {
-    upsertManualSample(profileId, s.metric, date, s.value);
+    if (s.metric !== SLEEP_METRIC) {
+      upsertManualSample(profileId, s.metric, date, s.value);
+      continue;
+    }
+    // The night, as one row (#1851). A stated bed/wake pair becomes the session
+    // WINDOW the Sleep Regularity Index reads — the thing a duration-only row can
+    // never give it — resolved against the profile's own zone so the clock minutes
+    // SRI compares are the ones the person's clock showed.
+    const resolved = s.window ? resolveSleepWindow(tz, date, s.window) : null;
+    upsertManualSleep(
+      profileId,
+      date,
+      // Hours ASLEEP when the sitting stated them (a window includes time awake in
+      // bed); otherwise the window's own ELAPSED minutes, which carry the real UTC
+      // offsets and so are the length a zone-transition night actually had.
+      resolved && !s.window?.durationStated ? resolved.minutes : s.value,
+      resolved
+    );
   }
   for (const r of readings) {
     // The blow's clock time: the sitting's accepted statement, rendered on the
@@ -493,6 +605,35 @@ export function insertWaistCirc(
   if ("error" in normalized) return false;
   writeTx(() => {
     upsertManualSample(profileId, WAIST_CIRC_METRIC, date, normalized.valueCm);
+  });
+  return true;
+}
+
+// ── lean mass / bone mass / hydration (issue #1851) ───────────────────────────
+
+// Persist the manual body samples the census charted but the form could not take.
+// The SIBLING of insertGrowth and insertWaistCirc — same store, same discipline,
+// same fixed-midnight point key, so re-logging a date CORRECTS it rather than
+// stacking a second reading — and deliberately not a member of either: these three
+// are neither life-stage-gated nor a tape measurement.
+//
+// The metric keys are the ones Withings and Health Connect already write
+// ('lean_mass_kg' / 'bone_mass_kg' / 'hydration_l'), so a DEXA figure typed at home
+// is the same row a synced one is: `lib/protein.ts` reads the latest lean mass
+// whatever wrote it, and the hydration chart plots both together. Auth-blind +
+// profileId-first like its neighbours. Returns false on a rejected/empty input.
+export function insertComposition(
+  profileId: number,
+  date: string,
+  raw: CompositionInputRaw
+): boolean {
+  if (!isRealIsoDate(date)) return false;
+  const normalized = normalizeCompositionInput(raw);
+  if ("error" in normalized) return false;
+  writeTx(() => {
+    for (const s of normalized.samples) {
+      upsertManualSample(profileId, s.metric, date, s.value);
+    }
   });
   return true;
 }
@@ -1147,7 +1288,12 @@ export function applyIntent(
           temperature: p.temperature,
           tempUnit: p.tempUnit,
           sleepHours: p.sleepHours,
+          // The night's two clocks (#1851) — a queued sitting replays with the
+          // window it stated, so an offline bed/wake entry still feeds SRI.
+          bedTime: p.bedTime,
+          wakeTime: p.wakeTime,
           hrv: p.hrv,
+          respiratoryRate: p.respiratoryRate,
           gripStrength: p.gripStrength,
           chairStand: p.chairStand,
           balance: p.balance,

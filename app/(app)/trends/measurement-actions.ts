@@ -6,6 +6,7 @@ import { getUnitPrefs } from "@/lib/settings";
 import { submittedWeightUnit } from "@/lib/units";
 import {
   insertBodyMetric,
+  insertComposition,
   insertGrowth,
   insertWaistCirc,
   insertVitals,
@@ -119,7 +120,10 @@ export async function addMeasurements(
     "spo2",
     "temperature",
     "sleep_hours",
+    "bed_time",
+    "wake_time",
     "hrv",
+    "respiratory_rate",
     "peak_flow",
   ].some(filled);
   if (anyVital) {
@@ -142,7 +146,14 @@ export async function addMeasurements(
         temperature: str("temperature"),
         tempUnit: str("temp_unit"),
         sleepHours: str("sleep_hours"),
+        // The night's bed/wake pair (#1851) — profile-local clocks the core
+        // resolves against this profile's zone, never here.
+        bedTime: str("bed_time"),
+        wakeTime: str("wake_time"),
         hrv: str("hrv"),
+        // Respiratory rate (#1851) — a vital like the rest, carried by the same
+        // form and the same core onto the same canonical name.
+        respiratoryRate: str("respiratory_rate"),
         // Peak expiratory flow (#1850) — a vital like the rest, carried by the
         // same form and the same core. Its clock time is the sitting statement
         // below, so a second blow the same day lands as a second reading.
@@ -191,6 +202,20 @@ export async function addMeasurements(
       insertWaistCirc(profile.id, date, {
         waistCirc: str("waist_circ"),
         waistCircUnit: str("waist_circ_unit"),
+      }) || wrote;
+  }
+
+  // 5. Lean mass / bone mass / hydration (metric_samples) — ungated like the waist
+  //    tape above, and for the same reason: a DEXA report and a day's water apply
+  //    at every life stage (#1851).
+  if (filled("lean_mass") || filled("bone_mass") || filled("hydration")) {
+    wrote =
+      insertComposition(profile.id, date, {
+        leanMass: str("lean_mass"),
+        leanMassUnit: str("lean_mass_unit"),
+        boneMass: str("bone_mass"),
+        boneMassUnit: str("bone_mass_unit"),
+        hydration: str("hydration"),
       }) || wrote;
   }
 

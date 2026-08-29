@@ -233,6 +233,13 @@ export interface VitalsPayload {
   tempUnit: string | null;
   sleepHours: string | null;
   hrv: string | null;
+  // The night's two clocks and the counted rate (#1851). OPTIONAL for the same
+  // backward-compatibility reason as the fields below: an intent queued before they
+  // shipped carries none of them, and the server core treats an absent field
+  // exactly as an unfilled one.
+  bedTime?: string | null;
+  wakeTime?: string | null;
+  respiratoryRate?: string | null;
   // The sitting's stated instant (#2154) — the ONE WhenControl time the form
   // posts for the whole submission, generalizing the retired per-measure
   // `temperatureTime` rather than growing siblings per vital. ISO instant, or

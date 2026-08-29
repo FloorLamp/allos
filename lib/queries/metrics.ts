@@ -1075,20 +1075,14 @@ function getManualSleepEditability(
     .prepare(
       `SELECT date,
               MAX(CASE WHEN source = 'manual' AND origin IS NULL
-                            AND started_at = date || 'T00:00:00'
-                            AND ended_at = date || 'T00:00:00'
                        THEN value END) AS value,
               -- Safe as a MAX: the editable flag below only holds when the day
-              -- has EXACTLY ONE sample and that one is the manual duration-only
+              -- has EXACTLY ONE sample and that one is the profile's own manual
               -- row, so there is never a second id for this to pick between.
               MAX(CASE WHEN source = 'manual' AND origin IS NULL
-                            AND started_at = date || 'T00:00:00'
-                            AND ended_at = date || 'T00:00:00'
                        THEN id END) AS id,
               CASE WHEN COUNT(*) = 1
                          AND SUM(CASE WHEN source = 'manual' AND origin IS NULL
-                                           AND started_at = date || 'T00:00:00'
-                                           AND ended_at = date || 'T00:00:00'
                                       THEN 1 ELSE 0 END) = 1
                    THEN 1 ELSE 0 END AS editable
          FROM metric_samples
@@ -1113,7 +1107,15 @@ export function getEditableManualSleepDurations(
 
 // Re-check the Sleep log's edit invariant at the write boundary. A missing day
 // may receive a duration-only manual row; an existing day is editable only when
-// its sole sleep sample is the exact natural key written by upsertManualSample.
+// its sole sleep sample is the profile's OWN manual row.
+//
+// It used to require that row's exact midnight natural key, which excluded a
+// windowed one — right while the only windowed rows were imported, and wrong the
+// moment #1851 let the measurements form state a bed/wake pair: a night the person
+// typed themselves would have answered "Synced sleep entries cannot be edited
+// here." The window is not what makes a row untouchable, provenance is, and
+// `upsertManualSleep` keeps an existing window when a duration-only correction
+// lands on it — so editing the hours here no longer discards the clocks either.
 // Reading this inside the caller's IMMEDIATE transaction closes the render→save
 // race with an integration sync and prevents a crafted action request from
 // layering manual sleep over imported or windowed data.

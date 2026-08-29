@@ -12,6 +12,7 @@
 //   • Glucose                             → medical_records, category 'lab', mg/dL
 //   • Oxygen Saturation (SpO2)            → medical_records, category 'vitals',  %
 //   • Body Temperature                    → medical_records, category 'vitals',  degF
+//   • Respiratory Rate                    → medical_records, category 'vitals',  breaths/min
 //   • Sleep duration                      → metric_samples,  metric 'sleep_min', minutes
 //   • Heart rate variability (HRV)        → metric_samples,  metric 'hrv_ms',    ms
 //   • Peak expiratory flow                → metric_samples,  metric 'peak_flow_lmin', L/min
@@ -51,6 +52,63 @@ export interface VitalMedicalRow {
 export interface VitalSampleRow {
   metric: string;
   value: number;
+  // A stated SLEEP WINDOW (#1851) — the two clocks the person knows, which is all
+  // the Sleep Regularity Index needs and all a duration-only row cannot give it.
+  // Kept as profile-local clocks here (this module is pure and has no timezone);
+  // insertVitals resolves them to the absolute instants metric_samples stores.
+  window?: StatedSleepWindow;
+}
+
+// A bed/wake pair on the NOON-ANCHORED sleep day — the same anchoring
+// lib/sleep-regularity.ts indexes by, so one night falls inside one day. A bed
+// clock at or after 12:00 belongs to the evening BEFORE the wake day; one before
+// noon is a small-hours bedtime on the wake day itself.
+export interface StatedSleepWindow {
+  /** Profile-local "HH:MM" the person went to bed. */
+  bed: string;
+  /** Profile-local "HH:MM" they woke, on the submission's own date. */
+  wake: string;
+  /** Whether `bed` falls on the calendar day before the wake day. */
+  bedOnPreviousDay: boolean;
+  /** Nominal wall-clock length of the window, in minutes. */
+  minutes: number;
+  /** Whether the sitting ALSO stated hours asleep, which then owns `value`. */
+  durationStated: boolean;
+}
+
+// Longest bed-to-wake window a sitting may state. NOT 24 h: the stored value is
+// recomputed from the two resolved INSTANTS, which on a zone-transition night run
+// up to an hour longer than the wall clock says, and `sleep_min`'s ingest envelope
+// tops out at 1440. 23 h leaves exactly that headroom.
+export const MAX_SLEEP_WINDOW_MINUTES = 1380;
+
+// Fold two stated clocks into the noon-anchored window they denote, or null when
+// either is not a wall clock. `minutes` may be non-positive or longer than a day —
+// judging that is the validator's job, not this pure fold's.
+export function sleepWindowFromClocks(
+  bedTime: string | null | undefined,
+  wakeTime: string | null | undefined,
+  durationStated = false
+): StatedSleepWindow | null {
+  const bed = normalizeClockTime(bedTime);
+  const wake = normalizeClockTime(wakeTime);
+  if (!bed || !wake) return null;
+  const minuteOfDay = (hhmm: string): number =>
+    Number(hhmm.slice(0, 2)) * 60 + Number(hhmm.slice(3));
+  const bedMin = minuteOfDay(bed);
+  const wakeMin = minuteOfDay(wake);
+  const bedOnPreviousDay = bedMin >= 720;
+  // Both clocks as minutes since the PREVIOUS day's noon, so the subtraction never
+  // needs a midnight special case.
+  const bedFromNoon = bedOnPreviousDay ? bedMin - 720 : bedMin + 720;
+  const wakeFromNoon = wakeMin + 720;
+  return {
+    bed,
+    wake,
+    bedOnPreviousDay,
+    minutes: wakeFromNoon - bedFromNoon,
+    durationStated,
+  };
 }
 
 // A vital submitted BY IDENTITY rather than by table (#2032's write direction,
@@ -87,7 +145,14 @@ export interface VitalsRawInput {
   // (lib/offline/writes.ts::insertVitals maps them at the boundary).
   temperatureTime?: string | null;
   sleepHours?: string | null;
+  // The night's two clocks (#1851). A PAIR — both or neither — and the half of
+  // manual sleep a wearable used to be required for.
+  bedTime?: string | null; // profile-local "HH:MM"
+  wakeTime?: string | null; // profile-local "HH:MM"
   hrv?: string | null;
+  // Respiratory rate, breaths/min (#1851). The last clinical vital on this form
+  // that could not be counted by hand.
+  respiratoryRate?: string | null;
   gripStrength?: string | null; // kg
   chairStand?: string | null; // reps in 30 s
   balance?: string | null; // single-leg stance seconds
@@ -125,6 +190,14 @@ export const VITAL_CANONICAL = {
     canonical: "Body Temperature",
     category: "vitals" as const,
     unit: "degF",
+  },
+  // Respiratory rate (#1851) — the same canonical name, category and unit the
+  // Health Connect parser and the Fitbit takeout importer already write, so a
+  // counted rate and a pushed one are one series.
+  respiratoryRate: {
+    canonical: "Respiratory Rate",
+    category: "vitals" as const,
+    unit: "breaths/min",
   },
   // Functional fitness markers (#158) — manual-entry physical measurements stored
   // in their canonical unit directly (no conversion). Each is a canonical biomarker
@@ -328,7 +401,10 @@ export function validateVitalsInput(input: VitalsRawInput): string | null {
     input.spo2,
     input.temperature,
     input.sleepHours,
+    input.bedTime,
+    input.wakeTime,
     input.hrv,
+    input.respiratoryRate,
     input.gripStrength,
     input.chairStand,
     input.balance,
@@ -388,10 +464,41 @@ export function validateVitalsInput(input: VitalsRawInput): string | null {
     }
   }
 
+  // The bed/wake pair (#1851) — a window, like a blood pressure is a pair.
+  const hasBed = !blank(input.bedTime);
+  const hasWake = !blank(input.wakeTime);
+  if (hasBed !== hasWake) return "Enter both bed and wake times.";
+  if (hasBed && hasWake) {
+    const window = sleepWindowFromClocks(input.bedTime, input.wakeTime);
+    if (!window) return "Enter valid bed and wake times.";
+    if (window.minutes <= 0) return "Wake time must be after bed time.";
+    if (window.minutes > MAX_SLEEP_WINDOW_MINUTES) {
+      return "Bed and wake times must be less than 23 hours apart.";
+    }
+    // Hours ASLEEP can be shorter than the window (awake in bed) but never longer;
+    // a night that claims more sleep than time in bed is a typo, not a reading.
+    const hours = numOrNull(input.sleepHours);
+    if (hours != null && hours * 60 > window.minutes) {
+      return "Sleep can't be longer than the time between bed and wake.";
+    }
+  }
+
   if (!blank(input.hrv)) {
     const v = numOrNull(input.hrv);
     if (v == null || v <= 0 || v > 500) {
       return "HRV must be between 1 and 500 ms.";
+    }
+  }
+
+  if (!blank(input.respiratoryRate)) {
+    const v = numOrNull(input.respiratoryRate);
+    // The INGEST envelope, not a second opinion: a counted rate is accepted on
+    // exactly the terms a pushed one is (lib/ingest-bounds.ts, 3–80 breaths/min).
+    if (
+      v == null ||
+      !inMetricBounds(VITAL_CANONICAL.respiratoryRate.canonical, v)
+    ) {
+      return "Respiratory rate must be between 3 and 80 breaths per minute.";
     }
   }
 
@@ -468,6 +575,14 @@ export function normalizeVitalsInput(
     medical.push({ ...VITAL_CANONICAL.spo2, value_num: spo2 });
   }
 
+  const respiratoryRate = numOrNull(input.respiratoryRate);
+  if (respiratoryRate != null) {
+    medical.push({
+      ...VITAL_CANONICAL.respiratoryRate,
+      value_num: respiratoryRate,
+    });
+  }
+
   const tempRaw = numOrNull(input.temperature);
   if (tempRaw != null) {
     // WHEN the reading was taken is the sitting's one stated time, applied at the
@@ -482,8 +597,26 @@ export function normalizeVitalsInput(
     });
   }
 
+  // ONE nightly sleep sample, however the sitting spelled it (#1851). Duration and
+  // window are two accounts of the same night, so they cannot be two rows: the
+  // per-day totals are additive and would read a stated 8 h beside its own window
+  // as sixteen hours of sleep.
   const sleepHours = numOrNull(input.sleepHours);
-  if (sleepHours != null) {
+  const window = sleepWindowFromClocks(
+    input.bedTime,
+    input.wakeTime,
+    sleepHours != null
+  );
+  if (window) {
+    samples.push({
+      metric: SLEEP_METRIC,
+      // The NOMINAL length, which insertVitals replaces with the elapsed minutes
+      // between the resolved instants unless the sitting stated hours asleep.
+      value:
+        sleepHours != null ? Math.round(sleepHours * 60) : window.minutes,
+      window,
+    });
+  } else if (sleepHours != null) {
     samples.push({ metric: SLEEP_METRIC, value: Math.round(sleepHours * 60) });
   }
 
