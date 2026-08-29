@@ -1035,6 +1035,18 @@ ${MIGRATION_LINES}
   your branch and a control to see whose neighbours you changed, and say so.
   DO NOT respond by refusing to add spec files. The partition's fragility is the bug;
   a suite that cannot grow without hiding failures is measuring less every time.
+  AND IT BITES FROM THE OTHER DIRECTION TOO: BEING A MERGE BEHIND RE-PARTITIONS THE
+  SHARDS JUST AS ADDING A FILE DOES. If main has gained a spec file since your merge
+  base, your branch has one FEWER spec than main and every shard's file set differs
+  from main's — so a spec you never touched runs beside neighbours it never sees on
+  main, and a latent co-residency bug fires on your branch and nowhere else. Measured
+  2026-08-29 on #3273: two mobile-geometry specs the lane did not author went red on
+  CI, reproduced in NONE of four local configurations including a base-tree control,
+  and both went green after merging main — 467 spec files against main's 468 was the
+  whole story, confirmed with \`e2e-shard-plan.ts\` against a control checkout showing
+  all twelve shards byte-identical afterwards. So when a red lands in a spec your diff
+  does not touch, count the spec files on both sides BEFORE diagnosing the failure;
+  and merge main before your final CI run, not only before your gates.
 - DO NOT OPT A FIXTURE OUT OF THE E2E TIMEZONE PIN without reading
   e2e/fixture-timezones.ts, and if you do, your \`why\` must still be TRUE.
   e2e/pinned-timezone.ts pins local time to 13:mm ON PURPOSE — that is also
