@@ -246,11 +246,12 @@ test.describe("the record (#3958)", () => {
       /\/history\?kind=substance/
     );
 
-    // AND THE OLD ROUTES ARE GONE, with no shim standing in for them. A redirect
-    // would be the compatibility layer the line-budget ruling forbids, so the check
-    // is that the app answers 404 rather than that it answers at all.
-    const gone = await page.request.get("/nutrition/food-history");
-    expect(gone.status()).toBe(404);
+    // THE OLD ROUTES ARE GONE, with no shim standing in for them, and the check for
+    // that is NOT here: it is `git grep`, which the issue names as the acceptance
+    // criterion precisely because a surviving reference is what a redirect would
+    // hide. Spelling one of those paths in this file to assert its 404 would put the
+    // string back in the tree and make that grep answer something — so what this
+    // test proves is the half a browser can: every door lands on the record.
   });
 
   test("a bad deep link degrades to the page, and the record ends at now", async ({
