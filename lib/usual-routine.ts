@@ -94,14 +94,17 @@ export function namesPhrase(names: readonly string[]): string {
   return `${names.slice(0, -1).join(", ")} and ${names[names.length - 1]}`;
 }
 
-// The dose half of the label, as the phrase says it (#3098). When EVERY rider dose
+// The dose half of the label, as the phrase says it (#3098) — exported because the
+// recent-past catch-up sheet's per-bucket bulk row makes the SAME promise about the
+// same kind of set (#3936), and a second spelling of the compression would let one
+// surface name a group the other enumerates. When EVERY rider dose
 // (two or more) shares one non-null stack, the enumeration compresses to the
 // profile's OWN name for exactly those doses — "Sleep stack (4)" — with the count
 // keeping the promise checkable. Mixed riders (two stacks, any unstacked dose) and
 // single-dose riders keep the full enumeration: a one-dose rider renamed to its
 // stack would name the group while writing one member, which the label-is-a-promise
 // doctrine forbids.
-function dosesPhrase(
+export function dosesPhrase(
   doses: readonly Pick<UsualRoutineDose, "name" | "stack">[]
 ): string {
   const stacks = new Set(doses.map((d) => d.stack?.trim() || null));

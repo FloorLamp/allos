@@ -651,6 +651,19 @@ renderer:
   `HistoricalDoseForm` with an item picker in front, which opens on the item the
   ledger is filtered to. The per-item panel keeps its own entry: an item-scoped
   question stays answerable on the item.
+- **The recent past is NOT the ledger's job** (#3936). The quick-log sheet's dose
+  form carries a day switcher offering exactly `doseLogDays(today)` — today,
+  yesterday, the day before, read off `DOSE_LOG_DATE_WINDOW_DAYS` so the offer and
+  the write core's `isDoseDateAccepted` gate cannot drift. A switched day renders
+  that day's still-unresolved doses grouped by declared `timeBucket`, each with a
+  take and a skip, plus a whole-stack row per bucket of two or more whose label
+  follows the #3098 grammar. Every write goes through `markDoseTaken` /
+  `markDoseSkipped` with the selected date — the same dated act a late Telegram tap
+  and the offline replay already perform, so there is no second validation and no
+  audit row. `resolveDayDoses` re-derives `pendingDayDoses` server-side and writes
+  only the named-and-still-unresolved intersection (the #2458 contract), so a stale
+  tap refuses instead of double-logging. BEYOND the window nothing changes: the
+  audited historical cores above stay the only way to reach a closed day.
 - Cross-linked with the Trends → Nutrition **Dose history** chart (#2415) both
   ways: the ledger links to the chart, and a tapped day in that chart's day panel
   links back to the ledger filtered to that day (`dayLink` on the `dose` entry of
