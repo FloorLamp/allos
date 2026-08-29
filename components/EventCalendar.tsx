@@ -53,33 +53,34 @@ const DOW = ["S", "M", "T", "W", "T", "F", "S"];
 // The sidebar is narrow, so the month dropdown uses short labels ("Jan" … "Dec").
 const MONTHS = monthNames("short");
 
-// THE HIT AREA AND THE GLYPH ARE TWO BOXES BELOW `md` (#3377) — the padding/hit-slop
-// idiom the app already uses for its icon-only triggers. The month arrow's chevron
-// stays 16px and the day's circle stays 28px at every width; what grows on a phone is
-// the box a finger lands in. From `md` up the outer box collapses back onto the glyph,
-// so the desktop sidebar's density is unchanged.
+// THE HIT AREA AND THE GLYPH ARE TWO BOXES (#3377) — the padding/hit-slop idiom the
+// app already uses for its icon-only triggers. The month arrow's chevron stays 16px
+// and the day's circle stays 28px; what the reader taps is the box around it.
 //
-// 44, NOT THE 40 THESE WERE BUILT AT. #3377 sized both boxes against the floor as it
-// stood then, and it sized them correctly; #3514 ruled the floor to 44px EFFECTIVE on
-// 2026-08-21 and these were left behind — 40px, neither registered mechanism, and
-// invisible to the census that enumerates exactly this population, because a hoisted
-// class list came back to it as the word `ARROW_HIT` (#3561).
+// ONE HEIGHT, NO VIEWPORT STEP (#3938, extended here by #3954). These used to be 44
+// below `md` and 24/28 above it — two heights for one idea, chosen by width, which
+// is the pattern the control box retired. The outer box is `--control-box` at every
+// width now and a coarse pointer gets the missing reach back around it, the way
+// every other control kind does. (#3377 built them at 40, #3561 found that a
+// hoisted class list hid them from the census that enumerates this population, and
+// #3514 ruled the floor effective; the box is where all three land.)
 const ARROW_HIT =
-  "flex h-11 w-11 shrink-0 items-center justify-center rounded-sm text-slate-500 hover:bg-slate-100 hover:text-slate-700 disabled:pointer-events-none disabled:opacity-30 md:h-6 md:w-6 dark:text-slate-400 dark:hover:bg-ink-800 dark:hover:text-slate-200";
+  "tap-target flex h-(--control-box) w-(--control-box) shrink-0 items-center justify-center rounded-sm text-slate-500 hover:bg-slate-100 hover:text-slate-700 disabled:pointer-events-none disabled:opacity-30 dark:text-slate-400 dark:hover:bg-ink-800 dark:hover:text-slate-200";
 
-// The day cell's hit box: the FULL grid column and 44px tall on a phone, the bare 28px
-// circle from `md` up. `w-full` rather than a fixed width so the columns tile the grid
-// with no dead pixels between them — a tap that lands nowhere reads as a broken day
-// just as a tap that lands next door does.
+// The day cell's hit box: the FULL grid column, one control box tall. `w-full` rather
+// than a fixed width so the columns tile the grid with no dead pixels between them — a
+// tap that lands nowhere reads as a broken day just as a tap that lands next door
+// does. That tiling is also why the day's reach is block-only (app/globals.css): the
+// inline axis has no gap to spend and an inline reach would just move the boundary
+// between two days.
 //
 // What SEVEN of those columns cost is `--week-grid-min` (app/globals.css, #3452) —
 // stated there once, because the phone nav drawer has to be wide enough to pay for it
 // and used to derive the same number a second time in its own width class. The
-// full-bleed band below claims that minimum and spends its gutter so every column
-// reaches the same 44px rendered floor as its height; the phone drawer reserves the
-// width for it (#3536). The desktop sidebar keeps the bare 28px circles.
+// full-bleed band below claims that minimum and spends its gutter so every column is
+// at least 44px WIDE; the phone drawer reserves the width for it (#3536).
 const DAY_HIT =
-  "flex h-11 w-full items-center justify-center md:mx-auto md:h-7 md:w-7";
+  "flex h-(--control-box) w-full items-center justify-center";
 // `w-72`, told to the positioner so the panel's first paint is already clamped
 // inside the viewport rather than measured into place afterwards.
 const PANEL_WIDTH_PX = 288;
@@ -220,7 +221,8 @@ function MonthGrid({
         ))}
       </div>
 
-      <div className="mt-1 grid grid-cols-7 gap-y-0.5">
+      {/* The row gap pays the reach floor where the reach exists (#3954). */}
+      <div className="mt-1 grid grid-cols-7 gap-y-0.5 pointer-coarse:gap-y-3">
         {cells.map((cell, i) => {
           const ds = isoDate(cell.y, cell.m, cell.d);
           const isToday = ds === todayStr;
@@ -232,6 +234,7 @@ function MonthGrid({
                 key={i}
                 href={`/timeline?from=${ds}&to=${ds}#timeline-day-${ds}`}
                 onClick={onNavigate}
+                data-calendar-day=""
                 className={DAY_HIT}
               >
                 <span

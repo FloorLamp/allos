@@ -1,5 +1,10 @@
 import { test, expect } from "./fixtures";
-import { hydratedClick, settledBoxes, settledClick } from "./helpers";
+import {
+  expectPhoneTapTargets,
+  hydratedClick,
+  settledBoxes,
+  settledClick,
+} from "./helpers";
 import { TAP_FLOOR_PX } from "@/lib/tap-floor-tokens";
 
 // THE ANCHORED PANEL FORKS AT `md` (issues #3374, #3376).
@@ -135,7 +140,7 @@ test.describe("below md the ⋯ menu is a bottom action sheet", () => {
 });
 
 test.describe("below md the date picker is a bottom sheet", () => {
-  test("a form's calendar opens as a sheet with 44px days and posts the same value", async ({
+  test("a form's calendar opens as a sheet whose days clear the floor, and posts the same value", async ({
     page,
   }) => {
     test.slow();
@@ -166,11 +171,24 @@ test.describe("below md the date picker is a bottom sheet", () => {
     // Day cells at the tap floor. The typed value put the calendar on March
     // 2026, so the 9th is the day it is showing as selected — measure a handful
     // of real cells rather than the whole grid.
+    //
+    // THE FLOOR IS EFFECTIVE, AND THE TWO AXES REACH IT DIFFERENTLY (#3938/#3954).
+    // A day cell renders the 34px control box and is as wide as its grid column.
+    // Its width already clears 44 from the column; its height clears it through
+    // the block reach a coarse pointer gets — this file runs in the `mobile`
+    // project, so the reach is really there and `expectPhoneTapTargets` demands
+    // the 44 rather than the box. Two adjacent days are handed in together so the
+    // disjointness is asserted on the EXTENDED boxes, which is the pair that can
+    // now fight over a pixel.
     const day = calendar.getByRole("button", { name: "17", exact: true });
+    const dayBelow = calendar.getByRole("button", { name: "24", exact: true });
     await expect(day).toBeVisible();
-    const [dayBox] = await settledBoxes([day]);
-    expect(dayBox.height).toBeGreaterThanOrEqual(TAP_FLOOR_PX);
-    expect(dayBox.width).toBeGreaterThanOrEqual(TAP_FLOOR_PX);
+    await expectPhoneTapTargets(
+      page,
+      "the date sheet's day cells",
+      [day, dayBelow],
+      { disjoint: true }
+    );
 
     // Picking round-trips into the field's POSTED value, which is the contract
     // the fork must not touch.

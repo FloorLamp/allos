@@ -30,7 +30,7 @@ const PHONE_ONLY_CONTRACTS = [
 
 // The control box's own selector list, spelled once (#3938).
 const CONTROL_BOX_SELECTOR =
-  ".chip-base, .btn, .btn-ghost, .btn-danger, .button-control, .input";
+  ".chip-base, .btn, .btn-ghost, .btn-danger, .button-control, .input, [data-segmented-option]";
 
 function normalized(value: string) {
   return value.replace(/\s+/g, " ").trim();
@@ -304,6 +304,12 @@ describe("compiled phone-only CSS proof (#3518/#3727)", () => {
     [CONTROL_BOX_SELECTOR, "padding-block", false, null, false],
     [CONTROL_BOX_SELECTOR, "border-width", false, null, false],
     [CONTROL_BOX_SELECTOR, "min-block-size", false, "components", false],
+    // #3954: a checkbox label has no line box, so it takes the floor on BOTH
+    // axes instead of the derived padding — in `components` with the rest of the
+    // floor, and un-important, because a phone floor spelled with `!` is exactly
+    // what #3896 had to undo.
+    [".checkbox-control", "min-block-size", false, "components", false],
+    [".checkbox-control", "min-inline-size", false, "components", false],
   ] as const)(
     "%s { %s } below-sm=%s compiles into layer %s important=%s",
     async (selector, property, belowSm, layer, important) => {

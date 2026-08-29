@@ -1255,14 +1255,24 @@ export async function settledBoxes(
 // under `@media (pointer: coarse)`, so whether it arrived is a rendered fact; and a
 // `<select>` or `<input>` renders no pseudo-element at all, which is why the floor
 // is stated as effective and some targets legitimately return 0.
-async function renderedReach(targets: Locator[]): Promise<number[]> {
+//
+// PER AXIS, because one axis is where a tiled control's reach lives (#3954). A
+// segmented track's options and a calendar's day cells sit shoulder to shoulder
+// with no gap to spend, so their reach is block-only — reading `top` and calling
+// it the reach on both axes would credit a tiled control with 12px of inline
+// target it does not have, which is the flattering direction.
+type Reach = { block: number; inline: number };
+async function renderedReach(targets: Locator[]): Promise<Reach[]> {
   return Promise.all(
     targets.map((target) =>
       target.evaluate((el) => {
         const after = getComputedStyle(el, "::after");
-        if (after.content === "none") return 0;
-        const inset = Math.abs(Number.parseFloat(after.top));
-        return Number.isFinite(inset) ? inset : 0;
+        if (after.content === "none") return { block: 0, inline: 0 };
+        const side = (raw: string) => {
+          const inset = Math.abs(Number.parseFloat(raw));
+          return Number.isFinite(inset) ? inset : 0;
+        };
+        return { block: side(after.top), inline: side(after.left) };
       })
     )
   );
@@ -1361,12 +1371,12 @@ export async function expectPhoneTapTargets(
   );
   const floor = coarse ? TAP_FLOOR_PX : CONTROL_BOX_PX;
   const effective = boxes.map((box, index) => {
-    const r = reach[index] ?? 0;
+    const r = reach[index] ?? { block: 0, inline: 0 };
     return {
-      x: box.x - r,
-      y: box.y - r,
-      width: box.width + 2 * r,
-      height: box.height + 2 * r,
+      x: box.x - r.inline,
+      y: box.y - r.block,
+      width: box.width + 2 * r.inline,
+      height: box.height + 2 * r.block,
     };
   });
   const viewport = page.viewportSize();
@@ -1375,11 +1385,11 @@ export async function expectPhoneTapTargets(
   for (const [index, box] of boxes.entries()) {
     expect(
       effective[index]!.width + TAP_FLOOR_FLOAT_EPSILON_PX,
-      `${name} target ${index} width: ${box.width} rendered + 2x${reach[index]} reach, against the ${coarse ? "coarse-pointer" : "fine-pointer"} floor`
+      `${name} target ${index} width: ${box.width} rendered + 2x${reach[index]?.inline} inline reach, against the ${coarse ? "coarse-pointer" : "fine-pointer"} floor`
     ).toBeGreaterThanOrEqual(floor);
     expect(
       effective[index]!.height + TAP_FLOOR_FLOAT_EPSILON_PX,
-      `${name} target ${index} height: ${box.height} rendered + 2x${reach[index]} reach, against the ${coarse ? "coarse-pointer" : "fine-pointer"} floor`
+      `${name} target ${index} height: ${box.height} rendered + 2x${reach[index]?.block} block reach, against the ${coarse ? "coarse-pointer" : "fine-pointer"} floor`
     ).toBeGreaterThanOrEqual(floor);
     expect(box.x, `${name} target ${index} left edge`).toBeGreaterThanOrEqual(
       0

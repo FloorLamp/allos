@@ -162,6 +162,15 @@ test.describe("touch targets clear the 40px minimum (#644)", () => {
 // assertion below kept passing, because 40 is not less than 40. A bound that survives
 // the rule it exists to enforce is not a bound (#3561).
 //
+// AND IT MOVED AGAIN (#3938/#3954): the day cell and the month arrow render the
+// 34px control box now, at every width, and a COARSE pointer gets the rest of the
+// 44 back as reach around it. The two claims here are therefore different on the
+// two axes and the difference is the design. HEIGHT is the box plus whatever reach
+// this pointer actually got — read back from the render, so this file (desktop
+// project, fine pointer, no reach) demands the box and a touch run demands 44.
+// WIDTH stays a hard 44: a day cell is as wide as its grid column, the column is
+// what `--week-grid-min` buys, and nothing about the box changed that.
+//
 // What seven day columns cost is `--week-grid-min` (app/globals.css, #3452) — the
 // drawer's width class and the calendar band both read it, and neither derives it
 // any more. #3536 widened the drawer enough to pay that bill even at a 320px
@@ -173,7 +182,7 @@ test.describe("touch targets clear the 40px minimum (#644)", () => {
 test.describe("the phone drawer's month calendar clears the floor too (#3377/#3514)", () => {
   test.use({ viewport: PHONE });
 
-  test("every day cell is >=44px square and disjoint at 320px and 390px", async ({
+  test("every day cell is a 44px-wide column, one control box tall, and disjoint at 320px and 390px", async ({
     page,
   }) => {
     test.slow(); // opening the drawer costs a hydration wait on a cold route
@@ -229,40 +238,71 @@ test.describe("the phone drawer's month calendar clears the floor too (#3377/#35
         const calendar = prev.closest("div")!.parentElement!;
         const grids = calendar.querySelectorAll(".grid");
         const days = Array.from(grids[grids.length - 1].children);
+        // The reach as the browser resolved it, per axis: a tiled day cell reaches
+        // on the BLOCK axis only, so crediting `top`'s inset to the width would
+        // report 12px of inline target that does not exist (#3954).
         const box = (el: Element) => {
           const r = el.getBoundingClientRect();
-          return { x: r.x, y: r.y, w: r.width, h: r.height };
+          const after = getComputedStyle(el, "::after");
+          const side = (raw: string) => {
+            const inset = Math.abs(Number.parseFloat(raw));
+            return after.content === "none" || !Number.isFinite(inset)
+              ? 0
+              : inset;
+          };
+          return {
+            x: r.x,
+            y: r.y,
+            w: r.width,
+            h: r.height,
+            reachBlock: side(after.top),
+            reachInline: side(after.left),
+          };
         };
         return {
           days: days.map(box),
           dayCount: days.length,
           glyph: box(days[0].firstElementChild!),
+          coarse: window.matchMedia("(pointer: coarse)").matches,
         };
       });
       expect(cells.dayCount).toBeGreaterThanOrEqual(28);
+      const heightFloor = cells.coarse ? TAP_FLOOR_PX : CONTROL_BOX_PX;
       for (const [index, day] of cells.days.entries()) {
-        expect(day.w).toBeGreaterThanOrEqual(TAP_FLOOR_PX);
-        expect(day.h).toBeGreaterThanOrEqual(TAP_FLOOR_PX);
+        expect(day.w + 2 * day.reachInline).toBeGreaterThanOrEqual(
+          TAP_FLOOR_PX
+        );
+        expect(
+          day.h + 2 * day.reachBlock,
+          `day ${index}: ${day.h}px rendered + 2x${day.reachBlock}px block reach`
+        ).toBeGreaterThanOrEqual(heightFloor);
+        // Disjointness on the EXTENDED boxes, which is where two hit regions can
+        // now fight over a pixel that the rendered boxes never touched.
         if (index % 7 !== 0) {
           const previous = cells.days[index - 1];
           expect(previous.y).toBeCloseTo(day.y, 0);
-          expect(previous.x + previous.w).toBeLessThanOrEqual(day.x + 0.5);
+          expect(
+            previous.x + previous.w + previous.reachInline
+          ).toBeLessThanOrEqual(day.x - day.reachInline + 0.5);
         }
         if (index >= 7) {
           const above = cells.days[index - 7];
           expect(above.x).toBeCloseTo(day.x, 0);
-          expect(above.y + above.h).toBeLessThanOrEqual(day.y + 0.5);
+          expect(above.y + above.h + above.reachBlock).toBeLessThanOrEqual(
+            day.y - day.reachBlock + 0.5
+          );
         }
       }
       // …and the glyph inside did NOT grow with it. This is the padding/hit-slop
-      // idiom, not a bigger calendar: 28px circles, 44px-tall targets.
+      // idiom, not a bigger calendar: 28px circles inside the control box.
       expect(cells.glyph.w).toBeLessThanOrEqual(30);
 
-      const [prevBox, nextBox] = await settledBoxes([prevMonth, nextMonth]);
-      for (const arrow of [prevBox, nextBox]) {
-        expect(arrow.width).toBeGreaterThanOrEqual(TAP_FLOOR_PX);
-        expect(arrow.height).toBeGreaterThanOrEqual(TAP_FLOOR_PX);
-      }
+      // The arrows are `.tap-target`, so they reach on BOTH axes and are asserted
+      // through the shared helper, which reads the same pointer this page reports.
+      await expectPhoneTapTargets(page, "the drawer calendar's month arrows", [
+        prevMonth,
+        nextMonth,
+      ]);
 
       // The destinations are untouched — growing a hit area must not re-point a day.
       // EVERY day link, not a sampled one: a hit box that grew over its neighbour

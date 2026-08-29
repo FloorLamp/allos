@@ -728,7 +728,8 @@ export default function SymptomLogBar({
                           </span>
                         )}
                       </span>
-                      <div className="flex items-center gap-1">
+                      {/* `gap-3` is the reach floor (#3938). */}
+                      <div className="flex items-center gap-3">
                         <SymptomSeverityControl
                           symptomLabel={s.label}
                           value={s.severity}
