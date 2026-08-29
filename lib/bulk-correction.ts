@@ -272,19 +272,32 @@ export function planCorrection(
 }
 
 /**
- * Canonical signature of a plan's (id, before) pairs — the compare-and-set token
- * (the #467 grantSignature treatment, applied to a bulk write). The preview hands
- * it to the client; apply re-reads under the write lock, re-plans, and refuses
- * when the signatures no longer match (a sync can land mid-preview). FNV-1a 64-bit
- * over the canonical pair list: deterministic, dependency-free, and the failure
- * mode of a (astronomically unlikely) collision is applying exactly the numbers
- * the user previewed — the same trust boundary as the data itself.
+ * Canonical signature of a plan's (id, before → after) triples — the
+ * compare-and-set token (the #467 grantSignature treatment, applied to a bulk
+ * write). The preview hands it to the client; apply re-reads under the write lock,
+ * re-plans, and refuses when the signatures no longer match. FNV-1a 64-bit over the
+ * canonical triple list: deterministic, dependency-free, and the failure mode of a
+ * (astronomically unlikely) collision is applying exactly the numbers the user
+ * previewed — the same trust boundary as the data itself.
+ *
+ * COVERS (#3962): the token signs the previewed PLAN, not merely the previewed
+ * rows. `before` moves under DATA drift (a sync upsert, a concurrent edit, a row
+ * entering or leaving the range); `after` moves under OP drift, which hashing only
+ * the pairs could never see. Op drift is reachable without touching the data at
+ * all: the weight/distance unit is per-LOGIN, so a flip in another tab between
+ * preview and apply re-resolves the same typed amount through a different scale
+ * and would otherwise apply a correction 2.2046× off the one displayed.
+ *
+ * DOES NOT COVER: an op whose `after` values are identical on every planned row —
+ * the intended boundary, since such an apply writes exactly what was shown. It
+ * says nothing about rows outside the plan, and it is not an authorization check;
+ * profile scoping stays at the request boundary.
  */
 export function correctionSignature(
-  changes: readonly { id: number; before: number }[]
+  changes: readonly { id: number; before: number; after: number }[]
 ): string {
   const text = `${changes.length};${changes
-    .map((c) => `${c.id}:${c.before}`)
+    .map((c) => `${c.id}:${c.before}>${c.after}`)
     .join("|")}`;
   let hash = 0xcbf29ce484222325n;
   const prime = 0x100000001b3n;

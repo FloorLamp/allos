@@ -173,31 +173,45 @@ describe("resolveCorrectionOp", () => {
 
 describe("correctionSignature", () => {
   const changes = [
-    { id: 1, before: 80 },
-    { id: 2, before: 81.5 },
+    { id: 1, before: 80, after: 78 },
+    { id: 2, before: 81.5, after: 79.5 },
   ];
 
-  it("is deterministic for the same (id, before) pairs", () => {
+  it("is deterministic for the same (id, before → after) triples", () => {
     expect(correctionSignature(changes)).toBe(
       correctionSignature([...changes])
     );
   });
 
-  it("changes when any id, value, or the row count drifts", () => {
-    const base = correctionSignature(changes);
-    expect(correctionSignature([{ id: 1, before: 80 }])).not.toBe(base);
-    expect(
-      correctionSignature([
-        { id: 1, before: 80 },
-        { id: 3, before: 81.5 },
-      ])
-    ).not.toBe(base);
-    expect(
-      correctionSignature([
-        { id: 1, before: 80 },
-        { id: 2, before: 81.6 },
-      ])
-    ).not.toBe(base);
+  // The last row is OP drift with the DATA held identical (#3962): same ids, same
+  // `before` values, different results. A token over (id, before) alone cannot see
+  // it, and that is exactly what a weight-unit flip between preview and apply
+  // produces — a −2 kg offset re-resolved as −2 lb.
+  it.each([
+    { drift: "a dropped row", plan: [{ id: 1, before: 80, after: 78 }] },
+    {
+      drift: "a changed id",
+      plan: [
+        { id: 1, before: 80, after: 78 },
+        { id: 3, before: 81.5, after: 79.5 },
+      ],
+    },
+    {
+      drift: "a changed before value",
+      plan: [
+        { id: 1, before: 80, after: 78 },
+        { id: 2, before: 81.6, after: 79.5 },
+      ],
+    },
+    {
+      drift: "changed after values only",
+      plan: [
+        { id: 1, before: 80, after: 79.093 },
+        { id: 2, before: 81.5, after: 80.593 },
+      ],
+    },
+  ])("differs under $drift", ({ plan }) => {
+    expect(correctionSignature(plan)).not.toBe(correctionSignature(changes));
   });
 });
 
