@@ -1,7 +1,12 @@
 import { test, expect } from "./fixtures";
 import type { Locator, Page } from "@playwright/test";
 import Database from "better-sqlite3";
-import { awaitHydrated, hydratedClick, settledClick } from "./helpers";
+import {
+  awaitHydrated,
+  hydratedClick,
+  settledClick,
+  settledSelect,
+} from "./helpers";
 import { loginAs } from "./nav";
 import {
   E2E_LOGIN_FOODPIN,
@@ -723,6 +728,24 @@ function eatingTimeOf(eventId: string): {
 const EARLIER_HOUR = "08:00";
 const EARLIER_HOUR_SLOT = "Morning";
 
+// State an eating time by the wall clock it READS, through the settled path.
+//
+// Two reasons it is a helper and not a `selectOption`. The control's option VALUES
+// are ISO instants — the day's hours resolved in the profile's rotating zone — which
+// a spec has no business spelling; the LABEL is the absolute local time, which is the
+// thing the user picks and the thing #2236's invariant 4 is about. And a bare
+// `selectOption` on a CONTROLLED select can land before hydration, set the DOM value,
+// fire no `onChange`, and be reverted — the swallow `settledSelect` exists for. It is
+// not hypothetical here: measured 2 runs in 3 on this file the first time the box was
+// loaded enough to widen the window.
+async function stateEatingTime(page: Page, hhmm: string): Promise<void> {
+  const field = page.getByTestId("food-when-time");
+  const value = await field
+    .getByRole("option", { name: hhmm, exact: true })
+    .getAttribute("value");
+  await settledSelect(page, field, value ?? "");
+}
+
 async function removeLoggedServing(page: Page, eventId: string): Promise<void> {
   const row = page.getByTestId(`food-logged-${eventId}`);
   await hydratedClick(
@@ -796,7 +819,7 @@ test("the control's Now fills an absolute local time, and it is what lands (#205
 
   // The statement is withdrawable — the empty option is a real answer, so there is no
   // way to be stuck having said something.
-  await page.getByTestId("food-when-time").selectOption("");
+  await settledSelect(page, page.getByTestId("food-when-time"), "");
   await expect(page.getByTestId("food-eating-time-note")).toContainText(
     "recorded with no eating time"
   );
@@ -818,7 +841,7 @@ test("an earlier hour states an absolute time, and it is what lands (#2053)", as
   // hours at the current local hour, so nothing on screen can be refused. The e2e
   // clock is pinned to 13:mm local, so 08:00 is always among them.
   const hhmm = EARLIER_HOUR;
-  await page.getByTestId("food-when-time").selectOption({ label: hhmm });
+  await stateEatingTime(page, hhmm);
   await expect(page.getByTestId("food-eating-time-note")).toContainText(
     `recorded as eaten at ${hhmm}`
   );
@@ -857,9 +880,7 @@ test("a stated time wins over the tab: the serving lands, visibly, in its derive
   // e2e clock is pinned to 13:mm local (Midday under the default 11:00/15:00
   // boundaries), so 08:00 is offered and files under Morning at every UTC start hour.
   const filingSlot = EARLIER_HOUR_SLOT;
-  await page
-    .getByTestId("food-when-time")
-    .selectOption({ label: EARLIER_HOUR });
+  await stateEatingTime(page, EARLIER_HOUR);
 
   // Stand in a DIFFERENT tab than the one the hour files under. The tab is
   // navigation; the statement stated the consequence.

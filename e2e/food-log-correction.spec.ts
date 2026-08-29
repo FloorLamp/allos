@@ -441,7 +441,7 @@ test("the correction sheet names the time it shows: eating time when stated, log
   await expect(loggedRows(page)).toHaveCount(idsBefore.length + 2);
   const statedId = await newRowId(page, idsWithFirst);
   // The statement is sticky across taps by design — release it before anything else.
-  await page.getByTestId("food-when-time").selectOption("");
+  await settledSelect(page, page.getByTestId("food-when-time"), "");
 
   // THE PIN, unstated half: the ⋯ menu's accessible name claims the LOGGED time and
   // the sheet opens with the "No eating time recorded" line — never a bare clock

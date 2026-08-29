@@ -1,7 +1,7 @@
 import { test, expect } from "./fixtures";
 import type { Page } from "@playwright/test";
 import Database from "better-sqlite3";
-import { hydratedClick, settledClick } from "./helpers";
+import { hydratedClick, settledClick, settledSelect } from "./helpers";
 import { frozenNow, workerDbPath } from "./worker-env";
 
 // #1596: the food quick-adds — a one-tap food-group serving and the protein-grams
@@ -272,9 +272,14 @@ test("a fast device clock keeps the serving and the sync SAYS the time wasn't re
 
   // The user states a time, exactly as in the passing #2053 case above — except the
   // device's own clock is what decided this hour was already behind them.
-  await page
-    .getByTestId("food-when-time")
-    .selectOption({ label: FAST_CLOCK_HOUR });
+  // Through the settled path: a bare selectOption on a controlled select can land
+  // before hydration and be reverted, and here that would silently withdraw the
+  // statement this test is entirely about.
+  const field = page.getByTestId("food-when-time");
+  const value = await field
+    .getByRole("option", { name: FAST_CLOCK_HOUR, exact: true })
+    .getAttribute("value");
+  await settledSelect(page, field, value ?? "");
 
   await context.setOffline(true);
   await hydratedClick(page, page.getByTestId("log-berries"));
