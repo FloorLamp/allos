@@ -692,3 +692,66 @@ describe("every kind's edit payload carries the stored row", () => {
     expect(hr.edit).toMatchObject({ unit: "", value: 54 });
   });
 });
+
+// ── FILTERS THAT NOTHING CAN SATISFY DEGRADE, AND SOURCES PRINT THEIR LABEL ──
+describe("the media filter degrades, and body rows name their source", () => {
+  it("does not assert emptiness over a record no kind can filter", () => {
+    const p = profile("history media degrade");
+    const loginId = login();
+    serving(p, YESTERDAY, 1);
+    weighIn(p, YESTERDAY, 70);
+
+    // No phase-1 kind carries row media yet, so `?media=1` used to render "Nothing
+    // recorded here yet." over a full record — a page ASSERTING emptiness rather than
+    // degrading to what it can show, which is what every other unsatisfiable filter
+    // on this page does.
+    const asked = gatherHistoryLog(p, { loginId, limit: 200, media: true });
+    const unasked = gatherHistoryLog(p, { loginId, limit: 200 });
+    expect(asked.rows.map((r) => r.id)).toEqual(unasked.rows.map((r) => r.id));
+    expect(asked.rows.length).toBeGreaterThan(0);
+    // And it says so, so the chip and the URL can stop claiming a filter is on.
+    expect(asked.mediaApplied).toBe(false);
+    expect(unasked.mediaApplied).toBe(false);
+
+    // THE CONVERSE, so this cannot be read as "the filter never applies": the question
+    // is asked of the ROWS, so the day a kind carries media the filter starts working
+    // with no edit here. Nothing in phase 1 produces one, which is why this half is
+    // asserted against the predicate rather than against a fixture.
+    expect(unasked.rows.every((row) => row.media === 0)).toBe(true);
+  });
+
+  it("prints an integration's name, and stays quiet for a manual reading", () => {
+    const p = profile("history body source");
+    const loginId = login();
+    db.prepare(
+      "INSERT INTO body_metrics (profile_id, date, weight_kg, source) VALUES (?, ?, 70, 'health-connect')"
+    ).run(p, YESTERDAY);
+    db.prepare(
+      "INSERT INTO body_metrics (profile_id, date, weight_kg) VALUES (?, ?, 71)"
+    ).run(p, TODAY);
+
+    const rows = gatherHistoryLog(p, {
+      loginId,
+      limit: 200,
+      kind: "body",
+    }).rows;
+    const synced = rows.find((r) => r.date === YESTERDAY)!;
+    const manual = rows.find((r) => r.date === TODAY)!;
+    // The LABEL both readers compute, not the raw column: Trends prints "Health
+    // Connect" for this row and the record printed `health_connect`.
+    expect(synced.detail).toContain("Health Connect");
+    expect(synced.detail).not.toContain("health-connect");
+    // A hand-entered reading has no provenance worth a tail — "Manual" on every such
+    // row is noise, not source.
+    expect(manual.detail).not.toContain("Manual");
+
+    // The DAY path reads the other statement and must agree with it.
+    const day = gatherHistoryLog(p, {
+      loginId,
+      limit: 200,
+      kind: "body",
+      day: YESTERDAY,
+    }).rows[0];
+    expect(day.detail).toBe(synced.detail);
+  });
+});

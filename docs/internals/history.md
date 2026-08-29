@@ -123,9 +123,15 @@ their subject from the session.
 No 7D/30D chips, no From/To card, no window note, no numbered pages. #2657's
 month/year **folds** with URL-carried open state, plus **load-more** (`?show`),
 bound the read. `?show` is clamped at `HISTORY_MAX_SHOW`, and AT that ceiling the
-control stops rendering and the page says so: a button whose URL changes and whose page
-does not is worse than no button. Reading further back is narrowing to one kind — each
-gets its own bound — or opening a day. The the **jump rail** (`components/JumpRailScrubber.tsx`) scrubs the
+control stops rendering and the page says how much it is showing — a button whose URL
+changes and whose page does not is worse than no button.
+
+**It names no escape, and that is the correction of one.** It briefly said "narrow to
+one kind, or open a day", and the first half was false: `limit` is applied PER KIND
+inside the gather, so the All view already reads every kind to `show` and the chip
+carries `show` across — the narrowed view returns the identical rows. A sentence that
+sends the reader back to where they are spends their trust as well as their tap. Phase
+2's day view is where "further back" gets a real answer. The the **jump rail** (`components/JumpRailScrubber.tsx`) scrubs the
 fold spine and owns a lane via `SCRUBBER_GUTTER_CLASS` rather than overlaying a
 row's action column. The rail is shared with `/timeline` until phase 2 retires
 that route — which is what closed #2816: the overlay chokepoint's rule 5 could
@@ -138,11 +144,15 @@ implies its family), `?class` (the old two-door dose pre-filter), `?item`,
 `?media`, `?day`, `?view=everyone`, `?open` (repeatable), `?show`. There is **no**
 `from`/`to`/`range`/`page` — those concepts died with the range row and the pager.
 
-An invalid `?kind`, `?family`, `?day` or `?item` **falls back to All**. The item axis
+An invalid `?kind`, `?family`, `?day`, `?item` or an unsatisfiable `?media` **falls
+back to All**. The item axis
 degrades only where the vocabulary is CLOSED — food groups and the three body measures
 — because that is where a pure layer can answer; `?kind=food&item=alcohol` is the case
 the alcohol ruling created, and it degrades rather than rendering an empty page that
-asserts there is nothing. Dose items and practice names are open per-profile
+asserts there is nothing. `?media=1` degrades on the same rule and for a reason that will expire on its
+own: no phase-1 kind carries row media, so the filter is asked of the ROWS the gather
+produced rather than of the phase — the day a kind carries media it starts working with
+no edit, and until then the page shows the record instead of asserting it is empty. Dose items and practice names are open per-profile
 vocabularies whose membership is a DB question, so their readers answer it by returning
 nothing. A record surface
 that 404s on a hand-edited URL is a record you cannot get back to.

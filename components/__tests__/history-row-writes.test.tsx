@@ -536,6 +536,7 @@ describe("the record's ⋯ posts to the domain's own action", () => {
         duration_min: "25",
         notes: "evening wind-down",
       },
+      "Save",
     ],
     [
       "substance",
@@ -560,6 +561,7 @@ describe("the record's ⋯ posts to the domain's own action", () => {
         amount: "3",
         notes: "after lunch",
       },
+      "Save",
     ],
     [
       "food",
@@ -584,6 +586,7 @@ describe("the record's ⋯ posts to the domain's own action", () => {
         group_key: "leafy_greens",
         meal_slot: "Midday",
       },
+      "Save",
     ],
     [
       "body",
@@ -601,13 +604,52 @@ describe("the record's ⋯ posts to the domain's own action", () => {
       }),
       "updateMetricReading",
       { kind: "resting-hr", target: "body_metrics:3:resting_hr", value: "54" },
+      "Save",
+    ],
+    [
+      // THE KIND THE MATRIX SKIPPED, and the one carrying a VALUE rather than a null.
+      // Dose submits through the domain's own `HistoricalDoseForm` — button "Save
+      // changes", not "Save" — so it sat outside this table while its two cases
+      // asserted only ids and the clock. Nothing asserted that `HistoryRows` forwards
+      // `edit.amount` into that form, and the form falls back to
+      // `initialDose?.amount` when it is missing: for a TAPER, whose log carries
+      // 250 mg against a schedule of 500 mg, the row says 250 and the editor opens on
+      // 500, and the historical-dose core writes `amountOverride || row.dose_amount`.
+      // Dropping the forwarding was green across 24,476 tests.
+      "dose",
+      row({
+        id: "dose:21",
+        kind: "dose",
+        date: "2026-08-18",
+        title: "Magnesium",
+        edit: {
+          kind: "dose",
+          logId: 21,
+          itemId: 42,
+          doseId: 9,
+          statedAt: "2026-08-18 10:07:00",
+          amount: "250 mg",
+          itemKind: "supplement",
+        },
+      }),
+      "updateHistoricalDose",
+      {
+        log_id: "21",
+        id: "42",
+        dose_id: "9",
+        date: "2026-08-18",
+        time: "10:07",
+        // THE LOG'S OWN AMOUNT, not the schedule's default — the taper, preserved.
+        amount: "250 mg",
+      },
+      "Save changes",
     ],
   ] as const)(
     "%s posts every field back unchanged when nothing was edited",
-    async (_kind, item, action, expected) => {
+    async (_kind, item, action, expected, saveLabel) => {
       await openEdit([item]);
       await act(async () =>
-        fireEvent.click(screen.getByRole("button", { name: "Save" }))
+        fireEvent.click(screen.getByRole("button", { name: saveLabel }))
       );
       expect(only(action)).toEqual(expected);
     }

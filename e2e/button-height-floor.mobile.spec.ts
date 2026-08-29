@@ -492,29 +492,36 @@ test.describe("the control box: one height, every kind, every viewport (#3938)",
   // group, and the Photos toggle outside it behind a hairline. Nothing else in the
   // app puts two control clusters that close together.
   //
-  // `?media=1` IS WHAT MAKES THE SECOND CLUSTER DETERMINISTIC. The Photos chip is
-  // data-presence-earned, and no phase-1 log kind carries row media yet, so on a
-  // bare URL it correctly does not render — and a row with one cluster in it cannot
-  // fail the way this test exists to catch. The param is a legitimate deep link, and
-  // asking for it is how the fixture expresses the arrangement rather than hoping the
-  // seed supplies it.
+  // WHAT IS AND IS NOT MEASURED HERE, because the honest scope shrank once. This
+  // briefly opened `/history?kind=dose&media=1` to force the Photos chip into the row
+  // and measure TWO independently placed clusters across the hairline. That URL no
+  // longer produces it: `?media=1` degrades when no row can satisfy it (owner ruling
+  // 2026-08-29), and no phase-1 kind carries row media — so the chip is unreachable
+  // until symptoms land, and forcing it back would mean asserting over a state the
+  // app deliberately refuses to enter.
   //
-  // WHAT IT DID NOT FIND, said because a comment claiming a catch it did not make is
-  // worse than no comment: the row was already clear at `gap-2`. The hairline divider
-  // between the clusters is itself gapped on both sides, so the distance between the
-  // last pill and the Photos chip is two gaps plus the rule, not one gap. The page
-  // spends `gap-3` because that is the gap the pill group already spends, and this
-  // test is what would notice if either of them stopped.
+  // So this measures the kind-chip row: every chip one height, every extended target
+  // disjoint from its neighbour. WHICH GAP THAT IS, stated because it is no longer the
+  // one it used to be: with a single cluster the separation is `FilterPills`' own
+  // `gap-3`, not the page row's — verified by mutating each, the pill group's turns
+  // this red and the row's no longer can. The cluster-against-cluster case comes back
+  // with the Photos chip; it is recorded here rather than silently dropped.
+  //
+  // AND `gap-2` WAS NEVER SHORT, said because a comment claiming a catch it did not
+  // make is worse than no comment: the hairline divider is itself gapped on both
+  // sides, so the distance across it was two gaps plus the rule. The page spends
+  // `gap-3` because that is the gap the pill group already spends, and this test is
+  // what would notice if either stopped.
   test("the record's filter row is one height with disjoint hit regions", async ({
     page,
   }) => {
-    await page.goto("/history?kind=dose&media=1");
+    await page.goto("/history");
     const row = page.getByTestId("history-filters");
     await expect(row).toBeVisible();
-    // THE SECOND CLUSTER, PROVEN PRESENT BEFORE ANYTHING IS MEASURED. Without it the
-    // row is one group of chips at one gap and every assertion below is true of a
-    // page that could not have been wrong.
-    await expect(page.getByTestId("history-chip-media")).toBeVisible();
+    // THE CONTENT, BEFORE THE GEOMETRY. A chip row that rendered only "All" cannot
+    // fail the way this test exists to catch, and the kind chips are data-presence
+    // earned — so their presence is asserted rather than assumed.
+    await expect(row.getByTestId("history-chip-all")).toBeVisible();
 
     const geometry = await row.evaluate((el, epsilon) => {
       // A TARGET'S LIVE HIT REGION ENDS AT ITS SCROLLPORT (#3607's rule, one row

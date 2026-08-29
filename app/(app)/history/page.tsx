@@ -190,6 +190,10 @@ export default async function HistoryPage(props: {
   const presentKinds = HISTORY_LOG_KINDS.filter((candidate) =>
     feeds.some((feed) => feed.gather.presentKinds.includes(candidate))
   );
+  // WHETHER THE PHOTOS FILTER IS ON, as the gather answers it rather than as the URL
+  // asks: `?media=1` degrades when no row can satisfy it, so the chip must not paint
+  // itself pressed over a page that is showing everything.
+  const mediaApplied = feeds.some((feed) => feed.gather.mediaApplied);
   const hasMedia = feeds.some((feed) =>
     feed.gather.rows.some((row) => row.media > 0)
   );
@@ -223,7 +227,7 @@ export default async function HistoryPage(props: {
       kind: nextKind,
       class: nextKind === "dose" ? doseClass : undefined,
       item: "kind" in next ? undefined : rawItem,
-      media: next.media ?? media,
+      media: next.media ?? mediaApplied,
       day,
       everyone,
       show: show === HISTORY_DEFAULT_SHOW ? undefined : show,
@@ -240,7 +244,7 @@ export default async function HistoryPage(props: {
       kind,
       class: doseClass,
       item: rawItem,
-      media,
+      media: mediaApplied,
       day,
       everyone,
       open: toggledTimelineOpen(openFolds, key, fold),
@@ -365,7 +369,7 @@ export default async function HistoryPage(props: {
             ]}
           />
         </div>
-        {hasMedia || media ? (
+        {hasMedia || mediaApplied ? (
           <>
             <span
               aria-hidden
@@ -374,8 +378,8 @@ export default async function HistoryPage(props: {
             <span className="shrink-0">
               <Chip
                 role="filter"
-                href={chipHref({ media: !media })}
-                current={media}
+                href={chipHref({ media: !mediaApplied })}
+                current={mediaApplied}
                 linkBehavior="timeline"
                 testId="history-chip-media"
               >
@@ -474,7 +478,14 @@ export default async function HistoryPage(props: {
                 presentation; the link is already the real one). */}
             <h2 className="sticky top-0 z-10 -mx-1 mb-1 flex items-baseline gap-2 bg-(--page) px-1 py-1 text-sm font-semibold text-slate-800 dark:text-slate-100">
               <Link
-                href={historyHref({ day: group.date, everyone })}
+                // THE READER'S OWN BOUND RIDES ACROSS. Without `show` a day opened at
+                // `HISTORY_DEFAULT_SHOW`, so a busy day truncated on first open even
+                // though the page it was opened from had already been widened.
+                href={historyHref({
+                  day: group.date,
+                  everyone,
+                  show: show === HISTORY_DEFAULT_SHOW ? undefined : show,
+                })}
                 className="hover:underline"
                 data-testid="history-day-link"
               >
@@ -537,13 +548,22 @@ export default async function HistoryPage(props: {
 
       {/* LOAD MORE, OR THE SENTENCE THAT SAYS WHY THERE ISN'T ONE.
           `?show` is clamped at `HISTORY_MAX_SHOW`, so at the ceiling the control was a
-          button whose URL changed and whose page did not: it rendered, it navigated,
-          and the reader got back a byte-identical page. A control that does nothing is
-          worse than no control, because it answers "is there more" with a promise
-          instead of a fact. The ceiling stays — it is what keeps one kind's read off
-          the whole store — and the page says what it is and where the rest is instead.
-          Both routes named below are REAL and bounded per kind or per day, so neither
-          is the same wall one step along. */}
+          button whose URL changed and whose page did not. A control that does nothing
+          is worse than no control, because it answers "is there more" with a promise
+          instead of a fact.
+
+          AND SO IS A SENTENCE THAT NAMES A ROUTE BACK TO THE SAME ROWS. This said
+          "Narrow to one kind, or open a day, to read further back", and the first half
+          was FALSE: `limit` is applied per kind inside the gather — `wants()` decides
+          WHETHER a kind is read, never how much — so the All view already reads every
+          kind to `show`, and the chip carries `show` across, landing the narrowed view
+          on the identical rows. Measured: 0 rows revealed, same oldest date either
+          side. That is worse than the inert button it replaced, because it spends the
+          reader's trust as well as their tap.
+
+          So the page says only what it knows: how much it is showing. The ceiling
+          stays — it is what keeps one kind's read off the whole store — and phase 2's
+          day view is where "further back" gets a real answer. */}
       {hasMore ? (
         <div className={`mt-4 ${railGutter}`}>
           {show < HISTORY_MAX_SHOW ? (
@@ -555,7 +575,7 @@ export default async function HistoryPage(props: {
                 kind,
                 class: doseClass,
                 item: rawItem,
-                media,
+                media: mediaApplied,
                 day,
                 everyone,
                 open: [...openFolds],
@@ -569,10 +589,7 @@ export default async function HistoryPage(props: {
               className="text-sm text-slate-500 dark:text-slate-400"
               data-testid="history-show-ceiling"
             >
-              {`Showing the most recent ${HISTORY_MAX_SHOW} records. `}
-              {kind
-                ? "Open a day to read further back."
-                : "Narrow to one kind, or open a day, to read further back."}
+              {`Showing the most recent ${HISTORY_MAX_SHOW} records.`}
             </p>
           )}
         </div>

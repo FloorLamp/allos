@@ -83,6 +83,12 @@ export interface HistoryGather {
   hasMore: boolean;
   /** The kinds this profile has ANY row for: what earns a filter chip (#3958). */
   presentKinds: HistoryLogKind[];
+  /**
+   * Whether `?media=1` actually narrowed anything. False when it was not asked for,
+   * and false when it was asked for and no row could satisfy it — the degrade case,
+   * which the page reads so the chip and the URL both stop claiming a filter is on.
+   */
+  mediaApplied: boolean;
   /** The subject's own today, in the subject's own timezone. */
   today: string;
 }
@@ -505,9 +511,15 @@ export function gatherHistoryLog(
           href: metricDetailHref(measure.slug),
           // The SAME number the editor opens on, formatted once — the detail and the
           // edit field cannot disagree because there is only one value between them.
+          // THE LABEL, NOT THE TOKEN. Both body readers compute `source_label` — the
+          // integration's name, "Manual", "Document" — and reading `source` past it
+          // printed a synced row as "71 kg · health_connect" where Trends prints
+          // "Health Connect". Gated on the raw column so a MANUAL row still prints
+          // nothing: the source is the muted tail when it says something, and
+          // "Manual" on every hand-entered row is noise, not provenance.
           detail: detailSegment([
             `${measure.value}${measure.unit}`,
-            row.source,
+            row.source ? row.source_label : null,
           ]),
           media: 0,
           edit: {
@@ -527,14 +539,27 @@ export function gatherHistoryLog(
   // THE RECORD ENDS AT NOW, applied to the gathered set rather than to each reader's
   // SQL: one rule, one place, and a kind that grows a future-dated row later inherits
   // it without a second clause.
-  const bounded = rows.filter(
-    (row) => row.date <= todayStr && (!opts.media || row.media > 0)
-  );
+  const dated = rows.filter((row) => row.date <= todayStr);
+
+  // A FILTER NOTHING CAN SATISFY DEGRADES, like every other unsatisfiable one on this
+  // page (owner ruling 2026-08-29). No phase-1 kind carries row media yet — the five
+  // composers all write `media: 0` — so a hand-typed `?media=1` rendered "Nothing
+  // recorded here yet." over a full record, which is a page ASSERTING emptiness
+  // rather than degrading to what it can show.
+  //
+  // ASKED OF THE ROWS, NOT OF THE PHASE. The moment a kind starts carrying media the
+  // filter starts working, with no edit here and nothing to remember to undo; and a
+  // profile that simply has no photos still gets the filter applied honestly, because
+  // the question is whether ANY row this gather produced carries any.
+  const mediaApplied =
+    opts.media === true && dated.some((row) => row.media > 0);
+  const bounded = mediaApplied ? dated.filter((row) => row.media > 0) : dated;
 
   return {
     rows: bounded,
     hasMore: truncated,
     presentKinds: historyPresentKinds(profileId),
+    mediaApplied,
     today: todayStr,
   };
 }

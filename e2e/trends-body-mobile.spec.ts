@@ -36,6 +36,14 @@ import {
 const PHONE = { width: 360, height: 800 };
 const DESKTOP = { width: 1024, height: 800 };
 
+/** Has the roving focus left the option it started on, and landed on another? */
+function movedOff(
+  place: { at: "item"; testId: string } | { at: "elsewhere" | "lost" },
+  from: string
+): boolean {
+  return place.at === "item" && place.testId !== from;
+}
+
 async function openBodyTab(
   page: Page,
   opts: { view?: "all" | "tiles" } = {}
@@ -365,13 +373,74 @@ test.describe("Trends → Overview → body census responsive views (#1067)", ()
     const menuOptions = page.getByTestId("chart-jump-menu-options");
     await expect(menuOptions).toBeVisible();
     await expect(trigger).toHaveAttribute("aria-expanded", "true");
-    const focusedMenuItem = menuOptions.locator('[role="menuitemradio"]:focus');
-    await expect(focusedMenuItem).toHaveCount(1);
-    const initiallyFocused = await focusedMenuItem.getAttribute("data-testid");
-    await page.keyboard.press("ArrowDown");
-    await expect
-      .poll(() => focusedMenuItem.getAttribute("data-testid"))
-      .not.toBe(initiallyFocused);
+    // THE SUBJECT OF THIS ASSERTION IS NOT CHOSEN BY THE MENU (#4015/#4018's shape,
+    // ported). It used to read the focused item's testid, press ArrowDown, and poll
+    // for a DIFFERENT testid — and which item is focused is decided by the app under
+    // timing this spec does not control. `ChartJumpMenu`'s focus effect is keyed on
+    // `activeIndex`, and `activeIndex` is set by an IntersectionObserver over the
+    // charts: any scroll or late layout settle re-runs the effect and re-focuses the
+    // newly-active option, with no keystroke involved.
+    //
+    // MEASURED on this box: open the menu, ArrowDown to `chart-jump-resting_hr`,
+    // scroll the page, and focus moves to `chart-jump-steps` on its own. So the old
+    // assertion could be satisfied by the observer, defeated by the observer putting
+    // focus back where it started, or left with focus on NO menu item at all while a
+    // re-render's rAF is starved — and that last one reads as
+    // "Timeout 5000ms exceeded while waiting on the predicate", naming nothing.
+    //
+    // So the property is stated instead, bounded and three-valued. ArrowDown is
+    // pressed until the roving focus is somewhere other than where it started,
+    // bounded by the number of options — a menu whose arrow key does nothing
+    // exhausts the bound however many options there are, while an observer yank
+    // costs at most one extra press. `lost` is a distinct outcome, because
+    // "focus is not on the item it started on" is also true of focus falling to
+    // nothing, which is a different bug wearing the same green.
+    const optionTestIds = await menuOptions
+      .locator('[role="menuitemradio"]')
+      .evaluateAll((nodes) =>
+        nodes.map((node) => node.getAttribute("data-testid") ?? "")
+      );
+    expect(optionTestIds.length).toBeGreaterThan(1);
+
+    /** Where the roving focus is, as a word rather than a testid. */
+    const rovingFocus = async (): Promise<
+      { at: "item"; testId: string } | { at: "elsewhere" | "lost" }
+    > =>
+      menuOptions.evaluate((panel) => {
+        const active = document.activeElement;
+        if (!active || active === document.body) return { at: "lost" as const };
+        if (!panel.contains(active)) return { at: "elsewhere" as const };
+        const item = active.closest('[role="menuitemradio"]');
+        if (!item) return { at: "elsewhere" as const };
+        return {
+          at: "item" as const,
+          testId: item.getAttribute("data-testid") ?? "",
+        };
+      });
+
+    const started = await rovingFocus();
+    expect(started.at, "the menu opened without focusing an option").toBe(
+      "item"
+    );
+    const from = started.at === "item" ? started.testId : "";
+    let landed = started;
+    for (let i = 0; i < optionTestIds.length && !movedOff(landed, from); i++) {
+      await page.keyboard.press("ArrowDown");
+      landed = await rovingFocus();
+    }
+    // A PRESENCE: focus is on an option, and it is a different option.
+    expect(
+      landed,
+      `ArrowDown ${optionTestIds.length} times from ${from} left the roving focus ` +
+        `at ${JSON.stringify(landed)} — the arrow keys must move it between the ` +
+        `menu's ${optionTestIds.length} options, and it must stay ON one.`
+    ).toMatchObject({ at: "item" });
+    expect(
+      landed,
+      `the roving focus never left ${from} in ${optionTestIds.length} presses of ` +
+        "ArrowDown — the arrow keys move it between options, and a menu whose " +
+        "roving focus is stuck exhausts this bound however many options it has."
+    ).not.toMatchObject({ at: "item", testId: from });
     await page.keyboard.press("Escape");
     await expect(menuOptions).toHaveCount(0);
     await expect(trigger).toHaveAttribute("aria-expanded", "false");

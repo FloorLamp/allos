@@ -296,12 +296,25 @@ export function getBodyMetricsPage(
 export function getBodyMetricsOnDate(
   profileId: number,
   date: string
-): BodyMetric[] {
-  return db
-    .prepare(
-      "SELECT * FROM body_metrics WHERE profile_id = ? AND date = ? ORDER BY id"
-    )
-    .all(profileId, date) as BodyMetric[];
+): BodyMetricWithSource[] {
+  // THE SAME LABELLED SHAPE THE PAGE READ RETURNS. Both are read by `/history` — the
+  // day view asks this one — and a row that printed its raw `source` token here while
+  // the page above printed the integration's name would be one surface disagreeing
+  // with itself about the same row (#3958).
+  return (
+    db
+      .prepare(
+        `SELECT w.*, d.id AS document_id, d.source AS doc_source,
+                d.doc_type AS doc_type, d.filename AS doc_filename
+           FROM body_metrics w
+           LEFT JOIN medical_documents d
+             ON w.source = '${DOCUMENT_SOURCE_PREFIX}' || d.id
+            AND d.profile_id = w.profile_id
+          WHERE w.profile_id = ? AND w.date = ?
+          ORDER BY w.id`
+      )
+      .all(profileId, date) as BodyMetricSourceRow[]
+  ).map(withSourceLabel);
 }
 
 // ---- Integration metrics (steps, distance, calories, HR) ----
