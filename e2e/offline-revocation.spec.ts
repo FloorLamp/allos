@@ -244,15 +244,34 @@ async function nextVisitBouncesToLogin(page: Page) {
 
 test("R1 — a REVOKED session wipes the offline record and closes the write gate (#3053)", async ({
   page,
+  browser,
 }, testInfo) => {
   test.slow();
   const f = createFixture(testInfo, "r1");
   try {
     await warm(page, f);
 
-    // Exactly what `revokeLoginSessions` runs — "Sign out all devices", aimed at this
-    // device from somewhere else entirely.
-    onServer("DELETE FROM sessions WHERE login_id = ?", f.loginId);
+    // THE REVOCATION IS DRIVEN THROUGH THE PRODUCT, from a second device, because that is
+    // the claim: "Sign out everywhere else" is a Server Action that ends this device's
+    // session row and nothing else, and until #3053 the phone kept the record anyway. A
+    // raw DELETE against the fixture database would have proven only that the browser acts
+    // on a state the spec itself invented; the seven server paths that must PRODUCE that
+    // state are pinned per-path in lib/__db_tests__/session-revocation.test.ts.
+    const other = await browser.newContext();
+    try {
+      const laptop = await other.newPage();
+      await login(laptop, f);
+      await laptop.goto("/settings/account");
+      await laptop
+        .getByRole("button", { name: "Sign out everywhere else" })
+        .click();
+      await expect(
+        laptop.getByTestId("active-sessions"),
+        "the second device never saw the sessions card"
+      ).toContainText("1 device signed in", { timeout: 20_000 });
+    } finally {
+      await other.close();
+    }
 
     await nextVisitBouncesToLogin(page);
 

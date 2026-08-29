@@ -26,6 +26,7 @@ import {
   WARM_START_DELAY_MS,
 } from "@/lib/offline/warm-offline-route";
 import { whenSessionOpened } from "@/lib/offline/write-gate";
+import { wipeIfRevoked } from "@/components/device-wipe";
 
 // How long after a page load the first snapshot refresh runs. See the call site: the
 // endpoint does synchronous SQLite work in the same single-threaded server that is
@@ -59,8 +60,11 @@ const INITIAL_REFRESH_DELAY_MS = 1_200;
 //     a snapshot refresh is background work nobody is waiting on, and holding it would
 //     be the polling-miss case #2982 deliberately excluded.
 //
-// It asks the server for nothing when everything it holds is current — `snapshotsToRefresh`
-// answers from the stored envelopes' own clocks, in the PROFILE'S timezone.
+// It asks the server only for the PAYLOADS it does not have — `snapshotsToRefresh` answers
+// from the stored envelopes' own clocks, in the PROFILE'S timezone. It still ASKS on every
+// run, because two things can only be learned by asking and neither is a payload: that the
+// offline-reads switch moved on another device (#3041), and that this session was REVOKED
+// rather than merely expired (#3053).
 //
 // WHEN IT RUNS. "An authenticated visit" is not the same thing as a hard page load, and
 // keying the effect on `[activeProfileId]` alone quietly made it one: this is an App
@@ -150,13 +154,26 @@ export default function OfflineSnapshotRefresher({
             ...dirtySnapshotKinds(),
           ]),
         ];
-        if (wanted.length === 0) return;
-
+        // IT ASKS EVEN WHEN IT NEEDS NOTHING (#3041). Returning here was the defect: a
+        // device holding a complete, fresh set stopped asking, so an off switch flipped
+        // on another device reached it only when a payload happened to age — up to a day,
+        // for a control whose surface says the data is gone from this account's devices.
+        // The probe is the same route answered above its builders: one session lookup and
+        // one settings read, no payloads, no PHI. That is the extra request this costs on
+        // visits that previously made none.
         const res = await fetch(
-          `/api/offline-snapshots?kinds=${wanted.join(",")}`,
+          wanted.length === 0
+            ? "/api/offline-snapshots?probe=1"
+            : `/api/offline-snapshots?kinds=${wanted.join(",")}`,
           { headers: { Accept: "application/json" } }
         );
-        if (!res.ok) return;
+        if (!res.ok) {
+          // The one 401 that IS a wipe (#3053). Every other failure — a lapsed cookie, a
+          // blip, a 5xx — leaves the device holding what it holds, which is the ruling
+          // this branch is careful not to disturb.
+          await wipeIfRevoked(res);
+          return;
+        }
         const body = (await res.json()) as {
           enabled?: boolean;
           profileId?: number;
@@ -164,8 +181,9 @@ export default function OfflineSnapshotRefresher({
         };
         // The off switch, honored from the SERVER's answer as well as from the toggle
         // itself: a profile turned off on another device stops having payloads here at
-        // its next authenticated visit. Nothing re-materializes until it is turned back
-        // on.
+        // its next authenticated visit — which is now true of a device that needed
+        // nothing, too, because the probe above asked (#3041). Nothing re-materializes
+        // until it is turned back on.
         if (body.enabled === false) {
           // WIPE, AND DO NOT LATCH. The server is authoritative and it is asked again on
           // every refresh, so it needs no help from this device to keep saying no —

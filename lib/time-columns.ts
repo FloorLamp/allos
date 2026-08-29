@@ -1509,6 +1509,15 @@ export const TIME_COLUMNS = {
       convention: "bare",
     },
   ],
+  revoked_sessions: [
+    {
+      column: "revoked_at",
+      semantic: "lifecycle",
+      grain: "instant",
+      convention: "bare",
+      note: "When a session was deliberately ended (#3053) — the tombstone that lets the server answer REVOKED rather than merely unauthorized. Written only by lib/auth's revocation paths, never by purgeExpiredSessions, and swept by that purge once past the session absolute-max ceiling.",
+    },
+  ],
   routines: [
     {
       column: "started_date",

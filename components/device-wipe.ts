@@ -7,12 +7,17 @@
 // (Log out) and app/(app)/settings/family/FamilyManager (delete your own login, sign your
 // own login out of every device, reset your own password).
 //
-// WHAT IS NOT HERE, deliberately: any wipe triggered by a session that ended somewhere
-// ELSE. An admin revoking a phone that is in a drawer, "Sign out everywhere else" aimed at
-// a laptop across town — those devices are not running this code, learn nothing until they
-// next reach the server, and what they get then is a 401 that looks exactly like ordinary
-// expiry. Wiping on a bare 401 would evaporate the offline record for someone who simply
-// came back tomorrow, which is the case this whole feature exists for. That fork is #3053.
+// A SESSION THAT ENDED SOMEWHERE ELSE reaches this module too, and that is #3053's
+// resolution. An admin revoking a phone that is in a drawer, "Sign out everywhere else"
+// aimed at a laptop across town — those devices are not running the affordance's code and
+// learn nothing until they next reach the server. What they used to get then was a 401
+// that looked exactly like ordinary expiry, and wiping on THAT would evaporate the
+// offline record for someone who simply came back tomorrow, which is the case this whole
+// feature exists for (#2994's pass-4 ruling, untouched).
+//
+// So the server now says which 401 it is, and `wipeIfRevoked` below is the only new door:
+// same wipe, same perimeter, opened by the server's own word rather than by a timer or by
+// a bare status code.
 
 import { clearEmergencyPayload } from "@/components/emergency-offline";
 import { clearQueue } from "@/lib/offline/queue-db";
@@ -120,4 +125,31 @@ export async function reopenUnlessSessionEnded(): Promise<void> {
  */
 export async function reopenAfterRefusedSignOut(): Promise<void> {
   await reopenForFailedLogout();
+}
+
+/**
+ * The DEVICE-SIDE half of "the server says revoked" (#3053).
+ *
+ * Handed the 401 an authenticated data route just answered. Wipes — the whole perimeter,
+ * gate included — only when the server named the session REVOKED, and does nothing at all
+ * on the plain `unauthorized` that an expired cookie gets. Answers whether it wiped.
+ *
+ * ONLY `"revoked"` COUNTS, and everything else is deliberately the keep-it case: a body
+ * that will not parse, a 401 from something that is not this app's route, an older server
+ * that still answers `"auth"`. Each of those is "I could not tell", and #2994's ruling is
+ * that not being able to tell means the record stays. The failure direction is the whole
+ * design: a wipe we did not make is a health record someone still has, and a wipe we made
+ * wrongly is a health record nobody has.
+ */
+export async function wipeIfRevoked(res: Response): Promise<boolean> {
+  if (res.status !== 401) return false;
+  let error: unknown;
+  try {
+    error = ((await res.json()) as { error?: unknown }).error;
+  } catch {
+    return false;
+  }
+  if (error !== "revoked") return false;
+  await wipeDeviceForSignOut();
+  return true;
 }

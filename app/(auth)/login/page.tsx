@@ -1,10 +1,11 @@
 import { redirect } from "next/navigation";
 import Wordmark from "@/components/Wordmark";
-import { getCurrentSession } from "@/lib/auth";
+import { currentSessionDenial, getCurrentSession } from "@/lib/auth";
 import { safeNextPath, safePrefillUsername } from "@/lib/login-security";
 import { isDemoMode, DEMO_USERNAME, DEMO_PASSWORD } from "@/lib/demo";
 import { canSendAuthEmail } from "@/lib/auth-email";
 import LoginForm from "./LoginForm";
+import RevokedDeviceWipe from "@/components/RevokedDeviceWipe";
 
 // Reading cookies() makes this dynamic — required, since the redirect-if-already
 // -authed check must run per request.
@@ -21,10 +22,19 @@ export default async function LoginPage(props: {
   const prefillUsername = safePrefillUsername(searchParams.u);
   // Already signed in — skip the form and go where they were headed.
   if (await getCurrentSession()) redirect(next);
+  // Not signed in, and there are two ways to be that (#3053). A cookie whose session was
+  // deliberately ENDED — "Sign out all devices" on a compromised phone, a per-device
+  // revoke, an admin password reset — means this device is still holding the offline
+  // health record of a session somebody took away. This is where such a device lands, and
+  // the only place it can be told, because the (app) layout that hosts every offline
+  // component never renders for it again. An ordinary lapsed cookie answers
+  // "unauthorized" and nothing is touched.
+  const revoked = (await currentSessionDenial()) === "revoked";
 
   return (
     <main className="flex min-h-screen items-center justify-center px-4 py-12">
       <div className="w-full max-w-sm">
+        {revoked && <RevokedDeviceWipe />}
         <div className="mb-8 flex items-center justify-center gap-2">
           <Wordmark markClassName="h-8 w-14" />
         </div>
