@@ -67,6 +67,26 @@ test.describe("the Show-everything tail's grammar (#3365)", () => {
     ).toBeGreaterThan(1);
   });
 
+  // #3365's third amendment: "No empty-state prose in the tail — absence is not
+  // content." One sentence outlived that ruling because its host had no way to
+  // suppress it: `SymptomLogBar`'s "No symptoms logged." rendered inside the tail's
+  // well-day card. #3366 retired that mount, so the sentence goes with it, and this
+  // is where that is checked rather than assumed. The bar itself is unchanged — it
+  // still says this in the illness cockpit and on the Cycles page, where a day with
+  // no symptoms logged is the reader's actual question.
+  test("no empty-state sentence renders inside the tail", async ({ page }) => {
+    await page.goto("/");
+    await openDashboardAll(page);
+    const lane = page.getByTestId("dashboard-all-contents");
+    // The control: the lane rendered and holds entries, so the absence below is
+    // about a populated tail and not a selector that found nothing.
+    expect(
+      await lane.getByTestId("dashboard-candidate").count()
+    ).toBeGreaterThan(0);
+    await expect(lane.getByTestId("symptom-none-logged")).toHaveCount(0);
+    await expect(lane.getByTestId("symptom-log-bar")).toHaveCount(0);
+  });
+
   test("no two tail blocks share a moment header", async ({ page }) => {
     await page.goto("/");
     await openDashboardAll(page);
