@@ -18,6 +18,7 @@ import {
   type BulkCorrectionPreviewResult,
   type BulkCorrectionRequest,
 } from "@/app/(app)/data/bulk-correction-actions";
+import Disclosure from "@/components/Disclosure";
 
 // Bulk corrections (issue #1603): fix a bad RUN of data — a miscalibrated scale,
 // an import that landed pounds as kilograms — in one plan → preview → apply →
@@ -177,7 +178,7 @@ export default function BulkCorrectionCard({
     // A power tool used a few times a year, so it collapses to ONE summary line at
     // the bottom of Review (#1880 item 6). A ?fix= deep-link (initialField) opens it
     // pre-selected — a native <details>, so the toggle needs no hydration.
-    <details
+    <Disclosure
       id="bulk-correction"
       className="card scroll-mt-4"
       data-testid="bulk-correction-card"
@@ -432,6 +433,6 @@ export default function BulkCorrectionCard({
             {preview.message}
           </p>
         ))}
-    </details>
+    </Disclosure>
   );
 }

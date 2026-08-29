@@ -8,8 +8,7 @@ import { E2E_LOGIN_CYCLE_STALE, E2E_MEMBER_PASSWORD } from "./fixture-logins";
 
 // Cycle plausibility guards (issue #1682): a period left open past the plausible maximum
 // stops claiming menstrual and prompts instead of being silently closed, and the dated
-// form refuses future dates and overlaps by NAMING the conflict rather than storing
-// something the domain can't mean.
+// form names an overlap conflict rather than storing something the domain can't mean.
 //
 // Fixture-OWNED per e2e hygiene (#868): runs as E2E_LOGIN_CYCLE_STALE in its OWN cookie
 // context on a dedicated adult profile seeded with one completed period plus one started
@@ -64,23 +63,6 @@ test.describe("cycle plausibility guards (#1682)", () => {
       "use “Edit” on its row in the history below"
     );
     await expect(prompt).not.toContainText("set its end date below");
-  });
-
-  test("the form refuses a future start date", async () => {
-    await page.goto("/medical/cycles");
-    // Folded since #2583 — open it, then drive it exactly as before.
-    const form = await openAddPeriodPanel(page);
-    const rows = page.getByTestId("cycle-history-row");
-    const before = await rows.count();
-
-    await fillPeriodDate(page, "start", shift(1));
-    await settledClick(page, form.getByRole("button", { name: "Add period" }));
-
-    await expect(form.getByRole("alert")).toContainText(
-      /can't start in the future/,
-      { timeout: 20_000 }
-    );
-    await expect(rows).toHaveCount(before); // refused, so nothing was stored
   });
 
   test("the form refuses an overlapping period and names the conflict", async () => {

@@ -1,6 +1,7 @@
 import type { ReactNode } from "react";
 import type { Finding } from "@/lib/findings";
 import FindingRow from "@/components/FindingRow";
+import Disclosure from "@/components/Disclosure";
 
 // Shared presentational list for the page-level, dismissible observational findings
 // (issue #45, domains 4–6) — the training-balance, body-hygiene, and goal-pacing
@@ -63,7 +64,7 @@ export default function FindingsList({
         {findings.map((f) => row(f, `${testid}-item`, `${testid}-dismiss`))}
       </ul>
       {moreFindings.length > 0 && (
-        <details className="group mt-3" data-testid={`${testid}-more`}>
+        <Disclosure className="mt-3" data-testid={`${testid}-more`}>
           <summary className="cursor-pointer list-none text-xs font-medium text-slate-500 hover:text-brand-600 hover:underline dark:text-slate-400 dark:hover:text-brand-400 [&::-webkit-details-marker]:hidden">
             <span className="group-open:hidden">
               Show {moreFindings.length} more →
@@ -75,14 +76,14 @@ export default function FindingsList({
               row(f, `${testid}-more-item`, `${testid}-more-dismiss`)
             )}
           </ul>
-        </details>
+        </Disclosure>
       )}
     </>
   );
 
   if (collapsible) {
     return (
-      <details className="card group" data-testid={testid}>
+      <Disclosure className="card" data-testid={testid}>
         <summary
           className="flex cursor-pointer list-none items-center justify-between gap-4 [&::-webkit-details-marker]:hidden"
           data-testid={`${testid}-toggle`}
@@ -113,7 +114,7 @@ export default function FindingsList({
         <div className="mt-4 border-t border-black/10 pt-4 dark:border-white/10">
           {rows}
         </div>
-      </details>
+      </Disclosure>
     );
   }
 

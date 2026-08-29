@@ -10,6 +10,7 @@ import {
   type NotifyRun,
   type NotifyLineKind,
 } from "@/lib/notify-log-format";
+import Disclosure from "@/components/Disclosure";
 
 // The run table for Settings → Logs & audit → Notify tick (issue #2209). Same shell
 // as its sibling viewers — card, ScrollFade, `.th`/`.td`, dashed empty panel,
@@ -142,7 +143,7 @@ export default function NotifyRunTable({
                       )}
                     </td>
                     <td className="td">
-                      <details>
+                      <Disclosure>
                         <summary className="cursor-pointer text-slate-500 dark:text-slate-400">
                           {run.counts.total}
                         </summary>
@@ -176,7 +177,7 @@ export default function NotifyRunTable({
                             );
                           })}
                         </ul>
-                      </details>
+                      </Disclosure>
                     </td>
                   </tr>
                 ))}

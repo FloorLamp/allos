@@ -154,6 +154,7 @@ import { BUILTIN_PRESURGERY_SITUATION } from "@/lib/surgery-bridge";
 import { IconChevronDown } from "@tabler/icons-react";
 import HistoricalDoseLauncher from "@/components/intake/HistoricalDoseLauncher";
 import { isHistoricalDoseDateAccepted } from "@/lib/dose-log-window";
+import Disclosure from "@/components/Disclosure";
 
 export const dynamic = "force-dynamic";
 
@@ -819,7 +820,7 @@ export default async function SupplementsTab({
       )}
 
       {notScheduled.length > 0 && (
-        <details data-testid="not-scheduled-section" className="group">
+        <Disclosure data-testid="not-scheduled-section">
           <summary className="flex cursor-pointer list-none items-center justify-between gap-3 rounded-lg border border-(--border) bg-surface px-3 py-2.5 text-sm font-medium text-slate-700 transition hover:bg-(--ghost-hover) [&::-webkit-details-marker]:hidden dark:text-slate-200">
             <span>More supplements ({notScheduled.length})</span>
             <IconChevronDown className="h-4 w-4 transition-transform group-open:rotate-180" />
@@ -827,18 +828,18 @@ export default async function SupplementsTab({
           <div className="mt-2 space-y-3">
             {notScheduled.map((item) => renderRow(item))}
           </div>
-        </details>
+        </Disclosure>
       )}
 
       {paused.length > 0 && (
-        <details>
+        <Disclosure>
           <summary className="cursor-pointer section-label">
             Paused ({paused.length})
           </summary>
           <div className="mt-2 space-y-3">
             {paused.map((item) => renderRow(item))}
           </div>
-        </details>
+        </Disclosure>
       )}
     </>
   );
