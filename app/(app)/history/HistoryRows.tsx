@@ -31,6 +31,7 @@ import {
 } from "@tabler/icons-react";
 import { timelineEntryAnchorId } from "@/lib/timeline-format";
 import DateField from "@/components/DateField";
+import WhenControl from "@/components/WhenControl";
 import HistoricalDoseForm from "@/components/medications/HistoricalDoseForm";
 import LoggedEventRow, {
   LOGGED_EVENT_LIST,
@@ -85,6 +86,21 @@ import {
 } from "@/app/(app)/medical/cycles/actions";
 import { SYMPTOM_SEVERITY_LEVELS, severityLabelFor } from "@/lib/symptoms";
 import { FLOW_LABELS, FLOW_LEVELS } from "@/lib/cycle";
+import {
+  statedHhmm,
+  statedInstantOnDate,
+  type WhenValue,
+} from "@/lib/stated-time";
+
+const practiceWhenFor = (
+  row: HistoryRow,
+  statedTime: string | null
+): WhenValue => ({
+  date: row.date,
+  statedAt: statedTime
+    ? (statedInstantOnDate(row.date, statedTime, row.tz)?.toISOString() ?? null)
+    : null,
+});
 
 // THE RECORD'S ROWS (#3958 phase 1) — one line, at every viewport.
 //
@@ -243,6 +259,7 @@ export default function HistoryRows({
   const undoable = useUndoableDelete();
   const toast = useToast();
   const [editingId, setEditingId] = useState<string | null>(null);
+  const [practiceWhen, setPracticeWhen] = useState<WhenValue | null>(null);
   const [menuOpenId, setMenuOpenId] = useState<string | null>(null);
   const [pendingId, setPendingId] = useState<string | null>(null);
   const itemById = new Map(doseItems.map((item) => [item.id, item]));
@@ -486,13 +503,23 @@ export default function HistoryRows({
             {buttons}
           </form>
         );
-      case "practice":
+      case "practice": {
+        const when = practiceWhen ?? practiceWhenFor(row, edit.statedStart);
         return (
           <form
             className="grid gap-2 sm:grid-cols-2"
             onSubmit={(event) =>
               void post(event, async (fd) => {
                 fd.set("id", String(edit.sessionId));
+                fd.set("date", when.date);
+                fd.set("start_time", statedHhmm(when.statedAt, row.tz));
+                // THE STATED END RIDES ALONG UNCHANGED (#3142).
+                // `editPracticeSession` REWRITES every field it reads, so omitting
+                // this one would silently clear a window the person stated in the
+                // expanded form — and this control states a START, not a range.
+                // Correcting an end stays on the practice card, where the full
+                // editor is.
+                fd.set("end_time", edit.statedEnd ?? "");
                 const outcome = await editPracticeSession(fd);
                 return outcome.kind === "updated"
                   ? { ok: true }
@@ -500,34 +527,19 @@ export default function HistoryRows({
               })
             }
           >
-            <label className="text-xs text-slate-500 dark:text-slate-400">
-              Date
-              <DateField
-                name="date"
-                defaultValue={row.date}
-                required
-                inputClassName="mt-1 w-full"
+            <div className="sm:col-span-2">
+              <WhenControl
+                mode="correct"
+                grain="minute"
+                value={when}
+                onChange={setPracticeWhen}
+                tz={row.tz}
+                maxDate={maxDateFor(row)}
+                dateLabel="Date"
+                timeLabel="Time"
+                testId="history-practice-when"
               />
-            </label>
-            {/* THE SESSION'S WINDOW RIDES ALONG UNCHANGED, AND IT IS THE STORED
-                PAIR. `editPracticeSession` REWRITES every field it reads, so
-                omitting one erases it — but posting `row.sortTime` back instead was
-                worse than erasing: that is `bestKnownInstant`, which falls back to
-                `created_at` for a quick-path tick with no stated time, so correcting
-                a DURATION laundered the filing clock into the event column and the
-                row stopped saying "logged 19:43". `edit.statedStart` / `statedEnd`
-                are `practice_logs.start_time` / `end_time` and nothing else — the
-                same values `PracticeSessionHistory` posts. (Raw <input type="time">
-                pair here would be two more hand-rolled "when did this happen"
-                controls (#2236), which the ratchet in
-                lib/__tests__/time-input-scan.test.ts refuses; correcting a session's
-                clock stays on the practice card, where the full editor is.) */}
-            <input
-              type="hidden"
-              name="start_time"
-              value={edit.statedStart ?? ""}
-            />
-            <input type="hidden" name="end_time" value={edit.statedEnd ?? ""} />
+            </div>
             <label className="text-xs text-slate-500 dark:text-slate-400">
               Duration (minutes)
               <input
@@ -550,6 +562,7 @@ export default function HistoryRows({
             {buttons}
           </form>
         );
+      }
       case "substance":
         return (
           <form
@@ -871,6 +884,11 @@ export default function HistoryRows({
                     data-testid="history-row-edit"
                     onClick={() => {
                       close();
+                      if (row.edit?.kind === "practice") {
+                        setPracticeWhen(
+                          practiceWhenFor(row, row.edit.statedStart)
+                        );
+                      }
                       setEditingId(row.id);
                     }}
                     className={MENU_ITEM}

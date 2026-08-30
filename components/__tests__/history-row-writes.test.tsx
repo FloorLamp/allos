@@ -293,7 +293,7 @@ describe("the record's ⋯ posts to the domain's own action", () => {
     expect(fd.notes).toBe("evening wind-down");
   });
 
-  it("practice carries a stated time back unchanged", async () => {
+  it("practice corrects its date and stated time through the shared control", async () => {
     await openEdit([
       row({
         id: "practice:6",
@@ -305,16 +305,31 @@ describe("the record's ⋯ posts to the domain's own action", () => {
           kind: "practice",
           sessionId: 6,
           statedStart: "07:15",
-          statedEnd: null,
+          // A STATED END, on purpose: with a null one the "rides along unchanged"
+          // assertion below would read "" whether the field was carried or dropped.
+          statedEnd: "19:25",
           durationMin: 20,
           notes: null,
         },
       }),
     ]);
+    fireEvent.change(screen.getByTestId("history-practice-when-date"), {
+      target: { value: "2026-08-19" },
+    });
+    fireEvent.change(screen.getByTestId("history-practice-when-time"), {
+      target: { value: "08:30" },
+    });
     await act(async () =>
       fireEvent.click(screen.getByRole("button", { name: "Save" }))
     );
-    expect(only("editPracticeSession").start_time).toBe("07:15");
+    expect(only("editPracticeSession")).toMatchObject({
+      date: "2026-08-19",
+      // The control states the session's START (#3142) …
+      start_time: "08:30",
+      // … and the stated END rides along unchanged, because the action rewrites
+      // every field it reads and this control does not state a range.
+      end_time: "19:25",
+    });
   });
 
   it.each(["kg", "lb"] as const)(

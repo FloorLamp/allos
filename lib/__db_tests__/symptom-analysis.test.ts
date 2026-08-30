@@ -118,16 +118,19 @@ describe("monthly symptom day-counts", () => {
     expect(analysis.entries.find((e) => e.symptom === "nausea")?.days).toBe(1);
   });
 
-  it("counts every day in the window, past the range reader's 250-day default", () => {
+  it("keeps a closed window complete and bounds explicit requests newest-first", () => {
     const profileId = profile();
     const todayStr = today(profileId);
     for (let i = 0; i < 300; i++)
       log(profileId, shiftDateStr(todayStr, -i), "migraine", 2);
 
     const { from, to } = symptomAnalysisWindow(todayStr);
-    // The CONTROL: the same reader on its own default stops at 250 days, so a
-    // 300-day answer cannot have come from it by accident.
-    expect(getSymptomDaysInRange(profileId, from, to)).toHaveLength(250);
+    const complete = getSymptomDaysInRange(profileId, from, to);
+    expect(complete).toHaveLength(300);
+    expect(complete.at(-1)?.date).toBe(shiftDateStr(todayStr, -299));
+    const bounded = getSymptomDaysInRange(profileId, from, to, 250);
+    expect(bounded).toHaveLength(250);
+    expect(bounded.at(-1)?.date).toBe(shiftDateStr(todayStr, -249));
     expect(rowCount(profileId)).toBe(300);
     const migraine = buildSymptomAnalysis(profileId, todayStr).entries[0];
     expect(migraine.days).toBe(300);
