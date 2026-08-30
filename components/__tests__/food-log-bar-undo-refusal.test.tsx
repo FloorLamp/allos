@@ -734,63 +734,7 @@ describe("FoodLogBar projection publication", () => {
     expect(screen.queryByRole("button", { name: "End fast" })).toBeNull();
   });
 
-  it("does not let an older bar cleanup dismiss a newer bar's serving Undo", async () => {
-    actions.logFoodServing
-      .mockResolvedValueOnce({
-        ok: true,
-        eventId: 81,
-        servings: 1,
-        mealSlot: "Midday",
-        mealServings: 1,
-      })
-      .mockResolvedValueOnce({
-        ok: true,
-        eventId: 82,
-        servings: 2,
-        mealSlot: "Midday",
-        mealServings: 2,
-      });
-    actions.readFoodServingTruth
-      .mockReset()
-      .mockResolvedValueOnce({
-        ok: true,
-        servings: 1,
-        mealServings: { Morning: 0, Midday: 1, Evening: 0 },
-      })
-      .mockResolvedValueOnce({
-        ok: true,
-        servings: 2,
-        mealServings: { Morning: 0, Midday: 2, Evening: 0 },
-      });
-    const view = render(twoBarTree());
-
-    fireEvent.click(
-      within(screen.getByTestId("first-food-bar")).getByTestId(
-        "log-cruciferous"
-      )
-    );
-    expect(await screen.findByRole("button", { name: "Undo" })).toBeTruthy();
-    fireEvent.click(
-      within(screen.getByTestId("second-food-bar")).getByTestId(
-        "log-cruciferous"
-      )
-    );
-    await waitFor(() =>
-      expect(actions.readFoodServingTruth).toHaveBeenCalledTimes(2)
-    );
-    expect(
-      await screen.findByText("2 servings of Cruciferous vegetables today")
-    ).toBeTruthy();
-
-    view.rerender(twoBarTree({ showFirst: false }));
-
-    expect(screen.getByRole("button", { name: "Undo" })).toBeTruthy();
-    expect(
-      screen.getByText("2 servings of Cruciferous vegetables today")
-    ).toBeTruthy();
-  });
-
-  it("does not let an older bar cleanup dismiss a newer bar's end-fast offer", async () => {
+  it("does not let an older bar cleanup dismiss a newer bar's actions", async () => {
     actions.logFoodServing
       .mockResolvedValueOnce({
         ok: true,
@@ -843,6 +787,7 @@ describe("FoodLogBar projection publication", () => {
     ).toBeTruthy();
     view.rerender(twoBarTree({ showFirst: false }));
 
+    expect(screen.getByRole("button", { name: "Undo" })).toBeTruthy();
     const offer = screen.getByRole("button", { name: "End fast" });
     fireEvent.click(offer);
     expect(fastActions.endFastAction).toHaveBeenCalledTimes(1);
