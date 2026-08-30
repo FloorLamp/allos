@@ -261,6 +261,22 @@ export default function DayLedger({
   const pending = (dose: PendingDayDose) =>
     !resolved.has(occurrenceKey(date, dose.doseId));
 
+  // Beyond `DOSE_LOG_DATE_WINDOW_DAYS` the write cores refuse, so the row states what
+  // the day owed and offers nothing — a control whose every tap would be refused is
+  // not an affordance, it is a lie the surface tells.
+  function readOnlyDoseRow(dose: PendingDayDose) {
+    return (
+      <li
+        key={dose.doseId}
+        data-testid={`ledger-due-dose-${dose.doseId}`}
+        className={LOGGED_EVENT_ROW}
+      >
+        <LoggedEventRow icon={<DoseGlyph />}>{dose.name}</LoggedEventRow>
+        <span className={LOGGED_EVENT_TRAILING}>Not recorded</span>
+      </li>
+    );
+  }
+
   function doseTapRow(dose: PendingDayDose) {
     const key = occurrenceKey(date, dose.doseId);
     return (
@@ -452,20 +468,7 @@ export default function DayLedger({
         {expanded && (
           <ul className="border-t border-(--divider)">
             {doses.map((dose) =>
-              doseWritable ? (
-                doseTapRow(dose)
-              ) : (
-                <li
-                  key={dose.doseId}
-                  data-testid={`ledger-due-dose-${dose.doseId}`}
-                  className={LOGGED_EVENT_ROW}
-                >
-                  <LoggedEventRow icon={<DoseGlyph />}>
-                    {dose.name}
-                  </LoggedEventRow>
-                  <span className={LOGGED_EVENT_TRAILING}>Not recorded</span>
-                </li>
-              )
+              doseWritable ? doseTapRow(dose) : readOnlyDoseRow(dose)
             )}
           </ul>
         )}
@@ -524,20 +527,7 @@ export default function DayLedger({
               </li>
             ))}
             {stillOpen.map((dose) =>
-              doseWritable ? (
-                doseTapRow(dose)
-              ) : (
-                <li
-                  key={dose.doseId}
-                  data-testid={`ledger-due-dose-${dose.doseId}`}
-                  className={LOGGED_EVENT_ROW}
-                >
-                  <LoggedEventRow icon={<DoseGlyph />}>
-                    {dose.name}
-                  </LoggedEventRow>
-                  <span className={LOGGED_EVENT_TRAILING}>Not recorded</span>
-                </li>
-              )
+              doseWritable ? doseTapRow(dose) : readOnlyDoseRow(dose)
             )}
           </ul>
         )}
