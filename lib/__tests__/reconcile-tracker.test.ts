@@ -687,23 +687,25 @@ describe("label hygiene (dispatch.md §Queue labels)", () => {
 
   it("flags a label outside the closed taxonomy, once per stray", () => {
     // The live drift this catches: GitHub's add-labels endpoint silently
-    // CREATES an unknown label, so `testing` (for `e2e`), `deps` (for
-    // `dependencies`) and friends accumulated repo-side — 16 strays counted
-    // 2026-08-30 — and issues carrying them cluster on nothing.
+    // CREATES an unknown label, so `deps` (for `dependencies`), `tooling`
+    // (for `infra`) and friends accumulated repo-side — 16 strays counted
+    // 2026-08-30 — and issues carrying them cluster on nothing. Three of the
+    // sixteen (`testing`, `a11y`, `dashboard`) were later promoted by owner
+    // ruling, which is why the fixtures here use ones that stayed stray.
     const findings = checkLabelHygiene([
-      issue({ number: 11, labels: ["P3", "intake", "db", "testing"] }),
-      issue({ number: 12, labels: ["P2", "design", "a11y", "deps"] }),
+      issue({ number: 11, labels: ["P3", "intake", "db", "tooling"] }),
+      issue({ number: 12, labels: ["P2", "design", "sleep", "deps"] }),
     ]);
     expect(findings).toEqual([
       {
         issue: 11,
         kind: "unknown-label",
-        detail: expect.stringContaining("testing"),
+        detail: expect.stringContaining("tooling"),
       },
       {
         issue: 12,
         kind: "unknown-label",
-        detail: expect.stringContaining("a11y"),
+        detail: expect.stringContaining("sleep"),
       },
       {
         issue: 12,
@@ -728,11 +730,22 @@ describe("label hygiene (dispatch.md §Queue labels)", () => {
 
   it("the taxonomy is the union of the four axes and contains no stray", () => {
     // KNOWN_LABELS is what a filer verifies a label against — never the live
-    // repo list, which validates every past mistake. Pin its composition.
-    for (const l of ["P0", "parked", "training", "bug", "ui", "needs-human"]) {
+    // repo list, which validates every past mistake. Pin its composition,
+    // including the three 2026-08-30 promotions (testing/a11y as type color,
+    // dashboard as a domain).
+    for (const l of [
+      "P0",
+      "parked",
+      "training",
+      "dashboard",
+      "bug",
+      "testing",
+      "a11y",
+      "needs-human",
+    ]) {
       expect(KNOWN_LABELS.has(l)).toBe(true);
     }
-    for (const l of ["testing", "deps", "infrastructure", "a11y", "lib"]) {
+    for (const l of ["deps", "infrastructure", "sleep", "tooling", "lib"]) {
       expect(KNOWN_LABELS.has(l)).toBe(false);
     }
   });

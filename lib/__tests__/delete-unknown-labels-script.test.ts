@@ -101,7 +101,7 @@ function runScript(live: readonly string[], extraArgs: readonly string[]): Run {
   };
 }
 
-const LIVE = ["P2", "bug", "design", "training", "deps", "testing", "a11y"];
+const LIVE = ["P2", "bug", "design", "training", "deps", "tooling", "sleep"];
 
 describe("delete-unknown-labels.ts", () => {
   it("a dry run plans the strays and writes NOTHING", () => {
@@ -109,7 +109,7 @@ describe("delete-unknown-labels.ts", () => {
     expect(run.status).toBe(0);
     expect(run.deletes).toEqual([]);
     expect(run.remaining).toEqual(LIVE);
-    for (const stray of ["deps", "testing", "a11y"]) {
+    for (const stray of ["deps", "tooling", "sleep"]) {
       expect(run.stdout).toContain(`delete ${stray}`);
     }
     expect(run.stdout).toContain("dry run");
@@ -118,7 +118,7 @@ describe("delete-unknown-labels.ts", () => {
   it("--apply deletes exactly the off-taxonomy strays and nothing else", () => {
     const run = runScript(LIVE, ["--apply"]);
     expect(run.status).toBe(0);
-    expect(run.deletes.sort()).toEqual(["a11y", "deps", "testing"]);
+    expect(run.deletes.sort()).toEqual(["deps", "sleep", "tooling"]);
     expect(run.remaining).toEqual(["P2", "bug", "design", "training"]);
     expect(run.stdout).toContain("deleted 3");
   });

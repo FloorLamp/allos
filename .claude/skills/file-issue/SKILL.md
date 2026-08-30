@@ -174,21 +174,21 @@ Every issue gets **at least one domain label** and **exactly one
 priority-slot label** (`P0`–`P3`, or `parked` — never two slot labels;
 `reconcile-tracker` flags violations of both axes). Cross-cutting design/UX
 work takes `design` — a real domain, not a missing one. `bug` is the one type
-label dispatch reads; `feat`/`refactor` are optional color, and `ui` is an
-optional hint for screen-heavy (therefore e2e-heavy) work. The taxonomy is
-CLOSED — its canon is `KNOWN_LABELS` in
+label dispatch reads; `feat`/`refactor`/`testing`/`a11y` are optional color,
+and `ui` is an optional hint for screen-heavy (therefore e2e-heavy) work. The
+taxonomy is CLOSED — its canon is `KNOWN_LABELS` in
 `scripts/orchestration/reconcile-tracker-core.ts`, and that constant, never
 the repo's live label list, is what to verify against: GitHub's add-labels
 endpoint silently creates unknown labels, so the live list carries strays
-(`deps`, `testing`, `a11y`, …) that validate the next mistake. Never invent
+(`deps`, `tooling`, `sleep`, …) that validate the next mistake. Never invent
 a label — a missing concept is an owner decision — and never apply a retired
 one (`enhancement`, `cleanup`, `javascript`, `lib`, retired 2026-08-15):
 
-> biomarkers, body-metrics, bug, ci, db, dependencies, design, docs, e2e,
-> feat, findings, goals, infra, insights, intake, integrations,
-> medical-passport, mobile, needs-human, notifications, nutrition,
-> performance, refactor, reproductive-health, security, training, ui,
-> wearable, wellness
+> a11y, biomarkers, body-metrics, bug, ci, dashboard, db, dependencies,
+> design, docs, e2e, feat, findings, goals, infra, insights, intake,
+> integrations, medical-passport, mobile, needs-human, notifications,
+> nutrition, performance, refactor, reproductive-health, security, testing,
+> training, ui, wearable, wellness
 
 Priority calibration from the standing contract: P0/P1 bugs preempt features;
 an active infrastructure bottleneck is P1; an isolated latent flake is P3.

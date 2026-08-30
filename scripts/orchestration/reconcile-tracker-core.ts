@@ -687,6 +687,7 @@ export const DOMAIN_LABELS = [
   "biomarkers",
   "body-metrics",
   "ci",
+  "dashboard",
   "db",
   "dependencies",
   "design",
@@ -718,8 +719,22 @@ export const RETIRED_LABELS = [
   "lib",
 ] as const;
 
-/** Optional type color; `bug` is the one dispatch reads, `ui` hints e2e-heavy work. */
-export const TYPE_LABELS = ["bug", "feat", "refactor", "ui"] as const;
+/**
+ * Optional type color; `bug` is the one dispatch reads, `ui` hints e2e-heavy
+ * work. `testing` and `a11y` joined by owner ruling 2026-08-30 — the two
+ * strays whose usage (99 and 9 issues) showed a real habit worth legitimizing
+ * as color rather than deleting; `dashboard` joined the domain axis the same
+ * day. A size axis was considered then and DECLINED: the dispatch ledger
+ * already measures real lane durations, and estimates drift.
+ */
+export const TYPE_LABELS = [
+  "a11y",
+  "bug",
+  "feat",
+  "refactor",
+  "testing",
+  "ui",
+] as const;
 
 /** Process markers with their own routing rules (dispatch.md §Queue labels). */
 export const PROCESS_LABELS = [

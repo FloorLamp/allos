@@ -1640,7 +1640,17 @@ the repo side is enforced too: `.github/workflows/label-taxonomy.yml`
 deletes any off-taxonomy label the moment a filing mints it (plus a weekly
 backstop), through `delete-unknown-labels.ts` — the toolchain's third writer,
 confined by the same structural tests as the other two to one verb against
-the repo's label collection and no issue URL at all. Self-filed issues are
+the repo's label collection and no issue URL at all.
+
+Postscript, same day: before the sweep ran, the sixteen strays were checked
+against actual usage and put to the owner. Three earned promotion — `testing`
+(99 issues; legitimized as optional type color, where it routes nothing),
+`a11y` (9 issues, type color), and `dashboard` (19 issues, a real product
+surface, now a domain). The other thirteen stay deletions. A small/med/large
+size axis was considered in the same ruling and DECLINED: two axes had just
+measurably drifted, a third mandatory one multiplies the hygiene surface,
+and the dispatch ledger already measures real lane durations — which cluster
+tightly (85±5 min) because gate cost dominates issue size. Self-filed issues are
 back-of-queue by rule in `dispatch.md` §Dispatch — default P3, sourced
 oldest-first after owner-filed work, demonstrated P0/P1 regressions the only
 exception — and the dispatch brief now forbids lanes from filing issues at

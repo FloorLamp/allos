@@ -10,18 +10,23 @@ Two axes are load-bearing, and `reconcile-tracker` flags violations of both
 - **At least one domain label.** Cross-cutting design/UX work takes `design` —
   it is a real domain, not a missing one.
 - Every ready P0/P1 preempts feature and presentation work, with or without
-  `bug`. Other type labels are optional color; `ui` marks e2e-heavy work.
+  `bug`. Other type labels (`feat`, `refactor`, `testing`, `a11y`) are
+  optional color; `ui` marks e2e-heavy work.
 - **The taxonomy is CLOSED, and its canon is code**: `PRIORITY_SLOT_LABELS`,
   `DOMAIN_LABELS`, `TYPE_LABELS`, `PROCESS_LABELS` (union `KNOWN_LABELS`) in
   `scripts/orchestration/reconcile-tracker-core.ts`. Never apply a label
   outside it, and never verify a label against the repo's LIVE label list:
   GitHub's add-labels endpoint silently creates any label it does not
   recognise, so the live list accumulates every past mistake and then
-  validates the next one (16 strays counted 2026-08-30 — `deps`, `testing`,
-  `infrastructure`, `a11y`, …). The taxonomy spelling wins over its synonyms:
-  `infra` not `infrastructure`, `dependencies` not `deps`, `e2e` not
-  `testing`. A missing concept is an owner decision, not a new label.
-  `checkLabelHygiene` flags off-taxonomy labels as `unknown-label`, and
+  validates the next one (16 strays counted 2026-08-30 — `deps`, `tooling`,
+  `infrastructure`, `sleep`, …). The taxonomy spelling wins over its
+  synonyms: `infra` not `infrastructure`/`tooling`, `dependencies` not
+  `deps`. A missing concept is an owner decision, not a new label — ruled
+  2026-08-30: three strays earned promotion by measured usage (`testing` and
+  `a11y` as type color, `dashboard` as a domain) and a size axis was
+  DECLINED (a third mandatory axis multiplies drift, and the dispatch ledger
+  already measures real durations). `checkLabelHygiene` flags off-taxonomy
+  labels as `unknown-label`, and
   `.github/workflows/label-taxonomy.yml` deletes them repo-side — on label
   creation/edit, weekly, and on demand — so to add a label, extend
   `KNOWN_LABELS` first and merge; the live list follows the code.
