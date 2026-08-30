@@ -7,19 +7,21 @@ import { workerDbPath, frozenNow } from "./worker-env";
 import { createFixtureProfile, destroyFixtureProfile } from "./fixture-profile";
 import { E2E_LOGIN_DAILY, E2E_MEMBER_PASSWORD } from "./fixture-logins";
 
-// Timeline windowing (issue #2657).
+// The record's windowing (issue #2657), inherited from `/timeline` when #3958 phase 2
+// retired that route.
 //
-// `/history` at its default "All · All dates" unrolled 47,251px of individual event
+// The timeline at its default "All · All dates" unrolled 47,251px of individual event
 // cards at 390px, and OPENED on far-future goal target dates — the reader's entry
 // point was speculative scheduling rather than their own recent history. The feed now
-// folds: the future to one line, the last 14 days event-grained, everything older to
-// one collapsible card per calendar month.
+// folds: the last 14 days event-grained, everything older to one collapsible card per
+// calendar month. (The FUTURE fold was `/timeline`'s and #3958 does not inherit it —
+// the record ends at now — so this spec asserts the future's ABSENCE instead.)
 //
 // The claim this spec has to keep honest is the one a windowing change can quietly
 // break — that nothing was REMOVED, only compressed. So each fold is proved twice: the
 // planted entry is absent from the default page, and present after the fold that hides
-// it is opened. The "Oldest" jump is proved to carry the fold open with it, because a
-// jump into a collapsed card is a link to nothing.
+// it is opened. (The "Oldest" jump was `/timeline`'s header and is gone with it; the
+// note where its test stood says what took over.)
 //
 // Fixture-OWNED (#868), on the spec's OWN profiles (#3106): these fixtures used to
 // ride the shared profile 1, whose seeded history sits close enough to
@@ -29,8 +31,8 @@ import { E2E_LOGIN_DAILY, E2E_MEMBER_PASSWORD } from "./fixture-logins";
 // not). Each test now creates a login + profile pair and plants its goals there, so
 // no other spec's writes can reach this feed. The two describes plant DIFFERENT
 // goal sets because their ledgers must differ: the windowing tests need the previous
-// year absent (so the Oldest jump's destination hides behind a MONTH fold, the shape
-// its href assertion pins), while the year roll-up tests need it present.
+// year absent, so an old day hides behind a MONTH fold rather than a year one, while
+// the year roll-up tests need it present.
 
 const DB_PATH = workerDbPath();
 const AHEAD_GOAL = "E2E windowing ahead goal";
@@ -149,7 +151,7 @@ const WINDOW_GOALS = [
   [OLD_GOAL, OLD_DATE],
 ] as const;
 
-test.describe("timeline windowing (#2657)", () => {
+test.describe("the record's windowing (#2657)", () => {
   test("the feed opens on recent history — the future and older months are folded away", async ({
     browser,
   }, testInfo) => {
@@ -161,28 +163,29 @@ test.describe("timeline windowing (#2657)", () => {
     try {
       await page.goto("/history");
 
-      // The very first thing in the feed is the future fold, not a December day group.
-      const first = page.locator("#timeline-feed section").first(); // first-ok: asserts WHICH element leads the feed — the assertion is about position
-      await expect(first).toHaveAttribute("data-fold-key", "ahead");
+      // THE FEED OPENS ON A DAY, NOT ON A FOLD. `/timeline` led with its future fold;
+      // #3958 rules that fold NOT inherited — "the record ends at now", the future
+      // belongs to /upcoming — so the first thing here is a recent day group.
+      const first = page.getByTestId("history-feed").locator("section").first(); // first-ok: asserts WHICH element leads the feed — the assertion is about position
+      await expect(first).toHaveAttribute("data-testid", "history-day");
 
-      const ahead = page.getByTestId("timeline-fold-ahead");
-      await expect(ahead).toHaveAttribute("data-fold-open", "false");
-      await expect(
-        page.getByTestId("timeline-fold-ahead-toggle")
-      ).toHaveAttribute("aria-expanded", "false");
-      // The always-present count (#1504 grammar): the amount never hides, only the
-      // vertical cost of it does.
-      await expect(page.getByTestId("timeline-fold-ahead-counts")).toHaveText(
-        /^\d+ events? · \d+ days?$/
-      );
-
-      // …and the scheduled-ahead entry itself is genuinely not rendered.
+      // THE FUTURE IS ABSENT, AND BOTH HALVES ARE ASSERTED. A "no ahead fold" check
+      // alone passes on a page that renders nothing at all, so the future-dated goal
+      // is asserted missing BESIDE a recent one asserted present — the fixture seeds
+      // both, so a record that had simply failed to render would fail here.
+      await expect(page.getByTestId("history-fold-ahead")).toHaveCount(0);
       await expect(page.getByText(AHEAD_GOAL)).toHaveCount(0);
       await expect(page.locator(`#timeline-day-${AHEAD_DATE}`)).toHaveCount(0);
+      await expect(page.getByText(RECENT_GOAL)).toBeVisible();
 
-      // The same for the old month: a card, closed, with its rows unrendered.
-      const month = page.getByTestId(`timeline-fold-${OLD_MONTH}`);
+      // The old month IS folded: a card, closed, with its rows unrendered. The
+      // always-present count (#1504 grammar) rides on it — the amount never hides,
+      // only the vertical cost of it does.
+      const month = page.getByTestId(`history-fold-${OLD_MONTH}`);
       await expect(month).toHaveAttribute("data-fold-open", "false");
+      await expect(
+        page.getByTestId(`history-fold-${OLD_MONTH}-counts`)
+      ).toHaveText(/^\d+ events? · \d+ days?$/);
       await expect(page.getByText(OLD_GOAL)).toHaveCount(0);
       await expect(page.locator(`#timeline-day-${OLD_DATE}`)).toHaveCount(0);
     } finally {
@@ -204,27 +207,27 @@ test.describe("timeline windowing (#2657)", () => {
 
       await followLink(
         page,
-        page.getByTestId(`timeline-fold-${OLD_MONTH}-toggle`),
+        page.getByTestId(`history-fold-${OLD_MONTH}-toggle`),
         new RegExp(`open=${OLD_MONTH}`)
       );
 
       await expect(
-        page.getByTestId(`timeline-fold-${OLD_MONTH}-toggle`)
+        page.getByTestId(`history-fold-${OLD_MONTH}-toggle`)
       ).toHaveAttribute("aria-expanded", "true");
       await expect(page.locator(`#timeline-day-${OLD_DATE}`)).toBeVisible();
       await expect(page.getByText(OLD_GOAL)).toBeVisible();
 
-      // The other folds stay shut — expanding one month is not expanding the page.
-      await expect(page.getByTestId("timeline-fold-ahead")).toHaveAttribute(
-        "data-fold-open",
-        "false"
-      );
+      // "The other folds stay shut" was asserted here against the ahead fold, which
+      // #3958 does not inherit — and this fixture plants no previous year, so after
+      // the retirement OLD_MONTH is the only fold on the page and there is no other
+      // one to make a claim about. The year describe below covers "opening one fold
+      // is not opening the page" on a fixture that actually has two.
 
       // And it closes again, back to the fold-free URL.
       await followLink(
         page,
-        page.getByTestId(`timeline-fold-${OLD_MONTH}-toggle`),
-        /\/timeline$/
+        page.getByTestId(`history-fold-${OLD_MONTH}-toggle`),
+        /\/history$/
       );
       await expect(page.getByText(OLD_GOAL)).toHaveCount(0);
     } finally {
@@ -233,61 +236,12 @@ test.describe("timeline windowing (#2657)", () => {
     }
   });
 
-  test("the future fold opens to the scheduled-ahead entry", async ({
-    browser,
-  }, testInfo) => {
-    const fixture = createTimelineFixture(testInfo, "w-ahead", WINDOW_GOALS);
-    const page = await loginAs(browser, {
-      username: fixture.username,
-      password: E2E_MEMBER_PASSWORD,
-    });
-    try {
-      await page.goto("/history");
-
-      await followLink(
-        page,
-        page.getByTestId("timeline-fold-ahead-toggle"),
-        /open=ahead/
-      );
-
-      await expect(
-        page.getByTestId("timeline-fold-ahead-toggle")
-      ).toHaveAttribute("aria-expanded", "true");
-      await expect(page.locator(`#timeline-day-${AHEAD_DATE}`)).toBeVisible();
-      await expect(page.getByText(AHEAD_GOAL)).toBeVisible();
-    } finally {
-      await page.context().close();
-      destroyTimelineFixture(fixture);
-    }
-  });
-
-  test("the Oldest jump carries the fold that hides its destination open", async ({
-    browser,
-  }, testInfo) => {
-    const fixture = createTimelineFixture(testInfo, "w-oldest", WINDOW_GOALS);
-    const page = await loginAs(browser, {
-      username: fixture.username,
-      password: E2E_MEMBER_PASSWORD,
-    });
-    try {
-      await page.goto("/history");
-
-      const oldest = page.getByRole("link", { name: "Oldest" });
-      const href = await oldest.getAttribute("href");
-      // A bare "#timeline-day-…" fragment here would be a link into a collapsed card:
-      // the jump must name the fold it needs opened as well as the day it lands on.
-      expect(href).toMatch(
-        /^\/timeline\?open=\d{4}-(0[1-9]|1[0-2])#timeline-day-\d{4}-\d{2}-\d{2}$/
-      );
-      const destination = href?.split("#timeline-day-")[1] ?? "";
-
-      await followLink(page, oldest, /open=\d{4}-\d{2}/);
-      await expect(page.locator(`#timeline-day-${destination}`)).toBeVisible();
-    } finally {
-      await page.context().close();
-      destroyTimelineFixture(fixture);
-    }
-  });
+  // THE "OLDEST" JUMP IS NOT HERE, AND ITS TEST WENT WITH IT. `/timeline`'s header
+  // carried Latest/Oldest links whose whole subtlety was opening the fold that hid
+  // the destination; the record's header carries no jumps — the jump rail (#2657
+  // item 4, e2e/history-scrubber.spec.ts) is how you reach a distant period now, and
+  // it solves the same problem by the same means (a stop for a folded period carries
+  // the key that opens it). Recorded rather than silently dropped.
 });
 
 // YEARS ROLL UP (#2657 item 6). One level up, same grammar, same claim to keep honest:
@@ -320,17 +274,17 @@ test.describe("timeline year roll-up (#2657)", () => {
     try {
       await page.goto(YEAR_FEED);
 
-      const year = page.getByTestId(`timeline-fold-${LAST_YEAR}`);
+      const year = page.getByTestId(`history-fold-${LAST_YEAR}`);
       await expect(year).toHaveAttribute("data-fold-open", "false");
       // A year counts in MONTHS — months are what a tap reveals (#1504 always-present).
       await expect(
-        page.getByTestId(`timeline-fold-${LAST_YEAR}-counts`)
+        page.getByTestId(`history-fold-${LAST_YEAR}-counts`)
       ).toHaveText(/^\d+ events? · \d+ months?$/);
 
       // The month card inside is not merely collapsed, it is absent — which is what
       // makes the roll-up a saving in bytes rather than in `display: none`.
       await expect(
-        page.getByTestId(`timeline-fold-${LAST_YEAR_MONTH}`)
+        page.getByTestId(`history-fold-${LAST_YEAR_MONTH}`)
       ).toHaveCount(0);
       await expect(page.getByText(LAST_YEAR_GOAL)).toHaveCount(0);
       await expect(page.locator(`#timeline-day-${LAST_YEAR_DATE}`)).toHaveCount(
@@ -355,11 +309,11 @@ test.describe("timeline year roll-up (#2657)", () => {
 
       await followLink(
         page,
-        page.getByTestId(`timeline-fold-${LAST_YEAR}-toggle`),
+        page.getByTestId(`history-fold-${LAST_YEAR}-toggle`),
         new RegExp(`open=${LAST_YEAR}(&|$)`)
       );
 
-      const month = page.getByTestId(`timeline-fold-${LAST_YEAR_MONTH}`);
+      const month = page.getByTestId(`history-fold-${LAST_YEAR_MONTH}`);
       await expect(month).toBeVisible();
       await expect(month).toHaveAttribute("data-fold-open", "false");
       await expect(month).toHaveAttribute("data-fold-nested", "true");
@@ -386,10 +340,10 @@ test.describe("timeline year roll-up (#2657)", () => {
       await page.goto(`${YEAR_FEED}&open=${LAST_YEAR_MONTH}`);
 
       await expect(
-        page.getByTestId(`timeline-fold-${LAST_YEAR}-toggle`)
+        page.getByTestId(`history-fold-${LAST_YEAR}-toggle`)
       ).toHaveAttribute("aria-expanded", "true");
       await expect(
-        page.getByTestId(`timeline-fold-${LAST_YEAR_MONTH}-toggle`)
+        page.getByTestId(`history-fold-${LAST_YEAR_MONTH}-toggle`)
       ).toHaveAttribute("aria-expanded", "true");
       await expect(page.getByText(LAST_YEAR_GOAL)).toBeVisible();
     } finally {
@@ -415,16 +369,16 @@ test.describe("timeline year roll-up (#2657)", () => {
 
       await followLink(
         page,
-        page.getByTestId(`timeline-fold-${LAST_YEAR}-toggle`),
+        page.getByTestId(`history-fold-${LAST_YEAR}-toggle`),
         /\/timeline\?category=goal$/
       );
 
       await expect(
-        page.getByTestId(`timeline-fold-${LAST_YEAR}`)
+        page.getByTestId(`history-fold-${LAST_YEAR}`)
       ).toHaveAttribute("data-fold-open", "false");
       await expect(page.getByText(LAST_YEAR_GOAL)).toHaveCount(0);
       await expect(
-        page.getByTestId(`timeline-fold-${LAST_YEAR_MONTH}`)
+        page.getByTestId(`history-fold-${LAST_YEAR_MONTH}`)
       ).toHaveCount(0);
     } finally {
       await page.context().close();

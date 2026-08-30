@@ -56,14 +56,17 @@ test.describe("Weekly recap + milestones (#32)", () => {
   }) => {
     await page.goto("/history?kind=milestone");
     await expect(page.getByText("50 workouts logged").first()).toBeVisible(); // first-ok: asserts the milestone line renders — order-agnostic presence
-    // The milestone badge labels the category on the card. Scoped to a feed entry:
-    // the #1517 collapsed filter bar renders a (hidden) "Milestone · All dates"
-    // summary label earlier in the DOM, which a page-wide first-match would grab —
-    // the consolidation-class selector break. (Prose deliberately avoids spelling
-    // out the locator call: the hygiene guard is a text scan and would count it.)
+    // THE CATEGORY IS ON THE ROW, NOT IN A BADGE. `/timeline` printed a "Milestone"
+    // label on every card; the record's rows are one line at every viewport (#3958),
+    // so the kind is the leading glyph and the machine-readable attribute — which is
+    // the stable thing to assert anyway. Asserted on the row that carries the recap's
+    // own milestone, so this cannot pass on some other kind's row.
     await expect(
-      page.locator('[id^="timeline-entry-"]').getByText("Milestone").first() // first-ok: asserts a Milestone badge renders on a feed entry — order-agnostic presence
-    ).toBeVisible();
+      page
+        .getByTestId("history-row")
+        .filter({ hasText: "50 workouts logged" })
+        .first() // first-ok: the recap fixture's own milestone line — deterministic
+    ).toHaveAttribute("data-history-kind", "milestone");
   });
 });
 

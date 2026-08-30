@@ -3,7 +3,6 @@ import { type Page } from "@playwright/test";
 import Database from "better-sqlite3";
 import { hydratedClick, settledBoxes, settledClick } from "./helpers";
 import { loginAs } from "./nav";
-import { expandTimelineFilters } from "./timeline-chrome";
 import {
   E2E_MEMBER_PASSWORD,
   E2E_LOGIN_TL_CHROME,
@@ -14,16 +13,20 @@ import {
 } from "./fixture-logins";
 import { workerDbPath } from "./worker-env";
 
-// The Timeline's mobile chrome budget (issue #1517).
+// The record day view's phone chrome (issue #1517), inherited from `/timeline` when
+// #3958 phase 2 retired that route and `/history?day=` became the app's one "that
+// day" anchor.
 //
-// Three fixes, one surface:
-//   A. the sticky/scroll priority is swapped — the day nav (used constantly) takes
-//      the pinned slot and rides the shell chrome; the filter block (set once a
-//      session) scrolls away;
-//   B. the filter block collapses to ONE summary line below `sm`, expanding on tap;
+// Two of #1517's three fixes still have a subject here:
+//   A. the sticky/scroll priority — the day nav (used constantly) takes the pinned
+//      slot and rides the shell chrome, while the filter row scrolls away;
 //   C. the symptom logger arrives collapsed behind "+ Log symptom" unless logging is
 //      the point of the visit (the day already has symptoms, or an illness-type
 //      situation is active).
+//
+// Fix B (collapsing the filter block) does not: the record has one filter row and no
+// range chrome, so there is nothing to collapse. The note where its test stood says
+// what asserts the budget instead.
 //
 // Fixture (#868): a dedicated login over two dedicated profiles — see
 // e2e/logins/history.ts for why the auto-expand's three states cannot share one
@@ -80,25 +83,25 @@ async function scrollTo(page: Page, y: number): Promise<number> {
   return page.evaluate(() => window.scrollY);
 }
 
-test.describe("Timeline mobile chrome budget (#1517)", () => {
-  test("the day nav takes the pinned slot and the filter block scrolls away (A)", async ({
+test.describe("the record day view's phone chrome (#1517, inherited)", () => {
+  test("the day nav takes the pinned slot and the filter row scrolls away (A)", async ({
     browser,
   }) => {
-    test.slow(); // the Timeline is one of the app's heaviest server renders
+    test.slow(); // the record is one of the app's heaviest server renders
     const page = await signIn(browser);
     try {
       await page.goto(dayUrl(TL_CHROME_BUSY_DAY));
       await chromeReady(page);
 
       const nav = page.getByTestId("timeline-day-nav");
-      const filters = page.locator("#timeline-controls");
+      const filters = page.getByTestId("history-filters");
       await expect(nav).toBeVisible();
 
       // It is genuinely sticky on a phone — the premise of the swap.
       await expect
         .poll(() => nav.evaluate((el) => getComputedStyle(el).position))
         .toBe("sticky");
-      // …and the filter block is NOT. It used to be the pinned one.
+      // …and the filter row is NOT. On `/timeline` the block was the pinned one.
       await expect
         .poll(() => filters.evaluate((el) => getComputedStyle(el).position))
         .toBe("static");
@@ -140,43 +143,22 @@ test.describe("Timeline mobile chrome budget (#1517)", () => {
       expect(navBox.y).toBeLessThan(160);
       await expect(page.getByTestId("timeline-day-prev")).toBeVisible();
 
-      // The filter block, meanwhile, has scrolled off the top entirely.
+      // The filter row, meanwhile, has scrolled off the top entirely.
       expect(filterBox.y + filterBox.height).toBeLessThan(0);
     } finally {
       await page.context().close();
     }
   });
 
-  test("the filter block is one summary line that expands on tap (B)", async ({
-    browser,
-  }) => {
-    test.slow();
-    const page = await signIn(browser);
-    try {
-      await page.goto(dayUrl(TL_CHROME_BUSY_DAY));
-
-      const bar = page.getByTestId("timeline-filters-bar");
-      await expect(bar).toBeVisible();
-      await expect(bar).toHaveAttribute("data-expanded", "false");
-      // The summary names the active state: category, then the window.
-      await expect(page.getByTestId("timeline-filters-label")).toContainText(
-        "All"
-      );
-      // Collapsed means genuinely out of the tree, not merely visually hidden.
-      await expect(page.getByTestId("timeline-filters-controls")).toBeHidden();
-
-      await expandTimelineFilters(page);
-      await expect(bar).toHaveAttribute("data-expanded", "true");
-      await expect(page.getByTestId("timeline-filters-controls")).toBeVisible();
-      await expect(page.getByTestId("custom-range-toggle")).toBeVisible();
-
-      // …and it closes again: this is a toggle, not a one-way reveal.
-      await hydratedClick(page, page.getByTestId("timeline-filters-toggle"));
-      await expect(bar).toHaveAttribute("data-expanded", "false");
-    } finally {
-      await page.context().close();
-    }
-  });
+  // FIX B HAS NO SUBJECT HERE, AND THAT IS THE POINT. `/timeline` met its chrome
+  // budget by COLLAPSING a filter block that carried a category row, a date-range
+  // card and a quick-range row. The record meets the same budget by not having them:
+  // #3958 rules ONE filter row and NO range chrome at all, so there is no block to
+  // collapse and no summary line to expand. Deleting the test rather than porting it
+  // is the honest reading — a collapse guard over a surface with nothing to collapse
+  // would be green for the wrong reason. The budget itself is asserted directly, in
+  // e2e/history.spec.ts ("spends no more than the chrome budget above its first
+  // record at 390px").
 
   test("the symptom entry is collapsed on an ordinary day and open when it is the point of the visit (C)", async ({
     browser,
@@ -188,22 +170,22 @@ test.describe("Timeline mobile chrome budget (#1517)", () => {
       // 1. A quiet day, no active situation → collapsed behind "+ Log symptom",
       //    with the bar itself out of the tab order.
       await page.goto(dayUrl(TL_CHROME_QUIET_DAY));
-      const entry = page.getByTestId("timeline-symptom-entry");
+      const entry = page.getByTestId("history-symptom-entry");
       await expect(entry).toBeVisible();
       await expect(entry).toHaveAttribute("data-open", "false");
-      await expect(page.getByTestId("timeline-symptom-toggle")).toContainText(
+      await expect(page.getByTestId("history-symptom-toggle")).toContainText(
         "Log symptom"
       );
       await expect(page.getByTestId("symptom-log-bar")).toBeHidden();
 
       // …and one tap still gets you there.
-      await hydratedClick(page, page.getByTestId("timeline-symptom-toggle"));
+      await hydratedClick(page, page.getByTestId("history-symptom-toggle"));
       await expect(entry).toHaveAttribute("data-open", "true");
       await expect(page.getByTestId("symptom-log-bar")).toBeVisible();
 
       // 2. A day that already carries symptoms → open on arrival (you are amending).
       await page.goto(dayUrl(TL_CHROME_SYMPTOM_DAY));
-      await expect(page.getByTestId("timeline-symptom-entry")).toHaveAttribute(
+      await expect(page.getByTestId("history-symptom-entry")).toHaveAttribute(
         "data-open",
         "true"
       );
@@ -230,7 +212,7 @@ test.describe("Timeline mobile chrome budget (#1517)", () => {
 
       await page.setViewportSize(PHONE);
       await page.goto(dayUrl(TL_CHROME_QUIET_DAY));
-      await expect(page.getByTestId("timeline-symptom-entry")).toHaveAttribute(
+      await expect(page.getByTestId("history-symptom-entry")).toHaveAttribute(
         "data-open",
         "true"
       );
@@ -239,7 +221,7 @@ test.describe("Timeline mobile chrome budget (#1517)", () => {
     }
   });
 
-  test("desktop is unchanged: sticky filters, static day nav, no toggle", async ({
+  test("desktop is unchanged: the day nav stops sticking, and nothing collapses", async ({
     browser,
   }) => {
     test.slow();
@@ -248,15 +230,8 @@ test.describe("Timeline mobile chrome budget (#1517)", () => {
       await page.setViewportSize(DESKTOP);
       await page.goto(dayUrl(TL_CHROME_BUSY_DAY));
 
-      // The filter block is still the sticky one from `md` up, where viewport
-      // height is not the scarce resource.
-      await expect
-        .poll(() =>
-          page
-            .locator("#timeline-controls")
-            .evaluate((el) => getComputedStyle(el).position)
-        )
-        .toBe("sticky");
+      // The day nav drops to static from `sm` up — the pinned slot is a phone
+      // affordance, bought because viewport height is scarce there and not here.
       await expect
         .poll(() =>
           page
@@ -265,59 +240,28 @@ test.describe("Timeline mobile chrome budget (#1517)", () => {
         )
         .toBe("static");
 
-      // No collapse at all: the toggle isn't rendered and the controls are simply
-      // there, in the layout they always had.
-      await expect(page.getByTestId("timeline-filters-toggle")).toBeHidden();
-      await expect(page.getByTestId("timeline-filters-controls")).toBeVisible();
+      // AND THE FILTER ROW IS STATIC AT BOTH WIDTHS, which is the half that changed:
+      // `/timeline` made its filter block sticky from `md` up. The record's row is
+      // one line, so pinning it would spend the budget it exists to protect. Asserted
+      // beside the nav rather than alone — "nothing is sticky" passes on a page that
+      // rendered no chrome at all, and the nav assertion above is what rules that out.
+      await expect
+        .poll(() =>
+          page
+            .getByTestId("history-filters")
+            .evaluate((el) => getComputedStyle(el).position)
+        )
+        .toBe("static");
     } finally {
       await page.context().close();
     }
   });
 });
 
-// ── THE HEADER'S READ-ONCE SENTENCE (#3452 item 3) ───────────────────────────
-//
-// The Timeline's subtitle — "A chronological view of workouts, labs, documents,
-// medications, visits, goals, and other health events." — is the longest page
-// subtitle in the app, and #3403 made it cost a second line on a phone: letting
-// the header reserve its action's width stopped "Year in review" wrapping and
-// pushed the sentence over instead, running the header 73->165 instead of 73->145.
-//
-// The owner ruled it off the phone (2026-08-22) and named the cost: a first-time
-// phone visitor loses the one-line explainer. `PageHeader`'s `hideSubtitleBelowSm`
-// is the prop that does it, and until now NOTHING in the app passed it — so the
-// only thing standing between this ruling and a silent revert is this guard
-// (guards are mandatory, owner ruling 2026-08-21, docs/internals/design-system.md).
-//
-// BOTH HALVES, because half of the ruling is that desktop does not change. A guard
-// that only checked the phone would go green on a subtitle deleted outright, which
-// is a different decision than the one that was made.
-test.describe("the Timeline subtitle is phone-only chrome (#3452)", () => {
-  const SUBTITLE = /^A chronological view of workouts, labs/;
-
-  test("hidden below `sm`, present on desktop", async ({ browser }) => {
-    test.slow(); // the Timeline is one of the app's heaviest server renders
-    const page = await signIn(browser);
-    try {
-      await page.goto(dayUrl(TL_CHROME_QUIET_DAY));
-
-      // The page still NAMES itself on a phone — the title is what orients you, and
-      // `compactBelowSm` (which takes the whole heading band) was not the ruling.
-      await expect(
-        page.getByRole("heading", { name: "Timeline", level: 1 })
-      ).toBeVisible();
-      // RENDERED BUT NOT SHOWN. `hideSubtitleBelowSm` is a `hidden sm:block`, so the
-      // node is in the DOM and `toBeHidden` is the honest assertion; a `toHaveCount(0)`
-      // here would pass against a subtitle that had simply been deleted.
-      const subtitle = page.getByText(SUBTITLE);
-      await expect(subtitle).toHaveCount(1);
-      await expect(subtitle).toBeHidden();
-
-      // …and it comes back the moment there is room for it. Same page, same node.
-      await page.setViewportSize(DESKTOP);
-      await expect(subtitle).toBeVisible();
-    } finally {
-      await page.context().close();
-    }
-  });
-});
+// THE SUBTITLE TEST WENT WITH THE ROUTE (#3452 item 3). It guarded
+// `hideSubtitleBelowSm` against a silent revert, and `/timeline`'s subtitle — the
+// longest in the app — was the only thing in the tree that passed the prop. The
+// record uses `compactBelowSm` instead and states its own rule in #3958 ("no
+// h1/subtitle below `sm`"), which e2e/history.spec.ts's chrome-budget case measures
+// directly rather than by naming a prop. The prop itself now has no call site; that
+// is recorded on the PR as an open question rather than removed here.

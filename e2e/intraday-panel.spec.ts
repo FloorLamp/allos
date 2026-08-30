@@ -39,11 +39,11 @@ async function openFixtureDay(page: Awaited<ReturnType<typeof loginAs>>) {
   return date;
 }
 
-test.describe("Timeline intraday panel (#1068)", () => {
+test.describe("the day view's intraday panel (#1068)", () => {
   test("renders the day's layers and a tick jumps to its feed entry", async ({
     browser,
   }) => {
-    test.slow(); // local `next dev` compiles the Timeline route on first hit
+    test.slow(); // local `next dev` compiles the record route on first hit
 
     const member = await loginAs(browser, {
       username: E2E_LOGIN_INTRADAY,
@@ -80,7 +80,10 @@ test.describe("Timeline intraday panel (#1068)", () => {
       // rendered below, so tapping it scrolls the list to that entry.
       const morningTick = ticks.first(); // first-ok: ticks are time-ordered and spec-owned; 07:15 is the earliest
       const href = await morningTick.getAttribute("href");
-      expect(href).toMatch(/^#timeline-entry-document-\d+$/);
+      // `feed:` is the record's namespace for a re-housed timeline event (a timeline
+      // event id and a Logs row id both spell `body:12`), and the tick is built from
+      // the SAME id the row is, so the two cannot drift into different anchors.
+      expect(href).toMatch(/^#timeline-entry-feed-document-\d+$/);
 
       const target = member.locator(href!);
       await expect(target).toContainText(INTRADAY_TICK_DOC);

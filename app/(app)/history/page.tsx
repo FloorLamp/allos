@@ -199,7 +199,14 @@ function FoldCard({
           <span className="block text-sm font-medium text-slate-900 dark:text-slate-100">
             {fold.label}
           </span>
-          <span className="block text-xs text-slate-500 dark:text-slate-400">
+          {/* THE COUNT IS ADDRESSABLE (#1504's grammar): the amount never hides,
+              only the vertical cost of it does — so it is a claim the fold makes
+              about content it is not showing, and a test has to be able to name it
+              rather than matching its text against a page full of other numbers. */}
+          <span
+            data-testid={`history-fold-${fold.key}-counts`}
+            className="block text-xs text-slate-500 dark:text-slate-400"
+          >
             {timelineFoldCounts(fold)}
           </span>
         </span>
