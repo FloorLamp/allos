@@ -2,13 +2,8 @@
 
 import { useRef } from "react";
 import { createPortal } from "react-dom";
-import Link from "next/link";
-import { IconSearch } from "@tabler/icons-react";
-import Wordmark from "@/components/Wordmark";
-import ProfileIdentityBar from "@/components/ProfileIdentityBar";
 import SidebarContent from "@/components/SidebarContent";
 import QuickLogSheet from "@/components/QuickLogSheet";
-import { openGlobalSearch } from "@/components/CommandPalette";
 import { useLockBodyScroll } from "@/components/useLockBodyScroll";
 import { useFocusTrap } from "@/components/useFocusTrap";
 import { usePresence } from "@/components/usePresence";
@@ -25,28 +20,34 @@ import type { SegmentLogDays } from "@/lib/log-sheet";
 import type { SessionProfile } from "@/lib/auth";
 import { DEFAULT_NAV_RELEVANCE, type NavRelevance } from "@/lib/nav-relevance";
 
-// Mobile-only top bar + slide-in drawer. The desktop sidebar in app/layout.tsx is
-// hidden below `md`; this surfaces the same navigation on phones by rendering the
-// shared <SidebarContent> (the single source of truth for the sidebar's contents)
-// inside the drawer, so the two viewports can't drift apart. Only the
-// collapsed top bar — identity and search — is mobile-specific chrome and lives
-// here. The dock owns the drawer and quick-log triggers (#2745/#2746).
+// The phone's slide-in nav drawer and its quick-log sheet. The desktop sidebar in
+// app/layout.tsx is hidden below `md`; this surfaces the same navigation on
+// phones by rendering the shared <SidebarContent> (the single source of truth for
+// the sidebar's contents) inside the drawer, so the two viewports can't drift
+// apart. The dock owns both visible triggers (#2745/#2746).
 //
-// The bar is no longer sticky ITSELF: <ShellChrome> wraps it in the one sticky,
-// auto-hiding element (issue #1416). Everything about scroll behavior lives
-// there; this file owns the bar's contents and the drawer.
+// ── THE TOP BAR IS GONE, AND THIS FILE NOW RENDERS NO CHROME AT ALL (#4102) ──
 //
-// The left cluster (issue #1801): the identity bar takes the WORDMARK'S slot on
-// a multi-profile instance, so "whose data is this, and who am I acting as?" is
-// answerable without opening anything. A single-profile instance keeps the
-// wordmark — identity chrome when identity is ambiguous, brand chrome when it
-// isn't.
+// It used to open with a `md:hidden` <header> holding an identity bar (or the
+// wordmark) and a magnifier. #2746 deferred one question — whether that remnant
+// should fold into the dock too — and the 2026-08-29 ruling answered it: yes. The
+// dock is the phone's ONE chrome. Search became a dock slot, the identity bar
+// moved to the TOP OF THE DRAWER below (where the ✕ already lives), and the
+// mobile chrome budget above the first record is spent by pages rather than by
+// the shell — a tab-first page keeps its own sticky strip, mounted standalone.
 //
-// Search remains one tap from every page. The former contextual +, caret, and
-// workout bolt were a second permanently-visible logging cluster beside the dock
-// puck; #2745 moved the workout offer into the sheet's Train segment and retired
-// all three. #2746 likewise made the dock's More slot the sole visible drawer
-// trigger. Edge-swipe-right remains a gesture route to that same drawer.
+// What is left here is two OVERLAYS and the gestures that drive them, so the file
+// contributes zero pixels until something opens. It is therefore no longer a
+// child of <ShellChrome> (which exists to make the sticky bar hide on scroll, and
+// has no bar to hide any more); it is a sibling of <main>, like the dock.
+//
+// The identity bar's #1801 rule survives the move INTACT rather than being
+// dropped: identity chrome when identity is ambiguous, brand chrome when it is
+// not — the XOR now resolves inside the drawer instead of inside the bar, which
+// is what <SidebarContent>'s `brandChrome` does. What changed is only WHERE the
+// answer is read, and the cost of that is one tap on More.
+//
+// Edge-swipe-right remains a gesture route to the drawer.
 //
 // IT IS A MODAL, AND IT SAYS SO (#3463). The drawer is a hand-rolled modal
 // surface — it portals to <body>, covers the viewport with its own scrimmed
@@ -218,54 +219,12 @@ export default function MobileNav({
 
   return (
     <>
-      {/* pt + max() side padding keep the bar clear of the notch/status bar now
-      that the viewport paints edge-to-edge (viewportFit cover in app/layout.tsx).
-      Stickiness lives on the <ShellChrome> wrapper, not here. */}
-      <header className="border-b border-black/10 bg-(--nav) pt-[env(safe-area-inset-top)] md:hidden print:hidden dark:border-white/5">
-        <div className="flex h-14 items-center gap-2 pl-[max(1rem,env(safe-area-inset-left))] pr-[max(1rem,env(safe-area-inset-right))]">
-          {/* The identity bar takes the WORDMARK'S SLOT on a multi-profile
-              instance (issue #1801). In a personal health app the brand line
-              spends ~90px of a 390px bar saying nothing, while "whose data is
-              this?" had no answer on this screen at all; home stays one tap away
-              in the drawer, and the desktop sidebar and login screen keep the
-              wordmark. On a single-profile instance identity is unambiguous, so
-              the wordmark stays exactly as it was. */}
-          {multiProfile ? (
-            <ProfileIdentityBar
-              profiles={profiles}
-              actingProfileId={active.id}
-              viewIds={viewIds}
-              readOnlyIds={readOnlyIds}
-              readOnly={readOnly}
-              surface="mobile"
-            />
-          ) : (
-            <Link href="/" className="flex items-center gap-2">
-              <Wordmark markClassName="h-5 w-9" />
-            </Link>
-          )}
-          <div className="ml-auto -mr-1 flex items-center">
-            {/* Global search, one tap from every page (issue #1416). Opens the
-                same CommandPalette the drawer's search button and ⌘K do. */}
-            <button
-              type="button"
-              aria-label="Search"
-              data-testid="search-mobile"
-              onClick={() => openGlobalSearch()}
-              className="tap-target press flex h-10 w-10 items-center justify-center rounded-lg text-slate-600 transition hover:bg-slate-100 dark:text-slate-300 dark:hover:bg-ink-750"
-            >
-              <IconSearch className="h-5 w-5" stroke={1.75} />
-            </button>
-          </div>
-        </div>
-      </header>
-
-      {/* Portalled to <body> ON PURPOSE. The bar lives inside <ShellChrome>,
-      which TRANSFORMS itself to hide on scroll — and a transformed ancestor turns
-      `position: fixed` into "fixed relative to that ancestor", which would drag
-      the full-screen drawer along with the bar's slide. Rendering it at the body
-      keeps the overlay anchored to the viewport no matter what the chrome is
-      doing. (BottomSheet portals for the same reason.) */}
+      {/* Portalled to <body> ON PURPOSE, and still, after the bar retired. The
+      reason used to be <ShellChrome>'s hide-on-scroll transform re-parenting
+      `position: fixed` to itself; this component has left that wrapper, so the
+      surviving reasons are the ordinary ones — a full-screen overlay must escape
+      every ancestor's stacking context, overflow clip and transform, whatever
+      the shell later grows. (BottomSheet portals for the same reason.) */}
       {drawer.mounted &&
         typeof document !== "undefined" &&
         createPortal(
