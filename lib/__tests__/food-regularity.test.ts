@@ -14,6 +14,8 @@ import {
   periodFoodHabits,
   habitualFoodGroups,
   usualFoodOffer,
+  isUsualBackfillDateAccepted,
+  USUAL_BACKFILL_WINDOW_DAYS,
   type FoodRegularityEvent,
 } from "@/lib/food-regularity";
 import { shiftDateStr } from "@/lib/date";
@@ -307,5 +309,39 @@ describe("foodPeriodRegularity (#2397)", () => {
     expect(FOOD_PERIOD_HABIT_MIN_SHARE).toBeLessThan(
       FOOD_REGULARITY_HABITUAL_SHARE
     );
+  });
+});
+
+// ── HOW FAR BACK A "usual" TAP MAY REACH (#4118) ─────────────────────────────
+//
+// Both edges and one day past each, because a reach is only as good as where it stops.
+// ASYMMETRIC on purpose, unlike `isDoseDateAccepted`: a dose reminder may be tapped a
+// day either side of its own day, but there is no day-after-tomorrow morning to
+// reconstruct, so nothing in the future is accepted at all.
+describe("isUsualBackfillDateAccepted", () => {
+  const TODAY = "2026-08-20";
+  it.each([
+    ["today", 0, true],
+    ["yesterday", -1, true],
+    ["the last day in reach", -USUAL_BACKFILL_WINDOW_DAYS, true],
+    ["one day past the reach", -(USUAL_BACKFILL_WINDOW_DAYS + 1), false],
+    ["a fortnight back", -14, false],
+    ["tomorrow", 1, false],
+  ] as const)("%s → %s", (_why, delta, accepted) => {
+    expect(isUsualBackfillDateAccepted(TODAY, shiftDateStr(TODAY, delta))).toBe(
+      accepted
+    );
+  });
+
+  it("refuses a day it cannot parse rather than treating it as today", () => {
+    expect(isUsualBackfillDateAccepted(TODAY, "not-a-date")).toBe(false);
+    expect(isUsualBackfillDateAccepted(TODAY, "")).toBe(false);
+  });
+
+  it("matches the nutrition day picker's span, which is what it was set from", () => {
+    // The picker offers today plus the previous six (app/(app)/nutrition/FoodTab.tsx
+    // builds a 7-length array). Stated as arithmetic so a change to either side has to
+    // be a deliberate one.
+    expect(USUAL_BACKFILL_WINDOW_DAYS + 1).toBe(7);
   });
 });

@@ -15,14 +15,18 @@ import { setTimezone } from "@/lib/settings";
 import {
   FOOD_REGULARITY_MIN_WINDOW_DAYS,
   FOOD_REGULARITY_SPAN_DAYS,
+  USUAL_BACKFILL_WINDOW_DAYS,
 } from "@/lib/food-regularity";
 import { logUsualFoodCore } from "@/lib/food-usual-write";
+import { logFoodServingCore } from "@/lib/food-log-write";
+import { USUAL_BACKFILL, type LoggedVia } from "@/lib/logged-via";
 import {
   getCapDirectionFoodGroups,
   getFoodRegularity,
   getHabitualFoodGroups,
   getUsualFoodOffer,
 } from "@/lib/queries";
+import { usualRoutineDayOffers } from "@/lib/queries/usual-routine";
 
 // The mid-set refusal is UNREACHABLE through the product — `logUsualFoodCore` only ever
 // passes catalog slugs it just re-derived — which is exactly why the guard against it
@@ -301,6 +305,7 @@ describe("logUsualFoodCore lands the whole set or none of it (#2380)", () => {
       const outcome = logUsualFoodCore(
         profileId,
         "Morning",
+        anchor,
         ["berries", "fermented"],
         "page"
       );
@@ -326,6 +331,7 @@ describe("logUsualFoodCore lands the whole set or none of it (#2380)", () => {
     const outcome = logUsualFoodCore(
       profileId,
       "Morning",
+      anchor,
       ["berries", "fermented"],
       "page"
     );
@@ -345,11 +351,357 @@ describe("logUsualFoodCore lands the whole set or none of it (#2380)", () => {
     // there — this pins that the two paths agree on the observable outcome.
     const { profileId, anchor } = seedPair("usual-atomic-empty");
     expect(
-      logUsualFoodCore(profileId, "Morning", ["red_meat", "alcohol"], "page")
+      logUsualFoodCore(
+        profileId,
+        "Morning",
+        anchor,
+        ["red_meat", "alcohol"],
+        "page"
+      )
     ).toEqual({ kind: "nothing-to-log" });
     expect(writtenToday(profileId, anchor)).toEqual({
       counters: [],
       events: [],
     });
   });
+});
+
+// ── THE EVIDENCE GUARD (#4118) ───────────────────────────────────────────────
+//
+// The dated usual write is only safe because the rows it makes are not readmitted as
+// the reason to offer it again. `getFoodRegularity` excludes `usual-backfill` rows and
+// nothing else does — so this needs BOTH directions on ONE fixture, or it proves
+// nothing: "backfilled rows are excluded" passes on a ledger with no backfilled rows in
+// it, and passes just as well on a guard that excludes EVERYTHING.
+//
+// THE FIXTURE SITS ONE DAY UNDER THE GATE, which is where the loop actually bites.
+// `FOOD_REGULARITY_MIN_WINDOW_DAYS` observed mornings is the difference between silence
+// and a habit, so one extra morning is the difference between NO OFFER AT ALL and an
+// offer — the largest observable consequence a single day can have, and therefore the
+// one worth asserting the guard against.
+describe("usual-backfilled rows are not evidence, and everything else still is", () => {
+  // One morning short of the gate: two groups on every one of those mornings, so the
+  // ONLY thing standing between this profile and an offer is the day count.
+  function seedOneShortOfTheGate(name: string) {
+    const { profileId, anchor } = makeProfile(name);
+    for (let d = 1; d <= FOOD_REGULARITY_MIN_WINDOW_DAYS - 1; d++) {
+      const date = shiftDateStr(anchor, -d);
+      tap(profileId, "fermented", date, "08:00:00");
+      tap(profileId, "berries", date, "08:05:00");
+    }
+    return { profileId, anchor };
+  }
+
+  // The morning that tips it, written with a given provenance — the same two servings
+  // either way, on the same day, differing ONLY in the column the guard reads.
+  function addTheTippingMorning(
+    profileId: number,
+    date: string,
+    via: LoggedVia
+  ) {
+    for (const group of ["fermented", "berries"])
+      logFoodServingCore(
+        profileId,
+        group,
+        date,
+        via,
+        `${date}T08:00:00Z`,
+        "Morning"
+      );
+  }
+
+  // THE STAMP DECIDES, NOT THE SURFACE — and `telegram-nudge` is here to pin that the
+  // guard is narrow, not that a Telegram tap is always evidence. Since #4118 a Telegram
+  // food button can itself land on a past day, and when it does the HANDLER substitutes
+  // `usual-backfill` from the same date comparison the write core uses, so such a row
+  // never reaches this row of the table. That substitution is asserted where it is made
+  // (lib/__db_tests__/telegram-food.test.ts), because it is the handler's decision and
+  // not this measure's.
+  it.each([
+    ["page", "page", true],
+    ["telegram-nudge", "telegram-nudge", true],
+    ["usual-backfill", USUAL_BACKFILL, false],
+  ] as const)(
+    "a morning stamped %s is evidence = %s",
+    (_label, via, counts) => {
+      const { profileId, anchor } = seedOneShortOfTheGate(`guard-${via}`);
+      const gateDay = shiftDateStr(anchor, -FOOD_REGULARITY_MIN_WINDOW_DAYS);
+      // Before: under the gate, so no measure and no offer.
+      expect(getFoodRegularity(profileId).Morning).toBeNull();
+      expect(getUsualFoodOffer(profileId, "Morning", anchor)).toEqual([]);
+
+      addTheTippingMorning(profileId, gateDay, via);
+
+      const measure = getFoodRegularity(profileId).Morning;
+      if (counts) {
+        expect(measure?.observedDays).toBe(FOOD_REGULARITY_MIN_WINDOW_DAYS);
+        expect(getUsualFoodOffer(profileId, "Morning", anchor)).toEqual([
+          "berries",
+          "fermented",
+        ]);
+      } else {
+        // The guard's own direction: the rows exist, and the measure cannot see them.
+        expect(measure).toBeNull();
+        expect(getUsualFoodOffer(profileId, "Morning", anchor)).toEqual([]);
+      }
+      // …and either way the servings ARE on the ledger. A guard that had swallowed the
+      // rows themselves would satisfy the null above and be a data-loss bug.
+      expect(
+        db
+          .prepare(
+            `SELECT SUM(servings) AS n FROM food_daily_totals
+              WHERE profile_id = ? AND date = ?`
+          )
+          .get(profileId, gateDay) as { n: number }
+      ).toEqual({ n: 2 });
+    }
+  );
+
+  it("a dated logUsualFoodCore writes rows that count for the DAY and not for the measure", () => {
+    // End to end through the real write, which is the only place the `usual-backfill`
+    // stamp is actually decided. Seven logged mornings, so the offer stands, with a HOLE
+    // at day 6 back — the LAST day the bundle may reach (`USUAL_BACKFILL_WINDOW_DAYS`),
+    // so this exercises the far edge of the reach rather than a comfortable middle.
+    const { profileId, anchor } = makeProfile("guard-end-to-end");
+    const empty = shiftDateStr(anchor, -USUAL_BACKFILL_WINDOW_DAYS);
+    for (let d = 1; d <= FOOD_REGULARITY_MIN_WINDOW_DAYS + 1; d++) {
+      if (d === USUAL_BACKFILL_WINDOW_DAYS) continue;
+      const date = shiftDateStr(anchor, -d);
+      tap(profileId, "fermented", date, "08:00:00");
+      tap(profileId, "berries", date, "08:05:00");
+    }
+    const before = getFoodRegularity(profileId).Morning!;
+    expect(before.observedDays).toBe(FOOD_REGULARITY_MIN_WINDOW_DAYS);
+
+    const outcome = logUsualFoodCore(
+      profileId,
+      "Morning",
+      empty,
+      ["berries", "fermented"],
+      "page"
+    );
+    expect(outcome.kind).toBe("logged");
+
+    // Visible where a person looks: that day's window now holds the pair, so the offer
+    // FOR THAT DAY is spent and a second tap on it writes nothing.
+    expect(getUsualFoodOffer(profileId, "Morning", empty)).toEqual([]);
+    // Invisible to the measure: the same observed-day count and the same shares.
+    const after = getFoodRegularity(profileId).Morning!;
+    expect(after).toEqual(before);
+    // The stamp is what makes that true.
+    expect(
+      db
+        .prepare(
+          `SELECT DISTINCT logged_via FROM food_log_events
+            WHERE profile_id = ? AND date = ?`
+        )
+        .all(profileId, empty)
+    ).toEqual([{ logged_via: USUAL_BACKFILL }]);
+
+    // ONE DAY FURTHER BACK IS OUT OF REACH, and it is a DIFFERENT answer from
+    // "nothing to log" — the bundle may not be written there at all, and the surface
+    // has to be able to say so rather than reporting an empty offer.
+    expect(
+      logUsualFoodCore(
+        profileId,
+        "Morning",
+        shiftDateStr(anchor, -(USUAL_BACKFILL_WINDOW_DAYS + 1)),
+        ["berries", "fermented"],
+        "page"
+      )
+    ).toEqual({ kind: "invalid-date" });
+    // …and TOMORROW is refused by the same bound, which `isDoseDateAccepted` would
+    // have allowed: no usual offer has ever named a day nobody has lived through.
+    expect(
+      logUsualFoodCore(
+        profileId,
+        "Morning",
+        shiftDateStr(anchor, 1),
+        ["berries", "fermented"],
+        "page"
+      )
+    ).toEqual({ kind: "invalid-date" });
+  });
+
+  it("a CONTEMPORANEOUS usual tap is still evidence, and still stamps its surface", () => {
+    // The converse of the test above, on the same shape: the doctrine only ever meant
+    // to stop a BACKFILL feeding itself. A person tapping their usual on the day they
+    // are living has recorded a real morning, and it counts like any other.
+    const { profileId, anchor } = makeProfile("guard-contemporaneous");
+    for (let d = 1; d <= FOOD_REGULARITY_MIN_WINDOW_DAYS - 1; d++) {
+      const date = shiftDateStr(anchor, -d);
+      tap(profileId, "fermented", date, "08:00:00");
+      tap(profileId, "berries", date, "08:05:00");
+    }
+    // Under the gate, and there is therefore nothing to tap — so the pair is written
+    // the way a person on that day would have: two ordinary taps.
+    for (const group of ["fermented", "berries"])
+      logFoodServingCore(
+        profileId,
+        group,
+        anchor,
+        "page",
+        `${anchor}T08:00:00Z`,
+        "Morning"
+      );
+
+    expect(getFoodRegularity(profileId).Morning?.observedDays).toBe(
+      FOOD_REGULARITY_MIN_WINDOW_DAYS
+    );
+    expect(
+      db
+        .prepare(
+          `SELECT DISTINCT logged_via FROM food_log_events
+            WHERE profile_id = ? AND date = ?`
+        )
+        .all(profileId, anchor)
+    ).toEqual([{ logged_via: "page" }]);
+  });
+});
+
+// ── THE `/history` DOOR'S OFFER READ (#4118) ─────────────────────────────────
+//
+// `usualRoutineDayOffers` is the derivation the record's add door renders from, and the
+// door's own re-read consults the same function — so what it answers IS what the button
+// promises. Three properties, and the last is the one that keeps the affordance honest:
+// it must never name a day the write core would refuse.
+describe("usualRoutineDayOffers", () => {
+  // A habit in TWO windows, with a hole at day 3 back so both stand on that day and
+  // neither stands on the days already logged.
+  // The two-window habit plus a Morning-declared dose, aged behind the lifetime bound
+  // (#430/#1442 — a dose born today is owed on no past day, so an un-aged fixture would
+  // assert about an empty rider and pass whatever the bound did).
+  function seedWithDose(name: string, hole: number) {
+    const { profileId, anchor } = seedTwoWindows(name, hole);
+    const itemId = Number(
+      db
+        .prepare(
+          `INSERT INTO intake_items (profile_id, name, kind, active, obligation, condition)
+           VALUES (?, 'Creatine', 'supplement', 1, 'should', 'daily')`
+        )
+        .run(profileId).lastInsertRowid
+    );
+    const dose = Number(
+      db
+        .prepare(
+          `INSERT INTO intake_item_doses (item_id, amount, time_of_day, food_timing, sort)
+           VALUES (?, '1 scoop', 'morning', 'any', 0)`
+        )
+        .run(itemId).lastInsertRowid
+    );
+    const born = `${shiftDateStr(anchor, -60)} 09:00:00`;
+    db.prepare(`UPDATE intake_items SET created_at = ? WHERE id = ?`).run(
+      born,
+      itemId
+    );
+    db.prepare(`UPDATE intake_item_doses SET created_at = ? WHERE id = ?`).run(
+      born,
+      dose
+    );
+    return { profileId, anchor, dose };
+  }
+
+  function seedTwoWindows(name: string, hole: number) {
+    const { profileId, anchor } = makeProfile(name);
+    for (let d = 1; d <= 14; d++) {
+      if (d === hole) continue;
+      const date = shiftDateStr(anchor, -d);
+      tap(profileId, "fermented", date, "08:00:00");
+      tap(profileId, "berries", date, "08:05:00");
+      tap(profileId, "legumes", date, "19:00:00");
+      tap(profileId, "nuts_seeds", date, "19:05:00");
+    }
+    return { profileId, anchor };
+  }
+
+  it("names EVERY window that stands on the day, not the current one", () => {
+    // A reader reconstructing a day they have already lived is not standing in any of
+    // its windows — the morning they missed is exactly as offerable as the evening, so
+    // a `currentFoodSlot`-shaped read would answer with at most one of the two.
+    const { profileId, anchor } = seedTwoWindows("door-windows", 3);
+    const offers = usualRoutineDayOffers(profileId, shiftDateStr(anchor, -3));
+    expect(offers.map((o) => o.window)).toEqual(["Morning", "Evening"]);
+    expect(offers[0].food.map((f) => f.slug)).toEqual(["berries", "fermented"]);
+    // NAMES, not slugs: a label is a promise and a slug is not a promise anybody can
+    // read, so the derivation resolves them rather than leaving it to each surface.
+    expect(offers[0].food.map((f) => f.name)).toEqual([
+      "Berries",
+      "Fermented foods",
+    ]);
+  });
+
+  it("says nothing about a day whose windows are already logged", () => {
+    // The converse of the test above on the same fixture: the seeded days hold the
+    // whole habit, so nothing stands on them and the door shows no button. Without
+    // this, "offers every window" would pass just as well on a read that offered every
+    // window unconditionally.
+    const { profileId, anchor } = seedTwoWindows("door-logged", 3);
+    expect(usualRoutineDayOffers(profileId, shiftDateStr(anchor, -2))).toEqual(
+      []
+    );
+  });
+
+  it.each([
+    ["inside the dose window", -2, true],
+    ["one day past the dose window", -3, false],
+    ["the last day in food reach", -USUAL_BACKFILL_WINDOW_DAYS, false],
+  ] as const)(
+    "%s: the offer names doses = %s, so the button cannot promise a refusal",
+    (_why, delta, named) => {
+      // THE TWO HALVES REACH DIFFERENT DISTANCES. Past `isDoseDateAccepted`'s window
+      // every named dose comes back `stale-dose` having written nothing, so an offer
+      // that still listed them would put a count and a name on a button for writes the
+      // core refuses. Both sides of the edge, because "no doses past day 2" would pass
+      // on an offer that never names a dose at all.
+      const { profileId, anchor, dose } = seedWithDose(
+        `door-dose${delta}`,
+        -delta
+      );
+      const offers = usualRoutineDayOffers(
+        profileId,
+        shiftDateStr(anchor, delta)
+      );
+      expect(offers.length).toBeGreaterThan(0);
+      const morning = offers.find((o) => o.window === "Morning")!;
+      // The FOOD half is unaffected either way — this bound narrows the rider, never
+      // the offer itself.
+      expect(morning.food.map((f) => f.slug)).toEqual(["berries", "fermented"]);
+      expect(morning.doses.map((d) => d.id)).toEqual(named ? [dose] : []);
+    }
+  );
+
+  it.each([
+    ["the last day in reach", -USUAL_BACKFILL_WINDOW_DAYS, false],
+    ["one day past the reach", -(USUAL_BACKFILL_WINDOW_DAYS + 1), true],
+    ["tomorrow", 1, true],
+  ] as const)(
+    "%s: the read and the write core agree about whether the day is reachable",
+    (_why, delta, silent) => {
+      // ONE DECISION, ASKED IN ONE PLACE. The door must never show a button
+      // `logUsualRoutineCore` would answer `invalid-date` to, so the read is bounded by
+      // the same predicate the core gates on — asserted here against the CORE's own
+      // verdict rather than against a repeated constant, so the two cannot drift.
+      //
+      // THE HOLE IS AT THE TARGET DAY, so the ONLY thing that can silence the read is
+      // the reach. Seeded over it, the day's windows would already be full and the read
+      // would answer `[]` for a reason this test is not about — green on both sides of
+      // the bound, which is precisely the shape that must not ship here.
+      const { profileId, anchor } = seedTwoWindows(
+        `door-reach${delta}`,
+        Math.max(0, -delta)
+      );
+      const target = shiftDateStr(anchor, delta);
+      expect(usualRoutineDayOffers(profileId, target).length === 0).toBe(
+        silent
+      );
+      const write = logUsualFoodCore(
+        profileId,
+        "Morning",
+        target,
+        ["berries", "fermented"],
+        "page"
+      );
+      expect(write.kind === "invalid-date").toBe(silent);
+    }
+  );
 });

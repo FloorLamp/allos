@@ -45,6 +45,7 @@ import {
 import { handleCallbackQuery } from "@/lib/notifications/telegram-callbacks";
 import { reconcileProfileMessages } from "@/lib/notifications/reconcile";
 import { PROTEIN_QUICKADD_LAST_KEY } from "@/lib/protein-daily-totals-write";
+import { foodTapDateGuard } from "@/lib/notifications/callback-data";
 import { PROTEIN_NUDGE_KEY } from "@/lib/protein-nudge";
 import { handleIncomingMessage } from "@/lib/notifications/telegram-quick-log";
 import { seedLoginTelegram } from "./fixtures";
@@ -181,6 +182,79 @@ describe("a food tap records the KEYBOARD it came from, not the file it is handl
     seedHabit(profileId, groups);
     return profileId;
   }
+
+  // ── NO MINT IS EVER DATED AHEAD OF THE PROFILE'S TODAY (#4118) ────────────
+  //
+  // `foodTapDateGuard` reads `isDoseDateAccepted`, which is SYMMETRIC, so it accepts a
+  // token dated one or two days into the FUTURE. That is deliberate — reading the dose
+  // window directly is what stops the food half of a message drifting from its dose
+  // half again — and it is safe only because nothing mints such a token. "Nothing mints
+  // one" is a claim about the SENDERS, so it is asserted of them rather than argued in
+  // a comment: both production mint sites are driven here already, and a rebuild is a
+  // third because a tap re-renders the whole keyboard from the same builder.
+  //
+  // The guard would be vacuous if the message carried no dated tokens at all, so the
+  // count is asserted before the dates are.
+  it("mints no food or protein token dated after today, from either sender or a rebuild", async () => {
+    const chat = "5559108";
+    // A protein tracker with the reserved pseudo-group in its history, so the "+Xg"
+    // button is on the keyboard and `foodp:` is in the sweep — the two token families
+    // carry a date and both are minted here.
+    const profileId = seedChat("LV4118-dates", chat, [
+      "leafy_greens",
+      PROTEIN_NUDGE_KEY,
+    ]);
+    setProfileSetting(profileId, PROTEIN_QUICKADD_LAST_KEY, "30");
+    const t = today(profileId);
+
+    // 1. THE PROACTIVE SEND.
+    await tickProfile(profileId, "LV4118-dates", 5, Date.now());
+    const nudge = sentTo(chat).find((m) => m.msg.kind === "food");
+    expect(nudge, "the tick sent no food nudge").toBeDefined();
+    // 2. THE `/food` REPLY — the same builder, the other sender.
+    await handleIncomingMessage({
+      message_id: 2,
+      chat: { id: chat },
+      text: "/food",
+    });
+    const reply = sentTo(chat).at(-1)!;
+    // 3. THE REBUILD a tap produces, read off the edit rather than a send.
+    editMock.mockClear();
+    const tapToken = (reply.msg.actions ?? [])
+      .map((a) => a.data ?? "")
+      .find((d) => d.startsWith("food:"))!;
+    await handleCallbackQuery(
+      cq(tapToken, chat, keyboardOf(reply.msg), reply.id)
+    );
+
+    const rebuilt = (
+      editMock.mock.calls.at(-1)?.[3] as { keyboard?: Button[][] } | undefined
+    )?.keyboard;
+    expect(rebuilt, "the tap did not rebuild the keyboard").toBeDefined();
+
+    // BOTH DATED FAMILIES, and the prefix is `foodprotein:` rather than the `foodp:`
+    // an abbreviation would guess — a sweep spelling it wrong reports a clean result it
+    // never took, which is the whole failure mode this assertion exists to avoid.
+    const dated = (d: string) => /^food(?:protein)?:/.test(d);
+    const minted = [
+      ...(nudge!.msg.actions ?? []).map((a) => a.data ?? ""),
+      ...(reply.msg.actions ?? []).map((a) => a.data ?? ""),
+      ...rebuilt!.flat().map((b) => b.callback_data ?? ""),
+    ].filter(dated);
+
+    // The positive control: this sweep is looking at real dated tokens from all three
+    // paths, in both families, not at three empty lists.
+    expect(minted.length).toBeGreaterThanOrEqual(3);
+    expect(minted.some((d) => d.startsWith("foodprotein:"))).toBe(true);
+    for (const token of minted) {
+      const day = /\d{4}-\d{2}-\d{2}/.exec(token)?.[0];
+      expect(day, `${token} carries no date where one belongs`).toBeDefined();
+      expect(day, `${token} is dated ahead of the profile's today`).toBe(t);
+    }
+    // …and the guard really would have accepted a future one, which is what makes the
+    // sweep above load-bearing rather than decorative.
+    expect(foodTapDateGuard(shiftDateStr(t, 1), t).kind).not.toBe("stale-date");
+  });
 
   it("stores telegram-nudge for a tap on the PROACTIVE send, through the real tick", async () => {
     const profileId = seedChat("LV3087-nudge", NUDGE_CHAT);

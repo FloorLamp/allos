@@ -11,6 +11,7 @@ import type { FoodLogOutcome } from "../food-log-write";
 import type { ProteinAddOutcome } from "../protein-daily-totals-write";
 import { formatRecordDate } from "../record-format";
 import { isRealIsoDate } from "../date";
+import { isDoseDateAccepted } from "../dose-log-window";
 import { foodGroupName } from "../food-groups";
 import { INTAKE_SEND_SLOTS, type IntakeSendSlot } from "./intake-format";
 import { FOOD_NUDGE_WINDOWS, type FoodNudgeWindow } from "./food-format";
@@ -1038,12 +1039,17 @@ export function parseFoodProteinCallback(
 // (a forged/over-cap token) is answered honestly, never a false confirm (#1073).
 export function foodProteinAnswerText(
   outcome: ProteinAddOutcome,
-  grams: number
+  grams: number,
+  // The day the grams landed on, when it is NOT today (#4118) — a tap on yesterday's
+  // still-live message must not answer "today". Absent for the ordinary same-day tap.
+  onDate?: string
 ): string {
-  if (outcome.kind === "invalid") {
+  if (outcome.kind === "invalid" || outcome.kind === "invalid-date") {
     return "Not logged — that entry is out of date. Open the app.";
   }
-  return `Logged ${GLYPH.done} ＋${grams} g protein — ${outcome.grams} g today`;
+  return onDate
+    ? `Logged ${GLYPH.done} ＋${grams} g protein on ${onDate} — ${outcome.grams} g that day`
+    : `Logged ${GLYPH.done} ＋${grams} g protein — ${outcome.grams} g today`;
 }
 
 // A food-nudge expansion tap — "➕ Show more" (#1075) or "➖ Show less" (#1807):
@@ -1105,7 +1111,6 @@ export function parseFoodOptInCallback(
 // A same-day tap from an older window keeps working (the date is right; only the
 // button counts on the old message are stale, which the rebuild refreshes).
 export type TapDateGuard = { kind: "current-day" } | { kind: "stale-date" };
-export type FoodTapDateGuard = TapDateGuard;
 
 // Decide whether a tap's token date is still the subject's today. Pure, so the
 // tz-midnight boundary (a 23:59 tap on yesterday's message vs a 00:01 tap on today's)
@@ -1121,16 +1126,49 @@ export function tapDateGuard(
     : { kind: "stale-date" };
 }
 
-// The food nudge's name for the shared guard; the handler passes today(profileId).
+// THE FOOD TAP'S OWN GUARD, WHICH IS NO LONGER THE SHARED ONE (#4118).
+//
+// The owner's report: "I can only update the morning supplement times, not food." On one
+// stale morning message the ✅ dose buttons beside the food buttons still work — they
+// gate on `isDoseDateAccepted`, the message-date ±2 rule (#3973) — and the food buttons
+// answer "that nudge was from yesterday". Two buttons, one message, one finger,
+// different answers, and the asymmetry is not a decision anybody made: it is #947's
+// same-day rule meeting #3973's window rule.
+//
+// So the food tap gets the SAME window its dose neighbours have, and a THIRD state that
+// carries the difference #947 was actually about:
+//
+//   • current-day — the tap instant IS an eating-time measurement. The row records it
+//     (`time_source = 'tap'`), unchanged since #2019;
+//   • recent-day  — the message's day is inside the window, so the SERVING lands on that
+//     day; but "I'm eating now" is false about a day that has ended, so no eating
+//     instant is invented for it. The row carries the nudge's window as a declared
+//     `meal_slot` and a NULL `occurred_at`, which is exactly the shape the "usual"
+//     bundle and the `/history` door already write for a day with no stated time;
+//   • stale-date  — outside the window. Nothing written, answered honestly, as before.
+//
+// The window is `isDoseDateAccepted`'s, read off the same constant rather than
+// re-spelled, so widening one can never leave the buttons on one message disagreeing
+// again. `tapDateGuard` above is UNCHANGED and stays exact-day: the household round
+// (#1719) is a today-shaped tap on someone else's behalf and is deliberately not a
+// backfill surface.
+export type FoodTapDateGuard =
+  { kind: "current-day" } | { kind: "recent-day" } | { kind: "stale-date" };
+
 export function foodTapDateGuard(
   tokenDate: string,
   todayDate: string
 ): FoodTapDateGuard {
-  return tapDateGuard(tokenDate, todayDate);
+  if (tokenDate === todayDate) return { kind: "current-day" };
+  return isDoseDateAccepted(todayDate, tokenDate)
+    ? { kind: "recent-day" }
+    : { kind: "stale-date" };
 }
 
 // The honest Telegram toast for a refused cross-date tap: name the stale date so the
-// user understands why nothing was logged and where the live buttons are.
+// user understands why nothing was logged and where the live buttons are. Since #4118
+// this is reached only OUTSIDE the message-date window — a tap one or two days late now
+// logs to the message's own day and says so, exactly as the dose buttons beside it do.
 export function foodStaleDateAnswerText(tokenDate: string): string {
   return `That nudge was from ${tokenDate} — today's buttons are below.`;
 }
@@ -1140,12 +1178,23 @@ export function foodStaleDateAnswerText(tokenDate: string): string {
 // stale/forged token, a retired slug) is answered honestly, never falsely confirmed.
 export function foodLogAnswerText(
   outcome: FoodLogOutcome,
-  group: string
+  group: string,
+  // The day the serving landed on, when it is NOT today (#4118). The tap on a two-day-old
+  // message is legitimate and it writes to THAT day — so the toast has to say which,
+  // rather than letting "×2 today" describe a day the person is not standing in.
+  onDate?: string
 ): string {
   if (outcome.kind === "unknown-group") {
     return "Not logged — that food is out of date. Open the app.";
   }
+  if (outcome.kind === "invalid-date") {
+    return "Not logged — that day is out of range. Open the app.";
+  }
   const name = foodGroupName(group);
+  if (onDate)
+    return outcome.servings > 1
+      ? `Logged ${GLYPH.done} ${name} ×${outcome.servings} on ${onDate}`
+      : `Logged ${GLYPH.done} ${name} on ${onDate}`;
   return outcome.servings > 1
     ? `Logged ${GLYPH.done} ${name} ×${outcome.servings} today`
     : `Logged ${GLYPH.done} ${name}`;

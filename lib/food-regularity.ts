@@ -34,8 +34,30 @@
 // Not "0.5 confidence", not "not enough data yet" — nothing. A consumer that reads
 // null must treat it as NO HABIT (there is no expectation), never as a habit broken.
 
-import { shiftDateStr } from "./date";
+import { daysBetweenDateStr, shiftDateStr } from "./date";
 import { FOOD_SLOTS, type FoodSlot } from "./food-slot";
+
+// HOW FAR BACK A "usual" TAP MAY REACH (#4118). The composed one-tap is a BULK write —
+// several servings and several dose confirms from one press — so the day it lands on is
+// bounded here rather than left to whatever a form posts. Six days back plus today is
+// the nutrition day picker's own span (app/(app)/nutrition/FoodTab.tsx builds exactly
+// `today` and the previous six), so a person reconstructing a missed day sees the same
+// reach on both surfaces. Past it, the per-item deep doors — `logHistoricalDose` and the
+// `/history` food door — stay the honest path: reaching further back is a deliberate
+// per-row act, not a bundle.
+export const USUAL_BACKFILL_WINDOW_DAYS = 6;
+
+// Is `date` a day the dated usual write may target, given the profile's today? Pure, so
+// the boundary is unit-pinnable, and ASYMMETRIC where `isDoseDateAccepted` is symmetric:
+// a dose reminder may legitimately be tapped a day either side of its own day, but a
+// bundle nobody has lived through yet is not a thing to reconstruct. Never the future.
+export function isUsualBackfillDateAccepted(
+  todayStr: string,
+  date: string
+): boolean {
+  const diff = daysBetweenDateStr(todayStr, date);
+  return diff != null && diff <= 0 && -diff <= USUAL_BACKFILL_WINDOW_DAYS;
+}
 
 // How far back the measure looks. Three whole WEEKS: a whole number of weeks so a
 // weekday-shaped rhythm (the Saturday cook, the weekday commute breakfast) is counted

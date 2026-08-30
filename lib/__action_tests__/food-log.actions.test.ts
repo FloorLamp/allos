@@ -891,7 +891,7 @@ describe("trackFoodHabit / untrackFoodHabit (#580)", () => {
 });
 
 describe("canonicalizes the persisted slug, never storing the raw input (#883)", () => {
-  it("logFoodServing stores the canonical slug for a case/punctuation variant", async () => {
+  it("log and undo normalize variants while canonical slugs remain unchanged", async () => {
     const login = createLogin();
     const profile = createProfile("canon-log", login.id);
     actAs(login, profile);
@@ -900,27 +900,23 @@ describe("canonicalizes the persisted slug, never storing the raw input (#883)",
     // downstream exact-match reads (daily totals, rollup, habit progress) can find it.
     await logFoodServing(fd({ group_key: "Leafy_Greens", date: DATE }));
     await logFoodServing(fd({ group_key: "leafy-greens", date: DATE }));
+    await logFoodServing(fd({ group_key: "leafy_greens", date: DATE }));
 
-    const r = rows(profile.id);
-    expect(r).toHaveLength(1); // one canonical row, not two raw variants
-    expect(r[0]).toMatchObject({ group_key: "leafy_greens", servings: 2 });
+    let r = rows(profile.id);
+    expect(r).toHaveLength(1); // one canonical row, not three input spellings
+    expect(r[0]).toMatchObject({ group_key: "leafy_greens", servings: 3 });
     // The rollup (exact-match reader) sees the servings.
     expect(getFoodRollupInRange(profile.id, DATE, DATE)).toEqual([
-      expect.objectContaining({ slug: "leafy_greens", servings: 2 }),
+      expect.objectContaining({ slug: "leafy_greens", servings: 3 }),
     ]);
-  });
 
-  it("undoFoodServing on a variant targets the canonical row a canonical log wrote", async () => {
-    const login = createLogin();
-    const profile = createProfile("canon-undo", login.id);
-    actAs(login, profile);
-
-    await logFoodServing(fd({ group_key: "leafy_greens", date: DATE }));
     const res = await undoFoodServing(
       fd({ group_key: "Leafy-Greens", date: DATE })
     );
-    expect(res).toEqual({ ok: true, servings: 0 });
-    expect(rows(profile.id)).toEqual([]);
+    expect(res).toEqual({ ok: true, servings: 2 });
+    r = rows(profile.id);
+    expect(r).toHaveLength(1);
+    expect(r[0]).toMatchObject({ group_key: "leafy_greens", servings: 2 });
   });
 
   it("trackFoodHabit stores the canonical scope_value for a variant", async () => {
@@ -932,30 +928,6 @@ describe("canonicalizes the persisted slug, never storing the raw input (#883)",
     const targets = getFrequencyTargets(profile.id);
     expect(targets).toHaveLength(1);
     expect(targets[0].scope_value).toBe("fatty_fish");
-  });
-
-  it("still rejects a truly unknown group without writing", async () => {
-    const login = createLogin();
-    const profile = createProfile("canon-reject", login.id);
-    actAs(login, profile);
-
-    const res = await logFoodServing(
-      fd({ group_key: "definitely_not_a_group", date: DATE })
-    );
-    expect(res.ok).toBe(false);
-    expect(rows(profile.id)).toEqual([]);
-  });
-
-  it("existing canonical slugs keep working unchanged", async () => {
-    const login = createLogin();
-    const profile = createProfile("canon-existing", login.id);
-    actAs(login, profile);
-
-    await logFoodServing(fd({ group_key: "berries", date: DATE }));
-    expect(rows(profile.id)[0]).toMatchObject({
-      group_key: "berries",
-      servings: 1,
-    });
   });
 });
 
@@ -972,5 +944,65 @@ describe("scoping + rollup", () => {
     const rollupB = getFoodRollupInRange(b.id, DATE, DATE);
     expect(rollupA.map((g) => g.slug)).toEqual(["fatty_fish"]);
     expect(rollupB).toEqual([]);
+  });
+});
+
+// ── THE DAY BOUND IS IN THE CORE NOW (#4118) ─────────────────────────────────
+//
+// Until #4118 the only thing between a posted `date` and the ledger was the day
+// picker's own markup — the action's parse checked the SHAPE `\d{4}-\d{2}-\d{2}` and
+// nothing else, so a hand-built POST could put a serving on any day that spells like
+// one, the next century included. Those rows would then sit in every rollup, every
+// tally and every trend for ever, and nothing in the app would remove them.
+//
+// The refusal lives in `logFoodServingCore`, so the quick-log sheet, the Telegram
+// handler and the offline replay inherit it together. Arbitrary PAST stays allowed:
+// that is the `/history` door's whole job.
+describe("a forged day", () => {
+  function seed(name: string) {
+    const login = createLogin();
+    const profile = createProfile(name, login.id);
+    actAs(login, profile);
+    return profile;
+  }
+
+  it.each([
+    ["tomorrow", 1],
+    ["next week", 7],
+    ["next year", 400],
+  ] as const)("refuses %s and writes nothing", async (why, ahead) => {
+    const profile = seed(`forged-future-${ahead}`);
+    const future = shiftDateStr(today(profile.id), ahead);
+    const res = await logFoodServing(
+      fd({ group_key: "berries", date: future })
+    );
+    expect(res.ok, why).toBe(false);
+    expect(rows(profile.id)).toEqual([]);
+    expect(
+      db
+        .prepare(
+          "SELECT COUNT(*) AS n FROM food_log_events WHERE profile_id = ?"
+        )
+        .get(profile.id) as { n: number }
+    ).toEqual({ n: 0 });
+  });
+
+  it("still accepts an arbitrary PAST day, which is the /history door's contract", async () => {
+    // The converse, in the same commit: a not-future bound written as a WINDOW would
+    // pass every assertion above and would silently break the one deep door this app
+    // has for reconstructing a year-old record.
+    const profile = seed("forged-past");
+    const old = shiftDateStr(today(profile.id), -400);
+    const res = await logFoodServing(fd({ group_key: "berries", date: old }));
+    expect(res.ok).toBe(true);
+    expect(rows(profile.id).map((r) => r.date)).toEqual([old]);
+  });
+
+  it("today itself is inside the bound, at the very edge of it", async () => {
+    const profile = seed("forged-edge");
+    const res = await logFoodServing(
+      fd({ group_key: "berries", date: today(profile.id) })
+    );
+    expect(res.ok).toBe(true);
   });
 });

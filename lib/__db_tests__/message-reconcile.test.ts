@@ -663,10 +663,15 @@ describe("idempotence — the rate-limit pin", () => {
 });
 
 describe("day rollover", () => {
-  it("closes yesterday's still-live FOOD keyboard with no next send required", async () => {
-    // A food token's date is the system's guess at when the user ate, and the guess
-    // expires at midnight (#947) — so this family, and only a family like it, is the
-    // one the day boundary ends.
+  it("keeps yesterday's FOOD keyboard alive and closes one from OUTSIDE the window", async () => {
+    // THIS TEST'S SUBJECT CHANGED SIDES AT #4118, so its old name is gone rather than
+    // its assertion loosened. The food nudge used to be the sweep's example of a
+    // rollover close — the token's date was read as the system's guess at when the user
+    // ate, and the guess expired at midnight (#947). It no longer does: the handler
+    // honours a tap on the message's own day for the same ±2 its dose neighbours use, so
+    // closing at the rollover would delete buttons that still work, which is exactly the
+    // asymmetry #4118 was filed about. What the sweep must still do is close a keyboard
+    // from OUTSIDE that window, and both halves are asserted here on one fixture.
     const pid = newProfile("Rollover Rae");
     seedLoginTelegram(pid, "5551788");
     const yd = shiftDateStr(today(pid), -1);
@@ -687,9 +692,30 @@ describe("day rollover", () => {
       ],
     });
 
-    const out = await reconcileProfileMessages(pid);
-    expect(out.closed).toBe(1);
-    expect(liveMessagePointers(pid)).toEqual([]);
+    // Inside the window: still live, still tappable.
+    expect((await reconcileProfileMessages(pid)).closed).toBe(0);
+    expect(liveMessagePointers(pid).map((p) => p.messageId)).toEqual([4242]);
+
+    // A second pointer from three days back — the first day the handler refuses — is
+    // the one the sweep still ends.
+    const old = shiftDateStr(today(pid), -3);
+    recordMessagePointer({
+      profileId: pid,
+      chatId: "5551788",
+      messageId: 4243,
+      kind: "food",
+      date: old,
+      keyboard: [
+        [
+          {
+            text: "🥬 Leafy greens",
+            callback_data: `food:${pid}:Morning:${old}:leafy_greens`,
+          },
+        ],
+      ],
+    });
+    expect((await reconcileProfileMessages(pid)).closed).toBe(1);
+    expect(liveMessagePointers(pid).map((p) => p.messageId)).toEqual([4242]);
   });
 });
 
@@ -1460,6 +1486,11 @@ describe("a closed message says what it closed (#1822 item 7)", () => {
   });
 
   it("names the subject on a ROLLOVER close too", async () => {
+    // THE VEHICLE CHANGED, NOT THE CLAIM. This used to ride a food keyboard, which
+    // stopped producing a rollover close at #4118 when the food family moved onto the
+    // dose window. `mood` is the exact-day family this is about now — a next-morning tap
+    // on last night's face picker would answer yesterday's question — and the close TEXT
+    // being asserted is unchanged.
     const pid = newProfile("Rollover Rhea");
     seedLoginTelegram(pid, "5551992");
     const yd = shiftDateStr(today(pid), -1);
@@ -1467,22 +1498,15 @@ describe("a closed message says what it closed (#1822 item 7)", () => {
       profileId: pid,
       chatId: "5551992",
       messageId: 4343,
-      kind: "food",
+      kind: "mood",
       date: yd,
-      keyboard: [
-        [
-          {
-            text: "🥬 Leafy greens",
-            callback_data: `food:${pid}:Morning:${yd}:leafy_greens`,
-          },
-        ],
-      ],
-      title: "[Rhea] 🍽️ Morning food log",
+      keyboard: [[{ text: "🙂", callback_data: `mood:${pid}:4:${yd}` }]],
+      title: "[Rhea] 🙂 How was today?",
     });
 
     expect((await reconcileProfileMessages(pid)).closed).toBe(1);
     expect(editText.mock.calls.at(-1)![2]).toBe(
-      "[Rhea] 🍽️ Morning food log — this was yesterday's message."
+      "[Rhea] 🙂 How was today? — this was yesterday's message."
     );
   });
 
@@ -1495,16 +1519,9 @@ describe("a closed message says what it closed (#1822 item 7)", () => {
       profileId: pid,
       chatId: "5551993",
       messageId: 4444,
-      kind: "food",
+      kind: "mood",
       date: yd,
-      keyboard: [
-        [
-          {
-            text: "🥬 Leafy greens",
-            callback_data: `food:${pid}:Morning:${yd}:leafy_greens`,
-          },
-        ],
-      ],
+      keyboard: [[{ text: "🙂", callback_data: `mood:${pid}:4:${yd}` }]],
     });
 
     expect((await reconcileProfileMessages(pid)).closed).toBe(1);
@@ -2473,26 +2490,21 @@ describe("the three non-resolved tails are untouched (#2275)", () => {
     const pid = newProfile("Tail Tess");
     seedLoginTelegram(pid, "5552289");
     const yd = shiftDateStr(today(pid), -1);
+    // A `mood` keyboard rather than a food one since #4118 — see "names the subject on
+    // a ROLLOVER close too". The tail text under assertion is unchanged.
     recordMessagePointer({
       profileId: pid,
       chatId: "5552289",
       messageId: 7016,
-      kind: "food",
+      kind: "mood",
       date: yd,
-      keyboard: [
-        [
-          {
-            text: "🥬 Leafy greens",
-            callback_data: `food:${pid}:Morning:${yd}:leafy_greens`,
-          },
-        ],
-      ],
-      title: "[Tess] 🍽️ Morning food log",
+      keyboard: [[{ text: "🙂", callback_data: `mood:${pid}:4:${yd}` }]],
+      title: "[Tess] 🙂 How was today?",
     });
     editText.mockClear();
     expect((await reconcileProfileMessages(pid)).closed).toBe(1);
     expect(String(editText.mock.calls.at(-1)![2])).toBe(
-      "[Tess] 🍽️ Morning food log — this was yesterday's message."
+      "[Tess] 🙂 How was today? — this was yesterday's message."
     );
   });
 });
