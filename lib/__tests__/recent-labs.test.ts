@@ -211,8 +211,6 @@ describe("recentLabHighlights acknowledgment order (#3225)", () => {
   });
 
   it("no predicate is the pre-#3225 order, byte for byte — the digest and recap are out of scope", () => {
-    expect(recentLabHighlights(rows, 6).map((r) => r.name)).toEqual(
-      seat([])
-    );
+    expect(recentLabHighlights(rows, 6).map((r) => r.name)).toEqual(seat([]));
   });
 });

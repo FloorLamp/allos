@@ -53,7 +53,13 @@ function addLdl(
     `INSERT INTO medical_records
        (profile_id, date, category, name, value, unit, canonical_name, value_num, flag, panel, created_at)
      VALUES (?, ?, 'lab', 'LDL Cholesterol', ?, 'mg/dL', 'LDL Cholesterol', ?, ?, 'AckDraw', ${arrivedSql})`
-  ).run(p.profileId, shiftDateStr(p.todayStr, -days), String(value), value, flag);
+  ).run(
+    p.profileId,
+    shiftDateStr(p.todayStr, -days),
+    String(value),
+    value,
+    flag
+  );
 }
 
 function trajectoryForLdl() {

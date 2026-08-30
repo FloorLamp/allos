@@ -103,11 +103,14 @@ const BACKING_READING = `category NOT IN (${NON_IDENTITY_CATEGORIES.map(
 // Grouped on the same `lower(biomarkerFamilyKey())` expression the orphan sweep
 // compares against, which is the SQL twin of the JS `biomarkerFlagDismissalKey`
 // suffix — so the two sides of the comparison are the same identity by construction.
-const FAMILY_LAST_ARRIVAL_SQL = `SELECT lower(${biomarkerFamilyKey()}) AS family,
-          MAX(created_at) AS arrived
+// Hoisted for the same reason the read above is: a profile that acknowledges results
+// pays this on every render that asks the bus, and compilation is the expensive half.
+const FAMILY_LAST_ARRIVAL_STMT = hoistedStatement(
+  `SELECT lower(${biomarkerFamilyKey()}) AS family, MAX(created_at) AS arrived
      FROM medical_records
     WHERE profile_id = ? AND ${BACKING_READING}
-    GROUP BY family`;
+    GROUP BY family`
+);
 
 // Drop the flagged-result acknowledgments a NEW DRAW has re-armed (#3225).
 //
@@ -146,9 +149,10 @@ function dropReArmedFlagAcks(
       acked.set(key.slice(BIOMARKER_FLAG_PREFIX.length), rec.dismissed_at);
   }
   if (acked.size === 0) return;
-  const rows = db
-    .prepare(FAMILY_LAST_ARRIVAL_SQL)
-    .all(profileId, ...NON_IDENTITY_CATEGORIES) as {
+  const rows = FAMILY_LAST_ARRIVAL_STMT.all(
+    profileId,
+    ...NON_IDENTITY_CATEGORIES
+  ) as {
     family: string;
     arrived: string | null;
   }[];

@@ -86,7 +86,10 @@ import { PageHeader, EmptyState, MedicalValue } from "@/components/ui";
 import { Notice } from "@/components/Notice";
 import { type BiomarkerBands } from "@/components/BiomarkerChart";
 import BiomarkerTrendChart from "@/components/BiomarkerTrendChart";
-import { getProtocolWindowsForOutcome, getFindingSuppressions } from "@/lib/queries";
+import {
+  getProtocolWindowsForOutcome,
+  getFindingSuppressions,
+} from "@/lib/queries";
 import { isSuppressed } from "@/lib/upcoming-suppress";
 import { biomarkerFlagDismissalKey } from "@/lib/dismissal-keys";
 import { dismissTrajectory } from "../../actions";
