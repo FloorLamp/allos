@@ -653,10 +653,10 @@ describe("FoodLogBar projection publication", () => {
     //   • the MOUNT guard covers the replaced-bar case (the case below: provider alive,
     //     bar swapped, the stale continuation still holding a live setState);
     //   • the EPOCH guard covers the SUPERSEDED-correction case, where nothing unmounts
-    //     at all — start correction A (Morning→Evening), fully resolve correction B
-    //     (Morning→Midday), then let A resolve late. Only the epoch guard refuses A;
-    //     forcing it open reds with `expected '1' to be '0'`, and the mount guard makes
-    //     no difference because the bar never went away.
+    //     at all — "refuses a superseded correction that resolves after a newer one",
+    //     above. Forcing the epoch guard open reds it with `expected '1' to be '0'`;
+    //     removing the mount guard alone leaves it green at 20/20, because the bar
+    //     never went away and there is no mount check left to do the work.
     // Delete either one and some real defect stops being refused.
     //
     // The case below replaces only the bar, leaving the provider live, and is where these
@@ -665,6 +665,122 @@ describe("FoodLogBar projection publication", () => {
     expect(screen.getByTestId("projection-slot-evening").textContent).toBe("0");
     expect(screen.queryByText("Serving corrected.")).toBeNull();
     expect(screen.queryByTestId("toast")).toBeNull();
+  });
+
+  // THE EPOCH GUARD'S OWN CASE, where NOTHING UNMOUNTS (#4323 review). The two stale
+  // -write guards cover different defects and the suite only demonstrated one of them:
+  // every other stale case here replaces the bar, the provider, or both, so
+  // `commitProjection`'s mount check answers first and `areServingMutationsCurrent` is
+  // never the line doing the work. Its justification lived in prose, and a prose guard
+  // is not a guard.
+  //
+  // Here one bar stays mounted throughout and two corrections overlap on it: A moves the
+  // serving Morning->Evening and is left in flight; B moves it Morning->Midday and
+  // resolves fully. A then lands last. A is superseded — B is the correction the person
+  // actually completed — so A must be refused, and no mount check can refuse it because
+  // nothing ever unmounted.
+  it("refuses a superseded correction that resolves after a newer one", async () => {
+    const day: FoodLogDay = {
+      ...DAY,
+      counts: { cruciferous: 1 },
+      slotCounts: { Morning: { cruciferous: 1 }, Midday: {}, Evening: {} },
+      events: [
+        {
+          id: 74,
+          groupKey: "cruciferous",
+          name: GROUP.name,
+          date: DATE,
+          mealSlot: "Morning",
+          eatenAt: null,
+          loggedTime: "08:00",
+        },
+      ],
+    };
+    const toEvening = {
+      ok: true,
+      from: {
+        date: DATE,
+        groupKey: "cruciferous",
+        mealSlot: "Morning",
+        servings: 1,
+        mealServings: 0,
+      },
+      to: {
+        date: DATE,
+        groupKey: "cruciferous",
+        mealSlot: "Evening",
+        servings: 1,
+        mealServings: 1,
+      },
+    } as const;
+    const toMidday = {
+      ok: true,
+      from: {
+        date: DATE,
+        groupKey: "cruciferous",
+        mealSlot: "Morning",
+        servings: 1,
+        mealServings: 0,
+      },
+      to: {
+        date: DATE,
+        groupKey: "cruciferous",
+        mealSlot: "Midday",
+        servings: 1,
+        mealServings: 1,
+      },
+    } as const;
+
+    // A superseded correction also asks the server for current truth. Pin that answer
+    // to the state B left behind, so a reconcile is a no-op and the ONLY thing this
+    // case can be measuring is whether A's own placement leaked.
+    actions.readFoodServingTruth.mockReset();
+    actions.readFoodServingTruth.mockResolvedValue({
+      ok: true,
+      servings: 1,
+      mealServings: { Morning: 0, Midday: 1, Evening: 0 },
+    });
+    const slow = deferred<typeof toEvening>();
+    actions.updateFoodLogEvent.mockReturnValueOnce(slow.promise);
+    mountBar({ profileId: 7, day, slot: "Morning" });
+
+    const openCorrection = () => {
+      fireEvent.click(
+        screen.getByRole("button", {
+          name: /^Actions for the Cruciferous vegetables serving/,
+        })
+      );
+      fireEvent.click(screen.getByTestId("ledger-serving-correct-74"));
+    };
+
+    // Correction A — Morning to Evening, left in flight.
+    openCorrection();
+    fireEvent.change(screen.getByTestId("food-correct-slot"), {
+      target: { value: "Evening" },
+    });
+    fireEvent.click(screen.getByTestId("food-correct-save"));
+
+    // Correction B — Morning to Midday, resolves completely. Same bar, same provider.
+    actions.updateFoodLogEvent.mockResolvedValueOnce(toMidday);
+    openCorrection();
+    fireEvent.change(screen.getByTestId("food-correct-slot"), {
+      target: { value: "Midday" },
+    });
+    await act(async () => {
+      fireEvent.click(screen.getByTestId("food-correct-save"));
+    });
+    expect(screen.getByTestId("projection-slot-midday").textContent).toBe("1");
+
+    // THE FIXTURE'S REACH: B really did land, so A really is superseded rather than
+    // merely late. Without this the case could pass with both corrections refused.
+    expect(screen.getByTestId("projection-slot-morning").textContent).toBe("0");
+
+    // A lands last. The epoch guard is the only thing that can refuse it.
+    await act(async () => slow.resolve(toEvening));
+
+    expect(screen.getByTestId("projection-slot-midday").textContent).toBe("1");
+    expect(screen.getByTestId("projection-slot-evening").textContent).toBe("0");
+    expect(screen.getByTestId("food-day-total").textContent).toBe("1 serving");
   });
 
   // THE REACHABLE HALF of the same defect. In the remount case above the provider itself

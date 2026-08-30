@@ -123,6 +123,27 @@ export const BOTTOM_EDGE_GUTTER_RIGHT =
   "right-[max(1rem,env(safe-area-inset-right))]";
 export const BOTTOM_EDGE_GUTTER_LEFT =
   "left-[max(1rem,env(safe-area-inset-left))]";
+// CLEARANCE, NOT A CONTRACT (#4334). Room for a scrollable overlay body to leave
+// below its last interactive row, so a notice raised BY that row cannot come to rest
+// on top of it.
+//
+// The contract is the thing #4334 holds: a bottom-anchored surface should CLAIM the
+// edge (useBottomEdgeClaim) so the notice layers move out of its way, exactly as the
+// nav dock does. `BottomSheet` does not claim, so notices land inside it, and the
+// sheet's own tap targets are only ever as safe as the arithmetic below happens to
+// leave them. That is why this is spelled as clearance: it buys margin, it does not
+// establish an invariant, and #4323's measurement is the argument for the real fix
+// rather than a substitute for it.
+//
+// It tracks the notice band rather than restating it — same offset var, same safe-area
+// inset as BOTTOM_EDGE_NOTICE_BOTTOM — plus 7rem for the notice's own height. That last
+// term is the honest weak point: a toast measured 78px on a 390px phone and a two-line
+// one is taller, so this is sized to cover the notice rather than derived from it,
+// because nothing publishes a notice's height. #4334's claim would make the term
+// unnecessary. A literal, because Tailwind's scanner reads literals.
+export const BOTTOM_EDGE_NOTICE_CLEARANCE =
+  "pb-[calc(var(--bottom-edge-offset,0px)+max(1rem,env(safe-area-inset-bottom))+7rem)]";
+
 export const BOTTOM_EDGE_DOCK_LAYER = "z-40";
 export const BOTTOM_EDGE_NOTICE_LAYER = "z-100";
 export const BOTTOM_EDGE_ALERT_LAYER = "z-101";
