@@ -36,6 +36,55 @@ import { medNameKey } from "./medication-record-match";
 import { normalizeStrength, sameStrength } from "./medication-renewal";
 import { strengthFromName } from "./prescription-parse";
 
+// Route/form evidence must be read from the source wording, before medNameKey's
+// grouping cleanup removes the strength and everything after it. This is only a
+// copy-confidence signal: family identity and every dosing counter stay unchanged.
+const DELIVERY_ROUTES = [
+  ["oral", /\b(?:oral(?:ly)?|by[\s-]+mouth|per[\s-]+os)\b/i],
+  ["ophthalmic", /\b(?:ophthalmic|ophth)\b/i],
+  ["otic", /\b(?:otic|aural)\b/i],
+  ["nasal", /\b(?:nasal|intranasal(?:ly)?)\b/i],
+  ["topical", /\b(?:topical(?:ly)?|transdermal(?:ly)?)\b/i],
+  [
+    "injected",
+    /\b(?:intravenous(?:ly)?|intramuscular(?:ly)?|subcutaneous(?:ly)?)\b/i,
+  ],
+  ["rectal", /\b(?:rectal(?:ly)?|per[\s-]+rectum)\b/i],
+  ["sublingual", /\b(?:sublingual(?:ly)?)\b/i],
+] as const;
+const DELIVERY_FORMS = [
+  [
+    "nebulizer",
+    /\b(?:neb|nebulizers?|nebulisers?|nebulized|nebulised|nebulization|nebulisation)\b/i,
+  ],
+  ["inhaler", /\b(?:hfa|mdi|dpi|inhalers?)\b/i],
+  ["tablet", /\b(?:tablets?|tabs?|pills?)\b/i],
+  ["capsule", /\b(?:capsules?|caps?|softgels?)\b/i],
+  ["patch", /\bpatch(?:es)?\b/i],
+  ["spray", /\bsprays?\b/i],
+  ["drops", /\bdrops?\b/i],
+  ["solution", /\bsolutions?\b/i],
+  ["suspension", /\bsuspensions?\b/i],
+  ["injection", /\binjections?\b/i],
+  ["cream", /\bcreams?\b/i],
+  ["ointment", /\bointments?\b/i],
+  ["gel", /\bgels?\b/i],
+] as const;
+
+function statedDelivery(name: string): {
+  route: string | null;
+  form: string | null;
+} {
+  const first = (markers: typeof DELIVERY_ROUTES | typeof DELIVERY_FORMS) =>
+    markers.find(([, pattern]) => pattern.test(name))?.[0] ?? null;
+  return { route: first(DELIVERY_ROUTES), form: first(DELIVERY_FORMS) };
+}
+
+function statedValuesAgree(values: readonly (string | null)[]): boolean {
+  const stated = values.filter((value): value is string => value != null);
+  return stated.length < 2 || stated.every((value) => value === stated[0]);
+}
+
 // The findings-bus namespace for the coaching-tier therapeutic-duplication note
 // (#1027 ask 3). Registered in RULE_FINDING_REGISTRY (coaching) + the intake
 // dismiss guard via the registry-backed page guards.
@@ -152,6 +201,7 @@ function familyKeyFor(members: readonly MedFamilyItem[]): string {
 // Are a family's members INDISTINGUISHABLE from one another — the property test
 // behind the therapeutic-duplication note's two renderings, never a guess:
 //   • identical (non-empty) medNameKey across EVERY member, AND
+//   • no conflicting stated delivery route or dosage form, AND
 //   • no two members carrying different strengths — all strengthless, or every
 //     stated strength the same (sameStrength's one-sided concentration-history
 //     tolerance included). A one-strength-one-without family FAILS: it cannot be
@@ -165,6 +215,9 @@ export function isIndistinguishableFamily(
   if (members.length < 2) return false;
   const keys = members.map((m) => medNameKey(m.name));
   if (!keys[0] || keys.some((k) => k !== keys[0])) return false;
+  const delivery = members.map((m) => statedDelivery(m.name));
+  if (!statedValuesAgree(delivery.map((d) => d.route))) return false;
+  if (!statedValuesAgree(delivery.map((d) => d.form))) return false;
   const strengths = members.map((m) =>
     normalizeStrength(strengthFromName(m.name))
   );
@@ -183,10 +236,10 @@ export function isIndistinguishableFamily(
 }
 
 // The rendered copy for one family's duplication note (#1027 ask 3, split by
-// #3069). A DISTINGUISHABLE family (different strengths, a brand beside a
-// generic) keeps the original therapeutic-duplication copy — the OTC-plus-Rx
-// case #1027 was written for, reassurance included. An INDISTINGUISHABLE family
-// is duplicate records, and the note says so instead of rationalizing
+// #3069 / #3125). A DISTINGUISHABLE family (different strengths, delivery, or a
+// brand beside a generic) keeps the original therapeutic-duplication copy — the
+// OTC-plus-Rx case #1027 was written for, reassurance included. An
+// INDISTINGUISHABLE family is duplicate records, and the note says so instead of rationalizing
 // "albuterol + albuterol + albuterol" as a lifestyle choice. Pure — the builder
 // in lib/rule-findings.ts wraps this in the Finding envelope (key, tier, action)
 // unchanged, so a stored `med-dup:` dismissal keeps applying across the split.
