@@ -331,7 +331,14 @@ export default function DayLedger({
           </LoggedEventRow>
           <span className={LOGGED_EVENT_TRAILING}>{clock}</span>
           <OverflowMenu
-            itemName={`the ${row.name} serving ${clock}`}
+            // The name says WHICH time it names: "logged at" over an eating time was a
+            // wrong claim (#2227), so the two clocks read differently here exactly as
+            // they did on the list this row replaces.
+            itemName={
+              row.clockKind === "stated"
+                ? `the ${row.name} serving eaten at ${row.hhmm}`
+                : `the ${row.name} serving logged at ${row.hhmm}`
+            }
             open={open.has(row.id)}
             onOpenChange={(next) => toggle(row.id)}
           >

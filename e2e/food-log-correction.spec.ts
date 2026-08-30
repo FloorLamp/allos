@@ -118,7 +118,7 @@ test("a mis-slotted serving is corrected from the log and the meal tallies follo
   const row = page.getByTestId(`ledger-serving-${eventId}`);
   await expect(row).toHaveAttribute("data-slot", "Morning");
   await expect(row).toHaveAttribute("data-group", "nuts_seeds");
-  expect(await slotTotal(page, "Morning")).toBe(morningBefore + 1);
+  await expect.poll(() => slotTotal(page, "Morning")).toBe(morningBefore + 1);
 
   // ⋯ → Correct this serving → move it to Evening.
   await row.getByRole("button", { name: /^Actions for the/ }).click();
@@ -140,7 +140,7 @@ test("a mis-slotted serving is corrected from the log and the meal tallies follo
   );
   // The Evening ledger group now names the group; the row itself re-files too.
   await expect(page.getByTestId("ledger-group-evening")).toContainText(
-    "Nuts and seeds"
+    "Nuts & seeds"
   );
   await expect(row).toHaveAttribute("data-slot", "Evening");
 
@@ -276,7 +276,7 @@ test("removing one serving offers Undo, and Undo brings the serving back (#2038)
   await expect(page.getByTestId("count-berries")).toHaveText(
     String(countBefore)
   );
-  expect(await slotTotal(page, "Midday")).toBe(middayBefore);
+  await expect.poll(() => slotTotal(page, "Midday")).toBe(middayBefore);
 
   // THE PIN: the toast carries an Undo, and taking it gives the serving back — both the
   // ledger row and the day counter it decremented.
@@ -285,7 +285,7 @@ test("removing one serving offers Undo, and Undo brings the serving back (#2038)
   await expect(page.getByTestId("count-berries")).toHaveText(
     String(countBefore + 1)
   );
-  expect(await slotTotal(page, "Midday")).toBe(middayBefore + 1);
+  await expect.poll(() => slotTotal(page, "Midday")).toBe(middayBefore + 1);
   // The restore re-inserts with a NEW id (the undo substrate's contract), so the row is
   // identified as the one row this test added rather than by its original id.
   await page.reload();
@@ -302,7 +302,7 @@ test("removing one serving offers Undo, and Undo brings the serving back (#2038)
   await page.reload();
   await expect(page.getByTestId("food-log-bar")).toBeVisible();
   await expect(loggedRows(page)).toHaveCount(idsBefore.length);
-  expect(await slotTotal(page, "Midday")).toBe(middayBefore);
+  await expect.poll(() => slotTotal(page, "Midday")).toBe(middayBefore);
 });
 
 test("the sheet corrects a serving's eating time; Meal follows the hour until touched; Not stated clears (#2227)", async ({
@@ -368,7 +368,13 @@ test("the sheet corrects a serving's eating time; Meal follows the hour until to
   // (the row renders eatenAt ?? loggedTime, and this row now has an eatenAt).
   await page.getByTestId("food-day-yesterday").click();
   await expect(row).toBeVisible();
-  await expect(row).toContainText("Evening · 19:00");
+  // THE ROW STATES THE CLOCK; THE GROUP STATES THE MEAL (#3987). The meal used to be
+  // repeated on every row beside its time; it is the heading the row now sits under,
+  // which is the same fact said once.
+  await expect(row).toContainText("19:00");
+  await expect(page.getByTestId("ledger-group-evening")).toContainText(
+    "Legumes & beans"
+  );
 
   // Reopen: the sheet opens on the "Ate at" line and the select shows the hour.
   await row.getByRole("button", { name: /serving eaten at 19:00/ }).click();
@@ -384,7 +390,10 @@ test("the sheet corrects a serving's eating time; Meal follows the hour until to
   await settledClick(page, page.getByTestId("food-correct-save"));
   await expect(page.getByTestId("food-correct-modal")).toBeHidden();
   // Back on the logged time: the row shows the tap clock again…
-  await expect(row).toContainText(/Evening · \d{2}:\d{2}/);
+  // Back on a FILING-TIME clock, in #3958's grammar — "logged 13:36" says which
+  // question the clock answers, where a bare time would claim an eating minute the
+  // row no longer states.
+  await expect(row).toContainText(/logged \d{1,2}:\d{2}/);
   // …and the sheet reopens on the honest opening line.
   await row.getByRole("button", { name: /serving logged at/ }).click();
   await page.getByTestId(`ledger-serving-correct-${eventId}`).click();
@@ -425,6 +434,7 @@ test("the correction sheet names the time it shows: eating time when stated, log
   //    a second tap of the same row inside the tap ledger's cooldown is absorbed as an
   //    accidental double.
   await revealFoodGroup(page, "berries");
+  await hydratedClick(page, page.getByTestId("food-when-summary"));
   await page.getByTestId("food-when-now").click();
   await expect(page.getByTestId("food-when-time")).not.toHaveValue("");
   await page.getByTestId("log-berries").click();

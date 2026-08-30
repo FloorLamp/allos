@@ -913,7 +913,7 @@ test("a stated time wins over the tab: the serving lands, visibly, in its derive
   await expect(row).toHaveAttribute("data-slot", filingSlot);
   await expect(
     page.getByTestId(`ledger-group-${filingSlot.toLowerCase()}`)
-  ).toContainText("Nuts and seeds");
+  ).toContainText("Nuts & seeds");
   expect(
     await page
       .getByTestId(`ledger-group-${otherTab.toLowerCase()}`)
@@ -942,7 +942,11 @@ test("the time question relabels on a past day and its answer is per-day (#4118)
   await expect(page.getByTestId("food-eating-time")).toBeVisible();
   await expect(page.getByTestId("food-when-summary")).toHaveText("Set time?");
   await openWhenFold(page);
-  await expect(page.getByTestId("food-when-date")).toHaveText("Yesterday");
+  // The shared control renders a FIXED day as text, and names it relatively only for
+  // today — a past day reads as its own calendar date.
+  await expect(page.getByTestId("food-when-date")).toHaveText(
+    /^\d{4}-\d{2}-\d{2}$/
+  );
   await expect(page.getByTestId("food-eating-time-note")).toContainText(
     "with no time until you set one"
   );

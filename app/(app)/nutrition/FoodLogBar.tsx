@@ -2038,7 +2038,6 @@ export default function FoodLogBar({
         )}
         {dayLedger && (
           <DayLedger
-            key={activeDate}
             date={activeDate}
             groups={dayLedger.groupsByDate[activeDate] ?? []}
             doseWritable={dayLedger.doseWritableDates.includes(activeDate)}
