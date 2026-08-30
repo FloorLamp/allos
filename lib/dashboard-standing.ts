@@ -1,4 +1,5 @@
 import type { DashboardCandidate } from "./dashboard-relevance";
+import { standingReasonClaim } from "./dashboard-rank-precedence";
 
 export type StandingSectionKey = "today" | "body" | "longer-view";
 
@@ -250,8 +251,7 @@ export interface StandingMember {
 const CTA_CLAIM = 0;
 
 function reasonClaim(candidate: DashboardCandidate): number | null {
-  const reasons = candidate.rankReasons;
-  return reasons.safety ? 3 : reasons.owed ? 2 : reasons.changed ? 1 : null;
+  return standingReasonClaim(candidate.rankReasons);
 }
 
 function presenceOf(
