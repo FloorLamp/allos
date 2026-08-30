@@ -8,7 +8,9 @@
 // source-priority chain (issue #824):
 //   - `tracked`   — an integration's protein_g (Health Connect protein_grams → protein_g;
 //                   surfaced on Trends → Nutrition → Macros & fiber, #1166). A measured
-//                   FULL-DAY total, so it OVERRIDES the sum below.
+//                   FULL-DAY total, so it OVERRIDES the sum below. "Full-day" is a claim
+//                   about a COMPLETE day: TODAY's reading is a running partial, which is
+//                   why today's row marks it as a floor too (#3903, proteinTodayLineParts).
 //   - `estimated` — servings × per-serving grams from the food-group catalog (#579 rollup,
 //                   reused, never a second engine). A FLOOR by construction — incidental
 //                   protein from untracked foods is invisible.
@@ -557,9 +559,15 @@ export function proteinTodayStatus(t: ProteinToday): ProteinTodayStatus {
 }
 
 // The pieces of today's protein line, so one surface can render it plain and another
-// can emphasize the figure without either re-deriving the conclusion (#1710). A floor
-// basis (anything but a measured tracked reading) keeps its floor marker per the #767
-// floor-copy discipline; a tracked reading states the figure directly.
+// can emphasize the figure without either re-deriving the conclusion (#1710). TODAY's
+// figure is a FLOOR on every basis, so the #767 floor marker is unconditional (#3903).
+// `tracked` was excepted as "a measured full-day total" — true of a COMPLETE day, false
+// of this one: getMetricDailyTotals SUMs the day's samples and an integration writes one
+// per meal as it syncs, so at 09:00 the reading is breakfast. It is also the basis that
+// overrides the profile's own food log, so a running partial wearing an exact figure was
+// the one place where connecting a health app LOWERED the number and dropped its hedge in
+// the same step. Whether the override itself survives is a separate, owner-held question;
+// the marker is right either way, because a max or a sum of floors is still a floor.
 //
 // NOT nudge-only any more (#3257): the dashboard's protein row and card read the SAME
 // amount and band, so Telegram and the web glance state today's protein in identical
@@ -576,10 +584,8 @@ export function proteinTodayStatus(t: ProteinToday): ProteinTodayStatus {
 // survives screen readers and notification previews that strip emoji.
 export interface ProteinTodayLineParts {
   emoji: string;
-  // "107 g+" (floor basis — the trailing plus IS the #767 floor marker) or "107 g" (a
-  // tracked reading, which states the figure exactly). Whether the marker belongs on
-  // `tracked` too is the open half of #3903 (it rides the Telegram nudge as well, and
-  // turns on the override ruling); the hover carries tracked's hedge either way.
+  // "107 g+" — always. The trailing plus IS the #767 floor marker, and today's figure
+  // is a floor on every basis (see above). It rides the Telegram nudge as well.
   amount: string;
   // "80–105 g" — the goal band.
   band: string;
@@ -591,11 +597,10 @@ export interface ProteinTodayLineParts {
 
 export function proteinTodayLineParts(t: ProteinToday): ProteinTodayLineParts {
   const grams = Math.round(t.todayGrams);
-  const isFloor = t.todayIntake ? t.todayIntake.basis !== "tracked" : true;
   const status = proteinTodayStatus(t);
   return {
     emoji: status === "reached" ? "🎯" : "🍗",
-    amount: isFloor ? `${grams} g+` : `${grams} g`,
+    amount: `${grams} g+`,
     band: `${g(t.target.gramsLow)}–${g(t.target.gramsHigh)} g`,
     status,
     statusWords: status === "reached" ? "goal reached" : null,
