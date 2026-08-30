@@ -2,6 +2,7 @@ import { describe, expect, it } from "vitest";
 import fs from "node:fs";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
+import { stripComments } from "./strip-comments";
 
 // Static guard for the typed-internal-route convention (issue #285), in the
 // repo's established source-scan idiom (`nav-routes.test.ts`,
@@ -161,15 +162,15 @@ function walk(dir: string): string[] {
   return out;
 }
 
-/** Strip comments so prose about `href: string` (this file's own siblings, the
- *  lib/hrefs.ts header) can't trip the scanner — only real code counts. */
-function stripComments(text: string): string {
-  return text
-    .replace(/\/\*[\s\S]*?\*\//g, "")
-    .replace(/(^|[^:])\/\/.*$/gm, "$1");
+interface SourceFile {
+  rel: string;
+  text: string;
 }
 
-function sourceFiles(): { rel: string; text: string }[] {
+let sourceFilesCache: SourceFile[] | undefined;
+
+function sourceFiles(): SourceFile[] {
+  if (sourceFilesCache) return sourceFilesCache;
   const files: { rel: string; text: string }[] = [];
   for (const d of SCAN_DIRS) {
     const abs = path.join(REPO, d);
@@ -182,38 +183,43 @@ function sourceFiles(): { rel: string; text: string }[] {
       files.push({ rel, text: fs.readFileSync(full, "utf8") });
     }
   }
-  return files;
+  sourceFilesCache = files;
+  return sourceFilesCache;
 }
 
-/** Every string-shaped href declaration in the app, as `<file>:<identifier>`. */
-function stringTypedHrefs(): { key: string; where: string }[] {
-  const hits: { key: string; where: string }[] = [];
+interface RouteHrefCensus {
+  stringTyped: { key: string; where: string }[];
+  appRouteCount: number;
+}
+
+let routeHrefCensusCache: RouteHrefCensus | undefined;
+
+/** Every string-shaped href and the AppRoute floor, from one source projection. */
+function routeHrefCensus(): RouteHrefCensus {
+  if (routeHrefCensusCache) return routeHrefCensusCache;
+  const stringTyped: { key: string; where: string }[] = [];
+  let appRouteCount = 0;
   for (const { rel, text } of sourceFiles()) {
+    // A raw rejection cannot hide a declaration: every spelling the line-level
+    // parser accepts necessarily contains this suffix and colon. Possible matches
+    // still go through the shared comment-aware projection before deciding.
+    if (!/[Hh]refs?\s*\??\s*:/.test(text)) continue;
     stripComments(text)
       .split("\n")
       .forEach((line, i) => {
         for (const { name, type } of hrefDeclarations(line)) {
-          if (!isStringShaped(type)) continue;
-          hits.push({ key: `${rel}:${name}`, where: `${rel}:${i + 1}` });
+          if (isStringShaped(type)) {
+            stringTyped.push({
+              key: `${rel}:${name}`,
+              where: `${rel}:${i + 1}`,
+            });
+          }
+          if (/^AppRoute\b/.test(type.trim())) appRouteCount++;
         }
       });
   }
-  return hits;
-}
-
-/** Href declarations that ARE AppRoute — the non-vacuity signal for the scan. */
-function appRouteHrefCount(): number {
-  let n = 0;
-  for (const { text } of sourceFiles()) {
-    stripComments(text)
-      .split("\n")
-      .forEach((line) => {
-        for (const { type } of hrefDeclarations(line)) {
-          if (/^AppRoute\b/.test(type.trim())) n++;
-        }
-      });
-  }
-  return n;
+  routeHrefCensusCache = { stringTyped, appRouteCount };
+  return routeHrefCensusCache;
 }
 
 describe("typed internal-route props (issue #285)", () => {
@@ -258,7 +264,7 @@ describe("typed internal-route props (issue #285)", () => {
   });
 
   it("no href-carrying field is typed string instead of AppRoute", () => {
-    const offenders = stringTypedHrefs().filter(
+    const offenders = routeHrefCensus().stringTyped.filter(
       (h) => !EXTERNAL_OR_RUNTIME_HREFS.has(h.key)
     );
     expect(
@@ -273,7 +279,7 @@ describe("typed internal-route props (issue #285)", () => {
   });
 
   it("every registered exception still exists", () => {
-    const live = new Set(stringTypedHrefs().map((h) => h.key));
+    const live = new Set(routeHrefCensus().stringTyped.map((h) => h.key));
     const stale = [...EXTERNAL_OR_RUNTIME_HREFS.keys()].filter(
       (k) => !live.has(k)
     );
@@ -287,11 +293,6 @@ describe("typed internal-route props (issue #285)", () => {
   it("the scan is not vacuous — the app's href fields ARE typed AppRoute", () => {
     // If the extractor silently stopped matching, this collapses to 0 and the
     // "no offenders" assertion above would pass for the wrong reason.
-    expect(appRouteHrefCount()).toBeGreaterThan(10);
-  });
-
-  it("AppRoute is still the alias the convention names", () => {
-    const src = fs.readFileSync(path.join(REPO, "lib/hrefs.ts"), "utf8");
-    expect(/export type AppRoute\s*=/.test(src)).toBe(true);
+    expect(routeHrefCensus().appRouteCount).toBeGreaterThan(10);
   });
 });

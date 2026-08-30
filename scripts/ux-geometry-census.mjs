@@ -314,51 +314,6 @@ export function geometryProbe(opts) {
     };
 
     /**
-     * Is this element's overflow ABSORBED by an ancestor that truncates with an
-     * ellipsis?
-     *
-     * The second designed shape, and the one #3607 item 1 was (`/supplies`, three
-     * `span "· Supply Parent (e2e)"` rows recorded by #3529 at 8-16px over and
-     * never diagnosed). `.truncate` sets `white-space: nowrap` on the ancestor, so
-     * every inline run inside it keeps its FULL natural width in
-     * `getBoundingClientRect()` no matter how narrow the ancestor is — the rect
-     * runs off the viewport while the pixels do not, because the ancestor's
-     * `overflow: hidden` paints an ellipsis at its own edge. Measured 2026-08-23 at
-     * 390px: the chip is 33->357, its `.truncate` span 74->324 (clientWidth 250,
-     * scrollWidth 332, ellipsis rendered), and the inline detail span inside it
-     * reports 268.6->405.6. Nothing is off screen; one rect is.
-     *
-     * So the exemption is NARROW, and each half is load-bearing:
-     *   - the ancestor must CLIP (`overflow-x` other than visible) AND signal it
-     *     (`text-overflow: ellipsis`). A silent `overflow-x: hidden` is #3478
-     *     exactly — the app shell clips and the reader gets no ellipsis and no
-     *     scroll — and stays reportable, which is why `insideHorizontalScroller`
-     *     above still refuses to exempt hidden on its own;
-     *   - the ancestor's own right edge must be INSIDE the viewport. A truncating
-     *     box that is itself off the edge really does put copy where nobody can
-     *     read it, and the ellipsis does not save it.
-     *
-     * Without this the probe flags every truncated string in the app, which is the
-     * #3325 failure mode: a census that cries wolf on the layout working gets
-     * deleted within a week and takes the real findings with it.
-     */
-    const insideEllipsisTruncation = (el) => {
-      for (
-        let p = el.parentElement;
-        p && p !== document.body;
-        p = p.parentElement
-      ) {
-        const cs = getComputedStyle(p);
-        if (cs.overflowX === "visible") continue;
-        if (cs.textOverflow !== "ellipsis") continue;
-        const pr = p.getBoundingClientRect();
-        const pRight = pr.left + window.scrollX + pr.width;
-        if (pRight - viewportWidth <= clipEpsilonPx) return true;
-      }
-      return false;
-    };
-
-    /**
      * The part of an element's box that is actually PAINTED: its own rect,
      * intersected with every clipping ancestor's.
      *
@@ -380,6 +335,7 @@ export function geometryProbe(opts) {
     const paintedRect = (el) => {
       const r = el.getBoundingClientRect();
       let { left, top, right, bottom } = r;
+      const horizontalClips = [];
       for (
         let p = el.parentElement;
         p && p !== document.body;
@@ -392,8 +348,29 @@ export function geometryProbe(opts) {
         top = Math.max(top, pr.top);
         right = Math.min(right, pr.right);
         bottom = Math.min(bottom, pr.bottom);
+        if (cs.overflowX !== "visible")
+          horizontalClips.push({
+            right: pr.right,
+            signalsEllipsis: cs.textOverflow === "ellipsis",
+          });
       }
-      return { left, top, right, bottom };
+      return { left, top, right, bottom, horizontalClips };
+    };
+
+    /**
+     * Is this element's overflow ABSORBED by an ancestor that truncates with an
+     * ellipsis? `paintedRect` owns which ancestors clip and where they paint; this
+     * helper keeps probe (a)'s narrower policy that the clip must signal an
+     * ellipsis and its own right edge must remain inside the viewport. Silent
+     * `overflow-x: hidden` is still #3478's reportable shape.
+     */
+    const insideEllipsisTruncation = (el) => {
+      for (const clip of paintedRect(el).horizontalClips) {
+        if (!clip.signalsEllipsis) continue;
+        const pRight = clip.right + window.scrollX;
+        if (pRight - viewportWidth <= clipEpsilonPx) return true;
+      }
+      return false;
     };
 
     const clipped = [];
