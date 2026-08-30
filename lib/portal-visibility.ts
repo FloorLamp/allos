@@ -165,13 +165,14 @@ export function listVisiblePortalRunHistory(
               COUNT(CASE WHEN r.target_table = 'medical_documents' THEN 1 END)
                 AS deliveredDocuments
          FROM integration_sync_events e
-         LEFT JOIN integration_sync_rows r ON r.event_id = e.id
+        LEFT JOIN integration_sync_rows r ON r.event_id = e.id
         WHERE e.source_id = 'patient-portals' AND e.account_id IS NOT NULL
+          AND e.profile_id IN ${profileIdsIn(ids)}
           AND ${reachableAccountSql(ids, "e.account_id")}
         GROUP BY e.id
         ORDER BY e.at DESC, e.id DESC`
     )
-    .all(...ids, canSeeUnclaimed ? 1 : 0) as Array<
+    .all(...ids, ...ids, canSeeUnclaimed ? 1 : 0) as Array<
     Omit<PortalRunHistoryItem, "ok"> & { ok: number }
   >;
   return rows.map((run) => ({ ...run, ok: run.ok === 1 }));
