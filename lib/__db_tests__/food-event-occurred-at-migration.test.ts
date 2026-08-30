@@ -33,31 +33,17 @@
 
 import Database from "better-sqlite3";
 import { describe, expect, it } from "vitest";
+import { historicalDbFixture } from "./historical-db-fixture";
 import { MIGRATIONS, NUMBERED_MIGRATIONS } from "@/lib/migrations/versions";
 import { up } from "@/lib/migrations/versions/183-food-event-occurred-at";
 import { eventInstant, recordInstant } from "@/lib/row-instants";
 
-// The real pre-183 fixture is still built through the migration chain because the
-// chain is the question here. Every case starts from the same seeded bytes, though,
-// so replay it once and give each case an independent in-memory page-array copy.
-let seededSnapshot: Buffer | null = null;
-
-function seededDb(): Database.Database {
-  seededSnapshot ??= buildSeededSnapshot();
-  return new Database(seededSnapshot);
-}
-
-function buildSeededSnapshot(): Buffer {
-  const mem = new Database(":memory:");
+// The chain is still the source of the fixture; each case gets independent bytes.
+const seededDb = historicalDbFixture((mem) => {
   mem.pragma("foreign_keys = OFF");
-  try {
-    for (const m of NUMBERED_MIGRATIONS) if (m.id <= 182) m.up(mem);
-    seed(mem);
-    return mem.serialize();
-  } finally {
-    mem.close();
-  }
-}
+  for (const m of NUMBERED_MIGRATIONS) if (m.id <= 182) m.up(mem);
+  seed(mem);
+});
 
 interface EventRow {
   id: number;
