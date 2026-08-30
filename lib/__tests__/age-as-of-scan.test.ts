@@ -185,6 +185,10 @@ export function ageCalls(
   return out;
 }
 
+const callsByFile = new Map(
+  sourceFiles().map(({ rel: file, text }) => [file, ageCalls(text)])
+);
+
 describe("age is evaluated as of the reading's date (issue #2090, #150)", () => {
   it("splits argument lists at the top level only", () => {
     expect(splitArgs('a, f(b, c), "d,e"')).toEqual(["a", "f(b, c)", '"d,e"']);
@@ -218,11 +222,11 @@ describe("age is evaluated as of the reading's date (issue #2090, #150)", () => 
 
   it("every today-anchored age call is a registered current-age question", () => {
     const offenders: string[] = [];
-    for (const { rel: r, text } of sourceFiles()) {
-      for (const { helper, asOf, line } of ageCalls(text)) {
+    for (const [file, calls] of callsByFile) {
+      for (const { helper, asOf, line } of calls) {
         if (!TODAY_SHAPED.test(asOf)) continue;
-        if (CURRENT_AGE_FILES.has(r)) continue;
-        offenders.push(`${r}:${line} — ${helper}(…, ${asOf})`);
+        if (CURRENT_AGE_FILES.has(file)) continue;
+        offenders.push(`${file}:${line} — ${helper}(…, ${asOf})`);
       }
     }
     expect(
@@ -236,13 +240,12 @@ describe("age is evaluated as of the reading's date (issue #2090, #150)", () => 
   });
 
   it("every registered file still holds a today-anchored age call", () => {
-    const byFile = new Map(sourceFiles().map((f) => [f.rel, f.text]));
     const stale: string[] = [];
-    for (const r of CURRENT_AGE_FILES.keys()) {
-      const text = byFile.get(r);
-      const held =
-        text != null && ageCalls(text).some((c) => TODAY_SHAPED.test(c.asOf));
-      if (!held) stale.push(r);
+    for (const file of CURRENT_AGE_FILES.keys()) {
+      const held = callsByFile
+        .get(file)
+        ?.some(({ asOf }) => TODAY_SHAPED.test(asOf));
+      if (!held) stale.push(file);
     }
     expect(
       stale,
@@ -252,8 +255,7 @@ describe("age is evaluated as of the reading's date (issue #2090, #150)", () => 
   });
 
   it("the scan is not vacuous — both shapes exist in the tree", () => {
-    const files = sourceFiles();
-    const all = files.flatMap(({ text }) => ageCalls(text));
+    const all = [...callsByFile.values()].flat();
     expect(all.length).toBeGreaterThan(5);
     expect(all.some((c) => TODAY_SHAPED.test(c.asOf))).toBe(true);
     expect(all.some((c) => !TODAY_SHAPED.test(c.asOf))).toBe(true);
