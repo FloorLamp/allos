@@ -28,36 +28,20 @@ beforeEach(() => {
 });
 
 describe("saveDietaryPreferences", () => {
-  it("round-trips the excluded set (canonical, sorted) and revalidates", async () => {
+  it("defaults, normalizes, revalidates, and clears back to Omnivore", async () => {
     const login = createLogin();
-    const profile = createProfile("diet-pref", login.id);
+    const profile = createProfile("diet-lifecycle", login.id);
     actAs(login, profile);
 
     expect(getExcludedFoodGroups(profile.id)).toEqual([]); // Omnivore by default
 
-    await saveDietaryPreferences(excludedForm(["dairy", "eggs"]));
-    expect(getExcludedFoodGroups(profile.id)).toEqual(["dairy", "eggs"]);
-    expect(revalidate).toHaveBeenCalledWith("/nutrition");
-  });
-
-  it("drops unknown slugs (a forged post can't store junk)", async () => {
-    const login = createLogin();
-    const profile = createProfile("diet-junk", login.id);
-    actAs(login, profile);
-
+    // Sort, de-duplicate, and discard a forged unknown group.
     await saveDietaryPreferences(
-      excludedForm(["dairy", "not_a_group", "eggs"])
+      excludedForm(["eggs", "not_a_group", "dairy", "eggs"])
     );
     expect(getExcludedFoodGroups(profile.id)).toEqual(["dairy", "eggs"]);
-  });
+    expect(revalidate).toHaveBeenCalledWith("/nutrition");
 
-  it("an empty set clears back to Omnivore", async () => {
-    const login = createLogin();
-    const profile = createProfile("diet-clear", login.id);
-    actAs(login, profile);
-
-    await saveDietaryPreferences(excludedForm(["dairy"]));
-    expect(getExcludedFoodGroups(profile.id)).toEqual(["dairy"]);
     await saveDietaryPreferences(excludedForm([]));
     expect(getExcludedFoodGroups(profile.id)).toEqual([]);
   });
