@@ -103,6 +103,7 @@ describe("createGoal — biomarker kind", () => {
       expect(row.biomarker_name).toBe("LDL Cholesterol");
       expect(row.target_direction).toBe("below");
       expect(row.target_value).toBe(100);
+      expect(row.title).toBe("LDL Cholesterol under 100");
       // Not trusted from the client — the analyte's own charted unit.
       expect(row.unit).toBe("mg/dL");
       expect(row.category).toBeNull();
@@ -115,20 +116,6 @@ describe("createGoal — biomarker kind", () => {
       expect(row.body_metric).toBeNull();
       expect(revalidate).toHaveBeenCalledWith("/training");
     });
-  });
-
-  it("derives a title when none is given", async () => {
-    const { profile } = seedActor();
-    seedReading(profile.id, "2026-01-05", "LDL Cholesterol", 160);
-    await createGoal(
-      fd({
-        kind: "biomarker",
-        biomarker_name: "LDL Cholesterol",
-        target_direction: "below",
-        biomarker_target: 100,
-      })
-    );
-    expect(goalRow(profile.id)!.title).toBe("LDL Cholesterol under 100");
   });
 
   it("still writes a goal for an analyte with no readings yet (null baseline)", async () => {
@@ -146,43 +133,32 @@ describe("createGoal — biomarker kind", () => {
     expect(row.baseline_value).toBeNull();
   });
 
-  it("refuses an analyte outside the profile's biomarker vocabulary", async () => {
+  it("refuses invalid biomarker inputs without writing", async () => {
     const { profile } = seedActor();
-    await createGoal(
-      fd({
+
+    const invalidInputs = [
+      {
         kind: "biomarker",
         biomarker_name: "Midi-chlorian Count",
         target_direction: "below",
         biomarker_target: 100,
-      })
-    );
-    expect(getOutcomeGoals(profile.id)).toHaveLength(0);
-  });
-
-  it("refuses an undeclared or bogus direction", async () => {
-    const { profile } = seedActor();
-    for (const target_direction of ["", "sideways", "under"]) {
-      await createGoal(
-        fd({
-          kind: "biomarker",
-          biomarker_name: "LDL Cholesterol",
-          target_direction,
-          biomarker_target: 100,
-        })
-      );
-    }
-    expect(getOutcomeGoals(profile.id)).toHaveLength(0);
-  });
-
-  it("refuses a missing target value", async () => {
-    const { profile } = seedActor();
-    await createGoal(
-      fd({
+      },
+      ...["", "sideways", "under"].map((target_direction) => ({
+        kind: "biomarker",
+        biomarker_name: "LDL Cholesterol",
+        target_direction,
+        biomarker_target: 100,
+      })),
+      {
         kind: "biomarker",
         biomarker_name: "LDL Cholesterol",
         target_direction: "below",
-      })
-    );
+      },
+    ];
+
+    for (const input of invalidInputs) {
+      await createGoal(fd(input));
+    }
     expect(getOutcomeGoals(profile.id)).toHaveLength(0);
   });
 });
