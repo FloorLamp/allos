@@ -1,5 +1,6 @@
 import { requireSession } from "@/lib/auth";
 import { today } from "@/lib/db";
+import DestinationLink from "@/components/DestinationLink";
 import PageContainer from "@/components/PageContainer";
 import { PageHeader, EmptyState } from "@/components/ui";
 import LineChartCard from "@/components/LineChartCard";
@@ -17,6 +18,7 @@ import {
   getCycleForecast,
   getForecastSuspension,
   listCyclePeriods,
+  listRecentCyclePeriods,
 } from "@/lib/cycle-store";
 import { getTtcState } from "@/lib/ttc-store";
 import { getProfileAge } from "@/lib/settings";
@@ -37,7 +39,7 @@ import CycleForecastCard from "./CycleForecastCard";
 import TtcSection from "./TtcSection";
 import CycleForm from "./CycleForm";
 import PeriodQuickActions from "./PeriodQuickActions";
-import CycleHistoryRow from "./CycleHistoryRow";
+import CycleHistory from "./CycleHistory";
 import { saveCycleAction } from "./actions";
 
 export const dynamic = "force-dynamic";
@@ -91,6 +93,8 @@ export default async function CyclePage() {
     );
   }
   const periods = listCyclePeriods(profile.id);
+  // Analyses need the complete record; only the rendered correction window is bounded.
+  const recentPeriods = listRecentCyclePeriods(profile.id);
   // Whether a cycle applies AT ALL right now (#2801) — pregnancy or an explicit
   // postmenopausal status. Already gathered for the forecast; now also the input that
   // stops the hero contradicting the forecast card below it.
@@ -336,11 +340,15 @@ export default async function CyclePage() {
         {periods.length === 0 ? (
           <EmptyState message="No periods logged yet. Use “Period started” above for today’s, or “Add a period with dates” for an earlier one." />
         ) : (
-          <ul className="flex flex-col gap-2">
-            {periods.map((p) => (
-              <CycleHistoryRow key={p.id} period={p} />
-            ))}
-          </ul>
+          <>
+            <CycleHistory periods={recentPeriods} />
+            <DestinationLink
+              href="/history?kind=cycle"
+              className="text-link text-sm"
+            >
+              Full history
+            </DestinationLink>
+          </>
         )}
       </section>
     </PageContainer>
