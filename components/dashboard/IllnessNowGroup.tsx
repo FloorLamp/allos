@@ -165,7 +165,13 @@ export default function IllnessNowGroup({
             // whole text 12px off the rag every other row on the page sits on.
             // A fill is not a frame, so it claims no exception and the sweep
             // still holds it to `border-width: 0`.
-            className="card border-l-4 border-l-rose-500 max-sm:bg-rose-50! dark:border-l-rose-400 max-sm:dark:bg-rose-950!"
+            // NOT A CARD (#4076). Cards left `/` entirely, and this is the one
+            // container on the page that is neither a fact nor a row: a running
+            // SITUATION with its own accordion, symptom bar and dose controls. It
+            // keeps the band the rows are drawn on rather than a card shell, so the
+            // page holds one frame vocabulary and this cockpit is still the loudest
+            // thing on it.
+            className="band min-w-0 max-w-full rounded-xl border border-(--border) border-l-4 border-l-rose-500 bg-surface p-4 max-sm:bg-rose-50! sm:p-5 dark:border-l-rose-400 max-sm:dark:bg-rose-950!"
           >
             <div
               data-testid="illness-cockpit-header-row"

@@ -6,6 +6,7 @@ import { useToast } from "@/components/Toast";
 import { useOptimisticLedger } from "@/components/useOptimisticLedger";
 import {
   usualRoutineAnswerText,
+  usualRoutineHeading,
   usualRoutinePhrase,
 } from "@/lib/usual-routine";
 import { logUsualRoutine, type UsualRoutineResult } from "@/app/(app)/actions";
@@ -56,9 +57,7 @@ export default function UsualRoutineControl({
     food.map((f) => f.name),
     doses
   );
-  const heading = subjectName
-    ? `${subjectName}'s usual ${window}`
-    : `Your usual ${window}`;
+  const heading = usualRoutineHeading(window, subjectName);
 
   function run() {
     void ledger.tap<UsualRoutineResult>({

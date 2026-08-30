@@ -1,4 +1,3 @@
-import type { ReactNode } from "react";
 import NowCards, { type NowStripRow } from "./NowCards";
 
 export type { NowStripRow };
@@ -26,7 +25,6 @@ export default function NowStrip({
   rows,
   dateLabel,
   bootstrapClaim,
-  illnessGroupNode,
 }: {
   rows: readonly NowStripRow[];
   /** Passed straight through — see NowCards. */
@@ -35,12 +33,11 @@ export default function NowStrip({
   // below `md` that header is gone entirely (#1413 section C), so this is where the
   // day's orientation survives on a phone. Absent → no line.
   dateLabel?: string;
-  illnessGroupNode?: ReactNode;
 }) {
   return (
     <section
       data-testid="now-strip"
-      data-count={rows.length + (illnessGroupNode ? 1 : 0)}
+      data-count={rows.length}
       aria-labelledby="dashboard-now-title"
       // Tighter under the strip on a phone (#3460): the strip is the tallest block
       // on the page there, and every unit it keeps pushes the first reading further
@@ -64,11 +61,6 @@ export default function NowStrip({
           className="mb-2 text-xs font-medium text-slate-500 md:hidden dark:text-slate-400"
         >
           {dateLabel}
-        </div>
-      )}
-      {illnessGroupNode && (
-        <div className="mb-3" data-testid="dashboard-illness-group">
-          {illnessGroupNode}
         </div>
       )}
       {/* The rows move one level down into a CLIENT component: whether a row's

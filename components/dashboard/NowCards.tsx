@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useRef, useState } from "react";
+import { useEffect, useRef, useState, type ReactNode } from "react";
 import type { DashboardPlacement } from "@/lib/dashboard-relevance";
 import { witnessedNowMotion } from "@/lib/dashboard-motion";
 import { microMotionPlan } from "@/lib/micro-motion";
@@ -11,8 +11,16 @@ import {
 } from "./DashboardStandingCluster";
 
 export interface NowStripRow {
-  candidate: DashboardPlacement["candidate"];
-  presentation: DashboardStandingPresentation;
+  id: string;
+  candidate?: DashboardPlacement["candidate"];
+  presentation?: DashboardStandingPresentation;
+  /**
+   * THE ONE ENTRY THAT IS NOT A FACT: the illness cockpit group, a running SITUATION
+   * with its own accordion and controls, standing where its first episode placed. It
+   * is listed here rather than hoisted above the band so the strip keeps the RANKER's
+   * order — an episode safety fact that outranks it must still print first.
+   */
+  node?: ReactNode;
 }
 
 // THE NOW STRIP'S ROWS — the one client component on the dashboard's placement
@@ -54,7 +62,7 @@ export default function NowCards({
   // The ids as ONE string, so the effect below can depend on the row set itself
   // rather than on an array literal that is new on every render. Candidate ids never
   // contain a newline (they are `domain.fact:key` shapes), so the join round-trips.
-  const idsKey = rows.map((row) => row.candidate.candidateId).join("\n");
+  const idsKey = rows.map((row) => row.id).join("\n");
   const [motion, setMotion] = useState<{
     animate: ReadonlySet<string>;
     emptyArrived: boolean;
@@ -109,10 +117,24 @@ export default function NowCards({
   return (
     <ul className="band flex min-w-0 flex-col overflow-hidden rounded-xl border border-(--border) bg-surface">
       {rows.map((row) => {
-        const animating = motion.animate.has(row.candidate.candidateId);
+        const animating = motion.animate.has(row.id);
+        const rowClass = `relative border-t border-(--divider) px-4 py-3 first:border-t-0 ${
+          animating ? plan.className : ""
+        }`;
+        if (!row.candidate || !row.presentation)
+          return (
+            <li
+              key={row.id}
+              data-testid="dashboard-illness-group"
+              data-motion={animating ? "promote" : undefined}
+              className={rowClass}
+            >
+              {row.node}
+            </li>
+          );
         return (
           <DashboardFactRow
-            key={row.candidate.candidateId}
+            key={row.id}
             candidate={row.candidate}
             presentation={row.presentation}
             lane="now"
@@ -122,9 +144,7 @@ export default function NowCards({
             // guess about computed styles. The row's own box is also the door's rail
             // (`relative`), as it is in the tail.
             data-motion={animating ? "promote" : undefined}
-            className={`relative border-t border-(--divider) px-4 py-3 first:border-t-0 ${
-              animating ? plan.className : ""
-            }`}
+            className={rowClass}
           />
         );
       })}

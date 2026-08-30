@@ -218,7 +218,7 @@ import {
   sleepRecordPresentation,
 } from "@/lib/sleep-summary";
 import UsualRoutineControl from "@/components/dashboard/UsualRoutineControl";
-import { usualRoutinePhrase } from "@/lib/usual-routine";
+import { usualRoutineHeading, usualRoutinePhrase } from "@/lib/usual-routine";
 import DashboardQuickEntryAction from "@/components/dashboard/DashboardQuickEntryAction";
 import IllnessCockpitBody from "../../components/illness/IllnessCockpitBody";
 import { LoggedViaSurface } from "@/components/LoggedViaSurface";
@@ -1985,9 +1985,10 @@ async function renderDashboard(
         routineTiming
       ),
       {
-        label: routineControl.subjectName
-          ? `${routineControl.subjectName}'s usual ${routineControl.window}`
-          : `Your usual ${routineControl.window}`,
+        label: usualRoutineHeading(
+          routineControl.window,
+          routineControl.subjectName
+        ),
         // The offer NAMES every serving and every dose the tap will write (#2458) —
         // a label is a promise — so the phrase stays on the row rather than inside
         // the button, where the facts column is what a reader scans.

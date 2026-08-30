@@ -280,9 +280,9 @@ const manifests = new Map<
   string,
   DashboardPlacementCanvasProps["placements"]
 >();
-const standingPresentations = new Map<
+const rowPresentations = new Map<
   string,
-  DashboardPlacementCanvasProps["standingPresentations"]
+  DashboardPlacementCanvasProps["presentations"]
 >();
 const aheadPresentations = new Map<
   string,
@@ -365,10 +365,7 @@ describe("actual atomic dashboard manifests", () => {
       const element = await renderDashboard();
       expect(element.type).toBe(DashboardPlacementCanvas);
       manifests.set(persona.name, element.props.placements);
-      standingPresentations.set(
-        persona.name,
-        element.props.standingPresentations
-      );
+      rowPresentations.set(persona.name, element.props.presentations);
       aheadPresentations.set(persona.name, element.props.aheadPresentations);
       queryCounts.set(persona.name, trace.count());
       personaProfileIds.set(persona.name, profileId);
@@ -431,7 +428,7 @@ describe("actual atomic dashboard manifests", () => {
     let externalStanding = 0;
     for (const [persona, placements] of manifests) {
       const profileId = personaProfileIds.get(persona)!;
-      const presentations = standingPresentations.get(persona)!;
+      const presentations = rowPresentations.get(persona)!;
       const standing = placements.filter(
         (placement) => placement.lane === "standing"
       );
@@ -569,34 +566,59 @@ describe("actual atomic dashboard manifests", () => {
     expect(seen).toEqual(new Set(order));
   });
 
-  // THE #3077 COMPLETENESS CONTRACT, NOW A MANIFEST ASSERTION (#3366).
+  // THE #3077 COMPLETENESS CONTRACT, NOW THE ONLY TIER THAT CARRIES IT (#3366/#4076).
   //
   // Show everything no longer renders every placement, so "nothing the ranker gathers
-  // can go missing" stopped being something a reader could verify by scrolling. It is
-  // verified here instead, against the REAL manifests and by ITERATING THE DROPS:
-  // each non-admitted placement names a page, that page is one of the doors the tail
-  // draws, and the app has a name for it — which is exactly what the canvas needs to
-  // draw the row (it throws otherwise). A candidate builder that starts dropping
-  // without a named page fails here, on the day the guarantee would have quietly
-  // stopped holding rather than the day someone noticed.
-  it("keeps every dropped Show everything fact one named door away", () => {
+  // can go missing" stopped being something a reader could verify by scrolling. #3366
+  // moved half of it here and left the other half as a rendered "Elsewhere" list of
+  // page names; #4076 retired that list (owner: "utterly useless"), so this is now
+  // the whole of the guarantee. It is asserted against the REAL manifests and by
+  // ITERATING THE DROPS: each non-admitted placement names a page, and the app has a
+  // name for that page. A candidate builder that starts dropping without a named page
+  // fails here, on the day the guarantee would have quietly stopped holding rather
+  // than the day someone noticed.
+  it("keeps every dropped Show everything fact on a page the app can name", () => {
     const dropped: string[] = [];
     for (const [persona, placements] of manifests) {
-      const { doors } = everythingTail(placements);
       for (const placement of placements) {
         if (placement.lane !== "everything" || placement.admitted) continue;
         const page = placement.candidate.navDuplicateOf;
         dropped.push(`${persona}:${placement.candidate.candidateId}`);
         expect(
-          page && doors.includes(page) && trackedPageFor(page)?.label,
-          `${persona}:${placement.candidate.candidateId} has no named door`
+          page && trackedPageFor(page)?.label,
+          `${persona}:${placement.candidate.candidateId} has no named page`
         ).toBeTruthy();
       }
-      expect(new Set(doors).size, persona).toBe(doors.length);
     }
     // The loop above is satisfiable by admitting everything, so the seeded profiles
     // must actually exercise a drop for it to have asserted anything.
     expect(dropped.length).toBeGreaterThan(0);
+  });
+
+  // EXACT-ONCE, THE OTHER HALF: everything the ranker gathered is either drawn in the
+  // tail or deliberately dropped onto a named page — never both, and never neither.
+  it("splits the tail into drawn and dropped with nothing in between", () => {
+    for (const [persona, placements] of manifests) {
+      const lane = placements.filter(
+        (placement) => placement.lane === "everything"
+      );
+      const drawn = everythingTail(placements);
+      const drawnIds = new Set(
+        drawn.map((placement) => placement.candidate.candidateId)
+      );
+      expect(drawnIds.size, persona).toBe(drawn.length);
+      // The control: this persona's tail is populated on BOTH sides, so neither
+      // claim below is about an empty set.
+      expect(drawn.length, persona).toBeGreaterThan(0);
+      expect(lane.length, persona).toBeGreaterThan(drawn.length);
+      for (const placement of lane) {
+        const id = placement.candidate.candidateId;
+        expect(
+          drawnIds.has(id) !== (placement.candidate.navDuplicateOf != null),
+          `${persona}:${id} is neither drawn nor dropped onto a page`
+        ).toBe(true);
+      }
+    }
   });
 
   // THE TAIL'S GENERIC WRITE CARDS ARE GONE, AND THE SHEET HAS THEM (#3366/#4064).

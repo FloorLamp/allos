@@ -7,7 +7,7 @@ import {
   type DashboardEverythingGroup,
   type DashboardPlacement,
 } from "@/lib/dashboard-relevance";
-import NowStrip from "./NowStrip";
+import NowStrip, { type NowStripRow } from "./NowStrip";
 import AppBadge from "@/components/AppBadge";
 import RememberedDetails from "@/components/RememberedDetails";
 import DashboardAhead, { type DashboardAheadBucket } from "./DashboardAhead";
@@ -207,13 +207,25 @@ export default function DashboardPlacementCanvas({
   if (illnessPlacements.length > 0 && illnessGroupNode == null) {
     throw new Error("Missing dashboard illness-group presentation");
   }
-  const now = nowPlacements.filter(
-    (placement) =>
-      !(
-        placement.nowLayer === "illness" &&
-        placement.candidate.episodeGroup != null
-      )
-  );
+  // The illness group stands where its FIRST episode placed, and every other episode
+  // placement leaves the strip (their facts are inside the cockpit).
+  const firstIllnessId = illnessPlacements[0]?.candidate.candidateId;
+  const now = nowPlacements.flatMap((placement): NowStripRow[] => {
+    const grouped =
+      placement.nowLayer === "illness" &&
+      placement.candidate.episodeGroup != null;
+    if (!grouped)
+      return [
+        {
+          id: placement.candidate.candidateId,
+          candidate: placement.candidate,
+          presentation: presentations.get(placement.candidate.candidateId)!,
+        },
+      ];
+    return placement.candidate.candidateId === firstIllnessId
+      ? [{ id: "illness-group", node: illnessGroupNode }]
+      : [];
+  });
   const standing = placementsInLane(placements, "standing");
   // Owner ruling (#3548, cold start): "Nothing needs you." can never render on a
   // profile whose attention tier is the getting-started list. A never-recorded
@@ -267,13 +279,9 @@ export default function DashboardPlacementCanvas({
         />
       </div>
       <NowStrip
-        rows={now.map((placement) => ({
-          candidate: placement.candidate,
-          presentation: presentations.get(placement.candidate.candidateId)!,
-        }))}
+        rows={now}
         dateLabel={dateLabel}
         bootstrapClaim={bootstrapClaim}
-        illnessGroupNode={illnessGroupNode}
       />
 
       {standing.length > 0 && (
