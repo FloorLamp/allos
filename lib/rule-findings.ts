@@ -671,9 +671,8 @@ export function buildPairedObservationFindings(
       // The module's declared reach is the rollup and nothing more, so the
       // rollup's floor must be cleared explicitly (#3129).
       dashboardRelevance: FINDING_DASHBOARD_RELEVANCE.review,
-      evidence:
-        `Co-occurrence in your own logs — ${verdict.withArm.nights} nights with, ` +
-        `${verdict.withoutArm.nights} without. Not a causal claim and not a diagnosis.`,
+      // The decision sentence already owns both arm sizes and the disclaimer.
+      evidence: null,
       actionHref: entry.actionHref,
       actionLabel: entry.actionLabel,
     });
