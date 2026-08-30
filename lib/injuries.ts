@@ -27,6 +27,7 @@ import {
 } from "./injury-model";
 import { exerciseHistoryKey, type MovementPattern } from "./lifts";
 import type { MuscleId, MuscleRegion } from "./lifts";
+import type { NiggleTemper } from "./niggle-model";
 
 // The columns every read selects — one list so a new #2024 field can't be selected by one
 // reader and missed by another.
@@ -127,6 +128,7 @@ export function getInjuryConstraints(profileId: number): InjuryConstraint[] {
 export interface FormRecoveringContext {
   temperedRegions: MuscleRegion[];
   constraints: InjuryConstraint[];
+  niggleTempers?: NiggleTemper[];
 }
 
 export function getFormRecoveringContext(
