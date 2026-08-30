@@ -214,7 +214,9 @@ test.describe("Nutrition trio", () => {
       // The copy names BOTH records rather than only the winner.
       await expect(
         page.getByTestId("fiber-estimate-details").getByTestId("fiber-intake")
-      ).toContainText("the larger of what you log here and your health app");
+      ).toContainText(
+        "the larger of your food and supplement logs and your health app"
+      );
     } finally {
       await page.close();
     }
