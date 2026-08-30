@@ -633,7 +633,6 @@ describe("the hand-rolled comment strippers still in the tree (#3595)", () => {
     "lib/__tests__/notes-text.test.ts",
     "lib/__tests__/observation-substrate.test.ts",
     "lib/__tests__/offline-queue.test.ts",
-    "lib/__tests__/protocol-offer-renderers.test.ts",
     "lib/__tests__/reconcile-registry.test.ts",
     "lib/__tests__/settings-groups.test.ts",
     "lib/__tests__/sql-clock-seam.test.ts",
