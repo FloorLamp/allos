@@ -631,9 +631,11 @@ export default function DayLedger({
                   anti-drop gate): it is current safety advice about what to take
                   together, so it belongs beside the taps, not on a management list. */}
               {warnings}
-              {/* Named, because `warnings` above is arbitrary server-rendered content
-                  that can carry its own list — so "the ledger's rows" has to be
-                  addressable as itself rather than as the first `ul` in the section. */}
+              {/* Named so "the ledger's rows" is addressable as itself rather than as
+                  "the first `ul` inside the section", which is what the chrome
+                  measurement in e2e/day-ledger.spec.ts used to rely on. That is a
+                  robustness improvement and NOT a diagnosed fix — see the spec, which
+                  carries the honest account of what is and is not known. */}
               <ul data-testid="ledger-rows" className={LOGGED_EVENT_LIST}>
                 {group.rows.map(renderRow)}
               </ul>

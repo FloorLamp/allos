@@ -423,13 +423,21 @@ test.describe("the day is stated once, and the chrome is measured", () => {
     // THE MEASUREMENT (#3987's chrome gate). The redesign's goal is LESS, so less is
     // measured: the y of the FIRST LEDGER ROW — of any kind, since a dose row can
     // legitimately lead the day — at 430x932. Reported in the PR body.
-    // `[data-testid="ledger-rows"] > li` and NOT `ul > li`: the keep-apart notices
-    // render ABOVE the rows inside the same section and are arbitrary server-rendered
-    // content, so they can carry their own list — and one inside a collapsed disclosure
-    // has no box at all, which made this measurement fail with `expected null not to be
-    // null` on a day whose due doses happened to raise a notice. Whether they appear
-    // depends on shared-profile state, so it read as a flake. The measurement means the
-    // first LEDGER ROW; now it says so.
+    // `[data-testid="ledger-rows"] > li` and NOT `ul > li`, which says what this
+    // measurement means instead of relying on the rows being the section's only list.
+    //
+    // WHAT IS NOT KNOWN, stated because the commit that changed this first claimed
+    // otherwise. On CI at 8627f824 this line failed with `expected null not to be null`
+    // — `boundingBox()` on an element that was attached but not visible. I proposed that
+    // a keep-apart notice above the rows had carried its own list, and then checked:
+    // `Notice` renders no `ul` and no `li`, `DayLedger` contains no `<details>` and no
+    // Disclosure, and the only lists in this section are the rows and the two nested
+    // ones inside expanded rows. So that explanation is DISPROVEN, and with it the
+    // weaker claim that the old locator could match anything outside the rows on today's
+    // markup. The real mechanism is unexplained and was never reproduced locally.
+    //
+    // This locator is therefore a precision improvement that removes a dependency the
+    // measurement should never have had — not a fix for a mechanism anyone has seen.
     const firstRow = ledger.locator('[data-testid="ledger-rows"] > li').first(); // first-ok: the topmost row IS the measurement — order is the point
     const box = await firstRow.boundingBox();
     expect(box).not.toBeNull();
