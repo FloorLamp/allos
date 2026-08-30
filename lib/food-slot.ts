@@ -86,6 +86,37 @@ export function deriveFoodSlot(
   return "Evening";
 }
 
+// The local minute-of-day span a window OWNS — the same three splits `deriveFoodSlot`
+// compares against, turned round and expressed as an interval. HALF-OPEN, matching that
+// function's own `minutesOfDay < b.midday` exactly, so the two can never disagree about a
+// boundary minute. Evening is terminal and ends at 1440, the end of the local day.
+//
+// This exists because the dashboard needed to say how long a food-anchored offer STANDS
+// (#3265): the composed usual-routine one-tap borrowed the meal-REMINDER windows for
+// that, so its own window said Evening runs to midnight while its placement window said
+// 21:00. A window's liveness is the food-slot question, so it is answered here, off the
+// boundaries that chose the slot in the first place.
+//
+// Morning is EMPTY (opensAt === endsBefore) where the midday boundary lands on minute 0 —
+// which is also the configuration in which `deriveFoodSlot` can never return Morning,
+// since no minute is below zero. An empty span is the honest answer for a window nothing
+// can fall into.
+export interface FoodSlotWindow {
+  // First local minute the window owns, inclusive.
+  opensAt: number;
+  // First local minute it no longer owns, EXCLUSIVE. 1440 for Evening.
+  endsBefore: number;
+}
+
+export function foodSlotWindow(
+  slot: FoodSlot,
+  b: FoodSlotBoundaries
+): FoodSlotWindow {
+  if (slot === "Morning") return { opensAt: 0, endsBefore: b.midday };
+  if (slot === "Midday") return { opensAt: b.midday, endsBefore: b.evening };
+  return { opensAt: b.evening, endsBefore: 24 * 60 };
+}
+
 // Convenience: derive a food slot straight from an "HH:MM" wall-clock string and the
 // boundaries. Malformed input folds to minute 0 (Morning) rather than throwing.
 export function foodSlotForHhmm(hhmm: string, b: FoodSlotBoundaries): FoodSlot {
