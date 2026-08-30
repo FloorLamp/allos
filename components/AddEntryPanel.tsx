@@ -69,7 +69,7 @@ export default function AddEntryPanel({
   panelId: string;
   testId?: string;
   // The toggle's own testid, when the surface's spec names it independently of the
-  // wrapper (the Timeline's `timeline-symptom-toggle`). Defaults to `<testId>-toggle`.
+  // wrapper (the day view's `history-symptom-toggle`). Defaults to `<testId>-toggle`.
   toggleTestId?: string;
   // Tighter rhythm + a small-caps-weight heading, for a panel that sits INSIDE a
   // day view rather than at the foot of a page. Purely visual.

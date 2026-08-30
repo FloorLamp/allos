@@ -84,7 +84,7 @@ import {
 import { hasActiveIllnessSituation } from "@/lib/settings/profile-attrs";
 import { PICKER_SYMPTOMS } from "@/lib/symptoms";
 import SymptomLogBar from "../../../components/illness/SymptomLogBar";
-import SymptomEntryCard from "./SymptomEntryCard";
+import SymptomEntryCard from "../history/SymptomEntryCard";
 import { isTaskConfigured } from "@/lib/ai-resolve";
 import {
   groupTimelineDays,

@@ -16,18 +16,45 @@ import HistoryRows from "./HistoryRows";
 import HistoryAddDoor from "./HistoryAddDoor";
 import { requireScope } from "@/lib/scope";
 import { today } from "@/lib/db";
-import { zonedDateParts } from "@/lib/date";
 import {
   getDisplayFormatPrefs,
+  getHomeLocation,
   getTimezone,
   getUnitPrefs,
 } from "@/lib/settings";
-import { getIntakeDoses, getIntakeItems } from "@/lib/queries";
+import {
+  getCustomSymptomNames,
+  getDaylightOutdoorMinutesByDay,
+  getIntakeDoses,
+  getIntakeItems,
+  getSymptomLogOrder,
+  getSymptomNotesOnDate,
+  getSymptomSeveritiesOnDate,
+} from "@/lib/queries";
 import { getTrackedPractices } from "@/lib/queries/wellness";
 import { getProfileSubstanceKeys } from "@/lib/queries/substance";
 import { substanceDef } from "@/lib/substance-use";
 import { isOnDemand } from "@/lib/intake-schedule";
-import { formatLongDate } from "@/lib/format-date";
+import { formatLongDate, formatMonthDay } from "@/lib/format-date";
+import { shiftDateStr, zonedDateParts } from "@/lib/date";
+import DaylightChip from "@/components/DaylightChip";
+import CyclePhaseChip from "@/components/CyclePhaseChip";
+import TimelineDayNav from "@/components/TimelineDayNav";
+import IntradayPanel from "@/components/IntradayPanel";
+import SymptomEntryCard from "./SymptomEntryCard";
+import SymptomLogBar from "@/components/illness/SymptomLogBar";
+import { getIntradayDay } from "@/lib/queries/intraday";
+import { getUvDoseForDays } from "@/lib/queries/weather";
+import { evaluateSeries, notableStatesSummary } from "@/lib/weather-situations";
+import {
+  WEATHER_SERIES_LOOKBACK_DAYS,
+  getWeatherDaysForProfile,
+} from "@/lib/queries/weather-situations";
+import { listCyclePeriods } from "@/lib/cycle-store";
+import { cyclePhaseOnDate, periodOnDate } from "@/lib/cycle";
+import { hasActiveIllnessSituation } from "@/lib/settings/profile-attrs";
+import { PICKER_SYMPTOMS } from "@/lib/symptoms";
+import { isTaskConfigured } from "@/lib/ai-resolve";
 import { historyHref, type AppRoute } from "@/lib/hrefs";
 import { historyMemberFeed } from "@/lib/history";
 import {
@@ -322,6 +349,22 @@ export default async function HistoryPage(props: {
     });
   };
 
+  // THE DAY NAV'S TWO DESTINATIONS. Same day, one step either way, and every other
+  // filter the reader has set rides across — walking days inside `?kind=dose` stays
+  // inside it. The fold and rollup open-sets are deliberately DROPPED: they are the
+  // scrolling feed's state and a day view has no folds to open.
+  const dayNavHref = (target: string): AppRoute =>
+    historyHref({
+      family: kind ? undefined : family,
+      kind,
+      class: doseClass,
+      item: rawItem,
+      media: mediaApplied,
+      day: target,
+      everyone,
+      show: show === HISTORY_DEFAULT_SHOW ? undefined : show,
+    });
+
   // THE ROLLUP LINE'S OWN LINK — the same toggle helper the folds use, so the `?expand`
   // set is sorted and the href for a given open set is byte-identical across renders.
   const expandHref = (key: string): AppRoute =>
@@ -493,6 +536,81 @@ export default async function HistoryPage(props: {
       if (viewIds.includes(profile.id)) subjectNames[profile.id] = profile.name;
     }
   }
+
+  // ── THE DAY VIEW'S INHERITANCE (#3958 phase 2; #1068/#1425/#799) ─────────
+  //
+  // `/history?day=` is the app's one "that day" anchor now, so the four things
+  // `/timeline`'s single-day view carried come with it: the intraday panel, the day
+  // context chips, the prev/next nav with its swipe, and the SymptomLogBar mount.
+  //
+  // SINGLE-SUBJECT ONLY, which is the timeline's own rule and not a simplification:
+  // daylight, UV, weather and cycle phase are ONE body's context, and a merged
+  // household day cannot say whose. `?view=everyone&day=` still lists the rows — it
+  // just draws no context, exactly as the merged feed did.
+  const dayContext = day != null && !everyone ? day : null;
+  const home = dayContext ? getHomeLocation(actingProfileId) : null;
+  const profileTimezone = getTimezone(actingProfileId);
+  const daylightOutdoor =
+    dayContext && home
+      ? (getDaylightOutdoorMinutesByDay(actingProfileId, [dayContext]).get(
+          dayContext
+        ) ?? 0)
+      : 0;
+  // UV rides on daylight: the dose reader is only asked about a day that HAS outdoor
+  // minutes, which is the same gate the scrolling feed applied per row.
+  const dayUv =
+    dayContext && home && daylightOutdoor > 0
+      ? (() => {
+          const dose = getUvDoseForDays(actingProfileId, [dayContext]).get(
+            dayContext
+          );
+          return dose && dose.uvSource === "live"
+            ? { uvMinutes: dose.uvMinutes, peakUvIndex: dose.peakUvIndex }
+            : null;
+        })()
+      : null;
+  // WEATHER CONTEXT (#1728), quiet by default and notable by exception. The series is
+  // widened backwards by the same lookback the feed used, because a spell's leading
+  // days are what let the predicates see the run at all — asking for one day's row
+  // would make a heatwave's third day look like an ordinary warm one.
+  const dayWeather = (() => {
+    if (!dayContext || !home) return null;
+    const evaluated = evaluateSeries(
+      getWeatherDaysForProfile(
+        actingProfileId,
+        shiftDateStr(dayContext, -WEATHER_SERIES_LOOKBACK_DAYS),
+        dayContext
+      )
+    );
+    return notableStatesSummary(evaluated.byDate.get(dayContext) ?? []) || null;
+  })();
+  const cyclePeriods = dayContext ? listCyclePeriods(actingProfileId) : [];
+
+  // THE INTRADAY PANEL (#1068) — the day rotated 90°. It reads the list this page
+  // RESOLVED (`gather.dayEvents`), never a second query, which is what makes "a tick
+  // can never name something the list below does not show" true by construction.
+  // Null when nothing on the day is intraday, so a quiet day draws no empty frame.
+  const intraday = dayContext
+    ? getIntradayDay(
+        actingProfileId,
+        dayContext,
+        feeds[0]?.gather.dayEvents ?? []
+      )
+    : null;
+
+  // RETRO SYMPTOM ENTRY (#799/#1517 C). The bar writes to the ACTING profile, so it
+  // mounts only on the acting profile's own day — never a mixed-subject write. It
+  // opens on arrival when logging IS the point of the visit: the day already carries
+  // symptom entries, or an illness-type situation is active.
+  const daySymptomSeverities = dayContext
+    ? getSymptomSeveritiesOnDate(actingProfileId, dayContext)
+    : {};
+  const daySymptomNotes = dayContext
+    ? getSymptomNotesOnDate(actingProfileId, dayContext)
+    : {};
+  const dayIllnessActive = dayContext
+    ? hasActiveIllnessSituation(actingProfileId)
+    : false;
 
   // WHETHER THE DAY'S LOG ROWS COLLAPSE (#3958 phase 2).
   //
@@ -712,6 +830,69 @@ export default async function HistoryPage(props: {
         </div>
       ) : null}
 
+      {/* ADJACENT-DAY NAVIGATION (#1425), on the view that HAS neighbours. Both
+          destinations are built HERE, on the server, through the one grammar helper —
+          never client date arithmetic, because which calendar day is "yesterday"
+          depends on the profile's timezone. The component renders the arrows AND owns
+          the horizontal swipe that follows them, so the two can never disagree.
+
+          THE READER'S FILTER RIDES ACROSS. Walking from one day to the next inside
+          `?kind=dose` stays inside it; the day changes and nothing else does.
+
+          NEVER PAST TODAY (#3958's edge-case ruling: "day nav cannot advance past
+          today"). `clampHistoryDay` clamps a future `?day=` on arrival, so a next
+          arrow into tomorrow would land back on today — an arrow that visibly does
+          nothing. On today it is not drawn at all. */}
+      {day ? (
+        <TimelineDayNav
+          prevHref={dayNavHref(shiftDateStr(day, -1))}
+          nextHref={
+            day < todayStr ? dayNavHref(shiftDateStr(day, 1)) : dayNavHref(day)
+          }
+          prevLabel={formatMonthDay(shiftDateStr(day, -1), prefs)}
+          nextLabel={
+            day < todayStr
+              ? formatMonthDay(shiftDateStr(day, 1), prefs)
+              : formatMonthDay(day, prefs)
+          }
+          targetSelector='[data-testid="app-content-container"]'
+        />
+      ) : null}
+
+      {/* THE DAY'S CONTEXT (#1068's neighbours: daylight, UV, weather, cycle phase).
+          Body context for ONE body, so it renders only on a single-subject day —
+          `?view=everyone&day=` still lists the rows and simply draws no chips, which
+          is the merged feed's own rule rather than a gap.
+
+          Each chip is quiet by default: `DaylightChip` draws nothing without a home
+          location, `CyclePhaseChip` nothing off a cycle, and the weather line only on
+          a day the #1726 predicates called notable. An ordinary mild Tuesday with no
+          home set renders an empty strip, which is why the wrapper is conditional on
+          content rather than on the day. */}
+      {dayContext && (home || dayWeather) ? (
+        <div className={`mb-3 ${railGutter}`} data-testid="history-day-context">
+          <DaylightChip
+            home={home}
+            date={dayContext}
+            timezone={profileTimezone}
+            outdoorMinutes={daylightOutdoor}
+            uv={dayUv}
+          />
+          <CyclePhaseChip
+            phase={cyclePhaseOnDate(cyclePeriods, dayContext, todayStr)}
+            period={periodOnDate(cyclePeriods, dayContext, todayStr)}
+          />
+          {dayWeather ? (
+            <div
+              className="mt-1 text-xs text-slate-500 dark:text-slate-400"
+              data-testid="history-day-weather"
+            >
+              {dayWeather}
+            </div>
+          ) : null}
+        </div>
+      ) : null}
+
       {/* THE ADD DOOR, KIND-RESOLVED. Filtered to a kind it IS that kind's backfill,
           MOUNTED IN PLACE — the form opens here rather than sending the reader to the
           domain surface, which is what #3958 asked for and what only the dose kind
@@ -762,6 +943,51 @@ export default async function HistoryPage(props: {
               vocabulary={addVocabulary}
             />
           ) : null}
+        </div>
+      ) : null}
+
+      {/* THE DAY AT A GLANCE (#1068), above the list it maps. Rendered from the
+          resolved row set rather than a second gather — see `HistoryGather.dayEvents`
+          — so the chart cannot show a mark for something the list below dropped. */}
+      {intraday ? (
+        <div className={railGutter}>
+          <IntradayPanel
+            model={intraday}
+            formatPrefs={prefs}
+            profileId={actingProfileId}
+          />
+        </div>
+      ) : null}
+
+      {/* THE SYMPTOM BAR'S CONVENIENCE MOUNT (#799), which is the whole reason a
+          symptom is not an Add-door kind: symptoms are quick-logged against a day,
+          not declared as an entry. Acting profile only — the card renders only on
+          `dayContext`, which is already the acting profile's own day. */}
+      {dayContext && canWrite ? (
+        <div className={`mb-3 ${railGutter}`}>
+          <SymptomEntryCard
+            dateLabel={formatLongDate(dayContext, prefs)}
+            defaultOpen={
+              Object.keys(daySymptomSeverities).length > 0 ||
+              Object.keys(daySymptomNotes).length > 0 ||
+              dayIllnessActive
+            }
+          >
+            <SymptomLogBar
+              date={dayContext}
+              initial={daySymptomSeverities}
+              initialNotes={daySymptomNotes}
+              symptoms={PICKER_SYMPTOMS}
+              customNames={getCustomSymptomNames(actingProfileId)}
+              rankedKeys={getSymptomLogOrder(actingProfileId)}
+              suggestActivateIllness={!dayIllnessActive}
+              temperatureUnit={getUnitPrefs(loginId).temperatureUnit}
+              textIntakeEnabled={isTaskConfigured("symptom-map")}
+              // Unconditional: the card above renders only on the acting profile's
+              // own day, so this link can never name someone else's analysis.
+              analysisHref="/trends/symptoms"
+            />
+          </SymptomEntryCard>
         </div>
       ) : null}
 
