@@ -53,9 +53,12 @@ function part(over: Partial<PartEntry> = {}): PartEntry {
 
 function renderList(parts: PartEntry[], over: Record<string, unknown> = {}) {
   const onUpdatePart = vi.fn();
-  render(
+  const list = (
+    currentParts: PartEntry[],
+    currentOver: Record<string, unknown> = over
+  ) => (
     <ActivityPartsList
-      parts={parts}
+      parts={currentParts}
       stickyFooter={false}
       isEdit={false}
       live={false}
@@ -105,10 +108,14 @@ function renderList(parts: PartEntry[], over: Record<string, unknown> = {}) {
       onFillFromSession={vi.fn()}
       onPlateFromSuggestion={vi.fn()}
       onPlateTarget={vi.fn()}
-      {...over}
+      {...currentOver}
     />
   );
-  return { onUpdatePart };
+  const view = render(list(parts));
+  return {
+    onUpdatePart,
+    rerenderParts: (next: PartEntry[]) => view.rerender(list(next)),
+  };
 }
 
 describe("the per-part fact row states what the exercise records (#3349)", () => {
@@ -209,6 +216,64 @@ describe("the per-part fact row states what the exercise records (#3349)", () =>
 
     // …and it is the OTHER part's panel: a unilateral lift offers the sides control.
     expect(screen.getByTestId("per-side-checkbox")).toBeTruthy();
+  });
+
+  it("closes the equipment editor before reorder can retarget it (#4185)", () => {
+    const first = part({ name: "Back Squat" });
+    const target = part();
+    const third = part({ name: "Deadlift" });
+    let rerenderParts!: ReturnType<typeof renderList>["rerenderParts"];
+    const onMovePart = vi.fn(() => rerenderParts([first, third, target]));
+    rerenderParts = renderList([first, target, third], {
+      onMovePart,
+    }).rerenderParts;
+
+    fireEvent.click(screen.getAllByTestId("strength-equipment-chip")[1]);
+    expect(screen.getByTestId("strength-equipment-editor")).toBeTruthy();
+    fireEvent.click(
+      screen.getAllByRole("button", { name: "Move activity up" })[2]
+    );
+
+    expect(onMovePart).toHaveBeenCalledWith(2, -1);
+    expect(screen.queryByTestId("strength-equipment-editor")).toBeNull();
+  });
+
+  it("closes the options editor before removal can retarget it (#4185)", () => {
+    const first = part({ name: "Back Squat" });
+    const target = part();
+    const third = part({ name: "Deadlift" });
+    let rerenderParts!: ReturnType<typeof renderList>["rerenderParts"];
+    const onRemovePart = vi.fn(() => rerenderParts([target, third]));
+    rerenderParts = renderList([first, target, third], {
+      onRemovePart,
+    }).rerenderParts;
+
+    fireEvent.click(screen.getAllByTestId("part-fact-more")[1]);
+    expect(screen.getByTestId("part-options-editor")).toBeTruthy();
+    fireEvent.click(
+      screen.getAllByRole("button", { name: "Remove activity" })[0]
+    );
+
+    expect(onRemovePart).toHaveBeenCalledWith(0);
+    expect(screen.queryByTestId("part-options-editor")).toBeNull();
+  });
+
+  it("keeps the options editor open for an ordinary part edit (#4185)", () => {
+    const first = part({ name: "Back Squat" });
+    const target = part();
+    let rerenderParts!: ReturnType<typeof renderList>["rerenderParts"];
+    const onUpdatePart = vi.fn((pi: number, patch: Partial<PartEntry>) =>
+      rerenderParts([first, { ...target, ...patch }])
+    );
+    rerenderParts = renderList([first, target], {
+      onUpdatePart,
+    }).rerenderParts;
+
+    fireEvent.click(screen.getAllByTestId("part-fact-more")[1]);
+    fireEvent.click(screen.getByTestId("to-failure-checkbox"));
+
+    expect(onUpdatePart).toHaveBeenCalledWith(1, { toFailure: true });
+    expect(screen.getByTestId("part-options-editor")).toBeTruthy();
   });
 
   it("shares its one slot with the equipment editor, so opening options closes it", () => {
