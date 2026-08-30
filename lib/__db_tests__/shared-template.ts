@@ -171,9 +171,8 @@ function walkInto(hash: crypto.Hash, root: string, dir: string): void {
  * Sorted so two machines walking the same tree agree — an order-dependent key
  * would rebuild at random and look like a flaky cache.
  */
-export function templateKey(): string {
+export function templateKey(root = process.cwd()): string {
   const hash = crypto.createHash("sha256");
-  const root = process.cwd();
   for (const dir of TEMPLATE_INPUT_DIRS)
     walkInto(hash, root, path.join(root, dir));
   for (const file of TEMPLATE_INPUT_FILES)
