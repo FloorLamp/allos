@@ -176,3 +176,12 @@ export const LOGSHEET_RESERVE_PROFILE = "Log Sheet Reserve (e2e)";
 // basis at once.
 export const E2E_LOGIN_PROTEIN_SOURCES = "e2e_protein_sources";
 export const PROTEIN_SOURCES_PROFILE = "Protein Both Sources (e2e)";
+
+// Its sibling, and the state #3903 named as the one no rendered test reached: a tracked
+// reading with NOTHING logged in-app, which after the ruling is the only route to a bare
+// `tracked` basis. The row must read "20 g+" and the hover must carry the unsent-meals
+// sentence — this is the fixture that fails if the floor marker's `tracked` exception
+// ever comes back, which the both-sources profile above cannot see (its basis is not
+// `tracked`, so it keeps its "+" either way).
+export const E2E_LOGIN_PROTEIN_TRACKED = "e2e_protein_tracked";
+export const PROTEIN_TRACKED_PROFILE = "Protein Tracked Only (e2e)";
