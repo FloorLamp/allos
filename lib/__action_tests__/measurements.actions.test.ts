@@ -519,6 +519,27 @@ describe("addMeasurements — the #1851 manual-entry gaps", () => {
     expect(after!.target.gramsHigh).toBeLessThan(before!.target.gramsHigh);
   });
 
+  // Water is the one ADDITIVE metric on this form (lib/metric-buckets.ts), and the
+  // field files a single point row per day. Pinned because the two readings of the
+  // label disagree and only one matches the code: "Water today" corrects, "log a
+  // glass" would accumulate. Measured before pinning — 0.5 then 0.7 leaves 0.7.
+  it("treats water as the day's total, correcting on re-entry rather than accumulating", async () => {
+    const { profile } = seedActor();
+    await addMeasurements(fd({ date: DATE, hydration: "0.5" }));
+    expect(sampleValue(profile.id, "hydration_l")).toBe(0.5);
+
+    await addMeasurements(fd({ date: DATE, hydration: "0.7" }));
+    expect(sampleValue(profile.id, "hydration_l")).toBe(0.7);
+    // ONE row, so the day reads 0.7 rather than summing to 1.2.
+    expect(
+      db
+        .prepare(
+          "SELECT COUNT(*) AS n FROM metric_samples WHERE profile_id = ? AND metric = 'hydration_l'"
+        )
+        .get(profile.id)
+    ).toEqual({ n: 1 });
+  });
+
   it("writes a counted respiratory rate onto the canonical vitals row", async () => {
     const { profile } = seedActor();
     await addMeasurements(fd({ date: DATE, respiratory_rate: "22" }));

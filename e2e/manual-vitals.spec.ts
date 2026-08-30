@@ -113,7 +113,7 @@ test("the measurements form takes water, lean/bone mass and respiratory rate (#1
   await openMeasurementGroup(page, form, "vitals");
   await form.getByLabel("Respiratory Rate", { exact: true }).fill("22");
   await openMeasurementGroup(page, form, "body");
-  await form.getByLabel("Water", { exact: true }).fill("2.4");
+  await form.getByLabel("Water today", { exact: true }).fill("2.4");
   await form.getByLabel("Lean Body Mass unit").selectOption("kg");
   await form.getByLabel("Lean Body Mass", { exact: true }).fill("56.4");
   await form.getByLabel("Bone Mass unit").selectOption("kg");

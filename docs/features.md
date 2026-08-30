@@ -943,7 +943,8 @@ Water, lean mass, bone mass and respiratory rate join the same **Log measurement
 form and land in the same stores an import writes, so a DEXA report's lean mass
 scales the protein target the way a smart scale's does and a counted breathing
 rate charts beside a pushed one. Masses are entered in your own weight unit and
-stored in kilograms; water is entered in litres.
+stored in kilograms; water is the day's total, in litres — typing it again
+corrects the day rather than adding a second entry.
 
 **Waist circumference** (#2322) is a body metric here, not a biomarker. It is
 self-measured with a tape, arrives at the metric cadence, and sits beside weight

@@ -51,7 +51,7 @@ export function deepLinkFieldId(
 
 // ── The form's GROUPS (issue #2014) ─────────────────────────────────────────
 //
-// The combined form is eighteen fields, and eighteen always-empty boxes to collect
+// The combined form is seventeen fields, and seventeen always-empty boxes to collect
 // the one or two readings someone actually took is the thing its own copy argues
 // against ("fill in only what you measured"). They are disclosed in three groups,
 // exactly one of which is open on mount — chosen by where the person came from.
