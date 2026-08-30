@@ -74,6 +74,108 @@
           "title": "A practice session records when it started and when it ended, and draws on the day's chart",
           "kind": "feature",
           "issues": [3142]
+        },
+        {
+          "pr": 4120,
+          "title": "Two medications taken different ways are no longer treated as the same one",
+          "kind": "fix",
+          "issues": [3125]
+        },
+        {
+          "pr": 4150,
+          "title": "A date your clock skipped shows zero minutes instead of stretching the day before",
+          "kind": "fix",
+          "issues": [3845]
+        },
+        {
+          "pr": 4166,
+          "title": "A single equipment reading shows its value, unit and date instead of an empty chart",
+          "kind": "fix",
+          "issues": [3235]
+        },
+        {
+          "pr": 4175,
+          "title": "The photo gallery and the fitness-test timer stop the page scrolling behind them",
+          "kind": "fix",
+          "issues": [3256]
+        },
+        {
+          "pr": 4182,
+          "title": "Total mass from a DEXA scan points to your weight trend",
+          "kind": "feature",
+          "issues": [2766]
+        },
+        {
+          "pr": 4188,
+          "title": "A prediction for a past workout day uses what was known that day, not later training",
+          "kind": "fix",
+          "issues": [3991]
+        },
+        {
+          "pr": 4191,
+          "title": "Preventive review offers appear beside the setup rows they belong to",
+          "kind": "feature",
+          "issues": [3113]
+        },
+        {
+          "pr": 4197,
+          "title": "The Android/Gynoid ratio explains that it comes from two regions of one scan",
+          "kind": "fix",
+          "issues": [2768]
+        },
+        {
+          "pr": 4199,
+          "title": "The AREDS zinc warning matches your age instead of assuming the adult limit",
+          "kind": "fix",
+          "issues": [3638]
+        },
+        {
+          "pr": 4200,
+          "title": "As-needed supplements join medications in the dashboard quick log",
+          "kind": "feature",
+          "issues": [3174]
+        },
+        {
+          "pr": 4202,
+          "title": "Bristol stool logs save with no connection and sync when you are back",
+          "kind": "feature",
+          "issues": [3166]
+        },
+        {
+          "pr": 4207,
+          "title": "A clock change at midnight counts as a real day again",
+          "kind": "fix",
+          "issues": [4186]
+        },
+        {
+          "pr": 4224,
+          "title": "An offline weigh-in keeps your weight when the waist measurement needs a connection",
+          "kind": "fix",
+          "issues": [4142]
+        },
+        {
+          "pr": 4235,
+          "title": "Correcting a practice session's date and time in the record works together",
+          "kind": "fix",
+          "issues": [4009]
+        },
+        {
+          "pr": 4260,
+          "title": "Protocol comparisons wait until there is enough data to compare",
+          "kind": "fix",
+          "issues": [4244]
+        },
+        {
+          "pr": 4265,
+          "title": "The dashboard shows how many days you have kept a protocol",
+          "kind": "feature",
+          "issues": [4227]
+        },
+        {
+          "pr": 4275,
+          "title": "One add-media form everywhere: choose a file, drag, paste or use the camera",
+          "kind": "feature",
+          "issues": [3286]
         }
       ]
     },
