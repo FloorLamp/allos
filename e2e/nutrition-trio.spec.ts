@@ -4,6 +4,7 @@ import { loginAs } from "./nav";
 import { settledClick } from "./helpers";
 import {
   E2E_LOGIN_NUTRITION,
+  E2E_LOGIN_FIBER_SOURCES,
   E2E_MEMBER_PASSWORD,
   NUTRITION_PROFILE,
 } from "./fixture-logins";
@@ -181,6 +182,39 @@ test.describe("Nutrition trio", () => {
       );
       // The capsule fiber supplement contributes 0 g and is noted honestly.
       await expect(fiberDetails).toContainText(/grams unknown/i);
+    } finally {
+      await page.close();
+    }
+  });
+
+  // #4127 — the both-sources fiber state, rendered. Its own profile (see
+  // E2E_LOGIN_FIBER_SOURCES): a confirmed 20 g psyllium dose today against an 8 g
+  // health-app reading, so the IN-APP side is the larger floor. A tree still carrying the
+  // retired override renders "8g" on a `tracked` basis with no floor marker, which is what
+  // each of these three assertions separately refuses.
+  test("a day holding both sources shows the larger floor and names both", async ({
+    browser,
+  }) => {
+    const page = await loginAs(browser, {
+      username: E2E_LOGIN_FIBER_SOURCES,
+      password: E2E_MEMBER_PASSWORD,
+    });
+    try {
+      await page.goto("/nutrition?tab=food");
+      const fiber = page.getByTestId("fiber-adequacy");
+      await expect(fiber).toBeVisible({ timeout: WAIT });
+      // Today's card, from the single-date gather — the call site that can be handed today.
+      await expect(fiber).toHaveAttribute("data-basis", "both-sources");
+      // The figure is max(8 tracked, 20 supplemented), and it carries the floor marker.
+      // Scoped to the element that owns the claim: "20g+" as an exact match, since the
+      // goal text beside it also ends in "g+".
+      await expect(page.getByTestId("nutrition-weekly-fiber-value")).toHaveText(
+        "20g+"
+      );
+      // The copy names BOTH records rather than only the winner.
+      await expect(
+        page.getByTestId("fiber-estimate-details").getByTestId("fiber-intake")
+      ).toContainText("the larger of what you log here and your health app");
     } finally {
       await page.close();
     }

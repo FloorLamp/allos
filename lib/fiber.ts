@@ -8,8 +8,15 @@
 //
 // Intake composition (fiberIntake):
 //   - `tracked`      — an integration's fiber_g daily total (Health Connect
-//                      dietary_fiber_grams → fiber_g). A measured day total, taken as
-//                      already covering any supplement the person swallowed.
+//                      dietary_fiber_grams → fiber_g). A measured day total, ASSUMED since
+//                      #976 to already cover any supplement the person swallowed. That
+//                      assumption is inherited, not established, and is doubtful: the
+//                      ingest maps dietary_fiber_grams inside `for (const rec of
+//                      asArray(payload.nutrition))` (lib/integrations/health-connect.ts),
+//                      so it reads MEAL records only — a psyllium capsule logged here as a
+//                      supplement cannot appear in it unless the person also logged it as
+//                      food in their health app. Filed separately; it predates this module
+//                      and its fix reaches every basis, not just the two below.
 //   - `estimated`    — servings × per-serving fiber_g from the food-group catalog (the
 //                      #976 fiber_g column, reused through estimatedFiberGrams). A FLOOR
 //                      by construction — incidental fiber from untracked foods is
@@ -198,9 +205,14 @@ export function fiberIntake(args: {
       // measured total already includes what was taken — the caveat is moot on a tracked
       // basis" — true only BY VIRTUE OF THE OVERRIDE, when the figure was the health app's
       // alone. Under the max the caveat is live again whenever the IN-APP side is the
-      // figure shown, because there the unquantified dose contributed 0 g. It stays moot
-      // only where the tracked reading is strictly the larger, which is the case the old
-      // reasoning actually covered.
+      // figure shown, because there the unquantified dose contributed 0 g.
+      //
+      // It stays moot where the tracked reading is strictly the larger — which is the case
+      // the old reasoning covered, and NO MORE THAN THAT. Suppressing it there still rests
+      // on #976's inherited assumption that a tracked total covers supplements (module
+      // header: doubtful, filed separately). This line does not establish that premise; it
+      // declines to widen it. At a TIE the flag stays live, because the in-app sum explains
+      // the figure just as well and the unquantified dose contributed 0 g to it.
       unknownSupplement: unknownSupplement && tracked <= inApp,
     };
   const basis: FiberBasis =
