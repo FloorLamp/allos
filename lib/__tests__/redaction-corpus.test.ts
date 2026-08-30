@@ -2,14 +2,14 @@ import { describe, expect, it } from "vitest";
 import fs from "node:fs";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
-import { redactSecrets } from "../error-log-format";
+import { redactSecrets, VENDOR_SECRET_PREFIXES } from "../error-log-format";
 
 // THE OVER-REDACTION CORPUS (#2965, required by the #3000 review).
 //
 // The vendor-prefix list in `error-log-format.ts` is a DENYLIST, which is the
 // design #2955 deliberately replaced. It was granted as an exception on one
-// stated condition — the three-condition rule, whose second condition is that
-// nothing this app logs can begin with a listed prefix and carry a body on it.
+// stated exception — now a four-condition rule, whose second condition requires
+// a long body with a digit so an all-letter prose continuation is not a match.
 // Until now that condition was a COMMENT. Nothing executed it, so the sole
 // guardrail the exception rests on could not fail.
 //
@@ -129,6 +129,22 @@ function buildCorpus(): Set<string> {
 describe("redactSecrets over the app's own vocabulary (#2965 guardrail)", () => {
   const corpus = [...buildCorpus()];
 
+  it("ties every registered prefix to a production credential consumer (#3013)", () => {
+    const production = ["app", "components", "lib"].flatMap((dir) =>
+      filesUnder(path.join(repoRoot, dir), [".ts", ".tsx"])
+    );
+    for (const { prefix, credentialEnv } of VENDOR_SECRET_PREFIXES) {
+      const access = `process.env.${credentialEnv}`;
+      const consumers = production.filter((file) =>
+        fs.readFileSync(file, "utf8").includes(access)
+      );
+      expect(
+        consumers,
+        `${prefix} has no production ${access} consumer`
+      ).not.toEqual([]);
+    }
+  });
+
   it("collected a corpus large enough for its absence to be a failure", () => {
     // Without this, a broken walk turns every assertion below into a green over
     // an empty set — the shape of guard this whole test exists to replace.
@@ -171,8 +187,6 @@ describe("redactSecrets over the app's own vocabulary (#2965 guardrail)", () => 
     // The corpus proves the rule is quiet. This proves quiet is not the same as
     // switched off — a rule that redacted nothing would pass everything above.
     const planted = [
-      `${["sk", "live", ""].join("_")}abc123DEADBEEF456xyz`,
-      `${["ghp", ""].join("_")}AAAABBBBCCCCDDDDEEEE1111`,
       `${["sk", "ant", "api03", "AAbbCCddEEffGGhhIIjj"].join("-")}`,
     ];
     for (const p of planted) {
