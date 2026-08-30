@@ -776,6 +776,11 @@ export default function HistoryRows({
               exactly the width the rail exists for, and where the ⋯ then sat under
               the strip. A wrapper has no padding of its own to lose to. */}
         <div
+          // The wrapper that actually SPENDS the rail's lane, named so a test can
+          // measure it. Below `sm` the band fill is full-bleed (#3920) and the day
+          // section reserves nothing, so this element is the only place the "row
+          // content ends short of the edge" half of that rule is observable.
+          data-testid="history-row-content"
           className={`flex min-w-0 flex-1 items-center gap-2 ${rowClassName}`}
         >
           <LoggedEventRow

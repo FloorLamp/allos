@@ -247,7 +247,7 @@ test.describe("the record's windowing (#2657)", () => {
 // YEARS ROLL UP (#2657 item 6). One level up, same grammar, same claim to keep honest:
 // nothing removed, only compressed.
 //
-// Every case here drives `?category=goal` rather than the bare feed, and that is not
+// Every case here drives `?kind=goal` rather than the bare feed, and that is not
 // incidental. The default view stops at the newest 300 events, which on a seeded
 // profile is roughly three months — a year card cannot appear in a view whose oldest
 // event is twelve weeks old, so measuring the roll-up there would prove nothing. The
@@ -260,7 +260,7 @@ const YEAR_GOALS = [
   [LAST_YEAR_GOAL, LAST_YEAR_DATE],
 ] as const;
 
-test.describe("timeline year roll-up (#2657)", () => {
+test.describe("the record's year roll-up (#2657)", () => {
   const YEAR_FEED = `/history?kind=goal` as const;
 
   test("an earlier year is one card, and neither its months nor its days are rendered", async ({
@@ -370,7 +370,7 @@ test.describe("timeline year roll-up (#2657)", () => {
       await followLink(
         page,
         page.getByTestId(`history-fold-${LAST_YEAR}-toggle`),
-        /\/timeline\?category=goal$/
+        /\/history\?kind=goal$/
       );
 
       await expect(

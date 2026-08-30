@@ -167,6 +167,13 @@ function FoldCard({
       data-testid={`history-fold-${fold.key}`}
       data-fold-key={fold.key}
       data-fold-open={fold.open ? "true" : "false"}
+      // NESTING IS MACHINE-READABLE, not only a left inset. A month card inside an
+      // opened year is a level DOWN, and the whole point of the year roll-up is that
+      // the two levels stay distinguishable — a nested card that rendered flush with
+      // its parent would read as a second name for the same level, which is exactly
+      // the compression #2657 bought being given back. The `pl-4` says it visually;
+      // this is what a test can name.
+      data-fold-nested={nested ? "true" : undefined}
       className={`scroll-mt-24 py-1.5 ${nested ? "pl-4" : ""} ${gutter}`}
     >
       {/* THE POSITION-PRESERVING LINK, NOT A PLAIN ONE (#4045 §4). This shipped as a

@@ -35,7 +35,7 @@ import { TAP_FLOOR_PX } from "@/lib/tap-floor-tokens";
 // rail through the simpler channel proves the same handlers with far less to go wrong.
 //
 // Fixture-OWNED (#868): four goals on the shared default profile, spread so that
-// `?category=goal` has a deterministic spine — one future, three in distinct older
+// `?kind=goal` has a deterministic spine — one future, three in distinct older
 // months of the current year, one comfortably inside the previous calendar year.
 // Planted in beforeAll, removed in afterAll, so both the ABSENCES and the PRESENCES
 // this spec asserts are its own rather than the seed's.
@@ -70,7 +70,25 @@ const OLDEST_MONTH = DATES.oldest.slice(0, 7);
 const LAST_YEAR_MONTH = DATES.lastYear.slice(0, 7);
 const LAST_YEAR = DATES.lastYear.slice(0, 4);
 
-const FEED = "/history?kind=goal" as const;
+// THE RAIL NEEDS DEPTH, AND `?show=` IS HOW THE RECORD OFFERS IT — but the reason
+// this spec has to ask for it is a FINDING, not a preference, so it is written down
+// here rather than left as a magic param.
+//
+// `/timeline?category=goal` pushed the category into the QUERY, so its 250-event
+// budget was 250 GOALS and reached back years on any profile. The record narrows in
+// memory instead (lib/history.ts: "ONE GATHER, NARROWED IN MEMORY", so `?kind=` cannot
+// change which chips the reader is offered), which means a feed-kind view reads the
+// newest `show` events across ALL SIXTEEN feed categories and then keeps the goals
+// among them. On this shared, densely seeded profile the default 200 covers roughly
+// three months, so the fixture's goals at −100/−160/−220/−400 days fall outside it and
+// the rail has no spine to draw. Measured: at `show` default the strip does not render
+// at all; at 1000 (`HISTORY_MAX_SHOW`, reachable through Load more) every case here
+// passes.
+//
+// That shallowness is the same on every retargeted `?kind=` door and is recorded as an
+// open question on #3958. This spec's subject is the RAIL, so it asks for the depth the
+// rail exists to navigate rather than asserting the gather's window.
+const FEED = "/history?kind=goal&show=1000" as const;
 
 function withDb<T>(fn: (handle: Database.Database) => T): T {
   const handle = new Database(DB_PATH);
@@ -140,7 +158,7 @@ async function pressRail(
   return point;
 }
 
-test.describe("timeline jump rail (#2657 item 4)", () => {
+test.describe("the record's jump rail (#2657 item 4)", () => {
   test.beforeAll(seed);
   test.afterAll(cleanup);
 
@@ -244,10 +262,25 @@ test.describe("timeline jump rail (#2657 item 4)", () => {
   test("a released drag positions the scroll and expands NOTHING", async ({
     page,
   }) => {
+    // A SHORT VIEWPORT, AND THE PREMISE ASSERTED. The drag positions a DOCUMENT
+    // scroll offset, so the document has to have one — and the record is compact
+    // enough that this fixture's feed (one recent row plus fold cards) fits a full
+    // -height window, where `/timeline` filled it with a header, a subtitle, a filter
+    // block and a range card that #3958 all removed. Shrinking the window is the
+    // honest way to give the gesture something to move; asserting the premise is what
+    // stops this passing silently on a page that cannot scroll at all, which is
+    // exactly how it failed when the record's feed first replaced the timeline's.
+    await page.setViewportSize({ width: 1280, height: 500 });
     await page.goto(FEED);
     const before = page.url();
     const month = page.getByTestId(`history-fold-${OLDEST_MONTH}`);
     await expect(month).toHaveAttribute("data-fold-open", "false");
+    expect(
+      await page.evaluate(
+        () => document.documentElement.scrollHeight - window.innerHeight
+      ),
+      "the feed must be scrollable or the drag asserts nothing"
+    ).toBeGreaterThan(0);
 
     const box = await stripBox(page);
     await pressRail(page, 0.02);
@@ -330,7 +363,7 @@ test.describe("timeline jump rail (#2657 item 4)", () => {
   });
 });
 
-test.describe("timeline jump rail under reduced motion (#2657 item 4)", () => {
+test.describe("the record's jump rail under reduced motion (#2657 item 4)", () => {
   // The harness builds its own contexts (DB-per-worker), so the preference rides in
   // through `contextOptions` rather than the bare `reducedMotion` test option — the
   // same shape as the suite's other reduced-motion contexts.
@@ -411,18 +444,26 @@ test.describe("the rail's column on a phone (#3403)", () => {
 
     const edges = {
       controls: await contentRight(page, '[data-testid="history-filters"]'),
-      feed: await contentRight(page, '[data-testid="history-day"]'),
+      row: await contentRight(page, '[data-testid="history-row-content"]'),
     };
     // The reserved band equals the intrusion with NOTHING left over: both surfaces
     // stop exactly where the rail begins. The feed used to stop 16px short.
-    //
-    // THE FEED EDGE IS MEASURED ON A DAY CARD, NOT ON `history-feed`. The feed
-    // CONTAINER deliberately takes no gutter — below `sm` the row band is full-bleed
-    // — so its right edge is the page's, and measuring it would assert the opposite
-    // of the rule. The gutter is spent one level in, on the day headers and the row
-    // content, which is where a reader actually sees the rail's lane.
     expect(edges.controls).toBeCloseTo(railBox.x, 0);
-    expect(edges.feed).toBeCloseTo(railBox.x, 0);
+    expect(edges.row).toBeCloseTo(railBox.x, 0);
+
+    // AND THE BAND ITSELF STILL REACHES THE EDGE — the converse, without which the
+    // assertion above is satisfied by simply shrinking the whole row. #3920 rules the
+    // fill FULL-BLEED below `sm` with the CONTENT inset, which is two different
+    // elements at two different right edges; a day card reserves nothing here on
+    // purpose (`sm:pr-7`), so measuring the gutter on it would assert the opposite of
+    // the rule. Measured as a relationship between the two boxes, not against a
+    // constant.
+    const band = await page
+      .getByTestId("history-row")
+      .first() // first-ok: the rule is per-row and identical on every one
+      .evaluate((el) => el.getBoundingClientRect().right);
+    expect(band).toBeGreaterThan(edges.row);
+    expect(band).toBeCloseTo(430, 0);
 
     // Nothing bought that by pushing a box past the edge, at either phone width.
     // Element-level and not a document-width comparison: the app shell clips
