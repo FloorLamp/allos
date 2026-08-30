@@ -77,6 +77,22 @@ const HANDROLLED_ALLOW = new Map<
     },
   ],
   [
+    "app/(app)/trends/MeasurementsQuickAdd.tsx",
+    {
+      count: 2,
+      kind: "event",
+      reason:
+        "the #1851 bed\u2192wake pair — the same range shape as the activity " +
+        "start/end pair above and unmodelled for the same reason, plus one of " +
+        "its own: NEITHER clock states a date. The wake day is the sitting's, " +
+        "the bed day is DERIVED from the clock against the noon anchor, and " +
+        "the pair resolves to instants in the PROFILE's zone at the write " +
+        "boundary rather than the browser's. Migrates with DateTimeFields " +
+        "when the control grows a range form. The form's own sitting Time is " +
+        "still WhenControl's and is not counted here.",
+    },
+  ],
+  [
     "app/(app)/settings/notifications/NotificationPrefs.tsx",
     {
       count: 3,

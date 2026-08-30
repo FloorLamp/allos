@@ -336,6 +336,8 @@ export default function MeasurementsQuickAdd({
       temperature: s("temperature"),
       tempUnit: s("temp_unit"),
       sleepHours: s("sleep_hours"),
+      bedTime: s("bed_time"),
+      wakeTime: s("wake_time"),
       hrv: s("hrv"),
       respiratoryRate: s("respiratory_rate"),
       peakFlow: s("peak_flow"),
@@ -367,6 +369,8 @@ export default function MeasurementsQuickAdd({
       vitals.spo2 != null ||
       vitals.temperature != null ||
       vitals.sleepHours != null ||
+      vitals.bedTime != null ||
+      vitals.wakeTime != null ||
       vitals.hrv != null ||
       vitals.respiratoryRate != null ||
       vitals.peakFlow != null;
@@ -536,7 +540,8 @@ export default function MeasurementsQuickAdd({
     toast(
       measurementsSavedText(
         metric ? `${metric.label} saved` : "Measurements saved",
-        saved.statedTimeRefused
+        saved.statedTimeRefused,
+        saved.sleepWindowRefused
       )
     );
     formRef.current?.reset();
@@ -844,6 +849,35 @@ export default function MeasurementsQuickAdd({
         )}
       </Field>
     ),
+    // The night's two clocks (#1851) — ONE reading typed as two times, the same
+    // structural pairing a blood pressure gets. This is the whole of what the Sleep
+    // Regularity Index needs; the hours field below cannot give it, because a
+    // duration says nothing about WHEN.
+    sleepWindow: (
+      <Field key="sleep-window" label="Bed & wake" htmlFor="m-bed-time">
+        <div className="flex items-center gap-1.5">
+          <input
+            id="m-bed-time"
+            type="time"
+            name="bed_time"
+            aria-label="Bed time"
+            data-testid="measurements-bed-time"
+            className="input min-w-0 flex-1"
+          />
+          <span aria-hidden className="text-slate-400">
+            –
+          </span>
+          <input
+            id="m-wake-time"
+            type="time"
+            name="wake_time"
+            aria-label="Wake time"
+            data-testid="measurements-wake-time"
+            className="input min-w-0 flex-1"
+          />
+        </div>
+      </Field>
+    ),
     sleep: (
       <Field key="sleep" label="Sleep" htmlFor="m-sleep">
         <UnitSuffix suffix="hrs">
@@ -984,7 +1018,7 @@ export default function MeasurementsQuickAdd({
       field.boneMass,
       field.hydration,
     ],
-    sleep: [field.sleep, ...(showHrv ? [field.hrv] : [])],
+    sleep: [field.sleepWindow, field.sleep, ...(showHrv ? [field.hrv] : [])],
   };
 
   return (

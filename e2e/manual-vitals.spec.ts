@@ -141,3 +141,39 @@ test("the measurements form takes water, lean/bone mass and respiratory rate (#1
     await expect(rows, slug).toContainText(shown);
   }
 });
+
+// #1851, the sleep half: the bed/wake pair. The whole reason it exists is that the
+// Sleep Regularity Index needs two clocks and a duration cannot give it any, so this
+// drives the real form and then reads the night back off the SLEEP LOG — the surface
+// that renders the stored window, where a field posting under a name nothing reads
+// would show a duration with no clocks beside it.
+test("the measurements form takes a bed and wake time (#1851)", async ({
+  page,
+}) => {
+  const form = await openMeasurementsForm(page);
+  // The date the form itself will post, so the log row below is addressed exactly
+  // rather than by position — the sleep log is a shared surface and its first row is
+  // whatever the seed put there.
+  const date = await form.locator('input[name="date"]').inputValue();
+  await openMeasurementGroup(page, form, "sleep");
+  await form.getByLabel("Bed time", { exact: true }).fill("23:15");
+  await form.getByLabel("Wake time", { exact: true }).fill("07:05");
+  await form.getByRole("button", { name: "Save measurements" }).click();
+  await expect(page.getByText("Measurements saved")).toBeVisible();
+
+  // The log's own row for today, not the page — scoping to the row is what keeps this
+  // an assertion about THIS night. The seed already carries a SYNCED 5h night for
+  // today, which makes the row a real control: the typed window has to win that night
+  // (per-night resolution, manual first in SOURCE_PREFERENCE) for "7h 50m" to appear
+  // at all, and it must not take the seed's naps or mood off the row with it.
+  //
+  // MUTATION: drop `bedTime`/`wakeTime` from the action's payload. Measured — the row
+  // falls back to the synced night and names itself in the failure:
+  //   unexpected value "Aug 30Sunday, August 305hBedtime · 1/1 taken…Naps13:00 → 13:45 · 45m…"
+  await page.goto("/sleep");
+  const row = page.locator(
+    `[data-testid="sleep-mood-history-row"][data-date="${date}"]`
+  );
+  await expect(row).toHaveCount(1);
+  await expect(row).toContainText("7h 50m");
+});

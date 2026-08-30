@@ -814,8 +814,10 @@ export function parseComputedTemperatureCsv(
 // hands it to `new Date()`, which resolves an offset-less date-time as process-local.
 // Measured on one profile's 52 Takeout nights, the derived typical wake time moved
 // from 05:57 to 01:55 between `TZ=America/New_York` and `TZ=UTC` — and production
-// runs Docker, i.e. the wrong column. It only ever surfaced when Takeout was the
-// ELECTED sleep source, since readSleepSessions pins the read to one source.
+// runs Docker, i.e. the wrong column. It only ever surfaced on the nights Takeout
+// won, which under #1851's per-night resolution is the nights it covers that a
+// higher-preference source does not — it was the whole profile's nights when this
+// was written, because the read elected one source for all of them.
 //
 // So the parser now takes `tz` (the dispatcher already had it in hand for this
 // family's siblings) and resolves each boundary against the profile timezone, storing
