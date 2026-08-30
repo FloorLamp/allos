@@ -434,7 +434,7 @@ describe("getActiveProtocolSummaries (issue #660)", () => {
     expect(out[0].href).toBe(`/protocols/${getProtocols(profile)[0].id}`);
   });
 
-  it("carries the shared practice label for the adherence atom", () => {
+  it("carries the weekly practice count for the adherence atom", () => {
     const profile = newProfile("Proto Pace");
     const targetId = Number(
       db
@@ -456,7 +456,10 @@ describe("getActiveProtocolSummaries (issue #660)", () => {
     ).run(profile, todayStr);
 
     const summary = getActiveProtocolSummaries(profile, todayStr, "kg")[0];
-    expect(summary.adherence?.label).toBe("Cold plunge sessions");
+    expect(summary.adherence).toEqual({
+      value: "1 of 3",
+      detail: "this week",
+    });
   });
 });
 

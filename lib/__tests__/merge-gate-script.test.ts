@@ -165,7 +165,9 @@ describe("merge-gate.mjs", () => {
     expect(run.stdout).toContain("VOIDS");
   });
 
-  it("closes when the only stated-SHA review is the AUTHOR's own", () => {
+  it("closes a same-account review that states the SHA but not independence", () => {
+    // The #4258 boundary: on a shared identity the receipt must SAY the
+    // reviewer did not author the change — a SHA alone is not the claim.
     const run = runGate({
       reviews: [
         {
@@ -176,7 +178,40 @@ describe("merge-gate.mjs", () => {
       ],
     });
     expect(run.status).toBe(1);
-    expect(run.stdout).toContain("no exact-head receipt");
+    expect(run.stdout).toContain("does not assert independence");
+  });
+
+  it("opens on a shared-identity receipt that states SHA AND non-authorship", () => {
+    // The orchestrator and its lanes post as one account (#4258): a genuine
+    // independent review used to fail on identity rather than content. The
+    // claim the gate can actually check is the stated one.
+    const run = runGate({
+      reviews: [
+        {
+          state: "COMMENTED",
+          user: { login: "author-agent" },
+          body:
+            `Independent review of ${HEAD}: I did not author this change. ` +
+            "Verified claims against the repo; no findings.",
+        },
+      ],
+    });
+    expect(run.status).toBe(0);
+    expect(run.stdout).toContain("shared identity");
+    expect(run.stdout).toContain("did not author");
+  });
+
+  it("a shared-identity assertion still needs THIS head's SHA", () => {
+    const run = runGate({
+      reviews: [
+        {
+          state: "COMMENTED",
+          user: { login: "author-agent" },
+          body: `Independent review of ${OLD_HEAD}: I did not author this change.`,
+        },
+      ],
+    });
+    expect(run.status).toBe(1);
   });
 
   it("closes when a review exists but never states the SHA", () => {

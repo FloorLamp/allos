@@ -143,10 +143,10 @@ that makes it work:
   transactions, authorization boundaries, identity handling, and shared
   one-question-one-computation models. Require tests at the tier that can
   observe the defect.
-- Post it as a COMMENT review that STATES THE REVIEWED SHA and who reviewed
-  it — the receipt `review-merge.md` §Merge requires. A head change voids the
-  review; the new head gets a new exact-head review. Flag owner-visible
-  judgment calls in it.
+- Post it as a COMMENT review that STATES THE REVIEWED SHA, who reviewed it,
+  and — you share one account with the lane — that you did not author the
+  change (#4258): the receipt `review-merge.md` §Merge requires. A head
+  change voids it; the new head re-reviews. Flag owner-visible calls in it.
 - Run `adversarial-review-brief.mjs <pr> --check` for every PR (0 MANDATORY /
   3 CONSULT — you decide from the quoted claims / 1 ordinary / 2 unreadable).
   High-stakes paths get a separate falsifying agent and the merge WAITS; a
