@@ -27,9 +27,15 @@ const REPO = path.resolve(fileURLToPath(new URL("../..", import.meta.url)));
 // Spelled this way, rather than as a string escape, so THIS file stays plain text and
 // never has to appear in the deliberate-NUL registry (#3206).
 const NUL = String.fromCharCode(0);
+const sourceCache = new Map<string, string>();
 
 function read(rel: string): string {
-  return readFileSync(path.join(REPO, rel), "utf8");
+  let source = sourceCache.get(rel);
+  if (source === undefined) {
+    source = readFileSync(path.join(REPO, rel), "utf8");
+    sourceCache.set(rel, source);
+  }
+  return source;
 }
 
 function trackedSources(): string[] {
@@ -55,13 +61,12 @@ const isTest = (rel: string) =>
   rel.includes("__action_tests__") ||
   rel.startsWith("e2e/");
 
+const productionFiles = trackedSources().filter((rel) => !isTest(rel));
+
 describe("the RPE opt-in seam is structural — source claims (#3335)", () => {
   it("source: exactly one production module imports the minter", () => {
-    const importers = trackedSources().filter(
-      (rel) =>
-        rel !== SCALE_MODULE &&
-        !isTest(rel) &&
-        /\bmintRpeTracking\b/.test(read(rel))
+    const importers = productionFiles.filter(
+      (rel) => rel !== SCALE_MODULE && /\bmintRpeTracking\b/.test(read(rel))
     );
     expect(importers).toEqual([SEAM_MODULE]);
   });
@@ -76,11 +81,8 @@ describe("the RPE opt-in seam is structural — source claims (#3335)", () => {
   });
 
   it("source: nothing outside the scale module casts its way past the brand", () => {
-    const casters = trackedSources().filter(
-      (rel) =>
-        rel !== SCALE_MODULE &&
-        !isTest(rel) &&
-        /\bas\s+RpeTracking\b/.test(read(rel))
+    const casters = productionFiles.filter(
+      (rel) => rel !== SCALE_MODULE && /\bas\s+RpeTracking\b/.test(read(rel))
     );
     expect(casters).toEqual([]);
   });
@@ -89,8 +91,8 @@ describe("the RPE opt-in seam is structural — source claims (#3335)", () => {
   // the same drift by another route — so the literal appears only where the seam is
   // defined and where the one-time back-fill writes it.
   it("source: the opt-in key is spelled in one place, plus its back-fill migration", () => {
-    const spellers = trackedSources().filter(
-      (rel) => !isTest(rel) && /["']strength_rpe["']/.test(read(rel))
+    const spellers = productionFiles.filter((rel) =>
+      /["']strength_rpe["']/.test(read(rel))
     );
     expect(spellers).toEqual([
       "lib/migrations/versions/20260820-rpe-column-opt-in.ts",
