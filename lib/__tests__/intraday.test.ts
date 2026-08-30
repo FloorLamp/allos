@@ -63,14 +63,12 @@ function activityEvent(
     sortTime: "08:00",
     iconType: "cardio",
     href: "/training?tab=log#activity-1",
-    clockWindows: [
-      {
-        date: DAY,
-        start_time: "08:00",
-        end_time: null,
-        duration_min: 60,
-      },
-    ],
+    clockWindow: {
+      date: DAY,
+      start_time: "08:00",
+      end_time: null,
+      duration_min: 60,
+    },
     ...over,
   };
 }
@@ -340,14 +338,12 @@ describe("buildIntradayModel — session blocks", () => {
       input({
         events: [
           activityEvent("a:2", {
-            clockWindows: [
-              {
-                date: DAY,
-                start_time: "23:00",
-                end_time: "01:00",
-                duration_min: null,
-              },
-            ],
+            clockWindow: {
+              date: DAY,
+              start_time: "23:00",
+              end_time: "01:00",
+              duration_min: null,
+            },
           }),
         ],
       })
@@ -365,14 +361,12 @@ describe("buildIntradayModel — session blocks", () => {
         events: [
           activityEvent("a:3", {
             sortTime: "17:45",
-            clockWindows: [
-              {
-                date: DAY,
-                start_time: "17:45",
-                end_time: null,
-                duration_min: null,
-              },
-            ],
+            clockWindow: {
+              date: DAY,
+              start_time: "17:45",
+              end_time: null,
+              duration_min: null,
+            },
           }),
         ],
       })
@@ -389,20 +383,21 @@ describe("buildIntradayModel — session blocks", () => {
   });
 });
 
-// PRACTICES ON THE AXIS (#3142). A practice card is a practice-DAY, so one event
-// carries one window per session and the panel draws a mark for each — all of them
-// anchored to that single feed entry, which is what keeps the "one visibility
-// predicate" true: the sessions travel on the feed's own resolved event.
+// PRACTICE SESSIONS ON THE AXIS (#3142). A practice reaches the record as ONE ROW
+// PER SESSION (the #3958 retarget — `/timeline`'s day-grouped card is gone), so each
+// session is its own event carrying its own window and its own anchor.
 describe("buildIntradayModel — practice sessions", () => {
   const practiceEvent = (
-    windows: NonNullable<TimelineEvent["clockWindows"]>
+    id: string,
+    window: NonNullable<TimelineEvent["clockWindow"]>,
+    over: Partial<TimelineEvent> = {}
   ): TimelineEvent => ({
-    id: `practice:${DAY}:Sauna`,
+    id,
     date: DAY,
     category: "practice",
     title: "Sauna",
-    subtitle: `${windows.length} sessions`,
-    clockWindows: windows,
+    clockWindow: window,
+    ...over,
   });
 
   const win = (
@@ -411,13 +406,13 @@ describe("buildIntradayModel — practice sessions", () => {
     duration_min: number | null
   ) => ({ date: DAY, start_time, end_time, duration_min });
 
-  // The two ways a session states a window, and the one way it does not. Both
-  // bounded shapes must draw a BLOCK over the same minutes — `activityWindow`'s own
-  // precedence, reused rather than re-decided — and the unbounded one a TICK.
+  // The two ways a session states a bounded window, and the one way it does not.
+  // Both bounded shapes must draw a BLOCK over the same minutes — `activityWindow`'s
+  // own precedence, reused rather than re-decided.
   it.each([
     ["a stated end", win("19:00", "19:25", null), 1140, 1165],
     ["a start plus a duration", win("19:00", null, 25), 1140, 1165],
-    // end_time WINS over a disagreeing duration: that is the stored precedence, and
+    // end_time WINS over a DISAGREEING duration: that is the stored precedence, and
     // a fixture where the two agreed could not tell which one the model read.
     [
       "a stated end over a disagreeing duration",
@@ -427,21 +422,21 @@ describe("buildIntradayModel — practice sessions", () => {
     ],
   ])("draws a block for %s", (_label, window, startMinute, endMinute) => {
     const model = buildIntradayModel(
-      input({ events: [practiceEvent([window])] })
+      input({ events: [practiceEvent("practice:7", window)] })
     );
     expect(model!.blocks).toHaveLength(1);
     expect(model!.blocks[0]).toMatchObject({
       startMinute,
       endMinute,
       title: "Sauna",
-      anchorId: timelineEntryAnchorId(`practice:${DAY}:Sauna`),
+      anchorId: timelineEntryAnchorId("practice:7"),
     });
     expect(model!.ticks).toEqual([]);
   });
 
   it("draws a tick, not an invented span, for a start-only session", () => {
     const model = buildIntradayModel(
-      input({ events: [practiceEvent([win("19:00", null, null)])] })
+      input({ events: [practiceEvent("practice:8", win("19:00", null, null))] })
     );
     expect(model!.blocks).toEqual([]);
     expect(model!.ticks).toHaveLength(1);
@@ -449,40 +444,52 @@ describe("buildIntradayModel — practice sessions", () => {
       minute: 1140,
       label: "Sauna",
       category: "practice",
-      anchorId: timelineEntryAnchorId(`practice:${DAY}:Sauna`),
+      anchorId: timelineEntryAnchorId("practice:8"),
     });
   });
 
-  it("draws one shape per session on a multi-session day, all on one anchor", () => {
+  // THE WINDOW'S OWN START WINS OVER `sortTime`, and this is the discriminating
+  // case: a practice row's `sortTime` is `bestKnownInstant`, which falls back to the
+  // FILING clock. A tick taken from it would draw the session at the minute it was
+  // typed. The two are seeded an hour apart so the fixture can tell them apart.
+  it("ticks a start-only session at its START, never at its filing clock", () => {
     const model = buildIntradayModel(
       input({
         events: [
-          practiceEvent([
-            win("07:30", "07:50", null), // block
-            win("19:00", null, 25), // block
-            win("12:15", null, null), // tick
-            win(null, null, 30), // nothing at all: no start, no minute to draw
-          ]),
+          practiceEvent("practice:9", win("19:00", null, null), {
+            sortTime: "20:00",
+          }),
+        ],
+      })
+    );
+    expect(model!.ticks.map((t) => t.minute)).toEqual([1140]);
+  });
+
+  it("draws one mark per session on a multi-session day, each on its own row", () => {
+    const model = buildIntradayModel(
+      input({
+        events: [
+          practiceEvent("practice:1", win("07:30", "07:50", null)),
+          practiceEvent("practice:2", win("19:00", null, 25)),
+          practiceEvent("practice:3", win("12:15", null, null)),
+          // No start at all: nothing to draw, and nothing invented from a duration.
+          practiceEvent("practice:4", win(null, null, 30)),
         ],
       })
     );
     expect(model!.blocks.map((b) => b.startMinute)).toEqual([450, 1140]);
     expect(model!.ticks.map((t) => t.minute)).toEqual([735]);
-    const anchor = timelineEntryAnchorId(`practice:${DAY}:Sauna`);
-    for (const mark of [...model!.blocks, ...model!.ticks]) {
-      expect(mark.anchorId).toBe(anchor);
-      expect(mark.eventId).toBe(`practice:${DAY}:Sauna`);
-    }
-    // Distinct keys, because three marks share one event id and React (and the
-    // label collision pass) key on them.
-    const keys = [...model!.blocks, ...model!.ticks].map((m) => m.key);
-    expect(new Set(keys).size).toBe(keys.length);
+    expect(model!.blocks.map((b) => b.anchorId)).toEqual([
+      timelineEntryAnchorId("practice:1"),
+      timelineEntryAnchorId("practice:2"),
+    ]);
+    expect(model!.ticks[0].anchorId).toBe(timelineEntryAnchorId("practice:3"));
   });
 
-  it("stays data-gated: a day of untimed practice ticks draws no panel", () => {
+  it("stays data-gated: a day of untimed practice rows draws no panel", () => {
     expect(
       buildIntradayModel(
-        input({ events: [practiceEvent([win(null, null, 20)])] })
+        input({ events: [practiceEvent("practice:5", win(null, null, 20))] })
       )
     ).toBeNull();
   });

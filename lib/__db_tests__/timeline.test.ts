@@ -8,8 +8,6 @@ import { beforeAll, describe, expect, it } from "vitest";
 import { db } from "@/lib/db";
 import { shiftDateStr } from "@/lib/date";
 import { getTimelineDates, getTimelineEvents } from "@/lib/timeline";
-import { buildIntradayModel } from "@/lib/intraday";
-import { timelineEntryAnchorId } from "@/lib/timeline-format";
 import { seedProfile, type SeededProfile } from "./fixtures";
 import { setStoredAge, setTimezone } from "@/lib/settings";
 
@@ -518,72 +516,5 @@ describe("protocol timeline events follow the record at every age (#3133)", () =
     expect(
       getTimelineEvents(id).some((event) => event.category === "protocol")
     ).toBe(true);
-  });
-});
-
-// THE PRACTICE DAY EVENT CARRIES ONE WINDOW PER SESSION (#3142), and the SQL that
-// builds it is the fragile part: the day's sessions are GROUP_CONCAT'd into one
-// string and split back apart, so a NULL end and a NULL duration BOTH serialize to
-// the empty string and a parse that shifted would read a duration as an end. Only a
-// real DB can prove the round trip, so it is asserted here and then fed through the
-// pure model, which is the pair the panel actually runs.
-describe("practice sessions reach the intraday panel (#3142)", () => {
-  const DAY = "2026-05-14";
-
-  function seedSessions(
-    name: string,
-    rows: [start: string | null, end: string | null, dur: number | null][]
-  ): number {
-    const id = Number(
-      db.prepare("INSERT INTO profiles (name) VALUES (?)").run(name)
-        .lastInsertRowid
-    );
-    const insert = db.prepare(
-      `INSERT INTO practice_logs
-         (profile_id, practice, date, start_time, end_time, duration_min, logged_via)
-       VALUES (?, 'Sauna', ?, ?, ?, ?, 'page')`
-    );
-    for (const [start, end, dur] of rows) insert.run(id, DAY, start, end, dur);
-    return id;
-  }
-
-  it("round-trips a mixed day's windows through the grouped event", () => {
-    // A stated window, a start + duration, a bare start, and an untimed row — the
-    // four shapes a day can hold, deliberately mixed so a shifted parse cannot land
-    // on the right answer by having every field populated.
-    const id = seedSessions("timeline-practice-windows", [
-      ["07:30", "07:50", null],
-      ["12:15", null, 25],
-      ["19:00", null, null],
-      [null, null, 30],
-    ]);
-    const event = getTimelineEvents(id).find(
-      (e) => e.category === "practice" && e.date === DAY
-    );
-    expect(event?.clockWindows).toEqual([
-      { date: DAY, start_time: "07:30", end_time: "07:50", duration_min: null },
-      { date: DAY, start_time: "12:15", end_time: null, duration_min: 25 },
-      { date: DAY, start_time: "19:00", end_time: null, duration_min: null },
-      { date: DAY, start_time: null, end_time: null, duration_min: 30 },
-    ]);
-
-    const model = buildIntradayModel({
-      date: DAY,
-      events: [event!],
-      hr: [],
-      sleep: [],
-      zone2: null,
-      nowMinute: null,
-    });
-    // Two bounded windows draw blocks, the bare start draws a tick, the untimed row
-    // draws nothing — and every mark points back at this one feed entry.
-    expect(model!.blocks.map((b) => [b.startMinute, b.endMinute])).toEqual([
-      [450, 470],
-      [735, 760],
-    ]);
-    expect(model!.ticks.map((t) => t.minute)).toEqual([1140]);
-    for (const mark of [...model!.blocks, ...model!.ticks]) {
-      expect(mark.anchorId).toBe(timelineEntryAnchorId(event!.id));
-    }
   });
 });

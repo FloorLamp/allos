@@ -177,14 +177,12 @@ describe("getIntradayDay", () => {
         category: "activity",
         title: "Zone 2 base ride",
         sortTime: "08:00",
-        clockWindows: [
-          {
-            date: DAY,
-            start_time: "08:00",
-            end_time: "09:00",
-            duration_min: 60,
-          },
-        ],
+        clockWindow: {
+          date: DAY,
+          start_time: "08:00",
+          end_time: "09:00",
+          duration_min: 60,
+        },
       },
     ];
     const model = getIntradayDay(p, DAY, events);

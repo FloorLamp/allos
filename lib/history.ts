@@ -122,10 +122,16 @@ export interface HistoryGather {
    * Ids are namespaced `feed:` exactly as the rows are, so `timelineEntryAnchorId`
    * resolves a tick onto the row element that represents the same event.
    *
-   * NOTHING IS LOST relative to what `/timeline` drew: the five categories this
-   * gather reads natively instead (body, food, substance, practice, symptom) are all
-   * clockless day aggregates in lib/timeline.ts — no `sortTime`, so `clockMinute`
-   * returned null and they contributed no tick there either. Measured, not assumed.
+   * NOTHING IS LOST relative to what `/timeline` drew: the categories this gather
+   * reads natively instead (body, food, substance, symptom) are all clockless day
+   * aggregates in lib/timeline.ts — no `sortTime`, so `clockMinute` returned null and
+   * they contributed no tick there either. Measured, not assumed.
+   *
+   * PRACTICE IS THE EXCEPTION, and it is an ADDITION rather than a loss (#3142): a
+   * practice session now states a window, and its rows push themselves onto this
+   * array from the practice reader below. `/timeline` grouped a day's sessions into
+   * one clockless card and could draw neither a block nor a tick for them; this page
+   * lists them one per session, so each gets its own mark on its own anchor.
    */
   dayEvents: TimelineEvent[];
 }
@@ -299,6 +305,7 @@ export function gatherHistoryLog(
   // the same empty page and it is recorded in the report rather than papered over.
   const item = resolveHistoryItem(opts.kind, opts.item);
   const rows: HistoryRow[] = [];
+  const dayEvents: TimelineEvent[] = [];
   let truncated = false;
 
   // ── DOSES ────────────────────────────────────────────────────────────────
@@ -505,6 +512,26 @@ export function gatherHistoryLog(
           notes: row.notes,
         },
       });
+      // THE SESSION'S WINDOW, ONTO THE DAY'S CHART (#3142). Practices reach this page
+      // as one row PER SESSION, so each session is its own event with its own anchor
+      // — the `practice:<id>` id is the ROW's id, which is what makes the block or
+      // tick scroll to the row that represents it. Pushed HERE, beside the row it
+      // came from, for the same reason the feed loop pushes at its emit point: a
+      // session the reader's `?kind=` or `?item=` dropped never reaches this array,
+      // so the panel cannot draw a mark for something the list below does not show.
+      if (opts.day != null)
+        dayEvents.push({
+          id: `practice:${row.id}`,
+          date: row.date,
+          category: "practice",
+          title: normalizePracticeName(row.practice),
+          clockWindow: {
+            date: row.date,
+            start_time: row.start_time,
+            end_time: row.end_time,
+            duration_min: row.duration_min,
+          },
+        });
     }
   }
 
@@ -902,7 +929,6 @@ export function gatherHistoryLog(
   // SUBJECT's own life stage, exactly as the timeline gates them, so `?view=everyone`
   // inherits the gate per row rather than re-deriving it across a widened query.
   const feedKinds = new Set<HistoryKind>();
-  const dayEvents: TimelineEvent[] = [];
   {
     let feedEmitted = 0;
     const events = getTimelineEvents(profileId, {

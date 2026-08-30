@@ -861,3 +861,114 @@ describe("the media filter degrades, and body rows name their source", () => {
     expect(day.detail).toBe(synced.detail);
   });
 });
+
+// THE DAY'S CHART READS THE ROWS THE PAGE RESOLVED (#3142, on the #3958 mount).
+// A practice reaches this page as ONE ROW PER SESSION, so each session pushes its
+// own window onto `dayEvents` beside the row it came from. Only a real DB proves
+// the pairing: that the window's values are the STORED columns, that the event id
+// is the ROW's id (which is what makes a mark scroll to its row), and that the
+// array is empty on a scrolling read.
+describe("a practice session's window reaches the day's intraday events (#3142)", () => {
+  function session(
+    profileId: number,
+    date: string,
+    name: string,
+    start: string | null,
+    end: string | null,
+    dur: number | null
+  ): number {
+    return Number(
+      db
+        .prepare(
+          `INSERT INTO practice_logs
+             (profile_id, practice, date, start_time, end_time, duration_min,
+              logged_via)
+           VALUES (?, ?, ?, ?, ?, ?, 'page')`
+        )
+        .run(profileId, name, date, start, end, dur).lastInsertRowid
+    );
+  }
+
+  it("carries each session's stored window on its own row id", () => {
+    const p = profile("history practice windows");
+    const loginId = login();
+    // A stated window, a start + duration, a bare start and an untimed row — the
+    // four shapes a day holds, so the assertion cannot pass by every field being
+    // populated the same way.
+    const stated = session(
+      p,
+      YESTERDAY,
+      "window sauna",
+      "07:30",
+      "07:50",
+      null
+    );
+    const derived = session(p, YESTERDAY, "window sauna", "12:15", null, 25);
+    const bare = session(p, YESTERDAY, "window sauna", "19:00", null, null);
+    const untimed = session(p, YESTERDAY, "window sauna", null, null, 30);
+
+    const gather = gatherHistoryLog(p, {
+      loginId,
+      limit: 200,
+      day: YESTERDAY,
+    });
+    const windows = new Map(
+      gather.dayEvents
+        .filter((e) => e.category === "practice")
+        .map((e) => [e.id, e.clockWindow])
+    );
+    expect([...windows.keys()].sort()).toEqual(
+      [stated, derived, bare, untimed].map((id) => `practice:${id}`).sort()
+    );
+    expect(windows.get(`practice:${stated}`)).toEqual({
+      date: YESTERDAY,
+      start_time: "07:30",
+      end_time: "07:50",
+      duration_min: null,
+    });
+    expect(windows.get(`practice:${derived}`)).toEqual({
+      date: YESTERDAY,
+      start_time: "12:15",
+      end_time: null,
+      duration_min: 25,
+    });
+    // Nothing is invented for the row that stated nothing — the panel's own model
+    // then draws no mark for it.
+    expect(windows.get(`practice:${untimed}`)).toEqual({
+      date: YESTERDAY,
+      start_time: null,
+      end_time: null,
+      duration_min: 30,
+    });
+
+    // EVERY EVENT ID IS A ROW ID ON THE PAGE. This is the pairing that makes a mark
+    // scroll to its own entry, and it is the half a window assertion cannot see.
+    const rowIds = new Set(gather.rows.map((r) => r.id));
+    for (const id of windows.keys()) expect(rowIds.has(id)).toBe(true);
+  });
+
+  it("stays empty on a scrolling read — the panel is a day-view surface", () => {
+    const p = profile("history practice windows scrolling");
+    const loginId = login();
+    session(p, YESTERDAY, "scroll sauna", "07:30", "07:50", null);
+    expect(gatherHistoryLog(p, { loginId, limit: 200 }).dayEvents).toEqual([]);
+  });
+
+  // THE ONE VISIBILITY PREDICATE, in the direction that can actually break: a
+  // session the reader's filter dropped must not reach the chart either. `?kind=food`
+  // shows no practice rows, so it may contribute no practice marks.
+  it("drops a session's window when the reader's filter drops its row", () => {
+    const p = profile("history practice windows filtered");
+    const loginId = login();
+    session(p, YESTERDAY, "filtered sauna", "07:30", "07:50", null);
+    const filtered = gatherHistoryLog(p, {
+      loginId,
+      limit: 200,
+      day: YESTERDAY,
+      kind: "food",
+    });
+    expect(filtered.dayEvents.filter((e) => e.category === "practice")).toEqual(
+      []
+    );
+  });
+});
