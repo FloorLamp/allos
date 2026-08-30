@@ -9,7 +9,7 @@ import { useToast } from "@/components/Toast";
 import SubmitButton from "@/components/SubmitButton";
 import InlineError from "@/components/InlineError";
 import LeadFold from "@/components/LeadFold";
-import PhotoCapture from "@/components/photo/PhotoCapture";
+import MediaInput from "@/components/media/MediaInput";
 import {
   DOCUMENT_CAPTURE_MAX_EDGE,
   DOCUMENT_CAPTURE_QUALITY,
@@ -20,29 +20,37 @@ import {
 } from "@/lib/upload-gate";
 
 // Upload form for medical documents. The submit button stays disabled until at
-// least one file is chosen. One offscreen `name="file"` input is the only picker;
-// the affordances OVER it are viewport-shaped — a dashed drop zone on desktop where
-// dragging is a real gesture, two equal Upload/Camera buttons on a phone where it
-// isn't. Two kinds of upload share this one control: a lab report / scan (PDF,
-// image, or spreadsheet) that the AI reads, and a portal health-record export — a
-// MyChart "Download Summary" (CCD/XDM) or a SMART Health Card — that is parsed
-// deterministically into immunizations, labs, and vitals.
+// least one file is chosen. Two kinds of upload share this one control: a lab
+// report / scan (PDF, image, or spreadsheet) that the AI reads, and a portal
+// health-record export — a MyChart "Download Summary" (CCD/XDM) or a SMART
+// Health Card — that is parsed deterministically into immunizations, labs, and
+// vitals.
 //
-// Multi-file (issue #1008): the input is `multiple` and the zone accepts a
-// multi-file drop, so a user can hand over a whole stack at once. Every selected
-// file rides under the same `file` FormData key; the server action ingests them
-// sequentially and enforces a ~20-file soft cap. The chosen files are listed before
-// submit, and drops that land on the zone are forwarded into the real input (via a
-// DataTransfer) so the form submit carries them.
+// THE DOOR IS <MediaInput>, THE SHARED ADD-MEDIA SURFACE (#3286). This form used
+// to own its own: an offscreen `name="file"` input under two viewport-shaped
+// affordances (a dashed drop zone above `sm`, two equal Upload/Camera buttons
+// below it), with a hand-rolled DataTransfer forwarding drops into the input and
+// a <PhotoCapture> mount for the camera. All of that MOVED into MediaInput —
+// this form is now a consumer of the very drop-zone mechanism it donated, and
+// the photo surfaces get it too, which is the point of the consolidation. Gained
+// here in the trade: paste-from-clipboard, and a camera path that no longer
+// hides behind a `sm:hidden` row.
 //
-// Camera capture (issues #1423, #1993): a phone can photograph a paper document
-// straight into the same submit. It used to render as a label-with-colon plus a bare
-// `<input type="file">` under the drop zone — a leftover form field where a second
-// way IN belongs, on a viewport where the "drop zone" above it is not a drop zone at
-// all. It is now an ACTION: below `sm` the drop zone is gone and the form offers two
-// equal buttons, Upload and Camera, the latter opening the shared <PhotoCapture>
-// surface. The dual-input mechanism is unchanged and still load-bearing — see the
-// comment at the mobile action row.
+// The dashed zone is this form's `triggerContent`, so dropping a stack of PDFs
+// onto the page works exactly as before — MediaInput's trigger is itself a drop
+// target — and `name="file"` still lands on ONE real input, MediaInput's, inside
+// this <form>. Multi-file (#1008) is `multiple`: every selected file rides the
+// same `file` FormData key, the action ingests them sequentially under a ~20-file
+// soft cap, and the chosen files are listed before submit.
+//
+// Camera capture (#1423, #1993): a phone can photograph a paper document straight
+// into the same submit. The image presets are the DOCUMENT ones, because a preset
+// tuned for skin tone is not tuned for something a downstream extraction has to
+// read. MediaInput's picker is image-and-document wide here, and its `capture`
+// behaviour is a live viewfinder rather than a `capture` attribute on this input
+// — which is what lets one input accept PDFs, zips and spreadsheets without
+// mobile Chrome opening the camera INSTEAD of the file picker and taking
+// health-record exports off the phone entirely.
 //
 // Immediate feedback (issue #102): the inline imports table that used to show a
 // processing spinner next to this form moved into Data → Review, so a bare
@@ -67,53 +75,10 @@ export default function UploadForm({
   onUploaded?: () => void;
 }) {
   const [selected, setSelected] = useState<File[]>([]);
-  const [dragActive, setDragActive] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const formRef = useRef<HTMLFormElement>(null);
-  const inputRef = useRef<HTMLInputElement>(null);
   const toast = useToast();
   const router = useRouter();
-
-  // The preview list and the submit gating read the one real input, which is what
-  // every path — picker, drop, camera — writes into.
-  function syncSelected() {
-    setSelected(Array.from(inputRef.current?.files ?? []));
-  }
-
-  // The camera path's landing: APPEND the captured photo to whatever the picker
-  // already holds (a photographed page plus a downloaded PDF is one batch) through
-  // the same DataTransfer a drop uses, so the form submit carries it with no second
-  // field and no second submit. A typed outcome, not an unconditional "done": if the
-  // input isn't there the capture modal stays open with the reason.
-  async function addCapturedFile(file: File): Promise<string | null> {
-    const input = inputRef.current;
-    if (!input) return "Couldn't attach the photo. Try again.";
-    const dt = new DataTransfer();
-    Array.from(input.files ?? []).forEach((f) => dt.items.add(f));
-    dt.items.add(file);
-    input.files = dt.files;
-    syncSelected();
-    return null;
-  }
-
-  // A drop onto the zone: write the dropped files into the real input (so the form
-  // submit carries them) and mirror them into the preview list. preventDefault
-  // cancels the input's own native file-drop handling so we stay the single source
-  // of truth — the DataTransfer we build is exactly what the input ends up holding.
-  function handleDrop(e: React.DragEvent) {
-    e.preventDefault();
-    setDragActive(false);
-    if (demo) return;
-    const dropped = e.dataTransfer.files;
-    if (!dropped || dropped.length === 0) return;
-    const input = inputRef.current;
-    if (input) {
-      const dt = new DataTransfer();
-      Array.from(dropped).forEach((f) => dt.items.add(f));
-      input.files = dt.files;
-      syncSelected();
-    }
-  }
 
   async function handleUpload(formData: FormData) {
     setError(null);
@@ -203,107 +168,41 @@ export default function UploadForm({
           </>
         }
       />
-      {/* The ONE real picker, offscreen. Both affordances below drive it, and it is
-          the only element carrying `name="file"` — so whatever lands in it (picked,
-          dropped, or photographed) rides the same single submit. */}
-      <input
-        ref={inputRef}
-        type="file"
+      {/* THE ONE DOOR. Its trigger wears this form's dashed zone, so the desktop
+          drop gesture is unchanged; inside, the dialog leads with Choose file on
+          a desktop and with the camera on a phone, and takes a drop or a paste
+          either way (#3286). `name="file"` makes MediaInput's input this form's
+          real field, so there is still ONE submit and one `file` key. */}
+      <MediaInput
         name="file"
         multiple
-        id="medical-upload-file"
-        data-testid="medical-upload-input"
-        aria-label="Choose files to upload"
-        accept=".pdf,.xlsx,.csv,image/*,.zip,.xdm,.xml,.smart-health-card,application/zip,text/xml,application/xml,application/json,.json"
-        // Not `required`: the camera path can be the only thing holding a file, and
-        // a `required` empty picker would block that submit. The empty case is
-        // already gated by the submit button (disabled until something is selected)
-        // and answered server-side by the action's zero-file result.
         disabled={demo}
-        onChange={syncSelected}
-        tabIndex={-1}
-        className="sr-only"
-      />
-
-      {/* DESKTOP: the drop zone, where drag-and-drop is a real gesture. */}
-      <div
-        data-testid="medical-upload-dropzone"
-        onDragOver={(e) => {
-          e.preventDefault();
-          if (!demo) setDragActive(true);
+        triggerLabel="Choose files"
+        triggerTestId="medical-upload-choose"
+        inputTestId="medical-upload-input"
+        accept=".pdf,.xlsx,.csv,image/*,.zip,.xdm,.xml,.smart-health-card,application/zip,text/xml,application/xml,application/json,.json"
+        maxEdge={DOCUMENT_CAPTURE_MAX_EDGE}
+        quality={DOCUMENT_CAPTURE_QUALITY}
+        fileName="document.jpg"
+        className="flex w-full cursor-pointer flex-col items-center gap-2 rounded-xl border-2 border-dashed border-black/10 bg-slate-50 p-8 text-sm text-slate-500 transition hover:border-brand-400 hover:bg-brand-50 focus:outline-hidden focus-visible:ring-2 focus-visible:ring-brand-500 disabled:cursor-not-allowed disabled:opacity-50 disabled:hover:border-black/10 disabled:hover:bg-slate-50 data-drag-active:border-brand-400 dark:border-white/10 dark:bg-ink-900 dark:text-slate-400 dark:hover:bg-brand-950"
+        triggerContent={
+          <>
+            <IconUpload className="h-6 w-6" stroke={1.75} aria-hidden />
+            <span>
+              <span className="font-medium text-brand-700 dark:text-brand-300">
+                Choose files
+              </span>{" "}
+              or drop them here
+            </span>
+          </>
+        }
+        onConfirm={async (files) => {
+          // MediaInput has already written these into the real input, so the
+          // submit carries them; this list is what the user reads back.
+          setSelected(files);
+          return null;
         }}
-        onDragLeave={() => setDragActive(false)}
-        onDrop={handleDrop}
-        className={`hidden rounded-xl transition sm:block ${dragActive ? "ring-2 ring-brand-400" : ""}`}
-      >
-        <button
-          type="button"
-          data-testid="medical-upload-choose"
-          disabled={demo}
-          onClick={() => inputRef.current?.click()}
-          className="flex w-full cursor-pointer flex-col items-center gap-2 rounded-xl border-2 border-dashed border-black/10 bg-slate-50 p-8 text-sm text-slate-500 transition hover:border-brand-400 hover:bg-brand-50 focus:outline-hidden focus-visible:ring-2 focus-visible:ring-brand-500 disabled:cursor-not-allowed disabled:opacity-50 disabled:hover:border-black/10 disabled:hover:bg-slate-50 dark:border-white/10 dark:bg-ink-900 dark:text-slate-400 dark:hover:bg-brand-950"
-        >
-          <IconUpload className="h-6 w-6" stroke={1.75} aria-hidden />
-          <span>
-            <span className="font-medium text-brand-700 dark:text-brand-300">
-              Choose files
-            </span>{" "}
-            or drop them here
-          </span>
-        </button>
-      </div>
-
-      {/* MOBILE: two actions of EQUAL weight (#1993). There is no drag-and-drop on
-          touch, so the dashed box above is a desktop metaphor wearing the full
-          width of a phone — and the second way in used to hide beneath it as a bare
-          file input. On a phone, photographing the page in front of you and picking
-          a file out of Drive are equally likely, so they are two buttons.
-
-          The camera is <PhotoCapture>, the photo core's shared capture surface
-          (#1119): a live preview with a native-input fallback when getUserMedia is
-          unavailable or denied (PWA-safe, CI, older devices), and a canvas
-          re-encode that carries no EXIF — a photo of a lab report should not ship
-          GPS. Its fallback input is what still carries `capture="environment"`, and
-          it is deliberately IMAGE-ONLY and separate from the picker above: a
-          `capture` attribute on an input that also accepts PDFs/zips/spreadsheets
-          makes mobile Chrome open the camera INSTEAD of the file picker, which
-          would take health-record exports off the phone entirely.
-
-          The captured File rides into the real input through the same DataTransfer
-          a drop uses, so there is still ONE submit and one `file` field. (The other
-          one-tap phone path for a document is the share sheet —
-          app/share-target/route.ts.) */}
-      <div
-        className="flex gap-3 sm:hidden"
-        data-testid="medical-upload-actions"
-      >
-        <button
-          type="button"
-          className="btn flex-1"
-          data-testid="medical-upload-choose-mobile"
-          disabled={demo}
-          onClick={() => inputRef.current?.click()}
-        >
-          <IconUpload className="h-4 w-4" stroke={1.75} aria-hidden />
-          {/* "Choose files", not "Upload" (#3488). The desktop dropzone above has
-              always said "Choose files" for the SAME action, while this said
-              "Upload" — the word the form's actual submit also wears, eighty
-              pixels below it and greyed out by the #1450 disabled treatment. Two
-              buttons with one name and different jobs read as one broken button.
-              One verb, one job: this one opens the picker, "Upload" submits. */}
-          Choose files
-        </button>
-        <PhotoCapture
-          triggerLabel="Camera"
-          triggerTestId="medical-upload-camera"
-          className="btn flex-1"
-          disabled={demo}
-          maxEdge={DOCUMENT_CAPTURE_MAX_EDGE}
-          quality={DOCUMENT_CAPTURE_QUALITY}
-          fileName="document.jpg"
-          onConfirm={addCapturedFile}
-        />
-      </div>
+      />
       {selected.length > 0 && (
         <ul
           data-testid="medical-upload-selected"
