@@ -6,10 +6,11 @@ import {
   IconLayoutDashboard,
   IconMenu2,
   IconPlus,
+  IconSearch,
   IconTimelineEvent,
-  IconTrendingUp,
 } from "@tabler/icons-react";
 import PendingNavLink from "./PendingNavLink";
+import { openGlobalSearch } from "./CommandPalette";
 import { useMobileChrome } from "./MobileChromeProvider";
 import {
   BOTTOM_EDGE_NAV_ROW_HEIGHT,
@@ -24,11 +25,19 @@ import {
 
 // THE PHONE'S BOTTOM CHROME (issue #2651).
 //
-// Four destination slots and a raised log puck, along the bottom edge, below
-// `md` only. The desktop sidebar is untouched — this is chrome, not a fork, and
-// nothing about any page's CONTENT changes with it (the one-content-component
-// rule holds: both viewports still render the same page and the same
-// <SidebarContent>).
+// Four slots and a raised log puck, along the bottom edge, below `md` only. The
+// desktop sidebar is untouched — this is chrome, not a fork, and nothing about
+// any page's CONTENT changes with it (the one-content-component rule holds: both
+// viewports still render the same page and the same <SidebarContent>).
+//
+// ── IT IS NOW THE PHONE'S *ONLY* CHROME (#4102) ──────────────────────────────
+//
+// The top bar retired. There is no longer a second permanently-visible strip
+// holding a magnifier and an identity bar, so this bar carries the two things it
+// took over: SEARCH is a slot (it replaced Trends — "i realize i don't actually
+// use trends that much"), and the identity bar moved to the top of the drawer
+// that More opens. Everything above the first record on a phone is now spent by
+// the PAGE, not by the shell.
 //
 // ── WHY THE BOTTOM ───────────────────────────────────────────────────────────
 //
@@ -81,7 +90,7 @@ const ICONS: Record<DockIcon, typeof IconPlus> = {
   dashboard: IconLayoutDashboard,
   barbell: IconBarbell,
   history: IconTimelineEvent,
-  trending: IconTrendingUp,
+  search: IconSearch,
   menu: IconMenu2,
 };
 
@@ -105,18 +114,28 @@ export default function MobileDock({
   const renderSlot = (slot: DockSlot) => {
     const Icon = ICONS[slot.icon];
     if (slot.href === null) {
-      // More is a DISCLOSURE, not a destination: it carries `aria-expanded`
-      // (honest, because the provider owns the drawer's state) and deliberately
-      // no `aria-current` — claiming the drawer is "the page" would be a lie on
-      // every route. Its visible caption is its accessible name, so it is not an
-      // icon-only button and needs no `aria-label`/`title` pair.
+      // The two slots that OPEN something rather than go somewhere. Both are
+      // buttons, both deliberately carry no `aria-current` — claiming the drawer
+      // or the search surface is "the page" would be a lie on every route — and
+      // both have their visible caption as their accessible name, so neither is
+      // an icon-only button needing an `aria-label`/`title` pair.
+      //
+      // More reports `aria-expanded` HONESTLY, because the provider owns the
+      // drawer's boolean. Search does not, and that omission is the honest one:
+      // the palette owns its own open state behind a window event
+      // (`openGlobalSearch`), so any `aria-expanded` here would be a value this
+      // component invented. `aria-haspopup="dialog"` is the part it can actually
+      // vouch for — the surface it opens is a dialog.
+      const isMore = slot.id === "more";
       return (
         <button
           key={slot.id}
           type="button"
           data-testid={`dock-slot-${slot.id}`}
-          aria-expanded={drawerOpen}
-          onClick={() => setDrawerOpen(true)}
+          {...(isMore
+            ? { "aria-expanded": drawerOpen }
+            : { "aria-haspopup": "dialog" as const })}
+          onClick={() => (isMore ? setDrawerOpen(true) : openGlobalSearch())}
           className={SLOT_CLASS}
         >
           <Icon className="h-6 w-6" stroke={1.75} />

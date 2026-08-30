@@ -375,3 +375,112 @@ test("Cycle entry hides for a male profile with no cycle rows, but the page neve
     await page.context().close();
   }
 });
+
+// ── THE DRAWER'S LENGTH IS NOW A MEASURED THING (#4102, closing #3343's flag) ─
+//
+// The Q4 ruling grew the drawer's nav from ~9 rows to ~21, and the lane that
+// landed it recorded the gap rather than papering over it: *"nothing in the repo
+// would currently notice if that made the drawer unusably long: every existing
+// drawer spec passes regardless, because Playwright's visibility check is not
+// viewport-bounded."*
+//
+// THAT SENTENCE IS THIS TEST'S WHOLE SUBJECT. `toBeVisible()` asks whether an
+// element has a box, is displayed and is not `visibility: hidden`. It does NOT
+// ask whether the box is on the screen. An element 3000px down a scroll container
+// is "visible" to every drawer spec in this repo, so a drawer that had grown past
+// anything a thumb could reach would have gone green everywhere. `toBeInViewport`
+// is the matcher that asks the other question, and the two are asserted together
+// below on the SAME element at the SAME moment, because the pair is the lesson.
+//
+// TWO INDEPENDENT WAYS THIS CAN FAIL, and they catch different defects:
+//
+//   1. THE PANEL ESCAPES THE VIEWPORT. The drawer is `absolute inset-y-0` inside a
+//      `fixed inset-0` host and scrolls its own overflow. If any of that comes
+//      undone — a height that grows with content, an `overflow-y` that stops being
+//      `auto`, a transformed ancestor re-parenting the fixed host — then content
+//      past the fold is unreachable no matter how hard anyone scrolls, and the page
+//      behind is scroll-locked so there is no second scroller to rescue it. That is
+//      the "unusably long" defect in its literal form, and it is asserted as a
+//      RELATIONSHIP (panel box against viewport box), never against a constant.
+//   2. THE FOOTER IS NOT REACHABLE. Scroll the drawer to its end and the last row
+//      must be FULLY on screen (`ratio: 1`, not merely intersecting), because a
+//      Disclaimer link half off the bottom edge is not a reachable Disclaimer link.
+//
+// AND IT IS GUARDED AGAINST BEING VACUOUS, which is the failure mode this whole
+// test exists because of. If the drawer fitted on one screen, "reachable by
+// scroll" would be a claim about nothing: the footer would already be there and
+// the scroll would be a no-op. So the overflow itself is asserted first, and the
+// footer is asserted OFF SCREEN before the scroll.
+//
+// THE MARGIN, MEASURED, because a control nobody has costed is a guess: on the
+// seeded admin at 390x844 the drawer's content is 1336px inside an 844px panel —
+// 1.58 screens, 492px of overflow. The one change in flight that could shorten it
+// is the calendar band leaving for /history's rail (~230px), which would still
+// leave ~260px over. So this control has real room, and if it ever does go red
+// because the drawer genuinely fits, the fix is to re-derive the guard against the
+// shorter drawer rather than to drop the check that proves the scroll did work.
+test("the drawer is viewport-bounded and its footer is reachable by scroll at 390x844 with every group expanded (#4102)", async ({
+  page,
+}) => {
+  const VIEWPORT = { width: 390, height: 844 };
+  await page.setViewportSize(VIEWPORT);
+  await page.goto("/");
+  const drawer = await openMobileDrawer(page);
+
+  // THE PRECONDITION THE LENGTH CLAIM IS ABOUT. Nothing is tapped to get here —
+  // the drawer expands every group by ruling — so asserting the children are
+  // present is asserting the drawer is at its FULL height, which is the only
+  // height worth measuring. Both groups, because a claim about "all groups
+  // expanded" that checked one of them would be measuring a shorter drawer.
+  for (const group of GROUP_LABELS) {
+    // Every one of the group's rows, not just its first: "all groups expanded" is
+    // a claim about the whole membership, and a partially-rendered group would
+    // give a shorter drawer than the one this test exists to measure.
+    const rows = drawer
+      .locator(`[data-nav-group="${group}"]`)
+      .getByRole("link");
+    await expect(rows).not.toHaveCount(0);
+    for (const row of await rows.all()) await expect(row).toBeVisible();
+  }
+  await expect(
+    drawer.getByRole("link", { name: "Illness episodes" })
+  ).toBeVisible();
+
+  const geometry = await drawer.evaluate((el) => {
+    const box = el.getBoundingClientRect();
+    return {
+      top: box.top,
+      bottom: box.bottom,
+      scrollHeight: el.scrollHeight,
+      clientHeight: el.clientHeight,
+    };
+  });
+
+  // (1) The panel's own box, against the viewport it must not exceed.
+  expect(
+    geometry.top,
+    "the drawer starts at or below the viewport top"
+  ).toBeGreaterThanOrEqual(-1);
+  expect(
+    geometry.bottom,
+    "the drawer ends at or above the viewport bottom — a panel taller than the screen puts its tail out of every reach"
+  ).toBeLessThanOrEqual(VIEWPORT.height + 1);
+
+  // The non-vacuity control: with every group inline the content really is longer
+  // than one screen, so everything below is a claim about a scroll that matters.
+  expect(
+    geometry.scrollHeight,
+    "the drawer overflows one screen with all groups expanded"
+  ).toBeGreaterThan(geometry.clientHeight);
+
+  const footer = drawer.getByRole("link", { name: "Disclaimer" });
+  // THE PAIR. Same element, same instant, opposite answers — and the left-hand one
+  // is what every other drawer spec in this repo would have been satisfied by.
+  await expect(footer).toBeVisible();
+  await expect(footer).not.toBeInViewport();
+
+  // (2) Reachable. Scroll the drawer's own scroller, not the page's: the page is
+  // scroll-locked behind the modal, so `mouse.wheel` would move nothing.
+  await drawer.evaluate((el) => el.scrollTo({ top: el.scrollHeight }));
+  await expect(footer).toBeInViewport({ ratio: 1 });
+});

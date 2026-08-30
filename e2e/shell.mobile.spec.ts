@@ -26,11 +26,17 @@ import { workerDbPath } from "./worker-env";
 //      transform-based hide is invisible to a "toBeVisible" assertion (a
 //      translated element is still visible), so the position is asserted by
 //      BOUNDING BOX as well as by the state attribute.
-//   C. The multi-profile view banner lives INSIDE that sticky chrome. That
-//      containment IS the fix — before it, the banner sat in the content flow and
-//      scrolled away, which is exactly when you most need to know whose data you
-//      are reading.
-//   B/E. Search is one tap; the dock puck is the sole phone-chrome log route.
+//      SINCE #4102 THIS IS A TAB-FIRST PAGE'S BEHAVIOUR. The chrome was built to
+//      carry two things, the phone top bar and a route-registered tab strip; the
+//      bar retired, so on a page that registers no strip the chrome is EMPTY and
+//      has nothing to hide. The hide/reveal is therefore exercised on /records,
+//      which registers one — the mechanism is unchanged, its only occupant moved.
+//   C. The identity bar is at the top of the MORE DRAWER, not in the chrome. It
+//      rode the top bar until #4102 retired that bar; the question it answers is
+//      the same one, and the drawer is now the only place on a phone that answers
+//      it. Pinned in e2e/profile-identity-bar.spec.ts, where the switcher lives.
+//   B/E. Search is one tap FROM THE DOCK; the dock puck is the sole phone-chrome
+//      log route.
 //   E. The quick-log sheet opens, reaches a REAL existing form, and closes.
 //   F. Reduced motion: the same open/close STATES, no travel.
 //
@@ -92,10 +98,15 @@ async function chromeReady(page: Page) {
 
 test.describe("auto-hiding top chrome (#1416 B)", () => {
   test("hides on scroll-down and returns on scroll-up", async ({ page }) => {
-    // The Timeline is the app's tallest read-only surface on the shared seed
-    // (~3 weeks of day sections), so there is real scroll range at 390px wide.
-    await page.goto("/history");
+    // A TAB-FIRST page, because the chrome only has an occupant on one (#4102).
+    // /records registers a strip (components/tab-first-pages.ts) and its history
+    // pane is long enough to scroll at 390px wide.
+    await page.goto("/records/history");
     const chrome = await chromeReady(page);
+    // The premise, asserted rather than assumed: this page really does put
+    // something in the chrome. Without this the whole test would pass vacuously on
+    // a tree where the strip stopped registering — an empty box hides just fine.
+    await expect(page.getByTestId("shell-tab-strip")).toBeVisible();
     await expect(chrome).toHaveAttribute("data-hidden", "false");
 
     // It is genuinely sticky on a phone — the whole premise of B and C.
@@ -159,12 +170,18 @@ test.describe("auto-hiding top chrome (#1416 B)", () => {
   });
 });
 
-test("the identity bar rides in the sticky chrome and opens the top drawer (#1416 C / #1801)", async ({
+// #1416 C, RE-POINTED (#4102). The promise was that "whose data am I looking at?"
+// stays answerable without hunting — originally by living inside the sticky chrome
+// so it could not scroll away. The top bar retired, so the bar lives at the top of
+// the More drawer and the promise is kept differently: one tap on a dock slot that
+// is fixed to the bottom edge and never scrolls at all.
+//
+// What is asserted HERE is the part this file owns — that nothing identity-shaped
+// is left in the scrolling content, and that the view-set round-trips through the
+// drawer's bar. The switcher's own behaviour is e2e/profile-identity-bar.spec.ts's.
+test("the identity bar answers from the drawer, never from the scrolling content (#1416 C / #1801 / #4102)", async ({
   browser,
 }) => {
-  // Read-only over the multi-view fixture, in its OWN cookie context: the view-set
-  // lives on the SESSION (sessions.view_profile_ids), so toggling it here cannot
-  // touch the shared admin storageState or another spec's session.
   const sharedId = fixtureProfileId(MULTI_SHARED_PROFILE);
   const page = await loginAs(
     browser,
@@ -173,56 +190,44 @@ test("the identity bar rides in the sticky chrome and opens the top drawer (#141
   );
   try {
     await page.goto("/upcoming");
-    // Single-view default: one avatar on the bar.
-    await expectInView(page, 1, { mobile: true });
 
-    // THE #1416 C assertion, inherited by the surface that replaced the view strip:
-    // the thing that answers "whose data am I looking at?" is a descendant of the
-    // STICKY chrome, not of the scrolling content container — so it stays on screen
-    // mid-scroll instead of scrolling away with the page.
-    const bar = page
-      .getByTestId(CHROME)
-      .getByTestId("profile-identity-bar-mobile");
-    await expect(bar).toBeVisible();
+    // Not in the chrome, and — the half that would be a real regression — not in
+    // the content container either, where it would scroll away.
+    await expect(
+      page.getByTestId(CHROME).getByTestId("profile-identity-bar")
+    ).toHaveCount(0);
     await expect(
       page
         .getByTestId("app-content-container")
-        .getByTestId("profile-identity-bar-mobile")
+        .getByTestId("profile-identity-bar")
     ).toHaveCount(0);
-    await chromeReady(page);
-    const chromeBox = await page.getByTestId(CHROME).boundingBox();
-    const box = await bar.boundingBox();
-    expect(chromeBox, "the chrome should be laid out").not.toBeNull();
-    expect(box, "the bar should be laid out").not.toBeNull();
-    expect(box!.y).toBeGreaterThanOrEqual(chromeBox!.y);
-    expect(box!.y + box!.height).toBeLessThanOrEqual(
-      chromeBox!.y + chromeBox!.height + 1
+    // And the retired phone-shaped mount is gone outright.
+    await expect(page.getByTestId("profile-identity-bar-mobile")).toHaveCount(
+      0
     );
 
-    // Tapping the bar drops the TOP drawer — the switcher panel appears where the
-    // finger already is, not at the far end of the screen. The drawer is portalled
-    // to <body> (the chrome transforms itself on scroll), so scope the row lookup to
-    // the panel: the hidden desktop expando carries the same row testids.
+    const drawer = await openMobileDrawer(page);
+    const bar = drawer.getByTestId("profile-identity-bar");
+    await expect(bar).toBeVisible();
+    // Single-view default: one avatar on the bar.
+    await expectInView(page, 1, { within: drawer });
+
     await expect(bar).toBeEnabled();
     await bar.click();
-    const panel = page.getByTestId("profile-switcher-panel-mobile");
+    const panel = drawer.getByTestId("profile-switcher-panel");
     await expect(panel).toBeVisible();
-    const panelBox = await panel.boundingBox();
-    expect(panelBox, "the panel should be laid out").not.toBeNull();
-    // Anchored to the TOP of the viewport, under the finger that opened it.
-    expect(panelBox!.y).toBeLessThan(40);
 
     const viewToggle = panel.getByTestId(`view-toggle-${sharedId}`);
     await expect(viewToggle).toHaveAttribute("data-icon-button", "");
     await expectPhoneTapTargets(page, "profile view toggle", [viewToggle]);
     await settledClick(page, viewToggle);
 
-    // The bar now stacks both profiles — the view-set round-trip, read off the ONE
-    // surface that reports it.
-    await expectInView(page, 2, { mobile: true });
+    // The view-set round-trip, read off the ONE surface that reports it.
+    const reopened = await openMobileDrawer(page);
+    await expectInView(page, 2, { within: reopened });
     await expect(
-      page
-        .getByTestId("profile-identity-bar-mobile")
+      reopened
+        .getByTestId("profile-identity-bar")
         .getByTestId(`identity-avatar-${sharedId}`)
     ).toBeVisible();
   } finally {
@@ -231,7 +236,7 @@ test("the identity bar rides in the sticky chrome and opens the top drawer (#141
 });
 
 test.describe("fewer taps to common actions (#1416 B/E)", () => {
-  test("search opens the command palette in ONE tap from the bar", async ({
+  test("search opens the command palette in ONE tap from the dock", async ({
     page,
   }) => {
     await page.goto("/");
@@ -240,13 +245,15 @@ test.describe("fewer taps to common actions (#1416 B/E)", () => {
     });
     await expect(input).toHaveCount(0);
 
-    // No drawer detour — the magnifier lives on the bar itself now.
+    // No drawer detour, and no top bar either: since #4102 the magnifier IS a dock
+    // slot, so the one tap it always promised is now a tap at the bottom edge —
+    // inside the thumb's range instead of at the far corner.
     await expect(async () => {
       if (!(await input.isVisible())) {
-        await page.getByTestId("search-mobile").click();
+        await page.getByTestId("dock-slot-search").click();
       }
       await expect(input).toBeVisible({ timeout: 1000 });
-    }).toPass({ timeout: 20_000, intervals: [300, 700, 1500] }); // topass-ok: re-tap the search icon past the pre-hydration swallow (#500) — a pure client toggle with no POST to settle on, and the visibility guard keeps a late tap from re-closing it
+    }).toPass({ timeout: 20_000, intervals: [300, 700, 1500] }); // topass-ok: re-tap the dock's Search slot past the pre-hydration swallow (#500) — a pure client toggle with no POST to settle on, and the visibility guard keeps a late tap from re-closing it
   });
 
   test("the dock puck absorbs the bar's log cluster and keeps the workout offer", async ({

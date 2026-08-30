@@ -1,7 +1,7 @@
 import { test, expect } from "./fixtures";
 import { type Locator, type Page } from "@playwright/test";
 import Database from "better-sqlite3";
-import { settledClick, expectInView } from "./helpers";
+import { settledClick, expectInView, openMobileDrawer } from "./helpers";
 import { switchToProfile } from "./family-helpers";
 import { loginAs } from "./nav";
 import {
@@ -90,15 +90,28 @@ async function boxOf(
 
 // Open the switcher past the pre-hydration disable gate (#830): the bar renders
 // disabled until mounted, so wait for it to enable, then click.
-async function openSwitcher(page: Page, mobile = false): Promise<void> {
+//
+// `within` SCOPES the lookup, and below `md` it is required rather than tidy: the
+// desktop sidebar is hidden by a breakpoint but still in the DOM, so at 390px the
+// plain testid resolves to TWO elements — the hidden sidebar's bar and the
+// drawer's — and an unscoped locator is a strict-mode violation, not a preference.
+async function openSwitcher(
+  page: Page,
+  mobile = false,
+  within?: Locator
+): Promise<void> {
   const barId = mobile ? "profile-identity-bar-mobile" : "profile-identity-bar";
   const panelId = mobile
     ? "profile-switcher-panel-mobile"
     : "profile-switcher-panel";
-  const trigger = page.getByTestId(barId);
+  const scope = within ?? page;
+  const trigger = scope.getByTestId(barId);
   await expect(trigger).toBeEnabled();
   await trigger.click();
-  await expect(page.getByTestId(panelId)).toBeVisible();
+  // The panel is scoped for the same reason the trigger is, and for one more: it
+  // is kept MOUNTED and toggled with a class, so the hidden sidebar's copy exists
+  // in the DOM at every width and is never the one under test.
+  await expect(scope.getByTestId(panelId)).toBeVisible();
 }
 
 // THE acting-emphasis pin: the bar's first stacked avatar is the acting profile,
@@ -107,9 +120,10 @@ async function openSwitcher(page: Page, mobile = false): Promise<void> {
 async function expectActing(
   page: Page,
   profileIdValue: number,
-  mobile = false
+  mobile = false,
+  within?: Locator
 ): Promise<void> {
-  const bar = page.getByTestId(
+  const bar = (within ?? page).getByTestId(
     mobile ? "profile-identity-bar-mobile" : "profile-identity-bar"
   );
   await expect(bar).toHaveAttribute(
@@ -247,7 +261,13 @@ test.describe("Unified profile switcher (issue #1801)", () => {
     }
   });
 
-  test("the phone bar carries the identity, the top drawer switches, and the wordmark is gone", async ({
+  // THE PHONE'S IDENTITY BAR MOVED, IT DID NOT GO (#4102). It used to ride a
+  // `md:hidden` top bar and open a TOP drawer of its own; that bar retired with
+  // the rest of the phone's top chrome, so the bar now sits at the top of the More
+  // drawer and opens the ordinary sidebar-anchored panel — one switcher, one
+  // vocabulary, which is the #1801 rule this move had to keep. The testids are
+  // therefore the plain ones: there is no second, phone-shaped switcher any more.
+  test("the drawer's top carries the identity, switches through the same panel, and shows no wordmark", async ({
     browser,
   }) => {
     test.slow();
@@ -262,33 +282,51 @@ test.describe("Unified profile switcher (issue #1801)", () => {
     try {
       await page.goto("/medications");
 
-      // The bar took the wordmark's slot: on a multi-profile instance the brand
-      // line is gone from the phone bar (home stays one tap away in the drawer).
-      const bar = page.locator("header", {
-        has: page.getByTestId("search-mobile"),
-      });
-      await expect(
-        bar.getByTestId("profile-identity-bar-mobile")
-      ).toBeVisible();
-      await expect(bar.getByText("Allos")).toHaveCount(0);
-      await expectActing(page, selfId, true);
+      // Nothing identity-shaped is ON SCREEN with the drawer shut: the phone's one
+      // chrome is the dock, and the dock never carries identity. Asserted as
+      // not-VISIBLE rather than not-present, because the desktop sidebar is still
+      // in the DOM at this width (it is hidden by a breakpoint, not unmounted) and
+      // it renders the same testid — a count of 0 would be asking the wrong
+      // question and would fail on a correct tree.
+      await expect(page.getByTestId("profile-identity-bar")).not.toBeVisible();
+      // The phone's OWN identity surface, on the other hand, is gone outright: the
+      // top-drawer switcher retired with the bar that hosted it.
+      await expect(page.getByTestId("profile-identity-bar-mobile")).toHaveCount(
+        0
+      );
 
-      // The TOP drawer drops from the bar and switches through the same rows.
-      await openSwitcher(page, true);
-      const panel = page.getByTestId("profile-switcher-panel-mobile");
+      const drawer = await openMobileDrawer(page);
+      // It took the wordmark's slot inside the drawer, exactly as it took it in the
+      // bar: identity chrome when identity is ambiguous, brand chrome when it is
+      // not, never both (#1801's XOR, now resolved one level in).
+      await expect(drawer.getByTestId("profile-identity-bar")).toBeVisible();
+      await expect(drawer.getByText("Allos")).toHaveCount(0);
+      await expectActing(page, selfId, false, drawer);
+
+      await openSwitcher(page, false, drawer);
+      const panel = drawer.getByTestId("profile-switcher-panel");
       await expect(
         panel.getByTestId(`switcher-read-only-${roId}`)
       ).toBeVisible();
       await settledClick(page, panel.getByTestId(`switch-to-${roId}`));
 
-      await expect(
-        page.getByTestId("profile-identity-bar-mobile")
-      ).toContainText(MVMEDS_RO_PROFILE, { timeout: 20_000 });
-      await expectActing(page, roId, true);
-      await expect(page.getByTestId("read-only-badge-mobile")).toBeVisible();
+      // Wait for the switched profile's page to paint at all before reading the
+      // named row, so a slow switch fails as "the row is missing" rather than as
+      // whatever the previous profile's page still had on screen.
+      const anyRow = page.getByTestId("medication-row").first(); // first-ok: a paint gate, not an assertion about a particular row — the named row is asserted immediately below
+      await expect(anyRow).toBeVisible({ timeout: 20_000 });
       await expect(
         page.getByTestId("medication-row").filter({ hasText: MVMEDS_RO_MED })
       ).toBeVisible();
+
+      // And the switched identity reads back from the drawer, which is now the one
+      // place on a phone that answers "who am I acting as?".
+      const reopened = await openMobileDrawer(page);
+      await expect(reopened.getByTestId("profile-identity-bar")).toContainText(
+        MVMEDS_RO_PROFILE
+      );
+      await expectActing(page, roId, false, reopened);
+      await expect(reopened.getByTestId("read-only-badge")).toBeVisible();
     } finally {
       await page.context().close();
     }
@@ -307,16 +345,15 @@ test.describe("Unified profile switcher (issue #1801)", () => {
     );
     try {
       await page.goto("/");
-      const bar = page.locator("header", {
-        has: page.getByTestId("search-mobile"),
-      });
-      await expect(bar.getByText("Allos")).toBeVisible();
-      await expect(page.getByTestId("profile-identity-bar-mobile")).toHaveCount(
-        0
-      );
+      // The drawer's top, since the phone bar retired (#4102): brand chrome is
+      // what a single-profile instance gets there, and no switcher grows behind it.
+      const drawer = await openMobileDrawer(page);
+      await expect(drawer.getByText("Allos")).toBeVisible();
+      await expect(drawer.getByTestId("profile-identity-bar")).toHaveCount(0);
       await expect(
-        page.getByTestId("profile-switcher-panel-mobile")
-      ).toHaveCount(0);
+        page.getByTestId("profile-switcher-panel")
+      ).not.toBeVisible();
+      await page.keyboard.press("Escape");
 
       // Same at desktop: the sidebar gains nothing.
       await page.setViewportSize({ width: 1280, height: 900 });

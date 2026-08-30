@@ -22,17 +22,26 @@
 // disagree about where you are. And no slot carries a count, a dot or a badge:
 // the dock never campaigns for attention (the findings reach policy is
 // unchanged, and the owner's #2651 call 2 removed the only slot that raised the
-// question).
+// question). That holds for Search too — it is the newest slot and the rule is
+// about the BAR, not about which destinations happen to sit in it.
+//
+// ── TWO SLOTS ARE NOT PLACES ─────────────────────────────────────────────────
+//
+// `href: null` is the registry's way of saying "this slot does something instead
+// of going somewhere", and since #4102 there are two of them: Search opens the
+// full-screen search surface (#3423) and More opens the drawer. They are told
+// apart by their `id` — a closed union — rather than by a second field, because
+// a `kind` discriminant on a five-entry registry is machinery bought to restate
+// what the id already says.
 
 import type { AppRoute } from "./hrefs";
 import { isRouteActive } from "./nav";
 
 // Icon keys resolved to real Tabler icons in components/MobileDock.tsx — the
 // registry stays pure and serializable, like QUICK_LOG_ITEMS.
-export type DockIcon =
-  "dashboard" | "barbell" | "history" | "trending" | "menu";
+export type DockIcon = "dashboard" | "barbell" | "history" | "search" | "menu";
 
-export type DockSlotId = "home" | "training" | "history" | "trends" | "more";
+export type DockSlotId = "home" | "training" | "history" | "search" | "more";
 
 export interface DockSlot {
   id: DockSlotId;
@@ -40,9 +49,9 @@ export interface DockSlot {
   label: string;
   icon: DockIcon;
   /**
-   * The destination, or null for the one slot that is a DISCLOSURE rather than a
-   * place: "More" opens the existing drawer (the full nav, demoted to the long
-   * tail) instead of navigating anywhere.
+   * The destination, or null for the two slots that ACT rather than go
+   * somewhere: "Search" opens the full-screen search surface and "More" opens
+   * the existing drawer (the full nav, demoted to the long tail).
    */
   href: AppRoute | null;
 }
@@ -50,8 +59,9 @@ export interface DockSlot {
 /**
  * Four, always — two either side of the puck. A fifth would put a destination
  * under the raised centre control, and a third would leave the row visibly
- * unbalanced; the owner's resolution (#2651, 2026-08-13) fixes the set at
- * Home · Training · [puck] · Trends · More, with History replacing
+ * unbalanced; the owner's resolution (#2651, 2026-08-13) fixes the set at four,
+ * and the #4102 supersession moved ONE slot's occupant without touching the
+ * count: Home · Training · [puck] · Search · More, with History replacing
  * Training through early childhood so the four-slot geometry stays balanced.
  */
 export const DOCK_SLOT_COUNT = 4;
@@ -74,11 +84,11 @@ const HISTORY: DockSlot = {
   icon: "history",
   href: "/history",
 };
-const TRENDS: DockSlot = {
-  id: "trends",
-  label: "Trends",
-  icon: "trending",
-  href: "/trends",
+const SEARCH: DockSlot = {
+  id: "search",
+  label: "Search",
+  icon: "search",
+  href: null,
 };
 const MORE: DockSlot = {
   id: "more",
@@ -92,6 +102,16 @@ const MORE: DockSlot = {
  * index 1 and index 2).
  * Training is replaced by History when the workout product is not relevant.
  *
+ * THE THIRD SLOT'S OCCUPANT, RULED (#4102, owner 2026-08-29): SEARCH, not
+ * Trends. "i realize i don't actually use trends that much" — and the shape of
+ * the app agrees: lookup beats browse when the palette indexes 24 domains plus a
+ * ~30-page registry, Trends' glance job is already done by the dashboard's
+ * Standing zone, and Trends stays one tap away in the drawer. This is a NARROW
+ * supersession of #2651's 2026-08-13 set: the four-slot count, the raised puck,
+ * the no-badge rule and More-as-disclosure are all untouched, and only this slot
+ * changed hands. Search also became the phone's ONLY search trigger in the same
+ * ruling, because the top bar that used to carry the magnifier retired (#2746).
+ *
  * THE SECOND SLOT'S OCCUPANT, RULED (#3343 Q5, owner 2026-08-29):
  * `trainingRelevant ? TRAINING : HISTORY`. `/timeline` held this slot and #3958
  * phase 2 retires the route, so the record — which absorbed the timeline's content
@@ -102,17 +122,19 @@ const MORE: DockSlot = {
  * review-shaped identity mid-rebuild of #3987). Do not revisit either.
  */
 export function dockSlots(trainingRelevant = true): DockSlot[] {
-  return [HOME, trainingRelevant ? TRAINING : HISTORY, TRENDS, MORE];
+  return [HOME, trainingRelevant ? TRAINING : HISTORY, SEARCH, MORE];
 }
 
 /**
  * Which slot is the page being viewed, or null when the current route lives in
  * the long tail behind More.
  *
- * Null is the honest answer there and "More" is deliberately NOT it: More is a
- * disclosure button, and `aria-current="page"` on a control that opens a drawer
- * would claim the drawer is the page. A route with no slot lights nothing — the
- * same thing the sidebar does for a route with no nav row.
+ * Null is the honest answer there, and neither Search nor More is ever it: both
+ * are controls that OPEN something, and `aria-current="page"` on a control that
+ * opens a drawer or a search surface would claim that surface is the page. The
+ * `href !== null` test below is what keeps them out, so a slot added later
+ * without a destination inherits the same honesty for free. A route with no slot
+ * lights nothing — the same thing the sidebar does for a route with no nav row.
  */
 export function activeDockSlotId(
   slots: readonly DockSlot[],

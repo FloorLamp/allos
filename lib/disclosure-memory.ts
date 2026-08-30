@@ -22,9 +22,10 @@
 //     also a server write on every disclosure tap, which is a chatty path for a gesture
 //     that must feel free.
 //   • `localStorage` — keyed by DEVICE (browser profile). The tier the repo already uses
-//     for exactly this class: `allos:page-visits:v1` (lib/recent-pages.ts), the theme,
-//     trend annotation visibility. No health data crosses it and nothing here is ever
-//     read by a finding, a notification, or the Upcoming bus.
+//     for exactly this class: the theme, trend annotation visibility. (It also held
+//     `allos:page-visits:v1` until #4102 retired the frequent-pages row and deleted the
+//     key outright.) No health data crosses it and nothing here is ever read by a
+//     finding, a notification, or the Upcoming bus.
 //
 // So: localStorage, and deliberately so. The GRADUATION PATH stays open in the other
 // direction — #2652 §4's rule is that a preference which earns cross-device permanence
