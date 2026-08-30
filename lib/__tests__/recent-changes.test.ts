@@ -260,7 +260,7 @@ describe("renderRecentChanges — the cap and the quiet window", () => {
       overflowLabel: "this week",
       overflowHref: "/history",
     });
-    expect(out.lines.at(-1)).toBe("+4 more this week /timeline");
+    expect(out.lines.at(-1)).toBe("+4 more this week /history");
   });
 });
 

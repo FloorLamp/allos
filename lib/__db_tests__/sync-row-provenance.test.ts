@@ -173,9 +173,9 @@ describe("integration_sync_rows provenance (#1333)", () => {
     expect(act.label).toBe("Morning run");
     expect(act.disposition).toBe("inserted");
     expect(act.deleted).toBe(false);
-    expect(act.href).toContain("/timeline?from=2026-03-01");
+    expect(act.href).toContain("/history?day=2026-03-01");
     const body = links.find((l) => l.targetTable === "body_metrics")!;
-    expect(body.href).toContain("/timeline?from=2026-03-02");
+    expect(body.href).toContain("/history?day=2026-03-02");
 
     // Another profile can't resolve this event's provenance.
     const other = Number(
@@ -219,7 +219,7 @@ describe("integration_sync_rows provenance (#1333)", () => {
         deleted: false,
       },
     ]);
-    expect(links[0].href).toContain("/timeline?from=2026-03-03");
+    expect(links[0].href).toContain("/history?day=2026-03-03");
 
     const updated: ProvenanceEntry[] = [];
     writeTx(() =>

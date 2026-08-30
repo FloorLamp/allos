@@ -59,7 +59,7 @@ vi.mock("next/navigation", async () => {
     await vi.importActual<typeof import("next/navigation")>("next/navigation");
   return {
     ...actual,
-    usePathname: () => "/timeline",
+    usePathname: () => "/history",
     useSearchParams: () => new URLSearchParams(),
     useRouter: () => ({
       push: vi.fn(),

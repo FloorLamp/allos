@@ -109,8 +109,9 @@ export const dynamic = "force-dynamic";
 //
 // WHAT THIS FILE OWNS. The URL → read → render seam, and nothing about a domain: the
 // row grammar is lib/history-format.ts's, the composers are lib/history.ts's, the
-// folds and the rail are #2657's (shared verbatim with /timeline until phase 2 retires
-// it), and every write is the domain's own Server Action reached through HistoryRows.
+// folds and the rail are #2657's (inherited verbatim from /timeline, which phase 2
+// retired), and every write is the domain's own Server Action reached through
+// HistoryRows.
 //
 // THE CHROME BUDGET IS AN ACCEPTANCE CRITERION: ≤ ~140px above the first record at
 // 390px. What buys that is stated so an addition has to name what it displaces — no
@@ -122,41 +123,27 @@ export const dynamic = "force-dynamic";
 // kind, a retired family, a future day. A record surface that 404s on a hand-edited
 // URL is a record you cannot get back to.
 //
-// ── THE #2657 SCROLL RESTORER IS DELIBERATELY NOT MOUNTED HERE ───────────────
+// ── THE #2657 SCROLL RESTORER IS GONE, NOT MISSING ──────────────────────────
 //
-// Written down because the next reader WILL find `TimelineScrollRestorer` exported
-// beside the `TimelineFilterLink` this page uses on every chip and every fold card,
-// see it mounted on `/timeline` and not here, and read that as a re-housing that got
-// dropped. It is a decision.
+// Written down because the next reader will find `scroll={false}` on every chip and
+// fold card and wonder where the restore half went. `TimelineScrollRestorer` recorded
+// the day sitting under the filter controls on a chip tap and scrolled it back
+// afterwards. That was right for `/timeline`, whose filter row and date-range control
+// re-queried the whole feed; it was never mounted here, because #4062 re-nested the
+// folds so an open month's days render UNDER their own card and `scroll={false}`
+// alone leaves the reader looking at the card they tapped — mounting the restorer
+// would have scrolled them AWAY from it, undoing that fix.
 //
-// WHAT IT DOES: on a chip tap it records the day sitting under the filter controls,
-// and after the navigation scrolls that day back under them. On `/timeline` that is
-// right — the filter row and the date-range control re-query the whole feed, so
-// without it the reader is left at an offset that no longer means anything.
-//
-// WHY NOT HERE: #4062 re-nested the folds so an open month's days render UNDER their
-// own card, and paired that with `scroll={false}` so opening one leaves the reader
-// looking at the card they tapped. The restorer's capture target is the DAY under the
-// controls, which after a fold tap is not the fold card — so mounting it as-is would
-// scroll the reader AWAY from the card they just opened, undoing the fix. The two
-// answers to "where should the reader be afterwards" disagree, and the fold arrangement
-// already gives the better one for the taps that dominate this page.
-//
-// The chips are the case that would still benefit, and separating them would mean a
-// per-link flag on the shared control — a second shape of one component selected by a
-// prop, which is the variant the line-budget ruling names outright. Not worth it for
-// the chip case alone, so this is raised rather than built.
-//
-// NOTHING IS LEAKING IN THE MEANTIME: the capture in `TimelineFilterLink`'s onClick
-// looks up `#timeline-controls`, which exists only on `/timeline`, so on this page it
-// finds nothing and returns without writing. It is inert here, not half-wired — and
-// when `/timeline` retires, the capture and the restorer retire with it unless this
-// decision is revisited first.
+// With `/timeline` deleted it had no consumer left, so it retired with the route
+// exactly as the note that stood here said it would. The chip case is the one that
+// would still have benefited, and separating it would mean a per-link flag on the
+// shared control — a second shape of one component selected by a prop. Raised rather
+// than built.
 
 // One collapsed period — a month of the current year, or an earlier year (#2657).
-// Deliberately the same shape and the same `timeline-fold-` anchor id the timeline
-// draws: the rail's stops are computed from those ids, and phase 2 moves that feed
-// onto this page rather than reconciling two vocabularies.
+// The `timeline-fold-` anchor id is INHERITED, not restated: the rail's stops are
+// computed from those ids in lib/timeline-scrubber.ts, which survived the route.
+// Phase 2 moved the feed onto this page rather than reconciling two vocabularies.
 function FoldCard({
   fold,
   href,
@@ -182,8 +169,8 @@ function FoldCard({
       {/* THE POSITION-PRESERVING LINK, NOT A PLAIN ONE (#4045 §4). This shipped as a
           `next/link` with default scroll, so every fold tap navigated to `?open=…` and
           jumped to the top of the page: the reader tapped a card, landed above their
-          own recent history, saw nothing new, and read the card as dead. `/timeline`'s
-          fold cards never did that because they go through this component, which
+          own recent history, saw nothing new, and read the card as dead. The retired
+          `/timeline`'s fold cards never did that: they went through this component, which
           carries `scroll={false}` and the #2657 scroll-target capture — the re-housing
           simply dropped it. Reused rather than re-spelled: a second copy of a
           scroll-preserving link is the duplication #2816 was filed about.
@@ -1016,7 +1003,7 @@ export default async function HistoryPage(props: {
             content nobody asked to see.
 
             AN OPEN MONTH'S DAYS RENDER RIGHT HERE, UNDER ITS OWN CARD (#4045 §4), which
-            is the arrangement `/timeline` has always had. Shipped, this page appended
+            is the arrangement the retired `/timeline` always had. Shipped, this page appended
             every open month's days to the day feed ABOVE the whole fold stack, so a tap
             revealed content nowhere near the card that revealed it: with the scroll
             preserved, the reader was left looking at a card that had visibly done

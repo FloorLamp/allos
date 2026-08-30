@@ -162,9 +162,7 @@ describe("MonthCalendar", () => {
 
     const linked = day("March 12, 2026");
     expect(linked.tagName).toBe("A");
-    expect(linked.getAttribute("href")).toBe(
-      "/timeline?from=2026-03-12&to=2026-03-12#timeline-day-2026-03-12"
-    );
+    expect(linked.getAttribute("href")).toBe("/history?day=2026-03-12");
     expect(within(linked).getByText("12")).toBeTruthy();
 
     // Every OTHER day is inert — not a disabled link, not a button: nothing to

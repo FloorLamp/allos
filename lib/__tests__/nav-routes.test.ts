@@ -217,7 +217,7 @@ describe("nav ↔ route consistency", () => {
   // registry it guards is a literal array in a client component.
   const GROUPED_HREFS = [
     "/upcoming",
-    "/timeline",
+    "/history",
     "/wellness",
     "/longevity",
     "/household",

@@ -14,7 +14,7 @@ import {
 
 describe("trackedPageFor", () => {
   it("matches a top-level route exactly", () => {
-    expect(trackedPageFor("/timeline")?.label).toBe("Timeline");
+    expect(trackedPageFor("/history")?.label).toBe("History");
     expect(trackedPageFor("/")?.label).toBe("Dashboard");
     expect(trackedPageFor("/wellness")?.label).toBe("Wellness");
   });
@@ -40,24 +40,24 @@ describe("trackedPageFor", () => {
     expect(trackedPageFor("/nutrition?tab=supplements")?.href).toBe(
       "/nutrition"
     );
-    expect(trackedPageFor("/timeline/")?.href).toBe("/timeline");
+    expect(trackedPageFor("/history/")?.href).toBe("/history");
   });
 });
 
 describe("recordPageVisit", () => {
   it("counts a tracked visit without mutating the input", () => {
     const before: PageVisits = {};
-    const after = recordPageVisit(before, "/timeline", 1000);
+    const after = recordPageVisit(before, "/history", 1000);
     expect(before).toEqual({});
-    expect(after["/timeline"]).toEqual({ n: 1, t: 1000 });
-    expect(recordPageVisit(after, "/timeline", 2000)["/timeline"]).toEqual({
+    expect(after["/history"]).toEqual({ n: 1, t: 1000 });
+    expect(recordPageVisit(after, "/history", 2000)["/history"]).toEqual({
       n: 2,
       t: 2000,
     });
   });
 
   it("returns the SAME object for an untracked path (no write, no churn)", () => {
-    const visits: PageVisits = { "/timeline": { n: 2, t: 1 } };
+    const visits: PageVisits = { "/history": { n: 2, t: 1 } };
     expect(recordPageVisit(visits, "/untracked-thing", 9)).toBe(visits);
   });
 
@@ -66,9 +66,9 @@ describe("recordPageVisit", () => {
     for (let i = 0; i < MAX_TRACKED + 5; i++) {
       visits[`/stale-${i}`] = { n: 1, t: i };
     }
-    visits = recordPageVisit(visits, "/timeline", 10_000);
+    visits = recordPageVisit(visits, "/history", 10_000);
     expect(Object.keys(visits).length).toBe(MAX_TRACKED);
-    expect(visits["/timeline"]).toBeDefined();
+    expect(visits["/history"]).toBeDefined();
     // The oldest ones went first.
     expect(visits["/stale-0"]).toBeUndefined();
   });
@@ -76,7 +76,7 @@ describe("recordPageVisit", () => {
 
 describe("frequentPages", () => {
   const visits: PageVisits = {
-    "/timeline": { n: 9, t: 5 },
+    "/history": { n: 9, t: 5 },
     "/trends": { n: 9, t: 9 },
     "/nutrition": { n: 4, t: 1 },
     "/settings": { n: FREQUENT_MIN_VISITS - 1, t: 100 },
@@ -85,7 +85,7 @@ describe("frequentPages", () => {
   it("ranks by visit count, breaking ties by recency", () => {
     expect(frequentPages(visits).map((p) => p.href)).toEqual([
       "/trends",
-      "/timeline",
+      "/history",
       "/nutrition",
     ]);
   });
@@ -99,7 +99,7 @@ describe("frequentPages", () => {
       frequentPages(visits, { currentPath: "/trends/metric/weight" }).map(
         (p) => p.href
       )
-    ).toEqual(["/timeline", "/nutrition"]);
+    ).toEqual(["/history", "/nutrition"]);
   });
 
   it("excludes unavailable destinations left in stored history", () => {
@@ -121,12 +121,12 @@ describe("frequentPages", () => {
   it("resolves a section-anchored path to its page", () => {
     expect(
       frequentPages(visits, { currentPath: "/trends#body" }).map((p) => p.href)
-    ).toEqual(["/timeline", "/nutrition"]);
+    ).toEqual(["/history", "/nutrition"]);
     expect(
       frequentPages(visits, { currentPath: "/trends?range=all#insights" }).map(
         (p) => p.href
       )
-    ).toEqual(["/timeline", "/nutrition"]);
+    ).toEqual(["/history", "/nutrition"]);
   });
 
   it("renders nothing for a fresh login", () => {
@@ -151,7 +151,7 @@ describe("parsePageVisits", () => {
   it("drops malformed entries and keeps the good ones", () => {
     const parsed = parsePageVisits(
       JSON.stringify({
-        "/timeline": { n: 3, t: 12 },
+        "/history": { n: 3, t: 12 },
         "/trends": { n: "many", t: 4 },
         "/nutrition": { n: 0, t: 4 },
         "/sleep": { n: 2 },
@@ -159,7 +159,7 @@ describe("parsePageVisits", () => {
       })
     );
     expect(parsed).toEqual({
-      "/timeline": { n: 3, t: 12 },
+      "/history": { n: 3, t: 12 },
       "/sleep": { n: 2, t: 0 },
     });
   });
