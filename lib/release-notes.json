@@ -68,6 +68,12 @@
           "title": "Record rows open to show where an entry came from and what it links to",
           "kind": "feature",
           "issues": [3958, 662, 2920]
+        },
+        {
+          "pr": 4252,
+          "title": "A practice session records when it started and when it ended, and draws on the day's chart",
+          "kind": "feature",
+          "issues": [3142]
         }
       ]
     },
