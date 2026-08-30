@@ -8,7 +8,7 @@ import {
   formatMonthDay,
   type TimeFormat,
 } from "@/lib/format-date";
-import { timelineDayHref } from "@/lib/hrefs";
+import { historyDayHref } from "@/lib/hrefs";
 import { chartSeries } from "@/lib/chart-colors";
 import { useFormatPrefs } from "@/components/FormatPrefsProvider";
 
@@ -86,7 +86,7 @@ export default function ConsistencyStrip({
         {shown.map((n) => (
           <Link
             key={n.date}
-            href={timelineDayHref(n.date)}
+            href={historyDayHref(n.date)}
             className={`group flex items-center gap-3 rounded px-1 py-0.5 transition ${
               n.offSchedule
                 ? "bg-rose-50/80 ring-1 ring-inset ring-rose-200 hover:bg-rose-100/80 dark:bg-rose-950/20 dark:ring-rose-900 dark:hover:bg-rose-950/35"

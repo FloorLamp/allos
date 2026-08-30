@@ -281,6 +281,11 @@ beforeAll(async () => {
   expect(bindPortalIdentity(accountTwo.id, LABEL_TWO, profileTwo).ok).toBe(
     true
   );
+  // The same patient label and person on both logins isolates account ownership:
+  // profile and label equality cannot accidentally rescue a login-keyed claim.
+  expect(bindPortalIdentity(accountTwo.id, LABEL_ONE, profileOne).ok).toBe(
+    true
+  );
   // TWO PATIENTS ON ONE LOGIN — the shape #2914 was filed from. A household's portal
   // login covers the whole proxy list, and the tool files one report per patient.
   expect(bindPortalIdentity(accountOne.id, LABEL_SIBLING, profileTwo).ok).toBe(
@@ -346,8 +351,9 @@ describe("the upload route records which IDENTITY a document was acquired for (#
 
 describe("a run claims exactly the documents it delivered (#2999)", () => {
   it("claims this run's documents, and none from a previous run or another login", async () => {
-    // Login TWO delivers first, on its own patient. Nothing below may ever claim these.
-    const otherDoc = await upload(accountTwo, LABEL_TWO, "other-login-b1.pdf");
+    // Login TWO delivers first for the SAME label and profile. Account ownership is
+    // therefore the only fact that can keep login ONE from claiming this archive.
+    const otherDoc = await upload(accountTwo, LABEL_ONE, "other-login-b1.pdf");
 
     // RUN 1 on login ONE: two archives, then the report.
     const first = await upload(accountOne, LABEL_ONE, "run-one-a1.pdf");
@@ -367,14 +373,6 @@ describe("a run claims exactly the documents it delivered (#2999)", () => {
     // …and run 1's claim is untouched: a document belongs to exactly one run.
     expect(claimedDocuments(runOne)).toEqual(claimedByOne);
     expect(claimedByOne).not.toContain(third);
-  });
-
-  it("never claims a document acquired for another login", async () => {
-    const theirs = await upload(accountTwo, LABEL_TWO, "theirs-b2.pdf");
-    const ours = await upload(accountOne, LABEL_ONE, "ours-a4.pdf");
-    const run = await reportRun(accountOne, LABEL_ONE);
-    expect(claimedDocuments(run)).toEqual([ours]);
-    expect(claimedDocuments(run)).not.toContain(theirs);
   });
 
   it("leaves a hand-uploaded document unclaimed — no login acquired it", async () => {

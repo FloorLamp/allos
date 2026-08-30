@@ -4,6 +4,7 @@ import path from "node:path";
 import { fileURLToPath } from "node:url";
 import {
   FLOW_KINDS,
+  OFFLINE_QUEUE_COVERAGE,
   buildIntent,
   chunkIntents,
   MAX_INTENTS,
@@ -221,7 +222,9 @@ describe("FLOW_KINDS", () => {
       // DAY-idempotent per (profile, practice-identity, date), which is what answers
       // #2130's "a replay could double-log a day" objection.
       "practice",
+      "stool",
     ]);
+    expect(OFFLINE_QUEUE_COVERAGE["stool-form"]).toBe("stool");
   });
 });
 

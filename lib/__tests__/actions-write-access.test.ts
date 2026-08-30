@@ -3,6 +3,7 @@ import fs from "node:fs";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
 import ts from "typescript-api";
+import { stripComments } from "./strip-comments";
 
 // Write-access enforcement scanner (issue #33). The mirror of the profile-scoping
 // leak test: it reads the repo's own Server Actions as TEXT (no DB, no network,
@@ -701,6 +702,10 @@ function actionFiles(): string[] {
   });
 }
 
+const actionSources = new Map(
+  actionFiles().map((file) => [file, fs.readFileSync(file, "utf8")])
+);
+
 // Route handlers are request boundaries too. The original #33 scan stopped at
 // `*actions.ts`, which left every `route.ts` outside the write-access ratchet even
 // when it called the same auth-blind cores. Keep the two inventories separate: an
@@ -724,6 +729,9 @@ function registeredImportLocals(
   registered: RegisteredImports
 ): Map<string, string> {
   const out = new Map<string, string>();
+  if (!Object.keys(registered).some((module) => src.includes(module))) {
+    return out;
+  }
   const sf = ts.createSourceFile(
     "scan.ts",
     src,
@@ -983,19 +991,6 @@ const PROFILE_REPOINT_ACTIONS: readonly {
   },
 ];
 
-// Strip comments so a stray mention of the guard name in prose can't satisfy the
-// check — only a real call in code counts. Block comments first, then whole-line
-// `//` comments (the only place these files park explanatory text). Leaves string
-// literals intact; the token we scan for (`requireWriteAccess(`) never appears in
-// a user-facing string.
-function stripComments(src: string): string {
-  return src
-    .replace(/\/\*[\s\S]*?\*\//g, "")
-    .split("\n")
-    .map((line) => (/^\s*\/\//.test(line) ? "" : line))
-    .join("\n");
-}
-
 // Extract every exported async function as { name, body }. Balanced-brace scan
 // from the function's opening `{` to its matching `}`.
 function exportedAsyncFunctions(src: string): { name: string; body: string }[] {
@@ -1061,6 +1056,9 @@ function routeWriteScan(
   const matchedAllow = new Set<string>();
   const reachedCores = new Set<string>();
   const imports = registeredImportLocals(src, ROUTE_WRITE_CORES);
+  if (imports.size === 0) {
+    return { violations, matchedGates, matchedAllow, reachedCores };
+  }
   const code = stripComments(src);
 
   for (const { name, body } of exportedAsyncFunctions(code)) {
@@ -1157,6 +1155,7 @@ function profileRepointScan(
   const violations: string[] = [];
   const matched = new Set<string>();
   const imports = registeredImportLocals(src, PROFILE_REPOINT_CORES);
+  if (imports.size === 0) return { violations, matched };
   const code = stripComments(src);
   for (const { name, body } of exportedAsyncFunctions(code)) {
     const indexes = callIndexes(body, imports.keys());
@@ -1190,11 +1189,11 @@ function profileRepointScan(
 }
 
 describe("write-access enforcement: every mutating Server Action is gated", () => {
-  const files = actionFiles();
+  const sources = [...actionSources];
 
   it("scans a meaningful number of action files", () => {
     // Guards against a broken glob silently passing the whole suite.
-    expect(files.length).toBeGreaterThan(25);
+    expect(sources.length).toBeGreaterThan(25);
   });
 
   it("every exported action calls requireWriteAccess()/requireAdmin() or is allowlisted", () => {
@@ -1203,9 +1202,9 @@ describe("write-access enforcement: every mutating Server Action is gated", () =
     const matchedModules = new Set<string>();
     let scanned = 0;
 
-    for (const file of files) {
+    for (const [file, rawSrc] of sources) {
       const rel = path.relative(REPO, file).split(path.sep).join("/");
-      const src = stripComments(fs.readFileSync(file, "utf8"));
+      const src = stripComments(rawSrc);
       const moduleAllow = MODULE_ALLOW.find((entry) => entry.file === rel);
       for (const { name, body } of exportedAsyncFunctions(src)) {
         scanned++;
@@ -1381,9 +1380,9 @@ describe("profile re-points declare both authorization sides (#2103/#2109)", () 
   it("every action reaching a re-point-capable core declares and takes its gates", () => {
     const violations: string[] = [];
     const matched = new Set<string>();
-    for (const file of actionFiles()) {
+    for (const [file, src] of actionSources) {
       const rel = path.relative(REPO, file).split(path.sep).join("/");
-      const result = profileRepointScan(rel, fs.readFileSync(file, "utf8"));
+      const result = profileRepointScan(rel, src);
       violations.push(...result.violations);
       result.matched.forEach((entry) => matched.add(entry));
     }
@@ -1422,10 +1421,10 @@ describe("actions consume typed write-core outcomes (#2106/#2109)", () => {
   it("no action discards a registered typed outcome in statement position", () => {
     const violations: string[] = [];
     const reached = new Set<string>();
-    for (const file of actionFiles()) {
+    for (const [file, src] of actionSources) {
       const rel = path.relative(REPO, file).split(path.sep).join("/");
-      const src = fs.readFileSync(file, "utf8");
       const imports = registeredImportLocals(src, TYPED_OUTCOME_CORES);
+      if (imports.size === 0) continue;
       for (const core of imports.values()) reached.add(core);
       for (const { name, body } of exportedAsyncFunctions(stripComments(src))) {
         for (const core of discardedOutcomeCalls(body, imports)) {

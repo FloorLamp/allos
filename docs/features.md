@@ -56,7 +56,14 @@ Each member whose episode is still inside its seven-day reopen window gets a cal
 **stays dismissed** across reloads for that reader: the hide is a per-login
 viewing preference, so another caregiver with access to the same person still
 sees the action, and it never changes the episode or its reopen window. Household
-illness history is an independent typed context fact in Show everything.
+illness history is an independent typed context fact; because it is only a link to
+a page the sidebar already carries, Show everything draws that page as a door row
+under **Elsewhere** rather than a card of its own.
+
+Show everything holds no general-purpose write controls. Logging weight, a vital,
+a symptom, a well day, an illness or a period is the quick logger's job — one
+surface for quick writes, reached from anywhere — so the tail is somewhere to
+look rather than somewhere to type.
 
 ### Atomic overview
 
@@ -938,6 +945,29 @@ self-reported wellbeing values appear as observations and are never
 range-flagged. The shared **Log measurements** action writes to the same stores
 used by integrations.
 
+**Four measures that could only arrive from a device can now be typed** (#1851).
+Water, lean mass, bone mass and respiratory rate join the same **Log measurements**
+form and land in the same stores an import writes, so a DEXA report's lean mass
+scales the protein target the way a smart scale's does and a counted breathing
+rate charts beside a pushed one. Masses are entered in your own weight unit and
+stored in kilograms; water is the day's total, in litres — typing it again
+corrects the day rather than adding a second entry.
+
+**A night can be typed as bed and wake times** (#1851), not just as hours. The
+Sleep Regularity Index and the consistency strip need to know _when_ you slept,
+which a duration cannot say, so the same **Log measurements** form takes the two
+clocks you already know. A bed time at or after midday is read as the evening
+before the date on the form — this field states a night, not a nap. If you also
+type the hours, those are the hours asleep; the clocks are the time in bed.
+
+**A typed night fills a gap your wearable missed.** Sleep now resolves one night
+at a time: your device keeps every night it recorded, a night you typed yourself
+stands where it recorded nothing, and when both describe the same night your own
+entry is the one that counts. Two devices reporting one night still collapse to
+one, so a night is never counted twice. Correcting the hours later keeps the
+clocks — unless the new hours no longer fit inside them, in which case the clocks
+come off and the app says so.
+
 **Waist circumference** (#2322) is a body metric here, not a biomarker. It is
 self-measured with a tape, arrives at the metric cadence, and sits beside weight
 and body fat — the same argument peak expiratory flow used — so it is a
@@ -1156,8 +1186,9 @@ classification, and a course whose prescriber matches a linked visit reads
 "prescribed at the Day-2 visit"); "Illness + visits" also interleaves the
 unlinked routine visits. It's promoted with a calm dashboard link whenever
 anyone in the house is **currently or recently sick** (and receding when the
-house is well) — the dashboard keeps it as a typed illness-context fact in
-**Show everything**, alongside recently-resolved reopen rows; each illness-episode
+house is well) — the dashboard keeps it as a typed illness-context fact, drawn as
+the **Illness episodes** door in **Show everything** alongside recently-resolved
+reopen rows; each illness-episode
 page carries an **"Around the household"**
 card of other members' overlapping or closely adjacent illnesses (a dated fact —
 "overlapped by 4 days", never a cause) and a **Care** line linking the resulting
@@ -3000,8 +3031,9 @@ on the card rather than implying it holds the legal instrument.
 Logging often happens exactly where the signal doesn't: a set at a gym with dead
 reception, a dose on a flight, a weigh-in during an outage. For a small set of
 **idempotent quick-logs** — confirming a **dose taken** or **skipped**
-(Supplements & Meds), a **body-metric** weigh-in (Trends → Overview → body census), a **vitals**
-entry (Trends → Overview → body census), a daily **mood check-in** (the Dashboard "How are you
+(Supplements & Meds), a **body-metric** weigh-in (the quick-log sheet's **Log measurements** row, which
+opens with no connection, or Trends → Overview → body census), a **vitals**
+entry (the same form), a daily **mood check-in** (the Dashboard "How are you
 today?" card — idempotent per day, so a replay updates the day's one entry), a
 **workout session** logged entirely offline (the Training editor: if the
 connection is gone for the whole session, closing the editor queues the

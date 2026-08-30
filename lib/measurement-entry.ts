@@ -11,7 +11,14 @@ export type MeasurementEntryMetric =
   | "peak-flow"
   // Waist circumference (#2322) — ungated: a tape measurement is the entry surface
   // the whole ruling rests on, and it applies at every life stage.
-  | "waist-circ";
+  | "waist-circ"
+  // The four #1851 closed: charted and imported, but with no way to type them in.
+  // All ungated — a counted breathing rate, a DEXA report and a day's water apply
+  // at every life stage.
+  | "respiratory-rate"
+  | "lean-mass"
+  | "bone-mass"
+  | "hydration";
 
 export interface MeasurementEntryGates {
   showBodyFat: boolean;

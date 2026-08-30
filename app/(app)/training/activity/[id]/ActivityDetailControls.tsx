@@ -111,7 +111,7 @@ export function ActivityDetailActions({
         } /* detail-none: this menu already lives on the activity's canonical detail page. */
         canWrite={canWrite}
         openMergeSignal={signal}
-        deleteReturnHref={trainingRelevant ? "/training?tab=log" : "/timeline"}
+        deleteReturnHref={trainingRelevant ? "/training?tab=log" : "/history"}
         mergeAwayHref={(keeperId) =>
           trainingActivityPageHref(
             keeperId,

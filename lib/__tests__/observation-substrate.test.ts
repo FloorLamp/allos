@@ -2,6 +2,7 @@ import { describe, expect, it } from "vitest";
 import fs from "node:fs";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
+import { stripComments } from "./strip-comments";
 
 // Static boundary guard for the observation-substrate helpers (issue #944). The
 // eight observation-shaped tables are NOT merged (#860 decided that); instead the
@@ -74,6 +75,8 @@ function sourceFiles(): { rel: string; text: string }[] {
   return files;
 }
 
+const productionSources = sourceFiles();
+
 function read(rel: string): string {
   return fs.readFileSync(path.join(REPO, rel), "utf8");
 }
@@ -82,9 +85,7 @@ function read(rel: string): string {
 // (a doc comment) or inside a SQL SELECT string ("SELECT id, edited, …") can't trip
 // the scanners — only real code tokens count.
 function stripCommentsAndStrings(text: string): string {
-  return text
-    .replace(/\/\*[\s\S]*?\*\//g, "")
-    .replace(/(^|[^:])\/\/.*$/gm, "$1")
+  return stripComments(text)
     .replace(/`(?:\\[\s\S]|[^\\`])*`/g, "``")
     .replace(/"(?:\\.|[^"\\])*"/g, '""')
     .replace(/'(?:\\.|[^'\\])*'/g, "''");
@@ -146,7 +147,7 @@ describe("observation-substrate helpers boundary (issue #944)", () => {
     // Each `UPDATE medical_records …` statement, up to the end of its template
     // literal — so a lock condition is attributed to the table it actually writes.
     const statements = /UPDATE medical_records[\s\S]*?`/g;
-    for (const { rel, text } of sourceFiles()) {
+    for (const { rel, text } of productionSources) {
       // Migrations are frozen history and may legitimately describe the old shape.
       if (rel.startsWith("lib/migrations/")) continue;
       for (const stmt of text.match(statements) ?? []) {
@@ -213,8 +214,9 @@ describe("observation-substrate helpers boundary (issue #944)", () => {
     expect(/export function tallyUpsert\b/.test(acc)).toBe(true);
 
     const offenders: string[] = [];
-    for (const { rel, text } of sourceFiles()) {
+    for (const { rel, text } of productionSources) {
       if (rel === ACCOUNTING) continue; // tallyUpsert lives here, may increment
+      if (!/\.(?:inserted|updated|unchanged)\+\+/.test(text)) continue;
       if (
         /\.(?:inserted|updated|unchanged)\+\+/.test(
           stripCommentsAndStrings(text)

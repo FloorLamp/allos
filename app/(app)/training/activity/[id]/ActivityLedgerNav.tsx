@@ -50,7 +50,7 @@ export default function ActivityLedgerNav({
     >
       <span className="flex min-w-0 flex-wrap items-center gap-2">
         <PendingLink
-          href={trainingRelevant ? "/training?tab=log" : "/timeline"}
+          href={trainingRelevant ? "/training?tab=log" : "/history"}
           label={trainingRelevant ? "training log" : "timeline"}
           className={LEDGER_LINK_CLASS}
         >
@@ -61,7 +61,7 @@ export default function ActivityLedgerNav({
                 size="h-4 w-4"
                 icon={<IconChevronLeft className="h-4 w-4" aria-hidden />}
               />
-              {trainingRelevant ? "Training log" : "Timeline"}
+              {trainingRelevant ? "Training log" : "History"}
             </>
           )}
         </PendingLink>

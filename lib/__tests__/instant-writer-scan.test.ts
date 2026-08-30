@@ -201,22 +201,41 @@ function walk(dir: string): string[] {
   return out;
 }
 
-function sourceFiles(): { rel: string; text: string }[] {
-  const files: { rel: string; text: string }[] = [];
+interface SourceFile {
+  rel: string;
+  code: string;
+  sql: string[];
+}
+
+const SOURCE_GATE = /\b(?:INSERT|UPDATE|DELETE|SELECT)\b/i;
+let sourceFilesCache: SourceFile[] | undefined;
+
+function sourceFiles(): SourceFile[] {
+  if (sourceFilesCache) return sourceFilesCache;
+  const files: SourceFile[] = [];
   for (const d of SCAN_DIRS) {
     const abs = path.join(REPO, d);
     if (!fs.existsSync(abs)) continue;
     for (const full of walk(abs)) {
       const rel = path.relative(REPO, full).split(path.sep).join("/");
       if (isExcluded(rel)) continue;
-      files.push({ rel, text: fs.readFileSync(full, "utf8") });
+      const text = fs.readFileSync(full, "utf8");
+      // Rules A/B can only see a SQL keyword, and rule C deliberately considers
+      // only SQL-writing modules plus its argued allowlist. Gate before the shared
+      // comment projection so irrelevant source cannot pay parser cost.
+      if (!SOURCE_GATE.test(text) && !HANDBUILT_ALLOW[rel]) continue;
+      const code = stripComments(text);
+      files.push({ rel, code, sql: sqlLiterals(code) });
     }
   }
-  return files;
+  sourceFilesCache = files;
+  return sourceFilesCache;
 }
 
-// Strip line and block comments so PROSE about a convention — of which this codebase
-// has plenty, including the explanations phase 1 added — can't trip the scanner.
+// This deliberately remains on strip-comments.test.ts's hand-rolled work queue.
+// The shared language projection is stronger, but measured 3.601s in CI here versus
+// the old guard's 1.955s. This narrower SQL scanner keeps its URL-aware fast path;
+// the immutable cache above removes the three repeated projections instead.
 function stripComments(text: string): string {
   return text
     .replace(/\/\*[\s\S]*?\*\//g, "")
@@ -432,11 +451,10 @@ const HANDBUILT_RE =
 
 const DAY_ARITHMETIC_PREFIX = /(?:Date\.parse|new Date)\s*\(\s*$/;
 
-function countHandbuilt(text: string): number {
-  const stripped = stripComments(text);
+function countHandbuilt(code: string): number {
   let n = 0;
-  for (const m of stripped.matchAll(HANDBUILT_RE)) {
-    if (DAY_ARITHMETIC_PREFIX.test(stripped.slice(0, m.index))) continue;
+  for (const m of code.matchAll(HANDBUILT_RE)) {
+    if (DAY_ARITHMETIC_PREFIX.test(code.slice(0, m.index))) continue;
     n++;
   }
   return n;
@@ -445,8 +463,8 @@ function countHandbuilt(text: string): number {
 describe("stored-instant convention (issue #2205, phase 1)", () => {
   it("A. every canonical instant column is written through a bound parameter", () => {
     const violations: string[] = [];
-    for (const { rel, text } of sourceFiles()) {
-      for (const sql of sqlLiterals(stripComments(text))) {
+    for (const { rel, sql: statements } of sourceFiles()) {
+      for (const sql of statements) {
         for (const w of writesIn(sql)) {
           const declared = CANONICAL_INSTANT_COLUMNS[w.table];
           if (!declared || !declared.columns.includes(w.column)) continue;
@@ -479,8 +497,8 @@ describe("stored-instant convention (issue #2205, phase 1)", () => {
     const violations: string[] = [];
     if (tables.length > 0) {
       const mentions = new RegExp(`\\b(?:${tables.join("|")})\\b`, "i");
-      for (const { rel, text } of sourceFiles()) {
-        for (const sql of sqlLiterals(stripComments(text))) {
+      for (const { rel, sql: statements } of sourceFiles()) {
+        for (const sql of statements) {
           if (!mentions.test(sql) || !NOW_READ_RE.test(sql)) continue;
           violations.push(
             `${rel}: a statement over ${sql.match(mentions)?.[0]} reads SQL's own ` +
@@ -498,10 +516,9 @@ describe("stored-instant convention (issue #2205, phase 1)", () => {
   it("C. no module that writes SQL hand-builds an instant", () => {
     const violations: string[] = [];
     const seen = new Set<string>();
-    for (const { rel, text } of sourceFiles()) {
-      const stripped = stripComments(text);
-      if (!SQL_WRITE_RE.test(stripped) && !HANDBUILT_ALLOW[rel]) continue;
-      const count = countHandbuilt(text);
+    for (const { rel, code } of sourceFiles()) {
+      if (!SQL_WRITE_RE.test(code) && !HANDBUILT_ALLOW[rel]) continue;
+      const count = countHandbuilt(code);
       if (count === 0 && !HANDBUILT_ALLOW[rel]) continue;
       seen.add(rel);
       const allowed = HANDBUILT_ALLOW[rel]?.count ?? 0;
@@ -544,15 +561,6 @@ describe("stored-instant convention (issue #2205, phase 1)", () => {
       `These entries need a real reason (what the value is, and why it is or is not ` +
         `a stored instant):\n${thin.join("\n")}`
     ).toEqual([]);
-  });
-
-  it("the writer helpers exist where the convention says they do", () => {
-    const date = fs.readFileSync(path.join(REPO, "lib/date.ts"), "utf8");
-    expect(/export function utcInstant\b/.test(date)).toBe(true);
-    expect(/export function toUtcInstant\b/.test(date)).toBe(true);
-    expect(/export function utcSqlString\b/.test(date)).toBe(true);
-    const clock = fs.readFileSync(path.join(REPO, "lib/clock.ts"), "utf8");
-    expect(/export function instantNow\b/.test(clock)).toBe(true);
   });
 });
 

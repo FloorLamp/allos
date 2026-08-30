@@ -4,7 +4,7 @@
 // against the in-memory SQLite handle with the auth boundary mocked (setup.ts). Pins: a
 // log lands active with parsed regions; a missing region/label is refused; status moves
 // stamp/clear resolved_date; delete removes the row; the bridge activates the "Injury"
-// situation; and each write revalidates /training + /timeline.
+// situation; and each write revalidates /training + /history.
 
 import { describe, it, expect, beforeEach, vi } from "vitest";
 import { revalidatePath } from "next/cache";
@@ -53,7 +53,7 @@ describe("logInjury (#838)", () => {
 
     const paths = revalidate.mock.calls.map((c) => c[0]);
     expect(paths).toContain("/training");
-    expect(paths).toContain("/timeline");
+    expect(paths).toContain("/history");
   });
 
   it("refuses a log with no affected region", async () => {

@@ -4,15 +4,16 @@ import SymptomLogBar from "@/components/illness/SymptomLogBar";
 import { PICKER_SYMPTOMS } from "@/lib/symptoms";
 import type { TemperatureUnit } from "@/lib/settings";
 
-// The quick-log sheet's symptom panel (issue #4064) — a FIFTH mounting of
-// `SymptomLogBar`, after the dashboard's well-day card, the Timeline day view, the
-// illness cockpit and the Cycles page.
+// The quick-log sheet's symptom panel (issue #4064) — one of four mountings of
+// `SymptomLogBar`, beside the Timeline day view, the illness cockpit and the Cycles
+// page. It arrived as a fifth, over the dashboard's own well-day card; #3366 retired
+// that card once this row existed, which is the order its Depends-on required.
 //
 // It holds no logic and no write. Every prop below was gathered on the server on open
 // (`loadQuickEntry("symptom")`) from the same reads the dashboard's own mount makes, and
 // the bar posts the same `logSymptom` / `lowerSymptom` / `setSymptomNote` /
 // `removeSymptom` / `activateIllnessForSymptoms` actions it always has — so a tap here
-// and a tap on the dashboard are one write path with one validation, differing only in
+// and a tap in the cockpit are one write path with one validation, differing only in
 // the surface each mounting declares (#3087). That equality is asserted rather than
 // promised: components/__tests__/quick-symptom-parity.test.tsx builds both mounts and
 // compares the FormData they post.

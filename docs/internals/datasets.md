@@ -353,8 +353,8 @@ The family that carries the volume is a **DEXA scan's regional decomposition**:
 per-region fat percentage, per-site bone mineral density and content, the
 compartment-mass grid (with and without the `(g)` a report prints inside the
 name — `normalizeCanonicalKey` keeps it as a token, so the two spellings are two
-keys), and the derived depot ratios. Around ninety declared names, expanded from
-a cross product rather than hand-listed, all sharing **one** `out-of-scope`
+keys), and the remaining derived depot ratios. Around ninety declared names,
+expanded from a cross product rather than hand-listed, all sharing **one** `out-of-scope`
 declaration: they are the outputs of a single scan rather than independent
 analytes, and no population reference band exists for left-arm fat percentage.
 `out-of-scope` and not `covered-elsewhere` — the whole-body totals
@@ -362,6 +362,10 @@ analytes, and no population reference band exists for left-arm fat percentage.
 region is not its total, and pointing a reader at the total would claim their
 left arm is tracked when it isn't. Those totals stay curated; the completeness
 guard fails the day a declaration blurs that line.
+
+`Android/Gynoid Ratio` is declined separately: it is arithmetic over two regions
+of one DEXA, not an independently measured analyte. Its reason deliberately makes
+no claim about population reference ranges.
 
 The cross product is deliberate and its comment says why: "the family is a cross
 product, and writing ~80 literal rows is how one region quietly goes missing."

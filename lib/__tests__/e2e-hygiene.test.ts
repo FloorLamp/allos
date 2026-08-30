@@ -576,7 +576,7 @@ const MENU_TRIGGER_CLICK_ALLOW: Record<string, number> = {
 //
 // THE ESCAPE, and there is exactly one use: a discard whose OWN next assertion is a
 // server fact the delete alone can satisfy. `unclassified-activity.spec.ts` waits for
-// `/timeline`, and `leaveDeletedActivityPage` navigates only once `onDeleted` has
+// `/history`, and `leaveDeletedActivityPage` navigates only once `onDeleted` has
 // fired; it also presses Undo afterwards, so the helper — which dismisses that very
 // toast — is the wrong tool there rather than a missing one. Mark such a site with a
 // same-line `confirm-delete-ok: <why>` comment on the `.click(` line (the `first-ok`
@@ -632,6 +632,8 @@ const isFixtureLoginsModule = (name: string) =>
 // A constant used within this many characters after a sign-in opener counts as
 // "signed in as" (covers the multi-line `loginAs(browser, { username: X, … })` form).
 const SIGNIN_WINDOW_RE = /(?:loginAs\(|creds\(|username:)[\s\S]{0,200}/g;
+const SPEC_OWNED_DRAFT_SCOPE_RE =
+  /kind:\s*["']spec-owned["'][\s\S]{0,300}?ownerLogin:\s*(E2E_LOGIN_[A-Z0-9_]+)/g;
 // Fixture logins that are deliberately never signed in as, with WHY. Keep this list
 // short — each entry is a login the family page carries forever.
 const LOGIN_NO_SIGNIN_ALLOW: Record<string, string> = {
@@ -657,7 +659,7 @@ const LOGIN_NO_SIGNIN_ALLOW: Record<string, string> = {
 interface SpecFile {
   name: string;
   text: string;
-  code: string;
+  code?: string;
 }
 
 const strippedTextCache = new Map<string, string>();
@@ -667,6 +669,10 @@ function cachedStripComments(text: string): string {
   const code = stripComments(text);
   strippedTextCache.set(text, code);
   return code;
+}
+
+function codeFor(file: SpecFile): string {
+  return (file.code ??= cachedStripComments(file.text));
 }
 
 let specFilesCache: SpecFile[] | undefined;
@@ -683,7 +689,7 @@ function specFiles(): SpecFile[] {
         const name = path.relative(E2E_DIR, full).split(path.sep).join("/");
         if (!SCAN_EXCLUDE.has(name)) {
           const text = fs.readFileSync(full, "utf8");
-          out.push({ name, text, code: cachedStripComments(text) });
+          out.push({ name, text });
         }
       }
     }
@@ -791,11 +797,16 @@ function checkPattern(
     `New occurrences are banned — use e2e/helpers.ts (settledClick/followLink); ` +
       `see docs/internals/e2e-hygiene.md.`;
 
-  for (const { name, text, code } of files) {
-    const count = countMatches(
-      hygieneScanTextFrom(text, code, opts?.excludeLineMarker),
-      re
-    );
+  for (const file of files) {
+    const { name, text } = file;
+    // Comment stripping cannot create a match. Keep the exact code-only verdict
+    // for raw candidates without lexing guaranteed-empty files for every rule.
+    const count = countMatches(text, re)
+      ? countMatches(
+          hygieneScanTextFrom(text, codeFor(file), opts?.excludeLineMarker),
+          re
+        )
+      : 0;
     const allowed = allow[name] ?? 0;
     seen.add(name);
     if (count > allowed) {
@@ -1344,6 +1355,44 @@ describe("e2e suite hygiene guard (issue #868)", () => {
     }
 
     expect(violations, violations.join("\n")).toEqual([]);
+  });
+
+  it("a spec-owned draft sweep belongs to the only spec that signs into its owner login", () => {
+    const files = specFiles().filter((f) => f.name.endsWith(".spec.ts"));
+    const declarations: Array<{ file: string; login: string }> = [];
+    const rawDeclarations: string[] = [];
+
+    for (const file of files) {
+      if (!file.text.includes("spec-owned")) continue;
+      const code = codeFor(file);
+      rawDeclarations.push(
+        ...(code.match(/kind:\s*["']spec-owned["']/g) ?? [])
+      );
+      for (const match of code.matchAll(SPEC_OWNED_DRAFT_SCOPE_RE))
+        declarations.push({ file: file.name, login: match[1] });
+    }
+
+    expect(declarations.length).toBe(rawDeclarations.length);
+    expect(declarations.length).toBeGreaterThan(0);
+    for (const declaration of declarations) {
+      const signInFiles = files
+        .filter(
+          (file) =>
+            file.text.includes(declaration.login) &&
+            [...codeFor(file).matchAll(SIGNIN_WINDOW_RE)].some((window) =>
+              new Set<string>(window[0].match(LOGIN_CONST_NAME_RE) ?? []).has(
+                declaration.login
+              )
+            )
+        )
+        .map((file) => file.name);
+      expect(
+        signInFiles,
+        `${declaration.login} is declared as a spec-owned draft profile by ` +
+          `${declaration.file}, but is signed into by ${signInFiles.join(", ") || "no spec"}. ` +
+          `A destructive sweep is safe only when that login belongs to this one spec.`
+      ).toEqual([declaration.file]);
+    }
   });
 
   it("no NEW raw INSERT INTO profiles in an e2e/*.ts (use createFixtureProfile)", () => {

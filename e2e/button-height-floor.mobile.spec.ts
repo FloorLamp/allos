@@ -100,7 +100,6 @@ const BOX_ROUTES: { route: string; ready: string; surfaces: BoxSurface[] }[] = [
     route: "/",
     ready: "dashboard-canvas",
     surfaces: [
-      { kind: "btn", testId: "vitals-log-reading", repairable: true },
       {
         kind: "button-control",
         testId: "cockpit-end-episode",
@@ -113,13 +112,28 @@ const BOX_ROUTES: { route: string; ready: string; surfaces: BoxSurface[] }[] = [
         testId: "symptom-cough-sev-1",
         repairable: true,
       },
-      // A typed <input> cannot grow a pseudo-element either; it wears the box with
-      // a >=16px line so iOS does not zoom the page on focus.
-      {
-        kind: "typed field",
-        testId: "weight-quick-add-input",
-        repairable: false,
-      },
+    ],
+  },
+  // TWO SUBJECTS RE-PICKED (#3366). This route used to bind `vitals-log-reading`
+  // (`btn btn-sm`) and `weight-quick-add-input` — the dashboard tail's own vitals
+  // and weight write controls. The 2026-08-29 ruling retired the tail's generic
+  // write cards because the quick logger is the app's one quick-write surface, so
+  // neither control renders on `/` any more.
+  //
+  //   • The TYPED FIELD moved WITH the capability, to the sheet's measurements
+  //     overlay below — the surface the weigh-in itself moved to. `m-time` is the
+  //     shared WhenControl's own input, rendered above the disclosure groups, so it
+  //     is there on arrival exactly as the weight field used to be.
+  //   • The `btn btn-sm` KIND did not need re-homing: `supplement-add-toggle` on
+  //     `/nutrition?tab=supplements` below is the same class family in its harder,
+  //     icon-only form, so nothing stopped being measured. No nearby element was
+  //     drafted onto route `/` to keep this list the same length.
+  {
+    route: "/?quick=log-measurements",
+    ready: "measurements-quick-add",
+    surfaces: [
+      // A typed <input> cannot grow a pseudo-element, so it wears the box itself.
+      { kind: "typed field", testId: "m-time", repairable: false },
     ],
   },
   // THE QUICK-LOG SHEET'S TWO "Happened earlier?" DISCLOSURES (#3273). They are

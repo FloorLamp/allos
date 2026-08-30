@@ -66,7 +66,7 @@ describe("Chip", () => {
 
   it("keeps timeline behavior behind the primitive-owned adapter", () => {
     render(
-      <Chip role="filter" href="/timeline" current linkBehavior="timeline">
+      <Chip role="filter" href="/history" current linkBehavior="timeline">
         30D
       </Chip>
     );
@@ -124,7 +124,7 @@ describe("FilterPills", () => {
         layout="responsive"
         label="Timeline category"
         value="all"
-        options={[{ value: "all", label: "All", href: "/timeline" }]}
+        options={[{ value: "all", label: "All", href: "/history" }]}
       />
     );
 
@@ -186,7 +186,7 @@ describe("FilterPills", () => {
         value="active"
         options={[
           { value: "all", label: "All", href: "/records" },
-          { value: "active", label: "Active", href: "/timeline" },
+          { value: "active", label: "Active", href: "/history" },
         ]}
       />
     );

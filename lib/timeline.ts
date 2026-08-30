@@ -57,7 +57,7 @@ import {
   immunizationHref,
   importHref,
   intakeHref,
-  timelineDayHref,
+  historyDayHref,
 } from "./hrefs";
 import { symptomLabel, severityLabel, severityLabelFor } from "./symptoms";
 import {
@@ -81,13 +81,6 @@ export interface TimelineOptions {
   limit?: number;
   units?: UnitPrefs;
   includeTrainingEvents?: boolean;
-  // Multi-view Timeline (#1329): the profile whose day a per-day deep-link
-  // (`timelineDayHref` on symptom/practice events) should land on. Set ONLY by the
-  // cross-profile gather (getMultiProfileTimeline) to the member being gathered, so a
-  // day link carries whose day it is and the single-day view lands on the SUBJECT's
-  // day context — never a mixed-subject edit surface. Undefined (every single-view
-  // caller) leaves the link byte-identical.
-  dayLinkProfileId?: number;
 }
 
 export interface TimelinePage {
@@ -1218,7 +1211,7 @@ function collectEvents(
         category: "milestone",
         title: m.title,
         detail: m.detail,
-        href: "/timeline?category=milestone",
+        href: historyHref({ kind: "milestone" }),
         sortTime: timeFromCreatedAt(m.created_at, tz),
         tone: "good",
       },
@@ -1390,7 +1383,7 @@ function collectEvents(
           parsed.map((p) => symptomLabel(p.key)),
           5
         ),
-        href: timelineDayHref(s.date, options.dayLinkProfileId),
+        href: historyDayHref(s.date),
         tone: s.max_severity >= 3 ? "warn" : "default",
         detailItems: parsed.map((p) => ({
           label: symptomLabel(p.key),
@@ -1450,7 +1443,7 @@ function collectEvents(
         category: "practice",
         title: p.practice,
         subtitle: p.count === 1 ? "1 session" : `${p.count} sessions`,
-        href: timelineDayHref(p.date, options.dayLinkProfileId),
+        href: historyDayHref(p.date),
         detailItems,
       },
       options
@@ -1531,20 +1524,16 @@ export function getTimelinePage(
 // context trap, #1096) and the per-table caps apply PER MEMBER (a chatty member can't
 // evict a quiet member's day — #304), which a shared-clock SQL read would violate. So
 // there is no new cross-profile SQL module to register — only a merge of per-profile
-// results (the pure merge lives in lib/timeline-multi.ts). Each member's per-day
-// deep-links carry that member's own profile id so the single-day view lands on the
-// SUBJECT's day context. `hasMore` is true when ANY member has more history.
+// results (the pure merge lives in lib/timeline-multi.ts). `hasMore` is true when ANY
+// member has more history.
 export function getMultiProfileTimeline(
   viewIds: readonly number[],
-  options: Omit<TimelineOptions, "dayLinkProfileId"> = {}
+  options: TimelineOptions = {}
 ): { members: MemberTimeline[]; hasMore: boolean } {
   const members: MemberTimeline[] = [];
   let hasMore = false;
   for (const pid of viewIds) {
-    const page = getTimelinePage(pid, {
-      ...options,
-      dayLinkProfileId: pid,
-    });
+    const page = getTimelinePage(pid, options);
     if (page.hasMore) hasMore = true;
     members.push({
       profileId: pid,

@@ -67,8 +67,8 @@ describe("currentStreak", () => {
 //   a >24h travel switch): the walk reads the missing date as a gap and stops there,
 //   so it reports only the part of the run AFTER the skip. Undercount — and note it
 //   is not always by one: whatever prefix sat before the skip is dropped with it.
-//   Deliberate and tolerated; lib/streak.ts carries why, and why "fixing" it risks
-//   the opposite, worse error.
+//   That describes inputs containing only dates the profile actually lived; a stored
+//   activity label for the deleted date instead bridges the gap, recorded below.
 //
 //   DST, either hemisphere, either direction: a 23h or 25h day is still a day with
 //   its own date, so nothing is deleted and the count is EXACT. The case that
@@ -76,8 +76,7 @@ describe("currentStreak", () => {
 //
 //   WESTWARD, a local date lived through TWICE: two runs at the same calendar label
 //   collapse to one entry in the date set, so the count is exact. The mirror does
-//   NOT invent a day — which is the property that makes the eastward error safe to
-//   leave.
+//   not invent a day for these swept inputs.
 
 // The profile-local days a profile ACTUALLY lived, sampled minute by minute from real
 // instants through whatever zone its clock was on at the time — `zoneAt` is what lets
@@ -198,5 +197,34 @@ describe("currentStreak across a real timezone skip (#3294)", () => {
 
     // Trained every day the profile actually lived, anchored on the last of them.
     expect(currentStreak(days.at(-1) as string, days)).toBe(streak);
+    // Bound against the independently swept lived-day count, not input length.
+    expect(currentStreak(days.at(-1) as string, days)).toBeLessThanOrEqual(
+      minutes.size
+    );
+  });
+
+  it("records a deleted-date activity label bridging the calendar gap", () => {
+    const minutes = livedLocalDays(
+      switchedZone(
+        "Pacific/Pago_Pago",
+        "Pacific/Kiritimati",
+        "2026-03-10T10:30:00Z"
+      ),
+      "2026-03-09T20:00:00Z",
+      "2026-03-12T20:00:00Z"
+    );
+    const livedDays = [...minutes.keys()].sort();
+    expect(livedDays).toEqual([
+      "2026-03-09",
+      "2026-03-11",
+      "2026-03-12",
+      "2026-03-13",
+    ]);
+    expect(minutes.has("2026-03-10")).toBe(false);
+
+    const storedDates = [...livedDays, "2026-03-10"];
+    const streak = currentStreak(livedDays.at(-1) as string, storedDates);
+    expect(streak).toBe(5);
+    expect(streak).toBeGreaterThan(minutes.size);
   });
 });

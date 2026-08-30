@@ -129,19 +129,34 @@ describe("fiberDoseGrams", () => {
 });
 
 describe("fiberIntake composition", () => {
-  it("tracked reading OVERRIDES the estimated+supplemented sum", () => {
+  it("takes the larger floor and keeps both sources", () => {
     const i = fiberIntake({
       dailyTracked: 30,
       dailyEstimated: 12,
       dailySupplemented: 5,
+      unknownSupplement: true,
     });
     expect(i).toMatchObject({
       grams: 30,
-      basis: "tracked",
-      estimatedGrams: 0,
-      supplementedGrams: 0,
-      unknownSupplement: false,
+      basis: "both-sources",
+      estimatedGrams: 12,
+      supplementedGrams: 5,
+      unknownSupplement: true,
     });
+  });
+
+  // The property the #4127 ruling bought, asserted as the comparison it is about rather
+  // than against a constant: the same day with an integration connected can never read
+  // LOWER than the same day without one. The shipped case above fixes tracked ABOVE the
+  // in-app sum, so nothing yet pins the other side of the max.
+  it("connecting an integration never lowers the figure", () => {
+    const inApp = { dailyEstimated: 22, dailySupplemented: 5 };
+    const without = fiberIntake({ ...inApp, dailyTracked: null })!;
+    expect(without.grams).toBe(27);
+    for (const dailyTracked of [1, 20, 27, 40])
+      expect(
+        fiberIntake({ ...inApp, dailyTracked })!.grams
+      ).toBeGreaterThanOrEqual(without.grams);
   });
 
   it("estimated + supplemented SUM to a combined basis", () => {
@@ -256,6 +271,7 @@ describe("fiberBasisIsFloor (#980 gauge/copy predicate)", () => {
     expect(fiberBasisIsFloor("estimated")).toBe(true);
     expect(fiberBasisIsFloor("combined")).toBe(true);
     expect(fiberBasisIsFloor("supplemented")).toBe(true);
+    expect(fiberBasisIsFloor("both-sources")).toBe(true);
   });
 });
 
@@ -267,6 +283,24 @@ describe("fiber copy discipline", () => {
     expect(detail).toMatch(/floor/i);
     expect(detail).not.toMatch(/deficien/i);
     expect(detail).toMatch(/informational/i);
+  });
+
+  // The both-sources sentence ships unasserted otherwise, and it is the half of the
+  // ruling that is about COPY: the figure names both records rather than only the one
+  // that won, which is what made the retired override unreadable.
+  it("both-sources names both records and keeps the floor caveat", () => {
+    const summary = fiberIntakeSummary(
+      fiberIntake({
+        dailyTracked: 20,
+        dailyEstimated: 22,
+        dailySupplemented: 5,
+      })!
+    );
+    expect(summary).toContain("27 g/day");
+    expect(summary).toContain(
+      "your food and supplement logs and your health app"
+    );
+    expect(summary).toContain("a floor");
   });
 
   it("signal key is namespaced under the registered prefix", () => {

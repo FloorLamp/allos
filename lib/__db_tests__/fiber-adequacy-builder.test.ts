@@ -146,21 +146,31 @@ describe("buildFiberAdequacyFindings (#976)", () => {
     expect(rolled).toContain(f.dedupeKey);
   });
 
-  it("a tracked fiber_g reading OVERRIDES the estimated+supplemented sum", () => {
+  it("compares weekly source averages and preserves the in-app components", () => {
     const p = newProfile("fiber-tracked");
     setSex(p, "female"); // target 25
+    db.prepare(
+      "INSERT INTO profile_settings (profile_id, key, value) VALUES (?, 'week_mode', 'rolling')"
+    ).run(p);
     const anchor = today(p);
-    logFood(p, anchor, "legumes", 1); // would estimate 8
+    const yesterday = shiftDateStr(anchor, -1);
+    logFood(p, anchor, "legumes", 2); // 16
+    logFood(p, yesterday, "whole_grains", 2); // 6; estimated mean = 11
     seedDose(p, "Metamucil", "5 g", anchor, "taken");
-    seedTrackedFiber(p, anchor, 30); // measured total wins
+    seedDose(p, "Psyllium", "7 g", yesterday, "taken"); // supplement mean = 6
+    seedDose(p, "Fiber capsules", "2 capsules", anchor, "taken");
+    seedTrackedFiber(p, anchor, 10);
+    seedTrackedFiber(p, yesterday, 12); // tracked mean = 11; in-app mean = 17
 
     const a = getFiberAdequacy(p);
-    expect(a?.intake.basis).toBe("tracked");
-    expect(Math.round(a!.intake.grams)).toBe(30);
-    expect(a?.intake.estimatedGrams).toBe(0);
-    expect(a?.intake.supplementedGrams).toBe(0);
-    expect(a?.status).toBe("within"); // 30 ≥ 25, under the ceiling
-    expect(buildFiberAdequacyFindings(p)).toEqual([]);
+    expect(a?.intake.basis).toBe("both-sources");
+    expect(a?.intake).toMatchObject({
+      grams: 17,
+      estimatedGrams: 11,
+      supplementedGrams: 6,
+      unknownSupplement: true,
+    });
+    expect(a?.status).toBe("below");
   });
 
   it("stays silent with no food, no supplements, and no tracked reading", () => {

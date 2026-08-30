@@ -8,7 +8,7 @@ import {
   type SleepRecordPresentation,
 } from "@/lib/sleep-summary";
 import type { TimeFormat } from "@/lib/format-date";
-import { timelineDayHref } from "@/lib/hrefs";
+import { historyDayHref } from "@/lib/hrefs";
 import { chartSeries } from "@/lib/chart-colors";
 import { activityProvenanceLabel } from "@/lib/training-log-format";
 import type { BedtimeSupplementSummary } from "@/lib/sleep-bedtime-supplements";
@@ -96,7 +96,7 @@ export default function SleepHero({
           </span>
         </div>
         <DestinationLink
-          href={timelineDayHref(summary.wakeDay)}
+          href={historyDayHref(summary.wakeDay)}
           className="inline-flex items-center gap-1 text-sm text-link"
           data-testid="sleep-hero-day-link"
         >

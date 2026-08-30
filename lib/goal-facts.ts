@@ -8,10 +8,10 @@
 // module decides only WHICH facts the row states and WHAT each one reads; how a chip
 // looks and discloses its editor belongs to components/facts/FactChipRow.
 //
-// THE TAP TRADE, written down here because the acceptance criterion that asked for a
-// "census baseline" names a file that does not exist in this tree, and #3219 and
-// #3222 both answered it in their own fact module's header instead. A summary-first
-// form costs ONE EXTRA TAP per fact the person actually wants to change (open the
+// THE TAP TRADE stays here because #3390's committed baseline at
+// scripts/census-chrome-baseline.json records rendered geometry, not tap counts;
+// #3219 and #3222 use the same point-of-contact record. A summary-first form costs
+// ONE EXTRA TAP per fact the person actually wants to change (open the
 // chip, edit, Done) and saves the READING of every fact they do not. That is a good
 // trade exactly when most facts are already right.
 //

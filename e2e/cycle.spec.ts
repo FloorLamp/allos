@@ -28,6 +28,9 @@ import {
 // the feed keys the group on it verbatim, so a bare date string is the right shape here —
 // there is no instant to build.
 const FUTURE_GOAL_TITLE = "E2E future phase goal 1";
+// The profile's own today, as the frozen run clock sees it. The day view is what
+// carries body context now, so the chip test needs a day the profile has lived.
+const TODAY = new Date(frozenNow()).toISOString().slice(0, 10);
 const FUTURE_DATE = (() => {
   const d = new Date(frozenNow());
   d.setUTCDate(d.getUTCDate() + 120);
@@ -401,32 +404,40 @@ test.describe("menstrual cycle (#714)", () => {
     }
   });
 
-  test("Timeline day header shows the cycle phase/period chip", async () => {
-    await page.goto("/timeline");
-    await expect(page.getByTestId("cycle-phase-chip").first()).toBeVisible(); // first-ok: asserts a cycle phase chip renders — order-agnostic presence
+  test("the record's day view shows the cycle phase/period chip", async () => {
+    // THE CHIP MOVED WITH THE DAY VIEW. `/timeline` drew body context beside every
+    // day group in its scrolling feed; #3958 gives the record a one-line day header
+    // with a count and nothing else (the ≤140px chrome budget), and puts daylight, UV,
+    // weather and cycle phase on `?day=` — the one surface that is about a single day.
+    await page.goto(`/history?day=${TODAY}`);
+    await expect(page.getByTestId("history-day-context")).toBeVisible();
+    await expect(page.getByTestId("cycle-phase-chip")).toBeVisible();
   });
 
-  // #2613 — the Timeline's window leaves its upper bound open so future-dated events
-  // are visible, and a goal target date months out opens a day group of its own.
-  // That group used to carry a bare "Follicular" chip in exactly the factual voice
-  // today's uses: cyclePhaseOnDate's open-cycle branch answered with total confidence
-  // about a day nobody has lived. The phase there is not uncertain, it is unknowable, so
-  // the honest answer is an ABSENCE — no chip at all, not a hedged one.
-  test("a future day group carries no phase chip while a lived-through one still does", async () => {
+  // #2613 — a day nobody has lived cannot be given a phase. `cyclePhaseOnDate`'s
+  // open-cycle branch answered with total confidence about a future day, and the
+  // honest answer is an ABSENCE rather than a hedge.
+  //
+  // THE GUARANTEE IS STRUCTURAL NOW, AND THAT IS WHAT THIS ASSERTS. `/timeline` left
+  // its upper bound open, so a goal target months out opened a day group of its own
+  // and the chip had to be suppressed there. #3958 rules that the record ENDS AT NOW
+  // — the future belongs to /upcoming — and clamps a future `?day=` to today, so the
+  // unlived day has no surface at all. Proved both ways rather than by absence alone:
+  // the planted future goal is off the record, and a future `?day=` lands on today
+  // WITH its chip, so a record that had simply stopped rendering would fail here.
+  test("the record ends at now, so an unlived day has no phase chip to get wrong", async () => {
     seedFutureGoal();
     try {
-      // The future FOLDS since #2657 — it is never the feed's opening content — so the
-      // day group this asserts on is reached by opening that fold. What is under test
-      // is unchanged: a day nobody has lived still carries no phase chip.
-      await page.goto("/timeline?open=ahead");
-      // Both halves in one assertion set: the fixture's chips are still rendering
-      // (otherwise "no chip on the future day" would pass for the wrong reason)…
-      await expect(page.getByTestId("cycle-phase-chip").first()).toBeVisible(); // first-ok: asserts chips still render at all — order-agnostic presence
-      // …and the future day group exists, carries this spec's own goal, and has none.
-      const futureDay = page.locator(`#timeline-day-${FUTURE_DATE}`);
-      await expect(futureDay).toBeVisible();
-      await expect(futureDay.getByText(FUTURE_GOAL_TITLE)).toBeVisible();
-      await expect(futureDay.getByTestId("cycle-phase-chip")).toHaveCount(0);
+      await page.goto("/history");
+      await expect(page.getByText(FUTURE_GOAL_TITLE)).toHaveCount(0);
+      await expect(page.locator(`#timeline-day-${FUTURE_DATE}`)).toHaveCount(0);
+
+      // A hand-typed future day clamps rather than 404ing or rendering a blank
+      // future — #3958's edge-case ruling — and what it lands on is today.
+      await page.goto(`/history?day=${FUTURE_DATE}`);
+      await expect(page.getByTestId("history-day-context")).toBeVisible();
+      await expect(page.getByTestId("cycle-phase-chip")).toBeVisible();
+      await expect(page.locator(`#timeline-day-${FUTURE_DATE}`)).toHaveCount(0);
     } finally {
       clearFutureGoal();
     }

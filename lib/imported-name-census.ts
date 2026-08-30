@@ -85,6 +85,22 @@ export function blankComments(source: string): string {
   return out.join("");
 }
 
+// The census asks several questions of the same immutable source text. Keep the
+// expensive common projections for the lifetime of this short-lived test worker
+// instead of blanking comments and rebuilding the binding graph for every question.
+const cleanSourceCache = new Map<string, string>();
+const bindingCache = new Map<string, string[]>();
+const renderSiteCache = new Map<string, CensusHit[]>();
+
+function cleanSource(source: string): string {
+  let clean = cleanSourceCache.get(source);
+  if (clean === undefined) {
+    clean = blankComments(source);
+    cleanSourceCache.set(source, clean);
+  }
+  return clean;
+}
+
 // An expression that mentions a name — `med.name`, `item.name`, `row.source_name`,
 // `provider_name`, `c.name`. Deliberately loose: over-matching here only widens what
 // the casing rule LOOKS at, and the casing rule is the narrow one.
@@ -101,6 +117,9 @@ const NAME_EXPR = String.raw`[A-Za-z_$][\w.$?\[\]"'! ]*?(?<!class)[Nn]ame\b[\w.$
 // methods, and the helper shapes (`titleCase(x)`, `toTitleCase(x)`, `capitalize(x)`,
 // `startCase(x)`) that would arrive with a utility rather than a method call.
 const CASING = String.raw`(?:\.\s*to(?:Locale)?(?:Upper|Lower)Case\s*\(|(?<![\w.$])(?:to)?[Tt]itleCase\s*\(|(?<![\w.$])[Cc]apitali[sz]e\s*\(|(?<![\w.$])startCase\s*\()`;
+// Binding analysis can only produce a cased local when the raw source contains a
+// casing call. Comment blanking may remove a candidate, but it cannot create one.
+const CASING_CALL_GATE = /(?:case|capitali[sz]e)\s*\(/i;
 
 // A JSX interpolation in a position a reader SEES: a text child (`>{ … }`, with the
 // `>` not part of `=>`, `<=`, `>=` or `!==`), or one of the user-facing attributes
@@ -232,7 +251,10 @@ function casingOnLocal(rhs: string, locals: Set<string>): boolean {
 // The local identifiers this source binds a cased name to. Exported so the guard can
 // assert on WHICH binding it found rather than only on the verdict.
 export function casedNameBindings(source: string): string[] {
-  const clean = blankComments(source);
+  const cached = bindingCache.get(source);
+  if (cached) return [...cached];
+
+  const clean = cleanSource(source);
 
   // Locals holding a name with no casing on them yet — `const shown = med.name`.
   // Not an offence; the material for the two-step one.
@@ -269,7 +291,9 @@ export function casedNameBindings(source: string): string[] {
     }
     if (!grew) break;
   }
-  return [...cased];
+  const bindings = [...cased];
+  bindingCache.set(source, bindings);
+  return [...bindings];
 }
 
 // Does this interpolation render one of those bindings? A word-boundary match, so
@@ -296,15 +320,21 @@ function lineOf(source: string, index: number): number {
 // Every JSX interpolation in this source that RENDERS a name. The census floor is a
 // count of these: the rule can only speak about sites it can see.
 export function nameRenderSites(source: string): CensusHit[] {
-  const clean = blankComments(source);
-  const bindings = casedNameBindings(source);
+  const cached = renderSiteCache.get(source);
+  if (cached) return cached.map((hit) => ({ ...hit }));
+
+  const clean = cleanSource(source);
+  const bindings = CASING_CALL_GATE.test(source)
+    ? casedNameBindings(source)
+    : [];
   const hits: CensusHit[] = [];
   for (const m of clean.matchAll(RENDER_RE)) {
     const body = m[1] ?? "";
     if (!NAME_IN_INTERP.test(body) && !rendersBinding(body, bindings)) continue;
     hits.push({ text: body.trim(), line: lineOf(clean, m.index) });
   }
-  return hits;
+  renderSiteCache.set(source, hits);
+  return hits.map((hit) => ({ ...hit }));
 }
 
 // Every name render that applies a casing transform on the way to the DOM — the
@@ -401,7 +431,7 @@ function childWindow(clean: string, from: number): string {
 // Every casing class or casing style in this source — the denominator the floor is
 // asserted on.
 export function cssCasingClassSites(source: string): CensusHit[] {
-  const clean = blankComments(source);
+  const clean = cleanSource(source);
   const hits: CensusHit[] = [];
   for (const m of clean.matchAll(CASING_MARKUP_RE)) {
     if (!isCasingMarkup(m[1], m[0])) continue;
@@ -413,7 +443,7 @@ export function cssCasingClassSites(source: string): CensusHit[] {
 // Every casing class or casing style whose element then renders a name — the
 // offending shape.
 export function cssCasingOverNameHits(source: string): CensusHit[] {
-  const clean = blankComments(source);
+  const clean = cleanSource(source);
   const hits: CensusHit[] = [];
   for (const m of clean.matchAll(CASING_MARKUP_RE)) {
     if (!isCasingMarkup(m[1], m[0])) continue;

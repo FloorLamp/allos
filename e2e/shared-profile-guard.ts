@@ -37,6 +37,21 @@ export interface StrandedDraft {
   date: string;
 }
 
+export type DraftAssertionScope =
+  | { kind: "shared"; profileId: typeof SHARED_PROFILE_ID }
+  | {
+      kind: "spec-owned";
+      profileId: number;
+      profileName: string;
+      ownerLogin: string;
+    };
+
+/** The standing guard's explicit permission to repair profile 1. */
+export const SHARED_PROFILE_DRAFT_SCOPE: DraftAssertionScope = {
+  kind: "shared",
+  profileId: SHARED_PROFILE_ID,
+};
+
 // The LIVE-DRAFT SIGNATURE, straight off `computeWorkoutPresence`'s own `active`
 // classifier (lib/workout-presence.ts): a manual (source-less) row that started, has
 // no end, and carries no positive duration. Those four columns are exactly what the
@@ -124,7 +139,8 @@ export function takeStrandedDrafts(
 /** The failure message a stranded draft earns, naming the rows it left behind. */
 export function strandedDraftMessage(
   stranded: StrandedDraft[],
-  profileId: number = SHARED_PROFILE_ID
+  profileId: number = SHARED_PROFILE_ID,
+  profileName?: string
 ): string {
   const rows = stranded
     .map((row) => `  • activity ${row.id} "${row.title}" (${row.date})`)
@@ -132,7 +148,9 @@ export function strandedDraftMessage(
   const which =
     profileId === SHARED_PROFILE_ID
       ? `the SHARED profile ${SHARED_PROFILE_ID}`
-      : `its own fixture profile ${profileId}`;
+      : profileName
+        ? `its own fixture profile "${profileName}" (profile ${profileId})`
+        : `its own fixture profile ${profileId}`;
   return (
     `This test left ${stranded.length} live workout draft(s) on ` +
     `${which} (#3173):\n${rows}\n\n` +
@@ -143,6 +161,81 @@ export function strandedDraftMessage(
     `cannot skip it — or give the fixture a profile of its own (#868). The rows above ` +
     `have been removed so the rest of this worker's run is unaffected.`
   );
+}
+
+/**
+ * Repair and ASSERT the absence of a live draft at a spec cleanup boundary.
+ *
+ * A sweep is safe only in one of two scopes: profile 1, whose automatic per-test
+ * guard serialises ownership, or a fixture profile the calling spec owns outright.
+ * The latter has no numeric shortcut: the caller must declare the profile's stable
+ * name and owner login. The helper checks both the name and that this is the only
+ * login granted to the profile before deleting anything; e2e-hygiene independently
+ * proves that only the declaring spec signs in as that login. That makes a copy onto
+ * somebody else's fixture fail at the precondition instead of quietly erasing its
+ * rows. The assertion lives here with the live-draft signature so every caller both
+ * reports and repairs the same condition.
+ */
+export function assertNoStrandedDrafts(
+  dbPath: string = workerDbPath(),
+  scope: DraftAssertionScope = SHARED_PROFILE_DRAFT_SCOPE
+): void {
+  if (!fs.existsSync(dbPath)) return;
+
+  if (scope.kind === "shared") {
+    if (scope.profileId !== SHARED_PROFILE_ID)
+      throw new Error(
+        `The shared-profile draft scope must name profile ${SHARED_PROFILE_ID}.`
+      );
+  } else {
+    if (scope.profileId === SHARED_PROFILE_ID)
+      throw new Error(
+        `Profile ${SHARED_PROFILE_ID} is shared; it cannot be declared spec-owned.`
+      );
+    const db = new Database(dbPath, { readonly: true });
+    try {
+      db.pragma("busy_timeout = 5000");
+      const actual = db
+        .prepare("SELECT name FROM profiles WHERE id = ?")
+        .get(scope.profileId) as { name: string } | undefined;
+      if (actual?.name !== scope.profileName)
+        throw new Error(
+          `Draft assertion expected owned fixture profile ${scope.profileId} to be ` +
+            `"${scope.profileName}", but found ${actual ? `"${actual.name}"` : "no profile"}.`
+        );
+      const grants = db
+        .prepare(
+          `SELECT l.username, lp.access
+             FROM login_profiles lp
+             JOIN logins l ON l.id = lp.login_id
+            WHERE lp.profile_id = ?
+            ORDER BY l.username`
+        )
+        .all(scope.profileId) as Array<{ username: string; access: string }>;
+      if (
+        grants.length !== 1 ||
+        grants[0].username !== scope.ownerLogin ||
+        grants[0].access !== "write"
+      )
+        throw new Error(
+          `Owned fixture profile ${scope.profileId} is not exclusively granted with ` +
+            `write access to ${scope.ownerLogin}; found ` +
+            `${grants.map((grant) => `${grant.username}:${grant.access}`).join(", ") || "no grants"}.`
+        );
+    } finally {
+      db.close();
+    }
+  }
+
+  const stranded = takeStrandedDrafts(dbPath, scope.profileId);
+  if (stranded.length > 0)
+    throw new Error(
+      strandedDraftMessage(
+        stranded,
+        scope.profileId,
+        scope.kind === "spec-owned" ? scope.profileName : undefined
+      )
+    );
 }
 
 // ─────────────────────────────────────────────────────────────────────────────

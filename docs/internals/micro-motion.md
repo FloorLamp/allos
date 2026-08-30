@@ -168,7 +168,7 @@ smuggle the row's travel out of the band too, and the test fails that.
   `requestAnimationFrame` loop only retires the bounded scale-pulse receipt.
 - `app/(app)/nutrition/FoodLogBar.tsx` — serving-chip settle and serving-count pulse.
 - `components/quick-entry/QuickStoolForm.tsx` — type-chip settle and today's-count pulse.
-- `app/(app)/timeline/TimelineScrubber.tsx` — the jump rail's bubble, beating once per
+- `components/JumpRailScrubber.tsx` — the jump rail's bubble, beating once per
   month boundary a drag crosses.
 - `components/dashboard/NowCards.tsx` — a witnessed reading promoted into Now.
 - `components/QuickLogSheet.tsx` — due-and-usual offers fading into a slot reserved
@@ -274,8 +274,8 @@ not deleted, and _here_ is where to look.
   changes size, and it is **slate, not the success green** the confirm settle uses —
   catching a dismissal is a location, not an achievement.
 
-**`tick` — `app/(app)/timeline/TimelineScrubber.tsx`, the #2657 jump rail.** The first
-tenant that is not feedback on a write. Dragging the timeline's right-edge scrubber
+**`tick` — `components/JumpRailScrubber.tsx`, the #2657 jump rail.** The first
+tenant that is not feedback on a write. Dragging the record's right-edge scrubber
 moves a floating bubble that names the period under the finger; the bubble beats once
 each time the finger crosses out of one month and into the next, which is the difference
 between scrubbing _through_ history and sliding around inside one month.

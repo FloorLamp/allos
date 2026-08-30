@@ -21,7 +21,7 @@ import {
 import {
   intakeHref,
   nutritionTabHref,
-  timelineDayHref,
+  historyDayHref,
   MEDICATIONS_HREF,
   INSTRUMENTS_HREF,
   SUPPLIES_HREF,
@@ -557,7 +557,7 @@ export function uvOverexposureItems(
       domain: "uv-exposure" as const,
       title: obs.title,
       detail,
-      href: timelineDayHref(today),
+      href: historyDayHref(today),
       dueDate: null,
       band: "today" as const,
       dueText: "Review",

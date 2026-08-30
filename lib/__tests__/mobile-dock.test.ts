@@ -24,14 +24,31 @@ describe("dockSlots", () => {
     expect(dockSlots()).toHaveLength(DOCK_SLOT_COUNT);
   });
 
-  it("uses Timeline instead of Training through early childhood", () => {
+  // #3343 Q5, owner 2026-08-29: `trainingRelevant ? TRAINING : HISTORY`. The slot
+  // was Timeline's until #3958 phase 2 retired that route; the record absorbed its
+  // content, so it is the literal successor. Pinned as the whole slot LIST rather
+  // than as one id, because the ruling's other half is that NO OTHER SLOT CHANGES
+  // and the dock stays at four — an assertion about the second slot alone would
+  // pass on a dock that had quietly gained or reordered the rest.
+  it("uses History instead of Training through early childhood", () => {
     expect(dockSlots(false).map((s) => s.id)).toEqual([
       "home",
-      "timeline",
+      "history",
       "trends",
       "more",
     ]);
     expect(dockSlots(false)).toHaveLength(DOCK_SLOT_COUNT);
+  });
+
+  // The successor is a DESTINATION, which is the half an id comparison cannot see:
+  // a slot whose href had not moved with its id would light nothing and navigate to
+  // a route that no longer exists.
+  it("points the inherited slot at the record", () => {
+    expect(dockSlots(false)[1]).toMatchObject({
+      id: "history",
+      label: "History",
+      href: "/history",
+    });
   });
 
   it("gives every slot but More a destination, and More none", () => {

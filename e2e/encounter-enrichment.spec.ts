@@ -61,11 +61,11 @@ test.describe("encounter detail enrichment (#1350/#1353)", () => {
     await expect(page.getByTestId("encounter-scheduling")).toContainText(
       /Scheduled .* → attended/
     );
-    // The timeline-day link resolves to the visit's day in the Timeline.
+    // The day link resolves to the visit's day on the record.
     await followLink(
       page,
       page.getByTestId("encounter-timeline-link"),
-      /\/timeline\?/
+      /\/history\?day=/
     );
   });
 

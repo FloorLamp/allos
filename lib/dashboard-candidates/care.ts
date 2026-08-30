@@ -1,4 +1,4 @@
-import type { AppRoute } from "../hrefs";
+import { EPISODES_HREF, type AppRoute } from "../hrefs";
 import type { DashboardEpisodeGroup } from "../dashboard-relevance";
 import { profileDataRelevance } from "./candidate";
 import {
@@ -82,7 +82,10 @@ export const careCandidates = {
       "household.recent-episode-history",
       "household.episodes",
       "may",
-      { dashboardScope: "illness-context" }
+      // A LINK AND NOTHING ELSE, to a page the sidebar already lists as "Illness
+      // episodes" (#3366). It reports no value, so the tail draws one door row to
+      // that page instead of a card restating the nav.
+      { dashboardScope: "illness-context", navDuplicateOf: EPISODES_HREF }
     );
   },
   appointment(ctx: DomainCandidateContext, href: AppRoute) {

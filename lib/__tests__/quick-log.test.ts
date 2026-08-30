@@ -13,7 +13,7 @@ import {
 
 describe("primaryQuickLog", () => {
   it("falls back to Log activity on opinionless routes", () => {
-    for (const path of ["/", "/timeline", "/training", "/settings", "/data"]) {
+    for (const path of ["/", "/history", "/training", "/settings", "/data"]) {
       expect(primaryQuickLog(path).id).toBe(LOG_ACTIVITY_ID);
     }
   });
@@ -273,7 +273,7 @@ describe("the registry itself", () => {
       "/",
       "/data",
       "/wellness",
-      "/timeline",
+      "/history",
       "/nutrition",
       "/medications",
       "/trends",

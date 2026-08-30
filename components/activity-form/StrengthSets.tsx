@@ -872,9 +872,9 @@ export default function StrengthSets({
           census counts that tap (#1510's discipline). It is bought deliberately: the
           same fold removes nine rows of four controls each from a three-exercise
           session, and the overwhelmingly common thing to do with a finished uniform run
-          is READ it. The trade is stated in the module because #3390 established that
-          the census baseline cannot carry an annotation in-repo — so the annotation
-          lives at the point of contact, which is where the next reader is anyway.
+          is READ it. #3390's committed baseline now lives at
+          scripts/census-chrome-baseline.json, but it records rendered geometry, not tap
+          counts. This tap annotation therefore stays at the point of contact.
 
           COLLAPSE IS DISPLAY ONLY. The sets stay in `parts` state the whole time, and
           `buildActivityPayload` composes the save from that state — never from mounted

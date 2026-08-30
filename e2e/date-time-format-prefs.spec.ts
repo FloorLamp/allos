@@ -64,7 +64,7 @@ test("flipping the date/time prefs re-renders a record date and a training log t
 
     // Timeline day headers default to the mdy long shape ("Monday, July 6") —
     // never an ISO date (#1020).
-    await page.goto("/timeline");
+    await page.goto("/history");
     await expect(
       page.getByText(/^[A-Za-z]+day, [A-Z][a-z]+ \d{1,2}/).first() // first-ok: asserts a timeline date renders in long-date format — order-agnostic presence
     ).toBeVisible();
@@ -110,7 +110,7 @@ test("flipping the date/time prefs re-renders a record date and a training log t
 
     // Timeline day headers follow the pref ("Monday, 2026-07-06" — iso keeps the
     // weekday prefix, #1020).
-    await page.goto("/timeline");
+    await page.goto("/history");
     await expect(
       page.getByText(/^[A-Za-z]+day, \d{4}-\d{2}-\d{2}$/).first() // first-ok: asserts a timeline date renders in ISO format — order-agnostic presence
     ).toBeVisible();

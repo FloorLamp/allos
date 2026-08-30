@@ -9,16 +9,18 @@ import { LOGGED_VIA_FIELD } from "@/lib/logged-via";
 
 // NO SECOND WRITE PATH, ASSERTED RATHER THAN PROMISED (#4064/#1633).
 //
-// The quick logger's Care segment gains symptom capture, the well-day capture and the
-// mark-as-illness bridge so the #3366 ruling can retire the dashboard tail's card that
-// carries them today. The whole claim is that the sheet REACHES those controls rather
-// than reproducing them — and the only place that claim can be checked is a mounted
+// The quick logger's Care segment gained symptom capture, the well-day capture and the
+// mark-as-illness bridge so the #3366 ruling could retire the dashboard tail's card
+// that carried them. That card is gone; the mount below is kept as the RETIRED SHAPE
+// the sheet has to keep matching, which is the whole point of having landed the sheet
+// row first. The claim is that the sheet REACHES those controls rather than
+// reproducing them — and the only place that claim can be checked is a mounted
 // tree, because what a control posts is assembled in its click handler
 // (docs/internals/component-tests.md).
 //
 // SO THIS COMPARES TWO REAL MOUNTS, not one helper called twice. Each row below builds
-// the tree its surface actually renders — the dashboard's own JSX from
-// app/(app)/page.tsx, the sheet's panel, the illness cockpit's, the Cycles page's —
+// the tree its surface renders — the retired dashboard card's JSX, the sheet's panel,
+// the illness cockpit's, the Cycles page's —
 // drives the SAME tap through it, and captures the FormData that reached `logSymptom`.
 // Two calls into `withTarget` would prove nothing about any of them.
 
@@ -53,7 +55,11 @@ const RANKED = ["headache", "fatigue"];
 const COCKPIT_PROFILE = 42;
 const COCKPIT_EPISODE = 7;
 
-/** The dashboard's well-day card, exactly as app/(app)/page.tsx renders it. */
+/**
+ * The dashboard's well-day card, exactly as app/(app)/page.tsx rendered it until
+ * #3366 retired the mount. Kept: it is the payload the sheet inherited, so this is
+ * what "no coverage gap" means in bytes.
+ */
 function dashboardMount() {
   return (
     <LoggedViaSurface value="dashboard-widget">
@@ -147,7 +153,7 @@ async function tapHeadache(
   );
 }
 
-describe("the sheet's symptom row posts what the dashboard card posts", () => {
+describe("the sheet's symptom row posts what the retired dashboard card posted", () => {
   beforeEach(() => vi.clearAllMocks());
 
   it("is byte-identical apart from the surface each mounting declares", async () => {

@@ -18,6 +18,11 @@
 # Run from the worktree root. Exits non-zero on the first failing gate, with
 # the failing gate named on its own line — report the output VERBATIM.
 
+if [ "${1:-}" = "--help" ] || [ "${1:-}" = "-h" ]; then # the header IS the usage (usage.mjs is the JS twin)
+  sed -n '2,${/^#/!q;s/^#[[:space:]]\{0,1\}//p;}' "$0"
+  exit 0
+fi
+
 set -uo pipefail
 
 run_gate() {
@@ -80,6 +85,8 @@ db_tier_paths=(
   e2e/seed/session.ts
   e2e/worker-env.ts
   e2e/sync-instants.ts
+  # The profile-scoped draft assertion's DB contract imports this helper directly.
+  e2e/shared-profile-guard.ts
   # Profile-local fixture helpers imported by the date/zone invariant proofs.
   e2e/pinned-timezone.ts
   e2e/seed/profile-time-fixtures.ts

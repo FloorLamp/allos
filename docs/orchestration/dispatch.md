@@ -1,36 +1,23 @@
 # Dispatch and pipeline
 
-## Queue labels
-
-Two axes are load-bearing, and `reconcile-tracker` flags violations of both
-(`checkLabelHygiene`, 2026-08-15):
-
-- **Exactly one priority-slot label**: `P0`–`P3` or `parked`. Never two — a
-  `P2` + `parked` issue is in no queue and every queue at once.
-- **At least one domain label.** Cross-cutting design/UX work takes `design` —
-  it is a real domain, not a missing one.
-- Every ready P0/P1 preempts feature and presentation work, with or without
-  `bug`. Other type labels are optional color; `ui` marks e2e-heavy work.
-- `enhancement`, `cleanup`, `javascript`, and `lib` are retired (2026-08-15)
-  and deleted repo-side; a hygiene finding flags any reappearance. `lib` routed
-  nothing — business logic living in `lib/` is the repo's own rule.
-- `needs-human` means one specific owner answer is required. Apply it, assign
-  the owner, and keep working elsewhere; never prompt the owner uninvited.
-- Evaluations end with `recommend-adopt` or `recommend-hold`. A hold also gets
-  `parked`; an adopt is merged by the orchestrator.
+Queue labels live in [labels.md](labels.md) — the two label axes, the
+closed taxonomy, and `needs-human` handling.
 
 ## Dispatch
 
-- Use `scripts/orchestration/dispatch-brief.mjs new` for every agent, including
-  Agent-tool runs. Adopt any unrecorded live dispatch immediately.
+- Use `scripts/orchestration/dispatch-brief.mjs new` for every agent; adopt any
+  unrecorded live dispatch. Its setup prints `PINNED_BASE_SHA`; keep it and use
+  that exact SHA—not moving `origin/main`—for any reset or history rewrite.
 - Cluster two to six related issues by domain and files. Avoid file overlap;
   sequence work when overlap cannot be fenced.
 - A `design` issue is dispatchable only when its body records the owner
   decision (the #2701 shape) or a direction with stated falsifiers (#2641).
   One still carrying the design question is owner-gated; agents never explore.
 - Older issues start with an audit table: resolved by what, or still open.
-- Cap E2E work at two agents and ordinary concurrent work at five agents (four
-  until #2964 scoped the DB tier; raised on trial 2026-08-16).
+- Cap E2E work at two agents — `dispatch-brief.mjs` refuses a third `--e2e`
+  lane on every path (new/resume/adopt) and warns past the machine cap.
+  Ordinary concurrency is min(harness slots, machine cap) — five on the
+  4-core container (#2964); a harness exposing fewer slots caps there (#3710).
 - Revert on a DISCRIMINATING signal: a misread red actually shipped, or the
   ledger's median dispatch duration degrades. "Agents hit the ten-minute tool
   cap" is not one — it fired at four agents and at five, so it cannot tell them
@@ -40,8 +27,13 @@ Two axes are load-bearing, and `reconcile-tracker` flags violations of both
   dispatch at roughly three unreviewed PRs however few agents are running.
 - With ready P1s, reserve two user/data lanes and select the highest-risk ready
   P2; cap presentation/guard at one. Recompute when issues arrive or lanes free.
-- An urgent P0/P1 displaces the current candidate through `promote`; run only
-  its full matrix.
+- **Self-filed work joins the BACK of its queue.** An issue you or a lane
+  filed defaults to P3, sourced OLDEST FIRST only when no owner-filed work of
+  equal or higher priority is ready. Sole exception: a DEMONSTRATED P0/P1
+  regression a merge just introduced.
+- Lanes never file issues. Findings ride the return summary; the orchestrator
+  decides what becomes an issue — a filed observation displaces real work.
+- An urgent P0/P1 displaces the candidate via `promote`; run only its matrix.
 - STAGGER starts. Durations cluster tightly (seven of the first ten inside
   85±5 min), so simultaneous starts are simultaneous arrivals — and
   simultaneous GATES: five at once drove load to 17.7 on 4 cores.
@@ -53,8 +45,10 @@ Two axes are load-bearing, and `reconcile-tracker` flags violations of both
   rework when judging depth.
 - Every brief uses the generated template and the gate order from
   `scripts/orchestration/agent-gates.sh`.
-- Push meaningful checkpoints. A branch not next to land stays branch-only;
-  do not open a PR for CI that an earlier merge will invalidate.
+- Push meaningful checkpoints. A branch not next to land stays branch-only —
+  no PR at all, and a draft is not a banking state. The candidate's PR opens
+  READY (environment.md §GitHub access), never for CI a pending merge will
+  invalidate.
 - Parallelize banked implementation/local pre-review; serialize the sole
   candidate's remote review, CI, and merge.
 - A census meant to be EXHAUSTIVE passes ripgrep's `--binary` (`-a`). Several
@@ -64,12 +58,7 @@ Two axes are load-bearing, and `reconcile-tracker` flags violations of both
 
 ## Per-unit pipeline
 
-1. Read the issue body and every comment, WHOLE, and CHECK IT IS STILL OPEN —
-   other sessions work this tracker, so re-read before dispatching and again
-   before the lane opens its PR (2026-08-30: a lane finished against an issue
-   another session had closed 46 minutes earlier) — `issue-read.mjs <n>` never
-   truncates and flags rulings sitting in a body's tail. Never read a tracker item
-   through a character slice: owner rulings append to body ends (2026-08-30).
+1. Read each issue whole via `issue-read.mjs`; skip ones already closed.
 2. Generate the dispatch brief and record the branch in the task list.
 3. Require the agent to merge current `origin/main` and run the assigned gates.
    Promote only the next landing candidate to a PR; keep later verified branches
@@ -83,6 +72,9 @@ Two axes are load-bearing, and `reconcile-tracker` flags violations of both
 
 ## Tooling
 
+- Every entry script answers `-h`/`--help` with its own header and exits
+  before any side effect (`script-help.test.ts` pins it) — probing an
+  unfamiliar script is always safe.
 - `dispatch-brief.mjs`: manage dispatches, the sole landing candidate, and
   validated priority/lane state; deliver every emitted role update. `list`
   flags 3x-median idleness or a dispatch with no worktree and no branch.
@@ -92,7 +84,11 @@ Two axes are load-bearing, and `reconcile-tracker` flags violations of both
   Both vitest gates carry a 60 s per-test ceiling here; CI keeps 15 s.
 - `ci-watch.mjs`: wait for settled CI; exit 0 green, 1 red, 2 unsettled, 3
   conflict-blocked.
+- `catchup-digest.sh`: the since-last-looked digest; the check-in runs it once
+  its anchor is 4h stale, so it needs no remembering; `--peek` any time.
 - `dependabot-eval-brief.mjs`: evaluate major dependency updates.
+- `session-metrics.mjs`: the trend pulse — throughput, review depth, queue
+  shape, needs-human aging; denominators first. Argue caps from its numbers.
 - `release-notes-gather.mjs`: gather merged user-visible changes.
 - `adversarial-review-brief.mjs`: route and brief high-stakes second reviews.
 

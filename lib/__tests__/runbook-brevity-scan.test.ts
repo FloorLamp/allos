@@ -3,12 +3,13 @@ import path from "node:path";
 import { describe, expect, it } from "vitest";
 
 // The runbook is rules only, short bullets, no prose (owner, 2026-08-13).
-// Narratives and receipts belong in docs/orchestration-incidents.md — the
-// runbook cites them as `_incidents: §section_`. This scan is the CI tooth:
-// runbook rules had regrown into inline war stories (one bullet reached 18
-// lines) within days of each trim, because every incident wants to be
-// institutionalized where the rule lives. The receipts file is exempt — it is
-// WHERE the prose goes, and capping it would just push narratives back here.
+// This scan is the CI tooth: runbook rules had regrown into inline war
+// stories (one bullet reached 18 lines) within days of each trim, because
+// every incident wants to be institutionalized where the rule lives. The
+// narrative half went first to a receipts file (docs/orchestration-incidents),
+// then the owner killed that too (2026-08-30): a lesson is encoded in tooling
+// or a runbook rule, and the story behind it lives in git history, nowhere in
+// the tree.
 //
 // Shape enforced, in lines AT WRAP_COLUMNS — a line's own length decides how many
 // it counts for, so the measure survives a file nothing rewraps:
@@ -133,8 +134,28 @@ const FILE_BUDGETS = {
   "docs/orchestration/dispatch.md": { lines: 100, genre: "runbook" },
   "docs/orchestration/e2e-ci.md": { lines: 100, genre: "runbook" },
   "docs/orchestration/environment.md": { lines: 100, genre: "runbook" },
+  "docs/orchestration/labels.md": { lines: 40, genre: "runbook" },
   "docs/orchestration/lifecycle.md": { lines: 80, genre: "runbook" },
+  "docs/orchestration/recovery.md": { lines: 50, genre: "runbook" },
   "docs/orchestration/review-merge.md": { lines: 100, genre: "runbook" },
+} as const satisfies Record<string, { lines: number; genre: Genre }>;
+
+/**
+ * The skills and the PR template joined the guard on 2026-08-30, first at
+ * FILE-budget granularity and, since the same-day reshape pass, under the
+ * full block shape too — every skill bullet and paragraph now fits the
+ * short-instruction form, with war-story detail cut. They are
+ * `prose` genre (explanatory one-pagers), and their budgets are snapshots of
+ * the reshaped size plus small headroom: shrink work moves detail out, never
+ * raises the number.
+ */
+const SKILL_BUDGETS = {
+  ".claude/skills/file-issue/SKILL.md": { lines: 225, genre: "prose" },
+  ".claude/skills/needs-human/SKILL.md": { lines: 205, genre: "prose" },
+  ".claude/skills/orchestrate/SKILL.md": { lines: 235, genre: "prose" },
+  ".claude/skills/reconcile-tracker/SKILL.md": { lines: 250, genre: "prose" },
+  ".claude/skills/ux-walkthrough/SKILL.md": { lines: 370, genre: "prose" },
+  ".github/pull_request_template.md": { lines: 25, genre: "prose" },
 } as const satisfies Record<string, { lines: number; genre: Genre }>;
 
 const SKIPPED_DIRS = new Set([".git", "node_modules"]);
@@ -170,7 +191,14 @@ type Block = {
 };
 
 function scanBlocks(source: string): Block[] {
-  const lines = source.split("\n");
+  let lines = source.split("\n");
+  // A skill's YAML frontmatter is machine-read trigger text — exempt from the
+  // block shape the way tables are, though it still counts toward the file
+  // budget (fileLines reads the raw source).
+  if (lines[0] === "---") {
+    const end = lines.indexOf("---", 1);
+    if (end > 0) lines = lines.slice(end + 1);
+  }
   const blocks: Block[] = [];
   let inFence = false;
   let current: Block | null = null;
@@ -268,6 +296,47 @@ describe("runbook brevity", () => {
   it("registers every agent and orchestration instruction file", () => {
     expect(guardedFiles()).toEqual(Object.keys(FILE_BUDGETS).sort());
   });
+
+  it("registers every skill under the guard", () => {
+    const skills = readdirSync(path.join(process.cwd(), ".claude", "skills"), {
+      withFileTypes: true,
+    })
+      .filter((entry) => entry.isDirectory())
+      .map((entry) => path.posix.join(".claude/skills", entry.name, "SKILL.md"))
+      .sort();
+    expect(skills).toEqual(
+      Object.keys(SKILL_BUDGETS)
+        .filter((f) => f.startsWith(".claude/skills/"))
+        .sort()
+    );
+  });
+
+  it.each(Object.entries(SKILL_BUDGETS))(
+    "%s stays within its line and block budgets",
+    (relativePath, budget) => {
+      const source = readFileSync(
+        path.join(process.cwd(), relativePath),
+        "utf8"
+      );
+      expect(
+        fileLines(source),
+        `${relativePath} has ${fileLines(source)} lines (budget ` +
+          `${budget.lines}). Move detail to a document the file cites ` +
+          `instead of raising the budget.`
+      ).toBeLessThanOrEqual(budget.lines);
+
+      const violations = brevityViolations(
+        source,
+        GENRE_PARAGRAPH_LINES[budget.genre]
+      );
+      expect(
+        violations,
+        `${relativePath} (${budget.genre}) has blocks past the ` +
+          `short-instruction shape:\n${violations.join("\n")}\n` +
+          `Keep the decision here and move narrative or history elsewhere.`
+      ).toEqual([]);
+    }
+  );
 
   it("keeps the terse-bullet runbook on the calibration it was bought for", () => {
     // The #2784 loosening reaches the prose one-pagers and NOTHING else. Stated

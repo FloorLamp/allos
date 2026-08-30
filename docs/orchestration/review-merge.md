@@ -17,7 +17,6 @@
   rendering the case the ruling names.
 - A guard's existence is not its coverage. Ask which widths, states and
   roles it runs at, and say which in the review.
-- Receipts for both: incidents, "The review that checked the arithmetic".
 - A REMOVAL is checked against the issue's acceptance criteria before it is
   accepted. An unreachable export can be debris or an unfinished requirement,
   and the code cannot tell you which — only the issue can. Delete it once the
@@ -28,7 +27,8 @@
 
 ## Adversarial lane
 
-- Run `adversarial-review-brief.mjs <pr> --check` for every PR. Exit 0 dispatches
+- Run `adversarial-review-brief.mjs <pr> --check` for every PR. Exit 0
+  dispatches
   the lane, 3 is CONSULT and you decide, 1 is ordinary, 2 could not read the PR.
 - Never treat 2 or 3 as a no.
 - High-stakes paths—data integrity, auth boundaries, and safety signals—require
@@ -45,9 +45,8 @@
 - After two blocking rounds against one mechanism, stop patching examples.
   Re-open the premise around a shared substrate, restrictive invariant, or
   direct behavior evidence; record why the replacement closes the defect class.
-- #3011 is the worked example: three passes, and passes 2 and 3 each found a real
-  defect in what the previous fix had just built—a memory that expired with the
-  runs, then a memory attached to a row that was not a document.
+- #3011 is the worked example: three passes, and passes 2 and 3 each found a
+  real defect in what the previous fix had just built.
 
 ## What a lens looks for, and how verification lies
 
@@ -66,21 +65,28 @@ instance that bought it. Read it before writing a guard or dispatching a lens.
 
 ## Merge
 
-- Squash merge through MCP only after CI is green on the exact head. Re-read
-  `head.sha` in the same breath as the merge call: a lane can push between the
-  check and the merge, and GitHub merges the head it finds, not the one you read.
+- Squash merge only a green EXACT HEAD, through the transport this host
+  grants (MCP, else REST `PUT /pulls/N/merge` squash). Re-read `head.sha` in
+  the same breath as the merge call: GitHub merges the head it finds.
 - Serialize merges. After each merge, recheck every open PR's mergeability and
   refresh or reconcile affected branches.
-- One landing candidate gets final rebase, PR open/refresh, remote exact-head
-  COMMENT/adversarial review, and full CI, in order. Local pre-review does not
-  replace it; bank later branches until the candidate lands.
+- One landing candidate gets final rebase, PR opened or refreshed READY
+  (never draft — environment.md §GitHub access), exact-head review, and full
+  CI, in order. Local pre-review never replaces it; bank later branches.
+- **The exact-head review is INDEPENDENT and pinned to the SHA** (owner
+  2026-08-26, #3710): a non-author reviews the exact candidate commit; the
+  COMMENT review states the reviewed SHA and reviewer — the receipt. A head
+  change voids it.
+- **Run `scripts/orchestration/merge-gate.mjs <pr>` before every merge
+  call** — receipt on the current head, checks green, zero unresolved
+  threads, read-only; exit 0 is the precondition. CI recomputes the same
+  verdict as the `merge-gate` commit status on pushes, reviews, CI settling.
 - A later conflicting PR rebases only after the last earlier conflict lands.
 - Resume the author for semantic conflict resolution; do not hand-integrate
   feature code.
-- **Check what a merge would CLOSE, with the full keyword set.** Run
-  `node scripts/orchestration/closing-keywords.mjs <pr>`; exit 3 means something
-  closes. It reads all ten keywords from the body AND every commit — the natural
-  three miss the rest, and a missed keyword reads as safe (failure modes).
+- **Check what a merge would CLOSE**: `closing-keywords.mjs <pr>`; exit 3
+  means something closes. It reads all ten keywords from the body AND every
+  commit — the natural three miss the rest (failure modes).
 - **Require the PR body rewritten in the same push as a rewrite.**
   `adversarial-review-brief.mjs` serves it as "the claims to attack", so a stale
   body aims the next lens at deleted code (failure modes).
@@ -88,9 +94,6 @@ instance that bought it. Read it before writing a guard or dispatching a lens.
 
 ## Merge queue
 
-- The checked-in merge-queue ruleset is inactive while the repository is under
-  a personal account.
-- Until organization transfer, keep the manual serialization and exact-head
-  checks above.
-- After transfer, apply the ruleset and validate the speculative merge commit
-  before retiring manual serialization.
+- The checked-in ruleset is inactive under a personal account. Keep the
+  manual serialization and exact-head checks until organization transfer;
+  then apply it, validating the speculative merge commit first.

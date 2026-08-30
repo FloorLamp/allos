@@ -8,6 +8,7 @@ import {
   unwrapFragment,
   valueOverflowsItsLine,
 } from "../card-meta-value-census";
+import { stripComments } from "./strip-comments";
 
 // The card-mode meta value-shape guard (#3517). The rule, its history and the
 // reason it is NOT the rule #3517's own wording describes are all in
@@ -28,13 +29,6 @@ import {
 
 const REPO = path.resolve(fileURLToPath(new URL("../..", import.meta.url)));
 const SCAN_DIRS = ["app", "components"];
-
-// Cells allowed to pass a multi-node block value, each with the reason the shared
-// rule deliberately does not apply. There are none: the two the census found were
-// FIXED rather than exempted (`VaccineDoseHistory`'s Dose and `FamilyHistoryList`'s
-// Condition now wrap their stacks in one node, exactly as the sleep history's naps
-// were), because the fix is one element and the exemption is forever.
-const ALLOWLIST = new Map<string, string>();
 
 function walk(dir: string): string[] {
   const out: string[] = [];
@@ -60,50 +54,6 @@ function sourceFiles(): { rel: string; text: string }[] {
     }
   }
   return files;
-}
-
-// Blank `//`, `/* */` and `{/* */}` comments while preserving offsets, so reported
-// line numbers stay real and a `<div>` inside a comment is not a finding. (Every
-// census in lib/__tests__ carries its own copy of this; it is four lines of state
-// machine and sharing it would couple unrelated guards.)
-function stripComments(text: string): string {
-  let out = "";
-  let i = 0;
-  let quote: string | null = null;
-  while (i < text.length) {
-    const ch = text[i];
-    if (quote) {
-      out += ch;
-      if (ch === quote && text[i - 1] !== "\\") quote = null;
-      i++;
-      continue;
-    }
-    if (ch === '"' || ch === "'" || ch === "`") {
-      quote = ch;
-      out += ch;
-      i++;
-      continue;
-    }
-    if (ch === "/" && text[i + 1] === "/") {
-      while (i < text.length && text[i] !== "\n") {
-        out += " ";
-        i++;
-      }
-      continue;
-    }
-    if (ch === "/" && text[i + 1] === "*") {
-      while (i < text.length && !(text[i] === "*" && text[i + 1] === "/")) {
-        out += text[i] === "\n" ? "\n" : " ";
-        i++;
-      }
-      out += "  ";
-      i += 2;
-      continue;
-    }
-    out += ch;
-    i++;
-  }
-  return out;
 }
 
 function lineOf(text: string, index: number): number {
@@ -243,17 +193,12 @@ function columnCells(rel: string, text: string): Finding[] {
   return out;
 }
 
-export function censusOffenders(): Finding[] {
+function censusOffenders(): Finding[] {
   const out: Finding[] = [];
   for (const { rel, text } of sourceFiles()) {
+    if (!text.includes("<Td") && !text.includes("RecordColumn<")) continue;
     const stripped = stripComments(text);
-    for (const f of [
-      ...directCells(rel, stripped),
-      ...columnCells(rel, stripped),
-    ]) {
-      if (ALLOWLIST.has(`${f.file}:${f.label}`)) continue;
-      out.push(f);
-    }
+    out.push(...directCells(rel, stripped), ...columnCells(rel, stripped));
   }
   return out;
 }
@@ -277,18 +222,6 @@ describe("card-mode meta values are ONE node when they have structure (#3517)", 
         "row's wrapping is what separates PAIRS, and letting a pair wrap " +
         "internally is the readability defect #3499 fixed."
     ).toEqual([]);
-  });
-
-  it("every allowlist entry still names a cell that would otherwise fail", () => {
-    const offending = new Set(
-      censusOffenders().map((o) => `${o.file}:${o.label}`)
-    );
-    for (const [key, reason] of ALLOWLIST) {
-      expect(
-        offending.has(key),
-        `${key} allowlisted (${reason}) but clean`
-      ).toBe(true);
-    }
   });
 });
 

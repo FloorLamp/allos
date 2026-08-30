@@ -324,6 +324,90 @@ test.describe("substance use (#998/#1078/#1085)", () => {
     await settledClick(page, page.getByTestId(`substance-undo-${NAME}`));
   });
 
+  test("share, emergency card, and print exclude curated and custom substance data (#3331)", async ({
+    browser,
+  }) => {
+    test.slow();
+    const custom = "Kava reach";
+    await page.goto("/records/specialty/substance-use");
+    const alcoholBefore = await weekCount(page, "alcohol");
+    const customCard = page.getByTestId(`substance-card-${custom}`);
+    const customBefore = (await customCard.count())
+      ? await weekCount(page, custom)
+      : 0;
+
+    await settledClick(page, page.getByTestId("substance-log-alcohol"));
+    await hydratedClick(page, page.getByTestId("track-substance-panel-toggle"));
+    await settledFill(page, page.getByTestId("track-substance-name"), custom);
+    await settledClick(page, page.getByTestId("track-substance-save"));
+    expect(await weekCount(page, "alcohol")).toBe(alcoholBefore + 1);
+    expect(await weekCount(page, custom)).toBe(customBefore + 1);
+
+    let emergencyWasEnabled = false;
+    try {
+      await page.goto("/profile");
+      const passport = page.locator('[data-print-region="passport"]');
+      await expect(passport.getByRole("heading", { level: 1 })).toBeVisible();
+      for (const name of ["Alcohol", custom]) {
+        await expect(passport.getByText(name, { exact: true })).toHaveCount(0);
+      }
+
+      await page.emulateMedia({ media: "print" });
+      await expect(passport).toBeVisible();
+      for (const name of ["Alcohol", custom]) {
+        await expect(passport.getByText(name, { exact: true })).toHaveCount(0);
+      }
+      await page.emulateMedia({ media: "screen" });
+
+      const toggle = page.getByTestId("emergency-toggle");
+      emergencyWasEnabled = await toggle.isChecked();
+      if (!emergencyWasEnabled) {
+        await toggle.check();
+        await expect(page.getByLabel("Saved")).toBeVisible();
+      }
+      const emergency = page.getByTestId("emergency-card");
+      await expect(emergency).toBeVisible();
+      for (const name of ["Alcohol", custom]) {
+        await expect(emergency.getByText(name, { exact: true })).toHaveCount(0);
+      }
+
+      await page.getByRole("button", { name: "Share" }).click();
+      await page.getByRole("button", { name: "Create link" }).click();
+      const shareUrl = await page.getByLabel("Created share link").inputValue();
+      const anonContext = await browser.newContext({
+        storageState: { cookies: [], origins: [] },
+      });
+      try {
+        const anon = await anonContext.newPage();
+        expect((await anon.goto(shareUrl))?.status()).toBe(200);
+        await expect(anon.getByText(/Shared read-only copy/i)).toBeVisible();
+        for (const name of ["Alcohol", custom]) {
+          await expect(anon.getByText(name, { exact: true })).toHaveCount(0);
+        }
+      } finally {
+        await anonContext.close();
+      }
+      await page
+        .locator("li")
+        .filter({ has: page.getByRole("button", { name: "Revoke" }) })
+        .first() // first-ok: newest-first; this test just created the newest link
+        .getByRole("button", { name: "Revoke" })
+        .click();
+    } finally {
+      await page.emulateMedia({ media: "screen" });
+      await page.goto("/profile#emergency");
+      await page.reload(); // same-page hash navigation leaves the Share dialog mounted
+      const toggle = page.getByTestId("emergency-toggle");
+      if (!emergencyWasEnabled && (await toggle.isChecked())) {
+        await toggle.uncheck();
+        await expect(page.getByLabel("Saved")).toBeVisible();
+      }
+      await page.goto("/records/specialty/substance-use");
+      await settledClick(page, page.getByTestId(`substance-undo-${custom}`));
+      await settledClick(page, page.getByTestId("substance-undo-alcohol"));
+    }
+  });
+
   // A LOST CLICK ON THIS BUTTON IS RESCUED, AND STILL LOGS EXACTLY ONE USE (#3359).
   //
   // THIS IS A TEST OF `e2e/helpers.ts` AND IT LIVES HERE ON PURPOSE — do not move it

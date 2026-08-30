@@ -84,7 +84,7 @@ function readPeriods(dbPath: string): CyclePeriod[] {
 const SPAWN_CEILING = { timeout: perTestCeiling(3, "worst") };
 
 describe("named one-cycle seed data (#3489 D5)", SPAWN_CEILING, () => {
-  it("seeds two periods, verifies one interval, and reaches the honest UI state", () => {
+  it("seeds the honest UI state and rejects both off-by-one mutations", () => {
     const allocation = allocateUxServedDb(
       makeTmpDir("one-cycle-owned-database")
     );
@@ -112,20 +112,8 @@ describe("named one-cycle seed data (#3489 D5)", SPAWN_CEILING, () => {
       expect(verified.status, verified.stderr || verified.stdout).toBe(0);
       expect(verified.stdout).toContain("verified one-cycle UX database");
       assertUxServedDbOwned(allocation);
-    } finally {
-      cleanupUxServedDb(allocation);
-    }
-  });
 
-  it("makes both off-by-one mutations fail loudly at the real verifier boundary", () => {
-    const allocation = allocateUxServedDb(
-      makeTmpDir("one-cycle-verifier-mutations")
-    );
-    try {
-      const seeded = runSeed(allocation.dbPath);
-      expect(seeded.status, seeded.stderr || seeded.stdout).toBe(0);
       const exact = fs.readFileSync(allocation.dbPath);
-
       let db = new Database(allocation.dbPath);
       db.prepare(
         "DELETE FROM cycles WHERE profile_id = 1 AND period_start = (SELECT MAX(period_start) FROM cycles WHERE profile_id = 1)"
@@ -148,10 +136,6 @@ describe("named one-cycle seed data (#3489 D5)", SPAWN_CEILING, () => {
       expect(tooMany.status).not.toBe(0);
       expect(tooMany.stderr).toContain("storedPeriods=3");
       expect(tooMany.stderr).toContain("completedIntervals=2");
-
-      fs.writeFileSync(allocation.dbPath, exact);
-      const restored = runVerifier(allocation.dbPath);
-      expect(restored.status, restored.stderr || restored.stdout).toBe(0);
     } finally {
       cleanupUxServedDb(allocation);
     }

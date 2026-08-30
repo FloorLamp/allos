@@ -59,6 +59,24 @@ function profileId(name: string): number {
   }
 }
 
+function medicationId(profileName: string, medicationName: string): number {
+  const db = new Database(workerDbPath());
+  try {
+    db.pragma("busy_timeout = 5000");
+    return (
+      db
+        .prepare(
+          `SELECT i.id FROM intake_items i
+             JOIN profiles p ON p.id = i.profile_id
+            WHERE p.name = ? AND i.name = ? AND i.kind = 'medication'`
+        )
+        .get(profileName, medicationName) as { id: number }
+    ).id;
+  } finally {
+    db.close();
+  }
+}
+
 // The laid-out rect, or a failure that names the element — `boundingBox()` is
 // nullable (a display:none element has no box) and the #1823 geometry pins below
 // are arithmetic, not optional.
@@ -107,6 +125,56 @@ async function expectActing(
 }
 
 test.describe("Unified profile switcher (issue #1801)", () => {
+  test("a direct ward medication URL keeps the actor and names the subject (#3312)", async ({
+    browser,
+  }) => {
+    test.slow();
+    const selfId = profileId(MVMEDS_SELF_PROFILE);
+    const selfMedicationId = medicationId(MVMEDS_SELF_PROFILE, MVMEDS_SELF_MED);
+    const wardMedicationId = medicationId(MVMEDS_RO_PROFILE, MVMEDS_RO_MED);
+    const page = await loginAs(browser, {
+      username: E2E_LOGIN_MVMEDS,
+      password: E2E_MEMBER_PASSWORD,
+    });
+    try {
+      // Direct/fabricated navigation is the only route that does not switch first.
+      await page.goto(`/medications/${wardMedicationId}`);
+      await expectActing(page, selfId);
+      await expect(
+        page.getByRole("heading", { level: 1, name: MVMEDS_RO_MED })
+      ).toBeVisible();
+      await expect(
+        page.getByTestId("medication-identity-banner")
+      ).toBeVisible();
+      await expect(page.getByTestId("medication-subject-name")).toHaveText(
+        MVMEDS_RO_PROFILE
+      );
+      await expect(page.getByTestId("medication-switch-profile")).toHaveText(
+        `Act as ${MVMEDS_RO_PROFILE}`
+      );
+      await expect(
+        page.getByTestId("medication-cross-profile-note")
+      ).toContainText(`Viewing ${MVMEDS_RO_PROFILE}'s medication`);
+
+      // The paired own-profile branch keeps the normal way back and no subject frame.
+      await page.goto(`/medications/${selfMedicationId}`);
+      await expect(
+        page.getByRole("heading", { level: 1, name: MVMEDS_SELF_MED })
+      ).toBeVisible();
+      await expect(
+        page.getByRole("link", { name: "Back to medications" })
+      ).toBeVisible();
+      await expect(page.getByTestId("medication-identity-banner")).toHaveCount(
+        0
+      );
+      await expect(
+        page.getByTestId("medication-cross-profile-note")
+      ).toHaveCount(0);
+    } finally {
+      await page.context().close();
+    }
+  });
+
   test("switching from the bar reorders acting-first, carries the read-only hint, and the page follows", async ({
     browser,
   }) => {

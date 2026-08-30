@@ -80,7 +80,6 @@ const UNDECLARED_PAGE_WIDTHS = new Set<string>([
   "app/(app)/settings/family/page.tsx",
   "app/(app)/settings/logs/page.tsx",
   "app/(app)/settings/notify-log/page.tsx",
-  "app/(app)/timeline/page.tsx",
   "app/(app)/trends/page.tsx",
   "app/(app)/upcoming/page.tsx",
   "app/(auth)/forgot-password/page.tsx",
@@ -396,10 +395,13 @@ describe("page width convention (issue #794 cluster 9b)", () => {
 
   it("the declaration check can SEE an undeclared page, and the dashboard's cap", () => {
     // A green sweep over a complying tree says nothing about what the sweep can
-    // see, so this asks the predicate about one page in each state. /timeline is a
+    // see, so this asks the predicate about one page in each state. /upcoming is a
     // real ratchet entry: it renders bare into the shell, and if `declaresWidth`
     // could not tell, the guard above would pass a tree full of undeclared pages.
-    expect(declaresWidth("app/(app)/timeline/page.tsx")).toBe(false);
+    // (It replaced /timeline, whose route #3958 phase 2 deleted — the control has to
+    // name a page that still EXISTS and is still undeclared, or it stops asking
+    // anything.)
+    expect(declaresWidth("app/(app)/upcoming/page.tsx")).toBe(false);
     // The dashboard is the page #3253 capped, and it is deliberately NOT on the
     // ratchet list — this is what "no longer undeclared" looks like from here.
     expect(declaresWidth("app/(app)/page.tsx")).toBe(true);

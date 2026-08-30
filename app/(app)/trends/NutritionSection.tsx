@@ -218,7 +218,7 @@ export default async function NutritionSection({
 
   const blocks: Record<NutritionSectionId, ReactNode> = {
     // Intake history — day-history calendar (coverage) + group×day matrix
-    // (composition), one shared group filter, days linking INTO the Timeline.
+    // (composition), one shared group filter, days linking INTO the record.
     "intake-history": (
       <section data-testid="intake-history">
         <div className="mb-1 flex items-center justify-between">
@@ -226,10 +226,10 @@ export default async function NutritionSection({
             Intake history
           </h2>
           <DestinationLink
-            href="/timeline"
+            href="/history"
             className="text-sm font-medium text-brand-700 hover:underline dark:text-brand-400"
           >
-            Full timeline
+            Full record
           </DestinationLink>
         </div>
         <p className="mb-3 text-sm text-slate-500 dark:text-slate-400">

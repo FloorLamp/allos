@@ -158,3 +158,52 @@ export const ROUTINE_USUAL_PROFILE = "Routine Usual (e2e)";
 // left. This one is read-only in its spec and stays repeat-safe.
 export const E2E_LOGIN_LOGSHEET_RESERVE = "e2e_logsheet_reserve";
 export const LOGSHEET_RESERVE_PROFILE = "Log Sheet Reserve (e2e)";
+
+// THE TRACKED PROTEIN BRANCH, RENDERED (#3903). No fixture anywhere seeded a tracked
+// `protein_g` that reached the dashboard's protein row, so the one basis that stated an
+// exact figure was the one basis no rendered test ever executed — which is how it kept
+// its missing floor marker through #3888's survey of the other four.
+//
+// A dedicated ADULT profile whose TODAY holds BOTH sources at once, with the in-app side
+// deliberately the LARGER floor: 70 g quick-added here against a 20 g health-app reading
+// that has so far synced one meal. That asymmetry is the whole point of the fixture —
+// under the retired override the row rendered the health app's 20 g and dropped every
+// hedge, so a tree carrying it renders "20 g" where this profile must render "70 g+".
+// 70 kg → the default `active` band, which is the exact target #3903's own probe used.
+//
+// READ-ONLY in its spec and isolated on purpose: it is the only fixture profile carrying
+// a tracked protein_g, so a neighbour logging food on it would change the max and the
+// basis at once.
+export const E2E_LOGIN_PROTEIN_SOURCES = "e2e_protein_sources";
+export const PROTEIN_SOURCES_PROFILE = "Protein Both Sources (e2e)";
+
+// Its sibling, and the state #3903 named as the one no rendered test reached: a tracked
+// reading with NOTHING logged in-app, which after the ruling is the only route to a bare
+// `tracked` basis. The row must read "20 g+" and the hover must carry the unsent-meals
+// sentence — this is the fixture that fails if the floor marker's `tracked` exception
+// ever comes back, which the both-sources profile above cannot see (its basis is not
+// `tracked`, so it keeps its "+" either way).
+export const E2E_LOGIN_PROTEIN_TRACKED = "e2e_protein_tracked";
+export const PROTEIN_TRACKED_PROFILE = "Protein Tracked Only (e2e)";
+
+// THE SAME QUESTION FOR FIBER, RENDERED (#4127). Fiber's override retired with protein's,
+// and no fixture anywhere seeded a tracked `fiber_g` beside in-app fiber — so the
+// both-sources state had no rendered coverage while the behaviour was symmetric. Two
+// modules symmetric in behaviour and asymmetric in coverage is how the next divergence
+// gets in unnoticed.
+//
+// A dedicated ADULT profile whose TODAY holds both sources with the IN-APP side the LARGER
+// floor: a confirmed 20 g psyllium dose against an 8 g health-app reading that has synced
+// one meal. Supplement grams specifically, because that is the half fiber has and protein
+// does not, and no food-group servings at all — so the in-app figure is exactly the dose
+// and the assertion needs no catalog arithmetic. Sex male → the 38 g DRI band, so the day
+// reads `below` on either tree and the status cannot carry the assertion for the figure.
+//
+// Under the retired override this profile renders the health app's 8 g on a `tracked`
+// basis with NO floor marker; it must render 20 g+ and name both records.
+//
+// READ-ONLY in its spec and isolated on purpose: it is the only fixture profile carrying a
+// tracked fiber_g, so a neighbour logging food or a dose on it would move the max and the
+// basis at once.
+export const E2E_LOGIN_FIBER_SOURCES = "e2e_fiber_sources";
+export const FIBER_SOURCES_PROFILE = "Fiber Both Sources (e2e)";

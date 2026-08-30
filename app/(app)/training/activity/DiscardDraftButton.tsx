@@ -35,7 +35,7 @@ export default function DiscardDraftButton({
             fd.set("profile_id", String(subjectProfileId));
           const out = await discardWorkout(fd);
           if (out.kind === "discarded")
-            router.replace(trainingRelevant ? "/training" : "/timeline");
+            router.replace(trainingRelevant ? "/training" : "/history");
           else router.refresh();
         } finally {
           setBusy(false);

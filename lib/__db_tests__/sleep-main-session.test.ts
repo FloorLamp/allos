@@ -378,12 +378,12 @@ describe("getSleepSignal — main overnight session, not the nap-summed total (#
 // be a nap, the overnight must still be the night, and the night's stage stack must
 // still be on the chart.
 //
-// NOT asserted here, deliberately: `getLastNightSummary` on this same fixture. It
-// reads `getSleepSessions`, which elects a whole SOURCE STREAM for the profile and
-// falls back to "the source of the newest session" — so the afternoon nap flips the
-// entire session history onto the phone and the hero reads 45 minutes. That is a
-// different election at a different grain (a stream, not a day), with its own #14
-// rationale behind it, and it is reported separately rather than widened into here.
+// ASSERTED here now, and it used to be the paragraph explaining why it could not be
+// (#1851). `getSleepSessions` elected a whole SOURCE STREAM for the profile and fell
+// back to "the source of the newest session", so the afternoon nap flipped the entire
+// session history onto the phone and the hero read 45 minutes — a second election at a
+// second grain, which is why it was reported separately instead of pinned here. The
+// per-night rule leaves ONE grain, so the hero belongs in the case below with the rest.
 describe("one wake-day, two sources, two real sessions (#2552)", () => {
   let crossId: number;
   let wakeDay: string;
@@ -472,6 +472,13 @@ describe("one wake-day, two sources, two real sessions (#2552)", () => {
     // failure ran both ways round: the night vanished, and with it the only session
     // that could have made the nap a nap.
     expect(naps.history).toHaveLength(1);
+    // And the hero reads the NIGHT, not the newest session. Under the stream election
+    // the nap was newer, so it carried the whole history onto the phone and this read
+    // 45.
+    expect(getLastNightSummary(crossId)).toMatchObject({
+      wakeDay,
+      durationMin: 420,
+    });
   });
 
   it("keeps that night's stage stack on the chart", () => {
@@ -541,22 +548,24 @@ describe("one wake-day, two sources, two real sessions (#2552)", () => {
   });
 });
 
-// The SAME two-syncing-sources shape one grain up (#2603). `readSleepSessions` elects
-// one source STREAM for the whole read and, with no profile primary source set, falls
-// back to "the source of the newest session" — a probe over a single row. An afternoon
-// nap is the newest session most afternoons, so the phone's 45 minutes elected the
-// phone and the ring's entire session history left the read with it: the hero, the
-// SRI, the consistency strip, the typical wake time and the digest's sleep line all
-// then described the nap.
+// The SAME two-syncing-sources shape one grain up (#2603), now answered PER NIGHT
+// (#1851) — and this header used to say the opposite, so read it as replaced rather
+// than amended.
 //
-// The bucket is NOT the fix here, and that is the difference from #2552 above. Stream
-// election has its own #14 rationale — SRI needs ONE continuous session stream across
-// its window, which is exactly why `getDailySleepSessionsSince` exists separately for
-// date-keyed display — and that rationale is untouched. What was wrong is the probe:
-// recency of ANY session, so one nap outranks a hundred nights. It now asks for the
-// newest OVERNIGHT, and only falls back to the newest session at all when the profile
-// records no overnight anywhere.
-describe("two syncing sources, one nap: the stream election (#2603)", () => {
+// It said stream election had its own #14 rationale, untouched by #2552's per-window
+// bucket, and that the #2603 defect was only the PROBE: recency read off any single
+// row, so a phone's afternoon nap was the newest session most afternoons and elected
+// the phone for the whole profile, taking a ring's entire history out of the read.
+// The probe is gone with the rule it patched. `readSleepSessions` resolves each
+// overlapping-window cluster on its own, so a nap cannot reach the nights at all and
+// there is no profile-wide recency left to get wrong.
+//
+// WHAT THE FIXTURES BELOW NOW PIN, and it is a different claim from the one they
+// used to: not "the losing source disappears" but "nothing that really happened
+// disappears". The ring's nights, the phone's nap and a typed night the device
+// missed are three separate events and all three survive; two sources describing the
+// SAME night still collapse to one, because a duplicate overlaps.
+describe("two syncing sources, one nap: per-night resolution (#2603/#1851)", () => {
   const NIGHTS = 10;
 
   // A ring reporting `NIGHTS` consecutive overnights, plus one phone nap this
@@ -598,11 +607,18 @@ describe("two syncing sources, one nap: the stream election (#2603)", () => {
     return { id, wakeDay };
   };
 
-  it("keeps the ring's whole history when the newest session is the phone's nap", () => {
+  it("keeps the ring's whole history AND the phone's nap — two events, not an election", () => {
     const { id } = napFlipProfile("SleepStreamNap");
     const sessions = getSleepSessions(id);
-    expect(sessions).toHaveLength(NIGHTS);
-    expect(sessions.every((row) => row.source === "oura")).toBe(true);
+    // The #2603 defect was the ring's ten nights leaving the read behind one nap.
+    expect(sessions.filter((row) => row.source === "oura")).toHaveLength(
+      NIGHTS
+    );
+    // And the nap is not collateral either: it overlaps none of them, so it is its
+    // own cluster and stays. The old stream rule could only keep one of these two.
+    expect(sessions.filter((row) => row.source === "health-connect")).toEqual([
+      expect.objectContaining({ value: 45 }),
+    ]);
   });
 
   it("reads the hero off the night, not the nap", () => {
@@ -656,17 +672,24 @@ describe("two syncing sources, one nap: the stream election (#2603)", () => {
     );
 
     const sessions = getSleepSessions(id);
-    expect(sessions.every((row) => row.source === "health-connect")).toBe(true);
+    // Last night is the phone's, and it wins last night. What CHANGED with #1851 is
+    // the other half: the ring's nine older nights are no longer thrown away to say
+    // so. "Taking over" now means the nights it actually records.
+    expect(sessions[0]).toMatchObject({ source: "health-connect", value: 400 });
+    expect(sessions.filter((row) => row.source === "oura")).toHaveLength(
+      NIGHTS - 1
+    );
     expect(getLastNightSummary(id)).toMatchObject({
       wakeDay,
       durationMin: 400,
     });
   });
 
-  it("still elects SOMEBODY when no session anywhere reaches an overnight", () => {
-    // A nap-only profile on two sources: the overnight probe finds nothing, so the
-    // read falls back to the newest session exactly as it always did rather than
-    // electing nobody and returning an empty history.
+  it("keeps BOTH naps on a nap-only profile — there is nobody to elect", () => {
+    // This used to assert the overnight probe's last resort: no session anywhere
+    // reaches an overnight, so the newest one elects its source and the other
+    // source's nap is discarded. Two naps four hours apart are two things that
+    // happened, and neither is a duplicate account of the other.
     const id = Number(
       db
         .prepare("INSERT INTO profiles (name) VALUES ('SleepStreamNapsOnly')")
@@ -700,16 +723,29 @@ describe("two syncing sources, one nap: the stream election (#2603)", () => {
       ],
       "health-connect"
     );
-    expect(getSleepSessions(id).map((row) => row.source)).toEqual([
-      "health-connect",
-    ]);
+    expect(
+      getSleepSessions(id)
+        .map((row) => row.value)
+        .sort()
+    ).toEqual([40, 50]);
   });
 
-  it("leaves an explicit primary source in charge", () => {
-    // The profile's own #14 pick is decided before the fallback is ever reached, so
-    // nothing here can override it — including when the pick is the nap's source.
+  it("gives an explicit primary source the nights it covers, and STRICT the rest", () => {
+    // A non-strict #14 pick is a PREFERENCE, and per night it can only be preferred
+    // where it has a row: health-connect owns the nap, and the ring's ten nights
+    // carry no health-connect account to prefer, so they stay. That is the same
+    // reading `getDailySleepSessionsSince` has given the Sleep log since #2552.
     const { id } = napFlipProfile("SleepStreamNapPicked");
     setMetricSourcePriorityEntry(id, "sleep_min", "health-connect");
+    expect(
+      getSleepSessions(id)
+        .map((row) => row.value)
+        .sort()
+    ).toEqual([420, 420, 420, 420, 420, 420, 420, 420, 420, 420, 45]);
+    // STRICT (#1642) is the setting that means "only this source, and an uncovered
+    // night is a gap" — and it is the escape hatch a profile that has genuinely
+    // moved sources reaches for. It still empties the ring's nights.
+    setMetricSourcePriorityEntry(id, "sleep_min", "health-connect", true);
     expect(getSleepSessions(id).map((row) => row.value)).toEqual([45]);
   });
 });

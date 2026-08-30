@@ -1573,14 +1573,14 @@
     /* Keep a horizontal overscroll INSIDE the page (issues #1425 / #1469).
 
      The app has two horizontal touch gestures — the edge-swipe that opens the
-     nav drawer and the Timeline's adjacent-day swipe — and by default a
+     nav drawer and the record day view's adjacent-day swipe — and by default a
      horizontal drag that the page cannot scroll CHAINS to the browser's own
      in-page history navigation: the swipe goes "back" instead, and the gesture
      appears to do nothing except lose your place. (That is not a theory; it is
      what the browser tests caught, landing on the previous history entry.)
 
      `contain` stops the chaining without stopping any scrolling: an inner
-     horizontal scroller — a wide table, the Timeline's filter-chip strip, a
+     horizontal scroller — a wide table, the record's filter-chip strip, a
      chart — still scrolls exactly as before. It is the x-axis twin of the
      `overscroll-behavior-y: contain` that pull-to-refresh (#1467) already sets
      while it is active.

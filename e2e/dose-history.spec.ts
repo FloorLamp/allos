@@ -80,18 +80,24 @@ test("dosage restructure keeps the taken history at its original amount", async 
   await expect(rows.first()).toContainText("1000 mg"); // first-ok: the single remaining dose row (count asserted above) — order-agnostic
 
   // ── History survived at the original amount ─────────────────────────────────
-  // The timeline's "Supplement doses confirmed" event for today still lists the
-  // confirmed dose — retired, not cascaded — and its expanded detail shows the
+  // The record still lists the confirmed dose — retired, not cascaded — at the
   // amount SNAPSHOTTED at confirm time (500 mg), not the post-edit 1000 mg.
-  await page.goto("/timeline");
-  const confirmedEvent = page
-    .locator("details")
-    .filter({ hasText: "Supplement doses confirmed" })
+  //
+  // ASSERTED ON THE DOSE ROW, WHICH IS A BETTER SURFACE THAN THE ONE IT REPLACES.
+  // This read the timeline's "Supplement doses confirmed" CARD and opened its
+  // `<details>` disclosure, where the per-dose amounts lived in `detailItems`. The
+  // record's rows are one line and carry no disclosure yet (#662/#2920, phase 2d), so
+  // that surface is gone — but `?kind=dose` is the record's OWN row for this dose,
+  // composed by the dose kind's own reader, and the snapshot is exactly what it
+  // prints. One row, named by this spec's own item, so nothing else can satisfy it.
+  await page.goto("/history?kind=dose");
+  const doseRow = page
+    .getByTestId("history-row")
     .filter({ hasText: name })
-    .first(); // first-ok: filtered to the confirmed-doses event for THIS spec's supplement — one match
-  await confirmedEvent.locator("summary").click();
-  await expect(confirmedEvent.getByText(name).first()).toBeVisible(); // first-ok: the supplement name inside the scoped confirmed-doses event — order-agnostic
-  await expect(confirmedEvent.getByText("500 mg").first()).toBeVisible(); // first-ok: the dose amount inside the scoped confirmed-doses event — order-agnostic
+    .first(); // first-ok: this spec plants a uniquely-named item; one row carries it
+  await expect(doseRow).toBeVisible();
+  await expect(doseRow).toContainText("500 mg");
+  await expect(doseRow).not.toContainText("1000 mg");
 });
 
 // #1933: historical dose correction is shared adherence machinery, so the supplements

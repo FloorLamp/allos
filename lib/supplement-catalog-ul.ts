@@ -46,14 +46,12 @@ import {
 
 // The band the catalog is curated against: a general adult. The seeded servings are
 // what an adult label states, and the ruling on #3156 is about the ADULT upper limit
-// ("80 mg zinc against an adult upper limit of 40 mg"). A pediatric profile's lower
-// bands are a real question and a different one — this census makes no claim about
-// them, and `formulationUlNote` is band-agnostic because it reads a warning that has
-// already been computed for whoever is looking at it. OPEN: on a pediatric band the
-// note still renders the adult sentence ("above the general zinc limit by design")
-// against a child's lower limit. That is a wording call on a safety surface and is
-// the owner's, not this module's — nothing here decides it.
+// ("80 mg zinc against an adult upper limit of 40 mg"). The #3638 ruling names that
+// adult band in the note for every profile, but reserves the expected-total reassurance
+// for the adult DRI band; a pediatric profile keeps the explanation without borrowing
+// reassurance from the adult formulation.
 const CENSUS_AGE_YEARS = 40;
+const ADULT_DRI_MIN_AGE = 19;
 
 function norm(name: string): string {
   return name.trim().toLowerCase();
@@ -156,10 +154,12 @@ export type FormulationUlWarning = Pick<
 // `total - byDesign` IS everything else in the stack — and while that is above zero the
 // note ends by saying so instead of calling the number expected. A multivitamin, an
 // immune blend and a cold lozenge at 8 mg each beside an AREDS 2 is 120 mg, and no
-// arrangement of those items makes 120 mg something a product expects.
+// arrangement of those items makes 120 mg something a product expects. `ageYears`
+// follows DRI's null-age adult default and controls only that final reassurance.
 export function formulationUlNote(
   warning: FormulationUlWarning,
-  entries: readonly SupplementCatalogEntry[] = SUPPLEMENT_CATALOG
+  entries: readonly SupplementCatalogEntry[] = SUPPLEMENT_CATALOG,
+  ageYears: number | null = null
 ): string | null {
   const { key: nutrientKey, total, ul, contributors } = warning;
   const seen = new Set<string>();
@@ -182,15 +182,23 @@ export function formulationUlNote(
       everyShareIsAStatedServing = false;
     }
     for (const n of declared) {
-      if (seen.has(n.reason)) continue;
-      seen.add(n.reason);
-      notes.push(n.reason);
+      const reason = n.reason.replace(
+        "above the general zinc limit",
+        "above the adult zinc limit"
+      );
+      if (seen.has(reason)) continue;
+      seen.add(reason);
+      notes.push(reason);
     }
   }
   if (notes.length === 0) return null;
   if (total - byDesign > AMOUNT_EPSILON) {
     notes.push(REST_ELSEWHERE);
-  } else if (explainers === 1 && everyShareIsAStatedServing) {
+  } else if (
+    explainers === 1 &&
+    everyShareIsAStatedServing &&
+    (ageYears == null || ageYears >= ADULT_DRI_MIN_AGE)
+  ) {
     notes.push(TOTAL_EXPECTED);
   }
   return notes.join(" ");

@@ -835,6 +835,28 @@ test("Standing draws its aligned sparkline column on the desktop", async ({
     // assertion's; what is pinned is that BOTH facts are named.
     expect(titles[titles.length - 1]).toMatch(/^[\d.,]+ \S+ · .*\d+$/);
 
+    // The resting-HR family owns the two-point tail added for #3252. Name it
+    // directly: the shared-column count below would stay green if this family
+    // silently lost its series while two unrelated families remained.
+    const restingHr = standing.locator(
+      '[data-standing-family="resting-heart-rate"]'
+    );
+    const restingHrSpark = restingHr.getByTestId("standing-sparkline");
+    await expect(restingHrSpark).toBeVisible();
+    await expect(restingHrSpark).toHaveAttribute(
+      "data-sparkline-state",
+      "series"
+    );
+    await expect(restingHrSpark).toHaveAttribute("data-sparkline-points", "2");
+    expect(
+      await restingHrSpark
+        .locator("[data-testid='standing-sparkline-point'] title")
+        .allTextContents()
+    ).toEqual([
+      expect.stringMatching(/^60 bpm · /),
+      expect.stringMatching(/^58 bpm · /),
+    ]);
+
     // ONE COLUMN: every family that draws a plot draws it at the same right edge.
     const rights = await standing
       .getByTestId("standing-sparkline")

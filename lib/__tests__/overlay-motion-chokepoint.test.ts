@@ -184,6 +184,7 @@ const ANCHORED_MENU_EXCEPTIONS = new Map<string, string>([
 // lines before the `className` that says `absolute`. A guard that reads half an
 // element reports a clean sweep it never took.
 export function anchoredMenuLines(text: string): number[] {
+  if (!/role=\{?["']menu["']/.test(text)) return [];
   const source = withoutComments(text);
   const lines: number[] = [];
   const re = /role=\{?["']menu["']/g;
@@ -286,6 +287,7 @@ const byPath = new Map(FILES.map((f) => [f.rel, f.text]));
 // host would then have been reported as an unclassified overlay by a guard reading
 // a paragraph about why it is not one.
 function isFullViewportOverlay(text: string): boolean {
+  if (!/\bfixed inset-0\b/.test(text)) return false;
   return /\bfixed inset-0\b/.test(withoutComments(text));
 }
 
@@ -296,6 +298,7 @@ function isFullViewportOverlay(text: string): boolean {
 // overscroll-contain somewhere" is exactly the cheaper question: a file with two
 // scrollers, one of them contained, would pass it while still chaining.
 function uncontainedScrollerLines(text: string): number[] {
+  if (!/\boverflow-y-auto\b/.test(text)) return [];
   const lines: number[] = [];
   withoutComments(text)
     .split("\n")
@@ -330,6 +333,8 @@ function uncontainedScrollerLines(text: string): number[] {
 // file declares and then propagated through the bindings that reference them, to a
 // fixpoint; the attribute is checked against that set.
 export function noOpCloseLines(text: string): number[] {
+  if (!/<(?:ModalShell|BottomSheet)\b/.test(text) || !/onClose\s*=/.test(text))
+    return [];
   const source = withoutComments(text);
 
   const EMPTY_BODY = String.raw`\(\s*\)\s*=>\s*(?:\{\s*\}|undefined\b)`;
@@ -381,6 +386,7 @@ export function noOpCloseLines(text: string): number[] {
 
 /** Does this file put a `<form>` on screen itself? */
 function hostsRawForm(text: string): boolean {
+  if (!/<form[\s>]/.test(text)) return false;
   return /<form[\s>]/.test(withoutComments(text));
 }
 
@@ -392,8 +398,11 @@ function hostsRawForm(text: string): boolean {
 //
 // Measured at conversion: the shared scanner read 28 of 2,528 files differently
 // (mostly JSX text and regex-literal shapes the local scanner did not model), and all
-// 21 overlay rules stayed green. The cache is file-local because its inputs are the
-// immutable source snapshots above; planted strings still exercise the same scanner.
+// 21 overlay rules stayed green. Call sites reject impossible candidates against the
+// raw text before reaching this projection; a possible match still comes through here,
+// so comments never decide a rule's verdict. The cache is file-local because its
+// inputs are the immutable source snapshots above; planted strings still exercise the
+// same scanner.
 const withoutCommentsCache = new Map<string, string>();
 function withoutComments(text: string): string {
   const cached = withoutCommentsCache.get(text);
@@ -522,6 +531,7 @@ describe("overlay motion chokepoint", () => {
     const offenders: string[] = [];
     for (const { rel, text } of FILES) {
       if (rel === MOTION_HOME) continue;
+      if (!/["'`]overlay-(?:enter|exit)-/.test(text)) continue;
       withoutComments(text)
         .split("\n")
         .forEach((code, i) => {
@@ -556,6 +566,7 @@ describe("overlay motion chokepoint", () => {
     const offenders: string[] = [];
     for (const { rel, text } of FILES) {
       if (RAW_DRAG_LISTENER_ALLOW.has(rel)) continue;
+      if (!RAW_DRAG_PATTERNS.some((pattern) => pattern.test(text))) continue;
       withoutComments(text)
         .split("\n")
         .forEach((code, i) => {
@@ -648,6 +659,7 @@ describe("overlay motion chokepoint", () => {
   it("records every opt-out from the phone sheet idiom", () => {
     const offenders: string[] = [];
     for (const { rel, text } of FILES) {
+      if (!/presentation=\{?["']centered["']/.test(text)) continue;
       if (!/presentation=\{?["']centered["']/.test(withoutComments(text)))
         continue;
       if (CENTERED_PRESENTATION.has(rel)) continue;

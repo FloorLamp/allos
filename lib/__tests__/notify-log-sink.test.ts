@@ -8,10 +8,9 @@
 // logs), so the suite chdirs into the tmp dir and restores afterwards. No DB, no
 // network. The last case spawns real child processes.
 //
-// NO PER-TEST CEILING ANY MORE (#4002). That last case carried `}, 60_000)`, which
-// `ALLOS_VITEST_TIMEOUT_MS` cannot reach, and the tier's 15 000 ms covers it: the
-// whole file reads 1 785 ms across 16 tests on the green CI run at f1742fa6d, of
-// which the dispatch box puts 1 542 ms in that one test — ~9.7x margin.
+// The real multiprocess case synchronizes through an IPC readiness barrier. A
+// future timestamp plus three busy-spinning children used to spend 1.5 seconds and
+// three cores manufacturing simultaneity before any assertion could run.
 
 import {
   describe,
@@ -271,15 +270,22 @@ describe("two processes on one DATA_DIR, third sink (#1883 extended to #2209)", 
     // a future edit that reached for a bare appendFileSync would fail here.
     const WRITERS = 3;
     const PER_WRITER = 20;
-    const startAt = Date.now() + 1500; // start every writer on the same beat
 
     const child = path.join(tmpDir, "notify-writer.mjs");
     fs.writeFileSync(
       child,
       `
 import { appendJsonlLine } from ${JSON.stringify(pathToFileURL(path.join(REPO_ROOT, "lib", "jsonl-log-file.ts")).href)};
-const [file, tag, startAt, count] = process.argv.slice(2);
-while (Date.now() < Number(startAt)) {}
+const [file, tag, count] = process.argv.slice(2);
+if (!process.send) throw new Error("notify writer requires an IPC channel");
+const start = new Promise((resolve) => {
+  process.on("message", (message) => {
+    if (message === "start") resolve();
+  });
+});
+process.send("ready");
+await start;
+process.disconnect();
 for (let i = 0; i < Number(count); i++) {
   appendJsonlLine(file, JSON.stringify({
     id: tag + "-" + i,
@@ -296,27 +302,39 @@ for (let i = 0; i < Number(count); i++) {
     const runs = Array.from({ length: WRITERS }, (_, w) => {
       const proc = spawn(
         process.execPath,
-        [
-          "--import",
-          "tsx",
-          child,
-          logPath,
-          `w${w}`,
-          String(startAt),
-          String(PER_WRITER),
-        ],
-        { cwd: REPO_ROOT, stdio: ["ignore", "ignore", "pipe"] }
+        ["--import", "tsx", child, logPath, `w${w}`, String(PER_WRITER)],
+        { cwd: REPO_ROOT, stdio: ["ignore", "ignore", "pipe", "ipc"] }
       );
       let stderr = "";
-      proc.stderr.on("data", (d) => (stderr += String(d)));
-      return new Promise<void>((resolve, reject) => {
-        proc.on("error", reject);
-        proc.on("exit", (code) =>
-          code === 0 ? resolve() : reject(new Error(`writer ${w}: ${stderr}`))
-        );
+      proc.stderr!.on("data", (d) => (stderr += String(d)));
+      let resolveReady!: () => void;
+      let rejectReady!: (error: Error) => void;
+      const ready = new Promise<void>((resolve, reject) => {
+        resolveReady = resolve;
+        rejectReady = reject;
       });
+      const done = new Promise<void>((resolve, reject) => {
+        proc.on("message", (message) => {
+          if (message === "ready") resolveReady();
+        });
+        proc.on("error", (error) => {
+          rejectReady(error);
+          reject(error);
+        });
+        proc.on("exit", (code) => {
+          if (code === 0) resolve();
+          else {
+            const error = new Error(`writer ${w}: ${stderr}`);
+            rejectReady(error);
+            reject(error);
+          }
+        });
+      });
+      return { proc, ready, done };
     });
-    await Promise.all(runs);
+    await Promise.all(runs.map((run) => run.ready));
+    for (const run of runs) run.proc.send("start");
+    await Promise.all(runs.map((run) => run.done));
 
     const ids = lines().map((e) => e.id);
     expect(new Set(ids).size).toBe(WRITERS * PER_WRITER);

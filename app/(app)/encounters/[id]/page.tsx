@@ -24,7 +24,7 @@ import {
   episodeForProfileId,
 } from "@/lib/illness-episode";
 import { episodeCollapsedStatus } from "@/lib/illness-episode-format";
-import { episodeHref, timelineDayHref } from "@/lib/hrefs";
+import { episodeHref, historyDayHref } from "@/lib/hrefs";
 import FromThisVisit from "@/components/visit-links/FromThisVisit";
 import VisitEpisodes, {
   type VisitEpisodeTrailItem,
@@ -391,12 +391,12 @@ export default async function EncounterDetailPage(props: {
               </Link>
             ) : null}
             <Link
-              href={timelineDayHref(encounter.date)}
+              href={historyDayHref(encounter.date)}
               className="btn-ghost btn-sm"
               data-testid="encounter-timeline-link"
             >
               <IconTimeline className="h-4 w-4" stroke={1.75} />
-              View this day in Timeline
+              View this day in History
             </Link>
           </div>
         </section>

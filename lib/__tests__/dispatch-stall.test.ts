@@ -18,7 +18,7 @@
 //   3. A dispatch that has left NO TRACE warns once it is past its grace period.
 //      Both signals #2988 proposes are absent in the only stall this runbook has
 //      actually measured (the 12.9-hour denied-and-idle agent of 2026-08-10,
-//      docs/orchestration-incidents.md, whose `git worktree add` was refused and
+//      whose `git worktree add` was refused and
 //      which therefore had neither a worktree nor a branch), so a detector built
 //      on those two signals alone would be blind exactly where the noisy one was
 //      merely loud.
@@ -35,6 +35,7 @@ import { afterEach, describe, expect, it } from "vitest";
 
 import {
   NO_TRACE_GRACE_MS,
+  branchGitArgs,
   commitIdleMs,
   idleMsFrom,
   resumeState,
@@ -67,6 +68,26 @@ afterEach(() => {
 });
 
 const iso = (ms: number): string => new Date(ms).toISOString();
+
+describe("branchGitArgs", () => {
+  it("keeps a hostile branch literal in one argv element", () => {
+    const branch = "x/$(printf injected); echo still-data";
+    const args = branchGitArgs(branch);
+    expect([
+      args.localLog.at(-1),
+      args.remoteLog.at(-1),
+      args.remoteExists.at(-1),
+      args.localExists.at(-1),
+      args.deleteLocal.at(-1),
+    ]).toEqual([
+      `refs/heads/${branch}`,
+      `refs/remotes/origin/${branch}`,
+      `refs/remotes/origin/${branch}`,
+      `refs/heads/${branch}`,
+      branch,
+    ]);
+  });
+});
 
 /**
  * A ledger file in `dir`, and its path.
@@ -303,6 +324,40 @@ describe("resumeState", () => {
 });
 
 describe("the dispatch-brief CLI", () => {
+  it("does not evaluate shell syntax while measuring a branch", () => {
+    const branch = "$(printf main)";
+    const ledger = ledgerIn(tempDir(), [
+      { at: iso(Date.now() - 2 * MINUTE), status: "active", branch },
+    ]);
+    const run = spawnSync(process.execPath, [SCRIPT, "list"], {
+      encoding: "utf8",
+      env: { ...process.env, ALLOS_DISPATCH_LEDGER: ledger },
+    });
+    expect(run.status).toBe(0);
+    expect(
+      run.stdout.split("\n").find((line) => line.includes(branch))
+    ).toContain("idle=(no trace)");
+  });
+
+  it("pins the fetched worktree base for any later history rewrite", () => {
+    const run = spawnSync(
+      process.execPath,
+      [SCRIPT, "new", "--branch", "x/pinned-base"],
+      {
+        encoding: "utf8",
+        env: {
+          ...process.env,
+          ALLOS_DISPATCH_LEDGER: ledgerIn(tempDir(), []),
+        },
+      }
+    );
+
+    expect(run.status).toBe(0);
+    expect(run.stdout).toContain("BASE_SHA=$(git rev-parse FETCH_HEAD)");
+    expect(run.stdout).toContain('echo "PINNED_BASE_SHA=$BASE_SHA"');
+    expect(run.stdout).toContain("reset or rewrite against the printed SHA");
+  });
+
   it("still answers every subcommand it is the only tooling for", () => {
     // A rename or a dropped branch in the dispatcher strands the orchestrator
     // and every agent at once, so the command surface is asserted rather than
