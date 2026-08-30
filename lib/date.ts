@@ -210,7 +210,23 @@ export function localDayMinutes(tz: string, dateStr: string): number {
   if (!isRealIsoDate(dateStr)) return 1440;
   const midnight = (day: string) => {
     const instant = zonedWallTimeToUtc(tz, day, "00:00");
-    return instant && dateStrInTz(tz, instant) === day ? instant : null;
+    if (!instant) return null;
+    const resolvedDay = dateStrInTz(tz, instant);
+    if (resolvedDay === day) return instant;
+
+    // A clock can jump over local 00:00 without deleting the date. In that rare
+    // case the wall-time resolver lands just before the gap; advance to the first
+    // real minute of the requested date. A date-line deletion crosses straight to
+    // the following date, so it still has no boundary.
+    if (resolvedDay < day) {
+      for (let minutes = 1; minutes <= 24 * 60; minutes++) {
+        const candidate = new Date(instant.getTime() + minutes * 60_000);
+        const candidateDay = dateStrInTz(tz, candidate);
+        if (candidateDay === day) return candidate;
+        if (candidateDay > day) break;
+      }
+    }
+    return null;
   };
   const start = midnight(dateStr);
   if (!start) return 0;
