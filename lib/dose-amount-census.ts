@@ -46,6 +46,8 @@ export type DoseAmountCensusBucket =
   | "no-quantity"
   // Reads the same before and after the fix — the overwhelming majority.
   | "always-correct"
+  // Both readers agree, but the shipped scan restarted inside a written token.
+  | "agreement-without-certificate"
   // Read as ZERO before the fix, correct now. The alarming bucket, and already
   // repaired: "1,000 mg" of niacin contributed nothing to a total 28x over the UL.
   | "recovered-from-zero"
@@ -106,7 +108,7 @@ export function recoverableCandidates(amount: string | null): string[] {
 export function classifyDoseAmount(
   amount: string | null
 ): DoseAmountCensusBucket {
-  const now = readDoseQuantity(amount);
+  const now = readDoseQuantity(amount, { structuralSoundness: true });
   if (now.kind === "none") return "no-quantity";
   if (now.kind === "unreadable") {
     return recoverableCandidates(amount).length > 0
@@ -115,7 +117,9 @@ export function classifyDoseAmount(
   }
   const before = preFixDoseReading(amount);
   if (before && before.value === now.value && before.unit === now.unit) {
-    return "always-correct";
+    return now.structurallySound
+      ? "always-correct"
+      : "agreement-without-certificate";
   }
   return before && before.value === 0
     ? "recovered-from-zero"
@@ -142,6 +146,7 @@ export interface DoseAmountCensus {
 
 export const DOSE_AMOUNT_CENSUS_BUCKETS: DoseAmountCensusBucket[] = [
   "always-correct",
+  "agreement-without-certificate",
   "no-quantity",
   "recovered-from-zero",
   "recovered-from-wrong",
@@ -152,6 +157,8 @@ export const DOSE_AMOUNT_CENSUS_BUCKETS: DoseAmountCensusBucket[] = [
 export const DOSE_AMOUNT_CENSUS_LABELS: Record<DoseAmountCensusBucket, string> =
   {
     "always-correct": "read the same before and after — untouched",
+    "agreement-without-certificate":
+      "read the same, but from a number fragment — inspect before trusting",
     "no-quantity": 'no number+unit at all ("1 capsule") — never affected',
     "recovered-from-zero":
       "was read as ZERO, now correct — repaired by the write-path fix",

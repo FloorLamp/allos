@@ -1515,7 +1515,8 @@ deliberate — the amount is unusable for every consumer, not just the UL — bu
 number is not "doses missing from a safety total"; it is at most that many.
 
 **Measuring the population.** `npm run census:dose-amounts [path]` partitions
-every stored dose amount into six buckets (untouched, no quantity, repaired-from-
+every stored dose amount into seven buckets (certified unchanged,
+agreement-without-certificate, no quantity, repaired-from-
 zero, repaired-from-wrong, unreadable-with-a-restated-amount,
 unreadable-with-nothing-to-recover), split live/retired. It is read-only, opens
 the file directly so counting can never migrate what it measures, and prints
@@ -1525,6 +1526,10 @@ version of the rule #3153 unified, and a census that disagrees with the engine i
 describes is worse than none. The one re-implementation there is the _pre-fix_
 pattern, kept to answer "what did this row read as yesterday": the artifact being
 measured, not a rule.
+
+Agreement is certified only when `readDoseQuantity` consumed a whole number
+token. If its scan restarted inside a token (`1-000 mg` → `000 mg`), agreement is
+reported separately: it is neither a parser error nor an all-clear (#3467).
 
 **The census measures the stored string, and there was a third reader upstream of
 it (#3444).** `lib/prescription-parse.ts` — the medication import — spelled its
