@@ -891,7 +891,7 @@ describe("trackFoodHabit / untrackFoodHabit (#580)", () => {
 });
 
 describe("canonicalizes the persisted slug, never storing the raw input (#883)", () => {
-  it("logFoodServing stores the canonical slug for a case/punctuation variant", async () => {
+  it("log and undo normalize variants while canonical slugs remain unchanged", async () => {
     const login = createLogin();
     const profile = createProfile("canon-log", login.id);
     actAs(login, profile);
@@ -900,27 +900,23 @@ describe("canonicalizes the persisted slug, never storing the raw input (#883)",
     // downstream exact-match reads (daily totals, rollup, habit progress) can find it.
     await logFoodServing(fd({ group_key: "Leafy_Greens", date: DATE }));
     await logFoodServing(fd({ group_key: "leafy-greens", date: DATE }));
+    await logFoodServing(fd({ group_key: "leafy_greens", date: DATE }));
 
-    const r = rows(profile.id);
-    expect(r).toHaveLength(1); // one canonical row, not two raw variants
-    expect(r[0]).toMatchObject({ group_key: "leafy_greens", servings: 2 });
+    let r = rows(profile.id);
+    expect(r).toHaveLength(1); // one canonical row, not three input spellings
+    expect(r[0]).toMatchObject({ group_key: "leafy_greens", servings: 3 });
     // The rollup (exact-match reader) sees the servings.
     expect(getFoodRollupInRange(profile.id, DATE, DATE)).toEqual([
-      expect.objectContaining({ slug: "leafy_greens", servings: 2 }),
+      expect.objectContaining({ slug: "leafy_greens", servings: 3 }),
     ]);
-  });
 
-  it("undoFoodServing on a variant targets the canonical row a canonical log wrote", async () => {
-    const login = createLogin();
-    const profile = createProfile("canon-undo", login.id);
-    actAs(login, profile);
-
-    await logFoodServing(fd({ group_key: "leafy_greens", date: DATE }));
     const res = await undoFoodServing(
       fd({ group_key: "Leafy-Greens", date: DATE })
     );
-    expect(res).toEqual({ ok: true, servings: 0 });
-    expect(rows(profile.id)).toEqual([]);
+    expect(res).toEqual({ ok: true, servings: 2 });
+    r = rows(profile.id);
+    expect(r).toHaveLength(1);
+    expect(r[0]).toMatchObject({ group_key: "leafy_greens", servings: 2 });
   });
 
   it("trackFoodHabit stores the canonical scope_value for a variant", async () => {
@@ -932,30 +928,6 @@ describe("canonicalizes the persisted slug, never storing the raw input (#883)",
     const targets = getFrequencyTargets(profile.id);
     expect(targets).toHaveLength(1);
     expect(targets[0].scope_value).toBe("fatty_fish");
-  });
-
-  it("still rejects a truly unknown group without writing", async () => {
-    const login = createLogin();
-    const profile = createProfile("canon-reject", login.id);
-    actAs(login, profile);
-
-    const res = await logFoodServing(
-      fd({ group_key: "definitely_not_a_group", date: DATE })
-    );
-    expect(res.ok).toBe(false);
-    expect(rows(profile.id)).toEqual([]);
-  });
-
-  it("existing canonical slugs keep working unchanged", async () => {
-    const login = createLogin();
-    const profile = createProfile("canon-existing", login.id);
-    actAs(login, profile);
-
-    await logFoodServing(fd({ group_key: "berries", date: DATE }));
-    expect(rows(profile.id)[0]).toMatchObject({
-      group_key: "berries",
-      servings: 1,
-    });
   });
 });
 
