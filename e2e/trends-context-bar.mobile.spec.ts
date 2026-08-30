@@ -325,11 +325,20 @@ test.describe("the bar rides the shell chrome (F + #1416)", () => {
     await scrollTo(page, deep - 300);
     await expect(chrome).toHaveAttribute("data-hidden", "false");
     await expect(bar).toHaveAttribute("data-hidden", "false");
-    // …and the label is back on screen, stuck under the navbar: mid-scroll, the
-    // charts you are reading are still named.
+    // …and the label is back on screen: mid-scroll, the charts you are reading are
+    // still named.
+    //
+    // THE NUMBER CHANGED WITH THE SHELL, NOT WITH THIS BAR (#4102). It used to be
+    // `> 0` because the bar parked UNDER the phone top bar, and the top bar's height
+    // was the offset. That bar retired, /trends registers no tab-first strip, so
+    // `--shell-chrome-h` is 0 here and the bar parks at the viewport top itself —
+    // `>= 0`, and the interesting failure is a NEGATIVE y, which is the bar still
+    // being translated off-screen. The `toBeInViewport` below is what keeps this
+    // honest either way: it is the assertion that survives the offset changing
+    // again, and the y-poll is what distinguishes "on screen" from "translated away".
     await expect
       .poll(async () => (await bar.boundingBox())?.y ?? -1)
-      .toBeGreaterThan(0);
+      .toBeGreaterThanOrEqual(0);
     await expect(page.getByTestId("trends-context-label")).toBeInViewport();
   });
 });

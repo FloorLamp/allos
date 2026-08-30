@@ -491,14 +491,23 @@ export default function SidebarContent({
         `surface` is the PANEL's anchoring, not a second host boolean: a drawer is
         a narrow column like the sidebar, so it takes the sidebar's anchoring. */
         <div className="flex items-center justify-between gap-2">
-          <ProfileIdentityBar
-            profiles={profiles}
-            actingProfileId={active.id}
-            viewIds={viewIds}
-            readOnlyIds={readOnlyIds}
-            readOnly={readOnly}
-            surface="sidebar"
-          />
+          {/* `min-w-0 flex-1` is load-bearing, not tidying. A flex item's default
+          `min-width: auto` is its MIN-CONTENT width, so without this the bar sizes
+          itself to the widest it would like to be — two stacked avatars plus both
+          profile names — and overflows its column instead of truncating inside it.
+          Measured when the bar moved into the drawer (#4102): 337.6px of bar in a
+          288px content box, hanging ~50px past the panel's right edge. The sidebar
+          never showed it because the bar had no flex-row parent there. */}
+          <div className="min-w-0 flex-1">
+            <ProfileIdentityBar
+              profiles={profiles}
+              actingProfileId={active.id}
+              viewIds={viewIds}
+              readOnlyIds={readOnlyIds}
+              readOnly={readOnly}
+              surface="sidebar"
+            />
+          </div>
           {closeButton}
         </div>
       )}

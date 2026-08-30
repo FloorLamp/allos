@@ -107,13 +107,12 @@
       "viewport": "mobile",
       "why": "The dashboard — the shell's most-visited surface and the one every nav change lands on.",
       "landmarks": {
-        "shellChromeHeight": 57,
         "dockHeight": 57,
         "mainInsetLeft": 0,
         "mainInsetRight": 0,
         "contentGutterLeft": 16,
         "contentGutterRight": 16,
-        "contentTopInset": 73,
+        "contentTopInset": 16,
         "contentWidth": 358
       }
     },
@@ -122,13 +121,12 @@
       "viewport": "mobile",
       "why": "The record — a full-width day-grouped row list under one filter row, with a bounded chrome stack above the first row (#3958).",
       "landmarks": {
-        "shellChromeHeight": 57,
         "dockHeight": 57,
         "mainInsetLeft": 0,
         "mainInsetRight": 0,
         "contentGutterLeft": 16,
         "contentGutterRight": 16,
-        "contentTopInset": 73,
+        "contentTopInset": 16,
         "contentWidth": 358,
         "pageTitleHeight": 1
       }
@@ -138,13 +136,13 @@
       "viewport": "mobile",
       "why": "A tabbed hub panel — the census's HUB_VARIANTS shape, where a tab strip sits between the title and the content.",
       "landmarks": {
-        "shellChromeHeight": 107,
+        "shellChromeHeight": 50,
         "dockHeight": 57,
         "mainInsetLeft": 0,
         "mainInsetRight": 0,
         "contentGutterLeft": 16,
         "contentGutterRight": 16,
-        "contentTopInset": 123,
+        "contentTopInset": 66,
         "contentWidth": 358
       }
     },
@@ -153,13 +151,12 @@
       "viewport": "mobile",
       "why": "A settings index — a group list rather than a data page, and the densest column of controls in the app.",
       "landmarks": {
-        "shellChromeHeight": 57,
         "dockHeight": 57,
         "mainInsetLeft": 0,
         "mainInsetRight": 0,
         "contentGutterLeft": 16,
         "contentGutterRight": 16,
-        "contentTopInset": 73,
+        "contentTopInset": 16,
         "contentWidth": 358,
         "pageTitleHeight": 28
       }
@@ -170,13 +167,12 @@
       "censusRoute": "/trends/metric/[kind]",
       "why": "A dynamic detail route — the DYNAMIC_ROUTES shape (#1544), reached by id rather than by path.",
       "landmarks": {
-        "shellChromeHeight": 57,
         "dockHeight": 57,
         "mainInsetLeft": 0,
         "mainInsetRight": 0,
         "contentGutterLeft": 16,
         "contentGutterRight": 16,
-        "contentTopInset": 73,
+        "contentTopInset": 16,
         "contentWidth": 358,
         "pageTitleHeight": 28
       }
@@ -186,13 +182,12 @@
       "viewport": "mobile",
       "why": "A plain index page under the default gutters: the shell with nothing overriding it.",
       "landmarks": {
-        "shellChromeHeight": 57,
         "dockHeight": 57,
         "mainInsetLeft": 0,
         "mainInsetRight": 0,
         "contentGutterLeft": 16,
         "contentGutterRight": 16,
-        "contentTopInset": 73,
+        "contentTopInset": 16,
         "contentWidth": 358,
         "pageTitleHeight": 28
       }

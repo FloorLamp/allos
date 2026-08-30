@@ -5,6 +5,7 @@ import {
   expectPhoneTapTargets,
   hydratedClick,
   openMeasurementGroup,
+  openMobileDrawer,
   settledClick,
   settledFill,
 } from "./helpers";
@@ -835,9 +836,16 @@ test("switching profiles clears the originating food receipt and cannot target i
   );
   try {
     await page.goto("/");
-    await expect(page.getByTestId("profile-identity-bar-mobile")).toContainText(
+    // The acting profile reads from the DRAWER's identity bar since #4102 — the
+    // phone top bar that used to carry it retired — so it is opened, read, and shut
+    // again before the food entry, leaving the receipt to be raised from a clean
+    // screen exactly as before.
+    const opening = await openMobileDrawer(page);
+    await expect(opening.getByTestId("profile-identity-bar")).toContainText(
       MULTI_OWNER_PROFILE
     );
+    await page.keyboard.press("Escape");
+    await expect(opening).toHaveCount(0);
     const food = await openQuickEntry(page, "log-food");
     const row = food.getByTestId(`food-group-${group}`);
     if (!(await row.isVisible())) {
@@ -850,18 +858,35 @@ test("switching profiles clears the originating food receipt and cannot target i
     await page.keyboard.press("Escape");
     await expect(food).toHaveCount(0);
 
-    const switcher = page.getByTestId("profile-identity-bar-mobile");
+    // THE SWITCH ITSELF, through the drawer — the switcher moved there with the
+    // identity bar when the phone top bar retired (#4102).
+    //
+    // A CONTROL WAS TRIED HERE AND DELIBERATELY REMOVED. The switcher used to be one
+    // tap away on the bar; it is now behind a drawer open, so the natural worry is
+    // that the toast could be cleared by the DRAWER rather than by the switch, and
+    // the obvious guard is to re-assert the toast once the drawer is up. Measured:
+    // that assertion fails, because the snackbar's own TTL expires across the extra
+    // step. It was therefore reading toast LIFETIME, not drawer behaviour — a race
+    // dressed as a control, and the kind that gets re-run until it is green.
+    // The real claim is already pinned below and is not time-dependent: the write
+    // landed on the ORIGINATING profile and none landed on its peer, read from the
+    // database. That is what #3611 is about; the toast's disappearance is a symptom.
+    const drawer = await openMobileDrawer(page);
+    const switcher = drawer.getByTestId("profile-identity-bar");
     await expect(switcher).toBeEnabled();
     await switcher.click();
     await settledClick(
       page,
-      page
-        .getByTestId("profile-switcher-panel-mobile")
+      drawer
+        .getByTestId("profile-switcher-panel")
         .getByTestId(`switch-to-${sharedId}`)
     );
-    await expect(switcher).toContainText(MULTI_SHARED_PROFILE);
     await expect(page.locator('[data-toast-key^="food-serving:"]')).toHaveCount(
       0
+    );
+    const after = await openMobileDrawer(page);
+    await expect(after.getByTestId("profile-identity-bar")).toContainText(
+      MULTI_SHARED_PROFILE
     );
     expect(profileFoodCount(ownerId, group)).toBe(1);
     expect(profileFoodCount(sharedId, group)).toBe(0);

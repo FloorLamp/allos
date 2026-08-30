@@ -1142,18 +1142,23 @@ export async function primeCameraFallback(page: Page): Promise<void> {
 // profiles are currently IN VIEW, acting included — 1 is the single-view default
 // every session starts in.
 //
-// Desktop mount by default (the sidebar's bar). The phone's bar is a separate
-// mount (`profile-identity-bar-mobile`) because both exist in the DOM at every
-// width, one `md:hidden` and one `hidden md:flex`.
+// ONE mount, since #4102. There used to be two — `profile-identity-bar` in the
+// desktop sidebar and `profile-identity-bar-mobile` in the phone top bar — and the
+// helper picked between them. The top bar retired; the bar now sits at the top of
+// the More drawer and is the SAME sidebar-surface mount, so there is nothing to
+// choose any more.
+//
+// `within` scopes the lookup, and below `md` it is required rather than tidy: the
+// desktop sidebar is hidden by a breakpoint but still in the DOM, so at phone width
+// the bare testid resolves to two elements and an unscoped locator is a strict-mode
+// violation. Pass the open drawer.
 export async function expectInView(
   page: Page,
   count: number,
-  opts: { mobile?: boolean } = {}
+  opts: { within?: Locator } = {}
 ): Promise<void> {
   await expect(
-    page.getByTestId(
-      opts.mobile ? "profile-identity-bar-mobile" : "profile-identity-bar"
-    )
+    (opts.within ?? page).getByTestId("profile-identity-bar")
   ).toHaveAttribute("data-view-count", String(count));
 }
 

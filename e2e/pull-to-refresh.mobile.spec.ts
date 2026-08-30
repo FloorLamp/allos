@@ -184,8 +184,11 @@ test("in a browser tab there is no pull-to-refresh at all", async ({
   // affordance is absent, not merely inert.
   await page.goto("/history");
   // Settle on the rendered shell first, so the absence below is a fact about a
-  // loaded page rather than about a page that hadn't painted yet.
-  await expect(page.getByTestId("shell-chrome")).toBeVisible();
+  // loaded page rather than about a page that hadn't painted yet. The DOCK is what
+  // is waited on since #4102: /history registers no tab-first strip, so the shell's
+  // sticky chrome is empty and zero-height there — Playwright calls that hidden,
+  // correctly, and it is no longer a paint signal for anything.
+  await expect(page.getByTestId("mobile-dock")).toBeVisible();
   await expect(page.getByTestId(INDICATOR)).toHaveCount(0);
 });
 
