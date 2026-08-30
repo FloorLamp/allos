@@ -396,6 +396,7 @@ test.describe("substance use (#998/#1078/#1085)", () => {
     } finally {
       await page.emulateMedia({ media: "screen" });
       await page.goto("/profile#emergency");
+      await page.reload(); // same-page hash navigation leaves the Share dialog mounted
       const toggle = page.getByTestId("emergency-toggle");
       if (!emergencyWasEnabled && (await toggle.isChecked())) {
         await toggle.uncheck();
