@@ -33,8 +33,7 @@ closed taxonomy, and `needs-human` handling.
   regression a merge just introduced.
 - Lanes never file issues. Findings ride the return summary; the orchestrator
   decides what becomes an issue — a filed observation displaces real work.
-- An urgent P0/P1 displaces the current candidate through `promote`; run only
-  its full matrix.
+- An urgent P0/P1 displaces the candidate via `promote`; run only its matrix.
 - STAGGER starts. Durations cluster tightly (seven of the first ten inside
   85±5 min), so simultaneous starts are simultaneous arrivals — and
   simultaneous GATES: five at once drove load to 17.7 on 4 cores.
@@ -85,8 +84,8 @@ closed taxonomy, and `needs-human` handling.
   Both vitest gates carry a 60 s per-test ceiling here; CI keeps 15 s.
 - `ci-watch.mjs`: wait for settled CI; exit 0 green, 1 red, 2 unsettled, 3
   conflict-blocked.
-- `catchup-digest.sh`: the since-last-looked digest; the check-in runs it
-  once its anchor is 4h stale, so it needs no remembering. `--peek` any time.
+- `catchup-digest.sh`: the since-last-looked digest; the check-in runs it once
+  its anchor is 4h stale, so it needs no remembering; `--peek` any time.
 - `dependabot-eval-brief.mjs`: evaluate major dependency updates.
 - `session-metrics.mjs`: the trend pulse — throughput, review depth, queue
   shape, needs-human aging; denominators first. Argue caps from its numbers.
