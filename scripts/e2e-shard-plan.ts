@@ -35,6 +35,7 @@
 // claim is actually checked against Playwright.
 import { execFileSync } from "node:child_process";
 import fs from "node:fs";
+import os from "node:os";
 import path from "node:path";
 import {
   isSpecFile,
@@ -71,15 +72,19 @@ function walkSpecFiles(dir = TEST_DIR, out: string[] = []): string[] {
  * so normalize here — the one place the two conventions meet.
  */
 function listSpecFiles(): string[] {
-  const out = execFileSync(
-    "npx",
-    ["playwright", "test", "--list", "--reporter=json"],
-    {
-      encoding: "utf8",
-      maxBuffer: 64 * 1024 * 1024,
-      stdio: ["ignore", "pipe", "inherit"],
+  const reportDir = fs.mkdtempSync(path.join(os.tmpdir(), "allos-e2e-list-"));
+  const reportPath = path.join(reportDir, "report.json");
+  const out = (() => {
+    try {
+      execFileSync("npx", ["playwright", "test", "--list", "--reporter=json"], {
+        env: { ...process.env, PLAYWRIGHT_JSON_OUTPUT_FILE: reportPath },
+        stdio: ["ignore", "ignore", "inherit"],
+      });
+      return fs.readFileSync(reportPath, "utf8");
+    } finally {
+      fs.rmSync(reportDir, { recursive: true, force: true });
     }
-  );
+  })();
   const report = JSON.parse(out) as {
     suites?: { file?: string; suites?: unknown[] }[];
   };

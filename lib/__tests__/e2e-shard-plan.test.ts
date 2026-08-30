@@ -1,3 +1,7 @@
+import { spawnSync } from "node:child_process";
+import { chmodSync, mkdtempSync, rmSync, writeFileSync } from "node:fs";
+import os from "node:os";
+import path from "node:path";
 import { describe, expect, it } from "vitest";
 import {
   assertPartition,
@@ -16,6 +20,49 @@ const files = (n: number): string[] =>
     { length: n },
     (_, i) => `e2e/spec-${String(i).padStart(3, "0")}.spec.ts`
   );
+
+describe("the Playwright file-list boundary", () => {
+  it("does not parse import-time stdout as the JSON report", () => {
+    const bin = mkdtempSync(path.join(os.tmpdir(), "allos-e2e-list-"));
+    const fakeNpx = path.join(bin, "npx");
+    writeFileSync(
+      fakeNpx,
+      `#!/usr/bin/env node
+const fs = require("node:fs");
+const report = JSON.stringify({ suites: [] });
+const output = process.env.PLAYWRIGHT_JSON_OUTPUT_FILE;
+if (output) fs.writeFileSync(output, report);
+process.stdout.write("INFO [migrate] imported a server graph\\n");
+if (!output) process.stdout.write(report);
+`
+    );
+    chmodSync(fakeNpx, 0o755);
+
+    try {
+      const run = spawnSync(
+        process.execPath,
+        [
+          path.join("node_modules", "tsx", "dist", "cli.mjs"),
+          path.join("scripts", "e2e-shard-plan.ts"),
+          "--verify",
+        ],
+        {
+          cwd: process.cwd(),
+          encoding: "utf8",
+          env: {
+            ...process.env,
+            PATH: `${bin}${path.delimiter}${process.env.PATH ?? ""}`,
+          },
+        }
+      );
+      expect(run.status).toBe(0);
+      expect(run.stdout).toBe("");
+      expect(run.stderr).toContain("universe verified");
+    } finally {
+      rmSync(bin, { recursive: true, force: true });
+    }
+  });
+});
 
 describe("isSpecFile", () => {
   // The planner's universe is a directory walk filtered by this predicate, and
