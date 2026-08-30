@@ -1546,8 +1546,9 @@ export function getConfirmedIntakeDosesInRange(
 // scoping guard is satisfied. Returns null when there's no intake signal or no DRI target.
 //
 // Windowing mirrors protein: intake is a PER-DAY average over this week (same
-// weekWindowStart), each basis averaged over the distinct days that carry it (so a partial
-// week isn't diluted by unlogged days).
+// weekWindowStart), each source averaged over the distinct days that carry it (so a partial
+// week isn't diluted by unlogged days). `fiberIntake` compares the tracked mean with the
+// sum of the estimated and supplemented means; it does not add the independent sources.
 export function getFiberAdequacy(profileId: number): FiberAdequacy | null {
   const weekStart = weekWindowStart(profileId);
 

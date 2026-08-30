@@ -129,18 +129,19 @@ describe("fiberDoseGrams", () => {
 });
 
 describe("fiberIntake composition", () => {
-  it("tracked reading OVERRIDES the estimated+supplemented sum", () => {
+  it("takes the larger floor and keeps both sources", () => {
     const i = fiberIntake({
       dailyTracked: 30,
       dailyEstimated: 12,
       dailySupplemented: 5,
+      unknownSupplement: true,
     });
     expect(i).toMatchObject({
       grams: 30,
-      basis: "tracked",
-      estimatedGrams: 0,
-      supplementedGrams: 0,
-      unknownSupplement: false,
+      basis: "both-sources",
+      estimatedGrams: 12,
+      supplementedGrams: 5,
+      unknownSupplement: true,
     });
   });
 
@@ -256,6 +257,7 @@ describe("fiberBasisIsFloor (#980 gauge/copy predicate)", () => {
     expect(fiberBasisIsFloor("estimated")).toBe(true);
     expect(fiberBasisIsFloor("combined")).toBe(true);
     expect(fiberBasisIsFloor("supplemented")).toBe(true);
+    expect(fiberBasisIsFloor("both-sources")).toBe(true);
   });
 });
 
