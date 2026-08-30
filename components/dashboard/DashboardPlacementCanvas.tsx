@@ -167,6 +167,11 @@ function MomentBlock({
             candidate={placement.candidate}
             presentation={presentations.get(placement.candidate.candidateId)!}
             lane="everything"
+            // The row's hover door is `absolute right-0` and pins to the nearest
+            // positioned ancestor. Standing provides its facts cell; here the row's
+            // own box is the rail — without it the door escapes to the viewport
+            // edge, and its resting 4px translate widens the whole page.
+            className="relative"
           />
         ))}
       </ul>
