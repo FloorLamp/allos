@@ -9,15 +9,20 @@
 
 import Database from "better-sqlite3";
 import { describe, expect, it } from "vitest";
+import { historicalDbFixture } from "./historical-db-fixture";
 import { runMigrations } from "@/lib/migrations/runner";
 import { migrationsBefore } from "@/lib/migrations/versions";
 import { migration } from "@/lib/migrations/versions/20260827-notify-offers-autoincrement";
 
 const MIGRATION = "20260827-notify-offers-autoincrement";
 
-function seeded(count: number): Database.Database {
-  const db = new Database(":memory:");
+// The chain is still the source of the schema; each case gets independent bytes.
+const preMigrationDb = historicalDbFixture((db) => {
   runMigrations(db, migrationsBefore(MIGRATION));
+});
+
+function seeded(count: number): Database.Database {
+  const db = preMigrationDb();
   db.prepare("INSERT INTO profiles (id, name) VALUES (1, 'OFFERS')").run();
   for (let i = 0; i < count; i++) {
     db.prepare(
