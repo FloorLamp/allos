@@ -6,16 +6,13 @@ allowed-tools: Read, Grep, Glob, Bash(npx tsx scripts/orchestration/reconcile-tr
 
 # Tracker reconciliation
 
-At this repo's velocity — dozens of agent-shipped PRs landing the same day
-against a spec-dense tracker — every issue body is a set of claims about `main`
-with an expiry date nobody stamps. This pass re-checks those claims. It is
-**factual reconciliation only**. It fixes what is provably wrong and flags
-everything else.
+At this repo's velocity, every issue body is a set of claims about `main`
+with an expiry date nobody stamps. This pass re-checks those claims — it is
+**factual reconciliation only**: fix what is provably wrong, flag the rest.
 
-Two halves. The deterministic half is
-`scripts/orchestration/reconcile-tracker.ts`, which gathers evidence and
-decides nothing. You are the other half: you read the residue the script could
-not decide, and you exercise the judgment it cannot.
+Two halves. `scripts/orchestration/reconcile-tracker.ts` gathers evidence and
+decides nothing; you read the residue the script could not decide and
+exercise the judgment it cannot.
 
 ## Hard guardrails
 
@@ -24,63 +21,47 @@ Verbatim from #865, and none of them is negotiable:
 > **never closes issues · never edits owner prose beyond factual status
 > markers/cross-refs/path refreshes · never changes scope or decisions —
 > judgment calls get FLAGGED, not made.**
+> `symbol-refresh` (#3619) joined that list of factual kinds: an identifier
+> CITATION refreshed to the name that replaced it, on the same terms.
 
-`symbol-refresh` (#3619) joined that list of factual kinds: an identifier
-CITATION refreshed to the name that replaced it, on the same terms.
-
-Three things follow, and they are enforced by construction rather than by your
-compliance:
+These are enforced by construction rather than by your compliance:
 
 - **No close-capable tool is granted to this run.** The `allowed-tools` line
-  above contains no `issue_write`, no `gh issue close`, no general REST verb.
-  The body writer is `scripts/orchestration/reconcile-apply.ts`, holding
-  exactly two confined writes: the body PATCH (payload built from one field,
-  `body`) and a comment POST that announces a body edit on an issue with
-  READERS — because a body PATCH is silent (no notification, no timeline
-  event), an issue with a comment chain or an in-flight lane must get the
-  edit said out loud in the thread, or its readers keep working from the
-  pre-edit text. The tool posts that comment itself when the chain is
-  non-empty; when the ORCHESTRATOR invokes this pass, it passes the roster's
-  in-flight issue numbers as `--notify 123,456` so a quiet-but-dispatched
-  issue is announced too. If you find yourself wanting a tool that could
-  close an issue, the answer is to write it in the report instead.
-  This is why reads here go through MCP's scoped read tools rather than REST,
-  which is the transport `docs/orchestration/environment.md` §GitHub access
-  otherwise mandates: `Bash(gh api:*)` would hand this run every verb including
-  the ones the guardrail forbids, and a grant cannot be narrowed after the fact.
-  §GitHub access names this exception, so it reads as the deliberate
-  capability restriction it is rather than as drift. The rule is unchanged for
-  every run that is allowed to write.
-- **Every patch is assertion-anchored.** A patch names the exact text it
-  expects. Absent ⇒ skip and flag. Present more than once ⇒ skip and flag.
-  There is no fuzzy fallback, and you must never hand-edit a body to work
-  around a refusal. A refusal means the body moved under you, which is
-  precisely when a blind edit does damage.
+  has no `issue_write`, no `gh issue close`, no general REST verb. Wanting a
+  tool that could close an issue means the answer belongs in the report.
+- The body writer, `reconcile-apply.ts`, holds exactly two confined writes:
+  a body PATCH (payload built from one field, `body`) and a comment POST
+  that announces a body edit on an issue with READERS — a body PATCH is
+  silent, and a comment chain or in-flight lane keeps the pre-edit text.
+- The tool comments itself when the chain is non-empty; an ORCHESTRATOR
+  invoking this pass adds `--notify 123,456` with the roster's in-flight
+  issues so a quiet-but-dispatched issue is announced too.
+- Reads go through MCP's scoped read tools rather than REST, the deliberate
+  exception §GitHub access names: `Bash(gh api:*)` would hand this run every
+  verb, and a grant cannot be narrowed after the fact. The REST rule is
+  unchanged for every run that is allowed to write.
+- **Every patch is assertion-anchored** — it names the exact text it expects.
+  Absent ⇒ skip and flag; present twice ⇒ skip and flag. No fuzzy fallback,
+  and never hand-edit a body around a refusal: a refusal means the body
+  moved under you, which is precisely when a blind edit does damage.
 - **Four patch kinds exist and no fifth.** `status-marker`, `cross-ref`,
-  `path-refresh`, `symbol-refresh`. Anything you want to say that does not fit
-  one of those four is a finding, not a patch.
-- **A `symbol-refresh` is written WITH ITS BACKTICKS, on both sides** — anchor
-  `` `oldName` ``, replacement `` `newName` ``. The scan reports the bare
-  identifier; the patch anchors the code span, because that is what makes it a
-  citation rather than a sentence. It refuses if the replacement does not
-  resolve on main, if the old name still does (nothing expired), and if the
-  body cites the symbol more than once — which is what holds #3472, whose
-  ruling names the same absent symbol its Refs bullet does.
-- **Labels have three ops and a standing exception to "flag, don't judge".**
-  The label writer is `scripts/orchestration/reconcile-labels.ts`. Removing a
-  `RETIRED_LABELS` entry and resetting a priority slot to the priority the
-  issue's own body states are FACTS, and automatic. **Assigning a domain label
-  is a judgment, and the owner has ruled (2026-08-19) that this routine makes
-  it rather than flagging it — asking only when the evidence is genuinely
-  split.** That narrows #865's "judgment calls get FLAGGED, not made" for this
-  one axis and nothing else; every other judgment call is still flagged.
-  Both endpoints it writes through are per-issue LABELS endpoints: DELETE takes
-  no request body, POST takes one built from exactly one field. Neither has a
+  `path-refresh`, `symbol-refresh`. Anything else is a finding, not a patch.
+- **A `symbol-refresh` is written WITH ITS BACKTICKS on both sides** — anchor
+  `` `oldName` ``, replacement `` `newName` `` — anchoring the code span, not
+  the sentence. It refuses when the replacement does not resolve on main,
+  when the old name still does, or when the body cites the symbol twice.
+- **Labels have three ops** (`reconcile-labels.ts`): removing a retired
+  label and resetting a priority slot to the body's own stated ruling are
+  FACTS, automatic. Both endpoints are per-issue LABELS endpoints with no
   field an issue's state could ride in.
+- **Assigning a domain label is a judgment the owner ruled this routine
+  makes** (2026-08-19), asking only when the evidence is genuinely split.
+  That narrows "judgment calls get FLAGGED, not made" for this one axis and
+  nothing else.
 
 Also, standing: **do not run the write half while another reconciliation or
-triage sweep is in flight.** Duplicate or conflicting edits to a tracker are
-worse than no edits. Check with the orchestrator first.
+triage sweep is in flight** — duplicate edits are worse than none. Check with
+the orchestrator first.
 
 ## The six-step protocol
 
@@ -93,86 +74,78 @@ npx tsx scripts/orchestration/reconcile-tracker.ts \
   --json /tmp/reconcile-evidence.json --out /tmp/reconcile-report.md
 ```
 
-The run window starts at the previous run's watermark
-(`$SCRATCH/allos-reconcile-watermark.json`, or the system temp dir), so deltas
-are incremental. `--since <iso>` overrides it; `--stamp` advances it, and is
-**off by default** so a dry run never moves the mark. The report stamps both
-ends of its own window.
+The window starts at the previous run's watermark
+(`$SCRATCH/allos-reconcile-watermark.json`). `--since <iso>` overrides;
+`--stamp` advances it and is **off by default** so a dry run never moves it.
 
-Read the report's **"What was examined"** block before its findings. Numbers
-there are the only thing separating a healthy tracker from a script that has
-stopped resolving anything — see step 6.
+Read the report's **"What was examined"** block before its findings — the
+numbers there are the only thing separating a healthy tracker from a script
+that has stopped resolving anything (step 6).
 
 ### 2. Verify PR claims, tick umbrellas
 
-For each merged PR in the window that says "Part of #X": `git grep` the claimed
-artifact on `main` **before** ticking anything. PR titles have claimed clusters
-whose stragglers were legitimate exceptions. Verify, never trust a title. Note
-residuals in the report.
+For each merged PR in the window claiming "Part of #X": `git grep` the
+claimed artifact on `main` BEFORE ticking anything — titles have claimed
+clusters whose stragglers were legitimate exceptions. Verify, never trust.
 
 A verified box gets a `status-marker` patch. An unverified one gets a finding.
 
 ### 3. Sweep open issues for staleness
 
-The script does the mechanical part and hands you three lists:
+The script does the mechanical part and hands you the lists:
 
 - **dead paths** — a cited file that matches nothing tracked.
 - **unqualified paths** — a bare basename with exactly one match; the
   correction is computed and a `path-refresh` patch is proposable.
 - **moved lines** — a `file.ts:NNN` whose co-located anchor symbol now lives
-  elsewhere in that file; the corrected line is computed.
-- **closed dependencies** — `Depends-on: #X`, "once #X lands", "blocked by #X"
-  where X is closed.
+  elsewhere in the file; the corrected line is computed.
+- **closed dependencies** — `Depends-on: #X` and its free-text forms where X
+  is closed.
 
-What the script explicitly **cannot** reach, and you must: a claim about
-BEHAVIOUR. Measured on this tracker in one day — a prescribed fix that cannot
-work at the real tick rate; a premise that is physically impossible given what
-the write path stores; a premise obsoleted by work that shipped months ago; a
-"every other call site does X" claim with fourteen counterexamples; a framing
-that names the wrong half of the code as the gap. None of those is a
-filesystem fact. Use the verified citations as your reading list: an issue
-whose citations all check out is exactly the issue whose prose still has to be
-read.
+What the script CANNOT reach, and you must: claims about BEHAVIOUR — a
+prescribed fix that cannot work, an impossible premise, a framing naming the
+wrong half of the code (all measured on this tracker in one day).
+
+Use the verified citations as your reading list: an issue whose citations all
+check out is exactly the issue whose prose still has to be read.
 
 ### 4. Refresh meta-issues
 
 `Meta:`-titled issues carry ✅/⏳ claims and critical-path lines. Verify every
-glyph against code. Flip the verified ones with `status-marker` patches; flag
-the rest. (As of 2026-08-12 the tracker has none open — this step is a no-op
-until one appears, which is worth reporting rather than silently skipping.)
+glyph against code; flip the verified ones with `status-marker` patches, flag
+the rest. None are open as of 2026-08-12 — report the no-op, don't skip it.
 
 ### 4b. Label hygiene — judge it, ask only when split
 
-Three findings, and you now settle two of them yourself.
+Three findings; you settle two of them yourself.
 
-**`retired-label` — automatic.** The writer removes it. A retired label is a
-fact about the taxonomy; it routes nothing. Refused as `would-strand` when it
-is the issue's only domain-ish label, because that trades wrongly-labelled for
-invisible-to-clustering — those land in the domain worksheet instead.
+**`retired-label` — automatic.** The writer removes it; a retired label
+routes nothing. Refused as `would-strand` when it is the issue's only
+domain-ish label — those land in the domain worksheet instead.
 
-**`priority-slot` — automatic where the body already ruled.** This tracker's
-owner rulings write their verdict in prose ("**Priority dropped P2 → P3.**",
-"Priority unchanged at P2"). When the label contradicts a stated priority, the
-label is what drifted, and `decidePriorityLabel` resets it. It invents nothing:
-a body that states no priority yields `no-stated-priority` and stays a
-question. `parked` and a double-booked slot are never overruled by prose —
-somebody chose those deliberately, so they come back as `slot-contested`.
+**`priority-slot` — automatic where the body already ruled.** Owner rulings
+write their verdict in prose ("**Priority dropped P2 → P3.**"); a label
+contradicting a stated priority is what drifted, and the writer resets it.
 
-**`no-domain` — you judge it.** Run the writer with no plan; it prints a
-worksheet ranking what each stranded issue's own citations point at
-(`scoreDomains`). Then decide:
+A body stating no priority stays a question; `parked` and double-booked
+slots come back `slot-contested`.
 
-- **One domain clearly leads** — assign it. Write a plan file and apply.
-- **The evidence is split, or points nowhere tracked** — that is the ambiguous
-  case. ASK the owner, with the tally in hand so the question is answerable in
-  one line.
-- **The work is genuinely cross-cutting** — `design` is a real domain and the
-  right answer, not a shrug (`docs/orchestration/dispatch.md`).
+**`no-domain` — you judge it.** Run the writer with no plan for the
+worksheet (`scoreDomains` ranks what each stranded issue's citations point
+at), then decide:
 
-The tally is evidence, not a verdict: it cannot know an issue citing `lib/db.ts`
-is really about notifications. Read the issue before trusting it. An add may
-only FILL a gap — the writer refuses `already-classified`, because re-filing
-work that already has a home is an argument, not reconciliation.
+- **One domain clearly leads** — assign it: plan file, then apply.
+- **Split or pointing nowhere tracked** — ASK the owner, tally in hand, so
+  the question is answerable in one line.
+- **Genuinely cross-cutting** — `design` is a real domain and the right
+  answer, not a shrug (`docs/orchestration/labels.md`).
+
+The tally is evidence, not a verdict — it cannot know an issue citing
+`lib/db.ts` is really about notifications; read the issue first. An add may
+only FILL a gap: the writer refuses `already-classified`.
+
+The sweep reads OPEN issues only and the writer refuses closed ones: a
+closed issue's labels are historical record, not queue state.
 
 Plan shape:
 
@@ -180,14 +153,13 @@ Plan shape:
 { "3051": [{ "label": "wellness", "reason": "protocols and pillars" }] }
 ```
 
-The sweep only reads OPEN issues and the writer refuses closed ones: a closed
-issue's labels are historical record, not queue state.
-
 ### 5. Docs contract check
 
-`docs/**` `Status:` lines and README navigation versus shipped reality. The
-script runs the path detector over `docs/` too. A mismatch is a **finding**; a
-purely mechanical path refresh may become a tiny PR, never an unreviewed edit.
+`docs/**` `Status:` lines and README navigation versus shipped reality; the
+script runs the path detector over `docs/` too.
+
+A mismatch is a **finding**; a purely mechanical path refresh may become a
+tiny PR, never an unreviewed edit.
 
 ### 6. Report
 
@@ -207,11 +179,11 @@ Window: <previous watermark> → <this run>
 ## Verified clean (n)
 ```
 
-**Why denominators come first.** A report that finds little is what a healthy
-tracker looks like AND what a blind script looks like, and the second one is
-the one nobody investigates. "0 findings across 223 citations" is a healthy
-tracker. "0 findings across 0 citations" is a broken run. If the examined
-counts drop sharply between runs, treat that as the finding.
+**Why denominators come first.** "0 findings across 223 citations" is a
+healthy tracker; "0 findings across 0 citations" is a broken run — and the
+clean-looking one is the one nobody investigates.
+
+A sharp drop in examined counts between runs IS the finding.
 
 ## Applying patches
 
@@ -221,21 +193,18 @@ npx tsx scripts/orchestration/reconcile-apply.ts plan.json --apply [--notify 123
 ```
 
 `plan.json` maps issue number → array of `AnchoredPatch`. Dry-run first,
-always: the dry run re-reads every current body and reports which anchors still
-hold, so you see the refusals before anything is written — and which issues
-will also get the announcement comment (a non-empty comment chain, or a
-number you passed via `--notify` because its dispatch is in flight).
+always: it re-reads every current body and reports which anchors still hold.
+
+It also lists which issues will get the announcement comment (a non-empty
+chain, or `--notify` because the dispatch is in flight).
 
 **Never re-run a plan with `--apply` twice.** Several path refreshes contain
-their own anchor inside the replacement (`intake-safety.ts` →
-`lib/queries/upcoming/intake-safety.ts`), so a second pass nests them. A fresh
-gather will not re-propose an applied patch, because the corrected path now
-resolves — so re-gather, never replay.
+their own anchor inside the replacement, so a second pass nests them. A
+fresh gather will not re-propose an applied patch — re-gather, never replay.
 
 **Never hand-widen an anchor to force a refusal through.** An
-`anchor-ambiguous` refusal means the basename appears more than once and the
-plan cannot say which; writing a longer context-bearing anchor to get past it
-is exactly the fuzzy fallback the contract forbids. Flag it.
+`anchor-ambiguous` refusal means the plan cannot say which occurrence;
+writing a longer anchor past it is the forbidden fuzzy fallback. Flag it.
 
 ## Applying label changes
 
@@ -245,15 +214,14 @@ npx tsx scripts/orchestration/reconcile-labels.ts --apply            # removals 
 npx tsx scripts/orchestration/reconcile-labels.ts --plan p.json --apply   # + your domain calls
 ```
 
-It builds the removal and priority work itself from the live tracker, takes
-domain adds only from `--plan`, re-reads each issue immediately before writing,
-and prints one line per write with its refusal reason. Same discipline as the
-applier: dry run first, and never while another sweep is in flight.
+It builds removal and priority work from the live tracker, takes domain adds
+only from `--plan`, re-reads each issue immediately before writing, and
+prints one line per write. Dry run first; never while another sweep runs.
 
 ## Scheduling
 
-Run weekly, or on demand after a heavy merge day. The schedule is deliberately
-**not** wired to a cron in this repo: an unattended pass that writes to the
-tracker needs its report reviewed at least once per convention change, and a
-cron that nobody reads is how a routine starts patching in a shape nobody
+Run weekly, or on demand after a heavy merge day. Deliberately NOT wired to
+a cron: an unattended pass that writes to the tracker needs its report read.
+
+An unread cron is how a routine starts patching in a shape nobody
 sanctioned. Wire it when the report has been boring three runs running.

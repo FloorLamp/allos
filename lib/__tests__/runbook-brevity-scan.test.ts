@@ -140,22 +140,22 @@ const FILE_BUDGETS = {
 } as const satisfies Record<string, { lines: number; genre: Genre }>;
 
 /**
- * Budget-only guard (owner, 2026-08-30): the skills and the PR template join
- * at FILE-budget granularity — a snapshot of current size plus small headroom,
- * so growth needs a deliberate budget edit with an argument behind it. Block
- * shape is deliberately NOT enforced here yet: the skills carry brief-culture
- * long bullets, and reshaping those is its own pass, not a side effect of
- * extending the census. Budgets follow the runbook rule: shrink work moves
- * detail out (to docs the skill cites, or incidents), never raises the number.
+ * The skills and the PR template joined the guard on 2026-08-30, first at
+ * FILE-budget granularity and, since the same-day reshape pass, under the
+ * full block shape too — every skill bullet and paragraph now fits the
+ * short-instruction form, with war-story detail cited to incidents. They are
+ * `prose` genre (explanatory one-pagers), and their budgets are snapshots of
+ * the reshaped size plus small headroom: shrink work moves detail out, never
+ * raises the number.
  */
-const BUDGET_ONLY_FILES = {
-  ".claude/skills/file-issue/SKILL.md": { lines: 240 },
-  ".claude/skills/needs-human/SKILL.md": { lines: 260 },
-  ".claude/skills/orchestrate/SKILL.md": { lines: 250 },
-  ".claude/skills/reconcile-tracker/SKILL.md": { lines: 280 },
-  ".claude/skills/ux-walkthrough/SKILL.md": { lines: 480 },
-  ".github/pull_request_template.md": { lines: 25 },
-} as const satisfies Record<string, { lines: number }>;
+const SKILL_BUDGETS = {
+  ".claude/skills/file-issue/SKILL.md": { lines: 225, genre: "prose" },
+  ".claude/skills/needs-human/SKILL.md": { lines: 205, genre: "prose" },
+  ".claude/skills/orchestrate/SKILL.md": { lines: 235, genre: "prose" },
+  ".claude/skills/reconcile-tracker/SKILL.md": { lines: 250, genre: "prose" },
+  ".claude/skills/ux-walkthrough/SKILL.md": { lines: 370, genre: "prose" },
+  ".github/pull_request_template.md": { lines: 25, genre: "prose" },
+} as const satisfies Record<string, { lines: number; genre: Genre }>;
 
 const SKIPPED_DIRS = new Set([".git", "node_modules"]);
 
@@ -190,7 +190,14 @@ type Block = {
 };
 
 function scanBlocks(source: string): Block[] {
-  const lines = source.split("\n");
+  let lines = source.split("\n");
+  // A skill's YAML frontmatter is machine-read trigger text — exempt from the
+  // block shape the way tables are, though it still counts toward the file
+  // budget (fileLines reads the raw source).
+  if (lines[0] === "---") {
+    const end = lines.indexOf("---", 1);
+    if (end > 0) lines = lines.slice(end + 1);
+  }
   const blocks: Block[] = [];
   let inFence = false;
   let current: Block | null = null;
@@ -289,7 +296,7 @@ describe("runbook brevity", () => {
     expect(guardedFiles()).toEqual(Object.keys(FILE_BUDGETS).sort());
   });
 
-  it("registers every skill under the budget-only guard", () => {
+  it("registers every skill under the guard", () => {
     const skills = readdirSync(path.join(process.cwd(), ".claude", "skills"), {
       withFileTypes: true,
     })
@@ -297,14 +304,14 @@ describe("runbook brevity", () => {
       .map((entry) => path.posix.join(".claude/skills", entry.name, "SKILL.md"))
       .sort();
     expect(skills).toEqual(
-      Object.keys(BUDGET_ONLY_FILES)
+      Object.keys(SKILL_BUDGETS)
         .filter((f) => f.startsWith(".claude/skills/"))
         .sort()
     );
   });
 
-  it.each(Object.entries(BUDGET_ONLY_FILES))(
-    "%s stays within its file budget",
+  it.each(Object.entries(SKILL_BUDGETS))(
+    "%s stays within its line and block budgets",
     (relativePath, budget) => {
       const source = readFileSync(
         path.join(process.cwd(), relativePath),
@@ -316,6 +323,17 @@ describe("runbook brevity", () => {
           `${budget.lines}). Move detail to a document the file cites (or ` +
           `incidents) instead of raising the budget.`
       ).toBeLessThanOrEqual(budget.lines);
+
+      const violations = brevityViolations(
+        source,
+        GENRE_PARAGRAPH_LINES[budget.genre]
+      );
+      expect(
+        violations,
+        `${relativePath} (${budget.genre}) has blocks past the ` +
+          `short-instruction shape:\n${violations.join("\n")}\n` +
+          `Keep the decision here and move narrative or history elsewhere.`
+      ).toEqual([]);
     }
   );
 
