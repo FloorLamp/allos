@@ -619,7 +619,6 @@ describe("the hand-rolled comment strippers still in the tree (#3595)", () => {
     "lib/__tests__/e2e-hygiene.test.ts",
     "lib/__tests__/fasting-standdown.test.ts",
     "lib/__tests__/fiber-symptom-panel.test.ts",
-    "lib/__tests__/flag-notability.test.ts",
     "lib/__tests__/food-habit-observation.test.ts",
     "lib/__tests__/food-limit-note.test.ts",
     "lib/__tests__/goal-liveness.test.ts",
