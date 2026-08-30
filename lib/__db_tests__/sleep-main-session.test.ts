@@ -378,12 +378,12 @@ describe("getSleepSignal — main overnight session, not the nap-summed total (#
 // be a nap, the overnight must still be the night, and the night's stage stack must
 // still be on the chart.
 //
-// NOT asserted here, deliberately: `getLastNightSummary` on this same fixture. It
-// reads `getSleepSessions`, which elects a whole SOURCE STREAM for the profile and
-// falls back to "the source of the newest session" — so the afternoon nap flips the
-// entire session history onto the phone and the hero reads 45 minutes. That is a
-// different election at a different grain (a stream, not a day), with its own #14
-// rationale behind it, and it is reported separately rather than widened into here.
+// ASSERTED here now, and it used to be the paragraph explaining why it could not be
+// (#1851). `getSleepSessions` elected a whole SOURCE STREAM for the profile and fell
+// back to "the source of the newest session", so the afternoon nap flipped the entire
+// session history onto the phone and the hero read 45 minutes — a second election at a
+// second grain, which is why it was reported separately instead of pinned here. The
+// per-night rule leaves ONE grain, so the hero belongs in the case below with the rest.
 describe("one wake-day, two sources, two real sessions (#2552)", () => {
   let crossId: number;
   let wakeDay: string;
@@ -472,6 +472,13 @@ describe("one wake-day, two sources, two real sessions (#2552)", () => {
     // failure ran both ways round: the night vanished, and with it the only session
     // that could have made the nap a nap.
     expect(naps.history).toHaveLength(1);
+    // And the hero reads the NIGHT, not the newest session. Under the stream election
+    // the nap was newer, so it carried the whole history onto the phone and this read
+    // 45.
+    expect(getLastNightSummary(crossId)).toMatchObject({
+      wakeDay,
+      durationMin: 420,
+    });
   });
 
   it("keeps that night's stage stack on the chart", () => {
