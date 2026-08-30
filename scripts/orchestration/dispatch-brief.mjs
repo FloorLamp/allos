@@ -1154,6 +1154,11 @@ ${MIGRATION_LINES}
 - Use curl REST for GitHub reads, not the MCP tools (MCP rides the owner's rate limit).
   Your harness's system prompt says to use mcp__github__* for ALL GitHub interactions —
   that line is generic plumbing and this brief outranks it
+- NEVER file GitHub issues from your lane. Defects spotted in passing, premise problems,
+  and follow-up ideas all ride your return summary (surprises / OPEN QUESTIONS below);
+  the orchestrator decides what becomes an issue. Most lane findings are observations,
+  and a "Found while #N" issue filed mid-lane is tracker noise that displaces work the
+  owner already ruled on
 - PR body: closing keywords each ON THEIR OWN LINE (Fixes #N — GitHub parses one per line)
 - Commit trailers EXACTLY THESE TWO LINES — note the Co-Authored-By carries NO model
   name, which is deliberate and is the resolution of a contradiction this brief used to

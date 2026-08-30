@@ -11,6 +11,17 @@ Two axes are load-bearing, and `reconcile-tracker` flags violations of both
   it is a real domain, not a missing one.
 - Every ready P0/P1 preempts feature and presentation work, with or without
   `bug`. Other type labels are optional color; `ui` marks e2e-heavy work.
+- **The taxonomy is CLOSED, and its canon is code**: `PRIORITY_SLOT_LABELS`,
+  `DOMAIN_LABELS`, `TYPE_LABELS`, `PROCESS_LABELS` (union `KNOWN_LABELS`) in
+  `scripts/orchestration/reconcile-tracker-core.ts`. Never apply a label
+  outside it, and never verify a label against the repo's LIVE label list:
+  GitHub's add-labels endpoint silently creates any label it does not
+  recognise, so the live list accumulates every past mistake and then
+  validates the next one (16 strays counted 2026-08-30 — `deps`, `testing`,
+  `infrastructure`, `a11y`, …). The taxonomy spelling wins over its synonyms:
+  `infra` not `infrastructure`, `dependencies` not `deps`, `e2e` not
+  `testing`. A missing concept is an owner decision, not a new label.
+  `checkLabelHygiene` flags off-taxonomy labels as `unknown-label`.
 - `enhancement`, `cleanup`, `javascript`, and `lib` are retired (2026-08-15)
   and deleted repo-side; a hygiene finding flags any reappearance. `lib` routed
   nothing — business logic living in `lib/` is the repo's own rule.
@@ -40,6 +51,19 @@ Two axes are load-bearing, and `reconcile-tracker` flags violations of both
   dispatch at roughly three unreviewed PRs however few agents are running.
 - With ready P1s, reserve two user/data lanes and select the highest-risk ready
   P2; cap presentation/guard at one. Recompute when issues arrive or lanes free.
+- **Self-filed work joins the BACK of its queue, never the front.** An issue
+  the orchestrator or a lane filed ("Found while #N…" provenance) defaults to
+  P3 and is sourced only when no owner-filed work at the same or higher
+  priority is ready — recency is not urgency, and capacity spent on your own
+  filings is capacity taken from issues the owner already ruled on (incidents,
+  "The issues the orchestrator filed instead of doing the work"). Source
+  lanes from the open backlog OLDEST FIRST. The one exception: a P0/P1
+  regression a merge just introduced, DEMONSTRATED in the issue (failing test
+  or repro), preempts like any P0/P1.
+- Lanes never file issues directly. A lane's findings ride its return
+  summary (surprises, OPEN QUESTIONS); the orchestrator decides what becomes
+  an issue — most findings are observations, and an observation filed with
+  questions attached is tracker noise that displaces real work.
 - An urgent P0/P1 displaces the current candidate through `promote`; run only
   its full matrix.
 - STAGGER starts. Durations cluster tightly (seven of the first ten inside

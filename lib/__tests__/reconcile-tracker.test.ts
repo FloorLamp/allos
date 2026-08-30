@@ -27,6 +27,7 @@ import {
   decideDomainAdd,
   decideLabelRemoval,
   decidePriorityLabel,
+  KNOWN_LABELS,
   parseStatedPriority,
   planLabelRemovals,
   scoreDomains,
@@ -682,6 +683,58 @@ describe("label hygiene (dispatch.md §Queue labels)", () => {
         issue({ number: 7, labels: ["lib", "cleanup"], state: "closed" }),
       ])
     ).toEqual([]);
+  });
+
+  it("flags a label outside the closed taxonomy, once per stray", () => {
+    // The live drift this catches: GitHub's add-labels endpoint silently
+    // CREATES an unknown label, so `testing` (for `e2e`), `deps` (for
+    // `dependencies`) and friends accumulated repo-side — 16 strays counted
+    // 2026-08-30 — and issues carrying them cluster on nothing.
+    const findings = checkLabelHygiene([
+      issue({ number: 11, labels: ["P3", "intake", "db", "testing"] }),
+      issue({ number: 12, labels: ["P2", "design", "a11y", "deps"] }),
+    ]);
+    expect(findings).toEqual([
+      {
+        issue: 11,
+        kind: "unknown-label",
+        detail: expect.stringContaining("testing"),
+      },
+      {
+        issue: 12,
+        kind: "unknown-label",
+        detail: expect.stringContaining("a11y"),
+      },
+      {
+        issue: 12,
+        kind: "unknown-label",
+        detail: expect.stringContaining("deps"),
+      },
+    ]);
+  });
+
+  it("does not double-flag a retired label as also unknown", () => {
+    const findings = checkLabelHygiene([
+      issue({ number: 13, labels: ["P3", "intake", "cleanup"] }),
+    ]);
+    expect(findings).toEqual([
+      {
+        issue: 13,
+        kind: "retired-label",
+        detail: expect.stringContaining("cleanup"),
+      },
+    ]);
+  });
+
+  it("the taxonomy is the union of the four axes and contains no stray", () => {
+    // KNOWN_LABELS is what a filer verifies a label against — never the live
+    // repo list, which validates every past mistake. Pin its composition.
+    for (const l of ["P0", "parked", "training", "bug", "ui", "needs-human"]) {
+      expect(KNOWN_LABELS.has(l)).toBe(true);
+    }
+    for (const l of ["testing", "deps", "infrastructure", "a11y", "lib"]) {
+      expect(KNOWN_LABELS.has(l)).toBe(false);
+    }
   });
 
   it("rides gatherEvidence into the report's own section", () => {

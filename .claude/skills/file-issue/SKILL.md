@@ -175,10 +175,14 @@ priority-slot label** (`P0`–`P3`, or `parked` — never two slot labels;
 `reconcile-tracker` flags violations of both axes). Cross-cutting design/UX
 work takes `design` — a real domain, not a missing one. `bug` is the one type
 label dispatch reads; `feat`/`refactor` are optional color, and `ui` is an
-optional hint for screen-heavy (therefore e2e-heavy) work. Current vocabulary
-(verify with `gh api repos/FloorLamp/allos/labels --jq '.[].name'` if in
-doubt; never invent a label, and never apply a retired one — `enhancement`,
-`cleanup`, `javascript` and `lib` were retired 2026-08-15):
+optional hint for screen-heavy (therefore e2e-heavy) work. The taxonomy is
+CLOSED — its canon is `KNOWN_LABELS` in
+`scripts/orchestration/reconcile-tracker-core.ts`, and that constant, never
+the repo's live label list, is what to verify against: GitHub's add-labels
+endpoint silently creates unknown labels, so the live list carries strays
+(`deps`, `testing`, `a11y`, …) that validate the next mistake. Never invent
+a label — a missing concept is an owner decision — and never apply a retired
+one (`enhancement`, `cleanup`, `javascript`, `lib`, retired 2026-08-15):
 
 > biomarkers, body-metrics, bug, ci, db, dependencies, design, docs, e2e,
 > feat, findings, goals, infra, insights, intake, integrations,
@@ -188,7 +192,11 @@ doubt; never invent a label, and never apply a retired one — `enhancement`,
 
 Priority calibration from the standing contract: P0/P1 bugs preempt features;
 an active infrastructure bottleneck is P1; an isolated latent flake is P3.
-Most well-scoped feature and cleanup work lands P2–P3.
+Most well-scoped feature and cleanup work lands P2–P3. An issue whose
+provenance is other agent work ("Found while implementing #N") defaults to
+P3 regardless of how it reads — self-filed work never gets the same slot as
+the owner's, and a P0/P1 claim on one needs the regression demonstrated in
+the body (`docs/orchestration/dispatch.md` §Dispatch).
 
 ## 7. Confirm, then file
 

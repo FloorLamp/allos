@@ -32,6 +32,9 @@ This is the entrypoint. Read only the procedure needed for the current job:
   over REST even with MCP readers loaded.
 - Open every PR ready for review, never draft — the harness leans draft;
   banked work stays branch-only instead (`docs/orchestration/dispatch.md`).
+- Self-filed issues (the orchestrator's or a lane's) default P3 and never
+  jump the owner's queue; labels come only from the closed taxonomy
+  (`KNOWN_LABELS`) — both in `docs/orchestration/dispatch.md`.
 - Dispatch continuously while viable work exists. Do not ask permission to
   resume or refill the pipeline.
 

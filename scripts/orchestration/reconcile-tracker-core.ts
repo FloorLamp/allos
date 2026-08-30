@@ -718,9 +718,35 @@ export const RETIRED_LABELS = [
   "lib",
 ] as const;
 
+/** Optional type color; `bug` is the one dispatch reads, `ui` hints e2e-heavy work. */
+export const TYPE_LABELS = ["bug", "feat", "refactor", "ui"] as const;
+
+/** Process markers with their own routing rules (dispatch.md §Queue labels). */
+export const PROCESS_LABELS = [
+  "needs-human",
+  "recommend-adopt",
+  "recommend-hold",
+] as const;
+
+/**
+ * The whole taxonomy, CLOSED. GitHub's add-labels endpoint silently CREATES a
+ * label it does not recognise, so one filing with a synonym or typo ("deps",
+ * "testing", "infrastructure") mints a real repo label that routes nothing —
+ * and the live label list then validates the next filer's mistake. 16 such
+ * strays were counted on the live list on 2026-08-30. A label outside this
+ * union is a hygiene finding, never something to apply; and the live list is
+ * never the thing to verify a label against — this union is.
+ */
+export const KNOWN_LABELS: ReadonlySet<string> = new Set<string>([
+  ...PRIORITY_SLOT_LABELS,
+  ...DOMAIN_LABELS,
+  ...TYPE_LABELS,
+  ...PROCESS_LABELS,
+]);
+
 export interface LabelFinding {
   issue: number;
-  kind: "priority-slot" | "no-domain" | "retired-label";
+  kind: "priority-slot" | "no-domain" | "retired-label" | "unknown-label";
   detail: string;
 }
 
@@ -1049,6 +1075,17 @@ export function checkLabelHygiene(
         issue: issue.number,
         kind: "retired-label",
         detail: `carries retired label \`${label}\``,
+      });
+    }
+    // Retired labels already have their own finding above; everything else off
+    // the taxonomy is a stray that some filing minted repo-side.
+    for (const label of issue.labels) {
+      if (KNOWN_LABELS.has(label)) continue;
+      if ((RETIRED_LABELS as readonly string[]).includes(label)) continue;
+      out.push({
+        issue: issue.number,
+        kind: "unknown-label",
+        detail: `carries \`${label}\`, which is outside the taxonomy (KNOWN_LABELS) — it routes nothing, and applying it is what created it repo-side`,
       });
     }
   }

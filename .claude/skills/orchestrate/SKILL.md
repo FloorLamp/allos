@@ -71,8 +71,19 @@ authoritative over your own memory of the session.
   tracker's measured failure mode is stale premises, not typos — 7 of ~40
   audited issues rested on false ones.
 - Label hygiene is machine-checked (`checkLabelHygiene` — exactly one
-  priority-slot label, at least one domain label). Repair violations on the
-  spot; they are yours to fix, not to report.
+  priority-slot label, at least one domain label, nothing outside the closed
+  taxonomy). Repair violations on the spot; they are yours to fix, not to
+  report. The taxonomy is `KNOWN_LABELS` in
+  `scripts/orchestration/reconcile-tracker-core.ts` — never invent a label
+  and never verify one against the repo's live label list, which silently
+  grows a new label for every past mistake (`dispatch.md` §Queue labels).
+- Issues YOU or a lane filed are back-of-queue by construction: default P3,
+  sourced only when no owner-filed work at the same or higher priority is
+  ready, oldest first. Filing an issue and then dispatching it ahead of the
+  owner's backlog is the measured failure mode (`dispatch.md` §Dispatch); the
+  one exception is a demonstrated P0/P1 regression a merge just introduced.
+  Lanes never file issues at all — their findings ride the return summary,
+  and you decide what becomes an issue.
 - `needs-human` items: apply the label + assign the owner the same day a
   question is flagged, then WORK ELSEWHERE. Never prompt the owner uninvited;
   the needs-human skill drains that queue when the owner shows up.

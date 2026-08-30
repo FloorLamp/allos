@@ -1608,3 +1608,35 @@ will argue", and the ready-not-draft rule is written where the temptation
 lives (banking in `dispatch.md`, candidate promotion in `review-merge.md`).
 A rule that contradicts an ambient default has to name the default it
 overrides, or every new session relearns the drift.
+
+## The queue the crew filed for itself, in labels nobody defined (2026-08-30)
+
+Two tracker drifts, measured together on the live repo. First: 11 of 96 open
+issues carried "found while / found by a lane" provenance, and the
+orchestrator's habit is to dispatch its own filings first — recency reads as
+urgency, so the freshly-filed observation jumps issues the owner ruled on
+weeks ago. The 2026-08-29 entry established the rule ("self-filed work does
+not get the same priority slot as the owner's") but it lived only in this
+file; the dispatch procedure never said where self-filed work goes, so each
+session re-invented an answer, usually "front".
+
+Second: the repo's live label list had grown to 52 labels against a
+documented taxonomy of ~36 — 16 strays (`deps` beside `dependencies`,
+`infrastructure` beside `infra`, `testing` and `test-coverage` beside `e2e`,
+plus `a11y`, `coaching`, `dashboard`, `illness`, `medical`, `navigation`,
+`offline`, `privacy`, `settings`, `sleep`, `tooling`, `trends`). The
+mechanism is GitHub's add-labels endpoint, which silently CREATES a label it
+does not recognise: one filer's synonym becomes a real label, and the
+file-issue skill's own advice — "verify against the live label list if in
+doubt" — then validated the stray for every later filer. A feedback loop
+wearing a verification step's clothes.
+
+Both fixes follow the tooling doctrine. The taxonomy is now CLOSED in code
+(`KNOWN_LABELS` in `reconcile-tracker-core.ts`) and `checkLabelHygiene`
+flags any open issue carrying a label outside it; docs and the file-issue
+skill now point at the constant, never the live list. Self-filed issues are
+back-of-queue by rule in `dispatch.md` §Dispatch — default P3, sourced
+oldest-first after owner-filed work, demonstrated P0/P1 regressions the only
+exception — and the dispatch brief now forbids lanes from filing issues at
+all: findings ride the return summary, and the orchestrator decides what
+becomes an issue.
