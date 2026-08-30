@@ -353,9 +353,6 @@ test("a partial measurements save clears only the half it kept", async ({
   await expect(page.getByTestId("offline-queue-badge")).toHaveText(
     /1 queued offline/
   );
-  // The kept transport is finished: clear its controls and remember only its UI
-  // group. The refused transport remains an editable retry, even though BP shares
-  // the Vitals disclosure with resting HR (which belongs to the kept transport).
   await expect(weight).toHaveValue("");
   await expect(systolic).toHaveValue("118");
   await expect(diastolic).toHaveValue("76");
@@ -367,8 +364,6 @@ test("a partial measurements save clears only the half it kept", async ({
     )
   ).toEqual(["body"]);
 
-  // Retrying the still-populated refusal must not mint a second body intent. The
-  // forced vitals refusal answers the tap, while both refused values remain ready.
   await save.click();
   await expect(page.getByText(OFFLINE_CAPTURE_REFUSED_MESSAGE)).toBeVisible();
   expect(await queuedIntentCount(page), "queued intents after retry").toBe(1);

@@ -447,9 +447,10 @@ export default function MeasurementsQuickAdd({
     const rememberWritten = (group: MeasurementGroup | undefined): void => {
       if (group) rememberGroup(profileId, group);
     };
-    const clearCapturedBody = (): void => {
+    const settlePartialFields = (): void => {
       const form = formRef.current;
       if (!form) return;
+      const retained = new FormData(form);
       for (const name of BODY_CAPTURE_FIELDS) {
         const field = form.elements.namedItem(name);
         if (
@@ -459,7 +460,23 @@ export default function MeasurementsQuickAdd({
           field.value = "";
         }
       }
-      refreshSummaries();
+      // React resets an uncontrolled action form after the action resolves. Restore
+      // the refused half on the next frame, after that reset has cleared everything.
+      requestAnimationFrame(() => {
+        for (const [name, value] of retained) {
+          if (BODY_CAPTURE_FIELDS.includes(name) || typeof value !== "string")
+            continue;
+          const field = form.elements.namedItem(name);
+          if (
+            field instanceof HTMLInputElement ||
+            field instanceof HTMLTextAreaElement ||
+            field instanceof HTMLSelectElement
+          ) {
+            field.value = value;
+          }
+        }
+        refreshSummaries();
+      });
     };
 
     // Offline: replay each half through its OWN queued intent — the queue's flow
@@ -523,7 +540,7 @@ export default function MeasurementsQuickAdd({
         if (kept !== "kept") {
           if (keptBody && kept === "failed") {
             rememberWritten(capturedBodyGroup);
-            clearCapturedBody();
+            settlePartialFields();
             return "partial";
           }
           return "refused";
