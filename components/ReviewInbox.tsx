@@ -4,7 +4,12 @@ import type { IntegrationSyncEvent, IntegrationId } from "@/lib/types";
 import type { UnitPrefs } from "@/lib/settings";
 import { getIntegration } from "@/lib/integrations/registry";
 import { isStaleSyncEvent } from "@/lib/integrations/staleness";
-import { integrationDetailHref, type AppRoute } from "@/lib/hrefs";
+import {
+  integrationDetailHref,
+  medicationEditHref,
+  nutritionTabHref,
+  type AppRoute,
+} from "@/lib/hrefs";
 import type { FeedEntry } from "@/lib/import-feed";
 import type { DocumentTombstone } from "@/lib/document-tombstones";
 import RelativeTime from "@/components/RelativeTime";
@@ -28,6 +33,7 @@ import type {
   ConnectedSource,
 } from "@/lib/queries/integrations";
 import type { UnitMislabelReview as UnitMislabelReviewRow } from "@/lib/queries/medical";
+import type { getUnreadableDoseAmounts } from "@/lib/queries/data-quality";
 import type {
   ActivityDupCluster,
   BodyMetricConflictPair,
@@ -47,7 +53,7 @@ import type {
 //     wrist while the phone keeps pushing aggregates). Slate, not rose, because
 //     nothing is broken: it is a coaching-tier observation, it never sends, and it
 //     yields to (a) so a source is still one row.
-// (b) DETECTED duplicate/conflict pairs (issue #10, Phase 2) + unit mislabels.
+// (b) DETECTED duplicate/conflict pairs, unit mislabels, and unreadable dose amounts.
 // (c) "Connected sources" (<ConnectedSources>) — the calm rest of the recurring
 //     streams: partial/not-connected expanded, flapping stated as an amber one-liner,
 //     healthy collapsed to a line linking to its own page (which owns its controls
@@ -77,6 +83,7 @@ export default function ReviewInbox({
   activityClusters = [],
   bodyMetricPairs = [],
   unitMislabels = [],
+  unreadableDoseAmounts = [],
   correctionSources,
   initialCorrectionField = null,
   units,
@@ -102,6 +109,8 @@ export default function ReviewInbox({
   bodyMetricPairs?: BodyMetricConflictPair<BodyMetricConflictRow>[];
   // Probable power-of-ten unit mislabels (issue #761), each a one-click correction.
   unitMislabels?: UnitMislabelReviewRow[];
+  // Exact stored text the shared dose parser refuses; Review never guesses a locale.
+  unreadableDoseAmounts?: ReturnType<typeof getUnreadableDoseAmounts>;
   // Bulk corrections (#1603): which source runs exist per correctable field, for
   // the "Fix a run of data" panel's pickers.
   correctionSources: CorrectionSourcesByField;
@@ -123,7 +132,9 @@ export default function ReviewInbox({
 
   return (
     <div className="space-y-6" data-testid="review-inbox">
-      {(escalated.length > 0 || leftoverIssues.length > 0) && (
+      {(escalated.length > 0 ||
+        leftoverIssues.length > 0 ||
+        unreadableDoseAmounts.length > 0) && (
         <div
           className="card border-rose-200 dark:border-rose-900/50"
           data-testid="needs-attention-sources"
@@ -184,6 +195,34 @@ export default function ReviewInbox({
                   </li>
                 );
               })}
+            </ul>
+          )}
+          {unreadableDoseAmounts.length > 0 && (
+            <ul className="mt-3 space-y-3">
+              {unreadableDoseAmounts.map((dose) => (
+                <li
+                  key={dose.doseId}
+                  className="rounded-lg border border-rose-200 bg-rose-50/50 p-3 dark:border-rose-900/50 dark:bg-rose-950/20"
+                >
+                  <p className="font-medium text-slate-800 dark:text-slate-100">
+                    {dose.itemName}:{" "}
+                    <span className="whitespace-pre-wrap">{dose.amount}</span>
+                  </p>
+                  <p className="mt-1 text-sm text-rose-700 dark:text-rose-300">
+                    This dose amount can&apos;t be read as one number.
+                  </p>
+                  <DestinationLink
+                    href={
+                      dose.kind === "medication"
+                        ? medicationEditHref(dose.itemId)
+                        : nutritionTabHref("supplements")
+                    }
+                    className="mt-2 inline-block text-sm text-link"
+                  >
+                    Review dose
+                  </DestinationLink>
+                </li>
+              ))}
             </ul>
           )}
         </div>

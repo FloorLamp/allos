@@ -20,6 +20,7 @@ import type {
   PersistClinicalObservation,
 } from "@/lib/import-shape";
 import { getUnreadableDoseAmounts } from "@/lib/queries/data-quality";
+import { getImportReviewCount } from "@/lib/queries/integrations";
 import { classifyDoseAmount } from "@/lib/dose-amount-census";
 import { readDoseQuantity } from "@/lib/dri";
 import { db } from "@/lib/db";
@@ -380,7 +381,7 @@ describe("separator-bearing prescription strengths through persistDocumentImport
   // fabricated "5 mg" is readable, so it was classified `always-correct` and no gap
   // ever mentioned it. This is what "the census measures the string that was stored"
   // costs when the wrong string is stored, and what it buys once the right one is.
-  it("the unreadable strengths surface as a data-quality gap, one per drug", () => {
+  it("the unreadable strengths reach Review with their original text", () => {
     const flagged = getUnreadableDoseAmounts(profile);
     const flaggedNames = new Set(
       flagged.map(
@@ -399,11 +400,15 @@ describe("separator-bearing prescription strengths through persistDocumentImport
         .map((c) => c.grouping)
         .sort()
     );
+    expect(flagged).toContainEqual(
+      expect.objectContaining({ itemName: "Bisoprolol", amount: "2,5 mg" })
+    );
     // …and nothing that reads is dragged in with them.
     expect(flaggedNames.has("Metformin")).toBe(false);
     expect(flaggedNames.has("Amlodipine")).toBe(false);
     expect(flaggedNames.has("Paracetamol")).toBe(false);
     expect(flaggedNames.has("B12")).toBe(false);
+    expect(getImportReviewCount(profile)).toBe(flagged.length);
   });
 
   it("the census buckets the stored rows honestly", () => {
