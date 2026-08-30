@@ -66,8 +66,14 @@
 // calls `biomarkerFamily()` (lib/sql-functions.ts).
 
 import { db } from "./db";
-import { resolveSymptomKey } from "./symptoms";
-import { resolveSubstanceKey, type SubstanceKey } from "./substance-use";
+import { isCuratedSymptom, resolveSymptomKey } from "./symptoms";
+import {
+  isCuratedSubstance,
+  resolveSubstanceKey,
+  validateSubstanceName,
+  type SubstanceKey,
+  type SubstanceNameResult,
+} from "./substance-use";
 
 // The two free-text vocabularies. A third would add a row here, not a second fold.
 export type VocabularyDomain = "symptom" | "substance";
@@ -79,6 +85,7 @@ interface VocabularySpec {
   // The domain's own resolver, which already collapses curated slugs/labels; the fold
   // is the `known` argument it takes.
   resolve: (input: string, known: readonly string[]) => string | null;
+  isCurated: (key: string) => boolean;
 }
 
 // Table/column are fixed literals from this closed registry, never user input — they are
@@ -88,12 +95,14 @@ const VOCABULARY_SPECS: Record<VocabularyDomain, VocabularySpec> = {
     table: "symptom_logs",
     column: "symptom",
     resolve: resolveSymptomKey,
+    isCurated: isCuratedSymptom,
   },
   substance: {
     table: "substance_daily_totals",
     column: "substance",
     resolve: (input, known) =>
       resolveSubstanceKey(input, known as readonly SubstanceKey[]),
+    isCurated: isCuratedSubstance,
   },
 };
 
@@ -140,8 +149,24 @@ export function resolveProfileVocabularyKey(
   profileId: number,
   input: string
 ): string | null {
-  return VOCABULARY_SPECS[domain].resolve(
-    input,
-    profileVocabulary(domain, profileId)
-  );
+  const spec = VOCABULARY_SPECS[domain];
+  const resolved = spec.resolve(input, []);
+  if (resolved === null || spec.isCurated(resolved)) return resolved;
+  return spec.resolve(input, profileVocabulary(domain, profileId));
+}
+
+// The typed-substance action's length gate plus the same curated-first DB boundary.
+// Invalid and curated input are answered in memory; only a genuinely custom spelling
+// needs the profile ledger to decide whether it joins an existing key.
+export function validateProfileSubstanceName(
+  profileId: number,
+  input: string
+): SubstanceNameResult {
+  const validated = validateSubstanceName(input);
+  if (!validated.ok) return validated;
+  return {
+    ok: true,
+    // Validation already proved this normalized name is non-empty.
+    key: resolveProfileVocabularyKey("substance", profileId, input)!,
+  };
 }

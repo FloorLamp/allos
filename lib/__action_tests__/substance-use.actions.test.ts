@@ -9,7 +9,7 @@
 // substance_daily_totals core; the target actions upsert/clear the substance
 // frequency_targets row (cap semantics, one row per substance).
 
-import { describe, expect, it } from "vitest";
+import { describe, expect, it, vi } from "vitest";
 import { db, today } from "@/lib/db";
 import {
   recordSubstanceInstrumentAction,
@@ -381,7 +381,20 @@ describe("trackSubstanceUseAction (#3326)", () => {
     const profile = createProfile("su-track-curated", login.id);
     actAs(login, profile);
 
-    const result = await trackSubstanceUseAction(fd({ name: "Alcohol" }));
+    let scans = 0;
+    const realPrepare = db.prepare.bind(db);
+    const spy = vi.spyOn(db, "prepare").mockImplementation(((sql: string) => {
+      if (/FROM substance_daily_totals[\s\S]*GROUP BY substance/.test(sql))
+        scans++;
+      return realPrepare(sql);
+    }) as typeof db.prepare);
+    let result: Awaited<ReturnType<typeof trackSubstanceUseAction>>;
+    try {
+      result = await trackSubstanceUseAction(fd({ name: "Alcohol" }));
+    } finally {
+      spy.mockRestore();
+    }
+    expect(scans).toBe(0);
     expect(result).toEqual({
       ok: true,
       substance: "alcohol",
