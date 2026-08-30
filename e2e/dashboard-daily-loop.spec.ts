@@ -1,5 +1,6 @@
 import { test, expect } from "./fixtures";
 import { type Page } from "@playwright/test";
+import Database from "better-sqlite3";
 import { loginAs } from "./nav";
 import {
   E2E_LOGIN_DAILY,
@@ -10,7 +11,7 @@ import {
 import { dashboardCandidatePrefix } from "./dashboard-candidate";
 import { openDashboardAll } from "./helpers";
 import { openLogSheet, showLogRow } from "./log-sheet-helpers";
-import { frozenLocalHHMM, frozenNow } from "./worker-env";
+import { frozenLocalHHMM, frozenNow, workerDbPath } from "./worker-env";
 import { pinnedTimezone } from "./pinned-timezone";
 import { STEPS_DELTA_COMPLETE_HOUR } from "@/lib/steps-today";
 
@@ -21,8 +22,38 @@ import { STEPS_DELTA_COMPLETE_HOUR } from "@/lib/steps-today";
 // Fixture-OWNED per e2e hygiene (#868): runs as E2E_LOGIN_DAILY in its OWN cookie
 // context on a dedicated adult FEMALE profile (DAILY_LOOP_PROFILE) seeded with one
 // reading in every domain, dated to the fixture's "today" so each card renders
-// populated. Read-only — the spec asserts presence + value PATTERNS (never an exact
-// shared-seed count), so a neighbor's write or a --repeat-each run can't break it.
+// populated. The spec asserts presence + value PATTERNS (never an exact shared-seed
+// count); its one transient schedule write is restored before the test returns.
+
+function setDailyProteinTailWindow(enabled: boolean): void {
+  const db = new Database(workerDbPath());
+  try {
+    db.pragma("busy_timeout = 5000");
+    const { profileId } = db
+      .prepare(
+        "SELECT own_profile_id AS profileId FROM logins WHERE username = ?"
+      )
+      .get(E2E_LOGIN_DAILY) as { profileId: number };
+    const keys = [
+      "notify_supp_morning_hour",
+      "notify_supp_midday_hour",
+      "notify_supp_evening_hour",
+    ];
+    const del = db.prepare(
+      "DELETE FROM profile_settings WHERE profile_id = ? AND key = ?"
+    );
+    for (const key of keys) del.run(profileId, key);
+    if (!enabled) return;
+    const put = db.prepare(
+      "INSERT INTO profile_settings (profile_id, key, value) VALUES (?, ?, ?)"
+    );
+    ["16:00", "19:00", "22:00"].forEach((value, index) =>
+      put.run(profileId, keys[index], value)
+    );
+  } finally {
+    db.close();
+  }
+}
 
 test.describe("dashboard daily loop (#1221)", () => {
   let page: Page;
@@ -39,6 +70,7 @@ test.describe("dashboard daily loop (#1221)", () => {
   });
 
   test("Nutrition-today card shows today's protein against the goal band", async () => {
+    setDailyProteinTailWindow(false);
     await page.goto("/");
     const card = dashboardCandidatePrefix(page, "nutrition.protein:");
     await expect(card).toBeVisible();
@@ -82,6 +114,25 @@ test.describe("dashboard daily loop (#1221)", () => {
       "aria-label",
       /g\/kg.*Today's total is from.*aren't counted, so your real total may be higher\./s
     );
+
+    // Move all three meal anchors later than the fixture's pinned 13:xx local time.
+    // The reading is then live but not active: it leaves Standing for the Read tail.
+    try {
+      setDailyProteinTailWindow(true);
+      await page.goto("/");
+      await openDashboardAll(page);
+      const tail = page.getByTestId("dashboard-all-contents");
+      const tailProtein = tail.locator(
+        '[data-candidate-id^="nutrition.protein:"]'
+      );
+      await expect(tailProtein).toBeVisible();
+      await expect(tailProtein).toHaveAttribute("data-lane", "everything");
+      await expect(
+        tail.getByText("Nutrition today", { exact: true })
+      ).toHaveCount(1);
+    } finally {
+      setDailyProteinTailWindow(false);
+    }
   });
 
   // THE TRACKED BRANCH, RENDERED (#3903). Until this test the protein row's tracked
