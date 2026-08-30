@@ -2,8 +2,12 @@
 
 ## Environment
 
-- Discover the installed Node 24 version under `/opt/nvm/versions/node/`; do not
-  copy a patch version from documentation. Verify `better-sqlite3` loads.
+- Discover the Node major pinned in `.nvmrc` from the RUNNING process first,
+  then installed version managers (`$NVM_DIR`, `~/.nvm`, `/opt/nvm`) —
+  `scripts/orchestration/host.mjs` is the resolver. Never copy a patch version
+  from documentation and never pin one host's install path (#3710: a
+  hard-coded `/opt/nvm` blocked a macOS orchestrator outright). Verify
+  `better-sqlite3` loads.
 - Use one canonical `node_modules` tree from the main checkout. Hard-link it
   into new worktrees as directed by the generated brief.
 - Create agent worktrees under the shared scratch directory, never inside the
@@ -49,9 +53,18 @@ section rather than restating it, so the rule cannot drift per surface.
   Never search the filesystem or environment for credentials (see Lost
   credentials below); if it is unset, say so and stop at the write.
 - **MCP only handles squash merges, draft-to-ready changes, protected refs, and
-  Actions writes.** A run forbidden from issue writes may use MCP scoped readers
-  because `Bash(gh api:*)` grants every verb. That is a capability restriction;
-  any write-authorized run uses REST.
+  Actions writes — where the harness grants MCP at all.** A host without the
+  GitHub MCP (a macOS orchestrator, #3710) performs the squash merge through
+  REST's merge endpoint instead; the invariants (exact green head re-read,
+  serialization, post-merge verification — `review-merge.md` §Merge) are
+  transport-independent and never relax. A run forbidden from issue writes may
+  use MCP scoped readers because `Bash(gh api:*)` grants every verb. That is a
+  capability restriction; any write-authorized run uses REST.
+- **Read-only tooling may take its credential from an authenticated `gh`**
+  (`gh auth token`, via `host.mjs`) when the token variables are unset — that
+  is the sanctioned credential helper on hosts that authenticate through gh,
+  not a filesystem search, which Lost credentials below still forbids. Writes
+  keep requiring `${GH_TOKEN:-$GITHUB_TOKEN}` by name.
 - **PRs open READY, never draft.** The harness and `create_pull_request` lean
   draft; the repo default is ready — open via REST with `"draft": false`
   explicit. A draft PR is not a banking state: a branch that is not the

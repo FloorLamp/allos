@@ -66,7 +66,10 @@ instance that bought it. Read it before writing a guard or dispatching a lens.
 
 ## Merge
 
-- Squash merge through MCP only after CI is green on the exact head. Re-read
+- Squash merge only after CI is green on the exact head, through the merge
+  transport this host grants: MCP where present, else REST's merge endpoint
+  (`PUT /pulls/N/merge`, `merge_method: squash`) — the invariants in this
+  section are transport-independent (environment.md §GitHub access). Re-read
   `head.sha` in the same breath as the merge call: a lane can push between the
   check and the merge, and GitHub merges the head it finds, not the one you read.
 - Serialize merges. After each merge, recheck every open PR's mergeability and
@@ -75,6 +78,14 @@ instance that bought it. Read it before writing a guard or dispatching a lens.
   (never draft — environment.md §GitHub access), remote exact-head
   COMMENT/adversarial review, and full CI, in order. Local pre-review does not
   replace it; bank later branches until the candidate lands.
+- **The exact-head review is INDEPENDENT and pinned to the SHA** (owner,
+  2026-08-26, recorded on #3710): a reviewer other than the author reviews
+  the exact candidate commit and its full diff, and the COMMENT review states
+  the reviewed SHA and who reviewed it — that line is the receipt. ANY head
+  change invalidates the review; a new head gets a new exact-head review.
+  Merge requires that same SHA to carry green required CI and zero unresolved
+  review findings. Transport- and provider-neutral, like the rest of this
+  section.
 - A later conflicting PR rebases only after the last earlier conflict lands.
 - Resume the author for semantic conflict resolution; do not hand-integrate
   feature code.

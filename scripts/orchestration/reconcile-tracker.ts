@@ -33,6 +33,7 @@ import {
   type TrackerPr,
 } from "./reconcile-tracker-core";
 import { helpGuard } from "./usage.mjs";
+import { resolveReadToken } from "./host.mjs";
 helpGuard(process.argv, import.meta.url);
 
 interface GhLabel {
@@ -101,12 +102,20 @@ function readWatermark(): string | null {
 function main(): void {
   const config = resolveRunConfig(process.env, process.argv.slice(2));
   if (!config.token) {
+    // Read-only fallback for hosts that authenticate through gh instead of
+    // exporting a variable (#3710): `gh auth token` via host.mjs. This adds
+    // no write capability — the token feeds the same GET-only curl helper,
+    // and the write tools still require the variables by name.
+    config.token = resolveReadToken(process.env);
+  }
+  if (!config.token) {
     // An unauthenticated read is rate-limited into partial pages, and a partial
     // page is a report that finds nothing for the wrong reason — exactly the
     // deceptive success the core's header names. Refuse instead.
     console.error(
-      "reconcile-tracker: no GH_TOKEN/GITHUB_TOKEN. An unauthenticated sweep " +
-        "would silently truncate and report a clean tracker. Refusing."
+      "reconcile-tracker: no GH_TOKEN/GITHUB_TOKEN and no authenticated gh " +
+        "(`gh auth token`). An unauthenticated sweep would silently truncate " +
+        "and report a clean tracker. Refusing."
     );
     process.exit(2);
   }

@@ -51,8 +51,12 @@ Two axes are load-bearing, and `reconcile-tracker` flags violations of both
   decision (the #2701 shape) or a direction with stated falsifiers (#2641).
   One still carrying the design question is owner-gated; agents never explore.
 - Older issues start with an audit table: resolved by what, or still open.
-- Cap E2E work at two agents and ordinary concurrent work at five agents (four
-  until #2964 scoped the DB tier; raised on trial 2026-08-16).
+- Cap E2E work at two agents. Ordinary concurrency is
+  min(harness agent slots, the measured machine cap) — the machine cap is
+  five on the 4-core container (four until #2964 scoped the DB tier; raised
+  on trial 2026-08-16), and a harness exposing fewer slots caps there
+  (#3710's host exposes four total, orchestrator included). The two-E2E and
+  unreviewed-PR limits below hold on every host.
 - Revert on a DISCRIMINATING signal: a misread red actually shipped, or the
   ledger's median dispatch duration degrades. "Agents hit the ten-minute tool
   cap" is not one — it fired at four agents and at five, so it cannot tell them

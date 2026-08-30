@@ -1489,6 +1489,7 @@ describe("the toolchain granted to a reconciliation run cannot close an issue", 
     "scripts/orchestration/reconcile-labels.ts",
     "scripts/orchestration/delete-unknown-labels.ts",
     "scripts/orchestration/usage.mjs",
+    "scripts/orchestration/host.mjs",
   ];
   const SKILL = ".claude/skills/reconcile-tracker/SKILL.md";
 

@@ -14,7 +14,7 @@ This is the entrypoint. Read only the procedure needed for the current job:
 ## Standing contract
 
 > Orchestrate all development; prioritize P0/P1 bugs over features; delegate to
-> opus agents; GitHub REST for ALL READS + MOST WRITES; open PRs as ready; allow at most two
+> coding agents; GitHub REST for ALL READS + MOST WRITES; open PRs as ready; allow at most two
 > agents working on E2E; only the orchestrator runs full E2E suites; parallelize
 > non-E2E work; review every PR, adversarial when needed
 

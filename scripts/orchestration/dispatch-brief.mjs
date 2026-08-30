@@ -73,6 +73,7 @@ import fs from "node:fs";
 import path from "node:path";
 import { fileURLToPath, pathToFileURL } from "node:url";
 import { helpGuard } from "./usage.mjs";
+import { discoverNodeBin, resolveStateDir } from "./host.mjs";
 helpGuard(process.argv, import.meta.url);
 
 const repoRoot = path.resolve(
@@ -97,10 +98,13 @@ function mainCheckout() {
   return common ? path.resolve(path.dirname(common)) : repoRoot;
 }
 
-// The one state directory both files live in. Matches
-// scripts/orchestrator-checkin.sh's `STATE_DIR=${SCRATCH:-/home/user/scratch}`
-// exactly — if you change one, change the other.
-const STATE_DIR = process.env.SCRATCH ?? "/home/user/scratch";
+// The one state directory both files live in — resolved by host.mjs, the
+// SAME resolver the shell scripts call, so the ledger and the roster cannot
+// disagree per host the way the two hand-copied defaults once did (#3710:
+// the hard-coded /home/user/scratch simply does not exist on a macOS
+// orchestrator, and dispatch failed at worktree setup).
+const STATE_DIR = resolveStateDir();
+fs.mkdirSync(STATE_DIR, { recursive: true });
 
 const ledgerPath =
   process.env.ALLOS_DISPATCH_LEDGER ??
@@ -279,20 +283,20 @@ function git(args, { allowFail = false } = {}) {
 
 // --- discovery -------------------------------------------------------------
 
-// The runbook's rule: DISCOVER the node 24 bin dir, never paste one — a pinned
-// patch version in the docs went stale within days.
+// The runbook's rule: DISCOVER the node bin dir, never paste one — a pinned
+// patch version in the docs went stale within days, and a pinned /opt path
+// blocked a macOS host outright (#3710). .nvmrc carries the canonical major;
+// host.mjs checks the running process first, then installed version managers.
+function nvmrcMajor() {
+  return fs
+    .readFileSync(path.join(repoRoot, ".nvmrc"), "utf8")
+    .trim()
+    .replace(/^v/, "")
+    .split(".")[0];
+}
+
 function discoverNode24() {
-  const nvmDir = "/opt/nvm/versions/node";
-  if (fs.existsSync(nvmDir)) {
-    const v24 = fs
-      .readdirSync(nvmDir)
-      .filter((v) => v.startsWith("v24."))
-      .sort((a, b) => a.localeCompare(b, undefined, { numeric: true }))
-      .pop();
-    if (v24) return path.join(nvmDir, v24, "bin");
-  }
-  if (process.version.startsWith("v24.")) return path.dirname(process.execPath);
-  return null;
+  return discoverNodeBin(nvmrcMajor());
 }
 
 function canonicalNodeModules() {
@@ -413,9 +417,10 @@ function buildBrief(opts) {
 
   const nodeLine = node24
     ? `- export PATH=${node24}:$PATH in EVERY shell (verify better-sqlite3 loads)`
-    : "- No node 24 found under /opt/nvm/versions/node — install it first:\n" +
-      "  export NVM_DIR=/opt/nvm && . /opt/nvm/nvm.sh && nvm install 24 (~30s),\n" +
-      "  then export PATH to its bin dir in EVERY shell (verify better-sqlite3 loads)";
+    : `- No node ${nvmrcMajor()} found (checked the running process, then nvm under $NVM_DIR,\n` +
+      `  ~/.nvm, and /opt/nvm) — install the .nvmrc major with your version manager first\n` +
+      `  (e.g. nvm install ${nvmrcMajor()}), then export PATH to its bin dir in EVERY shell\n` +
+      `  (verify better-sqlite3 loads)`;
 
   const issueLines = opts.issues.length
     ? opts.issues
@@ -673,9 +678,10 @@ ${landingLines}
   and its port until the container dies. Two lanes did this on 2026-08-22 and one
   tree could not be reclaimed at all, because killing the processes was outside
   the orchestrator's permissions.
-- $SCRATCH may be UNSET in your shell. It is /home/user/scratch — the same directory
-  this script and scripts/orchestrator-checkin.sh both fall back to. Do not infer it
-  from another cluster's worktree, and do not write to /tmp instead.
+- $SCRATCH may be UNSET in your shell. On THIS host it is ${STATE_DIR} — the same
+  directory this script and scripts/orchestrator-checkin.sh resolve through
+  scripts/orchestration/host.mjs. export SCRATCH=${STATE_DIR} in every shell rather
+  than inferring it from another cluster's worktree, and do not write to /tmp instead.
 - NAME EVERY LOG FILE AFTER YOUR BRANCH: \`$SCRATCH/gates-<branch>.log\`, never a bare
   \`gates.log\`, \`e2e.log\` or \`db.log\`. Sibling agents share one scratchpad, and they
   all reach for the same obvious names, so a generic filename is a COLLISION and the

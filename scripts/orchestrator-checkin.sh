@@ -78,7 +78,11 @@ trap '' PIPE
 ACK_RELAUNCH=0
 [ "${1:-}" = "--relaunched" ] && ACK_RELAUNCH=1
 
-STATE_DIR=${SCRATCH:-/home/user/scratch}
+# One resolver for the state dir (scripts/orchestration/host.mjs), shared with
+# dispatch-brief.mjs so the roster and the ledger agree on every host (#3710).
+# The inline fallback covers a shell with no node on PATH — the measured live
+# container's own layout, so it resolves identically there.
+STATE_DIR=${SCRATCH:-$(node "$(dirname "$0")/orchestration/host.mjs" state-dir 2>/dev/null || echo /home/user/scratch)}
 BOOT_FILE="$STATE_DIR/.boot_id"
 SESSION_FILE="$STATE_DIR/.session_id"
 ROSTER="$STATE_DIR/.roster"

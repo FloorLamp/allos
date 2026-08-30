@@ -35,7 +35,8 @@ fi
 
 set -uo pipefail
 
-STATE_DIR=${SCRATCH:-/home/user/scratch}
+# Same resolver as orchestrator-checkin.sh and dispatch-brief.mjs (#3710).
+STATE_DIR=${SCRATCH:-$(node "$(dirname "$0")/host.mjs" state-dir 2>/dev/null || echo /home/user/scratch)}
 ANCHOR_FILE="$STATE_DIR/.last_catchup"
 REPO_DIR=$(git rev-parse --show-toplevel 2>/dev/null || echo /home/user/allos)
 API="https://api.github.com/repos/FloorLamp/allos"
