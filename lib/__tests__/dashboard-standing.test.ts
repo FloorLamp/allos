@@ -466,6 +466,59 @@ describe("Standing's ranked bands", () => {
       })
     );
 
+  it("lifts a composed family whole without changing member or quiet families", () => {
+    const arrivedSleep = reading("sleep.duration:2026-08-18", 0, {
+      rankReasons: {
+        safety: false,
+        owed: false,
+        windowOpen: false,
+        changed: true,
+      },
+      readingPromotion: "sleep-arrived",
+    });
+    const bands = (candidates: readonly DashboardCandidate[]) =>
+      rank([...fillNow(), ...candidates])
+        .filter((placement) => placement.lane === "standing")
+        .map(({ candidate, standingBand }) => [
+          candidate.candidateId,
+          standingBand,
+        ]);
+
+    expect(
+      bands([
+        arrivedSleep,
+        reading("sleep.bed-time:2026-08-18", 1),
+        reading("sleep.wake-time:2026-08-18", 2),
+      ])
+    ).toEqual([
+      ["sleep.duration:2026-08-18", "attention"],
+      ["sleep.bed-time:2026-08-18", "attention"],
+      ["sleep.wake-time:2026-08-18", "attention"],
+    ]);
+
+    expect(
+      bands([
+        claimed("labs.latest:tsh", "changed", 300),
+        reading("labs.latest:ldl", 301),
+      ])
+    ).toEqual([
+      ["labs.latest:tsh", "attention"],
+      ["labs.latest:ldl", "tail"],
+    ]);
+
+    expect(
+      bands([
+        reading("sleep.duration:2026-08-18", 0),
+        reading("sleep.bed-time:2026-08-18", 1),
+        reading("sleep.wake-time:2026-08-18", 2),
+      ])
+    ).toEqual([
+      ["sleep.duration:2026-08-18", "rest"],
+      ["sleep.bed-time:2026-08-18", "rest"],
+      ["sleep.wake-time:2026-08-18", "rest"],
+    ]);
+  });
+
   const bandOf = (candidate: DashboardCandidate) =>
     rank([...fillNow(), candidate]).find(
       (placement) => placement.lane === "standing"

@@ -11,6 +11,9 @@ import {
   releaseNotesPage,
   RELEASE_NOTE_KINDS,
   WHATS_NEW_PAGE_ENTRIES,
+  CATEGORIZED_SINCE,
+  CONCISE_TITLE_LENGTH,
+  groupDayEntries,
 } from "@/lib/release-notes";
 import shipped from "@/lib/release-notes.json";
 
@@ -305,5 +308,207 @@ describe("releaseNotesPage", () => {
     );
     // The newest day leads page 1: "what did the image I just pulled bring me".
     expect(first.days[0].date).toBe(shippedNotes.days[0].date);
+  });
+});
+
+// THE CATEGORIZED, TIGHTER CONTRACT (owner, 2026-08-31): days from
+// CATEGORIZED_SINCE require a category from the closed list and an ≤80-char
+// title; earlier days keep the contract they shipped under. Grouping renders
+// MOST VISIBLE FIRST — the arithmetic is pure, so it is pinned here.
+describe("categories and the concise contract", () => {
+  const entry = (over: Record<string, unknown> = {}) => ({
+    pr: 1,
+    title: "T",
+    issues: [],
+    ...over,
+  });
+
+  it("requires a category from the cutoff day, not before", () => {
+    expect(() =>
+      parseReleaseNotes({
+        days: [day({ date: CATEGORIZED_SINCE, entries: [entry()] })],
+      })
+    ).toThrow(/category/);
+    expect(() =>
+      parseReleaseNotes({
+        days: [day({ date: "2026-08-30", entries: [entry()] })],
+      })
+    ).not.toThrow();
+  });
+
+  it("rejects a category outside the closed list, any day", () => {
+    expect(() =>
+      parseReleaseNotes({
+        days: [day({ entries: [entry({ category: "Vibes" })] })],
+      })
+    ).toThrow(/expected one of/);
+  });
+
+  it("caps a cutoff-day title at CONCISE_TITLE_LENGTH; older days keep 120", () => {
+    const long = "x".repeat(CONCISE_TITLE_LENGTH + 1);
+    expect(() =>
+      parseReleaseNotes({
+        days: [
+          day({
+            date: CATEGORIZED_SINCE,
+            entries: [entry({ title: long, category: "General" })],
+          }),
+        ],
+      })
+    ).toThrow(/at most 80/);
+    expect(() =>
+      parseReleaseNotes({ days: [day({ entries: [entry({ title: long })] })] })
+    ).not.toThrow();
+  });
+
+  // THE DAYS TIGHTENED BY HAND, NAMED. This was keyed on `days[0]` — the
+  // NEWEST day, whichever that is — and that made it a standing demand that
+  // every future day meet a contract its own date may not be under. It went
+  // red on correct code the moment 2026-08-30 merged ahead of 2026-08-29:
+  // nothing was wrong with either day, one of them simply arrived.
+  //
+  // From CATEGORIZED_SINCE the validator enforces this for every day, so the
+  // only days needing a pin are the two curated BEFORE the cutoff. They are
+  // named. A third pre-cutoff day is not this test's business, and a
+  // post-cutoff day cannot parse without already complying.
+  const TIGHTENED_BEFORE_CUTOFF = ["2026-08-30", "2026-08-29"];
+
+  it("the days hand-tightened before the cutoff still meet the tighter shape", () => {
+    const notes = parseReleaseNotes(shipped);
+    for (const date of TIGHTENED_BEFORE_CUTOFF) {
+      const day = notes.days.find((d) => d.date === date);
+      // Named, so a day that vanished from the file fails here rather than
+      // passing over an empty loop.
+      expect(
+        day,
+        `${date} is missing from lib/release-notes.json`
+      ).toBeDefined();
+      expect(date < CATEGORIZED_SINCE).toBe(true);
+      for (const e of day!.entries) {
+        expect(e.category).toBeDefined();
+        expect(e.title.length).toBeLessThanOrEqual(CONCISE_TITLE_LENGTH);
+      }
+    }
+  });
+});
+
+describe("groupDayEntries — most visible first", () => {
+  const e = (
+    pr: number,
+    category: string | undefined,
+    kind?: string
+  ): Record<string, unknown> => ({
+    pr,
+    title: `t${pr}`,
+    issues: [],
+    ...(kind ? { kind } : {}),
+    ...(category ? { category } : {}),
+  });
+  const parsedDay = (entries: Record<string, unknown>[]) =>
+    parseReleaseNotes({ days: [day({ entries })] }).days[0];
+
+  it("a group holding a feature outranks fix-only groups, whatever the file order", () => {
+    const groups = groupDayEntries(
+      parsedDay([
+        e(1, "Interface", "fix"),
+        e(2, "Training", "feature"),
+        e(3, "Interface", "fix"),
+      ])
+    );
+    expect(groups.map((g) => g.category)).toEqual(["Training", "Interface"]);
+  });
+
+  it("inside a group, features lead and file order breaks ties", () => {
+    const groups = groupDayEntries(
+      parsedDay([
+        e(1, "Training", "fix"),
+        e(2, "Training", "feature"),
+        e(3, "Training", "fix"),
+      ])
+    );
+    expect(groups[0].entries.map((x) => x.entry.pr)).toEqual([2, 1, 3]);
+    // Positions survive reordering, so render keys stay unique and stable.
+    expect(groups[0].entries.map((x) => x.position)).toEqual([1, 0, 2]);
+  });
+
+  // THE TIE-BREAK IS ASSERTED WHERE IT DISAGREES WITH DECLARATION ORDER, which
+  // is the only place it can be observed. This used to give Training the extra
+  // feature — and Training is declared FIRST, so `["Training", "Sleep"]` is
+  // equally what declaration order alone produces and the case could not fail.
+  // Sleep is declared fifth, so giving SLEEP the extra feature makes the two
+  // keys disagree and only the count can produce this answer.
+  it("equally visible groups tie-break by feature count, then declaration order", () => {
+    const groups = groupDayEntries(
+      parsedDay([
+        e(1, "Training", "feature"),
+        e(2, "Sleep", "feature"),
+        e(3, "Sleep", "feature"),
+      ])
+    );
+    expect(groups.map((g) => g.category)).toEqual(["Sleep", "Training"]);
+    // And with the counts level, declaration order decides — Training first.
+    const declared = groupDayEntries(
+      parsedDay([e(1, "Sleep", "feature"), e(2, "Training", "feature")])
+    );
+    expect(declared.map((g) => g.category)).toEqual(["Training", "Sleep"]);
+    // The count is FEATURES, not "whatever ranks first". A security entry is
+    // the most visible thing a group can hold, so it wins `best` — but it must
+    // not also be counted as a capability: Sleep's two features outrank
+    // Training's one inside the tier they share.
+    const notSecurity = groupDayEntries(
+      parsedDay([
+        e(1, "Training", "security"),
+        e(2, "Training", "feature"),
+        e(3, "Sleep", "security"),
+        e(4, "Sleep", "feature"),
+        e(5, "Sleep", "feature"),
+      ])
+    );
+    expect(notSecurity.map((g) => g.category)).toEqual(["Sleep", "Training"]);
+  });
+
+  // A LEGACY DAY IS NOT RE-ORDERED. This case used to assert [2, 1] — the
+  // feature pulled ahead of the fix — which encoded the very re-ordering the
+  // function's own doc, lib/release-notes.ts and the page all promise does not
+  // happen to a pre-CATEGORIZED_SINCE day. Measured against the shipped file,
+  // that sort moved 32 of 36 days, and on three of them it took a `security`
+  // bullet its author had put FIRST and rendered it last. Curated order is the
+  // author's order.
+  it("a legacy day without categories is ONE headerless group, in FILE order", () => {
+    const groups = groupDayEntries(
+      parsedDay([e(1, undefined, "fix"), e(2, undefined, "feature")])
+    );
+    expect(groups).toHaveLength(1);
+    expect(groups[0].category).toBeNull();
+    expect(groups[0].entries.map((x) => x.entry.pr)).toEqual([1, 2]);
+  });
+
+  // The converse, so "file order" cannot pass by the sort simply being absent:
+  // a CATEGORIZED day still re-orders, and security leads it.
+  it("security leads a categorized group, ahead of a feature", () => {
+    const groups = groupDayEntries(
+      parsedDay([
+        e(1, "Interface", "fix"),
+        e(2, "Interface", "feature"),
+        e(3, "Interface", "security"),
+      ])
+    );
+    expect(groups[0].entries.map((x) => x.entry.pr)).toEqual([3, 2, 1]);
+  });
+
+  // And no shipped day loses its author's ordering to the group sort: only the
+  // two hand-categorized days re-order, and they asked to.
+  it("no legacy day in the shipped file is re-ordered", () => {
+    const notes = parseReleaseNotes(shipped);
+    const moved = notes.days
+      .filter((day) => day.entries.some((entry) => !entry.category))
+      .filter((day) => {
+        const rendered = groupDayEntries(day).flatMap((g) =>
+          g.entries.map((x) => x.position)
+        );
+        return rendered.some((position, index) => position !== index);
+      })
+      .map((day) => day.date);
+    expect(moved).toEqual([]);
   });
 });

@@ -319,6 +319,7 @@ export function resolveStandingMembers(
   cappedOverflowIds: ReadonlySet<string>;
 } {
   const members: StandingMember[] = [];
+  const composedClaims = new Map<StandingFamilyKey, number>();
   const memberIds = new Set<string>();
   // Cold-start CTAs are ranked across the whole surface, not per family, because
   // the cap the owner set is a cap on the getting-started LIST — and the list only
@@ -359,8 +360,16 @@ export function resolveStandingMembers(
     });
     const selected =
       family.cap == null ? ordered : ordered.slice(0, family.cap);
+    const composedClaim =
+      family.composition === "composed"
+        ? selected.reduce(
+            (best, candidate) => Math.max(best, reasonClaim(candidate) ?? -1),
+            -1
+          )
+        : -1;
+    if (composedClaim >= 0) composedClaims.set(family.key, composedClaim);
     for (const candidate of selected) {
-      const claim = reasonClaim(candidate);
+      const claim = composedClaims.get(family.key) ?? reasonClaim(candidate);
       const presence = presenceOf(candidate);
       const band: StandingBandKey =
         claim != null
@@ -392,14 +401,17 @@ export function resolveStandingMembers(
     rest: 1,
     tail: 2,
   };
+  const attentionClaim = (member: StandingMember) =>
+    composedClaims.get(member.family.key) ??
+    reasonClaim(member.candidate) ??
+    CTA_CLAIM;
   const ranked = members
     .map((member, index) => ({ member, index }))
     .sort(
       (a, b) =>
         bandOrder[a.member.band] - bandOrder[b.member.band] ||
         (b.member.band === "attention"
-          ? (reasonClaim(b.member.candidate) ?? CTA_CLAIM) -
-            (reasonClaim(a.member.candidate) ?? CTA_CLAIM)
+          ? attentionClaim(b.member) - attentionClaim(a.member)
           : 0) ||
         a.index - b.index
     )
