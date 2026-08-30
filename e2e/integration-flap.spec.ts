@@ -150,7 +150,7 @@ test("connected-source timestamps form one desktop column without a phone overha
     const dataPage = page.getByTestId("data-page");
     const timestamps = dataPage
       .getByTestId("sources-healthy")
-      .getByTestId("sync-timestamp-compact");
+      .locator('.shrink-0 > [data-testid="sync-timestamp-compact"]');
     await expect(timestamps).toHaveCount(3);
 
     const rightEdges = await timestamps.evaluateAll((nodes) =>
