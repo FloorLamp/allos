@@ -125,74 +125,49 @@ function runScript(
 }
 
 describe("reconcile-labels.ts --plan, applying", () => {
-  it("fills a gap with the one domain the plan names", () => {
+  it("applies one valid domain and refuses every competing add", () => {
     const run = runScript(
-      { "3051": { labels: ["bug", "P2"] } },
+      {
+        "3051": { labels: ["bug", "P2"] },
+        "3052": { labels: ["bug", "P2"] },
+        "3053": { labels: ["bug", "P2", "db"] },
+        "3054": { labels: ["bug"] },
+      },
       {
         "3051": [{ label: "wellness", reason: "citations point at wellness" }],
-      },
-      ["--apply"]
-    );
-    expect(run.status).toBe(0);
-    expect(run.writes).toEqual(["3051:wellness"]);
-    expect(run.stdout).toContain("#3051 +wellness: ok");
-  });
-
-  it("lands ONE label when the plan lists two domains for the same issue", () => {
-    // The #3122 failure verbatim: an agent hedging between two domains instead of
-    // asking. Before the fix both labels landed and nothing was logged.
-    const run = runScript(
-      { "3051": { labels: ["bug", "P2"] } },
-      {
-        "3051": [
+        // The #3122 failure verbatim: an agent hedging between two domains.
+        "3052": [
           { label: "wellness", reason: "hedge A" },
           { label: "training", reason: "hedge B" },
         ],
+        "3053": [{ label: "wellness", reason: "re-classify" }],
+        "3054": [{ label: "P1", reason: "wrong axis" }],
       },
       ["--apply"]
     );
     expect(run.status).toBe(0);
-    expect(run.writes).toEqual(["3051:wellness"]);
+    expect(run.stderr).not.toContain("stub curl: unhandled");
+    expect(run.writes).toEqual(["3051:wellness", "3052:wellness"]);
     expect(run.stdout).toContain("#3051 +wellness: ok");
     expect(run.stdout).toContain(
-      "#3051 +training: REFUSED (already-classified) — carries wellness"
+      "#3052 +training: REFUSED (already-classified) — carries wellness"
     );
-    expect(run.stdout).toContain("wrote 1 · refused 1");
-  });
-
-  it("refuses an add onto an issue that already carries a domain", () => {
-    const run = runScript(
-      { "3051": { labels: ["bug", "P2", "db"] } },
-      { "3051": [{ label: "wellness", reason: "re-classify" }] },
-      ["--apply"]
-    );
-    expect(run.writes).toEqual([]);
     expect(run.stdout).toContain(
-      "#3051 +wellness: REFUSED (already-classified) — carries db"
+      "#3053 +wellness: REFUSED (already-classified) — carries db"
     );
+    expect(run.stdout).toContain("#3054 +P1: REFUSED (not-a-domain)");
+    expect(run.stdout).toContain("wrote 2 · refused 3");
   });
 
-  it("refuses a label that is not a domain, and writes nothing", () => {
-    const run = runScript(
-      { "3051": { labels: ["bug"] } },
-      { "3051": [{ label: "P1", reason: "wrong axis" }] },
-      ["--apply"]
-    );
-    expect(run.writes).toEqual([]);
-    expect(run.stdout).toContain("#3051 +P1: REFUSED (not-a-domain)");
-  });
-});
-
-describe("reconcile-labels.ts --plan, dry run", () => {
   it("promises exactly the writes an --apply run would make", () => {
     // THE HALF A RE-READ CANNOT FIX. With no --apply nothing is written, so every
     // re-read returns the same labels — a dry run judging only on re-reads would
     // print two `ok` lines for a pair of writes the real run could never perform,
     // and the dry run is what a human reads before authorising the apply.
     const run = runScript(
-      { "3051": { labels: ["bug", "P2"] } },
+      { "3055": { labels: ["bug", "P2"] } },
       {
-        "3051": [
+        "3055": [
           { label: "wellness", reason: "hedge A" },
           { label: "training", reason: "hedge B" },
         ],
@@ -201,24 +176,10 @@ describe("reconcile-labels.ts --plan, dry run", () => {
     );
     expect(run.status).toBe(0);
     expect(run.writes).toEqual([]);
-    expect(run.stdout).toContain("#3051 +wellness: ok");
+    expect(run.stdout).toContain("#3055 +wellness: ok");
     expect(run.stdout).toContain(
-      "#3051 +training: REFUSED (already-classified)"
+      "#3055 +training: REFUSED (already-classified)"
     );
     expect(run.stdout).toContain("would write 1 · refused 1");
-  });
-});
-
-describe("the stub is really being reached", () => {
-  // Without this, every assertion above would pass just as well against a script
-  // that silently failed before its first request.
-  it("makes the reads the script documents, and no unexpected call", () => {
-    const run = runScript(
-      { "3051": { labels: ["bug"] } },
-      { "3051": [{ label: "wellness", reason: "r" }] },
-      ["--apply"]
-    );
-    expect(run.stderr).not.toContain("stub curl: unhandled");
-    expect(run.status).toBe(0);
   });
 });

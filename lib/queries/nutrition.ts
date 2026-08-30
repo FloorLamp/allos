@@ -40,7 +40,13 @@ import {
   HABIT_TREND_WEEKS,
   type HabitWeekCell,
 } from "../food-habit-trend";
-import { FOOD_SLOTS, type FoodSlot } from "../food-slot";
+import {
+  foodSlotForHhmm,
+  foodSlotWindow,
+  FOOD_SLOTS,
+  type FoodSlot,
+  type FoodSlotWindow,
+} from "../food-slot";
 import {
   FOOD_REGULARITY_SPAN_DAYS,
   foodPeriodRegularity,
@@ -543,6 +549,23 @@ export function foodSlotForInstant(profileId: number, instant: Date): FoodSlot {
 // order lead with the same slot.
 export function currentFoodSlot(profileId: number): FoodSlot {
   return foodSlotForInstant(profileId, clockNow());
+}
+
+// The profile's current food slot TOGETHER WITH the local-minute span that slot owns
+// (#3265) — one clock read, one boundary read, so the two halves are provably the same
+// derivation. A caller that took the slot from here and the span from somewhere else is
+// how the composed usual-routine one-tap ended up standing until midnight while its
+// dashboard placement expired at 21:00; a caller cannot pair a slot with a foreign
+// window if the pair arrives already made.
+export function currentFoodSlotWindow(
+  profileId: number
+): FoodSlotWindow & { slot: FoodSlot } {
+  const boundaries = profileFoodSlotBoundaries(profileId);
+  const slot = foodSlotForHhmm(
+    zonedDateParts(getTimezone(profileId), clockNow()).hhmm,
+    boundaries
+  );
+  return { slot, ...foodSlotWindow(slot, boundaries) };
 }
 
 // THE food-group ranking (issue #1980 — one function, both surfaces). Returns the

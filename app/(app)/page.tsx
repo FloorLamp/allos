@@ -62,7 +62,7 @@ import { routineOrder } from "@/lib/dismissal-fatigue";
 import { requireSession } from "@/lib/auth";
 import { requireScope, type ProfileScope } from "@/lib/scope";
 import { writeSubjectName } from "@/lib/own-profile";
-import { currentFoodSlot } from "@/lib/queries/nutrition";
+import { currentFoodSlotWindow } from "@/lib/queries/nutrition";
 import { getUsualRoutineOffer } from "@/lib/queries/usual-routine";
 import { foodGroupBySlug } from "@/lib/datasets/food-groups";
 import { withAiLogContext } from "@/lib/ai-log";
@@ -941,13 +941,29 @@ async function renderDashboard(
   // `requireWriteAccess` regardless, so this is presentation rather than security —
   // but offering a caregiver-view a button that can only refuse is worse than offering
   // nothing.
-  const routineWindow =
+  const routineSlot =
     foodLoggingApplicable && access === "write"
-      ? currentFoodSlot(profile.id)
+      ? currentFoodSlotWindow(profile.id)
       : null;
   const routineOffer =
-    routineWindow != null
-      ? getUsualRoutineOffer(profile.id, routineWindow, on)
+    routineSlot != null
+      ? getUsualRoutineOffer(profile.id, routineSlot.slot, on)
+      : null;
+  // THE OFFER'S PLACEMENT WINDOW IS THE WINDOW IT IS ABOUT (#3265). This used to be
+  // `mealTimeWindows(nowMealAnchors)` — the intake REMINDER anchors ±60 min, which is
+  // when a dose is DUE, a different question from whether a food routine still stands.
+  // Those windows close at 21:00 while the offer is `currentFoodSlot`-anchored and
+  // Evening runs to midnight, so between 21:00 and local midnight the dashboard computed
+  // the offer, paid its DB reads, and then dropped it as expired before any lane was
+  // built — for exactly the population an Evening routine describes. The span comes back
+  // from the same call that chose the slot, so the two can no longer disagree.
+  //
+  // `endsBefore - 1` because `FoodSlotWindow` is half-open and `localTimeWindow` takes an
+  // INCLUSIVE closing minute. The span always contains the current minute (the slot was
+  // derived from it), so it is never the empty Morning window.
+  const routineTiming =
+    routineSlot != null
+      ? localTimeWindow(routineSlot.opensAt, routineSlot.endsBefore - 1)
       : null;
   // The label names every write, in display names: a slug is not a promise anybody can
   // read. The subject line follows writeSubjectName so a caregiver acting on another
@@ -1778,7 +1794,11 @@ async function renderDashboard(
           sourceOrder: sourceOrder++,
         },
         on,
-        proteinToday.todayIntake?.basis === "tracked" ? "external" : "manual",
+        // `both-sources` carries integration data too (#3903), so it is external.
+        proteinToday.todayIntake?.basis === "tracked" ||
+          proteinToday.todayIntake?.basis === "both-sources"
+          ? "external"
+          : "manual",
         mealTimeWindows(nowMealAnchors)
       ),
       // ROW ONLY (#3365). This reading can reach no card lane — it carries no rank
@@ -1815,7 +1835,7 @@ async function renderDashboard(
         presence: "never",
       }
     );
-  if (routineControl)
+  if (routineControl && routineTiming)
     add(
       dailyCandidates.usualRoutine(
         {
@@ -1825,7 +1845,7 @@ async function renderDashboard(
         },
         routineControl.window,
         on,
-        mealTimeWindows(nowMealAnchors)
+        routineTiming
       ),
       <UsualRoutineAtom {...routineControl} />
     );

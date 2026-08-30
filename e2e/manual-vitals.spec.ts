@@ -99,3 +99,45 @@ test("the measurements form logs a temperature with an optional reading time (#8
     page.getByTestId("trends-body").getByTestId("vitals-temperature")
   ).toBeVisible();
 });
+
+// #1851: three measures that were charted, imported and consumed downstream but
+// had no field. This drives the REAL form — the field names it posts are the
+// names the Server Action reads, and nothing but an end-to-end save can tell you
+// they still agree — then reads each value back off the metric's own detail page,
+// which renders from the stored row.
+test("the measurements form takes water, lean/bone mass and respiratory rate (#1851)", async ({
+  page,
+}) => {
+  const form = await openMeasurementsForm(page);
+
+  await openMeasurementGroup(page, form, "vitals");
+  await form.getByLabel("Respiratory Rate", { exact: true }).fill("22");
+  await openMeasurementGroup(page, form, "body");
+  await form.getByLabel("Water today", { exact: true }).fill("2.4");
+  await form.getByLabel("Lean Body Mass unit").selectOption("kg");
+  await form.getByLabel("Lean Body Mass", { exact: true }).fill("56.4");
+  await form.getByLabel("Bone Mass unit").selectOption("kg");
+  await form.getByLabel("Bone Mass", { exact: true }).fill("2.9");
+
+  await form.getByRole("button", { name: "Save measurements" }).click();
+  await expect(page.getByText("Measurements saved")).toBeVisible();
+
+  // Each value on its own detail page's readings table — the surface that renders
+  // the STORED row, so a field that appears and writes nothing fails here. The
+  // seed carries no reading of any of these, so the row count is the control: one
+  // row, the one just typed.
+  for (const [slug, shown] of [
+    ["respiratory-rate", "22"],
+    ["hydration", "2.4"],
+    ["lean-mass", "56.4"],
+    ["bone-mass", "2.9"],
+  ] as const) {
+    await page.goto(`/trends/metric/${slug}?from=2000-01-01&to=2100-01-01`);
+    const rows = page.getByTestId("metric-readings-table").locator("tbody tr");
+    // The slug is in the message because the four share one loop and one line: a
+    // bare "expected 1, received 0" here names no metric, and the whole point of
+    // the loop is that each of the four can fail on its own.
+    await expect(rows, slug).toHaveCount(1);
+    await expect(rows, slug).toContainText(shown);
+  }
+});

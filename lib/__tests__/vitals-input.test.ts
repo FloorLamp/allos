@@ -252,3 +252,37 @@ describe("normalizeVitalsInput", () => {
     expect(validateVitalsInput({ chairStand: "14" })).toBeNull();
   });
 });
+
+// ── #1851: respiratory rate ──────────────────────────────────────────────────
+
+describe("respiratory rate (#1851)", () => {
+  it("lands on the canonical name the Health Connect parser writes", () => {
+    const out = normalizeVitalsInput({ respiratoryRate: "16" });
+    if ("error" in out) throw new Error(out.error);
+    expect(out.medical).toEqual([
+      {
+        canonical: "Respiratory Rate",
+        category: "vitals",
+        unit: "breaths/min",
+        value_num: 16,
+      },
+    ]);
+  });
+
+  it.each([
+    ["2 breaths/min", "2"],
+    ["90 breaths/min", "90"],
+    ["a non-number", "sixteen"],
+  ])("refuses %s", (_label, value) => {
+    expect(validateVitalsInput({ respiratoryRate: value })).toMatch(
+      /Respiratory rate/
+    );
+  });
+
+  // The band is the INGEST envelope's own, so pin both edges: an off-by-one
+  // either way would silently disagree with what a pushed reading is accepted at.
+  it("accepts the ingest envelope's own edges", () => {
+    expect(validateVitalsInput({ respiratoryRate: "3" })).toBeNull();
+    expect(validateVitalsInput({ respiratoryRate: "80" })).toBeNull();
+  });
+});

@@ -49,7 +49,12 @@ import { specsNeedingIsolation } from "@/vitest.isolation";
 // 31 since #3948: seed-auth-state drives the e2e seed's real session mint, which
 // is the one thing in the tier that needs the GENUINE lib/auth — the case this
 // file's own message calls out, a spec testing the module everything else stubs.
-const DB_ISOLATED = 31;
+// 32 since #3265: usual-routine-late-evening-placement renders that same real page at
+// 22:30 local, for the same private substitutions and the same reason. It is a second
+// file rather than another case in the manifest spec because the manifest spec is a
+// QUERY BUDGET pinned at one frozen instant, and a second render at a different hour
+// would move the number it exists to measure.
+const DB_ISOLATED = 32;
 // 7 since #3065: Longevity's server-component FitnessSection is tested directly with
 // controlled session, age, and assembler boundaries. It must prove that minor and unknown
 // profiles return null before assembling adult population data; sharing those module stubs

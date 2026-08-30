@@ -85,19 +85,21 @@ describe("protein-grams quick-add end-to-end (#824)", () => {
     expect(Math.round(a!.intake.grams)).toBe(50);
   });
 
-  it("a tracked integration protein_g OVERRIDES the estimated+logged sum", () => {
+  it("a tracked integration protein_g is the LARGER FLOOR, not an eraser (#3903)", () => {
     const p = newProfile("protein-override");
     const anchor = today(p);
     seedWeight(p, anchor, 80);
     logFood(p, anchor, "poultry", 1); // ~35 estimated
     addProteinGramsCore(p, anchor, 30, "page"); // +30 logged → sum ~65
-    // …but a measured 150 g/day from the integration wins.
+    // …and a 150 g/day reading from the integration, which is the larger of the two.
     seedTrackedProtein(p, anchor, 150);
 
     const a = getProteinAdequacy(p);
-    expect(a?.intake.basis).toBe("tracked");
+    expect(a?.intake.basis).toBe("both-sources");
     expect(Math.round(a!.intake.grams)).toBe(150);
-    expect(a!.intake.loggedGrams).toBe(0); // the sum's parts are dropped under override
+    // The quick-added grams SURVIVE as the app's own ledger, so a surface can still name
+    // what the profile logged here. The retired override zeroed this.
+    expect(a!.intake.loggedGrams).toBe(30);
     // 150 is above the ~95–130 band → no shortfall finding.
     expect(a?.status).toBe("above");
     expect(buildProteinAdequacyFindings(p)).toEqual([]);
