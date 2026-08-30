@@ -182,7 +182,6 @@ async function removeSubstanceDay(fd: FormData) {
 export default function HistoryRows({
   rows,
   rollups = [],
-  actingProfileId,
   writableProfileIds,
   doseItems,
   maxDates,
@@ -198,8 +197,6 @@ export default function HistoryRows({
    * plain record, and the day view lists everything.
    */
   rollups?: HistoryRollupLine[];
-  /** The acting profile — the subject two domains' correction cores can still only write. */
-  actingProfileId: number;
   /**
    * The profiles this login may WRITE, out of the ones in view (#4009 item 1).
    *
@@ -247,21 +244,16 @@ export default function HistoryRows({
   const [pendingId, setPendingId] = useState<string | null>(null);
   const itemById = new Map(doseItems.map((item) => [item.id, item]));
 
-  // WRITE ACCESS ON THE ROW'S OWN PROFILE (#2106), not on the acting one.
+  // WRITE ACCESS ON THE ROW'S OWN PROFILE (#2106), not on the acting one — for EVERY
+  // kind now. Phase 2b drew no ⋯ at all on another member's symptom or cycle row,
+  // because `editSymptom`, `saveCycleAction` and `deleteCycleAction` resolved their
+  // subject from the SESSION: the menu would have corrected the acting profile's own
+  // log instead of the row it was drawn on. All three take the row's subject now, so
+  // the gate is the same one question for all seven ⋯ kinds and there is no
+  // per-kind exception left to keep in sync with the actions.
   const writable = new Set(writableProfileIds);
-  // TWO DOMAINS GATE THE ACTING PROFILE AND NOTHING ELSE, so their ⋯ is drawn only on
-  // the acting profile's own rows. `editSymptom`, `saveCycleAction` and
-  // `deleteCycleAction` resolve their subject from the SESSION (`requireWriteAccess`)
-  // rather than from a posted `profile_id`, so a ⋯ on Mia's symptom row would have
-  // written Dad's log — silently, and to the wrong person's record. Drawing no menu is
-  // the honest answer until those cores take the row's subject the way the other five
-  // do; the alternative was a button that writes somewhere else. Raised as a follow-up
-  // rather than widened here: three actions in two domains is its own change.
-  const ACTING_ONLY_KINDS = new Set(["symptom", "cycle"]);
   const canEdit = (row: HistoryRow) =>
-    row.edit != null &&
-    writable.has(row.profileId) &&
-    (!ACTING_ONLY_KINDS.has(row.kind) || row.profileId === actingProfileId);
+    row.edit != null && writable.has(row.profileId);
 
   // AND SO IS "TODAY" — the row's subject decides how far forward its date field
   // reaches, for the same reason its zone decides what a wall clock means.
@@ -336,6 +328,15 @@ export default function HistoryRows({
           // core in lib/symptom-log-write.ts takes exactly this pair.
           fd.set("symptom", edit.symptom);
           fd.set("date", row.date);
+          // AND THE SUBJECT AGAIN, UNDER THE OTHER SHIPPED SPELLING. `removeSymptom`
+          // is a symptom-BAR action (#858) as well as this row's delete, and the bar
+          // posts its cross-profile target as `profileId`; every other action this
+          // component posts reads `profile_id` through `gateItemProfile`. Both gate
+          // the same requireProfileWriteAccess(target), so this line is a field name
+          // and not a second authorization path — without it the delete would fall
+          // back to the acting profile while the Edit beside it corrected the row's
+          // own member.
+          fd.set("profileId", String(row.profileId));
           await undoable(removeSymptomDay, fd, {
             deletedMessage: "Symptom removed",
           });
