@@ -45,7 +45,6 @@ import {
   isCadenceScopeKind,
   type CadenceSource,
 } from "../cadence";
-import { protocolPracticeLabel } from "../protocol-practice";
 import { protocolHref, type AppRoute } from "../hrefs";
 import {
   getPracticeSpellingsMap,
@@ -1058,7 +1057,8 @@ export interface ActiveProtocolSummary {
   href: AppRoute;
   daysElapsed: number;
   adherence: {
-    label: string;
+    value: string;
+    detail: string;
   } | null;
   practiceName: string | null;
   // Whether today is one of the wellness practice's inferred rhythm days (#2188)
@@ -1124,7 +1124,8 @@ export function getActiveProtocolSummaries(
       adherence:
         practice && adherenceProgress
           ? {
-              label: protocolPracticeLabel(practice.scopeKind, practice.value),
+              value: `${adherenceProgress.count} of ${adherenceProgress.per_week}`,
+              detail: "this week",
             }
           : null,
       practiceName: practice?.value ?? null,
