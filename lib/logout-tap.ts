@@ -28,24 +28,19 @@
 // model they walk away with is "I logged out" — on a device they may be handing back.
 // That is the half that is indefensible independent of how narrow the window is.
 //
-// ── WHICH SURFACE THAT WINDOW IS ON: `md` AND UP, AND NOT A PHONE ─────────────────────
+// ── WHICH SURFACE THAT WINDOW IS ON ────────────────────────────────────────────
 //
 // Written down because the first version of this file framed the stake as a phone, and a
-// phone is the one viewport it does not describe. The Log out control reaches the SERVER
+// phone is the one viewport the shared shell control does not describe. It reaches SERVER
 // HTML from exactly one place: the desktop sidebar in app/(app)/layout.tsx, whose
 // `<aside>` is `hidden … md:flex`. Below `md` that aside is `display:none`, so there is
 // nothing there to tap. The mobile drawer renders the same SidebarContent, but through a
 // `createPortal` gated on `drawer.mounted` (components/MobileNav.tsx) — client state that
 // is false on the first render — so the drawer is in no server HTML at all, and opening
-// it already requires the bundle. e2e/smoke.mobile.spec.ts pins that the drawer is the
-// only route to Log out on a phone.
+// it already requires the bundle. e2e/smoke.mobile.spec.ts pins that drawer path.
 //
-// So below `md` there is no pre-hydration tap to queue, and the phone's version of "I
-// tapped Log out and nothing happened" is a DIFFERENT defect with a different shape: not
-// a tap that was swallowed, but a control that is unreachable until the bundle lands,
-// behind a hamburger that is equally unreachable. Nothing here addresses that, and
-// nothing here should pretend to. e2e/logout-pre-hydration.spec.ts runs at the default
-// desktop viewport for exactly this reason.
+// `/settings` is the ruled exception below `md` (#3604): its server-form button queues
+// here, then hydrates, wipes, and submits. The other-route window remains accepted.
 //
 // ── WHAT THIS DOES INSTEAD (owner ruling, 2026-08-22) ─────────────────────────────────
 //
