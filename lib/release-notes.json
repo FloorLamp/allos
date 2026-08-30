@@ -23,13 +23,13 @@
         },
         {
           "pr": 4144,
-          "title": "Today's protein takes the larger of what you logged here and what your health app reports",
+          "title": "Today's protein takes the larger of your own log and your health app's, so connecting one never lowers it",
           "kind": "fix",
           "issues": [3903]
         },
         {
           "pr": 4156,
-          "title": "Today's fiber takes the larger of your food and supplement logs and what your health app reports",
+          "title": "Today's fiber takes the larger of your health app's reading and your own food and supplement logs",
           "kind": "fix",
           "issues": [4127]
         },
