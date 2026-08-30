@@ -105,6 +105,32 @@ function readOne(n) {
     `updated=${issue.updated_at}  body=${body.length} chars  comments=${comments.length}`
   );
 
+  // THE BODY CAN BE NEWER THAN EVERY COMMENT, and nothing in the print order
+  // says so — the body prints first and the comments after, which reads as
+  // chronological and is not. Measured 2026-08-30 on #4076: a comment at 10:26
+  // said the item was DEFERRED and must not be dispatched; the owner ruling
+  // that cleared it was written into the BODY at 10:51, and `needs-human` came
+  // off in the same edit. The deferral was carried for twelve hours because the
+  // later fact was printed first and undated.
+  //
+  // The API exposes no body-edited timestamp, so this compares the issue's own
+  // `updated_at` against the newest comment. Label and title edits move it too,
+  // which is why this says MAY rather than DOES.
+  const newestComment = comments.reduce(
+    (acc, c) => (c.updated_at > acc ? c.updated_at : acc),
+    ""
+  );
+  if (comments.length && issue.updated_at > newestComment) {
+    banner(
+      "!",
+      `THE ITEM CHANGED AFTER ITS NEWEST COMMENT (item ${issue.updated_at} > comment ${newestComment}).\n` +
+        `The BODY may carry a ruling NEWER than every comment below it — including a comment\n` +
+        `saying this is deferred, blocked, or must not be dispatched. Check the body's own\n` +
+        `ruling dates before trusting any comment that withholds dispatch. Labels moved too:\n` +
+        `a needs-human that is GONE is itself evidence the question was answered.`
+    );
+  }
+
   // AN OPEN ITEM CAN STILL BE MOSTLY SHIPPED, and the closed-item banner above
   // cannot see that. #3366 stayed open on one unmet acceptance line while BOTH
   // of its dispatchable halves had merged in #4083 sixteen hours earlier —
@@ -166,7 +192,9 @@ function readOne(n) {
 
   banner(
     "=",
-    `END #${n} — a comment overrides the body where they conflict; reconcile by timestamp.`
+    `END #${n} — reconcile by TIMESTAMP, never by print order. A comment usually\n` +
+      `overrides the body, but the body is edited in place and can be newer than every\n` +
+      `comment here — the ruling that unblocks an item is often the last thing written.`
   );
 }
 
