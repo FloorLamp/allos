@@ -78,6 +78,7 @@ import {
 import type { AppRoute } from "@/lib/hrefs";
 import TimelineFilterLink from "@/components/TimelineFilterLink";
 import DestinationLink from "@/components/DestinationLink";
+import { MedicalValue } from "@/components/ui";
 import { editSymptom, removeSymptom } from "@/app/(app)/symptom-actions";
 import { LoggedViaField } from "@/components/LoggedViaSurface";
 import {
@@ -105,12 +106,13 @@ const practiceWhenFor = (
 // THE RECORD'S ROWS (#3958 phase 1) — one line, at every viewport.
 //
 // THE ONE-LINE RULE IS A DELIBERATE EXCEPTION to the #3671 compact-card default, and
-// the owner argued it from what this surface is FOR: scanning many rows. So there is
-// no tap-to-disclose here — what truncates first is the detail segment, and a row's
-// long content lives on the record's own page behind the title link. That is also why
-// the rows are `<li>`s on `LoggedEventRow` (#3891's identity half) rather than a
-// `ResponsiveTable`: a table's card mode exists to STACK a row onto several lines,
-// which is the thing this surface may not do.
+// the owner argued it from what this surface is FOR: scanning many rows. What
+// truncates first is the detail segment, and that cell is also the row's DISCLOSURE
+// where there is more than a line's worth to say (#662/#2920, phase 2d — see the
+// detail cell below). The rows are `<li>`s on `LoggedEventRow` (#3891's identity half)
+// rather than a `ResponsiveTable`: a table's card mode exists to STACK a row onto
+// several lines, which is the thing this surface may not do — an OPEN row's panel is a
+// sibling `<li>`, so the row itself is one line whether or not it is open.
 //
 // WHAT THE ⋯ DOES, AND WHAT IT MAY NOT DO. Every branch below posts to the Server
 // Action that domain already had — `deleteAdministration`, `updateFoodLogEvent`,
@@ -198,7 +200,6 @@ async function removeSubstanceDay(fd: FormData) {
 export default function HistoryRows({
   rows,
   rollups = [],
-  actingProfileId,
   writableProfileIds,
   doseItems,
   maxDates,
@@ -214,8 +215,6 @@ export default function HistoryRows({
    * plain record, and the day view lists everything.
    */
   rollups?: HistoryRollupLine[];
-  /** The acting profile — the subject two domains' correction cores can still only write. */
-  actingProfileId: number;
   /**
    * The profiles this login may WRITE, out of the ones in view (#4009 item 1).
    *
@@ -262,23 +261,33 @@ export default function HistoryRows({
   const [practiceWhen, setPracticeWhen] = useState<WhenValue | null>(null);
   const [menuOpenId, setMenuOpenId] = useState<string | null>(null);
   const [pendingId, setPendingId] = useState<string | null>(null);
+  // THE OPEN ROW, in client state rather than in the URL — and the split is a rule,
+  // not a preference. The folds and the rollups carry their open state in the URL
+  // because expanding them changes what the SERVER must render; this panel's content
+  // already arrived on the row, so a round trip would buy a longer URL and nothing
+  // else. Same tier as `editingId` and `menuOpenId` beside it: one row at a time, so
+  // opening a second closes the first and the list never grows two panels deep.
+  const [openPanelId, setOpenPanelId] = useState<string | null>(null);
   const itemById = new Map(doseItems.map((item) => [item.id, item]));
 
-  // WRITE ACCESS ON THE ROW'S OWN PROFILE (#2106), not on the acting one.
+  // WRITE ACCESS ON THE ROW'S OWN PROFILE (#2106), not on the acting one — for EVERY
+  // kind now. Phase 2b drew no ⋯ at all on another member's symptom or cycle row,
+  // because `editSymptom`, `saveCycleAction` and `deleteCycleAction` resolved their
+  // subject from the SESSION: the menu would have corrected the acting profile's own
+  // log instead of the row it was drawn on. All three take the row's subject now, so
+  // the gate is the same one question for all seven ⋯ kinds and there is no
+  // per-kind exception left to keep in sync with the actions.
   const writable = new Set(writableProfileIds);
-  // TWO DOMAINS GATE THE ACTING PROFILE AND NOTHING ELSE, so their ⋯ is drawn only on
-  // the acting profile's own rows. `editSymptom`, `saveCycleAction` and
-  // `deleteCycleAction` resolve their subject from the SESSION (`requireWriteAccess`)
-  // rather than from a posted `profile_id`, so a ⋯ on Mia's symptom row would have
-  // written Dad's log — silently, and to the wrong person's record. Drawing no menu is
-  // the honest answer until those cores take the row's subject the way the other five
-  // do; the alternative was a button that writes somewhere else. Raised as a follow-up
-  // rather than widened here: three actions in two domains is its own change.
-  const ACTING_ONLY_KINDS = new Set(["symptom", "cycle"]);
   const canEdit = (row: HistoryRow) =>
-    row.edit != null &&
-    writable.has(row.profileId) &&
-    (!ACTING_ONLY_KINDS.has(row.kind) || row.profileId === actingProfileId);
+    row.edit != null && writable.has(row.profileId);
+
+  // WHETHER THIS ROW HAS MORE THAN ITS LINE (#662/#2920, phase 2d). Asked of the ROW's
+  // own content and never of its kind: the feed's gathers set `detailItems` on the
+  // labs, activities, doses and symptom-days that HAVE a breakdown and leave it off
+  // the ones that do not, so a kind-keyed predicate would draw an empty panel's
+  // control on the rows that carry nothing.
+  const hasPanel = (row: HistoryRow) =>
+    (row.detailItems?.length ?? 0) > 0 || (row.linkedRefs?.length ?? 0) > 0;
 
   // AND SO IS "TODAY" — the row's subject decides how far forward its date field
   // reaches, for the same reason its zone decides what a wall clock means.
@@ -353,6 +362,15 @@ export default function HistoryRows({
           // core in lib/symptom-log-write.ts takes exactly this pair.
           fd.set("symptom", edit.symptom);
           fd.set("date", row.date);
+          // AND THE SUBJECT AGAIN, UNDER THE OTHER SHIPPED SPELLING. `removeSymptom`
+          // is a symptom-BAR action (#858) as well as this row's delete, and the bar
+          // posts its cross-profile target as `profileId`; every other action this
+          // component posts reads `profile_id` through `gateItemProfile`. Both gate
+          // the same requireProfileWriteAccess(target), so this line is a field name
+          // and not a second authorization path — without it the delete would fall
+          // back to the acting profile while the Edit beside it corrected the row's
+          // own member.
+          fd.set("profileId", String(row.profileId));
           await undoable(removeSymptomDay, fd, {
             deletedMessage: "Symptom removed",
           });
@@ -769,144 +787,264 @@ export default function HistoryRows({
       );
     }
     return (
-      <li
-        key={row.id}
-        // THE ROW'S ANCHOR (#1068). The day view's intraday chart is a MAP of the day
-        // and this list is its detail, so a tick has to have something to scroll to.
-        // Built by the same `timelineEntryAnchorId` the model's ticks are built with,
-        // from the same id, so the two cannot drift into different spellings.
-        // `scroll-mt` keeps the landed row clear of the sticky day header above it.
-        id={timelineEntryAnchorId(row.id)}
-        data-testid="history-row"
-        data-history-kind={row.kind}
-        data-history-row-id={row.id}
-        className={`${LOGGED_EVENT_ROW} band card-gutter-action scroll-mt-24`}
-      >
-        {/* THE RAIL'S LANE IS SPENT HERE, on an inner wrapper rather than as
+      <Fragment key={row.id}>
+        <li
+          // THE ROW'S ANCHOR (#1068). The day view's intraday chart is a MAP of the day
+          // and this list is its detail, so a tick has to have something to scroll to.
+          // Built by the same `timelineEntryAnchorId` the model's ticks are built with,
+          // from the same id, so the two cannot drift into different spellings.
+          // `scroll-mt` keeps the landed row clear of the sticky day header above it.
+          id={timelineEntryAnchorId(row.id)}
+          data-testid="history-row"
+          data-history-kind={row.kind}
+          data-history-row-id={row.id}
+          className={`${LOGGED_EVENT_ROW} band card-gutter-action scroll-mt-24`}
+        >
+          {/* THE RAIL'S LANE IS SPENT HERE, on an inner wrapper rather than as
               padding on the row. The row's own `px-4` is a `max-sm:` variant, so a
               base `pr-7` on the same element loses the cascade below `sm` — which is
               exactly the width the rail exists for, and where the ⋯ then sat under
               the strip. A wrapper has no padding of its own to lose to. */}
-        <div
-          // The wrapper that actually SPENDS the rail's lane, named so a test can
-          // measure it. Below `sm` the band fill is full-bleed (#3920) and the day
-          // section reserves nothing, so this element is the only place the "row
-          // content ends short of the edge" half of that rule is observable.
-          data-testid="history-row-content"
-          className={`flex min-w-0 flex-1 items-center gap-2 ${rowClassName}`}
-        >
-          <LoggedEventRow
-            icon={
-              showGlyphs ? (
-                <Glyph
-                  aria-hidden
-                  className="h-4 w-4 shrink-0 text-slate-500 dark:text-slate-400"
-                  stroke={1.75}
-                />
-              ) : undefined
-            }
+          <div
+            // The wrapper that actually SPENDS the rail's lane, named so a test can
+            // measure it. Below `sm` the band fill is full-bleed (#3920) and the day
+            // section reserves nothing, so this element is the only place the "row
+            // content ends short of the edge" half of that rule is observable.
+            data-testid="history-row-content"
+            className={`flex min-w-0 flex-1 items-center gap-2 ${rowClassName}`}
           >
-            {/* ONE LINE, EVERY VIEWPORT: the cluster truncates unconditionally,
+            <LoggedEventRow
+              icon={
+                showGlyphs ? (
+                  <Glyph
+                    aria-hidden
+                    className="h-4 w-4 shrink-0 text-slate-500 dark:text-slate-400"
+                    stroke={1.75}
+                  />
+                ) : undefined
+              }
+            >
+              {/* ONE LINE, EVERY VIEWPORT: the cluster truncates unconditionally,
                 which is what the row grammar buys with its disclosure. */}
-            <span className="flex min-w-0 items-baseline gap-1.5 truncate">
-              {row.href && !canEdit(row) && row.edit == null ? (
-                /* THE › HALF OF THE EXCLUSIVE AFFORDANCE (#3958). A row a richer
+              <span className="flex min-w-0 items-baseline gap-1.5 truncate">
+                {row.href && !canEdit(row) && row.edit == null ? (
+                  /* THE › HALF OF THE EXCLUSIVE AFFORDANCE (#3958). A row a richer
                      surface owns carries no ⋯, and its pointer is the ONE rightward
                      destination cue the primitive owns — `DestinationLink` draws the
                      chevron and lib/__tests__/destination-link-primitive.test.ts
                      refuses a hand-rolled one inside a link. So the row has exactly one
                      control and one cue, and a row can never show both verbs. */
-                <DestinationLink
-                  href={row.href}
-                  className="inline-flex shrink-0 items-center text-link"
-                  data-testid="history-row-title"
-                >
-                  {row.title}
-                </DestinationLink>
-              ) : row.href ? (
-                <Link
-                  href={row.href}
-                  className="shrink-0 text-link"
-                  data-testid="history-row-title"
-                >
-                  {row.title}
-                </Link>
-              ) : (
-                <span className="shrink-0" data-testid="history-row-title">
-                  {row.title}
-                </span>
-              )}
-              {subject ? (
-                <span
-                  className="shrink-0 text-xs font-normal text-slate-500 dark:text-slate-400"
-                  data-testid="history-row-subject"
-                >
-                  {subject}
-                </span>
-              ) : null}
-              {row.detail ? (
-                <span
-                  className="min-w-0 truncate text-xs font-normal text-slate-500 dark:text-slate-400"
-                  data-testid="history-row-detail"
-                >
-                  {row.detail}
-                </span>
-              ) : null}
-            </span>
-          </LoggedEventRow>
-          {row.clock ? (
-            <span
-              className={`${LOGGED_EVENT_TRAILING} whitespace-nowrap`}
-              data-testid="history-row-clock"
-            >
-              {row.clock}
-            </span>
-          ) : null}
-          {canEdit(row) ? (
-            <OverflowMenu
-              kind={HISTORY_KIND_LABELS[row.kind].replace(/s$/, "")}
-              itemName={menuName(row)}
-              open={menuOpenId === row.id}
-              onOpenChange={(open) => setMenuOpenId(open ? row.id : null)}
-            >
-              {({ close }) => (
-                <>
+                  <DestinationLink
+                    href={row.href}
+                    className="inline-flex shrink-0 items-center text-link"
+                    data-testid="history-row-title"
+                  >
+                    {row.title}
+                  </DestinationLink>
+                ) : row.href ? (
+                  <Link
+                    href={row.href}
+                    className="shrink-0 text-link"
+                    data-testid="history-row-title"
+                  >
+                    {row.title}
+                  </Link>
+                ) : (
+                  <span className="shrink-0" data-testid="history-row-title">
+                    {row.title}
+                  </span>
+                )}
+                {subject ? (
+                  <span
+                    className="shrink-0 text-xs font-normal text-slate-500 dark:text-slate-400"
+                    data-testid="history-row-subject"
+                  >
+                    {subject}
+                  </span>
+                ) : null}
+                {/* THE DISCLOSURE IS THE DETAIL CELL, and that is what makes it fit
+                  this row's grammar rather than porting the feed's card back. #3958
+                  rules the row one line at every viewport and the trailing affordance
+                  EXCLUSIVE — ⋯ or ›, never both — so a third trailing control was
+                  never available, and the leading chevron is already spoken for by
+                  the rollup line. What is left is the cell the issue itself points
+                  at: "what truncates first; long detail lives behind the row's
+                  disclosure". The control is therefore exactly where the truncation
+                  happens, it spends no new width (the chevron replaces nothing and
+                  sits outside the truncating span, so the line still ends in an
+                  ellipsis when it must), and the title link stays independent —
+                  a ⋯ row and a › row disclose the same way. */}
+                {hasPanel(row) ? (
                   <button
                     type="button"
-                    role="menuitem"
-                    data-testid="history-row-edit"
-                    onClick={() => {
-                      close();
-                      if (row.edit?.kind === "practice") {
-                        setPracticeWhen(
-                          practiceWhenFor(row, row.edit.statedTime)
-                        );
-                      }
-                      setEditingId(row.id);
-                    }}
-                    className={MENU_ITEM}
+                    data-testid="history-row-disclosure"
+                    aria-expanded={openPanelId === row.id}
+                    aria-controls={`${timelineEntryAnchorId(row.id)}-panel`}
+                    onClick={() =>
+                      setOpenPanelId(openPanelId === row.id ? null : row.id)
+                    }
+                    className="flex min-w-0 items-center gap-1 text-left text-xs font-normal text-slate-500 hover:text-slate-700 dark:text-slate-400 dark:hover:text-slate-200"
                   >
-                    Edit
+                    <span
+                      className="min-w-0 truncate"
+                      data-testid="history-row-detail"
+                    >
+                      {row.detail}
+                    </span>
+                    <IconChevronDown
+                      aria-hidden
+                      className={`h-3 w-3 shrink-0 transition ${
+                        openPanelId === row.id ? "rotate-180" : ""
+                      }`}
+                      stroke={2}
+                    />
                   </button>
-                  <button
-                    type="button"
-                    role="menuitem"
-                    data-testid="history-row-delete"
-                    disabled={pendingId === row.id}
-                    onClick={() => {
-                      close();
-                      void remove(row);
-                    }}
-                    className={MENU_ITEM_DANGER}
+                ) : row.detail ? (
+                  <span
+                    className="min-w-0 truncate text-xs font-normal text-slate-500 dark:text-slate-400"
+                    data-testid="history-row-detail"
                   >
-                    Delete
-                  </button>
-                </>
-              )}
-            </OverflowMenu>
-          ) : null}
-        </div>
-      </li>
+                    {row.detail}
+                  </span>
+                ) : null}
+              </span>
+            </LoggedEventRow>
+            {row.clock ? (
+              <span
+                className={`${LOGGED_EVENT_TRAILING} whitespace-nowrap`}
+                data-testid="history-row-clock"
+              >
+                {row.clock}
+              </span>
+            ) : null}
+            {canEdit(row) ? (
+              <OverflowMenu
+                kind={HISTORY_KIND_LABELS[row.kind].replace(/s$/, "")}
+                itemName={menuName(row)}
+                open={menuOpenId === row.id}
+                onOpenChange={(open) => setMenuOpenId(open ? row.id : null)}
+              >
+                {({ close }) => (
+                  <>
+                    <button
+                      type="button"
+                      role="menuitem"
+                      data-testid="history-row-edit"
+                      onClick={() => {
+                        close();
+                        if (row.edit?.kind === "practice") {
+                          setPracticeWhen(
+                            practiceWhenFor(row, row.edit.statedTime)
+                          );
+                        }
+                        setEditingId(row.id);
+                      }}
+                      className={MENU_ITEM}
+                    >
+                      Edit
+                    </button>
+                    <button
+                      type="button"
+                      role="menuitem"
+                      data-testid="history-row-delete"
+                      disabled={pendingId === row.id}
+                      onClick={() => {
+                        close();
+                        void remove(row);
+                      }}
+                      className={MENU_ITEM_DANGER}
+                    >
+                      Delete
+                    </button>
+                  </>
+                )}
+              </OverflowMenu>
+            ) : null}
+          </div>
+        </li>
+        {/* THE PANEL IS THE ROW'S SIBLING, NOT ITS CHILD (#4045 §4 — revealed content
+          belongs directly beneath the line that revealed it). A row `<li>` is
+          `flex items-center` on the shared primitive and every geometry assertion on
+          this page measures it; growing it into a column when a reader opens one
+          would move the thing those specs measure. The rollup's revealed rows are
+          siblings for the same reason. */}
+        {openPanelId === row.id ? (
+          <li
+            id={`${timelineEntryAnchorId(row.id)}-panel`}
+            data-testid="history-row-panel"
+            data-history-row-id={row.id}
+            className="band card-gutter-action border-t border-(--divider) py-2"
+          >
+            <div
+              className={`min-w-0 text-sm text-slate-600 dark:text-slate-300 ${rowClassName}`}
+            >
+              {row.detailItems && row.detailItems.length > 0 ? (
+                <dl className="space-y-1">
+                  {row.detailItems.map((item, index) => (
+                    <div
+                      key={`${row.id}:detail:${index}:${item.label}`}
+                      className="grid gap-1 sm:grid-cols-[10rem_1fr]"
+                    >
+                      <dt className="font-medium text-slate-700 dark:text-slate-200">
+                        {item.label}
+                      </dt>
+                      <dd>
+                        {item.unit || item.flag ? (
+                          <MedicalValue
+                            value={item.value}
+                            unit={item.unit ?? null}
+                            flag={item.flag ?? null}
+                          />
+                        ) : (
+                          item.value
+                        )}
+                      </dd>
+                    </div>
+                  ))}
+                </dl>
+              ) : null}
+              {/* LINKED CONTEXT (#662), AND ITS HEADING CLAIMS ONLY WHAT THE GATHER HAD
+                (#2920): "From this visit" for rows carrying a real encounter link to
+                this visit, the encounter detail page's own vocabulary; the document
+                wording only where that import document stands for a SINGLE visit.
+                A multi-visit portal export sets neither, because a reference chip
+                that cannot honestly name its visit says nothing. Informational
+                either way — never a causal claim. */}
+              {row.linkedRefs && row.linkedRefs.length > 0 ? (
+                <div
+                  data-testid="history-linked-refs"
+                  className={row.detailItems?.length ? "mt-3" : ""}
+                >
+                  <p
+                    // The heading is addressable on its own, because the two spellings
+                    // it chooses between are a PREFIX of one another (#2920): an
+                    // assertion that can only reach it through the section would have to
+                    // match on containment, and "From this visit" is satisfied by the
+                    // document wording too.
+                    data-testid="history-linked-scope"
+                    className="text-xs font-medium text-slate-500 dark:text-slate-400"
+                  >
+                    {row.linkedScope === "visit"
+                      ? "From this visit"
+                      : "From this visit’s document"}
+                  </p>
+                  <div className="mt-1 flex flex-wrap gap-1.5">
+                    {row.linkedRefs.map((ref, index) => (
+                      <Link
+                        key={`${row.id}:ref:${index}:${ref.label}`}
+                        href={ref.href}
+                        className="rounded-sm bg-(--ghost) px-1.5 py-0.5 text-xs text-link"
+                      >
+                        {ref.label}
+                      </Link>
+                    ))}
+                  </div>
+                </div>
+              ) : null}
+            </div>
+          </li>
+        ) : null}
+      </Fragment>
     );
   };
 

@@ -18,6 +18,23 @@
 // WRITE-granted profile LANDS on the target rather than on the acting profile. The
 // third is not a formality — a gate that refused everything would pass the first two
 // and would have taken the capability away instead of granting it.
+//
+// SYMPTOM AND CYCLE JOIN THE TABLE IN PHASE 2D, and they arrive from the other
+// direction. Phase 2b put them on the record and found all three of their cores
+// resolving the subject from the SESSION, so it CONTAINED the gap — the ⋯ was drawn
+// only on the acting profile's own symptom and cycle rows — and proved the containment
+// in its own file. #3958's multiprofile clause asks for the capability, not the
+// containment, so those cores now take the row's subject like the other ten and that
+// file is folded in here: the containment case it held is this table's third arm with
+// the same fixture and the opposite verdict.
+//
+// ITS TWO LOAD-BEARING PROPERTIES SURVIVE THE FOLD, because both are what make a
+// green here mean anything. BOTH profiles are granted to the acting login in every
+// case that must LAND, so a refusal can only come from the action's own scoping and
+// never from the login lacking access. And every assertion reads THE STORE rather than
+// the return value — three of these actions answer a `{kind:"not-found"}` union
+// instead of throwing, so the promise's shape cannot tell a refusal from a write that
+// landed on the wrong person.
 
 import { describe, it, expect } from "vitest";
 import { db } from "@/lib/db";
@@ -43,6 +60,13 @@ import {
   deleteMetricReading,
   updateMetricReading,
 } from "@/app/(app)/trends/reading-actions";
+import { editSymptom, removeSymptom } from "@/app/(app)/symptom-actions";
+import {
+  deleteCycleAction,
+  saveCycleAction,
+} from "@/app/(app)/medical/cycles/actions";
+import { setSymptomSeverityCore } from "@/lib/symptom-log-write";
+import { createCycleRow } from "@/lib/cycle-store";
 import { createLogin, createProfile, actAs, fd } from "./harness";
 
 // ── Seeds: one correctable row per kind, owned by `profileId` ─────────────────
@@ -156,6 +180,49 @@ const substanceAmountOf = (id: number) =>
 // `body_metrics` is one row per (profile, day) holding up to three measures, and the
 // action addresses a CELL: `body_metrics:<rowId>:<column>` is the wire target
 // `bodyMetricMeasures` emits and `parseReadingTarget` reads.
+// SYMPTOMS ARE ADDRESSED BY (profile, symptom, date) AND NOT BY A ROW ID —
+// `symptom_logs` is UNIQUE on that triple and every core in lib/symptom-log-write.ts
+// takes exactly it. So the seed hands back the row id for `present`, and the reads key
+// on the pair the way the `body` kind's do.
+function seedSymptomDay(profileId: number, date: string): number {
+  setSymptomSeverityCore(profileId, "headache", 2, date, "page", "member note");
+  return Number(
+    (
+      db
+        .prepare(
+          "SELECT id FROM symptom_logs WHERE profile_id = ? AND date = ? AND symptom = 'headache'"
+        )
+        .get(profileId, date) as { id: number }
+    ).id
+  );
+}
+
+const symptomSeverityOf = (profileId: number, date: string) =>
+  (
+    db
+      .prepare(
+        "SELECT severity FROM symptom_logs WHERE profile_id = ? AND date = ? AND symptom = 'headache'"
+      )
+      .get(profileId, date) as { severity: number } | undefined
+  )?.severity ?? null;
+
+function seedCyclePeriod(profileId: number, date: string): number {
+  return createCycleRow(profileId, date, null, null, "member note");
+}
+
+const cycleEndOf = (id: number) =>
+  (
+    db.prepare("SELECT period_end FROM cycles WHERE id = ?").get(id) as
+      { period_end: string | null } | undefined
+  )?.period_end ?? null;
+
+const cycleExists = (id: number) =>
+  (
+    db.prepare("SELECT COUNT(*) AS n FROM cycles WHERE id = ?").get(id) as {
+      n: number;
+    }
+  ).n === 1;
+
 function seedBodyMetric(profileId: number, date: string): number {
   return Number(
     db
@@ -195,7 +262,15 @@ interface Kind {
   /** The forged/legitimate correction post, minus `profile_id`. */
   correct: (id: number, date: string) => Record<string, string | number>;
   correctFn: (form: FormData) => Promise<unknown>;
-  remove: (id: number) => Record<string, string | number>;
+  /**
+   * The delete post, minus `profile_id`. It takes the SUBJECT as well as the row id
+   * because one of these seven actions spells the subject differently: `removeSymptom`
+   * is a symptom-BAR action (#858) as well as the record's delete, and reads
+   * `profileId` where the other six read `profile_id` through `gateItemProfile`. Both
+   * resolve to requireProfileWriteAccess(target); only the field name differs, and the
+   * record's ⋯ posts whichever one its row's action reads.
+   */
+  remove: (id: number, profileId: number) => Record<string, string | number>;
   removeFn: (form: FormData) => Promise<unknown>;
   /** Whether the row still exists, for the delete half. */
   present: (id: number, profileId: number, date: string) => boolean;
@@ -285,6 +360,48 @@ const KINDS: Kind[] = [
     removeFn: (form) => deleteMetricReading(form),
     present: (_id, profileId, date) => bodyWeightOf(profileId, date) != null,
   },
+  {
+    name: "symptom",
+    seed: seedSymptomDay,
+    read: (_id, profileId, date) => symptomSeverityOf(profileId, date),
+    corrected: 4,
+    // No date field on the record's symptom form — the store is UNIQUE on
+    // (profile, date, symptom), so moving a day is a delete plus a re-log — but the
+    // post carries the row's own date because that is half of its address.
+    correct: (_id, date) => ({
+      symptom: "headache",
+      severity: 4,
+      date,
+      note: "corrected",
+    }),
+    correctFn: (form) => editSymptom(form),
+    remove: (_id, profileId) => ({
+      symptom: "headache",
+      date: DATE,
+      profileId,
+    }),
+    removeFn: (form) => removeSymptom(form),
+    present: (_id, profileId, date) =>
+      symptomSeverityOf(profileId, date) != null,
+  },
+  {
+    name: "cycle",
+    seed: seedCyclePeriod,
+    // The correction closes an open period: `period_end` is the INCLUSIVE last
+    // bleeding day and NULL means ongoing, so this moves a real column with a value
+    // the plausibility gate accepts (a past date, no overlap, its own row excluded).
+    read: (id) => cycleEndOf(id),
+    corrected: "2026-08-24",
+    correct: (id, date) => ({
+      id,
+      period_start: date,
+      period_end: "2026-08-24",
+    }),
+    correctFn: (form) => saveCycleAction(form),
+    remove: (id) => ({ id }),
+    removeFn: (form) => deleteCycleAction(form),
+    present: (id) => cycleExists(id),
+  },
 ];
 
 const DATE = "2026-08-20";
@@ -310,7 +427,9 @@ describe("the record's corrections gate the ROW's profile (#4009 item 1)", () =>
         )
       ).rejects.toThrow();
       await expect(
-        kind.removeFn(fd({ ...kind.remove(id), profile_id: stranger.id }))
+        kind.removeFn(
+          fd({ ...kind.remove(id, stranger.id), profile_id: stranger.id })
+        )
       ).rejects.toThrow();
 
       // NOT MERELY THAT IT THREW: the subject's row is byte-identical and still there.
@@ -337,7 +456,7 @@ describe("the record's corrections gate the ROW's profile (#4009 item 1)", () =>
         kind.correctFn(fd({ ...kind.correct(id, DATE), profile_id: ro.id }))
       ).rejects.toThrow();
       await expect(
-        kind.removeFn(fd({ ...kind.remove(id), profile_id: ro.id }))
+        kind.removeFn(fd({ ...kind.remove(id, ro.id), profile_id: ro.id }))
       ).rejects.toThrow();
 
       expect(kind.read(id, ro.id, DATE)).toEqual(before);
@@ -360,9 +479,44 @@ describe("the record's corrections gate the ROW's profile (#4009 item 1)", () =>
       );
       expect(kind.read(id, target.id, DATE)).toEqual(kind.corrected);
 
-      await kind.removeFn(fd({ ...kind.remove(id), profile_id: target.id }));
+      await kind.removeFn(
+        fd({ ...kind.remove(id, target.id), profile_id: target.id })
+      );
       expect(kind.present(id, target.id, DATE)).toBe(false);
     });
+  });
+
+  // THE SYMPTOM CORRECTION HAS NO REFUSAL TO OBSERVE WHEN IT MISSES, which is why it
+  // gets a case of its own on top of the table's three arms. `setSymptomSeverityCore`
+  // is keyed on (profile, symptom, date) rather than on a row id, so an action that
+  // ignored the posted subject would not fail to find anything — it would UPSERT the
+  // acting profile's own day for that symptom and answer `{ ok: true }`. Phase 2b
+  // measured exactly that and gated the ⋯ off the screen because of it. So the table's
+  // "lands on the target" arm is necessary and not sufficient here: the other half of
+  // the claim is that the caregiver's own record did not silently grow a row.
+  it("corrects the member's symptom-day without writing the acting profile's", async () => {
+    const login = createLogin({ role: "member" });
+    const acting = createProfile("acting symptom subject", login.id);
+    const member = createProfile("member symptom subject", login.id);
+    actAs(login, acting);
+    seedSymptomDay(member.id, DATE);
+
+    expect(
+      await editSymptom(
+        fd({
+          symptom: "headache",
+          severity: 4,
+          date: DATE,
+          note: "corrected",
+          profile_id: member.id,
+        })
+      )
+    ).toMatchObject({ ok: true });
+
+    expect(symptomSeverityOf(member.id, DATE)).toBe(4);
+    // The acting profile has no headache row at all — not a row with the old
+    // severity, none. A `toBe(2)` here would have passed on a tree that wrote both.
+    expect(symptomSeverityOf(acting.id, DATE)).toBeNull();
   });
 
   // WITHOUT A SUBJECT, NOTHING MOVED. Every single-view form in the app posts no

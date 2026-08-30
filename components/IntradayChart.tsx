@@ -60,8 +60,12 @@ import {
   type IntradayView,
 } from "@/lib/intraday-layout";
 
-// Tick color by the event's tone — the SAME tone the feed card renders, so a
-// flagged temperature reads red in both places.
+// Tick color by the event's tone (`TimelineEvent["tone"]`, carried onto the tick by
+// lib/intraday.ts from the SAME resolved event set the day's list is built from).
+// This is now that field's ONLY renderer: the feed card this comment used to point at
+// was `/timeline`'s `EventCard`, deleted with the route in #3958 phase 2c. The record's
+// rows do not colour by tone — a one-line row's colour budget is spent on the title
+// link — so a flagged temperature reads red on the axis and plain in the list.
 const TONE_COLOR: Record<NonNullable<IntradayTick["tone"]>, string> = {
   default: chartNeutral,
   good: chartSeries.brand,
