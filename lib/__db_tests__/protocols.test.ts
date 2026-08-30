@@ -144,7 +144,7 @@ describe("protocols reads", () => {
 });
 
 describe("protocol comparison seam", () => {
-  it("gathers a biomarker series and computes a before/during shift", () => {
+  it("gathers a sparse biomarker series without judging the shift", () => {
     const profile = newProfile("Proto Compare");
     // LDL: 130 before the protocol, 110 during.
     const insLab = db.prepare(
@@ -166,7 +166,8 @@ describe("protocol comparison seam", () => {
     expect(o.baseline.mean).toBe(130); // nearest draw before start
     expect(o.intervention.mean).toBe(110);
     expect(o.meanDelta).toBe(-20);
-    expect(o.betterness).toBe("better"); // LDL is lower_better
+    expect(o.insufficient).toBe(true);
+    expect(o.betterness).toBe("unknown");
 
     const picker = getProtocolOutcomePickerData(
       profile,
@@ -177,16 +178,10 @@ describe("protocol comparison seam", () => {
     expect(
       picker.options.find((option) => option.key === "result:LDL Cholesterol")
         ?.preview
-    ).toMatchObject({
-      beforeMean: 130,
-      duringMean: 110,
-      meanDelta: -20,
-      unit: "mg/dL",
-      beforeN: 1,
-      duringN: 1,
-    });
+    ).toBeUndefined();
     expect(picker.comparison.outcomes).toHaveLength(1);
     expect(picker.comparison.outcomes[0].meanDelta).toBe(-20);
+    expect(picker.comparison.outcomes[0].insufficient).toBe(true);
   });
 
   it("keeps a selected biomarker editable after its source reading is deleted", () => {
