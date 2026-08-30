@@ -143,111 +143,61 @@ function peerWrites(db: Database.Database): number {
   ).n;
 }
 
+type BootWriteProbe = {
+  before: number;
+  after?: number;
+  error?: unknown;
+};
+
+function probeBootWrite(file: string, busyTimeout: number): BootWriteProbe {
+  const db = new Database(file);
+  db.pragma(`busy_timeout = ${busyTimeout}`);
+  db.pragma("journal_mode = WAL");
+  const before = peerWrites(db);
+  try {
+    bootWrite(db);
+    return { before, after: peerWrites(db) };
+  } catch (error) {
+    return { before, error };
+  } finally {
+    db.close();
+  }
+}
+
 describe("cold-boot lock race is busy-tolerant (issue #581)", () => {
-  it("a boot write with busy_timeout set FIRST waits out a peer's lock and succeeds", async () => {
+  it("distinguishes disabled, bounded, and sufficient busy timeouts under one real peer lock", async () => {
     const dir = makeTmpDir("boot");
     const file = path.join(dir, "allos.db");
     try {
-      // A generous hold: the before/after reads below prove the contention was real,
-      // and the one flake surface is worker→main message latency eating the overlap
-      // before the probe starts. A 1000ms hold leaves most of the window in hand
-      // even on a starved runner, where a 400ms hold once did not.
       const HOLD = 1000;
       const { result, err } = await withHeldLock(file, HOLD, () => {
-        // Mirror the FIXED createDb pragma order: busy_timeout BEFORE journal_mode.
-        const b = new Database(file);
-        b.pragma("busy_timeout = 5000");
-        b.pragma("journal_mode = WAL");
-        // Read BEFORE and AFTER the write, which is what makes this a test of
-        // OVERLAP rather than of duration (#3470).
-        const before = peerWrites(b);
-        bootWrite(b);
-        const after = peerWrites(b);
-        b.close();
-        return { before, after };
+        // Round 1's pre-fix path failed immediately with no busy handler. Round 2's
+        // residual exhausted one bounded acquisition. The fixed round-1 path waits
+        // out the SAME peer after both negative probes, without paying for three
+        // independent worker threads and hold windows.
+        const disabled = probeBootWrite(file, 0);
+        const bounded = probeBootWrite(file, 150);
+        const sufficient = probeBootWrite(file, 5000);
+        return { disabled, bounded, sufficient };
       });
       expect(err).toBeUndefined();
-      // THE CONTENTION WAS REAL, proven without a stopwatch. The peer is mid
-      // transaction at this moment, so its row is written but NOT committed and this
-      // connection cannot see it. If worker→main message latency ever ate the whole
-      // hold window — the one flake surface this test has — the peer would already
-      // have committed and this would be 1.
-      //
-      // THIS ASSERTION IS LOAD-SENSITIVE, AND SAYS SO WHEN IT FIRES. It reads a
-      // discrete state rather than a duration, which is why it is allowed to stay
-      // where the elapsed-time CEILING this file used to carry had to go (#3470) —
-      // but a starved box can still delay the probe past the peer's commit. What
-      // makes that acceptable is the DIRECTION of the failure: a red here means the
-      // test proved nothing, never that the boot lock is broken. The message says
-      // that out loud, because this file has already cost one lane a diagnosis by
-      // presenting a wrong-number-against-an-expected-number, and its replacement
-      // must not do the same thing in a new spelling.
       expect(
-        result.before,
-        "VACUOUS RUN, NOT A PRODUCT DEFECT: the peer's row was already visible " +
-          "when the probe started, so this test ran against no contention and " +
-          "proved nothing. The boot lock is not implicated — nothing here " +
-          "examined it. The likely cause is worker→main message latency on a " +
-          "loaded box eating the hold window before the probe began; re-run this " +
-          "file alone. If it persists on a QUIET box, the hold window (HOLD) is " +
-          "genuinely too short and belongs in the fix, not the assertion."
-      ).toBe(0);
-      // AND IT WAITED rather than failing: the peer's row is committed and visible
-      // once this write returns, so the peer's write lock was gone before this write
-      // took one. Two yes/no readings of the data, no elapsed time anywhere, and
-      // nothing a busy machine can move.
-      expect(result.after).toBe(1);
-    } finally {
-      fs.rmSync(dir, { recursive: true, force: true });
-    }
-  });
-
-  it("the same write with busy_timeout DISABLED throws the raw SQLITE_BUSY the bug reported", async () => {
-    const dir = makeTmpDir("boot");
-    const file = path.join(dir, "allos.db");
-    try {
-      // 1000ms hold so the probe reliably overlaps it even if worker→main message
-      // latency delays the probe start on a starved runner (busy_timeout=0 throws
-      // instantly on contention, so it only needs the lock to still be held).
-      const { err } = await withHeldLock(file, 1000, () => {
-        const b = new Database(file);
-        b.pragma("busy_timeout = 0"); // the pre-fix hazard: no wait
-        b.pragma("journal_mode = WAL");
-        try {
-          bootWrite(b);
-        } finally {
-          b.close();
-        }
-      });
-      expect(err).toBeDefined();
-      expect(String((err as { code?: string }).code)).toMatch(/SQLITE_BUSY/);
-    } finally {
-      fs.rmSync(dir, { recursive: true, force: true });
-    }
-  });
-
-  // THE RESIDUAL (round 2): a peer holding the write lock LONGER than the busy
-  // timeout still kills the boot — busy_timeout alone is bounded, so on a starved
-  // CI runner where a worker queues behind every peer's whole boot, it expires and
-  // the raw SQLITE_BUSY surfaces. This is the recurrence seen on PR #586 with
-  // round 1 merged, reproduced with the timeout scaled down (150ms) against a
-  // longer hold (700ms).
-  it("RESIDUAL: a peer holding the lock LONGER than busy_timeout still throws SQLITE_BUSY without the boot lock", async () => {
-    const dir = makeTmpDir("boot");
-    const file = path.join(dir, "allos.db");
-    try {
-      const { err } = await withHeldLock(file, 1000, () => {
-        const b = new Database(file);
-        b.pragma("busy_timeout = 150"); // expires before the peer's 1000ms hold
-        b.pragma("journal_mode = WAL");
-        try {
-          bootWrite(b);
-        } finally {
-          b.close();
-        }
-      });
-      expect(err).toBeDefined();
-      expect(String((err as { code?: string }).code)).toMatch(/SQLITE_BUSY/);
+        [
+          result.disabled.before,
+          result.bounded.before,
+          result.sufficient.before,
+        ],
+        "VACUOUS RUN, NOT A PRODUCT DEFECT: the peer committed before every " +
+          "contention probe started; rerun this file alone"
+      ).toEqual([0, 0, 0]);
+      expect(
+        String((result.disabled.error as { code?: string } | undefined)?.code)
+      ).toMatch(/SQLITE_BUSY/);
+      expect(
+        String((result.bounded.error as { code?: string } | undefined)?.code)
+      ).toMatch(/SQLITE_BUSY/);
+      expect(result.sufficient.error).toBeUndefined();
+      expect(result.sufficient.after).toBe(1);
     } finally {
       fs.rmSync(dir, { recursive: true, force: true });
     }

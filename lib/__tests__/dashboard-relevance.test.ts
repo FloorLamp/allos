@@ -1,5 +1,7 @@
 import { describe, expect, it } from "vitest";
 import {
+  everythingTail,
+  placementsInLane,
   resolveDashboardTiming,
   localTimeWindow,
   mealTimeWindows,
@@ -1098,5 +1100,78 @@ describe("Now lane ordering follows the dose-day order (#3554)", () => {
     const backward = model([twin(12), twin(11)]).map((item) => item.key);
     expect(forward).toEqual(["dose:11", "dose:12"]);
     expect(backward).toEqual(forward);
+  });
+});
+
+// THE TAIL'S ONE DROP (owner ruling #3366, 2026-08-29). Show everything stays
+// exhaustive; a candidate whose whole content is a link to a page the nav already
+// carries renders as one deduplicated door instead. The lane itself is untouched —
+// the drop is a RENDERING mark, so the exact-once partition still holds over it.
+describe("Show everything admission and doors (#3366)", () => {
+  const navLink = (
+    id: string,
+    href: "/medical/episodes" | "/trends",
+    reasons: Partial<DashboardCandidate["rankReasons"]> = {}
+  ): DashboardCandidate =>
+    actionCandidate({
+      candidateId: id,
+      factKey: `fact.${id}`,
+      groupKey: null,
+      subject,
+      applicable: true,
+      relevance: { kind: "event" },
+      obligation: "may",
+      navDuplicateOf: href,
+      rankReasons: {
+        safety: false,
+        owed: false,
+        windowOpen: false,
+        changed: false,
+        ...reasons,
+      },
+      sourceOrder: order++,
+    });
+
+  it("marks nav-duplicate links unadmitted and leaves the partition whole", () => {
+    const kept = action("kept", "may");
+    const placements = rank([
+      kept,
+      navLink("episodes-a", "/medical/episodes"),
+      navLink("episodes-b", "/medical/episodes"),
+      navLink("trends", "/trends"),
+    ]);
+    const tail = placementsInLane(placements, "everything");
+    expect(tail.map((placement) => placement.candidate.candidateId)).toEqual([
+      "kept",
+      "episodes-a",
+      "episodes-b",
+      "trends",
+    ]);
+    expect(tail.map((placement) => placement.admitted)).toEqual([
+      true,
+      false,
+      false,
+      false,
+    ]);
+
+    const { members, doors } = everythingTail(placements);
+    expect(members.map((placement) => placement.candidate.candidateId)).toEqual(
+      ["kept"]
+    );
+    // Two dropped facts on one page owe the reader ONE row, in placement order.
+    expect(doors).toEqual(["/medical/episodes", "/trends"]);
+  });
+
+  it("keeps a safety candidate out of the drop by never letting it reach the tail", () => {
+    const placements = rank([
+      navLink("flagged", "/medical/episodes", { safety: true }),
+    ]);
+    expect(placementsInLane(placements, "everything")).toEqual([]);
+    expect(
+      placementsInLane(placements, "now").map(
+        (placement) => placement.candidate.candidateId
+      )
+    ).toEqual(["flagged"]);
+    expect(everythingTail(placements).doors).toEqual([]);
   });
 });
