@@ -31,7 +31,10 @@ import DashboardPlacementCanvas, {
   type DashboardPlacementCanvasProps,
 } from "@/components/dashboard/DashboardPlacementCanvas";
 import { STANDING_READING_ORDER } from "@/lib/dashboard-standing";
-import { everythingTail } from "@/lib/dashboard-relevance";
+import {
+  everythingTail,
+  type DashboardEverythingGroup,
+} from "@/lib/dashboard-relevance";
 import { trackedPageFor } from "@/lib/recent-pages";
 import { logSheetSegments } from "@/lib/log-sheet";
 
@@ -597,6 +600,89 @@ describe("actual atomic dashboard manifests", () => {
     // The loop above is satisfiable by admitting everything, so the seeded profiles
     // must actually exercise a drop for it to have asserted anything.
     expect(dropped.length).toBeGreaterThan(0);
+  });
+
+  // AND THE CONVERSE, WHICH THE DROP LOOP ABOVE IS STRUCTURALLY UNABLE TO STATE
+  // (#3366). That loop walks the drops, so it stays green on a tree that drops far
+  // too MUCH: a builder that put `navDuplicateOf` on a whole group would hand every
+  // one of those candidates a named door, satisfy every clause up there, and empty
+  // the group out of the tail. `dropped.length > 0` cannot see it either — it only
+  // asks that SOMETHING dropped. The ruling's acceptance is that the tail stays
+  // exhaustive, so that is asserted here in the direction it is written: these facts
+  // are still DRAWN, and the drop reaches exactly one candidate and no further.
+  //
+  // The survivor list is short and hand-written on purpose, one per tail group. A
+  // list derived from the manifests would restate whatever the manifests happen to
+  // say and could never contradict them.
+  it("keeps drawing the tail it did not drop", () => {
+    const drawn = new Map(
+      [...manifests].map(([persona, placements]) => [
+        persona,
+        everythingTail(placements).members,
+      ])
+    );
+    const survivors: readonly {
+      persona: string;
+      group: DashboardEverythingGroup;
+      candidate: string;
+    }[] = [
+      {
+        persona: "biohacker",
+        group: "act",
+        candidate: "attention.fact:review",
+      },
+      { persona: "biohacker", group: "read", candidate: "protocol.adherence:" },
+      {
+        persona: "biohacker",
+        group: "active-states",
+        candidate: "protocol.state:",
+      },
+      {
+        persona: "household",
+        group: "understand",
+        candidate: "appointment.next",
+      },
+      {
+        persona: "marathon-runner",
+        group: "setup",
+        candidate: "attention.fact:screening:hiv_screening",
+      },
+    ];
+    for (const { persona, group, candidate } of survivors) {
+      expect(
+        drawn
+          .get(persona)!
+          .some(
+            (placement) =>
+              placement.everythingGroup === group &&
+              placement.candidate.candidateId.startsWith(candidate)
+          ),
+        `${persona}: ${candidate} is no longer drawn in ${group}`
+      ).toBe(true);
+    }
+    // Exactly one candidate in the whole seeded population is a link the nav already
+    // carries, which is what `care.ts` claims in prose. Widening the drop reddens
+    // here rather than quietly shortening the tail.
+    expect(
+      [...manifests].flatMap(([persona, placements]) =>
+        placements.flatMap((placement) =>
+          placement.lane === "everything" && !placement.admitted
+            ? [`${persona}:${placement.candidate.candidateId}`]
+            : []
+        )
+      )
+    ).toEqual(["household:household.episode-history"]);
+    // Drawn against dropped against the lane, per persona: a member the split loses
+    // on its way to the canvas is neither, and no absence assertion can see that.
+    for (const [persona, placements] of manifests) {
+      const lane = placements.filter(
+        (placement) => placement.lane === "everything"
+      );
+      const dropped = lane.filter((placement) => !placement.admitted);
+      expect(drawn.get(persona)!.length, persona).toBe(
+        lane.length - dropped.length
+      );
+    }
   });
 
   // THE TAIL'S GENERIC WRITE CARDS ARE GONE, AND THE SHEET HAS THEM (#3366/#4064).
