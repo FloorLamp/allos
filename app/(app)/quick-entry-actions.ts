@@ -295,7 +295,7 @@ export async function loadQuickEntry(
       return {
         form: "unavailable",
         message:
-          "Food-group serving logging starts after the first year. Growth for this age lives in the Body and Timeline views.",
+          "Food-group serving logging starts after the first year. Growth for this age lives in the Body and History views.",
       };
     }
     const yesterday = shiftDateStr(date, -1);

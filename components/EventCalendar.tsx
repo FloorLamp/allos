@@ -111,7 +111,7 @@ export default function EventCalendar({
         panelClassName="w-72"
       >
         {/* `open` lives in a layout App Router does not remount, so without this
-            the grid stays floating over the Timeline day it just opened (#3905).
+            the grid stays floating over the record day it just opened (#3905).
             The primitive cannot know a Link inside it ends the interaction. */}
         {() => (
           <div className="p-3">

@@ -182,7 +182,10 @@ test("the sheet opens on the segment the current route is about", async ({
   await expect(sheet.getByTestId("quick-log-log-activity")).toHaveCount(0);
 });
 
-test("a toddler gets Timeline and no Train segment", async ({ browser }) => {
+// #3343 Q5, owner 2026-08-29: `trainingRelevant ? TRAINING : HISTORY`. The slot was
+// Timeline's until #3958 phase 2 retired that route; the record absorbed its content,
+// so it is the literal successor and the dock stays fixed at four (#2651).
+test("a toddler gets History and no Train segment", async ({ browser }) => {
   // The puck stays because food, body, and care logging still apply. Only the
   // workout-product destination and Train segment stand down.
   //
@@ -200,7 +203,8 @@ test("a toddler gets Timeline and no Train segment", async ({ browser }) => {
     await expect(dock).toBeVisible();
     await expect(dock.getByTestId("dock-log-puck")).toBeVisible();
     await expect(dock.getByTestId("dock-slot-training")).toHaveCount(0);
-    await expect(dock.getByTestId("dock-slot-timeline")).toBeVisible();
+    await expect(dock.getByTestId("dock-slot-timeline")).toHaveCount(0);
+    await expect(dock.getByTestId("dock-slot-history")).toBeVisible();
 
     const sheet = child.getByTestId("quick-log-sheet");
     await tapUntilOpen(child, child.getByTestId("dock-log-puck"), sheet);

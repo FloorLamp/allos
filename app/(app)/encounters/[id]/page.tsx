@@ -396,7 +396,7 @@ export default async function EncounterDetailPage(props: {
               data-testid="encounter-timeline-link"
             >
               <IconTimeline className="h-4 w-4" stroke={1.75} />
-              View this day in Timeline
+              View this day in History
             </Link>
           </div>
         </section>

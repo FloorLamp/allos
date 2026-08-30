@@ -753,7 +753,7 @@ export default async function BodySection({
             href={historyDayHref(todayStr)}
             className="font-medium text-brand-700 hover:underline dark:text-brand-400"
           >
-            Timeline
+            History
           </Link>
           .
         </p>
@@ -1658,7 +1658,7 @@ export default async function BodySection({
           data-testid="body-timeline-link"
           className="inline-flex items-center gap-1.5 text-sm font-medium text-brand-700 hover:underline dark:text-brand-400"
         >
-          View today on Timeline
+          View today on History
         </DestinationLink>
       </div>
 
