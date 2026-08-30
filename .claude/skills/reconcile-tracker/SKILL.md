@@ -33,10 +33,17 @@ compliance:
 
 - **No close-capable tool is granted to this run.** The `allowed-tools` line
   above contains no `issue_write`, no `gh issue close`, no general REST verb.
-  The only writer is `scripts/orchestration/reconcile-apply.ts`, whose request
-  payload is built from exactly one field — `body`. If you find yourself
-  wanting a tool that could close an issue, the answer is to write it in the
-  report instead.
+  The body writer is `scripts/orchestration/reconcile-apply.ts`, holding
+  exactly two confined writes: the body PATCH (payload built from one field,
+  `body`) and a comment POST that announces a body edit on an issue with
+  READERS — because a body PATCH is silent (no notification, no timeline
+  event), an issue with a comment chain or an in-flight lane must get the
+  edit said out loud in the thread, or its readers keep working from the
+  pre-edit text. The tool posts that comment itself when the chain is
+  non-empty; when the ORCHESTRATOR invokes this pass, it passes the roster's
+  in-flight issue numbers as `--notify 123,456` so a quiet-but-dispatched
+  issue is announced too. If you find yourself wanting a tool that could
+  close an issue, the answer is to write it in the report instead.
   This is why reads here go through MCP's scoped read tools rather than REST,
   which is the transport `docs/orchestration/environment.md` §GitHub access
   otherwise mandates: `Bash(gh api:*)` would hand this run every verb including
@@ -209,12 +216,14 @@ counts drop sharply between runs, treat that as the finding.
 
 ```bash
 npx tsx scripts/orchestration/reconcile-apply.ts plan.json           # dry run
-npx tsx scripts/orchestration/reconcile-apply.ts plan.json --apply
+npx tsx scripts/orchestration/reconcile-apply.ts plan.json --apply [--notify 123,456]
 ```
 
 `plan.json` maps issue number → array of `AnchoredPatch`. Dry-run first,
 always: the dry run re-reads every current body and reports which anchors still
-hold, so you see the refusals before anything is written.
+hold, so you see the refusals before anything is written — and which issues
+will also get the announcement comment (a non-empty comment chain, or a
+number you passed via `--notify` because its dispatch is in flight).
 
 **Never re-run a plan with `--apply` twice.** Several path refreshes contain
 their own anchor inside the replacement (`intake-safety.ts` →

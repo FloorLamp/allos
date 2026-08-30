@@ -1552,11 +1552,20 @@ describe("the toolchain granted to a reconciliation run cannot close an issue", 
     "scripts/orchestration/delete-unknown-labels.ts",
   ];
 
-  it("the body applier writes one verb and builds its payload from one field", () => {
+  it("the body applier holds two confined writes: body PATCH and comment POST", () => {
+    // The comment POST exists because a body PATCH is SILENT — no
+    // notification, no timeline event — so an issue with a comment chain or
+    // an in-flight lane (--notify) gets its edit announced where its readers
+    // are (2026-08-30). One verb each, one payload field each, and the POST
+    // can reach only the comments collection; neither endpoint has a field an
+    // issue's status could ride in.
     const applier = source("scripts/orchestration/reconcile-apply.ts");
     expect(applier.match(/"PATCH"/g)).toHaveLength(1);
+    expect(applier.match(/"POST"/g)).toHaveLength(1);
     expect(applier).toContain("JSON.stringify({ body })");
-    expect(applier).not.toMatch(/"(?:POST|PUT|DELETE)"/);
+    expect(applier).toContain("JSON.stringify({ body: note })");
+    expect(applier).toContain("${issueUrl(issue)}/comments");
+    expect(applier).not.toMatch(/"(?:PUT|DELETE)"/);
   });
 
   it("the label writer touches only the per-issue LABELS endpoints", () => {

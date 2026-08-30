@@ -80,6 +80,14 @@ section rather than restating it, so the rule cannot drift per surface.
   has silently dropped a PATCH. Verify by re-reading the item and grepping for
   a phrase unique to the edit — and verify label changes on the ITEM, never on
   the label list, which serves stale for a while after a successful write.
+- **A body edit on an issue with READERS is not done until a comment announces
+  it.** A body PATCH is silent — no notification, no timeline event — so on an
+  issue with a comment chain or an in-flight dispatch, editing the body alone
+  leaves every reader (the thread's humans, a lane that already read the
+  brief) working from the pre-edit text. Say what changed as a comment in the
+  same pass; `reconcile-apply.ts` does this itself (comment chains
+  automatically, in-flight issues via `--notify`). Label changes need no
+  comment — GitHub renders those as timeline events already.
 - Check the GraphQL rate-limit bucket before MCP-heavy work. Batch around a
   reset; never retry in a loop.
 - GitHub closes multiple issues only when each `Fixes #N` is on its own line.

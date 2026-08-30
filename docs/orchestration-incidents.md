@@ -1689,3 +1689,24 @@ exiting 0 before anything else runs (`usage.mjs` for JS/TS, an inline sed
 guard in the shell scripts). `script-help.test.ts` spawns each one with the
 flag, with no token and no stubs, so a guard that goes missing or drifts
 below side-effectful code fails loudly.
+
+## The body edit nobody saw (2026-08-30)
+
+The reconciliation flow patched issue bodies and stopped there, and the owner
+flagged the gap: a body PATCH is silent — GitHub sends no notification and
+renders no timeline event — so on an issue with a comment chain, the humans
+in the thread keep reasoning from the text they already read; on an issue in
+flight, the lane's brief was generated from the pre-edit body and the lane
+re-reads COMMENTS, not the body, mid-work. The edit was correct and
+invisible, which on a moving tracker is a new flavor of stale premise: the
+body says one thing, everyone acting on the issue believes another.
+
+Encoded in the tool, not in a reminder: `reconcile-apply.ts` now holds a
+second confined write — a comment POST that announces what the body edit
+changed, fired automatically when the comment chain is non-empty and for any
+issue the orchestrator names via `--notify` (its roster's in-flight issues).
+A quiet, undispatched issue still gets the silent patch alone; a mechanical
+sweep that commented on every dead-path fix would be tracker noise. Label
+changes stay comment-free — GitHub already renders those as timeline events.
+The rule generalizes past the tool (environment.md §GitHub access): a body
+edit on an issue with readers is not done until a comment announces it.
