@@ -1,7 +1,11 @@
 import { test, expect } from "./fixtures";
 import { type Page } from "@playwright/test";
 import { loginAs } from "./nav";
-import { E2E_LOGIN_DAILY, E2E_MEMBER_PASSWORD } from "./fixture-logins";
+import {
+  E2E_LOGIN_DAILY,
+  E2E_LOGIN_PROTEIN_SOURCES,
+  E2E_MEMBER_PASSWORD,
+} from "./fixture-logins";
 import { dashboardCandidatePrefix } from "./dashboard-candidate";
 import { openDashboardAll } from "./helpers";
 import { frozenLocalHHMM, frozenNow } from "./worker-env";
@@ -71,6 +75,50 @@ test.describe("dashboard daily loop (#1221)", () => {
       "aria-label",
       /g\/kg.*Today's total is from.*aren't counted, so your real total may be higher\./s
     );
+  });
+
+  // THE TRACKED BRANCH, RENDERED (#3903). Until this test the protein row's tracked
+  // basis reached no rendered test at all — which is how it kept an exact figure and a
+  // hover with no hedge through #3888's survey of the other four states.
+  //
+  // Its own login/context rather than the describe's shared page: the fixture is the only
+  // one carrying a tracked protein_g, and it is a different profile.
+  //
+  // WHY THIS FIXTURE DISCRIMINATES: today holds 70 g logged in-app against a 20 g health
+  // app reading. The retired override returned the health app's 20 g and zeroed the rest,
+  // so a tree still carrying it renders "20 g" here — the smaller number, with no floor
+  // marker. Both halves of #3903 fail this test separately.
+  test("the protein row shows the LARGER floor and names both sources (#3903)", async ({
+    browser,
+  }) => {
+    const own = await loginAs(browser, {
+      username: E2E_LOGIN_PROTEIN_SOURCES,
+      password: E2E_MEMBER_PASSWORD,
+    });
+    try {
+      await own.goto("/");
+      const card = dashboardCandidatePrefix(own, "nutrition.protein:");
+      await expect(card).toBeVisible();
+
+      // max(20 tracked, 70 in-app) — and the "+" the tracked basis used to go without.
+      // Scoped to the row's own amount rather than the page: "70" alone would be
+      // satisfiable by the goal band or the 7-day average sitting beside it.
+      await expect(card).toContainText("70 g+");
+      await expect(card).not.toContainText("20 g");
+
+      // The hover names BOTH records, and hedges for both reasons. Asserted as the exact
+      // sentences: the failure this row exists for was a hover that named only the
+      // winner, which every "contains a source phrase" matcher would have passed.
+      const explain = own.getByRole("button", {
+        name: /Today's total is from your food log and your health app\./,
+      });
+      await expect(explain).toHaveAttribute(
+        "aria-label",
+        /Today's total is from your food log and your health app\. Foods you haven't logged and meals your health app hasn't sent aren't counted, so your real total may be higher\./
+      );
+    } finally {
+      await own.context().close();
+    }
   });
 
   test("Steps-today card shows the prior-7-day baseline, and no partial-day delta", async () => {

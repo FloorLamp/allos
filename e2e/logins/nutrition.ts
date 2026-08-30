@@ -158,3 +158,21 @@ export const ROUTINE_USUAL_PROFILE = "Routine Usual (e2e)";
 // left. This one is read-only in its spec and stays repeat-safe.
 export const E2E_LOGIN_LOGSHEET_RESERVE = "e2e_logsheet_reserve";
 export const LOGSHEET_RESERVE_PROFILE = "Log Sheet Reserve (e2e)";
+
+// THE TRACKED PROTEIN BRANCH, RENDERED (#3903). No fixture anywhere seeded a tracked
+// `protein_g` that reached the dashboard's protein row, so the one basis that stated an
+// exact figure was the one basis no rendered test ever executed — which is how it kept
+// its missing floor marker through #3888's survey of the other four.
+//
+// A dedicated ADULT profile whose TODAY holds BOTH sources at once, with the in-app side
+// deliberately the LARGER floor: 70 g quick-added here against a 20 g health-app reading
+// that has so far synced one meal. That asymmetry is the whole point of the fixture —
+// under the retired override the row rendered the health app's 20 g and dropped every
+// hedge, so a tree carrying it renders "20 g" where this profile must render "70 g+".
+// 70 kg → the default `active` band, which is the exact target #3903's own probe used.
+//
+// READ-ONLY in its spec and isolated on purpose: it is the only fixture profile carrying
+// a tracked protein_g, so a neighbour logging food on it would change the max and the
+// basis at once.
+export const E2E_LOGIN_PROTEIN_SOURCES = "e2e_protein_sources";
+export const PROTEIN_SOURCES_PROFILE = "Protein Both Sources (e2e)";

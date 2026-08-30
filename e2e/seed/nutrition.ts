@@ -43,6 +43,8 @@ import {
   E2E_LOGIN_FOODPIN,
   FOOD_PIN_PROFILE,
   FOOD_PIN_GROUP,
+  E2E_LOGIN_PROTEIN_SOURCES,
+  PROTEIN_SOURCES_PROFILE,
 } from "../fixture-logins";
 import { getTimezone } from "../../lib/settings";
 import { setFixtureTimezone } from "../fixture-timezones";
@@ -724,4 +726,47 @@ export function seedFoodPinSplit(): void {
   console.log(
     `e2e: seeded deep-linked food pin fixture — profile ${pinId} (${FOOD_PIN_PROFILE}) (#2061)`
   );
+}
+
+// ── The tracked protein branch, rendered (#3903) ──
+export function seedProteinBothSources(): void {
+  // TODAY carries BOTH sources, with the IN-APP side the larger floor: 70 g quick-added
+  // here against a 20 g health-app reading that has synced one meal so far. The row must
+  // print max(20, 70) = "70 g+" and name both sources. See the login module for why the
+  // asymmetry is the fixture's whole point.
+  //
+  // Idempotent — every table this profile owns is cleared first, so a reused dev server
+  // re-seeds cleanly and the max can never drift by accumulating a second day's rows.
+  const id = fixtureProfileId(PROTEIN_SOURCES_PROFILE);
+  seedMemberLogin(E2E_LOGIN_PROTEIN_SOURCES, id);
+  const day = today(id);
+  for (const sql of [
+    `DELETE FROM body_metrics WHERE profile_id = ?`,
+    `DELETE FROM protein_daily_totals WHERE profile_id = ?`,
+    `DELETE FROM food_daily_totals WHERE profile_id = ?`,
+    `DELETE FROM metric_samples WHERE profile_id = ? AND metric = 'protein_g'`,
+  ])
+    db.prepare(sql).run(id);
+
+  // 70 kg → the default `active` band (1.2–1.6 g/kg), the exact target #3903's probe used.
+  db.prepare(
+    `INSERT INTO body_metrics (profile_id, date, weight_kg, notes) VALUES (?, ?, 70, 'e2e:protein-sources')`
+  ).run(id, day);
+
+  // The app's OWN ledger: 70 g of quick-added grams. No food-group servings, so the
+  // in-app figure is exactly this number and the assertion needs no catalog arithmetic.
+  db.prepare(
+    `INSERT INTO protein_daily_totals (profile_id, date, grams) VALUES (?, ?, 70)`
+  ).run(id, day);
+
+  // The health app, mid-sync: ONE breakfast-shaped nutrition sample. protein_g is a SUM
+  // metric and an integration writes one sample per meal record, so this is a running
+  // partial — which is the fact the whole issue turns on. The instant is built through
+  // the profile's own zone (the seed pins a rotating per-run timezone), never a naive
+  // `${day}T08:30` string.
+  const breakfast = zonedWallTimeToUtc(getTimezone(id), day, "08:30");
+  db.prepare(
+    `INSERT INTO metric_samples (profile_id, source, metric, date, started_at, ended_at, value)
+     VALUES (?, 'health_connect', 'protein_g', ?, ?, ?, 20)`
+  ).run(id, day, breakfast, breakfast);
 }
