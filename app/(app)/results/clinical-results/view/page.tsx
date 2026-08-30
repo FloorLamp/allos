@@ -45,6 +45,7 @@ import {
   ageBandLabel,
   isBiomarkerStale,
   isOutOfRange,
+  isNotableFlag,
   daysBetween,
   humanizeAge,
 } from "@/lib/reference-range";
@@ -85,7 +86,13 @@ import { PageHeader, EmptyState, MedicalValue } from "@/components/ui";
 import { Notice } from "@/components/Notice";
 import { type BiomarkerBands } from "@/components/BiomarkerChart";
 import BiomarkerTrendChart from "@/components/BiomarkerTrendChart";
-import { getProtocolWindowsForOutcome } from "@/lib/queries";
+import {
+  getProtocolWindowsForOutcome,
+  getFindingSuppressions,
+} from "@/lib/queries";
+import { isSuppressed } from "@/lib/upcoming-suppress";
+import { biomarkerFlagDismissalKey } from "@/lib/dismissal-keys";
+import { dismissTrajectory } from "../../actions";
 import { buildProtocolWindows } from "@/lib/trend-annotations";
 import { buildTrendAnnotations } from "@/lib/trends-series";
 import StarButton from "@/components/StarButton";
@@ -575,6 +582,15 @@ export default async function ClinicalResultDetailPage(props: {
   //   - else, a recently RESOLVED follow-up → show its recorded outcome.
   const isIop = isIopBiomarker(canonical);
   const famKey = biomarkerFamily(canonical).toLowerCase();
+  // The analyte acknowledgment (#3225, on #564's key): the ONE key the dashboard
+  // flag atom, the trajectory rollup and this page's "Seen it" all write. Read
+  // through the shared suppression bus, which is also where a new draw of the family
+  // has already re-armed it — so the control below reflects the CURRENT state rather
+  // than "a row exists".
+  const resultAckKey = biomarkerFlagDismissalKey(canonical);
+  const resultAckRecord = getFindingSuppressions(profile.id).get(resultAckKey);
+  const resultAcknowledged =
+    resultAckRecord != null && isSuppressed(resultAckRecord, todayStr);
   const familyFollowUps = isIop
     ? getIopFollowUps(profile.id)
     : getLabFollowUps(profile.id).filter(
@@ -794,6 +810,39 @@ export default async function ClinicalResultDetailPage(props: {
             <span className="badge bg-emerald-100 text-emerald-700 dark:bg-emerald-950 dark:text-emerald-300">
               Immune
             </span>
+          </div>
+        )}
+        {/* "Seen it" (#3225). Thirty-seven chronic notables from one panel pin the
+            dashboard's clinical family for months, and outside the 14-day
+            flagged-attention window there is no dismiss control anywhere that reaches
+            them — this is that control, on the page every one of those rows links to.
+            It writes the SAME analyte acknowledgment key the trajectory rollup and the
+            dashboard flag atom write (owner ruling 2026-08-20: one state, not two), so
+            it also quiets the analyte's flag and its trajectory watch, and the next
+            draw of the family re-arms all three. The reading itself is untouched: it
+            still reads "High" here and still lists on /results. */}
+        {isNotableFlag(latest.flag) && (
+          <div data-testid="result-acknowledge">
+            <div className="label">Acknowledge</div>
+            {resultAcknowledged ? (
+              <span
+                data-testid="result-acknowledged"
+                className="text-sm text-slate-500 dark:text-slate-400"
+              >
+                Seen — until the next draw
+              </span>
+            ) : (
+              <form action={dismissTrajectory}>
+                <input type="hidden" name="dedupe_key" value={resultAckKey} />
+                <button
+                  type="submit"
+                  className="btn-ghost btn-sm"
+                  data-testid="result-acknowledge-submit"
+                >
+                  Seen it
+                </button>
+              </form>
+            )}
           </div>
         )}
         {/* Finding follow-up (#700 labs adapter): a flagged result can be tracked to a

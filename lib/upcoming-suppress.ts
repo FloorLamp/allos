@@ -76,8 +76,12 @@ export function itemSuppressionPolicy(
 
 // Whether a suppression record hides its item right now (`today` = the profile-
 // local YYYY-MM-DD). Semantics:
-//   - Dismissed → hidden indefinitely (until the user restores it, which removes
-//     the row so no record reaches here).
+//   - Dismissed → hidden until the user restores it, which removes the row so no
+//     record reaches here. One key's record can also stop reaching here without
+//     being restored: since #3225 the bus read drops a `biomarker-flag:` ack once a
+//     new draw of that family has arrived (lib/queries/upcoming/suppressions.ts).
+//     That is a decision about WHICH records are still live, made before this
+//     function; the rule below is unchanged.
 //   - Snoozed → hidden while today < snooze_until; on/after that date the snooze
 //     has expired and the item reappears.
 //   - Neither field set → not hidden (a defensive no-op; such a row shouldn't

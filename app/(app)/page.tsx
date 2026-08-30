@@ -237,6 +237,7 @@ import {
   prStrengthDismissalKey,
 } from "@/lib/dismissal-keys";
 import { upcomingDueText } from "@/lib/upcoming";
+import { isSuppressed } from "@/lib/upcoming-suppress";
 import { dashboardAttentionCandidateId } from "@/lib/dashboard-attention-identity";
 import { loadContextLabel } from "@/lib/lifts";
 import { formatMinutes } from "@/lib/duration";
@@ -720,6 +721,15 @@ async function renderDashboard(
   {
     const observations = getDashboardClinicalObservations(profile.id);
     const activeAttentionKeys = new Set(attention.map((item) => item.key));
+    // An acknowledged marker spends its notable-first precedence (#3225). The
+    // acknowledgment IS the flag dismissal — one state, not two (owner ruling
+    // 2026-08-20) — read through the same suppression bus every other consumer of
+    // the key reads, which is also where a new draw has already re-armed it.
+    const labSuppressions = getFindingSuppressions(profile.id);
+    const labAcknowledged = (name: string): boolean => {
+      const rec = labSuppressions.get(biomarkerFlagDismissalKey(name));
+      return rec != null && isSuppressed(rec, on);
+    };
     for (const observation of observations) {
       const name = observation.canonical_name?.trim() || observation.name;
       const findingKey = biomarkerFlagDismissalKey(name);
@@ -741,7 +751,12 @@ async function renderDashboard(
       });
     }
     labRows = cappedFamilyGather(
-      recentLabHighlights(observations, Number.MAX_SAFE_INTEGER, on),
+      recentLabHighlights(
+        observations,
+        Number.MAX_SAFE_INTEGER,
+        on,
+        labAcknowledged
+      ),
       CLINICAL_RESULTS_CAP,
       (row) => labPromotions.get(row.name)?.changed === true
     );
