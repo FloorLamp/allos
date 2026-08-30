@@ -19,6 +19,11 @@ import { RoutineCreateControl } from "@/app/(app)/training/RoutinesManager";
 import { EquipmentCreateControl } from "@/components/EquipmentManager";
 import AddSupplementModal from "@/components/nutrition/AddSupplementModal";
 
+const UnopenedForm = vi.hoisted(() => () => null);
+const unexpectedAction = vi.hoisted(() => () => {
+  throw new Error("create-action tests do not submit domain actions");
+});
+
 vi.mock("@/components/ActivityEditorProvider", () => ({
   useActivityEditor: () => ({ openCreate: vi.fn() }),
 }));
@@ -31,6 +36,40 @@ vi.mock("@/components/ModalShell", () => ({
 
 vi.mock("@/components/TabFirstTabs", () => ({
   default: () => <nav data-testid="desktop-tabs" />,
+}));
+
+// The live create triggers are the subject. Their modal bodies and domain writes
+// are not opened or submitted here, so keep those dependency graphs outside this
+// component test and fail loudly if a case starts reaching an action.
+vi.mock("@/components/IntakeItemForm", () => ({ default: UnopenedForm }));
+vi.mock("@/app/(app)/wellness/PracticeEditor", () => ({
+  default: UnopenedForm,
+}));
+vi.mock("@/app/(app)/protocols/ProtocolForm", () => ({
+  default: UnopenedForm,
+}));
+vi.mock("@/app/(app)/training/GoalForm", () => ({ default: UnopenedForm }));
+vi.mock("@/app/(app)/training/RoutineBuilder", () => ({
+  default: UnopenedForm,
+}));
+vi.mock("@/app/(app)/training/goal-actions", () => ({
+  updateProgress: unexpectedAction,
+  setStatus: unexpectedAction,
+  setArchived: unexpectedAction,
+  deleteGoal: unexpectedAction,
+}));
+vi.mock("@/app/(app)/training/actions", () => ({
+  adoptRoutineTemplateAction: unexpectedAction,
+  activateRoutineAction: unexpectedAction,
+  deactivateRoutineAction: unexpectedAction,
+  deleteRoutineAction: unexpectedAction,
+  restartRoutineCycleAction: unexpectedAction,
+}));
+vi.mock("@/app/(app)/equipment/actions", () => ({
+  createEquipmentAction: unexpectedAction,
+  updateEquipmentAction: unexpectedAction,
+  deleteEquipmentAction: unexpectedAction,
+  setEquipmentRetiredAction: unexpectedAction,
 }));
 
 function TestControl() {
