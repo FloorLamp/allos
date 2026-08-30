@@ -50,21 +50,16 @@ import { parseQuantity } from "./dri";
 
 // ---- Intake: max(tracked, estimated + supplemented) -----------------------
 
-// The composition of the per-day intake figure:
-//   tracked      — an integration's reading, with nothing logged in-app that day.
-//   both-sources — an integration's reading AND in-app logging; the figure is the LARGER
-//                  of the two floors. Distinct from `combined`, which names two COLUMNS of
-//                  this app's own ledger (foods + doses); this names two independent
-//                  SOURCES.
-//   combined     — the estimated food-group floor PLUS confirmed dose grams.
-//   estimated    — the food-group floor only.
-//   supplemented — dose grams only (or a lone dose whose grams are unknown).
+// `both-sources` is the one the module header explains: an integration's reading AND
+// in-app logging, at the LARGER of the two floors. It is distinct from `combined`, which
+// names two COLUMNS of this app's own ledger (foods + doses); this names two independent
+// SOURCES.
 //
 // EVERY SITE THAT READS `basis !== "tracked"` AS "THIS IS A FLOOR" IS ALREADY CORRECT for
-// `both-sources`: the value means "the max of two floors", and that is a floor. Audited at
-// all four when it was added — fiberBasisIsFloor (FiberGauge, the Food tab's "+"),
-// fiberAdequacyDetail, NutritionSnapshot, and lib/nutrition-day.ts. FiberAdequacyCard's
-// `data-basis` echoes the value rather than testing it, so it needs nothing.
+// it: the value means "the max of two floors", and that is a floor. Audited at all four —
+// fiberBasisIsFloor (FiberGauge, the Food tab's "+"), fiberAdequacyDetail,
+// NutritionSnapshot, lib/nutrition-day.ts. FiberAdequacyCard's `data-basis` echoes the
+// value rather than testing it, so it needs nothing.
 export type FiberBasis =
   "tracked" | "both-sources" | "combined" | "estimated" | "supplemented";
 
@@ -199,13 +194,13 @@ export function fiberIntake(args: {
       basis: inApp > 0 ? "both-sources" : "tracked",
       estimatedGrams: estimated,
       supplementedGrams: supplemented,
-      // RE-DERIVED, not forced false (#4127). This flag used to be hard `false` here, under
-      // the comment "a measured total already includes what was taken — the caveat is moot
-      // on a tracked basis". That was true only BY VIRTUE OF THE OVERRIDE: the figure was
-      // the health app's alone, so an unquantified dose was already inside it. Under the
-      // max the caveat is live again whenever the IN-APP side is the figure being shown,
-      // because on that side the dose contributed 0 g. It stays moot only where the tracked
-      // reading is strictly the larger, which is the only case the old reasoning covered.
+      // RE-DERIVED, not forced false (#4127). This was hard `false`, under the comment "a
+      // measured total already includes what was taken — the caveat is moot on a tracked
+      // basis" — true only BY VIRTUE OF THE OVERRIDE, when the figure was the health app's
+      // alone. Under the max the caveat is live again whenever the IN-APP side is the
+      // figure shown, because there the unquantified dose contributed 0 g. It stays moot
+      // only where the tracked reading is strictly the larger, which is the case the old
+      // reasoning actually covered.
       unknownSupplement: unknownSupplement && tracked <= inApp,
     };
   const basis: FiberBasis =
