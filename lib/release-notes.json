@@ -23,7 +23,7 @@
         },
         {
           "pr": 4144,
-          "title": "Today's protein takes the larger of your own log and your health app's, so connecting one never lowers it",
+          "title": "Today's protein takes the larger of your own log and your health app's, so it never falls below what you logged",
           "kind": "fix",
           "issues": [3903]
         },
