@@ -72,10 +72,14 @@ test("the quick logger's measurements row OPENS with no connection, and the weig
 
     await context.setOffline(true);
 
-    // From here on, every step is offline. No navigation happens inside this
-    // window, so no shell has to come from anywhere and `readyForOffline` is not
-    // the precondition (docs/internals/e2e-hygiene.md, "Offline does not reach the
-    // service worker").
+    // offline-nav-ok: nothing here navigates. The sheet is a client toggle, the
+    // form is already in the shell's bundle, and the save reaches IndexedDB — none
+    // of which the service worker's fetch bypass can fake, and no shell has to come
+    // from anywhere, so `readyForOffline` is not this block's precondition
+    // (docs/internals/e2e-hygiene.md, "Offline does not reach the service worker").
+    // This test never reconnects, so its window is textually open to the end of the
+    // file and the scan sees the NEXT test's `goto` — which runs in that test's own
+    // context, online, before its own `setOffline(true)`.
     const sheet = await openLogSheet(page);
     const row = await showLogRow(sheet, "log-measurements");
     await row.click();
