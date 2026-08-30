@@ -58,7 +58,7 @@ closed taxonomy, and `needs-human` handling.
 
 ## Per-unit pipeline
 
-1. Read the issue body and every comment.
+1. Read each issue whole via `issue-read.mjs`; skip ones already closed.
 2. Generate the dispatch brief and record the branch in the task list.
 3. Require the agent to merge current `origin/main` and run the assigned gates.
    Promote only the next landing candidate to a PR; keep later verified branches
