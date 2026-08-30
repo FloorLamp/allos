@@ -1315,7 +1315,12 @@ offers an **Undo** toast that puts both back.
 
 **When you ate is captured, and correctable (#2019).** A Telegram tap's declared
 contract is "I'm eating now", so the tap instant is recorded as a real eating time
-(`occurred_at`, `time_source = 'tap'`) beside the immutable tap stamp, and the nudge
+(`occurred_at`, `time_source = 'tap'`) beside the immutable tap stamp — on the day the
+message is FOR. Since #4118 a food button keeps working for two days after its message,
+the same window the ✅ dose buttons beside it already had, and the serving lands on the
+message's own day; "I'm eating now" is untrue about a day that has ended, so a tap that
+late states no eating time at all and takes the nudge's window instead. Past those two
+days nothing is written and the reply says which day the message was from. The nudge
 carries burst-collapsed correction chips plus an absolute-hour picker for the common
 case of being slow to tap. **The chips state the time they set, not an offset**
 (#2206): `19:41 · −30m` and `19:11 · −1h`, in the same absolute vocabulary the picker

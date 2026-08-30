@@ -865,7 +865,15 @@ describe("the date-guard completeness guard (#2018)", () => {
   it("the two date closes stay distinguishable — a run-out window is not 'yesterday'", () => {
     // A rollover close says "this is yesterday's message"; a dose past its window needs
     // to be told the confirm can no longer land here. Same branch, different sentence.
-    expect(messageExpiry("food", D, shiftDateStr(D, 1))).toBe("rollover");
+    //
+    // `mood` rather than `food` since #4118: the food nudge moved onto the dose window
+    // when its handler did, so it is no longer an example of a rollover close at all.
+    // The exemplar has to be a family that is still `exact-day`, or this assertion
+    // would pin an entry it does not describe — and the moment none is left, the
+    // rollover branch has no producer and someone should be told rather than have this
+    // test quietly re-point again.
+    expect(messageExpiry("mood", D, shiftDateStr(D, 1))).toBe("rollover");
+    expect(messageExpiry("food", D, shiftDateStr(D, 1))).toBeNull();
     expect(
       messageExpiry(
         "intake-dose",

@@ -16,6 +16,7 @@ import { setTimezone } from "@/lib/settings";
 import { logUsualRoutine } from "@/app/(app)/actions";
 import { getUsualRoutineOffer } from "@/lib/queries/usual-routine";
 import { createLogin, createProfile, actAs, fd } from "./harness";
+import { AUDIT_ACTIONS } from "@/lib/audit-actions";
 
 const revalidate = vi.mocked(revalidatePath);
 
@@ -290,4 +291,195 @@ describe("logUsualRoutine", () => {
       await logUsualRoutine(fd({ meal_slot: "Morning", groups: "" }))
     ).toEqual({ ok: false, error: "Nothing to log." });
   });
+});
+
+// ── THE DATED COMPOSED TAP (#4118) ───────────────────────────────────────────
+describe("logUsualRoutine on a past day", () => {
+  function auditRows(profileId: number) {
+    return db
+      .prepare(
+        `SELECT action, target, detail FROM audit_events
+          WHERE active_profile_id = ? AND action LIKE 'usual-routine.%'
+          ORDER BY id`
+      )
+      .all(profileId) as {
+      action: string;
+      target: string | null;
+      detail: string | null;
+    }[];
+  }
+
+  // The habit with a HOLE at day 2 back, so a real offer stands on that day and the
+  // dose half is still inside its own ±2 window.
+  function seedWithHole(name: string, hole: number) {
+    const login = createLogin();
+    const profile = createProfile(name, login.id);
+    actAs(login, profile);
+    setTimezone(profile.id, "UTC");
+    const anchor = today(profile.id);
+    for (let d = 1; d <= 13; d++) {
+      if (d === hole) continue;
+      const date = shiftDateStr(anchor, -d);
+      tap(profile.id, "fermented", date, "08:00:00");
+      tap(profile.id, "berries", date, "08:05:00");
+    }
+    const creatine = seedItem(profile.id, "Creatine", {
+      timeOfDay: "morning",
+    });
+    // AGE THE ITEM BEHIND THE LIFETIME BOUND. A freshly inserted row defaults to
+    // `created_at = now`, and `pendingDayDoses` is date-resolved on the dose's lifetime
+    // (#430/#1442) — so a dose born today is owed on NO past day and every assertion
+    // below would have been green about an empty set. This fixture is not about that
+    // boundary, so it sits well behind it (the same treatment
+    // past-dose-day.actions.test.ts gives its own).
+    const born = `${shiftDateStr(anchor, -60)} 09:00:00`;
+    db.prepare(
+      `UPDATE intake_items SET created_at = ?
+        WHERE id = (SELECT item_id FROM intake_item_doses WHERE id = ?)`
+    ).run(born, creatine);
+    db.prepare(`UPDATE intake_item_doses SET created_at = ? WHERE id = ?`).run(
+      born,
+      creatine
+    );
+    return { login, profile, anchor, creatine };
+  }
+
+  it("writes BOTH halves onto the target day and audits the backfill", async () => {
+    const { profile, anchor, creatine } = seedWithHole("routine-dated", 2);
+    const target = shiftDateStr(anchor, -2);
+    const res = await logUsualRoutine(
+      fd({
+        meal_slot: "Morning",
+        groups: "berries,fermented",
+        dose_ids: String(creatine),
+        date: target,
+      })
+    );
+
+    expect(res.ok).toBe(true);
+    expect(servings(profile.id, target)).toEqual([
+      { group_key: "berries", servings: 1 },
+      { group_key: "fermented", servings: 1 },
+    ]);
+    expect(doseLogs(profile.id, target)).toEqual([
+      { dose_id: creatine, status: "taken" },
+    ]);
+    // Nothing on today, which is what a silent fallback would have produced.
+    expect(servings(profile.id, anchor)).toEqual([]);
+    expect(doseLogs(profile.id, anchor)).toEqual([]);
+
+    // ONE TAP IS ONE TAP: both ledgers carry the same stamp.
+    expect(
+      db
+        .prepare(
+          `SELECT DISTINCT logged_via FROM food_log_events
+            WHERE profile_id = ? AND date = ?`
+        )
+        .all(profile.id, target)
+    ).toEqual([{ logged_via: "usual-backfill" }]);
+    expect(
+      db
+        .prepare(
+          `SELECT DISTINCT l.logged_via FROM intake_item_logs l
+             JOIN intake_item_doses d ON d.id = l.dose_id
+             JOIN intake_items s ON s.id = d.item_id
+            WHERE s.profile_id = ? AND l.date = ?`
+        )
+        .all(profile.id, target)
+    ).toEqual([{ logged_via: "usual-backfill" }]);
+
+    // AUDITED like `logHistoricalDose`: identifiers and the affected date only.
+    expect(auditRows(profile.id)).toEqual([
+      {
+        action: AUDIT_ACTIONS.usualBackfill,
+        target: "Morning",
+        detail: target,
+      },
+    ]);
+  });
+
+  it("does NOT audit a contemporaneous tap, and stamps it with its own surface", async () => {
+    // The converse, in the same commit: auditing every usual tap would bury the
+    // retroactive ones it exists to make findable, and stamping every one
+    // `usual-backfill` would delete today's tap from the evidence for its own offer.
+    const { profile, anchor, creatine } = seedWithHole("routine-today", 14);
+    const res = await logUsualRoutine(
+      fd({
+        meal_slot: "Morning",
+        groups: "berries,fermented",
+        dose_ids: String(creatine),
+        logged_via: "dashboard-widget",
+      })
+    );
+    expect(res.ok).toBe(true);
+    expect(auditRows(profile.id)).toEqual([]);
+    expect(
+      db
+        .prepare(
+          `SELECT DISTINCT logged_via FROM food_log_events
+            WHERE profile_id = ? AND date = ?`
+        )
+        .all(profile.id, anchor)
+    ).toEqual([{ logged_via: "dashboard-widget" }]);
+  });
+
+  it("the dose half stops at ITS OWN window while the food half keeps going", async () => {
+    // The two bounds genuinely differ — food reaches six days back, a dose two — so on
+    // day four the bundle lands its servings and reports its dose as not logged. That
+    // is the composed answer's contract (#2458) doing what it was built for, and it is
+    // asserted rather than hidden because a person who taps expecting both must be told.
+    const { profile, anchor, creatine } = seedWithHole("routine-dose-edge", 4);
+    const target = shiftDateStr(anchor, -4);
+    const res = await logUsualRoutine(
+      fd({
+        meal_slot: "Morning",
+        groups: "berries,fermented",
+        dose_ids: String(creatine),
+        date: target,
+      })
+    );
+    expect(res.ok).toBe(true);
+    expect(servings(profile.id, target)).toEqual([
+      { group_key: "berries", servings: 1 },
+      { group_key: "fermented", servings: 1 },
+    ]);
+    expect(doseLogs(profile.id, target)).toEqual([]);
+    expect(res.ok && res.doses.map((d) => d.outcome)).toEqual(["stale-dose"]);
+  });
+
+  it.each([
+    ["a day past the food reach", -7],
+    ["tomorrow", 1],
+  ] as const)(
+    "refuses %s, writing neither half anywhere",
+    async (why, delta) => {
+      const { profile, anchor, creatine } = seedWithHole(
+        `routine-out${delta}`,
+        99
+      );
+      const target = shiftDateStr(anchor, delta);
+      const before = servings(profile.id, target);
+      const res = await logUsualRoutine(
+        fd({
+          meal_slot: "Morning",
+          groups: "berries,fermented",
+          dose_ids: String(creatine),
+          date: target,
+        })
+      );
+      expect(res, why).toEqual({
+        ok: false,
+        error: "That day is out of range.",
+      });
+      // The target day already carries the seeded habit on the past-day case, so the
+      // claim is that it is UNCHANGED — asserting "empty" there would be false about a
+      // correct tree, and asserting only the target day would miss a fallback landing
+      // somewhere else.
+      expect(servings(profile.id, target)).toEqual(before);
+      expect(servings(profile.id, anchor)).toEqual([]);
+      expect(doseLogs(profile.id, target)).toEqual([]);
+      expect(doseLogs(profile.id, anchor)).toEqual([]);
+      expect(auditRows(profile.id)).toEqual([]);
+    }
+  );
 });

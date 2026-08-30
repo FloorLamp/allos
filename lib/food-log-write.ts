@@ -18,7 +18,7 @@
 // spelling of it. Everything else here — catalog canonicalization, the event ledger the
 // counter rides with, meal-window derivation, the typed outcomes — is unchanged.
 
-import { db, readTx, writeTx } from "./db";
+import { db, readTx, today, writeTx } from "./db";
 import type { LoggedVia } from "./logged-via";
 import { now as clockNow, instantNow } from "./clock";
 import { foodDayCounter } from "./day-counter-ledger-db";
@@ -65,6 +65,7 @@ export interface FoodWriteOrigin {
 // happened rather than unconditionally confirming (the markDoseTaken contract, #232):
 //   logged        — a serving was recorded; `servings` is the group's new total for the day.
 //   unknown-group  — the slug isn't in the catalog (forged/stale token); nothing written.
+//   invalid-date   — the day is malformed or in the FUTURE (#4118); nothing written.
 export type FoodLogOutcome =
   | {
       kind: "logged";
@@ -75,7 +76,8 @@ export type FoodLogOutcome =
       mealSlot?: FoodSlot;
       mealServings?: number;
     }
-  | { kind: "unknown-group" };
+  | { kind: "unknown-group" }
+  | { kind: "invalid-date" };
 
 // The typed result of an undo (issue #748 item 5): a serving was removed and
 // `servings` is the group's REMAINING daily total (0 once the row is dropped), or the
@@ -194,6 +196,17 @@ export function logFoodServingCore(
   // case/punctuation variants, but downstream readers compare group_key exactly.
   const slug = canonicalFoodGroup(group);
   if (slug === null) return { kind: "unknown-group" };
+  // THE DAY BOUND LIVES HERE NOW (#4118). Until this line the 7-day nutrition picker
+  // and the `/history` door's `maxDate` were the ONLY thing between a posted `date` and
+  // this INSERT, and both are markup: a forged POST carrying `2099-01-01` passed the
+  // action's `\d{4}-\d{2}-\d{2}` shape check and landed a serving in the next century,
+  // where it would sit in every rollup and every tally for ever. Not-future is the
+  // whole rule — the `/history` door's arbitrary PAST is deliberate and passes through
+  // untouched — and it is spelled the way the food ledger's other dated core spells it
+  // (`addSubstanceDailyTotalCore`), which is the shape of `isHistoricalDoseDateAccepted`
+  // on the dose side.
+  if (!isRealIsoDate(date) || date > today(profileId))
+    return { kind: "invalid-date" };
   // A stated time wins at log time (#2269): the slot is not stored beside it, and the
   // outcome names the DERIVED window — the section the tallies will actually file the
   // serving under — so a surface can place it visibly rather than under the tab.

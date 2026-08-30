@@ -298,21 +298,55 @@ test.describe("the compact logged-event row at 430px (#3671)", () => {
 
     // DIVIDERS, NOT PER-ROW CARDS: the frame is the LIST's, the hairline is the
     // row's, and the row itself has neither a corner nor a fill of its own.
-    const listChrome = await logRow.evaluate((el) => {
-      const row = getComputedStyle(el);
-      const list = getComputedStyle(el.parentElement!);
-      return {
-        rowRadius: row.borderTopLeftRadius,
-        rowBackground: row.backgroundColor,
-        rowDivider: row.borderTopWidth,
-        listRadius: list.borderTopLeftRadius,
-        listBorder: list.borderTopWidth,
-      };
-    });
-    expect(listChrome.rowRadius).toBe("0px");
-    expect(listChrome.rowBackground).toBe("rgba(0, 0, 0, 0)");
-    expect(listChrome.listBorder).toBe("1px");
-    expect(listChrome.listRadius).not.toBe("0px");
+    //
+    // THE READ IS POLLED, AND ONLY THE READ. `getComputedStyle` on a node that is not
+    // in a rendered document answers an EMPTY declaration rather than throwing, so
+    // every field below comes back `""` — and a bare `evaluate` asserts whatever that
+    // instant returned. This list is client-rendered, so the row Playwright resolves
+    // can be mid-remount when the callback runs, and `""` is then compared against
+    // `"0px"` and reported as a wrong corner radius. Seen in CI on 2026-08-30
+    // (`e2e (4)`): `Expected: "0px" / Received: ""`, on a branch that renders nothing
+    // on this page, irreproducible in 28 local runs across two trees.
+    //
+    // Waiting for a non-empty read cannot invent a measurement: a row that genuinely
+    // carried a corner would answer with that corner, and a list that never rendered
+    // would time out with `""` and say so. So the four claims below stay exactly as
+    // they were and do NOT retry — what retries is the act of measuring.
+    type ListChrome = {
+      rowRadius: string;
+      rowBackground: string;
+      rowDivider: string;
+      listRadius: string;
+      listBorder: string;
+    };
+    let listChrome: ListChrome | null = null;
+    await expect
+      .poll(
+        async () => {
+          listChrome = await logRow.evaluate((el) => {
+            const row = getComputedStyle(el);
+            const list = getComputedStyle(el.parentElement!);
+            return {
+              rowRadius: row.borderTopLeftRadius,
+              rowBackground: row.backgroundColor,
+              rowDivider: row.borderTopWidth,
+              listRadius: list.borderTopLeftRadius,
+              listBorder: list.borderTopWidth,
+            };
+          });
+          return listChrome.rowRadius;
+        },
+        {
+          message:
+            "the row's computed style never became readable — the node stayed detached",
+        }
+      )
+      .not.toBe("");
+    const chrome = listChrome as unknown as ListChrome;
+    expect(chrome.rowRadius).toBe("0px");
+    expect(chrome.rowBackground).toBe("rgba(0, 0, 0, 0)");
+    expect(chrome.listBorder).toBe("1px");
+    expect(chrome.listRadius).not.toBe("0px");
 
     // ── THE SAME FACT ON THE RECORD, THROUGH THE SAME PRIMITIVE (#3958) ───────
     //

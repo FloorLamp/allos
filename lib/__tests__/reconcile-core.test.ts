@@ -758,23 +758,36 @@ describe("a dose keyboard lives exactly as long as the write core honors the tap
   });
 });
 
-describe("a food keyboard still dies at the day boundary", () => {
-  // Same fixture shape, opposite verdict: the food token's date is the system's GUESS at
-  // when the user ate, and the guess expires at midnight (#947).
+describe("a food keyboard now lives as long as the dose keyboard beside it (#4118)", () => {
+  // SAME FIXTURE, VERDICT CHANGED SIDES. This block used to be "a food keyboard still
+  // dies at the day boundary" — #947 read the food token's date as the system's GUESS at
+  // when the user ate, and the guess expired at midnight. #4118 overturned that: the
+  // message settles which DAY the serving belongs to (it is not a guess), and the only
+  // part that really was a guess — the eating INSTANT — is what the handler now declines
+  // to invent on a day that has ended. Closing here would delete buttons the handler
+  // honours, which is precisely the dose/food asymmetry the issue was filed about.
   const FOOD = kb([`food:7:Morning:${D}:leafy_greens`]);
 
-  it("is closed on D+1", () => {
-    expect(sweepVerdict(FOOD, shiftDateStr(D, 1))).toEqual({
-      action: "close",
-      reason: "rollover",
-    });
+  it("survives every day inside DOSE_LOG_DATE_WINDOW_DAYS, exactly as the dose does", () => {
+    for (let d = 0; d <= DOSE_LOG_DATE_WINDOW_DAYS; d++) {
+      expect(
+        sweepVerdict(FOOD, shiftDateStr(D, d)),
+        `a food nudge should still be tappable on D+${d}`
+      ).toEqual({ action: "none" });
+    }
   });
 
-  it("is untouched on D itself", () => {
-    expect(sweepVerdict(FOOD, D)).toEqual({ action: "none" });
+  it("closes the day AFTER the window runs out, and says `expired` not `rollover`", () => {
+    // The sentence changes with the reason, and it should: this message is not "from
+    // yesterday" any more, it is one whose window ran out.
+    expect(
+      sweepVerdict(FOOD, shiftDateStr(D, DOSE_LOG_DATE_WINDOW_DAYS + 1))
+    ).toEqual({ action: "close", reason: "expired" });
   });
 
-  it("the household round follows food, not the dose — its handler is exact-day", () => {
+  it("the household round did NOT follow it — its handler is still exact-day", () => {
+    // The divergence #4118 deliberately left in place: a round is a today-shaped tap on
+    // somebody else's medication, and the check-off family is not a backfill surface.
     const hh = kb([`hh:7:8:11:3:${D}`]);
     expect(sweepVerdict(hh, shiftDateStr(D, 1))).toEqual({
       action: "close",
