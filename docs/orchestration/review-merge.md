@@ -78,9 +78,9 @@ instance that bought it. Read it before writing a guard or dispatching a lens.
   COMMENT review states the reviewed SHA and reviewer — the receipt. A head
   change voids it.
 - **Run `scripts/orchestration/merge-gate.mjs <pr>` before every merge
-  call.** It checks the whole gate read-only — receipt on the current head,
-  checks green, zero unresolved threads. Exit 0 is the merge precondition;
-  run it after `ci-watch.mjs` settles.
+  call** — receipt on the current head, checks green, zero unresolved
+  threads, read-only; exit 0 is the precondition. CI recomputes the same
+  verdict as the `merge-gate` commit status on pushes, reviews, CI settling.
 - A later conflicting PR rebases only after the last earlier conflict lands.
 - Resume the author for semantic conflict resolution; do not hand-integrate
   feature code.

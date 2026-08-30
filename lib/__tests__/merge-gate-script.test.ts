@@ -97,7 +97,11 @@ function fixture(overrides: Fixture) {
   };
 }
 
-function runGate(overrides: Fixture, env: Record<string, string> = {}) {
+function runGate(
+  overrides: Fixture,
+  env: Record<string, string> = {},
+  extraArgs: readonly string[] = []
+) {
   const dir = makeTmpDir("merge-gate-script");
   const bin = path.join(dir, "bin");
   fs.mkdirSync(bin);
@@ -106,7 +110,7 @@ function runGate(overrides: Fixture, env: Record<string, string> = {}) {
   const log = path.join(dir, "calls.jsonl");
   fs.writeFileSync(state, JSON.stringify(fixture(overrides)));
   fs.writeFileSync(log, "");
-  const run = spawnSync(process.execPath, [SCRIPT, "4100"], {
+  const run = spawnSync(process.execPath, [SCRIPT, "4100", ...extraArgs], {
     cwd: REPO,
     encoding: "utf8",
     env: {
@@ -191,6 +195,30 @@ describe("merge-gate.mjs", () => {
     });
     expect(run.status).toBe(2);
     expect(run.stdout).toContain("CI INCOMPLETE");
+  });
+
+  it("--ignore-check excludes the gate's own wrapper, and only it", () => {
+    // The CI wrapper's job is a pending check run on the very head it
+    // evaluates — without self-exclusion it reads CI as incomplete forever.
+    const withSelf = {
+      checkRuns: [
+        green("lint"),
+        green("test"),
+        { name: "merge-gate", status: "in_progress" },
+      ],
+    };
+    expect(runGate(withSelf).status).toBe(2);
+    const run = runGate(withSelf, {}, ["--ignore-check", "merge-gate"]);
+    expect(run.status).toBe(0);
+    expect(run.stdout).toContain('ignoring check "merge-gate"');
+    // The exclusion is by NAME, not by status: a pending check that is not
+    // the wrapper still blocks.
+    const other = runGate(
+      { checkRuns: [green("lint"), { name: "test", status: "in_progress" }] },
+      {},
+      ["--ignore-check", "merge-gate"]
+    );
+    expect(other.status).toBe(2);
   });
 
   it("closes on an unresolved review thread, outdated or not", () => {

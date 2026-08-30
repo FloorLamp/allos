@@ -19,6 +19,13 @@
 //
 // Usage:
 //   node scripts/orchestration/merge-gate.mjs <pr-number> [--repo owner/name]
+//     [--ignore-check <name>]
+//
+// --ignore-check excludes one check run by name from step 4. It exists for
+// the CI wrapper (.github/workflows/merge-gate.yml), whose own job is a
+// pending check run on the very head it is evaluating — without excluding
+// itself it would read CI as incomplete forever. Interactive runs never need
+// it.
 //
 // Exit codes: 0 gate OPEN — this head may merge · 1 gate CLOSED (every
 //   failure listed; fix, re-review, or record the override in the thread) ·
@@ -50,6 +57,8 @@ if (!prNumber) {
 }
 const repoFlag = args.indexOf("--repo");
 const repo = repoFlag === -1 ? "FloorLamp/allos" : args[repoFlag + 1];
+const ignoreFlag = args.indexOf("--ignore-check");
+const ignoreCheck = ignoreFlag === -1 ? null : args[ignoreFlag + 1];
 
 // curl, not fetch: node's fetch ignores HTTP(S)_PROXY and the managed
 // environments route GitHub through an agent proxy (ci-watch.mjs says why).
@@ -188,15 +197,20 @@ if (standing.length)
     `standing CHANGES_REQUESTED from ${standing.map((r) => r.user.login).join(", ")}`
   );
 
-const check_runs = [];
-let total_count = 0;
+const all_runs = [];
+let fetched_count = 0;
 for (let page = 1; ; page++) {
   const batch = gh(
     `repos/${repo}/commits/${head}/check-runs?per_page=100&page=${page}`
   );
-  total_count = batch.total_count;
-  check_runs.push(...batch.check_runs);
-  if (check_runs.length >= total_count) break;
+  fetched_count = batch.total_count;
+  all_runs.push(...batch.check_runs);
+  if (all_runs.length >= fetched_count) break;
+}
+const check_runs = all_runs.filter((r) => r.name !== ignoreCheck);
+const total_count = check_runs.length;
+if (ignoreCheck && all_runs.length !== check_runs.length) {
+  console.log(`(ignoring check "${ignoreCheck}" — the gate's own wrapper)`);
 }
 const pending = check_runs.filter((r) => r.status !== "completed");
 const red = check_runs.filter(
