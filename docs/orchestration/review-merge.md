@@ -17,7 +17,6 @@
   rendering the case the ruling names.
 - A guard's existence is not its coverage. Ask which widths, states and
   roles it runs at, and say which in the review.
-- Receipts for both: incidents, "The review that checked the arithmetic".
 - A REMOVAL is checked against the issue's acceptance criteria before it is
   accepted. An unreachable export can be debris or an unfinished requirement,
   and the code cannot tell you which — only the issue can. Delete it once the
@@ -47,7 +46,7 @@
   Re-open the premise around a shared substrate, restrictive invariant, or
   direct behavior evidence; record why the replacement closes the defect class.
 - #3011 is the worked example: three passes, and passes 2 and 3 each found a
-  real defect in what the previous fix had just built (_incidents_).
+  real defect in what the previous fix had just built.
 
 ## What a lens looks for, and how verification lies
 

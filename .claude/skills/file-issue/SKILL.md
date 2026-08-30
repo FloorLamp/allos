@@ -73,7 +73,7 @@ gh api repos/FloorLamp/allos/issues/<n>/comments   # comments carry owner ruling
 
 **Read every near match WHOLE — entire body, every comment, never a slice.**
 Rulings append to body ENDS and questions arrive as comments; a live run's
-truncated read filed exactly what a same-day ruling had struck (_incidents_).
+truncated read filed exactly what a same-day ruling had struck.
 
 Re-read at draft time too, if the investigation was long — a ruling can land
 while you work. Outcomes:

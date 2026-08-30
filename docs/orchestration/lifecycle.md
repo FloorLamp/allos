@@ -36,7 +36,8 @@
 - A failed job whose steps are all green is infrastructure; inspect the steps,
   then rerun.
 - Institutionalize lessons in tooling or the relevant focused runbook file the
-  same day. Put narrative and receipts in `docs/orchestration-incidents.md`.
+  same day — those are the only durable homes. Narrative that fits neither is
+  cut, not relocated; history lives in git.
 
 ## Wind-down
 

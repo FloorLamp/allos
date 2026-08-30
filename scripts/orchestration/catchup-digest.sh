@@ -295,22 +295,7 @@ node -e '
     if(why.length) console.log(`  (excluded: ${why.join(", ")}, plus needs-human and parked)`);
   }' "$TMP"/issues.*
 
-# 5. Incidents filed inside the window — the fires half of the pulse. Headings
-#    carry dates inconsistently, so filter where a date exists and always show
-#    the last three as a floor.
-echo
-echo "--- incident headings (docs/orchestration-incidents.md) ---"
-SINCE_DAY=${SINCE%%T*}
-grep '^## ' "$REPO_DIR/docs/orchestration-incidents.md" | SINCE_DAY="$SINCE_DAY" node -e '
-  let d="";process.stdin.on("data",c=>d+=c).on("end",()=>{
-    const lines=d.trim().split("\n"), since=process.env.SINCE_DAY;
-    const dated=lines.filter(l=>{const m=l.match(/\d{4}-\d{2}-\d{2}/);return m&&m[0]>=since;});
-    const show=dated.length?dated:lines.slice(-3);
-    if(!dated.length) console.log(`  (none dated >= ${since}; last three for context)`);
-    for(const l of show) console.log("  "+l.replace(/^## /,""));
-  });'
-
-# 6. Advance the anchor only on a full, non-peek run: a --peek or --since read
+# 5. Advance the anchor only on a full, non-peek run: a --peek or --since read
 #    must not move what "since last catch-up" means for the next one.
 echo
 if [ "$PEEK" = 1 ]; then

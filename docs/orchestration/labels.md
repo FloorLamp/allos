@@ -13,7 +13,7 @@ Two axes are load-bearing; `reconcile-tracker` flags violations of both
 - **The taxonomy is CLOSED; its canon is `KNOWN_LABELS`** in
   `scripts/orchestration/reconcile-tracker-core.ts`. Verify labels against the
   constant, never the live list — the add-labels endpoint silently mints
-  unknown labels, so the live list validates past mistakes (_incidents_).
+  unknown labels, so the live list validates past mistakes.
 - A missing concept is an owner decision, never a new label. Ruled 2026-08-30:
   `testing`/`a11y` promoted as type color, `dashboard` as a domain, a size
   axis DECLINED (the dispatch ledger already measures real durations).

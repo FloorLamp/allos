@@ -14,8 +14,6 @@ import { describe, expect, it } from "vitest";
 // exist, and every qualified `§` anchor must resolve to a real heading.
 //
 // Deliberately OUT of reach, so the gap is named rather than discovered:
-// - `docs/orchestration-incidents.md` — historical narrative; a path that no
-//   longer exists can be exactly the point of the story.
 // - Issue/PR numbers (`#NNNN`) — verifying them needs the network, and this
 //   scan runs offline in CI.
 // - Bare basenames (`reconcile-tracker-core.ts`) and dir mentions (`lib/`) —
@@ -163,11 +161,10 @@ describe("runbook citation scan", () => {
     ).toEqual([]);
   });
 
-  it("scans the whole runbook surface and skips incidents by name", () => {
+  it("scans the whole runbook surface", () => {
     expect(files).toContain("docs/orchestration/review-merge.md");
     expect(files).toContain(".claude/skills/orchestrate/SKILL.md");
     expect(files).toContain("scripts/orchestration/merge-gate.mjs");
-    expect(files).not.toContain("docs/orchestration-incidents.md");
   });
 
   it("keeps the deliberate-refs allowlist honest in both directions", () => {

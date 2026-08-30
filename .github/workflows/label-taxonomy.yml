@@ -7,8 +7,8 @@ name: label-taxonomy
 # WHY THIS EXISTS: GitHub's add-labels endpoint silently CREATES any label it
 # does not recognise, so one filing with a synonym or typo (`deps`, `testing`,
 # `infrastructure`) mints a real repo label — and the live list then validates
-# the next filer's mistake. 16 such strays had accumulated by 2026-08-30
-# (docs/orchestration-incidents.md). Prose told every filer not to invent
+# the next filer's mistake. 16 such strays had accumulated by 2026-08-30.
+# Prose told every filer not to invent
 # labels and the strays arrived anyway, so the rule moved into tooling.
 #
 # TO ADD A LABEL: extend `KNOWN_LABELS` first and merge — the live list

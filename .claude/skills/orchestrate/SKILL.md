@@ -37,7 +37,7 @@ branches, GitHub writes, or scheduled wakes, triggers, and reminders.
 
 Name each deferred arming as a "first live action" instead of performing it.
 A LIVE session arms its durable wake at check-in (`lifecycle.md`); a dry one
-only says it would — a dry run once armed a real wake trigger (_incidents_).
+only says it would — a dry run once armed a real wake trigger.
 
 ## 0. Check in — first action, every wake
 
@@ -197,9 +197,9 @@ or dependency-bound" — reach it and say so, with the list.
   `dependabot-eval-brief.mjs` within a day (verdicts land as
   `recommend-adopt` / `recommend-hold` + `parked`).
 - Institutionalize lessons THE SAME DAY: encode in tooling or the focused
-  runbook file; narrative and receipts go to
-  `docs/orchestration-incidents.md`. A lesson that lives only in the session
-  transcript dies with the container.
+  runbook file — the only durable homes. A lesson that lives only in the
+  session transcript dies with the container; narrative that fits neither
+  home is cut, not archived.
 
 ## Wind-down
 

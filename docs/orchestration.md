@@ -11,7 +11,6 @@ This is the entrypoint. Read only the procedure needed for the current job:
 - [E2E and CI](orchestration/e2e-ci.md)
 - [Review and merge](orchestration/review-merge.md)
 - [Cadence and lifecycle](orchestration/lifecycle.md)
-- [Incident history](orchestration-incidents.md)
 
 ## Standing contract
 
@@ -63,5 +62,5 @@ scripts/orchestrator-checkin.sh
 6. Run `dispatch-brief.mjs done <branch>`, confirm issue closure, and update
    release notes when appropriate.
 
-Rules stay concise here. The receipts that justify them belong in
-`docs/orchestration-incidents.md`.
+Rules stay concise here. The rule or the tooling carries its own lesson;
+the history that justified it lives in git.

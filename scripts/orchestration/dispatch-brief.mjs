@@ -1683,7 +1683,7 @@ export function idleMsFrom({ worktreeIdleMs: wt, branchIdleMs: br }) {
 
 // A dispatch with NO worktree and NO branch has left no trace at all, and that is
 // the shape of the one stall this runbook has actually measured: the 12.9-hour
-// "denied-and-idle" agent of 2026-08-10 (docs/orchestration-incidents.md) had its
+// "denied-and-idle" agent of 2026-08-10 had its
 // first `git worktree add` refused by the permission system, correctly did not
 // retry, and sat — four tool calls, no worktree, thirteen hours, "visible from
 // minute five, if anyone had looked".

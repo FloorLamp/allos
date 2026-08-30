@@ -34,5 +34,3 @@
   completion median.
 - Check that the worktree exists and that its current commit is pushed.
 - Ask for the exact refusal or blocker. Do not infer progress from liveness.
-
-See `docs/orchestration-incidents.md` for recovery receipts and history.

@@ -63,7 +63,7 @@ For each item, before any question reaches the owner:
 - **Read the WHOLE body and EVERY comment, freshly, now** — never a slice or
   a cached read. Rulings append to body ENDS and questions arrive as
   comments, so truncation drops the most binding text; a live run missed a
-  same-morning ruling and asked a question contradicting it (_incidents_).
+  same-morning ruling and asked a question contradicting it.
 - Re-read immediately before ASKING, not once at sweep start — a ruling can
   land mid-sweep.
 - **Find the specific question(s).** The label contract requires them
@@ -150,7 +150,7 @@ curl -sS -X PATCH -H "Authorization: Bearer $TOKEN" \
 
 **VERIFY BY RE-READING THE ITEM, NEVER THE LIST.** The label-filtered list
 serves stale after a successful delete — three removals once returned `200`
-and the list still showed all three (_incidents_). `GET issues/N` per item.
+and the list still showed all three. `GET issues/N` per item.
 
 Partially answered → body updated with what was ruled; label and assignment
 stay; remaining questions enumerated so the next sweep asks only those.

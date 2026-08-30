@@ -3,12 +3,13 @@ import path from "node:path";
 import { describe, expect, it } from "vitest";
 
 // The runbook is rules only, short bullets, no prose (owner, 2026-08-13).
-// Narratives and receipts belong in docs/orchestration-incidents.md — the
-// runbook cites them as `_incidents: §section_`. This scan is the CI tooth:
-// runbook rules had regrown into inline war stories (one bullet reached 18
-// lines) within days of each trim, because every incident wants to be
-// institutionalized where the rule lives. The receipts file is exempt — it is
-// WHERE the prose goes, and capping it would just push narratives back here.
+// This scan is the CI tooth: runbook rules had regrown into inline war
+// stories (one bullet reached 18 lines) within days of each trim, because
+// every incident wants to be institutionalized where the rule lives. The
+// narrative half went first to a receipts file (docs/orchestration-incidents),
+// then the owner killed that too (2026-08-30): a lesson is encoded in tooling
+// or a runbook rule, and the story behind it lives in git history, nowhere in
+// the tree.
 //
 // Shape enforced, in lines AT WRAP_COLUMNS — a line's own length decides how many
 // it counts for, so the measure survives a file nothing rewraps:
@@ -143,7 +144,7 @@ const FILE_BUDGETS = {
  * The skills and the PR template joined the guard on 2026-08-30, first at
  * FILE-budget granularity and, since the same-day reshape pass, under the
  * full block shape too — every skill bullet and paragraph now fits the
- * short-instruction form, with war-story detail cited to incidents. They are
+ * short-instruction form, with war-story detail cut. They are
  * `prose` genre (explanatory one-pagers), and their budgets are snapshots of
  * the reshaped size plus small headroom: shrink work moves detail out, never
  * raises the number.
@@ -320,8 +321,8 @@ describe("runbook brevity", () => {
       expect(
         fileLines(source),
         `${relativePath} has ${fileLines(source)} lines (budget ` +
-          `${budget.lines}). Move detail to a document the file cites (or ` +
-          `incidents) instead of raising the budget.`
+          `${budget.lines}). Move detail to a document the file cites ` +
+          `instead of raising the budget.`
       ).toBeLessThanOrEqual(budget.lines);
 
       const violations = brevityViolations(

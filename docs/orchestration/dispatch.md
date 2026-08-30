@@ -29,7 +29,7 @@ closed taxonomy, and `needs-human` handling.
 - **Self-filed work joins the BACK of its queue.** An issue you or a lane
   filed defaults to P3, sourced OLDEST FIRST only when no owner-filed work of
   equal or higher priority is ready. Sole exception: a DEMONSTRATED P0/P1
-  regression a merge just introduced (_incidents_).
+  regression a merge just introduced.
 - Lanes never file issues. Findings ride the return summary; the orchestrator
   decides what becomes an issue — a filed observation displaces real work.
 - An urgent P0/P1 displaces the current candidate through `promote`; run only
@@ -74,7 +74,7 @@ closed taxonomy, and `needs-human` handling.
 
 - Every entry script answers `-h`/`--help` with its own header and exits
   before any side effect (`script-help.test.ts` pins it) — probing an
-  unfamiliar script is always safe (_incidents_).
+  unfamiliar script is always safe.
 - `dispatch-brief.mjs`: manage dispatches, the sole landing candidate, and
   validated priority/lane state; deliver every emitted role update. `list`
   flags 3x-median idleness or a dispatch with no worktree and no branch.
