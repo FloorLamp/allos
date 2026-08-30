@@ -1,6 +1,6 @@
 import { requireSession } from "@/lib/auth";
-import Link from "next/link";
 import { today } from "@/lib/db";
+import DestinationLink from "@/components/DestinationLink";
 import PageContainer from "@/components/PageContainer";
 import { PageHeader, EmptyState } from "@/components/ui";
 import LineChartCard from "@/components/LineChartCard";
@@ -342,9 +342,12 @@ export default async function CyclePage() {
         ) : (
           <>
             <CycleHistory periods={recentPeriods} />
-            <Link href="/history?kind=cycle" className="text-link text-sm">
-              Full history ›
-            </Link>
+            <DestinationLink
+              href="/history?kind=cycle"
+              className="text-link text-sm"
+            >
+              Full history
+            </DestinationLink>
           </>
         )}
       </section>
