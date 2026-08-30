@@ -192,6 +192,8 @@ test("a Bristol tap queues offline and syncs exactly once (#3166)", async ({
   const date = dateStrInTz(TZ, frozenNow());
   await page.goto("/?quick=log-stool");
   const picker = page.getByTestId("quick-entry-stool");
+  const awaitHydrated = (await import("./helpers")).awaitHydrated;
+  await awaitHydrated(picker.getByTestId("stool-type-6"));
 
   await context.setOffline(true);
   await picker.getByTestId("stool-type-6").click();
