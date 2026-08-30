@@ -722,61 +722,6 @@ describe("a re-anchored COMPLETED day still corrects the row it overlaps", () =>
     expect(second.split.superseded).toBe(1);
     expect(stored(p, "steps").map((r) => r.value)).toEqual([3500]);
   });
-
-  it("and a push that states NO stamp deletes nothing, rather than dropping a row", () => {
-    // The stampless path, which is what the fallback was invented to serve. It now
-    // supersedes nothing — so the day reads HIGH, visibly, instead of a reading going
-    // missing.
-    //
-    // NO MUTATION REDS THIS CASE, and saying so is more use than the claim that used to
-    // stand here ("let a stampless push supersede and one of the two rows disappears").
-    // Three were run: removing the `pushedAt === null` guard from
-    // `supersedeMetricSampleOverlaps` is a NO-OP (`pushed_at = NULL` matches no row, so
-    // the stamped set is empty either way) — 6624 db tests green; the window-derived
-    // FALLBACK leaves it green too, because the correcting push's latest end is EARLIER
-    // than the stored row's, so the fallback stamp fails to outrank and the delete does
-    // not happen — the case passes for the wrong reason; the window-derived PRIMARY reds
-    // 9 tests but not this one, for the same reason. What holds the stampless rule is the
-    // pair below — "leaves the converged row alone when a stale record rides in beside a
-    // later one" and "says NOTHING for a push that stamped nothing" — both of which red
-    // under either window-derived shape. This case is the readable statement of the
-    // designed outcome, not the guard.
-    const p = freshProfile("NO-STAMP-KEEPS-BOTH");
-    const body = (start: string, end: string, count: number) => ({
-      steps: [
-        {
-          start_time: start,
-          end_time: end,
-          count,
-          metadata: { data_origin: ORIGIN },
-        },
-      ],
-    });
-    guarded(p, () =>
-      ingestHealthConnectPayload(
-        p,
-        parseHealthConnectPayload(
-          body("2026-05-01T04:00:00Z", "2026-05-01T23:00:00Z", 3000),
-          "UTC"
-        )
-      )
-    );
-    const second = guarded(p, () =>
-      ingestHealthConnectPayload(
-        p,
-        parseHealthConnectPayload(
-          body("2026-05-01T10:00:00Z", "2026-05-01T22:00:00Z", 3500),
-          "UTC"
-        )
-      )
-    );
-    expect(second.split.superseded).toBe(0);
-    expect(
-      stored(p, "steps")
-        .map((r) => r.value)
-        .sort()
-    ).toEqual([3000, 3500]);
-  });
 });
 
 describe("a STAMPLESS push can never delete, however its rows are bundled", () => {
