@@ -32,7 +32,9 @@ import {
 } from "@/lib/portals";
 import {
   deliveredDocumentCountsByAccount,
+  listVisiblePortalRunHistory,
   listVisiblePortalRunReports,
+  portalRunOutcome,
 } from "@/lib/portal-visibility";
 import { portalLoginStatus } from "@/lib/portal-status";
 import {
@@ -503,4 +505,37 @@ describe("the bounded delivery read keeps the profile-local day (#3944)", () => 
       ).toEqual({ count, day });
     }
   );
+});
+
+it("keeps each visible login's quiet, failed, and delivered runs newest first", () => {
+  const identity = {
+    portalId: accountOne.portalId,
+    accountId: accountOne.id,
+    patientLabel: "One Patient",
+  };
+  const quiet = recordSyncEvent(profileOne, SOURCE, { ok: true, identity })!;
+  const failed = recordSyncEvent(profileOne, SOURCE, {
+    ok: false,
+    error: "session expired",
+    identity,
+  })!;
+  const stamp = db.prepare(
+    "UPDATE integration_sync_events SET at = ? WHERE id = ?"
+  );
+  stamp.run("2026-08-17T09:00:00Z", quiet);
+  stamp.run("2026-08-18T09:00:00Z", failed);
+
+  const history = listVisiblePortalRunHistory(authorized([profileOne]), false);
+  expect(history.some((run) => run.accountId === accountTwo.id)).toBe(false);
+  expect(
+    history
+      .filter((run) => run.accountId === accountOne.id)
+      .slice(0, 4)
+      .map((run) => [run.at, portalRunOutcome(run)])
+  ).toEqual([
+    ["2026-08-18T09:00:00Z", "Failed — session expired"],
+    ["2026-08-17T09:00:00Z", "Nothing new"],
+    ["2026-08-15T19:36:24Z", "Delivered 1 document"],
+    ["2026-08-15T19:36:20Z", "Delivered 3 documents"],
+  ]);
 });

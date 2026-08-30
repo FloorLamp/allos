@@ -139,6 +139,44 @@ export function listVisiblePortalRunReports(
   }));
 }
 
+export interface PortalRunHistoryItem {
+  id: number;
+  accountId: number;
+  at: string;
+  ok: boolean;
+  error: string | null;
+  deliveredDocuments: number;
+}
+
+export function portalRunOutcome(run: PortalRunHistoryItem): string {
+  if (!run.ok) return run.error ? `Failed — ${run.error}` : "Failed";
+  if (run.deliveredDocuments === 0) return "Nothing new";
+  return `Delivered ${run.deliveredDocuments} ${run.deliveredDocuments === 1 ? "document" : "documents"}`;
+}
+
+export function listVisiblePortalRunHistory(
+  accessibleProfileIds: AuthorizedProfileIds,
+  canSeeUnclaimed: boolean
+): PortalRunHistoryItem[] {
+  const ids = accessibleProfileIds;
+  const rows = db
+    .prepare(
+      `SELECT e.id, e.account_id AS accountId, e.at, e.ok, e.error,
+              COUNT(CASE WHEN r.target_table = 'medical_documents' THEN 1 END)
+                AS deliveredDocuments
+         FROM integration_sync_events e
+         LEFT JOIN integration_sync_rows r ON r.event_id = e.id
+        WHERE e.source_id = 'patient-portals' AND e.account_id IS NOT NULL
+          AND ${reachableAccountSql(ids, "e.account_id")}
+        GROUP BY e.id
+        ORDER BY e.at DESC, e.id DESC`
+    )
+    .all(...ids, canSeeUnclaimed ? 1 : 0) as Array<
+    Omit<PortalRunHistoryItem, "ok"> & { ok: number }
+  >;
+  return rows.map((run) => ({ ...run, ok: run.ok === 1 }));
+}
+
 // ── WHAT A LOGIN DELIVERED, AND WHEN (#2914) ─────────────────────────────────
 //
 // The login row says "Delivered N documents <day>" for a delivery-only report, and this
