@@ -151,6 +151,7 @@ export interface FoldSite {
  * happens to comply proves nothing about what the sweep can SEE (the #3206 lesson).
  */
 export function foldSites(file: string, source: string): FoldSite[] {
+  if (!/(?:lower|upper)\s*\(|collate\s+nocase/i.test(source)) return [];
   const found: FoldSite[] = [];
   for (const literal of literals(source)) {
     for (const m of literal.matchAll(SQL_FOLD_CALL)) {

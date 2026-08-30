@@ -106,7 +106,10 @@ function sources(root: string, sub: string): SourceFile[] {
 // only the candidates that need a code-only projection; eagerly scanning `lib/`
 // walked generated migrations and datasets that cannot name a web surface.
 function codeOf(file: SourceFile): string {
-  return (file.code ??= stripComments(file.src));
+  return (file.code ??=
+    file.src.includes("//") || file.src.includes("/*")
+      ? stripComments(file.src)
+      : file.src);
 }
 
 /** Every exported action in `app/` that READS a posted surface. */

@@ -92,7 +92,7 @@ export default function QuickLogPrnContent({
       <QuickLogPrnControl
         key={m.id}
         itemId={m.id}
-        name={m.name}
+        name={m.displayName ?? m.name}
         doseAmount={m.amount}
         product={m.product}
         dayLabel={
@@ -102,7 +102,7 @@ export default function QuickLogPrnContent({
         }
         redoseLine={redoseLine}
         redosePrimary={redoseActionIsPrimary(redoseStatus)}
-        linkToDetail
+        linkToDetail={m.kind === "medication"}
         profileId={profileId}
         rowVariant={rowVariant}
         compactActions={compact}

@@ -609,18 +609,15 @@ describe("the hand-rolled comment strippers still in the tree (#3595)", () => {
    * so it cannot grow. Delete a line when its file starts importing this module.
    */
   const HAND_ROLLED_TODAY = [
-    "lib/__tests__/actions-write-access.test.ts",
     "lib/__tests__/bio-age-inputs-card-scan.test.ts",
     "lib/__tests__/card-mode-boundary.test.ts",
     "lib/__tests__/chrome-refresh-scan.test.ts",
-    "lib/__tests__/cycle-offer-renderers.test.ts",
     "lib/__tests__/date-locale-guard.test.ts",
     "lib/__tests__/db-template-key.test.ts",
     "lib/__tests__/disclaimers.test.ts",
     "lib/__tests__/e2e-hygiene.test.ts",
     "lib/__tests__/fasting-standdown.test.ts",
     "lib/__tests__/fiber-symptom-panel.test.ts",
-    "lib/__tests__/flag-notability.test.ts",
     "lib/__tests__/food-habit-observation.test.ts",
     "lib/__tests__/food-limit-note.test.ts",
     "lib/__tests__/goal-liveness.test.ts",
@@ -631,9 +628,7 @@ describe("the hand-rolled comment strippers still in the tree (#3595)", () => {
     "lib/__tests__/migration-historical-fixture-scan.test.ts",
     "lib/__tests__/mobile-density-convention.test.ts",
     "lib/__tests__/notes-text.test.ts",
-    "lib/__tests__/observation-substrate.test.ts",
     "lib/__tests__/offline-queue.test.ts",
-    "lib/__tests__/protocol-offer-renderers.test.ts",
     "lib/__tests__/reconcile-registry.test.ts",
     "lib/__tests__/settings-groups.test.ts",
     "lib/__tests__/sql-clock-seam.test.ts",

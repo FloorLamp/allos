@@ -198,6 +198,16 @@ function resolveFile(rel: string): string | null {
 
 type SourceFile = { file: string; src: string };
 
+const sourceTexts = new Map<string, string>();
+function sourceText(file: string): string {
+  let src = sourceTexts.get(file);
+  if (src === undefined) {
+    src = fs.readFileSync(path.join(REPO, file), "utf8");
+    sourceTexts.set(file, src);
+  }
+  return src;
+}
+
 /** Reaches out of the trigger set, as `file → specifier`. */
 function uncoveredIn(files: Iterable<SourceFile>, set: TriggerSet): string[] {
   const out: string[] = [];
@@ -224,7 +234,7 @@ function tierClosure(): string[] {
     const file = queue.pop()!;
     if (seen.has(file)) continue;
     seen.add(file);
-    const src = fs.readFileSync(path.join(REPO, file), "utf8");
+    const src = sourceText(file);
     for (const spec of importSpecifiers(src)) {
       const rel = resolveSpecifier(file, spec);
       if (!rel) continue;
@@ -238,8 +248,7 @@ function tierClosure(): string[] {
 
 /** The closure with its text, read one file at a time rather than all at once. */
 function* tierSources(): Generator<SourceFile> {
-  for (const file of tierClosure())
-    yield { file, src: fs.readFileSync(path.join(REPO, file), "utf8") };
+  for (const file of tierClosure()) yield { file, src: sourceText(file) };
 }
 
 describe("the test:db gate's trigger set", () => {
@@ -328,9 +337,7 @@ describe("the test:db gate's trigger set", () => {
     // reachable ONLY through a chain, so dropping transitivity would lose it.
     const directlyImported = new Set<string>();
     for (const seed of seeds)
-      for (const spec of importSpecifiers(
-        fs.readFileSync(path.join(REPO, seed), "utf8")
-      )) {
+      for (const spec of importSpecifiers(sourceText(seed))) {
         const rel = resolveSpecifier(seed, spec);
         const resolved = rel && resolveFile(rel);
         if (resolved) directlyImported.add(resolved);

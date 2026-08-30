@@ -88,6 +88,41 @@ function cervicalActionable(p: number, now: string): boolean {
 }
 
 describe("the owner-reported Pap scenario (#3025)", () => {
+  it("offers an import-only Pap on the calm setup row (#3113)", () => {
+    const p = femaleProfile("Pap Setup Offer");
+    const now = today(p);
+    const papDate = shiftDateStr(now, -PAP_DAYS_AGO);
+    const papId = Number(
+      db
+        .prepare(
+          `INSERT INTO medical_records
+             (profile_id, date, category, name, value, loinc)
+           VALUES (?, ?, 'report', ?, NULL, '33717-0')`
+        )
+        .run(p, papDate, PAP_NAME).lastInsertRowid
+    );
+
+    const items = collectUpcoming(p, now);
+    const cervical = items.find((item) => item.key === SIGNAL);
+    expect(cervical?.signalGroup).toBe("setup");
+    expect(cervical?.band).toBe("later");
+    expect(cervical?.dueText).toBe("No record yet");
+    expect(cervical?.preventiveReview).toEqual([
+      {
+        recordId: papId,
+        ruleKey: RULE,
+        recordName: PAP_NAME,
+        recordDate: papDate,
+      },
+    ]);
+
+    const bloodPressure = items.find(
+      (item) => item.key === "screening:blood_pressure"
+    );
+    expect(bloodPressure?.signalGroup).toBe("setup");
+    expect(bloodPressure?.preventiveReview).toBeUndefined();
+  });
+
   it("the valueless Pap report emits ONE candidate and leaves the item actionable", () => {
     const { p, now, papDate, papId } = screenedProfile("Pap Offer");
 
