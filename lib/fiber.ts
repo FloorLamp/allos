@@ -8,8 +8,8 @@
 //
 // Intake composition (fiberIntake):
 //   - `tracked`      — an integration's fiber_g daily total (Health Connect
-//                      dietary_fiber_grams → fiber_g). A measured FULL-DAY total that
-//                      already includes any supplements taken, so it OVERRIDES the sum.
+//                      dietary_fiber_grams → fiber_g). On today this can be a running
+//                      partial, because integrations write one sample per meal.
 //   - `estimated`    — servings × per-serving fiber_g from the food-group catalog (the
 //                      #976 fiber_g column, reused through estimatedFiberGrams). A FLOOR
 //                      by construction — incidental fiber from untracked foods is
@@ -22,11 +22,12 @@
 //                      contributes 0 g and sets `unknownSupplement`, and the surface notes
 //                      "fiber supplement taken (grams unknown)" rather than fabricating a
 //                      figure.
-// When there's no tracked reading, `estimated` and `supplemented` SUM. The sum is still a
-// FLOOR (untracked foods stay invisible), so every non-tracked surface's copy says so.
+// `estimated` and `supplemented` SUM, then the intake takes the larger of that in-app
+// floor and `tracked`. The max is still a FLOOR and connecting an integration can never
+// lower the figure or hide the app's own components (#4127).
 // The `basis` names the composition, extending the #824 `combined` precedent:
-//   `combined` (both parts) / `estimated` (foods only) / `supplemented` (doses only) /
-//   `tracked` (a measured total).
+//   `both-sources` (integration + in-app ledger) / `combined` (both in-app parts) /
+//   `estimated` (foods only) / `supplemented` (doses only) / `tracked` (integration only).
 //
 // Target (fiberTarget): the DRI Adequate Intake bands (IOM 2005) by age + sex — a flat
 // g/day figure, NOT mass-scaled (fiber's DRI isn't). The 14 g/1000 kcal basis exists but
@@ -37,16 +38,17 @@ import type { Sex } from "./types";
 import { foodGroupBySlug } from "./food-groups";
 import { parseQuantity } from "./dri";
 
-// ---- Intake: tracked OVERRIDES (estimated + supplemented) ------------------
+// ---- Intake: max(tracked, estimated + supplemented) ------------------------
 
-export type FiberBasis = "tracked" | "combined" | "estimated" | "supplemented";
+export type FiberBasis =
+  "tracked" | "both-sources" | "combined" | "estimated" | "supplemented";
 
 export interface FiberIntake {
   // Per-day grams. For every non-`tracked` basis this is a FLOOR (see module header).
   grams: number;
   basis: FiberBasis;
-  // The two floor components that add to `grams` for a non-`tracked` basis (both 0 for a
-  // `tracked` basis, whose measured total overrides the sum).
+  // The app's own components. Under `both-sources` they remain visible even when the
+  // integration's reading is the larger floor, so they need not add to `grams`.
   estimatedGrams: number;
   supplementedGrams: number;
   // True when a CONFIRMED fiber supplement dose was taken but its grams couldn't be
@@ -141,9 +143,9 @@ export function fiberDoseGrams(amount: string | null): FiberDoseGrams {
   return { grams: 0, known: false };
 }
 
-// Compose the intake (issue #976): a measured `tracked` reading OVERRIDES; otherwise the
-// estimated food-group floor and the supplemented dose grams SUM. Each input is an
-// already-per-day figure the gather computed (an average over the days that carry it).
+// Compose the intake (issues #976, #4127): estimated food and supplemented dose grams
+// SUM, then a tracked reading is compared with that sum as the larger floor. Each input
+// is an already-per-day figure the gather computed (an average over the days carrying it).
 // Returns null when no basis has any signal AND no unknown-grams fiber supplement was
 // taken — a lone unknown-unit dose still surfaces (grams 0) so the honest note renders.
 export function fiberIntake(args: {
@@ -153,22 +155,23 @@ export function fiberIntake(args: {
   unknownSupplement?: boolean;
 }): FiberIntake | null {
   const unknownSupplement = !!args.unknownSupplement;
-  if (args.dailyTracked != null && args.dailyTracked > 0)
-    return {
-      grams: args.dailyTracked,
-      basis: "tracked",
-      estimatedGrams: 0,
-      supplementedGrams: 0,
-      // A measured total already includes what was taken — the unknown-grams caveat is
-      // moot on a tracked basis.
-      unknownSupplement: false,
-    };
+  const tracked =
+    args.dailyTracked != null && args.dailyTracked > 0 ? args.dailyTracked : 0;
   const estimated = args.dailyEstimated > 0 ? args.dailyEstimated : 0;
   const supplemented =
     args.dailySupplemented != null && args.dailySupplemented > 0
       ? args.dailySupplemented
       : 0;
-  const grams = estimated + supplemented;
+  const inApp = estimated + supplemented;
+  if (tracked > 0)
+    return {
+      grams: Math.max(tracked, inApp),
+      basis: inApp > 0 || unknownSupplement ? "both-sources" : "tracked",
+      estimatedGrams: estimated,
+      supplementedGrams: supplemented,
+      unknownSupplement,
+    };
+  const grams = inApp;
   if (grams <= 0 && !unknownSupplement) return null;
   const basis: FiberBasis =
     estimated > 0 && supplemented > 0
@@ -336,6 +339,8 @@ export function fiberIntakeSummary(intake: FiberIntake): string {
   switch (intake.basis) {
     case "tracked":
       return `~${g(intake.grams)} g/day from your tracked intake`;
+    case "both-sources":
+      return `≈${g(intake.grams)} g/day — the larger of your food and supplement logs and your health app (${FLOOR_CAVEAT})${unknown}`;
     case "combined":
       return `≈${g(intake.grams)} g/day — ${g(intake.estimatedGrams)} g estimated from foods + ${g(intake.supplementedGrams)} g from supplements (${FLOOR_CAVEAT})${unknown}`;
     case "supplemented":
