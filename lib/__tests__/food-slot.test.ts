@@ -3,6 +3,8 @@ import {
   foodSlotBoundaries,
   deriveFoodSlot,
   foodSlotForHhmm,
+  foodSlotWindow,
+  FOOD_SLOTS,
   DEFAULT_MIDDAY_BOUNDARY_MIN,
   DEFAULT_EVENING_BOUNDARY_MIN,
 } from "@/lib/food-slot";
@@ -138,3 +140,73 @@ function foodSlotForHhmmInZone(
   const { hhmm } = zonedDateParts(tz, new Date(iso));
   return foodSlotForHhmm(hhmm, b);
 }
+
+// ── THE SPAN A WINDOW OWNS (#3265) ───────────────────────────────────────────
+//
+// `foodSlotWindow` is `deriveFoodSlot` turned round: instead of "which window holds this
+// minute", it answers "which minutes does this window hold". The dashboard needs the
+// second form to say how long a food-anchored offer STANDS, and the two must be the same
+// three splits or the offer's own window and its placement window disagree — which is the
+// defect: the composed usual-routine one-tap borrowed the meal-REMINDER windows (each
+// intake anchor +/- 60 min, last close 21:00) while the offer itself is
+// `currentFoodSlot`-anchored and Evening runs to midnight.
+describe("foodSlotWindow", () => {
+  const fallback = foodSlotBoundaries({
+    morning: null,
+    midday: null,
+    evening: null,
+  });
+  // 14:00 / 18:00 / 21:00 -> midpoints 16:00 and 19:30.
+  const shifted = foodSlotBoundaries({
+    morning: 14 * 60,
+    midday: 18 * 60,
+    evening: 21 * 60,
+  });
+  // The one degenerate span, declared rather than discovered: a midnight morning slot
+  // puts the midday boundary on minute 0, so Morning holds nothing. That is the same
+  // configuration in which `deriveFoodSlot` can never answer Morning, since no minute is
+  // below zero — an empty span is the honest answer, not a hole.
+  const midnight = foodSlotBoundaries({ morning: 0, midday: 0, evening: 60 });
+
+  // `endsBefore` is EXCLUSIVE, so Evening's 1440 means its last minute is 23:59.
+  it.each([
+    ["fallback", fallback, "Morning", 0, 660],
+    ["fallback", fallback, "Midday", 660, 900],
+    ["fallback", fallback, "Evening", 900, 1440],
+    ["shifted", shifted, "Morning", 0, 960],
+    ["shifted", shifted, "Midday", 960, 1170],
+    ["shifted", shifted, "Evening", 1170, 1440],
+    ["midnight-morning", midnight, "Morning", 0, 0],
+  ] as const)(
+    "%s boundaries give %s [%d, %d)",
+    (_label, b, slot, opensAt, endsBefore) => {
+      expect(foodSlotWindow(slot, b)).toEqual({ opensAt, endsBefore });
+    }
+  );
+
+  // The property that matters is not any single boundary but ROUND-TRIPPING: every minute
+  // of the local day belongs to exactly one window, and it is the window `deriveFoodSlot`
+  // puts it in. That is what stops the two forms from ever drifting apart.
+  it.each([
+    ["fallback", fallback],
+    ["shifted", shifted],
+    ["midnight-morning", midnight],
+  ] as const)("partitions the local day under %s boundaries", (_label, b) => {
+    for (let minute = 0; minute < 1440; minute++) {
+      const holders = FOOD_SLOTS.filter((s) => {
+        const w = foodSlotWindow(s, b);
+        return minute >= w.opensAt && minute < w.endsBefore;
+      });
+      expect(holders, `minute ${minute}`).toEqual([deriveFoodSlot(minute, b)]);
+    }
+  });
+
+  // 21:00 is the whole point: the meal-reminder windows have closed for the day and the
+  // Evening food window still has three hours to run.
+  it("still holds 22:30 in Evening, past every meal window's close", () => {
+    expect(deriveFoodSlot(22 * 60 + 30, fallback)).toBe("Evening");
+    expect(foodSlotWindow("Evening", fallback).endsBefore).toBeGreaterThan(
+      23 * 60 + 59
+    );
+  });
+});

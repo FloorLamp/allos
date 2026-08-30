@@ -120,6 +120,12 @@ const HOVER_UNDERLINE = /(?<![\w:-])hover:underline(?![\w-])/;
 export function findHandRolledTextLinks(sources: Source[]): Finding[] {
   const found: Finding[] = [];
   for (const { file, source } of sources) {
+    if (
+      !source.includes("text-brand-600") ||
+      !source.includes("hover:underline")
+    ) {
+      continue;
+    }
     for (const { line, text } of stringLiterals(source)) {
       if (!STATIC_BRAND_TONE.test(text)) continue;
       if (!HOVER_UNDERLINE.test(text)) continue;

@@ -88,18 +88,21 @@ describe("buildProteinAdequacyFindings (#767)", () => {
     expect(rolled).toContain(f.dedupeKey);
   });
 
-  it("overrides to a TRACKED basis when an integration protein_g is present", () => {
+  it("names BOTH sources when an integration protein_g joins in-app logging (#3903)", () => {
     const p = newProfile("protein-tracked");
     const anchor = today(p);
     seedWeight(p, anchor, 80);
     // Same modest logged servings (would estimate ~51)…
     logFood(p, anchor, "poultry", 1);
     logFood(p, anchor, "eggs", 1);
-    // …but a measured 140 g/day from the integration wins.
+    // …and a 140 g/day reading from the integration. Both are floors on the same true
+    // total, so the LARGER one is printed (#3903) — 140 here — but the basis names both,
+    // because the in-app 51 g was considered rather than discarded. Under the retired
+    // override this read `tracked`, and the in-app ledger was silently dropped.
     seedTrackedProtein(p, anchor, 140);
 
     const a = getProteinAdequacy(p);
-    expect(a?.intake.basis).toBe("tracked");
+    expect(a?.intake.basis).toBe("both-sources");
     expect(Math.round(a!.intake.grams)).toBe(140);
     // 140 is above the ~95–130 band → no shortfall finding (above, not below).
     expect(a?.status).toBe("above");
