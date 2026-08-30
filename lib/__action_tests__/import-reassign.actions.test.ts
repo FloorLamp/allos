@@ -230,128 +230,32 @@ function ownedRowCount(profileId: number, docId: number): number {
 }
 
 describe("reassignDocument", () => {
-  it("moves every owned row + the document to the destination and empties the source", async () => {
-    const admin = createLogin({ role: "admin" });
-    const a = createProfile("REASSIGN-A");
-    const b = createProfile("REASSIGN-B");
-    const docId = newDocument(a.id);
-    persistDocumentImport(a.id, docId, makeInput());
-    // Reconcile flags under A first, so the snapshot captures A's final state and
-    // the destination reconcile (same demographics — both profiles have no sex set)
-    // yields the identical flags, keeping the content comparison about the MOVE, not
-    // the flag recompute (which its own test covers).
-    reconcileFlags(a.id);
-    actAs(admin, a);
-
-    const beforeA = ownedRowCount(a.id, docId);
-    expect(beforeA).toBeGreaterThan(0);
-    const snapshotA = getReprocessSnapshot(a.id, docId);
-
-    const res = await reassignDocument(fd({ id: docId, destProfileId: b.id }));
-    expect(res.status).toBe("done");
-
-    // The document row now belongs to B.
-    const owner = db
-      .prepare("SELECT profile_id FROM medical_documents WHERE id = ?")
-      .get(docId) as { profile_id: number };
-    expect(owner.profile_id).toBe(b.id);
-
-    // Source A has zero rows for the document; B has exactly what A had.
-    expect(ownedRowCount(a.id, docId)).toBe(0);
-    expect(ownedRowCount(b.id, docId)).toBe(beforeA);
-
-    // The imported content is intact under B — identical to A's reconciled snapshot.
-    const snapshotB = getReprocessSnapshot(b.id, docId);
-    expect(computeImportDiff(snapshotA, snapshotB).hasChanges).toBe(false);
-  });
-
-  it("CARRIES acquired-by provenance across the move (#1748)", async () => {
-    // How a document ARRIVED is a fact about its arrival, not a claim about whose it
-    // is. And the single most likely reason to reassign a portal document is that the
-    // binding sent it to the wrong person — which is exactly when "which portal pushed
-    // this?" is the question being asked. Clearing it here would destroy the audit
-    // trail at the moment it matters most.
+  it("moves the full footprint while preserving provenance and re-deriving destination data", async () => {
     const portal = createPortal("Reassign Portal");
     expect(portal.ok).toBe(true);
     if (!portal.ok) return;
 
     const admin = createLogin({ role: "admin" });
-    const a = createProfile("REASSIGN-PROV-A");
-    const b = createProfile("REASSIGN-PROV-B");
+    const a = createProfile("REASSIGN-A");
+    const b = createProfile("REASSIGN-B");
     const docId = newDocument(a.id);
     db.prepare(
-      "UPDATE medical_documents SET acquired_portal_id = ?, extraction_status = 'done' WHERE id = ?"
+      "UPDATE medical_documents SET acquired_portal_id = ? WHERE id = ?"
     ).run(portal.id, docId);
-    actAs(admin, a);
 
-    const res = await reassignDocument(fd({ id: docId, destProfileId: b.id }));
-    expect(res.status).toBe("done");
-
-    const moved = db
-      .prepare(
-        "SELECT profile_id AS p, acquired_portal_id AS portal FROM medical_documents WHERE id = ?"
-      )
-      .get(docId) as { p: number; portal: number | null };
-    expect(moved.p).toBe(b.id);
-    expect(moved.portal).toBe(portal.id);
-  });
-
-  it("writes a medical-document.reassign audit event and preserves a non-null provider_id (#655)", async () => {
-    const admin = createLogin({ role: "admin" });
-    const a = createProfile("AUD-A");
-    const b = createProfile("AUD-B");
-    const docId = newDocument(a.id);
-    persistDocumentImport(a.id, docId, makeInput());
-    // The seed rows carry provider: null; explicitly link a real provider to the
-    // imported records so the move's provenance-preservation is actually asserted
-    // (the seed-null gap the issue's related nit called out).
-    const providerId = Number(
-      db
-        .prepare(
-          `INSERT INTO providers (name, type, dedup_key) VALUES ('Dr. Keep', 'individual', ?)`
-        )
-        .run(`keep-${Math.random()}`).lastInsertRowid
-    );
-    db.prepare(
-      "UPDATE medical_records SET provider_id = ? WHERE document_id = ? AND profile_id = ?"
-    ).run(providerId, docId, a.id);
-    actAs(admin, a);
-
-    const res = await reassignDocument(fd({ id: docId, destProfileId: b.id }));
-    expect(res.status).toBe("done");
-
-    // The provider_id crossed to B intact (a global link — the move doesn't drop it).
-    const moved = db
-      .prepare(
-        "SELECT DISTINCT provider_id FROM medical_records WHERE document_id = ? AND profile_id = ? AND provider_id IS NOT NULL"
-      )
-      .all(docId, b.id) as { provider_id: number }[];
-    expect(moved.some((r) => r.provider_id === providerId)).toBe(true);
-
-    // The cross-profile move is audited: document id + source→destination profiles.
-    const ev = db
-      .prepare(
-        `SELECT target, detail FROM audit_events
-          WHERE action = ? ORDER BY id DESC LIMIT 1`
-      )
-      .get(AUDIT_ACTIONS.medicalDocReassign) as
-      { target: string | null; detail: string | null } | undefined;
-    expect(ev?.target).toBe(String(docId));
-    expect(ev?.detail).toContain(String(a.id));
-    expect(ev?.detail).toContain(String(b.id));
-  });
-
-  it("carries the extraction-confidence signal to the destination (#1601)", async () => {
-    // Confidence is persisted on the document's import_report, so a reassign must
-    // move it with the document: the destination's Review feed badges the rows the
-    // extractor hedged on, and the source stops claiming them.
-    const admin = createLogin({ role: "admin" });
-    const a = createProfile("CONF-SRC");
-    const b = createProfile("CONF-DEST");
-    const docId = newDocument(a.id);
     const input = makeInput();
     persistDocumentImport(a.id, docId, {
       ...input,
+      observations: [
+        {
+          ...input.observations[0],
+          name: "Glucose, Fasting",
+          canonical: "Glucose, Fasting",
+          value: "130",
+          value_num: 130,
+        },
+        input.observations[1],
+      ],
       meta: {
         ...input.meta,
         importReport: serializeImportReport({
@@ -380,28 +284,71 @@ describe("reassignDocument", () => {
         }),
       },
     });
+    const providerId = Number(
+      db
+        .prepare(
+          `INSERT INTO providers (name, type, dedup_key) VALUES ('Dr. Keep', 'individual', ?)`
+        )
+        .run(`keep-${Math.random()}`).lastInsertRowid
+    );
+    db.prepare(
+      "UPDATE medical_records SET provider_id = ? WHERE document_id = ? AND profile_id = ?"
+    ).run(providerId, docId, a.id);
+
+    // Capture the correct source state, then corrupt the stored flag. The move must
+    // both preserve the snapshot and repair the flag under the destination rules.
+    reconcileFlags(a.id);
+    const snapshotA = getReprocessSnapshot(a.id, docId);
+    db.prepare(
+      "UPDATE medical_records SET flag = 'low' WHERE document_id = ? AND profile_id = ? AND category = 'lab'"
+    ).run(docId, a.id);
     actAs(admin, a);
-    expect(
-      getImportLogDocuments(a.id).find((d) => d.id === docId)
-        ?.confidence_scrutiny
-    ).toBe(2);
+
+    const beforeA = ownedRowCount(a.id, docId);
+    expect(beforeA).toBeGreaterThan(0);
 
     const res = await reassignDocument(fd({ id: docId, destProfileId: b.id }));
     expect(res.status).toBe("done");
 
+    const moved = getMedicalDocument(b.id, docId)!;
+    expect(moved.acquired_portal_id).toBe(portal.id);
+    expect(ownedRowCount(a.id, docId)).toBe(0);
+    expect(ownedRowCount(b.id, docId)).toBe(beforeA);
+    const snapshotB = getReprocessSnapshot(b.id, docId);
+    expect(computeImportDiff(snapshotA, snapshotB).hasChanges).toBe(false);
+    const movedProviders = db
+      .prepare(
+        "SELECT DISTINCT provider_id FROM medical_records WHERE document_id = ? AND profile_id = ? AND provider_id IS NOT NULL"
+      )
+      .all(docId, b.id) as { provider_id: number }[];
+    expect(movedProviders.some((r) => r.provider_id === providerId)).toBe(true);
     expect(
       getImportLogDocuments(b.id).find((d) => d.id === docId)
         ?.confidence_scrutiny
     ).toBe(2);
     expect(getImportLogDocuments(a.id).some((d) => d.id === docId)).toBe(false);
-    // The flagged rows themselves crossed intact — the detail card renders the same
-    // ranked list under the destination profile.
-    const moved = getMedicalDocument(b.id, docId)!;
     expect(
       parseImportReport(moved.import_report)?.confidence?.flags.map(
         (f) => f.label
       )
     ).toEqual(["Confidence Marker 1", "Sample Condition"]);
+    const lab = db
+      .prepare(
+        "SELECT flag FROM medical_records WHERE document_id = ? AND profile_id = ? AND category = 'lab'"
+      )
+      .get(docId, b.id) as { flag: string | null };
+    expect(lab.flag).toBe("high");
+
+    const ev = db
+      .prepare(
+        `SELECT target, detail FROM audit_events
+          WHERE action = ? ORDER BY id DESC LIMIT 1`
+      )
+      .get(AUDIT_ACTIONS.medicalDocReassign) as
+      { target: string | null; detail: string | null } | undefined;
+    expect(ev?.target).toBe(String(docId));
+    expect(ev?.detail).toContain(String(a.id));
+    expect(ev?.detail).toContain(String(b.id));
   });
 
   it("moves the on-disk file into the destination profile's directory", async () => {
@@ -628,63 +575,5 @@ describe("reassignDocument", () => {
     // Re-extract to a shape that no longer contains the influenza dose.
     persistDocumentImport(a.id, docId, { ...makeInput(), immunizations: [] });
     expect(liveDismissals(a.id, codes)).toBe(0);
-  });
-
-  it("re-derives biomarker flags against the destination after the move", async () => {
-    const admin = createLogin({ role: "admin" });
-    const a = createProfile("FLAG-A");
-    const b = createProfile("FLAG-B");
-    const docId = newDocument(a.id);
-    // A single out-of-range Glucose (130 > canonical ref high) so a reconcile has a
-    // definite 'high' to derive.
-    const input: PersistInput = {
-      ...makeInput(),
-      observations: [
-        {
-          // The FASTING entry (#2337): unqualified "Glucose" is band-less by
-          // decision, so only a banded analyte can prove a dest-side reconcile ran.
-          category: "lab",
-          name: "Glucose, Fasting",
-          canonical: "Glucose, Fasting",
-          value: "130",
-          value_num: 130,
-          unit: "mg/dL",
-          date: DATE,
-          reference_range: null,
-          flag: null,
-          panel: null,
-          notes: null,
-          source: "ccda",
-          external_id: "obs:glucose",
-          loinc: null,
-          provider: null,
-          courses: null,
-        },
-      ],
-      immunizations: [],
-      bodyMetrics: [],
-      heights: [],
-    };
-    persistDocumentImport(a.id, docId, input);
-    // Reconcile under A (the record's flag becomes 'high'), then CORRUPT it so a
-    // dest-side reconcile has something to correct. If reassign fails to reconcile
-    // the destination, the corrupted flag survives the move — the assertion catches
-    // exactly that regression.
-    reconcileFlags(a.id);
-    db.prepare(
-      "UPDATE medical_records SET flag = 'low' WHERE document_id = ? AND profile_id = ?"
-    ).run(docId, a.id);
-    actAs(admin, a);
-
-    const res = await reassignDocument(fd({ id: docId, destProfileId: b.id }));
-    expect(res.status).toBe("done");
-
-    const moved = db
-      .prepare(
-        "SELECT flag FROM medical_records WHERE document_id = ? AND profile_id = ?"
-      )
-      .get(docId, b.id) as { flag: string | null };
-    // reconcileFlags(dest) ran after the move: the corrupted 'low' is back to 'high'.
-    expect(moved.flag).toBe("high");
   });
 });
