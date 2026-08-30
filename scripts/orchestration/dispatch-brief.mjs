@@ -358,6 +358,25 @@ function allocatePortBase(active, opts = {}) {
   );
 }
 
+// Load caps (docs/orchestration/dispatch.md §Dispatch), as PREDICATES rather
+// than inline counts, for the reason the port-collision rule moved out of the
+// allocator's loop: a rule that lives at one call site is a rule the next
+// call site skips. The two-agent E2E cap holds on EVERY host and refuses; the
+// machine cap only WARNS — it is host-dependent and a P0 preempts (the same
+// reason the sibling-start stagger warns).
+export const E2E_LANE_CAP = 2;
+export const MACHINE_CAP_WARN = 5;
+
+export function e2eLaneRefusal(active, ignoreBranch) {
+  const lanes = active.filter((d) => d.e2e && d.branch !== ignoreBranch);
+  if (lanes.length < E2E_LANE_CAP) return null;
+  return (
+    `the E2E lane is full: ${lanes.map((d) => d.branch).join(", ")} already ` +
+    `hold it (cap ${E2E_LANE_CAP} — dispatch.md §Dispatch, on every host). ` +
+    "Close one with `done <branch>` or dispatch this cluster without --e2e."
+  );
+}
+
 // --- brief -----------------------------------------------------------------
 
 // Migrations are NAME-KEYED (the numbered era closed at 185 — see
@@ -1288,12 +1307,18 @@ function cmdNew(argv) {
     );
     process.exit(1);
   }
-  if (opts.e2e && active.filter((d) => d.e2e).length >= 2) {
-    console.error(
-      "REFUSED: two e2e-touching dispatches are already active (the runbook's cap). " +
-        "Close one with `done <branch>` or drop --e2e if this work touches no spec."
-    );
+  const e2eFull = opts.e2e && e2eLaneRefusal(active, opts.branch);
+  if (e2eFull) {
+    console.error(`REFUSED: ${e2eFull}`);
     process.exit(1);
+  }
+  if (active.length >= MACHINE_CAP_WARN) {
+    console.error(
+      `*** MACHINE CAP: ${active.length} dispatches already active (measured cap ` +
+        `${MACHINE_CAP_WARN} on the 4-core container — dispatch.md §Dispatch). ***\n` +
+        "    Contention MISLEADS, not just slows: a starved gate tier fails in\n" +
+        "    untouched code and reads as a regression. Not a refusal — a P0 preempts."
+    );
   }
 
   // ARRIVAL CLUSTERING. The concurrency cap counts agents RUNNING, which is a
@@ -1959,11 +1984,9 @@ function cmdResume(argv) {
     );
     process.exit(1);
   }
-  if (prior.e2e && active.filter((d) => d.e2e).length >= 2) {
-    console.error(
-      "REFUSED: resuming this e2e-touching dispatch would exceed the 2-agent e2e cap. " +
-        "Close one with `done <branch>` first."
-    );
+  const e2eFullOnResume = prior.e2e && e2eLaneRefusal(active, prior.branch);
+  if (e2eFullOnResume) {
+    console.error(`REFUSED: cannot resume — ${e2eFullOnResume}`);
     process.exit(1);
   }
   // Reuse the prior port range when it is still free — the agent's environment
@@ -2057,11 +2080,9 @@ function cmdAdopt(argv) {
     );
     process.exit(1);
   }
-  if (opts.e2e && active.filter((d) => d.e2e).length >= 2) {
-    console.error(
-      "REFUSED: adopting this as e2e-touching would exceed the 2-agent e2e cap. " +
-        "Close one with `done <branch>` first, or drop --e2e if it touches no spec."
-    );
+  const e2eFullOnAdopt = opts.e2e && e2eLaneRefusal(active, branch);
+  if (e2eFullOnAdopt) {
+    console.error(`REFUSED: cannot adopt as e2e-touching — ${e2eFullOnAdopt}`);
     process.exit(1);
   }
   const reserved = opts.portBase && RESERVED_PORT_REASON(opts.portBase);

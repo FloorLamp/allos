@@ -13,10 +13,10 @@ closed taxonomy, and `needs-human` handling.
   decision (the #2701 shape) or a direction with stated falsifiers (#2641).
   One still carrying the design question is owner-gated; agents never explore.
 - Older issues start with an audit table: resolved by what, or still open.
-- Cap E2E work at two agents. Ordinary concurrency is min(harness agent
-  slots, machine cap) — five on the 4-core container (#2964, 2026-08-16); a
-  harness exposing fewer slots caps there (#3710). The two-E2E and
-  unreviewed-PR limits hold on every host.
+- Cap E2E work at two agents — `dispatch-brief.mjs` refuses a third `--e2e`
+  lane on every path (new/resume/adopt) and warns past the machine cap.
+  Ordinary concurrency is min(harness slots, machine cap) — five on the
+  4-core container (#2964); a harness exposing fewer slots caps there (#3710).
 - Revert on a DISCRIMINATING signal: a misread red actually shipped, or the
   ledger's median dispatch duration degrades. "Agents hit the ten-minute tool
   cap" is not one — it fired at four agents and at five, so it cannot tell them
@@ -85,6 +85,9 @@ closed taxonomy, and `needs-human` handling.
 - `ci-watch.mjs`: wait for settled CI; exit 0 green, 1 red, 2 unsettled, 3
   conflict-blocked.
 - `dependabot-eval-brief.mjs`: evaluate major dependency updates.
+- `session-metrics.mjs`: the trend pulse — merge throughput, review-queue
+  depth, queue shape, needs-human aging over a fixed window, denominators
+  first. Argue caps and cadences from its numbers, not from memory.
 - `release-notes-gather.mjs`: gather merged user-visible changes.
 - `adversarial-review-brief.mjs`: route and brief high-stakes second reviews.
 

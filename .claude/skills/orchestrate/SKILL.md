@@ -193,6 +193,8 @@ or dependency-bound" — reach it and say so, with the list.
 
 - One adversarial audit over the previous day of merges; file findings
   against the introducing PR.
+- Pulse the numbers: `session-metrics.mjs --days 7`. Reverts, draft PRs and
+  needs-human aging are findings, not noise.
 - Dependabot: merge minors on green current main; majors through
   `dependabot-eval-brief.mjs` within a day (verdicts land as
   `recommend-adopt` / `recommend-hold` + `parked`).

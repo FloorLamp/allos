@@ -41,6 +41,7 @@ const ENTRY_SCRIPTS = [
   "scripts/orchestration/reconcile-tracker.ts",
   "scripts/orchestration/reconcile-watermark.ts",
   "scripts/orchestration/release-notes-gather.mjs",
+  "scripts/orchestration/session-metrics.mjs",
 ] as const;
 
 function runHelp(rel: string) {
