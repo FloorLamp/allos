@@ -270,8 +270,8 @@ describe("the Show-everything tail (#3365)", () => {
   const recapRow = (label: string, value: string) => ({
     label,
     value,
-    href: "/timeline" as const,
-    moment: { title: "Weekly recap · Aug 23–29", href: "/timeline" as const },
+    href: "/history" as const,
+    moment: { title: "Weekly recap · Aug 23–29", href: "/history" as const },
   });
 
   function renderTail(

@@ -30,9 +30,9 @@ import { isRouteActive } from "./nav";
 // Icon keys resolved to real Tabler icons in components/MobileDock.tsx — the
 // registry stays pure and serializable, like QUICK_LOG_ITEMS.
 export type DockIcon =
-  "dashboard" | "barbell" | "timeline" | "trending" | "menu";
+  "dashboard" | "barbell" | "history" | "trending" | "menu";
 
-export type DockSlotId = "home" | "training" | "timeline" | "trends" | "more";
+export type DockSlotId = "home" | "training" | "history" | "trends" | "more";
 
 export interface DockSlot {
   id: DockSlotId;
@@ -51,7 +51,7 @@ export interface DockSlot {
  * Four, always — two either side of the puck. A fifth would put a destination
  * under the raised centre control, and a third would leave the row visibly
  * unbalanced; the owner's resolution (#2651, 2026-08-13) fixes the set at
- * Home · Training · [puck] · Trends · More, with Timeline replacing
+ * Home · Training · [puck] · Trends · More, with History replacing
  * Training through early childhood so the four-slot geometry stays balanced.
  */
 export const DOCK_SLOT_COUNT = 4;
@@ -68,11 +68,11 @@ const TRAINING: DockSlot = {
   icon: "barbell",
   href: "/training",
 };
-const TIMELINE: DockSlot = {
-  id: "timeline",
-  label: "Timeline",
-  icon: "timeline",
-  href: "/timeline",
+const HISTORY: DockSlot = {
+  id: "history",
+  label: "History",
+  icon: "history",
+  href: "/history",
 };
 const TRENDS: DockSlot = {
   id: "trends",
@@ -90,10 +90,19 @@ const MORE: DockSlot = {
 /**
  * The dock's four slots, in tap order (left to right; the puck sits between
  * index 1 and index 2).
- * Training is replaced by Timeline when the workout product is not relevant.
+ * Training is replaced by History when the workout product is not relevant.
+ *
+ * THE SECOND SLOT'S OCCUPANT, RULED (#3343 Q5, owner 2026-08-29):
+ * `trainingRelevant ? TRAINING : HISTORY`. `/timeline` held this slot and #3958
+ * phase 2 retires the route, so the record — which absorbed the timeline's content
+ * — is its literal successor and serves the audience the slot existed for. The dock
+ * stays fixed at FOUR (#2651) and no other slot changes. Upcoming was considered and
+ * rejected (a permanent slot is too big a bet on a surface the attention pipeline may
+ * not be sending people to); Nutrition was rejected (it breaks the slot's
+ * review-shaped identity mid-rebuild of #3987). Do not revisit either.
  */
 export function dockSlots(trainingRelevant = true): DockSlot[] {
-  return [HOME, trainingRelevant ? TRAINING : TIMELINE, TRENDS, MORE];
+  return [HOME, trainingRelevant ? TRAINING : HISTORY, TRENDS, MORE];
 }
 
 /**

@@ -156,7 +156,7 @@ describe("MonthCalendar", () => {
     mount({
       kind: "linked",
       dates: ["2026-03-12"],
-      href: (iso) => `/timeline?from=${iso}&to=${iso}#timeline-day-${iso}`,
+      href: (iso) => `/history?day=${iso}`,
       onNavigate,
     });
 
@@ -184,7 +184,7 @@ describe("MonthCalendar", () => {
     mount({
       kind: "linked",
       dates: ["2025-11-04"],
-      href: (iso) => `/timeline?from=${iso}&to=${iso}#timeline-day-${iso}`,
+      href: (iso) => `/history?day=${iso}`,
     });
     const previous = screen.getByLabelText(
       "Previous month"

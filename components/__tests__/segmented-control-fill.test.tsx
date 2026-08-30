@@ -75,7 +75,7 @@ describe("SegmentedControl fill mode (#3675)", () => {
           {
             value: "timeline",
             label: "A long timeline label",
-            href: "/timeline",
+            href: "/history",
           },
         ]}
         value="timeline"

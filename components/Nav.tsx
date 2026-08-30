@@ -167,12 +167,12 @@ const RECORDS: Group = {
 };
 
 // The episodic group (#3079). Five top-level rows measured at ZERO deliberate
-// visits in the owner's 2026-08-17 usage review — Timeline, Upcoming, Household,
+// visits in the owner's 2026-08-17 usage review — Timeline (now History), Upcoming, Household,
 // Wellness, Longevity — plus Progress photos, which shares their shape. The
 // measurement did not find six redundant pages: each holds writes that exist
 // nowhere else (protocol creation only at /longevity#protocols, practice CRUD and
 // back-dated logging only at /wellness, member setup only at /household, retro
-// symptom entry for an arbitrary past day only at /timeline, restore /
+// symptom entry for an arbitrary past day only at /history?day=, restore /
 // preventive-override / care-plan completion only at /upcoming). NOTHING here is
 // retired, no URL moves, and every gate below keeps the semantics it had as a
 // top-level row.
@@ -199,13 +199,19 @@ const PLAN_REVIEW: Group = {
     // not because its zero is a fault. Its real cost (the hero excluding
     // everything past today) is a separate issue and is untouched here.
     { href: "/upcoming", label: "Upcoming", icon: IconCalendarClock },
-    // TIMELINE — used constantly, never from the nav. It is the target of every
-    // DayHistory heatmap cell, every mini-calendar day (EventCalendar, the
-    // Calendar row just BELOW this nav), the weekly recap widget, and
-    // several sleep and trends surfaces; it also holds a permanent mobile dock slot
-    // (lib/mobile-dock.ts). It is a destination reached FROM CONTEXT. The unused
-    // thing was the row, not the page — so the row is what moves.
-    { href: "/timeline", label: "Timeline", icon: IconTimelineEvent },
+    // HISTORY — the record, which INHERITED this slot from Timeline when #3958
+    // phase 2 retired `/timeline` (#3343, owner 2026-08-29: "when phase 2 absorbs
+    // the timeline and vacates its slot, History inherits it"). Everything the note
+    // below said about Timeline is now true of it: used constantly, never from the
+    // nav, and the target of every DayHistory heatmap cell, every mini-calendar day
+    // (EventCalendar, the Calendar row just BELOW this nav), the weekly recap
+    // widget, and several sleep and trends surfaces; it holds the same permanent
+    // mobile dock slot (lib/mobile-dock.ts, the Q5 half of the same ruling). It is a
+    // destination reached FROM CONTEXT — the unused thing was the row, not the page.
+    //
+    // Its retro symptom entry for an arbitrary past day, named in this group's
+    // header note as `/timeline`'s unique write, moved with it to `?day=`.
+    { href: "/history", label: "History", icon: IconTimelineEvent },
     // WELLNESS (#1620) — an episodic MANAGEMENT surface whose daily reading is
     // already promoted to the dashboard: a profile opens it to create or edit a
     // practice a few times a year. #2894's doctrine covers it — "tabs for surfaces

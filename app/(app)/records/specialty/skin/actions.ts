@@ -37,7 +37,7 @@ function revalidateSkin() {
   // Skin folded into Health record (#1042 final tail): the surface is now
   // /records#skin.
   revalidateRoute("/records");
-  revalidateRoute("/timeline");
+  revalidateRoute("/history");
   revalidateRoute("/profile");
   revalidateRoute("/");
 }

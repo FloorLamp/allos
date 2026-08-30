@@ -1034,7 +1034,8 @@ const PAGES: {
   {
     title: "History",
     href: "/history",
-    keywords: "record log ledger what happened edit history chronological",
+    keywords:
+      "record log ledger what happened edit history chronological events timeline",
   },
   {
     title: "Dose history",
@@ -1061,11 +1062,6 @@ const PAGES: {
     title: "Body history",
     href: "/history?kind=body",
     keywords: "weight body fat resting heart rate readings ledger",
-  },
-  {
-    title: "Timeline",
-    href: "/timeline",
-    keywords: "history chronological events",
   },
   {
     title: "Trends",

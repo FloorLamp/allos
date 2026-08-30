@@ -6,6 +6,7 @@ import { IconCalendar } from "@tabler/icons-react";
 import AnchoredPanel from "@/components/overlay/AnchoredPanel";
 import MonthCalendar from "@/components/MonthCalendar";
 import { useCompactViewport } from "@/components/useCompactViewport";
+import { historyDayHref } from "@/lib/hrefs";
 
 // THE SIDEBAR'S EVENT CALENDAR — a month grid whose marked days are a door into
 // the Timeline (#3079's usage review), one row at rest (#3154).
@@ -38,17 +39,17 @@ import { useCompactViewport } from "@/components/useCompactViewport";
 
 // THE GRID ITSELF IS components/MonthCalendar.tsx (#3744) — the same one
 // DateField's picker renders. What is left here is the two HOSTS and the binding:
-// a marked day is a door into the Timeline, an unmarked one is inert, and the set
-// of doors is the only thing this file tells the calendar.
+// a marked day is a door into the record's day view, an unmarked one is inert, and
+// the set of doors is the only thing this file tells the calendar.
 
 // `w-72`, told to the positioner so the panel's first paint is already clamped
 // inside the viewport rather than measured into place afterwards.
 const PANEL_WIDTH_PX = 288;
 
-// Where a marked day goes: the Timeline narrowed to that one day and anchored at
-// it, so the page arrives already scrolled to what was tapped.
-const href = (day: string): Route =>
-  `/timeline?from=${day}&to=${day}#timeline-day-${day}`;
+// Where a marked day goes: the record's day view. Through the SHARED helper — this
+// hand-built its own `/timeline?from=…&to=…#…` string, which is exactly why no sweep
+// over `timelineDayHref` could see it when the route was retired.
+const href = (day: string): Route => historyDayHref(day);
 
 // The phone drawer's band, CLAIMED rather than assumed (#3377/#3452). Its
 // `min-w-(--week-grid-min)` is what seven 44px columns cost, stated once in

@@ -258,7 +258,7 @@ describe("renderRecentChanges — the cap and the quiet window", () => {
     const out = renderRecentChanges(many, {
       max: 2,
       overflowLabel: "this week",
-      overflowHref: "/timeline",
+      overflowHref: "/history",
     });
     expect(out.lines.at(-1)).toBe("+4 more this week /timeline");
   });

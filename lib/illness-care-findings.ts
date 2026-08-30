@@ -63,7 +63,7 @@ export function illnessCareFindingsFor(
 // open assembled episode, which always carries an id).
 function actionHrefFor(profileId: number, date: string): AppRoute {
   const episode = openEpisodeAsOf(profileId, date);
-  return episode?.id != null ? episodeHref(episode.id) : "/timeline";
+  return episode?.id != null ? episodeHref(episode.id) : "/history";
 }
 
 // One neutral finding → the shared care-tier Finding envelope. Caution tone (a

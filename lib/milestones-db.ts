@@ -2,7 +2,7 @@
 // threshold engine is lib/milestones.ts; this module reads the cumulative stats it
 // needs from the profile-scoped query layer, records newly-crossed milestones in
 // the `milestones` table (which doubles as the once-only fired marker AND the
-// timeline source), and optionally sends a quiet notification. Called once per
+// record source), and optionally sends a quiet notification. Called once per
 // profile per hourly tick from scripts/notify.ts, next to the refill/digest runs.
 
 import { db, writeTx } from "./db";
@@ -146,13 +146,13 @@ export function renderMilestoneMessage(
     kind: "milestone",
     // Milestones always land on the Timeline, so that is where "see it" goes.
     ...(base
-      ? { actions: [{ label: "Open Timeline →", url: `${base}/timeline` }] }
+      ? { actions: [{ label: "Open History →", url: `${base}/history` }] }
       : {}),
   };
 }
 
 // Detect + record + (optionally) announce this profile's milestones. Recording
-// always happens (so the timeline shows them); the notification is gated on a
+// always happens (so the record shows them); the notification is gated on a
 // per-profile opt-out (notify_milestones, default on) and on a channel being
 // configured. Returns whether a configured channel failed (folded into the tick
 // exit code). Never throws for an ordinary send failure.
@@ -164,7 +164,7 @@ export async function runMilestones(
   const detected = detectMilestones(gatherMilestoneInput(profileId));
   if (detected.length === 0) return { failed: false, fired: 0 };
 
-  // Record first so a milestone is on the timeline even if notification fails.
+  // Record first so a milestone is on the record even if notification fails.
   recordMilestones(profileId, detected, date);
   log.info("milestones recorded", {
     profile: profileId,

@@ -32,7 +32,7 @@ function revalidateInstruments() {
   // Mental-health instruments folded into Health record (#1042 final tail): the
   // surface is now /records#mental-health.
   revalidateRoute("/records");
-  revalidateRoute("/timeline");
+  revalidateRoute("/history");
   revalidateRoute("/upcoming");
   revalidateRoute("/");
 }

@@ -27,7 +27,7 @@ export async function enableWeatherAction() {
     // A first-sync failure is non-fatal — the hourly tick retries; just log it.
     log.error("weather initial sync threw", { err: String(err) });
   }
-  revalidateRoute(["/", "/timeline", "/integrations/weather", "/data"]);
+  revalidateRoute(["/", "/history", "/integrations/weather", "/data"]);
 }
 
 export async function disconnectWeatherAction() {

@@ -13,8 +13,8 @@ import {
 import { monthNames } from "@/lib/date";
 import {
   dayHistoryAddHref,
-  timelineDayHref,
-  timelineRangeHref,
+  historyDayHref,
+  historyHref,
   trainingLogDayHref,
   type AppRoute,
 } from "@/lib/hrefs";
@@ -818,31 +818,35 @@ export default function DayHistory({
         0
       )
     : 0;
-  // A week has no single day anchor to scroll to and the Training Log's anchor
-  // is a DAY, so at week grain every domain lands on the Timeline filtered to
-  // the week — clamped to the window's end, never claiming days that have not
-  // happened.
+  // A WEEK HAS NO DAY ANCHOR, AND THE RECORD HAS NO RANGE (#3958). This used to land
+  // on `/timeline?from=X&to=Y`; the record is navigated rather than windowed, so
+  // `from`/`to` died with that route and there is no week-shaped destination to
+  // replace them with — the folds the record does carry are MONTH-grained by design.
+  //
+  // So a week cell opens the record with that week's MONTH unfolded (its year too, or
+  // the month is sealed inside a shut year card and the link lands on nothing). It is
+  // the honest form of "show me around then": it does not claim a week filter the page
+  // cannot apply, and the week's days are all on screen inside the opened month.
   const bucketFeedHref = (bucket: string): AppRoute =>
-    timelineRangeHref(
-      bucket,
-      historyBucketCoverage(bucket, "week", end).through
-    );
+    historyHref({
+      open: [bucket.slice(0, 4), bucket.slice(0, 7)],
+    });
   const selectedDayHref = (date: string) =>
     week
       ? bucketFeedHref(date)
       : domain === "workout" && selectedDayTotal > 0
         ? trainingLogDayHref(date)
-        : timelineDayHref(date);
+        : historyDayHref(date);
   const selectedDayLinkLabel =
     !week && domain === "workout" && selectedDayTotal > 0
       ? "Training log"
-      : "Timeline";
+      : "History";
   const occurrenceHref = (date: string) =>
     week
       ? bucketFeedHref(date)
       : domain === "workout"
         ? trainingLogDayHref(date)
-        : timelineDayHref(date);
+        : historyDayHref(date);
 
   const selectedRow = selectedRowKey
     ? (rows.find((row) => row.key === selectedRowKey) ?? null)

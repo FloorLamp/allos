@@ -65,7 +65,7 @@ export function tempRedFlagFindingFor(
 // The action link every surface shares: the current open episode's detail page.
 function actionHrefFor(profileId: number, date: string): AppRoute {
   const episode = openEpisodeAsOf(profileId, date);
-  return episode?.id != null ? episodeHref(episode.id) : "/timeline";
+  return episode?.id != null ? episodeHref(episode.id) : "/history";
 }
 
 // One neutral finding → the shared care-tier Finding envelope. Caution tone; the

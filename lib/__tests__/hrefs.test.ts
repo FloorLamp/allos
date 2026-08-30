@@ -2,7 +2,7 @@ import { describe, expect, it } from "vitest";
 import {
   clinicalResultDetailHref,
   clinicalResultAddHref,
-  timelineDayHref,
+  historyDayHref,
   trainingLogDayHref,
   dayHistoryAddHref,
   dataSectionHref,
@@ -106,11 +106,11 @@ describe("clinicalResultDetailHref", () => {
   });
 });
 
-describe("timelineDayHref", () => {
-  it("filters the feed to one day and anchors to that day", () => {
-    expect(timelineDayHref("2026-07-12")).toBe(
-      "/timeline?from=2026-07-12&to=2026-07-12#timeline-day-2026-07-12"
-    );
+describe("historyDayHref", () => {
+  // The record's day view IS the day, so there is no feed left to scroll and no
+  // `#timeline-day-…` fragment to carry — the two things that died with `/timeline`.
+  it("selects the day on the record", () => {
+    expect(historyDayHref("2026-07-12")).toBe("/history?day=2026-07-12");
   });
 });
 
