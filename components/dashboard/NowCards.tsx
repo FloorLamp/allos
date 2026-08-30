@@ -1,29 +1,34 @@
 "use client";
 
-import { useEffect, useRef, useState, type ReactNode } from "react";
-import type { DashboardCandidateKind } from "@/lib/dashboard-relevance";
+import { useEffect, useRef, useState } from "react";
+import type { DashboardPlacement } from "@/lib/dashboard-relevance";
 import { witnessedNowMotion } from "@/lib/dashboard-motion";
 import { microMotionPlan } from "@/lib/micro-motion";
 import { usePrefersReducedMotion } from "@/components/usePrefersReducedMotion";
-import CandidateKindGlyph from "./CandidateKindGlyph";
+import {
+  DashboardFactRow,
+  type DashboardStandingPresentation,
+} from "./DashboardStandingCluster";
 
-export interface NowStripCard {
-  id: string;
-  // The candidate's kind, for its glyph. The strip is still a PLACER: this is the
-  // same value the wrapper already publishes as `data-kind`, not a second opinion
-  // about what the card says.
-  kind: DashboardCandidateKind;
-  node: ReactNode;
+export interface NowStripRow {
+  candidate: DashboardPlacement["candidate"];
+  presentation: DashboardStandingPresentation;
 }
 
-// The Now strip's CARDS — the one client component on the dashboard's placement
+// THE NOW STRIP'S ROWS — the one client component on the dashboard's placement
 // canvas, and it exists for exactly one reason: only the client knows whether a
 // change was WITNESSED (#3253 decision 4).
 //
-// The cards themselves are still server-rendered and passed through untouched. What
-// this owns is the band's layout, the kind glyph's gutter, and the single question
-// the server cannot answer — did this card arrive in front of the viewer, or did it
-// simply turn up in a page they came back to?
+// SINCE #4076 NOW IS ROWS LIKE EVERY OTHER ZONE. It renders through the shared
+// `DashboardFactRow` rather than placing heterogeneous cards, so what it owns is the
+// band's stacking and the single question the server cannot answer — did this row
+// arrive in front of the viewer, or did it simply turn up in a page they came back
+// to? The kind glyph that used to ride in its gutter is gone with the cards: the
+// label column carries identity, and a row's kind stays legible from its shape (a
+// control means action, a bare value means reading).
+//
+// A row's `control` is built on the SERVER and passed through as a node, exactly as
+// the card `node` was: this boundary carries the write, it does not re-implement it.
 //
 // The decision is `witnessedNowMotion` (lib/dashboard-motion.ts), kept pure and unit
 // tested; this component only supplies the three observations it needs. Two of them
@@ -31,25 +36,11 @@ export interface NowStripCard {
 // yet, so `hiddenSinceLast` cannot be true at the moment a diff lands. #3075's silent
 // refresh is what makes it reachable, and the listener is here now so that refresh
 // arrives quiet by construction rather than needing this argued again.
-//
-// The glyph gutter is deliberately BESIDE the card rather than inside it: the cards
-// are heterogeneous server components with their own headers and controls, and a
-// badge dropped into a corner would land on top of one of them.
-//
-// AND THAT GUTTER IS DESKTOP-ONLY (#3459 item 3). On a 390px line it reads as a
-// stray icon floating in the left margin and costs every card ~24px of width, so
-// below `sm` it is not shown and the card's own leading icon carries the eye —
-// every Now-capable card already opens with one INSIDE its frame (DOMAIN_ICON in
-// DashboardAttentionAtom, the cockpit's IconVirus). A fold-in was considered and
-// rejected: a corner overlay collides with exactly those leading icons, and a
-// card-header slot would reverse #3253's no-prop decision for a decorative mark.
-// Ahead is untouched at every width — its glyph already rides inline in the member
-// row, which IS the folded-in form.
 export default function NowCards({
-  cards,
+  rows,
   bootstrapClaim = false,
 }: {
-  cards: readonly NowStripCard[];
+  rows: readonly NowStripRow[];
   /**
    * Standing's attention tier is holding a cold-start claim — a family that has
    * never recorded, asking to be connected or logged for the first time (#3548).
@@ -60,10 +51,10 @@ export default function NowCards({
 }) {
   const reduceMotion = usePrefersReducedMotion();
   const plan = microMotionPlan("promote", reduceMotion);
-  // The ids as ONE string, so the effect below can depend on the card set itself
+  // The ids as ONE string, so the effect below can depend on the row set itself
   // rather than on an array literal that is new on every render. Candidate ids never
   // contain a newline (they are `domain.fact:key` shapes), so the join round-trips.
-  const idsKey = cards.map((card) => card.id).join("\n");
+  const idsKey = rows.map((row) => row.candidate.candidateId).join("\n");
   const [motion, setMotion] = useState<{
     animate: ReadonlySet<string>;
     emptyArrived: boolean;
@@ -102,7 +93,7 @@ export default function NowCards({
     });
   }, [idsKey, reduceMotion]);
 
-  if (cards.length === 0)
+  if (rows.length === 0)
     return bootstrapClaim ? null : (
       <p
         data-testid="now-strip-empty"
@@ -116,30 +107,27 @@ export default function NowCards({
     );
 
   return (
-    <div className="grid min-w-0 grid-cols-1 items-start gap-2 sm:gap-3">
-      {cards.map((card) => {
-        const animating = motion.animate.has(card.id);
+    <ul className="band flex min-w-0 flex-col overflow-hidden rounded-xl border border-(--border) bg-surface">
+      {rows.map((row) => {
+        const animating = motion.animate.has(row.candidate.candidateId);
         return (
-          <div
-            key={card.id}
-            data-testid={`now-strip-card-${card.id}`}
+          <DashboardFactRow
+            key={row.candidate.candidateId}
+            candidate={row.candidate}
+            presentation={row.presentation}
+            lane="now"
             // The attribute, not the class, is what a spec reads — it mirrors the
             // class exactly, so a reduced-motion viewer (who gets no class) also gets
             // no attribute, and "nothing animated" is one assertion rather than a
-            // guess about computed styles.
+            // guess about computed styles. The row's own box is also the door's rail
+            // (`relative`), as it is in the tail.
             data-motion={animating ? "promote" : undefined}
-            className={`flex min-w-0 items-start gap-2 ${
+            className={`relative border-t border-(--divider) px-4 py-3 first:border-t-0 ${
               animating ? plan.className : ""
             }`}
-          >
-            <CandidateKindGlyph
-              kind={card.kind}
-              className="mt-1 hidden h-4 w-4 shrink-0 text-slate-500 sm:block dark:text-slate-400"
-            />
-            <div className="min-w-0 flex-1">{card.node}</div>
-          </div>
+          />
         );
       })}
-    </div>
+    </ul>
   );
 }

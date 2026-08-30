@@ -856,36 +856,23 @@ export function placementsInLane<Lane extends DashboardLane>(
     .sort((a, b) => a.laneOrder - b.laneOrder);
 }
 
-// WHAT SHOW EVERYTHING DRAWS, AND WHERE THE REST LIVES (#3366).
+// WHAT SHOW EVERYTHING DRAWS, AND WHERE THE REST LIVES (#3366/#4076).
 //
-// The lane itself stays the complete exact-once remainder; this splits it into the
-// members the tail draws and ONE door per owning page for the members it does not.
-// Deduplicated by page, in placement order, because someone looking for a dropped
-// fact is looking for a page, not for the fact's rank.
+// The lane itself stays the complete exact-once remainder; this drops the members
+// whose whole content is a page the app's own nav already names.
 //
-// A non-admitted placement that names no page is RENDERED rather than dropped.
-// Completeness is the contract, so the only safe direction to fail is toward
-// showing — but the fallback is NOT the guard: the manifest tier asserts it carries
-// nothing, and that is the assertion that goes red the day a candidate loses its
-// door.
-export function everythingTail(placements: readonly DashboardPlacement[]): {
-  members: Extract<DashboardPlacement, { lane: "everything" }>[];
-  doors: AppRoute[];
-} {
-  const members: Extract<DashboardPlacement, { lane: "everything" }>[] = [];
-  const doors: AppRoute[] = [];
-  const seen = new Set<AppRoute>();
-  for (const placement of placementsInLane(placements, "everything")) {
-    const door = placement.admitted
-      ? null
-      : (placement.candidate.navDuplicateOf ?? null);
-    if (door == null) {
-      members.push(placement);
-      continue;
-    }
-    if (seen.has(door)) continue;
-    seen.add(door);
-    doors.push(door);
-  }
-  return { members, doors };
+// THE TAIL NO LONGER DRAWS A DOOR FOR THEM (#4076, owner: "utterly useless") — a
+// list of page names beside a sidebar of the same page names told nobody anything.
+// The exact-once guarantee did not move with it: every drop must still name a page
+// the app has a name for, and that is asserted at the manifest tier, against the real
+// personas, where it can actually go red. A non-admitted placement that names no page
+// is RENDERED rather than dropped, because completeness is the contract and showing
+// is the only safe direction to fail.
+export function everythingTail(
+  placements: readonly DashboardPlacement[]
+): Extract<DashboardPlacement, { lane: "everything" }>[] {
+  return placementsInLane(placements, "everything").filter(
+    (placement) =>
+      placement.admitted || placement.candidate.navDuplicateOf == null
+  );
 }

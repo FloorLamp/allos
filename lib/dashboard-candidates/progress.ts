@@ -10,13 +10,18 @@ import {
 } from "./shared";
 
 export const progressCandidates = {
+  // THE FAMILY'S OWN groupKey (#4076 part 2). Statement families passed `null` here,
+  // so the moment-block fold had nothing to fold on and N findings printed N blocks
+  // headed with the same words. It stayed inert until the row grammar landed —
+  // a family that renders cards never reaches the fold — so it lands with it.
   statement(
     ctx: DomainCandidateContext,
     family: string,
     id: string | number,
-    factKey: string
+    factKey: string,
+    groupKey: string | null = null
   ) {
-    return statement(ctx, `${family}:${id}`, factKey, null);
+    return statement(ctx, `${family}:${id}`, factKey, groupKey);
   },
   goal(ctx: DomainCandidateContext, id: number, promoted = false) {
     return reading(

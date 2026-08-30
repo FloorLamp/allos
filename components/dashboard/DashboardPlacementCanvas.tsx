@@ -1,5 +1,5 @@
 import Link from "next/link";
-import { Fragment, type ReactNode } from "react";
+import type { ReactNode } from "react";
 import { PageHeader } from "@/components/ui";
 import {
   everythingTail,
@@ -7,10 +7,7 @@ import {
   type DashboardEverythingGroup,
   type DashboardPlacement,
 } from "@/lib/dashboard-relevance";
-import type { AppRoute } from "@/lib/hrefs";
-import { trackedPageFor } from "@/lib/recent-pages";
-import DestinationLink from "@/components/DestinationLink";
-import NowStrip, { type NowStripCard } from "./NowStrip";
+import NowStrip from "./NowStrip";
 import AppBadge from "@/components/AppBadge";
 import RememberedDetails from "@/components/RememberedDetails";
 import DashboardAhead, { type DashboardAheadBucket } from "./DashboardAhead";
@@ -22,32 +19,26 @@ import DashboardStandingCluster, {
 export interface DashboardPlacementCanvasProps {
   dateLabel: string;
   placements: readonly DashboardPlacement[];
-  candidateNodes: ReadonlyMap<string, ReactNode>;
   /**
-   * The row presentation for every fact that reports: Standing's members and, since
-   * #3365, the Show-everything tail's Read / Understand / Setup entries, which render
-   * through the SAME row renderer rather than a card of their own.
+   * The row presentation for EVERY fact the dashboard draws. Since #4076 there is no
+   * second map beside it: cards left `/`, so a placement that renders declares a row
+   * and nothing else, and the canvas fails loudly for one that declares neither
+   * (exact-once completeness is a claim about what is ON SCREEN).
    */
-  standingPresentations: ReadonlyMap<string, DashboardStandingPresentation>;
-  aheadPresentations: ReadonlyMap<string, DashboardAheadPresentation>;
+  presentations: ReadonlyMap<string, DashboardStandingPresentation>;
+  /**
+   * AHEAD SAYS WHEN, NOT WHAT (#4076). One row RENDERER serves every zone, but Ahead
+   * is a schedule: its facts column states when a thing is due, where the same
+   * candidate drawn in Now or in the tail states the item's own content — the
+   * biomarker retest sentence, "Vitamin D3 · 2000 IU". A candidate places in exactly
+   * one lane, and the lane is not known when the page builds these, so the page
+   * declares both readings and the canvas picks by lane. Reusing one for the other
+   * silently deletes the sentence a person came to read.
+   */
+  aheadPresentations: ReadonlyMap<string, DashboardStandingPresentation>;
   attentionBadgeCount: number;
   illnessGroupNode?: ReactNode;
 }
-
-export interface DashboardAheadPresentation {
-  label: string;
-  detail?: string;
-  href?: AppRoute;
-}
-
-// WHICH TAIL GROUPS REPORT (#3365). Read, Understand and Setup are indexes of facts,
-// so they render as rows; Act is an offer to write and Active states is a situation
-// that is running, and both keep a card. Cards act, lines report (#3077).
-const ROW_GROUPS: ReadonlySet<DashboardEverythingGroup> = new Set([
-  "read",
-  "understand",
-  "setup",
-]);
 
 const EVERYTHING_LABELS: Record<DashboardEverythingGroup, string> = {
   act: "Act",
@@ -94,6 +85,11 @@ interface MomentBlockModel {
 // put in this group, in the ranker's order, and the block's key is the group's own.
 // A sibling promoted to Now simply leaves one row fewer behind; nothing here can
 // admit, drop, reorder or cap anything. An ungrouped atom is a block of one.
+//
+// SINCE #4076 IT SERVES EVERY TAIL GROUP, Act and Active states included: with cards
+// gone there is no branch left for a group to take, so the statement families that
+// could never fold while they rendered cards (coaching observations, data-quality
+// findings) fold here on the shared `groupKey` their builder now passes.
 function momentBlocks(
   members: readonly EverythingPlacement[]
 ): MomentBlockModel[] {
@@ -107,24 +103,6 @@ function momentBlocks(
     groupKey: block[0].candidate.groupKey,
     members: block,
   }));
-}
-
-// Consecutive row blocks share ONE bordered container, so the group reads as a single
-// index rather than a stack of framed strips; a block that renders its members' nodes
-// (a Show-everything entry that hosts a control, and therefore declares no row) breaks
-// the run and sits between them in the ranker's order, unmoved.
-function tailRuns(
-  blocks: readonly MomentBlockModel[],
-  rendersAsRow: (placement: EverythingPlacement) => boolean
-): { rows: boolean; blocks: MomentBlockModel[] }[] {
-  const runs: { rows: boolean; blocks: MomentBlockModel[] }[] = [];
-  for (const block of blocks) {
-    const rows = block.members.every(rendersAsRow);
-    const last = runs.at(-1);
-    if (last && last.rows === rows && rows) last.blocks.push(block);
-    else runs.push({ rows, blocks: [block] });
-  }
-  return runs;
 }
 
 function MomentBlock({
@@ -182,91 +160,44 @@ function MomentBlock({
 export default function DashboardPlacementCanvas({
   dateLabel,
   placements,
-  candidateNodes,
-  standingPresentations,
+  presentations,
   aheadPresentations,
   attentionBadgeCount,
   illnessGroupNode,
 }: DashboardPlacementCanvasProps) {
-  // A REPORTING tail entry renders as a row and needs a row presentation; every other
-  // placement renders its node. Read / Understand / Setup declare a row, so the fact
-  // that a Show-everything entry HOSTS A CONTROL is the one thing that keeps it in a
-  // card there — and that is a claim the page makes by declaring no row, not a
-  // per-source branch here. Either way the entry must render: exact-once completeness
-  // is a claim about what is ON SCREEN, so a candidate that has neither is a hard
-  // failure rather than a silent omission.
-  const rendersAsRow = (placement: DashboardPlacement) =>
-    placement.lane === "everything" &&
-    ROW_GROUPS.has(placement.everythingGroup) &&
-    standingPresentations.get(placement.candidate.candidateId) != null;
-  // THE TAIL'S SPLIT (#3366), taken before the node check below, because a placement
-  // the tail does not draw owes no node — its page is drawn instead.
-  const { members: everything, doors: everythingDoors } =
-    everythingTail(placements);
+  const rowFor = (placement: DashboardPlacement) =>
+    (placement.lane === "ahead" ? aheadPresentations : presentations).get(
+      placement.candidate.candidateId
+    );
+  // THE TAIL'S SPLIT (#3366): a placement the tail does not draw owes no
+  // presentation — its page is drawn instead, in the app's own nav. Since #4076 the
+  // tail draws no door row for it either (owner: the Elsewhere section is "utterly
+  // useless"), so the guarantee that nothing is silently hidden is asserted where it
+  // can actually be checked — the placement manifest tier — rather than by a reader
+  // scrolling a list of page names they already have a sidebar for.
+  const everything = everythingTail(placements);
   const drawn = new Set(
     everything.map((placement) => placement.candidate.candidateId)
   );
-  const missingNode = placements.find(
+  const missing = placements.find(
     (placement) =>
-      placement.lane !== "standing" &&
-      placement.lane !== "ahead" &&
       !(
         placement.lane === "everything" &&
         !drawn.has(placement.candidate.candidateId)
       ) &&
-      !rendersAsRow(placement) &&
       !(
         placement.lane === "now" &&
         placement.nowLayer === "illness" &&
         placement.candidate.episodeGroup != null
       ) &&
-      candidateNodes.get(placement.candidate.candidateId) == null
+      rowFor(placement) == null
   );
-  if (missingNode) {
+  if (missing) {
     throw new Error(
-      `Missing dashboard candidate node for ${missingNode.candidate.candidateId} in ${missingNode.lane}`
+      `Missing dashboard row presentation for ${missing.candidate.candidateId} in ${missing.lane}`
     );
   }
-  const missingAhead = placements.find(
-    (placement) =>
-      placement.lane === "ahead" &&
-      aheadPresentations.get(placement.candidate.candidateId) == null
-  );
-  if (missingAhead)
-    throw new Error(
-      `Missing dashboard Ahead presentation for ${missingAhead.candidate.candidateId}`
-    );
-  // A door's label is the DESTINATION'S OWN NAME, from the one list that already maps
-  // a route to what it is called (`TRACKED_PAGES`, the same list Standing's doors
-  // read). Nothing is invented here, so a page the app has no name for is a hard
-  // failure rather than a row labelled with its URL — the candidate that named it
-  // would otherwise be reachable only by a reader who already knew the path.
-  const unnamedDoor = everythingDoors.find((href) => !trackedPageFor(href));
-  if (unnamedDoor)
-    throw new Error(`Unnamed Show everything door: ${unnamedDoor}`);
 
-  const nodeFor = (placement: DashboardPlacement) => {
-    const node = candidateNodes.get(placement.candidate.candidateId);
-    if (node == null) return null;
-    const { candidate } = placement;
-    const engagement =
-      candidate.relevance.kind === "profile-data"
-        ? candidate.relevance.engagement
-        : undefined;
-    return (
-      <div
-        className="min-w-0"
-        data-testid="dashboard-candidate"
-        data-candidate-id={candidate.candidateId}
-        data-fact-key={candidate.factKey}
-        data-lane={placement.lane}
-        data-kind={candidate.kind}
-        data-engagement={engagement}
-      >
-        {node}
-      </div>
-    );
-  };
   const nowPlacements = placementsInLane(placements, "now");
   const illnessPlacements = nowPlacements.filter(
     (placement) =>
@@ -276,33 +207,13 @@ export default function DashboardPlacementCanvas({
   if (illnessPlacements.length > 0 && illnessGroupNode == null) {
     throw new Error("Missing dashboard illness-group presentation");
   }
-  const firstIllnessId = illnessPlacements[0]?.candidate.candidateId;
-  const now = nowPlacements.flatMap((placement) => {
-    if (placement.nowLayer === "illness" && placement.candidate.episodeGroup) {
-      if (placement.candidate.candidateId !== firstIllnessId) return [];
-      return [
-        {
-          id: "illness-group",
-          // The group is one Now member standing for every open episode, and every
-          // episode's own placement is a `state` — a situation that is running.
-          kind: "state" as const,
-          node: (
-            <div data-testid="dashboard-illness-group">{illnessGroupNode}</div>
-          ),
-        } satisfies NowStripCard,
-      ];
-    }
-    const node = nodeFor(placement);
-    return node == null
-      ? []
-      : [
-          {
-            id: placement.candidate.candidateId,
-            kind: placement.candidate.kind,
-            node,
-          } satisfies NowStripCard,
-        ];
-  });
+  const now = nowPlacements.filter(
+    (placement) =>
+      !(
+        placement.nowLayer === "illness" &&
+        placement.candidate.episodeGroup != null
+      )
+  );
   const standing = placementsInLane(placements, "standing");
   // Owner ruling (#3548, cold start): "Nothing needs you." can never render on a
   // profile whose attention tier is the getting-started list. A never-recorded
@@ -328,24 +239,17 @@ export default function DashboardPlacementCanvas({
       label: key === "later-today" ? "Later today" : "This week and later",
       ...(key === "horizon"
         ? {
-            primaryHref: (horizon.some(
+            primaryHref: horizon.some(
               (placement) => placement.upcomingBand === "week"
             )
-              ? "/upcoming#week"
-              : "/upcoming#later") as AppRoute,
+              ? ("/upcoming#week" as const)
+              : ("/upcoming#later" as const),
           }
         : {}),
-      members: members.map((placement) => {
-        const presentation = aheadPresentations.get(
-          placement.candidate.candidateId
-        )!;
-        return {
-          candidateId: placement.candidate.candidateId,
-          factKey: placement.candidate.factKey,
-          kind: placement.candidate.kind,
-          ...presentation,
-        };
-      }),
+      members: members.map((placement) => ({
+        candidate: placement.candidate,
+        presentation: aheadPresentations.get(placement.candidate.candidateId)!,
+      })),
     };
   });
   const everythingGroups = groupsInPlacementOrder(
@@ -363,21 +267,25 @@ export default function DashboardPlacementCanvas({
         />
       </div>
       <NowStrip
-        cards={now}
+        rows={now.map((placement) => ({
+          candidate: placement.candidate,
+          presentation: presentations.get(placement.candidate.candidateId)!,
+        }))}
         dateLabel={dateLabel}
         bootstrapClaim={bootstrapClaim}
+        illnessGroupNode={illnessGroupNode}
       />
 
       {standing.length > 0 && (
         <DashboardStandingCluster
           placements={standing}
-          presentations={standingPresentations}
+          presentations={presentations}
         />
       )}
 
       <DashboardAhead buckets={aheadBuckets} />
 
-      {(everything.length > 0 || everythingDoors.length > 0) && (
+      {everything.length > 0 && (
         <RememberedDetails
           id="dashboard-all"
           className="group"
@@ -395,82 +303,25 @@ export default function DashboardPlacementCanvas({
           }
         >
           <div className="space-y-6" data-testid="dashboard-all-contents">
-            {everythingGroups.map(({ key: group, members }) => {
-              return (
-                <section key={group} aria-label={EVERYTHING_LABELS[group]}>
-                  <h3 className="mb-2 text-xs font-semibold tracking-wide text-slate-500 uppercase dark:text-slate-400">
-                    {EVERYTHING_LABELS[group]}
-                  </h3>
-                  <div
-                    className="grid grid-cols-1 gap-3"
-                    data-testid={`dashboard-everything-${group}`}
-                  >
-                    {ROW_GROUPS.has(group)
-                      ? tailRuns(momentBlocks(members), rendersAsRow).map(
-                          (run) =>
-                            run.rows ? (
-                              <div
-                                key={run.blocks[0].key}
-                                className="band overflow-hidden rounded-xl border border-(--border) bg-surface"
-                              >
-                                {run.blocks.map((block) => (
-                                  <MomentBlock
-                                    key={block.key}
-                                    block={block}
-                                    presentations={standingPresentations}
-                                  />
-                                ))}
-                              </div>
-                            ) : (
-                              <Fragment key={run.blocks[0].key}>
-                                {run.blocks.flatMap((block) =>
-                                  block.members.map((placement) => (
-                                    <Fragment
-                                      key={placement.candidate.candidateId}
-                                    >
-                                      {nodeFor(placement)}
-                                    </Fragment>
-                                  ))
-                                )}
-                              </Fragment>
-                            )
-                        )
-                      : members.map((placement) => (
-                          <Fragment key={placement.candidate.candidateId}>
-                            {nodeFor(placement)}
-                          </Fragment>
-                        ))}
-                  </div>
-                </section>
-              );
-            })}
-            {everythingDoors.length > 0 && (
-              <section aria-label="Elsewhere">
+            {everythingGroups.map(({ key: group, members }) => (
+              <section key={group} aria-label={EVERYTHING_LABELS[group]}>
                 <h3 className="mb-2 text-xs font-semibold tracking-wide text-slate-500 uppercase dark:text-slate-400">
-                  Elsewhere
+                  {EVERYTHING_LABELS[group]}
                 </h3>
-                <ul
+                <div
                   className="band overflow-hidden rounded-xl border border-(--border) bg-surface"
-                  data-testid="dashboard-all-doors"
+                  data-testid={`dashboard-everything-${group}`}
                 >
-                  {everythingDoors.map((href) => (
-                    <li
-                      key={href}
-                      className="border-t border-(--divider) first:border-t-0"
-                    >
-                      <DestinationLink
-                        href={href}
-                        data-testid="dashboard-all-door"
-                        data-door-href={href}
-                        className="flex items-center px-4 py-3 text-sm font-medium text-brand-700 hover:underline dark:text-brand-400"
-                      >
-                        {trackedPageFor(href)!.label}
-                      </DestinationLink>
-                    </li>
+                  {momentBlocks(members).map((block) => (
+                    <MomentBlock
+                      key={block.key}
+                      block={block}
+                      presentations={presentations}
+                    />
                   ))}
-                </ul>
+                </div>
               </section>
-            )}
+            ))}
           </div>
         </RememberedDetails>
       )}

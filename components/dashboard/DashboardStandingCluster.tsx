@@ -39,6 +39,17 @@ export interface DashboardStandingPresentation {
    * group declares the same moment; the canvas reads the first that has one.
    */
   moment?: { title: string; href?: AppRoute };
+  /**
+   * THE CONTROL SLOT (#4076). The trailing cell of the one row grammar, holding at
+   * most TWO controls at the one 34px `--control-box` height — the snooze/dismiss
+   * menu, a "Mark taken", a finding's Dismiss. Cards left `/` entirely, and this is
+   * where their writes landed: the ruling sanctions this slot as part of THE one
+   * shape rather than as a second shape of the row (#3365 declined it as the
+   * latter). A row with a control is NOT link-wrapped — see below — because a
+   * `<form>` inside an `<a>` is invalid markup, which is the reason the writes had
+   * to stay in cards until now.
+   */
+  control?: ReactNode;
 }
 
 // The door's label: the DESTINATION's own name, taken from the one list that already
@@ -50,10 +61,13 @@ function doorLabel(href: AppRoute): string | null {
   return trackedPageFor(href)?.label ?? null;
 }
 
-// THE ROW. One renderer for every label/value fact the dashboard reports, in Standing
-// and in the Show-everything tail alike (#3365) — the tail is an index of the same
-// grammar, not a second spelling of it. The caller supplies only what its lane owns:
-// Standing's door rail and stacking classes, the tail's nothing.
+// THE ROW. ONE renderer for every fact the dashboard reports, in EVERY zone — Now,
+// Standing, Ahead and the Show-everything tail (#4076). Cards-act/lines-report
+// (#3077) is dead as a rendering rule: there is no second grammar left for a zone to
+// choose, so identity comes from the label column and the block header rather than
+// from a glyph or a frame, and what a row EARNS goes in the trailing slot (a control,
+// a sparkline, a door). The caller supplies only what its lane owns: Standing's door
+// rail and stacking classes, every other lane's nothing.
 export function DashboardFactRow({
   candidate,
   presentation,
@@ -61,18 +75,29 @@ export function DashboardFactRow({
   surfaceClass = "",
   linkClass = "",
   className,
+  "data-motion": dataMotion,
 }: {
   candidate: DashboardPlacement["candidate"];
   presentation: DashboardStandingPresentation;
-  lane: "standing" | "everything";
+  lane: DashboardPlacement["lane"];
   surfaceClass?: string;
   linkClass?: string;
   className?: string;
+  /**
+   * Now's witnessed-arrival mark (#3253 decision 4), which only the client can
+   * decide. It mirrors the motion class exactly, so a reduced-motion viewer gets
+   * neither — "nothing animated" stays one assertion rather than a guess about
+   * computed styles.
+   */
+  "data-motion"?: "promote";
 }) {
   const engagement =
     candidate.relevance.kind === "profile-data"
       ? candidate.relevance.engagement
       : undefined;
+  // The label carries the row's destination when the row itself cannot (see the
+  // link-wrap suppression below): identity is what a door's words should name.
+  const labelLink = presentation.control != null ? presentation.href : undefined;
   const content = (
     <>
       {presentation.label && (
@@ -84,7 +109,16 @@ export function DashboardFactRow({
           data-testid="standing-label"
           className="text-xs text-slate-500 dark:text-slate-400"
         >
-          {presentation.label}
+          {labelLink ? (
+            <Link
+              href={labelLink}
+              className="hover:text-brand-700 hover:underline dark:hover:text-brand-400"
+            >
+              {presentation.label}
+            </Link>
+          ) : (
+            presentation.label
+          )}
         </span>
       )}
       {presentation.value != null && (
@@ -114,7 +148,13 @@ export function DashboardFactRow({
   // the destination — an untracked href is the honest silence.
   const door = presentation.href ? doorLabel(presentation.href) : null;
   const rowDisclosure = presentation.disclosure;
-  const linked = presentation.href ? (
+  // LINK-WRAP SUPPRESSION (#4076). A row that hosts a control cannot be an anchor
+  // around its own contents — the control is a `<form>`/`<button>`, and nesting
+  // either inside an `<a>` is invalid markup that browsers reparent. The row's
+  // destination is not lost: the label carries it as an ordinary link, which is also
+  // the only element on the row whose words name where it goes.
+  const control = presentation.control;
+  const linked = control == null && presentation.href ? (
     door ? (
       <StandingDestinationLink
         href={presentation.href}
@@ -132,6 +172,21 @@ export function DashboardFactRow({
       </Link>
     )
   ) : null;
+  const body = linked ? (
+    rowDisclosure ? (
+      <div className={`flex min-w-0 items-center ${linkClass}`}>
+        {linked}
+        <InfoTooltipIcon label={rowDisclosure} />
+      </div>
+    ) : (
+      linked
+    )
+  ) : (
+    <div className={rowClass}>
+      {content}
+      {rowDisclosure ? <InfoTooltipIcon label={rowDisclosure} /> : null}
+    </div>
+  );
   return (
     <li
       className={className}
@@ -142,20 +197,21 @@ export function DashboardFactRow({
       data-kind={candidate.kind}
       data-engagement={engagement}
       data-presence={presentation.presence}
+      data-motion={dataMotion}
     >
-      {linked ? (
-        rowDisclosure ? (
-          <div className={`flex min-w-0 items-center ${linkClass}`}>
-            {linked}
-            <InfoTooltipIcon label={rowDisclosure} />
-          </div>
-        ) : (
-          linked
-        )
+      {control == null ? (
+        body
       ) : (
-        <div className={rowClass}>
-          {content}
-          {rowDisclosure ? <InfoTooltipIcon label={rowDisclosure} /> : null}
+        // The trailing cell. `items-center` and not `items-baseline`: a control is a
+        // box, and aligning a 34px box on the text baseline hangs it below the row.
+        <div className="flex min-w-0 items-center gap-2">
+          {body}
+          <div
+            data-testid="dashboard-row-controls"
+            className="ml-auto flex shrink-0 items-center gap-1"
+          >
+            {control}
+          </div>
         </div>
       )}
     </li>
