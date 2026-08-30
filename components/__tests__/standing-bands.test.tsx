@@ -107,10 +107,13 @@ const PRESENTATIONS = new Map<string, DashboardStandingPresentation>([
   [PILLAR.candidate.candidateId, { label: "VO2 max", value: "Quiet" }],
 ]);
 
-const cluster = (placements: readonly StandingPlacement[]) => (
+const cluster = (
+  placements: readonly StandingPlacement[],
+  presentations = PRESENTATIONS
+) => (
   <DashboardStandingCluster
     placements={placements}
-    presentations={PRESENTATIONS}
+    presentations={presentations}
   />
 );
 
@@ -180,5 +183,33 @@ describe("Standing's rendered bands", () => {
         node.getAttribute("data-standing-band")
       )
     ).toEqual(["rest"]);
+  });
+
+  it("keeps a disclosure beside its value and the door on its rail", () => {
+    const disclosure = "Protein uses the larger tracked or in-app floor";
+    const presentations = new Map(PRESENTATIONS);
+    presentations.set(STEPS.candidate.candidateId, {
+      label: "Protein",
+      value: "84 g",
+      href: "/nutrition",
+      disclosure,
+      presence: "current",
+    });
+    const { container } = render(cluster([STEPS], presentations));
+    const candidate = container.querySelector<HTMLElement>(
+      `[data-candidate-id="${STEPS.candidate.candidateId}"]`
+    )!;
+    const wrapper = candidate.firstElementChild as HTMLElement;
+    const link = screen.getByRole("link", { name: /protein/i });
+    const info = screen.getByRole("button", { name: disclosure });
+    const door = screen.getByTestId("standing-door");
+
+    expect(wrapper.classList.contains("sm:pr-32")).toBe(true);
+    expect(wrapper.classList.contains("pr-32")).toBe(false);
+    expect(link.classList.contains("sm:pr-32")).toBe(false);
+    expect(link.nextElementSibling).toBe(info.parentElement);
+    expect(link.classList.contains("standing-stretch")).toBe(true);
+    expect(door.classList.contains("absolute")).toBe(true);
+    expect(door.classList.contains("right-0")).toBe(true);
   });
 });

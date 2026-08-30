@@ -113,11 +113,12 @@ export function DashboardFactRow({
   // No door on a row that is not a link, and no door where the app has no name for
   // the destination — an untracked href is the honest silence.
   const door = presentation.href ? doorLabel(presentation.href) : null;
+  const rowDisclosure = presentation.disclosure;
   const linked = presentation.href ? (
     door ? (
       <StandingDestinationLink
         href={presentation.href}
-        className={`${surfaceClass}standing-row ${rowClass} ${linkClass} hover:text-brand-700 dark:hover:text-brand-400`}
+        className={`${surfaceClass}standing-row ${rowClass} ${rowDisclosure ? "" : linkClass} hover:text-brand-700 dark:hover:text-brand-400`}
         destinationLabel={door}
       >
         {content}
@@ -131,7 +132,6 @@ export function DashboardFactRow({
       </Link>
     )
   ) : null;
-  const rowDisclosure = presentation.disclosure;
   return (
     <li
       className={className}
@@ -145,7 +145,7 @@ export function DashboardFactRow({
     >
       {linked ? (
         rowDisclosure ? (
-          <div className="flex min-w-0 items-center">
+          <div className={`flex min-w-0 items-center ${linkClass}`}>
             {linked}
             <InfoTooltipIcon label={rowDisclosure} />
           </div>
