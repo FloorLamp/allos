@@ -125,25 +125,16 @@ const TIER_LABEL: Record<FoodGroupTier, string> = {
   limit: "Eat less",
 };
 
-// What a food row SAYS about its group — the name, its tier badge, and the serving
-// line — in ONE component (#2305). It used to be written twice, once inside the phone
-// disclosure button and once inside the `md:block` static twin, and only the phone copy
-// carried testids: at a desktop viewport `getByTestId("food-tier-…").toHaveText(…)` was
-// therefore passing against a `md:hidden` element (`toHaveText` does not require
-// visibility) while the badge people actually see was covered by nothing. The two copies
-// had already drifted — the desktop name span had lost `truncate`, so a long name wrapped
-// there and pushed the row taller instead of clipping — which is exactly the failure mode
-// a second, untested copy produces.
+// WHAT A FOOD ROW SAYS ABOUT ITS GROUP: its name, on one line (#3987).
 //
-// The wrappers still differ, because they genuinely do: on a phone the label is a
-// disclosure BUTTON that expands the truncated serving line, above `md` it is static text.
-// Only the wrapper is per-breakpoint; the content is this.
-//
-// Both mounts are in the DOM at every width, so the testids follow the ProfileIdentityBar
-// convention: the same ids declared once here, with the phone mount suffixed `-mobile`.
-// The UNSUFFIXED ids belong to the mount that is visible at desktop widths, which is where
-// the default Playwright project runs — so an assertion on `food-tier-<slug>` now names
-// something a person can see.
+// It used to say three things through two breakpoint mounts — the name, a tier badge
+// and the serving sentence, written once for the phone's disclosure button and once
+// for a `md:block` static twin. The owner dropped the guidance tags (Telegram dropped
+// them first) and the serving sentence with them, which leaves nothing for a
+// disclosure to unfold, which leaves nothing for the second mount to be. One name, one
+// mount, one testid, at every width — and #2305's defect (an assertion passing against
+// the `md:hidden` copy while the visible one was covered by nothing) is unreachable
+// because there is no longer a copy to pass against.
 function FoodRowLabel({ group }: { group: FoodGroup }) {
   return (
     <span
