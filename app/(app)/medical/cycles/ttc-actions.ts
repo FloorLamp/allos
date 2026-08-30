@@ -21,7 +21,7 @@ export type TtcActionResult = { ok: true } | { ok: false; error: string };
 
 function revalidateTtc() {
   revalidateRoute("/medical/cycles");
-  revalidateRoute("/timeline");
+  revalidateRoute("/history");
   revalidateRoute("/");
 }
 

@@ -384,6 +384,10 @@ test("the strength picker creates and selects a travel machine without losing th
       page,
       page.getByTestId("confirm-dialog").getByRole("button", { name: "Delete" })
     );
+    // Absence cannot prove the revalidated tree applied (#3303). Read it from a
+    // fresh server render, after its positive page marker has settled.
+    await page.goto("/equipment");
+    await expect(page.getByTestId("equipment-index")).toBeVisible();
     await expect(row).toHaveCount(0);
   } finally {
     assertNoStrandedDrafts(workerDbPath(), SHARED_PROFILE_DRAFT_SCOPE);

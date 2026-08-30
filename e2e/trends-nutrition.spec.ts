@@ -115,14 +115,14 @@ test("a day tap opens the day panel; the Timeline stays one link away (#1166)", 
   await expect(panel).toBeVisible();
   await expect(panel.getByTestId("day-history-day-item")).not.toHaveCount(0);
 
-  // The Timeline link inside the panel carries the single-day shape.
-  const link = panel.getByRole("link", { name: /Timeline/ });
+  // The record link inside the panel carries the single-day shape.
+  const link = panel.getByRole("link", { name: /History/ });
   await expect(link).toHaveAttribute(
     "href",
-    /\/timeline\?from=.*&to=.*#timeline-day-/
+    /\/history\?day=\d{4}-\d{2}-\d{2}$/
   );
-  await followLink(page, link, /\/timeline\?from=/);
-  await expect(page).toHaveURL(/\/timeline\?from=/);
+  await followLink(page, link, /\/history\?day=/);
+  await expect(page).toHaveURL(/\/history\?day=/);
 });
 
 // #2417: the dose calendar's "what did I take that day" is the cross-item dose
@@ -363,12 +363,21 @@ test("selecting a week opens the WEEK panel, and a partial week says how far it 
   // the offer is withheld rather than filing the entry on a day nobody picked.
   await expect(panel.getByTestId("day-history-add-link")).toHaveCount(0);
 
-  // The Timeline link spans the week rather than pointing at one day.
-  const timeline = panel.getByRole("link", { name: "Timeline" });
-  const href = await timeline.getAttribute("href");
-  const match = href!.match(/from=(\d{4}-\d{2}-\d{2})&to=(\d{4}-\d{2}-\d{2})/);
-  expect(match).not.toBeNull();
-  expect(match![2] > match![1]).toBe(true);
+  // THE WEEK DOOR OPENS THE MONTH THAT CONTAINS IT. It used to span the week as
+  // `?from=X&to=Y`; #3958 rules the record navigated rather than windowed, so
+  // `from`/`to` died with `/timeline` and a week has no shape on this page. The
+  // folds it DOES carry are month-grained, so the honest successor opens the week's
+  // month (and its year, or the month is sealed inside a shut year card and the link
+  // lands on nothing). Both keys asserted, because opening only the month is the
+  // failure mode that still looks right in a URL.
+  const record = panel.getByRole("link", { name: "History" });
+  const href = await record.getAttribute("href");
+  expect(href).toMatch(/^\/history\?open=\d{4}&open=\d{4}-\d{2}$/);
+  const keys = [...href!.matchAll(/open=([\d-]+)/g)].map((m) => m[1]);
+  expect(keys).toHaveLength(2);
+  // The month key sits INSIDE the year key it ships with — the pair is what makes the
+  // month reachable, and a month without its year is the shape that lands on nothing.
+  expect(keys[1].startsWith(keys[0])).toBe(true);
 
   // The trailing week is PARTIAL — kept and declared, so
   // its smaller total never reads as a decline.

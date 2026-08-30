@@ -31,6 +31,9 @@ import DashboardPlacementCanvas, {
   type DashboardPlacementCanvasProps,
 } from "@/components/dashboard/DashboardPlacementCanvas";
 import { STANDING_READING_ORDER } from "@/lib/dashboard-standing";
+import { everythingTail } from "@/lib/dashboard-relevance";
+import { trackedPageFor } from "@/lib/recent-pages";
+import { logSheetSegments } from "@/lib/log-sheet";
 
 const session = vi.hoisted(() => ({
   loginId: 0,
@@ -566,6 +569,75 @@ describe("actual atomic dashboard manifests", () => {
     expect(seen).toEqual(new Set(order));
   });
 
+  // THE #3077 COMPLETENESS CONTRACT, NOW A MANIFEST ASSERTION (#3366).
+  //
+  // Show everything no longer renders every placement, so "nothing the ranker gathers
+  // can go missing" stopped being something a reader could verify by scrolling. It is
+  // verified here instead, against the REAL manifests and by ITERATING THE DROPS:
+  // each non-admitted placement names a page, that page is one of the doors the tail
+  // draws, and the app has a name for it — which is exactly what the canvas needs to
+  // draw the row (it throws otherwise). A candidate builder that starts dropping
+  // without a named page fails here, on the day the guarantee would have quietly
+  // stopped holding rather than the day someone noticed.
+  it("keeps every dropped Show everything fact one named door away", () => {
+    const dropped: string[] = [];
+    for (const [persona, placements] of manifests) {
+      const { doors } = everythingTail(placements);
+      for (const placement of placements) {
+        if (placement.lane !== "everything" || placement.admitted) continue;
+        const page = placement.candidate.navDuplicateOf;
+        dropped.push(`${persona}:${placement.candidate.candidateId}`);
+        expect(
+          page && doors.includes(page) && trackedPageFor(page)?.label,
+          `${persona}:${placement.candidate.candidateId} has no named door`
+        ).toBeTruthy();
+      }
+      expect(new Set(doors).size, persona).toBe(doors.length);
+    }
+    // The loop above is satisfiable by admitting everything, so the seeded profiles
+    // must actually exercise a drop for it to have asserted anything.
+    expect(dropped.length).toBeGreaterThan(0);
+  });
+
+  // THE TAIL'S GENERIC WRITE CARDS ARE GONE, AND THE SHEET HAS THEM (#3366/#4064).
+  //
+  // Owner ruling: the quick logger is the app's one quick-write surface, so an
+  // always-available write control does not also sit in the dashboard tail. An
+  // absence assertion alone would pass on a tree where the writes vanished
+  // altogether, so each retired candidate is checked against the quick-log row that
+  // now carries it — the sheet gained first, the tail dropped second.
+  //
+  // EACH ROW IS ASKED FOR AT THE LEAST PERMISSIVE FLAGS ITS CAPABILITY CLAIMS, not
+  // at `(true, true)`. `logSheetSegments` filters on the #1042 cycle bit and the
+  // #3279 substance bit, so the most permissive input cannot distinguish a row every
+  // profile reaches from one only a cycle-tracking profile reaches — and the profile
+  // that matters here is the FRESH one, which is what `vitals.manual-log` also served
+  // as a Setup bootstrap row before it retired. `cycle.control` keeps `cycleRelevant`
+  // because cycle relevance is the precondition of that capability itself, not an
+  // accident of the fixture. Measured: gating `log-measurements` behind the cycle bit
+  // leaves the `(true, true)` form 20/20 green and turns this one red.
+  it.each([
+    { candidateId: "weight.quick-add", row: "log-measurements", cycle: false },
+    { candidateId: "vitals.manual-log", row: "log-measurements", cycle: false },
+    { candidateId: "symptom.well-day-log", row: "log-symptom", cycle: false },
+    { candidateId: "cycle.control", row: "log-period", cycle: true },
+  ] as const)(
+    "$candidateId left the dashboard for the quick logger's $row",
+    ({ candidateId, row, cycle }) => {
+      for (const [persona, placements] of manifests) {
+        expect(
+          placements.map((placement) => placement.candidate.candidateId),
+          persona
+        ).not.toContain(candidateId);
+      }
+      expect(
+        logSheetSegments(cycle, false).flatMap((segment) =>
+          segment.items.map((item) => item.id)
+        )
+      ).toContain(row);
+    }
+  );
+
   it("keeps sleep regularity only in its healthspan family", () => {
     for (const placements of manifests.values()) {
       expect(
@@ -655,13 +727,20 @@ describe("actual atomic dashboard manifests", () => {
   // regression, which is exactly how the old single cap stopped meaning anything.
   // #3723 batches additive metric totals, recovering two statements for the
   // bodybuilder and four for the biohacker while preserving source election.
+  // #3366 retires the tail's four generic write cards. Only the SYMPTOM bar gathered
+  // anything of its own — severities, notes, custom names and log order, 13 statements
+  // — so every persona that renders it recovers exactly those. `household` is flat
+  // because its acting profile is sick, and the well-day bar never rendered there.
+  // #1851 makes the sleep read per-night, which DELETES the profile-wide source
+  // election and the DISTINCT source scan that fed it — one statement back for every
+  // persona, household included, since every dashboard reaches a sleep session.
   const QUERY_BASELINE: Record<string, number> = {
-    bodybuilder: 241,
-    "marathon-runner": 240,
-    household: 270,
-    pregnant: 237,
-    "diabetic-cgm": 248,
-    biohacker: 254,
+    bodybuilder: 227,
+    "marathon-runner": 226,
+    household: 269,
+    pregnant: 223,
+    "diabetic-cgm": 234,
+    biohacker: 240,
   };
 
   // A BACKSTOP, NOT THE METER. The baseline above is the meter; this is the bound

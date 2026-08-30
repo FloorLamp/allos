@@ -21,10 +21,11 @@ import {
 // imported from lib/timeline-scrubber.ts; what lives here is measurement, pointer
 // plumbing and paint.
 //
-// IT LIVES IN components/ SINCE #3958, and the move is what closed #2816. Two pages
-// scrub the same fold spine now — /history (the record) and /timeline until phase 2
-// retires it — and a second copy of a pointer recognizer is precisely the thing the
-// #1469 chokepoint exists to prevent. It is a RECORDED exception rather than a
+// IT LIVES IN components/ SINCE #3958, and the move is what closed #2816. It was
+// shared by two pages while the record and /timeline both scrubbed the same fold
+// spine; phase 2 retired that route, so /history is its only host now — and a second
+// copy of a pointer recognizer is precisely the thing the #1469 chokepoint exists to
+// prevent. It is a RECORDED exception rather than a
 // converged consumer: `useDragGesture` models an overlay's own dismissal, and this
 // positions a document scroll offset, which is the same reasoning PullToRefresh's
 // exception carries. #2816's actual defect was that the guard could not SEE it — rule

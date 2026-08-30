@@ -44,7 +44,7 @@ function revalidateDental() {
   // Dental folded into Health record (#1042 final tail): the surface is now
   // /records#dental.
   revalidateRoute("/records");
-  revalidateRoute("/timeline");
+  revalidateRoute("/history");
   revalidateRoute("/profile");
   revalidateRoute("/");
 }

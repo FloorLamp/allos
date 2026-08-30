@@ -1,7 +1,11 @@
 import { test, expect } from "./fixtures";
 import { loginAs } from "./nav";
-import { openDashboardAll } from "./helpers";
-import { E2E_LOGIN_ROUTINEUSUAL, E2E_MEMBER_PASSWORD } from "./fixture-logins";
+import { expectNoClippedContent, openDashboardAll } from "./helpers";
+import {
+  E2E_LOGIN_ROUTINEUSUAL,
+  E2E_LOGIN_WELLSYM,
+  E2E_MEMBER_PASSWORD,
+} from "./fixture-logins";
 
 // THE SHOW-EVERYTHING TAIL HAS ONE GRAMMAR (#3365).
 //
@@ -67,6 +71,42 @@ test.describe("the Show-everything tail's grammar (#3365)", () => {
     ).toBeGreaterThan(1);
   });
 
+  // #3365's third amendment: "No empty-state prose in the tail — absence is not
+  // content." One sentence outlived that ruling because its host had no way to
+  // suppress it: `SymptomLogBar`'s "No symptoms logged." rendered inside the tail's
+  // well-day card. #3366 retired that mount, so the sentence goes with it, and this
+  // is where that is checked rather than assumed. The bar itself is unchanged — it
+  // still says this in the illness cockpit and on the Cycles page, where a day with
+  // no symptoms logged is the reader's actual question.
+  //
+  // ON THE WELL-DAY LOGIN, WHICH IS THE ONLY PLACE THE CLAIM MEANS ANYTHING. The card
+  // was gated on a WELL day, so on the shared fixture — which carries an open illness
+  // — it never rendered and this test would have passed on the unfixed tree too.
+  // Measured: with the mount restored, the shared fixture stayed green and this login
+  // went red.
+  test("no empty-state sentence renders inside the tail", async ({
+    browser,
+  }) => {
+    const page = await loginAs(browser, {
+      username: E2E_LOGIN_WELLSYM,
+      password: E2E_MEMBER_PASSWORD,
+    });
+    try {
+      await page.goto("/");
+      await openDashboardAll(page);
+      const lane = page.getByTestId("dashboard-all-contents");
+      // The control: the lane rendered and holds entries, so the absence below is
+      // about a populated tail and not a selector that found nothing.
+      expect(
+        await lane.getByTestId("dashboard-candidate").count()
+      ).toBeGreaterThan(0);
+      await expect(lane.getByTestId("symptom-log-bar")).toHaveCount(0);
+      await expect(lane.getByTestId("symptom-none-logged")).toHaveCount(0);
+    } finally {
+      await page.context().close();
+    }
+  });
+
   test("no two tail blocks share a moment header", async ({ page }) => {
     await page.goto("/");
     await openDashboardAll(page);
@@ -79,6 +119,47 @@ test.describe("the Show-everything tail's grammar (#3365)", () => {
     // populated set and not an empty one.
     expect(headers.length).toBeGreaterThan(0);
     expect([...new Set(headers)].length).toBe(headers.length);
+  });
+
+  test("expanding the tail never widens the page, and every door stays on its row", async ({
+    page,
+  }) => {
+    await page.goto("/");
+    await openDashboardAll(page);
+
+    // A tail row's hover door is `absolute right-0`, which pins to the nearest
+    // POSITIONED ancestor — and when no row provided one, every door fell through to
+    // the viewport itself and its resting 4px translate gave the whole desktop a
+    // horizontal scrollbar (#4078 regression). The positive control first: doors
+    // exist in the tail, so both claims below are about rendered doors.
+    const doors = page
+      .getByTestId("dashboard-all-contents")
+      .getByTestId("standing-door");
+    expect(await doors.count()).toBeGreaterThan(0);
+
+    // Claim one, the user's symptom: no sideways overflow with the tail expanded.
+    // The escaped door is invisible at rest (opacity 0), so the helper's element
+    // walk skips it — its document-level belt-and-braces branch is what catches
+    // this one, because a viewport-anchored box evades the app shell's clip too.
+    await expectNoClippedContent(page);
+
+    // Claim two, the mechanism: each door's containing block is its own row — its
+    // `offsetParent` (nearest positioned ancestor) lives inside the row's <li>. Box
+    // geometry can't state this (the resting slide-in translate legitimately hangs
+    // 4px past the row, into the band shell's overflow clip); the anchor can.
+    const escaped = await doors.evaluateAll((nodes) =>
+      nodes
+        .map((node) => {
+          const row = node.closest("li");
+          if (!row) return { text: node.textContent, why: "no <li> ancestor" };
+          const anchor = node instanceof HTMLElement ? node.offsetParent : null;
+          return anchor instanceof Element && row.contains(anchor)
+            ? null
+            : { text: node.textContent, why: "door anchored outside its row" };
+        })
+        .filter(Boolean)
+    );
+    expect(escaped).toEqual([]);
   });
 
   // READ-ONLY on the composed-morning fixture: it looks at the offer and never taps

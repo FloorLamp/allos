@@ -1,9 +1,15 @@
 import { test, expect } from "./fixtures";
 import { type Page } from "@playwright/test";
 import { loginAs } from "./nav";
-import { E2E_LOGIN_DAILY, E2E_MEMBER_PASSWORD } from "./fixture-logins";
+import {
+  E2E_LOGIN_DAILY,
+  E2E_LOGIN_PROTEIN_SOURCES,
+  E2E_LOGIN_PROTEIN_TRACKED,
+  E2E_MEMBER_PASSWORD,
+} from "./fixture-logins";
 import { dashboardCandidatePrefix } from "./dashboard-candidate";
 import { openDashboardAll } from "./helpers";
+import { openLogSheet, showLogRow } from "./log-sheet-helpers";
 import { frozenLocalHHMM, frozenNow } from "./worker-env";
 import { pinnedTimezone } from "./pinned-timezone";
 import { STEPS_DELTA_COMPLETE_HOUR } from "@/lib/steps-today";
@@ -73,6 +79,88 @@ test.describe("dashboard daily loop (#1221)", () => {
     );
   });
 
+  // THE TRACKED BRANCH, RENDERED (#3903). Until this test the protein row's tracked
+  // basis reached no rendered test at all — which is how it kept an exact figure and a
+  // hover with no hedge through #3888's survey of the other four states.
+  //
+  // Its own login/context rather than the describe's shared page: the fixture is the only
+  // one carrying a tracked protein_g, and it is a different profile.
+  //
+  // WHY THIS FIXTURE DISCRIMINATES: today holds 70 g logged in-app against a 20 g health
+  // app reading. The retired override returned the health app's 20 g and zeroed the rest,
+  // so a tree still carrying it renders "20 g" here — the smaller number.
+  //
+  // It catches the OVERRIDE half only. Its basis is `both-sources`, not `tracked`, so the
+  // floor marker's old `tracked` exception leaves this row's "+" untouched; the
+  // tracked-only test below is the one that sees that half.
+  test("the protein row shows the LARGER floor and names both sources (#3903)", async ({
+    browser,
+  }) => {
+    const own = await loginAs(browser, {
+      username: E2E_LOGIN_PROTEIN_SOURCES,
+      password: E2E_MEMBER_PASSWORD,
+    });
+    try {
+      await own.goto("/");
+      const card = dashboardCandidatePrefix(own, "nutrition.protein:");
+      await expect(card).toBeVisible();
+
+      // max(20 tracked, 70 in-app) — and the "+" the tracked basis used to go without.
+      // Scoped to the row's own amount rather than the page: "70" alone would be
+      // satisfiable by the goal band or the 7-day average sitting beside it.
+      await expect(card).toContainText("70 g+");
+      await expect(card).not.toContainText("20 g");
+
+      // The hover names BOTH records, and hedges for both reasons. Asserted as the exact
+      // sentences: the failure this row exists for was a hover that named only the
+      // winner, which every "contains a source phrase" matcher would have passed.
+      const explain = own.getByRole("button", {
+        name: /Today's total is from your food log and your health app\./,
+      });
+      await expect(explain).toHaveAttribute(
+        "aria-label",
+        /Today's total is from your food log and your health app\. Foods you haven't logged and meals your health app hasn't sent aren't counted, so your real total may be higher\./
+      );
+    } finally {
+      await own.context().close();
+    }
+  });
+
+  // THE STATE THAT SAID THE LEAST (#3903), which after the ruling is reached only when
+  // the profile has logged nothing in-app at all. This is the row that used to print an
+  // exact figure with a hover that volunteered nothing about incompleteness — and the
+  // only fixture that fails if the floor marker's `tracked` exception returns.
+  test("a tracked-only row is a floor too, and says why (#3903)", async ({
+    browser,
+  }) => {
+    const own = await loginAs(browser, {
+      username: E2E_LOGIN_PROTEIN_TRACKED,
+      password: E2E_MEMBER_PASSWORD,
+    });
+    try {
+      await own.goto("/");
+      const card = dashboardCandidatePrefix(own, "nutrition.protein:");
+      await expect(card).toBeVisible();
+
+      // "20 g+", never the bare "20 g" this basis shipped with. Asserted with the marker
+      // attached, because "20 g" is a substring of "20 g+" and would pass on both.
+      await expect(card).toContainText("20 g+");
+
+      // Its OWN sentence, not the unlogged-foods one: for this basis the incompleteness
+      // is unsent time, not unlogged food, and reusing the sibling sentence would state
+      // something this state's data does not support.
+      const explain = own.getByRole("button", {
+        name: /Today's total is from the daily total your health app sends\./,
+      });
+      await expect(explain).toHaveAttribute(
+        "aria-label",
+        /Today's total is from the daily total your health app sends\. Meals your health app hasn't sent yet aren't counted, so your real total may be higher\./
+      );
+    } finally {
+      await own.context().close();
+    }
+  });
+
   test("Steps-today card shows the prior-7-day baseline, and no partial-day delta", async () => {
     await page.goto("/");
     const card = dashboardCandidatePrefix(page, "activity.steps:");
@@ -113,7 +201,6 @@ test.describe("dashboard daily loop (#1221)", () => {
       page,
       "vitals.resting-heart-rate:"
     );
-    const logCandidate = dashboardCandidatePrefix(page, "vitals.manual-log");
     await expect(bpCandidate).toBeVisible();
     await expect(hrCandidate).toBeVisible();
     // The most recent BP pair (118/76 in the seed) — a systolic/diastolic value.
@@ -132,17 +219,31 @@ test.describe("dashboard daily loop (#1221)", () => {
     await expect(
       hrCandidate.getByTestId("vitals-latest-resting-hr-age")
     ).not.toHaveAttribute("data-stale", "true");
-    // #1892: the log affordance is present WITH data, not only without it. It used to
-    // live in the empty state alone, so the person who logs BP weekly — the one who
-    // actually opens this card — had none. It opens the same shared measurements
-    // quick-entry the empty CTA opens.
-    const logReading = logCandidate.getByTestId("vitals-log-reading");
-    await expect(logReading).toHaveText("Log a vital");
-    await logReading.click();
-    await expect(page.getByTestId("quick-entry-body")).toHaveAttribute(
-      "data-form",
-      "measurements"
-    );
+    // #1892 SURVIVES ITS SURFACE (#3366). The claim was "the log affordance is present
+    // WITH data, not only without it" — it used to live in the vitals empty state
+    // alone, so the person who logs BP weekly had none. The 2026-08-29 ruling moved
+    // every always-available write off the tail because the quick logger is the app's
+    // one quick-write surface, which satisfies the claim unconditionally rather than
+    // per-card. Both halves are asserted here: gone from the card, offered by the
+    // sheet, on a profile that HAS vitals data — the case #1892 was filed about.
+    await expect(
+      dashboardCandidatePrefix(page, "vitals.manual-log")
+    ).toHaveCount(0);
+    await expect(page.getByTestId("vitals-log-reading")).toHaveCount(0);
+    // The puck is phone-only chrome, so the viewport moves for this one assertion
+    // and moves back — every other test in this file shares this page at 1280.
+    await page.setViewportSize({ width: 390, height: 844 });
+    try {
+      const sheet = await openLogSheet(page);
+      const row = await showLogRow(sheet, "log-measurements");
+      await row.click();
+      await expect(page.getByTestId("quick-entry-body")).toHaveAttribute(
+        "data-form",
+        "measurements"
+      );
+    } finally {
+      await page.setViewportSize({ width: 1280, height: 900 });
+    }
   });
 
   test("Cycle-phase card shows the derived cycle day and phase (informational)", async () => {

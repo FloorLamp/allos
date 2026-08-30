@@ -127,9 +127,25 @@ test.describe("the record's merged household view (#4009 item 3)", () => {
     // Everything below has to be attributable to the MODE rather than to the
     // fixture, and the only way to say that is to show the same page without it:
     // one member's row, no subject chip, and the other member's dose absent.
-    await page.goto("/history");
-    await expect(page.getByText(HXEVERY_SELF_DOSE)).toBeVisible();
-    await expect(page.getByText(HXEVERY_RO_DOSE)).toHaveCount(0);
+    //
+    // ON `?kind=dose`, NOT ON THE UNFILTERED RECORD, and the reason is this issue's
+    // own contract: filtered to a kind the page is the plain record, while in
+    // Everything the dose rows collapse into a rollup line. Every claim in this spec
+    // is about a ROW — its subject, its ⋯, the correction it dispatches — so the view
+    // it is asserted on has to be one that draws rows.
+    //
+    // AND THE ROW IS THE SCOPE, not the page. Read page-wide, `getByText(SELF_DOSE)`
+    // is satisfied by a NEIGHBOUR: the record also carries an insight row whose detail
+    // segment names the same item ("1 dose · Record Self Vitamin"), so that assertion
+    // passed on the unfiltered view even with the dose row collapsed out of the DOM —
+    // green, and no longer about the dose row at all.
+    await page.goto("/history?kind=dose");
+    await expect(
+      page.getByTestId("history-row").filter({ hasText: HXEVERY_SELF_DOSE })
+    ).toHaveCount(1);
+    await expect(
+      page.getByTestId("history-row").filter({ hasText: HXEVERY_RO_DOSE })
+    ).toHaveCount(0);
     await expect(page.getByTestId("history-row-subject")).toHaveCount(0);
 
     // ── THE MODE IS NOT ON THE FILTER ROW ────────────────────────────────────
@@ -158,19 +174,40 @@ test.describe("the record's merged household view (#4009 item 3)", () => {
 
     // ── MERGED ───────────────────────────────────────────────────────────────
     await addToView(page, roId);
-    await page.goto("/history?view=everyone");
 
-    // BOTH members' doses, on one page, each naming its subject. Exact matching with
-    // a count rather than a substring: the two fixture item names share the prefix
-    // "Record", so `toContainText("Record")` would be satisfied by either row alone.
-    await expect(page.getByText(HXEVERY_SELF_DOSE)).toBeVisible();
-    await expect(page.getByText(HXEVERY_RO_DOSE)).toBeVisible();
-    const subjects = page.getByTestId("history-row-subject");
-    await expect(
-      subjects.filter({ hasText: HXEVERY_SELF_PROFILE })
-    ).toHaveCount(1);
-    await expect(subjects.filter({ hasText: HXEVERY_RO_PROFILE })).toHaveCount(
+    // THE ROLLUP LINE CARRIES THE ATTRIBUTION TOO, and in Everything it is the only
+    // thing that does for a log kind — so it is asserted here rather than left to the
+    // pure tier. PER MEMBER is the load-bearing half of the rollup rule ("a mixed
+    // count would hide whose logs they were"): two members' doses on one day must be
+    // TWO lines each naming its own subject, never one line counting both.
+    await page.goto("/history?view=everyone");
+    const rollups = page.getByTestId("history-rollup");
+    await expect(rollups.filter({ hasText: HXEVERY_SELF_PROFILE })).toHaveCount(
       1
+    );
+    await expect(rollups.filter({ hasText: HXEVERY_RO_PROFILE })).toHaveCount(
+      1
+    );
+
+    // ── THE ROWS THEMSELVES, on the view that draws them ──────────────────────
+    // BOTH members' doses, on one page, each naming its subject. Scoped to the row and
+    // counted rather than matched as page text: the two fixture item names share the
+    // prefix "Record", so a substring read would be satisfied by either row alone —
+    // and, as above, by an insight row that merely mentions the item.
+    await page.goto("/history?kind=dose&view=everyone");
+    const selfDoseRow = page
+      .getByTestId("history-row")
+      .filter({ hasText: HXEVERY_SELF_DOSE });
+    const roDoseRow = page
+      .getByTestId("history-row")
+      .filter({ hasText: HXEVERY_RO_DOSE });
+    await expect(selfDoseRow).toHaveCount(1);
+    await expect(roDoseRow).toHaveCount(1);
+    await expect(selfDoseRow.getByTestId("history-row-subject")).toHaveText(
+      HXEVERY_SELF_PROFILE
+    );
+    await expect(roDoseRow.getByTestId("history-row-subject")).toHaveText(
+      HXEVERY_RO_PROFILE
     );
 
     // ── THE PER-ROW WRITE GATE (#4009 item 1 / #2106) ────────────────────────
@@ -178,14 +215,10 @@ test.describe("the record's merged household view (#4009 item 3)", () => {
     // the writable member's row has the menu, the read-only member's does not, in
     // the same render. Either half alone is satisfiable by a page that draws no
     // menus at all, which is exactly the phase-1 behaviour this replaces.
-    const selfRow = page
-      .getByTestId("history-row")
-      .filter({ hasText: HXEVERY_SELF_DOSE });
-    const roRow = page
-      .getByTestId("history-row")
-      .filter({ hasText: HXEVERY_RO_DOSE });
-    await expect(selfRow.getByTestId("overflow-menu-trigger")).toHaveCount(1);
-    await expect(roRow.getByTestId("overflow-menu-trigger")).toHaveCount(0);
+    await expect(selfDoseRow.getByTestId("overflow-menu-trigger")).toHaveCount(
+      1
+    );
+    await expect(roDoseRow.getByTestId("overflow-menu-trigger")).toHaveCount(0);
   });
 
   test("a correction on a writable member's row lands on that member", async ({
@@ -202,7 +235,11 @@ test.describe("the record's merged household view (#4009 item 3)", () => {
     // stored count below is then a negative control on a profile the page never even
     // rendered.
     await addToView(page, memberId);
-    await page.goto("/history?view=everyone");
+    // FILTERED TO THE KIND, for the same reason the case above is: a correction is
+    // driven from a row's ⋯, and in Everything a dose row is inside a rollup rather
+    // than on the page. The gate being proven is per-ROW and has nothing to do with
+    // which view drew the row.
+    await page.goto("/history?kind=dose&view=everyone");
 
     // Delete MEMBER's dose — a writable profile that is NOT the acting one, which is
     // the capability #4009 item 1 grants and the one thing no other tier can reach:
@@ -220,11 +257,18 @@ test.describe("the record's merged household view (#4009 item 3)", () => {
       page.getByTestId("confirm-dialog").getByRole("button", { name: "Delete" })
     );
 
-    await expect(page.getByText(HXEVERY_MEMBER_DOSE)).toHaveCount(0);
+    // SCOPED TO THE ROW, never to the page: the record carries insight rows whose
+    // detail segment names the same item, so a page-wide text read answers about a
+    // neighbour rather than about the row the correction was driven from.
+    await expect(
+      page.getByTestId("history-row").filter({ hasText: HXEVERY_MEMBER_DOSE })
+    ).toHaveCount(0);
     // The ACTING profile's row survives, and it is the one that has to be named: a
     // correction that fell back to the session — the exact defect the gate exists to
     // prevent — lands there, and "the row I clicked went away" cannot see it.
-    await expect(page.getByText(HXEVERY_SELF_DOSE)).toBeVisible();
+    await expect(
+      page.getByTestId("history-row").filter({ hasText: HXEVERY_SELF_DOSE })
+    ).toHaveCount(1);
 
     // And in the store, per profile rather than per row count.
     const db = new Database(workerDbPath());

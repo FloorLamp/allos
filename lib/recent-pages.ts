@@ -34,7 +34,6 @@ export const TRACKED_PAGES: TrackedPage[] = [
   { href: "/training", label: "Training" },
   { href: "/nutrition", label: "Nutrition" },
   { href: "/history", label: "History" },
-  { href: "/timeline", label: "Timeline" },
   { href: "/trends", label: "Trends" },
   { href: "/retrospective", label: "Year in review" },
   { href: "/sleep", label: "Sleep" },

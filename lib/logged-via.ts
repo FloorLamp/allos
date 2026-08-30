@@ -159,11 +159,12 @@ export const IMPORTED: LoggedVia = "import";
  * to know about these rows is that they arrived through the queue, because a replayed
  * write's timing tells you nothing about when the person acted.
  *
- * IT IS NOT that the surface is unknowable. It is in scope at both `enqueue` calls —
- * `WeightQuickAdd` sets `dashboard-widget` on the online branch of the same function,
- * and `LogPracticeButton` already holds its surface when it queues — so carrying it
+ * IT IS NOT that the surface is unknowable. It is in scope at the `enqueue` calls —
+ * `LogPracticeButton` already holds its surface when it queues, and a form that
+ * enqueues declares one on its online branch of the same function — so carrying it
  * would be recording something the client knows and currently discards, not inventing
- * anything. The column stores one fact per row; the issue chose this one, and a
+ * anything. (The dashboard's own weigh-in widget was the second example here until
+ * #3366 retired it; the argument is unchanged, only that citation was.) The column stores one fact per row; the issue chose this one, and a
  * two-axis "queued from X, replayed" is a wider change than #3087 asked for.
  */
 export const OFFLINE_REPLAY: LoggedVia = "offline-replay";

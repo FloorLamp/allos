@@ -146,7 +146,7 @@ describe("installNavFetchGuard", () => {
     installNavFetchGuard(win);
 
     const body = "dose=1";
-    await win.fetch("/timeline", { method: "POST", body });
+    await win.fetch("/history", { method: "POST", body });
     expect(inner).toHaveBeenCalledTimes(1);
     expect(inner.mock.calls[0][1]).toMatchObject({ method: "POST", body });
   });
@@ -171,7 +171,7 @@ describe("installNavFetchGuard", () => {
     installNavFetchGuard(win);
     startNavProgress();
 
-    const result = win.fetch("/timeline", { headers: NAV_HEADERS });
+    const result = win.fetch("/history", { headers: NAV_HEADERS });
     await vi.advanceTimersByTimeAsync(NAV_RETRY_DELAYS_MS[0]);
     expect((await result).ok).toBe(true);
     expect(calls).toBe(2);
@@ -190,7 +190,7 @@ describe("installNavFetchGuard", () => {
     startNavProgress();
 
     await expect(
-      win.fetch("/timeline", {
+      win.fetch("/history", {
         headers: NAV_HEADERS,
         signal: controller.signal,
       })
@@ -208,7 +208,7 @@ describe("installNavFetchGuard", () => {
     startNavProgress();
 
     let settled = false;
-    void win.fetch("/timeline", { headers: NAV_HEADERS }).then(
+    void win.fetch("/history", { headers: NAV_HEADERS }).then(
       () => {
         settled = true;
       },
@@ -243,7 +243,7 @@ describe("installNavFetchGuard", () => {
     installNavFetchGuard(win);
     startNavProgress();
 
-    const result = win.fetch("/timeline", { headers: NAV_HEADERS });
+    const result = win.fetch("/history", { headers: NAV_HEADERS });
     for (const delay of NAV_RETRY_DELAYS_MS) {
       await vi.advanceTimersByTimeAsync(delay);
     }
@@ -266,7 +266,7 @@ describe("installNavFetchGuard", () => {
     installNavFetchGuard(win);
     expect(getNavProgress()).toBe("idle");
 
-    const result = win.fetch("/timeline", { headers: NAV_HEADERS });
+    const result = win.fetch("/history", { headers: NAV_HEADERS });
     const assertion = expect(result).rejects.toThrow(TypeError);
     for (const delay of NAV_RETRY_DELAYS_MS) {
       await vi.advanceTimersByTimeAsync(delay);

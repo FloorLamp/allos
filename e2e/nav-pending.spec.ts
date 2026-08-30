@@ -239,16 +239,16 @@ test("a day arrow shows the day opening, and five taps dispatch one navigation (
   // guard, on a control whose whole purpose is being tapped again and again.
   const DAY = "2026-03-15";
   const nav = heldNavigation();
-  await page.route("**/timeline?*", nav.handler);
+  await page.route("**/history?*", nav.handler);
 
-  await page.goto(`/timeline?from=${DAY}&to=${DAY}`);
+  await page.goto(`/history?day=${DAY}`);
   const prev = page.getByTestId("timeline-day-prev");
   await expect(prev).toBeVisible();
 
   await hydratedClick(page, prev);
   await expect(prev.getByTestId("nav-link-pending")).toBeVisible();
   await expect(prev.getByRole("status")).toHaveText(/Opening /);
-  expect(new URL(page.url()).searchParams.get("from")).toBe(DAY);
+  expect(new URL(page.url()).searchParams.get("day")).toBe(DAY);
 
   // The impatient taps. Each is a real click on a real, enabled anchor — a
   // disabled arrow would also refuse a cmd-click, which opens the day beside
@@ -256,7 +256,7 @@ test("a day arrow shows the day opening, and five taps dispatch one navigation (
   for (let i = 0; i < 4; i += 1) await prev.click();
 
   nav.release();
-  await expect(page).toHaveURL(/from=2026-03-14/);
+  await expect(page).toHaveURL(/day=2026-03-14/);
   expect(
     nav.navRequests(),
     "a repeat tap on a pending day arrow must be absorbed, not dispatched"
@@ -304,24 +304,32 @@ test("a pager step shows pending in its own label, and absorbs repeat taps (#286
   ).toBe(1);
 });
 
-test("a timeline range chip shows pending in place, and absorbs repeat taps (#2869)", async ({
+// RE-POINTED FROM THE RANGE PILL, WHICH #3958 DELETED. This drove
+// `timeline-pill-30D`, one of the 7D/30D/90D chips the record rules out entirely
+// ("no 7D/30D/90D chips, no From/To card") — so the control is gone, not renamed.
+// What #2869 is actually about survives unchanged: a FILTER CHIP that navigates
+// shows its pending state in place and absorbs repeat taps. The record's family
+// chips are the same `TimelineFilterLink` over the same `PendingLink`, so the
+// behaviour under test is identical and the assertion moves to a control that
+// exists.
+test("a record filter chip shows pending in place, and absorbs repeat taps (#2869)", async ({
   page,
 }) => {
   const nav = heldNavigation();
-  await page.route("**/timeline?*", nav.handler);
+  await page.route("**/history?*", nav.handler);
 
-  await page.goto("/timeline");
-  const chip = page.getByTestId("timeline-pill-30D");
+  await page.goto("/history");
+  const chip = page.getByTestId("history-chip-family-logs");
   await expect(chip).toBeVisible();
 
   await hydratedClick(page, chip);
   await expect(chip.getByTestId("nav-link-pending")).toBeVisible();
-  await expect(chip.getByRole("status")).toHaveText(/Opening 30D/);
+  await expect(chip.getByRole("status")).toHaveText(/Opening Logs/);
 
   for (let i = 0; i < 4; i += 1) await chip.click();
 
   nav.release();
-  await expect(page).toHaveURL(/from=/);
+  await expect(page).toHaveURL(/family=logs/);
   expect(
     nav.navRequests(),
     "a repeat tap on a pending filter chip must be absorbed, not dispatched"

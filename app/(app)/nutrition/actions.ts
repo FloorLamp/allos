@@ -271,7 +271,6 @@ export async function logFoodServing(
   revalidateRoute("/nutrition");
   revalidateRoute("/history");
   revalidateRoute("/trends");
-  revalidateRoute("/timeline");
   revalidateRoute("/");
   return {
     ok: true,
@@ -346,7 +345,6 @@ export async function undoFoodServing(
   revalidateRoute("/nutrition");
   revalidateRoute("/history");
   revalidateRoute("/trends");
-  revalidateRoute("/timeline");
   revalidateRoute("/");
   return {
     ok: true,
@@ -415,7 +413,6 @@ export async function logUsualFood(
   revalidateRoute("/nutrition");
   revalidateRoute("/history");
   revalidateRoute("/trends");
-  revalidateRoute("/timeline");
   revalidateRoute("/");
   return {
     ok: true,
@@ -522,7 +519,6 @@ export async function updateFoodLogEvent(
   revalidateRoute("/nutrition");
   revalidateRoute("/history");
   revalidateRoute("/trends");
-  revalidateRoute("/timeline");
   revalidateRoute("/");
   return { ok: true, from: outcome.from, to: outcome.to };
 }
@@ -566,7 +562,6 @@ export async function deleteFoodLogEvent(
   revalidateRoute("/nutrition");
   revalidateRoute("/history");
   revalidateRoute("/trends");
-  revalidateRoute("/timeline");
   revalidateRoute("/");
   return { ok: true, vacated: outcome.vacated, undoId: outcome.undoId };
 }

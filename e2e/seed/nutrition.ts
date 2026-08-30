@@ -43,6 +43,12 @@ import {
   E2E_LOGIN_FOODPIN,
   FOOD_PIN_PROFILE,
   FOOD_PIN_GROUP,
+  E2E_LOGIN_PROTEIN_SOURCES,
+  PROTEIN_SOURCES_PROFILE,
+  E2E_LOGIN_PROTEIN_TRACKED,
+  E2E_LOGIN_FIBER_SOURCES,
+  FIBER_SOURCES_PROFILE,
+  PROTEIN_TRACKED_PROFILE,
 } from "../fixture-logins";
 import { getTimezone } from "../../lib/settings";
 import { setFixtureTimezone } from "../fixture-timezones";
@@ -594,15 +600,23 @@ export function seedRoutineUsual(): void {
   // events": every instant below is already built from a profile-LOCAL wall time through
   // `zonedWallTimeToUtc` (#1417), so the opt-out bought the fixture nothing and cost it
   // determinism. Under a UTC pin the profile's local minute-of-day IS the run's real UTC
-  // start hour, and the dashboard candidate this fixture exists to render carries
+  // start hour, and the dashboard candidate this fixture exists to render CARRIED
   // meal-window timing (`mealTimeWindows`, the intake anchors ±60 min): past 21:00 local
-  // no meal window is left today, the candidate resolves `expired`, and an expired
+  // no meal window was left today, the candidate resolved `expired`, and an expired
   // candidate is dropped from EVERY lane — `openDashboardAll` cannot reach it. The spec
   // was therefore red for the ~3 hours of each day a run started in [21:00, 24:00) UTC
   // and green the other 21. Following the pinned zone puts the frozen clock at 13:mm
   // local, which IS `DEFAULT_INTAKE_REMINDER_MINUTES.Midday` (13:00), so the offer sits
   // at the centre of a meal window at every possible UTC start hour rather than near an
   // edge. lib/__tests__/pinned-timezone.test.ts pins that invariant.
+  //
+  // THAT CUTOFF IS GONE AS OF #3265 — this candidate now carries the FOOD-slot window it
+  // is anchored to, and Evening runs to local midnight, so it is placed at every hour of
+  // the day. The profile still follows the pin, for the reason the whole table gives: an
+  // opted-out profile is a second calendar in one run, and a spec that asserts a
+  // dashboard atom may not have one (e2e/fixture-timezones.ts, enforced by
+  // lib/__tests__/fixture-timezone-atoms.test.ts). The paragraph above is kept as the
+  // receipt for how this fixture got here, not as a live constraint on it.
   //
   // Local 08:00 is Morning, 12:00 Midday and 19:00 Evening under the default 11:00/15:00
   // food boundaries. Idempotent: every fixture-owned row is cleared first.
@@ -724,4 +738,136 @@ export function seedFoodPinSplit(): void {
   console.log(
     `e2e: seeded deep-linked food pin fixture — profile ${pinId} (${FOOD_PIN_PROFILE}) (#2061)`
   );
+}
+
+// ── The tracked protein branch, rendered (#3903) ──
+export function seedProteinSourceStates(): void {
+  // TWO profiles, because today has ONE basis and #3903 turns on two states:
+  //
+  //   BOTH SOURCES, in-app larger — 70 g quick-added here against a 20 g health-app
+  //     reading that has synced one meal. The row must print max(20, 70) = "70 g+" and
+  //     name both sources. The retired override printed the health app's 20 g and zeroed
+  //     the rest, so it fails on this profile alone.
+  //   TRACKED ONLY — a 20 g reading with nothing logged in-app, which after the ruling is
+  //     the only route to a bare `tracked` basis, and the state #3903 says no rendered
+  //     test reached. It is also the only one that can catch the floor marker's old
+  //     `tracked` exception: the both-sources profile keeps its "+" either way.
+  //
+  // Both are 70 kg → the default `active` band, the exact target #3903's own probe used.
+  // Both are read-only in their spec, and they are the only fixture profiles anywhere
+  // carrying a tracked protein_g, so a neighbour logging food would change a max and a
+  // basis at once. Idempotent — every table each profile owns is cleared first, so a
+  // reused dev server re-seeds cleanly and no max drifts by accumulating a second row.
+  for (const [login, name, loggedGrams] of [
+    [E2E_LOGIN_PROTEIN_SOURCES, PROTEIN_SOURCES_PROFILE, 70],
+    [E2E_LOGIN_PROTEIN_TRACKED, PROTEIN_TRACKED_PROFILE, 0],
+  ] as const) {
+    const id = fixtureProfileId(name);
+    seedMemberLogin(login, id);
+    const day = today(id);
+    for (const sql of [
+      `DELETE FROM body_metrics WHERE profile_id = ?`,
+      `DELETE FROM protein_daily_totals WHERE profile_id = ?`,
+      `DELETE FROM food_daily_totals WHERE profile_id = ?`,
+      `DELETE FROM metric_samples WHERE profile_id = ? AND metric = 'protein_g'`,
+    ])
+      db.prepare(sql).run(id);
+
+    db.prepare(
+      `INSERT INTO body_metrics (profile_id, date, weight_kg, notes) VALUES (?, ?, 70, 'e2e:protein-sources')`
+    ).run(id, day);
+
+    // The app's OWN ledger, as quick-added grams only — no food-group servings, so the
+    // in-app figure is exactly this number and the assertion needs no catalog arithmetic.
+    if (loggedGrams > 0)
+      db.prepare(
+        `INSERT INTO protein_daily_totals (profile_id, date, grams) VALUES (?, ?, ?)`
+      ).run(id, day, loggedGrams);
+
+    // The health app, mid-sync: ONE breakfast-shaped nutrition sample. protein_g is a SUM
+    // metric and an integration writes one sample per meal record, so 20 g is a running
+    // partial — the fact the whole issue turns on. The instant is built through the
+    // profile's own zone (the seed pins a rotating per-run timezone), never a naive
+    // `${day}T08:30` string.
+    const breakfast = zonedWallTimeToUtc(
+      getTimezone(id),
+      day,
+      "08:30"
+    )!.toISOString();
+    db.prepare(
+      `INSERT INTO metric_samples (profile_id, source, metric, date, started_at, ended_at, value)
+     VALUES (?, 'health_connect', 'protein_g', ?, ?, ?, 20)`
+    ).run(id, day, breakfast, breakfast);
+  }
+}
+
+// ── The both-sources FIBER branch, rendered (#4127) ──
+export function seedFiberSourceStates(): void {
+  // ONE profile, because fiber's ruling turns on one state protein's fixtures cannot
+  // stand in for: a tracked reading beside SUPPLEMENT grams, which is the component fiber
+  // has and protein does not. The in-app side is deliberately the LARGER floor — a
+  // confirmed 20 g psyllium dose against an 8 g health-app reading that has synced one
+  // meal — so a tree still carrying the override renders the health app's 8 g on a
+  // `tracked` basis with no floor marker, where this profile must render 20 g+ and name
+  // both records.
+  //
+  // NO food-group servings: the in-app figure is then exactly the dose amount, and the
+  // spec's assertion needs no catalog arithmetic to stay true when the catalog moves.
+  // Idempotent — every table this profile owns is cleared first, so a reused dev server
+  // re-seeds cleanly and the max never drifts by accumulating a second dose or sample.
+  const id = fixtureProfileId(FIBER_SOURCES_PROFILE);
+  seedMemberLogin(E2E_LOGIN_FIBER_SOURCES, id);
+  const day = today(id);
+  for (const sql of [
+    `DELETE FROM food_daily_totals WHERE profile_id = ?`,
+    `DELETE FROM metric_samples WHERE profile_id = ? AND metric = 'fiber_g'`,
+    `DELETE FROM intake_item_logs WHERE item_id IN (SELECT id FROM intake_items WHERE profile_id = ?)`,
+    `DELETE FROM intake_item_doses WHERE item_id IN (SELECT id FROM intake_items WHERE profile_id = ?)`,
+    `DELETE FROM intake_items WHERE profile_id = ?`,
+  ])
+    db.prepare(sql).run(id);
+
+  // Sex → a DRI fiber target (adult male = 38 g/day), so the day reads `below` on either
+  // tree and the status cannot stand in for the figure the spec is really asserting.
+  db.prepare(
+    `INSERT INTO profile_settings (profile_id, key, value) VALUES (?, 'sex', 'male')
+     ON CONFLICT (profile_id, key) DO UPDATE SET value = excluded.value`
+  ).run(id);
+
+  // The app's OWN ledger: one CONFIRMED, gram-quantified fiber dose today. Taken, not
+  // scheduled — a skipped dose never counts toward the supplemented floor.
+  const itemId = Number(
+    db
+      .prepare(
+        `INSERT INTO intake_items (profile_id, name, active, kind, condition, obligation)
+         VALUES (?, 'Psyllium husk', 1, 'supplement', 'daily', 'should')`
+      )
+      .run(id).lastInsertRowid
+  );
+  const doseId = Number(
+    db
+      .prepare(
+        `INSERT INTO intake_item_doses (item_id, amount, time_of_day, food_timing, sort)
+         VALUES (?, '20 g', 'morning', 'any', 0)`
+      )
+      .run(itemId).lastInsertRowid
+  );
+  db.prepare(
+    `INSERT INTO intake_item_logs (dose_id, item_id, date, amount, recorded_at, status)
+     VALUES (?, ?, ?, '20 g', ?, 'taken')`
+  ).run(doseId, itemId, day, utcSqlString(clockNow()));
+
+  // The health app, mid-sync: ONE breakfast-shaped nutrition sample. fiber_g is a SUM
+  // metric and an integration writes one sample per meal record, so 8 g is a running
+  // partial. The instant is built through the profile's own zone (the seed pins a
+  // rotating per-run timezone), never a naive `${day}T08:30` string.
+  const breakfast = zonedWallTimeToUtc(
+    getTimezone(id),
+    day,
+    "08:30"
+  )!.toISOString();
+  db.prepare(
+    `INSERT INTO metric_samples (profile_id, source, metric, date, started_at, ended_at, value)
+     VALUES (?, 'health_connect', 'fiber_g', ?, ?, ?, 8)`
+  ).run(id, day, breakfast, breakfast);
 }

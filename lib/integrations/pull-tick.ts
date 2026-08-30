@@ -12,6 +12,7 @@ import {
 import { getSetting } from "@/lib/settings/kv";
 import type { IntegrationId } from "@/lib/types";
 import { resumeDueIntegrationBackfills } from "./backfill-jobs";
+import { pullLogFields } from "./pull-log-fields";
 
 // THE TICK'S PULL PASS (#2121 step 1). One profile's connected pull sources, polled
 // at each source's DECLARED cadence rather than once per tick.
@@ -152,7 +153,10 @@ export async function syncIntegrations(
       }
       result.polled.push(runner.id);
       const r = await runner.run(profileId);
-      log.info(`${runner.id} sync`, { profile: profileId, ...(r as object) });
+      log.info(`${runner.id} sync`, {
+        profile: profileId,
+        ...pullLogFields(r),
+      });
     } catch (e) {
       log.error(`${runner.id} sync failed`, {
         profile: profileId,

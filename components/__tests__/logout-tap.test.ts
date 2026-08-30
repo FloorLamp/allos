@@ -88,7 +88,7 @@ describe("LOGOUT_BOOT_SCRIPT captures a tap with no handler behind it (#3515)", 
     document.body.innerHTML = `
       <button type="button" data-testid="profile-identity-bar">Switch profile</button>
       <button type="submit">Save</button>
-      <a href="/timeline">Timeline</a>`;
+      <a href="/history">History</a>`;
 
     // Swallow the anchor's default so jsdom does not try to navigate; the listener
     // under test runs in the CAPTURE phase and has already seen the event by then.

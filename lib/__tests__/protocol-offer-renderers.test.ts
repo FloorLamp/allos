@@ -24,6 +24,7 @@ import { describe, expect, it } from "vitest";
 import fs from "node:fs";
 import path from "node:path";
 import { REPO } from "./sql-scan";
+import { stripComments } from "./strip-comments";
 import { STATEFUL_WRITE_TABLES } from "@/lib/stateful-writes";
 import {
   PROTOCOL_REOPEN_WINDOW_DAYS,
@@ -35,11 +36,7 @@ const CONTROL = "app/(app)/protocols/ProtocolControls.tsx";
 const CORE = "lib/protocol-lifecycle.ts";
 
 function code(rel: string): string {
-  return fs
-    .readFileSync(path.join(REPO, rel), "utf8")
-    .replace(/\/\*[\s\S]*?\*\//g, "")
-    .replace(/^\s*\/\/.*$/gm, "")
-    .replace(/\{\s*\/\*[\s\S]*?\*\/\s*\}/g, "");
+  return stripComments(fs.readFileSync(path.join(REPO, rel), "utf8"));
 }
 
 function walk(dir: string, out: string[]): void {
@@ -73,16 +70,32 @@ function renderingSources(): string[] {
     );
 }
 
+const OFFER_SOURCE_NEEDLES = [
+  "protocolReopenEligibility",
+  "PROTOCOL_REOPEN_WINDOW_DAYS",
+];
+const offerSources = new Map(
+  renderingSources().flatMap((rel): [string, string][] => {
+    const source = fs.readFileSync(path.join(REPO, rel), "utf8");
+    if (!OFFER_SOURCE_NEEDLES.some((needle) => source.includes(needle))) {
+      return [];
+    }
+    return [[rel, stripComments(source)]];
+  })
+);
+
 describe("the protocol reopen offer has ONE derivation (#2135 / #221)", () => {
   it("is called by exactly the control, the write core, and the run-again action", () => {
     // Three callers, each a different job over ONE answer: the control renders the
     // verb, the core refuses a tap that contradicts it, and runProtocolAgain is the
     // expired branch's write. A fourth would be a second opinion.
-    const callers = renderingSources().filter(
-      (rel) =>
-        rel !== "lib/protocol-reopen.ts" &&
-        /protocolReopenEligibility\(/.test(code(rel))
-    );
+    const callers = [...offerSources]
+      .filter(
+        ([rel, source]) =>
+          rel !== "lib/protocol-reopen.ts" &&
+          /protocolReopenEligibility\(/.test(source)
+      )
+      .map(([rel]) => rel);
     expect(callers.sort()).toEqual(
       [CONTROL, CORE, "app/(app)/protocols/actions.ts"].sort()
     );
@@ -91,9 +104,8 @@ describe("the protocol reopen offer has ONE derivation (#2135 / #221)", () => {
   it("no surface re-derives the window from the raw end date", () => {
     // The two ingredients a second implementation would reach for. The control may
     // read `end_date` for the date RANGE it prints; it may not measure elapsed days.
-    for (const rel of renderingSources()) {
+    for (const [rel, src] of offerSources) {
       if (rel === "lib/protocol-reopen.ts") continue;
-      const src = code(rel);
       expect(
         src.includes("PROTOCOL_REOPEN_WINDOW_DAYS"),
         `${rel} re-derives the reopen window`

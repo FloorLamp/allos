@@ -94,7 +94,7 @@ test("a pull at the top of a standalone page refreshes; a mid-page pull does not
   try {
     // The Timeline is the app's tallest read-only surface on the shared seed, so
     // there is guaranteed scroll range to have a "mid-page" at all.
-    await page.goto("/timeline");
+    await page.goto("/history");
 
     const indicator = page.getByTestId(INDICATOR);
     // It mounts at all only because this context reports standalone.
@@ -182,7 +182,7 @@ test("in a browser tab there is no pull-to-refresh at all", async ({
   // The browser already has a refresh control, and Chrome-Android has its own
   // native overscroll refresh — a second one here would fight it. So the whole
   // affordance is absent, not merely inert.
-  await page.goto("/timeline");
+  await page.goto("/history");
   // Settle on the rendered shell first, so the absence below is a fact about a
   // loaded page rather than about a page that hadn't painted yet.
   await expect(page.getByTestId("shell-chrome")).toBeVisible();

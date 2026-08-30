@@ -6,11 +6,13 @@ import { getUnitPrefs } from "@/lib/settings";
 import { submittedWeightUnit } from "@/lib/units";
 import {
   insertBodyMetric,
+  insertComposition,
   insertGrowth,
   insertWaistCirc,
   insertVitals,
 } from "@/lib/offline/writes";
 import type { StatedTimeRefusal } from "@/lib/stated-time";
+import type { SleepWindowRefusal } from "@/lib/vitals-input";
 import { LOGGED_VIA_FIELD, parseWebOrigin } from "@/lib/logged-via";
 
 // The combined "Log measurements" write path (issue #1486).
@@ -49,6 +51,9 @@ import { LOGGED_VIA_FIELD, parseWebOrigin } from "@/lib/logged-via";
 // whichever answered is not a choice between two opinions.
 export interface MeasurementsSaveResult {
   statedTimeRefused?: StatedTimeRefusal;
+  // Why the night's bed/wake clocks did not survive the write (#1851) — a NOTICE
+  // on a successful save, exactly like the one above.
+  sleepWindowRefused?: SleepWindowRefusal;
 }
 
 export async function addMeasurements(
@@ -69,6 +74,7 @@ export async function addMeasurements(
 
   let wrote = false;
   let statedTimeRefused: StatedTimeRefusal | undefined;
+  let sleepWindowRefused: SleepWindowRefusal | undefined;
 
   // ONE SUBMISSION, ONE SURFACE (#3087). This form is mounted on the Trends
   // measurements panel, on a metric detail page and in the quick-log sheet, so the
@@ -119,7 +125,10 @@ export async function addMeasurements(
     "spo2",
     "temperature",
     "sleep_hours",
+    "bed_time",
+    "wake_time",
     "hrv",
+    "respiratory_rate",
     "peak_flow",
   ].some(filled);
   if (anyVital) {
@@ -142,7 +151,14 @@ export async function addMeasurements(
         temperature: str("temperature"),
         tempUnit: str("temp_unit"),
         sleepHours: str("sleep_hours"),
+        // The night's bed/wake pair (#1851) — profile-local clocks the core
+        // resolves against this profile's zone, never here.
+        bedTime: str("bed_time"),
+        wakeTime: str("wake_time"),
         hrv: str("hrv"),
+        // Respiratory rate (#1851) — a vital like the rest, carried by the same
+        // form and the same core onto the same canonical name.
+        respiratoryRate: str("respiratory_rate"),
         // Peak expiratory flow (#1850) — a vital like the rest, carried by the
         // same form and the same core. Its clock time is the sitting statement
         // below, so a second blow the same day lands as a second reading.
@@ -169,6 +185,9 @@ export async function addMeasurements(
     if (vitals.wrote && vitals.statedTimeRefused) {
       statedTimeRefused = vitals.statedTimeRefused;
     }
+    // The night's clocks, when the core could not keep them (#1851). Only the
+    // vitals half writes sleep, so unlike the stated time there is one producer.
+    if (vitals.wrote) sleepWindowRefused = vitals.sleepWindowRefused;
   }
 
   // 3. Growth (metric_samples), life-stage-gated in the form: only a minor's form
@@ -194,10 +213,27 @@ export async function addMeasurements(
       }) || wrote;
   }
 
+  // 5. Lean mass / bone mass / hydration (metric_samples) — ungated like the waist
+  //    tape above, and for the same reason: a DEXA report and a day's water apply
+  //    at every life stage (#1851).
+  if (filled("lean_mass") || filled("bone_mass") || filled("hydration")) {
+    wrote =
+      insertComposition(profile.id, date, {
+        leanMass: str("lean_mass"),
+        leanMassUnit: str("lean_mass_unit"),
+        boneMass: str("bone_mass"),
+        boneMassUnit: str("bone_mass_unit"),
+        hydration: str("hydration"),
+      }) || wrote;
+  }
+
   if (!wrote) return {};
   revalidateRoute("/trends");
   revalidateRoute("/results");
   revalidateRoute("/sleep");
   revalidateRoute("/");
-  return statedTimeRefused ? { statedTimeRefused } : {};
+  return {
+    ...(statedTimeRefused ? { statedTimeRefused } : {}),
+    ...(sleepWindowRefused ? { sleepWindowRefused } : {}),
+  };
 }

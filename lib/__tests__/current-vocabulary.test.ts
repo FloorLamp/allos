@@ -8,7 +8,7 @@ const repo = path.join(here, "..", "..");
 const roots = ["app", "components", "docs", "e2e", "lib", "scripts"];
 const extensions = new Set([".ts", ".tsx", ".md", ".mjs"]);
 
-function currentSources(): { file: string; source: string }[] {
+function readCurrentSources(): { file: string; source: string }[] {
   const files: { file: string; source: string }[] = [];
   const visit = (relative: string) => {
     if (
@@ -32,6 +32,8 @@ function currentSources(): { file: string; source: string }[] {
   for (const root of roots) visit(root);
   return files;
 }
+
+const currentSources = readCurrentSources();
 
 describe("current namespace and log vocabulary (#2485)", () => {
   it("keeps daily insights in coaching and names stored summary shapes by grain", () => {
@@ -76,7 +78,7 @@ describe("current namespace and log vocabulary (#2485)", () => {
   });
 
   it("retires generic PRN and removed-route vocabulary from current sources", () => {
-    const violations = currentSources().flatMap(({ file, source }) => {
+    const violations = currentSources.flatMap(({ file, source }) => {
       const found: string[] = [];
       if (/\bisPrn\b/.test(source)) found.push("isPrn");
       if (/\/medicine\b/.test(source)) found.push("/medicine");
@@ -126,7 +128,7 @@ describe("Training Log vocabulary (#2486)", () => {
       retiredFiles.filter((file) => fs.existsSync(path.join(repo, file)))
     ).toEqual([]);
 
-    const violations = currentSources().flatMap(({ file, source }) => {
+    const violations = currentSources.flatMap(({ file, source }) => {
       const matches = source.match(/\b(?:Journal|journal)\b|\bJOURNAL_/g) ?? [];
       return matches.map((term) => `${file}: ${term}`);
     });

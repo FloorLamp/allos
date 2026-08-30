@@ -105,6 +105,7 @@ describe("dashboard placement canvas", () => {
         timingDisposition: { kind: "active" },
         everythingGroup: "active-states",
         memberOrder: 0,
+        admitted: true,
       },
       {
         candidate: act,
@@ -113,6 +114,7 @@ describe("dashboard placement canvas", () => {
         timingDisposition: { kind: "active" },
         everythingGroup: "act",
         memberOrder: 0,
+        admitted: true,
       },
     ];
     const nodes = new Map<string, ReactNode>([
@@ -185,6 +187,7 @@ describe("dashboard placement canvas", () => {
         timingDisposition: { kind: "active" },
         everythingGroup: groupNames[laneOrder],
         memberOrder: 0,
+        admitted: true,
       })
     );
     const nodes = new Map<string, ReactNode>(
@@ -253,6 +256,7 @@ describe("the Show-everything tail (#3365)", () => {
     timingDisposition: { kind: "active" },
     everythingGroup,
     memberOrder: 0,
+    admitted: candidate.navDuplicateOf == null,
   });
 
   function recapLine(index: number): DashboardCandidate {
@@ -270,8 +274,8 @@ describe("the Show-everything tail (#3365)", () => {
   const recapRow = (label: string, value: string) => ({
     label,
     value,
-    href: "/timeline" as const,
-    moment: { title: "Weekly recap · Aug 23–29", href: "/timeline" as const },
+    href: "/history" as const,
+    moment: { title: "Weekly recap · Aug 23–29", href: "/history" as const },
   });
 
   function renderTail(
@@ -387,5 +391,87 @@ describe("the Show-everything tail (#3365)", () => {
     // A statement with no row declared keeps its card: the tail never drops an entry
     // for want of a presentation.
     expect(html).toContain("Hosted control");
+  });
+});
+
+// THE TAIL'S DOORS (#3366). What the ranker did not admit is not simply absent: the
+// page that owns it is drawn instead, once per page and named by the app's own name
+// for it, so a dropped fact is two taps away rather than unreachable.
+describe("Show everything doors (#3366)", () => {
+  const linkOnly = (id: string, href: "/medical/episodes" | "/trends") =>
+    statementCandidate({
+      candidateId: id,
+      factKey: `fact.${id}`,
+      groupKey: null,
+      subject,
+      applicable: true,
+      relevance: { kind: "event" },
+      navDuplicateOf: href,
+      sourceOrder: 0,
+    });
+
+  const canvas = (
+    placements: DashboardPlacement[],
+    nodes: [string, ReactNode][]
+  ) =>
+    renderToStaticMarkup(
+      createElement(DashboardPlacementCanvas, {
+        dateLabel: "August 19, 2026",
+        placements,
+        candidateNodes: new Map<string, ReactNode>(nodes),
+        standingPresentations: new Map(),
+        aheadPresentations: new Map(),
+        attentionBadgeCount: 0,
+      })
+    );
+
+  const tailPlacement = (
+    candidate: DashboardCandidate,
+    laneOrder: number
+  ): DashboardPlacement => ({
+    candidate,
+    lane: "everything",
+    laneOrder,
+    timingDisposition: { kind: "active" },
+    everythingGroup: "act",
+    memberOrder: laneOrder,
+    admitted: candidate.navDuplicateOf == null,
+  });
+
+  it("draws admitted members and one named door per dropped page", () => {
+    const admitted = statement("admitted");
+    const droppedA = linkOnly("dropped-a", "/medical/episodes");
+    const droppedB = linkOnly("dropped-b", "/medical/episodes");
+    const droppedC = linkOnly("dropped-c", "/trends");
+    const html = canvas(
+      [admitted, droppedA, droppedB, droppedC].map(tailPlacement),
+      [
+        [admitted.candidateId, createElement("p", null, "Admitted node")],
+        [droppedC.candidateId, createElement("p", null, "Dropped node")],
+      ]
+    );
+    expect(html).toContain("Admitted node");
+    expect(html).not.toContain("Dropped node");
+    // Two dropped facts on one page, one row; the second page adds the second.
+    expect(html.split('data-testid="dashboard-all-door"')).toHaveLength(3);
+    expect(html).toContain('data-door-href="/medical/episodes"');
+    expect(html).toContain("Illness episodes");
+    expect(html).toContain('data-door-href="/trends"');
+  });
+
+  it("refuses a door the app has no name for", () => {
+    const unnamed = statementCandidate({
+      candidateId: "unnamed",
+      factKey: "fact.unnamed",
+      groupKey: null,
+      subject,
+      applicable: true,
+      relevance: { kind: "event" },
+      navDuplicateOf: "/appointments",
+      sourceOrder: 0,
+    });
+    expect(() => canvas([tailPlacement(unnamed, 0)], [])).toThrow(
+      "Unnamed Show everything door: /appointments"
+    );
   });
 });

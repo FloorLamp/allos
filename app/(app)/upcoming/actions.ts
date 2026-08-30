@@ -78,7 +78,7 @@ export async function logUpcomingPractice(
     revalidateRoute("/upcoming");
     revalidateRoute("/wellness");
     revalidateRoute("/longevity");
-    revalidateRoute("/timeline");
+    revalidateRoute("/history");
     revalidateRoute("/");
   }
   return { ok: true, outcome };

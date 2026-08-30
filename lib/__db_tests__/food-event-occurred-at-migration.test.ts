@@ -33,17 +33,17 @@
 
 import Database from "better-sqlite3";
 import { describe, expect, it } from "vitest";
+import { historicalDbFixture } from "./historical-db-fixture";
 import { MIGRATIONS, NUMBERED_MIGRATIONS } from "@/lib/migrations/versions";
 import { up } from "@/lib/migrations/versions/183-food-event-occurred-at";
 import { eventInstant, recordInstant } from "@/lib/row-instants";
 
-// The real schema at version `maxId`, built the way the runner builds it.
-function schemaAt(maxId: number): Database.Database {
-  const mem = new Database(":memory:");
+// The chain is still the source of the fixture; each case gets independent bytes.
+const seededDb = historicalDbFixture((mem) => {
   mem.pragma("foreign_keys = OFF");
-  for (const m of NUMBERED_MIGRATIONS) if (m.id <= maxId) m.up(mem);
-  return mem;
-}
+  for (const m of NUMBERED_MIGRATIONS) if (m.id <= 182) m.up(mem);
+  seed(mem);
+});
 
 interface EventRow {
   id: number;
@@ -144,8 +144,7 @@ function column(mem: Database.Database, col: string): (string | null)[] {
 
 describe("migration 183 — food_log_events instants renamed and normalized", () => {
   it("moves both columns onto their vocabulary names, truncating only the fraction", () => {
-    const mem = schemaAt(182);
-    seed(mem);
+    const mem = seededDb();
     const before = events(mem, OTHER_COLUMNS) as EventRow[];
     const dates = column(mem, "date");
 
@@ -178,8 +177,7 @@ describe("migration 183 — food_log_events instants renamed and normalized", ()
     // before 'Z' (0x5A), so the millisecond-bearing instant of a second orders AHEAD
     // of the bare-second instant of the SAME second, and a `>=` boundary against a
     // second-resolution literal excludes it. Both queries look entirely reasonable.
-    const mem = schemaAt(182);
-    seed(mem);
+    const mem = seededDb();
 
     const orderBefore = (
       mem
@@ -234,8 +232,7 @@ describe("migration 183 — food_log_events instants renamed and normalized", ()
     // migration 154 adds `eaten_at` back unless its PRAGMA guard finds it — which
     // would grow a dead column under a wrapper whose contract is that a replay changes
     // nothing.
-    const mem = schemaAt(182);
-    seed(mem);
+    const mem = seededDb();
     up(mem);
 
     const cols = (
@@ -266,8 +263,7 @@ describe("migration 183 — food_log_events instants renamed and normalized", ()
   });
 
   it("rebuilds the indexes under their frozen names, on the renamed column", () => {
-    const mem = schemaAt(182);
-    seed(mem);
+    const mem = seededDb();
     up(mem);
 
     const names = (
@@ -304,8 +300,10 @@ describe("migration 183 — food_log_events instants renamed and normalized", ()
   });
 
   it("keeps the FK graph: the links re-declare and a pruned pointer still SET NULLs", () => {
-    const mem = schemaAt(182);
-    const { messageId } = seed(mem);
+    const mem = seededDb();
+    const { id: messageId } = mem
+      .prepare("SELECT id FROM notify_messages")
+      .get() as { id: number };
     up(mem);
 
     // The rebuild runs with foreign_keys OFF, so the copied values are only as good as
@@ -342,8 +340,7 @@ describe("migration 183 — food_log_events instants renamed and normalized", ()
   });
 
   it("preserves the AUTOINCREMENT high-water mark so event ids never recycle", () => {
-    const mem = schemaAt(182);
-    seed(mem);
+    const mem = seededDb();
     // Delete the newest tap: the copy's own max id now UNDERSTATES the high-water
     // mark, which is exactly the case a plain rebuild loses.
     const maxId = (
@@ -370,8 +367,7 @@ describe("migration 183 — food_log_events instants renamed and normalized", ()
     // the captured row's own keys, so a serving deleted before the migration and undone
     // after it would name a column that no longer exists. The default trash window is
     // 30 days — entirely live across a deploy.
-    const mem = schemaAt(182);
-    seed(mem);
+    const mem = seededDb();
     const payload = JSON.stringify({
       v: 1,
       kind: "food-serving",
@@ -418,8 +414,7 @@ describe("migration 183 — food_log_events instants renamed and normalized", ()
   });
 
   it("is replay-safe: a second up() changes neither schema nor rows", () => {
-    const mem = schemaAt(182);
-    seed(mem);
+    const mem = seededDb();
     up(mem);
     const schema = schemaText(mem);
     const rows = events(
@@ -435,8 +430,7 @@ describe("migration 183 — food_log_events instants renamed and normalized", ()
   });
 
   it("answers the event and record questions through the renamed columns", () => {
-    const mem = schemaAt(182);
-    seed(mem);
+    const mem = seededDb();
     up(mem);
 
     const rows = mem

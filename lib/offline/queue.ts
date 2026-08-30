@@ -12,8 +12,9 @@
 // entirely offline ("set" — #28's original "add set" ask, landed by #1596), a
 // food quick-add ("food", #1596: a one-serving food-group tap or a protein-grams
 // tap), a mobility move tapped ON ("mobility", #2130: set semantics per
-// (profile, date, move)), and a practice session ("practice", #2908: DAY-idempotent
-// per (profile, practice-identity, date) — see the amended coverage row below).
+// (profile, date, move)), a practice session ("practice", #2908: DAY-idempotent
+// per (profile, practice-identity, date)), and a Bristol stool-form tap ("stool",
+// #3166: captured type + instant).
 // Anything with server-derived state stays online-only. The COVERAGE RECORD
 // below (#2130) is this scope sentence with teeth: every ONE_TAP_AFFORDANCES
 // entry is either mapped to its flow or excluded with a written argument, and
@@ -69,7 +70,8 @@ export type FlowKind =
   | "set"
   | "food"
   | "mobility"
-  | "practice";
+  | "practice"
+  | "stool";
 
 export const FLOW_KINDS: readonly FlowKind[] = [
   "dose",
@@ -81,6 +83,7 @@ export const FLOW_KINDS: readonly FlowKind[] = [
   "food",
   "mobility",
   "practice",
+  "stool",
 ];
 
 // ── THE COVERAGE RECORD (#2130) ──────────────────────────────────────────────
@@ -151,9 +154,7 @@ export const OFFLINE_QUEUE_COVERAGE = {
   "routine-usual": arguedExclusion(
     "Declared idempotent, excluded for `food-usual`'s reason and one MORE (#2458): the bundle's justification is server state on both axes, and its dose half CONFIRMS DOSES — an expired replay would double-log a meal window AND mis-decrement on-hand supply for three items, which is stock arithmetic against a total that moved (the excluded `medication-refill` class). The single-serving taps and the single-dose confirms underneath it queue exactly as they always did, so nothing is unreachable offline — only the shortcut is."
   ),
-  "stool-form": arguedExclusion(
-    "Not decided here, and deliberately not decided here. The capture would be mechanically ordinary — a date, a type and the captured instant, exactly the shape resolveCapturedInstant already carries, with no server-derived state behind the tap — so this is NOT the excluded class above. What is missing is a ruling: #2785 ships a v1 recording surface and says nothing about queueing a bodily-function timestamp from a device that may be shared or handed over, and inventing that ruling inside a vocabulary change is how a queue grows a flow nobody argued. Nothing is unreachable offline that was reachable before: the tap works online exactly as every other quick-entry form does."
-  ),
+  "stool-form": "stool",
   "dose-backfill": arguedExclusion(
     "Online-only, and nothing that was reachable offline becomes unreachable: the form this offer sits above has never queued either, so the whole backfill door keeps the behaviour it has always had. The offer itself is rendered from a server-computed adherence strip — the day is offered BECAUSE the server says nothing is logged there — and a capture would carry that justification into a replay that cannot recheck it. The core would still refuse honestly (idempotent per dose and date), so this is not the destructive class; it is a dated assertion about a closed day, which is not the `dose` flow's set-to-taken-today shape, and inventing a dated flow for it belongs to whoever takes offline backfill on purpose."
   ),
@@ -232,7 +233,16 @@ export interface VitalsPayload {
   temperature: string | null;
   tempUnit: string | null;
   sleepHours: string | null;
+  // The night's two clocks (#1851). OPTIONAL for the same backward-compatibility
+  // reason as the fields below: an intent queued before they shipped carries
+  // neither, and the server core treats an absent field exactly as an unfilled one.
+  bedTime?: string | null;
+  wakeTime?: string | null;
   hrv: string | null;
+  // The counted breathing rate (#1851). OPTIONAL for the same backward-compatibility
+  // reason as the fields below: an intent queued before it shipped carries none of
+  // it, and the server core treats an absent field exactly as an unfilled one.
+  respiratoryRate?: string | null;
   // The sitting's stated instant (#2154) — the ONE WhenControl time the form
   // posts for the whole submission, generalizing the retired per-measure
   // `temperatureTime` rather than growing siblings per vital. ISO instant, or
@@ -364,6 +374,11 @@ export interface PracticePayload {
   durationMin?: number | null;
 }
 
+export interface StoolPayload {
+  type: number;
+  at: string | null;
+}
+
 export type IntentPayload =
   | DosePayload
   | BodyMetricPayload
@@ -372,7 +387,8 @@ export type IntentPayload =
   | SetPayload
   | FoodPayload
   | MobilityPayload
-  | PracticePayload;
+  | PracticePayload
+  | StoolPayload;
 
 // The maximum number of intents accepted (server) and sent (client) per replay POST
 // — the SINGLE source of truth for both sides so they can never disagree (issue
@@ -642,13 +658,13 @@ export function syncedAnnouncement(
 // constant rather than inventing a ninth copy):
 //   • components/DoseStatusControl.tsx — dose take/skip
 //   • components/practices/LogPracticeButton.tsx — practice session
-//   • components/dashboard/WeightQuickAdd.tsx — dashboard weigh-in
 //   • components/quick-entry/QuickMoodCheckin.tsx — quick-entry mood
 //   • components/ActivityForm.tsx — close-path workout capture
 //   • app/(app)/nutrition/FoodLogBar.tsx — food serving "+"
 //   • app/(app)/nutrition/ProteinQuickAdd.tsx — protein grams "+"
 //   • app/(app)/trends/MeasurementsQuickAdd.tsx — body metrics + vitals
 //   • app/(app)/training/MobilityLogBar.tsx — mobility move on-tap
+//   • components/quick-entry/QuickStoolForm.tsx — Bristol stool-form tap
 // lib/__tests__/offline-refused-capture.test.ts pins both halves: every consumer
 // of the queue's `enqueue` references this constant, and the sentence itself
 // exists exactly once.
@@ -686,6 +702,7 @@ export function describeIntent(intent: QueuedIntent): string {
     food: "Food log",
     mobility: "Mobility move",
     practice: "Practice session",
+    stool: "Bristol stool form",
   };
   return `${label[intent.flow]} · ${intent.date}`;
 }

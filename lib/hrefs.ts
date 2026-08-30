@@ -31,7 +31,7 @@
 //    Static/one-off links stay plain literals, now compile-checked and greppable.
 //
 // Two flavors of helper:
-//   - QUERY-RULE helpers (clinicalResultDetailHref, timelineDayHref, dataSectionHref):
+//   - QUERY-RULE helpers (clinicalResultDetailHref, historyDayHref, dataSectionHref):
 //     encode a canonical-gating / param-shape rule shared by ≥2 surfaces.
 //   - DYNAMIC-ROUTE helpers (importHref, encounterHref, protocolHref,
 //     immunizationHref): a dynamic route like `/import/5` is NOT assignable to
@@ -51,7 +51,7 @@ import type { PanelId } from "./biomarker-panels";
 import type { GrowthMetric } from "./growth";
 import type { IntegrationId } from "./types/integrations";
 import type { IntakeItemKind } from "./types/intake";
-import type { HistoryFamily, HistoryLogKind } from "./history-format";
+import type { HistoryFamily, HistoryKind } from "./history-format";
 
 export type AppRoute = Route;
 
@@ -152,13 +152,15 @@ export function intakeHref(kind: IntakeItemKind): AppRoute {
 export function historyHref(
   params: {
     family?: HistoryFamily;
-    kind?: HistoryLogKind;
+    kind?: HistoryKind;
     class?: "supplement" | "medication";
     item?: string;
     media?: boolean;
     day?: string;
     everyone?: boolean;
     open?: readonly string[];
+    /** The rollup lines opened in Everything (#3958 phase 2), one key per entry. */
+    expand?: readonly string[];
     show?: number;
   } = {}
 ): AppRoute {
@@ -172,6 +174,7 @@ export function historyHref(
   if (params.day) sp.set("day", params.day);
   if (params.everyone) sp.set("view", "everyone");
   for (const key of params.open ?? []) sp.append("open", key);
+  for (const key of params.expand ?? []) sp.append("expand", key);
   if (params.show != null) sp.set("show", String(params.show));
   const qs = sp.toString();
   // Spelled as literals rather than through a `${base}` variable so Next's typedRoutes
@@ -302,33 +305,24 @@ export function trainingActivityPageHref(
   ) as AppRoute;
 }
 
-// The Timeline "jump to this day" link: filter the feed to a single day AND
-// scroll to that day's anchor. One place for the `/timeline?from=X&to=X#…`
-// pattern the sidebar calendar and the workout heatmap (#186) both build.
+// THE RECORD'S "JUMP TO THIS DAY" LINK (#3958 phase 2). One place the day-view
+// param is spelled for the ~10 surfaces that deep-link a day — the sidebar calendar,
+// the three sleep surfaces, Trends → Body, encounter detail, DayHistory, the
+// integration import digests and the intake-safety finding.
 //
-// `subjectProfileId` (issue #1329) rides only on links built INSIDE the multi-view
-// timeline feed, where an event belongs to a specific in-view member and the day it
-// deep-links to is THAT member's local day. The single-day timeline view stays
-// single-SUBJECT (never a mixed-subject edit surface), so the param carries whose day
-// it is; omitted (the default, and every single-view caller) it renders byte-identical.
-export function timelineDayHref(
-  date: string,
-  subjectProfileId?: number
-): AppRoute {
-  // Inline the full `/timeline?…` literals (not a `${base}` variable) so Next's
-  // typedRoutes can still infer the route from the literal prefix at build time.
-  return subjectProfileId != null
-    ? `/timeline?from=${date}&to=${date}&subject=${subjectProfileId}#timeline-day-${date}`
-    : `/timeline?from=${date}&to=${date}#timeline-day-${date}`;
-}
-
-// The Timeline over a SPAN of days (#2413). The day link above scrolls to one
-// day's anchor; a span has no single anchor to scroll to, so this filters the
-// feed and stops there rather than inventing one. The week-grain day-history
-// panel is its caller: a week cell selects a week, and "show me that week"
-// means the whole week's feed.
-export function timelineRangeHref(from: string, to: string): AppRoute {
-  return `/timeline?from=${from}&to=${to}`;
+// It replaces `timelineDayHref`, which named a route that no longer exists. Two
+// things went with that route and neither has a successor, both by owner ruling:
+//
+//   • THE `#timeline-day-<date>` FRAGMENT. It existed because `/timeline?from=X&to=X`
+//     still rendered a scrolling feed that had to be scrolled to the day. `?day=` IS
+//     the day, so there is nothing to scroll to.
+//   • THE `subject` PARAM (#1329). The 2026-08-29 ruling took `?subject=` out of the
+//     grammar entirely — "never implemented, never will be" — because a subject param
+//     is a second profile-selection vocabulary beside the sidebar switcher. A day link
+//     built inside `?view=everyone` lands on the acting profile's day context, and
+//     reading a member's day means switching to them.
+export function historyDayHref(date: string): AppRoute {
+  return historyHref({ day: date });
 }
 
 // The Training Log's date anchor. Workout-day surfaces land in the domain

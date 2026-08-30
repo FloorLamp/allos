@@ -411,7 +411,7 @@ export default function ActivityEditorProvider({
         // The page beneath may BE the discarded row's — don't strand the
         // reader on a just-deleted activity; the hub is where they started.
         if (window.location.pathname === `/training/activity/${id}`)
-          router.replace(trainingRelevant ? "/training" : "/timeline");
+          router.replace(trainingRelevant ? "/training" : "/history");
       })
       .catch(() => {});
   }, [editData, router, trainingRelevant]);
@@ -428,7 +428,7 @@ export default function ActivityEditorProvider({
       setLiveCreatePending(false);
       setDismissedPresenceId(id);
       if (window.location.pathname === `/training/activity/${id}`)
-        router.replace(trainingRelevant ? "/training" : "/timeline");
+        router.replace(trainingRelevant ? "/training" : "/history");
     },
     [router, trainingRelevant]
   );

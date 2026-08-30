@@ -3,6 +3,7 @@ import Database from "better-sqlite3";
 import { openDashboardAll, settledClick } from "./helpers";
 import { createProfileViaFamily, switchToProfile } from "./family-helpers";
 import { loginAs } from "./nav";
+import { openLogSheet, showLogRow } from "./log-sheet-helpers";
 import {
   E2E_LOGIN_WELLSYM,
   E2E_MEMBER_PASSWORD,
@@ -61,18 +62,29 @@ test("the well-day symptom action logs burden without activating illness", async
 }) => {
   test.slow();
   resetWellSymptomState();
-  const page = await loginAs(browser, {
-    username: E2E_LOGIN_WELLSYM,
-    password: E2E_MEMBER_PASSWORD,
-  });
+  const page = await loginAs(
+    browser,
+    { username: E2E_LOGIN_WELLSYM, password: E2E_MEMBER_PASSWORD },
+    // The sheet is reached from the dock puck, which is phone-only chrome.
+    { viewport: { width: 390, height: 844 }, hasTouch: true }
+  );
   try {
     await page.goto("/");
+    // #3366 MOVED THE GESTURE, NOT THE CLAIM. The well-day bar used to be a card in
+    // the dashboard tail; the ruling of 2026-08-29 retired the tail's generic write
+    // cards because the quick logger is the app's one quick-write surface. Both
+    // halves are asserted, so a tree where well-day logging vanished instead of
+    // moving cannot pass: gone from the tail, offered by the sheet's Care segment.
     await openDashboardAll(page);
-    const symptom = dashboardCandidatePrefix(page, "symptom.well-day-log");
-    await expect(symptom).toBeVisible();
-    await expect(symptom).toHaveAttribute("data-kind", "action");
+    await expect(
+      dashboardCandidatePrefix(page, "symptom.well-day-log")
+    ).toHaveCount(0);
 
-    const bar = symptom.getByTestId("symptom-log-bar");
+    const sheet = await openLogSheet(page);
+    const row = await showLogRow(sheet, "log-symptom");
+    await row.click();
+    const overlay = page.getByTestId("quick-entry-sheet");
+    const bar = overlay.getByTestId("symptom-log-bar");
     await expect(bar).toBeVisible();
     await bar.getByTestId("symptom-add-picker-toggle").click();
     await settledClick(page, bar.getByTestId("symptom-pick-headache"));

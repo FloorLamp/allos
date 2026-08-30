@@ -189,7 +189,7 @@ test("the matrix is one keyboard grid and selecting a cell opens the shared day 
   await expect(section.getByTestId("day-history-daypanel")).toBeVisible();
 });
 
-test("an empty calendar day is selectable and still reaches Timeline", async ({
+test("an empty calendar day is selectable and still reaches the record", async ({
   page,
 }) => {
   await page.goto("/training?tab=analyze");
@@ -204,8 +204,8 @@ test("an empty calendar day is selectable and still reaches Timeline", async ({
 
   const panel = section.getByTestId("day-history-daypanel");
   await expect(panel).toContainText("Nothing logged this day");
-  await expect(panel.getByRole("link", { name: /Timeline/ })).toHaveAttribute(
+  await expect(panel.getByRole("link", { name: /History/ })).toHaveAttribute(
     "href",
-    `/timeline?from=${date}&to=${date}#timeline-day-${date}`
+    `/history?day=${date}`
   );
 });

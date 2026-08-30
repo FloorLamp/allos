@@ -2,10 +2,10 @@ import { expect, test } from "./fixtures";
 import { type Page } from "@playwright/test";
 import { hydratedClick, touchSwipe } from "./helpers";
 
-// Timeline day-swipe (issue #1425).
+// The record's day-view swipe (issue #1425).
 //
 // On the single-day view a horizontal swipe walks to the adjacent day, using the
-// SAME `timelineDayHref` destinations the arrows beside it link to — one pair of
+// SAME `historyDayHref` destinations the arrows beside it link to — one pair of
 // hrefs, built on the server, so the gesture can never land on a different day
 // than the control does. The other half of the contract is what the gesture must
 // NOT do: vertical scrolling always wins, and a swipe that begins at the screen
@@ -20,11 +20,11 @@ const NEXT_DAY = "2026-03-16";
 const PREV_DAY = "2026-03-14";
 
 function dayUrl(date: string): string {
-  return `/timeline?from=${date}&to=${date}`;
+  return `/history?day=${date}`;
 }
 
 // A swiped day change is a CLIENT navigation: the URL only commits once the RSC
-// payload for the destination day arrives, and the Timeline is one of the app's
+// payload for the destination day arrives, and the record is one of the app's
 // heaviest server renders (a cold day can take several seconds under `next
 // start`). The gesture is not what is slow — the page is — so the assertion gets
 // a real budget rather than the 5s default, which fails on the first, coldest
@@ -32,7 +32,7 @@ function dayUrl(date: string): string {
 const NAV_TIMEOUT = 20_000;
 
 async function landedOn(page: Page, date: string): Promise<void> {
-  await expect(page).toHaveURL(new RegExp(`from=${date}`), {
+  await expect(page).toHaveURL(new RegExp(`day=${date}`), {
     timeout: NAV_TIMEOUT,
   });
 }
@@ -97,10 +97,10 @@ test("a mostly-vertical drag scrolls and never changes the day", async ({
   // drag reads as a scroll on purpose, because an ambiguous gesture that
   // navigates is a gesture that fires when you meant to read.
   await touchSwipe(page, { x: 200, y: 640 }, { x: 232, y: 300 });
-  await expect(page).toHaveURL(new RegExp(`from=${DAY}`));
+  await expect(page).toHaveURL(new RegExp(`day=${DAY}`));
 
   await touchSwipe(page, { x: 200, y: 640 }, { x: 300, y: 540 });
-  await expect(page).toHaveURL(new RegExp(`from=${DAY}`));
+  await expect(page).toHaveURL(new RegExp(`day=${DAY}`));
 });
 
 test("a swipe from the screen edge opens the drawer instead of changing the day", async ({
@@ -113,16 +113,18 @@ test("a swipe from the screen edge opens the drawer instead of changing the day"
 
   await touchSwipe(page, { x: 2, y: 520 }, { x: 230, y: 524 });
   await expect(page.getByTestId("mobile-drawer")).toBeVisible();
-  await expect(page).toHaveURL(new RegExp(`from=${DAY}`));
+  await expect(page).toHaveURL(new RegExp(`day=${DAY}`));
 });
 
 test("the day view is the only place the swipe is armed", async ({ page }) => {
-  // A multi-day range has no single "adjacent day", so there is no nav and no
-  // gesture — a horizontal swipe across the feed does nothing.
-  await page.goto("/timeline?from=2026-03-01&to=2026-03-31");
+  // The scrolling record has no single "adjacent day", so there is no nav and no
+  // gesture — a horizontal swipe across the feed does nothing. (`/timeline?from=…`
+  // used to be this case; the record is navigated rather than windowed, so the
+  // multi-day view IS the unfiltered feed.)
+  await page.goto("/history");
   await hydrated(page);
   await expect(page.getByTestId("timeline-day-nav")).toHaveCount(0);
 
   await touchSwipe(page, { x: 320, y: 520 }, { x: 110, y: 526 });
-  await expect(page).toHaveURL(/from=2026-03-01/);
+  await expect(page).toHaveURL(/\/history$/);
 });

@@ -30,20 +30,20 @@ const WIDE = '[data-variant="wide"]';
 /** The fixture's intraday day IS the profile's today. Resolved from the page
  *  rather than by recomputing the run's frozen clock here. */
 async function openFixtureDay(page: Awaited<ReturnType<typeof loginAs>>) {
-  await page.goto("/timeline");
+  await page.goto("/history");
   const date = (await page
     .locator("[id^='timeline-day-']")
     .first() // first-ok: spec-owned profile, newest day is the fixture's today
     .getAttribute("id"))!.replace("timeline-day-", "");
-  await page.goto(`/timeline?from=${date}&to=${date}`);
+  await page.goto(`/history?day=${date}`);
   return date;
 }
 
-test.describe("Timeline intraday panel (#1068)", () => {
+test.describe("the day view's intraday panel (#1068)", () => {
   test("renders the day's layers and a tick jumps to its feed entry", async ({
     browser,
   }) => {
-    test.slow(); // local `next dev` compiles the Timeline route on first hit
+    test.slow(); // local `next dev` compiles the record route on first hit
 
     const member = await loginAs(browser, {
       username: E2E_LOGIN_INTRADAY,
@@ -80,7 +80,10 @@ test.describe("Timeline intraday panel (#1068)", () => {
       // rendered below, so tapping it scrolls the list to that entry.
       const morningTick = ticks.first(); // first-ok: ticks are time-ordered and spec-owned; 07:15 is the earliest
       const href = await morningTick.getAttribute("href");
-      expect(href).toMatch(/^#timeline-entry-document-\d+$/);
+      // `feed:` is the record's namespace for a re-housed timeline event (a timeline
+      // event id and a Logs row id both spell `body:12`), and the tick is built from
+      // the SAME id the row is, so the two cannot drift into different anchors.
+      expect(href).toMatch(/^#timeline-entry-feed-document-\d+$/);
 
       const target = member.locator(href!);
       await expect(target).toContainText(INTRADAY_TICK_DOC);
@@ -225,7 +228,7 @@ test.describe("Timeline intraday panel (#1068)", () => {
       // Three days back the fixture profile has ONLY a weigh-in — a real feed
       // event with no clock time, no HR, no sleep, no windowed workout. The day
       // renders; the panel is data-gated away (no empty frame).
-      await member.goto("/timeline");
+      await member.goto("/history");
       const dayIds = await member
         .locator("[id^='timeline-day-']")
         .evaluateAll((nodes) =>
@@ -233,10 +236,17 @@ test.describe("Timeline intraday panel (#1068)", () => {
         );
       const quiet = dayIds.at(-1)!;
 
-      await member.goto(`/timeline?from=${quiet}&to=${quiet}`);
+      await member.goto(`/history?day=${quiet}`);
+      // THE POSITIVE CONTROL, RE-POINTED. It named the heading "Body metrics logged"
+      // — `/timeline`'s card title for its day-aggregate body event. The record reads
+      // body natively as its own Logs kind (one row per reading, titled by the
+      // measure, one line and therefore no heading), so that locator now resolves to
+      // nothing and "the panel is absent" would have passed on a page that rendered
+      // no day at all. Keyed on the row's kind, which is what the day is being
+      // asserted to contain.
       await expect(
-        member.getByRole("heading", { name: "Body metrics logged" })
-      ).toBeVisible();
+        member.locator('[data-testid="history-row"][data-history-kind="body"]')
+      ).not.toHaveCount(0);
       await expect(member.getByTestId("intraday-panel")).toHaveCount(0);
     } finally {
       await member.context().close();

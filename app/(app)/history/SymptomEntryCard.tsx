@@ -1,7 +1,7 @@
 import type { ReactNode } from "react";
 import AddEntryPanel from "@/components/AddEntryPanel";
 
-// The Timeline day view's retro symptom entry, behind a "+ Log symptom" affordance
+// The record's day view retro symptom entry, behind a "+ Log symptom" affordance
 // (issue #1517 C — the #1497 rare-cadence-entry rule).
 //
 // The bar itself (#799) is a large fixed block: a heading plus severity chips,
@@ -21,7 +21,7 @@ import AddEntryPanel from "@/components/AddEntryPanel";
 // link's server-rendered state survives), `aria-hidden` + out of the tab order while
 // closed, the collapsed "+" affordance vs the open heading — are the shared
 // components/AddEntryPanel since #1499 applied the same rule to the Results hub's
-// entry forms. This file is the Timeline's copy deck over it, not a second
+// entry forms. This file is the day view's copy deck over it, not a second
 // implementation of the behavior.
 export default function SymptomEntryCard({
   dateLabel,
@@ -39,9 +39,9 @@ export default function SymptomEntryCard({
       label={`Log symptoms for ${dateLabel}`}
       addLabel="Log symptom"
       defaultOpen={defaultOpen}
-      panelId="timeline-symptom-panel"
-      testId="timeline-symptom-entry"
-      toggleTestId="timeline-symptom-toggle"
+      panelId="history-symptom-panel"
+      testId="history-symptom-entry"
+      toggleTestId="history-symptom-toggle"
       dense
     >
       {children}

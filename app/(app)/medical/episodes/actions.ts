@@ -91,7 +91,7 @@ function revalidateEpisodeEvents() {
   revalidateRoute("/medical/episodes/[id]", "page");
   revalidateRoute("/medications");
   revalidateRoute("/results");
-  revalidateRoute("/timeline");
+  revalidateRoute("/history");
   revalidateRoute("/");
 }
 

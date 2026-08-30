@@ -104,6 +104,22 @@ vi.mock("@/app/(app)/trends/reading-actions", () => ({
   },
 }));
 
+// HistoryRows also renders symptom and cycle branches, but this suite owns the five
+// domains above. Do not load two unrelated Server Action and DB graphs for rows that
+// no case mounts; fail loudly if one starts reaching an unowned branch.
+vi.mock("@/app/(app)/symptom-actions", () => {
+  const unexpected = () => {
+    throw new Error("history-row-writes does not cover symptom actions");
+  };
+  return { editSymptom: unexpected, removeSymptom: unexpected };
+});
+vi.mock("@/app/(app)/medical/cycles/actions", () => {
+  const unexpected = () => {
+    throw new Error("history-row-writes does not cover cycle actions");
+  };
+  return { deleteCycleAction: unexpected, saveCycleAction: unexpected };
+});
+
 // The row's neighbours: none of them decides what a correction means.
 vi.mock("@/components/Toast", () => ({ useToast: () => () => {} }));
 vi.mock("@/components/ConfirmDialog", () => ({
@@ -195,6 +211,7 @@ function openRow(
   render(
     <HistoryRows
       rows={rows}
+      actingProfileId={ACTING}
       writableProfileIds={writableProfileIds}
       doseItems={[
         {
@@ -926,6 +943,7 @@ describe("the record's ⋯ posts to the domain's own action", () => {
             },
           }),
         ]}
+        actingProfileId={ACTING}
         writableProfileIds={[ACTING, WRITABLE]}
         doseItems={[]}
         maxDates={{ [ACTING]: ACTING_TODAY }}

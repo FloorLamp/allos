@@ -26,16 +26,16 @@
 
 import Database from "better-sqlite3";
 import { describe, expect, it } from "vitest";
+import { historicalDbFixture } from "./historical-db-fixture";
 import { MIGRATIONS, NUMBERED_MIGRATIONS } from "@/lib/migrations/versions";
 import { up } from "@/lib/migrations/versions/173-intake-log-recorded-at";
 
-// The real schema at version `maxId`, built the way the runner builds it.
-function schemaAt(maxId: number): Database.Database {
-  const mem = new Database(":memory:");
+// The chain is still the source of the fixture; each case gets independent bytes.
+const seededDb = historicalDbFixture((mem) => {
   mem.pragma("foreign_keys = OFF");
-  for (const m of NUMBERED_MIGRATIONS) if (m.id <= maxId) m.up(mem);
-  return mem;
-}
+  for (const m of NUMBERED_MIGRATIONS) if (m.id <= 172) m.up(mem);
+  seed(mem);
+});
 
 interface LogRow {
   id: number;
@@ -124,6 +124,15 @@ function seed(mem: Database.Database): { doseId: number; itemId: number } {
   return { doseId, itemId };
 }
 
+function fixtureIds(mem: Database.Database): {
+  doseId: number;
+  itemId: number;
+} {
+  return mem
+    .prepare("SELECT id AS doseId, item_id AS itemId FROM intake_item_doses")
+    .get() as { doseId: number; itemId: number };
+}
+
 function logs(mem: Database.Database, cols: string): unknown[] {
   return mem
     .prepare(`SELECT ${cols} FROM intake_item_logs ORDER BY id`)
@@ -147,8 +156,7 @@ const OTHER_COLUMNS =
 
 describe("migration 173 — intake_item_logs.given_at → recorded_at", () => {
   it("moves every given_at value onto recorded_at and leaves the rest untouched", () => {
-    const mem = schemaAt(172);
-    seed(mem);
+    const mem = seededDb();
     const before = logs(mem, OTHER_COLUMNS) as LogRow[];
     const givenBefore = (
       mem
@@ -176,8 +184,7 @@ describe("migration 173 — intake_item_logs.given_at → recorded_at", () => {
   });
 
   it("keeps the vestigial given_at column, empty, so the frozen migrations still run", () => {
-    const mem = schemaAt(172);
-    seed(mem);
+    const mem = seededDb();
     up(mem);
 
     const cols = (
@@ -204,8 +211,7 @@ describe("migration 173 — intake_item_logs.given_at → recorded_at", () => {
     // without the vestigial shell a replay would decide the table still needs
     // rebuilding and then throw on an INSERT…SELECT naming columns that are gone; 156
     // would fail to prepare its index outright.
-    const mem = schemaAt(172);
-    seed(mem);
+    const mem = seededDb();
     up(mem);
     const before = schemaText(mem);
     const rowsBefore = logs(mem, OTHER_COLUMNS);
@@ -221,8 +227,7 @@ describe("migration 173 — intake_item_logs.given_at → recorded_at", () => {
   });
 
   it("rebuilds the indexes, with the arming composite on the live column", () => {
-    const mem = schemaAt(172);
-    seed(mem);
+    const mem = seededDb();
     up(mem);
 
     const names = (
@@ -252,8 +257,8 @@ describe("migration 173 — intake_item_logs.given_at → recorded_at", () => {
   });
 
   it("re-creates the product-snapshot triggers, and they still fire", () => {
-    const mem = schemaAt(172);
-    const { doseId, itemId } = seed(mem);
+    const mem = seededDb();
+    const { doseId, itemId } = fixtureIds(mem);
     up(mem);
 
     const triggers = (
@@ -289,8 +294,8 @@ describe("migration 173 — intake_item_logs.given_at → recorded_at", () => {
   });
 
   it("keeps the FK graph: the links re-declare and a dose delete still cascades", () => {
-    const mem = schemaAt(172);
-    const { doseId } = seed(mem);
+    const mem = seededDb();
+    const { doseId } = fixtureIds(mem);
     up(mem);
 
     // The rebuild runs with foreign_keys OFF, so the copied values are only as good as
@@ -319,8 +324,7 @@ describe("migration 173 — intake_item_logs.given_at → recorded_at", () => {
   });
 
   it("preserves the AUTOINCREMENT high-water mark so log ids never recycle", () => {
-    const mem = schemaAt(172);
-    seed(mem);
+    const mem = seededDb();
     // Delete the newest administration: the copy's own max id now UNDERSTATES the
     // high-water mark, which is exactly the case a plain rebuild loses.
     const maxId = (
@@ -343,8 +347,7 @@ describe("migration 173 — intake_item_logs.given_at → recorded_at", () => {
   });
 
   it("is replay-safe: a second up() changes neither schema nor rows", () => {
-    const mem = schemaAt(172);
-    seed(mem);
+    const mem = seededDb();
     up(mem);
     const schema = schemaText(mem);
     const rows = logs(mem, `${OTHER_COLUMNS}, recorded_at, given_at`);
@@ -360,8 +363,8 @@ describe("migration 173 — intake_item_logs.given_at → recorded_at", () => {
     // new administration lands within ADMIN_DEDUP_WINDOW_SEC of an existing one. A row
     // written before the rename must be just as visible to them afterwards, which is
     // the whole of #2228's constraint 3.
-    const mem = schemaAt(172);
-    const { doseId } = seed(mem);
+    const mem = seededDb();
+    const { doseId } = fixtureIds(mem);
     up(mem);
 
     const arming = mem

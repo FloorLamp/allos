@@ -176,13 +176,10 @@ test.describe("Data → Review import inbox", () => {
     // The inserted run carries a "new" disposition badge — scoped to the run's own
     // link (spec-owned fixture) so it's an exact, single match, no ordinal.
     await expect(provRun.getByText("new", { exact: true })).toBeVisible();
-    await expect(provRun).toHaveAttribute(
-      "href",
-      /\/timeline\?from=2026-07-08/
-    );
-    // The deep link navigates to that record's timeline day.
+    await expect(provRun).toHaveAttribute("href", /\/history\?day=2026-07-08/);
+    // The deep link navigates to that record's day view.
     await provRun.click();
-    await expect(page).toHaveURL(/\/timeline\?from=2026-07-08/);
+    await expect(page).toHaveURL(/\/history\?day=2026-07-08/);
   });
 
   test("shows a removed source's history with a Reconnect link, and hides never-set-up sources (issue #294)", async ({

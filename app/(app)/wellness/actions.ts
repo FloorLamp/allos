@@ -28,7 +28,6 @@ function revalidatePracticeSurfaces() {
   revalidateRoute("/wellness");
   revalidateRoute("/history");
   revalidateRoute("/longevity");
-  revalidateRoute("/timeline");
   revalidateRoute("/upcoming");
   revalidateRoute("/");
 }

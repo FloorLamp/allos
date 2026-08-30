@@ -119,6 +119,8 @@ import {
   seedRoutineUsual,
   seedLogSheetReserve,
   seedFoodPinSplit,
+  seedProteinSourceStates,
+  seedFiberSourceStates,
 } from "./seed/nutrition";
 import { seedProviderMergePair, seedProviderCloseout } from "./seed/providers";
 import { seedIllness, seedSymptomVideoEpisode } from "./seed/illness";
@@ -133,7 +135,7 @@ import {
   seedNotifyScope,
   seedNotifyTickLog,
 } from "./seed/notifications";
-import { seedTimelineChrome, seedTimelineEmpty } from "./seed/timeline";
+import { seedTimelineChrome, seedTimelineEmpty } from "./seed/history";
 import { seedTrashZones } from "./seed/trash";
 import {
   seedBodyMobile,
@@ -197,6 +199,8 @@ seedFoodUsual();
 seedRoutineUsual();
 seedLogSheetReserve();
 seedFoodPinSplit();
+seedProteinSourceStates();
+seedFiberSourceStates();
 seedEndurancePlans();
 seedFlaggedFollowups();
 seedPanelGroups();

@@ -24,8 +24,8 @@ function trend(date: string, value: number, prev?: number): LatestTrend {
     date,
     value,
     previousValue: prev ?? null,
-    // The day before, which is enough for these cases: nothing here asserts on the
-    // previous DATE, it only has to exist when a previous value does (#3252).
+    // The day before is enough for the freshness cases; the points test below uses
+    // explicit non-adjacent dates so ordering cannot pass by coincidence (#3252).
     previousDate: prev == null ? null : shiftDateStr(date, -1),
     direction: prev == null ? null : value > prev ? "up" : "down",
   };
@@ -74,6 +74,26 @@ describe("presentedDirection", () => {
 });
 
 describe("vitalsLatestModel", () => {
+  it("builds a one-point resting-HR sparkline from the current reading", () => {
+    const current = trend("2026-08-07", 61);
+    expect(
+      vitalsLatestModel(null, null, current, TODAY)?.restingHr?.points
+    ).toEqual([{ date: "2026-08-07", value: 61 }]);
+  });
+
+  it("orders exactly the previous and current readings in a two-point resting-HR sparkline", () => {
+    const previous = {
+      ...trend("2026-08-07", 61, 59),
+      previousDate: "2026-08-03",
+    };
+    expect(
+      vitalsLatestModel(null, null, previous, TODAY)?.restingHr?.points
+    ).toEqual([
+      { date: "2026-08-03", value: 59 },
+      { date: "2026-08-07", value: 61 },
+    ]);
+  });
+
   it("keeps a stale reading's VALUE and withdraws only its currency claim", () => {
     // Ten months: past the 180-day blood-pressure floor, well inside the year at which
     // the row goes dormant. This is the whole span #2303 governs.

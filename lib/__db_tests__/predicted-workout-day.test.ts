@@ -12,7 +12,7 @@
 //
 // Deterministic: :memory:-backed temp DB via setup.ts; no network.
 
-import { describe, it, expect } from "vitest";
+import { afterEach, describe, it, expect } from "vitest";
 import { db, today } from "@/lib/db";
 import { inferWorkoutSchedule, isPredictedWorkoutDay } from "@/lib/queries";
 import { isDueOn } from "@/lib/intake-schedule";
@@ -42,6 +42,10 @@ function nextWeekday(from: string, wd: number): string {
   }
   return from;
 }
+
+afterEach(() => {
+  delete process.env.ALLOS_TEST_NOW;
+});
 
 describe("predicted workout day (#558)", () => {
   it("predicts habitual training weekdays without a logged session that day", () => {
@@ -93,6 +97,23 @@ describe("predicted workout day (#558)", () => {
     const inf = inferWorkoutSchedule(p);
     expect(inf.hasPattern).toBe(false);
     expect(isPredictedWorkoutDay(p, today(p))).toBeNull();
+  });
+
+  it("keeps a past verdict anchored when the later pattern changes", () => {
+    process.env.ALLOS_TEST_NOW = "2026-01-05T12:00:00Z";
+    const p = newProfile("historical Monday trainer");
+    const historicalDate = today(p);
+    for (const back of [0, 7, 14, 21])
+      logWorkout(p, shiftDateStr(historicalDate, -back));
+    expect(isPredictedWorkoutDay(p, historicalDate)).toBe(true);
+
+    process.env.ALLOS_TEST_NOW = "2026-04-01T12:00:00Z";
+    const currentDate = today(p);
+    for (const back of [0, 7, 14, 21])
+      logWorkout(p, shiftDateStr(currentDate, -back));
+
+    expect(isPredictedWorkoutDay(p, historicalDate)).toBe(true);
+    expect(isPredictedWorkoutDay(p, currentDate)).toBe(true);
   });
 });
 

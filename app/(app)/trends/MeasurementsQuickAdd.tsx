@@ -16,6 +16,7 @@ import {
 import { validateVitalsInput } from "@/lib/vitals-input";
 import { validateGrowthInput } from "@/lib/growth-input";
 import { validateWaistInput } from "@/lib/waist-input";
+import { validateCompositionInput } from "@/lib/composition-input";
 import {
   deepLinkFieldId,
   deepLinkGroup,
@@ -335,7 +336,10 @@ export default function MeasurementsQuickAdd({
       temperature: s("temperature"),
       tempUnit: s("temp_unit"),
       sleepHours: s("sleep_hours"),
+      bedTime: s("bed_time"),
+      wakeTime: s("wake_time"),
       hrv: s("hrv"),
+      respiratoryRate: s("respiratory_rate"),
       peakFlow: s("peak_flow"),
     };
     const growth = {
@@ -348,6 +352,13 @@ export default function MeasurementsQuickAdd({
       waistCirc: s("waist_circ"),
       waistCircUnit: s("waist_circ_unit"),
     };
+    const composition = {
+      leanMass: s("lean_mass"),
+      leanMassUnit: s("lean_mass_unit"),
+      boneMass: s("bone_mass"),
+      boneMassUnit: s("bone_mass_unit"),
+      hydration: s("hydration"),
+    };
 
     const hasBody =
       body.weight != null || body.bodyFatPct != null || body.restingHr != null;
@@ -358,12 +369,19 @@ export default function MeasurementsQuickAdd({
       vitals.spo2 != null ||
       vitals.temperature != null ||
       vitals.sleepHours != null ||
+      vitals.bedTime != null ||
+      vitals.wakeTime != null ||
       vitals.hrv != null ||
+      vitals.respiratoryRate != null ||
       vitals.peakFlow != null;
     const hasGrowth = growth.height != null || growth.headCirc != null;
     const hasWaist = waist.waistCirc != null;
+    const hasComposition =
+      composition.leanMass != null ||
+      composition.boneMass != null ||
+      composition.hydration != null;
 
-    if (!hasBody && !hasVitals && !hasGrowth && !hasWaist) {
+    if (!hasBody && !hasVitals && !hasGrowth && !hasWaist && !hasComposition) {
       setError("Enter at least one measurement.");
       return;
     }
@@ -393,7 +411,8 @@ export default function MeasurementsQuickAdd({
         : null) ??
       (hasVitals ? validateVitalsInput(vitals) : null) ??
       (hasGrowth ? validateGrowthInput(growth) : null) ??
-      (hasWaist ? validateWaistInput(waist) : null);
+      (hasWaist ? validateWaistInput(waist) : null) ??
+      (hasComposition ? validateCompositionInput(composition) : null);
     if (firstError) {
       setError(firstError);
       return;
@@ -451,7 +470,7 @@ export default function MeasurementsQuickAdd({
     const queueOffline = async (): Promise<
       "queued" | "refused" | "partial" | "unqueueable"
     > => {
-      if (hasGrowth || hasWaist) return "unqueueable";
+      if (hasGrowth || hasWaist || hasComposition) return "unqueueable";
       let keptBody = false;
       if (hasBody) {
         const kept = await enqueue("body-metric", date, {
@@ -521,7 +540,8 @@ export default function MeasurementsQuickAdd({
     toast(
       measurementsSavedText(
         metric ? `${metric.label} saved` : "Measurements saved",
-        saved.statedTimeRefused
+        saved.statedTimeRefused,
+        saved.sleepWindowRefused
       )
     );
     formRef.current?.reset();
@@ -534,6 +554,12 @@ export default function MeasurementsQuickAdd({
   // A label names the measure, the field carries its unit, and the group heading
   // carries the domain — so no label appends a second parenthetical to a title that
   // already has one ("BLOOD PRESSURE (SYSTOLIC) (MMHG)", uppercased by `.label`).
+  // The mass toggle leads with the login's own weight unit, so the common case is
+  // one tap fewer and the uncommon one is still there. Storage is canonical kg
+  // either way; the CHART stays in kilograms, exactly as height charts in
+  // centimetres however the tape was read.
+  const massUnitOptions = weightUnit === "lb" ? ["lb", "kg"] : ["kg", "lb"];
+
   const field = {
     weight: (
       <Field
@@ -642,6 +668,83 @@ export default function MeasurementsQuickAdd({
         </UnitToggle>
       </Field>
     ),
+    // Lean and bone mass (#1851) — the two numbers a DEXA report hands you, and
+    // the reason the protein band could not use the basis it prefers. Entered in
+    // the login's own weight unit (the toggle leads with it) and stored in
+    // canonical kilograms, the same rows Withings and Health Connect write.
+    leanMass: (
+      <Field
+        key="lean-mass"
+        label={TREND_METRIC_META["lean-mass"].title}
+        htmlFor="m-lean-mass"
+      >
+        <UnitToggle
+          name="lean_mass_unit"
+          label={`${TREND_METRIC_META["lean-mass"].title} unit`}
+          options={massUnitOptions}
+        >
+          <input
+            id="m-lean-mass"
+            type="number"
+            step="0.1"
+            min="0"
+            name="lean_mass"
+            data-testid="measurements-lean-mass"
+            className="input pr-16"
+          />
+        </UnitToggle>
+      </Field>
+    ),
+    boneMass: (
+      <Field
+        key="bone-mass"
+        label={TREND_METRIC_META["bone-mass"].title}
+        htmlFor="m-bone-mass"
+      >
+        <UnitToggle
+          name="bone_mass_unit"
+          label={`${TREND_METRIC_META["bone-mass"].title} unit`}
+          options={massUnitOptions}
+        >
+          <input
+            id="m-bone-mass"
+            type="number"
+            step="0.01"
+            min="0"
+            name="bone_mass"
+            className="input pr-16"
+          />
+        </UnitToggle>
+      </Field>
+    ),
+    // Water drunk today (#1851), in litres — the metric's own canonical and
+    // charted unit, so what is typed is what the chart plots.
+    //
+    // "TODAY" IS LOAD-BEARING, not a nicety. `hydration_l` is an ADDITIVE metric
+    // (lib/metric-buckets.ts names it so), and this field files ONE point row per
+    // day that re-entry CORRECTS — so a second glass typed later replaces the
+    // first rather than adding to it. Labelled "Water" alone, the natural reading
+    // is "log a glass", and the measured result of that reading is wrong twice
+    // over: two typed glasses (0.5 then 0.7) leave the day at 0.7, and on a
+    // profile that also syncs a bottle the typed value REPLACES the synced day
+    // (2.5 L → 0.3 L), because `manual` leads SOURCE_PREFERENCE and an additive
+    // metric elects one source per day. Naming the quantity the field actually
+    // holds is what makes both of those the right answer instead of a surprise.
+    hydration: (
+      <Field key="hydration" label="Water today" htmlFor="m-hydration">
+        <UnitSuffix suffix={TREND_METRIC_META.hydration.unit.trim()}>
+          <input
+            id="m-hydration"
+            type="number"
+            step="0.1"
+            min="0"
+            name="hydration"
+            data-testid="measurements-hydration"
+            className="input pr-9"
+          />
+        </UnitSuffix>
+      </Field>
+    ),
     // A blood pressure is ONE reading typed as two numbers — one field, two inputs
     // and a slash. Adjacency used to be an ordering convention against a grid that
     // reflows freely; here it is structural.
@@ -746,6 +849,35 @@ export default function MeasurementsQuickAdd({
         )}
       </Field>
     ),
+    // The night's two clocks (#1851) — ONE reading typed as two times, the same
+    // structural pairing a blood pressure gets. This is the whole of what the Sleep
+    // Regularity Index needs; the hours field below cannot give it, because a
+    // duration says nothing about WHEN.
+    sleepWindow: (
+      <Field key="sleep-window" label="Bed & wake" htmlFor="m-bed-time">
+        <div className="flex items-center gap-1.5">
+          <input
+            id="m-bed-time"
+            type="time"
+            name="bed_time"
+            aria-label="Bed time"
+            data-testid="measurements-bed-time"
+            className="input min-w-0 flex-1"
+          />
+          <span aria-hidden className="text-slate-400">
+            –
+          </span>
+          <input
+            id="m-wake-time"
+            type="time"
+            name="wake_time"
+            aria-label="Wake time"
+            data-testid="measurements-wake-time"
+            className="input min-w-0 flex-1"
+          />
+        </div>
+      </Field>
+    ),
     sleep: (
       <Field key="sleep" label="Sleep" htmlFor="m-sleep">
         <UnitSuffix suffix="hrs">
@@ -756,6 +888,25 @@ export default function MeasurementsQuickAdd({
             min="0"
             max="24"
             name="sleep_hours"
+            className="input pr-12"
+          />
+        </UnitSuffix>
+      </Field>
+    ),
+    respiratoryRate: (
+      <Field
+        key="respiratory-rate"
+        label={TREND_METRIC_META["respiratory-rate"].title}
+        htmlFor="m-respiratory-rate"
+      >
+        <UnitSuffix suffix={TREND_METRIC_META["respiratory-rate"].unit.trim()}>
+          <input
+            id="m-respiratory-rate"
+            type="number"
+            step="1"
+            min="0"
+            name="respiratory_rate"
+            data-testid="measurements-respiratory-rate"
             className="input pr-12"
           />
         </UnitSuffix>
@@ -841,6 +992,10 @@ export default function MeasurementsQuickAdd({
     "head-circ": [field.headCirc],
     "peak-flow": [field.peakFlow],
     "waist-circ": [field.waistCirc],
+    "respiratory-rate": [field.respiratoryRate],
+    "lean-mass": [field.leanMass],
+    "bone-mass": [field.boneMass],
+    hydration: [field.hydration],
   };
 
   const groupFields: Record<MeasurementGroup, ReactNode[]> = {
@@ -848,6 +1003,7 @@ export default function MeasurementsQuickAdd({
       field.bloodPressure,
       field.restingHr,
       field.spo2,
+      field.respiratoryRate,
       field.temperature,
       field.glucose,
       field.peakFlow,
@@ -858,8 +1014,11 @@ export default function MeasurementsQuickAdd({
       ...(showGrowth ? [field.height] : []),
       ...(showGrowth && showHeadCirc ? [field.headCirc] : []),
       field.waistCirc,
+      field.leanMass,
+      field.boneMass,
+      field.hydration,
     ],
-    sleep: [field.sleep, ...(showHrv ? [field.hrv] : [])],
+    sleep: [field.sleepWindow, field.sleep, ...(showHrv ? [field.hrv] : [])],
   };
 
   return (

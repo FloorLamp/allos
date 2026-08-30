@@ -2,21 +2,12 @@ import { describe, it, expect } from "vitest";
 import { hashPasswordSync, verifyPassword } from "../password";
 
 describe("password hashing", () => {
-  it("round-trips a hash back to a successful verification", async () => {
-    const stored = hashPasswordSync("correct horse battery staple");
-    expect(await verifyPassword("correct horse battery staple", stored)).toBe(
-      true
-    );
-  });
+  it("stores a salted, self-describing hash that verifies only its password", async () => {
+    const password = "correct horse battery staple";
+    const stored = hashPasswordSync(password);
+    expect(await verifyPassword(password, stored)).toBe(true);
+    expect(await verifyPassword("wrong password", stored)).toBe(false);
 
-  it("rejects the wrong password", async () => {
-    const stored = hashPasswordSync("hunter2");
-    expect(await verifyPassword("hunter3", stored)).toBe(false);
-    expect(await verifyPassword("", stored)).toBe(false);
-  });
-
-  it("is self-describing: params and salt live in the stored string", () => {
-    const stored = hashPasswordSync("pw");
     const parts = stored.split("$");
     expect(parts).toHaveLength(6);
     const [scheme, n, r, p, saltHex, hashHex] = parts;
@@ -26,12 +17,7 @@ describe("password hashing", () => {
     expect(p).toBe("1");
     expect(saltHex).toMatch(/^[0-9a-f]{32}$/); // 16 bytes
     expect(hashHex).toMatch(/^[0-9a-f]{64}$/); // 32 bytes
-  });
-
-  it("produces a distinct salt (and thus hash) per call", () => {
-    const a = hashPasswordSync("same");
-    const b = hashPasswordSync("same");
-    expect(a).not.toBe(b);
+    expect(hashPasswordSync(password)).not.toBe(stored);
   });
 
   it("returns false for malformed stored hashes rather than throwing", async () => {

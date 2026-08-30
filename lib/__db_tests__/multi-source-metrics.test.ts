@@ -462,7 +462,10 @@ describe("sleep — stages and sessions keep one source per night", () => {
     ).toEqual({ date: DATE, deep: 70, rem: 80, light: 290, awake: 35 });
   });
 
-  it("sessions come from a single stream (the SRI input never interleaves)", () => {
+  it("one night's two accounts resolve to one (the SRI never interleaves)", () => {
+    // The #14 no-interleave claim, which survives #1851 — but it is now earned by
+    // these two OVERLAPPING windows resolving per night, not by a profile-wide
+    // stream election that made the count 1 whatever the fixture held.
     const sessions = getSleepSessions(profileId);
     const sources = new Set(sessions.map((s) => s.source));
     expect(sources.size).toBe(1);

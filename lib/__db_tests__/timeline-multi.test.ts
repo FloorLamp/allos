@@ -103,7 +103,12 @@ describe("getMultiProfileTimeline over a multi-profile view-set (#1329)", () => 
     expect(eastToday > westToday).toBe(true);
   });
 
-  it("threads each member's own subject id into per-day deep-links (whose day it is)", () => {
+  // `?subject=` IS OUT OF THE GRAMMAR (owner ruling 2026-08-29 on #3958): a subject
+  // param is a second profile-selection vocabulary beside the sidebar switcher, and
+  // reading a member's day means switching to them. This used to assert that each
+  // member's day link carried their own id; what survives — and is the part the merge
+  // is actually for — is that each member's rows bucket on THEIR OWN local date.
+  it("buckets each member's rows on that member's own date", () => {
     const a = newProfile("MV SymA");
     const b = newProfile("MV SymB");
     addSymptom(a, "2024-05-01");
@@ -111,9 +116,11 @@ describe("getMultiProfileTimeline over a multi-profile view-set (#1329)", () => 
     const { members } = getMultiProfileTimeline([a, b]);
     const aSym = members[0].events.find((e) => e.id.startsWith("symptom:"))!;
     const bSym = members[1].events.find((e) => e.id.startsWith("symptom:"))!;
-    expect(aSym.href).toContain(`subject=${a}`);
-    expect(bSym.href).toContain(`subject=${b}`);
-    // And the merge buckets them on their own dates with both members present.
+    // The day link is the plain grammar for both, carrying no subject either way —
+    // asserted on BOTH so a link that still spelled one would fail rather than being
+    // read as "no subject anywhere".
+    expect(aSym.href).toBe("/history?day=2024-05-01");
+    expect(bSym.href).toBe("/history?day=2024-05-02");
     const days = mergeMemberTimelines(members);
     expect(days.some((d) => d.date === "2024-05-01")).toBe(true);
     expect(days.some((d) => d.date === "2024-05-02")).toBe(true);

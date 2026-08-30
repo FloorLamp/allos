@@ -113,15 +113,19 @@ tie-break inside `cycleOffer`: the reopen window (3 days) closes before the
 plausible-gap window (10 days) opens. The gap between them is where the honest
 answer is silence, and the dated form on the Cycle page owns that exception.
 
-Three surfaces render it and **none of them re-derives it**:
+Two surfaces render it and **none of them re-derives it**:
 
-| surface                | component                                         | where the state comes from             |
-| ---------------------- | ------------------------------------------------- | -------------------------------------- |
-| Cycle page control     | `app/(app)/medical/cycles/PeriodQuickActions.tsx` | the page, once per render              |
-| Dashboard control atom | `components/dashboard/CycleControlAtom.tsx`       | the dashboard page, once per render    |
-| Quick-log sheet        | `components/quick-entry/QuickCyclePanel.tsx`      | `loadQuickEntry("cycle")`, **on open** |
+| surface            | component                                         | where the state comes from             |
+| ------------------ | ------------------------------------------------- | -------------------------------------- |
+| Cycle page control | `app/(app)/medical/cycles/PeriodQuickActions.tsx` | the page, once per render              |
+| Quick-log sheet    | `components/quick-entry/QuickCyclePanel.tsx`      | `loadQuickEntry("cycle")`, **on open** |
 
-All three mount `components/cycle/PeriodOfferButton.tsx`, the only caller of
+A dashboard control atom was the third until #3366 retired the tail's generic
+write cards; the dashboard still resolves `cycleControlState` for Standing's
+phase reading, which is why the renderer pin below still counts three server
+entry points while listing two renderers.
+
+Both mount `components/cycle/PeriodOfferButton.tsx`, the only caller of
 `cycleOffer` in the app. `lib/__tests__/cycle-offer-renderers.test.ts` is the
 #221 pin: it fails if a surface reaches for the predicates directly, calls the
 derivation itself, hard-codes a verb, or if a fourth server entry point starts

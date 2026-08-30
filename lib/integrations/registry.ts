@@ -314,7 +314,7 @@ export const INTEGRATIONS: IntegrationDef[] = [
       revalidates: [
         "/",
         "/trends",
-        "/timeline",
+        "/history",
         "/integrations/withings",
         "/data",
       ],
@@ -511,7 +511,7 @@ export const INTEGRATIONS: IntegrationDef[] = [
       // daily request budget, and the data itself is hourly-resolution forecast, so
       // a sub-hourly poll would re-fetch the same numbers. Hourly, like the rest.
       cadenceMinutes: 60,
-      revalidates: ["/", "/timeline", "/integrations/weather", "/data"],
+      revalidates: ["/", "/history", "/integrations/weather", "/data"],
     },
   },
   {

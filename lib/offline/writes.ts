@@ -14,19 +14,33 @@
 import { db, today, writeTx } from "@/lib/db";
 import { OFFLINE_REPLAY, type LoggedVia } from "../logged-via";
 import { now as clockNow } from "@/lib/clock";
-import { isRealIsoDate, utcInstant, zonedDateParts } from "@/lib/date";
+import {
+  isRealIsoDate,
+  shiftDateStr,
+  utcInstant,
+  zonedDateParts,
+  zonedWallTimeToUtc,
+} from "@/lib/date";
 import { isDoseDateAccepted } from "@/lib/dose-log-window";
+import { inMetricBounds } from "@/lib/ingest-bounds";
 import { toKg } from "@/lib/units";
 import type { WeightUnit } from "@/lib/settings";
 import {
   normalizeClockTime,
   normalizeVitalsInput,
+  SLEEP_METRIC,
   VITAL_CANONICAL,
+  type SleepWindowRefusal,
+  type StatedSleepWindow,
   type VitalsRawInput,
 } from "@/lib/vitals-input";
 import { statedInstantOnDate } from "@/lib/stated-time";
 import { normalizeGrowthInput, type GrowthInputRaw } from "@/lib/growth-input";
 import { normalizeWaistInput, type WaistInputRaw } from "@/lib/waist-input";
+import {
+  normalizeCompositionInput,
+  type CompositionInputRaw,
+} from "@/lib/composition-input";
 import { WAIST_CIRC_METRIC } from "@/lib/waist-circ-extract";
 import { BRISTOL_STOOL_METRIC, parseBristolType } from "@/lib/bristol-stool";
 import { markDoseSkipped, markDoseTaken } from "@/lib/queries";
@@ -63,6 +77,7 @@ import {
   type FoodPayload,
   type MobilityPayload,
   type PracticePayload,
+  type StoolPayload,
 } from "@/lib/offline/queue";
 
 // ── dose confirm / skip ───────────────────────────────────────────────────────
@@ -267,19 +282,149 @@ export function insertBodyMetric(
 // re-entry corrects rather than duplicates. source='manual', origin=NULL, and a
 // fixed midnight start make the natural key stable, while `source` keeps a Health
 // Connect push from ever touching it.
+// The day's midnight, the natural-key anchor a POINT measurement is filed at. It is
+// a day attribution rather than an instant, which is why it is a template here and
+// not a `utcInstant()` call.
+function dayMidnightAnchor(date: string): string {
+  return `${date}T00:00:00`;
+}
+
 function upsertManualSample(
   profileId: number,
   metric: string,
   date: string,
-  value: number
+  value: number,
+  window?: { startedAt: string; endedAt: string }
 ): void {
-  const ts = `${date}T00:00:00`;
+  const startedAt = window?.startedAt ?? dayMidnightAnchor(date);
+  const endedAt = window?.endedAt ?? startedAt;
   db.prepare(
     `INSERT INTO metric_samples (profile_id, source, metric, date, started_at, ended_at, value)
        VALUES (?, 'manual', ?, ?, ?, ?, ?)
      ON CONFLICT DO UPDATE SET
-       value = excluded.value, date = excluded.date`
-  ).run(profileId, metric, date, ts, ts, value);
+       value = excluded.value, date = excluded.date,
+       -- The natural key (migration 083) is (profile, metric, source, origin,
+       -- started_at) — the END is NOT in it. Without this, re-stating a night with
+       -- the same bedtime and a new wake clock updated the value in place and left
+       -- the old end instant behind: a window whose length no longer matched the
+       -- hours printed beside it. Point rows are unaffected (end equals start).
+       ended_at = excluded.ended_at`
+  ).run(profileId, metric, date, startedAt, endedAt, value);
+}
+
+// ONE manual sleep row per profile-day, whichever shape the sitting used (#1851).
+//
+// `metric_samples`' natural key is the START instant and `sleep_min` is ADDITIVE, so
+// a duration-only night filed at midnight and a stated bed/wake window are two keys
+// that would read one night as two. Every other manual row for the day therefore
+// goes BEFORE the upsert, which then corrects in place — keeping the row id the
+// Sleep log's per-reading delete addresses.
+//
+// A sitting that states NO window keeps whatever window the day's manual row
+// already has: correcting the hours on the Sleep page — a form that knows only a
+// duration — must not silently discard clocks typed on the measurements form.
+// TWO cases break that retention, and each returns its reason rather than deciding
+// in silence:
+//
+//   • the sitting DID state a pair and it could not be stored (`stated.refused`).
+//     The fallback is a duration-only row, and it has to actually fall back: leaving
+//     the day's old clocks in place answers a refused statement with someone else's
+//     night, which is the one outcome nobody asked for.
+//   • the retained window is SHORTER than the hours now being stored. Time asleep
+//     can be less than time in bed and never more — `validateVitalsInput` refuses
+//     exactly that inside one sitting — so a 12-hour correction landing on a
+//     23:00→07:00 night means those clocks are no longer an account of it.
+function upsertManualSleep(
+  profileId: number,
+  date: string,
+  value: number,
+  stated: {
+    window: { startedAt: string; endedAt: string } | null;
+    refused: boolean;
+  }
+): SleepWindowRefusal | null {
+  return writeTx(() => {
+    let notice: SleepWindowRefusal | null = null;
+    let target = stated.window;
+    if (target == null) {
+      if (stated.refused) {
+        notice = "unstorable";
+      } else {
+        const existing = db
+          .prepare(
+            `SELECT started_at AS startedAt, ended_at AS endedAt FROM metric_samples
+              WHERE profile_id = ? AND metric = ? AND source = 'manual'
+                AND origin IS NULL AND date = ?
+                AND julianday(ended_at) > julianday(started_at)
+              ORDER BY id LIMIT 1`
+          )
+          .get(profileId, SLEEP_METRIC, date) as
+          { startedAt: string; endedAt: string } | undefined;
+        if (existing) {
+          const elapsed = Math.round(
+            (Date.parse(existing.endedAt) - Date.parse(existing.startedAt)) /
+              60000
+          );
+          if (Number.isFinite(elapsed) && value > elapsed) {
+            notice = "shorter-than-stated-sleep";
+          } else {
+            target = existing;
+          }
+        }
+      }
+    }
+    const startedAt = target?.startedAt ?? dayMidnightAnchor(date);
+    const endedAt = target?.endedAt ?? startedAt;
+    db.prepare(
+      `DELETE FROM metric_samples
+        WHERE profile_id = ? AND metric = ? AND source = 'manual'
+          AND origin IS NULL AND date = ? AND started_at <> ?`
+    ).run(profileId, SLEEP_METRIC, date, startedAt);
+    upsertManualSample(profileId, SLEEP_METRIC, date, value, {
+      startedAt,
+      endedAt,
+    });
+    return notice;
+  });
+}
+
+// The two absolute instants a stated bed/wake pair denotes in the profile's zone,
+// or null when the zone cannot place them or the ELAPSED minutes between them fall
+// outside `sleep_min`'s ingest envelope.
+//
+// THE STORED VALUE IS BOUNDED HERE, not by the validator's ceiling: that bounds the
+// NOMINAL clock difference, this bounds the elapsed minutes the row actually
+// carries, and a zone transition separates the two by however much the zone shifts.
+// Antarctica/Troll shifts two hours, which let a validated 12:00→11:00 pair store
+// 1500 against a 0–1440 envelope. Every other writer of this metric goes through
+// the same `inMetricBounds`; this is that check on the one path that lacked it.
+//
+// WHICH ZONE INTERPRETS THE CLOCKS: the profile's zone AT WRITE TIME, which for a
+// replayed intent is the zone at RECONNECT rather than the one the person was in
+// when they typed. The intent carries clocks, not instants, deliberately — an
+// offline device has no server to ask — so the rule follows from that: the stated
+// wall clock is resolved by whatever zone the profile holds when the write lands.
+// A sitting queued abroad and flushed at home moves with the profile. (lib/travel.ts
+// makes zone changes routine, which is why this is written down; pinning a zone into
+// the payload at capture is a payload change, not a silent one, and nobody has asked
+// for it.) The bed clock sits on the previous calendar day whenever it is at or
+// after noon — the anchoring lib/sleep-regularity.ts indexes by — and the wake clock
+// is on the row's own wake day, which is how every sleep session here is dated.
+function resolveSleepWindow(
+  tz: string,
+  date: string,
+  window: StatedSleepWindow
+): { startedAt: string; endedAt: string; minutes: number } | null {
+  const bedAt = zonedWallTimeToUtc(
+    tz,
+    window.bedOnPreviousDay ? shiftDateStr(date, -1) : date,
+    window.bed
+  );
+  const wakeAt = zonedWallTimeToUtc(tz, date, window.wake);
+  if (!bedAt || !wakeAt) return null;
+  const minutes = Math.round((wakeAt.getTime() - bedAt.getTime()) / 60000);
+  if (minutes <= 0 || !inMetricBounds(SLEEP_METRIC, minutes)) return null;
+  return { startedAt: utcInstant(bedAt), endedAt: utcInstant(wakeAt), minutes };
 }
 
 // Persist a manual vitals entry. Runs the SAME pure normalizeVitalsInput guard the
@@ -333,8 +478,18 @@ function upsertManualSample(
 // `statedTimeRefused` is a NOTICE, never a failure: `wrote` is still true, the rows
 // are still on their own day, and nothing is persisted to chase the user later.
 // Absent whenever nobody stated a time.
+//
+// `sleepWindowRefused` is the same shape for the same reason (#1851). A stated
+// bed/wake pair that cannot be stored, or clocks a later duration contradicts, used
+// to be dropped with the toast still saying "Measurements saved" — the identical
+// silence, one field over.
 export type VitalsWriteOutcome =
-  { wrote: false } | { wrote: true; statedTimeRefused?: StatedTimeRefusal };
+  | { wrote: false }
+  | {
+      wrote: true;
+      statedTimeRefused?: StatedTimeRefusal;
+      sleepWindowRefused?: SleepWindowRefusal;
+    };
 
 export function insertVitals(
   profileId: number,
@@ -409,8 +564,26 @@ export function insertVitals(
           : occurredAt,
     });
   }
+  let sleepWindowRefused: SleepWindowRefusal | null = null;
   for (const s of samples) {
-    upsertManualSample(profileId, s.metric, date, s.value);
+    if (s.metric !== SLEEP_METRIC) {
+      upsertManualSample(profileId, s.metric, date, s.value);
+      continue;
+    }
+    // The night, as ONE row (#1851). A stated bed/wake pair becomes the session
+    // WINDOW the Sleep Regularity Index reads — the thing a duration-only row can
+    // never give it — resolved against the profile's own zone, so the clock minutes
+    // SRI compares are the ones the person's clock showed.
+    const resolved = s.window ? resolveSleepWindow(tz, date, s.window) : null;
+    sleepWindowRefused = upsertManualSleep(
+      profileId,
+      date,
+      // Hours ASLEEP when the sitting stated them (a window includes time awake in
+      // bed); otherwise the window's own ELAPSED minutes, which carry the real UTC
+      // offsets and so are the length a zone-transition night actually had.
+      resolved && !s.window?.durationStated ? resolved.minutes : s.value,
+      { window: resolved, refused: s.window != null && resolved == null }
+    );
   }
   for (const r of readings) {
     // The blow's clock time: the sitting's accepted statement, rendered on the
@@ -431,7 +604,11 @@ export function insertVitals(
   }
   // The readings landed. If the sitting stated a time and the gate threw it away,
   // the caller now holds the reason instead of the resolver's shape erasing it.
-  return { wrote: true, ...(refused ? { statedTimeRefused: refused } : {}) };
+  return {
+    wrote: true,
+    ...(refused ? { statedTimeRefused: refused } : {}),
+    ...(sleepWindowRefused ? { sleepWindowRefused } : {}),
+  };
 }
 
 // ── growth (height / head circumference) ───────────────────────────────────────
@@ -497,6 +674,35 @@ export function insertWaistCirc(
   return true;
 }
 
+// ── lean mass / bone mass / hydration (issue #1851) ───────────────────────────
+
+// Persist the manual body samples the census charted but the form could not take.
+// The SIBLING of insertGrowth and insertWaistCirc — same store, same discipline,
+// same fixed-midnight point key, so re-logging a date CORRECTS it rather than
+// stacking a second reading — and deliberately not a member of either: these three
+// are neither life-stage-gated nor a tape measurement.
+//
+// The metric keys are the ones Withings and Health Connect already write
+// ('lean_mass_kg' / 'bone_mass_kg' / 'hydration_l'), so a DEXA figure typed at home
+// is the same row a synced one is: `lib/protein.ts` reads the latest lean mass
+// whatever wrote it, and the hydration chart plots both together. Auth-blind +
+// profileId-first like its neighbours. Returns false on a rejected/empty input.
+export function insertComposition(
+  profileId: number,
+  date: string,
+  raw: CompositionInputRaw
+): boolean {
+  if (!isRealIsoDate(date)) return false;
+  const normalized = normalizeCompositionInput(raw);
+  if ("error" in normalized) return false;
+  writeTx(() => {
+    for (const s of normalized.samples) {
+      upsertManualSample(profileId, s.metric, date, s.value);
+    }
+  });
+  return true;
+}
+
 // ── Bristol stool form (issue #2785) ──────────────────────────────────────────
 
 // Persist one Bristol stool-form observation. The SIBLING of insertWaistCirc in
@@ -524,7 +730,8 @@ export function logBristolStool(
   type: unknown,
   // The observation's profile-local wall clock, "HH:MM". Omitted → read from the
   // clock seam, which is what a one-tap log does: the moment IS now.
-  at?: string | null
+  at?: string | null,
+  instant: Date = clockNow()
 ): boolean {
   if (!isRealIsoDate(date)) return false;
   const bristolType = parseBristolType(type);
@@ -548,7 +755,6 @@ export function logBristolStool(
   // zone in the modern era is a whole-minute offset, so the seconds are the same
   // number on any wall clock.
   const stated = normalizeClockTime(at ?? null);
-  const instant = clockNow();
   const hhmm = stated ?? zonedDateParts(getTimezone(profileId), instant).hhmm;
   const seconds = stated
     ? "00"
@@ -1039,6 +1245,15 @@ export function applyIntent(
         factors: p.factors,
         note: p.note,
       });
+    } else if (intent.flow === "stool") {
+      const p = intent.payload as StoolPayload;
+      ok = logBristolStool(
+        profileId,
+        intent.date,
+        p?.type,
+        typeof p?.at === "string" ? p.at : null,
+        new Date(resolveCapturedInstant(intent.capturedAt, clockNow()))
+      );
     } else if (intent.flow === "set") {
       // The offline-logged workout replays through the shared activity core; its
       // typed outcome keeps the refusal's reason (#1596, the dose-flow pattern).
@@ -1147,7 +1362,12 @@ export function applyIntent(
           temperature: p.temperature,
           tempUnit: p.tempUnit,
           sleepHours: p.sleepHours,
+          // The night's two clocks (#1851) — a queued sitting replays with the
+          // window it stated, so an offline bed/wake entry still feeds SRI.
+          bedTime: p.bedTime,
+          wakeTime: p.wakeTime,
           hrv: p.hrv,
+          respiratoryRate: p.respiratoryRate,
           gripStrength: p.gripStrength,
           chairStand: p.chairStand,
           balance: p.balance,

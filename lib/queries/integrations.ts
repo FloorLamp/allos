@@ -38,7 +38,7 @@ import {
 import { syncEventDay } from "@/lib/integrations/sync-history-days";
 import { dateFromCreatedAt } from "@/lib/timeline-format";
 import {
-  timelineDayHref,
+  historyDayHref,
   clinicalResultDetailHref,
   importHref,
   type AppRoute,
@@ -1084,7 +1084,7 @@ export function getSyncRowProvenance(
   for (const r of rows) {
     let date: string | null = null;
     let label = "";
-    let href: AppRoute = timelineDayHref(""); // replaced below
+    let href: AppRoute = historyDayHref(""); // replaced below
     let deleted = false;
     if (r.target_table === "activities") {
       const rec = findActivity.get(r.target_id, profileId) as
@@ -1092,21 +1092,21 @@ export function getSyncRowProvenance(
       deleted = !rec;
       date = rec?.date ?? null;
       label = rec?.title || rec?.type || "Activity";
-      href = date ? timelineDayHref(date) : timelineDayHref("");
+      href = date ? historyDayHref(date) : historyDayHref("");
     } else if (r.target_table === "body_metrics") {
       const rec = findBody.get(r.target_id, profileId) as
         { date: string } | undefined;
       deleted = !rec;
       date = rec?.date ?? null;
       label = "Body metrics";
-      href = date ? timelineDayHref(date) : timelineDayHref("");
+      href = date ? historyDayHref(date) : historyDayHref("");
     } else if (r.target_table === "metric_samples") {
       const rec = findSample.get(r.target_id, profileId) as
         { date: string; metric: string } | undefined;
       deleted = !rec;
       date = rec?.date ?? null;
       label = rec?.metric ?? "Metric";
-      href = date ? timelineDayHref(date) : timelineDayHref("");
+      href = date ? historyDayHref(date) : historyDayHref("");
     } else if (r.target_table === "medical_records") {
       // medical_records → the reading's OWN detail surface (#1932): the metric
       // detail page for a continuous vital, the reference-range page for a lab,
@@ -1149,7 +1149,7 @@ export function getSyncRowProvenance(
       deleted = !rec;
       date = rec?.date ?? null;
       label = rec?.practice || "Wellness practice";
-      href = date ? timelineDayHref(date) : timelineDayHref("");
+      href = date ? historyDayHref(date) : historyDayHref("");
     }
     out.push({
       id: r.id,

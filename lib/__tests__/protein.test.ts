@@ -41,15 +41,62 @@ describe("estimatedProteinGrams", () => {
   });
 });
 
-describe("proteinIntake — tracked OVERRIDES, else estimated + logged SUM (#824)", () => {
-  it("tracked (a measured full-day total) overrides the sum", () => {
-    expect(
-      proteinIntake({ dailyTracked: 120, dailyLogged: 90, dailyEstimated: 60 })
-    ).toEqual({
-      grams: 120,
-      basis: "tracked",
-      estimatedGrams: 0,
-      loggedGrams: 0,
+describe("proteinIntake — the LARGER FLOOR of tracked vs estimated + logged (#824, #3903)", () => {
+  // #3903's owner ruling: a tracked reading no longer OVERRIDES the in-app sum, it is
+  // taken against it as a MAX. Both inputs are floors on the same true total, so their
+  // max is a floor too — nothing double-counted (a shake entered in both places would
+  // count twice under a sum) and nothing discarded (the override hid in-app logging).
+  // The property these rows exist to hold: connecting an integration can never LOWER
+  // the figure, which is what the override did.
+  //
+  // `estimatedGrams`/`loggedGrams` report the app's OWN ledger throughout — they are not
+  // a decomposition of `grams`, so under `both-sources` they keep naming what the profile
+  // logged here even when the integration's reading is the larger number.
+  //   name | args | grams | basis | estimatedGrams | loggedGrams
+  it.each([
+    // THE DISCRIMINATING ROW: the in-app sum is larger. The retired override returned
+    // 120 here — the smaller number — and zeroed both components.
+    [
+      "the in-app sum is larger",
+      { dailyTracked: 120, dailyLogged: 90, dailyEstimated: 60 },
+      150,
+      "both-sources",
+      60,
+      90,
+    ],
+    [
+      "the tracked reading is larger",
+      { dailyTracked: 120, dailyLogged: 30, dailyEstimated: 20 },
+      120,
+      "both-sources",
+      20,
+      30,
+    ],
+    // At equality both records still exist, so the basis still names both — the hover's
+    // job is to say which records were considered, not which one won.
+    [
+      "the two floors are equal",
+      { dailyTracked: 100, dailyLogged: 40, dailyEstimated: 60 },
+      100,
+      "both-sources",
+      60,
+      40,
+    ],
+    // Nothing logged in-app: the only route to a bare `tracked` basis now.
+    [
+      "nothing is logged in-app",
+      { dailyTracked: 120, dailyEstimated: 0 },
+      120,
+      "tracked",
+      0,
+      0,
+    ],
+  ])("%s", (_name, args, grams, basis, estimatedGrams, loggedGrams) => {
+    expect(proteinIntake(args)).toEqual({
+      grams,
+      basis,
+      estimatedGrams,
+      loggedGrams,
     });
   });
 

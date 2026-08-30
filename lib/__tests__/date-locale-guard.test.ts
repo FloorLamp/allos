@@ -117,6 +117,9 @@ const FORMATTER_MIN_ARGS: Record<string, number> = {
   formatRecordDate: 3,
   formatRecordDateTime: 3,
 };
+const FORMATTER_CALL_NEEDLES = Object.keys(FORMATTER_MIN_ARGS).map(
+  (name) => `${name}(`
+);
 
 // Login-less channels (documented fixed-format policy — see lib/format-date.ts's
 // header): these files render into a channel with a profile but NO login in
@@ -210,11 +213,13 @@ function stripComments(text: string): string {
     .replace(/(^|[^:])\/\/.*$/gm, "$1");
 }
 
+const productionSources = sourceFiles();
+
 describe("date/time display-pref guard (#964/#1020)", () => {
   it("no implicit-locale toLocale* date/time calls outside the frozen admin-ops allowlist", () => {
     const problems: string[] = [];
     const seen = new Set<string>();
-    for (const { rel, text } of sourceFiles()) {
+    for (const { rel, text } of productionSources) {
       const count = countMatches(text, TOLOCALE_RE);
       if (count === 0) continue;
       seen.add(rel);
@@ -248,7 +253,8 @@ describe("date/time display-pref guard (#964/#1020)", () => {
   it('no raw <input type="date"> outside the frozen allowlist — date entry goes through <DateField />', () => {
     const problems: string[] = [];
     const seen = new Set<string>();
-    for (const { rel, text } of sourceFiles()) {
+    for (const { rel, text } of productionSources) {
+      if (!text.includes("type") || !text.includes("date")) continue;
       const count = countMatches(stripComments(text), NATIVE_DATE_RE);
       if (count === 0) continue;
       seen.add(rel);
@@ -283,7 +289,10 @@ describe("date/time display-pref guard (#964/#1020)", () => {
   it("every pref-taking date-formatter call passes prefs, outside the login-less allowlist", () => {
     const problems: string[] = [];
     const seen = new Set<string>();
-    for (const { rel, text } of sourceFiles()) {
+    for (const { rel, text } of productionSources) {
+      if (!FORMATTER_CALL_NEEDLES.some((needle) => text.includes(needle))) {
+        continue;
+      }
       const calls = preflessCalls(text);
       if (calls.length === 0) continue;
       seen.add(rel);

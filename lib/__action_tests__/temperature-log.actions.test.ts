@@ -84,7 +84,7 @@ describe("logTemperature — canonical write + fever flag", () => {
       occurred_at: `${DATE}T02:15:00Z`,
       notes: null,
     });
-    expect(revalidate).toHaveBeenCalledWith("/timeline");
+    expect(revalidate).toHaveBeenCalledWith("/history");
     expect(revalidate).toHaveBeenCalledWith("/results");
   });
 

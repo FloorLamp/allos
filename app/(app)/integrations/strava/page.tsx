@@ -276,10 +276,10 @@ function SetupCard({
         <>
           Imported runs, rides, and workouts appear under{" "}
           <Link
-            href={trainingRelevant ? "/training?tab=log" : "/timeline"}
+            href={trainingRelevant ? "/training?tab=log" : "/history"}
             className="text-brand-700 underline dark:text-brand-400"
           >
-            {trainingRelevant ? "Training history" : "Timeline"}
+            {trainingRelevant ? "Training history" : "History"}
           </Link>
           ; calories feed the{" "}
           <Link

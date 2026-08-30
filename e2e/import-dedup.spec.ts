@@ -84,7 +84,7 @@ test.describe("Data → Review duplicate resolver", () => {
 
     // Only the kept (Afternoon Run) activity survives on that day; the merged-away
     // manual "Morning run" row is actually deleted, not just hidden.
-    await page.goto(`/timeline?from=${DUP_DATE}&to=${DUP_DATE}`);
+    await page.goto(`/history?day=${DUP_DATE}`);
     // Scope to the FEED row: the single-day view now also renders the intraday
     // panel (#1068), whose SVG carries a hidden <title>Afternoon Run</title> for
     // the workout block — a page-wide text locator's FIRST match resolves to that

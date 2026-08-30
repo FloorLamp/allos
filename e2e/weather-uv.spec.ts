@@ -1,5 +1,6 @@
 import Database from "better-sqlite3";
 import { test, expect } from "./fixtures";
+import type { Page } from "@playwright/test";
 import { loginAs } from "./nav";
 import { followLink, openDashboardAll, settledClick } from "./helpers";
 import { E2E_LOGIN_WEATHER, E2E_MEMBER_PASSWORD } from "./fixture-logins";
@@ -116,6 +117,20 @@ function setTodayWetWeather(weatherCode: number | null): void {
     db.close();
   }
 }
+// The record's newest day, read off the page rather than recomputed from the run's
+// frozen clock. The day CONTEXT (daylight, UV, weather) lives on the day view since
+// #3958 phase 2 — the scrolling record's day header is one line and a count — so the
+// chip assertions below open that day first.
+async function newestDay(page: Page): Promise<string> {
+  await page.goto("/history");
+  const id = await page
+    .locator("[id^='timeline-day-']")
+    .first() // first-ok: the newest day group; the assertion is about position
+    .getAttribute("id");
+  expect(id, "the record rendered no day group to open").not.toBeNull();
+  return id!.replace("timeline-day-", "");
+}
+
 test.describe("Weather & UV integration (#1172)", () => {
   test("the integration page renders the connected state and UV surfaces", async ({
     browser,
@@ -215,7 +230,7 @@ test.describe("Weather & UV integration (#1172)", () => {
     }
   });
 
-  test("the timeline shows the live UV badge for the seeded outdoor day", async ({
+  test("the day view shows the live UV badge for the seeded outdoor day", async ({
     browser,
   }) => {
     test.slow();
@@ -225,7 +240,7 @@ test.describe("Weather & UV integration (#1172)", () => {
       password: E2E_MEMBER_PASSWORD,
     });
     try {
-      await member.goto("/timeline");
+      await member.goto(`/history?day=${await newestDay(member)}`);
       // The seeded walk today logged 120 daylight-outdoor minutes → the minutes chip
       // (the offline #571 behavior) AND, because live UV is cached, the UV badge on
       // top of it (the #1172 enrichment). Scope to the fixture's own day header.
@@ -273,10 +288,10 @@ test.describe("Weather & UV integration (#1172)", () => {
         "93°F · clear"
       );
 
-      // The three-day hot spell makes today NOTABLE, so the Timeline day header
+      // The three-day hot spell makes today NOTABLE, so the record's DAY VIEW
       // carries its conditions summary. Quiet days carry none.
-      await member.goto("/timeline");
-      const context = member.getByTestId("timeline-weather-context").first(); // first-ok: fixture-owned single notable day
+      await member.goto(`/history?day=${await newestDay(member)}`);
+      const context = member.getByTestId("history-day-weather");
       await expect(context).toBeVisible();
       await expect(context).toContainText("Heatwave");
     } finally {
