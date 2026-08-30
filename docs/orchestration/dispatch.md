@@ -21,12 +21,18 @@ Two axes are load-bearing, and `reconcile-tracker` flags violations of both
   `infrastructure`, `a11y`, …). The taxonomy spelling wins over its synonyms:
   `infra` not `infrastructure`, `dependencies` not `deps`, `e2e` not
   `testing`. A missing concept is an owner decision, not a new label.
-  `checkLabelHygiene` flags off-taxonomy labels as `unknown-label`.
+  `checkLabelHygiene` flags off-taxonomy labels as `unknown-label`, and
+  `.github/workflows/label-taxonomy.yml` deletes them repo-side — on label
+  creation/edit, weekly, and on demand — so to add a label, extend
+  `KNOWN_LABELS` first and merge; the live list follows the code.
 - `enhancement`, `cleanup`, `javascript`, and `lib` are retired (2026-08-15)
   and deleted repo-side; a hygiene finding flags any reappearance. `lib` routed
   nothing — business logic living in `lib/` is the repo's own rule.
 - `needs-human` means one specific owner answer is required. Apply it, assign
-  the owner, and keep working elsewhere; never prompt the owner uninvited.
+  the owner, and keep working elsewhere; never prompt the owner uninvited —
+  and never a blocking `AskUserQuestion` mid-session: the owner is usually
+  absent, so the question stalls the whole pipeline until they return. The
+  needs-human skill drains the queue when they show up.
 - Evaluations end with `recommend-adopt` or `recommend-hold`. A hold also gets
   `parked`; an adopt is merged by the orchestrator.
 

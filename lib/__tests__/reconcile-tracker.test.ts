@@ -1474,6 +1474,7 @@ describe("the toolchain granted to a reconciliation run cannot close an issue", 
     "scripts/orchestration/reconcile-patch.ts",
     "scripts/orchestration/reconcile-apply.ts",
     "scripts/orchestration/reconcile-labels.ts",
+    "scripts/orchestration/delete-unknown-labels.ts",
   ];
   const SKILL = ".claude/skills/reconcile-tracker/SKILL.md";
 
@@ -1525,13 +1526,15 @@ describe("the toolchain granted to a reconciliation run cannot close an issue", 
     }
   });
 
-  // TWO writers now, each confined to a different endpoint, and the point of
-  // this block is that neither confinement rests on intent. The body applier
-  // can name only `body`; the label writer sends no body at all. Everything
-  // else in the toolchain still holds no write verb whatsoever.
+  // THREE writers now, each confined to a different endpoint, and the point of
+  // this block is that no confinement rests on intent. The body applier can
+  // name only `body`; the label writer sends no body at all; the label deleter
+  // holds one verb against the repo's own label collection and no issue URL
+  // whatsoever. Everything else in the toolchain still holds no write verb.
   const WRITERS = [
     "scripts/orchestration/reconcile-apply.ts",
     "scripts/orchestration/reconcile-labels.ts",
+    "scripts/orchestration/delete-unknown-labels.ts",
   ];
 
   it("the body applier writes one verb and builds its payload from one field", () => {
@@ -1560,7 +1563,17 @@ describe("the toolchain granted to a reconciliation run cannot close an issue", 
     }
   });
 
-  it("nothing outside the two writers holds a write verb at all", () => {
+  it("the label deleter holds one verb, aimed only at the repo label collection", () => {
+    const del = source("scripts/orchestration/delete-unknown-labels.ts");
+    // One DELETE, no other verb — and no issue URL anywhere in the file, so
+    // the only thing it can ever remove is a label from the repo's own list.
+    expect(del.match(/"DELETE"/g)).toHaveLength(1);
+    expect(del).not.toMatch(/"(?:PATCH|POST|PUT)"/);
+    expect(del).toContain("/labels/${encodeURIComponent(name)}");
+    expect(del).not.toContain("/issues");
+  });
+
+  it("nothing outside the three writers holds a write verb at all", () => {
     for (const rel of MODULES.filter((m) => !WRITERS.includes(m))) {
       expect({
         rel,

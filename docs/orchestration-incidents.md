@@ -1634,9 +1634,30 @@ wearing a verification step's clothes.
 Both fixes follow the tooling doctrine. The taxonomy is now CLOSED in code
 (`KNOWN_LABELS` in `reconcile-tracker-core.ts`) and `checkLabelHygiene`
 flags any open issue carrying a label outside it; docs and the file-issue
-skill now point at the constant, never the live list. Self-filed issues are
+skill now point at the constant, never the live list. And because prose had
+already told every filer not to invent labels and the strays arrived anyway,
+the repo side is enforced too: `.github/workflows/label-taxonomy.yml`
+deletes any off-taxonomy label the moment a filing mints it (plus a weekly
+backstop), through `delete-unknown-labels.ts` — the toolchain's third writer,
+confined by the same structural tests as the other two to one verb against
+the repo's label collection and no issue URL at all. Self-filed issues are
 back-of-queue by rule in `dispatch.md` §Dispatch — default P3, sourced
 oldest-first after owner-filed work, demonstrated P0/P1 regressions the only
 exception — and the dispatch brief now forbids lanes from filing issues at
 all: findings ride the return summary, and the orchestrator decides what
 becomes an issue.
+
+## The question that waited for nobody (2026-08-30)
+
+Orchestrators had been reaching for `AskUserQuestion` mid-session — the
+harness suggests it for anything ambiguous — and the owner is usually not
+present while a session orchestrates, so each question parked the entire
+pipeline until somebody wandered back to a prompt. The runbook already said
+"never prompt the owner uninvited" about needs-human items; a blocking
+question is that, plus a stalled session.
+
+Encoded structurally, not just in prose: the orchestrate skill no longer
+grants `AskUserQuestion` at all. A question becomes a `needs-human` label
+with the owner assigned, or a line in the status pulse, and the session
+keeps moving on other work — the needs-human skill drains the queue when
+the owner actually shows up.

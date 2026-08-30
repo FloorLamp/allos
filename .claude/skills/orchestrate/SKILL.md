@@ -1,7 +1,7 @@
 ---
 name: orchestrate
 description: Run an agent-orchestrated development session on FloorLamp/allos — check in, triage the queue, cluster issues, dispatch coding agents through the brief tooling, review every diff, merge green heads serially, and keep the pipeline full until the queue is blocked or the owner winds it down. Use when the owner says "orchestrate", "run a session", "work the queue", "dispatch agents", "keep merging", or hands over the repo for autonomous development — and for resuming after a restart or gap. NOT for doing the feature work yourself (the orchestrator never writes feature code) and NOT for one-off issue filing or tracker maintenance (file-issue and reconcile-tracker own those).
-allowed-tools: Read, Grep, Glob, Bash, Agent, AskUserQuestion, TaskCreate, TaskUpdate, TaskList, mcp__github__merge_pull_request, mcp__github__pull_request_read, mcp__github__issue_read, mcp__github__update_pull_request, mcp__github__actions_get, mcp__github__actions_list
+allowed-tools: Read, Grep, Glob, Bash, Agent, TaskCreate, TaskUpdate, TaskList, mcp__github__merge_pull_request, mcp__github__pull_request_read, mcp__github__issue_read, mcp__github__update_pull_request, mcp__github__actions_get, mcp__github__actions_list
 ---
 
 # orchestrate — run the development session
@@ -86,7 +86,13 @@ authoritative over your own memory of the session.
   and you decide what becomes an issue.
 - `needs-human` items: apply the label + assign the owner the same day a
   question is flagged, then WORK ELSEWHERE. Never prompt the owner uninvited;
-  the needs-human skill drains that queue when the owner shows up.
+  the needs-human skill drains that queue when the owner shows up. That
+  includes `AskUserQuestion`, which this skill deliberately does not grant:
+  the owner is usually NOT PRESENT while you orchestrate, and a blocking
+  question stalls the entire pipeline until they wander back — your harness
+  suggests that tool for ambiguity, and while orchestrating it is never the
+  answer. Every question becomes a label + assignment (or a line in the
+  status pulse) and the session keeps moving on other work.
 - `design` issues split on one test: does the body RECORD the decision, or
   still CONTAIN the question? A recorded owner decision (#2701's dated
   Decision section + acceptance criteria) or a direction with falsifiers
@@ -207,5 +213,8 @@ branches, stop check-ins, hand off remaining state in the final pulse.
 - Approving or requesting changes on PRs (COMMENT reviews only).
 - Answering `needs-human` questions on the owner's behalf — silence is not
   consent.
+- Blocking on the owner. No `AskUserQuestion` mid-session (the tool is not
+  even granted): questions ride `needs-human` labels and the status pulse
+  while the pipeline keeps moving.
 - Restructuring top-level guidance incidentally. Agents keep docs current;
   reshaping the doctrine is a decision, not a side effect.

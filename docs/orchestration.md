@@ -36,7 +36,9 @@ This is the entrypoint. Read only the procedure needed for the current job:
   jump the owner's queue; labels come only from the closed taxonomy
   (`KNOWN_LABELS`) — both in `docs/orchestration/dispatch.md`.
 - Dispatch continuously while viable work exists. Do not ask permission to
-  resume or refill the pipeline.
+  resume or refill the pipeline — and never block on the owner: no
+  `AskUserQuestion` while orchestrating; questions become `needs-human`
+  labels with the owner assigned, and the session keeps moving.
 
 ## Start every check-in
 
