@@ -33,6 +33,7 @@ const DISCLOSURE_OWNER = "components/Disclosure.tsx";
 
 /** Whether this source RENDERS a raw `<details>`, as opposed to talking about one. */
 export function rendersRawDetails(src: string): boolean {
+  if (!src.includes("<details")) return false;
   // Through the SHARED stripper, not a hand-rolled pair of regexes — several of these
   // files explain in prose why the element was chosen, and a guard that reads its own
   // documentation as evidence cries wolf until somebody deletes it. `stripComments`
