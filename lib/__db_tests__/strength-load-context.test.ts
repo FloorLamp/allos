@@ -27,6 +27,7 @@ import { deleteEquipment } from "@/lib/equipment";
 import { buildTrainingObservationFindings } from "@/lib/rule-findings";
 import {
   getExerciseComparison,
+  getExerciseBests,
   getExerciseE1rmSeries,
   getExerciseLoadContexts,
   getOutcomeGoalProgressMap,
@@ -117,7 +118,7 @@ beforeAll(() => {
       .lastInsertRowid
   );
   const pt = today(plainProfileId);
-  addSession(
+  const curlActivityId = addSession(
     plainProfileId,
     shiftDateStr(pt, -20),
     "Barbell Curl",
@@ -125,7 +126,29 @@ beforeAll(() => {
     8,
     null
   );
+  db.prepare(
+    `UPDATE exercise_sets
+        SET weight_kg_right = 55, reps_right = 9, duration_sec_right = 30
+      WHERE activity_id = ?`
+  ).run(curlActivityId);
   addSession(plainProfileId, shiftDateStr(pt, -5), "Curl", 50, 6, null);
+  addSession(plainProfileId, shiftDateStr(pt, -1), "Empty Hold", 0, 0, null);
+});
+
+describe("getExerciseBests starting-point source (#3220/#3434)", () => {
+  it("folds both sides, merges spellings, and treats zero as no best", () => {
+    const bests = getExerciseBests(plainProfileId);
+    expect(bests[exerciseHistoryKey("Curl")]).toEqual({
+      weightKg: 55,
+      reps: 9,
+      durationSec: 30,
+    });
+    expect(bests[exerciseHistoryKey("Empty Hold")]).toEqual({
+      weightKg: null,
+      reps: null,
+      durationSec: null,
+    });
+  });
 });
 
 describe("getRecentExerciseHistory ships the load context (#1610)", () => {
