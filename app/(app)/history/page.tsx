@@ -588,7 +588,15 @@ export default async function HistoryPage(props: {
     );
     return notableStatesSummary(evaluated.byDate.get(dayContext) ?? []) || null;
   })();
+  // The cycle's answer for THIS day, resolved once: it decides both whether the chip
+  // draws and whether the context strip has anything to hold.
   const cyclePeriods = dayContext ? listCyclePeriods(actingProfileId) : [];
+  const dayCyclePhase = dayContext
+    ? cyclePhaseOnDate(cyclePeriods, dayContext, todayStr)
+    : null;
+  const dayCyclePeriod = dayContext
+    ? periodOnDate(cyclePeriods, dayContext, todayStr)
+    : null;
 
   // THE INTRADAY PANEL (#1068) — the day rotated 90°. It reads the list this page
   // RESOLVED (`gather.dayEvents`), never a second query, which is what makes "a tick
@@ -870,10 +878,19 @@ export default async function HistoryPage(props: {
 
           Each chip is quiet by default: `DaylightChip` draws nothing without a home
           location, `CyclePhaseChip` nothing off a cycle, and the weather line only on
-          a day the #1726 predicates called notable. An ordinary mild Tuesday with no
-          home set renders an empty strip, which is why the wrapper is conditional on
-          content rather than on the day. */}
-      {dayContext && (home || dayWeather) ? (
+          a day the #1726 predicates called notable — so the WRAPPER is conditional on
+          there being content, not on the day, or an ordinary Tuesday draws an empty
+          strip.
+
+          THE CONDITION ASKS ABOUT EVERY CHIP, not just the home-gated ones. Gating it
+          on `home` alone was wrong and a spec caught it: a profile tracking cycles
+          with no home location set got no strip at all, so the phase chip — which
+          needs no location — disappeared with the two that do. */}
+      {dayContext &&
+      (home ||
+        dayWeather ||
+        dayCyclePhase != null ||
+        dayCyclePeriod != null) ? (
         <div className={`mb-3 ${railGutter}`} data-testid="history-day-context">
           <DaylightChip
             home={home}
@@ -882,10 +899,7 @@ export default async function HistoryPage(props: {
             outdoorMinutes={daylightOutdoor}
             uv={dayUv}
           />
-          <CyclePhaseChip
-            phase={cyclePhaseOnDate(cyclePeriods, dayContext, todayStr)}
-            period={periodOnDate(cyclePeriods, dayContext, todayStr)}
-          />
+          <CyclePhaseChip phase={dayCyclePhase} period={dayCyclePeriod} />
           {dayWeather ? (
             <div
               className="mt-1 text-xs text-slate-500 dark:text-slate-400"
