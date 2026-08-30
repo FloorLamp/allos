@@ -23,13 +23,13 @@
         },
         {
           "pr": 4144,
-          "title": "Today's protein counts your food log and your health app together, and never drops when you connect one",
+          "title": "Today's protein takes the larger of what you logged here and what your health app reports",
           "kind": "fix",
           "issues": [3903]
         },
         {
           "pr": 4156,
-          "title": "Today's fiber counts your food and supplement logs alongside your health app",
+          "title": "Today's fiber takes the larger of your food and supplement logs and what your health app reports",
           "kind": "fix",
           "issues": [4127]
         },
@@ -77,7 +77,7 @@
         },
         {
           "pr": 4120,
-          "title": "Two medications taken different ways are no longer treated as the same one",
+          "title": "An inhaler and a nebulizer of the same medicine are no longer called a duplicate record",
           "kind": "fix",
           "issues": [3125]
         },
