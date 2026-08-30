@@ -105,6 +105,18 @@ function insertDoc(profileId: number): number {
 
 let savedKey: string | undefined;
 
+// Token refusal is the contract under test; make its fresh-extraction fallback
+// synchronous so unrelated fire-and-forget logging cannot outlive the test worker.
+function withoutConfiguredAi<T>(run: () => T): T {
+  const key = process.env.ANTHROPIC_API_KEY;
+  delete process.env.ANTHROPIC_API_KEY;
+  try {
+    return run();
+  } finally {
+    if (key !== undefined) process.env.ANTHROPIC_API_KEY = key;
+  }
+}
+
 beforeAll(() => {
   // aiConfigured() must be true so the preview reaches the AI path; the extractor
   // itself is mocked, so no real key/network is used.
@@ -183,11 +195,8 @@ describe("apply commits the previewed extraction (#946)", () => {
     expect(importedRecordNames(profile.id, docId)).toEqual(["Glucose"]);
 
     // A second apply with the SAME token is refused (single-use) and falls back.
-    const second = reprocessDocumentById(
-      login.id,
-      profile.id,
-      docId,
-      preview.previewToken
+    const second = withoutConfiguredAi(() =>
+      reprocessDocumentById(login.id, profile.id, docId, preview.previewToken)
     );
     expect(second).toEqual({ mode: "re-extracted" });
   });
@@ -206,11 +215,8 @@ describe("apply commits the previewed extraction (#946)", () => {
       "UPDATE medical_documents SET content_hash = 'changed-since-preview' WHERE id = ? AND profile_id = ?"
     ).run(docId, profile.id);
 
-    const outcome = reprocessDocumentById(
-      login.id,
-      profile.id,
-      docId,
-      preview.previewToken
+    const outcome = withoutConfiguredAi(() =>
+      reprocessDocumentById(login.id, profile.id, docId, preview.previewToken)
     );
     expect(outcome).toEqual({ mode: "re-extracted" });
   });
@@ -230,11 +236,8 @@ describe("apply commits the previewed extraction (#946)", () => {
     }
     // Jump past the ~15-minute TTL before applying.
     nowSpy.mockReturnValue(base + 16 * 60 * 1000);
-    const outcome = reprocessDocumentById(
-      login.id,
-      profile.id,
-      docId,
-      preview.previewToken
+    const outcome = withoutConfiguredAi(() =>
+      reprocessDocumentById(login.id, profile.id, docId, preview.previewToken)
     );
     nowSpy.mockRestore();
     expect(outcome).toEqual({ mode: "re-extracted" });
