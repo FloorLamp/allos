@@ -176,6 +176,12 @@
           "title": "One add-media form everywhere: choose a file, drag, paste or use the camera",
           "kind": "feature",
           "issues": [3286]
+        },
+        {
+          "pr": 4272,
+          "title": "On a phone the bottom bar is the only chrome: Search moves into it and pages start at the top of the screen",
+          "kind": "feature",
+          "issues": [3343, 4102]
         }
       ]
     },
