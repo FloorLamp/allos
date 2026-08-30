@@ -688,6 +688,9 @@ export const OFFLINE_CAPTURE_REFUSED_MESSAGE =
 export const MEASUREMENTS_PARTIAL_REFUSED_MESSAGE =
   "Body measurements were saved. Vitals weren't — add those again.";
 
+export const MEASUREMENTS_WAIST_REFUSED_MESSAGE =
+  "Body measurements were saved. Waist circumference wasn't — add that again.";
+
 // A short human description of what an intent tried to log, for the review list —
 // the user needs to recognise which entry was dropped so they can re-enter it. Only
 // the flow + captured date (no per-field PHI beyond what the user already sees).
