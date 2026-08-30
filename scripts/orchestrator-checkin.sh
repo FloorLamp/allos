@@ -39,6 +39,11 @@
 # --relaunched clears the sticky rescue flag described at RESCUE_FILE below. Pass
 # it only AFTER every dirty tree has been rescued and every dead agent relaunched.
 
+if [ "${1:-}" = "--help" ] || [ "${1:-}" = "-h" ]; then # the header IS the usage (usage.mjs is the JS twin)
+  sed -n '2,${/^#/!q;s/^#[[:space:]]\{0,1\}//p;}' "$0"
+  exit 0
+fi
+
 set -uo pipefail
 
 # THE STAMP MUST SURVIVE A TRUNCATED READ, and this is not a hypothetical

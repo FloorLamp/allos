@@ -28,6 +28,11 @@
 # Output also lands in $SCRATCH/catchup-<ts>.log — the raw notes that survive
 # the session.
 
+if [ "${1:-}" = "--help" ] || [ "${1:-}" = "-h" ]; then # the header IS the usage (usage.mjs is the JS twin)
+  sed -n '2,${/^#/!q;s/^#[[:space:]]\{0,1\}//p;}' "$0"
+  exit 0
+fi
+
 set -uo pipefail
 
 STATE_DIR=${SCRATCH:-/home/user/scratch}

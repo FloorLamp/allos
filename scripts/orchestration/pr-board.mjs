@@ -36,6 +36,8 @@
 // Exit 0 always: a glance is not a verdict. Use ci-watch.mjs for the merge gate.
 
 import { execFileSync } from "node:child_process";
+import { helpGuard } from "./usage.mjs";
+helpGuard(process.argv, import.meta.url);
 
 const token = process.env.GH_TOKEN ?? process.env.GITHUB_TOKEN;
 if (!token) {

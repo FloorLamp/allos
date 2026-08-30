@@ -21,6 +21,8 @@
 // not a dependabot PR); it never guesses a brief.
 
 import { execFileSync } from "node:child_process";
+import { helpGuard } from "./usage.mjs";
+helpGuard(process.argv, import.meta.url);
 
 const token = process.env.GH_TOKEN ?? process.env.GITHUB_TOKEN;
 const prNumber = process.argv[2];

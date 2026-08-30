@@ -37,6 +37,8 @@
 // a 10-minute tool cap — exit 2 means "invoke me again", not "green".
 
 import { execFileSync } from "node:child_process";
+import { helpGuard } from "./usage.mjs";
+helpGuard(process.argv, import.meta.url);
 
 const token = process.env.GH_TOKEN ?? process.env.GITHUB_TOKEN;
 if (!token) {

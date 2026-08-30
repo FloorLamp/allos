@@ -115,6 +115,12 @@ Two axes are load-bearing, and `reconcile-tracker` flags violations of both
 
 ## Tooling
 
+- Every entry script answers `-h`/`--help` by printing its own header — the
+  documentation IS the usage — and exiting before doing anything, so probing
+  an unfamiliar script is always safe. Before 2026-08-30 the flag was
+  ignored and the default action ran; on the stateful scripts (the check-in
+  recorder, the dispatch ledger) that was a real state transition nobody
+  asked for. `lib/__tests__/script-help.test.ts` pins every one.
 - `dispatch-brief.mjs`: manage dispatches, the sole landing candidate, and
   validated priority/lane state; deliver every emitted role update. `list`
   flags 3x-median idleness or a dispatch with no worktree and no branch.

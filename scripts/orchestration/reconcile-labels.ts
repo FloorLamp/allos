@@ -54,6 +54,8 @@ import {
   type RepoIndex,
   type TrackerIssue,
 } from "./reconcile-tracker-core";
+import { helpGuard } from "./usage.mjs";
+helpGuard(process.argv, import.meta.url);
 
 interface GhLabel {
   name: string;

@@ -11,6 +11,8 @@ import { execFileSync, spawnSync } from "node:child_process";
 import fs from "node:fs";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
+import { helpGuard } from "./usage.mjs";
+helpGuard(process.argv, import.meta.url);
 
 const APP_ROOT = "app/(app)/";
 const SHARED_APP_FILES = new Set([

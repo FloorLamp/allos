@@ -27,6 +27,8 @@
 
 import { execFileSync } from "node:child_process";
 import { KNOWN_LABELS } from "./reconcile-tracker-core";
+import { helpGuard } from "./usage.mjs";
+helpGuard(process.argv, import.meta.url);
 
 const REPO = "FloorLamp/allos";
 const API = `https://api.github.com/repos/${REPO}`;

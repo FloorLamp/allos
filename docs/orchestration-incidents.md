@@ -1671,3 +1671,21 @@ grants `AskUserQuestion` at all. A question becomes a `needs-human` label
 with the owner assigned, or a line in the status pulse, and the session
 keeps moving on other work — the needs-human skill drains the queue when
 the owner actually shows up.
+
+## The --help that ran the script (2026-08-30)
+
+Orchestrators probe unfamiliar scripts with `--help`. Only one of the sixteen
+entry scripts answered it; everywhere else the flag was silently ignored and
+the DEFAULT action ran. For the dry-run scripts that wasted a network round
+trip; for the stateful ones it was worse — `orchestrator-checkin.sh --help`
+ran a real check-in against the flight recorder's persisted state, a state
+transition the caller never asked for while trying to learn what the script
+does.
+
+The fix makes the habit harmless instead of forbidding it: every entry
+script now answers `-h`/`--help` by printing its own header comment — the
+documentation IS the usage, which is why the headers are written — and
+exiting 0 before anything else runs (`usage.mjs` for JS/TS, an inline sed
+guard in the shell scripts). `script-help.test.ts` spawns each one with the
+flag, with no token and no stubs, so a guard that goes missing or drifts
+below side-effectful code fails loudly.
