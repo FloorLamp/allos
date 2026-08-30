@@ -133,9 +133,29 @@ const FILE_BUDGETS = {
   "docs/orchestration/dispatch.md": { lines: 100, genre: "runbook" },
   "docs/orchestration/e2e-ci.md": { lines: 100, genre: "runbook" },
   "docs/orchestration/environment.md": { lines: 100, genre: "runbook" },
+  "docs/orchestration/labels.md": { lines: 40, genre: "runbook" },
   "docs/orchestration/lifecycle.md": { lines: 80, genre: "runbook" },
+  "docs/orchestration/recovery.md": { lines: 50, genre: "runbook" },
   "docs/orchestration/review-merge.md": { lines: 100, genre: "runbook" },
 } as const satisfies Record<string, { lines: number; genre: Genre }>;
+
+/**
+ * Budget-only guard (owner, 2026-08-30): the skills and the PR template join
+ * at FILE-budget granularity — a snapshot of current size plus small headroom,
+ * so growth needs a deliberate budget edit with an argument behind it. Block
+ * shape is deliberately NOT enforced here yet: the skills carry brief-culture
+ * long bullets, and reshaping those is its own pass, not a side effect of
+ * extending the census. Budgets follow the runbook rule: shrink work moves
+ * detail out (to docs the skill cites, or incidents), never raises the number.
+ */
+const BUDGET_ONLY_FILES = {
+  ".claude/skills/file-issue/SKILL.md": { lines: 240 },
+  ".claude/skills/needs-human/SKILL.md": { lines: 260 },
+  ".claude/skills/orchestrate/SKILL.md": { lines: 250 },
+  ".claude/skills/reconcile-tracker/SKILL.md": { lines: 280 },
+  ".claude/skills/ux-walkthrough/SKILL.md": { lines: 480 },
+  ".github/pull_request_template.md": { lines: 25 },
+} as const satisfies Record<string, { lines: number }>;
 
 const SKIPPED_DIRS = new Set([".git", "node_modules"]);
 
@@ -268,6 +288,36 @@ describe("runbook brevity", () => {
   it("registers every agent and orchestration instruction file", () => {
     expect(guardedFiles()).toEqual(Object.keys(FILE_BUDGETS).sort());
   });
+
+  it("registers every skill under the budget-only guard", () => {
+    const skills = readdirSync(path.join(process.cwd(), ".claude", "skills"), {
+      withFileTypes: true,
+    })
+      .filter((entry) => entry.isDirectory())
+      .map((entry) => path.posix.join(".claude/skills", entry.name, "SKILL.md"))
+      .sort();
+    expect(skills).toEqual(
+      Object.keys(BUDGET_ONLY_FILES)
+        .filter((f) => f.startsWith(".claude/skills/"))
+        .sort()
+    );
+  });
+
+  it.each(Object.entries(BUDGET_ONLY_FILES))(
+    "%s stays within its file budget",
+    (relativePath, budget) => {
+      const source = readFileSync(
+        path.join(process.cwd(), relativePath),
+        "utf8"
+      );
+      expect(
+        fileLines(source),
+        `${relativePath} has ${fileLines(source)} lines (budget ` +
+          `${budget.lines}). Move detail to a document the file cites (or ` +
+          `incidents) instead of raising the budget.`
+      ).toBeLessThanOrEqual(budget.lines);
+    }
+  );
 
   it("keeps the terse-bullet runbook on the calibration it was bought for", () => {
     // The #2784 loosening reaches the prose one-pagers and NOTHING else. Stated

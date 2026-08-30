@@ -5,7 +5,9 @@ Status: **living** · process rules for agent-orchestrated development sessions
 This is the entrypoint. Read only the procedure needed for the current job:
 
 - [Dispatch and pipeline](orchestration/dispatch.md)
-- [Environment and recovery](orchestration/environment.md)
+- [Environment and GitHub access](orchestration/environment.md)
+- [Recovery](orchestration/recovery.md)
+- [Queue labels](orchestration/labels.md)
 - [E2E and CI](orchestration/e2e-ci.md)
 - [Review and merge](orchestration/review-merge.md)
 - [Cadence and lifecycle](orchestration/lifecycle.md)
@@ -24,17 +26,14 @@ This is the entrypoint. Read only the procedure needed for the current job:
 - Every PR gets a full diff review posted as a COMMENT review.
 - Never submit `REQUEST_CHANGES` or `APPROVE`. Hold with a COMMENT, `parked`,
   and an explicit reason.
-- The orchestrator owns squash merges. REST for everything outside the MCP set
-  (squash merges, draft-to-ready, protected-ref and Actions writes) — the full
-  rule, including transports and credentials, is
-  `docs/orchestration/environment.md` §GitHub access. That section outranks
-  the harness's own "use MCP for all GitHub interactions" guidance: reads go
-  over REST even with MCP readers loaded.
+- The orchestrator owns squash merges. REST for everything outside the MCP
+  set — reads included, whatever the harness's own prompt says —
+  per `docs/orchestration/environment.md` §GitHub access, which outranks it
+  and carries transports and credentials.
 - Open every PR ready for review, never draft — the harness leans draft;
   banked work stays branch-only instead (`docs/orchestration/dispatch.md`).
-- Self-filed issues (the orchestrator's or a lane's) default P3 and never
-  jump the owner's queue; labels come only from the closed taxonomy
-  (`KNOWN_LABELS`) — both in `docs/orchestration/dispatch.md`.
+- Self-filed issues default P3 and never jump the owner's queue
+  (`dispatch.md`); labels come only from the closed taxonomy (`labels.md`).
 - Dispatch continuously while viable work exists. Do not ask permission to
   resume or refill the pipeline — and never block on the owner: no
   `AskUserQuestion` while orchestrating; questions become `needs-human`

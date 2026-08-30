@@ -22,6 +22,7 @@ import fs from "node:fs";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
 import { helpGuard } from "./usage.mjs";
+import { resolveReadToken } from "./host.mjs";
 helpGuard(process.argv, import.meta.url);
 
 const repoRoot = path.resolve(
@@ -30,10 +31,11 @@ const repoRoot = path.resolve(
   ".."
 );
 
-const token = process.env.GH_TOKEN ?? process.env.GITHUB_TOKEN;
+const token = resolveReadToken();
 if (!token) {
   console.error(
-    'GH_TOKEN/GITHUB_TOKEN missing — cannot read main\'s history. Re-mint via add_repo access:"push".'
+    "no GH_TOKEN/GITHUB_TOKEN and no authenticated gh — cannot read main's " +
+      'history. Re-mint via add_repo access:"push".'
   );
   process.exit(2);
 }

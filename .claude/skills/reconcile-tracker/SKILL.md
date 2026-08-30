@@ -67,7 +67,7 @@ compliance:
   body cites the symbol more than once — which is what holds #3472, whose
   ruling names the same absent symbol its Refs bullet does.
 - **Labels have three ops and a standing exception to "flag, don't judge".**
-  The second writer is `scripts/orchestration/reconcile-labels.ts`. Removing a
+  The label writer is `scripts/orchestration/reconcile-labels.ts`. Removing a
   `RETIRED_LABELS` entry and resetting a priority slot to the priority the
   issue's own body states are FACTS, and automatic. **Assigning a domain label
   is a judgment, and the owner has ruled (2026-08-19) that this routine makes
@@ -87,7 +87,8 @@ worse than no edits. Check with the orchestrator first.
 ### 1. Gather the delta
 
 ```bash
-export PATH=/opt/nvm/versions/node/v24.19.0/bin:$PATH
+# .nvmrc-major node on PATH — discovered, never a pinned path (environment.md)
+export PATH=$(node scripts/orchestration/host.mjs node-bin):$PATH
 npx tsx scripts/orchestration/reconcile-tracker.ts \
   --json /tmp/reconcile-evidence.json --out /tmp/reconcile-report.md
 ```

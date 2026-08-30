@@ -666,7 +666,7 @@ export interface DocsFinding {
 
 export const SPEC_STATUS_LINE = /^Status:\s*\S/m;
 
-// ---- Label hygiene (docs/orchestration/dispatch.md §Queue labels) ----------
+// ---- Label hygiene (docs/orchestration/labels.md) --------------------------
 //
 // Dispatch consumes exactly two label axes — one priority-slot label and at
 // least one domain label — and until 2026-08-15 nothing checked either (an
@@ -736,7 +736,7 @@ export const TYPE_LABELS = [
   "ui",
 ] as const;
 
-/** Process markers with their own routing rules (dispatch.md §Queue labels). */
+/** Process markers with their own routing rules (docs/orchestration/labels.md). */
 export const PROCESS_LABELS = [
   "needs-human",
   "recommend-adopt",
@@ -783,7 +783,7 @@ export type LabelRemovalRefusal =
  * function over the issue's CURRENT labels.
  *
  * Removal of a retired label is a FACT: the taxonomy no longer contains it
- * (`RETIRED_LABELS`, `docs/orchestration/dispatch.md`), so the label routes
+ * (`RETIRED_LABELS`, `docs/orchestration/labels.md`), so the label routes
  * nothing and says nothing. Choosing which domain label an issue should carry
  * instead is a JUDGMENT — it decides how the issue clusters and who gets
  * dispatched to it — so this module cannot express it. There is no add op, and

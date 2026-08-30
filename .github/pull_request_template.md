@@ -9,4 +9,4 @@
 - [ ] Schema change ships as a NEW append-only migration in `lib/migrations/versions/` (+ `index.ts` + `manifest.json` hash via `npm run gen:migration-manifest`); no shipped migration edited
 - [ ] Gates green: `format:check` · `lint` · `typecheck` · `test` · `test:db` · `build`
 - [ ] Seed updated if a new domain landed
-- [ ] README updated if user-visible (nav/route/Settings tab/integration/env var) behavior changed
+- [ ] Docs current for user-visible changes: `docs/features.md` for behavior (nav/routes/Settings tabs), the matching `docs/` guide for integrations/notifications, README only for setup-facing changes (install, env vars, quick start)

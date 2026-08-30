@@ -757,11 +757,13 @@ if [ "$stale" -gt 0 ]; then
 fi
 if [ -n "${GH_TOKEN:-}" ] || [ -n "${GITHUB_TOKEN:-}" ]; then
   echo "  GH_TOKEN: present"
+elif command -v gh >/dev/null 2>&1 && gh auth token >/dev/null 2>&1; then
+  echo "  GH_TOKEN: unset, gh auth present - reads OK, writes need the variable"
 else
   echo "  GH_TOKEN: *** MISSING - see the credential-loss section of the runbook ***"
 fi
-node24=$(ls -d /opt/nvm/versions/node/v24* 2>/dev/null | head -1)
-echo "  node24: ${node24:-ABSENT - nvm install 24}"
+nodebin=$(node "$(dirname "$0")/orchestration/host.mjs" node-bin 2>/dev/null)
+echo "  node(.nvmrc): ${nodebin:-ABSENT - install the .nvmrc major with your version manager}"
 echo "  main:   $(git -C "$REPO" ls-remote origin main 2>/dev/null | cut -c1-7)"
 echo
 

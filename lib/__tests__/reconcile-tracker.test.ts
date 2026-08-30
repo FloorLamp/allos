@@ -640,7 +640,7 @@ describe("gatherEvidence", () => {
   });
 });
 
-describe("label hygiene (dispatch.md §Queue labels)", () => {
+describe("label hygiene (docs/orchestration/labels.md)", () => {
   it("flags a doubled priority slot, a missing slot, a missing domain, and a retired label", () => {
     const findings = checkLabelHygiene([
       // The live defect this check exists for: #2701 carried P2 AND parked.

@@ -38,15 +38,16 @@
 
 import { execFileSync } from "node:child_process";
 import { helpGuard } from "./usage.mjs";
+import { resolveReadToken } from "./host.mjs";
 helpGuard(process.argv, import.meta.url);
 
-const token = process.env.GH_TOKEN ?? process.env.GITHUB_TOKEN;
+const token = resolveReadToken();
 if (!token) {
   console.error(
-    "BLOCKED: neither GH_TOKEN nor GITHUB_TOKEN is set. Refusing to poll —\n" +
-      "an unauthenticated poll reads as 'no failures'. If a container restart\n" +
-      'wiped the token, re-mint with add_repo access:"push" (see the runbook\'s\n' +
-      "credential-loss section), then re-run."
+    "BLOCKED: no GH_TOKEN/GITHUB_TOKEN and no authenticated gh. Refusing to\n" +
+      "poll — an unauthenticated poll reads as 'no failures'. If a container\n" +
+      'restart wiped the token, re-mint with add_repo access:"push" (see the\n' +
+      "runbook's credential-loss section), then re-run."
   );
   process.exit(3);
 }

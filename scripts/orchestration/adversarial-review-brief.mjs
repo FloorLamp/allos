@@ -50,6 +50,7 @@ import { execFileSync } from "node:child_process";
 import path from "node:path";
 import { pathToFileURL } from "node:url";
 import { helpGuard } from "./usage.mjs";
+import { resolveReadToken } from "./host.mjs";
 helpGuard(process.argv, import.meta.url);
 
 export const EXIT = {
@@ -597,7 +598,7 @@ function gh(token, pathname) {
 }
 
 function main(argv) {
-  const token = process.env.GH_TOKEN ?? process.env.GITHUB_TOKEN;
+  const token = resolveReadToken();
   const prNumber = argv.find((a) => /^\d+$/.test(a));
   const checkOnly = argv.includes("--check");
   const force = argv.includes("--force");
@@ -605,7 +606,7 @@ function main(argv) {
     console.error(
       !prNumber
         ? "usage: adversarial-review-brief.mjs <pr-number> [--check] [--force]"
-        : 'GH_TOKEN/GITHUB_TOKEN missing — cannot read the PR. Re-mint via add_repo access:"push".'
+        : 'No GH_TOKEN/GITHUB_TOKEN and no authenticated gh — cannot read the PR. Re-mint via add_repo access:"push".'
     );
     process.exit(EXIT.cannotAnswer);
   }

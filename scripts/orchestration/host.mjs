@@ -2,6 +2,7 @@
 // many harnesses ask it (#3710).
 //
 //   node scripts/orchestration/host.mjs state-dir   # print (and create) the state dir
+//   node scripts/orchestration/host.mjs node-bin    # print the .nvmrc-major node bin dir
 //
 // The orchestration bootstrap grew up on one Linux container and hard-coded
 // its shape: state in /home/user/scratch, node under /opt/nvm, a token always
@@ -26,7 +27,7 @@ import fs from "node:fs";
 import os from "node:os";
 import path from "node:path";
 import { execFileSync } from "node:child_process";
-import { pathToFileURL } from "node:url";
+import { fileURLToPath, pathToFileURL } from "node:url";
 import { helpGuard } from "./usage.mjs";
 
 /**
@@ -100,7 +101,7 @@ export function discoverNodeBin(
  * Read-only token fallback: the env variables by name, else `gh auth token`
  * from an authenticated gh. The helper is the sanctioned credential source on
  * hosts that authenticate through gh instead of exporting a variable — it is
- * NOT a filesystem search, which environment.md §Lost credentials still
+ * NOT a filesystem search, which recovery.md §Lost credentials still
  * forbids. Read paths only: the write tools keep requiring the variables.
  */
 /**
@@ -133,6 +134,23 @@ if (
     const dir = resolveStateDir();
     fs.mkdirSync(dir, { recursive: true });
     console.log(dir);
+  } else if (command === "node-bin") {
+    const repoRoot = path.resolve(
+      path.dirname(fileURLToPath(import.meta.url)),
+      "..",
+      ".."
+    );
+    const major = fs
+      .readFileSync(path.join(repoRoot, ".nvmrc"), "utf8")
+      .trim()
+      .replace(/^v/, "")
+      .split(".")[0];
+    const bin = discoverNodeBin(major);
+    if (!bin) {
+      console.error(`host.mjs: no node ${major} found (.nvmrc)`);
+      process.exit(1);
+    }
+    console.log(bin);
   } else {
     console.error(
       `host.mjs: unknown command ${command ?? "(none)"} — see --help`

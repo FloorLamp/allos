@@ -1,45 +1,7 @@
 # Dispatch and pipeline
 
-## Queue labels
-
-Two axes are load-bearing, and `reconcile-tracker` flags violations of both
-(`checkLabelHygiene`, 2026-08-15):
-
-- **Exactly one priority-slot label**: `P0`–`P3` or `parked`. Never two — a
-  `P2` + `parked` issue is in no queue and every queue at once.
-- **At least one domain label.** Cross-cutting design/UX work takes `design` —
-  it is a real domain, not a missing one.
-- Every ready P0/P1 preempts feature and presentation work, with or without
-  `bug`. Other type labels (`feat`, `refactor`, `testing`, `a11y`) are
-  optional color; `ui` marks e2e-heavy work.
-- **The taxonomy is CLOSED, and its canon is code**: `PRIORITY_SLOT_LABELS`,
-  `DOMAIN_LABELS`, `TYPE_LABELS`, `PROCESS_LABELS` (union `KNOWN_LABELS`) in
-  `scripts/orchestration/reconcile-tracker-core.ts`. Never apply a label
-  outside it, and never verify a label against the repo's LIVE label list:
-  GitHub's add-labels endpoint silently creates any label it does not
-  recognise, so the live list accumulates every past mistake and then
-  validates the next one (16 strays counted 2026-08-30 — `deps`, `tooling`,
-  `infrastructure`, `sleep`, …). The taxonomy spelling wins over its
-  synonyms: `infra` not `infrastructure`/`tooling`, `dependencies` not
-  `deps`. A missing concept is an owner decision, not a new label — ruled
-  2026-08-30: three strays earned promotion by measured usage (`testing` and
-  `a11y` as type color, `dashboard` as a domain) and a size axis was
-  DECLINED (a third mandatory axis multiplies drift, and the dispatch ledger
-  already measures real durations). `checkLabelHygiene` flags off-taxonomy
-  labels as `unknown-label`, and
-  `.github/workflows/label-taxonomy.yml` deletes them repo-side — on label
-  creation/edit, weekly, and on demand — so to add a label, extend
-  `KNOWN_LABELS` first and merge; the live list follows the code.
-- `enhancement`, `cleanup`, `javascript`, and `lib` are retired (2026-08-15)
-  and deleted repo-side; a hygiene finding flags any reappearance. `lib` routed
-  nothing — business logic living in `lib/` is the repo's own rule.
-- `needs-human` means one specific owner answer is required. Apply it, assign
-  the owner, and keep working elsewhere; never prompt the owner uninvited —
-  and never a blocking `AskUserQuestion` mid-session: the owner is usually
-  absent, so the question stalls the whole pipeline until they return. The
-  needs-human skill drains the queue when they show up.
-- Evaluations end with `recommend-adopt` or `recommend-hold`. A hold also gets
-  `parked`; an adopt is merged by the orchestrator.
+Queue labels live in [labels.md](labels.md) — the two label axes, the
+closed taxonomy, and `needs-human` handling.
 
 ## Dispatch
 
@@ -51,12 +13,10 @@ Two axes are load-bearing, and `reconcile-tracker` flags violations of both
   decision (the #2701 shape) or a direction with stated falsifiers (#2641).
   One still carrying the design question is owner-gated; agents never explore.
 - Older issues start with an audit table: resolved by what, or still open.
-- Cap E2E work at two agents. Ordinary concurrency is
-  min(harness agent slots, the measured machine cap) — the machine cap is
-  five on the 4-core container (four until #2964 scoped the DB tier; raised
-  on trial 2026-08-16), and a harness exposing fewer slots caps there
-  (#3710's host exposes four total, orchestrator included). The two-E2E and
-  unreviewed-PR limits below hold on every host.
+- Cap E2E work at two agents. Ordinary concurrency is min(harness agent
+  slots, machine cap) — five on the 4-core container (#2964, 2026-08-16); a
+  harness exposing fewer slots caps there (#3710). The two-E2E and
+  unreviewed-PR limits hold on every host.
 - Revert on a DISCRIMINATING signal: a misread red actually shipped, or the
   ledger's median dispatch duration degrades. "Agents hit the ten-minute tool
   cap" is not one — it fired at four agents and at five, so it cannot tell them
@@ -66,19 +26,12 @@ Two axes are load-bearing, and `reconcile-tracker` flags violations of both
   dispatch at roughly three unreviewed PRs however few agents are running.
 - With ready P1s, reserve two user/data lanes and select the highest-risk ready
   P2; cap presentation/guard at one. Recompute when issues arrive or lanes free.
-- **Self-filed work joins the BACK of its queue, never the front.** An issue
-  the orchestrator or a lane filed ("Found while #N…" provenance) defaults to
-  P3 and is sourced only when no owner-filed work at the same or higher
-  priority is ready — recency is not urgency, and capacity spent on your own
-  filings is capacity taken from issues the owner already ruled on (incidents,
-  "The issues the orchestrator filed instead of doing the work"). Source
-  lanes from the open backlog OLDEST FIRST. The one exception: a P0/P1
-  regression a merge just introduced, DEMONSTRATED in the issue (failing test
-  or repro), preempts like any P0/P1.
-- Lanes never file issues directly. A lane's findings ride its return
-  summary (surprises, OPEN QUESTIONS); the orchestrator decides what becomes
-  an issue — most findings are observations, and an observation filed with
-  questions attached is tracker noise that displaces real work.
+- **Self-filed work joins the BACK of its queue.** An issue you or a lane
+  filed defaults to P3, sourced OLDEST FIRST only when no owner-filed work of
+  equal or higher priority is ready. Sole exception: a DEMONSTRATED P0/P1
+  regression a merge just introduced (_incidents_).
+- Lanes never file issues. Findings ride the return summary; the orchestrator
+  decides what becomes an issue — a filed observation displaces real work.
 - An urgent P0/P1 displaces the current candidate through `promote`; run only
   its full matrix.
 - STAGGER starts. Durations cluster tightly (seven of the first ten inside
@@ -92,10 +45,10 @@ Two axes are load-bearing, and `reconcile-tracker` flags violations of both
   rework when judging depth.
 - Every brief uses the generated template and the gate order from
   `scripts/orchestration/agent-gates.sh`.
-- Push meaningful checkpoints. A branch not next to land stays branch-only;
-  do not open a PR for CI that an earlier merge will invalidate. Branch-only
-  means no PR at all — a draft PR is not a banking state. When the candidate's
-  PR opens, it opens READY (environment.md §GitHub access).
+- Push meaningful checkpoints. A branch not next to land stays branch-only —
+  no PR at all, and a draft is not a banking state. The candidate's PR opens
+  READY (environment.md §GitHub access), never for CI a pending merge will
+  invalidate.
 - Parallelize banked implementation/local pre-review; serialize the sole
   candidate's remote review, CI, and merge.
 - A census meant to be EXHAUSTIVE passes ripgrep's `--binary` (`-a`). Several
@@ -119,12 +72,9 @@ Two axes are load-bearing, and `reconcile-tracker` flags violations of both
 
 ## Tooling
 
-- Every entry script answers `-h`/`--help` by printing its own header — the
-  documentation IS the usage — and exiting before doing anything, so probing
-  an unfamiliar script is always safe. Before 2026-08-30 the flag was
-  ignored and the default action ran; on the stateful scripts (the check-in
-  recorder, the dispatch ledger) that was a real state transition nobody
-  asked for. `lib/__tests__/script-help.test.ts` pins every one.
+- Every entry script answers `-h`/`--help` with its own header and exits
+  before any side effect (`script-help.test.ts` pins it) — probing an
+  unfamiliar script is always safe (_incidents_).
 - `dispatch-brief.mjs`: manage dispatches, the sole landing candidate, and
   validated priority/lane state; deliver every emitted role update. `list`
   flags 3x-median idleness or a dispatch with no worktree and no branch.
