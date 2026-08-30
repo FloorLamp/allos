@@ -78,6 +78,8 @@ describe("dismissRecentlyResolved (#1548)", () => {
     await dismissRecentlyResolved(episodeId);
 
     expect(getRecentlyResolvedDismissed(login.id)).toEqual([episodeId]);
+    await dismissRecentlyResolved(episodeId);
+    expect(getRecentlyResolvedDismissed(login.id)).toEqual([episodeId]);
     // Stored where the sibling per-login viewer preferences live — login_settings,
     // as a JSON id array — NOT on the findings/upcoming suppression bus.
     expect(getLoginSetting(login.id, "recently_resolved_dismissed")).toBe(
@@ -101,22 +103,6 @@ describe("dismissRecentlyResolved (#1548)", () => {
 
     // The server placement model must drop the dismissed reopen fact from fresh state.
     expect(revalidate).toHaveBeenCalledWith("/");
-  });
-
-  it("is idempotent — dismissing the same line twice stores one id", async () => {
-    const login = createLogin({ role: "member" });
-    const { profileId, episodeId } = seedResolved(
-      login.id,
-      "Reopen Idem",
-      "Cold",
-      2
-    );
-    actAs(login, { id: profileId, name: "Reopen Idem" });
-
-    await dismissRecentlyResolved(episodeId);
-    await dismissRecentlyResolved(episodeId);
-
-    expect(getRecentlyResolvedDismissed(login.id)).toEqual([episodeId]);
   });
 
   it("prunes ids whose reopen window has closed on the next write", async () => {
@@ -144,16 +130,24 @@ describe("dismissRecentlyResolved (#1548)", () => {
     const mine = createLogin({ role: "member" });
     const theirs = createLogin({ role: "member" });
     const own = seedResolved(mine.id, "Reopen Mine", "Cold", 2);
+    const expired = seedResolved(mine.id, "Reopen Expired", "Cold", 20);
     // Another household's line: granted to `theirs` only.
     const other = seedResolved(theirs.id, "Reopen Theirs", "Cold", 2);
     actAs(mine, { id: own.profileId, name: "Reopen Mine" });
+    expect(reopenEligibleEpisodeForProfile(expired.profileId)).toBeNull();
 
-    // A stranger's episode, an id that never existed, and junk all no-op.
-    await dismissRecentlyResolved(other.episodeId);
-    await dismissRecentlyResolved(999_999);
-    await dismissRecentlyResolved(0);
-    await dismissRecentlyResolved(-1);
-    await dismissRecentlyResolved(Number.NaN);
+    // A stranger's episode, an expired episode on an accessible profile, an id that
+    // never existed, and junk all no-op.
+    for (const episodeId of [
+      other.episodeId,
+      expired.episodeId,
+      999_999,
+      0,
+      -1,
+      Number.NaN,
+    ]) {
+      await dismissRecentlyResolved(episodeId);
+    }
 
     expect(getRecentlyResolvedDismissed(mine.id)).toEqual([]);
     // And it never spilled into the OTHER login's preference either.
@@ -163,19 +157,6 @@ describe("dismissRecentlyResolved (#1548)", () => {
     // refusals above were about the ID, not a wedged action.
     await dismissRecentlyResolved(own.episodeId);
     expect(getRecentlyResolvedDismissed(mine.id)).toEqual([own.episodeId]);
-  });
-
-  it("refuses an EXPIRED episode of the login's own profile", async () => {
-    const login = createLogin({ role: "member" });
-    // Resolved 20 days ago — outside the 7-day reopen window, so no line renders and
-    // no dismissal may be recorded for it.
-    const expired = seedResolved(login.id, "Reopen Expired", "Cold", 20);
-    actAs(login, { id: expired.profileId, name: "Reopen Expired" });
-    expect(reopenEligibleEpisodeForProfile(expired.profileId)).toBeNull();
-
-    await dismissRecentlyResolved(expired.episodeId);
-
-    expect(getRecentlyResolvedDismissed(login.id)).toEqual([]);
   });
 
   it("is per-login: a co-caregiver on the same profile still sees the line", async () => {
