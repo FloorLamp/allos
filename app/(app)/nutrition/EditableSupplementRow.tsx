@@ -31,7 +31,6 @@ import IntakeItemForm from "@/components/IntakeItemForm";
 import ModalShell from "@/components/ModalShell";
 import FoodGuidance from "@/components/FoodGuidance";
 import NotesText from "@/components/NotesText";
-import DoseStatusControl from "@/components/DoseStatusControl";
 import DoseHistoryPanel, {
   type DoseHistoryEntry,
 } from "@/components/intake/DoseHistoryPanel";
@@ -65,12 +64,9 @@ export default function EditableSupplementRow({
   purposes = [],
   purposeConditions = [],
   purposeBiomarkers = [],
-  isTaken,
-  isSkipped,
   strip,
   refillRate,
   poolChip = null,
-  historicalStatus = null,
   suppressedFoodKeys = [],
   doseHistory = [],
   historyMaxDate,
@@ -94,8 +90,6 @@ export default function EditableSupplementRow({
   purposes?: IntakeItemPurpose[];
   purposeConditions?: IntakeConditionOption[];
   purposeBiomarkers?: string[];
-  isTaken: boolean;
-  isSkipped: boolean;
   strip: AdherenceDot[];
   refillRate: DoseRate | null;
   // The shared-bottle chip when this item draws from a pool (#1374) — it REPLACES
@@ -103,7 +97,6 @@ export default function EditableSupplementRow({
   poolChip?: PoolChipData | null;
   // Past schedule days are read-only: show the recorded outcome without exposing
   // today's write control against a historical row.
-  historicalStatus?: "taken" | "skipped" | "missed" | null;
   // Active food-timing dismissals for this profile (#435), threaded to FoodGuidance.
   suppressedFoodKeys?: string[];
   // This item's recorded administrations over the page's history window (#1933), for
@@ -165,24 +158,6 @@ export default function EditableSupplementRow({
                 split
               </span>
             )}
-            {historicalStatus && (
-              <span
-                data-testid={`supplement-history-${historicalStatus}`}
-                className={`badge ${
-                  historicalStatus === "taken"
-                    ? "bg-emerald-100 text-emerald-700 dark:bg-emerald-950 dark:text-emerald-300"
-                    : historicalStatus === "skipped"
-                      ? "bg-amber-100 text-amber-700 dark:bg-amber-950 dark:text-amber-300"
-                      : "bg-rose-100 text-rose-700 dark:bg-rose-950 dark:text-rose-300"
-                }`}
-              >
-                {historicalStatus === "taken"
-                  ? "Taken"
-                  : historicalStatus === "skipped"
-                    ? "Skipped"
-                    : "Missed"}
-              </span>
-            )}
             {s.condition !== "daily" && (
               <span className="badge bg-slate-100 text-slate-600 dark:bg-ink-800 dark:text-slate-300">
                 {CONDITION_LABELS[s.condition]}
@@ -224,25 +199,14 @@ export default function EditableSupplementRow({
           </div>
         </div>
         <div className="col-start-2 row-start-1 flex shrink-0 items-center gap-3 text-xs">
-          {/* One tap away, for EVERY active item (#2419). The gate is the item's
-            state and the row's DAY — never its dueness: dueness gates NUDGING, and
-            logging is a statement about what happened. A `may` item, an off-cadence
-            row and a situation-inactive one all render this control, so taking one
-            today no longer means flipping a situation active just to make a button
-            exist. Visual prominence stays with the section split (due rows in Today,
-            the rest collapsed below). A PAST day's row stays read-only — it renders
-            its recorded outcome instead (historicalStatus) — and a paused item has
-            none, matching setDoseStatus's own refusals (retired dose / paused item,
-            never dueness). The logged day is TODAY: a tap says "I took this now", it
-            never claims the item was scheduled. */}
-          {!!s.active && !historicalStatus && (
-            <DoseStatusControl
-              doseId={dose.id}
-              taken={isTaken}
-              skipped={isSkipped}
-              variant="circle"
-            />
-          )}
+          {/* NO DAY CONTROL HERE ANY MORE (#3987). This row was the second place a
+            day's dose was stated — a take/skip control and a Taken/Skipped/Missed
+            badge, beside the Day ledger's own row for the same dose. Resolving a dose
+            is the ledger's job now, on the surface that shows what the day holds; this
+            row is management: what the item IS, what it is for, what it interacts
+            with, and its history. The write cores are untouched — #2419's "one tap
+            away for every active item" is satisfied by the ledger's due rows, which
+            gate on the item's state and the row's day exactly as this did. */}
           <OverflowMenu
             kind="Supplement"
             itemName={s.name}

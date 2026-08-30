@@ -2,8 +2,6 @@ import {
   getIntakeItems,
   getIntakeDoses,
   getRetiredDoses,
-  getTakenDoseIds,
-  getSkippedDoseIds,
   getIntakeAdherenceEvidence,
   getIntakePairs,
   getIntakeIngredientsByItem,
@@ -52,8 +50,7 @@ import { foodSourcesForDriNutrient } from "@/lib/food-suggest";
 import { FOOD_TIMING_PREFIX } from "@/lib/food-drug-interactions";
 import { type InteractionItem } from "@/lib/drug-interactions";
 import { type PgxVariantInput } from "@/lib/pgx";
-import { FindingCard, DismissFindingButton } from "@/components/FindingCard";
-import { Notice } from "@/components/Notice";
+import { FindingCard } from "@/components/FindingCard";
 import IntakeWarnings, { IntakeSafetyScope } from "@/components/IntakeWarnings";
 import { today } from "@/lib/db";
 import { parseRxcuiIngredients } from "@/lib/rxnorm";
@@ -98,17 +95,12 @@ import {
   countSituationalDue,
   doseDueOn,
   isPostWorkoutReady,
-  timeBucket,
-  TIME_BUCKETS,
-  TIME_BUCKET_LABELS,
   OBLIGATION_ORDER,
   OBLIGATION_LABELS,
   CONDITION_LABELS,
   WORKOUT_CONDITIONS,
   obligationClass,
-  workoutDaySubtitleLabel,
   heldBySituation,
-  type TimeBucket,
 } from "@/lib/intake-schedule";
 import { compareDoseDay, type DoseDayEntry } from "@/lib/dose-order";
 import type { IntakeItem, IntakeDose } from "@/lib/types";
@@ -126,16 +118,11 @@ import {
   DOSE_HISTORY_DAYS,
   type AdherenceDot,
 } from "@/lib/intake-adherence";
-import {
-  separatePairWarnings,
-  type KeepApartWarning,
-} from "@/lib/intake-pairs";
 import SuggestionsForm from "./SuggestionsForm";
 import CuratedSupplementSuggestions from "@/components/CuratedSupplementSuggestions";
 import InfoTooltipIcon from "@/components/InfoTooltipIcon";
 import AdherenceFindings from "./AdherenceFindings";
 import DemotionSuggestions from "./DemotionSuggestions";
-import SupplementSchedule from "./SupplementSchedule";
 import SupplementInsightBadges from "./SupplementInsightBadges";
 import AddSupplementModal from "@/components/nutrition/AddSupplementModal";
 import { SectionCreateHeader } from "@/components/CreateAction";
@@ -215,8 +202,6 @@ export default async function SupplementsTab({
     retiredBySupp.set(d.item_id, arr);
   }
 
-  const taken = getTakenDoseIds(profile.id, todayStr);
-  const skipped = getSkippedDoseIds(profile.id, todayStr);
   const activeSituations = new Set(getActiveSituations(profile.id));
   // Per-day situation resolver for the adherence strip: a past day is scored against
   // the situations active THAT day (#654), reconstructed from the change-log, not the
@@ -267,18 +252,6 @@ export default async function SupplementsTab({
   const dates = lastNDates(todayStr, STRIP_DAYS);
   // The schedule control mirrors Food's bounded recent-day lens: today first,
   // followed by the previous six days. Adherence keeps its wider 14-day window.
-  const scheduleDates = dates
-    .slice(-7)
-    .reverse()
-    .map((date, index) => ({
-      date,
-      label:
-        index === 0
-          ? "Today"
-          : index === 1
-            ? "Yesterday"
-            : formatWeekdayDate(date, formatPrefs),
-    }));
   const takenByDose = indexTakenByDose(
     getIntakeAdherenceEvidence(profile.id, STRIP_DAYS)
   );
@@ -439,9 +412,6 @@ export default async function SupplementsTab({
   // Monday, its 2.5 mg row is not), so the due/not-scheduled split has to be made at the
   // row level or an alternating pair would show both amounts every day.
   const activeSupplementItems = itemsFor((s) => !isMed(s) && !!s.active);
-  const dueItems = activeSupplementItems.filter((i) =>
-    doseDueOn(i.supplement, i.dose, ctx)
-  );
   const heldItems = itemsFor((s) => !isMed(s) && !!s.active && isHeld(s));
   // An off-cadence row lands HERE — visible under "Not scheduled today" with its
   // cadence named — rather than vanishing. Same discoverability contract as the Held
@@ -471,34 +441,15 @@ export default async function SupplementsTab({
     )
     .map(([k]) => k);
 
-  // Group due items by time bucket; within a bucket use the SHARED dose-day
-  // comparator (obligation → stack → name) so this section and the Upcoming /
-  // attention surfaces order a dose day identically (issue #297). The
-  // buckets already partition by time-of-day, so the comparator's leading bucket
-  // key is a constant within each group and the residual order is obligation → …
+  // The stack list uses the SHARED dose-day comparator (bucket → obligation → stack →
+  // name) so this list and the Day ledger / Upcoming order a dose day identically
+  // (issue #297) — one question, one computation, three surfaces.
   const doseEntry = (it: Item): DoseDayEntry => ({
     timeOfDay: it.dose.time_of_day,
     obligation: it.supplement.obligation,
     stack: it.supplement.stack,
     name: it.supplement.name,
   });
-  const byBucketFor = (items: Item[]) => {
-    const grouped = new Map<TimeBucket, Item[]>();
-    for (const item of items) {
-      const bucket = timeBucket(item.dose.time_of_day);
-      const rows = grouped.get(bucket) ?? [];
-      rows.push(item);
-      grouped.set(bucket, rows);
-    }
-    for (const rows of grouped.values())
-      rows.sort((a, b) => compareDoseDay(doseEntry(a), doseEntry(b)));
-    return grouped;
-  };
-  const byBucket = byBucketFor(dueItems);
-
-  // "Keep apart" warnings: a separate-pair whose both supplements have a due
-  // dose in the same bucket. Policy lives in the shared separatePairWarnings
-  // (issue #313); this surface just supplies the bucket's supplement ids.
   const pairs = getIntakePairs(profile.id);
   // Label composition (#2856), for the "What's in this" line on each card and for the
   // edit form's repeater. One profile-scoped read for the whole page, indexed by item.
@@ -517,19 +468,11 @@ export default async function SupplementsTab({
     status: c.status,
   }));
   const purposeBiomarkers = getUsedCanonicalNames(profile.id);
-  // Filtered through the findings bus (#435): a keep-apart warning the profile has
-  // dismissed (on this page or Upcoming) is held out, keyed by its keep-apart:<lo>-<hi>
-  // dedupeKey. `suppressions`/`todayStr` are resolved above.
-  const bucketWarnings = (items: Item[]): KeepApartWarning[] =>
-    activeByKey(
-      separatePairWarnings(
-        items.map((it) => it.supplement.id),
-        pairs
-      ),
-      (w) => w.key,
-      suppressions,
-      todayStr
-    );
+  // KEEP-APART WARNINGS MOVED TO THE DAY LEDGER (#3987): they are advice about what
+  // not to take together right now, so they belong beside the taps that would take
+  // them, which is `app/(app)/nutrition/FoodTab.tsx`'s gather. They are still filtered
+  // through the findings bus (#435) there, keyed by the same dedupeKey, so a dismissal
+  // on this page's Upcoming twin still silences them.
 
   // Item forms use the id-keyed vocabulary (#560): every situation row for this
   // profile, plus the built-in suggestions — the ONE shared merged option
@@ -675,25 +618,11 @@ export default async function SupplementsTab({
     active: !!s.active,
   }));
 
-  const renderRow = (it: Item, date = todayStr) => {
-    const doseHistory = takenByDose.get(it.dose.id);
-    const isTaken =
-      date === todayStr
-        ? taken.has(it.dose.id)
-        : !!doseHistory?.taken.has(date);
-    const isSkipped =
-      date === todayStr
-        ? skipped.has(it.dose.id)
-        : !!doseHistory?.skipped.has(date);
-    const historicalStatus =
-      date === todayStr
-        ? null
-        : isTaken
-          ? ("taken" as const)
-          : isSkipped
-            ? ("skipped" as const)
-            : ("missed" as const);
-
+  // A MANAGEMENT ROW, NOT A DAY ROW (#3987). Whether today's dose is taken, skipped or
+  // still owed is the Day ledger's statement now, and it is the only one: this row used
+  // to carry both a take/skip control and a Taken/Skipped/Missed badge, which is exactly
+  // the "the same dose rendered twice" the redesign exists to end.
+  const renderRow = (it: Item) => {
     return (
       <EditableSupplementRow
         key={it.dose.id}
@@ -709,12 +638,9 @@ export default async function SupplementsTab({
         purposes={purposesBySupp.get(it.supplement.id) ?? []}
         purposeConditions={purposeConditions}
         purposeBiomarkers={purposeBiomarkers}
-        isTaken={isTaken}
-        isSkipped={isSkipped}
         strip={stripFor(it.supplement)}
         refillRate={refillRates.get(it.supplement.id) ?? null}
         poolChip={poolChips.get(it.supplement.id) ?? null}
-        historicalStatus={historicalStatus}
         suppressedFoodKeys={suppressedFoodKeys}
         doseHistory={historyFor(it.supplement)}
         historyMaxDate={todayStr}
@@ -725,79 +651,18 @@ export default async function SupplementsTab({
     );
   };
 
-  const dayContext = activityScheduleAvailable
-    ? workoutDaySubtitleLabel(predictedWorkoutDay, isWorkoutDay)
-    : null;
-  const scheduleBucketsFor = (date: string, dayItems: Item[]) => {
-    const grouped = date === todayStr ? byBucket : byBucketFor(dayItems);
-    return TIME_BUCKETS.map((bucket) => {
-      const bucketItems = grouped.get(bucket) ?? [];
-      // Keep-apart warnings are current safety guidance, not historical claims.
-      const warnings =
-        date === todayStr
-          ? bucketWarnings(bucketItems)
-          : ([] as KeepApartWarning[]);
-      return {
-        slot: bucket,
-        count: bucketItems.length,
-        content: (
-          <section
-            key={`${date}-${bucket}`}
-            data-testid={`supplement-bucket-${bucket
-              .toLowerCase()
-              .replaceAll(" ", "-")}`}
-          >
-            <h3 className="mb-2 section-label">{TIME_BUCKET_LABELS[bucket]}</h3>
-            {warnings.map((warning) => (
-              <Notice
-                key={warning.key}
-                tone="amber"
-                icon
-                className="mb-2"
-                action={
-                  <DismissFindingButton
-                    dedupeKey={warning.key}
-                    label={`Dismiss: ${warning.text}`}
-                  />
-                }
-              >
-                {warning.text}
-              </Notice>
-            ))}
-            {bucketItems.length > 0 && (
-              <div className="space-y-3">
-                {bucketItems.map((item) => renderRow(item, date))}
-              </div>
-            )}
-          </section>
-        ),
-      };
-    });
-  };
-  const scheduleDays = scheduleDates.map(({ date, label }) => {
-    const dayItems =
-      date === todayStr
-        ? dueItems
-        : itemsFor((supplement) => !isMed(supplement) && !!supplement.active)
-            .filter((item) =>
-              doseDueOn(item.supplement, item.dose, {
-                date,
-                isWorkoutDay: workoutDays.has(date),
-                activeSituations: situationsOn(date),
-              })
-            )
-            .filter((item) => existedOn(item, date));
-    const takenCountForDay = dayItems.filter((item) =>
-      takenByDose.get(item.dose.id)?.taken.has(date)
-    ).length;
-    return {
-      date,
-      label,
-      totalCount: dayItems.length,
-      takenCount: takenCountForDay,
-      buckets: scheduleBucketsFor(date, dayItems),
-    };
-  });
+  // THE DAILY SCHEDULE RETIRES HERE (#3987 phase 1). Its whole job — what this day
+  // owes, what has been taken, what was skipped, in time buckets, with a seven-day
+  // switcher — is the Day ledger's now, on the Food tab, interleaved with the servings
+  // that share those buckets. What is LEFT on this tab is management: what the stack
+  // holds, what each item is for, its history, and the safety layer over it. The
+  // scheduled items keep a plain list so every active item still has an edit row; the
+  // day-shaped chrome (day switcher, slot filter, taken counter, keep-apart notices)
+  // went with the schedule, and the keep-apart notices moved to the ledger's due rows
+  // rather than being dropped.
+  const scheduledItems = activeSupplementItems
+    .filter((item) => !isHeld(item.supplement))
+    .sort((a, b) => compareDoseDay(doseEntry(a), doseEntry(b)));
   const secondarySchedule = (
     <>
       {heldItems.length > 0 && (
@@ -1310,25 +1175,36 @@ export default async function SupplementsTab({
               data-testid="supplement-workspace"
               className="grid gap-6 lg:grid-cols-[1fr_320px]"
             >
-              <div className="min-w-0">
-                <SupplementSchedule
-                  today={todayStr}
-                  days={scheduleDays}
-                  secondary={secondarySchedule}
-                  context={dayContext}
-                  addSupplement={addSupplementModal}
-                  ledgerDoor={
-                    // THE DOOR MOVES TO THE LOG IT OPENS (#3671). It used to sit in
+              <div data-testid="intake-schedule" className="min-w-0">
+                <SectionCreateHeader
+                  title="Your stack"
+                  action={
+                    // THE DOOR STAYS WITH THE LIST IT OPENS (#3671): it used to sit in
                     // the desktop rail, which stacks to the very bottom of this page
-                    // below `lg` — present in the DOM, functionally absent on a
-                    // phone, which is what the owner reported as a missing link.
+                    // below `lg` — present in the DOM, functionally absent on a phone.
                     <LedgerDoorLink
                       href={historyHref({ kind: "dose", class: "supplement" })}
                       label="Dose history"
                       testId="dose-ledger-link"
                     />
                   }
+                  createAction={{
+                    kind: "supplement",
+                    control: <AddSupplementModal {...addSupplementModal} />,
+                  }}
                 />
+                {scheduledItems.length > 0 ? (
+                  <div data-testid="supplement-stack" className="space-y-3">
+                    {scheduledItems.map((item) => renderRow(item))}
+                  </div>
+                ) : (
+                  <EmptyState
+                    compact
+                    testId="supplement-stack-empty"
+                    message="Nothing scheduled. Add a supplement, or see today's doses on the Day ledger."
+                  />
+                )}
+                <div className="mt-6 space-y-4">{secondarySchedule}</div>
               </div>
               <aside
                 data-testid="supplement-sidebar"

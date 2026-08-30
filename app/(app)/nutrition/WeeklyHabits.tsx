@@ -17,10 +17,15 @@ import {
   foodHabitInteractions,
   foodHabitInteractionNote,
 } from "@/lib/food-habit";
-import FoodGroupIcon from "@/components/FoodGroupIcon";
+import FoodGroupIcon, {
+  FOOD_GROUP_TIER_TINT,
+} from "@/components/FoodGroupIcon";
 import RightSizeSuggestions from "@/components/RightSizeSuggestions";
 import SubmitButton from "@/components/SubmitButton";
-import VisualizationDetails from "@/components/VisualizationDetails";
+import Disclosure from "@/components/Disclosure";
+import { EmptyState } from "@/components/ui";
+import { foodGroupBySlug } from "@/lib/food-groups";
+import type { GroupServingTotal } from "@/lib/food-daily-totals";
 import { trackFoodHabit } from "./actions";
 import UntrackHabitButton from "./UntrackHabitButton";
 
@@ -37,18 +42,37 @@ const TREND_CELL_CLASS: Record<HabitWeekVerdict, string> = {
   na: "bg-transparent ring-1 ring-inset ring-dashed ring-slate-200 dark:ring-slate-700 opacity-50",
 };
 
-// Food-habit targets card (issue #580): the profile's food_group frequency targets with
-// this-week progress (the #579 rollup via getFrequencyTargetProgress — one computation),
-// plus an add form. User-initiated, reversible; a target here is the SAME row a protocol
-// can adopt as its intervention (frequency_target_id).
+// THIS WEEK, AS ONE LIST (issue #580, consolidated by #3987).
+//
+// The rail used to answer "what did I eat this week?" twice: a WEEKLY ROLLUP listing
+// every logged group with its servings, and a WEEKLY HABITS section listing the tracked
+// subset of those same groups with a target and a pace badge. Same groups, same week,
+// two lists, adjacent. This is the ONE list — a row per group, with the target, the pace
+// and the consistency pips carried INLINE on the rows that have them.
+//
+// THE UNION IS THE POINT, and it is why this owns the merge rather than the rollup
+// component: a tracked habit with nothing logged this week has no rollup row and is
+// exactly the row a person needs to see. It appears at zero, "Behind" and all.
+//
+// The per-habit weekly-details buttons are gone with the second list (owner ruling: no
+// per-habit detail buttons); the pips keep their `aria-label`, which is what carried the
+// non-visual reading of them. The add form is ONE affordance, folded, in the
+// rare-cadence idiom (#1497) — tracking a habit is a rare act and a standing form is a
+// tax on every visit.
+//
+// A target here is the SAME row a protocol can adopt as its intervention
+// (frequency_target_id); tracking stays user-initiated and reversible.
 
 export default function WeeklyHabits({
   profileId,
   formatPrefs,
+  rollup,
   embedded = false,
 }: {
   profileId: number;
   formatPrefs?: DisplayFormatPrefs;
+  /** This week's logged servings per group — the other half of the one list. */
+  rollup: GroupServingTotal[];
   embedded?: boolean;
 }) {
   const habits = getFrequencyTargetProgress(profileId).filter(
@@ -67,9 +91,35 @@ export default function WeeklyHabits({
   // ~8 weeks so "is this habit sticking?" gets a surface. Keyed by target id.
   const trends = getFoodHabitTrends(profileId, formatPrefs);
 
+  // THE ONE LIST: every group with servings this week, plus every tracked group that
+  // has none. Ordered servings-descending then by name, so the hierarchy is legible and
+  // two weeks with the same contents read the same; a zero-serving habit lands at the
+  // end, which is where "you have not done this yet" belongs.
+  const byHabit = new Map(habits.map((p) => [p.target.scope_value, p]));
+  const rows = [
+    ...rollup.map((g) => ({ slug: g.slug, name: g.name, tier: g.tier, servings: g.servings })),
+    ...habits
+      .filter((p) => !rollup.some((g) => g.slug === p.target.scope_value))
+      .map((p) => {
+        const group = foodGroupBySlug(p.target.scope_value);
+        return {
+          slug: p.target.scope_value,
+          name:
+            group?.name ??
+            frequencyScopeLabel("food_group", p.target.scope_value),
+          tier: group?.tier ?? "neutral",
+          servings: 0,
+        };
+      }),
+  ].sort(
+    (a, b) =>
+      b.servings - a.servings ||
+      a.name.localeCompare(b.name, undefined, { sensitivity: "base" })
+  );
+
   return (
     <div className={embedded ? undefined : "card"} data-testid="weekly-habits">
-      <h3 className="mb-3 section-label">Weekly habits</h3>
+      <h3 className="mb-3 section-label">This week</h3>
 
       {/* Right-sizing suggestions (#1670), above the habits they are about: a
           servings target the profile has been under for four completed weeks,
@@ -78,73 +128,80 @@ export default function WeeklyHabits({
         <RightSizeSuggestions profileId={profileId} domain="food" />
       </div>
 
-      {habits.length > 0 && (
-        <ul className="mb-3 space-y-1.5">
-          {habits.map((p) => {
-            const interactions = foodHabitInteractions(
-              p.target.scope_value,
-              medications
-            );
+      {rows.length === 0 ? (
+        <EmptyState message="No servings logged this week yet." />
+      ) : (
+        <ul data-testid="food-weekly-rollup" className="mb-3 space-y-1.5">
+          {rows.map((row) => {
+            const habit = byHabit.get(row.slug);
+            const interactions = habit
+              ? foodHabitInteractions(row.slug, medications)
+              : [];
+            const cells = habit ? (trends.get(habit.target.id) ?? []) : [];
             return (
               <li
-                key={p.target.id}
-                data-testid={`habit-${p.target.scope_value}`}
+                key={row.slug}
+                data-testid={`rollup-${row.slug}`}
                 className="text-sm"
               >
-                <div className="flex items-center justify-between gap-3">
-                  <span className="flex items-center gap-2 text-slate-700 dark:text-slate-200">
-                    <FoodGroupIcon
-                      slug={p.target.scope_value}
-                      className="h-4 w-4 shrink-0 text-slate-500 dark:text-slate-400"
-                    />
-                    {frequencyScopeLabel("food_group", p.target.scope_value)}
+                <div className="flex items-center gap-2">
+                  <FoodGroupIcon
+                    slug={row.slug}
+                    className={`h-4 w-4 shrink-0 ${FOOD_GROUP_TIER_TINT[row.tier]}`}
+                  />
+                  <span className="w-5 shrink-0 text-right font-semibold tabular-nums text-slate-800 dark:text-slate-100">
+                    {row.servings % 1 === 0
+                      ? row.servings
+                      : row.servings.toFixed(1)}
                   </span>
-                  <span className="flex items-center gap-2">
-                    <span className="font-semibold tabular-nums text-slate-800 dark:text-slate-100">
-                      {p.count} / {p.per_week}
-                    </span>
+                  <span className="min-w-0 flex-1 text-slate-700 dark:text-slate-200">
+                    {row.name}
+                  </span>
+                  {habit && (
                     <span
-                      data-testid={`habit-pace-${p.target.scope_value}`}
-                      data-pace={p.pace}
-                      className={`badge ${PACE_BADGE_CLASS[p.pace]}`}
+                      data-testid={`habit-${row.slug}`}
+                      className="flex shrink-0 items-center gap-2"
                     >
-                      {frequencyPaceLabel(p.pace)}
-                    </span>
-                    <UntrackHabitButton
-                      targetId={p.target.id}
-                      protocolName={protocolByTarget.get(p.target.id) ?? null}
-                    />
-                  </span>
-                </div>
-                {(() => {
-                  const cells = trends.get(p.target.id) ?? [];
-                  if (cells.length === 0) return null;
-                  return (
-                    <>
-                      <div
-                        data-testid={`habit-trend-${p.target.scope_value}`}
-                        className="mt-1.5 flex items-center gap-1"
-                        role="img"
-                        aria-label={`Consistency over the last ${cells.length} weeks`}
+                      <span className="text-xs tabular-nums text-slate-500 dark:text-slate-400">
+                        of {habit.per_week}
+                      </span>
+                      <span
+                        data-testid={`habit-pace-${row.slug}`}
+                        data-pace={habit.pace}
+                        className={`badge ${PACE_BADGE_CLASS[habit.pace]}`}
                       >
-                        {cells.map((c) => (
-                          <span
-                            key={c.start}
-                            data-verdict={c.verdict}
-                            className={`h-3 w-3 shrink-0 rounded-xs ${TREND_CELL_CLASS[c.verdict]}`}
-                          />
-                        ))}
-                      </div>
-                      <VisualizationDetails
-                        label={`${frequencyScopeLabel("food_group", p.target.scope_value)} weekly details`}
-                        items={cells.map((cell) => cell.label)}
+                        {frequencyPaceLabel(habit.pace)}
+                      </span>
+                      <UntrackHabitButton
+                        targetId={habit.target.id}
+                        protocolName={
+                          protocolByTarget.get(habit.target.id) ?? null
+                        }
                       />
-                    </>
-                  );
-                })()}
+                    </span>
+                  )}
+                </div>
+                {cells.length > 0 && (
+                  <div
+                    data-testid={`habit-trend-${row.slug}`}
+                    className="mt-1.5 flex items-center gap-1 pl-6"
+                    role="img"
+                    aria-label={`Consistency over the last ${cells.length} weeks: ${cells
+                      .map((c) => c.label)
+                      .join("; ")}`}
+                  >
+                    {cells.map((c) => (
+                      <span
+                        key={c.start}
+                        data-verdict={c.verdict}
+                        className={`h-3 w-3 shrink-0 rounded-xs ${TREND_CELL_CLASS[c.verdict]}`}
+                      />
+                    ))}
+                  </div>
+                )}
                 {interactions.length > 0 && (
                   <ul
-                    data-testid={`habit-warning-${p.target.scope_value}`}
+                    data-testid={`habit-warning-${row.slug}`}
                     className="mt-1 space-y-0.5"
                   >
                     {interactions.map((i) => (
@@ -164,14 +221,18 @@ export default function WeeklyHabits({
         </ul>
       )}
 
-      <form
-        action={async (fd) => {
-          "use server";
-          await trackFoodHabit(fd);
-        }}
-        className="flex flex-wrap items-center gap-2"
-        data-testid="add-habit-form"
-      >
+      <Disclosure>
+        <summary className="flex min-h-11 cursor-pointer list-none items-center text-xs font-medium text-slate-500 [&::-webkit-details-marker]:hidden dark:text-slate-400">
+          Track a habit
+        </summary>
+        <form
+          action={async (fd) => {
+            "use server";
+            await trackFoodHabit(fd);
+          }}
+          className="mt-2 flex flex-wrap items-center gap-2"
+          data-testid="add-habit-form"
+        >
         <select
           name="group_key"
           aria-label="Food group"
@@ -196,8 +257,9 @@ export default function WeeklyHabits({
         <span className="text-xs text-slate-500 dark:text-slate-400">
           /week
         </span>
-        <SubmitButton pendingLabel="Tracking…">Track</SubmitButton>
-      </form>
+          <SubmitButton pendingLabel="Tracking…">Track</SubmitButton>
+        </form>
+      </Disclosure>
     </div>
   );
 }

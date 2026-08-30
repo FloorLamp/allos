@@ -19,6 +19,7 @@ import { logUsualFoodCore } from "@/lib/food-usual-write";
 import { EATEN_AT_FUTURE_SKEW_MS, judgeEatenAt } from "@/lib/food-eating-time";
 import { statedHourInstant } from "@/lib/correction-time";
 import { normalizeClockTime } from "@/lib/vitals-input";
+import { statedInstantOnDate } from "@/lib/stated-time";
 import type { StatedTimeRefusal, StatedTimeVerdict } from "@/lib/stated-time";
 import { now as clockNow } from "@/lib/clock";
 import { dateStrInTz, utcInstant, zonedWallTimeToUtc } from "@/lib/date";
@@ -190,18 +191,35 @@ export async function logFoodServing(
   const at = clockNow();
   const tz = getTimezone(profileId);
   const stated = normalizeClockTime(String(formData.get("occurred_at") ?? ""));
-  // THE DAY RULE GETS THE SAME CLOCK TOLERANCE THE ACCEPTANCE GATE DOES, and it has
-  // to since #3273 moved the offer client-side. `statedHourInstant` reads a wall time
-  // later than `now` as YESTERDAY's — right for a picker whose hours the server
-  // enumerated, wrong for a field the browser filled from its own clock. Measured: a
-  // 90-second skew re-dated the statement and lost it. One decision, one tolerance.
-  const resolved = stated
-    ? statedHourInstant(
-        stated,
-        new Date(at.getTime() + EATEN_AT_FUTURE_SKEW_MS),
-        tz
-      )
-    : null;
+  // WHICH DAY A BARE WALL TIME MEANS, and the two cases are genuinely different.
+  //
+  //   THE ROW'S DAY IS TODAY — THE DAY RULE, with the acceptance gate's own clock
+  //   tolerance, as it has been since #3273 moved the offer client-side.
+  //   `statedHourInstant` reads a wall time later than `now` as YESTERDAY's: right for
+  //   a picker whose hours the server enumerated, wrong for a field the browser filled
+  //   from its own clock, so the skew rides along. Measured: a 90-second skew re-dated
+  //   the statement and lost it. The re-dating is what keeps the backfill guard below
+  //   non-vacuous for the today case.
+  //
+  //   THE ROW'S DAY IS A PAST DAY — ANCHORED ON THAT DAY, by construction (#4118's
+  //   past-day amendment). The form NAMES its day, the surface offered that day's own
+  //   hours, and `statedInstantOnDate` enforces the (date, hhmm) pair or refuses: a
+  //   wall time that does not exist there (a spring-forward gap) comes back null and is
+  //   reported as malformed rather than settling silently onto a different reading.
+  //   Re-dating relative to `now` here is simply wrong — "8pm" stated about last
+  //   Tuesday is last Tuesday's, and the day rule would resolve it to today or
+  //   yesterday and then refuse it as "not on that day", which is how the amendment's
+  //   sticky-time batch would have silently lost every minute it set. This is the same
+  //   split `offeredHourInstant` already makes between its `today` and `prev` levels.
+  const resolved = !stated
+    ? null
+    : fields.date === dateStrInTz(tz, at)
+      ? statedHourInstant(
+          stated,
+          new Date(at.getTime() + EATEN_AT_FUTURE_SKEW_MS),
+          tz
+        )
+      : statedInstantOnDate(fields.date, stated, tz);
   const judged: StatedTimeVerdict = !stated
     ? { kind: "unstated" }
     : resolved === null

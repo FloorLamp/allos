@@ -32,17 +32,8 @@ import { isFoodLoggingRelevant } from "@/lib/life-stage";
 import { FOOD_SLOTS, type FoodSlot } from "@/lib/food-slot";
 import { profileFoodSlotBoundaries } from "@/lib/profile-food-slot";
 import type { FoodGroup } from "@/lib/food-groups";
-import {
-  assessProteinAdequacy,
-  proteinIntakeSummary,
-  proteinTargetSummary,
-  type ProteinAdequacy,
-} from "@/lib/protein";
-import {
-  fiberBasisIsFloor,
-  fiberIntakeSummary,
-  fiberTargetSummary,
-} from "@/lib/fiber";
+import { assessProteinAdequacy } from "@/lib/protein";
+import { fiberBasisIsFloor } from "@/lib/fiber";
 import type { FiberAdequacy } from "@/lib/fiber";
 import { EmptyState } from "@/components/ui";
 import FoodLogBar, { type FoodLogDay } from "./FoodLogBar";
@@ -51,7 +42,6 @@ import { historyHref } from "@/lib/hrefs";
 import ProteinQuickAdd from "./ProteinQuickAdd";
 import WeeklyHabits from "./WeeklyHabits";
 import { trackFoodHabit } from "./actions";
-import FoodWeeklyRollup from "@/components/FoodWeeklyRollup";
 import FoodSuggestions from "@/components/FoodSuggestions";
 import NutrientsCard from "@/components/NutrientsCard";
 import ProteinAdequacyCard from "@/components/ProteinAdequacyCard";
@@ -103,85 +93,35 @@ const FIBER_STATUS_CLASS: Record<FiberAdequacy["status"], string> = {
   above: "text-slate-600 dark:text-slate-300",
 };
 
-function WeeklyFiberSummary({ adequacy }: { adequacy: FiberAdequacy }) {
+// FIBER, STATED ONCE (#3987). The rail used to say it three times: the Today gauge, a
+// WEEKLY FIBER TARGET block down in the weekly section, and the intake/target figures
+// behind the methodology disclosure. The block and the figures are gone; what the block
+// alone knew — the week's average logged day, which is a different fact from today's —
+// is this ONE line, inside the fiber block it belongs to.
+function WeeklyFiberLine({ adequacy }: { adequacy: FiberAdequacy }) {
   const { intake, target, status } = adequacy;
-  const intakeValue = `${Math.round(intake.grams)}g${
-    fiberBasisIsFloor(intake.basis) ? "+" : ""
-  }`;
-
   return (
-    <div
+    <p
       data-testid="nutrition-weekly-fiber"
-      aria-label="Weekly fiber average for logged days"
-      className="border-t border-black/5 pt-5 dark:border-white/5"
+      className="mt-1 flex items-baseline justify-between gap-3 text-xs text-slate-500 dark:text-slate-400"
     >
-      <div className="flex items-center justify-between gap-3">
-        <h3 className="section-label">Weekly fiber target</h3>
+      <span>Avg logged day this week</span>
+      <span className="inline-flex items-baseline gap-1 text-right tabular-nums">
+        <span
+          data-testid="nutrition-weekly-fiber-value"
+          className="font-semibold text-slate-700 dark:text-slate-200"
+        >
+          {Math.round(intake.grams)}g{fiberBasisIsFloor(intake.basis) ? "+" : ""}
+        </span>
+        <span>/ {Math.round(target.grams)}g+ goal</span>
         <span
           data-testid="nutrition-weekly-fiber-status"
-          className={`text-xs font-medium ${FIBER_STATUS_CLASS[status]}`}
+          className={`font-medium ${FIBER_STATUS_CLASS[status]}`}
         >
           {FIBER_STATUS_LABEL[status]}
         </span>
-      </div>
-      <div className="mt-1 flex items-baseline justify-between gap-3 text-xs text-slate-500 dark:text-slate-400">
-        <span>Avg logged day</span>
-        <span className="inline-flex items-baseline gap-1 text-right tabular-nums">
-          <span
-            data-testid="nutrition-weekly-fiber-value"
-            className="font-semibold text-slate-700 dark:text-slate-200"
-          >
-            {intakeValue}
-          </span>
-          <span>/ {Math.round(target.grams)}g+ goal</span>
-        </span>
-      </div>
-    </div>
-  );
-}
-
-function NutrientEstimateDetails({
-  protein,
-  fiber,
-}: {
-  protein: ProteinAdequacy | null;
-  fiber: FiberAdequacy | null;
-}) {
-  return (
-    <>
-      {protein && (
-        <div data-testid="protein-estimate-details">
-          <p>
-            <span className="font-medium">Protein intake: </span>
-            <span data-testid="protein-intake">
-              {proteinIntakeSummary(protein.intake)}
-            </span>
-          </p>
-          <p className="mt-1">
-            <span className="font-medium">Protein target: </span>
-            <span data-testid="protein-target">
-              {proteinTargetSummary(protein.target)}
-            </span>
-          </p>
-        </div>
-      )}
-      {fiber && (
-        <div data-testid="fiber-estimate-details">
-          <p>
-            <span className="font-medium">Fiber intake: </span>
-            <span data-testid="fiber-intake">
-              {fiberIntakeSummary(fiber.intake)}
-            </span>
-          </p>
-          <p className="mt-1">
-            <span className="font-medium">Fiber target: </span>
-            <span data-testid="fiber-target">
-              {fiberTargetSummary(fiber.target)}
-            </span>
-          </p>
-        </div>
-      )}
-    </>
+      </span>
+    </p>
   );
 }
 
@@ -487,12 +427,6 @@ export default async function FoodTab({
           embedded
           title="Nutrients"
           headingLevel={3}
-          details={
-            <NutrientEstimateDetails
-              protein={day.proteinAssessment}
-              fiber={day.fiber}
-            />
-          }
         >
           {(day.protein || day.proteinAssessment) && (
             <ProteinAdequacyCard
@@ -530,8 +464,12 @@ export default async function FoodTab({
             className="min-w-0"
           >
             {/* Fasting (#2756) sits ABOVE the log bar because it is the same kind of
-                thing — an act, in the "Act" column — and because the state chip has to
-                be visible before the bar's taps start meeting "End your fast?".
+                thing — an act, in the "Act" column. It is NOT here because the state
+                has to be on screen for the end-fast offer to land: that offer is a
+                post-write TOAST fired after the serving has already landed (#2756's
+                offer-after-the-fact shape), so it reaches the user whether or not this
+                surface is expanded — which is what lets the idle state fold to one
+                affordance (#3672).
                 Rendered only for a profile the write core would accept a START from:
                 hiding a surface is NOT the gate (lib/fast-write.ts refuses
                 independently, which is what makes the gate real against a direct POST),
@@ -613,12 +551,6 @@ export default async function FoodTab({
             >
               <NutrientsCard
                 embedded
-                details={
-                  <NutrientEstimateDetails
-                    protein={proteinAdequacy}
-                    fiber={fiberToday}
-                  />
-                }
               >
                 {(proteinToday || proteinAdequacy) && (
                   <ProteinAdequacyCard
@@ -627,44 +559,48 @@ export default async function FoodTab({
                   />
                 )}
                 {fiberToday && (
-                  <FiberAdequacyCard
-                    adequacy={fiberToday}
-                    periodLabel="Today"
-                  />
+                  <div>
+                    <FiberAdequacyCard
+                      adequacy={fiberToday}
+                      periodLabel="Today"
+                    />
+                    {fiberAdequacy && (
+                      <WeeklyFiberLine adequacy={fiberAdequacy} />
+                    )}
+                  </div>
                 )}
               </NutrientsCard>
             </section>
           )
         }
         weeklySidebar={
-          // Weekly reflection remains visible for every selected date because it is
-          // explicitly labeled as a weekly context rather than a daily one.
+          // ONE THIS-WEEK LIST (#3987). The rollup and the habits section were two
+          // lists of the same groups for the same week; `WeeklyHabits` now owns the
+          // merged one, so this section holds it and the co-read panel and nothing
+          // else. Weekly reflection remains visible for every selected date because it
+          // is explicitly labeled as a weekly context rather than a daily one.
           <section
             key="nutrition-week"
             data-testid="nutrition-week-section"
             className="space-y-5"
           >
-            <div>
-              <h2 className="mb-3 section-label">This week</h2>
-              <FoodWeeklyRollup rollup={rollup} />
-            </div>
-            {fiberAdequacy && <WeeklyFiberSummary adequacy={fiberAdequacy} />}
+            <WeeklyHabits
+              profileId={profile.id}
+              formatPrefs={formatPrefs}
+              rollup={rollup}
+              embedded
+            />
             {/* Fiber × GI symptoms read together (#2788): rendered only when BOTH
                 series have something in the window — with either empty there is
                 nothing to co-read, and silence beats an empty exhortation. */}
             {fiberSymptomPanelHasSignal(fiberSymptomPanel) && (
-              <FiberSymptomPanel
-                panel={fiberSymptomPanel}
-                formatPrefs={formatPrefs}
-              />
+              <div className="border-t border-black/5 pt-5 dark:border-white/5">
+                <FiberSymptomPanel
+                  panel={fiberSymptomPanel}
+                  formatPrefs={formatPrefs}
+                />
+              </div>
             )}
-            <div className="border-t border-black/5 pt-5 dark:border-white/5">
-              <WeeklyHabits
-                profileId={profile.id}
-                formatPrefs={formatPrefs}
-                embedded
-              />
-            </div>
           </section>
         }
       />

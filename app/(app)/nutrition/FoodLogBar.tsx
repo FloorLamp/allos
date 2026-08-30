@@ -1192,14 +1192,15 @@ export default function FoodLogBar({
   // a past day is asked "Set time?" and its bare taps stay untimed; today is asked
   // "Happened earlier?" and its bare taps mean now.
   const statingTime = activeDate === today;
-  // A statement belongs to the day it was made about. When the selected day moves, the
-  // statement and its fold go with it — the alternative is a time chosen for Tuesday
-  // silently stamping Wednesday's taps, which is the fabricated instant the NULL default
-  // exists to refuse.
-  useEffect(() => {
-    setEatingWhen({ date: activeDate, statedAt: null });
-    setWhenOpen(false);
-  }, [activeDate]);
+  // A statement BELONGS TO THE DAY IT WAS MADE ABOUT, and that is enforced by the value
+  // itself rather than by resetting state when the day moves: the pair the control owns
+  // carries its own `date`, so a statement made about Tuesday is simply not in force on
+  // Wednesday. Nothing is silently in force either — the fold's summary prints the time
+  // whenever one is, so switching back to Tuesday shows what Tuesday still says.
+  const whenForDay: WhenValue =
+    eatingWhen.date === activeDate
+      ? eatingWhen
+      : { date: activeDate, statedAt: null };
   // The statement in force, as the two things every consumer of it needs: the INSTANT an
   // offline capture carries (resolved here because a replay has no server to ask, and
   // validated server-side before it lands), and the profile-local wall time the online
@@ -1207,8 +1208,7 @@ export default function FoodLogBar({
   // cannot describe different minutes.
   // The statement is anchored on the SELECTED day by the control's own pair rule, so a
   // stale value from a day that has since been switched away from cannot be in force.
-  const statedAt =
-    eatingWhen.date === activeDate ? eatingWhen.statedAt : null;
+  const statedAt = whenForDay.statedAt;
   const statedTime = statedAt ? statedHhmm(statedAt, tz) : "";
 
   // The meal window the statement in force FILES under (#2269) — the section a "+" will
@@ -2153,7 +2153,7 @@ export default function FoodLogBar({
               <WhenControl
                 mode="state"
                 grain="hour"
-                value={eatingWhen}
+                value={whenForDay}
                 onChange={setEatingWhen}
                 minDate={activeDate}
                 maxDate={activeDate}
