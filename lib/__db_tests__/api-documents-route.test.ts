@@ -163,26 +163,6 @@ describe("POST /api/documents — authentication", () => {
 });
 
 describe("POST /api/documents — authorization", () => {
-  it("403s a profile the login cannot reach at all, storing nothing", async () => {
-    const res = await POST(
-      uploadRequest(strangerToken, writeProfile, [
-        { name: "labs.pdf", bytes: pdfBytes("stranger") },
-      ])
-    );
-    expect(res.status).toBe(403);
-    expect(docCount(writeProfile)).toBe(0);
-  });
-
-  it("403s a profile granted READ-only", async () => {
-    const res = await POST(
-      uploadRequest(memberToken, readProfile, [
-        { name: "labs.pdf", bytes: pdfBytes("readonly") },
-      ])
-    );
-    expect(res.status).toBe(403);
-    expect(docCount(readProfile)).toBe(0);
-  });
-
   it("gives the same 403 for unreachable and read-only (no existence probe)", async () => {
     const unreachable = await POST(
       uploadRequest(memberToken, otherProfile, [
@@ -199,16 +179,8 @@ describe("POST /api/documents — authorization", () => {
     expect((await unreachable.json()) as unknown).toEqual(
       (await readonly.json()) as unknown
     );
-  });
-
-  it("lets an admin upload to any profile (implicit all-write)", async () => {
-    const res = await POST(
-      uploadRequest(adminToken, otherProfile, [
-        { name: "admin.pdf", bytes: pdfBytes("admin") },
-      ])
-    );
-    expect(res.status).toBe(200);
-    expect(docCount(otherProfile)).toBe(1);
+    expect(docCount(otherProfile)).toBe(0);
+    expect(docCount(readProfile)).toBe(0);
   });
 
   it("revoking the member's grant refuses the SAME token on the next request", async () => {
@@ -365,7 +337,7 @@ describe("POST /api/documents — per-file outcomes", () => {
     expect(docCount(writeProfile)).toBe(before);
   });
 
-  it("dedups PER PROFILE — the same file for a different person is stored", async () => {
+  it("dedups per profile: an admin stores the same file for another person", async () => {
     const bytes = pdfBytes("cross-profile");
     await POST(
       uploadRequest(memberToken, writeProfile, [{ name: "labs.pdf", bytes }])
@@ -374,6 +346,7 @@ describe("POST /api/documents — per-file outcomes", () => {
       uploadRequest(adminToken, otherProfile, [{ name: "labs.pdf", bytes }])
     );
     const body = (await res.json()) as { documents: { outcome: string }[] };
+    expect(res.status).toBe(200);
     expect(body.documents[0].outcome).toBe("stored");
     expect(docCount(otherProfile)).toBe(1);
   });
@@ -406,19 +379,6 @@ describe("POST /api/documents — per-file outcomes", () => {
     expect(body.documents[0].reason).toMatch(/too large/i);
   });
 
-  it("reports `failed` for a file whose bytes contradict its name", async () => {
-    const res = await POST(
-      uploadRequest(memberToken, writeProfile, [
-        { name: "notreally.pdf", bytes: new TextEncoder().encode("hello") },
-      ])
-    );
-    const body = (await res.json()) as {
-      documents: { outcome: string; reason: string | null }[];
-    };
-    expect(body.documents[0].outcome).toBe("failed");
-    expect(body.documents[0].reason).toBeTruthy();
-  });
-
   it("never answers a blanket success — a mixed batch reports each file", async () => {
     const res = await POST(
       uploadRequest(memberToken, writeProfile, [
@@ -428,12 +388,13 @@ describe("POST /api/documents — per-file outcomes", () => {
     );
     const body = (await res.json()) as {
       ok: boolean;
-      documents: { name: string; outcome: string }[];
+      documents: { name: string; outcome: string; reason: string | null }[];
     };
     // ok:true means "the request was handled", never "every file landed" — which is
     // exactly why each file carries its own verdict.
     expect(body.ok).toBe(true);
     expect(body.documents.map((d) => d.outcome)).toEqual(["stored", "failed"]);
+    expect(body.documents[1].reason).toBeTruthy();
   });
 });
 
@@ -456,22 +417,15 @@ describe("GET /api/documents/profiles", () => {
     // Read-only and unreachable profiles are both absent.
     expect(ids).not.toContain(readProfile);
     expect(ids).not.toContain(otherProfile);
+    for (const profile of body.profiles) {
+      expect(Object.keys(profile).sort()).toEqual(["id", "name"]);
+    }
   });
 
   it("returns an empty list for a login with no grants at all", async () => {
     const res = await GET(listRequest(strangerToken));
     const body = (await res.json()) as { profiles: unknown[] };
     expect(body.profiles).toEqual([]);
-  });
-
-  it("carries names only — no health data, no counts", async () => {
-    const res = await GET(listRequest(memberToken));
-    const body = (await res.json()) as {
-      profiles: Record<string, unknown>[];
-    };
-    for (const p of body.profiles) {
-      expect(Object.keys(p).sort()).toEqual(["id", "name"]);
-    }
   });
 
   it("disambiguates two profiles sharing a name, like the switcher does", async () => {

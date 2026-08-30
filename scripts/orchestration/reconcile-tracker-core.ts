@@ -106,7 +106,12 @@ export interface RunConfig {
   only: readonly number[];
   /** Override the watermark's lower bound (ISO 8601). */
   since: string | null;
-  /** Advance the stored watermark on success. Off by default. */
+  /**
+   * Legacy flag, still parsed so it fails LOUDLY: stamping moved to the
+   * confined writer (`reconcile-watermark.ts`) when the watermark moved into
+   * the tracker itself, and the read-only gatherer refuses it rather than
+   * silently ignoring it.
+   */
   stamp: boolean;
   /** Where to write the markdown report; null ⇒ stdout. */
   out: string | null;
@@ -141,6 +146,43 @@ export function resolveRunConfig(
     else if (arg === "--repo") config.repo = value();
   }
   return { ...config, only: only.filter((n) => Number.isInteger(n) && n > 0) };
+}
+
+/**
+ * The watermark lives IN THE TRACKER, as the body of one dedicated issue with
+ * this exact title (owner, 2026-08-30) — container state dies with the
+ * container, and a lost watermark silently reshapes the sweep window. The
+ * read-only gatherer finds it in the open-issue list it already fetches; only
+ * the confined writer (`reconcile-watermark.ts`) advances it.
+ */
+export const WATERMARK_ISSUE_TITLE = "Reconcile watermark (machine state)";
+
+export interface WatermarkCarrier {
+  /** The carrier issue's number, or null when no carrier exists yet. */
+  issueNumber: number | null;
+  /** The stamped previous-run instant, or null (first run, or unstamped). */
+  lastRunAt: string | null;
+}
+
+/**
+ * Split the carrier out of a sweep's issue list: its body is machine state,
+ * not tracker claims, so it is never swept, and its stamp becomes the
+ * window's lower bound.
+ */
+export function extractWatermark(issues: readonly TrackerIssue[]): {
+  carrier: WatermarkCarrier;
+  issues: TrackerIssue[];
+} {
+  const carrierIssue =
+    issues.find((i) => i.title === WATERMARK_ISSUE_TITLE) ?? null;
+  const stamp = carrierIssue?.body.match(/"lastRunAt":\s*"([^"]+)"/);
+  return {
+    carrier: {
+      issueNumber: carrierIssue?.number ?? null,
+      lastRunAt: stamp?.[1] ?? null,
+    },
+    issues: issues.filter((i) => i !== carrierIssue),
+  };
 }
 
 /** One open issue, reduced to the fields this module reads. */
@@ -666,7 +708,7 @@ export interface DocsFinding {
 
 export const SPEC_STATUS_LINE = /^Status:\s*\S/m;
 
-// ---- Label hygiene (docs/orchestration/dispatch.md §Queue labels) ----------
+// ---- Label hygiene (docs/orchestration/labels.md) --------------------------
 //
 // Dispatch consumes exactly two label axes — one priority-slot label and at
 // least one domain label — and until 2026-08-15 nothing checked either (an
@@ -687,6 +729,7 @@ export const DOMAIN_LABELS = [
   "biomarkers",
   "body-metrics",
   "ci",
+  "dashboard",
   "db",
   "dependencies",
   "design",
@@ -718,9 +761,49 @@ export const RETIRED_LABELS = [
   "lib",
 ] as const;
 
+/**
+ * Optional type color; `bug` is the one dispatch reads, `ui` hints e2e-heavy
+ * work. `testing` and `a11y` joined by owner ruling 2026-08-30 — the two
+ * strays whose usage (99 and 9 issues) showed a real habit worth legitimizing
+ * as color rather than deleting; `dashboard` joined the domain axis the same
+ * day. A size axis was considered then and DECLINED: the dispatch ledger
+ * already measures real lane durations, and estimates drift.
+ */
+export const TYPE_LABELS = [
+  "a11y",
+  "bug",
+  "feat",
+  "refactor",
+  "testing",
+  "ui",
+] as const;
+
+/** Process markers with their own routing rules (docs/orchestration/labels.md). */
+export const PROCESS_LABELS = [
+  "needs-human",
+  "recommend-adopt",
+  "recommend-hold",
+] as const;
+
+/**
+ * The whole taxonomy, CLOSED. GitHub's add-labels endpoint silently CREATES a
+ * label it does not recognise, so one filing with a synonym or typo ("deps",
+ * "testing", "infrastructure") mints a real repo label that routes nothing —
+ * and the live label list then validates the next filer's mistake. 16 such
+ * strays were counted on the live list on 2026-08-30. A label outside this
+ * union is a hygiene finding, never something to apply; and the live list is
+ * never the thing to verify a label against — this union is.
+ */
+export const KNOWN_LABELS: ReadonlySet<string> = new Set<string>([
+  ...PRIORITY_SLOT_LABELS,
+  ...DOMAIN_LABELS,
+  ...TYPE_LABELS,
+  ...PROCESS_LABELS,
+]);
+
 export interface LabelFinding {
   issue: number;
-  kind: "priority-slot" | "no-domain" | "retired-label";
+  kind: "priority-slot" | "no-domain" | "retired-label" | "unknown-label";
   detail: string;
 }
 
@@ -742,7 +825,7 @@ export type LabelRemovalRefusal =
  * function over the issue's CURRENT labels.
  *
  * Removal of a retired label is a FACT: the taxonomy no longer contains it
- * (`RETIRED_LABELS`, `docs/orchestration/dispatch.md`), so the label routes
+ * (`RETIRED_LABELS`, `docs/orchestration/labels.md`), so the label routes
  * nothing and says nothing. Choosing which domain label an issue should carry
  * instead is a JUDGMENT — it decides how the issue clusters and who gets
  * dispatched to it — so this module cannot express it. There is no add op, and
@@ -1049,6 +1132,17 @@ export function checkLabelHygiene(
         issue: issue.number,
         kind: "retired-label",
         detail: `carries retired label \`${label}\``,
+      });
+    }
+    // Retired labels already have their own finding above; everything else off
+    // the taxonomy is a stray that some filing minted repo-side.
+    for (const label of issue.labels) {
+      if (KNOWN_LABELS.has(label)) continue;
+      if ((RETIRED_LABELS as readonly string[]).includes(label)) continue;
+      out.push({
+        issue: issue.number,
+        kind: "unknown-label",
+        detail: `carries \`${label}\`, which is outside the taxonomy (KNOWN_LABELS) — it routes nothing, and applying it is what created it repo-side`,
       });
     }
   }

@@ -1,0 +1,66 @@
+name: label-taxonomy
+
+# Deletes repo labels outside the closed taxonomy — `KNOWN_LABELS` in
+# scripts/orchestration/reconcile-tracker-core.ts, the same canon
+# `checkLabelHygiene` checks issues against.
+#
+# WHY THIS EXISTS: GitHub's add-labels endpoint silently CREATES any label it
+# does not recognise, so one filing with a synonym or typo (`deps`, `testing`,
+# `infrastructure`) mints a real repo label — and the live list then validates
+# the next filer's mistake. 16 such strays had accumulated by 2026-08-30.
+# Prose told every filer not to invent
+# labels and the strays arrived anyway, so the rule moved into tooling.
+#
+# TO ADD A LABEL: extend `KNOWN_LABELS` first and merge — the live list
+# follows the code, never the other way around. A label created repo-side
+# without that is deleted by the next run, whoever created it; the run's log
+# names what it deleted. Deleting a repo label strips it from every issue and
+# PR (open and closed), which is the same remedy the 2026-08-15 label
+# retirement used.
+#
+# The `label` trigger is the instant path — a stray dies the moment a filing
+# mints it (`created`) or a rename drifts a known label off-taxonomy
+# (`edited`). The weekly run is the backstop for missed events, and manual
+# dispatch (optionally as a dry run) covers "what would this delete" before a
+# taxonomy change. Runs serialized: two concurrent sweeps are harmless — the
+# loser's DELETE answers 404, which the script tolerates — but one plan per
+# moment reads better in the logs.
+on:
+  label:
+    types: [created, edited]
+  schedule:
+    - cron: "41 5 * * 1"
+  workflow_dispatch:
+    inputs:
+      dry_run:
+        description: "Plan only — print the strays without deleting"
+        type: boolean
+        default: false
+
+# Repo labels ride the issues permission scope.
+permissions:
+  issues: write
+
+concurrency:
+  group: label-taxonomy
+
+jobs:
+  enforce:
+    # Forks keep their own labels; this taxonomy is FloorLamp/allos policy.
+    if: github.repository == 'FloorLamp/allos'
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v7
+
+      # tsx comes from devDependencies; the cached node_modules restore makes
+      # this cheap on the common path (see the action's own header).
+      - uses: ./.github/actions/node-setup
+
+      - name: Delete unknown labels
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          DRY_RUN: ${{ inputs.dry_run }}
+        run: |
+          args=(--apply)
+          if [ "$DRY_RUN" = "true" ]; then args=(); fi
+          npx tsx scripts/orchestration/delete-unknown-labels.ts "${args[@]}"

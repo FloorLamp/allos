@@ -36,14 +36,17 @@
 // Exit 0 always: a glance is not a verdict. Use ci-watch.mjs for the merge gate.
 
 import { execFileSync } from "node:child_process";
+import { helpGuard } from "./usage.mjs";
+import { resolveReadToken } from "./host.mjs";
+helpGuard(process.argv, import.meta.url);
 
-const token = process.env.GH_TOKEN ?? process.env.GITHUB_TOKEN;
+const token = resolveReadToken();
 if (!token) {
   // The unauthenticated read returns an error body that parses to nothing, which
   // renders as "no failures" — a lie in the reassuring direction (ci-watch.mjs
   // carries the same assertion for the same reason).
   console.error(
-    'BLOCKED: neither GH_TOKEN nor GITHUB_TOKEN is set. Refusing to poll — an\nunauthenticated read reads as "nothing is wrong". Re-mint with add_repo access:"push".'
+    'BLOCKED: no GH_TOKEN/GITHUB_TOKEN and no authenticated gh. Refusing to poll — an\nunauthenticated read reads as "nothing is wrong". Re-mint with add_repo access:"push".'
   );
   process.exit(3);
 }

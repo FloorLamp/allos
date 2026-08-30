@@ -18,7 +18,7 @@
 //   3. A dispatch that has left NO TRACE warns once it is past its grace period.
 //      Both signals #2988 proposes are absent in the only stall this runbook has
 //      actually measured (the 12.9-hour denied-and-idle agent of 2026-08-10,
-//      docs/orchestration-incidents.md, whose `git worktree add` was refused and
+//      whose `git worktree add` was refused and
 //      which therefore had neither a worktree nor a branch), so a detector built
 //      on those two signals alone would be blind exactly where the noisy one was
 //      merely loud.
