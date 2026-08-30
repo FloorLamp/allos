@@ -647,6 +647,22 @@ ${landingLines}
   it was structurally the wrong direction. Name the surfaces that must stay loud, keep
   the list SHORT and hand-written (an exhaustive scanner is the forbidden shape), and
   prove the converse assertion can fail before you trust it passing.
+- COUNT HOW OFTEN YOUR FIXTURE REACHES THE STATE YOUR ASSERTION FORBIDS. This is the
+  cheapest check in this brief and it catches the defect class the rest of these rules
+  keep circling. A test's SUBJECT and its FIXTURE are usually chosen by the same person
+  in the same motion, so the fixture inherits that person's belief about where the
+  defect lives and then confirms it. Nobody asks the separate question -- can this
+  fixture even produce the shape? Measured 2026-08-30 across one session: an empty-state
+  test whose fixture made the absence true for the wrong reason; a retirement table
+  querying its most permissive input; a census sweep whose pattern never matched
+  anything; a completeness guard structurally blind to over-dropping; a tie-break case
+  whose expected answer was also what declaration order alone produced; and a 5000-seed
+  conservation fuzz that stayed GREEN with its guard deleted, because the generator had
+  produced the shape that guard governs ZERO times. Every one was green, and green for a
+  reason that had nothing to do with the code.
+  So instrument once, in a throwaway file you delete: count the fixtures, seeds or rows
+  that actually reach the forbidden state. A zero is your answer. This costs one run and
+  it is what turns "my test passes" into "my test could have failed".
 - MEASURE YOUR DIFF WITH THREE DOTS. \`git diff origin/main HEAD\` is UNSAFE in this
   container: every worktree shares one \`.git\`, so a SIBLING LANE's fetch moves
   \`refs/remotes/origin/main\` under you with no action of your own, and a two-dot diff
