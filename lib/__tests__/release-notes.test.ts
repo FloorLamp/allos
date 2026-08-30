@@ -361,14 +361,33 @@ describe("categories and the concise contract", () => {
     ).not.toThrow();
   });
 
-  it("the shipped newest day already meets the tighter shape", () => {
-    // The 2026-08-29 batch was hand-tightened when the contract landed; this
-    // keeps that true so /whats-new page 1 stays grouped and concise.
+  // THE DAYS TIGHTENED BY HAND, NAMED. This was keyed on `days[0]` — the
+  // NEWEST day, whichever that is — and that made it a standing demand that
+  // every future day meet a contract its own date may not be under. It went
+  // red on correct code the moment 2026-08-30 merged ahead of 2026-08-29:
+  // nothing was wrong with either day, one of them simply arrived.
+  //
+  // From CATEGORIZED_SINCE the validator enforces this for every day, so the
+  // only days needing a pin are the two curated BEFORE the cutoff. They are
+  // named. A third pre-cutoff day is not this test's business, and a
+  // post-cutoff day cannot parse without already complying.
+  const TIGHTENED_BEFORE_CUTOFF = ["2026-08-30", "2026-08-29"];
+
+  it("the days hand-tightened before the cutoff still meet the tighter shape", () => {
     const notes = parseReleaseNotes(shipped);
-    const newest = notes.days[0];
-    for (const e of newest.entries) {
-      expect(e.category).toBeDefined();
-      expect(e.title.length).toBeLessThanOrEqual(CONCISE_TITLE_LENGTH);
+    for (const date of TIGHTENED_BEFORE_CUTOFF) {
+      const day = notes.days.find((d) => d.date === date);
+      // Named, so a day that vanished from the file fails here rather than
+      // passing over an empty loop.
+      expect(
+        day,
+        `${date} is missing from lib/release-notes.json`
+      ).toBeDefined();
+      expect(date < CATEGORIZED_SINCE).toBe(true);
+      for (const e of day!.entries) {
+        expect(e.category).toBeDefined();
+        expect(e.title.length).toBeLessThanOrEqual(CONCISE_TITLE_LENGTH);
+      }
     }
   });
 });
@@ -427,12 +446,48 @@ describe("groupDayEntries — most visible first", () => {
     expect(declared.map((g) => g.category)).toEqual(["Training", "Sleep"]);
   });
 
-  it("a legacy day without categories is ONE headerless group, in kind order", () => {
+  // A LEGACY DAY IS NOT RE-ORDERED. This case used to assert [2, 1] — the
+  // feature pulled ahead of the fix — which encoded the very re-ordering the
+  // function's own doc, lib/release-notes.ts and the page all promise does not
+  // happen to a pre-CATEGORIZED_SINCE day. Measured against the shipped file,
+  // that sort moved 32 of 36 days, and on three of them it took a `security`
+  // bullet its author had put FIRST and rendered it last. Curated order is the
+  // author's order.
+  it("a legacy day without categories is ONE headerless group, in FILE order", () => {
     const groups = groupDayEntries(
       parsedDay([e(1, undefined, "fix"), e(2, undefined, "feature")])
     );
     expect(groups).toHaveLength(1);
     expect(groups[0].category).toBeNull();
-    expect(groups[0].entries.map((x) => x.entry.pr)).toEqual([2, 1]);
+    expect(groups[0].entries.map((x) => x.entry.pr)).toEqual([1, 2]);
+  });
+
+  // The converse, so "file order" cannot pass by the sort simply being absent:
+  // a CATEGORIZED day still re-orders, and security leads it.
+  it("security leads a categorized group, ahead of a feature", () => {
+    const groups = groupDayEntries(
+      parsedDay([
+        e(1, "Interface", "fix"),
+        e(2, "Interface", "feature"),
+        e(3, "Interface", "security"),
+      ])
+    );
+    expect(groups[0].entries.map((x) => x.entry.pr)).toEqual([3, 2, 1]);
+  });
+
+  // And no shipped day loses its author's ordering to the group sort: only the
+  // two hand-categorized days re-order, and they asked to.
+  it("no legacy day in the shipped file is re-ordered", () => {
+    const notes = parseReleaseNotes(shipped);
+    const moved = notes.days
+      .filter((day) => day.entries.some((entry) => !entry.category))
+      .filter((day) => {
+        const rendered = groupDayEntries(day).flatMap((g) =>
+          g.entries.map((x) => x.position)
+        );
+        return rendered.some((position, index) => position !== index);
+      })
+      .map((day) => day.date);
+    expect(moved).toEqual([]);
   });
 });

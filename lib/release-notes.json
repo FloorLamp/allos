@@ -7,14 +7,14 @@
           "pr": 4132,
           "title": "Water, lean mass, bone mass and respiratory rate can be typed in by hand",
           "kind": "feature",
-          "category": "Medical",
+          "category": "Trends",
           "issues": [1851]
         },
         {
           "pr": 4136,
           "title": "The measurements form opens offline, so a weigh-in still saves and syncs later",
           "kind": "fix",
-          "category": "Medical",
+          "category": "Trends",
           "issues": [4091]
         },
         {
@@ -26,14 +26,14 @@
         },
         {
           "pr": 4144,
-          "title": "Today's protein takes the larger of your own log and your health app's",
+          "title": "Today's protein never falls below what you logged, whatever your health app says",
           "kind": "fix",
           "category": "Nutrition",
           "issues": [3903]
         },
         {
           "pr": 4156,
-          "title": "Today's fiber takes the larger of your health app's reading and your own logs",
+          "title": "Today's fiber never falls below your own food and supplement logs",
           "kind": "fix",
           "category": "Nutrition",
           "issues": [4127]
@@ -84,7 +84,7 @@
           "pr": 4252,
           "title": "A practice session records when it started and ended, and draws on the chart",
           "kind": "feature",
-          "category": "Training",
+          "category": "History",
           "issues": [3142]
         },
         {
@@ -175,7 +175,7 @@
           "pr": 4224,
           "title": "An offline weigh-in keeps your weight when waist needs a connection",
           "kind": "fix",
-          "category": "Medical",
+          "category": "Trends",
           "issues": [4142]
         },
         {
@@ -219,6 +219,27 @@
           "kind": "fix",
           "category": "Medications",
           "issues": [4254]
+        },
+        {
+          "pr": 4251,
+          "title": "A finding card stops repeating the counts its decision line already states",
+          "kind": "fix",
+          "category": "Trends",
+          "issues": [4229]
+        },
+        {
+          "pr": 4289,
+          "title": "A dose tapped in the quick sheet with no connection saves and syncs later",
+          "kind": "fix",
+          "category": "Medications",
+          "issues": [3272]
+        },
+        {
+          "pr": 4295,
+          "title": "A stored recap hides substance mentions unless you turned that on",
+          "kind": "security",
+          "category": "Security",
+          "issues": []
         }
       ]
     },

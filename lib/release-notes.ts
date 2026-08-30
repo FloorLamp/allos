@@ -360,11 +360,18 @@ export type ReleaseNoteGroup = {
   entries: Array<{ entry: ReleaseNoteEntry; position: number }>;
 };
 
+// SECURITY LEADS. It ranked LAST here — below `fix` — which read as the
+// declaration order of RELEASE_NOTE_KINDS rather than as a decision, and it
+// demoted the one bullet a person most needs to see: "Alcohol no longer
+// reaches Telegram unless you turn it on for that profile" (#3846) sat first
+// on 2026-08-27 and rendered fifteenth. A security note is not polish and it
+// is not a capability; it is the line someone has to read before they decide
+// whether their data was exposed, so it outranks both.
 const KIND_RANK: Record<ReleaseNoteKind, number> = {
-  feature: 0,
-  perf: 1,
-  fix: 2,
-  security: 3,
+  security: 0,
+  feature: 1,
+  perf: 2,
+  fix: 3,
 };
 const kindRank = (entry: ReleaseNoteEntry): number =>
   entry.kind ? KIND_RANK[entry.kind] : KIND_RANK.fix;
@@ -373,9 +380,10 @@ const kindRank = (entry: ReleaseNoteEntry): number =>
  * A day's entries grouped by category, MOST VISIBLE FIRST (owner, 2026-08-31):
  * groups are ordered by the most prominent kind they contain (a new capability
  * outranks polish), then by how many new capabilities they hold, then by the
- * closed list's declaration order; inside a group, features lead and file
- * order breaks ties. Uncategorized entries (pre-CATEGORIZED_SINCE days) form
- * one null group that renders headerless — legacy days look exactly as they
+ * closed list's declaration order; inside a group, security leads, then
+ * features, and file order breaks ties. Uncategorized entries
+ * (pre-CATEGORIZED_SINCE days) form one null group that renders headerless
+ * IN THE ORDER IT WAS WRITTEN — legacy days look exactly as they
  * always did. Pure; positions survive for stable render keys.
  */
 export function groupDayEntries(day: ReleaseNoteDay): ReleaseNoteGroup[] {
@@ -392,12 +400,23 @@ export function groupDayEntries(day: ReleaseNoteDay): ReleaseNoteGroup[] {
   const groups: ReleaseNoteGroup[] = [...byCategory.entries()].map(
     ([category, entries]) => ({
       category,
-      entries: entries
-        .slice()
-        .sort(
-          (a, b) =>
-            kindRank(a.entry) - kindRank(b.entry) || a.position - b.position
-        ),
+      // A LEGACY DAY IS NOT RE-ORDERED AT ALL. The null group is what a
+      // pre-CATEGORIZED_SINCE day renders as, and this file, the page and
+      // this function's own doc all promise such a day looks exactly as it
+      // always did. Sorting it by kind broke that promise on 32 of 36 shipped
+      // days — silently, since nothing renders the old order to compare
+      // against. Curated order is the author's order; only a categorized day
+      // asked to be re-arranged.
+      entries:
+        category === null
+          ? entries.slice()
+          : entries
+              .slice()
+              .sort(
+                (a, b) =>
+                  kindRank(a.entry) - kindRank(b.entry) ||
+                  a.position - b.position
+              ),
     })
   );
   const best = (g: ReleaseNoteGroup) =>
